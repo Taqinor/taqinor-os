@@ -56,6 +56,11 @@ const newLigne = () => ({
 // ACHT63 — libellé d'un chantier : sa RÉFÉRENCE (les chantiers n'ont pas de clé `nom`).
 const libelleChantier = (c) => c?.reference || c?.nom || '—'
 
+// ENF15 — le catalogue d'achat est paginé côté serveur : le picker lit TOUTES les pages du
+// filtre `q` (nom / SKU / catégorie), jamais la seule première page tronquée en silence.
+const lireCatalogue = (q) => lireToutesLesPages(
+  (p) => stockApi.getCatalogueAchat(q ? { q, ...p } : p))
+
 const emptyForm = () => ({
   objet: '', chantier: '', priorite: 'normale', date_besoin: '', note: '',
   lignes: [newLigne()],
@@ -73,6 +78,9 @@ export default function DemandesAchatList() {
   const [produits, setProduits] = useState([])
   // NTP2P22 — ids produits à remonter en tête du picker (épinglés + récents).
   const [favoris, setFavoris] = useState([])
+  // Dernière lecture du catalogue demandée : une réponse plus ancienne (lecture multi-pages
+  // plus lente qu'une recherche tapée après elle) ne remplace jamais la plus récente.
+  const catalogueSeq = useRef(0)
   const [chantiers, setChantiers] = useState([])
 
   // Dialogue de création (form) et de détail (une demande existante).
@@ -111,8 +119,10 @@ export default function DemandesAchatList() {
     // NTP2P3 — le picker de la demande d'achat lit le CATALOGUE D'ACHAT
     // (jamais `/stock/produits/`) : pas de `prix_vente`, donc pas de marge
     // visible du demandeur.
-    stockApi.getCatalogueAchat().then(
-      (r) => { if (alive) setProduits(r.data?.results ?? r.data ?? []) },
+    catalogueSeq.current += 1
+    const seq = catalogueSeq.current
+    lireCatalogue('').then(
+      (rows) => { if (alive && seq === catalogueSeq.current) setProduits(rows) },
       () => {},
     )
     // NTP2P22 — favoris : les articles épinglés puis les 5 derniers demandés
@@ -194,11 +204,12 @@ export default function DemandesAchatList() {
     }))
   }
 
-  // NTP2P3 — recherche SERVEUR du catalogue (nom / SKU / catégorie) : la
-  // liste complète n'est jamais chargée d'un bloc.
+  // NTP2P3 — recherche SERVEUR du catalogue (nom / SKU / catégorie), toutes pages du filtre.
   const chercherCatalogue = useCallback((q) => {
-    stockApi.getCatalogueAchat(q ? { q } : undefined).then(
-      (r) => setProduits(r.data?.results ?? r.data ?? []),
+    catalogueSeq.current += 1
+    const seq = catalogueSeq.current
+    lireCatalogue(q).then(
+      (rows) => { if (seq === catalogueSeq.current) setProduits(rows) },
       () => {},
     )
   }, [])

@@ -428,6 +428,27 @@ class LogoRegleTests(SimpleTestCase):
         self.assertIn(b64, G.logo_html())
         self.assertIn(b64, G.logo_p1_dark())
 
+    def test_cloture_agricole_qr_meme_regle(self):
+        """APDF102 — le QR « Scannez pour signer » de la page 3 agricole
+        (``agricole/pages.py::cloture``) reçoit ``theme.logo_qr`` : profil
+        sans logo ⇒ aucun logo TAQINOR ; aucun profil ⇒ asset inchangé."""
+        from apps.ventes.quote_engine.agricole import pages
+        from apps.ventes.quote_engine.residential import theme
+        lien = 'https://app.exemple.ma/proposition/tok-apdf102'
+        for entreprise, attendu_asset in (
+                ({'nom': 'SOLAIRE EXEMPLE SARL'}, False), ({}, True)):
+            d = {'links': {'signer': lien}, 'entreprise': entreprise}
+            logos = []
+
+            def espion(url, **k):
+                logos.append(k.get('logo', True))
+                return ''
+
+            with mock.patch.object(theme, 'qr_data_uri', side_effect=espion):
+                pages.cloture({'d': d, 'synthese': {}, 'ident': {}})
+            self.assertEqual(logos, [theme.logo_qr(d)])
+            self.assertEqual(logos[0] is True, attendu_asset)
+
     def test_logo_qr_regle_unique(self):
         """APDF102 — QR : aucun profil ⇒ asset (octet-identique) ; profil
         sans logo ⇒ aucun logo central ; logo téléversé ⇒ ce logo."""

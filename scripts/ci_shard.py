@@ -118,8 +118,9 @@ MIN_UNIT_SECONDS = 0.4
 
 # Nombre de processus que `manage.py test --parallel N` lance dans CHAQUE lane.
 # DOIT rester aligne sur le `PARALLEL` de l'etape « Run Django test suite » de
-# `.github/workflows/ci.yml` (4, ou 1 si la garde anti-`max_locks` se declenche
-# sur ce shard) : le plan est calcule pour ce parallelisme, et un ecart ne
+# `.github/workflows/ci.yml` (4 sur toutes les lanes depuis CI-5MIN, 23/10/2026 :
+# la ceinture anti-`max_locks` qui retombait a 1 est retiree) : le plan est
+# calcule pour ce parallelisme, et un ecart ne
 # casserait rien (le decoupage reste complet) mais rendrait l'equilibrage faux.
 # Le NOMBRE DE LANES, lui, ne vit pas ici : il est dans `matrix.shard` de ci.yml
 # et passe en argument (`ci_shard.py <shard> <total>`) — 6 depuis le volet G.
@@ -138,8 +139,9 @@ LANE_RESERVE_SECONDS = {0: 45.0}
 # n'a jamais eue.
 CLASS_FLOOR_SECONDS = 1.0
 
-# Marqueurs d'une classe « a purge large » — DOIT rester aligne sur le script
-# `/tmp/purge_large.py` de l'etape « Run Django test suite » de ci.yml.
+# Marqueurs d'une classe « a purge large ». CI-5MIN (23/10/2026) : la garde de
+# ci.yml qui les comptait (`/tmp/purge_large.py`, repli `--parallel 1`) est
+# retiree ; l'anti-affinite ci-dessous reste une simple preference de placement.
 PURGE_MARQUEURS = frozenset({"TransactionTestCase", "WideTeardownTimeoutMixin"})
 
 # WOW-CI RONDE 5 / VOLET F (20/08/2026) — LE PARALLELISME CHANGE LE COUT D'UNE

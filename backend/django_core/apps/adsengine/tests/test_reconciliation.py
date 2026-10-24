@@ -8,6 +8,7 @@ contrat JSON stable, l'upsert idempotent + non-ré-alerte, et le scoping sociét
 import datetime
 
 from django.contrib.contenttypes.models import ContentType
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -157,6 +158,17 @@ class ReconciliationTests(TestCase):
         # une seule alerte (pas de re-alerte sur divergence déjà connue).
         self.assertEqual(EngineAlert.objects.filter(
             company=self.company).count(), 1)
+
+    def test_unicite_societe_campagne_jour_en_base(self):
+        """ENF18 — la base refuse un 2e instantané (société, campagne, jour) ;
+        les lignes sans campagne restent libres (NULL != NULL)."""
+        ReconciliationSnapshot.objects.create(
+            company=self.company, campaign=self.camp, date=DAY)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            ReconciliationSnapshot.objects.create(
+                company=self.company, campaign=self.camp, date=DAY)
+        ReconciliationSnapshot.objects.create(company=self.company, date=DAY)
+        ReconciliationSnapshot.objects.create(company=self.company, date=DAY)
 
     # ── contrat JSON stable ─────────────────────────────────────────────────
     def test_stable_json_contract_keys(self):
