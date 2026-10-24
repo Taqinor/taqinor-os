@@ -186,6 +186,23 @@ class LeGroupeDeVariantesEstVerrouille(_BaseAcceptation):
         self.assertEqual(self.racine.statut, Devis.Statut.ACCEPTE)
         self.assertEqual(self.soeur.statut, Devis.Statut.REFUSE)
 
+    def test_le_lien_public_de_la_soeur_effondree_est_revoque(self):
+        """E (revue du 24/10/2026) — accepter la variante A révoque le lien
+        public de la sœur B (404 sur ``proposal_data``) ; celui de A reste."""
+        from rest_framework.test import APIClient
+        from apps.ventes.models import ShareLink
+        lien_a = ShareLink.for_devis(self.racine)
+        lien_b = ShareLink.for_devis(self.soeur)
+        accept_devis(devis=self.racine, user=None, nom='M. Client')
+        lien_a.refresh_from_db()
+        lien_b.refresh_from_db()
+        self.assertIsNotNone(lien_b.revoque_le)
+        self.assertIsNone(lien_a.revoque_le)
+        with patch('apps.ventes.public_views._notify_open'):
+            resp = APIClient().get(
+                f'/api/django/public/proposal/{lien_b.token}/data/')
+        self.assertEqual(resp.status_code, 404)
+
     def test_un_devis_sans_variante_est_inchange(self):
         """Le groupe d'un devis seul, c'est lui-même : rien à effondrer."""
         seul = self._devis('DEV-QJR134-SEUL')

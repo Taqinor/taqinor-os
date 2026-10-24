@@ -126,6 +126,8 @@ def revoquer_liens_publics(devis):
 MOTIF_REFUS = 'devis refusé'
 MOTIF_REMPLACE = 'remplacé par une nouvelle version'
 MOTIF_LEAD_PERDU = 'lead perdu'
+#: E (revue du 24/10/2026) — sœur effondrée par l'acceptation d'une variante.
+MOTIF_VARIANTE = 'variante non retenue'
 
 
 def revoquer_en_fin_de_vie(devis, motif):

@@ -1105,6 +1105,12 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
             'statut', 'date_refus', 'motif_refus', 'is_active'])
         activity.log_devis_refusal(
             soeur, user, 'variante non retenue', date_acc)
+        # E (revue du 24/10/2026) — l'effondrement pose REFUSE SANS émettre
+        # ``devis_refused`` : les liens publics de la sœur restaient vivants.
+        # Même révocation que l'abonné du refus (point de sauvegarde inclus,
+        # jamais un devis accepté).
+        from apps.ventes.domain.suivi import MOTIF_VARIANTE, revoquer_en_fin_de_vie
+        revoquer_en_fin_de_vie(soeur, MOTIF_VARIANTE)
 
     # AMET2 (D-ECH-FIGE) — échéancier figé AVANT ``devis_accepted`` (les trois
     # portes d'``accept_devis`` passent ici) : les abonnés lisent le plan figé.
