@@ -25,7 +25,7 @@ import { resolveCss } from '../../../test/readCss.mjs'
 
 const {
   apercuFacturerVente, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
-  getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
+  getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis, noterLead,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
   // du chargement paresseux ci-dessous (MÊME forme que DevisOffresTailles.
@@ -66,6 +66,8 @@ const {
     CATALOGUE_SUBSTITUTIONS,
     // QJR534 — « Réviser » depuis la carte (reviserEtOuvrir → ventesApi).
     reviserDevis: vi.fn(() => Promise.resolve({ data: { id: 99, reference: 'DEV-V2' } })),
+    // ALEA50 — « Demander au responsable » : note chatter nommant les postes.
+    noterLead: vi.fn(() => Promise.resolve({ data: {} })),
   }
 })
 vi.mock('../../../api/ventesApi', async () => ({
@@ -83,6 +85,7 @@ vi.mock('../../../api/crmApi', () => ({
   default: {
     whatsappDevis,
     whatsappDevisApercu,
+    noterLead,
     getLeadSalleVenteAnalytics: () => Promise.resolve({ data: null }),
   },
 }))
@@ -214,6 +217,60 @@ describe('LW21 — CTA devis automatique', () => {
   it('QJR599 — devis_auto prêt → le bouton d’édition complète est là aussi, une seule fois', () => {
     renderTab({ state: leadState({ devis_auto: { pret: true, manquants: [] } }) })
     expect(screen.getAllByRole('button', { name: /Nouveau devis \(édition complète\)/ })).toHaveLength(1)
+  })
+
+  // ALEA50 (D-ACI-6=a) — « prêt » inclut le catalogue : postes fixes sans prix.
+  const BLOQUE = {
+    pret: true, manquants: [],
+    catalogue_ci: {
+      pret: false,
+      manquants: [
+        'Forfait « Pose des modules » (Paramètres › Devis › Prestations C&I)',
+        'Coffret DC C&I (fiche produit)',
+        'Protection AC C&I (fiche produit)',
+      ],
+    },
+  }
+
+  it('ALEA50 — catalogue C&I non prêt → bouton désactivé, motif visible, liens Paramètres/Produits', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis_auto: BLOQUE }) })
+    const bouton = screen.getByRole('button', { name: /Devis automatique/ })
+    expect(bouton).toBeDisabled()
+    await user.click(bouton)
+    expect(onAction).not.toHaveBeenCalledWith('open-devis', 'auto')
+    expect(screen.getByText('3 postes sans prix — à régler par l\'administrateur')).toBeInTheDocument()
+    expect(screen.getByText(/Coffret DC C&I \(fiche produit\)/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Paramètres' })).toHaveAttribute('href', '/parametres')
+    expect(screen.getByRole('link', { name: 'Produits' })).toHaveAttribute('href', '/stock')
+    // Le devis manuel reste ouvert, et le menu « modifiable » (auto) disparaît.
+    expect(screen.getByRole('button', { name: /Nouveau devis \(édition complète\)/ })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /Devis modifiable/ })).toBeNull()
+  })
+
+  it('ALEA50 — « Demander au responsable » poste une note chatter qui nomme les postes', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis_auto: BLOQUE }) })
+    await user.click(screen.getByRole('button', { name: 'Demander au responsable' }))
+    await waitFor(() => expect(noterLead).toHaveBeenCalledTimes(1))
+    const [leadId, texte] = noterLead.mock.calls[0]
+    expect(leadId).toBe(7)
+    expect(texte).toContain('3 postes sans prix')
+    expect(texte).toContain('Pose des modules')
+    expect(texte).toContain('Coffret DC C&I')
+    expect(await screen.findByText('Demande enregistrée dans le fil')).toBeInTheDocument()
+  })
+
+  it('ALEA50 — catalogue prêt (ou non C&I : null) → le bouton reste actif', async () => {
+    const user = userEvent.setup()
+    const { onAction, unmount } = renderTab({
+      state: leadState({ devis_auto: { pret: true, manquants: [], catalogue_ci: { pret: true, manquants: [] } } }),
+    })
+    await user.click(screen.getByRole('button', { name: /Devis automatique/ }))
+    expect(onAction).toHaveBeenCalledWith('open-devis', 'auto')
+    unmount()
+    renderTab({ state: leadState({ devis_auto: { pret: true, manquants: [], catalogue_ci: null } }) })
+    expect(screen.getByRole('button', { name: /Devis automatique/ })).toBeEnabled()
   })
 
   it('devis_auto pas prêt → liste des champs manquants cliquables (saute au champ du centre)', async () => {

@@ -22,6 +22,10 @@ La même liste alimente le champ sérialisé `devis_auto` (UI) et l'endpoint
 POST /crm/leads/<id>/devis-auto/ (règle serveur) — jamais deux logiques.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Modes regroupés (clés de Lead.TypeInstallation — scalaires, jamais une
 # liste d'étapes du pipeline, qui vit dans STAGES.py).
 _MODES_ETUDE = ('commercial', 'industriel')
@@ -302,3 +306,24 @@ def visite_point_eau_avant_devis(lead):
     if lead.debit_forage_m3h is None:
         motifs.append('débit du forage inconnu')
     return {'requise': bool(motifs), 'motifs': motifs}
+
+
+def catalogue_ci(lead):
+    """ALEA50 (D-ACI-6=a) — ``{pret, manquants}`` : les postes FIXES du
+    moteur C&I sans prix (forfaits société, coffrets, protection AC, comptage
+    d'injection). Un lead commercial/industriel dont le catalogue n'est pas
+    prêt ne peut pas recevoir de devis automatique (le moteur refuserait en
+    409 « Prix à renseigner ») : l'écran désactive le bouton et dit pourquoi.
+    ``None`` hors C&I, ou si la lecture échoue (jamais un blocage muet).
+    Lu par ``ventes.selectors.catalogue_ci_pret`` (cache 5 min par société)."""
+    if (lead.type_installation or '') not in _MODES_ETUDE:
+        return None
+    if not getattr(lead, 'company_id', None):
+        return None
+    try:
+        from apps.ventes.selectors import catalogue_ci_pret
+        return catalogue_ci_pret(lead.company_id)
+    except Exception:
+        logger.warning('catalogue_ci_pret : échec ignoré (dégradé)',
+                       exc_info=True)
+        return None

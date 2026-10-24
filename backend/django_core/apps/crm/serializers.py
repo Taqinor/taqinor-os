@@ -34,7 +34,7 @@ from .models import (
     WebsiteLeadPayload,
 )
 from .devis_auto import (
-    champs_manquants_detail, champs_requis, message_manquants,
+    catalogue_ci, champs_manquants_detail, champs_requis, message_manquants,
     source_conso, visite_avant_devis, visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 import logging
@@ -743,6 +743,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # industriel seulement, null ailleurs ; jamais un blocage.
             'source_conso': source_conso(obj),
             'visite_avant_devis': visite_avant_devis(obj),
+            # ALEA50 (D-ACI-6=a) — « prêt » inclut le CATALOGUE : les postes
+            # fixes C&I sans prix (forfaits, coffrets, protection, comptage).
+            # null hors C&I (ou si la lecture échoue : jamais un blocage muet).
+            'catalogue_ci': catalogue_ci(obj),
         }
 
     @extend_schema_field(serializers.DictField(allow_null=True))

@@ -131,3 +131,24 @@ export function lectureClientLabel(lecture, corrigeLe = null) {
     : ''
   return `Ouvert ${vues} fois par le client${quand}${avantCorrection}`
 }
+
+// ALEA50 (D-ACI-6=a) — « prêt » inclut le CATALOGUE : pour un lead C&I, le
+// serveur sert `devis_auto.catalogue_ci` = { pret, manquants: [libellés] } (les
+// postes fixes sans prix : forfaits société, coffrets, protection AC, comptage).
+// `null` (hors C&I, lecture en échec) ne bloque jamais : seul `pret === false`.
+export function catalogueCiBloque(devisAuto) {
+  return devisAuto?.catalogue_ci?.pret === false
+}
+
+// « 3 postes sans prix — à régler par l'administrateur » (singulier géré).
+export function raisonCatalogueCi(devisAuto) {
+  const n = devisAuto?.catalogue_ci?.manquants?.length ?? 0
+  return `${n} poste${n > 1 ? 's' : ''} sans prix — à régler par l'administrateur`
+}
+
+// Le texte de la note chatter « Demander au responsable » : nomme les postes.
+export function noteDemandeCatalogueCi(devisAuto) {
+  const postes = devisAuto?.catalogue_ci?.manquants ?? []
+  return 'Demande au responsable : le devis automatique C&I est bloqué, '
+    + `${raisonCatalogueCi(devisAuto)}. Postes à chiffrer : ${postes.join(' ; ')}.`
+}

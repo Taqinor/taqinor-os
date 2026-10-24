@@ -39,6 +39,7 @@ import {
   DEVIS_MINI_TRACK, devisTrackCurrent, SECTIONS_ENVOI,
   sectionsDepuisServeur, taillesDepuisServeur, optionsCountFromTailles,
   taillesFromOptionsCount, waArmed, devisIntent, lectureClientLabel,
+  catalogueCiBloque, raisonCatalogueCi, noteDemandeCatalogueCi,
 } from './devisTabLogique'
 import { libelleStatutDevis } from '../../ventes/devisStatuts'
 // NTCRM19 — badge de consultation de la salle de vente digitale (NTCRM17/18).
@@ -105,6 +106,52 @@ function BoutonReviser({ devis }) {
         </p>
       )}
     </>
+  )
+}
+
+// ALEA50 (D-ACI-6=a) — le devis automatique C&I est BLOQUÉ tant que des postes
+// fixes (forfaits société, coffrets, protection AC, comptage) n'ont pas de prix :
+// le bouton est désactivé AVEC son motif, les liens mènent où les régler, et
+// « Demander au responsable » laisse une note chatter qui NOMME les postes.
+function BlocCatalogueCi({ devisAuto, leadId }) {
+  const [demande, setDemande] = useState('idle') // idle | envoi | ok | erreur
+  const postes = devisAuto.catalogue_ci?.manquants ?? []
+  const demander = () => {
+    if (!leadId || demande === 'envoi') return
+    setDemande('envoi')
+    crmApi.noterLead(leadId, noteDemandeCatalogueCi(devisAuto))
+      .then(() => setDemande('ok'))
+      .catch((err) => {
+        setDemande('erreur')
+        toastError(errorMessageFrom(err, 'La demande n’a pas pu être enregistrée — réessayez.'))
+      })
+  }
+  return (
+    <div className="lw-context-devis-cta lw-context-devis-bloque" data-testid="lw-devis-catalogue-ci">
+      <Button
+        type="button" variant="default" disabled
+        data-testid="lw-devis-auto-bloque"
+        title={raisonCatalogueCi(devisAuto)}
+      >
+        <Zap size={14} aria-hidden="true" /> Devis automatique
+      </Button>
+      <p className="gen-hint" role="status">{raisonCatalogueCi(devisAuto)}</p>
+      <ul className="lw-context-missing-list">
+        {postes.map((p) => <li key={p}>{p}</li>)}
+      </ul>
+      <p className="gen-hint">
+        À régler dans <Link to="/parametres">Paramètres</Link> (prestations) ou{' '}
+        <Link to="/stock">Produits</Link> (articles).
+      </p>
+      <Button
+        type="button" size="sm" variant="outline"
+        data-testid="lw-devis-demander-responsable"
+        disabled={demande === 'envoi' || demande === 'ok'}
+        onClick={demander}
+      >
+        {demande === 'ok' ? 'Demande enregistrée dans le fil' : 'Demander au responsable'}
+      </Button>
+    </div>
   )
 }
 
@@ -465,7 +512,9 @@ export default function DevisTab({
           <FileText size={14} aria-hidden="true" /> Nouveau devis (édition complète)…
         </Button>
       </div>
-      {devisAuto.pret ? (
+      {devisAuto.pret && catalogueCiBloque(devisAuto) ? (
+        <BlocCatalogueCi devisAuto={devisAuto} leadId={state.leadId} />
+      ) : devisAuto.pret ? (
         <div className="lw-context-devis-cta">
           <Button
             type="button"

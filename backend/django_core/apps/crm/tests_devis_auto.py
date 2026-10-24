@@ -364,6 +364,111 @@ class TestDevisAutoSerializerField(TestCase):
         self.assertIsNone(resp.data['devis_auto']['message'])
 
 
+class TestCatalogueCiAlea50(TestCase):
+    """ALEA50 (D-ACI-5=a / D-ACI-6=a) — « prêt » inclut le CATALOGUE : le bloc
+    ``devis_auto.catalogue_ci`` = {pret, manquants} des postes fixes C&I sans
+    prix (forfaits société, coffrets, protection AC, comptage d'injection)."""
+
+    FORFAITS = ('etudes_ingenierie', 'pose_structure', 'pose_modules',
+                'raccordement_ac', 'mise_en_service', 'dossier_raccordement',
+                'levage_acces', 'transport_ci')
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.company = make_company(slug='alea50-co', nom='ALEA50 Co')
+        self.user = User.objects.create_user(
+            username='alea50_resp', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = make_api(self.user)
+
+    def _equiper(self, forfaits=None, roles=None):
+        from apps.parametres.models import CompanyProfile
+        from apps.stock.models import Produit
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'forfaits_ci': {
+                cle: {'fixe_ht': '500', 'source': 'grille de test'}
+                for cle in (self.FORFAITS if forfaits is None else forfaits)}})
+        for role in (('coffret_dc', 'coffret_ac', 'protection_ac',
+                      'compteur_injection') if roles is None else roles):
+            Produit.objects.create(
+                company=self.company, nom='Poste %s' % role, role_ci=role,
+                prix_vente=Decimal('900'), prix_achat=Decimal('400'))
+
+    def _bloc(self, **kw):
+        lead = Lead.objects.create(company=self.company, nom='Usine',
+                                   **{'type_installation': 'commercial', **kw})
+        resp = self.api.get(f'/api/django/crm/leads/{lead.id}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        return resp.data['devis_auto']['catalogue_ci']
+
+    def test_catalogue_vide_nomme_les_postes_sans_prix(self):
+        bloc = self._bloc()
+        self.assertFalse(bloc['pret'])
+        self.assertEqual(len(bloc['manquants']), 8 + 4)
+        self.assertIn('Forfait « Pose des modules » (Paramètres › Devis › '
+                      'Prestations C&I)', bloc['manquants'])
+        self.assertIn('Coffret DC C&I (fiche produit)', bloc['manquants'])
+        self.assertIn("Compteur d'injection ou contrôleur / limiteur "
+                      "d'injection C&I (fiche produit)", bloc['manquants'])
+
+    def test_catalogue_complet_est_pret(self):
+        self._equiper()
+        bloc = self._bloc(type_installation='industriel')
+        self.assertEqual(bloc, {'pret': True, 'manquants': []})
+
+    def test_un_controleur_tarife_vaut_le_compteur(self):
+        self._equiper(roles=('coffret_dc', 'coffret_ac', 'protection_ac',
+                             'controleur_injection'))
+        self.assertTrue(self._bloc()['pret'])
+
+    def test_article_sans_prix_ou_archive_ne_compte_pas(self):
+        from apps.stock.models import Produit
+        self._equiper(roles=('coffret_ac', 'protection_ac',
+                             'compteur_injection'))
+        Produit.objects.create(company=self.company, nom='Coffret DC sans prix',
+                               role_ci='coffret_dc', prix_vente=Decimal('0'))
+        Produit.objects.create(company=self.company, nom='Coffret DC archivé',
+                               role_ci='coffret_dc', prix_vente=Decimal('800'),
+                               is_archived=True)
+        bloc = self._bloc()
+        self.assertEqual(bloc['manquants'], ['Coffret DC C&I (fiche produit)'])
+
+    def test_forfait_incomplet_manque(self):
+        self._equiper(forfaits=self.FORFAITS[:7])
+        bloc = self._bloc()
+        self.assertEqual(bloc['manquants'], [
+            'Forfait « Transport C&I » (Paramètres › Devis › Prestations C&I)'])
+
+    def test_null_hors_ci(self):
+        lead = Lead.objects.create(company=self.company, nom='Villa',
+                                   facture_hiver=700)
+        resp = self.api.get(f'/api/django/crm/leads/{lead.id}/')
+        self.assertIsNone(resp.data['devis_auto']['catalogue_ci'])
+
+    def test_cache_5_min_par_societe(self):
+        from unittest import mock
+        from apps.ventes import selectors
+        self._equiper()
+        with mock.patch.object(selectors, '_calculer_catalogue_ci_pret',
+                               wraps=selectors._calculer_catalogue_ci_pret
+                               ) as calcul:
+            self.assertTrue(self._bloc()['pret'])
+            self.assertTrue(self._bloc()['pret'])
+            self.assertEqual(calcul.call_count, 1)
+            # Rien n'invalide : le TTL seul rafraîchit (la société voisine, non).
+            autre = make_company(slug='alea50-autre', nom='Autre')
+            self.assertFalse(selectors.catalogue_ci_pret(autre.id)['pret'])
+            self.assertEqual(calcul.call_count, 2)
+
+    def test_forme_du_contrat(self):
+        exemple = CONTRAT_DEVIS_AUTO['exemple_catalogue_ci']['devis_auto']
+        bloc = self._bloc()
+        self.assertEqual(set(bloc), set(exemple['catalogue_ci']))
+        self.assertIsInstance(bloc['pret'], bool)
+        self.assertIsInstance(bloc['manquants'], list)
+
+
 class TestDevisAutoEndpoint(TestCase):
     """Garde serveur POST /crm/leads/<id>/devis-auto/ — sans effet de bord."""
 
