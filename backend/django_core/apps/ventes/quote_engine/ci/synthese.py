@@ -328,6 +328,27 @@ def _par_mois(bilan):
     return [mois[i] for i in range(1, 13)]
 
 
+def _bloc_estimation(etude_ci, coherente):
+    """AMOT91 — ce sur quoi l'estimation repose, lu sur l'étude du moteur :
+    la base de production (``production.source`` / ``inclinaison_deg`` /
+    ``azimut_deg``) et la règle de dimensionnement (``taille.pas_kwc`` /
+    ``horizon_marginal_annees``, D-CIQ-2 — seulement quand l'étude décrit le
+    kWc servi). None quand l'étude ne dit rien de tel."""
+    sortie = {}
+    production = _dict(etude_ci.get("production"))
+    if production.get("source") in ("pvgis", "calepinage"):
+        sortie["production"] = {
+            "source": production["source"],
+            "inclinaison_deg": _num(production.get("inclinaison_deg")),
+            "azimut_deg": _num(production.get("azimut_deg"))}
+    taille = _dict(etude_ci.get("taille"))
+    pas = _num(taille.get("pas_kwc"))
+    horizon = _num(taille.get("horizon_marginal_annees"))
+    if coherente and taille.get("statut") == "calculee" and pas and horizon:
+        sortie["dimensionnement"] = {"pas_kwc": pas, "horizon_annees": horizon}
+    return sortie or None
+
+
 def _option_servie(data):
     servie = data.get("option_servie")
     if servie == "avec":
@@ -738,6 +759,9 @@ def synthese_ci(data):
         else:
             omissions.append({"bloc": "energie", "motif": motif})
 
+    estimation = _bloc_estimation(etude_ci, etude_coherente)
+    if estimation is not None:
+        synthese["estimation"] = estimation
     synthese["option_servie"] = option
     option_batterie = _option_batterie(data)
     if option_batterie is not None:

@@ -210,3 +210,42 @@ class Amot90PageEnergie(SimpleTestCase):
                         p3.index('data-graphique="energie_mensuelle"'))
         sans = _pages(dict(_data_energie(), _sans_graphiques=True))[3]
         self.assertNotIn("data-graphique", sans)
+
+
+class Amot91Hypotheses(SimpleTestCase):
+    """AMOT91 — les deux rangées nouvelles (base de production, règle de
+    dimensionnement) dans la liste de la page finance ; le tableau compact
+    sur la page énergie (non chiffrable)."""
+
+    def test_page_finance_deux_rangees_nouvelles(self):
+        texte = _texte(_pages(_data_energie())[3])
+        self.assertIn("Base de production : 10° d'inclinaison, plein sud — à "
+                      "confirmer au calepinage", texte)
+        self.assertIn("Règle de dimensionnement : chaque palier de 5 kWc "
+                      "retenu se rembourse en moins de 10 ans", texte)
+        self.assertIn("Prix du kWh : Tarif ONEE BT publié", texte)
+        self.assertNotIn("repli", texte)
+
+    def test_page_energie_tableau_compact(self):
+        d = _data_energie(None)
+        d["economie_ci"] = sample_data.economie_ci("exemple")
+        d["economie_ci"]["omissions"] = [{
+            "cle": "investissement_mad", "motif": "investissement à "
+            "compléter après la visite technique (3 postes hors total)"}]
+        d["economie_ci"]["flux_ht"] = dict(d["economie_ci"]["flux_ht"],
+                                           flux=[])
+        texte = _texte(_pages(d)[3])
+        self.assertIn("Ce que la centrale produit pour votre site", texte)
+        tableau = texte[texte.index("Hypothèses de l'estimation"):]
+        self.assertIn("Entretien (O&M) non déduite des économies", tableau)
+        self.assertIn("Règle de dimensionnement", tableau)
+        # Compact : jamais l'investissement (incomplet ici) dans le tableau.
+        self.assertNotIn("Investissement 247 500", tableau)
+
+    def test_taux_declare_sans_nom_de_champ_interne(self):
+        texte = _texte(_pages(_data("exemple_industriel_mt"))[3])
+        self.assertIn("Taux d'actualisation : 8 % — déclaré par le client",
+                      texte)
+        self.assertNotIn("taux_actualisation_client", texte)
+        self.assertIn("Prix du kWh : ceux de votre facture d'électricité",
+                      texte)

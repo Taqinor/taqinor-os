@@ -195,7 +195,12 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_surplus_injecte_kwh', 'ci_surplus_reste',
         # AMOT90 — l'énergie mois par mois.
         'ci_gr_titre', 'ci_gr_consommation', 'ci_gr_autoconsommee',
-        'ci_gr_surplus', 'ci_gr_note', 'ci_ind_energie_titre')),
+        'ci_gr_surplus', 'ci_gr_note', 'ci_ind_energie_titre',
+        # AMOT91 — tableau « Hypothèses de l'estimation ».
+        'ci_h_prix_kwh', 'ci_h_valorisation', 'ci_h_base_production',
+        'ci_h_base_calepinage', 'ci_h_base_pvgis', 'ci_h_plein_sud',
+        'ci_h_azimut', 'ci_h_dimensionnement', 'ci_h_regle_taille',
+        'ci_h_om', 'ci_h_om_deduite', 'ci_h_om_non_deduite')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

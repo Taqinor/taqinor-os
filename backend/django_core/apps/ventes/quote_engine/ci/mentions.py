@@ -309,16 +309,26 @@ def ligne_tarif_grille(tarif, langue=None):
         date=date, tension=texte(tension, langue) if tension else "")
 
 
+#: AMOT91 — le prix du kWh lu sur la facture du client (valeur d'une rangée
+#: « Prix du kWh » : sans le préfixe de la mention complète).
+TEXTES_TARIF_FACTURE = {
+    "fr": "ceux de votre facture d'électricité",
+    "en": "those of your electricity bill",
+    "ar": "تلك الواردة في فاتورة الكهرباء الخاصة بكم",
+}
+
+
 def ligne_tarif_client(tarif, langue=None):
     """AMOT88 — le prix du kWh en mots du client : la grille ONEE publiée et
-    sa date (``ligne_tarif_grille``) ou « ceux de votre facture » ; None
-    sans tarif servi. Remplace la valeur interne « grille ONEE …, repli »
-    d'``economie_ci.hypotheses``."""
+    sa date (``ligne_tarif_grille``) ou « ceux de votre facture
+    d'électricité » ; None sans tarif servi. Remplace la valeur interne
+    « grille ONEE …, repli » d'``economie_ci.hypotheses``."""
     grille = ligne_tarif_grille(tarif, langue)
     if grille:
         return grille
-    entree = _mention_tarif(_dict(tarif)) if _dict(tarif) else None
-    return texte(entree["textes"], langue) if entree else None
+    if _dict(tarif).get("origine") == "declare_facture":
+        return texte(TEXTES_TARIF_FACTURE, langue)
+    return None
 
 
 def _batterie_servie(data):

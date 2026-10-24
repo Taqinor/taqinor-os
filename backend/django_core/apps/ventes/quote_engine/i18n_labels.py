@@ -2492,6 +2492,49 @@ LIBELLES = {
     'ci_ind_energie_titre': {'fr': 'Ce que la centrale produit pour votre site',
                              'en': 'What the plant produces for your site',
                              'ar': 'ما تنتجه المحطة لموقعكم'},
+    # AMOT91 — tableau « Hypothèses de l'estimation » (rangées lues sur
+    # ``synthese_ci`` : ``industriel.finance.rangees_hypotheses``).
+    'ci_h_prix_kwh': {'fr': 'Prix du kWh', 'en': 'kWh price',
+                      'ar': 'ثمن الكيلوواط ساعة'},
+    'ci_h_valorisation': {'fr': 'Valorisation de vos kWh',
+                          'en': 'Valuation of your kWh',
+                          'ar': 'تثمين الكيلوواط ساعة لديكم'},
+    'ci_h_base_production': {'fr': 'Base de production',
+                             'en': 'Production basis',
+                             'ar': 'أساس الإنتاج'},
+    'ci_h_base_calepinage': {
+        'fr': 'production du calepinage retenu pour votre toiture',
+        'en': 'production of the panel layout selected for your roof',
+        'ar': 'إنتاج تصميم الألواح المعتمد لسقفكم'},
+    'ci_h_base_pvgis': {
+        'fr': "{incl}° d'inclinaison, {orientation} — à confirmer au "
+              "calepinage",
+        'en': '{incl}° tilt, {orientation} — to be confirmed by the panel '
+              'layout',
+        'ar': 'ميل {incl}°، {orientation} — يُؤكَّد عند تصميم الألواح'},
+    'ci_h_plein_sud': {'fr': 'plein sud', 'en': 'due south',
+                       'ar': 'جنوبا تماما'},
+    'ci_h_azimut': {'fr': 'azimut {a}° (0° = plein sud)',
+                    'en': 'azimuth {a}° (0° = due south)',
+                    'ar': 'السمت {a}° (0° = الجنوب)'},
+    'ci_h_dimensionnement': {'fr': 'Règle de dimensionnement',
+                             'en': 'Sizing rule', 'ar': 'قاعدة التحجيم'},
+    'ci_h_regle_taille': {
+        'fr': 'chaque palier de {pas} kWc retenu se rembourse en moins de '
+              '{n} ans',
+        'en': 'each {pas} kWp step retained pays for itself in under {n} '
+              'years',
+        'ar': 'كل شريحة من {pas} كيلوواط ذروة معتمدة تسترد كلفتها في أقل من '
+              '{n} سنوات'},
+    'ci_h_om': {'fr': 'Entretien (O&amp;M)', 'en': 'Maintenance (O&amp;M)',
+                'ar': 'الصيانة (التشغيل والصيانة)'},
+    'ci_h_om_deduite': {
+        'fr': 'déduite des économies : {montant} MAD/an',
+        'en': 'deducted from the savings: {montant} MAD/yr',
+        'ar': 'مخصومة من الوفورات: {montant} درهم/سنة'},
+    'ci_h_om_non_deduite': {'fr': 'non déduite des économies',
+                            'en': 'not deducted from the savings',
+                            'ar': 'غير مخصومة من الوفورات'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},

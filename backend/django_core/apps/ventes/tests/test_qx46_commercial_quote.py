@@ -631,3 +631,65 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
             pdf = equip.pdf_adaptatif(d, _build, lambda _html: _Doc())
         self.assertEqual(pdf, b"%PDF-sans-graphique")
         self.assertEqual(essais, [(None, False), (None, True)])
+
+
+class TestAmot91Hypotheses(SimpleTestCase):
+    """AMOT91 — la page 3 commerciale porte le tableau « Hypothèses de
+    l'estimation », chaque rangée lue sur ``synthese_ci`` (tarif et sa date,
+    indexation, dégradation, horizon, entretien, onduleur, base de
+    production, règle de dimensionnement D-CIQ-2)."""
+
+    def _p3(self, data):
+        return _texte_ci(_pages_ci(data)[3])
+
+    def test_rangees_lues_sur_les_donnees_servies(self):
+        data = _data_ci()
+        p3 = self._p3(data)
+        production = _ETUDE_CI["production"]
+        taille = _ETUDE_CI["taille"]
+        for rangee in (
+                "Hypothèses de l'estimation",
+                "Prix du kWh Tarif ONEE BT publié — à confirmer sur votre "
+                "facture (grille du 16/02/2025).",
+                "Indexation du tarif 0 % / an", "Dégradation des panneaux",
+                "Horizon 25 ans",
+                "Entretien (O&M) non déduite des économies",
+                "Remplacement onduleur en année 11 55 000,00 MAD TTC",
+                f"Base de production {production['inclinaison_deg']}° "
+                "d'inclinaison, plein sud — à confirmer au calepinage",
+                f"Règle de dimensionnement chaque palier de "
+                f"{taille['pas_kwc']} kWc retenu se rembourse en moins de "
+                f"{taille['horizon_marginal_annees']} ans"):
+            with self.subTest(rangee=rangee):
+                self.assertIn(rangee, p3)
+        # Compact : les montants de la couverture et de la page 2 n'y sont
+        # pas répétés.
+        tableau = p3[p3.index("Hypothèses de l'estimation"):]
+        self.assertNotIn("Investissement", tableau[:tableau.index(
+            "Règle de dimensionnement")])
+
+    def test_om_souscrite_deduite(self):
+        data = _data_ci()
+        data["economie_ci"]["om"] = {"statut": "souscrit",
+                                     "montant_mad_an": 12000.0,
+                                     "source": "ligne O&M souscrite"}
+        self.assertIn("Entretien (O&M) déduite des économies : 12 000,00 "
+                      "MAD/an", self._p3(data))
+
+    def test_calepinage_et_etude_d_une_autre_puissance(self):
+        data = _data_ci()
+        etude_ci = data["etude"]["etude_ci"]
+        etude_ci["production"]["source"] = "calepinage"
+        etude_ci["taille"]["retenue_kwc"] = 40  # ≠ 90 kWc servis
+        p3 = self._p3(data)
+        self.assertIn("Base de production production du calepinage retenu "
+                      "pour votre toiture", p3)
+        self.assertNotIn("Règle de dimensionnement", p3)
+
+    def test_cede_sa_place_au_rendu_adaptatif(self):
+        data = renderer._augment(_data_ci())
+        p3 = render.build_html(dict(data, _sans_graphiques=True)).split(
+            'class="page"')[3]
+        self.assertNotIn("Hypothèses de l", p3)
+        self.assertIn('data-graphique="hypotheses"',
+                      render.build_html(data).split('class="page"')[3])

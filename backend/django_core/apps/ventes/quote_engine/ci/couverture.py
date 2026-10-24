@@ -73,7 +73,10 @@ _CODES_INTERNES = re.compile(
     r"|\bD-[A-Z]+-\d+\s*:\s*"
     r"|,?\s*décision Q\d+ du [\d/]+"
     r"|\b[\w.]+\.json\s*(?:—\s*)?"
-    r"|\b(?:saisies_economie_ci|economie_ci|etude_ci)\.[\w.]+\s*")
+    r"|\b(?:saisies_economie_ci|economie_ci|etude_ci)\.[\w.]+\s*"
+    # AMOT91 — un nom de champ interne entre parenthèses
+    # (« (taux_actualisation_client) »).
+    r"|\s*\([a-z]+(?:_[a-z]+)+\)")
 
 
 def texte_client(d, texte):

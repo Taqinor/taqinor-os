@@ -117,12 +117,18 @@ def _valeur_hypothese(h, fmt, L):
     return ci_blocs._txt(valeur)
 
 
-def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
-    """Les hypothèses DU MOTEUR (flux servi, valorisation, tarif,
-    remplacements), chacune avec sa source — aucune n'est écrite ici."""
-    lignes = []
+#: AMOT91 — hypothèses du flux dont le montant est déjà imprimé ailleurs sur
+#: le document commercial (couverture, page 2) : hors du tableau compact.
+CLES_MONTANTS_FLUX = ("investissement_mad", "economie_annee1_mad",
+                      "production_annee1_kwh")
+
+
+def _rangees_flux(flux, fmt, L, d, compact):
+    """``(libellé, valeur — source)`` des hypothèses du flux servi."""
+    rangees = []
     for h in flux.get("hypotheses") or []:
-        if not isinstance(h, dict) or h.get("cle") not in LIBELLES_HYPOTHESES:
+        if not isinstance(h, dict) or h.get("cle") not in LIBELLES_HYPOTHESES \
+                or (compact and h["cle"] in CLES_MONTANTS_FLUX):
             continue
         valeur = _valeur_hypothese(h, fmt, L)
         if valeur is None:
@@ -130,22 +136,32 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
         cat, fr = LIBELLES_HYPOTHESES[h["cle"]]
         # AMOT80 — chaque source dans les mots du client (aucun code interne).
         source = ci_couverture.texte_client(d, h.get("source"))
-        lignes.append(f"{L(cat, fr)}&#160;: {valeur}"
-                      + (f" — {source}" if source else ""))
+        rangees.append((L(cat, fr), valeur + (f" — {source}" if source
+                                              else "")))
+    return rangees
+
+
+def _rangees_argent(argent, fmt_mad, L, d):
+    """``(libellé | None, valeur)`` : valorisation, prix du kWh (AMOT88 :
+    grille publiée datée ou votre facture, jamais « repli »), remplacements
+    au montant réel de la ligne du devis."""
+    from ..ci.mentions import ligne_tarif_client
+    rangees = []
     for h in argent.get("hypotheses") or []:
-        if isinstance(h, dict) and h.get("cle") == "tarif":
-            # AMOT88 — « grille ONEE …, repli » : le prix du kWh en mots du
-            # client (grille publiée datée, ou votre facture).
-            from ..ci.mentions import ligne_tarif_client
-            tarif_txt = ligne_tarif_client(argent.get("tarif"),
-                                           ci_blocs.langue(d))
-            if tarif_txt:
-                lignes.append(tarif_txt)
-                continue
-        if isinstance(h, dict) and h.get("valeur"):
+        if not isinstance(h, dict):
+            continue
+        tarif_txt = (ligne_tarif_client(argent.get("tarif"),
+                                        ci_blocs.langue(d))
+                     if h.get("cle") == "tarif" else None)
+        if tarif_txt:
+            rangees.append((L("ci_h_prix_kwh", "Prix du kWh"), tarif_txt))
+        elif h.get("valeur"):
             source = ci_couverture.texte_client(d, h.get("source"))
-            lignes.append(ci_blocs._txt(h.get("valeur"))
-                          + (f" — {source}" if source else ""))
+            rangees.append((
+                L("ci_h_valorisation", "Valorisation de vos kWh")
+                if h.get("cle") == "valorisation" else None,
+                ci_blocs._txt(h.get("valeur"))
+                + (f" — {source}" if source else "")))
     for r in argent.get("remplacements") or []:
         if not isinstance(r, dict) or r.get("annee") is None:
             continue
@@ -154,15 +170,125 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
         cle_composant = f"ci_garantie_{composant}"
         if ci_blocs.langue(d) != "fr" and cle_composant in _cles_catalogue():
             composant = L(cle_composant, composant)
-        lignes.append(
-            L("ci_ind_remplacement", "Remplacement {composant} en année {annee}",
-              composant=composant,
+        motif = (f" — {ci_couverture.texte_client(d, r.get('motif'))}"
+                 if r.get("motif") else "")
+        rangees.append((
+            L("ci_ind_remplacement", "Remplacement {composant} en année "
+              "{annee}", composant=composant,
               annee=f"{r['annee']:g}" if isinstance(r["annee"], (int, float))
-              else r["annee"])
-            + (f"&#160;: {fmt_mad(montant)}&nbsp;MAD {L('ci_ttc', 'TTC')}"
-               if montant is not None else "")
-            + (f" — {ci_couverture.texte_client(d, r.get('motif'))}" if r.get("motif") else ""))
-    return lignes
+              else r["annee"]),
+            (f"{fmt_mad(montant)}&nbsp;MAD {L('ci_ttc', 'TTC')}"
+             if montant is not None else "") + motif))
+    return rangees
+
+
+def _rangees_estimation(synthese, L):
+    """AMOT91 — la base de production (« 30° d'inclinaison, plein sud — à
+    confirmer au calepinage », ou le calepinage retenu) et la règle de
+    dimensionnement (D-CIQ-2 : « chaque palier de 5 kWc retenu se rembourse
+    en moins de 10 ans »), lues sur ``synthese_ci['estimation']``."""
+    estimation = (synthese or {}).get("estimation") if isinstance(
+        synthese, dict) else None
+    estimation = estimation if isinstance(estimation, dict) else {}
+    rangees = []
+    prod = estimation.get("production") or {}
+    titre = L("ci_h_base_production", "Base de production")
+    if prod.get("source") == "calepinage":
+        rangees.append((titre, L("ci_h_base_calepinage", "production du "
+                                 "calepinage retenu pour votre toiture")))
+    elif _num(prod.get("inclinaison_deg")) is not None \
+            and _num(prod.get("azimut_deg")) is not None:
+        azimut = _num(prod["azimut_deg"])
+        orientation = (L("ci_h_plein_sud", "plein sud") if azimut == 0 else
+                       L("ci_h_azimut", "azimut {a}° (0° = plein sud)",
+                         a=_decimal_txt(azimut)))
+        rangees.append((titre, L(
+            "ci_h_base_pvgis", "{incl}° d'inclinaison, {orientation} — à "
+            "confirmer au calepinage", orientation=orientation,
+            incl=_decimal_txt(_num(prod["inclinaison_deg"])))))
+    dim = estimation.get("dimensionnement") or {}
+    if _num(dim.get("pas_kwc")) and _num(dim.get("horizon_annees")):
+        rangees.append((L("ci_h_dimensionnement", "Règle de dimensionnement"),
+                        L("ci_h_regle_taille", "chaque palier de {pas} kWc "
+                          "retenu se rembourse en moins de {n} ans",
+                          pas=_decimal_txt(_num(dim["pas_kwc"])),
+                          n=_decimal_txt(_num(dim["horizon_annees"])))))
+    return rangees
+
+
+def _rangee_om(argent, fmt_mad, L):
+    """AMOT91 — l'entretien (O&M) : « déduite des économies : N MAD/an »
+    seulement souscrite et chiffrée (CIQ342), sinon « non déduite »."""
+    om = argent.get("om") if isinstance(argent, dict) else None
+    om = om if isinstance(om, dict) else {}
+    montant = _num(om.get("montant_mad_an"))
+    valeur = (L("ci_h_om_deduite", "déduite des économies : {montant} MAD/an",
+                montant=fmt_mad(montant))
+              if om.get("statut") == "souscrit" and montant else
+              L("ci_h_om_non_deduite", "non déduite des économies"))
+    return [(L("ci_h_om", "Entretien (O&amp;M)"), valeur)]
+
+
+def rangees_hypotheses(d, synthese, fmt, fmt_mad, L, *, compact=False,
+                       om=False):
+    """AMOT91 — LES hypothèses de l'estimation, ``[(libellé | None, valeur)]``,
+    toutes lues sur ``synthese_ci`` (flux servi, valorisation, prix du kWh,
+    remplacements, entretien si ``om``, base de production, règle de
+    dimensionnement) — UNE source pour la page finance industrielle, la page
+    énergie industrielle et le tableau de la page 3 commerciale. ``compact`` :
+    sans les montants déjà imprimés ailleurs (investissement, économie et
+    production de l'année 1)."""
+    argent = (synthese or {}).get("argent") if isinstance(synthese, dict) \
+        else None
+    argent = argent if isinstance(argent, dict) else {}
+    _cle, flux = flux_principal(argent)
+    rangees = _rangees_flux(flux, fmt, L, d, compact) + _rangees_argent(
+        argent, fmt_mad, L, d)
+    if om and argent:
+        rangees += _rangee_om(argent, fmt_mad, L)
+    return rangees + _rangees_estimation(synthese, L)
+
+
+def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
+    """Les hypothèses de l'estimation en lignes « Libellé : valeur — source »
+    (page finance industrielle) — aucune n'est écrite ici."""
+    synthese = dict((d or {}).get("ind_synthese") or {}, argent=argent)
+    return [f"{libelle}&#160;: {valeur}" if libelle and valeur
+            else (libelle or valeur)
+            for libelle, valeur in rangees_hypotheses(
+                d, synthese, fmt, fmt_mad, L)]
+
+
+def tableau_hypotheses(d, synthese, fmt, fmt_mad, L, prefixe,
+                       optionnel=False, **options):
+    """AMOT91 — le tableau compact « Hypothèses de l'estimation »
+    (``rangees_hypotheses``), ou '' sans aucune hypothèse servie.
+    ``optionnel`` : le bloc cède sa place (``data-graphique``, retiré par le
+    rendu adaptatif) avant que les conditions ne soient tronquées."""
+    rangees = rangees_hypotheses(d, synthese, fmt, fmt_mad, L, **options)
+    if not rangees or (optionnel and d.get("_sans_graphiques")):
+        return ""
+    lignes = "".join(
+        f'<tr><td class="{prefixe}-hy-l">{libelle or ""}</td>'
+        f'<td class="{prefixe}-hy-v">{valeur}</td></tr>'
+        for libelle, valeur in rangees)
+    marque = ' data-graphique="hypotheses"' if optionnel else ""
+    return (f'<div class="{prefixe}-hy"{marque}><div class="{prefixe}-hy-t">'
+            f'{L("ci_hypotheses_estimation", TITRE_HYPOTHESES)}</div>'
+            f'<table class="{prefixe}-hy-tbl">{lignes}</table></div>')
+
+
+def css_tableau_hypotheses(prefixe, navy, muted, ink, line_soft):
+    """La feuille du tableau compact, une définition par préfixe."""
+    return (
+        f".{prefixe}-hy{{margin-top:10px;}}"
+        f".{prefixe}-hy-t{{font-size:9pt;font-weight:700;color:{navy};}}"
+        f".{prefixe}-hy-tbl{{width:100%;border-collapse:collapse;"
+        f"margin-top:3px;font-size:7pt;line-height:1.3;}}"
+        f".{prefixe}-hy-tbl td{{padding:2px 4px;border-bottom:1px solid "
+        f"{line_soft};vertical-align:top;}}"
+        f".{prefixe}-hy-l{{color:{muted};width:30%;}}"
+        f".{prefixe}-hy-v{{color:{ink};}}")
 
 
 def _ligne_om(argent, fmt_mad, L):
@@ -371,7 +497,7 @@ def _motif_non_chiffre(d, L):
              "un TRI qui ne reposeraient sur aucune mesure."), motif
 
 
-def _corps_non_chiffre(d, L, pied, couleurs_gr, police, fmt):
+def _corps_non_chiffre(d, L, pied, couleurs_gr, police, fmt, fmt_mad):
     """``(corps, chapeau, titre)`` de la page 3 quand la rentabilité n'est pas
     chiffrable. AMOT90 — la page n'est plus une page blanche « Rentabilité non
     chiffrée » : quand le bilan horaire est servi, elle porte l'analyse
@@ -398,6 +524,7 @@ def _corps_non_chiffre(d, L, pied, couleurs_gr, police, fmt):
   <div class="i2-motif">{corps_txt}{motif}</div>
   {graphique}
   {ci_couverture.ligne_surplus(d, "ind", "i2")}
+  {tableau_hypotheses(d, d.get("ind_synthese"), fmt, fmt_mad, L, "i2", compact=True, om=True)}
   <div class="i2-foot">{pied}.</div>""", chapeau, titre)
 
 
@@ -486,6 +613,7 @@ def build(ctx):
 .i2-motif b{{color:{navy};}}
 .i2-mtsrc{{margin-top:4px;font-size:7pt;color:{muted};line-height:1.35;}}
 {css_graphique("i2", navy, muted)}
+{css_tableau_hypotheses("i2", navy, muted, ink, line_soft)}
 </style>
 """
 
@@ -494,7 +622,7 @@ def build(ctx):
     couleurs_gr = (navy, green, gold, line, muted)
     if not chiffrable:
         corps, lead_txt, titre = _corps_non_chiffre(
-            d, L, pied, couleurs_gr, f_sans, fmt)
+            d, L, pied, couleurs_gr, f_sans, fmt, fmt_mad)
     else:
         economie = d.get("ind_economies")
         base_eco = d.get("ind_economie_base")
