@@ -152,6 +152,21 @@ test('ADEV84 — la TVA des repères est celle de la société, plus un 20 codé
   assert.equal(lignesDepuisCompositionCi(COMPOSITION_ADEV84, PRODUITS_84)[0].taux_tva, 20)
 })
 
+test('lignesDepuisCompositionCi : un forfait au panneau suit le compte de la composition', () => {
+  const produits = [
+    { id: 5, nom: 'Panneau Jinko 550W', prix_vente: '1000', tva: 10, prix_fixe_ht: null, prix_par_panneau_ht: null },
+    { id: 6, nom: 'Installation', prix_vente: '4000', tva: 20, prix_fixe_ht: '2000.00', prix_par_panneau_ht: '250.0000' },
+  ]
+  const composition = { lignes: [
+    { role: 'panneau', produit: 5, designation: 'Panneau Jinko 550W', quantite: 40, prix_connu: true },
+    { role: 'installation', produit: 6, designation: 'Installation', quantite: 1, prix_connu: true },
+  ] }
+  const rows = lignesDepuisCompositionCi(composition, produits, 20)
+  assert.equal(rows[1].prixHtOrigine, '12000.00') // 2 000 + 250 × 40
+  assert.equal(rows[1].prix_unit_ttc, 14400)
+  assert.equal(rows[0].prixHtOrigine, '1000.00', 'produit sans barème : prix_vente inchangé')
+})
+
 test('ADEV84 — aucun repère n’est enregistré (jamais envoyé au serveur)', () => {
   const lignes = withKeys(lignesDepuisCompositionCi(COMPOSITION_ADEV84, PRODUITS_84, 20))
   const payload = lignesEcranVersPayload(lignes)
