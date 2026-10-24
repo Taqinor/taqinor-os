@@ -1,0 +1,58 @@
+# Traces du rejeu AGQ du 24/10/2026 — générateur, devis automatique, page client
+
+Pile locale : base `erp-agentique` (données anonymisées, société 4, lead 1038 « Mansouri-2NM » : débit souhaité
+10 m³/h, HMT 40 m, niveau statique 40 m, forage 36 m³/h source client, butane 3 bouteilles/jour, 6 j/semaine,
+pompe actuelle 7 CV, mode de pompe vide). Code rejoué : ce commit (Django dans un conteneur temporaire monté sur
+la branche, port 8001 ; front construit depuis la branche, `vite preview` relayé vers 8001 ; site public `astro dev`
+sur la même API). Catalogue de test : produits « [TEST AGQ] » (panneau 550 W avec fiche STC, structure au sol,
+installation au barème 3 000 + 150 / panneau).
+
+## P4.1 — générateur depuis le lead (AGQ43, AGQ44, AGQ45)
+- Ouverture `/ventes/devis/nouveau?lead=1038` : « Débit d'exploitation du forage (m³/h) = 36 », « Origine du débit =
+  Estimation du client » (AGQ45).
+- « Pompe neuve » choisi, AUCUN mode de besoin : « Besoin en eau : calculé depuis le débit souhaité (10 m³/h) × les
+  heures de pompage du site. » ; aperçu : pompe 5,5 CV, VEICHI SI23 5,5 kW, champ 6,05 kWc (11 panneaux) (AGQ44).
+- Auto-remplir : installation « 5580 » TTC = (3 000 + 150 × 11) × 1,2 ; total écran 42 400 MAD ; « Créer » →
+  DEV-202610-0004 = 42 400 MAD (AGQ43). Avant correctif : écran 31 900, devis écrit 37 300 (DEV-202610-0003).
+- Devis automatique du même lead (bouton « ⚡ Devis auto » de la fiche) : DEV-202610-0005 = 42 400 MAD, journal des
+  alertes affiché dans la fenêtre (parité générateur = devis automatique).
+
+## P4.1 — pompe existante (AGQ46, AGQ47)
+- « Pompe existante conservée » : résumé « Champ 6,05 kWc (11 panneaux) » = carte « Recommandée » « 6,05 kWc · 11
+  panneaux » (AGQ47 ; avant : 4,95 kWc / 9 contre 5,5 kWc / 10).
+- Auto-remplir : « Auto-remplir indisponible — kit incomplet (Variateur : kW de plaque à relever … : variateur non
+  choisi). », aucune ligne posée (AGQ46 ; avant : kit sans variateur à 20 300 MAD).
+
+## P4.1 — corps de l'aperçu et écran (AGQ12, AGQ16, AGQ26, AGQ27, AGQ39)
+- Lead sans `mode_pompe` : « Pompe neuve » et « Pompe existante conservée » non cochés (aucun défaut, AGQ39).
+- Corps `etude-pompage/preview` : `localisation = {ville: Rabat}` (AGQ26) ; mode « Volume déclaré » 60 m³/j :
+  `besoin = {mode: volume_declare, volume_m3_jour: 60, debit_souhaite_m3h: 10, debit_actuel_m3h: null,
+  heures_actuelles_jour: null, cultures: [], region: null}` (AGQ27).
+- Bascule « Pompe actuelle » : kit masqué, « Auto-remplir indisponible — à renseigner : le besoin en eau. » (AGQ27).
+- « Hypothèses (5) » : libellés et sources en clair (« Énergie hydraulique par m³ et par mètre de hauteur (Wh) …
+  Constante physique … ») (AGQ12).
+- Appels `economie-pompage/preview` de la carte : 9 puis 8 lignes du devis en cours (l'appel à 0 ligne est la garde
+  de cohérence) (AGQ16).
+
+## P3.1 — documents de DEV-202610-0004 (`/proposal`)
+- fr : 3 pages ; `include_note_calcul=1` : 4 pages ; ar : 3 pages. Aucun « prix_achat », aucun « None ».
+  Installation 4 650 HT, total 42 400 (= écran). Textes : `2026-10-24-pdf-fr.txt`, `-note.txt`, `-ar.txt`.
+- Page 3 : options du kit à cocher, « prix sur devis » (AGQ11) ; « D'où viennent ces chiffres » : « Débit
+  d'exploitation du forage : 36 m³/h — déclaré par vous le 24/10/2026 » (AGQ28) ; « Étapes suivantes » 1-5 sans délai
+  chiffré (AGQ30) ; « Notes de dimensionnement » (AGQ38).
+- Annexe : « Site : Rabat » (corrigé ce jour : le dictionnaire brut était imprimé), « Besoin : débit souhaité déclaré
+  par vous × heures de pompage de chaque mois » (AGQ1, AGQ31), table « Hypothèses de calcul et leurs sources » (AGQ12).
+- ar : 2 224 caractères arabes ; seuls restent en latin les noms de produits du catalogue et le titre officiel de la
+  source FDA (AGQ13).
+
+## P3.4 — page client `/proposition` de DEV-202610-0004 (AGQ42)
+- En-tête : « 42 400 MAD · 6,05 kWc · 11 panneaux », plus de « kWh / an » (pompe sans courbe : pas d'eau/jour servie).
+- Carte prix : « Votre kit de pompage solaire » (plus « Sans batterie ») ; pas de badge « Autoconsommation BT ».
+- Demande de modification : boutons `eau` et `autre` seulement.
+- « Et ensuite : accord FDA si vous demandez l’aide, commande, pose, mise en service » ; « Chaque chiffre est étudié sur
+  vos propres données — point d’eau, besoin en eau, énergie actuelle —, pas promis. »
+
+## Non couvert ce jour
+AGQ25 (journal du devis automatique lancé DEPUIS LE GÉNÉRATEUR : seul celui de la fiche lead a été vu), AGQ3 (mois du héros : pompe sans courbe au catalogue de test), AGQ48 et AGQ49 (aucune économie déclarée publiable
+sur ce lead : mois non cochés), refus nommés du devis automatique (AGQ4, AGQ7, AGQ9, AGQ22 : lead complet ce jour),
+AGQ14, AGQ15, AGQ17-AGQ21, AGQ23, AGQ24, AGQ29, AGQ32, AGQ36, AGQ40.

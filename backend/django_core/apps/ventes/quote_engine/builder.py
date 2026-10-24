@@ -4469,15 +4469,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # est saisie : sinon le module retombe sur son repli daté (Guide FDA 2024)
     # et tout autre devis reste octet-identique. Ne casse jamais un rendu.
     if mode == "agricole":
-        try:
-            from apps.parametres.selectors import regle_fda_pompage_pour
-            _regle_fda = regle_fda_pompage_pour(
-                getattr(devis, "company", None))
-        except Exception:  # noqa: BLE001 — repli daté du module (D-ENF22-BLE001)
-            logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
-            _regle_fda = {}
-        if _regle_fda:
-            data["regle_fda_societe"] = _regle_fda
+        # AGR306 + D-AGQ-13 — règle FDA et délai SAV saisis par la société.
+        from .reglages_societe import poser_fda_et_sav
+        poser_fda_et_sav(data, devis)
         # ── AGR307 — le bloc PUBLIC ``economie_pompage`` (AGR3, calculé à la
         # lecture, jamais stocké ; SANS ``vue_interne``), recopié tel quel par
         # ``agricole/synthese`` dans ``synthese_agricole['economies']``. Posé
@@ -4697,18 +4691,8 @@ def services_ci_du_devis(devis):
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
         logger.exception("services_ci: lignes O&M illisibles (devis %s)",
                          getattr(devis, "reference", "?"))
-    delai = None
-    company = getattr(devis, "company", None)
-    if company is not None:
-        try:
-            from apps.parametres.models_company import CompanyProfile
-            delai = (CompanyProfile.objects.filter(company=company)
-                     .values_list("delai_intervention_suivi_heures",
-                                  flat=True).first())
-        except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-            logger.warning("builder.services_ci_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
-            delai = None
-    return om, delai
+    from .reglages_societe import delai_intervention_societe
+    return om, delai_intervention_societe(devis)
 
 
 # ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────

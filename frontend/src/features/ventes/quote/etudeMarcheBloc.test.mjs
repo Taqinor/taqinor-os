@@ -174,6 +174,23 @@ test('AGR130 — lignesDepuisKit : le kit serveur, aucun prix inventé', () => {
   assert.deepEqual(lignesDepuisKit(null, produits), [])
 })
 
+test('lignesDepuisKit : un forfait au panneau suit le compte du kit (comme le serveur à l’enregistrement)', () => {
+  // Mesuré le 24/10/2026 : 10 panneaux, installation prix_vente 0 + barème
+  // 3 000 + 150/panneau — l'écran affichait 0, le devis enregistré 4 500 HT.
+  const produits = [
+    { id: 3, nom: 'Panneau 710W', prix_vente: '1000', tva: 10, prix_fixe_ht: null, prix_par_panneau_ht: null },
+    { id: 9, nom: 'Installation', prix_vente: '0', tva: 20, prix_fixe_ht: '3000.00', prix_par_panneau_ht: '150.0000' },
+  ]
+  const kit = { inclus: [
+    { cle: 'panneaux', produit: 3, designation: 'Panneau 710W', quantite: 10, prix_connu: true },
+    { cle: 'installation', produit: 9, designation: 'Installation', quantite: 1, prix_connu: true },
+  ] }
+  const lignes = lignesDepuisKit(kit, produits)
+  assert.equal(lignes[1].prixHtOrigine, '4500.00')
+  assert.equal(lignes[1].prix_unit_ttc, 5400)
+  assert.equal(lignes[0].prix_unit_ttc, 1100, 'produit sans barème : prix_vente inchangé')
+})
+
 test('résidentiel : choix + entrées, objet vide ⇒ null', () => {
   assert.equal(projeterEtudeMarche('residentiel', { choix: {}, entrees: () => ({}) }), null)
   assert.deepEqual(

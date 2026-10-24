@@ -17,7 +17,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -27,6 +27,7 @@ from apps.parametres.models import CompanyProfile
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.domain import pompage
 from authentication.models import Company
+from core.tests.test_agr120_tailles import PROFILS as PROFILS_SAISONNIERS
 
 User = get_user_model()
 
@@ -270,3 +271,83 @@ class PrioriteEtEcritureTests(_Base):
                      if q['sql'].lstrip().upper().startswith(
                          ('INSERT', 'UPDATE', 'DELETE'))]
         self.assertEqual(ecritures, [])
+
+
+# ── Rejeu live AGQ41 (24/10) — pompe EXISTANTE sans kW de plaque ────────────
+
+def _var_cat(id_, kw, tension=380):
+    return {'id': id_, 'nom': 'VARIATEUR VEICHI SI23 %sKW %sV' % (kw, tension),
+            'role_pompage': 'variateur_pompage', 'pompe_kw': str(kw),
+            'tension_v': tension, 'fiche': None, 'prix_connu': True,
+            'alimentation': 'tri' if tension == 380 else 'mono'}
+
+
+def _catalogue_existante():
+    return {
+        'pompage': [
+            _var_cat(401, 2.2, 220), _var_cat(402, 5.5), _var_cat(403, 7.5),
+            {'id': 51, 'nom': 'Structure au sol pompage',
+             'role_pompage': 'structure_sol', 'prix_connu': True},
+            {'id': 60, 'nom': 'Installation pompage',
+             'role_pompage': 'installation_pompage', 'prix_connu': True,
+             'prix_fixe_ht': 1000.0, 'prix_par_panneau_ht': 100.0},
+        ],
+        'panneau': {'id': 3, 'nom': 'Panneau 710W', 'prix_connu': True,
+                    'pmax_wc': 710.0, 'vmp_v': 40.4, 'voc_v': 48.6,
+                    'isc_a': 18.6, 'imp_a': 17.6,
+                    'temp_coeff_voc_pct_c': None,
+                    'temp_coeff_pmax_pct_c': None},
+        'transport': None, 'installation_toiture': None, 'socle': None,
+    }
+
+
+class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
+    """Sans DB : catalogue, PVGIS et TMY simulés (``etudier_pompage(None, …)``
+    ne lit aucune société)."""
+
+    def _etude(self):
+        corps = json.loads(json.dumps(CONTRAT['corps']))
+        corps.update(
+            mode_pompe='existante',
+            plaque={'kw': None, 'tension_v': None, 'phases': None, 'cv': 7,
+                    'courant_a': None},
+            besoin=dict(corps['besoin'], mode='pompe_actuelle',
+                        volume_m3_jour=None, debit_actuel_m3h=12,
+                        heures_actuelles_jour=7))
+        with mock.patch.object(pompage, 'lire_catalogue',
+                               return_value=_catalogue_existante()), \
+                mock.patch.object(pompage, 'profils_horaires_site',
+                                  return_value=PROFILS_SAISONNIERS), \
+                mock.patch.object(pompage, 'temperatures_du_site',
+                                  return_value=None):
+            return pompage.etudier_pompage(None, corps)
+
+    def test_champ_du_resume_egal_champ_de_la_taille_retenue(self):
+        """Avant : « Champ 4,95 kWc (9 panneaux) » dans le résumé et
+        « 5,5 kWc · 10 panneaux » sur la carte Recommandée (deux appels du
+        noyau, l'un avec le mois critique de la passe 1, l'autre sans) ; ici
+        6,39 kWc (9) contre 7,1 kWc (10) sur des profils SAISONNIERS (la
+        passe 1 et le champ ne tombent pas sur le même mois)."""
+        data = self._etude()
+        self.assertIsNotNone(data['champ']['nb_panneaux'])
+        retenue = [t for t in data['tailles'] if t['retenue']]
+        self.assertEqual(len(retenue), 1)
+        self.assertEqual(data['champ']['kwc'], retenue[0]['champ_kwc'])
+        self.assertEqual(data['champ']['nb_panneaux'],
+                         retenue[0]['nb_panneaux'])
+        panneaux = next(ligne for ligne in data['kit']['inclus']
+                        if ligne['cle'] == 'panneaux')
+        self.assertEqual(panneaux['quantite'], data['champ']['nb_panneaux'])
+
+    def test_variateur_non_choisi_est_un_role_minimum_manquant(self):
+        data = self._etude()
+        # La clé servie est dans le contrat (exemples synchronisés).
+        self.assertEqual(set(data), set(CONTRAT['exemple_pompe_existante']))
+        self.assertIsNone(data['variateur']['produit'])
+        self.assertIn('kW de plaque', data['variateur']['motif'])
+        roles = {r['cle'] for r in data['roles_minimum_manquants']}
+        self.assertIn('variateur', roles)
+        # La pompe n'est jamais un rôle manquant en mode « existante ».
+        self.assertNotIn('pompe', roles)
+        self.assertNotIn('variateur',
+                         [ligne['cle'] for ligne in data['kit']['inclus']])

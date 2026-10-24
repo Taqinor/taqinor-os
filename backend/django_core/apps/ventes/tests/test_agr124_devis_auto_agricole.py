@@ -228,6 +228,20 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(rep.data['field'], 'kit.structure')
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
+    def test_panneau_sans_fiche_refus_dit_la_cause(self):
+        """Rejeu live AGQ41 (24/10) — panneau sans valeurs STC : le 409 dit la
+        CAUSE (« Panneau sans valeurs STC complètes… »), jamais « voir les
+        alertes » (le 409 ne sert aucune alerte)."""
+        FicheTechnique.objects.filter(produit=self.panneau).delete()
+        self._pompe('15000')
+        lead = self._lead()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(rep.data['field'], 'kit.panneaux')
+        self.assertIn('Panneau sans valeurs STC complètes', rep.data['detail'])
+        self.assertNotIn('voir les alertes', rep.data['detail'])
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
     def test_installation_absente_refuse_en_la_nommant(self):
         Produit.objects.filter(pk=self.installation.pk).update(
             is_archived=True)

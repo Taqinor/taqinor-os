@@ -809,7 +809,7 @@ class NouveauForage(SimpleTestCase):
         self.assertIn(f"{str(attendu).replace('.', ',')} MAD/m³", html)
         self.assertIn('investissement + charges du solaire sur 10 ans', html)
         for interdit in ('Remplacement', 'Économie nette', 'Retour',
-                         'Indexation du carburant',
+                         'Prix du carburant supposé stable',
                          'remplace tout votre pompage actuel',
                          'Consommation et prix payé', 'avant / avec'):
             self.assertNotIn(interdit, html)

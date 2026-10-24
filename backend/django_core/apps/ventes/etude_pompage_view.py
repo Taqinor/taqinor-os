@@ -46,6 +46,8 @@ EtudePompagePreviewResponse = inline_serializer('EtudePompagePreviewResponse', {
     'alertes': serializers.JSONField(allow_null=True),
     'hypotheses': serializers.JSONField(allow_null=True),
     'methode': serializers.JSONField(allow_null=True),
+    # AGQ46 — les rôles du kit minimum manquants (refus nommé d'Auto-remplir).
+    'roles_minimum_manquants': serializers.JSONField(allow_null=True),
 })
 
 #: Identifiants de contexte retirés du corps avant le calcul (ce ne sont pas
@@ -132,4 +134,6 @@ def etude_pompage_preview(request):
         'alertes': etude['alertes'],
         'hypotheses': etude['hypotheses'],
         'methode': etude['methode'],
+        # AGQ46 — même liste que le refus du devis automatique.
+        'roles_minimum_manquants': etude.get('roles_minimum_manquants', []),
     })

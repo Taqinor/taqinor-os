@@ -35,7 +35,7 @@ vi.mock('../../components/ProduitPicker', async (importOriginal) => {
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import DevisGenerator from './DevisGenerator'
-import { bancCreation } from './devisGenerator.testHelpers.jsx'
+import { bancCreation, renderGeneratorPage } from './devisGenerator.testHelpers.jsx'
 import { htFromTtc, formatMoney } from '../../features/ventes/solar'
 
 const PRODUITS = [
@@ -130,5 +130,31 @@ describe('VX188 — DevisLineRow mémoïsé : taper dans Note ne re-rend pas les
     // le re-rendu de la ligne inchangée : ProduitPicker n'est jamais
     // ré-invoqué pour elle.
     expect(produitPickerRenderSpy).not.toHaveBeenCalled()
+  })
+})
+
+// Forfaits au panneau — l'écran pose le prix que le serveur écrira
+// (`retarifer_forfaits_par_panneau`) : barème du catalogue sur le compte de
+// panneaux des lignes, jamais `prix_vente` ; un prix TAPÉ n'est jamais ramené.
+describe('forfait au panneau : barème du catalogue sur le compte des lignes', () => {
+  const CATALOGUE_FORFAIT = [
+    ...PRODUITS,
+    { id: 11, nom: 'Installation', prix_vente: 4000, tva: 20, is_archived: false,
+      prix_fixe_ht: '2000.00', prix_par_panneau_ht: '250.0000' },
+  ]
+
+  it('aucune ligne panneau : la ligne Installation vaut la part fixe (2 000 HT → 2 400 TTC), pas prix_vente', async () => {
+    renderGeneratorPage(DevisGenerator, { crmApi, stockApi, produits: CATALOGUE_FORFAIT })
+    const designation = await screen.findByDisplayValue('Installation')
+    const prix = designation.closest('tr').querySelector('td[data-label="Prix unit. TTC"] input')
+    expect(prix.value).toBe('2400')
+  })
+
+  it('un prix tapé sur la ligne forfait reste tel quel (jamais ramené au barème)', async () => {
+    renderGeneratorPage(DevisGenerator, { crmApi, stockApi, produits: CATALOGUE_FORFAIT })
+    const designation = await screen.findByDisplayValue('Installation')
+    const prix = designation.closest('tr').querySelector('td[data-label="Prix unit. TTC"] input')
+    fireEvent.change(prix, { target: { value: '3000.5' } })
+    expect(prix.value).toBe('3000.5')
   })
 })

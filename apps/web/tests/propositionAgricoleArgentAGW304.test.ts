@@ -13,13 +13,13 @@ import { fileURLToPath } from 'node:url';
 import {
   AGR_ARGENT_LBL,
   AGR_ENERGIE_LBL,
-  AGR_NON_INCLUS_LBL,
   dureeGarantie,
   libelleGarantie,
   syntheseAgricole,
   syntheseAgricoleArgent,
   type ProposalResponse,
 } from '../src/lib/proposition';
+import { AGR_ACCEPTATION_LBL, AGR_NON_INCLUS_LBL, savAgricole, valeurProvenance } from '../src/lib/propositionAgricole';
 import { garantiesCodeesEnDurAffichees } from '../src/lib/propositionPage';
 
 const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -295,5 +295,49 @@ describe('AGQ35 — parité /proposition ↔ document agricole (C-AGQ-010, 016, 
     const bvl = { ...SERVIE.besoin_vs_livre, mois_sous_tolerance: [{ mois: 10, couverture_pct: 80 }, { mois: 13 }, { mois: 9 }] };
     expect(syntheseAgricole(payload({ ...SERVIE, besoin_vs_livre: bvl }))!.besoinVsLivre!.moisSousTolerance)
       .toEqual([{ mois: 10, couverturePct: 80 }, { mois: 9, couverturePct: null }]);
+  });
+});
+
+describe('Rejeu live AGQ41 — « Non inclus » : jamais une clé brute à l’écran du client', () => {
+  it('chaque clé servie (contrat) et chaque option du kit a son libellé fr/en/ar', () => {
+    const cles = new Set<string>([...SERVIE.non_inclus, ...SERVIE.options_kit.map((o: any) => o.cle),
+      'protection_dc', 'sonde_niveau', 'cable_descente', 'colonne_refoulement', 'clapet', 'tuyauterie',
+      'bassin', 'entretien_pompage', 'antivol', 'cloture']);
+    for (const cle of cles) {
+      const lbl = AGR_NON_INCLUS_LBL[cle];
+      expect(lbl, cle).toBeTruthy();
+      for (const lg of ['fr', 'en', 'ar'] as const) {
+        expect(lbl[lg].length, `${cle}.${lg}`).toBeGreaterThan(0);
+        expect(lbl[lg], `${cle}.${lg}`).not.toBe(cle);
+      }
+    }
+  });
+});
+
+describe('Rejeu live AGQ41 — « D’où viennent ces chiffres » : la valeur à côté de sa provenance (parité PDF)', () => {
+  it('la valeur servie est lue et formatée avec son unité ; sans valeur, rien', () => {
+    const s = syntheseAgricole(payload(SERVIE))!;
+    const forage = s.provenance.find((p) => p.cle === 'debit_exploitation_m3h')!;
+    expect(forage.valeur).toBe(SERVIE.provenance.debit_exploitation_m3h.valeur);
+    expect(valeurProvenance('debit_exploitation_m3h', 36, (n) => String(n))).toEqual({ fr: '36 m³/h', en: '36 m³/h', ar: '36 م³/س' });
+    expect(valeurProvenance('niveau_statique_m', null, String)).toBeNull();
+  });
+});
+
+describe('D-AGQ-12 / D-AGQ-13 — SAV servi et acceptation d’un pompage', () => {
+  it('le délai d’intervention servi devient la phrase du PDF ; non servi : rien', () => {
+    expect(savAgricole({ synthese_agricole: { sav: { delai_intervention_heures: 48 } } }))
+      .toEqual({
+        fr: 'Service après-vente : intervention sous 48 h après votre appel.',
+        en: 'After-sales service: intervention within 48 h of your call.',
+        ar: 'خدمة ما بعد البيع: التدخل في أجل 48 ساعة بعد اتصالكم.',
+      });
+    expect(savAgricole({ synthese_agricole: {} })).toBeNull();
+    expect(savAgricole(null)).toBeNull();
+  });
+  it('l’acceptation dit ferme APRÈS l’accord FDA quand l’aide est demandée (fr/en/ar)', () => {
+    expect(AGR_ACCEPTATION_LBL.ferme.fr).toContain('qu’après l’accord préalable FDA');
+    expect(AGR_ACCEPTATION_LBL.acompte.fr).toBe('à la commande — après l’accord FDA si vous demandez l’aide');
+    for (const lg of ['en', 'ar'] as const) expect(AGR_ACCEPTATION_LBL.ferme[lg].length).toBeGreaterThan(40);
   });
 });

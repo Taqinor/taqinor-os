@@ -227,6 +227,8 @@ class Renderer(SimpleTestCase):
         self.assertIn('Étapes suivantes', p1)
         self.assertIn('débit et HMT mesurés, écart affiché contre ce devis',
                       p1)
+        # D-AGQ-14 — dossier remis et formation à la mise en service.
+        self.assertIn('formation à l', p1)
         self.assertIn('Entretien : nettoyage des panneaux et contrôle '
                       'annuel (contrat en option)', p1)
         self.assertIn("après l'accord FDA si vous demandez l'aide", p3)

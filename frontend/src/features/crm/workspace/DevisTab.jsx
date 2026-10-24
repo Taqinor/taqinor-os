@@ -404,7 +404,8 @@ export default function DevisTab({
       // funnel « Devis envoyé » (backend), fiche rechargée pour le montrer.
       const url = await mintProposalUrl(d, { envoi: true })
       const nom = `${state.server?.nom ?? ''} ${state.server?.prenom ?? ''}`.trim()
-      const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(nom, url))
+      const agricole = state.server?.type_installation === 'agricole'
+      const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(nom, url, { agricole }))
       if (waUrl) window.open(waUrl, '_blank', 'noopener')
       onAction?.('refresh')
     } catch (err) {

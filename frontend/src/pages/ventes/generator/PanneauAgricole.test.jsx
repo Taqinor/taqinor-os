@@ -245,6 +245,40 @@ describe('résultat serveur (AGR129)', () => {
     expect(pastille(3)).toBe('rouge')
   })
 
+  it('test_pompe_existante_sans_kw_refuse_auto_remplir_et_dit_pourquoi', () => {
+    const donnees = {
+      ...CONTRAT.exemple_pompe_existante,
+      kit: {
+        ...CONTRAT.exemple_pompe_existante.kit,
+        inclus: CONTRAT.exemple_pompe_existante.kit.inclus.filter((l) => l.cle !== 'variateur'),
+      },
+      variateur: { produit: null, nom: null, motif: 'kW de plaque à relever : variateur non choisi' },
+      roles_minimum_manquants: [
+        { cle: 'variateur', libelle: 'Variateur', motif: 'aucun article au catalogue' },
+      ],
+    }
+    render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees }} />)
+    expect(screen.getByTestId('refus-auto-remplir').textContent)
+      .toMatch(/Auto-remplir indisponible.*Variateur : kW de plaque à relever/)
+  })
+
+  it('kit complet : aucun refus affiché', () => {
+    render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={{ donnees: REPONSE }} />)
+    expect(screen.queryByTestId('refus-auto-remplir')).toBeNull()
+  })
+
+  it('test_besoin_depuis_le_debit_souhaite_est_dit_a_l_ecran', () => {
+    const { rerender } = render(<PanneauAgricole {...PROPS_VIDES} pompeDebit="10" />)
+    expect(screen.getByTestId('besoin-debit-souhaite').textContent)
+      .toMatch(/débit souhaité \(10 m³\/h\)/)
+    // Un mode de besoin choisi, ou aucun débit : la phrase disparaît.
+    rerender(<PanneauAgricole {...PROPS_VIDES} pompeDebit="" />)
+    expect(screen.queryByTestId('besoin-debit-souhaite')).toBeNull()
+    rerender(<PanneauAgricole {...PROPS_VIDES} pompeDebit="10"
+      pompageSaisie={poserSaisie(POMPAGE_SAISIE_VIDE, 'besoin.mode', 'volume_declare')} />)
+    expect(screen.queryByTestId('besoin-debit-souhaite')).toBeNull()
+  })
+
   it('aucune valeur affichée sans réponse serveur', () => {
     render(<PanneauAgricole {...PROPS_VIDES} apercuPompage={null} />)
     expect(screen.queryByTestId('resultat-pompage')).toBeNull()
