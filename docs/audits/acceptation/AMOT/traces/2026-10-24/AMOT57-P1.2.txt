@@ -1,0 +1,12 @@
+Rejeu orchestrateur P1.2 (AMOT57) sur la pile locale à 69b5d2287 (origin/main), 24/10/2026, demo_admin — sonde API (manage.py shell, APIClient + JWT), PDF /proposal RÉEL (WeasyPrint de l'image), texte extrait par PyMuPDF ; modification DANS une transaction ANNULÉE (désignations relues inchangées après).
+Devis démo résidentiel DEV-202610-0074 (id 1025) — lignes : Onduleur réseau 10kW, Onduleur hybride 5kW, Panneau mono 550W ×4 / ×7, Batterie 5 kWh, Structures acier…
+Avant : le /proposal rend les deux scénarios « Sans batterie » ET « Avec batterie ».
+Ligne onduleur réseau renommée « Onduleur hors-réseau Deye 6kW » (graphie à trait d'union, cas C-AMOT-002) : le /proposal ne rend plus que « Avec batterie » — l'onduleur autonome est reconnu comme tel (famille hors-réseau / avec batterie) et n'alimente plus un scénario « Sans batterie ».
+Sortie brute :
+LIGNES [{"designation": "Onduleur réseau 10kW", "quantite": "1.00"}, {"designation": "Onduleur hybride 5kW", "quantite": "1.00"}, {"designation": "Panneau mono 550W", "quantite": "4.00"}, {"designation": "Panneau mono 550W", "quantite": "7.00"}, {"designation": "Batterie 5 kWh", "quantite": "1.00"}, {"designation": "Structures acier", "quantite": "4.00"}, {"designation": "Structures acier", "quantite": "
+AVANT (200, ['AVEC BATTERIE', 'Avec batterie', 'SANS BATTERIE', 'Sans batterie', 'avec batterie'])
+MODIFIE 8803 Onduleur hors-réseau Deye 6kW
+PENDANT (200, ['Avec batterie', 'avec batterie', 'hors-réseau'])
+APRES ['Onduleur réseau 10kW', 'Onduleur hybride 5kW', 'Panneau mono 550W', 'Panneau mono 550W', 'Batterie 5 kWh', 'Structures acier']
+
+Oracles : PDF /proposal 200 à chaque rendu (6 PASS) ; aucune réponse ≥ 500 (1 PASS) ; autres oracles navigateur NA (rejeu API).
