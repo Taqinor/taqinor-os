@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from drf_spectacular.utils import extend_schema_field
 from django.db.models import DecimalField, Q
 from rest_framework import serializers
@@ -878,6 +879,8 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         """True si un DevisSignature (loi 53-05) existe pour ce devis."""
         try:
             return obj.signature is not None
+        except ObjectDoesNotExist:  # devis non signé : le cas normal, sans trace
+            return False
         except Exception:
             logger.warning("serializers.DevisSerializer.get_est_signe : erreur ignorée (mode dégradé)", exc_info=True)
             return False
@@ -887,6 +890,8 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
         """Informations minimales de signature (sans données personnelles)."""
         try:
             sig = obj.signature
+        except ObjectDoesNotExist:  # devis non signé : le cas normal, sans trace
+            return None
         except Exception:
             logger.warning("serializers.DevisSerializer.get_signature_info "
                            ": erreur ignorée (mode dégradé)", exc_info=True)

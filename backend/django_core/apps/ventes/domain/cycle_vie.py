@@ -42,6 +42,7 @@ suit pas un patch posé ici, et réciproquement. D'où la règle :
   la façade au moment de l'appel (import fonction-local), continue de se patcher
   sur ``apps.ventes.services.X`` — inchangé.
 """
+from django.core.exceptions import ObjectDoesNotExist
 import logging
 import os
 # QJR146 (i) — comparaison d'OTP à temps constant (``compare_digest``).
@@ -777,9 +778,16 @@ def signature_entreprise(devis):
     ``None``. Lecture seule."""
     if not exige_identite_entreprise(devis):
         return None
+    # L3 (24/10/2026) — un devis SANS signature est le cas normal de toute
+    # lecture publique avant acceptation : ``RelatedObjectDoesNotExist``
+    # (sous-classe d'``ObjectDoesNotExist``) se lit en silence ; seul un
+    # vrai incident est journalisé (chaque GET d'un envoyé écrivait une
+    # trace complète dans les journaux, qui noyait les vraies).
     try:
         sig = devis.signature
-    except Exception:  # noqa: BLE001 — RelatedObjectDoesNotExist (D-ENF22-BLE001)
+    except ObjectDoesNotExist:
+        return None
+    except Exception:  # noqa: BLE001 — lecture dégradée (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', 'signature_entreprise', exc_info=True)
         return None
     if sig is None or not (sig.raison_sociale or sig.signataire_qualite
