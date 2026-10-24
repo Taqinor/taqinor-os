@@ -198,6 +198,67 @@ class TestProposalPublicCrossCompanyToken(TestCase):
         self.assertIn(self.devis_a.id, called_ids)
         self.assertNotIn(self.devis_b.id, called_ids)
 
+    def _data(self, token):
+        # Moteur mocké (frais à chaque appel) : on teste l'identité de
+        # l'émetteur, lue par la vue sur la société du devis du jeton.
+        with patch('apps.ventes.quote_engine.builder.build_quote_data',
+                   side_effect=lambda *a, **k: {
+                       'ref': 'DEV-ARC5', 'date': '2026-10-24',
+                       'client_name': 'Client'}):
+            return APIClient().get(f'/api/django/public/proposal/{token}/data/')
+
+    def test_jeton_b_sert_l_identite_de_b(self):
+        """APDF110 (C-APDF-VER-007) — ``emetteur`` = l'identité légale de la
+        société du devis du JETON : A sert A, B sert B sans aucune valeur de A,
+        une société sans identité légale renseignée sert des chaînes vides
+        (son profil, créé à la lecture par ``CompanyProfile.get``, porte son
+        nom) ; ni RIB, ni adresse, ni CNSS ; relu deux fois ⇒ identique ;
+        jeton inconnu ⇒ 404 sans ``emetteur``. Mutant : lire l'identité de A
+        en dur ⇒ le cas B rougit."""
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.update_or_create(company=self.co_a, defaults={
+            'nom': 'SOLAIRE EXEMPLE SARL', 'forme_juridique': 'SARL',
+            'capital_social': '50 000,00 MAD', 'rc': '12345',
+            'ice': '001111111000011', 'rib': 'RIB-SENTINELLE-9876543',
+            'adresse': 'ADRESSE-SENTINELLE-9876543',
+            'cnss': 'CNSS-SENTINELLE-9876543'})
+        CompanyProfile.objects.update_or_create(company=self.co_b, defaults={
+            'nom': 'HELIOS SARL', 'ice': '002222222000022'})
+        co_c = _make_company('arc5-c', 'ARC5 C')
+        link_c = ShareLink.objects.create(company=co_c, devis=_make_devis(
+            co_c, _make_client(co_c, 'ClientC'), 'DEV-ARC5-C1'))
+
+        resp_a = self._data(self.link_a.token)
+        self.assertEqual(resp_a.status_code, 200)
+        self.assertEqual(resp_a.json()['emetteur'], {
+            'nom': 'SOLAIRE EXEMPLE SARL', 'forme_juridique': 'SARL',
+            'capital_social': '50 000,00 MAD', 'rc': '12345',
+            'ice': '001111111000011'})
+        self.assertNotIn(b'SENTINELLE-9876543', resp_a.content)
+
+        resp_b = self._data(self.link_b.token)
+        self.assertEqual(resp_b.status_code, 200)
+        self.assertEqual(resp_b.json()['emetteur'], {
+            'nom': 'HELIOS SARL', 'forme_juridique': '', 'capital_social': '',
+            'rc': '', 'ice': '002222222000022'})
+        for valeur in ('SOLAIRE EXEMPLE', '001111111000011', '50 000,00',
+                       'SENTINELLE-9876543'):
+            self.assertNotIn(valeur, resp_b.content.decode('utf-8'))
+
+        self.assertEqual(self._data(link_c.token).json()['emetteur'], {
+            'nom': 'ARC5 C', 'forme_juridique': '', 'capital_social': '',
+            'rc': '', 'ice': ''})
+
+        nb_profils = CompanyProfile.objects.count()
+        self.assertEqual(self._data(self.link_b.token).json()['emetteur'],
+                         resp_b.json()['emetteur'])
+        self.assertEqual(CompanyProfile.objects.count(), nb_profils)
+
+        inconnu = APIClient().get(
+            '/api/django/public/proposal/jeton-inconnu-apdf110/data/')
+        self.assertEqual(inconnu.status_code, 404)
+        self.assertNotIn('emetteur', inconnu.json())
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # (2) UN rendu PDF complet — le chemin public rend réellement après le sweep

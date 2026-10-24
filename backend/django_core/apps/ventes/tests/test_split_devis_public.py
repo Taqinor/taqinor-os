@@ -187,10 +187,11 @@ _CHAMPS_POSTERIEURS_AU_GOLDEN = ('suivi_prolonge_le', 'revoque_le',
 #: (ADEV49-ADEV52, contrat ADEV2) : exclues du digest, prouvées par leurs
 #: propres tests (``test_adev49``…``test_adev52``). ``empreinte_contenu``
 #: hache des clés primaires (produit, client) : il varierait d'un run à
-#: l'autre de toute façon.
+#: l'autre de toute façon. APDF110 : + ``emetteur`` (clé de BASE, identité
+#: de la société émettrice), prouvée par ``test_arc5_proposal_public_access``.
 _CLES_POSTERIEURES_AU_GOLDEN = frozenset({
     'economies_cumul_25_ans', 'empreinte_contenu', 'offre_expiree',
-    'date_expiration', 'pdf_disponible',
+    'date_expiration', 'pdf_disponible', 'emetteur',
 })
 
 

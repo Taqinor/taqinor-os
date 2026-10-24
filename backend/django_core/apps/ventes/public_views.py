@@ -23,6 +23,7 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.parametres.selectors import company_identity
 from .economies_periodes import construire_economies_periodes
 from .models import ShareLink
 from .public.noyau import (
@@ -1137,6 +1138,13 @@ def _economies_cumul_25_ans_publique(data):
     return out or None
 
 
+def _emetteur_public(company):
+    """APDF110 (C-APDF-VER-007) — identité légale de la société ÉMETTRICE, lue
+    par ``company_identity`` ('' quand non renseignée) ; jamais RIB/adresse/CNSS."""
+    identite = company_identity(company)
+    return {cle: identite[cle] for cle in ('nom', 'forme_juridique', 'capital_social', 'rc', 'ice')}
+
+
 @extend_schema(responses={200: SH.ProposalDataResponse, 403: SH.OtpRequis})
 @api_view(['GET'])
 @authentication_classes([])
@@ -1369,6 +1377,8 @@ def proposal_data(request, token):
             'date': data['date'],
             'client_name': data['client_name'],
             'statut': devis.statut,
+            # APDF110 — la société ÉMETTRICE est celle du devis du jeton.
+            'emetteur': _emetteur_public(devis.company),
             # QJR536 (contrat QJR501) — ``null`` tant que CE devis n'est pas
             # remplacé ; sinon ``{reference, url}`` de la version EN VIGUEUR
             # (dernière de la chaîne ``superseded_by``, même société). ``url``
