@@ -522,6 +522,8 @@ def proposal_accept(request, token):
             signed_at_client=signed_at_client,
             on_behalf_of=on_behalf_of,
             entreprise=entreprise,
+            # ADEV99 — la confirmation part dans la langue de la page (EN/FR).
+            langue=_langue_du_corps(request),
         )
     except AcceptError as exc:
         corps = {'detail': exc.message}
@@ -551,6 +553,12 @@ def proposal_accept(request, token):
         # ADEV96 — le reçu : horodatage, sceau du contenu, SHA-256 du PDF.
         'recu': recu_signature(devis),
     }))
+
+
+def _langue_du_corps(request):
+    """ADEV99 — ``fr``/``en``/``ar`` envoyé par la page, sinon ``''``."""
+    brut = request.data.get('langue') if hasattr(request.data, 'get') else ''
+    return brut if brut in ('fr', 'en', 'ar') else ''
 
 
 def _deverrouiller_exemplaire_signe(link, statut_avant, devis):

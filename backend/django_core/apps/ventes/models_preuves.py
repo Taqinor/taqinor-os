@@ -40,6 +40,11 @@ class PreuveSignatureB2B(models.Model):
     signed_pdf_sha256 = models.CharField(
         max_length=64, blank=True, default='',
         verbose_name='Empreinte SHA-256 du PDF signé')
+    # ADEV99 — langue de la page au moment de signer (fr/en/ar) : la
+    # confirmation part en anglais quand la proposition était lue en anglais.
+    langue_page = models.CharField(
+        max_length=5, blank=True, default='',
+        verbose_name='Langue de la page à la signature')
 
     class Meta:
         abstract = True

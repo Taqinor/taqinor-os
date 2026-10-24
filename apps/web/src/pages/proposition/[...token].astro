@@ -6719,7 +6719,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-                <span data-i18n data-fr="Télécharger le devis (PDF)" data-en="Download the quote (PDF)" data-ar="تحميل العرض (PDF)">Télécharger le devis (PDF)</span>
+                {/* ADEV99 — l'écran de succès offre TOUT DE SUITE l'exemplaire signé (même
+                    `/pdf/` ; qui vient de signer l'ouvre sans code, ADEV97). */}
+                <span data-i18n data-fr="Télécharger votre exemplaire signé" data-en="Download your signed copy" data-ar="تحميل نسختكم الموقّعة">Télécharger votre exemplaire signé</span>
               </a>)}
               <a href="#etapes-suivantes" class="btn-pill inline-flex items-center justify-center gap-2">
                 <span data-i18n data-fr="Voir « Et après ? »" data-en="See “What happens next?”" data-ar="ماذا بعد؟">Voir « Et après ? »</span>
@@ -9288,6 +9290,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             token: cfg.token,
             twoOptions: cfg.twoOptions,
             ...richBody,
+            // ADEV99 — la confirmation e-mail part dans la langue lue (EN ; FR sinon).
+            langue: currentLang,
           }),
           signal: submitController.signal,
         });

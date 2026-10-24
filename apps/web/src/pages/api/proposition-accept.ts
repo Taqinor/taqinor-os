@@ -112,6 +112,10 @@ export const POST: APIRoute = async ({ request }) => {
     otp_code,
     empreinte_contenu,
   });
+  // ADEV99 — langue de la page (fr/en/ar) : la confirmation part en anglais quand le client
+  // lisait en anglais. Liste fermée ; toute autre valeur n'est pas relayée.
+  const langue = body.langue === 'fr' || body.langue === 'en' || body.langue === 'ar' ? body.langue : '';
+  const upstream = langue ? { ...upstreamBody, langue } : upstreamBody;
 
   const url = acceptEndpoint(resolveApiBase(), token);
 
@@ -138,7 +142,7 @@ export const POST: APIRoute = async ({ request }) => {
         accept: 'application/json',
         ...(signerIp ? { 'X-Forwarded-For': signerIp, 'CF-Connecting-IP': signerIp } : {}),
       },
-      body: JSON.stringify(upstreamBody),
+      body: JSON.stringify(upstream),
     });
     upstreamStatus = res.status;
     try {

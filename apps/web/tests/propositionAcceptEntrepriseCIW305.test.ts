@@ -209,4 +209,29 @@ describe('CIW305 — la page C&I ne propose plus « mes parents, mon foyer »', 
     expect(i).toBeLessThan(page.indexOf('if (res.status === 409) {', i));
     expect(page).toContain('Bon pour accord : au nom de la société');
   });
+  it('ADEV99 — la page envoie sa langue ; le succès offre l’exemplaire signé tout de suite', () => {
+    expect(page).toContain('langue: currentLang,');
+    expect(page).toContain('data-fr="Télécharger votre exemplaire signé"');
+  });
+});
+
+describe('ADEV99 — proxy /api/proposition-accept : la langue de la page est relayée (liste fermée)', () => {
+  beforeEach(() => resetRateLimit());
+  afterEach(() => vi.unstubAllGlobals());
+  async function corpsRelaye(body: unknown): Promise<Record<string, unknown>> {
+    const fetchMock = vi.fn(async () => ({ status: 200, ok: true, json: async () => ({ detail: 'ok' }) }) as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    await POST({
+      request: new Request('http://localhost/api/proposition-accept', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      }),
+    } as unknown as Parameters<typeof POST>[0]);
+    return JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
+  }
+  it('`en` relayé, une valeur hors liste jamais', async () => {
+    expect((await corpsRelaye({ token: 'tok', nom: 'Hassan', langue: 'en' })).langue).toBe('en');
+    expect('langue' in (await corpsRelaye({ token: 'tok', nom: 'Hassan', langue: 'de' }))).toBe(false);
+  });
 });

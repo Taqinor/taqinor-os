@@ -278,3 +278,58 @@ class LEmailNePromentQueLaPreuveQuiExiste(_BaseAcceptation):
         self.assertNotIn('exemplaire signé', corps)
         # Le reste de l'email — l'accusé de réception — part comme avant.
         self.assertIn('Nous avons bien reçu votre acceptation', corps)
+
+
+class LaConfirmationVaAuxDeuxParties(_BaseAcceptation):
+    """ADEV99 — signataire ET contact du lead, copie PDF au vendeur ; raison
+    sociale / ICE / horodatage Casablanca / empreinte dans le corps ; anglais
+    quand la page était lue en anglais."""
+
+    slug = 'adev99-email'
+
+    ENTREPRISE = {'raison_sociale': 'Hôtel Exemple SARL',
+                  'signataire_qualite': 'Directeur général',
+                  'ice': '000000000000000',
+                  'signataire_email': 'dg@hotel-exemple.test',
+                  'pouvoir_engager': True}
+
+    def _avec_lead_et_vendeur(self):
+        from django.contrib.auth import get_user_model
+        from apps.crm.models import Lead
+        vendeur = get_user_model().objects.create_user(
+            username='adev99-vendeur', password='x', company=self.company,
+            email='vendeur@adev99.test', role_legacy='commercial')
+        lead = Lead.objects.create(company=self.company, nom='Contact',
+                                   email='contact@hotel-exemple.test',
+                                   owner=vendeur)
+        Devis.objects.filter(pk=self.racine.pk).update(lead=lead)
+        self.racine.refresh_from_db()
+
+    def test_signataire_contact_et_copie_vendeur(self):
+        self._avec_lead_et_vendeur()
+        accept_devis(devis=self.racine, user=None, nom='Karim Exemple',
+                     entreprise=dict(self.ENTREPRISE))
+        logs = {log.to_email: log for log in EmailLog.objects.filter(
+            devis=self.racine)}
+        self.assertEqual(set(logs), {'dg@hotel-exemple.test',
+                                     'contact@hotel-exemple.test',
+                                     'vendeur@adev99.test'})
+        corps = logs['dg@hotel-exemple.test'].corps
+        self.assertIn(PHRASE_SIGNATURE, corps)
+        self.assertIn('Société : Hôtel Exemple SARL — ICE : 000000000000000', corps)
+        self.assertIn('(heure de Casablanca)', corps)
+        sig = DevisSignature.objects.get(devis=self.racine)
+        self.assertIn(sig.content_hash, corps)
+        copie = logs['vendeur@adev99.test']
+        self.assertTrue(copie.sujet.startswith('Copie'))
+        self.assertIn('dg@hotel-exemple.test', copie.corps)
+
+    def test_confirmation_en_anglais_quand_la_page_l_etait(self):
+        accept_devis(devis=self.racine, user=None, nom='Mr Client',
+                     langue='en')
+        log = EmailLog.objects.filter(devis=self.racine).order_by('-id').first()
+        self.assertTrue(log.sujet.startswith('Proposal accepted'), log.sujet)
+        self.assertIn('Fingerprint of the signed content (SHA-256)', log.corps)
+        self.assertIn('(Casablanca time)', log.corps)
+        self.assertEqual(
+            DevisSignature.objects.get(devis=self.racine).langue_page, 'en')
