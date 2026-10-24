@@ -72,14 +72,17 @@ class TestSyntheseCiArgent(SimpleTestCase):
         self.assertIn("van_mad", s["argent"]["indicateurs"])
         self.assertIn("sensibilites", s["argent"])
 
-    def test_commercial_ni_van_ni_lcoe_ni_sensibilites(self):
+    def test_commercial_ni_van_ni_lcoe(self):
         economie = _economie()
         s = synthese_ci(_data(_etude_ci(), economie_ci=economie))
         cles = set(_cles_recursives(s["argent"]))
         for interdite in ("van_mad", "van_motif", "lcoe_mad_kwh",
-                          "lcoe_actualise", "retour_actualise_ans",
-                          "sensibilites"):
+                          "lcoe_actualise", "retour_actualise_ans"):
             self.assertNotIn(interdite, cles)
+        # AMOT97 (D-ACI-15=a) — les sensibilités servies restent (scénario
+        # prudent imprimé sur le commercial).
+        self.assertEqual(s["argent"]["sensibilites"],
+                         economie["sensibilites"])
         omissions = [o.get("cle") for o in s["argent"]["omissions"]]
         self.assertNotIn("van_mad", omissions)
         # Le reste est recopié tel quel.

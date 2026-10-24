@@ -203,3 +203,48 @@ class Amot84MotifsVisiteCommercial(SimpleTestCase):
                 self.assertNotIn("visite avant le devis final", html)
                 self.assertNotIn("surface disponible inconnue", html)
                 self.assertNotIn("D-CIQ", html)
+
+
+def visible(html):
+    """AMOT101 — le HTML sans feuilles de style ni ancres ``data-figure``
+    masquées (leur valeur reste au format canonique lu par la parité)."""
+    html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+    return re.sub(r"<span data-figure[^>]*></span>", "", html)
+
+
+class Amot101FormatAnglais(SimpleTestCase):
+    """AMOT101 (D-ACI-21=a) — en ``en`` : milliers « , », décimale « . »
+    (montants, puissance, pourcentages) ; FR et AR inchangés ; le format
+    est retiré après le rendu (jamais transmis au rendu suivant)."""
+
+    def test_anglais_format_anglais_francais_et_arabe_inchanges(self):
+        from apps.ventes.quote_engine.montants import fmt_centimes
+        ttc = renderer._augment(_data())["_invest_ttc"]
+        anglais = f"{ttc:,.2f}"
+        self.assertIn(",", anglais)
+        en, fr, ar = (visible(_html(_data(langue)))
+                      for langue in ("en", None, "ar"))
+        self.assertIn(anglais, en)
+        self.assertNotIn(fmt_centimes(ttc), en)
+        for html in (fr, ar):
+            self.assertIn(fmt_centimes(ttc), html)
+            self.assertNotIn(anglais, html)
+        ht = renderer._augment(_data())["totaux_all"]["ht_net"]
+        self.assertIn(f"{ht:,.2f} MAD", en)
+        self.assertIn(f"{fmt_centimes(ht)} MAD", fr)
+
+    def test_format_retire_apres_le_rendu(self):
+        from apps.ventes.quote_engine.montants import (
+            fmt_centimes, format_anglais)
+        avant = _html(_data())
+        _html(_data("en"))
+        self.assertFalse(format_anglais())
+        self.assertEqual(fmt_centimes(1234.5), "1 234,50")
+        self.assertEqual(_html(_data()), avant)
+
+    def test_devis_aux_regles_d_origine_garde_le_format_francais(self):
+        from apps.ventes.quote_engine.montants import fmt_centimes
+        d = _data("en")
+        d["regles_calcul_origine"] = True
+        ttc = renderer._augment(_data())["_invest_ttc"]
+        self.assertIn(fmt_centimes(ttc), _html(d))

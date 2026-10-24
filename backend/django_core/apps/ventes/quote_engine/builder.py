@@ -4457,11 +4457,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         _sig_ent = _signature_entreprise(devis)
         if _sig_ent:
             data["signature_entreprise"] = _sig_ent
-        _om, _delai = services_ci_du_devis(devis)
-        if _om:
-            data["om_ci_lignes"] = _om
-        if _delai:
-            data["delai_intervention_suivi_heures"] = _delai
+        # AMOT100 — + le facteur CO₂ réglé par la société.
+        from .reglages_societe import poser_services_ci
+        poser_services_ci(data, services_ci_du_devis(devis), devis)
 
     # ── AGR306 — la règle FDA SAISIE par la société (AGR207), passée à
     # ``agricole/synthese`` qui en imprime la RÈGLE (jamais un montant propre

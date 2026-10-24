@@ -18,6 +18,7 @@ from ..ci.synthese import chiffres_cles, libelle_poste
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
 from ..ci.blocs import langue as _langue, libelle as _libelle
 from ..sequence import sequence_affichage
+from ..montants import decimale
 from .. import premium_base
 
 
@@ -260,7 +261,7 @@ def _rangees_installation(d, L, fmt):
         rangees.append((L("ci_inst_onduleurs", "Onduleurs"), " · ".join(
             [", ".join(onduleurs)]
             + ([L("ci_inst_kw_ac", "{kw} kW AC au total",
-                  kw=f"{kw_ac:g}".replace(".", ","))] if kw_ac else []))))
+                  kw=decimale(f"{kw_ac:g}"))] if kw_ac else []))))
     pose = installation.get("type_pose")
     if pose in LIBELLES_TYPES_POSE:
         rangees.append((L("ci_inst_pose", "Type de pose"),

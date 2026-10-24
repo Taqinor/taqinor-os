@@ -956,6 +956,8 @@ LIBELLES = {
                       'en': 'Investment (incl. VAT, turnkey)',
                       'ar': 'الاستثمار (شامل الضريبة، تسليم مفتاح)'},
     'ci_soit': {'fr': 'soit', 'en': 'i.e.', 'ar': 'أي'},
+    # AMOT95 — plus imprimée (statut déclaré ci-dessous) ; gardée au
+    # catalogue servi, que le golden du rendu d'origine fige.
     'ci_note_tva_recuperable': {
         'fr': 'TVA récupérable selon votre régime fiscal — à confirmer avec '
               'votre comptable.',
@@ -963,6 +965,23 @@ LIBELLES = {
               'confirmed with your accountant.',
         'ar': 'الضريبة على القيمة المضافة قابلة للاسترجاع حسب نظامكم '
               'الضريبي — يُؤكد مع محاسبكم.'},
+    # AMOT95 — la mention TVA dit le statut DÉCLARÉ (base servie).
+    'ci_tva_declaree_ht': {
+        'fr': 'TVA récupérable déclarée : économies en HT.',
+        'en': 'Recoverable VAT declared: savings excl. VAT.',
+        'ar': 'استرجاع الضريبة مصرح به: الوفورات دون احتساب الضريبة.'},
+    'ci_tva_non_declaree': {
+        'fr': 'TVA récupérable non déclarée : économies en HT et en TTC.',
+        'en': 'Recoverable VAT not declared: savings excl. and incl. VAT.',
+        'ar': 'استرجاع الضريبة غير مصرح به: الوفورات دون احتساب الضريبة '
+              'وشاملة لها.'},
+    'ci_tva_inconnue': {
+        'fr': 'TVA récupérable inconnue : économies en HT et en TTC — à '
+              'confirmer avec votre comptable.',
+        'en': 'Recoverable VAT unknown: savings excl. and incl. VAT — to be '
+              'confirmed with your accountant.',
+        'ar': 'استرجاع الضريبة غير معروف: الوفورات دون احتساب الضريبة '
+              'وشاملة لها — يُؤكد مع محاسبكم.'},
     'ci_raison_sociale': {'fr': 'Raison sociale', 'en': 'Company name',
                           'ar': 'الاسم التجاري'},
     'ci_siege': {'fr': 'Siège', 'en': 'Head office',
@@ -1055,6 +1074,17 @@ LIBELLES = {
     'ci_prix_a_renseigner': {'fr': 'prix à renseigner',
                              'en': 'price to be set',
                              'ar': 'السعر في انتظار التحديد'},
+    # AMOT100 (D-ACI-19=a) — CO₂ évité sur le facteur réglé par la société.
+    'ci_co2_evite': {'fr': 'CO₂ évité / an', 'en': 'CO₂ avoided / yr',
+                     'ar': 'ثاني أكسيد الكربون المُتجنَّب / سنة'},
+    'ci_co2_facteur': {
+        'fr': 'facteur réseau {g} gCO₂/kWh — {source}',
+        'en': 'grid factor {g} gCO₂/kWh — {source}',
+        'ar': 'معامل الشبكة {g} غرام CO₂/كيلوواط ساعة — {source}'},
+    # AMOT98 (D-ACI-17=a) — l'O&M sans prix, côté client.
+    'ci_tarif_sur_demande': {'fr': 'tarif sur demande',
+                             'en': 'price on request',
+                             'ar': 'السعر عند الطلب'},
     'ci_propose_non_inclus': {'fr': ' (proposé, non inclus dans le total)',
                               'en': ' (proposed, not included in the total)',
                               'ar': ' (مقترح، غير مدرج في المجموع)'},
@@ -1324,6 +1354,17 @@ LIBELLES = {
                               'ar': 'ثمن الكيلوواط ساعة'},
     'ci_ind_sens_production': {'fr': 'Production', 'en': 'Production',
                                'ar': 'الإنتاج'},
+    # AMOT97 (D-ACI-15=a) — tableau des scénarios et scénario prudent.
+    'ci_sens_central': {'fr': 'Scénario central', 'en': 'Central scenario',
+                        'ar': 'السيناريو المركزي'},
+    'ci_sens_scenario': {'fr': 'Scénario', 'en': 'Scenario',
+                         'ar': 'السيناريو'},
+    'ci_sens_cumul': {'fr': 'Cumul net sur {n} ans',
+                      'en': 'Net cumulative over {n} years',
+                      'ar': 'الرصيد الصافي على {n} سنة'},
+    'ci_sens_prudent': {'fr': 'scénario prudent : retour ≈ {n} ans',
+                        'en': 'cautious scenario: payback ≈ {n} years',
+                        'ar': 'السيناريو الحذر: الاسترداد ≈ {n} سنة'},
     'ci_ind_sens_retour': {'fr': 'retour {n} ans', 'en': 'payback {n} years',
                            'ar': 'مدة الاسترداد {n} سنة'},
     'ci_ind_sens_tri': {'fr': 'TRI {t} %', 'en': 'IRR {t} %',
@@ -2882,6 +2923,19 @@ LIBELLES = {
     'ci_fx_economie': {'fr': 'Économie', 'en': 'Saving', 'ar': 'الوفر'},
     'ci_fx_om': {'fr': 'O&amp;M', 'en': 'O&amp;M',
                  'ar': 'التشغيل والصيانة'},
+    # AMOT96 (D-ACI-14=a) — entretien minimum du réglage société.
+    'ci_fx_entretien': {'fr': 'Entretien', 'en': 'Maintenance',
+                        'ar': 'الصيانة'},
+    'ci_entretien_minimum': {
+        'fr': 'entretien minimum à votre charge (réglage société) : '
+              '{montant} MAD/an, déduit des économies',
+        'en': 'minimum maintenance at your expense (company setting): '
+              '{montant} MAD/yr, deducted from the savings',
+        'ar': 'الحد الأدنى للصيانة على نفقتكم (إعداد الشركة): {montant} '
+              'درهم/سنة، مخصوم من الوفورات'},
+    'ci_entretien_non_chiffre': {'fr': 'entretien non chiffré',
+                                 'en': 'maintenance not quantified',
+                                 'ar': 'الصيانة غير مقدرة'},
     'ci_fx_remplacement': {'fr': 'Remplacement', 'en': 'Replacement',
                            'ar': 'الاستبدال'},
     'ci_fx_flux': {'fr': 'Flux net', 'en': 'Net cash flow',

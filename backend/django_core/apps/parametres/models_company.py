@@ -311,6 +311,26 @@ class CompanyProfile(models.Model):
     # Délai entre réception provisoire et définitive (mois) — D-CIQ-14.
     delai_reception_definitive_mois = models.PositiveIntegerField(
         null=True, blank=True)
+    # AMOT96 (D-ACI-14=a) — entretien minimum à la charge du client, en MAD
+    # HT par kWc et par an : déduit des économies C&I quand l'O&M n'est pas
+    # souscrite. Vide = entretien non chiffré (aucune déduction).
+    entretien_minimum_mad_kwc_an = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0'))],
+        verbose_name='Entretien minimum à la charge du client (MAD HT/kWc/an)')
+    # AMOT100 (D-ACI-19=a) — facteur d'émission du réseau marocain fourni par
+    # la société, avec sa source et sa date : vide = aucune mention CO₂ sur
+    # les documents C&I (jamais un facteur par défaut).
+    facteur_co2_reseau_g_kwh = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0'))],
+        verbose_name="Facteur d'émission du réseau (gCO₂/kWh)")
+    facteur_co2_reseau_source = models.TextField(
+        blank=True, default='',
+        verbose_name="Source du facteur d'émission du réseau")
+    facteur_co2_reseau_date = models.DateField(
+        null=True, blank=True,
+        verbose_name="Date du facteur d'émission du réseau")
     # Contrôle de sécurité obligatoire avant la mise en service.
     securite_obligatoire_avant_demarrage = models.BooleanField(default=False)
     # Garantie de production : jamais imprimée tant que la société ne l'a pas

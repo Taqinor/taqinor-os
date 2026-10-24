@@ -17,6 +17,7 @@ import html
 import re
 
 from .blocs import langue, libelle
+from ..montants import decimale
 from .mentions import TEXTES_POINTE_SANS, TEXTES_VISITE, texte
 
 #: Bandeau (sans le point final de la phrase de la table des mentions).
@@ -251,13 +252,29 @@ def ans(valeur):
     """« 3 » / « 3,4 » — le payback servi, sans arrondi propre."""
     texte_ans = (f"{valeur:g}" if isinstance(valeur, (int, float))
                  else str(valeur))
-    return texte_ans.replace(".", ",")
+    return decimale(texte_ans)
 
 
-#: CIQ315 — jamais un avantage fiscal promis : la récupération dépend du
-#: régime du client (une clinique est exonérée sans droit à déduction).
-NOTE_TVA_RECUPERABLE = ("TVA récupérable selon votre régime fiscal — à "
-                        "confirmer avec votre comptable.")
+def note_tva(d, base):
+    """CIQ315 / AMOT95 — jamais un avantage fiscal promis : la mention dit le
+    statut TVA DÉCLARÉ (``mentions.cle_mention_tva``), ou ''."""
+    from .. import i18n_labels
+    from .mentions import cle_mention_tva
+    cle = cle_mention_tva(d, base)
+    return libelle(d, cle, i18n_labels.LIBELLES[cle]["fr"]) if cle else ""
+
+
+def economie_ttc(d, cle, fmt):
+    """AMOT95 — base « deux » : « soit N MAD TTC », l'économie de l'année 1
+    TTC SERVIE (``chiffres_cles``) à côté de la HT ; '' sinon."""
+    from .synthese import chiffres_cles
+    ttc = chiffres_cles(d.get(f"{cle}_synthese") or {})[
+        "economie_annuelle_ttc_mad"]
+    if ttc is None:
+        return ""
+    return (f'{libelle(d, "ci_soit", "soit")} {fmt(ttc)}&nbsp;MAD&nbsp;'
+            f'{libelle(d, "ci_ttc", "TTC")}')
+
 
 #: AMOT86 (D-ACI-2=a) — titre du bloc investissement par base servie :
 #: ``(clé, littéral)`` « clé en main » d'hier, puis la version « hors postes
@@ -331,7 +348,6 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
     l_ht = libelle(d, "ci_ht", "HT")
     l_ttc = libelle(d, "ci_ttc", "TTC")
     l_soit = libelle(d, "ci_soit", "soit")
-    note_tva = libelle(d, "ci_note_tva_recuperable", NOTE_TVA_RECUPERABLE)
     if base in ("ht", "deux") and ht is not None:
         ht_txt = fmt_mad(ht)
         if base == "ht":
@@ -339,12 +355,12 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
                 prefixe, titre_investissement(d, synthese, "ht"), ht_txt,
                 l_ht, ancre("total_ht", ht_txt),
                 f'{l_soit} {ttc_txt}&nbsp;MAD&nbsp;{l_ttc}'
-                f'{ancre("total_affiche", ttc_txt)} · {note_tva}')
+                f'{ancre("total_affiche", ttc_txt)} · {note_tva(d, base)}')
         return _html_investissement(
             prefixe, titre_investissement(d, synthese, "deux"), ttc_txt,
             l_ttc, ancre("total_affiche", ttc_txt),
             f'{l_soit} {ht_txt}&nbsp;MAD&nbsp;{l_ht}'
-            f'{ancre("total_ht", ht_txt)} · {note_tva}')
+            f'{ancre("total_ht", ht_txt)} · {note_tva(d, base)}')
     return _html_investissement(
         prefixe, titre_investissement(d, synthese, "ttc"), ttc_txt, "",
         ancre("total_affiche", ttc_txt))
@@ -406,7 +422,25 @@ def tuiles_taux(d, cle, kpi):
             d, libelle(d, "ci_part_conso_couverte",
                        "Part de votre consommation couverte"),
             definitions.get("couverture")), "couverture_pct"))
-    return tuiles
+    return tuiles + tuile_co2(d, cle, kpi)
+
+
+def tuile_co2(d, cle, kpi):
+    """AMOT100 (D-ACI-19=a) — la tuile « CO₂ évité / an » : la tonne SERVIE
+    (``synthese_ci.decarbonation.co2_evite``) et la source du facteur réglé
+    par la société ; [] sans facteur réglé (aucune mention)."""
+    co2 = ((d.get(f"{cle}_synthese") or {}).get("decarbonation") or {}).get(
+        "co2_evite")
+    if not isinstance(co2, dict) or co2.get("t_an") is None:
+        return []
+    facteur = libelle(
+        d, "ci_co2_facteur", "facteur réseau {g} gCO₂/kWh — {source}",
+        g=decimale(f"{co2['facteur_g_kwh']:g}"),
+        source=html.escape(str(co2.get("source") or ""), quote=False))
+    return [kpi(decimale(f"≈&#160;{co2['t_an']:g}"), "&nbsp;t",
+                libelle(d, "ci_co2_evite", "CO₂ évité / an")
+                + f'<div style="font-size:6.2pt;margin-top:1px;">{facteur}'
+                '</div>')]
 
 
 def _avec_definition(d, libelle_tuile, definition):
@@ -483,6 +517,9 @@ def tuiles_argent(d, cle, kpi, fmt):
                 '<div style="font-size:6.3pt;margin-top:1px;">'
                 + libelle(d, "ci_retour_prix_complet", "retour calculé sur "
                           "le prix complet, après la visite") + "</div>")
+        if economie_ttc(d, cle, fmt):
+            libelle_eco += ('<div style="font-size:6.3pt;margin-top:1px;">'
+                            + economie_ttc(d, cle, fmt) + "</div>")
         tuiles.append(kpi(fmt(economies), "&nbsp;MAD", libelle_eco,
                           "economie_annuelle"))
     payback = d.get(f"{cle}_payback")
@@ -491,12 +528,15 @@ def tuiles_argent(d, cle, kpi, fmt):
         argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
         base = libelle(d, "ci_ttc", "TTC") if argent.get("base") == "ttc" \
             else libelle(d, "ci_ht", "HT")
+        prudent = scenario_prudent(d, cle) if cle == "com" else ""
         tuiles.append(kpi(ans(payback),
                           libelle(d, "ci_unite_ans", "&nbsp;ans"),
-                          libelle(d, "ci_retour_estime_base",
-                                  "Retour estimé ({base})", base=base)
-                          if argent else
-                          libelle(d, "ci_retour_estime", "Retour estimé"),
+                          (libelle(d, "ci_retour_estime_base",
+                                   "Retour estimé ({base})", base=base)
+                           if argent else
+                           libelle(d, "ci_retour_estime", "Retour estimé"))
+                          + (f'<div style="font-size:6.3pt;margin-top:1px;">'
+                             f'{prudent}</div>' if prudent else ""),
                           "payback_ans"))
     elif motif_investissement(d, cle):
         # AMOT80 (D-ACI-8=a) — investissement non chiffré : le MOTIF à la
@@ -506,6 +546,20 @@ def tuiles_argent(d, cle, kpi, fmt):
             f'{motif_investissement(d, cle)}</span>', "",
             libelle(d, "ci_retour_estime", "Retour estimé")))
     return tuiles
+
+
+def scenario_prudent(d, cle):
+    """AMOT97 (D-ACI-15=a) — « scénario prudent : retour ≈ N ans », le plus
+    long retour SERVI parmi les sensibilités (``argent.sensibilites``), ou ''
+    (aucun scénario chiffré)."""
+    argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
+    retours = [s["retour_ans"] for s in argent.get("sensibilites") or []
+               if isinstance(s, dict)
+               and isinstance(s.get("retour_ans"), (int, float))]
+    if not retours:
+        return ""
+    return libelle(d, "ci_sens_prudent", "scénario prudent : retour ≈ {n} ans",
+                   n=ans(max(retours)))
 
 
 # ── AMOT92 — la couverture est le PROJET du client ─────────────────────────

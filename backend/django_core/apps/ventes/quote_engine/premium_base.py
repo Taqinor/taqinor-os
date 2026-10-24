@@ -55,11 +55,13 @@ def build_html(data: dict, pages_fn) -> str:
     CIQ333 — un document en anglais ou en arabe porte ``lang`` (et
     ``dir="rtl"`` en arabe, d'où WeasyPrint tire l'alignement à droite et
     l'ordre miroir des tableaux) et la police arabe vendorisée, comme le
-    document agricole (AGR314) ; le français reste octet pour octet."""
+    document agricole (AGR314) ; le français reste octet pour octet.
+    AMOT101 — en anglais, les nombres au format anglais (``montants``)."""
     from . import i18n_labels
     ctx = build_ctx(data)
     ident = ctx["ident"]
-    pages = pages_fn(ctx)
+    with montants.format_langue(data):
+        pages = pages_fn(ctx)
     total = len(pages)
     body = "".join(
         wrap_page(inner, n, data, ident, total)
@@ -143,9 +145,10 @@ def polices(fonts: dict) -> tuple:
 
 def kwc_str(v, defaut: str = "—") -> str:
     """Puissance à la française pour les couvertures (« 10,65 », « 10 ») ;
-    ``defaut`` quand la valeur est illisible ou absente."""
+    ``defaut`` quand la valeur est illisible ou absente (AMOT101 : « 65.32 »
+    dans un document C&I en anglais)."""
     try:
-        return f"{float(v):.2f}".rstrip("0").rstrip(".").replace(".", ",")
+        return montants.decimale(f"{float(v):.2f}".rstrip("0").rstrip("."))
     except (TypeError, ValueError):
         return defaut
 

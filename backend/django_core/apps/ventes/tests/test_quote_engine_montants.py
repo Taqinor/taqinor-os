@@ -47,5 +47,7 @@ class TestFormateurUnique(SimpleTestCase):
             elif isinstance(node, ast.ImportFrom):
                 mods.add((node.module or "").split(".")[0])
         # contextvars (stdlib) : drapeau « règles d'origine » du rendu
-        # (décision fondateur 08/10/2026, nouveaux rendus seulement).
-        self.assertEqual(mods - {"decimal", "contextvars"}, set())
+        # (décision fondateur 08/10/2026, nouveaux rendus seulement) ;
+        # contextlib (stdlib) : format anglais posé puis retiré (AMOT101).
+        self.assertEqual(mods - {"decimal", "contextvars", "contextlib"},
+                         set())

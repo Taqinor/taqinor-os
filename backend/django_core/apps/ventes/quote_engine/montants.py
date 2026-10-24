@@ -4,6 +4,7 @@ Stdlib seulement : importable par le moteur legacy vendorisé comme par les
 paquets premium (résidentiel / commercial / industriel), qui ne peuvent pas
 importer ``generate_devis_premium`` (matplotlib au chargement).
 """
+import contextlib
 import contextvars
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
@@ -27,6 +28,37 @@ def regles_origine():
     return _REGLES_ORIGINE.get()
 
 
+#: AMOT101 (D-ACI-21=a) — vrai pendant le rendu d'un document C&I en anglais :
+#: milliers « , », décimale « . » (« 484,992.48 », « 65.32 ») ; FR, AR,
+#: résidentiel, agricole et devis aux règles d'origine inchangés.
+_FORMAT_ANGLAIS = contextvars.ContextVar('format_anglais', default=False)
+
+
+@contextlib.contextmanager
+def format_langue(data):
+    """Le format des nombres du rendu de ``data`` (posé puis RETIRÉ)."""
+    data = data if isinstance(data, dict) else {}
+    anglais = (str(data.get('langue_sortie') or '').strip().lower()[:2] == 'en'
+               and str(data.get('mode_installation') or '').strip().lower()
+               in ('commercial', 'industriel')
+               and not data.get('regles_calcul_origine'))
+    jeton = _FORMAT_ANGLAIS.set(anglais)
+    try:
+        yield
+    finally:
+        _FORMAT_ANGLAIS.reset(jeton)
+
+
+def format_anglais():
+    """Vrai pendant le rendu d'un document C&I en anglais (AMOT101)."""
+    return _FORMAT_ANGLAIS.get()
+
+
+def decimale(texte):
+    """« 0,5 » à la française, « 0.5 » dans un document C&I en anglais."""
+    return texte if _FORMAT_ANGLAIS.get() else texte.replace(".", ",")
+
+
 def fmt_centimes(v):
     """Montant au CENTIME à la française : 1 166,67.
 
@@ -42,6 +74,8 @@ def fmt_centimes(v):
         d = Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError, TypeError):
         return str(v)
+    if _FORMAT_ANGLAIS.get():
+        return f"{d:,.2f}"
     return f"{d:,.2f}".replace(",", " ").replace(".", ",")
 
 
@@ -71,7 +105,7 @@ def pct_fr(v):
     txt = format(d.normalize(), "f")
     if "." in txt:
         txt = txt.rstrip("0").rstrip(".")
-    return txt.replace(".", ",")
+    return decimale(txt)
 
 
 def fmt_dirhams(v, sep="\u202f"):
@@ -94,7 +128,7 @@ def fmt_dirhams(v, sep="\u202f"):
         d = Decimal(str(v)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError, TypeError):
         return str(v)
-    return f"{int(d):,}".replace(",", sep)
+    return f"{int(d):,}".replace(",", "," if _FORMAT_ANGLAIS.get() else sep)
 
 
 def pu_ht_remise(it):
