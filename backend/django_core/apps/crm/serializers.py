@@ -544,7 +544,8 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     web_estimate = serializers.DictField(required=False)
     # AGQ10 (D-AGQ-6) — bornes DANS le schéma publié (api-fuzz CI #1021 : un
     # corps conforme au schéma était refusé) : 0 < jours ≤ 7, message nommé.
-    jours_irrigation_semaine = serializers.DecimalField(
+    # ALEA : `LeadDecimalField` garde la normalisation d'une décimale de trop.
+    jours_irrigation_semaine = LeadDecimalField(
         max_digits=3, decimal_places=1, required=False, allow_null=True,
         min_value=Decimal('0.1'), max_value=Decimal('7'),
         error_messages={'min_value': _MSG_JOURS_IRRIGATION,
