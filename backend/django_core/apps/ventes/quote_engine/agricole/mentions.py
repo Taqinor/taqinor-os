@@ -97,8 +97,14 @@ def _milliers(n, sep):
     return str(entier).replace(".", "," if sep != "," else ".")
 
 
-def _textes_fda(plafonds, source, nom):
+def _textes_fda(plafonds, source, nom, releve=None):
     t, ha, kwc, projet = (plafonds.get(c) for c in PLAFONDS)
+    # AGQ21 — la date de relevé de la règle (JJ/MM/AAAA), quand elle existe.
+    src = {"fr": source, "en": source, "ar": source}
+    if releve:
+        src = {"fr": f"{source} (relevé le {releve})",
+               "en": f"{source} (read on {releve})",
+               "ar": f"{source} (تاريخ الاطلاع {releve})"}
 
     def fr(n):
         return _milliers(n, " ") if n is not None else "—"
@@ -116,7 +122,7 @@ def _textes_fda(plafonds, source, nom):
                f"pas déduite du prix et elle est versée après réalisation ; "
                f"un seul projet par exploitation. Décision de la DPA/ORMVA, "
                f"non garantie ; {_nom_installateur(nom, 'fr')} n'est pas organisme subventionneur. "
-               f"Source : {source}."),
+               f"Source : {src['fr']}."),
         "en": (f"State aid (Agricultural Development Fund) for solar pumping: "
                f"{en(t)}% of the investment, capped at {en(ha)} MAD per "
                f"hectare, {en(kwc)} MAD per kWp and {en(projet)} MAD per "
@@ -125,7 +131,7 @@ def _textes_fda(plafonds, source, nom):
                f"BEFORE the works; the aid is not deducted from the price and "
                f"is paid after completion; one project per farm. Decision of "
                f"the DPA/ORMVA, not guaranteed; {_nom_installateur(nom, 'en')} is not a subsidising "
-               f"body. Source: {source}."),
+               f"body. Source: {src['en']}."),
         "ar": (f"دعم الدولة (صندوق التنمية الفلاحية) للضخ بالطاقة الشمسية: "
                f"{fr(t)} % من الاستثمار، في حدود {fr(ha)} درهم للهكتار "
                f"و{fr(kwc)} درهم للكيلوواط ذروة و{fr(projet)} درهم للمشروع. "
@@ -134,7 +140,7 @@ def _textes_fda(plafonds, source, nom):
                f"من الثمن ويُصرف بعد الإنجاز؛ مشروع واحد لكل استغلالية. قرار "
                f"المديرية الإقليمية للفلاحة / المكتب الجهوي للاستثمار "
                f"الفلاحي، غير مضمون؛ {_nom_installateur(nom, 'ar')} ليست جهة مانحة للدعم. "
-               f"المصدر: {source}."),
+               f"المصدر: {src['ar']}."),
     }
 
 
@@ -148,7 +154,10 @@ def regle_fda(regle_societe=None, *, nom_societe=None):
     releve_le, textes}``.
     """
     regle = regle_societe if isinstance(regle_societe, dict) else {}
-    saisie = bool(regle.get("source"))
+    # AGQ21 — une règle société n'est imprimée qu'avec sa source ET ses
+    # quatre nombres ; incomplète ⇒ repli daté, jamais « — % … — DH ».
+    saisie = bool(regle.get("source")) and all(
+        _nombre(regle.get(cle)) is not None for cle in PLAFONDS)
     base = regle if saisie else REPLI_FDA
     plafonds = {cle: _nombre(base.get(cle)) for cle in PLAFONDS}
     source = base.get("source") or REPLI_FDA["source"]
@@ -157,14 +166,16 @@ def regle_fda(regle_societe=None, *, nom_societe=None):
     edition = (base.get("edition") or source) if saisie \
         else REPLI_FDA["edition"]
     nom = (nom_societe or "").strip() or None
+    releve_le = ((base.get("releve_le") or None) if saisie
+                 else REPLI_FDA["releve_le"])
     return {
         "conditions": list(CONDITIONS_FDA),
         "plafonds": plafonds,
         "edition": edition,
         "source": source,
-        "releve_le": (base.get("releve_le") or None) if saisie
-        else REPLI_FDA["releve_le"],
-        "textes": _textes_fda(plafonds, source, nom),
+        "releve_le": releve_le,
+        "textes": _textes_fda(plafonds, source, nom,
+                              _date_jjmmaaaa(releve_le)),
     }
 
 
@@ -214,6 +225,53 @@ def formalites():
         },
         _formalite_prelevement(),
     ]
+
+
+# ── AGQ30 — étapes suivantes (D-AGQ-11, D-AGR-10 : AUCUN délai chiffré) ────
+#: (clé, fr, en, ar) — l'ordre est celui du chantier agricole ; jamais un
+#: jour ni une semaine (D-AGR-10), l'accord FDA AVANT la commande (D-AGR-6).
+_ETAPES = (
+    ("visite_point_eau",
+     "Visite du point d'eau : niveau, débit du forage et HMT relevés sur "
+     "place.",
+     "Water point visit: level, borehole flow and head measured on site.",
+     "زيارة نقطة الماء: قياس المستوى وصبيب الثقب والارتفاع في عين المكان."),
+    ("accord_fda",
+     "Accord FDA, si vous demandez l'aide : dossier déposé avant toute "
+     "commande.",
+     "FDA approval, if you apply for the subsidy: file submitted before "
+     "any order.",
+     "موافقة صندوق التنمية الفلاحية، إن طلبتم الدعم: يودع الملف قبل أي طلب."),
+    ("commande",
+     "Commande : acompte versé, matériel commandé.",
+     "Order: down payment made, equipment ordered.",
+     "الطلب: أداء الدفعة المقدمة وطلب المعدات."),
+    ("pose",
+     "Pose : pompe, variateur, champ solaire et protections.",
+     "Installation: pump, drive, solar array and protections.",
+     "التركيب: المضخة والمغير والحقل الشمسي والحمايات."),
+    ("mise_en_service",
+     "À la mise en service : débit et HMT mesurés, écart affiché contre ce "
+     "devis.",
+     "At commissioning: flow and head measured, gap shown against this "
+     "quote.",
+     "عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض."),
+)
+
+#: L'entretien, dit au client à côté des étapes (contrat en option).
+ENTRETIEN = {
+    "fr": "Entretien : nettoyage des panneaux et contrôle annuel (contrat en "
+          "option).",
+    "en": "Maintenance: panel cleaning and yearly check (optional contract).",
+    "ar": "الصيانة: تنظيف الألواح والمراقبة السنوية (عقد اختياري).",
+}
+
+
+def etapes_suivantes():
+    """AGQ30 — les 5 étapes du devis agricole, ``[{cle, textes}]`` en
+    fr/en/ar ; aucun délai chiffré (D-AGR-10)."""
+    return [{"cle": cle, "textes": {"fr": fr, "en": en, "ar": ar}}
+            for cle, fr, en, ar in _ETAPES]
 
 
 #: Les phrases de provenance (contrat AGR2 › ``provenance``), par langue.

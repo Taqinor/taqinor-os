@@ -31,13 +31,35 @@ _MODE_AGRICOLE = 'agricole'
 #: aussi par AGR530). ``pompe_actuelle_debit_m3h`` ne compte QUE si
 #: ``pompage_heures_jour`` est renseigné (volume déclaré = débit actuel ×
 #: heures actuelles, D-AGR-3 ; dérivé par AGR404).
+#: AGQ9 (D-AGQ-5) — la HMT SAISIE est requise : le niveau d'eau seul ne fait
+#: aucune HMT (il faut dénivelé, conduite, pertes) et ne compte que pour la
+#: règle de visite D-AGR-4 (``visite_point_eau_avant_devis``).
 GROUPES_HYDRAULIQUES_AGRICOLES = (
-    ('pompe_hmt_m', 'niveau_statique_m'),
+    ('pompe_hmt_m',),
     ('pompe_debit_m3h', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h'),
 )
 
-#: Champ qui ne compte qu'accompagné d'un autre (sinon il vaut « vide »).
-_COMPTE_SEULEMENT_AVEC = {'pompe_actuelle_debit_m3h': 'pompage_heures_jour'}
+#: Champ qui ne compte qu'accompagné d'autres (sinon il vaut « vide »).
+#: AGQ39 (D-AGQ-10) — la plaque de la pompe conservée ne compte que COMPLÈTE
+#: (kW, tension, phases) : une seule puce, jamais une plaque à moitié lue.
+_COMPTE_SEULEMENT_AVEC = {
+    'pompe_actuelle_debit_m3h': ('pompage_heures_jour',),
+    'pompe_actuelle_kw': ('pompe_actuelle_tension_v', 'pompe_actuelle_phases'),
+}
+
+#: AGQ39 (D-AGQ-10) — groupe requis en plus quand le lead dit « pompe
+#: existante conservée » : la plaque de la pompe actuelle.
+GROUPE_PLAQUE_EXISTANTE = ('pompe_actuelle_kw',)
+
+
+def mode_pompe_du_lead(lead):
+    """AGQ39 (D-AGQ-10) — ``{valeur, par_defaut}`` pour un lead AGRICOLE,
+    ``None`` ailleurs. Vide ⇒ « neuve » comme avant, étiqueté « par défaut »
+    (jamais écrit sur le lead)."""
+    if (lead.type_installation or '') != _MODE_AGRICOLE:
+        return None
+    mode = getattr(lead, 'mode_pompe', None) or None
+    return {'valeur': mode or 'neuve', 'par_defaut': mode is None}
 
 
 def _releve_rempli(lead):
@@ -89,20 +111,21 @@ def _rempli(lead, champ):
     if (champ == 'facture_hiver' and lead.type_installation in _MODES_ETUDE
             and not (_facture_mad_compte(lead) and _contrat_bt_declare(lead))):
         return False
-    compagnon = _COMPTE_SEULEMENT_AVEC.get(champ)
-    return not compagnon or bool(getattr(lead, compagnon, None))
+    return all(getattr(lead, compagnon, None)
+               for compagnon in _COMPTE_SEULEMENT_AVEC.get(champ, ()))
 
 
 def releve_eau_manquant(lead) -> bool:
-    """AGR530 (D-AGR-4 côté cadence) — lead AGRICOLE dont un groupe
-    HYDRAULIQUE de la règle « devis auto prêt » (AGR403 :
-    ``GROUPES_HYDRAULIQUES_AGRICOLES``) n'a aucun champ rempli : le devis ne
-    peut pas se chiffrer, la suite est le relevé du point d'eau. Faux pour
-    tout autre segment."""
+    """AGR530 (D-AGR-4 côté cadence) — lead AGRICOLE dont le niveau d'eau
+    OU le débit du forage est inconnu (:func:`visite_point_eau_avant_devis`) :
+    la suite est le relevé du point d'eau. Faux pour tout autre segment."""
     if (getattr(lead, 'type_installation', None) or '') != _MODE_AGRICOLE:
         return False
-    return any(not any(_rempli(lead, champ) for champ in groupe)
-               for groupe in GROUPES_HYDRAULIQUES_AGRICOLES)
+    # AGQ9 (D-AGQ-5) — la HMT est une DÉCLARATION, pas une mesure : son
+    # absence ne demande pas un relevé. Le relevé suit la règle D-AGR-4
+    # (niveau d'eau ou débit du forage inconnu), une seule définition.
+    bloc = visite_point_eau_avant_devis(lead)
+    return bool(bloc and bloc['requise'])
 
 
 def champs_requis(lead) -> list[list[str]]:
@@ -112,7 +135,10 @@ def champs_requis(lead) -> list[list[str]]:
     même sémantique du vide que :func:`champs_manquants` (0 = manquant)."""
     mode = lead.type_installation or 'residentiel'
     if mode == _MODE_AGRICOLE:
-        return [list(groupe) for groupe in GROUPES_HYDRAULIQUES_AGRICOLES]
+        requis = [list(groupe) for groupe in GROUPES_HYDRAULIQUES_AGRICOLES]
+        if getattr(lead, 'mode_pompe', None) == 'existante':
+            requis.append(list(GROUPE_PLAQUE_EXISTANTE))
+        return requis
     if mode in _MODES_ETUDE:
         # CAD166 — conso éditable OU kWh du tunnel : l'un vaut l'autre.
         # CIQ404 (contrat CIQ1) — + le relevé de factures et la facture en
@@ -193,9 +219,11 @@ _ORDRE_SOURCE_CONSO = ('releve_conso', 'conso_mensuelle_kwh', 'bill_kwh',
 #: groupe (celui que la puce « manquant » vise). Libellés inchangés.
 _LIBELLES = {
     # AGR403 — libellés du contrat ``devis_auto_pret.json``.
-    'pompe_hmt_m': "HMT (m) ou niveau d'eau",
+    'pompe_hmt_m': 'HMT (m)',
     'pompe_debit_m3h': ('Débit souhaité, besoin en eau (m³/jour) ou débit '
                         'de la pompe actuelle'),
+    # AGQ39 (D-AGQ-10) — une seule puce pour la plaque complète.
+    'pompe_actuelle_kw': 'plaque de la pompe actuelle (kW, tension, phases)',
     # ── CAD-M ── CAD166 — LE DOSSIER PRO ÉTAIT BLOQUÉ ALORS QUE LA DONNÉE
     # ÉTAIT LÀ. Le tunnel professionnel du site n'écrit que ``bill_kwh``
     # (archive web, lecture seule) ; ce gating, lui, n'interrogeait que
@@ -296,9 +324,17 @@ def visite_point_eau_avant_devis(lead):
     """
     if (lead.type_installation or '') != _MODE_AGRICOLE:
         return None
-    motifs = []
+    # AGQ22 (C-AGQ-021) — chaque motif porte le CHAMP du lead qu'il vise
+    # (``motifs_detail``) : la puce et le 409 du devis automatique nomment le
+    # bon champ (débit du forage ≠ niveau). ``motifs`` (textes) inchangé.
+    motifs, detail = [], []
     if lead.niveau_statique_m is None:
         motifs.append("niveau d'eau du forage inconnu")
+        detail.append({'champ': 'niveau_statique_m',
+                       'libelle': "niveau d'eau du forage (visite)"})
     if lead.debit_forage_m3h is None:
         motifs.append('débit du forage inconnu')
-    return {'requise': bool(motifs), 'motifs': motifs}
+        detail.append({'champ': 'debit_forage_m3h',
+                       'libelle': 'débit du forage (visite)'})
+    return {'requise': bool(motifs), 'motifs': motifs,
+            'motifs_detail': detail}

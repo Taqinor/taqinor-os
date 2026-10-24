@@ -56,6 +56,34 @@ export function construireCorpsEconomiePompage({ saisies, sortieEtude, lignes } 
   return { saisies, sortie_etude_pompage: sortieEtude, lignes: propres }
 }
 
+/**
+ * AGQ16 (C-AGQ-015) — les lignes du DEVIS EN COURS (écran TTC, forme
+ * `withKeys`) → les lignes du corps économie. Seules les lignes que le devis
+ * COMPTE partent (produit lié, non optionnelle, type « produit » — la règle
+ * `_ligne_comptee` du serveur, appliquée ici parce que le corps ne transmet
+ * ni `optionnelle` ni `type_ligne`) ; P.U. HT = TTC ÷ (1 + TVA) (mapping de
+ * l'écran 100 % TTC, aucun chiffre affiché) ; `remise` = la remise GLOBALE
+ * du devis, même part sur chaque ligne. Sans ligne : `[]` (le serveur omet
+ * alors le retour en le nommant).
+ */
+export function lignesEconomieDepuisEcran(lignes, remiseGlobalePct) {
+  const remise = Number.parseFloat(remiseGlobalePct) || 0
+  return (Array.isArray(lignes) ? lignes : [])
+    .filter((l) => l && l.produit && !l.optionnelle
+      && (l.typeLigne ?? 'produit') === 'produit')
+    .map((l) => {
+      const tva = Number.parseFloat(l.taux_tva ?? 20)
+      const ttc = Number.parseFloat(l.prix_unit_ttc) || 0
+      return {
+        produit: Number(l.produit),
+        quantite: Number.parseFloat(l.quantite) || 0,
+        prix_unitaire: ttc / (1 + tva / 100),
+        remise,
+        taux_tva: tva,
+      }
+    })
+}
+
 /** « N bouteilles × P DH × M mois, déclaré le JJ/MM » — lu des entrées DÉCLARÉES. */
 export function detailDeclare(reponse) {
   const entrees = Array.isArray(reponse?.entrees_declarees) ? reponse.entrees_declarees : []

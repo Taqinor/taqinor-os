@@ -75,12 +75,21 @@ class ChoixVariateur(unittest.TestCase):
         self.assertEqual(res["kw_requis"], 4.0)
 
     def test_cv_seul_alerte_kw_plaque_a_relever_et_jamais_aucun(self):
+        # AGQ6 (réaligné) — 3 CV × 0,7355 = 2,21 kW, arrondi au moteur
+        # normalisé 2,2 kW (IEC 60034-1) : jamais « aucun variateur ».
         res = choisir_variateur(CATALOGUE, cv="3", alimentation="mono")
         codes = [a["code"] for a in res["alertes"]]
         self.assertIn("kw_plaque_a_relever", codes)
-        # 3 CV × 0,7355 = 2,21 kW > 2,2 kW : l'alerte nomme la limite.
-        self.assertIn("aucun_variateur", codes)
-        self.assertIn("220 V", res["motif"])
+        self.assertNotIn("aucun_variateur", codes)
+        self.assertIsNotNone(res["variateur"])
+
+    def test_cv_hors_puissance_normalisee_jamais_arrondi_vers_le_bas(self):
+        # 12,5 CV = 9,19 kW : aucune puissance normalisée dans la tolérance
+        # d'arrondi du CV écrit ⇒ 9,19 kW requis, variateur ≥ 9,19 kW.
+        res = choisir_variateur(CATALOGUE + [_var(8, 11, 380)], cv="12.5",
+                                alimentation="tri")
+        self.assertEqual(res["kw_requis"], 9.19)
+        self.assertEqual(res["variateur"]["id"], 8)
 
     def test_phases_publiees_incompatibles_exclues(self):
         fiche_tri = dict(FICHE_250_780, ond_phases=3)
@@ -102,6 +111,21 @@ class ChoixVariateur(unittest.TestCase):
         self.assertEqual(res["sans_prix"], [cat[0]["nom"]])
 
 
+class Variateur(unittest.TestCase):
+    """AGQ6 (C-AGQ-005) — pompe connue par son seul CV."""
+
+    def test_3cv_mono_cv_seul_retient_le_2_2_kw(self):
+        res = choisir_variateur(CATALOGUE, cv="3.00", alimentation="mono")
+        self.assertIsNotNone(res["variateur"])
+        self.assertEqual(res["variateur"]["id"], 1)  # SI22 2,2 kW 220 V
+        self.assertEqual(res["kw_requis"], 2.2)
+        self.assertEqual(res["source_kw"], "cv")
+        codes = [a["code"] for a in res["alertes"]]
+        self.assertIn("kw_plaque_a_relever", codes)
+        self.assertIn("kw_moteur_normalises",
+                      [h["cle"] for h in res["hypotheses"]])
+
+
 class EnergieKwc(unittest.TestCase):
 
     def test_kwc_depart_formule(self):
@@ -114,6 +138,25 @@ class EnergieKwc(unittest.TestCase):
         e_d = e_d_depuis_profils(PROFILS)
         self.assertEqual(len(e_d), 12)
         self.assertLess(e_d[11], e_d[6])
+
+
+class Couverture(unittest.TestCase):
+    """AGQ2 (D-AGQ-2) — mois critique = pire mois RÉEL de production."""
+
+    BESOIN = [0.0] * 3 + [120.0] * 7 + [0.0] * 2  # avril → octobre
+
+    def test_mois_critique_est_le_pire_mois_de_production(self):
+        # Le mois 4 (avril) est celui que désignait la forme du profil
+        # (heures-pic identiques sur la saison) : il n'est qu'une indication.
+        res = dimensionner_champ(
+            besoin_m3_jour_mois=self.BESOIN, hmt_m=70, panneau=PANNEAU,
+            variateurs_candidats=[_var(30, 7.5, 380)],
+            pompe={"courbe_pompe": OSP_30_8}, p_plaque_kw=7.5,
+            profils_horaires=PROFILS, mois_critique=4)
+        self.assertEqual(res["mois_critique"], 10)  # octobre
+        prod = res["production"]["m3_jour_mois"]
+        for i in range(3, 10):
+            self.assertGreaterEqual(prod[i], 120.0, "mois %d" % (i + 1))
 
 
 class Champ(unittest.TestCase):

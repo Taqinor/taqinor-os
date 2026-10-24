@@ -1,0 +1,71 @@
+{
+ "champs": [
+  {
+   "args": [],
+   "kwargs": {
+    "auto_created": true,
+    "primary_key": true,
+    "serialize": false,
+    "verbose_name": "ID"
+   },
+   "nom": "id",
+   "type": "BigAutoField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now_add": true
+   },
+   "nom": "created_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "auto_now": true
+   },
+   "nom": "updated_at",
+   "type": "DateTimeField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "on_delete": "callable:CASCADE",
+    "related_name": "%(app_label)s_%(class)s_set",
+    "to": "authentication.company",
+    "verbose_name": "Société"
+   },
+   "nom": "company",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "choices": [
+     [
+      "email",
+      "E-mail"
+     ],
+     [
+      "telephone",
+      "Téléphone"
+     ]
+    ],
+    "max_length": 10
+   },
+   "nom": "nature",
+   "type": "CharField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "max_length": 64
+   },
+   "nom": "empreinte",
+   "type": "CharField"
+  }
+ ],
+ "db_table": "crm_empreinteopposition",
+ "label": "crm.EmpreinteOpposition",
+ "relations_inverses": []
+}

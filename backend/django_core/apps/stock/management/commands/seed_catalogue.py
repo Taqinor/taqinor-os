@@ -583,6 +583,13 @@ SKU_POMPAGE_PRIX_A_RENSEIGNER = [
      'Clôture de protection du champ solaire', False),
 ]
 
+# ── AGQ36 — structure AU SOL du kit pompage (rôle ``structure_sol``), PRIX
+# VIDE : ``core.pompage.kit.composer_kit`` cherche ce rôle pour la ligne
+# « Structure au sol » du kit minimum (D-AGR-8, D-AGQ-3) ; jamais la
+# structure de toiture. Même tuple que ci-dessus. Le nom n'emploie JAMAIS
+# « panneau » ni « module » (lu comme un panneau : puissance crête faussée) ;
+# la quantité suit le nombre de panneaux du kit (dit dans la description,
+# sans chiffre). Le prix reste au fondateur (AGRM5).
 # ── PVLV2 — HISTORIQUE des SKU « Basse Tension » (créés 18/08, ARCHIVÉS
 # 21/08/2026) ─────────────────────────────────────────────────────────────
 # La recherche PVG4 avait identifié OND-H-DEY-15T/20T comme des SG01HP3
@@ -1297,6 +1304,8 @@ ONDULEURS_CONTRAT_INCOMPLET = {}
 # valeur saisie à la main sur un champ que le catalogue ne source pas) et la
 # fiche d'un produit absent de ce dictionnaire.
 FICHES_TECHNIQUES = {
+    # AGQ36 — la structure de pompage se pose AU SOL (vocabulaire TYPES_POSE).
+    'STR-SOL-PMP': {'type_fiche': 'structure', 'struct_type_pose': 'sol'},
     # PV85 — Canadian Solar CS7N-710TB-AG (TOPBiHiKu7), datasheet
     # static.csisolar.com v1.61/v1.9 — valeurs STC. NON seedés faute de champ
     # sur FicheTechnique (jamais inventé) : NMOT 41±3 °C (537 W / Vmp 38,2 /
@@ -2065,7 +2074,10 @@ class Command(BaseCommand):
         # PRIX VIDES (0), barème forfaitaire VIDE, périodicité VIDE. Additif :
         # un SKU ou un nom déjà présent est sauté, jamais réécrit.
         for (nom, sku, role_pompage, qte, seuil, description,
-             recurrent) in SKU_POMPAGE_PRIX_A_RENSEIGNER:
+             recurrent) in (SKU_POMPAGE_PRIX_A_RENSEIGNER + [
+                 ('Structure au sol pompage', 'STR-SOL-PMP', 'structure_sol',
+                  999, 0, 'Structure de pose au sol du champ solaire de '
+                  'pompage, quantité au nombre de capteurs du champ', False)]):
             if (Produit.objects.filter(company=company, sku=sku).exists()
                     or Produit.objects.filter(
                         company=company, nom__iexact=nom,

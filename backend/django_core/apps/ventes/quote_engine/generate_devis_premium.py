@@ -80,8 +80,7 @@ ASSET_DIR = BASE_DIR / "assets"
 _RENDER_LOCK = threading.RLock()
 
 
-from .identite import ligne_rib as _ligne_rib_identite  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
-from .identite import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .identite import (ligne_rib as _ligne_rib_identite,  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     LEGALE_TAQINOR_LEGACY, mentions_legales as _mentions_legales,
     profil_renseigne as _profil_renseigne)
 # AMOT57 — « est-ce un onduleur ? » : LE classifieur partagé (« Deye off-Grid »).
@@ -2924,6 +2923,8 @@ def _bankable_pct(valeur):
 #: panneau de plus pèse déjà bien davantage).
 # AMOT35 — LA constante vit dans ``bankable`` (règle partagée).
 from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .agricole.garanties import garantie_ligne_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _bankable_decrit_ce_champ(bank):
@@ -2947,7 +2948,6 @@ def _bankable_decrit_ce_champ(bank):
 #: tol\u00e9rance de la garde pos\u00e9e c\u00f4t\u00e9 moteur par QJR114 (\u00ab deux productions d'un
 #: m\u00eame devis ne divergent pas de plus de 1 % \u00bb) : elle absorbe l'arrondi \u00e0
 #: l'entier de la carte, jamais les ~10 % que produisait le double derate.
-from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
 
 
 def _bankable_concorde_avec_la_page(bank):
@@ -3945,14 +3945,16 @@ def _cartes_pompage_synthese(synthese):
              _ancre_figure("pompe_debit_m3h", _fdec_fr(_dq, 1))))
     _m3j, _hrs = eau.get("m3_jour"), eau.get("heures_pompage")
     # AMOT56 (D-AMOT-7 = a) — m³/jour sur débit DÉCLARÉ : la carte le dit.
-    from .agricole.synthese import debit_declare_sans_courbe
+    # AGQ3 (D-AGQ-2) — mois de conception, plus bas et heures équivalentes :
+    # LA phrase du héro du 3 pages ; devis v1 (aucun mois) : texte d'hier.
+    from .agricole.synthese import debit_declare_sans_courbe, texte_heures_eau
     if _m3j is not None and _hrs is not None:
         _est = (f"{_L('estimation')} &#183; {_L('lg_debit_declare_par_vous')}, "
                 if debit_declare_sans_courbe({"etude": ETUDE, "all_items": SANS_ITEMS + AVEC_ITEMS})
                 else f"{_L('estimation')}, " if eau.get("estimation") else "")
         cellules.append(
             (f"{_L('eau_jour')} &#8212; {_est}"
-             f"{_L('sur_heures_pompage').format(heures=_fdec_fr(_hrs, 1))}"
+             f"{texte_heures_eau(eau, LANGUE_SORTIE, lambda v: _fdec_fr(v, 1)) or _L('sur_heures_pompage').format(heures=_fdec_fr(_hrs, 1))}"
              f" ({_L('hypothese')})",
              f"&#8776; {fnum(_m3j)} m&#179;",
              _ancre_figure("pompe_volume_m3_jour", fnum(_m3j))))
@@ -4233,7 +4235,8 @@ def page_onepage(items, tronquees=0):
         qty_str = str(int(qty)) if qty == int(qty) else fnum(qty)
         marque_html = badge(marque) if marque else ""
         detail_html = _desc_lines_html(it, max_lines=max_desc, font_pt=desc_pt) if max_desc else ""
-        gar = (it.get("garantie") or "").strip()
+        gar = garantie_ligne_onepage(
+            it, _L, (globals().get("MODE_INSTALLATION") or "").strip().lower() == "agricole")
         if gar and show_gar:
             detail_html += (
                 f'<div style="font-size:{desc_pt}pt;color:{CGR};font-weight:600;'

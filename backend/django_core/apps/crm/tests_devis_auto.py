@@ -22,7 +22,7 @@ from authentication.models import Company
 from apps.crm import stages
 from apps.crm.devis_auto import (
     champs_manquants, champs_manquants_detail, champs_requis,
-    message_manquants, source_conso, visite_avant_devis,
+    message_manquants, mode_pompe_du_lead, source_conso, visite_avant_devis,
     visite_point_eau_avant_devis)
 from apps.crm.models import Lead, LeadActivity
 from apps.ventes.models import Devis
@@ -30,7 +30,7 @@ from apps.ventes.models import Devis
 User = get_user_model()
 
 # AGR403 — libellés du contrat ``devis_auto_pret.json`` (exemple_agricole).
-LIB_HMT = "HMT (m) ou niveau d'eau"
+LIB_HMT = 'HMT (m)'  # AGQ9 (D-AGQ-5)
 LIB_DEBIT = ('Débit souhaité, besoin en eau (m³/jour) ou débit de la pompe '
              'actuelle')
 MSG_AGRICOLE = f'Manque : {LIB_HMT}, {LIB_DEBIT}'
@@ -187,19 +187,24 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
                           pompe_debit_m3h=Decimal('20'))
         self.assertEqual(champs_manquants(lead), [])
 
-    def test_niveau_et_besoin_m3j_est_pret(self):
-        lead = self._lead(niveau_statique_m=Decimal('32'),
+    def test_hmt_et_besoin_m3j_est_pret(self):
+        # AGQ9 (D-AGQ-5, réaligné) — la HMT saisie fait le groupe ; le niveau
+        # d'eau seul ne suffit plus.
+        lead = self._lead(pompe_hmt_m=Decimal('60'),
                           besoin_eau_m3j=Decimal('135'))
         self.assertEqual(champs_manquants(lead), [])
-
-    def test_niveau_et_debit_actuel_avec_heures_est_pret(self):
         lead = self._lead(niveau_statique_m=Decimal('32'),
+                          besoin_eau_m3j=Decimal('135'))
+        self.assertEqual(champs_manquants(lead), [LIB_HMT])
+
+    def test_hmt_et_debit_actuel_avec_heures_est_pret(self):
+        lead = self._lead(pompe_hmt_m=Decimal('60'),
                           pompe_actuelle_debit_m3h=Decimal('10'),
                           pompage_heures_jour=Decimal('7'))
         self.assertEqual(champs_manquants(lead), [])
 
     def test_debit_actuel_sans_heures_n_est_pas_pret(self):
-        lead = self._lead(niveau_statique_m=Decimal('32'),
+        lead = self._lead(pompe_hmt_m=Decimal('60'),
                           pompe_actuelle_debit_m3h=Decimal('10'))
         self.assertEqual(champs_manquants(lead), [LIB_DEBIT])
 
@@ -217,16 +222,23 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
 
     def test_visite_point_eau_requise_tant_que_niveau_ou_debit_manque(self):
         lead = self._lead()
+        # AGQ22 — chaque motif porte aussi son champ (``motifs_detail``).
+        niveau = {'champ': 'niveau_statique_m',
+                  'libelle': "niveau d'eau du forage (visite)"}
+        debit = {'champ': 'debit_forage_m3h',
+                 'libelle': 'débit du forage (visite)'}
         self.assertEqual(visite_point_eau_avant_devis(lead), {
             'requise': True,
             'motifs': ["niveau d'eau du forage inconnu",
-                       'débit du forage inconnu']})
+                       'débit du forage inconnu'],
+            'motifs_detail': [niveau, debit]})
         lead.niveau_statique_m = Decimal('32')
         self.assertEqual(visite_point_eau_avant_devis(lead), {
-            'requise': True, 'motifs': ['débit du forage inconnu']})
+            'requise': True, 'motifs': ['débit du forage inconnu'],
+            'motifs_detail': [debit]})
         lead.debit_forage_m3h = Decimal('36')
         self.assertEqual(visite_point_eau_avant_devis(lead),
-                         {'requise': False, 'motifs': []})
+                         {'requise': False, 'motifs': [], 'motifs_detail': []})
 
     def test_visite_point_eau_vaut_none_hors_agricole(self):
         for mode in (None, '', 'residentiel', 'industriel', 'commercial'):
@@ -258,6 +270,8 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
             'manquants_detail': detail,
             'requis': champs_requis(lead),
             'visite_point_eau_avant_devis': visite_point_eau_avant_devis(lead),
+            # AGQ39 (D-AGQ-10) — le mode de pompe servi avec son drapeau.
+            'mode_pompe': mode_pompe_du_lead(lead),
         }, attendu)
 
 

@@ -195,6 +195,16 @@ ENTREES_POMPAGE_CIBLES = (
      'saisies_economie_pompage.depense_unitaire_payee.valeur'),
     ('mois_irrigation', 'saisies_economie_pompage',
      'saisies_economie_pompage.mois_irrigation.mois'),
+    # AGQ10 (D-AGQ-6) — sans eux, une conso « par jour d'irrigation » (butane)
+    # laisse le bloc « Votre argent » omis.
+    ('jours_irrigation_semaine', 'saisies_economie_pompage',
+     'saisies_economie_pompage.consommation.jours_irrigation_par_semaine'),
+    # AGQ39 (D-AGQ-10) — le mode de pompe du lead et la plaque de la pompe
+    # ACTUELLE : « existante » ⇒ aucune ligne pompe, variateur sur la plaque.
+    ('mode_pompe', 'mode_pompe', 'mode_pompe'),
+    ('pompe_actuelle_kw', 'plaque', 'plaque.kw'),
+    ('pompe_actuelle_tension_v', 'plaque', 'plaque.tension_v'),
+    ('pompe_actuelle_phases', 'plaque', 'plaque.phases'),
 )
 
 
@@ -204,8 +214,10 @@ _ENTREES_POMPAGE_SOURCES = {
     'niveau_statique_m': ('niveau_statique_source', {
         'declare': 'client', 'site_web': 'site_web',
         'mesure_visite': 'mesure_visite'}),
+    # AGQ29 (C-AGQ-027) — le débit du FOREUR ou d'un ESSAI de pompage est une
+    # MESURE, jamais une simple déclaration du client.
     'debit_forage_m3h': ('debit_forage_source', {
-        'essai': 'client', 'foreur': 'client', 'client': 'client',
+        'essai': 'essai', 'foreur': 'foreur', 'client': 'client',
         'mesure_visite': 'mesure_visite'}),
     'besoin_eau_m3j': ('besoin_eau_source', {
         'client': 'client', 'site_web': 'site_web',
@@ -217,7 +229,12 @@ _ENTREES_POMPAGE_SOURCES = {
 
 #: La pompe ACTUELLE : lue par le moteur seulement en mode « pompe existante
 #: conservée » (D-AGR-7) — servie marquée « information ».
-_ENTREES_POMPAGE_INFORMATION = ('pompe_actuelle_cv', 'pompe_actuelle_type')
+_ENTREES_POMPAGE_INFORMATION = ('pompe_actuelle_cv', 'pompe_actuelle_type',
+                                'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
+                                'pompe_actuelle_phases')
+
+#: AGQ39 — phases de la plaque : vocabulaire du lead → phases du moteur.
+_PHASES_PLAQUE = {'mono': 1, 'tri': 3}
 
 
 #: Les heures de la pompe ACTUELLE, jamais des heures de pompage solaire.
@@ -312,6 +329,10 @@ def entrees_pompage_du_lead(lead):
                 (Decimal(str(brute)) * Decimal('3.6')).quantize(
                     Decimal('0.01')))
             entree['conversion'] = 'L/s × 3,6 → m³/h'
+        if colonne == 'pompe_actuelle_phases':
+            # Conversion de vocabulaire (mono → 1, tri → 3), jamais un défaut.
+            entree['valeur'] = _PHASES_PLAQUE.get(brute)
+            entree['conversion'] = 'mono → 1, tri → 3'
         if colonne == 'debit_forage_m3h' and lead.debit_forage_source:
             entree['origine'] = lead.debit_forage_source
         if colonne in _ENTREES_POMPAGE_INFORMATION:
@@ -323,6 +344,14 @@ def entrees_pompage_du_lead(lead):
                 'jour_irrigation'
         if colonne == 'carburant_litres_mois':
             entree['unite'], entree['periode'] = 'litre', 'mois'
+        if colonne in ('butane_bouteilles_jour', 'carburant_litres_mois'):
+            # AGQ19 (C-AGQ-018) — une seule colonne correspond à l'énergie du
+            # lead : l'autre est servie MARQUÉE ``ignoree`` (jamais « le
+            # dernier lu gagne » sur ``consommation.quantite``).
+            from apps.ventes.selectors import unite_par_energie
+            attendue = unite_par_energie().get(lead.pompe_alim_actuelle)
+            if attendue and entree['unite'] != attendue:
+                entree['ignoree'] = f'énergie {lead.pompe_alim_actuelle}'
         entrees.append(entree)
 
     # D-AGR-3 — volume déclaré : besoin_eau_m3j, sinon débit ACTUEL × heures

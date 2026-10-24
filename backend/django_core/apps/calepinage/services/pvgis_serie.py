@@ -96,6 +96,15 @@ APPELS_PAR_SECONDE = 30
 #: Une série horaire est une grosse réponse : délai plus large que le mensuel.
 TIMEOUT_S = 30
 
+#: AGQ24 (C-AGQ-023) — l'année météo type ne sert que les TEMPÉRATURES de
+#: dimensionnement (replis mentionnés sans elle) : délai court, et coupe-
+#: circuit partagé (cache système ``core.cache``, même patron que
+#: ``apps.parametres.pvgis_profils.PANNE_CLE``) pendant ``TMY_PANNE_TTL_S``
+#: après un échec réseau — jamais 30 s d'attente répétées.
+TIMEOUT_TMY_S = 5
+TMY_PANNE_CLE = 'pvgis_serie:tmy:panne'
+TMY_PANNE_TTL_S = 5 * 60
+
 #: Retentatives sur un 529 (« service surchargé »), bornées : au-delà, on
 #: refuse plutôt que de marteler PVGIS.
 RETENTATIVES_529 = 3
@@ -379,6 +388,24 @@ class _Cache:
 _CACHE_PARTAGE = _Cache()
 
 
+def _panne_tmy():
+    """AGQ24 — le drapeau de panne TMY du cache système (best-effort)."""
+    try:
+        from core import cache as cache_systeme
+        return bool(cache_systeme.get(None, TMY_PANNE_CLE))
+    except Exception:  # noqa: BLE001 — cache indisponible : pas de coupe-circuit (D-ENF22-BLE001)
+        logger.debug('coupe-circuit TMY : cache indisponible', exc_info=True)
+        return False
+
+
+def _marquer_panne_tmy():
+    try:
+        from core import cache as cache_systeme
+        cache_systeme.set(None, TMY_PANNE_CLE, True, TMY_PANNE_TTL_S)
+    except Exception:  # noqa: BLE001 — cache indisponible : on s'en passe (D-ENF22-BLE001)
+        logger.debug('coupe-circuit TMY : cache indisponible', exc_info=True)
+
+
 def _transport_urllib(url, timeout_s):
     """Transport RÉSEAU par défaut : rend ``(statut, corps)``, jamais d'appel
     caché ailleurs dans le module."""
@@ -429,7 +456,7 @@ class ClientPvgis:
                 + urllib.parse.urlencode(params, safe=''))
 
     # ── l'appel, avec cadence, retentative bornée et refus net ──────────
-    def _appeler(self, service, params):
+    def _appeler(self, service, params, *, timeout_s=None):
         cle = cle_de_cache(service, params)
         en_cache = self.cache.lire(cle)
         if en_cache is not None:
@@ -442,7 +469,9 @@ class ClientPvgis:
             self.limiteur.attendre_son_tour()
             self.urls_appelees.append(url)
             try:
-                statut, corps = self.transport(url, self.timeout_s)
+                statut, corps = self.transport(
+                    url, timeout_s if timeout_s is not None
+                    else self.timeout_s)
             except (urllib.error.URLError, TimeoutError, OSError) as erreur:
                 raise PvgisIndisponible(
                     'PVGIS est injoignable '
@@ -661,7 +690,22 @@ class ClientPvgis:
             'usehorizon': 1 if utiliser_horizon else 0,
             'outputformat': 'json',
         }
-        charge, depuis_cache = self._appeler('tmy', params)
+        # AGQ24 — coupe-circuit RÉSEAU seulement (un transport injecté par
+        # un test n'est jamais court-circuité) ; une réponse en cache sert.
+        reseau = self.transport is _transport_urllib
+        if (reseau and self.cache.lire(cle_de_cache('tmy', params)) is None
+                and _panne_tmy()):
+            raise PvgisIndisponible(
+                "PVGIS (année météo type) a échoué il y a moins de 5 min : "
+                "températures de dimensionnement non publiées (coupe-circuit).")
+        try:
+            charge, depuis_cache = self._appeler(
+                'tmy', params,
+                timeout_s=min(self.timeout_s, TIMEOUT_TMY_S))
+        except PvgisIndisponible:
+            if reseau:
+                _marquer_panne_tmy()
+            raise
         lignes = (((charge or {}).get('outputs') or {}).get('tmy_hourly'))
         if not isinstance(lignes, list) or not lignes:
             raise PvgisIndisponible(

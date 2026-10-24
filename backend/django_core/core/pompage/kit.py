@@ -11,8 +11,11 @@ Ici :
 * D'OFFICE (``inclus``) : pompe (si neuve), variateur, panneaux, structure
   (+ socles comme aujourd'hui : 2 par panneau, ``solar.js``), installation,
   transport. Installation = ``INST-PMP`` (rôle ``installation_pompage``) si
-  son barème ``prix_fixe_ht``/``prix_par_panneau_ht`` est saisi, sinon
-  ``INST-CAT`` avec l'alerte INTERNE « barème toiture appliqué à un pompage ».
+  son barème ``prix_fixe_ht``/``prix_par_panneau_ht`` est saisi, sinon le
+  produit de rôle ``installation`` du catalogue société (AGQ5 : trouvé par
+  rôle, jamais par un SKU codé) avec l'alerte INTERNE « barème toiture
+  appliqué à un pompage ». AGQ5 — un barème saisi vaut PRIX CONNU : la ligne
+  est chiffrée par le barème à l'écriture (``domain/lignes.py``).
   Câble DC champ → variateur SEULEMENT si la distance est SAISIE (jamais 20 m
   par défaut, P6).
 * OPTIONS NOMMÉES trouvées par ``role_pompage`` (vocabulaire
@@ -77,7 +80,9 @@ def _ligne(cle, role, produit, designation_defaut, quantite):
         return {"cle": cle, "role_pompage": role, "produit": None,
                 "designation": designation_defaut + SUFFIXE_PRIX,
                 "quantite": quantite, "prix_connu": False}
-    connu = prix_connu(produit)
+    # AGQ5 (C-AGQ-004) — un barème saisi (prix fixe / par panneau) est un
+    # prix connu : l'écrivain de lignes chiffre la ligne par ce barème.
+    connu = prix_connu(produit) or bareme_saisi(produit)
     nom = produit.get("nom") or designation_defaut
     return {"cle": cle, "role_pompage": role, "produit": produit.get("id"),
             "designation": nom if connu else nom + SUFFIXE_PRIX,
@@ -144,7 +149,8 @@ def composer_kit(*, mode_pompe, pompe=None, variateur=None, panneau=None,
       mode ``existante`` (aucune ligne pompe) ;
     * ``variateur``, ``panneau``, ``structure``, ``socle``, ``transport`` :
       dicts produit ; ``installation_pompage`` = INST-PMP (avec son barème),
-      ``installation_toiture`` = INST-CAT ;
+      ``installation_toiture`` = l'installation de rôle ``installation``
+      du catalogue (repli trouvé par rôle, AGQ5) ;
     * ``produits_options`` : éléments ``produits_pompage`` (tous rôles) ;
     * ``options_cochees`` : liste de clés cochées, ``None`` = défauts.
 

@@ -450,8 +450,10 @@ class CoutDuM3SensibiliteSeuilTests(SimpleTestCase):
         self.assertEqual(bloc['cas'], E.CAS_NOUVEAU_FORAGE)
         self.assertIsNone(bloc['mad_par_m3']['actuel'])
         utile = 40.0 * 365                         # min(40 livrés, 50 voulus)
+        # AGQ17 — aucun remplacement compté pour un forage neuf.
         self.assertEqual(bloc['mad_par_m3']['solaire'],
-                         round((50000 + 8000 + 6000) / (utile * 10), 2))
+                         round((50000 + 6000) / (utile * 10), 2))
+        self.assertEqual(bloc['remplacements'], [])
         self.assertEqual(bloc['economie']['flux'], [])
         self.assertEqual(bloc['sensibilite_carburant'], [])
         self.assertIsNone(bloc['seuil_rentabilite_carburant'])
@@ -549,6 +551,29 @@ class GardeDeCoherenceTests(SimpleTestCase):
         bloc = self.bloc(3, 500, 60, confirmee=True)
         self.assertEqual(len(bloc['coherence']), 1)
         self.assertTrue(bloc['publiable_client'])
+
+    def test_butane_en_litres_refuse_en_nommant_le_champ(self):
+        """AGQ19 (C-AGQ-018) — butane en litres (ou gasoil en bouteilles) :
+        ``EconomieInvalide`` sur ``consommation.unite``, message qui nomme
+        l'unité attendue ; plus aucune garde « auto-désactivée ». Mutant :
+        retirer ``UNITE_PAR_ENERGIE`` ⇒ le butane en litres passe ⇒ rouge."""
+        with self.assertRaises(E.EconomieInvalide) as refus:
+            E.depense_actuelle(saisies_carburant(
+                energie='butane', quantite=30, unite='litre', periode='mois'))
+        self.assertEqual(refus.exception.champ, 'consommation.unite')
+        self.assertIn('butane se déclare en bouteilles de 12 kg',
+                      str(refus.exception))
+        with self.assertRaises(E.EconomieInvalide) as refus:
+            E.depense_actuelle(saisies_carburant(
+                energie='diesel', quantite=3, unite='bouteille_12kg'))
+        self.assertEqual(refus.exception.champ, 'consommation.unite')
+        self.assertIn('gasoil se déclare en litres', str(refus.exception))
+        self.assertEqual(E.UNITE_PAR_ENERGIE,
+                         {'butane': 'bouteille_12kg', 'diesel': 'litre'})
+        # L'unité attendue passe, comme avant.
+        self.assertEqual(E.depense_actuelle(saisies_carburant(
+            energie='diesel', quantite=40, unite='litre',
+            periode='mois'))['cas'], E.CAS_CARBURANT)
 
     def test_pci_non_source_omission_nommee(self):
         from unittest import mock
@@ -720,3 +745,163 @@ class VueInterneEtFinancementTests(SimpleTestCase):
             self.assertNotIn(interdit, texte)
         self.assertIsNone(publique['economie']['van_mad'])
         self.assertIn('vue_interne', bloc)
+
+
+# ── AGQ15-AGQ20 — audit agricole du 23/10/2026 ─────────────────────────────
+
+class EconomiePompage(SimpleTestCase):
+    """AGQ15 — sans ligne chiffrée, l'investissement est inconnu : jamais
+    « retour 0 an » publié."""
+
+    def test_sans_ligne_non_publiable(self):
+        for lignes in ([], None):
+            bloc = E.economie_pompage(
+                saisies_12000(), sortie_etude=etude_declaree(),
+                lignes=lignes, reglages=CHARGES)
+            self.assertEqual(bloc['statut'], 'omis')
+            self.assertFalse(bloc['publiable_client'])
+            self.assertIn('aucune ligne chiffrée : investissement inconnu',
+                          bloc['motifs_non_publiable'])
+            self.assertIsNone(bloc['economie']['retour_ans'])
+            self.assertEqual(bloc['economie']['flux'], [])
+            self.assertIsNone(bloc['mad_par_m3']['solaire'])
+            self.assertEqual(bloc['sensibilite_carburant'], [])
+
+    def test_avec_lignes_chiffrees_inchange(self):
+        bloc = E.economie_pompage(
+            saisies_12000(), sortie_etude=ETUDE_COUVERTE,
+            lignes=lignes_reference(), reglages=CHARGES)
+        self.assertEqual(bloc['statut'], 'calcule')
+        self.assertTrue(bloc['publiable_client'])
+        self.assertEqual(bloc['economie']['retour_ans'], 5)
+
+
+class NouveauForage(SimpleTestCase):
+    """AGQ17 — un forage neuf n'a aucune énergie remplacée : le seul repère
+    est le coût du m³ solaire, sans remplacement compté ni phrase carburant."""
+
+    def bloc(self):
+        saisies = {'energie_actuelle': _energie('aucune'),
+                   'consommation': {'jours_irrigation_par_semaine': 7},
+                   'mois_irrigation': _mois(range(1, 13))}
+        return E.economie_pompage(
+            saisies, sortie_etude=etude_declaree(volume=50.0,
+                                                 production=40.0),
+            lignes=lignes_reference(garantie_variateur=24),
+            reglages=CHARGES)
+
+    def test_aucun_remplacement_et_m3_solaire_seul(self):
+        from apps.ventes.quote_engine.agricole import pages
+        bloc = self.bloc()
+        self.assertEqual(bloc['cas'], 'nouveau_forage')
+        self.assertEqual(bloc['remplacements'], [])
+        self.assertIsNone(bloc['mad_par_m3']['actuel'])
+        utile = 40.0 * 365                         # min(40 livrés, 50 voulus)
+        attendu = round((50000 + 600 * 10) / (utile * 10), 2)
+        self.assertEqual(bloc['mad_par_m3']['solaire'], attendu)
+        self.assertNotIn('remplacements', bloc['mad_par_m3']['formule'])
+        self.assertTrue(bloc['publiable_client'])
+
+        synthese = {'economies': E.economie_pompage_publique(bloc),
+                    'energie_actuelle': {'valeur': 'aucune'}}
+        html = pages._argent(synthese, 'fr')
+        self.assertIn("Coût de l'eau solaire", html)
+        self.assertIn(f"{str(attendu).replace('.', ',')} MAD/m³", html)
+        self.assertIn('investissement + charges du solaire sur 10 ans', html)
+        for interdit in ('Remplacement', 'Économie nette', 'Retour',
+                         'Indexation du carburant',
+                         'remplace tout votre pompage actuel',
+                         'Consommation et prix payé', 'avant / avec'):
+            self.assertNotIn(interdit, html)
+
+
+class Mois(SimpleTestCase):
+    """AGQ18 — des mois pré-cochés par le calendrier de culture ne sont pas
+    une déclaration du client : non publiables tant que non confirmés ; une
+    fois confirmés, le document dit QUAND ils ont été déclarés."""
+
+    def bloc(self, origine, detail=None):
+        s = saisies_12000()
+        s['mois_irrigation'] = _mois(range(1, 13), origine=origine,
+                                     detail=detail)
+        return E.economie_pompage(s, sortie_etude=ETUDE_COUVERTE,
+                                  lignes=lignes_reference(), reglages=CHARGES)
+
+    def test_mois_calendrier_non_confirmes_non_publiables(self):
+        bloc = self.bloc('calculee', 'calendrier_culture')
+        self.assertFalse(bloc['publiable_client'])
+        self.assertIn('mois d\'irrigation pré-cochés par le calendrier, non '
+                      'confirmés avec le client',
+                      bloc['motifs_non_publiable'])
+        confirme = self.bloc('saisie')
+        self.assertTrue(confirme['publiable_client'])
+        self.assertEqual(confirme['motifs_non_publiable'], [])
+
+    def test_note_imprime_la_declaration_des_mois(self):
+        from apps.ventes.quote_engine.agricole import pages
+        bloc = self.bloc('saisie')
+        html = pages._argent({'economies': E.economie_pompage_publique(bloc),
+                              'energie_actuelle': {'valeur': 'diesel'}}, 'fr')
+        self.assertIn("Mois d'irrigation : déclarés par vous le 12/09/2026.",
+                      html)
+
+
+class Retour(SimpleTestCase):
+    """AGQ20 — le retour est le DERNIER passage du cumul au non-négatif ;
+    sans retour, le motif est imprimé ; « 1 an » ; l'économie nette de
+    l'année 1 ne soustrait que les charges, jamais un remplacement."""
+
+    def bloc(self, lignes, charges_an, saisies=None):
+        reglages = {'charges_pompage_solaire': [
+            {'libelle': 'Nettoyage', 'montant_mad_an': charges_an,
+             'source': 'barème société'}]}
+        return E.economie_pompage(saisies or saisies_12000(),
+                                  sortie_etude=ETUDE_COUVERTE, lignes=lignes,
+                                  reglages=reglages)
+
+    def html(self, bloc):
+        from apps.ventes.quote_engine.agricole import pages
+        return pages._argent({'economies': E.economie_pompage_publique(bloc),
+                              'energie_actuelle': {'valeur': 'diesel'}}, 'fr')
+
+    def test_dernier_passage_apres_remplacement(self):
+        from apps.ventes.economie import _retour
+        cumuls = [-60000, -50000, -40000, -30000, -20000, -10000, 0,
+                  -10000, 0, 10000, 20000]
+        self.assertEqual(_retour('retour_ans', cumuls, 10, [], dernier_passage=True), 8)
+        self.assertIsNone(_retour('retour_ans', cumuls[:8], 7, [], dernier_passage=True))
+        # Les autres marchés gardent le premier passage (devis envoyés inchangés).
+        self.assertEqual(_retour('retour_ans', cumuls, 10, []), 6)
+        # Investissement 60 000 TTC (pompe 20 000 remplacée en année 7),
+        # 12 000 économisés − 2 000 de charges = 10 000 nets par an.
+        lignes = [ligne('Pompe', 20000, type_equipement='pompe'),
+                  ligne('Panneaux', 40000)]
+        bloc = self.bloc(lignes, 2000.0)
+        cumul = [f['cumul_mad'] for f in bloc['economie']['flux']]
+        self.assertEqual(cumul[6], 0.0)
+        self.assertEqual(cumul[7], -10000.0)
+        self.assertEqual(bloc['economie']['retour_ans'], 8)
+
+    def test_economie_nette_an1_hors_remplacement(self):
+        # Variateur 6 000 TTC à 12 mois de garantie : remplacé en année 1.
+        lignes = lignes_reference(garantie_variateur=12)
+        bloc = self.bloc(lignes, 600.0)
+        an1 = bloc['economie']['flux'][1]
+        self.assertEqual(an1['flux_mad'], 12000.0 - 600.0 - 6000.0)
+        self.assertEqual(bloc['economie']['economie_nette_an1'],
+                         12000.0 - 600.0)
+        self.assertIn('11 400,00 MAD', self.html(bloc))
+
+    def test_un_an_au_singulier(self):
+        # 12 000 − 600 = 11 400 nets ≥ 10 000 investis : retour en 1 an.
+        bloc = self.bloc([ligne('Panneaux', 10000)], 600.0)
+        self.assertEqual(bloc['economie']['retour_ans'], 1)
+        html = self.html(bloc)
+        self.assertIn('>1 an<', html)
+        self.assertNotIn('1 ans', html)
+
+    def test_sans_retour_sur_10_ans_motif_imprime(self):
+        bloc = self.bloc([ligne('Panneaux', 500000)], 600.0)
+        self.assertIsNone(bloc['economie']['retour_ans'])
+        self.assertIn('Retour sur investissement, sans aide</td>'
+                      '<td class="r">au-delà de 10 ans', self.html(bloc))

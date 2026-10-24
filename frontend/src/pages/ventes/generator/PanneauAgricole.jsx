@@ -224,9 +224,11 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
           <summary>Hypothèses ({d.hypotheses.length})</summary>
           <ul className="mt-1 grid gap-0.5">
             {d.hypotheses.map((h) => (
+              // AGQ12 — libellé et source lisibles par le client (jamais la clé
+              // brute ni la trace interne) ; une plage s'écrit « min – max ».
               <li key={h.cle}>
-                {h.cle} = {String(h.valeur)} —{' '}
-                {h.statut === 'estimation' ? 'EST.' : (h.source || 'EST.')}
+                {h.libelle?.fr || h.cle} = {valeurHypothese(h.valeur)} —{' '}
+                {h.statut === 'estimation' || h.statut === 'EST.' ? 'EST.' : (h.source_client?.fr || 'EST.')}
               </li>
             ))}
           </ul>
@@ -391,6 +393,12 @@ function AttestationUsageAgricole({ attestation, majAttestation }) {
   )
 }
 
+// AGQ12 — valeur d'une hypothèse : plage « 1,2 – 1,5 », liste « 0,75, 1,1, … ».
+const valeurHypothese = (v) => (
+  v && typeof v === 'object' && !Array.isArray(v) && 'min' in v ? `${v.min} – ${v.max}`
+    : Array.isArray(v) ? v.join(', ') : String(v)
+)
+
 export default function PanneauAgricole({
   marche,
   // ── Pompe et forage ──
@@ -541,6 +549,25 @@ export default function PanneauAgricole({
                       options={[['oui', 'Oui'], ['non', 'Non']]} />
           <ChampNombre id="gen-source-niveau-dynamique" label="Niveau dynamique (m)"
                        valeur={source.niveau_dynamique_m} onChange={maj('source.niveau_dynamique_m')} />
+          {/* AGQ27 (C-AGQ-026) — UNE seule saisie du niveau d'eau : statique et
+              rabattement vivent ici, dans « Point d'eau », plus dans « Votre
+              exploitation ». */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="gen-farm-static">
+              Niveau statique de l'eau (m) — optionnel
+            </Label>
+            <Input id="gen-farm-static" type="number" min="0" step="any"
+                   placeholder="ex: 40" value={farmHmtStatic}
+                   onChange={e => setFarmHmtStatic(e.target.value)} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="gen-farm-drawdown">
+              Rabattement en pompage (m) — optionnel
+            </Label>
+            <Input id="gen-farm-drawdown" type="number" min="0" step="any"
+                   placeholder="ex: 15" value={farmHmtDrawdown}
+                   onChange={e => setFarmHmtDrawdown(e.target.value)} />
+          </div>
           <ChampNombre id="gen-source-tubage" label="Diamètre de tubage (mm)"
                        valeur={source.diametre_tubage_mm} onChange={maj('source.diametre_tubage_mm')} />
           <ChampNombre id="gen-source-calage" label="Profondeur de calage (m)"
@@ -685,22 +712,6 @@ export default function PanneauAgricole({
                   <SelectItem value="gravitaire">Gravitaire</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="gen-farm-static">
-                Niveau statique de l'eau (m) — optionnel
-              </Label>
-              <Input id="gen-farm-static" type="number" min="0" step="any"
-                     placeholder="ex: 40" value={farmHmtStatic}
-                     onChange={e => setFarmHmtStatic(e.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="gen-farm-drawdown">
-                Rabattement en pompage (m) — optionnel
-              </Label>
-              <Input id="gen-farm-drawdown" type="number" min="0" step="any"
-                     placeholder="ex: 15" value={farmHmtDrawdown}
-                     onChange={e => setFarmHmtDrawdown(e.target.value)} />
             </div>
           </div>
 

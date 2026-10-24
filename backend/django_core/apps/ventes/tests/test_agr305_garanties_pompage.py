@@ -47,8 +47,50 @@ class Agr305GarantiesTests(SimpleTestCase):
         """Le texte « constructeur 2 ans » n'est JAMAIS interprété."""
         g, omissions = garanties_pompage_et_omissions([_variateur()])
         self.assertEqual(g, [])
+        # AGQ14 (D-AGQ-4) — l'omission est NOMMÉE : selon fiche fournisseur.
         self.assertIn({'bloc': 'garanties.variateur',
-                       'motif': 'garantie non renseignée'}, omissions)
+                       'motif': 'garantie non renseignée : selon fiche '
+                                'fournisseur'}, omissions)
+
+    def test_selon_fiche_fournisseur_imprime_sans_duree(self):
+        """AGQ14 — pompe et variateur sans durée structurée : le document
+        dit « selon fiche fournisseur », jamais une durée ; une ligne seule
+        donne ses durées structurées (une-page)."""
+        from apps.ventes.quote_engine.agricole import pages, renderer
+        from apps.ventes.quote_engine.agricole.garanties import (
+            garanties_de_la_ligne,
+        )
+        from apps.ventes.tests.test_agr310_renderer_agricole import (
+            data_complete,
+        )
+        d = data_complete()
+        for it in d['all_items']:
+            it['garantie_mois'] = None
+        p3 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[3]
+        self.assertIn('Garantie constructeur de la pompe : selon fiche '
+                      'fournisseur', p3)
+        self.assertIn('Garantie constructeur du variateur : selon fiche '
+                      'fournisseur', p3)
+        self.assertNotIn('2 ans', p3)
+        self.assertEqual(garanties_de_la_ligne(_pompe()), [('pompe', None)])
+        self.assertEqual(
+            garanties_de_la_ligne(_panneau(garantie_mois=144,
+                                           garantie_production_mois=300)),
+            [('panneaux', 144), ('performance_panneaux', 300)])
+        self.assertEqual(garanties_de_la_ligne({'designation': 'Câble'}), [])
+
+    def test_seeder_ne_seme_aucune_garantie_pompe_ni_variateur(self):
+        """AGQ14 (D-AGQ-4) — aucune fiche OSP/VEICHI du seeder ne porte de
+        ``garantie_mois`` : une base neuve reste vide, un re-seed n'en pose
+        pas (le seeder ne comble que les champs DÉCLARÉS par FICHES)."""
+        from apps.stock.management.commands.seed_catalogue import FICHES
+        skus = [s for s in FICHES if s.startswith(('PMP-OSP-', 'VEI-'))]
+        self.assertTrue(skus)
+        for sku in skus:
+            with self.subTest(sku=sku):
+                self.assertNotIn('garantie_mois', FICHES[sku])
+                self.assertNotIn('garantie', FICHES[sku])
 
     def test_le_texte_24_d_une_pompe_n_est_jamais_lu(self):
         g, omissions = garanties_pompage_et_omissions([_pompe()])

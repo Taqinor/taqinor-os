@@ -75,14 +75,92 @@ class Agr319NoteCalculTests(SimpleTestCase):
                         'Pertes linéaires', 'Pression de service',
                         'Débit de conception : 30,7 m³/h (mois critique : '
                         'décembre)',
-                        'energie_hydraulique_wh_par_m3_m', 'EST.',
-                        'Fiche de VARIATEUR VEICHI SI23 7.5KW 380V',
-                        'Aucune référence de pompage à ce jour.'):
+                        # AGQ12 — libellé client, jamais la clé brute.
+                        'Énergie hydraulique par m³ et par mètre de hauteur',
+                        'EST.',
+                        'Fiche de VARIATEUR VEICHI SI23 7.5KW 380V'):
             with self.subTest(attendu=attendu):
                 self.assertIn(attendu, annexe)
+        # AGQ32 — sans référence, aucune phrase ni section.
+        self.assertNotIn('Aucune référence', annexe)
+        self.assertNotIn('Références de la société', annexe)
         self.assertNotIn('None', annexe)
 
-    def test_references_agricoles_servies(self):
+    def test_annexe_sans_cle_brute_ni_chemin_de_depot(self):
+        """AGQ12 (C-AGQ-011) — l'annexe imprime, pour chaque hypothèse de la
+        table du noyau, son libellé, sa valeur (plage « min – max ») et sa
+        source PUBLIQUE : aucune clé brute, aucun chemin du dépôt, aucune
+        décision interne, aucun id de tâche. Mutant : imprimer ``source`` au
+        lieu de ``source_client`` ⇒ « docs/ » revient ⇒ rouge."""
+        from core.pompage import hypotheses as H
+        d = _data()
+        d['etude']['hypotheses_pompage'] = H.utilisees([
+            'energie_hydraulique_wh_par_m3_m', 'ratio_champ_pompe_bande_alerte',
+            'tolerance_conception_pct', 'pertes_pvgis_comprises_pct',
+            'rendement_groupe'])
+        annexe = _annexe(_html(d))
+        bloc = annexe.split('Hypothèses de calcul et leurs sources')[1].split(
+            '<div class="ag-sec">')[0]
+        for attendu in ('<th>Hypothèse</th>', 'Rapport puissance du champ solaire',
+                        '1,2 – 1,5', '-5 – 20',
+                        'Règle de dimensionnement de la société',
+                        'EST. — Estimation prudente'):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, bloc)
+        for interdit in ('docs/', 'backend/', 'décision', 'JAMAIS',
+                         'ratio_champ_pompe_bande_alerte', 'energie_hydraulique'):
+            with self.subTest(interdit=interdit):
+                self.assertNotIn(interdit, bloc)
+        self.assertIsNone(re.search(r'[A-Z]{3,}\d+', bloc), bloc)
+        # Devis d'hier : entrée sans ``libelle`` → lue dans la table par sa clé.
+        d['etude']['hypotheses_pompage'] = [
+            {'cle': 'cv_vers_kw', 'valeur': 0.7355, 'statut': 'physique',
+             'source': 'interne'}]
+        bloc = _annexe(_html(d)).split('Hypothèses de calcul')[1]
+        self.assertIn('Conversion cheval-vapeur', bloc)
+        self.assertNotIn('interne', bloc)
+
+    def test_annexe_porte_hmt_composantes_chaines_et_cartouche(self):
+        """AGQ31 (C-AGQ-029) — l'annexe FDA porte le site, les cultures et
+        surfaces déclarées, la nature du besoin, la source d'ensoleillement,
+        le calage, les chaînes contre l'entrée du variateur, le point de
+        fonctionnement, le tableau besoin / livré / couverture, les garanties
+        et le cartouche. Valeurs LUES (etude_params, synthèse). Mutant :
+        omettre les chaînes ⇒ rouge."""
+        d = _data()
+        d['etude']['champ']['chaines'] = {
+            'serie': 7, 'paralleles': 2, 'voc_froid_v': 360,
+            'vmp_chaud_v': 250, 'verifiable': True, 'motif': None}
+        d['etude']['variateur'] = {'nom': 'VEICHI SI23 7.5KW'}
+        d['etude']['besoin']['cultures'] = [
+            {'culture': 'agrumes', 'surface_ha': 4, 'irrigation': 'goutte'}]
+        d['etude']['source']['profondeur_calage_m'] = 70
+        d['etude']['couverture_pct_mois'] = [104] * 12
+        d['etude']['entrees_resolues'] = {
+            'localisation': {'valeur': {'ville': 'Taroudant'}}}
+        annexe = _annexe(_html(d))
+        for attendu in ('Site : Taroudant', 'agrumes · 4 ha · goutte',
+                        'Besoin déclaré par vous', 'PVGIS',
+                        'Profondeur de calage : 70 m',
+                        '7 en série × 2 en parallèle', 'Voc à froid 360 V',
+                        'Vmp à chaud 250 V', 'VEICHI SI23 7.5KW',
+                        'Point de fonctionnement : 30,5 m³/h à 58,7 m',
+                        'Débit de conception', 'Besoin (m³/j)',
+                        'Couverture', '104 %', 'Garanties :',
+                        'Étude réalisée par Soleil Agri le 05/10/2026'):
+            with self.subTest(attendu=attendu):
+                self.assertIn(attendu, annexe)
+        self.assertEqual(annexe.count('<div class="page">'), 0)
+        # Chaînes non vérifiables : le motif servi est dit ; HMT saisie dite.
+        d['etude']['champ']['chaines'] = {
+            'verifiable': False, 'motif': 'fiche panneau incomplète'}
+        d['etude']['hmt'] = {'source': 'saisie', 'composantes': None}
+        d['etude']['hmt_composantes'] = {}
+        annexe = _annexe(_html(d))
+        self.assertIn('Chaînes non vérifiées : fiche panneau incomplète', annexe)
+        self.assertIn('HMT saisie telle quelle', annexe)
+        self.assertNotIn('None', annexe)
+
         html = _html(_data(references=[
             {'titre': 'Pompage 7,5 kW', 'ville': 'Taroudant',
              'mise_en_service': '2026-05'}]))

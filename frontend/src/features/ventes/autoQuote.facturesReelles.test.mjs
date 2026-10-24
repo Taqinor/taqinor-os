@@ -75,7 +75,8 @@ test('createAutoQuote : la garde résidentielle du contrat PACT10 est `hiver > 0
 test('CIQ127 — createAutoQuote : le bloc résidentiel vit AVANT l’appel serveur des autres marchés', () => {
   const src = lire('./autoQuote.js')
   const residentiel = src.indexOf("if (mode === 'residentiel') {")
-  const autres = src.indexOf('return creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marche: mode })')
+  // AGQ23 — la signature porte aussi `idempotencyKey`.
+  const autres = src.indexOf('return creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marche: mode, idempotencyKey })')
   assert.ok(residentiel > 0 && autres > residentiel,
     'ordre attendu : branche résidentielle (serveur) → agricole / C&I (serveur)')
 })

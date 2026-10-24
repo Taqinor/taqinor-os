@@ -576,6 +576,7 @@ describe('AGW408 — pompage : corps POST', () => {
       carburant_prix_unitaire_mad: '45',
       depense_carburant_mad_mois: '1800',
       mois_irrigation: [6, 5, 5, 7, 13, 0],
+      jours_irrigation_semaine: '5',
       compteur_eau: 'oui',
     });
     expect(b.section).toBe('pompage');
@@ -591,9 +592,17 @@ describe('AGW408 — pompage : corps POST', () => {
       carburant_prix_unitaire_mad: 45,
       depense_carburant_mad_mois: 1800,
       mois_irrigation: [5, 6, 7],
+      jours_irrigation_semaine: 5,
       compteur_eau: true,
     });
     expect(b.photo).toBeUndefined();
+  });
+
+  it('AGQ34 — jours d’irrigation : 0 < jours ≤ 7 transmis tels quels ; 0, 8 ou vide ⇒ rien d’envoyé', () => {
+    expect(buildQuestionnairePostBody('pompage', { jours_irrigation_semaine: '3.5' }).reponses).toEqual({ jours_irrigation_semaine: 3.5 });
+    for (const brut of ['0', '8', '', 'abc']) {
+      expect(buildQuestionnairePostBody('pompage', { jours_irrigation_semaine: brut }).reponses, brut).toEqual({});
+    }
   });
 
   it('un choix hors contrat est écarté, jamais envoyé', () => {

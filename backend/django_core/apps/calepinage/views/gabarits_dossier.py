@@ -127,6 +127,13 @@ def _donnees(request):
     if hasattr(brut, 'dict'):
         brut = brut.dict()
     donnees = dict(brut) if isinstance(brut, dict) else {}
+    # CI #1021 api-fuzz (5) — en multipart, une liste JSON peut arriver en
+    # PARTIE À NOM DE FICHIER (``request.FILES``, jamais dans ``request.data``) :
+    # elle était ignorée en silence (201 avec une liste vide). Son texte est lu
+    # et validé comme toute liste (``_liste_saisie`` : 400 nommé sinon).
+    for cle in ('pieces_attendues', 'champs'):
+        if cle not in donnees and cle in getattr(request, 'FILES', {}):
+            donnees[cle] = request.FILES[cle].read().decode('utf-8', 'replace')
     donnees.pop('fichier', None)
     donnees.pop('company', None)
     return donnees
@@ -145,6 +152,12 @@ def _fichier_mal_forme(request):
                                    "(multipart ou JSON)."},
                         status=status.HTTP_400_BAD_REQUEST)
     if 'fichier' in request.data and 'fichier' not in request.FILES:
+        # CI #1021 api-fuzz (5) — corps JSON : « fichier » vide ou null = pas
+        # de fichier (le schéma le dit facultatif) ; seul un TEXTE à la place
+        # d'un fichier, ou une valeur de formulaire multipart, est refusé.
+        if (not isinstance(request.data, QueryDict)
+                and request.data.get('fichier') in ('', None)):
+            return None
         return Response({'fichier': [
             "Le gabarit se dépose en fichier PDF (envoi multipart) : "
             "« fichier » n'est pas un fichier."]},

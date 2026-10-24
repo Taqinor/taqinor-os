@@ -29,21 +29,18 @@ import {
 // AGR127/AGR128 — aperçu SERVEUR du pompage (aucun calcul local).
 import {
   useEtudePompagePreview, construireCorpsPompage, manquantsPompage,
-  useEconomiePompagePreview,
+  useEconomiePompagePreview, lignesEconomieDepuisEcran,
 } from '../../features/ventes/etudePompagePreview'
 import {
-  saisiesEconomiePompage,
+  saisiesEconomiePompage, ECO_POMPAGE_VIDE, ATTESTATION_VIDE,
   TARIF_SAISIE_VIDE, tarifDeclareDepuisSaisie,
   ECO_CI_VIDE, saisiesEconomieCi,
 } from '../../features/ventes/quote/etudeMarcheBloc'
 import { useApercuEconomieCi } from '../../features/ventes/quote/hooks/useApercuEconomieCi'
 import {
-  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance,
+  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance, siteDuLead,
 } from '../../features/ventes/etudePompagePreviewPur'
-import { entreesPompageDuLead } from '../../features/ventes/quote/entreesPompageLead'
-import {
-  ECO_POMPAGE_VIDE, ATTESTATION_VIDE,
-} from '../../features/ventes/quote/etudeMarcheBloc'
+import { entreesPompageDuLead, appliquerSaisiePompageLead } from '../../features/ventes/quote/entreesPompageLead'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
@@ -194,7 +191,8 @@ import { useChargeurEdition } from '../../features/ventes/quote/hooks/useChargeu
 import { useRegistreOverrides } from '../../features/ventes/quote/hooks/useRegistreOverrides'
 import { useLignesEcran } from './generator/hooks/useLignesEcran'
 import { useCompositionEcran } from './generator/hooks/useCompositionEcran'
-import { useLeadClientEcran } from './generator/hooks/useLeadClientEcran'
+// AGQ25 — `AlertesDevisAuto` : le journal du devis automatique, même rendu que la fiche lead.
+import { useLeadClientEcran, AlertesDevisAuto } from './generator/hooks/useLeadClientEcran'
 import { useApercuEtude } from './generator/hooks/useApercuEtude'
 import { useBrouillonEcran } from './generator/hooks/useBrouillonEcran'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
@@ -1186,12 +1184,15 @@ export default function DevisGenerator({
     if ('energie' in eco) eco.energieProvenance = res.eco.energieProvenance
     if ('mois' in eco) eco.moisProvenance = res.eco.moisProvenance
     if (Object.keys(eco).length) setEcoPompage((e) => ({ ...e, ...eco }))
+    // AGQ39 (D-AGQ-10) — mode de pompe et plaque du lead → `pompageSaisie`,
+    // même règle : une saisie du vendeur n'est jamais écrasée.
+    setPompageSaisie(appliquerSaisiePompageLead(res.saisie, libre, posesLead.current, poserSaisie))
     setProvenancesLead(res.provenances)
   }
 
   // SPL50 — lien lead/client du devis (déplacé tel quel dans le hook ; l'effet d'arrivée du lead reste plus bas).
   const {
-    applyLead, applyClient, runAutoQuote,
+    applyLead, applyClient, runAutoQuote, alertesAuto,
   } = useLeadClientEcran({
     leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
     setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly: poserMoisDerives, modeInstallation,
@@ -1444,10 +1445,12 @@ export default function DevisGenerator({
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
     farmHmtStatic, farmHmtDrawdown, leadId: leadId || null,
-    editId: editId || null,
+    // AGQ26 (C-AGQ-025) — le SITE du lead (ville de calcul + GPS) : sans lui,
+    // la production retombait en repli plat en accusant PVGIS.
+    editId: editId || null, ...siteDuLead(villeCalculLead, selectedLead),
   }), [pompageSaisie, pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit,
     pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId])
+    farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId, villeCalculLead, selectedLead])
   const pompageManquants = modeInstallation === 'agricole'
     ? manquantsPompage(etatPompage) : []
   const corpsPompage = modeInstallation === 'agricole'
@@ -1708,6 +1711,8 @@ export default function DevisGenerator({
                 <p className="num mt-1 text-2xl font-semibold">{formatMoney(succes.total)}</p>
               )}
             </div>
+            {/* AGQ25 — le journal du devis automatique (même rendu que la fiche lead). */}
+            <AlertesDevisAuto alertes={alertesAuto} />
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
               <Button
                 onClick={() => navigate(`/ventes/devis?devis=${succes.id}&envoyer=1`)}
@@ -2033,7 +2038,8 @@ export default function DevisGenerator({
           farmHmtStatic={farmHmtStatic} setFarmHmtStatic={setFarmHmtStatic}
           farmHmtDrawdown={farmHmtDrawdown} setFarmHmtDrawdown={setFarmHmtDrawdown}
           pompageSaisie={pompageSaisie} majPompage={majPompage}
-          apercuPompage={apercuPompage}
+          // AGQ16 — la carte économie chiffre le devis EN COURS (lignes comptées + remise globale).
+          apercuPompage={apercuPompage} lignesDevis={lignesEconomieDepuisEcran(lines, discountPct)}
         />
 
         {/* ── Paramètres techniques ── */}
