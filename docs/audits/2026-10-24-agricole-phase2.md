@@ -49,7 +49,7 @@ trouvés et corrigés :
 | C-AGQ-046 | « Volume d'eau par jour » imprimé sans sa valeur → volume persisté | AGQ55 |
 | C-AGQ-047 | relevé du foreur « mesuré par TAQINOR » ; essai « à confirmer » → qui a relevé, essai = mesure | AGQ56 |
 | C-AGQ-048 | page sans mois de conception ni mois déclarés (PDF : oui) → jumeaux | AGQ57 |
-| C-AGQ-049 | succès du devis automatique du générateur sans référence → référence affichée | AGQ58 |
+| C-AGQ-049 | succès du devis automatique du générateur sans référence → corrigé en parallèle par ALEA51 (PR #1022) | AGQ58 |
 
 Non retenus : le bouton « ⚡ Devis auto » du rail reste actif quand la visite est requise, mais il ouvre l'onglet Devis
 qui refuse (aucun devis créé) ; le message WhatsApp multi-devis (lien PDF) est neutre ; « TVA » sans taux quand un seul

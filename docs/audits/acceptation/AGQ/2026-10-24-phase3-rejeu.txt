@@ -102,7 +102,9 @@ Jetons de partage masqués (`<jeton>`).
   bouteille × 6 mois, déclaré le 24/10 ».
 - AGQ25 : `/ventes/devis/nouveau?lead=…&auto=1` : « Devis enregistré » + « Alertes du devis automatique : Rendement
   MPPT du variateur … non publié … ; Chaîne PV non vérifiable … ; Ratio champ/pompe 0,81× … ».
-  DÉFAUT C-AGQ-049 (avant 4c37e3859) : « Devis enregistré — » sans référence ; après : « DEV-202610-0022 ».
+  DÉFAUT C-AGQ-049 (main e659f9c13) : « Devis enregistré — » sans référence ; correctif de la branche (4c37e3859) :
+  « DEV-202610-0022 ». Main a livré le même correctif en parallèle (ALEA51, PR #1022) : à la fusion la branche le
+  garde ; rejoué sur la branche fusionnée c06fd0460 : « Devis enregistré DEV-202610-0024 · 49 000 MAD » + journal.
 
 ## P3.4 — page /proposition (site public, devis DEV-202610-0018 envoyé)
 - AGQ52 : « Si vous demandez l'aide FDA, votre signature vaut accord sur ce devis : la commande devient ferme et
