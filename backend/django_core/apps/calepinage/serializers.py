@@ -689,7 +689,7 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
             if lead is None:
                 lead = self._lead_de_la_requete(lead_id)
             if lead is not None and lead.client_id != client.pk:
-                raise serializers.ValidationError({
+                erreur = {
                     'client': (
                         "Le client doit être celui du lead : ce lead "
                         + (f"est rattaché à un autre client (#{lead.client_id})"
@@ -697,7 +697,15 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                         + ". Laissez « Client » vide, ou choisissez le "
                         "client du lead."
                     ),
-                })
+                }
+                if instance is not None:
+                    # api-fuzz 24/10 — PATCH ``{"client": 1}`` : le corps est
+                    # conforme, c'est le lead DÉJÀ rattaché qui s'y oppose
+                    # (état du calepinage) : 409, même corps nommant le champ.
+                    from core.conflit_etat import ConflitEtat
+
+                    raise ConflitEtat(erreur)
+                raise serializers.ValidationError(erreur)
         return attrs
 
     def _refuser_cles_non_inscriptibles(self):
