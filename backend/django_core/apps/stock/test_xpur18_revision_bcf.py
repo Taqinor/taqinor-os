@@ -278,6 +278,21 @@ class TestCorpsTypesEtCapacite(Xpur18Base):
         bc.refresh_from_db()
         self.assertEqual(bc.revision, 0)
 
+    def test_reviser_prix_ou_quantite_d_une_ligne_recue_409(self):
+        """api-fuzz 24/10 — le prix figé d'une quantité reçue, ou une quantité
+        sous le reçu, s'opposent par l'ÉTAT de la ligne : 409, pas 400."""
+        bc = self._bcf_envoye()
+        ligne = bc.lignes.first()
+        ligne.quantite_recue = 1
+        ligne.save(update_fields=['quantite_recue'])
+        url = f'{self.BASE}{bc.id}/reviser/'
+        prix = self.api.post(url, {'lignes': [
+            {'id': ligne.id, 'prix_achat_unitaire': '1500'}]}, format='json')
+        self.assertEqual(prix.status_code, 409, prix.content)
+        quantite = self.api.post(url, {'lignes': [
+            {'id': ligne.id, 'quantite': 0}]}, format='json')
+        self.assertEqual(quantite.status_code, 400, quantite.content)
+
     def test_envoyer_email_corps_mal_type_400(self):
         bc = BonCommandeFournisseur.objects.create(
             company=self.company, reference='BCF-X18-EM',
