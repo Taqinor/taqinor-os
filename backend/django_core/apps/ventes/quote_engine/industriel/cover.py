@@ -208,10 +208,7 @@ def build(ctx):
     marques_correction = "".join(
         f'<div class="i1-hd">{m}</div>'
         for m in theme.marques_correction(d))
-    client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name") or "Client")
-    client_meta = theme.join_meta(d.get("client_addr", ""), (d.get("client_ville_libelle") or d.get("client_city", "")),
-                                  ci_couverture.format_telephone(
-                                      d.get("client_phone", "")))
+    client_full, client_meta = ci_couverture.identite_client(d)
     # M7 (audit du 19/08/2026) — pastille de validité : la VRAIE date
     # d'échéance du devis ; indéterminable ⇒ pastille OMISE.
     _vu = (d.get("valid_until") or "").strip()

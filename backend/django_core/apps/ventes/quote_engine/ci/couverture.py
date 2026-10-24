@@ -518,6 +518,19 @@ def format_telephone(brut):
             + " ".join(reste[i:i + 2] for i in range(0, 8, 2)))
 
 
+def identite_client(d):
+    """``(nom, adresse · ville · téléphone)`` du client sous le bandeau des
+    deux couvertures — le téléphone mis en forme (AMOT92)."""
+    from ..residential import theme
+    nom = theme.titlecase_name(d.get("client_full") or d.get("client_name")
+                               or "Client")
+    meta = theme.join_meta(
+        d.get("client_addr", ""),
+        d.get("client_ville_libelle") or d.get("client_city", ""),
+        format_telephone(d.get("client_phone", "")))
+    return nom, meta
+
+
 def titre_projet(d, cle, kwc_txt, nom_client):
     """« Centrale solaire 90 kWc — Hôtel Atlas Riad SARL, Marrakech » : la
     raison sociale servie (``entreprise_client``), sinon le nom du client
