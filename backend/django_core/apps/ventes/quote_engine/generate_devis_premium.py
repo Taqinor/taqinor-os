@@ -4680,12 +4680,16 @@ def _conditions_onepage_html():
     ``cgv_imprimees`` (APDF12 — société gelées ou vives, défaut du moteur
     sinon ; tronquées comme les clauses quand la page est dense), la validité
     et la note de TVA seulement quand aucune puce ne les porte déjà, puis la
-    note de remise par ligne."""
+    note de remise par ligne.
+    ERR-APDF48 — la ligne s'ouvre sur le TITRE de ``cgv_imprimees`` (celui
+    de la page publique, variante C&I comprise), en ligne : aucune page de
+    plus, la densité adaptative mesure ce même bloc."""
     puces = list(CGV_IMPRIMEES.get("puces") or [])
     if ONEPAGE_TEXTES_TRONQUES:
         puces = [_tronquer_texte_echappe(p, _ONEPAGE_CLAUSE_MAX)
                  for p in puces]
-    morceaux = []
+    morceaux = [f'<strong style="color:{CN};">{t}</strong>'
+                for t in [str(CGV_IMPRIMEES.get("titre") or "").strip()] if t]
     validite = _doc_text("validite_onepage")
     if validite and not (VALID_UNTIL and any(VALID_UNTIL in p
                                              for p in puces)):
