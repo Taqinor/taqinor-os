@@ -300,6 +300,9 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
         self.assertNotIn('rotationDeg', calage['required'])
 
     def _composant(self, schema):
+        # Une règle de racine (x-corps-resserre) publie ``allOf`` [$ref, règle].
+        if '$ref' not in schema and 'allOf' in schema:
+            schema = next(m for m in schema['allOf'] if '$ref' in m)
         return self.schema['components']['schemas'][
             schema['$ref'].rsplit('/', 1)[-1]]
 

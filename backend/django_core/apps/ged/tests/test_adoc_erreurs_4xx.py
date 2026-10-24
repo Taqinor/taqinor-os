@@ -1251,7 +1251,7 @@ class ApiFuzzFull2410GedTests(TestCase):
         self.assertIn('destinataires', resp.json())
 
     def test_nom_de_fichier_sur_pour_l_en_tete(self):
-        from apps.ged.views import _nom_fichier_sur
+        from apps.ged.corps_requete import nom_fichier_sur as _nom_fichier_sur
         self.assertEqual(_nom_fichier_sur('\x12@"a\\b.pdf'), '@ab.pdf')
         self.assertEqual(_nom_fichier_sur('\x01'), 'document')
         self.assertEqual(_nom_fichier_sur('Devis é.pdf'), 'Devis é.pdf')

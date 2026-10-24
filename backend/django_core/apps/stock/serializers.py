@@ -2848,10 +2848,15 @@ class ModeleBonCommandeFournisseurSerializer(
 
     def validate_lignes(self, value):
         # ERR fuzz (modeles-bcf) : une ligne sans produit (PATCH partiel) ou un
-        # produit en double violait NOT NULL / unique_together -> 500 ; 400.
+        # produit en double violait NOT NULL / unique_together -> 500.
+        # Sans produit = corps hors schéma (400) ; doublon entre lignes = règle
+        # d'état que le schéma ne porte pas (409, api-fuzz-full 24/10).
         produits = [ligne.get('produit') for ligne in value]
-        if None in produits or len(set(produits)) != len(produits):  # doublon entre lignes : 409
-            raise ConflitEtat({'lignes': ['Chaque ligne exige un produit, sans doublon.']})
+        if None in produits:
+            raise serializers.ValidationError(
+                {'lignes': ['Chaque ligne exige un produit.']})
+        if len(set(produits)) != len(produits):
+            raise ConflitEtat({'lignes': ['Un même produit ne figure qu\'une fois.']})
         return value
 
     def create(self, validated_data):

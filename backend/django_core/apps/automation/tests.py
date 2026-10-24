@@ -883,10 +883,10 @@ class ApprovalRequestTests(TestCase):
         # api-fuzz-full : un substitut isolé (nom, listes, clés de
         # ``champs_config``) ou un NUL dans ``champs_config`` -> 500 au stockage.
         api = auth(self.admin)
-        resp = api.post('/api/django/automation/approval-request-types/', {
+        resp = api.post('/api/django/automation/approval-request-types/', json.dumps({
             'nom': 'Type\ud826', 'champs_requis': ['m\ud800'],
             'champs_config': {'c\ud800': {'\u0000x': [1, 32589158477190044729]}},
-        }, format='json')
+        }), content_type='application/json')  # substituts isolés : JSON brut
         self.assertEqual(resp.status_code, 201, resp.content)
         obj = ApprovalRequestType.objects.get(pk=resp.data['id'])
         self.assertEqual(obj.nom, 'Type')

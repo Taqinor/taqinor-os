@@ -118,7 +118,11 @@ class Ntapi19TokenEndpointTests(TestCase):
             'PublicOAuthTokenRequestRequest']['properties']
         for nom in ('client_id', 'client_secret'):
             self.assertIn('\\u0000', champs[nom]['pattern'], nom)
-        self.assertIn('\\u0000', champs['scope']['oneOf'][0]['pattern'])
+        # ``scope`` admet le vide : drf-spectacular 0.28 publie le motif à plat,
+        # 0.30 l'enveloppe dans ``oneOf`` [motif, chaîne vide] — même règle.
+        scope = champs['scope']
+        motif = scope.get('pattern') or scope['oneOf'][0]['pattern']
+        self.assertIn('\\u0000', motif)
 
     def test_scope_demande_est_un_sous_ensemble_jamais_une_elevation(self):
         resp = self._demander(scope=f'{SCOPE_READ_LEADS} read:factures')

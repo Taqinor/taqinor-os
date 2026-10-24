@@ -64,19 +64,18 @@ class StandardPagination(PageNumberPagination):
     max_page_size = 200
 
     def get_page_size(self, request):
-        brut = valider_parametre_entier(request, self.page_size_query_param)
-        # api-fuzz-full 24/10/2026 — `?page_size=-26596` était accepté (taille par
-        # défaut) alors que le schéma publie désormais `minimum: 1`.
-        if brut is not None and int(brut) < 1:
-            raise ValidationError({self.page_size_query_param: [
-                f'Le paramètre « {self.page_size_query_param} » doit être au moins 1.']})
+        # ERR-ENF11-FUZZ-PAGE-SIZE — entier conforme TOUJOURS accepté (0 ou
+        # négatif → taille par défaut, au-delà du plafond → plafond) : aucun
+        # minimum n'est publié pour page_size (règle de main, 55f6cd28e).
+        valider_parametre_entier(request, self.page_size_query_param)
         return super().get_page_size(request)
 
     def get_schema_operation_parameters(self, view):
-        # Publie `minimum: 1` sur page et page_size (ce que le serveur applique).
+        # Publie `minimum: 1` sur ``page`` (0 répond 404, statut déclaré) ;
+        # ``page_size`` reste un entier libre, comme le serveur l'applique.
         params = super().get_schema_operation_parameters(view)
         for p in params:
-            if p.get('name') in (self.page_query_param, self.page_size_query_param):
+            if p.get('name') == self.page_query_param:
                 p.setdefault('schema', {})['minimum'] = 1
         return params
 

@@ -179,9 +179,8 @@ class CorbeilleApiTests(CorbeilleBase):
                         {'page': '8130654409940161338'}):
             resp = api.get(self.BASE, requete)
             self.assertIn(resp.status_code, (200, 404), (requete, resp.content))
-        # api-fuzz-full 24/10 : ``page_size`` publié ``minimum: 1`` → 400.
         self.assertEqual(
-            api.get(self.BASE, {'page_size': '-7987'}).status_code, 400)
+            api.get(self.BASE, {'page_size': '-7987'}).status_code, 200)
 
     def test_journal_en_lecture_seule(self):
         archiver(self.lead)

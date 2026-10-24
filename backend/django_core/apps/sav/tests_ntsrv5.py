@@ -6,6 +6,7 @@ et son ISSUE, et il est filtrable en rapport (``selectors.journal_appels``).
 Run :
     docker compose exec django_core python manage.py test apps.sav.tests_ntsrv5 -v 2
 """
+import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -122,8 +123,8 @@ class NTSRV5LogAppelTest(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertIn('duree_minutes', resp.json())
         resp = self.api.post(
-            self._url(), {'duree_minutes': 2, 'notes': 'ok\ud9d1'},
-            format='json')
+            self._url(), json.dumps({'duree_minutes': 2, 'notes': 'ok\ud9d1'}),
+            content_type='application/json')  # substitut isolé : JSON brut
         self.assertEqual(resp.status_code, 201, resp.content)
         for corps in ([], {'duree_minutes': '5'}, {'issue': None}):
             resp = self.api.post(self._url(), corps, format='json')
