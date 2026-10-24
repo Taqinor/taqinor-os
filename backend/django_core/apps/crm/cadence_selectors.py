@@ -215,23 +215,10 @@ def kpi_cadences(company, *, jours=30):
 #     jugement reste humain (et le couple « à-l'heure % + conversion » est
 #     servi ensemble, anti-Goodhart).
 
-#: Le grain de l'« à-l'heure » est le JOUR, pas la minute : une touche due à
-#: 09:00 et faite à 17:00 le même jour A ÉTÉ FAITE. Mesurer à la minute
-#: transformerait un KPI de suivi en chronomètre de surveillance — exactement
-#: ce que la recherche (HBR) dit de ne pas faire.
-#: Le DÉNOMINATEUR de l'adhérence = les touches closes PAR UN HUMAIN sur la
-#: période (faites + sautées). Les annulations moteur en sont exclues.
-_STATUTS_CLOS_HUMAIN = ('fait', 'sautee')
-
-
-#: Plafond de la liste actionnable `leads_sans_touche` : au-delà, ce n'est
-#: plus une file de travail mais un export — et la page mettrait dix secondes.
-LEADS_SANS_TOUCHE_MAX = 100
-
-
-def _lundi(jour):
-    """Le lundi de la semaine de ``jour`` — la clé des tendances hebdo."""
-    return jour - datetime.timedelta(days=jour.weekday())
+# Le grain de l'« à-l'heure » est le JOUR, pas la minute : une touche due à
+# 09:00 et faite à 17:00 le même jour A ÉTÉ FAITE. Mesurer à la minute
+# transformerait un KPI de suivi en chronomètre de surveillance — exactement
+# ce que la recherche (HBR) dit de ne pas faire.
 
 
 def _pct(numerateur, denominateur):
@@ -239,20 +226,6 @@ def _pct(numerateur, denominateur):
     if not denominateur:
         return None
     return round(100.0 * numerateur / denominateur, 1)
-
-
-def _mediane_decimale(valeurs):
-    """Médiane DÉCIMALE — distincte du ``_mediane`` entier défini plus bas,
-    qui arrondit des minutes : la vitesse de premier contact se lit en heures
-    avec une décimale (3,4 h), et un arrondi à l'entier effacerait justement
-    l'écart que la tendance hebdo cherche à montrer."""
-    valeurs = sorted(valeurs)
-    if not valeurs:
-        return None
-    milieu = len(valeurs) // 2
-    if len(valeurs) % 2:
-        return valeurs[milieu]
-    return (valeurs[milieu - 1] + valeurs[milieu]) / 2.0
 
 
 def _a_lheure(etape):
@@ -296,50 +269,6 @@ def _a_lheure_ou_excusee(etape, absences, proprietaire):
         return True
     return absences.couvre(
         proprietaire.get(etape.lead_id), etape.due_date)
-
-
-def _conversion_par_stage(company, leads_visibles, depuis):
-    """Le funnel APPARIÉ à l'adhérence (anti-Goodhart) — sur les clés de
-    ``STAGES.py``, jamais une liste en dur.
-
-    « Entré » dans une étape = le lead l'a ATTEINTE (son étape courante est à
-    ce rang ou au-delà, ou son historique porte le passage). L'historique
-    compte parce qu'un lead redescendu au Froid a bel et bien traversé le
-    funnel : ne lire que l'étape courante ferait disparaître tous les dossiers
-    parqués et gonflerait mécaniquement les taux.
-
-    ``COLD`` est un PARKING (rang hors échelle) : il n'entre pas dans
-    l'échelle de conversion — il n'y a pas de « suivant » après un parking.
-    """
-    from .models import LeadActivity
-    from . import stages
-
-    echelle = [s for s in stages.STAGES if s != stages.COLD]
-    rang = {cle: i for i, cle in enumerate(echelle)}
-    label_vers_cle = {stages.STAGE_LABELS[cle]: cle for cle in echelle}
-
-    leads = list(leads_visibles.filter(date_creation__gte=depuis)
-                 .values_list('id', 'stage'))
-    atteint = {pk: rang.get(stage, -1) for pk, stage in leads}
-    if atteint:
-        for lead_id, valeur in LeadActivity.objects.filter(
-                company=company, field='stage', lead_id__in=list(atteint),
-        ).values_list('lead_id', 'new_value'):
-            cle = label_vers_cle.get((valeur or '').strip())
-            if cle is not None:
-                atteint[lead_id] = max(atteint[lead_id], rang[cle])
-
-    lignes = []
-    for i, cle in enumerate(echelle):
-        entres = sum(1 for r in atteint.values() if r >= i)
-        passes = sum(1 for r in atteint.values() if r >= i + 1)
-        lignes.append({
-            'stage': cle,
-            'entres': entres,
-            'passes_au_suivant': passes,
-            'taux_pct': _pct(passes, entres),
-        })
-    return lignes
 
 
 # ── Chaîne commerciale — les trois compteurs du cockpit ──────────────────────
