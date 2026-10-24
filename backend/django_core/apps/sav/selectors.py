@@ -170,7 +170,10 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
                             'sous_garantie': 0, 'non_renseignee': 0},
                 '_prochaine': None,
             }
-        st = _statut(eq.date_fin_garantie)
+        # ASAV107 — statut, totaux et échéance jugés sur la fin EFFECTIVE
+        # (max légale loi 31-08 / constructeur), comme la fiche équipement.
+        fin = eq.date_fin_garantie_effective
+        st = _statut(fin)
         st_prod = _statut(eq.date_fin_garantie_production)
         item = {
             'equipement': eq.id,
@@ -184,6 +187,7 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
             'date_fin_garantie_production': (
                 eq.date_fin_garantie_production.isoformat()
                 if eq.date_fin_garantie_production else None),
+            'date_fin_garantie_effective': fin.isoformat() if fin else None,
             'statut_garantie': st,
             'statut_garantie_production': st_prod,
             'statut': eq.statut,
@@ -200,10 +204,10 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
         totaux['equipements'] += 1
         totaux[_stat_key[st]] += 1
         # Prochaine échéance du parc = la plus proche date de fin non nulle.
-        if eq.date_fin_garantie is not None:
+        if fin is not None:
             cur = parc['_prochaine']
-            if cur is None or eq.date_fin_garantie < cur:
-                parc['_prochaine'] = eq.date_fin_garantie
+            if cur is None or fin < cur:
+                parc['_prochaine'] = fin
 
     # Tri des parcs : échéance la plus proche d'abord (None = tout en fin).
     _MAX = datetime.date.max

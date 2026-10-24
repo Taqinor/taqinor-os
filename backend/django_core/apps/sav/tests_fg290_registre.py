@@ -107,3 +107,29 @@ class TestFG290Registre(TestCase):
             self.assertEqual(r.status_code, 400, (brut, r.content))
             self.assertIn('jours', r.data)
         self.assertEqual(self.api.get(URL, {'jours': 36500}).status_code, 200)
+
+    def test_garantie_legale_seule_sous_garantie(self):
+        """ASAV107 — constructeur 8 mois échu, légale 12 mois en cours : le
+        registre sert la fin effective et juge statut/totaux/échéance dessus."""
+        from apps.sav.dateutils import add_months
+        today = timezone.localdate()
+        pose = today - timedelta(days=300)
+        inst = Installation.objects.create(
+            company=self.company, reference='CHT-ASAV107',
+            client=self.inst.client)
+        Equipement.objects.create(
+            company=self.company, produit=self.prod, installation=inst,
+            numero_serie='EQ-LEGALE', date_pose=pose,
+            date_fin_garantie=add_months(pose, 8))
+        fin_legale = add_months(pose, 12).isoformat()
+        # Fin légale ≈ J+65 : dans une fenêtre de 90 j ⇒ « expire bientôt ».
+        r = self.api.get(URL, {'installation': inst.id, 'jours': 90})
+        self.assertEqual(r.status_code, 200, r.content)
+        item = r.data['parcs'][0]['items'][0]
+        self.assertEqual(item['date_fin_garantie_effective'], fin_legale)
+        self.assertEqual(item['date_fin_garantie'],
+                         add_months(pose, 8).isoformat())
+        self.assertEqual(item['statut_garantie'], 'expire_bientot')
+        self.assertEqual(r.data['totaux']['expirees'], 0)
+        self.assertEqual(r.data['totaux']['expire_bientot'], 1)
+        self.assertEqual(r.data['parcs'][0]['prochaine_echeance'], fin_legale)
