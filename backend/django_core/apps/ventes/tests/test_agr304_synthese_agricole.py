@@ -567,6 +567,28 @@ class SyntheseAgricoleTests(SimpleTestCase):
         prov = synthese_agricole(data)['provenance']['debit_exploitation_m3h']
         self.assertEqual(prov['valeur'], 36)
 
+    def test_volume_du_lead_imprime_avec_sa_valeur_et_essai_mesure(self):
+        """Rejeu AGQ du 24/10 — le volume d'eau déclaré sur le lead est
+        persisté et imprimé avec sa valeur (avant : « Volume d'eau par jour :
+        déclaré par vous le … » sans 120 m³) ; un débit relevé à l'essai de
+        pompage n'est plus « à confirmer par la visite »."""
+        from apps.ventes.domain.pompage import derivees_de_l_etude
+        derivees = derivees_de_l_etude({'entrees_resolues': {
+            'volume_m3_jour': {'valeur': 120, 'provenance': {
+                'origine': 'lead', 'detail': 'client', 'date': '2026-10-24'}}}})
+        self.assertEqual(derivees['entrees_pompage']['volume_m3_jour'], 120)
+        data = _data_complete()
+        data['etude'].get('besoin', {}).pop('volume_m3_jour', None)
+        data['etude']['entrees_pompage'] = derivees['entrees_pompage']
+        data['etude']['provenance_pompage'] = {'entrees': {
+            'volume_m3_jour': {'origine': 'lead', 'detail': 'client',
+                               'date': '2026-10-24'},
+            'debit_exploitation_m3h': {'origine': 'lead', 'detail': 'essai',
+                                       'date': '2026-10-24'}}}
+        s = synthese_agricole(data)
+        self.assertEqual(s['provenance']['volume_m3_jour']['valeur'], 120)
+        self.assertNotIn('debit_exploitation_m3h', s['a_confirmer_par_visite'])
+
     def test_option_deja_ligne_du_devis_non_reproposee(self):
         data = _data_complete()
         data['etude']['kit'] = _kit_du_moteur()

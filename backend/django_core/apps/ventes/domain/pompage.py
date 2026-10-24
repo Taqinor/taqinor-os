@@ -1279,11 +1279,12 @@ def _au_mois_critique(serie, mois):
 #: le schéma et la comparaison besoin/livré impriment.
 #: Rejeu live AGQ41 (24/10) — ``debit_exploitation_m3h`` en fait partie : sans
 #: lui, un débit du forage venu du LEAD s'imprimait « déclaré par vous le … »
-#: SANS sa valeur (« D'où viennent ces chiffres », AGQ28).
+#: SANS sa valeur (« D'où viennent ces chiffres », AGQ28). Même cause, même
+#: remède pour ``volume_m3_jour`` (rejeu du 24/10, phase 3).
 CLES_ENTREES_POMPAGE = (
     'cultures', 'region', 'niveau_statique_m', 'niveau_dynamique_m',
     'debit_exploitation_m3h', 'profondeur_forage_m', 'volume_reservoir_m3',
-    'distance_champ_m', 'plaque',
+    'distance_champ_m', 'plaque', 'volume_m3_jour',
 )
 
 

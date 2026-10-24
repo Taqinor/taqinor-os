@@ -165,6 +165,22 @@ class Plafonds(unittest.TestCase):
                          "couverture_insuffisante")
         self.assertIn("plafond_forage", _codes(r))
 
+    def test_besoin_couvert_sous_le_plafond_aucune_alerte_non_couvert(self):
+        """Rejeu AGQ du 24/10 — forage 25 m³/h, besoin 250 m³/j couvert en
+        pompant plus longtemps (production horaire ≥ besoin) : aucune
+        ``plafond_forage`` « le besoin ne sera pas couvert » ; sans
+        production (passe 1) l'alerte reste."""
+        besoin = besoin_retenu(volume_declare_m3_jour=250,
+                               mois_irrigation=[4, 5, 6, 7, 8, 9, 10])
+        passe1 = conception(besoin=besoin, profils_horaires=PROFILS,
+                            debit_exploitation_m3h=25, niveau_eau_m=30)
+        self.assertIn("plafond_forage", _codes(passe1))
+        r = conception(besoin=besoin, profils_horaires=PROFILS,
+                       debit_exploitation_m3h=25, niveau_eau_m=30,
+                       production_m3_jour_mois=[250.0] * 12)
+        self.assertEqual(r["controle_conception"]["statut"], "conforme")
+        self.assertNotIn("plafond_forage", _codes(r))
+
     def test_volume_annuel_superieur_a_l_autorise(self):
         r = conception(besoin=besoin_retenu(volume_declare_m3_jour=100),
                        profils_horaires=PROFILS, debit_exploitation_m3h=50,

@@ -287,6 +287,12 @@ PHRASES_PROVENANCE = {
     "mesure": {"fr": "mesuré par {societe} le {date}",
                "en": "measured by {societe} on {date}",
                "ar": "قاسته {societe} بتاريخ {date}"},
+    "mesure_foreur": {"fr": "relevé par votre foreur (saisi le {date})",
+                      "en": "recorded by your driller (entered on {date})",
+                      "ar": "سجله حفار البئر (أُدخل بتاريخ {date})"},
+    "mesure_essai": {"fr": "relevé à l'essai de pompage (saisi le {date})",
+                     "en": "recorded at the pumping test (entered on {date})",
+                     "ar": "سُجل خلال تجربة الضخ (أُدخل بتاريخ {date})"},
     "a_confirmer": {"fr": "à confirmer par la visite",
                     "en": "to be confirmed by the site visit",
                     "ar": "يجب تأكيده خلال الزيارة"},
@@ -303,13 +309,31 @@ def _date_jjmmaaaa(date_iso):
     return None
 
 
+#: Détail de provenance MESURÉ → sa phrase : seule la visite est une mesure
+#: de la société ; le foreur et l'essai de pompage disent qui a relevé.
+CLES_MESURE = {"mesure_visite": "mesure", "foreur": "mesure_foreur",
+               "essai": "mesure_essai"}
+
+
+def cle_provenance(p):
+    """La clé de phrase d'une provenance servie ``{origine, detail, date}`` :
+    mesurée (visite, foreur, essai), déclarée (saisie, lead), sinon None."""
+    if not isinstance(p, dict):
+        return None
+    if p.get("detail") in CLES_MESURE:
+        return CLES_MESURE[p["detail"]]
+    if p.get("origine") in ("saisie", "lead"):
+        return "declare"
+    return None
+
+
 def phrase_provenance(cle, langue="fr", *, date=None, nom_societe=None):
     """La phrase de provenance ``cle`` dans ``langue`` (fr par défaut).
 
     ``declare`` / ``mesure`` exigent une date : sans date lisible, la phrase
     retombe sur « à confirmer par la visite » (jamais une date inventée)."""
     langue = langue if langue in LANGUES else "fr"
-    if cle in ("declare", "mesure"):
+    if cle in ("declare", "mesure", "mesure_foreur", "mesure_essai"):
         jour = _date_jjmmaaaa(date)
         if jour is None:
             return PHRASES_PROVENANCE["a_confirmer"][langue]

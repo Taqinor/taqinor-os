@@ -328,6 +328,12 @@ def conception(*, besoin, profils_horaires=None, agricole_pump_hours=None,
         if mois_production:
             mois = mois_production
     controle = controle_conception(serie, production_m3_jour_mois, mois)
+    # Rejeu AGQ du 24/10 — production connue et besoin couvert (en pompant
+    # plus longtemps) : l'alerte « le besoin ne sera pas couvert » serait
+    # fausse ; seule la couverture mois par mois en décide.
+    if production_m3_jour_mois and controle["statut"] in (
+            "conforme", "surdimensionnement"):
+        alertes = [a for a in alertes if a["code"] != "plafond_forage"]
     if controle["statut"] in ("couverture_insuffisante", "surdimensionnement"):
         message = ("Couverture au mois critique : %s %% (tolérance -5/+20 %%)."
                    % controle["couverture_mois_critique_pct"])
