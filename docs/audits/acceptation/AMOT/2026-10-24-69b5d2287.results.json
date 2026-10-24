@@ -1,0 +1,33 @@
+{
+  "sha": "69b5d2287ae0c260ec42169941dcb0af174c673f",
+  "date": "2026-10-24",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT57"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.2",
+      "taches": [
+        "AMOT57"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-24/AMOT57-P1.2.txt"
+    }
+  ]
+}
