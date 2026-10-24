@@ -315,7 +315,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             # ZFSM1 — lecture de la fiche d'intervention (relevé terrain).
             'fiche',
         ]:
-            return [IsAnyRole()]
+            # D-ASEC-50 — la liste ``?export=xlsx`` exige ``installation_export``.
+            return [IsAnyRole()] + droits_de_la_grille(
+                self, list=[DroitDeLaGrille('installation_export', export=('xlsx',))])
         elif self.action in WRITE_ACTIONS + [
             'noter', 'cocher_materiel', 'cocher_outil', 'choisir_kit',
             'confirmer_charge', 'commander_manques', 'depart_depot', 'checkin',

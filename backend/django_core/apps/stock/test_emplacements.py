@@ -127,6 +127,27 @@ class TestTransfer(EmplacementBase):
         self.assertEqual(by_name['Dépôt principal'], 10)
         self.assertEqual(by_name['Camionnette'], 0)
 
+    def test_repeated_transfers_reuse_the_company_row(self):
+        # ENF18 — la ligne est cherchée AVEC la société (unicité
+        # `(company, produit, emplacement)`) : des transferts répétés
+        # alimentent UNE ligne qui porte la société, aller comme retour.
+        principal, camionnette = self._emps()
+        for _ in range(2):
+            transfer_stock(
+                company=self.company, user=self.admin,
+                produit_id=self.produit.id, source_id=principal.id,
+                destination_id=camionnette.id, quantite=2)
+        lignes = StockEmplacement.objects.filter(
+            produit=self.produit, emplacement=camionnette)
+        self.assertEqual(lignes.count(), 1)
+        self.assertEqual(lignes.get().company_id, self.company.id)
+        self.assertEqual(lignes.get().quantite, 4)
+        transfer_stock(
+            company=self.company, user=self.admin, produit_id=self.produit.id,
+            source_id=camionnette.id, destination_id=principal.id, quantite=4)
+        self.assertEqual(lignes.count(), 1)
+        self.assertEqual(lignes.get().quantite, 0)
+
     def test_reject_more_than_available(self):
         principal, camionnette = self._emps()
         with self.assertRaises(ValueError):

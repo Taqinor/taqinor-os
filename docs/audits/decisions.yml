@@ -1092,6 +1092,18 @@ decisions:
     source: "docs/claude-memory/asec-decisions-fondateur.md (ASEC10)"
     taches: [ASEC10]
 
+  - id: D-ASEC-50
+    question: "Role systeme Responsable sans code sur sav_export, installation_export et ventes_supprimer (suppression d'une facture brouillon) : aligner ou refuser ?"
+    options:
+      - cle: a
+        texte: "Aligner par migration roles (comme 0009) : le role systeme Responsable recoit sav_export, installation_export et ventes_supprimer, puis les endpoints appliquent le code"
+      - cle: b
+        texte: "Accepter le refus : le Responsable perd ces gestes"
+    reponse: a
+    date: "2026-10-24"
+    source: "Reda, session « loop work on all plans » du 24/10/2026"
+    taches: [ASEC50]
+
   - id: D-ASTK-37
     question: "Ecart d'inventaire : stock de reference ?"
     options:

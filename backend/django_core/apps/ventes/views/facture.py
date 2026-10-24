@@ -18,6 +18,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
     IsAdminRole,
 )
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50 / D-ASEC-50
 from core.conflit_etat import ConflitEtat
 from core.permissions import declared_action_permissions
 
@@ -144,9 +145,11 @@ class FactureViewSet(FactureCycleActionsMixin,
             'liberer_retenue',
         ]:
             return [IsResponsableOrAdmin()]
-        # VNT13 — supprimer un brouillon : même garde qu'annuler.
+        # VNT13 — supprimer un brouillon : même garde qu'annuler,
+        # plus ``ventes_supprimer`` (ASEC50 / D-ASEC-50).
         elif self.action == 'destroy':
-            return [p() for p in PEUT_ANNULER]
+            return [p() for p in PEUT_ANNULER] + [
+                DroitDeLaGrille('ventes_supprimer')()]
         # AUD124 — `marquer_payee` : geste comptable, palier admin.
         elif self.action == 'marquer_payee':
             return [IsAdminRole()]

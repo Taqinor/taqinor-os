@@ -125,6 +125,29 @@ class TestRebuterProduitService(Xstk10Base):
             produit=self.produit, emplacement=depot_b)
         self.assertEqual(se.quantite, 2)
 
+    def test_rebut_ne_touche_que_la_ligne_de_la_societe(self):
+        """ENF18 — la ligne est cherchée AVEC la société (unicité
+        `(company, produit, emplacement)`) : une ligne d'une autre société sur
+        le même couple n'est ni lue ni décrémentée."""
+        from apps.stock.models import StockEmplacement
+        voisine = _company('xstk10-voisine')
+        depot_b = EmplacementStock.objects.create(
+            company=self.company, nom='Dépôt C X10', is_principal=False,
+            ordre=21)
+        propre = StockEmplacement.objects.create(
+            company=self.company, produit=self.produit,
+            emplacement=depot_b, quantite=4)
+        etrangere = StockEmplacement.objects.create(
+            company=voisine, produit=self.produit,
+            emplacement=depot_b, quantite=9)
+        rebuter_produit(
+            company=self.company, produit=self.produit, quantite=2,
+            motif='vol', user=self.user, emplacement=depot_b)
+        propre.refresh_from_db()
+        etrangere.refresh_from_db()
+        self.assertEqual(propre.quantite, 2)
+        self.assertEqual(etrangere.quantite, 9)
+
 
 class TestRapportPertes(Xstk10Base):
     def test_rapport_agrege_quantite_et_valeur_par_motif(self):

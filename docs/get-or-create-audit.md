@@ -17,14 +17,4 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 | `backend/django_core/apps/portail/views_client.py::MesDevisPortailViewSet.accepter::AcceptationDevisPortail` | get_or_create | AcceptationDevisPortail.objects | company, devis |
 | `backend/django_core/apps/portail/views_client.py::MesFacturesPortailViewSet.payer::PaiementFacturePortail` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
 | `backend/django_core/apps/statuspage/tasks.py::_accumuler_uptime_jour::UptimeDayBucket` | get_or_create | UptimeDayBucket.objects | company, composant, date, region |
-| `backend/django_core/apps/stock/services.py::consommer_et_produire_assemblage::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py::consommer_et_produire_assemblage::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py::demonter_composite::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py::demonter_composite::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services.py::get_or_create_produit::Produit` | get_or_create | Produit.objects | company |
-| `backend/django_core/apps/stock/services.py::rebuter_produit::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py::record_stock_movement::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py::transfer_stock::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py::transfer_stock::StockEmplacement` | get_or_create | StockEmplacement.objects | emplacement, produit |
-| `backend/django_core/apps/stock/services_transfert_deux_temps.py::expedier_transfert::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services_transfert_deux_temps.py::receptionner_transfert::StockEmplacement` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |

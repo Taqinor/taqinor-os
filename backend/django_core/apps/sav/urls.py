@@ -8,6 +8,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework.decorators import api_view, permission_classes
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from apps.roles.permissions import DroitDeLaGrille  # ASEC50 / D-ASEC-50
 
 from .views import (
     EquipementViewSet, TicketViewSet,
@@ -149,7 +150,8 @@ def file_action_view(request):
         }),
     (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('sav_export', export=('xlsx',))])
 def fcr_insight_view(request):
     """NTSRV24 — Taux de résolution au premier contact. Responsable/admin.
 
@@ -185,7 +187,8 @@ def fcr_insight_view(request):
         }),
     (200, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'): OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([IsResponsableOrAdmin,
+                     DroitDeLaGrille('sav_export', export=('xlsx',))])
 def performance_agent_view(request):
     """NTSRV27 — Charge et performance par agent. Responsable/admin
     UNIQUEMENT : ces chiffres ne sont jamais un classement public/gamifié

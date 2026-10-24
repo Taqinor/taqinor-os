@@ -129,6 +129,30 @@ class Ntret7CycleTests(Ntret7Base):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 101)
 
+    def test_une_ligne_dune_autre_societe_nest_jamais_touchee(self):
+        """ENF18 — la ligne de stock est cherchée AVEC la société (unicité
+        `(company, produit, emplacement)`) : une ligne étrangère sur le même
+        couple (produit, emplacement) n'est ni lue ni modifiée, et la ligne de
+        destination créée porte la société du transfert."""
+        etrangere_a = StockEmplacement.objects.create(
+            company=self.autre, produit=self.produit,
+            emplacement=self.magasin_a, quantite=5)
+        etrangere_b = StockEmplacement.objects.create(
+            company=self.autre, produit=self.produit,
+            emplacement=self.magasin_b, quantite=3)
+        transfert = self._demande(quantite=10)
+        expedier_transfert(transfert, self.admin)
+        receptionner_transfert(transfert, self.admin, quantite_recue=10)
+
+        for ligne, attendu in ((self.se_a, 30), (etrangere_a, 5),
+                               (etrangere_b, 3)):
+            ligne.refresh_from_db()
+            self.assertEqual(ligne.quantite, attendu)
+        propre_b = StockEmplacement.objects.get(
+            company=self.company, produit=self.produit,
+            emplacement=self.magasin_b)
+        self.assertEqual(propre_b.quantite, 10)
+
     def test_lordre_des_etapes_est_impose(self):
         transfert = self._demande(quantite=5)
         with self.assertRaises(ValueError):

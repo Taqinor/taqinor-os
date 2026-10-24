@@ -895,6 +895,11 @@ RESPONSABLE_PERMISSIONS = [
     # (décochables ; migration roles 0009_asec50_responsable_alignement).
     'crm_export', 'crm_reassign', 'ventes_export', 'reporting_export',
     'sav_reassign', 'technicien_assign',
+    # ASEC50 / D-ASEC-50 (24/10/2026) — export des insights SAV, export des
+    # interventions et suppression d'une facture brouillon, gestes déjà faits
+    # par ce palier ; codes appliqués côté serveur, décochables (migration
+    # roles 0010_asec50_responsable_exports).
+    'sav_export', 'installation_export', 'ventes_supprimer',
 ]
 
 UTILISATEUR_PERMISSIONS = [
