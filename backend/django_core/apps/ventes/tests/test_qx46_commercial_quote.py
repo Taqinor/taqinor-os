@@ -705,7 +705,8 @@ class TestAmot91Hypotheses(SimpleTestCase):
                 "facture (grille du 16/02/2025).",
                 "Indexation du tarif 0 % / an", "Dégradation des panneaux",
                 "Horizon 25 ans",
-                "Entretien (O&M) non déduit des économies",
+                # AMOT96 — sans O&M ni entretien réglé : « non chiffré ».
+                "Entretien (O&M) non chiffré — non déduit des économies",
                 "Remplacement onduleur en année 11 55 000,00 MAD TTC",
                 f"Base de production {production['inclinaison_deg']}° "
                 "d'inclinaison, plein sud — à confirmer au calepinage",
