@@ -104,6 +104,14 @@ class EnumerationLoginTests(TestCase):
         r = self._login([None, None], '0')
         self.assertEqual(r.status_code, 400, r.data)
         self.assertNotIn('access_token', r.cookies)
+        # api-fuzz full 24/10 : un caractère nul (corps form-encodé) faisait
+        # lever la recherche du compte en base (500) ; le schéma publie la
+        # règle, la validation répond 400 sans jeton.
+        r = APIClient().post('/api/django/token/',
+                             'username=a%00b&password=x',
+                             content_type='application/x-www-form-urlencoded')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertNotIn('access_token', r.cookies)
 
     def test_corps_non_objet_400_pas_500(self):
         # api-fuzz (PR #997) : le CORPS entier `[null, null]` (liste JSON) faisait

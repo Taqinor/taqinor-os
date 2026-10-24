@@ -11,6 +11,9 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
+from ..corps_achats import RapprocherPeseesCorps, valider_corps
+from ..erreurs_achats import statut_refus_metier
+
 
 def _pesee_payload(ligne, pesee):
     from ..services_catch_weight import (
@@ -100,9 +103,7 @@ class PeseeLigneActionsMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(_pesee_payload(ligne, pesee))
 
-    @extend_schema(request=inline_serializer('RapprocherPeseesCorps',
-                                             {'note': serializers.CharField(required=False, allow_blank=True)}),
-                   responses={
+    @extend_schema(request=RapprocherPeseesCorps, responses={
         200: inline_serializer('StockReceptionPeseeRapprochement', {
             'ajustes': serializers.IntegerField(),
             'inchanges': serializers.IntegerField(),
@@ -122,11 +123,12 @@ class PeseeLigneActionsMixin:
         from ..services_catch_weight import rapprocher_pesee_reception
 
         reception = self.get_object()
+        corps_valide = valider_corps(RapprocherPeseesCorps, request)
         try:
             result = rapprocher_pesee_reception(
                 reception=reception, user=request.user,
-                note=request.data.get('note') or None)
+                note=corps_valide.get('note') or None)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         return Response(result)

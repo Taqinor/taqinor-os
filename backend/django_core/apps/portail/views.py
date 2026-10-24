@@ -273,8 +273,10 @@ class AcceptationDevisPortailViewSet(_PortailBaseViewSet):
 
 @extend_schema_view(list=extend_schema(parameters=[OpenApiParameter(
     'statut', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
-    enum=list(PaiementFacturePortail.Statut.values),
-    description='Ne garder que les paiements de ce statut.')]))
+    # api-fuzz full 24/10 — ``''`` (aucun filtre, AUD146) est publié : il
+    # était accepté hors énumération.
+    enum=[''] + list(PaiementFacturePortail.Statut.values),
+    description='Ne garder que les paiements de ce statut (vide = tous).')]))
 class PaiementFacturePortailViewSet(_PortailBaseViewSet):
     """Intentions de paiement en ligne d'une facture depuis le portail (FG230).
 
@@ -309,10 +311,15 @@ class PaiementFacturePortailViewSet(_PortailBaseViewSet):
         liste entière sur un filtre incompris est exactement le défaut.
         """
         qs = super().get_queryset()
-        statut = (self.request.query_params.get('statut') or '').strip()
-        if not statut:
+        # api-fuzz full 24/10 — le schéma publie UNE valeur de l'énumération,
+        # vide comprise (= aucun filtre, AUD146) : répétée ou entourée de
+        # blancs (lue « nettoyée » en silence) = 400, comme une inconnue.
+        valeurs = self.request.query_params.getlist('statut')
+        if not valeurs or valeurs == ['']:
             return qs
-        if statut not in PaiementFacturePortail.Statut.values:
+        statut = valeurs[0]
+        if (len(valeurs) > 1
+                or statut not in PaiementFacturePortail.Statut.values):
             raise ValidationError({'statut': 'Statut de paiement inconnu.'})
         return qs.filter(statut=statut)
 

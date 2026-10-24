@@ -92,7 +92,9 @@ class PeriodiciteApiTests(TestCase):
 
     def test_la_periode_sans_montant_est_refusee_en_nommant_le_champ(self):
         resp = self._patch({'facture_periodicite': 'bimestrielle'})
-        self.assertEqual(resp.status_code, 400)
+        # ENF11 (api-fuzz-full 24/10) : règle entre deux champs que le schéma
+        # ne dit pas -> refus d'ÉTAT, 409 (même corps par champ).
+        self.assertEqual(resp.status_code, 409)
         # YAPIC3 (core.exceptions.taqinor_exception_handler) ajoute
         # TOUJOURS une enveloppe `error` additive sur ce endpoint standard
         # (raise DRFValidationError, pas une Response construite à la main) :
@@ -100,6 +102,26 @@ class PeriodiciteApiTests(TestCase):
         # patron que tests_mry22_motif_obligatoire.py pour ce même endpoint.
         self.assertEqual(resp.data['facture_periodicite'],
                          CONTRAT['exemple_erreur_sans_montant']['facture_periodicite'])
+
+    def test_le_schema_publie_le_vocabulaire_de_la_periode(self):
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.crm import urls as crm_urls
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/crm/', include(crm_urls)),
+        ]).get_schema(request=None, public=True)
+        composants = schema['components']['schemas']
+        champ = composants['PatchedLeadRequest']['properties'][
+            'facture_periodicite']
+        # drf-spectacular range l'énumération sous un composant `...Enum`
+        # (nom et forme varient d'une version à l'autre) : on suit les $ref.
+        publiees = set(champ.get('enum', ()))
+        for nom, composant in composants.items():
+            if f'/{nom}"' in json.dumps(champ):
+                publiees.update(composant.get('enum', ()))
+        self.assertEqual(publiees - {''}, set(Lead.PERIODICITES_FACTURE))
 
     def test_une_periode_inconnue_ne_touche_rien(self):
         resp = self._patch({'facture_hiver': '900',

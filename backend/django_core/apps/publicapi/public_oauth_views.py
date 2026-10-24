@@ -18,6 +18,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from core.champs_stricts import ChaineStricte
+
 from .models import OAuthClient
 from .oauth import GRANT_TYPE, emettre_token
 from .public_response import PublicApiResponseMixin
@@ -67,9 +69,12 @@ _CHAMPS_TEXTE = ('grant_type', 'client_id', 'client_secret', 'scope')
     summary='Jeton OAuth2 client_credentials (NTAPI19).',
     request=inline_serializer('PublicOAuthTokenRequest', {
         'grant_type': serializers.ChoiceField(choices=[GRANT_TYPE]),
-        'client_id': serializers.CharField(),
-        'client_secret': serializers.CharField(),
-        'scope': serializers.CharField(required=False),
+        # api-fuzz full 24/10 — schéma seul : la vue refuse (400) un champ
+        # texte porteur d'un caractère nul ; ``ChaineStricte`` PUBLIE ce motif
+        # (non blanc pour les deux identifiants), la vérification est inchangée.
+        'client_id': ChaineStricte(),
+        'client_secret': ChaineStricte(),
+        'scope': ChaineStricte(required=False, allow_blank=True),
     }),
     # 429 (débit) et 500 viennent du crochet ``ErreurApi`` ; 400/401 sont ceux
     # que la vue sert elle-même (corps de l'enveloppe publique).

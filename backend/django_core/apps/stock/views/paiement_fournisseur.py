@@ -5,7 +5,7 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import BasePermission
-from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, P, XLSX
+from ..openapi_helpers import BINARY, DATE_OU_VIDE, ID_OU_VIDE, P, XLSX
 from ..utils.params import corps_objet, date_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import FactureFournisseur, PaiementFournisseur
@@ -46,7 +46,7 @@ class PeutLirePaiementsFournisseur(BasePermission):
         return bool(user.is_responsable and user.can_view_buy_prices)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('facture', INT, False, 'Facture fournisseur (id)')]))
+@extend_schema_view(list=extend_schema(parameters=[P('facture', ID_OU_VIDE, False, 'Facture fournisseur (id)')]))
 class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
     """G5 — Paiements fournisseur (règlements). Lecture + création/suppression ;
     chaque écriture recalcule le statut de la facture. company posée serveur."""
@@ -96,9 +96,8 @@ class PaiementFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        from ..utils.params import entier_ou_400
-        facture_id = entier_ou_400(
-            self.request.query_params.get('facture'), 'facture')
+        from ..utils.params import id_requete_ou_400
+        facture_id = id_requete_ou_400(self.request, 'facture')
         if facture_id is not None:
             qs = qs.filter(facture_id=facture_id)
         return qs

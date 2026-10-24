@@ -21,7 +21,7 @@ from .corps_requetes import (
     REPONSES_AVATAR_REFUS, REPONSES_REINIT, REQUETE_AVATAR, REQUETE_REINIT,
     statut_refus_avatar, statut_refus_mot_de_passe,
     ID_COMPTE, REPONSE_400_COMPTE, SCHEMA_PATCH_HEGIRIEN, SCHEMA_PATCH_LANGUE, SwitchCompanyRequete,
-    TwoFactorDisableRequete, TwoFactorEnableRequete,
+    TwoFactorDisableRequete, TwoFactorEnableRequete, nom_requetable, role_demande,
 )
 from .models import CustomUser, Company, UserSession
 from .serializers import (
@@ -331,8 +331,8 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         # VERROUILLÉ reçoit le même 401, bon mot de passe ou non (ASEC14-revue).
         raw_uname0 = str((request.data.get('username') if hasattr(request.data, 'get') else '')
                          or '').strip()  # ERR fuzz : liste/nul → 400, pas 500
-        locked_user = CustomUser.objects.filter(
-            username__iexact=raw_uname0).first() if raw_uname0 else None
+        locked_user = CustomUser.objects.filter(  # NUL : jamais en base (500) → 400 DRF
+            username__iexact=raw_uname0).first() if nom_requetable(raw_uname0) else None
         # ASEC4-revue — le plancher plateforme verrouille le couple
         # (compte, IP) : IP lue par LA primitive (ADOC79).
         from core.throttling import ip_de_requete
@@ -1326,13 +1326,12 @@ class UserViewSet(viewsets.ModelViewSet):
         if role_id in (None, '', 'null'):
             # Rôle vidé → on retombe sur le legacy.
             return target.role_legacy == CustomUser.ROLE_ADMIN
-        from apps.roles.models import Role
-        role = Role.objects.filter(pk=role_id).first()
-        return bool(role and 'roles_gerer' in (role.permissions or []))
+        role = role_demande(self.get_serializer().fields['role'], role_id)
+        return role is None or 'roles_gerer' in (role.permissions or [])
 
     def update(self, request, *args, **kwargs):
         target = self.get_object()
-        data = request.data
+        data = request.data if hasattr(request.data, 'get') else {}  # liste : 400 DRF, pas 500
         # Détecte une rétrogradation (perte du rôle admin) ou une
         # désactivation du compte.
         retro = False

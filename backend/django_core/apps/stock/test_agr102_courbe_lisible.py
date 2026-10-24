@@ -89,17 +89,17 @@ class TestApiRefus(TestCase):
 
     def test_debits_non_tries_400_cite_le_point_3(self):
         r = self._post({'debits_m3h': [0, 12, 10], 'hmt_m': [80, 70, 60]})
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : règle croisée, pas la forme
         self.assertIn('Point 3', str(r.data['courbe_pompe']))
 
     def test_hmt_croissante_400(self):
         r = self._post({'debits_m3h': [0, 6, 12], 'hmt_m': [80, 85, 60]})
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : règle croisée, pas la forme
         self.assertIn('courbe_pompe', r.data)
 
-    def test_valeur_negative_400(self):
+    def test_valeur_negative_409(self):
         r = self._post({'debits_m3h': [0, 6, 12], 'hmt_m': [80, 70, -1]})
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
     def test_courbe_lisible_201(self):
         r = self._post({'debits_m3h': [0, 6, 12], 'hmt_m': [91, 88, 85]})

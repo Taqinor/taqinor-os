@@ -339,11 +339,21 @@ def _valeur_avec_sa_source(champ, source):
 
 #: Règle publiée en ``allOf`` au corps (``x-corps-resserre``) : une requête
 #: conforme n'est plus refusée « … exige sa source ».
-ROOF_LOAD_SOURCES = {EXTENSION_CORPS_RESSERRE: {'allOf': [
-    _valeur_avec_sa_source('charge_admissible_kg_m2',
-                           'charge_admissible_source'),
-    _valeur_avec_sa_source('coefficient_securite', 'coefficient_source'),
-]}}
+#: CI #997 fuzz (24/10) : toute grandeur du calcul est bornée à ±1e9 (``8e14`` kg
+#: sur ``2e-308`` m² débordait en ``inf`` puis en 500) ; borne publiée ET
+#: appliquée par ``roof_load_view._corps_invalide``.
+BORNE_CHARGE = 1e9
+ROOF_LOAD_SOURCES = {EXTENSION_CORPS_RESSERRE: {
+    'properties': {champ: {'minimum': -BORNE_CHARGE, 'maximum': BORNE_CHARGE}
+                   for champ in (
+                       'charge_admissible_kg_m2', 'struct_masse_kg_m2',
+                       'poids_module_kg', 'aire_module_m2',
+                       'masse_layout_kg_m2', 'coefficient_securite')},
+    'allOf': [
+        _valeur_avec_sa_source('charge_admissible_kg_m2',
+                               'charge_admissible_source'),
+        _valeur_avec_sa_source('coefficient_securite', 'coefficient_source'),
+    ]}}
 RoofLoadResponse = _ser('RoofLoadVerdict', {
     'capacite_kg_m2': s.FloatField(allow_null=True),
     'capacite_source': s.CharField(allow_null=True),
@@ -491,7 +501,9 @@ ProposalDataResponse = _ser('PublicProposalData', {
     'parametres_site': s.DictField(**_souple()),
     'acompte': s.DictField(**_souple()),
     'date_validite': s.CharField(**_souple(allow_blank=True)),
-    'conditions': s.ListField(child=s.DictField(), **_souple()),
+    # api-fuzz-full 24/10 : le serveur sert une liste de TEXTES (lignes de
+    # conditions), jamais d'objets.
+    'conditions': s.ListField(child=s.CharField(), **_souple()),
     'conditions_titre': s.CharField(**_souple(allow_blank=True)),
     'paiement_moyens': s.ListField(child=s.JSONField(), **_souple()),
     'confirmation_email': s.BooleanField(required=False),

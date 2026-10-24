@@ -10,6 +10,8 @@ rangement (``RegleRangement``/``CategorieStockage``, ZSTK9) vivent dans
 """
 import logging
 
+from .erreurs_achats import EtatIncompatible
+
 logger = logging.getLogger('stock.wms')
 
 
@@ -363,9 +365,8 @@ def lancer_vague(vague):
     if vague.statut != VaguePicking.Statut.BROUILLON:
         return vague
     if not vague.lignes.exists():
-        raise ValueError('Une vague sans ligne ne peut pas être lancée.')
-    vague.statut = VaguePicking.Statut.LANCEE
-    vague.date_lancement = timezone.now()
+        raise EtatIncompatible('Une vague sans ligne ne peut pas être lancée.')
+    vague.statut, vague.date_lancement = VaguePicking.Statut.LANCEE, timezone.now()
     vague.save(update_fields=['statut', 'date_lancement'])
     return vague
 
@@ -486,7 +487,7 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             apres = avant + quantite
         elif type_mouvement == 'sortie':
             if quantite > avant:
-                raise ValueError(
+                raise EtatIncompatible(
                     f'Stock insuffisant ({avant} disponible).')
             exiger_hors_quarantaine(company, verrouille, quantite)  # ASTK248
             apres = avant - quantite
@@ -675,7 +676,7 @@ def ajouter_ligne_unite_logistique(*, company, unite, produit, quantite,
     from .models_wms import UniteLogistique, UniteLogistiqueLigne
 
     if unite.est_figee:
-        raise ValueError(
+        raise EtatIncompatible(
             'Cette unité logistique est scellée : son contenu est figé.')
     try:
         quantite = int(quantite)
@@ -1131,7 +1132,7 @@ def configurer_liberation_vague(*, vague, mode, seuil_lignes=None):
     from .models_wms import VaguePicking
 
     if vague.statut != VaguePicking.Statut.BROUILLON:
-        raise ValueError(
+        raise EtatIncompatible(
             'Seule une vague en brouillon peut changer de mode de '
             'libération.')
     if mode not in dict(VaguePicking.ModeLiberation.choices):
@@ -1153,7 +1154,7 @@ def configurer_liberation_vague(*, vague, mode, seuil_lignes=None):
         # lecture et l'écriture n'est jamais reconfigurée.
         verrou = VaguePicking.objects.select_for_update().get(pk=vague.pk)
         if verrou.statut != VaguePicking.Statut.BROUILLON:
-            raise ValueError(
+            raise EtatIncompatible(
                 'Seule une vague en brouillon peut changer de mode de '
                 'libération.')
         vague.mode_liberation = mode
@@ -1461,11 +1462,11 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
         and (not filtre or p['ligne_id'] in filtre)
     ]
     if not propositions:
-        raise ValueError(
+        raise EtatIncompatible(
             'Aucune ligne de cette réception ne correspond à une vague en '
             'attente.')
     if unite is not None and unite.est_figee:
-        raise ValueError(
+        raise EtatIncompatible(
             'Cette unité logistique est scellée : son contenu est figé.')
 
     produits = {
@@ -1790,7 +1791,7 @@ def exporter_asn(unite):
     if unite is None:
         raise ValueError('Unité logistique introuvable.')
     if not unite.est_figee:
-        raise ValueError(
+        raise EtatIncompatible(
             'Seule une unité scellée peut produire un ASN (son contenu doit '
             'être figé).')
 
@@ -2074,7 +2075,7 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
     lignes = [ligne for u in unites
               for ligne in u.lignes.select_related('produit').all()]
     if not lignes:
-        raise ValueError('Cette unité logistique est vide : rien à déplacer.')
+        raise EtatIncompatible('Cette unité logistique est vide : rien à déplacer.')
     # ASTK200 — invariant hazmat : chaque produit de l'unité doit être
     # admis par le casier de destination, AVANT tout mouvement.
     from .services_hazmat import exiger_casier_compatible

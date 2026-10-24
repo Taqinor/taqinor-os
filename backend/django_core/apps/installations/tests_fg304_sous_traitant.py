@@ -228,3 +228,15 @@ class TestSousTraitantRoleGate(TestCase):
             'metier': 'terrassement',
         })
         self.assertEqual(r.status_code, 403, r.data)
+
+
+class TestSousTraitantLongueurs(TestCase):
+    def test_telephone_trop_long_400_jamais_500(self):
+        # api-fuzz full : colonne Fournisseur.telephone = 20 signes (500).
+        company = make_company()
+        api = auth(make_user(company))
+        r = api.post(f'{BASE}/sous-traitants/', {
+            'raison_sociale': 'Terrasol SARL', 'telephone': '0' * 29,
+        }, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('telephone', r.data)

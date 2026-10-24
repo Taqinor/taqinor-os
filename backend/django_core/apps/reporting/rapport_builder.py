@@ -19,6 +19,7 @@ from rest_framework.response import Response
 
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
 from core.champs_stricts import ChampsStrictsMixin
+from core.conflit_etat import ConflitEtat
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -31,6 +32,31 @@ from rest_framework.parsers import JSONParser
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _porte_un_interdit(valeur):
+    """Vrai si une chaîne (clé OU valeur, à toute profondeur) du JSON porte
+    un caractère que ``jsonb`` refuse : U+0000 ou un demi-substitut isolé."""
+    if isinstance(valeur, str):
+        return any(c == chr(0) or 0xD800 <= ord(c) <= 0xDFFF for c in valeur)
+    if isinstance(valeur, dict):
+        return any(_porte_un_interdit(k) or _porte_un_interdit(v)
+                   for k, v in valeur.items())
+    if isinstance(valeur, list):
+        return any(_porte_un_interdit(v) for v in valeur)
+    return False
+
+
+def _objet_rangeable(valeur, nom):
+    """api-fuzz full 24/10 (``POST rapport-definitions/``) — un caractère nul
+    au fond de ``spec``/``pivot_spec`` faisait lever l'INSERT ``jsonb`` (500).
+    Le schéma publie un objet LIBRE (clés et profondeur non bornées, OpenAPI
+    3.0 sans ``propertyNames``) : refus inexprimable au schéma = 409."""
+    if _porte_un_interdit(valeur):
+        raise ConflitEtat(
+            f'« {nom} » porte un caractère non enregistrable (caractère nul '
+            'ou demi-substitut isolé).')
+    return valeur
 
 
 class RapportDefinitionSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
@@ -56,6 +82,12 @@ class RapportDefinitionSerializer(ChampsStrictsMixin, serializers.ModelSerialize
             'id', 'partage_label', 'owner_username', 'created_at',
             'updated_at',
         ]
+
+    def validate_spec(self, value):
+        return _objet_rangeable(value, 'spec')
+
+    def validate_pivot_spec(self, value):
+        return _objet_rangeable(value, 'pivot_spec')
 
     def validate_dataset(self, value):
         value = (value or '').strip()

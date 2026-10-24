@@ -127,6 +127,16 @@ class TestReadApi(AuditBase):
         self.assertIn('mine', reprs)
         self.assertNotIn('foreign', reprs)
 
+    def test_filtre_user_illisible_ignore_sans_400(self):
+        # api-fuzz-full 24/10 : « ² » passe str.isdigit mais pas int() (400) ;
+        # un entier géant déborde la colonne. Valeur illisible = ignorée.
+        AuditLog.objects.create(company=self.company, action='create',
+                                object_repr='mine')
+        for valeur in ('%C2%B2', '9' * 30, 'abc'):
+            resp = auth(self.directeur).get(
+                f'/api/django/audit/entries/?user={valeur}')
+            self.assertEqual(resp.status_code, 200, (valeur, resp.content))
+
 
 class TestPdfEventCapture(AuditBase):
     """M4 — la génération d'un PDF (devis/facture) produit toujours une entrée

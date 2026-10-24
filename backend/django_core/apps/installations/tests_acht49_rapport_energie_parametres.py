@@ -61,14 +61,29 @@ class RapportEnergieParametresTests(TestCase):
             ({'tarif': '0'}, 'tarif'),
             ({'co2': '-1'}, 'co2'),
             ({'nb_mois': '-3'}, 'nb_mois'),
-            ({'date_debut': '2026-10-01', 'date_fin': '2026-01-01'},
-             'date_fin'),
             ({'date_debut': 'hier'}, 'date_debut'),
+            # api-fuzz full : bornes publiées (plafonds) et formes strictes.
+            ({'tarif': '1e308'}, 'tarif'),
+            ({'nb_mois': '2.9e79'}, 'nb_mois'),
+            ({'co2': '-2.2250738585e-313'}, 'co2'),
+            ({'rendement': '1_0'}, 'rendement'),
+            ({'date_debut': '2026-1-5'}, 'date_debut'),
         ]
         for params, champ in cas:
             r = self._get(self.inst, **params)
             self.assertEqual(r.status_code, 400, (params, r.content[:200]))
             self.assertIn(champ, r.data, params)
+
+    def test_fenetre_incoherente_409(self):
+        # api-fuzz full : règle d'ENSEMBLE sur deux dates bien formées = 409.
+        cas = [
+            {'date_debut': '2026-10-01', 'date_fin': '2026-01-01'},
+            {'date_debut': '4565-01-01', 'date_fin': '6194-09-03'},
+        ]
+        for params in cas:
+            r = self._get(self.inst, **params)
+            self.assertEqual(r.status_code, 409, (params, r.content[:200]))
+            self.assertIn('date_fin', r.data, params)
 
     def test_co2_zero_accepte(self):
         r = self._get(self.inst, co2='0')

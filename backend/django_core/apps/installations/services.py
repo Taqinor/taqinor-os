@@ -2348,7 +2348,8 @@ def enregistrer_series_lot(installation, lignes, user=None):
     from django.utils import timezone
 
     from apps.sav.services import assurer_equipement_chantier
-    from apps.stock.selectors import get_produit_scoped
+
+    from .services_bornes import produit_scope_ou_none
 
     resultats = []
     with transaction.atomic():
@@ -2360,13 +2361,11 @@ def enregistrer_series_lot(installation, lignes, user=None):
                         'produit': ligne.get('produit'), 'statut': 'erreur',
                         'message': None}
             resultats.append(resultat)
-            produit = None
-            if ligne.get('produit'):
-                try:
-                    produit = get_produit_scoped(
-                        installation.company, ligne['produit'])
-                except (TypeError, ValueError):
-                    produit = None
+            if len(serie) > 120:  # colonne Equipement.numero_serie (CharField 120)
+                resultat['message'] = "Numéro de série trop long (120 signes max)."
+                continue
+            produit = produit_scope_ou_none(
+                installation.company, ligne.get('produit'))
             if produit is None:
                 resultat['statut'] = 'autre_societe'
                 resultat['message'] = "Produit inconnu de cette société."

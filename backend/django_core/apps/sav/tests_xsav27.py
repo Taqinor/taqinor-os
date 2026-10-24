@@ -142,3 +142,16 @@ class XSAV27PretEquipementServiceTest(TestCase):
         self.assertEqual(resp.data['statut'], PretEquipement.Statut.RETOURNE)
         self.onduleur.refresh_from_db()
         self.assertEqual(self.onduleur.quantite_stock, 2)
+
+    def test_corps_mal_forme_400_pas_500(self):
+        # api-fuzz-full : ``numero_serie`` numérique levait AttributeError (500).
+        api = auth(self.admin)
+        url = f'/api/django/sav/tickets/{self.ticket.id}/prets-equipement/'
+        for corps in ({'produit': self.onduleur.id, 'numero_serie': 24027},
+                      {'produit': self.onduleur.id, 'date_sortie': ''},
+                      {'produit': self.onduleur.id,
+                       'date_retour_prevue': '2026-1-5'},
+                      [], {}):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        self.assertFalse(PretEquipement.objects.exists())

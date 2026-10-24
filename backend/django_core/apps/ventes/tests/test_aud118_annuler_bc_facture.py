@@ -71,11 +71,11 @@ class TestAnnulerBcFacture(TestCase):
         return self.api.post(
             f'/api/django/ventes/bons-commande/{self.bc.id}/annuler/')
 
-    def test_bc_facture_refuse_l_annulation_en_400(self):
+    def test_bc_facture_refuse_l_annulation_en_409(self):
         """ROUGE avant le correctif : 200, et la facture restait orpheline."""
         facture = self._facture()
         resp = self._annuler()
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn(facture.reference, resp.data['detail'])
         self.bc.refresh_from_db()
         self.assertEqual(self.bc.statut, BonCommande.Statut.CONFIRME)

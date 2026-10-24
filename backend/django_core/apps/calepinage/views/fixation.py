@@ -27,7 +27,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
-from ..serializers import forme_du_contrat, forme_reponse
+from ..serializers import corps_obligatoire, forme_du_contrat, forme_reponse
 from ..services.fixation import (
     FixationRefusee, appliquer_systeme, bom_de_fixation, resoudre_systeme,
 )
@@ -53,7 +53,9 @@ def bom_fixation(self, request, pk=None):
     calepinage = self.get_object()  # borné société par get_queryset
     demande = request.query_params.get('systeme')
     try:
-        if demande not in (None, ''):
+        if demande is not None:
+            # Publié entier : le vide (``?systeme=``) n'en est pas un — il
+            # était lu comme « absent » alors que le schéma le déclare faux.
             int(str(demande).strip())
     except ValueError:
         # ERR-ENF11-FUZZ-CALEPINAGE — le paramètre est publié entier : une
@@ -73,6 +75,7 @@ def bom_fixation(self, request, pk=None):
         'systeme_id': drf_serializers.IntegerField(allow_null=True)}),
     responses=forme_reponse('CalepinageFixationChoix', 'systeme',
                             'systeme_source'))
+@corps_obligatoire  # corps ABSENT = « Indiquez le système » (400) : le schema l'exige
 @action(detail=True, methods=['post'], url_path='fixation',
         url_name='fixation', permission_classes=[PeutGererCalepinage])
 def fixation(self, request, pk=None):

@@ -19,7 +19,7 @@ from core.champs_stricts import (
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import ChoixDocumente
-from ..models import Paiement
+from ..models import Paiement, ROLES_AUTO_COMPOSITION
 from ..payments.providers import providers_lien_actifs
 from ..serializers import (
     DevisSerializer, DevisWriteSerializer, PlanCommissionSerializer,
@@ -423,8 +423,11 @@ EnregistrerAvanceRequest = _ser('PaiementEnregistrerAvanceRequest', {
 _JETON = s.CharField(required=False, allow_blank=True, allow_null=True)
 
 ErreurDetail = _ser('DevisErreurDetail', {'detail': s.CharField()})
+# CI #997 fuzz (24/10) : un 400 de VALIDATION du corps (``valider_corps``) est
+# rendu par champ (``{"nature": [...]}``) et ne porte pas ``detail`` : seuls les
+# refus d'état (409) et de garde le portent toujours.
 ErreurDevisFige = _ser('DevisErreurFige', {
-    'detail': s.CharField(),
+    'detail': s.CharField(required=False),
     'code': s.CharField(required=False),
 })
 ErreurGarde = _ser('DevisErreurGarde', {
@@ -442,34 +445,48 @@ CompositionRequest = {
             'Une puissance (`kwc`) OU un nombre de panneaux (`nb_panneaux`) '
             'est requis(e), strictement positif(ve).'),
         'properties': {
-            'kwc': {'type': 'number', 'exclusiveMinimum': True,
-                    'minimum': 0},
-            'nb_panneaux': {'type': 'integer', 'minimum': 1},
-            'panel_watt': {'type': 'number', 'exclusiveMinimum': True,
-                           'minimum': 0},
+            # CI #997 fuzz (24/10) — bornes PUBLIÉES et appliquées par
+            # ``valider_corps_schema`` : ``1.2e308`` kWc débordait le calcul
+            # (500) ; un parc > 100 MWc, un module hors 1-5000 Wc ou plus d'un
+            # million de panneaux ne sont pas des devis résidentiels.
+            'kwc': {'type': 'number', 'minimum': 0.01, 'maximum': 100000},
+            'nb_panneaux': {'type': 'integer', 'minimum': 1,
+                            'maximum': 1000000},
+            'panel_watt': {'type': 'number', 'minimum': 1, 'maximum': 5000},
             # CI #997 fuzz — les scénarios que la composition sait servir
             # (``creation_auto.SCENARIOS_DEMANDABLES`` ; vide = les deux) :
             # un autre texte était « conforme » puis refusé en 422.
             'scenario': {'type': 'string',
                          'enum': ['', 'sans', 'avec', 'les_deux']},
-            'structure_produit_id': {'type': 'integer', 'nullable': True},
-            'structure_type': {'type': 'string'},
+            'structure_produit_id': {'type': 'integer', 'nullable': True,
+                                     'minimum': 1, 'maximum': 2147483647},
+            'structure_type': {'type': 'string',
+                               'pattern': r'^[^\u0000]*$'},
             'taux_tva': {'type': 'number', 'minimum': 0, 'maximum': 100},
-            'mppt_paires': {'type': 'integer', 'minimum': 1},
+            'mppt_paires': {'type': 'integer', 'minimum': 1, 'maximum': 1000},
             'hors_reseau': {'type': 'boolean'},
-            'lead': {'type': 'integer', 'nullable': True},
+            'lead': {'type': 'integer', 'nullable': True, 'minimum': 1,
+                     'maximum': 2147483647},
             'dimensionnement_avec': {
                 'type': 'object',
                 'properties': {
-                    'nb_panneaux': {'type': 'number'},
-                    'kwc': {'type': 'number'},
-                    'batterie_kwh': {'type': 'number'},
+                    'nb_panneaux': {'type': 'number', 'minimum': 0,
+                                    'maximum': 1000000},
+                    'kwc': {'type': 'number', 'minimum': 0, 'maximum': 100000},
+                    'batterie_kwh': {'type': 'number', 'minimum': 0,
+                                     'maximum': 1000000},
                 },
             },
         },
         'anyOf': [{'required': ['kwc']}, {'required': ['nb_panneaux']}],
     },
 }
+#: api-fuzz — « une puissance OU un nombre de panneaux » rend le CORPS
+#: obligatoire (drf-spectacular ne pose ``required: true`` que sur un
+#: sérialiseur à champ requis, jamais sur un ``request`` en dict) : le fuzz
+#: envoyait un corps ABSENT, « conforme », puis refusé en 400.
+CORPS_KWC_OU_PANNEAUX = corps_resserre({'anyOf': [
+    {'required': ['kwc']}, {'required': ['nb_panneaux']}]})
 CompositionResponse = _ser('DevisCompositionResponse', {
     'lignes': s.ListField(child=s.DictField()),
     'scenario': s.CharField(allow_null=True),
@@ -519,12 +536,19 @@ def _pourcent_souple(**kwargs):
                   required=False, allow_null=True, **kwargs)
 
 
+#: api-fuzz — plafond publié ET appliqué de la puissance cible d'un devis
+#: automatique (10 MWc). Le schéma annonçait tout flottant : ``2.27e16`` kWc
+#: composait des quantités qui débordent ``DecimalField(10, 2)`` à l'écriture
+#: des lignes (``DataError`` → 500).
+TARGET_KWC_MAX = 10_000
+
 AutoDevisRequest = _ser('DevisAutoRequest', {
     # CI #997 fuzz — corps validé tel que publié (la vue le relisait à la
     # main) ; « un lead OU un client » publié (``CORPS_LEAD_OU_CLIENT``).
     'lead': EntierStrict(required=False, allow_null=True, min_value=1),
     'client': EntierStrict(required=False, allow_null=True, min_value=1),
-    'target_kwc': NombreStrict(required=False, allow_null=True),
+    'target_kwc': NombreStrict(required=False, allow_null=True,
+                               max_value=TARGET_KWC_MAX),
     'scenario': ChaineStricte(required=False, allow_blank=True,
                               allow_null=True),
     'etude_params': s.DictField(required=False, allow_null=True),
@@ -555,8 +579,10 @@ FromLayoutRequest = _ser('DevisFromLayoutRequest', {
     'layout': s.DictField(),
     'lead': s.IntegerField(required=False, allow_null=True),
     'client': s.IntegerField(required=False, allow_null=True),
-    'taux_tva': s.FloatField(required=False, allow_null=True),
-    'remise_globale': s.FloatField(required=False, allow_null=True),
+    # api-fuzz — la règle de ``domain/bornes.pourcentage_saisi`` : chaîne au
+    # motif 0-100 à 2 décimales OU nombre 0-100 (arrondi au centième).
+    'taux_tva': _pourcent_souple(),
+    'remise_globale': _pourcent_souple(),
     'structure_produit_id': s.IntegerField(required=False, allow_null=True),
     'structure_type': s.CharField(required=False, allow_blank=True,
                                   allow_null=True),
@@ -567,7 +593,15 @@ FromLayoutRequest = _ser('DevisFromLayoutRequest', {
 #: client : les deux règles sont PUBLIÉES sur cette opération seulement.
 CORPS_FROM_LAYOUT = corps_resserre({
     'type': 'object',
-    'properties': {'layout': {'type': 'object', 'minProperties': 1}},
+    # CI #997 fuzz (24/10) : taux de TVA et remise globale en pourcentage
+    # 0-100 (``-5.9e103`` répondait 400 « doit être compris entre 0 et 100 »).
+    'properties': {
+        'layout': {'type': 'object', 'minProperties': 1},
+        'taux_tva': {'type': 'number', 'nullable': True, 'minimum': 0,
+                     'maximum': 100},
+        'remise_globale': {'type': 'number', 'nullable': True, 'minimum': 0,
+                           'maximum': 100},
+    },
     'anyOf': [
         {'required': ['lead'],
          'properties': {'lead': {'type': 'integer', 'minimum': 1}}},
@@ -600,6 +634,19 @@ ErreurFromLayout = _ser('DevisErreurFromLayout', {
 #: manquant ») : au moins une clé, publiée.
 LayoutRequest = {'application/json': {'type': 'object', 'minProperties': 1,
                                       'additionalProperties': True}}
+#: CI #997 fuzz (24/10) : `sections` n'accepte QUE les clés de la liste fermée
+#: (toute autre = 400 « clés inconnues ») — un `inline_serializer` ne ferme pas
+#: l'objet ; les propriétés sont restatées car `additionalProperties: false`
+#: ne regarde que les `properties` de SON sous-schéma `allOf`.
+CORPS_SHARE_LINK = corps_resserre({'properties': {'sections': {
+    'properties': {cle: {} for cle in _SECTIONS_LIEN},
+    'additionalProperties': False}}})
+#: CI #997 fuzz (24/10) : un layout est un corps OBLIGATOIRE — un `request` en
+#: dict ne rend jamais le corps obligatoire (le fuzz l'omettait : « Layout
+#: manquant ou invalide. » = 400 sur un envoi « conforme »). `anyOf` à une
+#: branche, au sens de ``minProperties``, le rend obligatoire.
+CORPS_LAYOUT_OBLIGATOIRE = corps_resserre({'anyOf': [
+    {'type': 'object', 'minProperties': 1}]})
 LayoutResponse = _ser('DevisLayoutResponse', {
     'roof_layout': s.JSONField(allow_null=True),
 })
@@ -676,12 +723,55 @@ SimulerResponse = _ser('DevisSimulerResponse', {
 # ------------------------------------------------------------ atomic / lignes
 
 
+def _proprietes_etude_params(avec_jeton=True):
+    """CI #1001 (merge group) — le corps PATCH publie EXACTEMENT les clés que
+    ``domain/etude_schema.SCHEMA`` accepte de l'écran : les ENTRÉES non
+    exclusives, typées d'après ``type_attendu`` et nullables (``null`` retire la
+    clé). Une clé inconnue, dérivée, exclusive ou retirée est donc hors schéma
+    (400 attendu) — plus jamais « rejected schema-compliant ».
+
+    api-fuzz — un type ``(int,)`` seul se publie ``integer`` (le serveur refuse
+    ``2.5``) ; ``(int, float)`` reste ``number``. ``avec_jeton=False`` : le
+    jeton optimiste n'est pas une clé d'étude (il vit en tête du corps de
+    ``replace-lines``, jamais DANS ``etude_params``).
+    """
+    from ..domain import etude_schema as _es
+    _json = {str: {'type': 'string'}, int: {'type': 'number'}, float: {'type': 'number'},
+             bool: {'type': 'boolean'}, dict: {'type': 'object'}, list: {'type': 'array'}}
+    props = {}
+    for cle, regle in _es.SCHEMA.items():
+        if regle['nature'] != _es.ENTREE or regle['exclusif']:
+            continue
+        formes = []
+        for t in regle['type']:
+            f = dict(_json[t])
+            if t is int and float not in regle['type']:
+                f = {'type': 'integer'}
+            if f not in formes:
+                formes.append(f)
+        forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
+        props[cle] = {**forme, 'nullable': True}
+    if avec_jeton:
+        props['expected_updated_at'] = {'type': 'string', 'nullable': True}
+    return props
+
+
+#: api-fuzz — ``etude_params`` d'un corps de devis (``replace-lines``,
+#: ``atomic``) : la MÊME liste de clés que le PATCH ``etude-params``, fermée
+#: (``_valider_etude_ecran`` → ``etude_schema.valider`` refuse toute autre clé
+#: en 400 : « le schéma est la seule porte »).
+EtudeParamsEcran = extend_schema_field({
+    'type': 'object', 'nullable': True, 'additionalProperties': False,
+    'properties': _proprietes_etude_params(avec_jeton=False)})(
+    type('EtudeParamsEcran', (s.DictField,), {}))
+
+
 class DevisAtomic(DevisWriteSerializer):
     """Corps de ``POST /devis/atomic/`` : les champs d'en-tête du devis (comme
     ``POST /devis/``) + ``lignes`` (au moins une) + ``etude_params`` (écrit
     par l'écrivain unique d'étude, pas par le sérialiseur d'en-tête)."""
     lignes = s.ListField(child=s.DictField(), min_length=1)
-    etude_params = s.DictField(required=False, allow_null=True)
+    etude_params = EtudeParamsEcran(required=False, allow_null=True)
 
     class Meta(DevisWriteSerializer.Meta):
         fields = list(DevisWriteSerializer.Meta.fields) + ['lignes']
@@ -690,9 +780,24 @@ class DevisAtomic(DevisWriteSerializer):
 ReplaceLinesRequest = _ser('DevisReplaceLinesRequest', {
     'lignes': s.ListField(child=s.DictField(), min_length=1),
     'entete': s.DictField(required=False, allow_null=True),
-    'etude_params': s.DictField(required=False, allow_null=True),
+    'etude_params': EtudeParamsEcran(required=False, allow_null=True),
     'expected_updated_at': _JETON,
 })
+#: CI #997 fuzz (24/10) : ce que l'écrivain de lignes (``domain/lignes``) exige
+#: de CHAQUE ligne — une section / note porte un intitulé, toute autre ligne un
+#: produit (« Ligne sans produit valide. » = 400 sur un `DictField` libre).
+CORPS_REPLACE_LINES = corps_resserre({'properties': {'lignes': {'items': {
+    'type': 'object',
+    'anyOf': [
+        {'required': ['type_ligne', 'designation'],
+         'properties': {
+             'type_ligne': {'type': 'string', 'enum': ['section', 'note']},
+             'designation': {'type': 'string', 'pattern': r'\S'}}},
+        {'required': ['produit'],
+         'properties': {
+             'type_ligne': {'type': 'string', 'enum': ['produit']},
+             'produit': {'type': 'integer', 'minimum': 1}}},
+    ]}}}})
 
 # --------------------------------------------------------------- cycle de vie
 DeriveResponse = _ser('DevisDeriveResponse', {
@@ -782,11 +887,20 @@ SavePresetRequest = _ser('DevisSavePresetRequest', {
     'description': ChaineStricte(required=False, allow_blank=True),
 })
 
+#: Plus grande valeur d'un entier PostgreSQL 32 bits (``ordre``, clés).
+ENTIER_32_MAX = 2147483647
+#: api-fuzz — MIROIR de ``devis_cycle._LotCreationSerializer`` (qui valide ce
+#: corps) : mêmes types stricts, mêmes bornes (nom non blanc de 150 signes,
+#: adresse de 255, ``ordre`` et identifiants de ligne dans un entier 32 bits).
 LotCreationRequest = _ser('DevisLotCreationRequest', {
-    'nom_lot': s.CharField(),
-    'adresse_site': s.CharField(required=False, allow_blank=True),
-    'ordre': s.IntegerField(required=False),
-    'lignes': s.ListField(child=s.IntegerField(), required=False),
+    'nom_lot': ChaineStricte(max_length=150),
+    'adresse_site': ChaineStricte(max_length=255, required=False,
+                                  allow_blank=True, allow_null=True),
+    'ordre': EntierStrict(min_value=0, max_value=ENTIER_32_MAX,
+                          required=False, allow_null=True),
+    'lignes': s.ListField(
+        child=EntierStrict(min_value=1, max_value=ENTIER_32_MAX),
+        required=False, allow_null=True),
 })
 LotsResponse = _ser('DevisLotsResponse', {
     'lots': s.ListField(child=s.DictField()),
@@ -831,31 +945,6 @@ EtudeParamsGetResponse = _ser('DevisEtudeParamsResponse', {
     'etude_params': s.DictField(),
     'updated_at': s.CharField(required=False, allow_null=True),
 })
-
-
-def _proprietes_etude_params():
-    """CI #1001 (merge group) — le corps PATCH publie EXACTEMENT les clés que
-    ``domain/etude_schema.SCHEMA`` accepte de l'écran : les ENTRÉES non
-    exclusives, typées d'après ``type_attendu`` et nullables (``null`` retire la
-    clé). Une clé inconnue, dérivée, exclusive ou retirée est donc hors schéma
-    (400 attendu) — plus jamais « rejected schema-compliant ».
-    """
-    from ..domain import etude_schema as _es
-    _json = {str: {'type': 'string'}, int: {'type': 'number'}, float: {'type': 'number'},
-             bool: {'type': 'boolean'}, dict: {'type': 'object'}, list: {'type': 'array'}}
-    props = {}
-    for cle, regle in _es.SCHEMA.items():
-        if regle['nature'] != _es.ENTREE or regle['exclusif']:
-            continue
-        formes = []
-        for t in regle['type']:
-            f = dict(_json[t])
-            if f not in formes:
-                formes.append(f)
-        forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
-        props[cle] = {**forme, 'nullable': True}
-    props['expected_updated_at'] = {'type': 'string', 'nullable': True}
-    return props
 
 
 EtudeParamsPatchRequest = {
@@ -1041,7 +1130,7 @@ FacturerVenteApercu = _ser('DevisFacturerVenteApercu', {
     'vente': FacturerVenteMontants,
 })
 ErreurFacturerVente = _ser('DevisFacturerVenteErreur', {
-    'detail': s.CharField(),
+    'detail': s.CharField(required=False),
     'code': s.CharField(required=False),
 })
 GenererFactureRequest = _ser('DevisGenererFactureRequest', {
@@ -1053,10 +1142,20 @@ GenererFactureRequest = _ser('DevisGenererFactureRequest', {
 
 # ========================================================= ENF11 — facturation
 # Bons de commande, factures, paiements, avoirs : corps et réponses RÉELS.
+@extend_schema_field({'anyOf': [
+    {'type': 'string', 'format': 'decimal', 'pattern': MOTIF_MONTANT_SAISI},
+    {'type': 'number', 'minimum': 0.01, 'maximum': 9999999999.99}]})
+class _QuantiteLivree(s.DecimalField):
+    """CI #997 fuzz (24/10) — quantité livrée STRICTEMENT positive, 2 décimales
+    au plus, en chaîne ou en nombre : la règle réellement appliquée par
+    ``bon_commande._erreur_lignes_livraison`` (le schéma annonçait tout
+    décimal et ``"-36.2"`` répondait 400)."""
+
+
 LigneLivraison = _ser('BonCommandeLigneLivraison', {
-    'ligne_devis': s.IntegerField(),
-    'quantite': s.DecimalField(max_digits=12, decimal_places=2,
-                               min_value=Decimal('0.01')),
+    'ligne_devis': s.IntegerField(min_value=1, max_value=2147483647),
+    'quantite': _QuantiteLivree(max_digits=12, decimal_places=2,
+                                min_value=Decimal('0.01')),
 })
 LivrerPartielRequest = _ser('BonCommandeLivrerPartielRequest', {
     'lignes': s.ListField(child=LigneLivraison, min_length=1),
@@ -1147,7 +1246,9 @@ ErreurRetenue = _ser('FactureErreurChamp', {
     'action_attendue': s.CharField(required=False),
 })
 EnvoyerEmailFactureRequest = _ser('FactureEnvoyerEmailRequest', {
-    'to_email': ChaineStricte(required=False, allow_blank=True),
+    # CI #997 fuzz (24/10) : une adresse (ou vide = celle du client) — publiée
+    # `format: email` ; ``"û"`` était « conforme » puis refusé à l'envoi (400).
+    'to_email': s.EmailField(required=False, allow_blank=True),
     'sujet': ChaineStricte(required=False, allow_blank=True),
     'corps': ChaineStricte(required=False, allow_blank=True),
     'attach_pdf': BooleenStrict(required=False),
@@ -1199,7 +1300,10 @@ _PourcentLigne = _decimal_publie(_MOTIF_POURCENT)
 #: (``LigneDevisSerializer.validate`` + garde ``domain/bornes``) publiées sur
 #: ``devis-lignes`` : quantité / prix >= 0, remise 0-100, et un taux de TVA à
 #: 0 % porte sa base légale (AGR217).
-_ZERO_DECIMAL = r'^0*(?:\.0*)?$'
+#: ``-0`` / ``-0.00`` valent zéro pour le serveur (``Decimal('-0') == 0``) : le
+#: signe est dans le motif, sinon ``"-0"`` était publié « taux non nul » (pas de
+#: base légale requise) puis refusé en 400 (api-fuzz, PATCH devis-lignes).
+_ZERO_DECIMAL = r'^-?0*(?:\.0*)?$'
 _REGLES_LIGNE_DEVIS = {
     'properties': {
         'quantite': {'type': 'string', 'pattern': _MOTIF_POSITIF},
@@ -1474,9 +1578,17 @@ OffreTailleConfigRequest = {
                                     'maximum': 500},
                     'batterie_nb_modules': {'type': 'integer', 'minimum': 0,
                                             'maximum': 100},
-                    'equipements': {'type': 'object',
-                                    'additionalProperties': {
-                                        'type': 'integer'}},
+                    # CI #997 fuzz (24/10) : les rôles de composition connus,
+                    # rien d'autre (« Rôle de composition inconnu. » = 400
+                    # sur une clé pourtant conforme à un `additionalProperties`
+                    # libre) ; le produit est une clé primaire (>= 1).
+                    'equipements': {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'properties': {
+                            role: {'type': 'integer', 'minimum': 1}
+                            for role in ROLES_AUTO_COMPOSITION},
+                    },
                 },
             },
         },

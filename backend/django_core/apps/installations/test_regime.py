@@ -138,6 +138,23 @@ class TestRegimeSuggestionEndpoint(TestCase):
             self.assertEqual(r.status_code, 400, r.data)
             self.assertIn(champ, r.data)
 
+    def test_endpoint_parametres_publies_lus_strictement(self):
+        # api-fuzz full : nombre >= 0 et énumérations publiés = lus (« false »,
+        # un négatif, un niveau/type inconnu étaient acceptés en silence).
+        url = '/api/django/installations/chantiers/regime-suggestion/'
+        for params, champ in (
+                ({'kwc': 'false'}, 'kwc'), ({'kwc': '-1'}, 'kwc'),
+                ({'kwc': '1_0'}, 'kwc'), ({'kw_ac': '-0.5'}, 'kw_ac'),
+                ({'hors_reseau': 'garbage'}, 'hors_reseau'),
+                ({'niveau': 'xx'}, 'niveau'),
+                ({'type_installation': 'xx'}, 'type_installation')):
+            r = self.api.get(url, params)
+            self.assertEqual(r.status_code, 400, (params, r.content))
+            self.assertIn(champ, r.json())
+        r = self.api.get(url, {'kwc': '', 'niveau': 'bt', 'hors_reseau': 'non',
+                               'type_installation': 'residentiel'})
+        self.assertEqual(r.status_code, 200, r.content)
+
     def test_endpoint_kw_ac_et_type(self):
         url = '/api/django/installations/chantiers/regime-suggestion/'
         r = self.api.get(url, {'kwc': '12', 'kw_ac': '10'})

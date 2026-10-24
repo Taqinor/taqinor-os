@@ -253,7 +253,8 @@ class LeadVisitesActionsMixin:
         })
 
     @extend_schema(request=sd.corps('CrmPlanifierVisiteRequest', commercial=serializers.IntegerField(required=False),
-                                    date_prevue=serializers.DateField(), etape=serializers.CharField(required=False),
+                                    date_prevue=serializers.DateField(),
+                                    etape=serializers.RegexField(r'^[0-9]+$', required=False),
                                     note_etape=serializers.CharField(required=False),
                                     notes=serializers.CharField(required=False),
                                     replanifier=serializers.BooleanField(required=False)),
@@ -322,10 +323,12 @@ class LeadVisitesActionsMixin:
                                   company=request.user.company)
                           .first())
             if commercial is None:
+                # Nocturne 24/10 : identifiant bien formé inconnu = 404 (corps
+                # inchangé : l'exemple du contrat ``lead_visite_planifier``).
                 return Response(
                     {'commercial': ['Utilisateur inconnu dans votre '
                                     'société.']},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
 
         # SUIVI E18 — la touche qui a demandé la planification : une touche
         # de CE lead (donc de la société de l'appelant, ``get_object`` étant
@@ -333,12 +336,18 @@ class LeadVisitesActionsMixin:
         etape = None
         brut_etape = request.data.get('etape')
         if brut_etape not in (None, '', 0):
-            if str(brut_etape).isdigit():
+            numerique = (str(brut_etape).isascii() and str(brut_etape).isdigit()
+                         and len(str(brut_etape)) <= 18)
+            if numerique:
                 etape = lead.relance_etapes.filter(pk=int(brut_etape)).first()
             if etape is None:
+                # Nocturne 24/10 : le schéma publie ``^[0-9]+$`` — un
+                # identifiant bien formé inconnu de ce lead est un 404, un
+                # texte qui n'en est pas un reste un 400.
                 return Response(
                     {'etape': ['Étape de relance inconnue sur ce lead.']},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=(status.HTTP_404_NOT_FOUND if numerique
+                            else status.HTTP_400_BAD_REQUEST))
         replanifier = request.data.get('replanifier') in (
             True, 'true', 'True', '1', 1)
         # COCKPIT-CONTRÔLE B8 — l'échéance que la touche avait au moment où on

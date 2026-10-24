@@ -70,6 +70,8 @@ PRODUIT_XOR_SOUS_KIT = {'anyOf': [
         'composant_kit': {'type': 'integer'}, 'produit': {'nullable': True, 'enum': [None]}}},
 ]}
 MOTIF_TAUX_0_100 = r'^(?:\d{1,2}(?:\.\d{1,2})?|\.\d{1,2})$'
+#: Taux de TVA d'une ligne de facture : 0..100 inclus (``TauxTvaLigne``).
+MOTIF_TAUX_TVA_LIGNE = r'^(?:100(?:\.0{0,2})?|\d{1,2}(?:\.\d{0,2})?|\.\d{1,2})$'
 
 #: CI #997 fuzz (4) — profil saisonnier (``creer_profil_saisonnier``) : UNE cible,
 #: un produit OU une catégorie, jamais les deux ni aucune.
@@ -139,11 +141,14 @@ _STRICT_POSITIF = {'anyOf': [
     {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True},
     {'type': 'string', 'pattern': r'^(?:0*[1-9]\d*(?:[.,]\d+)?|0*[.,]\d*[1-9]\d*)$'}]}
 CHAMPS_JSON_PRODUIT = {
-    # Objet ; ses séries (débits STRICTEMENT croissants, HMT non croissante,
-    # mêmes longueurs, >= 2 points) ne s'expriment pas en JSON Schema : la
-    # règle est dite en description et par l'exemple (seule valeur générée).
+    # Objet à deux séries de nombres >= 0 (>= 2 points) publiées ; leurs règles
+    # croisées (débits STRICTEMENT croissants, HMT non croissante, mêmes longueurs)
+    # ne s'expriment pas en JSON Schema : dites en description, refusées en 409.
     'courbe_pompe': {
-        'type': 'object', 'nullable': True,
+        'type': 'object', 'nullable': True, 'required': ['debits_m3h', 'hmt_m'],
+        'properties': {
+            'debits_m3h': {'type': 'array', 'minItems': 2, 'items': {'type': 'number', 'minimum': 0}},
+            'hmt_m': {'type': 'array', 'minItems': 2, 'items': {'type': 'number', 'minimum': 0}}},
         'description': ('{"debits_m3h": [...], "hmt_m": [...]} : >= 2 points, débits '
                         'STRICTEMENT croissants, HMT non croissante, mêmes longueurs, valeurs >= 0.'),
         'example': {'debits_m3h': [0, 12], 'hmt_m': [91, 85]}},
@@ -187,15 +192,25 @@ CONTRAINTES = {
     'PatchedPaiementFournisseurRequest': {'montants_positifs': ['montant']},
     # ERR-ENF11-FUZZ-STOCK (CI #997) — fiche technique : les bornes que les
     # validateurs du modèle appliquent et qu'une chaîne décimale ne porte pas.
-    # Rendements 1–100 % (1 décimale), C-rate ≥ 0,01, `lim_phases` = 1 ou 3.
+    # Rendements 1–100 % (1 décimale), C-rate ≥ 0,01, conso de nuit ≥ 0, `lim_phases` = 1 ou 3.
     'FicheTechniqueRequest': {
         'pourcentages_1_100': ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
         'montants_positifs': ['bat_c_rate_charge', 'bat_c_rate_decharge'],
+        'montants_non_negatifs': ['ond_conso_nuit_w'],
         'remplacer': {'lim_phases': PHASES_LIMITEUR}},
     'PatchedFicheTechniqueRequest': {
         'pourcentages_1_100': ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
         'montants_positifs': ['bat_c_rate_charge', 'bat_c_rate_decharge'],
+        'montants_non_negatifs': ['ond_conso_nuit_w'],
         'remplacer': {'lim_phases': PHASES_LIMITEUR}},
+    'LigneFactureFournisseurRequest': {'motifs': {'taux_tva': MOTIF_TAUX_TVA_LIGNE}},
+    # NTWMS12 — `mode` = ModeLiberation ; AUTO_SEUIL exige un seuil de lignes >= 1.
+    'VagueConfigurerLiberationCorpsRequest': {
+        'remplacer': {'mode': {'type': 'string', 'enum': ['manuel', 'auto_heure', 'auto_seuil']}},
+        'racine': {'anyOf': [
+            {'properties': {'mode': {'enum': ['manuel', 'auto_heure']}}},
+            {'required': ['seuil_lignes'], 'properties': {
+                'mode': {'enum': ['auto_seuil']}, 'seuil_lignes': {'type': 'integer', 'minimum': 1}}}]}},
     'FournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
     'PatchedFournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
     # CI #997 fuzz — `prix_achat` : la fiche produit l'envoie en NOMBRE JSON
@@ -313,6 +328,10 @@ def declarer_contraintes_achats(result, generator=None, request=None,
             if isinstance(propriete, dict) and propriete.get('pattern'):
                 propriete['pattern'] = _motif_decimal_positif(
                     propriete['pattern'])
+        for champ in regles.get('montants_non_negatifs') or ():  # `>= 0` : motif sans signe
+            propriete = proprietes.get(champ)
+            if isinstance(propriete, dict) and propriete.get('pattern'):
+                propriete['pattern'] = propriete['pattern'].replace('^-?', '^', 1)
         for champ, motif in (regles.get('motifs') or {}).items():
             if isinstance(proprietes.get(champ), dict):
                 _branche_chaine(proprietes[champ])['pattern'] = motif

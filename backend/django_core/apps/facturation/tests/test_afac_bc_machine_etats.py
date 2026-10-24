@@ -181,7 +181,7 @@ class BcMachineEtatsTests(TestCase):
         bc = self._bc(devis)
         self.assertEqual(self._partiel(bc, self.ligne, '4').status_code, 200)
         r = self.api.post(self._url(bc, 'annuler'))
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # refus d'état (api-fuzz-full 24/10)
         bc.refresh_from_db()
         self.assertEqual(bc.statut, 'confirme')
         self.assertEqual(self._sorti(self.panneau, [bc.reference]), 4)

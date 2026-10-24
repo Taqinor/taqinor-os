@@ -81,6 +81,38 @@ class TestDefinitions(CFBase):
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.json()['options'], ['A', 'B'])
 
+    def test_module_et_regle_de_type_publies_sans_empilement(self):
+        # api-fuzz-full 24/10 (« Too many generated examples are filtered
+        # out ») : ``module`` = UN motif borné (plus anyOf + énumération +
+        # motif DRF + longueurs) ; la règle dépendant du ``type`` = UN anyOf.
+        import re
+
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.customfields import urls as cf_urls
+        from apps.customfields.serializers import corps_definition_resserre
+        regle = corps_definition_resserre()
+        self.assertEqual(list(regle), ['anyOf'])
+        self.assertEqual(len(regle['anyOf']), 4)
+        schema = SchemaGenerator(patterns=[
+            path('api/django/custom-fields/', include(cf_urls)),
+        ]).get_schema(request=None, public=True)
+        module = schema['components']['schemas']['CustomFieldDefRequest'][
+            'properties']['module']
+        self.assertNotIn('anyOf', module)
+        motif = re.compile(module['pattern'])
+        for ok in ('lead', 'devis', 'custom:a', 'custom:' + 'a' * 13):
+            self.assertTrue(motif.fullmatch(ok), ok)
+        for ko in ('', 'inconnu', 'custom:', 'custom:' + 'a' * 14, 'custom:\x00'):
+            self.assertFalse(motif.fullmatch(ko), ko)
+        # Ce que le motif annonce, le serveur l'accepte.
+        for ok in ('lead', 'custom:' + 'a' * 13):
+            resp = self.api.post('/api/django/custom-fields/definitions/', {
+                'module': ok, 'code': 'm_' + ok[-3:].replace(':', 'x'),
+                'libelle': 'L', 'type': 'text'}, format='json')
+            self.assertEqual(resp.status_code, 201, (ok, resp.content))
+
     def test_scoped_to_company(self):
         other = Company.objects.create(slug='cf-other', nom='Autre')
         CustomFieldDef.objects.create(company=other, module='lead',

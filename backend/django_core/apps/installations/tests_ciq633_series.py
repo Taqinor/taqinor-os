@@ -36,6 +36,33 @@ class SeriesCITests(TestCase):
             ])
         self.url = f'{BASE}/chantiers/{self.inst.id}/series-lot/'
 
+    def test_series_lot_corps_hors_schema_400_jamais_500(self):
+        # api-fuzz full : `non_releves` entier, lignes non objets, NUL.
+        for corps in ({'non_releves': 22237}, {'lignes': [1, None]},
+                      {'lignes': [{'produit': [1], 'numero_serie': 'S'}]},
+                      {'texte': 'a\x00b'}, {'produit': 'abc'}):
+            r = self.api.post(self.url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+
+    def test_serie_trop_longue_resultat_erreur_sans_500(self):
+        r = self.api.post(self.url, {'texte': 'S' * 130 + ';C1',
+                                     'produit': self.module.id},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['resultats'][0]['statut'], 'erreur')
+
+    def test_cocher_checklist_corps_hors_schema_400(self):
+        url = f'{BASE}/chantiers/{self.inst.id}/cocher-checklist/'
+        cle = ensure_checklist_items(self.inst)[0].cle
+        for corps in ({}, {'cle': ['x']}, {'cle': cle, 'fait': 'oui'},
+                      {'cle': cle, 'equipements': {'produit': 1}},
+                      {'cle': cle, 'equipements': [{'produit': [1]}]},
+                      {'cle': 'a\x00b'}):
+            r = self.api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        r = self.api.post(url, {'cle': 'inconnue'}, format='json')
+        self.assertEqual(r.status_code, 404, r.content)
+
     def test_doublon_dans_un_lot_de_trois_sans_500(self):
         Equipement.objects.create(company=self.company, produit=self.module,
                                   numero_serie='S-2')

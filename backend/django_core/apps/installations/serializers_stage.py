@@ -83,10 +83,12 @@ class CautionTotaleMixin:
         quantite = attrs.get('quantite', getattr(self.instance, 'quantite', 0))
         caution = attrs.get(
             'caution_unitaire', getattr(self.instance, 'caution_unitaire', 0))
-        if (quantite or 0) * Decimal(caution or 0) >= Decimal(10) ** 10:
+        if abs((quantite or 0) * Decimal(caution or 0)) >= Decimal(10) ** 10:
             champ = ('caution_unitaire' if 'caution_unitaire' in attrs
                      else 'quantite')
-            raise serializers.ValidationError(
+            # Regle d'ENSEMBLE (produit des deux champs) que le schema ne peut
+            # pas exprimer : 409, jamais un 400 sur une requete conforme.
+            raise ConflitEtat(
                 {champ: ['Caution totale trop elevee '
                          '(quantite x caution unitaire).']})
         return attrs

@@ -64,16 +64,27 @@ class StandardPagination(PageNumberPagination):
     max_page_size = 200
 
     def get_page_size(self, request):
+        # ERR-ENF11-FUZZ-PAGE-SIZE — entier conforme TOUJOURS accepté (0 ou
+        # négatif → taille par défaut, au-delà du plafond → plafond) : aucun
+        # minimum n'est publié pour page_size (règle de main, 55f6cd28e).
         valider_parametre_entier(request, self.page_size_query_param)
         return super().get_page_size(request)
 
+    def get_schema_operation_parameters(self, view):
+        # Publie `minimum: 1` sur ``page`` (0 répond 404, statut déclaré) ;
+        # ``page_size`` reste un entier libre, comme le serveur l'applique.
+        params = super().get_schema_operation_parameters(view)
+        for p in params:
+            if p.get('name') == self.page_query_param:
+                p.setdefault('schema', {})['minimum'] = 1
+        return params
+
     def paginate_queryset(self, queryset, request, view=None):
-        # ``page`` répété → 400 ; ``page`` non entier garde le 404 « Page non
-        # valide » de DRF (déjà documenté, déjà un refus).
-        if len(request.query_params.getlist(self.page_query_param)) > 1:
-            raise ValidationError({self.page_query_param: [
-                f'Le paramètre « {self.page_query_param} » ne doit figurer '
-                "qu'une fois."]})
+        # ``page`` répété ou NON ENTIER → 400 (nocturne 24/10/2026, api-fuzz-full :
+        # 205 constats « accepted schema-violating » — DRF lit ``?page=`` vide
+        # comme la page 1 alors que le schéma publie un entier). Un entier hors
+        # plage garde le 404 « Page non valide » de DRF.
+        valider_parametre_entier(request, self.page_query_param)
         return super().paginate_queryset(queryset, request, view)
 
 

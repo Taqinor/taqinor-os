@@ -57,9 +57,15 @@ class FG23SecurityEventsTest(TestCase):
         levait une 500) ; > 500 reste plafonné, valeur valide inchangée."""
         for url in ('/api/django/audit/security/',
                     '/api/django/audit/portail/'):
-            for bad in ('-29404', '0', 'abc'):
+            # api-fuzz full 24/10 : vide ou répété = hors schéma (400).
+            for bad in ('-29404', '0', 'abc', '', '5&limit=6'):
                 r = self.api.get(url + '?limit=' + bad)
                 self.assertEqual(r.status_code, 400, (url, bad, r.content))
+            # ``search`` porteur d'un caractère nul levait PostgreSQL (500) :
+            # aucune ligne ne peut correspondre → liste vide (règle de core).
+            r = self.api.get(url + '?search=%00x')
+            self.assertEqual(r.status_code, 200, (url, r.content))
+            self.assertEqual(r.data['results'], [])
             self.assertEqual(self.api.get(url + '?limit=9999').status_code, 200)
         r = self.api.get('/api/django/audit/security/?limit=1')
         self.assertEqual(r.status_code, 200)

@@ -70,6 +70,19 @@ class BcfAchatsCommanderTests(TestCase):
         return BonCommandeFournisseur.objects.filter(
             company=self.company).count()
 
+    def test_commander_besoin_corps_et_etat(self):
+        # api-fuzz full : id inconnu = 404, corps mal formé = 400 (500 sur un
+        # objet/liste en `fournisseur`), aucun manque = refus d'ÉTAT (409).
+        api = self._api(self.admin)
+        url = f'{BASE}/chantiers/{self.chantier.id}/commander-besoin/'
+        r = api.post(url, {'fournisseur': 999999}, format='json')
+        self.assertEqual(r.status_code, 404, r.content)
+        for corps in ({'fournisseur': [1]}, {'fournisseur': 'abc'}):
+            r = api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        r = api.post(url, {'fournisseur': self.fournisseur.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
     def test_technicien_refuse_partout(self):
         api = self._api(self.tech)
         avant = self._nb_bcf()

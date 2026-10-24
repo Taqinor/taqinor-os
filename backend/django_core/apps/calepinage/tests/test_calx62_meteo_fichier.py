@@ -451,7 +451,7 @@ class RouteEnregistreeTest(SimpleTestCase):
         self.assertEqual(
             [parseur.__name__
              for parseur in action.kwargs['parser_classes']],
-            ['MultiPartParser', 'FormParser'])
+            ['MultiPartParser'])
 
 
 class ContratCommitteTest(SimpleTestCase):

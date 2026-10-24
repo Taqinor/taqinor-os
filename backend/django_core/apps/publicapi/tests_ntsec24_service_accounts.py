@@ -73,6 +73,24 @@ class ServiceAccountEndpointTests(TenantAPITestCase):
             f'{self.URL}{sa_id}/', {'scopes': None}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
 
+    def test_expiration_passee_409(self):
+        """api-fuzz full 24/10 — ``0192-12-23T…`` était enregistrée puis rendue
+        avec un décalage historique hors RFC 3339 : expiration passée = 409
+        (création ET modification) ; une expiration future est acceptée."""
+        from datetime import timedelta
+        from django.utils import timezone
+        r = self._admin().post(self.URL, {
+            'nom': 'bot', 'expire_le': '0192-12-23T16:17:26.4+20:34'},
+            format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        futur = (timezone.now() + timedelta(days=30)).isoformat()
+        r = self._admin().post(
+            self.URL, {'nom': 'bot', 'expire_le': futur}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = self._admin().patch(f'{self.URL}{r.json()["id"]}/', {
+            'expire_le': '2001-01-01T00:00:00Z'}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+
     def test_non_admin_forbidden(self):
         r = self.client_as().post(self.URL, {'nom': 'bot'}, format='json')
         self.assertEqual(r.status_code, 403)

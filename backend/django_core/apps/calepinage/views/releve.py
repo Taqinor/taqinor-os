@@ -27,7 +27,7 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from core.champs_stricts import DateStricte
+from core.champs_stricts import ChaineStricte, DateStricte
 from core.conflit_etat import ConflitEtat
 
 from ..permissions import PeutGererCalepinage, PeutLireOuEcrireCalepinage
@@ -49,7 +49,7 @@ class ReleveTerrainMixin:
         request=inline_serializer('CalepinageReleveCorps', {
             # ENF11 — la date est OBLIGATOIRE et s'écrit AAAA-MM-JJ (publié).
             'releve_le': DateStricte(),
-            'notes': serializers.CharField(required=False, allow_blank=True),
+            'notes': ChaineStricte(required=False, allow_blank=True),
             'chaines': serializers.JSONField(required=False)}),
         responses={201: _FORME_RELEVE})
     @action(detail=True, methods=['get', 'post'], url_path='releve',
@@ -93,7 +93,7 @@ class ReleveTerrainMixin:
             location=OpenApiParameter.PATH,
             description="Identifiant du relevé terrain (sous-ressource).")],
         request=inline_serializer('CalepinageReleveModifCorps', {
-            'notes': serializers.CharField(required=False, allow_blank=True),
+            'notes': ChaineStricte(required=False, allow_blank=True),
             'chaines': serializers.JSONField(required=False)}),
         responses={200: _FORME_RELEVE, 204: None})
     @action(detail=True, methods=['patch', 'delete'],

@@ -529,6 +529,11 @@ _FICHIERS_VALIDES = (
     # = « Aucune image fournie » (400). Sans clé OCR, le serveur répond 503.
     (re.compile(r'^/api/django/crm/leads/scan-carte/$'), {'POST'},
      {'file': _PNG_MINIMAL}),
+    # ERR-ENF11-FUZZ-CRM — note de lead avec pièce jointe (multipart) : le
+    # fichier est lu par ``store_attachment`` (octets magiques) ; la règle
+    # « texte OU fichier » rend le fichier seul conforme au schéma.
+    (re.compile(r'^/api/django/crm/leads/\{[^/]+\}/noter/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
     # ERR-ENF11-FUZZ-CRM — « pièce reçue » en multipart : le fichier facultatif
     # est lu par ``store_attachment`` (octets magiques), jamais des octets vides.
     (re.compile(r'^/api/django/crm/relance-etapes/\{[^/]+\}/piece-recue/$'), {'POST'},
@@ -652,6 +657,24 @@ def _schema_corps_resolu(schema):
     if isinstance(reference, str):
         return (schema.get('x-bundled') or {}).get(
             reference.rsplit('/', 1)[-1], schema)
+    # Règle de racine (``x-corps-resserre``, ``core.openapi_erreurs``) : le
+    # corps devient ``{'allOf': [<corps>, <règle>]}`` — les champs binaires
+    # vivent dans le membre ``$ref`` ; sans cette fusion, un fichier de
+    # formulaire partait SANS nom (champ texte pour Django : « Note vide. »
+    # sur ``POST crm/leads/{id}/noter/``, requête pourtant conforme).
+    membres = schema.get('allOf') if isinstance(schema, dict) else None
+    if isinstance(membres, list):
+        regroupe = schema.get('x-bundled')
+        proprietes = {}
+        for membre in membres:
+            if regroupe is not None and isinstance(membre, dict):
+                membre = {**membre, 'x-bundled': regroupe}
+            membre = _schema_corps_resolu(membre)
+            if isinstance(membre, dict) and isinstance(
+                    membre.get('properties'), dict):
+                proprietes.update(membre['properties'])
+        if proprietes:
+            return {'type': 'object', 'properties': proprietes}
     return schema
 
 

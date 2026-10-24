@@ -455,6 +455,17 @@ class DevisFacturationActionsMixin:
             proforma = create_with_reference(
                 ProformaDocument, 'PF', company, _rendre_puis_creer,
                 period='monthly')
+        except (TypeError, ValueError, ArithmeticError, KeyError,
+                AttributeError) as exc:
+            # CI #997 fuzz (24/10) : une donnée du DEVIS (ligne sans quantité
+            # ni prix, nombre absent…) fait échouer le rendu — la requête est
+            # conforme, c'est l'état du devis qui s'oppose : 409, plus 500.
+            # Rien n'est enregistré (le rendu précède la création, QJR19).
+            logger.warning(
+                "devis_facturation.DevisFacturationActionsMixin.proforma_pdf "
+                ": rendu impossible sur les données du devis", exc_info=True)
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(f'PDF indisponible : {exc}')
         except Exception as exc:
             logger.warning(
                 "devis_facturation.DevisFacturationActionsMixin.proforma_pdf "

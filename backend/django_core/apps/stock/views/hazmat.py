@@ -8,7 +8,8 @@ from authentication.permissions import (
 )
 from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
-from ..openapi_helpers import INT, P, STR
+from ..openapi_helpers import ID_OU_VIDE, P, STR
+from ..utils.params import id_requete_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import CompatibiliteHazmatCasier, Produit
@@ -39,7 +40,7 @@ class CompatibiliteHazmatCasierSerializer(IdInconnu404Mixin, CompanyScopedRelati
         return value
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('bin', INT), P('classe_danger', STR)]))
+@extend_schema_view(list=extend_schema(parameters=[P('bin', ID_OU_VIDE), P('classe_danger', STR)]))
 class CompatibiliteHazmatCasierViewSet(CompanyScopedModelViewSet):
     """CRUD des casiers autorisés par classe de danger.
 
@@ -63,7 +64,7 @@ class CompatibiliteHazmatCasierViewSet(CompanyScopedModelViewSet):
         # Filtrage MANUEL : aucun DjangoFilterBackend n'est branché ici, donc
         # `filterset_fields` serait un no-op silencieux.
         qs = super().get_queryset()
-        bin_id = self.request.query_params.get('bin')
+        bin_id = id_requete_ou_400(self.request, 'bin')
         if bin_id:
             qs = qs.filter(bin_id=bin_id)
         classe = self.request.query_params.get('classe_danger')

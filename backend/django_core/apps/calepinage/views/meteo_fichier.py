@@ -54,7 +54,7 @@ from uuid import uuid4
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import MultiPartParser
 from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
@@ -264,7 +264,7 @@ _FICHIER_RETENU_OU_NULL = {
         url_path='meteo-fichier',
         url_name='meteo-fichier',
         permission_classes=[PeutLireOuEcrireCalepinage],
-        parser_classes=[MultiPartParser, FormParser],
+        parser_classes=[MultiPartParser],
         renderer_classes=[_RenduJsonNull])
 def meteo_fichier(self, request, pk=None):
     """CALX62 — ``POST /calepinages/<pk>/meteo-fichier/``.

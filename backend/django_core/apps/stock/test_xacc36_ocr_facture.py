@@ -191,6 +191,14 @@ class TestDepuisOcrEndpoint(Xacc36Base):
         motif = re.compile(_REGEX_OBJET_JSON_PLAT)
         self.assertIsNone(motif.search('0'))
         self.assertIsNone(motif.search('{"a":}'))
+        # api-fuzz : tout ce que le motif admet est du JSON lisible (blancs \x0b/\x0c
+        # et zéros de tête exclus — ``json.loads`` les refuse).
+        for texte in ('{\x0b\x0c\r        }', '{"a": 01}', '{"a": 1}\x0b'):
+            self.assertIsNone(motif.search(texte), repr(texte))
+        import json
+        for texte in ('{\t\n\r }', '{"a": 0, "b": -10.5}'):
+            self.assertIsNotNone(motif.search(texte), repr(texte))
+            json.loads(texte)
         for texte in ('{}', ' {"numero": "F-1", "montant_ttc": 12.5, "x": null} '):
             self.assertIsNotNone(motif.search(texte), texte)
             resp = self.api.post(

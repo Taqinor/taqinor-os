@@ -6,6 +6,8 @@ attestation/révocation. Une révocation retire le rôle via
 """
 from __future__ import annotations
 
+import re
+
 from django.utils import timezone
 
 
@@ -14,7 +16,13 @@ def users_in_scope(campaign):
     from authentication.models import CustomUser
     qs = CustomUser.objects.filter(company=campaign.company, is_active=True)
     if campaign.perimetre == campaign.Perimetre.ROLE and campaign.perimetre_ref:
-        qs = qs.filter(role_id=campaign.perimetre_ref)
+        # api-fuzz-full 24/10 : le schéma publie ``perimetre_ref`` comme un
+        # texte libre ; un identifiant de rôle illisible (ou hors entier 32
+        # bits) ne désigne aucun rôle -> périmètre vide, jamais un 400/500.
+        ref = campaign.perimetre_ref
+        if not re.fullmatch(r'[0-9]{1,10}', ref) or int(ref) > 2147483647:
+            return qs.none()
+        qs = qs.filter(role_id=int(ref))
     return qs
 
 

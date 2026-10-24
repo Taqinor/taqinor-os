@@ -38,6 +38,8 @@ tracé (``rapprocher_pesee_reception``), jamais une écriture silencieuse.
 from decimal import Decimal, ROUND_HALF_UP
 import logging
 
+from .erreurs_achats import EtatIncompatible
+
 logger = logging.getLogger(__name__)
 
 
@@ -191,14 +193,14 @@ def rapprocher_pesee_reception(*, reception, user=None, note=None):
     from .services import record_stock_movement
 
     if reception.statut != ReceptionFournisseur.Statut.CONFIRME:
-        raise ValueError(
+        raise EtatIncompatible(
             'Le rapprochement de pesée ne concerne qu\'une réception '
             'confirmée.')
 
     reference = reference_rapprochement(reception)
     if MouvementStock.objects.filter(
             company=reception.company, reference=reference).exists():
-        raise ValueError(
+        raise EtatIncompatible(
             'Les écarts de pesée de cette réception ont déjà été rapprochés.')
 
     result = {'ajustes': 0, 'inchanges': 0, 'mouvements': []}

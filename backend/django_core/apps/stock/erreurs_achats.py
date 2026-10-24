@@ -13,6 +13,7 @@ attrapent ``ValueError`` continuent de fonctionner) que les vues traduisent en
 serializer, là où un ``ValidationError`` donnerait un 400.
 """
 from contextlib import contextmanager
+from decimal import Decimal
 
 from django.db import DataError, transaction
 from rest_framework import status
@@ -87,8 +88,13 @@ class IdInconnu404LignesMixin(IdInconnu404Mixin):
             not reste or _ids_inconnus_seulement(reste, self.fields))
 
 
+_MESSAGE_COMPTEUR = (
+    'Quantité impossible à enregistrer : le stock du produit ou du '
+    'casier dépasserait la capacité de son compteur.')
+
+
 @contextmanager
-def debordement_compteur_en_409():
+def debordement_compteur_en_409(message=_MESSAGE_COMPTEUR):
     """CI #997 fuzz (3) — écriture de stock dans un point de sauvegarde : un
     compteur entier (``quantite_stock``, casier, emplacement) qui DÉBORDERAIT
     sa colonne (SQLSTATE 22003) répond 409 nommé — c'est le niveau déjà
@@ -102,6 +108,67 @@ def debordement_compteur_en_409():
         cause = exc.__cause__
         if (getattr(cause, 'pgcode', None) or getattr(cause, 'sqlstate', None)) != _SQLSTATE_HORS_PLAGE:
             raise
-        raise ConflitEtat(
-            'Quantité impossible à enregistrer : le stock du produit ou du '
-            'casier dépasserait la capacité de son compteur.')
+        raise ConflitEtat(message)
+
+
+#: Plus grand total de ligne / de document que ``total_achat`` sait servir
+#: (``DecimalField(max_digits=14, decimal_places=2)``).
+PLAFOND_MONTANT = Decimal('999999999999.99')
+#: Plus grand prix unitaire d'une colonne ``max_digits=10, decimal_places=2``.
+PLAFOND_PRIX = Decimal('99999999.99')
+
+MESSAGE_CAPACITE = (
+    'Montants hors capacité : le total d’une ligne ou du bon de commande '
+    'dépasserait 999 999 999 999,99 (quantité × prix d’achat).')
+
+
+def controler_capacite_montants(lignes):
+    """``lignes`` : couples ``(quantité, prix unitaire MAD)``. Lève
+    ``ConflitEtat`` (409) si un prix, un total de ligne ou le total du
+    document dépasse sa colonne."""
+    total = Decimal('0')
+    for quantite, prix in lignes:
+        prix = abs(Decimal(prix or 0))
+        montant = abs(int(quantite or 0)) * prix
+        if prix > PLAFOND_PRIX or montant > PLAFOND_MONTANT:
+            raise ConflitEtat(MESSAGE_CAPACITE)
+        total += montant
+    if total > PLAFOND_MONTANT:
+        raise ConflitEtat(MESSAGE_CAPACITE)
+
+
+def controler_capacite_bcf(bon):
+    """Même contrôle sur les lignes DÉJÀ écrites d'un BCF (après révision)."""
+    controler_capacite_montants(
+        (ligne.quantite, ligne.prix_achat_unitaire) for ligne in bon.lignes.all())
+
+
+class CapaciteMontantsBcfMixin:
+    """Mixin de ``BonCommandeFournisseurSerializer`` : refuse (409) des lignes
+    dont le prix converti ou le total ne tiendrait pas en base, AVANT toute
+    écriture. À placer AVANT ``serializers.ModelSerializer``."""
+
+    #: Champs d'une ligne existante repris quand ils ne sont pas transmis
+    #: (même liste que ``_upsert_lignes``).
+    _CHAMPS_CAPACITE = ('quantite', 'prix_achat_unitaire', 'prix_achat_unitaire_devise')
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        lignes = attrs.get('lignes')
+        if not lignes:
+            return attrs
+        from .services import apply_devise_ligne_bcf
+        instance = getattr(self, 'instance', None)
+        devise = attrs.get('devise', getattr(instance, 'devise', None))
+        taux = attrs.get('taux_change', getattr(instance, 'taux_change', None))
+        existantes = ({ligne.id: ligne for ligne in instance.lignes.all()}
+                      if instance is not None else {})
+        montants = []
+        for data in lignes:
+            base = existantes.get(data.get('id'))
+            fusion = {champ: data.get(champ, getattr(base, champ, None))
+                      for champ in self._CHAMPS_CAPACITE}
+            apply_devise_ligne_bcf(fusion, devise, taux)
+            montants.append((fusion['quantite'], fusion['prix_achat_unitaire']))
+        controler_capacite_montants(montants)
+        return attrs
