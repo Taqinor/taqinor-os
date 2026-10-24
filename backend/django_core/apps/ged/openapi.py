@@ -156,7 +156,9 @@ CAVIARDER_CORPS = S('CaviarderCorps', {
     'version': s.IntegerField(required=False, allow_null=True),
 })
 SCINDER_CORPS = S('ScinderCorps', {
-    'points_de_coupe': s.ListField(child=s.IntegerField()),
+    # api-fuzz-full 24/10 — numéros de page 1-based (``scinder_pdf``).
+    'points_de_coupe': s.ListField(
+        child=s.IntegerField(min_value=1, max_value=2 ** 31 - 1)),
     'version': s.IntegerField(required=False, allow_null=True),
 })
 FUSIONNER_CORPS = S('FusionnerCorps', {

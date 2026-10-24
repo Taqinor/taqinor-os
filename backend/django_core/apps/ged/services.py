@@ -5363,18 +5363,17 @@ def scinder_pdf(version, points_de_coupe, *, created_by=None):
     src = fitz.open(stream=data, filetype='pdf')
     try:
         n_pages = src.page_count
-        # Un point de coupe hors [1, n_pages] est une entrée invalide (ex. page
-        # 99 d'un PDF de 3 pages) — on refuse explicitement plutôt que de le
-        # filtrer silencieusement et produire un découpage faux.
+        # Un point de coupe au-delà de n_pages (ex. page 99 d'un PDF de 3 pages)
+        # est refusé plutôt que filtré (découpage faux). La borne basse (>= 1)
+        # est publiée au schéma ; le nombre de pages est l'ÉTAT du fichier
+        # stocké → 409 (ENF11, api-fuzz-full 24/10).
         raw_points = [int(p) for p in (points_de_coupe or [])]
-        if any(p < 1 or p > n_pages for p in raw_points):
-            raise ValueError("Points de coupe invalides.")
+        if n_pages < 1 or any(p < 1 or p > n_pages for p in raw_points):
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat("Points de coupe invalides.")
         coupes = sorted(set(raw_points))
         if not coupes or coupes[0] != 1:
             coupes = [1] + [c for c in coupes if c != 1]
-        coupes = [c for c in coupes if 1 <= c <= n_pages]
-        if not coupes:
-            raise ValueError("Points de coupe invalides.")
         bornes = coupes + [n_pages + 1]
         created = []
         for i in range(len(bornes) - 1):

@@ -929,8 +929,9 @@ RefuserRequest = _ser('DevisRefuserRequest', {
     'date': ChaineStricte(required=False, allow_blank=True),
     'marquer_lead_perdu': BooleenStrict(required=False),
 })
-#: Au moins un caractère non blanc (le serveur ``strip()`` puis refuse le vide).
-_NON_BLANC = r'\S'
+#: Au moins un caractère non blanc (le serveur ``strip()`` puis refuse le vide), sans
+#: NUL (refusé par DRF — api-fuzz-full 24/10, ``marquer-payee``).
+_NON_BLANC = MOTIF_NON_BLANC_SANS_NUL
 NoterRequest = _ser('DevisNoterRequest', {
     'body': s.RegexField(_NON_BLANC),
 })

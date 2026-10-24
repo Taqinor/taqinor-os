@@ -83,7 +83,7 @@ class _BornesArgentMixin:
             'Le prix unitaire ne peut pas être négatif.')
 
 
-class BonCommandeSerializer(ChampsStrictsSansDecimalMixin,
+class BonCommandeSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                             SameCompanyFKSerializerMixin,
                             serializers.ModelSerializer):
     # CI #997 — texte/booléens stricts (``signe_au_domicile: 0`` converti).

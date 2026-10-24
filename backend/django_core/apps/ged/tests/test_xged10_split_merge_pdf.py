@@ -106,8 +106,11 @@ class ScinderTests(XGed10Base):
         self.assertEqual(self._blobs[version.file_key], original_bytes)
 
     def test_split_invalid_points_raises(self):
+        # api-fuzz-full 24/10 — page 99 d'un PDF de 3 pages : l'état du fichier
+        # stocké s'oppose (409), la requête reste conforme au schéma.
+        from core.conflit_etat import ConflitEtat
         version = self._add_pdf_version(self.doc, 3)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ConflitEtat):
             services.scinder_pdf(version, [99])
 
     def test_split_without_pymupdf_raises_explicit(self):

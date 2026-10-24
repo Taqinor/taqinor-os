@@ -95,7 +95,8 @@ class TestFactureSocieteDuBonCommande(TestCase):
             '/api/django/ventes/bons-commande/',
             {'client': self.client_b.id, 'devis': self.devis_a2.id},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # api-fuzz-full 24/10 : client d'une autre société = id inconnu (404).
+        self.assertEqual(resp.status_code, 404, resp.data)
         self.assertIn('client', resp.data)
 
     def test_bc_sans_societe_refuse_la_facturation(self):
