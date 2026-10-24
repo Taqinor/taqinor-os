@@ -7080,6 +7080,25 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                       class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
                     <p id="sign-err-entreprise-ice" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
                   </div>
+                  {/* ADEV95 (D-CIQ-11) — l'e-mail du SIGNATAIRE (il reçoit la confirmation et
+                      l'exemplaire signé) et son attestation de pouvoir, cochée explicitement. */}
+                  <div>
+                    <label for="sign-email" class="block text-xs leading-snug text-lune-faint" data-i18n
+                      data-fr="Votre e-mail professionnel (vous recevrez l’exemplaire signé)"
+                      data-en="Your work email (you will receive the signed copy)"
+                      data-ar="بريدكم الإلكتروني المهني (ستتوصلون بالنسخة الموقّعة)">Votre e-mail professionnel (vous recevrez l’exemplaire signé)</label>
+                    <input id="sign-email" name="signataire_email" type="email" autocomplete="email" required
+                      class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
+                    <p id="sign-err-entreprise-signataire_email" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
+                  </div>
+                  <label class="flex cursor-pointer items-start gap-3 text-sm leading-snug">
+                    <input id="sign-pouvoir" name="pouvoir_engager" type="checkbox" required class="mt-0.5 h-4 w-4 flex-none accent-[var(--color-brass-400)]" />
+                    <span class="text-lune-soft" data-i18n
+                      data-fr="J’agis en la qualité indiquée ci-dessus et j’ai le pouvoir d’engager la société."
+                      data-en="I am acting in the capacity stated above and I have the authority to bind the company."
+                      data-ar="أتصرف بالصفة المذكورة أعلاه ولديّ صلاحية إلزام الشركة.">J’agis en la qualité indiquée ci-dessus et j’ai le pouvoir d’engager la société.</span>
+                  </label>
+                  <p id="sign-err-entreprise-pouvoir_engager" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
                 </div>
               )}
               {/* PREVIEW-V3 · LA SIGNATURE TAPÉE EST LA SIGNATURE (loi 43-20
@@ -7224,9 +7243,18 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  comme le reste de la phrase — un <a> À L'INTÉRIEUR d'un
                  data-i18n n'aurait survécu qu'en français (prepareI18n rend
                  EN/AR en textContent). */}
+            {/* ADEV95 — en commercial / industriel, la case est un « bon pour accord » au nom de la
+                société (B2B) ; la phrase consommateur (loi 31-08 art. 30) reste en résidentiel. */}
             <label class="mt-2 flex cursor-pointer items-start gap-3 text-sm leading-snug">
               <input id="sign-accord" name="accord" type="checkbox" required class="mt-0.5 h-4 w-4 flex-none accent-[var(--color-brass-400)]" />
-              <span class="text-lune-soft"><span data-i18n data-fr="J’accepte cette proposition et les " data-en="I accept this proposal and the " data-ar="أوافق على هذا العرض وعلى ">J’accepte cette proposition et les </span><a href="#sign-cgv" data-sign-cgv-link class="text-brass-300 underline underline-offset-2" data-i18n data-fr="conditions générales de vente" data-en="general terms of sale" data-ar="الشروط العامة للبيع">conditions générales de vente</a><span data-i18n data-fr=", et je la signe électroniquement." data-en=", and I sign it electronically." data-ar="، وأُوقّعه إلكترونياً.">, et je la signe électroniquement.</span></span>
+              <span class="text-lune-soft">{entrepriseRequise ? (
+                <span data-i18n
+                  data-fr={`Bon pour accord : au nom de la société, j’accepte la proposition réf. ${reference} et ses `}
+                  data-en={`Approved: on behalf of the company, I accept proposal ref. ${reference} and its `}
+                  data-ar={`موافق: باسم الشركة، أقبل العرض رقم ${reference} و`}>Bon pour accord : au nom de la société, j’accepte la proposition réf. {reference} et ses </span>
+              ) : (
+                <span data-i18n data-fr="J’accepte cette proposition et les " data-en="I accept this proposal and the " data-ar="أوافق على هذا العرض وعلى ">J’accepte cette proposition et les </span>
+              )}<a href="#sign-cgv" data-sign-cgv-link class="text-brass-300 underline underline-offset-2" data-i18n data-fr="conditions générales de vente" data-en="general terms of sale" data-ar="الشروط العامة للبيع">conditions générales de vente</a><span data-i18n data-fr=", et je la signe électroniquement." data-en=", and I sign it electronically." data-ar="، وأُوقّعه إلكترونياً.">, et je la signe électroniquement.</span></span>
             </label>
 
             {conditions.length > 0 && (
@@ -7929,6 +7957,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     type SignFormState,
     type PropLang as SignPropLang,
   } from '../../lib/proposition';
+  // ADEV95 — 409 `ice_divergent` (signature B2B) : jamais traité comme « déjà signé ».
+  import { estIceDivergent } from '../../lib/propositionB2b';
   // LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme (voir lib/visite.ts) :
   // jointe au beacon d'engagement /api/proposition-track ci-dessous, jamais à
   // un aperçu interne (trackProposalEvent le refuse déjà, cf. cfg.apercuInterne).
@@ -8861,6 +8891,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       'entreprise.raison_sociale': 'sign-raison-sociale',
       'entreprise.signataire_qualite': 'sign-qualite',
       'entreprise.ice': 'sign-ice',
+      // ADEV95 — e-mail et attestation de pouvoir du signataire.
+      'entreprise.signataire_email': 'sign-email',
+      'entreprise.pouvoir_engager': 'sign-pouvoir',
     };
     function showFieldError(champ: string | undefined, msg: string): boolean {
       const inputId = champ ? CHAMP_ENTREPRISE_INPUT[champ] : undefined;
@@ -9086,6 +9119,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             raison_sociale: (document.getElementById('sign-raison-sociale') as HTMLInputElement | null)?.value ?? '',
             signataire_qualite: (document.getElementById('sign-qualite') as HTMLInputElement | null)?.value ?? '',
             ice: (document.getElementById('sign-ice') as HTMLInputElement | null)?.value ?? '',
+            // ADEV95 — e-mail du signataire + attestation de pouvoir (le nom = celui tapé).
+            signataire_email: (document.getElementById('sign-email') as HTMLInputElement | null)?.value ?? '',
+            pouvoir_engager: (document.getElementById('sign-pouvoir') as HTMLInputElement | null)?.checked === true,
           }
         : null;
       const state: SignFormState = { nom, option: selectedOption(), ...(entreprise ? { entreprise } : {}) };
@@ -9188,6 +9224,13 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         if (estEmpreintePerimee(res.status, data)) {
           showError(data.detail ?? '');
           window.setTimeout(() => window.location.reload(), 2500);
+          return;
+        }
+        // ADEV95 — l'ICE saisi diffère de celui que nous avons pour la société : le
+        // message du serveur (qui nomme les deux) s'affiche sous le champ ICE, jamais
+        // l'état « signé » de la branche 409 ci-dessous.
+        if (estIceDivergent(res.status, data)) {
+          if (!showFieldError('entreprise.ice', data.detail ?? '')) showError(data.detail ?? '');
           return;
         }
         // 400 / 409 / 404 : message backend inline. 409 = déjà accepté →

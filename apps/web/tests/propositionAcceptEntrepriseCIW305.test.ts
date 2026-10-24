@@ -16,8 +16,11 @@ import {
   signatureEntrepriseRequise,
   type SignFormState,
 } from '../src/lib/proposition';
+import { estIceDivergent } from '../src/lib/propositionB2b';
 
-const ENT = { raison_sociale: 'Hôtel Exemple SARL', signataire_qualite: 'Directeur général', ice: '000000000000000' };
+const ENT3 = { raison_sociale: 'Hôtel Exemple SARL', signataire_qualite: 'Directeur général', ice: '000000000000000' };
+// ADEV95 — lien public : e-mail du signataire + attestation de pouvoir ; le nom = celui tapé.
+const ENT = { ...ENT3, signataire_email: 'karim@hotel-exemple.test', pouvoir_engager: true };
 
 describe('CIW305 — validateSign C&I', () => {
   it('sans ICE → invalide sur l\'ICE (champ nommé)', () => {
@@ -39,9 +42,17 @@ describe('CIW305 — validateSign C&I', () => {
     expect(validateSign({ nom: 'K', option: null }, false, true).champ).toBe('entreprise.raison_sociale');
   });
 
-  it('nom vide → champ « nom » ; quatre champs remplis → valide', () => {
+  it('nom vide → champ « nom » ; tous les champs remplis → valide', () => {
     expect(validateSign({ nom: ' ', option: null, entreprise: ENT }, false, true).champ).toBe('nom');
     expect(validateSign({ nom: 'Karim Exemple', option: null, entreprise: ENT }, false, true)).toEqual({ valid: true, error: null });
+  });
+
+  it('ADEV95 — e-mail du signataire et attestation de pouvoir exigés (champ nommé)', () => {
+    const sansEmail = validateSign({ nom: 'K', option: null, entreprise: { ...ENT, signataire_email: 'k@' } }, false, true);
+    expect(sansEmail.champ).toBe('entreprise.signataire_email');
+    const sansPouvoir = validateSign({ nom: 'K', option: null, entreprise: { ...ENT, pouvoir_engager: false } }, false, true);
+    expect(sansPouvoir.champ).toBe('entreprise.pouvoir_engager');
+    expect(validateSign({ nom: 'K', option: null, entreprise: ENT3 }, false, true).champ).toBe('entreprise.signataire_email');
   });
 
   it('l\'option reste exigée à deux options, après l\'identité de l\'entreprise', () => {
@@ -79,6 +90,16 @@ describe('CIW305 — corps construit avec `entreprise`', () => {
     const rich = buildAcceptBodyRich(f, false, { consent_esign: true });
     expect(rich.entreprise?.ice).toBe('000000000000000');
     expect(rich.nom).toBe('Karim Exemple');
+  });
+
+  it('ADEV95 — le nom du signataire est le nom tapé ; e-mail trimé, attestation booléenne', () => {
+    const f: SignFormState = { nom: ' Karim Exemple ', option: null, entreprise: { ...ENT, signataire_email: ' k@x.ma ' } };
+    expect(buildAcceptBody(f, false).entreprise).toEqual({
+      ...ENT3,
+      signataire_nom: 'Karim Exemple',
+      signataire_email: 'k@x.ma',
+      pouvoir_engager: true,
+    });
   });
 
   it('sans saisie entreprise → aucune clé `entreprise` (résidentiel : corps inchangé)', () => {
@@ -120,7 +141,7 @@ describe('CIW305 — proxy /api/proposition-accept : `entreprise` relayé, champ
     const { status } = await call({ token: 'tok', nom: 'Karim Exemple', entreprise: ENT });
     expect(status).toBe(200);
     const sent = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body);
-    expect(sent.entreprise).toEqual(ENT);
+    expect(sent.entreprise).toEqual({ ...ENT, signataire_nom: 'Karim Exemple' });
     expect(sent.nom).toBe('Karim Exemple');
   });
 
@@ -141,6 +162,19 @@ describe('CIW305 — proxy /api/proposition-accept : `entreprise` relayé, champ
     const { status, json } = await call({ token: 'tok', nom: 'K', entreprise: { ...ENT, ice: '' } });
     expect(status).toBe(400);
     expect(json.champ).toBe('entreprise.ice');
+  });
+
+  it('ADEV95 — 409 `ice_divergent` relayé avec son code (jamais un succès)', async () => {
+    const detail = "L'ICE saisi (000000000000000) ne correspond pas à l'ICE enregistré pour votre société (111111111111111).";
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ status: 409, ok: false, json: async () => ({ detail, code: 'ice_divergent' }) }) as unknown as Response),
+    );
+    const { status, json } = await call({ token: 'tok', nom: 'Karim Exemple', entreprise: ENT });
+    expect(status).toBe(409);
+    expect(json.code).toBe('ice_divergent');
+    expect(estIceDivergent(status, json)).toBe(true);
+    expect(estIceDivergent(409, { code: 'empreinte_perimee' })).toBe(false);
   });
 
   it('résidentiel : aucun `entreprise` relayé quand le navigateur n\'en envoie pas', async () => {
@@ -166,5 +200,13 @@ describe('CIW305 — la page C&I ne propose plus « mes parents, mon foyer »', 
       expect(page).toContain(`id="sign-err-${id}"`);
     }
     expect(page).toContain('validateSign(state, cfg.twoOptions, !!cfg.entrepriseRequise)');
+    for (const id of ['sign-email', 'sign-pouvoir']) expect(page).toContain(`id="${id}"`);
+    for (const id of ['entreprise-signataire_email', 'entreprise-pouvoir_engager']) expect(page).toContain(`id="sign-err-${id}"`);
+  });
+  it('ADEV95 — `ice_divergent` est traité AVANT la branche 409 « déjà accepté » ; « bon pour accord » B2B', () => {
+    const i = page.indexOf('estIceDivergent(res.status, data)');
+    expect(i).toBeGreaterThan(0);
+    expect(i).toBeLessThan(page.indexOf('if (res.status === 409) {', i));
+    expect(page).toContain('Bon pour accord : au nom de la société');
   });
 });

@@ -415,18 +415,12 @@ def proposal_accept(request, token):
     on_behalf_of = on_behalf_of[:150]
     # CIQ319 (D-CIQ-11) — devis commercial / industriel : raison sociale,
     # qualité du signataire et ICE OBLIGATOIRES en ligne (400 qui nomme le
-    # champ) ; ignorés pour tout autre segment.
-    from ..domain.cycle_vie import (
-        EntrepriseInvalide, lire_entreprise_acceptation,
-        signature_entreprise,
-    )
-    try:
-        entreprise = lire_entreprise_acceptation(
-            devis, request.data.get('entreprise'), obligatoire=True)
-    except EntrepriseInvalide as exc:
-        return _noindex(Response(
-            {'detail': exc.detail, 'champ': exc.champ},
-            status=status.HTTP_400_BAD_REQUEST))
+    # champ) ; ignorés pour tout autre segment. ADEV95 — plus le nom, l'e-mail
+    # et l'attestation de pouvoir du signataire ; un ICE différent de celui du
+    # Client donne 409 ``ice_divergent`` (rien n'est écrit).
+    entreprise, refus = _entreprise_du_corps(request, devis, nom)
+    if refus is not None:
+        return refus
     # QJ11 — code OTP si le toggle est actif (service gère la validation).
     otp_code, refus = _texte_du_corps(request, 'otp_code')
     if refus is not None:
@@ -505,16 +499,45 @@ def proposal_accept(request, token):
         'paiement': _deposit_success_payload(devis, token),
         # CIQ319 — l'identité d'entreprise RELUE sur la signature enregistrée
         # (la première fait foi), même forme que le corps ; null hors C&I.
-        'entreprise': _entreprise_relue(signature_entreprise(devis)),
+        'entreprise': _entreprise_relue(devis),
     }))
 
 
-def _entreprise_relue(bloc):
+def _entreprise_du_corps(request, devis, nom):
+    """ADEV95 — ``(entreprise, None)`` ou ``(None, refus)`` : 400 qui nomme le
+    champ fautif (``entreprise.<cle>``), 409 ``ice_divergent`` qui nomme les
+    deux ICE. ``(None, None)`` hors commercial / industriel."""
+    from ..domain.identite_entreprise import (
+        EntrepriseInvalide, IceDivergent, lire_signataire_lien,
+    )
+    try:
+        return lire_signataire_lien(
+            devis, request.data.get('entreprise'), nom=nom), None
+    except EntrepriseInvalide as exc:
+        return None, _noindex(Response(
+            {'detail': exc.detail, 'champ': exc.champ},
+            status=status.HTTP_400_BAD_REQUEST))
+    except IceDivergent as exc:
+        return None, _noindex(Response(
+            {'detail': exc.detail, 'code': 'ice_divergent'},
+            status=status.HTTP_409_CONFLICT))
+
+
+def _entreprise_relue(devis):
+    """CIQ319 / ADEV95 — l'identité d'entreprise RELUE sur la signature
+    enregistrée (la première fait foi), même forme que le corps ; ``None``
+    hors C&I."""
+    from ..domain.cycle_vie import signature_entreprise
+    bloc = signature_entreprise(devis)
     if not bloc:
         return None
+    sig = devis.signature
     return {'raison_sociale': bloc.get('raison_sociale') or '',
             'signataire_qualite': bloc.get('signataire_qualite') or '',
-            'ice': bloc.get('ice') or ''}
+            'ice': bloc.get('ice') or '',
+            'signataire_nom': bloc.get('signataire_nom') or '',
+            'signataire_email': sig.signataire_email or '',
+            'pouvoir_engager': bool(sig.pouvoir_engager)}
 
 
 @api_view(['POST'])

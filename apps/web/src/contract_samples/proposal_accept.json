@@ -39,7 +39,8 @@
     "empreinte_perimee",
     "validation_requise",
     "statut",
-    "vente_active_existante"
+    "vente_active_existante",
+    "ice_divergent"
   ],
   "reponses_409": {
     "forme": "Toute réponse 409 de l'acceptation porte EXACTEMENT `{detail, code}` : `detail` = phrase française affichée telle quelle par la page, `code` ∈ `codes_409` (liste FERMÉE — un code hors liste est un bug du serveur). La page ne traite JAMAIS un 409 comme un succès.",
@@ -74,6 +75,10 @@
     "vente_active_existante": {
       "detail": "Cette proposition ne peut pas être signée en l'état : contactez votre conseiller.",
       "code": "vente_active_existante"
+    },
+    "ice_divergent": {
+      "detail": "L'ICE saisi (000000000000000) ne correspond pas à l'ICE enregistré pour votre société (111111111111111). Vérifiez-le ou contactez votre conseiller avant de signer.",
+      "code": "ice_divergent"
     }
   },
   "avenant_signe": {

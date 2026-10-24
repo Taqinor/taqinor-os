@@ -24,6 +24,11 @@ def _champs_signature_entreprise(entreprise):
         'signataire_qualite': str(entreprise.get('signataire_qualite') or '')
         .strip()[:150],
         'ice_declare': str(entreprise.get('ice') or '').strip()[:30],
+        # ADEV95 — e-mail et attestation de pouvoir du signataire (lien
+        # public ; vides / faux sur le portail et l'ERP).
+        'signataire_email': str(entreprise.get('signataire_email') or '')
+        .strip()[:254],
+        'pouvoir_engager': entreprise.get('pouvoir_engager') is True,
     }
 
 
@@ -96,11 +101,79 @@ def lire_entreprise_acceptation(devis, brut, *, obligatoire):
     return valeurs
 
 
+#: ADEV95 — les champs du SIGNATAIRE exigés en plus sur le LIEN PUBLIC
+#: (commercial / industriel), et le message 400 qui nomme chacun.
+CHAMPS_SIGNATAIRE = (
+    ('signataire_nom', 'Le nom du signataire est requis pour accepter ce devis.'),
+    ('signataire_email',
+     "L'e-mail du signataire est requis pour accepter ce devis."),
+)
+
+#: ADEV95 — l'attestation de pouvoir, cochée explicitement (jamais par défaut).
+MESSAGE_POUVOIR = ("Cochez l'attestation : vous agissez en la qualité indiquée "
+                   "et avez le pouvoir d'engager la société.")
+
+
+class IceDivergent(Exception):
+    """ADEV95 — l'ICE déclaré diffère de celui que le Client porte déjà :
+    409 ``ice_divergent`` qui nomme les deux, rien n'est écrit."""
+
+    def __init__(self, ice_client, ice_declare):
+        self.ice_client, self.ice_declare = ice_client, ice_declare
+        self.detail = (
+            f"L'ICE saisi ({ice_declare}) ne correspond pas à l'ICE enregistré "
+            f"pour votre société ({ice_client}). Vérifiez-le ou contactez "
+            "votre conseiller avant de signer.")
+        super().__init__(self.detail)
+
+
+def lire_signataire_lien(devis, brut, *, nom):
+    """ADEV95 (D-CIQ-11) — en plus de :func:`lire_entreprise_acceptation`,
+    le LIEN PUBLIC d'un devis commercial / industriel exige le nom (celui tapé
+    pour signer), l'e-mail VALIDE du signataire et l'attestation de pouvoir
+    (``pouvoir_engager`` booléen vrai) ; un ICE différent de celui du Client
+    lève :class:`IceDivergent`. Hors C&I : ``None``. Lève
+    :class:`EntrepriseInvalide` (400 qui nomme le champ)."""
+    entreprise = lire_entreprise_acceptation(devis, brut, obligatoire=True)
+    if entreprise is None:
+        return None
+    for cle, message in CHAMPS_SIGNATAIRE:
+        valeur = brut.get(cle)
+        if not isinstance(valeur, str) or not valeur.strip():
+            raise EntrepriseInvalide(message, f'entreprise.{cle}')
+        entreprise[cle] = valeur.strip()
+    if _nom_normalise(entreprise['signataire_nom']) != _nom_normalise(nom):
+        raise EntrepriseInvalide(
+            'Le nom du signataire doit être celui que vous tapez pour signer.',
+            'entreprise.signataire_nom')
+    from django.core.exceptions import ValidationError
+    from django.core.validators import validate_email
+    try:
+        validate_email(entreprise['signataire_email'])
+    except ValidationError:
+        raise EntrepriseInvalide("L'e-mail du signataire est invalide.",
+                                 'entreprise.signataire_email') from None
+    if brut.get('pouvoir_engager') is not True:
+        raise EntrepriseInvalide(MESSAGE_POUVOIR, 'entreprise.pouvoir_engager')
+    entreprise['pouvoir_engager'] = True
+    if divergence_ice(devis, entreprise['ice']):
+        raise IceDivergent(_ice_du_client(devis), entreprise['ice'])
+    return entreprise
+
+
+def _nom_normalise(nom):
+    return ' '.join(str(nom or '').split()).casefold()
+
+
+def _ice_du_client(devis):
+    return ''.join(str(getattr(getattr(devis, 'client', None), 'ice', '')
+                       or '').split())
+
+
 def divergence_ice(devis, ice_declare):
     """CIQ319 — vrai quand le Client porte DÉJÀ un ICE différent de celui
     déclaré à l'acceptation (jamais écrasé : drapeau pour le vendeur)."""
-    client = getattr(devis, 'client', None)
-    ice_client = ''.join(str(getattr(client, 'ice', '') or '').split())
+    ice_client = _ice_du_client(devis)
     declare = ''.join(str(ice_declare or '').split())
     return bool(ice_client and declare and ice_client != declare)
 

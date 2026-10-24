@@ -7,6 +7,8 @@ from core.models import TenantModel
 # tuple sans pouvoir importer ``apps.ventes``. Voir ``ROLES_AUTO_COMPOSITION``
 # plus bas : le nom historique reste, la copie a disparu.
 from core.product_roles import ROLES_DEVIS
+# L3 lien public — champs de preuve déportés (mixins abstraits, models_preuves).
+from .models_preuves import PreuveSignatureB2B
 import logging
 import secrets
 from datetime import timedelta
@@ -1466,7 +1468,7 @@ def _default_payment_expiry():
     return timezone.now() + timedelta(days=PAYMENT_LINK_TTL_DAYS)
 
 
-class DevisSignature(models.Model):
+class DevisSignature(PreuveSignatureB2B, models.Model):
     """QJ10 — Enregistrement IMMUABLE de signature électronique (loi 53-05).
 
     Créé UNE SEULE FOIS au moment de l'acceptation de la proposition.
@@ -1601,8 +1603,8 @@ class DevisSignature(models.Model):
     CONTENT_HASH_V1 = 1
     #: QJR144 — v1 + ``taux_tva``/``optionnelle`` par ligne + ``option_acceptee``.
     CONTENT_HASH_V2 = 2
-    #: La version dont sont scellées les NOUVELLES signatures.
-    CONTENT_HASH_VERSION = CONTENT_HASH_V2
+    #: La version dont sont scellées les NOUVELLES signatures :
+    #: ``CONTENT_HASH_VERSION``, portée par ``models_preuves.PreuveSignatureB2B``.
 
     @staticmethod
     def _norme_decimale(valeur):

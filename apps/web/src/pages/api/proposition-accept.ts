@@ -63,14 +63,19 @@ export const POST: APIRoute = async ({ request }) => {
   // chaînes bornées. Absent / mal formé → non relayé (le serveur répond 400 + `champ` si requis).
   const entRaw = body.entreprise;
   const bornee = (v: unknown): string => (typeof v === 'string' ? v.trim().slice(0, 200) : '');
-  const entreprise =
-    entRaw && typeof entRaw === 'object' && !Array.isArray(entRaw)
-      ? {
-          raison_sociale: bornee((entRaw as Record<string, unknown>).raison_sociale),
-          signataire_qualite: bornee((entRaw as Record<string, unknown>).signataire_qualite),
-          ice: bornee((entRaw as Record<string, unknown>).ice),
-        }
-      : null;
+  const ent = entRaw && typeof entRaw === 'object' && !Array.isArray(entRaw) ? (entRaw as Record<string, unknown>) : null;
+  // ADEV95 — e-mail du signataire et attestation de pouvoir (booléen strict), relayés quand la
+  // page les porte ; le nom du signataire est TOUJOURS le `nom` tapé (posé par `buildAcceptBody`).
+  const entreprise = ent
+    ? {
+        raison_sociale: bornee(ent.raison_sociale),
+        signataire_qualite: bornee(ent.signataire_qualite),
+        ice: bornee(ent.ice),
+        ...('signataire_email' in ent || 'pouvoir_engager' in ent
+          ? { signataire_email: bornee(ent.signataire_email), pouvoir_engager: ent.pouvoir_engager === true }
+          : {}),
+      }
+    : null;
   const form: SignFormState = {
     nom: typeof body.nom === 'string' ? body.nom : '',
     option,
