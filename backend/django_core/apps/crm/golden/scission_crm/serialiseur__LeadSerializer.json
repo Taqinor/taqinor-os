@@ -205,7 +205,7 @@
    "required": false
   },
   {
-   "classe": "ChaineStricte",
+   "classe": "PeriodeFacture",
    "nom": "facture_periodicite",
    "read_only": false,
    "required": false

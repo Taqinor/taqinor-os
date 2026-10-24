@@ -168,6 +168,21 @@ class TrancheDeclaree(JsonLead):
         return valeur
 
 
+class PeriodeFacture(ChaineStricte):
+    """CAD158 — « La facture couvre » : vide, ``mensuelle`` ou
+    ``bimestrielle`` (``Lead.PERIODICITES_FACTURE``). Le schéma publie ce
+    vocabulaire en ``enum`` (api-fuzz-full 24/10 : un texte libre « conforme »
+    recevait 400) ; le refus nommé de ``LeadSerializer.validate`` reste pour
+    tout appelant qui n'a pas lu le schéma."""
+
+    def __init__(self, **kwargs):
+        from .models import Lead
+
+        super().__init__(**kwargs)
+        set_override(self, 'field', {
+            'type': 'string', 'enum': ['', *Lead.PERIODICITES_FACTURE]})
+
+
 class UrlMaps:
     """Prédicat du lien Maps : ``MOTIF_URL_HTTP_SOUPLE`` (celui de
     ``core.champs_stricts.UrlHttpSouple``) et au plus ``MAPS_MAX`` signes
