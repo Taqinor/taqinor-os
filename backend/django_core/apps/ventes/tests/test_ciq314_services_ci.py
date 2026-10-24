@@ -88,7 +88,10 @@ class ServicesCi(TestCase):
             with self.subTest(mode=mode):
                 d, html = self._rendu(self._devis(mode, om='0'), mode)
                 page = _page_confiance(html, mode)
-                self.assertIn('prix à renseigner', page)
+                # AMOT98 — « tarif sur demande » côté client, jamais l'alerte
+                # interne « prix à renseigner ».
+                self.assertIn('tarif sur demande', page)
+                self.assertNotIn('prix à renseigner', page)
                 self.assertIn('Contrat O&amp;M : nettoyages, inspection',
                               page)
                 synthese = d.get('com_synthese') or d.get('ind_synthese')
@@ -101,6 +104,7 @@ class ServicesCi(TestCase):
         page = _page_confiance(html, 'commercial')
         self.assertIn('MAD HT', page)
         self.assertNotIn('prix à renseigner', page)
+        self.assertNotIn('tarif sur demande', page)
         self.assertEqual(
             d['com_synthese']['services']['om_option']['statut'], 'souscrit')
 
@@ -147,11 +151,23 @@ class Amot83ServicesNommes(SimpleTestCase):
         services, html = self._services()
         self.assertEqual(services["om_option"]["statut"], "tarif_a_renseigner")
         self.assertIn("Contrat O&amp;M (nettoyages, inspection, thermographie, "
-                      "test des protections) — prix à renseigner", html)
+                      "test des protections) — tarif sur demande", html)
         self.assertEqual(services["suivi_production"],
                          {"delai_intervention": None})
         self.assertIn("Suivi de production inclus", html)
         self.assertNotIn("intervention sous", html)
+
+    def test_om_sans_prix_tarif_sur_demande_trois_langues(self):
+        """AMOT98 (D-ACI-17=a) — « tarif sur demande » / « price on
+        request » / « السعر عند الطلب » ; jamais « prix à renseigner ».
+        Test-du-test : remettre ``ci_prix_a_renseigner`` ⇒ rouge."""
+        for langue, attendu in (("fr", "tarif sur demande"),
+                                ("en", "price on request"),
+                                ("ar", "السعر عند الطلب")):
+            _services, html = self._services(langue_sortie=langue)
+            self.assertIn(attendu, html, langue)
+            for interne in ("prix à renseigner", "price to be set"):
+                self.assertNotIn(interne, html, langue)
 
     def test_delai_saisi_imprime(self):
         services, html = self._services(delai_intervention_suivi_heures=48)

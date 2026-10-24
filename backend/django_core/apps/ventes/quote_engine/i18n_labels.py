@@ -1069,6 +1069,10 @@ LIBELLES = {
     'ci_prix_a_renseigner': {'fr': 'prix à renseigner',
                              'en': 'price to be set',
                              'ar': 'السعر في انتظار التحديد'},
+    # AMOT98 (D-ACI-17=a) — l'O&M sans prix, côté client.
+    'ci_tarif_sur_demande': {'fr': 'tarif sur demande',
+                             'en': 'price on request',
+                             'ar': 'السعر عند الطلب'},
     'ci_propose_non_inclus': {'fr': ' (proposé, non inclus dans le total)',
                               'en': ' (proposed, not included in the total)',
                               'ar': ' (مقترح، غير مدرج في المجموع)'},
