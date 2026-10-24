@@ -74,8 +74,7 @@ class ReglesPuresTest(SimpleTestCase):
         ser = DevisWriteSerializer()
         champs = ser.fields
         for nom in ('retenue_garantie', 'penalites_retard_livraison',
-                    'caution', 'echeancier', 'remise_globale',
-                    'acompte_montant'):
+                    'caution', 'echeancier', 'remise_globale'):
             self.assertEqual(champs[nom]._spectacular_annotation['field'],
                              conditions_ci.SCHEMAS[nom], nom)
         refus = (
@@ -88,7 +87,6 @@ class ReglesPuresTest(SimpleTestCase):
              {'taux_pct': 5, 'liberation': None}),
             (ser.validate_retenue_garantie, {'taux_pct': '05'}),
             (ser.validate_penalites_retard_livraison, 'x'),
-            (ser.validate_acompte_montant, Decimal('-1')),
         )
         for valider, brut in refus:
             with self.assertRaises(serializers.ValidationError, msg=repr(brut)):
@@ -197,17 +195,17 @@ class EnteteDevisTest(_Base):
 
     def test_entete_hors_forme_publiee_400(self):
         """CI #997 (2) — ``caution: [null, null]`` (cas kr9rrL),
-        ``prix_cible_kwc: ""`` lu ``null`` (cas 7RmWal), ``acompte_montant:
-        "-1"`` en 500 ``CheckViolation`` : 400 nommant le champ."""
+        ``prix_cible_kwc: ""`` lu ``null`` (cas 7RmWal) : 400 nommant le
+        champ (VNT103 : l'acompte persisté, ancien 500 ``CheckViolation``, a
+        quitté le modèle)."""
         devis = self._devis('DEV-CIQ214-0065', statut='brouillon')
         for corps in ({'caution': [None, None]}, {'retenue_garantie': ''},
                       {'echeancier': [None, None]}, {'prix_cible_kwc': ''},
-                      {'prix_cible_kwc': '1e2'}, {'acompte_montant': '-1'}):
+                      {'prix_cible_kwc': '1e2'}):
             r = self._patch(devis, corps)
             self.assertEqual(r.status_code, 400, (corps, r.data))
             self.assertIn(next(iter(corps)), r.data)
-        r = self._patch(devis, {'caution': {}, 'prix_cible_kwc': None,
-                                'acompte_montant': 0})
+        r = self._patch(devis, {'caution': {}, 'prix_cible_kwc': None})
         self.assertEqual(r.status_code, 200, r.data)
 
     def test_enregistrer_rouvrir_enregistrer_entete_identique(self):
