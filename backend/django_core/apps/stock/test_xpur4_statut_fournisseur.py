@@ -175,6 +175,6 @@ class TestMultiTenant(Xpur4Base):
                 'prix_achat_unitaire': '100',
             }],
         }, format='json')
-        # Le sérialiseur rejette déjà un fournisseur hors société (400) —
-        # jamais un cross-tenant.
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # Fournisseur hors société = id inconnu (404, IdInconnu404Mixin du BCF,
+        # api-fuzz-full 24/10) — jamais un cross-tenant.
+        self.assertEqual(resp.status_code, 404, resp.data)

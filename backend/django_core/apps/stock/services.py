@@ -7226,7 +7226,7 @@ def _valider_revision_ligne_bcf(bc, ligne, ligne_data):
             raise ValueError(f'Ligne {ligne.id} — prix négatif.')
         if prix_mad != (ligne.prix_achat_unitaire or Decimal('0')):
             if (ligne.quantite_recue or 0) > 0:
-                raise ValueError(
+                raise EtatIncompatible(
                     f'Ligne {ligne.id} — le prix d\'une quantité déjà '
                     'reçue est figé : passer par une revalorisation.')
             valeurs['prix_achat_unitaire'] = prix_mad
