@@ -44,6 +44,12 @@ class SeriesCITests(TestCase):
             r = self.api.post(self.url, corps, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.content))
 
+    def test_series_lot_multipart_sans_fichier_400(self):
+        # api-fuzz-full 24/10 — le corps multipart publié exige ``fichier``.
+        r = self.api.post(self.url, {'produit': self.module.id}, format='multipart')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('fichier', r.data)
+
     def test_serie_trop_longue_resultat_erreur_sans_500(self):
         r = self.api.post(self.url, {'texte': 'S' * 130 + ';C1',
                                      'produit': self.module.id},

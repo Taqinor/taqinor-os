@@ -1879,7 +1879,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         serializer = self.get_serializer(produit)
         return Response(serializer.data)
 
-    @extend_schema(request=None, responses=OBJET)
+    @extend_schema(request=None, responses={200: OBJET})  # DELETE servi 200 + detail (api-fuzz-full 24/10)
     @action(detail=True, methods=['delete'], url_path='force-delete')
     def force_delete(self, request, *args, **kwargs):
         produit = self.get_object()

@@ -1547,7 +1547,7 @@ def confirm_reception_fournisseur(reception, user):
     if reception.statut != ReceptionFournisseur.Statut.BROUILLON:
         # Idempotence : une réception déjà confirmée/annulée ne touche pas le
         # stock une seconde fois.
-        raise ValueError(
+        raise EtatIncompatible(  # api-fuzz-full 24/10 : refus d'état, 409
             'Seule une réception en brouillon peut être confirmée.')
     # YPROC7 — un BCF ANNULÉ ne doit plus jamais recevoir de stock : la garde
     # intervenait auparavant seulement APRÈS coup (avancement de statut), donc
@@ -1555,7 +1555,7 @@ def confirm_reception_fournisseur(reception, user):
     if (reception.bon_commande is not None
             and reception.bon_commande.statut
             == BonCommandeFournisseur.Statut.ANNULE):
-        raise ValueError(
+        raise EtatIncompatible(
             'Ce bon de commande fournisseur est annulé : la réception ne '
             'peut pas être confirmée.')
     lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
@@ -1576,7 +1576,7 @@ def confirm_reception_fournisseur(reception, user):
         verrou = (ReceptionFournisseur.objects.select_for_update()
                   .get(pk=reception.pk))
         if verrou.statut != ReceptionFournisseur.Statut.BROUILLON:
-            raise ValueError(
+            raise EtatIncompatible(
                 'Seule une réception en brouillon peut être confirmée '
                 '(déjà confirmée ou annulée).')
         applique_total = 0

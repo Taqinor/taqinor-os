@@ -114,7 +114,7 @@ class TestReceptionFournisseur(G5Base):
         # double-comptage du stock.
         r2 = self.api.post(
             f'/api/django/stock/receptions-fournisseur/{rec_id}/confirmer/')
-        self.assertEqual(r2.status_code, 400)
+        self.assertEqual(r2.status_code, 409)  # api-fuzz-full 24/10 : refus d'état
         produit.refresh_from_db()
         self.assertEqual(produit.quantite_stock, 9)  # inchangé
         self.assertEqual(MouvementStock.objects.filter(

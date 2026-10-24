@@ -100,19 +100,21 @@ class FactureFkEtChampsServeurTests(TestCase):
     def _url(self):
         return f'/api/django/ventes/factures/{self.facture.id}/'
 
-    def test_fk_etrangere_400(self):
+    def test_fk_etrangere_404(self):
+        # api-fuzz-full 24/10 — FactureWriteSerializer porte IdInconnu404Mixin :
+        # FK d'une autre société = id inexistant = 404, même corps.
         from apps.ventes.models import Facture, LigneFacture
         for champ in self.FK_FACTURE:
             with self.subTest(champ=champ):
                 r = self.api.patch(self._url(), {champ: self.mb[champ].pk},
                                    format='json')
-                self.assertEqual(r.status_code, 400, r.data)
+                self.assertEqual(r.status_code, 404, r.data)
                 self.assertIn(champ, r.data)
                 self.assertNotIn('Client B', str(r.data))
-                # Inexistant → 400, jamais 500.
+                # Inexistant → 404, jamais 500.
                 r = self.api.patch(self._url(), {champ: 999999},
                                    format='json')
-                self.assertEqual(r.status_code, 400, r.data)
+                self.assertEqual(r.status_code, 404, r.data)
         self.facture.refresh_from_db()
         self.assertEqual(self.facture.client_id, self.ma['client'].pk)
         self.assertIsNone(self.facture.devis_id)
@@ -121,7 +123,7 @@ class FactureFkEtChampsServeurTests(TestCase):
         r = self.api.post('/api/django/ventes/factures/',
                           {'client': self.mb['client'].pk,
                            'taux_tva': '20.00'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
         self.assertEqual(Facture.objects.count(), avant)
         # Lignes : produit et devis source voisins refusés.
         for champ, valeur in (('produit', self.mb['produit'].pk),
@@ -172,7 +174,7 @@ class FactureFkEtChampsServeurTests(TestCase):
         avant = solde_devis(devis_b)
         r = self.api.patch(self._url(), {'devis': devis_b.pk},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)  # api-fuzz-full 24/10
         devis_b.refresh_from_db()
         self.assertEqual(solde_devis(devis_b), avant)
 

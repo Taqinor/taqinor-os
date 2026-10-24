@@ -54,7 +54,16 @@ class _TexteGabaritSchema(OpenApiSerializerFieldExtension):
             self.target, direction, bypass_extensions=True)
         if direction == 'request' and schema.get('type') == 'string':
             schema = dict(schema)
-            schema['pattern'] = self.target.motif_requete
+            motif = self.target.motif_requete
+            borne = getattr(self.target, 'max_length', None)  # ``maxLength`` est posé APRÈS l'extension
+            if borne and motif.endswith(')*$'):
+                # api-fuzz-full 24/10 — Schemathesis fusionnait ``maxLength``
+                # dans le ``*`` en RÉÉCRIVANT le motif (``}`` nu, refusé en
+                # ECMA ``u`` : « Schema Error ») ; une borne explicite
+                # ``{0,maxLength}`` le lui fait laisser tel quel. Même ensemble
+                # accepté : chaque répétition consomme au moins un caractère.
+                motif = motif[:-2] + '{0,%d}$' % borne
+            schema['pattern'] = motif
         return schema
 
 

@@ -21,7 +21,7 @@ def _declarations(lecture, signature, paiement, SH):
         # ADEV98 — beacon de lecture humaine (corps ignoré, toujours 204).
         (lecture.proposal_vu, dict(request=None, responses={204: None})),
         (signature.proposal_decliner,
-         dict(request=SH.DeclinRequest,
+         dict(request=SH.DeclinRequest, extensions=SH.DECLIN_AUTRE_TEXTE,
               responses={200: SH.DeclinResponse, 400: SH.DetailResponse,
                          403: SH.DetailResponse, 409: SH.AcceptRefus})),
         (signature.proposal_contact_request,
