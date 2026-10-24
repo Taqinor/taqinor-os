@@ -27,8 +27,6 @@ Sortie = le bloc ``bilan`` du contrat ``etude_ci_preview.json`` ; la matrice
 ``horaire`` est celle que lit la valorisation (``apps.ventes.economie_ci``).
 """
 
-from bisect import bisect_right
-
 from apps.ventes.quote_engine.constants_82_21 import (
     MENTION_BT,
     PLAFOND_INJECTION_PCT,
@@ -64,6 +62,18 @@ def _matrice_heure(charge, production):
     return auto, production - auto
 
 
+def _rang(triees, seuil):
+    """Nombre de valeurs de ``triees`` (croissantes) ≤ ``seuil`` (dichotomie)."""
+    bas, haut = 0, len(triees)
+    while bas < haut:
+        milieu = (bas + haut) // 2
+        if triees[milieu] <= seuil:
+            bas = milieu + 1
+        else:
+            haut = milieu
+    return bas
+
+
 def _croiser_serie(charge, mois_serie, kwc):
     """AMOT99 — ``(autoconsommé[24], surplus[24])`` SOMMÉS sur les jours réels du
     mois : la règle de :func:`_matrice_heure` sur chaque heure, par l'identité
@@ -71,7 +81,7 @@ def _croiser_serie(charge, mois_serie, kwc):
     triées et cumulées une fois par étude : ~1 ms par taille)."""
     auto_h, surplus_h = [], []
     for c, triees, cumuls in zip(charge, mois_serie['heures_triees'], mois_serie['cumuls']):
-        rang = bisect_right(triees, c / kwc) if kwc > 0 else len(triees)
+        rang = _rang(triees, c / kwc) if kwc > 0 else len(triees)
         auto = kwc * cumuls[rang] + c * (len(triees) - rang)
         auto_h.append(auto)
         surplus_h.append(max(0.0, kwc * cumuls[-1] - auto))
