@@ -135,7 +135,8 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
     if not d.get("ind_sous_reserve") and isinstance(argent, dict) and \
             (argent.get("tarif") or {}).get("origine") == "declare_facture":
         lignes.append((L("ci_ind_statut", "Statut de l'étude"),
-                       L("ci_ind_offre_ferme", "offre ferme")))
+                       L("ci_ind_prix_ferme",
+                         "prix ferme, économies estimées")))
     rangees = "".join(
         f'<tr><td class="{prefixe}-sy-l">{lib}</td>'
         f'<td class="{prefixe}-sy-v">{val}</td></tr>'
@@ -213,7 +214,8 @@ def build(ctx):
             if n else L("ci_ind_baseline_interpoles_sans_n",
                         "mois interpolés — estimation"))
     elif source == "kwh_declares":
-        suffixe = " — " + L("ci_ind_baseline_kwh", "kWh déclarés")
+        suffixe = " — " + L("ci_ind_source_kwh_declares",
+                            "d'après vos kWh déclarés")
     else:
         # Sans source servie, la couverture ne prétend plus « 12 mois ».
         suffixe = ""
@@ -254,10 +256,10 @@ def build(ctx):
     else:
         bars_html = ""
         bill_html = ('<div class="i1-basel">'
-                     + L("ci_ind_facture_non_communiquee",
+                     + L("ci_ind_facture_non_communiquee_client",
                          "Facture électrique actuelle non communiquée — "
-                         "transmettez 12 mois de factures et la baseline se "
-                         "chiffre.")
+                         "transmettez 12 mois de factures et votre "
+                         "consommation de référence se chiffre.")
                      + '</div>')
 
     # QJR651 — la cellule KPI est commune (premium_base.kpi).
@@ -275,8 +277,9 @@ def build(ctx):
     bandeau = ci_couverture.bandeau_reserve(d, "ind", "i1")
     # AMOT80 — le sous-titre « cashflow et payback » seulement sur un flux.
     from .finance import flux_principal
-    sous_titre = L("ci_ind_sous_titre", "Analyse de rentabilité (CFO) — "
-                   "baseline, cashflow et payback.") if flux_principal(
+    sous_titre = L("ci_ind_sous_titre_client", "Analyse de rentabilité : "
+                   "votre consommation, vos flux annuels et le délai de "
+                   "retour.") if flux_principal(
         (d.get("ind_synthese") or {}).get("argent"))[1].get("flux") else ""
     methode_line = ci_couverture.ligne_methode(d, "ind", "i1")
     note_pointe = ci_couverture.note_pointe(d, "ind")
@@ -387,7 +390,8 @@ def build(ctx):
         "ci_ind_note_autoconso",
         "L'installation vise l'<b>autoconsommation</b> : la valeur porte "
         "d'abord sur\n      les <b>heures pleines</b> (production en journée).")
-    baseline_titre = L("ci_ind_baseline", "Baseline énergétique") + suffixe
+    baseline_titre = L("ci_ind_conso_prod_titre",
+                       "Votre consommation et votre production") + suffixe
     conso_prod = ' · '.join(x for x in (conso_line, prod_line) if x)
 
     html = f"""{css}

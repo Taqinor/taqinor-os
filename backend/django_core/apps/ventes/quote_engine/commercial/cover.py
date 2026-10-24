@@ -196,7 +196,7 @@ def build(ctx):
       </div>
     </div>
     <div class="c1c-hbody">
-      <div class="c1c-kicker">{L("ci_kicker_commercial", "Proposition — Autoconsommation solaire commerciale")}</div>
+      <div class="c1c-kicker">{L("ci_kicker_solaire_commercial", "Proposition — Autoconsommation solaire commerciale")}</div>
       <div class="c1c-catrow">
         <div class="c1c-caticon">{icon}</div>
         <div class="c1c-catlab"><div class="c1c-serif c1c-title">{cat_label}</div></div>

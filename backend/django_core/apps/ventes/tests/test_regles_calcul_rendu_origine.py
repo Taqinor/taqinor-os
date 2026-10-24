@@ -180,7 +180,16 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_retour_prix_complet', 'ci_role_cable_dc', 'ci_role_cable_ac',
         'ci_role_structure_ci', 'ci_role_coffret_dc', 'ci_role_coffret_ac',
         'ci_role_protection_ac', 'ci_role_onduleur_string_tri',
-        'ci_role_onduleur_string_mono')),
+        'ci_role_onduleur_string_mono',
+        # AMOT88 — vocabulaire client (nouvelles clés, anciennes intactes).
+        'ci_part_conso_couverte', 'ci_kicker_solaire_commercial',
+        'ci_a_chiffrer_hors_total', 'ci_ind_sous_titre_client',
+        'ci_ind_conso_prod_titre', 'ci_ind_source_kwh_declares',
+        'ci_ind_facture_non_communiquee_client', 'ci_ind_prix_ferme',
+        'ci_ind_lead_client', 'ci_ind_delai_retour',
+        'ci_hypotheses_estimation', 'ci_ind_methode_tri_client',
+        'ci_ind_revente_hors_flux', 'ci_ind_motif_bt_client',
+        'ci_ind_motif_invest_client', 'ci_src_reglage_societe')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

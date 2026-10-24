@@ -130,7 +130,10 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         html = _html(_data("ar"))
         self.assertIn('<html lang="ar" dir="rtl">', html)
         self.assertIn(L.libelle("ci_echeancier", "ar"), html)
-        self.assertIn(L.libelle("ci_kicker_commercial", "ar"), html)
+        # AMOT88 — « للمنشآت التجارية » (établissements), jamais
+        # « للمحلات التجارية » (boutiques).
+        self.assertIn(L.libelle("ci_kicker_solaire_commercial", "ar"), html)
+        self.assertNotIn("للمحلات", html)
         # L'espacement de lettres casse la liaison des lettres arabes.
         self.assertIn("letter-spacing:0 !important", html)
 

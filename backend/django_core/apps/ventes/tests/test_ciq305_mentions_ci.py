@@ -102,7 +102,12 @@ class TestTableMentions(SimpleTestCase):
                  "tarifs_par_poste": [{"releve_le": "2026-10-03"}]}
         h = _par_cle(mentions_ci(_data(
             _etude("bt"), economie_ci={"tarif": tarif})))
-        self.assertIn("repli", h["tarif"]["textes"]["fr"])
+        # AMOT88 — le texte client dit « tarif officiel ONEE publié »,
+        # jamais « repli » (le mot reste dans la source, interne).
+        self.assertEqual(h["tarif"]["textes"]["fr"],
+                         "Prix du kWh : tarif officiel ONEE publié, en "
+                         "attendant la lecture de votre facture.")
+        self.assertNotIn("repli", " ".join(h["tarif"]["textes"].values()))
         self.assertEqual(h["tarif"]["source"], "Grille ONEE, repli")
         self.assertEqual(h["tarif"]["date"], "2026-10-03")
         self.assertNotIn("tarif", _par_cle(mentions_ci(_data(_etude("bt")))))

@@ -13,6 +13,7 @@ garde ses littéraux d'hier, octet pour octet.
 """
 from __future__ import annotations
 
+import html
 import re
 
 from .blocs import langue, libelle
@@ -47,6 +48,9 @@ SOURCES_CLIENT = {
     "etude_ci.bilan (moteur C&I)": "ci_src_production",
     "etude_ci.bilan": "ci_src_production",
     "D-CIQ-10 : 25 ans": "ci_src_horizon",
+    # AMOT88 — chemin d'écran interne : jamais imprimé au client.
+    "réglage société — Paramètres › Tarification & ROI":
+        "ci_src_reglage_societe",
     "conventions Groupe CIQ": "ci_src_methode",
     ("remplacement à mi-vie (principe IEA PVPS, décision Q1 du 20/08/2026), "
      "au montant réel de la ligne onduleur du devis"): "ci_src_onduleur",
@@ -116,11 +120,16 @@ def _a_confirmer(d, cle):
     connu du moteur (``ci_confirmer_<clé>``) est traduit ; un motif propre
     au dossier reste tel quel."""
     from .. import i18n_labels
-    libelles = [texte_client(d, a)
-                for a in d.get(f"{cle}_a_confirmer") or [] if a]
+    cles = d.get(f"{cle}_a_confirmer_cles") or []
+    # AMOT88 — les postes hors total ont leur propre ligne du bandeau
+    # (``bandeau_reserve``) : jamais « À confirmer : À chiffrer… ».
+    paires = [(texte_client(d, a), cles[i] if i < len(cles) else "")
+              for i, a in enumerate(d.get(f"{cle}_a_confirmer") or []) if a]
+    paires = [(t, c) for t, c in paires if c != "a_chiffrer_visite"]
+    libelles = [t for t, _c in paires]
+    cles = [c for _t, c in paires]
     if langue(d) == "fr":
         return libelles
-    cles = d.get(f"{cle}_a_confirmer_cles") or []
     sortie = []
     for i, texte_fr in enumerate(libelles):
         cat = f"ci_confirmer_{cles[i]}" if i < len(cles) else ""
@@ -145,6 +154,16 @@ def bandeau_reserve(d, cle, prefixe):
     liste = (f'<div class="{prefixe}-reserve-l">'
              + libelle(d, "ci_a_confirmer", "À confirmer : ")
              + " · ".join(a_confirmer) + "</div>") if a_confirmer else ""
+    postes = postes_hors_total(d.get(f"{cle}_synthese"))
+    if postes:
+        # AMOT88 — chaque poste dit son rôle en mots simples (« câble DC —
+        # <article> », « structure de fixation »), dans la langue du document.
+        from .synthese import texte_postes
+        liste = (f'<div class="{prefixe}-reserve-l">'
+                 + libelle(d, "ci_a_chiffrer_hors_total", "À chiffrer après "
+                           "la visite technique (hors total) : ")
+                 + html.escape(texte_postes(postes, roles_client(d)),
+                               quote=False) + "</div>") + liste
     bandeau = (BANDEAU_RESERVE if langue(d) == "fr"
                else texte(TEXTES_VISITE, langue(d)).rstrip("."))
     return (f'<div class="{prefixe}-reserve"><b>{bandeau}</b>'
@@ -361,8 +380,8 @@ def tuiles_taux(d, cle, kpi):
     couverture = d.get(f"{cle}_couverture")
     if couverture is not None:
         tuiles.append(kpi(f"{round(couverture)}", "&nbsp;%",
-                          libelle(d, "ci_couverture_conso",
-                                  "Couverture conso"),
+                          libelle(d, "ci_part_conso_couverte",
+                                  "Part de votre consommation couverte"),
                           "couverture_pct"))
     return tuiles
 

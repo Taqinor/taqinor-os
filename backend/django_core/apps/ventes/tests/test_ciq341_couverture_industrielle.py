@@ -75,19 +75,22 @@ class Ciq341Baseline(SimpleTestCase):
     def test_deux_factures_interpolees_estimation(self):
         p1 = _texte(_page1(_data(interpoles=10)))
         self.assertIn(
-            "Baseline énergétique — 2 factures, mois interpolés — estimation",
-            p1)
+            "Votre consommation et votre production — 2 factures, mois "
+            "interpolés — estimation", p1)
+        self.assertNotIn("aseline", p1)
         self.assertNotIn("12 mois", p1)
         self.assertIn("Facture électrique estimée", p1)
 
     def test_douze_factures(self):
         p1 = _texte(_page1(_data()))
-        self.assertIn("Baseline énergétique — 12 factures", p1)
+        self.assertIn("Votre consommation et votre production — 12 factures",
+                      p1)
 
     def test_kwh_seuls_jamais_non_communiquee(self):
         p1 = _texte(_page1(_data("exemple_industriel_mt",
                                  "exemple_industriel_mt")))
-        self.assertIn("Baseline énergétique — kWh déclarés", p1)
+        self.assertIn("Votre consommation et votre production — d'après vos "
+                      "kWh déclarés", p1)
         self.assertNotIn("non communiquée", p1)
         self.assertNotIn("MAD/an", p1.split("kWh déclarés")[1][:200])
 
@@ -149,8 +152,9 @@ class Ciq341Synthese(SimpleTestCase):
 
 
 class Amot80OffreFermeEtTitresCfo(SimpleTestCase):
-    """AMOT80 — « offre ferme » seulement sans réserve de visite ET sur un
-    tarif lu sur la facture du client ; titres CFO seulement avec un flux."""
+    """AMOT80 — le statut (AMOT88 : « prix ferme, économies estimées »)
+    seulement sans réserve de visite ET sur un tarif lu sur la facture du
+    client ; le sous-titre de rentabilité seulement avec un flux."""
 
     def _sans_reserve(self, etude, economie):
         d = _data(etude, economie)
@@ -159,23 +163,32 @@ class Amot80OffreFermeEtTitresCfo(SimpleTestCase):
         return _texte(_page1(d))
 
     def test_offre_ferme_jamais_sur_une_grille_de_repli(self):
-        # ``exemple`` : tarif d'origine grille_officielle (repli).
-        self.assertNotIn("offre ferme", self._sans_reserve("exemple",
-                                                           "exemple"))
+        # ``exemple`` : tarif d'origine grille_officielle (grille publiée).
+        self.assertNotIn("prix ferme", self._sans_reserve("exemple",
+                                                          "exemple"))
 
     def test_offre_ferme_sur_facture_declaree_sans_reserve(self):
         p1 = self._sans_reserve("exemple_industriel_mt",
                                 "exemple_industriel_mt")
-        self.assertIn("Statut de l'étude offre ferme", p1)
+        # AMOT88 — une règle : prix ferme, économies estimées (jamais
+        # « offre ferme » à côté de « chiffres indicatifs »).
+        self.assertIn("Statut de l'étude prix ferme, économies estimées", p1)
+        self.assertNotIn("offre ferme", _texte(_html(_data(
+            "exemple_industriel_mt", "exemple_industriel_mt"))))
 
     def test_jamais_offre_ferme_sous_reserve(self):
         p1 = _texte(_page1(_data("exemple_industriel_mt",
                                  "exemple_industriel_mt")))
         self.assertIn("Estimation sous réserve de la visite technique", p1)
-        self.assertNotIn("offre ferme", p1)
+        self.assertNotIn("prix ferme", p1)
 
     def test_titres_cfo_seulement_avec_un_flux(self):
-        self.assertIn("Analyse de rentabilité (CFO)", _texte(_html(_data())))
+        avec = _texte(_html(_data()))
+        self.assertIn("Analyse de rentabilité : votre consommation, vos flux "
+                      "annuels et le délai de retour.", avec)
+        # AMOT88 — plus aucun mot interne (CFO, baseline, cashflow, payback).
+        for mot in ("CFO", "aseline", "ashflow", "payback"):
+            self.assertNotIn(mot, avec)
         sans = _texte(_html(_data(economie=None)))
-        self.assertNotIn("Analyse de rentabilité (CFO)", sans)
+        self.assertNotIn("Analyse de rentabilité :", sans)
         self.assertNotIn("Rentabilité sur 25 ans", sans)

@@ -85,7 +85,8 @@ class Ciq342SiteMT(SimpleTestCase):
         d = _data("exemple_industriel_mt")
         texte = _texte(_pages(d)[3])
         self.assertIn("Cumul net de l'investissement (HT)", texte)
-        self.assertIn("hors cashflow", texte)
+        self.assertIn("hors flux annuels", texte)
+        self.assertNotIn("cashflow", texte)
         # Mention 82-21 SERVIE par ``economie_ci.revente_ci`` (contrat
         # réaligné sur le service : MENTION_82_21 en tête des six).
         self.assertIn("Tarif d'excédent ANRE (décision 04/26) : 18 cDH/kWh",

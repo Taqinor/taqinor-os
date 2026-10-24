@@ -2350,6 +2350,95 @@ LIBELLES = {
                                     'ar': 'العاكس'},
     'ci_role_onduleur_string_mono': {'fr': 'onduleur', 'en': 'inverter',
                                      'ar': 'العاكس'},
+    # AMOT88 — passe « vocabulaire client » : les mots internes (CFO,
+    # baseline, cashflow, payback, « moteur C&I », « flux servi ») sortent du
+    # document. NOUVELLES clés (les anciennes restent au catalogue, plus lues
+    # par les gabarits C&I) : le golden ``regles_calcul_origine`` reste
+    # valable sans recapture.
+    'ci_part_conso_couverte': {'fr': 'Part de votre consommation couverte',
+                               'en': 'Share of your consumption covered',
+                               'ar': 'حصة استهلاككم المغطاة'},
+    'ci_kicker_solaire_commercial': {
+        'fr': 'Proposition — Autoconsommation solaire commerciale',
+        'en': 'Proposal — Commercial solar self-consumption',
+        'ar': 'عرض — الاستهلاك الذاتي للطاقة الشمسية للمنشآت التجارية'},
+    'ci_a_chiffrer_hors_total': {
+        'fr': 'À chiffrer après la visite technique (hors total) : ',
+        'en': 'To be priced after the site visit (not in the total): ',
+        'ar': 'يُسعَّر بعد الزيارة التقنية (خارج المجموع): '},
+    'ci_ind_sous_titre_client': {
+        'fr': 'Analyse de rentabilité : votre consommation, vos flux annuels '
+              'et le délai de retour.',
+        'en': 'Profitability analysis: your consumption, your annual cash '
+              'flows and the payback period.',
+        'ar': 'تحليل المردودية: استهلاككم وتدفقاتكم السنوية ومدة الاسترداد.'},
+    'ci_ind_conso_prod_titre': {'fr': 'Votre consommation et votre production',
+                                'en': 'Your consumption and your production',
+                                'ar': 'استهلاككم وإنتاجكم'},
+    'ci_ind_source_kwh_declares': {'fr': "d'après vos kWh déclarés",
+                                   'en': 'based on your declared kWh',
+                                   'ar': 'حسب الكيلوواط ساعة المصرح بها'},
+    'ci_ind_facture_non_communiquee_client': {
+        'fr': 'Facture électrique actuelle non communiquée — transmettez 12 '
+              'mois de factures et votre consommation de référence se '
+              'chiffre.',
+        'en': 'Current electricity bill not provided — send 12 months of '
+              'bills and your reference consumption is calculated.',
+        'ar': 'فاتورة الكهرباء الحالية غير مقدمة — أرسلوا فواتير 12 شهرا '
+              'ليُحسب استهلاككم المرجعي.'},
+    'ci_ind_prix_ferme': {'fr': 'prix ferme, économies estimées',
+                          'en': 'firm price, estimated savings',
+                          'ar': 'سعر نهائي، وفورات مقدرة'},
+    'ci_ind_lead_client': {
+        'fr': 'Projection sur {n} ans : flux annuels, délai de retour et TRI '
+              'tirés de la même série ; hypothèses détaillées ci-dessous.',
+        'en': 'Projection over {n} years: annual cash flows, payback period '
+              'and IRR drawn from the same series; assumptions detailed '
+              'below.',
+        'ar': 'إسقاط على مدى {n} سنة: التدفقات السنوية ومدة الاسترداد ومعدل '
+              'العائد الداخلي مستخرجة من نفس السلسلة؛ الافتراضات مفصلة أدناه.'},
+    'ci_ind_delai_retour': {'fr': 'Délai de retour', 'en': 'Payback period',
+                            'ar': 'مدة الاسترداد'},
+    'ci_hypotheses_estimation': {'fr': "Hypothèses de l'estimation",
+                                 'en': 'Estimate assumptions',
+                                 'ar': 'افتراضات التقدير'},
+    'ci_ind_methode_tri_client': {
+        'fr': 'TRI et délai de retour calculés sur ces flux annuels (méthode '
+              'actuarielle) ; prix ferme, économies estimées.',
+        'en': 'IRR and payback period calculated on these annual cash flows '
+              '(actuarial method); firm price, estimated savings.',
+        'ar': 'معدل العائد الداخلي ومدة الاسترداد محسوبان على هذه التدفقات '
+              'السنوية (طريقة اكتوارية)؛ سعر نهائي ووفورات مقدرة.'},
+    'ci_ind_revente_hors_flux': {
+        'fr': 'revente du surplus, hors flux annuels (non comptée dans le '
+              'délai de retour ni le TRI).',
+        'en': 'sale of the surplus, outside the annual cash flows (not '
+              'counted in the payback period or the IRR).',
+        'ar': 'بيع الفائض، خارج التدفقات السنوية (غير محتسب في مدة الاسترداد '
+              'ولا في معدل العائد).'},
+    'ci_ind_motif_bt_client': {
+        'fr': "Les <b>économies annuelles</b> de cette installation n'ont pas "
+              "encore été calculées sur vos données. Nous préférons ne rien "
+              "afficher plutôt que des flux annuels, un point mort ou un TRI "
+              "qui ne reposeraient sur aucune mesure.",
+        'en': 'The <b>annual savings</b> of this installation have not yet '
+              'been calculated on your data. We prefer to show nothing rather '
+              'than annual cash flows, a break-even point or an IRR resting '
+              'on no measurement.',
+        'ar': 'لم تُحسب بعد <b>الوفورات السنوية</b> لهذه المنشأة على أساس '
+              'معطياتكم. نفضل ألا نعرض شيئا بدل تدفقات سنوية أو نقطة تعادل '
+              'أو معدل عائد لا يستند إلى أي قياس.'},
+    'ci_ind_motif_invest_client': {
+        'fr': "<b>{motif}</b> : le délai de retour, le TRI et les flux "
+              "annuels ne sont publiés que sur un investissement entièrement "
+              "chiffré.",
+        'en': '<b>{motif}</b>: payback period, IRR and annual cash flows are '
+              'only published on a fully priced investment.',
+        'ar': '<b>{motif}</b>: لا تُنشر مدة الاسترداد ومعدل العائد الداخلي '
+              'والتدفقات السنوية إلا على استثمار مُسعَّر بالكامل.'},
+    'ci_src_reglage_societe': {'fr': "hypothèse retenue par l'installateur",
+                               'en': "assumption set by the installer",
+                               'ar': 'افتراض اعتمده المركِّب'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},

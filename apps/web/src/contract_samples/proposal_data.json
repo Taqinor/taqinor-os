@@ -1829,9 +1829,9 @@
         {
           "cle": "tarif",
           "textes": {
-            "fr": "Prix du kWh : grille ONEE BT professionnel publiée (repli), en attendant la lecture de votre facture.",
-            "en": "kWh price: published ONEE low-voltage professional tariff (fallback), until your bill is read.",
-            "ar": "ثمن الكيلوواط ساعة: تعريفة المكتب الوطني المنشورة للمهنيين (احتياطي) إلى حين قراءة فاتورتكم."
+            "fr": "Prix du kWh : tarif officiel ONEE publié, en attendant la lecture de votre facture.",
+            "en": "kWh prices: published official ONEE tariff, until your bill is read.",
+            "ar": "أثمنة الكيلوواط ساعة: التعريفة الرسمية المنشورة للمكتب الوطني إلى حين قراءة فاتورتكم."
           },
           "source": "tarifs_ci.json — grille officielle, repli",
           "date": "2026-10-03"

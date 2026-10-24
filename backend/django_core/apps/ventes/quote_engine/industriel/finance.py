@@ -51,6 +51,9 @@ UNITES_HYPOTHESES = {
 
 _num = nombre_ou_none
 
+#: AMOT88 — le titre du bloc d'hypothèses, en mots du client.
+TITRE_HYPOTHESES = "Hypothèses de l'estimation"
+
 
 def flux_principal(argent):
     """``(clé, bloc)`` du flux de la base principale servie (``flux_ttc``
@@ -128,6 +131,15 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
         lignes.append(f"{L(cat, fr)}&#160;: {valeur}"
                       + (f" — {source}" if source else ""))
     for h in argent.get("hypotheses") or []:
+        if isinstance(h, dict) and h.get("cle") == "tarif":
+            # AMOT88 — « grille ONEE …, repli » : le prix du kWh en mots du
+            # client (grille publiée datée, ou votre facture).
+            from ..ci.mentions import ligne_tarif_client
+            tarif_txt = ligne_tarif_client(argent.get("tarif"),
+                                           ci_blocs.langue(d))
+            if tarif_txt:
+                lignes.append(tarif_txt)
+                continue
         if isinstance(h, dict) and h.get("valeur"):
             source = ci_couverture.texte_client(d, h.get("source"))
             lignes.append(ci_blocs._txt(h.get("valeur"))
@@ -187,9 +199,9 @@ def _ligne_revente(argent, fmt, L, langue):
                if mentions else "")
     return (f'<div class="i2-inj"><b>+ {fmt(valeur)} '
             f'{L("ci_mad_an", "MAD/an")}</b> — '
-            + L("ci_ind_revente_hors_cashflow",
-                "revente du surplus, hors cashflow (non comptée dans le "
-                "retour ni le TRI).")
+            + L("ci_ind_revente_hors_flux",
+                "revente du surplus, hors flux annuels (non comptée dans "
+                "le délai de retour ni le TRI).")
             + f'{mention}</div>')
 
 
@@ -425,9 +437,10 @@ def build(ctx):
             # AMOT80 (D-ACI-8=a) — l'économie est chiffrée, l'investissement
             # non : SON motif, jamais « économies pas encore calculées ».
             corps_txt, motif = L(
-                "ci_ind_motif_invest",
-                "<b>{motif}</b> : le retour, le TRI et le cashflow ne sont "
-                "publiés que sur un investissement entièrement chiffré.",
+                "ci_ind_motif_invest_client",
+                "<b>{motif}</b> : le délai de retour, le TRI et les flux "
+                "annuels ne sont publiés que sur un investissement "
+                "entièrement chiffré.",
                 motif=motif_inv), ""
         elif ci_couverture._argent_mt(d, "ind"):
             corps_txt = L(
@@ -438,11 +451,11 @@ def build(ctx):
                 "rien afficher plutôt qu'un chiffre qui n'est pas le vôtre.")
         else:
             corps_txt = L(
-                "ci_ind_motif_bt",
+                "ci_ind_motif_bt_client",
                 "Les <b>économies annuelles</b> de cette installation n'ont "
                 "pas encore été calculées sur vos données. Nous préférons ne "
-                "rien afficher plutôt qu'un cashflow, un point mort ou un TRI "
-                "qui ne reposeraient sur aucune mesure.")
+                "rien afficher plutôt que des flux annuels, un point mort ou "
+                "un TRI qui ne reposeraient sur aucune mesure.")
         corps = f"""
   <div class="i2-mt">
     <div class="i2-mt-t">{L("ci_ind_non_chiffre_titre", "Rentabilité non chiffrée sur ce dossier")}</div>
@@ -478,7 +491,7 @@ def build(ctx):
         if payback is not None:
             cellules.append(kpi(
                 ci_couverture.ans(payback), L("ci_unite_ans", "&nbsp;ans"),
-                L("ci_ind_retour_flux", "Retour (même flux)"),
+                L("ci_ind_delai_retour", "Délai de retour"),
                 "payback_ans", ci_couverture.ans(payback)))
         if tri_txt is not None:
             cellules.append(kpi(
@@ -521,7 +534,7 @@ def build(ctx):
                              (navy, ink))
         hypotheses_html = (
             f'<div class="i2-hyp"><div class="i2-hyp-t">'
-            f'{L("ci_ind_hypotheses", "Hypothèses du moteur")}</div>'
+            f'{L("ci_hypotheses_estimation", TITRE_HYPOTHESES)}</div>'
             + "".join(f'<div class="i2-hyp-i">{h}</div>' for h in lignes_hyp)
             + '</div>') if lignes_hyp else ""
         om_txt = _ligne_om(argent, fmt_mad, L)
@@ -538,11 +551,11 @@ def build(ctx):
   {hypotheses_html}
   <div class="i2-foot">
     {(om_txt + '. ') if om_txt else ''}{pied}.
-    {L("ci_ind_methode_tri", "TRI et retour lus sur le flux servi par le moteur C&amp;I (méthode actuarielle) ; chiffres indicatifs.")}
+    {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle) ; prix ferme, économies estimées.")}
     {mt_source}
   </div>"""
-        lead_txt = L("ci_ind_lead",
-                     "Projection du moteur C&amp;I sur {n} ans : flux, retour "
+        lead_txt = L("ci_ind_lead_client",
+                     "Projection sur {n} ans : flux annuels, délai de retour "
                      "et TRI tirés de la même série ; hypothèses détaillées "
                      "ci-dessous.", n=horizon_txt)
 

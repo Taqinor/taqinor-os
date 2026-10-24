@@ -466,3 +466,50 @@ class TestAmot87BlocInvestissement(SimpleTestCase):
                 self.assertRegex(css, rf"\.{prefixe}-inv-v\{{[^}}]*"
                                       r"white-space:nowrap")
                 self.assertRegex(css, rf"\.{prefixe}-inv-r\{{display:table")
+
+
+class TestAmot88VocabulaireClient(SimpleTestCase):
+    """AMOT88 — le document parle la langue du client : aucun mot interne,
+    le bandeau sans bégaiement, les postes dits par leur rôle, le tarif
+    sans « repli » ni « capture », l'arabe « للمنشآت التجارية »."""
+
+    MOTS_INTERNES = ("CFO", "aseline", "ashflow", "payback", "moteur",
+                     "repli", "capture", "reconfirm", "flux servi", "C&I",
+                     "Couverture conso")
+
+    def test_aucun_mot_interne_en_francais(self):
+        for hors_total in (False, True):
+            texte = _texte_ci("".join(_pages_ci(
+                _data_ci(hors_total=hors_total))))
+            for mot in self.MOTS_INTERNES:
+                with self.subTest(hors_total=hors_total, mot=mot):
+                    self.assertNotIn(mot, texte)
+
+    def test_bandeau_sans_begaiement_postes_par_role(self):
+        p1 = _texte_ci(_pages_ci(_data_ci(hors_total=True))[1])
+        self.assertNotIn("À confirmer : À chiffrer", p1)
+        self.assertIn(
+            "À chiffrer après la visite technique (hors total) : câble DC — "
+            "Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre), câble AC, "
+            "structure de fixation", p1)
+        # La désignation brute du moteur n'est plus imprimée.
+        self.assertNotIn("Structure C&I", p1)
+        self.assertNotIn("Onduleur réseau Huawei 50kW Triphasé → TGBT", p1)
+
+    def test_bandeau_traduit(self):
+        p1 = _texte_ci(_pages_ci(_data_ci(hors_total=True, langue="en"))[1])
+        self.assertIn("To be priced after the site visit (not in the "
+                      "total): DC cable — Câble solaire Nexans H1Z2Z2-K 4 "
+                      "mm² (au mètre), AC cable, mounting structure", p1)
+        self.assertNotIn("À chiffrer", p1)
+
+    def test_tuile_couverture_et_tarif_en_mots_du_client(self):
+        p1 = _texte_ci(_pages_ci(_data_ci())[1])
+        self.assertIn("Part de votre consommation couverte", p1)
+        self.assertIn("Tarif ONEE BT publié — à confirmer sur votre facture "
+                      "(grille du 16/02/2025).", p1)
+
+    def test_kicker_arabe_generique(self):
+        html = "".join(_pages_ci(_data_ci(langue="ar")))
+        self.assertIn("للمنشآت التجارية", html)
+        self.assertNotIn("للمحلات", html)
