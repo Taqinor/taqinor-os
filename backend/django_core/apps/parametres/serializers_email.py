@@ -4,6 +4,7 @@ import re
 from rest_framework import serializers
 
 from core.conflit_etat import ConflitEtat
+from .gabarits_schema import PublieMotif, motif_gabarit
 from .requetes_strictes import TypageStrictParametres
 
 from .models_email import (
@@ -29,10 +30,20 @@ def _unknown_placeholders(text, cle):
     return seen
 
 
+# 3e drainage api-fuzz — le schéma dit quels placeholders un texte peut porter.
+# La clé n'est pas toujours dans le corps (PATCH) : on publie les jetons
+# COMMUNS à toutes les clés, donc un schéma au plus aussi large que le serveur.
+_MOTIF_TEXTE = motif_gabarit(set.intersection(
+    *(set(v) for v in EMAIL_TEMPLATE_PLACEHOLDERS.values())))
+
+
 class EmailTemplateSerializer(TypageStrictParametres, serializers.ModelSerializer):
     class Meta:
         model = EmailTemplate
         fields = ['id', 'cle', 'sujet', 'corps']
+        extra_kwargs = {
+            champ: {'validators': [PublieMotif(_MOTIF_TEXTE)]}
+            for champ in ('sujet', 'corps')}
         # company posée côté serveur (TenantMixin) — jamais depuis le corps.
 
     def _check_placeholders(self, attrs):
