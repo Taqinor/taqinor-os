@@ -4,7 +4,7 @@
   "pourquoi": "ADEV2 (C-ADEV-015 à C-ADEV-019, action de classe PACT10 de la page publique, 08/10/2026) — CONTRAT D'ABORD, posé SEUL sur main, backend + copie jumelle `apps/web/src/contract_samples/proposal_accept.json` (JSON-égales : `scripts/check_api_shapes.py` et `apps/web/tests/contractSamplesParite.test.ts`). Aujourd'hui `apps/web/src/lib/proposition.ts::normalizeAcceptResponse` traite TOUT 409 comme un succès et l'acceptation n'a aucun contrat : ce fichier fige le corps (`exemple`), la réponse 200 (`reponse_200`, avec `paiement`) et les réponses 409 `{detail, code}` aux codes FERMÉS (`codes_409`), plus le 409 `aucun_canal` des demandes d'OTP (`otp`). Même vue sous le mount `ventes/` (`/api/django/ventes/proposal/<token>/accept/`) — jamais de logique dupliquée. Le bloc `entreprise` (C&I) est celui de `acceptation_entreprise.json` (CIW305) : référencé, jamais redéfini ici. Moitiés : serveur ADEV49-ADEV53 et ADEV20 (OTP), page web ADEV48-ADEV53 — toutes `@after: ADEV2` (PACT11). ADEV53 — `paiement` = sortie RÉELLE de `public/paiement_views._deposit_success_payload` (mêmes clés, prouvé par `test_qx33_deposit_success`) : plus de `card_payment_url` (aucune route `pay-card`) ; `rib` vide quand la société n'en a aucun (jamais un numéro de repli) ; `declare_url` = POST `/virement/`, gardé par l'OTP de lecture comme la lecture (403 `otp_required`). AUCUN statut nouveau (règle #4 : brouillon/envoye/accepte/refuse/expire restent 1:1). Valeurs ILLUSTRATIVES.",
   "exemple": {
     "nom": "Karim Exemple",
-    "option": "sans",
+    "option": "sans_batterie",
     "consent_esign": true,
     "signature_data_url": "data:image/png;base64,iVBORw0KGgo...",
     "signed_at_client": "2026-10-08T10:15:00+00:00",
@@ -18,7 +18,7 @@
     "entreprise": "Bloc C&I défini par `acceptation_entreprise.json` (CIW305) — référencé, pas dupliqué.",
     "recu": "ADEV96 — réponse 200 : le REÇU de la signature enregistrée (la première fait foi) — `signe_le` (ISO), `empreinte_contenu` = `DevisSignature.content_hash` (sceau v3 : lignes, totaux, option ET chiffres de l'étude C&I), `empreinte_pdf` = SHA-256 des octets du PDF signé figé (`signed_pdf_sha256`, vide tant qu'il n'est pas stocké). Mêmes champs dans `signature_info` de l'ERP (certificat). `null` sans signature.",
     "langue": "ADEV99 — facultatif, `fr` | `en` | `ar` (toute autre valeur ignorée) : la langue de la page au moment de signer, gardée sur `DevisSignature.langue_page`. La confirmation e-mail part en anglais pour `en`, en français sinon ; elle va au signataire (`entreprise.signataire_email`) ET au contact du lead (à défaut le client), avec raison sociale / ICE, horodatage (Africa/Casablanca) et empreintes, exemplaire signé joint ; copie PDF au vendeur (responsable du lead, sinon créateur du devis).",
-    "autres": "`nom`, `option`, `consent_esign`, `signature_data_url`, `signed_at_client`, `on_behalf_of`, `otp_code` : inchangés (vue `public/signature_views.proposal_accept`)."
+    "autres": "`option` ∈ {`sans_batterie`, `avec_batterie`} (valeurs de `Devis.OptionAcceptee` — « sans » nu est refusé 400, relevé au rejeu P-L3-5 du 24/10/2026) ; `nom`, `consent_esign`, `signature_data_url`, `signed_at_client`, `on_behalf_of`, `otp_code` : inchangés (vue `public/signature_views.proposal_accept`)."
   },
   "reponse_200": {
     "detail": "Proposition acceptée. Merci !",
