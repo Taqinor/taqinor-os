@@ -60,12 +60,13 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
 TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # CommissionPartenaire.paye_le : date de paiement (jour).
     "backend/django_core/apps/crm/models_clients.py::CommissionPartenaire.paye_le",
-    # PUB75 ConsentRecord.date_consentement : jour de recueil du consentement (loi 09-08).
-    "backend/django_core/apps/adsengine/models.py::ConsentRecord.date_consentement",
 }
 
+# ENF15 : le mot-cle doit etre un MOT du nom du champ (`sent_at`, `last_updated`, `paye_le`),
+# jamais enfoui dans un autre mot : « con-sent-ement » n'est pas un envoi, et
+# ConsentRecord.date_consentement (jour de recueil, DateField metier) n'est pas un horodatage.
 TIMESTAMP_NAME_RE = re.compile(
-    r"(created|updated|sent|paid|date_creation|date_maj|envoye_le|paye_le)",
+    r"(?<![a-z])(created|updated|sent|paid|date_creation|date_maj|envoye_le|paye_le)(?![a-z])",
     re.IGNORECASE,
 )
 
