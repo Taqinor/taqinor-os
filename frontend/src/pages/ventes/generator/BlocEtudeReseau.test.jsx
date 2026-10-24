@@ -11,6 +11,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import BlocEtudeReseau, {
   MENTION_REVENTE_BT, LIBELLE_REVENTE_MT, CarteTarifFacture,
 } from './BlocEtudeReseau'
+import CarteResultatCi from './CarteResultatCi'
 import PanneauIndustriel from './PanneauIndustriel'
 import PanneauCommercial from './PanneauCommercial'
 import {
@@ -219,3 +220,57 @@ function BlocEtudeReseauRepris({ initial, resolues, repris, onProfil }) {
                      setChamp={(c, v) => setProfil((p) => poserProfilCi(p, c, v))} />
   )
 }
+
+describe('ADEV101 — carte résultat : 4 chiffres en tête, détails du calcul repliés', () => {
+  const ECO = exempleContrat('ventes', 'economie_ci')
+  const donnees = (extra = {}) => ({ ...EXEMPLE, economie_ci: ECO, ...extra })
+
+  it('kWc retenue, économie / an HT, autoconsommation et couverture en tête ; le reste replié', () => {
+    render(<CarteResultatCi donnees={donnees()} />)
+    const synthese = screen.getByTestId('ci-synthese')
+    expect(screen.getByTestId('ci-taille-retenue')).toHaveTextContent('kWc')
+    expect(screen.getByTestId('ci-economie-an')).toHaveTextContent(/MAD/)
+    expect(screen.getByTestId('ci-economie-an')).toHaveTextContent('Économie estimée / an (HT)')
+    expect(screen.getByTestId('ci-autoconso')).toHaveTextContent('%')
+    expect(screen.getByTestId('ci-couverture')).toHaveTextContent('%')
+    expect(synthese).toContainElement(screen.getByTestId('ci-couverture'))
+    // le relevé d'ingénieur est sous « Détails du calcul », fermé par défaut
+    const details = screen.getByTestId('ci-details-calcul')
+    expect(details.open).toBe(false)
+    expect(details).toHaveTextContent('Détails du calcul')
+    expect(details).toContainElement(screen.getByTestId('ci-paliers'))
+    expect(details).toContainElement(screen.getByTestId('ci-raison-arret'))
+    expect(synthese).not.toContainElement(screen.getByTestId('ci-paliers'))
+    expect(screen.queryByText(/Ratio marginal|Admis/)).toBeNull()
+    expect(screen.getByTestId('ci-alertes')).toHaveTextContent('Vendeur seulement')
+  })
+
+  it('« retour » seulement quand le serveur le sert ; économie « — » quand elle est omise', () => {
+    const { rerender } = render(<CarteResultatCi donnees={donnees()} />)
+    const sert = ECO.indicateurs?.retour_ans != null
+    expect(Boolean(screen.queryByTestId('ci-retour'))).toBe(sert)
+    rerender(<CarteResultatCi donnees={donnees({ economie_ci: { statut: 'omis' } })} />)
+    expect(screen.queryByTestId('ci-retour')).toBeNull()
+    expect(screen.getByTestId('ci-economie-an')).toHaveTextContent('—')
+    rerender(<CarteResultatCi donnees={donnees({ economie_ci: { ...ECO, indicateurs: { ...ECO.indicateurs, retour_ans: 4.2 } } })} />)
+    expect(screen.getByTestId('ci-retour')).toHaveTextContent('4,2')
+  })
+
+  it('aucune clé interne brute : bornes et raison d’arrêt en français, inconnues sous « Autres »', () => {
+    const taille = {
+      ...EXEMPLE.taille, raison_arret: 'raison_secrete',
+      paliers: [
+        { kwc: 5, cout_ht: 1, economie_annuelle: 1, ratio_marginal_annees: 1, admis: true, borne: null },
+        { kwc: 10, cout_ht: 1, economie_annuelle: 1, ratio_marginal_annees: 1, admis: false, borne: 'toit' },
+        { kwc: 15, cout_ht: 1, economie_annuelle: 1, ratio_marginal_annees: 1, admis: false, borne: 'borne_x' },
+      ],
+    }
+    render(<CarteResultatCi donnees={donnees({ taille })} />)
+    const paliers = screen.getByTestId('ci-paliers')
+    expect(paliers).toHaveTextContent('non — toit plein')
+    expect(paliers).not.toHaveTextContent('(toit)')
+    expect(paliers).not.toHaveTextContent('borne_x')
+    expect(screen.getByTestId('ci-raison-arret')).not.toHaveTextContent('raison_secrete')
+    expect(screen.getByTestId('ci-autres')).toHaveTextContent('raison_secrete, borne_x')
+  })
+})

@@ -83,30 +83,6 @@ function HeuresDeLaReponse({ cle, reponses, setReponse }) {
   )
 }
 
-// CIQ131 — l'archétype retenu par le moteur (avec sa source, « estimation »
-// quand aucun horaire n'est déclaré) et les réponses SANS effet sur le calcul.
-function ArchetypeEtSansEffet({ profil }) {
-  if (!profil) return null
-  const a = profil.archetype
-  const sansEffet = profil.reponses_non_consommees || []
-  return (
-    <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
-      {a && (
-        <p data-testid="ci-archetype">
-          Archétype retenu : <strong>{a.cle}</strong>
-          {a.source ? ` — source : ${a.source}` : ''}
-          {profil.methode === 'archetype' ? ' (estimation : aucun horaire déclaré)' : ''}
-        </p>
-      )}
-      {sansEffet.length > 0 && (
-        <p data-testid="ci-sans-effet">
-          Sans effet sur le calcul : {sansEffet.join(', ')}.
-        </p>
-      )}
-    </div>
-  )
-}
-
 export default function PanneauCommercial({
   marche,
   // ── Catégorie commerciale et ses questions (QX44) ──
@@ -115,7 +91,7 @@ export default function PanneauCommercial({
   // ── CIQ125/CIQ222 — la carte C&I (profil, aperçu serveur, tarif, erreurs) ──
   ...carte
 }) {
-  const { apercuCi, reprisLead = [] } = carte
+  const { reprisLead = [] } = carte
   if (marche !== CLE) return null
   return (
     <>
@@ -173,7 +149,6 @@ export default function PanneauCommercial({
             ))}
           </div>
         )}
-        <ArchetypeEtSansEffet profil={apercuCi?.donnees?.profil_charge} />
       </div>
     </CarteProfilCi>
     <CarteEconomieCi apercu={carte.apercuEcoCi} eco={carte.ecoCi} setEcoChamp={carte.setEcoChamp} />

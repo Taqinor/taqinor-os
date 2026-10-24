@@ -50,15 +50,23 @@ describe('CIQ131 — PanneauCommercial', () => {
       .toEqual(Object.keys(exempleContrat('ventes', 'etude_ci_preview', 'corps').rythme).sort())
   })
 
-  it('archétype affiché avec sa source et « estimation » ; aucune part diurne', () => {
+  it('archétype en français avec sa source et « estimation » dans « Détails du calcul » ; aucune clé brute ni part diurne', () => {
     const apercu = exempleContrat('ventes', 'etude_ci_preview', 'exemple_kwh_seulement')
-    const pc = { ...apercu.profil_charge, reponses_non_consommees: ['occupation_pct'] }
+    const pc = { ...apercu.profil_charge, reponses_non_consommees: ['occupation_pct', 'cle_inconnue'] }
     render(<Harnais onEtat={() => {}} apercu={{ ...apercu, profil_charge: pc }} />)
+    const details = screen.getByTestId('ci-details-calcul')
+    expect(details.open).toBe(false) // replié par défaut
     const a = screen.getByTestId('ci-archetype')
-    expect(a).toHaveTextContent(pc.archetype.cle)
+    expect(details).toContainElement(a)
+    expect(a).toHaveTextContent('Bureau / Siège')
+    expect(a).not.toHaveTextContent(pc.archetype.cle)
     expect(a).toHaveTextContent(pc.archetype.source)
     if (pc.methode === 'archetype') expect(a).toHaveTextContent('estimation')
-    expect(screen.getByTestId('ci-sans-effet')).toHaveTextContent('occupation_pct')
+    const sansEffet = screen.getByTestId('ci-sans-effet')
+    expect(sansEffet).toHaveTextContent("Taux d'occupation annuel (%)")
+    expect(sansEffet).not.toHaveTextContent('occupation_pct')
+    // une clé sans libellé français va à la ligne « Autres »
+    expect(screen.getByTestId('ci-autres')).toHaveTextContent('cle_inconnue')
     expect(screen.queryByText(/diurne/i)).toBeNull()
   })
 
