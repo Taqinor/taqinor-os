@@ -103,3 +103,68 @@ class BornesArgentTests(TestCase):
         self.assertEqual(r.status_code, 400, r.content)
         self.assertIn('remise', r.json())
         self._sans_sql(r)
+
+
+class TotalLigneFactureHorsCapaciteTests(TestCase):
+    """api-fuzz (factures-lignes) — quantité × prix ne tient plus dans
+    ``total_ht`` (10 chiffres) : une ligne enregistrée ainsi faisait lever
+    ``InvalidOperation`` à CHAQUE lecture (GET / PATCH / PUT → 500). Corps
+    conforme au schéma, montant hors capacité du document : 409, rien écrit."""
+
+    def setUp(self):
+        from apps.ventes.models import Facture, LigneFacture
+        self.company = CompanyFactory()
+        self.user = UserFactory(company=self.company, role_legacy='admin')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.produit = ProduitFactory(company=self.company)
+        self.devis = DevisFactory(company=self.company)
+        self.facture = Facture.objects.create(
+            company=self.company, reference='FAC-BORNE-1',
+            client=self.devis.client, statut=Facture.Statut.BROUILLON,
+            taux_tva=Decimal('20.00'))
+        self.ligne = LigneFacture.objects.create(
+            facture=self.facture, produit=self.produit, designation='L',
+            quantite=Decimal('2'), prix_unitaire=Decimal('100'))
+        self.url = f'/api/django/ventes/factures-lignes/{self.ligne.id}/'
+
+    def _corps(self, **extra):
+        corps = {'facture': self.facture.id, 'produit': self.produit.id,
+                 'designation': 'L', 'quantite': '04197644',
+                 'prix_unitaire': '54853032', 'remise': '.96',
+                 'taux_tva': '.7'}
+        corps.update(extra)
+        return corps
+
+    def test_put_produit_hors_capacite_409_et_ligne_inchangee(self):
+        r = self.api.put(self.url, self._corps(), format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('quantite', r.json())
+        self.ligne.refresh_from_db()
+        self.assertEqual(self.ligne.quantite, Decimal('2.00'))
+        self.assertEqual(self.api.get(self.url).status_code, 200)
+
+    def test_patch_prix_dont_le_produit_avec_la_quantite_deborde_409(self):
+        r = self.api.patch(self.url, {'prix_unitaire': '99999999.99'},
+                           format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.ligne.refresh_from_db()
+        self.assertEqual(self.ligne.prix_unitaire, Decimal('100.00'))
+
+    def test_post_hors_capacite_409(self):
+        from apps.ventes.models import LigneFacture
+        avant = LigneFacture.objects.count()
+        r = self.api.post('/api/django/ventes/factures-lignes/',
+                          self._corps(), format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(LigneFacture.objects.count(), avant)
+
+    def test_patch_vide_et_temoin_dans_la_capacite(self):
+        self.assertEqual(
+            self.api.patch(self.url, {}, format='json').status_code, 200)
+        r = self.api.patch(self.url, {'quantite': '1000',
+                                      'prix_unitaire': '99999.99'},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['total_ht'], '99999990.00')

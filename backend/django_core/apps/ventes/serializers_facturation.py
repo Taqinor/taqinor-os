@@ -18,9 +18,12 @@ from core.champs_stricts import (
     BooleenStrict, ChaineStricte, ChampsStrictsMixin,
     ChampsStrictsSansDecimalMixin, DecimalSouple, EntierStrict, IdInconnu404Mixin, MOTIF_NON_BLANC_SANS_NUL,
 )
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
-from .domain.bornes import montant_saisi, pourcentage_saisi
+from .domain.bornes import (
+    montant_saisi, pourcentage_saisi, total_ligne_hors_capacite,
+)
 
 
 def _retirer_unicite_tranche(serializer):
@@ -193,6 +196,28 @@ class LigneFactureSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
         # ENF11 (nocturne 15/10) — DRF refuse le caractère nul dans tout texte :
         # le motif PUBLIÉ le dit (non blanc, sans nul), même prédicat appliqué.
         extra_kwargs = {'designation': {'validators': [RegexValidator(MOTIF_NON_BLANC_SANS_NUL)]}}
+
+    def validate(self, attrs):
+        """api-fuzz — quantité et prix valent chacun jusqu'à 8 chiffres
+        entiers, mais leur produit, lui, est SERVI par ``total_ht`` (10
+        chiffres) : une ligne enregistrée au-delà faisait lever
+        ``InvalidOperation`` à CHAQUE lecture (GET, PATCH, PUT → 500). Un
+        corps conforme au schéma dont le montant de ligne ne tient pas est un
+        refus d'état de la capacité du document : 409, même corps par champ ;
+        sur une modification, les valeurs absentes du corps sont celles de la
+        ligne."""
+        instance = self.instance
+
+        def _valeur(nom):
+            return attrs[nom] if nom in attrs else getattr(instance, nom, None)
+
+        if total_ligne_hors_capacite(_valeur('quantite'),
+                                     _valeur('prix_unitaire'),
+                                     _valeur('remise')):
+            raise ConflitEtat({'quantite': (
+                'Montant de ligne trop élevé : la quantité multipliée par le '
+                'prix unitaire dépasse 99 999 999,99.')})
+        return attrs
 
     def create(self, validated_data):
         # Réforme TVA : taux par ligne, copié du produit, repli sur le taux

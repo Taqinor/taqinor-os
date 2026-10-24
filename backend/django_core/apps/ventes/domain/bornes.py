@@ -54,3 +54,22 @@ def montant_saisi(valeur, champ):
     if nombre.normalize().as_tuple().exponent < -2:
         return None, {champ: f'« {champ} » : au plus 2 décimales.'}
     return nombre, None
+
+
+def total_ligne_hors_capacite(quantite, prix_unitaire, remise):
+    """api-fuzz — vrai si le total d'une ligne (HT, remise déduite) ne tient
+    plus dans le champ qui le sert (``total_ht``, ``DecimalField(max_digits=10,
+    decimal_places=2)`` : ``99999999.995`` arrondit à 10 chiffres entiers).
+    Quantité et prix valent chacun jusqu'à 8 chiffres entiers : leur produit,
+    lui, peut dépasser, et la sérialisation de la ligne DÉJÀ écrite levait
+    ``InvalidOperation`` (500). ``None`` (section/note) ou valeur illisible →
+    faux ; ``remise`` absente vaut 0."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        if quantite is None or prix_unitaire is None:
+            return False
+        total = (Decimal(str(quantite)) * Decimal(str(prix_unitaire))
+                 * (1 - Decimal(str(remise or 0)) / 100))
+    except (InvalidOperation, ValueError, TypeError):
+        return False
+    return abs(total) >= Decimal('99999999.995')
