@@ -2,6 +2,7 @@
 Authentification JWT via httpOnly cookie.
 Remplace la lecture du token dans l'en-tete Authorization.
 """
+import re
 import logging
 
 from django.contrib.auth import get_user_model
@@ -46,6 +47,12 @@ def _impersonation_revoquee(validated_token):
     return not demande.est_active()
 
 
+#: Nocturne 24/10/2026 (api-fuzz-full : 304 constats « accepted schema-violating »,
+#: en-tête Authorization au format violé mais réponse 200 par le cookie) — la
+#: seule forme admise d'un en-tête Authorization PRÉSENT : « Bearer <token68> ».
+_BEARER_BIEN_FORME = re.compile(r'^Bearer [A-Za-z0-9\-._~+/]+=*$')
+
+
 class CookieJWTAuthentication(BaseAuthentication):
     """
     Lit le JWT depuis le cookie httpOnly 'access_token'.
@@ -58,6 +65,14 @@ class CookieJWTAuthentication(BaseAuthentication):
         cookie_present = 'access_token' in request.COOKIES
         token = (request.COOKIES.get('access_token') or '').strip()
         auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+
+        # Nocturne 24/10/2026 — un en-tête Authorization PRÉSENT qui n'est pas
+        # « Bearer <jeton> » est un justificatif MAL FORMÉ : 401, jamais ignoré
+        # au profit du cookie (fermé par défaut ; le front n'envoie jamais
+        # d'en-tête Authorization, l'API publique a ses propres classes).
+        if auth_header and not _BEARER_BIEN_FORME.match(auth_header):
+            raise AuthenticationFailed(
+                'En-tête Authorization mal formé : « Bearer <jeton> » attendu.')
 
         # ENF2 (C4) — un cookie `access_token` PRÉSENT MAIS VIDE est un
         # justificatif invalide, pas une absence : il ne doit JAMAIS être

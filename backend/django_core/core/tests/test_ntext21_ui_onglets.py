@@ -194,6 +194,22 @@ class ConditionOngletTests(TestCase):
             res = api.post(URL, {**base, 'condition': arbre}, format='json')
             self.assertEqual(res.status_code, 201, (arbre, res.data))
 
+    def test_condition_cles_inconnues_jamais_stockees(self):
+        # api-fuzz-full 24/10 — une clé inconnue portant un caractère nul
+        # faisait refuser le jsonb (500) : l'arbre est stocké canonique.
+        api = _auth(make_user(self.company, role='admin'))
+        feuille = {'field': 'statut', 'operator': 'ne', 'cle\x00': {'a': 1},
+                   'op': {'x': []}}
+        res = api.post(URL, {
+            'cible': 'ventes.devis', 'titre': 'T', 'type_contenu': 'html',
+            'ref': '', 'condition': {'op': 'and', 'conditions': [feuille],
+                                     '.exe': {}}}, format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        self.assertEqual(
+            UiOngletCustom.objects.get(pk=res.data['id']).condition,
+            {'op': 'and', 'conditions': [
+                {'field': 'statut', 'operator': 'ne'}]})
+
     def test_condition_fausse_onglet_omis(self):
         UiOngletCustom.objects.create(
             company=self.company, cible='ventes.devis', titre='Conditionnel',

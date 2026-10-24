@@ -70,6 +70,13 @@ class ValiderDossierTests(TestCase):
             ['Paramètre requis (true/false).'])
         self._inchange()
 
+    def test_corps_non_objet_400(self):
+        # api-fuzz : un corps JSON liste/nombre/null levait AttributeError (500).
+        for corps in ([], [1, 2], 3.5, None):
+            rep = self._decider(corps)
+            self.assertEqual(rep.status_code, 400, (corps, rep.data))
+            self._inchange()
+
     def test_chaine_false_ne_valide_pas(self):
         for valeur in ('false', '0'):
             rep = self._decider({'valider': valeur})

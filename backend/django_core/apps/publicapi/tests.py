@@ -328,6 +328,20 @@ class ManagementEndpointTests(TestCase):
             self.assertIn('target_url', resp.data)
         self.assertFalse(Webhook.objects.filter(company=self.co).exists())
 
+    def test_motif_publie_exclut_nul_et_controles(self):
+        # api-fuzz full 24/10 : ``https://\u0000…`` passait le motif publié
+        # (``\S``) puis DRF le refusait — le motif l'exclut désormais.
+        import re
+        from django.core.validators import RegexValidator
+        from apps.publicapi.serializers import WebhookSerializer
+        motif = next(
+            v.regex.pattern
+            for v in WebhookSerializer().fields['target_url'].validators
+            if isinstance(v, RegexValidator))
+        for url in ('https://\x00vz', 'https://a\x13b', 'https://a b'):
+            self.assertIsNone(re.fullmatch(motif, url), url)
+        self.assertIsNotNone(re.fullmatch(motif, 'https://exemple.ma/hook'))
+
     def test_create_webhook_rejects_loopback_host(self):
         # ERR46 — une cible loopback (127.0.0.1) est refusée.
         api = session_auth(self.admin)

@@ -26,7 +26,7 @@ from .serializers_cadence import MessageTemplateSerializer, RelanceEtapeSerializ
 from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
 from .controle_suivi import SEGMENTS_ADMIS
-from .params_requete import CorpsTexteMixin, corps_objet, entier_param
+from .params_requete import CorpsTexteMixin, corps_objet, entier_param, texte_verifie
 from .cadence_reponses import CLES_MESSAGE_REPONSE, REPONSES_TOUCHE, TYPES_PIECE_RECUE
 from core.champs_stricts import ChaineStricte, entier_ou_400
 from core.conflit_etat import ConflitEtat
@@ -214,7 +214,9 @@ def _prochaine_touche_publique(etape):
 
 
 # ── RELANCE FOUNDATION — file « Relances du jour » + actions Fait/Sauter ────
-@extend_schema_view(list=extend_schema(parameters=[sd.P_LEAD, sd.P_OWNER, sd.P_SCOPE], responses=sd.OBJ))
+@extend_schema_view(list=extend_schema(parameters=[sd.param_entier_ou_vide('lead', 'Identifiant du lead.'),
+                                                   sd.param_entier_ou_vide('owner', 'Identifiant du responsable.'),
+                                                   sd.P_SCOPE], responses=sd.OBJ))
 class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                           viewsets.GenericViewSet):
     """Étapes de plan de relance structuré (``RelanceEtape``). AUCUNE création/
@@ -322,8 +324,9 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         return Response(payload)
 
     @extend_schema(parameters=[sd.param('date_debut', OpenApiTypes.DATE, required=True),
-                               sd.param('date_fin', OpenApiTypes.DATE, required=True), sd.P_OWNER_ID,
-                               sd.param('statut', enum=[*STATUTS_SUIVI])],
+                               sd.param('date_fin', OpenApiTypes.DATE, required=True),
+                               sd.param_entier_ou_vide('owner', 'Identifiant du responsable (entier >= 1).', minimum=1),
+                               sd.param_enum_ou_vide('statut', STATUTS_SUIVI)],
                    responses={200: sd.OBJ,
                               409: inline_serializer('CrmSuiviConflit', {  # ENF11 : écart > 62 j = 409 d'état
                                   # Corps réel : le dict levé par ConflitEtat
@@ -537,7 +540,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         versionnée reste celle de la réponse. ``owner`` ENTIER mais inconnu
         ou hors portée : 404, même corps (ERR-ENF11-FUZZ-CRM)."""
         from .controle_suivi import (
-            controle_suivi, parametre_segment, parametres_controle,
+            controle_suivi, entier_ascii, parametre_segment,
+            parametres_controle,
         )
 
         jours, owner, erreurs = parametres_controle(
@@ -552,7 +556,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             erreurs = {**erreurs, 'segment': erreur_segment}
         if erreurs:
             if (list(erreurs) == ['owner']
-                    and (request.query_params.get('owner') or '').strip().isdigit()):
+                    and entier_ascii(
+                        (request.query_params.get('owner') or '').strip())):
                 # ERR-ENF11-FUZZ-CRM — un identifiant ENTIER (conforme au
                 # schéma) qui n'est pas un responsable de la portée : id
                 # inconnu = 404, même corps que le refus nommé (jamais un
@@ -1114,7 +1119,8 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             etape, request=request, user=request.user, cle=cle or None,
             langue=langue or None))
 
-    @extend_schema(request=sd.corps('CrmRelanceWhatsappRequest', langue=serializers.CharField(required=False)),
+    @extend_schema(request=sd.corps('CrmRelanceWhatsappRequest',
+                                    langue=ChoixDocumente(choices=[*Lead.LanguePreferee.values], required=False)),
                    responses=sd.OBJ)
     @action(detail=True, methods=['post'])
     @_geste_atomique
@@ -1287,9 +1293,9 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
     @extend_schema(request=sd.corps('CrmReporterRequest',
                                     mode=serializers.ChoiceField(choices=['decaler', 'veille'], required=False),
                                     due_at=serializers.DateTimeField(required=False),
-                                    rappel_le=serializers.CharField(required=False),
-                                    rappel_heure=serializers.CharField(required=False)),
-                   responses=RelanceEtapeSerializer)
+                                    rappel_le=serializers.RegexField(sd.MOTIF_JOUR, required=False),
+                                    rappel_heure=serializers.RegexField(sd.MOTIF_HEURE, required=False)),
+                   extensions=sd.REPORTER_ECHEANCE, responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
     @_geste_atomique
     def reporter(self, request, pk=None):
@@ -1338,11 +1344,13 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 status=status.HTTP_400_BAD_REQUEST)
         # CAD27 — une date de report dans le passé tirait tout le plan en
         # arrière : refusée, le champ fautif NOMMÉ (celui du corps reçu).
+        # ENF11 (api-fuzz-full 24/10) — « pas dans le passé » dépend de
+        # l'horloge du serveur, pas du corps (un date-heure ISO ancien est
+        # conforme au schéma) : refus d'ÉTAT, 409, même corps ``erreurs``.
         refus = _refus_date_passee(quand, 'Reporter au')
         if refus:
             champ = 'due_at' if brut else 'rappel_le'
-            return Response({'erreurs': {champ: refus}},
-                            status=status.HTTP_400_BAD_REQUEST)
+            raise ConflitEtat({'erreurs': {champ: refus}})
         # CAD178 — compteur BEST-EFFORT du geste « Reporter », par famille
         # d'appareil (les deux modes, decaler ET veille, comptent). ACRM22 —
         # dans son propre point de sauvegarde.
@@ -1685,9 +1693,13 @@ class LeadCadenceActionsMixin:
                 etapes, many=True, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    # ENF11 (api-fuzz-full 24/10) : textes STRICTS — motif non blanc et
+    # cadences « sans caractère nul » (le serveur refuse le nul en 400 : un
+    # texte simple le publiait permis).
     @extend_schema(request=sd.corps('CrmArreterRelanceRequest',
-                                    cadences=serializers.ListField(child=serializers.CharField(), required=False),
-                                    motif=serializers.CharField()), responses=sd.OBJ)
+                                    cadences=serializers.ListField(
+                                        child=ChaineStricte(allow_blank=True), required=False),
+                                    motif=ChaineStricte()), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='relance/arreter',
             permission_classes=[IsResponsableOrAdmin])
     def arreter_relance(self, request, pk=None):
@@ -1699,7 +1711,10 @@ class LeadCadenceActionsMixin:
         sur chaque touche arrêtée. Idempotent : zéro touche ouverte renvoie
         ``{arretees: 0}`` sans rien journaliser."""
         lead = self.get_object()
-        motif = (request.data.get('motif') or '').strip()
+        # Nocturne 24/10 : un motif non texte (``.strip()``) ou porteur d'un
+        # NUL, des cadences non textes ou à NUL (littéral SQL refusé par
+        # Postgres) répondaient 500 — 400 nommant le champ.
+        motif = texte_verifie(request, 'motif')
         if not motif:
             return Response(
                 {'motif': "Le motif d'arrêt est obligatoire."},
@@ -1708,6 +1723,11 @@ class LeadCadenceActionsMixin:
         if cadences is not None and not isinstance(cadences, list):
             return Response(
                 {'cadences': 'Liste de cadences attendue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if cadences and not all(isinstance(c, str) and '\x00' not in c
+                                for c in cadences):
+            return Response(
+                {'cadences': 'Liste de textes (sans caractère nul) attendue.'},
                 status=status.HTTP_400_BAD_REQUEST)
         from .cadence_plan import arreter_cadence
         arretees = arreter_cadence(

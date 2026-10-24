@@ -114,6 +114,12 @@ class XFAC1AvancesTests(TestCase):
         r = self.api.get(
             '/api/django/ventes/paiements/avances-non-affectees/?client=abc')
         self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 fuzz (24/10) : ``?client=`` publié entier — vide ou répété
+        # = 400 aussi (il était lu « pas de filtre »).
+        for brut in ('?client=', '?client=1&client=2'):
+            r = self.api.get(
+                '/api/django/ventes/paiements/avances-non-affectees/' + brut)
+            self.assertEqual(r.status_code, 400, (brut, r.data))
         r = self.api.get(
             '/api/django/ventes/paiements/avances-non-affectees/'
             f'?client={self.client_obj.id}')

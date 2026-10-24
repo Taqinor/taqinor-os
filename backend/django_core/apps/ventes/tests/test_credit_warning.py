@@ -124,6 +124,16 @@ class TestCreditWarning(TestCase):
         for brut in ('abc', 'NaN', 'Infinity'):
             r = self.api.get(self._url() + f'?montant_ttc={brut}')
             self.assertEqual(r.status_code, 400, (brut, r.data))
+        # CI #997 fuzz (24/10) : UN prédicat (motif publié) — notation
+        # scientifique, séparateur « _ », blancs et plus de 15 chiffres sont
+        # refusés ; un décimal simple (signé ou non) passe.
+        for brut in ('1e9', '1_0', '%205', '1' * 16):
+            r = self.api.get(self._url() + f'?montant_ttc={brut}')
+            self.assertEqual(r.status_code, 400, (brut, r.data))
+        for brut in ('15000', '-20.50', '+7'):
+            r = self.api.get(self._url() + '?montant_ttc=' + brut.replace(
+                '+', '%2B'))
+            self.assertEqual(r.status_code, 200, (brut, r.data))
 
     def test_endpoint_paid_facture_not_counted(self):
         """Une facture payée ne fait pas partie de l'encours."""

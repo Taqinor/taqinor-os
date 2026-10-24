@@ -26,7 +26,7 @@ déjà. Contrat partagé : ``apps/ventes/contract_samples/plan_commission.json``
 import re
 
 from drf_spectacular.utils import extend_schema_view
-from ..openapi_params import qstr
+from ..openapi_params import entier_requete, qstr
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from drf_spectacular.utils import OpenApiParameter
@@ -37,7 +37,6 @@ from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import HasPermissionOrLegacy
-from core.champs_stricts import entier_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import PlanCommission
@@ -147,7 +146,7 @@ class PlanCommissionViewSet(CompanyScopedModelViewSet):
         # ENF11 — ``?owner=`` publié entier : illisible = 400 ; un id bien
         # formé mais inconnu de la société (``0`` compris) = 404, comme
         # n'importe quelle ressource introuvable — jamais un 400.
-        owner_id = entier_ou_400(request.query_params.get('owner'), 'owner')
+        owner_id = entier_requete(request, 'owner')
         owner = None
         if owner_id is not None:
             # Le commercial est résolu DANS la société du demandeur : un id

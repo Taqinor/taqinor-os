@@ -171,10 +171,23 @@ class TestMaterielConsigneEnf11Nocturne(TestCase):
         r = self.api.get(f'{BASE}/materiels-consignes/')
         self.assertEqual(r.status_code, 200, r.content)
 
-    def test_caution_totale_hors_bornes_refusee_400(self):
+    def test_caution_totale_hors_bornes_refusee_409(self):
+        # Produit quantite x caution = regle d'ensemble : 409 (pas 400).
         r = self.api.post(f'{BASE}/materiels-consignes/', {
             'designation': 'Touret', 'quantite': 13542,
             'caution_unitaire': '31223732.', 'fournisseur': None,
+        }, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('caution_unitaire', r.json())
+        self.assertEqual(
+            self.api.get(f'{BASE}/materiels-consignes/').status_code, 200)
+
+    def test_caution_negative_refusee_400_et_liste_saine(self):
+        # api-fuzz full : une caution negative x grande quantite donnait un
+        # caution_totale hors bornes -> 500 sur POST puis sur la liste.
+        r = self.api.post(f'{BASE}/materiels-consignes/', {
+            'designation': 'Touret', 'quantite': 2000000000,
+            'caution_unitaire': '-9999999.99',
         }, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         self.assertIn('caution_unitaire', r.json())

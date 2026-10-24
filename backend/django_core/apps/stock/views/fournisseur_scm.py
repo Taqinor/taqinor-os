@@ -10,7 +10,6 @@ Endpoints livrés ici :
 Toutes ces valeurs sont INTERNES (prix d'achat, coûts) : gardées
 responsable/admin, jamais dans une sortie client-facing.
 """
-from decimal import Decimal, InvalidOperation
 
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework.parsers import JSONParser
@@ -24,11 +23,11 @@ from authentication.permissions import (
 from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin
-from ..openapi_helpers import BOOL, INT, NUM, P, STR
+from ..openapi_helpers import BOOL, ID_OU_VIDE, INT, NUM, P, STR
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import IncidentQualiteFournisseur
-from ..utils.params import choix_ou_400, decimal_ou_400
+from ..utils.params import MOTIF_MONTANT_REQUETE, choix_ou_400, decimal_ou_400, montant_requete_ou_400
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -66,8 +65,8 @@ class IncidentQualiteFournisseurSerializer(IdInconnu404Mixin, MasqueMontantsAcha
                             'resolu_par', 'date_resolution']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('produit', INT), P('gravite', STR),
-                                                   P('resolu', BOOL)]))
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', ID_OU_VIDE), P('produit', ID_OU_VIDE),
+                                                   P('gravite', STR), P('resolu', BOOL, vide=True)]))
 class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
     """NTSCM9 — incidents qualité fournisseur.
 
@@ -90,10 +89,11 @@ class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
         # Filtrage MANUEL (aucun DjangoFilterBackend branché ici).
         qs = super().get_queryset()
         params = self.request.query_params
-        fournisseur = params.get('fournisseur')
+        from ..utils.params import id_requete_ou_400
+        fournisseur = id_requete_ou_400(self.request, 'fournisseur')
         if fournisseur:
             qs = qs.filter(fournisseur_id=fournisseur)
-        produit = params.get('produit')
+        produit = id_requete_ou_400(self.request, 'produit')
         if produit:
             qs = qs.filter(produit_id=produit)
         gravite = params.get('gravite')
@@ -218,7 +218,8 @@ class ScmFournisseurActionsMixin:
 class ScmProduitTcoMixin:
     """NTSCM26 — colonne TCO du panneau « Comparer fournisseurs » (FG58)."""
 
-    @extend_schema(parameters=[P('cout_rupture_jour', NUM), P('fenetre_mois', INT, mini=1, maxi=36)], responses={
+    @extend_schema(parameters=[P('cout_rupture_jour', STR, pattern=MOTIF_MONTANT_REQUETE),
+                               P('fenetre_mois', INT, mini=1, maxi=36)], responses={
         200: inline_serializer('StockProduitComparerTco', {
             'produit': serializers.IntegerField(),
             'cout_rupture_jour': serializers.CharField(),
@@ -239,12 +240,8 @@ class ScmProduitTcoMixin:
         from ..selectors_fournisseur import valider_fenetre_mois
         fenetre = _fenetre_mois_ou_400(
             request.query_params.get('fenetre_mois'), valider_fenetre_mois)
-        cout_jour = request.query_params.get('cout_rupture_jour') or 0
-        try:
-            Decimal(str(cout_jour))
-        except (InvalidOperation, ValueError):
-            raise serializers.ValidationError(
-                {'cout_rupture_jour': ['Nombre attendu.']})
+        cout_jour = montant_requete_ou_400(
+            request.query_params.get('cout_rupture_jour'), 'cout_rupture_jour') or 0
         return Response({
             'produit': self.get_object().id,
             'cout_rupture_jour': str(cout_jour),

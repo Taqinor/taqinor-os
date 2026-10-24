@@ -108,6 +108,26 @@ class TestCreateAlarme(TestCase):
         self.assertIsNotNone(alarme.date_detection)
         self.assertEqual(alarme.created_by_id, self.user.id)
 
+    def test_date_detection_ancienne_rendue_en_utc(self):
+        # api-fuzz-full : en l'an 30, le fuseau local rendait ``-00:30:20``
+        # (secondes de décalage), invalide en RFC 3339.
+        resp = self.api.post(BASE, {
+            'code': '00', 'date_detection': '0030-09-17T05:52:30.279719+10:47',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertTrue(resp.data['date_detection'].endswith('Z'),
+                        resp.data['date_detection'])
+        liste = self.api.get(BASE)
+        self.assertEqual(liste.status_code, 200)
+        self.assertTrue(all(
+            (a['date_detection'] or 'Z').endswith('Z')
+            for a in liste.data['results']))
+
+    def test_filtre_equipement_repete_400(self):
+        resp = self.api.get(BASE + '?equipement=1&equipement=2')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(self.api.get(BASE + '?equipement=').status_code, 200)
+
     def test_create_rejects_foreign_equipement(self):
         other = make_company('fg280-foreign-eq', 'Foreign Eq')
         oeq, _, _ = make_equipement(other, 'f')

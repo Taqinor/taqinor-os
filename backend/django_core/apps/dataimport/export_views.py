@@ -40,6 +40,16 @@ from rest_framework import serializers
 
 _FICHIERS_EXPORT = {
     (200, FORMATS[k][1]): OpenApiTypes.BINARY for k in FORMATS}
+# api-fuzz-full 24/10 — le rendu ``json`` est un OBJET (``exporters.export_json``),
+# pas une chaîne binaire : le schéma déclaré dit enfin ce qui est servi.
+_FICHIERS_EXPORT[(200, FORMATS['json'][1])] = inline_serializer(
+    'ExportObjetJson', {
+        'object': serializers.CharField(),
+        'label': serializers.CharField(),
+        'columns': serializers.ListField(child=serializers.CharField()),
+        'count': serializers.IntegerField(),
+        'records': serializers.ListField(child=serializers.DictField()),
+    })
 
 
 def _company_of(user):

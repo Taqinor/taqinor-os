@@ -6,7 +6,7 @@ from io import BytesIO
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, inline_serializer,
+    OpenApiParameter, extend_schema, extend_schema_field, inline_serializer,
 )
 from rest_framework import serializers as drf_serializers
 from rest_framework import viewsets
@@ -111,8 +111,14 @@ class ExporterConfigSerializer(drf_serializers.Serializer):
     nom = ChaineStricte(max_length=150, required=False)
 
 
+@extend_schema_field(config_package_service.SCHEMA_CONTENU)
+class _ContenuPackageField(drf_serializers.DictField):
+    """``contenu`` d'un package : forme publiée = forme validée par
+    ``config_package_service.valider_contenu_import``."""
+
+
 class ContenuConfigSerializer(drf_serializers.Serializer):
-    contenu = drf_serializers.DictField()
+    contenu = _ContenuPackageField()
 
 
 class SandboxEnvironmentViewSet(viewsets.ReadOnlyModelViewSet):

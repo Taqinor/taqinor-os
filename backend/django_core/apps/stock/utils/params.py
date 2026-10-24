@@ -60,6 +60,26 @@ def decimal_ou_400(valeur, nom, defaut=None):
     return n
 
 
+#: Montant de requête (colonne ``numeric(12, 2)``) : positif, sans signe ni
+#: exposant ; vide = non renseigné. La MÊME forme est publiée (chaîne à motif —
+#: en query string un nombre et sa chaîne sont indiscernables) et lue.
+MOTIF_MONTANT_REQUETE = r'^([0-9]{1,10}(\.[0-9]{1,2})?)?$'
+_MONTANT_REQUETE = re.compile(MOTIF_MONTANT_REQUETE)
+
+
+def montant_requete_ou_400(valeur, nom):
+    """Montant positif de requête STRICT : absent/vide -> ``None`` ; hors de
+    ``MOTIF_MONTANT_REQUETE`` (``NaN``, exposant, signe, espace) -> 400 nommant le
+    paramètre (``Decimal()`` lisait tout cela, ou débordait en 500)."""
+    from decimal import Decimal
+    from rest_framework.exceptions import ValidationError
+    if valeur is None or valeur == '':
+        return None
+    if not _MONTANT_REQUETE.fullmatch(valeur):
+        raise ValidationError({nom: ['Montant positif attendu (au plus 2 décimales).']})
+    return Decimal(valeur)
+
+
 def corps_objet(request):
     """Corps de requête OBJET (ERR fuzz stock) : un corps JSON non objet
     (``[null, null]``, ``null``, nombre) levait AttributeError sur ``.get``
@@ -222,6 +242,35 @@ def choix_ou_400(valeur, nom, choix):
         raise ValidationError({nom: [
             'Valeur attendue : ' + ', '.join(str(c) for c in choix) + '.']})
     return valeur
+
+
+def texte_sans_nul_ou_400(valeur, nom):
+    """Filtre TEXTE de requête (``?q=``, ``?type_document=``) : un caractère nul
+    ne peut être lu par PostgreSQL (500) -> 400 nommant le paramètre. Le schéma
+    publie ``MOTIF_SANS_NUL`` pour ce paramètre. Absent -> ``None``."""
+    from rest_framework.exceptions import ValidationError
+    if valeur is not None and '\x00' in valeur:
+        raise ValidationError({nom: ['Caractère nul interdit.']})
+    return valeur
+
+
+def statut_requete_ou_400(request, choix, nom='statut'):
+    """Filtre ``?statut=`` à valeurs FERMÉES (énumération publiée) : absent/vide
+    -> ``None`` ; paramètre répété ou valeur hors ``choix`` -> 400 nommant le
+    paramètre (une valeur à caractère nul faisait un 500 SQL)."""
+    return choix_ou_400(valeur_unique_ou_400(request, nom), nom, list(choix))
+
+
+def etiquette_options_ou_400(request):
+    """``?symbology=qr|code128`` et ``?sortie=html|pdf`` des planches
+    d'étiquettes, STRICTS (api-fuzz stock B) : valeur unique, énumération
+    publiée au schéma (vide = défaut) — elles retombaient en silence sur
+    ``qr`` / ``pdf``. Retourne ``(symbology, sortie)``."""
+    symbology = choix_ou_400(valeur_unique_ou_400(request, 'symbology'),
+                             'symbology', ('qr', 'code128')) or 'qr'
+    sortie = choix_ou_400(valeur_unique_ou_400(request, 'sortie'),
+                          'sortie', ('html', 'pdf'))
+    return symbology, sortie
 
 
 #: Forme publiée de ``?ids=`` : identifiants entiers séparés par des virgules.

@@ -143,7 +143,7 @@ class DossierExchangeSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
             raise
 
 
-class SubventionDossierSerializer(ChampsStrictsMixin,
+class SubventionDossierSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                                   SameCompanyFKSerializerMixin,
                                   serializers.ModelSerializer):
     """FG270 — dossier de subvention/incitation."""
@@ -173,6 +173,12 @@ class SubventionDossierSerializer(ChampsStrictsMixin,
             'id', 'programme_label', 'statut_label',
             'created_at', 'updated_at',
         ]
+
+    def validate_pieces(self, valeur):
+        # CI #997 fuzz (24/10) : JSON libre rangé en jsonb -> nul et
+        # demi-substituts Unicode normalisés (DataError 500 sinon).
+        from .utils.corps import nettoyer_json
+        return nettoyer_json(valeur)
 
 
 class Regularisation8221Serializer(IdInconnu404Mixin, ChampsStrictsMixin,

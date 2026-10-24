@@ -472,6 +472,10 @@ class TariffApiTest(TestCase):
             for valeur in ('abc', 'nan'):
                 r = self.api.get(PROD_URL, {param: valeur})
                 self.assertEqual(r.status_code, 400, (param, valeur, r.data))
+        # api-fuzz full 24/10 : répété (``?lat=x&lat=``) ou vide = hors schéma.
+        for requete in ('lat=%10&lat=', 'lat=', 'tilt=30&tilt=31'):
+            r = self.api.get(f'{PROD_URL}?{requete}')
+            self.assertEqual(r.status_code, 400, (requete, r.data))
         r = self.api.get(PROD_URL, {'tilt': '30', 'azimuth': '0'})
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data['source'], 'manual')

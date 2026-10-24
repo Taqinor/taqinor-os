@@ -1,7 +1,7 @@
 from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 
 from core.champs_stricts import (
     ChampsStrictsSansDecimalMixin, DecimalSouple, EntierStrict,
@@ -162,7 +162,9 @@ class ContratMaintenanceSerializer(ListesStrictesMixin,
         if prestations is not None:
             existantes = {p.pk: p for p in instance.prestations.all()}
             if any(e.get('id') not in existantes for e in prestations):
-                raise ValidationError(
+                # ENF11 : un id bien formé qui ne désigne aucune prestation de
+                # CE contrat = ressource absente (404), pas un corps invalide.
+                raise NotFound(
                     {'prestations': 'Prestation inconnue pour ce contrat.'})
             for entree in prestations:
                 prestation = existantes[entree['id']]

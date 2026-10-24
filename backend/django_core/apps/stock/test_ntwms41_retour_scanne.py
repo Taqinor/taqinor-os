@@ -190,6 +190,10 @@ class Ntwms41ApiTests(Ntwms41Base):
         res = auth(self.magasinier).get(self.URL, {'code': 'INEXISTANT'})
         self.assertEqual(res.status_code, 404)
 
+    def test_code_avec_caractere_nul_renvoie_400_et_jamais_500(self):
+        res = auth(self.magasinier).get(self.URL, {'code': 'ab\x00cd'})
+        self.assertEqual(res.status_code, 400)
+
     def test_endpoint_refuse_lanonyme(self):
         self.assertEqual(APIClient().get(self.URL).status_code, 401)
 

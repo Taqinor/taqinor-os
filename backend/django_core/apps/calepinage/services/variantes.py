@@ -43,6 +43,24 @@ class VarianteRefusee(ValueError):
         self.champ = champ
 
 
+#: Longueur de la colonne ``CalepinageVariante.nom`` : au-delà, l'INSERT levait
+#: une erreur SQL (500).
+NOM_MAX = 160
+
+
+def _sans_caractere_interdit(valeur, champ):
+    """ERR-ENF11-FUZZ-CALEPINAGE — U+0000 ou un demi-substitut isolé (texte OU
+    clé, à n'importe quelle profondeur) ne se range ni en colonne texte ni en
+    JSONB : l'INSERT échouait en 500. Refus NOMMÉ à la place."""
+    from .parametres import _chemin_caractere_interdit
+
+    chemin = _chemin_caractere_interdit(valeur, champ)
+    if chemin:
+        raise VarianteRefusee(
+            "« %s » contient un caractère interdit (caractère nul ou "
+            "illisible) : corrigez la saisie." % chemin, champ=champ)
+
+
 def _nom_texte(nom):
     """ACAL277 — le nom d'une variante est un TEXTE : ``5`` ou ``['a']`` sont
     refusés en nommant ``nom`` (avant : ``AttributeError`` ⇒ 500)."""
@@ -50,7 +68,13 @@ def _nom_texte(nom):
         raise VarianteRefusee(
             "Le nom de la variante doit être un texte "
             f"(reçu : {type(nom).__name__}).", champ='nom')
-    return (nom or '').strip()
+    _sans_caractere_interdit(nom, 'nom')
+    propre = (nom or '').strip()
+    if len(propre) > NOM_MAX:
+        raise VarianteRefusee(
+            "Le nom de la variante tient en %d caractères au plus (reçu : "
+            "%d)." % (NOM_MAX, len(propre)), champ='nom')
+    return propre
 
 
 def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
@@ -83,6 +107,8 @@ def creer_variante(calepinage, *, nom, roof_layout=None, resultat=None,
         raise VarianteRefusee(
             "La conception de la variante doit être un objet "
             f"(reçu : {type(roof_layout).__name__}).", champ='roof_layout')
+    _sans_caractere_interdit(roof_layout, 'roof_layout')
+    _sans_caractere_interdit(resultat, 'resultat')
 
     with transaction.atomic():
         variante = CalepinageVariante.objects.create(
@@ -134,6 +160,10 @@ def modifier_variante(variante, *, nom=None, roof_layout=..., resultat=...,
 
     champs = []
     changements = []
+    if roof_layout is not ...:
+        _sans_caractere_interdit(roof_layout, 'roof_layout')
+    if resultat is not ...:
+        _sans_caractere_interdit(resultat, 'resultat')
     if nom is not None:
         libelle = _nom_texte(nom)
         if not libelle:

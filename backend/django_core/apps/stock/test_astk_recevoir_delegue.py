@@ -147,10 +147,28 @@ class RecevoirDelegueTests(TestCase):
 
     def test_quantite_non_entiere_400(self):
         bc, ligne = self._bcf(15)
-        rep = self._recevoir(bc, ligne, '2.5')
-        self.assertEqual(rep.status_code, 400, rep.data)
-        self.assertIn('2,5', str(rep.data['quantite'][0]))
+        # La quantité est un ENTIER JSON (schéma == serveur, api-fuzz) : 2.5 et '2.5' -> 400.
+        for quantite in ('2.5', 2.5, '3', True, 0, -1):
+            rep = self._recevoir(bc, ligne, quantite)
+            self.assertEqual(rep.status_code, 400, (quantite, rep.data))
+            self.assertIn('receptions', rep.data)
         self.assertFalse(
             ReceptionFournisseur.objects.filter(bon_commande=bc).exists())
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 0)
+
+    def test_corps_hors_schema_400_et_inconnus_404(self):
+        # api-fuzz : item vide / liste vide / corps non objet = 400 ; ligne ou
+        # conditionnement inconnu = 404 (jamais 400 « Réception invalide »).
+        bc, ligne = self._bcf(15)
+        url = f'{URL}{bc.pk}/recevoir/'
+        for corps in ({'receptions': [{}]}, {'receptions': []}, {}, [],
+                      {'receptions': [{'ligne': {}, 'quantite': 1}]},
+                      {'receptions': [{'ligne': ligne.pk, 'quantite': 1, 'conditionnement': {}}]}):
+            self.assertEqual(self.api.post(url, corps, format='json').status_code, 400, corps)
+        for item in ({'ligne': 987654, 'quantite': 1},
+                     {'ligne': ligne.pk, 'quantite': 1, 'conditionnement': 987654},
+                     {'ligne': ligne.pk, 'quantite': 1, 'conditionnement_code_barres': 'INCONNU'}):
+            rep = self.api.post(url, {'receptions': [item]}, format='json')
+            self.assertEqual(rep.status_code, 404, (item, rep.data))
+        self.assertFalse(ReceptionFournisseur.objects.filter(bon_commande=bc).exists())

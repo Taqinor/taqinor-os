@@ -155,6 +155,25 @@ class CommissioningApiTest(TestCase):
                     self.assertEqual(champ_lie.to_internal_value(propre.pk),
                                      propre)
 
+    def test_filtres_stricts_resultat_et_entiers(self):
+        # CI #997 fuzz (24/10) : une valeur hors liste (dont le caractère nul,
+        # 500 avant) ou un entier vide / illisible = 400 nommé.
+        for params in ({'resultat': 'zzz'}, {'resultat': 'a\x00'},
+                       {'chantier': ''}, {'devis': 'abc'}):
+            with self.subTest(params=params):
+                resp = self.api.get(self.url, params)
+                self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(
+            self.api.get(self.url, {'chantier': '0'}).status_code, 200)
+        for ressource, cle in (('attestations-conformite', 'statut'),
+                               ('tests-pr-reception', 'verdict'),
+                               ('attestations-re', 'statut')):
+            with self.subTest(ressource=ressource):
+                url = f'/api/django/ventes/{ressource}/'
+                self.assertEqual(
+                    self.api.get(url, {cle: 'x\x00'}).status_code, 400)
+                self.assertEqual(self.api.get(url).status_code, 200)
+
     def test_list_scoped_and_filter_resultat(self):
         CommissioningTest.objects.create(
             company=self.company, devis=self.devis, resultat='conforme')

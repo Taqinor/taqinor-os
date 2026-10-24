@@ -1,7 +1,7 @@
 from datetime import date as _date
 
 from drf_spectacular.utils import extend_schema_view
-from ..openapi_params import qstr
+from ..openapi_params import entier_requete, qstr
 from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
@@ -236,14 +236,11 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
             facture__isnull=True,
         ).exclude(
             statut_affectation=Paiement.StatutAffectation.AFFECTE)
-        client_id = request.query_params.get('client')
-        if client_id:
-            # ENF11 — ``client`` non entier : 400 (ValueError → 500 avant).
-            try:
-                qs = qs.filter(client_id=int(client_id))
-            except (TypeError, ValueError):
-                return Response({'client': 'Entier attendu.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 fuzz (24/10) : ``?client=`` publié entier — vide, répété ou
+        # illisible = 400 (le vide était lu « pas de filtre »).
+        client_id = entier_requete(request, 'client')
+        if client_id is not None:
+            qs = qs.filter(client_id=client_id)
         rows = [p for p in qs if p.montant_disponible > 0]
         return Response(PaiementSerializer(rows, many=True).data)
 

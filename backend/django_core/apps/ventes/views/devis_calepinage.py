@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
+from ..domain.bornes import arrondi_si_nombre_json
 from ..domain.bornes import pourcentage_saisi as _pourcentage_saisi  # ACAL278, ATOT21
 
 
@@ -57,6 +58,10 @@ def _ecrire_conception(devis, payload, request):
     from ..domain.resynchronisation import (
         ConceptionRefusee, ecrire_conception_du_devis)
     from ..services import SyncLayoutError
+    from ..utils.corps import nettoyer_json
+    # CI #997 fuzz (24/10) : JSON libre rangé en jsonb -> nul et demi-substituts
+    # Unicode normalisés (DataError / UnicodeEncodeError = 500 sinon).
+    payload = nettoyer_json(payload)
 
     try:
         resultat = ecrire_conception_du_devis(
@@ -169,10 +174,14 @@ class DevisCalepinageActionsMixin:
         # de ck_devis_remise_globale_0_100 (500).
         # APAR49 — défaut = taux STANDARD de la société (``tva_standard``).
         from ..utils.company_settings import tva_standard
+        # api-fuzz — un nombre JSON est arrondi au centième (publié ainsi :
+        # ``D.FromLayoutRequest``), une chaîne reste jugée telle quelle.
+        montants = {champ: arrondi_si_nombre_json(request.data.get(champ))
+                    for champ in ('taux_tva', 'remise_globale')}
         taux_tva, erreur = _pourcentage_saisi(
-            request.data, 'taux_tva', tva_standard(company))
+            montants, 'taux_tva', tva_standard(company))
         remise, erreur_remise = _pourcentage_saisi(
-            request.data, 'remise_globale', Decimal('0'))
+            montants, 'remise_globale', Decimal('0'))
         erreur = erreur or erreur_remise
         if erreur:
             return Response(
@@ -313,7 +322,8 @@ class DevisCalepinageActionsMixin:
 
     @extend_schema(request=D.LayoutRequest,
                    responses={200: D.SyncLayoutResponse,
-                              409: D.ErreurSyncLayout})
+                              409: D.ErreurSyncLayout},
+                   extensions=D.CORPS_LAYOUT_OBLIGATOIRE)
     @action(parser_classes=[JSONParser], detail=True, methods=['post'], url_path='sync-layout',
             permission_classes=[IsResponsableOrAdmin])
     def sync_layout(self, request, pk=None):
@@ -597,7 +607,8 @@ class DevisCalepinageActionsMixin:
     # api-only: plus d'appelant écran depuis ACAL97 (intégrations/scripts)
     @extend_schema(methods=['GET'], responses=D.LayoutResponse)
     @extend_schema(methods=['POST'], request=D.LayoutRequest,
-                   responses=D.LayoutResponse)
+                   responses=D.LayoutResponse,
+                   extensions=D.CORPS_LAYOUT_OBLIGATOIRE)
     @action(
         parser_classes=[JSONParser],
         detail=True,

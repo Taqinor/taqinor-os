@@ -33,7 +33,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import HasPermissionOrLegacy
-from core.champs_stricts import ChaineStricte, entier_ou_400
+from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte, entier_ou_400
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.permissions import _user_has_or_legacy
 from core.viewsets import CompanyScopedModelViewSet
@@ -307,7 +307,8 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
             # CI #956 (fuzz) — ``lead`` est déclaré entier : ``?lead=null``
             # (ou ``abc``) répond 400 « Entier attendu. », plus un filtre
             # ignoré en silence ; vide = pas de filtre.
-            lead = entier_ou_400(self.request.query_params.get('lead'), 'lead')
+            lead = entier_ou_400(
+                self.request.query_params.get('lead'), 'lead', maxi=2 ** 31 - 1)
             if lead is not None:
                 queryset = queryset.filter(lead_id=lead)
         return queryset
@@ -316,7 +317,9 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
         parameters=[
             OpenApiParameter('mine', OpenApiTypes.STR, required=False),
             OpenApiParameter(
-                'lead', OpenApiTypes.INT, required=False,
+                'lead', {'anyOf': [{'type': 'integer'},
+                                   {'type': 'string', 'maxLength': 0}]},
+                required=False,
                 description="Identifiant du lead : seulement ses visites."),
         ],
         responses={200: _VISITE_LIGNE})
@@ -842,7 +845,8 @@ class MaJourneeView(APIView):
 
     @extend_schema(
         parameters=[OpenApiParameter(
-            'tous', bool, OpenApiParameter.QUERY,
+            'tous', {'type': 'string', 'enum': ['', '0', '1', 'true', 'false']},
+            OpenApiParameter.QUERY,
             description=("Reserve aux porteurs de visites_valider : la "
                          "journee de toute l'equipe au lieu de la sienne."))],
         responses=inline_serializer(
@@ -890,12 +894,15 @@ class LeadsRechercheView(APIView):
     @extend_schema(
         parameters=[
             OpenApiParameter(
-                'q', str, OpenApiParameter.QUERY,
+                'q', {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+                location=OpenApiParameter.QUERY,
                 description=('Terme recherche dans le nom OU le telephone. '
                              'Vide : aucun resultat (on n’enumere pas '
                              'l’annuaire).')),
             OpenApiParameter(
-                'limit', int, OpenApiParameter.QUERY,
+                'limit', {'anyOf': [{'type': 'integer'},
+                                    {'type': 'string', 'maxLength': 0}]},
+                OpenApiParameter.QUERY,
                 description='Nombre maximum de resultats (defaut 10, max 50).'),
         ],
         responses=inline_serializer(
@@ -918,9 +925,13 @@ class LeadsRechercheView(APIView):
             except (TypeError, ValueError):
                 raise ValidationError(
                     {'limit': 'Un entier est attendu (1 à 50).'})
+        terme = request.query_params.get('q')
+        if terme and '\x00' in terme:
+            # Postgres refuse le caractère nul dans un littéral (500).
+            raise ValidationError({'q': 'Caractère nul interdit.'})
         # ACRM30 — bornée aux leads visibles de l'appelant.
         return Response({'results': crm_selectors.rechercher_leads_minimal(
             request.user.company,
-            request.query_params.get('q'),
+            terme,
             limit=limite or 10,
             user=request.user)})

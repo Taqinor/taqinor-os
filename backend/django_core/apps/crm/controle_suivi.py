@@ -98,6 +98,15 @@ MESSAGE_OWNER = ('« Commercial » : responsable inconnu ou hors de votre '
 
 # ── Paramètres ───────────────────────────────────────────────────────────────
 
+def entier_ascii(brut):
+    """Vrai pour un entier décimal ASCII de 18 chiffres au plus.
+
+    ``str.isdigit`` accepte « ² » ou « ٣ » (``int`` lève alors ValueError :
+    500 constaté par api-fuzz) et un identifiant géant déborderait la colonne
+    entière côté base : les deux sont refusés comme un texte non numérique."""
+    return brut.isascii() and brut.isdigit() and len(brut) <= 18
+
+
 def parametres_controle(company, user, jours_brut=None, owner_brut=None):
     """``(jours, owner, erreurs)`` depuis les paramètres de la requête.
 
@@ -109,14 +118,15 @@ def parametres_controle(company, user, jours_brut=None, owner_brut=None):
     jours = JOURS_DEFAUT
     brut = str(jours_brut if jours_brut is not None else '').strip()
     if brut:
-        if brut.isdigit() and int(brut) in JOURS_AUTORISES:
+        if entier_ascii(brut) and int(brut) in JOURS_AUTORISES:
             jours = int(brut)
         else:
             erreurs['jours'] = MESSAGE_JOURS
     owner = None
     brut = str(owner_brut if owner_brut is not None else '').strip()
     if brut:
-        if brut.isdigit() and _owner_dans_la_portee(company, user, int(brut)):
+        if entier_ascii(brut) and _owner_dans_la_portee(
+                company, user, int(brut)):
             owner = int(brut)
         else:
             erreurs['owner'] = MESSAGE_OWNER

@@ -393,6 +393,32 @@ class _HeureRendueSansFuseau(OpenApiSerializerFieldExtension):
         return schema
 
 
+def installer_dates_rfc3339():
+    """api-fuzz-full du 24/10/2026 (« Response violates schema », POST
+    ``core/dashboards-partages/`` et ``ged/partages/``, ``expires_at`` en
+    1263 / 0907) — pour une date antérieure à 1913, le fuseau local
+    (Africa/Casablanca) rend le décalage « LMT » ``-00:30:20`` : à secondes,
+    ce n'est pas une date-heure RFC 3339 (``format: date-time``). Plusieurs
+    apps le corrigeaient champ par champ ; ici UNE fois pour tout
+    ``DateTimeField`` DRF : un décalage à secondes est ramené en UTC (``Z``),
+    même instant. Aucune date postérieure à 1913 ne change. Idempotent."""
+    import datetime
+
+    origine = serializers.DateTimeField.enforce_timezone
+    if getattr(origine, '_rfc3339', False):
+        return
+
+    def enforce_timezone(self, value):
+        value = origine(self, value)
+        decalage = value.utcoffset() if getattr(value, 'tzinfo', None) else None
+        if decalage is not None and int(decalage.total_seconds()) % 60:
+            return value.astimezone(datetime.timezone.utc)
+        return value
+
+    enforce_timezone._rfc3339 = True
+    serializers.DateTimeField.enforce_timezone = enforce_timezone
+
+
 def drapeau_ou_400(valeur, nom):
     """Drapeau de requête déclaré ``enum=['1']`` : absent → ``False`` ;
     ``'1'`` → ``True`` ; toute autre valeur → 400 nommant le paramètre (elle
@@ -543,7 +569,27 @@ class ListesStrictesMixin:
         return super().to_internal_value(data)
 
 
-def _ids_inconnus_seulement(erreurs, champs):
+def _ids_inconnus_imbriques(champ, details):
+    """api-fuzz-full 24/10 (``POST core/workflow-definitions/``, ``steps[]``
+    à ``formulaire``/``definition`` inexistants) — erreurs d'un sérialiseur
+    IMBRIQUÉ : ``None`` si ``champ`` n'en est pas un ; sinon vrai ssi ses
+    erreurs ne sont QUE des ids inconnus (même règle, récursive ; un élément
+    ``{}`` d'une liste est un élément valide). OPT-IN : seul un sérialiseur
+    qui pose ``ids_inconnus_imbriques = True`` l'active (les autres gardent le
+    400 d'une clé imbriquée, que leurs tests figent)."""
+    if isinstance(champ, serializers.ListSerializer):
+        if not isinstance(details, list):
+            return False
+        fautifs = [d for d in details if d]
+        return bool(fautifs) and all(
+            _ids_inconnus_seulement(d, champ.child.fields, imbriques=True)
+            for d in fautifs)
+    if isinstance(champ, serializers.Serializer):
+        return _ids_inconnus_seulement(details, champ.fields, imbriques=True)
+    return None
+
+
+def _ids_inconnus_seulement(erreurs, champs, imbriques=False):
     """Vrai si TOUTES les erreurs sont « objet inexistant » (``does_not_exist``)
     sur des champs de relation par clé primaire — ou le refus d'unicité
     (``unique``) d'une telle relation (``OneToOne``), deux refus d'ÉTAT qu'un
@@ -553,6 +599,13 @@ def _ids_inconnus_seulement(erreurs, champs):
     inconnu = False
     for nom, details in erreurs.items():
         champ = champs.get(nom)
+        imbrique = (_ids_inconnus_imbriques(champ, details) if imbriques
+                    else None)
+        if imbrique is not None:
+            if not imbrique:
+                return False
+            inconnu = True
+            continue
         relation = getattr(champ, 'child_relation', champ)
         if not isinstance(relation, serializers.PrimaryKeyRelatedField):
             return False
@@ -575,7 +628,9 @@ class IdInconnu404Mixin:
         valide = super().is_valid(raise_exception=False)
         if not valide and raise_exception:
             from rest_framework.exceptions import NotFound
-            if _ids_inconnus_seulement(self.errors, self.fields):
+            if _ids_inconnus_seulement(
+                    self.errors, self.fields,
+                    imbriques=getattr(self, 'ids_inconnus_imbriques', False)):
                 raise NotFound(self.errors)
             raise serializers.ValidationError(self.errors)
         return valide
@@ -669,7 +724,26 @@ class ArbreConditionsField(serializers.JSONField):
         if not arbre_conditions_valide(valeur):
             raise serializers.ValidationError(
                 "Arbre de conditions non conforme au schéma publié.")
-        return valeur
+        return arbre_conditions_canonique(valeur)
+
+
+def arbre_conditions_canonique(noeud):
+    """api-fuzz-full 24/10 (``POST core/ui-onglets/``, 500) — l'arbre réduit
+    aux clés que ``core.rules`` lit (``op``/``conditions`` d'un groupe,
+    ``field``/``operator``/``value`` d'une feuille) : une clé inconnue — à
+    ``\\x00`` comprise, que le jsonb PostgreSQL refuse — n'est jamais stockée.
+    Arbre déjà validé (``arbre_conditions_valide``)."""
+    from core.rules import _is_group
+    if _is_group(noeud):
+        sortie = {'conditions': [
+            arbre_conditions_canonique(c) for c in noeud['conditions']]}
+        if 'op' in noeud:
+            sortie['op'] = noeud['op']
+        return sortie
+    sortie = {'field': noeud['field'], 'operator': noeud['operator']}
+    if 'value' in noeud:
+        sortie['value'] = noeud['value']
+    return sortie
 
 
 class _ArbreConditionsSchema(OpenApiSerializerFieldExtension):

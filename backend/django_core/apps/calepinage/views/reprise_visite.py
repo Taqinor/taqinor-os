@@ -53,6 +53,13 @@ def releve_visite(self, request, pk=None):
     calepinage = self.get_object()  # borné société par get_queryset
     if request.method.lower() != 'post':
         return Response(etat_reprise(calepinage))
+    if not isinstance(request.data, dict):
+        # Un corps JSON qui n'est pas un objet (liste, texte, ``null``) levait
+        # ``AttributeError`` sur ``.get`` (500) : refus nomme.
+        return Response(
+            {'detail': "Le corps attendu est un objet "
+                       "« {remplacer: true|false} »."},
+            status=status.HTTP_400_BAD_REQUEST)
     remplacer = str(request.data.get('remplacer')).strip().lower() in (
         'true', '1')
     try:

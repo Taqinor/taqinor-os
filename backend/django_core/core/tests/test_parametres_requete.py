@@ -184,3 +184,98 @@ class ParametresRequeteTests(TestCase):
         parametres_requete.installer()
         self.assertIs(Base.initial, avant)
         self.assertTrue(getattr(Base.initial, '_enfp_parametres_requete', False))
+
+
+class _VueTypee(APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter('document', OpenApiTypes.INT),
+            OpenApiParameter('k', {'type': 'integer', 'minimum': 1,
+                                   'maximum': 50}),
+            OpenApiParameter('taux', OpenApiTypes.NUMBER),
+            OpenApiParameter('mode', OpenApiTypes.STR, enum=['a', 'b']),
+            OpenApiParameter('statut', OpenApiTypes.STR),
+            OpenApiParameter('ids', {'type': 'array',
+                                     'items': {'type': 'integer'}}),
+        ],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    def get(self, request):
+        return Response({'ok': True})
+
+
+@override_settings(API_QUERY_PARAMS_STRICT=True)
+class ValeursParametresTests(TestCase):
+    """api-fuzz-full 24/10/2026 — la VALEUR d'un paramètre déclaré suit son
+    schéma publié : répété, entier/nombre illisible ou hors bornes, hors
+    énumération -> 400 nommant le paramètre."""
+
+    def setUp(self):
+        parametres_requete.vider_cache()
+        self.addCleanup(parametres_requete.vider_cache)
+
+    def _get(self, chaine):
+        return _VueTypee.as_view()(factory.get('/x/?' + chaine))
+
+    def test_valeurs_conformes_acceptees(self):
+        for chaine in ('document=12', 'document=-3', 'k=1', 'k=50',
+                       'taux=2.5', 'mode=b', 'statut=libre', 'ids=1&ids=2'):
+            self.assertEqual(self._get(chaine).status_code, 200, chaine)
+
+    def test_valeurs_hors_schema_refusees_et_nommees(self):
+        for chaine, nom in (
+                ('document=', 'document'), ('document=abc', 'document'),
+                ('document=1.5', 'document'), ('document=1&document=2', 'document'),
+                ('k=0', 'k'), ('k=51', 'k'), ('taux=nan', 'taux'),
+                ('taux=', 'taux'), ('mode=', 'mode'), ('mode=c', 'mode'),
+                ('statut=a&statut=b', 'statut')):
+            reponse = self._get(chaine)
+            self.assertEqual(reponse.status_code, 400, chaine)
+            self.assertIn(nom, reponse.data, chaine)
+            self.assertEqual(reponse.data['error']['code'], 'validation_error')
+
+    def test_reglage_eteint_valeurs_non_controlees(self):
+        with override_settings(API_QUERY_PARAMS_STRICT=False):
+            self.assertEqual(self._get('document=abc').status_code, 200)
+
+
+class CaractereNulTests(TestCase):
+    """api-fuzz-full 24/10/2026 — un caractère nul dans une valeur de query
+    (PostgreSQL le refuse : 500) est un 400 nommé PARTOUT, réglage strict ou
+    non ; ``search`` garde sa liste vide (200)."""
+
+    def setUp(self):
+        parametres_requete.vider_cache()
+        self.addCleanup(parametres_requete.vider_cache)
+
+    def test_nul_refuse_400_meme_hors_mode_strict(self):
+        for strict in (True, False):
+            with override_settings(API_QUERY_PARAMS_STRICT=strict):
+                reponse = _VueTypee.as_view()(
+                    factory.get('/x/', {'statut': 'a\x00b'}))
+            self.assertEqual(reponse.status_code, 400, strict)
+            self.assertEqual(list(reponse.data['error']['fields']), ['statut'])
+
+    def test_recherche_a_nul_reste_tolere(self):
+        reponse = liste(factory.get('/types/', {'search': 'us\x00er'}))
+        self.assertEqual(reponse.status_code, 200, reponse.data)
+
+    def test_motif_sans_nul_publie_sur_les_textes_de_query(self):
+        from core.openapi_erreurs import (
+            MOTIF_QUERY_SANS_NUL, aligner_motifs_sur_drf)
+        doc = {'paths': {'/x/': {'get': {'parameters': [
+            {'in': 'query', 'name': 'statut', 'schema': {'type': 'string'}},
+            {'in': 'query', 'name': 'search', 'schema': {'type': 'string'}},
+            {'in': 'query', 'name': 'mode',
+             'schema': {'type': 'string', 'enum': ['a']}},
+            {'in': 'query', 'name': 'jour',
+             'schema': {'type': 'string', 'format': 'date'}},
+            {'in': 'path', 'name': 'id', 'schema': {'type': 'string'}},
+        ]}}}}
+        params = aligner_motifs_sur_drf(doc)['paths']['/x/']['get']['parameters']
+        self.assertEqual(params[0]['schema']['pattern'], MOTIF_QUERY_SANS_NUL)
+        for param in params[1:]:
+            self.assertNotIn('pattern', param['schema'], param['name'])

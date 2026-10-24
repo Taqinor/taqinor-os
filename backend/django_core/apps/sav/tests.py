@@ -159,8 +159,9 @@ class TestEquipementFilters(TestCase):
         # bornes 1..ID_MAX que `entier_param` applique — même verdict des deux
         # côtés (0, négatif, non entier → 400 nommé ; vide → ignoré).
         from apps.sav.query_params import ENTIER_ID, ID_MAX
-        self.assertEqual(ENTIER_ID, {'type': 'integer', 'minimum': 1,
-                                     'maximum': ID_MAX})
+        self.assertEqual(ENTIER_ID, {'oneOf': [
+            {'type': 'integer', 'minimum': 1, 'maximum': ID_MAX},
+            {'type': 'string', 'enum': ['']}]})
         for nom in ('produit', 'installation', 'client', 'categorie'):
             for brut in ('0', '-1', 'abc', '99999999999'):
                 r = self.api.get('/api/django/sav/equipements/', {nom: brut})
@@ -169,6 +170,10 @@ class TestEquipementFilters(TestCase):
         r = self.api.get('/api/django/sav/equipements/',
                          {'produit': '', 'client': ''})
         self.assertEqual(r.status_code, 200, r.data)
+        # api-fuzz-full : un paramètre RÉPÉTÉ (tableau) est refusé en 400.
+        r = self.api.get('/api/django/sav/equipements/?produit=1&produit=2')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('produit', r.data)
 
     def test_filter_by_marque(self):
         r = self.api.get('/api/django/sav/equipements/', {'marque': 'Canadian'})
@@ -241,7 +246,8 @@ class TestSerieUnicite(TestCase):
         r1 = self._create('SN-DUP')
         self.assertEqual(r1.status_code, 201, r1.data)
         r2 = self._create('SN-DUP')
-        self.assertEqual(r2.status_code, 400, r2.data)
+        # ENF11 (api-fuzz-full) : doublon = refus d'état, 409.
+        self.assertEqual(r2.status_code, 409, r2.data)
         self.assertIn('numero_serie', r2.data)
 
     def test_blank_serials_allowed(self):
@@ -281,7 +287,7 @@ class TestSerieUnicite(TestCase):
         sid = second.data['id']
         r = self.api.patch(f'/api/django/sav/equipements/{sid}/',
                            {'numero_serie': 'SN-A'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('numero_serie', r.data)
 
 
@@ -435,6 +441,14 @@ class TestTicketWarrantyAndChatter(TestCase):
         self.assertTrue(r.data['annule'])
         self.assertEqual(r.data['motif_annulation'], 'Doublon')
         self.assertTrue(Ticket.objects.filter(pk=tid).exists())
+
+    def test_annuler_corps_mal_forme_400_pas_500(self):
+        tid = self._open_ticket().data['id']
+        for corps in ([], {'motif': 5}):
+            r = self.api.post(f'/api/django/sav/tickets/{tid}/annuler/',
+                              corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+        self.assertFalse(Ticket.objects.get(pk=tid).annule)
 
 
 class TestTicketPrefillFromEquipement(TestCase):
@@ -719,3 +733,43 @@ class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
         for brut in ('null', '0', '-1', 'abc'):
             with self.assertRaises(ValidationError, msg=brut):
                 entier_ou_400(brut, 'limit', defaut=5, mini=1)
+
+    def test_intervention_du_ticket_dates_et_compte_rendu_nullables(self):
+        # api-fuzz-full (annuler/reprendre) : une intervention non réalisée
+        # sert ``null`` ; le schéma les annonçait non nulles.
+        from apps.sav.serializers import TicketInterventionSerializer
+        champs = TicketInterventionSerializer().fields
+        for nom in ('date_prevue', 'date_realisee', 'compte_rendu'):
+            self.assertTrue(champs[nom].allow_null, nom)
+
+    def test_quantite_positive_motif_publie_egal_au_serveur(self):
+        import re
+        from rest_framework.exceptions import ValidationError
+        from apps.sav.champs_corps import (
+            MOTIF_QUANTITE_POSITIVE, QuantitePositive)
+        champ = QuantitePositive()
+        for bonne in ('1', '12.5', '9999999999.99', '0.01', '.5', '0.10'):
+            self.assertTrue(re.fullmatch(MOTIF_QUANTITE_POSITIVE, bonne), bonne)
+            champ.run_validation(bonne)
+        for mauvaise in ('0', '0.00', '-1', '', '.', '1.234', '12345678901'):
+            self.assertFalse(
+                re.fullmatch(MOTIF_QUANTITE_POSITIVE, mauvaise), mauvaise)
+        for mauvaise in ('0', '0.00', '-1', '1.234', '12345678901'):
+            with self.assertRaises(ValidationError, msg=mauvaise):
+                champ.run_validation(mauvaise)
+
+    def test_parametre_repete_ou_vide_publie(self):
+        from rest_framework.exceptions import ValidationError
+        from rest_framework.test import APIRequestFactory
+        from rest_framework.request import Request
+        from apps.sav.query_params import entier_param, ou_vide
+        fabrique = APIRequestFactory()
+        un = Request(fabrique.get('/x/', {'n': '3'}))
+        self.assertEqual(entier_param(un, 'n'), 3)
+        vide = Request(fabrique.get('/x/', {'n': ''}))
+        self.assertIsNone(entier_param(vide, 'n'))
+        deux = Request(fabrique.get('/x/?n=1&n=2'))
+        with self.assertRaises(ValidationError):
+            entier_param(deux, 'n')
+        self.assertIn({'type': 'string', 'enum': ['']},
+                      ou_vide({'type': 'integer'})['oneOf'])

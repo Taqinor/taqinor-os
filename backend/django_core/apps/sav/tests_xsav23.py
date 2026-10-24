@@ -9,6 +9,7 @@ Couvre :
 Run :
     docker compose exec django_core python manage.py test apps.sav.tests_xsav23 -v 2
 """
+import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -125,3 +126,19 @@ class XSAV23ReponseTypeTest(TestCase):
             {'reponse_type_id': macro.id, 'body': 'Note manuelle explicite'})
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.data['body'], 'Note manuelle explicite')
+
+    def test_noter_corps_vide_ou_mal_forme_400_macro_inconnue_404(self):
+        # api-fuzz-full : ``{}`` « conforme » refusé -> le schéma exige un texte
+        # non blanc OU une réponse type ; un corps non objet ne plante plus.
+        api = auth(self.admin)
+        url = f'/api/django/sav/tickets/{self.ticket.id}/noter/'
+        for corps in ({}, [], {'body': 5}, {'body': '   '},
+                      {'reponse_type_id': '7'}):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = api.post(url, {'reponse_type_id': 987654}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        resp = api.post(url, json.dumps({'body': 'ok\ud9d1', 'visible_client': True}),
+                        content_type='application/json')  # substitut isolé
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['body'], 'ok')

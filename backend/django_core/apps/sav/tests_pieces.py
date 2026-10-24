@@ -57,6 +57,32 @@ class TestSavPieces(TestCase):
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, Decimal('7'))
 
+    def test_quantite_non_positive_ou_mal_formee_400(self):
+        # api-fuzz-full : "0" était « conforme » au schéma puis refusé ; le
+        # motif publié l'exclut désormais, et le serveur refuse pareil.
+        for quantite in ('0', '-25.2', '0.00', 'abc', '1.234', [], True):
+            r = self._add(quantite=quantite)
+            self.assertEqual(r.status_code, 400, (quantite, r.data))
+        r = self.api.post(
+            f'/api/django/sav/tickets/{self.ticket.id}/pieces/', [],
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertFalse(PieceConsommee.objects.filter(
+            ticket=self.ticket).exists())
+
+    def test_quantite_decimale_positive_acceptee(self):
+        for quantite in ('0.5', '.25', '12.50'):
+            r = self._add(quantite=quantite)
+            self.assertEqual(r.status_code, 201, (quantite, r.data))
+
+    def test_retrait_destination_et_quantite_hors_schema_400(self):
+        url = f'/api/django/sav/tickets/{self.ticket.id}/pieces-retirees/'
+        for corps in ({'destination': ']_C.exe'}, {'operation': 'zzz'},
+                      {'quantite': '-25.2'}, {'numero_serie': 5}):
+            r = self.api.post(
+                url, {'produit': self.produit.id, **corps}, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.data))
+
     def test_decrement_over_stock_blocked(self):
         # ERR80 — décrémenter plus que le stock en main est refusé (jamais
         # négatif) et ne crée pas la pièce.
