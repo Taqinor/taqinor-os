@@ -481,6 +481,12 @@ CompositionRequest = {
         'anyOf': [{'required': ['kwc']}, {'required': ['nb_panneaux']}],
     },
 }
+#: api-fuzz — « une puissance OU un nombre de panneaux » rend le CORPS
+#: obligatoire (drf-spectacular ne pose ``required: true`` que sur un
+#: sérialiseur à champ requis, jamais sur un ``request`` en dict) : le fuzz
+#: envoyait un corps ABSENT, « conforme », puis refusé en 400.
+CORPS_KWC_OU_PANNEAUX = corps_resserre({'anyOf': [
+    {'required': ['kwc']}, {'required': ['nb_panneaux']}]})
 CompositionResponse = _ser('DevisCompositionResponse', {
     'lignes': s.ListField(child=s.DictField()),
     'scenario': s.CharField(allow_null=True),
@@ -530,12 +536,19 @@ def _pourcent_souple(**kwargs):
                   required=False, allow_null=True, **kwargs)
 
 
+#: api-fuzz — plafond publié ET appliqué de la puissance cible d'un devis
+#: automatique (10 MWc). Le schéma annonçait tout flottant : ``2.27e16`` kWc
+#: composait des quantités qui débordent ``DecimalField(10, 2)`` à l'écriture
+#: des lignes (``DataError`` → 500).
+TARGET_KWC_MAX = 10_000
+
 AutoDevisRequest = _ser('DevisAutoRequest', {
     # CI #997 fuzz — corps validé tel que publié (la vue le relisait à la
     # main) ; « un lead OU un client » publié (``CORPS_LEAD_OU_CLIENT``).
     'lead': EntierStrict(required=False, allow_null=True, min_value=1),
     'client': EntierStrict(required=False, allow_null=True, min_value=1),
-    'target_kwc': NombreStrict(required=False, allow_null=True),
+    'target_kwc': NombreStrict(required=False, allow_null=True,
+                               max_value=TARGET_KWC_MAX),
     'scenario': ChaineStricte(required=False, allow_blank=True,
                               allow_null=True),
     'etude_params': s.DictField(required=False, allow_null=True),
@@ -566,8 +579,10 @@ FromLayoutRequest = _ser('DevisFromLayoutRequest', {
     'layout': s.DictField(),
     'lead': s.IntegerField(required=False, allow_null=True),
     'client': s.IntegerField(required=False, allow_null=True),
-    'taux_tva': s.FloatField(required=False, allow_null=True),
-    'remise_globale': s.FloatField(required=False, allow_null=True),
+    # api-fuzz — la règle de ``domain/bornes.pourcentage_saisi`` : chaîne au
+    # motif 0-100 à 2 décimales OU nombre 0-100 (arrondi au centième).
+    'taux_tva': _pourcent_souple(),
+    'remise_globale': _pourcent_souple(),
     'structure_produit_id': s.IntegerField(required=False, allow_null=True),
     'structure_type': s.CharField(required=False, allow_blank=True,
                                   allow_null=True),
@@ -708,12 +723,55 @@ SimulerResponse = _ser('DevisSimulerResponse', {
 # ------------------------------------------------------------ atomic / lignes
 
 
+def _proprietes_etude_params(avec_jeton=True):
+    """CI #1001 (merge group) — le corps PATCH publie EXACTEMENT les clés que
+    ``domain/etude_schema.SCHEMA`` accepte de l'écran : les ENTRÉES non
+    exclusives, typées d'après ``type_attendu`` et nullables (``null`` retire la
+    clé). Une clé inconnue, dérivée, exclusive ou retirée est donc hors schéma
+    (400 attendu) — plus jamais « rejected schema-compliant ».
+
+    api-fuzz — un type ``(int,)`` seul se publie ``integer`` (le serveur refuse
+    ``2.5``) ; ``(int, float)`` reste ``number``. ``avec_jeton=False`` : le
+    jeton optimiste n'est pas une clé d'étude (il vit en tête du corps de
+    ``replace-lines``, jamais DANS ``etude_params``).
+    """
+    from ..domain import etude_schema as _es
+    _json = {str: {'type': 'string'}, int: {'type': 'number'}, float: {'type': 'number'},
+             bool: {'type': 'boolean'}, dict: {'type': 'object'}, list: {'type': 'array'}}
+    props = {}
+    for cle, regle in _es.SCHEMA.items():
+        if regle['nature'] != _es.ENTREE or regle['exclusif']:
+            continue
+        formes = []
+        for t in regle['type']:
+            f = dict(_json[t])
+            if t is int and float not in regle['type']:
+                f = {'type': 'integer'}
+            if f not in formes:
+                formes.append(f)
+        forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
+        props[cle] = {**forme, 'nullable': True}
+    if avec_jeton:
+        props['expected_updated_at'] = {'type': 'string', 'nullable': True}
+    return props
+
+
+#: api-fuzz — ``etude_params`` d'un corps de devis (``replace-lines``,
+#: ``atomic``) : la MÊME liste de clés que le PATCH ``etude-params``, fermée
+#: (``_valider_etude_ecran`` → ``etude_schema.valider`` refuse toute autre clé
+#: en 400 : « le schéma est la seule porte »).
+EtudeParamsEcran = extend_schema_field({
+    'type': 'object', 'nullable': True, 'additionalProperties': False,
+    'properties': _proprietes_etude_params(avec_jeton=False)})(
+    type('EtudeParamsEcran', (s.DictField,), {}))
+
+
 class DevisAtomic(DevisWriteSerializer):
     """Corps de ``POST /devis/atomic/`` : les champs d'en-tête du devis (comme
     ``POST /devis/``) + ``lignes`` (au moins une) + ``etude_params`` (écrit
     par l'écrivain unique d'étude, pas par le sérialiseur d'en-tête)."""
     lignes = s.ListField(child=s.DictField(), min_length=1)
-    etude_params = s.DictField(required=False, allow_null=True)
+    etude_params = EtudeParamsEcran(required=False, allow_null=True)
 
     class Meta(DevisWriteSerializer.Meta):
         fields = list(DevisWriteSerializer.Meta.fields) + ['lignes']
@@ -722,7 +780,7 @@ class DevisAtomic(DevisWriteSerializer):
 ReplaceLinesRequest = _ser('DevisReplaceLinesRequest', {
     'lignes': s.ListField(child=s.DictField(), min_length=1),
     'entete': s.DictField(required=False, allow_null=True),
-    'etude_params': s.DictField(required=False, allow_null=True),
+    'etude_params': EtudeParamsEcran(required=False, allow_null=True),
     'expected_updated_at': _JETON,
 })
 #: CI #997 fuzz (24/10) : ce que l'écrivain de lignes (``domain/lignes``) exige
@@ -829,11 +887,20 @@ SavePresetRequest = _ser('DevisSavePresetRequest', {
     'description': ChaineStricte(required=False, allow_blank=True),
 })
 
+#: Plus grande valeur d'un entier PostgreSQL 32 bits (``ordre``, clés).
+ENTIER_32_MAX = 2147483647
+#: api-fuzz — MIROIR de ``devis_cycle._LotCreationSerializer`` (qui valide ce
+#: corps) : mêmes types stricts, mêmes bornes (nom non blanc de 150 signes,
+#: adresse de 255, ``ordre`` et identifiants de ligne dans un entier 32 bits).
 LotCreationRequest = _ser('DevisLotCreationRequest', {
-    'nom_lot': s.CharField(),
-    'adresse_site': s.CharField(required=False, allow_blank=True),
-    'ordre': s.IntegerField(required=False),
-    'lignes': s.ListField(child=s.IntegerField(), required=False),
+    'nom_lot': ChaineStricte(max_length=150),
+    'adresse_site': ChaineStricte(max_length=255, required=False,
+                                  allow_blank=True, allow_null=True),
+    'ordre': EntierStrict(min_value=0, max_value=ENTIER_32_MAX,
+                          required=False, allow_null=True),
+    'lignes': s.ListField(
+        child=EntierStrict(min_value=1, max_value=ENTIER_32_MAX),
+        required=False, allow_null=True),
 })
 LotsResponse = _ser('DevisLotsResponse', {
     'lots': s.ListField(child=s.DictField()),
@@ -878,31 +945,6 @@ EtudeParamsGetResponse = _ser('DevisEtudeParamsResponse', {
     'etude_params': s.DictField(),
     'updated_at': s.CharField(required=False, allow_null=True),
 })
-
-
-def _proprietes_etude_params():
-    """CI #1001 (merge group) — le corps PATCH publie EXACTEMENT les clés que
-    ``domain/etude_schema.SCHEMA`` accepte de l'écran : les ENTRÉES non
-    exclusives, typées d'après ``type_attendu`` et nullables (``null`` retire la
-    clé). Une clé inconnue, dérivée, exclusive ou retirée est donc hors schéma
-    (400 attendu) — plus jamais « rejected schema-compliant ».
-    """
-    from ..domain import etude_schema as _es
-    _json = {str: {'type': 'string'}, int: {'type': 'number'}, float: {'type': 'number'},
-             bool: {'type': 'boolean'}, dict: {'type': 'object'}, list: {'type': 'array'}}
-    props = {}
-    for cle, regle in _es.SCHEMA.items():
-        if regle['nature'] != _es.ENTREE or regle['exclusif']:
-            continue
-        formes = []
-        for t in regle['type']:
-            f = dict(_json[t])
-            if f not in formes:
-                formes.append(f)
-        forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
-        props[cle] = {**forme, 'nullable': True}
-    props['expected_updated_at'] = {'type': 'string', 'nullable': True}
-    return props
 
 
 EtudeParamsPatchRequest = {
@@ -1258,7 +1300,10 @@ _PourcentLigne = _decimal_publie(_MOTIF_POURCENT)
 #: (``LigneDevisSerializer.validate`` + garde ``domain/bornes``) publiées sur
 #: ``devis-lignes`` : quantité / prix >= 0, remise 0-100, et un taux de TVA à
 #: 0 % porte sa base légale (AGR217).
-_ZERO_DECIMAL = r'^0*(?:\.0*)?$'
+#: ``-0`` / ``-0.00`` valent zéro pour le serveur (``Decimal('-0') == 0``) : le
+#: signe est dans le motif, sinon ``"-0"`` était publié « taux non nul » (pas de
+#: base légale requise) puis refusé en 400 (api-fuzz, PATCH devis-lignes).
+_ZERO_DECIMAL = r'^-?0*(?:\.0*)?$'
 _REGLES_LIGNE_DEVIS = {
     'properties': {
         'quantite': {'type': 'string', 'pattern': _MOTIF_POSITIF},

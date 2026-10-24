@@ -1381,7 +1381,7 @@
      false
     ],
     "remise_globale": [
-     "DecimalField",
+     "PourcentSouple",
      false,
      false,
      null,
