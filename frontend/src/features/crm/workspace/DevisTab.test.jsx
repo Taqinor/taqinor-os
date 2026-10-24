@@ -863,15 +863,13 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
         envoi: true,
       },
     ))
+    // APDF111 — texte construit par la source unique (sans marque hors session).
+    const texte = proposalWhatsappText('Karim', 'https://taqinor.ma/proposition/karim/tok-abc')
     await waitFor(() => expect(window.open).toHaveBeenCalledWith(
-      'https://wa.me/212612345678?text='
-      + encodeURIComponent(
-        "Bonjour Karim, voici votre proposition d'installation solaire Taqinor : "
-        + 'https://taqinor.ma/proposition/karim/tok-abc '
-        + "N'hésitez pas à me poser vos questions.",
-      ),
-      '_blank', 'noopener',
+      'https://wa.me/212612345678?text=' + encodeURIComponent(texte), '_blank', 'noopener',
     ))
+    expect(texte).toBe("Bonjour Karim, voici votre proposition d'installation solaire : "
+      + "https://taqinor.ma/proposition/karim/tok-abc N'hésitez pas à me poser vos questions.")
   })
 
   it('APDF108 — « WhatsApp » nomme la société de la session (profil chargé), jamais une marque codée en dur', async () => {
