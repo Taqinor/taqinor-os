@@ -8,7 +8,5 @@
 # AFAC95/ASAV77 (2026-10-09) : racines etendues a pages/** et store/** ; leurs sites
 # (releve du jour) sont geles ici, memes regles (fichier::fonction, decroissant).
 frontend/src/features/crm/companyLookup.js::searchCompanies
-frontend/src/features/offlinesync/mobile/CockpitHome.jsx::CockpitHome
-frontend/src/pages/installations/DemandesAchatList.jsx::pickProduit
 frontend/src/pages/stock/StockList.jsx::loadTransferts
 # ADOC182 (2026-10-11) : sites a helper local sans appel HTTP : les 3 faux positifs (endpoints non pagines) vivent dans scripts/liste_page1_non_paginees.txt.

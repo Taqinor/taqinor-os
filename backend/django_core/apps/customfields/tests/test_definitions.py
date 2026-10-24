@@ -67,6 +67,15 @@ class TestDefinitions(CFBase):
         self.assertFalse(valide({'type': 'relation', 'relation_module': 'x'}))
         self.assertTrue(valide({'type': 'relation', 'relation_module': 'lead'}))
         self.assertFalse(valide({'type': 'formula', 'formule': ' '}))
+        # api-fuzz 24/10 : la formule publiée est une opération sur nombres,
+        # que le serveur accepte (jamais « Syntaxe invalide »).
+        self.assertFalse(valide({'type': 'formula', 'formule': 'a\bé+v'}))
+        self.assertTrue(valide({'type': 'formula', 'formule': '2 * 30 - 4'}))
+        resp = self.api.post(
+            '/api/django/custom-fields/definitions/',
+            {'module': 'lead', 'libelle': 'F', 'type': 'formula',
+             'code': 'f_num', 'formule': '2 * 30 - 4'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
         url = '/api/django/custom-fields/definitions/'
         base = {'module': 'lead', 'libelle': 'L', 'type': 'choice'}
         for n, options in enumerate((None, [], ['A', ' '])):

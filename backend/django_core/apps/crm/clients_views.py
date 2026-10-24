@@ -14,7 +14,8 @@ import uuid
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import filters, mixins, serializers, status, viewsets
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import (
+    action, api_view, parser_classes, permission_classes)
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
@@ -1894,6 +1895,7 @@ class _LeadPlaybookPermission(IsAnyRole):
     'fait': serializers.BooleanField(required=False, default=True),
 }), responses=LeadPlaybookProgressSerializer)
 @api_view(['GET', 'POST'])
+@parser_classes([JSONParser])  # api-fuzz 24/10 — entier/booléen JSON stricts
 @permission_classes([_LeadPlaybookPermission])
 def lead_playbook_view(request, lead_id):
     """NTCRM12 — ``GET`` : progression playbook du lead (toutes les tâches

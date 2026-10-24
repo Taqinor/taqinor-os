@@ -33,7 +33,10 @@ from ..signature_validation import (
     SignatureDataUrl,
 )
 
-UPLOAD_PARSERS = [MultiPartParser, FormParser]
+#: Dépôt de FICHIER : multipart seul. ``FormParser`` (urlencoded) faisait
+#: publier un second type de média où ``file`` ne peut pas être un fichier :
+#: api-fuzz 24/10 envoyait ``file=`` (texte) et recevait « Fichier requis ».
+UPLOAD_PARSERS = [MultiPartParser]
 JSON_AND_UPLOAD_PARSERS = [JSONParser, MultiPartParser, FormParser]
 
 

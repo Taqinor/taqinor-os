@@ -16,6 +16,14 @@ from .models import (
 # XPLT15 — clés reconnues du JSON `conditions` (visible/requis/lecture seule).
 CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
 
+#: Formule PUBLIÉE (api-fuzz 24/10 : ``formule`` libre « conforme » puis refusée
+#: pour sa syntaxe, ``Syntaxe invalide``) : une opération entière sur des
+#: nombres (``2 * 30 - 4``), que le serveur accepte toujours. La syntaxe ne
+#: s'exprime pas en schéma ; le serveur, lui, accepte aussi les codes des
+#: champs frères, comparaisons et fonctions sûres (``core.formula``).
+MOTIF_FORMULE_PUBLIEE = (
+    r'^(?:0|[1-9][0-9]{0,5})(?: ?[-+*] ?(?:0|[1-9][0-9]{0,5})){0,4}$')
+
 
 @extend_schema_field({
     'type': 'object', 'additionalProperties': False, 'nullable': True,
@@ -115,7 +123,7 @@ def corps_definition_resserre():
         exige('relation',
               relation_module={'type': 'string', 'enum': cibles}),
         exige('formula', formule={
-            'type': 'string', 'pattern': MOTIF_NON_BLANC_SANS_NUL}),
+            'type': 'string', 'pattern': MOTIF_FORMULE_PUBLIEE}),
     ]}
 
 

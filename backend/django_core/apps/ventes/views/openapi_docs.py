@@ -16,7 +16,7 @@ from rest_framework import serializers as s
 
 from core.champs_stricts import (
     BooleenStrict, ChaineStricte, DateStricte, DecimalSouple, DecimalStricte,
-    EntierStrict,
+    EntierStrict, MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import ChoixDocumente
@@ -26,7 +26,7 @@ from ..serializers import (
     DevisSerializer, DevisWriteSerializer, PlanCommissionSerializer,
 )
 from ..serializers_facturation import (
-    AvoirSerializer, FactureListeSerializer, FactureSerializer, FactureWriteSerializer,
+    AvoirSerializer, FactureListeSerializer, FactureWriteSerializer,
     NoteDebitSerializer, PaiementSerializer, RetenueSubieSerializer,
 )
 
@@ -835,11 +835,17 @@ CORPS_REPLACE_LINES = corps_resserre({'properties': {'lignes': {'items': {
         {'required': ['type_ligne', 'designation'],
          'properties': {
              'type_ligne': {'type': 'string', 'enum': ['section', 'note']},
-             'designation': {'type': 'string', 'pattern': r'\S'}}},
+             'designation': {'type': 'string',
+                             'pattern': MOTIF_NON_BLANC_SANS_NUL},
+             'groupe_label': {'type': 'string', 'pattern': MOTIF_SANS_NUL}}},
         {'required': ['produit'],
          'properties': {
              'type_ligne': {'type': 'string', 'enum': ['produit']},
-             'produit': {'type': 'integer', 'minimum': 1}}},
+             'produit': {'type': 'integer', 'minimum': 1},
+             'designation': {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+             'groupe_label': {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+             'tva_base_legale': {'type': 'string',
+                                 'pattern': MOTIF_SANS_NUL}}},
     ]}}}})
 
 # --------------------------------------------------------------- cycle de vie
@@ -890,7 +896,6 @@ def _schema_tranche_put():
     contrôle ``forme_tranche_ecriture``) acceptée aussi sous la forme du
     contrat ``{cle, libelle, unite, valeur}`` (``valeur`` = ``pct_or_montant``)."""
     import copy
-    from core.champs_stricts import MOTIF_SANS_NUL
     from ..utils.echeancier import schema_echeancier
     tranche = copy.deepcopy(schema_echeancier()['anyOf'][0]['items'])
     tranche['properties']['valeur'] = copy.deepcopy(
@@ -1538,10 +1543,13 @@ DgiTransmissionResponse = _ser('FactureDgiTransmission', {
 
 
 # ---------------------------------------------------------------- paiements
+# api-fuzz — la facture rendue ici n'a pas de contexte de vue : comme toute
+# réponse d'action elle part de la forme LISTE (sans ``situation_vente`` ni
+# ``prochaines_echeances``, que seul le détail sert).
 PaiementAvecRetenueResponse = _ser('PaiementAvecRetenueResponse', {
     'paiement': PaiementSerializer(),
     'retenue': RetenueSubieSerializer(),
-    'facture': FactureSerializer(),
+    'facture': FactureListeSerializer(),
 })
 AttestationRecueRequest = _ser('PaiementAttestationRecueRequest', {
     'attestation_date': s.DateField(required=False),

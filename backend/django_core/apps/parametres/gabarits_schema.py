@@ -24,7 +24,7 @@ def motif_gabarit(jetons):
     noms = '|'.join(sorted(re.escape(j.strip('{}')) for j in jetons))
     if not noms:
         return r'^[^{}\u0000]*$'
-    return r'^(?:[^{}\u0000]|\{(?:' + noms + r')\})*$'
+    return r'^(?:[^{}\u0000]|[{](?:' + noms + r')[}])*$'  # [{] / [}] : sans échappement
 
 
 class TexteGabarit(ChaineStricte):

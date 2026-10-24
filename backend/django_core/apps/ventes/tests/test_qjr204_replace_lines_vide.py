@@ -146,3 +146,41 @@ class TestQJR204(APITestCase):
         # ``nombre_proprietes`` n'accepte QUE des entiers côté serveur.
         self.assertEqual(etude['properties']['nombre_proprietes']['type'],
                          'integer')
+
+    def test_corps_illisible_400_au_lieu_d_un_corps_vide(self):
+        """api-fuzz — ``EntiteScopeMixin.initial`` avalait l'échec de lecture
+        du corps : DRF le met alors en cache VIDE et la vue répondait 2xx à des
+        octets aléatoires. Le 400 du parseur passe, sur une action sans
+        garde de corps (``dupliquer-variante-gamme``) comme ici."""
+        for url in (self._url(), '/api/django/ventes/devis/%s/'
+                    'dupliquer-variante-gamme/' % self.devis.id):
+            with self.subTest(url=url):
+                resp = self.api.post(url, data=b'\xef\xbf\xbdq{',
+                                     content_type='application/json')
+                self.assertEqual(resp.status_code, 400,
+                                 getattr(resp, 'data', resp))
+        self.assertEqual(self.devis.lignes.count(), len(LIGNES))
+
+    def test_designation_et_textes_publies_sans_caractere_nul(self):
+        """api-fuzz — le schéma de ``lignes[]`` publie « pas de caractère nul »
+        (``designation``, ``groupe_label``, ``tva_base_legale``) : un nul fait
+        refuser la ligne (400) alors que ``\\S`` seul la disait conforme."""
+        import re
+
+        from apps.ventes.views.openapi_docs import CORPS_REPLACE_LINES
+        from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+
+        items = CORPS_REPLACE_LINES[EXTENSION_CORPS_RESSERRE][
+            'properties']['lignes']['items']
+        for branche in items['anyOf']:
+            for champ in ('designation', 'groupe_label'):
+                motif = branche['properties'][champ]['pattern']
+                self.assertIsNone(re.search(motif, 'a\x00b'), (champ, motif))
+                self.assertIsNotNone(re.search(motif, 'Pose'), (champ, motif))
+        section = items['anyOf'][0]['properties']['designation']['pattern']
+        self.assertIsNone(re.search(section, '   '))
+        resp = self.api.post(self._url(), {'lignes': [
+            {'type_ligne': 'section', 'designation': 'Lot\x00 A'}]},
+            format='json')
+        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(self.devis.lignes.count(), len(LIGNES))
