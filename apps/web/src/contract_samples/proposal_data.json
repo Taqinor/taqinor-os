@@ -1970,6 +1970,7 @@
           {
             "cle": "valorisation",
             "valeur": "tarif du poste horaire couvert, heure par heure",
+            "valeur_code": "methode_horaire_poste",
             "statut": "source",
             "source": "conventions Groupe CIQ"
           },

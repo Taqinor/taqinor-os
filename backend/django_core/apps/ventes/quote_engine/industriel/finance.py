@@ -184,6 +184,16 @@ CLES_MONTANTS_FLUX = ("investissement_mad", "economie_annee1_mad",
                       "production_annee1_kwh")
 
 
+def _texte_code(d, L, code, servi):
+    """AMOT84 — le libellé ``ci_code_<code>`` dans la langue du document
+    (le texte ``servi`` en français, octet pour octet), ou ``servi`` tel
+    quel sans code connu du catalogue."""
+    cle = f"ci_code_{code}" if code else ""
+    if cle and cle in _cles_catalogue():
+        return L(cle, servi)
+    return servi
+
+
 def _rangees_flux(flux, fmt, L, d, compact):
     """``(libellé, valeur — source)`` des hypothèses du flux servi."""
     rangees = []
@@ -196,7 +206,10 @@ def _rangees_flux(flux, fmt, L, d, compact):
             continue
         cat, fr = LIBELLES_HYPOTHESES[h["cle"]]
         # AMOT80 — chaque source dans les mots du client (aucun code interne).
-        source = ci_couverture.texte_client(d, h.get("source"))
+        # AMOT84 — une source servie sous un code stable (``source_code``)
+        # est imprimée dans la langue du document ; le texte servi en repli.
+        source = _texte_code(d, L, h.get("source_code"),
+                             ci_couverture.texte_client(d, h.get("source")))
         rangees.append((L(cat, fr), valeur + (f" — {source}" if source
                                               else "")))
     return rangees
@@ -221,7 +234,8 @@ def _rangees_argent(argent, fmt_mad, L, d):
             rangees.append((
                 L("ci_h_valorisation", "Valorisation de vos kWh")
                 if h.get("cle") == "valorisation" else None,
-                ci_blocs._txt(h.get("valeur"))
+                _texte_code(d, L, h.get("valeur_code"),
+                            ci_blocs._txt(h.get("valeur")))
                 + (f" — {source}" if source else "")))
     # AMOT94 — le montant du remplacement sur la BASE servie : HT quand la
     # TVA est récupérable (``argent.base == 'ht'``, D-CIQ-3), TTC sinon.

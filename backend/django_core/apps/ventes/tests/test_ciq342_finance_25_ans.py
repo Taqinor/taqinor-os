@@ -251,6 +251,63 @@ class Amot91Hypotheses(SimpleTestCase):
                       texte)
 
 
+class Amot84SourcesServiesParCode(SimpleTestCase):
+    """AMOT84 — les textes français SERVIS par ``economie_ci`` (indexation
+    constante, dégradation NREL, méthode horaire) portent un code stable :
+    un document anglais en imprime le libellé anglais ; le français reste le
+    texte servi, octet pour octet."""
+
+    def _texte(self, langue):
+        from apps.ventes import economie_ci as eco
+        d = _data()
+        d["langue_sortie"] = langue
+        for h in d["economie_ci"]["flux_ht"]["hypotheses"]:
+            if h["cle"] == "indexation_pct":
+                h.update(source=eco.MENTION_INDEXATION_CONSTANTE,
+                         source_code=eco.CODE_INDEXATION_CONSTANTE)
+            elif h["cle"] == "degradation_pct":
+                h.update(source=eco.DEGRADATION_CI_SOURCE,
+                         source_code=eco.CODE_DEGRADATION_NREL)
+        return _texte(_pages(d)[3])
+
+    def test_anglais_libelles_du_code(self):
+        texte = self._texte("en")
+        hyp = texte[texte.index("Estimate assumptions"):]
+        hyp = hyp[:hyp.index("kWh price")]
+        for en in ("constant selling tariff (assumption)",
+                   "median from Jordan & Kurtz, NREL/JA-5200-51664, 2012",
+                   "tariff of the time-of-use period covered, hour by hour"):
+            self.assertIn(en, hyp)
+        for fr in ("hypothèse", "médiane", "heure par heure"):
+            self.assertNotIn(fr, hyp)
+
+    def test_francais_texte_servi(self):
+        from apps.ventes import economie_ci as eco
+        texte = self._texte("fr")
+        for fr in (eco.MENTION_INDEXATION_CONSTANTE, eco.DEGRADATION_CI_SOURCE,
+                   eco.HYPOTHESE_VALORISATION["valeur"]):
+            self.assertIn(fr, texte)
+
+    def test_le_moteur_sert_les_codes(self):
+        from apps.ventes import economie_ci as eco
+        bloc = eco.flux_ci(
+            eco.base_economique(
+                "oui", investissement={"ht": 400000.0, "ttc": 480000.0},
+                economie_annee1={"total_mad": 80000.0,
+                                 "total_mad_ttc": 96000.0}),
+            production_annee1_kwh=100000)["flux_ht"]
+        hyp = {h["cle"]: h for h in bloc["hypotheses"]}
+        self.assertEqual(hyp["indexation_pct"]["source_code"],
+                         "indexation_constante")
+        self.assertEqual(hyp["degradation_pct"]["source_code"],
+                         "degradation_nrel_2012")
+        # Le texte français reste servi (lecteurs d'hier).
+        self.assertEqual(hyp["indexation_pct"]["source"],
+                         eco.MENTION_INDEXATION_CONSTANTE)
+        self.assertEqual(eco.HYPOTHESE_VALORISATION["valeur_code"],
+                         "methode_horaire_poste")
+
+
 class Amot94RemplacementSurLaBaseServie(SimpleTestCase):
     """AMOT94 — la rangée « Remplacement onduleur » des hypothèses dit le
     montant sur la BASE servie : HT quand la TVA est récupérable
