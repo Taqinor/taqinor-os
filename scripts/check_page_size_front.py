@@ -27,8 +27,6 @@ PAGINATION = Path("backend") / "django_core" / "core" / "pagination.py"
 FRONT = Path("frontend") / "src"
 # Dette connue (cliquet) : 'fichier::fonction' -> raison. Corriger = sortir.
 DETTES = {
-    "frontend/src/pages/stock/KitsStock.jsx::KitsStock":
-        "APAR78 : page_size 1000 lu via le helper `liste`, `next` non suivi",
 }
 _RE_PAGE_SIZE = re.compile(r"""page_size['"]?\s*[:=]\s*(\d+)""")
 _RE_RESULTS = re.compile(r"\bresults\b")
