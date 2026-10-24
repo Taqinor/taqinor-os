@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
-import { createAutoQuote } from '../../../features/ventes/autoQuote'
+import { createAutoQuote, libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { usePdfPreview } from '../../../features/ventes/usePdfPreview'
 import PdfPreviewBody from '../../../features/ventes/PdfPreviewBody'
@@ -100,6 +100,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // AGR126 — alertes renvoyées par le serveur avec le devis automatique
   // (agricole : étude pompage, articles « prix à renseigner » omis).
   const [alertes, setAlertes] = useState([])
+  // ALEA51 — le retour du serveur après le devis automatique (réf., kWc, TTC,
+  // économie, retour, postes à chiffrer) : bannière de SUCCÈS, pas d'erreur.
+  const [resume, setResume] = useState(null)
   const [devisId, setDevisId] = useState(existingDevisId || null)
   const [devisRef, setDevisRef] = useState('')
   // QJR534 — le devis CHARGÉ (droits `modifiable` / `revision_possible` lus du
@@ -192,10 +195,12 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
         }
       }
       setAlertes([])
+      setResume(null)
       const id = await createAutoQuote({
         lead, produits: produitsRef.current, discountStr, dispatch, targetKwc,
         marques: marquesRef.current || undefined,
         onAlertes: setAlertes,
+        onResultat: setResume,
       })
       setDevisId(id)
       onDevisChanged?.()
@@ -532,10 +537,21 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
           {phase === 'preview' && (
             <div className="ldp-preview">
+              {/* ALEA51 — SUCCÈS : une phrase qui dit ce qui vient d'être créé
+                  (référence · kWc · TTC · économie · retour · postes à chiffrer
+                  après la visite), jamais la boîte rouge des erreurs. */}
+              {resume && (
+                <div className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm"
+                     role="status" data-testid="ldp-succes-auto">
+                  <strong>Devis créé :</strong> {libelleSuccesDevisAuto(resume)}
+                </div>
+              )}
               {/* AGR126 — ce que le devis automatique serveur signale (jamais
-                  un chiffre inventé : le message du serveur, tel quel). */}
+                  un chiffre inventé : le message du serveur, tel quel), en
+                  AVERTISSEMENT sous le succès (ALEA51). */}
               {alertes.length > 0 && (
-                <div className="form-error-box" role="status" data-testid="ldp-alertes-auto">
+                <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"
+                     role="status" data-testid="ldp-alertes-auto">
                   <strong>Alertes du devis automatique :</strong>
                   <ul>
                     {alertes.map((a, i) => (

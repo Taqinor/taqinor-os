@@ -549,6 +549,11 @@ AutoDevisResponse = _ser('DevisAutoResponse', {
     'proposal_token': s.CharField(),
     'proposal_path': s.CharField(),
     'alertes': s.ListField(child=s.JSONField()),
+    # ALEA51 — le retour pour la bannière de succès (lu du devis créé).
+    'total_ttc': s.FloatField(allow_null=True),
+    'economie_an_1_ht': s.FloatField(allow_null=True),
+    'retour_ans': s.FloatField(allow_null=True),
+    'postes_apres_visite': s.ListField(child=s.CharField()),
 })
 
 FromLayoutRequest = _ser('DevisFromLayoutRequest', {

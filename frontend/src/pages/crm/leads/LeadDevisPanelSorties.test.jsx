@@ -33,6 +33,7 @@ vi.mock('../../ventes/DevisGenerator', async () => (await import('../../../test/
 import ventesApi from '../../../api/ventesApi'
 import { jumpToField } from '../../../features/crm/workspace/jumpToField'
 import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
+import { libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
 
 // ALEA48 — le saut DOM est espionné : seul l'appel (cible) compte ici.
 vi.mock('../../../features/crm/workspace/jumpToField', () => ({ jumpToField: vi.fn() }))
@@ -306,5 +307,42 @@ describe('ALEA48 — 409 du devis automatique : bouton « Compléter »', () => 
     rendrePanneau({ lead: LEAD_RESIDENTIEL, mode: 'auto', existingDevisId: undefined })
     expect(await screen.findByText('Champ exotique.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Compléter/ })).toBeNull()
+  })
+})
+
+// ALEA51 — après le devis automatique : une phrase de SUCCÈS (jamais la boîte
+// rouge des erreurs), les alertes du serveur en avertissement dessous.
+describe('ALEA51 — devis automatique créé : bannière de succès', () => {
+  const normaliser = (t) => t.replace(/[\u202f\u00a0]/g, ' ')
+  const REPONSE = {
+    id: 413, reference: 'DEV-2026-0412', statut: 'brouillon', kwc: 65, nb_lignes: 14,
+    total_ttc: 212100, economie_an_1_ht: 102040, retour_ans: null,
+    postes_apres_visite: ['Structure C&I', 'Câble solaire DC', 'Câble AC'],
+    alertes: [{ code: 'a_chiffrer_visite', message: 'À chiffrer après la visite.', interne: true }],
+  }
+
+  it('réf. · kWc · TTC · économie ≈ · postes à chiffrer, alertes en avertissement', async () => {
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: REPONSE })
+    rendrePanneau({
+      lead: { id: 91, nom: 'Usine', type_installation: 'industriel' },
+      mode: 'auto', existingDevisId: undefined,
+    })
+    const banniere = await screen.findByTestId('ldp-succes-auto')
+    expect(normaliser(banniere.textContent)).toContain(
+      'DEV-2026-0412 · 65 kWc · 212 100 MAD TTC · économie ≈ 102 000 MAD/an · 3 postes à chiffrer après la visite')
+    // retour_ans null (investissement incomplet) ⇒ aucun « retour » inventé.
+    expect(banniere.textContent).not.toMatch(/retour/)
+    const alertes = screen.getByTestId('ldp-alertes-auto')
+    expect(alertes).toHaveTextContent('À chiffrer après la visite.')
+    expect(document.querySelector('.form-error-box')).toBeNull()
+  })
+
+  it('le libellé omet ce que le serveur ne sert pas et garde le retour chiffré', () => {
+    expect(libelleSuccesDevisAuto(null)).toBe('')
+    const texte = normaliser(libelleSuccesDevisAuto({
+      reference: 'DEV-1', kwc: 5, total_ttc: 41000, economie_an_1_ht: null,
+      retour_ans: 4.26, postes_apres_visite: ['Structure C&I'],
+    }))
+    expect(texte).toBe('DEV-1 · 5 kWc · 41 000 MAD TTC · retour ≈ 4,3 ans · 1 poste à chiffrer après la visite')
   })
 })

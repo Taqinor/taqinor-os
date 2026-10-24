@@ -88,14 +88,15 @@ test('la cible traverse le panneau jusqu’au calcul partagé', () => {
   assert.match(panel, /targetKwc = null/)
   // PVMRQ (18/08) — `marques` suit `targetKwc` dans l'appel : la cible traverse
   // toujours, accompagnée des marques épinglées.
-  assert.match(panel, /createAutoQuote\(\{[\s\S]{0,200}?targetKwc,[\s\S]{0,120}?\}\)/)
+  assert.match(panel, /createAutoQuote\(\{[\s\S]{0,200}?targetKwc,[\s\S]{0,200}?\}\)/)
   // PVMRQ (18/08) — la signature porte aussi `marques` après `targetKwc` ;
   // PVORD (19/08) — puis `ordreLignes` (ordre par défaut des lignes).
   // AGR126 — `pumpHours` a quitté la signature (plus de pompage JS) ;
   // `onAlertes` reçoit les alertes du devis créé par le serveur.
   // CIQ127 — tout part au serveur (qui lit marques et ordre de la société) :
   // la signature ne garde que lead, remise, alertes et la cible.
-  assert.match(autoQuote, /createAutoQuote\(\{ lead, discountStr, onAlertes, targetKwc \}\)/)
+  // ALEA51 — `onResultat` reçoit le retour du serveur (bannière de succès).
+  assert.match(autoQuote, /createAutoQuote\(\{ lead, discountStr, onAlertes, onResultat, targetKwc \}\)/)
 })
 
 test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {

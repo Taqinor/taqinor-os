@@ -60,6 +60,34 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 CONCEVABLE = ['1', 'true']
 
 
+def _resume_devis_auto(devis):
+    """ALEA51 — le RETOUR du devis automatique pour la bannière de succès :
+    ``total_ttc``, ``economie_an_1_ht``, ``retour_ans`` (``None`` quand
+    l'investissement est incomplet ou sans étude C&I) et ``postes_apres_visite``
+    (désignations « à chiffrer après la visite »). Tout est LU du devis créé
+    (``etude_params.etude_ci`` stocké ; la valorisation et le retour sont ceux
+    que lit déjà le document, ``economie_ci_pour_devis``) : rien n'est
+    recalculé ici et aucun statut n'est touché. Jamais bloquant."""
+    total = devis.total_ttc
+    resume = {'total_ttc': float(total) if total is not None else None,
+              'economie_an_1_ht': None, 'retour_ans': None,
+              'postes_apres_visite': []}
+    etude = (devis.etude_params or {}).get('etude_ci')
+    if not isinstance(etude, dict):
+        return resume
+    composition = etude.get('composition') or {}
+    resume['postes_apres_visite'] = list(composition.get('a_chiffrer_visite') or [])
+    try:
+        from ..economie_ci import economie_ci_pour_devis
+        bloc = economie_ci_pour_devis(devis, devis.company) or {}
+        resume['economie_an_1_ht'] = (bloc.get('economie_annee1') or {}).get('total_mad')
+        resume['retour_ans'] = (bloc.get('indicateurs') or {}).get('retour_ans')
+    except Exception:  # lecture seule : la bannière se passe de ces chiffres
+        logger.warning('devis/auto : résumé économique indisponible (dégradé)',
+                       exc_info=True)
+    return resume
+
+
 @extend_schema_view(list=extend_schema(parameters=[
     qint('lead'), qstr('concevable', enum=CONCEVABLE),
     qstr('statut', enum=Devis.Statut.values), ENTITE]),
@@ -537,6 +565,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                 created_by=request.user).first()
             if deja is not None:
                 link = ShareLink.for_devis(deja)
+                resume = _resume_devis_auto(deja)
                 return Response(
                     {
                         'id': deja.id,
@@ -547,6 +576,10 @@ class DevisViewSet(DevisEditionActionsMixin,
                         'proposal_token': link.token,
                         'proposal_path': chemin_proposition(deja, link.token),
                         'alertes': list(trace.get('alertes') or []),
+                        'total_ttc': resume['total_ttc'],
+                        'economie_an_1_ht': resume['economie_an_1_ht'],
+                        'retour_ans': resume['retour_ans'],
+                        'postes_apres_visite': resume['postes_apres_visite'],
                     },
                     status=status.HTTP_200_OK)
 
@@ -588,6 +621,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         except Exception:
             logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
         link = ShareLink.for_devis(devis)
+        resume = _resume_devis_auto(devis)
         return Response(
             {
                 'id': devis.id,
@@ -598,6 +632,10 @@ class DevisViewSet(DevisEditionActionsMixin,
                 'proposal_token': link.token,
                 'proposal_path': chemin_proposition(devis, link.token),
                 'alertes': alertes,
+                'total_ttc': resume['total_ttc'],
+                'economie_an_1_ht': resume['economie_an_1_ht'],
+                'retour_ans': resume['retour_ans'],
+                'postes_apres_visite': resume['postes_apres_visite'],
             },
             status=status.HTTP_201_CREATED)
 
