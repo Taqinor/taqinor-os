@@ -1959,6 +1959,15 @@ class ReconciliationSnapshot(TenantModel):
         verbose_name = 'Instantané de réconciliation'
         verbose_name_plural = 'Instantanés de réconciliation'
         ordering = ['-date', '-created_at']
+        # ENF18 — ``reconciliation.run_daily_reconciliation`` upserte par
+        # ``update_or_create(company, campaign, date)`` : sans contrainte en base
+        # deux runs simultanés du même jour créaient deux instantanés. Les lignes
+        # sans campagne (``SET_NULL``) restent libres (NULL != NULL en base).
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'campaign', 'date'],
+                name='uniq_adseng_recon_co_camp_dt'),
+        ]
         indexes = [
             models.Index(fields=['company', 'date'],
                          name='adseng_recon_co_dt_idx'),
