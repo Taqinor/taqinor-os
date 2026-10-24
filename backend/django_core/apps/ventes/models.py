@@ -1672,8 +1672,11 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         ]
 
     @classmethod
-    def _payload_content_hash(cls, devis, lignes=None, *, version=None):
-        """Le payload canonique, dans la VERSION demandée (jamais du hash)."""
+    def _payload_content_hash(cls, devis, lignes=None, *, version=None,
+                              figures=None):
+        """Le payload canonique, dans la VERSION demandée (jamais du hash).
+        ``figures`` — chiffres scellés de l'étude C&I (v3), fournis par
+        l'appelant (voir ``models_preuves._suffixe_sceau_etude``)."""
         version = version or cls.CONTENT_HASH_VERSION
         client = getattr(devis, 'client', None)
         client_str = ''
@@ -1712,27 +1715,35 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
             payload = (f"v{cls.CONTENT_HASH_V2}|{payload}|"
                        f"option={getattr(devis, 'option_acceptee', '') or ''}")
         # ADEV96 — v3 : + les chiffres de l'étude C&I (``models_preuves``).
-        return payload + cls._suffixe_sceau_etude(devis, version)
+        return payload + cls._suffixe_sceau_etude(figures, version)
 
     @classmethod
-    def compute_content_hash(cls, devis, lignes=None, *, version=None):
+    def compute_content_hash(cls, devis, lignes=None, *, version=None,
+                             figures=None):
         """SHA-256 du payload canonique du devis (sans aucune donnée interne).
 
         Le hash couvre : référence, client (nom/email), date_creation,
         ``taux_tva`` global, ``remise_globale``, les lignes
         (designation/qte/pu_ht/remise **+ taux_tva de ligne + optionnelle**) et
-        l'**option acceptée**. JAMAIS prix_achat ni marge. Déterministe et
-        reproductible.
+        l'**option acceptée** (+ v3 : les chiffres de l'étude C&I passés en
+        ``figures``). JAMAIS prix_achat ni marge. Déterministe et
+        reproductible : il ne lit que le devis, ses lignes et ``figures`` —
+        jamais le moteur.
 
         ``version`` — ``None`` (le défaut, et tous les appelants de production)
         scelle dans la version COURANTE. La vérification (:meth:`verifier_
         contenu`) est le seul appelant qui demande explicitement ``v1``, pour
         pouvoir relire une empreinte d'hier.
+
+        ``figures`` — ADEV96 : les chiffres scellés de l'étude C&I (part v3),
+        calculés par la couche domaine (``modifiabilite.figures_sceau``) ;
+        ``None`` hors C&I. Le modèle ne relance JAMAIS le moteur lui-même.
         """
-        payload = cls._payload_content_hash(devis, lignes, version=version)
+        payload = cls._payload_content_hash(devis, lignes, version=version,
+                                            figures=figures)
         return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
-    def verifier_contenu(self, lignes=None):
+    def verifier_contenu(self, lignes=None, figures=None):
         """QJR144 — l'empreinte scellée décrit-elle ENCORE ce devis ?
 
         Le sceau existait mais AUCUN code ne savait le vérifier : il était
@@ -1749,6 +1760,14 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         * ``(False, None)`` — le contenu a changé depuis la signature ;
         * ``(None, None)`` — aucune empreinte scellée (signatures très
           anciennes) : « on ne sait pas » n'est pas « falsifié ».
+
+        ``figures`` — la part v3 (étude C&I) : les chiffres STOCKÉS sur la
+        signature (:attr:`figures_scellees`, posés à l'acceptation) font foi,
+        si bien que le sceau se reproduit quel que soit le moteur
+        d'aujourd'hui. Compatibilité : une signature v3 posée AVANT ce champ
+        n'en a pas — on rejoue alors ``figures``, l'étude relue par l'appelant
+        domaine (``identite_entreprise``), seul cas où une évolution du moteur
+        peut encore rendre ce sceau-là irreproductible.
         """
         scelle = (self.content_hash or '').strip()
         if not scelle:
@@ -1756,7 +1775,8 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         for version in (self.CONTENT_HASH_V3, self.CONTENT_HASH_V2,
                         self.CONTENT_HASH_V1):
             if self.compute_content_hash(
-                    self.devis, lignes=lignes, version=version) == scelle:
+                    self.devis, lignes=lignes, version=version,
+                    figures=self.figures_a_rejouer(figures)) == scelle:
                 return True, version
         return False, None
 

@@ -459,13 +459,22 @@ CLES_CHIFFRES_SCELLES = (
 )
 
 
-def synthese_ci_lue(devis, link=None):
+class SyntheseCiIllisible(Exception):
+    """C (revue du 24/10/2026) — l'étude C&I d'un devis commercial /
+    industriel n'a pas pu être lue (``synthese_ci_lue(strict=True)``)."""
+
+
+def synthese_ci_lue(devis, link=None, *, strict=False):
     """ADEV96 — la ``synthese_ci`` que la page ``/proposition`` montre : MÊME
     fonction que le PDF, sur la charge moteur assainie (``_strip_confidential
     _deep``) ; argent retiré quand la section « économies » n'est pas servie
     sur ``link``. ``None`` hors commercial / industriel (sans rendu moteur).
     Point de sauvegarde : appelée DANS la transaction d'acceptation, un
-    incident de lecture ne la rend jamais invalide (``None``, journalisé)."""
+    incident de lecture ne la rend jamais invalide (``None``, journalisé).
+
+    ``strict=True`` (le sceau de l'acceptation) : l'incident lève
+    :class:`SyntheseCiIllisible` au lieu de rendre ``None`` — un devis C&I ne
+    se scelle jamais SANS son étude en silence (refus « fermé »)."""
     mode = str(getattr(devis, 'mode_installation', '') or '').strip().lower()
     if devis is None or mode not in ('commercial', 'industriel'):
         return None
@@ -482,9 +491,11 @@ def synthese_ci_lue(devis, link=None):
             # Les MÊMES étapes que ``proposal_data`` avant sa ``synthese_ci``.
             synthese = synthese_ci(_sans_internes_bancables(
                 _strip_confidential_deep(build_quote_data(devis, opts))))
-    except Exception:  # noqa: BLE001 — sceau sans étude plutôt qu'une signature cassée (D-ENF22-BLE001)
+    except Exception as exc:  # noqa: BLE001 — lecture : page sans étude ; sceau (strict) : refus fermé (D-ENF22-BLE001)
         logger.warning('ADEV96 : synthèse C&I illisible (devis %s)',
                        getattr(devis, 'reference', '?'), exc_info=True)
+        if strict:
+            raise SyntheseCiIllisible(str(exc)) from exc
         return None
     if synthese is not None and link is not None \
             and not link.section_servie('economies'):
@@ -514,6 +525,48 @@ def figures_etude_scellees(synthese):
         'hypotheses': sorted(str(h.get('cle')) for h in synthese.get(
             'hypotheses') or [] if isinstance(h, dict)),
     }
+
+
+def figures_sceau(devis, *, strict=False):
+    """ADEV96 — les chiffres de l'étude C&I que le sceau v3 de
+    ``DevisSignature`` couvre (étude complète, sans filtre de lien). Calculés
+    ICI, dans la couche domaine : ``ventes.models`` ne relance jamais le
+    moteur (contrat import-linter « Core domain models stay decoupled »).
+    ``strict`` — voir :func:`synthese_ci_lue` (acceptation : refus fermé)."""
+    return figures_etude_scellees(synthese_ci_lue(devis, strict=strict))
+
+
+#: ADEV51 — le refus 409 du contrat ``proposal_accept.json``
+#: (``reponses_409.empreinte_perimee``), mot pour mot.
+EMPREINTE_PERIMEE = ('La proposition a changé depuis votre lecture : '
+                     'rechargez la page avant de signer.')
+
+
+def empreinte_contenu_signable(devis, synthese=None, link=None):
+    """ADEV51 (C-ADEV-018) — empreinte du CONTENU signable de ce devis :
+    SHA-256 de :func:`empreinte_visible` (lignes, en-tête, note, option,
+    conception — relus en base). Une correction SUR PLACE d'un envoyé
+    (D-QJR5-1) la change ; rien d'autre ne la change.
+
+    ADEV96 — en commercial / industriel, elle couvre AUSSI les chiffres de
+    l'étude que la page montre (:func:`figures_etude_scellees` de la
+    ``synthese_ci`` : kWc, production, autoconsommation, couverture, économie
+    de l'année 1, retour/TRI, hypothèses) : une correction de l'étude seule
+    après l'envoi donne 409 ``empreinte_perimee``. ``synthese`` = celle déjà
+    calculée par la lecture (``proposal_data``) ; absente, elle est relue
+    (:func:`synthese_ci_lue`, mêmes sections servies que ``link``). Hors C&I :
+    l'empreinte d'avant, à l'octet. UNE fonction pour la lecture, la garde de
+    la vue et la re-vérification SOUS le verrou d'``accept_devis``."""
+    import hashlib
+    import json
+    contenu = empreinte_visible(devis)
+    if synthese is None:
+        synthese = synthese_ci_lue(devis, link)
+    etude = figures_etude_scellees(synthese)
+    if etude is not None:
+        contenu = dict(contenu, etude_ci=etude)
+    brut = json.dumps(contenu, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(brut.encode('utf-8')).hexdigest()
 
 
 def _est_envoye(devis):

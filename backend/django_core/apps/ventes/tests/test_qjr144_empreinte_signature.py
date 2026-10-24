@@ -206,19 +206,55 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
         """ADEV96 — une correction de l'étude C&I SEULE change le sceau v3,
         jamais le v2 (portée d'hier)."""
         from unittest import mock
+        from apps.ventes.domain.modifiabilite import figures_sceau
         cible = 'apps.ventes.domain.modifiabilite.synthese_ci_lue'
         etude = {'systeme': {'kwc': 55, 'production_kwh_an': 95425},
                  'energie': {'taux_autoconso_pct': 72.8}}
         with mock.patch(cible, return_value=etude):
-            v3_avant = DevisSignature.compute_content_hash(self.devis)
-            v2_avant = DevisSignature.compute_content_hash(
-                self.devis, version=DevisSignature.CONTENT_HASH_V2)
+            figures = figures_sceau(self.devis)
+        v3_avant = DevisSignature.compute_content_hash(
+            self.devis, figures=figures)
+        v2_avant = DevisSignature.compute_content_hash(
+            self.devis, version=DevisSignature.CONTENT_HASH_V2)
         etude['energie']['taux_autoconso_pct'] = 80
         with mock.patch(cible, return_value=etude):
-            self.assertNotEqual(
-                DevisSignature.compute_content_hash(self.devis), v3_avant)
-            self.assertEqual(DevisSignature.compute_content_hash(
-                self.devis, version=DevisSignature.CONTENT_HASH_V2), v2_avant)
+            figures = figures_sceau(self.devis)
+        self.assertNotEqual(DevisSignature.compute_content_hash(
+            self.devis, figures=figures), v3_avant)
+        self.assertEqual(DevisSignature.compute_content_hash(
+            self.devis, version=DevisSignature.CONTENT_HASH_V2,
+            figures=figures), v2_avant)
+
+    def test_le_sceau_v3_se_reproduit_depuis_les_chiffres_stockes(self):
+        """C (revue du 24/10/2026) — les chiffres de l'étude lus À LA
+        SIGNATURE sont stockés (``figures_scellees``) ; la vérification les
+        rejoue au lieu de relancer le moteur : une étude relue AUTREMENT
+        aujourd'hui (évolution du moteur) ne rend pas le sceau rouge."""
+        import copy
+        from unittest import mock
+        from apps.ventes.domain.cycle_vie import _create_esign_record
+        from apps.ventes.domain.modifiabilite import figures_etude_scellees
+        cible = 'apps.ventes.domain.modifiabilite.synthese_ci_lue'
+        etude = {'systeme': {'kwc': 55, 'production_kwh_an': 95425},
+                 'energie': {'taux_autoconso_pct': 72.8}}
+        with mock.patch(cible, return_value=etude):
+            _create_esign_record(
+                devis=self.devis, nom='M. Client', ip='81.0.0.1',
+                user_agent='pytest', consentement=True, lignes=None)
+        signature = DevisSignature.objects.get(devis=self.devis)
+        self.assertEqual(signature.figures_scellees, {
+            'etude': DevisSignature.figures_canoniques(
+                figures_etude_scellees(etude))})
+        autre = copy.deepcopy(etude)
+        autre['energie']['taux_autoconso_pct'] = 80
+        with mock.patch(cible, return_value=autre):
+            rapport = verifier_empreinte_signature(self.devis)
+            intacte, version = DevisSignature.objects.get(
+                pk=signature.pk).verifier_contenu()
+        self.assertTrue(rapport['intacte'], rapport)
+        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V3)
+        self.assertEqual((intacte, version),
+                         (True, DevisSignature.CONTENT_HASH_V3))
 
     def test_le_pdf_signe_porte_son_empreinte_sha256(self):
         """ADEV96 — ``_store_signed_pdf`` pose le SHA-256 des octets remis ;

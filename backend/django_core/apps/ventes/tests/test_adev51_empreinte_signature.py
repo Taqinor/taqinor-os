@@ -98,6 +98,26 @@ class EmpreinteSignatureTests(TestCase):
         # CLAUSE PERSISTANCE : relire après le 409 → toujours rien de signé.
         self.assertFalse(self._lire()['accepted'])
 
+    def test_correction_commitee_entre_la_garde_et_le_verrou_409(self):
+        """Course : la garde de la vue PASSE (contenu encore identique), puis
+        le commercial corrige une ligne AVANT le verrou d'``accept_devis`` —
+        l'empreinte re-comparée SOUS le verrou refuse : 409
+        ``empreinte_perimee``, rien n'est écrit."""
+        from apps.ventes.public import signature_views
+        e0 = self._lire()['empreinte_contenu']
+        vraie_garde = signature_views._refus_empreinte
+
+        def garde_puis_correction(request, devis, link=None):
+            refus = vraie_garde(request, devis, link)
+            self.assertIsNone(refus)  # la voie rapide a bien laissé passer
+            LigneDevis.objects.filter(pk=self.ligne.pk).update(
+                quantite=Decimal('11'))
+            return refus
+
+        with mock.patch.object(signature_views, '_refus_empreinte',
+                               side_effect=garde_puis_correction):
+            self._assert_rien_ecrit(self._signer(e0))
+
     def test_empreinte_courante_200(self):
         lu = self._lire()
         resp = self._signer(lu['empreinte_contenu'])

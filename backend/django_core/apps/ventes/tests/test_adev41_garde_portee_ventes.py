@@ -107,6 +107,8 @@ ROUTES_EXEMPTEES = {
     'proposal-otp-lecture-demander': 'publique à jeton.',
     'proposal-otp-lecture-verifier': 'publique à jeton.',
     'proposal-engagement': 'publique à jeton.',
+    'proposal-vu-ventes': 'publique à jeton (balise de lecture, ADEV98).',
+    'proposal-decliner-ventes': 'publique à jeton (déclin client, ADEV98).',
     'proposal-virement-ventes': 'publique à jeton.',
     'proposal-activate-option-ventes': 'publique à jeton.',
     'suivi-public': 'publique à jeton.',

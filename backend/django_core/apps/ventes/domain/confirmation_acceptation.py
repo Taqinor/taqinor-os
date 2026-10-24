@@ -128,7 +128,11 @@ def _vendeur(devis):
 
 def envoyer_confirmations(*, devis, user, acompte_bloc=''):
     """Copie au vendeur (PDF joint) PUIS confirmation à chaque destinataire
-    client (PDF joint). Rend la liste des adresses client servies."""
+    client (PDF joint). Rend la liste des adresses client servies.
+
+    G (revue du 24/10/2026) — chaque envoi client est gardé SÉPARÉMENT : un
+    échec sur le premier destinataire (journalisé) n'empêche jamais le
+    second ; seules les adresses réellement servies sont rendues."""
     from apps.ventes.email_service import send_document_email
     sig = _signature_de(devis)
     langue = 'en' if getattr(sig, 'langue_page', '') == 'en' else 'fr'
@@ -147,8 +151,15 @@ def envoyer_confirmations(*, devis, user, acompte_bloc=''):
                 user=user, attach_pdf=True, log_activity=False)
         except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
             logger.warning('ADEV99 : copie vendeur non partie (%s)', devis.reference, exc_info=True)
+    servies = []
     for dest in dests:
-        send_document_email(
-            devis, to_email=dest, sujet=t['sujet'].format(ref=devis.reference),
-            corps=corps, user=user, attach_pdf=True, log_activity=False)
-    return dests
+        try:
+            send_document_email(
+                devis, to_email=dest, sujet=t['sujet'].format(ref=devis.reference),
+                corps=corps, user=user, attach_pdf=True, log_activity=False)
+        except Exception:  # noqa: BLE001 — un destinataire n'arrête pas l'autre (D-ENF22-BLE001)
+            logger.warning('ADEV99 : confirmation non partie à %s (%s)', dest,
+                           devis.reference, exc_info=True)
+            continue
+        servies.append(dest)
+    return servies

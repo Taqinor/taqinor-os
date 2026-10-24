@@ -186,6 +186,23 @@ class LeGroupeDeVariantesEstVerrouille(_BaseAcceptation):
         self.assertEqual(self.racine.statut, Devis.Statut.ACCEPTE)
         self.assertEqual(self.soeur.statut, Devis.Statut.REFUSE)
 
+    def test_le_lien_public_de_la_soeur_effondree_est_revoque(self):
+        """E (revue du 24/10/2026) — accepter la variante A révoque le lien
+        public de la sœur B (404 sur ``proposal_data``) ; celui de A reste."""
+        from rest_framework.test import APIClient
+        from apps.ventes.models import ShareLink
+        lien_a = ShareLink.for_devis(self.racine)
+        lien_b = ShareLink.for_devis(self.soeur)
+        accept_devis(devis=self.racine, user=None, nom='M. Client')
+        lien_a.refresh_from_db()
+        lien_b.refresh_from_db()
+        self.assertIsNotNone(lien_b.revoque_le)
+        self.assertIsNone(lien_a.revoque_le)
+        with patch('apps.ventes.public_views._notify_open'):
+            resp = APIClient().get(
+                f'/api/django/public/proposal/{lien_b.token}/data/')
+        self.assertEqual(resp.status_code, 404)
+
     def test_un_devis_sans_variante_est_inchange(self):
         """Le groupe d'un devis seul, c'est lui-même : rien à effondrer."""
         seul = self._devis('DEV-QJR134-SEUL')
@@ -193,6 +210,54 @@ class LeGroupeDeVariantesEstVerrouille(_BaseAcceptation):
         seul.refresh_from_db()
         self.assertEqual(seul.statut, Devis.Statut.ACCEPTE)
         self.assertTrue(seul.is_active)
+
+
+class LesRefusPortentUnCodeDuContrat(_BaseAcceptation):
+    """D (revue du 24/10/2026) — tout 409 de l'acceptation est
+    ``{detail, code}`` avec un code de la liste FERMÉE de
+    ``proposal_accept.json`` ; « Seul un devis en cours… » et « Devis
+    introuvable » n'en portaient aucun."""
+
+    slug = 'qjr134-codes'
+
+    def test_devis_refuse_lien_vivant_409_statut(self):
+        import json
+        from pathlib import Path
+        from rest_framework.test import APIClient
+        from apps.ventes.models import ShareLink
+        contrat = json.loads((Path(__file__).resolve().parent.parent
+                              / 'contract_samples' / 'proposal_accept.json')
+                             .read_text(encoding='utf-8'))
+        seul = self._devis('DEV-QJR134-REF')
+        link = ShareLink.for_devis(seul)
+        # Refusé SANS passer par le service (le lien reste vivant) : la garde
+        # sous verrou d'``accept_devis`` dit pourquoi.
+        Devis.objects.filter(pk=seul.pk).update(statut=Devis.Statut.REFUSE)
+        resp = APIClient().post(
+            f'/api/django/public/proposal/{link.token}/accept/',
+            {'nom': 'M. Client', 'consent_esign': True,
+             'empreinte_contenu': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(set(resp.data), {'detail', 'code'})
+        self.assertEqual(resp.data['code'], 'statut')
+        self.assertIn(resp.data['code'], contrat['codes_409'])
+        seul.refresh_from_db()
+        self.assertEqual(seul.statut, Devis.Statut.REFUSE)
+        self.assertFalse(DevisSignature.objects.filter(devis=seul).exists())
+
+    def test_service_statut_et_introuvable_portent_leur_code(self):
+        seul = self._devis('DEV-QJR134-REF2')
+        Devis.objects.filter(pk=seul.pk).update(statut=Devis.Statut.REFUSE)
+        with self.assertRaises(AcceptError) as leve:
+            accept_devis(devis=seul, user=None, nom='M. Client')
+        self.assertEqual((leve.exception.conflict, leve.exception.code),
+                         (True, 'statut'))
+        with patch('apps.ventes.selectors.groupe_proposition',
+                   return_value=Devis.objects.none()):
+            with self.assertRaises(AcceptError) as leve:
+                accept_devis(devis=seul, user=None, nom='M. Client')
+        self.assertEqual((leve.exception.conflict, leve.exception.code),
+                         (True, 'inactive'))
 
 
 class LeRejeuDeLAval(_BaseAcceptation):
@@ -323,6 +388,31 @@ class LaConfirmationVaAuxDeuxParties(_BaseAcceptation):
         copie = logs['vendeur@adev99.test']
         self.assertTrue(copie.sujet.startswith('Copie'))
         self.assertIn('dg@hotel-exemple.test', copie.corps)
+
+    def test_un_destinataire_en_echec_n_arrete_pas_l_autre(self):
+        """G (revue du 24/10/2026) — l'envoi au signataire lève : le contact
+        du lead reçoit QUAND MÊME sa confirmation (outbox), l'acceptation
+        tient."""
+        from django.core import mail
+        from apps.ventes import email_service
+        self._avec_lead_et_vendeur()
+        vrai_envoi = email_service.send_document_email
+
+        def envoi(devis, *, to_email, **kwargs):
+            if to_email == 'dg@hotel-exemple.test':
+                raise RuntimeError('SMTP refuse ce destinataire (simulé)')
+            return vrai_envoi(devis, to_email=to_email, **kwargs)
+
+        mail.outbox = []
+        with patch.object(email_service, 'send_document_email',
+                          side_effect=envoi):
+            accept_devis(devis=self.racine, user=None, nom='Karim Exemple',
+                         entreprise=dict(self.ENTREPRISE))
+        destinataires = {to for m in mail.outbox for to in m.to}
+        self.assertIn('contact@hotel-exemple.test', destinataires)
+        self.assertNotIn('dg@hotel-exemple.test', destinataires)
+        self.racine.refresh_from_db()
+        self.assertEqual(self.racine.statut, Devis.Statut.ACCEPTE)
 
     def test_confirmation_en_anglais_quand_la_page_l_etait(self):
         accept_devis(devis=self.racine, user=None, nom='Mr Client',
