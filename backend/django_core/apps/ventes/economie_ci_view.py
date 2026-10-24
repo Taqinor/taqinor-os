@@ -32,8 +32,8 @@ EconomieCiResponse = inline_serializer('EconomieCiResponse', {
         'statut', 'motifs_omission', 'base', 'motif_base', 'tarif',
         'economie_annee1', 'facture_avant', 'facture_apres', 'revente',
         'flux_ht', 'flux_ttc', 'jalons', 'jalons_ttc', 'indicateurs',
-        'remplacements', 'om', 'sensibilites', 'financement', 'hypotheses',
-        'omissions', 'alertes_internes', 'vue_interne')
+        'remplacements', 'om', 'entretien', 'sensibilites', 'financement',
+        'hypotheses', 'omissions', 'alertes_internes', 'vue_interne')
 })
 
 

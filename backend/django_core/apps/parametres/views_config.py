@@ -68,6 +68,8 @@ PROFILE_CONFIG_FIELDS = [
     'delai_reception_definitive_mois',
     'securite_obligatoire_avant_demarrage',
     'garantie_production_autorisee', 'garantie_production_validation',
+    # AMOT96 — entretien minimum C&I (MAD HT/kWc/an), sans défaut.
+    'entretien_minimum_mad_kwc_an',
     'devise_defaut', 'lead_sla_hours', 'overage_seuil_pct',
     # MRY8 — fenêtres d'appel de la société (forme `fenetres_appel` du
     # contrat MRY25) : elles decident QUAND une touche de cadence tombe

@@ -140,6 +140,102 @@ class OmTest(SimpleTestCase):
         self.assertEqual(res['om']['statut'], 'tarif_a_renseigner')
 
 
+class EntretienMinimumTest(SimpleTestCase):
+    """AMOT96 (D-ACI-14=a) — sans O&M souscrite chiffrée, l'entretien minimum
+    du réglage société (MAD HT/kWc/an × kWc retenu) est déduit de CHAQUE année
+    du flux (jamais en double avec l'O&M) ; réglage vide ⇒ flux inchangé et
+    « entretien non chiffré »."""
+
+    REGLAGE = {'mad_kwc_an': 30, 'tva_pct': 20}
+    APERCU = {'taille': {'retenue_kwc': 200}}
+
+    def _entretien(self):
+        return eco.entretien_minimum(self.REGLAGE, self.APERCU)
+
+    def test_trente_mad_par_kwc_sur_deux_cents_kwc(self):
+        self.assertEqual(self._entretien(), {'ht': 6000.0, 'ttc': 7200.0,
+                                             'mad_kwc_an': 30.0,
+                                             'kwc': 200.0})
+        sans = eco.flux_ci(_base(), production_annee1_kwh=100000)
+        res = eco.flux_ci(_base(), production_annee1_kwh=100000,
+                          entretien=self._entretien())
+        for ligne in res['flux_ht']['flux'][1:]:
+            with self.subTest(annee=ligne['annee']):
+                self.assertAlmostEqual(
+                    ligne['economie_mad'] - ligne['flux_mad'], 6000.0,
+                    places=1)
+        self.assertEqual(res['entretien']['statut'], 'deduit')
+        self.assertEqual(res['entretien']['montant_mad_an'], 6000.0)
+        self.assertEqual(res['entretien']['source'],
+                         eco.SOURCE_ENTRETIEN_MINIMUM)
+        # Le retour et le TRI en tiennent compte (recalcul indépendant).
+        cumul, retour = -400000.0, None
+        for t in range(1, 26):
+            cumul += 80000.0 * 0.995 ** (t - 1) - 6000.0
+            if retour is None and cumul >= 0:
+                retour = t
+        self.assertEqual(res['indicateurs']['retour_ans'], retour)
+        self.assertLess(res['indicateurs']['tri_pct'],
+                        sans['indicateurs']['tri_pct'])
+
+    def test_base_deux_ttc_a_la_tva_du_profil(self):
+        res = eco.flux_ci(_base('inconnu'), production_annee1_kwh=100000,
+                          entretien=self._entretien())
+        an1 = res['flux_ttc']['flux'][1]
+        self.assertAlmostEqual(an1['economie_mad'] - an1['flux_mad'], 7200.0,
+                               places=1)
+
+    def test_om_souscrite_seule_deduite_jamais_les_deux(self):
+        res = eco.flux_ci(_base(), production_annee1_kwh=100000,
+                          om={'activee': True, 'ht': 5000.0, 'ttc': 6000.0},
+                          entretien=self._entretien())
+        an1 = res['flux_ht']['flux'][1]
+        self.assertAlmostEqual(an1['economie_mad'] - an1['flux_mad'], 5000.0)
+        self.assertEqual(res['om']['statut'], 'souscrit')
+        self.assertIsNone(res['entretien'])
+
+    def test_om_proposee_l_entretien_minimum_est_deduit(self):
+        res = eco.flux_ci(_base(), production_annee1_kwh=100000,
+                          om={'activee': False, 'ht': 5000.0, 'ttc': 6000.0},
+                          entretien=self._entretien())
+        an1 = res['flux_ht']['flux'][1]
+        self.assertAlmostEqual(an1['economie_mad'] - an1['flux_mad'], 6000.0)
+        self.assertEqual(res['om']['statut'], 'propose')
+        self.assertEqual(res['entretien']['statut'], 'deduit')
+
+    def test_reglage_vide_flux_inchange_entretien_non_chiffre(self):
+        self.assertIsNone(eco.entretien_minimum(None, self.APERCU))
+        self.assertIsNone(eco.entretien_minimum(self.REGLAGE, {}))
+        sans = eco.flux_ci(_base(), production_annee1_kwh=100000)
+        res = eco.flux_ci(_base(), production_annee1_kwh=100000,
+                          entretien=None)
+        self.assertEqual(res['flux_ht']['flux'], sans['flux_ht']['flux'])
+        self.assertEqual(res['entretien'], {
+            'statut': 'non_chiffre', 'montant_mad_an': None,
+            'source': eco.MOTIF_ENTRETIEN_NON_CHIFFRE})
+
+    def test_assemblage_lit_le_reglage_et_le_kwc_de_l_etude(self):
+        import copy
+        import json
+        from pathlib import Path
+        contrats = Path(__file__).resolve().parents[1] / 'contract_samples'
+        apercu = copy.deepcopy(json.loads(
+            (contrats / 'etude_ci_preview.json').read_text(
+                encoding='utf-8'))['exemple'])
+        kwc = apercu['taille']['retenue_kwc']
+        bloc = eco.assembler_economie_ci(
+            apercu, tarif_declare={'contrat': 'bt_patente'},
+            investissement={'ht': 900000.0, 'ttc': 1080000.0},
+            mode_installation='commercial',
+            reglages={'entretien_minimum': self.REGLAGE})
+        self.assertEqual(bloc['entretien']['montant_mad_an'], 30.0 * kwc)
+        an1 = bloc['flux_ht']['flux'][1]
+        self.assertAlmostEqual(an1['economie_mad'] - an1['flux_mad'],
+                               30.0 * kwc, places=1)
+        public = eco.economie_ci_publique(bloc)
+        self.assertEqual(public['entretien'], bloc['entretien'])
+
+
 class ReventeHorsFluxTest(SimpleTestCase):
     def test_une_revente_ne_change_pas_le_retour(self):
         import inspect

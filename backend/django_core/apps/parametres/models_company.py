@@ -311,6 +311,13 @@ class CompanyProfile(models.Model):
     # Délai entre réception provisoire et définitive (mois) — D-CIQ-14.
     delai_reception_definitive_mois = models.PositiveIntegerField(
         null=True, blank=True)
+    # AMOT96 (D-ACI-14=a) — entretien minimum à la charge du client, en MAD
+    # HT par kWc et par an : déduit des économies C&I quand l'O&M n'est pas
+    # souscrite. Vide = entretien non chiffré (aucune déduction).
+    entretien_minimum_mad_kwc_an = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(Decimal('0'))],
+        verbose_name='Entretien minimum à la charge du client (MAD HT/kWc/an)')
     # Contrôle de sécurité obligatoire avant la mise en service.
     securite_obligatoire_avant_demarrage = models.BooleanField(default=False)
     # Garantie de production : jamais imprimée tant que la société ne l'a pas

@@ -396,6 +396,36 @@ class Amot94TableauVingtCinqAns(SimpleTestCase):
         self.assertIn("O&M", texte)
         self.assertEqual(texte.count("-12 000,00"), 25)
 
+    def test_entretien_minimum_colonne_et_hypotheses(self):
+        """AMOT96 (D-ACI-14=a) — l'entretien minimum DÉDUIT par le moteur
+        (``argent.entretien``) : colonne « Entretien » du tableau des 25 ans
+        (le montant servi chaque année), la ligne sous les KPI et la rangée
+        des hypothèses étiquetées « réglage société »."""
+        d = _data()
+        d["economie_ci"]["entretien"] = {
+            "statut": "deduit", "montant_mad_an": 6000.0, "mad_kwc_an": 30.0,
+            "kwc": 200.0, "source": "entretien minimum à votre charge "
+                                    "(réglage société)"}
+        p3, tableau = self._tableau(d)
+        texte = _texte(tableau)
+        self.assertIn("Entretien", texte)
+        self.assertNotIn("O&M", texte)
+        self.assertEqual(texte.count("-6 000,00"), 25)
+        page = _texte(p3)
+        self.assertIn("entretien minimum à votre charge (réglage société) : "
+                      "6 000,00 MAD/an, déduit des économies", page)
+        self.assertIn("Entretien (O&M) : entretien minimum à votre charge",
+                      page)
+
+    def test_entretien_non_chiffre_dit_sans_colonne(self):
+        d = _data()
+        self.assertEqual(d["economie_ci"]["entretien"]["statut"],
+                         "non_chiffre")
+        p3, tableau = self._tableau(d)
+        self.assertNotIn("Entretien", _texte(tableau))
+        self.assertIn("non déduit des économies — entretien non chiffré",
+                      _texte(p3))
+
     def test_courbe_cedable_tableau_garde(self):
         p3 = _pages(dict(_data(), _sans_graphiques=frozenset(
             {"courbe_cumul"})))[3]

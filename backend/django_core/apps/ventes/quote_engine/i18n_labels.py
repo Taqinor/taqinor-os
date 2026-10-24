@@ -2901,6 +2901,19 @@ LIBELLES = {
     'ci_fx_economie': {'fr': 'Économie', 'en': 'Saving', 'ar': 'الوفر'},
     'ci_fx_om': {'fr': 'O&amp;M', 'en': 'O&amp;M',
                  'ar': 'التشغيل والصيانة'},
+    # AMOT96 (D-ACI-14=a) — entretien minimum du réglage société.
+    'ci_fx_entretien': {'fr': 'Entretien', 'en': 'Maintenance',
+                        'ar': 'الصيانة'},
+    'ci_entretien_minimum': {
+        'fr': 'entretien minimum à votre charge (réglage société) : '
+              '{montant} MAD/an, déduit des économies',
+        'en': 'minimum maintenance at your expense (company setting): '
+              '{montant} MAD/yr, deducted from the savings',
+        'ar': 'الحد الأدنى للصيانة على نفقتكم (إعداد الشركة): {montant} '
+              'درهم/سنة، مخصوم من الوفورات'},
+    'ci_entretien_non_chiffre': {'fr': 'entretien non chiffré',
+                                 'en': 'maintenance not quantified',
+                                 'ar': 'الصيانة غير مقدرة'},
     'ci_fx_remplacement': {'fr': 'Remplacement', 'en': 'Replacement',
                            'ar': 'الاستبدال'},
     'ci_fx_flux': {'fr': 'Flux net', 'en': 'Net cash flow',

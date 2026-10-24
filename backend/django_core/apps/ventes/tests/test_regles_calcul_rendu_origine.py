@@ -267,7 +267,11 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_code_methode_horaire_poste',
         # AMOT95-101 (lane amot-doc, 24/10/2026) — libellés AJOUTÉS, sans
         # chiffre ; aucun libellé existant reformulé ni retiré.
-        'ci_tva_declaree_ht', 'ci_tva_non_declaree', 'ci_tva_inconnue')),
+        'ci_tva_declaree_ht', 'ci_tva_non_declaree', 'ci_tva_inconnue',
+        'ci_fx_entretien', 'ci_entretien_minimum', 'ci_entretien_non_chiffre')),
+    # AMOT96 — clé AJOUTÉE au bloc ``economie_ci`` : jamais un chiffre sur un
+    # devis aux règles d'origine (entretien jamais déduit).
+    ('economie_ci', 'entretien'),
     *_LIBELLES_APDF, *_LIBELLES_AGQ)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 
