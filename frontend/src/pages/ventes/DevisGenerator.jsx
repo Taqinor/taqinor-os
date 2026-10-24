@@ -645,7 +645,7 @@ export default function DevisGenerator({
   // réponses par catégorie (clés snake_case), stockées dans etude_params.
   const [categorieCommerciale, setCategorieCommerciale] = useState(CATEGORIE_NON_PRECISEE)
   const [commercialAnswers, setCommercialAnswers] = useState({})
-  // ADEV100 — pré-remplissage C&I depuis le lead (badge « repris du lead ») + gestes de saisie.
+  // ADEV100 — pré-remplissage C&I depuis le lead (badge de provenance, LIBELLE_REPRIS_LEAD) + gestes de saisie.
   const ci = useProfilCiLead({ profilCi, setProfilCi, categorieCommerciale, setCategorieCommerciale,
     commercialAnswers, setCommercialAnswers, tarifSaisie, setTarifSaisie })
   const [prixCible, setPrixCible] = useState('')

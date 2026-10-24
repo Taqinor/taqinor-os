@@ -408,7 +408,7 @@ export const etudePorteProfilCi = (e) => Boolean(e && typeof e === 'object'
 // « Hôtel » non repris — la commerciale retapait ce que le lead savait déjà).
 // `semisCiDepuisLead` calcule, SANS rien écrire, ce que la fiche lead apporte à
 // l'écran : des valeurs ÉDITABLES (jamais verrouillées), repérées par un badge
-// « repris du lead ». Règles : une valeur absente du lead n'est pas semée ; un
+// de provenance (LIBELLE_REPRIS_LEAD). Règles : une valeur absente du lead n'est pas semée ; un
 // champ que la commerciale a DÉJÀ rempli n'est jamais écrasé ; la consommation
 // du lead n'est reprise que si le lead n'a pas de relevé de factures (le
 // serveur le lit mieux). Les champs que l'écran n'édite pas (équipes de travail

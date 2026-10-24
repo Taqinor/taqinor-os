@@ -75,8 +75,6 @@ function EtapesCreationDevis() {
 const TITLES = {
   auto: 'Devis automatique',
   remise: 'Devis automatique avec remise',
-  onepage: 'Devis 1 page',
-  premium: 'Devis premium',
   edit: 'Édition complète du devis',
   view: 'Devis',
 }
@@ -208,13 +206,13 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // ALEA48 — même geste que les puces « manquants » de DevisTab : on ferme le
   // panneau (modal) puis `jumpToField` déplie, scrolle et focalise le champ.
   const completerChamp = (champ) => {
-    const cible = missingFieldTarget(champ)
+    const cible = missingFieldTarget(champ, lead?.type_installation)
     if (!cible) return
     onClose?.()
     setTimeout(() => jumpToField(cible), 0)
   }
 
-  // ── Création auto (auto / onepage / premium : pas de saisie préalable) ──
+  // ── Création auto (mode « auto » : pas de saisie préalable) ──
   const doCreateAuto = async (discountStr) => {
     setPhase('creating')
     setErrorMsg(null)
@@ -258,7 +256,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   useEffect(() => {
     if (startedRef.current) return
     // ALEA55 — jamais de création quand le panneau s'ouvre sur un devis EXISTANT.
-    if (!existingDevisId && (mode === 'auto' || mode === 'onepage' || mode === 'premium')) {
+    if (!existingDevisId && mode === 'auto') {
       startedRef.current = true
       // eslint-disable-next-line react-hooks/set-state-in-effect -- création automatique au montage, une seule fois (startedRef) (D-ENF22)
       doCreateAuto('0')
@@ -535,7 +533,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           {phase === 'error' && (
             <div className="ldp-center">
               <div className="form-error-box" role="alert">{errorMsg}</div>
-              {errorField && missingFieldTarget(errorField) && (
+              {errorField && missingFieldTarget(errorField, lead?.type_installation) && (
                 <Button type="button" variant="outline" data-testid="ldp-completer"
                         onClick={() => completerChamp(errorField)}>
                   Compléter : {fieldLabels[errorField].label}

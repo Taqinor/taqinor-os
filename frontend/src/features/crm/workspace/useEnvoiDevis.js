@@ -7,7 +7,7 @@ import { normalizePhoneE164 } from '../../../lib/format'
 import { errorMessageFrom } from '../../../lib/toast'
 // L5 (fondateur 21/08/2026) — lien PAGE CLIENT + message WhatsApp, MÊME
 // FORMAT que l'outil 3D (ToitureDesign.jsx). Fonctions pures, testées à part.
-import { clientProposalUrl, proposalWhatsappText, buildWaUrl } from '../../ventes/clientProposalLink'
+import { clientProposalUrl, proposalWhatsappText, buildWaUrl, DEFAULT_PUBLIC_SITE_URL } from '../../ventes/clientProposalLink'
 import {
   sectionsDepuisServeur, taillesDepuisServeur, taillesFromOptionsCount, dateRelanceJ3,
 } from './devisTabLogique'
@@ -18,7 +18,7 @@ import {
 // des composants).
 
 // L5 — site public (page client), même résolution que ToitureDesign.jsx.
-const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma'
+const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || DEFAULT_PUBLIC_SITE_URL
 
 // Les options 1/2/3 (Éco/Recommandé/Max) n'existent que pour le RÉSIDENTIEL
 // (DevisOffresTailles refuse les autres marchés) : un devis dont le marché est

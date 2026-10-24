@@ -27,6 +27,7 @@ import { reviserEtOuvrir } from '../../ventes/reviserDevis'
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
 import { missingFieldTarget, missingChampPourLead } from './missingFields'
+import { getField } from './draftCore'
 import {
   DEVIS_MINI_TRACK, devisTrackCurrent, waArmed, devisIntent, lectureClientLabel,
   catalogueCiBloque, raisonCatalogueCi, noteDemandeCatalogueCi,
@@ -62,7 +63,7 @@ import SalleVenteAnalyticsBadge from '../../../pages/crm/leads/SalleVenteAnalyti
 // sur l'en-tête de section et le même clic donnait deux résultats différents
 // selon l'état de repli. Un seul chemin, partagé avec le centre.
 function jumpToMissingField(champ, state) {
-  const target = missingFieldTarget(missingChampPourLead(champ, state))
+  const target = missingFieldTarget(missingChampPourLead(champ, state), getField(state, 'type_installation'))
   if (!target) return
   jumpToField(target)
 }

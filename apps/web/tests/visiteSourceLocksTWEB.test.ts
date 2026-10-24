@@ -69,10 +69,10 @@ describe('proposition/[...token].astro — bandeau + désactivation aperçu inte
     expect(src).toMatch(/pointer-events-none opacity-50/);
   });
 
-  it('le formulaire « Demander une modification » est désactivé sous apercuInterne (3 boutons + textarea + submit)', () => {
+  it('les formulaires « Demander une modification » et « Décliner » sont désactivés sous apercuInterne (3 boutons + textarea + submit, puis 3 motifs + textarea + envoi)', () => {
     const disabledGuards = src.match(/disabled=\{apercuInterne\}/g) ?? [];
-    // 3 puces de type + textarea + bouton d'envoi = 5.
-    expect(disabledGuards.length).toBe(5);
+    // 3 puces de type + textarea + bouton d'envoi = 5 ; ADEV98 : + 3 motifs de déclin + textarea + envoi = 8.
+    expect(disabledGuards.length).toBe(8);
   });
 
   it('AUCUN beacon (proposition-track NI funnel-beacon) ne part sous apercuInterne', () => {

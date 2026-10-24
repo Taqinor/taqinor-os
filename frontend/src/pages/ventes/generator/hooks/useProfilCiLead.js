@@ -1,5 +1,5 @@
 // ADEV100 — le générateur C&I s'ouvre PRÉ-REMPLI depuis la fiche lead (rejeu
-// « humain » R1-07). Ce hook tient les champs SEMÉS (badge « repris du lead »),
+// « humain » R1-07). Ce hook tient les champs SEMÉS (badge de provenance, LIBELLE_REPRIS_LEAD),
 // sème à l'arrivée du lead (création seulement : l'appelant ne l'invoque pas en
 // `?edit=`) et enveloppe les gestes de saisie du profil C&I — une modification
 // de la commerciale retire le badge du champ et n'est jamais écrasée.

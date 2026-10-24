@@ -90,7 +90,6 @@ class _Base(TestCase):
         kw.setdefault('categorie_commerciale', 'bureau')
         kw.setdefault('tension_raccordement', 'bt')
         kw.setdefault('raccordement', 'triphase')  # ADEV89 — phase du site
-        kw.setdefault('raccordement', 'triphase')
         kw.setdefault('type_toiture', 'bac_acier')
         return Lead.objects.create(company=self.co, nom='Pro CIQ120', **kw)
 
@@ -143,6 +142,17 @@ class DevisAutoCITests(_Base):
             self._auto(lead)
         self.assertEqual(ctx.exception.field, 'conso_mensuelle_kwh')
         self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+
+    def test_phase_inconnue_refus_nomme_le_raccordement(self):
+        # ADEV89 — la phase du site est un prérequis du moteur C&I : « je ne
+        # sais pas » (ou vide) refuse en nommant `raccordement`, rien n'est créé.
+        for phase in ('inconnu', ''):
+            lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), raccordement=phase)
+            avant = Devis.objects.filter(company=self.co).count()
+            with self.assertRaises(AutoDevisError) as ctx:
+                self._auto(lead)
+            self.assertEqual(ctx.exception.field, 'raccordement', phase)
+            self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
 
     def test_structure_sans_prix_422_prix_a_renseigner(self):
         Produit.objects.filter(pk=self.structure.pk).update(prix_vente=0)

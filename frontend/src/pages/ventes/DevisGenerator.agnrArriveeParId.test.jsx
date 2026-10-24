@@ -63,7 +63,7 @@ describe('AGNR19 — lead et client d’arrivée résolus par leur id', () => {
 })
 
 // ADEV100 — un lead commercial ouvre le générateur PRÉ-REMPLI (valeurs éditables
-// + badge « repris du lead »), sans rien écraser quand on rouvre un devis.
+// + badge de provenance LIBELLE_REPRIS_LEAD), sans rien écraser quand on rouvre un devis.
 const LEAD_HOTEL = {
   id: 70, nom: 'Hotel70', prenom: '', societe: 'Hôtel Exemple', type_installation: 'commercial',
   categorie_commerciale: 'hotel', reponses_categorie: { chambres: 40, piscine: false },
