@@ -87,13 +87,12 @@ def _empreinte_recue(request):
 
 def _aucun_code_requis(link):
     """L-NIV / ADEV97 — 200 « Aucun code requis » (``code_requis: false``)
-    quand ce lien n'exige AUCUN code de lecture — ni ``otp_lecture`` posé, ni
-    exemplaire signé à protéger (``pdf_signe_sous_otp``), ou déjà
-    déverrouillé dans l'heure ; ``None`` sinon (un code part). La page s'en
-    sert au clic « Télécharger » : jamais un second code pour rien."""
-    from ..domain.cycle_vie import otp_lecture_verified, pdf_signe_sous_otp
-    if (link.otp_lecture or pdf_signe_sous_otp(link)) \
-            and not otp_lecture_verified(link, pdf=True):
+    quand ce lien n'exige AUCUN code de lecture — ``otp_lecture`` non posé, ou
+    déjà déverrouillé dans l'heure ; ``None`` sinon (un code part). La page
+    s'en sert au clic « Télécharger » : jamais un second code pour rien. LA
+    garde unique (``services.otp_lecture_verified``, QJR417)."""
+    from ..services import otp_lecture_verified
+    if link.otp_lecture and not otp_lecture_verified(link):
         return None
     return _noindex(Response({'detail': 'Aucun code requis pour ce lien.',
                               'code_requis': False}))

@@ -656,33 +656,15 @@ def validate_otp_lecture(link, otp_code):
     return None
 
 
-def pdf_signe_sous_otp(link):
-    """ADEV97 — vrai quand le PDF de ``link`` est l'EXEMPLAIRE SIGNÉ figé
-    (devis accepté, ``signed_pdf_key`` posé : raison sociale, ICE, signature)
-    ET qu'un code de lecture peut réellement partir vers le client
-    (:func:`canal_otp_disponible`) : son téléchargement exige alors l'OTP de
-    lecture, même sur un lien sans ``otp_lecture``. Sans canal : inchangé (un
-    lien n'est jamais rendu illisible). La page et ``/suivi/`` restent lisibles
-    au jeton (ADOC131 : jusqu'à la réception + 90 jours)."""
-    devis = getattr(link, 'devis', None)
-    if devis is None or getattr(link, 'via_interne', False) \
-            or getattr(devis, 'statut', None) != 'accepte':
-        return False
-    try:
-        signe = bool(devis.signature.signed_pdf_key)
-    except AttributeError:  # aucune signature liée (RelatedObjectDoesNotExist)
-        return False
-    return signe and canal_otp_disponible(getattr(devis, 'client', None))
-
-
-def otp_lecture_verified(link, *, pdf=False):
+def otp_lecture_verified(link):
     """True si la lecture de ``link`` a déjà été déverrouillée par un OTP
     valide dans la dernière heure. Toujours True si ``link.otp_lecture`` est
-    False (rien à déverrouiller — comportement d'aujourd'hui). ADEV97 —
-    ``pdf=True`` (téléchargement du PDF) : l'exemplaire signé exige aussi le
-    code quand :func:`pdf_signe_sous_otp`."""
-    if not getattr(link, 'otp_lecture', False) \
-            and not (pdf and pdf_signe_sous_otp(link)):
+    False (rien à déverrouiller — comportement d'aujourd'hui).
+
+    LA garde unique des lectures et actions publiques (QJR417/QJR418 — aucun
+    second helper). L'exemplaire SIGNÉ d'un accepté suit la règle du lien,
+    sans règle propre (hors périmètre ADEV97 : « otp_lecture inchangé »)."""
+    if not getattr(link, 'otp_lecture', False):
         return True
     from django.core.cache import cache
     return bool(cache.get(_otp_lecture_verified_key(link.token)))

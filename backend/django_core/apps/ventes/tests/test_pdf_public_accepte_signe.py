@@ -63,9 +63,6 @@ class TestPdfPublicAccepteSigne(TestCase):
            return_value='devis/rerendu.pdf')
     def test_accepte_avec_cle_sert_les_octets_signes(self, mock_gen, _dl):
         devis, link = self._devis('DEV-QJR670-A', 'accepte', CLE_SIGNEE)
-        # ADEV97 — l'exemplaire signé exige le code de lecture (le client a un
-        # e-mail) : on pose le drapeau qu'un code valide pose.
-        self._deverrouiller(link)
         # Une fiche produit évolue APRÈS la signature.
         Produit.objects.filter(company=self.company).update(
             description='Nouvelle fiche produit après signature')
@@ -94,7 +91,7 @@ class TestPdfPublicAccepteSigne(TestCase):
         self.assertEqual(contenu, OCTETS_RERENDU)
         self.assertTrue(mock_gen.called)
 
-    # ── ADEV97 — l'exemplaire signé sous le code de lecture ────────────────
+    # ── L'exemplaire signé suit la règle du LIEN (revue du 24/10/2026) ────
 
     @staticmethod
     def _deverrouiller(link):
@@ -109,18 +106,22 @@ class TestPdfPublicAccepteSigne(TestCase):
     @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
     @patch('apps.ventes.public_views.generate_premium_devis_pdf',
            return_value='devis/rerendu.pdf')
-    def test_exemplaire_signe_exige_le_code_de_lecture(self, mock_gen, _dl):
+    def test_exemplaire_signe_suit_la_regle_du_lien(self, mock_gen, _dl):
+        """Lien SANS code : l'exemplaire signé part au jeton (client joignable
+        ou non), aucun code demandé. Lien SOUS code : 403 ``otp_required``
+        jusqu'au code, puis les octets signés."""
         from django.core.cache import cache
         from apps.ventes.domain.cycle_vie import _otp_lecture_cache_key
         _, link = self._devis('DEV-ADEV97-A', 'accepte', CLE_SIGNEE)
         for url in ('public-proposal-pdf', 'public-document'):
+            self.assertEqual(self._get(url, link, mock_gen), OCTETS_SIGNES, url)
+        self.assertEqual(self._demander(link).json().get('code_requis'), False)
+        link.otp_lecture = True
+        link.save(update_fields=['otp_lecture'])
+        for url in ('public-proposal-pdf', 'public-document'):
             resp = DjangoClient().get(reverse(url, args=[link.token]))
             self.assertEqual(resp.status_code, 403, url)
             self.assertEqual(resp.json()['detail'], 'otp_required')
-        # La page et le suivi restent lisibles au jeton (aucun code exigé).
-        self.assertNotEqual(DjangoClient().get(
-            f'/api/django/public/proposal/{link.token}/data/').status_code, 403)
-        # La demande ENVOIE un code (un vrai) ; déverrouillé, le PDF part.
         with patch('apps.ventes.domain.cycle_vie._send_otp_email',
                    return_value=True) as envoi:
             resp = self._demander(link)
@@ -131,8 +132,7 @@ class TestPdfPublicAccepteSigne(TestCase):
         self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
                          OCTETS_SIGNES)
         # Déjà déverrouillé : aucun second code.
-        resp = self._demander(link)
-        self.assertEqual(resp.json().get('code_requis'), False)
+        self.assertEqual(self._demander(link).json().get('code_requis'), False)
 
     @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
     @patch('apps.ventes.public_views.generate_premium_devis_pdf',

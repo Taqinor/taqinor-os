@@ -123,7 +123,7 @@
       "detail": "Aucun code requis pour ce lien.",
       "code_requis": false
     },
-    "exemplaire_signe": "ADEV97 — `otp-lecture/demander/` et `otp-lecture/verifier/` répondent `reponse_200_aucun_code` quand le lien n'exige AUCUN code de lecture : ni `otp_lecture` posé, ni exemplaire SIGNÉ à protéger, ou déjà déverrouillé dans l'heure. Un devis ACCEPTÉ dont le PDF signé est stocké et dont le client est joignable par e-mail exige le code de lecture pour `/pdf/` et `/document/` (403 `otp_required`) ; la page et `/suivi/` restent lisibles au jeton. Une acceptation FRAÎCHE au jeton déverrouille l'exemplaire une heure (le signataire le télécharge tout de suite), jamais une resoumission sur un accepté.",
+    "exemplaire_signe": "ADEV97 — `otp-lecture/demander/` et `otp-lecture/verifier/` répondent `reponse_200_aucun_code` quand le lien n'exige AUCUN code de lecture : `otp_lecture` non posé, ou déjà déverrouillé dans l'heure. L'exemplaire SIGNÉ d'un accepté (`/pdf/`, `/document/`) suit la règle du lien, sans règle propre (revue du 24/10/2026 : hors périmètre ADEV97, `otp_lecture` inchangé) — 403 `otp_required` seulement sur un lien sous code non déverrouillé. Une acceptation FRAÎCHE au jeton pose le drapeau de lecture vérifiée une heure, jamais une resoumission sur un accepté.",
     "reponse_409": {
       "detail": "Aucun moyen d'envoyer le code : contactez votre conseiller.",
       "code": "aucun_canal"
