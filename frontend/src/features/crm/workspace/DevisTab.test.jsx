@@ -2,6 +2,8 @@ import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
+import { configureStore } from '@reduxjs/toolkit'
+import { Provider } from 'react-redux'
 import { initState } from './draftCore'
 import { exempleContrat, documentContrat } from '../../../test/fixtures/contractSamples'
 import { toast } from '../../../ui'
@@ -15,6 +17,7 @@ import {
   lectureClientLabel, dateRelanceJ3,
 } from './devisTabLogique'
 import { missingFieldTarget, missingChampPourLead, chipsAComplete } from './missingFields'
+import { proposalWhatsappText } from '../../ventes/clientProposalLink'
 import { resolveCss } from '../../../test/readCss.mjs'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
@@ -869,6 +872,33 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
       ),
       '_blank', 'noopener',
     ))
+  })
+
+  it('APDF108 — « WhatsApp » nomme la société de la session (profil chargé), jamais une marque codée en dur', async () => {
+    const user = userEvent.setup()
+    window.open = vi.fn(() => ({}))
+    const store = configureStore({
+      reducer: { parametres: (s = { profile: { nom: 'SOLAIRE EXEMPLE SARL' } }) => s },
+    })
+    render(
+      <Provider store={store}>
+        <MemoryRouter>
+          <DevisTab
+            state={leadState({ telephone: '0612345678', devis: [devis1] })} onAction={vi.fn()}
+            wa={waState()} onWaToggle={vi.fn()} onWaLangue={vi.fn()} onWaPreview={vi.fn()} onWaReset={vi.fn()}
+          />
+        </MemoryRouter>
+      </Provider>,
+    )
+    await ouvrirEnvoi(user)
+    await user.click(screen.getByRole('button', { name: 'WhatsApp' }))
+    const url = 'https://taqinor.ma/proposition/karim/tok-abc'
+    await waitFor(() => expect(window.open).toHaveBeenCalledWith(
+      'https://wa.me/212612345678?text='
+      + encodeURIComponent(proposalWhatsappText('Karim', url, { marque: 'SOLAIRE EXEMPLE SARL' })),
+      '_blank', 'noopener',
+    ))
+    expect(decodeURIComponent(window.open.mock.calls.at(-1)[0])).toContain('solaire SOLAIRE EXEMPLE SARL : ')
   })
 
   it('« WhatsApp » par devis désactivé sans numéro exploitable', async () => {
