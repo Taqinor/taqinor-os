@@ -18,6 +18,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { formatDateLang, parseBackendDate, resolveValidity } from '../src/lib/proposition';
+import { identiteEmetteur, LEGAL_IDENTITY } from '../src/lib/nap';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 const PROPOSITION = read('../src/pages/proposition/[...token].astro');
@@ -87,10 +88,13 @@ describe('audit C4 — le mois suit la langue', () => {
   });
 
   it('« Capital » porte ses trois langues (RC/ICE sont des sigles)', () => {
-    expect(PROPOSITION).toContain('Share capital ${LEGAL_IDENTITY.capital}');
+    // APDF107 — le triplet vit dans `identiteEmetteur` (lib/nap.ts), lu par la page.
+    const { ligne } = identiteEmetteur(undefined).bloc!;
+    expect(ligne.en).toBe(`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · Share capital ${LEGAL_IDENTITY.capital}`);
     // Le montant arabe est enfermé dans un isolat bidi (U+2066 … U+2069) :
     // sans lui, « رأس المال 100 000,00 MAD » se rendait « 000,00 100 رأس
     // المال MAD » dans ce paragraphe `dir="ltr"` (constaté au rendu).
-    expect(PROPOSITION).toContain('رأس المال \u2066${LEGAL_IDENTITY.capital}\u2069');
+    expect(ligne.ar).toContain(`رأس المال \u2066${LEGAL_IDENTITY.capital}\u2069`);
+    expect(PROPOSITION).toContain('data-ar={emetteur.bloc.ligne.ar}');
   });
 });
