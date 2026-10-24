@@ -235,3 +235,39 @@ def schema_cos_phi(nullable):
     schema = nombre_ou_texte(0.0005, 1, motif=MOTIF_COS_PHI)
     schema['anyOf'][1]['format'] = 'decimal'
     return _nullable(schema) if nullable else schema
+
+
+#: ``Lead.jours_irrigation_semaine`` en chaîne : 0,1 à 7 (AGQ10 — 0 exclu,
+#: une décimale). Le nombre JSON porte déjà ses bornes ; la chaîne les suit.
+MOTIF_JOURS_IRRIGATION = r'^(?:0?\.[1-9]|[1-6](?:\.[0-9]?)?|7(?:\.0?)?)$'
+#: ``Lead.gps_lat`` / ``gps_lng`` en chaîne : ±90 / ±180, 6 décimales.
+MOTIF_GPS_LAT = r'^-?(?:90(?:\.0{0,6})?|[0-8]?[0-9](?:\.[0-9]{0,6})?|\.[0-9]{1,6})$'
+MOTIF_GPS_LNG = (r'^-?(?:180(?:\.0{0,6})?|(?:1[0-7][0-9]|[0-9]{1,2})'
+                 r'(?:\.[0-9]{0,6})?|\.[0-9]{1,6})$')
+_MOTIFS_BORNES = {
+    'jours_irrigation_semaine': MOTIF_JOURS_IRRIGATION,
+    'gps_lat': MOTIF_GPS_LAT, 'gps_lng': MOTIF_GPS_LNG,
+}
+
+
+class _DecimalLeadBornePublie(OpenApiSerializerFieldExtension):
+    """api-fuzz (``POST crm/leads/ {"jours_irrigation_semaine": "0"}``, 400) —
+    le motif décimal générique laissait passer ``"0"``, ``"9"`` ou une latitude
+    ``"95"``, que la borne du champ refuse. La branche chaîne du schéma de
+    requête de ces champs suit désormais la borne (le nombre JSON la portait
+    déjà) ; le serveur est inchangé."""
+    target_class = 'apps.crm.serializers.LeadDecimalField'
+    match_subclasses = False
+    priority = 1
+
+    def map_serializer_field(self, auto_schema, direction):
+        from core.champs_stricts import _DecimalChaineNonVide
+        schema = _DecimalChaineNonVide(self.target).map_serializer_field(
+            auto_schema, direction)
+        motif = _MOTIFS_BORNES.get(self.target.field_name)
+        if direction != 'request' or motif is None or 'anyOf' not in schema:
+            return schema
+        schema = dict(schema)
+        schema['anyOf'] = [dict(schema['anyOf'][0], pattern=motif),
+                           *schema['anyOf'][1:]]
+        return schema
