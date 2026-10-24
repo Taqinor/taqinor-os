@@ -14,6 +14,7 @@ Run :
         -Modules "apps.ventes.tests.test_ciq118_etude_ci_preview"
 """
 import json
+import math
 from decimal import Decimal
 from pathlib import Path
 from unittest import mock
@@ -27,6 +28,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.calepinage.models import ProfilTypeConsommation
 from apps.crm.models import Lead
+from apps.parametres import pvgis_profils as pp
 from apps.parametres.models import CompanyProfile
 from apps.parametres.pvgis_profils import (
     SAISONS,
@@ -36,6 +38,7 @@ from apps.parametres.pvgis_profils import (
 )
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.domain import etude_ci
+from apps.ventes.moteur_ci.production import plan_de_production
 from authentication.models import Company
 
 User = get_user_model()
@@ -46,7 +49,7 @@ CONTRAT = json.loads(
 URL = '/api/django/ventes/etude-ci/preview/'
 
 
-def _production_casablanca(_site=None):
+def _production_casablanca(_site=None, toit=None):
     formes = {}
     for saison in SAISONS:
         resolu = profil_production_journalier(saison=saison, ville='Casablanca')
@@ -359,3 +362,153 @@ class BornePoseParDefautAdev90(_Base):
         rep = self._bornes(type_pose='toit_plat_leste')
         toit = rep['taille']['bornes']['toit']
         self.assertNotIn('pose estimée', toit['source'])
+
+
+# ── AMOT99 (D-ACI-18=a) — autoconsommation sur les 8 760 h de l'année type ──
+
+def _serie_annee_type():
+    """8 760 h kWh/kWc (heure GMT, 1er janvier 0 h) : un jour sur deux couvert
+    (× 0,2) — exactement ce qu'une journée moyenne lisserait."""
+    serie = []
+    for jour in range(365):
+        nuage = 1.0 if jour % 2 == 0 else 0.2
+        serie.extend(round(0.9 * nuage * max(0.0, math.sin(math.pi * (h - 6) / 12)), 4)
+                     for h in range(24))
+    return {'kwh_kwc': serie, 'annees': [2014 + m % 10 for m in range(12)]}
+
+
+SERIE = _serie_annee_type()
+
+
+def _lecture_avec_serie(_site=None, toit=None):
+    """``lire_production`` avec la série horaire (jamais le réseau)."""
+    return (*_production_casablanca(), dict(SERIE, plan=plan_de_production(toit)))
+
+
+def _autoconso_par_heure(jours_types, serie, kwc):
+    """Σ_jours types (nb ÷ jours du mois) × Σ_jours réels Σ_h min(charge, kwc·prod)
+    — la définition, à la main, sur les 8 760 h."""
+    jours_du_mois = {}
+    for jt in jours_types:
+        jours_du_mois[jt['mois']] = jours_du_mois.get(jt['mois'], 0) + jt['nb_jours']
+    debuts = [0]
+    for jours in pp.JOURS_PAR_MOIS:
+        debuts.append(debuts[-1] + 24 * jours)
+    total = 0.0
+    for jt in jours_types:
+        m = jt['mois']
+        heures = serie[debuts[m - 1]:debuts[m]]
+        croise = sum(min(jt['charge_kwh'][i % 24], kwc * p) for i, p in enumerate(heures))
+        total += croise * jt['nb_jours'] / jours_du_mois[m]
+    return total
+
+
+class Serie8760Amot99(_Base):
+    SITE_GPS = {'ville': 'Casablanca', 'lat': 33.57, 'lon': -7.59}
+
+    def setUp(self):
+        super().setUp()
+        self.production.side_effect = _lecture_avec_serie
+
+    def _etude(self, **toit):
+        corps = self.corps(site=dict(self.SITE_GPS), taille_explicite_kwc=100)
+        corps['toit'] = dict({'type_pose': None, 'surface_utile_m2': None}, **toit)
+        return self.post(corps)
+
+    def test_bilan_somme_des_8760_heures_orientation_declaree_lue(self):
+        data = self._etude(pente_deg=10, azimut_deg=-90)
+        production, bilan = data['production'], data['bilan']
+        self.assertEqual(production['methode_autoconso'], 'horaire_8760')
+        self.assertEqual((production['inclinaison_deg'], production['azimut_deg']), (10, -90))
+        toit = self.production.call_args.kwargs['toit']
+        self.assertEqual((toit['pente_deg'], toit['azimut_deg']), (10, -90))
+        # Pose non déclarée : D-ACI-13 (surimposition) ⇒ montage PVGIS « building ».
+        self.assertEqual(plan_de_production(toit)['montage'], 'building')
+        serie = production['serie_horaire']['kwh_kwc']
+        self.assertEqual(len(serie), 8760)
+        kwc = data['taille']['retenue_kwc']
+        self.assertAlmostEqual(bilan['production_kwh'], sum(serie) * kwc, delta=1)
+        self.assertAlmostEqual(bilan['autoconso_kwh'] + bilan['surplus_kwh'],
+                               bilan['production_kwh'], delta=1)
+        cellules = sum(h['nb_jours'] * (sum(h['autoconso_kwh']) + sum(h['surplus_kwh']))
+                       for h in bilan['horaire'])
+        self.assertAlmostEqual(cellules, bilan['production_kwh'], delta=bilan['production_kwh'] * 1e-3)
+        jours_types = data['profil_charge']['jours_types']
+        attendu = _autoconso_par_heure(jours_types, serie, kwc)
+        self.assertAlmostEqual(bilan['autoconso_kwh'], attendu, delta=1)
+        # Test-du-test : revenir à la journée moyenne donnerait un autre chiffre.
+        moyennes = {j['mois']: j['production_kwh_kwc'] for j in production['jours_types']}
+        journee_moyenne = sum(jt['nb_jours'] * sum(min(c, kwc * p) for c, p in zip(
+            jt['charge_kwh'], moyennes[jt['mois']])) for jt in jours_types)
+        self.assertGreater(abs(journee_moyenne - attendu), 0.01 * attendu)
+        hyp = {h['cle']: h for h in data['hypotheses']}
+        self.assertEqual(hyp['methode_autoconsommation']['valeur'], 'horaire_8760')
+        self.assertEqual(hyp['inclinaison_deg']['source'], 'toit déclaré')
+        self.assertNotIn('orientation_non_prise_en_compte', [a['code'] for a in data['alertes']])
+        self.assertEqual(data['methode'], etude_ci.METHODE_8760)
+
+    def test_sans_serie_horaire_repli_journees_moyennes_dit(self):
+        self.production.side_effect = _production_casablanca
+        data = self._etude(pente_deg=10, azimut_deg=-90)
+        self.assertEqual(data['production']['methode_autoconso'], 'journees_moyennes')
+        self.assertIsNone(data['production']['serie_horaire'])
+        hyp = {h['cle']: h for h in data['hypotheses']}
+        self.assertEqual(hyp['methode_autoconsommation']['valeur'], 'journees_moyennes')
+        self.assertEqual(hyp['methode_autoconsommation']['statut'], 'estimation')
+        self.assertIn('orientation_non_prise_en_compte', [a['code'] for a in data['alertes']])
+        self.assertEqual(data['methode'], etude_ci.METHODE)
+
+    def test_production_figee_dun_devis_envoye_rendu_inchange(self):
+        # Règle « devis envoyés : nouveaux rendus seulement » : une production
+        # figée AVANT la série (sans ses clés) garde ses journées moyennes.
+        self.production.side_effect = _production_casablanca
+        corps = self.corps(site=dict(self.SITE_GPS), taille_explicite_kwc=100)
+        reference = etude_ci.etudier_ci(self.co, corps)
+        figee = {k: v for k, v in reference['production'].items()
+                 if k not in ('methode_autoconso', 'serie_horaire')}
+        self.production.reset_mock()
+        self.production.side_effect = _lecture_avec_serie
+        rejeu = etude_ci.etudier_ci(self.co, corps, production_figee=figee)
+        self.production.assert_not_called()
+        self.assertEqual(rejeu['bilan'], reference['bilan'])
+        self.assertEqual(rejeu['methode'], etude_ci.METHODE)
+
+
+class AnneeTypePvgisAmot99(TestCase):
+    """``pvgis_profils.serie_horaire_annee_type`` — le réseau est simulé."""
+
+    @staticmethod
+    def _reponse():
+        import datetime
+        heures = []
+        for annee, watts in ((2014, 500.0), (2015, 1000.0), (2016, 600.0)):
+            t = datetime.datetime(annee, 1, 1)
+            while t.year == annee:
+                heures.append({'time': t.strftime('%Y%m%d:%H10'), 'P': watts})
+                t += datetime.timedelta(hours=1)
+        return {'outputs': {'hourly': heures}}
+
+    def test_mois_representatif_et_plan_declare_dans_lappel(self):
+        with mock.patch.object(pp, '_cache_lire', return_value=None), \
+                mock.patch.object(pp, '_cache_ecrire'), \
+                mock.patch.object(pp, '_appel_pvgis', return_value=self._reponse()) as reseau:
+            serie = pp.serie_horaire_annee_type(33.57, -7.59, angle_deg=10, aspect_deg=-90,
+                                                montage='building')
+        # Moyenne de chaque mois = 700 W : l'année la plus proche est 2016 (600 W),
+        # son 29 février écarté — 8 760 h exactement.
+        self.assertEqual(serie['annees'], [2016] * 12)
+        self.assertEqual(len(serie['kwh_kwc']), 8760)
+        self.assertEqual(set(serie['kwh_kwc']), {0.6})
+        url = reseau.call_args.args[0]
+        for attendu in ('/seriescalc?', 'pvcalculation=1', 'angle=10', 'aspect=-90',
+                        'mountingplace=building', 'loss=14'):
+            self.assertIn(attendu, url)
+        self.assertEqual(reseau.call_args.kwargs['timeout'], pp.SERIE_TIMEOUT_S)
+
+    def test_pvgis_injoignable_none(self):
+        with mock.patch.object(pp, '_cache_lire', return_value=None), \
+                mock.patch.object(pp, '_appel_pvgis', return_value=None):
+            self.assertIsNone(pp.serie_horaire_annee_type(
+                33.57, -7.59, angle_deg=30, aspect_deg=0, montage='free'))
+        self.assertIsNone(pp.serie_horaire_annee_type(
+            None, None, angle_deg=30, aspect_deg=0, montage='free'))
