@@ -2308,3 +2308,51 @@ decisions:
     date: "2026-10-23"
     source: "rejeu humain du 23/10/2026 (session moteur C&I) ; constat C-ACI-026"
     taches: [ADEV90]
+  - id: D-ACI-14
+    question: "Entretien (O&M) dans les flux C&I quand l'option n'est pas souscrite (aujourd'hui 0, production supposée propre) : que faire dans les nouveaux rendus ?"
+    options:
+      - cle: a
+        texte: "un « entretien minimum à votre charge » (MAD/kWc/an) réglé dans Paramètres, toujours déduit des économies et étiqueté sur le document"
+      - cle: b
+        texte: "sans O&M souscrite, une perte de production d'encrassement réglable"
+      - cle: c
+        texte: "rien (D-CIQ-12 / CIQ342 tels quels)"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 (L3 « best quote making machine ») ; constat C-L3-MOT-01"
+    taches: [AMOT96]
+  - id: D-ACI-15
+    question: "Incertitude par défaut sur le document C&I (production P90, tarif +x %/an, dégradation 0,75 %, contribution art. 13) ?"
+    options:
+      - cle: a
+        texte: "4 scénarios seedés dans Paramètres (valeurs sourcées, modifiables), imprimés sur l'industriel et résumés sur le commercial à côté du scénario central"
+      - cle: b
+        texte: "rien tant que le fondateur ne saisit pas (D-CIQ-10 tel quel)"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; constat C-L3-MOT-01"
+    taches: [AMOT97]
+  - id: D-ACI-16
+    question: "Postes hors total (structure, câbles à chiffrer après la visite) : provision estimée ajoutée au total, ou omission ?"
+    options:
+      - cle: a
+        texte: "garder l'omission (D-ACI-2=a) avec le titre « Investissement hors postes à chiffrer après la visite » et la liste des postes sans montant"
+      - cle: b
+        texte: "provision estimée par poste (fourchette Paramètres) ajoutée au total avec mention"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; confirme D-ACI-2=a et AMOT86"
+    taches: [AMOT86]
+  - id: D-ACI-17
+    question: "« Exploitation et maintenance (O&M) C&I — prix à renseigner » sur le document client (D-ACI-12=a) : formulation côté client ?"
+    options:
+      - cle: a
+        texte: "« tarif sur demande » côté client ; l'ERP garde l'alerte interne « prix à renseigner »"
+      - cle: b
+        texte: "garder « prix à renseigner »"
+      - cle: c
+        texte: "masquer la ligne tant qu'elle n'a pas de prix"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; vérificateur R4 (« état interne du catalogue sur un document client »)"
+    taches: [AMOT98]
