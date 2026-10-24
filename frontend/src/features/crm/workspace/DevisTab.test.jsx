@@ -14,7 +14,7 @@ import {
   TAILLES_ENVOI, taillesDepuisServeur, optionsCountFromTailles, taillesFromOptionsCount,
   lectureClientLabel,
 } from './devisTabLogique'
-import { missingFieldTarget } from './missingFields'
+import { missingFieldTarget, missingChampPourLead, chipsAComplete } from './missingFields'
 import { resolveCss } from '../../../test/readCss.mjs'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
@@ -1676,5 +1676,63 @@ describe('ALEA52 — boîte d’envoi : canaux d’abord, réglages sous « Avan
     renderTab({ state: leadState({ type_installation: 'residentiel', devis: [devis1] }) })
     await ouvrirEnvoi(user)
     expect(screen.getByText('Options présentées au client :')).toBeInTheDocument()
+  })
+})
+
+/* ALEA53 — la puce « rythme » : un commercial sans activité est conduit à
+   l'ACTIVITÉ (2 clics), pas aux jours (6 clics + 2 champs). */
+describe('ALEA53 — puce « Jours et heures d’ouverture » : le plus court chemin', () => {
+  const LABEL = "Jours et heures d'ouverture (ou catégorie d'activité)"
+  const manquants = [{ champ: 'jours_ouverture', label: LABEL }]
+  const etat = (extra) => leadState({
+    devis_auto: { pret: false, manquants: [LABEL], manquants_detail: manquants, requis: [['jours_ouverture']] },
+    ...extra,
+  })
+
+  it('missingChampPourLead : commercial sans activité → catégorie ; sinon le champ lui-même', () => {
+    const e = (lead) => initState({ lead, mode: 'edit' })
+    expect(missingChampPourLead('jours_ouverture', e({ type_installation: 'commercial' }))).toBe('categorie_commerciale')
+    expect(missingChampPourLead('heure_debut', e({ type_installation: 'commercial', categorie_commerciale: '' }))).toBe('categorie_commerciale')
+    // activité déjà choisie (sans archétype) : on va aux jours
+    expect(missingChampPourLead('jours_ouverture', e({ type_installation: 'commercial', categorie_commerciale: 'autre' }))).toBe('jours_ouverture')
+    // industriel : pas de catégorie
+    expect(missingChampPourLead('jours_ouverture', e({ type_installation: 'industriel' }))).toBe('jours_ouverture')
+    expect(missingChampPourLead('contrat_electricite', e({ type_installation: 'commercial' }))).toBe('contrat_electricite')
+  })
+
+  it('le bandeau « à compléter » du centre pointe la même cible', () => {
+    const [puce] = chipsAComplete(etat({ type_installation: 'commercial' })).filter((c) => c.id === 'devis:jours_ouverture')
+    expect(puce.field).toBe('lf-categorie-commerciale')
+    expect(puce.section).toBe('pro')
+  })
+
+  it('cliquer la puce d’un commercial saute à l’activité', async () => {
+    const user = userEvent.setup()
+    const input = document.createElement('input')
+    input.id = 'lf-categorie-commerciale'
+    document.body.appendChild(input)
+    const focusSpy = vi.spyOn(input, 'focus')
+    try {
+      renderTab({ state: etat({ type_installation: 'commercial' }) })
+      await user.click(screen.getByText(LABEL))
+      await waitFor(() => expect(focusSpy).toHaveBeenCalled())
+    } finally {
+      input.remove()
+    }
+  })
+
+  it('cliquer la puce d’un industriel saute aux jours', async () => {
+    const user = userEvent.setup()
+    const input = document.createElement('input')
+    input.id = 'lf-jours-ouverture'
+    document.body.appendChild(input)
+    const focusSpy = vi.spyOn(input, 'focus')
+    try {
+      renderTab({ state: etat({ type_installation: 'industriel' }) })
+      await user.click(screen.getByText(LABEL))
+      await waitFor(() => expect(focusSpy).toHaveBeenCalled())
+    } finally {
+      input.remove()
+    }
   })
 })

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { FormField, Input } from '../../../../ui'
 import { getField } from '../draftCore'
 import { jumpToField } from '../jumpToField'
@@ -18,6 +19,11 @@ import SelectEnum from './SelectEnum'
    numériques sont `step="any"` — jamais un arrondi (12,5 kVA part tel quel).
    Les provenances servies (`entrees_ci`, CIQ405) sont en LECTURE SEULE. */
 
+// ALEA53 — la phase du site (monophasé / triphasé) : la MÊME colonne que
+// « Raccordement » du profil énergétique (`Lead.raccordement`), posée ici dans
+// l'ordre de l'appel C&I — « non raccordé » est un cas résidentiel isolé.
+// source-choix: crm.Lead.raccordement
+const PHASE_SITE = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
 // source-choix: crm.Lead.tension_raccordement
 const TENSION = { bt: 'Basse tension (BT)', mt: 'Moyenne tension (MT)', ne_sait_pas: 'Ne sait pas' }
 // source-choix: crm.Lead.tension_source
@@ -76,6 +82,7 @@ const QUESTIONS_PRO = {
   tension_source: "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? » — `site_defaut_visible` = valeur pré-cochée du site non modifiée par le client ; `mesure_visite` = relevé par notre technicien lors de la visite",
   contrat_electricite: "« Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. » — CIQ666 (décision fondateur 08/10/2026) : vocabulaire de `tarifs_ci.json` (`tarif_declare.contrat`) ; « ne sait pas » = aucun contrat transmis, jamais un contrat supposé",
   option_tarifaire_bt: "(posée avec le contrat, force motrice seulement) « Êtes-vous en option normale ou en option bi-horaire ? » — le bi-horaire n'est transmis au moteur que pour la force motrice",
+  raccordement: '« Votre installation électrique est-elle en monophasé ou en triphasé ? C\'est écrit sur votre facture ou sur votre compteur. »',
   compteur_puissance_kva: '« Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »',
   puissance_souscrite_source: "(posée avec la puissance) « Vous l'avez trouvée sur la facture, sur le contrat, ou c'est une estimation ? »",
   categorie_commerciale: '« Quelle est votre activité : hôtel, restaurant ou café, commerce, bureaux, santé, école, hammam, boulangerie, froid, ou autre chose ? »',
@@ -145,7 +152,6 @@ const RENVOIS = {
     { cle: 'facture_hiver', texte: 'Facture mensuelle déclarée (MAD)' },
     { cle: 'conso_mensuelle_kwh', texte: 'Consommation mensuelle (kWh)' },
   ],
-  raccordement: [{ cle: 'raccordement', texte: 'Phase : monophasé ou triphasé ?', segment: 'commercial' }],
   surface: [
     { cle: 'type_toiture', texte: 'Type de toiture' },
     { cle: 'surface_toiture_m2', texte: 'Surface disponible (m²)' },
@@ -184,9 +190,9 @@ function Renvois({ liste, segment }) {
   )
 }
 
-function Champ({ id, cle, ctx, children }) {
+function Champ({ id, cle, ctx, libelle, children }) {
   const { state, requis, errors } = ctx
-  const etiquette = fieldLabels[cle]?.label ?? cle
+  const etiquette = libelle ?? fieldLabels[cle]?.label ?? cle
   const prov = provenanceDe(state, cle)
   return (
     <FormField
@@ -223,9 +229,9 @@ function Texte({ 'data-field-anchor': id, cle, ctx, type = 'text' }) {
   )
 }
 
-function Choix({ 'data-field-anchor': id, cle, ctx, choix }) {
+function Choix({ 'data-field-anchor': id, cle, ctx, choix, libelle }) {
   return (
-    <Champ id={id} cle={cle} ctx={ctx}>
+    <Champ id={id} cle={cle} ctx={ctx} libelle={libelle}>
       <SelectEnum id={id} cle={cle} ctx={ctx} choix={choix} />
     </Champ>
   )
@@ -389,12 +395,184 @@ function TrancheDeclaree({ ctx }) {
   )
 }
 
+const vide = (v) => v === '' || v === null || v === undefined
+
+// ALEA53 — la provenance d'une saisie du vendeur est « Déclarée » par défaut :
+// dès qu'une valeur est posée ICI et que sa provenance est vide, on l'écrit
+// (jamais en silence : le résumé « Provenance » de chaque bloc la montre).
+// colonne saisie → colonne de provenance.
+const PROVENANCE_DE = {
+  tension_raccordement: 'tension_source',
+  compteur_puissance_kva: 'puissance_souscrite_source',
+  type_surface: 'surface_source',
+}
+function ctxProvenanceDeclaree(ctx) {
+  const { state, setField } = ctx
+  return {
+    ...ctx,
+    setField: (cle, valeur) => {
+      setField(cle, valeur)
+      const source = PROVENANCE_DE[cle]
+      if (source && !vide(valeur) && valeur !== 'ne_sait_pas' && vide(getField(state, source))) {
+        setField(source, 'declare')
+      }
+    },
+  }
+}
+
+// Le contrat BT / MT dit la tension : vide ⇒ on la remplit, et on le DIT.
+const TENSION_DU_CONTRAT = { bt_domestique: 'bt', bt_patente: 'bt', bt_force_motrice: 'bt', mt_general: 'mt' }
+
+// Les sélecteurs de provenance, repliés : « Déclarée » par défaut suffit à
+// l'appel ; on ne les ouvre que pour dire « lue sur la facture », « mesurée ».
+// Ils restent dans le DOM (hidden) : une ancre par champ, atteignable.
+function Provenances({ children, resume }) {
+  const [ouvert, setOuvert] = useState(false)
+  return (
+    <div data-provenances>
+      <button
+        type="button" className="link-button" aria-expanded={ouvert}
+        onClick={() => setOuvert((o) => !o)}
+      >
+        Préciser la provenance{ouvert ? ' ▴' : ' ▾'}
+      </button>
+      {resume && !ouvert && <span className="gen-hint" data-provenance-resume> {resume}</span>}
+      <div hidden={!ouvert}>{children}</div>
+    </div>
+  )
+}
+
+const libelleProvenance = (state, cle, choix) => {
+  const v = getField(state, cle)
+  return vide(v) ? null : (choix[v] ?? v)
+}
+
+// « Tension : Déclarée · Puissance : Déclarée » — ce qui sera enregistré, dit.
+function provenanceResume(state, colonnes) {
+  const morceaux = colonnes
+    .map(([nom, cle, choix]) => [nom, libelleProvenance(state, cle, choix)])
+    .filter(([, v]) => v)
+    .map(([nom, v]) => `${nom} : ${v}`)
+  return morceaux.length ? `Provenance — ${morceaux.join(' · ')}` : null
+}
+
 function Bloc({ titre, children }) {
   return (
     <div className="lw-bloc-pompage" role="group" aria-label={titre}>
       <h4 className="lw-bloc-titre">{titre}</h4>
       {children}
     </div>
+  )
+}
+
+// ── Raccordement : tension, contrat, puissance, PHASE (ALEA53) ──────────────
+function BlocRaccordement({ ctx }) {
+  const { state } = ctx
+  const cp = ctxProvenanceDeclaree(ctx)
+  const [tensionDeduite, setTensionDeduite] = useState(null)
+  // ALEA53 — un contrat « BT … » / « MT » dit la tension : si elle est vide on
+  // la remplit (et la provenance « Déclarée »), puis on le DIT sous le champ.
+  const ctxContrat = {
+    ...cp,
+    setField: (cle, valeur) => {
+      cp.setField(cle, valeur)
+      const tension = TENSION_DU_CONTRAT[valeur]
+      if (cle === 'contrat_electricite' && tension && vide(getField(state, 'tension_raccordement'))) {
+        cp.setField('tension_raccordement', tension)
+        setTensionDeduite(tension)
+      }
+    },
+  }
+  return (
+    <Bloc titre="Raccordement">
+      <div className="form-row">
+        <Choix data-field-anchor="lf-tension-raccordement" cle="tension_raccordement" ctx={cp} choix={TENSION} />
+        <Choix data-field-anchor="lf-raccordement" cle="raccordement" ctx={ctx} choix={PHASE_SITE}
+               libelle="Phase du site (monophasé / triphasé)" />
+      </div>
+      {tensionDeduite && !vide(getField(state, 'tension_raccordement')) && (
+        <p className="gen-hint" role="status" data-tension-deduite>
+          Tension remplie d&apos;après le contrat ({TENSION[tensionDeduite]}) — à corriger si besoin.
+        </p>
+      )}
+      {/* CIQ666 — le contrat déclaré : le devis automatique C&I en résout
+          la grille ONEE (« ne sait pas » = aucun contrat transmis). */}
+      <div className="form-row">
+        <Choix data-field-anchor="lf-contrat-electricite" cle="contrat_electricite" ctx={ctxContrat} choix={CONTRAT_ELECTRICITE} />
+        <Choix data-field-anchor="lf-option-tarifaire-bt" cle="option_tarifaire_bt" ctx={ctx} choix={OPTION_TARIFAIRE_BT} />
+      </div>
+      <div className="form-row">
+        <Nombre data-field-anchor="lf-compteur-puissance-kva" cle="compteur_puissance_kva" ctx={cp} placeholder="ex: 60" />
+      </div>
+      <Provenances resume={provenanceResume(state, [
+        ['Tension', 'tension_source', TENSION_SOURCE], ['Puissance', 'puissance_souscrite_source', PUISSANCE_SOURCE],
+      ])}>
+        <div className="form-row">
+          <Choix data-field-anchor="lf-tension-source" cle="tension_source" ctx={ctx} choix={TENSION_SOURCE} />
+          <Choix data-field-anchor="lf-puissance-souscrite-source" cle="puissance_souscrite_source" ctx={ctx} choix={PUISSANCE_SOURCE} />
+        </div>
+      </Provenances>
+    </Bloc>
+  )
+}
+
+// ── Activité & rythme ───────────────────────────────────────────────────────
+// ALEA53 — « Lun–Sam, 8 h–18 h » : raccourci EXPLICITE (un clic, valeurs
+// visibles, modifiables) ; il écrase jours et heures, jamais en silence.
+const RACCOURCI_HORAIRES = { jours_ouverture: [1, 2, 3, 4, 5, 6], heure_debut: 8, heure_fin: 18 }
+
+function BlocActivite({ ctx, industriel }) {
+  const { setField } = ctx
+  const appliquer = () => {
+    for (const [cle, valeur] of Object.entries(RACCOURCI_HORAIRES)) setField(cle, valeur)
+  }
+  return (
+    <Bloc titre="Activité & rythme">
+      {industriel ? (
+        <div className="form-row">
+          <Texte data-field-anchor="lf-secteur-industriel" cle="secteur_industriel" ctx={ctx} />
+          <Choix data-field-anchor="lf-export-ue" cle="export_ue_declare" ctx={ctx} choix={OUI_NON} />
+        </div>
+      ) : (
+        <>
+          <div className="form-row">
+            <Choix data-field-anchor="lf-categorie-commerciale" cle="categorie_commerciale" ctx={ctx} choix={CATEGORIE} />
+          </div>
+          <ReponsesCategorie ctx={ctx} />
+        </>
+      )}
+      <div className="form-row">
+        <Choix data-field-anchor="lf-regime-equipes" cle="regime_equipes" ctx={ctx} choix={REGIME_EQUIPES} />
+        <Nombre data-field-anchor="lf-heure-debut" cle="heure_debut" ctx={ctx} placeholder="ex: 8" />
+        <Nombre data-field-anchor="lf-heure-fin" cle="heure_fin" ctx={ctx} placeholder="ex: 18" />
+      </div>
+      <Cases data-field-anchor="lf-jours-ouverture" cle="jours_ouverture" ctx={ctx} valeurs={JOURS} />
+      <p className="gen-hint">
+        <button type="button" className="link-button" data-raccourci-horaires onClick={appliquer}>
+          Lun–Sam, 8 h–18 h
+        </button>
+        {' '}— remplit les jours et les heures ci-dessus (modifiables ensuite).
+      </p>
+      <Cases data-field-anchor="lf-fermeture-mois" cle="fermeture_mois" ctx={ctx} valeurs={MOIS} />
+    </Bloc>
+  )
+}
+
+// ── Surface : type + provenance repliée ─────────────────────────────────────
+function BlocSurface({ ctx, segment }) {
+  const cp = ctxProvenanceDeclaree(ctx)
+  return (
+    <Bloc titre="Surface">
+      <div className="form-row">
+        <Choix data-field-anchor="lf-type-surface" cle="type_surface" ctx={cp} choix={TYPE_SURFACE} />
+      </div>
+      <Provenances resume={provenanceResume(ctx.state, [['Surface', 'surface_source', SURFACE_SOURCE]])}>
+        <div className="form-row">
+          <Choix data-field-anchor="lf-surface-source" cle="surface_source" ctx={ctx} choix={SURFACE_SOURCE} />
+        </div>
+      </Provenances>
+      <Renvois liste={RENVOIS.surface} segment={segment} />
+    </Bloc>
   )
 }
 
@@ -430,54 +608,9 @@ export default function SectionPro({ state, setField, errors = {} }) {
         <ReleveConso ctx={ctx} />
       </Bloc>
 
-      <Bloc titre="Raccordement">
-        <div className="form-row">
-          <Choix data-field-anchor="lf-tension-raccordement" cle="tension_raccordement" ctx={ctx} choix={TENSION} />
-          <Choix data-field-anchor="lf-tension-source" cle="tension_source" ctx={ctx} choix={TENSION_SOURCE} />
-        </div>
-        {/* CIQ666 — le contrat déclaré : le devis automatique C&I en résout
-            la grille ONEE (« ne sait pas » = aucun contrat transmis). */}
-        <div className="form-row">
-          <Choix data-field-anchor="lf-contrat-electricite" cle="contrat_electricite" ctx={ctx} choix={CONTRAT_ELECTRICITE} />
-          <Choix data-field-anchor="lf-option-tarifaire-bt" cle="option_tarifaire_bt" ctx={ctx} choix={OPTION_TARIFAIRE_BT} />
-        </div>
-        <div className="form-row">
-          <Nombre data-field-anchor="lf-compteur-puissance-kva" cle="compteur_puissance_kva" ctx={ctx} placeholder="ex: 60" />
-          <Choix data-field-anchor="lf-puissance-souscrite-source" cle="puissance_souscrite_source" ctx={ctx} choix={PUISSANCE_SOURCE} />
-        </div>
-        <Renvois liste={RENVOIS.raccordement} segment={segment} />
-      </Bloc>
-
-      <Bloc titre="Activité & rythme">
-        {industriel ? (
-          <div className="form-row">
-            <Texte data-field-anchor="lf-secteur-industriel" cle="secteur_industriel" ctx={ctx} />
-            <Choix data-field-anchor="lf-export-ue" cle="export_ue_declare" ctx={ctx} choix={OUI_NON} />
-          </div>
-        ) : (
-          <>
-            <div className="form-row">
-              <Choix data-field-anchor="lf-categorie-commerciale" cle="categorie_commerciale" ctx={ctx} choix={CATEGORIE} />
-            </div>
-            <ReponsesCategorie ctx={ctx} />
-          </>
-        )}
-        <div className="form-row">
-          <Choix data-field-anchor="lf-regime-equipes" cle="regime_equipes" ctx={ctx} choix={REGIME_EQUIPES} />
-          <Nombre data-field-anchor="lf-heure-debut" cle="heure_debut" ctx={ctx} placeholder="ex: 8" />
-          <Nombre data-field-anchor="lf-heure-fin" cle="heure_fin" ctx={ctx} placeholder="ex: 18" />
-        </div>
-        <Cases data-field-anchor="lf-jours-ouverture" cle="jours_ouverture" ctx={ctx} valeurs={JOURS} />
-        <Cases data-field-anchor="lf-fermeture-mois" cle="fermeture_mois" ctx={ctx} valeurs={MOIS} />
-      </Bloc>
-
-      <Bloc titre="Surface">
-        <div className="form-row">
-          <Choix data-field-anchor="lf-type-surface" cle="type_surface" ctx={ctx} choix={TYPE_SURFACE} />
-          <Choix data-field-anchor="lf-surface-source" cle="surface_source" ctx={ctx} choix={SURFACE_SOURCE} />
-        </div>
-        <Renvois liste={RENVOIS.surface} segment={segment} />
-      </Bloc>
+      <BlocRaccordement ctx={ctx} />
+      <BlocActivite ctx={ctx} industriel={industriel} />
+      <BlocSurface ctx={ctx} segment={segment} />
 
       <Bloc titre="Décideur">
         <div className="form-row">

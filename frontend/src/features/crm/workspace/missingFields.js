@@ -34,6 +34,20 @@ export function missingFieldTarget(champ) {
 
 const vide = (v) => v === '' || v === null || v === undefined
 
+// ALEA53 — la puce « Jours et heures d'ouverture (ou catégorie d'activité) » d'un
+// lead COMMERCIAL sans activité mène à l'ACTIVITÉ (2 clics : une catégorie à
+// archétype lève le manque), pas aux jours (6 clics + 2 champs). Activité déjà
+// choisie, ou industriel (pas de catégorie) : le chemin des jours, inchangé. Une
+// seule règle, partagée par la puce de l'onglet Devis et le bandeau du centre.
+const CHAMPS_RYTHME = ['jours_ouverture', 'heure_debut']
+export function missingChampPourLead(champ, state) {
+  return CHAMPS_RYTHME.includes(champ)
+    && getField(state, 'type_installation') === 'commercial'
+    && vide(getField(state, 'categorie_commerciale'))
+    ? 'categorie_commerciale'
+    : champ
+}
+
 // Les étapes où une relance NON planifiée est une vraie lacune : un devis est
 // parti (ou on est déjà en relance) et personne ne sait quand rappeler. Avant
 // l'envoi du devis, ne rien avoir planifié est normal — on ne le signale pas.
@@ -57,7 +71,7 @@ export function chipsAComplete(state) {
   // les écrit, pour que l'écran et l'API disent exactement la même chose ;
   // cible résolue par le NOM DU CHAMP servi (QJR601).
   for (const { champ, label } of state?.server?.devis_auto?.manquants_detail ?? []) {
-    const cible = missingFieldTarget(champ)
+    const cible = missingFieldTarget(missingChampPourLead(champ, state))
     chips.push({
       id: `devis:${champ}`,
       label,

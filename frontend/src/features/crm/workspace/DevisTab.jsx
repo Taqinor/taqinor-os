@@ -26,7 +26,7 @@ import { reviserEtOuvrir } from '../../ventes/reviserDevis'
 // ROUND 5 — LE saut canonique (déplie toujours la section cible), partagé avec
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
-import { missingFieldTarget } from './missingFields'
+import { missingFieldTarget, missingChampPourLead } from './missingFields'
 import {
   DEVIS_MINI_TRACK, devisTrackCurrent, waArmed, devisIntent, lectureClientLabel,
   catalogueCiBloque, raisonCatalogueCi, noteDemandeCatalogueCi,
@@ -61,8 +61,8 @@ import SalleVenteAnalyticsBadge from '../../../pages/crm/leads/SalleVenteAnalyti
 // un champ dans une section repliée n'est pas dans le DOM, on retombait donc
 // sur l'en-tête de section et le même clic donnait deux résultats différents
 // selon l'état de repli. Un seul chemin, partagé avec le centre.
-function jumpToMissingField(champ) {
-  const target = missingFieldTarget(champ)
+function jumpToMissingField(champ, state) {
+  const target = missingFieldTarget(missingChampPourLead(champ, state))
   if (!target) return
   jumpToField(target)
 }
@@ -290,7 +290,7 @@ export default function DevisTab({
                 <button
                   type="button"
                   className="lw-context-missing-link"
-                  onClick={() => jumpToMissingField(champ)}
+                  onClick={() => jumpToMissingField(champ, state)}
                 >
                   {label}
                 </button>
