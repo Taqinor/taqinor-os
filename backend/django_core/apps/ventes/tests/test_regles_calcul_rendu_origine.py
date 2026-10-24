@@ -163,6 +163,9 @@ _CLES_AGQ = frozenset((
     'agr_annexe_site_titre', 'agr_annexe_site', 'agr_annexe_cultures',
     'agr_annexe_besoin_livre_mois',
     'agr_annexe_besoin_debit_souhaite',
+    # AGQ48 / AGQ50 (24/10) — mots du fermier reformulés et ligne SAV : des
+    # TEXTES du catalogue, jamais un chiffre.
+    'agr_charges_solaires', 'agr_remplacement', 'agr_indexation', 'agr_sav_delai',
     'agr_annexe_besoin_declare', 'agr_annexe_besoin_fao56', 'agr_annexe_irradiation_pvgis',
     'agr_annexe_irradiation_repli', 'agr_annexe_hmt_saisie', 'agr_annexe_ligne_besoin',
     'agr_annexe_ligne_livre', 'agr_annexe_ligne_couverture', 'agr_annexe_dimensionnement_titre',
