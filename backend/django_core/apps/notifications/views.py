@@ -412,7 +412,11 @@ class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         # ``year`` est un entier au schéma : illisible -> 400 (ignoré avant).
-        yr = entier_ou_400(self.request.query_params.get('year'), 'year')
+        brut = self.request.query_params.get('year')
+        if brut is not None and not brut.strip():
+            # ``?year=`` vide : le schéma publie un entier (ENF11).
+            raise serializers.ValidationError({'year': ['Entier attendu.']})
+        yr = entier_ou_400(brut, 'year')
         if yr is not None:
             # ERR-ENF11-FUZZ-NOTIFICATIONS — une année hors 1..9999 (ex.
             # 10**20) faisait lever OverflowError (500) : traitée comme un
@@ -910,7 +914,7 @@ def attention_summary(request):
 
 @extend_schema(
     request=inline_serializer('PushUnsubscribeRequest', {
-        'endpoint': RegexField(r'\S', max_length=1000),
+        'endpoint': RegexField(_NON_VIDE, max_length=1000),
     }),
     responses={200: inline_serializer(
         'PushUnsubscribed', {'deleted': serializers.IntegerField()}),

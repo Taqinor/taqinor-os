@@ -35,6 +35,7 @@ from .models import ContratMaintenance, Ticket
 from .pdf import rapport_maintenance_pdf
 from .query_params import (
     DATE_OU_VIDE, ENTIER_ID, ID_MAX, date_param, entier_param, nombre_param,
+    ou_vide,
 )
 from .serializers_maintenance import ContratMaintenanceSerializer
 
@@ -323,11 +324,11 @@ class ContratMaintenanceViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('lat', {
-                'type': 'number', 'minimum': -90, 'maximum': 90},
+            OpenApiParameter('lat', ou_vide({
+                'type': 'number', 'minimum': -90, 'maximum': 90}),
                 required=False, description="Latitude du point d'origine."),
-            OpenApiParameter('lng', {
-                'type': 'number', 'minimum': -180, 'maximum': 180},
+            OpenApiParameter('lng', ou_vide({
+                'type': 'number', 'minimum': -180, 'maximum': 180}),
                 required=False, description="Longitude du point d'origine."),
         ],
         responses=inline_serializer('TourneeReponse', {

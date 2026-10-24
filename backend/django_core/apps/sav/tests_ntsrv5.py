@@ -113,3 +113,18 @@ class NTSRV5LogAppelTest(TestCase):
         self.ticket.save(update_fields=['canal_ouverture'])
         self.ticket.refresh_from_db()
         self.assertEqual(self.ticket.canal_ouverture, 'telephone')
+
+    def test_duree_demesuree_400_et_substitut_isole_accepte(self):
+        # api-fuzz-full : 3843366061971633934 minutes (colonne 32 bits) et un
+        # substitut isolé dans ``notes`` faisaient répondre 500.
+        resp = self.api.post(
+            self._url(), {'duree_minutes': 3843366061971633934}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('duree_minutes', resp.json())
+        resp = self.api.post(
+            self._url(), {'duree_minutes': 2, 'notes': 'ok\ud9d1'},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        for corps in ([], {'duree_minutes': '5'}, {'issue': None}):
+            resp = self.api.post(self._url(), corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))

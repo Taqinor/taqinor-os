@@ -1,6 +1,6 @@
 import re
 from datetime import timedelta
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db import transaction, IntegrityError
@@ -22,15 +22,24 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
-from core.champs_stricts import BooleenStrict, ChaineStricte, DecimalBornee, entier_ou_400
+from core.champs_stricts import (
+    MOTIF_NON_BLANC_SANS_NUL, BooleenStrict, ChaineStricte, DateStricte,
+    DecimalBornee, EntierStrict, entier_ou_400,
+)
 from core.conflit_etat import ConflitEtat
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON, JsonSeulementMixin
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 
+from apps.records.champs_stricts import RegexStricte
+
 from . import activity
+from .champs_corps import (
+    QuantitePositive, TexteSansSubstitut,
+)
 from .validations_releve import exiger_objet
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
@@ -45,7 +54,7 @@ from .models import (
 from .dateutils import add_months
 from .query_params import (
     CORPS_ACTIONS_GROUPEES_VALEUR_REQUISE, CORPS_TICKET_CLIENT_OU_EQUIPEMENT,
-    DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, ORDRES_PROBLEME, ORDRES_PROBLEME_SCHEMA,
+    DATE_OU_VIDE, ENTIER_ID, ID_MAX, LIMITE_MAX, ORDRES_PROBLEME, ORDRES_PROBLEME_SCHEMA, ou_vide,
     archives_incluses, choix_param, date_param, entier_param,
 )
 from .pdf import fiche_synthese_ticket_pdf, rapport_intervention_pdf
@@ -124,6 +133,51 @@ _SCHEMA_REBUT = _sch('SavMettreAuRebutRequete', {'motif': ChaineStricte()})
 # levait un 500 sur ``.get``).
 _SCHEMA_CHECKLIST_INIT = _sch('SavChecklistInitRequete', {
     'template_id': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX)})
+# api-fuzz-full : corps lus PAR leur déclaration (``[]`` en corps, ``numero_serie``
+# numérique, ``date_sortie: ""`` : 500 ou refus d'un corps conforme).
+_SCHEMA_PLANIFIER_INTERVENTION = _sch('SavPlanifierInterventionRequete', {
+    'type_intervention': ChaineStricte(required=False, max_length=20)})
+_SCHEMA_PRET_EQUIPEMENT = _sch('SavPretEquipementRequete', {
+    # Entier non strict : le sélecteur de l'écran envoie l'identifiant en texte.
+    'produit': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX),
+    'date_sortie': DateStricte(required=False),
+    'date_retour_prevue': DateStricte(required=False),
+    'numero_serie': ChaineStricte(required=False, allow_blank=True)})
+_SCHEMA_LOG_APPEL = _sch('SavLogAppelRequete', {
+    'issue': RegexStricte(
+        r'^(joint|non_joint|rappel|refuse|interesse)?$',
+        required=False, allow_blank=True),
+    'duree_minutes': EntierStrict(
+        required=False, allow_null=True, min_value=0, max_value=ID_MAX),
+    'notes': TexteSansSubstitut(required=False, allow_blank=True)})
+_SCHEMA_PIECE_CONSOMMEE = _sch('SavPieceConsommeeRequete', {
+    'produit': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX),
+    'quantite': QuantitePositive(required=False),
+    'decrement': drf_serializers.BooleanField(required=False)})
+_SCHEMA_PIECE_RETIREE = _sch('SavPieceRetireeRequete', {
+    'produit': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX),
+    'quantite': QuantitePositive(required=False),
+    'numero_serie': TexteSansSubstitut(required=False, allow_blank=True),
+    'destination': drf_serializers.ChoiceField(
+        choices=PieceRetiree.Destination.values, required=False),
+    'operation': drf_serializers.ChoiceField(
+        choices=PieceRetiree.Operation.values, required=False),
+    'serie_neuve': TexteSansSubstitut(required=False, allow_blank=True),
+    'produit_neuf': drf_serializers.IntegerField(
+        required=False, allow_null=True, min_value=1, max_value=ID_MAX)})
+_SCHEMA_ANNULER = _sch('SavAnnulerRequete', {
+    'motif': TexteSansSubstitut(
+        required=False, allow_blank=True, allow_null=True)})
+_SCHEMA_NOTER = _sch('SavNoterRequete', {
+    'body': TexteSansSubstitut(required=False, allow_blank=True),
+    'reponse_type_id': EntierStrict(
+        required=False, min_value=1, max_value=ID_MAX),
+    'visible_client': BooleenStrict(required=False)})
+#: ``noter`` exige un texte non blanc OU une réponse type (sinon 400 « Note vide »).
+_CORPS_NOTER = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'required': ['body'],
+     'properties': {'body': {'pattern': MOTIF_NON_BLANC_SANS_NUL}}},
+    {'required': ['reponse_type_id']}]}}
 _SCHEMA_FUSIONNER = _sch('SavFusionnerRequete', {
     'doublon_id': drf_serializers.IntegerField(min_value=1, max_value=ID_MAX)})
 
@@ -238,7 +292,9 @@ _GARANTIES = (
         OpenApiParameter('marque', OpenApiTypes.STR, required=False),
         OpenApiParameter('installation', ENTIER_ID, required=False),
         OpenApiParameter('client', ENTIER_ID, required=False),
-        OpenApiParameter('statut', OpenApiTypes.STR, required=False),
+        OpenApiParameter(
+            'statut', OpenApiTypes.STR, required=False,
+            enum=[*Equipement.Statut.values, '']),
         OpenApiParameter(
             'garantie', OpenApiTypes.STR, required=False, enum=list(_GARANTIES)),
         OpenApiParameter('categorie', ENTIER_ID, required=False),
@@ -285,7 +341,9 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         marque = params.get('marque')
         installation = entier_param(self.request, 'installation')
         client = entier_param(self.request, 'client')
-        statut = params.get('statut')
+        # api-fuzz-full : ``statut`` hors énumération (NUL compris) = 500.
+        statut = choix_param(
+            self.request, 'statut', tuple(Equipement.Statut.values))
         garantie = choix_ou_400(self.request, 'garantie', _GARANTIES)
         categorie = entier_param(self.request, 'categorie')
         if produit:
@@ -578,7 +636,8 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[OpenApiParameter(
-            'jours', {'type': 'integer', 'minimum': 0, 'maximum': 36500},
+            'jours', ou_vide(
+                {'type': 'integer', 'minimum': 0, 'maximum': 36500}),
             required=False,
             description="Seuil « expire bientôt » en jours.")],
         responses=_RegistreGaranties)
@@ -1499,7 +1558,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[OpenApiParameter(
-            'limit', {'type': 'integer', 'minimum': 1}, required=False)],
+            'limit', ou_vide({'type': 'integer', 'minimum': 1}),
+            required=False)],
         responses=_sch('SavSimilairesReponse', {
             'results': drf_serializers.ListField(child=drf_serializers.DictField())}))
     @action(detail=True, methods=['get'], url_path='similaires',
@@ -1584,11 +1644,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(TicketActiviteAFaireSerializer(act).data)
 
     @extend_schema(
-        request=_sch('SavNoterRequete', {
-            'body': _CharF(required=False, allow_blank=True),
-            'reponse_type_id': drf_serializers.IntegerField(required=False),
-            'visible_client': drf_serializers.BooleanField(required=False),
-        }),
+        request=_SCHEMA_NOTER, extensions=_CORPS_NOTER,
         responses={201: TicketActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1604,17 +1660,17 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ``nouveau_statut``, il est appliqué au ticket (idempotent : ignoré
         si le ticket est déjà dans ce statut)."""
         ticket = self.get_object()
-        body = (request.data.get('body') or '').strip()
-        reponse_type_id = request.data.get('reponse_type_id')
+        corps = _valider_corps(_SCHEMA_NOTER, request.data)
+        body = (corps.get('body') or '').strip()
+        reponse_type_id = corps.get('reponse_type_id')
         statut_macro = None
 
         if not body and reponse_type_id:
             try:
                 macro = ReponseType.objects.get(
                     pk=reponse_type_id, company=ticket.company)
-            except (ReponseType.DoesNotExist, ValueError):
-                return Response(
-                    {'detail': 'Réponse type introuvable.'}, status=400)
+            except ReponseType.DoesNotExist:
+                raise NotFound('Réponse type introuvable.')
             # NTSRV34 — une macro restreinte à d'autres canaux n'est pas
             # seulement masquée du sélecteur : elle est refusée côté serveur
             # (une macro SANS restriction reste acceptée partout — défaut).
@@ -1648,8 +1704,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 return Response(exc.detail, status=400)
         # NTPRT12 — opt-in EXPLICITE : sans `visible_client` vrai dans le
         # corps, la note reste interne et le portail client ne la voit jamais.
-        visible_client = request.data.get('visible_client') in (
-            True, 'true', 'True', '1', 1, 'on')
+        visible_client = bool(corps.get('visible_client'))
         act = activity.log_note(
             ticket, request.user, body, visible_client=visible_client)
         # ASAV19 — une note VISIBLE CLIENT est une réponse au client ; une
@@ -1668,13 +1723,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(TicketActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=None)
+    @extend_schema(request=_SCHEMA_ANNULER)
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
     def annuler(self, request, pk=None):
         """Annule le ticket (DRAPEAU avec motif — pas une étape)."""
         ticket = self.get_object()
-        motif = (request.data.get('motif') or '').strip()
+        motif = (_valider_corps(_SCHEMA_ANNULER, request.data).get('motif')
+                 or '').strip()
         if not ticket.annule:
             ticket.annule = True
             ticket.motif_annulation = motif or None
@@ -1774,14 +1830,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             TicketSerializer(ticket, context={'request': request}).data)
 
     @extend_schema(
-        request=_sch('SavLogAppelRequete', {
-            'issue': drf_serializers.RegexField(
-                r'^(joint|non_joint|rappel|refuse|interesse)?$',
-                required=False, allow_blank=True),
-            'duree_minutes': drf_serializers.IntegerField(
-                required=False, min_value=0),
-            'notes': _CharF(required=False, allow_blank=True),
-        }),
+        request=_SCHEMA_LOG_APPEL,
         responses={201: _sch('SavLogAppelReponse', {
             'id': drf_serializers.IntegerField(),
             'kind': _CharF(),
@@ -1800,30 +1849,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
         de ``crm.LeadActivity`` (joint / non joint / à rappeler / refus /
         intéressé). Erreurs en français, nommant le champ fautif."""
         ticket = self.get_object()
-
-        issue = (request.data.get('issue')
-                 or request.data.get('outcome') or '').strip()
-        issues_valides = {code for code, _ in TicketActivity.OUTCOMES}
-        if issue not in issues_valides:
-            return Response(
-                {'issue': 'Issue inconnue (joint, non_joint, rappel, refuse, '
-                          'interesse, ou vide).'}, status=400)
-
-        duree_brute = request.data.get('duree_minutes',
-                                       request.data.get('duree'))
-        duree = None
-        if duree_brute not in (None, ''):
-            try:
-                duree = int(duree_brute)
-            except (TypeError, ValueError):
-                duree = -1
-            if duree < 0:
-                return Response(
-                    {'duree_minutes': 'Durée invalide : un nombre de minutes '
-                                      '(entier positif) est attendu.'},
-                    status=400)
-
-        notes = (request.data.get('notes') or '').strip()[:4000]
+        corps_appel = _valider_corps(_SCHEMA_LOG_APPEL, request.data)
+        issue = (corps_appel.get('issue') or '').strip()
+        duree = corps_appel.get('duree_minutes')
+        notes = (corps_appel.get('notes') or '').strip()[:4000]
         libelle = dict(TicketActivity.OUTCOMES).get(issue, issue)
         corps = 'Appel téléphonique'
         if duree is not None:
@@ -1963,12 +1992,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=PieceConsommeeSerializer(many=True))
     @extend_schema(
         methods=['POST'],
-        request=_sch('SavPieceConsommeeRequete', {
-            'produit': drf_serializers.IntegerField(),
-            'quantite': drf_serializers.DecimalField(
-                max_digits=12, decimal_places=2, required=False),
-            'decrement': drf_serializers.BooleanField(required=False),
-        }),
+        request=_SCHEMA_PIECE_CONSOMMEE,
         responses={201: PieceConsommeeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pieces', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -1988,19 +2012,13 @@ class TicketViewSet(CompanyScopedModelViewSet):
         from apps.stock.services import (
             mouvement_type_sortie, record_stock_movement,
         )
+        corps = _valider_corps(_SCHEMA_PIECE_CONSOMMEE, request.data)
+        quantite = corps.get('quantite', Decimal('1'))
         try:
-            quantite = Decimal(str(request.data.get('quantite') or '1'))
-        except (InvalidOperation, TypeError):
-            return Response({'detail': 'Quantité invalide.'}, status=400)
-        if quantite <= 0:
-            return Response({'detail': 'Quantité invalide.'}, status=400)
-        try:
-            produit = get_produit_or_raise(
-                ticket.company, request.data.get('produit'))
+            produit = get_produit_or_raise(ticket.company, corps['produit'])
         except (produit_does_not_exist(), ValueError, TypeError):
             return Response({'detail': 'Produit inconnu.'}, status=404)
-        decrement = str(request.data.get('decrement') or '') in (
-            '1', 'true', 'True', 'on')
+        decrement = bool(corps.get('decrement'))
         if decrement:
             # ERR80 — garde plancher : ne jamais piloter le stock en négatif.
             # On bloque le décrément qui dépasserait le stock en main.
@@ -2079,16 +2097,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=PieceRetireeSerializer(many=True))
     @extend_schema(
         methods=['POST'],
-        request=_sch('SavPieceRetireeRequete', {
-            'produit': drf_serializers.IntegerField(),
-            'quantite': drf_serializers.DecimalField(
-                max_digits=12, decimal_places=2, required=False),
-            'numero_serie': _CharF(required=False, allow_blank=True),
-            'destination': _CharF(required=False),
-            'operation': _CharF(required=False),
-            'serie_neuve': _CharF(required=False, allow_blank=True),
-            'produit_neuf': drf_serializers.IntegerField(required=False),
-        }),
+        request=_SCHEMA_PIECE_RETIREE,
         responses={201: PieceRetireeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pieces-retirees', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2109,27 +2118,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
             RetraitHorsPerimetreError, RetraitProduitIncoherentError,
             SerieNeuveDejaAuParcError, retirer_piece,
         )
+        corps = _valider_corps(_SCHEMA_PIECE_RETIREE, request.data)
+        quantite = corps.get('quantite', Decimal('1'))
         try:
-            quantite = Decimal(str(request.data.get('quantite') or '1'))
-        except (InvalidOperation, TypeError):
-            return Response({'detail': 'Quantité invalide.'}, status=400)
-        if quantite <= 0:
-            return Response({'detail': 'Quantité invalide.'}, status=400)
-        try:
-            produit = get_produit_or_raise(
-                ticket.company, request.data.get('produit'))
+            produit = get_produit_or_raise(ticket.company, corps['produit'])
         except (produit_does_not_exist(), ValueError, TypeError):
             return Response({'detail': 'Produit inconnu.'}, status=404)
-        destination = request.data.get('destination') or PieceRetiree.Destination.REBUT
-        if destination not in PieceRetiree.Destination.values:
-            return Response({'detail': 'Destination invalide.'}, status=400)
+        destination = corps.get('destination') or PieceRetiree.Destination.REBUT
         # ZMFG8 — typage opérationnel explicite (retrait/recyclage).
-        operation = request.data.get('operation') or PieceRetiree.Operation.RETRAIT
-        if operation not in PieceRetiree.Operation.values:
-            return Response({'detail': 'Opération invalide.'}, status=400)
-        numero_serie = (request.data.get('numero_serie') or '').strip()
+        operation = corps.get('operation') or PieceRetiree.Operation.RETRAIT
+        numero_serie = (corps.get('numero_serie') or '').strip()
         # ASAV9 — ``serie_neuve`` (optionnel) : l'appareil neuf entre au parc.
-        serie_neuve = (request.data.get('serie_neuve') or '').strip()
+        serie_neuve = (corps.get('serie_neuve') or '').strip()
         if serie_neuve:
             from .models import Equipement
             if Equipement.objects.filter(
@@ -2156,11 +2156,10 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 if serie_neuve and piece.equipement_remplace is not None:
                     from .services import remplacer_equipement
                     produit_neuf = produit
-                    if request.data.get('produit_neuf'):
+                    if corps.get('produit_neuf'):
                         try:
                             produit_neuf = get_produit_or_raise(
-                                ticket.company,
-                                request.data.get('produit_neuf'))
+                                ticket.company, corps['produit_neuf'])
                         except (produit_does_not_exist(), ValueError,
                                 TypeError):
                             raise _ProduitNeufInconnu()
@@ -2290,8 +2289,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         }, status=201)
 
     @extend_schema(
-        request=_sch('SavPlanifierInterventionRequete', {
-            'type_intervention': _CharF(required=False)}),
+        request=_SCHEMA_PLANIFIER_INTERVENTION,
         responses={201: _sch('SavPlanifierInterventionReponse', {
             'intervention_id': drf_serializers.IntegerField(),
             'ticket_statut': _CharF(),
@@ -2310,13 +2308,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ``apps.installations.services`` (frontière cross-app, jamais un
         import du modèle ``Intervention``)."""
         ticket = self.get_object()
+        corps = _valider_corps(_SCHEMA_PLANIFIER_INTERVENTION, request.data)
         from apps.installations.services import (
             TicketSansInstallationError, creer_intervention_depuis_ticket,
         )
         try:
             interv = creer_intervention_depuis_ticket(
                 ticket=ticket, user=request.user, company=ticket.company,
-                type_intervention=request.data.get('type_intervention'))
+                type_intervention=corps.get('type_intervention'))
         except TicketSansInstallationError as exc:
             raise ConflitEtat(str(exc))
         # AUD514 — le passage NOUVEAU → PLANIFIE passe par la machine d'états
@@ -2351,12 +2350,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=PretEquipementSerializer(many=True))
     @extend_schema(
         methods=['POST'],
-        request=_sch('SavPretEquipementRequete', {
-            'produit': drf_serializers.IntegerField(),
-            'date_sortie': drf_serializers.DateField(required=False),
-            'date_retour_prevue': drf_serializers.DateField(required=False),
-            'numero_serie': _CharF(required=False, allow_blank=True),
-        }),
+        request=_SCHEMA_PRET_EQUIPEMENT,
         responses={201: PretEquipementSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='prets-equipement', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2368,33 +2362,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if request.method == 'GET':
             qs = ticket.prets_equipement.select_related('produit')
             return Response(PretEquipementSerializer(qs, many=True).data)
-        from datetime import date as _date
-
         from apps.stock.selectors import (
             get_produit_or_raise, produit_does_not_exist,
         )
         from .services import PretEquipementError, creer_pret_equipement
+        corps = _valider_corps(_SCHEMA_PRET_EQUIPEMENT, request.data)
         try:
-            produit = get_produit_or_raise(
-                ticket.company, request.data.get('produit'))
+            produit = get_produit_or_raise(ticket.company, corps['produit'])
         except (produit_does_not_exist(), ValueError, TypeError):
             return Response({'detail': 'Produit inconnu.'}, status=404)
-
-        def _parse_date(raw):
-            if not raw:
-                return None
-            if isinstance(raw, _date):
-                return raw
-            try:
-                return _date.fromisoformat(str(raw))
-            except ValueError:
-                return None
-
-        date_sortie = _parse_date(request.data.get('date_sortie')) or (
-            timezone.localdate())
-        date_retour_prevue = _parse_date(
-            request.data.get('date_retour_prevue'))
-        numero_serie = (request.data.get('numero_serie') or '').strip()
+        date_sortie = corps.get('date_sortie') or timezone.localdate()
+        date_retour_prevue = corps.get('date_retour_prevue')
+        numero_serie = (corps.get('numero_serie') or '').strip()
         try:
             with transaction.atomic():
                 pret = creer_pret_equipement(
@@ -2500,6 +2479,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             201: TicketChecklistItemSerializer(many=True)})
     @extend_schema(
         methods=['PATCH'],
+        # Corps OBLIGATOIRE (sans corps, ``cle`` manque : 400 « conforme »).
+        extensions={EXTENSION_CORPS_RESSERRE: {'required': ['cle']}},
         # Schéma brut : ``cle`` est OBLIGATOIRE (sans lui le composant « Patched »
         # annonçait tous les champs facultatifs alors que la vue exige ``cle``).
         request={'application/json': {
@@ -3680,10 +3661,13 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
     @extend_schema(
         parameters=[
-            OpenApiParameter('fenetre_jours', OpenApiTypes.INT, required=False,
-                             description='Fenêtre en jours (défaut 30).'),
-            OpenApiParameter('seuil', OpenApiTypes.INT, required=False,
-                             description="Nombre d'occurrences (défaut 3)."),
+            OpenApiParameter('fenetre_jours', ou_vide(
+                {'type': 'integer', 'minimum': 1, 'maximum': 3650}),
+                required=False, description='Fenêtre en jours (défaut 30).'),
+            OpenApiParameter('seuil', ou_vide(
+                {'type': 'integer', 'minimum': 1, 'maximum': 1000}),
+                required=False,
+                description="Nombre d'occurrences (défaut 3)."),
         ],
         responses=inline_serializer('SavProblemeRegroupementsResponse', {
             'fenetre_jours': drf_serializers.IntegerField(),
@@ -3716,17 +3700,10 @@ class ProblemeViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         ensuite dans l'assistant (NTSRV31)."""
         from .selectors import tickets_candidats_probleme
 
-        params = request.query_params
-        try:
-            fenetre = int(params.get('fenetre_jours') or 30)
-        except (TypeError, ValueError):
-            raise ValidationError(
-                {'fenetre_jours': 'Indiquez un nombre de jours (ex. 30).'})
-        try:
-            seuil = int(params.get('seuil') or 3)
-        except (TypeError, ValueError):
-            raise ValidationError(
-                {'seuil': 'Indiquez un nombre d’occurrences (ex. 3).'})
+        # ENF11 — bornes publiées (un entier démesuré faisait déborder
+        # ``timedelta`` : 500).
+        fenetre = entier_param(request, 'fenetre_jours', 30, maxi=3650)
+        seuil = entier_param(request, 'seuil', 3, maxi=1000)
         groupes = tickets_candidats_probleme(
             request.user.company, fenetre, seuil=seuil)
         return Response({

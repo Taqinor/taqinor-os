@@ -158,3 +158,13 @@ class YSERV2HandoffTest(TestCase):
         notes_apres = TicketActivity.objects.filter(
             ticket=ticket, kind=TicketActivity.Kind.NOTE).count()
         self.assertEqual(notes_avant, notes_apres)
+
+    def test_planifier_intervention_corps_mal_forme_400(self):
+        # api-fuzz-full : un corps ``[]`` levait AttributeError (500).
+        ticket = self._ticket(installation=self.inst)
+        api = auth(self.admin)
+        url = f'/api/django/sav/tickets/{ticket.pk}/planifier-intervention/'
+        for corps in ([], {'type_intervention': 12}, {'type_intervention': 'x' * 21}):
+            resp = api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        self.assertFalse(Intervention.objects.filter(ticket=ticket).exists())

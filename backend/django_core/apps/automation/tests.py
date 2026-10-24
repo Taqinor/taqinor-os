@@ -879,6 +879,24 @@ class ApprovalRequestTests(TestCase):
             ApprovalRequestType.objects.get(pk=resp.data['id']).company,
             self.co)
 
+    def test_type_substituts_isoles_et_nul_ne_font_pas_500(self):
+        # api-fuzz-full : un substitut isolé (nom, listes, clés de
+        # ``champs_config``) ou un NUL dans ``champs_config`` -> 500 au stockage.
+        api = auth(self.admin)
+        resp = api.post('/api/django/automation/approval-request-types/', {
+            'nom': 'Type\ud826', 'champs_requis': ['m\ud800'],
+            'champs_config': {'c\ud800': {'\u0000x': [1, 32589158477190044729]}},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        obj = ApprovalRequestType.objects.get(pk=resp.data['id'])
+        self.assertEqual(obj.nom, 'Type')
+        self.assertEqual(obj.champs_requis, ['m'])
+        self.assertEqual(
+            obj.champs_config, {'c': {'x': [1, 32589158477190044729]}})
+        resp = api.post('/api/django/automation/approval-request-types/', {
+            'nom': 'Liste', 'champs_config': [1]}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
     def test_employee_cannot_create_type(self):
         api = auth(self.employe)
         resp = api.post('/api/django/automation/approval-request-types/', {

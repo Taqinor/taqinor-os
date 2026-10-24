@@ -66,6 +66,18 @@ class ZMFG6WorksheetTest(TestCase):
         sla.worksheets_maintenance_actifs = True
         sla.save(update_fields=['worksheets_maintenance_actifs'])
 
+    def test_modele_champs_nul_et_substituts_isoles_acceptes(self):
+        # api-fuzz-full : un NUL ou un substitut isolé dans ``champs`` (clés
+        # comprises) faisait répondre 500 au stockage jsonb.
+        resp = self.api.post('/api/django/sav/worksheet-modeles/', {
+            'nom': 'Fuzz\ud9d1', 'champs': [
+                {'o\u0000x\ud955': ['a\u0000', {'k\ud800': None}]}],
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        modele = WorksheetMaintenanceModele.objects.get(pk=resp.data['id'])
+        self.assertEqual(modele.nom, 'Fuzz')
+        self.assertEqual(modele.champs, [{'ox': ['a', {'k': None}]}])
+
     def test_off_by_default_returns_404(self):
         resp = self.api.get(f'/api/django/sav/tickets/{self.ticket.pk}/worksheet/')
         self.assertEqual(resp.status_code, 404)
