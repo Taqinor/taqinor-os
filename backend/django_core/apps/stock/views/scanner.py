@@ -18,7 +18,6 @@ comptage (`inventaire-sessions/`).
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from ..openapi_helpers import INT, P, STR, corps
-from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 from rest_framework import serializers, status
 from rest_framework.parsers import JSONParser
 from rest_framework.decorators import api_view, parser_classes, permission_classes
