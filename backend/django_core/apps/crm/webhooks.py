@@ -1757,6 +1757,9 @@ _QUEST_NETTOYEURS_HORS_SITE = {
     'carburant_prix_unitaire_mad': _quest_carburant_prix_unitaire_mad,
     'depense_carburant_mad_mois': _quest_depense_carburant_mad_mois,
     'mois_irrigation': _quest_mois_irrigation,
+    # AGQ34 (D-AGQ-6) — 0 < jours ≤ 7 ; 0 ou hors bornes ⇒ ignoré (même règle
+    # que le sérialiseur AGQ10) ; fichier-mur C20 : aucune fonction neuve ici.
+    'jours_irrigation_semaine': lambda raw: _clean_decimal(raw, lo=0, hi=7) or None,
     'compteur_eau': _quest_compteur_eau,
     'conso_mensuelle_kwh': _quest_conso,
     'surface_toiture_m2': _quest_surface,

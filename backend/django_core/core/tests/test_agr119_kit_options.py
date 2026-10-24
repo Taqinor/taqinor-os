@@ -115,6 +115,34 @@ class Installation(unittest.TestCase):
                           if a["code"] == "bareme_installation_toiture"])
 
 
+class Kit(unittest.TestCase):
+    """AGQ5 (C-AGQ-004) — barème = prix connu ; socles au kit."""
+
+    def test_installation_a_bareme_est_prix_connu_et_socles_quotes(self):
+        inst = dict(INST_PMP_VIDE, prix_fixe_ht=3000, prix_par_panneau_ht=150)
+        socle = {"id": 52, "nom": "Socle béton", "prix_connu": True}
+        kit = composer_kit(**dict(BASE, installation_pompage=inst,
+                                  socle=socle))
+        ligne = next(x for x in kit["inclus"] if x["cle"] == "installation")
+        self.assertTrue(ligne["prix_connu"])
+        self.assertEqual(ligne["produit"], 60)
+        self.assertNotIn(SUFFIXE_PRIX, ligne["designation"])
+        socles = next(x for x in kit["inclus"] if x["cle"] == "socles")
+        self.assertEqual(socles["quantite"], 28)
+        self.assertTrue(socles["prix_connu"])
+        dans_lignes = next(x for x in kit["lignes"]
+                           if x["cle"] == "installation")
+        self.assertEqual(dans_lignes["produit"], 60)
+
+    def test_repli_installation_a_bareme_prix_connu(self):
+        repli = dict(INST_CAT, prix_connu=False, prix_fixe_ht=2000,
+                     prix_par_panneau_ht=250)
+        kit = composer_kit(**dict(BASE, installation_toiture=repli))
+        ligne = next(x for x in kit["inclus"] if x["cle"] == "installation")
+        self.assertTrue(ligne["prix_connu"])
+        self.assertEqual(ligne["produit"], 61)
+
+
 class Options(unittest.TestCase):
 
     def test_compteur_coche_sans_produit_price_prix_a_renseigner(self):

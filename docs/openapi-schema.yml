@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3530}
+counts: {paths: 4814, operations: 7566, components: 3532}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10787,6 +10787,7 @@ components:
 - ModeLiberationEnum
 - ModePaiementClientEnum
 - ModePaiementFournisseurEnum
+- ModePompeEnum
 - ModeSaisieEnum
 - ModelEnum
 - ModeleBcfGenererCorpsRequest
@@ -11705,6 +11706,7 @@ components:
 - PolitiqueFacturationAchatEnum
 - PolitiqueRetention
 - PolitiqueRetentionRequest
+- PompeActuellePhasesEnum
 - PompeActuelleTypeEnum
 - PompeAlimActuelleEnum
 - PompeHmtSourceEnum

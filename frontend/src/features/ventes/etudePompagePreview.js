@@ -4,15 +4,19 @@
 // --test`) ; ce module ajoute UN hook React debouncé (~500 ms), annulable en
 // vol, qui EFFACE le résultat au début de chaque appel (jamais un résultat
 // périmé à l'écran). Aucun calcul local : D-AGR-1, un seul calcul serveur.
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useDebouncedValue } from '../../lib/debounce'
 import { useApercuServeur } from '../../lib/useApercuServeur'
 import api from '../../api/axios'
+// AGQ27 — LA garde « réponse du corps courant » (une définition, partagée C&I).
+import { reponseAJour } from './etudeCiPreviewPur'
 
 export {
   construireCorpsPompage, manquantsPompage, besoinExprime, hauteurConnue,
   alertesAffichables, libelleProvenance, nombreOuNull,
 } from './etudePompagePreviewPur'
+// AGQ16 — lignes du devis en cours → corps de la carte économie (fonction pure).
+export { lignesEconomieDepuisEcran } from './economiePompagePreviewPur'
 
 /** L'appel HTTP (exporté pour les tests composant qui le simulent). */
 export const postEtudePompagePreview = (body, config = {}) =>
@@ -23,9 +27,27 @@ export const postEtudePompagePreview = (body, config = {}) =>
  * appel, `donnees` reste `null`). Ne lève jamais.
  */
 export function useEtudePompagePreview(corps) {
+  // AGQ27 (C-AGQ-026) — un refus NOMMÉ du serveur (400 `detail`) est dit tel
+  // quel, jamais remplacé par le message générique.
+  const [detailRefus, setDetailRefus] = useState(null)
+  const appeler = useCallback((body, config) => {
+    setDetailRefus(null)
+    return postEtudePompagePreview(body, config).catch((err) => {
+      const detail = err?.response?.status === 400 ? err?.response?.data?.detail : null
+      setDetailRefus(typeof detail === 'string' && detail ? detail : null)
+      throw err
+    })
+  }, [])
   const { donnees, chargement, erreur, corpsServi } = useApercuServeur(
-    corps, postEtudePompagePreview, 'Aperçu du pompage indisponible pour le moment.')
-  return { donnees, chargement, erreur, corpsServi }
+    corps, appeler, 'Aperçu du pompage indisponible pour le moment.')
+  // AGQ27 — garde `corpsServi` (patron C&I `reponseAJour`) : la réponse d'un
+  // corps PRÉCÉDENT n'est jamais montrée (ni posée par Auto-remplir).
+  return {
+    donnees: reponseAJour(donnees, corpsServi, corps),
+    chargement,
+    erreur: erreur ? (detailRefus || erreur) : null,
+    corpsServi,
+  }
 }
 
 /** AGR212 — l'aperçu de l'économie DÉCLARÉE (AGR206, aucune écriture). */

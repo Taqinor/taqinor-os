@@ -43,6 +43,12 @@
    "required": false
   },
   {
+   "classe": "LeadDecimalField",
+   "nom": "jours_irrigation_semaine",
+   "read_only": false,
+   "required": false
+  },
+  {
    "classe": "CharField",
    "nom": "stage_label",
    "read_only": true,
@@ -214,6 +220,54 @@
    "classe": "DateTimeField",
    "nom": "deleted_at",
    "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "mode_pompe",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "pompe_actuelle_kw",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "IntegerField",
+   "nom": "pompe_actuelle_tension_v",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "ChoiceField",
+   "nom": "pompe_actuelle_phases",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "butane_bouteilles_jour",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "carburant_prix_unitaire_mad",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "DateField",
+   "nom": "carburant_prix_declare_le",
+   "read_only": true,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "depense_carburant_mad_mois",
+   "read_only": false,
    "required": false
   },
   {
@@ -591,30 +645,6 @@
   {
    "classe": "LeadDecimalField",
    "nom": "pompe_actuelle_debit_m3h",
-   "read_only": false,
-   "required": false
-  },
-  {
-   "classe": "LeadDecimalField",
-   "nom": "butane_bouteilles_jour",
-   "read_only": false,
-   "required": false
-  },
-  {
-   "classe": "LeadDecimalField",
-   "nom": "carburant_prix_unitaire_mad",
-   "read_only": false,
-   "required": false
-  },
-  {
-   "classe": "DateField",
-   "nom": "carburant_prix_declare_le",
-   "read_only": true,
-   "required": false
-  },
-  {
-   "classe": "LeadDecimalField",
-   "nom": "depense_carburant_mad_mois",
    "read_only": false,
    "required": false
   },

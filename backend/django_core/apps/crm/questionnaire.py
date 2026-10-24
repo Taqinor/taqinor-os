@@ -75,7 +75,8 @@ CHAMPS_PAR_SECTION = {
                 'surface_irriguee_ha', 'culture', 'irrigation_methode',
                 'pompe_alim_actuelle', 'butane_bouteilles_jour',
                 'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
-                'mois_irrigation', 'compteur_eau'),
+                # AGQ34 (D-AGQ-6) — jours d'irrigation par semaine (AGQ10).
+                'mois_irrigation', 'jours_irrigation_semaine', 'compteur_eau'),
     # Sections PHOTO : aucune colonne — la réponse est une pièce jointe.
     'photo_facture': (),
     'photo_compteur': (),

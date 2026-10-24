@@ -201,6 +201,21 @@ class ContratTests(_Base):
             data['entrees_resolues']['heures_repli']['provenance']['origine'],
             'reglage_societe')
 
+    def test_sans_localisation_alerte_site_inconnu(self):
+        """AGQ26 (C-AGQ-025) — aucune ville ni GPS : l'alerte nomme le SITE
+        manquant (`site_inconnu`), jamais une panne PVGIS ; le repli plat
+        reste étiqueté."""
+        self.profils.return_value = None
+        corps = self.corps()
+        corps.pop('localisation', None)
+        data = self.post(corps)
+        codes = [a['code'] for a in data['alertes']]
+        self.assertIn('site_inconnu', codes)
+        self.assertNotIn('pvgis_indisponible', codes)
+        alerte = next(a for a in data['alertes'] if a['code'] == 'site_inconnu')
+        self.assertIn('Site non renseigné (ville ou GPS)', alerte['message'])
+        self.assertEqual(data['production']['source_irradiation'], 'repli')
+
     def test_aucune_pompe_chiffrable_placeholder_nomme(self):
         Produit.objects.filter(pk=self.pompe.pk).update(prix_vente=0)
         data = self.post(self.corps())

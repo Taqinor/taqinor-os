@@ -329,6 +329,9 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
         'autorisation_debit_l_s', 'autorisation_volume_m3_an',
         'compteur_eau', 'projet_pompage', 'deja_beneficiaire_fda',
         'pompe_hmt_source',
+        # AGQ39 — la plaque de la pompe actuelle (D-AGQ-10).
+        'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
+        'pompe_actuelle_phases',
     )]
     # CIQ401 — colonnes du lead pro (contrat CIQ1 ``lead_pro.json``) qui
     # portent un marqueur énergie : nommées une à une, avec leur raison.
@@ -797,6 +800,17 @@ def champs_devis_auto_manquants(lead):
     if lead is None:
         return []
     return champs_manquants_detail(lead)
+
+
+def visite_point_eau_du_lead(lead):
+    """AGQ22 — ``{requise, motifs, motifs_detail}`` de la règle de visite
+    D-AGR-4 (``devis_auto.visite_point_eau_avant_devis``) pour un lead
+    agricole, ``None`` ailleurs : point d'entrée cross-app du devis
+    automatique serveur (le 409 nomme le champ du motif). Lecture seule."""
+    from .devis_auto import visite_point_eau_avant_devis
+    if lead is None:
+        return None
+    return visite_point_eau_avant_devis(lead)
 
 
 def lead_en_attente_ou_veille(lead_id, today, *, company):

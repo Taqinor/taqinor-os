@@ -38,6 +38,26 @@ def _par_colonne(bloc):
     return {e['colonne']: e for e in bloc['entrees']}
 
 
+class Provenance(TestCase):
+    """AGQ29 (C-AGQ-027) — le débit du foreur ou d'un essai est une MESURE."""
+
+    def setUp(self):
+        self.company, _ = Company.objects.get_or_create(
+            slug='agq29-co', defaults={'nom': 'AGQ29 Co'})
+
+    def _provenance_debit(self, source):
+        lead = Lead.objects.create(
+            company=self.company, nom='Ferme', type_installation='agricole',
+            debit_forage_m3h=Decimal('25'), debit_forage_source=source)
+        bloc = selectors.entrees_pompage_du_lead(lead)
+        return _par_colonne(bloc)['debit_forage_m3h']['provenance']
+
+    def test_foreur_est_une_mesure(self):
+        self.assertEqual(self._provenance_debit('foreur'), 'foreur')
+        self.assertEqual(self._provenance_debit('essai'), 'essai')
+        self.assertEqual(self._provenance_debit('client'), 'client')
+
+
 class EntreesPompage(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(
@@ -148,6 +168,66 @@ class EntreesPompage(TestCase):
                 self.assertEqual(servie[cle], entree[cle],
                                  f"{entree['colonne']}.{cle}")
 
+    def test_jours_irrigation_semaine_servis_au_bloc_economie(self):
+        """AGQ10 (D-AGQ-6) — les jours d'irrigation par semaine du lead sont
+        servis vers ``saisies_economie_pompage.consommation`` : sans eux une
+        conso butane « par jour d'irrigation » laisse « Votre argent » omis."""
+        lead = self._lead(
+            pompe_alim_actuelle='butane', butane_bouteilles_jour=Decimal('2'),
+            jours_irrigation_semaine=Decimal('5'))
+        servies = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+        jours = servies['jours_irrigation_semaine']
+        self.assertEqual(jours['valeur'], 5)
+        self.assertEqual(jours['cle_etude'], 'saisies_economie_pompage')
+        self.assertEqual(
+            jours['chemin'],
+            'saisies_economie_pompage.consommation.jours_irrigation_par_semaine')
+        # Champ vide : listé manquant, jamais un défaut.
+        vide = selectors.entrees_pompage_du_lead(self._lead())
+        self.assertIn('jours_irrigation_semaine', vide['manquants'])
+
+    def test_une_seule_colonne_de_consommation_par_energie(self):
+        """AGQ19 (C-AGQ-018) — ``butane_bouteilles_jour`` ET
+        ``carburant_litres_mois`` visent ``consommation.quantite`` : seule la
+        colonne de l'énergie du lead est servie telle quelle, l'autre porte
+        ``ignoree`` (le moteur la saute). Table unique : ``apps.ventes``."""
+        from apps.ventes.selectors import unite_par_energie
+        self.assertEqual(unite_par_energie(),
+                         {'butane': 'bouteille_12kg', 'diesel': 'litre'})
+        lead = self._lead(
+            pompe_alim_actuelle='butane', butane_bouteilles_jour=Decimal('2'),
+            carburant_litres_mois=Decimal('100'))
+        par = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+        self.assertNotIn('ignoree', par['butane_bouteilles_jour'])
+        self.assertEqual(par['carburant_litres_mois']['ignoree'],
+                         'énergie butane')
+        lead = self._lead(
+            pompe_alim_actuelle='diesel', butane_bouteilles_jour=Decimal('2'),
+            carburant_litres_mois=Decimal('100'))
+        par = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+        self.assertEqual(par['butane_bouteilles_jour']['ignoree'],
+                         'énergie diesel')
+        self.assertNotIn('ignoree', par['carburant_litres_mois'])
+
+    def test_mode_pompe_et_plaque_servis_au_moteur(self):
+        """AGQ39 (D-AGQ-10) — le mode et la plaque de la pompe actuelle
+        sont servis vers ``mode_pompe`` et ``plaque.*`` ; les phases en 1/3."""
+        lead = self._lead(
+            mode_pompe='existante', pompe_actuelle_kw=Decimal('5.5'),
+            pompe_actuelle_tension_v=380, pompe_actuelle_phases='tri')
+        par = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+        self.assertEqual(par['mode_pompe']['chemin'], 'mode_pompe')
+        self.assertEqual(par['mode_pompe']['valeur'], 'existante')
+        self.assertEqual(par['pompe_actuelle_kw']['chemin'], 'plaque.kw')
+        self.assertEqual(par['pompe_actuelle_kw']['valeur'], 5.5)
+        self.assertEqual(par['pompe_actuelle_tension_v']['valeur'], 380)
+        self.assertEqual(par['pompe_actuelle_phases']['chemin'],
+                         'plaque.phases')
+        self.assertEqual(par['pompe_actuelle_phases']['valeur'], 3)
+        self.assertTrue(par['pompe_actuelle_kw']['information'])
+        vide = selectors.entrees_pompage_du_lead(self._lead())
+        self.assertIn('mode_pompe', vide['manquants'])
+
     def test_lecture_filtree_par_societe(self):
         lead = self._lead(niveau_statique_m=Decimal('20'))
         autre, _ = Company.objects.get_or_create(
@@ -181,3 +261,39 @@ class EntreesPompageServiesAuDetail(TestCase):
         liste = self.api.get('/api/django/crm/leads/').data
         lignes = liste['results'] if 'results' in liste else liste
         self.assertNotIn('entrees_pompage', lignes[0])
+
+    def test_jours_irrigation_semaine_persiste_et_journalise(self):
+        """AGQ10 — enregistrer → rouvrir : valeur identique, chatter old→new ;
+        une valeur hors 0-7 est refusée en la nommant."""
+        url = f'/api/django/crm/leads/{self.lead.id}/'
+        rep = self.api.patch(url, {'jours_irrigation_semaine': '5'},
+                             format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+        relu = self.api.get(url).data
+        self.assertEqual(Decimal(str(relu['jours_irrigation_semaine'])),
+                         Decimal('5'))
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.MODIFICATION,
+            field='jours_irrigation_semaine').exists())
+        trop = self.api.patch(url, {'jours_irrigation_semaine': '8'},
+                              format='json')
+        self.assertEqual(trop.status_code, 400, trop.data)
+        self.assertIn('jours_irrigation_semaine', trop.data)
+
+    def test_mode_pompe_et_plaque_persistent_et_journalisent(self):
+        """AGQ39 — enregistrer → rouvrir : identique, chatter old→new."""
+        url = f'/api/django/crm/leads/{self.lead.id}/'
+        corps = {'mode_pompe': 'existante', 'pompe_actuelle_kw': '5.50',
+                 'pompe_actuelle_tension_v': 380,
+                 'pompe_actuelle_phases': 'tri'}
+        rep = self.api.patch(url, corps, format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+        relu = self.api.get(url).data
+        for cle, valeur in corps.items():
+            self.assertEqual(relu[cle], valeur, cle)
+        self.assertEqual(relu['devis_auto']['mode_pompe'],
+                         {'valeur': 'existante', 'par_defaut': False})
+        for champ in corps:
+            self.assertTrue(LeadActivity.objects.filter(
+                lead=self.lead, kind=LeadActivity.Kind.MODIFICATION,
+                field=champ).exists(), champ)

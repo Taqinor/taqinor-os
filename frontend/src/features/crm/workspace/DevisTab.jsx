@@ -127,6 +127,15 @@ export default function DevisTab({
   // « puissance cible » n'est pas affiché pour un lead agricole, la cible
   // reste donc vide (le serveur la refuserait en la nommant).
   const agricole = state.server?.type_installation === 'agricole'
+  // AGQ22 (C-AGQ-021) — la règle de visite D-AGR-4 est repliée DANS le bouton :
+  // tant que le relevé du point d'eau est requis, « Devis automatique » reste
+  // inactif (le serveur le refuserait en 409) et chaque motif devient une puce
+  // qui saute à SON champ (`motifs_detail[].champ`, débit ≠ niveau).
+  const visitePointEau = agricole ? devisAuto.visite_point_eau_avant_devis : null
+  const visiteRequise = !!visitePointEau?.requise
+  const pucesVisite = visiteRequise
+    ? (visitePointEau.motifs_detail ?? []).map(({ champ, libelle }) => ({ champ, label: libelle }))
+    : []
   // QJR602 (D-QJR5-13) — la cible tapée ici part TELLE QUELLE : le devis
   // automatique n'arrondit plus au palier de 5 kWc, plus aucun avis à montrer.
   const [waBusy, setWaBusy] = useState(false)
@@ -465,7 +474,7 @@ export default function DevisTab({
           <FileText size={14} aria-hidden="true" /> Nouveau devis (édition complète)…
         </Button>
       </div>
-      {devisAuto.pret ? (
+      {devisAuto.pret && !visiteRequise ? (
         <div className="lw-context-devis-cta">
           <Button
             type="button"
@@ -509,10 +518,22 @@ export default function DevisTab({
         </div>
       ) : (
         <div className="lw-context-devis-missing">
-          <p className="gen-hint">Devis automatique — champs manquants :</p>
+          {visiteRequise && (
+            <Button
+              type="button" variant="default" disabled data-testid="lw-devis-auto-visite"
+              title="Relevé du point d'eau requis avant devis (D-AGR-4)"
+            >
+              <Zap size={14} aria-hidden="true" /> Devis automatique
+            </Button>
+          )}
+          <p className="gen-hint">
+            {visiteRequise
+              ? "Devis automatique — relevé du point d'eau requis avant devis (D-AGR-4) ; à compléter :"
+              : 'Devis automatique — champs manquants :'}
+          </p>
           <ul className="lw-context-missing-list">
             {/* QJR601 — la cible vient du NOM DU CHAMP servi, jamais du libellé. */}
-            {(devisAuto.manquants_detail ?? []).map(({ champ, label }) => (
+            {[...(devisAuto.manquants_detail ?? []), ...pucesVisite].map(({ champ, label }) => (
               <li key={champ}>
                 <button
                   type="button"

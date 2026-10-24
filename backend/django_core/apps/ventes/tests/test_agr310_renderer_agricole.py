@@ -199,6 +199,125 @@ class Agr310HtmlTests(SimpleTestCase):
         self.assertFalse(renderer.is_agricole(_D(), {'pdf_mode': 'full'}))
 
 
+class Renderer(SimpleTestCase):
+    """AGQ30 (C-AGQ-028, D-AGQ-11, D-AGR-10) — « Étapes suivantes » sans
+    délai chiffré, mise en service mesurée, entretien, acompte après FDA."""
+
+    def test_etapes_suivantes_sans_delai_chiffre(self):
+        import re
+        for langue in ('fr', 'en', 'ar'):
+            d = data_complete()
+            d['langue_sortie'] = langue
+            aug = renderer._augment(d)
+            html = pages.build_html(aug)
+            p1, _p2, p3 = html.split('<div class="page">')[1:4]
+            etapes = aug['synthese']['etapes_suivantes']
+            with self.subTest(langue=langue):
+                self.assertEqual(len(etapes), 5)
+                for e in etapes:
+                    self.assertIn(e['textes'][langue], p1)
+                texte = re.sub(r'<style>.*?</style>', ' ', html, flags=re.S)
+                texte = re.sub(r'data:[^"\')]+', ' ', texte)
+                texte = re.sub(r'<[^>]+>', ' ', texte)
+                self.assertIsNone(re.search(
+                    r'\b\d+\s*(jours?|semaines?|days?|weeks?|يوم|أيام|أسبوع)',
+                    texte, flags=re.I))
+        html = pages.build_html(renderer._augment(data_complete()))
+        p1, _p2, p3 = html.split('<div class="page">')[1:4]
+        self.assertIn('Étapes suivantes', p1)
+        self.assertIn('débit et HMT mesurés, écart affiché contre ce devis',
+                      p1)
+        self.assertIn('Entretien : nettoyage des panneaux et contrôle '
+                      'annuel (contrat en option)', p1)
+        self.assertIn("après l'accord FDA si vous demandez l'aide", p3)
+
+
+class RendererPages23(SimpleTestCase):
+    """AGQ32 (C-AGQ-030) — pages 2 et 3 lisibles."""
+
+    def test_tva_ventilee_par_taux(self):
+        d = data_complete()
+        d['totaux_all']['tva_par_taux'] = [
+            {'taux': 10.0, 'montant': 2100.0, 'ht_net': 21000.0},
+            {'taux': 20.0, 'montant': 4130.0, 'ht_net': 20650.0}]
+        p3 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[3]
+        from apps.ventes.quote_engine.montants import fmt_centimes
+        self.assertIn('TVA (10 %)', p3)
+        self.assertIn('TVA (20 %)', p3)
+        self.assertIn(f'{fmt_centimes(2100.0)} MAD', p3)
+        self.assertIn(f'{fmt_centimes(4130.0)} MAD', p3)
+        self.assertEqual(p3.count('data-figure="tva_taux"'), 2)
+        # Un seul taux : la ligne unique d'hier.
+        p3 = pages.build_html(renderer._augment(data_complete())).split(
+            '<div class="page">')[3]
+        self.assertNotIn('tva_taux', p3)
+
+    def test_barres_valeurs_et_mois_sans_besoin(self):
+        d = data_complete()
+        d['etude']['besoin_mensuel']['m3_jour_mois'] = (
+            [0, 0] + [135] * 8 + [0, 0])
+        p2 = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[2]
+        self.assertIn('data-mois-sans-besoin="1"', p2)
+        self.assertEqual(p2.count('data-mois-sans-besoin='), 4)
+        self.assertIn('eau disponible', p2)
+        self.assertIn('>228,8<', p2)  # valeur livrée de juillet
+        self.assertIn('>135<', p2)
+
+    def test_schema_deux_lignes_et_distance_libellee(self):
+        p2 = pages.build_html(renderer._augment(data_complete())).split(
+            '<div class="page">')[2]
+        self.assertIn('Distance champ → coffret 25 m', p2)
+        self.assertIn('data-ligne="eau"', p2)
+        self.assertIn('data-ligne="energie"', p2)
+
+    def test_aucune_phrase_de_reference_vide(self):
+        d = data_complete()
+        d['include_note_calcul'] = True
+        annexe = pages.build_html(renderer._augment(d)).split(
+            '<div class="page">')[4]
+        self.assertNotIn('Aucune référence', annexe)
+        self.assertNotIn('Références de la société', annexe)
+
+
+class HtmlSansWeasy(SimpleTestCase):
+    """AGQ37 (C-AGQ-035) — garde du document agricole AU PALIER PAR-MERGE
+    (aucun WeasyPrint, aucune base) : les gardes PDF sont nocturnes. Le
+    marqueur de page du gabarit est ``<div class="page">`` (cadre partagé
+    ``residential.theme``)."""
+
+    INTERDITS = ('prix_achat', 'docs/', 'backend/', 'None', '{', '}')
+    DELAI = r'\b\d+\s*(jours?|semaines?|days?|weeks?|يوم|أيام|أسبوع)'
+
+    def _texte(self, html):
+        import re
+        html = re.sub(r'<style>.*?</style>', ' ', html, flags=re.S)
+        html = re.sub(r'data:[^"\')]+', ' ', html)
+        return re.sub(r'<[^>]+>', ' ', html)
+
+    def test_trois_sections_et_aucune_cle_interne(self):
+        import re
+        for langue in ('fr', 'en', 'ar'):
+            for annexe, attendu in ((False, 3), (True, 4)):
+                d = data_complete(nb_options=2)
+                d['langue_sortie'] = langue
+                d['include_note_calcul'] = annexe
+                for it in d['all_items'] + d['options_proposees']:
+                    it['prix_achat'] = 4321.0
+                html = pages.build_html(renderer._augment(d))
+                texte = self._texte(html)
+                with self.subTest(langue=langue, annexe=annexe):
+                    self.assertEqual(html.count('<div class="page">'),
+                                     attendu)
+                    self.assertIn(f'{attendu} / {attendu}', texte)
+                    for interdit in self.INTERDITS:
+                        self.assertNotIn(interdit, texte)
+                    self.assertNotIn('4321', texte)
+                    self.assertNotIn('4 321', texte)
+                    self.assertIsNone(re.search(self.DELAI, texte, re.I))
+
+
 def pages_et_debordements(pdf_bytes):
     """``(nb_pages, [(page, y1_mm, footer_top_mm)])`` — un bloc de texte qui
     commence au-dessus de la bande de pied (13 mm) et finit dedans déborde."""

@@ -40,9 +40,16 @@ CE QU'ELLE NE FAIT JAMAIS :
 """
 from __future__ import annotations
 
+import re
+import unicodedata
+
+from core.pompage.hypotheses import valeur as hypothese_valeur
+from core.pompage.kit import MENTION_COMPTEUR
+
+from ..i18n_labels import est_rtl, libelle
 from ..lecture_pure import nombre_normalise
 from .garanties import garanties_pompage_et_omissions
-from .mentions import formalites, regle_fda
+from .mentions import etapes_suivantes, formalites, regle_fda
 from .schema import schema_svg
 
 #: Version de la forme servie (contrat AGR4).
@@ -178,8 +185,38 @@ def _bloc_provenance(etude):
             continue
         prov = _provenance(p)
         if prov is not None:
+            # AGQ28 — la VALEUR à côté de sa provenance (lue, jamais
+            # recalculée) ; None quand l'étude ne la porte pas.
+            prov["valeur"] = _valeur_entree(etude, cle)
             sortie[cle] = prov
     return sortie
+
+
+def _valeur_entree(etude, cle):
+    """AGQ28 — la valeur d'une entrée de provenance telle que servie :
+    saisie du devis (``besoin``, ``source``), sinon valeur résolue du lead
+    (``entrees_pompage``) ; l'énergie actuelle est un mot (``butane``…)."""
+    if cle == "energie_actuelle":
+        return (_energie_actuelle(etude) or {}).get("valeur")
+    if cle == "hmt_m":
+        return _num(etude.get("hmt_m"))
+    if cle == "volume_m3_jour":
+        saisie = _dict(etude.get("besoin")).get("volume_m3_jour")
+    else:
+        saisie = _dict(etude.get("source")).get(cle)
+    return _num(_resolue(etude, saisie, cle))
+
+
+def _controle_forage(eau, etude):
+    """AGQ28 — « pompe X m³/h ≤ forage Y m³/h » : le débit retenu de la
+    pompe contre le débit d'exploitation du forage ; None sans l'un des
+    deux (aucun débit supposé)."""
+    pompe = eau.get("debit_hmt_m3h")
+    forage = _valeur_entree(etude, "debit_exploitation_m3h")
+    if pompe is None or forage is None:
+        return None
+    return {"debit_pompe_m3h": pompe, "debit_forage_m3h": forage,
+            "conforme": pompe <= forage}
 
 
 def _hmt_est_calculee(etude):
@@ -242,6 +279,122 @@ def _courbe_points(courbe):
     return points
 
 
+def _mois(v):
+    """Un numéro de mois 1-12, sinon None."""
+    n = _num(v)
+    return int(n) if n is not None and n == int(n) and 1 <= n <= 12 else None
+
+
+def _au_plus_bas(etude):
+    """AGQ3 — ``(m³/j, mois)`` le plus bas de l'ANNÉE sur la série livrée
+    servie (``production.m3_jour_mois``) ; ``(None, None)`` sans série."""
+    serie = _serie_12(_dict(etude.get("production")))
+    if serie is None:
+        return None, None
+    return min(serie), serie.index(min(serie)) + 1
+
+
+def _mois_sous_tolerance(etude):
+    """AGQ3 (D-AGQ-2) — ``[{mois, couverture_pct}]`` de chaque mois
+    d'irrigation sous la tolérance de conception, LUS dans
+    ``controle_conception.mois_sous_tolerance`` et ``couverture_pct_mois``
+    servis par le moteur (AGQ2) — aucun recalcul ; [] sinon."""
+    couverture = etude.get("couverture_pct_mois")
+    if not isinstance(couverture, (list, tuple)) or len(couverture) != 12:
+        couverture = [None] * 12
+    mois = _dict(etude.get("controle_conception")).get("mois_sous_tolerance")
+    return [{"mois": m, "couverture_pct": _num(couverture[m - 1])}
+            for m in (_mois(v) for v in mois or []) if m is not None]
+
+
+def texte_heures_eau(eau, langue, fmt):
+    """AGQ3 (D-AGQ-2) — « sur 5,1 h de pompage équivalentes à plein débit en
+    octobre, mois de conception · au plus bas : 73,2 m³/j en novembre » :
+    LA phrase du héro (3 pages) et de la carte eau (une-page). ``fmt``
+    formate un nombre à la française (gabarit appelant). "" quand l'étude
+    ne nomme aucun mois (devis v1 : l'appelant garde son texte d'hier)."""
+    mois = _mois(eau.get("mois_conception"))
+    if mois is None:
+        return ""
+    nom = libelle(f"agr_mois_{mois}", langue)
+    heures = eau.get("heures_pompage")
+    texte = (libelle("agr_heures_equivalentes_mois", langue).format(
+        heures=fmt(heures), mois=nom) if heures is not None else
+        libelle("agr_hero_mois_conception", langue).format(mois=nom))
+    bas, mois_bas = eau.get("m3_jour_min"), _mois(eau.get("mois_m3_jour_min"))
+    if bas is not None and mois_bas not in (None, mois):
+        texte += " · " + libelle("agr_au_plus_bas", langue).format(
+            m3=fmt(bas), mois=libelle(f"agr_mois_{mois_bas}", langue))
+    return texte
+
+
+# AGQ38 (C-AGQ-032) — liste BLANCHE des alertes du noyau dites au client :
+# code → clé i18n (le rendement non publié se dit selon la fiche en cause).
+# Toute alerte hors de cette liste reste INTERNE, jamais servie.
+CODES_NOTES_CLIENT = {
+    "ratio_champ_pompe": "agr_note_ratio_champ_pompe",
+    "variateur_suivant": "agr_note_variateur_suivant",
+    "site_inconnu": "agr_note_site_inconnu",
+    "pvgis_indisponible": "agr_note_irradiation_repli",
+    "plafond_forage": "agr_note_plafond_forage",
+}
+_NOTES_RENDEMENT = {"pompe.fiche": "agr_note_rendement_pompe",
+                    "variateur.fiche": "agr_note_rendement_variateur"}
+
+
+def _fr_nombre(v, dec=2):
+    """« 1,51 » — nombre à la française, sans zéro inutile (forme du noyau)."""
+    n = _num(v)
+    if n is None:
+        return "?"
+    return f"{n:.{dec}f}".rstrip("0").rstrip(".").replace(".", ",")
+
+
+def _cle_note(alerte):
+    code = alerte.get("code")
+    if code == "rendement_non_publie":
+        return _NOTES_RENDEMENT.get(alerte.get("champ"))
+    return CODES_NOTES_CLIENT.get(code)
+
+
+def _valeurs_note(code, etude, items, alertes):
+    """Les valeurs du gabarit, LUES (champ servi, table du noyau, lignes)."""
+    if code == "ratio_champ_pompe":
+        bande = hypothese_valeur("ratio_champ_pompe_bande_alerte")
+        return {"ratio": _fr_nombre(_dict(etude.get("champ")).get("ratio")),
+                "min": _fr_nombre(bande.min), "max": _fr_nombre(bande.max)}
+    if code == "variateur_suivant":
+        lignes = [it for it in items
+                  if str(it.get("role_pompage") or "").startswith("variateur")]
+        nom = ((lignes[0].get("designation") if lignes else None)
+               or _dict(etude.get("variateur")).get("nom") or "")
+        return {"nom": nom,
+                "n": sum(1 for a in alertes if a.get("code") == code)}
+    if code == "plafond_forage":
+        return {"plafond": _fr_nombre(
+            _dict(etude.get("production")).get("plafond_forage_m3h"), 1)}
+    return {}
+
+
+def _bloc_notes(etude, items):
+    """AGQ38 — ``[{code, textes{fr,en,ar}}]`` : les alertes de la liste
+    blanche, dites au client en trois langues, une note par (code, fiche) ;
+    ``[]`` sans alerte. Aucun recalcul : valeurs lues telles que servies."""
+    alertes = [a for a in (etude.get("alertes_pompage") or [])
+               if isinstance(a, dict)]
+    vues, notes = set(), []
+    for alerte in alertes:
+        cle = _cle_note(alerte)
+        if cle is None or cle in vues:
+            continue
+        vues.add(cle)
+        valeurs = _valeurs_note(alerte.get("code"), etude, items, alertes)
+        notes.append({"code": alerte.get("code"), "textes": {
+            lg: libelle(cle, lg).format(**valeurs)
+            for lg in ("fr", "en", "ar")}})
+    return notes
+
+
 def _bloc_besoin_vs_livre(etude):
     """(bloc, motif) — bloc None quand il est omis, motif dit pourquoi."""
     besoin_mensuel = etude.get("besoin_mensuel")
@@ -269,9 +422,14 @@ def _bloc_besoin_vs_livre(etude):
                  for b, q in zip(besoin, livre)],
         "mois_le_plus_serre": _num(
             _dict(etude.get("conception")).get("mois_critique")),
+        # AGQ28 (D-AGQ-7) — une surface irrigable n'est une estimation
+        # honnête que d'un besoin AGRONOMIQUE (FAO-56) ; besoin déclaré ⇒
+        # aucune surface (le client a donné la sienne).
         "hectares_irrigables": _num(
-            _dict(etude.get("ha_irrigables")).get("valeur")),
+            _dict(etude.get("ha_irrigables")).get("valeur"))
+        if nature == "agronomique_plein" else None,
         "base_besoin": nature,
+        "mois_sous_tolerance": _mois_sous_tolerance(etude),
     }, None
 
 
@@ -315,16 +473,96 @@ def _bloc_schema(etude, eau):
     }
 
 
-def _bloc_options_kit(options):
-    sortie = []
-    for o in options or []:
-        if not isinstance(o, dict):
+def _norme(texte):
+    """Texte comparable : sans accents, sans parenthèse, minuscules."""
+    texte = re.sub(r"\s*\(.*?\)", "", str(texte or ""))
+    texte = unicodedata.normalize("NFKD", texte)
+    texte = "".join(c for c in texte if not unicodedata.combining(c))
+    return " ".join(texte.lower().replace("’", "'").split())
+
+
+def _ligne_de_l_option(cle, libelle, proposees, prises):
+    """L'index de la ligne optionnelle chiffrée (``options_proposees``) qui
+    porte l'option ``cle`` du kit : par son ``role_pompage`` quand la ligne en
+    porte un, sinon par sa désignation qui commence par le libellé du kit
+    (« Compteur d'eau / débitmètre » ↔ « Compteur d'eau ») ; None sinon."""
+    base = _norme(libelle)
+    for i, o in enumerate(proposees):
+        if i in prises:
             continue
+        if o.get("role_pompage") == cle or (
+                base and _norme(o.get("designation")).startswith(base)):
+            return i
+    return None
+
+
+def _roles_des_lignes(items):
+    return {it.get("role_pompage") for it in items or []
+            if isinstance(it, dict) and it.get("role_pompage")}
+
+
+def _bloc_options_kit(etude, items, options):
+    """AGQ11 (D-AGR-8) — les options NOMMÉES du kit figé par le moteur
+    (``etude['kit']['options']``, libellés de ``core.pompage.kit.OPTIONS``)
+    fusionnées aux lignes optionnelles chiffrées (``options_proposees``,
+    supplément canonique QJR616) : chaque option du kit est listée, avec son
+    supplément quand une ligne le chiffre, sinon ``prix_connu`` faux (« prix
+    sur devis » au rendu) — jamais omise. Une option déjà ligne du devis
+    (comptée) n'est pas reproposée ; une ligne optionnelle sans option du
+    kit reste listée telle quelle. Aucun prix recalculé."""
+    proposees = [o for o in options or [] if isinstance(o, dict)]
+    roles = _roles_des_lignes(items)
+    sortie, prises = [], set()
+    for opt in _dict(etude.get("kit")).get("options") or []:
+        cle = opt.get("cle") if isinstance(opt, dict) else None
+        if not cle or cle in roles:
+            continue
+        i = _ligne_de_l_option(cle, opt.get("libelle"), proposees, prises)
+        ligne = proposees[i] if i is not None else {}
+        if i is not None:
+            prises.add(i)
+        total = _num(ligne.get("total_ttc"))
         sortie.append({
+            "cle": cle,
+            "ligne_id": ligne.get("id"),
+            "designation": ligne.get("designation") or opt.get("libelle"),
+            "total_ttc": total,
+            "prix_connu": total is not None,
+            "mention": MENTION_COMPTEUR if cle == "compteur_eau" else None,
+        })
+    for i, o in enumerate(proposees):
+        if i in prises:
+            continue
+        total = _num(o.get("total_ttc"))
+        sortie.append({
+            "cle": None,
             "ligne_id": o.get("id"),
             "designation": o.get("designation"),
-            "total_ttc": _num(o.get("total_ttc")),
+            "total_ttc": total,
+            "prix_connu": total is not None,
+            "mention": None,
         })
+    return sortie
+
+
+def _non_inclus(etude, items):
+    """AGQ11 — « non inclus » : forage et génie civil (D-AGR-8), puis les
+    éléments du kit absents des lignes du devis — un élément du kit minimum
+    resté SANS prix (omis du devis), et chaque option non retenue."""
+    roles = _roles_des_lignes(items)
+    kit = _dict(etude.get("kit"))
+    sortie = list(NON_INCLUS)
+    for ligne in kit.get("inclus") or []:
+        if not isinstance(ligne, dict):
+            continue
+        role = ligne.get("role_pompage")
+        if (role and role not in roles and not ligne.get("prix_connu")
+                and ligne.get("cle") and ligne["cle"] not in sortie):
+            sortie.append(ligne["cle"])
+    for opt in kit.get("options") or []:
+        cle = opt.get("cle") if isinstance(opt, dict) else None
+        if cle and cle not in roles and cle not in sortie:
+            sortie.append(cle)
     return sortie
 
 
@@ -404,7 +642,11 @@ def synthese_agricole(data):
         "hmt_m": _num(etude.get("hmt_m")),
         "debit_hmt_m3h": _num(etude.get("debit_hmt_m3h")),
         "estimation": _estimation(etude),
+        # AGQ3 — le mois du héro (mois de conception servi) et le plus bas.
+        "mois_conception": _mois(
+            _dict(etude.get("conception")).get("mois_critique")),
     }
+    eau["m3_jour_min"], eau["mois_m3_jour_min"] = _au_plus_bas(etude)
     provenance = _bloc_provenance(etude)
     champ = _dict(etude.get("champ"))
 
@@ -419,6 +661,9 @@ def synthese_agricole(data):
 
     synthese["eau"] = eau
     synthese["provenance"] = provenance
+    controle = _controle_forage(eau, etude)
+    if controle is not None:
+        synthese["controle_forage"] = controle
     synthese["a_confirmer_par_visite"] = _a_confirmer_par_visite(
         etude, provenance)
 
@@ -470,6 +715,13 @@ def synthese_agricole(data):
     # tracé sur les seules valeurs saisies, servi tel quel.
     synthese["schema_svg"] = schema_svg(
         synthese, langue=data.get("langue_sortie") or "fr")
+    # AGQ13 — en arabe, les textes du schéma en légendes HTML positionnées
+    # (le PDF ne façonne pas l'arabe d'un ``<text>`` SVG) ; [] sinon.
+    legendes = []
+    if est_rtl(data.get("langue_sortie")):
+        schema_svg(synthese, langue=data.get("langue_sortie"),
+                   legendes=legendes)
+    synthese["schema_legendes"] = legendes
     # AGR307 — l'argent : le bloc public AGR3 tel quel (posé par le builder
     # dans ``data['_economie_pompage']``), sinon absent et motivé.
     economies, motif = _bloc_economies(data.get("_economie_pompage"))
@@ -483,10 +735,15 @@ def synthese_agricole(data):
     else:
         omissions.append({"bloc": "energie_actuelle",
                           "motif": MOTIF_ENERGIE_NON_DECLAREE})
-    synthese["options_kit"] = _bloc_options_kit(data.get("options_proposees"))
-    synthese["non_inclus"] = list(NON_INCLUS)
+    synthese["options_kit"] = _bloc_options_kit(
+        etude, items, data.get("options_proposees"))
+    synthese["non_inclus"] = _non_inclus(etude, items)
     # AGR306 — les formalités du client (82-21 hors réseau, 36-15 eau).
     synthese["formalites"] = formalites()
+    # AGQ30 — les étapes suivantes, sans délai chiffré (D-AGR-10).
+    synthese["etapes_suivantes"] = etapes_suivantes()
+    # AGQ38 — les alertes client du noyau, dites au client (page 2 + page web).
+    synthese["notes"] = _bloc_notes(etude, items)
 
     omissions.extend(dict(o) for o in OMISSIONS_DE_PRINCIPE)
     synthese["omissions"] = omissions

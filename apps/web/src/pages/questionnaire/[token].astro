@@ -179,6 +179,8 @@ const POMPAGE_NUM = {
   niveau_statique_m: { id: 'q-niveau-statique', fr: "À quelle profondeur se trouve l'eau quand la pompe est arrêtée ? (m)", en: 'How deep is the water when the pump is off? (m)', ar: 'على أي عمق يوجد الماء عندما تكون المضخة متوقفة؟ (م)' },
   besoin_eau_m3j: { id: 'q-besoin-eau', fr: "De combien de mètres cubes d'eau avez-vous besoin par jour au plus fort de la saison ? (m³/jour)", en: 'How many cubic metres of water do you need per day at the peak of the season? (m³/day)', ar: 'كم متراً مكعباً من الماء تحتاجون يومياً في ذروة الموسم؟ (م³/اليوم)' },
   surface_irriguee_ha: { id: 'q-surface-irriguee', fr: "Combien d'hectares irriguez-vous ? (ha)", en: 'How many hectares do you irrigate? (ha)', ar: 'كم هكتاراً تسقون؟ (هكتار)' },
+  // AGQ34 (D-AGQ-6) — jamais pré-remplie (aucun défaut).
+  jours_irrigation_semaine: { id: 'q-jours-irrigation', fr: 'Combien de jours par semaine irriguez-vous en saison ? (1 à 7)', en: 'How many days a week do you irrigate in season? (1 to 7)', ar: 'كم يوماً في الأسبوع تسقون خلال الموسم؟ (من 1 إلى 7)' },
   butane_bouteilles_jour: { id: 'q-butane-bouteilles', fr: 'Combien de bouteilles de butane par jour en saison ? (bouteilles de 12 kg)', en: 'How many butane cylinders per day in season? (12 kg cylinders)', ar: 'كم قنينة بوتان في اليوم خلال الموسم؟ (قنينات 12 كلغ)' },
   carburant_prix_unitaire_mad: { id: 'q-carburant-prix', fr: 'Vous la payez combien, la bouteille (ou le litre de gasoil) ? (MAD)', en: 'How much do you pay for a cylinder (or a litre of diesel)? (MAD)', ar: 'بكم تشترون القنينة (أو لتر الغازوال)؟ (درهم)' },
   depense_carburant_mad_mois: { id: 'q-depense-carburant', fr: 'Combien dépensez-vous en carburant par mois ? (MAD/mois)', en: 'How much do you spend on fuel per month? (MAD/month)', ar: 'كم تنفقون على الوقود شهرياً؟ (درهم/الشهر)' },
@@ -1155,6 +1157,12 @@ const estIndustriel =
                               </div>
                             </fieldset>
                           )}
+                          {demande('pompage', 'jours_irrigation_semaine') && (
+                            <div>
+                              <label for={POMPAGE_NUM.jours_irrigation_semaine.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={POMPAGE_NUM.jours_irrigation_semaine.en} data-ar={POMPAGE_NUM.jours_irrigation_semaine.ar}>{POMPAGE_NUM.jours_irrigation_semaine.fr}</label>
+                              <input id={POMPAGE_NUM.jours_irrigation_semaine.id} type="number" min="0" max="7" step="any" inputmode="decimal" class={POMPAGE_INPUT_CLS} />
+                            </div>
+                          )}
                           {demande('pompage', 'compteur_eau') && (
                             <fieldset class="border-0 p-0">
                               <legend class="mb-1 text-sm font-semibold" data-i18n data-en="Do you have a water meter on the borehole?" data-ar="هل لديكم عداد ماء على البئر؟">
@@ -1818,6 +1826,7 @@ const estIndustriel =
             depense_carburant_mad_mois: numOrUndef('q-depense-carburant'),
             mois_irrigation: Array.from(document.querySelectorAll<HTMLButtonElement>('.q-mois-btn[aria-pressed="true"]'))
               .map((b) => Number(b.dataset.mois)),
+            jours_irrigation_semaine: numOrUndef('q-jours-irrigation'),
             compteur_eau: radioValue('q-compteur-eau'),
           };
         case 'reseau':
