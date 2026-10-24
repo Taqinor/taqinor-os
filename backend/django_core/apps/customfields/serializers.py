@@ -14,6 +14,7 @@ from .models import (
 # XPLT15 — clés reconnues du JSON `conditions` (visible/requis/lecture seule).
 CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
 
+
 @extend_schema_field({
     'type': 'object', 'additionalProperties': False, 'nullable': True,
     'description': (
@@ -26,7 +27,6 @@ class ChampsPersonnalisesField(serializers.JSONField):
     OBJET (ou ``null``) : publié en JSON libre, un tableau « conforme » était
     refusé 400 « Format invalide. » (``validate_custom_data``). Champ partagé
     par les modules à champs personnalisés (calepinage, crm)."""
-
 
 
 class SlugStrict(serializers.SlugField):
