@@ -470,6 +470,12 @@ CompositionRequest = {
         'anyOf': [{'required': ['kwc']}, {'required': ['nb_panneaux']}],
     },
 }
+#: api-fuzz — « une puissance OU un nombre de panneaux » rend le CORPS
+#: obligatoire (drf-spectacular ne pose ``required: true`` que sur un
+#: sérialiseur à champ requis, jamais sur un ``request`` en dict) : le fuzz
+#: envoyait un corps ABSENT, « conforme », puis refusé en 400.
+CORPS_KWC_OU_PANNEAUX = corps_resserre({'anyOf': [
+    {'required': ['kwc']}, {'required': ['nb_panneaux']}]})
 CompositionResponse = _ser('DevisCompositionResponse', {
     'lignes': s.ListField(child=s.DictField()),
     'scenario': s.CharField(allow_null=True),

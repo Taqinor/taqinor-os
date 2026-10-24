@@ -321,7 +321,8 @@ class DevisViewSet(DevisEditionActionsMixin,
 
     @extend_schema(request=D.CompositionRequest,
                    responses={200: D.CompositionResponse,
-                              409: D.ErreurComposition})
+                              409: D.ErreurComposition},
+                   extensions=D.CORPS_KWC_OU_PANNEAUX)
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
     def composition(self, request):
