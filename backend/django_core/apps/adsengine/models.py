@@ -20,7 +20,7 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 from core.models import TenantModel
@@ -2540,7 +2540,6 @@ class FactTable(TenantModel):
         """AGEN1 — Nouveau brouillon, version = plus-haute-utilisée+1 pour
         cette société (JAMAIS ``count()+1`` — une table archivée ne doit
         jamais faire collision)."""
-        from django.db import transaction
         with transaction.atomic():
             last = (cls.objects.select_for_update()
                     .filter(company=company).order_by('-version').first())
@@ -2558,7 +2557,6 @@ class FactTable(TenantModel):
     def publish(self):
         """AGEN1 — Publie CETTE table : dépublie toute autre table publiée de
         la société (une seule active à la fois — "publier supersède")."""
-        from django.db import transaction
         with transaction.atomic():
             FactTable.objects.filter(
                 company_id=self.company_id, statut=self.Statut.PUBLIEE,
