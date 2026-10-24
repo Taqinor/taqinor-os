@@ -333,11 +333,18 @@ class AgregateursChangesTests(unittest.TestCase):
         for fragment in ("api_fuzz_scope.py schema",
                          "api_fuzz_scope.py verdict", "--checks all",
                          "--phases coverage", "--max-time 1500",
-                         "--shard \"${{ matrix.shard }}/8\""):
+                         "--shard \"${{ matrix.shard }}/${{ strategy.job-total }}\""):
             self.assertIn(fragment, script)
-        # CI #997 (14/10/2026) — 8 tranches déterministes, plus d'échantillon
-        # aléatoire : chaque tranche fuzze TOUT son lot.
-        self.assertEqual(job["strategy"]["matrix"]["shard"], list(range(8)))
+        # CI #997 (14/10/2026) — tranches déterministes, plus d'échantillon
+        # aléatoire : chaque tranche fuzze TOUT son lot. CI-5MIN (23/10/2026) :
+        # leur nombre vient de `changes` (2 par paquet, plafond 8) ; le total
+        # est lu par `strategy.job-total`, jamais par un littéral.
+        self.assertEqual(job["strategy"]["matrix"]["shard"],
+                         "${{ fromJSON(needs.changes.outputs.fuzz_shards) }}")
+        self.assertIn("fuzz_shards", self.jobs["changes"]["outputs"])
+        detect = _detect_step_script()
+        self.assertIn('if [ "$fuzz_n" -gt 8 ]; then fuzz_n=8; fi', detect)
+        self.assertIn('if [ "$fuzz_n" -lt 1 ]; then fuzz_n=1; fi', detect)
         self.assertFalse(job["strategy"]["fail-fast"])
         self.assertNotIn("continue-on-error", job)
         self.assertFalse(any("continue-on-error" in s for s in job["steps"]))

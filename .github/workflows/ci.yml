@@ -198,6 +198,8 @@ jobs:
       # CI-5MIN (23/10/2026) — paquets d'API modifies (portee du fuzz PR),
       # calcules UNE fois ici au lieu d'une fois par tranche `api-fuzz-pr`.
       fuzz_owners: ${{ steps.detect.outputs.fuzz_owners }}
+      # CI-5MIN — liste JSON des tranches du fuzz PR (`[0,1,…]`), 2 par paquet.
+      fuzz_shards: ${{ steps.detect.outputs.fuzz_shards }}
       # WOW8-ONCE — 'true' ssi un dump EXACT existe deja pour l'ensemble de
       # migrations courant (cf. le job `backend-testdb`).
       testdb_hit: ${{ steps.testdb.outputs.cache-hit }}
@@ -353,6 +355,19 @@ jobs:
             fuzz_files="$changed"
           fi
           fuzz_owners="$(python3 scripts/fuzz/api_fuzz_scope.py proprietaires <<< "$fuzz_files" | tr '\n' ' ' | sed 's/ *$//')"
+          # CI-5MIN (23/10/2026) — NOMBRE DE TRANCHES PROPORTIONNEL A LA PORTEE :
+          # 2 par paquet modifie, plafond 8 (l'ancienne matrice fixe). La
+          # partition `k % N` de `api_fuzz_scope.py schema --shard i/N` couvre
+          # TOUTE la portee pour n'importe quel N : memes operations, memes
+          # checks, seules les mises en place dupliquees disparaissent. Mesure
+          # (run 40043647668, portee `apps.ventes` seule) : 8 tranches de 21 a
+          # 39 s de Schemathesis chacune derriere ~2,5 min de mise en place —
+          # 8 creneaux pour ~4 min de fuzz utile. Portee vide -> `[0]` (la
+          # matrice est de toute facon sautee, mais l'expression reste valide).
+          fuzz_n=$(( $(wc -w <<< "$fuzz_owners") * 2 ))
+          if [ "$fuzz_n" -gt 8 ]; then fuzz_n=8; fi
+          if [ "$fuzz_n" -lt 1 ]; then fuzz_n=1; fi
+          fuzz_shards="[$(seq -s, 0 $(( fuzz_n - 1 )))]"
 
           {
             echo "backend=$backend"
@@ -362,9 +377,10 @@ jobs:
             echo "fastapi=$fastapi"
             echo "code=$code"
             echo "fuzz_owners=$fuzz_owners"
+            echo "fuzz_shards=$fuzz_shards"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved -> backend=$backend frontend=$frontend web=$web yanbow=$yanbow fastapi=$fastapi e2e(code)=$code"
-          echo "Paquets d'API modifiés (fuzz PR) : ${fuzz_owners:-aucun}"
+          echo "Paquets d'API modifiés (fuzz PR) : ${fuzz_owners:-aucun} — tranches $fuzz_shards"
 
   # ---------------------------------------------------------------------------
   # WOW-CI RONDE 5 (20/08/2026) — L'IMAGE CI BACKEND PRE-CONSTRUITE.
@@ -1252,10 +1268,14 @@ jobs:
     # → tranche k % 8) : chaque tranche fuzze TOUT son lot, l'union = toute la
     # surface, à chaque run, en parallèle — même patron que
     # `backend-tests-shard`.
+    #
+    # CI-5MIN (23/10/2026) — la matrice vient de `changes` (`fuzz_shards`) : 2
+    # tranches par paquet modifie, plafond 8. Le total passe par
+    # `strategy.job-total` (patron AUD830), jamais par un litteral.
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: ${{ fromJSON(needs.changes.outputs.fuzz_shards) }}
     permissions:
       contents: read
       packages: read
@@ -1366,7 +1386,7 @@ jobs:
           python ../../scripts/fuzz/api_fuzz_scope.py schema \
             --in "$GITHUB_WORKSPACE/openapi-brut.json" \
             --out "$GITHUB_WORKSPACE/openapi-fuzz.json" \
-            --shard "${{ matrix.shard }}/8" \
+            --shard "${{ matrix.shard }}/${{ strategy.job-total }}" \
             --proprietaires ${{ needs.changes.outputs.fuzz_owners }}
       - name: schemathesis run (phase coverage, tous les checks — tranche entière)
         if: ${{ needs.changes.outputs.fuzz_owners != '' }}
