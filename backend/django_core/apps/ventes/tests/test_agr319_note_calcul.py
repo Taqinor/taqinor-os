@@ -168,6 +168,17 @@ class Agr319NoteCalculTests(SimpleTestCase):
         self.assertIn('Pompage 7,5 kW — Taroudant (2026-05)', annexe)
         self.assertNotIn('Aucune référence de pompage', annexe)
 
+    def test_annexe_besoin_debit_souhaite_et_ville_persistee(self):
+        """Rejeu live AGQ41 (24/10) — besoin issu du débit souhaité : jamais
+        « FAO-56 » ; la ville persistée (``ville_calcul``) est imprimée."""
+        d = _data()
+        d['etude']['besoin_mensuel']['nature'] = 'debit_souhaite'
+        d['etude']['ville_calcul'] = 'Rabat'
+        annexe = _annexe(_html(d))
+        self.assertIn('Site : Rabat', annexe)
+        self.assertIn('débit souhaité déclaré par vous', annexe)
+        self.assertNotIn('FAO-56', annexe)
+
     def test_aucun_montant_d_aide_ni_prix_achat(self):
         annexe = _annexe(_html(_data()))
         self.assertNotIn('1234', annexe)

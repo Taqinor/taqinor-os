@@ -1219,8 +1219,12 @@ def _site_et_besoin_annexe(d, lg):
     lignes = []
     loc = ((etude.get("entrees_resolues") or {}).get("localisation") or {})
     loc = loc.get("valeur") if isinstance(loc, dict) else None
-    ville = (loc or etude.get("localisation") or {}).get("ville") \
-        if isinstance(loc or etude.get("localisation"), dict) else None
+    # Rejeu live AGQ41 — la ville PERSISTÉE par le moteur (``ville_calcul``),
+    # repli sur une localisation servie (aperçu, données de test).
+    if not isinstance(loc, dict):
+        loc = etude.get("localisation") if isinstance(
+            etude.get("localisation"), dict) else {}
+    ville = etude.get("ville_calcul") or loc.get("ville")
     if ville:
         lignes.append(_t(lg, "agr_annexe_site", ville=theme._esc(str(ville))))
     cultures = [c for c in ((etude.get("besoin") or {}).get("cultures") or [])
@@ -1238,6 +1242,10 @@ def _site_et_besoin_annexe(d, lg):
     mensuel = etude.get("besoin_mensuel") or {}
     if mensuel.get("nature") == "declare":
         lignes.append(_t(lg, "agr_annexe_besoin_declare"))
+    elif mensuel.get("nature") == "debit_souhaite":
+        # Rejeu live AGQ41 (D-AGQ-1) — jamais « FAO-56 » pour un besoin issu
+        # du débit souhaité déclaré.
+        lignes.append(_t(lg, "agr_annexe_besoin_debit_souhaite"))
     elif mensuel.get("nature"):
         et0 = mensuel.get("source_et0")
         lignes.append(_t(lg, "agr_annexe_besoin_fao56", et0=theme._esc(str(et0))

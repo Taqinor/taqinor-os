@@ -757,6 +757,10 @@ LIBELLES = {
     'agr_annexe_besoin_declare': {'fr': 'Besoin déclaré par vous (volume par jour).',
                                   'en': 'Need declared by you (daily volume).',
                                   'ar': 'الحاجة صرحتم بها (الحجم اليومي).'},
+    'agr_annexe_besoin_debit_souhaite': {
+        'fr': 'Besoin : débit souhaité déclaré par vous × heures de pompage de chaque mois.',
+        'en': 'Need: flow you requested × pumping hours of each month.',
+        'ar': 'الحاجة: الصبيب الذي صرحتم به × ساعات الضخ لكل شهر.'},
     'agr_annexe_besoin_fao56': {'fr': 'Besoin agronomique FAO-56 (ET0 : {et0}).',
                                 'en': 'FAO-56 agronomic need (ET0: {et0}).',
                                 'ar': 'الحاجة الفلاحية FAO-56 (ET0: {et0}).'},
