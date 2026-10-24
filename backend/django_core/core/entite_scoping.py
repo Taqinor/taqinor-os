@@ -25,7 +25,9 @@ périmètre se lit via ``user.role.entites_visibles``, une simple traversée
 d'ORM, jamais un import de ``apps.roles``/``apps.entites``).
 """
 from django.db.models import Q
-from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.exceptions import (
+    NotFound, ParseError, PermissionDenied, UnsupportedMediaType, ValidationError,
+)
 from rest_framework.relations import PrimaryKeyRelatedField
 
 import logging
@@ -214,6 +216,11 @@ class EntiteScopeMixin:
             return
         try:
             data = request.data
+        except (ParseError, UnsupportedMediaType):
+            # api-fuzz — DRF met le corps en cache VIDE après un échec de
+            # lecture : l'avaler ici faisait lire ``{}`` à la vue, qui
+            # répondait 2xx à un corps illisible. 400 / 415 tels quels.
+            raise
         except Exception:  # noqa: BLE001 — corps illisible : le parseur DRF (D-ENF22-BLE001)
             logger.warning("initial : échec ignoré, comportement dégradé", exc_info=True)
             return           # de la vue tranchera (400/415), jamais un 500 ici

@@ -173,7 +173,7 @@ class PortesFacturationTests(TestCase):
         r = self.api.post(
             f"/api/django/ventes/factures/{bc.data['id']}/emettre/", {},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # api-fuzz : refus d'état
         self.assertIn(acompte.reference, r.data['detail'])
         self.assertEqual(Facture.objects.get(pk=bc.data['id']).statut,
                          Facture.Statut.BROUILLON)

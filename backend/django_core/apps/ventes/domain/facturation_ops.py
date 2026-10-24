@@ -42,9 +42,12 @@ class EmissionRefusee(Exception):
     Porte ``motif`` (le message français) pour que les vues le renvoient tel
     quel dans un 400 sans jamais reformuler la règle métier."""
 
-    def __init__(self, motif, champ=None):
+    def __init__(self, motif, champ=None, etat=False):
         super().__init__(motif)
         self.motif = motif
+        # api-fuzz — ``etat`` : le refus tient à l'ÉTAT des données (version
+        # remplacée, vente déjà facturée), pas au corps : l'écran répond 409.
+        self.etat = etat
         # CIQ217 — le champ fautif (p. ex. ``client.ice``), pour l'afficher
         # sous le champ ; None pour les refus qui ne visent aucun champ.
         self.champ = champ
@@ -121,7 +124,7 @@ def emettre_facture(facture, *, user=None, source='', exiger_lignes=False,
     verifier_ice_client_entreprise(facture)
     from apps.ventes.vente_facturation import motif_emission_hors_prix
     if (motif := motif_emission_hors_prix(facture)):  # VNT20 : 1 vente, 1 fois
-        raise EmissionRefusee(motif)
+        raise EmissionRefusee(motif, etat=True)
 
     if verifier_credit and facture.client_id:
         from apps.ventes.domain.recouvrement import verifier_credit_hold
