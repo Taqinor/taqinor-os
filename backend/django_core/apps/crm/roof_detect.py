@@ -16,7 +16,7 @@ Limitation — obstacle detection:
      mark obstacles manually in the roof-layout tool.
 
 Network policy:
-  All calls are best-effort with a short timeout (~8 s).
+  All calls are best-effort with a short timeout (connect 3 s, read 5 s).
   Any failure (network error, Overpass down, rate-limited, no building at
   the given point) returns None (or an empty polygon) so the caller falls
   back gracefully to manual drawing. No exception ever reaches the HTTP layer.
@@ -47,7 +47,12 @@ import re
 logger = logging.getLogger(__name__)
 
 _OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-_TIMEOUT_S = 8
+# api-fuzz-full 24/10 — ``GET leads/{id}/roof-footprint/`` dépassait 10 s : le
+# délai de ``requests`` vaut PAR opération réseau (connexion, puis chaque
+# lecture), 8 s chacune. Connexion 3 s + lecture 5 s, et Overpass borne sa
+# propre requête à 5 s : l'atelier retombe sur le dessin manuel bien avant.
+_TIMEOUT_S = 5
+_TIMEOUT_RESEAU = (3, _TIMEOUT_S)
 _RADIUS_M = 25  # search radius in metres around the pin
 
 #: CALX106 — the provenance published next to every value read from OSM.
@@ -228,7 +233,7 @@ def fetch_building_footprint(lat: float, lng: float) -> dict | None:
         resp = _requests.post(
             _OVERPASS_URL,
             data={"data": query},
-            timeout=_TIMEOUT_S,
+            timeout=_TIMEOUT_RESEAU,
         )
         resp.raise_for_status()
         return _parse_geometry(resp.json())
