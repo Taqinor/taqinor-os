@@ -40,6 +40,11 @@ METHODE = (
     "autoconsommation horaire : production PVGIS du site × profil déclaré, "
     "12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à "
     "l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2)")
+#: AMOT99 (D-ACI-18=a) — avec la série horaire ; ``METHODE`` = le repli (dit).
+METHODE_8760 = (
+    "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, "
+    "pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par "
+    "tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2, D-ACI-18)")
 CLES_INTERDITES = frozenset({'prix_achat', 'marge'})
 MODES = ('commercial', 'industriel')
 
@@ -605,8 +610,11 @@ def _garde_kwh_factures(res, tarif, alertes):
 
 # ── 3. LECTURES : production, profil société, catalogue ──────────────────────
 
-def lire_production(site):
-    """``(productible_mensuel, formes_saison, source)`` ou ``None`` (PVGIS)."""
+def lire_production(site, toit=None):
+    """``(productible_mensuel, formes_saison, source, serie)`` ou ``None`` (PVGIS).
+
+    AMOT99 — ``serie`` : l'année type HORAIRE au plan de ``toit``, au seul point
+    GPS du site ; sinon ``None`` (repli dit, hypothèse ``methode_autoconsommation``)."""
     from apps.parametres.pvgis_profils import productible_mensuel
 
     from ..etude_horaire import _formes_production_par_saison
@@ -622,7 +630,22 @@ def lire_production(site):
     if not formes or not mensuel:
         return None
     productibles, source = mensuel
-    return productibles, formes, source
+    return productibles, formes, source, _serie_horaire(lat, lon, toit)
+
+
+def _serie_horaire(lat, lon, toit):
+    if lat is None or lon is None:
+        return None
+    from apps.parametres.pvgis_profils import serie_horaire_annee_type
+    from apps.ventes.moteur_ci.production import plan_de_production
+    plan = plan_de_production(toit)
+    try:
+        serie = serie_horaire_annee_type(lat, lon, angle_deg=plan['angle_deg'],
+                                         aspect_deg=plan['aspect_deg'], montage=plan['montage'])
+    except Exception:  # noqa: BLE001 — série absente : repli dit, jamais l'étude omise
+        logger.warning('AMOT99 — série horaire PVGIS indisponible', exc_info=True)
+        return None
+    return dict(serie, plan=plan) if serie else None
 
 
 def _profil_societe(company, mode, cle):
@@ -1042,7 +1065,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     from apps.ventes import economie_ci, tarif_ci
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
-    from apps.ventes.moteur_ci.production import bloc_production_ci, traces_production
+    from apps.ventes.moteur_ci.production import (
+        bloc_production_ci, production_pour_bilan, traces_production,
+    )
     from apps.ventes.moteur_ci.taille import dimensionner_ci
     from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
 
@@ -1076,15 +1101,19 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     _garde_kwh_factures(res, tarif, alertes)
 
     site = res.valeur('site') or {}
-    lecture = None if production_figee else lire_production(site)
+    toit_declare = {'type_pose': res.valeur('type_pose'),
+                    'pente_deg': res.valeur('pente_deg'),
+                    'azimut_deg': res.valeur('azimut_deg')}
+    # AMOT99 — le plan de la série horaire : pose déclarée, sinon D-ACI-13.
+    pose = toit_declare['type_pose'] or POSE_PAR_DEFAUT_COUVERTURE.get(
+        res.valeur('couverture'), POSE_PAR_DEFAUT)
+    lecture = None if production_figee else lire_production(
+        site, toit=dict(toit_declare, type_pose=pose))
     if lecture is None and not production_figee:
         alertes.append(_alerte('production_indisponible', 'production',
                                'Profil PVGIS indisponible : production non calculée, étude omise.',
                                niveau='bloquant'))
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
-    toit_declare = {'type_pose': res.valeur('type_pose'),
-                    'pente_deg': res.valeur('pente_deg'),
-                    'azimut_deg': res.valeur('azimut_deg')}
     if production_figee:
         production = production_figee
         # CAD177 — mêmes traces que le calcul qui l'a figée (idempotence d'un
@@ -1094,13 +1123,14 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         alertes.extend(al_prod)
         hypotheses.extend(hyp_prod)
     else:
-        productibles, formes, source = lecture
+        productibles, formes, source, *serie = lecture  # 3 éléments : lecture d'avant AMOT99
+        serie = (serie or [None])[0]
         production, hyp_prod, al_prod = bloc_production_ci(
             productible_mensuel=productibles, formes_saison=formes,
             derate=PRODUCTION_DERATE,
             coordonnees_figees={'lat': _num(site.get('lat')), 'lon': _num(site.get('lon')),
                                 'date_appel': _aujourdhui().isoformat()},
-            source=source, toit=toit_declare)
+            source=source, toit=toit_declare, serie=serie, plan=(serie or {}).get('plan'))
         alertes.extend(al_prod)
         hypotheses.extend(hyp_prod)
     if production is None:
@@ -1176,7 +1206,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     borne_toit = _borne_toit(res, devis, catalogue['module'], alertes)
     _charge_toiture(res, catalogue, alertes)
     resultat = dimensionner_ci(
-        charge_jours_types=jours_types, production_jours_types=production['jours_types'],
+        charge_jours_types=jours_types, production_jours_types=production_pour_bilan(production),
         tension=tension, combiner=combiner, composer=composer, valoriser=valoriser,
         bornes={'toit': borne_toit,
                 'phase': {'kwc': None, 'motif': 'triphasé : aucune borne de phase'
@@ -1239,7 +1269,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         'regime_8221_suggere': regime,
         'alertes': _uniques(alertes),
         'hypotheses': _uniques(hypotheses, cle=('cle',)),
-        'methode': METHODE,
+        'methode': METHODE_8760 if production.get('serie_horaire') else METHODE,
         'version_moteur': VERSION_MOTEUR,
     }
     return _sans_cles_interdites(_json(etude))
@@ -1524,6 +1554,11 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
             'composition', 'economie_ci', 'alertes', 'hypotheses')}
         bloc['version'] = VERSION_MOTEUR
         bloc['empreinte'] = empreinte
+        serie = (bloc.get('production') or {}).get('serie_horaire')
+        if serie:
+            # AMOT99 — les 8 760 h vivent dans ``production_figee`` seule.
+            bloc['production'] = dict(bloc['production'], serie_horaire={
+                k: v for k, v in serie.items() if k != 'kwh_kwc'})
         ecrire(devis, proprietaire=MOTEUR_CI,
                **{CLE_ETUDE_CI: bloc, CLE_PRODUCTION_FIGEE: etude.get('production')})
         return bloc

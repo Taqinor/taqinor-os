@@ -8,6 +8,10 @@ par le SEUL moteur de croisement du dépôt
 calepinage) : autoconsommé = Σ min(charge_h, production_h), surplus =
 production − autoconsommé, pondérés par le nombre de jours du type.
 
+AMOT99 (D-ACI-18=a) — avec la série 8 760 h (``production_pour_bilan``), chaque
+jour type est croisé avec CHAQUE jour réel de son mois (:func:`_croiser_serie`) :
+le bilan est la somme des 8 760 h. Sans série : le calcul d'avant, à l'octet.
+
 Aucun taux fixe (ni « part diurne », ni 60 %, ni 80 % — D-CIQ-1).
 
 Régime d'injection (D-CIQ-4, ANRE 04/26, loi 82-21 art. 12) :
@@ -22,6 +26,8 @@ Régime d'injection (D-CIQ-4, ANRE 04/26, loi 82-21 art. 12) :
 Sortie = le bloc ``bilan`` du contrat ``etude_ci_preview.json`` ; la matrice
 ``horaire`` est celle que lit la valorisation (``apps.ventes.economie_ci``).
 """
+
+from bisect import bisect_right
 
 from apps.ventes.quote_engine.constants_82_21 import (
     MENTION_BT,
@@ -58,6 +64,20 @@ def _matrice_heure(charge, production):
     return auto, production - auto
 
 
+def _croiser_serie(charge, mois_serie, kwc):
+    """AMOT99 — ``(autoconsommé[24], surplus[24])`` SOMMÉS sur les jours réels du
+    mois : la règle de :func:`_matrice_heure` sur chaque heure, par l'identité
+    exacte Σ_d min(c, k·p_d) = k·Σ_{p_d ≤ c/k} p_d + c·#{p_d > c/k} (valeurs
+    triées et cumulées une fois par étude : ~1 ms par taille)."""
+    auto_h, surplus_h = [], []
+    for c, triees, cumuls in zip(charge, mois_serie['heures_triees'], mois_serie['cumuls']):
+        rang = bisect_right(triees, c / kwc) if kwc > 0 else len(triees)
+        auto = kwc * cumuls[rang] + c * (len(triees) - rang)
+        auto_h.append(auto)
+        surplus_h.append(max(0.0, kwc * cumuls[-1] - auto))
+    return auto_h, surplus_h
+
+
 def regime_injection(tension, revente_choisie):
     """``'revente'`` (MT/HT et revente choisie) ou ``'sans_revente'``."""
     if revente_choisie and (tension or '').lower() in TENSIONS_REVENTE:
@@ -70,16 +90,21 @@ def bilan_horaire(charge_jours_types, production_jours_types, kwc, *, tension,
     """Bloc ``bilan`` pour une taille ``kwc`` et ses alertes.
 
     ``charge_jours_types`` : ``[{mois, type_jour, nb_jours, charge_kwh[24]}]``.
-    ``production_jours_types`` : ``[{mois, production_kwh_kwc[24]}]``.
+    ``production_jours_types`` : ``[{mois, production_kwh_kwc[24]}]`` ou, série
+    horaire (AMOT99), ``[{mois, heures_triees[24][jours], cumuls[24][jours+1]}]``.
     Rend ``(bilan, alertes)``.
     """
     alertes = []
     puissance = _num(kwc)
-    prod_par_mois = {}
+    prod_par_mois, serie_par_mois, jours_du_mois = {}, {}, {}
     for bloc in production_jours_types or []:
-        if isinstance(bloc, dict) and bloc.get('mois') is not None:
+        if isinstance(bloc, dict) and bloc.get('heures_triees'):
+            serie_par_mois[bloc.get('mois')] = bloc
+        elif isinstance(bloc, dict) and bloc.get('mois') is not None:
             prod_par_mois[bloc['mois']] = [_num(v) * puissance
                                            for v in (bloc.get('production_kwh_kwc') or [])]
+    for jt in charge_jours_types or []:
+        jours_du_mois[jt.get('mois')] = jours_du_mois.get(jt.get('mois'), 0.0) + _num(jt.get('nb_jours'))
 
     mois_cumul = {}
     horaire = []
@@ -89,15 +114,24 @@ def bilan_horaire(charge_jours_types, production_jours_types, kwc, *, tension,
         nb = _num(jt.get('nb_jours'))
         charge = [_num(v) for v in (jt.get('charge_kwh') or [])]
         prod = prod_par_mois.get(mois)
-        if prod is None or len(prod) != HEURES or len(charge) != HEURES:
+        if mois in serie_par_mois and len(charge) == HEURES and jours_du_mois[mois]:
+            # AMOT99 — rapporté aux jours de charge du mois : Σ types = la série.
+            auto_h, surplus_h = (
+                [v / jours_du_mois[mois] for v in sommes]
+                for sommes in _croiser_serie(charge, serie_par_mois[mois], puissance))
+            jour = {'self_consumed_kwh': sum(auto_h), 'surplus_kwh': sum(surplus_h),
+                    'total_production_kwh': sum(auto_h) + sum(surplus_h),
+                    'total_load_kwh': sum(charge)}
+        elif prod is None or len(prod) != HEURES or len(charge) != HEURES:
             alertes.append(_alerte(
                 'production_mois_absente', 'production.jours_types',
                 f'Production ou charge horaire incomplète pour le mois {mois} : '
                 'ce jour type n’entre pas dans le bilan.', interne=True))
             continue
-        # Totaux du jour : le moteur de croisement unique, sur les 24 h.
-        jour = hourly_self_consumption(charge, prod)
-        auto_h, surplus_h = zip(*(_matrice_heure(c, p) for c, p in zip(charge, prod)))
+        else:
+            # Totaux du jour : le moteur de croisement unique, sur les 24 h.
+            jour = hourly_self_consumption(charge, prod)
+            auto_h, surplus_h = zip(*(_matrice_heure(c, p) for c, p in zip(charge, prod)))
         horaire.append({
             'mois': mois,
             'type_jour': jt.get('type_jour'),

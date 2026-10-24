@@ -13,10 +13,15 @@ totales, fondateur 18/08).
 comportement octet-identique — fin du « GHI × 0,8 national » côté C&I.
 
 Sans productible ou sans forme PVGIS : production ``None`` et étude omise
-(règle Z2), jamais une cloche inventée. Une seule chaîne PVGIS existe,
-FIGÉE à ``PVGIS_ANGLE_DEG``/``PVGIS_ASPECT_DEG`` : une pente ou un azimut
-déclarés différents ne changent PAS la production, ils lèvent une alerte.
+(règle Z2), jamais une cloche inventée. La table et les formes sont FIGÉES à
+``PVGIS_ANGLE_DEG``/``PVGIS_ASPECT_DEG`` : sur ce repli (journées moyennes), une
+pente ou un azimut déclarés différents ne changent PAS la production (alerte).
+AMOT99 (D-ACI-18=a) — avec la série HORAIRE de l'année type au plan déclaré
+(:func:`plan_de_production`), le bloc en dérive tout et le bilan se croise sur
+ses 8 760 h (:func:`production_pour_bilan`) ; la méthode est toujours dite.
 """
+
+from itertools import accumulate
 
 from apps.parametres.pvgis_profils import (
     JOURS_PAR_MOIS,
@@ -24,6 +29,8 @@ from apps.parametres.pvgis_profils import (
     PVGIS_ANGLE_DEG,
     PVGIS_ASPECT_DEG,
     PVGIS_LOSS_PCT,
+    SERIE_ANNEE_DEBUT,
+    SERIE_ANNEE_FIN,
 )
 
 #: Mois (1-12) → saison PVGIS, dérivé de ``MOIS_PAR_SAISON`` (même découpage
@@ -41,6 +48,14 @@ POSES_A_CONFIRMER = frozenset({'bac_acier', 'toit_plat_leste', 'toit_plat_fixe'}
 MESSAGE_ORIENTATION = ('orientation déclarée non prise en compte — production à confirmer '
                        'au calepinage')
 MESSAGE_A_CONFIRMER = 'production à confirmer au calepinage'
+
+#: AMOT99 — pose CIQ7 → montage PVGIS (« free » : rack ventilé ; « building » :
+#: aucune ventilation). Surimposition = « entre les deux » (manuel PVGIS) : le
+#: cas le MOINS favorable est retenu.
+MONTAGE_PVGIS_DE_LA_POSE = {'toiture_inclinee': 'building', 'bac_acier': 'building'}
+HEURES_AN = 8760
+METHODE_8760 = 'horaire_8760'
+METHODE_JOURNEES_MOYENNES = 'journees_moyennes'
 
 
 def _num(valeur, defaut=0.0):
@@ -103,18 +118,33 @@ def traces_production(production, *, source=None, toit=None):
     hypotheses, alertes = [], []
     if not production or production.get('source') != 'pvgis':
         return hypotheses, alertes
-    hypotheses.append({'cle': 'inclinaison_deg', 'valeur': PVGIS_ANGLE_DEG,
-                       'statut': 'source', 'source': 'pvgis_profils.PVGIS_ANGLE_DEG'})
-    hypotheses.append({'cle': 'azimut_deg', 'valeur': PVGIS_ASPECT_DEG,
-                       'statut': 'source', 'source': 'pvgis_profils.PVGIS_ASPECT_DEG'})
-    hypotheses.append({'cle': 'source_production', 'valeur': source,
-                       'statut': 'source', 'source': 'PVGIS'})
     toit = toit or {}
     pente = toit.get('pente_deg')
     azimut = toit.get('azimut_deg')
+    serie = production.get('serie_horaire') or None
+    angle = production.get('inclinaison_deg', PVGIS_ANGLE_DEG)
+    aspect = production.get('azimut_deg', PVGIS_ASPECT_DEG)
+    for cle, valeur, declare, defaut in (('inclinaison_deg', angle, pente, 'pvgis_profils.PVGIS_ANGLE_DEG'),
+                                         ('azimut_deg', aspect, azimut, 'pvgis_profils.PVGIS_ASPECT_DEG')):
+        lu = serie is not None and declare is not None
+        hypotheses.append({'cle': cle, 'valeur': valeur, 'source': 'toit déclaré' if lu else defaut,
+                           'statut': 'estimation' if serie is not None and not lu else 'source'})
+    hypotheses.append({'cle': 'source_production', 'valeur': source,
+                       'statut': 'source', 'source': 'PVGIS'})
+    # AMOT99 — la méthode d'autoconsommation retenue est TOUJOURS dite.
+    hypotheses.append({'cle': 'methode_autoconsommation', 'valeur': METHODE_8760, 'statut': 'source',
+                       'source': 'PVGIS seriescalc %s, année type (mois représentatifs %s), montage '
+                                 '« %s » : 8 760 h croisées heure par heure avec le profil déclaré'
+                                 % (serie.get('periode'), serie.get('annees_type'), serie.get('montage'))}
+                      if serie is not None else
+                      {'cle': 'methode_autoconsommation', 'valeur': METHODE_JOURNEES_MOYENNES,
+                       'statut': 'estimation',
+                       'source': 'série horaire PVGIS indisponible (coordonnées GPS absentes, PVGIS '
+                                 'injoignable ou production figée sans série) : repli sur 12 journées '
+                                 'moyennes PVGIS (30° plein sud) × types de jour'})
     orientation_differente = (
-        (pente is not None and _num(pente) != PVGIS_ANGLE_DEG)
-        or (azimut is not None and _num(azimut) != PVGIS_ASPECT_DEG))
+        (pente is not None and _num(pente) != _num(angle))
+        or (azimut is not None and _num(azimut) != _num(aspect)))
     if orientation_differente:
         alertes.append(_alerte('orientation_non_prise_en_compte', 'toit',
                                MESSAGE_ORIENTATION))
@@ -124,8 +154,58 @@ def traces_production(production, *, source=None, toit=None):
     return hypotheses, alertes
 
 
+def plan_de_production(toit):
+    """AMOT99 — plan PVGIS de la série : pente / azimut (PVGIS : 0 = Sud, −90 = Est)
+    DÉCLARÉS, sinon ceux de la table (dits en estimation) ; montage selon la pose
+    déclarée ou estimée (D-ACI-13, résolue par l'appelant)."""
+    toit = toit or {}
+    pente, azimut = toit.get('pente_deg'), toit.get('azimut_deg')
+    return {'angle_deg': PVGIS_ANGLE_DEG if pente is None else _num(pente),
+            'aspect_deg': PVGIS_ASPECT_DEG if azimut is None else _num(azimut),
+            'montage': MONTAGE_PVGIS_DE_LA_POSE.get(toit.get('type_pose'), 'free')}
+
+
+def _depuis_serie(serie, plan, derate):
+    """AMOT99 — ``(serie_horaire, kwh_kwc_mensuel, jours_types)`` de la série
+    8 760 h × ``derate`` (même dérate que la table), ou ``None``."""
+    kwh = (serie or {}).get('kwh_kwc') or []
+    if len(kwh) != HEURES_AN or not plan:
+        return None
+    valeurs = [round(_num(v) * derate, 4) for v in kwh]
+    mensuel, jours_types, debut = [], [], 0
+    for index, jours in enumerate(JOURS_PAR_MOIS):
+        mois_h = valeurs[debut:debut + 24 * jours]
+        debut += 24 * jours
+        mensuel.append(sum(mois_h))
+        jours_types.append({'mois': index + 1,
+                            'production_kwh_kwc': [sum(mois_h[h::24]) / jours
+                                                   for h in range(24)]})
+    serie_horaire = {'kwh_kwc': valeurs, 'annees_type': list(serie.get('annees') or []),
+                     'montage': plan['montage'],
+                     'periode': '%s-%s' % (SERIE_ANNEE_DEBUT, SERIE_ANNEE_FIN)}
+    return serie_horaire, mensuel, jours_types
+
+
+def production_pour_bilan(production):
+    """AMOT99 — l'entrée ``production_jours_types`` du bilan : avec la série, la
+    production de chaque heure des jours réels du mois, triée et cumulée (une
+    fois par étude) ; sans elle, les 12 journées moyennes du bloc (repli dit)."""
+    production = production or {}
+    serie = (production.get('serie_horaire') or {}).get('kwh_kwc') or []
+    if len(serie) != HEURES_AN:
+        return production.get('jours_types')
+    sortie, debut = [], 0
+    for index, jours in enumerate(JOURS_PAR_MOIS):
+        triees = [sorted(_num(v) for v in serie[debut + h:debut + 24 * jours:24])
+                  for h in range(24)]
+        debut += 24 * jours
+        sortie.append({'mois': index + 1, 'heures_triees': triees,
+                       'cumuls': [list(accumulate(t, initial=0.0)) for t in triees]})
+    return sortie
+
+
 def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnees_figees,
-                       source=None, toit=None, calepinage=None):
+                       source=None, toit=None, calepinage=None, serie=None, plan=None):
     """Bloc ``production`` du contrat ``etude_ci_preview.json`` (par kWc).
 
     ``coordonnees_figees`` : ``{lat, lon, date_appel}`` figés par l'appelant
@@ -133,6 +213,7 @@ def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnee
     ``toit`` : ``{type_pose, pente_deg, azimut_deg}`` déclarés.
     ``calepinage`` : ``{id, kwh_kwc_mensuel?}`` du calepinage retenu (lu par
     l'orchestrateur via ``apps.calepinage.selectors``) — il passe devant PVGIS.
+    ``serie`` / ``plan`` (AMOT99) : l'année type horaire et son plan — le bloc en dérive.
 
     Rend ``(production | None, hypotheses, alertes)``.
     """
@@ -167,16 +248,22 @@ def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnee
     else:
         origine = 'pvgis'
 
+    depuis_serie = _depuis_serie(serie, plan, derate) if origine == 'pvgis' else None
     production = {
         'source': origine,
         'coordonnees_figees': dict(coordonnees_figees) if coordonnees_figees else None,
-        'inclinaison_deg': PVGIS_ANGLE_DEG,
-        'azimut_deg': PVGIS_ASPECT_DEG,
+        'inclinaison_deg': plan['angle_deg'] if depuis_serie else PVGIS_ANGLE_DEG,
+        'azimut_deg': plan['aspect_deg'] if depuis_serie else PVGIS_ASPECT_DEG,
         'pertes_pct': PVGIS_LOSS_PCT,
         'kwh_kwc_mensuel': [m['prod_mois_kwh'] for m in par_mois],
         'jours_types': [{'mois': m['mois'], 'production_kwh_kwc': m['prod_24h']}
                         for m in par_mois],
+        'methode_autoconso': METHODE_8760 if depuis_serie else METHODE_JOURNEES_MOYENNES,
+        'serie_horaire': None,
     }
+    if depuis_serie:
+        (production['serie_horaire'], production['kwh_kwc_mensuel'],
+         production['jours_types']) = depuis_serie
 
     hyp_prod, al_prod = traces_production(production, source=source, toit=toit)
     hypotheses.extend(hyp_prod)

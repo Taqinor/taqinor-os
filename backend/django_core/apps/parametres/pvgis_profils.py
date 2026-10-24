@@ -129,6 +129,14 @@ PVGIS_LOSS_PCT = 14       # pertes système PVGIS usuelles
 PVGIS_PVTECH = 'crystSi'
 PVGIS_MOUNTING = 'free'
 
+# AMOT99 (D-ACI-18=a) — série HORAIRE ``seriescalc`` (``pvcalculation=1``, même
+# loss/techno que la table) au plan DÉCLARÉ : les 10 dernières années SARAH3 de
+# PVGIS 5.3 (2005-2023). Réponse lourde : délai plus large, même coupe-circuit.
+SERIE_ANNEE_DEBUT = 2014
+SERIE_ANNEE_FIN = 2023
+SERIE_TIMEOUT_S = 30
+PVGIS_SERIESCALC = PVGIS_API_BASE + '/seriescalc'
+
 # TTL du cache SYSTÈME (core.cache, company=None — comme PV73). Un profil
 # DRcalc est une MOYENNE climatologique du jour moyen d'un mois : il ne bouge
 # pas d'un jour à l'autre, d'où un TTL bien plus long que le productible
@@ -945,7 +953,7 @@ def _cache_ecrire(cle, valeur, ttl=None):
         logger.debug('cache pvgis_profils indisponible pour %s', cle)
 
 
-def _appel_pvgis(url):
+def _appel_pvgis(url, timeout=PVGIS_TIMEOUT_S):
     """GET JSON PVGIS avec timeout court ; ``None`` sur toute anomalie.
 
     Aucune exception réseau ne remonte : une proposition doit s'afficher même
@@ -963,7 +971,7 @@ def _appel_pvgis(url):
         return None
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'taqinor-os'})
-        with urllib.request.urlopen(req, timeout=PVGIS_TIMEOUT_S) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode('utf-8'))
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError,
             ValueError, OSError) as exc:
@@ -1097,6 +1105,63 @@ def productible_mensuel_live(lat, lon):
     if valeurs is not None:
         _cache_ecrire(cle, valeurs)
     return valeurs
+
+
+def _annee_type_depuis_seriescalc(payload):
+    """AMOT99 — l'année TYPE (8 760 h kWh/kWc, UTC, 1er janvier 0 h) d'une réponse
+    ``seriescalc`` : chaque mois est celui de l'année RÉELLE la plus proche de la
+    moyenne pluriannuelle du mois (principe des années météo types) — des heures
+    observées, jamais une moyenne qui lisserait les jours nuageux ; 29 février
+    écarté. Rend ``{kwh_kwc[8760], annees[12]}`` ou ``None``."""
+    heures = ((payload or {}).get('outputs') or {}).get('hourly') if isinstance(payload, dict) else None
+    if not isinstance(heures, list):
+        return None
+    par_mois = {}
+    for entree in heures:
+        try:
+            temps = str(entree['time'])
+            annee, mois, jour = int(temps[0:4]), int(temps[4:6]), int(temps[6:8])
+            valeur = max(0.0, float(entree['P'])) / 1000.0
+        except (TypeError, KeyError, ValueError):
+            return None
+        if not (mois == 2 and jour == 29):
+            par_mois.setdefault((annee, mois), []).append(valeur)
+    serie, annees = [], []
+    for mois in range(1, 13):
+        attendu = 24 * JOURS_PAR_MOIS[mois - 1]
+        candidats = {a: v for (a, m), v in par_mois.items() if m == mois and len(v) == attendu}
+        if not candidats:
+            return None
+        moyenne = sum(sum(v) for v in candidats.values()) / len(candidats)
+        retenue = min(candidats, key=lambda a: (abs(sum(candidats[a]) - moyenne), a))
+        serie.extend(candidats[retenue])
+        annees.append(retenue)
+    return {'kwh_kwc': serie, 'annees': annees}
+
+
+def serie_horaire_annee_type(lat, lon, *, angle_deg, aspect_deg, montage):
+    """AMOT99 — l'année type horaire au point GPS et au plan (``aspect`` PVGIS :
+    0 = Sud, −90 = Est ; ``montage`` free/building), ou ``None`` (PVGIS
+    injoignable, pas de GPS : repli dit par l'appelant). Cache SYSTÈME 30 j."""
+    coords = _coordonnees(lat, lon)
+    if coords is None or montage not in ('free', 'building'):
+        return None
+    latf, lonf = coords
+    cle = 'pvgis:serie8760:%.3f:%.3f:%g:%g:%s' % (latf, lonf, angle_deg, aspect_deg, montage)
+    en_cache = _cache_lire(cle)
+    if en_cache is not None:
+        return en_cache or None
+    params = {
+        'lat': latf, 'lon': lonf, 'pvcalculation': 1, 'peakpower': 1,
+        'loss': PVGIS_LOSS_PCT, 'pvtechchoice': PVGIS_PVTECH, 'mountingplace': montage,
+        'angle': angle_deg, 'aspect': aspect_deg, 'startyear': SERIE_ANNEE_DEBUT,
+        'endyear': SERIE_ANNEE_FIN, 'outputformat': 'json',
+    }
+    serie = _annee_type_depuis_seriescalc(_appel_pvgis(
+        PVGIS_SERIESCALC + '?' + urllib.parse.urlencode(params), timeout=SERIE_TIMEOUT_S))
+    if serie is not None:
+        _cache_ecrire(cle, serie)
+    return serie
 
 
 # ── API publique : chaîne de résolution ──────────────────────────────────────

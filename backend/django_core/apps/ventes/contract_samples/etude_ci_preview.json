@@ -1073,7 +1073,52 @@
             0.0
           ]
         }
-      ]
+      ],
+      "methode_autoconso": "horaire_8760",
+      "serie_horaire": {
+        "kwh_kwc": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.031,
+          0.181,
+          0.316,
+          0.421,
+          0.489,
+          0.512,
+          0.489,
+          0.421,
+          0.316,
+          0.181,
+          0.031,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "annees_type": [
+          2019,
+          2016,
+          2021,
+          2018,
+          2015,
+          2020,
+          2017,
+          2022,
+          2019,
+          2014,
+          2023,
+          2016
+        ],
+        "montage": "free",
+        "periode": "2014-2023"
+      }
     },
     "taille": {
       "retenue_kwc": 55,
@@ -2113,9 +2158,15 @@
         "valeur": 14,
         "statut": "estimation",
         "source": "pertes système PVGIS par défaut"
+      },
+      {
+        "cle": "methode_autoconsommation",
+        "valeur": "horaire_8760",
+        "statut": "source",
+        "source": "PVGIS seriescalc 2014-2023, année type (mois représentatifs [2019, 2016, 2021, 2018, 2015, 2020, 2017, 2022, 2019, 2014, 2023, 2016]), montage « free » : 8 760 h croisées heure par heure avec le profil déclaré"
       }
     ],
-    "methode": "autoconsommation horaire : production PVGIS du site × profil déclaré, 12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2)",
+    "methode": "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2, D-ACI-18)",
     "version_moteur": "ci-1"
   },
   "exemple_industriel_mt": {
@@ -2306,7 +2357,9 @@
             0.0
           ]
         }
-      ]
+      ],
+      "methode_autoconso": "journees_moyennes",
+      "serie_horaire": null
     },
     "taille": {
       "retenue_kwc": 55,
@@ -2712,6 +2765,12 @@
         "valeur": 14,
         "statut": "estimation",
         "source": "pertes système PVGIS par défaut"
+      },
+      {
+        "cle": "methode_autoconsommation",
+        "valeur": "journees_moyennes",
+        "statut": "estimation",
+        "source": "série horaire PVGIS indisponible (coordonnées GPS absentes, PVGIS injoignable ou production figée sans série) : repli sur 12 journées moyennes PVGIS (30° plein sud) × types de jour"
       }
     ],
     "methode": "autoconsommation horaire : production PVGIS du site × profil déclaré, 12 mois × types de jour ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2)",
@@ -2960,7 +3019,7 @@
     "sous_reserve_visite": "{valeur, motif} — vrai si site MT, ou si tension / puissance souscrite / toit restent inconnus (D-CIQ-5) ; le document porte alors « estimation sous réserve de visite »",
     "profil_charge.methode": "declare | registres_mt | courbe_mesuree | archetype — priorité : courbe_mesuree > registres_mt > declare > archetype (repli étiqueté « estimation », D-CIQ-1) ; `archetype` = {cle, source, licence} ou null",
     "profil_charge.jours_types": "[{mois, type_jour ouvre|samedi|dimanche|ferme, nb_jours, charge_kwh[24]}] — Σ charge × nb_jours = consommation du mois",
-    "production": "{source pvgis|calepinage, coordonnees_figees {lat, lon, date_appel}, inclinaison_deg, azimut_deg, pertes_pct, kwh_kwc_mensuel[12], jours_types[{mois, production_kwh_kwc[24]}]} — heures en GMT (aucun décalage, `decalage_maroc_h`)",
+    "production": "{source pvgis|calepinage, coordonnees_figees {lat, lon, date_appel}, inclinaison_deg, azimut_deg, pertes_pct, kwh_kwc_mensuel[12], jours_types[{mois, production_kwh_kwc[24]}], methode_autoconso horaire_8760|journees_moyennes, serie_horaire {kwh_kwc[8760], annees_type[12], montage free|building, periode} | null} — heures en GMT (aucun décalage, `decalage_maroc_h`). AMOT99 (D-ACI-18=a) : avec `serie_horaire` (année type PVGIS `seriescalc` au point GPS, à la pente / l'azimut (convention PVGIS, 0 = Sud, −90 = Est) / au montage de la pose déclarés — défaut 30° Sud, pose D-ACI-13), inclinaison/azimut/mensuel/jours_types en dérivent et le `bilan` est la somme des 8 760 h ; sans elle (pas de GPS, PVGIS injoignable, production figée d'un devis antérieur) : 12 journées moyennes, dit par l'hypothèse `methode_autoconsommation` (jamais en silence). La série n'est stockée que dans `production_figee` (l'`etude_ci` stockée en garde le résumé, sans `kwh_kwc`). L'exemple ABRÈGE `serie_horaire.kwh_kwc` aux 24 premières heures.",
     "taille": "pas 5 kWc ; `paliers[].cout_ht` = prix de VENTE HT de la tranche (jamais un coût d'achat) ; `ratio_marginal_annees` = cout_ht ÷ economie_annuelle marginale ; `admis` faux ⇒ `borne` nommée ; `retenue_kwc` null ⇒ `raison_arret` le dit ; raison_arret ∈ horizon_marginal | toit | puissance_souscrite | plafond_injection | onduleurs | prix_manquants | module | taille_explicite | consommation_absente (ADEV78 : `module` = module sans Pmax publiée, aucun palier) ; `statut` (ADEV79, D-ACI-2=a) = `estimation` dès qu'un poste attend la visite (`composition.a_chiffrer_visite` non vide : hors total, sous réserve de visite), `calculee` sinon, null sans taille",
     "composition.a_chiffrer_visite": "ADEV79 (D-ACI-2=a) — `composition.a_chiffrer_visite` = désignations des lignes qui dépendent de la VISITE (structure sans type de pose, câbles sans longueur ni chaînes, section/calibre du bureau d'études) : hors total et hors devis, jamais dans `prix_a_renseigner` ; une ligne sans prix d'un rôle de taille ou d'un poste fixe reste dans `prix_a_renseigner` et fait refuser le devis automatique (D-ACI-6=a).",
     "bilan": "taux_autoconso = autoconso ÷ production ; taux_couverture = autoconso ÷ consommation (COUV-AUTO) ; BT ⇒ `injecte_valorise_kwh` = 0 (aucune revente BT) ; `horaire` = la matrice que la valorisation (CIQ3) lit au prix du poste horaire",
