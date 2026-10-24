@@ -5,6 +5,7 @@ from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from ..openapi_helpers import BINARY, ID_OU_VIDE, LISTE, P, PDF, STR, choix_ou_vide, corps
+from ..corps_achats import ReceptionCrossDockCorps, valider_corps
 from ..utils.params import etiquette_options_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -278,9 +279,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             'lignes': proposer_cross_dock(reception),
         })
 
-    @extend_schema(request=corps('ReceptionCrossDockCorps',
-                                 lignes=serializers.ListField(child=serializers.IntegerField(), required=False),
-                                 unite_logistique=serializers.IntegerField(required=False)), responses={
+    @extend_schema(request=ReceptionCrossDockCorps, responses={
         200: inline_serializer('StockReceptionCrossDockAffectation', {
             'unite_logistique': serializers.IntegerField(allow_null=True),
             'sscc': serializers.CharField(),
@@ -299,8 +298,9 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 })),
             'reception_entierement_cross_dockee': serializers.BooleanField(),
         }),
+        # ``detail`` (refus du service) ou l'erreur de validation du corps (champs à la racine).
         400: inline_serializer('StockReceptionCrossDockErreur', {
-            'detail': serializers.CharField(),
+            'detail': serializers.CharField(required=False),
         }),
     })
     @action(detail=True, methods=['post'], url_path='affecter-cross-dock')
@@ -313,10 +313,11 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
         from ..models_wms import UniteLogistique
         from ..services import affecter_reception_cross_dock
         reception = self.get_object()
+        saisie = valider_corps(ReceptionCrossDockCorps, request)
         unite = None
-        if request.data.get('unite_logistique'):
+        if saisie.get('unite_logistique'):
             unite = UniteLogistique.objects.filter(
-                id=request.data.get('unite_logistique'),
+                id=saisie['unite_logistique'],
                 company=request.user.company).first()
             if unite is None:
                 return Response(
@@ -326,7 +327,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
         try:
             resultat = affecter_reception_cross_dock(
                 reception=reception, user=request.user,
-                lignes=request.data.get('lignes'), unite=unite)
+                lignes=saisie.get('lignes'), unite=unite)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=statut_refus_metier(exc))
