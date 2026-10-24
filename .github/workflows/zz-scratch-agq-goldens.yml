@@ -82,13 +82,43 @@ jobs:
           testdb-cache-into: test_erp_db
           prebuilt-image: 'true'
           testdb-save: 'false'
-      - name: Recapturer les goldens (build_quote_data, split public, scission crm)
+      - name: Diagnostic rendu d'origine (dump branche puis main)
         working-directory: backend/django_core
         run: |
-          set -o pipefail
-          UPDATE_GOLDEN=1 python manage.py test apps.ventes.tests.test_moteur_golden_build_quote_data apps.crm.tests_services_split_golden --keepdb -v 2 2>&1 | tail -40 || true
-          SPLIT_GOLDEN_CAPTURE=1 python manage.py test apps.ventes.tests.test_split_devis_public.ComportementPublicTests --keepdb -v 2 2>&1 | tail -20 || true
-          git status --short -- apps/ventes/tests/golden apps/crm/golden | head -40
+          cat > /tmp/zz_dump_rendu.py <<'PY'
+          import hashlib, itertools, os
+          import apps.ventes.tests.test_regles_calcul_rendu_origine as m
+          _c = itertools.count()
+          class _H:
+              def __getattr__(self, n):
+                  return getattr(hashlib, n)
+              def sha256(self, b=b''):
+                  with open(os.path.join(os.environ['DUMP_DIR'], '%03d.json' % next(_c)), 'wb') as f:
+                      f.write(b)
+                  return hashlib.sha256(b)
+          m.hashlib = _H()
+          class Dump(m.RenduReglesOrigineTests):
+              pass
+          PY
+          mkdir -p /tmp/dump_branche /tmp/dump_main
+          cp /tmp/zz_dump_rendu.py apps/ventes/tests/zz_dump_rendu.py
+          DUMP_DIR=/tmp/dump_branche python manage.py test apps.ventes.tests.zz_dump_rendu.Dump.test_devis_envoye_rendu_comme_avant_les_correctifs --keepdb 2>&1 | tail -3 || true
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" fetch --no-tags --depth=1 origin main
+          git -C "$GITHUB_WORKSPACE" worktree add /tmp/main FETCH_HEAD
+          cp /tmp/zz_dump_rendu.py /tmp/main/backend/django_core/apps/ventes/tests/zz_dump_rendu.py
+          cp "$GITHUB_WORKSPACE/STAGES.py" /tmp/main/ 2>/dev/null || true
+          cd /tmp/main/backend/django_core
+          DUMP_DIR=/tmp/dump_main python manage.py test apps.ventes.tests.zz_dump_rendu.Dump.test_devis_envoye_rendu_comme_avant_les_correctifs --keepdb 2>&1 | tail -3 || true
+          ls /tmp/dump_branche | wc -l; ls /tmp/dump_main | wc -l
+          for f in /tmp/dump_branche/*.json; do b=$(basename $f); cmp -s $f /tmp/dump_main/$b || echo "DIFF $b"; done | head -40
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dump-rendu
+          path: |
+            /tmp/dump_branche/
+            /tmp/dump_main/
       - name: Rejouer les modules rouges de la PR (verdict apres recapture)
         working-directory: backend/django_core
         run: |
