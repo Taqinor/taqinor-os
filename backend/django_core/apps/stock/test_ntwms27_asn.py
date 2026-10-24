@@ -170,7 +170,7 @@ class TestEndpointsAsn(Ntwms27Base):
             company=self.company, type_unite='colis')
         reponse = self.api.get(
             f'/api/django/stock/unites-logistiques/{unite.id}/export-asn/')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # ENF11 : état (non scellée)
 
     def test_import_via_api(self):
         unite = self._palette_scellee()

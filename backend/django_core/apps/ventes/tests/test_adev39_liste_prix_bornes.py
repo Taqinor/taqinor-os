@@ -82,3 +82,41 @@ class ListePrixBornesTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.content)
         self.liste.refresh_from_db()
         self.assertTrue(self.liste.archived)
+
+    def test_corps_obligatoires_et_regles_publiees_ci997(self):
+        # CI #997 fuzz (24/10) — un `request` en dict ne rend jamais le corps
+        # obligatoire : le fuzz l'omettait (« corps vide » = 400 sur un envoi
+        # « conforme »). Les opérations ci-dessous publient donc un corps
+        # OBLIGATOIRE, et les règles que le serveur applique (rôles de
+        # composition, clés de `sections`, bornes de la composition…).
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ventes import urls as ventes_urls
+        doc = SchemaGenerator(patterns=[path(
+            'api/django/ventes/', include(ventes_urls))]).get_schema(
+            request=None, public=True)
+        base = '/api/django/ventes/devis/{id}/'
+        for route, methode in (('overrides/', 'patch'),
+                               ('etude-params/', 'patch'),
+                               ('sync-layout/', 'post'),
+                               ('layout/', 'post')):
+            with self.subTest(route=route):
+                corps = doc['paths'][base + route][methode]['requestBody']
+                self.assertTrue(corps.get('required'), route)
+
+        def _texte(valeur):
+            import json
+            return json.dumps(valeur, sort_keys=True)
+        config = _texte(doc['paths'][base + 'offres-tailles/config/'][
+            'patch']['requestBody'])
+        self.assertIn('"batterie"', config)  # rôle de composition publié
+        partage = _texte(doc['paths'][base + 'share-link/']['post'][
+            'requestBody'])
+        self.assertIn('"additionalProperties": false', partage)
+        lignes = _texte(doc['paths'][base + 'replace-lines/']['post'][
+            'requestBody'])
+        self.assertIn('"designation"', lignes)
+        composition = _texte(doc['paths'][
+            '/api/django/ventes/devis/composition/']['post']['requestBody'])
+        self.assertIn('"maximum": 100000', composition)

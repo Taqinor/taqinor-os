@@ -34,6 +34,7 @@ uniquement.
 """
 from __future__ import annotations
 
+import functools
 import logging
 import math
 
@@ -67,6 +68,17 @@ def _num(valeur, defaut=None):
         return float(valeur)
     except (TypeError, ValueError):
         return defaut
+
+
+#: CI #997 fuzz (24/10) — bornes PUBLIÉES au schéma ET appliquées ci-dessous
+#: (``-2.6e16`` kWh ou ``1.9e-163`` kWh de batterie débordaient le calcul en
+#: 500) : toute grandeur est dans ±1e9, latitude ±90, longitude ±180.
+BORNE = 1e9
+BORNES_GEO = {'lat': 90.0, 'lon': 180.0}
+
+
+def _dans_bornes(nom, valeur):
+    return abs(valeur) <= BORNES_GEO.get(nom, BORNE)
 
 
 #: CI #997 api-fuzz — drapeaux publiés ``boolean`` au schéma : un vrai
@@ -114,7 +126,8 @@ def _serie_12(corps, nom):
         valeurs = [float(v) for v in brutes]
     except (ValueError, OverflowError):
         return False, None
-    return all(map(math.isfinite, valeurs)), valeurs
+    return (all(map(math.isfinite, valeurs))
+            and all(abs(v) <= BORNE for v in valeurs)), valeurs
 
 
 #: CI #997 (2) — forme publiée des champs scalaires : un champ PRÉSENT a son
@@ -143,6 +156,10 @@ def _champ_hors_forme(corps):
         for nom in noms:
             if nom in corps and not valide(corps.get(nom)):
                 return nom
+    for nom in _NOMBRES:
+        valeur = corps.get(nom) if nom in corps else None
+        if _nombre(valeur) and not _dans_bornes(nom, valeur):
+            return nom
     return None
 
 
@@ -308,6 +325,41 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
     return conso, source, detail, occupation, equipements
 
 
+def _calcul_borne(vue):
+    """CI #997 fuzz (24/10) — un calcul dont les entrées, bien que dans les
+    bornes publiées, ne tiennent pas (division par une grandeur infime,
+    débordement flottant) est un refus d'ÉTAT, 409 : jamais la page HTML d'une
+    500 non gérée. Une réponse portant un flottant infini est refusée de même
+    (non sérialisable en JSON)."""
+    @functools.wraps(vue)
+    def enveloppe(request, *args, **kwargs):
+        from core.conflit_etat import ConflitEtat
+        try:
+            reponse = vue(request, *args, **kwargs)
+        except (ArithmeticError, ValueError, TypeError) as exc:
+            logger.warning('etude_horaire_preview : calcul impossible (%s)',
+                           exc, exc_info=True)
+            raise ConflitEtat(
+                'Ces valeurs ne permettent pas de calcul : vérifiez les '
+                'consommations, la puissance et la capacité de batterie.')
+        if not _fini(getattr(reponse, 'data', None)):
+            raise ConflitEtat(
+                'Ces valeurs ne permettent pas de calcul fini : vérifiez les '
+                'consommations, la puissance et la capacité de batterie.')
+        return reponse
+    return enveloppe
+
+
+def _fini(valeur):
+    if isinstance(valeur, float):
+        return math.isfinite(valeur)
+    if isinstance(valeur, dict):
+        return all(_fini(v) for v in valeur.values())
+    if isinstance(valeur, (list, tuple)):
+        return all(_fini(v) for v in valeur)
+    return True
+
+
 # SCHÉMA RÉELLEMENT DÉCLARÉ, PAS BASELINÉ NI VIDE.
 #
 # Deux facilités étaient possibles ici, toutes deux refusées :
@@ -335,18 +387,24 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
                       'persisté (écran générateur), scopé société. Un `devis` '
                       'fourni en même temps PRIME toujours sur `lead`.'),
         'ville': ChaineStricte(required=False),
-        'lat': serializers.FloatField(required=False),
-        'lon': serializers.FloatField(required=False),
+        'lat': serializers.FloatField(
+            required=False, min_value=-90, max_value=90),
+        'lon': serializers.FloatField(
+            required=False, min_value=-180, max_value=180),
         'facture_hiver': serializers.FloatField(
-            required=False, help_text='MAD/mois — ancrage réel'),
-        'facture_ete': serializers.FloatField(required=False),
+            required=False, min_value=-BORNE, max_value=BORNE,
+            help_text='MAD/mois — ancrage réel'),
+        'facture_ete': serializers.FloatField(
+            required=False, min_value=-BORNE, max_value=BORNE),
         'ete_differente': serializers.BooleanField(required=False),
         'factures_mensuelles': serializers.ListField(
-            child=serializers.FloatField(), required=False, allow_null=True,
+            child=serializers.FloatField(min_value=-BORNE, max_value=BORNE),
+            required=False, allow_null=True,
             min_length=12, max_length=12,
             help_text='12 factures MAD réelles'),
         'conso_kwh_mensuelles': serializers.ListField(
-            child=serializers.FloatField(), required=False, allow_null=True,
+            child=serializers.FloatField(min_value=-BORNE, max_value=BORNE),
+            required=False, allow_null=True,
             min_length=12, max_length=12,
             help_text='12 consommations kWh saisies'),
         # Une occupation hors des valeurs servies est IGNORÉE (repli
@@ -357,8 +415,10 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
                       'autre valeur est ignorée (repli documenté).'),
         'equipements': serializers.DictField(required=False),
         'raccordement': ChaineStricte(required=False),
-        'kwc': serializers.FloatField(required=False),
-        'batterie_kwh': serializers.FloatField(required=False),
+        'kwc': serializers.FloatField(
+            required=False, min_value=-BORNE, max_value=BORNE),
+        'batterie_kwh': serializers.FloatField(
+            required=False, min_value=-BORNE, max_value=BORNE),
         'dimensionner': serializers.BooleanField(required=False),
         'critere': serializers.ChoiceField(choices=CRITERES, required=False),
     }),
@@ -412,6 +472,7 @@ def _profil_depuis_lead(lead, corps, *, tranches=None,
 # ``equipements`` (objet publié) voyageait en chaîne « {} » et une requête
 # conforme était refusée. Un corps multipart reçoit 415.
 @parser_classes([JSONParser])
+@_calcul_borne
 def etude_horaire_preview(request):
     """CJ2a — Aperçu du moteur horaire + dimensionnement, SANS devis persisté.
 

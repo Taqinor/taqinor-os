@@ -113,7 +113,7 @@ class LivraisonVentilationTests(TestCase):
         liv = self._liv([(self.a, 2), (self.b, 4)])
         mails = len(mail.outbox)
         r = self._post(liv, 'expedier')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('Stock insuffisant pour B (3 < 4)', str(r.data))
         liv.refresh_from_db()
         self.assertEqual(liv.statut, Livraison.Statut.PLANIFIEE)

@@ -6,7 +6,8 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin, IsAdminRole,
 )
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
-from core.champs_stricts import date_ou_400, nombre_ou_400
+from core.champs_stricts import (
+    MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, date_ou_400, non_blanc)
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone
@@ -598,15 +599,12 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             InterventionActivitySerializer(
                 interv.activites.all(), many=True).data)
 
-    @oa.extend_schema(request=oa.body('NoterRequete', body=oa.s(True)), responses={201: InterventionActivitySerializer})
+    @oa.extend_schema(request=oa.NoterRequete, responses={201: InterventionActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
         interv = self.get_object()
-        body = (request.data.get('body') or '').strip()
-        if not body:
-            return Response({'body': 'Note vide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        body = oa.corps_valide(oa.NoterRequete, request)['body'].strip()
         act = intervention_activity.log_note(interv, request.user, body)
         return Response(InterventionActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
@@ -1401,8 +1399,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── XFSM22 — durée & pièces suggérées par l'historique ──────────────────
     @oa.extend_schema(
-        parameters=[oa.qs('type_intervention', required=True, pattern=r'\S'), oa.qidv('technicien'),
-                    oa.qs('type_installation')],
+        parameters=[oa.qs('type_intervention', required=True,
+                          pattern=MOTIF_NON_BLANC_SANS_NUL),
+                    oa.qidv('technicien'),
+                    oa.qs('type_installation', pattern=MOTIF_SANS_NUL)],
         responses=oa.OBJ,
     )
     @action(detail=False, methods=['get'], url_path='suggestions-creation',
@@ -1417,8 +1417,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             suggestion_duree_intervention, suggestion_pieces_intervention,
         )
         company = request.user.company
-        type_intervention = request.query_params.get('type_intervention')
-        if not (type_intervention or '').strip():  # ERR-ENF11 : blanc = absent
+        # api-fuzz full : un caractère nul fait lever le pilote Postgres (500).
+        type_intervention = oa.texte_requete(request, 'type_intervention')
+        type_installation = oa.texte_requete(request, 'type_installation')
+        if not non_blanc(type_intervention or ''):  # ERR-ENF11 : blanc = absent
             return Response(
                 {'detail': 'type_intervention est requis.'}, status=400)
         technicien = None
@@ -1431,7 +1433,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             company, type_intervention, technicien=technicien)
         pieces = suggestion_pieces_intervention(
             company, type_intervention,
-            type_installation=request.query_params.get('type_installation'))
+            type_installation=type_installation)
         return Response({'duree': duree, 'pieces': pieces})
 
     @oa.extend_schema(responses=oa.OBJ)
@@ -2404,7 +2406,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response({'date': jour, 'stops': stops})
 
     # ── FG299 — plan de charge des équipes (capacité vs affecté) ─────────────
-    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qfv('heures_par_jour')], responses=oa.OBJ_FENETRE)
+    @oa.extend_schema(
+        parameters=[oa.qdv('debut'), oa.qdv('fin'),
+                    oa.qnombre('heures_par_jour', mini=0, maxi=24)],
+        responses=oa.OBJ_FENETRE)
     @action(detail=False, methods=['get'], url_path='plan-de-charge',
             permission_classes=[IsAnyRole])
     def plan_de_charge(self, request):
@@ -2417,10 +2422,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         sortie JSON simple (export via ``?export=`` non requis ici)."""
         from .. import selectors
 
-        params = request.query_params
         debut, fin = oa.fenetre_semaine(request)
-        heures = nombre_ou_400(
-            params.get('heures_par_jour'), 'heures_par_jour', defaut=8.0)
+        heures = oa.nombre_requete(
+            request, 'heures_par_jour', defaut=8.0, mini=0, maxi=24)
         data = selectors.plan_de_charge_equipes(
             request.user.company, debut, fin, heures_par_jour=heures)
         return Response(data)
@@ -2445,7 +2449,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(data)
 
     # ── FG301 — nivellement de charge (resource levelling) ───────────────────
-    @oa.extend_schema(parameters=[oa.qdv('debut'), oa.qdv('fin'), oa.qfv('heures_par_jour')], responses=oa.OBJ_FENETRE)
+    @oa.extend_schema(
+        parameters=[oa.qdv('debut'), oa.qdv('fin'),
+                    oa.qnombre('heures_par_jour', mini=0, maxi=24)],
+        responses=oa.OBJ_FENETRE)
     @action(detail=False, methods=['get'], url_path='nivellement-charge',
             permission_classes=[IsAnyRole])
     def nivellement_charge(self, request):
@@ -2460,10 +2467,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         (aucun ``?format=``)."""
         from .. import selectors
 
-        params = request.query_params
         debut, fin = oa.fenetre_semaine(request)
-        heures = nombre_ou_400(
-            params.get('heures_par_jour'), 'heures_par_jour', defaut=8.0)
+        heures = oa.nombre_requete(
+            request, 'heures_par_jour', defaut=8.0, mini=0, maxi=24)
         data = selectors.nivellement_charge(
             request.user.company, debut, fin, heures_par_jour=heures)
         return Response(data)
@@ -2530,7 +2536,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         jour = corps['jour']
         technicien_id = corps.get('technicien')
         intervention_ids = corps.get('intervention_ids')
-        simuler = corps['simuler'] or oa.drapeau_requete(request, 'simuler')
+        drapeau = oa.drapeau_requete(request, 'simuler')  # toujours validé
+        simuler = corps['simuler'] or drapeau
 
         if simuler:
             data = services.previsualiser_replanification_masse(

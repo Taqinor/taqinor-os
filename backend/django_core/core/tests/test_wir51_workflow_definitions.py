@@ -141,3 +141,18 @@ class WorkflowDefinitionCrudTests(TenantAPITestCase):
         rl = self._admin().get(STEPS)
         self.assertEqual(rl.status_code, 200, rl.content)
         self.assertEqual(rl.json(), [])
+
+    def test_etape_imbriquee_a_id_inconnu_404(self):
+        """api-fuzz-full 24/10 — ``steps[].formulaire`` bien formé mais
+        inexistant : 404 comme au premier niveau ; une autre erreur mêlée
+        garde le 400."""
+        payload = _payload(n=2)
+        payload['steps'][1]['formulaire'] = 987654321
+        r = self._admin().post(BASE, payload, format='json')
+        self.assertEqual(r.status_code, 404, r.content)
+        self.assertIn('formulaire', r.json()['steps'][1])
+        payload['steps'][0]['sla_heures'] = 'abc'
+        r = self._admin().post(BASE, payload, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertFalse(WorkflowDefinition.objects.filter(
+            company=self.company).exists())

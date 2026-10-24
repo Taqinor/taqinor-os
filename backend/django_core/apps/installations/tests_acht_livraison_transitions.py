@@ -56,7 +56,8 @@ class LivraisonTransitionsTests(TestCase):
     def _assert_refus(self, liv, action, message=None):
         avant = (liv.statut, liv.stock_mouvemente, liv.notifie_livree_le)
         r = self._post(liv, action)
-        self.assertEqual(r.status_code, 400, (liv.statut, action, r.data))
+        # api-fuzz full : transition interdite = refus d'ETAT, 409.
+        self.assertEqual(r.status_code, 409, (liv.statut, action, r.data))
         if message:
             self.assertIn(message, str(r.data))
         liv.refresh_from_db()
@@ -95,7 +96,7 @@ class LivraisonTransitionsTests(TestCase):
             company=self.company, type='livraison.livree').count()
         self.assertEqual(evenements, 1)
         r = self._post(liv, 'livrer')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(len(mail.outbox), mails)
         self.assertEqual(ApiEvent.objects.filter(
             company=self.company, type='livraison.livree').count(), 1)

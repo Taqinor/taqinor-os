@@ -391,7 +391,7 @@ class ContratWmsPickingTests(WmsBase):
         self.assertMemesCles(rep.json(), contrat['exemple'], 'liberation')
         self.api.post(f'{self.URL}{vague["id"]}/lancer/')
         rep = self.api.post(url, contrat['exemple_corps'], format='json')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)  # ENF11 : vague plus en brouillon = état
         self.assertEqual(rep.json(), contrat['exemple_erreur_400'])
 
     def test_lancer_vague_vide_message(self):
@@ -401,7 +401,7 @@ class ContratWmsPickingTests(WmsBase):
             company=self.company, reference='VAG-ASTK-VIDE',
             cree_par=self.admin)
         rep = self.api.post(f'{self.URL}{vide.id}/lancer/')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)  # ENF11 : vague sans ligne = état
         self.assertEqual(
             rep.json(),
             route('wms_picking', 'vague_lancer')['exemple_erreur_400'])
@@ -599,7 +599,7 @@ class ContratWmsQuaisTests(WmsBase):
         base = '/api/django/stock/unites-logistiques/'
         export = route('wms_quais', 'unite_export_asn')
         rep = self.api.get(f'{base}{unite.id}/export-asn/')
-        self.assertEqual(rep.status_code, 400)
+        self.assertEqual(rep.status_code, 409)  # ENF11 : unité non scellée = état
         self.assertEqual(rep.json(), export['exemple_erreur_400'])
 
         sceller()

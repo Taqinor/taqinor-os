@@ -160,11 +160,16 @@ class XSAV17ReleveCompteurTest(TestCase):
                 ({'type': 'kwh', 'valeur': '031223732205', 'date': '2026-01-01'}, 'valeur'),
                 ({'type': 'kwh', 'valeur': 'NaN'}, 'valeur'),
                 ({'type': 'kwh', 'valeur': '-1'}, 'valeur'),
-                ({'type': 'kwh', 'valeur': '10', 'date': '4044-03-03'}, 'date'),
                 ({'type': 'kwh', 'valeur': '10', 'date': 5}, 'date')):
             resp = api.post(url, corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
             self.assertIn(champ, resp.json())
+        # api-fuzz-full : la borne « année trop lointaine » suit la date du
+        # jour (donc l'état) : le schéma ne peut la publier -> 409, pas 400.
+        resp = api.post(url, {'type': 'kwh', 'valeur': '10',
+                              'date': '4044-03-03'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('date', resp.json())
         resp = api.post(url, [{'type': 'kwh'}], format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 

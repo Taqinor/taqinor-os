@@ -6,7 +6,7 @@ borné à la société de l'utilisateur), jamais lue du corps. Querysets filtré
 `/proposal`, et ne change aucun statut de devis (RULE #4). Aucun prix exposé.
 """
 from drf_spectacular.utils import extend_schema_view, extend_schema
-from ..openapi_params import qint, qstr
+from ..openapi_params import choix_requete, entier_requete, qint, qstr
 import re
 import uuid
 
@@ -181,7 +181,8 @@ def _refleter_sur_chantier(dossier):
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('devis'), qstr('statut')]))
+    parameters=[qint('devis'),
+                qstr('statut', enum=RegulatoryDossier.Statut.values)]))
 class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
     # ARC5 — sweep TenantMixin : base transverse unique (idem pour les 5 viewsets
     # de ce module). get_queryset / perform_create / perform_update /
@@ -208,10 +209,11 @@ class RegulatoryDossierViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        devis_id = self.request.query_params.get('devis')
-        if devis_id:
+        devis_id = entier_requete(self.request, 'devis')
+        if devis_id is not None:
             qs = qs.filter(devis_id=devis_id)
-        statut = self.request.query_params.get('statut')
+        statut = choix_requete(
+            self.request, 'statut', RegulatoryDossier.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
         return qs
@@ -266,8 +268,8 @@ class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        dossier_id = self.request.query_params.get('dossier')
-        if dossier_id:
+        dossier_id = entier_requete(self.request, 'dossier')
+        if dossier_id is not None:
             qs = qs.filter(dossier_id=dossier_id)
         return qs
 
@@ -293,7 +295,8 @@ class DossierChecklistItemViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('dossier'), qstr('type_echange')]))
+    parameters=[qint('dossier'),
+                qstr('type_echange', enum=DossierExchange.TypeEchange.values)]))
 class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG269 — journal de la navette opérateur (scopé société)."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
@@ -314,10 +317,11 @@ class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-d
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        dossier_id = self.request.query_params.get('dossier')
-        if dossier_id:
+        dossier_id = entier_requete(self.request, 'dossier')
+        if dossier_id is not None:
             qs = qs.filter(dossier_id=dossier_id)
-        type_echange = self.request.query_params.get('type_echange')
+        type_echange = choix_requete(
+            self.request, 'type_echange', DossierExchange.TypeEchange.values)
         if type_echange:
             qs = qs.filter(type_echange=type_echange)
         return qs
@@ -344,7 +348,9 @@ class DossierExchangeViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-d
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('devis'), qstr('programme'), qstr('statut')]))
+    parameters=[qint('devis'),
+                qstr('programme', enum=SubventionDossier.Programme.values),
+                qstr('statut', enum=SubventionDossier.Statut.values)]))
 class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG270 — éligibilité & suivi des subventions (scopé société)."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
@@ -365,13 +371,15 @@ class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        devis_id = self.request.query_params.get('devis')
-        if devis_id:
+        devis_id = entier_requete(self.request, 'devis')
+        if devis_id is not None:
             qs = qs.filter(devis_id=devis_id)
-        programme = self.request.query_params.get('programme')
+        programme = choix_requete(
+            self.request, 'programme', SubventionDossier.Programme.values)
         if programme:
             qs = qs.filter(programme=programme)
-        statut = self.request.query_params.get('statut')
+        statut = choix_requete(
+            self.request, 'statut', SubventionDossier.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
         return qs
@@ -401,7 +409,8 @@ class SubventionDossierViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('devis'), qstr('statut')]))
+    parameters=[qint('devis'),
+                qstr('statut', enum=Regularisation8221.Statut.values)]))
 class Regularisation8221ViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG271 — workflow de régularisation Article 33 (scopé société)."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
@@ -422,10 +431,11 @@ class Regularisation8221ViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note c
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        devis_id = self.request.query_params.get('devis')
-        if devis_id:
+        devis_id = entier_requete(self.request, 'devis')
+        if devis_id is not None:
             qs = qs.filter(devis_id=devis_id)
-        statut = self.request.query_params.get('statut')
+        statut = choix_requete(
+            self.request, 'statut', Regularisation8221.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
         return qs

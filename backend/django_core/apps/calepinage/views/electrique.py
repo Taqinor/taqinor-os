@@ -29,12 +29,14 @@ from drf_spectacular.types import OpenApiTypes
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+
 from ..permissions import (
     PeutApprouverCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
 )
 from ..serializers import forme_du_contrat, forme_reponse
 from ..services.electrique import (
-    CLE_PUBLICATION, EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
+    CHAMPS_ENTREE, CLE_PUBLICATION, EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
     entree_electrique_servie, entree_stockee, evaluation_electrique,
     resultat_calepinage, verdict_publiable,
 )
@@ -84,11 +86,19 @@ class ElectriqueActionsMixin:
         # calepinage ; rien n'est écrit. Variante étrangère ⇒ 404.
         variante = None
         brut = request.query_params.get('variante')
-        if brut not in (None, ''):
+        if brut is not None:
             from .. import selectors
 
+            if not str(brut).strip():
+                # Publié entier : le vide (``?variante=``) n'en est pas un,
+                # il n'est plus lu comme « pas de variante ».
+                return Response(
+                    {'variante': "« variante » attend l'identifiant "
+                                 'numérique de la variante.'},
+                    status=status.HTTP_400_BAD_REQUEST)
             variante = (selectors.variantes(calepinage).filter(pk=brut).first()
-                        if str(brut).isdigit() else None)
+                        if brut.isascii() and brut.isdigit()
+                        and len(brut) < 19 else None)
             if variante is None:
                 return Response({'variante': 'Variante introuvable.'},
                                 status=status.HTTP_404_NOT_FOUND)
@@ -120,6 +130,12 @@ class ElectriqueActionsMixin:
         methods=['POST'],
         request=inline_serializer('CalepinageEntreeElectriqueCorps', {
             'derogations': drf_serializers.JSONField(required=False)}),
+        # ERR-ENF11-FUZZ-CALEPINAGE - ``enregistrer_entree`` refuse (400) toute
+        # cle hors ``CHAMPS_ENTREE`` : le corps publie la liste fermee (le
+        # contenu de chaque champ reste juge par le service).
+        extensions={EXTENSION_CORPS_RESSERRE: {
+            'properties': {cle: {} for cle in CHAMPS_ENTREE},
+            'additionalProperties': False}},
         responses=_FORME_RESULTAT)
     @action(detail=True, methods=['get', 'post'], url_path='entree-electrique',
             permission_classes=[PeutLireOuEcrireCalepinage])

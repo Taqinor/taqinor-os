@@ -86,6 +86,16 @@ class RapportDefinitionCrudTests(TestCase):
         self.assertEqual(res.status_code, 201, res.data)
         self.assertEqual(res.data['spec'], {})
 
+    def test_caractere_nul_en_profondeur_409_pas_500(self):
+        # api-fuzz full 24/10 : un NUL (clé ou valeur, à toute profondeur)
+        # faisait lever l'INSERT jsonb ; objet libre au schéma → 409.
+        for corps in ({'spec': {'a': {'b': ['x\x00']}}},
+                      {'pivot_spec': {'\x00cle': 1}}):
+            res = self.api.post(URL, {'titre': 'T', 'dataset': 'd', **corps},
+                                format='json')
+            self.assertEqual(res.status_code, 409, res.data)
+        self.assertFalse(RapportDefinition.objects.filter(titre='T').exists())
+
     def test_list_is_company_scoped(self):
         RapportDefinition.objects.create(
             company=self.company, owner=self.user, titre='À moi',

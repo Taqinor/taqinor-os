@@ -147,7 +147,7 @@ class FilClientTicketTests(TestCase):
     def test_payload_du_fil_sans_champ_interne(self):
         self.api.post(
             f'{BASE}/tickets/{self.ticket.pk}/noter/',
-            {'body': 'Message client', 'visible_client': '1'}, format='json')
+            {'body': 'Message client', 'visible_client': True}, format='json')
 
         fil = selectors.fil_client_du_ticket(
             self.company, self.client_portail.id, self.ticket.pk)

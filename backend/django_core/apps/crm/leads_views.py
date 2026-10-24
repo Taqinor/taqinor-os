@@ -5,7 +5,6 @@ PointContactViewSet, déplacés de ``views.py`` à l'identique (move only).
 
 Règle d'import : ce module n'importe JAMAIS ``views.py``.
 """
-from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
@@ -19,7 +18,8 @@ from .actions_crud import READ_ACTIONS, _PorteeEnfantsMixin
 from . import activity
 from . import schema_docs as sd
 from .params_requete import (
-    date_param, entier_param, texte_param, valider_pagination)
+    corps_objet, date_param, entier_param, rejeter_param_repete, texte_param,
+    valider_pagination)
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin, HasPermissionOrLegacy
 import logging
 
@@ -196,7 +196,8 @@ class LeadIntakeActionsMixin:
         ])
 
     @extend_schema(parameters=[sd.param('telephone'), sd.param('phone'), sd.param('email'),
-                               sd.param('exclude', OpenApiTypes.INT)], responses=sd.liste('CrmLeadDoublonControle'))
+                               sd.param_entier_ou_vide('exclude', 'Lead à écarter (celui en cours d’édition).')],
+                   responses=sd.liste('CrmLeadDoublonControle'))
     @action(detail=False, methods=['get'], url_path='check-duplicates',
             permission_classes=[IsAnyRole])
     def check_duplicates(self, request):
@@ -209,9 +210,9 @@ class LeadIntakeActionsMixin:
         (les deux listes sont fusionnées par le même bandeau côté rail)."""
         from .leads_doublons import find_duplicates_by_contact, is_strong_identity_match
         valider_pagination(request)
-        phone = request.query_params.get('telephone') or \
-            request.query_params.get('phone')
-        email = request.query_params.get('email')
+        rejeter_param_repete(request, 'exclude', 'telephone', 'phone', 'email')
+        phone = texte_param(request, 'telephone') or texte_param(request, 'phone')
+        email = texte_param(request, 'email')
         exclude_pk = entier_param(request, 'exclude')
         dups = find_duplicates_by_contact(
             request.user.company, phone=phone, email=email,
@@ -433,7 +434,7 @@ class LeadIntakeActionsMixin:
         lead = self.get_object()
         try:
             questions = quest.valider_questions(
-                request.data.get('questions'), lead)
+                corps_objet(request).get('questions'), lead)
         except quest.SectionInconnue as exc:
             # ENF11 (nocturne 15/10) — section connue mais hors du segment du
             # lead : la fiche s'oppose (409) ; hors whitelist / non booléen : 400.

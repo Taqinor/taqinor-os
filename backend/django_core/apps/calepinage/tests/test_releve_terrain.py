@@ -378,3 +378,26 @@ class EndpointTest(BaseReleve):
             format='json')
         self.assertEqual(reponse.status_code, 404)
         self.assertEqual(ReleveTerrain.objects.count(), 0)
+
+
+class SaisieIllisibleTest(SimpleTestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE - date inexistante, U+0000 : refus NOMMES."""
+
+    def test_date_inexistante_ou_illisible_est_none(self):
+        from apps.calepinage.services.releve import _date_saisie
+
+        self.assertEqual(_date_saisie('2026-02-28'), datetime.date(2026, 2, 28))
+        for brut in ('2026-02-30', '2026-13-45', 'abc', '', None, 5):
+            self.assertIsNone(_date_saisie(brut), repr(brut))
+
+    def test_caractere_nul_dans_les_notes_ou_les_chaines_refuse(self):
+        from apps.calepinage.services.releve import _sans_caractere_interdit
+
+        _sans_caractere_interdit('une note', 'notes')
+        _sans_caractere_interdit([{'nom': 'ok', 'cotes': [{'valeur': 1.0}]}],
+                                 'chaines')
+        for valeur, champ in (('a' + chr(0), 'notes'),
+                              ([{'nom': 'a' + chr(0)}], 'chaines')):
+            with self.assertRaises(ReleveRefuse) as capture:
+                _sans_caractere_interdit(valeur, champ)
+            self.assertEqual(capture.exception.champ, champ)

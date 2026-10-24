@@ -120,6 +120,9 @@ class DevisViewSet(DevisEditionActionsMixin,
                    DevisCadenceActionsMixin,
                    IdempotentCreateMixin, EntiteScopeMixin,
                    CompanyScopedModelViewSet):
+    # ENF17 / api-fuzz-full — ``DevisWriteSerializer`` porte ``IdInconnu404Mixin``
+    # (``client``/``lead`` inconnus = 404) : ``entite`` répond pareil.
+    entite_inconnue_404 = True
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
     # en-tête `Idempotency-Key`, comportement inchangé (le mixin ne fait que
@@ -349,7 +352,8 @@ class DevisViewSet(DevisEditionActionsMixin,
 
     @extend_schema(request=D.CompositionRequest,
                    responses={200: D.CompositionResponse,
-                              409: D.ErreurComposition})
+                              409: D.ErreurComposition},
+                   extensions=D.CORPS_KWC_OU_PANNEAUX)
     @action(detail=False, methods=['post'], url_path='composition',
             permission_classes=[IsResponsableOrAdmin])
     def composition(self, request):
@@ -561,7 +565,10 @@ class DevisViewSet(DevisEditionActionsMixin,
         # calculées (factures mensuelles réelles du contrat PACT10). La
         # COMPOSITION, elle, est entièrement serveur : l'appelant n'envoie
         # aucune ligne, aucun prix, aucune marque.
-        etude_extra = corps.get('etude_params')
+        # CI #997 fuzz (24/10) : JSON libre rangé en jsonb -> nul / demi-substituts
+        # normalisés (DataError 500 sinon).
+        from ..utils.corps import nettoyer_json
+        etude_extra = nettoyer_json(corps.get('etude_params'))
         # AGR124 — le devis automatique AGRICOLE dépose ici ses alertes
         # (étude pompage + articles « prix à renseigner » omis), rendues à
         # l'écran (``alertes``) ; les autres marchés n'y écrivent rien.

@@ -239,6 +239,49 @@ def _champ_section(schema):
     return ChampSection(required=False)
 
 
+def _schema_gabarits_disposition():
+    """ERR-ENF11-FUZZ-CALEPINAGE - la section ``gabarits_disposition`` telle que
+    ``services.gabarits._gabarit`` la juge : ``{cle: gabarit}``, chaque gabarit
+    un OBJET dont les reglages sont ceux de ``REGLAGES`` (aucune cle inconnue,
+    aucune geometrie), chacun avec son type et ses bornes. Les noms viennent de
+    ``services.gabarits`` : aucune seconde liste."""
+    from ..services import gabarits as g
+
+    positif = {'type': 'number', 'minimum': 0}
+    proprietes = {
+        'libelle': {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+        'orientation': {'type': 'string', 'enum': list(g.ORIENTATIONS)},
+        'famille': {'type': 'string', 'enum': list(g.FAMILLES)},
+        'roofType': {'type': 'string', 'enum': list(g.TYPES_TOITURE)},
+        'rives': {'type': 'object', 'additionalProperties': False,
+                  'properties': {rive: positif for rive in g.RIVES}},
+        'allee_m': positif,
+        'pitchDeg': dict(positif, maximum=90, exclusiveMaximum=True),
+        'facingAzimuthDeg': {'type': 'number', 'minimum': 0, 'maximum': 360},
+        'facingManual': {'type': 'boolean'},
+        'neededAuto': {'type': 'boolean'},
+        'priorite': {'type': 'integer'},
+        'chassis_sous_pente_deg': {
+            'type': 'number', 'minimum': 0, 'exclusiveMinimum': True,
+            'maximum': 90, 'exclusiveMaximum': True},
+        'chassis_inclinaison_deg': dict(positif, maximum=90,
+                                        exclusiveMaximum=True),
+    }
+    for compte in g.COMPTES:
+        proprietes[compte] = {'type': 'integer', 'minimum': 1}
+    # Un reglage de ``REGLAGES`` non liste ci-dessus est un nombre >= 0.
+    for cle, _libelle in g.REGLAGES:
+        proprietes.setdefault(cle, positif)
+    gabarit = {
+        'type': 'object', 'additionalProperties': False,
+        'properties': proprietes,
+        # Une inclinaison de chassis sans son seuil est refusee.
+        'anyOf': [
+            {'not': {'required': ['chassis_inclinaison_deg']}},
+            {'required': ['chassis_sous_pente_deg']}]}
+    return {'type': 'object', 'additionalProperties': gabarit}
+
+
 def _sections_requete_resserrees():
     """CI #997 fuzz (2) — ``PUT parametres/`` : un objet « conforme » portant
     une clé de plus (``x-schemathesis-additional``) était refusé 400 « Réglage
@@ -252,6 +295,8 @@ def _sections_requete_resserrees():
     champs = {section: _champ_section({
         'type': 'object', 'additionalProperties': False})
         for section in _SECTIONS_A_VOCABULAIRE_FERME}
+    champs['gabarits_disposition'] = _champ_section(
+        _schema_gabarits_disposition())
     for section in (SECTION_SIMULATION, SECTION_ELECTRIQUE_SOCIETE):
         champs[section] = _champ_section(_schema_section_a_registre(section))
     return champs

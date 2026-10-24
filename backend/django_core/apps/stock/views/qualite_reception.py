@@ -17,6 +17,7 @@ from authentication.permissions import (
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.viewsets import CompanyScopedModelViewSet
 
+from ..corps_achats import ControleQualiteCorps, valider_corps
 from ..openapi_helpers import EntierBornePublie
 from ..serializers_wms import TexteLie
 from ..models import ControleReception, PlanEchantillonnage
@@ -143,12 +144,7 @@ class ControleReceptionActionsMixin:
                          if controle else None),
         })
 
-    @extend_schema(request=inline_serializer('ControleQualiteCorps',
-                                             {'resultat': serializers.ChoiceField(choices=['conforme',
-                                                                                           'non_conforme']),
-                                              'unites_controlees': serializers.IntegerField(required=False),
-                                              'observation': serializers.CharField(required=False, allow_blank=True)}),
-                   responses={
+    @extend_schema(request=ControleQualiteCorps, responses={
         200: ControleReceptionSerializer,
     })
     @action(detail=True, methods=['post'], url_path='controle-qualite',
@@ -160,12 +156,13 @@ class ControleReceptionActionsMixin:
         from ..services_qualite_reception import enregistrer_controle_reception
 
         reception = self.get_object()
+        saisie = valider_corps(ControleQualiteCorps, request)
         try:
             controle = enregistrer_controle_reception(
                 reception=reception, user=request.user,
-                resultat=request.data.get('resultat'),
-                unites_controlees=request.data.get('unites_controlees') or 0,
-                observation=request.data.get('observation') or '')
+                resultat=saisie['resultat'],
+                unites_controlees=saisie.get('unites_controlees') or 0,
+                observation=saisie.get('observation') or '')
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)

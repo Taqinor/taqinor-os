@@ -103,7 +103,7 @@ class TestSerializerValidation(Xstk3Base):
             'nom': 'Doublon', 'prix_vente': '10',
             'code_barres': '4006381333931',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)  # ENF11 : doublon = état des données
 
     def test_creation_sans_code_barres_ok(self):
         resp = self.api.post('/api/django/stock/produits/', {

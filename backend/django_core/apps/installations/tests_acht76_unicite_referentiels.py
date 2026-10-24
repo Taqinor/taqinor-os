@@ -59,6 +59,14 @@ class UniciteReferentielsTests(TestCase):
             company=self.co, nom='Pose', type_intervention='pose')
         Equipe.objects.create(company=self.co, nom='E1')
 
+    def test_filtre_phase_nul_400_jamais_500(self):
+        # api-fuzz full : `?phase=\x00` faisait lever le pilote -> 500.
+        r = self.api.get(f'{BASE}/shotlist-slots/', {'phase': 'a\x00b'})
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('phase', r.json())
+        r = self.api.get(f'{BASE}/shotlist-slots/', {'phase': 'avant'})
+        self.assertEqual(r.status_code, 200, r.content)
+
     def _cas(self, tpl_id):
         return [
             ('etapes-chantier', {'cle': 'etude_site', 'libelle': 'X',

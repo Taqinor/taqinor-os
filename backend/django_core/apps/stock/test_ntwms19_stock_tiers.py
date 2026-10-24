@@ -147,7 +147,7 @@ class TestEndpointEmplacementsTiers(Ntwms19Base):
             f'{self.URL}{self.principal.id}/',
             {'type_proprietaire': 'de_tiers', 'tiers_nom': 'X'},
             format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # ENF11 : règle d'état
         self.assertIn('type_proprietaire', reponse.data)
 
 

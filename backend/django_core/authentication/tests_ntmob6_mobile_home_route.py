@@ -132,6 +132,16 @@ class MobileHomeRouteApiTests(TestCase):
                 '/api/django/auth/mobile-home-route/', corps, format='json')
             self.assertEqual(res.status_code, 400, (corps, res.content))
 
+    def test_whitelist_publiee_au_schema(self):
+        # api-fuzz full 24/10 : ``{"route": "f"}`` était « conforme » puis
+        # refusé « Route inconnue. » ; l'énumération est publiée.
+        from authentication.corps_requetes import RouteAccueilChamp
+        from authentication.selectors import MOBILE_HOME_ALLOWED_ROUTES
+        from drf_spectacular.drainage import get_override
+        schema = get_override(RouteAccueilChamp, 'field')
+        self.assertEqual(set(schema['enum']), set(MOBILE_HOME_ALLOWED_ROUTES))
+        self.assertTrue(schema['nullable'])
+
     def test_only_affects_current_user(self):
         self.client.post(
             '/api/django/auth/mobile-home-route/',

@@ -1564,3 +1564,19 @@ class Enf11Records2eTourTests(TestCase):
         act.refresh_from_db()
         self.assertTrue(act.done)
         self.assertIsNone(r.data['chained'])
+
+    def test_nocturne_2410_nul_et_type_suivant_inconnu(self):
+        # api-fuzz-full 24/10 : ``?q=`` à caractère nul (Postgres : 500) -> 400 ;
+        # ``type_suivant`` bien formé mais inconnu -> 404 (plus 400).
+        r = self.api.get('/api/django/records/tags/', {'q': 'a' + chr(0)})
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.patch(
+            f'/api/django/records/activity-types/{self.type.id}/',
+            {'type_suivant': 987654321}, format='json')
+        self.assertEqual(r.status_code, 404, r.content)
+        r = self.api.post(
+            f'/api/django/records/activities/{self.act.id}/snooze/',
+            {'snoozed_until': '2999-01-01',
+             'snooze_trigger_event': 'devis_signed:1' + chr(0)},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.content)

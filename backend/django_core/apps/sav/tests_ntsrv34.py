@@ -148,7 +148,7 @@ class NTSRV34ReponseTypeCanauxTest(TestCase):
         resp = self.api.post(
             f'/api/django/sav/tickets/{self.ticket_whatsapp.pk}/noter/',
             {'reponse_type_id': self.formelle.pk}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
 
     def test_noter_accepte_macro_du_bon_canal(self):
         resp = self.api.post(

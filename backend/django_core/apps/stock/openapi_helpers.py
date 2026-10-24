@@ -1,4 +1,6 @@
 import functools
+import re
+from datetime import timezone as dt_timezone
 """ENF4 — petits assistants pour déclarer EXACTEMENT le schéma OpenAPI des
 vues stock/achats (statuts, corps, paramètres de requête, exports binaires).
 
@@ -39,13 +41,20 @@ XLSX = (
 CSV = (200, 'text/csv')
 
 
-def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None, pattern=None):
-    """Paramètre de requête (query string) ; ``mini``/``maxi`` bornent un entier."""
+def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None, pattern=None, vide=False):
+    """Paramètre de requête (query string) ; ``mini``/``maxi`` bornent un entier.
+    ``vide`` : le serveur lit la chaîne VIDE comme « non renseigné » -> publiée."""
     if typ == STR and pattern is not None:
         typ = {'type': 'string', 'pattern': pattern}
     if typ == INT and (mini is not None or maxi is not None):
         typ = {'type': 'integer', **({'minimum': mini} if mini is not None else {}),
                **({'maximum': maxi} if maxi is not None else {})}
+    if vide and enum is not None:
+        enum = [*enum, '']
+    elif vide:
+        from drf_spectacular.plumbing import build_basic_type
+        typ = {'oneOf': [typ if isinstance(typ, dict) else build_basic_type(typ),
+                         {'type': 'string', 'enum': ['']}]}
     return OpenApiParameter(
         name=name, type=typ, location=OpenApiParameter.QUERY,
         required=required, description=desc or name, enum=enum)
@@ -63,6 +72,34 @@ class DecimalLie(serializers.DecimalField):
             return super().get_attribute(instance)
         except SkipField:
             return None if self.default is empty else self.default
+
+
+#: Décalage horaire À SECONDES (``-00:30:20``, fuseau local d'une date très
+#: ancienne) : RFC 3339 le refuse, le schéma ``date-time`` aussi.
+_DECALAGE_A_SECONDES = re.compile(r'[+-]\d{2}:\d{2}:\d{2}(?:\.\d+)?$')
+
+
+class DateHeureRfc3339(serializers.DateTimeField):
+    """Horodatage servi TOUJOURS conforme à ``date-time`` (api-fuzz « Response
+    violates schema », rendez-vous transporteur) : le fuseau d'affichage d'une
+    date antérieure à la normalisation de l'heure porte un décalage à secondes
+    (``0451-09-13T03:38:34-00:30:20``). Dans ce seul cas l'instant est rendu en
+    UTC (``Z``) ; toute date courante garde exactement son rendu habituel."""
+
+    def to_representation(self, value):
+        rendu = super().to_representation(value)
+        if isinstance(rendu, str) and _DECALAGE_A_SECONDES.search(rendu):
+            return value.astimezone(dt_timezone.utc).isoformat().replace('+00:00', 'Z')
+        return rendu
+
+
+class DatesRfc3339Mixin:
+    """Mixin de ``ModelSerializer`` : ses ``DateTimeField`` de modèle sont des
+    ``DateHeureRfc3339``. À placer AVANT ``ChampsTexteBooleenStricts``."""
+    serializer_field_mapping = {
+        **ChampsTexteBooleenStricts.serializer_field_mapping,
+        models.DateTimeField: DateHeureRfc3339,
+    }
 
 
 class NombreStrict(serializers.FloatField):
@@ -278,6 +315,17 @@ class _BudgetPeriodeCoherente(OpenApiSerializerExtension):
 #: « date OU chaîne vide », ce que le serveur accepte.
 DATE_OU_VIDE = {'oneOf': [
     {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+
+
+def choix_ou_vide(choix):
+    """Filtre à valeurs fermées lu par ``utils.params.statut_requete_ou_400`` :
+    une des valeurs, ou la chaîne vide (= filtre non posé)."""
+    return {'oneOf': [
+        {'type': 'string', 'enum': list(choix)}, {'type': 'string', 'enum': ['']}]}
+
+
+#: Identifiant de requête OBLIGATOIRE (1..2147483647), sans « vide ».
+ID_ENTIER = {'type': 'integer', 'minimum': 1, 'maximum': 2147483647}
 
 #: CI #997 fuzz — filtre d'identifiant lu par ``utils.params.id_requete_ou_400`` :
 #: un id 1..2147483647, ou la chaîne vide (= filtre non posé).

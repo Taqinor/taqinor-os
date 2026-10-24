@@ -104,6 +104,22 @@ class NormalisationTests(SimpleTestCase):
             normaliser_contraintes_site({
                 'assureur': 'apsad', 'degagements_m': {'lanterneau': 1.0}})
 
+    def test_caractere_nul_refuse_en_400_nomme(self):
+        # api-fuzz-full 24/10 : un NUL (clé ou texte) est refusé par PostgreSQL
+        # dans un JSONB -> refus nommé ici, jamais un 500.
+        for valeur in (
+                {'regles': {'a\x00b': 'x'}}, {'regles': {'a': 'x\x00'}},
+                {'assureur': 'autre', 'degagements_m': {'rive': 1.0},
+                 'source': {'document': 'd\x00'}}):
+            with self.assertRaises(ContraintesSiteInvalides):
+                normaliser_contraintes_site(valeur)
+
+    def test_nombre_hors_flottant_refuse_sans_exception(self):
+        with self.assertRaises(ContraintesSiteInvalides):
+            normaliser_contraintes_site({
+                'assureur': 'autre', 'allee_ilot_m': 10 ** 400,
+                'source': {'document': 'd'}})
+
     def test_migration_reversible(self):
         module = import_module(
             'apps.calepinage.migrations.0021_ciq136_contraintes_site')
@@ -149,3 +165,35 @@ class ContraintesApiTests(BaseApiCalepinage):
         self.assertEqual(r.status_code, 404)
         self.cal.refresh_from_db()
         self.assertEqual(self.cal.contraintes_site, {})
+
+    def test_corps_publie_ferme_et_relecture_du_detail_acceptee(self):
+        # api-fuzz-full 24/10 : le schéma de requête annonce l'objet fermé de
+        # ``normaliser_contraintes_site`` (clé inconnue = hors schéma) ; ce que
+        # le détail sert (préréglage FM, ``null`` compris) se renvoie tel quel.
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.calepinage import urls as cal_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/calepinage/', include(cal_urls)),
+        ]).get_schema(request=None, public=True)
+        champ = schema['components']['schemas']['PatchedCalepinageRequest'][
+            'properties']['contraintes_site']
+        self.assertIs(champ['additionalProperties'], False)
+        self.assertIn('degagements_m', champ['properties'])
+        self.assertIn('anyOf', champ)
+        r = self.api.patch(url_detail(self.cal.pk), {
+            'contraintes_site': {'assureur': 'fm_global'}}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        servi = self.api.get(url_detail(self.cal.pk)).data['contraintes_site']
+        r = self.api.patch(url_detail(self.cal.pk), {'contraintes_site': servi},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.patch(url_detail(self.cal.pk), {'contraintes_site': {
+            'assureur': 'apsad', 'ilot_max_m': None, 'allee_ilot_m': None,
+            'source': {'document': '', 'date': None, 'reference': ''}}},
+            format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        r = self.api.patch(url_detail(self.cal.pk), {'contraintes_site': {
+            'inconnue': 1}}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)

@@ -54,3 +54,40 @@ def montant_saisi(valeur, champ):
     if nombre.normalize().as_tuple().exponent < -2:
         return None, {champ: f'« {champ} » : au plus 2 décimales.'}
     return nombre, None
+
+
+def total_ligne_hors_capacite(quantite, prix_unitaire, remise):
+    """api-fuzz — vrai si le total d'une ligne (HT, remise déduite) ne tient
+    plus dans le champ qui le sert (``total_ht``, ``DecimalField(max_digits=10,
+    decimal_places=2)`` : ``99999999.995`` arrondit à 10 chiffres entiers).
+    Quantité et prix valent chacun jusqu'à 8 chiffres entiers : leur produit,
+    lui, peut dépasser, et la sérialisation de la ligne DÉJÀ écrite levait
+    ``InvalidOperation`` (500). ``None`` (section/note) ou valeur illisible →
+    faux ; ``remise`` absente vaut 0."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        if quantite is None or prix_unitaire is None:
+            return False
+        total = (Decimal(str(quantite)) * Decimal(str(prix_unitaire))
+                 * (1 - Decimal(str(remise or 0)) / 100))
+    except (InvalidOperation, ValueError, TypeError):
+        return False
+    return abs(total) >= Decimal('99999999.995')
+
+
+def arrondi_si_nombre_json(brut):
+    """api-fuzz — un NOMBRE JSON (``17.05983349296445``, flottant) est arrondi
+    au centième (``core.money.quantize_mad``, demi supérieur) avant la garde :
+    la garde refuse « au plus 2 décimales » une CHAÎNE saisie à la main, mais
+    un flottant porte toujours du bruit binaire (``0.1 + 0.2``) — comme
+    ``DecimalSouple``, le nombre est lu, jamais refusé pour sa queue. Chaîne,
+    booléen, ``None`` et flottant hors capacité sont rendus tels quels (la
+    garde les juge)."""
+    from decimal import InvalidOperation
+    from core.money import quantize_mad
+    if isinstance(brut, bool) or not isinstance(brut, float):
+        return brut
+    try:
+        return quantize_mad(brut)
+    except InvalidOperation:  # NaN, infini, ou plus de 28 chiffres
+        return brut

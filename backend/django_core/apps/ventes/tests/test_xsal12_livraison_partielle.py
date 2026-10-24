@@ -75,6 +75,19 @@ class TestLivraisonPartielle(TestCase):
                 {'lignes': [{'ligne_devis': self.ligne_panneau.id,
                              'quantite': 'Infinity'}]},
                 {'lignes': 'abc'},
+                # CI #997 fuzz (24/10) : la règle PUBLIÉE de la quantité
+                # (strictement positive, 2 décimales au plus, chaîne ou
+                # nombre fini ≤ 9 999 999 999,99) est aussi celle du serveur.
+                {'lignes': [{'ligne_devis': self.ligne_panneau.id,
+                             'quantite': '-36.2'}]},
+                {'lignes': [{'ligne_devis': self.ligne_panneau.id,
+                             'quantite': '0'}]},
+                {'lignes': [{'ligne_devis': self.ligne_panneau.id,
+                             'quantite': '1.234'}]},
+                {'lignes': [{'ligne_devis': self.ligne_panneau.id,
+                             'quantite': True}]},
+                {'lignes': [{'ligne_devis': self.ligne_panneau.id,
+                             'quantite': 1e12}]},
                 {'lignes': [ligne], 'date_livraison': 'pas-une-date'}):
             resp = self.api.post(
                 f'/api/django/ventes/bons-commande/{self.bc.id}/'

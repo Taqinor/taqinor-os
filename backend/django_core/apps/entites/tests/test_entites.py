@@ -197,6 +197,28 @@ class EntiteApiTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         self.assertTrue(r.data['erreurs'])
 
+    def test_importer_csv_pathologique_200_avec_erreurs_jamais_500(self):
+        # api-fuzz-full 24/10 : un retour chariot SEUL dans une cellule levait
+        # ``csv.Error`` (500) ; une cellule nulle / démesurée aurait été refusée
+        # par PostgreSQL (500). Tout est rapporté PAR LIGNE, en 200.
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        url = '/api/django/entites/entites/importer/'
+        corps = (
+            b"code,nom\nA\rB,Zed\n",
+            b"code,nom\nA," + b"n" * 151 + b"\n",
+            b"code,nom\n" + b"c" * 51 + b",Zed\n",
+            b"code,nom\nA\x00,Zed\n",
+        )
+        for brut in corps:
+            with self.subTest(brut=brut[:30]):
+                for commit in ('false', 'true'):
+                    fichier = SimpleUploadedFile("e.csv", brut)
+                    r = self.client_api.post(
+                        url, {'fichier': fichier, 'commit': commit},
+                        format='multipart')
+                    self.assertEqual(r.status_code, 200, r.content)
+        self.assertFalse(Entite.objects.filter(nom='Zed').exists())
+
     def test_importer_drapeaux_true_false_seulement(self):
         """CI fuzz : ``ecraser=0`` était lu « faux » en silence alors que le
         schéma publie un booléen ; le prédicat publié = le prédicat appliqué."""

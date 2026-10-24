@@ -37,7 +37,7 @@
   },
   "notes": {
     "replanifier": "SUIVI E5 — `replanifier: true` DEPLACE le rendez-vous EN ATTENTE du lead (brouillon, jamais commence, date — le plus recent) au lieu d'en creer un second : date, assigne s'il est fourni, notes completees ; l'assigne est prevenu, `visite_planifiee` est publie (la confirmation et le debrief suivent). Aucun rendez-vous en attente : la visite est creee.",
-    "etape": "SUIVI E18 — la touche qui a DEMANDE la planification (une RelanceEtape de CE lead ; sinon 400 `etape` qui le nomme, avant toute ecriture). Apres la planification reussie : encore a faire, elle est close « visite acceptee » avec `note_etape` ; « Confirmer la visite » et « Debrief visite » ouvertes SUIVENT le rendez-vous et restent ouvertes ; deja annulee par la planification (« Planifier la visite », etape devis mise en attente de la visite), elle reste annulee — la note eventuelle part alors dans une ligne de chatter.",
+    "etape": "SUIVI E18 — la touche qui a DEMANDE la planification (une RelanceEtape de CE lead ; sinon 404 `etape` quand l'identifiant est inconnu de ce lead, 400 quand il est illisible, avant toute ecriture). Apres la planification reussie : encore a faire, elle est close « visite acceptee » avec `note_etape` ; « Confirmer la visite » et « Debrief visite » ouvertes SUIVENT le rendez-vous et restent ouvertes ; deja annulee par la planification (« Planifier la visite », etape devis mise en attente de la visite), elle reste annulee — la note eventuelle part alors dans une ligne de chatter.",
     "prochaine_touche": "Forme `_prochaine_touche_publique` (SUIVI E9) de la prochaine etape A FAIRE du lead, toutes cadences confondues — ici « Confirmer la visite (veille) » ; null quand plus rien n'est ouvert."
   }
 }

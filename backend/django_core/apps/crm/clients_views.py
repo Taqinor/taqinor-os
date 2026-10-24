@@ -18,6 +18,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
+from core.champs_stricts import ChaineStricte
 from core.parametres_requete import choix_ou_400
 from core.parseurs import corps_valide
 from core.permissions import declared_action_permissions
@@ -47,8 +48,8 @@ from .serializers_clients import (
 from apps.records.serializers import ChatterActivitySerializer
 from .fiche_bulk import coerce_id_list
 from .params_requete import (
-    CorpsTexteMixin, corps_objet, entier_param, texte_param,
-    valider_pagination)
+    CorpsTexteMixin, booleen_param, corps_objet, entier_param, periode_param,
+    rejeter_param_repete, texte_param, valider_pagination)
 from .services import COOKIE_APPAREIL, domaine_cookies_equipe, enregistrer_appareil_equipe
 from . import activity
 from . import schema_docs as sd
@@ -326,7 +327,9 @@ class DefiViewSet(CompanyScopedModelViewSet):
         return Response(classement_defi(defi))
 
 
-@extend_schema_view(list=extend_schema(parameters=[sd.param('appareil_id'), sd.P_LEAD, sd.param('point')]))
+@extend_schema_view(list=extend_schema(parameters=[sd.param_texte_sans_nul('appareil_id'),
+                                                   sd.param_entier_ou_vide('lead', 'Identifiant du lead.'),
+                                                   sd.param_texte_sans_nul('point')]))
 class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
     """T-TRACE — écran de revue des visites externes (lecture seule).
 
@@ -350,21 +353,22 @@ class VisiteExterneViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = VisiteExterne.objects.select_related(
             'company', 'lead').filter(company=self.request.user.company)
-        params = self.request.query_params
-        appareil_id = params.get('appareil_id')
+
+        appareil_id = texte_param(self.request, 'appareil_id')
         if appareil_id:
             qs = qs.filter(appareil_id=appareil_id)
-        lead_id = params.get('lead')
-        if lead_id:
+        rejeter_param_repete(self.request, 'lead')
+        lead_id = entier_param(self.request, 'lead', mini=1, maxi=2 ** 31 - 1)
+        if lead_id is not None:
             qs = qs.filter(lead_id=lead_id)
-        point = params.get('point')
+        point = texte_param(self.request, 'point')
         if point:
             qs = qs.filter(point=point)
         return qs
 
     # Permission EXPLICITE sur l'@action (pattern d'or crm du cliquet
     # core.action_permission_scan : chaque @action porte sa garde).
-    @extend_schema(parameters=[sd.param('appareil_id')], responses=sd.liste('CrmAppareilVisites'))
+    @extend_schema(parameters=[sd.param_texte_sans_nul('appareil_id')], responses=sd.liste('CrmAppareilVisites'))
     @action(detail=False, methods=['get'], permission_classes=[IsAnyRole])
     def appareils(self, request):
         """Agrégat PAR APPAREIL : nb visites, durée totale, première/dernière
@@ -445,11 +449,13 @@ _COOKIES_EQUIPE_MAX_AGE = 730 * 24 * 3600
 #: pour reconnaître l'appareil dans la liste, jamais un user-agent entier.
 _MAX_NAVIGATEUR = 80
 
-#: Corps publié (et validé) de ``appareils-equipe/ce-navigateur/``.
+#: Corps publié (et validé) de ``appareils-equipe/ce-navigateur/``. Textes
+#: STRICTS (publiés « sans caractère nul » : ``CorpsTexteMixin`` refuse le nul
+#: en 400 — api-fuzz-full 24/10 « rejected schema-compliant request »).
 _CE_NAVIGATEUR_REQUETE = inline_serializer(
     'AppareilEquipeCeNavigateurRequest', {
-        'appareil_id': serializers.CharField(required=False, allow_blank=True),
-        'navigateur': serializers.CharField(required=False, allow_blank=True),
+        'appareil_id': ChaineStricte(required=False, allow_blank=True),
+        'navigateur': ChaineStricte(required=False, allow_blank=True),
     })
 
 
@@ -984,7 +990,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-    @extend_schema(parameters=[sd.param('seuil', OpenApiTypes.INT)], responses=sd.OBJ)
+    @extend_schema(parameters=[sd.param_entier_ou_vide('seuil', 'Inactivité en jours (défaut 90).')], responses=sd.OBJ)
     @action(detail=False, methods=['get'], url_path='dormants',
             pagination_class=None,  # ENF15 : liste calculée complète, jamais paginée
             permission_classes=[IsAnyRole])
@@ -1092,13 +1098,14 @@ class LeadClientsActionsMixin:
         """ZSAL4 — assistant de conversion EXPLICITE lead → client (body
         {mode: nouveau|lier|aucun, client_id?}). Journalisé dans le chatter."""
         lead = self.get_object()
-        mode = request.data.get('mode')
-        client_id = request.data.get('client_id')
+        corps = corps_objet(request)
+        mode = corps.get('mode')
+        client_id = corps.get('client_id')
         # ENF11 (api-fuzz) — types du schéma : `mode` texte, `client_id`
         # entier s'il est fourni (un objet passait en mode « nouveau »).
         if mode is not None and not isinstance(mode, str):
             raise DRFValidationError({'mode': ['Texte attendu.']})
-        if 'client_id' in request.data and (
+        if 'client_id' in corps and (
                 isinstance(client_id, bool) or not isinstance(client_id, int)):
             raise DRFValidationError(
                 {'client_id': ['Identifiant de client (entier) attendu.']})
@@ -1435,7 +1442,7 @@ class ObjectifCommercialViewSet(CompanyScopedModelViewSet):
             sd.param('year', OpenApiTypes.INT),
             sd.param('period_type',
                      enum=ObjectifCommercial.PeriodType.values),
-            sd.param('owner', description='Identifiant ou « null ».'),
+            sd.P_OWNER_OU_NULL,
         ],
         responses=ObjectifAttainmentSerializer(many=True),
     )
@@ -1531,8 +1538,8 @@ class ConcurrentPerteViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
             logger.warning('%s : échec ignoré (dégradé)', 'perform_create', exc_info=True)
 
 
-@extend_schema_view(list=extend_schema(parameters=[sd.P_OWNER, sd.param('categorie'),
-                                                   sd.param('periode', description='AAAA-MM')]))
+@extend_schema_view(list=extend_schema(parameters=[sd.param_entier_ou_vide('owner', 'Identifiant du responsable.'),
+                                                   sd.param('categorie'), sd.param_periode_ou_vide()]))
 class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     """CRUD des catégorisations forecast (commit/best-case/pipeline/omis).
@@ -1560,21 +1567,17 @@ class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        owner = self.request.query_params.get('owner')
-        if owner:
+        owner = entier_param(self.request, 'owner')
+        if owner is not None:
             qs = qs.filter(lead__owner_id=owner)
-        categorie = self.request.query_params.get('categorie')
+        categorie = texte_param(self.request, 'categorie')
         if categorie:
             qs = qs.filter(categorie=categorie)
-        periode = self.request.query_params.get('periode')  # 'YYYY-MM'
-        if periode and '-' in periode:
-            year, month = periode.split('-', 1)
-            try:
-                qs = qs.filter(
-                    lead__date_cloture_prevue__year=int(year),
-                    lead__date_cloture_prevue__month=int(month))
-            except ValueError:
-                pass
+        periode = periode_param(self.request)
+        if periode is not None:
+            qs = qs.filter(
+                lead__date_cloture_prevue__year=periode['period_year'],
+                lead__date_cloture_prevue__month=periode['period_month'])
         return qs
 
     def perform_create(self, serializer):
@@ -1601,9 +1604,8 @@ class ForecastEntryViewSet(_PorteeEnfantsMixin, CompanyScopedModelViewSet):
         return response
 
 
-@extend_schema(parameters=[sd.param('periode', {'type': 'string', 'pattern': sd.MOTIF_PERIODE_MOIS},
-                                    description='AAAA-MM'),
-                           sd.param('equipe', OpenApiTypes.INT)], responses=sd.OBJ)
+@extend_schema(parameters=[sd.param_periode_ou_vide(),
+                           sd.param_entier_ou_vide('equipe', "Identifiant de l'équipe.")], responses=sd.OBJ)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def forecast_rollup_view(request):
@@ -1614,16 +1616,9 @@ def forecast_rollup_view(request):
     user = request.user
     if not user.company_id:
         return Response({'equipes': [], 'total_societe': {}})
-    periode = None
-    periode_param = request.query_params.get('periode')
-    if periode_param is not None:
-        # ENF11 — « AAAA-MM » : une période illisible est refusée (avant :
-        # ignorée, donc le roll-up du mois courant répondait 200). Nocturne
-        # 15/10 : le motif PUBLIÉ est exactement celui-ci (même prédicat).
-        if not re.fullmatch(sd.MOTIF_PERIODE_MOIS, periode_param):
-            raise DRFValidationError({'periode': 'Format AAAA-MM attendu.'})
-        year, month = periode_param.split('-', 1)
-        periode = {'period_type': 'month', 'period_year': int(year), 'period_month': int(month)}
+    # ENF11 — « AAAA-MM » : une période illisible est refusée (avant :
+    # ignorée) ; vide = non renseignée (le schéma publie « motif OU vide »).
+    periode = periode_param(request)
     manager = None if getattr(user, 'is_admin_role', False) else user
     from .selectors import forecast_rollup
     data = forecast_rollup(user.company, periode=periode, manager=manager)
@@ -1636,7 +1631,9 @@ def forecast_rollup_view(request):
     return Response(data)
 
 
-@extend_schema(parameters=[sd.P_OWNER, sd.param('semaines', OpenApiTypes.INT)], responses=sd.OBJ)
+@extend_schema(parameters=[sd.param_entier_ou_vide('owner', 'Identifiant du responsable (vide = société).'),
+                           sd.param_entier_ou_vide('semaines', 'Nombre de semaines (1 à 520).')],
+               responses=sd.OBJ)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def forecast_historique_view(request):
@@ -1647,8 +1644,12 @@ def forecast_historique_view(request):
     user = request.user
     if not user.company_id:
         return Response({'series': []})
-    owner = entier_param(request, 'owner')
-    semaines = entier_param(request, 'semaines', 12)
+    # Nocturne 24/10 : ``owner`` répété ou géant (débordement de colonne) et
+    # ``semaines`` géante (LIMIT hors bigint) répondaient 500/200 : répété →
+    # 400, plafonds bornés.
+    rejeter_param_repete(request, 'owner', 'semaines')
+    owner = entier_param(request, 'owner', mini=1, maxi=2 ** 31 - 1)
+    semaines = entier_param(request, 'semaines', 12, mini=1, maxi=520)
     qs = ForecastSnapshot.objects.filter(company=user.company)
     qs = (qs.filter(owner_id=owner) if owner is not None
           else qs.filter(owner__isnull=True))
@@ -1911,8 +1912,11 @@ def lead_playbook_view(request, lead_id):
             'fait_par').all()
         return Response(LeadPlaybookProgressSerializer(progress, many=True).data)
 
-    tache_id = request.data.get('tache')
-    fait = bool(request.data.get('fait', True))
+    corps = corps_objet(request)
+    tache_id = corps.get('tache')
+    if isinstance(tache_id, bool) or not isinstance(tache_id, int):
+        raise DRFValidationError({'tache': 'Identifiant de tâche (entier) attendu.'})
+    fait = booleen_param(corps, 'fait') if 'fait' in corps else True
     progress = LeadPlaybookProgress.objects.filter(
         lead=lead, tache_id=tache_id).first()
     if progress is None:

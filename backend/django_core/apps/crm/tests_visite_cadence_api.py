@@ -214,7 +214,8 @@ class PlanifierVisiteApiTests(VisiteApiBase):
                 self._url(self.URL),
                 {'date_prevue': DEMAIN.isoformat(),
                  'commercial': self.etranger.id}, format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # Nocturne 24/10 : id bien formé inconnu de la société = 404.
+        self.assertEqual(reponse.status_code, 404, reponse.data)
         self.assertIn('commercial', reponse.data)
         self.assertEqual(VisiteTerrain.objects.count(), 0)
 

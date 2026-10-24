@@ -220,3 +220,19 @@ class TestEndpointsQuais(Ntwms7Base):
                 'date_heure_fin': h(LUNDI, 11).isoformat(),
             }, format='json')
         self.assertEqual(resp.status_code, 404)  # ENF11 : id inconnu de la société
+
+
+class TestDateAncienneRfc3339(Ntwms7Base):
+    def test_date_ancienne_rendue_sans_decalage_a_secondes(self):
+        """api-fuzz 24/10 « Response violates schema » — en fuseau Casablanca,
+        l'an 451 porte le décalage LMT -00:30:20 (hors RFC 3339) : rendue en UTC."""
+        import zoneinfo
+        with timezone.override(zoneinfo.ZoneInfo('Africa/Casablanca')):
+            resp = self.api.post(
+                '/api/django/stock/rendez-vous-transporteur/', {
+                    'quai': self.quai_a.id,
+                    'date_heure_debut': '0451-09-13T04:08:54Z',
+                    'date_heure_fin': '0451-09-13T05:00:00Z',
+                }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['date_heure_debut'], '0451-09-13T04:08:54Z')

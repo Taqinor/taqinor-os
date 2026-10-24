@@ -125,7 +125,11 @@ class DocumentTemplatesApiTest(TestCase):
                       {'cgv_par_mode': ''}, {'cgv_par_mode': {'autre': {}}},
                       {'cgv_par_mode': {'commercial': {'titre': 3}}},
                       {'cgv_par_mode': {'commercial': {'bullets': [1]}}},
-                      {'cgv_titre': 0}):
+                      {'cgv_titre': 0},
+                      # api-fuzz full 24/10 : caractère nul = 500 en JSONB.
+                      {'cgv_bullets': ['ok', 'a\x00b']},
+                      {'cgv_par_mode': {'commercial': {'titre': '\x00'}}},
+                      {'cgv_par_mode': {'industriel': {'bullets': ['\x00']}}}):
             r = self.api.patch(PUT_URL, corps, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.data))
         r = self.api.patch(PUT_URL, {

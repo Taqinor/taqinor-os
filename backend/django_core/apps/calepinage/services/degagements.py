@@ -487,11 +487,27 @@ def _metre(valeur, champ):
         raise ContraintesSiteInvalides(champ, f'{champ} doit être un nombre.')
     try:
         x = float(valeur)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         raise ContraintesSiteInvalides(champ, f'{champ} doit être un nombre.')
     if x < 0 or x != x:
         raise ContraintesSiteInvalides(champ, f'{champ} doit être positif.')
     return x
+
+
+def _refuser_nul(valeur, champ='contraintes_site'):
+    """Le caractère nul (clé ou texte) est refusé par PostgreSQL dans un JSONB :
+    400 nommé plutôt qu'un 500 (le schéma publié exclut déjà ce caractère)."""
+    if isinstance(valeur, str):
+        if '\x00' in valeur:
+            raise ContraintesSiteInvalides(
+                champ, f"{champ} : le caractère nul n'est pas autorisé.")
+    elif isinstance(valeur, dict):
+        for cle, sous in valeur.items():
+            _refuser_nul(cle, champ)
+            _refuser_nul(sous, champ)
+    elif isinstance(valeur, (list, tuple)):
+        for sous in valeur:
+            _refuser_nul(sous, champ)
 
 
 def normaliser_contraintes_site(valeur):
@@ -506,6 +522,7 @@ def normaliser_contraintes_site(valeur):
     if not isinstance(valeur, dict):
         raise ContraintesSiteInvalides('contraintes_site',
                                        'contraintes_site doit être un objet.')
+    _refuser_nul(valeur)
     permises = {'assureur', 'degagements_m', 'ilot_max_m', 'allee_ilot_m',
                 'source', 'regles'}
     inconnues = set(valeur) - permises

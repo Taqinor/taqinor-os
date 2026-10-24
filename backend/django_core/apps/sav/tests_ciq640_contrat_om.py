@@ -156,7 +156,8 @@ class ContratOmCiTest(TestCase):
             libelle='Autre')
         resp = api.patch(url, {'prestations': [
             {'id': etrangere.pk, 'frequence_an': 9}]}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # ENF11 (api-fuzz-full) : id bien formé sans prestation = 404.
+        self.assertEqual(resp.status_code, 404)
         etrangere.refresh_from_db()
         self.assertIsNone(etrangere.frequence_an)
 

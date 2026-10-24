@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4820, operations: 7572, components: 3535}
+counts: {paths: 4814, operations: 7566, components: 3550}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2540,7 +2540,6 @@ operations:
 - post /api/django/public/proposal/{token}/activer-option/ -> django_public_proposal_activer_option_create
 - post /api/django/public/proposal/{token}/contact/ -> django_public_proposal_contact_create
 - get /api/django/public/proposal/{token}/data/ -> django_public_proposal_data_retrieve
-- post /api/django/public/proposal/{token}/decliner/ -> django_public_proposal_decliner_create
 - post /api/django/public/proposal/{token}/engagement/ -> django_public_proposal_engagement_create
 - post /api/django/public/proposal/{token}/otp-lecture/demander/ -> django_public_proposal_otp_lecture_demander_create
 - post /api/django/public/proposal/{token}/otp-lecture/verifier/ -> django_public_proposal_otp_lecture_verifier_create
@@ -2548,7 +2547,6 @@ operations:
 - get /api/django/public/proposal/{token}/pdf/ -> django_public_proposal_pdf_retrieve
 - get /api/django/public/proposal/{token}/taille/{cle}/ -> django_public_proposal_taille_retrieve
 - post /api/django/public/proposal/{token}/virement/ -> django_public_proposal_virement_create
-- post /api/django/public/proposal/{token}/vu/ -> django_public_proposal_vu_create
 - post /api/django/public/sav/equipement/{token}/signaler/ -> django_public_sav_equipement_signaler_create
 - get /api/django/public/sav/ticket/{token}/ -> django_public_sav_ticket_retrieve
 - post /api/django/public/sav/ticket/{token}/satisfaction/ -> django_public_sav_ticket_satisfaction_create
@@ -3735,7 +3733,6 @@ operations:
 - post /api/django/ventes/proposal/{token}/accept/ -> django_ventes_proposal_accept_create
 - post /api/django/ventes/proposal/{token}/activer-option/ -> django_ventes_proposal_activer_option_create
 - post /api/django/ventes/proposal/{token}/contact/ -> django_ventes_proposal_contact_create
-- post /api/django/ventes/proposal/{token}/decliner/ -> django_ventes_proposal_decliner_create
 - post /api/django/ventes/proposal/{token}/engagement/ -> django_ventes_proposal_engagement_create
 - post /api/django/ventes/proposal/{token}/otp-lecture/demander/ -> django_ventes_proposal_otp_lecture_demander_create
 - post /api/django/ventes/proposal/{token}/otp-lecture/verifier/ -> django_ventes_proposal_otp_lecture_verifier_create
@@ -3743,7 +3740,6 @@ operations:
 - get /api/django/ventes/proposal/{token}/pdf/ -> django_ventes_proposal_pdf_retrieve
 - get /api/django/ventes/proposal/{token}/roof-image/ -> django_ventes_proposal_roof_image_retrieve
 - post /api/django/ventes/proposal/{token}/virement/ -> django_ventes_proposal_virement_create
-- post /api/django/ventes/proposal/{token}/vu/ -> django_ventes_proposal_vu_create
 - get /api/django/ventes/recettes-mes/ -> django_ventes_recettes_mes_list
 - post /api/django/ventes/recettes-mes/ -> django_ventes_recettes_mes_create
 - delete /api/django/ventes/recettes-mes/{id}/ -> django_ventes_recettes_mes_destroy
@@ -7523,7 +7519,6 @@ operations:
 - post /api/v1/ventes/proposal/{token}/accept/ -> v1_ventes_proposal_accept_create
 - post /api/v1/ventes/proposal/{token}/activer-option/ -> v1_ventes_proposal_activer_option_create
 - post /api/v1/ventes/proposal/{token}/contact/ -> v1_ventes_proposal_contact_create
-- post /api/v1/ventes/proposal/{token}/decliner/ -> v1_ventes_proposal_decliner_create
 - post /api/v1/ventes/proposal/{token}/engagement/ -> v1_ventes_proposal_engagement_create
 - post /api/v1/ventes/proposal/{token}/otp-lecture/demander/ -> v1_ventes_proposal_otp_lecture_demander_create
 - post /api/v1/ventes/proposal/{token}/otp-lecture/verifier/ -> v1_ventes_proposal_otp_lecture_verifier_create
@@ -7531,7 +7526,6 @@ operations:
 - get /api/v1/ventes/proposal/{token}/pdf/ -> v1_ventes_proposal_pdf_retrieve
 - get /api/v1/ventes/proposal/{token}/roof-image/ -> v1_ventes_proposal_roof_image_retrieve
 - post /api/v1/ventes/proposal/{token}/virement/ -> v1_ventes_proposal_virement_create
-- post /api/v1/ventes/proposal/{token}/vu/ -> v1_ventes_proposal_vu_create
 - get /api/v1/ventes/recettes-mes/ -> v1_ventes_recettes_mes_list
 - post /api/v1/ventes/recettes-mes/ -> v1_ventes_recettes_mes_create
 - delete /api/v1/ventes/recettes-mes/{id}/ -> v1_ventes_recettes_mes_destroy
@@ -9171,6 +9165,9 @@ components:
 - AcompteFournisseur
 - AcompteFournisseurRequest
 - ActionEcheanceEnum
+- ActionRegleDossier
+- ActionRegleDossierRequest
+- ActionRegleDossierTypeEnum
 - ActionTypeEnum
 - Activity
 - ActivityRequest
@@ -9475,7 +9472,9 @@ components:
 - BcfEnvoyerEmailReponse
 - BcfFusionnerCorpsRequest
 - BcfRecevoirCorpsRequest
+- BcfRecevoirLigneCorpsRequest
 - BcfReviserCorpsRequest
+- BcfReviserLigneCorpsRequest
 - BcfWhatsappReponse
 - BesoinEauSourceEnum
 - BillRangeBucketEnum
@@ -9597,6 +9596,7 @@ components:
 - CalepinageGabaritChampSaisiTypeEnum
 - CalepinageGabaritDepose
 - CalepinageGabaritDossier
+- CalepinageGabaritDossierCorpsFichierRequest
 - CalepinageGabaritDossierCorpsRequest
 - CalepinageGabaritPieceAttendueRequest
 - CalepinageGabaritsListe
@@ -9606,6 +9606,7 @@ components:
 - CalepinageGenererDossierCorpsParGabaritRequest
 - CalepinageGenererDossierCorpsRequest
 - CalepinageHorizon
+- CalepinageImageDocumentCorpsJsonRequest
 - CalepinageImageDocumentCorpsRequest
 - CalepinageImageDocumentDepot
 - CalepinageImportLayout
@@ -9674,7 +9675,7 @@ components:
 - CalepinageSyncDevisCorpsRequest
 - CalepinageTroncons
 - CalepinageVariante
-- CalepinageVarianteRequest
+- CalepinageVarianteCorpsRequest
 - CalepinageVersionLigne
 - CalepinageVersionRestauree
 - CalepinageVersionsDiff
@@ -10286,6 +10287,7 @@ components:
 - ExperimentRequest
 - ExperimentStatusEnum
 - ExportListeRequeteRequest
+- ExportObjetJson
 - ExportObjetRequeteRequest
 - ExportObjetsListe
 - ExportReversibiliteRequeteRequest
@@ -10351,6 +10353,7 @@ components:
 - FactureListe
 - FactureMarquerPayeeRequestRequest
 - FactureMontantTrancheRequest
+- FacturePeriodiciteEnum
 - FactureRelanceApercu
 - FactureRelancee
 - FactureReprendreAbandonRequestRequest
@@ -10436,7 +10439,6 @@ components:
 - FuseauHoraireEnum
 - GabaritDocumentCustom
 - GabaritDocumentCustomCibleEnum
-- GammeEnvoiEnum
 - GedAnalytiqueGed
 - GedArchivageLegalCorpsRequest
 - GedArchiverLegalementCorpsRequest
@@ -10658,6 +10660,7 @@ components:
 - LigneBonCommandeFournisseurRequest
 - LigneDevis
 - LigneDevisRequest
+- LigneEquipementRequeteRequest
 - LigneFacture
 - LigneFactureFournisseur
 - LigneFactureFournisseurRequest
@@ -10677,6 +10680,7 @@ components:
 - LigneRetourClientRequest
 - LigneRetourFournisseur
 - LigneRetourFournisseurRequest
+- LigneSerieRequeteRequest
 - LimModeEnum
 - ListePrix
 - ListePrixLigneSaisieRequest
@@ -10854,6 +10858,7 @@ components:
 - NiveauTensionSourceEnum
 - NomenclatureCodeBarres
 - NomenclatureCodeBarresRequest
+- NonReleveRequeteRequest
 - NoteDebit
 - NoteDebitAnnulationResponse
 - NoteDecisionRequest
@@ -11357,6 +11362,7 @@ components:
 - PatchedCabinetRequest
 - PatchedCadenceRelanceEtapeRequest
 - PatchedCalageRequest
+- PatchedCalepinageGabaritDossierCorpsFichierRequest
 - PatchedCalepinageGabaritDossierCorpsRequest
 - PatchedCalepinagePhotoCalageCorpsRequest
 - PatchedCalepinagePhotoModifCorpsRequest
@@ -11861,8 +11867,6 @@ components:
 - PublicConfirmerAbonnementReponse
 - PublicContactRequestRequest
 - PublicContactResponse
-- PublicDeclinRequestRequest
-- PublicDeclinResponse
 - PublicDemandeAchat
 - PublicDesabonnerReponse
 - PublicDevis
@@ -12058,6 +12062,7 @@ components:
 - ReportsServiceReportReponse
 - ReportsStockReportReponse
 - Reserve
+- ReserveChantierRequeteOrigineEnum
 - ReserveChantierRequeteRequest
 - ReserveOrigineEnum
 - ReserveStatutEnum
@@ -12115,6 +12120,7 @@ components:
 - RotationCleRequest
 - RoutageDocumentaire
 - RoutageDocumentaireRequest
+- RouteEnum
 - RulePolicy
 - RulePolicyModeEnum
 - RulePolicyRequest
@@ -12138,6 +12144,7 @@ components:
 - SauvegardeRequeteRequest
 - SavActionsGroupeesReponse
 - SavActionsGroupeesRequeteRequest
+- SavAnnulerRequeteRequest
 - SavChecklistInitRequeteRequest
 - SavCloturerDowntimeRequeteRequest
 - SavCreerDevisReponse
@@ -12168,6 +12175,8 @@ components:
 - SavPerformanceAgentInsight
 - SavPerformanceAgentLigne
 - SavPieceConsommeeRequeteRequest
+- SavPieceRetireeRequeteDestinationEnum
+- SavPieceRetireeRequeteOperationEnum
 - SavPieceRetireeRequeteRequest
 - SavPiecesCompatiblesReponse
 - SavPivotSavTauxAttacheReponse

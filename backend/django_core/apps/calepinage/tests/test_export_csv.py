@@ -240,5 +240,26 @@ class ActionRattacheeTest(unittest.TestCase):
             ['PeutVoirCalepinage'])
 
 
+class ColonnesPublieesTest(unittest.TestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE - ``?colonnes=`` publie le vocabulaire que le
+    service applique : le motif accepte les noms connus et refuse le reste."""
+
+    def test_motif_accepte_les_noms_connus_refuse_le_reste(self):
+        import re
+
+        from apps.calepinage.services.export_csv import COLONNES_HORAIRE
+        from apps.calepinage.views.export_csv import _MOTIF_COLONNES
+
+        # fullmatch : le ``$`` publié vaut « fin de chaîne » (ECMA) ; en
+        # Python ``match`` tolérerait un saut de ligne final.
+        motif = re.compile(_MOTIF_COLONNES)
+        noms = sorted(COLONNES_HORAIRE)
+        self.assertTrue(motif.fullmatch(noms[0]))
+        self.assertTrue(motif.fullmatch(','.join(noms)))
+        for faux in ('', ',', 'inconnue', noms[0] + ',inconnue',
+                     noms[0] + ',', noms[0] + chr(10)):
+            self.assertIsNone(motif.fullmatch(faux), repr(faux))
+
+
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()

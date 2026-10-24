@@ -100,7 +100,7 @@ class AvoirFournisseurViewSet(CompanyScopedModelViewSet):
         if avoir.statut != AvoirFournisseur.Statut.BROUILLON:
             return Response(
                 {'detail': 'Seul un avoir en brouillon peut être validé.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)
         avoir.statut = AvoirFournisseur.Statut.VALIDE
         avoir.save(update_fields=['statut'])
         return Response(self.get_serializer(avoir).data)

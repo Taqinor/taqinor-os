@@ -2,11 +2,12 @@ from django.core.exceptions import ObjectDoesNotExist
 from drf_spectacular.utils import extend_schema_field
 from django.db.models import DecimalField, Q
 from rest_framework import serializers
+from rest_framework.fields import SkipField
 
 from core.champs_stricts import (
     ChaineStricte, ChampsStrictsSansDecimalMixin, DecimalSouple,
     DecimalStricte,
-    DecimalSoupleMixin,
+    DecimalSoupleMixin, IdInconnu404Mixin,
 )
 from core.mixins import SameCompanyFKSerializerMixin
 from core.parseurs import ListeJSON, ObjetJSON
@@ -118,7 +119,23 @@ class _PrixLigneNonVide(DecimalStricte):
         return serializers.Field.validate_empty_values(self, data)
 
 
-class LigneDevisSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class _ProduitTva(serializers.DecimalField):
+    """CI #997 fuzz (24/10, « Response violates schema » sur ``PATCH
+    devis-lignes/{id}/``) — DRF SAUTE un champ lu via ``source='produit.tva'``
+    dont le ``produit`` est vide dès que le sérialiseur est ``partial`` (PATCH) :
+    la clé ``produit_tva`` disparaissait de la réponse d'une section / note alors
+    que le schéma la déclare obligatoire. Ici elle est rendue ``null``, comme sur
+    un GET (même correctif que ``core.champs_stricts.TexteLie``)."""
+
+    def get_attribute(self, instance):
+        try:
+            return super().get_attribute(instance)
+        except SkipField:
+            return None
+
+
+class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                           SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """La ligne d'un devis, telle que l'écran la lit et l'écrit.
 
@@ -145,7 +162,7 @@ class LigneDevisSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
     # panneaux PV), en lecture seule, ou null. L'écran le lit pour une ligne
     # historique sans taux au lieu de lui poser le taux du devis (20 %).
     # Seul ``tva`` est lu sur le produit — jamais ``prix_achat``.
-    produit_tva = serializers.DecimalField(
+    produit_tva = _ProduitTva(
         source='produit.tva', max_digits=5, decimal_places=2,
         read_only=True, allow_null=True, default=None)
 
@@ -1020,7 +1037,8 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
 
-class DevisWriteSerializer(DecimalSoupleMixin, SameCompanyFKSerializerMixin,
+class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
+                           SameCompanyFKSerializerMixin,
                            TiersPayeurValidationMixin,
                            EcheancierValidationMixin,
                            serializers.ModelSerializer):

@@ -289,5 +289,22 @@ class SchemaDuPutTest(unittest.TestCase):
         self.assertTrue(champs['provenance'].required)
 
 
+class CourbesServiesTest(unittest.TestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE - le schema de REPONSE dit les deux formes de
+    saison que ``profils_de_societe`` sert (24 poids, ou 24 poids par jour)."""
+
+    def test_schema_des_courbes_servies_admet_la_forme_segmentee(self):
+        from drf_spectacular.openapi import AutoSchema
+
+        from apps.calepinage.serializers_conso import ProfilTypeSerializer
+
+        champ = ProfilTypeSerializer().fields['courbes']
+        schema = AutoSchema()._map_serializer_field(champ, 'response')
+        formes = schema['additionalProperties']['oneOf']
+        self.assertEqual(formes[0]['type'], 'array')
+        self.assertEqual(formes[1]['type'], 'object')
+        self.assertEqual(formes[1]['additionalProperties']['type'], 'array')
+
+
 if __name__ == '__main__':  # pragma: no cover
     unittest.main()

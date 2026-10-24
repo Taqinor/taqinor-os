@@ -359,6 +359,14 @@ class FichiersPdfTests(unittest.TestCase):
                               {'file': b''}, mode='NEGATIVE')
         self.assertEqual(negatif['file'], b'')
 
+    def test_note_de_lead_recoit_un_png(self):
+        # ERR-ENF11-FUZZ-CRM — ``noter`` (multipart) : le fichier seul est une
+        # note conforme ; ses octets sont lus par ``store_attachment``.
+        corps = self._corps('POST', '/api/django/crm/leads/{id}/noter/',
+                            {'file': b'', 'body': 'x'})
+        self.assertTrue(corps['file'].startswith(b'\x89PNG'))
+        self.assertEqual(corps['body'], 'x')
+
     def test_demande_d_approbation_recoit_un_pdf(self):
         # ERR-ENF11-FUZZ-AUTOMATION — le part ``file`` d'une demande reçoit un
         # PDF ; le type de demande et le payload restent intacts, un cas
@@ -396,6 +404,26 @@ class FichiersPdfTests(unittest.TestCase):
             types.SimpleNamespace(body=[types.SimpleNamespace(
                 media_type='application/json',
                 definition={'schema': en_ligne})])), set())
+
+    def test_noms_de_fichiers_traverse_la_regle_de_racine_allof(self):
+        # ERR-ENF11-FUZZ-CRM — ``x-corps-resserre`` enveloppe le corps en
+        # ``{'allOf': [corps, règle]}`` (POST crm/leads/{id}/noter/) : le
+        # fichier doit garder son nom, sinon Django le lit comme du texte.
+        regle = {'anyOf': [{'required': ['body']}, {'required': ['file']}]}
+        corps = {'type': 'object', 'properties': {
+            'body': {'type': 'string'},
+            'file': {'type': 'string', 'format': 'binary'}}}
+        regroupe = {'allOf': [{'$ref': '#/x-bundled/schema1'}, regle],
+                    'x-bundled': {'schema1': corps}}
+        en_ligne = {'allOf': [corps, regle]}
+        for schema in (regroupe, en_ligne):
+            self.assertEqual(
+                self.hooks._noms_de_fichiers(self._operation_multipart(schema)),
+                {'file'})
+        # Aucun membre à propriétés : le schéma est rendu tel quel (pas de nom).
+        sans = {'allOf': [regle]}
+        self.assertEqual(
+            self.hooks._noms_de_fichiers(self._operation_multipart(sans)), set())
 
     def test_parts_de_fichier_recoivent_leur_nom(self):
         schema = {'type': 'object', 'properties': {

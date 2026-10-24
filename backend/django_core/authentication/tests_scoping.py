@@ -162,3 +162,27 @@ class TestSupervisorAssignment(TestCase):
             f'/api/django/users/{self.emp.id}/',
             {'supervisor': self.foreigner.id}, format='json')
         self.assertEqual(resp.status_code, 400)
+
+    def test_soi_meme_ou_cycle_409(self):
+        # api-fuzz full 24/10 : corps conforme, chaîne de supervision en base
+        # qui s'y oppose = 409 (était 400).
+        api = auth(self.directeur)
+        resp = api.patch(f'/api/django/users/{self.emp.id}/',
+                         {'supervisor': self.emp.id}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.boss.supervisor = self.emp
+        self.boss.save(update_fields=['supervisor'])
+        resp = api.patch(f'/api/django/users/{self.emp.id}/',
+                         {'supervisor': self.boss.id}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.emp.refresh_from_db()
+        self.assertIsNone(self.emp.supervisor_id)
+
+    def test_role_illisible_400_pas_500(self):
+        # api-fuzz full 24/10 : ``role: "abc"`` levait ValueError dans la
+        # détection de rétrogradation (500) ; le corps est refusé en 400.
+        api = auth(self.directeur)
+        for corps in ({'role': 'abc'}, {'role': {}}, ['role']):
+            resp = api.patch(f'/api/django/users/{self.directeur.id}/',
+                             corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))

@@ -288,6 +288,19 @@ class RefusTest(BaseGabarits):
         reponse = self.api.post(URL, corps, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
 
+    def test_schema_publie_le_fichier_en_multipart_seulement(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE - un ``fichier`` chaine vide « conforme » a
+        # un champ binaire etait refuse : le corps JSON n'a plus de ``fichier``,
+        # le multipart le porte (et seulement les champs scalaires).
+        from ..views.gabarits_dossier import (
+            _CORPS_GABARIT, _CORPS_GABARIT_MULTIPART, _REQUETE_GABARIT,
+        )
+        self.assertEqual(set(_REQUETE_GABARIT),
+                         {'application/json', 'multipart/form-data'})
+        self.assertNotIn('fichier', _CORPS_GABARIT.fields)
+        self.assertIn('fichier', _CORPS_GABARIT_MULTIPART.fields)
+        self.assertNotIn('pieces_attendues', _CORPS_GABARIT_MULTIPART.fields)
+
     def test_fichier_vide_ou_texte_refuse_400_nomme(self):
         # ENF11 (api-fuzz « accepted schema-violating request », ``fichier=``)
         # — ``fichier`` est un fichier : une valeur de formulaire vide n'est

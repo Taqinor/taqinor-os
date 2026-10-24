@@ -1174,8 +1174,10 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     # toutes deux voir « envoyé » et double-basculer/double-émettre l'événement.
     date_acc = date_acceptation or timezone.localdate()  # ADEV34 — jour LOCAL
     if date_acc > timezone.localdate():  # ADEV34 — jamais future (les 3 portes)
-        from rest_framework.exceptions import ValidationError
-        raise ValidationError({'date_acceptation': [DATE_ACCEPTATION_FUTURE]})
+        # CI #997 fuzz (24/10) : une date bien formée mais postérieure à
+        # AUJOURD'HUI dépend du jour = refus d'ÉTAT, 409 (plus 400).
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat({'date_acceptation': [DATE_ACCEPTATION_FUTURE]})
     with transaction.atomic():
         # ── QJR134 / ES14 — LE GROUPE DE VARIANTES EST VERROUILLÉ EN ENTIER ──
         #

@@ -482,6 +482,22 @@ class LeDryRunRefuseCeQuIlNeSaitPasComposer(_Base):
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(reponse.data['nb_panneaux'], 8)
 
+    def test_corps_sans_puissance_ni_panneaux_400_et_corps_publie_requis(self):
+        """api-fuzz — « une puissance OU un nombre de panneaux » est requis :
+        sans corps, le serveur répond 400 ET le schéma publié rend le corps
+        obligatoire (le fuzz envoyait un corps absent, « conforme »)."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        self.assertEqual(self.api.post(COMPO_URL).status_code, 400)
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include('apps.ventes.urls'))
+        ]).get_schema(request=None, public=True)
+        operation = next(
+            item['post'] for chemin, item in schema['paths'].items()
+            if chemin.endswith('devis/composition/'))
+        self.assertTrue(operation['requestBody'].get('required'))
+
 
 class LaFonctionPureResteApplelableSansReglage(_Base):
     """Sans réglage de gamme, la composition doit rester ce qu'elle était."""

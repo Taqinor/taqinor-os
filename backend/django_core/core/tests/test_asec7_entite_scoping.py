@@ -7,7 +7,7 @@ aucune app (contrat import-linter ``core-foundation-is-a-base-layer``).
 from django.apps import apps as django_apps
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 
 from authentication.models import Company
 from core.entite_scoping import assert_entite_assignable
@@ -48,6 +48,17 @@ class EntiteScopingTests(TestCase):
             assert_entite_assignable(self.libre, 999999999)
         self.assertEqual(absent.exception.detail['entite'][0].code,
                          'does_not_exist')
+
+    def test_saveur_404_meme_corps(self):
+        """CI #1029 — ``inconnu_404`` : 404 au lieu de 400, corps identique
+        (champ ``entite``, code ``does_not_exist``), étrangère ou inexistante."""
+        for entite_id in (self.e_b.id, 999999999):
+            with self.assertRaises(NotFound) as ctx:
+                assert_entite_assignable(self.libre, entite_id, inconnu_404=True)
+            self.assertEqual(ctx.exception.detail['entite'][0].code,
+                             'does_not_exist')
+        with self.assertRaises(ValidationError):
+            assert_entite_assignable(self.libre, self.e_b.id)
 
     def test_perimetre_restreint_inchange(self):
         with self.assertRaises(PermissionDenied):

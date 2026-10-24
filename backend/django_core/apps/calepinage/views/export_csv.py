@@ -46,6 +46,8 @@ motif enregistré sous un nom donné.
 """
 from __future__ import annotations
 
+import re
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import status
@@ -55,7 +57,8 @@ from rest_framework.response import Response
 from ..permissions import PeutVoirCalepinage
 from ..serializers import REPONSE_REFUS_ETAT
 from ..services.export_csv import (
-    EXPORTS, ExportImpossible, document_exportable, encoder_pour_tableur,
+    COLONNES_HORAIRE, EXPORTS, ExportImpossible, document_exportable,
+    encoder_pour_tableur,
 )
 # Renommé à l'import : le service ``export_csv`` et l'action HTTP vivent dans
 # le même espace de noms, ils ne peuvent pas porter le même nom ici.
@@ -70,6 +73,14 @@ CHAMPS_D_ETAT = frozenset({'production', 'points', 'mensuel',
                            'shading12x24'})
 
 
+#: Motif publié de ``colonnes`` : un ou plusieurs noms de ``COLONNES_HORAIRE``
+#: séparés par des virgules — la règle exacte de ``_colonnes_retenues``.
+_ALTERNATIVE_COLONNES = '|'.join(re.escape(nom) for nom in sorted(
+    COLONNES_HORAIRE))
+_MOTIF_COLONNES = '^(?:%s)(?:,(?:%s))*$' % (_ALTERNATIVE_COLONNES,
+                                            _ALTERNATIVE_COLONNES)
+
+
 @extend_schema(
     responses={(200, 'text/csv'): OpenApiTypes.BINARY,
                409: REPONSE_REFUS_ETAT},
@@ -80,7 +91,11 @@ CHAMPS_D_ETAT = frozenset({'production', 'points', 'mensuel',
             description="Export demandé : horaire (défaut), mensuel ou "
                         'ombrage.'),
         OpenApiParameter(
-            name='colonnes', type=OpenApiTypes.STR, required=False,
+            name='colonnes', required=False,
+            # ERR-ENF11-FUZZ-CALEPINAGE — le vocabulaire est PUBLIÉ : une liste
+            # de noms connus séparés par des virgules (le serveur refusait
+            # toute autre valeur en 400 alors que le schéma disait « chaîne »).
+            type={'type': 'string', 'pattern': _MOTIF_COLONNES},
             description='CALX313, export horaire SEULEMENT — liste de '
                         "colonnes séparées par des virgules (sous-ensemble "
                         'de `COLONNES_HORAIRE`) ; omis = les sept colonnes '
