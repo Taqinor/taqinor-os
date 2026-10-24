@@ -191,6 +191,21 @@ class FormalitesEtPhrasesTests(SimpleTestCase):
             'mesuré par Solaire Atlas le 15/09/2026')
         self.assertEqual(phrase_provenance('declare'),
                          'à confirmer par la visite')
+        # Rejeu AGQ du 24/10 — un débit relevé par le foreur ou à l'essai
+        # n'est jamais « mesuré par » la société.
+        self.assertEqual(
+            phrase_provenance(mentions.cle_provenance(
+                {'origine': 'lead', 'detail': 'foreur'}), date='2026-10-24',
+                nom_societe='Solaire Atlas'),
+            'relevé par votre foreur (saisi le 24/10/2026)')
+        self.assertEqual(
+            phrase_provenance(mentions.cle_provenance(
+                {'origine': 'lead', 'detail': 'essai'}), date='2026-10-24'),
+            "relevé à l'essai de pompage (saisi le 24/10/2026)")
+        self.assertEqual(mentions.cle_provenance(
+            {'origine': 'lead', 'detail': 'mesure_visite'}), 'mesure')
+        self.assertEqual(mentions.cle_provenance(
+            {'origine': 'lead', 'detail': 'client'}), 'declare')
         self.assertEqual(phrase_provenance('agronomique'),
                          'besoin agronomique plein (FAO-56)')
         for cle, langues in mentions.PHRASES_PROVENANCE.items():

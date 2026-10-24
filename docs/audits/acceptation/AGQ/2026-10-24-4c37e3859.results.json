@@ -1,0 +1,223 @@
+{
+ "sha": "4c37e3859ed88a468deddb87a1064d54c6262fa6",
+ "date": "2026-10-24",
+ "groupe": "AGQ",
+ "verdict": "PASS",
+ "couvre": [
+  "AGQ10",
+  "AGQ14",
+  "AGQ15",
+  "AGQ17",
+  "AGQ18",
+  "AGQ19",
+  "AGQ2",
+  "AGQ20",
+  "AGQ21",
+  "AGQ22",
+  "AGQ23",
+  "AGQ24",
+  "AGQ25",
+  "AGQ29",
+  "AGQ3",
+  "AGQ32",
+  "AGQ36",
+  "AGQ4",
+  "AGQ40",
+  "AGQ41",
+  "AGQ48",
+  "AGQ49",
+  "AGQ5",
+  "AGQ50",
+  "AGQ51",
+  "AGQ52",
+  "AGQ53",
+  "AGQ54",
+  "AGQ55",
+  "AGQ56",
+  "AGQ57",
+  "AGQ58",
+  "AGQ6",
+  "AGQ7",
+  "AGQ8",
+  "AGQ9"
+ ],
+ "couvre_avec_ecart": [],
+ "etapes": [
+  {
+   "id": "P1.2-refus",
+   "taches": [
+    "AGQ4",
+    "AGQ5",
+    "AGQ6",
+    "AGQ7",
+    "AGQ9",
+    "AGQ14",
+    "AGQ23",
+    "AGQ24",
+    "AGQ36"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-phase3-rejeu.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "PASS",
+    "4": "NA",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "NA",
+    "8": "NA",
+    "9": "PASS",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P2.2-conception",
+   "taches": [
+    "AGQ2",
+    "AGQ8",
+    "AGQ29",
+    "AGQ40",
+    "AGQ54"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-phase3-rejeu.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "PASS",
+    "4": "PASS",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "NA",
+    "9": "PASS",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P2.4-economie",
+   "taches": [
+    "AGQ10",
+    "AGQ15",
+    "AGQ17",
+    "AGQ18",
+    "AGQ19",
+    "AGQ20",
+    "AGQ21"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-phase3-rejeu.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "NA",
+    "4": "PASS",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "NA",
+    "9": "PASS",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P3.1-documents",
+   "taches": [
+    "AGQ3",
+    "AGQ32",
+    "AGQ48",
+    "AGQ50",
+    "AGQ51",
+    "AGQ55",
+    "AGQ56"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-phase3-rejeu.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "NA",
+    "4": "PASS",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P1.1-fiche",
+   "taches": [
+    "AGQ22",
+    "AGQ53"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-phase3-rejeu.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "NA",
+    "8": "NA",
+    "9": "PASS",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P4.1-generateur",
+   "taches": [
+    "AGQ25",
+    "AGQ49",
+    "AGQ58"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-phase3-rejeu.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "PASS",
+    "4": "NA",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P3.4-page",
+   "taches": [
+    "AGQ41",
+    "AGQ52",
+    "AGQ57"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-phase3-rejeu.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   }
+  }
+ ]
+}

@@ -4738,19 +4738,24 @@ export function dateJjMmAaaa(iso: string | null | undefined): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(t) ? `${t.slice(8, 10)}/${t.slice(5, 7)}/${t.slice(0, 4)}` : null;
 }
 
-export type ProvenanceKind = 'declare' | 'mesure' | 'a_confirmer';
+export type ProvenanceKind = 'declare' | 'mesure' | 'mesure_foreur' | 'mesure_essai' | 'a_confirmer';
 
 /**
  * Classe une provenance servie — MÊME règle que le renderer agricole
- * (`pages._provenance`) : `mesure_visite` / `foreur` → mesuré par TAQINOR ;
- * origine `saisie` / `lead` → déclaré par vous ; sinon à confirmer. Sans date lisible,
+ * (`mentions.cle_provenance`) : `mesure_visite` → mesuré par TAQINOR ; `foreur` → relevé
+ * par votre foreur ; `essai` → relevé à l'essai de pompage (rejeu AGQ du 24/10 : un relevé
+ * du foreur n'est jamais « mesuré par TAQINOR ») ; origine `saisie` / `lead` → déclaré
+ * par vous ; sinon à confirmer. Sans date lisible,
  * « déclaré » / « mesuré » retombent sur « à confirmer par la visite » (jamais une
  * date inventée).
  */
 export function provenanceKind(e: SyntheseProvenance): { kind: ProvenanceKind; date: string | null } {
   const date = dateJjMmAaaa(e.date);
-  if (e.detail === 'mesure_visite' || e.detail === 'foreur') {
-    return date ? { kind: 'mesure', date } : { kind: 'a_confirmer', date: null };
+  const mesure = ({ mesure_visite: 'mesure', foreur: 'mesure_foreur', essai: 'mesure_essai' } as const)[
+    e.detail as 'mesure_visite' | 'foreur' | 'essai'
+  ];
+  if (mesure) {
+    return date ? { kind: mesure, date } : { kind: 'a_confirmer', date: null };
   }
   if (e.origine === 'saisie' || e.origine === 'lead') {
     return date ? { kind: 'declare', date } : { kind: 'a_confirmer', date: null };
@@ -4794,6 +4799,16 @@ export const AGR_LBL = {
   aConfirmerVisite: { fr: 'À confirmer par la visite :', en: 'To be confirmed by the site visit:', ar: 'يؤكد خلال الزيارة:' },
   declare: { fr: 'déclaré par vous le {date}', en: 'declared by you on {date}', ar: 'صرحتم به بتاريخ {date}' },
   mesure: { fr: 'mesuré par TAQINOR le {date}', en: 'measured by TAQINOR on {date}', ar: 'قاسته TAQINOR بتاريخ {date}' },
+  mesureForeur: {
+    fr: 'relevé par votre foreur (saisi le {date})',
+    en: 'recorded by your driller (entered on {date})',
+    ar: 'سجله حفار البئر (أُدخل بتاريخ {date})',
+  },
+  mesureEssai: {
+    fr: "relevé à l'essai de pompage (saisi le {date})",
+    en: 'recorded at the pumping test (entered on {date})',
+    ar: 'سُجل خلال تجربة الضخ (أُدخل بتاريخ {date})',
+  },
   aConfirmer: { fr: 'à confirmer par la visite', en: 'to be confirmed by the site visit', ar: 'يجب تأكيده خلال الزيارة' },
   agronomique: { fr: 'besoin agronomique plein (FAO-56)', en: 'full agronomic need (FAO-56)', ar: 'الحاجة الفلاحية الكاملة (FAO-56)' },
   pompeExistante: { fr: 'Votre pompe existante', en: 'Your existing pump', ar: 'مضختكم الحالية' },
@@ -4851,6 +4866,8 @@ export function phraseProvenance(e: SyntheseProvenance): Lbl3 {
   const { kind, date } = provenanceKind(e);
   if (kind === 'declare') return remplirLbl(AGR_LBL.declare, { date: date as string });
   if (kind === 'mesure') return remplirLbl(AGR_LBL.mesure, { date: date as string });
+  if (kind === 'mesure_foreur') return remplirLbl(AGR_LBL.mesureForeur, { date: date as string });
+  if (kind === 'mesure_essai') return remplirLbl(AGR_LBL.mesureEssai, { date: date as string });
   return AGR_LBL.aConfirmer;
 }
 

@@ -34,7 +34,7 @@ import '../../styles/v3-photo-motion.css';
 // PV81 — l'enveloppe « Avis clients » (carte + titre) suit la MÊME condition que
 // son contenu : sans avis réel, aucun cadre vide n'est rendu chez le client.
 import { hasTestimonials } from '../../lib/testimonials';
-import { AGR_LBL_AGQ, AGR_NON_INCLUS_LBL, AGR_ACCEPTATION_LBL, savAgricole, valeurProvenance } from '../../lib/propositionAgricole';
+import { AGR_LBL_AGQ, AGR_NON_INCLUS_LBL, AGR_ACCEPTATION_LBL, heuresEauAgricole, moisIrrigationDeclares, savAgricole, valeurProvenance } from '../../lib/propositionAgricole';
 import {
   type ProposalResponse,
   type OptionKey,
@@ -619,6 +619,8 @@ const raisonSocialeServie = ci?.entrepriseClient?.raisonSociale ?? '';
 const synth: SyntheseAgricole | null = ok ? syntheseAgricole(data!) : null;
 // D-AGQ-13 — le SAV servi (délai saisi par la société), même phrase que le PDF.
 const savAgri = ok && isAgricole ? savAgricole(data) : null;
+// Rejeu AGQ du 24/10 — jumeau page d'AGQ3 : mois de conception et « au plus bas » (héro PDF).
+const heuresAgri = ok && isAgricole ? heuresEauAgricole(data, agri?.heures_pompage, (n) => formatNumber(n, 1)) : null;
 const bvl = synth?.besoinVsLivre ?? null;
 const bvlMax = bvl ? Math.max(...bvl.mois.map((m) => Math.max(m.besoin, m.livre)), 1) : 1;
 // AGQ3/AGQ33 — « octobre : 80 % de votre besoin ; novembre : 72 % … » (valeurs servies, jamais recalculées).
@@ -662,8 +664,9 @@ const energiePhrase: Lbl3 | null = argent?.energieActuelle ? phraseProvenance(ar
 const argentNotes: Lbl3 = (() => {
   const phrase = phraseProvenance({ cle: 'conso', origine: 'saisie', detail: null, date: argent?.economies?.declareLe ?? null });
   const conso = remplirLbl(AGR_ARGENT_LBL.consoPrixPaye, { phrase: '\u0000' });
+  const mois = moisIrrigationDeclares(data); // rejeu AGQ du 24/10 — jumeau d'AGQ18 (PDF)
   const voix = (k: 'fr' | 'en' | 'ar') =>
-    [conso[k].replace('\u0000', phrase[k]), AGR_ARGENT_LBL.indexation[k], AGR_ARGENT_LBL.fdaNonComptee[k], AGR_ARGENT_LBL.condition[k]].join(' ');
+    [conso[k].replace('\u0000', phrase[k]), mois?.[k], AGR_ARGENT_LBL.indexation[k], AGR_ARGENT_LBL.fdaNonComptee[k], AGR_ARGENT_LBL.condition[k]].filter(Boolean).join(' ');
   return { fr: voix('fr'), en: voix('en'), ar: voix('ar') };
 })();
 const nonInclusLbl: Lbl3 = (() => {
@@ -3206,11 +3209,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     data-en={`at ${formatNumber(agri.hmt_m)} m head`}
                     data-ar={`عند ${formatNumber(agri.hmt_m)} m (ع.ر.)`}>à {formatNumber(agri.hmt_m)} m HMT</p>
                 ) : null}
-                {agri.heures_pompage ? (
+                {heuresAgri ? (
                   <p class="mt-1 text-xs text-lune-faint" dir="ltr" data-i18n data-agri-heures-pompage
-                    data-fr={`estimation, sur ${formatNumber(agri.heures_pompage, 1)} h de pompage (hypothèse)`}
-                    data-en={`estimate, over ${formatNumber(agri.heures_pompage, 1)} h of pumping (assumption)`}
-                    data-ar={`تقدير، على ${formatNumber(agri.heures_pompage, 1)} س من الضخّ (فرضية)`}>estimation, sur {formatNumber(agri.heures_pompage, 1)} h de pompage (hypothèse)</p>
+                    data-fr={heuresAgri.fr}
+                    data-en={heuresAgri.en}
+                    data-ar={heuresAgri.ar}>{heuresAgri.fr}</p>
                 ) : null}
               </div>
             ) : null}

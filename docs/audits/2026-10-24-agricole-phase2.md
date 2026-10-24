@@ -33,3 +33,25 @@ FDA guide 2024 p.21-23 (pièces : note de calcul kWc + panneaux, fiche société
 devis ; liquidation 3 mois après approbation) ; SPIS Toolbox DESIGN §7-9 (devis : normes IEC, garanties,
 SAV local, calendrier, prix unitaires) et SET UP (test de réception, documentation, formation) ; Aurora 08/2025
 (expliquer, étapes suivantes, coûts réalistes).
+
+## 4. Phase 3 — rejeu de toutes les tâches restantes (24/10/2026, après la PR #1035)
+Rejeu sur la pile locale (API servie par main + correctifs dans un conteneur temporaire ; front et site construits
+depuis la branche) de AGQ2-10, 14, 15, 17-25, 29, 32, 36, 40, 48-53 : refus nommés du devis automatique (HMT,
+alimentation, structure sans prix, variateur), double clic, site GPS neuf (2,4 s), mois critique, rendements publiés,
+plafond du forage, économie (jours, nouveau forage, mois du calendrier, butane en litres, retour), règle FDA, SAV,
+documents fr/en/ar/une-page, page /proposition, fiche lead (règle de visite, saut au champ, WhatsApp) et générateur
+(journal, carte économie). Enregistrement : `docs/audits/acceptation/AGQ/2026-10-24-4c37e3859.md`. Cinq défauts
+trouvés et corrigés :
+
+| ID | Constat → correction | Tâche |
+|---|---|---|
+| C-AGQ-045 | besoin couvert en pompant plus longtemps mais note « pas entièrement couvert » → l'alerte suit la couverture mois par mois | AGQ54 |
+| C-AGQ-046 | « Volume d'eau par jour » imprimé sans sa valeur → volume persisté | AGQ55 |
+| C-AGQ-047 | relevé du foreur « mesuré par TAQINOR » ; essai « à confirmer » → qui a relevé, essai = mesure | AGQ56 |
+| C-AGQ-048 | page sans mois de conception ni mois déclarés (PDF : oui) → jumeaux | AGQ57 |
+| C-AGQ-049 | succès du devis automatique du générateur sans référence → corrigé en parallèle par ALEA51 (PR #1022) | AGQ58 |
+
+Non retenus : le bouton « ⚡ Devis auto » du rail reste actif quand la visite est requise, mais il ouvre l'onglet Devis
+qui refuse (aucun devis créé) ; le message WhatsApp multi-devis (lien PDF) est neutre ; « TVA » sans taux quand un seul
+taux (une-page : « TVA (20 %) ») ; « 30 ans garantie performance » du bloc société de la page (hors agricole) ;
+un forage limité couvert par un champ 3,2× la pompe est chiffré tel quel (alerte de ratio seule : choix de conception).
