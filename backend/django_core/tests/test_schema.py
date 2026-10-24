@@ -153,7 +153,7 @@ class OpenAPISchemaGenerationTests(TestCase):
         branches = sujet.get('oneOf') or [sujet]
         self.assertTrue(
             any(b.get('pattern') == MOTIF_SANS_NUL
-                or '\u0000' in b.get('pattern', '') for b in branches), sujet)
+                or '\\u0000' in b.get('pattern', '') for b in branches), sujet)
         self.assertNotIn(
             'pattern', schemas['EmailTemplate']['properties']['sujet'])
 
