@@ -2644,6 +2644,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         Pendant la pause, l'échéance SLA effective (``sla_due_at_effectif``)
         avance d'autant de jours — l'horloge SLA ignore le temps d'attente."""
         ticket = self.get_object()
+        if ticket.statut not in Ticket.OPEN_STATUTS or ticket.annule:  # ASAV110
+            raise ConflitEtat("Seul un ticket ouvert non annulé se met en attente client.")
         if not ticket.en_attente_client:
             ticket.mettre_en_attente_client()
             ticket.save(update_fields=['en_attente_client', 'attente_depuis'])

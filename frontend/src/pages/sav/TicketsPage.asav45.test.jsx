@@ -44,3 +44,33 @@ describe('TicketDetail — ASAV45 garantie effective servie', () => {
     expect(screen.getAllByRole('combobox').some((c) => c.textContent === 'Oui')).toBe(true)
   })
 })
+
+describe('TicketDetail — ASAV110 mise en attente client réservée aux tickets ouverts', () => {
+  const MISE_EN_ATTENTE = { name: /Mettre en attente client/ }
+  const REPRISE = { name: /Reprendre après attente client/ }
+
+  it('un ticket résolu n\'offre aucun bouton « Mettre en attente client »', async () => {
+    renderDetail({ statut: 'resolu', en_attente_client: false })
+    await screen.findByText('Suivi client & SLA')
+    expect(screen.queryByRole('button', MISE_EN_ATTENTE)).toBeNull()
+    expect(screen.queryByRole('button', REPRISE)).toBeNull()
+  })
+
+  it('un ticket annulé n\'offre aucun bouton « Mettre en attente client »', async () => {
+    renderDetail({ statut: 'en_cours', annule: true, en_attente_client: false })
+    await screen.findByText('Suivi client & SLA')
+    expect(screen.queryByRole('button', MISE_EN_ATTENTE)).toBeNull()
+  })
+
+  it('un ticket en cours offre le bouton « Mettre en attente client »', async () => {
+    renderDetail({ statut: 'en_cours', annule: false, en_attente_client: false })
+    expect(await screen.findByRole('button', MISE_EN_ATTENTE)).not.toBeNull()
+    expect(screen.queryByRole('button', REPRISE)).toBeNull()
+  })
+
+  it('un ticket encore en pause garde « Reprendre après attente client »', async () => {
+    renderDetail({ statut: 'resolu', en_attente_client: true, attente_depuis: '2026-10-06' })
+    expect(await screen.findByRole('button', REPRISE)).not.toBeNull()
+    expect(screen.queryByRole('button', MISE_EN_ATTENTE)).toBeNull()
+  })
+})

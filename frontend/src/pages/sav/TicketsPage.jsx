@@ -1048,11 +1048,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Button type="button" size="sm" variant="outline" loading={attenteBusy} onClick={reprendreApresAttente}>
                 Reprendre après attente client
               </Button>
-            ) : (
+            ) : TICKET_OPEN_STATUSES.includes(current.statut) && !current.annule ? (
               <Button type="button" size="sm" variant="outline" loading={attenteBusy} onClick={mettreEnAttenteClient}>
                 Mettre en attente client
               </Button>
-            )}
+            ) : null}
           </div>
         </CollapsibleSection>
 

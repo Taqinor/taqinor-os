@@ -24,6 +24,7 @@
     "sla_reponse_due_at": "2026-10-09",
     "date_resolution": null,
     "annule": false,
+    "en_attente_client": false,
     "statuts_suivants": [
       "planifie",
       "resolu"
@@ -52,6 +53,7 @@
     "sla_reponse_due_at": "2026-10-09",
     "date_resolution": null,
     "annule": false,
+    "en_attente_client": false,
     "statuts_suivants": [
       "en_cours",
       "planifie"

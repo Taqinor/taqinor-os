@@ -159,3 +159,32 @@ class CycleSlaTests(TestCase):
         self._post(t, 'reactiver')
         self.assertFalse(t.annule)
         self._assert_pause_close(t, 'reactiver')
+
+    # ── ASAV110 — la mise en attente client exige un ticket ouvert non annulé
+    def _poster_attente(self, ticket):
+        return self.api.post(
+            f'{BASE}/{ticket.pk}/attente-client/', {}, format='json')
+
+    def test_attente_refusee_ticket_resolu(self):
+        t = self._ticket('SAV-A110-1', statut=Ticket.Statut.RESOLU)
+        r = self._poster_attente(t)
+        self.assertEqual(r.status_code, 409, r.content)
+        # Persistance : le refus n'a rien écrit.
+        t.refresh_from_db()
+        self.assertFalse(t.en_attente_client)
+        self.assertIsNone(t.attente_depuis)
+
+    def test_attente_refusee_ticket_annule(self):
+        t = self._ticket('SAV-A110-2', annule=True)
+        r = self._poster_attente(t)
+        self.assertEqual(r.status_code, 409, r.content)
+        t.refresh_from_db()
+        self.assertFalse(t.en_attente_client)
+
+    def test_attente_acceptee_ticket_en_cours(self):
+        t = self._ticket('SAV-A110-3', statut=Ticket.Statut.EN_COURS)
+        r = self._poster_attente(t)
+        self.assertEqual(r.status_code, 200, r.content)
+        t.refresh_from_db()
+        self.assertTrue(t.en_attente_client)
+        self.assertEqual(t.attente_depuis, self.today)
