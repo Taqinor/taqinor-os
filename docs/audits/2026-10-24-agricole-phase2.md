@@ -24,7 +24,7 @@ pratiques de référence (FDA 2024 p.21-23, SPIS Toolbox GIZ/FAO 2018 DESIGN §7
 - Contrôles résidentiels visibles en mode agricole au générateur (Raccordement, Scénario batterie, « Villas
   différentes », lignes squelette avant auto-remplir) : S3, à reprendre dans le groupe générateur.
 - Liste des leads lente (12-35 s pour 200 leads, ~400 requêtes) : propriétaire CRM, hors agricole.
-- Décisions fondateur à prendre (D-AGQ-12 à 15) : acceptation « commande ferme + acompte 30 % » face à l'accord FDA
+- Décisions fondateur PRISES le 24/10/2026 (D-AGQ-12 à 15, `docs/audits/decisions.yml`, tâches AGQ50-AGQ53) : acceptation « commande ferme + acompte 30 % » face à l'accord FDA
   préalable ; SAV / délai d'intervention imprimé ; « documentation remise + formation » à la mise en service ;
   message WhatsApp du lien pour un fermier.
 
