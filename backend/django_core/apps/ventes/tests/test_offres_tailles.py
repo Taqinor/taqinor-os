@@ -1598,6 +1598,22 @@ class ApiVendeurTests(_Base):
         self.assertEqual(resp.status_code, 400, resp.content[:400])
         self.assertIn('economie_annuelle_mad', json.dumps(resp.json()))
 
+    def test_patch_produit_inconnu_repond_404_meme_corps(self):
+        # api-fuzz — un id de produit bien formé qui n'existe pas dans la
+        # société est une ressource absente (404) ; un rôle inconnu mêlé à
+        # un id absent garde le 400.
+        devis = self._devis('api-produit-inconnu')
+        url = '/api/django/ventes/devis/%s/offres-tailles/config/' % devis.pk
+        resp = self._client(devis).patch(
+            url, {'cle': 'eco', 'config': {'equipements': {'batterie': 11984}}},
+            format='json')
+        self.assertEqual(resp.status_code, 404, resp.content[:400])
+        self.assertIn('batterie', json.dumps(resp.json()))
+        resp = self._client(devis).patch(
+            url, {'cle': 'eco', 'config': {'equipements': {
+                'batterie': 11984, 'ovni': 11984}}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content[:400])
+
     def test_patch_n_affecte_QUE_la_taille_nommee(self):
         devis = self._devis('api-isole')
         api = self._client(devis)
