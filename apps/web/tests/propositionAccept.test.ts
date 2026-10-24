@@ -9,7 +9,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('cloudflare:workers', () => ({ env: {} }));
 
 import { POST } from '../src/pages/api/proposition-accept';
-import { lireRecuAcceptation } from '../src/lib/proposition';
 // W316 — le proxy est désormais rate-limité (bucket dédié, 10/min) : sans
 // remise à zéro entre tests, les nombreux appels de ce fichier (partageant
 // tous la même IP « unknown ») finiraient par se faire 429 entre eux.
@@ -25,6 +24,8 @@ import {
   virementMessage,
   VIREMENT_MSG,
 } from '../src/lib/paiementAcceptation';
+// ADEV104 — reçu de signature : le défi lu et le sceau stocké, deux empreintes nommées.
+import { lireRecuSignature } from '../src/lib/propositionRecu';
 
 function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/proposition-accept', {
@@ -288,29 +289,28 @@ describe('ADEV53 — succès post-signature : acompte, RIB, déclaration de vire
   });
 });
 
-// ── ADEV104 (C-L3-LIEN-10) — le reçu nomme deux empreintes : le défi lu ≠ le sceau stocké ──────
-describe('ADEV104 — reçu de signature à deux empreintes', () => {
-  const RECU = CONTRAT.reponse_200.recu as Record<string, string>;
-
-  it('lit le reçu du contrat : défi lu, sceau stocké, PDF ; l’alias n’est qu’un repli', () => {
-    expect(lireRecuAcceptation(RECU)).toEqual({
-      signe_le: RECU.signe_le,
-      empreinte_lue: RECU.empreinte_lue,
-      empreinte_scellee: RECU.empreinte_scellee,
-      empreinte_pdf: RECU.empreinte_pdf,
-    });
-    expect(RECU.empreinte_lue).not.toBe(RECU.empreinte_scellee);
-    // Serveur d'avant ADEV104 : seule la clé `empreinte_contenu` (= le sceau) est servie.
-    const ancien = lireRecuAcceptation({ signe_le: RECU.signe_le, empreinte_contenu: 'c'.repeat(64), empreinte_pdf: '' });
-    expect(ancien).toMatchObject({ empreinte_lue: '', empreinte_scellee: 'c'.repeat(64) });
-    expect(lireRecuAcceptation(null)).toBeUndefined();
-  });
-
-  it('le proxy relaie le reçu de la réponse 200 du contrat, jamais sur un refus', async () => {
+describe('ADEV104 — le reçu nomme le défi lu et le sceau stocké', () => {
+  it('le proxy relaie `recu` du contrat : `empreinte_lue` ≠ `empreinte_scellee`, jamais sur un refus', async () => {
+    const recu = CONTRAT.reponse_200.recu as Record<string, string>;
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(200, CONTRAT.reponse_200)));
     const ok = await call({ token: 'tok', nom: 'Karim Exemple', twoOptions: false });
-    expect(ok.json.recu).toEqual(lireRecuAcceptation(RECU));
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(409, { detail: 'Refus.', code: 'statut', recu: RECU })));
+    expect(ok.json.recu).toEqual({
+      signe_le: recu.signe_le,
+      empreinte_lue: recu.empreinte_lue,
+      empreinte_scellee: recu.empreinte_scellee,
+      empreinte_pdf: recu.empreinte_pdf,
+    });
+    expect(recu.empreinte_lue).not.toBe(recu.empreinte_scellee);
+    // `empreinte_contenu` : alias du sceau servi un cycle — lu en repli, jamais pris pour le défi.
+    expect(recu.empreinte_contenu).toBe(recu.empreinte_scellee);
+    expect(lireRecuSignature({ empreinte_contenu: recu.empreinte_scellee })).toEqual({
+      signe_le: null,
+      empreinte_lue: '',
+      empreinte_scellee: recu.empreinte_scellee,
+      empreinte_pdf: '',
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(409, { detail: 'Refus.', code: 'statut', recu: {} })));
     const refus = await call({ token: 'tok', nom: 'Karim Exemple', twoOptions: false });
     expect(refus.json).not.toHaveProperty('recu');
   });

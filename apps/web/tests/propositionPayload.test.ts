@@ -595,6 +595,12 @@ const NON_LU: Readonly<Record<string, string>> = {
   'pdf_disponible': 'Drapeau serveur de la case « PDF » (ADEV49) : lu par `pdfDisponible` dans le frontmatter pour ne rendre aucun lien « Télécharger » vers un 404, pas par le lecteur typé.',
   // APDF19 (11/10/2026) — le titre des conditions générales du PDF de CE devis.
   'conditions_titre': 'Titre des conditions générales que le PDF de CE devis imprime (APDF19), servi avec `conditions` pour la parité du texte : son affichage sur la page /proposition est optionnel (propriétaire web), pas encore lu.',
+  // APDF110/APDF112 (24/10/2026) — identité légale de la société ÉMETTRICE du devis.
+  'emetteur.nom': 'Raison sociale de la société émettrice (APDF110) : lue par `identiteEmetteur` (lib/nap.ts) pour le bloc « Qui est … ? » de la page, pas par le lecteur typé du devis.',
+  'emetteur.forme_juridique': 'Forme juridique de la société émettrice (APDF110) : lue par `identiteEmetteur` (lib/nap.ts) pour le titre « Qui est … ? », pas par le lecteur typé.',
+  'emetteur.capital_social': 'Capital social de la société émettrice (APDF110) : lu par `identiteEmetteur` (lib/nap.ts) pour la ligne RC · ICE · Capital du bloc d’identité, pas par le lecteur typé.',
+  'emetteur.rc': 'Registre de commerce de la société émettrice (APDF110) : lu par `identiteEmetteur` (lib/nap.ts) pour la ligne d’identité légale, pas par le lecteur typé.',
+  'emetteur.ice': 'ICE de la société émettrice (APDF110) : lu par `identiteEmetteur` (lib/nap.ts) pour la ligne d’identité légale, pas par le lecteur typé.',
 };
 
 /** La prose du contrat : jamais servie à un navigateur, mais elle se décide aussi. */

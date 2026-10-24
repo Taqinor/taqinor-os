@@ -3,6 +3,9 @@
 // la validation/mise en forme de la requête d'acceptation, et la normalisation
 // des réponses backend.
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { identiteEmetteur, LEGAL_IDENTITY } from '../src/lib/nap';
 import {
   formatMAD,
   formatNumber,
@@ -313,5 +316,46 @@ describe('WJ108 — buildAcceptBodyRich porte otp_code de façon additive', () =
   it('inclut otp_code trim quand fourni', () => {
     const body = buildAcceptBodyRich({ nom: 'Reda', option: null }, false, { otp_code: '  123456  ' });
     expect(body.otp_code).toBe('123456');
+  });
+});
+
+describe('APDF107 — identiteEmetteur : « Qui est … ? » nomme la société ÉMETTRICE servie', () => {
+  const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+  const CONTRAT = JSON.parse(lire('../src/contract_samples/proposal_data.json')) as Record<string, Record<string, unknown>>;
+  const SERVIE = CONTRAT.exemple!.emetteur as Record<string, string>;
+  const TAQINOR = ['691213', '003799642000067'];
+
+  it('servie (échantillon du contrat) ⇒ ses valeurs, jamais celles de TAQINOR', () => {
+    const id = identiteEmetteur(SERVIE);
+    expect(id.titre).toEqual({ fr: 'Qui est SOLAIRE EXEMPLE SARL ?', en: 'Who is SOLAIRE EXEMPLE SARL?', ar: 'من هي \u2066SOLAIRE EXEMPLE SARL\u2069؟' });
+    expect(id.bloc!.raisonSociale).toBe('SOLAIRE EXEMPLE SARL');
+    expect(id.bloc!.ligne.fr).toBe('RC 12345 · ICE 001111111000011 · Capital 50 000,00 MAD');
+    expect(id.bloc!.ligne.en).toBe('RC 12345 · ICE 001111111000011 · Share capital 50 000,00 MAD');
+    expect(id.bloc!.ligne.ar).toBe('RC 12345 · ICE 001111111000011 · رأس المال \u206650 000,00 MAD\u2069');
+    for (const valeur of TAQINOR) expect(JSON.stringify(id)).not.toContain(valeur);
+  });
+
+  it('parts vides omises, forme juridique ajoutée si le nom ne la porte pas', () => {
+    const id = identiteEmetteur({ ...SERVIE, nom: 'HELIOS', rc: '', capital_social: '', ice: '002222222000022' });
+    expect(id.bloc).toEqual({ raisonSociale: 'HELIOS SARL', ligne: { fr: 'ICE 002222222000022', en: 'ICE 002222222000022', ar: 'ICE 002222222000022' } });
+  });
+
+  it('`nom` vide ⇒ carte omise, jamais la constante TAQINOR', () => {
+    const id = identiteEmetteur({ ...SERVIE, nom: '  ' });
+    expect(id.bloc).toBeNull();
+    for (const valeur of TAQINOR) expect(JSON.stringify(id)).not.toContain(valeur);
+  });
+
+  it('clé absente (ancien backend) ⇒ le rendu d’aujourd’hui (LEGAL_IDENTITY)', () => {
+    const id = identiteEmetteur(undefined);
+    expect(id.titre).toEqual({ fr: 'Qui est Taqinor ?', en: 'Who is Taqinor?', ar: 'من هي تاقينور؟' });
+    expect(id.bloc!.raisonSociale).toBe(LEGAL_IDENTITY.raisonSociale);
+    expect(id.bloc!.ligne.fr).toBe(`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · Capital ${LEGAL_IDENTITY.capital}`);
+  });
+
+  it('la page lit `emetteur` par identiteEmetteur, plus LEGAL_IDENTITY en direct', () => {
+    const PAGE = lire('../src/pages/proposition/[...token].astro');
+    expect(PAGE).toContain("identiteEmetteur(data && 'emetteur' in data ? data.emetteur : undefined)");
+    expect(PAGE).not.toMatch(/LEGAL_IDENTITY\./);
   });
 });

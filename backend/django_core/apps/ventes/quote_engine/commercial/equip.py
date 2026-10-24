@@ -501,7 +501,8 @@ def build(ctx):
     # QJR668 — clauses/CGV de l'affaire gelées (déjà échappées) ; aucune → "".
     from ..clauses_cgv import bloc_clauses_html
     clauses_html = bloc_clauses_html(
-        d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink)
+        d.get("clauses_cgv"), couleur_titre=navy, couleur_texte=ink,
+        langue=_langue(d))
     html = f"""{css}{css_densite(d.get("_palier_equip"))}
 <div class="c2-root">
   <div class="c2-kicker">{L("ci_votre_installation", "Votre installation")}</div>

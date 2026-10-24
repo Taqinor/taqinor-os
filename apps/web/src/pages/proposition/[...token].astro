@@ -283,10 +283,10 @@ import {
 // (fondateur 2026-08-17) le badge IEC ne s'affiche que s'il peut pointer vers la
 // fiche du panneau RÉELLEMENT devisé (catégorie « Panneaux photovoltaïques »).
 import { ficheBySlug } from '../../lib/fiches';
-// PREVIEW v2 (fondateur Reda, 2026-09-16) — identité légale publiée, source
-// unique partagée avec /mentions-legales : jamais une seconde écriture du RC
-// ou de l'ICE sur une page cliente.
-import { LEGAL_IDENTITY } from '../../lib/nap';
+// APDF107 — identité légale de la société ÉMETTRICE servie (`emetteur`), sinon
+// LEGAL_IDENTITY (source partagée avec /mentions-legales) : jamais une seconde
+// écriture du RC ou de l'ICE sur une page cliente.
+import { identiteEmetteur } from '../../lib/nap';
 // TAILLES (ordre fondateur, 26/08/2026) — les trois tailles explorables
 // (Éco → Recommandé → Max), servies par le contrat `offres_tailles`. Fichier
 // DÉDIÉ, à l'image d'`economiesPeriodes.ts` : aucune arithmétique de taille ne
@@ -552,6 +552,8 @@ const remplacement = ok ? resolveRemplacement(data!) : null;
 // QJR627 (D-QJR5-6) — le texte CLIENT du champ « Notes » du devis, le même que
 // le PDF imprime ; absent ou vide → aucun bloc.
 const noteClient = ok ? resolveNoteClient(data!) : null;
+// APDF107 (C-APDF-VER-007) — « Qui est … ? » : la société ÉMETTRICE du devis.
+const emetteur = identiteEmetteur(data && 'emetteur' in data ? data.emetteur : undefined);
 
 // ACAL314 — chemin relatif du proxy Django, préfixé par l'origine de l'API.
 const roofImg = urlAfficheToiture(API_BASE, data?.roof_image_url);
@@ -6304,39 +6306,20 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            6. INTERDITS ICI : avis/étoiles (<StarRating/> démonté), invitation à
               visiter un chantier, assurance, nombre d'installations. */}
       <section id="confiance" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — « Pourquoi nous faire
-            confiance » était une promesse ; « Qui est Taqinor ? » est la
-            question réelle du lecteur méfiant, et celle à laquelle la
-            raison sociale, le RC et l'ICE répondent vraiment. */}
-        <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Qui est Taqinor ?" data-en="Who is Taqinor?" data-ar="من هي تاقينور؟">Qui est Taqinor ?</h2>
-        {/* ── PREVIEW v2 · L'IDENTITÉ VÉRIFIABLE, SUR LA PAGE ──────────────────
-            Toutes les checklists anti-arnaque marocaines demandent la même
-            chose avant de signer : à QUI on signe, et comment le vérifier. La
-            page renvoyait le lecteur aux mentions légales du site public ; la
-            raison sociale, le registre de commerce et l'ICE sont désormais ICI,
-            lus depuis la MÊME constante que /mentions-legales (LEGAL_IDENTITY
-            dans lib/nap.ts) — aucun second jeu de valeurs ne peut exister.
-            Aucune adresse postale n'est publiée : décision propriétaire (mode
-            zone de service), et inventer une adresse serait pire que l'omettre.
-            Aucun nom de personne ici : le gérant reste sur la page légale. */}
-        <div class="cine-card mt-4 rounded-xl p-5 sm:p-6">
-          <p class="text-sm text-lune">{LEGAL_IDENTITY.raisonSociale}</p>
-          {/* PREVIEW-V3 — loi 31-08 art. 29-2 : l'offre à distance doit porter
-              la dénomination, le RC ET LE CAPITAL SOCIAL — c'est la mention
-              que tout le monde oublie, et elle vit déjà dans LEGAL_IDENTITY
-              (même constante que /mentions-legales). Ni CNSS ni taxe
-              professionnelle : aucune ne concerne un devis. */}
-          {/* PREVIEW-V3-FIX (audit C4) — « Capital » restait en français dans la
-              carte arabe (seule chaîne de ce bloc sans triplet). RC et ICE sont
-              des sigles marocains : ils ne se traduisent pas. Le montant arabe
-              est enfermé dans un ISOLAT bidi (U+2066 … U+2069) : sans lui, le
-              libellé arabe et le nombre forment un seul passage droite-à-gauche
-              dans ce paragraphe `dir="ltr"` et le rendu donnait
-              « 000,00 100 رأس المال MAD » — constaté au rendu, pas supposé. */}
-          <p class="fig mt-1 text-xs text-lune-faint" dir="ltr" data-i18n
-            data-fr={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · Capital ${LEGAL_IDENTITY.capital}`}
-            data-en={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · Share capital ${LEGAL_IDENTITY.capital}`}
-            data-ar={`${LEGAL_IDENTITY.rcCourt} · ICE ${LEGAL_IDENTITY.ice} · رأس المال ⁦${LEGAL_IDENTITY.capital}⁩`}>{LEGAL_IDENTITY.rcCourt} · ICE {LEGAL_IDENTITY.ice} · Capital {LEGAL_IDENTITY.capital}</p>
+        {/* PREVIEW v2 (fondateur Reda, 2026-09-16) — « Qui est … ? » est la question
+            réelle du lecteur méfiant : à QUI il signe, et comment le vérifier (raison
+            sociale, RC, ICE). APDF107 (C-APDF-VER-007) — la société ÉMETTRICE servie
+            (`emetteur`, APDF110) ; clé absente ⇒ LEGAL_IDENTITY ; `nom` vide ⇒ carte
+            omise, jamais la constante (`identiteEmetteur`, lib/nap.ts). Aucune adresse
+            postale (zone de service), aucun nom de personne (le gérant reste sur la page
+            légale). Loi 31-08 art. 29-2 : dénomination, RC ET capital social ; ni CNSS
+            ni taxe professionnelle. Triplet fr/en/ar et isolat bidi : lib/nap.ts. */}
+        <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr={emetteur.titre.fr} data-en={emetteur.titre.en} data-ar={emetteur.titre.ar}>{emetteur.titre.fr}</h2>
+        {emetteur.bloc && (<div class="cine-card mt-4 rounded-xl p-5 sm:p-6">
+          <p class="text-sm text-lune">{emetteur.bloc.raisonSociale}</p>
+          {emetteur.bloc.ligne.fr && (<p class="fig mt-1 text-xs text-lune-faint" dir="ltr" data-i18n
+            data-fr={emetteur.bloc.ligne.fr} data-en={emetteur.bloc.ligne.en}
+            data-ar={emetteur.bloc.ligne.ar}>{emetteur.bloc.ligne.fr}</p>)}
           <p class="mt-2 text-xs text-lune-faint">
             <a href="/mentions-legales" target="_blank" rel="noopener" class="underline underline-offset-4 hover:text-lune-soft" data-i18n
               data-fr="Mentions légales complètes" data-en="Full legal notice" data-ar="المعلومات القانونية الكاملة">
@@ -6344,11 +6327,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </a>
           </p>
           {/* PREVIEW-V3 — la ligne SAV qui vivait ici répétait MOT POUR MOT la
-              promesse de délai du bloc contact juste dessous (et une
-              troisième fois au formulaire de signature). Trois fois la même
-              phrase ne rassure pas : elle dilue. Une seule reste, dans le
-              bloc contact — là où le lecteur agit. */}
-        </div>
+              promesse de délai du bloc contact juste dessous : une seule reste,
+              dans le bloc contact — là où le lecteur agit. */}
+        </div>)}
         {/* ── PREVIEW v2 · LES GARANTIES SONT MONTÉES AVEC LE MATÉRIEL ────
             (fondateur Reda, 2026-09-16.) La checklist anti-arnaque marocaine
             lit « marque/modèle » et « garantie » d'un même mouvement : les

@@ -22,8 +22,7 @@ class PreuveSignatureB2B(models.Model):
     """
 
     #: ADEV96 — v2 + les chiffres de l'étude C&I que la page et le PDF montrent
-    #: (``domain.modifiabilite.figures_etude_scellees`` de la ``synthese_ci``
-    #: lue SUR le lien signé) + ADEV104 : le niveau/les sections de ce lien.
+    #: (``domain.modifiabilite.figures_etude_scellees`` de la ``synthese_ci``).
     CONTENT_HASH_V3 = 3
     #: La version du payload dont sont scellées les NOUVELLES signatures
     #: (``DevisSignature.compute_content_hash`` ; v1 = QJ10, v2 = QJR144).
@@ -54,31 +53,61 @@ class PreuveSignatureB2B(models.Model):
     # sceau v3 depuis CE champ, jamais en relançant le moteur : une évolution
     # du moteur après la signature ne rend plus le sceau irreproductible.
     # ``NULL`` = signature antérieure à ce champ (voir ``verifier_contenu``).
+    # ADEV104 — signature au jeton : + ``"lien": {niveau, sections_masquees}``
+    # (``modifiabilite.lien_scelle``) ; ``<figures>`` est alors l'étude que CE
+    # lien a montrée (sans ``argent`` sur un lien « sans économies »).
     figures_scellees = models.JSONField(
         null=True, blank=True,
         verbose_name="Chiffres de l'étude C&I scellés à la signature")
-    # ADEV104 (C-L3-LIEN-10) — ce que le LIEN signé montrait, scellé avec le
-    # contenu (:meth:`lien_du_sceau`) : ``{"niveau", "sections_masquees"}``.
-    # ``NULL`` = acceptation sans lien (interne, portail) ou antérieure.
-    lien_scelle = models.JSONField(
-        null=True, blank=True,
-        verbose_name='Niveau et sections du lien scellés à la signature')
 
     class Meta:
         abstract = True
 
     @staticmethod
-    def lien_du_sceau(link):
-        """ADEV104 — le niveau du lien et ses sections MASQUÉES (clé à
-        ``False`` : sémantique de ``ShareLink.section_servie``), triées ;
-        ``None`` sans lien."""
-        if link is None:
-            return None
-        sections = getattr(link, 'sections', None)
-        sections = sections if isinstance(sections, dict) else {}
-        return {'niveau': str(getattr(link, 'niveau', '') or ''),
-                'sections_masquees': sorted(
-                    str(cle) for cle, servie in sections.items() if servie is False)}
+    def _norme_decimale(valeur):
+        """Le texte CANONIQUE d'un montant du payload — INDÉPENDANT DE LA VOIE
+        DE LECTURE.
+
+        LE DÉFAUT QUE CECI CORRIGE (constat du 30/08/2026). Le payload
+        interpolait les montants tels quels (``f"tva={devis.taux_tva}"``), donc
+        il rendait le *repr Python* de la valeur portée par l'instance — et ce
+        repr DIFFÈRE selon d'où vient l'instance :
+
+          · instance FRAÎCHE (``Devis.objects.create(taux_tva=Decimal('20'))``,
+            la voie de la POSE) → ``tva=20``, et ``remise=0`` car le défaut du
+            champ est l'*entier* ``0`` ;
+          · instance RELUE de la base (``signature.devis``, la voie de la
+            VÉRIFICATION) → ``tva=20.00|remise=0.00``, la colonne étant un
+            ``numeric(5,2)``.
+
+        Deux chaînes différentes ⇒ deux SHA-256 différents : le sceau ne
+        pouvait PAS se reproduire, et ``verifier_contenu`` rendait ``False``
+        pour un contenu pourtant strictement inchangé. Le sceau existait depuis
+        QJ10, mais personne ne le relisait : la lacune n'est apparue qu'en lui
+        donnant un vérificateur.
+
+        POURQUOI CE CHOIX PRÉSERVE LES SIGNATURES DÉJÀ POSÉES. La forme
+        canonique retenue est celle de la BASE (quantifiée aux 2 décimales de
+        la colonne), et non celle de l'instance fraîche. Or toute empreinte
+        jamais PERSISTÉE l'a été à partir de valeurs de cette forme-là (le
+        chemin d'acceptation lit le devis d'un queryset ; un devis créé par
+        sérialiseur DRF porte déjà des décimaux quantifiés). Quantifier est
+        donc un NO-OP sur ces valeurs : les empreintes v1 en base se
+        reproduisent à l'octet. Seule change la forme fraîche — celle qui, par
+        construction, ne pouvait jamais se re-vérifier.
+
+        ``None`` reste ``None`` (colonnes nullables : ``quantite``,
+        ``prix_unitaire``, ``taux_tva`` de ligne) — une valeur absente est déjà
+        stable des deux côtés, et la rendre autrement casserait un v1 existant.
+        """
+        from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+        if valeur is None:
+            return 'None'
+        try:
+            return str(Decimal(str(valeur)).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP))
+        except (InvalidOperation, TypeError, ValueError):
+            return str(valeur)
 
     @staticmethod
     def figures_canoniques(figures):
@@ -90,6 +119,15 @@ class PreuveSignatureB2B(models.Model):
         import json
         return json.loads(json.dumps(
             figures, sort_keys=True, ensure_ascii=False, default=str))
+
+    @staticmethod
+    def contenu_scelle(figures, lien=None):
+        """ADEV104 — la valeur de :attr:`figures_scellees` : ``{"etude":
+        figures}``, plus ``"lien"`` (niveau du lien scellé) quand la signature
+        vient d'un lien public ; portail et ERP : ``{"etude": …}`` seul."""
+        if lien is None:
+            return {'etude': figures}
+        return {'etude': figures, 'lien': lien}
 
     def figures_du_sceau(self):
         """``(True, figures)`` quand la signature porte ses chiffres scellés ;
@@ -108,14 +146,9 @@ class PreuveSignatureB2B(models.Model):
         return figures if stockees else figures_relues
 
     @classmethod
-    def _suffixe_sceau_etude(cls, figures, version, lien=None):
+    def _suffixe_sceau_etude(cls, figures, version):
         """ADEV96 — la part ÉTUDE du payload v3 (``''`` avant v3 : les
         empreintes v1/v2 déjà posées se reproduisent à l'octet).
-
-        ADEV104 — ``lien`` (:meth:`lien_du_sceau`, relu de
-        :attr:`lien_scelle` à la vérification) entre AUSSI dans la part v3 :
-        un sceau posé pour un lien ne valide pas le contenu d'un autre.
-        ``None`` (sans lien) : la part v3 d'avant, à l'octet.
 
         ``figures`` — les chiffres scellés de l'étude C&I
         (``domain.modifiabilite.figures_etude_scellees``), FOURNIS par
@@ -129,9 +162,7 @@ class PreuveSignatureB2B(models.Model):
         if (version or cls.CONTENT_HASH_VERSION) < cls.CONTENT_HASH_V3:
             return ''
         import json
-        part_lien = '' if lien is None else (
-            f"lien={json.dumps(lien, sort_keys=True, ensure_ascii=False, default=str)}|")
-        return (f"|v{cls.CONTENT_HASH_V3}|{part_lien}etude="
+        return (f"|v{cls.CONTENT_HASH_V3}|etude="
                 f"{json.dumps(figures, sort_keys=True, ensure_ascii=False, default=str)}")
 
 

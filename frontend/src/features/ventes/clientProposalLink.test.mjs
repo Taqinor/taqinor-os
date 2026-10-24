@@ -35,9 +35,30 @@ test('clientProposalUrl : chemin absent -> juste l’origine (jamais une excepti
 test('proposalWhatsappText : format figé du message WhatsApp de la proposition', () => {
   assert.equal(
     proposalWhatsappText('Karim', 'https://taqinor.ma/proposition/karim/abc'),
-    "Bonjour Karim, voici votre proposition d'installation solaire Taqinor : "
+    "Bonjour Karim, voici votre proposition d'installation solaire : "
     + 'https://taqinor.ma/proposition/karim/abc N\'hésitez pas à me poser vos questions.',
   )
+})
+
+test('proposalWhatsappText : aucune marque par défaut, la marque passée sinon', () => {
+  const url = 'https://taqinor.ma/proposition/karim/ABC123'
+  const fin = " N'hésitez pas à me poser vos questions."
+  const sansMarque = proposalWhatsappText('Karim', url)
+  assert.equal(sansMarque, `Bonjour Karim, voici votre proposition d'installation solaire : ${url}${fin}`)
+  assert.doesNotMatch(sansMarque.replace(url, ''), /taqinor/i)
+  assert.equal(
+    proposalWhatsappText('Karim', url, { marque: '  SOLAIRE EXEMPLE SARL ' }),
+    `Bonjour Karim, voici votre proposition d'installation solaire SOLAIRE EXEMPLE SARL : ${url}${fin}`,
+  )
+  assert.equal(
+    proposalWhatsappText('', url, { marque: '   ' }),
+    `Bonjour, voici votre proposition d'installation solaire : ${url}${fin}`,
+  )
+  assert.match(
+    proposalWhatsappText('Karim', url, { agricole: true, marque: 'SOLAIRE EXEMPLE SARL' }),
+    /^Bonjour Karim, voici votre étude de pompage solaire SOLAIRE EXEMPLE SARL : /,
+  )
+  assert.doesNotMatch(proposalWhatsappText('Karim', url, { agricole: true }).replace(url, ''), /taqinor/i)
 })
 
 test('proposalWhatsappText : nom vide -> salutation générique, jamais "Bonjour undefined"', () => {
@@ -62,7 +83,7 @@ test('buildWaUrl : aucun numéro -> null, jamais un lien wa.me/ invalide', () =>
 
 test('proposalWhatsappText : un pompage reçoit le texte agricole, sans chiffre (D-AGQ-15)', () => {
   const t = proposalWhatsappText('Karim', 'https://taqinor.ma/proposition/karim/abc', { agricole: true })
-  assert.match(t, /^Bonjour Karim, voici votre étude de pompage solaire Taqinor : https:\/\/taqinor\.ma\/proposition\/karim\/abc /)
+  assert.match(t, /^Bonjour Karim, voici votre étude de pompage solaire : https:\/\/taqinor\.ma\/proposition\/karim\/abc /)
   assert.match(t, /accord FDA si vous demandez l'aide/)
   assert.doesNotMatch(t, /installation solaire|\d+\s*(CV|kWc|m³)/)
   assert.equal(proposalWhatsappText('Karim', 'u'), proposalWhatsappText('Karim', 'u', { agricole: false }))

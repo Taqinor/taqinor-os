@@ -29,20 +29,23 @@ export function clientProposalUrl(proposalPath, siteUrl = DEFAULT_PUBLIC_SITE_UR
 }
 
 // Texte du message WhatsApp qui accompagne le lien de la proposition.
-export function proposalWhatsappText(name, proposalUrl, { agricole = false } = {}) {
+// APDF108 — la marque est celle de la société qui envoie (`marque`, trimée),
+// nommée seulement si elle est donnée : aucune marque codée en dur.
+export function proposalWhatsappText(name, proposalUrl, { agricole = false, marque = '' } = {}) {
   const hello = name?.trim() ? `Bonjour ${name.trim()}, ` : 'Bonjour, '
+  const deMarque = marque?.trim() ? ` ${marque.trim()}` : ''
   // D-AGQ-15 (fondateur, 24/10/2026) — un fermier reçoit le texte du pompage :
   // ce que la page contient, sans aucun chiffre (la ligne de devis n'en porte pas).
   if (agricole) {
     return (
-      `${hello}voici votre étude de pompage solaire Taqinor : ${proposalUrl} ` +
+      `${hello}voici votre étude de pompage solaire${deMarque} : ${proposalUrl} ` +
       `Vous y trouvez la pompe et le champ solaire choisis pour votre point d'eau, ` +
       `l'eau livrée mois par mois, le prix et les étapes (dont l'accord FDA si vous demandez l'aide). ` +
       `N'hésitez pas à me poser vos questions.`
     )
   }
   return (
-    `${hello}voici votre proposition d'installation solaire Taqinor : ${proposalUrl} ` +
+    `${hello}voici votre proposition d'installation solaire${deMarque} : ${proposalUrl} ` +
     `N'hésitez pas à me poser vos questions.`
   )
 }

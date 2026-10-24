@@ -62,40 +62,26 @@ class ContratProposalAcceptTests(SimpleTestCase):
                 self.assertEqual(corps['code'], code)
                 self.assertTrue(corps['detail'].strip())
 
-    def test_recu_nomme_deux_empreintes_adev104(self):
-        """ADEV104 (C-L3-LIEN-10) — le reçu distingue le DÉFI envoyé par la
-        page (``empreinte_lue``) du SCEAU stocké (``empreinte_scellee`` =
-        ``DevisSignature.content_hash``) ; ``empreinte_contenu`` reste servie
-        un cycle comme alias documenté de ``empreinte_scellee``."""
+    def test_recu_deux_empreintes_nommees(self):
+        """ADEV104 — le reçu nomme le défi reçu (``empreinte_lue``) et le
+        sceau stocké (``empreinte_scellee``) ; ``empreinte_contenu`` reste
+        servie un cycle, alias du sceau. Forme = sortie réelle de ``recu_de``."""
+        from datetime import datetime
+        from types import SimpleNamespace
+        from apps.ventes.public.signature_views import recu_de
         recu = self.accept['reponse_200']['recu']
-        self.assertEqual(set(recu), {'signe_le', 'empreinte_lue',
-                                     'empreinte_scellee', 'empreinte_contenu',
-                                     'empreinte_pdf'})
         self.assertEqual(recu['empreinte_lue'],
                          self.accept['exemple']['empreinte_contenu'])
-        self.assertEqual(recu['empreinte_contenu'], recu['empreinte_scellee'])
         self.assertNotEqual(recu['empreinte_lue'], recu['empreinte_scellee'])
-        for cle in ('empreinte_lue', 'empreinte_scellee', 'alias'):
-            with self.subTest(cle=cle):
-                self.assertIn(cle, self.accept['corps']['recu'])
-
-    def test_recu_servi_a_la_forme_du_contrat_adev104(self):
-        """La sortie RÉELLE de ``recu_signature`` porte exactement les clés
-        du contrat : défi relayé, sceau stocké, alias égal au sceau."""
-        from types import SimpleNamespace
-        from unittest import mock
-        from apps.ventes.models import DevisSignature
-        from apps.ventes.public.signature_views import recu_signature
-        sig = SimpleNamespace(signed_at=None, content_hash='c' * 64,
-                              signed_pdf_sha256='')
-        objets = mock.Mock()
-        objets.filter.return_value.first.return_value = sig
-        with mock.patch.object(DevisSignature, 'objects', objets):
-            recu = recu_signature(object(), 'a' * 64)
-        self.assertEqual(set(recu), set(self.accept['reponse_200']['recu']))
-        self.assertEqual(recu['empreinte_lue'], 'a' * 64)
-        self.assertEqual(recu['empreinte_scellee'], 'c' * 64)
         self.assertEqual(recu['empreinte_contenu'], recu['empreinte_scellee'])
+        sig = SimpleNamespace(
+            content_hash=recu['empreinte_scellee'],
+            signed_pdf_sha256=recu['empreinte_pdf'],
+            signed_at=datetime.fromisoformat(recu['signe_le']))
+        self.assertEqual(recu_de(sig, recu['empreinte_lue']), recu)
+        self.assertEqual(recu_de(sig)['empreinte_lue'], '')
+        for cle in ('empreinte_lue', 'empreinte_scellee', 'empreinte_contenu'):
+            self.assertIn(f'`{cle}`', self.accept['corps']['recu'])
 
     def test_otp_409_aucun_canal(self):
         otp = self.accept['otp']

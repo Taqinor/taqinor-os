@@ -73,8 +73,6 @@ SCHEMAS = {
     # tranches OBJETS ; CI #997 (4) — dont ``pct_or_montant`` est obligatoire
     # (source unique : ``utils.echeancier``, jumelle du refus 400).
     'echeancier': schema_echeancier(),
-    'acompte_montant': _decimal_borne(
-        MOTIF_ACOMPTE, 9999999999.99, nullable=True),
     'retenue_garantie': _objet(('taux_pct',), {
         'taux_pct': _POURCENT,
         'liberation': {'type': 'string', 'enum': ['reception_definitive']}}),

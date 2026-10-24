@@ -734,9 +734,9 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
 
     ADEV96 — les chiffres de l'étude C&I scellés sont lus ici et stockés sur
     la signature (``figures_scellees``) : la vérification rejoue le sceau
-    depuis eux, jamais depuis le moteur. ADEV104 — ``lien`` (le lien signé) :
-    l'étude est lue avec SES sections servies et son niveau/ses sections
-    masquées sont scellés (``lien_scelle``). ``refus_etude`` (``accept_devis``) —
+    depuis eux, jamais depuis le moteur. ADEV104 — ``lien`` (signature au
+    jeton) : l'étude que CE lien a montrée (``figures_sceau(link=…)``) et son
+    niveau (``lien_scelle``) sont scellés. ``refus_etude`` (``accept_devis``) —
     REFUS FERMÉ : l'étude d'un devis C&I illisible lève
     ``AcceptError(refus_etude, conflict=True, code='validation_requise')``
     AVANT le best-effort ci-dessous (qui, lui, n'arrête jamais rien) ; sans
@@ -760,7 +760,7 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     """
     from apps.ventes.models import DevisSignature
     from apps.ventes.domain.modifiabilite import (
-        SyntheseCiIllisible, figures_sceau)
+        SyntheseCiIllisible, figures_sceau, lien_scelle)
     figures = None
     # Refus fermé SEULEMENT quand le devis PORTE une étude C&I illisible :
     # un devis commercial / industriel composé à la main, sans étude
@@ -785,9 +785,8 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
         if figures is None:
             figures = figures_sceau(devis, link=lien)
         figures = DevisSignature.figures_canoniques(figures)
-        lien_scelle = DevisSignature.lien_du_sceau(lien)
         content_hash = DevisSignature.compute_content_hash(
-            devis, lignes=lignes, figures=figures, lien=lien_scelle)
+            devis, lignes=lignes, figures=figures)
         # ``signature_image`` peut être une data-URL volumineuse — on la borne
         # raisonnablement (les payloads canvas font ~quelques Ko).
         img = (signature_image or '')
@@ -810,8 +809,10 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
             **_champs_signature_entreprise(entreprise),
             # ADEV99 — langue de la page (confirmation FR, EN si 'en').
             langue_page=str(langue or '')[:5],
-            # ADEV96 — les chiffres scellés, pour un sceau reproductible.
-            figures_scellees={'etude': figures}, lien_scelle=lien_scelle,
+            # ADEV96 — les chiffres scellés, pour un sceau reproductible ;
+            # ADEV104 — + le niveau du lien scellé (signature au jeton).
+            figures_scellees=DevisSignature.contenu_scelle(
+                figures, lien_scelle(lien)),
         )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',

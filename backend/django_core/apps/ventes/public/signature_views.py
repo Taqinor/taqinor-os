@@ -536,8 +536,9 @@ def proposal_accept(request, token):
         # CIQ319 — l'identité d'entreprise RELUE sur la signature enregistrée
         # (la première fait foi), même forme que le corps ; null hors C&I.
         'entreprise': _entreprise_relue(devis),
-        # ADEV96 / ADEV104 — le reçu : horodatage, défi lu, sceau stocké, PDF.
-        'recu': _apres_signature(recu_signature, devis, _empreinte_recue(request)),
+        # ADEV96 / ADEV104 — le reçu : horodatage, défi lu, sceau, PDF.
+        'recu': _apres_signature(recu_signature, devis,
+                                 _empreinte_recue(request)),
     }))
 
 
@@ -575,23 +576,24 @@ def _deverrouiller_exemplaire_signe(link, statut_avant, devis):
 
 
 def recu_signature(devis, empreinte_lue=None):
-    """ADEV96 — le REÇU de la signature enregistrée (la première fait foi) :
-    ``{signe_le, empreinte_lue, empreinte_scellee, empreinte_contenu,
-    empreinte_pdf}``. ADEV104 (C-L3-LIEN-10) — deux empreintes NOMMÉES :
-    ``empreinte_lue`` = le DÉFI renvoyé par la page (``''`` sans) ;
-    ``empreinte_scellee`` = le sceau stocké (``content_hash``, v3 : étude C&I
-    et lien signé compris) ; ``empreinte_contenu`` = ALIAS de
-    ``empreinte_scellee``, servi un cycle. ``empreinte_pdf`` = SHA-256 des
-    octets du PDF signé remis (``''`` tant qu'il n'est pas stocké) ; ``None``
-    sans signature."""
+    """ADEV96 — le REÇU de la signature enregistrée (la première fait foi) ;
+    ``None`` sans signature. Forme : :func:`recu_de`."""
     from ..models import DevisSignature
     sig = DevisSignature.objects.filter(devis=devis).first()
-    if sig is None:
-        return None
+    return None if sig is None else recu_de(sig, empreinte_lue)
+
+
+def recu_de(sig, empreinte_lue=None):
+    """ADEV104 — les DEUX empreintes nommées : ``empreinte_lue`` = le défi
+    renvoyé par la page (``empreinte_contenu`` du corps, ``''`` absent),
+    ``empreinte_scellee`` = le sceau stocké (``content_hash``, v3 calculé avec
+    le lien) ; ``empreinte_contenu`` = alias d'``empreinte_scellee`` servi un
+    cycle ; ``empreinte_pdf`` = SHA-256 des octets du PDF signé remis
+    (``signed_pdf_sha256``, ``''`` tant qu'il n'est pas stocké)."""
     scellee = sig.content_hash or ''
     return {'signe_le': sig.signed_at.isoformat() if sig.signed_at else None,
-            'empreinte_lue': empreinte_lue or '', 'empreinte_scellee': scellee,
-            'empreinte_contenu': scellee,
+            'empreinte_lue': empreinte_lue or '',
+            'empreinte_scellee': scellee, 'empreinte_contenu': scellee,
             'empreinte_pdf': sig.signed_pdf_sha256 or ''}
 
 

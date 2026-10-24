@@ -147,72 +147,67 @@ class TestPdfPublicAccepteSigne(TestCase):
                          OCTETS_SIGNES)
         self.assertEqual(self._demander(link).json().get('code_requis'), False)
 
-    # ── ADEV105 (C-L3-LIEN-11) — l'exemplaire signé n'est pas une lecture ──
-
-    @patch('apps.crm.services.notify_devis_opened')
-    @patch('apps.ventes.public.lecture_views._notify_first_open')
-    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
-    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
-           return_value='devis/rerendu.pdf')
-    def test_telecharger_l_exemplaire_signe_ne_compte_aucune_ouverture(
-            self, mock_gen, _dl, premiere, reouverture):
-        """Devis ACCEPTÉ : le signataire télécharge son exemplaire signé
-        (écran de succès, e-mail) — ``view_count`` et les dates de lecture
-        inchangés, aucune note « devis ouvert », aucune notification, même
-        après la fenêtre de réouverture."""
-        from datetime import timedelta
-        _, link = self._devis('DEV-ADEV105-A', 'accepte', CLE_SIGNEE)
-        avant = timezone.now() - timedelta(days=2)
-        ShareLink.objects.filter(pk=link.pk).update(
-            view_count=3, first_viewed_at=avant, last_viewed_at=avant)
-        for _ in range(2):
-            self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
-                             OCTETS_SIGNES)
-        link.refresh_from_db()
-        self.assertEqual((link.view_count, link.first_viewed_at,
-                          link.last_viewed_at), (3, avant, avant))
-        premiere.assert_not_called()
-        reouverture.assert_not_called()
-
-    @patch('apps.crm.services.notify_devis_opened')
-    @patch('apps.ventes.public.lecture_views._notify_first_open')
-    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
-    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
-           return_value='devis/rerendu.pdf')
-    def test_route_document_jumelle_ne_compte_pas_l_exemplaire_signe(
-            self, mock_gen, _dl, premiere, reouverture):
-        """ADEV105 — jumeau : ``public-document`` sert le MÊME exemplaire signé
-        par le MÊME jeton ; il ne compte pas non plus de lecture."""
-        _, link = self._devis('DEV-ADEV105-C', 'accepte', CLE_SIGNEE)
-        self.assertEqual(self._get('public-document', link, mock_gen),
-                         OCTETS_SIGNES)
-        link.refresh_from_db()
-        self.assertEqual((link.view_count, link.first_viewed_at), (0, None))
-        premiere.assert_not_called()
-        reouverture.assert_not_called()
-
-    @patch('apps.ventes.public.lecture_views._notify_first_open')
-    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
-    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
-           return_value='devis/rerendu.pdf')
-    def test_pdf_d_un_envoye_compte_toujours_la_premiere_lecture(
-            self, mock_gen, _dl, premiere):
-        """Test-du-test : devis ENVOYÉ non accepté — le comptage d'avant
-        (première ouverture comptée et notifiée) est inchangé."""
-        _, link = self._devis('DEV-ADEV105-B', 'envoye')
-        self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
-                         OCTETS_RERENDU)
-        link.refresh_from_db()
-        self.assertEqual(link.view_count, 1)
-        self.assertIsNotNone(link.first_viewed_at)
-        premiere.assert_called_once()
-
     def test_envoye_aucun_code_requis(self):
         _, link = self._devis('DEV-ADEV97-C', 'envoye')
         resp = self._demander(link)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json(), {
             'detail': 'Aucun code requis pour ce lien.', 'code_requis': False})
+
+    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/rerendu.pdf')
+    def test_exemplaire_signe_telecharge_n_est_pas_une_ouverture(
+            self, mock_gen, _dl):
+        """ADEV105 (C-L3-LIEN-11) — accepté : télécharger l'exemplaire signé
+        ne compte pas une ouverture (``view_count`` et ``first_viewed_at``
+        inchangés, aucune note au lead, aucune notification au vendeur) ;
+        envoyé : comptage d'aujourd'hui (1 vue, note « ouvert », notification).
+        Test-du-test : retirer la condition sur le statut ⇒ rouge."""
+        from apps.crm.models import Lead, LeadActivity
+        from apps.notifications.models import Notification
+        lead = Lead.objects.create(
+            company=self.company, nom='Signataire ADEV105', owner=self.user)
+
+        def _traces():
+            return (LeadActivity.objects.filter(lead=lead).count(),
+                    Notification.objects.filter(recipient=self.user).count())
+
+        devis, link = self._devis('DEV-ADEV105-A', 'accepte', CLE_SIGNEE)
+        Devis.objects.filter(pk=devis.pk).update(lead=lead)
+        avant = _traces()
+        self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
+                         OCTETS_SIGNES)
+        link.refresh_from_db()
+        self.assertEqual((link.view_count, link.first_viewed_at), (0, None))
+        self.assertEqual(_traces(), avant)
+
+        devis_e, link_e = self._devis('DEV-ADEV105-B', 'envoye')
+        Devis.objects.filter(pk=devis_e.pk).update(lead=lead)
+        avant = _traces()
+        self._get('public-proposal-pdf', link_e, mock_gen)
+        link_e.refresh_from_db()
+        self.assertEqual(link_e.view_count, 1)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, body__contains='ouvert le devis DEV-ADEV105-B').exists())
+        self.assertGreater(_traces()[1], avant[1])
+
+    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/rerendu.pdf')
+    def test_route_document_jumelle_ne_compte_pas_l_exemplaire_signe(
+            self, mock_gen, _dl):
+        """ADEV105 — jumeau : ``public-document`` sert le MÊME exemplaire signé
+        par le MÊME jeton ; accepté : aucune ouverture comptée ; envoyé : la
+        première lecture reste comptée (test-du-test)."""
+        _, link = self._devis('DEV-ADEV105-C', 'accepte', CLE_SIGNEE)
+        self.assertEqual(self._get('public-document', link, mock_gen), OCTETS_SIGNES)
+        link.refresh_from_db()
+        self.assertEqual((link.view_count, link.first_viewed_at), (0, None))
+        _, link_e = self._devis('DEV-ADEV105-D', 'envoye')
+        self._get('public-document', link_e, mock_gen)
+        link_e.refresh_from_db()
+        self.assertEqual(link_e.view_count, 1)
 
 
 class _StockageMemoire:

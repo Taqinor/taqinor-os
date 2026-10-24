@@ -23,6 +23,7 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from apps.parametres.selectors import company_identity
 from .economies_periodes import construire_economies_periodes
 from .models import ShareLink
 from .public.noyau import (
@@ -1137,6 +1138,13 @@ def _economies_cumul_25_ans_publique(data):
     return out or None
 
 
+def _emetteur_public(company):
+    """APDF110 (C-APDF-VER-007) — identité légale de la société ÉMETTRICE, lue
+    par ``company_identity`` ('' quand non renseignée) ; jamais RIB/adresse/CNSS."""
+    identite = company_identity(company)
+    return {cle: identite[cle] for cle in ('nom', 'forme_juridique', 'capital_social', 'rc', 'ice')}
+
+
 @extend_schema(responses={200: SH.ProposalDataResponse, 403: SH.OtpRequis})
 @api_view(['GET'])
 @authentication_classes([])
@@ -1369,6 +1377,8 @@ def proposal_data(request, token):
             'date': data['date'],
             'client_name': data['client_name'],
             'statut': devis.statut,
+            # APDF110 — la société ÉMETTRICE est celle du devis du jeton.
+            'emetteur': _emetteur_public(devis.company),
             # QJR536 (contrat QJR501) — ``null`` tant que CE devis n'est pas
             # remplacé ; sinon ``{reference, url}`` de la version EN VIGUEUR
             # (dernière de la chaîne ``superseded_by``, même société). ``url``
@@ -2128,10 +2138,15 @@ def proposal_pdf(request, token):
     if not _section_servie(link, 'pdf'):
         return _not_found()
 
-    # QJ1 — stamp (True = 1re ouverture) ; jamais via le jeton interne, ni (ADEV105)
-    # pour l'exemplaire signé d'un devis ACCEPTÉ : seule la lecture d'avant compte.
-    is_first = _stamp_view_si_public(link, link.via_interne or link.devis.statut == 'accepte', request)
-    _notify_open(link, request, is_first=is_first)
+    # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV :
+    # jamais de stamp/notification via le jeton interne.
+    # ADEV105 (C-L3-LIEN-11) — devis ACCEPTÉ : le signataire télécharge SON
+    # exemplaire signé, ce n'est plus une « ouverture » de l'offre (ni
+    # compteur, ni note, ni notification au vendeur) ; seule la lecture AVANT
+    # acceptation compte.
+    if link.devis.statut != 'accepte':
+        is_first = _stamp_view_si_public(link, link.via_interne, request)
+        _notify_open(link, request, is_first=is_first)
 
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.
