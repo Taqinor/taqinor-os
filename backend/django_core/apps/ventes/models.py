@@ -8,7 +8,7 @@ from core.models import TenantModel
 # plus bas : le nom historique reste, la copie a disparu.
 from core.product_roles import ROLES_DEVIS
 # L3 lien public — champs de preuve déportés (mixins abstraits, models_preuves).
-from .models_preuves import PreuveSignatureB2B
+from .models_preuves import PreuveSignatureB2B, SuiviLienPublic
 import logging
 import secrets
 from datetime import timedelta
@@ -1097,7 +1097,7 @@ def _default_share_expiry():
     return timezone.now() + timedelta(days=SHARE_LINK_TTL_DAYS)
 
 
-class ShareLink(models.Model):
+class ShareLink(SuiviLienPublic, models.Model):
     """Lien public, lecture seule, expirant (30 j) vers le PDF CLIENT d'un devis
     ou d'une facture. Jeton long et imprévisible. Aucun login pour le client,
     aucune autre donnée accessible, jamais de prix d'achat ni de marge (le PDF

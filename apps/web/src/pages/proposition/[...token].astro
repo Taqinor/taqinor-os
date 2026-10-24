@@ -395,6 +395,10 @@ if (!rl.allowed) {
         ...(visitorUa ? { 'user-agent': visitorUa } : {}),
         ...(equipeAppareil ? { 'X-Equipe-Appareil': '1' } : {}),
         ...(appareilCookie ? { 'X-Appareil-Id': appareilCookie } : {}),
+        // ADEV98 — ce rendu SERVEUR n'est qu'un APERÇU (un scanner de messagerie
+        // le déclenche autant qu'un humain) : la lecture humaine est la balise
+        // `/api/proposition-vu` que la page émet après 3 s de visibilité.
+        'X-Proposition-Rendu': 'ssr',
       },
       signal: controller.signal,
     });
@@ -6586,6 +6590,49 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               </div>
             </form>
           </details>
+          {/* ADEV98 — « Décliner / demander un délai » : un motif fermé plutôt qu'un silence.
+              Consigné au chatter, conseiller prévenu ; AUCUN statut ne change. */}
+          {!accepted && (
+          <details class="cine-card mt-3 rounded-2xl p-5 sm:p-6">
+            <summary class="cursor-pointer text-sm text-lune-soft" data-i18n
+              data-fr="Pas pour cette fois, ou besoin de plus de temps ? Décliner / demander un délai"
+              data-en="Not this time, or need more time? Decline / ask for more time"
+              data-ar="ليس هذه المرة، أو تحتاجون مزيداً من الوقت؟ الرفض / طلب مهلة">
+              Pas pour cette fois, ou besoin de plus de temps ? Décliner / demander un délai
+            </summary>
+            <form id="declin-form" class="mt-4">
+              <fieldset class="flex flex-wrap gap-2">
+                <legend class="sr-only" data-i18n data-fr="Motif" data-en="Reason" data-ar="السبب">Motif</legend>
+                {[
+                  { v: 'prix', fr: 'Le prix', en: 'The price', ar: 'السعر' },
+                  { v: 'delai', fr: 'Besoin de plus de temps', en: 'I need more time', ar: 'أحتاج مزيداً من الوقت' },
+                  { v: 'concurrent', fr: 'Une offre concurrente', en: 'A competing offer', ar: 'عرض منافس' },
+                  { v: 'projet_reporte', fr: 'Projet reporté', en: 'Project postponed', ar: 'تأجيل المشروع' },
+                  { v: 'autre', fr: 'Autre', en: 'Other', ar: 'أخرى' },
+                ].map((m) => (
+                  <label class="btn-pill flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm has-[:checked]:border-brass-400">
+                    <input type="radio" name="motif" value={m.v} disabled={apercuInterne} class="sr-only" />
+                    <span data-i18n data-fr={m.fr} data-en={m.en} data-ar={m.ar}>{m.fr}</span>
+                  </label>
+                ))}
+              </fieldset>
+              <label for="declin-texte" class="mt-4 block text-sm text-lune-soft" data-i18n
+                data-fr="Un mot pour votre conseiller (facultatif, obligatoire pour « Autre »)"
+                data-en="A note for your advisor (optional, required for “Other”)"
+                data-ar="كلمة لمستشاركم (اختياري، وإلزامي عند اختيار «أخرى»)">
+                Un mot pour votre conseiller (facultatif, obligatoire pour « Autre »)
+              </label>
+              <textarea id="declin-texte" name="texte" rows="2" maxlength="2000" disabled={apercuInterne}
+                class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800/60 p-3 text-sm text-lune placeholder:text-lune-faint"></textarea>
+              <div class="mt-4 flex items-center gap-3">
+                <button type="submit" disabled={apercuInterne} class="btn-pill inline-flex items-center justify-center gap-2">
+                  <span data-i18n data-fr="Envoyer ma réponse" data-en="Send my answer" data-ar="إرسال ردي">Envoyer ma réponse</span>
+                </button>
+                <p id="declin-status" class="text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
+              </div>
+            </form>
+          </details>
+          )}
         </section>
       )}
 
@@ -7976,6 +8023,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   import { estIceDivergent } from '../../lib/propositionB2b';
   // ADEV97 — l'exemplaire signé se télécharge avec le code de lecture (si exigé).
   import { installerGardePdfSigne } from '../../lib/propositionPdfSigne';
+  // ADEV98 — balise de lecture humaine + « Décliner / demander un délai ».
+  import { installerBaliseVu, installerDeclin } from '../../lib/propositionSignaux';
   // LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme (voir lib/visite.ts) :
   // jointe au beacon d'engagement /api/proposition-track ci-dessous, jamais à
   // un aperçu interne (trackProposalEvent le refuse déjà, cf. cfg.apercuInterne).
@@ -9128,6 +9177,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       estAccepte: () => cfg.accepted || propositionAcceptee,
       langue: () => currentLang,
     });
+    // ADEV98 — la lecture HUMAINE (balise après 3 s de visibilité ; jamais depuis
+    // un aperçu interne) et « Décliner / demander un délai ».
+    installerBaliseVu(cfg.token, !!cfg.apercuInterne);
+    installerDeclin(cfg.token, () => currentLang);
 
     let submitting = false;
     form?.addEventListener('submit', async (e) => {

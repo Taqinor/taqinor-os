@@ -684,3 +684,53 @@ def proposal_activate_option(request, token):
         'ligne_id': ligne.id,
         'designation': ligne.designation,
     }))
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_decliner(request, token):
+    """ADEV98 — « Décliner / demander un délai » depuis la proposition.
+
+    Corps : ``{"motif": "prix|delai|concurrent|projet_reporte|autre",
+    "texte": "…"}`` (``texte`` obligatoire pour ``autre``, borné à 2 000).
+    Consigné au chatter du devis ET du lead, responsable notifié
+    (``domain.declin_client``) ; AUCUN statut écrit (règle #4). Même jeton,
+    mêmes refus que les autres actions client (aperçu interne 403, brouillon
+    409) ; un devis déjà accepté ⇒ 409 ``statut``. Idempotent : une réponse
+    par lien et par heure (``already_sent``), sans re-notifier."""
+    link = _resolve_proposal_link(token, refuser_brouillon=False)
+    if link is None:
+        return _not_found()
+    if link.via_interne:
+        return _refus_apercu_interne()
+    refus = _refus_brouillon(link)
+    if refus is not None:
+        return refus
+    motif, refus = _texte_du_corps(request, 'motif')
+    if refus is not None:
+        return refus
+    texte, refus = _texte_du_corps(request, 'texte')
+    if refus is not None:
+        return refus
+    from ..domain.declin_client import (
+        MESSAGE_MOTIF_INVALIDE, enregistrer_declin, motif_valide,
+    )
+    if not motif_valide(motif, texte):
+        return _noindex(Response({'detail': MESSAGE_MOTIF_INVALIDE,
+                                  'champ': 'motif'},
+                                 status=status.HTTP_400_BAD_REQUEST))
+    if link.devis.statut == 'accepte':
+        return _noindex(Response(
+            {'detail': 'Cette proposition est déjà acceptée.',
+             'code': 'statut'}, status=status.HTTP_409_CONFLICT))
+    from django.core.cache import cache
+    deja = not cache.add(f'adev98-declin:{link.pk}', True, 3600)
+    if not deja:
+        enregistrer_declin(link.devis, motif=motif, texte=texte[:2000])
+    return _noindex(Response({
+        'detail': ('Merci, votre réponse a bien été transmise à votre '
+                   'conseiller.'),
+        'already_sent': deja,
+    }))

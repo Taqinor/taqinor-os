@@ -179,7 +179,8 @@ _CLES_PK = {'devis', 'company', 'client', 'produit', 'lead', 'facture',
 
 #: Champs de ``ShareLink`` ajoutés APRÈS la capture du golden (ADOC131) ;
 #: leur valeur après ouverture est vérifiée à part (toujours ``None``).
-_CHAMPS_POSTERIEURS_AU_GOLDEN = ('suivi_prolonge_le', 'revoque_le')
+_CHAMPS_POSTERIEURS_AU_GOLDEN = ('suivi_prolonge_le', 'revoque_le',
+                                 'apercu_le')  # ADEV98
 
 
 #: Clés ADDITIVES de ``proposal_data`` servies APRÈS la capture du golden

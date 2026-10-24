@@ -97,6 +97,17 @@
       "avenant_signe": {"signe_le": "2026-10-12T09:30:00+00:00"}
     }
   },
+  "decliner": {
+    "pourquoi": "ADEV98 — « Décliner / demander un délai » depuis la proposition : un motif FERMÉ plutôt qu'un silence. Consigné au chatter du devis ET du lead, responsable du lead notifié ; AUCUN statut écrit (règle #4 : le devis reste « envoyé »). Une réponse par lien et par heure (`already_sent`). Aperçu interne 403, brouillon 409 `brouillon`, accepté 409 `statut`, motif invalide ou « autre » sans texte 400 {detail, champ: 'motif'}.",
+    "endpoint": "POST /api/django/public/proposal/<token>/decliner/",
+    "motifs": ["prix", "delai", "concurrent", "projet_reporte", "autre"],
+    "exemple": {"motif": "delai", "texte": "Nous revenons vers vous après le conseil d'administration de novembre."},
+    "reponse_200": {"detail": "Merci, votre réponse a bien été transmise à votre conseiller.", "already_sent": false}
+  },
+  "vu": {
+    "pourquoi": "ADEV98 — balise de lecture HUMAINE, postée par la page après 3 s de visibilité : c'est elle qui compte l'ouverture (compteur, note, notification au conseiller). Le rendu serveur de la page (`X-Proposition-Rendu: ssr` sur `proposal_data`) n'est qu'un APERÇU daté (`ShareLink.apercu_le`), sans note ni notification — les scanners de liens des messageries d'entreprise (SafeLinks, Proofpoint, Mimecast, Barracuda…) le déclenchaient. Corps ignoré, toujours 204 (jeton inconnu 404).",
+    "endpoint": "POST /api/django/public/proposal/<token>/vu/"
+  },
   "otp": {
     "endpoints": [
       "POST /api/django/public/proposal/<token>/otp/",

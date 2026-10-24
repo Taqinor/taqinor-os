@@ -58,3 +58,21 @@ class PreuveSignatureB2B(models.Model):
         figures = figures_etude_scellees(synthese_ci_lue(devis))
         return (f"|v{cls.CONTENT_HASH_V3}|etude="
                 f"{json.dumps(figures, sort_keys=True, ensure_ascii=False, default=str)}")
+
+
+class SuiviLienPublic(models.Model):
+    """ADEV98 — le signal d'ouverture FIABLE du lien public (``ShareLink``).
+
+    Le rendu serveur de la page (``X-Proposition-Rendu: ssr``) n'est plus
+    compté comme une lecture humaine : un scanner de messagerie (SafeLinks,
+    Proofpoint, Mimecast…) qui pré-charge le lien déclenchait compteur, note
+    et notification. Il est seulement daté ici, en APERÇU, sans chatter ni
+    notification ; la lecture humaine vient du beacon de la page
+    (``proposal/<token>/vu/``) après quelques secondes de visibilité."""
+
+    apercu_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Dernier aperçu serveur (sans lecture humaine)')
+
+    class Meta:
+        abstract = True
