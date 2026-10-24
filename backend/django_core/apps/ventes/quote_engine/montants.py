@@ -27,6 +27,37 @@ def regles_origine():
     return _REGLES_ORIGINE.get()
 
 
+#: AMOT101 (D-ACI-21=a) — vrai pendant le rendu d'un document C&I en ANGLAIS :
+#: milliers « , », décimale « . » (« 484,992.48 », « 65.32 ») ; français et
+#: arabe gardent le format français. Posé par :func:`langue_nombres`.
+_NOMBRES_ANGLAIS = contextvars.ContextVar('nombres_anglais', default=False)
+
+
+class langue_nombres:  # noqa: N801 — s'emploie comme une fonction (with)
+    """Le format des nombres de ``langue`` le temps d'un rendu (rétabli à la
+    sortie : un rendu suivant n'en hérite jamais)."""
+
+    def __init__(self, langue):
+        self._anglais, self._jeton = langue == "en", None
+
+    def __enter__(self):
+        self._jeton = _NOMBRES_ANGLAIS.set(self._anglais)
+
+    def __exit__(self, *_exc):
+        _NOMBRES_ANGLAIS.reset(self._jeton)
+
+
+def nombres_anglais():
+    """Vrai pendant un rendu aux nombres anglais (:func:`langue_nombres`)."""
+    return _NOMBRES_ANGLAIS.get()
+
+
+def decimal_doc(texte):
+    """Un nombre écrit avec le point Python (« 0.5 ») dans le format du
+    document : virgule décimale, sauf pendant un rendu anglais."""
+    return str(texte) if nombres_anglais() else str(texte).replace(".", ",")
+
+
 def fmt_centimes(v):
     """Montant au CENTIME à la française : 1 166,67.
 
@@ -42,6 +73,8 @@ def fmt_centimes(v):
         d = Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError, TypeError):
         return str(v)
+    if nombres_anglais():  # AMOT101 — « 484,992.48 » en anglais.
+        return f"{d:,.2f}"
     return f"{d:,.2f}".replace(",", " ").replace(".", ",")
 
 
@@ -71,7 +104,7 @@ def pct_fr(v):
     txt = format(d.normalize(), "f")
     if "." in txt:
         txt = txt.rstrip("0").rstrip(".")
-    return txt.replace(".", ",")
+    return decimal_doc(txt)
 
 
 def fmt_dirhams(v, sep="\u202f"):
@@ -94,7 +127,7 @@ def fmt_dirhams(v, sep="\u202f"):
         d = Decimal(str(v)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError, TypeError):
         return str(v)
-    return f"{int(d):,}".replace(",", sep)
+    return f"{int(d):,}".replace(",", "," if nombres_anglais() else sep)
 
 
 def pu_ht_remise(it):

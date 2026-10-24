@@ -59,7 +59,9 @@ def build_html(data: dict, pages_fn) -> str:
     from . import i18n_labels
     ctx = build_ctx(data)
     ident = ctx["ident"]
-    pages = pages_fn(ctx)
+    # AMOT101 (D-ACI-21=a) — nombres au format anglais dans un rendu anglais.
+    with montants.langue_nombres(theme.langue_doc(data)):
+        pages = pages_fn(ctx)
     total = len(pages)
     body = "".join(
         wrap_page(inner, n, data, ident, total)
@@ -145,7 +147,7 @@ def kwc_str(v, defaut: str = "—") -> str:
     """Puissance à la française pour les couvertures (« 10,65 », « 10 ») ;
     ``defaut`` quand la valeur est illisible ou absente."""
     try:
-        return f"{float(v):.2f}".rstrip("0").rstrip(".").replace(".", ",")
+        return montants.decimal_doc(f"{float(v):.2f}".rstrip("0").rstrip("."))
     except (TypeError, ValueError):
         return defaut
 

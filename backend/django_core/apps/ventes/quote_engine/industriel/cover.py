@@ -18,6 +18,7 @@ Aucune promesse d'écrêtage, aucun chiffre de cos φ. Rendu seul (règle #4).
 # QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
+from ..montants import decimal_doc
 # CIQ307 — bandeau, méthode, tuiles d'argent : lus sur ``synthese_ci``.
 from ..ci import couverture as ci_couverture
 # CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
@@ -68,7 +69,7 @@ def _taux_declare(argent):
 
 def _pct_txt(valeur):
     """« 39,8 » — un pourcentage servi, au dixième pour l'affichage."""
-    return f"{valeur:.1f}".replace(".", ",")
+    return decimal_doc(f"{valeur:.1f}")
 
 
 def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
@@ -119,7 +120,7 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
         taux = _taux_declare(argent)
         if van is not None and taux is not None:
             lignes.append((L("ci_ind_van", "VAN au taux déclaré de {taux} %",
-                             taux=f"{taux:g}".replace(".", ",")),
+                             taux=decimal_doc(f"{taux:g}")),
                            f"{fmt_mad(van)}&nbsp;MAD"))
         offre = argent.get("financement")
         if isinstance(offre, dict) and offre.get("echeance_mad") is not None:

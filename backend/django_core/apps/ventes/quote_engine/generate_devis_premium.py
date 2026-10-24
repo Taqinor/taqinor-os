@@ -39,9 +39,11 @@ except ImportError:  # exécution directe du moteur depuis son dossier
 # paquets premium ; même double chemin d'import.
 try:
     from .montants import (fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr,
+                           decimal_doc, langue_nombres, nombres_anglais,
                            poser_regles_origine, regles_origine)
 except ImportError:  # exécution directe du moteur depuis son dossier
     from montants import (fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr,
+                          decimal_doc, langue_nombres, nombres_anglais,
                           poser_regles_origine, regles_origine)
 
 # QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
@@ -1049,7 +1051,9 @@ def fmt(v):
 def fnum(v):
     """Format number with French thin-space thousands separator."""
     try:
-        return f"{int(round(float(v))):,}".replace(",", "\u202f")
+        # AMOT101 — « , » des milliers dans un rendu C&I anglais.
+        return f"{int(round(float(v))):,}".replace(
+            ",", "," if nombres_anglais() else "\u202f")
     except Exception:
         logger.warning("generate_devis_premium.fnum : erreur ignorée (mode dégradé)", exc_info=True)
         return str(v)
@@ -1065,7 +1069,7 @@ def kwc_fr(v):
         f = float(v)
     except (TypeError, ValueError):
         return str(v)
-    return (f"{f:.2f}".rstrip("0").rstrip(".") or "0").replace(".", ",")
+    return decimal_doc(f"{f:.2f}".rstrip("0").rstrip(".") or "0")
 
 
 def _fdec_fr(v, decimales=2):
@@ -1081,8 +1085,8 @@ def _fdec_fr(v, decimales=2):
         return str(v)
     if f == int(f):
         return fnum(f)
-    return (f"{f:.{decimales}f}".rstrip("0").rstrip(".")
-            or "0").replace(".", ",")
+    return decimal_doc(f"{f:.{decimales}f}".rstrip("0").rstrip(".")
+                       or "0")
 
 
 def _renvoi_detail_complet():
@@ -5182,6 +5186,16 @@ def render_html_for(data: dict) -> str:
     if ((data.get("mode_installation") or "").strip().lower() == "agricole"
             and data.get("pdf_mode", "full") != "onepage"):
         data = {**data, "pdf_mode": "onepage"}
+    # AMOT101 (D-ACI-21=a) — un document C&I anglais : nombres anglais.
+    ci = (data.get("mode_installation") or "").strip().lower() in (
+        "commercial", "industriel")
+    with langue_nombres(i18n_labels.normaliser(data.get("langue_sortie"))
+                        if ci else "fr"):
+        return _html_ingere(data)
+
+
+def _html_ingere(data):
+    """Ingestion puis HTML du gabarit (une-page ou complet)."""
     apply_quote_data(data)
     if data.get("pdf_mode", "full") == "onepage":
         # QJR124 — plus de re-filtrage ici : ``builder`` filtre les accessoires

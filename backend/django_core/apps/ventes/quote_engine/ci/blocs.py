@@ -9,6 +9,8 @@ une seconde fois.
 """
 from __future__ import annotations
 
+from ..montants import decimal_doc
+
 
 def _txt(valeur):
     return str(valeur).strip() if valeur is not None else ""
@@ -253,7 +255,7 @@ TITRE_ECHEANCIER = "Échéancier de paiement"
 def _pct(valeur):
     """« 40 » / « 33,5 » — le pourcentage servi, sans arrondi propre."""
     if isinstance(valeur, (int, float)):
-        return f"{valeur:g}".replace(".", ",")
+        return decimal_doc(f"{valeur:g}")
     return _txt(valeur)
 
 

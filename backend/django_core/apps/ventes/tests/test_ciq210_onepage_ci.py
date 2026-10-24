@@ -309,7 +309,8 @@ class Amot84UnitesDuUnePageCi(SimpleTestCase):
             with self.subTest(mode=mode):
                 data, html = _onepage(mode, langue_sortie="en")
                 texte = self._texte(html)
-                kwc = legacy.kwc_fr(float(data["puissance_kwc"]))
+                # AMOT101 (D-ACI-21=a) — point décimal anglais (« 5.68 »).
+                kwc = f"{float(data['puissance_kwc']):.2f}".rstrip("0").rstrip(".")
                 self.assertIn(f"{kwc} kWp", texte)
                 self.assertNotIn(f"{kwc} kWc", texte)
                 self.assertIn("MAD/kWp", texte)

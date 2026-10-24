@@ -65,6 +65,11 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 
+try:
+    from .montants import nombres_anglais as _nombres_anglais
+except ImportError:  # exécution directe du moteur depuis son dossier
+    from montants import nombres_anglais as _nombres_anglais
+
 ATTR = "data-figure"
 ATTR_OPTION = "data-figure-option"
 ATTR_TAUX = "data-figure-taux"
@@ -202,6 +207,10 @@ def ancre(cle: str, texte, option: str | None = None, taux=None) -> str:
     un chiffre : aucune ancre.
     """
     texte = _html.unescape(str(texte))
+    if _nombres_anglais():
+        # AMOT101 — un rendu anglais (« 484,992.48 ») : l'ancre garde la
+        # forme française que ``normaliser`` lit (parité inchangée).
+        texte = texte.replace(",", "\u202f").replace(".", ",")
     if normaliser(texte)[0] is None:
         return ""
     return (f"<span{attrs(cle, option, taux, texte)} "

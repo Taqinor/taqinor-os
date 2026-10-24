@@ -251,7 +251,9 @@ def ans(valeur):
     """« 3 » / « 3,4 » — le payback servi, sans arrondi propre."""
     texte_ans = (f"{valeur:g}" if isinstance(valeur, (int, float))
                  else str(valeur))
-    return texte_ans.replace(".", ",")
+    # AMOT101 — « 3.4 » dans un document anglais.
+    from ..montants import decimal_doc
+    return decimal_doc(texte_ans)
 
 
 #: CIQ315 — jamais un avantage fiscal promis : la récupération dépend du

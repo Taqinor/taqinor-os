@@ -181,6 +181,33 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         self.assertIn("Atlas SARL", html)
 
 
+class Amot101NombresAnglais(SimpleTestCase):
+    """AMOT101 (D-ACI-21=a) — le document commercial ANGLAIS écrit ses
+    nombres à l'anglaise (« 640,000.00 », milliers « , », décimale « . ») ;
+    le français et l'arabe gardent « 640 000,00 ». Test-du-test : rendre
+    l'anglais au format français ⇒ rouge."""
+
+    def test_anglais_milliers_virgule_decimale_point(self):
+        # Les ancres masquées (``data-figure``) gardent la forme française.
+        en = re.sub(r'<span data-figure[^>]*hidden></span>', "",
+                    _html(_data("en")))
+        for montant in ("640,000.00", "533,333.00"):
+            self.assertIn(montant, en)
+        self.assertNotIn("640 000,00", en)
+
+    def test_francais_et_arabe_inchanges(self):
+        for langue in (None, "ar"):
+            with self.subTest(langue=langue):
+                html = _html(_data(langue))
+                self.assertIn("640 000,00", html)
+                self.assertNotIn("640,000.00", html)
+
+    def test_aucun_rendu_suivant_n_herite_du_format(self):
+        from apps.ventes.quote_engine.montants import fmt_centimes
+        _html(_data("en"))
+        self.assertEqual(fmt_centimes(1234.5), "1 234,50")
+
+
 class Amot84MotifsVisiteCommercial(SimpleTestCase):
     """AMOT84 — les motifs de réserve de visite servis par le moteur C&I
     passent par ``i18n_labels`` (fr inchangé, sans code interne)."""

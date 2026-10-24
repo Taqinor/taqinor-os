@@ -27,6 +27,7 @@ from .. import premium_base
 from ..ci import couverture as ci_couverture
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
+from ..montants import decimal_doc
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
 from ..ci.graphiques import bloc_energie_mensuelle, cede, css_graphique
 
@@ -174,7 +175,7 @@ def _valeur_hypothese(h, fmt, L):
         if cle == "horizon_ans":
             return L("ci_ind_n_ans", "{n} ans", n=f"{valeur:g}")
         texte = fmt(valeur) if unite in ("MAD", "kWh") else \
-            f"{valeur:g}".replace(".", ",")
+            decimal_doc(f"{valeur:g}")
         if unite == "% / an":
             unite = L("ci_ind_pct_an", unite)
         return f"{texte}&nbsp;{unite}" if unite else texte
@@ -442,7 +443,7 @@ def _ligne_revente(argent, fmt, L, langue):
 
 def _decimal_txt(valeur):
     """« 0,1221 » — un nombre servi, sans arrondi propre."""
-    return f"{valeur:g}".replace(".", ",")
+    return decimal_doc(f"{valeur:g}")
 
 
 def _p90_bancable(d):
@@ -546,7 +547,7 @@ def _tableau_sensibilites(d, argent, fmt_mad, L):
         cle_sens = f"ci_ind_sens_{s.get('cle')}"
         nom = (L(cle_sens, catalogue[cle_sens]["fr"]) if cle_sens in catalogue
                else ci_blocs._txt(s.get("cle")))
-        tete = (f"{nom} " + f"{variation:+g}".replace(".", ",") + "&#160;%"
+        tete = (f"{nom} " + decimal_doc(f"{variation:+g}") + "&#160;%"
                 if variation is not None else nom)
         # AMOT84 — motif / source servis dans la langue du document.
         source = (ci_couverture.texte_client(d, s["motif"]) if s.get("motif")
@@ -566,7 +567,7 @@ def _tableau_sensibilites(d, argent, fmt_mad, L):
         retour, tri = _num(valeurs.get("retour_ans")), _num(valeurs.get("tri_pct"))
         cellules = (ci_couverture.ans(retour) + L("ci_unite_ans", "&nbsp;ans")
                     if retour is not None else "—",
-                    f"{tri:.1f}&#160;%".replace(".", ",") if tri is not None
+                    decimal_doc(f"{tri:.1f}") + "&#160;%" if tri is not None
                     else "—",
                     fmt_mad(_num(cumul)) if _num(cumul) is not None else "—")
         corps += (f"<tr><td>{tete}</td>"
@@ -770,7 +771,7 @@ def build(ctx):
             base_eco = L(f"ci_{base_eco.lower()}", base_eco)
         payback = _num(indicateurs.get("retour_ans"))
         tri = _num(indicateurs.get("tri_pct"))
-        tri_txt = f"{tri:.1f}".replace(".", ",") if tri is not None else None
+        tri_txt = decimal_doc(f"{tri:.1f}") if tri is not None else None
 
         def kpi(valeur, unite, libelle, cle_fig=None, texte_fig=None):
             a = ancre(cle_fig, texte_fig) if cle_fig else ""

@@ -583,7 +583,8 @@ class TestAmot89DefinitionsEtSurplus(SimpleTestCase):
         p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])
         self.assertIn("Self-consumption share of the solar production "
                       "consumed on site", p1)
-        self.assertIn("Surplus not valued: ≈ 25 959 kWh/yr (27 % of the "
+        # AMOT101 (D-ACI-21=a) — milliers à l'anglaise dans le rendu anglais.
+        self.assertIn("Surplus not valued: ≈ 25,959 kWh/yr (27 % of the "
                       "production)", p1)
 
 

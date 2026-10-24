@@ -235,3 +235,44 @@ class Amot84TextesDynamiquesIndustriel(SimpleTestCase):
                 self.assertIn(ht, html)
                 self.assertNotIn(">3 ans<", html)
                 self.assertNotIn("MAD/an<", html)
+
+
+class Amot101NombresAnglais(SimpleTestCase):
+    """AMOT101 (D-ACI-21=a) — document industriel et une-page C&I en
+    ANGLAIS : montants « 1,458,333.33 », pourcentages « 29.1 % », puissance
+    « 5.68 kWp », kWh « 95,425 » ; français et arabe inchangés ; les chiffres
+    ancrés (``data-figure``) restent identiques d'une langue à l'autre.
+    Test-du-test : rendre l'anglais au format français ⇒ rouge."""
+
+    def _texte(self, html):
+        html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+        return re.sub(r"<[^>]+>", " ", html)
+
+    def test_document_anglais(self):
+        en = self._texte(_html(_data("en")))
+        self.assertIn("1,458,333.33", en)
+        self.assertIn("29.1&#160;%", _html(_data("en")))
+        self.assertNotIn("1 458 333,33", en)
+        for langue in (None, "ar"):
+            with self.subTest(langue=langue):
+                html = _html(_data(langue))
+                self.assertIn("1 458 333,33", html)
+                self.assertNotIn("1,458,333.33", html)
+
+    def test_une_page_anglaise(self):
+        from apps.ventes.tests.test_ciq210_onepage_ci import _onepage
+        _d, fr = _onepage("industriel")
+        _d, en = _onepage("industriel", langue_sortie="en")
+        self.assertIn("5,68", fr)
+        self.assertIn("5.68", en)
+        self.assertIn("95,425&nbsp;kWh", en)
+        self.assertNotIn("95 425&nbsp;kWh", en)
+        self.assertIn("95 425 kWh/an", fr)
+        # L'ancre masquée garde la forme française (parité des chiffres).
+        self.assertIn('data-figure-value="95 425"', en)
+
+    def test_chiffres_ancres_identiques(self):
+        def _valeurs(langue):
+            return {i: sorted(str(m.valeur) for m in ms)
+                    for i, ms in extract_figures(_html(_data(langue))).items()}
+        self.assertEqual(_valeurs("en"), _valeurs(None))

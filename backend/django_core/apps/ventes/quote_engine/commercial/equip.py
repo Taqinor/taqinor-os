@@ -13,6 +13,7 @@ from . import categories
 # QA-FIGURES — ancres ``data-figure`` masquées À CÔTÉ des chiffres client
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
+from ..montants import decimal_doc
 from ..ci.mentions import texte_revente
 from ..ci.synthese import chiffres_cles, libelle_poste
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
@@ -260,7 +261,7 @@ def _rangees_installation(d, L, fmt):
         rangees.append((L("ci_inst_onduleurs", "Onduleurs"), " · ".join(
             [", ".join(onduleurs)]
             + ([L("ci_inst_kw_ac", "{kw} kW AC au total",
-                  kw=f"{kw_ac:g}".replace(".", ","))] if kw_ac else []))))
+                  kw=decimal_doc(f"{kw_ac:g}"))] if kw_ac else []))))
     pose = installation.get("type_pose")
     if pose in LIBELLES_TYPES_POSE:
         rangees.append((L("ci_inst_pose", "Type de pose"),
