@@ -1,0 +1,44 @@
+{
+  "sha": "003c111b7d731843ff5bef28f9eb6edfdd74967b",
+  "date": "2026-10-24",
+  "groupe": "ADEV",
+  "verdict": "PASS",
+  "couvre": [
+    "ADEV95",
+    "ADEV96",
+    "ADEV97",
+    "ADEV98",
+    "ADEV99"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P-L3-5",
+      "taches": [
+        "ADEV95",
+        "ADEV96",
+        "ADEV97",
+        "ADEV98",
+        "ADEV99"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ADEV/traces/2026-10-24/L3-P5-lien-b2b.txt",
+      "notes": [
+        "API locale : lien neuf sans slug (/proposition/<token>) ; GET scanner non compté, GET humain hors SSR compté, balise vu/ tamponne (dédoublonnée) ; 400 nommé sans attestation de pouvoir et sur e-mail invalide, 409 ice_divergent, 409 empreinte_perimee ; acceptation 200 avec reçu {signe_le, empreinte_contenu v3, empreinte_pdf}, DevisSignature complète (signataire, qualité, e-mail, pouvoir, langue_page, IP du client), PDF signé servi = SHA-256 stocké ; 2 e-mails (signataire + copie vendeur demo_resp, PDF joint ; le lead sans e-mail n’a pas de contact à prévenir) ; déclin « délai » consigné (activité lead +1, notifications +2, already_sent à la 2e), aucun statut écrit ; refus → lien 404."
+      ]
+    }
+  ]
+}
