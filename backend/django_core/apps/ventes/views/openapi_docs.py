@@ -797,11 +797,20 @@ SavePresetRequest = _ser('DevisSavePresetRequest', {
     'description': ChaineStricte(required=False, allow_blank=True),
 })
 
+#: Plus grande valeur d'un entier PostgreSQL 32 bits (``ordre``, clés).
+ENTIER_32_MAX = 2147483647
+#: api-fuzz — MIROIR de ``devis_cycle._LotCreationSerializer`` (qui valide ce
+#: corps) : mêmes types stricts, mêmes bornes (nom non blanc de 150 signes,
+#: adresse de 255, ``ordre`` et identifiants de ligne dans un entier 32 bits).
 LotCreationRequest = _ser('DevisLotCreationRequest', {
-    'nom_lot': s.CharField(),
-    'adresse_site': s.CharField(required=False, allow_blank=True),
-    'ordre': s.IntegerField(required=False),
-    'lignes': s.ListField(child=s.IntegerField(), required=False),
+    'nom_lot': ChaineStricte(max_length=150),
+    'adresse_site': ChaineStricte(max_length=255, required=False,
+                                  allow_blank=True, allow_null=True),
+    'ordre': EntierStrict(min_value=0, max_value=ENTIER_32_MAX,
+                          required=False, allow_null=True),
+    'lignes': s.ListField(
+        child=EntierStrict(min_value=1, max_value=ENTIER_32_MAX),
+        required=False, allow_null=True),
 })
 LotsResponse = _ser('DevisLotsResponse', {
     'lots': s.ListField(child=s.DictField()),
