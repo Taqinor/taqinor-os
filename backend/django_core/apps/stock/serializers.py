@@ -18,6 +18,7 @@ from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
 
+from .corps_achats import valider_lignes_modele_bcf
 from .erreurs_achats import CapaciteMontantsBcfMixin, ConflitEtat, IdInconnu404LignesMixin
 from .openapi_helpers import ChampsStrictsProduitMixin, ChampsStrictsSouplesMixin, DecimalLie
 from .models import (
@@ -2847,17 +2848,7 @@ class ModeleBonCommandeFournisseurSerializer(
         ]
 
     def validate_lignes(self, value):
-        # ERR fuzz (modeles-bcf) : une ligne sans produit (PATCH partiel) ou un
-        # produit en double violait NOT NULL / unique_together -> 500.
-        # Sans produit = corps hors schéma (400) ; doublon entre lignes = règle
-        # d'état que le schéma ne porte pas (409, api-fuzz-full 24/10).
-        produits = [ligne.get('produit') for ligne in value]
-        if None in produits:
-            raise serializers.ValidationError(
-                {'lignes': ['Chaque ligne exige un produit.']})
-        if len(set(produits)) != len(produits):
-            raise ConflitEtat({'lignes': ['Un même produit ne figure qu\'une fois.']})
-        return value
+        return valider_lignes_modele_bcf(value)  # 400 sans produit, 409 doublon
 
     def create(self, validated_data):
         # Création = mise à jour d'un modèle neuf (lignes vides par défaut).

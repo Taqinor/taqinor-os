@@ -17,7 +17,21 @@ from datetime import timedelta
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte, DecimalSouple, EntierStrict, QUANTITE_MAX
+from .erreurs_achats import ConflitEtat
 from .utils.params import ID_MAX
+
+
+def valider_lignes_modele_bcf(lignes):
+    """Lignes d'un modèle de BCF (ERR fuzz modeles-bcf : une ligne sans produit
+    — PATCH partiel — ou un produit en double violait NOT NULL / unique_together
+    → 500). Sans produit = corps hors schéma (400) ; doublon entre lignes =
+    règle d'état que le schéma ne porte pas (409, api-fuzz-full 24/10)."""
+    produits = [ligne.get('produit') for ligne in lignes]
+    if None in produits:
+        raise serializers.ValidationError({'lignes': ['Chaque ligne exige un produit.']})
+    if len(set(produits)) != len(produits):
+        raise ConflitEtat({'lignes': ["Un même produit ne figure qu'une fois."]})
+    return lignes
 
 
 def valider_corps(classe, request):
