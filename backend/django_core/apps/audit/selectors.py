@@ -166,12 +166,23 @@ def verify_audit_chain(company_id):
 
     Renvoie ``{'ok': bool, 'checked': int, 'broken_pk': pk|None}``. Ne
     considère que les lignes chaînées (``entry_hash`` non vide) ; les lignes
-    legacy non chaînées sont ignorées. Company-scopé."""
+    legacy non chaînées sont ignorées. Company-scopé.
+
+    APAR77 — une purge de rétention TRACÉE (``SettingsAuditLog``
+    ``PURGE_SECTION``/``PURGE_FIELD``) supprime légalement la tête de chaîne :
+    la vérification part alors du ``prev_hash`` de la plus ancienne ligne
+    restante ; toute ligne restante altérée casse toujours la chaîne."""
+    from django.apps import apps as django_apps
+
+    from apps.parametres.retention import PURGE_FIELD, PURGE_SECTION
+
     from .models import AuditLog, compute_entry_hash
     rows = list(
         AuditLog.objects.filter(company_id=company_id, entry_hash__gt='')
         .order_by('id'))
-    prev_hash = ''
+    purgee = django_apps.get_model('parametres', 'SettingsAuditLog').objects.filter(
+        company_id=company_id, section=PURGE_SECTION, field=PURGE_FIELD).exists()
+    prev_hash = rows[0].prev_hash if rows and purgee else ''
     checked = 0
     for row in rows:
         expected = compute_entry_hash(
