@@ -1055,12 +1055,12 @@ def _liste_saisie(valeur, champ):
             raise GabaritRefuse({champ: (
                 f"« {champ} » se donne en liste JSON : le texte reçu "
                 "n'est pas lisible.")})
-    if valeur is None:
-        return []
     if not isinstance(valeur, list):
+        # ``null`` compris (CI #1021 api-fuzz (5), part JSON « null ») : une
+        # liste absente s'OMET, elle ne se déclare pas nulle.
         raise GabaritRefuse({champ: (
             f"« {champ} » se donne en liste JSON (reçu : "
-            f"{type(valeur).__name__}).")})
+            f"{'null' if valeur is None else type(valeur).__name__}).")})
     return valeur
 
 

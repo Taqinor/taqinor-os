@@ -192,7 +192,7 @@ class RefusTest(BaseGabarits):
         """CI #1021 api-fuzz (5) — ``champs=0`` / ``champs={}`` en multipart
         étaient ACCEPTÉS (201, liste vide en silence) : refus 400 nommé, rien
         n'est créé."""
-        for brut in ('0', '{}', '"texte"'):
+        for brut in ('0', '{}', '"texte"', 'null'):
             reponse = self._deposer(champs=brut)
             self.assertEqual(reponse.status_code, 400, (brut, reponse.data))
             self.assertIn('liste JSON', reponse.data['champs'])
