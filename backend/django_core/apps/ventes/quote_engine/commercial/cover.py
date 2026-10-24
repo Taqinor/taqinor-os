@@ -15,6 +15,8 @@ from .. import premium_base
 from ..ci import couverture as ci_couverture
 # CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
 from ..ci import blocs as ci_blocs
+# AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
+from ..ci.graphiques import bloc_energie_mensuelle, css_graphique
 
 
 def build(ctx):
@@ -171,8 +173,15 @@ def build(ctx):
   padding:10px 14px;font-size:8.5pt;color:{ink};line-height:1.45;}}
 .c1c-note b{{color:{navy};}}
 {ci_couverture.css_investissement("c1c", (line, wash, muted, navy, ink), f_display, 20, 12, "11px 16px")}
+{css_graphique("c1c", navy, muted)}
 </style>
 """
+    # AMOT90 — l'énergie mois par mois (kWh du bilan horaire servi) dans le
+    # tiers bas de la page ; retirée par le rendu adaptatif si la page
+    # déborde (``_sans_graphiques``).
+    graphique = bloc_energie_mensuelle(
+        d, d.get("com_synthese"), (navy, green, gold, line, muted), f_sans,
+        fmt, "c1c", hauteur=100, largeur_mm=182)
 
     # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``
     # (HT si TVA récupérable déclarée, HT et TTC si inconnue, TTC sinon).
@@ -220,7 +229,7 @@ def build(ctx):
     {mt_line}
     <div class="c1c-note">
       {note_autoconso} {note_pointe}
-    </div>{inv_html}
+    </div>{inv_html}{graphique}
   </div>
 </div>
 """

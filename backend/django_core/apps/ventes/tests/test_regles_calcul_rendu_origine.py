@@ -192,7 +192,10 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_ind_motif_invest_client', 'ci_src_reglage_societe',
         # AMOT89 — surplus chiffré (règle 82-21).
         'ci_surplus_non_valorise', 'ci_surplus_bt', 'ci_surplus_sans_revente',
-        'ci_surplus_injecte_kwh', 'ci_surplus_reste')),
+        'ci_surplus_injecte_kwh', 'ci_surplus_reste',
+        # AMOT90 — l'énergie mois par mois.
+        'ci_gr_titre', 'ci_gr_consommation', 'ci_gr_autoconsommee',
+        'ci_gr_surplus', 'ci_gr_note', 'ci_ind_energie_titre')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

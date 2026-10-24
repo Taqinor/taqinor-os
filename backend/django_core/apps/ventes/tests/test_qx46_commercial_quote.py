@@ -556,7 +556,7 @@ class TestAmot89DefinitionsEtSurplus(SimpleTestCase):
         for cle in ("surplus_kwh", "non_valorise_kwh"):
             data["etude"]["etude_ci"]["bilan"].pop(cle)
         self.assertNotIn("surplus", synthese_ci(data)["energie"])
-        self.assertNotIn("Surplus", _texte_ci(_pages_ci(data)[1]))
+        self.assertNotIn("Surplus non valorisé", _texte_ci(_pages_ci(data)[1]))
 
     def test_anglais(self):
         p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])
@@ -564,3 +564,70 @@ class TestAmot89DefinitionsEtSurplus(SimpleTestCase):
                       "consumed on site", p1)
         self.assertIn("Surplus not valued: ≈ 25 959 kWh/yr (27 % of the "
                       "production)", p1)
+
+
+class TestAmot90EnergieMensuelle(SimpleTestCase):
+    """AMOT90 — l'énergie mois par mois en SVG en ligne sur la page 1, des
+    kWh du bilan horaire servi (``synthese_ci.energie.par_mois``) ; retirée
+    par le rendu adaptatif quand la page déborde, jamais une page de plus."""
+
+    def test_douze_mois_du_bilan_servis(self):
+        data = _data_ci()
+        bilan = data["etude"]["etude_ci"]["bilan"]["par_mois"]
+        par_mois = synthese_ci(data)["energie"]["par_mois"]
+        self.assertEqual([m["mois"] for m in par_mois], list(range(1, 13)))
+        for servi, brut in zip(par_mois, bilan):
+            for cle in ("production_kwh", "consommation_kwh",
+                        "autoconso_kwh", "surplus_kwh"):
+                self.assertEqual(servi[cle], brut[cle])
+
+    def test_svg_page_1_lu_sur_les_kwh_servis(self):
+        data = _data_ci()
+        p1 = _pages_ci(data)[1]
+        self.assertIn('data-graphique="energie_mensuelle"', p1)
+        bloc = p1[p1.index('data-graphique="energie_mensuelle"'):]
+        svg = bloc[bloc.index("<svg"):bloc.index("</svg>")]
+        # 12 mois × (consommation + autoconsommée + surplus).
+        self.assertEqual(svg.count("<rect"), 36)
+        mois = data["etude"]["etude_ci"]["bilan"]["par_mois"]
+        plafond = max(max(m["consommation_kwh"], m["production_kwh"])
+                      for m in mois)
+        graduation = f"{plafond:,}".replace(",", " ") + " kWh"
+        self.assertIn(_texte_ci(graduation), _texte_ci(svg))
+        texte = _texte_ci(p1)
+        self.assertIn("Votre énergie mois par mois", texte)
+        for legende in ("Votre consommation", "Production autoconsommée",
+                        "Surplus non consommé sur place",
+                        "calculées heure par heure"):
+            self.assertIn(legende, texte)
+
+    def test_sans_douze_mois_aucun_graphique(self):
+        data = _data_ci()
+        data["etude"]["etude_ci"]["bilan"]["par_mois"].pop()
+        self.assertNotIn("par_mois", synthese_ci(data)["energie"])
+        self.assertNotIn("data-graphique", _pages_ci(data)[1])
+
+    def test_rendu_adaptatif_retire_le_graphique_avant_la_densite(self):
+        """Une page qui déborde À CAUSE du graphique : le document sort au
+        palier 0 SANS graphique (jamais une page de plus, ni une densité
+        réduite pour lui)."""
+        from apps.ventes.quote_engine.commercial import equip
+        essais = []
+
+        class _Doc:
+            def write_pdf(self):
+                return b"%PDF-sans-graphique"
+
+        def _build(donnees):
+            essais.append((donnees.get("_palier_equip"),
+                           bool(donnees.get("_sans_graphiques"))))
+            return render.build_html(donnees)
+
+        def _tient(html, _doc):
+            return 'data-graphique="' not in html
+
+        d = renderer._augment(_data_ci())
+        with patch.object(equip, "_tient", _tient):
+            pdf = equip.pdf_adaptatif(d, _build, lambda _html: _Doc())
+        self.assertEqual(pdf, b"%PDF-sans-graphique")
+        self.assertEqual(essais, [(None, False), (None, True)])

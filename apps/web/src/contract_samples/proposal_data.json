@@ -1179,7 +1179,21 @@
           "valorise_kwh_an": 0,
           "non_valorise_kwh_an": 25959,
           "non_valorise_pct_production": 27
-        }
+        },
+        "par_mois": [
+          {"production_kwh": 5775, "consommation_kwh": 9800, "autoconso_kwh": 3919, "surplus_kwh": 1856, "mois": 1},
+          {"production_kwh": 6325, "consommation_kwh": 9200, "autoconso_kwh": 4063, "surplus_kwh": 2262, "mois": 2},
+          {"production_kwh": 8250, "consommation_kwh": 10100, "autoconso_kwh": 4834, "surplus_kwh": 3416, "mois": 3},
+          {"production_kwh": 9075, "consommation_kwh": 10800, "autoconso_kwh": 5607, "surplus_kwh": 3468, "mois": 4},
+          {"production_kwh": 9900, "consommation_kwh": 12500, "autoconso_kwh": 6692, "surplus_kwh": 3208, "mois": 5},
+          {"production_kwh": 9900, "consommation_kwh": 14800, "autoconso_kwh": 7732, "surplus_kwh": 2168, "mois": 6},
+          {"production_kwh": 10175, "consommation_kwh": 17200, "autoconso_kwh": 8542, "surplus_kwh": 1633, "mois": 7},
+          {"production_kwh": 9625, "consommation_kwh": 17600, "autoconso_kwh": 8277, "surplus_kwh": 1348, "mois": 8},
+          {"production_kwh": 8250, "consommation_kwh": 14900, "autoconso_kwh": 6695, "surplus_kwh": 1555, "mois": 9},
+          {"production_kwh": 7150, "consommation_kwh": 12100, "autoconso_kwh": 5210, "surplus_kwh": 1940, "mois": 10},
+          {"production_kwh": 5775, "consommation_kwh": 10200, "autoconso_kwh": 4119, "surplus_kwh": 1656, "mois": 11},
+          {"production_kwh": 5225, "consommation_kwh": 9900, "autoconso_kwh": 3777, "surplus_kwh": 1448, "mois": 12}
+        ]
       },
       "option_servie": "sans_batterie",
       "argent": {
@@ -2107,7 +2121,7 @@
     ],
     "absents_regle": "Clés ADDITIVES ABSENTES (jamais `null`) tant que le moteur C&I ne les sert pas — règle `additif_vs_null`.",
     "courbes_journalieres": "CIQ308 — en C&I, UNIQUEMENT la sortie horaire du moteur C&I (`construire_courbes_ci`, contrat `etude_ci_preview.json`) : {source: 'moteur_ci', note_horaire, unites, production{saison: {forme[24], kwh_jour, pic_kw, source}}, consommation{saison: {forme[24], kwh_jour, source}}, profil_suppose? + etiquette_profil? ('profil type — estimation', profil non déclaré)} ; saisons = moyennes des mois (MOIS_PAR_SAISON) pondérées par nb_jours ; heure légale par `decalage_maroc_h`. Jamais `occupation`/`equipements`/`options` d'un logement. Sans sortie moteur : clé ABSENTE. Fragments : `exemple_commercial` montre la saison « ete » (calculée sur l'`exemple` de `etude_ci_preview.json`), `exemple_industriel` les seules clés propres.",
-    "synthese_ci": "Clé ADDITIVE, ABSENTE hors C&I et jamais `null` : {version, segment, statut_etude ('estimation_sous_reserve_visite'|'offre_ferme'), a_confirmer[{cle, libelle, postes?}] (AMOT86 : `postes` sur la seule entrée `a_chiffrer_visite` — [{role, designation, quantite, unite, catalogue}] des postes « à chiffrer après la visite » restés hors des lignes du devis, jamais un prix), provenance{<entrée>: {origine, detail, date}}, systeme{kwc, nb_panneaux, production_kwh_an}, baseline?{source, estimation, factures_mensuelles?}, energie{taux_autoconso_pct, taux_couverture_pct, methode, definitions{autoconso, couverture}, surplus?{kwh_an, valorise_kwh_an, non_valorise_kwh_an, non_valorise_pct_production} (AMOT89 : kWh du bilan horaire recopiés, part non valorisée en % de la production)}, option_servie, option_batterie?{totaux, valeur_chiffree, motif}, argent?, hypotheses[{cle, textes{fr,en,ar}, source, date}], categorie?{cle, libelle, accroche, bloc{titre, lignes[{textes{fr,en,ar}}]}}, decarbonation?{cbam, textes}, services{om_option?, suivi_production?, garanties[]}, echeancier[{libelle, pct, montant_ttc, jalon}], entreprise_client?{raison_sociale, ice, rc, if_fiscal, siege, interlocuteur, fonction}, omissions[{bloc, motif}]} — servie IDENTIQUE au PDF et à /proposition. `?` = clé absente quand rien à montrer.",
+    "synthese_ci": "Clé ADDITIVE, ABSENTE hors C&I et jamais `null` : {version, segment, statut_etude ('estimation_sous_reserve_visite'|'offre_ferme'), a_confirmer[{cle, libelle, postes?}] (AMOT86 : `postes` sur la seule entrée `a_chiffrer_visite` — [{role, designation, quantite, unite, catalogue}] des postes « à chiffrer après la visite » restés hors des lignes du devis, jamais un prix), provenance{<entrée>: {origine, detail, date}}, systeme{kwc, nb_panneaux, production_kwh_an}, baseline?{source, estimation, factures_mensuelles?}, energie{taux_autoconso_pct, taux_couverture_pct, methode, definitions{autoconso, couverture}, surplus?{kwh_an, valorise_kwh_an, non_valorise_kwh_an, non_valorise_pct_production} (AMOT89 : kWh du bilan horaire recopiés, part non valorisée en % de la production), par_mois?[{mois, production_kwh, consommation_kwh, autoconso_kwh, surplus_kwh}] (AMOT90 : les 12 mois du bilan horaire recopiés, absent dès qu'un mois manque)}, option_servie, option_batterie?{totaux, valeur_chiffree, motif}, argent?, hypotheses[{cle, textes{fr,en,ar}, source, date}], categorie?{cle, libelle, accroche, bloc{titre, lignes[{textes{fr,en,ar}}]}}, decarbonation?{cbam, textes}, services{om_option?, suivi_production?, garanties[]}, echeancier[{libelle, pct, montant_ttc, jalon}], entreprise_client?{raison_sociale, ice, rc, if_fiscal, siege, interlocuteur, fonction}, omissions[{bloc, motif}]} — servie IDENTIQUE au PDF et à /proposition. `?` = clé absente quand rien à montrer.",
     "formes_citees": "`argent` = la forme PUBLIQUE de `economie_ci.json` (CIQ3 : sans `vue_interne` ni `alertes_internes`, `economie_ci_publique`) ; `provenance` et `energie` = sorties de `etude_ci_preview.json` (CIQ2) ; colonnes pro et identité = `lead_pro.json` (CIQ1) / `client_entreprise.json` (CIQ8). Jamais redéfinies ici. Aucun `prix_achat`.",
     "signature_entreprise": "Clé ADDITIVE, forme `signature_entreprise` du contrat `acceptation_entreprise.json` (CIQ9) : {raison_sociale, signataire_nom, signataire_qualite, ice, date} — présente une fois un devis C&I accepté en ligne, absente sinon.",
     "exemple_industriel": "MT SANS facture : `argent` ABSENT, `omissions` nomme « vos 12 dernières factures MT : prix des trois postes, prime fixe, puissance souscrite ».",

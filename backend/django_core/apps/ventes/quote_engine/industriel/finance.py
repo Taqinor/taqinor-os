@@ -27,6 +27,8 @@ from .. import premium_base
 from ..ci import couverture as ci_couverture
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
+# AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
+from ..ci.graphiques import bloc_energie_mensuelle, css_graphique
 
 #: Années des jalons (D-CIQ-10) — l'ordre d'impression, pas un calcul.
 JALONS_ANS = (5, 10, 15, 20, 25)
@@ -342,6 +344,63 @@ def _pied_investissement(d, argent, fmt_mad, L):
             + f" : <b>{fmt_mad(ttc)} MAD</b>")
 
 
+def _motif_non_chiffre(d, L):
+    """``(texte, ligne de motif)`` quand la rentabilité n'est pas chiffrée.
+    QJR119 / QXMT — jamais une table de zéros ; CIQ341 — un site MT demande
+    ses 12 factures MT ; AMOT80 (D-ACI-8=a) — investissement non chiffré ⇒
+    SON motif, jamais « économies pas encore calculées »."""
+    motif = ci_couverture.ligne_non_chiffre(d, "ind", "i2")
+    motif_inv = ci_couverture.motif_investissement(d, "ind")
+    if motif_inv:
+        return L("ci_ind_motif_invest_client",
+                 "<b>{motif}</b> : le délai de retour, le TRI et les flux "
+                 "annuels ne sont publiés que sur un investissement "
+                 "entièrement chiffré.", motif=motif_inv), ""
+    if ci_couverture._argent_mt(d, "ind"):
+        return L(
+            "ci_ind_motif_mt",
+            "Votre installation est raccordée en <b>MOYENNE TENSION</b> : "
+            "ses économies se chiffrent sur le barème MT par poste "
+            "horaire, pas sur le barème basse tension. Nous préférons ne "
+            "rien afficher plutôt qu'un chiffre qui n'est pas le vôtre."), \
+            motif
+    return L("ci_ind_motif_bt_client",
+             "Les <b>économies annuelles</b> de cette installation n'ont "
+             "pas encore été calculées sur vos données. Nous préférons ne "
+             "rien afficher plutôt que des flux annuels, un point mort ou "
+             "un TRI qui ne reposeraient sur aucune mesure."), motif
+
+
+def _corps_non_chiffre(d, L, pied, couleurs_gr, police, fmt):
+    """``(corps, chapeau, titre)`` de la page 3 quand la rentabilité n'est pas
+    chiffrable. AMOT90 — la page n'est plus une page blanche « Rentabilité non
+    chiffrée » : quand le bilan horaire est servi, elle porte l'analyse
+    énergétique (l'énergie mois par mois, le surplus) sous une petite ligne
+    de motif ; sans bilan, l'encadré d'hier."""
+    corps_txt, motif = _motif_non_chiffre(d, L)
+    chapeau = L("ci_ind_lead_non_chiffre",
+                "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
+                "calculée sur vos données.")
+    graphique = bloc_energie_mensuelle(
+        d, d.get("ind_synthese"), couleurs_gr, police, fmt, "i2",
+        hauteur=170, largeur_mm=182)
+    if not graphique:
+        return (f"""
+  <div class="i2-mt">
+    <div class="i2-mt-t">{L("ci_ind_non_chiffre_titre", "Rentabilité non chiffrée sur ce dossier")}</div>
+    <div class="i2-mt-b">{corps_txt}</div>
+    {motif}
+  </div>
+  <div class="i2-foot">{pied}.</div>""", chapeau, "")
+    titre = L("ci_ind_energie_titre", "Ce que la centrale produit pour "
+              "votre site")
+    return (f"""
+  <div class="i2-motif">{corps_txt}{motif}</div>
+  {graphique}
+  {ci_couverture.ligne_surplus(d, "ind", "i2")}
+  <div class="i2-foot">{pied}.</div>""", chapeau, titre)
+
+
 def build(ctx):
     d = ctx["d"]
     # CIQ345 — libellés STRUCTURELS dans la langue du document.
@@ -423,49 +482,19 @@ def build(ctx):
   padding-left:10px;position:relative;}}
 .i2-hyp-i:before{{content:'';position:absolute;left:0;top:4px;width:4px;
   height:4px;border-radius:50%;background:{blue};}}
+.i2-motif{{margin-top:6px;font-size:7.5pt;color:{muted};line-height:1.4;}}
+.i2-motif b{{color:{navy};}}
+.i2-mtsrc{{margin-top:4px;font-size:7pt;color:{muted};line-height:1.35;}}
+{css_graphique("i2", navy, muted)}
 </style>
 """
 
     pied = _pied_investissement(d, argent, fmt_mad, L)
+    # AMOT90 — l'énergie mois par mois (kWh du bilan horaire servi).
+    couleurs_gr = (navy, green, gold, line, muted)
     if not chiffrable:
-        # QJR119 / QXMT — sans série servie, le MOTIF remplace le corps
-        # chiffré (jamais une table de zéros) : la page ne peut que
-        # raccourcir. CIQ341 — un site MT demande ses 12 factures MT.
-        motif = ci_couverture.ligne_non_chiffre(d, "ind", "i2")
-        motif_inv = ci_couverture.motif_investissement(d, "ind")
-        if motif_inv:
-            # AMOT80 (D-ACI-8=a) — l'économie est chiffrée, l'investissement
-            # non : SON motif, jamais « économies pas encore calculées ».
-            corps_txt, motif = L(
-                "ci_ind_motif_invest_client",
-                "<b>{motif}</b> : le délai de retour, le TRI et les flux "
-                "annuels ne sont publiés que sur un investissement "
-                "entièrement chiffré.",
-                motif=motif_inv), ""
-        elif ci_couverture._argent_mt(d, "ind"):
-            corps_txt = L(
-                "ci_ind_motif_mt",
-                "Votre installation est raccordée en <b>MOYENNE TENSION</b> : "
-                "ses économies se chiffrent sur le barème MT par poste "
-                "horaire, pas sur le barème basse tension. Nous préférons ne "
-                "rien afficher plutôt qu'un chiffre qui n'est pas le vôtre.")
-        else:
-            corps_txt = L(
-                "ci_ind_motif_bt_client",
-                "Les <b>économies annuelles</b> de cette installation n'ont "
-                "pas encore été calculées sur vos données. Nous préférons ne "
-                "rien afficher plutôt que des flux annuels, un point mort ou "
-                "un TRI qui ne reposeraient sur aucune mesure.")
-        corps = f"""
-  <div class="i2-mt">
-    <div class="i2-mt-t">{L("ci_ind_non_chiffre_titre", "Rentabilité non chiffrée sur ce dossier")}</div>
-    <div class="i2-mt-b">{corps_txt}</div>
-    {motif}
-  </div>
-  <div class="i2-foot">{pied}.</div>"""
-        lead_txt = L("ci_ind_lead_non_chiffre",
-                     "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
-                     "calculée sur vos données.")
+        corps, lead_txt, titre = _corps_non_chiffre(
+            d, L, pied, couleurs_gr, f_sans, fmt)
     else:
         economie = d.get("ind_economies")
         base_eco = d.get("ind_economie_base")
@@ -549,6 +578,7 @@ def build(ctx):
   {table}
   {cfo_html}
   {hypotheses_html}
+  {bloc_energie_mensuelle(d, synthese, couleurs_gr, f_sans, fmt, "i2", hauteur=90, largeur_mm=182)}
   <div class="i2-foot">
     {(om_txt + '. ') if om_txt else ''}{pied}.
     {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle) ; prix ferme, économies estimées.")}
@@ -558,11 +588,13 @@ def build(ctx):
                      "Projection sur {n} ans : flux annuels, délai de retour "
                      "et TRI tirés de la même série ; hypothèses détaillées "
                      "ci-dessous.", n=horizon_txt)
+        titre = L("ci_ind_rentabilite_sur", "Rentabilité sur {n} ans",
+                  n=horizon_txt)
 
     html = f"""{css}
 <div class="i2-root">
   <div class="i2-kicker">{L("ci_ind_analyse_financiere", "Analyse financière")}</div>
-  {f'<div class="i2-sec">{L("ci_ind_rentabilite_sur", "Rentabilité sur {n} ans", n=horizon_txt)}</div>' if chiffrable else ""}
+  {f'<div class="i2-sec">{titre}</div>' if titre else ""}
   <div class="i2-lead">{lead_txt}</div>
 {corps}
 </div>

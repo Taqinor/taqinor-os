@@ -2470,6 +2470,28 @@ LIBELLES = {
         'fr': ' ; ≈ {kwh} kWh/an non valorisés ({pct} % de la production).',
         'en': '; ≈ {kwh} kWh/yr not valued ({pct} % of the production).',
         'ar': '؛ ≈ {kwh} kWh/سنة غير مُثمَّنة ({pct} % من الإنتاج).'},
+    # AMOT90 — l'énergie mois par mois (``ci.graphiques``).
+    'ci_gr_titre': {'fr': 'Votre énergie mois par mois',
+                    'en': 'Your energy, month by month',
+                    'ar': 'طاقتكم شهرا بشهر'},
+    'ci_gr_consommation': {'fr': 'Votre consommation',
+                           'en': 'Your consumption', 'ar': 'استهلاككم'},
+    'ci_gr_autoconsommee': {'fr': 'Production autoconsommée',
+                            'en': 'Self-consumed production',
+                            'ar': 'الإنتاج المستهلك ذاتيا'},
+    'ci_gr_surplus': {'fr': 'Surplus non consommé sur place',
+                      'en': 'Surplus not consumed on site',
+                      'ar': 'فائض غير مستهلك في عين المكان'},
+    'ci_gr_note': {
+        'fr': 'kWh par mois : votre consommation et la production estimée de '
+              'la centrale, calculées heure par heure.',
+        'en': 'kWh per month: your consumption and the estimated production '
+              'of the plant, calculated hour by hour.',
+        'ar': 'كيلوواط ساعة في الشهر: استهلاككم والإنتاج المقدر للمحطة، '
+              'محسوبان ساعة بساعة.'},
+    'ci_ind_energie_titre': {'fr': 'Ce que la centrale produit pour votre site',
+                             'en': 'What the plant produces for your site',
+                             'ar': 'ما تنتجه المحطة لموقعكم'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},

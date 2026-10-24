@@ -111,21 +111,39 @@ def pdf_adaptatif(d, build_html, rendre, index_page=1):
     refus — jamais une bande légale, une signature ou un financement coupés."""
     for palier in range(len(PALIERS_DENSITE)):
         donnees = d if palier == 0 else dict(d, _palier_equip=palier)
-        html = build_html(donnees)
-        doc = rendre(html)
-        # Une page qui déborde peut aussi POUSSER une page de plus : le
-        # document ne tient que s'il a exactement ses pages et rien de coupé.
-        if _tient(html, doc):
+        doc = _rendu_tenu(donnees, build_html, rendre)
+        if doc is not None:
             return doc.write_pdf()
     from ..ci.blocs import puces_conditions
     dernier = len(PALIERS_DENSITE) - 1
     n = len(puces_conditions(d))
     for garder in range(n - 1, -1, -1):
-        donnees = dict(d, _palier_equip=dernier, _cgv_max=garder)
+        donnees = dict(d, _palier_equip=dernier, _cgv_max=garder,
+                       _sans_graphiques=True)
         html = build_html(donnees)
         doc = rendre(html)
         if _tient(html, doc):
             return doc.write_pdf()
+    return None
+
+
+def _rendu_tenu(donnees, build_html, rendre):
+    """Le document rendu s'il TIENT (pages exactes, rien sous le pied) ;
+    sinon, AMOT90 — s'il porte des graphiques optionnels (``data-graphique``,
+    ``ci.graphiques``), le MÊME document sans eux (``_sans_graphiques``)
+    avant de toucher à la densité : un graphique ne pousse jamais une page
+    de plus ni ne coupe un texte. ``None`` si rien ne tient."""
+    html = build_html(donnees)
+    doc = rendre(html)
+    # Une page qui déborde peut aussi POUSSER une page de plus : le
+    # document ne tient que s'il a exactement ses pages et rien de coupé.
+    if _tient(html, doc):
+        return doc
+    if 'data-graphique="' in html and not donnees.get("_sans_graphiques"):
+        html = build_html(dict(donnees, _sans_graphiques=True))
+        doc = rendre(html)
+        if _tient(html, doc):
+            return doc
     return None
 
 

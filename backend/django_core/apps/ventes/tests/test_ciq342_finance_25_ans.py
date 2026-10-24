@@ -157,3 +157,56 @@ class Amot80PageFinance(SimpleTestCase):
         self.assertIn("valorisation heure par heure au tarif de chaque poste",
                       texte)
         self.assertIn("durée d'analyse : 25 ans", texte)
+
+
+def _data_energie(exemple="exemple"):
+    """La fixture industrielle + la sortie du moteur C&I (bilan horaire,
+    contrat ``etude_ci_preview.json``) alignée sur le kWc servi."""
+    import copy
+    import json
+    from pathlib import Path
+
+    from ._moteur_fixtures import etude_ci_au_kwc_servi
+    contrat = Path(__file__).resolve().parents[1] / "contract_samples"
+    etude_ci = json.loads((contrat / "etude_ci_preview.json").read_text(
+        encoding="utf-8"))["exemple"]
+    d = _data(exemple) if exemple else sample_data.build()
+    d["etude"] = dict(d.get("etude") or {}, etude_ci=copy.deepcopy(etude_ci))
+    return etude_ci_au_kwc_servi(d)
+
+
+class Amot90PageEnergie(SimpleTestCase):
+    """AMOT90 — la page 3 industrielle non chiffrable n'est plus une page
+    blanche : l'énergie mois par mois (kWh du bilan servi) et le surplus,
+    sous la petite ligne de motif ; chiffrable, le graphique suit le bloc
+    financier (retiré par le rendu adaptatif s'il ne tient pas)."""
+
+    def test_non_chiffrable_page_energie(self):
+        d = _data_energie(None)
+        p3 = _pages(d)[3]
+        texte = _texte(p3)
+        self.assertIn('data-graphique="energie_mensuelle"', p3)
+        graphique = p3[p3.index('data-graphique="energie_mensuelle"'):]
+        self.assertEqual(graphique[:graphique.index("</svg>")].count("<rect"),
+                         36)
+        self.assertIn("Ce que la centrale produit pour votre site", texte)
+        self.assertIn("Votre énergie mois par mois", texte)
+        self.assertIn("Surplus non valorisé : ≈ 25 959 kWh/an", texte)
+        # La petite ligne de motif reste ; plus l'encadré blanc.
+        self.assertIn("Économies et retour sur investissement non chiffrés",
+                      texte)
+        self.assertNotIn("Rentabilité non chiffrée sur ce dossier", texte)
+        self.assertEqual(len(_pages(d)) - 1, 4)
+
+    def test_sans_bilan_encadre_d_hier(self):
+        texte = _texte(_pages(sample_data.build())[3])
+        self.assertIn("Rentabilité non chiffrée sur ce dossier", texte)
+        self.assertNotIn("Votre énergie mois par mois", texte)
+
+    def test_chiffrable_graphique_apres_le_bloc_financier(self):
+        p3 = _pages(_data_energie())[3]
+        self.assertIn("Rentabilité sur 25 ans", _texte(p3))
+        self.assertLess(p3.index("Hypothèses de l"),
+                        p3.index('data-graphique="energie_mensuelle"'))
+        sans = _pages(dict(_data_energie(), _sans_graphiques=True))[3]
+        self.assertNotIn("data-graphique", sans)

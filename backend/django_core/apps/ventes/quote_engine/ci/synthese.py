@@ -300,7 +300,32 @@ def _bloc_energie(etude_ci, langue):
     surplus = _surplus(bilan)
     if surplus is not None:
         energie["surplus"] = surplus
+    par_mois = _par_mois(bilan)
+    if par_mois is not None:
+        energie["par_mois"] = par_mois
     return energie, None
+
+
+#: AMOT90 — les kWh d'un mois du bilan horaire (``bilan.par_mois[]``).
+CLES_MOIS_BILAN = ("production_kwh", "consommation_kwh", "autoconso_kwh",
+                   "surplus_kwh")
+
+
+def _par_mois(bilan):
+    """AMOT90 — les 12 mois du bilan horaire du moteur (kWh de production,
+    de consommation, autoconsommés et en surplus) recopiés tels quels, dans
+    l'ordre des mois ; None dès qu'un mois ou une valeur manque (jamais un
+    graphique sur 11 mois)."""
+    mois = {}
+    for m in bilan.get("par_mois") or []:
+        if not isinstance(m, dict) or _num(m.get("mois")) not in range(1, 13):
+            continue
+        valeurs = {cle: _num(m.get(cle)) for cle in CLES_MOIS_BILAN}
+        if all(v is not None and v >= 0 for v in valeurs.values()):
+            mois[int(_num(m["mois"]))] = dict(valeurs, mois=int(_num(m["mois"])))
+    if sorted(mois) != list(range(1, 13)):
+        return None
+    return [mois[i] for i in range(1, 13)]
 
 
 def _option_servie(data):
