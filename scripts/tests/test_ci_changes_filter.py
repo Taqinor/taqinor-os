@@ -324,14 +324,20 @@ class AgregateursChangesTests(unittest.TestCase):
     def test_lane_api_fuzz_pr_declaree(self):
         job = self.jobs["api-fuzz-pr"]
         self.assertIn("backend == 'true'", job["if"])
+        # CI-5MIN (23/10/2026) — la portee est calculee UNE fois par `changes`
+        # (sortie `fuzz_owners`) ; la matrice saute quand elle est vide.
+        self.assertIn("api_fuzz_scope.py proprietaires", _detect_step_script())
+        self.assertIn("fuzz_owners", self.jobs["changes"]["outputs"])
+        self.assertIn("needs.changes.outputs.fuzz_owners != ''", job["if"])
         script = " ".join(s.get("run", "") for s in job["steps"])
-        for fragment in ("api_fuzz_scope.py proprietaires", "api_fuzz_scope.py schema",
+        for fragment in ("api_fuzz_scope.py schema",
                          "api_fuzz_scope.py verdict", "--checks all",
                          "--phases coverage", "--max-time 1500",
                          "--shard \"${{ matrix.shard }}/8\""):
             self.assertIn(fragment, script)
         # CI #997 (14/10/2026) — 8 tranches déterministes, plus d'échantillon
-        # aléatoire : chaque tranche fuzze TOUT son lot.
+        # aléatoire : chaque tranche fuzze TOUT son lot. CI-5MIN (23/10/2026) :
+        # la partition reste FIXE (un autre N a sorti des constats nouveaux).
         self.assertEqual(job["strategy"]["matrix"]["shard"], list(range(8)))
         self.assertFalse(job["strategy"]["fail-fast"])
         self.assertNotIn("continue-on-error", job)
@@ -408,6 +414,104 @@ class CouplagesInterSurfacesTest(unittest.TestCase):
     def test_docs_ordinaire_reste_leger(self):
         r = _resolve(self.rules, ["docs/README.md", "docs/plans/PLAN_AUDIT_DEPLOY.md"])
         self.assertFalse(any(r.values()), r)
+
+
+class ReutilisationMergeQueueTests(unittest.TestCase):
+    """CI-5MIN (décision fondateur, 24/10/2026) — la merge queue reprend le vert
+    d'une PR seulement sur PREUVE (même arbre, run PR vert couvrant chaque
+    surface et chaque paquet fuzzé) ; le moindre doute rejoue le gate complet."""
+
+    @classmethod
+    def setUpClass(cls):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "ci_merge_group_reuse", REPO_ROOT / "scripts" / "ci_merge_group_reuse.py")
+        cls.m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.m)
+
+    JOURNAL = (
+        "2026-10-24T01:00:00.0Z ##[group]Run set -euo pipefail\n"
+        '2026-10-24T01:00:00.1Z echo "Resolved -> backend=$backend frontend=$frontend"\n'
+        "2026-10-24T01:00:00.2Z echo \"Paquets d'API modifiés (fuzz PR) : ${fuzz_owners:-aucun}\"\n"
+        "2026-10-24T01:00:09.0Z Resolved -> backend=true frontend=true web=false "
+        "yanbow=false fastapi=false e2e(code)=true\n"
+        "2026-10-24T01:00:09.1Z Paquets d'API modifiés (fuzz PR) : apps.ventes apps.crm\n")
+
+    def _faux_gh(self, arbre_pr="t1", runs="111", journal=None):
+        journal = self.JOURNAL if journal is None else journal
+
+        def gh(*args):
+            url = args[0]
+            if "/pulls/" in url:
+                return "abc123\n"
+            if "/git/commits/" in url:
+                return arbre_pr + "\n"
+            if "/workflows/ci.yml/runs" in url:
+                return runs + "\n"
+            if url.endswith("/jobs?per_page=100"):
+                return "999\n"
+            if url.endswith("/logs"):
+                return journal
+            raise AssertionError(url)
+        return gh
+
+    def _chercher(self, gh, groupe=None, fuzz=("apps.ventes",)):
+        groupe = groupe or {"backend": True, "frontend": False, "web": False,
+                            "yanbow": False, "fastapi": False, "code": True}
+        ancien = self.m._gh
+        self.m._gh = gh
+        try:
+            return self.m.chercher("o/r", "refs/heads/gh-readonly-queue/main/pr-1023-abcdef",
+                                   "t1", groupe, set(fuzz))
+        finally:
+            self.m._gh = ancien
+
+    def test_journal_ignore_l_entete_du_script(self):
+        surfaces, fuzz = self.m.lire_journal_changes(self.JOURNAL)
+        self.assertEqual(surfaces, {"backend": True, "frontend": True, "web": False,
+                                    "yanbow": False, "fastapi": False, "code": True})
+        self.assertEqual(fuzz, {"apps.ventes", "apps.crm"})
+        self.assertIsNone(self.m.lire_journal_changes("rien d'utile"))
+
+    def test_numero_pr(self):
+        self.assertEqual(self.m.numero_pr("refs/heads/gh-readonly-queue/main/pr-1023-0a1b"), 1023)
+        self.assertIsNone(self.m.numero_pr("refs/heads/main"))
+
+    def test_reprise_si_meme_arbre_et_couverture(self):
+        self.assertEqual(self._chercher(self._faux_gh()), "111")
+
+    def test_arbre_different_rejoue_tout(self):
+        self.assertIsNone(self._chercher(self._faux_gh(arbre_pr="t2")))
+
+    def test_surface_ou_paquet_non_couverts_rejouent_tout(self):
+        groupe = {"backend": True, "frontend": False, "web": True, "yanbow": False,
+                  "fastapi": False, "code": True}
+        self.assertIsNone(self._chercher(self._faux_gh(), groupe=groupe))
+        self.assertIsNone(self._chercher(self._faux_gh(), fuzz=("apps.stock",)))
+
+    def test_aucun_run_vert_rejoue_tout(self):
+        self.assertIsNone(self._chercher(self._faux_gh(runs="")))
+
+    def test_erreur_api_ne_fait_jamais_echouer(self):
+        def gh(*args):
+            raise OSError("réseau")
+        ancien = self.m._gh
+        self.m._gh = gh
+        try:
+            rc = self.m.main(["--repo", "o/r", "--head-ref", "x/pr-1-ab",
+                              "--group-tree", "t1", "--flags", "backend=true"])
+        finally:
+            self.m._gh = ancien
+        self.assertEqual(rc, 0)
+
+    def test_ci_yml_ne_reprend_que_sur_merge_group_et_saute_tout(self):
+        script = _detect_step_script()
+        self.assertIn('if [ "$EVENT_NAME" = "merge_group" ] && [ "$run_all" = false ]', script)
+        self.assertIn("scripts/ci_merge_group_reuse.py", script)
+        bloc = script.split('if [ -n "$reused_run" ]; then', 1)[1].split("fi", 1)[0]
+        for surface in ("backend", "frontend", "web", "yanbow", "fastapi", "code"):
+            self.assertIn(f"{surface}=false", bloc)
+        self.assertIn('fuzz_owners=""', bloc)
 
 
 if __name__ == "__main__":

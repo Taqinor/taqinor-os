@@ -1,10 +1,7 @@
 """ADEP13 - tests de scripts/check_filtre_chemins_ci.py."""
-import os
-import shlex
 import sys
 import tempfile
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -12,8 +9,6 @@ sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "scripts" / "tests"))
 
 import check_filtre_chemins_ci as cf  # noqa: E402 — après sys.path/setup() (D-ENF22)
-import ci_guards  # noqa: E402 — après sys.path/setup() (D-ENF22)
-import test_ci_guards as tcg  # noqa: E402 — après sys.path/setup() (D-ENF22)
 
 CI_YML = """jobs:
   changes:
@@ -94,33 +89,10 @@ class FiltreCheminsTests(unittest.TestCase):
         self.assertEqual(cf.verifier(ROOT), [])
 
 
-class GardesGateesTests(unittest.TestCase):
-    """Fichiers OUVERTS (sys.addaudithook) par les gardes de `backend-lint-fast`, job gate
-    sur `backend == true` : chacun situe dans le depot doit declencher `backend`."""
-
-    def test_fichiers_lus_par_gardes_gatees_declenchent_le_job(self):
-        rules = cf.regles(ROOT)
-        candidates = []
-        for nom, commande, wd in ci_guards.GARDES["backend-lint-fast"]:
-            mots = shlex.split(commande)
-            if mots[0] != "python" or (mots[1] == "-m" and mots[2] == "compileall"):
-                continue
-            candidates.append((commande, wd))
-        rouges = {}
-        with tempfile.TemporaryDirectory() as tmp:
-            with ThreadPoolExecutor(max_workers=6) as pool:
-                futs = [(c, pool.submit(tcg._fichiers_ouverts, c, wd, tmp, i))
-                        for i, (c, wd) in enumerate(candidates)]
-                for commande, fut in futs:
-                    for chemin in fut.result():
-                        rel = os.path.relpath(chemin, ROOT).replace(os.sep, "/")
-                        if rel.startswith("..") or rel.startswith(".git/") \
-                                or "/__pycache__" in rel or not os.path.isfile(chemin):
-                            continue
-                        if not cf.filtre._resolve(rules, [rel])["backend"]:
-                            rouges.setdefault(rel, commande)
-        self.assertEqual(rouges, {}, "fichiers ouverts par une garde de `backend-lint-fast` "
-                                     "sans declencher `backend` dans le filtre `changes`")
+# CI-5MIN (23/10/2026) — `GardesGateesTests` (fichiers ouverts par les gardes de
+# `backend-lint-fast` -> doivent declencher `backend`) vit desormais dans
+# scripts/tests/test_ci_guards.py, `GardeBackendNeLitPasLeFrontendTests`, ou il
+# partage la trace d'ADEP12 au lieu de rejouer une seconde fois toutes les gardes.
 
 
 if __name__ == "__main__":

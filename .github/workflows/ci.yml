@@ -188,6 +188,12 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # CI-5MIN (24/10/2026) — `actions: read` + `pull-requests: read` : lus par
+    # scripts/ci_merge_group_reuse.py (merge queue seulement, voir `detect`).
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
       frontend: ${{ steps.detect.outputs.frontend }}
@@ -195,6 +201,12 @@ jobs:
       yanbow: ${{ steps.detect.outputs.yanbow }}
       fastapi: ${{ steps.detect.outputs.fastapi }}
       code: ${{ steps.detect.outputs.code }}
+      # CI-5MIN (23/10/2026) — paquets d'API modifies (portee du fuzz PR),
+      # calcules UNE fois ici au lieu d'une fois par tranche `api-fuzz-pr`.
+      fuzz_owners: ${{ steps.detect.outputs.fuzz_owners }}
+      # CI-5MIN (24/10/2026) — merge queue : identifiant du run PR vert dont le
+      # groupe reprend le resultat (vide = gate complet).
+      reused_run: ${{ steps.detect.outputs.reused_run }}
       # WOW8-ONCE — 'true' ssi un dump EXACT existe deja pour l'ensemble de
       # migrations courant (cf. le job `backend-testdb`).
       testdb_hit: ${{ steps.testdb.outputs.cache-hit }}
@@ -223,6 +235,9 @@ jobs:
           PUSH_AFTER: ${{ github.sha }}
           MG_BASE: ${{ github.event.merge_group.base_sha }}
           MG_HEAD: ${{ github.event.merge_group.head_sha }}
+          MG_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           backend=false; frontend=false; web=false; yanbow=false; fastapi=false
@@ -335,6 +350,54 @@ jobs:
           code=false
           if [ "$backend" = true ] || [ "$frontend" = true ]; then code=true; fi
 
+          # CI-5MIN (23/10/2026) — PORTEE DU FUZZ PR (ENF11), calculee ICI une
+          # seule fois. Elle l'etait dans CHACUNE des 8 tranches `api-fuzz-pr`
+          # (checkout complet `fetch-depth: 0` ~19 s + demarrage du conteneur,
+          # run 40032000655), et une PR sans code d'API payait quand meme 8
+          # runners qui sortaient verts sans fuzzer. Meme plage de diff que
+          # l'ancienne etape (base/head selon l'evenement) et meme repli : plage
+          # introuvable -> la plateforme (core + authentication). Script pur
+          # stdlib (`api_fuzz_scope.py proprietaires`, Django n'est importe que
+          # par la sous-commande `schema`).
+          if [ "$run_all" = true ]; then
+            fuzz_files="backend/django_core/erp_agentique/urls.py"
+          else
+            fuzz_files="$changed"
+          fi
+          fuzz_owners="$(python3 scripts/fuzz/api_fuzz_scope.py proprietaires <<< "$fuzz_files" | tr '\n' ' ' | sed 's/ *$//')"
+          # CI-5MIN (23/10/2026) — LE NOMBRE DE TRANCHES RESTE FIXE A 8 : essaye a
+          # 2 tranches par paquet (run 40047148006, portee `apps.ventes`, 2
+          # tranches), le verdict a sorti 5 constats NOUVEAUX (500 sur
+          # `devis/{id}/noter/` et `proforma-pdf/`, PUT/PATCH d'etat sur
+          # `plans-commission/{id}/`) que la meme portee a 8 tranches ne sortait
+          # pas (runs 40041213676 et 40043647668, 0 nouveau). Le verdict depend
+          # des operations qui partagent une base : changer la partition change
+          # le test. Retire.
+
+          # CI-5MIN (decision fondateur, 24/10/2026) — LA MERGE QUEUE REPREND LE
+          # VERT DE LA PR. Le groupe rejouait tout le gate (12,4 min, run
+          # 40034106320) alors qu'une PR a jour, seule dans son groupe, porte le
+          # MEME arbre que le commit du groupe. Le script prouve : meme arbre,
+          # run PR `ci.yml` vert sur cette tete, et ce run a couvert chaque
+          # surface et chaque paquet fuzze que le groupe ferait tourner. Prouve
+          # -> toutes les surfaces a false : les lanes lourdes sont sautees et
+          # les checks requis passent comme pour une PR docs seule
+          # (`stage-names` reste non gate et tourne). Le moindre doute (API,
+          # journal, groupe a plusieurs PR, PR en retard) -> rien ne change.
+          reused_run=""
+          if [ "$EVENT_NAME" = "merge_group" ] && [ "$run_all" = false ]; then
+            reused_run="$(python3 scripts/ci_merge_group_reuse.py \
+              --repo "$REPO" --head-ref "$MG_HEAD_REF" \
+              --group-tree "$(git rev-parse "${head}^{tree}")" \
+              --flags "backend=$backend frontend=$frontend web=$web yanbow=$yanbow fastapi=$fastapi code=$code" \
+              --fuzz "$fuzz_owners" || true)"
+          fi
+          if [ -n "$reused_run" ]; then
+            backend=false; frontend=false; web=false; yanbow=false; fastapi=false; code=false
+            fuzz_owners=""
+            echo "Merge queue : resultat repris du run PR ${reused_run} (meme arbre) - lanes lourdes sautees." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
           {
             echo "backend=$backend"
             echo "frontend=$frontend"
@@ -342,8 +405,11 @@ jobs:
             echo "yanbow=$yanbow"
             echo "fastapi=$fastapi"
             echo "code=$code"
+            echo "fuzz_owners=$fuzz_owners"
+            echo "reused_run=$reused_run"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved -> backend=$backend frontend=$frontend web=$web yanbow=$yanbow fastapi=$fastapi e2e(code)=$code"
+          echo "Paquets d'API modifiés (fuzz PR) : ${fuzz_owners:-aucun}"
 
   # ---------------------------------------------------------------------------
   # WOW-CI RONDE 5 (20/08/2026) — L'IMAGE CI BACKEND PRE-CONSTRUITE.
@@ -698,6 +764,9 @@ jobs:
   # modules à purge large de SON shard et retombe à `--parallel 1` s'il y en a
   # deux ou plus. Un shard devient lent au lieu de devenir rouge — et la garde
   # s'adapte toute seule au prochain `TransactionTestCase` ajouté.
+  # CI-5MIN (23/10/2026) — GARDE RETIREE (voir l'etape « Run Django test suite ») :
+  # le depot compte desormais plus de classes a purge large que de lanes, la
+  # garde mettait une lane entiere en serie a chaque run (321 s, chemin critique).
   #
   # PARALLÉLISME PROUVÉ AILLEURS : le harnais local canonique
   # (`scripts/test-backend.ps1`) tourne en `--keepdb --parallel 4` par défaut
@@ -1069,95 +1138,35 @@ jobs:
           LABELS=$(python ../../scripts/ci_shard.py ${{ matrix.shard }} ${{ strategy.job-total }})
           echo "Shard ${{ matrix.shard }}/${{ strategy.job-total }} -> $(echo "$LABELS" | wc -w) modules"
 
-          # WOW-CI RONDE 5 — GARDE ANTI-`max_locks`, DEVENUE UNE CEINTURE.
-          #
-          # ELLE N'EST PLUS LA PROTECTION PRINCIPALE, et il faut savoir pourquoi
-          # avant de s'y fier. Écrite d'abord seule, elle comptait les modules
-          # déclarant un `TransactionTestCase` — dont le TRUNCATE de fin de test
-          # verrouille tout le schéma. Elle a échoué en conditions réelles (run
-          # 32316744098, 4 shards rouges) parce que la purge large n'est PAS le
-          # seul consommateur de verrous : un simple `Company.delete()` descend
-          # en cascade sur les ~900 tables et en prend autant dans UNE
-          # transaction, sans aucun `TransactionTestCase` à l'horizon
-          # (`test_purges_demo_company_expired_over_90_days`). Énumérer les
-          # classes coupables est un puits sans fond — c'était la mauvaise
-          # couche pour corriger ce défaut.
-          #
-          # LA VRAIE CORRECTION EST EN AMONT : Postgres tourne maintenant dans
-          # le conteneur du job avec `max_locks_per_transaction=2048`, ce qui
-          # règle la classe entière, présente et future (voir l'étape
-          # « Demarrer Postgres » de `.github/actions/backend-env`). Avec ce
-          # budget, deux purges simultanées passent largement.
-          #
-          # ON LA GARDE QUAND MÊME, pour un coût d'une seconde : si un jour le
-          # démarrage local régressait vers un serveur aux réglages par défaut,
-          # elle rendrait un shard lent plutôt que rouge. Elle ne doit plus être
-          # lue comme « ce qui rend `--parallel 4` sûr ».
-          # `core/tests/test_rls.py` reste exclu du compte : sans
-          # `POSTGRES_RLS_ENABLED` toute sa classe est sautée ici (elle a son
-          # propre job `rls-tests`).
-          # Détection par AST, et non par `grep` : `core/test_utils.py` CITE
-          # `TransactionTestCase` une dizaine de fois (docstring du mixin, exemple
-          # d'usage) sans en déclarer un seul — un grep textuel le comptait et
-          # déclenchait la garde pour rien. On ne retient donc que les CLASSES
-          # dont une base est réellement `TransactionTestCase` (ou le mixin
-          # maison `WideTeardownTimeoutMixin`, qui est précisément le marqueur de
-          # cette purge large dans ce dépôt).
-          # On compte des CLASSES, pas des FICHIERS : c'est la classe qui est
-          # l'unité d'affectation de Django à un worker, donc deux classes à
-          # purge large dans UN MÊME module suffiraient à faire tourner deux
-          # purges en parallèle — un comptage par fichier les aurait vues comme
-          # une seule et serait passé à côté.
-          cat > /tmp/purge_large.py <<'PY'
-          import ast
-          import sys
-
-          MARQUEURS = {'TransactionTestCase', 'WideTeardownTimeoutMixin'}
-
-
-          def noms_de_bases(classe):
-              for base in classe.bases:
-                  if isinstance(base, ast.Name):
-                      yield base.id
-                  elif isinstance(base, ast.Attribute):
-                      # `django.test.TransactionTestCase` -> `TransactionTestCase`
-                      yield base.attr
-
-
-          for chemin in sys.argv[1:]:
-              try:
-                  with open(chemin, encoding='utf-8') as fichier:
-                      arbre = ast.parse(fichier.read(), chemin)
-              except (OSError, SyntaxError, UnicodeDecodeError):
-                  # Un fichier illisible n'est pas une raison de bloquer le shard :
-                  # au pire la garde ne le compte pas, au mieux il n'existe pas.
-                  continue
-              for noeud in ast.walk(arbre):
-                  if isinstance(noeud, ast.ClassDef) and MARQUEURS & set(noms_de_bases(noeud)):
-                      print(f'{chemin}::{noeud.name}')
-          PY
-          FILES=""
-          for label in $LABELS; do
-            case "$label" in *test_rls*) continue ;; esac
-            p="$(printf '%s' "$label" | tr '.' '/').py"
-            if [ -f "$p" ]; then FILES="$FILES $p"; fi
-          done
-          WIDE_FILES=""
-          if [ -n "$FILES" ]; then
-            WIDE_FILES=$(python /tmp/purge_large.py $FILES)
-          fi
-          WIDE=$(printf '%s' "$WIDE_FILES" | grep -c . || true)
-          if [ "${WIDE:-0}" -ge 2 ]; then
-            PARALLEL=1
-            echo "GARDE max_locks : $WIDE classes a purge large dans ce shard —"
-            echo "$WIDE_FILES"
-            echo "on retombe a --parallel 1 pour ce shard (lent, mais jamais rouge)."
-          else
-            PARALLEL=4
-            echo "Classes a purge large dans ce shard : ${WIDE:-0} — --parallel 4."
-          fi
-
+          # CI-5MIN (23/10/2026) — LA CEINTURE ANTI-`max_locks` EST RETIREE : elle
+          # ralentissait le chemin critique de CHAQUE run. Elle comptait les
+          # classes a purge large (TransactionTestCase / WideTeardownTimeoutMixin)
+          # du shard et retombait a `--parallel 1` des qu'il y en avait deux.
+          # Mesure, run vert 40032000655 : le depot en compte maintenant plus que
+          # de lanes, le planificateur en a pose 10 sur la lane 3, qui a tourne
+          # EN SERIE (1 749 tests en 321 s — la plus lente des 8 lanes, alors
+          # qu'elle portait 98 modules contre ~580 pour ses voisines, toutes a
+          # `--parallel 4` en 158-331 s).
+          # POURQUOI C'EST SUR : la vraie correction est en amont depuis la ronde
+          # 5 — Postgres tourne dans le conteneur du job avec
+          # `max_locks_per_transaction=2048` (table de verrous 2048 x 100 =
+          # 204 800 entrees, contre ~4 500 par purge : quatre purges simultanees
+          # en prennent ~18 000), et `backend-env` ECHOUE le job si ce reglage
+          # n'est pas pris (etape « Demarrer Postgres », verification SHOW). Le
+          # repli silencieux que la ceinture voulait couvrir est donc deja une
+          # erreur franche. Le harnais local (`scripts/test-backend.ps1`) tourne
+          # en `--parallel 4` sur ces memes classes depuis toujours.
+          PARALLEL=4
+          # CI-5MIN (23/10/2026) — occupation CPU de la lane (/proc/stat avant/
+          # apres), une ligne en fin d'etape. Mesure du run 40043647668 : 78 a
+          # 93 %, iowait 0 % -> monter `--parallel` n'acheterait presque rien.
+          # Gardee : c'est la donnee a relire avant tout futur reglage.
+          read -r _ u1 n1 s1 i1 w1 q1 sq1 st1 _ < /proc/stat
+          t0=$(date +%s)
           python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel "$PARALLEL" --keepdb
+          read -r _ u2 n2 s2 i2 w2 q2 sq2 st2 _ < /proc/stat
+          occ=$(( u2+n2+s2+q2+sq2+st2 - (u1+n1+s1+q1+sq1+st1) )); tot=$(( occ + i2+w2 - i1-w1 ))
+          echo "CPU lane : $(( 100*occ/(tot>0?tot:1) )) % occupe sur $(nproc) vCPU, $(( $(date +%s)-t0 )) s de mur (iowait $(( 100*(w2-w1)/(tot>0?tot:1) )) %)"
       # NTPLT5 — suite d'étanchéité RLS (`core.tests.test_rls*`, sautée sans
       # POSTGRES_RLS_ENABLED). SOLMVP54 (21/09/2026) : c'était un job séparé
       # `rls-tests` (2 min 18 s dont 1 min 30 s de mise en place pour 33 s de
@@ -1287,7 +1296,11 @@ jobs:
   # ---------------------------------------------------------------------------
   api-fuzz-pr:
     needs: [changes, ci-image-check, backend-testdb]
-    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
+    # CI-5MIN (23/10/2026) — `fuzz_owners` vient de `changes` : sans paquet d'API
+    # modifie, la matrice entiere est SAUTEE (un saut garde `backend-tests` et
+    # `ci-gate` verts, comme l'ancienne sortie verte sans fuzz) et rend 8
+    # creneaux a l'organisation.
+    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.changes.outputs.fuzz_owners != '' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # CI #997 (fondateur, 14/10/2026) — PLUS D'ÉCHANTILLON : 14 tours rouges
@@ -1339,46 +1352,16 @@ jobs:
       FUZZ_BASE_URL: http://127.0.0.1:8000
       FUZZ_USERNAME: fuzz_admin
     steps:
+      # CI-5MIN (23/10/2026) — checkout superficiel : la portee (qui exigeait
+      # l'historique complet pour son `git diff`) est calculee par `changes`.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Portée — paquets d'API modifiés par la PR (ENF11)
-        id: portee
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          PUSH_BEFORE: ${{ github.event.before }}
-          PUSH_AFTER: ${{ github.sha }}
-          MG_BASE: ${{ github.event.merge_group.base_sha }}
-          MG_HEAD: ${{ github.event.merge_group.head_sha }}
-        run: |
-          set -euo pipefail
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          case "$EVENT_NAME" in
-            pull_request) base="$PR_BASE"; head="$PR_HEAD" ;;
-            merge_group)  base="$MG_BASE"; head="$MG_HEAD" ;;
-            *)            base="$PUSH_BEFORE"; head="$PUSH_AFTER" ;;
-          esac
-          # Plage introuvable (nouvelle branche, force-push) : même repli que
-          # `changes` côté sûr — la plateforme (core + authentication).
-          if [ -n "$base" ] && [ -n "$head" ] \
-             && git cat-file -e "${base}^{commit}" 2>/dev/null \
-             && git cat-file -e "${head}^{commit}" 2>/dev/null; then
-            fichiers="$(git diff --name-only "$base" "$head")"
-          else
-            fichiers="backend/django_core/erp_agentique/urls.py"
-          fi
-          proprietaires="$(python scripts/fuzz/api_fuzz_scope.py proprietaires <<< "$fichiers" | tr '\n' ' ' | sed 's/ *$//')"
-          echo "Paquets d'API modifiés : ${proprietaires:-aucun}"
-          echo "proprietaires=$proprietaires" >> "$GITHUB_OUTPUT"
       - uses: ./.github/actions/backend-env
-        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        if: ${{ needs.changes.outputs.fuzz_owners != '' }}
         with:
           testdb-cache-into: erp_db
           prebuilt-image: 'true'
       - name: Schéma OpenAPI en arrière-plan + migrate + seed (repris du nocturne)
-        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        if: ${{ needs.changes.outputs.fuzz_owners != '' }}
         working-directory: backend/django_core
         run: |
           set -euo pipefail
@@ -1395,7 +1378,7 @@ jobs:
           python manage.py seed_demo
           python manage.py seed_catalogue
       - name: Compte de fuzz dédié + ids FK connus (ENF1)
-        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        if: ${{ needs.changes.outputs.fuzz_owners != '' }}
         working-directory: backend/django_core
         run: |
           set -euo pipefail
@@ -1407,7 +1390,7 @@ jobs:
           export FUZZ_PASSWORD FUZZ_STATE_FILE
           python ../../scripts/fuzz/prepare_fuzz_env.py "$FUZZ_STATE_FILE"
       - name: Démarrer Django (gunicorn, throttles coupés — ENF1)
-        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        if: ${{ needs.changes.outputs.fuzz_owners != '' }}
         working-directory: backend/django_core
         run: |
           gunicorn -c ../../scripts/fuzz/gunicorn_fuzz.py erp_agentique.wsgi:application \
@@ -1423,7 +1406,7 @@ jobs:
             if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
           done
       - name: Schéma fuzzé — opérations des paquets modifiés + liens stateful (ENF11)
-        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        if: ${{ needs.changes.outputs.fuzz_owners != '' }}
         working-directory: backend/django_core
         run: |
           set -euo pipefail
@@ -1443,9 +1426,9 @@ jobs:
             --in "$GITHUB_WORKSPACE/openapi-brut.json" \
             --out "$GITHUB_WORKSPACE/openapi-fuzz.json" \
             --shard "${{ matrix.shard }}/8" \
-            --proprietaires ${{ steps.portee.outputs.proprietaires }}
+            --proprietaires ${{ needs.changes.outputs.fuzz_owners }}
       - name: schemathesis run (phase coverage, tous les checks — tranche entière)
-        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        if: ${{ needs.changes.outputs.fuzz_owners != '' }}
         run: |
           set -uo pipefail
           export SCHEMATHESIS_HOOKS="$GITHUB_WORKSPACE/scripts/fuzz/schemathesis_hooks.py"
@@ -1453,6 +1436,11 @@ jobs:
           # l'étape suivante contre la dette gelée ; tout autre code (schéma
           # illisible, crash) fait échouer ICI.
           rc=0
+          # CI-5MIN (23/10/2026) — `--workers 4` ESSAYE PUIS RETIRE : ~1,5x par
+          # tranche (run 40043647668), mais des requetes concurrentes sur la
+          # meme base changent l'ordre des ecritures, donc les constats (voir la
+          # note sur le nombre de tranches dans `changes`). Le fuzz PR reste
+          # sequentiel, comme le nocturne contre lequel la dette a ete gelee.
           schemathesis run \
             --url "$FUZZ_BASE_URL" \
             --checks all \
@@ -1466,13 +1454,13 @@ jobs:
           echo "schemathesis : code $rc"
           if [ "$rc" -gt 1 ]; then exit "$rc"; fi
       - name: Verdict — aucun constat hors de la dette gelée (BLOQUANT)
-        if: ${{ steps.portee.outputs.proprietaires != '' }}
+        if: ${{ needs.changes.outputs.fuzz_owners != '' }}
         run: |
           set -euo pipefail
           rapport=$(ls schemathesis-report/json-*.json | tail -1)
           python scripts/fuzz/api_fuzz_scope.py verdict --rapport "$rapport"
       - name: Upload le rapport Schemathesis
-        if: ${{ !cancelled() && steps.portee.outputs.proprietaires != '' }}
+        if: ${{ !cancelled() && needs.changes.outputs.fuzz_owners != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: schemathesis-report-pr-${{ matrix.shard }}
@@ -1677,7 +1665,12 @@ jobs:
           # consommateur (ni scripts/, ni frontend/scripts/, ni docs/) et
           # l'instrumentation coûte sur chacun des 612 fichiers. Les tests
           # exécutés sont exactement les mêmes.
-          npm run test:unit
+          # CI-5MIN (23/10/2026) — `--maxWorkers=4` : Vitest 4 prend par defaut
+          # (vCPU - 1) = 3 processus sur le runner a 4 vCPU, et le processus
+          # principal dort pendant les tests. Mesure (run 40032000655, lane 3) :
+          # 944 s de travail cumule (import 149 + setup 54 + env 256 + tests 465
+          # + transform 21) pour 325 s de mur = 2,9 coeurs occupes sur 4.
+          npm run test:unit -- --maxWorkers=4
 
   # Agrégateur mince qui PRÉSERVE le nom de check requis `frontend-lint` (patron
   # WOW6, identique à `backend-tests`). Vert ssi aucune lane n'a échoué ; vert
