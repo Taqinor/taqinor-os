@@ -423,3 +423,71 @@ class LaConfirmationVaAuxDeuxParties(_BaseAcceptation):
         self.assertIn('(Casablanca time)', log.corps)
         self.assertEqual(
             DevisSignature.objects.get(devis=self.racine).langue_page, 'en')
+
+
+class EmailExemplaireSigneTests(_BaseAcceptation):
+    """ADEV38 (C-ADEV-055) — « votre exemplaire signé ci-joint » n'est écrit
+    que si le PDF signé est stocké (``signed_pdf_key``) et joint. Code réel de
+    bout en bout (``accept_devis`` → ``envoyer_confirmations``, backend locmem) ;
+    seules les bornes du stockage (rendu + MinIO) sont simulées, pour fixer l'état
+    ``signed_pdf_key`` vide (échec de stockage) ou rempli."""
+
+    slug = 'adev38-email'
+
+    def _message_au_client(self):
+        from django.core import mail
+        messages = [m for m in mail.outbox
+                    if self.client_obj.email in m.to
+                    and m.subject.startswith(('Proposition acceptée',
+                                              'Proposal accepted'))]
+        self.assertEqual(len(messages), 1, [(m.to, m.subject) for m in mail.outbox])
+        return messages[0]
+
+    def test_sans_pdf_signe_pas_de_promesse(self):
+        """Stockage du PDF signé en échec ⇒ ``signed_pdf_key`` vide : le corps
+        n'annonce aucune pièce signée."""
+        from django.core import mail
+        mail.outbox = []
+        with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
+            accept_devis(devis=self.racine, user=None, nom='M. Client')
+        sig = DevisSignature.objects.get(devis=self.racine)
+        self.assertEqual(sig.signed_pdf_key, '')
+        corps = self._message_au_client().body
+        self.assertIn(PHRASE_SIGNATURE, corps)  # la preuve, elle, existe
+        self.assertNotIn('exemplaire signé', corps)
+        self.assertNotIn('ci-joint', corps)
+
+    def test_sans_pdf_signe_pas_de_promesse_en_anglais(self):
+        from django.core import mail
+        mail.outbox = []
+        with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
+            accept_devis(devis=self.racine, user=None, nom='Mr Client',
+                         langue='en')
+        corps = self._message_au_client().body
+        self.assertIn('Fingerprint of the signed content', corps)
+        self.assertNotIn('signed copy', corps)
+        self.assertNotIn('attached', corps)
+
+    def test_avec_pdf_signe_joint_et_annonce(self):
+        """Stockage réussi ⇒ ``signed_pdf_key`` rempli : l'exemplaire signé
+        (la copie figée ``…__signe.pdf``) est joint ET annoncé."""
+        from django.core import mail
+        octets = b'%PDF-1.7 exemplaire signe ADEV38'
+        mail.outbox = []
+        with patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                   return_value='devis/adev38/DEV-QJR134-A.pdf'), \
+                patch('apps.ventes.utils.pdf._upload_pdf'), \
+                patch('apps.ventes.utils.pdf.download_pdf',
+                      return_value=octets) as telechargement:
+            accept_devis(devis=self.racine, user=None, nom='M. Client')
+        sig = DevisSignature.objects.get(devis=self.racine)
+        self.assertEqual(sig.signed_pdf_key,
+                         'devis/adev38/DEV-QJR134-A__signe.pdf')
+        message = self._message_au_client()
+        self.assertIn('exemplaire signé', message.body)
+        self.assertIn('ci-joint', message.body)
+        self.assertEqual(
+            [(nom, contenu) for nom, contenu, _ in message.attachments],
+            [('DEV-QJR134-A.pdf', octets)])
+        # La pièce jointe vient bien de la clé du PDF SIGNÉ.
+        telechargement.assert_any_call(sig.signed_pdf_key)
