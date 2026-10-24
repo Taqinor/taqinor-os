@@ -127,7 +127,7 @@ export default function ParametresEntreprise() {
   // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
   const { confirm: confirmerAction, confirmDelete: confirmerSuppression } = useConfirmDialog()
   const dispatch = useDispatch()
-  const { profile, loading, saving, uploading, error, saveSuccess } = useSelector(s => s.parametres)
+  const { profile, loading, saving, uploading, error, saveSuccess, verrouUpdatedAt } = useSelector(s => s.parametres)
   const { categories, fournisseurs } = useSelector(s => s.stock)
   // WR12 — rôle courant : les réglages sensibles (commission, DGI) ne sont
   // éditables que par un directeur/admin. Le backend gate déjà l'écriture
@@ -854,7 +854,9 @@ export default function ParametresEntreprise() {
       return payload
     }
     dispatch(saveProfile(diffProfilePayload(
-      construire(initialSnapshot ?? form), construire(form), profile?.updated_at)))
+      construire(initialSnapshot ?? form), construire(form),
+      // APAR73 — le verrou rangé à part suit les écritures instantanées.
+      verrouUpdatedAt ?? profile?.updated_at)))
   }
 
   const accent = form.couleur_principale || '#1d4ed8'
