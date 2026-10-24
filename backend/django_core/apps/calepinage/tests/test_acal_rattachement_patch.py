@@ -100,7 +100,8 @@ class RattachementPatchTest(BaseApiCalepinage):
         reponse = self.api.patch(url_detail(calepinage.pk),
                                  {'client': self.autre_client.pk},
                                  format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # api-fuzz 24/10 : le lead déjà rattaché s'y oppose (état) → 409.
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('client', reponse.data)
         calepinage.refresh_from_db()
         self.assertEqual(calepinage.client_id, self.client_a.pk)

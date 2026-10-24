@@ -929,4 +929,5 @@ class InstallationsJsonOnlyTests(SimpleTestCase):
                        InstallationViewSet.ajouter_releve):
             parsers = list(action.kwargs['parser_classes'])
             self.assertIn(MultiPartParser, parsers)
-            self.assertIn(FormParser, parsers)
+            # api-fuzz-full 24/10 : multipart seul (urlencoded = 415).
+            self.assertNotIn(FormParser, parsers)

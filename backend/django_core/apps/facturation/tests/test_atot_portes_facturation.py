@@ -142,7 +142,7 @@ class PortesFacturationTests(TestCase):
                             [f.statut for f in self._actives(devis)
                              if f.statut != 'brouillon'], ['emise'])
                         continue
-                    self.assertEqual(r3.status_code, 400, r3.data)
+                    self.assertEqual(r3.status_code, 409, r3.data)  # refus d'état (api-fuzz-full)
                     self.assertIn('avoir', str(r3.data))
                     emises = [f for f in self._actives(devis)
                               if f.statut != 'brouillon']
@@ -173,7 +173,7 @@ class PortesFacturationTests(TestCase):
         r = self.api.post(
             f"/api/django/ventes/factures/{bc.data['id']}/emettre/", {},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)  # api-fuzz : refus d'état
         self.assertIn(acompte.reference, r.data['detail'])
         self.assertEqual(Facture.objects.get(pk=bc.data['id']).statut,
                          Facture.Statut.BROUILLON)

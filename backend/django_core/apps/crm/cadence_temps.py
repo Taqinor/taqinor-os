@@ -480,3 +480,26 @@ def adapter_canal_au_numero(gabarit, lead, *, langue=None):
     if conversion is None:
         return gabarit
     return GabaritAdapte(gabarit, conversion[0], template_cle=cle)
+
+
+def instant_utc(quand):
+    """Instant d'une saisie humaine, ramené en UTC (naïf = UTC, comme partout
+    ailleurs). Renvoie ``(instant, trop_ancien)`` :
+
+    * ``(UTC, False)`` — cas normal ;
+    * ``(None, True)`` — non représentable côté passé (an 1 + décalage) : un
+      PASSÉ, que l'appelant refuse comme tel ;
+    * ``(None, False)`` — non représentable côté futur (an 9999 + décalage).
+
+    api-fuzz 24/10 — un décalage ``-17:25`` (valide en RFC 3339, hors plage
+    ±15:59 de Postgres) passait tel quel jusqu'à la base : 500. Le calcul en
+    heure de Casablanca (le contrôle « pas dans le passé ») doit lui aussi
+    tenir, d'où sa vérification ici."""
+    if timezone.is_naive(quand):
+        quand = quand.replace(tzinfo=datetime.timezone.utc)
+    try:
+        en_utc = quand.astimezone(datetime.timezone.utc)
+        en_utc.astimezone(horaires.CASABLANCA)
+    except OverflowError:
+        return None, quand.year < 5000
+    return en_utc, False

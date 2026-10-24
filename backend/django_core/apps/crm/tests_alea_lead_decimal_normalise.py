@@ -109,3 +109,28 @@ class LeadDecimalGardeTests(SimpleTestCase):
                     self.fail(f'Lead.{champ_modele.name} refuse {valeur} : '
                               f'{exc}')
         self.assertGreater(vus, 5)  # anti-faux-vert
+
+
+class LeadMotifsBornesPublies(SimpleTestCase):
+    """api-fuzz : la branche chaîne du schéma de requête suit la borne du champ
+    (jours d'irrigation 0 < j ≤ 7, GPS ±90 / ±180) — toute chaîne conforme au
+    motif publié est acceptée par le sérialiseur."""
+
+    def test_chaine_conforme_au_motif_acceptee(self):
+        import re
+        from apps.crm.champs_lead import _MOTIFS_BORNES
+        champs = LeadSerializer().fields
+        candidats = ['0', '0.0', '.5', '0.1', '1', '6.9', '7', '7.0', '7.5',
+                     '8', '90', '90.0', '89.123456', '91', '95.5', '-90',
+                     '-91', '180', '180.000000', '179.5', '181', '-180.5',
+                     '.123456', '-.5', '0.05', '10', '99', '100']
+        for nom, motif in _MOTIFS_BORNES.items():
+            for valeur in candidats:
+                if not re.fullmatch(motif, valeur):
+                    continue
+                with self.subTest(champ=nom, valeur=valeur):
+                    champs[nom].run_validation(valeur)
+        # Les valeurs que le champ refuse sont bien hors du motif publié.
+        self.assertIsNone(re.fullmatch(_MOTIFS_BORNES['jours_irrigation_semaine'], '0'))
+        self.assertIsNone(re.fullmatch(_MOTIFS_BORNES['gps_lat'], '95.5'))
+        self.assertIsNone(re.fullmatch(_MOTIFS_BORNES['gps_lng'], '181'))
