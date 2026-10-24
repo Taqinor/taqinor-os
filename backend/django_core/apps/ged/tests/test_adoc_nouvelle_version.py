@@ -75,17 +75,19 @@ class NouvelleVersionTests(TestCase):
         # Ordre servi (plus récente d'abord), pas seulement l'ensemble.
         self.assertEqual([v['version'] for v in data], [2, 1])
 
-    def test_non_pdf_400(self):
+    def test_non_pdf_409(self):
+        # api-fuzz-full 24/10 — format lu dans les octets : règle hors schéma (409).
         resp = self._post(self.resp, octets=b'ceci est du texte, pas un PDF',
                           nom='faux.pdf')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('file', resp.data)
         self.client_minio.upload_fileobj.assert_not_called()
         self.assertEqual(self.doc.versions.count(), 1)
 
-    def test_fichier_trop_gros_400(self):
+    def test_fichier_trop_gros_409(self):
+        # api-fuzz-full 24/10 — plafond de 10 Mo du stockage : hors schéma (409).
         resp = self._post(self.resp, octets=PDF + b'0' * (10 * 1024 * 1024))
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('file', resp.data)
         self.client_minio.upload_fileobj.assert_not_called()
         self.assertEqual(self.doc.versions.count(), 1)
