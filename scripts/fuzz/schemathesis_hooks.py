@@ -511,6 +511,15 @@ _FICHIERS_VALIDES = (
     # les octets magiques, inexprimable dans le schéma.
     (re.compile(r'^/api/django/records/attachments/$'), {'POST'},
      {'file': _PDF_MINIMAL}),
+    # Nocturne 23/10 (run 40000624035) — avatar : le serveur lit les octets
+    # magiques (PNG/JPEG/WebP, 2 Mo) → 413/415 hors schéma ; un vrai PNG au
+    # cas positif. Import CSV des lignes d'une demande d'achat : un fichier
+    # vide ou sans en-tête est un 409 (contenu), un non-UTF-8 un 400.
+    (re.compile(r'^/api/django/users/\{[^}]+\}/avatar/$'), {'POST'},
+     {'file': _PNG_MINIMAL}),
+    (re.compile(r'^/api/django/installations/demandes-achat/\{[^}]+\}/'
+                r'importer-lignes-csv/$'), {'POST'},
+     {'fichier': b'designation,quantite,prix_estime\r\nFuzz,1,10\r\n'}),
     # CI #997 (3) — dépôt d'un document du portail : le formulaire porte un
     # fichier ``fichier`` (le serveur lit les octets magiques).
     (re.compile(r'^/api/django/portail/documents-client-portail/'),
@@ -845,6 +854,32 @@ def _rester_positif(case, etait_positif):
             meta.update_validated_hash(lieu, empreinte(case.body))
 
 
+def _est_multipart(operation):
+    """Le corps déclaré de l'opération est-il multipart ?"""
+    return any(str(getattr(corps, 'media_type', '')).lower().startswith('multipart/')
+               for corps in getattr(operation, 'body', None) or ())
+
+
+def _parts_nuls_absents(case):
+    """CI #1021 fuzz — un champ ``nullable`` d'un corps MULTIPART tiré à ``null``
+    part sur le fil comme la chaîne « None » (``prepare_multipart``), que le
+    serveur refuse (400 « « None » n'est pas un choix valide », « JSON valide »,
+    « boolean ») : POST /stock/fiches-techniques/. En multipart, la seule forme
+    d'un null est l'ABSENCE du part : ces clés sont retirées du corps avant
+    l'envoi (le cas reste schéma-conforme, le champ est facultatif)."""
+    corps = getattr(case, 'body', None)
+    if not isinstance(corps, dict) or not _est_multipart(case.operation):
+        return
+    # Cas NÉGATIF (CI #1021 fuzz (5)) : un ``null`` tiré POUR violer le schéma
+    # (« champs: Incorrect type ») doit atteindre le serveur — le retirer
+    # rendait la requête conforme et l'oracle « accepted schema-violating »
+    # rouge à tort ; le part « None » part alors tel quel (400 nommé attendu).
+    if not _est_positif(case):
+        return
+    for cle in [k for k, v in corps.items() if v is None]:
+        corps.pop(cle)
+
+
 def _est_positif(case):
     meta = case.meta
     return meta is not None and meta.generation.mode == GenerationMode.POSITIVE
@@ -857,5 +892,6 @@ def before_call(context, case, kwargs):
     _proteger_soi(case)
     _neutraliser_politique_reseau(case)
     _ids_fk_connus(case)
+    _parts_nuls_absents(case)
     _fichiers_valides(case)
     _rester_positif(case, etait_positif)

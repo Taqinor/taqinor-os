@@ -4,11 +4,12 @@ Un corps qui n'est pas un objet JSON (``[null]``, ``-1``…) levait une 500 sur
 ``request.data.get`` ; un champ de mauvais type était coercé en silence. Ces
 sérialiseurs répondent 400 (DRF) et servent aussi de déclaration OpenAPI.
 """
+from django.core.validators import RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_field, inline_serializer,
 )
-from rest_framework import serializers
+from rest_framework import serializers, status
 
 from core.champs_stricts import BooleenStrict, ChaineStricte
 
@@ -34,8 +35,36 @@ class CalendrierHegirienRequete(serializers.Serializer):
     calendrier_hegirien = BooleenStrict()
 
 
+@extend_schema_field({'type': 'string', 'pattern': r'^\d{6}$'})
+class CodeTotp(ChaineStricte):
+    """Code TOTP à 6 chiffres (espaces tolérés à la saisie, comme avant) :
+    forme invalide = 400 ; un code bien formé mais faux relève de l'ÉTAT (409,
+    dans la vue)."""
+
+    def to_internal_value(self, data):
+        code = super().to_internal_value(data).replace(' ', '')
+        if not (len(code) == 6 and code.isascii() and code.isdigit()):
+            self.fail('invalid')
+        return code
+
+
+class MotDePasseReinit(serializers.CharField):
+    """Déclaration (schéma seul) du mot de passe de
+    ``users/{id}/reinitialiser-mot-de-passe/`` : ≥ 8 caractères (``min_length``
+    → ``minLength`` publié), pas entièrement numérique (``RegexValidator`` →
+    ``pattern`` publié). Le serveur reste la vérité (validateurs Django +
+    politique de la société) ; la vue n'utilise pas ce champ pour valider."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('min_length', 8)
+        kwargs.setdefault('trim_whitespace', False)
+        kwargs.setdefault('validators', [RegexValidator(
+            r'^[\s\S]*\D[\s\S]*$', message='Mot de passe entièrement numérique.')])
+        super().__init__(**kwargs)
+
+
 class TwoFactorEnableRequete(serializers.Serializer):
-    code = ChaineStricte(required=False, allow_blank=True)
+    code = CodeTotp()
 
 
 class TwoFactorDisableRequete(serializers.Serializer):
@@ -82,3 +111,42 @@ SCHEMA_LOGOUT = extend_schema(
     responses=inline_serializer('LogoutReponse', {
         'detail': serializers.CharField(),
     }))
+
+
+#: ENF11 — avatar : le contenu du fichier (taille, type réel) ne se publie pas
+#: dans le schéma → 413 / 415 déclarés, jamais un 400 (constat nocturne).
+REQUETE_AVATAR = {'multipart/form-data': inline_serializer(
+    'AvatarUpload', {'file': serializers.FileField(
+        help_text="Image PNG, JPEG ou WebP (contrôlée sur ses octets), "
+                  "2 Mo maximum.")})}
+REPONSES_AVATAR_REFUS = {
+    413: OpenApiResponse(description="Fichier de plus de 2 Mo."),
+    415: OpenApiResponse(
+        description="Contenu qui n'est pas un PNG, JPEG ou WebP."),
+}
+
+
+def statut_refus_avatar(err):
+    """413 pour la taille, 415 pour le type réel (voir ``avatars.store_avatar``)."""
+    return (status.HTTP_413_REQUEST_ENTITY_TOO_LARGE if err.startswith('Fichier trop')
+            else status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+
+#: ENF11 — réinitialisation : la forme (≥ 8 caractères, pas entièrement
+#: numérique) est publiée au schéma → 400 ; ce que le schéma ne peut pas dire
+#: (mot de passe trop courant, politique propre à la société) relève de l'état
+#: de la société → 409, même corps ``{"password": [...]}``.
+REQUETE_REINIT = inline_serializer('ReinitialiserMotDePasseRequete', {
+    'password': MotDePasseReinit()})
+REPONSES_REINIT = {
+    200: inline_serializer('ReinitialiserMotDePasseReponse', {
+        'detail': serializers.CharField()}),
+    409: OpenApiResponse(
+        description="Mot de passe refusé par la politique (trop courant, "
+                    "règles de la société) : {\"password\": […]}."),
+}
+
+
+def statut_refus_mot_de_passe(brut):
+    forme = not isinstance(brut, str) or len(brut) < 8 or brut.isdigit()
+    return status.HTTP_400_BAD_REQUEST if forme else status.HTTP_409_CONFLICT

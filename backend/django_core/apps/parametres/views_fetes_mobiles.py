@@ -109,6 +109,11 @@ def fetes_mobiles_enregistrer(request):
             status=status.HTTP_400_BAD_REQUEST)
     annee = annee_brute
     dates = corps.get('dates') or {}
+    if isinstance(dates, dict):
+        # ENF11 — le schéma publié ne déclare que les 4 fêtes : toute autre
+        # clé est ignorée (jamais lue), donc jamais une raison de refuser.
+        dates = {cle: valeur for cle, valeur in dates.items()
+                 if cle in FETES_MOBILES_CLES}
     if not isinstance(dates, dict) or any(
             valeur is not None and not isinstance(valeur, str)
             for valeur in dates.values()):

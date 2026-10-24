@@ -329,6 +329,26 @@ class EndpointTest(BaseReleve):
                          ['façade / cage'])
         self.assertEqual(len(reponse.data['releves']), 1)
 
+    def test_date_du_releve_obligatoire_400_nomme(self):
+        # ENF11 — la date est SAISIE : le schéma la déclare obligatoire
+        # (``format: date``), le serveur la refuse sinon (400 nommé).
+        reponse = self.api.post(self.url, {}, format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('releve_le', reponse.data)
+
+    def test_date_future_est_un_conflit_409_detail(self):
+        # ENF11 — règle d'horloge : 409 ``{"detail": …}`` ; illisible = 400.
+        reponse = self.api.post(
+            self.url, {'releve_le': DEMAIN.isoformat(), 'chaines': []},
+            format='json')
+        self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.assertIn('futur', reponse.data['detail'])
+        reponse = self.api.post(
+            self.url, {'releve_le': 'hier matin', 'chaines': []},
+            format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(ReleveTerrain.objects.count(), 0)
+
     def test_get_liste_les_releves(self):
         enregistrer_releve(self.calepinage,
                            {'releve_le': HIER.isoformat(), 'chaines': []},

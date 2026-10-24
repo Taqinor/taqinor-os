@@ -1,13 +1,15 @@
 import datetime
+import re
 
 from drf_spectacular.utils import extend_schema_field
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsMixin, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin,
+    ChaineStricte, ChampsStrictsMixin, DecimalSouple, ChampsStrictsSansDecimalMixin, IdInconnu404Mixin,
 )
 from rest_framework import serializers
 
 from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
+from core.parseurs import ObjetJSON
 
 from .actions import (
     SET_FIELD_TARGETS, set_field_autorise, set_field_champs_autorises,
@@ -24,6 +26,45 @@ WEBHOOK_REGLE_INCOMPATIBLE = (
     "« Webhook entrant ».")
 
 
+_SUBSTITUTS_SEULS = re.compile(r'[\ud800-\udfff]')
+
+
+def _sans_substituts(valeur):
+    """Retire les moitiés de paire de substitution isolées (clés comprises) :
+    PostgreSQL les refuse en ``jsonb`` (« Unicode low surrogate must follow a
+    high surrogate » : DataError -> 500)."""
+    if isinstance(valeur, str):
+        return _SUBSTITUTS_SEULS.sub('', valeur)
+    if isinstance(valeur, list):
+        return [_sans_substituts(v) for v in valeur]
+    if isinstance(valeur, dict):
+        return {_sans_substituts(k): _sans_substituts(v)
+                for k, v in valeur.items()}
+    return valeur
+
+
+class ConfigRegleJSON(ObjetJSON):
+    """ENF11 (nocturne 23/10, ``POST automation/rules/`` 500) —
+    ``trigger_config`` / ``action_config`` : un OBJET JSON (publié
+    ``type: object``, tout autre type est un 400 nommé), dont le caractère nul
+    (``ObjetJSON``) et les substituts isolés (ici) sont retirés avant le
+    stockage ``jsonb`` qui les refuse. Le contenu de l'objet reste libre : les
+    règles par type d'action sont appliquées par ``AutomationRuleSerializer``
+    (et par l'exécution)."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict):
+            data = _sans_substituts(data)
+        return super().to_internal_value(data)
+
+
+class SeuilDecimal(DecimalSouple):
+    """ENF11 — seuil décimal accepté en CHAÎNE **ou** en NOMBRE JSON (l'écran
+    Automatisations envoie un nombre) et PUBLIÉ ainsi (``anyOf`` motif | nombre,
+    ``DecimalSouple``). ``""`` est un 400 nommé (motif publié, jamais lu
+    ``null`` en silence) ; ``null`` reste le « non renseigné » publié."""
+
+
 class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
                                serializers.ModelSerializer):
     # ERR-ENF11-FUZZ-AUTOMATION — texte et booléens STRICTS (nom sans caractère
@@ -33,6 +74,10 @@ class AutomationRuleSerializer(ChampsStrictsSansDecimalMixin,
         source='get_trigger_type_display', read_only=True)
     action_type_display = serializers.CharField(
         source='get_action_type_display', read_only=True)
+    trigger_config = ConfigRegleJSON(required=False)
+    action_config = ConfigRegleJSON(required=False)
+    approval_threshold = SeuilDecimal(
+        max_digits=12, decimal_places=2, required=False, allow_null=True)
 
     class Meta:
         model = AutomationRule

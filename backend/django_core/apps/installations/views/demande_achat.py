@@ -48,6 +48,18 @@ from . import _openapi as oa
 
 import logging
 
+#: Une erreur de ligne de l'import CSV : ``{ligne, erreur}`` (jamais une chaîne).
+
+
+def _erreur_ligne_csv():
+    # Une instance NEUVE par usage : un champ enfant lié deux fois porte déjà
+    # son `source` et drf-spectacular refuse alors le `child=` (génération KO).
+    # `oa.body` mémorise l'INSTANCE par nom (composant stable) : on instancie
+    # sa classe à chaque usage.
+    return type(oa.body(
+        'ImportLignesErreur', ligne=oa.i(required=True), erreur=oa.s(required=True)))()
+
+
 logger = logging.getLogger(__name__)
 
 # SCA36 — 'chatter_historique' est une lecture (patron flotte : le
@@ -467,9 +479,11 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         request=oa.body('ImporterLignesCsvRequete', fichier=oa.serializers.FileField()),
         responses={
             (200, 'application/json'): oa.body(
-                'ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst()),
+                'ImportLignesResultat', importees=oa.i(required=True), lignes_creees=oa.ints(required=True),
+                erreurs=oa.lst(child=_erreur_ligne_csv(), required=True)),
             (201, 'application/json'): oa.body(
-                'ImportLignesResultat', importees=oa.i(), lignes_creees=oa.lst(), erreurs=oa.lst()),
+                'ImportLignesResultat', importees=oa.i(required=True), lignes_creees=oa.ints(required=True),
+                erreurs=oa.lst(child=_erreur_ligne_csv(), required=True)),
         },
     )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='importer-lignes-csv')
@@ -508,7 +522,7 @@ class DemandeAchatViewSet(oa.JsonOnlyMixin, ChatterViewSetMixin, CompanyScopedMo
         if reader.fieldnames is None:
             return Response(
                 {'fichier': 'Fichier CSV vide ou sans en-tête.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)  # ENF11 : fichier lisible mais inexploitable
         entetes = {(h or '').strip().lower(): h for h in reader.fieldnames}
 
         from django.apps import apps as django_apps

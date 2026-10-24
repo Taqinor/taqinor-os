@@ -1374,7 +1374,7 @@ class TestFuzz997TypesEtRegles(TestCase):
 
     def test_garantie_decimaux_en_chaine_seulement(self):
         corps = {'installation': self.inst.id, 'guaranteed_year1_kwh': '0',
-                 'degradation_pct_per_year': '0', 'start_year': 0,
+                 'degradation_pct_per_year': '0', 'start_year': 2026,
                  'compensation_mad_per_kwh': '0', 'tolerance_pct': '0',
                  'note': ''}
         for champ in ('tolerance_pct', 'guaranteed_year1_kwh'):
@@ -1471,6 +1471,37 @@ class TestFuzzMonitoringW4(TestCase):
         r = self.api.post('/api/django/monitoring/warranties/', corps,
                           format='json')
         self.assertEqual(r.status_code, 409, r.data)
+
+    def test_garantie_motifs_exacts_et_annee_bornee(self):
+        """ENF11 (nocturne 23/10) : le motif publié du productible garanti
+        (>= 0) et des pourcentages est celui que le serveur applique ; l'année
+        de référence est bornée (1900..2200)."""
+        import re
+
+        from apps.monitoring import serializers as ms
+        for v in ('0', '12.5', '9999999999.99', '007'):
+            self.assertTrue(re.fullmatch(ms.MOTIF_GARANTI_KWH, v), v)
+        for v in ('-.90', '-1', '.5', '12.', '1e1', '', '99999999999'):
+            self.assertIsNone(re.fullmatch(ms.MOTIF_GARANTI_KWH, v), v)
+        for v in ('-.9', '12.', '1234'):
+            self.assertIsNone(
+                re.fullmatch(ms.MOTIF_POURCENT_GARANTIE, v), v)
+        corps = {'installation': self.inst.id, 'guaranteed_year1_kwh': '9000',
+                 'start_year': 2026}
+        for champ, valeur in (('guaranteed_year1_kwh', '-.90'),
+                              ('guaranteed_year1_kwh', '-1'),
+                              ('start_year', 37474), ('start_year', 1899)):
+            with self.subTest(champ=champ, valeur=valeur):
+                r = self.api.post('/api/django/monitoring/warranties/',
+                                  {**corps, champ: valeur}, format='json')
+                self.assertEqual(r.status_code, 400, r.data)
+                self.assertIn(champ, r.data)
+
+    def test_garantie_systeme_inconnu_404_corps_conforme(self):
+        r = self.api.post('/api/django/monitoring/warranties/', {
+            'installation': 10 ** 9, 'guaranteed_year1_kwh': '9000',
+            'start_year': 2026}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
 
     def test_periode_et_energie_publiees(self):
         import re

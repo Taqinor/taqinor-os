@@ -43,7 +43,18 @@ class Agr309SchemaTests(SimpleTestCase):
         self.assertIn('Profondeur 90 m', textes)
         self.assertIn('Niveau 40 m', textes)
         self.assertIn('HMT 60 m', textes)
-        self.assertIn('Distance 25 m', textes)
+        # AGQ32 — la distance est libellée « champ → coffret ».
+        self.assertIn('Distance champ → coffret 25 m', textes)
+
+    def test_deux_lignes_eau_et_energie(self):
+        """AGQ32 — l'eau en haut, l'énergie (panneaux, variateur) dessous."""
+        racine = ET.fromstring(S.schema_svg(_synthese()))
+        lignes = [r.get('data-ligne') for r in racine.iter(f'{SVG_NS}rect')]
+        self.assertEqual(lignes.count('eau'), 3)
+        self.assertEqual(lignes.count('energie'), 2)
+        y = {r.get('data-ligne'): float(r.get('y'))
+             for r in racine.iter(f'{SVG_NS}rect')}
+        self.assertLess(y['eau'], y['energie'])
 
     def test_sans_profondeur_aucun_libelle_de_profondeur(self):
         svg = S.schema_svg(_synthese(schema={
@@ -79,6 +90,31 @@ class Agr309SchemaTests(SimpleTestCase):
         en = ' '.join(_textes(S.schema_svg(_synthese(), langue='en')))
         self.assertIn('Borehole', en)
         self.assertIn('Depth 90 m', en)
+
+    def test_legendes_arabes_hors_text_et_chaine_miroir(self):
+        """AGQ13 — avec ``legendes``, aucun texte arabe dans un ``<text>``
+        SVG (WeasyPrint ne le façonne pas) ; la chaîne se lit de droite à
+        gauche ; le français reste octet pour octet celui d'hier."""
+        leg = []
+        svg = S.schema_svg(_synthese(), langue='ar', legendes=leg)
+        ET.fromstring(svg)
+        self.assertFalse([t for t in _textes(svg) if S._arabe(t)])
+        textes = [lg['texte'] for lg in leg]
+        self.assertIn(S.LIBELLES['pompe']['ar'], textes)
+        self.assertTrue(any('90' in t for t in textes))
+        racine = ET.fromstring(svg)
+        x = {r.get('data-etape'): float(r.get('x'))
+             for r in racine.iter(f'{SVG_NS}rect')}
+        boites = [float(r.get('x')) for r in racine.iter(f'{SVG_NS}rect')]
+        self.assertGreater(boites[0], boites[-1])  # forage à droite
+        self.assertTrue(x)
+        html = S.superposer(svg, leg)
+        self.assertIn('position:absolute', html)
+        self.assertIn(S.LIBELLES['pompe']['ar'], html)
+        vide = []
+        self.assertEqual(S.schema_svg(_synthese(), legendes=vide),
+                         S.schema_svg(_synthese()))
+        self.assertEqual(vide, [])
 
     def test_une_designation_avec_script_ressort_echappee(self):
         svg = S.schema_svg(_synthese(),

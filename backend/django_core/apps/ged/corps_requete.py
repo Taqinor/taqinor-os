@@ -336,11 +336,28 @@ def schema_groupe_conditions(profondeur=3):
     Groupe ET/OU (``op`` facultatif seulement sans ``operator``), groupe NON
     (une seule condition) ou feuille (``field`` non vide + opérateur connu) ;
     déplié sur ``profondeur`` niveaux, sans référence récursive."""
-    from core.rules import GROUP_OPERATORS, LEAF_OPERATORS
+    from core.champs_stricts import (
+        _MOTIF_OP_GROUPE, MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL)
+    from core.rules import LEAF_OPERATORS
+    # ERR-ENF11-FUZZ-GED (nocturne 22/10) — ``value`` est TYPÉE (texte sans
+    # NUL, nombre, booléen ou liste de ces valeurs) : un objet ou un texte à
+    # NUL passait la validation puis faisait lever Postgres (JSONB, 500). Les
+    # clés hors ``field``/``operator``/``value``/``op``/``conditions`` sont
+    # ÉCARTÉES à l'écriture (``arbre_canonique``) : le schéma peut les laisser.
+    scalaire = {'anyOf': [{'type': 'string', 'pattern': MOTIF_SANS_NUL},
+                          {'type': 'number'}, {'type': 'boolean'}]}
     feuille = {'type': 'object', 'required': ['field', 'operator'], 'properties': {
-        'field': {'type': 'string', 'minLength': 1},
+        'field': {'type': 'string', 'minLength': 1,
+                  'pattern': MOTIF_NON_BLANC_SANS_NUL},
+        # ``value`` absente ou ``null`` (opérateur ``exists``) reste admise ;
+        # dans une LISTE, un élément ``null`` est refusé par le serveur
+        # (``_valeur_feuille_valide``) comme par ce schéma.
+        'value': {'anyOf': [*scalaire['anyOf'],
+                            {'type': 'string', 'nullable': True,
+                             'enum': [None]},
+                            {'type': 'array', 'items': scalaire}]},
         'operator': {'type': 'string', 'enum': list(LEAF_OPERATORS)},
-        'op': {'not': {'enum': list(GROUP_OPERATORS)}}}}
+        'op': {'not': {'type': 'string', 'pattern': _MOTIF_OP_GROUPE}}}}
     if profondeur <= 0:
         return feuille
     enfants = schema_groupe_conditions(profondeur - 1)
@@ -369,13 +386,63 @@ def _feuille_sans_champ_lisible(noeud):
     return isinstance(champ, str) and re.search(r'\S', champ) is None
 
 
+def _valeur_feuille_valide(valeur):
+    """``value`` d'une feuille : null, texte sans NUL, nombre, booléen ou liste
+    de scalaires NON nuls (jamais un objet) — ce que le schéma publié annonce."""
+    if valeur is None or isinstance(valeur, (bool, int, float)):
+        return True
+    if isinstance(valeur, str):
+        return '\x00' not in valeur
+    if isinstance(valeur, list):
+        return all(v is not None and not isinstance(v, (list, dict))
+                   and _valeur_feuille_valide(v) for v in valeur)
+    return False
+
+
+def _erreurs_feuilles(noeud):
+    """Feuilles de l'arbre : ``field`` sans NUL (Postgres le refuse) et
+    ``value`` typée. Appelée sur un arbre déjà structurellement valide."""
+    from core.rules import _is_group
+    if _is_group(noeud):
+        for enfant in noeud['conditions']:
+            erreurs = _erreurs_feuilles(enfant)
+            if erreurs:
+                return erreurs
+        return []
+    if '\x00' in noeud['field']:
+        return ["feuille : 'field' ne peut pas contenir de caractère nul."]
+    if not _valeur_feuille_valide(noeud.get('value')):
+        return ["feuille : 'value' doit être un texte (sans caractère nul), "
+                "un nombre, un booléen ou une liste de ces valeurs."]
+    return []
+
+
+def arbre_canonique(noeud):
+    """L'arbre sans les clés que le moteur ignore (``core.rules`` ne lit que
+    ``op``/``conditions`` d'un groupe, ``field``/``operator``/``value`` d'une
+    feuille) : une clé inconnue — texte à NUL compris — n'est jamais stockée."""
+    from core.rules import _is_group
+    if _is_group(noeud):
+        sortie = {'conditions': [arbre_canonique(c)
+                                 for c in noeud['conditions']]}
+        if 'op' in noeud:
+            sortie['op'] = noeud['op']
+        return sortie
+    sortie = {'field': noeud['field'], 'operator': noeud['operator']}
+    if 'value' in noeud:
+        sortie['value'] = noeud['value']
+    return sortie
+
+
 def erreurs_groupe_conditions(valeur):
     """Erreurs d'un arbre de conditions : ``core.rules`` + feuille au ``field``
-    non blanc (règle publiée au schéma de requête)."""
+    non blanc et ``value`` typée (règles publiées au schéma de requête)."""
     from core.rules import validate_condition_group
     erreurs = validate_condition_group(valeur)
     if not erreurs and _feuille_sans_champ_lisible(valeur):
         erreurs = ["feuille sans 'field' (chaîne non blanche) valide."]
+    if not erreurs:
+        erreurs = _erreurs_feuilles(valeur)
     return erreurs
 
 
@@ -389,7 +456,7 @@ class GroupeConditionsField(drf_serializers.JSONField):
         erreurs = erreurs_groupe_conditions(valeur)
         if erreurs:
             raise drf_serializers.ValidationError(erreurs)
-        return valeur
+        return arbre_canonique(valeur)
 
 
 class _GroupeConditionsSchema(OpenApiSerializerFieldExtension):

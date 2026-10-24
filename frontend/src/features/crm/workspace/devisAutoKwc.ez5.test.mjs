@@ -95,7 +95,8 @@ test('la cible traverse le panneau jusqu’au calcul partagé', () => {
   // `onAlertes` reçoit les alertes du devis créé par le serveur.
   // CIQ127 — tout part au serveur (qui lit marques et ordre de la société) :
   // la signature ne garde que lead, remise, alertes et la cible.
-  assert.match(autoQuote, /createAutoQuote\(\{ lead, discountStr, onAlertes, targetKwc \}\)/)
+  // AGQ23 — la signature porte aussi `idempotencyKey` (une clé par ouverture du panneau).
+  assert.match(autoQuote, /createAutoQuote\(\{ lead, discountStr, onAlertes, targetKwc, idempotencyKey \}\)/)
 })
 
 test('la cible prime sur la fiche, mais ne l’écrase jamais', () => {

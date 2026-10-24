@@ -10,7 +10,7 @@ from rest_framework.validators import UniqueValidator
 
 from core.champs_stricts import (
     BooleenStrict, ChaineStricte, ChampsStrictsBornesMixin, ChampsStrictsMixin,
-    DecimalSouple,
+    DecimalSouple, IdInconnu404Mixin,
 )
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ObjetJSON
@@ -35,7 +35,8 @@ from .models import (
 )
 from .devis_auto import (
     champs_manquants_detail, champs_requis, message_manquants,
-    source_conso, visite_avant_devis, visite_point_eau_avant_devis)
+    mode_pompe_du_lead, source_conso, visite_avant_devis,
+    visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 import logging
 
@@ -469,6 +470,9 @@ def incoherence_segment(type_lead, devis):
     }
 
 
+_MSG_JOURS_IRRIGATION = "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu)."
+
+
 class LeadSerializer(SameCompanyFKSerializerMixin,
                      _CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
@@ -538,6 +542,14 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # accepterait null, que la base refuse.
     web_questionnaire = serializers.DictField(required=False)
     web_estimate = serializers.DictField(required=False)
+    # AGQ10 (D-AGQ-6) — bornes DANS le schéma publié (api-fuzz CI #1021 : un
+    # corps conforme au schéma était refusé) : 0 < jours ≤ 7, message nommé.
+    # ALEA : `LeadDecimalField` garde la normalisation d'une décimale de trop.
+    jours_irrigation_semaine = LeadDecimalField(
+        max_digits=3, decimal_places=1, required=False, allow_null=True,
+        min_value=Decimal('0.1'), max_value=Decimal('7'),
+        error_messages={'min_value': _MSG_JOURS_IRRIGATION,
+                        'max_value': _MSG_JOURS_IRRIGATION})
     stage_label = serializers.CharField(source='get_stage_display', read_only=True)
     source_label = serializers.CharField(source='get_source_display', read_only=True)
     client_nom = serializers.SerializerMethodField()
@@ -704,6 +716,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     def validate_whatsapp(self, value):
         return self._canonical_phone(value)
 
+    def validate_jours_irrigation_semaine(self, value):
+        """AGQ10 (D-AGQ-6) — 0 < jours ≤ 7 ; vide reste vide (jamais un
+        défaut). Refus nommé, jamais un arrondi silencieux."""
+        if value is not None and not (0 < value <= 7):
+            raise serializers.ValidationError(_MSG_JOURS_IRRIGATION)
+        return value
+
     def validate_ville(self, value):
         """VREF — auto-correction de la ville à l'écriture (même règle que
         le webhook site et la sync Odoo) : une graphie connue, une forme
@@ -743,6 +762,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # industriel seulement, null ailleurs ; jamais un blocage.
             'source_conso': source_conso(obj),
             'visite_avant_devis': visite_avant_devis(obj),
+            # AGQ39 (D-AGQ-10) — {valeur, par_defaut} pour un agricole (mode
+            # vide ⇒ « neuve » étiqueté « par défaut »), null ailleurs.
+            'mode_pompe': mode_pompe_du_lead(obj),
         }
 
     @extend_schema_field(serializers.DictField(allow_null=True))
@@ -1650,8 +1672,8 @@ class AppointmentSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
 
-class PointContactSerializer(ChampsStrictsBornesMixin, _LeadEnPorteeMixin,
-                             serializers.ModelSerializer):
+class PointContactSerializer(IdInconnu404Mixin, ChampsStrictsBornesMixin,
+                             _LeadEnPorteeMixin, serializers.ModelSerializer):
     """FG204 — point de contact du parcours multi-touch d'un lead.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant

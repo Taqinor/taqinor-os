@@ -124,6 +124,33 @@
       "question": "« Votre pompe actuelle est-elle immergée dans le forage, ou en surface ? »"
     },
     {
+      "nom": "mode_pompe",
+      "type": "choix",
+      "choix": ["neuve", "existante"],
+      "question": "« On installe une pompe neuve, ou on garde votre pompe actuelle et on la passe au solaire ? »",
+      "note": "AGQ39 (D-AGQ-10) : sans défaut ; vide ⇒ le devis automatique part en « neuve », étiqueté « par défaut » (devis_auto.mode_pompe) ; « existante » ⇒ aucune ligne pompe, variateur et champ sur la plaque (D-AGR-7)"
+    },
+    {
+      "nom": "pompe_actuelle_kw",
+      "type": "décimal",
+      "unite": "kW",
+      "question": "« Quelle puissance en kW est écrite sur la plaque de votre pompe actuelle ? »",
+      "note": "AGQ39 : plaque de la pompe ACTUELLE ; exigée (avec tension et phases) quand mode_pompe = existante"
+    },
+    {
+      "nom": "pompe_actuelle_tension_v",
+      "type": "entier",
+      "unite": "V",
+      "question": "« Quelle tension est écrite sur la plaque : 220 V ou 380 V ? »"
+    },
+    {
+      "nom": "pompe_actuelle_phases",
+      "type": "choix",
+      "choix": ["mono", "tri"],
+      "question": "« Sur la plaque, la pompe est-elle monophasée ou triphasée ? »",
+      "note": "servie au moteur en 1 / 3 (conversion de vocabulaire, jamais un défaut)"
+    },
+    {
       "nom": "pompe_actuelle_debit_m3h",
       "type": "décimal",
       "unite": "m³/h",
@@ -186,6 +213,13 @@
       "type": "liste d'entiers 1-12",
       "unite": "mois",
       "question": "« Quels mois de l'année irriguez-vous ? »"
+    },
+    {
+      "nom": "jours_irrigation_semaine",
+      "type": "décimal",
+      "unite": "jours / semaine",
+      "question": "« Vous irriguez combien de jours par semaine en saison ? »",
+      "note": "AGQ10 (D-AGQ-6) : sans défaut ; exigé par une consommation « par jour d'irrigation » (butane) pour chiffrer la dépense actuelle"
     },
     {
       "nom": "distance_forage_champ_m",
@@ -299,6 +333,11 @@
     "pompe_actuelle_cv": "7.50",
     "pompe_actuelle_type": "immergee",
     "pompe_actuelle_debit_m3h": null,
+    "mode_pompe": null,
+    "pompe_actuelle_kw": null,
+    "pompe_actuelle_tension_v": null,
+    "pompe_actuelle_phases": null,
+    "jours_irrigation_semaine": null,
     "pompage_heures_jour": null,
     "pompe_alim_actuelle": "butane",
     "butane_bouteilles_jour": "4.0",
@@ -348,7 +387,7 @@
         {
           "colonne": "debit_forage_m3h",
           "valeur": 36,
-          "provenance": "client",
+          "provenance": "foreur",
           "date": "2026-09-12",
           "cle_etude": "source",
           "chemin": "source.debit_exploitation_m3h"
@@ -468,7 +507,7 @@
     "entrees_pompage.cibles": {
       "niveau_statique_m": "source.niveau_statique_m (provenance : niveau_statique_source declare→client, site_web→site_web, mesure_visite→mesure_visite)",
       "profondeur_forage_m": "source.profondeur_forage_m",
-      "debit_forage_m3h": "source.debit_exploitation_m3h ; `debit_forage_source` → source.debit_exploitation_origine (essai|foreur|client|mesure_visite) ; provenance detail : mesure_visite si mesuré par TAQINOR, sinon client",
+      "debit_forage_m3h": "source.debit_exploitation_m3h ; `debit_forage_source` → source.debit_exploitation_origine (essai|foreur|client|mesure_visite) ; provenance detail : mesure_visite si mesuré par TAQINOR, foreur / essai si mesuré par le foreur ou un essai de pompage (AGQ29 : une mesure), sinon client",
       "besoin_eau_m3j": "besoin.volume_m3_jour (provenance : besoin_eau_source client→client, site_web→site_web, pompe_actuelle→derive)",
       "culture": "besoin.cultures[0].crop",
       "surface_irriguee_ha": "besoin.cultures[0].surface_ha",
@@ -485,10 +524,15 @@
       "pompe_hmt_m": "hmt_entrees.saisie_m (provenance : pompe_hmt_source declaree→client, site_web→site_web)",
       "pompe_debit_m3h": "besoin.debit_souhaite_m3h (servi à côté du débit livré)",
       "pompe_alim_actuelle": "saisies_economie_pompage.energie_actuelle",
-      "butane_bouteilles_jour": "saisies_economie_pompage.consommation (unite bouteille_12kg, periode jour_irrigation)",
-      "carburant_litres_mois": "saisies_economie_pompage.consommation (unite litre, periode mois)",
+      "butane_bouteilles_jour": "saisies_economie_pompage.consommation (unite bouteille_12kg, periode jour_irrigation) ; AGQ19 (C-AGQ-018) : servie MARQUÉE `ignoree: \"énergie diesel\"` quand `pompe_alim_actuelle` est diesel (une seule colonne par énergie, le moteur saute toute entrée `ignoree`)",
+      "carburant_litres_mois": "saisies_economie_pompage.consommation (unite litre, periode mois) ; AGQ19 (C-AGQ-018) : servie MARQUÉE `ignoree: \"énergie butane\"` quand `pompe_alim_actuelle` est butane (une seule colonne par énergie, le moteur saute toute entrée `ignoree`)",
       "carburant_prix_unitaire_mad": "saisies_economie_pompage.depense_unitaire_payee (saisi_le = carburant_prix_declare_le)",
-      "mois_irrigation": "saisies_economie_pompage.mois_irrigation (provenance déclarée)"
+      "mois_irrigation": "saisies_economie_pompage.mois_irrigation (provenance déclarée)",
+      "jours_irrigation_semaine": "saisies_economie_pompage.consommation.jours_irrigation_par_semaine (AGQ10, D-AGQ-6)",
+      "mode_pompe": "mode_pompe (AGQ39, D-AGQ-10 ; vide ⇒ neuve « par défaut »)",
+      "pompe_actuelle_kw": "plaque.kw (information : pompe ACTUELLE)",
+      "pompe_actuelle_tension_v": "plaque.tension_v (information : pompe ACTUELLE)",
+      "pompe_actuelle_phases": "plaque.phases (mono → 1, tri → 3 ; information : pompe ACTUELLE)"
     },
     "entrees_pompage.sans_cible": {
       "source_eau": "information affichée (fiche, visite) ; aucune entrée de calcul",

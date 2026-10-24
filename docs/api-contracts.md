@@ -349,7 +349,7 @@
 - frontend/src/api/publicapiApi.js :: getOpenApiSchema -> /api/public/v1/openapi.json
     components:objet, info:objet, openapi:inconnu, paths:inconnu, security:liste, servers:liste, webhooks:inconnu
 - frontend/src/api/publicapiApi.js :: ocrToCrm -> /api/django/publicapi/ocr-to-crm
-    detail:texte, devis_id:inconnu, devis_reference:inconnu, lead_id:inconnu, mode:inconnu
+    devis_id:inconnu, devis_reference:inconnu, lead_id:inconnu, mode:inconnu
 - frontend/src/api/publicapiApi.js :: sandboxTry -> /api/django/publicapi/sandbox/try
     resource:inconnu, results:inconnu, sandbox:booleen
 - frontend/src/api/recordsApi.js :: getMyActivities -> /api/django/records/activities/mine

@@ -26,9 +26,9 @@ on the document that matters most: `facturation.Facture` (the single
 Same reading for `compta.CompteTresorerie` (AUD175): a `devise` column
 with no rate column at all — mono-MAD in practice.
 
-- Money-bearing models scanned: **80**
+- Money-bearing models scanned: **81**
 - Already carry an explicit devise/currency field: **5**
-- Assume mono-devise MAD implicitly (no devise field): **75**
+- Assume mono-devise MAD implicitly (no devise field): **76**
 
 ## Models WITHOUT an explicit devise field (assume MAD)
 
@@ -42,14 +42,15 @@ with no rate column at all — mono-MAD in practice.
 | adminops | FactureLicence | `apps/adminops/models.py:299` | montant_ht, montant_ttc, tva |
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2322` | quota_total |
-| crm | Lead | `apps/crm/models.py:241` | carburant_prix_declare_le, carburant_prix_unitaire_mad, montant_estime, tva_recuperable |
-| crm | PointContact | `apps/crm/models.py:2398` | cout |
+| crm | Lead | `apps/crm/models.py:221` | montant_estime, tva_recuperable |
+| crm | PointContact | `apps/crm/models.py:2358` | cout |
 | crm | GesteRelanceAppareil | `apps/crm/models_cadence.py:214` | total |
 | crm | CommissionPartenaire | `apps/crm/models_clients.py:277` | base_ht, montant |
 | crm | DealEnregistre | `apps/crm/models_clients.py:555` | montant_commission_du, montant_commission_estime |
 | crm | Client | `apps/crm/models_clients.py:790` | tva_recuperable |
 | crm | ForecastEntry | `apps/crm/models_clients.py:1437` | montant_prevu |
 | crm | ForecastSnapshot | `apps/crm/models_clients.py:1498` | montant_total |
+| crm | LeadPompageMixin | `apps/crm/models_lead_pompage.py:37` | carburant_prix_declare_le, carburant_prix_unitaire_mad |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
 | facturation | LigneFacture | `apps/facturation/models.py:776` | prix_unitaire, remise, taux_tva |
 | facturation | Paiement | `apps/facturation/models.py:843` | escompte_montant, montant |

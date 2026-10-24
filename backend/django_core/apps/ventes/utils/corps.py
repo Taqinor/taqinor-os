@@ -6,6 +6,7 @@ silence. ``valider_corps`` rejoue le sérialiseur DÉCLARÉ dans le schéma
 (``views/openapi_docs.py``) et répond 400 ; le reste du code de la vue est
 inchangé (les clés inconnues restent ignorées).
 """
+import re
 
 
 def valider_corps(request, declare):
@@ -71,7 +72,7 @@ def _type_ok(valeur, attendu):
 def _erreur_valeur(valeur, schema):
     """Message du premier écart de ``valeur`` à ``schema`` (sous-ensemble
     publié : type, nullable, enum, minimum/maximum/exclusiveMinimum,
-    properties), ``None`` si conforme."""
+    pattern, properties), ``None`` si conforme."""
     if valeur is None:
         return None if schema.get('nullable') else 'Valeur nulle refusée.'
     attendu = schema.get('type')
@@ -80,6 +81,9 @@ def _erreur_valeur(valeur, schema):
     if 'enum' in schema and valeur not in schema['enum']:
         return 'Valeurs acceptées : ' + ', '.join(
             repr(v) for v in schema['enum']) + '.'
+    if 'pattern' in schema and isinstance(valeur, str) and not re.fullmatch(
+            schema['pattern'], valeur):
+        return 'Format non conforme.'
     mini, maxi = schema.get('minimum'), schema.get('maximum')
     if mini is not None and (valeur < mini or (
             schema.get('exclusiveMinimum') and valeur == mini)):
@@ -114,6 +118,12 @@ def valider_corps_schema(request, schema):
     if branches and not any(
             all(cle in donnees for cle in b.get('required', ()))
             for b in branches):
+        raise ValidationError({'detail': regle.get(
+            'description', 'Corps incomplet.')})
+    exactement = regle.get('oneOf')
+    if exactement and sum(
+            all(cle in donnees for cle in b.get('required', ()))
+            for b in exactement) != 1:
         raise ValidationError({'detail': regle.get(
             'description', 'Corps incomplet.')})
     return donnees

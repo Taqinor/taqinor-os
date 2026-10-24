@@ -934,6 +934,27 @@ class OcrToCrmBridgeTests(TestCase):
                         {'mode': 'lead', 'fields': {}}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_fournisseur_blanc_ne_masque_pas_un_client_valable(self):
+        # Corps conforme au schéma publié (client non blanc) : 201, pas 400.
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'lead',
+                         'fields': {'fournisseur': '  ', 'client': 'Acme'}},
+                        format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_refus_du_service_sur_corps_conforme_est_409(self):
+        # ENF11 : corps conforme, service qui refuse = état, 409 {"detail"}.
+        from unittest import mock
+        api = session_auth(self.admin)
+        with mock.patch('apps.crm.services.create_draft_lead_from_ocr',
+                        side_effect=ValueError('Document inexploitable.')):
+            resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                            {'mode': 'lead', 'fields': self.fields},
+                            format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertIn('inexploitable', resp.json()['detail'])
+
     def test_regle_publiee_alignee_sur_le_service(self):
         # ENF11 (api-fuzz) — le corps publié exige `fournisseur` OU `client`
         # non blanc dans `fields` : exactement ce que le service CRM lit.

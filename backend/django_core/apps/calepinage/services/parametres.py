@@ -34,6 +34,13 @@ class ReglageInvalide(ValueError):
         self.section = section
 
 
+class CaractereInterditEnCle(ReglageInvalide):
+    """ENF11 — le caractère interdit (NUL, demi-substitut isolé) est dans une CLÉ
+    d'objet : le schéma OpenAPI 3.0 ne borne pas les clés (pas de
+    ``propertyNames``), refus d'ÉTAT inexprimable au schéma = 409 (même corps).
+    Dans une VALEUR il reste un 400, le motif « sans NUL » étant publié."""
+
+
 class ReglageInterdit(ReglageInvalide):
     """ACAL302 — une clé de GOUVERNANCE changée sans le droit
     ``calepinage_approuver`` : la vue répond 403 en nommant la clé."""
@@ -176,7 +183,9 @@ def enregistrer_parametres(company, donnees, *, remplacer=False, user=None):
                 f"(reçu : {type(valeur).__name__}).", champ=section)
         fautif = _chemin_caractere_interdit(valeur, section)
         if fautif:
-            raise ReglageInvalide(
+            erreur = (CaractereInterditEnCle if fautif.endswith('(clé)')
+                      else ReglageInvalide)
+            raise erreur(
                 f"« {fautif} » porte un caractère interdit (nul U+0000 ou "
                 "demi-substitut isolé) : le réglage n'est pas enregistré.",
                 champ=section)

@@ -113,7 +113,8 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
                      besoin_agronomique=None, profils_horaires=None,
                      e_d_kwh_kwc_mois=None, temperatures=None,
                      salissure_pct=None, agricole_pump_hours=None,
-                     kit=None, coordonnees=None, reponse_pvgis=None):
+                     kit=None, coordonnees=None, reponse_pvgis=None,
+                     plafond_m3h=None):
     """AGR120 — ``{tailles, tailles_omises, defaut, alertes}``.
 
     * mode ``neuve`` : ``choix_pompe`` = sortie de
@@ -131,7 +132,7 @@ def proposer_tailles(*, mode_pompe="neuve", choix_pompe=None, plaque=None,
                   temperatures=temperatures, salissure_pct=salissure_pct,
                   agricole_pump_hours=agricole_pump_hours,
                   mois_critique=mois_critique, coordonnees=coordonnees,
-                  reponse_pvgis=reponse_pvgis)
+                  reponse_pvgis=reponse_pvgis, plafond_m3h=plafond_m3h)
     alertes = []
 
     if mode_pompe == "existante":

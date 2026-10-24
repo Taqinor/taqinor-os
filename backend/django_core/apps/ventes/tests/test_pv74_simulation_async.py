@@ -235,7 +235,7 @@ class LeLancementRepond202(_Base):
         with mock.patch.object(
                 tasks_mod.task_simulate_bankable_study, 'apply_async') as m:
             resp = self.api.post(self._url(devis), {}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
         self.assertIn('calepinage', resp.data['detail'])
         m.assert_not_called()
 

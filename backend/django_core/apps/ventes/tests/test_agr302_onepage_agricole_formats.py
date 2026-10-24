@@ -69,6 +69,29 @@ class Agr302CarteEauEstimationTests(SimpleTestCase):
         self.assertNotIn('estimation', html)
 
 
+class OnePage(SimpleTestCase):
+    """AGQ14 (D-AGQ-4) — le une-page agricole imprime les durées
+    STRUCTURÉES des fiches, jamais le texte libre ``garantie``."""
+
+    def test_garantie_panneaux_lit_le_champ_structure(self):
+        base = F.donnees_legacy('deux')['sans_items'][0]
+        panneau = dict(base, garantie='12 ans produit · 30 ans performance '
+                       'linéaire (87,4 %)', garantie_mois=144,
+                       garantie_production_mois=300)
+        pompe = dict(base, designation='Pompe immergée OSP 30/8',
+                     role_pompage='pompe', role_devis=None,
+                     garantie='Garantie constructeur 2 ans',
+                     garantie_mois=None, garantie_production_mois=None)
+        items = [panneau, pompe]
+        html = F.html_onepage(mode_installation='agricole',
+                              etude=dict(ETUDE_COURBE), sans_items=items,
+                              all_items=items)
+        self.assertIn('12 ans produit · 25 ans production', html)
+        self.assertNotIn('30 ans performance', html)
+        self.assertNotIn('Garantie constructeur 2 ans', html)
+        self.assertIn('selon fiche fournisseur', html)
+
+
 class Agr302LibellesTraduitsTests(SimpleTestCase):
 
     def test_en_arabe_aucun_des_quatre_libelles_francais_ne_reste(self):

@@ -120,6 +120,43 @@ class RegleFdaTests(SimpleTestCase):
         self.assertIn("n'est pas organisme subventionneur", r['textes']['fr'])
 
 
+class RegleFda(SimpleTestCase):
+    """AGQ21 — une règle FDA société n'est enregistrée qu'avec ses quatre
+    nombres ; aucune règle n'est imprimée avec « — » ; la date de relevé est
+    imprimée (société ou repli daté)."""
+
+    def test_regle_incomplete_jamais_imprimee_avec_tirets(self):
+        from apps.parametres import tariff
+        erreurs = tariff.erreurs_regle_fda(
+            {'source': 'Guide FDA édition 2025, p.18-21'})
+        self.assertIn('regle_fda_pompage', erreurs)
+        for cle in PLAFONDS:
+            self.assertIn(cle, erreurs['regle_fda_pompage'])
+        partielle = tariff.erreurs_regle_fda(
+            {'source': 'Guide FDA', 'taux_pct': 25,
+             'plafond_mad_par_ha': 2500})
+        self.assertIn('plafond_mad_par_kwc', partielle['regle_fda_pompage'])
+        self.assertNotIn('taux_pct', partielle['regle_fda_pompage'])
+        self.assertEqual(tariff.erreurs_regle_fda(REGLE_SOCIETE), {})
+        for regle in ({'source': 'Guide FDA édition 2025, p.18-21'},
+                      {'source': 'Guide FDA', 'taux_pct': 25}):
+            r = regle_fda(regle)
+            for texte in r['textes'].values():
+                self.assertNotIn('—', texte)
+            self.assertEqual(r['plafonds']['taux_pct'], 30)
+            self.assertEqual(r['releve_le'], '2026-10-02')
+
+    def test_date_de_releve_imprimee(self):
+        r = regle_fda(REGLE_SOCIETE)
+        self.assertIn('Source : Guide FDA édition 2025, p.18-21 (relevé le '
+                      '15/11/2026).', r['textes']['fr'])
+        self.assertIn('(read on 15/11/2026)', r['textes']['en'])
+        self.assertIn('15/11/2026', r['textes']['ar'])
+        repli = regle_fda(None)
+        self.assertIn('Source : Guide FDA édition 2024, p.20-23 (relevé le '
+                      '02/10/2026).', repli['textes']['fr'])
+
+
 class FormalitesEtPhrasesTests(SimpleTestCase):
     def test_formalites_presentes_trois_langues(self):
         f = {x['cle']: x for x in formalites()}

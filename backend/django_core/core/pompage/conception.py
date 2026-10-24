@@ -21,9 +21,12 @@ from __future__ import annotations
 from core.pompage.hydraulique import _flottant
 from core.pompage.hypotheses import utilisees, valeur
 from core.pompage.volumes import JOURS_PAR_MOIS, couverture_besoin_eau
+from core.pompage.volumes import mois_critique as mois_critique_production
 
 NATURE_DECLARE = "declare"
 NATURE_AGRONOMIQUE = "agronomique_plein"
+#: AGQ1 (D-AGQ-1) — besoin DÉRIVÉ du débit souhaité déclaré par le client.
+NATURE_DEBIT_SOUHAITE = "debit_souhaite"
 
 
 def _alerte(code, champ, message):
@@ -50,17 +53,36 @@ def heures_pic(profil_horaire):
     return sum(valeurs) / pic
 
 
+def _serie_debit_souhaite(debit, heures_pic_mois, mois_irrigation):
+    """AGQ1 — 12 valeurs m³/j = débit souhaité × heures-pic de chaque mois
+    (0 hors des mois d'irrigation déclarés) ; ``None`` si une heure manque."""
+    if not heures_pic_mois or len(heures_pic_mois) != 12:
+        return None
+    heures = [_flottant(h) for h in heures_pic_mois]
+    if any(h is None or h <= 0 for h in heures):
+        return None
+    masque = _serie_declaree(1.0, mois_irrigation)
+    return [debit * h * m for h, m in zip(heures, masque)]
+
+
 def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
                   debit_actuel_m3h=None, heures_actuelles=None,
-                  besoin_agronomique=None, provenance_declaree=None):
+                  besoin_agronomique=None, provenance_declaree=None,
+                  debit_souhaite_m3h=None, heures_pic_mois=None,
+                  source_heures_pic=None):
     """D-AGR-3 — le besoin RETENU et, s'il existe, l'AUTRE besoin connu.
 
     ``besoin_agronomique`` = la sortie de
     :func:`core.pompage.agronomie.besoin_agronomique` (ou ``None``).
+    AGQ1 (D-AGQ-1) — sans volume ni pompe actuelle déclarés, le DÉBIT
+    SOUHAITÉ déclaré fait le besoin : débit × ``heures_pic_mois`` (heures-pic
+    PVGIS de chaque mois, ou heures du réglage société quand
+    ``source_heures_pic == 'repli'``), nature ``debit_souhaite``.
     Rend ``{m3_jour_mois, nature, source_et0, autre_besoin, provenance}`` ;
     ``m3_jour_mois`` vaut ``None`` quand aucun besoin n'est connu."""
     declare = None
     detail = None
+    nature = NATURE_DECLARE
     volume = _flottant(volume_declare_m3_jour)
     if volume is not None and volume > 0:
         declare = _serie_declaree(volume, mois_irrigation)
@@ -68,9 +90,20 @@ def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
     else:
         debit = _flottant(debit_actuel_m3h)
         heures = _flottant(heures_actuelles)
+        souhaite = _flottant(debit_souhaite_m3h)
         if debit and heures and debit > 0 and heures > 0:
             declare = _serie_declaree(debit * heures, mois_irrigation)
             detail = "débit actuel × heures actuelles de la pompe déclarée"
+        elif souhaite is not None and souhaite > 0:
+            declare = _serie_debit_souhaite(souhaite, heures_pic_mois,
+                                            mois_irrigation)
+            if declare is not None:
+                nature = NATURE_DEBIT_SOUHAITE
+                detail = ("dérivé du débit souhaité : débit × %s"
+                          % ("heures de pompage du réglage société (repli, "
+                             "sans profil PVGIS)"
+                             if source_heures_pic == "repli"
+                             else "heures-pic PVGIS du mois"))
 
     agro = None
     source_et0 = None
@@ -84,6 +117,8 @@ def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
                                                   "date": None})
         if not provenance.get("detail"):
             provenance["detail"] = detail
+        elif nature == NATURE_DEBIT_SOUHAITE:
+            provenance["detail"] = "%s (%s)" % (detail, provenance["detail"])
         autre = None
         if agro is not None:
             autre = {
@@ -93,7 +128,7 @@ def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
                 "ecart_pointe_m3_jour": round(max(agro) - max(declare), 1),
             }
         return {"m3_jour_mois": [round(v, 1) for v in declare],
-                "nature": NATURE_DECLARE, "source_et0": None,
+                "nature": nature, "source_et0": None,
                 "autre_besoin": autre, "provenance": provenance}
     if agro is not None:
         return {"m3_jour_mois": [round(v, 1) for v in agro],
@@ -107,20 +142,34 @@ def besoin_retenu(*, volume_declare_m3_jour=None, mois_irrigation=None,
 
 def controle_conception(besoin_m3_jour_mois, production_m3_jour_mois,
                         mois):
-    """Contrôle -5/+20 % au mois critique (bornes de la table AGR110).
+    """Contrôle -5/+20 % au mois critique (bornes de la table AGR110), et
+    AGQ2 (D-AGQ-2) sur CHAQUE mois d'irrigation : ``mois_sous_tolerance`` =
+    mois (1-12) de besoin > 0 dont la couverture est sous 100 % + borne basse ;
+    un seul suffit pour ``couverture_insuffisante``.
 
     Rend ``{tolerance_pct, couverture_mois_critique_pct, statut,
-    source_tolerance}`` ; statut ``conforme | couverture_insuffisante |
-    surdimensionnement | non_verifiable``. Jamais bloquant."""
+    mois_sous_tolerance, source_tolerance}`` ; statut ``conforme |
+    couverture_insuffisante | surdimensionnement | non_verifiable``. Jamais
+    bloquant."""
     tolerance = valeur("tolerance_conception_pct")
     sortie = {
         "tolerance_pct": tolerance.en_dict(),
         "couverture_mois_critique_pct": None,
         "statut": "non_verifiable",
+        "mois_sous_tolerance": [],
         "source_tolerance": ("hypotheses_pompage.json › "
                              "tolerance_conception_pct (source secondaire)"),
     }
-    if not mois or not besoin_m3_jour_mois or not production_m3_jour_mois:
+    if not besoin_m3_jour_mois or not production_m3_jour_mois:
+        return sortie
+    for index in range(min(12, len(besoin_m3_jour_mois),
+                           len(production_m3_jour_mois))):
+        b = _flottant(besoin_m3_jour_mois[index])
+        p = _flottant(production_m3_jour_mois[index])
+        if b is not None and b > 0 and p is not None \
+                and p / b * 100 < 100 + tolerance.min:
+            sortie["mois_sous_tolerance"].append(index + 1)
+    if not mois:
         return sortie
     besoin = _flottant(besoin_m3_jour_mois[mois - 1])
     prod = _flottant(production_m3_jour_mois[mois - 1])
@@ -128,7 +177,7 @@ def controle_conception(besoin_m3_jour_mois, production_m3_jour_mois,
         return sortie
     couverture = prod / besoin * 100
     sortie["couverture_mois_critique_pct"] = round(couverture)
-    if couverture < 100 + tolerance.min:
+    if couverture < 100 + tolerance.min or sortie["mois_sous_tolerance"]:
         sortie["statut"] = "couverture_insuffisante"
     elif couverture > 100 + tolerance.max:
         sortie["statut"] = "surdimensionnement"
@@ -270,12 +319,23 @@ def conception(*, besoin, profils_horaires=None, agricole_pump_hours=None,
             (round(_flottant(production_m3_jour_mois[i], 0.0) / serie[i] * 100)
              if serie[i] else None) for i in range(12)]
 
+    # AGQ2 (D-AGQ-2) — production connue : le mois critique est le mois
+    # d'irrigation où production ÷ besoin est le plus bas (plus la forme du
+    # profil, identique sur une saison).
+    if production_m3_jour_mois and serie:
+        mois_production = mois_critique_production(serie,
+                                                   production_m3_jour_mois)
+        if mois_production:
+            mois = mois_production
     controle = controle_conception(serie, production_m3_jour_mois, mois)
     if controle["statut"] in ("couverture_insuffisante", "surdimensionnement"):
+        message = ("Couverture au mois critique : %s %% (tolérance -5/+20 %%)."
+                   % controle["couverture_mois_critique_pct"])
+        if controle["mois_sous_tolerance"]:
+            message += " Mois sous la tolérance : %s." % ", ".join(
+                str(m) for m in controle["mois_sous_tolerance"])
         alertes.append(_alerte(
-            controle["statut"], "conception.debit_conception_m3h",
-            "Couverture au mois critique : %s %% (tolérance -5/+20 %%)."
-            % controle["couverture_mois_critique_pct"]))
+            controle["statut"], "conception.debit_conception_m3h", message))
 
     # Autonomie d'un réservoir DÉCLARÉ (CAL155) — aucun bassin dimensionné.
     autonomie = {"valeur": None, "motif": "aucun réservoir déclaré"}
@@ -344,7 +404,7 @@ def pompe_existante(*, plaque, variateurs, panneau=None,
                     profils_horaires=None, e_d_kwh_kwc_mois=None,
                     temperatures=None, salissure_pct=None,
                     agricole_pump_hours=None, mois_critique=None,
-                    coordonnees=None, reponse_pvgis=None):
+                    coordonnees=None, reponse_pvgis=None, plafond_m3h=None):
     """AGR118 — pompe existante : aucune ligne pompe, variateur sur la plaque.
 
     * ``plaque`` : ``{kw, tension_v, phases, cv, courant_a}`` (saisie ou
@@ -456,7 +516,7 @@ def pompe_existante(*, plaque, variateurs, panneau=None,
             salissure_pct=salissure_pct,
             agricole_pump_hours=agricole_pump_hours,
             mois_critique=mois_critique, coordonnees=coordonnees,
-            reponse_pvgis=reponse_pvgis)
+            reponse_pvgis=reponse_pvgis, plafond_m3h=plafond_m3h)
         production = champ["production"]
         alertes.extend(champ["alertes"])
     if production is None:

@@ -13,7 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from . import openapi_docs as D
-from ..utils.corps import valider_corps
+from ..utils.corps import valider_corps, valider_corps_schema
 from rest_framework import status
 from rest_framework import serializers
 from rest_framework.decorators import action
@@ -72,15 +72,6 @@ class _LotCreationSerializer(serializers.Serializer):
 PALIER_VENTE = [IsAdminOrResponsableTier, IsResponsableOrAdmin]
 
 #: VNT60 — formes OpenAPI du contrat ``devis_prix_negocie.json``.
-_PRIX_NEGOCIE_REQUETE = inline_serializer('DevisPrixNegocieRequest', {
-    'prix_ttc': serializers.CharField(required=False, allow_null=True,
-                                      allow_blank=True),
-    'remise_pct': serializers.CharField(required=False, allow_null=True,
-                                        allow_blank=True),
-    # Texte libre ('apercu' | 'appliquer') : pas d'enum, pas de composant.
-    'mode': serializers.CharField(required=False),
-    'confirmer_avoir': serializers.BooleanField(required=False),
-})
 _PRIX_NEGOCIE_REPONSE = inline_serializer('DevisPrixNegocieReponse', {
     'devis_v2': serializers.DictField(),
     'remise_pct': serializers.CharField(),
@@ -483,7 +474,10 @@ class DevisCycleActionsMixin:
             status=status.HTTP_201_CREATED)
 
     # api-only: l'écran « Prix négocié » arrive avec le panneau de vente (VNT75/VNT79).
-    @extend_schema(request=_PRIX_NEGOCIE_REQUETE,
+    @extend_schema(request=D.PrixNegocieRequest,
+                   extensions=D.corps_resserre({'oneOf': [
+                       {'required': ['prix_ttc']},
+                       {'required': ['remise_pct']}]}),
                    responses={200: _PRIX_NEGOCIE_REPONSE,
                               201: _PRIX_NEGOCIE_REPONSE,
                               400: D.ErreurDevisFige, 409: D.ErreurDevisFige})
@@ -497,13 +491,12 @@ class DevisCycleActionsMixin:
         from ..domain.negociation import (
             PrixNegocieRefuse, apercu_prix_negocie, appliquer_prix_negocie)
         devis = self.get_object()
-        mode = request.data.get('mode') or 'apercu'
-        if mode not in ('apercu', 'appliquer'):
-            return Response(
-                {'detail': "mode attendu : 'apercu' ou 'appliquer'."},
-                status=status.HTTP_400_BAD_REQUEST)
-        saisie = {'prix_ttc': request.data.get('prix_ttc'),
-                  'remise_pct': request.data.get('remise_pct'),
+        # ENF11 — corps validé par le schéma PUBLIÉ (``D.PrixNegocieRequest``) :
+        # mode énuméré, prix OU remise en texte décimal, drapeau booléen.
+        donnees = valider_corps_schema(request, D.PrixNegocieRequest)
+        mode = donnees.get('mode', 'apercu')
+        saisie = {'prix_ttc': donnees.get('prix_ttc'),
+                  'remise_pct': donnees.get('remise_pct'),
                   'user': request.user}
         try:
             if mode == 'apercu':
@@ -512,10 +505,17 @@ class DevisCycleActionsMixin:
                          if not k.startswith('_')}
                 return Response(corps)
             corps = appliquer_prix_negocie(
-                devis, confirmer_avoir=bool(request.data.get(
-                    'confirmer_avoir')), **saisie)
+                devis, confirmer_avoir=bool(donnees.get('confirmer_avoir')),
+                **saisie)
         except PrixNegocieRefuse as exc:
-            return Response(exc.corps(), status=exc.statut_http)
+            # ENF11 — un corps conforme que le DEVIS refuse (montant rond,
+            # au-dessus du prix actuel, approbation, avoir à confirmer…) est un
+            # refus d'état : 409, même corps ``{detail, code, …}``.
+            statut = exc.statut_http
+            if statut == status.HTTP_400_BAD_REQUEST and exc.code not in (
+                    'saisie_vide', 'saisie_double'):
+                statut = status.HTTP_409_CONFLICT
+            return Response(exc.corps(), status=statut)
         return Response(corps, status=status.HTTP_201_CREATED)
 
     # api-only: l'écran « Faire signer l'avenant » arrive avec le panneau de vente (VNT75/VNT79).

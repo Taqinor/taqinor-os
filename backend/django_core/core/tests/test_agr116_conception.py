@@ -50,11 +50,78 @@ class BesoinRetenu(unittest.TestCase):
         self.assertEqual(besoin["nature"], "agronomique_plein")
         self.assertEqual(besoin["source_et0"], "EST.")
 
+    def test_debit_souhaite_seul_fait_un_besoin_par_heures_pic(self):
+        """AGQ1 (D-AGQ-1) — débit souhaité seul ⇒ besoin = débit × heures-pic
+        du mois, nature ``debit_souhaite`` ; la conception retombe sur ce
+        débit."""
+        heures = [heures_pic(p) for p in PROFILS]
+        besoin = besoin_retenu(debit_souhaite_m3h=20, heures_pic_mois=heures,
+                               mois_irrigation=[4, 5, 6])
+        self.assertEqual(besoin["nature"], "debit_souhaite")
+        self.assertEqual(besoin["m3_jour_mois"][3],
+                         round(20 * heures[3], 1))
+        self.assertEqual(besoin["m3_jour_mois"][0], 0.0)
+        self.assertIn("débit souhaité", besoin["provenance"]["detail"])
+        r = conception(besoin=besoin, profils_horaires=PROFILS,
+                       debit_exploitation_m3h=50, niveau_eau_m=30)
+        self.assertAlmostEqual(r["conception"]["debit_conception_m3h"], 20,
+                               places=0)
+
+    def test_debit_souhaite_sans_pvgis_heures_du_reglage_etiquetees(self):
+        besoin = besoin_retenu(debit_souhaite_m3h=20, heures_pic_mois=[7] * 12,
+                               source_heures_pic="repli")
+        self.assertEqual(besoin["m3_jour_mois"], [140.0] * 12)
+        self.assertIn("repli", besoin["provenance"]["detail"])
+
+    def test_volume_declare_prime_sur_le_debit_souhaite(self):
+        besoin = besoin_retenu(volume_declare_m3_jour=90,
+                               debit_souhaite_m3h=20,
+                               heures_pic_mois=[7] * 12)
+        self.assertEqual(besoin["nature"], "declare")
+        self.assertEqual(besoin["m3_jour_mois"], [90.0] * 12)
+
     def test_mois_d_irrigation_declares(self):
         besoin = besoin_retenu(volume_declare_m3_jour=50,
                                mois_irrigation=[5, 6, 7])
         self.assertEqual(besoin["m3_jour_mois"][4:7], [50.0] * 3)
         self.assertEqual(besoin["m3_jour_mois"][0], 0.0)
+
+
+class Controle(unittest.TestCase):
+    """AGQ2 (D-AGQ-2) — contrôle sur CHAQUE mois d'irrigation."""
+
+    BESOIN = [0.0] * 3 + [120.0] * 7 + [0.0] * 2
+
+    def test_mois_critique_recalcule_et_mois_sous_tolerance_listes(self):
+        # Sonde C-AGQ-002 : couverture [102, 96, 94, 94, 94, 94, 80] %.
+        prod = [0.0] * 3 + [122.4, 115.2, 112.8, 112.8, 112.8, 112.8, 96.0] \
+            + [0.0] * 2
+        r = conception(besoin=besoin_retenu(volume_declare_m3_jour=120,
+                                            mois_irrigation=range(4, 11)),
+                       profils_horaires=PROFILS, debit_exploitation_m3h=50,
+                       niveau_eau_m=30, production_m3_jour_mois=prod)
+        self.assertEqual(r["conception"]["mois_critique"], 10)
+        controle = r["controle_conception"]
+        self.assertEqual(controle["statut"], "couverture_insuffisante")
+        self.assertEqual(controle["couverture_mois_critique_pct"], 80)
+        self.assertEqual(controle["mois_sous_tolerance"], [6, 7, 8, 9, 10])
+
+    def test_tous_les_mois_couverts_conforme_liste_vide(self):
+        r = conception(besoin=besoin_retenu(volume_declare_m3_jour=120,
+                                            mois_irrigation=range(4, 11)),
+                       profils_horaires=PROFILS, debit_exploitation_m3h=50,
+                       niveau_eau_m=30,
+                       production_m3_jour_mois=[130.0] * 12)
+        self.assertEqual(r["controle_conception"]["statut"], "conforme")
+        self.assertEqual(r["controle_conception"]["mois_sous_tolerance"], [])
+
+    def test_mois_designe_conforme_mais_autre_mois_sous_tolerance(self):
+        prod = [100.0] * 12
+        prod[9] = 80.0
+        controle = controle_conception(self.BESOIN[:3] + [100.0] * 7
+                                       + self.BESOIN[10:], prod, 4)
+        self.assertEqual(controle["statut"], "couverture_insuffisante")
+        self.assertEqual(controle["mois_sous_tolerance"], [10])
 
 
 class Plafonds(unittest.TestCase):
@@ -73,6 +140,30 @@ class Plafonds(unittest.TestCase):
                        profils_horaires=PROFILS, debit_exploitation_m3h=20,
                        part_reglage_pct=80, niveau_eau_m=30)
         self.assertEqual(r["conception"]["plafonds"]["plafond_retenu_m3h"], 16)
+
+    def test_besoin_incouvrable_sous_le_plafond_du_forage(self):
+        """AGQ40 (D-AGQ-9) — production plafonnée à 25 × 90 % = 22,5 m³/h :
+        un besoin de 320 m³/j devient incouvrable, le contrôle le dit."""
+        from core.pompage.volumes import production_mensuelle
+        osp_30_13 = {"debits_m3h": [0, 12, 24, 30, 36, 39],
+                     "hmt_m": [148, 138, 114, 98, 70, 55]}
+        besoin = besoin_retenu(volume_declare_m3_jour=320)
+        passe1 = conception(besoin=besoin, profils_horaires=PROFILS,
+                            debit_exploitation_m3h=25, part_reglage_pct=90,
+                            niveau_eau_m=30)
+        plafond = passe1["conception"]["plafonds"]["plafond_retenu_m3h"]
+        self.assertEqual(plafond, 22.5)
+        prod = production_mensuelle(
+            kwc=30, profils_horaires=PROFILS, courbe_pompe=osp_30_13,
+            p_plaque_kw=11, hmt_m=70, plafond_m3h=plafond)
+        self.assertTrue(prod["plafond_atteint"])
+        r = conception(besoin=besoin, profils_horaires=PROFILS,
+                       debit_exploitation_m3h=25, part_reglage_pct=90,
+                       niveau_eau_m=30,
+                       production_m3_jour_mois=prod["m3_jour_mois"])
+        self.assertEqual(r["controle_conception"]["statut"],
+                         "couverture_insuffisante")
+        self.assertIn("plafond_forage", _codes(r))
 
     def test_volume_annuel_superieur_a_l_autorise(self):
         r = conception(besoin=besoin_retenu(volume_declare_m3_jour=100),

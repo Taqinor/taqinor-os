@@ -22,16 +22,20 @@ constantes.
 """
 from __future__ import annotations
 
+from core.pompage import hypotheses as hypotheses_noyau
+
 from .. import i18n_labels
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import fmt_centimes, lignes_remisees
+from ..montants import fmt_centimes, lignes_remisees, pct_fr
 from ..textes import tronquer_au_mot
 from ..residential import theme
 from ..sequence import sequence_affichage
 from . import mentions
-from .schema import TEXTE_COURBE_ABSENTE, courbe_svg
-from .synthese import CONDITION_ECONOMIES, debit_declare_sans_courbe
+from .schema import (TEXTE_COURBE_ABSENTE, courbe_svg, legende, schema_svg,
+                     superposer)
+from .synthese import (CONDITION_ECONOMIES, debit_declare_sans_courbe,
+                       texte_heures_eau)
 
 NB_PAGES = 3
 
@@ -219,8 +223,11 @@ def _hero(synthese, lg, declare=False):
                 f'</div></div>')
     a_hmt = (f' {_t(lg, "agr_hero_a_hmt", hmt=hmt)}'
              f'{ancre("pompe_hmt_m", hmt)}' if hmt is not None else "")
-    sur = (_t(lg, "sur_heures_pompage", heures=heures)
-           if heures is not None else "")
+    # AGQ28/AGQ3 — heures ÉQUIVALENTES à plein débit, pas des heures de
+    # marche ; AGQ3 (D-AGQ-2) — le mois de conception et le plus bas nommés.
+    sur = texte_heures_eau(eau, lg, _n) or (
+        _t(lg, "agr_heures_equivalentes", heures=heures)
+        if heures is not None else "")
     # AMOT56 (D-AMOT-7 = a) — m³/jour sur débit DÉCLARÉ (pompe sans courbe) :
     # la pastille le dit (« estimation · débit déclaré par vous »).
     pastille = (f'<span class="ag-hero-e">{_t(lg, "estimation")}'
@@ -238,25 +245,32 @@ def _cartes(synthese, lg):
     pompe = synthese.get("pompe") or {}
     champ = synthese.get("champ") or {}
     cartes = []
+    # AGQ13 — unités traduites (« 10,2 حصان », « 4,4 هكتار »).
+    u_cv, u_m3h = _t(lg, "unite_cv"), _t(lg, "unite_m3h")
     cv, kw = _n(pompe.get("cv")), _n(pompe.get("kw"))
     if cv is not None or kw is not None:
-        v = f"{cv} CV" if cv is not None else f"{kw} kW"
+        v = f"{cv} {u_cv}" if cv is not None else f"{kw} kW"
         s = f"{kw} kW" if cv is not None and kw is not None else ""
         cartes.append((_t(lg, "puissance_pompe"), v, s))
     debit, hmt = _n(eau.get("debit_hmt_m3h")), _n(eau.get("hmt_m"))
     if debit is not None:
         cartes.append((_t(lg, "debit_a_hmt", hmt=hmt) if hmt
                        else _t(lg, "agr_debit"),
-                       f'{debit} m³/h{ancre("pompe_debit_m3h", debit)}', ""))
+                       f'{debit} {u_m3h}{ancre("pompe_debit_m3h", debit)}',
+                       ""))
     kwc = _n(champ.get("kwc"), 2)
     if kwc is not None:
         nb = _n(champ.get("nb_panneaux"), 0)
-        cartes.append((_t(lg, "champ_pv"), f"{kwc} kWc",
+        cartes.append((_t(lg, "champ_pv"), f'{kwc} {_t(lg, "unite_kwc")}',
                        _t(lg, "agr_panneaux_n", n=nb) if nb else ""))
     ha = _n(((synthese.get("besoin_vs_livre") or {})
              .get("hectares_irrigables")))
     if ha is not None:
-        cartes.append((_t(lg, "agr_surface_irrigable"), f"{ha} ha", ""))
+        # AGQ28 (D-AGQ-7) — servie seulement d'un besoin agronomique :
+        # toujours étiquetée estimation FAO-56.
+        cartes.append((_t(lg, "agr_surface_irrigable"),
+                       f'≈ {ha} {_t(lg, "unite_ha")}',
+                       _t(lg, "agr_estimation_fao56")))
     if not cartes:
         return ""
     cellules = "".join(
@@ -272,10 +286,69 @@ def _composant(lg, cle):
             if f"agr_composant_{cle}" in i18n_labels.LIBELLES else cle)
 
 
+def _argent_nouveau_forage(eco, lg):
+    """AGQ17 — nouveau forage : le coût de l'eau solaire SEUL, avec sa
+    formule ; ni remplacement, ni économie, ni retour, ni phrase carburant
+    (le client n'a aucune énergie actuelle)."""
+    solaire = _n((eco.get("mad_par_m3") or {}).get("solaire"), 2)
+    if solaire is None:
+        return ""
+    horizon = _n((eco.get("economie") or {}).get("horizon_ans"), 0)
+    note = (f'<div class="ag-note">'
+            f'{_t(lg, "agr_formule_m3_solaire", horizon=horizon)}</div>'
+            if horizon is not None else "")
+    return (f'<div class="ag-sec">{_t(lg, "agr_votre_argent")}</div>'
+            f'<div class="ag-box ag-box-gold"><table class="ag-tbl">'
+            f'<tr><td>{_t(lg, "agr_cout_eau_solaire")}</td>'
+            f'<td class="r">{_t(lg, "agr_mad_par_m3", n=solaire)}</td></tr>'
+            f'</table>{note}</div>')
+
+
+def _economie_et_retour(economie, lg):
+    """AGQ20 — « Économie nette, année 1 » = ``economie_nette_an1`` servie
+    (économie − charges, hors remplacement) ; retour « 1 an » / « N ans » ;
+    sans retour sur l'horizon (flux calculé, cumul final négatif) : « au-delà
+    de N ans » — jamais une ligne omise en silence."""
+    lignes = []
+    nette = _mad(economie.get("economie_nette_an1"))
+    if nette is not None:
+        lignes.append((_t(lg, "agr_economie_nette_an1"), f"{nette} MAD"))
+    retour = _num(economie.get("retour_ans"))
+    flux = [f for f in economie.get("flux") or [] if isinstance(f, dict)]
+    horizon = _n(economie.get("horizon_ans"), 0)
+    if retour is not None:
+        cle = "agr_n_an" if retour == 1 else "agr_n_ans"
+        lignes.append((_t(lg, "agr_retour_sans_aide"),
+                       _t(lg, cle, n=_n(retour))))
+    elif flux and horizon is not None \
+            and (_num(flux[-1].get("cumul_mad")) or 0) < 0:
+        lignes.append((_t(lg, "agr_retour_sans_aide"),
+                       _t(lg, "agr_au_dela_de_n_ans", n=horizon)))
+    return lignes
+
+
+def _mois_declares(eco, lg):
+    """AGQ18 — « Mois d'irrigation : déclarés par vous le JJ/MM/AAAA. » lu
+    sur l'entrée ``mois_irrigation`` du bloc (des mois du calendrier non
+    confirmés rendent le bloc non publiable : ils n'arrivent jamais ici)."""
+    entree = next((e for e in eco.get("entrees_declarees") or []
+                   if isinstance(e, dict)
+                   and e.get("cle") == "mois_irrigation"), None)
+    if entree is None:
+        return ""
+    jour = _date_fr(entree.get("saisi_le")
+                    or (entree.get("provenance") or {}).get("date"))
+    phrase = (_t(lg, "agr_declares_par_vous_le", date=jour) if jour
+              else mentions.phrase_provenance("a_confirmer", lg))
+    return " " + _t(lg, "agr_mois_irrigation_phrase", phrase=phrase)
+
+
 def _argent(synthese, lg):
     eco = synthese.get("economies")
     if not isinstance(eco, dict):
         return ""
+    if eco.get("cas") == "nouveau_forage":
+        return _argent_nouveau_forage(eco, lg)
     lignes = []
     dep = eco.get("depense_actuelle") or {}
     energie = (synthese.get("energie_actuelle") or {}).get("valeur")
@@ -290,16 +363,7 @@ def _argent(synthese, lg):
     if _mad(charges.get("total_mad_an")) is not None:
         lignes.append((_t(lg, "agr_charges_solaires"),
                        f"{_mad(charges.get('total_mad_an'))} MAD"))
-    flux = ((eco.get("economie") or {}).get("flux") or [])
-    an1 = next((f for f in flux if isinstance(f, dict)
-                and f.get("annee") == 1), None)
-    if an1 and _mad(an1.get("flux_mad")) is not None:
-        lignes.append((_t(lg, "agr_economie_nette_an1"),
-                       f"{_mad(an1.get('flux_mad'))} MAD"))
-    retour = _n((eco.get("economie") or {}).get("retour_ans"))
-    if retour is not None:
-        lignes.append((_t(lg, "agr_retour_sans_aide"),
-                       _t(lg, "agr_n_ans", n=retour)))
+    lignes.extend(_economie_et_retour(eco.get("economie") or {}, lg))
     m3 = eco.get("mad_par_m3") or {}
     if _num(m3.get("actuel")) is not None and _num(m3.get("solaire")) is not None:
         lignes.append((_t(lg, "agr_cout_m3"),
@@ -324,6 +388,7 @@ def _argent(synthese, lg):
                    if isinstance(e, dict) and _date_fr(e.get("saisi_le")))
     declare = _t(lg, "agr_conso_prix_paye", phrase=mentions.phrase_provenance(
         "declare", lg, date=dates[-1] if dates else None))
+    declare += _mois_declares(eco, lg)
     notes = (f'{declare} {_t(lg, "agr_indexation")} '
              f'{_t(lg, "agr_fda_non_comptee")} '
              f'{CONDITION_ECONOMIES.get(lg) or CONDITION_ECONOMIES["fr"]}')
@@ -341,6 +406,26 @@ def _entree(lg, cle):
     return str(cle).replace("_", " ")
 
 
+#: AGQ28 — unité imprimée à côté de la valeur d'une entrée de provenance.
+_UNITE_ENTREE = {"volume_m3_jour": "unite_m3j", "niveau_statique_m": "unite_m",
+                 "niveau_dynamique_m": "unite_m", "profondeur_forage_m": "unite_m",
+                 "hmt_m": "unite_m", "debit_exploitation_m3h": "unite_m3h"}
+
+
+def _valeur_provenance(lg, cle, valeur):
+    """AGQ28 — « 135 m³/j », « 36 m³/h », « butane (bouteilles) » ; None
+    quand la valeur manque (la provenance seule s'imprime)."""
+    if cle == "energie_actuelle":
+        cle_i18n = f"agr_energie_{valeur}"
+        return (_t(lg, cle_i18n) if cle_i18n in i18n_labels.LIBELLES
+                else None)
+    texte = _n(valeur)
+    if texte is None:
+        return None
+    unite = _UNITE_ENTREE.get(cle)
+    return f"{texte} {_t(lg, unite)}" if unite else texte
+
+
 def _provenance(synthese, lg, nom_societe):
     prov = synthese.get("provenance") or {}
     lignes = []
@@ -356,8 +441,19 @@ def _provenance(synthese, lg, nom_societe):
                 "declare", lg, date=p.get("date"))
         else:
             phrase = mentions.phrase_provenance("a_confirmer", lg)
+        valeur = _valeur_provenance(lg, cle, p.get("valeur"))
         lignes.append(f'<div class="ag-li"><b>{_entree(lg, cle)}</b> : '
-                      f'{phrase}</div>')
+                      + (f'{valeur} — ' if valeur else "")
+                      + f'{phrase}</div>')
+    controle = synthese.get("controle_forage")
+    if isinstance(controle, dict):
+        cle = ("agr_controle_forage_ok" if controle.get("conforme")
+               else "agr_controle_forage_depasse")
+        u = _t(lg, "unite_m3h")
+        texte = _t(lg, cle,
+                   pompe=f'{_n(controle.get("debit_pompe_m3h"))} {u}',
+                   forage=f'{_n(controle.get("debit_forage_m3h"))} {u}')
+        lignes.append(f'<div class="ag-li">{texte}</div>')
     visite = [_entree(lg, c) for c in synthese.get("a_confirmer_par_visite")
               or []]
     bloc_visite = (
@@ -367,6 +463,23 @@ def _provenance(synthese, lg, nom_societe):
         return ""
     return (f'<div class="ag-sec">{_t(lg, "agr_provenance_titre")}</div>'
             f'<div class="ag-box">{"".join(lignes)}{bloc_visite}</div>')
+
+
+def _etapes_suivantes(synthese, lg):
+    """AGQ30 — les 5 étapes (visite → FDA si demandé → commande → pose →
+    mise en service mesurée) et l'entretien, SANS délai chiffré
+    (D-AGR-10) ; texte compact (``ag-small``) : la page 1 tient."""
+    etapes = [((e or {}).get("textes") or {}) for e in
+              synthese.get("etapes_suivantes") or []]
+    lignes = [f'<div>{i}. {t.get(lg) or t.get("fr")}</div>'
+              for i, t in enumerate(etapes, start=1)
+              if t.get(lg) or t.get("fr")]
+    if not lignes:
+        return ""
+    entretien = mentions.ENTRETIEN.get(lg) or mentions.ENTRETIEN["fr"]
+    return (f'<div class="ag-sec">{_t(lg, "agr_etapes_suivantes")}</div>'
+            f'<div class="ag-box ag-small">{"".join(lignes)}'
+            f'<div class="ag-note">{entretien}</div></div>')
 
 
 def page1(ctx):
@@ -387,14 +500,16 @@ def page1(ctx):
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'
             f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
             f'{_argent(synthese, lg)}{_qj(25)}'
-            f'{_provenance(synthese, lg, ctx["nom_societe"])}'
+            f'{_provenance(synthese, lg, ctx["nom_societe"])}{_qj(15)}'
+            f'{_etapes_suivantes(synthese, lg)}'
             f'</div>')
 
 
 # ── page 2 — comment ça marche ──────────────────────────────────────────────
 
 def _barres_besoin(bvl, lg):
-    """Barres « besoin / livré » par mois, en SVG (mise à l'échelle seule)."""
+    """Barres « besoin / livré » par mois, en SVG (mise à l'échelle seule).
+    AGQ13 — en arabe, mois de droite à gauche et noms des mois en HTML."""
     mois = bvl.get("mois") or []
     valeurs = [(_num(m.get("besoin_m3_jour")), _num(m.get("livre_m3_jour")))
                for m in mois if isinstance(m, dict)]
@@ -403,21 +518,76 @@ def _barres_besoin(bvl, lg):
     haut = max(max(b, q) for b, q in valeurs) or 1.0
     l_vb, h_vb, x0, y0, y1 = 600, 260, 40, 220, 20
     pas = (l_vb - x0 - 10) / 12
+    rtl = i18n_labels.est_rtl(lg)
+    legendes = [] if rtl else None
     corps = [f'<line x1="{x0}" y1="{y0}" x2="{l_vb - 10}" y2="{y0}" '
              f'stroke="#1F2937" stroke-width="1.2"/>']
     for i, (b, q) in enumerate(valeurs):
-        x = x0 + i * pas + 4
+        x = x0 + (11 - i if rtl else i) * pas + 4
+        if not b:
+            # AGQ32 — mois SANS besoin : bande grisée « eau disponible »
+            # (jamais lu comme une donnée manquante).
+            corps.append(f'<rect x="{x - 3:.1f}" y="{y1 - 14}" '
+                         f'width="{pas - 2:.1f}" height="{y0 - y1 + 14}" '
+                         f'fill="#F3F4F6" data-mois-sans-besoin="{i + 1}"/>')
         for j, (v, coul) in enumerate(((b, "#9CA3AF"), (q, "#2C5F8A"))):
             h = (v / haut) * (y0 - y1)
-            corps.append(f'<rect x="{x + j * (pas / 2 - 3):.1f}" '
+            xb = x + j * (pas / 2 - 3)
+            corps.append(f'<rect x="{xb:.1f}" '
                          f'y="{y0 - h:.1f}" width="{pas / 2 - 5:.1f}" '
                          f'height="{h:.1f}" fill="{coul}"/>')
+            if v:
+                # AGQ32 — la valeur sur la barre (chiffres seuls : sûrs en
+                # SVG dans toutes les langues).
+                corps.append(
+                    f'<text x="{xb + (pas / 2 - 5) / 2:.1f}" '
+                    f'y="{y0 - h - 3:.1f}" font-size="8" '
+                    f'text-anchor="middle" fill="{coul}" '
+                    f'font-family="DejaVu Sans, Arial, sans-serif">'
+                    f'{_n(v)}</text>')
+        nom = _t(lg, f"agr_moisc_{i + 1}")
+        if rtl:
+            legendes.append(legende(x + pas / 2 - 4, y0 + 16, nom,
+                                    (88, l_vb, h_vb + 10), taille=12,
+                                    couleur="#6B7280"))
+            continue
         corps.append(f'<text x="{x + pas / 2 - 4:.1f}" y="{y0 + 16}" '
                      f'font-size="12" text-anchor="middle" fill="#6B7280" '
                      f'font-family="DejaVu Sans, Arial, sans-serif">'
-                     f'{_t(lg, f"agr_moisc_{i + 1}")}</text>')
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {l_vb} '
-            f'{h_vb + 10}" width="100%">{"".join(corps)}</svg>')
+                     f'{nom}</text>')
+    return superposer(
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {l_vb} '
+        f'{h_vb + 10}" width="100%">{"".join(corps)}</svg>', legendes)
+
+
+def _sous_tolerance(bvl, lg):
+    """AGQ3 (D-AGQ-2) — « Mois sous la tolérance de conception : octobre :
+    80 % de votre besoin. » ; "" quand aucun mois n'est sous la tolérance."""
+    mois = [m for m in bvl.get("mois_sous_tolerance") or []
+            if isinstance(m, dict) and m.get("mois") in range(1, 13)]
+    liste = "; ".join(
+        _t(lg, "agr_mois_couverture", mois=_t(lg, f"agr_mois_{m['mois']}"),
+           pct=_n(m.get("couverture_pct"), 0))
+        if _n(m.get("couverture_pct"), 0) is not None
+        else _t(lg, f"agr_mois_{m['mois']}") for m in mois)
+    return f' {_t(lg, "agr_mois_sous_tolerance", liste=liste)}' if liste else ""
+
+
+def _dict_textes(note):
+    textes = note.get("textes") if isinstance(note, dict) else None
+    return textes if isinstance(textes, dict) else {}
+
+
+def _notes_html(synthese, lg):
+    """AGQ38 — les notes client du noyau (``synthese.notes``), au plus
+    quatre, dans la langue du document ; "" sans note (ni titre)."""
+    textes = [(_dict_textes(n).get(lg) or _dict_textes(n).get("fr"))
+              for n in (synthese.get("notes") or [])[:4]]
+    lignes = "".join(f'<div class="ag-li">{t}</div>' for t in textes if t)
+    if not lignes:
+        return ""
+    return (f'<div class="ag-sec">{_t(lg, "agr_notes_titre")}</div>'
+            f'<div class="ag-box ag-small">{lignes}</div>{_qj(15)}')
 
 
 def page2(ctx):
@@ -425,6 +595,15 @@ def page2(ctx):
     lg = _langue(d)
     schema = synthese.get("schema_svg") or ""
     courbe = courbe_svg(synthese, langue=lg)
+    if i18n_labels.est_rtl(lg):
+        # AGQ13 — l'arabe quitte les ``<text>`` SVG (non façonnés par
+        # WeasyPrint) pour des légendes HTML superposées ; même dessin.
+        leg_schema, leg_courbe = [], []
+        if schema:
+            schema = superposer(schema_svg(synthese, lg, legendes=leg_schema),
+                                leg_schema)
+        courbe = superposer(courbe_svg(synthese, langue=lg,
+                                       legendes=leg_courbe), leg_courbe)
     if courbe:
         bloc_courbe = f'<div class="ag-svg">{courbe}</div>'
     else:
@@ -448,9 +627,14 @@ def page2(ctx):
                       phrase=_phrase.get(lg) or _phrase["fr"])
         else:
             _leg = _t(lg, "agr_legende_barres")
+        sans_besoin = any(not (m or {}).get("besoin_m3_jour")
+                          for m in bvl.get("mois") or [])
         legende = (f'<div class="ag-note">{_leg}'
+                   + (f' {_t(lg, "agr_mois_sans_besoin")}'
+                      if sans_besoin else "")
                    + (f' {_t(lg, "agr_mois_serre", mois=serre_txt)}'
-                      if serre_txt else "") + '</div>')
+                      if serre_txt else "")
+                   + _sous_tolerance(bvl, lg) + '</div>')
         bloc_besoin = f'<div class="ag-svg">{barres}</div>{legende}'
     else:
         motif = _omission(synthese, "besoin_vs_livre")
@@ -492,7 +676,7 @@ def page2(ctx):
             f'{bloc_courbe}</div><div class="ag-col">'
             f'<div class="ag-sec">{_t(lg, "agr_besoin_livre_titre")}</div>'
             f'{bloc_besoin}</div></div>{_qj(30)}{plaque_html}{_qj(15)}'
-            f'{aide_html}</div>')
+            f'{_notes_html(synthese, lg)}{aide_html}</div>')
 
 
 # ── page 3 — équipement, prix, garanties ────────────────────────────────────
@@ -576,13 +760,23 @@ def _totaux(d, lg):
         lignes.append(("remise", tot.get("remise"), "- "))
     if (_num(tot.get("arrondi")) or 0) > 0:
         lignes.append(("arrondi", tot.get("arrondi"), "- "))
-    lignes += [("total_ht", tot.get("ht_net"), ""),
-               ("tva", tot.get("tva"), "")]
+    lignes.append(("total_ht", tot.get("ht_net"), ""))
+    # AGQ32 — la TVA ventilée par taux du builder (``tva_par_taux``), comme
+    # le une-page ; un seul taux : la ligne unique d'hier.
+    paliers = [b for b in tot.get("tva_par_taux") or []
+               if isinstance(b, dict) and _num(b.get("taux")) is not None]
+    if len(paliers) <= 1:
+        lignes.append(("tva", tot.get("tva"), ""))
     corps = ""
     for cle, val, signe in lignes:
         f = fmt_centimes(_num(val) or 0)
         corps += (f'<tr><td>{_t(lg, cle)}{ancre(cle, f)}</td>'
                   f'<td class="r">{signe}{f} MAD</td></tr>')
+    for b in paliers if len(paliers) > 1 else []:
+        f = fmt_centimes(_num(b.get("montant")) or 0)
+        corps += (f'<tr><td>{_t(lg, "lg_tva_pct", r=pct_fr(b["taux"]))}'
+                  f'{ancre("tva_taux", f, taux=b["taux"])}</td>'
+                  f'<td class="r">{f} MAD</td></tr>')
     ttc = fmt_centimes(_num(tot.get("ttc")) or 0)
     corps += (f'<tr class="ag-tot-ttc"><td>{_t(lg, "total_ttc")}'
               f'{ancre("total_ttc", ttc)}</td><td class="r">{ttc} MAD</td></tr>')
@@ -607,12 +801,20 @@ def _libelle_garantie(lg, g):
 
 def _garanties(synthese, lg):
     gar = [g for g in synthese.get("garanties") or [] if isinstance(g, dict)]
-    if not gar:
+    lignes = [_libelle_garantie(lg, g) for g in gar]
+    # AGQ14 (D-AGQ-4) — pompe / variateur sans durée structurée : l'omission
+    # est NOMMÉE, « selon fiche fournisseur » — jamais une durée inventée.
+    omis = {o.get("bloc") for o in synthese.get("omissions") or []
+            if isinstance(o, dict)}
+    for comp in ("pompe", "variateur"):
+        if f"garanties.{comp}" in omis:
+            lignes.append(_t(lg, f"agr_garantie_{comp}",
+                             duree=_t(lg, "agr_selon_fiche_fournisseur")))
+    if not lignes:
         return (f'<div class="ag-small"><b>{_t(lg, "agr_garanties")}</b> : '
                 f'{_t(lg, "agr_garanties_fiches")}</div>')
     return (f'<div class="ag-small"><b>{_t(lg, "agr_garanties")}</b></div>'
-            + "".join(f'<div class="ag-li">{_libelle_garantie(lg, g)}</div>'
-                      for g in gar))
+            + "".join(f'<div class="ag-li">{l}</div>' for l in lignes))
 
 
 def _formalites(synthese, lg):
@@ -629,13 +831,24 @@ def _formalites(synthese, lg):
             f'<div class="ag-box">{"".join(items)}</div>')
 
 
+def _libelle_non_inclus(lg, cle):
+    """AGQ11 — forage, génie civil, puis les éléments du kit absents des
+    lignes (libellé de l'option, en minuscule dans la phrase)."""
+    if f"agr_non_inclus_{cle}" in i18n_labels.LIBELLES:
+        return _t(lg, f"agr_non_inclus_{cle}")
+    if f"agr_option_{cle}" in i18n_labels.LIBELLES:
+        texte = _t(lg, f"agr_option_{cle}")
+        # « DC/AC » reste un sigle : minuscule seulement devant un mot.
+        return (texte[:1].lower() + texte[1:] if texte[1:2].islower()
+                else texte)
+    return str(cle).replace("_", " ")
+
+
 def page3(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
     lg = _langue(d)
     non_inclus = ", ".join(
-        _t(lg, f"agr_non_inclus_{c}")
-        if f"agr_non_inclus_{c}" in i18n_labels.LIBELLES else str(c)
-        for c in synthese.get("non_inclus") or [])
+        _libelle_non_inclus(lg, c) for c in synthese.get("non_inclus") or [])
     non_inclus_html = (f'<div class="ag-small" style="margin-top:4px;">'
                        f'<b>{_t(lg, "agr_non_inclus")}</b> : {non_inclus}.'
                        f'</div>' if non_inclus else "")
@@ -691,6 +904,16 @@ def _lien_signature(d):
     return lien if "/proposition/" in lien else None
 
 
+def _libelle_option(lg, o):
+    """AGQ11 — une option du kit SANS ligne chiffrée est nommée par son
+    libellé structurel traduit ; une ligne saisie garde sa désignation."""
+    cle = o.get("cle")
+    if (cle and o.get("ligne_id") is None
+            and f"agr_option_{cle}" in i18n_labels.LIBELLES):
+        return _t(lg, f"agr_option_{cle}")
+    return o.get("designation")
+
+
 def _options_a_cocher(synthese, lg):
     options = [o for o in synthese.get("options_kit") or []
                if isinstance(o, dict) and o.get("designation")]
@@ -699,9 +922,15 @@ def _options_a_cocher(synthese, lg):
     cases = []
     for o in options:
         prix = _mad(o.get("total_ttc"))
-        supplement = (f'<b>+ {prix} MAD TTC</b>' if prix is not None else "")
+        # AGQ11 — jamais omise : supplément chiffré, sinon « prix sur devis ».
+        supplement = (f'<b>+ {prix} MAD TTC</b>' if prix is not None
+                      else f'<i>{_t(lg, "agr_prix_sur_devis")}</i>')
+        cle_mention = f"agr_option_mention_{o.get('cle')}"
+        mention = (f' <span class="ag-mq">{_t(lg, cle_mention)}</span>'
+                   if o.get("mention") and cle_mention in i18n_labels.LIBELLES
+                   else "")
         cases.append(f'<td class="ag-opt"><span class="ag-case"></span>'
-                     f'{o.get("designation")} {supplement}</td>')
+                     f'{_libelle_option(lg, o)} {supplement}{mention}</td>')
     lignes = "".join(
         "<tr>" + "".join(cases[i:i + 2])
         + ("<td></td>" if len(cases[i:i + 2]) == 1 else "") + "</tr>"
@@ -733,7 +962,13 @@ def _echeancier(d, lg):
                      + '</div></td>')
     if not cases:
         return ""
-    return f'<table class="ag-ech"><tr>{"".join(cases)}</tr></table>'
+    # AGQ30 — l'acompte suit l'accord FDA quand le client demande l'aide
+    # (accord AVANT travaux, D-AGR-6).
+    fda = (f'<div class="ag-sig-h" style="margin:-2px 0 3px;">'
+           f'{_t(lg, "agr_acompte_apres_fda")}</div>'
+           if _num(termes.get("acompte")) else "")
+    return (f'<table class="ag-ech"><tr>{"".join(cases)}</tr></table>'
+            f'{fda}')
 
 
 def cloture(ctx):
@@ -836,6 +1071,9 @@ def _hmt_annexe(d, synthese, lg, nom_societe):
                     phrase=mentions.phrase_provenance(
                         cle, lg, date=prov.get("date"),
                         nom_societe=nom_societe))
+    # AGQ31 — une HMT SAISIE (aucune composante) le dit, jamais un calcul.
+    if not lignes and (etude.get("hmt") or {}).get("source") == "saisie":
+        phrase = phrase or _t(lg, "agr_annexe_hmt_saisie")
     return (f'<div class="ag-small"><b>{_t(lg, "agr_annexe_hmt", hmt=hmt)}'
             f'</b></div>'
             + (f'<table class="ag-tbl">{lignes}</table>' if lignes else "")
@@ -861,14 +1099,54 @@ def _debit_et_mois_annexe(d, synthese, lg):
             _num(v) is not None for v in serie):
         entetes = "".join(f'<td class="r"><b>{_t(lg, f"agr_moisc_{i}")}</b>'
                           f'</td>' for i in range(1, 13))
-        valeurs = "".join(f'<td class="r">{_n(v)}</td>' for v in serie)
+        # AGQ31 — besoin / livré / couverture par mois, LUS (synthèse AGR304,
+        # ``couverture_pct_mois`` du moteur) ; une ligne absente est omise.
+        bvl = (synthese.get("besoin_vs_livre") or {}).get("mois") or []
+        besoin = [m.get("besoin_m3_jour") for m in bvl if isinstance(m, dict)]
+        couv = etude.get("couverture_pct_mois")
+        rangs = [("agr_annexe_ligne_livre", serie, 1)]
+        if len(besoin) == 12 and all(_num(v) is not None for v in besoin):
+            rangs.insert(0, ("agr_annexe_ligne_besoin", besoin, 1))
+        if isinstance(couv, (list, tuple)) and len(couv) == 12:
+            rangs.append(("agr_annexe_ligne_couverture", couv, 0))
+        corps_tbl = "".join(
+            f'<tr><td>{_t(lg, cle)}</td>' + "".join(
+                f'<td class="r">{_n(v, dec) if _num(v) is not None else "—"}'
+                f'{" %" if cle.endswith("couverture") and _num(v) is not None else ""}</td>'
+                for v in valeurs) + '</tr>'
+            for cle, valeurs, dec in rangs)
         blocs.append(f'<div class="ag-small" style="margin-top:4px;">'
                      f'{_t(lg, "agr_annexe_m3_mois")}</div>'
-                     f'<table class="ag-tbl"><tr>{entetes}</tr>'
-                     f'<tr>{valeurs}</tr></table>')
+                     f'<table class="ag-tbl"><tr><td></td>{entetes}</tr>'
+                     f'{corps_tbl}</table>')
     if not blocs:
         return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
     return "".join(blocs)
+
+
+def _texte_hyp(h, champ, lg, repli):
+    """AGQ12 (C-AGQ-011) — texte CLIENT ``champ`` (``libelle`` ou
+    ``source_client``) en langue ``lg`` : servi par le payload, sinon lu dans
+    la table du noyau par sa clé (devis d'hier sans ces champs), sinon
+    ``repli``. Jamais ``source`` (trace interne : chemins, décisions)."""
+    textes = h.get(champ)
+    if not isinstance(textes, dict):
+        try:
+            textes = getattr(hypotheses_noyau.hypothese(h.get("cle")), champ)
+        except KeyError:
+            textes = {}
+    return textes.get(lg) or textes.get("fr") or repli
+
+
+def _valeur_hyp(valeur):
+    """AGQ12 — une plage s'imprime « 1,2 – 1,5 », une liste « 0,75, 1,1, … »."""
+    if isinstance(valeur, dict) and "min" in valeur:
+        return f'{_n(valeur.get("min"), 3)} – {_n(valeur.get("max"), 3)}'
+    if isinstance(valeur, (list, tuple)):
+        return ", ".join(str(_n(v, 3)) for v in valeur)
+    if _num(valeur) is not None:
+        return _n(valeur, 3)
+    return theme._esc(valeur if valeur is not None else "")
 
 
 def _hypotheses_annexe(d, lg):
@@ -876,15 +1154,20 @@ def _hypotheses_annexe(d, lg):
                         or []) if isinstance(h, dict) and h.get("cle")]
     if not hyps:
         return f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
-    lignes = []
+    lignes = [f'<tr><th>{_t(lg, "agr_annexe_hyp_libelle")}</th>'
+              f'<th class="r">{_t(lg, "agr_annexe_hyp_valeur")}</th>'
+              f'<th>{_t(lg, "agr_annexe_hyp_source")}</th></tr>']
     for h in hyps:
-        source = (_t(lg, "agr_annexe_est") if h.get("statut") == "estimation"
-                  or not h.get("source") else theme._esc(h.get("source")))
-        valeur = h.get("valeur")
-        valeur = _n(valeur, 3) if _num(valeur) is not None \
-            else theme._esc(valeur if valeur is not None else "")
-        lignes.append(f'<tr><td>{theme._esc(h.get("cle"))}</td>'
-                      f'<td class="r">{valeur}</td><td>{source}</td></tr>')
+        # AGQ12 — libellé et source lisibles par le client ; une estimation
+        # reste marquée « EST. » ; jamais la clé brute ni la trace interne.
+        libelle = theme._esc(_texte_hyp(
+            h, "libelle", lg, str(h["cle"]).replace("_", " ")))
+        source = theme._esc(_texte_hyp(h, "source_client", lg, ""))
+        if h.get("statut") in ("estimation", "EST.") or not source:
+            source = _t(lg, "agr_annexe_est") + (f" — {source}" if source else "")
+        lignes.append(f'<tr><td>{libelle}</td>'
+                      f'<td class="r">{_valeur_hyp(h.get("valeur"))}</td>'
+                      f'<td>{source}</td></tr>')
     return f'<table class="ag-tbl">{"".join(lignes)}</table>'
 
 
@@ -913,14 +1196,99 @@ def _references_annexe(d, lg):
     refs = [r for r in d.get("references_pompage") or []
             if isinstance(r, dict) and r.get("titre")]
     if not refs:
-        return (f'<div class="ag-small">'
-                f'{_t(lg, "agr_annexe_aucune_reference")}</div>')
+        # AGQ32 — aucune référence : aucune phrase (la section est omise).
+        return ""
     return "".join(
         f'<div class="ag-li">{theme._esc(r.get("titre"))}'
         + (f' — {theme._esc(r.get("ville"))}' if r.get("ville") else "")
         + (f' ({theme._esc(r.get("mise_en_service"))})'
            if r.get("mise_en_service") else "")
         + '</div>' for r in refs)
+
+
+def _lis(lignes):
+    return "".join(f'<div class="ag-li">{l}</div>' for l in lignes)
+
+
+def _site_et_besoin_annexe(d, lg):
+    """AGQ31 — site, cultures/surface/irrigation déclarées, nature du besoin
+    (déclaré ou FAO-56 avec sa source ET0), source d'ensoleillement : LUS."""
+    etude = d.get("etude") or {}
+    lignes = []
+    loc = ((etude.get("entrees_resolues") or {}).get("localisation") or {})
+    loc = loc.get("valeur") if isinstance(loc, dict) else None
+    ville = (loc or etude.get("localisation") or {}).get("ville") \
+        if isinstance(loc or etude.get("localisation"), dict) else None
+    if ville:
+        lignes.append(_t(lg, "agr_annexe_site", ville=theme._esc(str(ville))))
+    cultures = [c for c in ((etude.get("besoin") or {}).get("cultures") or [])
+                if isinstance(c, dict) and c.get("culture")]
+    if cultures:
+        parts = []
+        for c in cultures:
+            txt = theme._esc(str(c["culture"]))
+            if _n(c.get("surface_ha"), 2) is not None:
+                txt += f' · {_n(c.get("surface_ha"), 2)} ha'
+            if c.get("irrigation"):
+                txt += f' · {theme._esc(str(c["irrigation"]))}'
+            parts.append(txt)
+        lignes.append(_t(lg, "agr_annexe_cultures", liste="; ".join(parts)))
+    mensuel = etude.get("besoin_mensuel") or {}
+    if mensuel.get("nature") == "declare":
+        lignes.append(_t(lg, "agr_annexe_besoin_declare"))
+    elif mensuel.get("nature"):
+        et0 = mensuel.get("source_et0")
+        lignes.append(_t(lg, "agr_annexe_besoin_fao56", et0=theme._esc(str(et0))
+                         if et0 else _t(lg, "agr_annexe_est")))
+    src = (etude.get("production") or {}).get("source_irradiation")
+    if src:
+        lignes.append(_t(lg, "agr_annexe_irradiation_pvgis" if src == "pvgis"
+                         else "agr_annexe_irradiation_repli"))
+    return _lis(lignes) if lignes else f'<div class="ag-omis">{_t(lg, "agr_annexe_omis")}</div>'
+
+
+def _dimensionnement_annexe(d, synthese, lg):
+    """AGQ31 — calage de la pompe, chaînes PV contre l'entrée du variateur
+    (série × parallèle, Voc froid, Vmp chaud), point de fonctionnement, et la
+    phrase qui distingue débit de conception et débit livré : LUS."""
+    etude = d.get("etude") or {}
+    lignes = []
+    calage = _n((etude.get("source") or {}).get("profondeur_calage_m"))
+    if calage is not None:
+        lignes.append(_t(lg, "agr_annexe_calage", m=calage))
+    ch = (etude.get("champ") or {}).get("chaines") or {}
+    nom = theme._esc(str((etude.get("variateur") or {}).get("nom") or ""))
+    if ch.get("verifiable") and _n(ch.get("serie"), 0) is not None:
+        lignes.append(_t(lg, "agr_annexe_chaines", serie=_n(ch.get("serie"), 0),
+                         paralleles=_n(ch.get("paralleles"), 0),
+                         voc=_n(ch.get("voc_froid_v"), 0),
+                         vmp=_n(ch.get("vmp_chaud_v"), 0),
+                         variateur=nom or _t(lg, "agr_annexe_omis")))
+    elif ch.get("motif"):
+        lignes.append(_t(lg, "agr_annexe_chaines_non_verifiees",
+                         motif=theme._esc(str(ch["motif"]))))
+    pt = (synthese.get("point_fonctionnement") or {}).get("point") or {}
+    if _n(pt.get("debit_m3h")) is not None and _n(pt.get("hmt_m")) is not None:
+        lignes.append(_t(lg, "agr_annexe_point", q=_n(pt.get("debit_m3h")),
+                         hmt=_n(pt.get("hmt_m"))))
+    lignes.append(_t(lg, "agr_annexe_debits_explique"))
+    return _lis(lignes)
+
+
+def _garanties_et_cartouche_annexe(d, synthese, lg, nom_societe):
+    """AGQ31 — garanties par composant (lues sur les lignes, AGR305) et le
+    cartouche « Étude réalisée par … le … »."""
+    gars = []
+    for g in synthese.get("garanties") or []:
+        if not isinstance(g, dict) or not g.get("libelle"):
+            continue
+        mois = g.get("mois")
+        duree = (_duree(lg, mois) if isinstance(mois, int)
+                 and not isinstance(mois, bool) and mois > 0 else None)
+        gars.append(theme._esc(str(g["libelle"])) + (f" : {duree}" if duree else ""))
+    html = (f'<div class="ag-li">{_t(lg, "agr_annexe_garanties", liste="; ".join(gars))}'
+            f'</div>' if gars else "")
+    return html + (f'<div class="ag-note">{_t(lg, "agr_annexe_cartouche", societe=theme._esc(str(nom_societe or "")), date=theme._esc(str(d.get("date") or "")))}</div>')
 
 
 def page_annexe_note_calcul(ctx):
@@ -932,24 +1300,31 @@ def page_annexe_note_calcul(ctx):
     d, synthese = ctx["d"], ctx["synthese"]
     lg = _langue(d)
     sec = '<div class="ag-sec">{}</div>'.format
+    refs = _references_annexe(d, lg)
+    refs_html = (f'{sec(_t(lg, "agr_annexe_references"))}'
+                 f'<div class="ag-box">{refs}</div>' if refs else "")
     return (f'<div class="ag-pad">'
             f'<div class="ag-kicker">{_t(lg, "agr_annexe_kicker")}</div>'
             f'<div class="ag-title">{_t(lg, "agr_annexe_titre")}</div>'
             f'{sec(_t(lg, "agr_annexe_equipement"))}'
-            f'<div class="ag-box">{_equipement_annexe(d, synthese, lg)}</div>'
+            f'<div class="ag-box">{_equipement_annexe(d, synthese, lg)}'
+            f'{_garanties_et_cartouche_annexe(d, synthese, lg, ctx["nom_societe"])}</div>'
+            f'{sec(_t(lg, "agr_annexe_site_titre"))}'
+            f'<div class="ag-box ag-small">{_site_et_besoin_annexe(d, lg)}</div>'
             f'{sec(_t(lg, "agr_entree_hmt_m"))}'
             f'<div class="ag-box">'
             f'{_hmt_annexe(d, synthese, lg, ctx["nom_societe"])}</div>'
             f'{sec(_t(lg, "agr_debit"))}'
             f'<div class="ag-box">{_debit_et_mois_annexe(d, synthese, lg)}'
             f'</div>'
+            f'{sec(_t(lg, "agr_annexe_dimensionnement_titre"))}'
+            f'<div class="ag-box ag-small">'
+            f'{_dimensionnement_annexe(d, synthese, lg)}</div>'
             f'{sec(_t(lg, "agr_annexe_hypotheses"))}'
             f'<div class="ag-box">{_hypotheses_annexe(d, lg)}</div>'
             f'{sec(_t(lg, "agr_annexe_fiches"))}'
             f'<div class="ag-box">{_fiches_annexe(d, lg)}</div>'
-            f'{sec(_t(lg, "agr_annexe_references"))}'
-            f'<div class="ag-box">{_references_annexe(d, lg)}</div>'
-            f'</div>')
+            f'{refs_html}</div>')
 
 
 # ── assemblage ──────────────────────────────────────────────────────────────
@@ -1018,7 +1393,10 @@ def build_html(d: dict, elastic: dict | None = None) -> str:
     # APDF6 — LA CSS arabe partagée (police système, letter-spacing 0) ;
     # ``theme.css_langue`` porte déjà la part « libellés ».
     from ..premium_base import css_arabe as _css_arabe_partagee
+    # AGQ13 — le SVG porteur de légendes HTML est un bloc (aucun jeu de
+    # ligne de base sous le dessin : les positions en % tombent juste).
     css_arabe = (_css_arabe_partagee(libelles=True, document=True)
+                 + ".ag-sch svg{display:block;}"
                  if i18n_labels.est_rtl(langue) else "")
     return (f"<!doctype html>{racine}<head><meta charset='utf-8'>"
             f"<style>{theme.base_css()}{theme.css_langue(d)}"

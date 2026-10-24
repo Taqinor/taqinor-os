@@ -79,6 +79,16 @@ P_LEAD_REQ = param('lead', OpenApiTypes.INT, required=True,
                    description='Identifiant du lead.')
 P_CLE = param('cle', description='Clé du message.')
 P_LANGUE = param('langue', description='Langue du message (fr, darija…).')
+
+
+def parametres_message(cles, langues):
+    """ENF11 nocturne — ``relance-etapes/{id}/message/`` : ``cle`` et ``langue``
+    sont des VOCABULAIRES (le serveur répond 400 hors liste) ; publiés en
+    ``enum`` tirés des constantes du serveur, jamais recopiés."""
+    return [param('cle', enum=[*cles], description='Texte de réponse convenu.'),
+            param('langue', enum=[*langues], description='Langue du message.')]
+
+
 P_SCOPE = param('scope', description='Portée de la liste (today, lead…).')
 P_ARCHIVED = param('archived', enum=['only', 'all'],
                    description='only = archivés seulement, all = tous.')

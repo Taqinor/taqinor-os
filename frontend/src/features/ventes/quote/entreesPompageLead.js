@@ -43,7 +43,23 @@ export const LIBELLES_ENTREES_LEAD = {
   carburant_litres_mois: 'Carburant (L / mois)',
   carburant_prix_unitaire_mad: 'Prix payé (MAD)',
   mois_irrigation: 'Mois d’irrigation',
+  jours_irrigation_semaine: 'Jours d’irrigation / semaine',
+  mode_pompe: 'Mode de pompe',
+  pompe_actuelle_kw: 'Plaque : puissance (kW)',
+  pompe_actuelle_tension_v: 'Plaque : tension (V)',
+  pompe_actuelle_phases: 'Plaque : phases',
 }
+
+// AGQ39 (D-AGQ-10) — colonne du lead → chemin de `pompageSaisie` (mode de
+// pompe et plaque de la pompe ACTUELLE). Les phases arrivent du serveur en
+// 1 / 3 (moteur) ; l'écran les choisit en « mono » / « tri ».
+const SAISIE_PAR_COLONNE = {
+  mode_pompe: 'mode_pompe',
+  pompe_actuelle_kw: 'plaque.kw',
+  pompe_actuelle_tension_v: 'plaque.tension_v',
+  pompe_actuelle_phases: 'plaque.phases',
+}
+const PHASES_ECRAN = { 1: 'mono', 3: 'tri' }
 
 const vide = (v) => v === null || v === undefined || v === ''
 
@@ -52,11 +68,13 @@ const provenance = (e) => ({
 })
 
 /**
- * `lead` (détail) → `{ ecran, eco, provenances }`, ou `null` quand le lead ne
- * sert aucune entrée.
+ * `lead` (détail) → `{ ecran, eco, saisie, provenances }`, ou `null` quand le
+ * lead ne sert aucune entrée.
  *  - `ecran` : `{cléÉtat: 'texte'}` pour les états `useState` du générateur ;
  *  - `eco`   : morceaux de l'état `ecoPompage` (→ `saisies_economie_pompage`,
  *    forme AGR3) avec la provenance `lead` ;
+ *  - `saisie` : `{chemin: 'texte'}` pour `pompageSaisie` (mode de pompe et
+ *    plaque, AGQ39) ;
  *  - `provenances` : `[{colonne, libelle, valeur, provenance}]` à afficher.
  */
 export function entreesPompageDuLead(lead) {
@@ -64,6 +82,7 @@ export function entreesPompageDuLead(lead) {
   if (!Array.isArray(entrees) || entrees.length === 0) return null
   const ecran = {}
   const eco = {}
+  const saisie = {}
   const provenances = []
   for (const e of entrees) {
     if (!e || vide(e.valeur)) continue
@@ -91,6 +110,14 @@ export function entreesPompageDuLead(lead) {
       if (!Array.isArray(e.valeur) || e.valeur.length === 0) continue
       eco.mois = e.valeur.map(Number)
       eco.moisProvenance = provenance(e)
+    } else if (col === 'jours_irrigation_semaine') {
+      // AGQ10 (D-AGQ-6) — les jours d'une conso « par jour d'irrigation ».
+      eco.joursSemaine = String(e.valeur)
+    } else if (SAISIE_PAR_COLONNE[col]) {
+      const valeur = col === 'pompe_actuelle_phases'
+        ? PHASES_ECRAN[Number(e.valeur)] : String(e.valeur)
+      if (!valeur) continue
+      saisie[SAISIE_PAR_COLONNE[col]] = valeur
     } else {
       continue
     }
@@ -102,5 +129,21 @@ export function entreesPompageDuLead(lead) {
     })
   }
   if (provenances.length === 0) return null
-  return { ecran, eco, provenances }
+  return { ecran, eco, saisie, provenances }
+}
+
+/**
+ * AGQ39 (D-AGQ-10) — mode de pompe et plaque du lead → `pompageSaisie` :
+ * rend l'updater `(s) => s'` ; une saisie du vendeur (`libre` faux) n'est
+ * jamais écrasée ; `poses` reçoit les chemins posés depuis le lead.
+ */
+export function appliquerSaisiePompageLead(saisie, libre, poses, poserSaisie) {
+  const entrees = Object.entries(saisie || {})
+  if (!entrees.length) return (s) => s
+  return (s) => entrees.reduce((suite, [chemin, valeur]) => {
+    const courant = chemin.split('.').reduce((n, k) => (n == null ? n : n[k]), suite)
+    if (!libre(`saisie.${chemin}`, courant)) return suite
+    poses[`saisie.${chemin}`] = valeur
+    return poserSaisie(suite, chemin, valeur)
+  }, s)
 }

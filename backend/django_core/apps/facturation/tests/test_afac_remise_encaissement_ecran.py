@@ -104,5 +104,5 @@ class RemiseCorpsEcranTests(TestCase):
         corps = self._corps_ecran()
         corps['technicien'] = etranger.id
         r = self.api.post(REMISES, corps, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
         self.assertIn('technicien', r.data)

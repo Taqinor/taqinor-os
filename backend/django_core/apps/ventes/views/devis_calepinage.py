@@ -430,7 +430,8 @@ class DevisCalepinageActionsMixin:
         return Response(design)
 
     @extend_schema(request=D.SimulerRequest,
-                   responses={202: D.SimulerResponse})
+                   responses={202: D.SimulerResponse,
+                              409: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='simuler',
             permission_classes=[IsResponsableOrAdmin])
     def simuler(self, request, pk=None):
@@ -462,6 +463,9 @@ class DevisCalepinageActionsMixin:
             task_simulate_bankable_study, zones_etude_du_devis,
         )
 
+        # ENF11 — ``force_refresh`` est un booléen JSON (sérialiseur publié).
+        from ..utils.corps import valider_corps
+        corps = valider_corps(request, D.SimulerRequest)
         devis = self.get_object()  # borné société par get_queryset
         # ADEV58 — même garde que la conception : l'étude bancable d'un devis
         # accepté ou remplacé n'est plus relancée (409).
@@ -473,9 +477,10 @@ class DevisCalepinageActionsMixin:
                 {'detail': ('Ce devis ne porte aucun pan de toiture '
                             'exploitable : dessinez le calepinage 3D avant de '
                             'lancer la simulation.')},
-                status=status.HTTP_400_BAD_REQUEST)
+                # ENF11 — corps conforme (tout est facultatif) : c'est l'ÉTAT
+                # du devis (pas de pan exploitable) qui s'y oppose = 409.
+                status=status.HTTP_409_CONFLICT)
 
-        corps = request.data if isinstance(request.data, dict) else {}
         force_refresh = bool(corps.get('force_refresh'))
 
         token = uuid.uuid4().hex

@@ -85,3 +85,17 @@ class ContratPrixApplicableTests(TestCase):
         sans_client = self._get()
         self.assertEqual(sans_client['prix'], '2061.82')
         self.assertEqual(sans_client['source'], 'standard')
+
+    def test_quantite_publiee_est_la_regle_appliquee(self):
+        """ENF11 — ``quantite`` : le motif publié au schéma est celui que la
+        vue applique (décimal en chiffres ASCII) ; le reste = 400."""
+        import re
+        from apps.ventes.views.liste_prix import MOTIF_QUANTITE_PRIX
+        for valeur in ('1', '12.5', '0.000001'):
+            self.assertTrue(re.fullmatch(MOTIF_QUANTITE_PRIX, valeur))
+            self.assertEqual(self._get(quantite=valeur)['quantite'],
+                             str(Decimal(valeur)))
+        for valeur in ('Ü~·', '1e5', 'NaN', '-1', '１', '1\n', '1.'):
+            resp = self.api.get('/api/django/ventes/prix-applicable/', {
+                'produit': self.produit.pk, 'quantite': valeur})
+            self.assertEqual(resp.status_code, 400, valeur)

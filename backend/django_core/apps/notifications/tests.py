@@ -972,13 +972,14 @@ class FkNotificationsBorneesSocieteTests(TestCase):
         self._assert_borne(NotificationRoutingRuleSerializer, 'target_user',
                            self.user_a, self.user_b)
 
-    def test_post_regle_target_user_etranger_400(self):
+    def test_post_regle_target_user_etranger_404(self):
         api = _api(self.admin_a)
         r = api.post(URL_REGLES_ROUTAGE, {
             'event_type': EventType.FACTURE_OVERDUE,
             'target_user': self.user_b.pk}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertIn('target_user', r.data)
+        # ENF11 : id absent de la société (inconnu OU voisin) = 404, même corps.
+        self.assertEqual(r.status_code, 404, r.data)
+        self.assertIn('target_user', str(r.data))
         self.assertFalse(NotificationRoutingRule.objects.filter(
             target_user=self.user_b).exists())
         r_ok = api.post(URL_REGLES_ROUTAGE, {

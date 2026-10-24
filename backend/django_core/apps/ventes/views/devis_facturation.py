@@ -8,7 +8,7 @@ creer_facture_tranche``, ``from ..utils.pdf import generate_proforma_pdf``,
 ``from .. import activity``) restent dans les corps.
 """
 from django.http import HttpResponse
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema
 from drf_spectacular.types import OpenApiTypes
 from rest_framework import status
 from rest_framework.decorators import action
@@ -20,7 +20,6 @@ from ..serializers_facturation import BonCommandeSerializer, FactureSerializer
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsResponsableOrAdmin,
 )
-from rest_framework import serializers
 from ..utils.references import create_with_reference
 from ..utils.corps import valider_corps
 import logging
@@ -90,11 +89,22 @@ def refus_avant_facturer(vue, request, devis, corps):
     return None
 
 
-#: VNT66 — corps du ``PUT devis/<id>/echeancier/`` (contrat
-#: ``devis_echeancier.json``) : ``{tranches: [{cle, libelle, unite, valeur}]}``.
-_ECHEANCIER_REQUETE = inline_serializer('DevisEcheancierPut', {
-    'tranches': serializers.ListField(child=serializers.DictField()),
-})
+def _refus_forme_echeancier(tranches):
+    """Message du premier écart du corps à ``D.EcheancierRequest`` (liste non
+    vide de tranches de la forme publiée), ``None`` si conforme."""
+    from ..domain.modifiabilite import _entree_stockee
+    from ..utils.echeancier import EcheancierInvalide, forme_tranche_ecriture
+    if not isinstance(tranches, list) or not tranches:
+        return 'Indiquez les tranches de l’échéancier.'
+    for rang, tranche in enumerate(tranches):
+        cle = tranche.get('cle') if isinstance(tranche, dict) else None
+        if cle is not None and (not isinstance(cle, str) or '\x00' in cle):
+            return f'Tranche n°{rang + 1} : « cle » doit être un texte.'
+        try:
+            forme_tranche_ecriture(_entree_stockee(tranche), rang)
+        except EcheancierInvalide as exc:
+            return str(exc)
+    return None
 
 
 class DevisFacturationActionsMixin:
@@ -364,7 +374,8 @@ class DevisFacturationActionsMixin:
         }, status=status.HTTP_201_CREATED)
 
     # api-only: l'écran d'échéancier d'une vente arrive avec le panneau de vente (VNT75/VNT79).
-    @extend_schema(request=_ECHEANCIER_REQUETE,
+    @extend_schema(request=D.EcheancierRequest,
+                   extensions=D.corps_resserre({'required': ['tranches']}),
                    responses={200: DevisSerializer, 400: D.ErreurDevisFige,
                               409: D.ErreurDevisFige})
     @action(
@@ -384,16 +395,22 @@ class DevisFacturationActionsMixin:
         devis = self.get_object()
         tranches = request.data.get('tranches') if isinstance(
             request.data, dict) else None
-        if not isinstance(tranches, list) or not tranches:
-            return Response(
-                {'detail': 'Indiquez les tranches de l’échéancier.',
-                 'code': 'echeancier_invalide'},
-                status=status.HTTP_400_BAD_REQUEST)
+        refus_forme = _refus_forme_echeancier(tranches)
+        if refus_forme is not None:
+            return Response({'detail': refus_forme,
+                             'code': 'echeancier_invalide'},
+                            status=status.HTTP_400_BAD_REQUEST)
         try:
             devis = modifier_echeancier_vente(devis, tranches,
                                               user=request.user)
         except FacturationVenteRefusee as exc:
-            return Response(exc.corps, status=exc.status)
+            # ENF11 — la forme est celle du schéma publié (contrôlée
+            # ci-dessus) : tout 400 restant (somme ≠ prix convenu, total ≠
+            # 100 %, unité incohérente) dépend du devis = refus d'état, 409.
+            statut = (status.HTTP_409_CONFLICT
+                      if exc.status == status.HTTP_400_BAD_REQUEST
+                      else exc.status)
+            return Response(exc.corps, status=statut)
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
 

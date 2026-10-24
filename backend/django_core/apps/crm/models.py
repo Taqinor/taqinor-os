@@ -8,27 +8,7 @@ from django.db.models.functions import Lower  # noqa: F401 — façade crm.model
 from core.models import SoftDeleteModel, TenantModel
 
 from .stages import STAGE_CHOICES, NEW
-
-
-def valider_mois_irrigation(valeur):
-    """AGR400 — ``Lead.mois_irrigation`` : liste d'entiers 1-12 DISTINCTS.
-
-    Vide (None ou liste vide) = question pas encore posée. Toute autre forme
-    est refusée avec un message qui nomme les mois.
-    """
-    from django.core.exceptions import ValidationError
-    if valeur in (None, []):
-        return
-    message = ("« Mois d'irrigation » : une liste de mois distincts, "
-               'chacun entre 1 et 12.')
-    if not isinstance(valeur, list):
-        raise ValidationError(message)
-    for mois in valeur:
-        if isinstance(mois, bool) or not isinstance(mois, int) \
-                or not 1 <= mois <= 12:
-            raise ValidationError(message)
-    if len(set(valeur)) != len(valeur):
-        raise ValidationError(message)
+from .models_lead_pompage import LeadPompageMixin, valider_mois_irrigation
 
 
 def _valider_entiers_distincts(valeur, borne_max, message):
@@ -238,7 +218,7 @@ def valider_facture_tranche_declaree(valeur):
 Client = 'crm.Client'
 
 
-class Lead(SoftDeleteModel):
+class Lead(LeadPompageMixin, SoftDeleteModel):
     """A sales lead / opportunity — distinct from a Client (customer) record.
 
     Leads carry a pipeline stage (canonical from STAGES.py) and a source/origin
@@ -1096,8 +1076,8 @@ class Lead(SoftDeleteModel):
         max_digits=8, decimal_places=2, null=True, blank=True,
         help_text="Question à l'appel : « Quel débit voulez-vous, en m³ par "
                   'heure ? » (débit SOUHAITÉ, vide = pas encore posée). '
-                  'Servi à côté du débit livré, il ne fixe jamais seul le '
-                  'besoin.')
+                  'Débit souhaité (m³/h) : devient le débit de conception '
+                  "quand aucun volume n'est déclaré (D-AGQ-1).")
 
     # ── AGR400 — Pompage : les colonnes du contrat AGR1 (``lead_pompage.json``).
     # Toutes ``null=True`` : vide = « la question n'a pas encore été posée »,
@@ -1174,26 +1154,6 @@ class Lead(SoftDeleteModel):
                   'actuelle sort-elle par heure ? » (m³/h, vide = pas encore '
                   'posée). Avec les heures de la pompe actuelle, donne le '
                   'volume déclaré.')
-    butane_bouteilles_jour = models.DecimalField(
-        max_digits=5, decimal_places=1, null=True, blank=True,
-        verbose_name='Butane — bouteilles par jour',
-        help_text="Question à l'appel : « Combien de bouteilles de butane "
-                  'par jour en saison ? » (bouteilles de 12 kg par jour '
-                  "d'irrigation, vide = pas encore posée).")
-    carburant_prix_unitaire_mad = models.DecimalField(
-        max_digits=8, decimal_places=2, null=True, blank=True,
-        verbose_name='Prix payé (bouteille ou litre, MAD)',
-        help_text="Question à l'appel : « Vous la payez combien, la "
-                  'bouteille (ou le litre de gasoil) ? » (MAD, vide = pas '
-                  'encore posée). Prix PAYÉ déclaré, jamais pré-rempli.')
-    carburant_prix_declare_le = models.DateField(
-        null=True, blank=True, verbose_name='Prix du carburant déclaré le')
-    depense_carburant_mad_mois = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True,
-        verbose_name='Dépense carburant (MAD/mois)',
-        help_text="Question à l'appel : « Combien dépensez-vous en "
-                  'carburant par mois ? » (MAD/mois, vide = pas encore '
-                  'posée). Information : jamais convertie en consommation.')
     mois_irrigation = models.JSONField(
         null=True, blank=True, validators=[valider_mois_irrigation],
         verbose_name="Mois d'irrigation",

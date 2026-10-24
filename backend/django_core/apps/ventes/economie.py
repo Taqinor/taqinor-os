@@ -268,9 +268,27 @@ def _premiere_annee_positive(cumuls):
     return None
 
 
-def _retour(cle, cumuls, horizon, omissions):
-    """Le retour publiable (entier, <= 30 ans), sinon ``None`` + motif."""
-    annee = _premiere_annee_positive(cumuls)
+def _derniere_annee_non_negative(cumuls):
+    """AGQ20 (pompage, D-AGR-5) — l'année (index) du DERNIER passage du cumul
+    à ``>= 0`` : la première année à partir de laquelle le cumul RESTE
+    ``>= 0`` jusqu'à l'horizon (un remplacement qui le fait rechuter repousse
+    le retour) ; ``None`` si le cumul final est négatif. Réservée au bloc de
+    pompage : les autres marchés gardent le premier passage (devis envoyés
+    rendus comme avant, #898)."""
+    annee = None
+    for rang, cumul in enumerate(cumuls):
+        if cumul < 0:
+            annee = None
+        elif annee is None:
+            annee = rang
+    return annee
+
+
+def _retour(cle, cumuls, horizon, omissions, dernier_passage=False):
+    """Le retour publiable (entier, <= 30 ans), sinon ``None`` + motif ;
+    ``dernier_passage`` (pompage) retient le dernier passage au non-négatif."""
+    annee = (_derniere_annee_non_negative(cumuls) if dernier_passage
+             else _premiere_annee_positive(cumuls))
     if annee is None:
         omissions.append(_omission(
             cle, f"non publié : le cumul ne redevient pas positif sur "
@@ -487,7 +505,7 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
                        production_annee1_kwh=None, horizon_ans=None,
                        taux_actualisation_pct=None, indexation_pct=None,
                        degradation_pct=None, charges_annuelles_mad=None,
-                       remplacements=None, pret=None):
+                       remplacements=None, pret=None, dernier_passage=False):
     """Le bloc économie (forme ``contract_samples/ventes_economie.json``).
 
     Toutes les grandeurs sont facultatives À L'APPEL et aucune n'a de défaut :
@@ -667,9 +685,11 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
             cumul += valeur
             cumuls_actualises.append(cumul)
         bloc['retour_actualise_ans'] = _retour(
-            'retour_actualise_ans', cumuls_actualises, horizon, omissions)
+            'retour_actualise_ans', cumuls_actualises, horizon, omissions,
+            dernier_passage=dernier_passage)
     bloc['tri_pct'] = _tri(flux, omissions)
-    bloc['retour_ans'] = _retour('retour_ans', cumuls, horizon, omissions)
+    bloc['retour_ans'] = _retour('retour_ans', cumuls, horizon, omissions,
+                                 dernier_passage=dernier_passage)
     return bloc
 
 

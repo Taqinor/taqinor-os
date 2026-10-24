@@ -59,6 +59,20 @@ class KitUpdateTests(TestCase):
         # snapshot comparé APRÈS préservation : aucune révision « identique »
         self.assertEqual(self.kit.revisions.count(), revisions_avant)
 
+    def test_patch_vide_sert_toutes_les_cles_de_composant(self):
+        # api-fuzz « Response violates schema » : sous un PATCH (racine
+        # partielle) DRF sautait les champs liés à lien vide ; le schéma de
+        # réponse les déclare obligatoires.
+        reponse = self.api.patch(
+            f'/api/django/stock/kits/{self.kit.pk}/', {}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        composant = reponse.data['composants'][0]
+        for cle in ('produit_nom', 'produit_sku', 'prix_vente',
+                    'composant_kit_nom'):
+            self.assertIn(cle, composant)
+        self.assertIsNone(composant['composant_kit_nom'])
+        self.assertEqual(composant['produit_nom'], 'Câble 6mm')
+
     def test_composant_retire_supprime_nouveau_naît_a_zero(self):
         reponse = self._put([{'produit': self.p2.pk, 'quantite': '1'}])
 

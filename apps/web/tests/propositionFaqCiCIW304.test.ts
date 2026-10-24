@@ -66,8 +66,9 @@ describe('CIW304 — objectionFaq(mode) C&I', () => {
 });
 
 describe('CIW304 — le résidentiel est inchangé', () => {
-  it('sans mode, résidentiel ou agricole : la FAQ de propriétaire (déménagement inclus)', () => {
-    for (const m of [undefined, null, 'residentiel', 'agricole']) {
+  // AGQ33 — l'agricole a désormais SA FAQ (puits à sec, nuages, vol, entretien, FDA) : il sort de cette liste.
+  it('sans mode ou résidentiel : la FAQ de propriétaire (déménagement inclus)', () => {
+    for (const m of [undefined, null, 'residentiel']) {
       const ids = objectionFaq(m as string | undefined).map((f) => f.id);
       expect(ids).toContain('demenagement');
       expect(ids).toContain('panne-reseau');

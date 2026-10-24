@@ -16,6 +16,7 @@ import {
   AGR_NON_INCLUS_LBL,
   dureeGarantie,
   libelleGarantie,
+  syntheseAgricole,
   syntheseAgricoleArgent,
   type ProposalResponse,
 } from '../src/lib/proposition';
@@ -58,8 +59,12 @@ describe('AGW304 — syntheseAgricoleArgent : lecture défensive', () => {
     expect(e.declareLe).toBe('2026-09-12');
     expect(a.energieActuelle!.valeur).toBe('butane');
     expect(a.garanties).toHaveLength(2);
-    expect(a.optionsKit).toEqual([{ ligneId: 90311, designation: 'Afficheur du variateur', totalTtc: 950 }]);
-    expect(a.nonInclus).toEqual(['forage', 'genie_civil']);
+    // AGQ11 — les options du kit moteur sans prix sont servies aussi (« prix sur devis », AGQ35 les rend)
+    expect(a.optionsKit).toEqual([
+      { ligneId: 90311, designation: 'Afficheur du variateur', totalTtc: 950, prixConnu: true, mention: null },
+      { ligneId: null, designation: "Compteur d'eau", totalTtc: null, prixConnu: false, mention: 'exigé par la loi 36-15 et le dossier FDA 2024' },
+    ]);
+    expect(a.nonInclus).toEqual(['forage', 'genie_civil', 'compteur_eau']); // AGQ11 : rôle du kit absent des lignes
     expect(a.formalites[0].cle).toBe('declaration_8221');
     expect(a.formalites[0].textes.ar.length).toBeGreaterThan(10);
   });
@@ -180,7 +185,8 @@ describe('AGW304 — options du kit, non-inclus, formalités', () => {
       { ligne_id: 2, designation: 'Sonde de niveau' },
       'x',
     ] }))!;
-    expect(a.optionsKit).toEqual([{ ligneId: 2, designation: 'Sonde de niveau', totalTtc: null }]);
+    // AGQ35 — sans `prix_connu` servi ni montant : « prix sur devis » (prixConnu faux), aucune mention.
+    expect(a.optionsKit).toEqual([{ ligneId: 2, designation: 'Sonde de niveau', totalTtc: null, prixConnu: false, mention: null }]);
   });
   it('clés absentes → listes vides (jamais un bloc fabriqué)', () => {
     const a = syntheseAgricoleArgent(payload({ ...SERVIE, options_kit: undefined, non_inclus: undefined, formalites: undefined, garanties: undefined }))!;
@@ -227,7 +233,8 @@ describe('AGW304 — la page', () => {
     expect(bloc).toContain('formatMAD(o.totalTtc)');
     // tout bouton d’activation passe par la fonction pure d’AGW308 (jamais inconditionnel)
     for (const m of bloc.matchAll(/<button type="button" data-option-ajouter/g)) {
-      expect(bloc.slice(0, m.index)).toContain("{etat !== 'masque' && (");
+      // AGQ35 — le bouton d'ajout n'existe qu'avec un prix connu (« prix sur devis » sinon).
+      expect(bloc.slice(0, m.index)).toContain("{etat !== 'masque' && o.prixConnu && (");
     }
   });
 
@@ -240,5 +247,53 @@ describe('AGW304 — la page', () => {
     const code = lib.replace(/^\s*\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
     const zone = code.slice(code.indexOf('function lireEconomies'), code.indexOf('export function dureeGarantie'));
     expect(zone).not.toMatch(/\*\s*365|0\.3\b|prix_gaz|prix_butane|litres_par_cv/i);
+  });
+});
+
+describe('AGQ35 — parité /proposition ↔ document agricole (C-AGQ-010, 016, 017, 019, 032)', () => {
+  it('options du kit : `prix_connu` et `mention` lus tels que servis — « prix sur devis » sans montant', () => {
+    const opts = syntheseAgricoleArgent(payload(SERVIE))!.optionsKit;
+    expect(opts.map((o) => o.prixConnu)).toEqual(SERVIE.options_kit.map((o: any) => o.prix_connu));
+    const sansPrix = opts.find((o) => !o.prixConnu)!;
+    expect(sansPrix.totalTtc).toBeNull();
+    expect(sansPrix.mention).toBe(SERVIE.options_kit.find((o: any) => !o.prix_connu).mention);
+    // Payload d'hier (sans `prix_connu`) : un montant servi vaut prix connu.
+    const hier = syntheseAgricoleArgent(payload({ ...SERVIE, options_kit: [{ designation: 'X', ligne_id: 1, total_ttc: 100 }] }))!.optionsKit;
+    expect(hier).toEqual([{ ligneId: 1, designation: 'X', totalTtc: 100, prixConnu: true, mention: null }]);
+  });
+
+  it('nouveau forage : aucune dépense actuelle, le m³ solaire se dit seul (jamais un « actuel » inventé)', () => {
+    const eco = { ...SERVIE.economies, cas: 'nouveau_forage', mad_par_m3: { solaire: 0.56 } };
+    const e = syntheseAgricoleArgent(payload({ ...SERVIE, economies: eco }))!.economies!;
+    expect(e.cas).toBe('nouveau_forage');
+    expect(e.coutM3).toEqual({ actuel: null, solaire: 0.56 });
+  });
+
+  it('retour non publié : le MOTIF servi (au-delà de l’horizon), jamais un chiffre ; nul avec un retour servi', () => {
+    const sans = { ...SERVIE.economies, economie: { ...SERVIE.economies.economie, retour_ans: null },
+      omissions: [...SERVIE.economies.omissions, { cle: 'retour_ans', motif: 'au-delà de 10 ans' }] };
+    const e = syntheseAgricoleArgent(payload({ ...SERVIE, economies: sans }))!.economies!;
+    expect(e.retourAns).toBeNull();
+    expect(e.retourMotif).toBe('au-delà de 10 ans');
+    expect(syntheseAgricoleArgent(payload(SERVIE))!.economies!.retourMotif).toBeNull();
+  });
+
+  it('notes du noyau (AGQ38) : textes servis en trois voix, une note sans `fr` est ignorée', () => {
+    const notes = [
+      { code: 'ratio_champ_pompe', textes: { fr: 'Champ 1,51× la pompe : …', en: 'Array 1.51× the pump: …', ar: 'الحقل 1,51× المضخة: …' } },
+      { code: 'interne', textes: { en: 'no fr' } },
+    ];
+    const s = syntheseAgricole(payload({ ...SERVIE, notes }))!;
+    expect(s.notes).toEqual([{ code: 'ratio_champ_pompe', textes: notes[0].textes }]);
+    expect(syntheseAgricole(payload(SERVIE))!.notes).toEqual([]);
+  });
+
+  it('étapes suivantes (AGQ30) et mois sous la tolérance (AGQ3) lus tels que servis', () => {
+    const s = syntheseAgricole(payload(SERVIE))!;
+    expect(s.etapesSuivantes.map((e) => e.cle)).toEqual(SERVIE.etapes_suivantes.map((e: any) => e.cle));
+    expect(s.besoinVsLivre!.moisSousTolerance).toEqual([]);
+    const bvl = { ...SERVIE.besoin_vs_livre, mois_sous_tolerance: [{ mois: 10, couverture_pct: 80 }, { mois: 13 }, { mois: 9 }] };
+    expect(syntheseAgricole(payload({ ...SERVIE, besoin_vs_livre: bvl }))!.besoinVsLivre!.moisSousTolerance)
+      .toEqual([{ mois: 10, couverturePct: 80 }, { mois: 9, couverturePct: null }]);
   });
 });

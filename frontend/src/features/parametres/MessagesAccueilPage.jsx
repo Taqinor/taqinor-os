@@ -101,8 +101,12 @@ export default function MessagesAccueilPage() {
       recharger()
     } catch (err) {
       const data = err?.response?.data
-      if (err?.response?.status === 400 && data && typeof data === 'object' && !Array.isArray(data)) {
+      const statut = err?.response?.status
+      // 400 forme, 404 destinataire introuvable (champ), 409 état (inactif).
+      if ((statut === 400 || statut === 404) && data && typeof data === 'object' && !Array.isArray(data)) {
         setErreurs(data)
+      } else if (statut === 409 && typeof data?.detail === 'string') {
+        setErreurGenerale(data.detail)
       } else {
         setErreurGenerale('La création du message a échoué — réessayez.')
       }

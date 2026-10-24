@@ -50,7 +50,11 @@ ROLE_VERS_COMPOSANT = {
     "variateur_pompage": "variateur",
 }
 
-MOTIF_NON_RENSEIGNEE = "garantie non renseignée"
+#: AGQ14 (D-AGQ-4) — l'omission est NOMMÉE et le document l'imprime
+#: « selon fiche fournisseur » : jamais une durée sans garantie écrite.
+MOTIF_NON_RENSEIGNEE = "garantie non renseignée : selon fiche fournisseur"
+#: Composants dont l'absence de durée s'imprime « selon fiche fournisseur ».
+SELON_FICHE = ("pompe", "variateur")
 MOTIF_POSE_NON_DECIDEE = (
     "garantie de pose du pompage non décidée par le fondateur (AGRM22) : omise")
 
@@ -131,6 +135,52 @@ def garanties_pompage_et_omissions(items):
     return garanties, omissions
 
 
+def garanties_de_la_ligne(it):
+    """AGQ14 — les durées STRUCTURÉES d'UNE ligne (une-page agricole) :
+    ``[(composant, mois)]`` ; pompe / variateur sans durée → ``mois`` None
+    (« selon fiche fournisseur ») ; panneaux : produit puis production
+    seulement quand le champ est saisi ; autre ligne → ``[]``. Le texte
+    libre ``garantie`` n'est JAMAIS lu."""
+    if not isinstance(it, dict):
+        return []
+    composant = _composant_de(it)
+    if composant in SELON_FICHE:
+        return [(composant, _mois(it.get("garantie_mois")))]
+    if composant == "panneaux":
+        return [(c, m) for c, m in (
+            ("panneaux", _mois(it.get("garantie_mois"))),
+            ("performance_panneaux",
+             _mois(it.get("garantie_production_mois")))) if m]
+    return []
+
+
 def garanties_pompage(items):
     """La liste des garanties par composant (voir le module)."""
     return garanties_pompage_et_omissions(items)[0]
+
+
+def garantie_ligne_onepage(it, libelle, agricole):
+    """AGQ14 (D-AGQ-4) — la garantie d'une ligne du une-page : texte libre
+    hors agricole ; en AGRICOLE, les seules durées STRUCTURÉES
+    (:func:`garanties_de_la_ligne`, la même source que les 3 pages) :
+    « 12 ans produit · 25 ans production », « garantie 3 ans », ou
+    « garantie selon fiche fournisseur » — jamais le texte libre ``garantie``
+    (« 30 ans »). ``libelle`` = le lecteur de libellés du moteur legacy."""
+    if not agricole:
+        return (it.get("garantie") or "").strip()
+    morceaux = []
+    for composant, mois in garanties_de_la_ligne(it):
+        if mois is None:
+            morceaux.append(libelle("agr_annexe_garantie").format(
+                duree=libelle("agr_selon_fiche_fournisseur")))
+            continue
+        if mois % 12:
+            duree = libelle("agr_n_mois").format(n=mois)
+        else:
+            duree = libelle("agr_n_an" if mois == 12 else "agr_n_ans").format(
+                n=mois // 12)
+        cle = {"panneaux": "agr_gar_court_produit",
+               "performance_panneaux": "agr_gar_court_production"}.get(
+                   composant, "agr_annexe_garantie")
+        morceaux.append(libelle(cle).format(duree=duree))
+    return " · ".join(morceaux)
