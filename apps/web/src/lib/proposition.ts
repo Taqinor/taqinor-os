@@ -1843,6 +1843,7 @@ export interface AcceptResult {
   champ?: string;
   /** ADEV51 — code FERMÉ d'un 409 (`proposal_accept.json` › `codes_409`), ex. `empreinte_perimee`. */
   code?: string;
+  recu?: { signe_le: string | null; empreinte_lue: string; empreinte_scellee: string; empreinte_pdf: string }; // ADEV104 — défi lu + sceau stocké
 }
 
 /**
@@ -1863,29 +1864,28 @@ export function estEmpreintePerimee(status: number, payload: unknown): boolean {
   return status === 409 && code === CODE_EMPREINTE_PERIMEE;
 }
 
+const texteAmont = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
+/** ADEV104 — lit `recu` ; `empreinte_contenu` (alias servi un cycle) n'est qu'un repli de `empreinte_scellee`. */
+export function lireRecuAcceptation(brut: unknown): AcceptResult['recu'] {
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return undefined;
+  const r = brut as Record<string, unknown>;
+  return { signe_le: texteAmont(r.signe_le) ?? null, empreinte_lue: texteAmont(r.empreinte_lue) ?? '',
+    empreinte_scellee: texteAmont(r.empreinte_scellee) ?? texteAmont(r.empreinte_contenu) ?? '', empreinte_pdf: texteAmont(r.empreinte_pdf) ?? '' };
+}
+const REPLI_ACCEPT: Record<number, string> = { 404: 'Ce lien de proposition est introuvable ou a expiré.', 409: 'Ce devis a déjà été traité.', 400: 'La demande est invalide. Vérifiez votre saisie.' }; // repli FR par code
 export function normalizeAcceptResponse(status: number, payload: unknown): AcceptResult {
   const body = (payload ?? {}) as Record<string, unknown>;
-  const detail = typeof body.detail === 'string' && body.detail.trim() ? body.detail.trim() : '';
+  const detail = texteAmont(body.detail) ?? '';
   if (status >= 200 && status < 300) {
     return {
-      ok: true,
-      status,
-      detail: detail || 'Devis accepté.',
+      ok: true, status, detail: detail || 'Devis accepté.',
       reference: typeof body.reference === 'string' ? body.reference : undefined,
       accepte_par_nom: typeof body.accepte_par_nom === 'string' ? body.accepte_par_nom : undefined,
+      recu: lireRecuAcceptation(body.recu), // ADEV104 — absent ⇒ `undefined`, omis par le JSON du proxy
     };
   }
-  // Messages FR de repli par code, si le backend n'a pas fourni de `detail`.
-  const fallback =
-    status === 404
-      ? 'Ce lien de proposition est introuvable ou a expiré.'
-      : status === 409
-        ? 'Ce devis a déjà été traité.'
-        : status === 400
-          ? 'La demande est invalide. Vérifiez votre saisie.'
-          : 'Une erreur est survenue. Veuillez réessayer.';
-  const champ = typeof body.champ === 'string' && body.champ.trim() ? body.champ.trim() : undefined;
-  const code = typeof body.code === 'string' && body.code.trim() ? body.code.trim() : undefined;
+  const fallback = REPLI_ACCEPT[status] ?? 'Une erreur est survenue. Veuillez réessayer.';
+  const champ = texteAmont(body.champ), code = texteAmont(body.code);
   return { ok: false, status, detail: detail || fallback, ...(champ ? { champ } : {}), ...(code ? { code } : {}) };
 }
 

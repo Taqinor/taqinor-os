@@ -147,6 +147,49 @@ class TestPdfPublicAccepteSigne(TestCase):
                          OCTETS_SIGNES)
         self.assertEqual(self._demander(link).json().get('code_requis'), False)
 
+    # ── ADEV105 (C-L3-LIEN-11) — l'exemplaire signé n'est pas une lecture ──
+
+    @patch('apps.crm.services.notify_devis_opened')
+    @patch('apps.ventes.public.lecture_views._notify_first_open')
+    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/rerendu.pdf')
+    def test_telecharger_l_exemplaire_signe_ne_compte_aucune_ouverture(
+            self, mock_gen, _dl, premiere, reouverture):
+        """Devis ACCEPTÉ : le signataire télécharge son exemplaire signé
+        (écran de succès, e-mail) — ``view_count`` et les dates de lecture
+        inchangés, aucune note « devis ouvert », aucune notification, même
+        après la fenêtre de réouverture."""
+        from datetime import timedelta
+        _, link = self._devis('DEV-ADEV105-A', 'accepte', CLE_SIGNEE)
+        avant = timezone.now() - timedelta(days=2)
+        ShareLink.objects.filter(pk=link.pk).update(
+            view_count=3, first_viewed_at=avant, last_viewed_at=avant)
+        for _ in range(2):
+            self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
+                             OCTETS_SIGNES)
+        link.refresh_from_db()
+        self.assertEqual((link.view_count, link.first_viewed_at,
+                          link.last_viewed_at), (3, avant, avant))
+        premiere.assert_not_called()
+        reouverture.assert_not_called()
+
+    @patch('apps.ventes.public.lecture_views._notify_first_open')
+    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/rerendu.pdf')
+    def test_pdf_d_un_envoye_compte_toujours_la_premiere_lecture(
+            self, mock_gen, _dl, premiere):
+        """Test-du-test : devis ENVOYÉ non accepté — le comptage d'avant
+        (première ouverture comptée et notifiée) est inchangé."""
+        _, link = self._devis('DEV-ADEV105-B', 'envoye')
+        self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
+                         OCTETS_RERENDU)
+        link.refresh_from_db()
+        self.assertEqual(link.view_count, 1)
+        self.assertIsNotNone(link.first_viewed_at)
+        premiere.assert_called_once()
+
     def test_envoye_aucun_code_requis(self):
         _, link = self._devis('DEV-ADEV97-C', 'envoye')
         resp = self._demander(link)

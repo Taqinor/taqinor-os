@@ -729,12 +729,14 @@ def _send_otp_email(email, code, devis_ref, company=None):
 def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                          signature_image='', signed_at_client=None,
                          on_behalf_of='', lignes=None, entreprise=None,
-                         langue='', refus_etude=None):
+                         langue='', refus_etude=None, lien=None):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
 
     ADEV96 — les chiffres de l'étude C&I scellés sont lus ici et stockés sur
     la signature (``figures_scellees``) : la vérification rejoue le sceau
-    depuis eux, jamais depuis le moteur. ``refus_etude`` (``accept_devis``) —
+    depuis eux, jamais depuis le moteur. ADEV104 — ``lien`` (le lien signé) :
+    l'étude est lue avec SES sections servies et son niveau/ses sections
+    masquées sont scellés (``lien_scelle``). ``refus_etude`` (``accept_devis``) —
     REFUS FERMÉ : l'étude d'un devis C&I illisible lève
     ``AcceptError(refus_etude, conflict=True, code='validation_requise')``
     AVANT le best-effort ci-dessous (qui, lui, n'arrête jamais rien) ; sans
@@ -770,7 +772,7 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     if refus_etude is not None and porte_etude \
             and not DevisSignature.objects.filter(devis=devis).exists():
         try:
-            figures = figures_sceau(devis, strict=True)
+            figures = figures_sceau(devis, strict=True, link=lien)
         except SyntheseCiIllisible:
             raise AcceptError(refus_etude, conflict=True,
                               code='validation_requise') from None
@@ -781,10 +783,11 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
         # NPLUS1 — lignes déjà chargées par l'appelant quand il les a (le hash
         # est identique : elles sont retriées par ``id`` côté modèle).
         if figures is None:
-            figures = figures_sceau(devis)
+            figures = figures_sceau(devis, link=lien)
         figures = DevisSignature.figures_canoniques(figures)
+        lien_scelle = DevisSignature.lien_du_sceau(lien)
         content_hash = DevisSignature.compute_content_hash(
-            devis, lignes=lignes, figures=figures)
+            devis, lignes=lignes, figures=figures, lien=lien_scelle)
         # ``signature_image`` peut être une data-URL volumineuse — on la borne
         # raisonnablement (les payloads canvas font ~quelques Ko).
         img = (signature_image or '')
@@ -808,7 +811,7 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
             # ADEV99 — langue de la page (confirmation FR, EN si 'en').
             langue_page=str(langue or '')[:5],
             # ADEV96 — les chiffres scellés, pour un sceau reproductible.
-            figures_scellees={'etude': figures},
+            figures_scellees={'etude': figures}, lien_scelle=lien_scelle,
         )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
@@ -1435,7 +1438,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 on_behalf_of=on_behalf_of, lignes=lignes_devis,
                 # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
                 # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
-                entreprise=entreprise, langue=langue,
+                entreprise=entreprise, langue=langue, lien=lien,
                 refus_etude=(ETUDE_ILLISIBLE_REFUS
                              if _acceptation_par_le_client(user)
                              else ETUDE_ILLISIBLE_REFUS_INTERNE),

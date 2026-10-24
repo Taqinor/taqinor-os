@@ -527,13 +527,18 @@ def figures_etude_scellees(synthese):
     }
 
 
-def figures_sceau(devis, *, strict=False):
+def figures_sceau(devis, *, strict=False, link=None):
     """ADEV96 — les chiffres de l'étude C&I que le sceau v3 de
-    ``DevisSignature`` couvre (étude complète, sans filtre de lien). Calculés
-    ICI, dans la couche domaine : ``ventes.models`` ne relance jamais le
-    moteur (contrat import-linter « Core domain models stay decoupled »).
-    ``strict`` — voir :func:`synthese_ci_lue` (acceptation : refus fermé)."""
-    return figures_etude_scellees(synthese_ci_lue(devis, strict=strict))
+    ``DevisSignature`` couvre. Calculés ICI, dans la couche domaine :
+    ``ventes.models`` ne relance jamais le moteur (contrat import-linter
+    « Core domain models stay decoupled »). ``strict`` — voir
+    :func:`synthese_ci_lue` (acceptation : refus fermé).
+
+    ADEV104 (C-L3-LIEN-10) — ``link`` : le lien SIGNÉ. L'étude est lue avec
+    ses sections servies (l'``argent`` d'un lien « sans économies » n'entre
+    pas dans le sceau), exactement comme :func:`empreinte_contenu_signable`
+    l'a lue pour le défi ; ``None`` (interne, portail) : étude complète."""
+    return figures_etude_scellees(synthese_ci_lue(devis, link, strict=strict))
 
 
 #: ADEV51 — le refus 409 du contrat ``proposal_accept.json``

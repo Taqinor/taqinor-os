@@ -294,3 +294,95 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
         intacte, version = signature.verifier_contenu()
         self.assertTrue(intacte)
         self.assertEqual(version, DevisSignature.CONTENT_HASH_V3)
+
+
+class LeSceauCouvreCeQueCeLienAMontre(_BaseEmpreinte):
+    """ADEV104 (C-L3-LIEN-10) — le sceau v3 est calculé AVEC le lien : son
+    niveau et ses sections masquées entrent dans le payload, et l'argent d'un
+    lien « sans économies » (absent de la page) n'entre pas dans les chiffres
+    scellés. Un sceau posé pour un lien ne valide pas le contenu d'un autre."""
+
+    slug = 'qjr144-lien'
+    ETUDE = {'systeme': {'kwc': 55, 'production_kwh_an': 95425},
+             'energie': {'taux_autoconso_pct': 72.8},
+             'argent': {'economie_annee1': {'total_mad': 120000,
+                                            'total_mad_ttc': 144000},
+                        'indicateurs': {'retour_ans': 4.2}}}
+
+    def setUp(self):
+        super().setUp()
+        from apps.ventes.models import ShareLink
+        self.devis.mode_installation = 'commercial'
+        self.devis.save(update_fields=['mode_installation'])
+        self.lien = ShareLink.objects.create(
+            company=self.company, devis=self.devis,
+            sections={'economies': False})
+
+    def _accepter(self, lien):
+        import copy
+        from unittest import mock
+        from apps.ventes.domain.cycle_vie import _create_esign_record
+        with mock.patch('apps.ventes.quote_engine.builder.build_quote_data',
+                        return_value={}), \
+                mock.patch('apps.ventes.quote_engine.ci.synthese.synthese_ci',
+                           return_value=copy.deepcopy(self.ETUDE)):
+            _create_esign_record(
+                devis=self.devis, nom='M. Client', ip='81.0.0.1',
+                user_agent='pytest', consentement=True, lignes=None,
+                lien=lien)
+        return DevisSignature.objects.get(devis=self.devis)
+
+    def test_l_argent_masque_n_entre_pas_dans_le_sceau(self):
+        signature = self._accepter(self.lien)
+        self.assertEqual(signature.lien_scelle, {
+            'niveau': 'standard', 'sections_masquees': ['economies']})
+        etude = signature.figures_scellees['etude']
+        self.assertEqual(etude['economie_annee1'], {'ht': None, 'ttc': None})
+        self.assertEqual(etude['indicateurs'], {})
+        self.assertEqual(etude['chiffres']['kwc'], 55)
+        # Recalculable depuis ``figures_scellees`` + le niveau du lien.
+        self.assertEqual(signature.content_hash,
+                         DevisSignature.compute_content_hash(
+                             self.devis, figures=etude,
+                             lien=signature.lien_scelle))
+        self.assertEqual(signature.verifier_contenu(),
+                         (True, DevisSignature.CONTENT_HASH_V3))
+
+    def test_sceller_sans_le_niveau_du_lien_ne_reproduit_pas_le_sceau(self):
+        """Test-du-test : le même contenu scellé SANS le lien (ou avec un
+        autre niveau) donne une autre empreinte — le niveau et les sections
+        masquées font partie du sceau."""
+        signature = self._accepter(self.lien)
+        etude = signature.figures_scellees['etude']
+        self.assertNotEqual(signature.content_hash,
+                            DevisSignature.compute_content_hash(
+                                self.devis, figures=etude))
+        self.assertNotEqual(signature.content_hash,
+                            DevisSignature.compute_content_hash(
+                                self.devis, figures=etude, lien={
+                                    'niveau': 'confiance',
+                                    'sections_masquees': ['economies']}))
+
+    def test_un_lien_complet_scelle_l_argent(self):
+        self.lien.sections = {}
+        self.lien.niveau = 'confiance'
+        self.lien.save(update_fields=['sections', 'niveau'])
+        signature = self._accepter(self.lien)
+        self.assertEqual(signature.lien_scelle, {
+            'niveau': 'confiance', 'sections_masquees': []})
+        self.assertEqual(signature.figures_scellees['etude']['economie_annee1'],
+                         {'ht': 120000, 'ttc': 144000})
+        self.assertEqual(signature.verifier_contenu(),
+                         (True, DevisSignature.CONTENT_HASH_V3))
+
+    def test_sans_lien_le_sceau_v3_est_celui_d_avant(self):
+        """Acceptation interne / portail (aucun lien) : ``lien_scelle`` nul et
+        payload v3 inchangé à l'octet (les sceaux déjà posés se reproduisent)."""
+        signature = self._accepter(None)
+        self.assertIsNone(signature.lien_scelle)
+        payload = DevisSignature._payload_content_hash(
+            self.devis, figures=signature.figures_scellees['etude'])
+        self.assertNotIn('|lien=', payload)
+        self.assertIn('|v3|etude=', payload)
+        self.assertEqual(signature.verifier_contenu(),
+                         (True, DevisSignature.CONTENT_HASH_V3))
