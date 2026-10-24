@@ -96,6 +96,10 @@ from .models import (
     PositionTechnicien,
     GeofenceAlert,
 )
+from .serializers_bornes import (
+    CautionUnitaireBorneMixin, MontantProvisionBorneMixin, MotifSansNulMixin,
+    SeuilResponsableBorneMixin,
+)
 
 
 class ChecklistEtapeModeleSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
@@ -364,6 +368,9 @@ class InterventionSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
             # confirmer-rdv / replanification, check-in) : jamais du corps.
             'facture_id', 'rdv_confirme', 'rdv_confirme_le',
             'rdv_reschedule_count', 'arrivee_dans_fenetre',
+            # api-fuzz full : horodatage de notification pose par le serveur
+            # (service de cloture), jamais du corps (an 1194 -> offset LMT).
+            'cloturee_notifiee_le',
         ]
 
     @extend_schema_field(serializers.IntegerField())
@@ -1329,7 +1336,7 @@ class SousTraitantSerializer(serializers.Serializer):
     ``Fournisseur.nom``) et ``contact_nom`` sur ``Fournisseur.contact_personne``
     pour préserver le contrat d'API FG304."""
     id = serializers.IntegerField(read_only=True)
-    raison_sociale = ChaineStricte()
+    raison_sociale = ChaineStricte(max_length=255)
     metier = serializers.ChoiceField(
         choices=[  # miroir de stock.SousTraitantProfile.Metier
             ('terrassement', 'Terrassement'),
@@ -1341,16 +1348,18 @@ class SousTraitantSerializer(serializers.Serializer):
         ],
         required=False, default='autre')
     metier_display = serializers.SerializerMethodField()
+    # api-fuzz full : longueurs des colonnes stock.Fournisseur PUBLIEES (un
+    # telephone de 29 chiffres faisait lever la base -> 500).
     contact_nom = ChaineStricte(
-        required=False, allow_blank=True, allow_null=True)
+        required=False, allow_blank=True, allow_null=True, max_length=255)
     telephone = ChaineStricte(
-        required=False, allow_blank=True, allow_null=True)
+        required=False, allow_blank=True, allow_null=True, max_length=20)
     email = serializers.EmailField(
-        required=False, allow_blank=True, allow_null=True)
+        required=False, allow_blank=True, allow_null=True, max_length=254)
     ice = ChaineStricte(
-        required=False, allow_blank=True, allow_null=True)
+        required=False, allow_blank=True, allow_null=True, max_length=20)
     rib = ChaineStricte(
-        required=False, allow_blank=True, allow_null=True)
+        required=False, allow_blank=True, allow_null=True, max_length=50)
     adresse = ChaineStricte(
         required=False, allow_blank=True, allow_null=True)
     # Un sous-traitant est ACTIF par défaut ; `default=True` garantit « actif » à
@@ -1448,9 +1457,11 @@ class DemandeAchatLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixi
 
     def validate_prix_estime(self, value):
         # ACHT11 — prix estimé fini et non négatif.
+        # api-fuzz full : le motif publie d'un decimal souple ne sait pas
+        # exclure le signe `-` -> refus d'ETAT (409), comme la quantite.
         if value is not None and (not value.is_finite() or value < 0):
-            raise serializers.ValidationError(
-                'Le prix estimé ne peut pas être négatif.')
+            raise ConflitEtat(
+                {'prix_estime': ['Le prix estimé ne peut pas être négatif.']})
         return value
 
     def validate(self, attrs):
@@ -1581,7 +1592,7 @@ class EtapeApprobationAchatSerializer(SameCompanyFKSerializerMixin, serializers.
         read_only_fields = fields
 
 
-class SeuilApprobationBCFSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
+class SeuilApprobationBCFSerializer(SeuilResponsableBorneMixin, ChampsStrictsMixin, serializers.ModelSerializer):
     """FG312 — seuil (MAD) par société : un BCF au-dessus du seuil exige un
     Administrateur. La société est posée CÔTÉ SERVEUR."""
 
@@ -1805,7 +1816,8 @@ class LandedCostLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         return attrs
 
 
-class ReceptionNonFactureeSerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class ReceptionNonFactureeSerializer(MontantProvisionBorneMixin,
+                                     IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                                      serializers.ModelSerializer):
     """FG317 — provision de dette latente (réceptionné-non-facturé). La société
     et `created_by` sont posés CÔTÉ SERVEUR ; `lettre`/`date_lettrage`/`facture`
@@ -1952,7 +1964,8 @@ class BinLocationSerializer(
         return value
 
 
-class PutAwaySerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin,
+class PutAwaySerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
+                        SameCompanyFKSerializerMixin,
                         serializers.ModelSerializer):
     """FG320 - rangement guide. La societe, `created_by`, `bin_suggere`, le
     statut et les champs de tracage sont poses COTE SERVEUR. Le magasinier
@@ -2167,7 +2180,7 @@ class SessionComptageSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin
         ]
 
 
-class DemandeTransfertSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class DemandeTransfertSerializer(MotifSansNulMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """FG325 - demande de transfert inter-emplacements. Reference/societe/
     `created_by` poses COTE SERVEUR ; le statut et les champs d'approbation/
@@ -2248,7 +2261,7 @@ class RegleReapproSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, S
         return attrs
 
 
-class MaterielConsigneSerializer(CautionTotaleMixin, ChampsStrictsMixin,
+class MaterielConsigneSerializer(CautionUnitaireBorneMixin, CautionTotaleMixin, ChampsStrictsMixin,
                                  SameCompanyFKSerializerMixin,
                                  serializers.ModelSerializer):
     """FG327 - materiel consigne retournable. Societe/`created_by` poses COTE

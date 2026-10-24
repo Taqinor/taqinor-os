@@ -2360,6 +2360,9 @@ def enregistrer_series_lot(installation, lignes, user=None):
                         'produit': ligne.get('produit'), 'statut': 'erreur',
                         'message': None}
             resultats.append(resultat)
+            if len(serie) > 120:  # colonne Equipement.numero_serie (CharField 120)
+                resultat['message'] = "Numéro de série trop long (120 signes max)."
+                continue
             produit = None
             if ligne.get('produit'):
                 try:

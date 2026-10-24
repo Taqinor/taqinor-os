@@ -91,6 +91,19 @@ class TestReplanificationMasse(TestCase):
             type_intervention='depannage', created_by=self.admin,
             technicien=self.absent, date_prevue=self.jour)
 
+    def test_simuler_illisible_en_requete_400_meme_avec_simuler_en_corps(self):
+        # api-fuzz full : `corps['simuler'] or drapeau_requete(...)`
+        # court-circuitait la validation de `?simuler=11829` (200).
+        r = self.api.post(
+            f'{BASE}/interventions/replanifier-en-masse/?simuler=11829',
+            {'jour': self.jour.isoformat(), 'simuler': True}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('simuler', r.json())
+        r = self.api.post(
+            f'{BASE}/interventions/replanifier-en-masse/',
+            {'jour': '2026-1-5', 'simuler': True}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_dry_run_ne_mute_rien(self):
         resp = self.api.post(f'{BASE}/interventions/replanifier-en-masse/', {
             'jour': self.jour.isoformat(), 'technicien': self.absent.id,

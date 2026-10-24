@@ -135,6 +135,15 @@ class TestSessionComptage(TestCase):
         self.assertEqual(session.statut, SessionComptage.Statut.TERMINE)
 
 
+class TestFiltresIllisibles(TestCase):
+    def test_filtre_emplacement_chiffre_unicode_400(self):
+        # api-fuzz full : « \u00b9 » passait isdigit() puis int() -> 500.
+        api = auth(make_user(make_company()))
+        r = api.get(f'{BASE}/sessions-comptage/', {'emplacement': '\u00b9'})
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('emplacement', r.json())
+
+
 class TestScopingAndRoles(TestCase):
     def setUp(self):
         self.company = make_company()

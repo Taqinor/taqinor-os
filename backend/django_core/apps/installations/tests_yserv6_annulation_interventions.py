@@ -87,6 +87,19 @@ class AnnulationSoldeInterventionsTests(TestCase):
         self.i3_terminee = make_intervention(
             self.company, self.inst, statut=Intervention.Statut.TERMINEE)
 
+    def test_annuler_et_noter_corps_hors_schema_400_jamais_500(self):
+        # api-fuzz full : `motif` nombre (`.strip()` levait) ; note avec NUL.
+        base = f'{BASE}/chantiers/{self.inst.id}'
+        for corps in ({'motif': 3.7e-247}, {'motif': 'a\x00b'}, [1, 2]):
+            r = self.api.post(f'{base}/annuler/', corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        for corps in ({'body': 'a\x00b'}, {'body': 8.0e-81}, {'body': '  '},
+                      {}):
+            r = self.api.post(f'{base}/noter/', corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        self.inst.refresh_from_db()
+        self.assertFalse(self.inst.annule)
+
     def test_annuler_marque_interventions_ouvertes(self):
         r = self.api.post(f'{BASE}/chantiers/{self.inst.id}/annuler/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)

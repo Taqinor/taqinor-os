@@ -741,6 +741,21 @@ class TestInterventionF3(TestCase):
             {'body': '   '}, format='json')
         self.assertEqual(n.status_code, 400)
 
+    def test_noter_hors_schema_400_jamais_500(self):
+        # api-fuzz full : le texte de la note est strict, sans caractère nul.
+        iid = self._create_interv().data['id']
+        url = f'/api/django/installations/interventions/{iid}/noter/'
+        for corps in ({'body': 'a\x00b'}, {'body': 12}, {}):
+            n = self.api.post(url, corps, format='json')
+            self.assertEqual(n.status_code, 400, (corps, n.content))
+
+    def test_cloturee_notifiee_le_jamais_du_corps(self):
+        # api-fuzz full : horodatage posé par le service de clôture — l'an
+        # 1194 rendait un décalage LMT hors RFC 3339 (réponse hors schéma).
+        r = self._create_interv(cloturee_notifiee_le='1194-05-06T13:21:22+00:00')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertIsNone(r.data['cloturee_notifiee_le'])
+
     def test_camionnette_assignable_and_scoped(self):
         r = self._create_interv(camionnette=self.camion.id)
         self.assertEqual(r.status_code, 201, r.data)

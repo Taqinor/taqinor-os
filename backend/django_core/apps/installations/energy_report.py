@@ -16,6 +16,7 @@ la puissance nominale et l'identité du système ; aucun prix interne n'est lu.
 Rendu via WeasyPrint (octets PDF en mémoire), comme apps.ventes.utils.pdf —
 le moteur premium du devis n'est jamais importé ni modifié.
 """
+import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from html import escape
@@ -43,6 +44,27 @@ def _to_decimal(value, default=None):
         return default
 
 
+#: api-fuzz full — bornes PUBLIÉES des paramètres de requête (= lues) : sans
+#: plafond, un tarif de 1e308 ou une période de plusieurs siècles faisait
+#: déborder le calcul.
+NB_MOIS_MAX = 1200
+PRODUCTION_ANNUELLE_MAX = 1_000_000_000
+RENDEMENT_MAX = 10_000
+TARIF_MAX = 1_000
+CO2_MAX = 10
+
+#: Refus d'ÉTAT (409) : la requête est conforme, c'est la situation (chantier
+#: sans puissance, fenêtre de dates incohérente) qui s'oppose au rapport.
+MSG_PUISSANCE = 'Puissance installée non renseignée.'
+MSG_FENETRE_INVERSEE = 'La date de fin doit suivre la date de début.'
+MSG_FENETRE_TROP_LONGUE = (
+    f'La période ne peut pas dépasser {NB_MOIS_MAX} mois.')
+MESSAGES_ETAT = {MSG_PUISSANCE, MSG_FENETRE_INVERSEE, MSG_FENETRE_TROP_LONGUE}
+
+_NOMBRE = re.compile(r'^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?\Z', re.ASCII)
+_DATE_ISO = re.compile(r'^\d{4}-\d{2}-\d{2}\Z', re.ASCII)
+
+
 def valider_parametres_rapport(qp, puissance_kwc):
     """ACHT49 — valide les paramètres de requête du rapport AVANT tout calcul.
 
@@ -58,12 +80,15 @@ def valider_parametres_rapport(qp, puissance_kwc):
 
     erreurs = {}
 
-    def _nombre(cle, nom_param, minimum_strict):
+    def _nombre(cle, nom_param, minimum_strict, maximum):
         brut = qp.get(nom_param)
-        if brut is None or str(brut).strip() == '':
+        if brut is None or brut == '':
+            return None
+        if not _NOMBRE.match(brut):
+            erreurs[nom_param] = 'Nombre invalide.'
             return None
         try:
-            valeur = Decimal(str(brut).strip())
+            valeur = Decimal(brut)
         except (InvalidOperation, ValueError, TypeError):
             erreurs[nom_param] = 'Nombre invalide.'
             return None
@@ -76,37 +101,45 @@ def valider_parametres_rapport(qp, puissance_kwc):
         if not minimum_strict and valeur < 0:
             erreurs[nom_param] = 'Ne peut pas être négatif.'
             return None
+        if valeur > maximum:
+            erreurs[nom_param] = f'Ne peut pas dépasser {maximum}.'
+            return None
         return valeur
 
     def _date(nom_param):
         brut = qp.get(nom_param)
-        if brut is None or str(brut).strip() == '':
+        if brut is None or brut == '':
             return None
         try:
-            return datetime.strptime(str(brut).strip(), '%Y-%m-%d').date()
+            if not _DATE_ISO.match(brut):
+                raise ValueError(brut)
+            return datetime.strptime(brut, '%Y-%m-%d').date()
         except ValueError:
             erreurs[nom_param] = 'Date invalide (AAAA-MM-JJ).'
             return None
 
     params = {
-        'nb_mois': _nombre('nb_mois', 'nb_mois', True),
+        'nb_mois': _nombre('nb_mois', 'nb_mois', True, NB_MOIS_MAX),
         'date_debut': _date('date_debut'),
         'date_fin': _date('date_fin'),
         'production_annuelle_kwh': _nombre(
-            'production_annuelle_kwh', 'production_annuelle_kwh', True),
-        'rendement_kwh_par_kwc_an': _nombre('rendement', 'rendement', True),
-        'tarif_mad_par_kwh': _nombre('tarif', 'tarif', True),
-        'co2_kg_par_kwh': _nombre('co2', 'co2', False),
+            'production_annuelle_kwh', 'production_annuelle_kwh', True,
+            PRODUCTION_ANNUELLE_MAX),
+        'rendement_kwh_par_kwc_an': _nombre(
+            'rendement', 'rendement', True, RENDEMENT_MAX),
+        'tarif_mad_par_kwh': _nombre('tarif', 'tarif', True, TARIF_MAX),
+        'co2_kg_par_kwh': _nombre('co2', 'co2', False, CO2_MAX),
     }
-    if (params['date_debut'] and params['date_fin']
-            and params['date_fin'] < params['date_debut']):
-        erreurs['date_fin'] = (
-            'La date de fin doit suivre la date de début.')
+    if params['date_debut'] and params['date_fin']:
+        if params['date_fin'] < params['date_debut']:
+            erreurs['date_fin'] = MSG_FENETRE_INVERSEE
+        elif _months_between(
+                params['date_debut'], params['date_fin']) > NB_MOIS_MAX:
+            erreurs['date_fin'] = MSG_FENETRE_TROP_LONGUE
     puissance = _to_decimal(puissance_kwc)
     if (puissance is None or puissance <= 0) and (
             params['production_annuelle_kwh'] is None):
-        erreurs['puissance_installee_kwc'] = (
-            'Puissance installée non renseignée.')
+        erreurs['puissance_installee_kwc'] = MSG_PUISSANCE
     return params, erreurs
 
 

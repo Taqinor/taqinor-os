@@ -66,6 +66,14 @@ class TestDemandeTransfert(TestCase):
         self.dst = make_emplacement(self.company, 'Camionnette 1')
         self.produit = make_produit(self.company)
 
+    def test_motif_nul_ou_non_texte_400(self):
+        # api-fuzz full : le motif est un texte strict sans caractère nul.
+        for motif in ('a\x00b', 12):
+            r = self.api.post(f'{BASE}/demandes-transfert/',
+                              self._payload(motif=motif), format='json')
+            self.assertEqual(r.status_code, 400, (motif, r.content))
+            self.assertIn('motif', r.json())
+
     def _payload(self, **over):
         base = {
             'produit': self.produit.id, 'source': self.src.id,
