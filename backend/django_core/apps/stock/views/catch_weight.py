@@ -8,9 +8,17 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..erreurs_achats import statut_refus_metier
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.champs_stricts import ChaineStricte
+
+from ..erreurs_achats import statut_refus_metier
+
+
+class RapprocherPeseesCorps(serializers.Serializer):
+    """Corps de ``rapprocher-pesees`` (api-fuzz) : ``note`` facultative, vraie
+    chaîne JSON sans caractère nul — un corps non objet répondait 500."""
+    note = ChaineStricte(required=False, allow_blank=True)
 
 
 def _pesee_payload(ligne, pesee):
@@ -101,9 +109,7 @@ class PeseeLigneActionsMixin:
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(_pesee_payload(ligne, pesee))
 
-    @extend_schema(request=inline_serializer('RapprocherPeseesCorps',
-                                             {'note': serializers.CharField(required=False, allow_blank=True)}),
-                   responses={
+    @extend_schema(request=RapprocherPeseesCorps, responses={
         200: inline_serializer('StockReceptionPeseeRapprochement', {
             'ajustes': serializers.IntegerField(),
             'inchanges': serializers.IntegerField(),
@@ -123,10 +129,12 @@ class PeseeLigneActionsMixin:
         from ..services_catch_weight import rapprocher_pesee_reception
 
         reception = self.get_object()
+        corps_valide = RapprocherPeseesCorps(data=request.data)
+        corps_valide.is_valid(raise_exception=True)
         try:
             result = rapprocher_pesee_reception(
                 reception=reception, user=request.user,
-                note=request.data.get('note') or None)
+                note=corps_valide.validated_data.get('note') or None)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=statut_refus_metier(exc))

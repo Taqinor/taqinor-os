@@ -200,7 +200,7 @@ def rapprocher_pesee_reception(*, reception, user=None, note=None):
     reference = reference_rapprochement(reception)
     if MouvementStock.objects.filter(
             company=reception.company, reference=reference).exists():
-        raise ValueError(
+        raise EtatIncompatible(
             'Les écarts de pesée de cette réception ont déjà été rapprochés.')
 
     result = {'ajustes': 0, 'inchanges': 0, 'mouvements': []}
