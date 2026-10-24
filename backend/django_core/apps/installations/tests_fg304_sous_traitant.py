@@ -171,6 +171,13 @@ class TestSousTraitantFiltersSearch(TestCase):
         ids = [row['id'] for row in r.data['results']]
         self.assertEqual(ids, [self.elec.id])
 
+    def test_search_avec_caractere_nul_liste_vide_jamais_500(self):
+        """api-fuzz-full 24/10 : un NUL dans ``search`` atteignait PostgreSQL
+        (500). Aucun texte stocké n'en porte : liste vide, comme ailleurs."""
+        r = self.api.get(f'{BASE}/sous-traitants/?search=%C2%90%00a')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data['count'], 0)
+
     def test_search_by_ice(self):
         """FG304 — recherche plein-texte sur l'ICE."""
         r = self.api.get(f'{BASE}/sous-traitants/?search=001234567')

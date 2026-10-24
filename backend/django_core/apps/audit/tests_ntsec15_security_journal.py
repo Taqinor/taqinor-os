@@ -91,3 +91,16 @@ class SecurityExportTests(TenantAPITestCase):
         body = r.content.decode('utf-8')
         self.assertIn('alerte-rouge', body)
         self.assertNotIn('alerte-bleue', body)
+
+    def test_export_terme_nul_et_date_impossible_jamais_500(self):
+        """api-fuzz-full 24/10 (3e drainage) : un NUL dans ``search`` levait
+        PostgreSQL (500) ; une date-heure impossible levait ``parse_datetime``."""
+        AuditLog.objects.create(
+            company=self.company, action=AuditLog.Action.SECURITY_ALERT,
+            detail='alerte-nul')
+        api = self.client_as(role=CustomUser.ROLE_ADMIN)
+        r = api.get(self.URL, {'search': 'ab' + chr(0)})
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertNotIn('alerte-nul', r.content.decode('utf-8'))
+        r = api.get(self.URL, {'from': '2026-13-45T10:00:00'})
+        self.assertEqual(r.status_code, 200, r.content)

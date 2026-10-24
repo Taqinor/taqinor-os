@@ -23,8 +23,8 @@ from authentication.permissions import (
 )
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
 from core.champs_stricts import (
-    MOTIF_NON_BLANC_SANS_NUL, BooleenStrict, ChaineStricte, DateStricte,
-    DecimalBornee, EntierStrict, entier_ou_400,
+    MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, BooleenStrict, ChaineStricte,
+    DateStricte, DecimalBornee, EntierStrict, entier_ou_400,
 )
 from core.conflit_etat import ConflitEtat
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
@@ -38,7 +38,7 @@ from apps.records.champs_stricts import RegexStricte
 
 from . import activity
 from .champs_corps import (
-    QuantitePositive, TexteSansSubstitut,
+    CORPS_PIECE_RETIREE, QuantitePositive, TexteSansSubstitut,
 )
 from .validations_releve import exiger_objet
 from .models import (
@@ -2098,7 +2098,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         responses=PieceRetireeSerializer(many=True))
     @extend_schema(
         methods=['POST'],
-        request=_SCHEMA_PIECE_RETIREE,
+        request=_SCHEMA_PIECE_RETIREE, extensions=CORPS_PIECE_RETIREE,
         responses={201: PieceRetireeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='pieces-retirees', pagination_class=None,
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
@@ -2486,9 +2486,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # annonçait tous les champs facultatifs alors que la vue exige ``cle``).
         request={'application/json': {
             'type': 'object', 'required': ['cle'], 'properties': {
-                'cle': {'type': 'string', 'minLength': 1, 'pattern': r'\S'},
+                'cle': {'type': 'string', 'minLength': 1,
+                        'pattern': MOTIF_NON_BLANC_SANS_NUL},
                 'coche': {'type': 'boolean'},
-                'note': {'type': 'string', 'nullable': True}}}},
+                'note': {'type': 'string', 'nullable': True,
+                         'pattern': MOTIF_SANS_NUL}}}},
         responses=TicketChecklistItemSerializer)
     @action(detail=True, methods=['get', 'post', 'patch'],
             url_path='checklist', pagination_class=None,

@@ -155,7 +155,9 @@ class OracleInterSocietesTest(TestCase):
         for champ in ('module_produit', 'onduleur_produit',
                       'optimiseur_produit'):
             with self.subTest(champ=champ):
-                r = self._paire(self._entree(champ), self.produit_voisin.pk)
+                # ENF11 : id bien formé inconnu / d'une autre société = 404.
+                r = self._paire(self._entree(champ), self.produit_voisin.pk,
+                                statut=404)
                 self.assertEqual(_champs(r.data), [champ])
                 self.assertEqual(
                     _normalise(r.data, self.produit_voisin.pk)[champ],
@@ -167,7 +169,7 @@ class OracleInterSocietesTest(TestCase):
             f'{URL}{self.calepinage.pk}/entree-electrique/',
             {'module_produit': self.produit_voisin.pk, 'dc_m': 42.0},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 404, r.data)
         self.assertEqual(self._instantane(), avant)
 
     def test_entree_electrique_produit_de_la_societe_et_effacement_admis(self):

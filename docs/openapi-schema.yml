@@ -9617,8 +9617,6 @@ components:
 - CalepinageImporterPlanCorpsRequest
 - CalepinageJetonManquant
 - CalepinageJoindrePiece
-- CalepinageJoindrePieceCorpsParDossierRequest
-- CalepinageJoindrePieceCorpsParGabaritRequest
 - CalepinageJoindrePieceCorpsRequest
 - CalepinageLayoutCorpsRequest
 - CalepinageLayoutEcrit
@@ -10846,6 +10844,7 @@ components:
 - MouvementRebutRequest
 - MouvementStock
 - MouvementStockRequest
+- MouvementStockTypeMouvementEnum
 - MouvementsExportAsyncReponse
 - NetworkPolicy
 - NetworkPolicyModeEnum
@@ -12230,6 +12229,7 @@ components:
 - SavedViewImportRequeteRequest
 - SavedViewRequest
 - ScannerMouvementCorpsRequest
+- ScannerMouvementCorpsTypeMouvementEnum
 - ScheduleEnum
 - ScheduledExport
 - ScheduledExportDestinationEnum
@@ -12253,7 +12253,8 @@ components:
 - SerieEntrepot
 - SerieEntrepotRequest
 - SerieEntrepotStatutEnum
-- SeriesLotRequeteRequest
+- SeriesLotCorpsFichierRequest
+- SeriesLotCorpsJsonRequest
 - ServiceAccount
 - ServiceAccountCree
 - ServiceAccountCreerRequest
@@ -12529,7 +12530,6 @@ components:
 - TypeInterventionRequest
 - TypeLigneEnum
 - TypeMaterielEnum
-- TypeMouvementEnum
 - TypeNomenclatureEnum
 - TypePartenaireEnum
 - TypePompeEnum

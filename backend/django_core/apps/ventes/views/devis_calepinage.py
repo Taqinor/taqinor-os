@@ -12,6 +12,7 @@ dans les corps (patchs ``apps.ventes.utils.pdf.*``,
 """
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from . import openapi_docs as D
 from rest_framework import status
 from rest_framework.decorators import action
@@ -658,8 +659,13 @@ class DevisCalepinageActionsMixin:
         devis.refresh_from_db(fields=['roof_layout'])
         return Response({'roof_layout': devis.roof_layout})
 
+    # api-fuzz : le corps est obligatoire (drf-spectacular ne pose pas
+    # ``required: true`` sur un `request` en dict) — le fuzz l'omettait et
+    # recevait « Fichier image manquant » (400) sur une requête « conforme ».
     @extend_schema(request=D.RoofImageRequest,
-                   responses={201: D.RoofImageResponse})
+                   responses={201: D.RoofImageResponse},
+                   extensions={EXTENSION_CORPS_RESSERRE: {
+                       'required': ['image']}})
     @action(
         parser_classes=[MultiPartParser, FormParser],
         detail=True,

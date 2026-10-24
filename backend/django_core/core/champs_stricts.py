@@ -593,7 +593,8 @@ def _ids_inconnus_seulement(erreurs, champs, imbriques=False):
     """Vrai si TOUTES les erreurs sont « objet inexistant » (``does_not_exist``)
     sur des champs de relation par clé primaire — ou le refus d'unicité
     (``unique``) d'une telle relation (``OneToOne``), deux refus d'ÉTAT qu'un
-    schéma ne peut pas exprimer : un id inconnu l'emporte (404) sur le doublon."""
+    schéma ne peut pas exprimer : un id inconnu l'emporte (404) sur le doublon,
+    y compris celui d'un champ ordinaire (``code_parrainage`` d'un client)."""
     if not isinstance(erreurs, dict) or not erreurs:
         return False
     inconnu = False
@@ -607,9 +608,13 @@ def _ids_inconnus_seulement(erreurs, champs, imbriques=False):
             inconnu = True
             continue
         relation = getattr(champ, 'child_relation', champ)
-        if not isinstance(relation, serializers.PrimaryKeyRelatedField):
-            return False
         codes = {getattr(d, 'code', None) for d in details} if isinstance(details, list) else set()
+        if not isinstance(relation, serializers.PrimaryKeyRelatedField):
+            # Doublon d'un champ ordinaire (``unique``) : refus d'ÉTAT lui aussi,
+            # toléré seulement À CÔTÉ d'un id inconnu (seul, c'est un 409).
+            if codes == {'unique'}:
+                continue
+            return False
         if not codes or not codes <= {'does_not_exist', 'unique'}:
             return False
         inconnu = inconnu or 'does_not_exist' in codes

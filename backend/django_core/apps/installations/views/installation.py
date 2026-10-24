@@ -736,7 +736,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         })
 
     @oa.extend_schema(
-        request=oa.SeriesLotRequete,
+        # ENF11 : ``fichier`` n'existe qu'en multipart (en JSON : 400).
+        request={'application/json': oa.SeriesLotCorpsJson,
+                 'multipart/form-data': oa.SeriesLotCorpsFichier},
         responses=oa.OBJ,
     )
     @action(parser_classes=oa.JSON_AND_UPLOAD_PARSERS, detail=True, methods=['post'], url_path='series-lot',

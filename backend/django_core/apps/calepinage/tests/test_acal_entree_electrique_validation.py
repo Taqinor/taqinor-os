@@ -136,6 +136,46 @@ class Ecriture(BaseValidation):
         self.calepinage.refresh_from_db()
         self.assertEqual(self.calepinage.resultat[CLE_ENTREE]['dc_m'], 25.0)
 
+    def test_caractere_nul_est_un_conflit_409_et_n_ecrit_rien(self):
+        """ENF11 (api-fuzz-full 24/10) : un NUL (clé OU valeur, à toute
+        profondeur) ne se range pas en JSONB et un sous-objet libre ne peut
+        pas le dire au schéma : 409, jamais 400 « conforme » ni 500."""
+        for saisie in ({'regime': 'T\x00T'}, {'exigence_marche': {'a\x00': 1}},
+                       {'cheminement': {'pans': {'x': {'note': 'a\x00'}}}}):
+            with self.subTest(saisie=saisie):
+                reponse = self.api.post(url_entree(self.calepinage.pk),
+                                        saisie, format='json')
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertEqual(self.calepinage.resultat[CLE_ENTREE],
+                         self.entree_initiale)
+
+    def test_corps_publie_type_chaque_champ_et_ce_qu_il_publie_est_accepte(self):
+        """Le corps du schéma type CHAQUE champ de l'entrée (plus de ``{}``
+        libre : ``temperature_max_c: []`` était « conforme » puis refusé) et
+        un représentant de chaque forme publiée est accepté par le serveur."""
+        from apps.calepinage.champs_entree import corps_entree_resserre
+        from apps.calepinage.services.electrique import CHAMPS_ENTREE
+
+        regle = corps_entree_resserre()
+        self.assertEqual(set(regle['properties']), set(CHAMPS_ENTREE))
+        self.assertFalse(regle['additionalProperties'])
+        for cle, forme in regle['properties'].items():
+            self.assertTrue(forme, f'{cle} est publié libre ({{}})')
+        accepte = {
+            'temperature_min_c': -10, 'temperature_max_c': 55, 'dc_m': 12.5,
+            'ac_m': 3, 'phases': 3, 'regime': 'TN', 'zone_keraunique': True,
+            'inclure_prise_terre': False, 'longueur_chaine_forcee': 12,
+            'plafond_kwc_par_onduleur': 8.5, 'cheminement': {},
+            'transformateur': {'declare': False},
+            'batterie': {'strategie': 'autoconso', 'couplage': 'ac',
+                         'packs': 2, 'heures_charge': [10, 11]},
+            'hors_reseau': {'actif': False, 'jours_autonomie': 2},
+        }
+        entree = enregistrer_entree(self.calepinage, accepte)
+        self.assertEqual(entree['regime'], 'TN')
+        self.assertEqual(entree['batterie']['packs'], 2)
+
 
 class Lecture(BaseValidation):
 

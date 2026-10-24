@@ -130,9 +130,11 @@ def _journaliser(company, user, avant, apres):
         for cle in sorted(set(ancienne) | set(nouvelle)):
             if ancienne.get(cle) == nouvelle.get(cle):
                 continue
+            # ENF11 : une clé libre très longue (sections libres) dépassait
+            # varchar(100)/(150) du journal -> DataError (500) ; tronquées.
             SettingsAuditLog.log_change(
-                company, user, 'calepinage', f'{section}.{cle}',
-                f'Calepinage › {section} › {cle}',
+                company, user, 'calepinage', f'{section}.{cle}'[:100],
+                f'Calepinage › {section} › {cle}'[:150],
                 _texte_journal(ancienne.get(cle)),
                 _texte_journal(nouvelle.get(cle)))
 

@@ -110,6 +110,15 @@ class RapprocherPeseesCorps(serializers.Serializer):
     note = ChaineStricte(required=False, allow_blank=True)
 
 
+class ReceptionCrossDockCorps(serializers.Serializer):
+    """``POST receptions-fournisseur/{id}/affecter-cross-dock/`` (tout facultatif) :
+    ids des lignes de réception à router (une valeur non liste faisait un 500) et
+    colis existant à alimenter ; nul / absent = toutes les lignes / un colis neuf."""
+    lignes = serializers.ListField(
+        child=EntierStrict(min_value=1, max_value=ID_MAX), required=False, allow_null=True)
+    unite_logistique = EntierStrict(required=False, allow_null=True, min_value=1, max_value=ID_MAX)
+
+
 class UniteAjouterLigneCorps(serializers.Serializer):
     """``POST unites-logistiques/{id}/lignes/`` : une quantité hors colonne
     (entier 32 bits) faisait un 500 à l'écriture ; le plafond est celui des

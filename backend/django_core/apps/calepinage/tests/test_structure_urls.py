@@ -227,6 +227,28 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
                 corps = self._operation(methode, suffixe)['requestBody']
                 self.assertIs(corps.get('required'), True)
 
+    def test_put_parametres_publie_obligatoire(self):
+        """api-fuzz-full 24/10 : sans corps le PUT répond 400 « Corps de
+        requête manquant » -- le corps est donc OBLIGATOIRE au schéma."""
+        corps = self.schema['paths']['/api/django/calepinage/parametres/'][
+            'put']['requestBody']
+        self.assertIs(corps.get('required'), True)
+
+    def test_joindre_piece_un_objet_plat_sans_oneof(self):
+        """Un ``oneOf`` portant un ``format: binary`` plante le générateur du
+        fuzz (« Unsupported type: 'Binary' ») : objet plat, dossier OU
+        gabarit en ``anyOf`` de ``required``, ``fichier`` binaire au sommet."""
+        corps = self._operation('post', '{id}/joindre-piece/')['requestBody']
+        schema = corps['content']['multipart/form-data']['schema']
+        self.assertNotIn('oneOf', str(schema))
+        plat = self.schema['components']['schemas'][
+            schema['allOf'][0]['$ref'].rsplit('/', 1)[-1]]
+        self.assertNotIn('oneOf', str(plat))
+        self.assertEqual(plat['properties']['fichier']['format'], 'binary')
+        self.assertEqual(plat['required'], ['piece'])
+        self.assertEqual(schema['allOf'][1]['anyOf'],
+                         [{'required': ['dossier']}, {'required': ['gabarit']}])
+
     def test_joindre_piece_publie_en_multipart_seul(self):
         """Le champ binaire publié en JSON faisait planter le moteur du fuzz
         (« Unsupported type: 'Binary' ») : l'upload est multipart seul."""

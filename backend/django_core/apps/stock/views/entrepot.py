@@ -20,6 +20,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 
 
 # ENF11 — borne commune des seuils du cockpit (jours ou heures) : bornée,
@@ -83,7 +84,7 @@ def entrepot_cockpit_view(request):
     ))
 
 
-@extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers', pattern=r'\S'),
+@extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers', pattern=MOTIF_NON_BLANC_SANS_NUL),
                            P('quantite', INT, False, 'Quantité supplémentaire (>= 0 ; négative = 400)', mini=0),
                            P('produit', INT), P('emplacement', INT)], responses={
     200: inline_serializer('StockSimulationCapacite', {
