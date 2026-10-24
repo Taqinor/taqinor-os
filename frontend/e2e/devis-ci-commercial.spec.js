@@ -35,6 +35,11 @@ const ENTREPRISE = {
   // ICE FACTICE de 15 chiffres (le même que l'exemple du contrat).
   ice: '000000000000000',
 }
+// ADEV95 — sur le LIEN PUBLIC, le signataire C&I est aussi nommé (= le nom tapé), joignable,
+// et atteste son pouvoir d'engager la société (contrat acceptation_entreprise.json).
+const SIGNATAIRE = {
+  signataire_nom: 'Karim E2E', signataire_email: 'karim@hotel-e2e.test', pouvoir_engager: true,
+}
 // CAD177 — la consommation DÉCLARÉE doit être cohérente avec la fermeture
 // déclarée : le niveau de la courbe est la facture du mois (CIQ108,
 // Σ charge = kWh déclaré). Avec 17 600 kWh en août (le pic de
@@ -90,8 +95,9 @@ test('CIQ334 — créer (hôtel, dimanche fermé, août fermé), rouvrir, ré-en
   await expect(page.getByTestId('ci-profil')).toBeVisible()
 
   // Catégorie commerciale : Hôtel.
-  await page.locator('div.grid', { has: page.getByText('Catégorie commerciale', { exact: true }) })
-    .getByRole('combobox').first().click()
+  // Le champ de la LIBELLÉ (ADEV100 y ajoute le badge « repris du lead » : plus de texte exact).
+  await page.locator('label', { hasText: /^Catégorie commerciale/ }).locator('xpath=..')
+    .getByRole('combobox').click()
   await page.getByRole('option', { name: /Hôtel/ }).click()
 
   for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_AOUT_FERME[i]))
@@ -215,7 +221,7 @@ test('CIQ334 — signature entreprise : sans ICE refusée en nommant le champ, a
   const lu = await lireJson(await request.get(`${API}/public/proposal/${etat.token}/data/`), 'lecture de la proposition')
   const corps = (entreprise) => ({
     nom: 'Karim E2E', option: '', consent_esign: true,
-    signed_at_client: new Date().toISOString(), on_behalf_of: '', entreprise,
+    signed_at_client: new Date().toISOString(), on_behalf_of: '', entreprise: { ...entreprise, ...SIGNATAIRE },
     empreinte_contenu: lu.empreinte_contenu,
   })
   const sansIce = await request.post(`${API}/ventes/proposal/${etat.token}/accept/`,
@@ -223,10 +229,11 @@ test('CIQ334 — signature entreprise : sans ICE refusée en nommant le champ, a
   expect(sansIce.status(), 'acceptation sans ICE').toBe(400)
   expect((await sansIce.json()).champ, 'le refus nomme le champ').toBe('entreprise.ice')
 
+  // L'acceptation rend et scelle l'exemplaire signé (PDF) : plus que les 15 s par défaut.
   const accepte = await lireJson(await request.post(`${API}/ventes/proposal/${etat.token}/accept/`,
-    { data: corps(ENTREPRISE) }), 'acceptation avec ICE')
+    { data: corps(ENTREPRISE), timeout: 90_000 }), 'acceptation avec ICE')
   expect(accepte.statut).toBe('accepte')
-  expect(accepte.entreprise).toEqual(ENTREPRISE)
+  expect(accepte.entreprise).toMatchObject(ENTREPRISE)
 
   const signe = await request.get(`${API}/ventes/devis/${etat.devisId}/proposal/?pdf_mode=full`)
   expect(signe.status(), 'PDF signé').toBe(200)
