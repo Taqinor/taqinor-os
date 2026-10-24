@@ -1061,6 +1061,7 @@ def generate_releve_pdf(client, releve_data):
     """Relevé de compte client (style maison) — rendu à la volée, non stocké."""
     context = _company_context(company=client.company)
     context['releve'] = releve_data
+    _contexte_langue(context, client, client.company, traduit=False)
     html = _render_html('releve.html', context)
     return _html_to_pdf(html)
 

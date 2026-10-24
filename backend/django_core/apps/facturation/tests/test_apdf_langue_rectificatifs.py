@@ -4,7 +4,8 @@ documents de facturation dérivés pour un client arabe :
 * TRADUITS (dictionnaire de la facture) : avoir, note de débit, reçu,
   lettre de relance → ``<html lang="ar" dir="rtl">``, ≥ 50 caractères
   arabes, libellés structurels arabes ;
-* en FRANÇAIS avec mention de repli IMPRIMÉE : bon de commande, pro-forma ;
+* en FRANÇAIS avec mention de repli IMPRIMÉE : bon de commande, pro-forma,
+  relevé de compte client (APDF106) ;
 * société ``langue_repli='en'`` : facture française + mention de repli
   (jamais silencieux).
 
@@ -157,6 +158,31 @@ class LangueRectificatifsTests(TestCase):
         self.assertIn('<html lang="fr">', html)
         self.assertIn('Document disponible en français uniquement', html)
         self.assertIn('هذه الوثيقة متوفرة باللغة الفرنسية فقط', html)
+
+    def test_releve_repli_dit(self):
+        """APDF106 — le relevé de compte suit la décision D-APDF-3 (a) : client
+        arabe ⇒ français + mention de repli bilingue, mêmes totaux ; client
+        français ⇒ HTML inchangé, aucune mention."""
+        from apps.ventes.selectors_facturation import releve_client_pdf_bytes
+        releve_client_pdf_bytes(self.client_ar)
+        html_ar = self.html[-1]
+        self.assertIn('<html lang="fr">', html_ar)
+        self.assertIn('Document disponible en français uniquement', html_ar)
+        self.assertIn('هذه الوثيقة متوفرة باللغة الفرنسية فقط', html_ar)
+        # Le même client en français : rendu historique, sans mention.
+        self.client_ar.langue_document = 'fr'
+        self.client_ar.save(update_fields=['langue_document'])
+        releve_client_pdf_bytes(self.client_ar)
+        html_fr = self.html[-1]
+        self.assertNotIn('uniquement', html_fr)
+        self.assertIn('<div class="page">\n  <div class="header">', html_fr)
+        # Mêmes totaux : hors bandeau de repli et horloge du pied de page, les
+        # deux rendus sont identiques octet pour octet.
+        bandeau = re.compile(r'<div style="margin-bottom: 12px[^>]*>.*?</div>')
+        horloge = re.compile(r'Relevé généré le [^<]*')
+        self.assertEqual(
+            horloge.sub('', bandeau.sub('', html_ar, count=1)),
+            horloge.sub('', html_fr))
 
     def test_en_repli_dit(self):
         from apps.parametres.models import CompanyProfile
