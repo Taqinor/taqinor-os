@@ -1,0 +1,402 @@
+{
+  "sha": "5ef1110c01306a283230874b9d79fe32c26d0118",
+  "date": "2026-10-24",
+  "groupe": "PA4",
+  "parcours": "PA4",
+  "verdict": "FAIL",
+  "couvre": [
+    "VNT11"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA4.09",
+      "taches": [
+        "VNT11"
+      ],
+      "base_verdict": null,
+      "verdict": "PASS",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "PASS",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "trace": "POST /api/django/ventes/factures/296/creer-avoir/ → 201 ; POST /api/django/ventes/factures/296/creer-avoir/ → 409 ; GET /api/django/ventes/avoirs/ → 200"
+    }
+  ],
+  "etapes_sans_tache": [
+    {
+      "id": "PA4.01",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "FAIL",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "PASS",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "trace": "POST /api/django/ventes/devis/1050/convertir-bc/ → 201 ; POST /api/django/ventes/devis/1050/convertir-bc/ → 409 ; GET /api/django/ventes/bons-commande/ → 200"
+    },
+    {
+      "id": "PA4.02",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "PASS",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "PASS",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "trace": "POST /api/django/ventes/bons-commande/48/confirmer/ → 200 ; POST /api/django/ventes/bons-commande/48/confirmer/ → 409"
+    },
+    {
+      "id": "PA4.03",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "FAIL",
+        "checkpoint": "FAIL",
+        "aval": "NA"
+      },
+      "trace": "POST /api/django/ventes/bons-commande/48/livrer-partiel/ → 400"
+    },
+    {
+      "id": "PA4.04",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "PASS",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "PASS",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "trace": "POST /api/django/ventes/bons-commande/48/creer-facture/ → 201 ; POST /api/django/ventes/bons-commande/48/creer-facture/ → 409 ; GET /api/django/ventes/factures/ → 200"
+    },
+    {
+      "id": "PA4.05",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "PASS",
+        "6": "FAIL",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "PASS",
+        "checkpoint": "PASS",
+        "aval": "FAIL"
+      },
+      "trace": "POST /api/django/ventes/devis/1050/generer-facture/ → 201 ; POST /api/django/ventes/devis/1050/generer-facture/ → 201 ; GET /api/django/ventes/factures/ → 200"
+    },
+    {
+      "id": "PA4.06",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "FAIL",
+        "checkpoint": "FAIL",
+        "aval": "NA"
+      },
+      "trace": "POST /api/django/ventes/factures/296/emettre/ → 409"
+    },
+    {
+      "id": "PA4.07",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "declenchee": "NA",
+        "checkpoint": "NA",
+        "aval": "NA"
+      },
+      "trace": "aucune route DRF (fonction d'entrée, déclencheur, appelants) sur un objet du parcours"
+    },
+    {
+      "id": "PA4.08",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "FAIL",
+        "checkpoint": "FAIL",
+        "aval": "NA"
+      },
+      "trace": "POST /api/django/entites/entites/importer/ → 415"
+    },
+    {
+      "id": "PA4.10",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "FAIL",
+        "checkpoint": "FAIL",
+        "aval": "NA"
+      },
+      "trace": "POST /api/django/ventes/factures/296/creer-note-debit/ → 400"
+    },
+    {
+      "id": "PA4.11",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "declenchee": "NA",
+        "checkpoint": "NA",
+        "aval": "NA"
+      },
+      "trace": "aucune route DRF (fonction d'entrée, déclencheur, appelants) sur un objet du parcours"
+    },
+    {
+      "id": "PA4.12",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "oracles_parcours": {
+        "declenchee": "NA",
+        "checkpoint": "NA",
+        "aval": "NA"
+      },
+      "trace": "aucune route DRF (fonction d'entrée, déclencheur, appelants) sur un objet du parcours"
+    },
+    {
+      "id": "PA4.13",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "FAIL",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "PASS",
+        "checkpoint": "PASS",
+        "aval": "PASS"
+      },
+      "trace": "POST /api/django/ventes/devis/1050/proforma-pdf/ → 200"
+    },
+    {
+      "id": "PA4.14",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "FAIL",
+        "checkpoint": "FAIL",
+        "aval": "PASS"
+      },
+      "trace": "POST /api/django/ventes/factures/296/dgi-transmettre/ → 404"
+    },
+    {
+      "id": "PA4.15",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "PASS",
+      "oracles": {
+        "1": "NA",
+        "2": "NA",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "NA",
+        "checkpoint": "NA",
+        "aval": "NA"
+      },
+      "trace": "écrit {'crees': 0, 'modifies': []}"
+    },
+    {
+      "id": "PA4.16",
+      "taches": [],
+      "base_verdict": null,
+      "verdict": "FAIL",
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "FAIL",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "PASS"
+      },
+      "oracles_parcours": {
+        "declenchee": "FAIL",
+        "checkpoint": "FAIL",
+        "aval": "NA"
+      },
+      "trace": "POST /api/django/ventes/devis/1050/facturer-complet/ → 409"
+    }
+  ],
+  "etapes_manquantes": []
+}
