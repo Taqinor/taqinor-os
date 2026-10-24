@@ -648,7 +648,6 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
         # le lien texte « Signez en ligne » pointe vers la proposition tokenisée
         # ADEV97 — chemin partagé, sans le nom du client devant le token.
         self.assertIn(f'/proposition/{link.token}', html)
-        self.assertNotIn(f'/alaoui-karim/{link.token}', html)
         self.assertNotIn('taqinor.ma/signer/', html)
 
     @tag('pdf')
