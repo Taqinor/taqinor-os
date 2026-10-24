@@ -2389,3 +2389,14 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 ; confirme ADEV95-96"
     taches: [ADEV95, ADEV96]
+  - id: D-ACI-21
+    question: "Format des nombres dans les documents C&I en anglais (aujourd'hui « 484 992,48 », comme en français) ?"
+    options:
+      - cle: a
+        texte: "format anglais dans les rendus EN (« 484,992.48 MAD », « 65.32 kWp ») ; FR et AR inchangés"
+      - cle: b
+        texte: "garder le format français partout"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; constat C-L3-DOC-06"
+    taches: [AMOT101]
