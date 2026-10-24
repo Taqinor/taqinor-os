@@ -1012,3 +1012,37 @@ class TestAmot95BaseDeclaree(SimpleTestCase):
         p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])
         self.assertIn("Recoverable VAT not declared", p1)
         self.assertIn("i.e. 118 717 MAD incl. VAT", p1)
+
+
+class TestAmot97ScenarioPrudent(SimpleTestCase):
+    """AMOT97 (D-ACI-15=a) — le commercial résume ses sensibilités d'une
+    ligne : « scénario prudent : retour ≈ N ans », N = le plus long retour
+    SERVI (``argent.sensibilites``) ; aucun scénario chiffré ⇒ rien."""
+
+    def _data(self, sensibilites, langue=None):
+        data = _data_ci(langue=langue)
+        data["economie_ci"]["sensibilites"] = sensibilites
+        return data
+
+    def test_ligne_prudente_lue_sur_les_scenarios_servis(self):
+        p1 = _texte_ci(_pages_ci(self._data([
+            {"cle": "production", "variation_pct": -7.7, "source": "P90",
+             "retour_ans": 4, "tri_pct": 30.0},
+            {"cle": "degradation", "variation_pct": 0.75, "source": "D-ACI-15",
+             "retour_ans": 5, "tri_pct": 28.0}]))[1])
+        self.assertIn("scénario prudent : retour ≈ 5 ans", p1)
+        self.assertNotIn("≈ 4 ans", p1)
+
+    def test_sans_scenario_chiffre_aucune_ligne(self):
+        for sensibilites in ([], [{"cle": "production", "variation_pct": -7.7,
+                                   "source": "P90", "retour_ans": None,
+                                   "motif": "non chiffré"}]):
+            with self.subTest(sensibilites=sensibilites):
+                p1 = _texte_ci(_pages_ci(self._data(sensibilites))[1])
+                self.assertNotIn("scénario prudent", p1)
+
+    def test_anglais(self):
+        p1 = _texte_ci(_pages_ci(self._data([
+            {"cle": "production", "variation_pct": -7.7, "source": "P90",
+             "retour_ans": 6, "tri_pct": 20.0}], langue="en"))[1])
+        self.assertIn("cautious scenario: payback ≈ 6 years", p1)

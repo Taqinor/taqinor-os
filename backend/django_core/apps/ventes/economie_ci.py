@@ -1566,14 +1566,20 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
         omissions.append({'cle': 'financement',
                           'motif': MOTIF_FINANCEMENT_ABSENT})
     sensibilites = []
-    if str(mode_installation or '').strip().lower() == 'industriel':
-        # CIQ231 — industriel SEULEMENT, sur le flux de la base principale.
+    mode = str(mode_installation or '').strip().lower()
+    if motif_investissement and mode in ('industriel', 'commercial'):
+        # AMOT97 — prix incomplet : aucun scénario chiffré (comme le retour).
+        omissions.append({'cle': 'sensibilites', 'motif': motif_investissement})
+    elif mode in ('industriel', 'commercial'):
+        # CIQ231 / AMOT97 (D-ACI-15=a) — sur le flux de la base principale ;
+        # le commercial en imprime le scénario prudent.
         cle_base = 'ttc' if flux['base'] == BASE_TTC else 'ht'
         sensibilites, omis = sensibilites_ci(
             collecteur.get(cle_base), apercu, tarif, reglages,
             tarif_declare=tarif_declare, cle_base=cle_base)
         if omis is not None:
             omissions.append(omis)
+    if mode == 'industriel':
         # CIQ233 — vue INTERNE après impôt (industriel, saisie du client).
         apres, motif_apres = apres_impot_ci(
             saisies.get('fiscalite_client'), base, collecteur)
@@ -1629,7 +1635,9 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
 #                      autoconsommé = min(production, charge déclarée) cellule
 #                      par cellule, puis :func:`valoriser` (jamais une économie
 #                      mise à l'échelle linéairement).
-# Aucun scénario par défaut, aucun P90 inventé.
+# AMOT97 (D-ACI-15=a) — les scénarios par défaut sont SEEDÉS dans Paramètres
+# avec leur source (``parametres.tariff.SENSIBILITES_CI_DEFAUT``), modifiables ;
+# ce module ne lit que ce que le réglage porte.
 
 SENSIBILITE_CLES = ('indexation_tarif', 'degradation', 'tarif_kwh',
                     'production')
@@ -1700,7 +1708,8 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
                     tarif_declare=None, cle_base='ht'):
     """``(sensibilites, omission|None)`` — la liste du contrat
     ``economie_ci.json`` [{cle, variation_pct, source, economie_annee1_mad,
-    retour_ans, tri_pct, ecart_retour_ans, ecart_tri_pct}] et, sans scénario, l'omission nommée.
+    retour_ans, tri_pct, ecart_retour_ans, ecart_tri_pct, cumul_25_ans_mad}]
+    et, sans scénario, l'omission nommée.
 
     ``flux_entrees`` : les entrées EXACTES du flux de base (collectées par
     :func:`flux_ci`) ; ``reglages`` : ``{sensibilites_ci: [...]}`` (CIQ211).
@@ -1757,6 +1766,9 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
                      if isinstance(eco1, dict) else _montant(eco1)),
                  'retour_ans': _indicateur(bloc, 'retour_ans'),
                  'tri_pct': _indicateur(bloc, 'tri_pct'),
+                 # AMOT97 — le cumul net de la dernière année du MÊME flux.
+                 'cumul_25_ans_mad': ((bloc or {}).get('flux') or [{}])[-1].get(
+                     'cumul_mad'),
                  'ecart_retour_ans': _ecart(_indicateur(bloc, 'retour_ans'),
                                             base.get('retour_ans')),
                  'ecart_tri_pct': _ecart(_indicateur(bloc, 'tri_pct'),
@@ -1985,8 +1997,14 @@ def economie_ci_pour_devis(devis, company):
     totaux = option_totaux(devis)
     reglages = reglages_economie_ci(company)
     if not calcul_corrige(devis):
-        # AMOT96 — un devis envoyé garde ce que le client a reçu.
+        # AMOT96/97 — un devis envoyé garde ce que le client a reçu : ni
+        # entretien minimum, ni scénarios seedés, ni sensibilités commerciales.
+        from apps.parametres.tariff import SENSIBILITES_CI_DEFAUT
         reglages.pop('entretien_minimum', None)
+        reglages['sensibilites_ci'] = [] if getattr(
+            devis, 'mode_installation', None) == 'commercial' else [
+            sc for sc in reglages.get('sensibilites_ci') or []
+            if sc not in SENSIBILITES_CI_DEFAUT]
     return assembler_economie_ci(
         apercu if isinstance(apercu, dict) else {},
         saisies=params.get('saisies_economie_ci'),

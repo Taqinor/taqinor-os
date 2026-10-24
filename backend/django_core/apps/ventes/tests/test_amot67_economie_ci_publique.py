@@ -1,8 +1,9 @@
 """AMOT67 (C-AMOT-050) — ``economie_ci`` ne quitte plus ``quote`` sur la
 charge publique (la page lit ``synthese_ci``) : la case « économies »
 décochée ne laisse partir ni économie an 1, ni flux, ni TRI, et un devis
-COMMERCIAL ne publie ni VAN, ni LCOE, ni sensibilités (D-CIQ-10), à aucun
-niveau. Sonde VC lci6 : ``200 eci True argent False lcoe 0.09654 … tri 68.9``.
+COMMERCIAL ne publie ni VAN, ni LCOE (D-CIQ-10), à aucun niveau — ses
+sensibilités sont servies depuis AMOT97 (D-ACI-15=a, scénario prudent).
+Sonde VC lci6 : ``200 eci True argent False lcoe 0.09654 … tri 68.9``.
 
 Charge RÉELLE (``build_quote_data`` jamais mocké ; seule la production PVGIS
 est simulée, patron CIQ210/CIQ306).
@@ -23,9 +24,8 @@ from apps.ventes.tests.test_ciq210_branchement import _BaseDevis
 
 #: Ce que la case « économies » décochée retire : économie an 1, flux, TRI.
 CLES_ARGENT = {'economie_annee1', 'flux_ht', 'flux_ttc', 'tri_pct'}
-#: D-CIQ-10 — industriel seulement.
-CLES_INDUSTRIEL = {'van_mad', 'lcoe_mad_kwh', 'lcoe_actualise',
-                   'sensibilites'}
+#: D-CIQ-10 — industriel seulement (AMOT97 : les sensibilités, plus).
+CLES_INDUSTRIEL = {'van_mad', 'lcoe_mad_kwh', 'lcoe_actualise'}
 
 
 def _cles(valeur):
@@ -79,7 +79,7 @@ class EconomieCiPubliqueTests(_BaseDevis):
                 self.assertNotIn('argent', retire['synthese_ci'])
                 self.assertEqual(CLES_ARGENT & set(_cles(retire)), set())
 
-    def test_commercial_ni_van_ni_lcoe_ni_sensibilites(self):
+    def test_commercial_ni_van_ni_lcoe(self):
         commercial, _industriel = self._cas()
         for sections in (None, {'economies': False}):
             with self.subTest(sections=sections):

@@ -531,32 +531,8 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
             motif = L("ci_ind_van_motif", motif)
         lignes.append(L("ci_ind_van_omise", "VAN non calculée")
                       + (f"&#160;: {motif}" if motif else ""))
-    scenarios = [s for s in argent.get("sensibilites") or []
-                 if isinstance(s, dict)]
-    catalogue = _cles_catalogue()
-    for s in scenarios:
-        variation = _num(s.get("variation_pct"))
-        cle_sens = f"ci_ind_sens_{s.get('cle')}"
-        nom = (L(cle_sens, catalogue[cle_sens]["fr"]) if cle_sens in catalogue
-               else ci_blocs._txt(s.get("cle")))
-        tete = (f"{nom} {variation:+g}&#160;%".replace(".", ",")
-                if variation is not None else nom)
-        if s.get("motif") and s.get("retour_ans") is None:
-            # AMOT84 — le motif servi dans la langue du document.
-            lignes.append(f"{tete}&#160;: {ci_couverture.texte_client(d, s['motif'])}")
-            continue
-        morceaux = []
-        if _num(s.get("retour_ans")) is not None:
-            morceaux.append(L("ci_ind_sens_retour", "retour {n} ans",
-                              n=ci_couverture.ans(_num(s["retour_ans"]))))
-        if _num(s.get("tri_pct")) is not None:
-            morceaux.append(L("ci_ind_sens_tri", "TRI {t} %",
-                              t=f"{_num(s['tri_pct']):.1f}".replace(".", ",")))
-        lignes.append(f"{tete}&#160;: " + ", ".join(morceaux))
-    if scenarios:
-        lignes.append(L("ci_ind_sens_base",
-                        "Sensibilités saisies par la société ; base : 0 % "
-                        "d'indexation du tarif."))
+    # AMOT97 (D-ACI-15=a) — central + scénarios servis, en tableau.
+    sensibilites = _tableau_sensibilites(d, argent, fmt_mad, L)
     p90 = _p90_bancable(d)
     if p90 is not None:
         lignes.append(L("ci_ind_p90",
@@ -564,12 +540,68 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
                         kwh=fmt(p90)))
     financement = ci_blocs.bloc_financement(
         d.get("ind_synthese") or {}, "i2", navy, ink, doc=d)
-    if not lignes and not financement:
+    if not lignes and not financement and not sensibilites:
         return ""
     items = "".join(f'<div class="i2-cfo-i">{li}</div>' for li in lignes)
     return (f'<div class="i2-cfo"><div class="i2-hyp-t">'
             f'{L("ci_ind_indicateurs", "Indicateurs pour votre direction financière")}'
-            f'</div>{items}{financement}</div>')
+            f'</div>{items}{sensibilites}{financement}</div>')
+
+
+def _nom_scenario(s, L):
+    """« Production -7,7 % » — le nom du paramètre varié (catalogue
+    ``ci_ind_sens_<clé>``) et la variation SERVIE."""
+    catalogue = _cles_catalogue()
+    variation = _num(s.get("variation_pct"))
+    cle_sens = f"ci_ind_sens_{s.get('cle')}"
+    nom = (L(cle_sens, catalogue[cle_sens]["fr"]) if cle_sens in catalogue
+           else ci_blocs._txt(s.get("cle")))
+    return (f"{nom} {variation:+g}&#160;%".replace(".", ",")
+            if variation is not None else nom)
+
+
+def _tableau_sensibilites(d, argent, fmt_mad, L):
+    """AMOT97 (D-ACI-15=a) — le scénario central puis chaque scénario servi
+    (``argent.sensibilites``) : délai de retour, TRI, cumul net de la dernière
+    année du flux et la source, TELS QUE servis par ``economie_ci`` (aucun
+    recalcul) ; '' sans scénario. Cède sa place avec les hypothèses."""
+    scenarios = [s for s in argent.get("sensibilites") or []
+                 if isinstance(s, dict)]
+    if not scenarios or cede(d, "hypotheses"):
+        return ""
+    indicateurs = argent.get("indicateurs") or {}
+    flux = [f for f in flux_principal(argent)[1].get("flux") or []
+            if isinstance(f, dict)]
+    rangees = [(L("ci_sens_central", "Scénario central"),
+                indicateurs.get("retour_ans"), indicateurs.get("tri_pct"),
+                (flux[-1] if flux else {}).get("cumul_mad"), "")]
+    rangees += [(_nom_scenario(s, L), s.get("retour_ans"), s.get("tri_pct"),
+                 s.get("cumul_25_ans_mad"), ci_couverture.texte_client(
+                     d, s.get("motif") if s.get("motif") and s.get(
+                         "retour_ans") is None else s.get("source")))
+                for s in scenarios]
+
+    unite_ans = L("ci_unite_ans", "&nbsp;ans")
+    formats = (lambda v: ci_couverture.ans(v) + unite_ans,
+               lambda v: f"{v:.1f}".replace(".", ",") + "&#160;%",
+               lambda v: fmt_mad(v) + "&#160;MAD")
+    lignes = ""
+    for nom, *valeurs, source in rangees:
+        cellules = "".join(
+            f'<td class="i2-n">{f(_num(v)) if _num(v) is not None else "—"}'
+            '</td>' for f, v in zip(formats, valeurs))
+        lignes += (f'<tr><td>{nom}</td>{cellules}'
+                   f'<td class="i2-mini">{source}</td></tr>')
+    entete = "".join(f"<th>{x}</th>" for x in (
+        L("ci_sens_scenario", "Scénario"),
+        L("ci_ind_delai_retour", "Délai de retour"),
+        L("ci_ind_tri_sur", "TRI sur {n} ans", n="25"),
+        L("ci_sens_cumul", "Cumul net sur {n} ans", n="25"),
+        L("ci_source", "Source")))
+    base = L("ci_ind_sens_base", "Sensibilités saisies par la société ; "
+             "base : 0 % d'indexation du tarif.")
+    return (f'<table class="i2-tbl i2-fx"><tr>{entete}</tr>{lignes}</table>'
+            f'<div class="i2-cfo-i">{base}</div>')
 
 
 def _cles_catalogue():

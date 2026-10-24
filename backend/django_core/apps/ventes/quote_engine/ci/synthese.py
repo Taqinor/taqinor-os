@@ -152,17 +152,17 @@ LIBELLE_VISITE = "Relevé du site à la visite technique"
 MOTIF_ARGENT_BT = "vos 12 dernières factures"
 MOTIF_ARGENT_MT = ("vos 12 dernières factures MT : prix des trois postes, "
                    "prime fixe, puissance souscrite")
-#: VAN, LCOE et sensibilités : INDUSTRIEL seulement (D-CIQ-10). En commercial
-#: ces clés sont retirées du bloc recopié (jamais recalculées). Le payback
-#: actualisé suit la VAN (il n'existe que sur un taux déclaré) : un seul
-#: payback servi, celui du flux (``indicateurs.retour_ans``).
+#: VAN et LCOE : INDUSTRIEL seulement (D-CIQ-10). En commercial ces clés sont
+#: retirées du bloc recopié (jamais recalculées). Le payback actualisé suit la
+#: VAN (il n'existe que sur un taux déclaré) : un seul payback servi, celui du
+#: flux (``indicateurs.retour_ans``). AMOT97 (D-ACI-15=a) — les sensibilités
+#: restent servies au commercial (son scénario prudent est imprimé).
 CLES_INDUSTRIEL_SEUL = frozenset({
     "van_mad", "van_motif", "lcoe_mad_kwh", "lcoe_actualise",
-    "retour_actualise_ans", "sensibilites"})
+    "retour_actualise_ans"})
 #: Entrées de listes ``{cle: …}`` (omissions, hypothèses) qui ne parlent que
 #: de la VAN — retirées avec elle en commercial.
-ENTREES_INDUSTRIEL_SEUL = frozenset({"van_mad", "taux_actualisation_pct",
-                                     "sensibilites"})
+ENTREES_INDUSTRIEL_SEUL = frozenset({"van_mad", "taux_actualisation_pct"})
 
 
 # ── utilitaires purs ────────────────────────────────────────────────────────

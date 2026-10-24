@@ -341,6 +341,125 @@ class Amot94RemplacementSurLaBaseServie(SimpleTestCase):
                       ligne)
 
 
+class Amot97Sensibilites(SimpleTestCase):
+    """AMOT97 (D-ACI-15=a) — les scénarios du réglage société (seedés,
+    modifiables) calculés sur la MÊME série que le central, imprimés en
+    tableau sur l'industriel : retour, TRI, cumul 25 ans et source, chaque
+    chiffre servi par ``economie_ci``."""
+
+    SCENARIOS = [
+        {"cle": "production", "variation_pct": -7.7, "source": "P90 seedé"},
+        {"cle": "indexation_tarif", "variation_pct": 2.0,
+         "source": "historique saisi"},
+        {"cle": "degradation", "variation_pct": 0.75, "source": "D-ACI-15"},
+        {"cle": "tarif_kwh", "variation_pct": -5.0,
+         "source": "contribution art. 13 saisie"},
+    ]
+
+    def _bloc(self, scenarios, investissement=None):
+        import copy
+        import json
+        from pathlib import Path
+
+        from apps.ventes import economie_ci as eco
+        contrats = Path(__file__).resolve().parents[1] / "contract_samples"
+        apercu = copy.deepcopy(json.loads(
+            (contrats / "etude_ci_preview.json").read_text(
+                encoding="utf-8"))["exemple"])
+        return eco.assembler_economie_ci(
+            apercu, tarif_declare={"contrat": "bt_patente"},
+            investissement=investissement or {"ht": 900000.0,
+                                              "ttc": 1080000.0},
+            mode_installation="industriel",
+            reglages={"sensibilites_ci": scenarios})
+
+    def test_seedes_sources_et_valides(self):
+        from apps.parametres import tariff
+        defaut = tariff.sensibilites_ci_par_defaut()
+        self.assertEqual(tariff.erreurs_sensibilites_ci(defaut), {})
+        self.assertTrue(all(s["source"].strip() for s in defaut))
+        bloc = self._bloc(defaut)
+        self.assertEqual([s["cle"] for s in bloc["sensibilites"]],
+                         [s["cle"] for s in defaut])
+
+    def test_quatre_scenarios_servis_meme_serie_et_cumul(self):
+        bloc = self._bloc(self.SCENARIOS)
+        self.assertEqual(len(bloc["sensibilites"]), 4)
+        for s in bloc["sensibilites"]:
+            with self.subTest(cle=s["cle"]):
+                self.assertIsNotNone(s["retour_ans"])
+                self.assertIsNotNone(s["cumul_25_ans_mad"])
+        # Même série que le central, une seule grandeur change : dégradation
+        # 0,75 %/an > 0,5 % ⇒ cumul plus bas ; indexation +2 %/an ⇒ plus haut.
+        par_cle = {s["cle"]: s for s in bloc["sensibilites"]}
+        central = bloc["flux_ht"]["flux"][-1]["cumul_mad"]
+        self.assertLess(par_cle["degradation"]["cumul_25_ans_mad"], central)
+        self.assertGreater(par_cle["indexation_tarif"]["cumul_25_ans_mad"],
+                           central)
+
+    def test_scenario_retire_n_apparait_pas(self):
+        bloc = self._bloc(self.SCENARIOS[:3])
+        self.assertNotIn("tarif_kwh", [s["cle"] for s in bloc["sensibilites"]])
+
+    def test_prix_incomplet_aucun_scenario_chiffre(self):
+        from apps.ventes import economie_ci as eco
+        lignes = [{"designation": "Panneau", "ht": 0, "ttc": 0,
+                   "optionnelle": False, "onduleur": False, "panneau": True,
+                   "role_ci": None}]
+        import copy
+        import json
+        from pathlib import Path
+        contrats = Path(__file__).resolve().parents[1] / "contract_samples"
+        apercu = copy.deepcopy(json.loads(
+            (contrats / "etude_ci_preview.json").read_text(
+                encoding="utf-8"))["exemple"])
+        bloc = eco.assembler_economie_ci(
+            apercu, tarif_declare={"contrat": "bt_patente"},
+            investissement={"ht": None, "ttc": None}, lignes=lignes,
+            mode_installation="industriel",
+            reglages={"sensibilites_ci": self.SCENARIOS})
+        self.assertEqual(bloc["sensibilites"], [])
+        self.assertIn("sensibilites", [o["cle"] for o in bloc["omissions"]])
+
+    def test_tableau_imprime_chaque_chiffre_servi(self):
+        d = _data()
+        sensibilites = [
+            {"cle": "production", "variation_pct": -7.7, "source": "P90 seedé",
+             "retour_ans": 4, "tri_pct": 31.2, "cumul_25_ans_mad": 1111111.11},
+            {"cle": "indexation_tarif", "variation_pct": 2.0,
+             "source": "historique saisi", "retour_ans": 3, "tri_pct": 44.4,
+             "cumul_25_ans_mad": 2222222.22},
+            {"cle": "degradation", "variation_pct": 0.75, "source": "D-ACI-15",
+             "retour_ans": 3, "tri_pct": 38.8, "cumul_25_ans_mad": 1999999.99},
+            {"cle": "tarif_kwh", "variation_pct": -5.0,
+             "source": "contribution art. 13 saisie", "retour_ans": 4,
+             "tri_pct": 35.5, "cumul_25_ans_mad": 1555555.55}]
+        d["economie_ci"]["sensibilites"] = sensibilites
+        argent = synthese_ci(dict(d))["argent"]
+        p3 = _pages(d)[3]
+        debut = p3.index("Scénario central")
+        texte = _texte(p3[debut:p3.index("</table>", debut)])
+        self.assertIn(f"Scénario central {argent['indicateurs']['retour_ans']}"
+                      f" ans", texte)
+        self.assertIn(fmt_centimes(argent["flux_ht"]["flux"][-1][
+            "cumul_mad"]).replace(" ", " "), texte)
+        for s in sensibilites:
+            with self.subTest(cle=s["cle"]):
+                self.assertIn(fmt_centimes(s["cumul_25_ans_mad"]).replace(
+                    " ", " "), texte)
+                self.assertIn(f"{s['tri_pct']:.1f}".replace(".", ","), texte)
+                self.assertIn(s["source"], texte)
+        self.assertIn("Production -7,7 %", texte)
+        # Rendu adaptatif : le tableau cède avec les hypothèses.
+        sans = _pages(dict(d, _sans_graphiques=frozenset({"hypotheses"})))[3]
+        self.assertNotIn("Scénario central", sans)
+
+    def test_sans_scenario_aucun_tableau(self):
+        d = _data()
+        d["economie_ci"]["sensibilites"] = []
+        self.assertNotIn("Scénario central", _pages(d)[3])
+
+
 class Amot94TableauVingtCinqAns(SimpleTestCase):
     """AMOT94 — le flux servi année par année (0 → 25) à la place des cinq
     jalons : production, économie, O&M (si déduite), remplacement, flux net

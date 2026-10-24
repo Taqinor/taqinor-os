@@ -509,12 +509,15 @@ def tuiles_argent(d, cle, kpi, fmt):
         argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
         base = libelle(d, "ci_ttc", "TTC") if argent.get("base") == "ttc" \
             else libelle(d, "ci_ht", "HT")
+        prudent = scenario_prudent(d, cle) if cle == "com" else ""
         tuiles.append(kpi(ans(payback),
                           libelle(d, "ci_unite_ans", "&nbsp;ans"),
-                          libelle(d, "ci_retour_estime_base",
-                                  "Retour estimé ({base})", base=base)
-                          if argent else
-                          libelle(d, "ci_retour_estime", "Retour estimé"),
+                          (libelle(d, "ci_retour_estime_base",
+                                   "Retour estimé ({base})", base=base)
+                           if argent else
+                           libelle(d, "ci_retour_estime", "Retour estimé"))
+                          + (f'<div style="font-size:6.3pt;margin-top:1px;">'
+                             f'{prudent}</div>' if prudent else ""),
                           "payback_ans"))
     elif motif_investissement(d, cle):
         # AMOT80 (D-ACI-8=a) — investissement non chiffré : le MOTIF à la
@@ -524,6 +527,20 @@ def tuiles_argent(d, cle, kpi, fmt):
             f'{motif_investissement(d, cle)}</span>', "",
             libelle(d, "ci_retour_estime", "Retour estimé")))
     return tuiles
+
+
+def scenario_prudent(d, cle):
+    """AMOT97 (D-ACI-15=a) — « scénario prudent : retour ≈ N ans », le plus
+    long retour SERVI parmi les sensibilités (``argent.sensibilites``), ou ''
+    (aucun scénario chiffré)."""
+    argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
+    retours = [s["retour_ans"] for s in argent.get("sensibilites") or []
+               if isinstance(s, dict)
+               and isinstance(s.get("retour_ans"), (int, float))]
+    if not retours:
+        return ""
+    return libelle(d, "ci_sens_prudent", "scénario prudent : retour ≈ {n} ans",
+                   n=ans(max(retours)))
 
 
 # ── AMOT92 — la couverture est le PROJET du client ─────────────────────────

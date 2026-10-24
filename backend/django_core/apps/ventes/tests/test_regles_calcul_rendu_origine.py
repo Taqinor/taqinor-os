@@ -268,7 +268,9 @@ CLES_HORS_RENDU_ORIGINE = (
         # AMOT95-101 (lane amot-doc, 24/10/2026) — libellés AJOUTÉS, sans
         # chiffre ; aucun libellé existant reformulé ni retiré.
         'ci_tva_declaree_ht', 'ci_tva_non_declaree', 'ci_tva_inconnue',
-        'ci_fx_entretien', 'ci_entretien_minimum', 'ci_entretien_non_chiffre')),
+        'ci_fx_entretien', 'ci_entretien_minimum', 'ci_entretien_non_chiffre',
+        'ci_sens_central', 'ci_sens_scenario', 'ci_sens_cumul',
+        'ci_sens_prudent')),
     # AMOT96 — clé AJOUTÉE au bloc ``economie_ci`` : jamais un chiffre sur un
     # devis aux règles d'origine (entretien jamais déduit).
     ('economie_ci', 'entretien'),

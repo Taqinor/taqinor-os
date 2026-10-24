@@ -28,6 +28,8 @@ from decimal import Decimal
 
 from django.db import models
 
+from apps.parametres.tariff import sensibilites_ci_par_defaut
+
 
 # ── Barème résidentiel ONEE — défauts TTC (jamais de TVA en plus) ─────────────
 # Tranches mensuelles (kWh) → prix MAD/kWh TTC. ORDRE FONDATEUR (19/08/2026) —
@@ -411,16 +413,17 @@ class TariffSettings(models.Model):
                   "plafond_mad_par_projet, base (ht|ttc|a_confirmer), "
                   "source, releve_le} — refusée sans source.")
 
-    # ── CIQ211 (Groupe CIQ, 03/10/2026) — réglages C&I SANS valeur par défaut.
-    # Scénarios de sensibilité SAISIS par Reda (convention 16 : aucune
-    # sensibilité n'existe tant qu'il n'en saisit pas), chacun avec sa source ;
-    # au plus 4 (``tariff.SENSIBILITES_CI_MAX``). Refus nommant
-    # ``sensibilites_ci[i].source`` (``tariff.erreurs_sensibilites_ci``).
+    # ── CIQ211 (Groupe CIQ, 03/10/2026) — réglages C&I. Scénarios de
+    # sensibilité, chacun avec sa source ; au plus 4
+    # (``tariff.SENSIBILITES_CI_MAX``). Refus nommant ``sensibilites_ci[i].
+    # source`` (``tariff.erreurs_sensibilites_ci``). AMOT97 (D-ACI-15=a) :
+    # SEEDÉS (``tariff.SENSIBILITES_CI_DEFAUT``), modifiables ou retirables.
     sensibilites_ci = models.JSONField(
-        default=list, blank=True,
+        default=sensibilites_ci_par_defaut, blank=True,
         verbose_name='Scénarios de sensibilité C&I',
         help_text="Liste [{cle (indexation_tarif|degradation|tarif_kwh|"
-                  "production), variation_pct, source}] — vide par défaut.")
+                  "production), variation_pct, source}] — scénarios seedés "
+                  "sourcés, modifiables.")
     # D-CIQ-15 — le mot « crédit-bail » n'est montré au client qu'après un
     # avis juridique (loi 82-21 art. 2) : FAUX par défaut ; la référence de
     # l'avis est obligatoire pour passer à vrai.

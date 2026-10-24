@@ -1372,6 +1372,23 @@ SENSIBILITE_CI_CLES = ('indexation_tarif', 'degradation', 'tarif_kwh',
 SENSIBILITE_CI_CHAMPS = ('cle', 'variation_pct', 'source')
 #: Au plus 4 scénarios, comme ``apps.ventes.economie.SCENARIOS_MAX``.
 SENSIBILITES_CI_MAX = 4
+#: AMOT97 (D-ACI-15=a) — scénarios SEEDÉS (modifiables dans Paramètres), chacun
+#: avec sa source ; seules des valeurs sourcées : la hausse du tarif et la
+#: contribution art. 13 (non fixée par l'ANRE) restent à saisir par la société.
+SENSIBILITES_CI_DEFAUT = (
+    {'cle': 'production', 'variation_pct': -7.7,
+     'source': "P90 : P50 × (1 − 1,282 × σ), σ interannuel 6 % (variabilité "
+               "météo typique 5 à 7 %, étude bancable du moteur)"},
+    {'cle': 'degradation', 'variation_pct': 0.75,
+     'source': "dégradation prudente 0,75 %/an (D-ACI-15) — médiane publiée "
+               "0,5 %/an (Jordan & Kurtz, NREL/JA-5200-51664, 2012)"},
+)
+
+
+def sensibilites_ci_par_defaut():
+    """AMOT97 — défaut de ``TariffSettings.sensibilites_ci`` : une COPIE des
+    scénarios seedés (:data:`SENSIBILITES_CI_DEFAUT`)."""
+    return [dict(s) for s in SENSIBILITES_CI_DEFAUT]
 
 
 def erreurs_sensibilites_ci(scenarios):
