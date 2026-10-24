@@ -101,6 +101,16 @@ class ImportRelevesTest(TestCase):
         self.assertIn('Date illisible', lignes[4])
         self.assertEqual(self._releves().count(), 1)
 
+    def test_csv_non_texte_ou_blanc_400_pas_500(self):
+        # api-fuzz-full : ``{"csv": [null, null]}`` était accepté (200) et un
+        # corps tableau levait AttributeError (500) ; le schéma publie
+        # ``csv`` chaîne non blanche.
+        for corps in ({'csv': [None, None]}, {'csv': 5}, {'csv': '   '},
+                      {}, [None]):
+            resp = self.api.post(self.url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        self.assertEqual(self._releves().count(), 0)
+
     def test_chantier_d_une_autre_societe_404(self):
         autre, _ = Company.objects.get_or_create(
             slug='ciq645-autre', defaults={'nom': 'CIQ645 Autre'})
@@ -118,3 +128,17 @@ class ImportRelevesTest(TestCase):
         op = module.Migration.operations[0]
         self.assertIsInstance(op, migrations.AlterField)
         self.assertIn(('import', 'Import CSV'), op.field.choices)
+
+    def test_fichier_publie_non_vide(self):
+        """3e drainage api-fuzz : un fichier vide est refusé (400) — le schéma
+        multipart le publie donc ``minLength: 1``."""
+        from apps.monitoring.views import FichierReleves
+
+        champ = FichierReleves()
+        self.assertEqual(champ._spectacular_annotation['field'],
+                         {'type': 'string', 'format': 'binary',
+                          'minLength': 1})
+        resp = self.api.post(
+            self.url, {'fichier': SimpleUploadedFile('vide.csv', b'')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 400, resp.content)

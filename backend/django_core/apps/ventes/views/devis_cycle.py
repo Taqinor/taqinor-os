@@ -13,6 +13,8 @@ from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, inline_serializer
 from . import openapi_docs as D
+from core.champs_stricts import ChaineStricte, EntierStrict
+from core.conflit_etat import ConflitEtat
 from ..utils.corps import valider_corps, valider_corps_schema
 from rest_framework import status
 from rest_framework import serializers
@@ -35,19 +37,28 @@ from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
 class _LotCreationSerializer(serializers.Serializer):
     """QJR648 — le corps de ``POST /devis/<id>/lots/`` : ``nom_lot`` requis,
     ``adresse_site`` facultative, ``ordre`` entier ≥ 0 facultatif, ``lignes``
-    liste d'entiers facultative. Une entrée invalide répond 400, jamais 500."""
+    liste d'entiers facultative. Une entrée invalide répond 400, jamais 500.
 
-    nom_lot = serializers.CharField(
-        max_length=150, required=False, allow_blank=True, allow_null=True,
-        error_messages={'max_length': 'Nom de lot trop long (150 max).'})
-    adresse_site = serializers.CharField(
+    api-fuzz — LA MÊME forme est publiée (``openapi_docs.LotCreationRequest``,
+    mêmes types stricts et mêmes bornes) : texte = chaîne (nom non blanc,
+    150 / 255 signes), ``ordre`` et identifiants de ligne = entiers JSON dans
+    la plage d'un entier 32 bits (``ordre: 2291855056940682054`` débordait la
+    colonne → 500)."""
+
+    nom_lot = ChaineStricte(
+        max_length=150, error_messages={
+            'max_length': 'Nom de lot trop long (150 max).'})
+    adresse_site = ChaineStricte(
         max_length=255, required=False, allow_blank=True, allow_null=True)
-    ordre = serializers.IntegerField(
-        min_value=0, required=False, allow_null=True,
+    ordre = EntierStrict(
+        min_value=0, max_value=D.ENTIER_32_MAX, required=False,
+        allow_null=True,
         error_messages={'invalid': 'Ordre : entier positif attendu.',
-                        'min_value': 'Ordre : entier positif attendu.'})
+                        'min_value': 'Ordre : entier positif attendu.',
+                        'max_value': 'Ordre : entier positif attendu.'})
     lignes = serializers.ListField(
-        child=serializers.IntegerField(
+        child=EntierStrict(
+            min_value=1, max_value=D.ENTIER_32_MAX,
             error_messages={'invalid': 'Lignes : identifiants entiers '
                                        'attendus.'}),
         required=False, allow_null=True)
@@ -617,7 +628,6 @@ class DevisCycleActionsMixin:
         inchangé).
         POST : crée un lot — corps ``{nom_lot, adresse_site?, ordre?,
         lignes?: [ligne_id, ...]}`` ; les lignes citées lui sont rattachées."""
-        from rest_framework.exceptions import ValidationError
         from ..models import LotDevis
         from ..selectors import lots_totaux
         devis = self.get_object()
@@ -634,7 +644,9 @@ class DevisCycleActionsMixin:
             donnees = entree.validated_data
             nom = donnees['nom_lot']
             if devis.lots.filter(nom_lot=nom).exists():
-                raise ValidationError(
+                # api-fuzz — le corps est conforme, c'est l'ÉTAT du devis (un
+                # lot de ce nom y est déjà) qui s'oppose : 409.
+                raise ConflitEtat(
                     {'nom_lot': 'Ce lot existe déjà sur ce devis.'})
             with transaction.atomic():
                 lot = LotDevis.objects.create(
@@ -674,8 +686,11 @@ class DevisCycleActionsMixin:
             status=status.HTTP_201_CREATED)
 
     @extend_schema(request=D.AccepterRequest,
+                   # api-fuzz : le 409 « date future » est un ConflitEtat
+                   # (``{date_acceptation: [...], error: {...}}``, sans
+                   # ``detail``) — champs facultatifs comme ``refuser``.
                    responses={200: DevisSerializer, 403: D.ErreurGarde,
-                              409: D.ErreurDetail})
+                              409: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='accepter',
             permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):

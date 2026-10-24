@@ -370,6 +370,10 @@ class TestEntreesTypeesEnf11(TestCase):
             # hors plage : borné [1, 365], pas refusé.
             self.assertEqual(
                 self.api.get(url, {'jours': 99999}).status_code, 200, url)
+            # api-fuzz-full 24/10 : le texte publié est « sans caractère nul »
+            # (P_JOURS) — le serveur refuse le nul en 400, il ne le tolère pas.
+            resp = self.api.get(url, {'jours': 'a\x00b'})
+            self.assertEqual(resp.status_code, 400, (url, resp.content))
 
     def test_cadences_echues_jours_enorme_ne_leve_plus_500(self):
         resp = self.api.get('/api/django/crm/relance-etapes/cadences-echues/',
@@ -398,6 +402,11 @@ class TestEntreesTypeesEnf11(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
         resp = self.api.post('/api/django/crm/appareils-equipe/ce-navigateur/',
                              {'navigateur': {}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        # api-fuzz-full 24/10 : le nul est publié refusé (ChaineStricte) ET
+        # refusé par le serveur — le schéma dit ce que fait la vue.
+        resp = self.api.post('/api/django/crm/appareils-equipe/ce-navigateur/',
+                             {'navigateur': 'a' + chr(0) + 'b'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
     def test_fait_langue_liste_400_pas_500(self):
@@ -468,7 +477,8 @@ class TestFuzzCrmTour2(TestCase):
         200 sur un mois valide) ; membre d'équipe inconnu → 404."""
         url = '/api/django/crm/forecast/rollup/'
         self.assertEqual(self.api.get(url, {'periode': '2026-13'}).status_code, 400)
-        self.assertEqual(self.api.get(url, {'periode': ''}).status_code, 400)
+        # api-fuzz-full 24/10 : ``periode`` vide est PUBLIÉE (ou vide) = tout.
+        self.assertEqual(self.api.get(url, {'periode': ''}).status_code, 200)
         self.assertEqual(self.api.get(url, {'periode': '2026-05'}).status_code, 200)
         resp = self.api.post('/api/django/crm/equipes/', {
             'nom': 'Equipe X', 'membres': [999999999]}, format='json')
@@ -975,3 +985,183 @@ class TestFuzzCrmCi997(TestCase):
             '/api/django/crm/clients/',
             {**base, 'ice': 'ICE : 001 234 567 000 089'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
+
+
+class TestFuzzCrmNocturne2410(TestCase):
+    """api-fuzz-full du 24/10/2026 (lane crm/records/visites) — 500 devenus
+    400/409, caractère nul, paramètres répétés, FK inconnue, états."""
+
+    def setUp(self):
+        self.company = make_company('fuzz2410-co', 'Fuzz2410 Co')
+        self.user = User.objects.create_user(
+            username='fuzz2410_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.lead = Lead.objects.create(company=self.company, nom='Fuzz Lead')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Fuzz Client', email='f2410@exemple.ma')
+
+    def test_controle_entier_non_ascii_400_jamais_500(self):
+        indice = chr(178)  # « ² » : isdigit() vrai, int() lève
+        for params in ({'owner': indice}, {'jours': indice},
+                       {'owner': '9' * 40}):
+            resp = self.api.get(
+                '/api/django/crm/relance-etapes/controle/', params)
+            self.assertIn(resp.status_code, (400, 404), (params, resp.content))
+
+    def test_historique_forecast_bornes_et_param_repete(self):
+        url = '/api/django/crm/forecast/historique/'
+        resp = self.api.get(url, {'owner': '9' * 30, 'semaines': '9' * 30})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        resp = self.api.get(url, {'owner': ['1', '2']})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.get(url, {'owner': '', 'semaines': ''})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_forecast_entries_filtres_types(self):
+        url = '/api/django/crm/forecast-entries/'
+        for params in ({'owner': 'abc'}, {'periode': 'N'},
+                       {'periode': '2026-13'}):
+            resp = self.api.get(url, params)
+            self.assertEqual(resp.status_code, 400, (params, resp.content))
+        resp = self.api.get(url, {'owner': '', 'periode': ''})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_corps_non_objet_400_jamais_500(self):
+        base = f'/api/django/crm/leads/{self.lead.pk}/'
+        for chemin in ('questionnaire-lien/', 'locataire/',
+                       'convertir-client/', 'relance/arreter/'):
+            for corps in (['x'], 'texte', 12.5):
+                resp = self.api.post(base + chemin, corps, format='json')
+                self.assertEqual(
+                    resp.status_code, 400, (chemin, corps, resp.content))
+
+    def test_arreter_relance_motif_et_cadences_types(self):
+        url = f'/api/django/crm/leads/{self.lead.pk}/relance/arreter/'
+        for corps in ({'motif': 5}, {'motif': 'ok' + chr(0)},
+                      {'motif': 'ok', 'cadences': ['a' + chr(0)]},
+                      {'motif': 'ok', 'cadences': [5]}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_vues_enregistrees_nul_retire_ou_refuse(self):
+        url = '/api/django/crm/vues-enregistrees/'
+        resp = self.api.post(url, {
+            'page': 'crm.leads', 'name': 'Vue NUL',
+            'payload': {'cle': 'a' + chr(0) + 'b'}}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['payload'], {'cle': 'ab'})
+        resp = self.api.post(url + 'reorder/', {
+            'page': 'crm' + chr(0), 'ids': []}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.get(url, {'page': 'crm' + chr(0)})
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_lead_json_libre_avec_nul_jamais_500(self):
+        resp = self.api.post('/api/django/crm/leads/', {
+            'nom': 'Lead NUL',
+            'web_questionnaire': {'k': 'v' + chr(0)}}, format='json')
+        self.assertIn(resp.status_code, (201, 400), resp.content)
+
+    def test_check_duplicates_param_repete_400(self):
+        resp = self.api.get('/api/django/crm/leads/check-duplicates/',
+                            {'exclude': ['1', '2']})
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.get('/api/django/crm/leads/check-duplicates/',
+                            {'telephone': '06' + chr(0)})
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_client_texte_nul_400_et_parent_soi_meme_409(self):
+        resp = self.api.post('/api/django/crm/clients/', {
+            'nom': 'Cl NUL', 'email': 'nul2410@exemple.ma',
+            'avertissement_vente': 'a' + chr(0)}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.patch(
+            f'/api/django/crm/clients/{self.client_obj.pk}/',
+            {'parent': self.client_obj.pk}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_concurrent_perte_lead_inconnu_404(self):
+        resp = self.api.post('/api/django/crm/concurrents-perte/', {
+            'lead': 987654321, 'concurrent_nom': 'Rival'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_partenaire_expiration_avant_certification_409(self):
+        resp = self.api.post('/api/django/crm/partenaires/', {
+            'nom': 'Part 2410', 'date_certification': '2026-06-01',
+            'date_expiration_certification': '2026-01-01'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_planifier_visite_etape_inconnue_404_texte_400(self):
+        url = f'/api/django/crm/leads/{self.lead.pk}/visites/planifier/'
+        resp = self.api.post(
+            url, {'date_prevue': '2999-01-01', 'etape': '987654'},
+            format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        resp = self.api.post(
+            url, {'date_prevue': '2999-01-01', 'etape': 'abc'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_reporter_echeance_obligatoire_publiee(self):
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.crm import urls as crm_urls
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/crm/', include(crm_urls)),
+        ]).get_schema(request=None, public=True)
+        route = '/api/django/crm/relance-etapes/{id}/reporter/'
+        corps = schema['paths'][route]['post']['requestBody']['content'][
+            'application/json']['schema']
+        self.assertIn('anyOf', corps['allOf'][1])
+
+    def test_site_profile_gps_hors_amplitude_400(self):
+        for corps in ({'gps_lat': '91'}, {'gps_lng': '-181'}):
+            resp = self.api.post('/api/django/crm/site-profiles/', {
+                'client': self.client_obj.pk, **corps}, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self.api.post('/api/django/crm/site-profiles/', {
+            'client': self.client_obj.pk, 'gps_lat': '33.5731',
+            'gps_lng': '-7.5898'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_client_doublon_code_parrainage_et_liste_prix_inconnue_404(self):
+        """3e drainage api-fuzz : un doublon (``code_parrainage``) MÊLÉ à un id
+        inconnu (``liste_prix``) répondait 400 ; l'id inconnu l'emporte (404)."""
+        autre = Client.objects.create(
+            company=self.company, nom='Autre', email='autre2410@exemple.ma')
+        url = f'/api/django/crm/clients/{self.client_obj.pk}/'
+        resp = self.api.patch(url, {
+            'code_parrainage': autre.code_parrainage,
+            'liste_prix': 987654321}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        # Le doublon seul reste un 409.
+        resp = self.api.patch(
+            url, {'code_parrainage': autre.code_parrainage}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_locataire_schema_refuse_nul_et_numero_sans_chiffre_utile(self):
+        """3e drainage api-fuzz : le motif du nom était « non-espace » (qui MATCHE le
+        NUL) et « 2120 » (indicatif + zéros) se normalise en vide."""
+        import re
+
+        from apps.crm import schema_docs as sd
+
+        branche = sd.LOCATAIRE_SUITE['x-corps-resserre']['anyOf'][1]
+        proprietaire = branche['properties']['proprietaire']
+        nom = proprietaire['properties']['nom']
+        self.assertEqual(nom['maxLength'], 255)
+        self.assertTrue(re.search(nom['pattern'], 'Ali'))
+        for refuse in ('abc' + chr(0), '   ', ''):
+            self.assertFalse(re.search(nom['pattern'], refuse), repr(refuse))
+        numero = proprietaire['anyOf'][0]['properties']['telephone']
+        self.assertTrue(re.search(numero['pattern'], '0612345678'))
+        self.assertFalse(re.search(numero['pattern'], '2120'))
+        # Ce que le serveur refuse bien (400), pour ne jamais re-diverger.
+        url = f'/api/django/crm/leads/{self.lead.pk}/locataire/'
+        resp = self.api.post(url, {'proprietaire': {
+            'nom': 'Ali', 'telephone': '2120'}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)

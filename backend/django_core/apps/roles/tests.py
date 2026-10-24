@@ -449,7 +449,11 @@ class RevueAccesTest(TestCase):
     def test_erreur_revue_acces_reste_en_json(self):
         """ENF11 — ``dormant_days`` illisible ou négatif = 400, et une erreur
         n'est JAMAIS rendue en ``text/csv`` (même avec ``?format=csv``)."""
-        for qs in ('dormant_days=abc', 'format=csv&dormant_days=-1'):
+        # api-fuzz full 24/10 : au-delà du plafond publié (500 OverflowError),
+        # vide ou répété = 400 aussi.
+        for qs in ('dormant_days=abc', 'format=csv&dormant_days=-1',
+                   'dormant_days=16777217', 'dormant_days=',
+                   'dormant_days=1&dormant_days=2'):
             resp = self.api.get(f'/api/django/roles/revue-acces/?{qs}')
             self.assertEqual(resp.status_code, 400, qs)
             self.assertIn('application/json', resp['Content-Type'], qs)

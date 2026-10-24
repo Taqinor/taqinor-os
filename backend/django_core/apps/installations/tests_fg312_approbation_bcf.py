@@ -84,7 +84,9 @@ class TestSeuilConfig(TestCase):
         # un nombre ou un 0 n'est plus converti en silence.
         api = auth(make_user(self.company, role='admin'))
         for corps in ({'seuil_responsable': 0}, {'seuil_responsable': '10',
-                                                 'actif': 0}):
+                                                 'actif': 0},
+                      # api-fuzz full : seuil négatif refusé (borne publiée).
+                      {'seuil_responsable': '-.6'}):
             r = api.post(f'{BASE}/seuils-approbation-bcf/', corps)
             self.assertEqual(r.status_code, 400, r.data)
 

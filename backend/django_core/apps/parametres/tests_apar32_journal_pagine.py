@@ -71,7 +71,9 @@ class JournalPagineTests(TestCase):
         for params in ({'user': 'abc'}, {'limit': 'x'}, {'offset': '-1'},
                        {'limit': '0'}, {'date_debut': '2026-13-45'},
                        {'user': ''}, {'offset': '+1'},
-                       {'date_fin': '20261014'}):
+                       {'date_fin': '20261014'},
+                       # api-fuzz full 24/10 : caractère nul = 500 en base.
+                       {'field': 'a\x00b'}, {'section': '\x00'}):
             r = self.api.get(URL, params)
             self.assertEqual(r.status_code, 400, (params, r.data))
         # Une borne de date VIDE reste « non posée » (publiée comme telle).

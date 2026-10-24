@@ -34,6 +34,8 @@ from __future__ import annotations
 import hashlib
 import json
 
+from core.conflit_etat import ConflitEtat
+
 #: ACAL39 — les SEULES clés « volatiles » du document : état d'écran qui ne
 #: change rien à la conception, donc hors empreinte « document ». Chaque
 #: entrée est un CHEMIN ; ``[]`` parcourt une liste. Les pans se lisent aussi
@@ -147,6 +149,18 @@ def empreinte_document(roof_layout):
 
 class LayoutRefuse(ValueError):
     """Refus métier d'enregistrement, message français, champ fautif nommé."""
+
+    def __init__(self, message, *, champ=''):
+        super().__init__(message)
+        self.champ = champ
+
+
+class LayoutCaractereInterdit(ConflitEtat):
+    """409 - U+0000 ou un demi-substitut isole dans le document de conception
+    (cle OU valeur, a toute profondeur). Le document est un objet libre dont
+    le schema OpenAPI ne borne ni les cles ni les textes imbriques : refus
+    d'ETAT inexprimable au schema, donc 409 et non 400 (ENF11, meme doctrine
+    que ``parametres.CaractereInterditEnCle``)."""
 
     def __init__(self, message, *, champ=''):
         super().__init__(message)
@@ -443,6 +457,16 @@ def enregistrer_layout(calepinage, roof_layout, *, user=None,
         raise LayoutRefuse(
             "La conception doit être un objet "
             f"(reçu : {type(roof_layout).__name__}).", champ='roof_layout')
+    # ERR-ENF11-FUZZ-CALEPINAGE - U+0000 ou un demi-substitut isole (texte OU
+    # cle) ne se range pas en JSONB : l'INSERT echouait en 500. Refus NOMME.
+    from .parametres import _chemin_caractere_interdit
+
+    chemin_interdit = _chemin_caractere_interdit(roof_layout, 'roof_layout')
+    if chemin_interdit:
+        raise LayoutCaractereInterdit(
+            "« %s » contient un caractere interdit (caractere nul ou "
+            "illisible) : corrigez la saisie." % chemin_interdit,
+            champ='roof_layout')
 
     # CAL207 — miroir de la règle ventes/sync-layout : un calepinage dont le
     # devis lié a été envoyé est en lecture seule (409), sauf déverrouillage

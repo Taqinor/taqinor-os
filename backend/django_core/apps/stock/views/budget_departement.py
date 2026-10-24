@@ -89,7 +89,7 @@ class EngagementBudgetSerializer(CompanyScopedRelationsMixin,
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('annee', INT, mini=0,
-                    maxi=2147483647), P('mois', INT, mini=0, maxi=12), P('actif', BOOL)]))
+                    maxi=2147483647, vide=True), P('mois', INT, mini=0, maxi=12, vide=True), P('actif', BOOL)]))
 class BudgetDepartementViewSet(CompanyScopedModelViewSet):
     """NTP2P4 — enveloppe budgétaire d'achat de la société.
 
@@ -134,7 +134,7 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
             many=True).data
         return Response(detail)
 
-    @extend_schema(parameters=[P('montant', NUM, False, 'Montant demandé (MAD)')],
+    @extend_schema(parameters=[P('montant', NUM, False, 'Montant demandé (MAD)', vide=True)],
                    responses=corps('BudgetDisponibleReponse', controle_actif=serializers.BooleanField(),
                                    restant=serializers.FloatField(allow_null=True),
                                    depassement=serializers.FloatField(), suffisant=serializers.BooleanField(),
@@ -152,7 +152,7 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
 
         from ..utils.params import decimal_ou_400
         montant = decimal_ou_400(
-            request.query_params.get('montant'), 'montant', Decimal('0'))
+            valeur_unique_ou_400(request, 'montant'), 'montant', Decimal('0'))
         verdict = selectors.verifier_budget_disponible(
             request.user.company, None, montant)
         budget = verdict.pop('budget', None)

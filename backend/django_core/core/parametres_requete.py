@@ -56,6 +56,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import re
 
 from django.conf import settings
 from rest_framework import status
@@ -134,6 +135,28 @@ def _noms_query(parametres) -> set:
     return noms
 
 
+class _Autorises(frozenset):
+    """Noms autorisés d'une opération + ``schemas`` : nom -> schéma OpenAPI
+    publié de chaque paramètre ``in: query`` scalaire (contrôle des VALEURS)."""
+
+    def __new__(cls, noms, schemas=None):
+        objet = super().__new__(cls, noms)
+        objet.schemas = dict(schemas or {})
+        return objet
+
+
+def _schemas_query(parametres) -> dict:
+    """Schémas des paramètres ``in: query`` portés par un ``schema`` (un
+    paramètre ``content`` — objet JSON encodé — ou objet déplié est exclu)."""
+    schemas = {}
+    for param in parametres:
+        schema = param.get('schema')
+        if (param.get('in') == 'query' and param.get('name')
+                and isinstance(schema, dict) and schema.get('type') != 'object'):
+            schemas[param['name']] = schema
+    return schemas
+
+
 def _calculer(view, request, methode):
     from drf_spectacular.drainage import GENERATOR_STATS
     from drf_spectacular.generators import SchemaGenerator
@@ -161,7 +184,8 @@ def _calculer(view, request, methode):
         if schema.is_excluded():
             return None
         parametres = schema._get_parameters()
-    return frozenset(_noms_query(parametres) | PARAMETRES_PLATEFORME)
+    return _Autorises(_noms_query(parametres) | PARAMETRES_PLATEFORME,
+                      schemas=_schemas_query(parametres))
 
 
 def parametres_autorises(view, request):
@@ -216,6 +240,108 @@ def verifier_parametres_requete(view, request) -> None:
     }
     if inconnus:
         raise ParametresRequeteInconnus(inconnus)
+    verifier_valeurs_requete(request, getattr(autorises, 'schemas', {}))
+
+
+# ── Valeurs des paramètres DÉCLARÉS (api-fuzz-full du 24/10/2026) ───────────
+# Le schéma publie le TYPE de chaque paramètre ; DRF et les vues lisaient
+# ``query_params.get()`` : ``?document=`` vide, ``?document=abc`` ou un
+# paramètre répété (la DERNIÈRE valeur gagne) répondaient 200 sans filtrer —
+# « API accepted schema-violating request » sur des dizaines de listes de
+# toutes les apps (ged : archivages-legaux, depots-publics, planifications,
+# regles-dossier, signataires-demande, versions, champs-signature… ; core :
+# charge-approbateurs ``seuil=``). Une seule règle, lue du schéma publié lui-
+# même (documenté == accepté) : paramètre scalaire répété, entier/nombre
+# illisible ou hors bornes, valeur hors énumération → 400 nommant le
+# paramètre. Un tableau (``type: array``) n'est jamais contrôlé ici.
+_ENTIER = re.compile(r'[+-]?[0-9]+', re.ASCII)
+
+
+def _texte_enum(valeur):
+    if isinstance(valeur, bool):
+        return 'true' if valeur else 'false'
+    return str(valeur)
+
+
+def _hors_bornes(n, schema):
+    mini, maxi = schema.get('minimum'), schema.get('maximum')
+    if mini is not None and (n < mini or (
+            schema.get('exclusiveMinimum') is True and n == mini)):
+        return True
+    return maxi is not None and (n > maxi or (
+        schema.get('exclusiveMaximum') is True and n == maxi))
+
+
+def _erreur_valeur(schema, valeur):
+    """Message d'erreur si ``valeur`` viole ``schema`` (scalaire), sinon ``None``."""
+    enum = schema.get('enum')
+    if enum is not None:
+        choix = [_texte_enum(e) for e in enum if e is not None]
+        if valeur not in choix:
+            return f"Valeur « {valeur} » invalide : attendu {', '.join(choix)}."
+        return None
+    if schema.get('type') == 'integer':
+        if not _ENTIER.fullmatch(valeur):
+            return 'Un nombre entier est attendu.'
+        return 'Valeur hors plage.' if _hors_bornes(int(valeur), schema) else None
+    if schema.get('type') == 'number':
+        try:
+            n = float(valeur)
+        except ValueError:
+            n = None
+        if n is None or n != n or n in (float('inf'), float('-inf')) \
+                or valeur.strip() != valeur:
+            return 'Un nombre est attendu.'
+        return 'Valeur hors plage.' if _hors_bornes(n, schema) else None
+    return None
+
+
+def verifier_valeurs_requete(request, schemas) -> None:
+    """400 ``validation_error`` (``fields`` = les paramètres fautifs) quand une
+    valeur viole le schéma publié de son paramètre ; voir ci-dessus."""
+    from rest_framework.exceptions import ValidationError
+
+    erreurs = {}
+    for nom, schema in schemas.items():
+        if schema.get('type') == 'array':
+            continue
+        valeurs = request.query_params.getlist(nom)
+        if not valeurs:
+            continue
+        if len(valeurs) > 1:
+            erreurs[nom] = [
+                f"Le paramètre « {nom} » ne doit figurer qu'une fois."]
+            continue
+        message = _erreur_valeur(schema, valeurs[0])
+        if message:
+            erreurs[nom] = [message]
+    if erreurs:
+        raise ValidationError(erreurs)
+
+
+#: Seul paramètre dont le caractère nul reste toléré : ``search`` (liste vide,
+#: voir ``_installer_recherche_tolerante``).
+PARAMETRES_NUL_TOLERE = frozenset({'search'})
+MESSAGE_NUL = 'Le caractère nul est interdit dans un paramètre de requête.'
+
+
+def verifier_caractere_nul(request) -> None:
+    """api-fuzz-full du 24/10/2026 — un caractère nul dans une valeur de query
+    (``?statut=%00``, ``?type=…%00``) atteignait PostgreSQL, qui le refuse :
+    500 (ged demandes-approbation / demandes-disposition / journal-acces,
+    trash corbeille, tiers verifier-doublon, ged recherche ``q``…). Aucune
+    donnée stockée n'en contient ; le schéma publie la règle (motif « sans
+    nul » posé sur chaque paramètre texte par ``core.openapi_erreurs``) et le
+    serveur la tient PARTOUT (réglage strict ou non : un 500 devient un 400
+    nommé, aucune requête valide ne change)."""
+    from rest_framework.exceptions import ValidationError
+
+    fautifs = sorted({
+        cle for cle, valeurs in request.query_params.lists()
+        if cle not in PARAMETRES_NUL_TOLERE
+        and any('\x00' in v for v in valeurs)})
+    if fautifs:
+        raise ValidationError({cle: [MESSAGE_NUL] for cle in fautifs})
 
 
 def vider_cache() -> None:
@@ -261,6 +387,7 @@ def installer() -> None:
     def initial(self, request, *args, **kwargs):
         origine(self, request, *args, **kwargs)
         verifier_parametres_requete(self, request)
+        verifier_caractere_nul(request)
 
     initial._enfp_parametres_requete = True
     APIView.initial = initial

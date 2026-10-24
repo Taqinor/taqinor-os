@@ -1043,7 +1043,8 @@ class NTUX28LimitesAntiAbusTests(TestCase):
         resp = api.post(self.VUES, {
             'ecran': 'crm.leads', 'nom': 'Vue de trop', 'configuration': {},
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # api-fuzz full 24/10 : la limite est un état (409), plus un 400.
+        self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('detail', resp.data)
         self.assertEqual(SavedView.objects.filter(owner=self.user).count(), 2)
 
@@ -1061,7 +1062,7 @@ class NTUX28LimitesAntiAbusTests(TestCase):
         self.assertEqual(resp1.status_code, 201, resp1.data)
         resp2 = api.post(self.FAVORIS, {
             'modele': 'uxviews.savedview', 'object_id': cible2.pk}, format='json')
-        self.assertEqual(resp2.status_code, 400, resp2.data)
+        self.assertEqual(resp2.status_code, 409, resp2.data)
         self.assertEqual(FavoriUtilisateur.objects.filter(owner=self.user).count(), 1)
 
     def test_repingler_la_meme_cible_nest_jamais_bloque_par_la_limite(self):

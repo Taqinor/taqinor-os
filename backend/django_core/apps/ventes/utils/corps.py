@@ -8,6 +8,27 @@ inchangé (les clés inconnues restent ignorées).
 """
 import re
 
+#: Caractère nul ou demi-substitut Unicode isolé.
+_ILLISIBLE = re.compile('[\x00\ud800-\udfff]')
+
+
+def nettoyer_json(valeur):
+    """CI #997 fuzz (24/10) — normalise une valeur JSON LIBRE avant de la
+    ranger en ``jsonb`` : le caractère nul est retiré et un demi-substitut
+    Unicode isolé devient U+FFFD, clés comprises. PostgreSQL refuse l'un
+    (DataError) et psycopg ne sait pas encoder l'autre : la valeur publiée
+    (JSON libre) les autorise, donc elle est normalisée, jamais refusée ni
+    plantée. Même doctrine que ``core.parseurs.sans_nul`` (qui ne traite pas
+    les demi-substituts)."""
+    if isinstance(valeur, str):
+        return _ILLISIBLE.sub(
+            lambda m: '' if m.group() == '\x00' else '�', valeur)
+    if isinstance(valeur, list):
+        return [nettoyer_json(v) for v in valeur]
+    if isinstance(valeur, dict):
+        return {nettoyer_json(k): nettoyer_json(v) for k, v in valeur.items()}
+    return valeur
+
 
 def valider_corps(request, declare):
     """Lève ``ValidationError`` (400) si ``request.data`` viole ``declare``."""

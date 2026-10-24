@@ -17,8 +17,9 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset
 from .params_requete import (
-    CORPS_NOTER_JSON, CORPS_NOTER_MULTIPART, CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT,
-    NOTER_REPERE, RESOUDRE_GPS_REPERE, booleen_param, corps_lu, corps_objet, liste_ids, texte_verifie)
+    CORPS_NOTER_JSON, CORPS_NOTER_MULTIPART, CORPS_REORDER_VUE, CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT,
+    NOTER_REPERE, RESOUDRE_GPS_REPERE, booleen_param, corps_lu, corps_objet, liste_ids,
+    refus_page_reorder, texte_param, texte_verifie)
 from .models import (
     LeadActivity, Lead, LeadTag, MotifPerte, Canal, SavedView, SiteProfile,
     WebsiteLeadPayload,
@@ -1327,7 +1328,9 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         if request.method == 'GET':
             return Response(proposition_locataire(lead))
 
-        if request.data.get('proprietaire_inconnu') is True:
+        # Nocturne 24/10 : un corps qui n'est pas un objet JSON (texte, liste,
+        # nombre) levait ``.get`` (500) — 400 nommé.
+        if corps_objet(request).get('proprietaire_inconnu') is True:
             clore_locataire_sans_proprietaire(lead, request.user)
             lead.refresh_from_db()
             return Response({
@@ -2082,7 +2085,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset().filter(user=self.request.user)
-        page = self.request.query_params.get('page')
+        page = texte_param(self.request, 'page')
         if page:
             qs = qs.filter(page=page)
         return qs
@@ -2093,8 +2096,7 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             user=self.request.user,
         )
 
-    @extend_schema(request=sd.corps('CrmSavedViewReorderRequest', page=serializers.CharField(),
-                                    ids=serializers.ListField(child=serializers.IntegerField())),
+    @extend_schema(request=CORPS_REORDER_VUE,
                    responses=SavedViewSerializer(many=True))
     @action(detail=False, methods=['post'])
     def reorder(self, request):
@@ -2106,10 +2108,8 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
         from django.db import transaction
         page = corps_objet(request).get('page')
         ids = liste_ids(request.data, 'ids')
-        if not isinstance(page, str) or not page.strip():
-            return Response(
-                {'detail': "Paramètres 'page' et 'ids' (liste) requis."},
-                status=status.HTTP_400_BAD_REQUEST)
+        if (refus := refus_page_reorder(page)) is not None:
+            return refus
         owned_by_id = {
             v.id: v for v in SavedView.objects.filter(
                 company=request.user.company, user=request.user,

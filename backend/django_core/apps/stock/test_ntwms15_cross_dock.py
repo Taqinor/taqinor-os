@@ -213,8 +213,18 @@ class TestEndpointsCrossDock(Ntwms15Base):
         url = (f'/api/django/stock/receptions-fournisseur/{reception.id}/'
                'affecter-cross-dock/')
         reponse = self.api.post(url, {}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # ENF11 : aucune vague en attente = état
         self.assertIn('detail', reponse.data)
+
+    def test_corps_hors_schema_400_jamais_500(self):
+        # api-fuzz-full 24/10 : ``lignes`` non liste (``-1.1``) faisait un TypeError (500).
+        reception = self._reception([(self.produit, 4)])
+        url = (f'/api/django/stock/receptions-fournisseur/{reception.id}/'
+               'affecter-cross-dock/')
+        for corps in ({'lignes': -1.1}, {'lignes': ['x']}, {'lignes': [0]},
+                      {'unite_logistique': 'a'}, {'unite_logistique': 0}, [1]):
+            reponse = self.api.post(url, corps, format='json')
+            self.assertEqual(reponse.status_code, 400, (corps, reponse.content))
 
     def test_autre_societe_ne_voit_pas_la_reception(self):
         intrus = User.objects.create_user(

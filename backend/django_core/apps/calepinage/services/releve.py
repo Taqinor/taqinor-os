@@ -48,6 +48,36 @@ class ReleveRefuse(ValueError):
         self.champ = champ
 
 
+def _date_saisie(brut):
+    """La date AAAA-MM-JJ saisie, ou ``None`` si absente / illisible.
+
+    ``parse_date`` LEVE ``ValueError`` sur une date bien formee mais
+    inexistante (``2026-02-30``) : c'etait un 500 ; c'est un refus nomme."""
+    from django.utils.dateparse import parse_date
+
+    if hasattr(brut, 'year'):
+        return brut
+    if not isinstance(brut, str):
+        return None
+    try:
+        return parse_date(brut.strip())
+    except ValueError:
+        return None
+
+
+def _sans_caractere_interdit(valeur, champ):
+    """U+0000 ou un demi-substitut isole (texte OU cle, a toute profondeur) ne
+    se range ni en colonne texte ni en JSONB : l'INSERT echouait en 500. Refus
+    NOMME a la place."""
+    from .parametres import _chemin_caractere_interdit
+
+    chemin = _chemin_caractere_interdit(valeur, champ)
+    if chemin:
+        raise ReleveRefuse(
+            "« %s » contient un caractere interdit (caractere nul ou "
+            "illisible) : corrigez la saisie." % chemin, champ)
+
+
 def _nombre_valide(valeur, champ, libelle, *, obligatoire=False, positif=False):
     """ACAL277 — un réel FINI (``nan``/``inf``/``1e400`` refusés, jamais un
     500), strictement positif pour une longueur (``positif``)."""
@@ -203,22 +233,20 @@ def enregistrer_releve(calepinage, donnees, *, user=None):
     """
     from django.core.exceptions import ValidationError
     from django.db import transaction
-    from django.utils.dateparse import parse_date
-
     from ..models import PhotoSite, ReleveTerrain
 
     if not isinstance(donnees, dict):
         raise ReleveRefuse(
             "Le corps attendu est un objet de relevé.", 'releve')
 
-    brut = donnees.get('releve_le')
-    releve_le = brut if hasattr(brut, 'year') else parse_date(
-        (brut or '').strip() if isinstance(brut, str) else '')
+    releve_le = _date_saisie(donnees.get('releve_le'))
     if releve_le is None:
         raise ReleveRefuse(
             "La date du relevé est obligatoire et s'écrit AAAA-MM-JJ : elle "
             "est SAISIE, jamais déduite de la date d'envoi.", 'releve_le')
 
+    _sans_caractere_interdit(donnees.get('chaines'), 'chaines')
+    _sans_caractere_interdit(donnees.get('notes'), 'notes')
     geometrie = resoudre_chaines(donnees.get('chaines'))
 
     releve = ReleveTerrain(
@@ -299,8 +327,6 @@ def modifier_releve(releve, donnees, *, user=None):
     """
     from django.core.exceptions import ValidationError
     from django.db import transaction
-    from django.utils.dateparse import parse_date
-
     from ..models import PhotoSite
     from .verrou import verifier_ecriture_autorisee
 
@@ -311,9 +337,7 @@ def modifier_releve(releve, donnees, *, user=None):
     _releve_de_saisie(releve)
 
     if 'releve_le' in donnees:
-        brut = donnees.get('releve_le')
-        releve_le = brut if hasattr(brut, 'year') else parse_date(
-            (brut or '').strip() if isinstance(brut, str) else '')
+        releve_le = _date_saisie(donnees.get('releve_le'))
         if releve_le is None:
             raise ReleveRefuse(
                 "La date du relevé est obligatoire et s'écrit AAAA-MM-JJ : "
@@ -321,6 +345,7 @@ def modifier_releve(releve, donnees, *, user=None):
                 'releve_le')
         releve.releve_le = releve_le
     if 'chaines' in donnees:
+        _sans_caractere_interdit(donnees.get('chaines'), 'chaines')
         releve.geometrie = resoudre_chaines(donnees.get('chaines'))
         releve.chaines = donnees.get('chaines') or []
     if 'azimut_boussole_deg' in donnees:
@@ -332,6 +357,7 @@ def modifier_releve(releve, donnees, *, user=None):
             donnees.get('precision_azimut_deg'), 'precision_azimut_deg',
             "Précision de l'azimut")
     if 'notes' in donnees:
+        _sans_caractere_interdit(donnees.get('notes'), 'notes')
         releve.notes = str(donnees.get('notes') or '')
     try:
         releve.full_clean(exclude=['company', 'calepinage', 'releve_par'])

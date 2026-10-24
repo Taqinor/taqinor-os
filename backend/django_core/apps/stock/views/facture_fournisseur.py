@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR, corps
-from ..erreurs_achats import IntrouvableMetier
+from ..erreurs_achats import IntrouvableMetier, debordement_compteur_en_409
 from ..utils.params import corps_objet, date_ou_400, id_corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -50,11 +50,15 @@ class TrancheEcheancierSerializer(serializers.Serializer):
 # ne sait pas dire « JSON valide », on déclare donc le sous-ensemble plat
 # (clé -> chaîne/nombre/booléen/null) que l'API accepte à coup sûr — du texte
 # libre (ex. « 0 ») était un cas « conforme » refusé en 400.
+# Blancs JSON = espace, tabulation, LF, CR (jamais ``\s``, qui admet aussi \x0b / \x0c
+# que ``json.loads`` refuse) ; entiers sans zéro de tête (``01`` n'est pas du JSON).
+_BLANCS = r'[ \t\n\r]*'
 _CHAINE = r'"[^"\\\x00-\x1f]*"'
-_VAL = r'(?:' + _CHAINE + r'|-?[0-9]+(?:\.[0-9]+)?|null|true|false)'
-_PAIRE = _CHAINE + r'\s*:\s*' + _VAL
+_VAL = r'(?:' + _CHAINE + r'|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?|null|true|false)'
+_PAIRE = _CHAINE + _BLANCS + ':' + _BLANCS + _VAL
 _REGEX_OBJET_JSON_PLAT = (
-    r'^\s*\{\s*(?:' + _PAIRE + r'(?:\s*,\s*' + _PAIRE + r')*)?\s*\}\s*$')
+    r'^' + _BLANCS + r'\{' + _BLANCS + r'(?:' + _PAIRE + r'(?:' + _BLANCS + ',' + _BLANCS + _PAIRE + r')*)?'
+    + _BLANCS + r'\}' + _BLANCS + r'$')
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'), P('statut', STR,
@@ -480,6 +484,8 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             qs = facture.paiements.select_related('created_by').all()
             return Response(
                 PaiementFournisseurSerializer(qs, many=True).data)
+        # api-fuzz : un corps JSON non objet (``""``, ``[]``) faisait un TypeError (500).
+        donnees = corps_objet(request)
         # XPUR1/XPUR4/XPUR10 — mêmes gates que PaiementFournisseurViewSet.
         # create (fournisseur bloqué, conformité expirée, exception 3 voies).
         from ..services import (
@@ -497,7 +503,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         # POST — enregistre un paiement, company posée serveur.
         serializer = PaiementFournisseurSerializer(
-            data={**request.data, 'facture': facture.id},
+            data={**donnees, 'facture': facture.id},
             context={'request': request})
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
@@ -590,7 +596,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             rows = echeances_facture_fournisseur(
                 request.user.company, facture.pk)
             return Response(rows)
-        tranches = request.data.get('tranches') or []
+        tranches = corps_objet(request).get('tranches') or []
         if not isinstance(tranches, list) or not tranches:
             return Response(
                 {'detail': 'Au moins une tranche est requise.'},
@@ -599,8 +605,11 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         saisie.is_valid(raise_exception=True)
         tranches = saisie.validated_data
         from ..services import creer_echeancier_facture_fournisseur
-        created = creer_echeancier_facture_fournisseur(
-            request.user.company, facture, tranches)
+        # Montant dérivé (TTC × pourcentage) hors de la colonne : 409, rien d'écrit.
+        with debordement_compteur_en_409(
+                "Montant d'échéance hors capacité : TTC × pourcentage dépasse la limite de la colonne."):
+            created = creer_echeancier_facture_fournisseur(
+                request.user.company, facture, tranches)
         return Response(
             EcheanceFactureFournisseurSerializer(created, many=True).data,
             status=status.HTTP_201_CREATED)

@@ -16,7 +16,7 @@ from rest_framework.fields import SkipField
 from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from .erreurs_achats import ConflitEtat
-from .openapi_helpers import EntierBornePublie
+from .openapi_helpers import DatesRfc3339Mixin, EntierBornePublie
 from .permissions import MasqueMontantsAchatMixin
 
 from .models_wms import (
@@ -144,7 +144,7 @@ class UniteLogistiqueSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanySc
         courant = value
         while courant is not None and courant.pk not in vus:
             if courant.pk == self.instance.pk:
-                raise serializers.ValidationError(
+                raise ConflitEtat(
                     'Ce parent formerait un cycle (une unité ne peut pas se '
                     'contenir elle-même).')
             vus.add(courant.pk)
@@ -152,7 +152,7 @@ class UniteLogistiqueSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanySc
         return value
 
 
-class QuaiSerializer(CompanyScopedRelationsMixin,
+class QuaiSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                      ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS7 — quai de réception/expédition."""
 
@@ -176,7 +176,7 @@ class QuaiSerializer(CompanyScopedRelationsMixin,
 
 
 class RendezVousTransporteurSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
-                                       ChampsTexteBooleenStricts, serializers.ModelSerializer):
+                                       DatesRfc3339Mixin, ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS7 — créneau transporteur sur un quai.
 
     Le chevauchement est refusé PAR LE SERVEUR (garde dans
@@ -325,7 +325,7 @@ class AlerteRappelSerializer(CompanyScopedRelationsMixin,
         } for blocage in blocages_du_rappel(obj)]
 
 
-class PortailTiersTokenSerializer(ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
+class PortailTiersTokenSerializer(DatesRfc3339Mixin, ChampsTexteBooleenStricts, CompanyScopedRelationsMixin,
                                   serializers.ModelSerializer):
     """NTWMS20 — jeton du portail 3PL. Le jeton lui-même est GÉNÉRÉ côté
     serveur et n'est jamais accepté du client ; il n'est lisible que par les

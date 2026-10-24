@@ -242,3 +242,29 @@ class TestEndpointsUniteLogistique(Ntwms6Base):
         self.assertEqual(resp.status_code, 400, resp.content)
         resp = self.api.post(url, [None, None], format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
+
+    def test_ajouter_ligne_corps_invalide_404_409_jamais_500(self):
+        """api-fuzz : quantité hors colonne = 400 ; produit/lot inconnu = 404 ;
+        unité scellée = 409 (état) ; export ASN d'une unité non scellée = 409."""
+        colis = creer_unite_logistique(company=self.company)
+        url = f'/api/django/stock/unites-logistiques/{colis.id}/lignes/'
+        for corps in ({'produit': self.produit.id, 'quantite': 10 ** 38},
+                      {'produit': self.produit.id, 'quantite': 0},
+                      {'produit': self.produit.id, 'quantite': 2, 'lot': {}},
+                      {'produit': {}, 'quantite': 2}, [], {}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        resp = self.api.post(url, {'produit': 987654, 'quantite': 1}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        resp = self.api.post(
+            url, {'produit': self.produit.id, 'quantite': 1, 'lot': 987654}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertEqual(colis.lignes.count(), 0)
+        asn = f'/api/django/stock/unites-logistiques/{colis.id}/export-asn/'
+        self.assertEqual(self.api.get(asn).status_code, 409)
+        resp = self.api.post(url, {'produit': self.produit.id, 'quantite': 2}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        sceller_unite_logistique(unite=colis, user=self.admin)
+        resp = self.api.post(url, {'produit': self.produit.id, 'quantite': 2}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertEqual(self.api.get(asn).status_code, 200)

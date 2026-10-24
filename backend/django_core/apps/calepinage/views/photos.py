@@ -28,7 +28,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from core.champs_stricts import ChaineStricte, DateStricte
@@ -125,7 +125,7 @@ class PhotosSiteMixin:
         responses={201: _FORME_PHOTO})
     @action(detail=True, methods=['get', 'post'], url_path='photos',
             permission_classes=[PeutLireOuEcrireCalepinage],
-            parser_classes=[MultiPartParser, FormParser])
+            parser_classes=[MultiPartParser])
     def photos(self, request, pk=None):
         from ..selectors import photos_site
         from ..services.photos import (

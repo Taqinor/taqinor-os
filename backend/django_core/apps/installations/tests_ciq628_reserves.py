@@ -39,6 +39,20 @@ class ReservesChantierTests(TestCase):
         return StageModele.objects.get(company=self.company,
                                        cle='remise_client')
 
+    def test_corps_hors_schema_400_jamais_500(self):
+        # api-fuzz full : NUL, date non stricte, énumération, types.
+        for corps in ({'description': 'a\x00b'}, {'description': '   '},
+                      {'description': 'x', 'date_echeance': '2026-1-5'},
+                      {'description': 'x', 'origine': 'inconnue'},
+                      {'description': 'x', 'bloquante': 'true'},
+                      {'description': 12}, {}):
+            r = self.api.post(self.url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        r = self.api.post(self.url, [1, 2], format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(Reserve.objects.filter(
+            installation=self.inst).count(), 0)
+
     def test_reserve_bloquante_ouverte_remise_refusee_puis_levee(self):
         r = self._ajouter(bloquante=True, origine='recette',
                           date_echeance='2026-10-26',

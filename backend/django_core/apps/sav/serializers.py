@@ -1,16 +1,21 @@
+import datetime
 from datetime import timedelta
 
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
+from django.db import models
 from django.utils import timezone
 
 from core.champs_stricts import (
     ChaineStricte, ChampsStrictsEntiersMixin, ChampsStrictsMixin,
     ChampsStrictsSansDecimalMixin, IdInconnu404Mixin, ListesStrictesMixin)
+from core.conflit_etat import ConflitEtat
+from core.parseurs import sans_nul
 from core.mixins import SameCompanyFKSerializerMixin
 from core.champs_stricts import TypageStrictMixin
 from core.serializers import CompanyScopedRelationsMixin
 
+from .champs_corps import TexteSansSubstitut, sans_substituts
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
@@ -96,8 +101,9 @@ class EquipementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         if self.instance is not None:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError(
-                'Ce numéro de série existe déjà dans votre société.')
+            # ENF11 : doublon = refus d'ÉTAT (409), pas un corps mal formé.
+            raise ConflitEtat({'numero_serie': [
+                'Ce numéro de série existe déjà dans votre société.']})
         return value
 
     @extend_schema_field(serializers.IntegerField())
@@ -295,9 +301,11 @@ class TicketInterventionSerializer(serializers.Serializer):
     type_intervention_display = serializers.CharField(
         source='get_type_intervention_display')
     installation_id = serializers.IntegerField()
-    date_prevue = serializers.DateField()
-    date_realisee = serializers.DateField()
-    compte_rendu = serializers.CharField()
+    # ENF11 (api-fuzz-full) : ces trois colonnes sont nullables (intervention
+    # non encore réalisée) — le schéma les annonçait non nulles.
+    date_prevue = serializers.DateField(allow_null=True)
+    date_realisee = serializers.DateField(allow_null=True)
+    compte_rendu = serializers.CharField(allow_null=True)
     technicien_nom = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.CharField(allow_null=True))
@@ -321,6 +329,11 @@ class TicketChecklistItemSerializer(serializers.ModelSerializer):
 
 class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                        serializers.ModelSerializer):
+    # api-fuzz-full 24/10 — textes de modèle STRICTS (chaîne JSON seulement) :
+    # leur motif publié exclut le caractère nul que DRF refuse (400).
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte, models.TextField: ChaineStricte}
     # ASEC34 — un id d'une autre société reçoit la réponse d'un id absent
     # (400 « objet inexistant »), à la création comme au PATCH.
     # ENF17 — étendu à toutes les FK inscriptibles (client, chantier,
@@ -710,6 +723,12 @@ class AlarmeOnduleurSerializer(ChampsStrictsSansDecimalMixin, SameCompanyFKSeria
         source='ticket.reference', read_only=True, allow_null=True)
     acquittee_par_nom = serializers.CharField(
         source='acquittee_par.username', read_only=True, allow_null=True)
+    # ENF11 (api-fuzz-full) — rendue en UTC (``…Z``) : le fuseau local rendait
+    # le décalage historique ``-00:30:20`` des dates anciennes, invalide en
+    # RFC 3339 (la réponse violait son propre schéma).
+    date_detection = serializers.DateTimeField(
+        required=False, allow_null=True,
+        default_timezone=datetime.timezone.utc)
 
     class Meta:
         model = AlarmeOnduleur
@@ -955,6 +974,15 @@ class WorksheetMaintenanceModeleSerializer(ChampsStrictsMixin,
     champs = serializers.ListField(
         child=serializers.DictField(), required=False)
 
+    def to_internal_value(self, data):
+        # ENF11 (api-fuzz-full) : le caractère nul et les substituts isolés,
+        # clés comprises, sont refusés par le stockage ``jsonb`` (500).
+        if isinstance(data, dict):
+            data = sans_substituts(data)
+            if 'champs' in data:
+                data = {**data, 'champs': sans_nul(data['champs'])}
+        return super().to_internal_value(data)
+
     class Meta:
         model = WorksheetMaintenanceModele
         fields = [
@@ -1055,5 +1083,5 @@ class DowntimeEntreeSerializer(serializers.Serializer):
     debut = serializers.DateTimeField(required=False, allow_null=True)
     ticket = serializers.IntegerField(
         required=False, allow_null=True, min_value=1, max_value=2147483647)
-    motif = serializers.CharField(
+    motif = TexteSansSubstitut(
         required=False, allow_blank=True, allow_null=True)

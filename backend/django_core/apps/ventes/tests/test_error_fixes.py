@@ -81,7 +81,7 @@ class TestTenantLineInjection(TestCase):
             'designation': 'Inject', 'quantite': '1',
             'prix_unitaire': '1000', 'remise': '0',
         }, format='json')
-        self.assertIn(r.status_code, (400, 403), r.data)
+        self.assertEqual(r.status_code, 404, r.data)  # IdInconnu404Mixin
         self.assertEqual(LigneDevis.objects.filter(devis=self.devis_b).count(), 0)
 
     def test_cannot_inject_ligne_facture_on_other_company(self):
@@ -120,7 +120,7 @@ class TestDevisUpdateTenant(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/devis/{self.devis.id}/',
             {'client': self.client_b.id}, format='json')
-        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertEqual(r.status_code, 404, getattr(r, 'data', r))  # IdInconnu404Mixin
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.client_id, self.client_a.id)
 
@@ -128,7 +128,7 @@ class TestDevisUpdateTenant(TestCase):
         r = self.api.patch(
             f'/api/django/ventes/devis/{self.devis.id}/',
             {'lead': self.lead_b.id}, format='json')
-        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertEqual(r.status_code, 404, getattr(r, 'data', r))  # IdInconnu404Mixin
         self.devis.refresh_from_db()
         self.assertIsNone(self.devis.lead_id)
 

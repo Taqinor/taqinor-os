@@ -11,6 +11,7 @@ de requête, statuts, binaires).
   n'est jamais déclaré obligatoire (sinon ACC), un champ réellement exigé par
   le code l'est (sinon REJ).
 """
+import re
 from collections.abc import Mapping
 from datetime import date, timedelta
 
@@ -19,16 +20,17 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
 from drf_spectacular.utils import extend_schema_field
-from django.core.validators import RegexValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 
-from core.champs_stricts import BooleenStrict, ChaineStricte, EntierStrict, date_ou_400
+from core.champs_stricts import (
+    MOTIF_SANS_NUL, BooleenStrict, ChaineStricte, DateStricte, EntierStrict,
+    date_ou_400)
 from core.conflit_etat import ConflitEtat
 
 from ..signature_validation import (
-    MESSAGE_SIGNATURE_INVALIDE, MOTIF_DATA_URL, SIGNATURE_MAX_CARACTERES,
+    SignatureDataUrl,
 )
 
 UPLOAD_PARSERS = [MultiPartParser, FormParser]
@@ -56,7 +58,8 @@ def id_entier(valeur, nom):
     """Identifiant entier 1..ID_MAX (``int`` ou chaîne de chiffres), sinon
     400 nommant le champ — évite ``TypeError``/``DataError`` côté ORM."""
     if (isinstance(valeur, bool) or not isinstance(valeur, (int, str))
-            or (isinstance(valeur, str) and not valeur.strip().isdigit())
+            or (isinstance(valeur, str) and not (
+                valeur.strip().isascii() and valeur.strip().isdigit()))
             or not 1 <= int(valeur) <= ID_MAX):
         raise ValidationError({nom: 'Identifiant entier valide requis.'})
     return int(valeur)
@@ -235,6 +238,59 @@ def qdv(name, **kw):
     return q(name, DATE_OU_VIDE, **kw)
 
 
+_NOMBRE = re.compile(r'^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?\Z', re.ASCII)
+
+
+def nombre_requete(request, nom, defaut=None, mini=None, maxi=None,
+                   strict_mini=False):
+    """Nombre (``float``) du paramètre ``nom`` : absent ou vide -> ``defaut`` ;
+    toute forme qui n'est pas un nombre décimal (``false``, ``nan``, ``1_0``),
+    ou hors bornes, -> 400 nommant le paramètre. ``strict_mini`` : ``> mini``."""
+    brut = request.query_params.get(nom)
+    if brut is None or brut == '':
+        return defaut
+    valeur = float(brut) if _NOMBRE.match(brut) else None
+    if valeur is None or valeur in (float('inf'), float('-inf')):
+        raise ValidationError({nom: 'Nombre attendu.'})
+    if ((mini is not None and (valeur <= mini if strict_mini else valeur < mini))
+            or (maxi is not None and valeur > maxi)):
+        raise ValidationError({nom: 'Valeur hors plage.'})
+    return valeur
+
+
+def qnombre(name, mini=None, maxi=None, strict_mini=False, **kw):
+    """Paramètre nombre publié AVEC ses bornes réelles (ou la chaîne vide)."""
+    nombre = {'type': 'number'}
+    if mini is not None:
+        nombre['minimum'] = mini
+        if strict_mini:
+            nombre['exclusiveMinimum'] = True
+    if maxi is not None:
+        nombre['maximum'] = maxi
+    return q(name, {'oneOf': [nombre, {'type': 'string', 'enum': ['']}]}, **kw)
+
+
+def choix_requete(request, nom, valeurs):
+    """Valeur du paramètre ``nom`` parmi ``valeurs`` : absent ou vide ->
+    ``None`` ; toute autre valeur -> 400 nommant le paramètre (elle était
+    acceptée en silence alors que le schéma publie l'énumération)."""
+    brut = request.query_params.get(nom)
+    if brut is None or brut == '':
+        return None
+    if brut not in valeurs:
+        raise ValidationError({nom: 'Valeur inconnue.'})
+    return brut
+
+
+def texte_requete(request, nom):
+    """Valeur texte du paramètre ``nom`` (``None`` si absent) ; un caractère
+    nul fait lever le pilote Postgres (500) -> 400 nommant le paramètre."""
+    brut = request.query_params.get(nom)
+    if brut is not None and '\x00' in brut:
+        raise ValidationError({nom: 'Caractère nul interdit.'})
+    return brut
+
+
 def id_requete(request, nom, requis=False):
     """Identifiant du paramètre ``nom`` : absent ou vide → ``None`` (400 si
     ``requis``) ; toute autre forme qu'un entier 1..ID_MAX → 400 nommant le
@@ -245,6 +301,10 @@ def id_requete(request, nom, requis=False):
             raise ValidationError({nom: 'Paramètre requis.'})
         return None
     return id_entier(brut, nom)
+
+
+#: Longueur maximale (en jours) d'une fenêtre ``debut``/``fin`` de lecture.
+FENETRE_MAX_JOURS = 366
 
 
 def fenetre_semaine(request):
@@ -260,14 +320,27 @@ def fenetre_semaine(request):
         fin = debut + timedelta(days=6)
     if fin < debut:
         raise ConflitEtat('La fin de fenêtre précède le début.')
+    # api-fuzz full : une fenêtre de plusieurs siècles faisait boucler les
+    # agrégats (jour par jour) puis déborder (500) : règle d'ensemble, 409.
+    if (fin - debut).days > FENETRE_MAX_JOURS:
+        raise ConflitEtat(
+            f'La fenêtre ne peut pas dépasser {FENETRE_MAX_JOURS} jours.')
     return debut, fin
 
 
-def _valider_filtres(request, entiers, dates):
+#: Filtre texte publié SANS caractère nul (``\u0000`` fait lever le pilote
+#: Postgres -> 500 : le schéma le disait libre, la liste le refuse en 400).
+TEXTE_SANS_NUL = {'type': 'string', 'pattern': MOTIF_SANS_NUL}
+
+
+def _valider_filtres(request, entiers, dates, textes=()):
     for nom in entiers:
         id_requete(request, nom)
     for nom in dates:
         date_ou_400(request.query_params.get(nom), nom)
+    for nom in textes:
+        if any('\x00' in v for v in request.query_params.getlist(nom)):
+            raise ValidationError({nom: 'Caractère nul interdit.'})
 
 
 def listing(*args, **kw):
@@ -281,22 +354,25 @@ def listing(*args, **kw):
     params = list(args) + list(kw.values())
     entiers = [p.name for p in params if p.type == OpenApiTypes.INT]
     dates = [p.name for p in params if p.type == OpenApiTypes.DATE]
+    textes = [p.name for p in params if p.type == OpenApiTypes.STR]
     for p in params:
         if p.name in entiers:
             p.type = ID_OU_VIDE
         elif p.name in dates:
             p.type = DATE_OU_VIDE
+        elif p.name in textes and not p.enum:
+            p.type = TEXTE_SANS_NUL
     decorer = extend_schema_view(list=extend_schema(parameters=params))
 
     def appliquer(cls):
         cls = decorer(cls)
-        if entiers or dates:
+        if entiers or dates or textes:
             initial_parent = cls.initial
 
             def initial(self, request, *a, **k):
                 initial_parent(self, request, *a, **k)
                 if getattr(self, 'action', None) == 'list':
-                    _valider_filtres(request, entiers, dates)
+                    _valider_filtres(request, entiers, dates, textes)
             cls.initial = initial
         return cls
     return appliquer
@@ -318,7 +394,7 @@ def _id_strict(**kw):
 
 class ReplanifierEnMasseRequete(serializers.Serializer):
     """XFSM3 — {jour, [technicien], [intervention_ids], [simuler], [motif]}."""
-    jour = serializers.DateField()
+    jour = DateStricte()
     technicien = _id_strict(required=False, allow_null=True)
     intervention_ids = serializers.ListField(
         child=_id_strict(), required=False, max_length=500)
@@ -345,6 +421,98 @@ class AjouterReserveRequete(serializers.Serializer):
     memo = _id_strict(required=False, allow_null=True)
     creer_suivi = BooleenStrict(required=False)
     creer_ticket = BooleenStrict(required=False)
+
+
+# ── api-fuzz full : corps validés des actions de chantier lues à la main ──
+class NoterRequete(serializers.Serializer):
+    """Note libre du chatter (chantier, intervention, ordre d'assemblage) :
+    texte non blanc, sans caractère nul (il faisait lever la base -> 500)."""
+    body = ChaineStricte()
+
+
+class AnnulerChantierRequete(serializers.Serializer):
+    """Annulation d'un chantier : ``motif`` facultatif (un chantier non clôturé
+    s'annule sans motif), texte seulement (un nombre faisait lever ``strip``)."""
+    motif = ChaineStricte(required=False, allow_blank=True)
+
+
+class LigneEquipementRequete(serializers.Serializer):
+    """Ligne de série d'une checklist : une ligne sans ``produit`` est ignorée.
+    ``numero_serie`` <= 120 signes (colonne ``Equipement.numero_serie``)."""
+    produit = serializers.IntegerField(
+        min_value=1, max_value=ID_MAX, required=False)
+    numero_serie = ChaineStricte(
+        required=False, allow_blank=True, max_length=120)
+
+
+class CocherChecklistRequete(serializers.Serializer):
+    """N4/N9 — {cle, [fait], [equipements]} : déclaration ET validation."""
+    cle = ChaineStricte()
+    fait = BooleenStrict(required=False)
+    equipements = serializers.ListField(
+        child=LigneEquipementRequete(), required=False, max_length=500)
+
+
+class LigneSerieRequete(serializers.Serializer):
+    """CIQ633 — une ligne de l'import en lot des séries."""
+    produit = serializers.IntegerField(
+        min_value=1, max_value=ID_MAX, required=False)
+    numero_serie = ChaineStricte(
+        required=False, allow_blank=True, max_length=120)
+    chaine = ChaineStricte(required=False, allow_blank=True)
+
+
+class NonReleveRequete(serializers.Serializer):
+    """CIQ633 — produit « non relevé » + motif (un motif vide retire l'entrée)."""
+    produit = serializers.IntegerField(
+        min_value=1, max_value=ID_MAX, required=False)
+    motif = ChaineStricte(required=False, allow_blank=True)
+
+
+class SeriesLotCorpsJson(serializers.Serializer):
+    """CIQ633 — import en lot des numéros de série, corps JSON."""
+    lignes = serializers.ListField(
+        child=LigneSerieRequete(), required=False, max_length=500)
+    texte = ChaineStricte(required=False, allow_blank=True)
+    produit = serializers.IntegerField(
+        min_value=1, max_value=ID_MAX, required=False, allow_null=True)
+    non_releves = serializers.ListField(
+        child=NonReleveRequete(), required=False, max_length=500)
+
+
+class SeriesLotRequete(SeriesLotCorpsJson):
+    """CIQ633 — import en lot (JSON ou fichier) : la validation serveur."""
+    fichier = serializers.FileField(required=False, allow_empty_file=True)
+
+
+class SeriesLotCorpsFichier(serializers.Serializer):
+    """CIQ633 — import en lot par FICHIER (multipart) : ``fichier`` porte le
+    CSV ; ``lignes``/``non_releves`` (listes d'objets) ne s'envoient qu'en
+    JSON. Un ``fichier`` en JSON est refusé (400 « pas un fichier »)."""
+    fichier = serializers.FileField()
+    produit = serializers.IntegerField(
+        min_value=1, max_value=ID_MAX, required=False)
+
+
+class CommanderBesoinRequete(serializers.Serializer):
+    """N13 — {[fournisseur]} : id entier 1..ID_MAX (sinon fournisseur par défaut)."""
+    fournisseur = serializers.IntegerField(
+        min_value=1, max_value=ID_MAX, required=False)
+
+
+def _origines_reserve():
+    from ..models import Reserve
+    return list(Reserve.Origine.values)
+
+
+class ReserveChantierRequete(serializers.Serializer):
+    """CIQ628 — réserve posée sur le chantier : déclaration ET validation."""
+    description = ChaineStricte()
+    origine = serializers.ChoiceField(
+        choices=_origines_reserve(), required=False)
+    bloquante = BooleenStrict(required=False)
+    date_echeance = DateStricte(required=False, allow_null=True)
+    responsable = ChaineStricte(required=False, allow_blank=True)
 
 
 #: Réponse de ``tool-return`` (GET et POST) : la LISTE des lignes de retour,
@@ -381,9 +549,7 @@ class SignerChantierRequete(serializers.Serializer):
     """NTMOB16/CIQ631 — signature client du bon de livraison : la data-URL
     acceptée est PUBLIÉE (motif + longueur), les autres champs sont des textes
     facultatifs (``null`` toléré = vide, comme le lisait la vue)."""
-    signature_client = ChaineStricte(
-        max_length=SIGNATURE_MAX_CARACTERES, validators=[RegexValidator(
-            MOTIF_DATA_URL, message=MESSAGE_SIGNATURE_INVALIDE)])
+    signature_client = ChaineStricte(validators=[SignatureDataUrl()])
     signataire_nom = _texte_facultatif()
     motif_override_signature = _texte_facultatif()
     motif_override = _texte_facultatif()

@@ -12,6 +12,7 @@ d'activité » (Directeur par défaut) :
 Tout est company-scopé côté serveur. Les horodatages sont stockés en UTC ; le
 bucketing et l'affichage se font en Africa/Casablanca.
 """
+import re
 from datetime import datetime, timedelta, date as date_cls
 from zoneinfo import ZoneInfo
 
@@ -63,6 +64,17 @@ LIMITE = OpenApiParameter(
     description='1 à 500 (défaut 100) ; au-delà de 500, plafonné à 500.')
 
 
+def _limite(params):
+    """``limit`` STRICT (``LIMITE``) : absent → 100 ; vide, répété ou
+    illisible → 400 (``?limit=`` retombait en silence sur le défaut, et la
+    dernière occurrence d'un ``limit`` répété était lue)."""
+    valeurs = params.getlist('limit')
+    if len(valeurs) > 1 or (valeurs and not valeurs[0].strip()):
+        raise serializers.ValidationError(
+            {'limit': ['Un seul entier attendu.']})
+    return entier_ou_400(valeurs[0] if valeurs else None, 'limit', 100, 1, 500)
+
+
 def _company_qs(request):
     qs = AuditLog.objects.select_related('user', 'content_type')
     user = request.user
@@ -73,11 +85,20 @@ def _company_qs(request):
     return qs.none()
 
 
+def _ids_utilisateurs(valeurs):
+    """Identifiants d'utilisateur lisibles d'un filtre ``?user=`` : chiffres
+    ASCII seulement et dans l'entier 32 bits (api-fuzz-full 24/10 : « ² » passe
+    ``str.isdigit`` mais pas ``int()`` -> 400 ; un entier géant déborde la
+    colonne). Une valeur illisible est ignorée, comme avant."""
+    return [int(v) for v in valeurs
+            if re.fullmatch(r'[0-9]{1,10}', str(v)) and int(v) <= 2147483647]
+
+
 def _apply_filters(qs, params):
     """Filtres communs au graphe et à la liste."""
     users = params.getlist('user') or params.getlist('user[]')
     if users:
-        qs = qs.filter(user_id__in=[u for u in users if str(u).isdigit()])
+        qs = qs.filter(user_id__in=_ids_utilisateurs(users))
     actions = params.getlist('action') or params.getlist('action[]')
     if actions:
         qs = qs.filter(action__in=actions)
@@ -102,6 +123,11 @@ def _apply_filters(qs, params):
             date_to, datetime.min.time(), CASABLANCA) + timedelta(days=1)
         qs = qs.filter(timestamp__lt=end)
     search = (params.get('search') or '').strip()
+    if chr(0) in search:
+        # api-fuzz full 24/10 — même règle que ``SearchFilter`` (core) : un
+        # terme porteur d'un caractère nul ne désigne AUCUNE ligne (aucun texte
+        # stocké n'en contient) → liste vide ; il levait PostgreSQL (500).
+        return qs.none()
     if search:
         from django.db.models import Q
         qs = qs.filter(
@@ -206,7 +232,7 @@ def _apply_filters_no_range(qs, params):
     période du graphe)."""
     users = params.getlist('user') or params.getlist('user[]')
     if users:
-        qs = qs.filter(user_id__in=[u for u in users if str(u).isdigit()])
+        qs = qs.filter(user_id__in=_ids_utilisateurs(users))
     actions = params.getlist('action') or params.getlist('action[]')
     if actions:
         qs = qs.filter(action__in=actions)
@@ -221,6 +247,11 @@ def _apply_filters_no_range(qs, params):
     if object_id:
         qs = qs.filter(object_id=str(object_id))
     search = (params.get('search') or '').strip()
+    if chr(0) in search:
+        # api-fuzz full 24/10 — même règle que ``SearchFilter`` (core) : un
+        # terme porteur d'un caractère nul ne désigne AUCUNE ligne (aucun texte
+        # stocké n'en contient) → liste vide ; il levait PostgreSQL (500).
+        return qs.none()
     if search:
         from django.db.models import Q
         qs = qs.filter(
@@ -321,8 +352,7 @@ def security_events(request):
         qs = qs.filter(action__in=[a for a in requested if a in allowed])
     else:
         qs = qs.filter(action__in=list(allowed))
-    limit = entier_ou_400(
-        request.query_params.get('limit'), 'limit', 100, 1, 500)
+    limit = _limite(request.query_params)
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
 
@@ -352,8 +382,7 @@ def portal_access_events(request):
     sécurité."""
     qs = _apply_filters(_company_qs(request), request.query_params)
     qs = qs.filter(via_portail=True)
-    limit = entier_ou_400(
-        request.query_params.get('limit'), 'limit', 100, 1, 500)
+    limit = _limite(request.query_params)
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
 
@@ -422,8 +451,7 @@ def object_history(request, content_type, object_id):
     qs = (_company_qs(request)
           .filter(content_type=ct, object_id=str(object_id))
           .order_by('-timestamp'))
-    limit = entier_ou_400(
-        request.query_params.get('limit'), 'limit', 100, 1, 500)
+    limit = _limite(request.query_params)
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
 
@@ -477,6 +505,16 @@ def object_as_of(request, content_type, object_id):
     })
 
 
+def _date_heure_ou_none(brut):
+    """``?from=`` / ``?to=`` : une date-heure bien formée mais impossible
+    (« 2026-13-45T10:00:00 ») faisait lever ``parse_datetime`` (500) ; comme un
+    texte illisible, elle ne borne rien."""
+    try:
+        return parse_datetime(brut or '')
+    except ValueError:
+        return None
+
+
 # NTSEC15 — export CSV des évènements de sécurité (Directeur only, scopé société).
 # Garde IsAdminRole (Directeur/Administrateur, y compris les comptes admin
 # hérités) plutôt que CanViewActivityLog : ce dernier exige la permission fine
@@ -511,16 +549,21 @@ def security_events_export(request):
         # Un superuser sans société active n'a pas de périmètre CSV défini.
         return Response({'detail': 'Aucune société active.'}, status=400)
 
-    since = parse_datetime(request.query_params.get('from', '') or '')
-    until = parse_datetime(request.query_params.get('to', '') or '')
+    since = _date_heure_ou_none(request.query_params.get('from', ''))
+    until = _date_heure_ou_none(request.query_params.get('to', ''))
     qs = _security_events(company, since=since, until=until)
     # Mêmes filtres user/search que l'onglet « Sécurité » (company déjà fixée).
     users = (request.query_params.getlist('user')
              or request.query_params.getlist('user[]'))
     if users:
-        qs = qs.filter(user_id__in=[u for u in users if str(u).isdigit()])
+        qs = qs.filter(user_id__in=_ids_utilisateurs(users))
     search = (request.query_params.get('search') or '').strip()
-    if search:
+    if chr(0) in search:
+        # Même règle que le journal (``_apply_filters``) : un terme porteur d'un
+        # caractère nul ne désigne AUCUNE ligne et levait PostgreSQL (500) —
+        # api-fuzz-full, 3e drainage 24/10 : CSV sans ligne.
+        qs = qs.none()
+    elif search:
         from django.db.models import Q
         qs = qs.filter(
             Q(object_repr__icontains=search)

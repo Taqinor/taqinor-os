@@ -384,3 +384,23 @@ class SuppressionTests(TestCase):
         res = _auth(self.employe).delete(f'{URL_LIST}{msg.id}/')
         self.assertEqual(res.status_code, 403, res.data)
         self.assertTrue(MessageAccueil.objects.filter(id=msg.id).exists())
+
+
+class CorpsSchemaEgalServeurTests(TestCase):
+    """api-fuzz-full : le motif publié du corps (non blanc au sens de
+    ``str.strip``) est celui que le serveur applique, separateur de controle compris."""
+
+    def test_separateur_de_controle_seul_refuse_400(self):
+        from rest_framework.test import APIClient
+        admin = User.objects.create_user(
+            username='msgacc_schema', password='x', role_legacy='admin',
+            company=Company.objects.get_or_create(
+                slug='msgacc-schema', defaults={'nom': 'Msgacc Schema'})[0])
+        client = APIClient()
+        client.force_authenticate(admin)
+        for corps in ('\u001c', '\u001f ', ' '):
+            resp = client.post('/api/django/notifications/messages-accueil/', {
+                'destinataire': admin.id, 'corps': corps,
+                'visible_a_partir_de': '2026-01-01T08:00:00Z',
+            }, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))

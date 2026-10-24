@@ -89,7 +89,7 @@ def activity_state(due_date, done):
     return 'upcoming'
 
 
-class ActivityTypeSerializer(ChampsStrictsSansDecimalMixin,
+class ActivityTypeSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                              SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     # ASEC6 — l'enchaînement ne désigne jamais le type d'une autre société.

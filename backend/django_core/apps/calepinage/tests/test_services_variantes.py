@@ -16,7 +16,7 @@ Ce qui est prouvé ici :
 Run :
     python manage.py test apps.calepinage.tests.test_services_variantes -v2
 """
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.calepinage.models import Calepinage, CalepinageVariante
 from apps.calepinage.services.variantes import (
@@ -191,3 +191,29 @@ class DupliquerTest(BaseVariantes):
         with self.assertRaises(VarianteRefusee) as capture:
             dupliquer(Calepinage(company=self.company, lead_id=1))
         self.assertEqual(capture.exception.champ, 'calepinage')
+
+
+class SaisieIllisibleTest(SimpleTestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE - U+0000 / demi-substitut / nom trop long :
+    refus NOMMES (400), jamais une erreur SQL (500). Sans base."""
+
+    def test_nom_avec_caractere_nul_ou_trop_long_refuse(self):
+        from apps.calepinage.services.variantes import NOM_MAX, _nom_texte
+
+        for nom in ('a' + chr(0), 'b' + chr(0xD800), 'x' * (NOM_MAX + 1)):
+            with self.assertRaises(VarianteRefusee) as capture:
+                _nom_texte(nom)
+            self.assertEqual(capture.exception.champ, 'nom')
+        self.assertEqual(_nom_texte(' ' + 'x' * NOM_MAX + ' '), 'x' * NOM_MAX)
+
+    def test_conception_et_resultat_refusent_un_caractere_nul_imbrique(self):
+        from apps.calepinage.services.variantes import (
+            _sans_caractere_interdit,
+        )
+
+        _sans_caractere_interdit({'zones': [{'nom': 'ok'}]}, 'roof_layout')
+        for valeur in ({'zones': [{'nom': 'a' + chr(0)}]},
+                       {'k' + chr(0): 1}):
+            with self.assertRaises(VarianteRefusee) as capture:
+                _sans_caractere_interdit(valeur, 'roof_layout')
+            self.assertEqual(capture.exception.champ, 'roof_layout')

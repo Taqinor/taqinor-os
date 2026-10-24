@@ -1,3 +1,5 @@
+import re
+
 from django.db import models
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
@@ -70,31 +72,82 @@ def corps_definition_resserre():
     composant partagé ne peut pas porter (elles dépendent du ``type``) :
     un champ Choix exige au moins une option non vide ; un champ Relation, un
     module cible connu ; un champ calculé, une formule non vide. Combinées en
-    ``allOf`` au corps de CETTE opération (``EXTENSION_CORPS_RESSERRE``)."""
+    ``allOf`` au corps de CETTE opération (``EXTENSION_CORPS_RESSERRE``).
+
+    api-fuzz-full 24/10 (« Too many generated examples are filtered out ») :
+    trois ``anyOf`` empilés en ``allOf`` obligeaient le générateur à les
+    croiser (8 combinaisons, chacune refiltrée) ; la règle est maintenant UN
+    SEUL ``anyOf`` de quatre branches mutuellement exclusives (les types sans
+    exigence | choix | relation | calculé) — la même acceptation."""
     from . import registry
     types = CustomFieldDef.FieldType.values
-
-    def autre_que(type_):
-        return {'properties': {'type': {
-            'type': 'string', 'enum': [t for t in types if t != type_]}}}
-
-    def exige(type_, **proprietes):
-        return {'anyOf': [autre_que(type_), {
-            'required': ['type', *proprietes],
-            'properties': {'type': {'type': 'string', 'enum': [type_]},
-                           **proprietes}}]}
-
+    speciaux = ('choice', 'relation', 'formula')
     cibles = sorted(m for m in CustomFieldDef.Module.values
                     if registry.get_model(m) is not None)
-    return {'allOf': [
+
+    def exige(type_, **proprietes):
+        return {'required': ['type', *proprietes], 'properties': {
+            'type': {'type': 'string', 'enum': [type_]}, **proprietes}}
+
+    return {'anyOf': [
+        # ``type`` absent (défaut « texte ») ou sans exigence propre.
+        {'properties': {'type': {'type': 'string', 'enum': [
+            t for t in types if t not in speciaux]}}},
         exige('choice', options={
             'type': 'array', 'minItems': 1,
             'items': {'type': 'string',
                       'pattern': MOTIF_NON_BLANC_SANS_NUL}}),
-        exige('relation', relation_module={'type': 'string', 'enum': cibles}),
+        exige('relation',
+              relation_module={'type': 'string', 'enum': cibles}),
         exige('formula', formule={
             'type': 'string', 'pattern': MOTIF_NON_BLANC_SANS_NUL}),
     ]}
+
+
+class ConditionsChamp(ObjetJSON):
+    """XPLT15 — ``conditions`` d'une définition : objet dont les SEULES clés
+    sont ``CONDITION_KEYS``, chacune un arbre ``core.rules``. api-fuzz full
+    24/10 — publié ``type: object`` libre, ``{"": …}`` était « conforme » puis
+    refusé (« Clé(s) inconnue(s) ») : la forme exacte est publiée (clés
+    fermées, arbre ``schema_arbre_conditions``) et le MÊME prédicat
+    (``arbre_conditions_valide``) l'applique, avant la normalisation des
+    caractères nuls d'``ObjetJSON``."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+
+        from core.champs_stricts import schema_arbre_conditions
+
+        super().__init__(**kwargs)
+        schema = {
+            'type': 'object', 'additionalProperties': False,
+            'properties': {
+                cle: schema_arbre_conditions() for cle in CONDITION_KEYS},
+        }
+        if self.allow_null:
+            schema['nullable'] = True
+        set_override(self, 'field', schema)
+
+    def to_internal_value(self, data):
+        from core.champs_stricts import arbre_conditions_valide
+        from core.rules import validate_condition_group
+
+        if isinstance(data, dict):
+            inconnues = set(data) - set(CONDITION_KEYS)
+            if inconnues:
+                raise serializers.ValidationError(
+                    'Clé(s) inconnue(s) : '
+                    f'{", ".join(sorted(map(repr, inconnues)))}.')
+            for cle, arbre in data.items():
+                erreurs = validate_condition_group(arbre)
+                if erreurs:
+                    raise serializers.ValidationError(
+                        f'{cle} : {"; ".join(erreurs)}')
+                if not arbre_conditions_valide(arbre):
+                    raise serializers.ValidationError(
+                        f'{cle} : arbre de conditions non conforme au schéma '
+                        'publié.')
+        return super().to_internal_value(data)
 
 
 class ModuleChamp(serializers.CharField):
@@ -122,12 +175,16 @@ class _ModulePublie(OpenApiSerializerFieldExtension):
             {m for m in CustomFieldDef.Module.values
              if len(m) <= 20} | {m for m in registry.registered_module_keys()
                                  if len(m) <= 20})
-        schema = dict(schema)
-        schema['anyOf'] = [
-            {'type': 'string', 'enum': modules},
-            {'type': 'string', 'pattern': r'^custom:[^\u0000]+$'},
-        ]
-        return schema
+        # api-fuzz-full 24/10 (« Too many generated examples are filtered
+        # out ») : le schéma empilait ``anyOf`` (énumération | motif) sur un
+        # ``pattern`` DRF, un ``minLength`` et un ``maxLength`` -- le
+        # générateur tirait puis refiltrait. UN SEUL motif, longueur incluse :
+        # un module connu, ou ``custom:`` suivi de 1 à 13 signes (le module
+        # tient en 20 signes). Même acceptation que ``validate_module``.
+        alternatives = [re.escape(m) for m in modules]
+        alternatives.append(r'custom:[^\u0000]{1,13}')
+        return {'type': 'string',
+                'pattern': '^(?:%s)$' % '|'.join(alternatives)}
 
 
 class CustomFieldDefSerializer(serializers.ModelSerializer):
@@ -140,7 +197,7 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
     module = ModuleChamp(max_length=20)
     # ``JSONField`` publié `{}` (tout) alors que `validate` exige un objet :
     # `conditions: 1` était « conforme » puis refusé. Objet JSON ou null.
-    conditions = ObjetJSON(required=False, allow_null=True)
+    conditions = ConditionsChamp(required=False, allow_null=True)
     options = OptionsChamp(required=False, allow_null=True)
     rollup_config = ObjetJSON(required=False, allow_null=True)
 

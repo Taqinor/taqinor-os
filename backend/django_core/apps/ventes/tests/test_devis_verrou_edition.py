@@ -177,3 +177,16 @@ class TestDevisVerrouEdition(TestCase):
         from django.utils.dateparse import parse_datetime
         self.assertEqual(parse_datetime(r.data['updated_at']),
                          parse_datetime(self._jeton(api, devis)))
+
+    def test_corps_libre_normalise_nul_et_demi_substituts(self):
+        # CI #997 fuzz (24/10) : le JSON libre rangé en jsonb (étude, layout,
+        # pièces) ne porte ni caractère nul (PostgreSQL le refuse) ni
+        # demi-substitut isolé (psycopg ne sait pas l'encoder) : normalisés,
+        # clés comprises, jamais refusés ni plantés (500).
+        from apps.ventes.utils.corps import nettoyer_json
+        brut = {'a\x00b\ud83d': ['x\ud800y\x00', 1, None, True,
+                                 {'k': 'ok \U0001f600'}]}
+        propre = nettoyer_json(brut)
+        self.assertEqual(propre, {'a' + 'b\ufffd': [
+            'x\ufffdy', 1, None, True, {'k': 'ok \U0001f600'}]})
+        json.dumps(propre).encode('utf-8')  # sérialisable sans erreur

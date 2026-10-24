@@ -110,7 +110,8 @@ class PorteeEnfantsEcrituresTests(TestCase):
     def test_concurrent_perte(self):
         self._refuse_comme_inexistant(
             'post', f'{BASE}concurrents-perte/',
-            lambda lead: {'lead': lead, 'concurrent_nom': 'Rival'})
+            lambda lead: {'lead': lead, 'concurrent_nom': 'Rival'},
+            statut=404)  # ENF11 : lead inconnu/hors portée = IdInconnu404Mixin
         resp = self.api.post(f'{BASE}concurrents-perte/',
                              {'lead': self.mien.pk, 'concurrent_nom': 'Rival'},
                              format='json')

@@ -25,7 +25,8 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
-from core.champs_stricts import EntierStrict, drapeau_ou_400
+from core.champs_stricts import (
+    MOTIF_SANS_NUL, ChaineStricte, EntierStrict, drapeau_ou_400)
 from core.selectors import get_company_object
 
 from .models import (
@@ -114,7 +115,7 @@ _ACTIVITE_FAITE = _S('ActiviteFaite', {
 _SNOOZE_CORPS = _S('ActiviteSnoozeCorps', {
     'snoozed_until': drf.DateField(required=False, allow_null=True),
     'snooze_trigger_event': drf.RegexField(
-        r'^((client_reply|devis_signed|stock_arrive):\S.*)?$',
+        r'^((client_reply|devis_signed|stock_arrive):[^\s\x00][^\x00]*)?$',
         required=False, allow_blank=True),
 })
 
@@ -133,7 +134,7 @@ _NOTE_CORPS = _S('ChatterNoteCorps', {
 _COMMENT_CREATION = _S('CommentaireCreation', {
     'model': CibleModelField(),
     'id': drf.IntegerField(),
-    'body': drf.CharField(),
+    'body': ChaineStricte(),
     'resolved': drf.BooleanField(required=False),
 })
 
@@ -177,7 +178,8 @@ _PARAM_MINE = OpenApiParameter(
 _PARAM_RESOLVED = OpenApiParameter(
     'resolved', OpenApiTypes.BOOL, description="Fils résolus ou non.")
 _PARAM_Q = OpenApiParameter(
-    'q', OpenApiTypes.STR, description="Recherche dans le nom du tag.")
+    'q', {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+    description="Recherche dans le nom du tag.")
 
 
 # ── ARC8 — Chatter générique réutilisable (le « mail.thread » maison) ─────────
@@ -1194,6 +1196,9 @@ class TagViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = _scoped(Tag.objects.all(), self.request.user)
         q = self.request.query_params.get('q')
+        if q and chr(0) in q:
+            # Postgres refuse le caractère nul dans un littéral (500).
+            raise drf.ValidationError({'q': ['Caractère nul interdit.']})
         if q:
             qs = qs.filter(nom__icontains=q)
         return qs

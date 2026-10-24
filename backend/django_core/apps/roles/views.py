@@ -36,6 +36,9 @@ class _CsvOrJSONRenderer(JSONRenderer):
 # XPLT12 — seuil par défaut (jours) au-delà duquel un compte est « dormant »
 # (aucune connexion depuis N jours). Paramétrable via ``?dormant_days=N``.
 DEFAULT_DORMANT_DAYS = 90
+#: Plafond publié du seuil (100 ans) : ``now - timedelta(days=N)`` reste dans
+#: le calendrier (``16777217`` jours levait ``OverflowError`` — 500).
+DORMANT_DAYS_MAX = 36500
 
 
 def _cle_audit(nom):
@@ -301,15 +304,19 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         from authentication.models import CustomUser, UserSession
 
         # ENF11 — seuil illisible ou négatif = 400 (plus remplacé en silence).
-        brut = request.query_params.get('dormant_days')
+        # api-fuzz full 24/10 — au-delà de ``DORMANT_DAYS_MAX`` (publié),
+        # ``now - timedelta`` sortait du calendrier (500) ; vide ou répété
+        # contredit le schéma (UN entier) : 400 aussi.
+        valeurs = request.query_params.getlist('dormant_days')
+        brut = valeurs[0] if len(valeurs) == 1 else None
         try:
-            dormant_days = (DEFAULT_DORMANT_DAYS if brut in (None, '')
+            dormant_days = (DEFAULT_DORMANT_DAYS if not valeurs
                             else int(brut))
         except (TypeError, ValueError):
             dormant_days = -1
-        if dormant_days < 0:
-            raise ValidationError(
-                {'dormant_days': ['Entier positif ou nul attendu.']})
+        if not 0 <= dormant_days <= DORMANT_DAYS_MAX:
+            raise ValidationError({'dormant_days': [
+                f'Entier de 0 à {DORMANT_DAYS_MAX} attendu.']})
 
         now = timezone.now()
         cutoff = now - timedelta(days=dormant_days)
@@ -366,7 +373,8 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter(
-                'dormant_days', {'type': 'integer', 'minimum': 0},
+                'dormant_days', {'type': 'integer', 'minimum': 0,
+                                 'maximum': DORMANT_DAYS_MAX},
                 required=False,
                 description='Seuil dormant en jours (défaut 90) ; illisible '
                             'ou négatif = 400 JSON.'),

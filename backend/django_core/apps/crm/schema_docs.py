@@ -9,7 +9,8 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema_field, inline_serializer
 from rest_framework import serializers
 
-from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE, MOTIF_QUERY_SANS_NUL
 
 #: Réponse « objet libre » (dict dont la forme dépend de la situation).
 OBJ = OpenApiTypes.OBJECT
@@ -54,9 +55,12 @@ P_Q = param('q', description='Texte recherché.')
 #: ``jours`` des agrégats KPI (MRY19/MRY21/CAD87) : contrat TOLÉRANT —
 #: entier borné à [1, 365] ; une valeur non entière retombe sur le défaut
 #: (``params_requete.entier_param(tolerant=True)``). Déclaré entier OU texte,
-#: pour que le schéma dise ce que le serveur fait.
+#: pour que le schéma dise ce que le serveur fait. Le texte reste « sans
+#: caractère nul » : le serveur refuse un nul partout en 400
+#: (``core.parametres_requete.verifier_caractere_nul``) — api-fuzz-full 24/10.
 P_JOURS = OpenApiParameter(
-    'jours', {'anyOf': [{'type': 'integer'}, {'type': 'string'}]},
+    'jours', {'anyOf': [{'type': 'integer'},
+                        {'type': 'string', 'pattern': MOTIF_QUERY_SANS_NUL}]},
     OpenApiParameter.QUERY, required=False,
     description='Fenêtre en jours (1 à 365, bornée) ; une valeur non entière '
                 'retombe sur le défaut de la vue.')
@@ -78,6 +82,36 @@ P_LEAD = param('lead', OpenApiTypes.INT, description='Identifiant du lead.')
 P_LEAD_REQ = param('lead', OpenApiTypes.INT, required=True,
                    description='Identifiant du lead.')
 P_CLE = param('cle', description='Clé du message.')
+
+
+def param_entier_ou_vide(nom, description=None, minimum=None):
+    """Paramètre de requête ENTIER facultatif dont la valeur VIDE (``?nom=``)
+    veut dire « sans filtre » : le schéma publie « entier OU chaîne vide »,
+    exactement ce que ``params_requete.entier_param`` accepte (le serveur
+    refuse tout le reste en 400)."""
+    entier = {'type': 'integer'}
+    if minimum is not None:
+        entier['minimum'] = minimum
+    return OpenApiParameter(
+        nom, {'anyOf': [entier, {'type': 'string', 'maxLength': 0}]},
+        OpenApiParameter.QUERY, required=False, description=description)
+
+
+def param_texte_sans_nul(nom, description=None):
+    """Paramètre de requête TEXTE sans caractère nul (Postgres le refuse dans
+    tout littéral : le serveur répond 400 — le schéma ne le génère plus)."""
+    return OpenApiParameter(
+        nom, {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+        OpenApiParameter.QUERY, required=False, description=description)
+
+
+def param_enum_ou_vide(nom, valeurs, description=None):
+    """Paramètre de requête à vocabulaire dont la valeur vide = « tous »."""
+    return OpenApiParameter(
+        nom, {'type': 'string', 'enum': [*valeurs, '']},
+        OpenApiParameter.QUERY, required=False, description=description)
+
+
 P_LANGUE = param('langue', description='Langue du message (fr, darija…).')
 
 
@@ -164,31 +198,51 @@ CONVERSION_LIER_CLIENT = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
 ]}}
 
 
-def _texte_avec(motif):
-    return {'type': 'string', 'pattern': motif}
+def _texte_avec(motif, longueur_max=None):
+    schema = {'type': 'string', 'pattern': motif}
+    if longueur_max:
+        schema['maxLength'] = longueur_max
+    return schema
 
 
 #: ERR-ENF11-FUZZ-CRM — « locataire » (``cadence_reponses.refus_proprietaire``) :
 #: ``proprietaire_inconnu: true`` OU les coordonnées du propriétaire — un nom
-#: non blanc et un numéro joignable (au moins un chiffre non nul ; le
-#: téléphone prime sur le WhatsApp quand il est renseigné). Textes sans NUL.
+#: non blanc et un numéro joignable. Textes sans NUL, bornés comme les colonnes
+#: de ``crm.Lead`` (nom/prénom 255, téléphone/WhatsApp 50 : au-delà, Postgres
+#: refusait l'écriture).
+#: 3e drainage 24/10 : le motif du nom était ``\S`` (qui MATCHE le NUL : un nom
+#: « abc\0 » passait pour conforme) — c'est ``MOTIF_NON_BLANC_SANS_NUL``. Le
+#: numéro exige un chiffre 3-9 : ``normalize_phone`` retire l'indicatif ``212``
+#: et les zéros de tête, donc « 2120 » (chiffres 0-2 seuls) devient vide et le
+#: serveur répond 400 ; un chiffre 3-9 survit à toute normalisation.
 _SANS_NUL = r'^[^\x00]*$'
-_NUMERO = r'^[^\x00]*[1-9][^\x00]*$'
+_NUMERO = r'^[^\x00]*[3-9][^\x00]*$'
 LOCATAIRE_SUITE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
     {'required': ['proprietaire_inconnu'],
      'properties': {'proprietaire_inconnu': {'enum': [True]}}},
     {'required': ['proprietaire'], 'properties': {'proprietaire': {
         'type': 'object', 'required': ['nom'],
-        'properties': {'nom': _texte_avec(r'^[^\x00]*\S[^\x00]*$'),
-                       'prenom': _texte_avec(_SANS_NUL)},
+        'properties': {'nom': _texte_avec(MOTIF_NON_BLANC_SANS_NUL, 255),
+                       'prenom': _texte_avec(_SANS_NUL, 255)},
         'anyOf': [
             {'required': ['telephone'],
-             'properties': {'telephone': _texte_avec(_NUMERO),
-                            'whatsapp': _texte_avec(_SANS_NUL)}},
+             'properties': {'telephone': _texte_avec(_NUMERO, 50),
+                            'whatsapp': _texte_avec(_SANS_NUL, 50)}},
             {'required': ['whatsapp'],
-             'properties': {'whatsapp': _texte_avec(_NUMERO),
+             'properties': {'whatsapp': _texte_avec(_NUMERO, 50),
                             'telephone': {'type': 'string', 'maxLength': 0}}},
         ]}}},
+]}}
+
+
+#: Nocturne 24/10 — ``relance-etapes/{id}/reporter/`` : une ÉCHÉANCE est
+#: obligatoire — ``due_at`` non vide, OU ``rappel_le`` (jour AAAA-MM-JJ, heure
+#: facultative) ; un corps vide est refusé (400 « Échéance invalide »).
+MOTIF_JOUR = r'^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+MOTIF_HEURE = r'^([01][0-9]|2[0-3]):[0-5][0-9]$'
+REPORTER_ECHEANCE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'required': ['due_at'], 'properties': {'due_at': {'minLength': 1}}},
+    {'required': ['rappel_le']},
 ]}}
 
 
@@ -208,6 +262,15 @@ class QuestionsQuestionnaire(serializers.DictField):
 #: ENF11 (nocturne 15/10) — ``?periode=AAAA-MM`` du roll-up forecast : année
 #: 0001-9999, mois 01-12 — le motif PUBLIÉ est celui que la vue applique.
 MOTIF_PERIODE_MOIS = r'^(?!0000)[0-9]{4}-(0[1-9]|1[0-2])$'
+
+
+def param_periode_ou_vide(nom='periode'):
+    """``?periode=AAAA-MM`` facultatif ; vide = non renseignée."""
+    return OpenApiParameter(
+        nom, {'anyOf': [{'type': 'string', 'pattern': MOTIF_PERIODE_MOIS},
+                        {'type': 'string', 'maxLength': 0}]},
+        OpenApiParameter.QUERY, required=False, description='AAAA-MM')
+
 
 #: ENF11 (nocturne 15/10) — réponse du POST ``leads/{id}/locataire/`` : l'issue
 #: (``proprietaire_cree`` 201, ``proprietaire_relie`` / ``perdu_locataire`` 200),

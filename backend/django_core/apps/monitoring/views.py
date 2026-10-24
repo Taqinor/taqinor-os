@@ -26,7 +26,7 @@ from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema,
+    OpenApiParameter, OpenApiResponse, extend_schema,
     extend_schema_view, inline_serializer,
 )
 from rest_framework import filters, serializers, status, viewsets
@@ -37,7 +37,11 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from apps.records.champs_stricts import RegexStricte
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 from core.conflit_etat import ConflitEtat
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from core.parseurs import corps_valide
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
@@ -270,6 +274,24 @@ class MonitoringEmailOmReportSerializer(serializers.Serializer):
     recipient = serializers.EmailField(required=False)
 
 
+class FichierReleves(serializers.FileField):
+    """Fichier CSV du multipart d'``import-releves`` : le schéma le publie NON
+    VIDE (``minLength: 1``) — un fichier vide recevait 400 « Fichier CSV vide »
+    alors qu'il était conforme (api-fuzz-full, 3e drainage 24/10)."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+
+        super().__init__(**kwargs)
+        set_override(self, 'field', {
+            'type': 'string', 'format': 'binary', 'minLength': 1})
+
+
+class MonitoringImportRelevesCsv(serializers.Serializer):
+    """Corps JSON de ``import-releves`` (alternative au fichier multipart)."""
+    csv = RegexStricte(MOTIF_NON_BLANC_SANS_NUL)
+
+
 @extend_schema_view(list=extend_schema(
     parameters=_FILTRE_INSTALLATION))
 class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -340,10 +362,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         request={
             'multipart/form-data': inline_serializer(
                 'MonitoringImportRelevesFichier', {
-                    'fichier': serializers.FileField()}),
-            'application/json': inline_serializer(
-                'MonitoringImportRelevesCsv', {
-                    'csv': serializers.CharField()}),
+                    'fichier': FichierReleves()}),
+            'application/json': MonitoringImportRelevesCsv,
         },
         responses=inline_serializer('MonitoringImportReleves', {
             'crees': serializers.IntegerField(),
@@ -370,7 +390,9 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         if fichier is not None:
             texte = fichier.read().decode('utf-8-sig', errors='replace')
         else:
-            texte = str(request.data.get('csv') or '')
+            # ENF11 : corps validé par le serializer PUBLIÉ (``csv`` chaîne
+            # non blanche) — un tableau/nombre ne plante plus, ne passe plus.
+            texte = corps_valide(request, MonitoringImportRelevesCsv)['csv']
         if not texte.strip():
             return Response(
                 {'detail': 'Fichier CSV vide ou absent (champ « fichier » ou '
@@ -671,7 +693,9 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @extend_schema(
         parameters=[OpenApiParameter('annee', _ANNEE, required=False)],
-        responses=_PDF)
+        # ENF11 : le 409 d'une LECTURE n'est pas déclaré par le crochet global.
+        responses={**_PDF, 409: OpenApiResponse(
+            description='Garantie de production non validée (Paramètres).')})
     @action(detail=True, methods=['get'], url_path='rapport-garantie-pdf',
             permission_classes=[IsResponsableOrAdmin])
     def rapport_garantie_pdf(self, request, pk=None):
@@ -1078,6 +1102,10 @@ _CORPS_CERTIFICAT_CARBONE = {'application/json': {
 
 @extend_schema_view(create=extend_schema(
     request=_CORPS_CERTIFICAT_CARBONE,
+    # Corps OBLIGATOIRE (api-fuzz-full : sans corps, la période manque -> 400
+    # « conforme » ; un ``request`` en dict ne pose pas ``required: true``).
+    extensions={EXTENSION_CORPS_RESSERRE: {
+        'required': ['periode_debut', 'periode_fin']}},
     responses={201: CertificatCarboneSerializer}))
 class CertificatCarboneViewSet(CompanyScopedModelViewSet):
     """ASAV102 (D-ASAV-4 option (b), ASAV93) — registre des certificats

@@ -169,6 +169,15 @@ class Ntscm26ApiTests(Ntscm26Base):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(res.data['fournisseurs']), 2)
 
+    def test_cout_rupture_jour_forme_publiee_stricte(self):
+        # api-fuzz : le motif publié (montant positif, 2 décimales) == le serveur.
+        for valeur in ('NaN', 'Infinity', '1E999', '-5', ' 5', '5.123', '9' * 30, 'abc'):
+            res = auth(self.admin).get(self._url(), {'cout_rupture_jour': valeur})
+            self.assertEqual(res.status_code, 400, (valeur, res.content))
+        for valeur in ('', '0', '50', '12.5'):
+            res = auth(self.admin).get(self._url(), {'cout_rupture_jour': valeur})
+            self.assertEqual(res.status_code, 200, (valeur, res.content))
+
     def test_endpoint_refuse_un_role_normal_car_couts_internes(self):
         self.assertEqual(auth(self.normal).get(self._url()).status_code, 403)
 

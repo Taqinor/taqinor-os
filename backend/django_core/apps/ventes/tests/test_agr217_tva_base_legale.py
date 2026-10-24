@@ -158,6 +158,22 @@ class LigneViewSetTests(_Base):
         self.assertFalse(ser.is_valid())
         self.assertIn('tva_base_legale', ser.errors)
 
+    def test_zero_negatif_vaut_zero_au_serveur_et_au_schema(self):
+        """api-fuzz — ``"-0"`` : le serveur le lit comme 0 % (base légale
+        requise), le schéma publié doit donc le ranger parmi les zéros."""
+        import re
+        from apps.ventes.serializers import LigneDevisSerializer
+        from apps.ventes.views.openapi_docs import _ZERO_DECIMAL
+        for brut in ('0', '0.00', '-0', '-0.00', '-.0'):
+            with self.subTest(brut=brut):
+                self.assertTrue(re.fullmatch(_ZERO_DECIMAL, brut))
+        ser = LigneDevisSerializer(data={
+            'devis': self.devis.id, 'produit': self.produit.id,
+            'designation': 'Pompe', 'quantite': '1',
+            'prix_unitaire': '1000', 'taux_tva': '-0'})
+        self.assertFalse(ser.is_valid())
+        self.assertIn('tva_base_legale', ser.errors)
+
     def test_serialiseur_accepte_zero_avec_base(self):
         from apps.ventes.serializers import LigneDevisSerializer
         ser = LigneDevisSerializer(data={

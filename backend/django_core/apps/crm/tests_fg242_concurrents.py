@@ -254,7 +254,7 @@ class TestConcurrentPerteScoping(TestCase):
             'lead': self.lead2.pk,
             'concurrent_nom': 'Sneaky',
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)  # IdInconnu404Mixin : lead étranger = inconnu
         self.assertIn('lead', resp.data)
 
 

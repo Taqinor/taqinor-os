@@ -113,3 +113,27 @@ class RemplacementTests(TestCase):
         self.assertIsNone(r.data['equipement_neuf'])
         self.assertEqual(Equipement.objects.filter(
             company=self.company).count(), 1)
+
+    def test_recyclage_sans_stock_occasion_publie_et_refuse(self):
+        """3e drainage api-fuzz : la règle « recyclage => stock_occasion » est
+        publiée (``anyOf``) ET toujours tenue par le serveur (400)."""
+        import jsonschema
+
+        from apps.sav.champs_corps import CORPS_PIECE_RETIREE
+
+        regle = CORPS_PIECE_RETIREE['x-corps-resserre']
+        valides = ({'produit': 1}, {'produit': 1, 'operation': 'retrait'},
+                   {'produit': 1, 'operation': 'recyclage',
+                    'destination': 'stock_occasion'})
+        refuses = ({'produit': 1, 'operation': 'recyclage'},
+                   {'produit': 1, 'operation': 'recyclage',
+                    'destination': 'rebut'})
+        for corps in valides:
+            jsonschema.validate(corps, regle)
+        for corps in refuses:
+            with self.assertRaises(jsonschema.ValidationError, msg=corps):
+                jsonschema.validate(corps, regle)
+            r = self.api.post(
+                f'/api/django/sav/tickets/{self.ticket.pk}/pieces-retirees/',
+                {**corps, 'produit': self.produit.id}, format='json')
+            self.assertEqual(r.status_code, 400, r.content)

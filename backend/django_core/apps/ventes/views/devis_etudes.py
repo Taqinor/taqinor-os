@@ -10,6 +10,7 @@ n'interceptent qu'ainsi.
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from ..openapi_params import qstr
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 import logging
 from django.db import transaction
 from rest_framework import status
@@ -139,8 +140,15 @@ class DevisEtudesActionsMixin:
         }
 
     @extend_schema(methods=['GET'], responses=D.OverridesResponse)
+    # CI #997 fuzz (24/10) : un PATCH SANS corps était « conforme » (corps
+    # non obligatoire pour un `request` en dict) puis refusé « corps vide » :
+    # le corps est obligatoire, avec au moins un chemin de la liste blanche.
     @extend_schema(methods=['PATCH'], request=D.OverridesPatchRequest,
-                   responses=D.OverridesResponse)
+                   responses=D.OverridesResponse,
+                   extensions={EXTENSION_CORPS_RESSERRE: {'anyOf': [
+                       {'required': [chemin]}
+                       for chemin in D.OverridesPatchRequest[
+                           'application/json']['properties']]}})
     @extend_schema(methods=['DELETE'],
                    parameters=[qstr('chemin', required=True,
                                     enum=['taille.nb_panneaux',
@@ -272,8 +280,14 @@ class DevisEtudesActionsMixin:
                 ": erreur ignorée (mode dégradé)", exc_info=True)
 
     @extend_schema(methods=['GET'], responses=D.EtudeParamsGetResponse)
+    # CI #997 fuzz (24/10) : corps obligatoire (au moins une clé d'étude, ou
+    # le seul jeton optimiste) — sans lui, un PATCH vide « conforme » = 400.
     @extend_schema(methods=['PATCH'], request=D.EtudeParamsPatchRequest,
-                   responses=D.EtudeParamsGetResponse)
+                   responses=D.EtudeParamsGetResponse,
+                   extensions={EXTENSION_CORPS_RESSERRE: {'anyOf': [
+                       {'required': [cle]}
+                       for cle in D.EtudeParamsPatchRequest[
+                           'application/json']['properties']]}})
     @action(detail=True, methods=['get', 'patch'], url_path='etude-params',
             permission_classes=[IsResponsableOrAdmin])
     def etude_params(self, request, pk=None):
@@ -346,6 +360,10 @@ class DevisEtudesActionsMixin:
                 {'detail': 'Corps invalide : un objet {clé: valeur} non vide '
                            'est attendu.'},
                 status=status.HTTP_400_BAD_REQUEST)
+        # CI #997 fuzz (24/10) : valeurs libres rangées en jsonb -> nul et
+        # demi-substituts Unicode normalisés (DataError 500 sinon).
+        from ..utils.corps import nettoyer_json
+        corps = nettoyer_json(corps)
         # QJR518 — l'option recommandée est IMPRIMÉE : sur un envoyé, sa
         # correction est tracée (instantané avant, trace après).
         from ..domain.modifiabilite import (

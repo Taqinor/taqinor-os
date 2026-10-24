@@ -58,3 +58,33 @@ class AccoladeSeuleTests(TestCase):
                 self.company, 'envoi_devis', reference='DEV-1', nom='Bonjour,')
         self.assertEqual(rendu['corps'], 'Total 5 } — {reference}')
         self.assertEqual(rendu['sujet'], 'Devis DEV-1')
+
+
+class MotifPublieGabaritsTests(TestCase):
+    """3e drainage api-fuzz (24/10) : le schéma publié DIT quels placeholders un
+    texte de gabarit peut porter — un texte conforme n'est plus refusé."""
+
+    def test_motif_email_refuse_accolade_et_inconnu_accepte_commun(self):
+        import re
+
+        from apps.parametres.serializers_email import _MOTIF_TEXTE
+
+        for texte in ('Devis {reference} pour {nom}', 'sans accolade', ''):
+            self.assertTrue(re.search(_MOTIF_TEXTE, texte), texte)
+        for texte in ('Réf {abc', '5 }', '{prenom}', '{}', 'a' + chr(0)):
+            self.assertFalse(re.search(_MOTIF_TEXTE, texte), repr(texte))
+
+    def test_corps_messages_publie_la_liste_de_la_cle(self):
+        import re
+
+        from apps.parametres.views_messages import _CORPS_ECRIT
+
+        branches = _CORPS_ECRIT['x-corps-resserre']['anyOf']
+        facture = next(b for b in branches
+                       if 'facture' in b['properties'].get('cle', {}).get(
+                           'enum', ()))
+        motif = facture['properties']['corps_fr']['pattern']
+        self.assertTrue(re.search(motif, 'Bonjour {civilite} {nom} {marque}'))
+        # Le cas du fuzz : {prenom} n'est pas autorisé pour « facture ».
+        self.assertFalse(re.search(motif, 'Bonjour {civilite} {prenom}'))
+        self.assertEqual(branches[0]['properties']['reset'], {'enum': [True]})

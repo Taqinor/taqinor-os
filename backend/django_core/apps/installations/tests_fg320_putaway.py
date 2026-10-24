@@ -109,7 +109,22 @@ class TestPutAway(TestCase):
         resp = self.api.post(f'{BASE}/putaways/', {
             'produit': p_other.id, 'quantite': 1,
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # api-fuzz full : id bien formé mais absent de la société = 404.
+        self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_emplacement_inconnu_404(self):
+        resp = self.api.post(f'{BASE}/putaways/', {
+            'produit': self.produit.id, 'emplacement': 999999, 'quantite': 1,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_filtres_illisibles_400_jamais_500(self):
+        # api-fuzz full : « ² » est un chiffre Unicode (isdigit) que int()
+        # refuse -> 500 ; un caractère nul fait lever le pilote Postgres.
+        for params in ({'produit': '\u00b2'}, {'emplacement': '\u00b9'},
+                       {'produit': 'abc'}, {'statut': 'a\x00b'}):
+            r = self.api.get(f'{BASE}/putaways/', params)
+            self.assertEqual(r.status_code, 400, (params, r.content))
 
 
 class TestScopingAndRoles(TestCase):

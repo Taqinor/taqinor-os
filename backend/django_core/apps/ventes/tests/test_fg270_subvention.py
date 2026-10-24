@@ -7,6 +7,7 @@ Run :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_fg270_subvention -v 2
 """
+import json
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -92,7 +93,26 @@ class SubventionDossierApiTest(TestCase):
         resp = self.api.post(self.url, {
             'devis': other_devis.id, 'programme': 'masen',
         }, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # CI #997 fuzz (24/10) : id bien formé mais inconnu = 404.
+        self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_filtres_stricts_et_pieces_normalisees(self):
+        # CI #997 fuzz (24/10) : ``?devis=`` vide, ``?programme=`` hors liste
+        # (dont le caractère nul, 500 avant) = 400 nommé ; des pièces au nul /
+        # demi-substitut isolé sont normalisées, jamais une 500.
+        for params in ({'devis': ''}, {'devis': 'abc'},
+                       {'programme': 'inconnu'}, {'programme': 'm\x00'},
+                       {'statut': ''}):
+            with self.subTest(params=params):
+                resp = self.api.get(self.url, params)
+                self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(self.url, json.dumps({
+            'devis': self.devis.id, 'programme': 'masen',
+            'pieces': [{'code': 'a\x00b', 'label': 'x\ud800y'}]}),
+            content_type='application/json')  # substitut isolé : JSON brut
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['pieces'],
+                         [{'code': 'ab', 'label': 'x�y'}])
 
     def test_filter_by_programme_and_statut(self):
         SubventionDossier.objects.create(

@@ -5,6 +5,7 @@ Directeur (rôle Administrateur). Tout est scopé société côté serveur : la
 société n'est jamais lue du corps de requête.
 """
 import logging
+from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
@@ -168,6 +169,19 @@ def _banner_profile(request):
     return CompanyProfile.objects.filter(company=company).first()
 
 
+class _SchemaCorpsObligatoire(AutoSchema):
+    """api-fuzz full 24/10 — le POST refuse (400) une requête SANS corps,
+    mais drf-spectacular ne publie un corps ``required`` que si son composant
+    porte un champ requis (``username`` est facultatif) : un POST vide était
+    « conforme ». Le schéma le dit désormais (``{}`` reste accepté)."""
+
+    def _get_request_body(self, direction='request'):
+        corps = super()._get_request_body(direction)
+        if corps:
+            corps['required'] = True
+        return corps
+
+
 class LoginBannerView(APIView):
     """NTSEC28 — bannière/mention légale de connexion (pré-auth, AllowAny).
 
@@ -185,6 +199,7 @@ class LoginBannerView(APIView):
     # ASEC17 — plafond anonyme par IP (GET + POST) : au-delà, 429.
     throttle_classes = [LoginBannerThrottle]
     parser_classes = [JSONParser]
+    schema = _SchemaCorpsObligatoire()
 
     @extend_schema(
         parameters=[OpenApiParameter('username', OpenApiTypes.STR, required=False)],

@@ -113,6 +113,16 @@ class Ntapi19TokenEndpointTests(TestCase):
         for code in ('400', '401'):
             ref = reponses[code]['content']['application/json']['schema']
             self.assertEqual(ref, {'$ref': '#/components/schemas/PublicApiErreur'})
+        # api-fuzz full 24/10 : le refus (400) d'un caractère nul est publié.
+        champs = schema['components']['schemas'][
+            'PublicOAuthTokenRequestRequest']['properties']
+        for nom in ('client_id', 'client_secret'):
+            self.assertIn('\\u0000', champs[nom]['pattern'], nom)
+        # ``scope`` admet le vide : drf-spectacular 0.28 publie le motif à plat,
+        # 0.30 l'enveloppe dans ``oneOf`` [motif, chaîne vide] — même règle.
+        scope = champs['scope']
+        motif = scope.get('pattern') or scope['oneOf'][0]['pattern']
+        self.assertIn('\\u0000', motif)
 
     def test_scope_demande_est_un_sous_ensemble_jamais_une_elevation(self):
         resp = self._demander(scope=f'{SCOPE_READ_LEADS} read:factures')

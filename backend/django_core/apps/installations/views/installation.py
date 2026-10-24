@@ -7,7 +7,6 @@ from rest_framework.response import Response
 from authentication.permissions import (
     IsAnyRole, IsResponsableOrAdmin, IsAdminRole, HasPermissionOrLegacy,
 )
-from core.champs_stricts import nombre_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone
 
@@ -20,6 +19,7 @@ from ..serializers import (
     ChantierChecklistItemSerializer,
     PhotoChecklistMetaSerializer,
 )
+from .. import energy_report
 from ..services import create_installation_from_devis, ensure_checklist_items
 from . import _openapi as oa
 from apps.records.serializers import AttachmentSerializer
@@ -28,6 +28,13 @@ from ..serializers_commissioning import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: Plafond publié de ``tarif_jour`` (MAD/jour) de la synthèse de coût.
+_TARIF_JOUR_MAX = 1_000_000
+
+#: ``hors_reseau`` de ``regime-suggestion`` : valeurs publiées (= lues).
+_VRAI_REGIME = ('1', 'true', 'oui', 'yes')
+_DRAPEAUX_REGIME = ['', '0', 'false', 'non', 'no', *_VRAI_REGIME]
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -412,7 +419,12 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
     @oa.extend_schema(
-        parameters=[oa.qf('kwc'), oa.qf('kw_ac'), oa.qs('niveau'), oa.qs('hors_reseau'), oa.qs('type_installation')],
+        parameters=[
+            oa.qnombre('kwc', mini=0), oa.qnombre('kw_ac', mini=0),
+            oa.qs('niveau', enum=['', *Installation.NiveauTension.values]),
+            oa.qs('hors_reseau', enum=_DRAPEAUX_REGIME),
+            oa.qs('type_installation',
+                  enum=['', *Installation.TypeInstallation.values])],
         responses=oa.OBJ,
     )
     @action(detail=False, methods=['get'], url_path='regime-suggestion',
@@ -429,16 +441,20 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         chantier ``industriel`` à puissance inconnue → ``a_qualifier``."""
         from ..regime import suggest_for_company, regime_thresholds
         from ..models import Installation
-        params = request.query_params
-        kwc = nombre_ou_400(params.get('kwc'), 'kwc')  # ERR-ENF11 : 400 si illisible
-        hors_reseau = str(params.get('hors_reseau', '')).strip(
-        ).lower() in ('1', 'true', 'oui', 'yes')
+        # api-fuzz full : chaque paramètre publié est lu STRICTEMENT (nombre
+        # >= 0, énumérations) : « false » ou -1e308 passaient en silence.
+        kwc = oa.nombre_requete(request, 'kwc', mini=0)
+        hors_reseau = oa.choix_requete(
+            request, 'hors_reseau', _DRAPEAUX_REGIME) in _VRAI_REGIME
         company = request.user.company
         code = suggest_for_company(
             kwc, company, hors_reseau=hors_reseau,
-            kw_ac=nombre_ou_400(params.get('kw_ac'), 'kw_ac'),
-            niveau=params.get('niveau'),
-            type_installation=params.get('type_installation'))
+            kw_ac=oa.nombre_requete(request, 'kw_ac', mini=0),
+            niveau=oa.choix_requete(
+                request, 'niveau', Installation.NiveauTension.values),
+            type_installation=oa.choix_requete(
+                request, 'type_installation',
+                Installation.TypeInstallation.values))
         label = dict(Installation.Regime8221.choices).get(code, code)
         seuil_decl, seuil_anre = regime_thresholds(company)
         return Response({
@@ -455,15 +471,12 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(
             InstallationActivitySerializer(inst.activites.all(), many=True).data)
 
-    @oa.extend_schema(request=oa.body('NoterRequete', body=oa.s(True)), responses={201: InstallationActivitySerializer})
+    @oa.extend_schema(request=oa.NoterRequete, responses={201: InstallationActivitySerializer})
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
         inst = self.get_object()
-        body = (request.data.get('body') or '').strip()
-        if not body:
-            return Response({'body': 'Note vide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        body = oa.corps_valide(oa.NoterRequete, request)['body'].strip()
         act = activity.log_note(inst, request.user, body)
         return Response(InstallationActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
@@ -532,7 +545,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(
             InstallationSerializer(inst, context={'request': request}).data)
 
-    @oa.extend_schema(request=oa.body('AnnulerChantierRequete', motif=oa.s(True)), responses=InstallationSerializer)
+    @oa.extend_schema(request=oa.AnnulerChantierRequete, responses=InstallationSerializer)
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=[IsResponsableOrAdmin])
     def annuler(self, request, pk=None):
@@ -541,7 +554,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from ..services import est_directeur, verifier_annulation_cloture
 
         inst = self.get_object()
-        motif = (request.data.get('motif') or '').strip()
+        motif = oa.corps_valide(
+            oa.AnnulerChantierRequete, request).get('motif', '').strip()
         # CHT2 — le verrou AUD326 s'appliquait au seul changement de STATUT :
         # cette action, drapeau orthogonal, contournait le gel en libérant les
         # réservations et en soldant les interventions d'un chantier CLÔTURÉ
@@ -650,7 +664,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         })
 
     @oa.extend_schema(
-        request=oa.body('CocherChecklistRequete', cle=oa.s(True), fait=oa.b(), equipements=oa.lst()),
+        request=oa.CocherChecklistRequete,
         responses=oa.OBJ,
     )
     @action(detail=True, methods=['post'], url_path='cocher-checklist',
@@ -664,13 +678,14 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                  "equipements": [{"produit": <id>, "numero_serie": <str>}]}
         """
         inst = self.get_object()
+        corps = oa.corps_valide(oa.CocherChecklistRequete, request)
         ensure_checklist_items(inst)
-        cle = request.data.get('cle')
+        cle = corps['cle']
         item = inst.checklist.filter(cle=cle).first()
         if item is None:  # ERR-ENF11 : clé bien formée mais inconnue = 404
             return Response({'detail': 'Étape inconnue.'},
                             status=status.HTTP_404_NOT_FOUND)
-        fait = bool(request.data.get('fait', True))
+        fait = corps.get('fait', True)
         item.fait = fait
         item.fait_par = request.user if fait else None
         item.fait_le = timezone.now() if fait else None
@@ -680,8 +695,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # CIQ633 — UNE transaction, un résultat PAR LIGNE (créé | doublon |
         # autre société), jamais d'erreur 500 sur un doublon.
         from ..services import enregistrer_series_lot
-        lignes = [eq for eq in (request.data.get('equipements') or [])
-                  if isinstance(eq, dict) and eq.get('produit')]
+        lignes = [eq for eq in corps.get('equipements', [])
+                  if eq.get('produit')]
         resultats_series = enregistrer_series_lot(
             inst, lignes, user=request.user)
         created_equip = sum(
@@ -721,14 +736,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         })
 
     @oa.extend_schema(
-        request=oa.body(
-            'SeriesLotRequete',
-            lignes=oa.lst(),
-            texte=oa.s(),
-            produit=oa.i(null=True),
-            non_releves=oa.lst(),
-            fichier=oa.serializers.FileField(required=False),
-        ),
+        # ENF11 : ``fichier`` n'existe qu'en multipart (en JSON : 400).
+        request={'application/json': oa.SeriesLotCorpsJson,
+                 'multipart/form-data': oa.SeriesLotCorpsFichier},
         responses=oa.OBJ,
     )
     @action(parser_classes=oa.JSON_AND_UPLOAD_PARSERS, detail=True, methods=['post'], url_path='series-lot',
@@ -746,22 +756,22 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             _gate_check_series, enregistrer_series_lot, lire_lignes_series,
         )
         inst = self.get_object()
-        lignes = [x for x in (request.data.get('lignes') or [])
-                  if isinstance(x, dict)]
-        texte = request.data.get('texte')
+        corps = oa.corps_valide(oa.SeriesLotRequete, request)
+        lignes = list(corps.get('lignes', []))
+        texte = corps.get('texte')
         fichier = request.FILES.get('fichier') if request.FILES else None
         if fichier is not None:
-            texte = fichier.read().decode('utf-8-sig', errors='replace')
+            # Un caractère nul du fichier ferait lever la base (500).
+            texte = fichier.read().decode(
+                'utf-8-sig', errors='replace').replace(chr(0), '')
         if texte:
             lignes += lire_lignes_series(
-                texte, produit_defaut=request.data.get('produit'))
+                texte, produit_defaut=corps.get('produit'))
         resultats = enregistrer_series_lot(inst, lignes, user=request.user)
 
         non_releves = dict(inst.series_non_relevees or {})
         changed = False
-        for entree in (request.data.get('non_releves') or []):
-            if not isinstance(entree, dict):
-                continue
+        for entree in corps.get('non_releves', []):
             produit = get_produit_scoped(inst.company, entree.get('produit'))
             if produit is None:
                 continue
@@ -991,7 +1001,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'nb_manques': sum(1 for it in items if it['manque'] > 0),
         })
 
-    @oa.extend_schema(request=oa.body('CommanderBesoinRequete', fournisseur=oa.i()), responses={201: oa.OBJ})
+    @oa.extend_schema(request=oa.CommanderBesoinRequete, responses={201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='commander-besoin',
             permission_classes=[IsResponsableOrAdmin])
     def commander_besoin(self, request, pk=None):
@@ -1005,8 +1015,13 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from apps.stock.serializers import BonCommandeFournisseurSerializer
         inst = self.get_object()
         company = request.user.company
+        demande = oa.corps_valide(oa.CommanderBesoinRequete, request)
         fournisseur = resolve_fournisseur(
-            company, request.data.get('fournisseur'), inst)
+            company, demande.get('fournisseur'), inst)
+        if fournisseur is None and demande.get('fournisseur'):
+            # Identifiant bien formé mais inconnu de la société : 404.
+            return Response({'fournisseur': 'Fournisseur inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
         if fournisseur is None:
             return Response(
                 {'detail': (
@@ -1018,8 +1033,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             bon, nb = draft_bcf_for_shortfall(
                 inst, fournisseur, request.user, company)
         except ValueError as exc:
+            # api-fuzz full : « aucun manque » / « BCF déjà ouvert » = état du
+            # chantier (409), le corps était conforme.
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         data = BonCommandeFournisseurSerializer(
             bon, context={'request': request}).data
         data['nb_lignes'] = nb
@@ -1027,16 +1044,25 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     @oa.extend_schema(
         parameters=[
-            oa.qf('nb_mois', desc='Durée de la période, en mois.'),
-            oa.qd('date_debut', desc='Début de période (AAAA-MM-JJ).'),
-            oa.qd('date_fin', desc='Fin de période (AAAA-MM-JJ).'),
-            oa.qf('production_annuelle_kwh',
-                  desc='Production annuelle saisie (kWh).'),
-            oa.qf('rendement', desc='Rendement spécifique (kWh/kWc/an).'),
-            oa.qf('tarif', desc='Tarif (MAD/kWh).'),
-            oa.qf('co2', desc='Facteur CO2 (kg/kWh).'),
+            oa.qnombre('nb_mois', mini=0, strict_mini=True,
+                       maxi=energy_report.NB_MOIS_MAX,
+                       desc='Durée de la période, en mois.'),
+            oa.qdv('date_debut', desc='Début de période (AAAA-MM-JJ).'),
+            oa.qdv('date_fin', desc='Fin de période (AAAA-MM-JJ).'),
+            oa.qnombre('production_annuelle_kwh', mini=0, strict_mini=True,
+                       maxi=energy_report.PRODUCTION_ANNUELLE_MAX,
+                       desc='Production annuelle saisie (kWh).'),
+            oa.qnombre('rendement', mini=0, strict_mini=True,
+                       maxi=energy_report.RENDEMENT_MAX,
+                       desc='Rendement spécifique (kWh/kWc/an).'),
+            oa.qnombre('tarif', mini=0, strict_mini=True,
+                       maxi=energy_report.TARIF_MAX,
+                       desc='Tarif (MAD/kWh).'),
+            oa.qnombre('co2', mini=0, maxi=energy_report.CO2_MAX,
+                       desc='Facteur CO2 (kg/kWh).'),
         ],
-        responses={**oa.PDF, 409: oa.OBJ})  # 409 : chantier sans puissance (état)
+        # 409 : chantier sans puissance / fenêtre de dates incohérente (état)
+        responses={**oa.PDF, 409: oa.OBJ})
     @action(detail=True, methods=['get'], url_path='rapport-energie',
             permission_classes=[IsAnyRole])
     def rapport_energie(self, request, pk=None):
@@ -1051,7 +1077,6 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         rendement, tarif, co2.
         """
         from django.http import HttpResponse
-        from .. import energy_report
         inst = self.get_object()
 
         # ACHT49 — paramètres validés AVANT tout calcul : 400 FR nommant le
@@ -1059,9 +1084,10 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         params, erreurs = energy_report.valider_parametres_rapport(
             request.query_params, inst.puissance_installee_kwc)
         if erreurs:  # ERR-ENF11 : seule la puissance manquante (état) = 409
+            etat = set(erreurs.values()) <= energy_report.MESSAGES_ETAT
             return Response({champ: [msg] for champ, msg in erreurs.items()},
-                            status=status.HTTP_409_CONFLICT if set(erreurs) == {
-                                'puissance_installee_kwc'} else status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_409_CONFLICT if etat
+                                    else status.HTTP_400_BAD_REQUEST))
         pdf_bytes = energy_report.render_energy_report_pdf(inst, params)
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
@@ -1132,7 +1158,11 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(AttachmentSerializer(qs, many=True).data)
 
     @oa.extend_schema(
-        request=oa.body('AjouterReleveRequete', file=oa.serializers.FileField(), phase=oa.choice(_RELEVE_PHASES)),
+        # Corps NOMMÉ (et non un dict libre) : le composant porte
+        # ``requestBody.required`` -- sans lui le fuzz n'envoyait AUCUN corps
+        # et recevait « Fichier requis » (400) sur une requête « conforme ».
+        request=oa.body('AjouterReleveRequete', file=oa.serializers.FileField(),
+                        phase=oa.choice(_RELEVE_PHASES)),
         responses={201: AttachmentSerializer},
     )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-releve',
@@ -1294,7 +1324,9 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         })
 
     # ── FG71 — synthèse coût / marge par chantier (INTERNE, admin-only) ──────
-    @oa.extend_schema(parameters=[oa.qf('tarif_jour')], responses=oa.OBJ)
+    @oa.extend_schema(
+        parameters=[oa.qnombre('tarif_jour', mini=0, maxi=_TARIF_JOUR_MAX)],
+        responses=oa.OBJ)
     @action(detail=True, methods=['get'], url_path='cout',
             permission_classes=[IsAdminRole])
     def cout(self, request, pk=None):
@@ -1305,7 +1337,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         prix d'achat, qui ne doivent JAMAIS apparaître sur un document client."""
         from ..services import compute_chantier_cout
         inst = self.get_object()
-        tarif = request.query_params.get('tarif_jour')
+        tarif = oa.nombre_requete(
+            request, 'tarif_jour', mini=0, maxi=_TARIF_JOUR_MAX)
         return Response(compute_chantier_cout(inst, tarif_jour=tarif))
 
     @oa.extend_schema(responses=oa.LIST)
@@ -1428,14 +1461,7 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── CIQ628 — réserves de réception au niveau du chantier ────────────────
     @oa.extend_schema(
-        request=oa.body(
-            'ReserveChantierRequete',
-            description=oa.s(True),
-            origine=oa.s(),
-            bloquante=oa.b(),
-            date_echeance=oa.d(null=True),
-            responsable=oa.s(),
-        ),
+        request=oa.ReserveChantierRequete,
         responses={200: oa.LIST, 201: oa.OBJ},
     )
     @action(pagination_class=None, detail=True, methods=['get', 'post'], url_path='reserves',
@@ -1451,31 +1477,15 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         inst = self.get_object()
         if request.method == 'GET':
             return Response(reserves_contrat(inst))
-        data = request.data
-        description = (data.get('description') or '').strip()
-        if not description:
-            return Response({'description': 'Description obligatoire.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        origine = data.get('origine') or Reserve.Origine.RECETTE
-        if origine not in Reserve.Origine.values:
-            return Response({'origine': 'Origine inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-        echeance = None
-        if data.get('date_echeance'):
-            from django.utils.dateparse import parse_date
-            try:
-                echeance = parse_date(str(data.get('date_echeance')))
-            except ValueError:
-                echeance = None
-            if echeance is None:
-                return Response(
-                    {'date_echeance': 'Date invalide (AAAA-MM-JJ).'},
-                    status=status.HTTP_400_BAD_REQUEST)
-        bloquante = data.get('bloquante') in (True, 'true', '1', 1, 'on')
+        # api-fuzz full : corps VALIDÉ par le sérialiseur publié (texte sans
+        # caractère nul, énumération, date stricte, booléen strict).
+        data = oa.corps_valide(oa.ReserveChantierRequete, request)
         reserve = creer_reserve_chantier(
-            inst, request.user, description=description, origine=origine,
-            bloquante=bloquante, date_echeance=echeance,
-            responsable=(data.get('responsable') or '').strip()[:120])
+            inst, request.user, description=data['description'].strip(),
+            origine=data.get('origine') or Reserve.Origine.RECETTE,
+            bloquante=data.get('bloquante', False),
+            date_echeance=data.get('date_echeance'),
+            responsable=data.get('responsable', '').strip()[:120])
         return Response(reserve_contrat(reserve),
                         status=status.HTTP_201_CREATED)
 

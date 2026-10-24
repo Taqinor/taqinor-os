@@ -25,6 +25,21 @@ __all__ = ['ProfilTypeSerializer', 'ProfilsTypesEcritureSerializer',
            'ProfilsTypesSerializer']
 
 
+#: ERR-ENF11-FUZZ-CALEPINAGE - une saison est servie SOIT en 24 poids, SOIT par
+#: type de jour (``{"hiver": {"weekend": [24], ...}}``) : le schema ne disait
+#: que la premiere forme alors que ``profils_de_societe`` rend aussi la seconde.
+_LISTE_DE_POIDS = {'type': 'array', 'items': {'type': 'number'}}
+
+
+@extend_schema_field({
+    'type': 'object',
+    'additionalProperties': {'oneOf': [
+        _LISTE_DE_POIDS,
+        {'type': 'object', 'additionalProperties': _LISTE_DE_POIDS}]}})
+class CourbesServies(serializers.DictField):
+    """``{saison: [24 poids] | {type_de_jour: [24 poids]}}``."""
+
+
 class ProfilTypeSerializer(serializers.Serializer):
     """Un profil type — saisi par la société, ou repli ÉTIQUETÉ."""
 
@@ -39,8 +54,7 @@ class ProfilTypeSerializer(serializers.Serializer):
     #: que c'est une hypothèse interne.
     provenance = serializers.CharField(allow_blank=True)
     #: ``{saison: [24 fractions]}`` — des POIDS normalisés, pas des kWh.
-    courbes = serializers.DictField(
-        child=serializers.ListField(child=serializers.FloatField()))
+    courbes = CourbesServies()
     saisons = serializers.ListField(child=serializers.CharField())
 
 

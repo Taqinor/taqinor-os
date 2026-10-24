@@ -104,3 +104,19 @@ class ChargeToitureEndpointTests(TestCase):
                 self.assertEqual(r.status_code, 400, r.data)
         r = self.api.post(URL, {'couverture': 'tuile'}, format='multipart')
         self.assertEqual(r.status_code, 415)
+
+    def test_grandeurs_bornees_et_calcul_infini_409(self):
+        # CI #997 fuzz (24/10) : hors des ±1e9 publiés = 400 nommé (et plus de
+        # 500 sur ``8e14`` kg / ``2e-308`` m²) ; des entrées dans les bornes
+        # dont le calcul déborde (aire infime) = refus d'état 409.
+        r = self.api.post(URL, {'poids_module_kg': 8e14}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('poids_module_kg', r.data)
+        r = self.api.post(URL, {'charge_admissible_kg_m2': -1e300,
+                                'charge_admissible_source': 'x'},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(URL, {
+            'struct_masse_kg_m2': 10, 'poids_module_kg': 1e9,
+            'aire_module_m2': 2.2250738585072014e-308}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)

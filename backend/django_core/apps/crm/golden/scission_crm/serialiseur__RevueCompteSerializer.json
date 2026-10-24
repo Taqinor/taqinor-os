@@ -19,19 +19,19 @@
    "required": true
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "participants",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "decisions",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "prochaine_action",
    "read_only": false,
    "required": false

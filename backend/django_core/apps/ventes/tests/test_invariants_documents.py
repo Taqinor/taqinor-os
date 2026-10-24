@@ -263,7 +263,8 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
             self.bc.refresh_from_db()
             assert self.bc.statut == BonCommande.Statut.ANNULE
         else:
-            assert resp.status_code == 400, (resp.status_code, resp.data)
+            # CI #997 fuzz (24/10) : refus d'ÉTAT = 409.
+            assert resp.status_code == 409, (resp.status_code, resp.data)
             self.bc.refresh_from_db()
             assert self.bc.statut == avant
 

@@ -23,7 +23,7 @@ from rest_framework.response import Response
 from core.parseurs import ObjetJSON
 
 from ..permissions import PeutLireOuEcrireCalepinage
-from ..serializers import forme_reponse
+from ..serializers import corps_obligatoire, forme_reponse
 from ..services.io_layout import (
     ImportLayoutRefuse, exporter_layout, importer_layout,
 )
@@ -58,6 +58,7 @@ def export_layout(self, request, pk=None):
         layout_hash=drf_serializers.CharField(allow_blank=True,
                                               allow_null=True),
         inchange=drf_serializers.BooleanField()))
+@corps_obligatoire  # corps ABSENT = « Corps requis » (400) : le schema l'exige
 @action(detail=True, methods=['post'], url_path='import-layout',
         permission_classes=[PeutLireOuEcrireCalepinage])
 def import_layout(self, request, pk=None):

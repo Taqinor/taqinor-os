@@ -8,6 +8,9 @@ ni une chaîne parasite (« null ») qui verrouillerait le document signé.
 """
 import re
 
+from django.core.exceptions import ValidationError as _ErreurDjango
+from django.core.validators import RegexValidator
+
 # ~512 Kio d'image une fois décodée : une signature SignaturePad (PNG) pèse
 # quelques dizaines de Kio.
 SIGNATURE_MAX_CARACTERES = 700_000
@@ -20,6 +23,38 @@ _DATA_URL = re.compile(MOTIF_DATA_URL)
 MESSAGE_SIGNATURE_INVALIDE = (
     'Signature invalide : seule une image PNG ou JPEG tracée '
     '(data-URL base64) est acceptée.')
+
+
+#: api-fuzz-full 24/10 (« Too many generated examples are filtered out ») :
+#: le schéma de ``chantiers/{id}/signer-client`` empilait ``minLength`` + motif
+#: à espaces de bord + ``maxLength`` 700 000 sur la même chaîne. Le schéma ne
+#: publie plus QUE ce motif (sous-ensemble de ``MOTIF_DATA_URL`` : sans
+#: espaces de bord, rognés par DRF avant contrôle) ; la borne de longueur reste
+#: appliquée par le serveur (``SignatureDataUrl``).
+MOTIF_DATA_URL_PUBLIE = r'^data:image/(?:png|jpeg|jpg);base64,[A-Za-z0-9+/]+={0,2}$'
+
+
+class SignatureDataUrl(RegexValidator):
+    """Valide EXACTEMENT comme ``erreur_signature_client`` (motif + borne de
+    longueur) mais ne PUBLIE que ``MOTIF_DATA_URL_PUBLIE`` dans le schéma."""
+
+    def __init__(self):
+        super().__init__(regex=MOTIF_DATA_URL_PUBLIE,
+                         message=MESSAGE_SIGNATURE_INVALIDE, code='invalid')
+
+    def __call__(self, value):
+        if len(value) > SIGNATURE_MAX_CARACTERES:
+            raise _ErreurDjango(
+                'Signature trop volumineuse (maximum %d caractères).'
+                % SIGNATURE_MAX_CARACTERES, code='max_length')
+        if not _DATA_URL.match(value):
+            raise _ErreurDjango(self.message, code=self.code)
+
+    def __eq__(self, autre):
+        return isinstance(autre, SignatureDataUrl)
+
+    def __hash__(self):
+        return hash(SignatureDataUrl)
 
 
 def erreur_signature_client(valeur):

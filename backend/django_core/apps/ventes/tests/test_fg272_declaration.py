@@ -107,6 +107,17 @@ class DeclarationEndpointTest(TestCase):
         self.devis.refresh_from_db()
         self.assertEqual(self.devis.statut, 'accepte')
 
+    def test_regime_et_format_enumeres_400(self):
+        # CI #997 fuzz (24/10) : ``regime`` et ``format`` ont une énumération
+        # PUBLIÉE ; vide ou hors liste (dont un caractère de contrôle) = 400.
+        for params in ({'regime': ''}, {'regime': 'zzz'}, {'format': ''},
+                       {'format': 'docx'}):
+            with self.subTest(params=params):
+                resp = self.api.get(self.url, params)
+                self.assertIn(resp.status_code, (400, 404), resp.content)
+        resp = self.api.get(self.url, {'regime': 'a_qualifier'})
+        self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_other_company_devis_404(self):
         other_user = make_user(self.other, 'decl_o')
         other_devis = make_devis_with_system(

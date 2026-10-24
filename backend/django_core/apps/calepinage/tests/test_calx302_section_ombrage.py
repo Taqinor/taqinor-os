@@ -302,11 +302,31 @@ class CalepinageApiTest(BaseApiCalepinage):
         self.assertIn('<img class="ombrage-image"', html)
         self.assertIn('data:image/png;base64,', html)
 
-    def test_format_refuse_400_champ_fichier(self):
+    def test_format_refuse_409_champ_fichier(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE — la chaîne data-URL est conforme au schéma
+        # JSON ; c'est le CONTENU (pas une image) que seul le serveur juge : 409.
         illisible = 'data:image/png;base64,' + base64.b64encode(
             b'ceci n est pas une image').decode('ascii')
         reponse = self.api.post(
             self._url(self.calepinage),
             {'genre': 'ombrage', 'fichier': illisible}, format='json')
+        self.assertEqual(reponse.status_code, 409)
+        self.assertIn('fichier', reponse.data)
+
+    def test_corps_non_objet_ou_genre_non_texte_400_jamais_500(self):
+        """api-fuzz-full 24/10 : un scalaire JSON en corps (``2.2e-313``) ou
+        un ``genre`` qui n'est pas un texte levait ``AttributeError`` (500)."""
+        for corps in (2.2250738585e-313, [], 'texte',
+                      {'genre': 5, 'fichier': _data_uri_png()},
+                      {'genre': ['ombrage'], 'fichier': _data_uri_png()}):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(
+                    self._url(self.calepinage), corps, format='json')
+                self.assertEqual(reponse.status_code, 400, reponse.content)
+
+    def test_fichier_json_vide_reste_400(self):
+        reponse = self.api.post(
+            self._url(self.calepinage),
+            {'genre': 'ombrage', 'fichier': ''}, format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('fichier', reponse.data)

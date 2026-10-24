@@ -24,11 +24,12 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
-from core.champs_stricts import QUANTITE_MAX
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, QUANTITE_MAX, ChaineStricte
+from ..services_wms import TYPES_MOUVEMENT_SCANNABLES
 from ..erreurs_achats import debordement_compteur_en_409, statut_refus_metier
 
 
-@extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=r'\S')], responses={
+@extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=MOTIF_NON_BLANC_SANS_NUL)], responses={
     200: inline_serializer('StockScannerResoudreResultat', {
         'type': serializers.CharField(),
         'id': serializers.IntegerField(),
@@ -38,8 +39,10 @@ from ..erreurs_achats import debordement_compteur_en_409, statut_refus_metier
         # qui n'existent pas dans toutes les branches.
         'detail': serializers.DictField(),
     }),
+    # ``detail`` (code illisible) OU l'erreur de validation générique d'un paramètre
+    # (nul, doublon) qui garde ses clés à la racine — ``detail`` n'y figure pas.
     400: inline_serializer('StockScannerErreur', {
-        'detail': serializers.CharField(),
+        'detail': serializers.CharField(required=False),
     }),
     404: inline_serializer('StockScannerCodeInconnu', {
         'detail': serializers.CharField(),
@@ -56,7 +59,7 @@ def scanner_resoudre_view(request):
     from ..selectors import resoudre_code_scanne
 
     code = (request.query_params.get('code') or '').strip()
-    if not code:
+    if not code or '\x00' in code:
         return Response({'detail': 'Code illisible.'},
                         status=status.HTTP_400_BAD_REQUEST)
     resultat = resoudre_code_scanne(request.user.company, code)
@@ -68,15 +71,17 @@ def scanner_resoudre_view(request):
 
 # CI #997 fuzz (2) — identifiants publiés 1..ID_MAX (``id_corps`` refuse 0).
 _ID = {'min_value': 1, 'max_value': 2147483647}
+#: Colonne ``MouvementStock.reference`` (varchar 100) : plafond publié ET appliqué.
+_REFERENCE_MAX = 100
 
 
 @extend_schema(request=corps('ScannerMouvementCorps', produit=serializers.IntegerField(**_ID),
-                             type_mouvement=serializers.CharField(),
+                             type_mouvement=serializers.ChoiceField(choices=TYPES_MOUVEMENT_SCANNABLES),
                              quantite=serializers.IntegerField(min_value=1, max_value=QUANTITE_MAX),
                              bin_source=serializers.IntegerField(required=False, allow_null=True, **_ID),
                              bin_destination=serializers.IntegerField(required=False, allow_null=True, **_ID),
-                             reference=serializers.CharField(required=False),
-                             note=serializers.CharField(required=False, allow_blank=True)), responses={
+                             reference=ChaineStricte(required=False, max_length=_REFERENCE_MAX),
+                             note=ChaineStricte(required=False, allow_blank=True)), responses={
     201: inline_serializer('StockScannerMouvementResultat', {
         'id': serializers.IntegerField(),
         'produit': serializers.IntegerField(),
@@ -118,7 +123,10 @@ def scanner_mouvement_view(request):
                not isinstance(donnees.get(c, ''), str) for c in ('type_mouvement', 'reference', 'note')) or (
                # CI #997 fuzz (2) : quantité ENTIÈRE JSON, référence non blanche.
                isinstance(donnees.get('quantite'), bool) or not isinstance(donnees.get('quantite'), int)) or (
-               'reference' in donnees and not donnees['reference'].strip()):
+               'reference' in donnees and not donnees['reference'].strip()) or (
+               # api-fuzz-full 24/10 : publié « sans nul » (reference/note) et reference <= 100.
+               any('\x00' in donnees.get(c, '') for c in ('type_mouvement', 'reference', 'note'))
+               or len(donnees.get('reference', '')) > _REFERENCE_MAX):
         return Response({'detail': 'Corps invalide : identifiants entiers, quantité entière et textes attendus.'},
                         status=status.HTTP_400_BAD_REQUEST)
     # CI #997 fuzz (3) — plafond métier publié (``maximum``), AVANT tout calcul.
@@ -152,7 +160,8 @@ def scanner_mouvement_view(request):
     }, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU', pattern=r'\S'), P('quantite', INT)], responses={
+@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU', pattern=MOTIF_NON_BLANC_SANS_NUL),
+                           P('quantite', INT)], responses={
     200: inline_serializer('StockScannerRetourFournisseurLigne', {
         'produit': serializers.IntegerField(),
         'produit_nom': serializers.CharField(),
@@ -165,8 +174,9 @@ def scanner_mouvement_view(request):
         'fournisseur': serializers.IntegerField(allow_null=True),
         'fournisseur_nom': serializers.CharField(allow_blank=True),
     }),
+    # Idem résoudre : la validation générique des paramètres (``quantite=null``) n'a pas de ``detail``.
     400: inline_serializer('StockScannerRetourErreur', {
-        'detail': serializers.CharField(),
+        'detail': serializers.CharField(required=False),
     }),
     # CI #1001 — un code conforme qui désigne un casier/autre objet : l'ÉTAT
     # du référentiel s'oppose au retour (409), pas la forme de la requête.
@@ -188,6 +198,10 @@ def scanner_retour_fournisseur_view(request):
     from ..services_retour_scanne import (
         CodeInconnu, preparer_ligne_retour_scannee,
     )
+
+    if '\x00' in (request.query_params.get('code') or ''):  # nul publié interdit (500 SQL avant)
+        return Response({'detail': 'Code illisible.'},
+                        status=status.HTTP_400_BAD_REQUEST)
 
     try:
         ligne = preparer_ligne_retour_scannee(

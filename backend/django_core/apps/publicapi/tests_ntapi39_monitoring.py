@@ -234,6 +234,10 @@ class Ntapi39EndpointTests(TestCase):
     def test_une_fenetre_non_numerique_est_un_400(self):
         resp = _session_client(self.admin).get(URL, {'jours': 'sept'})
         self.assertEqual(resp.status_code, 400)
+        # api-fuzz full 24/10 : vide ou répété = hors schéma (un entier).
+        for requete in ('?jours=', '?jours=7&jours='):
+            resp = _session_client(self.admin).get(URL + requete)
+            self.assertEqual(resp.status_code, 400, requete)
 
     def test_une_fenetre_hors_bornes_est_un_400(self):
         self.assertEqual(

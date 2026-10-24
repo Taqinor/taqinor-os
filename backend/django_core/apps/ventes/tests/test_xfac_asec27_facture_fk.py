@@ -189,7 +189,8 @@ class FactureFkEtChampsServeurTests(TestCase):
                              self.ma[champ].pk, champ)
         r = self.api.patch(self._url(), {'devis': self.ma['devis'].pk},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # CI #997 fuzz (24/10) : en modification, refus d'ÉTAT = 409.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'facture_de_devis')
         r = self.api.post('/api/django/ventes/factures-lignes/', {
             'facture': self.facture.id, 'designation': 'Panneau',

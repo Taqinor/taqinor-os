@@ -8,6 +8,8 @@ Calcul PUR (aucune écriture base, aucun statut changé) ; jamais de prix ;
 résultat interne, jamais imprimé au client. Les anciennes capacités par type
 de toit (GET) ont disparu avec CIQ114.
 """
+import math
+
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import (
     api_view, parser_classes, permission_classes,
@@ -39,11 +41,24 @@ def _corps_invalide(data):
         if valeur is not None and (isinstance(valeur, bool) or not isinstance(
                 valeur, (int, float))):
             return {champ: ['Nombre attendu.']}
+        if valeur is not None and not abs(valeur) <= SH.BORNE_CHARGE:
+            return {champ: ['Valeur hors plage.']}
     for champ in _TEXTES:
         valeur = data.get(champ)
         if valeur is not None and not isinstance(valeur, str):
             return {champ: ['Texte attendu.']}
     return None
+
+
+def _fini(valeur):
+    """Faux si le résultat porte un flottant infini ou NaN (non sérialisable)."""
+    if isinstance(valeur, float):
+        return math.isfinite(valeur)
+    if isinstance(valeur, dict):
+        return all(_fini(v) for v in valeur.values())
+    if isinstance(valeur, (list, tuple)):
+        return all(_fini(v) for v in valeur)
+    return True
 
 
 @extend_schema(request=SH.RoofLoadRequest, responses=SH.RoofLoadResponse,
@@ -71,4 +86,10 @@ def roof_load_check(request):
         )
     except ChargeNonSourcee as refus:
         return Response({refus.champ: [refus.message]}, status=400)
+    if not _fini(result):
+        # CI #997 fuzz (24/10) : des entrées dans les bornes dont le calcul ne
+        # tient pas (``poids / aire`` d'une aire infime) : refus d'ÉTAT, 409.
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat('Ces valeurs ne permettent pas de calcul fini : '
+                          'vérifiez la surface et le poids du module.')
     return Response(result)

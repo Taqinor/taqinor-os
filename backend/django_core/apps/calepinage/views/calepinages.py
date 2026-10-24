@@ -42,7 +42,7 @@ from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.exceptions import ValidationError as DrfValidationError
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 
@@ -307,9 +307,10 @@ class _OrdreStatutDerive(filters.OrderingFilter):
         OpenApiParameter('statut', {'type': 'string', 'enum': ['', *Calepinage.Statut.values]},
                          OpenApiParameter.QUERY, required=False,
                          description="Statut du calepinage (vocabulaire du serveur ; vide = tous)."),
-        OpenApiParameter('depuis', OpenApiTypes.STR, OpenApiParameter.QUERY,
+        OpenApiParameter('depuis', OpenApiTypes.DATE, OpenApiParameter.QUERY,
                          required=False,
-                         description="Date ou date-heure ISO : calepinages modifiés depuis."),
+                         description="Date AAAA-MM-JJ : calepinages modifiés depuis "
+                                     "(le serveur lit aussi un horodatage ISO 8601)."),
         OpenApiParameter('lead', OpenApiTypes.INT, OpenApiParameter.QUERY,
                          required=False,
                          description="Identifiant du lead."),
@@ -350,8 +351,19 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
 
     # Fuzz CI #997 : le corps de création est un objet JSON (responsable/custom_data
     # typés) ; un multipart n'en porte que des chaînes → JSON seul, sans toucher aux uploads.
-    parsers_par_action = {'create': [JSONParser],
-                          'partial_update': [JSONParser]}
+    parsers_par_action = {
+        'create': [JSONParser],
+        'partial_update': [JSONParser],
+        # ERR-ENF11-FUZZ-CALEPINAGE — ces corps portent des objets / des entiers
+        # (``layout``, ``entree_electrique``, ``tag_id``, ``systeme_id``...) qu'un
+        # formulaire ne sait pas dire (tout y est chaine, un objet y devient
+        # ``""``) : le schema ne publie que le JSON, le serveur ne lit que lui.
+        'chatter_noter': [JSONParser], 'layout': [JSONParser],
+        'import_layout': [JSONParser], 'evaluer_electrique': [JSONParser],
+        'entree_electrique': [JSONParser], 'etiquettes': [JSONParser],
+        'fixation': [JSONParser], 'variantes': [JSONParser],
+        'schema_unifilaire': [JSONParser], 'releve': [JSONParser],
+        'releve_detail': [JSONParser], 'releve_visite': [JSONParser]}
 
     #: CALX347 — la décision d'approbation exige ``calepinage_approuver``, pas
     #: ``calepinage_gerer`` : un porteur de GÉRER seul n'y a pas droit, et un
@@ -389,7 +401,9 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     # ── ACAL293 — une note du chatter notifie le responsable ───────────────
     @extend_schema(
         request=inline_serializer('CalepinageNoteCorps', {
-            'body': drf_serializers.CharField()}),
+            # Texte non blanc SANS caractere nul (motif publie) : un NUL ou un
+            # demi-substitut cassait l'INSERT du chatter (500).
+            'body': ChaineStricte()}),
         responses={201: ChatterActivitySerializer})
     @action(detail=True, methods=['post'], url_path='chatter/noter',
             permission_classes=[IsResponsableOrAdmin])
@@ -399,6 +413,15 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
         notification avec le lien et l'extrait. Best-effort : une notification
         en échec ne fait jamais échouer la note déjà écrite. Survivant de
         l'ancien jumeau ``services/commentaires.py`` (CAL205), supprimé."""
+        self.get_object()  # L'OBJET D'ABORD : 404 d'un id etranger
+        corps = request.data if isinstance(request.data, dict) else {}
+        note = corps.get('body')
+        if isinstance(note, str) and any(
+                c == chr(0) or 0xD800 <= ord(c) <= 0xDFFF for c in note):
+            return Response(
+                {'body': ["La note contient un caractere interdit (caractere "
+                          "nul ou illisible) : corrigez la saisie."]},
+                status=status.HTTP_400_BAD_REQUEST)
         reponse = super().chatter_noter(request, pk=pk)
         if reponse.status_code == 201:
             _notifier_la_note(self.get_object(), request.user,
@@ -843,8 +866,19 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
     # ── Les variantes : CRUD, bascule idempotente, comparatif ──────────────
     @extend_schema(methods=['GET'],
                    responses=CalepinageVarianteSerializer(many=True))
-    @extend_schema(methods=['POST'], request=CalepinageVarianteSerializer,
-                   responses={201: CalepinageVarianteSerializer})
+    @extend_schema(
+        methods=['POST'],
+        # ERR-ENF11-FUZZ-CALEPINAGE - le corps lu par la vue : un nom texte
+        # NON BLANC sans caractere nul (<= 160), la conception et le resultat
+        # en objets, ``retenir`` booleen.
+        request=inline_serializer('CalepinageVarianteCorps', {
+            'nom': ChaineStricte(max_length=160),
+            'roof_layout': drf_serializers.JSONField(required=False,
+                                                     allow_null=True),
+            'resultat': drf_serializers.JSONField(required=False,
+                                                  allow_null=True),
+            'retenir': drf_serializers.BooleanField(required=False)}),
+        responses={201: CalepinageVarianteSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='variantes',
             permission_classes=[PeutLireOuEcrireCalepinage],
             pagination_class=None)
@@ -1070,7 +1104,7 @@ class CalepinageViewSet(ParsersParActionMixin, PhotosSiteMixin, ReleveTerrainMix
                                       'roof_image', 'url')})
     @action(detail=True, methods=['post'], url_path='roof-image',
             permission_classes=[PeutGererCalepinage],
-            parser_classes=[MultiPartParser, FormParser])
+            parser_classes=[MultiPartParser])
     def roof_image(self, request, pk=None):
         """CAL19 — réceptionne le rendu (PNG/JPEG) et le range dans MinIO.
 

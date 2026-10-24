@@ -712,7 +712,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 ordre.activites.all(), many=True).data)
 
     @oa.extend_schema(
-        request=oa.body('NoterRequete', body=oa.s(True)),
+        request=oa.NoterRequete,
         responses={201: OrdreAssemblageActivitySerializer},
     )
     @action(detail=True, methods=['post'], url_path='noter',
@@ -720,10 +720,7 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def noter(self, request, pk=None):
         """XMFG4 — note manuelle sur le chatter de l'ordre."""
         ordre = self.get_object()
-        body = (request.data.get('body') or '').strip()
-        if not body:
-            return Response({'body': 'Note vide.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        body = oa.corps_valide(oa.NoterRequete, request)['body'].strip()
         act = activity.log_note(ordre, request.user, body)
         return Response(OrdreAssemblageActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)

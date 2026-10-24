@@ -15,7 +15,7 @@ from authentication.permissions import (
 )
 from . import openapi_docs as D
 from ..models import Avoir, Facture
-from ..serializers_facturation import FactureSerializer
+from ..serializers_facturation import FactureListeSerializer, FactureSerializer
 from ..utils.corps import valider_corps
 
 #: VNT13 (D-VNT-1, arbitrage 5) — annuler une facture / supprimer un
@@ -66,7 +66,7 @@ class FactureCycleActionsMixin:
             data['anomalies'] = anomalies
         return Response(data)
 
-    @extend_schema(request=None, responses=FactureSerializer)
+    @extend_schema(request=None, responses=FactureListeSerializer)
     @action(detail=True, methods=['post'], url_path='remettre-brouillon',
             permission_classes=[IsResponsableOrAdmin])
     def remettre_brouillon(self, request, pk=None):
@@ -142,7 +142,7 @@ class FactureCycleActionsMixin:
         activity.log_facture_remise_brouillon(facture, request.user, ancien)
         return Response(FactureSerializer(facture).data)
 
-    @extend_schema(request=D.MarquerPayeeRequest, responses=FactureSerializer)
+    @extend_schema(request=D.MarquerPayeeRequest, responses=FactureListeSerializer)
     @action(detail=True, methods=['post'], url_path='marquer-payee',
             permission_classes=[IsAdminRole])
     def marquer_payee(self, request, pk=None):
@@ -262,7 +262,7 @@ class FactureCycleActionsMixin:
     @extend_schema(
         request=inline_serializer('FactureMontantTranche', {
             'montant_ttc': serializers.CharField()}),
-        responses={200: FactureSerializer, 400: D.ErreurDevisFige,
+        responses={200: FactureListeSerializer, 400: D.ErreurDevisFige,
                    409: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='montant-tranche',
             permission_classes=[IsAdminOrResponsableTier,

@@ -14,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from ..openapi_helpers import BOOL, DATE, NUM, OBJET, P, DecimalSoupleStock, corps
-from ..utils.params import ID_MAX, corps_objet, decimal_ou_400, id_corps, types_corps_ou_400
+from ..utils.params import ID_MAX, corps_objet, decimal_ou_400, id_corps, types_corps_ou_400, valeur_unique_ou_400
 from ..serializers import RevisionKitSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from authentication.permissions import (
@@ -88,7 +88,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
             return [HasPermissionOrLegacy('stock_modifier')()]
         return [IsAdminRole()]
 
-    @extend_schema(parameters=[P('quantite', NUM, False, 'Quantité de kits (défaut 1)')],
+    @extend_schema(parameters=[P('quantite', NUM, False, 'Quantité de kits (défaut 1)', vide=True)],
                    responses=corps('KitExploserReponse', kit_id=serializers.IntegerField(),
                                    kit_nom=serializers.CharField(), quantite_kit=serializers.FloatField(),
                                    lignes=serializers.ListField(child=serializers.DictField())))
@@ -103,7 +103,7 @@ class KitProduitViewSet(CompanyScopedModelViewSet):
         kit = self.get_object()
         # ERR fuzz : ``quantite`` déclarée nombre — ``null`` (ou toute valeur
         # illisible) était lue « 1 » en silence ; elle répond 400.
-        quantite = float(decimal_ou_400(request.query_params.get('quantite'), 'quantite', 1))
+        quantite = float(decimal_ou_400(valeur_unique_ou_400(request, 'quantite'), 'quantite', 1))
         if quantite <= 0:
             quantite = 1
         try:

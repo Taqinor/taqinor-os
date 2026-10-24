@@ -197,6 +197,21 @@ def _parametre_contenu_json(noeud):
 EXTENSION_CORPS_RESSERRE = 'x-corps-resserre'
 
 
+def _regle_exige(regle, cles=('required', 'anyOf', 'oneOf')):
+    """Vrai si la règle de racine EXIGE quelque chose (``required`` / ``anyOf``
+    / ``oneOf``) ou si un membre de son ``allOf`` pose ``required``/``oneOf``
+    — api-fuzz-full 24/10 : ``POST ged/acls/`` (``allOf`` [cible unique,
+    principal]) publiait encore un corps FACULTATIF, le fuzz l'omettait et
+    recevait 400 « conforme ». Sous ``allOf``, un ``anyOf`` seul (règle
+    PARTIELLE d'un PATCH, que ``{}`` satisfait) n'exige rien."""
+    if not isinstance(regle, dict):
+        return False
+    if any(cle in regle for cle in cles):
+        return True
+    return any(_regle_exige(sous, ('required', 'oneOf'))
+               for sous in regle.get('allOf') or ())
+
+
 def _corps_resserre(noeud):
     regle = noeud.pop(EXTENSION_CORPS_RESSERRE, None)
     corps = noeud.get('requestBody') if regle is not None else None
@@ -205,10 +220,29 @@ def _corps_resserre(noeud):
     # le corps obligatoire — drf-spectacular ne pose `required: true` que
     # sur un sérialiseur à champ requis, jamais sur un `request` en dict ;
     # le fuzz envoyait alors un corps ABSENT, « conforme » puis refusé 400.
-    if corps and any(cle in regle for cle in ('required', 'anyOf', 'oneOf')):
+    if corps and _regle_exige(regle):
         corps['required'] = True
     for media in (corps or {}).get('content', {}).values():
         media['schema'] = {'allOf': [media['schema'], regle]}
+
+
+#: api-fuzz-full du 24/10/2026 — un paramètre de requête TEXTE sans motif,
+#: format ni énumération est publié « sans caractère nul » : le serveur refuse
+#: un nul partout (``core.parametres_requete.verifier_caractere_nul``, 400) au
+#: lieu de le laisser atteindre PostgreSQL (500). ``search`` est exclu (un nul
+#: y rend une liste vide, voir ``_installer_recherche_tolerante``).
+MOTIF_QUERY_SANS_NUL = r'^[^\u0000]*$'
+_QUERY_NUL_TOLERE = frozenset({'search'})
+
+
+def _parametre_texte_sans_nul(noeud):
+    schema = noeud.get('schema')
+    if (noeud.get('in') != 'query' or noeud.get('name') in _QUERY_NUL_TOLERE
+            or not isinstance(schema, dict) or schema.get('type') != 'string'
+            or schema.get('minLength', 0) >= 1
+            or any(cle in schema for cle in ('pattern', 'format', 'enum'))):
+        return
+    schema['pattern'] = MOTIF_QUERY_SANS_NUL
 
 
 def _chaine_non_blanche(noeud):
@@ -227,6 +261,7 @@ def aligner_motifs_sur_drf(result, generator=None, request=None,
         noeud = pile.pop()
         if isinstance(noeud, dict):
             _parametre_contenu_json(noeud)
+            _parametre_texte_sans_nul(noeud)
             _corps_resserre(noeud)
             if noeud.get('format') == 'decimal':
                 strict = motif_decimal_strict(noeud.get('pattern'))

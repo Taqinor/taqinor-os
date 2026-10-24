@@ -14,12 +14,13 @@ Toutes les vues sont en LECTURE : aucune n'écrit, aucune ne réserve.
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from ..openapi_helpers import INT, NUM, P, STR
-from ..utils.params import decimal_ou_400, entier_ou_400
+from ..utils.params import decimal_ou_400, entier_ou_400, valeur_unique_ou_400
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 
 
 # ENF11 — borne commune des seuils du cockpit (jours ou heures) : bornée,
@@ -83,7 +84,7 @@ def entrepot_cockpit_view(request):
     ))
 
 
-@extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers', pattern=r'\S'),
+@extend_schema(parameters=[P('zone', STR, True, 'Zone de casiers', pattern=MOTIF_NON_BLANC_SANS_NUL),
                            P('quantite', INT, False, 'Quantité supplémentaire (>= 0 ; négative = 400)', mini=0),
                            P('produit', INT), P('emplacement', INT)], responses={
     200: inline_serializer('StockSimulationCapacite', {
@@ -131,7 +132,8 @@ def simuler_capacite_view(request):
     return Response(resultat)
 
 
-@extend_schema(parameters=[P('seuil', NUM, False, 'Seuil de remplissage (%)'), P('emplacement', INT)], responses={
+@extend_schema(parameters=[P('seuil', NUM, False, 'Seuil de remplissage (%)', vide=True),
+                           P('emplacement', INT, vide=True)], responses={
     200: inline_serializer('StockZonesSurcapacite', {
         'seuil_pct': serializers.CharField(),
         'zones': serializers.ListField(child=serializers.DictField()),
@@ -147,11 +149,11 @@ def zones_surcapacite_view(request):
         SEUIL_SURCAPACITE_PCT, _fmt_dec, zones_en_surcapacite,
     )
 
-    seuil = decimal_ou_400(request.query_params.get('seuil'), 'seuil')
+    seuil = decimal_ou_400(valeur_unique_ou_400(request, 'seuil'), 'seuil')
     zones = zones_en_surcapacite(
         request.user.company, seuil_pct=seuil,
         emplacement_id=_int_param(
-                request.query_params.get('emplacement'), None, 'emplacement'))
+                valeur_unique_ou_400(request, 'emplacement'), None, 'emplacement'))
     return Response({
         'seuil_pct': (zones[0]['seuil_pct'] if zones
                       else _fmt_dec(seuil or SEUIL_SURCAPACITE_PCT)),
@@ -200,7 +202,7 @@ def historique_casier_view(request, bin_id):
     })
 
 
-@extend_schema(parameters=[P('zone', STR), P('limite', INT, mini=1, maxi=100)], responses={
+@extend_schema(parameters=[P('zone', STR), P('limite', INT, mini=1, maxi=100, vide=True)], responses={
     200: inline_serializer('StockTacheRetour', {
         'zone_courante': serializers.CharField(allow_blank=True),
         'suggestions': serializers.ListField(child=serializers.DictField()),
@@ -224,5 +226,5 @@ def tache_retour_view(request):
             request.user.company, zone_courante=zone,
             operateur=request.user,
             limite=entier_ou_400(
-                request.query_params.get('limite'), 'limite', 1, 1, 100)),
+                valeur_unique_ou_400(request, 'limite'), 'limite', 1, 1, 100)),
     })

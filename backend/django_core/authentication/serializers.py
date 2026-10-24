@@ -477,9 +477,13 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
         if company is not None and value.company_id != company.id:
             raise serializers.ValidationError(
                 'Superviseur hors de votre entreprise.')
+        # api-fuzz full 24/10 — soi-même / cycle : le corps est conforme (un
+        # id de compte), c'est la CHAÎNE de supervision en base qui s'y
+        # oppose — refus d'état, 409 (plus 400).
+        from core.conflit_etat import ConflitEtat
         if self.instance is not None and value.id == self.instance.id:
-            raise serializers.ValidationError(
-                "Un utilisateur ne peut pas être son propre superviseur.")
+            raise ConflitEtat({'supervisor': [
+                "Un utilisateur ne peut pas être son propre superviseur."]})
         # VX235(b) — avant ce garde, seule l'auto-supervision directe était
         # bloquée : un cycle A→B→C→A (poser le superviseur de A sur C, qui
         # remonte déjà à B puis A) corrompait silencieusement
@@ -492,9 +496,9 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
                 if seen is None:
                     break
                 if seen.id == self.instance.id:
-                    raise serializers.ValidationError(
+                    raise ConflitEtat({'supervisor': [
                         'Ce superviseur créerait un cycle dans la chaîne '
-                        'de supervision.')
+                        'de supervision.']})
                 seen = seen.supervisor
         return value
 
