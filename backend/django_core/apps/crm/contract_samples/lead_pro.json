@@ -348,7 +348,7 @@
       ],
       "segment": "commun",
       "etape_appel": 2,
-      "question": "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? » — `site_defaut_visible` = valeur pré-cochée du site non modifiée par le client ; `mesure_visite` = relevé par notre technicien lors de la visite"
+      "question": "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? »"
     },
     {
       "nom": "compteur_puissance_kva",
@@ -385,7 +385,7 @@
       ],
       "segment": "commun",
       "etape_appel": 2,
-      "question": "« Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. » — CIQ666 (décision fondateur 08/10/2026) : vocabulaire de `tarifs_ci.json` (`tarif_declare.contrat`) ; « ne sait pas » = aucun contrat transmis, jamais un contrat supposé"
+      "question": "« Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. »"
     },
     {
       "nom": "option_tarifaire_bt",
@@ -396,7 +396,7 @@
       ],
       "segment": "commun",
       "etape_appel": 2,
-      "question": "(posée avec le contrat, force motrice seulement) « Êtes-vous en option normale ou en option bi-horaire ? » — le bi-horaire n'est transmis au moteur que pour la force motrice"
+      "question": "(posée avec le contrat, force motrice seulement) « Êtes-vous en option normale ou en option bi-horaire ? »"
     },
     {
       "nom": "raccordement",
@@ -435,7 +435,7 @@
       "type": "objet",
       "segment": "commercial",
       "etape_appel": 3,
-      "question": "Les questions propres à la catégorie (voir `reponses_categorie_par_categorie`), posées juste après l'activité."
+      "question": "Quelques questions propres à l'activité, posées juste après l'avoir choisie."
     },
     {
       "nom": "secteur_industriel",
@@ -586,7 +586,7 @@
       "unite": "MAD/mois",
       "segment": "commun",
       "etape_appel": null,
-      "question": "« Combien dépensez-vous en gasoil pour le groupe chaque mois ? » (déclaré seulement, jamais un prix pré-rempli — Q17)"
+      "question": "« Combien dépensez-vous en gasoil pour le groupe chaque mois ? »"
     },
     {
       "nom": "pv_existant_kwc",
@@ -601,7 +601,7 @@
       "type": "décimal",
       "segment": "industriel",
       "etape_appel": null,
-      "question": "« Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? » — jamais supposé (même règle que calepinage/services/etapes/ecretage.py)"
+      "question": "« Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? »"
     },
     {
       "nom": "cos_phi_source",
@@ -635,7 +635,7 @@
       ],
       "segment": "commun",
       "etape_appel": 1,
-      "question": "« Pouvez-vous nous envoyer vos dernières factures d'électricité ? Jusqu'à douze mois nous aident à être précis. » — jamais exigées toutes les douze (W5-VB-07)"
+      "question": "« Pouvez-vous nous envoyer vos dernières factures d'électricité ? Jusqu'à douze mois nous aident à être précis. »"
     },
     {
       "nom": "tva_recuperable",
@@ -647,7 +647,7 @@
       ],
       "segment": "commun",
       "etape_appel": null,
-      "question": "« Votre entreprise récupère-t-elle la TVA sur ses achats ? » (D-CIQ-3)"
+      "question": "« Votre entreprise récupère-t-elle la TVA sur ses achats ? »"
     },
     {
       "nom": "societe",
@@ -662,7 +662,7 @@
       "type": "texte",
       "segment": "commun",
       "etape_appel": null,
-      "question": "« Pouvez-vous nous donner l'ICE de l'entreprise ? Il figurera sur le devis et la facture. » — demandé, jamais bloquant au devis (D-CIQ-11)"
+      "question": "« Pouvez-vous nous donner l'ICE de l'entreprise ? Il figurera sur le devis et la facture. »"
     },
     {
       "nom": "rc",
@@ -697,7 +697,7 @@
       "type": "texte",
       "segment": "commun",
       "etape_appel": 5,
-      "question": "« Qui d'autre décide avec vous ? Quelle est sa fonction ? » (CAD144 : sans automatisation)"
+      "question": "« Qui d'autre décide avec vous ? Quelle est sa fonction ? »"
     },
     {
       "nom": "contact_secondaire_email",
@@ -732,7 +732,7 @@
       },
       "segment": "commun",
       "etape_appel": 1,
-      "question": "« Votre facture mensuelle se situe dans quelle tranche ? » — D-CIQ-19 : une tranche ouverte n'est JAMAIS stockée comme un montant"
+      "question": "« Votre facture mensuelle se situe dans quelle tranche ? »"
     }
   ],
   "reponses_categorie_par_categorie": {

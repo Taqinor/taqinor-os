@@ -77,16 +77,32 @@ const MOIS = [
 
 // La question orale sous chaque champ — celle du contrat `lead_pro.json`
 // (colonnes_pro[].question), gardée à l'identique par SectionsRender.test.jsx.
+// ALEA54 — QUE la question à poser au client : les notes internes sont ici.
+//  · tension_source : `site_defaut_visible` = valeur pré-cochée du site non
+//    modifiée par le client ; `mesure_visite` = relevé par notre technicien.
+//  · contrat_electricite (CIQ666, décision fondateur 08/10/2026) : vocabulaire
+//    de `tarifs_ci.json` (`tarif_declare.contrat`) ; « ne sait pas » = aucun
+//    contrat transmis, jamais un contrat supposé.
+//  · option_tarifaire_bt : le bi-horaire n'est transmis au moteur que pour la
+//    force motrice.
+//  · reponses_categorie : clés fermées de `reponses_categorie_par_categorie`.
+//  · groupe_depense_mad_mois : déclaré seulement, jamais un prix pré-rempli (Q17).
+//  · cos_phi : jamais supposé (même règle que calepinage/services/etapes/ecretage.py).
+//  · releve_conso : jamais exigées toutes les douze (W5-VB-07).
+//  · tva_recuperable : D-CIQ-3 ; ice : demandé, jamais bloquant au devis (D-CIQ-11).
+//  · facture_tranche_declaree : D-CIQ-19, une tranche ouverte n'est JAMAIS
+//    stockée comme un montant.
+//  · contact_secondaire_fonction : CAD144, sans automatisation.
 const QUESTIONS_PRO = {
   tension_raccordement: "« Votre site est-il raccordé en basse tension, avec un compteur ordinaire, ou en moyenne tension, avec un poste de transformation ? Si vous ne savez pas, ce n'est pas grave. »",
-  tension_source: "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? » — `site_defaut_visible` = valeur pré-cochée du site non modifiée par le client ; `mesure_visite` = relevé par notre technicien lors de la visite",
-  contrat_electricite: "« Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. » — CIQ666 (décision fondateur 08/10/2026) : vocabulaire de `tarifs_ci.json` (`tarif_declare.contrat`) ; « ne sait pas » = aucun contrat transmis, jamais un contrat supposé",
-  option_tarifaire_bt: "(posée avec le contrat, force motrice seulement) « Êtes-vous en option normale ou en option bi-horaire ? » — le bi-horaire n'est transmis au moteur que pour la force motrice",
+  tension_source: "(posée avec la tension) « Vous le lisez sur votre facture, ou c'est de mémoire ? »",
+  contrat_electricite: "« Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. »",
+  option_tarifaire_bt: '(posée avec le contrat, force motrice seulement) « Êtes-vous en option normale ou en option bi-horaire ? »',
   raccordement: '« Votre installation électrique est-elle en monophasé ou en triphasé ? C\'est écrit sur votre facture ou sur votre compteur. »',
   compteur_puissance_kva: '« Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »',
   puissance_souscrite_source: "(posée avec la puissance) « Vous l'avez trouvée sur la facture, sur le contrat, ou c'est une estimation ? »",
   categorie_commerciale: '« Quelle est votre activité : hôtel, restaurant ou café, commerce, bureaux, santé, école, hammam, boulangerie, froid, ou autre chose ? »',
-  reponses_categorie: "Les questions propres à la catégorie (voir `reponses_categorie_par_categorie`), posées juste après l'activité.",
+  reponses_categorie: "Quelques questions propres à l'activité, posées juste après l'avoir choisie.",
   secteur_industriel: '« Que fabriquez-vous ou que transformez-vous sur ce site ? »',
   export_ue_declare: "« Exportez-vous une partie de votre production vers l'Union européenne ? »",
   regime_equipes: '« Travaillez-vous en une équipe de jour, en deux équipes, en trois équipes, ou en continu ? »',
@@ -99,20 +115,20 @@ const QUESTIONS_PRO = {
   groupe_electrogene: '« Avez-vous un groupe électrogène sur le site ? »',
   groupe_kva: '« Quelle est sa puissance, en kVA ? »',
   groupe_litres_mois: '« Combien de litres de gasoil consomme-t-il par mois ? »',
-  groupe_depense_mad_mois: '« Combien dépensez-vous en gasoil pour le groupe chaque mois ? » (déclaré seulement, jamais un prix pré-rempli — Q17)',
+  groupe_depense_mad_mois: '« Combien dépensez-vous en gasoil pour le groupe chaque mois ? »',
   pv_existant_kwc: '« Avez-vous déjà des panneaux solaires installés ? De quelle puissance ? »',
-  cos_phi: "« Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? » — jamais supposé (même règle que calepinage/services/etapes/ecretage.py)",
+  cos_phi: "« Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? »",
   cos_phi_source: '(posée avec le cos φ) « Vous le lisez sur la facture ? »',
-  releve_conso: "« Pouvez-vous nous envoyer vos dernières factures d'électricité ? Jusqu'à douze mois nous aident à être précis. » — jamais exigées toutes les douze (W5-VB-07)",
-  tva_recuperable: '« Votre entreprise récupère-t-elle la TVA sur ses achats ? » (D-CIQ-3)',
-  ice: "« Pouvez-vous nous donner l'ICE de l'entreprise ? Il figurera sur le devis et la facture. » — demandé, jamais bloquant au devis (D-CIQ-11)",
+  releve_conso: "« Pouvez-vous nous envoyer vos dernières factures d'électricité ? Jusqu'à douze mois nous aident à être précis. »",
+  tva_recuperable: '« Votre entreprise récupère-t-elle la TVA sur ses achats ? »',
+  ice: "« Pouvez-vous nous donner l'ICE de l'entreprise ? Il figurera sur le devis et la facture. »",
   rc: '« Et son numéro de registre de commerce ? »',
   if_fiscal: "« Et l'identifiant fiscal ? »",
   adresse_siege: "« Quelle est l'adresse du siège, si elle diffère de celle du site ? »",
   fonction_contact: "« Quelle est votre fonction dans l'entreprise ? »",
-  contact_secondaire_fonction: "« Qui d'autre décide avec vous ? Quelle est sa fonction ? » (CAD144 : sans automatisation)",
+  contact_secondaire_fonction: "« Qui d'autre décide avec vous ? Quelle est sa fonction ? »",
   contact_secondaire_email: '« Pouvons-nous lui envoyer le devis par e-mail ? À quelle adresse ? »',
-  facture_tranche_declaree: '« Votre facture mensuelle se situe dans quelle tranche ? » — D-CIQ-19 : une tranche ouverte n\'est JAMAIS stockée comme un montant',
+  facture_tranche_declaree: '« Votre facture mensuelle se situe dans quelle tranche ? »',
 }
 
 // Questions propres à la catégorie : les clés FERMÉES du contrat
@@ -652,8 +668,8 @@ export default function SectionPro({ state, setField, errors = {} }) {
         <Renvois liste={RENVOIS.societe} segment={segment} />
       </Bloc>
       <p className="gen-hint">
-        <span className="req-auto">*</span> Requis pour le devis automatique (règle servie : l&apos;un des
-        champs de chaque groupe).
+        <span className="req-auto">*</span> À renseigner pour calculer le devis automatique (au moins
+        un champ marqué par groupe).
       </p>
     </>
   )

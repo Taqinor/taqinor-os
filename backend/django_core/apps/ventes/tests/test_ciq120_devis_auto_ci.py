@@ -183,12 +183,18 @@ class DevisAutoCITests(_Base):
 
     def test_sans_categorie_ni_heures_nomme_les_jours_puis_les_heures(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None)
-        self.assertEqual(self._refus(lead).field, 'jours_ouverture')
+        erreur = self._refus(lead)
+        self.assertEqual(erreur.field, 'jours_ouverture')
+        # ALEA54 — une consigne à la commerciale, pas le jargon du moteur.
+        self.assertTrue(erreur.message.startswith('Demandez au client quels jours'))
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None,
                           jours_ouverture=[1, 2, 3, 4, 5])
         erreur = self._refus(lead)
         self.assertEqual(erreur.field, 'heure_debut')
-        self.assertIn("Heures d'ouverture", erreur.message)
+        self.assertIn("heures d'ouverture", erreur.message)
+        self.assertTrue(erreur.message.startswith('Demandez au client'))
+        for jargon in ('profil', 'archétype', 'sourcé', 'sur le lead'):
+            self.assertNotIn(jargon, erreur.message)
 
     def test_facture_mad_seule_sans_contrat_nomme_le_contrat(self):
         lead = self._lead(facture_hiver=Decimal('3500'))

@@ -1263,11 +1263,15 @@ CHAMP_LEAD_DES_ALERTES = {
 }
 #: L'ordre dans lequel un refus nomme le premier champ manquant du lead.
 ORDRE_CHAMPS_LEAD_CI = ('contrat_electricite', 'jours_ouverture', 'heure_debut')
+# ALEA54 — ces refus s'adressent à la COMMERCIALE : une consigne à suivre auprès
+# du client, jamais le jargon du moteur (« profil de charge », « archétype »).
 MESSAGES_CHAMP_LEAD_CI = {
-    'jours_ouverture': ("Jours d'ouverture du site à déclarer sur le lead : profil de "
-                        'charge déclaré exigé (aucun week-end supposé).'),
-    'heure_debut': ("Heures d'ouverture (ou régime d'équipes) à déclarer sur le lead : "
-                    'aucun archétype sourcé pour cette activité, profil déclaré exigé.'),
+    'jours_ouverture': ("Demandez au client quels jours le site est ouvert (ou en "
+                        "production), ou choisissez son activité : le week-end n'est "
+                        'jamais supposé.'),
+    'heure_debut': ("Demandez au client ses heures d'ouverture (début et fin de journée, "
+                    "ou régime d'équipes), ou choisissez son activité : pour celle-ci, "
+                    "aucun horaire type n'est connu."),
 }
 #: ADEV78 — champs d'alerte (racine) dont le refus porte sur la composition.
 CHAMPS_COMPOSITION = frozenset({'composition', 'onduleurs', 'taille_explicite_kwc'})
@@ -1281,8 +1285,8 @@ MESSAGES_ARRET = {
                             'tranche de 5 kWc : aucune taille C&I.', 'compteur_puissance_kva'),
 }
 MESSAGE_PRIX_A_RENSEIGNER = (
-    'Prix à renseigner avant un devis automatique C&I : %s → Paramètres › Devis › '
-    'Prestations C&I ou fiche produit.')
+    "Prix à renseigner avant un devis automatique C&I : %s. À régler par "
+    "l'administrateur dans Paramètres › Devis › Prestations C&I, ou sur la fiche de l'article.")
 MESSAGE_MAD_SANS_CONTRAT = (
     "Facture en MAD sans contrat d'électricité déclaré : précisez le contrat "
     '(BT patenté / force motrice) ou saisissez la conso en kWh.')
