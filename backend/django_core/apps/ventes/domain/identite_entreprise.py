@@ -228,6 +228,13 @@ def verifier_empreinte_signature(devis, *, lignes=None):
                         "sceau ne couvre ni le taux de TVA par ligne, ni les "
                         "lignes optionnelles, ni l'option retenue."),
         }
+    if version == DevisSignature.CONTENT_HASH_V2 and exige_identite_entreprise(devis):
+        # ADEV96 — un sceau v2 d'un devis C&I ne couvrait pas l'étude.
+        return {
+            'signee': True, 'intacte': True, 'version': version,
+            'message': ("Empreinte conforme (sceau v2). Portée : ce sceau ne "
+                        "couvre pas les chiffres de l'étude C&I."),
+        }
     return {
         'signee': True, 'intacte': True, 'version': version,
         'message': "Empreinte conforme : le contenu signé n'a pas changé.",

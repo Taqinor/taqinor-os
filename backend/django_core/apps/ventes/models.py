@@ -1711,7 +1711,8 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
             # différentes ne peuvent pas produire la même chaîne.
             payload = (f"v{cls.CONTENT_HASH_V2}|{payload}|"
                        f"option={getattr(devis, 'option_acceptee', '') or ''}")
-        return payload
+        # ADEV96 — v3 : + les chiffres de l'étude C&I (``models_preuves``).
+        return payload + cls._suffixe_sceau_etude(devis, version)
 
     @classmethod
     def compute_content_hash(cls, devis, lignes=None, *, version=None):
@@ -1752,7 +1753,8 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         scelle = (self.content_hash or '').strip()
         if not scelle:
             return None, None
-        for version in (self.CONTENT_HASH_V2, self.CONTENT_HASH_V1):
+        for version in (self.CONTENT_HASH_V3, self.CONTENT_HASH_V2,
+                        self.CONTENT_HASH_V1):
             if self.compute_content_hash(
                     self.devis, lignes=lignes, version=version) == scelle:
                 return True, version

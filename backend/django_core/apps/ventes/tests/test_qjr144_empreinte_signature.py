@@ -123,7 +123,10 @@ class LeVerificateurDitLaVerite(_BaseEmpreinte):
         rapport = verifier_empreinte_signature(self.devis)
         self.assertTrue(rapport['signee'])
         self.assertTrue(rapport['intacte'])
-        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V2)
+        # ADEV96 — la version COURANTE (v3 : étude C&I comprise).
+        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V3)
+        self.assertEqual(rapport['version'],
+                         DevisSignature.CONTENT_HASH_VERSION)
 
     def test_un_taux_de_tva_de_ligne_modifie_rend_l_empreinte_ROUGE(self):
         self._sceller()
@@ -187,9 +190,64 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
             self.devis, version=DevisSignature.CONTENT_HASH_V2)
         self.assertNotEqual(v1, v2)
 
+    def test_une_empreinte_v2_se_verifie_encore(self):
+        """ADEV96 — une signature d'avant v3 se vérifie toujours, dans SA
+        version (sa portée ne couvrait pas l'étude)."""
+        self._sceller(version=DevisSignature.CONTENT_HASH_V2)
+        rapport = verifier_empreinte_signature(self.devis)
+        self.assertTrue(rapport['intacte'])
+        self.assertEqual(rapport['version'], DevisSignature.CONTENT_HASH_V2)
+        v3 = DevisSignature.compute_content_hash(
+            self.devis, version=DevisSignature.CONTENT_HASH_V3)
+        self.assertNotEqual(v3, DevisSignature.compute_content_hash(
+            self.devis, version=DevisSignature.CONTENT_HASH_V2))
+
+    def test_le_sceau_v3_couvre_l_etude_ci(self):
+        """ADEV96 — une correction de l'étude C&I SEULE change le sceau v3,
+        jamais le v2 (portée d'hier)."""
+        from unittest import mock
+        cible = 'apps.ventes.domain.modifiabilite.synthese_ci_lue'
+        etude = {'systeme': {'kwc': 55, 'production_kwh_an': 95425},
+                 'energie': {'taux_autoconso_pct': 72.8}}
+        with mock.patch(cible, return_value=etude):
+            v3_avant = DevisSignature.compute_content_hash(self.devis)
+            v2_avant = DevisSignature.compute_content_hash(
+                self.devis, version=DevisSignature.CONTENT_HASH_V2)
+        etude['energie']['taux_autoconso_pct'] = 80
+        with mock.patch(cible, return_value=etude):
+            self.assertNotEqual(
+                DevisSignature.compute_content_hash(self.devis), v3_avant)
+            self.assertEqual(DevisSignature.compute_content_hash(
+                self.devis, version=DevisSignature.CONTENT_HASH_V2), v2_avant)
+
+    def test_le_pdf_signe_porte_son_empreinte_sha256(self):
+        """ADEV96 — ``_store_signed_pdf`` pose le SHA-256 des octets remis ;
+        le reçu et le certificat ERP l'exposent."""
+        import hashlib
+        from unittest import mock
+        from apps.ventes.domain.cycle_vie import _store_signed_pdf
+        from apps.ventes.public.signature_views import recu_signature
+        from apps.ventes.serializers import DevisSerializer
+        signature = self._sceller()
+        octets = b'%PDF-1.7 exemplaire signe ADEV96'
+        with mock.patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                        return_value='devis/x/DEV.pdf'), \
+                mock.patch('apps.ventes.utils.pdf._upload_pdf'), \
+                mock.patch('apps.ventes.utils.pdf.download_pdf',
+                           return_value=octets):
+            _store_signed_pdf(devis=self.devis)
+        signature.refresh_from_db()
+        attendu = hashlib.sha256(octets).hexdigest()
+        self.assertEqual(signature.signed_pdf_sha256, attendu)
+        self.assertEqual(recu_signature(self.devis)['empreinte_pdf'], attendu)
+        info = DevisSerializer(Devis.objects.get(pk=self.devis.pk)).data[
+            'signature_info']
+        self.assertEqual(info['empreinte_pdf'], attendu)
+        self.assertEqual(info['empreinte_contenu'], signature.content_hash)
+
     def test_une_signature_neuve_est_scellee_dans_la_version_courante(self):
         """Le chemin d'acceptation ne demande aucune version : il doit sceller
-        en v2 sans avoir à le savoir."""
+        dans la version courante (v3, ADEV96) sans avoir à le savoir."""
         from apps.ventes.domain.cycle_vie import _create_esign_record
 
         _create_esign_record(
@@ -199,4 +257,4 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
         signature = DevisSignature.objects.get(devis=self.devis)
         intacte, version = signature.verifier_contenu()
         self.assertTrue(intacte)
-        self.assertEqual(version, DevisSignature.CONTENT_HASH_V2)
+        self.assertEqual(version, DevisSignature.CONTENT_HASH_V3)

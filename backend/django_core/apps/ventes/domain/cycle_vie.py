@@ -798,6 +798,22 @@ def _copier_exemplaire_signe(cle_rendu, *, devis):
     return cle_signee
 
 
+def _empreinte_pdf(cle, devis=None):
+    """ADEV96 — SHA-256 hex des OCTETS stockés sous ``cle`` (l'exemplaire
+    signé remis au client) ; ``''`` sans clé ou stockage illisible (jamais une
+    empreinte inventée)."""
+    if not cle:
+        return ''
+    try:
+        import hashlib
+        from apps.ventes.utils.pdf import download_pdf
+        return hashlib.sha256(download_pdf(cle)).hexdigest()
+    except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
+        logger.warning('ADEV96 : empreinte du PDF signé illisible (devis %s)',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return ''
+
+
 def _store_signed_pdf(*, devis):
     """QJ22 — Génère et stocke le PDF de la proposition SIGNÉE dans MinIO.
 
@@ -820,7 +836,9 @@ def _store_signed_pdf(*, devis):
         key = generate_premium_devis_pdf(
             devis.id, clean_pdf_options({}), persist=True)
         key = _copier_exemplaire_signe(key, devis=devis)
-        DevisSignature.objects.filter(pk=sig.pk).update(signed_pdf_key=key)
+        # ADEV96 — le SHA-256 des octets figés, posé avec la clé (certificat).
+        DevisSignature.objects.filter(pk=sig.pk).update(
+            signed_pdf_key=key, signed_pdf_sha256=_empreinte_pdf(key, devis))
         logger.info(
             'QJ22: PDF signé stocké pour devis %s → %s',
             devis.reference, key)

@@ -35,18 +35,44 @@ EMPREINTE_PERIMEE = ('La proposition a changé depuis votre lecture : '
                      'rechargez la page avant de signer.')
 
 
-def empreinte_contenu(devis):
+def empreinte_contenu(devis, synthese=None, link=None):
     """ADEV51 (C-ADEV-018) — empreinte du CONTENU signable de ce devis :
     SHA-256 de ``modifiabilite.empreinte_visible`` (lignes, en-tête, note,
     option, conception — relus en base). Une correction SUR PLACE d'un envoyé
-    (D-QJR5-1) la change ; rien d'autre ne la change."""
+    (D-QJR5-1) la change ; rien d'autre ne la change.
+
+    ADEV96 — en commercial / industriel, elle couvre AUSSI les chiffres de
+    l'étude que la page montre (``figures_etude_scellees`` de la
+    ``synthese_ci`` : kWc, production, autoconsommation, couverture, économie
+    de l'année 1, retour/TRI, hypothèses) : une correction de l'étude seule
+    après l'envoi donne 409 ``empreinte_perimee``. ``synthese`` = celle déjà
+    calculée par la lecture (``proposal_data``) ; absente, elle est relue
+    (``synthese_ci_lue``, mêmes sections servies que ``link``). Hors C&I :
+    l'empreinte d'avant, à l'octet."""
     import hashlib
     import json
 
-    from ..domain.modifiabilite import empreinte_visible
-    brut = json.dumps(empreinte_visible(devis), sort_keys=True,
-                      ensure_ascii=False, default=str)
+    from ..domain.modifiabilite import (
+        empreinte_visible, figures_etude_scellees, synthese_ci_lue,
+    )
+    contenu = empreinte_visible(devis)
+    if synthese is None:
+        synthese = synthese_ci_lue(devis, link)
+    etude = figures_etude_scellees(synthese)
+    if etude is not None:
+        contenu = dict(contenu, etude_ci=etude)
+    brut = json.dumps(contenu, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(brut.encode('utf-8')).hexdigest()
+
+
+def empreinte_servie(devis, link, synthese=None):
+    """ADEV51 / ADEV96 — la clé ADDITIVE ``empreinte_contenu`` de
+    ``proposal_data`` (le contenu SIGNABLE au moment de la lecture, renvoyé à
+    ``/accept/``) ; ``None`` quand rien n'est signable (aperçu interne,
+    brouillon, remplacé, accepté…)."""
+    if link.via_interne or not signable_au_jeton(devis):
+        return None
+    return empreinte_contenu(devis, synthese, link)
 
 
 def signable_au_jeton(devis):
@@ -66,14 +92,15 @@ def signable_au_jeton(devis):
     return permis
 
 
-def _refus_empreinte(request, devis):
+def _refus_empreinte(request, devis, link=None):
     """ADEV51 — 409 ``empreinte_perimee`` quand le client signe un contenu
     autre que celui qu'il a lu (empreinte absente ou différente de
     l'empreinte courante) ; ``None`` sinon. Rien n'est écrit."""
     if not signable_au_jeton(devis):
         return None
     recue = request.data.get('empreinte_contenu')
-    if isinstance(recue, str) and recue.strip() == empreinte_contenu(devis):
+    if isinstance(recue, str) and recue.strip() == empreinte_contenu(
+            devis, link=link):
         return None
     return _noindex(Response(
         {'detail': EMPREINTE_PERIMEE, 'code': 'empreinte_perimee'},
@@ -435,7 +462,7 @@ def proposal_accept(request, token):
     # ADEV51 (C-ADEV-018) — ce que le client signe = ce qu'il a lu : le corps
     # renvoie l'``empreinte_contenu`` servie à la lecture ; un devis corrigé
     # depuis (ou une empreinte absente) ⇒ 409 ``empreinte_perimee``.
-    refus = _refus_empreinte(request, devis)
+    refus = _refus_empreinte(request, devis, link)
     if refus is not None:
         return refus
     # VNT61 — un AVENANT accepté en interne : la signature seule (preuve +
@@ -500,7 +527,24 @@ def proposal_accept(request, token):
         # CIQ319 — l'identité d'entreprise RELUE sur la signature enregistrée
         # (la première fait foi), même forme que le corps ; null hors C&I.
         'entreprise': _entreprise_relue(devis),
+        # ADEV96 — le reçu : horodatage, sceau du contenu, SHA-256 du PDF.
+        'recu': recu_signature(devis),
     }))
+
+
+def recu_signature(devis):
+    """ADEV96 — le REÇU de la signature enregistrée (la première fait foi) :
+    ``{signe_le, empreinte_contenu, empreinte_pdf}`` — sceau du contenu
+    (``content_hash``, v3 : étude C&I comprise) et SHA-256 des octets du PDF
+    signé remis (``signed_pdf_sha256``, ``''`` tant qu'il n'est pas stocké) ;
+    ``None`` sans signature."""
+    from ..models import DevisSignature
+    sig = DevisSignature.objects.filter(devis=devis).first()
+    if sig is None:
+        return None
+    return {'signe_le': sig.signed_at.isoformat() if sig.signed_at else None,
+            'empreinte_contenu': sig.content_hash or '',
+            'empreinte_pdf': sig.signed_pdf_sha256 or ''}
 
 
 def _entreprise_du_corps(request, devis, nom):

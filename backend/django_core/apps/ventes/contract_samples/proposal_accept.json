@@ -15,6 +15,7 @@
   "corps": {
     "empreinte_contenu": "Texte, OBLIGATOIRE : la valeur `empreinte_contenu` servie par `proposal_data` (contrat `proposal_data.json`, fragment `exemple_adev2`) au moment où le client a lu la proposition. Différente de l'empreinte courante ⇒ 409 `empreinte_perimee` (le client a lu un autre contenu que celui qu'il signerait).",
     "entreprise": "Bloc C&I défini par `acceptation_entreprise.json` (CIW305) — référencé, pas dupliqué.",
+    "recu": "ADEV96 — réponse 200 : le REÇU de la signature enregistrée (la première fait foi) — `signe_le` (ISO), `empreinte_contenu` = `DevisSignature.content_hash` (sceau v3 : lignes, totaux, option ET chiffres de l'étude C&I), `empreinte_pdf` = SHA-256 des octets du PDF signé figé (`signed_pdf_sha256`, vide tant qu'il n'est pas stocké). Mêmes champs dans `signature_info` de l'ERP (certificat). `null` sans signature.",
     "autres": "`nom`, `option`, `consent_esign`, `signature_data_url`, `signed_at_client`, `on_behalf_of`, `otp_code` : inchangés (vue `public/signature_views.proposal_accept`)."
   },
   "reponse_200": {
@@ -29,7 +30,12 @@
       "message": "",
       "declare_url": "/api/django/public/proposal/<token>/virement/"
     },
-    "entreprise": null
+    "entreprise": null,
+    "recu": {
+      "signe_le": "2026-10-08T10:15:02+00:00",
+      "empreinte_contenu": "9c2e4f6a8b0d1e3f5a7c9e1b3d5f7a9c2e4f6a8b0d1e3f5a7c9e1b3d5f7a9c2e",
+      "empreinte_pdf": "5b7d9f1a3c5e7a9b1d3f5a7c9e1b3d5f7a9c2e4f6a8b0d1e3f5a7c9e1b3d5f7a"
+    }
   },
   "codes_409": [
     "version_remplacee",
