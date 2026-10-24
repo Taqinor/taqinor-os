@@ -22,6 +22,10 @@ La même liste alimente le champ sérialisé `devis_auto` (UI) et l'endpoint
 POST /crm/leads/<id>/devis-auto/ (règle serveur) — jamais deux logiques.
 """
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 # Modes regroupés (clés de Lead.TypeInstallation — scalaires, jamais une
 # liste d'étapes du pipeline, qui vit dans STAGES.py).
 _MODES_ETUDE = ('commercial', 'industriel')
@@ -108,6 +112,8 @@ def _rempli(lead, champ):
         return False
     if champ == 'contrat_electricite':
         return lead.contrat_electricite != 'ne_sait_pas'
+    if champ == 'raccordement':
+        return lead.raccordement != 'inconnu'
     if (champ == 'facture_hiver' and lead.type_installation in _MODES_ETUDE
             and not (_facture_mad_compte(lead) and _contrat_bt_declare(lead))):
         return False
@@ -147,6 +153,9 @@ def champs_requis(lead) -> list[list[str]]:
         # ALEA47 (D-ACI-5=a) — + le contrat (MT déclarée : Tarif Général).
         if _tension_declaree(lead) != 'mt':
             requis.append(['contrat_electricite'])
+        # ADEV89 (rejeu « humain » 23/10/2026) — + la phase du site : la
+        # combinaison d'onduleurs la suit (jamais « je ne sais pas »).
+        requis.append(['raccordement'])
         return requis + _groupes_rythme(lead)
     requis = [['facture_hiver']]
     if lead.ete_differente:
@@ -239,6 +248,8 @@ _LIBELLES = {
     # ALEA47 (D-ACI-5=a) — un libellé par groupe ; les deux groupes de
     # rythme partagent le leur (une seule puce).
     'contrat_electricite': "Contrat d'électricité",
+    # ADEV89 — la phase du site, prérequis de la combinaison d'onduleurs.
+    'raccordement': 'Phase du site (monophasé ou triphasé)',
     'jours_ouverture': "Jours et heures d'ouverture (ou catégorie d'activité)",
     'heure_debut': "Jours et heures d'ouverture (ou catégorie d'activité)",
 }
@@ -338,3 +349,24 @@ def visite_point_eau_avant_devis(lead):
                        'libelle': 'débit du forage (visite)'})
     return {'requise': bool(motifs), 'motifs': motifs,
             'motifs_detail': detail}
+
+
+def catalogue_ci(lead):
+    """ALEA50 (D-ACI-6=a) — ``{pret, manquants}`` : les postes FIXES du
+    moteur C&I sans prix (forfaits société, coffrets, protection AC, comptage
+    d'injection). Un lead commercial/industriel dont le catalogue n'est pas
+    prêt ne peut pas recevoir de devis automatique (le moteur refuserait en
+    409 « Prix à renseigner ») : l'écran désactive le bouton et dit pourquoi.
+    ``None`` hors C&I, ou si la lecture échoue (jamais un blocage muet).
+    Lu par ``ventes.selectors.catalogue_ci_pret`` (cache 5 min par société)."""
+    if (lead.type_installation or '') not in _MODES_ETUDE:
+        return None
+    if not getattr(lead, 'company_id', None):
+        return None
+    try:
+        from apps.ventes.selectors import catalogue_ci_pret
+        return catalogue_ci_pret(lead.company_id)
+    except Exception:
+        logger.warning('catalogue_ci_pret : échec ignoré (dégradé)',
+                       exc_info=True)
+        return None

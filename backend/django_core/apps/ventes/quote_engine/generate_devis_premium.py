@@ -341,6 +341,7 @@ SYNTHESE_AGRICOLE = None
 # sur ``synthese_ci``) : la MÊME projection que la couverture du document
 # complet et /proposition. None hors commercial/industriel.
 CHIFFRES_CI = None
+SYNTHESE_CI = None  # AMOT86 — la ``synthese_ci`` projetée en ``CHIFFRES_CI``.
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
@@ -2924,6 +2925,7 @@ def _bankable_pct(valeur):
 # AMOT35 — LA constante vit dans ``bankable`` (règle partagée).
 from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from .agricole.garanties import garantie_ligne_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .ci import onepage as ci_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
 
 
@@ -3990,7 +3992,8 @@ def _cartes_ci_onepage(chiffres):
     prod = chiffres.get("production_kwh_an")
     if prod:
         cellules.append(
-            (_L("op_production_annuelle"), f"{fnum(prod)} kWh/an",
+            (_L("op_production_annuelle"),
+             f"{fnum(prod)}{ci_onepage.unite_kwh_an(LANGUE_SORTIE, _L)}",
              _ancre_figure("production_annuelle_kwh", fnum(prod))))
     if MASQUER_ECONOMIES:
         return cellules
@@ -4001,7 +4004,8 @@ def _cartes_ci_onepage(chiffres):
         libelle = (_L("op_economies_estimees_an")
                    + (f" ({_L('ci_' + base.lower())})"
                       if base in ("HT", "TTC") else
-                      f" ({base})" if base else ""))
+                      f" ({base})" if base else "")
+                   + ci_onepage.legende_retour(chiffres, _L))
         cellules.append((libelle, f"{fnum(eco)} {_L('ci_mad_an')}",
                          _ancre_figure("economie_annuelle", fnum(eco))))
     payback = chiffres.get("payback_ans")
@@ -4108,7 +4112,7 @@ def page_onepage(items, tronquees=0):
                                _ancre_figure("puissance_kwc", kwc_fr(KWC))))
     elif KWC > 0:
         _sum_cells = [
-            (_L("op_puissance_crete"), f"{kwc_fr(KWC)} kWc",
+            (_L("op_puissance_crete"), ci_onepage.kwc(kwc_fr(KWC), _L, CHIFFRES_CI),
              _ancre_figure("puissance_kwc", kwc_fr(KWC))),
         ]
         if CHIFFRES_CI is not None:
@@ -4141,9 +4145,11 @@ def page_onepage(items, tronquees=0):
                      _ancre_figure("economie_annuelle", fnum(_eco_branche),
                                    ONEPAGE_BRANCHE)))
         _pkwc_txt = fnum(round(total / KWC))
-        _sum_cells.append(
-            (_L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/kWc",
-             _ancre_figure("prix_kwc", _pkwc_txt, _op_opt)))
+        # AMOT86 (D-ACI-2=a) — postes « à chiffrer après la visite » hors
+        # total : aucun « Prix par kWc » sur un prix incomplet.
+        _sum_cells += [] if (CHIFFRES_CI or {}).get("postes_hors_total") else [
+            (_L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/{ci_onepage.unite_kwc(_L, CHIFFRES_CI)}",
+             _ancre_figure("prix_kwc", _pkwc_txt, _op_opt))]
         # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
         # contrat DIM2 est posé (voir _falaise_context) : le budget densité
         # adaptative de cette page ne dépend que du nombre de LIGNES produit
@@ -4324,8 +4330,10 @@ def page_onepage(items, tronquees=0):
                                  _fmt2(tva_amt) + "&nbsp;MAD", fig="tva")
     # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
     # s'imprime au CENTIME (il était seul arrondi à l'unité de son bloc).
-    totals_html += _tot_line(_L("total_ttc"), _fmt2(total) + "&nbsp;MAD", navy=True,
-                             fig="total_ttc")
+    # AMOT86 — postes « à chiffrer après la visite » : titre servi + postes.
+    totals_html = ci_onepage.totaux_hors_total(totals_html + _tot_line(
+        _L("total_ttc"), _fmt2(total) + "&nbsp;MAD", navy=True, fig="total_ttc"),
+        CHIFFRES_CI, SYNTHESE_CI, LANGUE_SORTIE, LIBELLES_DOC, (CN, CG7))
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS total) ──────────────
     # Rendu SEUL : n'affiche que les add-ons proposés (P.U. + total TTC), jamais
@@ -4398,7 +4406,7 @@ def page_onepage(items, tronquees=0):
     <div style="font-size:6.5pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">{_L("client")}</div>
     <div style="font-size:11pt;font-weight:700;color:{CN};">{CLIENT_NAME}</div>
     <div style="font-size:8.5pt;color:{CG7};margin-top:2px;">{CLIENT_ADDR}</div>
-    <div style="font-size:8.5pt;color:{CG4};margin-top:1px;">{CLIENT_PHONE}</div>
+    <div style="font-size:8.5pt;color:{CG4};margin-top:1px;">{ci_onepage.telephone(CLIENT_PHONE, CHIFFRES_CI)}</div>
     {'<div style="font-size:8pt;color:' + CG7 + ';margin-top:3px;"><span style="color:' + CG4 + ';font-weight:600;">ICE&#160;:</span>&#160;' + CLIENT_ICE + '</div>' if CLIENT_ICE else ''}
   </div>
 
@@ -4890,15 +4898,8 @@ def apply_quote_data(data: dict) -> None:
     # le document complet et /proposition ; plus jamais ``prod_kwh`` (par
     # ville) ni ``eco_s_ann`` (``calculate_savings_roi``, BT/60 %). Une
     # synthèse illisible ⇒ dict VIDE ⇒ vignettes omises, jamais un repli.
-    global CHIFFRES_CI
-    CHIFFRES_CI = None
-    if MODE_INSTALLATION.strip().lower() in ("commercial", "industriel"):
-        try:
-            from .ci.synthese import chiffres_cles, synthese_ci
-            CHIFFRES_CI = chiffres_cles(synthese_ci(data) or {})
-        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici (D-ENF22-BLE001)
-            logger.warning("generate_devis_premium.apply_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
-            CHIFFRES_CI = {}
+    global CHIFFRES_CI, SYNTHESE_CI
+    SYNTHESE_CI, CHIFFRES_CI = ci_onepage.lire_synthese(data, MODE_INSTALLATION)
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
     INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))
     ELECTRICAL_DESIGN = data.get("electrical_design") or {}

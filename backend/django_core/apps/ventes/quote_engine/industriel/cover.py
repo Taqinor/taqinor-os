@@ -23,6 +23,7 @@ from ..ci import couverture as ci_couverture
 # CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
 from ..ci import blocs as ci_blocs
 from ..ci.mentions import texte
+from ..ci.graphiques import cede
 from ..lecture_pure import nombre_ou_none
 # QJR651 — kwc_str et la cellule KPI : harnais premium commun.
 from .. import premium_base
@@ -89,7 +90,11 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
                f"{fmt_mad(ht)}&nbsp;MAD {l_ht})")
     else:
         inv = f"{fmt_mad(invest)}&nbsp;MAD {l_ttc}"
-    lignes = [(L("ci_ind_investissement", "Investissement"), inv)]
+    # AMOT86 — postes hors total : « Investissement hors postes à chiffrer
+    # après la visite » (base dite dans le montant).
+    lignes = [(ci_couverture.titre_investissement(d, synthese, "deux")
+               if ci_couverture.postes_hors_total(synthese)
+               else L("ci_ind_investissement", "Investissement"), inv)]
     if isinstance(argent, dict) and not d.get("ind_masquer_economies"):
         eco = d.get("ind_economies")
         if eco is not None:
@@ -131,7 +136,8 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
     if not d.get("ind_sous_reserve") and isinstance(argent, dict) and \
             (argent.get("tarif") or {}).get("origine") == "declare_facture":
         lignes.append((L("ci_ind_statut", "Statut de l'étude"),
-                       L("ci_ind_offre_ferme", "offre ferme")))
+                       L("ci_ind_prix_ferme",
+                         "prix ferme, économies estimées")))
     rangees = "".join(
         f'<tr><td class="{prefixe}-sy-l">{lib}</td>'
         f'<td class="{prefixe}-sy-v">{val}</td></tr>'
@@ -140,6 +146,41 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
             f'<div class="{prefixe}-sy-t">{L("ci_ind_synthese", "Synthèse")}'
             f'</div><table class="{prefixe}-sy-tbl">{rangees}</table>'
             f'{bandeau}</div>')
+
+
+def _factures(d, L, fmt, source):
+    """``(barres, montant)`` de la facture électrique servie (12 mois) —
+    QJR119 : les factures manquantes ne se REMBOURRENT PLUS de zéros ;
+    CIQ341 : des kWh SEULS (source « kWh déclarés ») n'ont pas de montant en
+    MAD (ni facture imprimée, ni « facture non communiquée »)."""
+    bills = [float(b or 0) for b in (d.get("factures_mensuelles") or [])][:12]
+    if source == "kwh_declares" or not any(b > 0 for b in bills):
+        return "", ("" if source == "kwh_declares" else (
+            '<div class="i1-basel">'
+            + L("ci_ind_facture_non_communiquee_client",
+                "Facture électrique actuelle non communiquée — transmettez "
+                "12 mois de factures et votre consommation de référence se "
+                "chiffre.") + '</div>'))
+    annual_bill = round(sum(bills))
+    avg_bill = round(annual_bill / 12) if annual_bill else None
+    bills += [0.0] * (12 - len(bills))
+    bmax = max(bills) or 1.0
+    # Barres CSS (hauteurs en mm — déterministes, jamais de % en cellule).
+    bar_cells = "".join(
+        f'<td class="i1-bc"><div class="i1-bar" style="height:'
+        f'{round(b / bmax * 26.0, 1)}mm"></div><div class="i1-mn">'
+        f'{_MONTHS[i]}</div></td>' for i, b in enumerate(bills))
+    libelle_facture = (
+        L("ci_ind_facture_estimee", "Facture électrique estimée")
+        if source == "mois_interpoles"
+        else L("ci_ind_facture_actuelle", "Facture électrique actuelle"))
+    return (f'<table class="i1-bars"><tr>{bar_cells}</tr></table>',
+            f'<div class="i1-big">{fmt(annual_bill)}<span>&nbsp;'
+            f'{L("ci_mad_an", "MAD/an")}</span></div>'
+            + ancre("facture_annuelle_avant", fmt(annual_bill)) +
+            f'<div class="i1-basel">{libelle_facture} · ≈ '
+            f'{fmt(avg_bill)} {L("ci_mad_mois", "MAD/mois")}</div>'
+            + ancre("facture_mensuelle_avant", fmt(avg_bill)))
 
 
 def build(ctx):
@@ -167,9 +208,7 @@ def build(ctx):
     marques_correction = "".join(
         f'<div class="i1-hd">{m}</div>'
         for m in theme.marques_correction(d))
-    client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name") or "Client")
-    client_meta = theme.join_meta(d.get("client_addr", ""), (d.get("client_ville_libelle") or d.get("client_city", "")),
-                                  d.get("client_phone", ""))
+    client_full, client_meta = ci_couverture.identite_client(d)
     # M7 (audit du 19/08/2026) — pastille de validité : la VRAIE date
     # d'échéance du devis ; indéterminable ⇒ pastille OMISE.
     _vu = (d.get("valid_until") or "").strip()
@@ -209,58 +248,21 @@ def build(ctx):
             if n else L("ci_ind_baseline_interpoles_sans_n",
                         "mois interpolés — estimation"))
     elif source == "kwh_declares":
-        suffixe = " — " + L("ci_ind_baseline_kwh", "kWh déclarés")
+        suffixe = " — " + L("ci_ind_source_kwh_declares",
+                            "d'après vos kWh déclarés")
     else:
         # Sans source servie, la couverture ne prétend plus « 12 mois ».
         suffixe = ""
 
-    # QJR119 — les factures manquantes ne se REMBOURRENT PLUS de zéros.
-    # CIQ341 — des kWh SEULS (source « kWh déclarés ») n'ont pas de montant
-    # en MAD : ni facture imprimée, ni « facture non communiquée ».
-    bills = [float(b or 0) for b in (d.get("factures_mensuelles") or [])][:12]
-    bills_ok = any(b > 0 for b in bills) and source != "kwh_declares"
-    annual_bill = round(sum(bills)) if bills_ok else None
-    avg_bill = round(annual_bill / 12) if annual_bill else None
-    if bills_ok:
-        while len(bills) < 12:
-            bills.append(0.0)
-        bmax = max(bills) or 1.0
-        # Barres CSS (hauteurs en mm — déterministes, jamais de % en cellule).
-        bar_cells = ""
-        for i, b in enumerate(bills):
-            h = round(b / bmax * 26.0, 1)
-            bar_cells += (
-                f'<td class="i1-bc"><div class="i1-bar" style="height:{h}mm">'
-                f'</div><div class="i1-mn">{_MONTHS[i]}</div></td>')
-        bars_html = f'<table class="i1-bars"><tr>{bar_cells}</tr></table>'
-        libelle_facture = (
-            L("ci_ind_facture_estimee", "Facture électrique estimée")
-            if source == "mois_interpoles"
-            else L("ci_ind_facture_actuelle", "Facture électrique actuelle"))
-        bill_html = (
-            f'<div class="i1-big">{fmt(annual_bill)}<span>&nbsp;'
-            f'{L("ci_mad_an", "MAD/an")}</span></div>'
-            + ancre("facture_annuelle_avant", fmt(annual_bill)) +
-            f'<div class="i1-basel">{libelle_facture} · ≈ '
-            f'{fmt(avg_bill)} {L("ci_mad_mois", "MAD/mois")}</div>'
-            + ancre("facture_mensuelle_avant", fmt(avg_bill)))
-    elif source == "kwh_declares":
-        bars_html = ""
-        bill_html = ""
-    else:
-        bars_html = ""
-        bill_html = ('<div class="i1-basel">'
-                     + L("ci_ind_facture_non_communiquee",
-                         "Facture électrique actuelle non communiquée — "
-                         "transmettez 12 mois de factures et la baseline se "
-                         "chiffre.")
-                     + '</div>')
+    bars_html, bill_html = _factures(d, L, fmt, source)
 
     # QJR651 — la cellule KPI est commune (premium_base.kpi).
     def kpi(val, unit, label, fig=None):
         return premium_base.kpi(val, unit, label, fig, prefixe="i1")
 
-    cellules = [kpi(kwc, "&nbsp;kWc",
+    # AMOT84 — l'unité dans la langue du document (« kWp » en anglais,
+    # comme le titre) ; « &nbsp;kWc » en français, octet pour octet.
+    cellules = [kpi(kwc, L("res_unite_kwc", "&nbsp;kWc"),
                     L("ci_puissance_crete", "Puissance crête"),
                     "puissance_kwc")]
     cellules.extend(ci_couverture.tuiles_taux(d, "ind", kpi))
@@ -271,10 +273,13 @@ def build(ctx):
     bandeau = ci_couverture.bandeau_reserve(d, "ind", "i1")
     # AMOT80 — le sous-titre « cashflow et payback » seulement sur un flux.
     from .finance import flux_principal
-    sous_titre = L("ci_ind_sous_titre", "Analyse de rentabilité (CFO) — "
-                   "baseline, cashflow et payback.") if flux_principal(
+    sous_titre = L("ci_ind_sous_titre_client", "Analyse de rentabilité : "
+                   "votre consommation, vos flux annuels et le délai de "
+                   "retour.") if flux_principal(
         (d.get("ind_synthese") or {}).get("argent"))[1].get("flux") else ""
-    methode_line = ci_couverture.ligne_methode(d, "ind", "i1")
+    # AMOT89 — le surplus chiffré (kWh du bilan) sous la ligne de méthode.
+    methode_line = (ci_couverture.ligne_methode(d, "ind", "i1")
+                    + ci_couverture.ligne_surplus(d, "ind", "i1"))
     note_pointe = ci_couverture.note_pointe(d, "ind")
 
     # QXMT — la SOURCE du barème voyage avec le chiffre. CIQ341 — argent non
@@ -307,9 +312,12 @@ def build(ctx):
                    kwh=fmt(round(prod)))
                  + ancre("production_annuelle_kwh", fmt(round(prod)))
                  if prod else "")
-    inst_type = d.get('inst_type', 'Industrielle')
-    if inst_type == "Industrielle":
-        inst_type = L("ci_ind_tag", "Industrielle")
+    # AMOT92 — les prochaines étapes et le QR, sur une ligne ; cédables au
+    # rendu adaptatif (la couverture industrielle est la plus dense).
+    etapes = ("" if cede(d, "etapes") else
+              '<div data-graphique="etapes" style="margin-top:8px;">'
+              + ci_couverture.bloc_etapes(d, "i1", (navy, muted, gold),
+                                          en_ligne=True) + '</div>')
 
     css = f"""
 <style>
@@ -330,7 +338,7 @@ def build(ctx):
 .i1-hbody{{margin-top:6mm;color:#fff;}}
 .i1-kicker{{font-size:7.5pt;letter-spacing:2.4px;text-transform:uppercase;
   color:{gold};font-weight:700;}}
-.i1-title{{font-family:{f_display};font-size:24pt;line-height:1.05;margin-top:4px;}}
+.i1-title{{font-family:{f_display};font-size:19pt;line-height:1.1;margin-top:4px;}}
 .i1-sub{{font-size:10pt;color:rgba(255,255,255,.85);margin-top:5px;}}
 .i1-client{{padding:5mm 14mm 0 14mm;font-size:8.5pt;color:{muted};}}
 .i1-client b{{color:{ink};}}
@@ -371,12 +379,7 @@ def build(ctx):
   border-radius:12px;background:linear-gradient(100deg,{green_bg},#fff 72%);
   padding:8px 14px;font-size:8pt;color:{ink};line-height:1.4;}}
 .i1-note b{{color:{navy};}}
-.i1-inv{{margin-top:8px;display:table;width:100%;border:1px solid {line};
-  border-radius:12px;background:{wash};padding:9px 16px;}}
-.i1-inv-l{{display:table-cell;vertical-align:middle;font-size:8.5pt;color:{muted};}}
-.i1-inv-v{{display:table-cell;vertical-align:middle;text-align:right;
-  font-family:{f_display};font-size:17pt;color:{navy};}}
-.i1-inv-v span{{font-size:10pt;color:{muted};}}
+{ci_couverture.css_investissement("i1", (line, wash, muted, navy, ink), f_display, 17, 8, "9px 16px")}
 </style>
 """
 
@@ -388,7 +391,8 @@ def build(ctx):
         "ci_ind_note_autoconso",
         "L'installation vise l'<b>autoconsommation</b> : la valeur porte "
         "d'abord sur\n      les <b>heures pleines</b> (production en journée).")
-    baseline_titre = L("ci_ind_baseline", "Baseline énergétique") + suffixe
+    baseline_titre = L("ci_ind_conso_prod_titre",
+                       "Votre consommation et votre production") + suffixe
     conso_prod = ' · '.join(x for x in (conso_line, prod_line) if x)
 
     html = f"""{css}
@@ -406,15 +410,15 @@ def build(ctx):
     </div>
     <div class="i1-hbody">
       <div class="i1-kicker">{L("ci_ind_kicker", "Proposition — Autoconsommation solaire industrielle")}</div>
-      <div class="i1-serif i1-title">{L("ci_ind_titre", "Réduire votre coût de l'énergie")}</div>
-      <div class="i1-sub">{sous_titre}</div>
+      <div class="i1-serif i1-title">{ci_couverture.titre_projet(d, "ind", kwc, client_full)}</div>
+      <div class="i1-sub">{L("ci_ind_titre", "Réduire votre coût de l'énergie")}{(' — ' + sous_titre) if sous_titre else ''}</div>
     </div>
   </div>
 
   <div class="i1-client">
     <b>{client_full}</b>
     {f'&nbsp;·&nbsp;{client_meta}' if client_meta else ''}
-    <span class="i1-tag">{inst_type}</span>{ci_blocs.bloc_client((d.get('ind_synthese') or {}).get('entreprise_client'), 'i1', d.get('client_full') or d.get('client_name'), doc=d)}
+    {ci_blocs.bloc_client((d.get('ind_synthese') or {}).get('entreprise_client'), 'i1', d.get('client_full') or d.get('client_name'), doc=d)}{ci_couverture.ligne_interlocuteur(d, 'i1')}
   </div>
 
   <div class="i1-wrap">
@@ -440,7 +444,7 @@ def build(ctx):
       {note_autoconso} {note_pointe}
     </div>
 
-    {inv_html}
+    {inv_html}{etapes}
   </div>
 </div>
 """

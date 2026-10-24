@@ -50,6 +50,9 @@ const crmApi = {
   restaurerCorbeille: (corbeilleId) =>
     api.post(`/core/corbeille/${corbeilleId}/restaurer/`),
   getHistoriqueLead: (id) => api.get(`/crm/leads/${id}/historique/`),
+  // ALEA50 — note chatter manuelle (même route que le compositeur du fil) :
+  // « Demander au responsable » nomme les postes C&I sans prix.
+  noterLead: (id, body) => api.post(`/crm/leads/${id}/noter/`, { body }),
   // CRX37 — jalons du cycle de vie des devis du lead (envoyé / ouvert / signé /
   // refusé), fusionnés dans la timeline par `TimelineTab`. Réponse
   // `{ results: [{ id, kind: 'devis_*', body, created_at, devis_id, reference,

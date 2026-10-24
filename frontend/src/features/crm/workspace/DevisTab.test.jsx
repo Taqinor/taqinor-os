@@ -12,9 +12,9 @@ import {
   devisTrackCurrent, devisIntent, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
   TAILLES_ENVOI, taillesDepuisServeur, optionsCountFromTailles, taillesFromOptionsCount,
-  lectureClientLabel,
+  lectureClientLabel, dateRelanceJ3,
 } from './devisTabLogique'
-import { missingFieldTarget } from './missingFields'
+import { missingFieldTarget, missingChampPourLead, chipsAComplete } from './missingFields'
 import { resolveCss } from '../../../test/readCss.mjs'
 
 /* LW21/LW22 — `DevisTab` : cartes devis (StatusPill statut devis, total TTC
@@ -25,7 +25,7 @@ import { resolveCss } from '../../../test/readCss.mjs'
 
 const {
   apercuFacturerVente, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
-  getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis,
+  getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis, noterLead, envoyerEmailDevis, updateLead,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
   // du chargement paresseux ci-dessous (MÊME forme que DevisOffresTailles.
@@ -66,11 +66,17 @@ const {
     CATALOGUE_SUBSTITUTIONS,
     // QJR534 — « Réviser » depuis la carte (reviserEtOuvrir → ventesApi).
     reviserDevis: vi.fn(() => Promise.resolve({ data: { id: 99, reference: 'DEV-V2' } })),
+    // ALEA50 — « Demander au responsable » : note chatter nommant les postes.
+    noterLead: vi.fn(() => Promise.resolve({ data: {} })),
+    // ALEA55 — « Proposer une relance J+3 » : la date de relance du lead (API existante).
+    updateLead: vi.fn(() => Promise.resolve({ data: {} })),
+    // ALEA52 — canal e-mail de la boîte d'envoi (QJ14).
+    envoyerEmailDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
   }
 })
 vi.mock('../../../api/ventesApi', async () => ({
   default: {
-    apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis,
+    apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis, envoyerEmailDevis,
     ...(await import('../../../test/mocksVentesEcrans.js')).gestesFactureVente(),
   },
 }))
@@ -83,6 +89,8 @@ vi.mock('../../../api/crmApi', () => ({
   default: {
     whatsappDevis,
     whatsappDevisApercu,
+    noterLead,
+    updateLead,
     getLeadSalleVenteAnalytics: () => Promise.resolve({ data: null }),
   },
 }))
@@ -247,6 +255,60 @@ describe('LW21 — CTA devis automatique', () => {
   it('QJR599 — devis_auto prêt → le bouton d’édition complète est là aussi, une seule fois', () => {
     renderTab({ state: leadState({ devis_auto: { pret: true, manquants: [] } }) })
     expect(screen.getAllByRole('button', { name: /Nouveau devis \(édition complète\)/ })).toHaveLength(1)
+  })
+
+  // ALEA50 (D-ACI-6=a) — « prêt » inclut le catalogue : postes fixes sans prix.
+  const BLOQUE = {
+    pret: true, manquants: [],
+    catalogue_ci: {
+      pret: false,
+      manquants: [
+        'Forfait « Pose des modules » (Paramètres › Devis › Prestations C&I)',
+        'Coffret DC C&I (fiche produit)',
+        'Protection AC C&I (fiche produit)',
+      ],
+    },
+  }
+
+  it('ALEA50 — catalogue C&I non prêt → bouton désactivé, motif visible, liens Paramètres/Produits', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis_auto: BLOQUE }) })
+    const bouton = screen.getByRole('button', { name: /Devis automatique/ })
+    expect(bouton).toBeDisabled()
+    await user.click(bouton)
+    expect(onAction).not.toHaveBeenCalledWith('open-devis', 'auto')
+    expect(screen.getByText('3 postes sans prix — à régler par l\'administrateur')).toBeInTheDocument()
+    expect(screen.getByText(/Coffret DC C&I \(fiche produit\)/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Paramètres' })).toHaveAttribute('href', '/parametres')
+    expect(screen.getByRole('link', { name: 'Produits' })).toHaveAttribute('href', '/stock')
+    // Le devis manuel reste ouvert, et le menu « modifiable » (auto) disparaît.
+    expect(screen.getByRole('button', { name: /Nouveau devis \(édition complète\)/ })).toBeEnabled()
+    expect(screen.queryByRole('button', { name: /Devis modifiable/ })).toBeNull()
+  })
+
+  it('ALEA50 — « Demander au responsable » poste une note chatter qui nomme les postes', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis_auto: BLOQUE }) })
+    await user.click(screen.getByRole('button', { name: 'Demander au responsable' }))
+    await waitFor(() => expect(noterLead).toHaveBeenCalledTimes(1))
+    const [leadId, texte] = noterLead.mock.calls[0]
+    expect(leadId).toBe(7)
+    expect(texte).toContain('3 postes sans prix')
+    expect(texte).toContain('Pose des modules')
+    expect(texte).toContain('Coffret DC C&I')
+    expect(await screen.findByText('Demande enregistrée dans le fil')).toBeInTheDocument()
+  })
+
+  it('ALEA50 — catalogue prêt (ou non C&I : null) → le bouton reste actif', async () => {
+    const user = userEvent.setup()
+    const { onAction, unmount } = renderTab({
+      state: leadState({ devis_auto: { pret: true, manquants: [], catalogue_ci: { pret: true, manquants: [] } } }),
+    })
+    await user.click(screen.getByRole('button', { name: /Devis automatique/ }))
+    expect(onAction).toHaveBeenCalledWith('open-devis', 'auto')
+    unmount()
+    renderTab({ state: leadState({ devis_auto: { pret: true, manquants: [], catalogue_ci: null } }) })
+    expect(screen.getByRole('button', { name: /Devis automatique/ })).toBeEnabled()
   })
 
   it('devis_auto pas prêt → liste des champs manquants cliquables (saute au champ du centre)', async () => {
@@ -729,9 +791,13 @@ const SECTIONS_SEULES = {
   economies: true, jour_type: true, gammes: true,
 }
 const TOUTES_SECTIONS = { ...SECTIONS_SEULES, taille_eco: true, taille_max: true }
-const ouvrirEnvoi = (user) => user.click(
-  screen.getByRole('button', { name: /Envoyer au client/ }),
-)
+// ALEA52 — la boîte d'envoi montre les trois canaux d'abord ; niveau, OTP,
+// sections et options 1/2/3 vivent sous « Avancé » (replié par défaut) :
+// `avance` (vrai par défaut) déplie ce panneau pour les tests de réglages.
+const ouvrirEnvoi = async (user, { avance = true } = {}) => {
+  await user.click(screen.getByRole('button', { name: /Envoyer au client/ }))
+  if (avance) await user.click(screen.getByRole('button', { name: /Avancé/ }))
+}
 
 describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dialogue d’envoi)', () => {
   const devis1 = {
@@ -750,7 +816,7 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
     })
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     // QJ-FUNNEL (09/09/2026) — copier le lien = l'ENVOYER : le POST porte
     // `envoi: true` (backend : devis « envoyé » + funnel « Devis envoyé »).
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
@@ -889,7 +955,7 @@ describe('L-INTPREV — aperçu interne de la page client (sans notification)', 
     renderTab({ state: leadState({ telephone: '0612345678', devis: [devis1] }) })
     await ouvrirEnvoi(user)
 
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://taqinor.ma/proposition/karim/tok-abc'))
 
     await user.click(screen.getByRole('button', {
@@ -927,7 +993,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
       screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ }),
       'confiance',
     )
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
       1, { envoi: true, niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
@@ -938,7 +1004,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('checkbox', { name: /Exiger un code de lecture pour la page client de DEV-1/ }))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
       1, { envoi: true, niveau: 'standard', otp_lecture: true, sections: TOUTES_SECTIONS },
     ))
@@ -982,7 +1048,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     renderTab({ state: leadState({ devis: [devis1] }) })
     expect(screen.queryByTitle(/Le lien reste le même/)).not.toBeInTheDocument()
     await ouvrirEnvoi(user)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     expect(await screen.findByTitle(/Le lien reste le même/)).toHaveTextContent('Standard')
   })
 
@@ -1001,7 +1067,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
       })
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await screen.findByTitle(/Le lien reste le même/)
 
     await user.selectOptions(
@@ -1091,7 +1157,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('checkbox', { name: /^Calepinage 3D — page client de DEV-1/ }))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
       envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, roof3d: false },
@@ -1104,7 +1170,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('checkbox', { name: /^PDF téléchargeable — page client de DEV-1/ }))
     await user.click(screen.getByRole('checkbox', { name: /^Étude bancable — page client de DEV-1/ }))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
       envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, pdf: false, bankable: false },
@@ -1118,7 +1184,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     const box = screen.getByRole('checkbox', { name: /^Schéma unifilaire — page client de DEV-1/ })
     await user.click(box)
     await user.click(box)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
       1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
@@ -1254,7 +1320,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(radio('1'))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
       envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, taille_eco: false, taille_max: false },
@@ -1266,7 +1332,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(radio('2'))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
       envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, taille_eco: false },
@@ -1277,7 +1343,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     const user = userEvent.setup()
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
       1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
@@ -1582,5 +1648,191 @@ describe('QJR534 — cartes devis : Modifier / Réviser', () => {
     renderTab({ state: leadState({ devis: [carte('exemple_remplace')] }) })
     expect(screen.queryByRole('button', { name: /^Modifier$/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Réviser/ })).toBeNull()
+  })
+})
+
+/* ALEA52 — UNE seule boîte « Envoyer au client » : trois canaux (WhatsApp,
+   e-mail, copier le lien) d'abord ; niveau, code de lecture, sections et options
+   1/2/3 sous « Avancé » ; pas d'options 1/2/3 hors résidentiel. */
+describe('ALEA52 — boîte d’envoi : canaux d’abord, réglages sous « Avancé »', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'brouillon', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  it('les trois canaux sont visibles, les réglages sont repliés', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ email: 'karim@example.com', devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    expect(screen.getByRole('button', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /E-mail/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Copier le lien/ })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Niveau de la page client/)).toBeNull()
+    expect(screen.queryByText(/Exiger un code de lecture/)).toBeNull()
+    expect(screen.queryByText('Ce que le client reçoit :')).toBeNull()
+    expect(screen.queryByText('Options présentées au client :')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Avancé/ }))
+    expect(screen.getByLabelText(/Niveau de la page client/)).toBeInTheDocument()
+    expect(screen.getByText('Ce que le client reçoit :')).toBeInTheDocument()
+    expect(screen.getByText('Options présentées au client :')).toBeInTheDocument()
+  })
+
+  it('« E-mail » envoie la proposition à l’adresse de la fiche et recharge la fiche', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ email: 'karim@example.com', devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    await user.click(screen.getByRole('button', { name: /E-mail/ }))
+    await waitFor(() => expect(envoyerEmailDevis).toHaveBeenCalledWith(1, { to_email: 'karim@example.com' }))
+    expect(await screen.findByText('E-mail envoyé à karim@example.com.')).toBeInTheDocument()
+    expect(onAction).toHaveBeenCalledWith('refresh')
+  })
+
+  it('« E-mail » désactivé sans adresse sur la fiche', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ email: '', devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    expect(screen.getByRole('button', { name: /E-mail/ })).toBeDisabled()
+  })
+
+  it('devis commercial / industriel : ni curseur 1/2/3, ni Éco/Max, ni « Modifier les options »', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ type_installation: 'industriel', devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    // Les réglages de la page client restent là…
+    expect(screen.getByLabelText(/Niveau de la page client/)).toBeInTheDocument()
+    expect(screen.getByText('Ce que le client reçoit :')).toBeInTheDocument()
+    // …mais les options résidentielles disparaissent.
+    expect(screen.queryByText('Options présentées au client :')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Modifier les options…/ })).toBeNull()
+    expect(screen.queryByLabelText(/Taille Éco/)).toBeNull()
+  })
+
+  it('devis résidentiel : les options 1/2/3 sont proposées', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ type_installation: 'residentiel', devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    expect(screen.getByText('Options présentées au client :')).toBeInTheDocument()
+  })
+})
+
+/* ALEA53 — la puce « rythme » : un commercial sans activité est conduit à
+   l'ACTIVITÉ (2 clics), pas aux jours (6 clics + 2 champs). */
+describe('ALEA53 — puce « Jours et heures d’ouverture » : le plus court chemin', () => {
+  const LABEL = "Jours et heures d'ouverture (ou catégorie d'activité)"
+  const manquants = [{ champ: 'jours_ouverture', label: LABEL }]
+  const etat = (extra) => leadState({
+    devis_auto: { pret: false, manquants: [LABEL], manquants_detail: manquants, requis: [['jours_ouverture']] },
+    ...extra,
+  })
+
+  it('missingChampPourLead : commercial sans activité → catégorie ; sinon le champ lui-même', () => {
+    const e = (lead) => initState({ lead, mode: 'edit' })
+    expect(missingChampPourLead('jours_ouverture', e({ type_installation: 'commercial' }))).toBe('categorie_commerciale')
+    expect(missingChampPourLead('heure_debut', e({ type_installation: 'commercial', categorie_commerciale: '' }))).toBe('categorie_commerciale')
+    // activité déjà choisie (sans archétype) : on va aux jours
+    expect(missingChampPourLead('jours_ouverture', e({ type_installation: 'commercial', categorie_commerciale: 'autre' }))).toBe('jours_ouverture')
+    // industriel : pas de catégorie
+    expect(missingChampPourLead('jours_ouverture', e({ type_installation: 'industriel' }))).toBe('jours_ouverture')
+    expect(missingChampPourLead('contrat_electricite', e({ type_installation: 'commercial' }))).toBe('contrat_electricite')
+  })
+
+  it('le bandeau « à compléter » du centre pointe la même cible', () => {
+    const [puce] = chipsAComplete(etat({ type_installation: 'commercial' })).filter((c) => c.id === 'devis:jours_ouverture')
+    expect(puce.field).toBe('lf-categorie-commerciale')
+    expect(puce.section).toBe('pro')
+  })
+
+  it('cliquer la puce d’un commercial saute à l’activité', async () => {
+    const user = userEvent.setup()
+    const input = document.createElement('input')
+    input.id = 'lf-categorie-commerciale'
+    document.body.appendChild(input)
+    const focusSpy = vi.spyOn(input, 'focus')
+    try {
+      renderTab({ state: etat({ type_installation: 'commercial' }) })
+      await user.click(screen.getByText(LABEL))
+      await waitFor(() => expect(focusSpy).toHaveBeenCalled())
+    } finally {
+      input.remove()
+    }
+  })
+
+  it('cliquer la puce d’un industriel saute aux jours', async () => {
+    const user = userEvent.setup()
+    const input = document.createElement('input')
+    input.id = 'lf-jours-ouverture'
+    document.body.appendChild(input)
+    const focusSpy = vi.spyOn(input, 'focus')
+    try {
+      renderTab({ state: etat({ type_installation: 'industriel' }) })
+      await user.click(screen.getByText(LABEL))
+      await waitFor(() => expect(focusSpy).toHaveBeenCalled())
+    } finally {
+      input.remove()
+    }
+  })
+})
+
+/* ALEA55 — « Devis 1 page » / « Devis premium » ne créent plus de second devis :
+   ce sont des formats du PDF d'un devis existant ; relance J+3 à l'envoi. */
+describe('ALEA55 — formats du PDF sur la carte, relance J+3 dans la boîte d’envoi', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'brouillon', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  it('le menu de création ne propose plus « Devis 1 page » ni « Devis premium »', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis_auto: { pret: true, manquants: [] } }) })
+    await user.click(screen.getByRole('button', { name: /Devis modifiable/ }))
+    expect(screen.getByText('Remise %…')).toBeInTheDocument()
+    expect(screen.queryByText('Devis 1 page')).toBeNull()
+    expect(screen.queryByText('Devis premium')).toBeNull()
+  })
+
+  it('le menu « PDF » de la carte ouvre le MÊME devis au format choisi (aucune création)', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [devis1] }) })
+    await user.click(screen.getByRole('button', { name: /Format du PDF de DEV-1/ }))
+    await user.click(screen.getByRole('menuitem', { name: '1 page' }))
+    expect(onAction).toHaveBeenCalledWith('view-devis', { id: 1, pdf: 'onepage' })
+    await user.click(screen.getByRole('button', { name: /Format du PDF de DEV-1/ }))
+    await user.click(screen.getByRole('menuitem', { name: /Premium/ }))
+    expect(onAction).toHaveBeenCalledWith('view-devis', { id: 1, pdf: 'full' })
+    expect(onAction).not.toHaveBeenCalledWith('open-devis', expect.anything())
+  })
+
+  it('dateRelanceJ3 : J+3 à Casablanca, passage de mois compris', () => {
+    expect(dateRelanceJ3(new Date('2026-10-24T10:00:00Z'))).toBe('2026-10-27')
+    // passage de mois (10 h UTC : même jour à Casablanca, sans dépendre des
+    // données de fuseau du nœud CI)
+    expect(dateRelanceJ3(new Date('2026-10-30T10:00:00Z'))).toBe('2026-11-02')
+  })
+
+  it('relance J+3 : décochée par défaut ; cochée, posée APRÈS l’envoi (relance_date du lead)', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(() => Promise.resolve()) }, configurable: true, writable: true,
+    })
+    const { onAction } = renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    const case_ = screen.getByRole('checkbox', { name: 'Proposer une relance J+3' })
+    expect(case_).not.toBeChecked()
+    // Sans la case : envoyer ne touche pas la relance.
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    expect(updateLead).not.toHaveBeenCalled()
+    await user.click(case_)
+    await user.click(screen.getByRole('button', { name: /Copier le lien|Copié/ }))
+    await waitFor(() => expect(updateLead).toHaveBeenCalledWith(7, { relance_date: dateRelanceJ3() }))
+    expect(await screen.findByText(/Relance planifiée le/)).toBeInTheDocument()
+  })
+
+  it('relance déjà planifiée : jamais écrasée, la case n’est pas proposée', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1], relance_date: '2026-11-02' }) })
+    await ouvrirEnvoi(user, { avance: false })
+    expect(screen.queryByRole('checkbox', { name: 'Proposer une relance J+3' })).toBeNull()
+    expect(screen.getByText(/Relance déjà planifiée le/)).toBeInTheDocument()
   })
 })

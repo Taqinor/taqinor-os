@@ -251,3 +251,84 @@ class TestRobotNeNotifieJamais(TestCase):
         self.assertTrue(
             any('ouvert' in (n.body or '') for n in notes),
             [n.body for n in notes])
+
+
+#: ADEV98 — scanners de liens des messageries d'entreprise (UA publiés).
+UA_SCANNERS_B2B = (
+    'Mozilla/4.0 (compatible; ms-office; MSOffice 16)',
+    'Microsoft Office Existence Discovery',
+    'SafeLinks/1.0',
+    'Proofpoint URL Defense',
+    'ppops-ab12cd-1.0',
+    'Mimecast-URL-Protect/1.0',
+    'Barracuda Sentinel (EE)',
+    'Symantec Email Security',
+    'Cisco Umbrella',
+    'Google-Safety',
+    'GoogleOther',
+)
+
+
+class TestScannersB2bEtBeaconVu(TestCase):
+    """ADEV98 — scanners B2B jamais comptés ; le rendu SERVEUR de la page
+    (``X-Proposition-Rendu: ssr``) n'est qu'un APERÇU daté ; seule la balise
+    ``vu/`` de la page compte la lecture humaine (note + notification)."""
+
+    def setUp(self):
+        self.company = _make_company('adev98-vu', 'ADEV98 Vu')
+        self.lead = Lead.objects.create(company=self.company, nom='Prospect 98')
+        self.client_obj = Client.objects.get_or_create(
+            company=self.company, nom='Client ADEV98')[0]
+        self.devis = Devis.objects.create(
+            company=self.company, reference='DEV-ADEV98-V1',
+            client=self.client_obj, lead=self.lead, taux_tva=Decimal('20'),
+            statut=Devis.Statut.ENVOYE)
+        self.link = ShareLink.objects.create(
+            company=self.company, devis=self.devis)
+
+    def test_scanners_b2b_reconnus_navigateurs_non(self):
+        from django.test import RequestFactory
+        for ua in UA_SCANNERS_B2B:
+            self.assertTrue(_est_robot_apercu(
+                RequestFactory().get('/x', HTTP_USER_AGENT=ua)), ua)
+        for ua in (UA_CHROME, UA_ANDROID_INAPP):
+            self.assertFalse(_est_robot_apercu(
+                RequestFactory().get('/x', HTTP_USER_AGENT=ua)), ua)
+
+    @patch('apps.ventes.quote_engine.builder.build_quote_data',
+           return_value={'ref': 'DEV-ADEV98-V1', 'date': '2026-10-24',
+                         'client_name': 'Prospect 98'})
+    def test_rendu_ssr_apercu_seul_puis_beacon_lecture_humaine(self, _m):
+        resp = APIClient().get(
+            f'/api/django/public/proposal/{self.link.token}/data/',
+            HTTP_USER_AGENT=UA_CHROME, HTTP_X_PROPOSITION_RENDU='ssr')
+        self.assertEqual(resp.status_code, 200)
+        self.link.refresh_from_db()
+        self.assertEqual(self.link.view_count, 0)
+        self.assertIsNone(self.link.first_viewed_at)
+        self.assertIsNotNone(self.link.apercu_le)
+        self.assertFalse(LeadActivity.objects.filter(lead=self.lead).exists())
+        # La balise de la page : lecture humaine, note « ouvert ».
+        url = f'/api/django/public/proposal/{self.link.token}/vu/'
+        resp = APIClient().post(url, {}, format='json',
+                                HTTP_USER_AGENT=UA_CHROME)
+        self.assertEqual(resp.status_code, 204)
+        self.link.refresh_from_db()
+        self.assertEqual(self.link.view_count, 1)
+        self.assertTrue(any(
+            'ouvert' in (n.body or '')
+            for n in LeadActivity.objects.filter(lead=self.lead)))
+        # Un scanner qui poste la balise ne compte pas davantage.
+        APIClient().post(url, {}, format='json',
+                         HTTP_USER_AGENT=UA_SCANNERS_B2B[0])
+        self.link.refresh_from_db()
+        self.assertEqual(self.link.view_count, 1)
+
+    def test_beacon_jeton_inconnu_404_et_interne_muet(self):
+        self.assertEqual(APIClient().post(
+            '/api/django/public/proposal/inconnu/vu/').status_code, 404)
+        interne = self.link.jeton_interne_effectif()
+        resp = APIClient().post(f'/api/django/public/proposal/{interne}/vu/')
+        self.assertEqual(resp.status_code, 204)
+        self.link.refresh_from_db()
+        self.assertEqual(self.link.view_count, 0)

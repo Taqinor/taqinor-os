@@ -27,6 +27,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from drf_spectacular.utils import (
     extend_schema, extend_schema_field, inline_serializer,
 )
+from drf_spectacular.drainage import set_override
 from rest_framework import serializers, status
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
@@ -56,6 +57,60 @@ __all__ = ['ParametresCalepinageView', 'SuggestionPenteIGNView']
 CLE_CATALOGUE = 'catalogue_rapport'
 MESSAGE_CATALOGUE = ("Clé dérivée en lecture seule : elle ne s'enregistre "
                      "pas.")
+
+
+def _schema_gabarit():
+    """api-fuzz (24/10/2026) — la forme d'UN gabarit, dérivée des constantes de
+    ``services.gabarits`` (jamais une liste recopiée) : exactement ce que
+    ``_gabarit`` accepte — clés admises seules, choix fermés, nombres bornés,
+    comptes entiers ≥ 1, rives à 4 clés numériques. Un corps conforme passe,
+    un corps hors forme est refusé 400 nommé par le serveur."""
+    from ..services import gabarits as g
+    nombre = {'type': 'number', 'minimum': 0}
+    # OpenAPI 3.0 : les bornes exclusives sont des BOOLÉENS sur minimum/maximum.
+    angle = {'type': 'number', 'minimum': 0, 'maximum': 90,
+             'exclusiveMaximum': True}
+    props = {}
+    for cle, _libelle in g.REGLAGES:
+        if cle == 'libelle':
+            props[cle] = {}
+        elif cle == 'orientation':
+            props[cle] = {'type': 'string', 'enum': list(g.ORIENTATIONS)}
+        elif cle == 'famille':
+            props[cle] = {'type': 'string', 'enum': list(g.FAMILLES)}
+        elif cle == 'roofType':
+            props[cle] = {'type': 'string', 'enum': list(g.TYPES_TOITURE)}
+        elif cle == 'rives':
+            props[cle] = {'type': 'object', 'additionalProperties': False,
+                          'properties': {r: dict(nombre) for r in g.RIVES}}
+        elif cle in ('facingManual', 'neededAuto'):
+            props[cle] = {'type': 'boolean'}
+        elif cle == 'priorite':
+            props[cle] = {'type': 'integer'}
+        elif cle in g.COMPTES:
+            props[cle] = {'type': 'integer', 'minimum': 1}
+        elif cle == 'facingAzimuthDeg':
+            props[cle] = {'type': 'number', 'minimum': 0, 'maximum': 360}
+        elif cle == 'chassis_sous_pente_deg':
+            props[cle] = {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True,
+                          'maximum': 90, 'exclusiveMaximum': True}
+        elif cle in ('pitchDeg', 'chassis_inclinaison_deg'):
+            props[cle] = dict(angle)
+        else:
+            props[cle] = dict(nombre)
+    return {'type': 'object', 'additionalProperties': False,
+            'properties': props}
+
+
+class _GabaritsDispositionField(serializers.DictField):
+    """``gabarits_disposition`` : ``{nom: gabarit}`` — chaque valeur est un
+    objet de la forme ``_schema_gabarit`` (un flottant ou une clé inconnue
+    sont HORS schéma, comme le serveur les refuse)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        set_override(self, 'field', {
+            'type': 'object', 'additionalProperties': _schema_gabarit()})
 
 
 def _catalogue_rapport():
@@ -271,7 +326,7 @@ def _forme_reglages(nom, avec_registre=False, partielle=False):
         'imagerie': serializers.DictField(required=requis),
         'degagements': serializers.DictField(required=requis),
         'zones_types': serializers.DictField(required=requis),
-        'gabarits_disposition': serializers.DictField(required=requis),
+        'gabarits_disposition': _GabaritsDispositionField(required=requis),
         'presets': serializers.DictField(required=requis),
         'favoris_materiel': serializers.DictField(required=requis),
         'norme_electrique': serializers.DictField(required=requis),

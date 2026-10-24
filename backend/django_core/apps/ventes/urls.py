@@ -55,8 +55,9 @@ from .public.signature_views import (  # SPL253
     proposal_contact_request, proposal_request_otp,
     proposal_request_otp_lecture, proposal_verify_otp_lecture,  # L-NIV
     proposal_activate_option,  # XSAL5
+    proposal_decliner,  # ADEV98
 )
-from .public.lecture_views import proposal_engagement  # XSAL16, SPL246
+from .public.lecture_views import proposal_engagement, proposal_vu  # XSAL16, SPL246, ADEV98
 from .public.paiement_views import proposal_virement_declare  # QX33be, SPL252
 from .dashboard_view import dashboard_quote_to_cash
 from .insights_view import cash_flow_forecast, analyse_facturation_view  # ZFAC10
@@ -190,6 +191,13 @@ urlpatterns = [
     # headless: activation d'option self-service depuis la page publique
     path('proposal/<str:token>/activer-option/', proposal_activate_option,
          name='proposal-activate-option-ventes'),
+    # ADEV98 — beacon de lecture HUMAINE (après quelques secondes de visibilité).
+    # headless: beacon de lecture emis par la page publique (apps/web)
+    path('proposal/<str:token>/vu/', proposal_vu, name='proposal-vu-ventes'),
+    # ADEV98 — « Décliner / demander un délai » (motif fermé, aucun statut écrit).
+    # headless: declin poste par le client depuis la page publique (apps/web)
+    path('proposal/<str:token>/decliner/', proposal_decliner,
+         name='proposal-decliner-ventes'),
     # QX34 — suivi post-signature public en lecture seule (timeline jalons).
     # headless: suivi post-signature public, ouvert par lien tokenise
     path('suivi/<str:token>/', suivi_public, name='suivi-public'),

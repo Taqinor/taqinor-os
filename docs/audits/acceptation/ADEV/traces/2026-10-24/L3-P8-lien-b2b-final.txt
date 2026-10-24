@@ -1,0 +1,41 @@
+Rejeu API du lien public B2B sur le code FINAL (lanes LIEN puis LIEN2 : garde d'empreinte sous verrou, sceau reproductible `figures_scellees`, 409 codés, déclin sous OTP, garde OTP unique) — pile locale, code 8969487ae, 2026-10-24.
+Devis DEV-202610-0076 (usine, industriel, client 902 ICE de test) : acceptation ; DEV-202610-0082 (lead 2574) : déclin puis refus.
+
+ModuleNotFoundError: No module named 'STAGES'
+KeyError: 'contrat'
+LookupError: App 'contrats' doesn't have a 'contrat' model.
+KeyError: 'kbarticle'
+LookupError: App 'kb' doesn't have a 'kbarticle' model.
+P-L3-5 | devis 1 DEV-202610-0076 brouillon industriel lead 2573 client 902 546100.00
+P-L3-5 | share-link DEV-202610-0076 200 {'token': 'xuMykbVjFjsXn0GzR4ctkTn-7eAFWBqpgxVqA5UlpVo', 'path': '/proposition/xuMykbVjFjsXn0GzR4ctkTn-7eAFWBqpgxVqA5UlpVo'}
+P-L3-5 | ADEV97 chemin sans slug nominatif : /proposition/xuMykbVjFjsXn0GzR4ctkTn-7eAFWBqpgxVqA5UlpVo OK
+P-L3-5 | statut après envoi : envoye
+P-L3-5 | ADEV98 GET scanner SafeLinks 200 vues 0 -> 0 OK
+P-L3-5 | GET humain 200 vues 1 (attendu inchangé avant la balise) empreinte servie OK
+P-L3-5 | ADEV98 balise vu/ 204 vues 1 OK
+P-L3-5 | ADEV98 balise par un scanner 204 vues 1 OK
+P-L3-5 | ICE du client connu : 001234567000090
+P-L3-5 | ADEV95 sans attestation de pouvoir -> 400 {'detail': "Cochez l'attestation : vous agissez en la qualité indiquée et avez le pouvoir d'engager la société.", 'champ': 'entreprise.pouvoir_engager'} OK
+P-L3-5 | ADEV95 e-mail invalide -> 400 {'detail': "L'e-mail du signataire est invalide.", 'champ': 'entreprise.signataire_email'} OK
+P-L3-5 | ADEV95 ICE divergent -> 409 {'detail': "L'ICE saisi (000000000000099) ne correspond pas à l'ICE enregistré pour votre société (001234567000090). Vérifiez-le ou contactez votre conseiller avant de signer.", 'code': 'ice_divergent'} OK
+P-L3-5 | ADEV96 empreinte périmée -> 409 empreinte_perimee OK
+P-L3-5 | signatures avant : 0
+P-L3-5 | ACCEPT -> 200 {'statut': Devis.Statut.ACCEPTE, 'reference': 'DEV-202610-0076', 'accepte_par_nom': 'Youssef Benjelloun', 'recu': {'signe_le': '2026-10-24T05:40:04.597636+00:00', 'empreinte_contenu': '18fe193beb89a2036bc50b440391e0762ded03ca93df05c06676051896aade1a', 'empreinte_pdf': '447dfc5edda1b6349c8ca715cd18c767c3ee699b37dabccad69314aa2bb124b3'}, 'entreprise': {'raison_sociale': 'Hôtel Atlas Mogador SARL', 'signataire_qualite': 'Directeur général', 'ice': '001234567000090', 'signataire_nom': 'Youssef Benjelloun', 'signataire_email': 'youssef@atlas-mogador.test', 'pouvoir_engager': True}}
+P-L3-5 | ADEV99 e-mails envoyés : 2
+P-L3-5 |    -> (['demo_resp@taqinor.local'], 'Copie — proposition acceptée — DEV-202610-0076', 1, [], [])
+P-L3-5 |    -> (['youssef@atlas-mogador.test'], 'Proposition acceptée — DEV-202610-0076', 1, [], [])
+P-L3-5 | statut devis : accepte | notifications + 3
+P-L3-5 | ADEV95 signature : {'nom': 'Youssef Benjelloun', 'qualite': 'Directeur général', 'raison_sociale': 'Hôtel Atlas Mogador SARL', 'ice': '001234567000090', 'email': 'youssef@atlas-mogador.test', 'pouvoir': True, 'langue_page': 'fr', 'ip': '196.200.1.10', 'hash': '18fe193beb89', 'pdf_sha': '447dfc5edda1', 'pdf_key': True}
+P-L3-5 | ADEV96/99 PDF signé servi : 200 66197 sha = 447dfc5edda1 OK
+P-L3-5 | 2e acceptation (idempotence) -> 200 accepte
+P-L3-5 | devis 2 DEV-202610-0082 brouillon lead 2574
+P-L3-5 | share-link DEV-202610-0082 200 {'token': '2d76ioo7NpmP3HQgk7tDsxaz7TPqEr2u_XWBEt1oX9Y', 'path': '/proposition/2d76ioo7NpmP3HQgk7tDsxaz7TPqEr2u_XWBEt1oX9Y'}
+P-L3-5 | ADEV98 déclin « autre » sans texte -> 400 {'detail': 'Choisissez un motif (prix, délai, concurrent, projet reporté ou autre — précisez « autre »).', 'champ': 'motif'} OK
+P-L3-5 | ADEV98 déclin délai -> 200 {'detail': 'Merci, votre réponse a bien été transmise à votre conseiller.', 'already_sent': False}
+P-L3-5 |    activités lead + 1 | notifications + 2
+P-L3-5 |    dernière activité :  2574 note
+P-L3-5 |    2e déclin dans l'heure -> 200 {'detail': 'Merci, votre réponse a bien été transmise à votre conseiller.', 'already_sent': True}
+P-L3-5 |    statut devis 2 (aucun statut écrit) : envoye OK
+P-L3-5 | refuser -> 200 refuse
+P-L3-5 | ADEV97 lien après refus : actif = None revoked_at = None | GET -> 404 OK
+P-L3-5 | FIN

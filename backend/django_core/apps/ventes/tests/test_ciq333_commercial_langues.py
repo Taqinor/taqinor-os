@@ -130,7 +130,11 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         html = _html(_data("ar"))
         self.assertIn('<html lang="ar" dir="rtl">', html)
         self.assertIn(L.libelle("ci_echeancier", "ar"), html)
-        self.assertIn(L.libelle("ci_kicker_commercial", "ar"), html)
+        # AMOT88 — « للمنشآت التجارية » (établissements), jamais
+        # « للمحلات التجارية » (boutiques).
+        self.assertIn(L.libelle("ci_kicker_autoconso_commerciale", "ar"),
+                      html)
+        self.assertNotIn("للمحلات", html)
         # L'espacement de lettres casse la liaison des lettres arabes.
         self.assertIn("letter-spacing:0 !important", html)
 
@@ -145,7 +149,10 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         html = _html(_data())
         self.assertIn("<!doctype html><html><head>", html)
         self.assertNotIn(" dir=", html.split("<body>")[0])
-        for fr in ("Proposition — Autoconsommation solaire commerciale",
+        # AMOT92 — le surtitre dit la catégorie puis « Autoconsommation
+        # solaire commerciale » ; le titre est le projet du client.
+        for fr in ("Autoconsommation solaire commerciale",
+                   "Centrale solaire 90 kWc — ",
                    "Échéancier de paiement", "Comment nous procédons",
                    "Retour estimé", "Bon pour accord — pour la société"):
             self.assertIn(fr, html)
@@ -154,13 +161,19 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         self.assertEqual(_html(_data("fr")), html)
 
     def test_trois_pages_dans_les_trois_langues(self):
-        from weasyprint import HTML
+        """Le PDF LIVRÉ (``render_pdf_bytes`` : rendu adaptatif AMOT36/90,
+        blocs cédables retirés plutôt qu'une page de plus) fait 3 pages dans
+        les trois langues — compté sur ses octets, comme CIQ331, et non sur
+        le HTML du palier 0 que le rendu adaptatif corrige justement."""
+        import fitz
         for langue in ("fr", "en", "ar"):
             with self.subTest(langue=langue):
                 pdf = renderer.render_pdf_bytes(_data(langue))
                 self.assertEqual(pdf[:4], b"%PDF")
-                doc = HTML(string=_html(_data(langue))).render()
-                self.assertEqual(len(doc.pages), 3)
+                self.assertEqual(
+                    len(fitz.open(stream=pdf, filetype="pdf")), 3)
+                self.assertEqual(
+                    _html(_data(langue)).count('<div class="page">'), 3)
 
     def test_les_donnees_saisies_ne_sont_pas_traduites(self):
         html = _html(_data("ar"))

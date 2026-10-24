@@ -77,6 +77,15 @@ const RELAIS: Record<string, { charger: () => Promise<Module>; corps: unknown }>
     charger: () => import('./proposition-virement') as Promise<Module>,
     corps: { token: 'jeton-proposition-1234' },
   },
+  // ADEV98 — balise de lecture humaine et « Décliner / demander un délai ».
+  'proposition-vu': {
+    charger: () => import('./proposition-vu') as Promise<Module>,
+    corps: { token: 'jeton-proposition-1234' },
+  },
+  'proposition-decliner': {
+    charger: () => import('./proposition-decliner') as Promise<Module>,
+    corps: { token: 'jeton-proposition-1234', motif: 'prix' },
+  },
 };
 
 /** Lecture des imports : quels modules importent `forwardLead` / `_proxy`. */

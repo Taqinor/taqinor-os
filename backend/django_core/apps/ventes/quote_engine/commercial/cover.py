@@ -15,6 +15,8 @@ from .. import premium_base
 from ..ci import couverture as ci_couverture
 # CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
 from ..ci import blocs as ci_blocs
+# AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
+from ..ci.graphiques import bloc_energie_mensuelle, css_graphique
 
 
 def build(ctx):
@@ -46,9 +48,7 @@ def build(ctx):
     marques_correction = "".join(
         f'<div class="c1c-hd">{m}</div>'
         for m in theme.marques_correction(d))
-    client_full = theme.titlecase_name(d.get("client_full") or d.get("client_name") or "Client")
-    client_meta = theme.join_meta(d.get("client_addr", ""), (d.get("client_ville_libelle") or d.get("client_city", "")),
-                                  d.get("client_phone", ""))
+    client_full, client_meta = ci_couverture.identite_client(d)
     # M7 (audit du 19/08/2026) — pastille de validité : la VRAIE date
     # d'échéance du devis (``valid_until``, posée par le builder depuis
     # ``date_validite`` ou le réglage société ``quote_validity_days``).
@@ -76,7 +76,9 @@ def build(ctx):
     def kpi(val, unit, label, fig=None):
         return premium_base.kpi(val, unit, label, fig, prefixe="c1c")
 
-    cellules = [kpi(kwc, "&nbsp;kWc",
+    # AMOT84 — l'unité dans la langue du document (« kWp » en anglais,
+    # comme le titre) ; « &nbsp;kWc » en français, octet pour octet.
+    cellules = [kpi(kwc, L("res_unite_kwc", "&nbsp;kWc"),
                     L("ci_puissance_crete", "Puissance crête"),
                     "puissance_kwc")]
     # CIQ331 — la production annuelle du moteur C&I (``synthese_ci``), ancrée
@@ -109,7 +111,9 @@ def build(ctx):
                    + (f'<div class="c1c-mtsrc">{grille}</div>' if grille
                       else "")) if argent else ""
     bandeau = ci_couverture.bandeau_reserve(d, "com", "c1c")
-    methode_line = ci_couverture.ligne_methode(d, "com", "c1c")
+    # AMOT89 — le surplus chiffré (kWh du bilan) sous la ligne de méthode.
+    methode_line = (ci_couverture.ligne_methode(d, "com", "c1c")
+                    + ci_couverture.ligne_surplus(d, "com", "c1c"))
     note_pointe = ci_couverture.note_pointe(d, "com")
 
     # QXMT — la SOURCE du barème voyage avec le chiffre, ou l'explication de
@@ -147,7 +151,7 @@ def build(ctx):
 .c1c-catlab{{display:table-cell;vertical-align:middle;}}
 .c1c-kicker{{font-size:7.5pt;letter-spacing:2.4px;text-transform:uppercase;
   color:{gold};font-weight:700;}}
-.c1c-title{{font-family:{f_display};font-size:23pt;line-height:1.05;margin-top:3px;}}
+.c1c-title{{font-family:{f_display};font-size:19pt;line-height:1.1;margin-top:3px;}}
 .c1c-acc{{font-size:10.5pt;color:rgba(255,255,255,.88);margin-top:8px;max-width:150mm;}}
 .c1c-client{{padding:6mm 14mm 0 14mm;font-size:8.5pt;color:{muted};}}
 .c1c-client b{{color:{ink};}}
@@ -168,14 +172,22 @@ def build(ctx):
   border-radius:12px;background:linear-gradient(100deg,{green_bg},#fff 72%);
   padding:10px 14px;font-size:8.5pt;color:{ink};line-height:1.45;}}
 .c1c-note b{{color:{navy};}}
-.c1c-inv{{margin-top:12px;display:table;width:100%;border:1px solid {line};
-  border-radius:12px;background:{wash};padding:11px 16px;}}
-.c1c-inv-l{{display:table-cell;vertical-align:middle;font-size:8.5pt;color:{muted};}}
-.c1c-inv-v{{display:table-cell;vertical-align:middle;text-align:right;
-  font-family:{f_display};font-size:20pt;color:{navy};}}
-.c1c-inv-v span{{font-size:10pt;color:{muted};}}
+{ci_couverture.css_investissement("c1c", (line, wash, muted, navy, ink), f_display, 20, 12, "11px 16px")}
+{css_graphique("c1c", navy, muted)}
+.c1c-bas{{width:100%;border-collapse:collapse;margin-top:2px;}}
+.c1c-bas td{{vertical-align:top;padding:0;}}
+.c1c-bas-d{{width:52mm;padding-left:8px !important;padding-top:10px !important;}}
 </style>
 """
+    # AMOT90 — l'énergie mois par mois (kWh du bilan horaire servi) dans le
+    # tiers bas de la page ; retirée par le rendu adaptatif si la page
+    # déborde (``_sans_graphiques``).
+    # AMOT92 — à côté : les prochaines étapes et le QR de la proposition.
+    bas = ci_couverture.rangee_bas(
+        d, bloc_energie_mensuelle(
+            d, d.get("com_synthese"), (navy, green, gold, line, muted),
+            f_sans, fmt, "c1c", hauteur=150, largeur_mm=124),
+        ci_couverture.bloc_etapes(d, "c1c", (navy, muted, gold)), "c1c")
 
     # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``
     # (HT si TVA récupérable déclarée, HT et TTC si inconnue, TTC sinon).
@@ -201,10 +213,10 @@ def build(ctx):
       </div>
     </div>
     <div class="c1c-hbody">
-      <div class="c1c-kicker">{L("ci_kicker_commercial", "Proposition — Autoconsommation solaire commerciale")}</div>
+      <div class="c1c-kicker">{cat_label} · {L("ci_kicker_autoconso_commerciale", "Autoconsommation solaire commerciale")}</div>
       <div class="c1c-catrow">
         <div class="c1c-caticon">{icon}</div>
-        <div class="c1c-catlab"><div class="c1c-serif c1c-title">{cat_label}</div></div>
+        <div class="c1c-catlab"><div class="c1c-serif c1c-title">{ci_couverture.titre_projet(d, "com", kwc, client_full)}</div></div>
       </div>
       <div class="c1c-acc">{accroche}</div>
     </div>
@@ -213,7 +225,7 @@ def build(ctx):
   <div class="c1c-client">
     <b>{client_full}</b>
     {f'&nbsp;·&nbsp;{client_meta}' if client_meta else ''}
-    <span class="c1c-tag">{cat_label}</span>{ci_blocs.bloc_client((d.get("com_synthese") or {}).get("entreprise_client"), "c1c", d.get("client_full") or d.get("client_name"), doc=d)}
+    {ci_blocs.bloc_client((d.get("com_synthese") or {}).get("entreprise_client"), "c1c", d.get("client_full") or d.get("client_name"), doc=d)}{ci_couverture.ligne_interlocuteur(d, "c1c")}
   </div>
 
   <div class="c1c-wrap">
@@ -223,7 +235,7 @@ def build(ctx):
     {mt_line}
     <div class="c1c-note">
       {note_autoconso} {note_pointe}
-    </div>{inv_html}
+    </div>{inv_html}{bas}
   </div>
 </div>
 """

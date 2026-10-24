@@ -50,15 +50,23 @@ describe('CIQ131 — PanneauCommercial', () => {
       .toEqual(Object.keys(exempleContrat('ventes', 'etude_ci_preview', 'corps').rythme).sort())
   })
 
-  it('archétype affiché avec sa source et « estimation » ; aucune part diurne', () => {
+  it('archétype en français avec sa source et « estimation » dans « Détails du calcul » ; aucune clé brute ni part diurne', () => {
     const apercu = exempleContrat('ventes', 'etude_ci_preview', 'exemple_kwh_seulement')
-    const pc = { ...apercu.profil_charge, reponses_non_consommees: ['occupation_pct'] }
+    const pc = { ...apercu.profil_charge, reponses_non_consommees: ['occupation_pct', 'cle_inconnue'] }
     render(<Harnais onEtat={() => {}} apercu={{ ...apercu, profil_charge: pc }} />)
+    const details = screen.getByTestId('ci-details-calcul')
+    expect(details.open).toBe(false) // replié par défaut
     const a = screen.getByTestId('ci-archetype')
-    expect(a).toHaveTextContent(pc.archetype.cle)
+    expect(details).toContainElement(a)
+    expect(a).toHaveTextContent('Bureau / Siège')
+    expect(a).not.toHaveTextContent(pc.archetype.cle)
     expect(a).toHaveTextContent(pc.archetype.source)
     if (pc.methode === 'archetype') expect(a).toHaveTextContent('estimation')
-    expect(screen.getByTestId('ci-sans-effet')).toHaveTextContent('occupation_pct')
+    const sansEffet = screen.getByTestId('ci-sans-effet')
+    expect(sansEffet).toHaveTextContent("Taux d'occupation annuel (%)")
+    expect(sansEffet).not.toHaveTextContent('occupation_pct')
+    // une clé sans libellé français va à la ligne « Autres »
+    expect(screen.getByTestId('ci-autres')).toHaveTextContent('cle_inconnue')
     expect(screen.queryByText(/diurne/i)).toBeNull()
   })
 
@@ -77,5 +85,25 @@ describe('CIQ131 — PanneauCommercial', () => {
     const ecr2 = etatVersEcritures(devisVersEtat(devis), { entrees: {} })
     expect(ecr2.etude).toEqual(ecr1.etude)
     expect(ecr1.etude.rythme.reponses_categorie.heures_cuisson).toEqual([[2, 6]])
+  })
+})
+
+describe('ADEV100 — catégorie et réponses reprises du lead', () => {
+  it('le badge « repris du lead » marque la catégorie et chaque réponse semée, tous deux restent éditables', () => {
+    const { container } = render(
+      <PanneauCommercial
+        marche="commercial" errors={{}}
+        profilCi={profilCiVide()} setChampCi={() => {}} apercuCi={{}}
+        reprisLead={['categorie', 'reponses.chambres']}
+        categorieCommerciale="hotel" setCategorieCommerciale={() => {}}
+        commercialAnswers={{ chambres: 40, occupation_pct: '60' }}
+        setCommercialAnswer={() => {}}
+      />)
+    expect(screen.getByTestId('ci-repris-categorie')).toHaveTextContent('repris du lead')
+    expect(screen.getByTestId('ci-repris-reponses.chambres')).toBeInTheDocument()
+    expect(screen.queryByTestId('ci-repris-reponses.occupation_pct')).toBeNull()
+    const chambres = container.querySelector('#gen-com-chambres')
+    expect(chambres.value).toBe('40')
+    expect(chambres).not.toBeDisabled()
   })
 })

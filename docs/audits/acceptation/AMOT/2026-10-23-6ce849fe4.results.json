@@ -1,0 +1,36 @@
+{
+  "sha": "6ce849fe4df37828951f204cb8013047a2119bfb",
+  "date": "2026-10-23",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT85"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P-ACI-6",
+      "taches": [
+        "AMOT85"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ADEV/traces/2026-10-23/ACI-P6-rejeu-humain.txt",
+      "notes": [
+        "page 1 re-rendue : « Hôtel / Riad » et « Investissement à compléter après la visite technique (3 postes hors total) » (captures AVANT/APRÈS)"
+      ]
+    }
+  ]
+}

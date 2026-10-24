@@ -297,3 +297,17 @@ class EntreesPompageServiesAuDetail(TestCase):
             self.assertTrue(LeadActivity.objects.filter(
                 lead=self.lead, kind=LeadActivity.Kind.MODIFICATION,
                 field=champ).exists(), champ)
+
+
+class MotifJoursIrrigationTests(TestCase):
+    """api-fuzz (24/10/2026) — la branche « chaîne » du schéma refuse ce que
+    le serveur refuse : « 0 », négatif, > 7 ; accepte 0,1 … 7."""
+
+    def test_motif_aligne_sur_les_bornes(self):
+        import re
+        from apps.crm.serializers import MOTIF_JOURS_IRRIGATION
+        motif = re.compile(MOTIF_JOURS_IRRIGATION)
+        for ok in ('0.1', '0.5', '1', '3.5', '6.9', '7', '7.0'):
+            self.assertIsNotNone(motif.match(ok), ok)
+        for ko in ('0', '0.0', '-1', '7.1', '7.5', '8', '12', 'abc', ''):
+            self.assertIsNone(motif.match(ko), ko)

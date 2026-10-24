@@ -1823,11 +1823,11 @@ def proposal_data(request, token):
         # la lecture : la page la renvoie à ``/accept/``, qui refuse (409
         # ``empreinte_perimee``) si le devis a été corrigé entre-temps.
         # Additive : absente quand rien n'est signable (aperçu interne,
-        # brouillon, remplacé, accepté…).
-        from .public.signature_views import (
-            empreinte_contenu, signable_au_jeton)
-        if not link.via_interne and signable_au_jeton(devis):
-            payload['empreinte_contenu'] = empreinte_contenu(devis)
+        # brouillon, remplacé, accepté…). ADEV96 — scelle aussi les chiffres
+        # de l'étude C&I que la page montre (la ``synthese_ci`` déjà lue).
+        from .public.signature_views import empreinte_servie
+        if (_empreinte := empreinte_servie(devis, link, synthese_ci_pub)) is not None:
+            payload['empreinte_contenu'] = _empreinte
         # ADEV52 (C-ADEV-019) — LA règle d'expiration, servie : la page ne
         # calcule plus rien (« 12:00 UTC du dernier jour » supprimé). Deux clés
         # additives, absentes quand aucune validité n'est déterminable.

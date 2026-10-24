@@ -3,6 +3,7 @@ import re
 from django.db import models
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from core.champs_stricts import (
     BooleenStrict, ChampsStrictsEntiersMixin, IdInconnu404Mixin,
     MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL)
@@ -22,6 +23,20 @@ CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
 #: champs frères, comparaisons et fonctions sûres (``core.formula``).
 MOTIF_FORMULE_PUBLIEE = (
     r'^(?:0|[1-9][0-9]{0,5})(?: ?[-+*] ?(?:0|[1-9][0-9]{0,5})){0,4}$')
+
+
+@extend_schema_field({
+    'type': 'object', 'additionalProperties': False, 'nullable': True,
+    'description': (
+        "Champs personnalisés « code : valeur ». Les codes admis sont ceux "
+        "des définitions ACTIVES du module pour la société (propres à "
+        "chacune, donc non énumérés ici) : une clé inconnue est refusée en "
+        "la nommant.")})
+class ChampsPersonnalisesField(serializers.JSONField):
+    """CI #997 fuzz (2) puis #1022 (api-fuzz, leads) — ``custom_data`` est un
+    OBJET (ou ``null``) : publié en JSON libre, un tableau « conforme » était
+    refusé 400 « Format invalide. » (``validate_custom_data``). Champ partagé
+    par les modules à champs personnalisés (calepinage, crm)."""
 
 
 class SlugStrict(serializers.SlugField):

@@ -133,6 +133,13 @@ class InventaireDesActionsPubliquesTests(TestCase):
             'au moins aussi gardée que la lecture.',
         'proposal_activate_option':
             'QJR418/DR2 — activer une option CHANGE le périmètre facturé.',
+        'proposal_decliner':
+            'ADEV98 + revue du 24/10/2026 (F) — décliner engage la relation '
+            '(note au lead, vendeur notifié) : même garde que l\'acceptation.',
+        'proposal_vu':
+            'ADEV98 — balise de lecture HUMAINE émise par la page APRÈS '
+            'qu\'elle a été lue : sur un lien sous code non déverrouillé, '
+            'aucune lecture n\'est comptée (204 muet, aucun effet).',
     }
 
     #: Actions publiques délibérément NON gardées, chacune avec sa raison.

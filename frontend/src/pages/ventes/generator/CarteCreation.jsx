@@ -3,7 +3,9 @@
 // client (QJR627), avertissements non bloquants, raisons de blocage et carte
 // « Création du Devis » (QJ28 contacter le supérieur, Réinitialiser, Annuler,
 // Enregistrer). Props nommées une par une, jamais de spread.
+import { Link } from 'react-router-dom'
 import CarteEcheancier from './CarteEcheancier'
+import fieldLabels from '../../../features/crm/workspace/fieldLabels'
 import { erreursConditions } from '../../../features/ventes/echeancierEdition'
 import { Button, Card, CardContent, Textarea } from '../../../ui'
 import { GenCardHeader } from './CarteMetrique'
@@ -58,6 +60,17 @@ export default function CarteCreation({
       {(errors.submit || errors.lines || errors.client || errors.conso || errors.factures) && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive" data-testid="erreur-enregistrement">
           {errors.submit || errors.lines || errors.client || errors.conso || errors.factures}
+          {/* ALEA51 — le refus du devis AUTOMATIQUE nomme le champ du lead à
+              compléter (`field`) : même geste que « Compléter » du panneau de
+              la fiche lead. */}
+          {errors.submit && errors.submitField && fieldLabels[errors.submitField.field] && (
+            <p className="mt-1">
+              <Link to={`/crm/leads/${errors.submitField.leadId}`} className="underline"
+                    data-testid="erreur-completer-lead">
+                Compléter sur la fiche du lead : {fieldLabels[errors.submitField.field].label}
+              </Link>
+            </p>
+          )}
         </div>
       )}
 

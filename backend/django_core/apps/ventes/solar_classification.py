@@ -17,6 +17,7 @@ OCTET-IDENTIQUES — prouvé par ``tests/test_split_devis_solar.py`` (golden
 """
 from __future__ import annotations
 
+import unicodedata
 import re
 
 # STKCAT22 — LA table de reconnaissance « panneau » (mot à frontière de mot,
@@ -175,7 +176,20 @@ OFFGRID_AUTRE_FAMILLE_KEYWORDS = (
 )
 
 
+def _est_cable(designation: str) -> bool:
+    """C-L3-MOT-02 (24/10/2026) — un CÂBLE nommé d'après l'onduleur qu'il
+    dessert (« Câble AC Onduleur réseau Huawei 150kW → TGBT », le poste que le
+    moteur C&I écrit lui-même) n'est jamais un onduleur : le mot « câble »
+    l'emporte sur « onduleur » dans toutes les familles (paire avec
+    solar.js::isAnyInverter / classifyProduct et domain.catalogue)."""
+    d = unicodedata.normalize("NFD", (designation or "").lower())
+    d = "".join(c for c in d if unicodedata.category(c) != "Mn")
+    return "cable" in d
+
+
 def is_hybrid_inverter(designation: str) -> bool:
+    if _est_cable(designation):
+        return False
     d = (designation or "").lower()
     return "onduleur" in d and "hybride" in d
 
@@ -193,6 +207,8 @@ def is_offgrid_inverter(designation: str) -> bool:
     produit ne soit présent (sinon on volerait un panneau/une batterie/un
     accessoire nommé « ... off-grid ... » par le revendeur).
     """
+    if _est_cable(designation):
+        return False
     d = _sans_separateurs(designation)
     if not _a_mot_cle_offgrid(d) or "hybride" in d:
         return False
@@ -202,6 +218,8 @@ def is_offgrid_inverter(designation: str) -> bool:
 
 
 def is_reseau_inverter(designation: str) -> bool:
+    if _est_cable(designation):
+        return False
     d = _sans_separateurs(designation)
     return ("onduleur" in d
             and ("réseau" in d or "reseau" in d or "injection" in d)
@@ -210,6 +228,8 @@ def is_reseau_inverter(designation: str) -> bool:
 
 
 def is_any_inverter(designation: str) -> bool:
+    if _est_cable(designation):
+        return False
     return (is_hybrid_inverter(designation)
             or is_reseau_inverter(designation)
             or is_offgrid_inverter(designation))
@@ -222,6 +242,8 @@ def is_inverter(designation: str) -> bool:
     fondateur, sans le mot « onduleur ») est un onduleur ; sa provision de
     remplacement et sa garantie sont imprimées comme pour les autres.
     """
+    if _est_cable(designation):
+        return False
     return ("onduleur" in (designation or "").lower()
             or is_any_inverter(designation))
 

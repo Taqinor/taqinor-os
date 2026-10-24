@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError as _ErreurDjango
 from django.core.validators import RegexValidator as _RegexValidator
+from drf_spectacular.drainage import set_override
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers as s
@@ -44,7 +45,10 @@ class _MotifEntier(_RegexValidator):
 
 
 # ---------------------------------------------------------------- devis
-GAMME_ENVOI = ChaineStricte(required=False, allow_blank=True)
+# api-fuzz (24/10/2026) — vocabulaire FERMÉ (``domain.gammes.GAMME_ENVOIS``),
+# vide ou absent = mode déjà posé ; tout autre texte est refusé 400 nommé.
+GAMME_ENVOI = s.ChoiceField(choices=['seule', 'les_deux'], required=False,
+                            allow_blank=True, allow_null=True)
 
 _SECTIONS_LIEN = ('roof3d', 'sld', 'pdf', 'bankable', 'economies',
                   'jour_type', 'gammes', 'taille_eco', 'taille_max')
@@ -81,14 +85,14 @@ EnvoyerEmailRequest = _ser('DevisEnvoyerEmailRequest', {
 })
 EnvoyerEmailResponse = _ser('DevisEnvoyerEmailResponse', {
     'detail': s.CharField(),
-    'log_id': s.IntegerField(),
+    'log_id': s.IntegerField(required=False, allow_null=True),
     'email_statut': s.CharField(),
     'devis_statut': s.CharField(),
     'proposal_path': s.CharField(required=False, allow_null=True),
 })
 EnvoyerEmailEchec = _ser('DevisEnvoyerEmailEchec', {
     'detail': s.CharField(),
-    'log_id': s.IntegerField(),
+    'log_id': s.IntegerField(required=False, allow_null=True),
     'email_statut': s.CharField(),
     'devis_statut': s.CharField(),
 })
@@ -96,7 +100,7 @@ EnvoyerEmailEchec = _ser('DevisEnvoyerEmailEchec', {
 #: ENF11 — aucune adresse (ni ``to_email`` ni e-mail du client) : refus d'état.
 EnvoyerEmailSansDestinataire = _ser('DevisEnvoyerEmailSansDestinataire', {
     'detail': s.CharField(),
-    'log_id': s.IntegerField(),
+    'log_id': s.IntegerField(required=False, allow_null=True),
     'statut': s.CharField(),
 })
 
@@ -483,6 +487,38 @@ CompositionRequest = {
         'anyOf': [{'required': ['kwc']}, {'required': ['nb_panneaux']}],
     },
 }
+
+
+class _LigneEntree(s.DictField):
+    """api-fuzz (24/10/2026, replace-lines / atomic) — une ligne de devis telle
+    que ``domain/lignes.remplacer_lignes`` la lit : soit une ligne PRODUIT
+    (``produit`` entier ≥ 1 obligatoire ; un id bien formé mais inconnu répond
+    404), soit une ligne de SECTION / NOTE (``type_ligne`` + ``designation``
+    non blanche). Seules les clés que le serveur VALIDE sont typées ; les
+    autres (quantité, prix, remise, ordre…) restent libres (le serveur les lit
+    avec tolérance) — ni « rejected schema-compliant » ni « accepted
+    schema-violating »."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        produit = {
+            'type': 'object', 'required': ['produit'],
+            'properties': {
+                'produit': {'type': 'integer', 'minimum': 1},
+                'type_ligne': {'not': {'enum': ['section', 'note']}},
+            },
+        }
+        section = {
+            'type': 'object', 'required': ['type_ligne', 'designation'],
+            'properties': {
+                'type_ligne': {'type': 'string', 'enum': ['section', 'note']},
+                'designation': {'type': 'string', 'minLength': 1,
+                                'pattern': r'\S'},
+            },
+        }
+        set_override(self, 'field', {'oneOf': [produit, section]})
+
+
 #: api-fuzz — « une puissance OU un nombre de panneaux » rend le CORPS
 #: obligatoire (drf-spectacular ne pose ``required: true`` que sur un
 #: sérialiseur à champ requis, jamais sur un ``request`` en dict) : le fuzz
@@ -575,6 +611,11 @@ AutoDevisResponse = _ser('DevisAutoResponse', {
     'proposal_token': s.CharField(),
     'proposal_path': s.CharField(),
     'alertes': s.ListField(child=s.JSONField()),
+    # ALEA51 — le retour pour la bannière de succès (lu du devis créé).
+    'total_ttc': s.FloatField(allow_null=True),
+    'economie_an_1_ht': s.FloatField(allow_null=True),
+    'retour_ans': s.FloatField(allow_null=True),
+    'postes_apres_visite': s.ListField(child=s.CharField()),
 })
 
 FromLayoutRequest = _ser('DevisFromLayoutRequest', {
@@ -772,7 +813,7 @@ class DevisAtomic(DevisWriteSerializer):
     """Corps de ``POST /devis/atomic/`` : les champs d'en-tête du devis (comme
     ``POST /devis/``) + ``lignes`` (au moins une) + ``etude_params`` (écrit
     par l'écrivain unique d'étude, pas par le sérialiseur d'en-tête)."""
-    lignes = s.ListField(child=s.DictField(), min_length=1)
+    lignes = s.ListField(child=_LigneEntree(), min_length=1)
     etude_params = EtudeParamsEcran(required=False, allow_null=True)
 
     class Meta(DevisWriteSerializer.Meta):
@@ -780,7 +821,7 @@ class DevisAtomic(DevisWriteSerializer):
 
 
 ReplaceLinesRequest = _ser('DevisReplaceLinesRequest', {
-    'lignes': s.ListField(child=s.DictField(), min_length=1),
+    'lignes': s.ListField(child=_LigneEntree(), min_length=1),
     'entete': s.DictField(required=False, allow_null=True),
     'etude_params': EtudeParamsEcran(required=False, allow_null=True),
     'expected_updated_at': _JETON,
@@ -965,6 +1006,8 @@ EtudeParamsPatchRequest = {
         'additionalProperties': False,
     },
 }
+
+
 OffresTaillesResponse = _ser('DevisOffresTailles', {
     'offres_tailles': s.DictField(allow_null=True),
     'editable': s.BooleanField(),

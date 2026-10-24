@@ -531,6 +531,17 @@ ContactResponse = _ser('PublicContactResponse', {
 })
 ContactResponses = {200: ContactResponse, 403: DetailResponse}
 
+# ADEV98 — « Décliner / demander un délai » (motif fermé, aucun statut écrit).
+DeclinRequest = _ser('PublicDeclinRequest', {
+    # prix | delai | concurrent | projet_reporte | autre (400 sinon).
+    'motif': s.CharField(),
+    'texte': s.CharField(required=False, allow_blank=True),
+})
+DeclinResponse = _ser('PublicDeclinResponse', {
+    'detail': s.CharField(),
+    'already_sent': s.BooleanField(),
+})
+
 OtpEnvoye = _ser('PublicOtpEnvoye', {'detail': s.CharField()})
 OtpAucunCanal = _ser('PublicOtpAucunCanal', {
     'detail': s.CharField(),
@@ -549,6 +560,8 @@ AcceptRequest = _ser('PublicAcceptRequest', {
     'otp_code': s.CharField(required=False, allow_blank=True),
     'empreinte_contenu': s.CharField(required=False, allow_blank=True),
     'entreprise': s.DictField(required=False, allow_null=True),
+    # ADEV99 — langue de la page au moment de signer (fr/en/ar).
+    'langue': s.CharField(required=False, allow_blank=True),
 })
 AcceptResponse = _ser('PublicAcceptResponse', {
     'detail': s.CharField(),
@@ -567,7 +580,13 @@ AcceptResponse = _ser('PublicAcceptResponse', {
         'raison_sociale': s.CharField(allow_blank=True),
         'signataire_qualite': s.CharField(allow_blank=True),
         'ice': s.CharField(allow_blank=True),
+        # ADEV95 — nom, e-mail et attestation de pouvoir du signataire.
+        'signataire_nom': s.CharField(required=False, allow_blank=True),
+        'signataire_email': s.CharField(required=False, allow_blank=True),
+        'pouvoir_engager': s.BooleanField(required=False),
     }, allow_null=True),
+    # ADEV96 — le reçu : horodatage, sceau du contenu, SHA-256 du PDF signé.
+    'recu': s.DictField(required=False, allow_null=True),
 })
 AcceptRefus = _ser('PublicAcceptRefus', {
     'detail': s.CharField(),

@@ -103,6 +103,23 @@ describe('CIQ125 — profil déclaré C&I et résultat serveur en direct', () =>
     expect(ventesApi.patchEtudeParams).not.toHaveBeenCalled()
   })
 
+  it('ADEV91 — le kWh MENSUEL du lead résolu par le serveur (kwh_mensuel_declare) vaut consommation connue', async () => {
+    // Lead Meta : un seul kWh mensuel, aucun profil saisi — l'aperçu a calculé
+    // (30,53 kWc en direct) : « Créer / Enregistrer » ne refuse plus.
+    ventesApi.getDevisById.mockResolvedValue(devisIndustriel('commercial'))
+    const r = reponseSansConso()
+    r.data.entrees_resolues = { kwh_mensuel_declare: { valeur: 6000, provenance: { origine: 'lead', detail: 'client' } } }
+    ventesApi.etudeCiPreview.mockResolvedValue(r)
+    rendre()
+    // L'aperçu serveur doit être LU avant d'enregistrer (c'est lui qui porte
+    // la consommation résolue) : la taille retenue affichée en est la preuve.
+    const retenue = exempleContrat('ventes', 'etude_ci_preview').taille.retenue_kwc
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 5000 })).toHaveTextContent(String(retenue))
+    fireEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
+    await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalled(), { timeout: 5000 })
+    expect(screen.queryByTestId('erreur-conso')).toBeNull()
+  })
+
   it('enregistrer ⇒ les ENTRÉES v2 partent dans etude_params, jamais une dérivée du moteur', async () => {
     const { container } = rendre()
     await waitFor(() => expect(container.querySelector('#gen-ci-kwh-0')).not.toBeNull())

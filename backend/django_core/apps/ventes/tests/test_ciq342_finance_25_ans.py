@@ -85,15 +85,18 @@ class Ciq342SiteMT(SimpleTestCase):
         d = _data("exemple_industriel_mt")
         texte = _texte(_pages(d)[3])
         self.assertIn("Cumul net de l'investissement (HT)", texte)
-        self.assertIn("hors cashflow", texte)
+        self.assertIn("hors flux annuels", texte)
+        self.assertNotIn("cashflow", texte)
         # Mention 82-21 SERVIE par ``economie_ci.revente_ci`` (contrat
         # réaligné sur le service : MENTION_82_21 en tête des six).
         self.assertIn("Tarif d'excédent ANRE (décision 04/26) : 18 cDH/kWh",
                       texte)
         self.assertNotIn("n'est pas rémunéré", texte)
         # Pied de page sur la base servie (CIQ315) : HT.
-        self.assertIn("Investissement HT (clé en main) : 1 458 333,33 MAD HT",
+        # Le titre dit « HT » : le montant ne le répète pas.
+        self.assertIn("Investissement HT (clé en main) : 1 458 333,33 MAD",
                       texte)
+        self.assertNotIn("1 458 333,33 MAD HT", texte)
 
     def test_jamais_n_est_pas_remunere(self):
         for exemple in ("exemple", "exemple_industriel_mt"):
@@ -155,4 +158,301 @@ class Amot80PageFinance(SimpleTestCase):
         texte = _texte(_pages(_data())[3])
         self.assertIn("valorisation heure par heure au tarif de chaque poste",
                       texte)
-        self.assertIn("durée d'analyse : 25 ans", texte)
+        # « Horizon : 25 ans », une seule mention (la source le répétait).
+        self.assertIn("Horizon : 25 ans", texte)
+        self.assertNotIn("durée d'analyse", texte)
+
+
+def _data_energie(exemple="exemple"):
+    """La fixture industrielle + la sortie du moteur C&I (bilan horaire,
+    contrat ``etude_ci_preview.json``) alignée sur le kWc servi."""
+    import copy
+    import json
+    from pathlib import Path
+
+    from ._moteur_fixtures import etude_ci_au_kwc_servi
+    contrat = Path(__file__).resolve().parents[1] / "contract_samples"
+    etude_ci = json.loads((contrat / "etude_ci_preview.json").read_text(
+        encoding="utf-8"))["exemple"]
+    d = _data(exemple) if exemple else sample_data.build()
+    d["etude"] = dict(d.get("etude") or {}, etude_ci=copy.deepcopy(etude_ci))
+    return etude_ci_au_kwc_servi(d)
+
+
+class Amot90PageEnergie(SimpleTestCase):
+    """AMOT90 — la page 3 industrielle non chiffrable n'est plus une page
+    blanche : l'énergie mois par mois (kWh du bilan servi) et le surplus,
+    sous la petite ligne de motif ; chiffrable, le graphique suit le bloc
+    financier (retiré par le rendu adaptatif s'il ne tient pas)."""
+
+    def test_non_chiffrable_page_energie(self):
+        d = _data_energie(None)
+        p3 = _pages(d)[3]
+        texte = _texte(p3)
+        self.assertIn('data-graphique="energie_mensuelle"', p3)
+        graphique = p3[p3.index('data-graphique="energie_mensuelle"'):]
+        self.assertEqual(graphique[:graphique.index("</svg>")].count("<rect"),
+                         36)
+        self.assertIn("Ce que la centrale produit pour votre site", texte)
+        self.assertIn("Votre énergie mois par mois", texte)
+        self.assertIn("Surplus non valorisé : ≈ 25 959 kWh/an", texte)
+        # La petite ligne de motif reste ; plus l'encadré blanc.
+        self.assertIn("Économies et retour sur investissement non chiffrés",
+                      texte)
+        self.assertNotIn("Rentabilité non chiffrée sur ce dossier", texte)
+        self.assertEqual(len(_pages(d)) - 1, 4)
+
+    def test_sans_bilan_encadre_d_hier(self):
+        texte = _texte(_pages(sample_data.build())[3])
+        self.assertIn("Rentabilité non chiffrée sur ce dossier", texte)
+        self.assertNotIn("Votre énergie mois par mois", texte)
+
+    def test_chiffrable_graphique_apres_le_bloc_financier(self):
+        p3 = _pages(_data_energie())[3]
+        self.assertIn("Rentabilité sur 25 ans", _texte(p3))
+        self.assertLess(p3.index("Hypothèses de l"),
+                        p3.index('data-graphique="energie_mensuelle"'))
+        sans = _pages(dict(_data_energie(), _sans_graphiques=True))[3]
+        self.assertNotIn("data-graphique", sans)
+
+
+class Amot91Hypotheses(SimpleTestCase):
+    """AMOT91 — les deux rangées nouvelles (base de production, règle de
+    dimensionnement) dans la liste de la page finance ; le tableau compact
+    sur la page énergie (non chiffrable)."""
+
+    def test_page_finance_deux_rangees_nouvelles(self):
+        texte = _texte(_pages(_data_energie())[3])
+        self.assertIn("Base de production : 10° d'inclinaison, plein sud — à "
+                      "confirmer au calepinage", texte)
+        self.assertIn("Règle de dimensionnement : chaque palier de 5 kWc "
+                      "retenu se rembourse en moins de 10 ans", texte)
+        self.assertIn("Prix du kWh : Tarif ONEE BT publié", texte)
+        self.assertNotIn("repli", texte)
+
+    def test_page_energie_tableau_compact(self):
+        d = _data_energie(None)
+        d["economie_ci"] = sample_data.economie_ci("exemple")
+        d["economie_ci"]["omissions"] = [{
+            "cle": "investissement_mad", "motif": "investissement à "
+            "compléter après la visite technique (3 postes hors total)"}]
+        d["economie_ci"]["flux_ht"] = dict(d["economie_ci"]["flux_ht"],
+                                           flux=[])
+        texte = _texte(_pages(d)[3])
+        self.assertIn("Ce que la centrale produit pour votre site", texte)
+        tableau = texte[texte.index("Hypothèses de l'estimation"):]
+        self.assertIn("Entretien (O&M) non déduit des économies", tableau)
+        self.assertIn("Règle de dimensionnement", tableau)
+        # Compact : jamais l'investissement (incomplet ici) dans le tableau.
+        self.assertNotIn("Investissement 247 500", tableau)
+
+    def test_taux_declare_sans_nom_de_champ_interne(self):
+        texte = _texte(_pages(_data("exemple_industriel_mt"))[3])
+        self.assertIn("Taux d'actualisation : 8 % — déclaré par le client",
+                      texte)
+        self.assertNotIn("taux_actualisation_client", texte)
+        self.assertIn("Prix du kWh : ceux de votre facture d'électricité",
+                      texte)
+
+
+class Amot84SourcesServiesParCode(SimpleTestCase):
+    """AMOT84 — les textes français SERVIS par ``economie_ci`` (indexation
+    constante, dégradation NREL, méthode horaire) portent un code stable :
+    un document anglais en imprime le libellé anglais ; le français reste le
+    texte servi, octet pour octet."""
+
+    def _texte(self, langue):
+        from apps.ventes import economie_ci as eco
+        d = _data()
+        d["langue_sortie"] = langue
+        for h in d["economie_ci"]["flux_ht"]["hypotheses"]:
+            if h["cle"] == "indexation_pct":
+                h.update(source=eco.MENTION_INDEXATION_CONSTANTE,
+                         source_code=eco.CODE_INDEXATION_CONSTANTE)
+            elif h["cle"] == "degradation_pct":
+                h.update(source=eco.DEGRADATION_CI_SOURCE,
+                         source_code=eco.CODE_DEGRADATION_NREL)
+        return _texte(_pages(d)[3])
+
+    def test_anglais_libelles_du_code(self):
+        texte = self._texte("en")
+        hyp = texte[texte.index("Estimate assumptions"):]
+        hyp = hyp[:hyp.index("kWh price")]
+        for en in ("constant selling tariff (assumption)",
+                   "median from Jordan & Kurtz, NREL/JA-5200-51664, 2012",
+                   "tariff of the time-of-use period covered, hour by hour"):
+            self.assertIn(en, hyp)
+        for fr in ("hypothèse", "médiane", "heure par heure"):
+            self.assertNotIn(fr, hyp)
+
+    def test_francais_texte_servi(self):
+        from apps.ventes import economie_ci as eco
+        texte = self._texte("fr")
+        for fr in (eco.MENTION_INDEXATION_CONSTANTE, eco.DEGRADATION_CI_SOURCE,
+                   eco.HYPOTHESE_VALORISATION["valeur"]):
+            self.assertIn(fr, texte)
+
+    def test_le_moteur_sert_les_codes(self):
+        from apps.ventes import economie_ci as eco
+        bloc = eco.flux_ci(
+            eco.base_economique(
+                "oui", investissement={"ht": 400000.0, "ttc": 480000.0},
+                economie_annee1={"total_mad": 80000.0,
+                                 "total_mad_ttc": 96000.0}),
+            production_annee1_kwh=100000)["flux_ht"]
+        hyp = {h["cle"]: h for h in bloc["hypotheses"]}
+        self.assertEqual(hyp["indexation_pct"]["source_code"],
+                         "indexation_constante")
+        self.assertEqual(hyp["degradation_pct"]["source_code"],
+                         "degradation_nrel_2012")
+        # Le texte français reste servi (lecteurs d'hier).
+        self.assertEqual(hyp["indexation_pct"]["source"],
+                         eco.MENTION_INDEXATION_CONSTANTE)
+        self.assertEqual(eco.HYPOTHESE_VALORISATION["valeur_code"],
+                         "methode_horaire_poste")
+
+
+class Amot94RemplacementSurLaBaseServie(SimpleTestCase):
+    """AMOT94 — la rangée « Remplacement onduleur » des hypothèses dit le
+    montant sur la BASE servie : HT quand la TVA est récupérable
+    (``argent.base == 'ht'``), TTC sinon (base « deux » inchangée)."""
+
+    def _ligne(self, exemple):
+        d = _data(exemple)
+        argent = synthese_ci(dict(d))["argent"]
+        texte = _texte(_pages(d)[3])
+        debut = texte.index("Remplacement onduleur en année")
+        return argent, texte[debut:debut + 80]
+
+    def test_base_ht_montant_ht(self):
+        argent, ligne = self._ligne("exemple_industriel_mt")
+        self.assertEqual(argent["base"], "ht")
+        ht = argent["remplacements"][0]["montant_ht_mad"]
+        ttc = argent["remplacements"][0]["montant_ttc_mad"]
+        self.assertIn(fmt_centimes(ht).replace(" ", " ") + " MAD HT", ligne)
+        self.assertNotIn(fmt_centimes(ttc).replace(" ", " "), ligne)
+        self.assertNotIn("TTC", ligne)
+
+    def test_base_deux_montant_ttc_inchange(self):
+        argent, ligne = self._ligne("exemple")
+        self.assertEqual(argent["base"], "deux")
+        ttc = argent["remplacements"][0]["montant_ttc_mad"]
+        self.assertIn(fmt_centimes(ttc).replace(" ", " ") + " MAD TTC",
+                      ligne)
+
+
+class Amot94TableauVingtCinqAns(SimpleTestCase):
+    """AMOT94 — le flux servi année par année (0 → 25) à la place des cinq
+    jalons : production, économie, O&M (si déduite), remplacement, flux net
+    et cumul de CHAQUE ligne servie ; le cumul de l'année 25 reste ancré."""
+
+    def _tableau(self, d):
+        p3 = _pages(d)[3]
+        debut = p3.index('class="i2-tbl i2-fx"')
+        return p3, p3[debut:p3.index("</table>", debut)]
+
+    def test_chaque_ligne_servie(self):
+        d = _data()
+        argent = synthese_ci(dict(d))["argent"]
+        _p3, tableau = self._tableau(d)
+        texte = _texte(tableau)
+        flux = argent["flux_ht"]["flux"]
+        self.assertEqual(len(flux), 26)
+        self.assertEqual(tableau.count("<tr>"), 27)  # en-tête + 26 années
+        for f in flux:
+            with self.subTest(annee=f["annee"]):
+                self.assertIn(f"Année {f['annee']}", texte)
+                self.assertIn(fmt_centimes(f["cumul_mad"]).replace(
+                    " ", " "), texte)
+                self.assertIn(fmt_centimes(f["flux_mad"]).replace(
+                    " ", " "), texte)
+        for entete in ("Production (kWh)", "Économie", "Remplacement",
+                       "Flux net", "Cumul net (HT)"):
+            self.assertIn(entete, texte)
+        # Remplacement de l'onduleur au montant HT servi, l'année servie.
+        remplacement = argent["remplacements"][0]
+        ligne = texte[texte.index(f"Année {remplacement['annee']} "):]
+        self.assertTrue(ligne.split("Année")[1].count(fmt_centimes(
+            -remplacement["montant_ht_mad"]).replace(" ", " ")))
+        # O&M non souscrite : non déduite, aucune colonne.
+        self.assertNotIn("O&M", texte)
+        self.assertIn('data-figure="cumul_net_25_ans_mad"', tableau)
+
+    def test_production_lue_sur_la_ligne_servie(self):
+        d = _data()
+        flux = d["economie_ci"]["flux_ht"]["flux"]
+        for f in flux:
+            if f["annee"]:
+                f["production_kwh"] = 90000 + f["annee"]
+        texte = _texte(self._tableau(d)[1])
+        self.assertIn("Année 7 90 007", texte)
+
+    def test_om_souscrite_colonne_deduite(self):
+        d = _data()
+        d["economie_ci"]["om"] = {"statut": "souscrit",
+                                  "montant_mad_an": 12000.0,
+                                  "source": "ligne O&M souscrite"}
+        texte = _texte(self._tableau(d)[1])
+        self.assertIn("O&M", texte)
+        self.assertEqual(texte.count("-12 000,00"), 25)
+
+    def test_courbe_cedable_tableau_garde(self):
+        p3 = _pages(dict(_data(), _sans_graphiques=frozenset(
+            {"courbe_cumul"})))[3]
+        self.assertNotIn('class="i2-courbe"', p3)
+        self.assertIn('class="i2-tbl i2-fx"', p3)
+
+    def test_rendu_adaptatif_cede_les_blocs_de_la_seule_page_qui_deborde(self):
+        from unittest import mock
+
+        from apps.ventes.quote_engine.commercial import equip
+        html = ('<div class="page"><div data-graphique="etapes"></div></div>'
+                '<div class="page"><div data-graphique="energie_mensuelle">'
+                '</div><div data-graphique="courbe_cumul"></div></div>')
+
+        class _Doc:
+            pages = ["p1", "p2"]
+
+        with mock.patch.object(equip, "deborde", lambda page: page == "p2"):
+            self.assertEqual(
+                equip._cedables_des_pages_debordantes(html, _Doc()),
+                frozenset({"energie_mensuelle", "courbe_cumul"}))
+        # Page de trop : on ne sait plus laquelle a poussé — toutes.
+        _Doc.pages = ["p1", "p2", "p3"]
+        self.assertEqual(equip._cedables_des_pages_debordantes(html, _Doc()),
+                         frozenset({"etapes", "energie_mensuelle",
+                                    "courbe_cumul"}))
+
+    def test_ordre_des_blocs_cedes_chaque_retrait_re_mesure(self):
+        """AMOT94 — page finance qui déborde : l'énergie mensuelle cède
+        d'abord, puis la courbe du cumul, puis les hypothèses, chaque retrait
+        RE-MESURÉ ; le bloc d'une page qui ne déborde pas reste."""
+        from unittest import mock
+
+        from apps.ventes.quote_engine.ci.graphiques import cede
+        from apps.ventes.quote_engine.commercial import equip
+        essais = []
+
+        def _build(donnees):
+            essais.append(donnees.get("_sans_graphiques"))
+            blocs = "".join(
+                f'<div data-graphique="{nom}"></div>'
+                for nom in ("courbe_cumul", "hypotheses", "energie_mensuelle")
+                if not cede(donnees, nom))
+            return ('<div class="page"><div data-graphique="etapes"></div>'
+                    '</div><div class="page">' + blocs + '</div>')
+
+        class _Doc:
+            pages = ["p1", "p2"]
+
+        def _tient(html, _doc):
+            return 'data-graphique="hypotheses"' not in html
+
+        with mock.patch.object(equip, "deborde", lambda page: page == "p2"), \
+                mock.patch.object(equip, "_tient", _tient):
+            doc = equip.document_adaptatif({}, _build, lambda _html: _Doc())
+        self.assertIsNotNone(doc)
+        self.assertEqual(essais, [
+            None, frozenset({"energie_mensuelle"}),
+            frozenset({"energie_mensuelle", "courbe_cumul"}),
+            frozenset({"energie_mensuelle", "courbe_cumul", "hypotheses"})])
