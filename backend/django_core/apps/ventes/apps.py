@@ -99,4 +99,3 @@ class VentesConfig(AppConfig):
         chantier_receptionne.connect(
             on_chantier_receptionne,
             dispatch_uid='ventes_suivi_echeance_on_chantier_receptionne')
-# ci-timing : marqueur temporaire de mesure CI (retire avant la PR)
