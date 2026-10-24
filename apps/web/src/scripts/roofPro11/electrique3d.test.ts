@@ -430,6 +430,10 @@ describe('CALX220 — déplacer, retirer, annuler', () => {
    Le tracé est la SOURCE de la longueur que le serveur publiera : un tronçon
    qui ne relie rien, ou qui n'a ni tracé ni longueur saisie, est REFUSÉ en
    nommant l'extrémité ou le champ fautif — jamais accepté puis oublié.
+
+   Les cas du tracé et leur forme sont LUS dans l'échantillon committé
+   `apps/calepinage/contract_samples/electrique_cheminements.json` (CALX202),
+   comme ceux des équipements plus haut : pas de seconde fixture écrite ici.
    ========================================================================== */
 
 const ECHANTILLON_CHEMINS = contrat('electrique_cheminements');
