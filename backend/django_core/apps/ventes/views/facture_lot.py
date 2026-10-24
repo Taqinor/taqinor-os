@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from . import openapi_docs as D
 from ..models import Facture
-from ..serializers_facturation import FactureSerializer
+from ..serializers_facturation import FactureListeSerializer, FactureSerializer
 
 logger = logging.getLogger('apps.ventes.views.facture')
 
@@ -70,7 +70,7 @@ class FactureLotActionsMixin:
             self.get_queryset())))
 
     @extend_schema(request=D.ConsoliderRequest,
-                   responses={201: FactureSerializer},
+                   responses={201: FactureListeSerializer},
                    extensions=D.CORPS_DEVIS_IDS_UNIQUES)
     @action(detail=False, methods=['post'], url_path='consolider',
             permission_classes=[IsResponsableOrAdmin])

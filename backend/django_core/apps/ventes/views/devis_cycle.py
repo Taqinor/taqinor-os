@@ -617,7 +617,6 @@ class DevisCycleActionsMixin:
         inchangé).
         POST : crée un lot — corps ``{nom_lot, adresse_site?, ordre?,
         lignes?: [ligne_id, ...]}`` ; les lignes citées lui sont rattachées."""
-        from rest_framework.exceptions import ValidationError
         from ..models import LotDevis
         from ..selectors import lots_totaux
         devis = self.get_object()
@@ -634,7 +633,10 @@ class DevisCycleActionsMixin:
             donnees = entree.validated_data
             nom = donnees['nom_lot']
             if devis.lots.filter(nom_lot=nom).exists():
-                raise ValidationError(
+                # CI #997 fuzz (24/10) : nom bien formé, c'est l'ÉTAT du devis
+                # (lot déjà présent) qui s'oppose = 409, plus 400.
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat(
                     {'nom_lot': 'Ce lot existe déjà sur ce devis.'})
             with transaction.atomic():
                 lot = LotDevis.objects.create(

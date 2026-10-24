@@ -57,6 +57,10 @@ def _ecrire_conception(devis, payload, request):
     from ..domain.resynchronisation import (
         ConceptionRefusee, ecrire_conception_du_devis)
     from ..services import SyncLayoutError
+    from ..utils.corps import nettoyer_json
+    # CI #997 fuzz (24/10) : JSON libre rangé en jsonb -> nul et demi-substituts
+    # Unicode normalisés (DataError / UnicodeEncodeError = 500 sinon).
+    payload = nettoyer_json(payload)
 
     try:
         resultat = ecrire_conception_du_devis(
@@ -313,7 +317,8 @@ class DevisCalepinageActionsMixin:
 
     @extend_schema(request=D.LayoutRequest,
                    responses={200: D.SyncLayoutResponse,
-                              409: D.ErreurSyncLayout})
+                              409: D.ErreurSyncLayout},
+                   extensions=D.CORPS_LAYOUT_OBLIGATOIRE)
     @action(parser_classes=[JSONParser], detail=True, methods=['post'], url_path='sync-layout',
             permission_classes=[IsResponsableOrAdmin])
     def sync_layout(self, request, pk=None):
@@ -597,7 +602,8 @@ class DevisCalepinageActionsMixin:
     # api-only: plus d'appelant écran depuis ACAL97 (intégrations/scripts)
     @extend_schema(methods=['GET'], responses=D.LayoutResponse)
     @extend_schema(methods=['POST'], request=D.LayoutRequest,
-                   responses=D.LayoutResponse)
+                   responses=D.LayoutResponse,
+                   extensions=D.CORPS_LAYOUT_OBLIGATOIRE)
     @action(
         parser_classes=[JSONParser],
         detail=True,

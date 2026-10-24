@@ -19,7 +19,7 @@ from core.champs_stricts import (
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import ChoixDocumente
-from ..models import Paiement
+from ..models import Paiement, ROLES_AUTO_COMPOSITION
 from ..payments.providers import providers_lien_actifs
 from ..serializers import (
     DevisSerializer, DevisWriteSerializer, PlanCommissionSerializer,
@@ -423,8 +423,11 @@ EnregistrerAvanceRequest = _ser('PaiementEnregistrerAvanceRequest', {
 _JETON = s.CharField(required=False, allow_blank=True, allow_null=True)
 
 ErreurDetail = _ser('DevisErreurDetail', {'detail': s.CharField()})
+# CI #997 fuzz (24/10) : un 400 de VALIDATION du corps (``valider_corps``) est
+# rendu par champ (``{"nature": [...]}``) et ne porte pas ``detail`` : seuls les
+# refus d'état (409) et de garde le portent toujours.
 ErreurDevisFige = _ser('DevisErreurFige', {
-    'detail': s.CharField(),
+    'detail': s.CharField(required=False),
     'code': s.CharField(required=False),
 })
 ErreurGarde = _ser('DevisErreurGarde', {
@@ -442,28 +445,36 @@ CompositionRequest = {
             'Une puissance (`kwc`) OU un nombre de panneaux (`nb_panneaux`) '
             'est requis(e), strictement positif(ve).'),
         'properties': {
-            'kwc': {'type': 'number', 'exclusiveMinimum': True,
-                    'minimum': 0},
-            'nb_panneaux': {'type': 'integer', 'minimum': 1},
-            'panel_watt': {'type': 'number', 'exclusiveMinimum': True,
-                           'minimum': 0},
+            # CI #997 fuzz (24/10) — bornes PUBLIÉES et appliquées par
+            # ``valider_corps_schema`` : ``1.2e308`` kWc débordait le calcul
+            # (500) ; un parc > 100 MWc, un module hors 1-5000 Wc ou plus d'un
+            # million de panneaux ne sont pas des devis résidentiels.
+            'kwc': {'type': 'number', 'minimum': 0.01, 'maximum': 100000},
+            'nb_panneaux': {'type': 'integer', 'minimum': 1,
+                            'maximum': 1000000},
+            'panel_watt': {'type': 'number', 'minimum': 1, 'maximum': 5000},
             # CI #997 fuzz — les scénarios que la composition sait servir
             # (``creation_auto.SCENARIOS_DEMANDABLES`` ; vide = les deux) :
             # un autre texte était « conforme » puis refusé en 422.
             'scenario': {'type': 'string',
                          'enum': ['', 'sans', 'avec', 'les_deux']},
-            'structure_produit_id': {'type': 'integer', 'nullable': True},
-            'structure_type': {'type': 'string'},
+            'structure_produit_id': {'type': 'integer', 'nullable': True,
+                                     'minimum': 1, 'maximum': 2147483647},
+            'structure_type': {'type': 'string',
+                               'pattern': r'^[^\u0000]*$'},
             'taux_tva': {'type': 'number', 'minimum': 0, 'maximum': 100},
-            'mppt_paires': {'type': 'integer', 'minimum': 1},
+            'mppt_paires': {'type': 'integer', 'minimum': 1, 'maximum': 1000},
             'hors_reseau': {'type': 'boolean'},
-            'lead': {'type': 'integer', 'nullable': True},
+            'lead': {'type': 'integer', 'nullable': True, 'minimum': 1,
+                     'maximum': 2147483647},
             'dimensionnement_avec': {
                 'type': 'object',
                 'properties': {
-                    'nb_panneaux': {'type': 'number'},
-                    'kwc': {'type': 'number'},
-                    'batterie_kwh': {'type': 'number'},
+                    'nb_panneaux': {'type': 'number', 'minimum': 0,
+                                    'maximum': 1000000},
+                    'kwc': {'type': 'number', 'minimum': 0, 'maximum': 100000},
+                    'batterie_kwh': {'type': 'number', 'minimum': 0,
+                                     'maximum': 1000000},
                 },
             },
         },
@@ -567,7 +578,15 @@ FromLayoutRequest = _ser('DevisFromLayoutRequest', {
 #: client : les deux règles sont PUBLIÉES sur cette opération seulement.
 CORPS_FROM_LAYOUT = corps_resserre({
     'type': 'object',
-    'properties': {'layout': {'type': 'object', 'minProperties': 1}},
+    # CI #997 fuzz (24/10) : taux de TVA et remise globale en pourcentage
+    # 0-100 (``-5.9e103`` répondait 400 « doit être compris entre 0 et 100 »).
+    'properties': {
+        'layout': {'type': 'object', 'minProperties': 1},
+        'taux_tva': {'type': 'number', 'nullable': True, 'minimum': 0,
+                     'maximum': 100},
+        'remise_globale': {'type': 'number', 'nullable': True, 'minimum': 0,
+                           'maximum': 100},
+    },
     'anyOf': [
         {'required': ['lead'],
          'properties': {'lead': {'type': 'integer', 'minimum': 1}}},
@@ -600,6 +619,19 @@ ErreurFromLayout = _ser('DevisErreurFromLayout', {
 #: manquant ») : au moins une clé, publiée.
 LayoutRequest = {'application/json': {'type': 'object', 'minProperties': 1,
                                       'additionalProperties': True}}
+#: CI #997 fuzz (24/10) : `sections` n'accepte QUE les clés de la liste fermée
+#: (toute autre = 400 « clés inconnues ») — un `inline_serializer` ne ferme pas
+#: l'objet ; les propriétés sont restatées car `additionalProperties: false`
+#: ne regarde que les `properties` de SON sous-schéma `allOf`.
+CORPS_SHARE_LINK = corps_resserre({'properties': {'sections': {
+    'properties': {cle: {} for cle in _SECTIONS_LIEN},
+    'additionalProperties': False}}})
+#: CI #997 fuzz (24/10) : un layout est un corps OBLIGATOIRE — un `request` en
+#: dict ne rend jamais le corps obligatoire (le fuzz l'omettait : « Layout
+#: manquant ou invalide. » = 400 sur un envoi « conforme »). `anyOf` à une
+#: branche, au sens de ``minProperties``, le rend obligatoire.
+CORPS_LAYOUT_OBLIGATOIRE = corps_resserre({'anyOf': [
+    {'type': 'object', 'minProperties': 1}]})
 LayoutResponse = _ser('DevisLayoutResponse', {
     'roof_layout': s.JSONField(allow_null=True),
 })
@@ -693,6 +725,21 @@ ReplaceLinesRequest = _ser('DevisReplaceLinesRequest', {
     'etude_params': s.DictField(required=False, allow_null=True),
     'expected_updated_at': _JETON,
 })
+#: CI #997 fuzz (24/10) : ce que l'écrivain de lignes (``domain/lignes``) exige
+#: de CHAQUE ligne — une section / note porte un intitulé, toute autre ligne un
+#: produit (« Ligne sans produit valide. » = 400 sur un `DictField` libre).
+CORPS_REPLACE_LINES = corps_resserre({'properties': {'lignes': {'items': {
+    'type': 'object',
+    'anyOf': [
+        {'required': ['type_ligne', 'designation'],
+         'properties': {
+             'type_ligne': {'type': 'string', 'enum': ['section', 'note']},
+             'designation': {'type': 'string', 'pattern': r'\S'}}},
+        {'required': ['produit'],
+         'properties': {
+             'type_ligne': {'type': 'string', 'enum': ['produit']},
+             'produit': {'type': 'integer', 'minimum': 1}}},
+    ]}}}})
 
 # --------------------------------------------------------------- cycle de vie
 DeriveResponse = _ser('DevisDeriveResponse', {
@@ -1041,7 +1088,7 @@ FacturerVenteApercu = _ser('DevisFacturerVenteApercu', {
     'vente': FacturerVenteMontants,
 })
 ErreurFacturerVente = _ser('DevisFacturerVenteErreur', {
-    'detail': s.CharField(),
+    'detail': s.CharField(required=False),
     'code': s.CharField(required=False),
 })
 GenererFactureRequest = _ser('DevisGenererFactureRequest', {
@@ -1053,10 +1100,20 @@ GenererFactureRequest = _ser('DevisGenererFactureRequest', {
 
 # ========================================================= ENF11 — facturation
 # Bons de commande, factures, paiements, avoirs : corps et réponses RÉELS.
+@extend_schema_field({'anyOf': [
+    {'type': 'string', 'format': 'decimal', 'pattern': MOTIF_MONTANT_SAISI},
+    {'type': 'number', 'minimum': 0.01, 'maximum': 9999999999.99}]})
+class _QuantiteLivree(s.DecimalField):
+    """CI #997 fuzz (24/10) — quantité livrée STRICTEMENT positive, 2 décimales
+    au plus, en chaîne ou en nombre : la règle réellement appliquée par
+    ``bon_commande._erreur_lignes_livraison`` (le schéma annonçait tout
+    décimal et ``"-36.2"`` répondait 400)."""
+
+
 LigneLivraison = _ser('BonCommandeLigneLivraison', {
-    'ligne_devis': s.IntegerField(),
-    'quantite': s.DecimalField(max_digits=12, decimal_places=2,
-                               min_value=Decimal('0.01')),
+    'ligne_devis': s.IntegerField(min_value=1, max_value=2147483647),
+    'quantite': _QuantiteLivree(max_digits=12, decimal_places=2,
+                                min_value=Decimal('0.01')),
 })
 LivrerPartielRequest = _ser('BonCommandeLivrerPartielRequest', {
     'lignes': s.ListField(child=LigneLivraison, min_length=1),
@@ -1147,7 +1204,9 @@ ErreurRetenue = _ser('FactureErreurChamp', {
     'action_attendue': s.CharField(required=False),
 })
 EnvoyerEmailFactureRequest = _ser('FactureEnvoyerEmailRequest', {
-    'to_email': ChaineStricte(required=False, allow_blank=True),
+    # CI #997 fuzz (24/10) : une adresse (ou vide = celle du client) — publiée
+    # `format: email` ; ``"û"`` était « conforme » puis refusé à l'envoi (400).
+    'to_email': s.EmailField(required=False, allow_blank=True),
     'sujet': ChaineStricte(required=False, allow_blank=True),
     'corps': ChaineStricte(required=False, allow_blank=True),
     'attach_pdf': BooleenStrict(required=False),
@@ -1474,9 +1533,17 @@ OffreTailleConfigRequest = {
                                     'maximum': 500},
                     'batterie_nb_modules': {'type': 'integer', 'minimum': 0,
                                             'maximum': 100},
-                    'equipements': {'type': 'object',
-                                    'additionalProperties': {
-                                        'type': 'integer'}},
+                    # CI #997 fuzz (24/10) : les rôles de composition connus,
+                    # rien d'autre (« Rôle de composition inconnu. » = 400
+                    # sur une clé pourtant conforme à un `additionalProperties`
+                    # libre) ; le produit est une clé primaire (>= 1).
+                    'equipements': {
+                        'type': 'object',
+                        'additionalProperties': False,
+                        'properties': {
+                            role: {'type': 'integer', 'minimum': 1}
+                            for role in ROLES_AUTO_COMPOSITION},
+                    },
                 },
             },
         },

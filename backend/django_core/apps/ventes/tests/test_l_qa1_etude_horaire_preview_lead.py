@@ -181,6 +181,20 @@ class PreviewAvecLeadTests(_LeadPreviewBase):
         self.assertEqual(resp.data['profil']['equipements_actifs'], [])
         self.assertIsNone(resp.data['estimation_conso'])
 
+    def test_grandeurs_hors_bornes_400_jamais_500(self):
+        """CI #997 fuzz (24/10) : toute grandeur est publiée dans ±1e9 (latitude
+        ±90, longitude ±180) et appliquée par le serveur — ``-2.6e16`` kWh ou
+        ``1.9e-163`` kWh de batterie débordaient le calcul en 500 (page HTML)."""
+        url = '/api/django/ventes/etude-horaire/preview/'
+        for corps in ({'kwc': 1e12}, {'batterie_kwh': -1e300},
+                      {'lat': 91, 'lon': 0}, {'lon': -181},
+                      {'facture_hiver': 1e10},
+                      {'conso_kwh_mensuelles': [-2.6e16] * 12},
+                      {'factures_mensuelles': [1e10] * 12}):
+            with self.subTest(corps=corps):
+                resp = self.api.post(url, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.content)
+
 
 # ENF1b — POST /ventes/etude-horaire/preview/ : `equipements` non-objet.
 # api-fuzz du 09/10/2026 : le corps multipart `equipements={}` (une CHAÎNE) faisait planter

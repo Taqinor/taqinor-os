@@ -5,10 +5,11 @@ pour afficher un warning doux quand l'encours du client dépasse son plafond.
 Jamais un blocage dur : l'encours est calculé à la volée depuis les factures
 ouvertes et renvoyé avec un message prêt à l'affichage.
 """
+import re
 from decimal import Decimal, InvalidOperation
 
-from drf_spectacular.utils import extend_schema
-from ..openapi_params import qstr
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from . import openapi_docs as D
 from django.http import Http404
 from rest_framework.decorators import api_view, permission_classes
@@ -19,7 +20,16 @@ from authentication.permissions import IsAnyRole
 from core.selectors import get_company_object
 
 
-@extend_schema(parameters=[qstr('montant_ttc')], responses=D.CreditWarningResponse)
+#: CI #997 fuzz (24/10) — UN prédicat pour le schéma ET le serveur : un nombre
+#: décimal en notation simple (15 chiffres entiers au plus), ou vide
+#: (« non renseigné »). ``Decimal`` lisait aussi ``1_0``, `` 5 `` et ``1e9``.
+MONTANT_TTC_OU_VIDE = r'^(?:[+-]?\d{1,15}(?:\.\d+)?)?$'
+_MONTANT_TTC = re.compile(MONTANT_TTC_OU_VIDE)
+
+
+@extend_schema(parameters=[OpenApiParameter(
+    'montant_ttc', OpenApiTypes.STR, OpenApiParameter.QUERY, required=False,
+    pattern=MONTANT_TTC_OU_VIDE)], responses=D.CreditWarningResponse)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def client_credit_warning(request, client_id):
@@ -61,7 +71,8 @@ def client_credit_warning(request, client_id):
     montant_ttc = request.query_params.get('montant_ttc') or None
     if montant_ttc is not None:
         try:
-            valeur = Decimal(str(montant_ttc).strip())
+            valeur = (Decimal(montant_ttc)
+                      if _MONTANT_TTC.fullmatch(montant_ttc) else None)
         except (InvalidOperation, ValueError):
             valeur = None
         if valeur is None or not valeur.is_finite():

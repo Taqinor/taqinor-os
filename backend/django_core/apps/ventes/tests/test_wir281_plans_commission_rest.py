@@ -273,6 +273,13 @@ class TestResoudre(TestCase):
         r = self.api.get(f'{BASE}/resoudre/?owner={etranger.id}')
         self.assertEqual(r.status_code, 404, r.content)
 
+    def test_owner_vide_ou_repete_400(self):
+        # CI #997 fuzz (24/10) : ``?owner=`` publié entier — vide ou répété
+        # = 400 (le vide était lu « aucun commercial », 200).
+        for brut in ('', '1&owner=2'):
+            r = self.api.get(f'{BASE}/resoudre/?owner={brut}')
+            self.assertEqual(r.status_code, 400, (brut, r.content))
+
     def test_owner_zero_404_et_illisible_400(self):
         # ENF11 — ``0`` est un id bien formé, inconnu : 404 ; « abc » : 400.
         self.assertEqual(

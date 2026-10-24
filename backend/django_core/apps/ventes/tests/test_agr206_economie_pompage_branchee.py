@@ -119,6 +119,22 @@ class LectureTests(_Base):
         self.assertEqual(set(rep.json()), set(CONTRAT['exemple']))
         self.assertIn('vue_interne', rep.json())
 
+    def test_donnee_du_devis_refusee_409(self):
+        # CI #997 fuzz (24/10) : la requête (GET sans corps) est conforme ;
+        # c'est une grandeur STOCKÉE du devis que le calcul refuse = refus
+        # d'état 409 qui nomme le champ, plus un 400.
+        from apps.ventes.economie import EconomieInvalide
+        with mock.patch(
+                'apps.ventes.views.economie_pompage.'
+                'economie_pompage_pour_devis',
+                side_effect=EconomieInvalide(
+                    'lignes[0].total_ttc_mad : -1 refusé',
+                    champ='lignes[0].total_ttc_mad')):
+            rep = self.api.get(
+                f'/api/django/ventes/devis/{self.devis.pk}/economie-pompage/')
+        self.assertEqual(rep.status_code, 409, rep.content[:500])
+        self.assertIn('lignes[0].total_ttc_mad', str(rep.json()))
+
     def test_autre_societe_404(self):
         etranger = User.objects.create_user(
             username='agr206_etranger', password='x',

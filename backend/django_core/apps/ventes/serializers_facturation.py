@@ -618,6 +618,16 @@ class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
         super().__init__(*args, **kwargs)
         _retirer_unicite_tranche(self)
 
+    def get_fields(self):
+        # CI #997 fuzz (24/10) : la remise globale (0-100, 2 décimales) est
+        # PUBLIÉE telle que ``validate_remise_globale`` l'applique — le schéma
+        # annonçait tout décimal et ``101`` répondait 400. Même publication que
+        # l'en-tête du devis (``conditions_ci.publier``).
+        from .domain.conditions_ci import publier
+        fields = super().get_fields()
+        publier(fields)
+        return fields
+
 
 class LigneAvoirSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):

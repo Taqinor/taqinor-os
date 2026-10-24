@@ -380,7 +380,8 @@ class DevisEditionActionsMixin:
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=D.ReplaceLinesRequest, responses=DevisSerializer)
+    @extend_schema(request=D.ReplaceLinesRequest, responses=DevisSerializer,
+                   extensions=D.CORPS_REPLACE_LINES)
     @action(detail=True, methods=['post'], url_path='replace-lines',
             permission_classes=[IsResponsableOrAdmin])
     def replace_lines(self, request, pk=None):

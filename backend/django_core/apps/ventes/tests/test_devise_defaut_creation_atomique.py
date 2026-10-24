@@ -72,7 +72,7 @@ class TestDeviseDefautCreation(TestCase):
         self.assertEqual(Devis.objects.get(pk=r.data['id']).devise, 'MAD')
 
     def test_enf17_atomic_entite_bornee_societe(self):
-        """ENF17 — l'entité d'une AUTRE société = id absent (400
+        """ENF17 — l'entité d'une AUTRE société = id absent (404
         « objet inexistant »), rien n'est créé ; celle de la société passe."""
         from apps.entites.models import Entite
         autre = Company.objects.create(nom='ENF17 Autre', slug='enf17-autre')
@@ -85,7 +85,7 @@ class TestDeviseDefautCreation(TestCase):
                  'lignes': self._lignes()}
         avant = Devis.objects.count()
         r = self.api.post(url, {**corps, 'entite': entite_b.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertEqual(r.data['entite'][0].code, 'does_not_exist')
         self.assertEqual(Devis.objects.count(), avant)
         r = self.api.post(url, {**corps, 'entite': entite_a.id}, format='json')

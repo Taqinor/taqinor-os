@@ -123,7 +123,8 @@ class TestLotsDevis(TestCase):
         resp = auth(self.user).post(
             f'/api/django/ventes/devis/{self.devis.id}/lots/',
             {'nom_lot': 'Site A'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # CI #997 fuzz (24/10) : lot déjà présent = refus d'ÉTAT, 409.
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_qjr648_ordre_non_numerique_400(self):
         """QJR648 — ROUGE AVANT : ``int('abc')`` → 500."""

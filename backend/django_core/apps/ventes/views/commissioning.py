@@ -7,7 +7,7 @@ société de l'utilisateur). Querysets scopés. Aucun prix ; ne change aucun sta
 de devis (RULE #4).
 """
 from drf_spectacular.utils import extend_schema_view, extend_schema
-from ..openapi_params import qint, qstr
+from ..openapi_params import choix_requete, entier_requete, qint, qstr
 from rest_framework.parsers import JSONParser
 from rest_framework.exceptions import ValidationError
 
@@ -67,7 +67,9 @@ def _refresh_recette_result(recette):
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('chantier'), qint('devis'), qstr('resultat')]))
+    parameters=[qint('chantier'),
+                qint('devis'),
+                qstr('resultat', enum=CommissioningTest.Resultat.values)]))
 class CommissioningTestViewSet(CompanyScopedModelViewSet):
     """FG274 — CRUD fiche de recette ; résultat dérivé serveur.
 
@@ -95,13 +97,14 @@ class CommissioningTestViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        chantier_id = self.request.query_params.get('chantier')
-        if chantier_id:
+        chantier_id = entier_requete(self.request, 'chantier')
+        if chantier_id is not None:
             qs = qs.filter(chantier_id=chantier_id)
-        devis_id = self.request.query_params.get('devis')
-        if devis_id:
+        devis_id = entier_requete(self.request, 'devis')
+        if devis_id is not None:
             qs = qs.filter(devis_id=devis_id)
-        resultat = self.request.query_params.get('resultat')
+        resultat = choix_requete(
+            self.request, 'resultat', CommissioningTest.Resultat.values)
         if resultat:
             qs = qs.filter(resultat=resultat)
         return qs
@@ -149,7 +152,8 @@ _DEFAUT_VRAI = ['1', 'true', 'True']
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('recette'), qstr('defaut', enum=_DEFAUT_VRAI)]))
+    parameters=[qint('recette'),
+                qstr('defaut', enum=_DEFAUT_VRAI)]))
 class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG275 — CRUD courbes I-V ; écart & défaut dérivés serveur."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
@@ -171,10 +175,8 @@ class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-de
             return qs.none()
         # CI #997 — ``?recette`` entier et ``?defaut`` drapeau énuméré : une
         # autre valeur (``defaut=null``) répond 400, plus ignorée en silence.
-        from core.champs_stricts import entier_ou_400
-        recette_id = entier_ou_400(
-            self.request.query_params.get('recette'), 'recette')
-        if recette_id:
+        recette_id = entier_requete(self.request, 'recette')
+        if recette_id is not None:
             qs = qs.filter(recette_id=recette_id)
         defaut = self.request.query_params.get('defaut')
         if defaut is not None and defaut not in _DEFAUT_VRAI:
@@ -282,8 +284,8 @@ class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessu
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        chantier_id = self.request.query_params.get('chantier')
-        if chantier_id:
+        chantier_id = entier_requete(self.request, 'chantier')
+        if chantier_id is not None:
             qs = qs.filter(chantier_id=chantier_id)
         return qs
 
@@ -306,7 +308,8 @@ class AsBuiltPackViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessu
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('chantier'), qstr('statut')]))
+    parameters=[qint('chantier'),
+                qstr('statut', enum=AttestationConformite.Statut.values)]))
 class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG277 — CRUD attestation de conformité électrique."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
@@ -327,10 +330,11 @@ class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir not
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        chantier_id = self.request.query_params.get('chantier')
-        if chantier_id:
+        chantier_id = entier_requete(self.request, 'chantier')
+        if chantier_id is not None:
             qs = qs.filter(chantier_id=chantier_id)
-        statut = self.request.query_params.get('statut')
+        statut = choix_requete(
+            self.request, 'statut', AttestationConformite.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
         return qs
@@ -353,7 +357,8 @@ class AttestationConformiteViewSet(CompanyScopedModelViewSet):  # ARC5 (voir not
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('chantier'), qstr('verdict')]))
+    parameters=[qint('chantier'),
+                qstr('verdict', enum=TestPerformanceReception.Verdict.values)]))
 class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG278 — CRUD test PR de réception ; pr/ecart/verdict dérivés serveur."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
@@ -374,10 +379,11 @@ class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir 
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        chantier_id = self.request.query_params.get('chantier')
-        if chantier_id:
+        chantier_id = entier_requete(self.request, 'chantier')
+        if chantier_id is not None:
             qs = qs.filter(chantier_id=chantier_id)
-        verdict = self.request.query_params.get('verdict')
+        verdict = choix_requete(
+            self.request, 'verdict', TestPerformanceReception.Verdict.values)
         if verdict:
             qs = qs.filter(verdict=verdict)
         return qs
@@ -435,7 +441,8 @@ class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir 
 
 
 @extend_schema_view(list=extend_schema(
-    parameters=[qint('chantier'), qstr('statut')]))
+    parameters=[qint('chantier'),
+                qstr('statut', enum=AttestationRE.Statut.values)]))
 class AttestationREViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-dessus)
     """FG287 — CRUD attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
@@ -456,10 +463,11 @@ class AttestationREViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-des
             qs = qs.filter(company=user.company)
         elif not user.is_superuser:
             return qs.none()
-        chantier_id = self.request.query_params.get('chantier')
-        if chantier_id:
+        chantier_id = entier_requete(self.request, 'chantier')
+        if chantier_id is not None:
             qs = qs.filter(chantier_id=chantier_id)
-        statut = self.request.query_params.get('statut')
+        statut = choix_requete(
+            self.request, 'statut', AttestationRE.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
         return qs

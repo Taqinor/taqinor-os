@@ -160,6 +160,23 @@ class SingleLineEndpointTest(TestCase):
             resp = self.client_api.post(url, corps, format="json")
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
 
+    def test_format_enumere_vide_ou_inconnu_400(self):
+        # CI #997 fuzz (24/10) : ``?format=`` (json | pdf) vide ou hors liste
+        # répondait 200 (SVG par défaut) : 400 nommé.
+        devis = self._make_devis(self.company)
+        urls = ["/api/django/ventes/schema-unifilaire/",
+                f"/api/django/ventes/devis/{devis.id}/schema-unifilaire/"]
+        for url in urls:
+            for brut in ("", "xml"):
+                with self.subTest(url=url, format=brut):
+                    if url.endswith("schema-unifilaire/") and "devis" not in url:
+                        resp = self.client_api.post(
+                            url + f"?format={brut}", {"n_panneaux": 12},
+                            format="json")
+                    else:
+                        resp = self.client_api.get(url + f"?format={brut}")
+                    self.assertIn(resp.status_code, (400, 404), resp.content)
+
     def test_get_by_devis_derives_from_lines(self):
         devis = self._make_devis(self.company)
         resp = self.client_api.get(

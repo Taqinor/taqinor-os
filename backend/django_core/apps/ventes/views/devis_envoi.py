@@ -115,7 +115,8 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
 class DevisEnvoiActionsMixin:
     """SPL138 — actions d'envoi de ``DevisViewSet`` (mixin, aucune base)."""
 
-    @extend_schema(request=D.ShareLinkRequest, responses=D.ShareLinkResponse)
+    @extend_schema(request=D.ShareLinkRequest, responses=D.ShareLinkResponse,
+                   extensions=D.CORPS_SHARE_LINK)
     @action(detail=True, methods=['post'], url_path='share-link',
             permission_classes=[IsResponsableOrAdmin])
     def share_link(self, request, pk=None):
