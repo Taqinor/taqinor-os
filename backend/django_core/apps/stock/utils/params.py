@@ -224,6 +224,23 @@ def choix_ou_400(valeur, nom, choix):
     return valeur
 
 
+def texte_sans_nul_ou_400(valeur, nom):
+    """Filtre TEXTE de requête (``?q=``, ``?type_document=``) : un caractère nul
+    ne peut être lu par PostgreSQL (500) -> 400 nommant le paramètre. Le schéma
+    publie ``MOTIF_SANS_NUL`` pour ce paramètre. Absent -> ``None``."""
+    from rest_framework.exceptions import ValidationError
+    if valeur is not None and '\x00' in valeur:
+        raise ValidationError({nom: ['Caractère nul interdit.']})
+    return valeur
+
+
+def statut_requete_ou_400(request, choix, nom='statut'):
+    """Filtre ``?statut=`` à valeurs FERMÉES (énumération publiée) : absent/vide
+    -> ``None`` ; paramètre répété ou valeur hors ``choix`` -> 400 nommant le
+    paramètre (une valeur à caractère nul faisait un 500 SQL)."""
+    return choix_ou_400(valeur_unique_ou_400(request, nom), nom, list(choix))
+
+
 #: Forme publiée de ``?ids=`` : identifiants entiers séparés par des virgules.
 MOTIF_IDS = r'^[0-9]{1,9}(,[0-9]{1,9})*$'
 

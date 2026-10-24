@@ -279,6 +279,14 @@ class _BudgetPeriodeCoherente(OpenApiSerializerExtension):
 DATE_OU_VIDE = {'oneOf': [
     {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
 
+
+def choix_ou_vide(choix):
+    """Filtre à valeurs fermées lu par ``utils.params.statut_requete_ou_400`` :
+    une des valeurs, ou la chaîne vide (= filtre non posé)."""
+    return {'oneOf': [
+        {'type': 'string', 'enum': list(choix)}, {'type': 'string', 'enum': ['']}]}
+
+
 #: CI #997 fuzz — filtre d'identifiant lu par ``utils.params.id_requete_ou_400`` :
 #: un id 1..2147483647, ou la chaîne vide (= filtre non posé).
 ID_OU_VIDE = {'oneOf': [

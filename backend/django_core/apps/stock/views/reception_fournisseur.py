@@ -4,7 +4,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..openapi_helpers import BINARY, INT, LISTE, P, PDF, STR, corps
+from ..openapi_helpers import BINARY, ID_OU_VIDE, LISTE, P, PDF, STR, choix_ou_vide, corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
 from ..erreurs_achats import ConflitEtat
@@ -30,8 +30,8 @@ from .catch_weight import PeseeLigneActionsMixin  # noqa: E402 — fin de module
 from .document_fige import DocumentFigeMixin  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('bon_commande', INT, False, 'BCF (id)'), P('statut', STR, False,
-                                                                                                'Statut')]))
+@extend_schema_view(list=extend_schema(parameters=[
+    P('bon_commande', ID_OU_VIDE), P('statut', choix_ou_vide(ReceptionFournisseur.Statut.values))]))
 class ReceptionFournisseurViewSet(DocumentFigeMixin,
                                   ControleReceptionActionsMixin,
                                   PeseeLigneActionsMixin,
@@ -103,12 +103,12 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
 
     def get_queryset(self):
         qs = super().get_queryset()
-        from ..utils.params import entier_ou_400
-        bon_id = entier_ou_400(
-            self.request.query_params.get('bon_commande'), 'bon_commande')
+        from ..utils.params import id_requete_ou_400, statut_requete_ou_400
+        bon_id = id_requete_ou_400(self.request, 'bon_commande')
         if bon_id is not None:
             qs = qs.filter(bon_commande_id=bon_id)
-        statut = self.request.query_params.get('statut')
+        statut = statut_requete_ou_400(
+            self.request, ReceptionFournisseur.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
         return qs
