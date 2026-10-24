@@ -648,6 +648,16 @@ def _serie_horaire(lat, lon, toit):
     return dict(serie, plan=plan) if serie else None
 
 
+def _toit_declare(res):
+    """``(toit déclaré, toit de la série horaire)`` — AMOT99 : le plan de la série
+    prend la pose déclarée, sinon la pose estimée D-ACI-13."""
+    toit = {'type_pose': res.valeur('type_pose'), 'pente_deg': res.valeur('pente_deg'),
+            'azimut_deg': res.valeur('azimut_deg')}
+    pose = toit['type_pose'] or POSE_PAR_DEFAUT_COUVERTURE.get(
+        res.valeur('couverture'), POSE_PAR_DEFAUT)
+    return toit, dict(toit, type_pose=pose)
+
+
 def _profil_societe(company, mode, cle):
     """Profil SAISI par la société (famille du mode), par la façade calepinage.
 
@@ -1101,14 +1111,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     _garde_kwh_factures(res, tarif, alertes)
 
     site = res.valeur('site') or {}
-    toit_declare = {'type_pose': res.valeur('type_pose'),
-                    'pente_deg': res.valeur('pente_deg'),
-                    'azimut_deg': res.valeur('azimut_deg')}
-    # AMOT99 — le plan de la série horaire : pose déclarée, sinon D-ACI-13.
-    pose = toit_declare['type_pose'] or POSE_PAR_DEFAUT_COUVERTURE.get(
-        res.valeur('couverture'), POSE_PAR_DEFAUT)
-    lecture = None if production_figee else lire_production(
-        site, toit=dict(toit_declare, type_pose=pose))
+    toit_declare, toit_serie = _toit_declare(res)
+    lecture = None if production_figee else lire_production(site, toit=toit_serie)
     if lecture is None and not production_figee:
         alertes.append(_alerte('production_indisponible', 'production',
                                'Profil PVGIS indisponible : production non calculée, étude omise.',
@@ -1123,8 +1127,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         alertes.extend(al_prod)
         hypotheses.extend(hyp_prod)
     else:
-        productibles, formes, source, *serie = lecture  # 3 éléments : lecture d'avant AMOT99
-        serie = (serie or [None])[0]
+        productibles, formes, source, serie = (tuple(lecture) + (None,))[:4]  # 3 = avant AMOT99
         production, hyp_prod, al_prod = bloc_production_ci(
             productible_mensuel=productibles, formes_saison=formes,
             derate=PRODUCTION_DERATE,
