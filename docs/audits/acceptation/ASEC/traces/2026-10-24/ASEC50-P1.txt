@@ -1,0 +1,7 @@
+Rejeu orchestrateur ASEC50 / D-ASEC-50 sur la pile locale à e45ab8aa4 (origin/main, migration roles 0010 appliquée), 2026-10-24.
+Sonde API en transaction ANNULÉE (docker exec … manage.py shell, APIClient + JWT, e-mail locmem) ; deux rôles de rejeu créés dans la société démo :
+« sans Exporter » = Responsable canonique moins crm_export/sav_export/installation_export/ventes_export/reporting_export/ventes_supprimer ; « Directeur » = codes canoniques du Directeur.
+Contexte : societe=2 leads=[2616, 2615, 2614] client=140.
+
+[sans Exporter] POST crm/leads/export-xlsx/ → 403 (attendu 403, OK) — {"detail": "Droit « Exporter » manquant (crm_export).", "code": "droit_manquant", "error": {"code": "permission_denied", "message": "Droit « Exporter » manquant
+[Directeur] POST crm/leads/export-xlsx/ → 200 (attendu 200, OK) — application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
