@@ -96,10 +96,10 @@ with no rate column at all — mono-MAD in practice.
 | stock | ExpeditionTransporteur | `apps/stock/models_wms.py:477` | cout_reel |
 | ventes | LigneDevis | `apps/ventes/models.py:604` | prix_manuel, prix_unitaire, remise, taux_tva, tva_base_legale |
 | ventes | AvenantDevis | `apps/ventes/models.py:935` | taux_remise_global |
-| ventes | DevisPreset | `apps/ventes/models.py:1766` | remise_globale, taux_tva |
-| ventes | LignePrixListe | `apps/ventes/models.py:2112` | prix_unitaire |
-| ventes | PalierRemiseVolume | `apps/ventes/models.py:2201` | remise_pct |
-| ventes | PlanCommission | `apps/ventes/models.py:2261` | montant_par_kwc |
+| ventes | DevisPreset | `apps/ventes/models.py:1786` | remise_globale, taux_tva |
+| ventes | LignePrixListe | `apps/ventes/models.py:2132` | prix_unitaire |
+| ventes | PalierRemiseVolume | `apps/ventes/models.py:2221` | remise_pct |
+| ventes | PlanCommission | `apps/ventes/models.py:2281` | montant_par_kwc |
 | ventes | FactureSource | `apps/ventes/models_facturation.py:98` | sous_total_ht |
 | ventes | AffectationPaiement | `apps/ventes/models_facturation.py:397` | montant |
 | ventes | NoteDebit | `apps/ventes/models_facturation.py:431` | montant_ht, montant_ttc, montant_tva, remise_globale, taux_tva, ventilation_tva |
