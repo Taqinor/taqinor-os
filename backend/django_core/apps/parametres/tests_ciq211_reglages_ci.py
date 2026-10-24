@@ -77,7 +77,13 @@ class ApiReglagesCiTest(TestCase):
     def test_lecture_vierge(self):
         resp = self.api.get(URL)
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(resp.data['sensibilites_ci'], [])
+        # AMOT97 (D-ACI-15=a) — les scénarios seedés, sourcés et valides.
+        self.assertEqual(resp.data['sensibilites_ci'],
+                         tariff.sensibilites_ci_par_defaut())
+        self.assertEqual(tariff.erreurs_sensibilites_ci(
+            tariff.sensibilites_ci_par_defaut()), {})
+        self.assertTrue(all(s['source'].strip()
+                            for s in resp.data['sensibilites_ci']))
         self.assertIs(resp.data['mention_credit_bail_autorisee'], False)
         self.assertEqual(resp.data['mention_credit_bail_source'], '')
 

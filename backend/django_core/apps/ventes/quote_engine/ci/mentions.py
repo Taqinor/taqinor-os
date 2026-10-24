@@ -400,8 +400,9 @@ def mentions_ci(data, *, sous_reserve=False):
 # émissions DIRECTES comptent. La phrase CBAM n'est donc imprimée que si le
 # client a DÉCLARÉ exporter vers l'UE (``export_ue_declare``, CIQ1) ET que
 # son activité déclarée (``secteur_industriel``) est le ciment ou les
-# engrais. Jamais « traçabilité », jamais un tonnage de CO₂ (facteur réseau
-# non sourcé, AGRM27), aucun mécanisme de certificat promis (W5-24).
+# engrais. Jamais « traçabilité », jamais un tonnage de CO₂ sans le facteur
+# réseau sourcé RÉGLÉ par la société (AGRM27 ; AMOT100 : ``co2_evite``),
+# aucun mécanisme de certificat promis (W5-24).
 
 #: Référence réglementaire imprimée avec la phrase CBAM.
 SOURCE_CBAM = "Règlement (UE) 2023/956 du 10 mai 2023, annexe II"
@@ -452,6 +453,42 @@ def _declare_lead(data, colonne):
             if isinstance(entree, dict) and entree.get("colonne") == colonne:
                 return entree.get("valeur")
     return None
+
+
+def cle_mention_tva(data, base):
+    """AMOT95 — la clé de la mention TVA de la page 1, lue sur le statut
+    DÉCLARÉ : base ``ht`` (« oui ») ⇒ économies en HT ; base ``deux`` ⇒ HT
+    et TTC, « inconnue » quand le client a répondu « ne sait pas » (entrée
+    résolue de l'étude, sinon colonne du lead) ; autre base ⇒ None."""
+    if base not in ("ht", "deux"):
+        return None
+    if base == "ht":
+        return "ci_tva_declaree_ht"
+    entree = _dict(_dict(_dict(_dict(data).get("etude")).get("etude_ci")).get(
+        "entrees_resolues")).get("tva_recuperable")
+    valeur = entree.get("valeur") if isinstance(entree, dict) else entree
+    valeur = valeur or _declare_lead(_dict(data), "tva_recuperable")
+    if str(valeur or "").strip().lower() in ("inconnu", "ne_sait_pas"):
+        return "ci_tva_inconnue"
+    return "ci_tva_non_declaree"
+
+
+def co2_evite(data):
+    """AMOT100 (D-ACI-19=a) — ``{t_an, kwh_an, facteur_g_kwh, source, date}``
+    : kWh évités (autoconsommés + injectés valorisés, bilan du moteur C&I) ×
+    facteur RÉGLÉ par la société (``data['facteur_co2_reseau']``), en tonnes
+    au dixième ; None sans facteur réglé ou sans bilan (jamais un défaut)."""
+    data = _dict(data)
+    facteur = _dict(data.get("facteur_co2_reseau"))
+    g_kwh = nombre_normalise(facteur.get("g_kwh"))
+    bilan = _dict(_dict(_dict(data.get("etude")).get("etude_ci")).get("bilan"))
+    auto = nombre_normalise(bilan.get("autoconso_kwh"))
+    if not g_kwh or not str(facteur.get("source") or "").strip() or not auto:
+        return None
+    kwh = auto + (nombre_normalise(bilan.get("injecte_valorise_kwh")) or 0)
+    return {"t_an": round(kwh * g_kwh / 1e6, 1), "kwh_an": round(kwh),
+            "facteur_g_kwh": g_kwh, "source": str(facteur["source"]).strip(),
+            "date": facteur.get("date")}
 
 
 def decarbonation_ci(data):

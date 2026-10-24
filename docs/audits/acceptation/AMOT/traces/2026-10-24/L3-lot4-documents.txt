@@ -1,0 +1,36 @@
+Rejeu live lot 4 — pile locale (seed_demo, société « TAQINOR Démo »), code 558e670effcc52a5e88ffe77eed1c605ff5e07fe, front reconstruit depuis l'arbre et déposé dans le conteneur, base migrée (parametres 0127-0129), Django redémarré, 2026-10-24.
+Sonde 1 : brouillons frais par « Devis automatique » (lead hôtel copié, TVA non déclarée ⇒ base « deux » ; lead usine 2573), rendus /proposal fr/en extraits par PyMuPDF ; réglages société posés pour AMOT96/100 puis restaurés.
+LOT4 | lead créé 2608 type commercial
+LOT4 | auto 1 409 {"detail": "Tarif non déclaré et contrat d'électricité inconnu : économies non chiffrées (aucun prix plat supposé).", "field": "contrat_electricite"}
+LOT4 | auto 2 201 {"id": 1079, "reference": "DEV-202610-0084", "statut": "brouillon", "kwc": 60.35, "nb_lignes": 14, "proposal_token": "C4dMeCFLmSNBH6O88im_efNoCFzcWhrPTnvFN8yWNdI", "proposal_path": "/proposition/C4dMeCFLmSNBH6O88im_efNoCFzcWhrPTnvFN8yWNdI", "alertes": [{"code": "a_chiffrer_visite", "champ": "composition", "message": "« Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre) » à chiffrer après la visite technique : hors total, devis estimé sous réserve de visite."}, {"code": "a_chiffrer_visite", "champ": 
+LOT4 | deux clics [200, 200] ['{"id": 1079, "reference": "DEV-202610-0084", "statut": "brouillon", "kwc": 60.35, "nb_lignes": 14, "proposal_token": "C4dMeCFLmSNBH6O88im_efNoCFzcWhrPTnvFN8yWNd', '{"id": 1079, "reference": "DEV-202610-0084", "statut": "brouillon", "kwc": 60.35, "nb_lignes": 14, "proposal_token": "C4dMeCFLmSNBH6O88im_efNoCFzcWhrPTnvFN8yWNd']
+LOT4 | brouillon 1079 DEV-202610-0084 brouillon TTC 202300.00 lignes 14
+LOT4 | lignes Panneau Canadien Solar 710W | Onduleur réseau Huawei 50kW Triphasé | Coffret DC C&I | Disjoncteur AC 80 A tétrapolaire (C&I) | Contrôleur d'injection C&I | Coffret AC C&I | Études et ingénierie C&I | Pose de la structure C&I | Pose des modules C&I | Raccordement AC C&I | Mise en service C&I | Dossier de raccordement C&I | Levage et accès C&I | Transport C&I
+LOT4 | AMOT95.ht_et_ttc PASS 
+LOT4 | AMOT101.format_en PASS 
+LOT4 | AMOT101.fr_inchange PASS 
+LOT4 | AMOT95 mention TVA : ['soit 177 598,50\xa0MAD\xa0HT · TVA récupérable non déclarée : économies en HT et en TTC.', 'TVA %', 'TVA', 'TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations']
+LOT4 | AMOT98 tarif sur demande présent : True
+LOT4 | AMOT97 scénario prudent présent : False
+LOT4 | AMOT99 méthode (commercial) : ['autoconsommation : estimation sur journées moyennes (série horaire indisponible)']
+LOT4 | auto usine 201 {"id": 1080, "reference": "DEV-202610-0085", "statut": "brouillon", "kwc": 200.22, "nb_lignes": 14, "proposal_token": "T3RCuHVl-kAEX8SloeObof_ZMS1F4pgRAzTvQfwoPVo", "proposal_path": "/proposition/T3RC
+LOT4 | AMOT100.rien_sans_facteur PASS 
+LOT4 | industriel.pages PASS sans=4 fr=4 en=4
+LOT4 | AMOT96.entretien PASS 
+LOT4 | AMOT100.co2 PASS 
+LOT4 | AMOT97.scenarios FAIL 
+LOT4 | AMOT99.methode PASS 
+LOT4 | AMOT99.degradation PASS 
+LOT4 | AMOT101.industriel_en PASS 
+LOT4 | réglages société restaurés
+LOT4 | IDS {"lead": 2608, "devis_commercial": 1079, "devis_industriel": 1080}
+
+Sonde 2 : postes « après visite » chiffrés (prix de démo locaux) ⇒ investissement complet ⇒ scénarios (AMOT97).
+LOT4B | P-ACI-1.409_heure_debut FAIL {"id": 1081, "reference": "DEV-202610-0086", "statut": "brouillon", "kwc": 60.35, "nb_lignes": 14, "proposal_token": "PtK1e9chYGlf26lvtMe2CyS7X52LA2FTFwlTQfxN-C0", "proposal_path": "/proposition/PtK1e9chYGlf26lvtMe2CyS7X52LA2FTFwlTQfxN-C0", "alertes": [{"code": "a_chiffrer_visite", "champ": "composition", "message": "« Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre) » à chiffrer après la visite tec
+LOT4B | replace-lines 1079 200 ok postes chiffrés ['Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)', 'Câble AC Onduleur réseau Huawei 50kW Triphasé → TGBT', 'Structure C&I']
+LOT4B | commercial-chiffre pages 3 lignes scénarios ['scénario prudent : retour ≈ 8 ans']
+LOT4B | AMOT97.commercial-chiffre PASS 
+LOT4B | replace-lines 1080 200 ok postes chiffrés ['Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)', 'Câble AC Onduleur réseau Huawei 150kW Triphasé → TGBT', 'Structure C&I']
+LOT4B | industriel-chiffre pages 4 lignes scénarios ['SCÉNARIO', 'Scénario central', 'P90 : P50 × (1 − 1,282 × σ), σ interannuel 6 % (variabilité météo typique 5 à 7 %,', "Sensibilités saisies par la société ; base : 0 % d'indexation du tarif."]
+LOT4B | AMOT97.industriel-chiffre PASS 
+LOT4B | RESULTATS {"P-ACI-1.409_contrat": "PASS", "P-ACI-1.409_rythme": "PASS", "P-ACI-1.409_heure_debut": "FAIL", "P-ACI-3.un_brouillon": "FAIL", "AMOT97.commercial-chiffre": "PASS", "AMOT97.industriel-chiffre": "PASS"}

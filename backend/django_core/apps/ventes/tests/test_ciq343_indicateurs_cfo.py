@@ -98,9 +98,10 @@ class Ciq343Sensibilites(SimpleTestCase):
 
     def test_sensibilites_saisies_imprimees(self):
         texte = _texte(_page(_data(sensibilites=SENSIBILITES)))
-        self.assertIn("Indexation du tarif +2 % : retour 4 ans, TRI 29,1 %",
-                      texte)
-        self.assertIn("Production -10 % : retour 5 ans, TRI 24,2 %", texte)
+        # AMOT97 — en tableau (scénario, retour, TRI, cumul, source).
+        self.assertIn("Indexation du tarif +2 % 4 ans 29,1 %", texte)
+        self.assertIn("Production -10 % 5 ans 24,2 %", texte)
+        self.assertIn("Paramètres › Tarification & ROI", texte)
         self.assertIn("base : 0 % d'indexation", texte)
 
 

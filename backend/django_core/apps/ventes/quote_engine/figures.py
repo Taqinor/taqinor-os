@@ -202,6 +202,13 @@ def ancre(cle: str, texte, option: str | None = None, taux=None) -> str:
     un chiffre : aucune ancre.
     """
     texte = _html.unescape(str(texte))
+    try:
+        from .montants import format_anglais
+    except ImportError:  # exécution directe du moteur depuis son dossier
+        from montants import format_anglais
+    if format_anglais():
+        # AMOT101 — « 484,992.48 » (C&I en anglais) relu « 484 992,48 ».
+        texte = texte.replace(",", " ").replace(".", ",")
     if normaliser(texte)[0] is None:
         return ""
     return (f"<span{attrs(cle, option, taux, texte)} "

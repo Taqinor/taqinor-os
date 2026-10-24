@@ -152,17 +152,17 @@ LIBELLE_VISITE = "Relevé du site à la visite technique"
 MOTIF_ARGENT_BT = "vos 12 dernières factures"
 MOTIF_ARGENT_MT = ("vos 12 dernières factures MT : prix des trois postes, "
                    "prime fixe, puissance souscrite")
-#: VAN, LCOE et sensibilités : INDUSTRIEL seulement (D-CIQ-10). En commercial
-#: ces clés sont retirées du bloc recopié (jamais recalculées). Le payback
-#: actualisé suit la VAN (il n'existe que sur un taux déclaré) : un seul
-#: payback servi, celui du flux (``indicateurs.retour_ans``).
+#: VAN et LCOE : INDUSTRIEL seulement (D-CIQ-10). En commercial ces clés sont
+#: retirées du bloc recopié (jamais recalculées). Le payback actualisé suit la
+#: VAN (il n'existe que sur un taux déclaré) : un seul payback servi, celui du
+#: flux (``indicateurs.retour_ans``). AMOT97 (D-ACI-15=a) — les sensibilités
+#: restent servies au commercial (son scénario prudent est imprimé).
 CLES_INDUSTRIEL_SEUL = frozenset({
     "van_mad", "van_motif", "lcoe_mad_kwh", "lcoe_actualise",
-    "retour_actualise_ans", "sensibilites"})
+    "retour_actualise_ans"})
 #: Entrées de listes ``{cle: …}`` (omissions, hypothèses) qui ne parlent que
 #: de la VAN — retirées avec elle en commercial.
-ENTREES_INDUSTRIEL_SEUL = frozenset({"van_mad", "taux_actualisation_pct",
-                                     "sensibilites"})
+ENTREES_INDUSTRIEL_SEUL = frozenset({"van_mad", "taux_actualisation_pct"})
 
 
 # ── utilitaires purs ────────────────────────────────────────────────────────
@@ -328,10 +328,16 @@ def _par_mois(bilan):
     return [mois[i] for i in range(1, 13)]
 
 
+#: AMOT99 — ``production.methode_autoconso`` servie par le moteur C&I
+#: (``moteur_ci.production`` : série 8 760 h ou repli journées moyennes).
+METHODES_AUTOCONSO = ("horaire_8760", "journees_moyennes")
+
+
 def _bloc_estimation(etude_ci, coherente):
     """AMOT91 — ce sur quoi l'estimation repose, lu sur l'étude du moteur :
     la base de production (``production.source`` / ``inclinaison_deg`` /
-    ``azimut_deg``) et la règle de dimensionnement (``taille.pas_kwc`` /
+    ``azimut_deg``), la méthode d'autoconsommation (AMOT99,
+    ``production.methode_autoconso``) et la règle de dimensionnement (``taille.pas_kwc`` /
     ``horizon_marginal_annees``, D-CIQ-2 — seulement quand l'étude décrit le
     kWc servi). None quand l'étude ne dit rien de tel."""
     sortie = {}
@@ -341,6 +347,9 @@ def _bloc_estimation(etude_ci, coherente):
             "source": production["source"],
             "inclinaison_deg": _num(production.get("inclinaison_deg")),
             "azimut_deg": _num(production.get("azimut_deg"))}
+    # AMOT99 (D-ACI-18=a) — la méthode d'autoconsommation retenue, dite.
+    if production.get("methode_autoconso") in METHODES_AUTOCONSO:
+        sortie["methode_autoconso"] = production["methode_autoconso"]
     taille = _dict(etude_ci.get("taille"))
     pas = _num(taille.get("pas_kwc"))
     horizon = _num(taille.get("horizon_marginal_annees"))
@@ -838,6 +847,12 @@ def synthese_ci(data):
     if segment == "industriel":
         from .mentions import decarbonation_ci
         synthese["decarbonation"] = decarbonation_ci(data)
+    # AMOT100 (D-ACI-19=a) — CO₂ évité SEULEMENT sur le facteur réglé par la
+    # société et le bilan de CETTE installation (AMOT62).
+    from .mentions import co2_evite
+    co2 = co2_evite(data) if etude_coherente else None
+    if co2 is not None:
+        synthese.setdefault("decarbonation", {})["co2_evite"] = co2
     # CIQ314 — services : seulement ce que le devis porte (D-CIQ-12).
     synthese["services"] = _services(data)
     synthese["echeancier"] = _echeancier(data, option)
@@ -912,6 +927,9 @@ def chiffres_cles(synthese):
         "libelle_methode": LIBELLES_METHODE.get(methode) if methode else None,
         "economie_annuelle_mad": _num(valeur),
         "base_economie": libelle_base,
+        # AMOT95 — base « deux » : la TTC servie, imprimée à côté de la HT.
+        "economie_annuelle_ttc_mad": _num(economie.get("total_mad_ttc"))
+        if argent.get("base") == "deux" and valeur is not None else None,
         "payback_ans": _num(_dict(argent.get("indicateurs")).get(
             "retour_ans")),
         "revente_kwh_an": _num(revente.get("kwh_an")),

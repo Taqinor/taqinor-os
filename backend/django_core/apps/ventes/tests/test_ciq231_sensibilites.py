@@ -134,10 +134,13 @@ class SensibilitesTest(SimpleTestCase):
         self.assertLess(baisse, 0.10)
         self.assertGreater(baisse, 0.0)
 
-    def test_commercial_sensibilites_vides(self):
-        bloc = _bloc(_apercu_contrat(), [
-            {'cle': 'tarif_kwh', 'variation_pct': 10, 'source': 's'}],
-            mode='commercial')
-        self.assertEqual(bloc['sensibilites'], [])
-        self.assertNotIn('sensibilites',
-                         [o['cle'] for o in bloc['omissions']])
+    def test_commercial_sensibilites_calculees(self):
+        """AMOT97 (D-ACI-15=a) — le commercial reçoit ses scénarios (son
+        scénario prudent est imprimé), sur le même flux que l'industriel."""
+        scenario = [{'cle': 'tarif_kwh', 'variation_pct': 10, 'source': 's'}]
+        commercial = _bloc(_apercu_contrat(), scenario, mode='commercial')
+        industriel = _bloc(_apercu_contrat(), scenario, mode='industriel')
+        self.assertEqual(len(commercial['sensibilites']), 1)
+        self.assertEqual(commercial['sensibilites'],
+                         industriel['sensibilites'])
+        self.assertIsNotNone(commercial['sensibilites'][0]['retour_ans'])

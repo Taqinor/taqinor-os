@@ -88,7 +88,9 @@ class ServicesCi(TestCase):
             with self.subTest(mode=mode):
                 d, html = self._rendu(self._devis(mode, om='0'), mode)
                 page = _page_confiance(html, mode)
-                self.assertIn('prix à renseigner', page)
+                # AMOT98 (D-ACI-17=a) — côté client : « tarif sur demande ».
+                self.assertIn('tarif sur demande', page)
+                self.assertNotIn('prix à renseigner', page)
                 self.assertIn('Contrat O&amp;M : nettoyages, inspection',
                               page)
                 synthese = d.get('com_synthese') or d.get('ind_synthese')
@@ -101,6 +103,7 @@ class ServicesCi(TestCase):
         page = _page_confiance(html, 'commercial')
         self.assertIn('MAD HT', page)
         self.assertNotIn('prix à renseigner', page)
+        self.assertNotIn('tarif sur demande', page)
         self.assertEqual(
             d['com_synthese']['services']['om_option']['statut'], 'souscrit')
 
@@ -147,7 +150,7 @@ class Amot83ServicesNommes(SimpleTestCase):
         services, html = self._services()
         self.assertEqual(services["om_option"]["statut"], "tarif_a_renseigner")
         self.assertIn("Contrat O&amp;M (nettoyages, inspection, thermographie, "
-                      "test des protections) — prix à renseigner", html)
+                      "test des protections) — tarif sur demande", html)
         self.assertEqual(services["suivi_production"],
                          {"delai_intervention": None})
         self.assertIn("Suivi de production inclus", html)

@@ -181,6 +181,19 @@ def _omission(cle, motif):
     return {'cle': cle, 'motif': motif}
 
 
+def _degradation_annee1(brute, hypotheses):
+    """AMOT99 — ``degradation_annee1_pct`` FACULTATIVE (courbe de garantie
+    d'une fiche module) : publiée avec sa source, en FRACTION ; absente ⇒
+    None, sans omission (la dégradation composée d'hier s'applique)."""
+    valeur, source, saisie_le = _saisie(
+        'degradation_annee1_pct', brute, minimum=0, maximum=100)
+    if valeur is None:
+        return None
+    hypotheses.append(_hypothese('degradation_annee1_pct', valeur, source,
+                                 saisie_le))
+    return valeur / 100.0
+
+
 def _arrondi(valeur, decimales=2):
     return None if valeur is None else round(valeur, decimales)
 
@@ -505,7 +518,8 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
                        production_annee1_kwh=None, horizon_ans=None,
                        taux_actualisation_pct=None, indexation_pct=None,
                        degradation_pct=None, charges_annuelles_mad=None,
-                       remplacements=None, pret=None, dernier_passage=False):
+                       remplacements=None, pret=None, dernier_passage=False,
+                       degradation_annee1_pct=None):
     """Le bloc économie (forme ``contract_samples/ventes_economie.json``).
 
     Toutes les grandeurs sont facultatives À L'APPEL et aucune n'a de défaut :
@@ -523,6 +537,9 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
         taux_actualisation_pct: taux d'actualisation (%/an, > -100).
         indexation_pct: indexation annuelle du tarif (%/an, > -100).
         degradation_pct: dégradation annuelle de la production (%/an, [0, 100[).
+        degradation_annee1_pct: AMOT99 — perte de la 1re année d'une fiche
+            module (%) : facultative ; présente, la dégradation devient la
+            courbe linéaire de :func:`facteur_degradation`.
         charges_annuelles_mad: charges d'exploitation par an (>= 0).
         remplacements: ``[{equipement, annee, mode, montant_mad, source}]``.
         pret: CALX283 — ``{principal_mad, taux_annuel_pct, duree_mois,
@@ -566,6 +583,7 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
         'degradation_pct', degradation_pct,
         "aucune dégradation annuelle saisie par la société",
         minimum=0, maximum=100)
+    annee1 = _degradation_annee1(degradation_annee1_pct, hypotheses)
     charges = lire(
         'charges_annuelles_mad', charges_annuelles_mad,
         "aucune charge annuelle saisie — aucune n'est portée au flux",
@@ -634,7 +652,7 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
         bloc['lcoe_mad_kwh'] = _lcoe_calcule(
             investissement=investissement, charges=charges,
             production=production, horizon=horizon, r=taux / 100.0,
-            deg=degradation / 100.0, sorties=sorties)
+            deg=degradation / 100.0, sorties=sorties, annee1=annee1)
 
     if entrees_flux or taux_nominaux:
         for cle in ('tri_pct', 'retour_ans'):
@@ -652,7 +670,7 @@ def flux_de_tresorerie(*, investissement_mad=None, economie_annee1_mad=None,
     economies = [0.0]
     for annee in range(1, horizon + 1):
         economie = economie1 * (1.0 + idx) ** (annee - 1) \
-            * (1.0 - deg) ** (annee - 1)
+            * facteur_degradation(annee, deg, annee1)
         economies.append(economie)
         flux.append(economie - charges - sorties.get(annee, 0.0)
                     - service_pret.get(annee, 0.0))
@@ -1055,8 +1073,22 @@ def flux_apres_impot(*, taux_imposition_pct=None, amortissement_mode=None,
 # Production absente ou nulle ⇒ ``None`` + motif : JAMAIS une division bornée
 # qui publierait un nombre.
 
+def facteur_degradation(annee, deg, annee1=None):
+    """La production de l'année ``annee`` (≥ 1) en fraction de l'année 1.
+
+    ``deg``/``annee1`` en FRACTIONS. Sans ``annee1`` : dégradation composée
+    (1 − deg)^(t − 1), le calcul d'hier. Avec ``annee1`` (AMOT99, courbe de
+    garantie d'une fiche module) : puissance garantie au début de l'année —
+    1 en année 1, puis 1 − annee1 − deg × (t − 2), linéaire, jamais < 0."""
+    if annee1 is None:
+        return (1.0 - deg) ** (annee - 1)
+    if annee <= 1:
+        return 1.0
+    return max(0.0, 1.0 - annee1 - deg * (annee - 2))
+
+
 def _lcoe_calcule(*, investissement, charges, production, horizon, r, deg,
-                  sorties=None):
+                  sorties=None, annee1=None):
     """Z/E — toutes les entrées déjà VALIDÉES (fractions, pas des %)."""
     sorties = sorties or {}
     depenses = investissement
@@ -1064,7 +1096,8 @@ def _lcoe_calcule(*, investissement, charges, production, horizon, r, deg,
     for annee in range(1, horizon + 1):
         actualisation = (1.0 + r) ** annee
         depenses += (charges + sorties.get(annee, 0.0)) / actualisation
-        energie += production * (1.0 - deg) ** (annee - 1) / actualisation
+        energie += production * facteur_degradation(
+            annee, deg, annee1) / actualisation
     if energie <= 0:
         return None
     return round(depenses / energie, 6)
@@ -1073,7 +1106,7 @@ def _lcoe_calcule(*, investissement, charges, production, horizon, r, deg,
 def lcoe(*, investissement_mad=None, charges_annuelles_mad=None,
          production_annuelle_kwh=None, horizon_ans=None,
          taux_actualisation_pct=None, degradation_pct=None,
-         remplacements=None):
+         remplacements=None, degradation_annee1_pct=None):
     """CALX282 — ``{lcoe_mad_kwh, hypotheses, omissions}``.
 
     Mêmes règles que :func:`flux_de_tresorerie` : aucune grandeur n'a de
@@ -1115,6 +1148,7 @@ def lcoe(*, investissement_mad=None, charges_annuelles_mad=None,
         'degradation_pct', degradation_pct,
         "aucune dégradation annuelle saisie par la société",
         minimum=0, maximum=100)
+    annee1 = _degradation_annee1(degradation_annee1_pct, hypotheses)
     sorties, hyp_remplacements, omis_remplacements = _lire_remplacements(
         remplacements, horizon)
     hypotheses.extend(hyp_remplacements)
@@ -1138,7 +1172,7 @@ def lcoe(*, investissement_mad=None, charges_annuelles_mad=None,
         investissement=investissement,
         charges=0.0 if charges is None else charges,
         production=production, horizon=horizon, r=taux / 100.0,
-        deg=degradation / 100.0, sorties=sorties)
+        deg=degradation / 100.0, sorties=sorties, annee1=annee1)
     return resultat
 
 

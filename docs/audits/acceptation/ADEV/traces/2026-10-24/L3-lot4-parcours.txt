@@ -1,0 +1,33 @@
+Rejeu live ADEV85 (P-ACI-1..5) + ADEV105 — pile locale, code 558e670effcc52a5e88ffe77eed1c605ff5e07fe, 2026-10-24.
+P-ACI-1 / P-ACI-3 : lead « autre » sans contrat, jours, heures ni régime d'équipes (copie du lead 2572 nettoyée) :
+LOT4B | lead 2612 categorie autre
+LOT4B | P-ACI-1.409_contrat PASS {"detail": "Tarif non déclaré et contrat d'électricité inconnu : économies non chiffrées (aucun prix plat supposé).", "field": "contrat_electricite"}
+LOT4B | P-ACI-1.409_rythme PASS {"detail": "Demandez au client quels jours le site est ouvert (ou en production), ou choisissez son activité : le week-end n'est jamais supposé.", "field": "jours_ouverture"}
+LOT4B | P-ACI-1.409_heure_debut PASS {"detail": "Demandez au client ses heures d'ouverture (début et fin de journée, ou régime d'équipes), ou choisissez son activité : pour celle-ci, aucun horaire type n'est connu.", "field": "heure_debut"}
+LOT4B | P-ACI-3.un_brouillon PASS 0->1 codes=[409, 201]
+LOT4B | RESULTATS {"P-ACI-1.409_contrat": "PASS", "P-ACI-1.409_rythme": "PASS", "P-ACI-1.409_heure_debut": "PASS", "P-ACI-3.un_brouillon": "PASS"}
+
+P-ACI-2 / P-ACI-4 (brouillon commercial frais 1079) :
+LOT4 | auto 2 201 {"id": 1079, "reference": "DEV-202610-0084", "statut": "brouillon", "kwc": 60.35, "nb_lignes": 14, "proposal_token": "C4dMeCFLmSNBH6O88im_efNoCFzcWhrPTnvFN8yWNdI", "proposal_path": "/proposition/C4dMeCFLmSNBH6O88im_efNoCFzcWhrPTnvFN8yWNdI", "alertes": [{"code": "a_chiffrer_visite", "champ": "composition", "message": "« Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre) » à chiffrer après la visite technique : hors total, devis estimé sous réserve de visite."}, {"code": "a_chiffrer_visite", "champ": 
+LOT4 | deux clics [200, 200] ['{"id": 1079, "reference": "DEV-202610-0084", "statut": "brouillon", "kwc": 60.35, "nb_lignes": 14, "proposal_token": "C4dMeCFLmSNBH6O88im_efNoCFzcWhrPTnvFN8yWNd', '{"id": 1079, "reference": "DEV-202610-0084", "statut": "brouillon", "kwc": 60.35, "nb_lignes": 14, "proposal_token": "C4dMeCFLmSNBH6O88im_efNoCFzcWhrPTnvFN8yWNd']
+LOT4 | P-ACI-3.un_brouillon FAIL 1->1
+LOT4 | brouillon 1079 DEV-202610-0084 brouillon TTC 202300.00 lignes 14
+LOT4 | lignes Panneau Canadien Solar 710W | Onduleur réseau Huawei 50kW Triphasé | Coffret DC C&I | Disjoncteur AC 80 A tétrapolaire (C&I) | Contrôleur d'injection C&I | Coffret AC C&I | Études et ingénierie C&I | Pose de la structure C&I | Pose des modules C&I | Raccordement AC C&I | Mise en service C&I | Dossier de raccordement C&I | Levage et accès C&I | Transport C&I
+LOT4 | P-ACI-2.composition PASS 
+LOT4 | P-ACI-2.aucun_zero PASS []
+LOT4 | P-ACI-4.trois_pages PASS fr=3 en=3
+LOT4 | P-ACI-4.pas_bareme_onee PASS 
+LOT4 | P-ACI-4.8221 FAIL 
+LOT4 | auto usine 201 {"id": 1080, "reference": "DEV-202610-0085", "statut": "brouillon", "kwc": 200.22, "nb_lignes": 14, "proposal_token": "T3RCuHVl-kAEX8SloeObof_ZMS1F4pgRAzTvQfwoPVo", "proposal_path": "/proposition/T3RC
+LOT4 | RESULTATS {"P-ACI-1.contrat": "PASS", "P-ACI-1.heure_debut": "FAIL", "P-ACI-3.un_brouillon": "FAIL", "P-ACI-2.composition": "PASS", "P-ACI-2.aucun_zero": "PASS", "P-ACI-4.trois_pages": "PASS", "P-ACI-4.pas_bareme_onee": "PASS", "P-ACI-4.8221": "FAIL", "AMOT95.ht_et_ttc": "PASS", "AMOT101.format_en": "PASS", "AMOT101.fr_inchange": "PASS", "AMOT100.rien_sans_facteur": "PASS", "industriel.pages": "PASS", "AMOT96.entretien": "PASS", "AMOT100.co2": "PASS", "AMOT97.scenarios": "FAIL", "AMOT99.methode": "PASS", "AMOT99.degradation": "PASS", "AMOT101.industriel_en": "PASS"}
+  P-ACI-4.8221 : sur un site BT, le régime imprimé est MENTION_BT (« revente non ouverte en basse tension à ce jour — ANRE 04/26 ») — conforme à constants_82_21 (le numéro de loi n'est imprimé que sur la mention MT) ; suivi de production imprimé (« Suivi de production inclus »).
+
+P-ACI-5 (générateur ?lead=2612, navigateur) : marché « Commercial », 7 badges « repris du lead », « Auto-remplir » cliqué, repères « À chiffrer après visite » (3 postes hors total), 0 erreur console — capture L3-lot4-P5-generateur.png.
+
+Spec frontend/e2e/devis-ci-commercial.spec.js (locale, E2E_BASE_URL=http://localhost, chromium) : 5 passés, 1 ignoré (/proposition FR/AR : WEB_URL requis). Spec réalignée : sélecteur de la catégorie ancré sur sa libellé (badge ADEV100), corps d'acceptation avec signataire_nom/email + pouvoir_engager (ADEV95), délai 90 s sur l'acceptation (rendu + sceau du PDF signé).
+
+ADEV105 (route jumelle) — devis accepté 1086 :
+JUM | devis 1086 accepte avant (0, None, None)
+JUM | document 200 application/pdf
+JUM | proposal 200 application/pdf
+JUM | apres (0, None, None) PASS

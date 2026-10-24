@@ -27,6 +27,7 @@ from .. import premium_base
 from ..ci import couverture as ci_couverture
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
+from ..montants import decimale
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
 from ..ci.graphiques import bloc_energie_mensuelle, cede, css_graphique
 
@@ -43,12 +44,15 @@ LIBELLES_HYPOTHESES = {
     "taux_actualisation_pct": ("ci_ind_h_taux", "Taux d'actualisation"),
     "indexation_pct": ("ci_ind_h_indexation", "Indexation du tarif"),
     "degradation_pct": ("ci_ind_h_degradation", "Dégradation des panneaux"),
+    # AMOT99 — la perte de la 1re année publiée par la fiche module.
+    "degradation_annee1_pct": ("ci_ind_h_degradation_annee1",
+                               "Dégradation de la 1re année"),
 }
 UNITES_HYPOTHESES = {
     "investissement_mad": "MAD", "economie_annee1_mad": "MAD",
     "production_annee1_kwh": "kWh", "horizon_ans": None,
     "taux_actualisation_pct": "%", "indexation_pct": "% / an",
-    "degradation_pct": "% / an",
+    "degradation_pct": "% / an", "degradation_annee1_pct": "%",
 }
 
 _num = nombre_ou_none
@@ -103,6 +107,8 @@ def _charges_par_annee(argent, cle_flux):
     om = argent.get("om") if isinstance(argent.get("om"), dict) else {}
     om_an = (_num(om.get("montant_mad_an"))
              if om.get("statut") == "souscrit" else None)
+    # AMOT96 — sans O&M souscrite : l'entretien minimum DÉDUIT par le moteur.
+    om_an = om_an or _entretien_deduit(argent)
     cle_montant = "montant_ttc_mad" if cle_flux == "flux_ttc" \
         else "montant_ht_mad"
     remplacements = {}
@@ -126,7 +132,8 @@ def _tableau_flux(argent, lignes_flux, fmt, fmt_mad, L, base_txt):
     om_an, remplacements = _charges_par_annee(argent, cle_flux)
     colonnes = [L("ci_fx_production", "Production (kWh)"),
                 L("ci_fx_economie", "Économie")]
-    colonnes += [L("ci_fx_om", "O&amp;M")] if om_an else []
+    colonnes += [L("ci_fx_entretien", "Entretien") if _entretien_deduit(argent)
+                 else L("ci_fx_om", "O&amp;M")] if om_an else []
     colonnes += [L("ci_fx_remplacement", "Remplacement")] \
         if remplacements else []
     colonnes += [L("ci_fx_flux", "Flux net"),
@@ -171,7 +178,7 @@ def _valeur_hypothese(h, fmt, L):
         if cle == "horizon_ans":
             return L("ci_ind_n_ans", "{n} ans", n=f"{valeur:g}")
         texte = fmt(valeur) if unite in ("MAD", "kWh") else \
-            f"{valeur:g}".replace(".", ",")
+            decimale(f"{valeur:g}")
         if unite == "% / an":
             unite = L("ci_ind_pct_an", unite)
         return f"{texte}&nbsp;{unite}" if unite else texte
@@ -293,6 +300,7 @@ def _rangees_estimation(synthese, L):
             "ci_h_base_pvgis", "{incl}° d'inclinaison, {orientation} — à "
             "confirmer au calepinage", orientation=orientation,
             incl=_decimal_txt(_num(prod["inclinaison_deg"])))))
+    rangees += _rangee_methode(estimation, L)
     dim = estimation.get("dimensionnement") or {}
     if _num(dim.get("pas_kwc")) and _num(dim.get("horizon_annees")):
         rangees.append((L("ci_h_dimensionnement", "Règle de dimensionnement"),
@@ -303,18 +311,63 @@ def _rangees_estimation(synthese, L):
     return rangees
 
 
+def _rangee_methode(estimation, L):
+    """AMOT99 (D-ACI-18=a) — la méthode d'autoconsommation retenue par le
+    moteur : 8 760 h de l'année type, ou le repli sur journées moyennes."""
+    methode = estimation.get("methode_autoconso")
+    if methode not in ("horaire_8760", "journees_moyennes"):
+        return []
+    valeur = (L("ci_h_methode_8760", "autoconsommation calculée heure par "
+                "heure sur l'année type (8 760 h)")
+              if methode == "horaire_8760" else
+              L("ci_h_methode_journees", "autoconsommation : estimation sur "
+                "journées moyennes (série horaire indisponible)"))
+    return [(L("ci_h_methode_autoconso", "Méthode de calcul"), valeur)]
+
+
 def _rangee_om(argent, fmt_mad, L):
     """AMOT91 — l'entretien (O&M) : « déduit des économies : N MAD/an »
     seulement souscrit et chiffré (CIQ342), sinon « non déduit »
     (accordé à « entretien »)."""
     om = argent.get("om") if isinstance(argent, dict) else None
+    # AMOT96 — l'entretien minimum servi : déduit (il remplace la phrase),
+    # ou « entretien non chiffré » (seul sans O&M au devis).
+    entretien = _ligne_entretien(argent, fmt_mad, L)
+    if not isinstance(om, dict) and entretien:
+        return [(None, entretien)]
     om = om if isinstance(om, dict) else {}
     montant = _num(om.get("montant_mad_an"))
     valeur = (L("ci_h_om_deduite", "déduit des économies : {montant} MAD/an",
                 montant=fmt_mad(montant))
               if om.get("statut") == "souscrit" and montant else
               L("ci_h_om_non_deduite", "non déduit des économies"))
+    if _entretien_deduit(argent):
+        valeur = entretien
+    elif entretien and om.get("statut") != "souscrit":
+        valeur += f" — {entretien}"
     return [(L("ci_h_om", "Entretien (O&amp;M)"), valeur)]
+
+
+def _entretien_deduit(argent):
+    """AMOT96 — le montant annuel de l'entretien minimum DÉDUIT du flux servi
+    (``argent.entretien``, réglage société), sinon None."""
+    entretien = argent.get("entretien") if isinstance(argent, dict) else None
+    entretien = entretien if isinstance(entretien, dict) else {}
+    return (_num(entretien.get("montant_mad_an"))
+            if entretien.get("statut") == "deduit" else None)
+
+
+def _ligne_entretien(argent, fmt_mad, L):
+    """AMOT96 — « entretien minimum à votre charge (réglage société) : N
+    MAD/an, déduit des économies », « entretien non chiffré », ou ''."""
+    entretien = argent.get("entretien") if isinstance(argent, dict) else None
+    if not isinstance(entretien, dict):
+        return ""
+    if _entretien_deduit(argent):
+        return L("ci_entretien_minimum", "entretien minimum à votre charge "
+                 "(réglage société) : {montant} MAD/an, déduit des économies",
+                 montant=fmt_mad(_entretien_deduit(argent)))
+    return L("ci_entretien_non_chiffre", "entretien non chiffré")
 
 
 def rangees_hypotheses(d, synthese, fmt, fmt_mad, L, *, compact=False,
@@ -344,7 +397,9 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
     return [f"{libelle}&#160;: {valeur}" if libelle and valeur
             else (libelle or valeur)
             for libelle, valeur in rangees_hypotheses(
-                d, synthese, fmt, fmt_mad, L)]
+                d, synthese, fmt, fmt_mad, L,
+                # AMOT96 — l'entretien servi (déduit / non chiffré) est dit.
+                om=isinstance((argent or {}).get("entretien"), dict))]
 
 
 def tableau_hypotheses(d, synthese, fmt, fmt_mad, L, prefixe,
@@ -390,6 +445,8 @@ def _ligne_om(argent, fmt_mad, L):
     if om.get("statut") == "souscrit" and montant:
         return L("ci_ind_om_deduite", "O&amp;M déduite du flux : {montant} MAD/an",
                  montant=fmt_mad(montant))
+    if _entretien_deduit(argent):
+        return _ligne_entretien(argent, fmt_mad, L)
     if om.get("statut") in ("propose", "tarif_a_renseigner"):
         return L("ci_ind_om_non_deduite",
                  "O&amp;M proposée, non déduite de ces montants")
@@ -423,7 +480,7 @@ def _ligne_revente(argent, fmt, L, langue):
 
 def _decimal_txt(valeur):
     """« 0,1221 » — un nombre servi, sans arrondi propre."""
-    return f"{valeur:g}".replace(".", ",")
+    return decimale(f"{valeur:g}")
 
 
 def _p90_bancable(d):
@@ -493,32 +550,8 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
             motif = L("ci_ind_van_motif", motif)
         lignes.append(L("ci_ind_van_omise", "VAN non calculée")
                       + (f"&#160;: {motif}" if motif else ""))
-    scenarios = [s for s in argent.get("sensibilites") or []
-                 if isinstance(s, dict)]
-    catalogue = _cles_catalogue()
-    for s in scenarios:
-        variation = _num(s.get("variation_pct"))
-        cle_sens = f"ci_ind_sens_{s.get('cle')}"
-        nom = (L(cle_sens, catalogue[cle_sens]["fr"]) if cle_sens in catalogue
-               else ci_blocs._txt(s.get("cle")))
-        tete = (f"{nom} {variation:+g}&#160;%".replace(".", ",")
-                if variation is not None else nom)
-        if s.get("motif") and s.get("retour_ans") is None:
-            # AMOT84 — le motif servi dans la langue du document.
-            lignes.append(f"{tete}&#160;: {ci_couverture.texte_client(d, s['motif'])}")
-            continue
-        morceaux = []
-        if _num(s.get("retour_ans")) is not None:
-            morceaux.append(L("ci_ind_sens_retour", "retour {n} ans",
-                              n=ci_couverture.ans(_num(s["retour_ans"]))))
-        if _num(s.get("tri_pct")) is not None:
-            morceaux.append(L("ci_ind_sens_tri", "TRI {t} %",
-                              t=f"{_num(s['tri_pct']):.1f}".replace(".", ",")))
-        lignes.append(f"{tete}&#160;: " + ", ".join(morceaux))
-    if scenarios:
-        lignes.append(L("ci_ind_sens_base",
-                        "Sensibilités saisies par la société ; base : 0 % "
-                        "d'indexation du tarif."))
+    # AMOT97 (D-ACI-15=a) — central + scénarios servis, en tableau.
+    sensibilites = _tableau_sensibilites(d, argent, fmt_mad, L)
     p90 = _p90_bancable(d)
     if p90 is not None:
         lignes.append(L("ci_ind_p90",
@@ -526,12 +559,68 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
                         kwh=fmt(p90)))
     financement = ci_blocs.bloc_financement(
         d.get("ind_synthese") or {}, "i2", navy, ink, doc=d)
-    if not lignes and not financement:
+    if not lignes and not financement and not sensibilites:
         return ""
     items = "".join(f'<div class="i2-cfo-i">{li}</div>' for li in lignes)
     return (f'<div class="i2-cfo"><div class="i2-hyp-t">'
             f'{L("ci_ind_indicateurs", "Indicateurs pour votre direction financière")}'
-            f'</div>{items}{financement}</div>')
+            f'</div>{items}{sensibilites}{financement}</div>')
+
+
+def _nom_scenario(s, L):
+    """« Production -7,7 % » — le nom du paramètre varié (catalogue
+    ``ci_ind_sens_<clé>``) et la variation SERVIE."""
+    catalogue = _cles_catalogue()
+    variation = _num(s.get("variation_pct"))
+    cle_sens = f"ci_ind_sens_{s.get('cle')}"
+    nom = (L(cle_sens, catalogue[cle_sens]["fr"]) if cle_sens in catalogue
+           else ci_blocs._txt(s.get("cle")))
+    return (decimale(f"{nom} {variation:+g}&#160;%")
+            if variation is not None else nom)
+
+
+def _tableau_sensibilites(d, argent, fmt_mad, L):
+    """AMOT97 (D-ACI-15=a) — le scénario central puis chaque scénario servi
+    (``argent.sensibilites``) : délai de retour, TRI, cumul net de la dernière
+    année du flux et la source, TELS QUE servis par ``economie_ci`` (aucun
+    recalcul) ; '' sans scénario. Cède sa place avec les hypothèses."""
+    scenarios = [s for s in argent.get("sensibilites") or []
+                 if isinstance(s, dict)]
+    if not scenarios or cede(d, "hypotheses"):
+        return ""
+    indicateurs = argent.get("indicateurs") or {}
+    flux = [f for f in flux_principal(argent)[1].get("flux") or []
+            if isinstance(f, dict)]
+    rangees = [(L("ci_sens_central", "Scénario central"),
+                indicateurs.get("retour_ans"), indicateurs.get("tri_pct"),
+                (flux[-1] if flux else {}).get("cumul_mad"), "")]
+    rangees += [(_nom_scenario(s, L), s.get("retour_ans"), s.get("tri_pct"),
+                 s.get("cumul_25_ans_mad"), ci_couverture.texte_client(
+                     d, s.get("motif") if s.get("motif") and s.get(
+                         "retour_ans") is None else s.get("source")))
+                for s in scenarios]
+
+    unite_ans = L("ci_unite_ans", "&nbsp;ans")
+    formats = (lambda v: ci_couverture.ans(v) + unite_ans,
+               lambda v: decimale(f"{v:.1f}") + "&#160;%",
+               lambda v: fmt_mad(v) + "&#160;MAD")
+    lignes = ""
+    for nom, *valeurs, source in rangees:
+        cellules = "".join(
+            f'<td class="i2-n">{f(_num(v)) if _num(v) is not None else "—"}'
+            '</td>' for f, v in zip(formats, valeurs))
+        lignes += (f'<tr><td>{nom}</td>{cellules}'
+                   f'<td class="i2-mini">{source}</td></tr>')
+    entete = "".join(f"<th>{x}</th>" for x in (
+        L("ci_sens_scenario", "Scénario"),
+        L("ci_ind_delai_retour", "Délai de retour"),
+        L("ci_ind_tri_sur", "TRI sur {n} ans", n="25"),
+        L("ci_sens_cumul", "Cumul net sur {n} ans", n="25"),
+        L("ci_source", "Source")))
+    base = L("ci_ind_sens_base", "Sensibilités saisies par la société ; "
+             "base : 0 % d'indexation du tarif.")
+    return (f'<table class="i2-tbl i2-fx"><tr>{entete}</tr>{lignes}</table>'
+            f'<div class="i2-cfo-i">{base}</div>')
 
 
 def _cles_catalogue():
@@ -726,7 +815,7 @@ def build(ctx):
             base_eco = L(f"ci_{base_eco.lower()}", base_eco)
         payback = _num(indicateurs.get("retour_ans"))
         tri = _num(indicateurs.get("tri_pct"))
-        tri_txt = f"{tri:.1f}".replace(".", ",") if tri is not None else None
+        tri_txt = decimale(f"{tri:.1f}") if tri is not None else None
 
         def kpi(valeur, unite, libelle, cle_fig=None, texte_fig=None):
             a = ancre(cle_fig, texte_fig) if cle_fig else ""
@@ -739,7 +828,9 @@ def build(ctx):
             cellules.append(kpi(
                 fmt(economie), "&nbsp;MAD",
                 L("ci_ind_economie_an1", "Économie de l'année 1")
-                + (f" ({base_eco})" if base_eco else ""),
+                + (f" ({base_eco})" if base_eco else "")
+                + (f" — {ci_couverture.economie_ttc(d, 'ind', fmt)}"
+                   if ci_couverture.economie_ttc(d, "ind", fmt) else ""),
                 "economie_annuelle", fmt(economie)))
         if payback is not None:
             cellules.append(kpi(

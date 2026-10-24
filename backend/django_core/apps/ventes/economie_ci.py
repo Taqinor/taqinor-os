@@ -21,6 +21,7 @@ Module PUR : aucune base, aucun import de modèle, aucune clé interdite
 from __future__ import annotations
 
 from apps.ventes import tarif_ci
+from apps.ventes.moteur_ci import degradation as _deg
 from apps.ventes.quote_engine.constants_82_21 import MENTION_ART13, MENTION_BT
 
 STATUT_CALCULE = 'calcule'
@@ -489,8 +490,7 @@ CODE_DEGRADATION_NREL = 'degradation_nrel_2012'
 CODE_METHODE_HORAIRE = 'methode_horaire_poste'
 CODES_SOURCES_FLUX = {
     MENTION_INDEXATION_CONSTANTE: CODE_INDEXATION_CONSTANTE,
-    DEGRADATION_CI_SOURCE: CODE_DEGRADATION_NREL,
-}
+    DEGRADATION_CI_SOURCE: CODE_DEGRADATION_NREL, **_deg.CODES_SOURCES}
 #: Remplacement de l'onduleur à mi-vie (``pricing.INVERTER_REPLACE_YEAR`` ;
 #: principe IEA PVPS), au montant RÉEL de sa ligne (décision Q1 du 20/08).
 ONDULEUR_MOTIF = "remplacement à mi-vie (principe IEA PVPS, décision Q1 du " \
@@ -505,6 +505,10 @@ MOTIF_LCOE_NON_ACTUALISE = (
 MOTIF_OM_PROPOSE = "O&M proposé, non souscrit — non déduit"
 MOTIF_OM_SANS_PRIX = "tarif O&M à renseigner — non déduit"
 MOTIF_OM_ABSENT = "aucune option O&M sur le devis — aucune charge annuelle"
+#: AMOT96 (D-ACI-14=a) — entretien minimum à la charge du client (réglage
+#: société ``CompanyProfile.entretien_minimum_mad_kwc_an``, MAD HT/kWc/an).
+SOURCE_ENTRETIEN_MINIMUM = "entretien minimum à votre charge (réglage société)"
+MOTIF_ENTRETIEN_NON_CHIFFRE = "entretien non chiffré"
 
 
 def _pricing():
@@ -570,6 +574,37 @@ def _om(om, cle_base):
                      'source': source}
 
 
+def entretien_minimum(reglage, apercu):
+    """AMOT96 — ``{ht, ttc, mad_kwc_an, kwc}`` : l'entretien minimum annuel =
+    réglage société (MAD HT/kWc/an) × kWc retenu de l'étude, TTC à la TVA
+    standard du profil ; None sans réglage ou sans kWc."""
+    reglage = reglage if isinstance(reglage, dict) else {}
+    par_kwc = _montant(reglage.get('mad_kwc_an'), strictement_positif=True)
+    kwc = _montant(((apercu or {}).get('taille') or {}).get('retenue_kwc'),
+                   strictement_positif=True)
+    if par_kwc is None or kwc is None:
+        return None
+    ht = round(par_kwc * kwc, 2)
+    return {'ht': ht, 'ttc': round(ht * (1 + _f(reglage.get('tva_pct')) / 100),
+                                   2), 'mad_kwc_an': par_kwc, 'kwc': kwc}
+
+
+def _entretien(charge, om_bloc, entretien, cle_base):
+    """AMOT96 — sans O&M souscrite chiffrée, l'entretien minimum réglé est LA
+    charge annuelle (jamais les deux). ``(charge, bloc de sa source, bloc
+    entretien | None)`` ; réglage vide ⇒ « entretien non chiffré »."""
+    if charge is not None:
+        return charge, om_bloc, None
+    montant = _montant((entretien or {}).get(cle_base), strictement_positif=True)
+    if montant is None:
+        return None, om_bloc, {'statut': 'non_chiffre', 'montant_mad_an': None,
+                               'source': MOTIF_ENTRETIEN_NON_CHIFFRE}
+    bloc = {'statut': 'deduit', 'montant_mad_an': montant,
+            'mad_kwc_an': entretien['mad_kwc_an'], 'kwc': entretien['kwc'],
+            'source': SOURCE_ENTRETIEN_MINIMUM}
+    return montant, bloc, bloc
+
+
 def _codes_sources(hypotheses):
     """AMOT84 — pose ``source_code`` (``CODES_SOURCES_FLUX``) à côté de
     chaque source servie connue ; la source française reste intacte."""
@@ -578,25 +613,11 @@ def _codes_sources(hypotheses):
             h['source_code'] = CODES_SOURCES_FLUX[h['source']]
 
 
-def _production_par_annee(bloc, production_annee1, deg_pct):
-    """AMOT94 — la production de CHAQUE année du flux servi (``production_kwh``
-    sur chaque ligne ; ``None`` en année 0) : la production de l'année 1 du
-    moteur × (1 − dégradation)^(t − 1), la MÊME dégradation que
-    ``economie.flux_de_tresorerie`` applique à l'économie. Lue par le tableau
-    25 ans du document industriel (jamais recalculée par un gabarit)."""
-    prod = _montant(production_annee1)
-    for ligne in bloc.get('flux') or []:
-        annee = ligne.get('annee')
-        ligne['production_kwh'] = (
-            None if not prod or not annee else
-            int(round(prod * (1.0 - deg_pct / 100.0) ** (annee - 1))))
-
-
 def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
-             om_bloc, cle_base, collecteur=None):
+             om_bloc, cle_base, collecteur=None, degradation=None):
     from apps.ventes import economie as eco_mod
     pricing = _pricing()
-    deg_pct = pricing.PANEL_DEGRADATION * 100.0
+    deg = _deg.entrees_flux(degradation, DEGRADATION_CI_SOURCE)  # AMOT99
     remplacements = []
     montant_onduleur = None if onduleur is None else _montant(
         onduleur.get(cle_base))
@@ -630,16 +651,15 @@ def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
         taux_actualisation_pct=taux_brut,
         indexation_pct={'valeur': 0.0,
                         'source': MENTION_INDEXATION_CONSTANTE},
-        degradation_pct={'valeur': deg_pct, 'source': DEGRADATION_CI_SOURCE},
         charges_annuelles_mad=charge_brute,
-        remplacements=remplacements)
+        remplacements=remplacements, **deg)
     if collecteur is not None:
         # CIQ231 — les entrées EXACTES du flux de base, relancées par
         # :func:`sensibilites_ci` en ne changeant qu'UNE grandeur.
         collecteur[cle_base] = entrees
     bloc = eco_mod.flux_de_tresorerie(**entrees)
     _codes_sources(bloc.get('hypotheses'))
-    _production_par_annee(bloc, production['valeur'], deg_pct)
+    _deg.production_par_annee(bloc, production['valeur'], deg)
     omissions = [o for o in bloc['omissions']
                  if o['cle'] not in ('remplacements', 'charges_annuelles_mad')]
     if montant_onduleur is None:
@@ -659,9 +679,7 @@ def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
             horizon_ans=HORIZON_CI_ANS,
             taux_actualisation_pct={'valeur': 0.0,
                                     'source': MOTIF_LCOE_NON_ACTUALISE},
-            degradation_pct={'valeur': deg_pct,
-                             'source': DEGRADATION_CI_SOURCE},
-            remplacements=remplacements)['lcoe_mad_kwh']
+            remplacements=remplacements, **deg)['lcoe_mad_kwh']
         bloc['lcoe_mad_kwh'] = lcoe
         omissions = [o for o in omissions if o['cle'] != 'lcoe_mad_kwh']
         omissions.append({'cle': 'lcoe_actualise',
@@ -694,7 +712,7 @@ def _jalons(bloc):
 
 def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
             onduleur=None, om=None, taux_actualisation_client=None,
-            collecteur=None):
+            collecteur=None, entretien=None, degradation=None):
     """Le flux 25 ans d'un devis C&I et ses indicateurs (forme
     ``economie_ci.json`` : ``flux_ht`` / ``flux_ttc``, ``jalons``,
     ``indicateurs``, ``remplacements``, ``om``).
@@ -706,25 +724,32 @@ def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
     :func:`lire_taux_client`). La revente n'entre jamais ici.
     ``collecteur`` (CIQ231) : dict facultatif qui reçoit, par base
     (``ht``/``ttc``), les entrées exactes passées à ``flux_de_tresorerie``.
+    ``entretien`` (AMOT96) : sortie de :func:`entretien_minimum`, déduite
+    quand l'O&M n'est pas souscrite et chiffrée. ``degradation`` (AMOT99) :
+    courbe ``moteur_ci.degradation.courbe_depuis_fiches`` (None : d'hier).
     """
     taux = lire_taux_client(taux_actualisation_client)
     sortie = {'base': base_eco['base'], 'motif_base': base_eco['motif_base'],
               'flux_ht': None, 'flux_ttc': None, 'jalons': [],
-              'indicateurs': None, 'remplacements': [], 'om': None}
+              'indicateurs': None, 'remplacements': [], 'om': None,
+              'entretien': None}
     principal = 'flux_ttc' if base_eco['base'] == BASE_TTC else 'flux_ht'
     actualise = False
     for cle in base_eco['flux']:
         cle_base = 'ht' if cle == 'flux_ht' else 'ttc'
         charge, om_bloc = _om(om, cle_base)
+        charge, source_charge, entretien_ = _entretien(
+            charge, om_bloc, entretien, cle_base)
         bloc, remplacement, actualise_ = _un_flux(
             base_eco[f'investissement_{cle_base}_mad'],
             base_eco[f'economie_annee1_{cle_base}_mad'],
             production=production_annee1_kwh, taux=taux, onduleur=onduleur,
-            charge=charge, om_bloc=om_bloc, cle_base=cle_base,
-            collecteur=collecteur)
+            charge=charge, om_bloc=source_charge, cle_base=cle_base,
+            collecteur=collecteur, degradation=degradation)
         sortie[cle] = bloc
         if cle == principal:
             sortie['om'] = om_bloc
+            sortie['entretien'] = entretien_
             actualise = actualise_
             if remplacement is not None:
                 sortie['remplacements'] = [remplacement]
@@ -1134,7 +1159,9 @@ def comparaison_cse(flux, offre_cse, production):
     if not prod:
         sortie['motif'] = MOTIF_CSE_SANS_PRODUCTION
         return sortie
+    from apps.ventes.economie import facteur_degradation
     deg = _f(_hypothese_flux(flux, 'degradation_pct')) / 100.0
+    an1 = _hypothese_flux(flux, 'degradation_annee1_pct')
     hypotheses.append({'cle': 'production_annee1_kwh', 'valeur': prod,
                        'statut': 'source',
                        'source': "même production que le flux d'achat"})
@@ -1146,7 +1173,8 @@ def comparaison_cse(flux, offre_cse, production):
         ligne = par_annee.get(t)
         if ligne is None:
             break
-        kwh = prod * (1.0 - deg) ** (t - 1)
+        kwh = prod * facteur_degradation(
+            t, deg, None if an1 is None else _f(an1) / 100.0)
         paiement = offre['tarif_kwh_ht'] * (1.0 + idx / 100.0) ** (t - 1) * kwh
         cumul_offre += paiement
         cumul_net += (ligne.get('economie_mad') or 0.0) - paiement
@@ -1228,7 +1256,7 @@ HYPOTHESE_VALORISATION = {
 CLES_BLOC = ('statut', 'motifs_omission', 'base', 'motif_base', 'tarif',
              'economie_annee1', 'facture_avant', 'facture_apres', 'revente',
              'flux_ht', 'flux_ttc', 'jalons', 'jalons_ttc', 'indicateurs',
-             'remplacements', 'om', 'sensibilites', 'financement',
+             'remplacements', 'om', 'entretien', 'sensibilites', 'financement',
              'hypotheses', 'omissions', 'alertes_internes', 'vue_interne')
 
 
@@ -1495,7 +1523,9 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
                    kwh_evites_an=kwh_evites, onduleur=onduleur, om=om,
                    taux_actualisation_client=saisies.get(
                        'taux_actualisation_client'),
-                   collecteur=collecteur)
+                   collecteur=collecteur, entretien=entretien_minimum(
+                       reglages.get('entretien_minimum'), apercu),
+                   degradation=reglages.get('degradation_module'))
     if motif_investissement:
         flux = _sans_investissement(flux, motif_investissement)
     revente = valo['revente']
@@ -1524,14 +1554,20 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
         omissions.append({'cle': 'financement',
                           'motif': MOTIF_FINANCEMENT_ABSENT})
     sensibilites = []
-    if str(mode_installation or '').strip().lower() == 'industriel':
-        # CIQ231 — industriel SEULEMENT, sur le flux de la base principale.
+    mode = str(mode_installation or '').strip().lower()
+    if motif_investissement and mode in ('industriel', 'commercial'):
+        # AMOT97 — prix incomplet : aucun scénario chiffré (comme le retour).
+        omissions.append({'cle': 'sensibilites', 'motif': motif_investissement})
+    elif mode in ('industriel', 'commercial'):
+        # CIQ231 / AMOT97 (D-ACI-15=a) — sur le flux de la base principale ;
+        # le commercial en imprime le scénario prudent.
         cle_base = 'ttc' if flux['base'] == BASE_TTC else 'ht'
         sensibilites, omis = sensibilites_ci(
             collecteur.get(cle_base), apercu, tarif, reglages,
             tarif_declare=tarif_declare, cle_base=cle_base)
         if omis is not None:
             omissions.append(omis)
+    if mode == 'industriel':
         # CIQ233 — vue INTERNE après impôt (industriel, saisie du client).
         apres, motif_apres = apres_impot_ci(
             saisies.get('fiscalite_client'), base, collecteur)
@@ -1557,6 +1593,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
         'indicateurs': flux['indicateurs'],
         'remplacements': flux['remplacements'],
         'om': flux['om'],
+        'entretien': flux['entretien'],
         'sensibilites': sensibilites,
         'financement': financement,
         'hypotheses': hypotheses,
@@ -1586,7 +1623,9 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
 #                      autoconsommé = min(production, charge déclarée) cellule
 #                      par cellule, puis :func:`valoriser` (jamais une économie
 #                      mise à l'échelle linéairement).
-# Aucun scénario par défaut, aucun P90 inventé.
+# AMOT97 (D-ACI-15=a) — les scénarios par défaut sont SEEDÉS dans Paramètres
+# avec leur source (``parametres.tariff.SENSIBILITES_CI_DEFAUT``), modifiables ;
+# ce module ne lit que ce que le réglage porte.
 
 SENSIBILITE_CLES = ('indexation_tarif', 'degradation', 'tarif_kwh',
                     'production')
@@ -1657,7 +1696,8 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
                     tarif_declare=None, cle_base='ht'):
     """``(sensibilites, omission|None)`` — la liste du contrat
     ``economie_ci.json`` [{cle, variation_pct, source, economie_annee1_mad,
-    retour_ans, tri_pct, ecart_retour_ans, ecart_tri_pct}] et, sans scénario, l'omission nommée.
+    retour_ans, tri_pct, ecart_retour_ans, ecart_tri_pct, cumul_25_ans_mad}]
+    et, sans scénario, l'omission nommée.
 
     ``flux_entrees`` : les entrées EXACTES du flux de base (collectées par
     :func:`flux_ci`) ; ``reglages`` : ``{sensibilites_ci: [...]}`` (CIQ211).
@@ -1714,6 +1754,9 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
                      if isinstance(eco1, dict) else _montant(eco1)),
                  'retour_ans': _indicateur(bloc, 'retour_ans'),
                  'tri_pct': _indicateur(bloc, 'tri_pct'),
+                 # AMOT97 — le cumul net de la dernière année du MÊME flux.
+                 'cumul_25_ans_mad': ((bloc or {}).get('flux') or [{}])[-1].get(
+                     'cumul_mad'),
                  'ecart_retour_ans': _ecart(_indicateur(bloc, 'retour_ans'),
                                             base.get('retour_ans')),
                  'ecart_tri_pct': _ecart(_indicateur(bloc, 'tri_pct'),
@@ -1899,14 +1942,22 @@ def lignes_pour_economie_ci(devis):
 
 def reglages_economie_ci(company):
     """``{mention_credit_bail_autorisee}`` du ``TariffSettings`` (CIQ211),
-    lu sans jamais le créer ; vide sans réglage."""
+    lu sans jamais le créer ; vide sans réglage. AMOT96 : l'entretien
+    minimum du profil société (``entretien_minimum``) quand il est saisi."""
     if company is None:
         return {}
+    from apps.parametres.models_company import CompanyProfile
     from apps.parametres.models_tariff import TariffSettings
+    profil = CompanyProfile.objects.filter(company=company).values_list(
+        'entretien_minimum_mad_kwc_an', 'tva_standard').first()
+    entretien = {} if not profil or profil[0] is None else {
+        'entretien_minimum': {'mad_kwc_an': float(profil[0]),
+                              'tva_pct': float(profil[1] or 0)}}
     reglage = TariffSettings.objects.filter(company=company).first()
     if reglage is None:
-        return {}
+        return entretien
     return {
+        **entretien,
         'mention_credit_bail_autorisee': bool(
             getattr(reglage, 'mention_credit_bail_autorisee', False)),
         'sensibilites_ci': list(getattr(reglage, 'sensibilites_ci', None)
@@ -1932,6 +1983,19 @@ def economie_ci_pour_devis(devis, company):
             params.get('tarif'), dict) else None
     from apps.ventes.domain.regles_calcul import calcul_corrige
     totaux = option_totaux(devis)
+    reglages = reglages_economie_ci(company)
+    if not calcul_corrige(devis):
+        # AMOT96/97 — un devis envoyé garde ce que le client a reçu : ni
+        # entretien minimum, ni scénarios seedés, ni sensibilités commerciales.
+        from apps.parametres.tariff import SENSIBILITES_CI_DEFAUT
+        reglages.pop('entretien_minimum', None)
+        reglages['sensibilites_ci'] = [] if getattr(
+            devis, 'mode_installation', None) == 'commercial' else [
+            sc for sc in reglages.get('sensibilites_ci') or []
+            if sc not in SENSIBILITES_CI_DEFAUT]
+    else:  # AMOT99 — la courbe de garantie de la fiche module du devis.
+        from apps.ventes.domain.etude_ci import courbe_degradation_du_devis
+        reglages['degradation_module'] = courbe_degradation_du_devis(devis)
     return assembler_economie_ci(
         apercu if isinstance(apercu, dict) else {},
         saisies=params.get('saisies_economie_ci'),
@@ -1939,7 +2003,7 @@ def economie_ci_pour_devis(devis, company):
         investissement={'ht': totaux.get('ht'), 'ttc': totaux.get('ttc')},
         lignes=lignes_pour_economie_ci(devis),
         mode_installation=getattr(devis, 'mode_installation', None),
-        reglages=reglages_economie_ci(company),
+        reglages=reglages,
         # ADEV81 — nouveaux rendus seulement (``regles_calcul``) : un devis
         # envoyé sous les règles d'origine garde ce que le client a reçu.
         controle_lignes=calcul_corrige(devis))
