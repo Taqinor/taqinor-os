@@ -340,6 +340,10 @@ class BornePoseParDefautAdev90(_Base):
     bornée » quand une surface est déclarée."""
 
     def _bornes(self, **toit):
+        # La contenance d'une surface déclarée se calcule sur les COTES du
+        # module (fiche technique) : le module 710 W du catalogue de test les reçoit.
+        FicheTechnique.objects.filter(pmax_wc=Decimal('710')).update(
+            longueur_mm=2384, largeur_mm=1303)
         corps = self.corps()
         corps['toit'] = dict({'type_pose': None, 'surface_utile_m2': 200}, **toit)
         return self.post(corps)
