@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
+import { ReactReduxContext } from 'react-redux'
 import ventesApi from '../../../api/ventesApi'
 import crmApi from '../../../api/crmApi'
 import stockApi from '../../../api/stockApi'
@@ -103,6 +104,14 @@ function useRelanceJ3({ leadId, relanceActuelle }) {
   return { cochee, setCochee, posee, actuelle: relanceActuelle, proposable, date: dateRelanceJ3(), appliquer }
 }
 
+/** APDF108 — la marque du message WhatsApp = le nom de la société de la session
+ *  (profil chargé par Layout), lu au moment du geste. Contexte redux OPTIONNEL :
+ *  hors <Provider> (test, aperçu) ou profil pas encore chargé ⇒ aucune marque. */
+function useMarqueSociete() {
+  const redux = useContext(ReactReduxContext)
+  return () => redux?.store?.getState?.()?.parametres?.profile?.nom || ''
+}
+
 /** Tous les gestes d'envoi d'un devis (copier / ouvrir / WhatsApp / e-mail /
  *  aperçu interne) et leur état. `onRefresh` recharge la fiche après un ENVOI
  *  (le devis passe « envoyé », le funnel avance — QJ-FUNNEL). */
@@ -112,6 +121,7 @@ export function useEnvoiDevis({
 }) {
   const reglages = useReglagesLien()
   const relance = useRelanceJ3({ leadId, relanceActuelle })
+  const marqueSociete = useMarqueSociete()
   const [linkBusy, setLinkBusy] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
   // L-INTPREV — feedback « Copié » DISTINCT de `copiedId`.
@@ -186,7 +196,7 @@ export function useEnvoiDevis({
     if (!leadPhoneOk) return undefined
     return lancer(`w-${d.id}`, 'Lien WhatsApp indisponible.', async () => {
       const url = await mint(d, { envoi: true })
-      const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(leadNom, url, { agricole }))
+      const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(leadNom, url, { agricole, marque: marqueSociete() }))
       if (waUrl) window.open(waUrl, '_blank', 'noopener')
       await apresEnvoi()
     })

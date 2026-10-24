@@ -25,6 +25,9 @@ import type { OccupancyId, SeasonId, ServedProduction } from './dayProfiles';
 import { parseServedProductionEntry, parseServedProductionMap } from './dayProfiles';
 // ADEV95 — bloc `entreprise` B2B (validation + mise en forme) : module séparé (C20).
 import { entrepriseNettoyee, validerEntreprise } from './propositionB2b';
+// ADEV104 — reçu de signature (défi lu / sceau stocké) et 409 ADEV51 : module séparé (C20).
+import { lireRecuSignature, type RecuSignature } from './propositionRecu';
+export { CODE_EMPREINTE_PERIMEE, estEmpreintePerimee } from './propositionRecu';
 
 /** Une ligne d'équipement telle que renvoyée par le backend (champs publics). */
 export interface ProposalItem {
@@ -1843,6 +1846,8 @@ export interface AcceptResult {
   champ?: string;
   /** ADEV51 — code FERMÉ d'un 409 (`proposal_accept.json` › `codes_409`), ex. `empreinte_perimee`. */
   code?: string;
+  /** ADEV104 — succès : le reçu (`reponse_200.recu`) aux deux empreintes nommées, relayé par le proxy. */
+  recu?: RecuSignature;
 }
 
 /**
@@ -1854,25 +1859,18 @@ export function pdfDisponible(p: Pick<ProposalResponse, 'pdf_disponible'> | null
   return !!p && p.pdf_disponible !== false;
 }
 
-/** ADEV51 — le 409 qui dit « la proposition a changé depuis votre lecture ». */
-export const CODE_EMPREINTE_PERIMEE = 'empreinte_perimee';
-
-/** ADEV51 — vrai quand le serveur refuse la signature parce que le contenu a changé : la page recharge. */
-export function estEmpreintePerimee(status: number, payload: unknown): boolean {
-  const code = (payload as { code?: unknown } | null | undefined)?.code;
-  return status === 409 && code === CODE_EMPREINTE_PERIMEE;
-}
-
 export function normalizeAcceptResponse(status: number, payload: unknown): AcceptResult {
   const body = (payload ?? {}) as Record<string, unknown>;
   const detail = typeof body.detail === 'string' && body.detail.trim() ? body.detail.trim() : '';
   if (status >= 200 && status < 300) {
+    const recu = lireRecuSignature(body.recu);
     return {
       ok: true,
       status,
       detail: detail || 'Devis accepté.',
       reference: typeof body.reference === 'string' ? body.reference : undefined,
       accepte_par_nom: typeof body.accepte_par_nom === 'string' ? body.accepte_par_nom : undefined,
+      ...(recu ? { recu } : {}),
     };
   }
   // Messages FR de repli par code, si le backend n'a pas fourni de `detail`.

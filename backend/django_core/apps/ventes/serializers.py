@@ -1129,7 +1129,6 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
             # Marché + étude. ``etude_params`` est en LECTURE SEULE (voir la
             # docstring) ; ``echeancier`` reste écrivable, VALIDÉ par le mixin.
             'mode_installation', 'etude_params', 'echeancier',
-            'acompte_pct', 'acompte_montant',
             # Prix cible + prix/kWc gelé (SCA47).
             'prix_cible_kwc', 'prix_par_kwc', 'remise_approuvee',
             # ADEV33 — profondeur de remise approuvée (lecture seule).
@@ -1222,9 +1221,6 @@ class DevisWriteSerializer(IdInconnu404Mixin, DecimalSoupleMixin,
 
     def validate_remise_globale(self, value):
         return _borne_saisie(value, 'remise_globale', 'pourcentage')
-
-    def validate_acompte_montant(self, value):  # CI #997 (2) : -1 → 500
-        return _borne_saisie(value, 'acompte_montant', 'montant')
 
     def create(self, validated_data):
         """ASEC22 — l'auteur est TOUJOURS ``request.user`` (le corps ne

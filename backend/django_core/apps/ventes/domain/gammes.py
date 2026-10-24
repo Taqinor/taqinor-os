@@ -181,14 +181,9 @@ def creer_variante_gamme(devis, nom_gamme, *, user=None,
             # avait été négocié — deux offres envoyées ENSEMBLE (défaut
             # ``GAMME_ENVOI_LES_DEUX``) avec deux acomptes différents, dont un
             # que personne n'a décidé.
-            # ``acompte_montant`` est délibérément EXCLU : c'est un MONTANT en
-            # MAD qui décrit le total du frère, et la docstring de cette
-            # fonction promet à la sœur « sa composition et SES prix propres ».
-            # Le pourcentage, lui, est une CONDITION : il suit.
             echeancier=(list(devis.echeancier)
                         if isinstance(devis.echeancier, list)
                         else devis.echeancier),
-            acompte_pct=devis.acompte_pct,
             entite=devis.entite,
             custom_data=(dict(devis.custom_data)
                          if isinstance(devis.custom_data, dict)

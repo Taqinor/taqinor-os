@@ -629,6 +629,46 @@ class ResidentielLibellesHtmlTests(SimpleTestCase):
             charts.build_all(d)
         self.assertEqual(graphe.call_args.kwargs["variation_estimee"], fr)
 
+    def test_titre_clauses_residentiel_et_ci_par_langue(self):
+        """APDF105 — le titre du bloc « Clauses particulières » du résidentiel
+        premium (page de confiance) et du C&I (page équipements) suit la
+        langue ; le français est octet pour octet celui de l'appel sans
+        ``langue``. Test-du-test : retirer ``langue=`` de l'appel d'``equip``
+        (ou de ``trust``) ⇒ échec."""
+        from apps.ventes.quote_engine import clauses_cgv, i18n_labels
+        from apps.ventes.quote_engine.commercial import render, renderer
+        from apps.ventes.quote_engine.commercial import sample_data
+        clauses = [{"nom": "Clause A", "corps_texte": "Texte A."}]
+
+        def html_ci(langue):
+            d = dict(copy.deepcopy(sample_data.build()), clauses_cgv=clauses)
+            if langue != "fr":
+                d.update(langue_sortie=langue,
+                         libelles_document=i18n_labels.libelles(langue))
+            return render.build_html(renderer._augment(d))
+
+        def titre(html):
+            m = re.search(r'class="clauses-cgv"[^>]*><div[^>]*>([^<]*)</div>',
+                          html)
+            return m and m.group(1)
+
+        vrai = clauses_cgv.bloc_clauses_html
+
+        def sans_langue(*args, langue=None, **kwargs):
+            return vrai(*args, **kwargs)
+
+        rendus = (("residentiel", lambda langue: html_residentiel(
+            langue, clauses_cgv=clauses)), ("ci", html_ci))
+        attendus = {"fr": "Clauses particulières", "en": "Special terms",
+                    "ar": "شروط خاصة"}
+        for nom, rendu in rendus:
+            for langue, attendu in attendus.items():
+                self.assertEqual(titre(rendu(langue)), attendu, (nom, langue))
+            with mock.patch.object(clauses_cgv, "bloc_clauses_html",
+                                   sans_langue):
+                hier = rendu("fr")
+            self.assertEqual(rendu("fr"), hier, nom)
+
 
 @tag("pdf")
 class ResidentielLibellesTests(TestCase):

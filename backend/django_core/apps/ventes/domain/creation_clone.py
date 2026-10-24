@@ -24,10 +24,10 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
     Trois chemins produisent une copie de devis : la duplication
     (:func:`dupliquer_devis`), la RÉVISION et la DUPLICATION EN VARIANTES
     (``views/devis.py``). Les deux derniers réimplémentaient
-    ``Devis.objects.create(...)`` à la main et OMETTAIENT les sept champs que
-    ce cloneur porte explicitement depuis QJR146(a) — ``devise``,
-    ``taux_change``, ``echeancier``, ``acompte_pct``, ``acompte_montant``,
-    ``entite``, ``custom_data``. Un devis dont l'échéancier avait été NÉGOCIÉ
+    ``Devis.objects.create(...)`` à la main et OMETTAIENT les champs que ce
+    cloneur porte explicitement depuis QJR146(a) — ``devise``,
+    ``taux_change``, ``echeancier``, ``entite``, ``custom_data`` (VNT103 :
+    l'acompte persisté a quitté le modèle). Un devis dont l'échéancier avait été NÉGOCIÉ
     repartait donc sur l'échéancier par DÉFAUT de la société, et c'est la
     première tranche de cet échéancier que l'email de confirmation annonce au
     client comme acompte.
@@ -93,8 +93,6 @@ def cloner_devis(devis, *, user, note=None, version=1, version_parent=None,
             echeancier=(list(devis.echeancier)
                         if isinstance(devis.echeancier, list)
                         else devis.echeancier),
-            acompte_pct=devis.acompte_pct,
-            acompte_montant=devis.acompte_montant,
             entite=devis.entite,
             custom_data=(dict(devis.custom_data)
                          if isinstance(devis.custom_data, dict)

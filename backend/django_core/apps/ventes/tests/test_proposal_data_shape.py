@@ -72,7 +72,7 @@ EXEMPLES = ('exemple', 'exemple_standard', 'exemple_sections_masquees')
 #: Compté sur le code serveur au moment du contrat (QJR3, 29/08/2026) ET
 #: écrit dans `notes.structure_de_la_reponse`. Si ces deux nombres bougent,
 #: le contrat ET cette constante changent ensemble — jamais l'un sans l'autre.
-NB_CLES_BASE = 48
+NB_CLES_BASE = 49  # APDF110 : + `emetteur`
 # AGR308 : + `synthese_agricole` ; ACAL173 : + `fiche_batterie` ; CIQ306 : + `synthese_ci` ; CIQ319 : +
 # `signature_entreprise` ; ADEV50 : + `economies_cumul_25_ans` ; ADEV51 : + `empreinte_contenu` ; ADEV52 : +
 # `offre_expiree`, `date_expiration` ; ADEV49 : + `pdf_disponible` ; APDF19 : + `conditions_titre` ;

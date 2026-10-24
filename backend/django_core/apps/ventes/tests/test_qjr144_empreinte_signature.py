@@ -281,6 +281,74 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
         self.assertEqual(info['empreinte_pdf'], attendu)
         self.assertEqual(info['empreinte_contenu'], signature.content_hash)
 
+    def test_le_sceau_couvre_ce_que_ce_lien_a_montre(self):
+        """ADEV104 — signé depuis un lien « sans économies », le sceau v3 est
+        l'empreinte de l'étude que CE lien a montrée : l'``argent`` caché n'y
+        entre pas ; le niveau du lien est gardé avec les chiffres scellés, et
+        les deux suffisent à le recalculer (test-du-test : sceller sans le
+        lien rend ce test rouge)."""
+        import copy
+        from unittest import mock
+        from apps.ventes.domain.cycle_vie import _create_esign_record
+        from apps.ventes.domain.modifiabilite import figures_sceau
+        from apps.ventes.models import ShareLink
+        etude = {'systeme': {'kwc': 55, 'production_kwh_an': 95425},
+                 'energie': {'taux_autoconso_pct': 72.8},
+                 'argent': {'base': 'ht',
+                            'economie_annee1': {'total_mad': 98933.48},
+                            'indicateurs': {'retour_ans': 3}}}
+        self.devis.mode_installation = 'commercial'
+        self.devis.save(update_fields=['mode_installation'])
+        lien = ShareLink.objects.create(
+            company=self.company, devis=self.devis,
+            niveau=ShareLink.NIVEAU_CONFIANCE, sections={'economies': False})
+        moteur = (mock.patch('apps.ventes.quote_engine.builder.build_quote_data',
+                             return_value={}),
+                  mock.patch('apps.ventes.quote_engine.ci.synthese.synthese_ci',
+                             side_effect=lambda _d: copy.deepcopy(etude)))
+        with moteur[0], moteur[1]:
+            _create_esign_record(
+                devis=self.devis, nom='M. Client', ip='81.0.0.1',
+                user_agent='pytest', consentement=True, lignes=None,
+                lien=lien)
+            complet = DevisSignature.figures_canoniques(
+                figures_sceau(self.devis))
+            stocke = DevisSignature.objects.get(
+                devis=self.devis).figures_scellees
+            relu = ShareLink(devis=self.devis, niveau=stocke['lien']['niveau'],
+                             sections={c: False for c in
+                                       stocke['lien']['sections_masquees']})
+            recalcule = DevisSignature.figures_canoniques(
+                figures_sceau(self.devis, link=relu))
+        signature = DevisSignature.objects.get(devis=self.devis)
+        self.assertEqual(stocke['lien'], {'niveau': 'confiance',
+                                          'sections_masquees': ['economies']})
+        self.assertIsNone(stocke['etude']['economie_annee1']['ht'])
+        self.assertEqual(stocke['etude']['indicateurs'], {})
+        self.assertNotEqual(stocke['etude'], complet)
+        self.assertEqual(recalcule, stocke['etude'])
+        self.assertEqual(signature.content_hash, DevisSignature.compute_content_hash(
+            self.devis, figures=stocke['etude']))
+        self.assertNotEqual(signature.content_hash,
+                            DevisSignature.compute_content_hash(
+                                self.devis, figures=complet))
+        self.assertEqual(signature.verifier_contenu(),
+                         (True, DevisSignature.CONTENT_HASH_V3))
+
+    def test_accept_devis_scelle_avec_le_lien_de_la_signature(self):
+        """ADEV104 — ``accept_devis`` passe le lien signé au sceau
+        (``_create_esign_record(lien=…)``) ; sans lien (portail, ERP), rien."""
+        from unittest import mock
+        from apps.ventes.models import ShareLink
+        from apps.ventes.services import accept_devis
+        lien = ShareLink.objects.create(company=self.company, devis=self.devis)
+        cible = 'apps.ventes.domain.cycle_vie.%s'
+        with mock.patch(cible % '_create_esign_record') as sceau:
+            with mock.patch(cible % '_store_signed_pdf'):
+                accept_devis(devis=self.devis, user=None, nom='M. Client',
+                             lien=lien)
+        self.assertEqual(sceau.call_args.kwargs['lien'], lien)
+
     def test_une_signature_neuve_est_scellee_dans_la_version_courante(self):
         """Le chemin d'acceptation ne demande aucune version : il doit sceller
         dans la version courante (v3, ADEV96) sans avoir à le savoir."""

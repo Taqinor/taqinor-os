@@ -62,6 +62,27 @@ class ContratProposalAcceptTests(SimpleTestCase):
                 self.assertEqual(corps['code'], code)
                 self.assertTrue(corps['detail'].strip())
 
+    def test_recu_deux_empreintes_nommees(self):
+        """ADEV104 — le reçu nomme le défi reçu (``empreinte_lue``) et le
+        sceau stocké (``empreinte_scellee``) ; ``empreinte_contenu`` reste
+        servie un cycle, alias du sceau. Forme = sortie réelle de ``recu_de``."""
+        from datetime import datetime
+        from types import SimpleNamespace
+        from apps.ventes.public.signature_views import recu_de
+        recu = self.accept['reponse_200']['recu']
+        self.assertEqual(recu['empreinte_lue'],
+                         self.accept['exemple']['empreinte_contenu'])
+        self.assertNotEqual(recu['empreinte_lue'], recu['empreinte_scellee'])
+        self.assertEqual(recu['empreinte_contenu'], recu['empreinte_scellee'])
+        sig = SimpleNamespace(
+            content_hash=recu['empreinte_scellee'],
+            signed_pdf_sha256=recu['empreinte_pdf'],
+            signed_at=datetime.fromisoformat(recu['signe_le']))
+        self.assertEqual(recu_de(sig, recu['empreinte_lue']), recu)
+        self.assertEqual(recu_de(sig)['empreinte_lue'], '')
+        for cle in ('empreinte_lue', 'empreinte_scellee', 'empreinte_contenu'):
+            self.assertIn(f'`{cle}`', self.accept['corps']['recu'])
+
     def test_otp_409_aucun_canal(self):
         otp = self.accept['otp']
         self.assertEqual(otp['reponse_409']['code'], 'aucun_canal')

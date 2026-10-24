@@ -51,6 +51,39 @@ export const LEGAL_IDENTITY = {
   gerant: 'M. Reda Kasri',
 } as const;
 
+/** APDF107 — titre « Qui est … ? » de la marque (clé `emetteur` absente, ou `nom` vide). */
+const TITRE_TAQINOR = { fr: 'Qui est Taqinor ?', en: 'Who is Taqinor?', ar: 'من هي تاقينور؟' };
+
+/**
+ * APDF107 (C-APDF-VER-007) — l'identité du bloc « Qui est … ? » de la proposition :
+ * celle de la société ÉMETTRICE servie avec elle (`emetteur`, APDF110, lu par
+ * `company_identity` côté serveur). Clé ABSENTE (ancien backend) ⇒ LEGAL_IDENTITY,
+ * le rendu d'aujourd'hui ; `nom` vide ⇒ `bloc: null` (carte omise, jamais la
+ * constante). Ligne légale en trois langues, parts vides omises ; RC/ICE sont des
+ * sigles ; le montant arabe est enfermé dans un ISOLAT bidi (U+2066 … U+2069) :
+ * sans lui, « رأس المال 100 000,00 MAD » se rendait « 000,00 100 رأس المال MAD »
+ * dans le paragraphe `dir="ltr"` (constaté au rendu, PREVIEW-V3-FIX audit C4).
+ */
+export function identiteEmetteur(servie: unknown) {
+  const brut = (servie && typeof servie === 'object' ? servie : {}) as Record<string, unknown>;
+  const lu = (cle: string) => (typeof brut[cle] === 'string' ? (brut[cle] as string).trim() : '');
+  const ligne = (rc: string, ice: string, capital: string) => {
+    const joindre = (cap: string) => [rc, ice && `ICE ${ice}`, capital && cap].filter(Boolean).join(' · ');
+    return { fr: joindre(`Capital ${capital}`), en: joindre(`Share capital ${capital}`), ar: joindre(`رأس المال \u2066${capital}\u2069`) };
+  };
+  const { raisonSociale, rcCourt, ice, capital } = LEGAL_IDENTITY;
+  if (servie === undefined) return { titre: TITRE_TAQINOR, bloc: { raisonSociale, ligne: ligne(rcCourt, ice, capital) } };
+  const nom = lu('nom'), forme = lu('forme_juridique');
+  if (!nom) return { titre: TITRE_TAQINOR, bloc: null };
+  return {
+    titre: { fr: `Qui est ${nom} ?`, en: `Who is ${nom}?`, ar: `من هي \u2066${nom}\u2069؟` },
+    bloc: {
+      raisonSociale: forme && !nom.toUpperCase().includes(forme.toUpperCase()) ? `${nom} ${forme}` : nom,
+      ligne: ligne(lu('rc') && `RC ${lu('rc')}`, lu('ice'), lu('capital_social')),
+    },
+  };
+}
+
 /**
  * W288 — URLs d'entité (`sameAs`) pour le JSON-LD LocalBusiness : fiche Google
  * Business Profile + profils sociaux actifs. LIVRÉ VIDE (même règle
