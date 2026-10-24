@@ -10,14 +10,22 @@ Run:
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_qx46_commercial_quote -v 2
 """
+import copy
+import json
 import re
 from decimal import Decimal
+from html import unescape
+from pathlib import Path
 
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase, tag
 
+from apps.ventes.economie_ci import economie_ci_publique
+from apps.ventes.quote_engine.ci.synthese import chiffres_cles, synthese_ci
 from apps.ventes.quote_engine.commercial import render, renderer, sample_data
+
+from ._moteur_fixtures import etude_ci_au_kwc_servi
 
 
 class _Devis:
@@ -271,3 +279,573 @@ class TestCiq332CommercialAvecEtude(TestCase):
         pages, legacy = self._rendu({'pdf_mode': 'onepage'})
         self.assertTrue(legacy)
         self.assertEqual(len(pages), 1)
+
+
+# ── Lane document C&I (AMOT86-93) — HTML RÉEL de ``build_html`` sur la
+# fixture commerciale + la sortie du moteur C&I (contrat
+# ``etude_ci_preview.json``) et le bloc PUBLIC ``economie_ci``. ──────────────
+
+_CONTRATS_CI = Path(__file__).resolve().parents[1] / "contract_samples"
+_ETUDE_CI = json.loads((_CONTRATS_CI / "etude_ci_preview.json").read_text(
+    encoding="utf-8"))["exemple"]
+_ECONOMIE_CI = json.loads((_CONTRATS_CI / "economie_ci.json").read_text(
+    encoding="utf-8"))["exemple"]
+#: Trois postes de la composition « à chiffrer après la visite » (ADEV79) :
+#: un article du catalogue, deux libellés génériques du moteur.
+POSTES_VISITE = [
+    {"role": "cable_dc", "produit": 9, "quantite": None, "unite": "m",
+     "designation": "Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre)",
+     "prix_connu": False, "a_chiffrer_visite": True},
+    {"role": "cable_ac", "produit": None, "quantite": 35, "unite": "m",
+     "designation": "Câble AC Onduleur réseau Huawei 50kW Triphasé → TGBT",
+     "prix_connu": False, "a_chiffrer_visite": True},
+    {"role": "structure_ci", "produit": None, "quantite": 100,
+     "unite": "module", "designation": "Structure C&I",
+     "prix_connu": False, "a_chiffrer_visite": True},
+]
+MOTIF_VISITE = ("investissement à compléter après la visite technique "
+                "(3 postes hors total)")
+
+
+def _data_ci(categorie="hotel", *, hors_total=False, langue=None):
+    data = copy.deepcopy(sample_data.build(categorie))
+    etude_ci = copy.deepcopy(_ETUDE_CI)
+    economie = copy.deepcopy(_ECONOMIE_CI)
+    if hors_total:
+        composition = etude_ci["composition"]
+        composition["lignes"] = [
+            li for li in composition["lignes"]
+            if li["role"] not in ("structure_ci", "cable_ac")
+        ] + copy.deepcopy(POSTES_VISITE)
+        composition["a_chiffrer_visite"] = [
+            p["designation"] for p in POSTES_VISITE]
+        # D-ACI-8=a — le moteur omet le retour sur un prix incomplet.
+        economie["omissions"] = [{"cle": "investissement_mad",
+                                  "motif": MOTIF_VISITE}]
+        economie["flux_ht"] = dict(economie["flux_ht"], flux=[],
+                                   retour_ans=None)
+        economie["indicateurs"] = dict(economie["indicateurs"],
+                                       retour_ans=None, tri_pct=None)
+        economie["jalons"] = []
+    data["etude"] = dict(data["etude"], etude_ci=etude_ci)
+    data["economie_ci"] = economie_ci_publique(economie)
+    if langue:
+        data["langue_sortie"] = langue
+    return etude_ci_au_kwc_servi(data)
+
+
+def _pages_ci(data):
+    return render.build_html(renderer._augment(data)).split('class="page"')
+
+
+def _texte_ci(fragment):
+    texte = re.sub(r"<style>.*?</style>", "", fragment, flags=re.S)
+    texte = unescape(re.sub(r"<[^>]+>", " ", texte))
+    return re.sub(r"\s+", " ", texte.replace(" ", " ")
+                  .replace("\xa0", " "))
+
+
+class TestAmot86PrixHorsTotal(SimpleTestCase):
+    """AMOT86 (D-ACI-2=a) — des postes « à chiffrer après la visite » hors
+    total : jamais « clé en main », les postes listés SANS montant page 2,
+    la légende du retour sur le prix complet, aucun retour imprimé."""
+
+    def test_titre_hors_postes_jamais_cle_en_main(self):
+        pages = _pages_ci(_data_ci(hors_total=True))
+        self.assertIn("Investissement hors postes à chiffrer après la visite",
+                      _texte_ci(pages[1]))
+        self.assertNotIn("clé en main", _texte_ci("".join(pages)))
+
+    def test_sans_poste_hors_total_titre_d_hier(self):
+        texte = _texte_ci("".join(_pages_ci(_data_ci())))
+        self.assertIn("Investissement (clé en main)", texte)
+        self.assertNotIn("hors postes à chiffrer", texte)
+        self.assertNotIn("Postes à chiffrer après la visite", texte)
+
+    def test_page2_postes_sans_montant_hors_totaux(self):
+        p2 = _pages_ci(_data_ci(hors_total=True))[2]
+        bloc = p2[p2.index("Postes à chiffrer après la visite technique"):
+                  p2.index("</table>")]
+        texte = _texte_ci(bloc)
+        for nom in ("Câble DC — Câble solaire Nexans H1Z2Z2-K 4 mm² "
+                    "(au mètre)", "Câble AC", "Structure de fixation"):
+            self.assertIn(nom, texte)
+        # Intertitre + une mention par poste.
+        self.assertEqual(texte.count("à chiffrer après la visite technique"),
+                         4)
+        # Aucun montant (ni « 0,00 ») sur ces lignes ; les totaux d'hier.
+        self.assertIsNone(re.search(r"\d+,\d{2}", texte), texte)
+        self.assertIn("640 000,00", _texte_ci(p2))
+
+    def test_legende_retour_et_aucun_retour(self):
+        data = _data_ci(hors_total=True)
+        p1 = _pages_ci(data)[1]
+        self.assertIn("retour calculé sur le prix complet, après la visite",
+                      _texte_ci(p1))
+        self.assertIsNone(chiffres_cles(synthese_ci(data))["payback_ans"])
+        self.assertNotIn('data-figure="payback_ans', p1)
+
+    def test_poste_ajoute_au_devis_n_est_plus_hors_total(self):
+        data = _data_ci(hors_total=True)
+        data["all_items"].append({
+            "designation": "Structure C&I", "quantite": 100,
+            "prix_unit_ht": 300.0, "prix_unit_ttc": 360.0, "taux_tva": 20})
+        postes = chiffres_cles(synthese_ci(data))["postes_hors_total"]
+        self.assertEqual([p["role"] for p in postes],
+                         ["cable_dc", "cable_ac"])
+
+    def test_industriel_meme_titre_couverture_et_pied_finance(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        modele = _data_ci(hors_total=True)
+        data["etude"] = dict(data["etude"],
+                             etude_ci=modele["etude"]["etude_ci"])
+        data["economie_ci"] = modele["economie_ci"]
+        pages = i_render.build_html(i_rend._augment(
+            etude_ci_au_kwc_servi(data))).split('class="page"')
+        for i in (1, 3):
+            self.assertIn("hors postes à chiffrer après la visite",
+                          _texte_ci(pages[i]), i)
+        self.assertNotIn("clé en main", _texte_ci("".join(pages)))
+
+    def test_anglais_et_arabe_traduits(self):
+        for langue, titre in (
+                ("en", "Investment excluding items to be priced after the "
+                       "site visit"),
+                ("ar", "الاستثمار دون البنود التي تُسعَّر بعد الزيارة")):
+            with self.subTest(langue=langue):
+                texte = _texte_ci("".join(_pages_ci(
+                    _data_ci(hors_total=True, langue=langue))))
+                self.assertIn(titre, texte)
+                self.assertNotIn("à chiffrer après la visite technique",
+                                 texte)
+
+
+class TestAmot87BlocInvestissement(SimpleTestCase):
+    """AMOT87 — le montant et son unité sur une rangée insécable, la note
+    « soit … HT · TVA récupérable… » sur SA rangée pleine largeur (plus une
+    cellule anonyme de la table), sur les deux couvertures."""
+
+    def _bloc(self, html, prefixe):
+        debut = html.index(f'<div class="{prefixe}-inv">')
+        return html[debut:html.index("</div>\n    </div>", debut)]
+
+    def test_commercial_et_industriel(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data_i = copy.deepcopy(i_s.build())
+        # Base « deux » (TVA récupérable inconnue) : le TTC et son HT.
+        data_i["totaux_all"] = {"ht_brut": 533333.0, "remise": 0,
+                                "ht_net": 533333.0, "tva": 106667.0,
+                                "ttc": 640000.0}
+        data_i["display_total"] = 640000.0
+        data_i["etude"] = dict(data_i["etude"],
+                               etude_ci=copy.deepcopy(_ETUDE_CI))
+        data_i["economie_ci"] = economie_ci_publique(
+            copy.deepcopy(_ECONOMIE_CI))
+        cas = (("c1c", "".join(_pages_ci(_data_ci()))),
+               ("i1", i_render.build_html(i_rend._augment(
+                   etude_ci_au_kwc_servi(data_i)))))
+        for prefixe, html in cas:
+            with self.subTest(prefixe=prefixe):
+                bloc = self._bloc(html, prefixe)
+                rangee = bloc[:bloc.index(f'class="{prefixe}-inv-n"')]
+                # Montant + « MAD TTC » insécables, dans la rangée du titre.
+                self.assertIn("&nbsp;MAD&nbsp;TTC</span>", rangee)
+                self.assertIn(f'<div class="{prefixe}-inv-r">', rangee)
+                self.assertNotIn("soit", _texte_ci(rangee))
+                # La note sur sa propre rangée, sous le montant.
+                note = bloc[bloc.index(f'class="{prefixe}-inv-n"'):]
+                self.assertIn("soit 533 333,00 MAD HT",
+                              _texte_ci(note).replace("  ", " "))
+                self.assertIn("TVA récupérable", _texte_ci(note))
+                css = html[:html.index(f'<div class="{prefixe}-inv">')]
+                self.assertRegex(css, rf"\.{prefixe}-inv-v\{{[^}}]*"
+                                      r"white-space:nowrap")
+                self.assertRegex(css, rf"\.{prefixe}-inv-r\{{display:table")
+
+
+class TestAmot88VocabulaireClient(SimpleTestCase):
+    """AMOT88 — le document parle la langue du client : aucun mot interne,
+    le bandeau sans bégaiement, les postes dits par leur rôle, le tarif
+    sans « repli » ni « capture », l'arabe « للمنشآت التجارية »."""
+
+    MOTS_INTERNES = ("CFO", "aseline", "ashflow", "payback", "moteur",
+                     "repli", "capture", "reconfirm", "flux servi", "C&I",
+                     "Couverture conso")
+
+    def test_aucun_mot_interne_en_francais(self):
+        for hors_total in (False, True):
+            texte = _texte_ci("".join(_pages_ci(
+                _data_ci(hors_total=hors_total))))
+            for mot in self.MOTS_INTERNES:
+                with self.subTest(hors_total=hors_total, mot=mot):
+                    self.assertNotIn(mot, texte)
+
+    def test_bandeau_sans_begaiement_postes_par_role(self):
+        p1 = _texte_ci(_pages_ci(_data_ci(hors_total=True))[1])
+        self.assertNotIn("À confirmer : À chiffrer", p1)
+        self.assertIn(
+            "À chiffrer après la visite technique (hors total) : câble DC — "
+            "Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre), câble AC, "
+            "structure de fixation", p1)
+        # La désignation brute du moteur n'est plus imprimée.
+        self.assertNotIn("Structure C&I", p1)
+        self.assertNotIn("Onduleur réseau Huawei 50kW Triphasé → TGBT", p1)
+
+    def test_bandeau_traduit(self):
+        p1 = _texte_ci(_pages_ci(_data_ci(hors_total=True, langue="en"))[1])
+        self.assertIn("To be priced after the site visit (not in the "
+                      "total): DC cable — Câble solaire Nexans H1Z2Z2-K 4 "
+                      "mm² (au mètre), AC cable, mounting structure", p1)
+        self.assertNotIn("À chiffrer", p1)
+
+    def test_tuile_couverture_et_tarif_en_mots_du_client(self):
+        p1 = _texte_ci(_pages_ci(_data_ci())[1])
+        self.assertIn("Part de votre consommation couverte", p1)
+        self.assertIn("Tarif ONEE BT publié — à confirmer sur votre facture "
+                      "(grille du 16/02/2025).", p1)
+
+    def test_postes_arabes_sans_balise_echappee(self):
+        """Les mots du rôle (libellés isolés en arabe) ne sont jamais
+        ré-échappés ; seule la désignation du catalogue l'est."""
+        pages = _pages_ci(_data_ci(hors_total=True, langue="ar"))
+        for i in (1, 2):
+            with self.subTest(page=i):
+                self.assertNotIn("&lt;span", pages[i])
+                self.assertIn("كابل التيار المستمر", pages[i])
+        self.assertIn("هيكل التثبيت", pages[1])
+
+    def test_kicker_arabe_generique(self):
+        html = "".join(_pages_ci(_data_ci(langue="ar")))
+        self.assertIn("للمنشآت التجارية", html)
+        self.assertNotIn("للمحلات", html)
+
+
+class TestAmot89DefinitionsEtSurplus(SimpleTestCase):
+    """AMOT89 — la définition servie sous la tuile d'autoconsommation (la
+    tuile de couverture SE dit déjà « Part de votre consommation
+    couverte ») et le surplus chiffré en kWh du bilan, dit selon 82-21."""
+
+    def test_definition_sous_la_tuile_sans_redite(self):
+        p1 = _texte_ci(_pages_ci(_data_ci())[1])
+        self.assertIn("Autoconsommation part de la production consommée sur "
+                      "place", p1)
+        self.assertIn("Part de votre consommation couverte", p1)
+        self.assertNotIn("couverte par le solaire", p1)
+
+    def test_surplus_bt_en_kwh_du_bilan(self):
+        data = _data_ci()
+        bilan = data["etude"]["etude_ci"]["bilan"]
+        self.assertEqual(synthese_ci(data)["energie"]["surplus"], {
+            "kwh_an": bilan["surplus_kwh"], "valorise_kwh_an": 0,
+            "non_valorise_kwh_an": bilan["non_valorise_kwh"],
+            "non_valorise_pct_production": round(
+                bilan["non_valorise_kwh"] / bilan["production_kwh"] * 100)})
+        self.assertIn("Surplus non valorisé : ≈ 25 959 kWh/an (27 % de la "
+                      "production) — revente non ouverte en basse tension à "
+                      "ce jour (ANRE, décision 04/26).",
+                      _texte_ci(_pages_ci(data)[1]))
+
+    def test_surplus_mt_revendu_sous_plafond(self):
+        data = _data_ci()
+        etude_ci = data["etude"]["etude_ci"]
+        etude_ci["entrees_resolues"]["tension"]["valeur"] = "mt"
+        etude_ci["bilan"].update(injecte_valorise_kwh=19085,
+                                 non_valorise_kwh=6874)
+        self.assertIn("Surplus injecté : ≈ 19 085 kWh/an valorisés (plafond "
+                      "légal : 20 % de la production annuelle, loi 82-21 art. "
+                      "12) ; ≈ 6 874 kWh/an non valorisés (7 % de la "
+                      "production).", _texte_ci(_pages_ci(data)[1]))
+
+    def test_sans_surplus_servi_ligne_omise(self):
+        data = _data_ci()
+        for cle in ("surplus_kwh", "non_valorise_kwh"):
+            data["etude"]["etude_ci"]["bilan"].pop(cle)
+        self.assertNotIn("surplus", synthese_ci(data)["energie"])
+        self.assertNotIn("Surplus non valorisé", _texte_ci(_pages_ci(data)[1]))
+
+    def test_anglais(self):
+        p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])
+        self.assertIn("Self-consumption share of the solar production "
+                      "consumed on site", p1)
+        self.assertIn("Surplus not valued: ≈ 25 959 kWh/yr (27 % of the "
+                      "production)", p1)
+
+
+class TestAmot90EnergieMensuelle(SimpleTestCase):
+    """AMOT90 — l'énergie mois par mois en SVG en ligne sur la page 1, des
+    kWh du bilan horaire servi (``synthese_ci.energie.par_mois``) ; retirée
+    par le rendu adaptatif quand la page déborde, jamais une page de plus."""
+
+    def test_douze_mois_du_bilan_servis(self):
+        data = _data_ci()
+        bilan = data["etude"]["etude_ci"]["bilan"]["par_mois"]
+        par_mois = synthese_ci(data)["energie"]["par_mois"]
+        self.assertEqual([m["mois"] for m in par_mois], list(range(1, 13)))
+        for servi, brut in zip(par_mois, bilan):
+            for cle in ("production_kwh", "consommation_kwh",
+                        "autoconso_kwh", "surplus_kwh"):
+                self.assertEqual(servi[cle], brut[cle])
+
+    def test_svg_page_1_lu_sur_les_kwh_servis(self):
+        data = _data_ci()
+        p1 = _pages_ci(data)[1]
+        self.assertIn('data-graphique="energie_mensuelle"', p1)
+        bloc = p1[p1.index('data-graphique="energie_mensuelle"'):]
+        svg = bloc[bloc.index("<svg"):bloc.index("</svg>")]
+        # 12 mois × (consommation + autoconsommée + surplus).
+        self.assertEqual(svg.count("<rect"), 36)
+        mois = data["etude"]["etude_ci"]["bilan"]["par_mois"]
+        plafond = max(max(m["consommation_kwh"], m["production_kwh"])
+                      for m in mois)
+        graduation = f"{plafond:,}".replace(",", " ") + " kWh"
+        self.assertIn(_texte_ci(graduation), _texte_ci(svg))
+        texte = _texte_ci(p1)
+        self.assertIn("Votre énergie mois par mois", texte)
+        for legende in ("Votre consommation", "Production autoconsommée",
+                        "Surplus non consommé sur place",
+                        "calculées heure par heure"):
+            self.assertIn(legende, texte)
+
+    def test_sans_douze_mois_aucun_graphique(self):
+        data = _data_ci()
+        data["etude"]["etude_ci"]["bilan"]["par_mois"].pop()
+        self.assertNotIn("par_mois", synthese_ci(data)["energie"])
+        self.assertNotIn('data-graphique="energie_mensuelle"',
+                         _pages_ci(data)[1])
+
+    def test_rendu_adaptatif_retire_le_graphique_avant_la_densite(self):
+        """Une page qui déborde À CAUSE du graphique : le document sort au
+        palier 0 SANS graphique (jamais une page de plus, ni une densité
+        réduite pour lui)."""
+        from apps.ventes.quote_engine.commercial import equip
+        essais = []
+
+        class _Doc:
+            def write_pdf(self):
+                return b"%PDF-sans-graphique"
+
+        def _build(donnees):
+            essais.append((donnees.get("_palier_equip"),
+                           bool(donnees.get("_sans_graphiques"))))
+            return render.build_html(donnees)
+
+        def _tient(html, _doc):
+            return 'data-graphique="' not in html
+
+        d = renderer._augment(_data_ci())
+        with patch.object(equip, "_tient", _tient):
+            pdf = equip.pdf_adaptatif(d, _build, lambda _html: _Doc())
+        self.assertEqual(pdf, b"%PDF-sans-graphique")
+        self.assertEqual(essais, [(None, False), (None, True)])
+
+
+class TestAmot91Hypotheses(SimpleTestCase):
+    """AMOT91 — la page 3 commerciale porte le tableau « Hypothèses de
+    l'estimation », chaque rangée lue sur ``synthese_ci`` (tarif et sa date,
+    indexation, dégradation, horizon, entretien, onduleur, base de
+    production, règle de dimensionnement D-CIQ-2)."""
+
+    def _p3(self, data):
+        return _texte_ci(_pages_ci(data)[3])
+
+    def test_rangees_lues_sur_les_donnees_servies(self):
+        data = _data_ci()
+        p3 = self._p3(data)
+        production = _ETUDE_CI["production"]
+        taille = _ETUDE_CI["taille"]
+        for rangee in (
+                "Hypothèses de l'estimation",
+                "Prix du kWh Tarif ONEE BT publié — à confirmer sur votre "
+                "facture (grille du 16/02/2025).",
+                "Indexation du tarif 0 % / an", "Dégradation des panneaux",
+                "Horizon 25 ans",
+                "Entretien (O&M) non déduite des économies",
+                "Remplacement onduleur en année 11 55 000,00 MAD TTC",
+                f"Base de production {production['inclinaison_deg']}° "
+                "d'inclinaison, plein sud — à confirmer au calepinage",
+                f"Règle de dimensionnement chaque palier de "
+                f"{taille['pas_kwc']} kWc retenu se rembourse en moins de "
+                f"{taille['horizon_marginal_annees']} ans"):
+            with self.subTest(rangee=rangee):
+                self.assertIn(rangee, p3)
+        # Compact : les montants de la couverture et de la page 2 n'y sont
+        # pas répétés.
+        tableau = p3[p3.index("Hypothèses de l'estimation"):]
+        self.assertNotIn("Investissement", tableau[:tableau.index(
+            "Règle de dimensionnement")])
+
+    def test_om_souscrite_deduite(self):
+        data = _data_ci()
+        data["economie_ci"]["om"] = {"statut": "souscrit",
+                                     "montant_mad_an": 12000.0,
+                                     "source": "ligne O&M souscrite"}
+        self.assertIn("Entretien (O&M) déduite des économies : 12 000,00 "
+                      "MAD/an", self._p3(data))
+
+    def test_calepinage_et_etude_d_une_autre_puissance(self):
+        data = _data_ci()
+        etude_ci = data["etude"]["etude_ci"]
+        etude_ci["production"]["source"] = "calepinage"
+        etude_ci["taille"]["retenue_kwc"] = 40  # ≠ 90 kWc servis
+        p3 = self._p3(data)
+        self.assertIn("Base de production production du calepinage retenu "
+                      "pour votre toiture", p3)
+        self.assertNotIn("Règle de dimensionnement", p3)
+
+    def test_cede_sa_place_au_rendu_adaptatif(self):
+        data = renderer._augment(_data_ci())
+        p3 = render.build_html(dict(data, _sans_graphiques=True)).split(
+            'class="page"')[3]
+        self.assertNotIn("Hypothèses de l", p3)
+        self.assertIn('data-graphique="hypotheses"',
+                      render.build_html(data).split('class="page"')[3])
+
+
+class TestAmot92CouvertureProjet(SimpleTestCase):
+    """AMOT92 — la couverture dit le PROJET du client : « Centrale solaire
+    N kWc — raison sociale, ville », la catégorie en surtitre (plus en
+    pastille), le téléphone mis en forme, « À l'attention de » omis quand
+    c'est la société, le commercial nommé, les prochaines étapes et le QR
+    de la proposition en ligne quand un lien de partage existe."""
+
+    def _p1(self, data):
+        return _pages_ci(data)[1]
+
+    def _data(self, **surcharges):
+        data = _data_ci()
+        data.update(surcharges)
+        return data
+
+    def test_titre_projet_et_categorie_en_surtitre(self):
+        p1 = self._p1(self._data())
+        texte = _texte_ci(p1)
+        self.assertIn("Hôtel / Riad · Autoconsommation solaire commerciale "
+                      "Centrale solaire 90 kWc — Hôtel Atlas Riad SARL, "
+                      "Marrakech", texte)
+        self.assertNotIn('class="c1c-tag"', p1)
+
+    def test_raison_sociale_servie_prioritaire(self):
+        data = self._data(entreprise_client={
+            "raison_sociale": "Atlas Hospitality SA", "ice": "001234567000089"})
+        self.assertIn("Centrale solaire 90 kWc — Atlas Hospitality SA, "
+                      "Marrakech", _texte_ci(self._p1(data)))
+
+    def test_telephone_mis_en_forme(self):
+        from apps.ventes.quote_engine.ci.couverture import format_telephone
+        for brut, attendu in (("212661234590", "+212 6 61 23 45 90"),
+                              ("0661234590", "+212 6 61 23 45 90"),
+                              ("+212 5 24 00 00 00", "+212 5 24 00 00 00"),
+                              ("00212524000000", "+212 5 24 00 00 00"),
+                              ("+33 1 23 45 67 89", "+33 1 23 45 67 89")):
+            with self.subTest(brut=brut):
+                self.assertEqual(format_telephone(brut), attendu)
+        texte = _texte_ci(self._p1(self._data(client_phone="212661234590")))
+        self.assertIn("+212 6 61 23 45 90", texte)
+        self.assertNotIn("212661234590", texte)
+
+    def test_a_l_attention_omis_quand_c_est_la_societe(self):
+        meme = self._data(entreprise_client={
+            "raison_sociale": "Pharmacie Phase", "interlocuteur":
+            "Pharmacie Phase"})
+        self.assertNotIn("À l'attention de", _texte_ci(self._p1(meme)))
+        autre = self._data(entreprise_client={
+            "raison_sociale": "Pharmacie Phase",
+            "interlocuteur": "Youssef Benjelloun"})
+        self.assertIn("À l'attention de Youssef Benjelloun",
+                      _texte_ci(self._p1(autre)))
+
+    def test_votre_interlocuteur_servi_jamais_invente(self):
+        avec = self._data(seller={"nom": "Yassine Cherkaoui",
+                                  "telephone": "0612345678"})
+        self.assertIn("Votre interlocuteur : Yassine Cherkaoui · +212 6 12 34 "
+                      "56 78", _texte_ci(self._p1(avec)))
+        sans = self._data(seller={"nom": "", "telephone": "0522000000"})
+        self.assertNotIn("Votre interlocuteur", _texte_ci(self._p1(sans)))
+
+    def test_prochaines_etapes_et_qr_seulement_avec_un_lien(self):
+        lien = "https://taqinor.ma/proposition/hotel-atlas/abcdEFGH1234"
+        p1 = self._p1(self._data(links={"signer": lien}))
+        texte = _texte_ci(p1)
+        self.assertIn("Prochaines étapes 1 Visite technique de votre site 2 "
+                      "Validation de l'offre définitive 3 Pose et mise en "
+                      "service", texte)
+        self.assertIn('alt="QR"', p1)
+        self.assertIn("Votre proposition en ligne · taqinor.ma/proposition",
+                      texte)
+        self.assertNotIn("abcdEFGH1234", texte)
+        # Le repli « /signer/<ref> » (jamais servi par le site) : aucun QR.
+        p1_sans = self._p1(self._data(
+            links={"signer": "taqinor.ma/signer/DEV-COM-DEMO"}))
+        self.assertNotIn('alt="QR"', p1_sans)
+        self.assertIn("Prochaines étapes", _texte_ci(p1_sans))
+
+    def test_industriel_titre_projet_et_etapes_cedables(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["seller"] = {"nom": "Nadia Sefrioui", "telephone": "0661234590"}
+        p1 = i_render.build_html(i_rend._augment(data)).split(
+            'class="page"')[1]
+        texte = _texte_ci(p1)
+        self.assertIn("Centrale solaire 250 kWc — Société Atlas Industrie "
+                      "SARL, Fès", texte)
+        self.assertIn("Réduire votre coût de l'énergie", texte)
+        self.assertIn("Votre interlocuteur : Nadia Sefrioui · +212 6 61 23 "
+                      "45 90", texte)
+        self.assertIn('data-graphique="etapes"', p1)
+        self.assertNotIn('class="i1-tag"', p1)
+        sans = i_render.build_html(dict(i_rend._augment(data),
+                                        _sans_graphiques=True))
+        self.assertNotIn("Prochaines étapes", sans.split('class="page"')[1])
+
+
+class TestAmot93VotreInstallation(SimpleTestCase):
+    """AMOT93 — « Votre installation en bref » sous le tableau de la page 2
+    (commercial ET industriel) : modules (modèle, Wc, nombre, kWc),
+    onduleurs (modèle × n, kW AC SEULEMENT quand la composition décrit les
+    onduleurs du devis), type de pose et surface DÉCLARÉS."""
+
+    def _fiche(self, html_page):
+        debut = html_page.index('data-graphique="installation"')
+        return _texte_ci(html_page[debut:html_page.index("</table>", debut)])
+
+    def test_fiche_lue_sur_les_lignes_et_la_synthese(self):
+        fiche = self._fiche(_pages_ci(_data_ci())[2])
+        self.assertIn("Votre installation en bref", fiche)
+        self.assertIn("Modules 127 × Panneau Jinko 710W · 710 Wc par module · "
+                      "90 kWc au total", fiche)
+        # Composition (50 kW) ≠ onduleur du devis (100 kW) : aucun kW AC.
+        self.assertIn("Onduleurs 1 × Onduleur réseau Huawei 100kW Triphasé",
+                      fiche)
+        self.assertNotIn("kW AC", fiche)
+        self.assertIn("Type de pose Toit plat — lesté", fiche)
+        self.assertIn("Surface disponible (déclarée) 650 m²", fiche)
+
+    def test_kw_ac_quand_la_composition_decrit_les_onduleurs_du_devis(self):
+        data = _data_ci()
+        data["all_items"][1]["designation"] = \
+            "Onduleur réseau Huawei 50kW Triphasé"
+        self.assertEqual(synthese_ci(data)["installation"]["onduleurs"],
+                         [{"kw_ac": 50, "quantite": 1}])
+        self.assertIn("1 × Onduleur réseau Huawei 50kW Triphasé · 50 kW AC "
+                      "au total", self._fiche(_pages_ci(data)[2]))
+
+    def test_industriel_et_cedable(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["etude"] = dict(data["etude"], etude_ci=copy.deepcopy(_ETUDE_CI))
+        augmente = i_rend._augment(etude_ci_au_kwc_servi(data))
+        p2 = i_render.build_html(augmente).split('class="page"')[2]
+        self.assertIn("Modules 352 × Panneau Canadien Solar 710W",
+                      self._fiche(p2))
+        sans = i_render.build_html(dict(augmente, _sans_graphiques=True))
+        self.assertNotIn("Votre installation en bref",
+                         sans.split('class="page"')[2])

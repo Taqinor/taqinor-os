@@ -4139,9 +4139,11 @@ def page_onepage(items, tronquees=0):
                      _ancre_figure("economie_annuelle", fnum(_eco_branche),
                                    ONEPAGE_BRANCHE)))
         _pkwc_txt = fnum(round(total / KWC))
-        _sum_cells.append(
+        # AMOT86 (D-ACI-2=a) — postes « à chiffrer après la visite » hors
+        # total : aucun « Prix par kWc » sur un prix incomplet.
+        _sum_cells += [] if (CHIFFRES_CI or {}).get("postes_hors_total") else [
             (_L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/kWc",
-             _ancre_figure("prix_kwc", _pkwc_txt, _op_opt)))
+             _ancre_figure("prix_kwc", _pkwc_txt, _op_opt))]
         # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
         # contrat DIM2 est posé (voir _falaise_context) : le budget densité
         # adaptative de cette page ne dépend que du nombre de LIGNES produit

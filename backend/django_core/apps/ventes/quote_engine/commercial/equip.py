@@ -14,7 +14,7 @@ from . import categories
 # (aucune chaîne existante ne change) — voir ``quote_engine/figures.py``.
 from ..figures import ancre
 from ..ci.mentions import texte_revente
-from ..ci.synthese import chiffres_cles
+from ..ci.synthese import chiffres_cles, libelle_poste
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
 from ..ci.blocs import langue as _langue, libelle as _libelle
 from ..sequence import sequence_affichage
@@ -111,22 +111,158 @@ def pdf_adaptatif(d, build_html, rendre, index_page=1):
     refus — jamais une bande légale, une signature ou un financement coupés."""
     for palier in range(len(PALIERS_DENSITE)):
         donnees = d if palier == 0 else dict(d, _palier_equip=palier)
-        html = build_html(donnees)
-        doc = rendre(html)
-        # Une page qui déborde peut aussi POUSSER une page de plus : le
-        # document ne tient que s'il a exactement ses pages et rien de coupé.
-        if _tient(html, doc):
+        doc = _rendu_tenu(donnees, build_html, rendre)
+        if doc is not None:
             return doc.write_pdf()
     from ..ci.blocs import puces_conditions
     dernier = len(PALIERS_DENSITE) - 1
     n = len(puces_conditions(d))
     for garder in range(n - 1, -1, -1):
-        donnees = dict(d, _palier_equip=dernier, _cgv_max=garder)
+        donnees = dict(d, _palier_equip=dernier, _cgv_max=garder,
+                       _sans_graphiques=True)
         html = build_html(donnees)
         doc = rendre(html)
         if _tient(html, doc):
             return doc.write_pdf()
     return None
+
+
+def _rendu_tenu(donnees, build_html, rendre):
+    """Le document rendu s'il TIENT (pages exactes, rien sous le pied) ;
+    sinon, AMOT90 — s'il porte des graphiques optionnels (``data-graphique``,
+    ``ci.graphiques``), le MÊME document sans eux (``_sans_graphiques``)
+    avant de toucher à la densité : un graphique ne pousse jamais une page
+    de plus ni ne coupe un texte. ``None`` si rien ne tient."""
+    html = build_html(donnees)
+    doc = rendre(html)
+    # Une page qui déborde peut aussi POUSSER une page de plus : le
+    # document ne tient que s'il a exactement ses pages et rien de coupé.
+    if _tient(html, doc):
+        return doc
+    if 'data-graphique="' not in html or donnees.get("_sans_graphiques"):
+        return None
+    # D'abord les seuls blocs des pages qui débordent, puis tous.
+    for retires in (_cedables_des_pages_debordantes(html, doc), True):
+        if not retires:
+            continue
+        html = build_html(dict(donnees, _sans_graphiques=retires))
+        doc = rendre(html)
+        if _tient(html, doc):
+            return doc
+    return None
+
+
+def _cedables_des_pages_debordantes(html, doc):
+    """Les noms ``data-graphique`` posés sur les pages qui débordent (toutes
+    les pages quand le document a une page de trop ou de moins : on ne sait
+    plus laquelle a poussé)."""
+    import re
+    segments = html.split('<div class="page">')[1:]
+    pages = list(getattr(doc, "pages", None) or [])
+    if len(pages) == len(segments):
+        segments = [s for s, page in zip(segments, pages) if deborde(page)]
+    return frozenset(nom for s in segments
+                     for nom in re.findall(r'data-graphique="([\w-]+)"', s))
+
+
+def rangees_hors_total(d, L, navy, muted, wash):
+    """AMOT86 (D-ACI-2=a) — les postes « à chiffrer après la visite » restés
+    hors total : une ligne chacun sous un intertitre, « à chiffrer après la
+    visite technique » SANS montant (jamais un 0), hors de la chaîne de
+    totaux. Aucun poste ⇒ ''."""
+    from ..ci.couverture import postes_echappes, postes_hors_total, \
+        roles_client
+    postes = postes_echappes(postes_hors_total(
+        d.get("com_synthese") or d.get("ind_synthese")))
+    if not postes:
+        return ""
+    roles = roles_client(d)
+    mention = L("ci_a_chiffrer_apres_visite",
+                "à chiffrer après la visite technique")
+    rangees = (
+        f'<tr><td class="c2-d" colspan="5" style="font-weight:700;'
+        f'color:{navy};text-transform:uppercase;letter-spacing:.5px;'
+        f'background:{wash};">'
+        + L("ci_postes_hors_total",
+            "Postes à chiffrer après la visite technique (hors total)")
+        + '</td></tr>')
+    for poste in postes:
+        nom = libelle_poste(poste, roles)
+        qte = poste.get("quantite")
+        rangees += (
+            f'<tr><td class="c2-d">{nom[:1].upper() + nom[1:]}</td>'
+            f'<td class="c2-q">{f"{qte:g}" if qte else ""}</td>'
+            f'<td class="c2-p" colspan="3" style="font-style:italic;'
+            f'color:{muted};">{mention}</td></tr>')
+    return rangees
+
+
+def _rangees_installation(d, L, fmt):
+    """AMOT93 — ``[(libellé, valeur)]`` de la fiche « Votre installation en
+    bref » : lignes du devis (modules, onduleurs) et ``synthese_ci``
+    (nombre de modules et kWc servis, kW AC de la composition, type de pose
+    et surface disponible déclarés) — rien d'estimé ici."""
+    from apps.ventes import solar_classification as sc
+    from core.product_roles import LIBELLES_TYPES_POSE
+    synthese = d.get("com_synthese") or d.get("ind_synthese") or {}
+    systeme = synthese.get("systeme") or {}
+    installation = synthese.get("installation") or {}
+    items = [it for it in d.get("all_items") or []
+             if _num(it.get("quantite")) > 0]
+    rangees = []
+    panneaux = [f'{_num(it.get("quantite")):g} × {it.get("designation")}'
+                for it in items if sc.is_panel(it.get("designation") or "",
+                                               it.get("_produit_nom") or "")]
+    if panneaux:
+        watt = _num(d.get("watt_par_panneau"), None)
+        kwc = premium_base.kwc_str(systeme.get("kwc"), "")
+        rangees.append((L("ci_inst_modules", "Modules"), " · ".join(
+            [", ".join(panneaux)]
+            + ([L("ci_inst_wc", "{w} Wc par module", w=f"{watt:g}")]
+               if watt else [])
+            + ([L("ci_inst_kwc_total", "{kwc} kWc au total", kwc=kwc)]
+               if kwc else []))))
+    onduleurs = [f'{_num(it.get("quantite")):g} × {it.get("designation")}'
+                 for it in items if sc.is_inverter(it.get("designation") or "")]
+    kw_ac = sum(o["kw_ac"] * o["quantite"]
+                for o in installation.get("onduleurs") or [])
+    if onduleurs:
+        rangees.append((L("ci_inst_onduleurs", "Onduleurs"), " · ".join(
+            [", ".join(onduleurs)]
+            + ([L("ci_inst_kw_ac", "{kw} kW AC au total",
+                  kw=f"{kw_ac:g}".replace(".", ","))] if kw_ac else []))))
+    pose = installation.get("type_pose")
+    if pose in LIBELLES_TYPES_POSE:
+        rangees.append((L("ci_inst_pose", "Type de pose"),
+                        L(f"ci_pose_{pose}", LIBELLES_TYPES_POSE[pose])))
+    surface = _num(installation.get("surface_disponible_m2"), None)
+    if surface:
+        rangees.append((L("ci_inst_surface", "Surface disponible (déclarée)"),
+                        f"{fmt(round(surface))}&nbsp;m²"))
+    return rangees
+
+
+def bloc_installation(d, L, fmt, couleurs):
+    """AMOT93 — la fiche technique sous le tableau des équipements, ou ''.
+    Cédable (``data-graphique``) : le rendu adaptatif la retire avant de
+    densifier la page. ``couleurs`` = (navy, muted, line_soft, wash)."""
+    rangees = _rangees_installation(d, L, fmt)
+    from ..ci.graphiques import cede
+    if not rangees or cede(d, "installation"):
+        return ""
+    navy, muted, line_soft, wash = couleurs
+    lignes = "".join(
+        f'<tr><td style="color:{muted};width:24%;padding:3px 8px;'
+        f'border-bottom:1px solid {line_soft};vertical-align:top;">{lib}</td>'
+        f'<td style="padding:3px 8px;border-bottom:1px solid {line_soft};">'
+        f'{val}</td></tr>' for lib, val in rangees)
+    return (f'<div class="c2v" data-graphique="installation" '
+            f'style="margin-top:12px;border-radius:12px;background:{wash};'
+            f'padding:8px 6px;"><div style="font-size:9pt;font-weight:700;'
+            f'color:{navy};padding:0 8px 3px 8px;">'
+            + L("ci_inst_titre", "Votre installation en bref")
+            + f'</div><table style="width:100%;border-collapse:collapse;'
+            f'font-size:7.8pt;">{lignes}</table></div>')
 
 
 def build(ctx):
@@ -342,7 +478,7 @@ def build(ctx):
 
   <table class="c2-tbl">
     <tr><th>{L("designation", "Désignation")}</th><th class="c2-rr">{L("qte", "Qté")}</th><th class="c2-rr">{L("pu_ht", "P.U. HT")}</th><th class="c2-rr">{L("ci_tva_pct", "TVA %")}</th><th class="c2-rr">{L("total_ht", "Total HT")}</th></tr>
-    {rows}
+    {rows}{rangees_hors_total(d, L, navy, muted, wash)}
   </table>
 
   <div class="c2-tot">
@@ -361,6 +497,7 @@ def build(ctx):
   {note_html}{clauses_html}
   {options_html}{injection_html}
   {block}
+  {bloc_installation(d, L, fmt, (navy, muted, line_soft, wash))}
 </div>
 """
     return html

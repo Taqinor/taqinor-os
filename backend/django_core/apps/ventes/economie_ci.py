@@ -558,6 +558,20 @@ def _om(om, cle_base):
                      'source': source}
 
 
+def _production_par_annee(bloc, production_annee1, deg_pct):
+    """AMOT94 — la production de CHAQUE année du flux servi (``production_kwh``
+    sur chaque ligne ; ``None`` en année 0) : la production de l'année 1 du
+    moteur × (1 − dégradation)^(t − 1), la MÊME dégradation que
+    ``economie.flux_de_tresorerie`` applique à l'économie. Lue par le tableau
+    25 ans du document industriel (jamais recalculée par un gabarit)."""
+    prod = _montant(production_annee1)
+    for ligne in bloc.get('flux') or []:
+        annee = ligne.get('annee')
+        ligne['production_kwh'] = (
+            None if not prod or not annee else
+            int(round(prod * (1.0 - deg_pct / 100.0) ** (annee - 1))))
+
+
 def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
              om_bloc, cle_base, collecteur=None):
     from apps.ventes import economie as eco_mod
@@ -604,6 +618,7 @@ def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
         # :func:`sensibilites_ci` en ne changeant qu'UNE grandeur.
         collecteur[cle_base] = entrees
     bloc = eco_mod.flux_de_tresorerie(**entrees)
+    _production_par_annee(bloc, production['valeur'], deg_pct)
     omissions = [o for o in bloc['omissions']
                  if o['cle'] not in ('remplacements', 'charges_annuelles_mad')]
     if montant_onduleur is None:

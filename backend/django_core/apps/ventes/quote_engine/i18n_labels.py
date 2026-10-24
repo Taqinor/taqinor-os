@@ -2301,6 +2301,305 @@ LIBELLES = {
         'fr': 'Investissement à compléter après la visite technique ({n} postes hors total)',
         'en': 'Investment to be completed after the site visit ({n} items outside the total)',
         'ar': 'الاستثمار يُستكمل بعد الزيارة التقنية ({n} بنود خارج الإجمالي)'},
+    # AMOT86 (D-ACI-2=a) — postes « à chiffrer après la visite » hors total :
+    # jamais « clé en main », lignes sans montant, retour sur le prix complet.
+    'ci_invest_hv': {
+        'fr': 'Investissement hors postes à chiffrer après la visite',
+        'en': 'Investment excluding items to be priced after the site visit',
+        'ar': 'الاستثمار دون البنود التي تُسعَّر بعد الزيارة التقنية'},
+    'ci_invest_ht_hv': {
+        'fr': 'Investissement HT hors postes à chiffrer après la visite',
+        'en': 'Investment excl. VAT, excluding items to be priced after the '
+              'site visit',
+        'ar': 'الاستثمار دون احتساب الضريبة، دون البنود التي تُسعَّر بعد '
+              'الزيارة التقنية'},
+    'ci_invest_ttc_hv': {
+        'fr': 'Investissement TTC hors postes à chiffrer après la visite',
+        'en': 'Investment incl. VAT, excluding items to be priced after the '
+              'site visit',
+        'ar': 'الاستثمار شامل الضريبة، دون البنود التي تُسعَّر بعد الزيارة '
+              'التقنية'},
+    'ci_a_chiffrer_apres_visite': {
+        'fr': 'à chiffrer après la visite technique',
+        'en': 'to be priced after the site visit',
+        'ar': 'يُسعَّر بعد الزيارة التقنية'},
+    'ci_postes_hors_total': {
+        'fr': 'Postes à chiffrer après la visite technique (hors total)',
+        'en': 'Items to be priced after the site visit (not in the total)',
+        'ar': 'بنود تُسعَّر بعد الزيارة التقنية (خارج المجموع)'},
+    'ci_retour_prix_complet': {
+        'fr': 'retour calculé sur le prix complet, après la visite',
+        'en': 'payback calculated on the full price, after the site visit',
+        'ar': 'مدة الاسترداد تُحسب على السعر الكامل، بعد الزيارة'},
+    # AMOT88 — rôle d'un poste hors total, en mots du client
+    # (``ci.synthese.ROLES_POSTES_CLIENT``, le français y est servi).
+    'ci_role_cable_dc': {'fr': 'câble DC', 'en': 'DC cable',
+                         'ar': 'كابل التيار المستمر'},
+    'ci_role_cable_ac': {'fr': 'câble AC', 'en': 'AC cable',
+                         'ar': 'كابل التيار المتردد'},
+    'ci_role_structure_ci': {'fr': 'structure de fixation',
+                             'en': 'mounting structure',
+                             'ar': 'هيكل التثبيت'},
+    'ci_role_coffret_dc': {'fr': 'coffret DC', 'en': 'DC box',
+                           'ar': 'علبة التيار المستمر'},
+    'ci_role_coffret_ac': {'fr': 'coffret AC', 'en': 'AC box',
+                           'ar': 'علبة التيار المتردد'},
+    'ci_role_protection_ac': {'fr': 'protection AC', 'en': 'AC protection',
+                              'ar': 'حماية التيار المتردد'},
+    'ci_role_onduleur_string_tri': {'fr': 'onduleur', 'en': 'inverter',
+                                    'ar': 'العاكس'},
+    'ci_role_onduleur_string_mono': {'fr': 'onduleur', 'en': 'inverter',
+                                     'ar': 'العاكس'},
+    # AMOT88 — passe « vocabulaire client » : les mots internes (CFO,
+    # baseline, cashflow, payback, « moteur C&I », « flux servi ») sortent du
+    # document. NOUVELLES clés (les anciennes restent au catalogue, plus lues
+    # par les gabarits C&I) : le golden ``regles_calcul_origine`` reste
+    # valable sans recapture.
+    'ci_part_conso_couverte': {'fr': 'Part de votre consommation couverte',
+                               'en': 'Share of your consumption covered',
+                               'ar': 'حصة استهلاككم المغطاة'},
+    'ci_a_chiffrer_hors_total': {
+        'fr': 'À chiffrer après la visite technique (hors total) : ',
+        'en': 'To be priced after the site visit (not in the total): ',
+        'ar': 'يُسعَّر بعد الزيارة التقنية (خارج المجموع): '},
+    'ci_ind_sous_titre_client': {
+        'fr': 'Analyse de rentabilité : votre consommation, vos flux annuels '
+              'et le délai de retour.',
+        'en': 'Profitability analysis: your consumption, your annual cash '
+              'flows and the payback period.',
+        'ar': 'تحليل المردودية: استهلاككم وتدفقاتكم السنوية ومدة الاسترداد.'},
+    'ci_ind_conso_prod_titre': {'fr': 'Votre consommation et votre production',
+                                'en': 'Your consumption and your production',
+                                'ar': 'استهلاككم وإنتاجكم'},
+    'ci_ind_source_kwh_declares': {'fr': "d'après vos kWh déclarés",
+                                   'en': 'based on your declared kWh',
+                                   'ar': 'حسب الكيلوواط ساعة المصرح بها'},
+    'ci_ind_facture_non_communiquee_client': {
+        'fr': 'Facture électrique actuelle non communiquée — transmettez 12 '
+              'mois de factures et votre consommation de référence se '
+              'chiffre.',
+        'en': 'Current electricity bill not provided — send 12 months of '
+              'bills and your reference consumption is calculated.',
+        'ar': 'فاتورة الكهرباء الحالية غير مقدمة — أرسلوا فواتير 12 شهرا '
+              'ليُحسب استهلاككم المرجعي.'},
+    'ci_ind_prix_ferme': {'fr': 'prix ferme, économies estimées',
+                          'en': 'firm price, estimated savings',
+                          'ar': 'سعر نهائي، وفورات مقدرة'},
+    'ci_ind_lead_client': {
+        'fr': 'Projection sur {n} ans : flux annuels, délai de retour et TRI '
+              'tirés de la même série ; hypothèses détaillées ci-dessous.',
+        'en': 'Projection over {n} years: annual cash flows, payback period '
+              'and IRR drawn from the same series; assumptions detailed '
+              'below.',
+        'ar': 'إسقاط على مدى {n} سنة: التدفقات السنوية ومدة الاسترداد ومعدل '
+              'العائد الداخلي مستخرجة من نفس السلسلة؛ الافتراضات مفصلة أدناه.'},
+    'ci_ind_delai_retour': {'fr': 'Délai de retour', 'en': 'Payback period',
+                            'ar': 'مدة الاسترداد'},
+    'ci_hypotheses_estimation': {'fr': "Hypothèses de l'estimation",
+                                 'en': 'Estimate assumptions',
+                                 'ar': 'افتراضات التقدير'},
+    'ci_ind_methode_tri_client': {
+        'fr': 'TRI et délai de retour calculés sur ces flux annuels (méthode '
+              'actuarielle) ; prix ferme, économies estimées.',
+        'en': 'IRR and payback period calculated on these annual cash flows '
+              '(actuarial method); firm price, estimated savings.',
+        'ar': 'معدل العائد الداخلي ومدة الاسترداد محسوبان على هذه التدفقات '
+              'السنوية (طريقة اكتوارية)؛ سعر نهائي ووفورات مقدرة.'},
+    'ci_ind_revente_hors_flux': {
+        'fr': 'revente du surplus, hors flux annuels (non comptée dans le '
+              'délai de retour ni le TRI).',
+        'en': 'sale of the surplus, outside the annual cash flows (not '
+              'counted in the payback period or the IRR).',
+        'ar': 'بيع الفائض، خارج التدفقات السنوية (غير محتسب في مدة الاسترداد '
+              'ولا في معدل العائد).'},
+    'ci_ind_motif_bt_client': {
+        'fr': "Les <b>économies annuelles</b> de cette installation n'ont pas "
+              "encore été calculées sur vos données. Nous préférons ne rien "
+              "afficher plutôt que des flux annuels, un point mort ou un TRI "
+              "qui ne reposeraient sur aucune mesure.",
+        'en': 'The <b>annual savings</b> of this installation have not yet '
+              'been calculated on your data. We prefer to show nothing rather '
+              'than annual cash flows, a break-even point or an IRR resting '
+              'on no measurement.',
+        'ar': 'لم تُحسب بعد <b>الوفورات السنوية</b> لهذه المنشأة على أساس '
+              'معطياتكم. نفضل ألا نعرض شيئا بدل تدفقات سنوية أو نقطة تعادل '
+              'أو معدل عائد لا يستند إلى أي قياس.'},
+    'ci_ind_motif_invest_client': {
+        'fr': "<b>{motif}</b> : le délai de retour, le TRI et les flux "
+              "annuels ne sont publiés que sur un investissement entièrement "
+              "chiffré.",
+        'en': '<b>{motif}</b>: payback period, IRR and annual cash flows are '
+              'only published on a fully priced investment.',
+        'ar': '<b>{motif}</b>: لا تُنشر مدة الاسترداد ومعدل العائد الداخلي '
+              'والتدفقات السنوية إلا على استثمار مُسعَّر بالكامل.'},
+    'ci_src_reglage_societe': {'fr': "hypothèse retenue par l'installateur",
+                               'en': "assumption set by the installer",
+                               'ar': 'افتراض اعتمده المركِّب'},
+    # AMOT89 — le surplus chiffré depuis le bilan horaire (kWh servis), dit
+    # selon la règle 82-21 (``constants_82_21`` : BT sans revente ; MT/HT :
+    # plafond légal de la production annuelle).
+    'ci_surplus_non_valorise': {
+        'fr': 'Surplus non valorisé : ≈ {kwh} kWh/an ({pct} % de la '
+              'production)',
+        'en': 'Surplus not valued: ≈ {kwh} kWh/yr ({pct} % of the '
+              'production)',
+        'ar': 'فائض غير مُثمَّن: ≈ {kwh} kWh/سنة ({pct} % من الإنتاج)'},
+    'ci_surplus_bt': {
+        'fr': ' — revente non ouverte en basse tension à ce jour (ANRE, '
+              'décision 04/26).',
+        'en': ' — no surplus sale open at low voltage to date (ANRE, '
+              'decision 04/26).',
+        'ar': ' — بيع الفائض غير متاح بالجهد المنخفض حاليا (الهيئة الوطنية '
+              'لضبط الكهرباء، القرار 04/26).'},
+    'ci_surplus_sans_revente': {
+        'fr': ' — revente du surplus non retenue.',
+        'en': ' — surplus sale not selected.',
+        'ar': ' — بيع الفائض غير معتمد.'},
+    'ci_surplus_injecte_kwh': {
+        'fr': 'Surplus injecté : ≈ {kwh} kWh/an valorisés (plafond légal : '
+              '{plafond} % de la production annuelle, loi 82-21 art. 12)',
+        'en': 'Surplus fed in: ≈ {kwh} kWh/yr valued (legal cap: {plafond} '
+              '% of annual production, law 82-21 art. 12)',
+        'ar': 'الفائض المحقون: ≈ {kwh} kWh/سنة مُثمَّنة (السقف القانوني: '
+              '{plafond} % من الإنتاج السنوي، القانون 82-21 المادة 12)'},
+    'ci_surplus_reste': {
+        'fr': ' ; ≈ {kwh} kWh/an non valorisés ({pct} % de la production).',
+        'en': '; ≈ {kwh} kWh/yr not valued ({pct} % of the production).',
+        'ar': '؛ ≈ {kwh} kWh/سنة غير مُثمَّنة ({pct} % من الإنتاج).'},
+    # AMOT90 — l'énergie mois par mois (``ci.graphiques``).
+    'ci_gr_titre': {'fr': 'Votre énergie mois par mois',
+                    'en': 'Your energy, month by month',
+                    'ar': 'طاقتكم شهرا بشهر'},
+    'ci_gr_consommation': {'fr': 'Votre consommation',
+                           'en': 'Your consumption', 'ar': 'استهلاككم'},
+    'ci_gr_autoconsommee': {'fr': 'Production autoconsommée',
+                            'en': 'Self-consumed production',
+                            'ar': 'الإنتاج المستهلك ذاتيا'},
+    'ci_gr_surplus': {'fr': 'Surplus non consommé sur place',
+                      'en': 'Surplus not consumed on site',
+                      'ar': 'فائض غير مستهلك في عين المكان'},
+    'ci_gr_note': {
+        'fr': 'kWh par mois : votre consommation et la production estimée de '
+              'la centrale, calculées heure par heure.',
+        'en': 'kWh per month: your consumption and the estimated production '
+              'of the plant, calculated hour by hour.',
+        'ar': 'كيلوواط ساعة في الشهر: استهلاككم والإنتاج المقدر للمحطة، '
+              'محسوبان ساعة بساعة.'},
+    'ci_ind_energie_titre': {'fr': 'Ce que la centrale produit pour votre site',
+                             'en': 'What the plant produces for your site',
+                             'ar': 'ما تنتجه المحطة لموقعكم'},
+    # AMOT91 — tableau « Hypothèses de l'estimation » (rangées lues sur
+    # ``synthese_ci`` : ``industriel.finance.rangees_hypotheses``).
+    'ci_h_prix_kwh': {'fr': 'Prix du kWh', 'en': 'kWh price',
+                      'ar': 'ثمن الكيلوواط ساعة'},
+    'ci_h_valorisation': {'fr': 'Valorisation de vos kWh',
+                          'en': 'Valuation of your kWh',
+                          'ar': 'تثمين الكيلوواط ساعة لديكم'},
+    'ci_h_base_production': {'fr': 'Base de production',
+                             'en': 'Production basis',
+                             'ar': 'أساس الإنتاج'},
+    'ci_h_base_calepinage': {
+        'fr': 'production du calepinage retenu pour votre toiture',
+        'en': 'production of the panel layout selected for your roof',
+        'ar': 'إنتاج تصميم الألواح المعتمد لسقفكم'},
+    'ci_h_base_pvgis': {
+        'fr': "{incl}° d'inclinaison, {orientation} — à confirmer au "
+              "calepinage",
+        'en': '{incl}° tilt, {orientation} — to be confirmed by the panel '
+              'layout',
+        'ar': 'ميل {incl}°، {orientation} — يُؤكَّد عند تصميم الألواح'},
+    'ci_h_plein_sud': {'fr': 'plein sud', 'en': 'due south',
+                       'ar': 'جنوبا تماما'},
+    'ci_h_azimut': {'fr': 'azimut {a}° (0° = plein sud)',
+                    'en': 'azimuth {a}° (0° = due south)',
+                    'ar': 'السمت {a}° (0° = الجنوب)'},
+    'ci_h_dimensionnement': {'fr': 'Règle de dimensionnement',
+                             'en': 'Sizing rule', 'ar': 'قاعدة التحجيم'},
+    'ci_h_regle_taille': {
+        'fr': 'chaque palier de {pas} kWc retenu se rembourse en moins de '
+              '{n} ans',
+        'en': 'each {pas} kWp step retained pays for itself in under {n} '
+              'years',
+        'ar': 'كل شريحة من {pas} كيلوواط ذروة معتمدة تسترد كلفتها في أقل من '
+              '{n} سنوات'},
+    'ci_h_om': {'fr': 'Entretien (O&amp;M)', 'en': 'Maintenance (O&amp;M)',
+                'ar': 'الصيانة (التشغيل والصيانة)'},
+    'ci_h_om_deduite': {
+        'fr': 'déduite des économies : {montant} MAD/an',
+        'en': 'deducted from the savings: {montant} MAD/yr',
+        'ar': 'مخصومة من الوفورات: {montant} درهم/سنة'},
+    'ci_h_om_non_deduite': {'fr': 'non déduite des économies',
+                            'en': 'not deducted from the savings',
+                            'ar': 'غير مخصومة من الوفورات'},
+    # AMOT92 — la couverture est le PROJET du client.
+    'ci_kicker_autoconso_commerciale': {
+        'fr': 'Autoconsommation solaire commerciale',
+        'en': 'Commercial solar self-consumption',
+        'ar': 'الاستهلاك الذاتي للطاقة الشمسية للمنشآت التجارية'},
+    'ci_titre_projet': {'fr': 'Centrale solaire {kwc} kWc — {client}',
+                        'en': '{kwc} kWp solar plant — {client}',
+                        'ar': 'محطة شمسية بقدرة {kwc} كيلوواط ذروة — {client}'},
+    'ci_votre_interlocuteur': {'fr': 'Votre interlocuteur',
+                               'en': 'Your contact', 'ar': 'محاوركم'},
+    'ci_prochaines_etapes': {'fr': 'Prochaines étapes', 'en': 'Next steps',
+                             'ar': 'الخطوات المقبلة'},
+    'ci_etape_suivante_visite': {'fr': 'Visite technique de votre site',
+                                 'en': 'Technical visit of your site',
+                                 'ar': 'الزيارة التقنية لموقعكم'},
+    'ci_etape_suivante_validation': {
+        'fr': "Validation de l'offre définitive",
+        'en': 'Approval of the final offer',
+        'ar': 'المصادقة على العرض النهائي'},
+    'ci_etape_suivante_pose': {'fr': 'Pose et mise en service',
+                               'en': 'Installation and commissioning',
+                               'ar': 'التركيب والتشغيل'},
+    'ci_proposition_en_ligne': {'fr': 'Votre proposition en ligne',
+                                'en': 'Your online proposal',
+                                'ar': 'عرضكم عبر الإنترنت'},
+    # AMOT93 — « Votre installation en bref » (page 2, les deux documents).
+    'ci_inst_titre': {'fr': 'Votre installation en bref',
+                      'en': 'Your installation at a glance',
+                      'ar': 'منشأتكم باختصار'},
+    'ci_inst_modules': {'fr': 'Modules', 'en': 'Modules', 'ar': 'الألواح'},
+    'ci_inst_wc': {'fr': '{w} Wc par module', 'en': '{w} Wp per module',
+                   'ar': '{w} واط ذروة لكل لوح'},
+    'ci_inst_kwc_total': {'fr': '{kwc} kWc au total',
+                          'en': '{kwc} kWp in total',
+                          'ar': '{kwc} كيلوواط ذروة في المجموع'},
+    'ci_inst_onduleurs': {'fr': 'Onduleurs', 'en': 'Inverters',
+                          'ar': 'العواكس'},
+    'ci_inst_kw_ac': {'fr': '{kw} kW AC au total', 'en': '{kw} kW AC in total',
+                      'ar': '{kw} كيلوواط تيار متردد في المجموع'},
+    'ci_inst_pose': {'fr': 'Type de pose', 'en': 'Mounting type',
+                     'ar': 'نوع التركيب'},
+    'ci_inst_surface': {'fr': 'Surface disponible (déclarée)',
+                        'en': 'Available area (declared)',
+                        'ar': 'المساحة المتاحة (المصرح بها)'},
+    'ci_pose_toiture_inclinee': {'fr': 'Toiture inclinée',
+                                 'en': 'Pitched roof', 'ar': 'سقف مائل'},
+    'ci_pose_bac_acier': {'fr': 'Bac acier', 'en': 'Steel deck roof',
+                          'ar': 'سقف من الصفائح الفولاذية'},
+    'ci_pose_toit_plat_leste': {'fr': 'Toit plat — lesté',
+                                'en': 'Flat roof — ballasted',
+                                'ar': 'سطح مستو — بالأثقال'},
+    'ci_pose_toit_plat_fixe': {'fr': 'Toit plat — fixé',
+                               'en': 'Flat roof — anchored',
+                               'ar': 'سطح مستو — مثبت'},
+    'ci_pose_ombriere': {'fr': 'Ombrière', 'en': 'Solar carport',
+                         'ar': 'مظلة شمسية'},
+    'ci_pose_sol': {'fr': 'Au sol', 'en': 'Ground-mounted',
+                    'ar': 'على الأرض'},
+    # AMOT94 — le tableau des 25 ans (page finance industrielle).
+    'ci_fx_annee': {'fr': 'Année', 'en': 'Year', 'ar': 'السنة'},
+    'ci_fx_production': {'fr': 'Production (kWh)', 'en': 'Production (kWh)',
+                         'ar': 'الإنتاج (kWh)'},
+    'ci_fx_economie': {'fr': 'Économie', 'en': 'Saving', 'ar': 'الوفر'},
+    'ci_fx_om': {'fr': 'O&amp;M', 'en': 'O&amp;M',
+                 'ar': 'التشغيل والصيانة'},
+    'ci_fx_remplacement': {'fr': 'Remplacement', 'en': 'Replacement',
+                           'ar': 'الاستبدال'},
+    'ci_fx_flux': {'fr': 'Flux net', 'en': 'Net cash flow',
+                   'ar': 'التدفق الصافي'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},

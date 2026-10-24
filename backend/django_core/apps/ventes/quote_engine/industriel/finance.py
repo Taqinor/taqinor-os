@@ -27,6 +27,8 @@ from .. import premium_base
 from ..ci import couverture as ci_couverture
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
+# AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
+from ..ci.graphiques import bloc_energie_mensuelle, cede, css_graphique
 
 #: Années des jalons (D-CIQ-10) — l'ordre d'impression, pas un calcul.
 JALONS_ANS = (5, 10, 15, 20, 25)
@@ -51,6 +53,9 @@ UNITES_HYPOTHESES = {
 
 _num = nombre_ou_none
 
+#: AMOT88 — le titre du bloc d'hypothèses, en mots du client.
+TITRE_HYPOTHESES = "Hypothèses de l'estimation"
+
 
 def flux_principal(argent):
     """``(clé, bloc)`` du flux de la base principale servie (``flux_ttc``
@@ -60,11 +65,6 @@ def flux_principal(argent):
     cle = "flux_ttc" if argent.get("base") == "ttc" else "flux_ht"
     bloc = argent.get(cle)
     return cle, bloc if isinstance(bloc, dict) else {}
-
-
-def _cumuls(jalons):
-    return {j.get("annee"): _num(j.get("cumul_mad")) for j in jalons or []
-            if isinstance(j, dict)}
 
 
 def _courbe(flux, couleurs):
@@ -95,6 +95,72 @@ def _courbe(flux, couleurs):
             f'<tr class="i2-axe">{bas}</tr><tr>{etiquettes}</tr></table>')
 
 
+def _charges_par_annee(argent, cle_flux):
+    """AMOT94 — ``(O&M annuelle | None, {année: remplacement})`` du flux
+    servi : l'O&M seulement souscrite et chiffrée (CIQ342 — sinon elle n'est
+    pas déduite, la colonne est omise) ; chaque remplacement au montant de
+    la base du flux (HT pour ``flux_ht``, TTC pour ``flux_ttc``)."""
+    om = argent.get("om") if isinstance(argent.get("om"), dict) else {}
+    om_an = (_num(om.get("montant_mad_an"))
+             if om.get("statut") == "souscrit" else None)
+    cle_montant = "montant_ttc_mad" if cle_flux == "flux_ttc" \
+        else "montant_ht_mad"
+    remplacements = {}
+    for r in argent.get("remplacements") or []:
+        if isinstance(r, dict) and _num(r.get("annee")) is not None \
+                and _num(r.get(cle_montant)) is not None:
+            annee = int(_num(r["annee"]))
+            remplacements[annee] = remplacements.get(annee, 0.0) \
+                + _num(r[cle_montant])
+    return om_an or None, remplacements
+
+
+def _tableau_flux(argent, lignes_flux, fmt, fmt_mad, L, base_txt):
+    """AMOT94 — le flux de trésorerie servi, année par année (0 → horizon) :
+    année, production (kWh), économie, O&M (si déduite), remplacement (si
+    servi), flux net et cumul — chaque nombre est celui de la ligne servie
+    par ``economie_ci`` (aucun recalcul) ; le cumul de l'année 25 est ancré
+    (``cumul_net_25_ans_mad``). Typographie compacte : le contrat de 4 pages
+    tient."""
+    cle_flux, _bloc = flux_principal(argent)
+    om_an, remplacements = _charges_par_annee(argent, cle_flux)
+    colonnes = [L("ci_fx_production", "Production (kWh)"),
+                L("ci_fx_economie", "Économie")]
+    colonnes += [L("ci_fx_om", "O&amp;M")] if om_an else []
+    colonnes += [L("ci_fx_remplacement", "Remplacement")] \
+        if remplacements else []
+    colonnes += [L("ci_fx_flux", "Flux net"),
+                 f'{L("ci_ind_cumul_net", "Cumul net")} ({base_txt})']
+    entete = (f'<tr><th>{L("ci_fx_annee", "Année")}</th>'
+              + "".join(f'<th class="i2-r">{c}</th>' for c in colonnes)
+              + "</tr>")
+    rangees = ""
+    for f in lignes_flux:
+        annee = int(_num(f.get("annee")) or 0)
+        cumul = _num(f.get("cumul_mad"))
+        if cumul is None:
+            continue
+        txt = fmt_mad(cumul)
+        production = _num(f.get("production_kwh"))
+        cellules = [fmt(production) if production else "—",
+                    fmt_mad(_num(f.get("economie_mad")) or 0) if annee
+                    else "—"]
+        # Les charges sont des SORTIES du flux : le signe du formateur.
+        if om_an:
+            cellules.append(fmt_mad(-om_an) if annee else "—")
+        if remplacements:
+            cellules.append(fmt_mad(-remplacements[annee])
+                            if annee in remplacements else "—")
+        cellules.append(fmt_mad(_num(f.get("flux_mad")) or 0))
+        fig = ancre("cumul_net_25_ans_mad", txt) if annee == 25 else ""
+        cls = "i2-pos" if cumul >= 0 else "i2-neg"
+        rangees += (f'<tr><td>{L("ci_ind_annee", "Année {n}", n=annee)}</td>'
+                    + "".join(f'<td class="i2-n">{c}</td>' for c in cellules)
+                    + f'<td class="i2-c {cls}">{txt}{fig}</td></tr>')
+    return (f'<table class="i2-tbl i2-fx">{entete}{rangees}</table>'
+            if rangees else "")
+
+
 def _valeur_hypothese(h, fmt, L):
     valeur = h.get("valeur")
     cle = h.get("cle")
@@ -112,12 +178,18 @@ def _valeur_hypothese(h, fmt, L):
     return ci_blocs._txt(valeur)
 
 
-def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
-    """Les hypothèses DU MOTEUR (flux servi, valorisation, tarif,
-    remplacements), chacune avec sa source — aucune n'est écrite ici."""
-    lignes = []
+#: AMOT91 — hypothèses du flux dont le montant est déjà imprimé ailleurs sur
+#: le document commercial (couverture, page 2) : hors du tableau compact.
+CLES_MONTANTS_FLUX = ("investissement_mad", "economie_annee1_mad",
+                      "production_annee1_kwh")
+
+
+def _rangees_flux(flux, fmt, L, d, compact):
+    """``(libellé, valeur — source)`` des hypothèses du flux servi."""
+    rangees = []
     for h in flux.get("hypotheses") or []:
-        if not isinstance(h, dict) or h.get("cle") not in LIBELLES_HYPOTHESES:
+        if not isinstance(h, dict) or h.get("cle") not in LIBELLES_HYPOTHESES \
+                or (compact and h["cle"] in CLES_MONTANTS_FLUX):
             continue
         valeur = _valeur_hypothese(h, fmt, L)
         if valeur is None:
@@ -125,13 +197,32 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
         cat, fr = LIBELLES_HYPOTHESES[h["cle"]]
         # AMOT80 — chaque source dans les mots du client (aucun code interne).
         source = ci_couverture.texte_client(d, h.get("source"))
-        lignes.append(f"{L(cat, fr)}&#160;: {valeur}"
-                      + (f" — {source}" if source else ""))
+        rangees.append((L(cat, fr), valeur + (f" — {source}" if source
+                                              else "")))
+    return rangees
+
+
+def _rangees_argent(argent, fmt_mad, L, d):
+    """``(libellé | None, valeur)`` : valorisation, prix du kWh (AMOT88 :
+    grille publiée datée ou votre facture, jamais « repli »), remplacements
+    au montant réel de la ligne du devis."""
+    from ..ci.mentions import ligne_tarif_client
+    rangees = []
     for h in argent.get("hypotheses") or []:
-        if isinstance(h, dict) and h.get("valeur"):
+        if not isinstance(h, dict):
+            continue
+        tarif_txt = (ligne_tarif_client(argent.get("tarif"),
+                                        ci_blocs.langue(d))
+                     if h.get("cle") == "tarif" else None)
+        if tarif_txt:
+            rangees.append((L("ci_h_prix_kwh", "Prix du kWh"), tarif_txt))
+        elif h.get("valeur"):
             source = ci_couverture.texte_client(d, h.get("source"))
-            lignes.append(ci_blocs._txt(h.get("valeur"))
-                          + (f" — {source}" if source else ""))
+            rangees.append((
+                L("ci_h_valorisation", "Valorisation de vos kWh")
+                if h.get("cle") == "valorisation" else None,
+                ci_blocs._txt(h.get("valeur"))
+                + (f" — {source}" if source else "")))
     for r in argent.get("remplacements") or []:
         if not isinstance(r, dict) or r.get("annee") is None:
             continue
@@ -140,15 +231,125 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
         cle_composant = f"ci_garantie_{composant}"
         if ci_blocs.langue(d) != "fr" and cle_composant in _cles_catalogue():
             composant = L(cle_composant, composant)
-        lignes.append(
-            L("ci_ind_remplacement", "Remplacement {composant} en année {annee}",
-              composant=composant,
+        motif = (f" — {ci_couverture.texte_client(d, r.get('motif'))}"
+                 if r.get("motif") else "")
+        rangees.append((
+            L("ci_ind_remplacement", "Remplacement {composant} en année "
+              "{annee}", composant=composant,
               annee=f"{r['annee']:g}" if isinstance(r["annee"], (int, float))
-              else r["annee"])
-            + (f"&#160;: {fmt_mad(montant)}&nbsp;MAD {L('ci_ttc', 'TTC')}"
-               if montant is not None else "")
-            + (f" — {ci_couverture.texte_client(d, r.get('motif'))}" if r.get("motif") else ""))
-    return lignes
+              else r["annee"]),
+            (f"{fmt_mad(montant)}&nbsp;MAD {L('ci_ttc', 'TTC')}"
+             if montant is not None else "") + motif))
+    return rangees
+
+
+def _rangees_estimation(synthese, L):
+    """AMOT91 — la base de production (« 30° d'inclinaison, plein sud — à
+    confirmer au calepinage », ou le calepinage retenu) et la règle de
+    dimensionnement (D-CIQ-2 : « chaque palier de 5 kWc retenu se rembourse
+    en moins de 10 ans »), lues sur ``synthese_ci['estimation']``."""
+    estimation = (synthese or {}).get("estimation") if isinstance(
+        synthese, dict) else None
+    estimation = estimation if isinstance(estimation, dict) else {}
+    rangees = []
+    prod = estimation.get("production") or {}
+    titre = L("ci_h_base_production", "Base de production")
+    if prod.get("source") == "calepinage":
+        rangees.append((titre, L("ci_h_base_calepinage", "production du "
+                                 "calepinage retenu pour votre toiture")))
+    elif _num(prod.get("inclinaison_deg")) is not None \
+            and _num(prod.get("azimut_deg")) is not None:
+        azimut = _num(prod["azimut_deg"])
+        orientation = (L("ci_h_plein_sud", "plein sud") if azimut == 0 else
+                       L("ci_h_azimut", "azimut {a}° (0° = plein sud)",
+                         a=_decimal_txt(azimut)))
+        rangees.append((titre, L(
+            "ci_h_base_pvgis", "{incl}° d'inclinaison, {orientation} — à "
+            "confirmer au calepinage", orientation=orientation,
+            incl=_decimal_txt(_num(prod["inclinaison_deg"])))))
+    dim = estimation.get("dimensionnement") or {}
+    if _num(dim.get("pas_kwc")) and _num(dim.get("horizon_annees")):
+        rangees.append((L("ci_h_dimensionnement", "Règle de dimensionnement"),
+                        L("ci_h_regle_taille", "chaque palier de {pas} kWc "
+                          "retenu se rembourse en moins de {n} ans",
+                          pas=_decimal_txt(_num(dim["pas_kwc"])),
+                          n=_decimal_txt(_num(dim["horizon_annees"])))))
+    return rangees
+
+
+def _rangee_om(argent, fmt_mad, L):
+    """AMOT91 — l'entretien (O&M) : « déduite des économies : N MAD/an »
+    seulement souscrite et chiffrée (CIQ342), sinon « non déduite »."""
+    om = argent.get("om") if isinstance(argent, dict) else None
+    om = om if isinstance(om, dict) else {}
+    montant = _num(om.get("montant_mad_an"))
+    valeur = (L("ci_h_om_deduite", "déduite des économies : {montant} MAD/an",
+                montant=fmt_mad(montant))
+              if om.get("statut") == "souscrit" and montant else
+              L("ci_h_om_non_deduite", "non déduite des économies"))
+    return [(L("ci_h_om", "Entretien (O&amp;M)"), valeur)]
+
+
+def rangees_hypotheses(d, synthese, fmt, fmt_mad, L, *, compact=False,
+                       om=False):
+    """AMOT91 — LES hypothèses de l'estimation, ``[(libellé | None, valeur)]``,
+    toutes lues sur ``synthese_ci`` (flux servi, valorisation, prix du kWh,
+    remplacements, entretien si ``om``, base de production, règle de
+    dimensionnement) — UNE source pour la page finance industrielle, la page
+    énergie industrielle et le tableau de la page 3 commerciale. ``compact`` :
+    sans les montants déjà imprimés ailleurs (investissement, économie et
+    production de l'année 1)."""
+    argent = (synthese or {}).get("argent") if isinstance(synthese, dict) \
+        else None
+    argent = argent if isinstance(argent, dict) else {}
+    _cle, flux = flux_principal(argent)
+    rangees = _rangees_flux(flux, fmt, L, d, compact) + _rangees_argent(
+        argent, fmt_mad, L, d)
+    if om and argent:
+        rangees += _rangee_om(argent, fmt_mad, L)
+    return rangees + _rangees_estimation(synthese, L)
+
+
+def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
+    """Les hypothèses de l'estimation en lignes « Libellé : valeur — source »
+    (page finance industrielle) — aucune n'est écrite ici."""
+    synthese = dict((d or {}).get("ind_synthese") or {}, argent=argent)
+    return [f"{libelle}&#160;: {valeur}" if libelle and valeur
+            else (libelle or valeur)
+            for libelle, valeur in rangees_hypotheses(
+                d, synthese, fmt, fmt_mad, L)]
+
+
+def tableau_hypotheses(d, synthese, fmt, fmt_mad, L, prefixe,
+                       optionnel=False, **options):
+    """AMOT91 — le tableau compact « Hypothèses de l'estimation »
+    (``rangees_hypotheses``), ou '' sans aucune hypothèse servie.
+    ``optionnel`` : le bloc cède sa place (``data-graphique``, retiré par le
+    rendu adaptatif) avant que les conditions ne soient tronquées."""
+    rangees = rangees_hypotheses(d, synthese, fmt, fmt_mad, L, **options)
+    if not rangees or (optionnel and cede(d, "hypotheses")):
+        return ""
+    lignes = "".join(
+        f'<tr><td class="{prefixe}-hy-l">{libelle or ""}</td>'
+        f'<td class="{prefixe}-hy-v">{valeur}</td></tr>'
+        for libelle, valeur in rangees)
+    marque = ' data-graphique="hypotheses"' if optionnel else ""
+    return (f'<div class="{prefixe}-hy"{marque}><div class="{prefixe}-hy-t">'
+            f'{L("ci_hypotheses_estimation", TITRE_HYPOTHESES)}</div>'
+            f'<table class="{prefixe}-hy-tbl">{lignes}</table></div>')
+
+
+def css_tableau_hypotheses(prefixe, navy, muted, ink, line_soft):
+    """La feuille du tableau compact, une définition par préfixe."""
+    return (
+        f".{prefixe}-hy{{margin-top:10px;}}"
+        f".{prefixe}-hy-t{{font-size:9pt;font-weight:700;color:{navy};}}"
+        f".{prefixe}-hy-tbl{{width:100%;border-collapse:collapse;"
+        f"margin-top:3px;font-size:7pt;line-height:1.3;}}"
+        f".{prefixe}-hy-tbl td{{padding:2px 4px;border-bottom:1px solid "
+        f"{line_soft};vertical-align:top;}}"
+        f".{prefixe}-hy-l{{color:{muted};width:30%;}}"
+        f".{prefixe}-hy-v{{color:{ink};}}")
 
 
 def _ligne_om(argent, fmt_mad, L):
@@ -187,9 +388,9 @@ def _ligne_revente(argent, fmt, L, langue):
                if mentions else "")
     return (f'<div class="i2-inj"><b>+ {fmt(valeur)} '
             f'{L("ci_mad_an", "MAD/an")}</b> — '
-            + L("ci_ind_revente_hors_cashflow",
-                "revente du surplus, hors cashflow (non comptée dans le "
-                "retour ni le TRI).")
+            + L("ci_ind_revente_hors_flux",
+                "revente du surplus, hors flux annuels (non comptée dans "
+                "le délai de retour ni le TRI).")
             + f'{mention}</div>')
 
 
@@ -317,15 +518,75 @@ def _pied_investissement(d, argent, fmt_mad, L):
     ht = (d.get("totaux_all") or {}).get("ht_net")
     ttc = d.get("_invest_ttc") or 0
     l_ht, l_ttc = L("ci_ht", "HT"), L("ci_ttc", "TTC")
+    # AMOT86 — jamais « clé en main » quand des postes sont hors total.
+    synthese = d.get("ind_synthese")
     if base == "ht" and ht is not None:
-        return (L("ci_invest_ht", "Investissement HT (clé en main)")
+        return (ci_couverture.titre_investissement(d, synthese, "ht")
                 + f" : <b>{fmt_mad(ht)} MAD {l_ht}</b>")
     if base == "deux" and ht is not None:
-        return (L("ci_invest", "Investissement (clé en main)")
+        return (ci_couverture.titre_investissement(d, synthese, "deux")
                 + f" : <b>{fmt_mad(ttc)} MAD {l_ttc}</b> "
                   f"({L('ci_soit', 'soit')} {fmt_mad(ht)} MAD {l_ht})")
-    return (L("ci_invest_ttc", "Investissement (TTC, clé en main)")
+    return (ci_couverture.titre_investissement(d, synthese, "ttc")
             + f" : <b>{fmt_mad(ttc)} MAD</b>")
+
+
+def _motif_non_chiffre(d, L):
+    """``(texte, ligne de motif)`` quand la rentabilité n'est pas chiffrée.
+    QJR119 / QXMT — jamais une table de zéros ; CIQ341 — un site MT demande
+    ses 12 factures MT ; AMOT80 (D-ACI-8=a) — investissement non chiffré ⇒
+    SON motif, jamais « économies pas encore calculées »."""
+    motif = ci_couverture.ligne_non_chiffre(d, "ind", "i2")
+    motif_inv = ci_couverture.motif_investissement(d, "ind")
+    if motif_inv:
+        return L("ci_ind_motif_invest_client",
+                 "<b>{motif}</b> : le délai de retour, le TRI et les flux "
+                 "annuels ne sont publiés que sur un investissement "
+                 "entièrement chiffré.", motif=motif_inv), ""
+    if ci_couverture._argent_mt(d, "ind"):
+        return L(
+            "ci_ind_motif_mt",
+            "Votre installation est raccordée en <b>MOYENNE TENSION</b> : "
+            "ses économies se chiffrent sur le barème MT par poste "
+            "horaire, pas sur le barème basse tension. Nous préférons ne "
+            "rien afficher plutôt qu'un chiffre qui n'est pas le vôtre."), \
+            motif
+    return L("ci_ind_motif_bt_client",
+             "Les <b>économies annuelles</b> de cette installation n'ont "
+             "pas encore été calculées sur vos données. Nous préférons ne "
+             "rien afficher plutôt que des flux annuels, un point mort ou "
+             "un TRI qui ne reposeraient sur aucune mesure."), motif
+
+
+def _corps_non_chiffre(d, L, pied, couleurs_gr, police, fmt, fmt_mad):
+    """``(corps, chapeau, titre)`` de la page 3 quand la rentabilité n'est pas
+    chiffrable. AMOT90 — la page n'est plus une page blanche « Rentabilité non
+    chiffrée » : quand le bilan horaire est servi, elle porte l'analyse
+    énergétique (l'énergie mois par mois, le surplus) sous une petite ligne
+    de motif ; sans bilan, l'encadré d'hier."""
+    corps_txt, motif = _motif_non_chiffre(d, L)
+    chapeau = L("ci_ind_lead_non_chiffre",
+                "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
+                "calculée sur vos données.")
+    graphique = bloc_energie_mensuelle(
+        d, d.get("ind_synthese"), couleurs_gr, police, fmt, "i2",
+        hauteur=170, largeur_mm=182)
+    if not graphique:
+        return (f"""
+  <div class="i2-mt">
+    <div class="i2-mt-t">{L("ci_ind_non_chiffre_titre", "Rentabilité non chiffrée sur ce dossier")}</div>
+    <div class="i2-mt-b">{corps_txt}</div>
+    {motif}
+  </div>
+  <div class="i2-foot">{pied}.</div>""", chapeau, "")
+    titre = L("ci_ind_energie_titre", "Ce que la centrale produit pour "
+              "votre site")
+    return (f"""
+  <div class="i2-motif">{corps_txt}{motif}</div>
+  {graphique}
+  {ci_couverture.ligne_surplus(d, "ind", "i2")}
+  {tableau_hypotheses(d, d.get("ind_synthese"), fmt, fmt_mad, L, "i2", compact=True, om=True)}
+  <div class="i2-foot">{pied}.</div>""", chapeau, titre)
 
 
 def build(ctx):
@@ -382,6 +643,12 @@ def build(ctx):
 .i2-tbl th.i2-r,.i2-tbl td.i2-c{{text-align:right;}}
 .i2-tbl td{{padding:4px 8px;border-bottom:1px solid {line_soft};}}
 .i2-c{{font-weight:700;}}
+.i2-fx{{margin-top:4px;font-size:6.3pt;line-height:1.05;}}
+.i2-fx th{{font-size:5.8pt;padding:2px 5px;}}
+.i2-fx td{{padding:0.4px 5px;border-bottom:none;}}
+.i2-fx tr:nth-child(even) td{{background:{wash};}}
+.i2-n{{text-align:right;white-space:nowrap;}}
+.i2-fx td.i2-c{{text-align:right;white-space:nowrap;}}
 .i2-pos{{color:{green};}}
 .i2-neg{{color:{muted_2};}}
 .i2-courbe{{width:100%;border-collapse:collapse;margin-top:8px;table-layout:fixed;}}
@@ -405,52 +672,25 @@ def build(ctx):
 .i2-hyp{{margin-top:8px;border:1px solid {line_soft};border-radius:10px;
   background:{wash};padding:8px 12px;}}
 .i2-hyp-t{{font-size:8pt;font-weight:700;color:{navy};}}
-.i2-hyp-i{{font-size:6.8pt;color:{muted};line-height:1.3;margin-top:3px;
-  padding-left:10px;position:relative;}}
+.i2-hyp-c{{column-count:2;column-gap:14px;}}
+.i2-hyp-i{{font-size:6.6pt;color:{muted};line-height:1.25;margin-top:2px;
+  padding-left:10px;position:relative;break-inside:avoid;}}
 .i2-hyp-i:before{{content:'';position:absolute;left:0;top:4px;width:4px;
   height:4px;border-radius:50%;background:{blue};}}
+.i2-motif{{margin-top:6px;font-size:7.5pt;color:{muted};line-height:1.4;}}
+.i2-motif b{{color:{navy};}}
+.i2-mtsrc{{margin-top:4px;font-size:7pt;color:{muted};line-height:1.35;}}
+{css_graphique("i2", navy, muted)}
+{css_tableau_hypotheses("i2", navy, muted, ink, line_soft)}
 </style>
 """
 
     pied = _pied_investissement(d, argent, fmt_mad, L)
+    # AMOT90 — l'énergie mois par mois (kWh du bilan horaire servi).
+    couleurs_gr = (navy, green, gold, line, muted)
     if not chiffrable:
-        # QJR119 / QXMT — sans série servie, le MOTIF remplace le corps
-        # chiffré (jamais une table de zéros) : la page ne peut que
-        # raccourcir. CIQ341 — un site MT demande ses 12 factures MT.
-        motif = ci_couverture.ligne_non_chiffre(d, "ind", "i2")
-        motif_inv = ci_couverture.motif_investissement(d, "ind")
-        if motif_inv:
-            # AMOT80 (D-ACI-8=a) — l'économie est chiffrée, l'investissement
-            # non : SON motif, jamais « économies pas encore calculées ».
-            corps_txt, motif = L(
-                "ci_ind_motif_invest",
-                "<b>{motif}</b> : le retour, le TRI et le cashflow ne sont "
-                "publiés que sur un investissement entièrement chiffré.",
-                motif=motif_inv), ""
-        elif ci_couverture._argent_mt(d, "ind"):
-            corps_txt = L(
-                "ci_ind_motif_mt",
-                "Votre installation est raccordée en <b>MOYENNE TENSION</b> : "
-                "ses économies se chiffrent sur le barème MT par poste "
-                "horaire, pas sur le barème basse tension. Nous préférons ne "
-                "rien afficher plutôt qu'un chiffre qui n'est pas le vôtre.")
-        else:
-            corps_txt = L(
-                "ci_ind_motif_bt",
-                "Les <b>économies annuelles</b> de cette installation n'ont "
-                "pas encore été calculées sur vos données. Nous préférons ne "
-                "rien afficher plutôt qu'un cashflow, un point mort ou un TRI "
-                "qui ne reposeraient sur aucune mesure.")
-        corps = f"""
-  <div class="i2-mt">
-    <div class="i2-mt-t">{L("ci_ind_non_chiffre_titre", "Rentabilité non chiffrée sur ce dossier")}</div>
-    <div class="i2-mt-b">{corps_txt}</div>
-    {motif}
-  </div>
-  <div class="i2-foot">{pied}.</div>"""
-        lead_txt = L("ci_ind_lead_non_chiffre",
-                     "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
-                     "calculée sur vos données.")
+        corps, lead_txt, titre = _corps_non_chiffre(
+            d, L, pied, couleurs_gr, f_sans, fmt, fmt_mad)
     else:
         economie = d.get("ind_economies")
         base_eco = d.get("ind_economie_base")
@@ -476,7 +716,7 @@ def build(ctx):
         if payback is not None:
             cellules.append(kpi(
                 ci_couverture.ans(payback), L("ci_unite_ans", "&nbsp;ans"),
-                L("ci_ind_retour_flux", "Retour (même flux)"),
+                L("ci_ind_delai_retour", "Délai de retour"),
                 "payback_ans", ci_couverture.ans(payback)))
         if tri_txt is not None:
             cellules.append(kpi(
@@ -487,41 +727,23 @@ def build(ctx):
                 + '<td class="i2-kgap"></td>'.join(cellules)
                 + '</tr></table>') if cellules else ""
 
-        jalons = _cumuls(argent.get("jalons"))
-        jalons_ttc = (_cumuls(argent.get("jalons_ttc"))
-                      if argent.get("base") == "deux" else {})
-        entete_ttc = (f'<th class="i2-r">{L("ci_ind_cumul_net", "Cumul net")} '
-                      f'({L("ci_ttc", "TTC")})</th>' if jalons_ttc else "")
-        rangees = ""
-        for annee in JALONS_ANS:
-            cumul = jalons.get(annee)
-            if cumul is None:
-                continue
-            txt = fmt_mad(cumul)
-            fig = ancre("cumul_net_25_ans_mad", txt) if annee == 25 else ""
-            cls = "i2-pos" if cumul >= 0 else "i2-neg"
-            ttc_td = ""
-            if jalons_ttc:
-                cumul_ttc = jalons_ttc.get(annee)
-                ttc_td = (f'<td class="i2-c {cls}">{fmt_mad(cumul_ttc)}</td>'
-                          if cumul_ttc is not None else '<td></td>')
-            rangees += (
-                f'<tr><td>{L("ci_ind_annee", "Année {n}", n=annee)}</td>'
-                f'<td class="i2-c {cls}">{txt}{fig}</td>{ttc_td}</tr>')
-        table = (
-            f'<table class="i2-tbl"><tr><th>{L("ci_ind_jalon", "Jalon")}</th>'
-            f'<th class="i2-r">{L("ci_ind_cumul_net", "Cumul net")} '
-            f'({base_txt})</th>{entete_ttc}</tr>{rangees}</table>'
-            if rangees else "")
-        courbe = _courbe(lignes_flux, None)
+        # AMOT94 — le tableau des 25 ans (flux servi, ligne par ligne) à la
+        # place des 5 jalons ; la courbe du cumul cède sa place si la page
+        # déborde (le tableau porte déjà le cumul).
+        table = _tableau_flux(argent, lignes_flux, fmt, fmt_mad, L, base_txt)
+        courbe = ("" if cede(d, "courbe_cumul") else
+                  '<div data-graphique="courbe_cumul">'
+                  + _courbe(lignes_flux, None) + "</div>")
         lignes_hyp = _hypotheses(argent, flux, fmt, fmt_mad, L, d)
         cfo_html = _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L,
                              (navy, ink))
         hypotheses_html = (
             f'<div class="i2-hyp"><div class="i2-hyp-t">'
-            f'{L("ci_ind_hypotheses", "Hypothèses du moteur")}</div>'
+            f'{L("ci_hypotheses_estimation", TITRE_HYPOTHESES)}</div>'
+            # AMOT94 — sur deux colonnes : le tableau des 25 ans tient.
+            + '<div class="i2-hyp-c">'
             + "".join(f'<div class="i2-hyp-i">{h}</div>' for h in lignes_hyp)
-            + '</div>') if lignes_hyp else ""
+            + '</div></div>') if lignes_hyp else ""
         om_txt = _ligne_om(argent, fmt_mad, L)
         revente_html = _ligne_revente(argent, fmt, L, ci_blocs.langue(d))
         mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'
@@ -534,20 +756,23 @@ def build(ctx):
   {table}
   {cfo_html}
   {hypotheses_html}
+  {bloc_energie_mensuelle(d, synthese, couleurs_gr, f_sans, fmt, "i2", hauteur=90, largeur_mm=182)}
   <div class="i2-foot">
     {(om_txt + '. ') if om_txt else ''}{pied}.
-    {L("ci_ind_methode_tri", "TRI et retour lus sur le flux servi par le moteur C&amp;I (méthode actuarielle) ; chiffres indicatifs.")}
+    {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle) ; prix ferme, économies estimées.")}
     {mt_source}
   </div>"""
-        lead_txt = L("ci_ind_lead",
-                     "Projection du moteur C&amp;I sur {n} ans : flux, retour "
+        lead_txt = L("ci_ind_lead_client",
+                     "Projection sur {n} ans : flux annuels, délai de retour "
                      "et TRI tirés de la même série ; hypothèses détaillées "
                      "ci-dessous.", n=horizon_txt)
+        titre = L("ci_ind_rentabilite_sur", "Rentabilité sur {n} ans",
+                  n=horizon_txt)
 
     html = f"""{css}
 <div class="i2-root">
   <div class="i2-kicker">{L("ci_ind_analyse_financiere", "Analyse financière")}</div>
-  {f'<div class="i2-sec">{L("ci_ind_rentabilite_sur", "Rentabilité sur {n} ans", n=horizon_txt)}</div>' if chiffrable else ""}
+  {f'<div class="i2-sec">{titre}</div>' if titre else ""}
   <div class="i2-lead">{lead_txt}</div>
 {corps}
 </div>

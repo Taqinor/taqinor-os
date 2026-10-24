@@ -130,7 +130,11 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         html = _html(_data("ar"))
         self.assertIn('<html lang="ar" dir="rtl">', html)
         self.assertIn(L.libelle("ci_echeancier", "ar"), html)
-        self.assertIn(L.libelle("ci_kicker_commercial", "ar"), html)
+        # AMOT88 — « للمنشآت التجارية » (établissements), jamais
+        # « للمحلات التجارية » (boutiques).
+        self.assertIn(L.libelle("ci_kicker_autoconso_commerciale", "ar"),
+                      html)
+        self.assertNotIn("للمحلات", html)
         # L'espacement de lettres casse la liaison des lettres arabes.
         self.assertIn("letter-spacing:0 !important", html)
 
@@ -145,7 +149,10 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         html = _html(_data())
         self.assertIn("<!doctype html><html><head>", html)
         self.assertNotIn(" dir=", html.split("<body>")[0])
-        for fr in ("Proposition — Autoconsommation solaire commerciale",
+        # AMOT92 — le surtitre dit la catégorie puis « Autoconsommation
+        # solaire commerciale » ; le titre est le projet du client.
+        for fr in ("Autoconsommation solaire commerciale",
+                   "Centrale solaire 90 kWc — ",
                    "Échéancier de paiement", "Comment nous procédons",
                    "Retour estimé", "Bon pour accord — pour la société"):
             self.assertIn(fr, html)

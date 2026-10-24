@@ -93,8 +93,10 @@ class BaseHtTtc(SimpleTestCase):
             with self.subTest(gabarit=nom):
                 d, html = _rendu(sample, renderer, render, "deux")
                 self.assertIn("Investissement (clé en main)", html)
-                self.assertIn("MAD TTC", html)
-                self.assertIn("MAD HT", html)
+                # AMOT87 — montant et unité insécables (jamais « TTC » seul
+                # à la ligne), dans le bloc ET dans sa note.
+                self.assertIn("MAD&nbsp;TTC", html)
+                self.assertIn("MAD&nbsp;HT", html)
                 self.assertIn(Decimal(str(d["totaux_all"]["ht_net"])),
                               _valeurs(html, "total_ht"))
 

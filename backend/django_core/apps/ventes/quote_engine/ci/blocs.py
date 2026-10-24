@@ -65,6 +65,11 @@ def bloc_client(entreprise, prefixe, nom_affiche="", doc=None):
                         + f"&#160;: {siege}")
     interlocuteur = _txt(entreprise.get("interlocuteur"))
     fonction = _txt(entreprise.get("fonction"))
+    # AMOT92 — « À l'attention de Pharmacie X » sous « Pharmacie X » : le
+    # contact saisi EST la société, la ligne n'apprend rien (omise).
+    if interlocuteur.casefold() in {raison.casefold(),
+                                    _txt(nom_affiche).casefold()}:
+        interlocuteur = ""
     if interlocuteur:
         morceaux.append(libelle(doc, "ci_a_l_attention", "À l'attention de")
                         + " " + interlocuteur

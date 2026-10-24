@@ -265,6 +265,25 @@ def _bloc_baseline_source(entrees):
     return None, MOTIF_BASELINE_ABSENTE
 
 
+def _surplus(bilan):
+    """AMOT89 — le surplus annuel du bilan horaire, en kWh SERVIS
+    (``surplus_kwh``, ``injecte_valorise_kwh``, ``non_valorise_kwh``) et la
+    part non valorisée exprimée en % de la production (un changement
+    d'unité, au point près) ; None quand le bilan ne le dit pas."""
+    production = _num(bilan.get("production_kwh"))
+    surplus = _num(bilan.get("surplus_kwh"))
+    non_valorise = _num(bilan.get("non_valorise_kwh"))
+    if not production or production <= 0 or surplus is None \
+            or non_valorise is None:
+        return None
+    return {
+        "kwh_an": surplus,
+        "valorise_kwh_an": _num(bilan.get("injecte_valorise_kwh")) or 0,
+        "non_valorise_kwh_an": non_valorise,
+        "non_valorise_pct_production": round(non_valorise / production * 100),
+    }
+
+
 def _bloc_energie(etude_ci, langue):
     bilan = _dict(etude_ci.get("bilan"))
     autoconso = _pct(bilan.get("taux_autoconso"))
@@ -272,12 +291,105 @@ def _bloc_energie(etude_ci, langue):
     if autoconso is None or couverture is None:
         return None, MOTIF_TAUX_ABSENTS
     methode = _dict(etude_ci.get("profil_charge")).get("methode")
-    return {
+    energie = {
         "taux_autoconso_pct": autoconso,
         "taux_couverture_pct": couverture,
         "methode": METHODES.get(methode, METHODE_INCONNUE),
         "definitions": dict(DEFINITIONS.get(langue) or DEFINITIONS["fr"]),
-    }, None
+    }
+    surplus = _surplus(bilan)
+    if surplus is not None:
+        energie["surplus"] = surplus
+    par_mois = _par_mois(bilan)
+    if par_mois is not None:
+        energie["par_mois"] = par_mois
+    return energie, None
+
+
+#: AMOT90 — les kWh d'un mois du bilan horaire (``bilan.par_mois[]``).
+CLES_MOIS_BILAN = ("production_kwh", "consommation_kwh", "autoconso_kwh",
+                   "surplus_kwh")
+
+
+def _par_mois(bilan):
+    """AMOT90 — les 12 mois du bilan horaire du moteur (kWh de production,
+    de consommation, autoconsommés et en surplus) recopiés tels quels, dans
+    l'ordre des mois ; None dès qu'un mois ou une valeur manque (jamais un
+    graphique sur 11 mois)."""
+    mois = {}
+    for m in bilan.get("par_mois") or []:
+        if not isinstance(m, dict) or _num(m.get("mois")) not in range(1, 13):
+            continue
+        valeurs = {cle: _num(m.get(cle)) for cle in CLES_MOIS_BILAN}
+        if all(v is not None and v >= 0 for v in valeurs.values()):
+            mois[int(_num(m["mois"]))] = dict(valeurs, mois=int(_num(m["mois"])))
+    if sorted(mois) != list(range(1, 13)):
+        return None
+    return [mois[i] for i in range(1, 13)]
+
+
+def _bloc_estimation(etude_ci, coherente):
+    """AMOT91 — ce sur quoi l'estimation repose, lu sur l'étude du moteur :
+    la base de production (``production.source`` / ``inclinaison_deg`` /
+    ``azimut_deg``) et la règle de dimensionnement (``taille.pas_kwc`` /
+    ``horizon_marginal_annees``, D-CIQ-2 — seulement quand l'étude décrit le
+    kWc servi). None quand l'étude ne dit rien de tel."""
+    sortie = {}
+    production = _dict(etude_ci.get("production"))
+    if production.get("source") in ("pvgis", "calepinage"):
+        sortie["production"] = {
+            "source": production["source"],
+            "inclinaison_deg": _num(production.get("inclinaison_deg")),
+            "azimut_deg": _num(production.get("azimut_deg"))}
+    taille = _dict(etude_ci.get("taille"))
+    pas = _num(taille.get("pas_kwc"))
+    horizon = _num(taille.get("horizon_marginal_annees"))
+    if coherente and taille.get("statut") == "calculee" and pas and horizon:
+        sortie["dimensionnement"] = {"pas_kwc": pas, "horizon_annees": horizon}
+    return sortie or None
+
+
+def _onduleurs_au_devis(etude_ci, data):
+    """AMOT93 — les onduleurs de la composition sont-ils ceux des lignes du
+    devis (désignations) ? Sinon leur puissance AC décrirait une AUTRE
+    installation que celle imprimée au tableau."""
+    composition = _dict(etude_ci.get("composition"))
+    noms = {_norme(li.get("designation"))
+            for li in composition.get("lignes") or []
+            if isinstance(li, dict)
+            and str(li.get("role") or "").startswith("onduleur")}
+    au_devis = {_norme(it.get("designation"))
+                for it in _dict(data).get("all_items") or []
+                if isinstance(it, dict) and not it.get("optionnelle")}
+    return bool(noms) and noms <= au_devis
+
+
+def _bloc_installation(etude_ci, coherente, data=None):
+    """AMOT93 — ce que la fiche « Votre installation » lit sur l'étude : la
+    puissance AC des onduleurs de la composition (``composition.onduleurs.
+    combinaison`` — seulement quand l'étude décrit le kWc servi ET que ses
+    onduleurs sont ceux du devis), le type de pose et la surface disponible
+    DÉCLARÉS (``entrees_resolues``). None quand rien n'est servi — jamais
+    une surface occupée estimée ici."""
+    sortie = {}
+    combinaison = _dict(_dict(etude_ci.get("composition")).get(
+        "onduleurs")).get("combinaison")
+    if coherente and isinstance(combinaison, list) \
+            and _onduleurs_au_devis(etude_ci, data):
+        onduleurs = [{"kw_ac": _num(c.get("kw_ac")),
+                      "quantite": _num(c.get("quantite")) or 1}
+                     for c in combinaison
+                     if isinstance(c, dict) and _num(c.get("kw_ac"))]
+        if onduleurs:
+            sortie["onduleurs"] = onduleurs
+    entrees = _dict(etude_ci.get("entrees_resolues"))
+    pose = _dict(entrees.get("type_pose")).get("valeur")
+    if isinstance(pose, str) and pose.strip():
+        sortie["type_pose"] = pose.strip()
+    surface = _num(_dict(entrees.get("surface_utile_m2")).get("valeur"))
+    if surface and surface > 0:
+        sortie["surface_disponible_m2"] = surface
+    return sortie or None
 
 
 def _option_servie(data):
@@ -322,14 +434,81 @@ def _systeme(data, etude_ci, option):
     }
 
 
-def _statut_et_a_confirmer(etude_ci, lead):
+#: AMOT88 — rôle d'un poste « à chiffrer après la visite » (``composition.
+#: lignes[].role``) → ses mots pour le client (le texte servi est français ;
+#: les gabarits le traduisent par ``i18n_labels['ci_role_<rôle>']``).
+ROLES_POSTES_CLIENT = {
+    "cable_dc": "câble DC", "cable_ac": "câble AC",
+    "structure_ci": "structure de fixation", "coffret_dc": "coffret DC",
+    "coffret_ac": "coffret AC", "protection_ac": "protection AC",
+    "onduleur_string_tri": "onduleur", "onduleur_string_mono": "onduleur",
+}
+PREFIXE_HORS_TOTAL = "À chiffrer après la visite technique, hors total : "
+
+
+def _norme(texte):
+    return " ".join(str(texte or "").split()).casefold()
+
+
+def postes_hors_total(data, etude_ci):
+    """AMOT86 (D-ACI-2=a) — les postes de la composition « à chiffrer après
+    la visite » (``composition.a_chiffrer_visite``) restés HORS des lignes du
+    devis (même règle que ``economie_ci`` : une ligne ajoutée au devis n'est
+    plus hors total), avec leur rôle, leur quantité et leur unité lus sur
+    ``composition.lignes`` — jamais un prix. Rend ``[]`` sans poste."""
+    composition = _dict(_dict(etude_ci).get("composition"))
+    noms = [str(x.get("designation") if isinstance(x, dict) else x)
+            for x in composition.get("a_chiffrer_visite") or [] if x]
+    au_devis = {_norme(it.get("designation"))
+                for it in _dict(data).get("all_items") or []
+                if isinstance(it, dict) and not it.get("optionnelle")}
+    lignes = {}
+    for li in composition.get("lignes") or []:
+        if isinstance(li, dict) and li.get("designation"):
+            lignes.setdefault(_norme(li["designation"]), li)
+    postes = []
+    for nom in noms:
+        if _norme(nom) in au_devis:
+            continue
+        ligne = lignes.get(_norme(nom)) or {}
+        postes.append({"role": ligne.get("role"), "designation": nom,
+                       "quantite": _num(ligne.get("quantite")),
+                       "unite": ligne.get("unite"),
+                       "catalogue": ligne.get("produit") is not None})
+    return postes
+
+
+def libelle_poste(poste, roles=None):
+    """AMOT88 — « câble DC — Câble solaire Nexans… » (article du catalogue)
+    ou « structure de fixation » (libellé générique du moteur) ; un rôle
+    inconnu garde la désignation telle quelle. ``roles`` : la table des mots
+    du client (français par défaut)."""
+    role = (roles or ROLES_POSTES_CLIENT).get(poste.get("role"))
+    if role is None:
+        return poste.get("designation") or ""
+    return f"{role} — {poste['designation']}" if poste.get("catalogue") \
+        else role
+
+
+def texte_postes(postes, roles=None):
+    """Les postes dans l'ordre, sans doublon (deux câbles AC génériques ne
+    font qu'un « câble AC »)."""
+    vus = []
+    for poste in postes:
+        texte_poste = libelle_poste(poste, roles)
+        if texte_poste and texte_poste not in vus:
+            vus.append(texte_poste)
+    return ", ".join(vus)
+
+
+def _statut_et_a_confirmer(etude_ci, lead, data=None):
     a_confirmer = []
     vus = set()
 
-    def _ajoute(cle, libelle):
+    def _ajoute(cle, libelle, **extra):
         if cle not in vus:
             vus.add(cle)
-            a_confirmer.append({"cle": cle, "libelle": libelle})
+            a_confirmer.append(dict({"cle": cle, "libelle": libelle}, **extra))
 
     if not etude_ci:
         statut = STATUT_SOUS_RESERVE
@@ -341,15 +520,15 @@ def _statut_et_a_confirmer(etude_ci, lead):
             _ajoute("visite", reserve.get("motif") or LIBELLE_VISITE)
         # ADEV79 (D-ACI-2=a) — des lignes « à chiffrer après la visite »
         # (structure, câbles) hors total : le document est une estimation sous
-        # réserve de visite et DIT ce qui reste à chiffrer.
-        hors_total = [str(x.get("designation") if isinstance(x, dict) else x)
-                      for x in (_dict(etude_ci.get("composition")).get("a_chiffrer_visite") or [])
-                      if x]
+        # réserve de visite et DIT ce qui reste à chiffrer. AMOT88 — chaque
+        # poste dit son rôle en mots simples (« câble DC », « structure de
+        # fixation ») ; ``postes`` sert la forme structurée aux gabarits.
+        hors_total = postes_hors_total(data, etude_ci)
         if hors_total:
             statut = STATUT_SOUS_RESERVE
             _ajoute("a_chiffrer_visite",
-                    "À chiffrer après la visite technique, hors total : "
-                    + ", ".join(hors_total))
+                    PREFIXE_HORS_TOTAL + texte_postes(hors_total),
+                    postes=hors_total)
     for manquant in _dict(lead).get("manquants") or []:
         if manquant in A_CONFIRMER_LEAD:
             _ajoute(*A_CONFIRMER_LEAD[manquant])
@@ -451,6 +630,15 @@ def _est_mt(data, etude_ci, economie):
     if isinstance(tension, str) and tension.strip().lower() in ("mt", "ht"):
         return True
     return _dict(_dict(economie).get("tarif")).get("contrat") == "mt_general"
+
+
+def est_site_mt(data):
+    """AMOT89 — le site est-il raccordé en MT/HT (entrée résolue du moteur,
+    sinon tension déclarée à l'écran, sinon contrat MT du tarif servi) ?
+    La même lecture que le motif d'argent MT — jamais devinée."""
+    data = _dict(data)
+    etude_ci = _dict(_dict(data.get("etude")).get("etude_ci"))
+    return _est_mt(data, etude_ci, data.get("economie_ci"))
 
 
 def _bloc_argent(data, etude_ci, segment):
@@ -578,7 +766,7 @@ def synthese_ci(data):
     omissions = []
 
     statut, a_confirmer = _statut_et_a_confirmer(
-        etude_ci, data.get("_entrees_ci_lead"))
+        etude_ci, data.get("_entrees_ci_lead"), data)
     option = _option_servie(data)
 
     synthese = {
@@ -614,6 +802,12 @@ def synthese_ci(data):
         else:
             omissions.append({"bloc": "energie", "motif": motif})
 
+    estimation = _bloc_estimation(etude_ci, etude_coherente)
+    if estimation is not None:
+        synthese["estimation"] = estimation
+    installation = _bloc_installation(etude_ci, etude_coherente, data)
+    if installation is not None:
+        synthese["installation"] = installation
     synthese["option_servie"] = option
     option_batterie = _option_batterie(data)
     if option_batterie is not None:
@@ -694,6 +888,10 @@ def chiffres_cles(synthese):
         (o.get("motif") for o in argent.get("omissions") or []
          if isinstance(o, dict) and o.get("cle") == "investissement_mad"),
         None)
+    # AMOT86 — postes « à chiffrer après la visite » restés hors total.
+    hors_total = next(
+        (a.get("postes") for a in s.get("a_confirmer") or []
+         if isinstance(a, dict) and a.get("cle") == "a_chiffrer_visite"), None)
     return {
         "kwc": _num(systeme.get("kwc")),
         "production_kwh_an": _num(systeme.get("production_kwh_an")),
@@ -715,5 +913,9 @@ def chiffres_cles(synthese):
         "motif_argent": motif_argent,
         "argent_mt": motif_argent == MOTIF_ARGENT_MT,
         "motif_investissement": motif_investissement,
+        "postes_hors_total": list(hors_total or []),
+        # AMOT89 — définitions servies des deux taux et surplus du bilan.
+        "definitions": dict(_dict(energie.get("definitions"))),
+        "surplus": _dict(energie.get("surplus")) or None,
         "note_pointe": _dict(_dict(pointe).get("textes")).get("fr"),
     }

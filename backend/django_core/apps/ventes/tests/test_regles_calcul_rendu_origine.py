@@ -170,7 +170,51 @@ CLES_HORS_RENDU_ORIGINE = (
         'op_reserve_visite', 'op_unite_ans', 'lg_prix_onee_hausse',
         'ci_confirmer_etude_ci', 'ci_etape_installation_s',
         # AMOT85 (rejeu humain) — « à compléter après la visite ».
-        'ci_invest_apres_visite_1', 'ci_invest_apres_visite_n')),
+        'ci_invest_apres_visite_1', 'ci_invest_apres_visite_n',
+        # AMOT86-94 (lane document C&I, 24/10/2026) — libellés AJOUTÉS au
+        # catalogue, sans chiffre ; aucun libellé existant n'est reformulé
+        # (les nouveaux mots vivent sous de nouvelles clés) : le golden
+        # d'origine reste valable avec ce masque, sans recapture.
+        'ci_invest_hv', 'ci_invest_ht_hv', 'ci_invest_ttc_hv',
+        'ci_a_chiffrer_apres_visite', 'ci_postes_hors_total',
+        'ci_retour_prix_complet', 'ci_role_cable_dc', 'ci_role_cable_ac',
+        'ci_role_structure_ci', 'ci_role_coffret_dc', 'ci_role_coffret_ac',
+        'ci_role_protection_ac', 'ci_role_onduleur_string_tri',
+        'ci_role_onduleur_string_mono',
+        # AMOT88 — vocabulaire client (nouvelles clés, anciennes intactes).
+        'ci_part_conso_couverte',
+        'ci_a_chiffrer_hors_total', 'ci_ind_sous_titre_client',
+        'ci_ind_conso_prod_titre', 'ci_ind_source_kwh_declares',
+        'ci_ind_facture_non_communiquee_client', 'ci_ind_prix_ferme',
+        'ci_ind_lead_client', 'ci_ind_delai_retour',
+        'ci_hypotheses_estimation', 'ci_ind_methode_tri_client',
+        'ci_ind_revente_hors_flux', 'ci_ind_motif_bt_client',
+        'ci_ind_motif_invest_client', 'ci_src_reglage_societe',
+        # AMOT89 — surplus chiffré (règle 82-21).
+        'ci_surplus_non_valorise', 'ci_surplus_bt', 'ci_surplus_sans_revente',
+        'ci_surplus_injecte_kwh', 'ci_surplus_reste',
+        # AMOT90 — l'énergie mois par mois.
+        'ci_gr_titre', 'ci_gr_consommation', 'ci_gr_autoconsommee',
+        'ci_gr_surplus', 'ci_gr_note', 'ci_ind_energie_titre',
+        # AMOT91 — tableau « Hypothèses de l'estimation ».
+        'ci_h_prix_kwh', 'ci_h_valorisation', 'ci_h_base_production',
+        'ci_h_base_calepinage', 'ci_h_base_pvgis', 'ci_h_plein_sud',
+        'ci_h_azimut', 'ci_h_dimensionnement', 'ci_h_regle_taille',
+        'ci_h_om', 'ci_h_om_deduite', 'ci_h_om_non_deduite',
+        # AMOT92 — la couverture est le projet du client.
+        'ci_kicker_autoconso_commerciale', 'ci_titre_projet',
+        'ci_votre_interlocuteur', 'ci_prochaines_etapes',
+        'ci_etape_suivante_visite', 'ci_etape_suivante_validation',
+        'ci_etape_suivante_pose', 'ci_proposition_en_ligne',
+        # AMOT93 — « Votre installation en bref ».
+        'ci_inst_titre', 'ci_inst_modules', 'ci_inst_wc', 'ci_inst_kwc_total',
+        'ci_inst_onduleurs', 'ci_inst_kw_ac', 'ci_inst_pose',
+        'ci_inst_surface', 'ci_pose_toiture_inclinee', 'ci_pose_bac_acier',
+        'ci_pose_toit_plat_leste', 'ci_pose_toit_plat_fixe',
+        'ci_pose_ombriere', 'ci_pose_sol',
+        # AMOT94 — tableau des 25 ans.
+        'ci_fx_annee', 'ci_fx_production', 'ci_fx_economie', 'ci_fx_om',
+        'ci_fx_remplacement', 'ci_fx_flux')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

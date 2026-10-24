@@ -134,6 +134,23 @@ class OnePageCiLitSyntheseCi(SimpleTestCase):
                     _valeurs(figures, "production_annuelle_kwh"),
                     [Decimal(str(ETUDE_CI["bilan"]["production_kwh"]))])
 
+    def test_postes_hors_total_sans_prix_par_kwc(self):
+        """AMOT86 (D-ACI-2=a) — un poste « à chiffrer après la visite » hors
+        total : le une-page n'imprime plus « Prix par kWc » (prix
+        incomplet) ; sans poste hors total, la vignette reste."""
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data = _ci(donnees_legacy("deux", pdf_mode="onepage"), mode)
+                data["etude"]["etude_ci"]["composition"][
+                    "a_chiffrer_visite"] = ["Structure C&I"]
+                html = legacy.render_html_for(data)
+                self.assertEqual(_valeurs(extract_figures(html), "prix_kwc"),
+                                 [])
+                self.assertNotIn("Prix par kWc", unescape(html))
+                _data, html_ok = _onepage(mode)
+                self.assertEqual(
+                    len(_valeurs(extract_figures(html_ok), "prix_kwc")), 1)
+
     def test_etude_absente_production_omise(self):
         data = donnees_legacy("deux", pdf_mode="onepage",
                               mode_installation="industriel")
