@@ -192,14 +192,16 @@ CONTRAINTES = {
     'PatchedPaiementFournisseurRequest': {'montants_positifs': ['montant']},
     # ERR-ENF11-FUZZ-STOCK (CI #997) — fiche technique : les bornes que les
     # validateurs du modèle appliquent et qu'une chaîne décimale ne porte pas.
-    # Rendements 1–100 % (1 décimale), C-rate ≥ 0,01, `lim_phases` = 1 ou 3.
+    # Rendements 1–100 % (1 décimale), C-rate ≥ 0,01, conso de nuit ≥ 0, `lim_phases` = 1 ou 3.
     'FicheTechniqueRequest': {
         'pourcentages_1_100': ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
         'montants_positifs': ['bat_c_rate_charge', 'bat_c_rate_decharge'],
+        'montants_non_negatifs': ['ond_conso_nuit_w'],
         'remplacer': {'lim_phases': PHASES_LIMITEUR}},
     'PatchedFicheTechniqueRequest': {
         'pourcentages_1_100': ['ond_rendement_max_pct', 'ond_rendement_cec_pct'],
         'montants_positifs': ['bat_c_rate_charge', 'bat_c_rate_decharge'],
+        'montants_non_negatifs': ['ond_conso_nuit_w'],
         'remplacer': {'lim_phases': PHASES_LIMITEUR}},
     'LigneFactureFournisseurRequest': {'motifs': {'taux_tva': MOTIF_TAUX_TVA_LIGNE}},
     # NTWMS12 — `mode` = ModeLiberation ; AUTO_SEUIL exige un seuil de lignes >= 1.
@@ -326,6 +328,10 @@ def declarer_contraintes_achats(result, generator=None, request=None,
             if isinstance(propriete, dict) and propriete.get('pattern'):
                 propriete['pattern'] = _motif_decimal_positif(
                     propriete['pattern'])
+        for champ in regles.get('montants_non_negatifs') or ():  # `>= 0` : motif sans signe
+            propriete = proprietes.get(champ)
+            if isinstance(propriete, dict) and propriete.get('pattern'):
+                propriete['pattern'] = propriete['pattern'].replace('^-?', '^', 1)
         for champ, motif in (regles.get('motifs') or {}).items():
             if isinstance(proprietes.get(champ), dict):
                 _branche_chaine(proprietes[champ])['pattern'] = motif
