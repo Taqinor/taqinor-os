@@ -182,7 +182,7 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_role_protection_ac', 'ci_role_onduleur_string_tri',
         'ci_role_onduleur_string_mono',
         # AMOT88 — vocabulaire client (nouvelles clés, anciennes intactes).
-        'ci_part_conso_couverte', 'ci_kicker_solaire_commercial',
+        'ci_part_conso_couverte',
         'ci_a_chiffrer_hors_total', 'ci_ind_sous_titre_client',
         'ci_ind_conso_prod_titre', 'ci_ind_source_kwh_declares',
         'ci_ind_facture_non_communiquee_client', 'ci_ind_prix_ferme',
@@ -200,7 +200,12 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_h_prix_kwh', 'ci_h_valorisation', 'ci_h_base_production',
         'ci_h_base_calepinage', 'ci_h_base_pvgis', 'ci_h_plein_sud',
         'ci_h_azimut', 'ci_h_dimensionnement', 'ci_h_regle_taille',
-        'ci_h_om', 'ci_h_om_deduite', 'ci_h_om_non_deduite')),
+        'ci_h_om', 'ci_h_om_deduite', 'ci_h_om_non_deduite',
+        # AMOT92 — la couverture est le projet du client.
+        'ci_kicker_autoconso_commerciale', 'ci_titre_projet',
+        'ci_votre_interlocuteur', 'ci_prochaines_etapes',
+        'ci_etape_suivante_visite', 'ci_etape_suivante_validation',
+        'ci_etape_suivante_pose', 'ci_proposition_en_ligne')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

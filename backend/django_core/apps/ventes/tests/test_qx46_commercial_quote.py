@@ -605,7 +605,8 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
         data = _data_ci()
         data["etude"]["etude_ci"]["bilan"]["par_mois"].pop()
         self.assertNotIn("par_mois", synthese_ci(data)["energie"])
-        self.assertNotIn("data-graphique", _pages_ci(data)[1])
+        self.assertNotIn('data-graphique="energie_mensuelle"',
+                         _pages_ci(data)[1])
 
     def test_rendu_adaptatif_retire_le_graphique_avant_la_densite(self):
         """Une page qui déborde À CAUSE du graphique : le document sort au
@@ -693,3 +694,102 @@ class TestAmot91Hypotheses(SimpleTestCase):
         self.assertNotIn("Hypothèses de l", p3)
         self.assertIn('data-graphique="hypotheses"',
                       render.build_html(data).split('class="page"')[3])
+
+
+class TestAmot92CouvertureProjet(SimpleTestCase):
+    """AMOT92 — la couverture dit le PROJET du client : « Centrale solaire
+    N kWc — raison sociale, ville », la catégorie en surtitre (plus en
+    pastille), le téléphone mis en forme, « À l'attention de » omis quand
+    c'est la société, le commercial nommé, les prochaines étapes et le QR
+    de la proposition en ligne quand un lien de partage existe."""
+
+    def _p1(self, data):
+        return _pages_ci(data)[1]
+
+    def _data(self, **surcharges):
+        data = _data_ci()
+        data.update(surcharges)
+        return data
+
+    def test_titre_projet_et_categorie_en_surtitre(self):
+        p1 = self._p1(self._data())
+        texte = _texte_ci(p1)
+        self.assertIn("Hôtel / Riad · Autoconsommation solaire commerciale "
+                      "Centrale solaire 90 kWc — Hôtel Atlas Riad SARL, "
+                      "Marrakech", texte)
+        self.assertNotIn('class="c1c-tag"', p1)
+
+    def test_raison_sociale_servie_prioritaire(self):
+        data = self._data(entreprise_client={
+            "raison_sociale": "Atlas Hospitality SA", "ice": "001234567000089"})
+        self.assertIn("Centrale solaire 90 kWc — Atlas Hospitality SA, "
+                      "Marrakech", _texte_ci(self._p1(data)))
+
+    def test_telephone_mis_en_forme(self):
+        from apps.ventes.quote_engine.ci.couverture import format_telephone
+        for brut, attendu in (("212661234590", "+212 6 61 23 45 90"),
+                              ("0661234590", "+212 6 61 23 45 90"),
+                              ("+212 5 24 00 00 00", "+212 5 24 00 00 00"),
+                              ("00212524000000", "+212 5 24 00 00 00"),
+                              ("+33 1 23 45 67 89", "+33 1 23 45 67 89")):
+            with self.subTest(brut=brut):
+                self.assertEqual(format_telephone(brut), attendu)
+        texte = _texte_ci(self._p1(self._data(client_phone="212661234590")))
+        self.assertIn("+212 6 61 23 45 90", texte)
+        self.assertNotIn("212661234590", texte)
+
+    def test_a_l_attention_omis_quand_c_est_la_societe(self):
+        meme = self._data(entreprise_client={
+            "raison_sociale": "Pharmacie Phase", "interlocuteur":
+            "Pharmacie Phase"})
+        self.assertNotIn("À l'attention de", _texte_ci(self._p1(meme)))
+        autre = self._data(entreprise_client={
+            "raison_sociale": "Pharmacie Phase",
+            "interlocuteur": "Youssef Benjelloun"})
+        self.assertIn("À l'attention de Youssef Benjelloun",
+                      _texte_ci(self._p1(autre)))
+
+    def test_votre_interlocuteur_servi_jamais_invente(self):
+        avec = self._data(seller={"nom": "Yassine Cherkaoui",
+                                  "telephone": "0612345678"})
+        self.assertIn("Votre interlocuteur : Yassine Cherkaoui · +212 6 12 34 "
+                      "56 78", _texte_ci(self._p1(avec)))
+        sans = self._data(seller={"nom": "", "telephone": "0522000000"})
+        self.assertNotIn("Votre interlocuteur", _texte_ci(self._p1(sans)))
+
+    def test_prochaines_etapes_et_qr_seulement_avec_un_lien(self):
+        lien = "https://taqinor.ma/proposition/hotel-atlas/abcdEFGH1234"
+        p1 = self._p1(self._data(links={"signer": lien}))
+        texte = _texte_ci(p1)
+        self.assertIn("Prochaines étapes 1 Visite technique de votre site 2 "
+                      "Validation de l'offre définitive 3 Pose et mise en "
+                      "service", texte)
+        self.assertIn('alt="QR"', p1)
+        self.assertIn("Votre proposition en ligne · taqinor.ma/proposition",
+                      texte)
+        self.assertNotIn("abcdEFGH1234", texte)
+        # Le repli « /signer/<ref> » (jamais servi par le site) : aucun QR.
+        p1_sans = self._p1(self._data(
+            links={"signer": "taqinor.ma/signer/DEV-COM-DEMO"}))
+        self.assertNotIn('alt="QR"', p1_sans)
+        self.assertIn("Prochaines étapes", _texte_ci(p1_sans))
+
+    def test_industriel_titre_projet_et_etapes_cedables(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["seller"] = {"nom": "Nadia Sefrioui", "telephone": "0661234590"}
+        p1 = i_render.build_html(i_rend._augment(data)).split(
+            'class="page"')[1]
+        texte = _texte_ci(p1)
+        self.assertIn("Centrale solaire 250 kWc — Société Atlas Industrie "
+                      "SARL, Fès", texte)
+        self.assertIn("Réduire votre coût de l'énergie", texte)
+        self.assertIn("Votre interlocuteur : Nadia Sefrioui · +212 6 61 23 "
+                      "45 90", texte)
+        self.assertIn('data-graphique="etapes"', p1)
+        self.assertNotIn('class="i1-tag"', p1)
+        sans = i_render.build_html(dict(i_rend._augment(data),
+                                        _sans_graphiques=True))
+        self.assertNotIn("Prochaines étapes", sans.split('class="page"')[1])

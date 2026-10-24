@@ -489,3 +489,124 @@ def tuiles_argent(d, cle, kpi, fmt):
             f'{motif_investissement(d, cle)}</span>', "",
             libelle(d, "ci_retour_estime", "Retour estimé")))
     return tuiles
+
+
+# ── AMOT92 — la couverture est le PROJET du client ─────────────────────────
+
+def format_telephone(brut):
+    """« 212661234590 » / « 0661234590 » → « +212 6 61 23 45 90 » (numéro
+    marocain, mise en forme seule) ; tout autre numéro reste tel quel."""
+    texte = str(brut or "").strip()
+    chiffres = re.sub(r"\D", "", texte)
+    if chiffres.startswith("00212"):
+        chiffres = chiffres[2:]
+    if len(chiffres) == 10 and chiffres.startswith("0"):
+        chiffres = "212" + chiffres[1:]
+    if len(chiffres) != 12 or not chiffres.startswith("212"):
+        return texte
+    reste = chiffres[4:]
+    return (f"+212 {chiffres[3]} "
+            + " ".join(reste[i:i + 2] for i in range(0, 8, 2)))
+
+
+def titre_projet(d, cle, kwc_txt, nom_client):
+    """« Centrale solaire 90 kWc — Hôtel Atlas Riad SARL, Marrakech » : la
+    raison sociale servie (``entreprise_client``), sinon le nom du client
+    imprimé ; la ville du devis quand elle est connue."""
+    entreprise = (d.get(f"{cle}_synthese") or {}).get("entreprise_client")
+    raison = str((entreprise or {}).get("raison_sociale") or "").strip() \
+        if isinstance(entreprise, dict) else ""
+    ville = str(d.get("client_ville_libelle") or d.get("client_city")
+                or "").strip()
+    titre = libelle(d, "ci_titre_projet", "Centrale solaire {kwc} kWc — "
+                    "{client}", kwc=kwc_txt, client=raison or nom_client)
+    return titre + (f", {ville}" if ville else "")
+
+
+def ligne_interlocuteur(d, prefixe):
+    """« Votre interlocuteur : Yassine Cherkaoui · +212 6 12 34 56 78 » — le
+    créateur du devis servi par le builder (``seller``, QG7) ; '' sans nom
+    (jamais un nom inventé, jamais le seul numéro de la société)."""
+    vendeur = d.get("seller") if isinstance(d.get("seller"), dict) else {}
+    nom = str(vendeur.get("nom") or "").strip()
+    if not nom:
+        return ""
+    contact = " · ".join(x for x in (
+        nom, format_telephone(vendeur.get("telephone")),
+        str(vendeur.get("email") or "").strip()) if x)
+    return (f'<div class="{prefixe}-int" style="margin-top:1.5mm;'
+            f'font-size:7.5pt;">'
+            + libelle(d, "ci_votre_interlocuteur", "Votre interlocuteur")
+            + f"&#160;: <b>{contact}</b></div>")
+
+
+def qr_proposition(d):
+    """``(data-uri, lien affiché)`` du QR vers la proposition en ligne quand
+    le builder sert un vrai lien de partage (``links.signer`` contenant
+    « /proposition/ », QX6), sinon ``("", "")`` — même règle que la
+    couverture résidentielle (jamais un QR vers un 404)."""
+    from ..residential import theme
+    lien = str((d.get("links") or {}).get("signer") or "").strip()
+    if "/proposition/" not in lien:
+        return "", ""
+    uri = theme.qr_data_uri(theme.normaliser_lien(lien), logo=False,
+                            correction="M", box_size=10, border=4)
+    return (uri, theme.lien_affiche(lien)) if uri else ("", "")
+
+
+def rangee_bas(d, graphique, etapes, prefixe):
+    """AMOT92 — la rangée basse de la couverture : l'énergie mois par mois à
+    gauche (AMOT90), les prochaines étapes et le QR à droite ; sans
+    graphique servi, les étapes seules. Toute la rangée est CÉDABLE
+    (``data-graphique``) : le rendu adaptatif la retire en entier
+    (``_sans_graphiques``) plutôt que de pousser une page de plus."""
+    if d.get("_sans_graphiques"):
+        return ""
+    if not graphique:
+        return (f'<div data-graphique="etapes" style="margin-top:10px;">'
+                f'{etapes}</div>')
+    return (f'<table class="{prefixe}-bas" data-graphique="etapes"><tr>'
+            f'<td>{graphique}</td><td class="{prefixe}-bas-d">{etapes}</td>'
+            f'</tr></table>')
+
+
+#: AMOT92 — les prochaines étapes, sans date promise.
+ETAPES_SUIVANTES = (
+    ("ci_etape_suivante_visite", "Visite technique de votre site"),
+    ("ci_etape_suivante_validation", "Validation de l'offre définitive"),
+    ("ci_etape_suivante_pose", "Pose et mise en service"))
+
+
+def bloc_etapes(d, prefixe, couleurs, en_ligne=False):
+    """« Prochaines étapes » (visite technique, validation de l'offre
+    définitive, pose et mise en service — sans date promise) et, quand un
+    lien de partage existe, le QR de la proposition en ligne.
+    ``couleurs`` = (navy, muted, gold) ; ``en_ligne`` : les étapes sur une
+    ligne et le QR à droite (couverture industrielle, plus dense)."""
+    navy, muted, gold = couleurs
+    puces = [f'<span style="color:{gold};font-weight:700;">{i}</span>&#160;'
+             f'{libelle(d, cle, fr)}'
+             for i, (cle, fr) in enumerate(ETAPES_SUIVANTES, start=1)]
+    corps = (" &#160;·&#160; ".join(puces) if en_ligne else "".join(
+        f'<div style="margin-top:2px;">{p}</div>' for p in puces))
+    uri, lien = qr_proposition(d)
+    legende = (f'<div style="font-size:6.5pt;color:{muted};margin-top:2px;">'
+               + libelle(d, "ci_proposition_en_ligne",
+                         "Votre proposition en ligne")
+               + f' · {html.escape(lien)}</div>') if uri else ""
+    image = (f'<img src="{uri}" alt="QR" style="width:19mm;height:19mm;'
+             f'display:block;">') if uri else ""
+    titre = (f'<div style="font-size:8.5pt;font-weight:700;color:{navy};'
+             f'margin-bottom:2px;">'
+             + libelle(d, "ci_prochaines_etapes", "Prochaines étapes")
+             + "</div>")
+    if en_ligne:
+        return (f'<table class="{prefixe}-etapes" style="width:100%;'
+                f'border-collapse:collapse;font-size:7.5pt;"><tr>'
+                f'<td style="vertical-align:middle;">{titre}{corps}{legende}'
+                f'</td><td style="width:21mm;vertical-align:middle;">{image}'
+                f'</td></tr></table>')
+    return (f'<div class="{prefixe}-etapes" style="font-size:7.5pt;'
+            f'line-height:1.35;">{titre}{corps}'
+            + (f'<div style="margin-top:6px;">{image}{legende}</div>'
+               if uri else "") + "</div>")
