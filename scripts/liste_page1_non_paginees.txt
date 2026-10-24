@@ -42,7 +42,7 @@ frontend/src/pages/stock/FournisseurFiche360.jsx::reload  stock/fournisseurs/<id
 frontend/src/pages/sav/ContratsMaintenance.jsx::loadTournee  sav/contrats-maintenance/tournee/  @action(pagination_class=None) tournée calculée @backend/django_core/apps/sav/maintenance.py:339
 frontend/src/pages/sav/ContratsMaintenance.jsx::loadRentabilite  sav/contrats-maintenance/rentabilite/  @action(pagination_class=None) liste calculée @backend/django_core/apps/sav/maintenance.py:428
 frontend/src/pages/sav/SavSlaReportPage.jsx::charger  sav/insights/sav-pannes/  vues @api_view (rapports calculés, sav-pannes/-fiabilite/-resume-equipe/-parts-forecast) @backend/django_core/apps/sav/urls.py:83
-frontend/src/pages/sav/TicketAdvancedPanel.jsx::toggleSuivi  sav/tickets/<id>/similaires/  @action(pagination_class=None) top-N de similarité @backend/django_core/apps/sav/views.py:1553
+frontend/src/pages/sav/TicketAdvancedPanel.jsx::toggleSuivi  sav/tickets/<id>/similaires/  @action(pagination_class=None) top-N de similarité @backend/django_core/apps/sav/views.py:1566
 frontend/src/features/portail/client/PortailClientChantiers.jsx::charger  portail/mes-chantiers/  ViewSet portail pagination_class = None (liste complète du client) @backend/django_core/apps/portail/views_client.py:1271
 frontend/src/features/portail/client/PortailClientChantiers.jsx::voirSuivi  portail/mes-chantiers/<id>/photos/  ViewSet portail pagination_class = None (liste complète du client) @backend/django_core/apps/portail/views_client.py:1271
 frontend/src/features/portail/client/PortailClientConsommation.jsx::PortailClientConsommation  portail/mes-chantiers/  ViewSet portail pagination_class = None (liste complète du client) @backend/django_core/apps/portail/views_client.py:1271

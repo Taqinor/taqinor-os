@@ -1192,9 +1192,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # XCTR2). Un client sans contrat, ou un ticket sans équipement, ne
         # déclenche rien (comportement historique inchangé).
         if inst.equipement_id and inst.client_id:
-            from .models import ContratMaintenance
-            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
-            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
+            # ASAV108 — contrat couvrant à la date de référence du ticket.
+            contrat = inst._contrat_couvrant(inst.date_reference_couverture)
             if contrat is not None and not contrat.couvre_equipement(inst.equipement):
                 activity.log_note(
                     inst, self.request.user,
@@ -1205,12 +1204,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # visites/déplacements inclus au contrat (droits_restants). NULL sur le
         # contrat = illimité : aucun avertissement possible dans ce cas.
         if inst.client_id and inst.type in (Ticket.Type.PREVENTIF, Ticket.Type.CORRECTIF):
-            from .models import ContratMaintenance
             from .droits_contrat import droits_restants
-            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
-            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
+            # ASAV108 — même contrat couvrant ; le ticket ne se compte pas.
+            contrat = inst._contrat_couvrant(inst.date_reference_couverture)
             if contrat is not None:
-                droits = droits_restants(contrat, inst.date_ouverture.year)
+                droits = droits_restants(
+                    contrat, inst.date_ouverture.year, ticket=inst)
                 if (inst.type == Ticket.Type.PREVENTIF
                         and droits['visites_restantes'] == 0):
                     activity.log_note(
