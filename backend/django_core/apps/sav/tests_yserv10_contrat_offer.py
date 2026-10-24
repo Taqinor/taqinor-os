@@ -139,3 +139,28 @@ class Yserv10ContratOfferTests(TestCase):
     def test_taux_attache_zero_division_safe(self):
         result = taux_attache(self.company)
         self.assertEqual(result, {'total': 0, 'avec_contrat': 0, 'taux_pct': 0.0})
+
+    def test_contrat_echu_hors_grace_propose_et_hors_facturable(self):
+        """ASAV113 — « le client a un contrat » = ``est_actif`` : un contrat
+        de 12 mois débuté il y a 14 mois (grâce passée) ne bloque plus la
+        proposition d'entretien et sort de la liste facturable."""
+        from apps.sav.dateutils import add_months
+        from apps.sav.selectors import (
+            clients_sans_contrat_actif, contrats_maintenance_facturables)
+        contrat = ContratMaintenance.objects.create(
+            company=self.company, client=self.client_obj, actif=True,
+            date_debut=add_months(timezone.localdate(), -14), duree_mois=12,
+            facturation_active=True, prix=Decimal('1200'))
+        self.assertFalse(contrat.est_actif())
+        self.assertFalse(client_a_contrat_actif(self.client_obj, self.company))
+        inst = self._installation(devis=self._devis())
+        self._fire_reception(inst)
+        self._fire_reception(inst)
+        self.assertEqual(
+            Activity.objects.filter(
+                company=self.company,
+                note__contains=f'[yserv10:{inst.id}]').count(), 1)
+        self.assertEqual(contrats_maintenance_facturables(self.company), [])
+        self.assertEqual(
+            clients_sans_contrat_actif(self.company, [self.client_obj.id]),
+            {self.client_obj.id})

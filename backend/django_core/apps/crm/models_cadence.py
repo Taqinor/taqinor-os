@@ -300,7 +300,9 @@ class MessageTemplate(models.Model):
 
     class Meta:
         ordering = ['nom']
-        unique_together = [('company', 'nom')]
+        # ACRM70 — la langue fait partie de l'identité : « RDV » FR et « RDV »
+        # darija coexistent (le jumeau que la file en masse va chercher).
+        unique_together = [('company', 'nom', 'langue')]
         verbose_name = 'Modèle de message'
         verbose_name_plural = 'Modèles de messages'
 

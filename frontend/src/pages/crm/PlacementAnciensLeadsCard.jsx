@@ -37,6 +37,17 @@ import { TableauLignes } from '../../ui/TableauDefilant'
 const TAILLE_LOT = 40
 const PLAFOND_LOTS = 50
 
+// Une pastille par clé de `ignores` servie par le serveur (rendu générique,
+// sans code propre à chaque clé) : libellé français connu, sinon le nom brut
+// de la clé — une clé neuve du contrat s'affiche sans modifier cet écran.
+// Seul « devis accepté non signé » demande une action à la main : ton alerte.
+const LIBELLE_IGNORE = {
+  deja_en_cadence: 'Déjà en cadence',
+  devis_accepte_non_signe: 'Devis accepté non signé',
+  rappel_manuel_a_venir: 'Rappel manuel à venir',
+}
+const TON_IGNORE = { devis_accepte_non_signe: 'warning' }
+
 // `prochaine_le` (ISO, fuseau posé par le serveur) → « JJ/MM HH:MM » Casablanca
 // EXPLICITE (jamais le fuseau du navigateur — même trick que `heureDue` de
 // `features/crm/relances/RelanceEtapeRow.jsx`).
@@ -268,14 +279,13 @@ export default function PlacementAnciensLeadsCard() {
               {donnees.restants !== donnees.a_placer && (
                 <Badge tone="neutral">Restants : {donnees.restants}</Badge>
               )}
-              {donnees.ignores.deja_en_cadence > 0 && (
-                <Badge tone="neutral">Déjà en cadence : {donnees.ignores.deja_en_cadence}</Badge>
-              )}
-              {donnees.ignores.devis_accepte_non_signe > 0 && (
-                <Badge tone="warning">
-                  Devis accepté non signé : {donnees.ignores.devis_accepte_non_signe}
-                </Badge>
-              )}
+              {Object.entries(donnees.ignores || {})
+                .filter(([, nombre]) => nombre > 0)
+                .map(([cle, nombre]) => (
+                  <Badge key={cle} tone={TON_IGNORE[cle] || 'neutral'}>
+                    {LIBELLE_IGNORE[cle] || cle} : {nombre}
+                  </Badge>
+                ))}
             </div>
             <TableauLignes enveloppe="overflow-x-auto" className="w-full text-xs"
               tete={(

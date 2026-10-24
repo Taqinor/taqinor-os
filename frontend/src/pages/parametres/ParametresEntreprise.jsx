@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
@@ -127,7 +127,7 @@ export default function ParametresEntreprise() {
   // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
   const { confirm: confirmerAction, confirmDelete: confirmerSuppression } = useConfirmDialog()
   const dispatch = useDispatch()
-  const { profile, loading, saving, uploading, error, saveSuccess } = useSelector(s => s.parametres)
+  const { profile, loading, saving, uploading, error, saveSuccess, verrouUpdatedAt } = useSelector(s => s.parametres)
   const { categories, fournisseurs } = useSelector(s => s.stock)
   // WR12 — rôle courant : les réglages sensibles (commission, DGI) ne sont
   // éditables que par un directeur/admin. Le backend gate déjà l'écriture
@@ -597,6 +597,9 @@ export default function ParametresEntreprise() {
   const dirty = initialSnapshot != null
     && isDirty(initialSnapshot, form)
   useNavigationGuard(dirty)
+  // APAR74 — saisie de l'utilisateur mise de côté le temps de relire le profil
+  // serveur après un 409 ; la resynchro ci-dessous la ré-applique par-dessus.
+  const saisieARetablir = useRef(null)
 
   useEffect(() => {
     // Synchronisation du formulaire avec le profil chargé depuis le store
@@ -692,7 +695,8 @@ export default function ParametresEntreprise() {
     }
     /* eslint-disable react-hooks/set-state-in-effect -- resynchro depuis `profile` (D-ENF22) */
     setInitialSnapshot(next)
-    setForm(next)
+    setForm({ ...next, ...saisieARetablir.current })
+    saisieARetablir.current = null
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [profile])
 
@@ -854,7 +858,19 @@ export default function ParametresEntreprise() {
       return payload
     }
     dispatch(saveProfile(diffProfilePayload(
-      construire(initialSnapshot ?? form), construire(form), profile?.updated_at)))
+      construire(initialSnapshot ?? form), construire(form),
+      // APAR73 — le verrou rangé à part suit les écritures instantanées.
+      verrouUpdatedAt ?? profile?.updated_at)))
+  }
+
+  // APAR74 — bandeau 409 : relit le profil serveur en gardant les champs que
+  // l'utilisateur avait modifiés ; l'enregistrement suivant porte le nouvel
+  // `updated_at` (posé par `fetchProfile`).
+  const rechargerDepuisServeur = () => {
+    saisieARetablir.current = diffProfilePayload(initialSnapshot ?? {}, form)
+    dispatch(fetchProfile()).then((action) => {
+      if (fetchProfile.rejected.match(action)) saisieARetablir.current = null
+    })
   }
 
   const accent = form.couleur_principale || '#1d4ed8'
@@ -984,6 +1000,12 @@ export default function ParametresEntreprise() {
           <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5">
             <AlertCircle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
             <span className="text-sm text-destructive">{frenchError(error, 'Enregistrement impossible. Réessayez.')}</span>
+            {error.code === 'profil_modifie' && (
+              <Button type="button" variant="outline" size="sm" className="ml-auto"
+                onClick={rechargerDepuisServeur}>
+                Recharger les valeurs du serveur
+              </Button>
+            )}
           </div>
         )}
 

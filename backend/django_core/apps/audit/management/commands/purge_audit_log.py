@@ -8,6 +8,7 @@ suppression, on tente un archivage write-once best-effort (réutilise le service
 """
 import logging
 from django.core.management.base import BaseCommand
+from django.db import transaction
 from django.utils import timezone
 from datetime import timedelta
 
@@ -26,7 +27,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from apps.audit.models import AuditLog
         try:
-            from apps.parametres.models import CompanyProfile
+            from apps.parametres.models import CompanyProfile, SettingsAuditLog
+            from apps.parametres.retention import PURGE_FIELD, PURGE_SECTION
         except Exception:
             logger.warning("purge_audit_log.Command.handle : erreur ignorée (mode dégradé)", exc_info=True)
             self.stdout.write('CompanyProfile indisponible.')
@@ -55,7 +57,15 @@ class Command(BaseCommand):
                     % (profile.company_id, count, days))
                 continue
             self._archive_best_effort(profile.company, qs)
-            qs.delete()
+            # APAR77 — même trace que ``apps.parametres.retention.purge_company_audit`` :
+            # ``verify_audit_chain`` repart alors de la plus ancienne ligne restante.
+            with transaction.atomic():
+                qs.delete()
+                SettingsAuditLog.objects.create(
+                    company=profile.company, section=PURGE_SECTION, field=PURGE_FIELD,
+                    field_label='Purge de rétention du journal',
+                    old_value=f'rétention effective {days} j (purge_audit_log)',
+                    new_value=f'audit_deleted={count}')
             total += count
             self.stdout.write(
                 'société %s : %d lignes purgées (rétention %d j).'

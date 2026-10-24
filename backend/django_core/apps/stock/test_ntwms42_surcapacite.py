@@ -113,6 +113,33 @@ class Ntwms42TacheTests(Ntwms42Base):
             link__startswith=f'stock-surcapacite-{self.company.id}-',
         ).exists())
 
+    def _destinataires_surcapacite(self):
+        from apps.notifications.models import Notification
+
+        return set(Notification.objects.filter(
+            company=self.company,
+            link__startswith=f'stock-surcapacite-{self.company.id}-',
+        ).values_list('recipient__username', flat=True))
+
+    def test_regle_stock_low_respectee(self):
+        # APAR72 — une règle de routage « stock_low → X » fait notifier X par
+        # l'alerte de surcapacité, et non l'admin (repli historique).
+        from apps.notifications.models import NotificationRoutingRule
+        from apps.notifications.types_evenements import EventType
+
+        NotificationRoutingRule.objects.create(
+            company=self.company, event_type=EventType.STOCK_LOW,
+            target_user=self.normal, enabled=True)
+        alerter_surcapacite_zones_task()
+        self.assertEqual(
+            self._destinataires_surcapacite(), {'ntwms42_normal'})
+
+    def test_sans_regle_l_admin_reste_notifie(self):
+        # APAR72 — sans règle, repli historique inchangé (admin/responsable).
+        alerter_surcapacite_zones_task()
+        self.assertEqual(
+            self._destinataires_surcapacite(), {'ntwms42_admin'})
+
     def test_la_tache_ne_notifie_quune_fois_par_jour(self):
         alerter_surcapacite_zones_task()
         second = alerter_surcapacite_zones_task()

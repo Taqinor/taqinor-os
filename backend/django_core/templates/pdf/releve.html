@@ -28,7 +28,7 @@
   </style>
 </head>
 <body>
-<div class="page">
+<div class="page">{# APDF106 (D-APDF-3 a) — relevé non traduit : la mention de repli est imprimée pour un client arabe ou anglais ; vide (rien rendu) pour un client français. #}{% if mention_repli %}<div style="margin-bottom: 12px; padding: 8px 12px; background: #f1f5f9; border-radius: 4px; font-size: 10px; color: #475569;">{{ mention_repli }}</div>{% endif %}
   <div class="header">
     <div>
       {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}

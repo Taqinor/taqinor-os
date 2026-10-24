@@ -14,6 +14,7 @@
 // Section autonome : charge et enregistre ses propres données, sans le bouton
 // « Enregistrer » global. Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
+import { useDispatch } from 'react-redux'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Download, Lock, FileCheck2, ShieldCheck } from 'lucide-react'
 import { toast, useConfirmDialog } from '../../ui/confirm'
@@ -28,6 +29,7 @@ import {
   SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { majVerrouProfil } from '../../features/parametres/store/parametresSlice'
 import toutesLesPages from './toutesLesPages'
 import { ChargementTexte, ErreurChargementListe } from './EtatsSection'
 
@@ -408,6 +410,7 @@ function ConsentRecords() {
 // aucune agrégation n'existe encore. Bloc autonome : lit le profil, écrit via
 // PATCH /parametres/update/ (posé côté serveur sur la société de l'appelant).
 function BenchmarkingConsent() {
+  const dispatch = useDispatch()
   const [optIn, setOptIn] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -427,8 +430,11 @@ function BenchmarkingConsent() {
     const next = !optIn
     try {
       const { default: parametresApi } = await import('../../api/parametresApi')
-      await parametresApi.updateProfile({ benchmarking_opt_in: next })
+      const r = await parametresApi.updateProfile({ benchmarking_opt_in: next })
       setOptIn(next)
+      // APAR73 — le verrou du profil avance (le « Enregistrer » suivant porte
+      // ce nouvel horodatage) sans resynchroniser le formulaire.
+      dispatch(majVerrouProfil(r?.data?.updated_at))
     } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
     finally { setBusy(false) }
   }

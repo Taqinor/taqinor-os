@@ -110,3 +110,31 @@ class SallesVenteParqueesTests(TestCase):
         resp = self._api().get(f'{BASE}salle-vente/{self.salle_a.token}/')
         self.assertEqual(resp.status_code, 200, resp.content[:200])
         self.assertTrue(SalleVenteVue.objects.filter(salle=self.salle_a).exists())
+
+    def _vues_sur_la_fiche(self, salle, nb=2):
+        for i in range(nb):
+            SalleVenteVue.objects.create(salle=salle, ip_hash='h%d' % i)
+
+    def test_eteint_resume_fiche_lead_null(self):
+        """ACRM75 — réglage éteint : la fiche lead ne reçoit plus
+        ``salle_titre`` / ``nb_vues`` / ``derniere_vue`` (corps ``null``),
+        et la salle comme ses vues restent intactes en base."""
+        self._vues_sur_la_fiche(self.salle_e)
+        resp = self._api(self.u_eteinte).get(
+            f'{BASE}leads/{self.salle_e.lead_id}/salle-vente-analytics/')
+        self.assertEqual(resp.status_code, 200, resp.content[:200])
+        self.assertEqual(resp.content, b'null')
+        self.assertTrue(SalleVente.objects.filter(pk=self.salle_e.pk).exists())
+        self.assertEqual(
+            SalleVenteVue.objects.filter(salle=self.salle_e).count(), 2)
+
+    def test_allume_resume_fiche_lead_inchange(self):
+        """ACRM75 — réglage allumé : le résumé de la fiche lead est servi
+        comme avant (titre, nombre de vues, dernière vue)."""
+        self._vues_sur_la_fiche(self.salle_a)
+        resp = self._api(self.u_allumee).get(
+            f'{BASE}leads/{self.salle_a.lead_id}/salle-vente-analytics/')
+        self.assertEqual(resp.status_code, 200, resp.content[:200])
+        self.assertEqual(resp.data['salle_titre'], 'Salle')
+        self.assertEqual(resp.data['nb_vues'], 2)
+        self.assertIsNotNone(resp.data['derniere_vue'])

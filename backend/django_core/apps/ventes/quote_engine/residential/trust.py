@@ -45,7 +45,7 @@ def _disp_short(url: str) -> str:
     return "/".join(parts[:2]) if len(parts) > 2 else disp
 
 
-def _qr_data_uri(url: str, dark: str) -> str:
+def _qr_data_uri(url: str, dark: str, logo=True) -> str:
     """Premium scannable QR (rounded navy modules + centre TAQINOR logo) as a
     PNG data-URI. Uses `qrcode[pil]` (free, BSD-licensed, no API/cost). Error
     correction H keeps it scannable WITH the centre logo. Returns '' if the lib
@@ -54,12 +54,13 @@ def _qr_data_uri(url: str, dark: str) -> str:
     QRP1 — l'implémentation a migré dans ``theme.qr_data_uri`` (source UNIQUE :
     la page 1 en pose une seconde, plus petite). Les paramètres passés ici sont
     EXACTEMENT ceux de l'appel historique, donc la page 3 est rendue au bit
-    près. ``dark`` reste ignoré, comme avant."""
+    près. ``dark`` reste ignoré, comme avant. APDF102 — ``logo`` :
+    ``theme.logo_qr`` (logo de la société, sinon TAQINOR)."""
     target = _link(url)
     if not target or target == "#":
         return ""
     from . import theme
-    return theme.qr_data_uri(target, logo=True, correction="H",
+    return theme.qr_data_uri(target, logo=logo, correction="H",
                              box_size=16, border=2)
 
 
@@ -587,7 +588,7 @@ def build(ctx) -> str:
         accord_pick_html = ""
 
     # Scan-to-sign QR (degrades to the text link if qrcode is unavailable).
-    qr_uri = _qr_data_uri(l_sign, C["navy"])
+    qr_uri = _qr_data_uri(l_sign, C["navy"], theme.logo_qr(d))
     qr_html = (
         f'<div class="p3-cta-qr">'
         f'<img src="{qr_uri}" alt="QR — signer en ligne">'

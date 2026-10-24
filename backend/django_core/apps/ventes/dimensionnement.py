@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import logging
 import math
-from decimal import Decimal
 
 # 23/10/2026 — le balayage ADAPTATIF (grille grossière + raffinement, seuil
 # « hors résidentiel », plafond dur) vit dans son module PUR ; ce fichier-ci
@@ -716,7 +715,29 @@ def capacite_utile_batterie(produit, designation):
     return _parse_kwh(designation)
 
 
-def _lire_composition(lignes, taux_tva):
+def _facteur_ttc_ligne(produit, designation, taux_tva, company):
+    """APAR79 — facteur TTC d'une ligne : ``Produit.tva``, sinon le taux du
+    devis (``taux_tva``), sinon le repli société de la ligne
+    (``serializers._fallback_taux_tva``) — jamais un 20 % codé."""
+    tva = _num(getattr(produit, 'tva', None), defaut=-1.0)
+    if tva < 0 and taux_tva is not None:
+        tva = _num(taux_tva)
+    elif tva < 0:
+        from apps.ventes.serializers import _fallback_taux_tva
+        tva = _num(_fallback_taux_tva(company, designation))
+    return 1.0 + tva / 100.0
+
+
+def _taux_sans_devis(taux_tva, company):
+    """APAR79 — taux de composition d'un balayage : celui du devis s'il est
+    fourni, sinon le taux standard de la société (jamais un 20 % codé)."""
+    if taux_tva is not None:
+        return taux_tva
+    from apps.ventes.serializers import _fallback_taux_tva
+    return _fallback_taux_tva(company, '')
+
+
+def _lire_composition(lignes, taux_tva, company=None):
     """Extrait d'une composition ce dont le tableau a besoin.
 
     Renvoie ``{cout_ht, cout_ttc, onduleur, onduleur_kw, onduleur_triphase,
@@ -730,7 +751,6 @@ def _lire_composition(lignes, taux_tva):
     from apps.ventes.services import _est_triphase, _parse_kw
 
     roles = list(getattr(lignes, 'roles', ()) or ())
-    facteur_devis = 1.0 + _num(taux_tva, 20.0) / 100.0
 
     cout_ht = 0.0
     cout_ttc = 0.0
@@ -750,15 +770,10 @@ def _lire_composition(lignes, taux_tva):
         # TVA PAR LIGNE (fondateur, 24/08/2026 — le tableau surestimait le
         # TTC de ~1 270 DH à 10 panneaux) : chaque produit porte SON taux
         # (panneaux 10 %, le reste 20 %), exactement comme le devis réel le
-        # facture. Repli = taux du devis quand le produit n'en déclare pas.
-        tva_ligne = _num(getattr(getattr(ligne, 'produit', None), 'tva', None),
-                         defaut=-1.0)
-        if tva_ligne >= 0:
-            facteur_ligne = 1.0 + tva_ligne / 100.0
-        else:
-            facteur_ligne = facteur_devis
-        cout_ttc += quantite * pu_ht * facteur_ligne
+        # facture. Repli : ``_facteur_ttc_ligne`` (APAR79).
         nom = getattr(ligne, 'designation', '') or ''
+        cout_ttc += quantite * pu_ht * _facteur_ttc_ligne(
+            getattr(ligne, 'produit', None), nom, taux_tva, company)
 
         if role in ('onduleur_reseau', 'onduleur_hybride') and onduleur is None:
             onduleur = nom
@@ -967,7 +982,7 @@ def _remplissage_rendu(palier_energie):
 def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
                     charges_fixes_mad, ville=None, lat=None,
                     lon=None, occupation=None, equipements=None, phase=None,
-                    taux_tva=Decimal('20'), gamme_nom_devis=None,
+                    taux_tva=None, gamme_nom_devis=None,
                     structure_type='acier', structure_produit_id=None,
                     min_panneaux=None,
                     max_panneaux=None, source_conso=None,
@@ -1050,7 +1065,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         gamme_nom_devis=gamme_nom_devis,
         structure_type=structure_type,
         structure_produit_id=structure_produit_id,
-        phase=phase, mppt_paires=mppt_paires or 1, taux_tva=taux_tva,
+        phase=phase, mppt_paires=mppt_paires or 1,
+        taux_tva=_taux_sans_devis(taux_tva, company),
         hors_reseau=bool(hors_reseau))
 
     # Watt du panneau RÉELLEMENT retenu par le catalogue — LA sonde partagée
@@ -1129,7 +1145,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         composable = lignes_sans is not None
         if not composable:
             avert_sans.append('composition impossible à %d panneaux' % panneaux)
-        vue_sans = _lire_composition(lignes_sans, taux_tva) if composable else {}
+        vue_sans = (_lire_composition(lignes_sans, taux_tva, company)
+                    if composable else {})
 
         # ── 2. La SONDE « avec batterie » : verdicts électriques + vivier ──
         # LES DEUX VARIANTES ONT LEURS PROPRES VERDICTS, ET IL FAUT LES GARDER
@@ -1291,7 +1308,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
             lignes = _composer(panneaux, kwc, True, cible, journal)
             if lignes is None:
                 continue
-            vue = _lire_composition(lignes, taux_tva)
+            vue = _lire_composition(lignes, taux_tva, company)
             capacite = _num(vue.get('batterie_kwh'))
             if capacite <= 0 or capacite in vues:
                 continue
