@@ -631,7 +631,7 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
 
         def _build(donnees):
             essais.append((donnees.get("_palier_equip"),
-                           bool(donnees.get("_sans_graphiques"))))
+                           donnees.get("_sans_graphiques")))
             return render.build_html(donnees)
 
         def _tient(html, _doc):
@@ -641,7 +641,37 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
         with patch.object(equip, "_tient", _tient):
             pdf = equip.pdf_adaptatif(d, _build, lambda _html: _Doc())
         self.assertEqual(pdf, b"%PDF-sans-graphique")
-        self.assertEqual(essais, [(None, False), (None, True)])
+        # Palier 0 partout ; le GRAPHIQUE cède seul d'abord (re-mesuré),
+        # puis les autres blocs cédables encore posés — jamais la densité.
+        self.assertEqual([palier for palier, _r in essais], [None] * 3)
+        self.assertIsNone(essais[0][1])
+        self.assertEqual(essais[1][1], frozenset({"energie_mensuelle"}))
+        self.assertIn("energie_mensuelle", essais[2][1])
+        self.assertIn("etapes", essais[2][1])
+
+    def test_rendu_adaptatif_le_graphique_seul_suffit(self):
+        """AMOT90 — quand retirer le seul graphique suffit, la page 1 garde
+        ses prochaines étapes et la page 2 sa fiche d'installation."""
+        from apps.ventes.quote_engine.commercial import equip
+        essais = []
+
+        class _Doc:
+            def write_pdf(self):
+                return b"%PDF"
+
+        def _build(donnees):
+            essais.append(donnees.get("_sans_graphiques"))
+            return render.build_html(donnees)
+
+        def _tient(html, _doc):
+            return 'data-graphique="energie_mensuelle"' not in html
+
+        d = renderer._augment(_data_ci())
+        with patch.object(equip, "_tient", _tient):
+            self.assertEqual(
+                equip.pdf_adaptatif(d, _build, lambda _html: _Doc()),
+                b"%PDF")
+        self.assertEqual(essais, [None, frozenset({"energie_mensuelle"})])
 
 
 class TestAmot91Hypotheses(SimpleTestCase):

@@ -141,15 +141,30 @@ def _rendu_tenu(donnees, build_html, rendre):
         return doc
     if 'data-graphique="' not in html or donnees.get("_sans_graphiques"):
         return None
-    # D'abord les seuls blocs des pages qui débordent, puis tous.
-    for retires in (_cedables_des_pages_debordantes(html, doc), True):
-        if not retires:
+    # D'abord le seul GRAPHIQUE des pages qui débordent (le dessin cède avant
+    # tout texte), puis — RE-MESURÉ — les autres blocs cédables des pages
+    # qui débordent encore, enfin tous : chaque retrait est re-mesuré.
+    retires = frozenset()
+    for etape in range(2):
+        candidats = _cedables_des_pages_debordantes(html, doc) - retires
+        ajout = (candidats & CEDABLES_D_ABORD) if etape == 0 else candidats
+        if not ajout:
             continue
+        retires = retires | ajout
         html = build_html(dict(donnees, _sans_graphiques=retires))
         doc = rendre(html)
         if _tient(html, doc):
             return doc
-    return None
+    if 'data-graphique="' not in html:
+        return None
+    html = build_html(dict(donnees, _sans_graphiques=True))
+    doc = rendre(html)
+    return doc if _tient(html, doc) else None
+
+
+#: AMOT90 — les blocs cédables retirés EN PREMIER quand une page déborde :
+#: les graphiques (un dessin, aucune information que le texte ne porte).
+CEDABLES_D_ABORD = frozenset({"energie_mensuelle", "courbe_cumul"})
 
 
 def _cedables_des_pages_debordantes(html, doc):
