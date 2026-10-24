@@ -6,7 +6,7 @@
 // Run : npx vitest run src/pages/ventes/DevisGenerator.agnrArriveeParId.test.jsx
 import { describe, it, expect, vi } from 'vitest'
 import { cycleEcran } from '../../test/cycleEcran'
-import { act, waitFor } from '@testing-library/react'
+import { act, waitFor, fireEvent } from '@testing-library/react'
 
 import { DATE_FIGEE, monter, attendreStable } from './DevisGeneratorGoldenHarnais'
 
@@ -59,5 +59,44 @@ describe('AGNR19 — lead et client d’arrivée résolus par leur id', () => {
     await waitFor(() => expect(vue.crmApi.getClient).toHaveBeenCalledWith('1'))
     await attendreStable(vue.container, act)
     expect(document.getElementById('gen-adresse')?.value).toBe('Adresse 1')
+  }, 60000)
+})
+
+// ADEV100 — un lead commercial ouvre le générateur PRÉ-REMPLI (valeurs éditables
+// + badge « repris du lead »), sans rien écraser quand on rouvre un devis.
+const LEAD_HOTEL = {
+  id: 70, nom: 'Hotel70', prenom: '', societe: 'Hôtel Exemple', type_installation: 'commercial',
+  categorie_commerciale: 'hotel', reponses_categorie: { chambres: 40, piscine: false },
+  contrat_electricite: 'bt_patente', tension_raccordement: 'bt', raccordement: 'triphase',
+  jours_ouverture: [1, 2, 3, 4, 5], heure_debut: 8, heure_fin: 18,
+  type_surface: 'toiture', type_toiture: 'bac_acier', surface_toiture_m2: '650.00',
+  conso_mensuelle_kwh: '6000.00', facture_hiver: null, ete_differente: false,
+}
+
+describe('ADEV100 — le générateur C&I est pré-rempli depuis le lead', () => {
+  it('?lead=<commercial> : catégorie, réponses, contrat, phase, jours, heures, surface, kWh repris et éditables', async () => {
+    const vue = await monter('/ventes/devis/nouveau?lead=70', {
+      avant: ({ crmApi }) => {
+        crmApi.getLeads.mockResolvedValue({ data: [LEAD_HOTEL] })
+        crmApi.getLead.mockImplementation(parId([LEAD_HOTEL]))
+        crmApi.getClients.mockResolvedValue({ data: [] })
+      },
+    })
+    await attendreStable(vue.container, act)
+    await waitFor(() => expect(document.querySelector('[data-testid="ci-repris-categorie"]')).not.toBeNull())
+    for (const cle of ['contrat', 'phases', 'tension', 'joursOuverts', 'plages', 'surfaceUtile', 'typePose',
+      'kwhAnnuel', 'reponses.chambres']) {
+      expect(document.querySelector(`[data-testid="ci-repris-${cle}"]`), cle).not.toBeNull()
+    }
+    expect(document.getElementById('gen-ci-surface').value).toBe('650')
+    expect(document.getElementById('gen-ci-kwh-annuel').value).toBe('72000')
+    expect(document.getElementById('gen-tarif-contrat').value).toBe('bt_patente')
+    expect(document.getElementById('gen-com-chambres').value).toBe('40')
+    // éditable : une saisie retire le badge du champ
+    const surface = document.getElementById('gen-ci-surface')
+    expect(surface).not.toBeDisabled()
+    fireEvent.change(surface, { target: { value: '700' } })
+    await waitFor(() => expect(document.querySelector('[data-testid="ci-repris-surfaceUtile"]')).toBeNull())
+    expect(document.getElementById('gen-ci-surface').value).toBe('700')
   }, 60000)
 })

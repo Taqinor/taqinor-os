@@ -17,7 +17,9 @@ import { Card, CardContent, Input, Label, Button } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
 import { MONTHS_FR } from '../../../features/ventes/solar'
 import { libelleProvenance } from '../../../features/ventes/etudeCiPreview'
-import { JOURS_SEMAINE, TYPES_JOUR } from '../../../features/ventes/quote/profilCi'
+import {
+  JOURS_SEMAINE, TYPES_JOUR, LIBELLE_REPRIS_LEAD,
+} from '../../../features/ventes/quote/profilCi'
 import { GenCardHeader } from './CarteMetrique'
 import CarteResultatCi from './CarteResultatCi'
 
@@ -30,26 +32,31 @@ import CarteResultatCi from './CarteResultatCi'
  */
 export function CarteProfilCi({
   profilCi, setChampCi, apercuCi, errors, children,
-  tarifSaisie = null, setTarifChamp = null,
+  tarifSaisie = null, setTarifChamp = null, reprisLead = [],
 }) {
+  const erreursTarif = errors?.tarifDeclare || {}
+  const resolues = apercuCi?.donnees?.entrees_resolues || null
+  // ADEV102 — le contrat suit la consommation (question 2), le détail du tarif
+  // se range sous « Affiner » ; une erreur serveur sur ce détail l'ouvre.
+  const tarif = (partie) => setTarifChamp && (
+    <CarteTarifFacture partie={partie} tarif={tarifSaisie} setTarifChamp={setTarifChamp}
+                       tension={profilCi?.tension} erreurs={erreursTarif}
+                       repris={reprisLead} resolues={resolues} />
+  )
   return (
     <Card>
       <GenCardHeader icon={Zap} title="Profil de consommation du site" />
       <CardContent className="pt-4">
         <BlocEtudeReseau
           profil={profilCi} setChamp={setChampCi}
-          resolues={apercuCi?.donnees?.entrees_resolues || null}
+          resolues={resolues}
+          repris={reprisLead}
           erreurConso={errors?.conso}
           mentionReventeServeur={apercuCi?.donnees?.economie_ci?.revente?.statut === 'absente_bt'
             ? apercuCi.donnees.economie_ci.revente.mentions?.[0] : null}
+          contrat={tarif('contrat')} affiner={tarif('affiner')} activite={children}
+          affinerOuvert={Object.keys(erreursTarif).some((k) => k === 'base_tarifs' || k.startsWith('mt.'))}
         />
-        {setTarifChamp && (
-          <CarteTarifFacture tarif={tarifSaisie} setTarifChamp={setTarifChamp}
-                             tension={profilCi?.tension}
-                             erreurs={errors?.tarifDeclare || {}}
-                             resolues={apercuCi?.donnees?.entrees_resolues || null} />
-        )}
-        {children}
         <CarteResultatCi {...(apercuCi || {})} />
       </CardContent>
     </Card>
@@ -77,25 +84,54 @@ function ErreurChamp({ erreurs, champ }) {
  * souscrite, option bi-horaire (force motrice seulement), date de la facture.
  * Vide ⇒ la grille ONEE sert en repli (annoncé). Chaque nombre tel que tapé,
  * jamais corrigé ; les 400 du serveur s'affichent SOUS le champ nommé.
+ *
+ * ADEV102 — `partie` coupe la carte en deux : `'contrat'` = la question de
+ * l'appel (le contrat d'électricité, option bi-horaire, repli annoncé),
+ * `'affiner'` = le détail d'analyste (prix imprimés HT/TTC, source des prix,
+ * date de la facture, postes MT), replié sous « Affiner l'étude ». Sans
+ * `partie`, la carte entière.
  */
-export function CarteTarifFacture({ tarif, setTarifChamp, tension, erreurs = {}, resolues = null }) {
+export function CarteTarifFacture({
+  tarif, setTarifChamp, tension, erreurs = {}, resolues = null, repris = [], partie = null,
+}) {
   const t = tarif || {}
   const mt = t.contrat === 'mt_general'
   const vide = !t.contrat && !t.pointe && !t.pleines && !t.creuses && !t.primeFixe
   const puissanceLead = resolues?.puissance_souscrite_kva?.valeur
-  return (
-    <fieldset className="mt-4 grid gap-3 rounded-lg border border-border p-3" data-testid="ci-tarif-facture">
-      <legend className="text-sm font-semibold">Tarif de la facture</legend>
+  const question = (
+    <>
+      <AideAppel id="contrat">
+        « Quel est votre contrat d&apos;électricité : basse tension patenté, force motrice, domestique,
+        ou moyenne tension ? Il est écrit sur votre facture. »
+      </AideAppel>
+      <div className="grid gap-1.5 sm:max-w-xs">
+        <Label htmlFor="gen-tarif-contrat">Contrat<BadgeRepris cle="contrat" repris={repris} /></Label>
+        <select id="gen-tarif-contrat" className={SELECT} value={t.contrat || ''}
+                onChange={(e) => setTarifChamp('contrat', e.target.value)}>
+          <option value="">—</option>
+          {CONTRATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+        </select>
+        <ErreurChamp erreurs={erreurs} champ="contrat" />
+      </div>
+      {t.contrat === 'bt_force_motrice' && (
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" data-testid="gen-tarif-bi-horaire"
+                 checked={Boolean(t.optionBiHoraire)}
+                 onChange={(e) => setTarifChamp('optionBiHoraire', e.target.checked)} />
+          Option bi-horaire
+        </label>
+      )}
+      {vide && (
+        <p className="text-xs text-muted-foreground" data-testid="ci-tarif-repli">
+          Aucun tarif saisi : la grille ONEE officielle sert en repli
+          {tension === 'mt' ? ' (Tarif Général MT)' : ''}.
+        </p>
+      )}
+    </>
+  )
+  const detail = (
+    <>
       <div className="grid gap-4 sm:grid-cols-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="gen-tarif-contrat">Contrat</Label>
-          <select id="gen-tarif-contrat" className={SELECT} value={t.contrat || ''}
-                  onChange={(e) => setTarifChamp('contrat', e.target.value)}>
-            <option value="">—</option>
-            {CONTRATS.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-          </select>
-          <ErreurChamp erreurs={erreurs} champ="contrat" />
-        </div>
         <div className="grid gap-1.5">
           <Label htmlFor="gen-tarif-base">Prix imprimés</Label>
           <select id="gen-tarif-base" className={SELECT} value={t.baseTarifs || ''}
@@ -121,14 +157,6 @@ export function CarteTarifFacture({ tarif, setTarifChamp, tension, erreurs = {},
                  onChange={(e) => setTarifChamp('dateFacture', e.target.value)} />
         </div>
       </div>
-      {t.contrat === 'bt_force_motrice' && (
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input type="checkbox" data-testid="gen-tarif-bi-horaire"
-                 checked={Boolean(t.optionBiHoraire)}
-                 onChange={(e) => setTarifChamp('optionBiHoraire', e.target.checked)} />
-          Option bi-horaire
-        </label>
-      )}
       {mt && (
         <div className="grid gap-4 sm:grid-cols-3" data-testid="ci-tarif-mt">
           {[
@@ -148,16 +176,19 @@ export function CarteTarifFacture({ tarif, setTarifChamp, tension, erreurs = {},
           ))}
         </div>
       )}
-      {vide && (
-        <p className="text-xs text-muted-foreground" data-testid="ci-tarif-repli">
-          Aucun tarif saisi : la grille ONEE officielle sert en repli
-          {tension === 'mt' ? ' (Tarif Général MT)' : ''}.
-        </p>
-      )}
+    </>
+  )
+  if (partie === 'affiner') return <div className="grid gap-3" data-testid="ci-tarif-affiner">{detail}</div>
+  return (
+    <fieldset className="grid gap-3 rounded-lg border border-border p-3" data-testid="ci-tarif-facture">
+      <legend className="text-sm font-semibold">
+        {partie === 'contrat' ? "Contrat d'électricité" : 'Tarif de la facture'}
+      </legend>
+      {question}
+      {partie !== 'contrat' && detail}
     </fieldset>
   )
 }
-
 const TYPES_POSE = [
   { value: 'toiture_inclinee', label: 'Toiture inclinée' },
   { value: 'bac_acier', label: 'Bac acier' },
@@ -181,8 +212,27 @@ function valeurLisible(v) {
   return String(v)
 }
 
-/** La valeur retenue par le serveur + sa provenance, sous un champ. */
-function Retenu({ resolues, cle }) {
+/** ADEV100 — « repris du lead » : la valeur du champ vient de la fiche lead, elle reste éditable. */
+export function BadgeRepris({ cle, repris }) {
+  if (!Array.isArray(repris) || !repris.includes(cle)) return null
+  return (
+    <span className="ml-1.5 rounded bg-info/10 px-1.5 py-0.5 text-[11px] font-normal text-info"
+          data-testid={`ci-repris-${cle}`}>
+      {LIBELLE_REPRIS_LEAD}
+    </span>
+  )
+}
+
+/**
+ * La valeur retenue par le serveur + sa provenance, sous un champ. ADEV100 —
+ * `champ` = la clé du champ d'écran que ce « Retenu » décrit : s'il a été
+ * SEMÉ depuis le lead (`repris`), le badge « repris du lead » le remplace
+ * (la valeur est déjà dans le champ, éditable) ; sinon l'indication reste.
+ */
+function Retenu({ resolues, cle, champ = null, repris = [] }) {
+  if (champ && Array.isArray(repris) && repris.includes(champ)) {
+    return <p className="text-xs"><BadgeRepris cle={champ} repris={repris} /></p>
+  }
   const r = resolues && resolues[cle]
   if (!r) return null
   return (
@@ -203,8 +253,28 @@ function Nombre({ id, label, value, onChange, placeholder, testid }) {
   )
 }
 
+// ADEV102 — les CINQ questions de l'appel, dans l'ordre : consommation, contrat,
+// phase, activité et horaires, surface. Chaque question montre, en aide, la
+// phrase posée au client (contrat `lead_pro.json`, `questions_pro`) — rien d'interne.
+const QUESTION_CONSO = "« Combien payez-vous d'électricité par mois, à peu près ? Ou combien de kWh, si vous l'avez sous les yeux ? »"
+const QUESTION_PHASE = '« Votre compteur est-il monophasé ou triphasé ? »'
+const QUESTION_HORAIRES = '« Quelle est votre activité ? Quels jours et à quelles heures êtes-vous ouverts ? Fermez-vous certains mois de l\u2019année ? »'
+const QUESTION_SURFACE = '« Où pourrait-on poser les panneaux, et quelle surface est disponible, à peu près ? »'
+
+/** La phrase posée au client, en aide sous le titre d'une question. */
+export function AideAppel({ id, children }) {
+  return <p className="text-xs text-muted-foreground" data-testid={`ci-aide-${id}`}>{children}</p>
+}
+
+/**
+ * `contrat` : la question 2 (contrat d'électricité), `activite` : le début de
+ * la question 4 (catégorie commerciale), `affiner` : le complément du tarif —
+ * trois emplacements remplis par `CarteProfilCi`. Les détails d'analyse sont
+ * repliés sous « Affiner l'étude (facultatif) ».
+ */
 export default function BlocEtudeReseau({
-  profil, setChamp, resolues = null, erreurConso, mentionReventeServeur = null,
+  profil, setChamp, resolues = null, erreurConso, mentionReventeServeur = null, repris = [],
+  contrat = null, activite = null, affiner = null, affinerOuvert = false,
 }) {
   const p = profil || {}
   const estMt = p.tension === 'mt'
@@ -213,9 +283,10 @@ export default function BlocEtudeReseau({
   const fermetures = p.fermetures || []
   return (
     <div className="mt-3.5 grid gap-4" data-testid="ci-profil">
-      {/* ── Consommation : UNE saisie (12 mois, total annuel OU factures MAD) ── */}
+      {/* ── 1. Consommation : UNE saisie (12 mois, total annuel OU factures MAD) ── */}
       <fieldset className="grid gap-2">
         <legend className="text-sm font-semibold">Consommation du site</legend>
+        <AideAppel id="conso">{QUESTION_CONSO}</AideAppel>
         <div className="flex flex-wrap gap-3 text-sm" role="radiogroup" aria-label="Forme de la consommation">
           {[
             ['mensuel', '12 mois (kWh)'], ['annuel', 'Total annuel (kWh)'], ['factures', 'Factures (MAD)'],
@@ -272,17 +343,39 @@ export default function BlocEtudeReseau({
             </div>
           </div>
         )}
-        <Retenu resolues={resolues} cle="kwh_mensuels" />
-        <Retenu resolues={resolues} cle="kwh_annuel" />
+        <Retenu resolues={resolues} cle="kwh_mensuels" champ="kwhAnnuel" repris={repris} />
+        {!repris.includes('kwhAnnuel') && <Retenu resolues={resolues} cle="kwh_annuel" />}
         {/* ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES / CIQ125 — le refus s'affiche SOUS le champ. */}
         {erreurConso && (
           <p className="text-xs text-destructive" data-testid="erreur-conso">{erreurConso}</p>
         )}
       </fieldset>
 
-      {/* ── Calendrier : jours ouverts, plages, fermetures, talon ── */}
+      {/* ── 2. Contrat d'électricité (tarif de la facture) ── */}
+      {contrat}
+
+      {/* ── 3. Phase du compteur ── */}
+      <fieldset className="grid gap-2 sm:grid-cols-3">
+        <legend className="text-sm font-semibold">Phase du compteur</legend>
+        <div className="sm:col-span-3"><AideAppel id="phase">{QUESTION_PHASE}</AideAppel></div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="gen-ci-phases">Phases</Label>
+          <select id="gen-ci-phases" className={SELECT} value={p.phases || ''}
+                  onChange={(e) => setChamp('phases', e.target.value)}>
+            <option value="">—</option>
+            <option value="mono">Monophasé</option>
+            <option value="tri">Triphasé</option>
+            <option value="inconnu">Inconnu</option>
+          </select>
+          <Retenu resolues={resolues} cle="phases" champ="phases" repris={repris} />
+        </div>
+      </fieldset>
+
+      {/* ── 4. Activité et horaires : catégorie, jours, heures, fermetures ── */}
       <fieldset className="grid gap-2">
-        <legend className="text-sm font-semibold">Calendrier d'activité</legend>
+        <legend className="text-sm font-semibold">Activité et horaires</legend>
+        <AideAppel id="horaires">{QUESTION_HORAIRES}</AideAppel>
+        {activite}
         <div className="flex flex-wrap gap-3 text-sm">
           {JOURS_SEMAINE.map((j, i) => (
             <label key={j} className="flex items-center gap-1.5 cursor-pointer">
@@ -293,7 +386,7 @@ export default function BlocEtudeReseau({
             </label>
           ))}
         </div>
-        <Retenu resolues={resolues} cle="jours_ouverts" />
+        <Retenu resolues={resolues} cle="jours_ouverts" champ="joursOuverts" repris={repris} />
         <div className="grid gap-3 sm:grid-cols-3">
           {TYPES_JOUR.map(({ cle, libelle }) => (
             <div className="grid gap-1.5" key={cle}>
@@ -311,7 +404,7 @@ export default function BlocEtudeReseau({
             </div>
           ))}
         </div>
-        <Retenu resolues={resolues} cle="plages" />
+        <Retenu resolues={resolues} cle="plages" champ="plages" repris={repris} />
         <div className="grid gap-2" data-testid="ci-fermetures">
           {fermetures.map((f, i) => (
             <div className="grid gap-2 sm:grid-cols-3" key={i}>
@@ -331,26 +424,12 @@ export default function BlocEtudeReseau({
             </Button>
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="gen-ci-talon">Talon de consommation (kW)</Label>
-            <Input id="gen-ci-talon" type="number" min="0" step="any"
-                   disabled={Boolean(p.talonInconnu)} value={p.talonKw ?? ''}
-                   onChange={(e) => setChamp('talonKw', e.target.value)} />
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" data-testid="gen-ci-talon-inconnu"
-                     checked={Boolean(p.talonInconnu)}
-                     onChange={(e) => setChamp('talonInconnu', e.target.checked)} />
-              Je ne sais pas
-            </label>
-            <Retenu resolues={resolues} cle="talon" />
-          </div>
-        </div>
       </fieldset>
 
-      {/* ── Toit ── */}
+      {/* ── 5. Surface disponible ── */}
       <fieldset className="grid gap-4 sm:grid-cols-3">
-        <legend className="text-sm font-semibold">Toit</legend>
+        <legend className="text-sm font-semibold">Surface disponible</legend>
+        <div className="sm:col-span-3"><AideAppel id="surface">{QUESTION_SURFACE}</AideAppel></div>
         <div className="grid gap-1.5">
           <Label htmlFor="gen-ci-type-pose">Type de pose</Label>
           <select id="gen-ci-type-pose" className={SELECT} value={p.typePose || ''}
@@ -358,73 +437,88 @@ export default function BlocEtudeReseau({
             <option value="">—</option>
             {TYPES_POSE.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-          <Retenu resolues={resolues} cle="type_pose" />
+          <Retenu resolues={resolues} cle="type_pose" champ="typePose" repris={repris} />
         </div>
         <div className="grid gap-1.5">
           <Nombre id="gen-ci-surface" label="Surface utile (m²)" value={p.surfaceUtile}
                   onChange={(v) => setChamp('surfaceUtile', v)} />
-          <Retenu resolues={resolues} cle="surface_utile_m2" />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="gen-ci-couverture">Couverture</Label>
-          <Input id="gen-ci-couverture" placeholder="ex: béton, bac acier…"
-                 value={p.couverture ?? ''}
-                 onChange={(e) => setChamp('couverture', e.target.value)} />
-          <Retenu resolues={resolues} cle="couverture" />
+          <Retenu resolues={resolues} cle="surface_utile_m2" champ="surfaceUtile" repris={repris} />
         </div>
       </fieldset>
 
-      {/* ── Raccordement + revente ── */}
-      <fieldset className="grid gap-4 sm:grid-cols-3">
-        <legend className="text-sm font-semibold">Raccordement</legend>
-        <div className="grid gap-1.5">
-          <Label htmlFor="gen-ci-tension">Tension</Label>
-          <select id="gen-ci-tension" data-testid="gen-tension" className={SELECT}
-                  value={p.tension || ''} onChange={(e) => setChamp('tension', e.target.value)}>
-            <option value="">—</option>
-            <option value="bt">Basse tension (BT)</option>
-            <option value="mt">Moyenne tension (MT)</option>
-            <option value="inconnue">Inconnue</option>
-          </select>
-          <Retenu resolues={resolues} cle="tension" />
+      {/* ── Affiner (facultatif) : ce que l'analyste règle, replié ── */}
+      <details className="rounded-lg border border-border p-3" data-testid="ci-affiner"
+               open={affinerOuvert || undefined}>
+        <summary className="cursor-pointer text-sm font-semibold">Affiner l&apos;étude (facultatif)</summary>
+        <div className="mt-3 grid gap-4">
+          {affiner}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-ci-talon">Talon de consommation (kW)</Label>
+              <Input id="gen-ci-talon" type="number" min="0" step="any"
+                     disabled={Boolean(p.talonInconnu)} value={p.talonKw ?? ''}
+                     onChange={(e) => setChamp('talonKw', e.target.value)} />
+              <label className="flex items-center gap-2 text-xs cursor-pointer">
+                <input type="checkbox" data-testid="gen-ci-talon-inconnu"
+                       checked={Boolean(p.talonInconnu)}
+                       onChange={(e) => setChamp('talonInconnu', e.target.checked)} />
+                Je ne sais pas
+              </label>
+              <Retenu resolues={resolues} cle="talon" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-ci-couverture">Couverture</Label>
+              <Input id="gen-ci-couverture" placeholder="ex: béton, bac acier…"
+                     value={p.couverture ?? ''}
+                     onChange={(e) => setChamp('couverture', e.target.value)} />
+              <Retenu resolues={resolues} cle="couverture" />
+            </div>
+          </div>
+          <fieldset className="grid gap-4 sm:grid-cols-3">
+            <legend className="text-sm font-semibold">Raccordement</legend>
+            <div className="grid gap-1.5">
+              <Label htmlFor="gen-ci-tension">Tension</Label>
+              <select id="gen-ci-tension" data-testid="gen-tension" className={SELECT}
+                      value={p.tension || ''} onChange={(e) => setChamp('tension', e.target.value)}>
+                <option value="">—</option>
+                <option value="bt">Basse tension (BT)</option>
+                <option value="mt">Moyenne tension (MT)</option>
+                <option value="inconnue">Inconnue</option>
+              </select>
+              <Retenu resolues={resolues} cle="tension" champ="tension" repris={repris} />
+            </div>
+            <div className="grid gap-1.5">
+              <Nombre id="gen-ci-puissance" label="Puissance souscrite (kVA)"
+                      value={p.puissanceSouscrite}
+                      onChange={(v) => setChamp('puissanceSouscrite', v)} />
+              <Retenu resolues={resolues} cle="puissance_souscrite_kva" />
+            </div>
+            <div className="grid gap-1.5">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" data-testid="gen-ci-revente" disabled={!estMt}
+                       checked={estMt && Boolean(p.revente)}
+                       onChange={(e) => setChamp('revente', e.target.checked)} />
+                {estMt ? LIBELLE_REVENTE_MT : 'Revente du surplus'}
+              </label>
+              {!estMt && (
+                <p className="text-xs text-muted-foreground" data-testid="ci-revente-bt">
+                  {mentionReventeServeur || MENTION_REVENTE_BT}
+                </p>
+              )}
+            </div>
+          </fieldset>
         </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="gen-ci-phases">Phases</Label>
-          <select id="gen-ci-phases" className={SELECT} value={p.phases || ''}
-                  onChange={(e) => setChamp('phases', e.target.value)}>
-            <option value="">—</option>
-            <option value="mono">Monophasé</option>
-            <option value="tri">Triphasé</option>
-            <option value="inconnu">Inconnu</option>
-          </select>
-          <Retenu resolues={resolues} cle="phases" />
-        </div>
-        <div className="grid gap-1.5">
-          <Nombre id="gen-ci-puissance" label="Puissance souscrite (kVA)"
-                  value={p.puissanceSouscrite}
-                  onChange={(v) => setChamp('puissanceSouscrite', v)} />
-          <Retenu resolues={resolues} cle="puissance_souscrite_kva" />
-        </div>
-        <div className="grid gap-1.5 sm:col-span-2">
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input type="checkbox" data-testid="gen-ci-revente" disabled={!estMt}
-                   checked={estMt && Boolean(p.revente)}
-                   onChange={(e) => setChamp('revente', e.target.checked)} />
-            {estMt ? LIBELLE_REVENTE_MT : 'Revente du surplus'}
-          </label>
-          {!estMt && (
-            <p className="text-xs text-muted-foreground" data-testid="ci-revente-bt">
-              {mentionReventeServeur || MENTION_REVENTE_BT}
-            </p>
-          )}
-        </div>
-        <div className="grid gap-1.5">
-          <Nombre id="gen-ci-taille" label="Taille explicite (kWc, optionnelle)"
-                  value={p.tailleExplicite}
-                  onChange={(v) => setChamp('tailleExplicite', v)} />
-        </div>
-      </fieldset>
+      </details>
 
+      {/* Taille explicite : le seul réglage de taille (D-QJR5-13, souveraine). */}
+      <div className="grid gap-1.5 sm:max-w-xs">
+        <Nombre id="gen-ci-taille" label="Taille explicite (kWc)"
+                value={p.tailleExplicite}
+                onChange={(v) => setChamp('tailleExplicite', v)} />
+        <p className="text-xs text-muted-foreground" data-testid="ci-taille-aide">
+          vide = taille calculée par la règle des 10 ans
+        </p>
+      </div>
     </div>
   )
 }
