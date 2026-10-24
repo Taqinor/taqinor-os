@@ -239,8 +239,9 @@ def client_a_contrat_actif(client, company):
 
     if client is None:
         return False
-    return ContratMaintenance.objects.filter(
-        client=client, company=company, actif=True).exists()
+    # ASAV113 — « actif » = ``est_actif()`` (début, expiration + grâce).
+    return any(c.est_actif() for c in ContratMaintenance.objects.filter(
+        client=client, company=company, actif=True))
 
 
 def clients_sans_contrat_actif(company, client_ids):
@@ -256,10 +257,10 @@ def clients_sans_contrat_actif(company, client_ids):
     ids = {int(i) for i in (client_ids or [])}
     if not ids:
         return set()
-    avec_contrat = set(
-        ContratMaintenance.objects.filter(
+    avec_contrat = {
+        c.client_id for c in ContratMaintenance.objects.filter(
             company=company, client_id__in=ids, actif=True)
-        .values_list('client_id', flat=True))
+        if c.est_actif()}  # ASAV113 — expiration + grâce
     return ids - avec_contrat
 
 
@@ -328,10 +329,10 @@ def contrats_maintenance_facturables(company):
     qs = ContratMaintenance.objects.filter(
         company=company, actif=True, facturation_active=True,
         prix__isnull=False,
-    ).only('id', 'prix', 'periodicite')
+    ).only('id', 'prix', 'periodicite', 'actif', 'date_debut', 'duree_mois')
     return [
         {'id': cm.id, 'prix': cm.prix, 'periodicite': cm.periodicite}
-        for cm in qs
+        for cm in qs if cm.est_actif()  # ASAV113 — échu hors grâce exclu
     ]
 
 
