@@ -32,6 +32,7 @@ Appelants de :func:`etudier_pompage` (``git grep -n etudier_pompage``) :
 """
 from __future__ import annotations
 
+import re
 import contextlib
 import contextvars
 import logging
@@ -1480,9 +1481,30 @@ ROLES_KIT_MINIMUM = (
 )
 
 
+#: Rejeu live AGQ41 (24/10) — les alertes du noyau qui laissent le champ
+#: solaire non dimensionné : leur message EST la cause dite au vendeur (le 409
+#: ne sert aucune alerte, « voir les alertes » ne menait nulle part).
+CODES_CHAMP_NON_DIMENSIONNE = ('panneau_sans_fiche', 'besoin_inconnu',
+                               'irradiation_inconnue', 'aucun_variateur',
+                               'chaine_non_verifiable')
+
+
+def _cause_champ_vide(sortie):
+    for alerte in (sortie or {}).get('alertes') or ():
+        if (alerte.get('code') in CODES_CHAMP_NON_DIMENSIONNE
+                and alerte.get('message')):
+            # « … : champ non dimensionné. » — la conséquence est déjà dite.
+            return re.sub(r'\s*:\s*champ (solaire )?non dimensionné\.?$', '',
+                          alerte['message'].strip()).rstrip('. ')
+    motif = (((sortie or {}).get('champ') or {}).get('chaines') or {}).get(
+        'motif')
+    return motif or 'cause non servie par le moteur'
+
+
 def roles_minimum_manquants(sortie):
     """AGQ4 — ``[{cle, libelle, motif}]`` des rôles du kit minimum absents
-    de ``kit.inclus`` ou sans prix connu (barème compris, AGQ5)."""
+    de ``kit.inclus`` ou sans prix connu (barème compris, AGQ5) ; un champ
+    non dimensionné dit SA cause (alerte du noyau), jamais « voir les alertes »."""
     kit = (sortie or {}).get('kit') or {}
     existante = ((sortie or {}).get('pompe') or {}).get('mode') == 'existante'
     inclus = {ligne.get('cle'): ligne for ligne in kit.get('inclus') or ()}
@@ -1494,7 +1516,8 @@ def roles_minimum_manquants(sortie):
         ligne = inclus.get(cle)
         if ligne is None:
             if cle in ('panneaux', 'structure') and champ_vide:
-                motif = 'champ solaire non dimensionné (voir les alertes)'
+                motif = 'champ solaire non dimensionné — %s' % (
+                    _cause_champ_vide(sortie))
             else:
                 motif = 'aucun article au catalogue'
         elif not ligne.get('prix_connu') or not ligne.get('produit'):
