@@ -709,8 +709,9 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         methods=['POST'],
         request=_sch('SavDowntimeRequete', {
             'debut': drf_serializers.DateTimeField(required=False),
-            'ticket': drf_serializers.IntegerField(required=False),
-            'motif': _CharF(required=False, allow_blank=True),
+            'ticket': drf_serializers.IntegerField(
+                required=False, min_value=1, max_value=2147483647),
+            'motif': TexteSansSubstitut(required=False, allow_blank=True),
         }),
         responses={201: EquipementDowntimeSerializer})
     @action(detail=True, methods=['get', 'post'], url_path='downtime', pagination_class=None,
@@ -740,7 +741,7 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
             ticket = Ticket.objects.filter(
                 id=ticket_id, company=equipement.company_id).first()
             if ticket is None:
-                return Response({'detail': 'Ticket inconnu.'}, status=400)
+                raise NotFound({'ticket': 'Ticket inconnu.'})
 
         try:
             dt = ouvrir_downtime(
