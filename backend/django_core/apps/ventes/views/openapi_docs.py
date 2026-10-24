@@ -71,7 +71,9 @@ ShareLinkResponse = _ser('DevisShareLinkResponse', {
 })
 
 EnvoyerEmailRequest = _ser('DevisEnvoyerEmailRequest', {
-    'to_email': ChaineStricte(required=False, allow_blank=True),
+    # api-fuzz : une adresse mal formée atteignait le SMTP (« Invalid address »
+    # → 502) ; elle est refusée 400 et publiée ``format: email``.
+    'to_email': s.EmailField(required=False, allow_blank=True),
     'sujet': ChaineStricte(required=False, allow_blank=True),
     'corps': ChaineStricte(required=False, allow_blank=True),
     'pdf_mode': ChaineStricte(required=False, allow_blank=True),
