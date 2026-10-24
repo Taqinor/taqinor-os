@@ -6332,6 +6332,9 @@ def caviarder_document(version, zones, *, created_by=None):
         # ADOC11 — chaque zone est validée AVANT toute rédaction : une zone
         # hors page ou vide est refusée (jamais ignorée en silence — une
         # copie « (caviardée) » qui ne masque rien fuirait le texte).
+        # api-fuzz-full 24/10 — 409 : le nombre de pages du fichier stocké et
+        # « x1 > x0 » sont des règles que le schéma ne peut pas porter.
+        from core.conflit_etat import ConflitEtat
         a_rediger = []
         for zone in zones:
             try:
@@ -6340,13 +6343,13 @@ def caviarder_document(version, zones, *, created_by=None):
             except (TypeError, ValueError, AttributeError):
                 raise ValueError("Zone invalide.")
             if page_no < 0 or page_no >= doc.page_count:
-                raise ValueError(
+                raise ConflitEtat(
                     f"Zone hors page (page {page_no} / {doc.page_count} pages).")
             zx0, zy0, zx1, zy1 = [min(100.0, max(0.0, v)) for v in bornes]
             zx0, zx1 = min(zx0, zx1), max(zx0, zx1)
             zy0, zy1 = min(zy0, zy1), max(zy0, zy1)
             if zx1 - zx0 <= 0 or zy1 - zy0 <= 0:
-                raise ValueError("Zone vide.")
+                raise ConflitEtat("Zone vide.")
             a_rediger.append((page_no, zx0, zy0, zx1, zy1))
         for page_no, zx0, zy0, zx1, zy1 in a_rediger:
             page = doc[page_no]
