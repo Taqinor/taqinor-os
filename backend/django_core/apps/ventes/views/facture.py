@@ -70,6 +70,9 @@ class FactureViewSet(FactureCycleActionsMixin,
                      FactureLotActionsMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
+    # api-fuzz-full 24/10 — FactureWriteSerializer porte IdInconnu404Mixin :
+    # l'entité inconnue/étrangère répond 404 comme les autres FK.
+    entite_inconnue_404 = True
     # ARC5 — sweep TenantMixin : base transverse unique (CompanyScopedModelViewSet
     # = TenantMixin + ModelViewSet). get_queryset/perform_create/perform_update/
     # get_permissions SURCHARGENT la base : scoping société et matrice 401/403/404
