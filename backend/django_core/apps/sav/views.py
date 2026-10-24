@@ -1676,9 +1676,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
             # (une macro SANS restriction reste acceptée partout — défaut).
             canal_ticket = ReponseType.canal_de_ticket(ticket)
             if not macro.autorise_canal(canal_ticket):
-                return Response(
+                raise ConflitEtat(  # état du ticket (canal), pas la forme du corps
                     {'detail': 'Cette réponse type n\'est pas autorisée sur '
-                               'le canal de ce ticket.'}, status=400)
+                               'le canal de ce ticket.'})
             body = macro.rendu(
                 client=str(ticket.client) if ticket.client_id else '',
                 reference=ticket.reference,

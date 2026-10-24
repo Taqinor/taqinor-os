@@ -326,9 +326,11 @@ class CorpsFuzzTests(TestCase):
 
     def test_fuzz_modele_bcf_lignes_et_note(self):
         url = f'{BASE}/modeles-bcf/{self.modele.id}/'
-        for lignes in ([{'quantite': 0}], [{'produit': self.pa.id}, {'produit': self.pa.id}]):
-            r = self.api.patch(url, {'lignes': lignes}, format='json')
-            self.assertEqual(r.status_code, 400, (lignes, r.content))
+        r = self.api.patch(url, {'lignes': [{'quantite': 0}]}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)  # sans produit : hors schéma
+        r = self.api.patch(url, {'lignes': [{'produit': self.pa.id}, {'produit': self.pa.id}]},
+                           format='json')
+        self.assertEqual(r.status_code, 409, r.content)  # doublon : règle d'état
         r = self.api.put(url, {'nom': 'M', 'note': 0, 'lignes': []}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
         r = self.api.post(f'{BASE}/modeles-bcf/', {
