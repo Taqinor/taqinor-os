@@ -1,0 +1,46 @@
+{
+  "sha": "478f97fdcc8e804192bc95cba7d882189009239b",
+  "date": "2026-10-24",
+  "groupe": "ALEA",
+  "verdict": "PASS",
+  "couvre": [
+    "ALEA50",
+    "ALEA51",
+    "ALEA52",
+    "ALEA53",
+    "ALEA54",
+    "ALEA55"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P-L3-1",
+      "taches": [
+        "ALEA50",
+        "ALEA51",
+        "ALEA52",
+        "ALEA53",
+        "ALEA54",
+        "ALEA55"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ALEA/traces/2026-10-24/L3-P1-lead.txt",
+      "notes": [
+        "navigateur (Playwright MCP), front construit sur l'hôte depuis l'intégration et déposé dans le conteneur, Django redémarré : phase dans la section Pro, questionnaire résidentiel masqué, aides sans jargon, « Planifier la visite » ; bandeau de succès « Devis créé : DEV-202610-0077 · 55 kWc », aucune boîte rouge ; « Envoyer au client » depuis l'aperçu, boîte unique (WhatsApp / E-mail / Copier le lien, Avancé) ; réponse auto avec total_ttc/economie_an_1_ht/retour_ans/postes_apres_visite."
+      ]
+    }
+  ]
+}

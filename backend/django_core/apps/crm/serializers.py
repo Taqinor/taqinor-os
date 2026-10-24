@@ -750,7 +750,11 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # ALEA50 (D-ACI-6=a) — « prêt » inclut le CATALOGUE : les postes
             # fixes C&I sans prix (forfaits, coffrets, protection, comptage).
             # null hors C&I (ou si la lecture échoue : jamais un blocage muet).
-            'catalogue_ci': catalogue_ci(obj),
+            # CIQ428/CIQ405 — détail seulement (même porte que `entrees_ci`) :
+            # la liste garde son budget de requêtes, le cache 5 min ne la fait
+            # pas varier (tests « garde ses requêtes »).
+            'catalogue_ci': (catalogue_ci(obj)
+                             if self.context.get('include_chatter_recent') else None),
         }
 
     @extend_schema_field(serializers.DictField(allow_null=True))

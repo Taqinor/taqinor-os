@@ -166,8 +166,11 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return Response(gabarit_publie(self.get_object()))
 
-    @extend_schema(request=_CORPS_GABARIT, responses={201: inline_serializer(
-        'CalepinageGabaritDepose', {'gabarit': serializers.DictField()})})
+    # api-fuzz (#1022) — le dépôt est MULTIPART (``fichier`` = PDF) : publié
+    # en JSON, un corps « conforme » ``{"fichier": ""}`` était refusé 400.
+    @extend_schema(request={'multipart/form-data': _CORPS_GABARIT},
+                   responses={201: inline_serializer(
+                       'CalepinageGabaritDepose', {'gabarit': serializers.DictField()})})
     def create(self, request, *args, **kwargs):
         mal_forme = _fichier_mal_forme(request)
         if mal_forme is not None:

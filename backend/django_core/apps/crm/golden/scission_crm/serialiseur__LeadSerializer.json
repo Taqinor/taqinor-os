@@ -7,6 +7,12 @@
    "required": false
   },
   {
+   "classe": "ChampsPersonnalisesField",
+   "nom": "custom_data",
+   "read_only": false,
+   "required": false
+  },
+  {
    "classe": "_PuissanceKwField",
    "nom": "equip_piscine_pompe_kw",
    "read_only": false,
@@ -1030,12 +1036,6 @@
    "classe": "BooleenStrict",
    "nom": "is_archived",
    "read_only": true,
-   "required": false
-  },
-  {
-   "classe": "JSONField",
-   "nom": "custom_data",
-   "read_only": false,
    "required": false
   },
   {

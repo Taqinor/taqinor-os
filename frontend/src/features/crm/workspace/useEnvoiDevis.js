@@ -147,7 +147,11 @@ export function useEnvoiDevis({
     try {
       await navigator.clipboard?.writeText(url)
       poserCopie(setter, id)
-    } catch { /* presse-papier indisponible — le lien reste ouvrable */ }
+    } catch (err) {
+      // presse-papier indisponible (contexte non sécurisé, permission) : le lien
+      // reste ouvrable dans la boîte — dit au commercial, jamais avalé (AFAC95).
+      setActionMsg(errorMessageFrom(err, 'Copie impossible : sélectionnez le lien et copiez-le.'))
+    }
   }
 
   // Mint (ou réutilise — idempotent côté serveur) le ShareLink du devis, AU

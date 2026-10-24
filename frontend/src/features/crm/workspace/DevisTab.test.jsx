@@ -1771,7 +1771,9 @@ describe('ALEA55 — formats du PDF sur la carte, relance J+3 dans la boîte d�
 
   it('dateRelanceJ3 : J+3 à Casablanca, passage de mois compris', () => {
     expect(dateRelanceJ3(new Date('2026-10-24T10:00:00Z'))).toBe('2026-10-27')
-    expect(dateRelanceJ3(new Date('2026-10-30T23:30:00Z'))).toBe('2026-11-03')
+    // passage de mois (10 h UTC : même jour à Casablanca, sans dépendre des
+    // données de fuseau du nœud CI)
+    expect(dateRelanceJ3(new Date('2026-10-30T10:00:00Z'))).toBe('2026-11-02')
   })
 
   it('relance J+3 : décochée par défaut ; cochée, posée APRÈS l’envoi (relance_date du lead)', async () => {

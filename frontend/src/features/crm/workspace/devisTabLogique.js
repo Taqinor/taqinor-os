@@ -3,6 +3,7 @@
 // exportées et composant dans un même fichier). Importée par DevisTab.jsx ;
 // testée à part (DevisTab.test.jsx). Aucune logique modifiée : déplacement pur.
 import { formatDateTime, normalizePhoneE164 } from '../../../lib/format'
+import { todayLocalIso } from '../../../lib/dateLocale'
 
 // Mini-piste DOCUMENT (règle #4) devis→facture→chantier — JAMAIS les stages
 // STAGES.py du funnel lead (règle #2). N'est rendue QUE sur une carte devis
@@ -157,8 +158,9 @@ export function noteDemandeCatalogueCi(devisAuto) {
 // `relance_date`, 'YYYY-MM-DD') trois jours après AUJOURD'HUI à Casablanca (jamais
 // le fuseau du navigateur — même ancrage que le journal d'appel).
 export function dateRelanceJ3(maintenant = new Date()) {
-  const jour = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(maintenant)
+  const jour = todayLocalIso(maintenant)
   const d = new Date(`${jour}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() + 3)
-  return d.toISOString().slice(0, 10)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
 }
