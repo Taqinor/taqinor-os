@@ -12,6 +12,10 @@ Contrat testé : chaque effet de simulation porte ``statut_prevu`` ; il est
 
 Test-du-test : remettre « Une activité serait créée. » inconditionnel dans
 ``simulation._decrire_activite`` (sans ``statut_prevu`` dérivé) ⇒ rouge.
+
+APAR71 — un lead opposé (ACRM17) : retirer ``actions._refus_opposition`` de
+``simulation._decrire_email`` ⇒ ``test_lead_oppose_simulation_egale_execution``
+rouge (simulé ``success``, exécuté ``skipped``).
 """
 from datetime import date, timedelta
 from decimal import Decimal
@@ -158,6 +162,37 @@ class SimulationEgaleExecutionTests(TestCase):
             'action_type': ActionType.SEND_SMS, 'action_config': {}})
         self.assertFalse(ser.is_valid())
         self.assertIn('action_type', ser.errors)
+
+    def test_lead_oppose_simulation_egale_execution(self):
+        # APAR71 — lead « ne plus contacter » (ACRM17) : e-mail et WhatsApp
+        # sont simulés ET exécutés SKIPPED « Contact refusé », sans effet.
+        from django.core import mail
+
+        from apps.crm.selectors import MOTIF_CONTACT_REFUSE
+        from apps.records.models import Activity
+
+        lead = Lead.objects.create(
+            company=self.co, nom='Oppose', stage='NEW',
+            email='oppose-apar71@example.invalid',
+            telephone='+212612345678', ne_plus_contacter=True)
+        mail.outbox = []
+        taches = Activity.objects.count()
+        for type_action in (ActionType.SEND_EMAIL, ActionType.SEND_WHATSAPP):
+            regle = AutomationRule.objects.create(
+                company=self.co, nom=f'Opposé {type_action}', enabled=False,
+                trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+                action_type=type_action, action_config={'body': 'Bonjour'})
+            effets = simuler_regle(regle, lead, self.co, journaliser=False)
+            with self.captureOnCommitCallbacks(execute=True):
+                engine.run_action(regle, lead, self.co)
+            run = AutomationRun.objects.get(rule=regle)
+            skipped = AutomationRun.Status.SKIPPED
+            self.assertEqual(effets[0]['statut_prevu'], skipped, type_action)
+            self.assertEqual(run.status, skipped, type_action)
+            self.assertEqual(effets[0]['effet'], MOTIF_CONTACT_REFUSE)
+            self.assertEqual(run.message, MOTIF_CONTACT_REFUSE)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(Activity.objects.count(), taches)
 
     def test_client_d_un_equipement_resolu(self):
         equipement = self._instance('warranty_expiring')
