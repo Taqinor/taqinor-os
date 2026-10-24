@@ -271,7 +271,14 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_fx_entretien', 'ci_entretien_minimum', 'ci_entretien_non_chiffre',
         'ci_sens_central', 'ci_sens_scenario', 'ci_sens_cumul',
         'ci_sens_prudent', 'ci_tarif_sur_demande', 'ci_co2_evite',
-        'ci_co2_facteur')),
+        'ci_co2_facteur',
+        # AMOT99 (fin, 24/10/2026) — source de la dégradation et méthode
+        # d'autoconsommation : libellés AJOUTÉS, aucun existant reformulé.
+        'ci_code_degradation_fiche_module',
+        'ci_code_degradation_fiche_sans_annee1',
+        'ci_code_degradation_defaut_fiche_muette',
+        'ci_ind_h_degradation_annee1', 'ci_h_methode_autoconso',
+        'ci_h_methode_8760', 'ci_h_methode_journees')),
     # AMOT96 — clé AJOUTÉE au bloc ``economie_ci`` : jamais un chiffre sur un
     # devis aux règles d'origine (entretien jamais déduit).
     ('economie_ci', 'entretien'),

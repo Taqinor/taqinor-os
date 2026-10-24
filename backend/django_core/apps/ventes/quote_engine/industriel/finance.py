@@ -44,12 +44,15 @@ LIBELLES_HYPOTHESES = {
     "taux_actualisation_pct": ("ci_ind_h_taux", "Taux d'actualisation"),
     "indexation_pct": ("ci_ind_h_indexation", "Indexation du tarif"),
     "degradation_pct": ("ci_ind_h_degradation", "Dégradation des panneaux"),
+    # AMOT99 — la perte de la 1re année publiée par la fiche module.
+    "degradation_annee1_pct": ("ci_ind_h_degradation_annee1",
+                               "Dégradation de la 1re année"),
 }
 UNITES_HYPOTHESES = {
     "investissement_mad": "MAD", "economie_annee1_mad": "MAD",
     "production_annee1_kwh": "kWh", "horizon_ans": None,
     "taux_actualisation_pct": "%", "indexation_pct": "% / an",
-    "degradation_pct": "% / an",
+    "degradation_pct": "% / an", "degradation_annee1_pct": "%",
 }
 
 _num = nombre_ou_none
@@ -297,6 +300,7 @@ def _rangees_estimation(synthese, L):
             "ci_h_base_pvgis", "{incl}° d'inclinaison, {orientation} — à "
             "confirmer au calepinage", orientation=orientation,
             incl=_decimal_txt(_num(prod["inclinaison_deg"])))))
+    rangees += _rangee_methode(estimation, L)
     dim = estimation.get("dimensionnement") or {}
     if _num(dim.get("pas_kwc")) and _num(dim.get("horizon_annees")):
         rangees.append((L("ci_h_dimensionnement", "Règle de dimensionnement"),
@@ -305,6 +309,20 @@ def _rangees_estimation(synthese, L):
                           pas=_decimal_txt(_num(dim["pas_kwc"])),
                           n=_decimal_txt(_num(dim["horizon_annees"])))))
     return rangees
+
+
+def _rangee_methode(estimation, L):
+    """AMOT99 (D-ACI-18=a) — la méthode d'autoconsommation retenue par le
+    moteur : 8 760 h de l'année type, ou le repli sur journées moyennes."""
+    methode = estimation.get("methode_autoconso")
+    if methode not in ("horaire_8760", "journees_moyennes"):
+        return []
+    valeur = (L("ci_h_methode_8760", "autoconsommation calculée heure par "
+                "heure sur l'année type (8 760 h)")
+              if methode == "horaire_8760" else
+              L("ci_h_methode_journees", "autoconsommation : estimation sur "
+                "journées moyennes (série horaire indisponible)"))
+    return [(L("ci_h_methode_autoconso", "Méthode de calcul"), valeur)]
 
 
 def _rangee_om(argent, fmt_mad, L):
