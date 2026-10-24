@@ -31,6 +31,22 @@ class ChaqueEntreeEstSourcee(unittest.TestCase):
             self.assertIn(entree.usage, H.USAGES, entree.cle)
             self.assertTrue(entree.source and entree.source.strip(), entree.cle)
 
+    def test_libelle_et_source_client_lisibles_par_le_client(self):
+        """AGQ12 (C-AGQ-011) — chaque entrée porte ``libelle`` et
+        ``source_client`` en fr/en/ar, textes PUBLICS : jamais un chemin du
+        dépôt, une décision interne ni un id de tâche (``AGR606``…)."""
+        interdit = re.compile(r"docs/|backend/|décision|[A-Z]{3,}\d+")
+        for entree in H.TABLE:
+            for champ in ("libelle", "source_client"):
+                textes = getattr(entree, champ)
+                self.assertEqual(set(textes), {"fr", "en", "ar"}, entree.cle)
+                for langue, texte in textes.items():
+                    self.assertTrue(texte and texte.strip(), (entree.cle, champ, langue))
+                    self.assertIsNone(interdit.search(texte), (entree.cle, champ, texte))
+            exporte = entree.en_dict()
+            self.assertEqual(exporte["libelle"], entree.libelle)
+            self.assertEqual(exporte["source_client"], entree.source_client)
+
     def test_les_estimations_sont_marquees_est(self):
         rendement = H.hypothese("rendement_groupe")
         self.assertEqual(rendement.statut, "EST.")
@@ -45,6 +61,18 @@ class ChaqueEntreeEstSourcee(unittest.TestCase):
         self.assertAlmostEqual(H.valeur("energie_hydraulique_wh_par_m3_m"),
                                1000 * 9.81 / 3600, places=3)
         self.assertAlmostEqual(H.valeur("cv_vers_kw"), 0.7355, places=6)
+
+    def test_kw_moteur_normalises_source_iec(self):
+        """AGQ6 — puissances assignées normalisées, source IEC 60034-1,
+        exportées en liste JSON."""
+        entree = H.hypothese("kw_moteur_normalises")
+        self.assertEqual(entree.statut, "source")
+        self.assertIn("IEC 60034-1", entree.source)
+        self.assertEqual(list(entree.valeur), sorted(entree.valeur))
+        self.assertIn(2.2, entree.valeur)
+        exporte = [e for e in H.export()["hypotheses"]
+                   if e["cle"] == "kw_moteur_normalises"][0]
+        self.assertIsInstance(exporte["valeur"], list)
 
     def test_tolerance_jamais_seuil_de_recette(self):
         tol = H.hypothese("tolerance_conception_pct")

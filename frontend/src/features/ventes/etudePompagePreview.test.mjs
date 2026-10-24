@@ -51,6 +51,28 @@ test('champ vide → null, jamais un défaut', () => {
   assert.equal(nombreOuNull('abc'), null)
 })
 
+// AGQ27 (C-AGQ-026) — corps::test_mode_volume_n_envoie_pas_la_pompe_actuelle :
+// seuls les champs du mode de besoin choisi partent ; une valeur tapée sous
+// un autre mode part `null` (mutant : spread inconditionnel ⇒ rouge).
+test('corps::test_mode_volume_n_envoie_pas_la_pompe_actuelle', () => {
+  const etat = enTexte(CONTRAT.corps)
+  etat.besoin.debit_actuel_m3h = '10'
+  etat.besoin.heures_actuelles_jour = '6'
+  const volume = construireCorpsPompage(etat).besoin
+  assert.equal(volume.mode, 'volume_declare')
+  assert.equal(volume.volume_m3_jour, 135)
+  assert.equal(volume.debit_actuel_m3h, null)
+  assert.equal(volume.heures_actuelles_jour, null)
+  etat.besoin.mode = 'pompe_actuelle'
+  const actuelle = construireCorpsPompage(etat).besoin
+  assert.equal(actuelle.debit_actuel_m3h, 10)
+  assert.equal(actuelle.heures_actuelles_jour, 6)
+  assert.equal(actuelle.volume_m3_jour, null)
+  // Débit souhaité, mois de pointe, région : servis quel que soit le mode.
+  assert.equal(actuelle.mois_pointe, 7)
+  assert.equal(actuelle.region, 'souss-massa')
+})
+
 test('mode neuve → plaque nulle ; mode existante → plaque transmise', () => {
   const etat = enTexte(CONTRAT.corps)
   etat.plaque = { kw: '5.5', tension_v: '380', phases: 'tri', cv: '', courant_a: '' }

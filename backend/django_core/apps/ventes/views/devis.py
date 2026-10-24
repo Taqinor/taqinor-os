@@ -1,3 +1,5 @@
+import functools  # AGQ23 — enveloppe d'idempotence d'une action
+
 from drf_spectacular.utils import extend_schema_view
 from ..openapi_params import (
     ENTITE, choix_requete, entier_requete, qint, qstr,
@@ -86,6 +88,22 @@ def _resume_devis_auto(devis):
         logger.warning('devis/auto : résumé économique indisponible (dégradé)',
                        exc_info=True)
     return resume
+
+
+def _idempotente(suffixe):
+    """AGQ23 (C-AGQ-022) — pose le contrat ``Idempotency-Key`` de
+    ``core.idempotency`` (``IdempotentCreateMixin._avec_idempotence``, LA
+    primitive, aucune seconde garde) autour d'une ACTION de création, sans
+    toucher son corps (sa forme servie reste lisible par
+    ``scripts/check_api_shapes.py``). Sans en-tête : appel inchangé."""
+    def decorer(vue):
+        @functools.wraps(vue)
+        def enveloppe(self, request, *args, **kwargs):
+            return self._avec_idempotence(
+                request, lambda: vue(self, request, *args, **kwargs),
+                suffixe=suffixe)
+        return enveloppe
+    return decorer
 
 
 @extend_schema_view(list=extend_schema(parameters=[
@@ -460,6 +478,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                    extensions=D.CORPS_LEAD_OU_CLIENT)
     @action(detail=False, methods=['post'], url_path='auto',
             permission_classes=[IsResponsableOrAdmin])
+    @_idempotente('auto')  # AGQ23 — rejoue le 1ᵉʳ devis d'une même clé
     def auto(self, request):
         """Copilote — crée un devis automatiquement dimensionné à partir de la
         fiche lead, pour les QUATRE marchés : résidentiel, agricole (pompage,
@@ -476,7 +495,13 @@ class DevisViewSet(DevisEditionActionsMixin,
         oriente vers le générateur. La réponse porte de quoi dire le succès :
         ``total_ttc``, ``economie_an_1_ht``, ``retour_ans`` (null si
         l'investissement est incomplet) et ``postes_apres_visite`` (ALEA51).
-        Aucun statut n'est touché : le service renvoie un brouillon (règle #4)."""
+        Aucun statut n'est touché : le service renvoie un brouillon (règle #4).
+
+        AGQ23 (C-AGQ-022) — IDEMPOTENTE (``_idempotente``) : une
+        ``Idempotency-Key`` (une par ouverture du panneau lead) rejoue le
+        PREMIER devis créé pour cette clé au lieu d'en créer un second (2ᵉ
+        clic après un délai dépassé côté écran alors que le serveur a fini la
+        création) ; corps différent → 409. Sans en-tête : inchangé."""
         from decimal import Decimal
         from ..services import build_devis_auto, AutoDevisError
         from ..models import ShareLink

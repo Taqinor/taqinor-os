@@ -98,6 +98,8 @@ Non renseigné
 Oui
 Non
 Niveau dynamique (m)
+Niveau statique de l'eau (m) — optionnel
+Rabattement en pompage (m) — optionnel
 Diamètre de tubage (mm)
 Profondeur de calage (m)
 Réservoir (m³)
@@ -137,8 +139,6 @@ Non renseigné
 Goutte-à-goutte
 Aspersion
 Gravitaire
-Niveau statique de l'eau (m) — optionnel
-Rabattement en pompage (m) — optionnel
 Énergie actuelle et dépense déclarée
 Énergie actuelle
 Non renseignée
@@ -243,9 +243,9 @@ Compteur d'eau — aucun produit au catalogue — mention : exigé par la loi 36
 Câble de descente — marge de câble non réglée : quantité à saisir
 Non inclus : forage, génie civil
 Hypothèses (3)
-energie_hydraulique_wh_par_m3_m = 2.725 — ρ·g/3600 (ρ = 1000 kg/m³, g = 9,81 m/s²)
-hazen_williams_c_pvc_pehd = 150 — bulletin IPEX mis en ligne 08/2022 ; AWWA M23
-pertes_pvgis_comprises_pct = 14 — backend/django_core/apps/parametres/pvgis_profils.py:128 (PVGIS_LOSS_PCT) — déjà comprises : AUCUN derate supplémentaire (les 0,82-0,90 de Water Mission sont refusés : double comptage)
+Énergie hydraulique par m³ et par mètre de hauteur (Wh) = 2.725 — Constante physique : masse volumique de l'eau × gravité (1 000 kg/m³ × 9,81 m/s²)
+Coefficient de rugosité des conduites PVC / PEHD (Hazen-Williams) = 150 — Bulletin technique IPEX (2022) et manuel AWWA M23
+Pertes du système photovoltaïque déjà comprises dans la production PVGIS (%) = 14 — Réglage de pertes de l'outil PVGIS (Commission européenne) utilisé pour la production ; aucune perte n'est comptée deux fois
 Paramètres Techniques
 Puissance cible (kWc)
 Nombre de panneaux*
@@ -347,6 +347,8 @@ gen-source-debit-autorise=
 gen-source-volume-autorise=
 gen-source-compteur=
 gen-source-niveau-dynamique=
+gen-farm-static=
+gen-farm-drawdown=
 gen-source-tubage=
 gen-source-calage=
 gen-source-reservoir=
@@ -356,11 +358,9 @@ gen-profondeur=
 gen-distance=
 hmt-detail=on [ ]
 gen-farm-surface=
-#27=
-#28=
 #29=
-gen-farm-static=
-gen-farm-drawdown=
+#30=
+#31=
 gen-farm-fuel=
 gen-eco-date=
 gen-eco-entretien=

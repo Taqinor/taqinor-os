@@ -8,6 +8,7 @@ import { Button, Card, CardContent } from '../../../ui'
 import { Send, Eye } from 'lucide-react'
 import { formatMoney } from '../../../features/ventes/solar'
 import { libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
+import AlertesDevisAuto from '../../crm/leads/AlertesDevisAuto'
 
 export default function PanneauSucces({ succes, navigate }) {
   return (
@@ -24,20 +25,9 @@ export default function PanneauSucces({ succes, navigate }) {
               <p className="mt-2 text-sm" data-testid="succes-auto-resume">{libelleSuccesDevisAuto(succes.resultat)}</p>
             )}
           </div>
-          {succes.alertes?.length > 0 && (
-            <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-left text-sm"
-                 role="status" data-testid="succes-auto-alertes">
-              <strong>Alertes du devis automatique :</strong>
-              <ul>
-                {succes.alertes.map((a, i) => (
-                  <li key={`${a.code || 'alerte'}-${i}`}>
-                    {a.interne === true && <strong>Vendeur seulement — </strong>}
-                    {a.message || a.code}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* AGQ25 — rendu UNIQUE du journal, partagé avec la fiche lead ;
+              ALEA51 — en avertissement sous la phrase de succès. */}
+          <AlertesDevisAuto alertes={succes.alertes} />
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
             <Button
               onClick={() => navigate(`/ventes/devis?devis=${succes.id}&envoyer=1`)}

@@ -50,7 +50,7 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
 // nommé) ; ses `alertes` vont à `onAlertes` (internes comprises : l'écran les
 // marque « vendeur seulement »). Une cible kWc saisie POUR CE devis (EZ5)
 // part en `target_kwc`, souveraine (D-QJR5-13), sans toucher le lead.
-async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, targetKwc, marche }) {
+async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, targetKwc, marche, idempotencyKey }) {
   const cible = parseFloat(targetKwc)
   let creation
   try {
@@ -59,8 +59,20 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, tar
       remise_globale: discountStr || '0',
       // AGNR39 — jamais pour le pompage : le champ découle de la pompe.
       ...(cible > 0 && marche !== 'agricole' ? { target_kwc: cible } : {}),
-    })
+    // AGQ22 — agricole : l'écran (panneau lead, générateur) affiche lui-même
+    // le refus nommé ; le toast global ferait un second message. AGQ23 — la
+    // clé d'idempotence du panneau (agricole seulement : C&I inchangé).
+    }, marche === 'agricole'
+      ? { suppressErrorToast: true, ...(idempotencyKey ? { idempotencyKey } : {}) }
+      : undefined)
   } catch (err) {
+    // AGQ23 (C-AGQ-022) — délai dépassé : le serveur a pu finir la création.
+    if (marche === 'agricole' && err?.code === 'ECONNABORTED') {
+      throw {
+        detail: 'Le devis a peut-être été créé : la liste se rafraîchit.',
+        delaiDepasse: true,
+      }
+    }
     const data = err?.response?.data || {}
     throw {
       detail: data.detail
@@ -104,7 +116,7 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, tar
  * ordreLignes, dispatch) sont acceptés et IGNORÉS : le serveur lit le
  * catalogue, les marques épinglées et l'ordre des lignes de la société.
  */
-export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat, targetKwc }) {
+export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat, targetKwc, idempotencyKey }) {
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
   // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
@@ -188,7 +200,7 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat
   }
   // CIQ127 — agricole (AGR126) et commercial / industriel : le serveur
   // étudie, dimensionne, compose et crée le brouillon ; rien n'est calculé ici.
-  return creerDevisServeur({ lead, discountStr, onAlertes, onResultat, targetKwc, marche: mode })
+  return creerDevisServeur({ lead, discountStr, onAlertes, onResultat, targetKwc, marche: mode, idempotencyKey })
 }
 
 /**

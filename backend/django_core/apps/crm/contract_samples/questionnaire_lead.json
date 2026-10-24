@@ -58,6 +58,7 @@
         "carburant_prix_unitaire_mad",
         "depense_carburant_mad_mois",
         "mois_irrigation",
+        "jours_irrigation_semaine",
         "compteur_eau"
       ],
       "gps": [
@@ -79,6 +80,7 @@
       "carburant_prix_unitaire_mad": null,
       "depense_carburant_mad_mois": null,
       "mois_irrigation": null,
+      "jours_irrigation_semaine": null,
       "compteur_eau": null,
       "gps_lat": null,
       "gps_lng": null
@@ -211,6 +213,7 @@
       "carburant_prix_unitaire_mad",
       "depense_carburant_mad_mois",
       "mois_irrigation",
+      "jours_irrigation_semaine",
       "compteur_eau"
     ]
   },
@@ -271,6 +274,7 @@
       "carburant_prix_unitaire_mad",
       "depense_carburant_mad_mois",
       "mois_irrigation",
+      "jours_irrigation_semaine",
       "compteur_eau"
     ],
     "photo_facture": [],

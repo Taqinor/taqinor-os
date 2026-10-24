@@ -27,21 +27,18 @@ import {
 // AGR127/AGR128 — aperçu SERVEUR du pompage (aucun calcul local).
 import {
   useEtudePompagePreview, construireCorpsPompage, manquantsPompage,
-  useEconomiePompagePreview,
+  useEconomiePompagePreview, lignesEconomieDepuisEcran,
 } from '../../features/ventes/etudePompagePreview'
 import {
-  saisiesEconomiePompage,
+  saisiesEconomiePompage, ECO_POMPAGE_VIDE, ATTESTATION_VIDE,
   TARIF_SAISIE_VIDE, tarifDeclareDepuisSaisie,
   ECO_CI_VIDE, saisiesEconomieCi,
 } from '../../features/ventes/quote/etudeMarcheBloc'
 import { useApercuEconomieCi } from '../../features/ventes/quote/hooks/useApercuEconomieCi'
 import {
-  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance,
+  POMPAGE_SAISIE_VIDE, etatPompageEcran, poserSaisie, libelleProvenance, siteDuLead,
 } from '../../features/ventes/etudePompagePreviewPur'
-import { entreesPompageDuLead } from '../../features/ventes/quote/entreesPompageLead'
-import {
-  ECO_POMPAGE_VIDE, ATTESTATION_VIDE,
-} from '../../features/ventes/quote/etudeMarcheBloc'
+import { entreesPompageDuLead, appliquerSaisiePompageLead } from '../../features/ventes/quote/entreesPompageLead'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
@@ -1194,6 +1191,9 @@ export default function DevisGenerator({
     if ('energie' in eco) eco.energieProvenance = res.eco.energieProvenance
     if ('mois' in eco) eco.moisProvenance = res.eco.moisProvenance
     if (Object.keys(eco).length) setEcoPompage((e) => ({ ...e, ...eco }))
+    // AGQ39 (D-AGQ-10) — mode de pompe et plaque du lead → `pompageSaisie`,
+    // même règle : une saisie du vendeur n'est jamais écrasée.
+    setPompageSaisie(appliquerSaisiePompageLead(res.saisie, libre, posesLead.current, poserSaisie))
     setProvenancesLead(res.provenances)
   }
 
@@ -1453,10 +1453,12 @@ export default function DevisGenerator({
     pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit, pompeProfondeur,
     pompeDistance, farmRegion, farmCrop, farmSurfaceHa, farmIrrigation,
     farmHmtStatic, farmHmtDrawdown, leadId: leadId || null,
-    editId: editId || null,
+    // AGQ26 (C-AGQ-025) — le SITE du lead (ville de calcul + GPS) : sans lui,
+    // la production retombait en repli plat en accusant PVGIS.
+    editId: editId || null, ...siteDuLead(villeCalculLead, selectedLead),
   }), [pompageSaisie, pompeCv, pompeType, pompeAlim, pompeHmt, pompeDebit,
     pompeProfondeur, pompeDistance, farmRegion, farmCrop, farmSurfaceHa,
-    farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId])
+    farmIrrigation, farmHmtStatic, farmHmtDrawdown, leadId, editId, villeCalculLead, selectedLead])
   const pompageManquants = modeInstallation === 'agricole'
     ? manquantsPompage(etatPompage) : []
   const corpsPompage = modeInstallation === 'agricole'
@@ -2004,7 +2006,8 @@ export default function DevisGenerator({
           farmHmtStatic={farmHmtStatic} setFarmHmtStatic={setFarmHmtStatic}
           farmHmtDrawdown={farmHmtDrawdown} setFarmHmtDrawdown={setFarmHmtDrawdown}
           pompageSaisie={pompageSaisie} majPompage={majPompage}
-          apercuPompage={apercuPompage}
+          // AGQ16 — la carte économie chiffre le devis EN COURS (lignes comptées + remise globale).
+          apercuPompage={apercuPompage} lignesDevis={lignesEconomieDepuisEcran(lines, discountPct)}
         />
 
         {/* ── Paramètres techniques ── */}

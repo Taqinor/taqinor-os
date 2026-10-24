@@ -3,6 +3,7 @@
   "forme_serveur": "complete",
   "pourquoi": "QJR3 (M0, audit L3 du 29/08/2026) — `apps/ventes/public_views.py::proposal_data` (~lignes 2343-2906) est un dict ASSEMBLÉ À LA MAIN, sans sérialiseur et sans forme déclarée (un commentaire à ~2961-2967 reconnaît que le générateur DRF ne sait pas l'introspecter). CE CONTRAT NE LE CONVERTIT PAS en sérialiseur DRF — chantier séparé, bien plus gros — il POSE la carte clé → nature de ce qu'il renvoie RÉELLEMENT aujourd'hui, dérivée d'une lecture du code (pas d'une exécution), pour que le test de forme QJR7 (M1, PAS dans ce commit) puisse vérifier le serveur contre cette carte au lieu que chaque consommateur (la page publique `apps/web`, les tests) invente sa propre hypothèse — l'incident PACT10 du 03/08/2026, rejoué. M0 reste docs-only : aucun test, aucun code de production dans ce commit.",
   "notes": {
+    "agricole_agq3": "AGQ3 (D-AGQ-2, C-AGQ-014) — `synthese_agricole.eau` gagne `mois_conception` (= `etude.conception.mois_critique`, 1-12, null sans étude v2 : le gabarit garde alors son texte d'hier), `m3_jour_min` et `mois_m3_jour_min` (le plus bas de l'ANNÉE sur `production.m3_jour_mois`, null sans série) ; `besoin_vs_livre.mois_sous_tolerance` = [{mois, couverture_pct}] lus dans `controle_conception.mois_sous_tolerance` et `couverture_pct_mois` (AGQ2), [] quand aucun mois n'est sous la tolérance. Aucun recalcul.",
     "roof_image_url_acal314": "ACAL314 (C-ACAL-019) — `roof_image_url` est un CHEMIN RELATIF servi par Django, borné par le jeton (`/api/django/ventes/proposal/<token>/roof-image/` → 200 image/*, 404 muet sur jeton invalide ou sans affiche), jamais une URL pré-signée vers l'hôte interne du magasin (minio:9000). Le site le préfixe par l'origine de l'API (`apps/web/src/lib/proposition.ts`). `null` quand le devis n'a pas d'affiche.",
     "agricole_agr4": "AGR4 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; D-AGR-2, D-AGR-5, D-AGR-6, D-AGR-10, D-AGR-13) — CONTRAT D'ABORD (PACT10, patron QJR501) : `exemple_agricole` est un FRAGMENT (seules les clés propres à l'agricole sont montrées ; toutes les autres clés de base gardent la forme de `exemple`). (1) `mode_kpis` agricole = {pompe_cv, pompe_kw, hmt_m, debit_hmt_m3h, m3_jour, heures_pompage, champ_kwc} — `bassin_m3` (×2 non sourcé) et `fda_eligible` (verdict propre au client, contraire à D-AGR-6) sont RETIRÉS ; ces sept clés sont les dérivées v1 écrites par le NOUVEAU moteur (`cles_etude_params_v2` du contrat partagé `etude_pompage_preview.json`). (2) En agricole, les clés économiques résidentielles de `quote` (eco_s_ann … hypotheses) valent `null`, et `economies_mensuelles` / `economies_periodes` sont ABSENTES. (3) `synthese_agricole` est une clé ADDITIVE : absente hors agricole, jamais `null` ; une sous-clé marquée `?` dans la tâche (besoin_vs_livre, point_fonctionnement, economies, energie_actuelle, pompe.plaque) est ABSENTE quand elle n'a rien à montrer et nommée dans `omissions`. `provenance` = la forme UNIQUE {origine, detail, date} du contrat partagé `etude_pompage_preview.json` (AGR2), citée mot pour mot ; la nature « besoin agronomique plein » est `besoin.nature` d'AGR2 (ici `base_besoin`), jamais une provenance. `economies` = le bloc PUBLIC du contrat partagé `economie_pompage.json` (AGR3), c.-à-d. son `exemple` SANS `vue_interne` — recopié tel quel, jamais redéfini. `aide_fda` imprime la RÈGLE (conditions, plafonds, édition, source, date, textes fr/en/ar) : AUCUN montant propre au client, aucun délai, jamais « jusqu'à 30 % » (D-AGR-6). Aucun `prix_achat` ni marge, à aucun niveau. `exemple` reste inchangé (`forme_serveur: complete` vert : la clé additive n'y figure pas tant que la vue ne l'émet pas ; AGR308 l'ajoute à `exemple` avec la vue). Valeurs ILLUSTRATIVES, alignées sur l'`exemple` du contrat AGR2 ; textes arabes à relire par Reda (D-AGR-11, sans bloquer l'envoi).",
     "remplace_par": "QJR501 / QJR536 (D-QJR5-1) — `remplace_par` : null tant que le devis n'est pas remplacé ; sinon {reference, url} de la version EN VIGUEUR (dernière de la chaîne superseded_by, même société). `url` = '/proposition/<slug>/<token>' du successeur ENVOYÉ avec un lien déjà valide, null si le successeur est encore brouillon (jamais servi au client). Les deux cas sont les fragments `exemple_remplace_par_envoye` / `exemple_remplace_par_brouillon` (seule la clé décrite). public_views émet, le web (`resolveOfferState`, [...token].astro) lit : une version remplacée n'est plus signable et dit « remplacée par … ».",
@@ -415,34 +416,47 @@
         "heures_pompage": 4.4,
         "hmt_m": 58.7,
         "debit_hmt_m3h": 30.5,
-        "estimation": false
+        "estimation": false,
+        "mois_conception": 12,
+        "m3_jour_min": 134.2,
+        "mois_m3_jour_min": 12
       },
       "provenance": {
         "volume_m3_jour": {
           "origine": "lead",
           "detail": "client",
-          "date": "2026-09-12"
+          "date": "2026-09-12",
+          "valeur": 135
         },
         "niveau_statique_m": {
           "origine": "lead",
           "detail": "mesure_visite",
-          "date": "2026-09-15"
+          "date": "2026-09-15",
+          "valeur": 32
         },
         "niveau_dynamique_m": {
           "origine": "lead",
           "detail": "mesure_visite",
-          "date": "2026-09-15"
+          "date": "2026-09-15",
+          "valeur": 40
         },
         "debit_exploitation_m3h": {
           "origine": "saisie",
           "detail": "foreur",
-          "date": "2026-09-15"
+          "date": "2026-09-15",
+          "valeur": 36
         },
         "energie_actuelle": {
           "origine": "saisie",
           "detail": null,
-          "date": "2026-09-12"
+          "date": "2026-09-12",
+          "valeur": "butane"
         }
+      },
+      "controle_forage": {
+        "debit_pompe_m3h": 30.5,
+        "debit_forage_m3h": 36,
+        "conforme": true
       },
       "a_confirmer_par_visite": [
         "profondeur_forage_m"
@@ -508,7 +522,8 @@
         ],
         "mois_le_plus_serre": 12,
         "hectares_irrigables": null,
-        "base_besoin": "declare"
+        "base_besoin": "declare",
+        "mois_sous_tolerance": []
       },
       "point_fonctionnement": {
         "courbe": [
@@ -550,6 +565,7 @@
         "bassin": null
       },
       "schema_svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 400 300\"><!-- schéma forage → pompe → variateur → panneaux, rendu par le serveur ; abrégé dans l'exemple --></svg>",
+      "schema_legendes": [],
       "economies": {
         "statut": "calcule",
         "publiable_client": true,
@@ -956,14 +972,26 @@
       ],
       "options_kit": [
         {
+          "cle": "afficheur_variateur",
           "ligne_id": 90311,
           "designation": "Afficheur du variateur",
-          "total_ttc": 950.0
+          "total_ttc": 950.0,
+          "prix_connu": true,
+          "mention": null
+        },
+        {
+          "cle": "compteur_eau",
+          "ligne_id": null,
+          "designation": "Compteur d'eau",
+          "total_ttc": null,
+          "prix_connu": false,
+          "mention": "exigé par la loi 36-15 et le dossier FDA 2024"
         }
       ],
       "non_inclus": [
         "forage",
-        "genie_civil"
+        "genie_civil",
+        "compteur_eau"
       ],
       "formalites": [
         {
@@ -976,6 +1004,49 @@
           "source": "Loi 82-21, art. 3"
         }
       ],
+      "etapes_suivantes": [
+        {
+          "cle": "visite_point_eau",
+          "textes": {
+            "fr": "Visite du point d'eau : niveau, débit du forage et HMT relevés sur place.",
+            "en": "Water point visit: level, borehole flow and head measured on site.",
+            "ar": "زيارة نقطة الماء: قياس المستوى وصبيب الثقب والارتفاع في عين المكان."
+          }
+        },
+        {
+          "cle": "accord_fda",
+          "textes": {
+            "fr": "Accord FDA, si vous demandez l'aide : dossier déposé avant toute commande.",
+            "en": "FDA approval, if you apply for the subsidy: file submitted before any order.",
+            "ar": "موافقة صندوق التنمية الفلاحية، إن طلبتم الدعم: يودع الملف قبل أي طلب."
+          }
+        },
+        {
+          "cle": "commande",
+          "textes": {
+            "fr": "Commande : acompte versé, matériel commandé.",
+            "en": "Order: down payment made, equipment ordered.",
+            "ar": "الطلب: أداء الدفعة المقدمة وطلب المعدات."
+          }
+        },
+        {
+          "cle": "pose",
+          "textes": {
+            "fr": "Pose : pompe, variateur, champ solaire et protections.",
+            "en": "Installation: pump, drive, solar array and protections.",
+            "ar": "التركيب: المضخة والمغير والحقل الشمسي والحمايات."
+          }
+        },
+        {
+          "cle": "mise_en_service",
+          "textes": {
+            "fr": "À la mise en service : débit et HMT mesurés, écart affiché contre ce devis.",
+            "en": "At commissioning: flow and head measured, gap shown against this quote.",
+            "ar": "عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض."
+          }
+        }
+      ],
+      "notes": [],
       "omissions": [
         {
           "bloc": "preuve_realisation",

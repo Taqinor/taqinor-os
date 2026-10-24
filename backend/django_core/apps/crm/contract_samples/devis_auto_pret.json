@@ -1,7 +1,7 @@
 {
   "endpoint": "GET /api/django/crm/leads/<id>/",
   "forme_serveur": "partielle",
-  "pourquoi": "QJR509 (M0 QJR5) — la règle « devis automatique prêt » servie STRUCTURÉE : bloc `devis_auto` du lead = {pret, manquants: [libellés], manquants_detail: [{champ, label}], requis: [[…]]} où chaque groupe de `requis` est un « l'un des » (ex. [['conso_mensuelle_kwh','bill_kwh']] pour le C&I, [['pompe_hmt_m','niveau_statique_m'],['pompe_debit_m3h','besoin_eau_m3j','pompe_actuelle_debit_m3h']] en agricole depuis AGR403 (D-AGR-3, D-AGR-4 : le CV décrit la pompe ACTUELLE et ne compte plus ; pompe_actuelle_debit_m3h ne compte qu'avec pompage_heures_jour ; + visite_point_eau_avant_devis {requise, motifs} pour un agricole, null ailleurs)). Note : les QUATRE marchés (résidentiel, agricole, commercial, industriel) créent leur devis par POST /ventes/devis/auto/ (CIQ127) ; `createAutoQuote` (JS) n'est que l'appel de cet endpoint, rien n'est calculé à l'écran. ADEV89 (23/10/2026) : + le groupe ['raccordement'] (phase du site, jamais « inconnu ») pour commercial/industriel.",
+  "pourquoi": "QJR509 (M0 QJR5) — la règle « devis automatique prêt » servie STRUCTURÉE : bloc `devis_auto` du lead = {pret, manquants: [libellés], manquants_detail: [{champ, label}], requis: [[…]]} où chaque groupe de `requis` est un « l'un des » (ex. [['conso_mensuelle_kwh','bill_kwh']] pour le C&I, [['pompe_hmt_m'],['pompe_debit_m3h','besoin_eau_m3j','pompe_actuelle_debit_m3h']] en agricole depuis AGR403/AGQ9 (D-AGR-3, D-AGR-4, D-AGQ-5 : la HMT saisie est requise, le niveau d'eau ne compte que pour la visite ; le CV décrit la pompe ACTUELLE et ne compte plus ; pompe_actuelle_debit_m3h ne compte qu'avec pompage_heures_jour ; + visite_point_eau_avant_devis {requise, motifs} pour un agricole, null ailleurs)). Note : les QUATRE marchés (résidentiel, agricole, commercial, industriel) créent leur devis par POST /ventes/devis/auto/ (CIQ127) ; `createAutoQuote` (JS) n'est que l'appel de cet endpoint, rien n'est calculé à l'écran. ADEV89 (23/10/2026) : + le groupe ['raccordement'] (phase du site, jamais « inconnu ») pour commercial/industriel.",
   "exemple": {
     "devis_auto": {
       "pret": false,
@@ -26,13 +26,13 @@
     "devis_auto": {
       "pret": false,
       "manquants": [
-        "HMT (m) ou niveau d'eau",
+        "HMT (m)",
         "Débit souhaité, besoin en eau (m³/jour) ou débit de la pompe actuelle"
       ],
       "manquants_detail": [
         {
           "champ": "pompe_hmt_m",
-          "label": "HMT (m) ou niveau d'eau"
+          "label": "HMT (m)"
         },
         {
           "champ": "pompe_debit_m3h",
@@ -41,8 +41,7 @@
       ],
       "requis": [
         [
-          "pompe_hmt_m",
-          "niveau_statique_m"
+          "pompe_hmt_m"
         ],
         [
           "pompe_debit_m3h",
@@ -55,7 +54,57 @@
         "motifs": [
           "niveau d'eau du forage inconnu",
           "débit du forage inconnu"
+        ],
+        "motifs_detail": [
+          {
+            "champ": "niveau_statique_m",
+            "libelle": "niveau d'eau du forage (visite)"
+          },
+          {
+            "champ": "debit_forage_m3h",
+            "libelle": "débit du forage (visite)"
+          }
         ]
+      },
+      "mode_pompe": {
+        "valeur": "neuve",
+        "par_defaut": true
+      }
+    }
+  },
+  "exemple_agricole_existante": {
+    "devis_auto": {
+      "pret": false,
+      "manquants": [
+        "plaque de la pompe actuelle (kW, tension, phases)"
+      ],
+      "manquants_detail": [
+        {
+          "champ": "pompe_actuelle_kw",
+          "label": "plaque de la pompe actuelle (kW, tension, phases)"
+        }
+      ],
+      "requis": [
+        [
+          "pompe_hmt_m"
+        ],
+        [
+          "pompe_debit_m3h",
+          "besoin_eau_m3j",
+          "pompe_actuelle_debit_m3h"
+        ],
+        [
+          "pompe_actuelle_kw"
+        ]
+      ],
+      "visite_point_eau_avant_devis": {
+        "requise": false,
+        "motifs": [],
+        "motifs_detail": []
+      },
+      "mode_pompe": {
+        "valeur": "existante",
+        "par_defaut": false
       }
     }
   },
@@ -170,5 +219,7 @@
     }
   },
   "regle_catalogue_alea50": "ALEA50 (D-ACI-5=a, D-ACI-6=a) — commercial/industriel seulement (null ailleurs ou si la lecture échoue) : `devis_auto.catalogue_ci` = {pret: bool, manquants: [libellés]} ; pret=false quand un des 8 forfaits `CompanyProfile.forfaits_ci` n'est pas réglé (source + un montant) ou quand un poste fixe (coffret DC, coffret AC, protection AC, compteur OU contrôleur d'injection) n'a aucun article actif à prix de vente > 0. Le moteur refuserait alors en 409 « Prix à renseigner » : l'écran désactive le bouton « Devis automatique » avec ce motif et propose « Demander au responsable ». Indépendant de `pret` (données du lead) ; calculé par `ventes.selectors.catalogue_ci_pret` (cache 5 min par société).",
-  "regle_pro_ciq1":"CIQ1 (Groupe CIQ) — règle PRO v2 (contrat `lead_pro.json`, `regles_devis_auto`) : groupe « l'un des » [['conso_mensuelle_kwh','bill_kwh','releve_conso','facture_hiver']] ; `facture_hiver` (MAD) ne compte pour un commercial que si la tension n'est pas « mt », pour un industriel que si la tension « bt » est DÉCLARÉE (exemple_industriel : facture en MAD présente mais site MT ⇒ non comptée) ; le bloc gagne `source_conso` et `visite_avant_devis` {requise, motifs} (D-CIQ-5) pour un commercial/industriel, null ailleurs. `pret` ne mesure que les données. ALEA47 (D-ACI-5=a) — prêt = tout ce que le moteur C&I exige : + [['contrat_electricite']] sauf tension MT déclarée (« ne sait pas » ne compte pas), + les groupes de rythme MANQUANTS rendus par la règle partagée `apps.ventes.selectors.profil_charge_prerequis_ci` ([['jours_ouverture'], ['heure_debut','regime_equipes']] ; absents dès qu'une catégorie à archétype ou des heures/un régime placé suffisent) — les deux partagent UN libellé « Jours et heures d'ouverture (ou catégorie d'activité) » ; une facture en MAD ne compte qu'avec un contrat BT déclaré (exemple_commercial : contrat BT patenté + facture MAD, activité inconnue ⇒ seul le rythme manque)."
+  "regle_pro_ciq1":"CIQ1 (Groupe CIQ) — règle PRO v2 (contrat `lead_pro.json`, `regles_devis_auto`) : groupe « l'un des » [['conso_mensuelle_kwh','bill_kwh','releve_conso','facture_hiver']] ; `facture_hiver` (MAD) ne compte pour un commercial que si la tension n'est pas « mt », pour un industriel que si la tension « bt » est DÉCLARÉE (exemple_industriel : facture en MAD présente mais site MT ⇒ non comptée) ; le bloc gagne `source_conso` et `visite_avant_devis` {requise, motifs} (D-CIQ-5) pour un commercial/industriel, null ailleurs. `pret` ne mesure que les données. ALEA47 (D-ACI-5=a) — prêt = tout ce que le moteur C&I exige : + [['contrat_electricite']] sauf tension MT déclarée (« ne sait pas » ne compte pas), + les groupes de rythme MANQUANTS rendus par la règle partagée `apps.ventes.selectors.profil_charge_prerequis_ci` ([['jours_ouverture'], ['heure_debut','regime_equipes']] ; absents dès qu'une catégorie à archétype ou des heures/un régime placé suffisent) — les deux partagent UN libellé « Jours et heures d'ouverture (ou catégorie d'activité) » ; une facture en MAD ne compte qu'avec un contrat BT déclaré (exemple_commercial : contrat BT patenté + facture MAD, activité inconnue ⇒ seul le rythme manque).",
+  "regle_mode_pompe_agq39": "AGQ39 (D-AGQ-10) — `devis_auto.mode_pompe` = {valeur, par_defaut} pour un agricole, null ailleurs : `Lead.mode_pompe` vide ⇒ « neuve » étiqueté « par défaut » (jamais écrit sur le lead) ; « existante » ajoute le groupe [['pompe_actuelle_kw']] qui ne compte que si `pompe_actuelle_tension_v` et `pompe_actuelle_phases` sont aussi renseignés (UNE puce « plaque de la pompe actuelle (kW, tension, phases) »). Le devis automatique en mode existante : aucune ligne pompe, variateur et champ sur la plaque, 409 nommé si aucun variateur chiffrable.",
+  "regle_visite_agq22": "AGQ22 (C-AGQ-021) — `visite_point_eau_avant_devis.motifs_detail` = [{champ, libelle}] (même ordre que `motifs`, textes inchangés) : la fiche affiche une puce par motif (« débit du forage (visite) ») et garde le bouton « Devis automatique » inactif tant que la visite est requise ; le 409 de POST /ventes/devis/auto/ porte `field` = le champ du PREMIER motif (débit du forage ≠ niveau d'eau)."
 }

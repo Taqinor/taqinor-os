@@ -16,6 +16,8 @@
 // L-PCMP — import de TYPE uniquement (effacé à la compilation) : ce module
 // reste sans aucune dépendance à l'exécution, mais les silhouettes
 // d'occupation gardent UNE seule définition (`lib/dayProfiles.ts`).
+// AGQ33/AGQ35 — contenu agricole sans dépendance (étapes, FAQ) : module à part (C20, fichier-mur).
+import { etapesAgricole, objectionFaqAgricole, type SyntheseEtape, type SyntheseNote } from './propositionAgricole';
 import type { OccupancyId, SeasonId, ServedProduction } from './dayProfiles';
 // L-DEUXOPT (25/08/2026) — lecture de `production_par_option` : réutilise
 // STRICTEMENT le même validateur que `courbes_journalieres.production`
@@ -3805,7 +3807,12 @@ export interface NextStep {
  * Toujours affichée (pas de dépendance à un champ backend) : c'est un
  * processus, pas un chiffre client — rien à masquer.
  */
-export function nextSteps(): NextStep[] {
+export function nextSteps(mode?: string | null, servies?: ReadonlyArray<SyntheseEtape> | null): NextStep[] {
+  // AGQ33 (D-AGQ-11) — agricole : 5 étapes SANS délai chiffré, lues dans
+  // `synthese_agricole.etapes_suivantes` quand le serveur les sert (AGQ30),
+  // sinon les mêmes textes, locaux. Les trois autres modes gardent la frise
+  // WJ32 inchangée.
+  if (mode === 'agricole') return etapesAgricole(servies);
   return [
     {
       id: 'signature',
@@ -4172,6 +4179,7 @@ function objectionFaqCi(ci: SyntheseCi | null): FaqItem[] {
  */
 export function objectionFaq(mode?: string | null, ci: SyntheseCi | null = null): FaqItem[] {
   if (mode === 'commercial' || mode === 'industriel') return objectionFaqCi(ci);
+  if (mode === 'agricole') return objectionFaqAgricole();
   return [
     {
       id: 'panne-reseau',
@@ -4558,6 +4566,8 @@ export interface SyntheseAgricole {
     moisLePlusSerre: number | null;
     hectaresIrrigables: number | null;
     baseBesoin: string | null;
+    /** AGQ3/AGQ33 — chaque mois d'irrigation sous la tolérance de conception, avec sa couverture (% servi). */
+    moisSousTolerance: Array<{ mois: number; couverturePct: number | null }>;
   } | null;
   pointFonctionnement: {
     courbe: Array<[number, number]>;
@@ -4565,6 +4575,10 @@ export interface SyntheseAgricole {
   } | null;
   /** SVG tel que servi (déjà échappé côté serveur) — inséré tel quel, jamais réécrit. */
   dessinSchema: string | null;
+  /** AGQ30/AGQ33 — les étapes servies (`etapes_suivantes`), sans délai ; [] sinon. */
+  etapesSuivantes: SyntheseEtape[];
+  /** AGQ38/AGQ35 — notes client issues des alertes du noyau (`notes`), textes servis ; [] sinon. */
+  notes: SyntheseNote[];
   omissions: Array<{ bloc: string; motif: string }>;
 }
 
@@ -4594,6 +4608,7 @@ function lireBesoinVsLivre(v: unknown): SyntheseAgricole['besoinVsLivre'] {
     moisLePlusSerre: serre !== null && Number.isInteger(serre) && serre >= 1 && serre <= 12 ? serre : null,
     hectaresIrrigables: nombreServi(v.hectares_irrigables),
     baseBesoin: texteServi(v.base_besoin),
+    moisSousTolerance: lireMoisSousTolerance(v.mois_sous_tolerance),
   };
 }
 
@@ -4678,8 +4693,35 @@ export function syntheseAgricole(
     besoinVsLivre: lireBesoinVsLivre(brut.besoin_vs_livre),
     pointFonctionnement: lirePointFonctionnement(brut.point_fonctionnement),
     dessinSchema: svg !== null && svg.trimStart().startsWith('<svg') ? svg : null,
+    etapesSuivantes: lireListeTextes(brut.etapes_suivantes, 'cle', (cle, textes) => ({ cle, textes })),
+    notes: lireListeTextes(brut.notes, 'code', (code, textes) => ({ code, textes })),
     omissions,
   };
+}
+
+/** AGQ33/AGQ35 — une liste `[{<cle>, textes}]` servie en trois voix ; les éléments sans `fr` sont ignorés. */
+function lireListeTextes<T>(v: unknown, cle: string, construire: (nom: string | null, textes: Lbl3) => T): T[] {
+  if (!Array.isArray(v)) return [];
+  const out: T[] = [];
+  for (const e of v) {
+    if (!estRecord(e)) continue;
+    const textes = lireTextesTroisVoix(e.textes);
+    if (!textes) continue;
+    out.push(construire(texteServi(e[cle]), textes));
+  }
+  return out;
+}
+
+function lireMoisSousTolerance(v: unknown): Array<{ mois: number; couverturePct: number | null }> {
+  if (!Array.isArray(v)) return [];
+  const out: Array<{ mois: number; couverturePct: number | null }> = [];
+  for (const m of v) {
+    if (!estRecord(m)) continue;
+    const mois = nombreServi(m.mois);
+    if (mois === null || !Number.isInteger(mois) || mois < 1 || mois > 12) continue;
+    out.push({ mois, couverturePct: nombreServi(m.couverture_pct) });
+  }
+  return out;
 }
 
 /** Le motif d'omission servi pour un bloc (`besoin_vs_livre`, `point_fonctionnement`…), ou `null`. */
@@ -4880,7 +4922,10 @@ export interface SyntheseEconomiesAgricole {
   /** Retour SANS aide (années), tel que servi. */
   retourAns: number | null;
   /** Coût du m³ avant / avec le solaire (MAD). */
-  coutM3: { actuel: number; solaire: number } | null;
+  /** AGQ17/AGQ35 — `actuel` reste `null` pour un NOUVEAU forage (aucune dépense actuelle) : le m³ solaire se dit seul. */
+  coutM3: { actuel: number | null; solaire: number } | null;
+  /** AGQ20/AGQ35 — motif SERVI quand le retour n'est pas publié (au-delà de l'horizon…), sinon `null`. */
+  retourMotif: string | null;
   /** Remplacements COMPTÉS (année + montant TTC servis) ; les autres sont omis. */
   remplacements: SyntheseRemplacement[];
   /** Date de déclaration la plus récente des entrées (ISO), ou `null`. */
@@ -4910,6 +4955,10 @@ export interface SyntheseOptionKit {
   ligneId: number | null;
   designation: string;
   totalTtc: number | null;
+  /** AGQ11/AGQ35 — faux : « prix sur devis » (aucun montant, pas d'ajout en ligne). */
+  prixConnu: boolean;
+  /** AGQ11/AGQ35 — mention servie à côté de l'option (ex. compteur exigé), ou `null`. */
+  mention: string | null;
 }
 
 export interface SyntheseFormalite {
@@ -4927,6 +4976,15 @@ export interface SyntheseAgricoleArgent {
   optionsKit: SyntheseOptionKit[];
   nonInclus: string[];
   formalites: SyntheseFormalite[];
+}
+
+/** AGQ20/AGQ35 — le motif servi de l'omission du retour (`omissions[].cle` commençant par « retour »), seulement sans `retour_ans`. */
+function lireMotifRetour(omissions: unknown, retourAns: number | null): string | null {
+  if (retourAns !== null || !Array.isArray(omissions)) return null;
+  for (const o of omissions) {
+    if (estRecord(o) && typeof o.cle === 'string' && o.cle.startsWith('retour')) return texteServi(o.motif);
+  }
+  return null;
 }
 
 function lireEconomies(v: unknown): SyntheseEconomiesAgricole | null {
@@ -4972,7 +5030,8 @@ function lireEconomies(v: unknown): SyntheseEconomiesAgricole | null {
     economieNetteAn1: estRecord(an1) ? nombreServi(an1.flux_mad) : null,
     horizonAns: nombreServi(eco.horizon_ans),
     retourAns: nombreServi(eco.retour_ans),
-    coutM3: actuel !== null && solaire !== null ? { actuel, solaire } : null,
+    coutM3: solaire !== null ? { actuel, solaire } : null,
+    retourMotif: lireMotifRetour(v.omissions, nombreServi(eco.retour_ans)),
     remplacements,
     declareLe: dates.length > 0 ? dates.sort()[dates.length - 1] : null,
     entreesDeclarees: entrees,
@@ -5035,7 +5094,14 @@ function lireOptionsKit(v: unknown): SyntheseOptionKit[] {
     const designation = texteServi(o.designation);
     if (!designation) continue;
     const id = nombreServi(o.ligne_id);
-    out.push({ ligneId: id !== null && Number.isInteger(id) ? id : null, designation, totalTtc: nombreServi(o.total_ttc) });
+    const totalTtc = nombreServi(o.total_ttc);
+    out.push({
+      ligneId: id !== null && Number.isInteger(id) ? id : null,
+      designation,
+      totalTtc,
+      prixConnu: o.prix_connu === true || (o.prix_connu === undefined && totalTtc !== null),
+      mention: texteServi(o.mention),
+    });
   }
   return out;
 }

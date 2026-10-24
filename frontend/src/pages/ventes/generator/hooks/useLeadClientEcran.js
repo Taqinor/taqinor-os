@@ -7,7 +7,11 @@ import { LEAD_TYPE_TO_MODE, createAutoQuote } from '../../../../features/ventes/
 import crmApi from '../../../../api/crmApi'
 import { estimerMois } from '../../../../features/ventes/solar'
 import ventesApi from '../../../../api/ventesApi'
-import { useEffect, useRef } from 'react'
+// AGQ22 — libellé du champ du lead nommé par un 409 (carte unique).
+import fieldLabels from '../../../../features/crm/workspace/fieldLabels'
+import { useEffect, useRef, useState } from 'react'
+// AGQ25 — journal du devis automatique, rendu unique partagé avec la fiche lead.
+export { default as AlertesDevisAuto } from '../../../crm/leads/AlertesDevisAuto'
 
 export function useLeadClientEcran(ctx) {
   const {
@@ -157,8 +161,13 @@ export function useLeadClientEcran(ctx) {
   // agricole (pompage, mêmes appels que le flux manuel) ou industriel
   // (dimensionnement factures + étude d'autoconsommation comme en manuel).
   // On lit le lead DIRECTEMENT (l'état posé par applyLead est asynchrone).
+  // AGQ25 (C-AGQ-024) — le journal `alertes` du devis automatique serveur
+  // (étude pompage, articles « prix à renseigner » omis, internes C&I) : le
+  // même que celui de la fiche lead, plus jamais perdu sur ce chemin.
+  const [alertesAuto, setAlertesAuto] = useState([])
   const runAutoQuote = async (lead, discountStr) => {
     setSaving(true)
+    setAlertesAuto([])
     // ALEA51 — MÊME gestionnaire que le panneau devis de la fiche lead
     // (LeadDevisPanel) : les alertes du serveur et le retour (réf., TTC,
     // économie…) suivent le devis jusqu'au panneau de succès, et le champ du
@@ -174,14 +183,19 @@ export function useLeadClientEcran(ctx) {
       // société (PVORD) : rien de cela ne part d'ici.
       const devisId = await createAutoQuote({
         lead, discountStr, bareme: baremeSociete,
-        onAlertes: (a) => { alertes = a },
+        onAlertes: (a) => { alertes = a; setAlertesAuto(a) },
         onResultat: (r) => { resultat = r },
       })
       finish(devisId, { reference: resultat?.reference, total_ttc: resultat?.total_ttc, alertes, resultat })
     } catch (err) {
-      const msg = typeof err?.detail === 'string'
+      // AGQ22 (C-AGQ-021) — un refus qui NOMME un champ du lead (`field` du
+      // 409) dit lequel corriger sur la fiche ; un seul message (le toast
+      // global est coupé pour cet appel).
+      const champ = err?.field ? fieldLabels[err.field]?.label : null
+      const msg = (typeof err?.detail === 'string'
         ? err.detail
-        : 'Le devis automatique a échoué — vérifiez le lead et réessayez.'
+        : 'Le devis automatique a échoué — vérifiez le lead et réessayez.')
+        + (champ ? ` — à corriger sur la fiche lead : ${champ}.` : '')
       setErrors(prev => ({
         ...prev,
         submit: msg,
@@ -192,6 +206,6 @@ export function useLeadClientEcran(ctx) {
   }
 
   return {
-    applyLead, applyClient, runAutoQuote,
+    applyLead, applyClient, runAutoQuote, alertesAuto,
   }
 }

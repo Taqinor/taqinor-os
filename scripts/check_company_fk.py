@@ -92,6 +92,21 @@ def _call_name(node):
     return None
 
 
+def _est_abstrait(node: ast.ClassDef) -> bool:
+    """``class Meta: abstract = True`` dans le corps de la classe."""
+    for inner in node.body:
+        if not (isinstance(inner, ast.ClassDef) and inner.name == "Meta"):
+            continue
+        for stmt in inner.body:
+            if (isinstance(stmt, ast.Assign) and stmt.targets
+                    and isinstance(stmt.targets[0], ast.Name)
+                    and stmt.targets[0].id == "abstract"
+                    and isinstance(stmt.value, ast.Constant)
+                    and stmt.value.value is True):
+                return True
+    return False
+
+
 def _base_names(classdef):
     names = []
     for base in classdef.bases:
@@ -168,6 +183,12 @@ def _collect_file(app_label, path):
     out = {}
     for node in classdefs:
         if not is_model.get(node.name):
+            continue
+        if _est_abstrait(node):
+            # AGQ10/AGQ39 (23/10/2026) — un modèle ABSTRAIT (`Meta.abstract =
+            # True`) n'a pas de table : ses colonnes vivent sur le modèle
+            # concret qui en hérite, et c'est LUI qui porte (ou non) la
+            # société. `crm.LeadPompageMixin` → `crm.Lead` (TenantModel).
             continue
         bases = _base_names(node)
         model_key = f"{app_label}.{node.name}"

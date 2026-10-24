@@ -224,6 +224,120 @@ LIBELLES = {
                        'en': 'at {hmt} m of head',
                        'ar': 'على ارتفاع {hmt} م'},
     'agr_debit': {'fr': 'Débit', 'en': 'Flow', 'ar': 'الصبيب'},
+    # AGQ13 — unités des cartes (le français est le littéral d'hier).
+    'unite_ha': {'fr': 'ha', 'en': 'ha', 'ar': 'هكتار'},
+    'unite_cv': {'fr': 'CV', 'en': 'HP', 'ar': 'حصان'},
+    'unite_kwc': {'fr': 'kWc', 'en': 'kWp', 'ar': 'كيلوواط ذروة'},
+    'unite_m3h': {'fr': 'm³/h', 'en': 'm³/h', 'ar': 'م³/س'},
+    # AGQ28 — valeurs à côté de leur provenance, contrôle du forage.
+    'unite_m3j': {'fr': 'm³/j', 'en': 'm³/day', 'ar': 'م³/يوم'},
+    'unite_m': {'fr': 'm', 'en': 'm', 'ar': 'م'},
+    # AGQ3 — heures ÉQUIVALENTES à plein débit (volume ÷ débit nominal),
+    # jamais des heures de marche ; le mois de conception nommé.
+    'agr_heures_equivalentes': {
+        'fr': 'sur {heures} h de pompage équivalentes à plein débit (mois '
+              'de conception)',
+        'en': 'over {heures} h of pumping at equivalent full flow (design '
+              'month)',
+        'ar': 'على مدى {heures} ساعات ضخ مكافئة بالصبيب الكامل (شهر التصميم)'},
+    'agr_heures_equivalentes_mois': {
+        'fr': 'sur {heures} h de pompage équivalentes à plein débit en '
+              '{mois}, mois de conception',
+        'en': 'over {heures} h of pumping at equivalent full flow in {mois}, '
+              'design month',
+        'ar': 'على مدى {heures} ساعات ضخ مكافئة بالصبيب الكامل في {mois}، '
+              'شهر التصميم'},
+    'agr_hero_mois_conception': {'fr': 'en {mois}, mois de conception',
+                                 'en': 'in {mois}, design month',
+                                 'ar': 'في {mois}، شهر التصميم'},
+    'agr_au_plus_bas': {'fr': 'au plus bas : {m3} m³/j en {mois}',
+                        'en': 'at its lowest: {m3} m³/day in {mois}',
+                        'ar': 'في أدناه: {m3} م³/يوم في {mois}'},
+    'agr_mois_sous_tolerance': {
+        'fr': 'Mois sous la tolérance de conception : {liste}.',
+        'en': 'Months below the design tolerance: {liste}.',
+        'ar': 'أشهر دون هامش التصميم: {liste}.'},
+    'agr_mois_couverture': {'fr': '{mois} : {pct} % de votre besoin',
+                            'en': '{mois}: {pct} % of your need',
+                            'ar': '{mois}: {pct} % من حاجتكم'},
+    # AGQ38 — notes client issues des alertes du noyau (liste blanche,
+    # agricole/synthese.py::CODES_NOTES_CLIENT) ; valeurs lues, jamais calculées.
+    'agr_notes_titre': {'fr': 'Notes de dimensionnement', 'en': 'Sizing notes',
+                        'ar': 'ملاحظات التحجيم'},
+    'agr_note_ratio_champ_pompe': {
+        'fr': 'Champ {ratio}× la pompe : hors de la bande usuelle {min} – {max}× '
+              '— le champ couvre le besoin du mois le plus défavorable, par '
+              'chaînes entières acceptées par le variateur.',
+        'en': 'Array {ratio}× the pump: outside the usual {min} – {max}× band '
+              '— the array covers the need of the worst month, in whole strings '
+              'accepted by the drive.',
+        'ar': 'الحقل {ratio}× المضخة: خارج المجال المعتاد {min} – {max}× — الحقل '
+              'يغطي حاجة أصعب شهر، بسلاسل كاملة يقبلها المغير.'},
+    'agr_note_variateur_suivant': {
+        'fr': 'Pourquoi ce variateur : {nom} — {n} modèle(s) de puissance '
+              "inférieure n'acceptent pas le courant de ce champ (plage MPPT) ; "
+              'le modèle supérieur est retenu.',
+        'en': 'Why this drive: {nom} — {n} lower-rated model(s) cannot accept '
+              "this array's current (MPPT range); the next model up is selected.",
+        'ar': 'لماذا هذا المغير: {nom} — {n} نموذج (نماذج) بقدرة أدنى لا تقبل '
+              'تيار هذا الحقل (مجال MPPT)؛ تم اختيار النموذج الأعلى.'},
+    'agr_note_site_inconnu': {
+        'fr': 'Site non renseigné (ville ou GPS) : production calculée à plat '
+              "(débit × heures de pompage), sans variation d'un mois à l'autre.",
+        'en': 'Site not provided (town or GPS): yield computed flat (flow × '
+              'pumping hours), with no month-to-month variation.',
+        'ar': 'الموقع غير محدد (مدينة أو GPS): الإنتاج محسوب بشكل ثابت (الصبيب × '
+              'ساعات الضخ)، دون تغير من شهر إلى آخر.'},
+    'agr_note_irradiation_repli': {
+        'fr': 'Ensoleillement du site indisponible : production calculée à plat '
+              "(débit × heures de pompage), sans variation d'un mois à l'autre.",
+        'en': 'Site irradiation unavailable: yield computed flat (flow × pumping '
+              'hours), with no month-to-month variation.',
+        'ar': 'إشعاع الموقع غير متاح: الإنتاج محسوب بشكل ثابت (الصبيب × ساعات '
+              'الضخ)، دون تغير من شهر إلى آخر.'},
+    'agr_note_rendement_pompe': {
+        'fr': 'Rendement de la pompe non publié par le fabricant : la puissance '
+              'est calculée sur un rendement de groupe prudent (estimation).',
+        'en': 'Pump efficiency not published by the manufacturer: power computed '
+              'on a conservative unit efficiency (estimate).',
+        'ar': 'مردود المضخة غير منشور من الصانع: القدرة محسوبة على مردود مجموعة '
+              'حذر (تقدير).'},
+    'agr_note_rendement_variateur': {
+        'fr': 'Rendement du variateur non publié sur sa fiche : aucune perte du '
+              "variateur n'est comptée (production en borne haute).",
+        'en': 'Drive efficiency not published on its datasheet: no drive loss is '
+              'counted (upper-bound yield).',
+        'ar': 'مردود المغير غير منشور في بطاقته: لم تُحتسب أي خسارة للمغير (إنتاج '
+              'بالحد الأعلى).'},
+    'agr_note_plafond_forage': {
+        'fr': 'Débit limité par le forage : {plafond} m³/h au plus ; le besoin '
+              "du mois le plus défavorable n'est pas entièrement couvert.",
+        'en': 'Flow limited by the borehole: {plafond} m³/h at most; the need of '
+              'the worst month is not fully covered.',
+        'ar': 'الصبيب محدود بالبئر: {plafond} م³/س على الأكثر؛ حاجة أصعب شهر غير '
+              'مغطاة بالكامل.'},
+    # AGQ30 — étapes suivantes (textes des étapes : agricole/mentions.py).
+    'agr_etapes_suivantes': {'fr': 'Étapes suivantes', 'en': 'Next steps',
+                             'ar': 'الخطوات التالية'},
+    'agr_acompte_apres_fda': {
+        'fr': "Acompte à la commande — après l'accord FDA si vous demandez "
+              "l'aide.",
+        'en': 'Down payment on order — after the FDA approval if you apply '
+              'for the subsidy.',
+        'ar': 'الدفعة المقدمة عند الطلب — بعد موافقة صندوق التنمية الفلاحية إن طلبتم الدعم.'},
+    'agr_estimation_fao56': {'fr': 'estimation FAO-56',
+                             'en': 'FAO-56 estimate',
+                             'ar': 'تقدير FAO-56'},
+    # ``{pompe}`` / ``{forage}`` : débits DÉJÀ formatés avec leur unité.
+    'agr_controle_forage_ok': {
+        'fr': 'Pompe {pompe} ≤ forage {forage}',
+        'en': 'Pump {pompe} ≤ borehole {forage}',
+        'ar': 'المضخة {pompe} ≤ الثقب {forage}'},
+    'agr_controle_forage_depasse': {
+        'fr': 'Pompe {pompe} &gt; forage {forage} : à vérifier à la visite',
+        'en': 'Pump {pompe} &gt; borehole {forage}: to be checked at the '
+              'site visit',
+        'ar': 'المضخة {pompe} &gt; الثقب {forage}: يتم التحقق خلال الزيارة'},
     'agr_panneaux_n': {'fr': '{n} panneaux', 'en': '{n} panels',
                        'ar': '{n} لوحا'},
     'agr_surface_irrigable': {'fr': 'Surface irrigable',
@@ -257,10 +371,25 @@ LIBELLES = {
                              'ar': 'استرجاع الاستثمار، بدون دعم'},
     'agr_n_ans': {'fr': '{n} ans', 'en': '{n} years', 'ar': '{n} سنوات'},
     'agr_n_an': {'fr': '{n} an', 'en': '{n} year', 'ar': '{n} سنة'},
+    'agr_au_dela_de_n_ans': {'fr': 'au-delà de {n} ans',
+                             'en': 'beyond {n} years',
+                             'ar': 'أكثر من {n} سنوات'},
     'agr_n_mois': {'fr': '{n} mois', 'en': '{n} months', 'ar': '{n} أشهر'},
     'agr_cout_m3': {'fr': 'Coût du m³ : avant / avec le solaire',
                     'en': 'Cost per m³: before / with solar',
                     'ar': 'تكلفة المتر المكعب: قبل / مع الطاقة الشمسية'},
+    'agr_cout_eau_solaire': {'fr': "Coût de l'eau solaire",
+                             'en': 'Cost of solar-pumped water',
+                             'ar': 'تكلفة الماء بالطاقة الشمسية'},
+    'agr_mad_par_m3': {'fr': '{n} MAD/m³', 'en': '{n} MAD/m³',
+                       'ar': '{n} درهم/م³'},
+    'agr_formule_m3_solaire': {
+        'fr': 'Calcul : (investissement + charges du solaire sur {horizon} '
+              "ans) ÷ (volume d'eau utile par an × {horizon}).",
+        'en': 'Calculation: (investment + solar running costs over {horizon} '
+              'years) ÷ (useful water volume per year × {horizon}).',
+        'ar': 'الحساب: (الاستثمار + تكاليف الطاقة الشمسية على {horizon} '
+              'سنوات) ÷ (حجم الماء النافع في السنة × {horizon}).'},
     'agr_remplacement': {'fr': 'Remplacement {composant}, année {annee} (compté)',
                          'en': 'Replacement of the {composant}, year {annee} '
                                '(included)',
@@ -271,6 +400,12 @@ LIBELLES = {
     'agr_conso_prix_paye': {'fr': 'Consommation et prix payé : {phrase}.',
                             'en': 'Consumption and price paid: {phrase}.',
                             'ar': 'الاستهلاك والثمن المؤدى: {phrase}.'},
+    'agr_mois_irrigation_phrase': {'fr': "Mois d'irrigation : {phrase}.",
+                                   'en': 'Irrigation months: {phrase}.',
+                                   'ar': 'أشهر السقي: {phrase}.'},
+    'agr_declares_par_vous_le': {'fr': 'déclarés par vous le {date}',
+                                 'en': 'declared by you on {date}',
+                                 'ar': 'صرحتم بها بتاريخ {date}'},
     'agr_indexation': {'fr': 'Indexation du carburant : 0 %.',
                        'en': 'Fuel price indexation: 0%.',
                        'ar': 'مراجعة ثمن الوقود: 0 %.'},
@@ -389,6 +524,15 @@ LIBELLES = {
         'fr': 'Garantie constructeur du variateur : {duree}',
         'en': 'Drive manufacturer warranty: {duree}',
         'ar': 'ضمان الصانع للمغير: {duree}'},
+    # AGQ14 (D-AGQ-4) — durée sans garantie écrite : jamais un chiffre.
+    'agr_selon_fiche_fournisseur': {'fr': 'selon fiche fournisseur',
+                                    'en': "as per the supplier's sheet",
+                                    'ar': 'حسب بطاقة المورد'},
+    'agr_gar_court_produit': {'fr': '{duree} produit', 'en': '{duree} product',
+                              'ar': '{duree} للمنتوج'},
+    'agr_gar_court_production': {'fr': '{duree} production',
+                                 'en': '{duree} output',
+                                 'ar': '{duree} للإنتاج'},
     'agr_garantie_panneaux': {'fr': 'Garantie produit des panneaux : {duree}',
                               'en': 'Panel product warranty: {duree}',
                               'ar': 'ضمان منتوج الألواح: {duree}'},
@@ -403,6 +547,59 @@ LIBELLES = {
     'agr_non_inclus_genie_civil': {'fr': 'le génie civil',
                                    'en': 'civil works',
                                    'ar': 'الهندسة المدنية'},
+    # AGQ11 — éléments du kit minimum absents des lignes (sans prix).
+    'agr_non_inclus_pompe': {'fr': 'la pompe', 'en': 'the pump',
+                             'ar': 'المضخة'},
+    'agr_non_inclus_variateur': {'fr': 'le variateur', 'en': 'the drive',
+                                 'ar': 'المغير'},
+    'agr_non_inclus_structure': {'fr': 'la structure au sol',
+                                 'en': 'the ground-mount structure',
+                                 'ar': 'الهيكل الأرضي'},
+    'agr_non_inclus_cable_dc': {'fr': 'le câble DC champ → variateur',
+                                'en': 'the DC cable from array to drive',
+                                'ar': 'كابل التيار المستمر من الحقل إلى المغير'},
+    'agr_non_inclus_installation': {'fr': "l'installation",
+                                    'en': 'the installation work',
+                                    'ar': 'التركيب'},
+    # AGQ11 — options NOMMÉES du kit (D-AGR-8, ``core.pompage.kit.OPTIONS``).
+    'agr_option_afficheur_variateur': {'fr': 'Afficheur du variateur',
+                                       'en': 'Drive display',
+                                       'ar': 'شاشة المغير'},
+    'agr_option_protection_dc': {'fr': 'Protections DC/AC',
+                                 'en': 'DC/AC protection devices',
+                                 'ar': 'حمايات التيار المستمر والمتناوب'},
+    'agr_option_sonde_niveau': {'fr': 'Sonde de niveau (marche à sec)',
+                                'en': 'Level probe (dry-run protection)',
+                                'ar': 'مسبار المستوى (الحماية من التشغيل الجاف)'},
+    'agr_option_compteur_eau': {'fr': "Compteur d'eau", 'en': 'Water meter',
+                                'ar': 'عداد الماء'},
+    'agr_option_cable_descente': {'fr': 'Câble de descente',
+                                  'en': 'Drop cable',
+                                  'ar': 'كابل النزول'},
+    'agr_option_colonne_refoulement': {'fr': 'Colonne de refoulement',
+                                       'en': 'Rising main',
+                                       'ar': 'أنبوب الدفع'},
+    'agr_option_clapet': {'fr': 'Clapet anti-retour',
+                          'en': 'Non-return valve',
+                          'ar': 'صمام عدم الرجوع'},
+    'agr_option_tuyauterie': {'fr': 'Tuyauterie', 'en': 'Pipework',
+                              'ar': 'الأنابيب'},
+    'agr_option_bassin': {'fr': 'Bassin', 'en': 'Storage tank',
+                          'ar': 'الحوض'},
+    'agr_option_entretien_pompage': {'fr': "Contrat d'entretien",
+                                     'en': 'Maintenance contract',
+                                     'ar': 'عقد الصيانة'},
+    'agr_option_antivol': {'fr': 'Fixations antivol',
+                           'en': 'Anti-theft fixings',
+                           'ar': 'تثبيتات مضادة للسرقة'},
+    'agr_option_cloture': {'fr': 'Clôture du champ', 'en': 'Array fence',
+                           'ar': 'سياج الحقل'},
+    'agr_option_mention_compteur_eau': {
+        'fr': 'exigé par la loi 36-15 et le dossier FDA 2024',
+        'en': 'required by Law 36-15 and the 2024 FDA file',
+        'ar': 'يفرضه القانون 36-15 وملف صندوق التنمية الفلاحية 2024'},
+    'agr_prix_sur_devis': {'fr': 'prix sur devis', 'en': 'price on request',
+                           'ar': 'الثمن عند الطلب'},
     'agr_formalites': {'fr': 'Formalités', 'en': 'Formalities',
                        'ar': 'الإجراءات'},
     'agr_valable': {'fr': "Offre valable jusqu'au <b>{date}</b>",
@@ -475,8 +672,28 @@ LIBELLES = {
     'agr_schema_profondeur': {'fr': 'Profondeur', 'en': 'Depth',
                               'ar': 'العمق'},
     'agr_schema_niveau': {'fr': 'Niveau', 'en': 'Level', 'ar': 'المستوى'},
+    # AGQ32 — la distance saisie est celle du champ au coffret (variateur).
+    # Clé d'origine conservée telle quelle (empreinte « règles d'origine »
+    # #898 : un libellé existant ne change jamais de texte) ; le libellé
+    # précis vit sous une clé NEUVE.
     'agr_schema_distance': {'fr': 'Distance', 'en': 'Distance',
                             'ar': 'المسافة'},
+    'agr_schema_distance_champ_coffret': {'fr': 'Distance champ → coffret',
+                                          'en': 'Array → control box distance',
+                                          'ar': 'المسافة من الحقل إلى العلبة'},
+    'agr_schema_ligne_eau': {'fr': 'Eau', 'en': 'Water', 'ar': 'الماء'},
+    'agr_schema_ligne_energie': {'fr': 'Énergie', 'en': 'Energy',
+                                 'ar': 'الطاقة'},
+    # Clé d'origine conservée (empreinte #898) ; la phrase n'est plus imprimée
+    # (AGQ32 omet la section quand la liste est vide).
+    'agr_annexe_aucune_reference': {
+        'fr': 'Aucune référence de pompage à ce jour.',
+        'en': 'No pumping reference to date.',
+        'ar': 'لا توجد مراجع للضخ إلى حد الآن.'},
+    'agr_mois_sans_besoin': {
+        'fr': 'Mois grisés : aucun besoin — eau disponible.',
+        'en': 'Greyed months: no need — water available.',
+        'ar': 'الأشهر الرمادية: لا حاجة — الماء متوفر.'},
     'agr_schema_hmt': {'fr': 'HMT', 'en': 'Head', 'ar': 'الارتفاع'},
     'agr_schema_debit': {'fr': 'Débit', 'en': 'Flow', 'ar': 'الصبيب'},
     # Annexe « Note de calcul du kit de pompage » (AGR319, dossier FDA).
@@ -526,15 +743,72 @@ LIBELLES = {
                               'en': 'Calculation assumptions and their sources',
                               'ar': 'فرضيات الحساب ومصادرها'},
     'agr_annexe_est': {'fr': 'EST.', 'en': 'EST.', 'ar': 'تقدير'},
+    # AGQ12 — en-tête de la table des hypothèses de l'annexe (libellé client).
+    'agr_annexe_hyp_libelle': {'fr': 'Hypothèse', 'en': 'Assumption', 'ar': 'الفرضية'},
+    'agr_annexe_hyp_valeur': {'fr': 'Valeur', 'en': 'Value', 'ar': 'القيمة'},
+    'agr_annexe_hyp_source': {'fr': 'Source', 'en': 'Source', 'ar': 'المصدر'},
+    # AGQ31 — annexe FDA complétée (site, besoin, calage, chaînes, point,
+    # besoin/livré/%, garanties, cartouche) : textes, jamais un calcul.
+    'agr_annexe_site_titre': {'fr': 'Site et besoin', 'en': 'Site and need', 'ar': 'الموقع والحاجة'},
+    'agr_annexe_site': {'fr': 'Site : {ville}', 'en': 'Site: {ville}', 'ar': 'الموقع: {ville}'},
+    'agr_annexe_cultures': {'fr': 'Cultures et surfaces déclarées : {liste}',
+                            'en': 'Declared crops and areas: {liste}',
+                            'ar': 'الزراعات والمساحات المصرح بها: {liste}'},
+    'agr_annexe_besoin_declare': {'fr': 'Besoin déclaré par vous (volume par jour).',
+                                  'en': 'Need declared by you (daily volume).',
+                                  'ar': 'الحاجة صرحتم بها (الحجم اليومي).'},
+    'agr_annexe_besoin_fao56': {'fr': 'Besoin agronomique FAO-56 (ET0 : {et0}).',
+                                'en': 'FAO-56 agronomic need (ET0: {et0}).',
+                                'ar': 'الحاجة الفلاحية FAO-56 (ET0: {et0}).'},
+    'agr_annexe_irradiation_pvgis': {
+        'fr': 'Ensoleillement : PVGIS (Commission européenne), profil horaire du site.',
+        'en': 'Sunshine: PVGIS (European Commission), hourly profile of the site.',
+        'ar': 'الإشعاع الشمسي: PVGIS (المفوضية الأوروبية)، التوزيع الساعي للموقع.'},
+    'agr_annexe_irradiation_repli': {
+        'fr': 'Ensoleillement : repli à plat (débit × heures de pompage du réglage société).',
+        'en': 'Sunshine: flat fallback (flow × pumping hours of the company setting).',
+        'ar': 'الإشعاع الشمسي: بديل ثابت (الصبيب × ساعات الضخ حسب إعداد الشركة).'},
+    'agr_annexe_hmt_saisie': {'fr': 'HMT saisie telle quelle (aucune composante calculée).',
+                              'en': 'Head entered as such (no component computed).',
+                              'ar': 'الارتفاع المانومتري أُدخل كما هو (دون حساب المكونات).'},
+    'agr_annexe_ligne_besoin': {'fr': 'Besoin (m³/j)', 'en': 'Need (m³/day)', 'ar': 'الحاجة (م³/يوم)'},
+    'agr_annexe_ligne_livre': {'fr': 'Livré (m³/j)', 'en': 'Delivered (m³/day)', 'ar': 'المضخوخ (م³/يوم)'},
+    'agr_annexe_ligne_couverture': {'fr': 'Couverture', 'en': 'Coverage', 'ar': 'التغطية'},
+    'agr_annexe_dimensionnement_titre': {
+        'fr': 'Calage, chaînes et point de fonctionnement',
+        'en': 'Setting depth, strings and operating point',
+        'ar': 'عمق التثبيت والسلاسل ونقطة التشغيل'},
+    'agr_annexe_calage': {'fr': 'Profondeur de calage : {m} m', 'en': 'Setting depth: {m} m',
+                          'ar': 'عمق تثبيت المضخة: {m} م'},
+    'agr_annexe_chaines': {
+        'fr': 'Chaînes : {serie} en série × {paralleles} en parallèle ; Voc à froid {voc} V, '
+              'Vmp à chaud {vmp} V — vérifiées contre l\'entrée du variateur {variateur}.',
+        'en': 'Strings: {serie} in series × {paralleles} in parallel; cold Voc {voc} V, '
+              'hot Vmp {vmp} V — checked against the drive input {variateur}.',
+        'ar': 'السلاسل: {serie} على التوالي × {paralleles} على التوازي؛ Voc بارد {voc} ف، '
+              'Vmp ساخن {vmp} ف — تم التحقق منها مقابل مدخل المغير {variateur}.'},
+    'agr_annexe_chaines_non_verifiees': {'fr': 'Chaînes non vérifiées : {motif}.',
+                                         'en': 'Strings not checked: {motif}.',
+                                         'ar': 'السلاسل غير متحقق منها: {motif}.'},
+    'agr_annexe_point': {'fr': 'Point de fonctionnement : {q} m³/h à {hmt} m (sur la courbe constructeur).',
+                         'en': 'Operating point: {q} m³/h at {hmt} m (on the manufacturer curve).',
+                         'ar': 'نقطة التشغيل: {q} م³/س عند {hmt} م (على منحنى الصانع).'},
+    'agr_annexe_debits_explique': {
+        'fr': 'Débit de conception : ce que la pompe doit fournir au mois critique ; débit livré : '
+              "l'eau réellement pompée chaque jour selon l'ensoleillement.",
+        'en': 'Design flow: what the pump must supply in the critical month; delivered flow: '
+              'the water actually pumped each day according to sunshine.',
+        'ar': 'صبيب التصميم: ما يجب أن توفره المضخة في الشهر الحرج؛ الصبيب المضخوخ: '
+              'الماء المضخوخ فعلاً كل يوم حسب الإشعاع الشمسي.'},
+    'agr_annexe_garanties': {'fr': 'Garanties : {liste}', 'en': 'Warranties: {liste}', 'ar': 'الضمانات: {liste}'},
+    'agr_annexe_cartouche': {'fr': 'Étude réalisée par {societe} le {date}.',
+                             'en': 'Study carried out by {societe} on {date}.',
+                             'ar': 'دراسة أنجزتها {societe} بتاريخ {date}.'},
     'agr_annexe_fiches': {'fr': 'Fiches produits', 'en': 'Product sheets',
                           'ar': 'بطاقات المنتجات'},
     'agr_annexe_references': {'fr': 'Références de la société',
                               'en': 'Company references',
                               'ar': 'مراجع الشركة'},
-    'agr_annexe_aucune_reference': {
-        'fr': 'Aucune référence de pompage à ce jour.',
-        'en': 'No pumping reference to date.',
-        'ar': 'لا توجد مراجع للضخ إلى حد الآن.'},
     'agr_annexe_omis': {'fr': 'Non renseigné à ce jour.',
                         'en': 'Not provided to date.',
                         'ar': 'غير مدخل إلى حد الآن.'},

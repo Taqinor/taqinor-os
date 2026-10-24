@@ -1903,6 +1903,13 @@ def modules_vendus_du_devis(devis):
     return int(nb) if nb else None
 
 
+def unite_par_energie():
+    """AGQ19 — la table unique énergie → unité de consommation
+    (``economie_pompage.UNITE_PAR_ENERGIE``), copie neuve."""
+    from .economie_pompage import UNITE_PAR_ENERGIE
+    return dict(UNITE_PAR_ENERGIE)
+
+
 def profil_charge_prerequis_ci(rythme, categorie=None, *, company=None, mode=None,
                                cle_profil=None, en_champs_lead=False):
     """ADEV76 (D-ACI-5=a) — LA règle des prérequis du profil de charge C&I,

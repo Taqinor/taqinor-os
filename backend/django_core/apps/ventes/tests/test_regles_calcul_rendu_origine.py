@@ -145,6 +145,48 @@ _LIBELLES_APDF = tuple(
     ('libelles_document', cle) for cle in i18n_labels.LIBELLES
     if cle.startswith(('res_', 'op_', 'lg_', 'cgv_', 'tva_'))
     or cle == 'clauses_particulieres')
+#: AGQ (audit agricole du 23/10/2026) — libellés du document agricole ajoutés
+#: après le merge-base (options du kit, étapes suivantes, unités, notes,
+#: annexe) : des TEXTES de ``libelles_document``, jamais un chiffre.
+_CLES_AGQ = frozenset((
+    'agr_schema_distance_champ_coffret',
+    # AGQ3 (D-AGQ-2) — mois de conception, plus bas, mois sous tolérance.
+    'agr_heures_equivalentes_mois', 'agr_hero_mois_conception',
+    'agr_au_plus_bas', 'agr_mois_sous_tolerance', 'agr_mois_couverture',
+    # AGQ12 — en-tête de la table des hypothèses de l'annexe.
+    'agr_annexe_hyp_libelle', 'agr_annexe_hyp_valeur', 'agr_annexe_hyp_source',
+    # AGQ38 — notes client issues des alertes du noyau.
+    'agr_notes_titre', 'agr_note_ratio_champ_pompe', 'agr_note_variateur_suivant',
+    'agr_note_site_inconnu', 'agr_note_irradiation_repli', 'agr_note_rendement_pompe',
+    'agr_note_rendement_variateur', 'agr_note_plafond_forage',
+    # AGQ31 — annexe FDA complétée.
+    'agr_annexe_site_titre', 'agr_annexe_site', 'agr_annexe_cultures',
+    'agr_annexe_besoin_declare', 'agr_annexe_besoin_fao56', 'agr_annexe_irradiation_pvgis',
+    'agr_annexe_irradiation_repli', 'agr_annexe_hmt_saisie', 'agr_annexe_ligne_besoin',
+    'agr_annexe_ligne_livre', 'agr_annexe_ligne_couverture', 'agr_annexe_dimensionnement_titre',
+    'agr_annexe_calage', 'agr_annexe_chaines', 'agr_annexe_chaines_non_verifiees',
+    'agr_annexe_point', 'agr_annexe_debits_explique', 'agr_annexe_garanties', 'agr_annexe_cartouche',
+    'agr_acompte_apres_fda', 'agr_au_dela_de_n_ans',
+    'agr_controle_forage_depasse', 'agr_controle_forage_ok',
+    'agr_cout_eau_solaire', 'agr_declares_par_vous_le',
+    'agr_estimation_fao56', 'agr_etapes_suivantes',
+    'agr_formule_m3_solaire', 'agr_gar_court_production',
+    'agr_gar_court_produit', 'agr_heures_equivalentes', 'agr_mad_par_m3',
+    'agr_mois_irrigation_phrase', 'agr_mois_sans_besoin',
+    'agr_non_inclus_cable_dc', 'agr_non_inclus_installation',
+    'agr_non_inclus_pompe', 'agr_non_inclus_structure',
+    'agr_non_inclus_variateur', 'agr_option_afficheur_variateur',
+    'agr_option_antivol', 'agr_option_bassin', 'agr_option_cable_descente',
+    'agr_option_clapet', 'agr_option_cloture',
+    'agr_option_colonne_refoulement', 'agr_option_compteur_eau',
+    'agr_option_entretien_pompage', 'agr_option_mention_compteur_eau',
+    'agr_option_protection_dc', 'agr_option_sonde_niveau',
+    'agr_option_tuyauterie', 'agr_prix_sur_devis', 'agr_schema_ligne_eau',
+    'agr_schema_ligne_energie', 'agr_selon_fiche_fournisseur', 'unite_cv',
+    'unite_ha', 'unite_kwc', 'unite_m', 'unite_m3h', 'unite_m3j',
+))
+_LIBELLES_AGQ = tuple(('libelles_document', cle) for cle in i18n_labels.LIBELLES
+                      if cle in _CLES_AGQ)
 CLES_HORS_RENDU_ORIGINE = (
     ('entreprise', 'capital_social'), ('entreprise', 'forme_juridique'),
     ('regles_calcul_origine',),
@@ -215,7 +257,7 @@ CLES_HORS_RENDU_ORIGINE = (
         # AMOT94 — tableau des 25 ans.
         'ci_fx_annee', 'ci_fx_production', 'ci_fx_economie', 'ci_fx_om',
         'ci_fx_remplacement', 'ci_fx_flux')),
-    *_LIBELLES_APDF)
+    *_LIBELLES_APDF, *_LIBELLES_AGQ)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 
 

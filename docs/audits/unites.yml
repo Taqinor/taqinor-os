@@ -610,7 +610,7 @@ unites:
     pr: 876
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-sav.md
-    notes: "Garantie partant de la date de réception ; SLA calculé d'une seule façon. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-sav.md) : 51 constats (3 S1 + 1 décision fondateur), 86 tâches ASAV ; ticket couvert par contrat facturé depuis l'écran, quotas de contrat faux, garantie recalculée à chaque modification."
+    notes: "vérifie ASAV du 24/10/2026 (clôture, 88/89 cochées ; dossier docs/audits/2026-10-24-sav-verifie.md) : 27 tâches échantillonnées (graine 641a2266d) — 18 ok, 9 partielles ; 4 écarts S1-S2 reproduits par sonde (contrat postérieur à l'ouverture qui couvre à 0, override récidive accordé au technicien, signalement QR perdu après refus de photo, registre des garanties sans la garantie légale) + 6 S3 → ASAV104-ASAV114 ; 1 critique Fable. Garantie partant de la date de réception ; SLA calculé d'une seule façon. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-sav.md) : 51 constats (3 S1 + 1 décision fondateur), 86 tâches ASAV ; ticket couvert par contrat facturé depuis l'écran, quotas de contrat faux, garantie recalculée à chaque modification."
 
   - id: X7
     rang: 18

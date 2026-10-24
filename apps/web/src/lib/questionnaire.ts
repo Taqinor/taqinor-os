@@ -808,6 +808,11 @@ export function buildSectionReponses(
       }
       const mois = cleanMoisIrrigation(raw.mois_irrigation);
       if (mois) out.mois_irrigation = mois;
+      // AGQ34 (D-AGQ-6) — jours d'irrigation par semaine : 0 < jours ≤ 7, jamais
+      // pré-rempli ; absent ou hors bornes ⇒ rien d'envoyé (la dépense « par jour
+      // d'irrigation » du devis exige cette réponse, AGQ10).
+      const jours = cleanPositiveNumber(raw.jours_irrigation_semaine, 7);
+      if (jours != null) out.jours_irrigation_semaine = jours;
       const compteur = cleanOuiNon(raw.compteur_eau);
       if (compteur !== undefined) out.compteur_eau = compteur;
       break;
@@ -875,7 +880,8 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
   pompage: [
     'source_eau', 'niveau_statique_m', 'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
     'irrigation_methode', 'pompe_alim_actuelle', 'butane_bouteilles_jour',
-    'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois', 'mois_irrigation', 'compteur_eau',
+    'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois', 'mois_irrigation',
+    'jours_irrigation_semaine', 'compteur_eau',
   ],
   equipements: [
     'equip_piscine', 'equip_piscine_pompe_kw', 'equip_voiture_electrique', 'equip_ve_km_semaine',

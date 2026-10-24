@@ -162,7 +162,8 @@ describe('AGW308 — la page', () => {
 
   it('chaque option servie porte « Ajouter au devis », gaté par la fonction pure', () => {
     expect(bloc).toContain('etatActivationOption({ ligneId: o.ligneId, apercuInterne, offreVivante: offerState');
-    expect(bloc).toContain("{etat !== 'masque' && (");
+    // AGQ35 — l'ajout en ligne n'existe qu'avec un prix connu.
+    expect(bloc).toContain("{etat !== 'masque' && o.prixConnu && (");
     expect(bloc).toContain('data-option-ajouter');
     expect(bloc).toContain("disabled={etat === 'apercu'}");
     expect(bloc).toContain('data-confirm-fr={conf.fr}');
