@@ -223,10 +223,16 @@ def _rangees_argent(argent, fmt_mad, L, d):
                 if h.get("cle") == "valorisation" else None,
                 ci_blocs._txt(h.get("valeur"))
                 + (f" — {source}" if source else "")))
+    # AMOT94 — le montant du remplacement sur la BASE servie : HT quand la
+    # TVA est récupérable (``argent.base == 'ht'``, D-CIQ-3), TTC sinon.
+    en_ht = argent.get("base") == "ht"
     for r in argent.get("remplacements") or []:
         if not isinstance(r, dict) or r.get("annee") is None:
             continue
         montant = r.get("montant_ttc_mad")
+        unite = L("ci_ttc", "TTC")
+        if en_ht and r.get("montant_ht_mad") is not None:
+            montant, unite = r.get("montant_ht_mad"), L("ci_ht", "HT")
         composant = ci_blocs._txt(r.get("composant"))
         cle_composant = f"ci_garantie_{composant}"
         if ci_blocs.langue(d) != "fr" and cle_composant in _cles_catalogue():
@@ -238,7 +244,7 @@ def _rangees_argent(argent, fmt_mad, L, d):
               "{annee}", composant=composant,
               annee=f"{r['annee']:g}" if isinstance(r["annee"], (int, float))
               else r["annee"]),
-            (f"{fmt_mad(montant)}&nbsp;MAD {L('ci_ttc', 'TTC')}"
+            (f"{fmt_mad(montant)}&nbsp;MAD {unite}"
              if montant is not None else "") + motif))
     return rangees
 

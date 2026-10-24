@@ -251,6 +251,35 @@ class Amot91Hypotheses(SimpleTestCase):
                       texte)
 
 
+class Amot94RemplacementSurLaBaseServie(SimpleTestCase):
+    """AMOT94 — la rangée « Remplacement onduleur » des hypothèses dit le
+    montant sur la BASE servie : HT quand la TVA est récupérable
+    (``argent.base == 'ht'``), TTC sinon (base « deux » inchangée)."""
+
+    def _ligne(self, exemple):
+        d = _data(exemple)
+        argent = synthese_ci(dict(d))["argent"]
+        texte = _texte(_pages(d)[3])
+        debut = texte.index("Remplacement onduleur en année")
+        return argent, texte[debut:debut + 80]
+
+    def test_base_ht_montant_ht(self):
+        argent, ligne = self._ligne("exemple_industriel_mt")
+        self.assertEqual(argent["base"], "ht")
+        ht = argent["remplacements"][0]["montant_ht_mad"]
+        ttc = argent["remplacements"][0]["montant_ttc_mad"]
+        self.assertIn(fmt_centimes(ht).replace(" ", " ") + " MAD HT", ligne)
+        self.assertNotIn(fmt_centimes(ttc).replace(" ", " "), ligne)
+        self.assertNotIn("TTC", ligne)
+
+    def test_base_deux_montant_ttc_inchange(self):
+        argent, ligne = self._ligne("exemple")
+        self.assertEqual(argent["base"], "deux")
+        ttc = argent["remplacements"][0]["montant_ttc_mad"]
+        self.assertIn(fmt_centimes(ttc).replace(" ", " ") + " MAD TTC",
+                      ligne)
+
+
 class Amot94TableauVingtCinqAns(SimpleTestCase):
     """AMOT94 — le flux servi année par année (0 → 25) à la place des cinq
     jalons : production, économie, O&M (si déduite), remplacement, flux net
