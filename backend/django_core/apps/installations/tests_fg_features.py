@@ -413,7 +413,9 @@ class TestFG75Releves(TestCase):
             '/api/django/installations/chantiers/{id}/ajouter-releve/']['post']
         corps = operation['requestBody']
         self.assertTrue(corps['required'])
-        self.assertIn('multipart/form-data', corps['content'])
+        # api-fuzz 24/10 : multipart SEUL -- l'urlencoded publié envoyait
+        # ``file=`` (texte) et recevait « Fichier requis ».
+        self.assertEqual(list(corps['content']), ['multipart/form-data'])
         composant = schema['components']['schemas']['AjouterReleveRequeteRequest']
         self.assertEqual(composant['required'], ['file'])
         self.assertEqual(composant['properties']['file']['format'], 'binary')
