@@ -4695,8 +4695,6 @@ def services_ci_du_devis(devis):
     return om, delai_intervention_societe(devis)
 
 
-
-
 # ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────
 #: Champs texte d'une ligne rendus tels quels par les gabarits (les mêmes que
 #: ceux que le moteur legacy échappe déjà à l'ingestion, ERR37).
