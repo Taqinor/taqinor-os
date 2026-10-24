@@ -4,7 +4,9 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import NotFound
 
-from core.champs_stricts import EntierStrict, IdInconnu404Mixin
+from core.champs_stricts import (
+    ChampsStrictsSansDecimalMixin, EntierStrict, IdInconnu404Mixin,
+)
 from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
@@ -54,8 +56,8 @@ class _InstrumentsParEssaiSchema(OpenApiSerializerFieldExtension):
         return {'type': 'object', 'additionalProperties': detail}
 
 
-class CommissioningRecordSerializer(IdInconnu404Mixin, UniciteEn409Mixin, SameCompanyFKSerializerMixin,
-                                    serializers.ModelSerializer):
+class CommissioningRecordSerializer(IdInconnu404Mixin, UniciteEn409Mixin, ChampsStrictsSansDecimalMixin,
+                                    SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     # ACHT53 — FK inscriptibles bornées à la société.
     same_company_fields = ('installation',)
     # CIQ626 — ``{essai: identifiant d'instrument}`` : un objet d'entiers (ou

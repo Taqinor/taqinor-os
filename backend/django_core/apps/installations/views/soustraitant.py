@@ -76,6 +76,10 @@ class SousTraitantViewSet(oa.JsonOnlyMixin, viewsets.ViewSet):
         qs = stock_selectors.sous_traitants_qs(
             self._company(), metier=metier, actif=actif)
         search = params.get('search')
+        if search and '\x00' in search:
+            # ENF11 : aucun texte stocke ne porte de NUL -> aucune ligne
+            # (comme ``SearchFilter`` ailleurs) ; le NUL atteignait Postgres (500).
+            return qs.none()
         if search:
             from django.db.models import Q
             qs = qs.filter(Q(nom__icontains=search) | Q(ice__icontains=search))
