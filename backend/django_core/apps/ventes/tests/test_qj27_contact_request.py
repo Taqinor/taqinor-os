@@ -242,12 +242,23 @@ class DeclinPropositionTests(ContactRequestBase):
             event_type=EventType.CLIENT_CONTACT_REQUEST).count(), 2)
 
     def test_motif_invalide_ou_autre_sans_texte_400(self):
+        from apps.ventes.models import DevisActivity
+        # La notification LEAD_NEW posée par la création du lead (setUp) n'est
+        # pas un effet du déclin : on mesure ce que le 400 aurait écrit.
+        avant = (Notification.objects.count(),
+                 LeadActivity.objects.filter(lead=self.lead).count(),
+                 DevisActivity.objects.filter(devis=self.devis).count())
         for corps in ({'motif': 'inconnu'}, {'motif': 'autre'}, {}):
             with self.subTest(corps=corps):
                 resp = self._decliner(corps)
                 self.assertEqual(resp.status_code, 400, resp.data)
                 self.assertEqual(resp.data['champ'], 'motif')
-        self.assertFalse(Notification.objects.exists())
+        self.assertFalse(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).exists())
+        self.assertEqual(
+            (Notification.objects.count(),
+             LeadActivity.objects.filter(lead=self.lead).count(),
+             DevisActivity.objects.filter(devis=self.devis).count()), avant)
 
     def test_lien_sous_code_de_lecture_403_sans_rien_ecrire(self):
         """F (revue du 24/10/2026) — même garde que l'acceptation : lien qui
