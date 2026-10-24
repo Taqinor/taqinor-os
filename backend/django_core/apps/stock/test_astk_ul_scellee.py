@@ -89,7 +89,7 @@ class UniteLogistiqueScelleeTests(TestCase):
     def test_parent_egal_a_soi_refuse(self):
         r = self.api.patch(
             f'{URL}{self.v.id}/', {'parent': self.v.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF11 : cycle = état
         self.assertIn('cycle', str(r.data))
         self.v.refresh_from_db()
         self.assertIsNone(self.v.parent_id)
@@ -100,7 +100,7 @@ class UniteLogistiqueScelleeTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         r = self.api.patch(
             f'{URL}{self.v.id}/', {'parent': self.w.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF11 : cycle = état
         self.assertIn('cycle', str(r.data))
         self.v.refresh_from_db()
         self.assertIsNone(self.v.parent_id)
@@ -114,7 +114,7 @@ class UniteLogistiqueScelleeTests(TestCase):
         UniteLogistique.objects.filter(pk=self.w.pk).update(parent=self.v)
         r = self.api.post(f'{URL}{self.v.id}/deplacer/',
                           {'bin_destination': self.bin.id}, format='json')
-        self.assertIn(r.status_code, (200, 400), r.content)
+        self.assertIn(r.status_code, (200, 400, 409), r.content)
         if r.status_code == 200:
             self.assertEqual(sorted(r.data['unites_deplacees']),
                              sorted([self.v.id, self.w.id]))
@@ -122,4 +122,4 @@ class UniteLogistiqueScelleeTests(TestCase):
         UniteLogistique.objects.filter(pk=self.w.pk).update(parent=self.w)
         r = self.api.post(f'{URL}{self.w.id}/deplacer/',
                           {'bin_destination': self.bin.id}, format='json')
-        self.assertIn(r.status_code, (200, 400), r.content)
+        self.assertIn(r.status_code, (200, 400, 409), r.content)

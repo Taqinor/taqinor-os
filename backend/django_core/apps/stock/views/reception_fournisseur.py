@@ -5,9 +5,10 @@ from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from ..openapi_helpers import BINARY, ID_OU_VIDE, LISTE, P, PDF, STR, choix_ou_vide, corps
+from ..utils.params import etiquette_options_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
-from ..erreurs_achats import ConflitEtat
+from ..erreurs_achats import ConflitEtat, statut_refus_metier
 from ..models import Produit, ReceptionFournisseur
 from ..serializers import ReceptionFournisseurSerializer, FactureFournisseurSerializer
 from authentication.permissions import (
@@ -184,8 +185,8 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 if parsed.get('date_peremption') else None),
         })
 
-    @extend_schema(parameters=[P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
-                               P('sortie', STR, False, 'html pour la version HTML', ['html', 'pdf'])],
+    @extend_schema(parameters=[P('symbology', STR, False, 'Symbologie', ['qr', 'code128'], vide=True),
+                               P('sortie', STR, False, 'html pour la version HTML', ['html', 'pdf'], vide=True)],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquettes')
     def etiquettes(self, request, pk=None):
@@ -201,9 +202,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
         from apps.ventes.utils.pdf import _html_to_pdf
 
         reception = self.get_object()
-        symbology = request.query_params.get('symbology', 'qr')
-        if symbology not in ('qr', 'code128'):
-            symbology = 'qr'
+        symbology, sortie = etiquette_options_ou_400(request)
 
         items = []
         for ligne in reception.lignes.select_related('produit').all():
@@ -231,7 +230,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 status=status.HTTP_404_NOT_FOUND)
 
         html = labels.render_labels_html(items, symbology=symbology)
-        if request.query_params.get('sortie') == 'html':
+        if sortie == 'html':
             return HttpResponse(html, content_type='text/html; charset=utf-8')
         pdf_bytes = _html_to_pdf(html)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -319,14 +318,14 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 return Response(
                     {'detail': 'Unité logistique introuvable dans cette '
                                'société.'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
         try:
             resultat = affecter_reception_cross_dock(
                 reception=reception, user=request.user,
                 lignes=request.data.get('lignes'), unite=unite)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         return Response(resultat)
 
     @extend_schema(request=None, responses=ReceptionFournisseurSerializer)
@@ -349,7 +348,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
             confirm_reception_fournisseur(reception, request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         return Response(self.get_serializer(reception).data)
 
     @extend_schema(request=None, responses=ReceptionFournisseurSerializer)
@@ -388,7 +387,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
                 reception=reception)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         return Response(
             FactureFournisseurSerializer(
                 facture, context={'request': request}).data,

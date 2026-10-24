@@ -7,10 +7,12 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
-from ..erreurs_achats import EtatIncompatible, IntrouvableMetier, controler_capacite_bcf
+from ..erreurs_achats import controler_capacite_bcf, EtatIncompatible, IntrouvableMetier
 from ..utils.params import corps_objet, id_requete_ou_400
 from ..corps_achats import BcfConfirmerCorps, BcfEnvoyerEmailCorps, BcfReviserCorps, valider_corps
-from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, P, PDF, STR, corps, detail_reponse
+from ..openapi_helpers import (
+    BINARY, DATE_OU_VIDE, ID_ENTIER, ID_OU_VIDE, INT, LISTE, P, PDF, STR, corps, detail_reponse,
+)
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -595,8 +597,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             produit_ids=produit_ids)
         return Response(similaires)
 
-    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('fournisseur', INT, False,
-                                                                          'Fournisseur (id)')], responses=LISTE)
+    @extend_schema(parameters=[P('produit', ID_ENTIER, True, 'Produit (id)'),
+                               P('fournisseur', ID_OU_VIDE, False, 'Fournisseur (id)')], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='historique-prix')
     def historique_prix(self, request):
         """XPUR13 — popover « historique des prix » : derniers achats (toutes
@@ -604,12 +606,13 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         Query params : ``produit`` (requis), ``fournisseur`` (optionnel).
         LECTURE SEULE."""
         from ..services import historique_prix_produit
-        produit_id = request.query_params.get('produit')
+        from ..utils.params import id_requete_ou_400
+        produit_id = id_requete_ou_400(request, 'produit')
         if not produit_id:
             return Response(
                 {'detail': 'Le paramètre produit est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        fournisseur_id = request.query_params.get('fournisseur')
+        fournisseur_id = id_requete_ou_400(request, 'fournisseur')
         historique = historique_prix_produit(
             request.user.company, produit_id, fournisseur_id=fournisseur_id)
         return Response(historique)
@@ -660,7 +663,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         en_retard = bcf_en_retard_list(request.user.company)
         return Response(self.get_serializer(en_retard, many=True).data)
 
-    @extend_schema(request=corps('BcfRecevoirCorps', receptions=serializers.ListField(child=serializers.DictField())),
+    @extend_schema(request=corps('BcfRecevoirCorps',
+                                 receptions=serializers.ListField(child=serializers.DictField(), min_length=1)),
                    responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='recevoir')
     def recevoir(self, request, pk=None):

@@ -144,7 +144,7 @@ class UniteLogistiqueSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanySc
         courant = value
         while courant is not None and courant.pk not in vus:
             if courant.pk == self.instance.pk:
-                raise serializers.ValidationError(
+                raise ConflitEtat(
                     'Ce parent formerait un cycle (une unité ne peut pas se '
                     'contenir elle-même).')
             vus.add(courant.pk)
@@ -152,7 +152,7 @@ class UniteLogistiqueSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanySc
         return value
 
 
-class QuaiSerializer(CompanyScopedRelationsMixin,
+class QuaiSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                      ChampsTexteBooleenStricts, serializers.ModelSerializer):
     """NTWMS7 — quai de réception/expédition."""
 

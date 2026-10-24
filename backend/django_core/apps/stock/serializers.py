@@ -528,10 +528,10 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             raise serializers.ValidationError(
                 "La courbe de pompe doit contenir des listes `debits_m3h` "
                 "et `hmt_m`.")
-        if len(debits) != len(hmts):
-            raise serializers.ValidationError(
+        if len(debits) != len(hmts):  # règle croisée que le schéma ne dit pas : 409
+            raise ConflitEtat({'courbe_pompe': [
                 "`debits_m3h` et `hmt_m` doivent avoir la MÊME longueur "
-                f"({len(debits)} contre {len(hmts)}).")
+                f"({len(debits)} contre {len(hmts)})."]})
         if len(debits) < 2:
             raise serializers.ValidationError(
                 "La courbe de pompe doit compter au moins 2 points.")
@@ -547,8 +547,8 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                 "nombres finis.")
         # AGR102 — lisibilité physique : jamais corrigée en silence.
         probleme = controle_courbe_pompe_lisible(value)
-        if probleme:
-            raise serializers.ValidationError(probleme)
+        if probleme:  # séries croisées (et signe) : le schéma ne les dit pas -> 409
+            raise ConflitEtat({'courbe_pompe': [probleme]})
         return value
 
     def validate_sku(self, value):
@@ -615,8 +615,8 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
             if self.instance is not None:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
-                raise serializers.ValidationError(
-                    'Ce code-barres est déjà utilisé par un autre produit.')
+                raise ConflitEtat({'code_barres': [  # doublon = état des données : 409
+                    'Ce code-barres est déjà utilisé par un autre produit.']})
         return value
 
     # ── Unicité conditionnelle du NOM (contrainte `stock.0135`) ──────────────
@@ -1102,9 +1102,9 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
         for (_mi, ma, _p), (mi_suivant, _ma2, _p2) in zip(propres,
                                                           propres[1:]):
             if ma is None or ma > mi_suivant:
-                raise serializers.ValidationError(
+                raise ConflitEtat({'paliers_prix_vente': [  # règle croisée : 409
                     'Les paliers se recouvrent : chaque `seuil_max` (exclu) '
-                    'doit être ≤ au `seuil_min` du palier suivant.')
+                    'doit être ≤ au `seuil_min` du palier suivant.']})
         return [{'seuil_min': float(mi), 'seuil_max':
                  float(ma) if ma is not None else None,
                  'prix_vente_ttc': str(p)} for mi, ma, p in propres]
@@ -1330,7 +1330,7 @@ class EmplacementStockSerializer(ChampsTexteBooleenStricts, serializers.ModelSer
         if (est_principal
                 and type_proprietaire
                 != EmplacementStock.TypeProprietaire.INTERNE):
-            raise serializers.ValidationError(
+            raise ConflitEtat(
                 {'type_proprietaire': 'Le dépôt principal est toujours '
                                       'interne.'})
         if (type_proprietaire != EmplacementStock.TypeProprietaire.INTERNE
@@ -1735,7 +1735,7 @@ class BonCommandeFournisseurSerializer(CapaciteMontantsBcfMixin, SameCompanyFKSe
         lignes_data = validated_data.pop('lignes', None)
         if lignes_data is not None:
             if instance.statut != BonCommandeFournisseur.Statut.BROUILLON:
-                raise serializers.ValidationError(
+                raise ConflitEtat(
                     'Les lignes ne sont modifiables qu\'en brouillon.')
         # ASTK67 — en-tête et lignes dans UNE transaction : si les lignes
         # échouent (ligne protégée → 409, validation → 400), l'en-tête n'est
@@ -2231,7 +2231,7 @@ class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMix
             for champ in ('montant_ht', 'montant_tva', 'montant_ttc'):
                 if champ in validated_data and validated_data[champ] != getattr(
                         instance, champ):
-                    raise serializers.ValidationError({champ: self._MSG_DC16_UPDATE})
+                    raise ConflitEtat({champ: self._MSG_DC16_UPDATE})
         lignes_data = validated_data.pop('lignes', None)
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
@@ -2850,8 +2850,8 @@ class ModeleBonCommandeFournisseurSerializer(
         # ERR fuzz (modeles-bcf) : une ligne sans produit (PATCH partiel) ou un
         # produit en double violait NOT NULL / unique_together -> 500 ; 400.
         produits = [ligne.get('produit') for ligne in value]
-        if None in produits or len(set(produits)) != len(produits):
-            raise serializers.ValidationError('Chaque ligne exige un produit, sans doublon.')
+        if None in produits or len(set(produits)) != len(produits):  # doublon entre lignes : 409
+            raise ConflitEtat({'lignes': ['Chaque ligne exige un produit, sans doublon.']})
         return value
 
     def create(self, validated_data):

@@ -24,7 +24,7 @@ from authentication.permissions import (
 from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin
-from ..openapi_helpers import BOOL, INT, NUM, P, STR
+from ..openapi_helpers import BOOL, ID_OU_VIDE, INT, NUM, P, STR
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..models import IncidentQualiteFournisseur
@@ -66,8 +66,8 @@ class IncidentQualiteFournisseurSerializer(IdInconnu404Mixin, MasqueMontantsAcha
                             'resolu_par', 'date_resolution']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('produit', INT), P('gravite', STR),
-                                                   P('resolu', BOOL)]))
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', ID_OU_VIDE), P('produit', ID_OU_VIDE),
+                                                   P('gravite', STR), P('resolu', BOOL, vide=True)]))
 class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
     """NTSCM9 — incidents qualité fournisseur.
 
@@ -90,10 +90,11 @@ class IncidentQualiteFournisseurViewSet(CompanyScopedModelViewSet):
         # Filtrage MANUEL (aucun DjangoFilterBackend branché ici).
         qs = super().get_queryset()
         params = self.request.query_params
-        fournisseur = params.get('fournisseur')
+        from ..utils.params import id_requete_ou_400
+        fournisseur = id_requete_ou_400(self.request, 'fournisseur')
         if fournisseur:
             qs = qs.filter(fournisseur_id=fournisseur)
-        produit = params.get('produit')
+        produit = id_requete_ou_400(self.request, 'produit')
         if produit:
             qs = qs.filter(produit_id=produit)
         gravite = params.get('gravite')

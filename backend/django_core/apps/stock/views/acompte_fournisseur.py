@@ -4,7 +4,8 @@ from rest_framework.parsers import JSONParser
 from rest_framework import filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..openapi_helpers import INT, LISTE, P
+from ..openapi_helpers import ID_OU_VIDE, LISTE, P
+from ..utils.params import id_requete_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import AcompteFournisseur
 from ..serializers import AcompteFournisseurSerializer
@@ -14,7 +15,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('bon_commande', INT)]))
+@extend_schema_view(list=extend_schema(parameters=[P('bon_commande', ID_OU_VIDE)]))
 class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR8 — acomptes/avances fournisseur sur BCF. Imputés automatiquement
     (idempotent) sur la première facture du BCF via
@@ -45,7 +46,7 @@ class AcompteFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        bcf_id = self.request.query_params.get('bon_commande')
+        bcf_id = id_requete_ou_400(self.request, 'bon_commande')
         if bcf_id:
             qs = qs.filter(bon_commande_id=bcf_id)
         return qs

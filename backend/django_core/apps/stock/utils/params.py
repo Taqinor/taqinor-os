@@ -241,6 +241,18 @@ def statut_requete_ou_400(request, choix, nom='statut'):
     return choix_ou_400(valeur_unique_ou_400(request, nom), nom, list(choix))
 
 
+def etiquette_options_ou_400(request):
+    """``?symbology=qr|code128`` et ``?sortie=html|pdf`` des planches
+    d'étiquettes, STRICTS (api-fuzz stock B) : valeur unique, énumération
+    publiée au schéma (vide = défaut) — elles retombaient en silence sur
+    ``qr`` / ``pdf``. Retourne ``(symbology, sortie)``."""
+    symbology = choix_ou_400(valeur_unique_ou_400(request, 'symbology'),
+                             'symbology', ('qr', 'code128')) or 'qr'
+    sortie = choix_ou_400(valeur_unique_ou_400(request, 'sortie'),
+                          'sortie', ('html', 'pdf'))
+    return symbology, sortie
+
+
 #: Forme publiée de ``?ids=`` : identifiants entiers séparés par des virgules.
 MOTIF_IDS = r'^[0-9]{1,9}(,[0-9]{1,9})*$'
 

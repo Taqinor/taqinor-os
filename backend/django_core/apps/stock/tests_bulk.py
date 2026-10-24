@@ -71,6 +71,15 @@ class TestBulkWarrantyCategoryBrand(ProductBulkBase):
         self.assertEqual(p.categorie_id, cat.id)
         self.assertEqual(p.marque, 'VEICHI')
 
+    def test_set_category_vide_retire_la_categorie_sans_500(self):
+        # api-fuzz stock B : ``categorie_id: ""`` (publié) levait ValueError -> 400.
+        cat = Categorie.objects.create(company=self.company, nom='Onduleurs')
+        p = self.mk(categorie=cat)
+        resp = self.bulk(action='set_category', ids=[p.id], categorie_id='')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        p.refresh_from_db()
+        self.assertIsNone(p.categorie_id)
+
 
 class TestBulkExportAndScope(ProductBulkBase):
     def test_export_xlsx(self):
