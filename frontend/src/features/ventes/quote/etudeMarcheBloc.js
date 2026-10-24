@@ -27,6 +27,7 @@
 //                        AGR218 : `attestation` {attestee, le, signataire} →
 //                        `attestation_usage_agricole`.
 import { ligneProduitCatalogue } from '../solar.js'
+import { retarifierForfaitsEcran } from './forfaitsPanneau.js'
 import { todayLocalIso } from '../../../lib/dateLocale.js'
 
 const nombre = (v) => {
@@ -380,7 +381,9 @@ export function lignesDepuisKit(kit, produits) {
       taux_tva: 20,
     })
   }
-  return rows
+  // Forfaits au panneau : le barème du catalogue sur le compte de CE kit,
+  // comme le serveur à l'enregistrement (`forfaitsPanneau.js`).
+  return retarifierForfaitsEcran(rows, produits)
 }
 
 // ── CIQ222 — le tarif de SA facture (contrat `tarifs_ci.json`, `tarif_declare`) ──

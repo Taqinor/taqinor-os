@@ -1,0 +1,167 @@
+{
+ "sha": "3b988f5b8515932b964c79815f797f6967285f44",
+ "date": "2026-10-24",
+ "groupe": "AGQ",
+ "verdict": "PASS",
+ "couvre": [
+  "AGQ1",
+  "AGQ11",
+  "AGQ12",
+  "AGQ13",
+  "AGQ16",
+  "AGQ26",
+  "AGQ27",
+  "AGQ28",
+  "AGQ30",
+  "AGQ31",
+  "AGQ38",
+  "AGQ39",
+  "AGQ42",
+  "AGQ43",
+  "AGQ44",
+  "AGQ45",
+  "AGQ46",
+  "AGQ47"
+ ],
+ "couvre_avec_ecart": [],
+ "etapes": [
+  {
+   "id": "P4.1",
+   "taches": [
+    "AGQ43",
+    "AGQ44",
+    "AGQ45"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-generateur-et-page.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "PASS",
+    "4": "NA",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P4.1-existante",
+   "taches": [
+    "AGQ46",
+    "AGQ47"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-generateur-et-page.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "NA",
+    "8": "NA",
+    "9": "PASS",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P4.1-apercu",
+   "taches": [
+    "AGQ12",
+    "AGQ16",
+    "AGQ26",
+    "AGQ27",
+    "AGQ39"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-generateur-et-page.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "NA",
+    "8": "NA",
+    "9": "PASS",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P1.1",
+   "taches": [
+    "AGQ1"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-generateur-et-page.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "PASS",
+    "4": "NA",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P3.1",
+   "taches": [
+    "AGQ11",
+    "AGQ13",
+    "AGQ28",
+    "AGQ30",
+    "AGQ31",
+    "AGQ38"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-pdf-note.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "NA",
+    "4": "PASS",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "PASS",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "P3.4",
+   "taches": [
+    "AGQ42"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/AGQ/2026-10-24-generateur-et-page.txt",
+   "oracles": {
+    "1": "PASS",
+    "2": "NA",
+    "3": "NA",
+    "4": "NA",
+    "5": "PASS",
+    "6": "PASS",
+    "7": "PASS",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  }
+ ]
+}

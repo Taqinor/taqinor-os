@@ -799,6 +799,17 @@ def _libelle_garantie(lg, g):
     return g.get("libelle") or ""
 
 
+def _sav(synthese, lg):
+    """D-AGQ-13 — « Service après-vente : intervention sous N h » (délai saisi
+    par la société) ; rien sans délai saisi."""
+    sav = synthese.get("sav") if isinstance(synthese.get("sav"), dict) else {}
+    heures = sav.get("delai_intervention_heures")
+    if not heures:
+        return ""
+    return (f'<div class="ag-small">'
+            f'{_t(lg, "agr_sav_delai", n=heures)}</div>')
+
+
 def _garanties(synthese, lg):
     gar = [g for g in synthese.get("garanties") or [] if isinstance(g, dict)]
     lignes = [_libelle_garantie(lg, g) for g in gar]
@@ -862,7 +873,8 @@ def page3(ctx):
             f'<table class="ag-lines"><tr>{entetes}</tr>'
             f'{_lignes(d)}</table>{_qj(20)}'
             f'<div class="ag-tot"><div class="ag-tot-g">'
-            f'{_garanties(synthese, lg)}{non_inclus_html}</div>'
+            f'{_garanties(synthese, lg)}{_sav(synthese, lg)}'
+            f'{non_inclus_html}</div>'
             f'<div class="ag-tot-d">{_totaux(d, lg)}</div></div>{_qj(20)}'
             f'{_formalites(synthese, lg)}{_note_et_clauses(d, lg)}'
             f'{_qj(30)}{cloture(ctx)}</div>')
@@ -1115,8 +1127,10 @@ def _debit_et_mois_annexe(d, synthese, lg):
                 f'{" %" if cle.endswith("couverture") and _num(v) is not None else ""}</td>'
                 for v in valeurs) + '</tr>'
             for cle, valeurs, dec in rangs)
+        titre = ("agr_annexe_besoin_livre_mois" if len(rangs) > 1
+                 else "agr_annexe_m3_mois")
         blocs.append(f'<div class="ag-small" style="margin-top:4px;">'
-                     f'{_t(lg, "agr_annexe_m3_mois")}</div>'
+                     f'{_t(lg, titre)}</div>'
                      f'<table class="ag-tbl"><tr><td></td>{entetes}</tr>'
                      f'{corps_tbl}</table>')
     if not blocs:
@@ -1217,8 +1231,17 @@ def _site_et_besoin_annexe(d, lg):
     lignes = []
     loc = ((etude.get("entrees_resolues") or {}).get("localisation") or {})
     loc = loc.get("valeur") if isinstance(loc, dict) else None
-    ville = (loc or etude.get("localisation") or {}).get("ville") \
-        if isinstance(loc or etude.get("localisation"), dict) else None
+    # Rejeu live AGQ41 — la ville PERSISTÉE par le moteur (``ville_calcul``),
+    # repli sur une localisation servie (aperçu, données de test).
+    if not isinstance(loc, dict):
+        loc = etude.get("localisation") if isinstance(
+            etude.get("localisation"), dict) else {}
+    # ``ville_calcul`` est servie en objet {ville, reference} (vu au rejeu
+    # live du 24/10 : « Site : {'ville': …} » imprimé tel quel).
+    vc = etude.get("ville_calcul")
+    if isinstance(vc, dict):
+        vc = vc.get("ville") or vc.get("reference")
+    ville = vc or loc.get("ville")
     if ville:
         lignes.append(_t(lg, "agr_annexe_site", ville=theme._esc(str(ville))))
     cultures = [c for c in ((etude.get("besoin") or {}).get("cultures") or [])
@@ -1236,6 +1259,10 @@ def _site_et_besoin_annexe(d, lg):
     mensuel = etude.get("besoin_mensuel") or {}
     if mensuel.get("nature") == "declare":
         lignes.append(_t(lg, "agr_annexe_besoin_declare"))
+    elif mensuel.get("nature") == "debit_souhaite":
+        # Rejeu live AGQ41 (D-AGQ-1) — jamais « FAO-56 » pour un besoin issu
+        # du débit souhaité déclaré.
+        lignes.append(_t(lg, "agr_annexe_besoin_debit_souhaite"))
     elif mensuel.get("nature"):
         et0 = mensuel.get("source_et0")
         lignes.append(_t(lg, "agr_annexe_besoin_fao56", et0=theme._esc(str(et0))
@@ -1278,14 +1305,10 @@ def _dimensionnement_annexe(d, synthese, lg):
 def _garanties_et_cartouche_annexe(d, synthese, lg, nom_societe):
     """AGQ31 — garanties par composant (lues sur les lignes, AGR305) et le
     cartouche « Étude réalisée par … le … »."""
-    gars = []
-    for g in synthese.get("garanties") or []:
-        if not isinstance(g, dict) or not g.get("libelle"):
-            continue
-        mois = g.get("mois")
-        duree = (_duree(lg, mois) if isinstance(mois, int)
-                 and not isinstance(mois, bool) and mois > 0 else None)
-        gars.append(theme._esc(str(g["libelle"])) + (f" : {duree}" if duree else ""))
+    # Même libellé TRADUIT que la page 3 (``_libelle_garantie``) : plus de
+    # libellé français brut ni de durée répétée dans l'annexe (rejeu 24/10).
+    gars = [_libelle_garantie(lg, g) for g in synthese.get("garanties") or []
+            if isinstance(g, dict) and g.get("libelle")]
     html = (f'<div class="ag-li">{_t(lg, "agr_annexe_garanties", liste="; ".join(gars))}'
             f'</div>' if gars else "")
     return html + (f'<div class="ag-note">{_t(lg, "agr_annexe_cartouche", societe=theme._esc(str(nom_societe or "")), date=theme._esc(str(d.get("date") or "")))}</div>')

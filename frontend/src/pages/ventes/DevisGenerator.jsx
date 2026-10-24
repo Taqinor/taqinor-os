@@ -145,6 +145,8 @@ import { useProfilCiLead } from './generator/hooks/useProfilCiLead'
 import {
   profilCiVide, corpsCiDepuisProfil, profilCiAncre,
 } from '../../features/ventes/quote/profilCi'
+// Forfaits au panneau (barème du catalogue) : l'écran pose le prix que le serveur écrira.
+import { retarifierForfaitsEcran } from '../../features/ventes/quote/forfaitsPanneau'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
 // (ajout/suppression/réordonnancement) ; `RailArgent` possède la chaîne
@@ -831,6 +833,11 @@ export default function DevisGenerator({
     // QJR570 — les lignes par défaut sont une composition (pas une saisie).
     setLines(withKeys(defaultProductLines(produits).map(r => ({ ...r, compose: true }))))
   }, [produits])
+  // Chaque ligne d'un produit À BARÈME suit le compte de panneaux COURANT des
+  // lignes (`retarifer_forfaits_par_panneau` du serveur), ajusté PENDANT le
+  // rendu (jamais un rendu affiché au mauvais prix) ; le même tableau revient
+  // quand rien ne change, donc aucune boucle.
+  if (retarifierForfaitsEcran(lines, produits) !== lines) setLines(ls => retarifierForfaitsEcran(ls, produits))
 
   // QJR576 — LA conversion partagée ; compte ENTIER (plancher explicite).
   const kwp = kwcPourPanneaux(Math.floor(parseFloat(nbPanneaux) || 0), panelW)

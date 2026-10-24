@@ -108,6 +108,7 @@ function useRelanceJ3({ leadId, relanceActuelle }) {
  *  (le devis passe « envoyé », le funnel avance — QJ-FUNNEL). */
 export function useEnvoiDevis({
   leadPhone, leadEmail, leadNom, onRefresh, leadId = null, relanceActuelle = null,
+  agricole = false,
 }) {
   const reglages = useReglagesLien()
   const relance = useRelanceJ3({ leadId, relanceActuelle })
@@ -185,7 +186,7 @@ export function useEnvoiDevis({
     if (!leadPhoneOk) return undefined
     return lancer(`w-${d.id}`, 'Lien WhatsApp indisponible.', async () => {
       const url = await mint(d, { envoi: true })
-      const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(leadNom, url))
+      const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(leadNom, url, { agricole }))
       if (waUrl) window.open(waUrl, '_blank', 'noopener')
       await apresEnvoi()
     })

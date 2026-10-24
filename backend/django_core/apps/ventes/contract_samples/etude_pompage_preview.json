@@ -443,6 +443,7 @@
         "genie_civil"
       ]
     },
+    "roles_minimum_manquants": [],
     "alertes": [],
     "hypotheses": [
       {
@@ -740,6 +741,7 @@
         "genie_civil"
       ]
     },
+    "roles_minimum_manquants": [],
     "alertes": [
       {
         "code": "couverture_insuffisante",
@@ -915,6 +917,33 @@
         "genie_civil"
       ]
     },
+    "roles_minimum_manquants": [
+      {
+        "cle": "pompe",
+        "libelle": "Pompe",
+        "motif": "prix à renseigner au catalogue"
+      },
+      {
+        "cle": "variateur",
+        "libelle": "Variateur",
+        "motif": "aucun article au catalogue"
+      },
+      {
+        "cle": "panneaux",
+        "libelle": "Panneaux",
+        "motif": "champ solaire non dimensionné — aucune pompe retenue"
+      },
+      {
+        "cle": "structure",
+        "libelle": "Structure au sol",
+        "motif": "champ solaire non dimensionné — aucune pompe retenue"
+      },
+      {
+        "cle": "installation",
+        "libelle": "Installation",
+        "motif": "aucun article au catalogue"
+      }
+    ],
     "alertes": [
       {
         "code": "aucune_pompe_chiffrable",
@@ -1202,6 +1231,13 @@
         "genie_civil"
       ]
     },
+    "roles_minimum_manquants": [
+      {
+        "cle": "installation",
+        "libelle": "Installation",
+        "motif": "aucun article au catalogue"
+      }
+    ],
     "alertes": [
       {
         "code": "pvgis_indisponible",
@@ -1232,6 +1268,7 @@
     "autonomie_reservoir_jours": "{valeur, motif} — volume de réservoir DÉCLARÉ ÷ besoin ; aucun bassin dimensionné, aucun « ×2 »",
     "tailles": "≤ 3, clés recommandee | inferieure | superieure ; défaut = recommandee ; palier absent ⇒ dans `tailles_omises` avec motif ; mode existante ⇒ une seule taille",
     "kit": "inclus = pompe (si neuve), variateur, panneaux, structure (+ prestations) ; options nommées à cocher ; option sans produit pricé ⇒ prix_connu false + motif « prix à renseigner », jamais 0 MAD ; non_inclus = forage, genie_civil ; aucune batterie, aucun onduleur",
+    "roles_minimum_manquants": "[{cle, libelle, motif}] — les rôles du kit minimum (pompe sauf pompe existante, variateur, panneaux, structure, installation) absents de kit.inclus ou sans prix connu ; [] = kit complet. Rejeu live AGQ41 (24/10/2026) : l'écran REFUSE Auto-remplir quand un rôle n'a AUCUNE ligne dans kit.inclus (ex. pompe existante sans kW de plaque : variateur non choisi) en nommant la cause ; la cause d'un variateur absent est `variateur.motif` quand il est servi. Même fonction que le refus du devis automatique (`roles_minimum_manquants`)",
     "alertes": "[{code, champ, message}] — message en français, `champ` nomme la saisie fautive ; jamais bloquant ; codes nommés : `alimentation_inconnue` (champ `alim` : mono/tri non déclaré, pompe « Pompe — alimentation à renseigner », AGQ7) ; `rendement_non_publie` (champ `pompe.fiche` ou `variateur.fiche` : rendement pompe / MPPT non publié, kW minimal sur η EST. et production en borne haute, AGQ8/D-AGQ-8) ; `debit_limite_forage` (champ `source.debit_exploitation_m3h` : production horaire plafonnée par le forage, AGQ40/D-AGQ-9) ; `site_inconnu` (champ `localisation` : ni ville ni GPS transmis, « Site non renseigné (ville ou GPS) : production en repli plat », DISTINCT de `pvgis_indisponible` qui reste réservé à un site connu dont PVGIS ne répond pas, AGQ26)",
     "hypotheses": "[{cle, valeur, statut, source, usage}] — entrées de la table `hypotheses_pompage.json` (AGR110) effectivement utilisées par CE calcul, recopiées telles quelles"
   },
@@ -1364,6 +1401,7 @@
         "region": "marrakech_safi",
         "niveau_statique_m": 30,
         "niveau_dynamique_m": 40,
+        "debit_exploitation_m3h": 36,
         "profondeur_forage_m": 80,
         "volume_reservoir_m3": null,
         "distance_champ_m": 25,

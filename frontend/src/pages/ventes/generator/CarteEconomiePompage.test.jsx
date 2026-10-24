@@ -39,6 +39,10 @@ describe('AGR213 — vue client de la carte', () => {
     expect(screen.getByTestId('retour-ans').textContent).toContain(`${ex.economie.retour_ans} ans`)
     expect(screen.getByTestId('cout-m3').textContent).toContain(formatNumber(ex.mad_par_m3.actuel))
     expect(screen.getByTestId('detail-declare').textContent).toContain('déclaré le 12/09')
+    // Rejeu live AGQ41 : le libellé de l'unité, jamais la clé brute du serveur.
+    expect(screen.getByTestId('detail-declare').textContent)
+      .toContain("4 bouteille(s) de 12 kg par jour d'irrigation")
+    expect(screen.getByTestId('detail-declare').textContent).not.toContain('bouteille_12kg')
     expect(screen.getByTestId('seuil-rentabilite').textContent)
       .toContain(formatNumber(ex.seuil_rentabilite_carburant.valeur_unitaire_mad))
     expect(screen.getAllByText(/estimation — calculée sur les chiffres déclarés/).length).toBe(1)

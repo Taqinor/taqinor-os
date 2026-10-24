@@ -159,6 +159,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     onRefresh: () => onDevisChanged?.(),
     leadId: lead.id,
     relanceActuelle: lead.relance_date ?? null,
+    agricole: lead?.type_installation === 'agricole',
   })
   const [envoiOuvert, setEnvoiOuvert] = useState(false)
   // Marché du devis : hors résidentiel, ni options 1/2/3 (boîte d'envoi) ni

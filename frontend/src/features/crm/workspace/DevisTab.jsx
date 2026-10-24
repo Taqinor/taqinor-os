@@ -184,6 +184,7 @@ export default function DevisTab({
     onRefresh: () => onAction?.('refresh'),
     leadId: state.leadId,
     relanceActuelle: state.server?.relance_date ?? null,
+    agricole: state.server?.type_installation === 'agricole',
   })
   // Quel devis a sa boîte d'envoi ouverte (id | null).
   const [envoiOuvert, setEnvoiOuvert] = useState(null)

@@ -1310,7 +1310,7 @@ export function buildContactBody(state: ContactRequestState): ContactRequestBody
  * fréquentes observées en négociation avant signature — pas une nomenclature
  * exhaustive.
  */
-export type RevisionKind = 'kwc' | 'batterie' | 'autre';
+export type RevisionKind = 'kwc' | 'batterie' | 'eau' | 'autre';
 
 export interface RevisionRequestState {
   kind: RevisionKind;
@@ -1350,10 +1350,11 @@ export function validateRevisionRequest(state: RevisionRequestState): RevisionVa
  * client, tronqué comme tout message de contact.
  */
 export function buildRevisionContactState(state: RevisionRequestState): ContactRequestState {
-  const kind: RevisionKind = state.kind === 'kwc' || state.kind === 'batterie' ? state.kind : 'autre';
+  const kind: RevisionKind = state.kind === 'kwc' || state.kind === 'batterie' || state.kind === 'eau' ? state.kind : 'autre';
   const labels: Record<RevisionKind, string> = {
     kwc: 'Ajuster la puissance (kWc)',
     batterie: 'Changer l’option batterie',
+    eau: 'Ajuster le volume d’eau ou la pompe',
     autre: 'Autre modification',
   };
   const detail = (state.detail ?? '').trim();
@@ -4529,6 +4530,8 @@ export interface SyntheseProvenance {
   origine: string | null;
   detail: string | null;
   date: string | null;
+  /** Rejeu AGQ41 — la valeur servie à côté de sa provenance (AGQ28), sinon `null`. */
+  valeur?: number | null;
 }
 
 export interface SyntheseBesoinLivreMois {
@@ -4587,7 +4590,7 @@ function lireProvenance(v: unknown): SyntheseProvenance[] {
   const out: SyntheseProvenance[] = [];
   for (const [cle, e] of Object.entries(v)) {
     if (!estRecord(e) || !texteServi(e.origine)) continue;
-    out.push({ cle, origine: texteServi(e.origine), detail: texteServi(e.detail), date: texteServi(e.date) });
+    out.push({ cle, origine: texteServi(e.origine), detail: texteServi(e.detail), date: texteServi(e.date), valeur: nombreServi(e.valeur) });
   }
   return out;
 }
@@ -5173,14 +5176,14 @@ function fillDuree(gab: Lbl3, d: Lbl3): Lbl3 {
 export const AGR_ARGENT_LBL = {
   titreArgent: { fr: 'Votre argent', en: 'Your money', ar: 'أموالكم' },
   depenseActuelle: { fr: 'Votre dépense actuelle par an', en: 'Your current spending per year', ar: 'مصاريفكم الحالية في السنة' },
-  chargesSolaires: { fr: 'Charges du solaire par an (barème)', en: 'Solar running costs per year (price list)', ar: 'تكاليف الطاقة الشمسية في السنة (حسب التسعيرة)' },
+  chargesSolaires: { fr: 'Entretien du solaire par an, selon nos tarifs', en: 'Solar upkeep per year, at our rates', ar: 'صيانة المنظومة الشمسية في السنة، حسب أسعارنا' },
   economieNetteAn1: { fr: 'Économie nette, année 1', en: 'Net saving, year 1', ar: 'التوفير الصافي، السنة الأولى' },
   retourSansAide: { fr: 'Retour sur investissement, sans aide', en: 'Payback, without subsidy', ar: 'استرجاع الاستثمار، بدون دعم' },
   coutM3: { fr: 'Coût du m³ : avant / avec le solaire', en: 'Cost per m³: before / with solar', ar: 'تكلفة المتر المكعب: قبل / مع الطاقة الشمسية' },
   remplacement: {
-    fr: 'Remplacement {composant}, année {annee} (compté)',
-    en: 'Replacement of the {composant}, year {annee} (included)',
-    ar: 'استبدال {composant}، السنة {annee} (محتسب)',
+    fr: 'Remplacement {composant} prévu l’année {annee} (déjà compté dans le calcul)',
+    en: 'Replacement of the {composant} planned in year {annee} (already included in the calculation)',
+    ar: 'استبدال {composant} مبرمج في السنة {annee} (محتسب سلفاً في الحساب)',
   },
   composantPompe: { fr: 'pompe', en: 'pump', ar: 'المضخة' },
   composantVariateur: { fr: 'variateur', en: 'drive', ar: 'المغير' },
@@ -5189,7 +5192,7 @@ export const AGR_ARGENT_LBL = {
     en: 'Consumption and price paid: {phrase}.',
     ar: 'الاستهلاك والثمن المؤدى: {phrase}.',
   },
-  indexation: { fr: 'Indexation du carburant : 0 %.', en: 'Fuel price indexation: 0%.', ar: 'مراجعة ثمن الوقود: 0 %.' },
+  indexation: { fr: 'Prix du carburant supposé stable (aucune hausse comptée).', en: 'Fuel price assumed stable (no increase counted).', ar: 'ثمن الوقود مفترض ثابتاً (دون احتساب أي زيادة).' },
   fdaNonComptee: {
     fr: "L'aide FDA éventuelle n'est pas comptée.",
     en: 'Any FDA subsidy is not counted.',
@@ -5226,10 +5229,6 @@ export const AGR_ENERGIE_LBL: Record<string, Lbl3> = {
   aucune: { fr: 'aucune (nouveau forage)', en: 'none (new borehole)', ar: 'لا شيء (ثقب جديد)' },
 };
 
-export const AGR_NON_INCLUS_LBL: Record<string, Lbl3> = {
-  forage: { fr: 'le forage', en: 'the borehole', ar: 'الثقب' },
-  genie_civil: { fr: 'le génie civil', en: 'civil works', ar: 'الهندسة المدنية' },
-};
 
 // ════════════════════════════════════════════════════════════════════════════
 // AGW308 — options du kit à cocher sur /proposition (endpoint XSAL5 existant).

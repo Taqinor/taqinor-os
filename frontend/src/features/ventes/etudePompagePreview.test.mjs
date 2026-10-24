@@ -6,7 +6,8 @@ import assert from 'node:assert/strict'
 import { documentContrat, enTexte } from '../../test/fixtures/contractSamples.js'
 import {
   construireCorpsPompage, manquantsPompage, alertesAffichables,
-  libelleProvenance, nombreOuNull,
+  libelleProvenance, nombreOuNull, besoinExprime, besoinDepuisDebitSouhaite,
+  refusAutoRemplirPompage, etatPompageEcran, POMPAGE_SAISIE_VIDE, poserSaisie,
 } from './etudePompagePreviewPur.js'
 
 const CONTRAT = documentContrat('ventes', 'etude_pompage_preview')
@@ -98,6 +99,61 @@ test('aucune alerte perdue', () => {
   assert.deepEqual(alertesAffichables(CONTRAT.exemple).length,
     CONTRAT.exemple.alertes.length)
   assert.deepEqual(alertesAffichables(null), [])
+})
+
+// Rejeu live AGQ41 (24/10) — PARITÉ avec le serveur (`pompage.py::_besoin`) : sans
+// mode choisi, le débit souhaité seul fait le besoin ; le corps n'envoie QUE ce
+// que le serveur lit pour ce cas (AGQ27 : volume et pompe actuelle à null).
+test('besoin::test_debit_souhaite_seul_est_un_besoin_exprime', () => {
+  assert.equal(besoinExprime({ mode: '', debit_souhaite_m3h: '10' }), true)
+  assert.equal(besoinExprime({ debit_souhaite_m3h: 10 }), true)
+  assert.equal(besoinExprime({ mode: 'debit_souhaite', debit_souhaite_m3h: '10' }), true)
+  assert.equal(besoinExprime({ mode: '', debit_souhaite_m3h: '' }), false)
+  assert.equal(besoinExprime({ mode: '', debit_souhaite_m3h: '0' }), false)
+  // Un mode CHOISI garde sa règle : le débit souhaité ne remplace pas un volume vide.
+  assert.equal(besoinExprime({ mode: 'volume_declare', volume_m3_jour: '', debit_souhaite_m3h: '10' }), false)
+  assert.equal(besoinDepuisDebitSouhaite({ mode: 'pompe_actuelle', debit_souhaite_m3h: '10' }), false)
+  const saisie = poserSaisie(POMPAGE_SAISIE_VIDE, 'mode_pompe', 'existante')
+  const etat = etatPompageEcran(saisie, {
+    pompeDebit: '10', pompeHmt: '40', farmHmtStatic: '40', pompeCv: '7',
+  })
+  assert.deepEqual(manquantsPompage(etat), [])
+  const corps = construireCorpsPompage(etat)
+  assert.equal(corps.besoin.mode, null)
+  assert.equal(corps.besoin.debit_souhaite_m3h, 10)
+  assert.equal(corps.besoin.volume_m3_jour, null)
+  assert.equal(corps.besoin.debit_actuel_m3h, null)
+  assert.equal(corps.besoin.heures_actuelles_jour, null)
+})
+
+test('refus::test_kit_sans_variateur_refuse_auto_remplir_avec_la_cause', () => {
+  // Kit complet de l'exemple du contrat : rien ne s'oppose.
+  assert.deepEqual(CONTRAT.exemple.roles_minimum_manquants, [])
+  assert.equal(refusAutoRemplirPompage(CONTRAT.exemple), null)
+  assert.equal(refusAutoRemplirPompage(null), null)
+  // Pompe existante sans kW de plaque : variateur absent du kit.
+  const donnees = {
+    ...CONTRAT.exemple_pompe_existante,
+    kit: {
+      ...CONTRAT.exemple_pompe_existante.kit,
+      inclus: CONTRAT.exemple_pompe_existante.kit.inclus.filter((l) => l.cle !== 'variateur'),
+    },
+    variateur: { produit: null, nom: null, motif: 'kW de plaque à relever (visite) : variateur non choisi' },
+    roles_minimum_manquants: [
+      { cle: 'variateur', libelle: 'Variateur', motif: 'aucun article au catalogue' },
+    ],
+  }
+  const refus = refusAutoRemplirPompage(donnees)
+  assert.match(refus, /^Auto-remplir indisponible/)
+  assert.match(refus, /Variateur : kW de plaque à relever/)
+  // Un article « prix à renseigner » reste une LIGNE du kit : pas de refus.
+  const sansPrix = {
+    kit: { inclus: [{ cle: 'pompe', produit: null, prix_connu: false }] },
+    roles_minimum_manquants: [
+      { cle: 'pompe', libelle: 'Pompe', motif: 'prix à renseigner au catalogue' },
+    ],
+  }
+  assert.equal(refusAutoRemplirPompage(sansPrix), null)
 })
 
 test('libellés de provenance', () => {

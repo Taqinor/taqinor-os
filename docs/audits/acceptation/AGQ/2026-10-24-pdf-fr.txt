@@ -1,0 +1,98 @@
+P R O P O S I T I O N  ·  P O M P A G E  S O L A I R E
+L'eau de votre exploitation, pompée par le soleil
+Mansouri-2NM · Réf. DEV-202610-0004 · 24/10/2026 · offre valable jusqu'au 23/11/2026
+Pompage solaireVolume d'eau par jour non calculé : à confirmer par la visite.
+PUISSANCE POMPE
+5,5 CV
+4 kW
+CHAMP PV
+6,05 kWc
+11 panneaux
+D'où viennent ces chiffres
+À confirmer par la visite : Niveau statique, Niveau dynamique, Débit d'exploitation du forage, Profondeur du forage, Hauteur manométrique
+totale.
+Étapes suivantes
+1. Visite du point d'eau : niveau, débit du forage et HMT relevés sur place.
+2. Accord FDA, si vous demandez l'aide : dossier déposé avant toute commande.
+3. Commande : acompte versé, matériel commandé.
+4. Pose : pompe, variateur, champ solaire et protections.
+5. À la mise en service : débit et HMT mesurés, écart affiché contre ce devis.
+Entretien : nettoyage des panneaux et contrôle annuel (contrat en option).
+Hauteur manométrique totale : 40 m — déclaré par vous le 24/10/2026
+Niveau statique : 40 m — déclaré par vous le 24/10/2026
+Débit d'exploitation du forage : 36 m³/h — déclaré par vous le 24/10/2026
+TAQINOR Anonymisé (QA)   ·  anon@taqinor.local Page 1 / 3  ·  Réf. DEV-202610-0004 V O T R E  I N S T A L L A T I O N
+Comment ça marche
+Point de fonctionnement
+Courbe constructeur non disponible pour cette pompe.
+Point de fonctionnement omis.
+Besoin et eau livrée
+Besoin et eau livrée par mois : série mensuelle de besoin ou
+d'eau livrée absente : comparaison omise.
+Notes de dimensionnement
+Aide de l'État (FDA) : la règle
+Aide de l'État (Fonds de développement agricole) au pompage solaire : 30 % de l'investissement, plafonnée à 3 000 DH par hectare, 3 000 DH par kWc
+et 30 000 DH par projet. Conditions : remplacement d'une pompe au butane, irrigation localisée, compteur d'eau. Accord préalable à obtenir AVANT les
+travaux ; l'aide n'est pas déduite du prix et elle est versée après réalisation ; un seul projet par exploitation. Décision de la DPA/ORMVA, non garantie ;
+TAQINOR Anonymisé (QA) n'est pas organisme subventionneur. Source : Guide FDA édition 2024, p.20-23 (relevé le 02/10/2026).
+Forage
+Pompe
+Variateur
+Panneaux
+Irrigation
+Eau
+Énergie
+HMT 40 m
+Rendement de la pompe non publié par le fabricant : la puissance est calculée sur un rendement de groupe prudent (estimation).
+TAQINOR Anonymisé (QA)   ·  anon@taqinor.local Page 2 / 3  ·  Réf. DEV-202610-0004 V O T R E  K I T  D E  P O M P A G E
+Équipement, prix et garantiesDÉSIGNATION QTÉ P.U. HT TVA TOTAL HT
+Pompe immergée solaire 5.5 CV Triphasé 1 9 166,67 20 % 9 166,67
+VARIATEUR VEICHI SI23 5.5KW 380V VEICHI 1 2 708,33 20 % 2 708,33
+[TEST AGQ] Panneau mono 550W TestSolar 11 1 100,00 20 % 12 100,00
+[TEST AGQ] Structure au sol acier 11 375,00 20 % 4 125,00
+Socles 22 67,00 20 % 1 474,00
+[TEST AGQ] Installation pompage solaire 1 4 650,00 20 % 4 650,00
+Transport 1 833,33 20 % 833,33
+AFFICHEUR VARIATEUR SI22 VEICHI 1 350,00 20 % 350,00
+Garanties
+Non inclus : le forage, le génie civil, protections DC/AC, sonde de niveau
+(marche à sec), compteur d'eau, câble de descente, colonne de refoulement,
+clapet anti-retour, tuyauterie, bassin, contrat d'entretien, fixations antivol,
+clôture du champ.
+Sous-total HT 35 407,33 MAD
+Arrondi commercial - 74,00 MAD
+Total HT 35 333,33 MAD
+TVA 7 066,67 MAD
+Total TTC 42 400,00 MAD
+Formalités
+Conditions générales du devis : Validité de l’offre : jusqu’au 23/11/2026 · Acompte à la commande : 30% · 60% à la réception du matériel · 10% après la mise
+en marche · TVA 20 % appliquée sur l'ensemble des équipements et travaux.
+Bon pour accord Offre valable jusqu'au 23/11/2026
+Options du kit (cochez celles que vous retenez ; prix du supplément, hors total ci-dessus)
+Protections DC/AC prix sur devis Sonde de niveau (marche à sec) prix sur devis
+Compteur d'eau prix sur devis exigé par la loi 36-15 et le dossier FDA 2024 Câble de descente prix sur devis
+Colonne de refoulement prix sur devis Clapet anti-retour prix sur devis
+Tuyauterie prix sur devis Bassin prix sur devis
+Contrat d'entretien prix sur devis Fixations antivol prix sur devis
+Clôture du champ prix sur devis
+ACOMPTE À LA COMMANDE
+30 % · 12 720,00 MAD
+À LA RÉCEPTION DU MATÉRIEL
+60 % · 25 440,00 MAD
+APRÈS MISE EN MARCHE
+10 % · 4 240,00 MAD
+Acompte à la commande — après l'accord FDA si vous demandez l'aide.
+BON POUR ACCORD — LE CLIENT
+Mansouri-2NM
+Nom, date, mention « Bon pour accord » et signature
+POUR TAQINOR ANONYMISÉ (QA)
+Cachet et signature
+Date
+Scannez pour signer
+Garantie constructeur de la pompe : 2 ans
+Garantie produit des panneaux : 12 ans
+Garantie constructeur du variateur : selon fiche fournisseur
+Installation hors réseau : soumise à DÉCLARATION (loi 82-21, art. 3).
+Forage et prélèvement d'eau : autorisation de l'agence de bassin hydraulique et compteur sur un prélèvement par pompage (loi 36-15) — à la
+charge du client.
+TAQINOR Anonymisé (QA)   ·  anon@taqinor.local Page 3 / 3  ·  Réf. DEV-202610-0004

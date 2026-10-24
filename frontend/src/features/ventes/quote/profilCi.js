@@ -15,6 +15,7 @@ import {
   ligneProduitCatalogue, TVA_STANDARD_DEFAUT, ttcExactFromHt,
   COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS,
 } from '../solar.js'
+import { retarifierForfaitsEcran } from './forfaitsPanneau.js'
 import { ROLES_CI_PRESTATION, ROUTE_PARAMETRES_PRESTATIONS_CI } from '../../stock/catalogue.js'
 
 export const JOURS_SEMAINE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
@@ -374,7 +375,9 @@ export function lignesDepuisCompositionCi(composition, produits, tvaStandard) {
     }
     rows.push(row)
   }
-  return rows
+  // Forfaits au panneau : le barème du catalogue sur le compte de CE kit,
+  // comme le serveur à l'enregistrement (`forfaitsPanneau.js`).
+  return retarifierForfaitsEcran(rows, produits)
 }
 
 // ADEV84 — l'avertissement « devis incomplet » de l'Auto-remplir : chaque poste
