@@ -149,6 +149,12 @@ export const AGR_LBL_AGQ = {
   prixSurDevis: { fr: 'prix sur devis', en: 'price on request', ar: 'السعر حسب العرض' },
   notesTitre: { fr: 'Notes de dimensionnement', en: 'Sizing notes', ar: 'ملاحظات التحجيم' },
   coutM3Solaire: { fr: 'Coût du m³ avec le solaire', en: 'Cost per m³ with solar', ar: 'تكلفة المتر المكعب مع الطاقة الشمسية' },
+  // AGQ42 — la page d'un pompage parle d'eau, pas de toit.
+  eauJour: { fr: 'm³ d’eau par jour', en: 'm³ of water per day', ar: 'م³ من الماء يومياً' },
+  kitTitre: { fr: 'Votre kit de pompage solaire', en: 'Your solar pumping kit', ar: 'عدة الضخ الشمسي الخاصة بكم' },
+  revisionEau: { fr: 'Ajuster le volume d’eau ou la pompe', en: 'Adjust the water volume or the pump', ar: 'تعديل كمية الماء أو المضخة' },
+  etEnsuite: { fr: 'Et ensuite : accord FDA si vous demandez l’aide, commande, pose, mise en service', en: 'And then: FDA approval if you apply for the grant, order, installation, commissioning', ar: 'ثم: موافقة صندوق التنمية الفلاحية إن طلبتم الدعم، الطلبية، التركيب، التشغيل' },
+  hypotheses: { fr: 'Chaque chiffre est étudié sur vos propres données — point d’eau, besoin en eau, énergie actuelle —, pas promis.', en: 'Every figure is studied from your own data — water source, water need, current energy — not promised.', ar: 'كل رقم مدروس انطلاقاً من معطياتكم — نقطة الماء، الحاجة إلى الماء، الطاقة الحالية — وليس وعداً.' },
 } as const satisfies Record<string, Lbl3>;
 
 /** Rejeu live AGQ41 — libellés des options du kit listées dans « Non inclus » (clés servies par

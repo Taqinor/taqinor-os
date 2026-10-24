@@ -544,6 +544,7 @@ _CONTACT_CANAL_LABELS = {
 _REVISION_KIND_LABELS = {
     'kwc': 'ajuster la puissance (kWc)',
     'batterie': 'changer l’option batterie',
+    'eau': 'ajuster le volume d’eau ou la pompe',
     'autre': 'autre modification',
 }
 

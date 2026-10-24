@@ -1940,7 +1940,8 @@ const equipPresence = equipmentPresence(
 );
 const certKeys = [
   ...(panelFicheSlug ? ['iec' as const] : []),
-  'loi8221' as const,
+  // AGQ42 — « Autoconsommation BT » ne décrit pas un pompage hors réseau.
+  ...(isAgricole ? [] : ['loi8221' as const]),
   ...(equipPresence.panneaux ? ['panneaux' as const] : []),
   ...(equipPresence.onduleur ? ['onduleur' as const] : []),
 ];
@@ -2502,7 +2503,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   {formatNumber(heroKwc, 2)} kWc{heroNbPanneaux ? <> · {formatNumber(heroNbPanneaux)} <span class="text-lune-faint" data-i18n data-fr="panneaux" data-en="panels" data-ar="ألواح">panneaux</span></> : null}
                 </li>
               ) : null}
-              {prodKwh ? (
+              {isAgricole && synth?.eau?.m3Jour ? (
+                <li class="fig" dir="ltr" data-figure="eau_m3_jour">
+                  {formatNumber(synth.eau.m3Jour)} <span class="text-lune-faint" data-i18n data-fr={AGR_LBL_AGQ.eauJour.fr} data-en={AGR_LBL_AGQ.eauJour.en} data-ar={AGR_LBL_AGQ.eauJour.ar}>{AGR_LBL_AGQ.eauJour.fr}</span>
+                </li>
+              ) : null}
+              {prodKwh && !isAgricole ? (
                 <li class="fig" dir="ltr" data-figure="production_annuelle_kwh">
                   {formatNumber(prodKwh)} <span class="text-lune-faint" data-i18n data-fr="kWh / an" data-en="kWh / year" data-ar="ك.و.س / سنة">kWh / an</span>
                 </li>
@@ -5312,6 +5318,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     data-fr={opt === 'avec_batterie' ? 'Avec batterie (option)' : 'Offre réseau (autoconsommation)'}
                     data-en={opt === 'avec_batterie' ? 'With battery (option)' : 'Grid-connected offer (self-consumption)'}
                     data-ar={opt === 'avec_batterie' ? 'مع بطارية (خيار)' : 'عرض الربط بالشبكة (استهلاك ذاتي)'}>{opt === 'avec_batterie' ? 'Avec batterie (option)' : 'Offre réseau (autoconsommation)'}</h3>
+                ) : isAgricole ? (
+                  <h3 class="display text-xl text-lune" data-i18n data-fr={AGR_LBL_AGQ.kitTitre.fr} data-en={AGR_LBL_AGQ.kitTitre.en} data-ar={AGR_LBL_AGQ.kitTitre.ar}>{AGR_LBL_AGQ.kitTitre.fr}</h3>
                 ) : (
                   <h3 class="display text-xl text-lune" data-i18n data-fr={optionLabel(opt, avecDifferee)} data-en={optionLabelEn(opt, avecDifferee)} data-ar={optionLabelAr(opt, avecDifferee)}>{optionLabel(opt, avecDifferee)}</h3>
                 )}
@@ -6588,12 +6596,21 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             </summary>
             <form id="revision-form" class="mt-4">
               <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Type de modification">
+                {isAgricole && (
+                  <button type="button" disabled={apercuInterne} data-revision-kind="eau" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                    <span data-i18n data-fr={AGR_LBL_AGQ.revisionEau.fr} data-en={AGR_LBL_AGQ.revisionEau.en} data-ar={AGR_LBL_AGQ.revisionEau.ar}>{AGR_LBL_AGQ.revisionEau.fr}</span>
+                  </button>
+                )}
+                {!isAgricole && (
                 <button type="button" disabled={apercuInterne} data-revision-kind="kwc" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
                   <span data-i18n data-fr="Ajuster la puissance (kWc)" data-en="Adjust the system size (kWc)" data-ar="تعديل القدرة (kWc)">Ajuster la puissance (kWc)</span>
                 </button>
+                )}
+                {!isAgricole && (
                 <button type="button" disabled={apercuInterne} data-revision-kind="batterie" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
                   <span data-i18n data-fr="Changer l’option batterie" data-en="Change the battery option" data-ar="تغيير خيار البطارية">Changer l’option batterie</span>
                 </button>
+                )}
                 <button type="button" disabled={apercuInterne} data-revision-kind="autre" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
                   <span data-i18n data-fr="Autre" data-en="Other" data-ar="أخرى">Autre</span>
                 </button>
@@ -7642,10 +7659,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         </ol>
         {steps.length > 1 && (
           <details class="prop-fold mt-4">
+            {isAgricole ? (
+            <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
+              data-fr={AGR_LBL_AGQ.etEnsuite.fr} data-en={AGR_LBL_AGQ.etEnsuite.en} data-ar={AGR_LBL_AGQ.etEnsuite.ar}>{AGR_LBL_AGQ.etEnsuite.fr}</summary>
+            ) : (
             <summary class="prop-fold-summary cursor-pointer list-none marker:hidden [&::-webkit-details-marker]:hidden" data-i18n
               data-fr="Et ensuite : visite technique, pose, mise en service"
               data-en="And then: technical visit, installation, commissioning"
               data-ar="ثم: الزيارة التقنية، التركيب، التشغيل">Et ensuite : visite technique, pose, mise en service</summary>
+            )}
             <ol class="mt-4 grid gap-4 sm:grid-cols-3" start="2">
               {steps.slice(1).map((s, i) => (
                 <li class="cine-card rounded-xl p-5">
@@ -7856,12 +7878,17 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
            tout le reste de la page. -->
       <section class="mx-auto max-w-4xl px-5 pt-16 text-center sm:px-8">
         <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
+        {isAgricole ? (
+        <p class="display mt-6 text-balance text-xl text-white sm:text-2xl" data-i18n
+          data-fr={AGR_LBL_AGQ.hypotheses.fr} data-en={AGR_LBL_AGQ.hypotheses.en} data-ar={AGR_LBL_AGQ.hypotheses.ar}>{AGR_LBL_AGQ.hypotheses.fr}</p>
+        ) : (
         <p class="display mt-6 text-balance text-xl text-white sm:text-2xl" data-i18n
           data-fr="Chaque chiffre est étudié sur votre facture, pas promis."
           data-en="Every figure is studied from your own bill, not promised."
           data-ar="كل رقم مدروس انطلاقاً من فاتورتكم، وليس وعداً.">
           Chaque chiffre est étudié sur votre facture, pas promis.
         </p>
+        )}
         <p class="tech-label mt-3 text-lune-faint" data-i18n
           data-fr="L’étude d’abord. Le chantier ensuite."
           data-en="The study first. The installation next."
@@ -9698,7 +9725,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     const kindBtns = Array.from(revisionSection.querySelectorAll<HTMLButtonElement>('[data-revision-kind]'));
     if (!form) return;
 
-    type RevisionKind = 'kwc' | 'batterie' | 'autre';
+    type RevisionKind = 'kwc' | 'batterie' | 'eau' | 'autre';
     let selectedKind: RevisionKind | null = null;
 
     function selectKind(kind: RevisionKind): void {
@@ -9749,6 +9776,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       const labels: Record<RevisionKind, string> = {
         kwc: 'Ajuster la puissance (kWc)',
         batterie: 'Changer l’option batterie',
+        eau: 'Ajuster le volume d’eau ou la pompe',
         autre: 'Autre modification',
       };
       const message = detail ? `${labels[kind]} — ${detail}` : labels[kind];
