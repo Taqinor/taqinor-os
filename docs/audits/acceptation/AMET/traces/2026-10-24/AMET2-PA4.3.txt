@@ -1,0 +1,16 @@
+Rejeu orchestrateur PA4.3 (AMET2) sur la pile locale à 309168b3e (origin/main), 24/10/2026, demo_admin — sonde API (manage.py shell, APIClient + JWT, e-mail locmem) ; données démo PERSISTÉES (devis accepté), réglage société RESTAURÉ en fin de rejeu.
+1. Devis DEV-202610-0062 (id 732, « Envoyé », sans échéancier propre) accepté par POST /ventes/devis/732/accepter/ (date du jour) → 200 ; échéancier figé lu sur GET /ventes/devis/732/ (source de l'écran du devis) : Acompte 30 % / Livraison du matériel 60 % / Solde 10 % (fige_le posé).
+2. /proposal (GET /ventes/devis/732/proposal/, PDF réel rendu par le moteur, texte extrait par PyMuPDF) : « commande : 30% · 60% à la réception du matériel · 10% après la… ».
+3. Paramètres : PATCH /parametres/update/ (verrou updated_at) payment_terms résidentiel 50/40/10 → 200 ; payment_terms_effectifs relu : Acompte 50 % / Matériel 40 % / Solde 10 %.
+4. Devis rouvert : échéancier IDENTIQUE (30/60/10, même fige_le) ; /proposal re-rendu : même ligne « 30% · 60% · 10% » — tranches inchangées à l'écran (échéancier servi) et sur /proposal.
+5. Réglage société restauré (payment_terms d'origine, termes effectifs 30/60/10 relus).
+Sortie brute :
+EFFECTIFS_AVANT {"residentiel": [{"jalon": "acompte", "libelle": "Acompte", "pct": 30}, {"jalon": "materiel", "libelle": "Livraison du matériel", "pct": 60}, {"jalon": "solde", "libelle": "Solde", "pct": 10}], "industriel": [{"jalon": "commande", "libelle": "Commande", "pct": 30}, {"jalon": "livraison_materiel", "l
+PDF_AVANT [200, ["commande : 30% · 60% à la réception du matériel · 10% après la", "+ acompte 30%"]]
+PATCH 200 ok
+EFFECTIFS_PENDANT {"residentiel": [{"jalon": "acompte", "libelle": "Acompte", "pct": 50}, {"jalon": "materiel", "libelle": "Livraison du matériel", "pct": 40}, {"jalon": "solde", "libelle": "Solde", "pct": 10}], "industriel": [{"jalon": "commande", "libelle": "Commande", "pct": 30}, {"jalon": "livraison_materiel", "l
+PDF_APRES [200, ["commande : 30% · 60% à la réception du matériel · 10% après la", "+ acompte 30%"]]
+ECHEANCIER_IDENTIQUE True PDF_IDENTIQUE True TERMES_CHANGES True
+RESTAURE True {"residentiel": [{"jalon": "acompte", "libelle": "Acompte", "pct": 30}, {"jalon": "materiel", "libelle": "Livraison du matériel", "pct": 60}, {"jalon": "solde", "libelle": "Solde", "pct": 10}], "indus
+
+Oracles : aucune réponse ≥ 500, aucun 4xx sur geste légitime (1, 2 PASS) ; PDF /proposal rendu 200 deux fois (6 PASS) ; autres oracles navigateur NA (rejeu API).

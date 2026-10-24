@@ -1,0 +1,5 @@
+Rejeu orchestrateur P4.3 (APRF8) sur la pile locale à e45ab8aa4 (serveur et front reconstruits depuis origin/main), 24/10/2026, demo_admin, navigateur intégré — comptage des requêtes réseau (Performance API, équivalent de l'onglet Réseau).
+/ventes/devis : ligne DEV-202610-0087 (id 1082, brouillon) → « Envoyer » → modale « Envoyer par WhatsApp » (GET …/1082/whatsapp-preview/ → 200) → « Ouvrir WhatsApp » (window.open neutralisé : lien wa.me capturé, AUCUN message envoyé).
+Requêtes /ventes/devis après le geste : POST /api/django/ventes/devis/1082/whatsapp/ → 200 (passage « Envoyé ») puis UNE SEULE lecture GET /api/django/ventes/devis/1082/ → 200 ; aucune relecture de la liste (?page=…).
+Ligne relue : « Envoyé », boutons Relancer / Accepter / Refuser.
+Oracles : réponses 2xx uniquement (1, 2 PASS) ; console : seulement l'enregistrement du service worker refusé par le navigateur de rejeu (3 PASS) ; aucun dialogue natif (4 PASS) ; aucun écran d'erreur (8 PASS).

@@ -1,0 +1,19 @@
+Rejeu orchestrateur P3.6 (AMOT77) sur la pile locale à 309168b3e (origin/main), 24/10/2026, demo_admin — sonde API (manage.py shell, APIClient + JWT), PDF /proposal RÉEL rendu par le moteur (WeasyPrint de l'image), texte extrait par PyMuPDF ; le passage à 0 % est fait DANS une transaction ANNULÉE (devis et lignes relus à 20 % après).
+Commercial — DEV-202610-0090 (id 1085) : à 20 % « TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations » ; devis + lignes à taux_tva = 0 → « TVA appliquée ligne par ligne : 0 % ».
+Résidentiel premium (apply_quote_data) — DEV-202610-0074 (id 1025) : à 20 % « TVA 20% », « TVA 20 % appliquée sur l'ensemble des équipements et travaux » ; à 0 → « TVA 0% », « TVA appliquée ligne par ligne : 0 % » — plus jamais 20 % pour un 0 explicite.
+(Un devis résidentiel ACCEPTÉ, DEV-202610-0081, répond 409 au /proposal hors de ce rejeu — porte propre aux devis acceptés, hors périmètre AMOT77.)
+Sortie brute :
+DEVIS 1085 DEV-202610-0090 envoye taux_tva 20.00 mode commercial
+AVANT (200, ['soit 83 825,76\xa0MAD\xa0HT · TVA récupérable non déclarée : économies en HT et en TTC.', 'TVA %', 'TVA', 'TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations'])
+A_ZERO (200, ['soit 83 800,00\xa0MAD\xa0HT · TVA récupérable non déclarée : économies en HT et en TTC.', 'TVA %', 'TVA', 'TVA appliquée ligne par ligne : 0 %'])
+APRES_ROLLBACK 20.00
+DEVIS 1050 DEV-202610-0081 accepte taux_tva 20.00 mode residentiel
+AVANT (409, [])
+A_ZERO (409, [])
+APRES_ROLLBACK 20.00
+DEVIS 1025 DEV-202610-0074 brouillon taux_tva 20.00 mode residentiel
+AVANT (200, ['TVA', 'TVA 20%', 'TVA 20%', "TVA 20 % appliquée sur l'ensemble des équipements et travaux.", "mise en marche · TVA 20 % appliquée sur l'ensemble des"])
+A_ZERO (200, ['TVA', 'TVA 0%', 'TVA 0%', 'TVA appliquée ligne par ligne : 0 %', 'mise en marche · TVA appliquée ligne par ligne : 0 % · Tarifs de'])
+APRES_ROLLBACK 20.00
+
+Oracles : PDF /proposal 200 à chaque rendu du rejeu (6 PASS) ; aucune réponse ≥ 500 (1 PASS) ; autres oracles navigateur NA (rejeu API).

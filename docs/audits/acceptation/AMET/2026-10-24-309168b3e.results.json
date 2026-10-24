@@ -1,0 +1,33 @@
+{
+  "sha": "309168b3e23a09af19d9728b33198c492938c644",
+  "date": "2026-10-24",
+  "groupe": "AMET",
+  "verdict": "PASS",
+  "couvre": [
+    "AMET2"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA4.3",
+      "taches": [
+        "AMET2"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-24/AMET2-PA4.3.txt"
+    }
+  ]
+}
