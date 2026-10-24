@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3550}
+counts: {paths: 4814, operations: 7566, components: 3551}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -10846,6 +10846,7 @@ components:
 - MouvementRebutRequest
 - MouvementStock
 - MouvementStockRequest
+- MouvementStockTypeMouvementEnum
 - MouvementsExportAsyncReponse
 - NetworkPolicy
 - NetworkPolicyModeEnum
@@ -12230,6 +12231,7 @@ components:
 - SavedViewImportRequeteRequest
 - SavedViewRequest
 - ScannerMouvementCorpsRequest
+- ScannerMouvementCorpsTypeMouvementEnum
 - ScheduleEnum
 - ScheduledExport
 - ScheduledExportDestinationEnum
@@ -12529,7 +12531,6 @@ components:
 - TypeInterventionRequest
 - TypeLigneEnum
 - TypeMaterielEnum
-- TypeMouvementEnum
 - TypeNomenclatureEnum
 - TypePartenaireEnum
 - TypePompeEnum

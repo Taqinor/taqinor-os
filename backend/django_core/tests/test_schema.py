@@ -147,10 +147,13 @@ class OpenAPISchemaGenerationTests(TestCase):
         schemas = self.schema['components']['schemas']
         unite = schemas['UniteMesureRequest']['properties']['libelle']
         self.assertEqual(unite['pattern'], MOTIF_NON_BLANC_SANS_NUL)
+        # Le sujet d'un gabarit publie sa règle de placeholders (gabarits_schema,
+        # api-fuzz-full 24/10) : le motif exclut toujours le NUL.
         sujet = schemas['EmailTemplateRequest']['properties']['sujet']
         branches = sujet.get('oneOf') or [sujet]
         self.assertTrue(
-            any(b.get('pattern') == MOTIF_SANS_NUL for b in branches), sujet)
+            any(b.get('pattern') == MOTIF_SANS_NUL
+                or '\u0000' in b.get('pattern', '') for b in branches), sujet)
         self.assertNotIn(
             'pattern', schemas['EmailTemplate']['properties']['sujet'])
 
