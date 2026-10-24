@@ -95,4 +95,11 @@ class RegistreFiabiliteEndpointTest(TestCase):
         resp = self._client(self.directeur).get(
             '/api/django/core/registre-fiabilite/export-pdf/'
             '?periode_debut=2026-06&periode_fin=2026-01')
+        # api-fuzz-full 24/10 — ordre des deux périodes conformes : 409.
+        self.assertEqual(resp.status_code, 409)
+
+    def test_periode_mois_a_un_chiffre_refusee_comme_le_motif(self):
+        resp = self._client(self.directeur).get(
+            '/api/django/core/registre-fiabilite/export-pdf/'
+            '?periode_debut=2026-6&periode_fin=2026-06')
         self.assertEqual(resp.status_code, 400)

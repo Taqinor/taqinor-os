@@ -69,3 +69,8 @@ class CoreConfig(AppConfig):
         # ``core.parametres_requete``.
         from .parametres_requete import installer
         installer()
+
+        # api-fuzz-full 24/10/2026 — date-heure à décalage LMT (secondes)
+        # rendue en UTC : voir ``core.champs_stricts.installer_dates_rfc3339``.
+        from .champs_stricts import installer_dates_rfc3339
+        installer_dates_rfc3339()

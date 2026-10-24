@@ -35,6 +35,7 @@ from authentication.permissions import (
 )
 # SCA4 — base transverse UNIQUE des viewsets scopés société : tout NOUVEAU
 # ModelViewSet inscriptible part d'ici (scoping + forçage de `company` garantis).
+from core.conflit_etat import ConflitEtat
 from core.parametres_requete import choix_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 # `records` est une app de fondation : son registre de cibles autorisées
@@ -193,6 +194,18 @@ def _permissions_effectives_csv(lignes, filename_suffix):
     response['Content-Disposition'] = (
         f'attachment; filename="permissions-{filename_suffix}.csv"')
     return response
+
+
+def _nom_fichier_sur(nom):
+    """Nom de fichier sûr pour ``Content-Disposition`` : sans guillemet,
+    antislash ni caractère de contrôle (non imprimable). api-fuzz-full 24/10
+    (``GET versions/{id}/apercu/``) — un nom de fichier téléversé portant un
+    caractère de contrôle produisait un en-tête invalide, refusé par gunicorn
+    avec SA page HTML 400 (non documentée) : la réponse de l'API n'arrivait
+    jamais."""
+    return ''.join(
+        c for c in str(nom) if c not in '"\\' and c.isprintable()
+    ) or 'document'
 
 
 def _refus_sous_arbre_non_vide(folder_ids):
@@ -1710,7 +1723,7 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         côté serveur) et, si le document est brouillon, le fait avancer
         « brouillon → revue » via la machine à états GED17 (réutilisée, jamais
         dupliquée). `approbateur` est borné à la société courante. Une 2e demande
-        alors qu'une est déjà en attente renvoie 400. Écriture : responsable/admin.
+        alors qu'une est déjà en attente renvoie 409. Écriture : responsable/admin.
         """
         document = self.get_object()
         approbateur = None
@@ -1740,8 +1753,9 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
                     document, user=request.user,
                     commentaire=_txt(request.data.get('commentaire'), 'commentaire'))
         except ValueError as exc:
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            # api-fuzz-full 24/10 — demande déjà en attente / transition
+            # refusée : l'ÉTAT du document s'oppose (409), le corps est conforme.
+            raise ConflitEtat(str(exc))
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -1941,6 +1955,11 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
             ids = request.data.getlist('documents') or []
         else:
             ids = request.data.get('documents') or []
+        # api-fuzz-full 24/10 — ``{"documents": 6.4e16}`` : ``len()`` d'un
+        # nombre levait TypeError (500). Le schéma publie une liste d'entiers.
+        if not isinstance(ids, (list, tuple)):
+            raise drf_serializers.ValidationError(
+                {'documents': ["Une liste d'identifiants est attendue."]})
         if not ids or len(ids) < 2:
             return Response(
                 {'documents': 'Au moins deux documents sont requis.'},
@@ -2390,7 +2409,7 @@ class DocumentVersionViewSet(CorpsObjetMixin, ParsersParActionMixin, TenantMixin
             return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
 
         mime = version.mime or 'application/octet-stream'
-        safe_name = (version.filename or 'document').replace('"', '')
+        safe_name = _nom_fichier_sur(version.filename or 'document')
 
         # GED21 — Contrôle de diffusion : si le document est marqué
         # `watermark_diffusion`, on filigrane le CONTENU SERVI (best-effort,
@@ -3119,7 +3138,7 @@ class ModeleDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet)
             return Response(
                 {'detail': str(exc)},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE)
-        safe_name = (modele.nom or 'document').replace('"', '')
+        safe_name = _nom_fichier_sur(modele.nom or 'document')
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = f'attachment; filename="{safe_name}.pdf"'
         resp['X-Content-Type-Options'] = 'nosniff'
@@ -3333,7 +3352,7 @@ class DemandeSignatureDocumentViewSet(CorpsObjetMixin, TenantMixin,
             return Response(
                 {'detail': "Contenu du document introuvable."},
                 status=status.HTTP_404_NOT_FOUND)
-        safe_name = (demande.document.nom or 'document').replace('"', '')
+        safe_name = _nom_fichier_sur(demande.document.nom or 'document')
         resp = HttpResponse(pdf_bytes, content_type='application/pdf')
         resp['Content-Disposition'] = (
             f'attachment; filename="{safe_name}-signe.pdf"')
@@ -4038,11 +4057,15 @@ class AnnotationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelView
             out_bytes = services.exporter_pdf_annote(version)
         except services.FichierIndisponible as exc:  # CI #956 (fuzz r13)
             return Response({'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        except services.PdfInexploitable as exc:
+            # api-fuzz-full 24/10 — version au fichier non PDF / sans page : 409.
+            raise ConflitEtat(str(exc))
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         response = HttpResponse(out_bytes, content_type='application/pdf')
         response['Content-Disposition'] = (
-            f'attachment; filename="{version.filename or "annote"}-annote.pdf"')
+            f'attachment; filename="{_nom_fichier_sur(version.filename or "annote")}'
+            '-annote.pdf"')
         return response
 
 
@@ -4789,8 +4812,8 @@ def public_partage(request, token):
             status=status.HTTP_404_NOT_FOUND))
 
     mime = version.mime or 'application/octet-stream'
-    safe_name = (version.filename or partage.document.nom
-                 or 'document').replace('"', '')
+    safe_name = _nom_fichier_sur(version.filename or partage.document.nom
+                                 or 'document')
 
     # GED21 — Contrôle de diffusion sur le lien PUBLIC : on filigrane le contenu
     # servi si CE partage est marqué (`partage.watermark`) OU si le document est
@@ -5371,8 +5394,8 @@ def _servir_document_a_signer(request, demande):
         demande.document, utilisateur=None, type_acces=ACCES_PUBLIC,
         adresse_ip=_ip_client(request), source_ref='public_signature')
     mime = version.mime or 'application/octet-stream'
-    safe_name = (version.filename or demande.document.nom or 'document') \
-        .replace('"', '')
+    safe_name = _nom_fichier_sur(
+        version.filename or demande.document.nom or 'document')
     disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
     resp = HttpResponse(data, content_type=mime)
     resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'

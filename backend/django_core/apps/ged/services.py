@@ -5475,6 +5475,13 @@ class FichierIndisponible(ValueError):
     que les appelants historiques (``except ValueError``) tiennent."""
 
 
+class PdfInexploitable(ValueError):
+    """api-fuzz-full 24/10/2026 — le fichier STOCKÉ d'une version désignée par
+    un identifiant valide n'est pas un PDF exploitable (pas un PDF, aucune
+    page) : la requête est conforme, c'est l'état du fichier qui s'oppose —
+    la vue répond 409. Sous-classe de ``ValueError`` (appelants historiques)."""
+
+
 def _octets_version(version):
     """Les octets d'une version, ou ``FichierIndisponible`` (jamais un
     ``ValueError`` nu : « Fichier introuvable » n'est pas un 400)."""
@@ -5826,9 +5833,17 @@ def exporter_pdf_annote(version):
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
     data = _octets_version(version)
-    _exiger_pdf(data)  # ADOC22
+    try:
+        _exiger_pdf(data)  # ADOC22
+    except ValueError as exc:
+        raise PdfInexploitable(str(exc)) from exc
     doc = fitz.open(stream=data, filetype='pdf')
     try:
+        if not doc.page_count:
+            # api-fuzz-full 24/10/2026 — PyMuPDF refuse d'enregistrer un PDF
+            # sans page (« cannot save with zero pages ») : état du fichier.
+            raise PdfInexploitable(
+                'Le PDF de cette version ne contient aucune page.')
         # ADOC1 — seules les annotations de la société de la version.
         for annot in version.annotations.filter(
                 company_id=version.company_id):

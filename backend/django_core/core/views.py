@@ -17,6 +17,8 @@ Découplage : aucune importation d'app domaine ici — seulement l'infra Celery
 via ``core.jobs`` (qui fait ``from celery import current_app``). ``core`` reste
 une couche de base (import-linter).
 """
+import re
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_serializer, extend_schema_view,
@@ -132,6 +134,25 @@ _LISTE_OBJETS = {'type': 'array', 'items': _OBJET}
 # répondait 400 « Format de période invalide » à une valeur conforme).
 _PERIODE_TYPE = {
     'type': 'string', 'pattern': r'^[1-9]\d{3}-(0[1-9]|1[0-2])$'}
+_RE_PERIODE = re.compile(r'[1-9]\d{3}-(0[1-9]|1[0-2])')
+#: api-fuzz-full 24/10 — période FACULTATIVE des rapports d'approbation
+#: (vide = tout l'historique) : ``periode=q…`` était lue en silence comme
+#: « tout » et, en export xlsx, ses caractères de contrôle finissaient dans
+#: l'en-tête ``Content-Disposition`` (page HTML 400 de gunicorn).
+_PERIODE_OPTIONNELLE_TYPE = {
+    'type': 'string', 'pattern': r'^([1-9]\d{3}-(0[1-9]|1[0-2]))?$'}
+
+
+def _periode_ou_400(request):
+    """``periode`` de requête : absente/vide → ``None`` ; ``AAAA-MM`` sinon
+    400 nommant le paramètre (règle de ``_PERIODE_OPTIONNELLE_TYPE``)."""
+    brut = request.query_params.get('periode')
+    if brut in (None, ''):
+        return None
+    if not _RE_PERIODE.fullmatch(brut):
+        raise drf_serializers.ValidationError(
+            {'periode': ['Période attendue au format AAAA-MM.']})
+    return brut
 
 
 # ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré
@@ -561,7 +582,7 @@ def mes_processus_view(request):
 
 
 _P_CHARGE = [
-    _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
+    _q('periode', _PERIODE_OPTIONNELLE_TYPE, 'Période AAAA-MM (vide : tout).'),
     # ERR-ENF11-FUZZ-CORE — ``minimum`` publié : ``seuil=-538`` était
     # conforme au schéma puis refusé (400 « doit être positif »).
     _q('seuil', {'type': 'integer', 'minimum': 0},
@@ -603,7 +624,7 @@ def charge_approbateurs_view(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
     return Response(core_selectors.rapport_charge_approbateurs(
-        company, periode=request.query_params.get('periode'), seuil=seuil))
+        company, periode=_periode_ou_400(request), seuil=seuil))
 
 
 #: NTWFL34 — colonnes de la piste d'audit des décisions, dans l'ordre affiché
@@ -622,7 +643,7 @@ _COLONNES_CONFORMITE = [
 
 
 _P_CONFORMITE = [
-    _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
+    _q('periode', _PERIODE_OPTIONNELLE_TYPE, 'Période AAAA-MM (vide : tout).'),
     _q('export', OpenApiTypes.STR, 'xlsx : classeur téléchargeable.',
        enum=['xlsx'])]
 
@@ -660,7 +681,7 @@ def rapport_conformite_view(request):
     from . import workflow as workflow_engine
 
     company = getattr(request.user, 'company', None)
-    periode = request.query_params.get('periode')
+    periode = _periode_ou_400(request)
     rapport = workflow_engine.decisions_conformite(company, periode=periode)
     # ERR-ENF11-FUZZ-CORE — ``?export=AAA`` (hors énum publiée) = 400.
     if choix_ou_400(request, 'export', ('xlsx',)) == 'xlsx':
@@ -2263,17 +2284,20 @@ def registre_fiabilite_export_pdf(request):
 
     debut_str = request.query_params.get('periode_debut')
     fin_str = request.query_params.get('periode_fin')
-    try:
-        debut = datetime.strptime(debut_str, '%Y-%m').date().replace(day=1)
-        fin = datetime.strptime(fin_str, '%Y-%m').date().replace(day=1)
-    except (TypeError, ValueError):
+    # Même règle que le motif publié (``_PERIODE_TYPE``) : ``2026-1`` que
+    # ``strptime`` lisait est refusé comme le schéma le dit.
+    if not all(isinstance(v, str) and _RE_PERIODE.fullmatch(v)
+               for v in (debut_str, fin_str)):
         return Response(
             {'detail': 'Format de période invalide (attendu YYYY-MM).'},
             status=status.HTTP_400_BAD_REQUEST)
+    debut = datetime.strptime(debut_str, '%Y-%m').date().replace(day=1)
+    fin = datetime.strptime(fin_str, '%Y-%m').date().replace(day=1)
     if fin < debut:
-        return Response(
-            {'detail': 'periode_fin doit être postérieure à periode_debut.'},
-            status=status.HTTP_400_BAD_REQUEST)
+        # api-fuzz-full 24/10 — deux paramètres conformes dont l'ORDRE (relation
+        # inexprimable au schéma) s'oppose : 409, comme les bornes min/max.
+        raise ConflitEtat(
+            {'periode_fin': ['periode_fin doit être postérieure à periode_debut.']})
 
     pdf_bytes = generer_pdf_registre_fiabilite(
         request.user.company, debut, fin)

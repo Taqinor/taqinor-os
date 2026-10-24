@@ -485,7 +485,13 @@ class _SectionsModeleSchema(OpenApiSerializerFieldExtension):
         if direction != 'request':
             return auto_schema._map_serializer_field(
                 self.target, direction, bypass_extensions=True)
+        # api-fuzz-full 24/10 — ``titre``/``corps_html`` publiés comme
+        # ``validate_sections`` les lit : texte sans caractère nul.
+        from core.champs_stricts import MOTIF_SANS_NUL
+        texte = {'type': 'string', 'pattern': MOTIF_SANS_NUL}
         return {'type': 'array', 'nullable': True, 'items': {
-            'type': 'object', 'properties': {'conditions': {
-                'anyOf': [{'type': 'object', 'maxProperties': 0},
-                          schema_groupe_conditions()]}}}}
+            'type': 'object', 'properties': {
+                'titre': texte, 'corps_html': texte,
+                'conditions': {
+                    'anyOf': [{'type': 'object', 'maxProperties': 0},
+                              schema_groupe_conditions()]}}}}

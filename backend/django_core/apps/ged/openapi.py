@@ -153,7 +153,9 @@ FUSIONNER_CORPS = S('FusionnerCorps', {
     'nom': s.CharField(required=False, allow_blank=True),
 })
 PLANIFIER_CORPS = S('PlanifierCorps', {
-    'libelle': s.RegexField(r'\S'),
+    # api-fuzz-full 24/10 — publié comme la vue le lit (``_txt(…, 200)``) :
+    # texte non blanc, sans caractère nul, 200 signes au plus.
+    'libelle': ChaineStricte(max_length=200),
     'echeance': s.DateField(),
     'assigne_a': s.IntegerField(required=False, allow_null=True),
 })

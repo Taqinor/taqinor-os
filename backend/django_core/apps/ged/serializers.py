@@ -4,8 +4,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.champs_stricts import (
-    ChaineStricte, ChampsStrictsSansDecimalMixin, DecimalStricte,
-    IdInconnu404Mixin, MotifUrlPublie)
+    MOTIF_SANS_NUL, ChaineStricte, ChampsStrictsSansDecimalMixin,
+    DecimalStricte, IdInconnu404Mixin, MotifUrlPublie)
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import ConflitUnicite
 
@@ -24,7 +24,17 @@ from .models import (
 )
 from . import services
 from .corps_requete import (
-    GroupeConditionsField, SectionsModeleField, erreurs_groupe_conditions)
+    GroupeConditionsField, SectionsModeleField, arbre_canonique,
+    erreurs_groupe_conditions)
+
+#: ADOC26 / api-fuzz-full 24/10 — alias d'ingestion e-mail d'un dossier : vide,
+#: ou une lettre/un chiffre puis lettres, chiffres, point, tiret, souligné
+#: (normalisé en minuscules). Publié tel quel au schéma (validateur du champ).
+MOTIF_ALIAS_EMAIL = r'^([A-Za-z0-9][A-Za-z0-9._-]*)?$'
+MESSAGE_ALIAS_EMAIL = (
+    "Alias invalide : lettres, chiffres, point, tiret ou souligné uniquement.")
+#: Plus grand entier d'une colonne ``integer`` PostgreSQL (clé, rang).
+ENTIER_SQL_MAX = 2_147_483_647
 
 
 class DocumentTagSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
@@ -84,10 +94,13 @@ class DocumentTagSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         if request is not None and parent is not None \
                 and parent.company_id != request.user.company_id:
             raise serializers.ValidationError({'parent': 'Tag parent inconnu.'})
+        # api-fuzz-full 24/10 — parent = soi-même / descendant, slug déjà pris :
+        # le corps est conforme, c'est l'état de la taxonomie qui s'oppose (409).
+        from core.conflit_etat import ConflitEtat
         try:
             services.validate_tag_parent(self.instance, parent)
         except ValueError as exc:
-            raise serializers.ValidationError({'parent': str(exc)})
+            raise ConflitEtat({'parent': [str(exc)]})
         company_id = (request.user.company_id if request is not None
                       else getattr(self.instance, 'company_id', None))
         slug = attrs.get('slug')
@@ -96,8 +109,8 @@ class DocumentTagSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
             if self.instance is not None:
                 existe = existe.exclude(pk=self.instance.pk)
             if existe.exists():
-                raise serializers.ValidationError(
-                    {'slug': 'Un tag porte déjà cet identifiant.'})
+                raise ConflitEtat(
+                    {'slug': ['Un tag porte déjà cet identifiant.']})
         elif self.instance is None or 'slug' in attrs:
             nom = attrs.get('nom', getattr(self.instance, 'nom', ''))
             attrs['slug'] = self._slug_unique(company_id, nom)
@@ -219,6 +232,13 @@ class FolderSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
     cabinet_nom = serializers.CharField(source='cabinet.nom', read_only=True, allow_null=True)
     parent_nom = serializers.CharField(
         source='parent.nom', read_only=True, allow_null=True)
+    # api-fuzz-full 24/10 — la règle de l'alias est PUBLIÉE (motif) et tenue
+    # telle quelle (pas de rognage silencieux : l'écran envoie déjà `trim()`) ;
+    # un alias déjà pris est un conflit d'état (409), voir validate_alias_email.
+    alias_email = ChaineStricte(
+        required=False, allow_blank=True, max_length=100,
+        trim_whitespace=False,
+        validators=[RegexValidator(MOTIF_ALIAS_EMAIL, MESSAGE_ALIAS_EMAIL)])
 
     # ADOC36 — FK inscriptibles bornées à la société de la requête.
     same_company_fields = ('cabinet', 'parent')
@@ -235,15 +255,14 @@ class FolderSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         read_only_fields = ['path', 'created_at', 'updated_at']
 
     def validate_alias_email(self, value):
-        """ADOC26 — alias normalisé (minuscules), unique par société."""
-        import re
-        alias = (value or '').strip().lower()
+        """ADOC26 — alias normalisé (minuscules), unique par société. Le motif
+        publié (``MOTIF_ALIAS_EMAIL``) a déjà été vérifié par le validateur du
+        champ ; un alias déjà pris = 409 (état), plus 400."""
+        alias = (value or '').lower()
         if not alias:
             return ''
-        if not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', alias):
-            raise serializers.ValidationError(
-                "Alias invalide : lettres, chiffres, point, tiret ou "
-                "souligné uniquement.")
+        if '\n' in alias:  # ``$`` Python tolère un saut de ligne final
+            raise serializers.ValidationError(MESSAGE_ALIAS_EMAIL)
         request = self.context.get('request')
         if request is not None:
             qs = Folder.objects.filter(
@@ -251,7 +270,8 @@ class FolderSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
             if self.instance is not None and isinstance(self.instance, Folder):
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
-                raise serializers.ValidationError("Alias déjà utilisé.")
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat({'alias_email': ['Alias déjà utilisé.']})
         return alias
 
     def get_fields(self):
@@ -1272,19 +1292,36 @@ class ModeleDocumentSerializer(ChampsStrictsSansDecimalMixin,
         if not isinstance(valeur, list):
             raise serializers.ValidationError(
                 "Les sections doivent être une liste d'objets.")
+        sortie = []
         for index, section in enumerate(valeur):
             if not isinstance(section, dict):
                 raise serializers.ValidationError(
                     f"Section #{index + 1} : un objet est attendu.")
+            # api-fuzz-full 24/10 — seules les clés que le rendu lit sont
+            # stockées (une clé inconnue portant ``\x00`` faisait refuser le
+            # jsonb par PostgreSQL : 500) ; leurs textes sont publiés « sans
+            # caractère nul » (``_SectionsModeleSchema``).
+            propre = {}
+            for cle in ('titre', 'corps_html'):
+                if cle in section:
+                    texte = section[cle]
+                    if not isinstance(texte, str) or '\x00' in texte:
+                        raise serializers.ValidationError(
+                            f"Section #{index + 1} : « {cle} » doit être un "
+                            "texte sans caractère nul.")
+                    propre[cle] = texte
             conditions = section.get('conditions', {})
-            if conditions == {}:
-                continue
-            erreurs = erreurs_groupe_conditions(conditions)
-            if erreurs:
-                raise serializers.ValidationError(
-                    f"Section #{index + 1} — conditions invalides : "
-                    f"{' ; '.join(erreurs)}")
-        return valeur
+            if conditions != {}:
+                erreurs = erreurs_groupe_conditions(conditions)
+                if erreurs:
+                    raise serializers.ValidationError(
+                        f"Section #{index + 1} — conditions invalides : "
+                        f"{' ; '.join(erreurs)}")
+                conditions = arbre_canonique(conditions)
+            if 'conditions' in section:
+                propre['conditions'] = conditions
+            sortie.append(propre)
+        return sortie
 
 
 class JournalAccesSerializer(ChampsStrictsSansDecimalMixin,
@@ -1449,6 +1486,65 @@ class AnnotationDocumentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMi
         read_only_fields = ['auteur', 'created_at']
 
 
+#: XGED19 — types d'action qu'exécute ``services._executer_action_regle``.
+TYPES_ACTION_REGLE = (
+    'tag', 'deplacer', 'proprietaire', 'demander_approbation',
+    'demander_signature')
+
+
+@extend_schema_field({'nullable': True, 'anyOf': [
+    {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+    {'type': 'number'}, {'type': 'boolean'}]})
+class _ScalaireSansNul(serializers.Field):
+    """Valeur d'un paramètre d'action : texte sans caractère nul, nombre,
+    booléen ou null (jamais un objet ni une liste)."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('allow_null', True)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        if isinstance(data, str) and '\x00' not in data:
+            return data
+        if isinstance(data, (bool, int, float)):
+            return data
+        raise serializers.ValidationError(
+            'Texte (sans caractère nul), nombre ou booléen attendu.')
+
+    def to_representation(self, value):
+        return value
+
+
+class _ParamsActionRegle(serializers.DictField):
+    """``params`` d'une action : objet de scalaires. Une CLÉ portant un
+    caractère nul (inexprimable au schéma OpenAPI 3.0, sans
+    ``propertyNames``) est un refus d'état : 409, comme ailleurs (ENF11)."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('child', _ScalaireSansNul())
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data):
+        if isinstance(data, dict) and any('\x00' in str(k) for k in data):
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(
+                {'actions': ['Clé de paramètre sans caractère nul attendue.']})
+        return super().to_internal_value(data)
+
+
+class ActionRegleDossierSerializer(serializers.Serializer):
+    """api-fuzz-full 24/10 — une action de règle de dossier telle que le
+    moteur la lit (``type`` + ``params``) : une action « dict libre » portant
+    une clé à ``\\x00`` faisait refuser le jsonb par PostgreSQL (500) ; seules
+    ces deux clés sont désormais stockées."""
+    type = serializers.ChoiceField(choices=TYPES_ACTION_REGLE)
+    params = _ParamsActionRegle(required=False)
+
+    def to_representation(self, instance):
+        # Lecture : l'action stockée telle quelle (lignes antérieures comprises).
+        return dict(instance) if isinstance(instance, dict) else instance
+
+
 class RegleDossierSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                              SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """XGED19 — Règle d'action automatique à l'upload dans un dossier.
@@ -1461,7 +1557,7 @@ class RegleDossierSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
     # CI #997 api-fuzz : un JSONField publie « n'importe quoi » (null compris) et
     # DRF refuse null — la liste d'étapes est déclarée (liste d'objets).
     actions = serializers.ListField(
-        child=serializers.DictField(), required=False)
+        child=ActionRegleDossierSerializer(), required=False)
 
     class Meta:
         model = RegleDossier
@@ -1715,16 +1811,21 @@ def _codes(model, champ):
 
 class DestinataireMultiSerializer(serializers.Serializer):
     """ADOC76 — Un destinataire du circuit : rôle FERMÉ (signataire / copie /
-    approbateur), ordre ≥ 1."""
-    nom = serializers.CharField(max_length=255)
+    approbateur), ordre ≥ 1.
+
+    api-fuzz-full 24/10 — textes STRICTS (motif « sans caractère nul » publié :
+    un ``nom`` à ``\\x00`` était conforme puis refusé) et entiers bornés à la
+    colonne (un ``ordre`` de 38 chiffres débordait l'entier SQL : 500)."""
+    nom = ChaineStricte(max_length=255)
     email = serializers.EmailField(required=False, allow_blank=True)
-    telephone = serializers.CharField(
+    telephone = ChaineStricte(
         required=False, allow_blank=True, max_length=32)
     role = serializers.ChoiceField(
         choices=_codes(SignataireDemande, 'role'), default='signataire')
-    ordre = serializers.IntegerField(min_value=1, required=False)
+    ordre = serializers.IntegerField(
+        min_value=1, max_value=ENTIER_SQL_MAX, required=False)
     role_signataire = serializers.IntegerField(
-        required=False, allow_null=True)
+        min_value=1, max_value=ENTIER_SQL_MAX, required=False, allow_null=True)
 
 
 class CreerMultiSignatairesSerializer(serializers.Serializer):

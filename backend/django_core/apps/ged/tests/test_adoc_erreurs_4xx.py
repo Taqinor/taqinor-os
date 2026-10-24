@@ -113,7 +113,9 @@ class ErreursMetierTests(TestCase):
             version = docs[0].versions.first()
             resp = self.api.get(
                 f'{BASE}annotations/export-annote/?version={version.pk}')
-            self.assertEqual(resp.status_code, 400, resp.content)
+            # api-fuzz-full 24/10 — ``?version=<id>`` est conforme : c'est le
+            # fichier STOCKÉ (pas un PDF) qui s'oppose → 409 d'état.
+            self.assertEqual(resp.status_code, 409, resp.content)
         self.assertEqual(Document.objects.count(), avant)
 
     def test_detagger_tag_obligatoire_400(self):
@@ -1147,3 +1149,108 @@ class Ci997FuzzGedTour4Tests(TestCase):
         regle.refresh_from_db()
         self.assertEqual(regle.condition_group, {'op': 'and', 'conditions': [
             {'field': 'type', 'operator': 'in', 'value': ['a', 2]}]})
+
+
+class ApiFuzzFull2410GedTests(TestCase):
+    """api-fuzz-full du 24/10/2026 (run 40044521365) — constats GED : 500 →
+    400 nommé, refus d'état → 409, JSON stocké canonique (jamais de clé à
+    caractère nul dans un jsonb), en-tête de fichier sûr."""
+
+    def setUp(self):
+        self.co = Company.objects.get_or_create(
+            slug='apifuzz2410-ged', defaults={'nom': 'APIFUZZ 2410 GED'})[0]
+        self.admin = User.objects.create_user(
+            username='apifuzz2410-ged-admin', password='x', company=self.co,
+            role_legacy='admin')
+        self.cab = Cabinet.objects.create(company=self.co, nom='C')
+        self.folder = Folder.objects.create(
+            company=self.co, cabinet=self.cab, nom='R')
+        self.doc = Document.objects.create(
+            company=self.co, folder=self.folder, nom='D')
+        self.api = auth(self.admin)
+
+    def test_fusionner_documents_non_liste_400(self):
+        for valeur in (6.4545140445560664e+16, 'abc', {'a': 1}):
+            resp = self.api.post(f'{BASE}documents/fusionner/',
+                                 {'documents': valeur}, format='json')
+            self.assertEqual(resp.status_code, 400, (valeur, resp.content))
+            self.assertIn('documents', resp.json())
+
+    def test_export_annote_pdf_inexploitable_409(self):
+        services.add_version(self.doc, file_key='attachments/v.pdf',
+                             company=self.co, mime='application/pdf')
+        version = self.doc.versions.first()
+        with mock.patch.object(
+                services, 'exporter_pdf_annote',
+                side_effect=services.PdfInexploitable('aucune page')):
+            resp = self.api.get(
+                f'{BASE}annotations/export-annote/?version={version.pk}')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_regle_dossier_actions_canoniques(self):
+        cg = {'field': 'nom', 'operator': 'eq', 'value': 'x'}
+        corps = {'folder': self.folder.pk, 'nom': 'r', 'condition_group': cg}
+        resp = self.api.post(f'{BASE}regles-dossier/', {**corps, 'actions': [
+            {'type': 'tag', 'params': {'tag': 'compta'},
+             'poubelle\x00': [{'y': None}]}]}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        from apps.ged.models import RegleDossier
+        self.assertEqual(RegleDossier.objects.get(pk=resp.json()['id']).actions,
+                         [{'type': 'tag', 'params': {'tag': 'compta'}}])
+        for actions in ([{'type': 'inconnu'}], [{'params': {}}],
+                        [{'type': 'tag', 'params': {'tag': ['a']}}],
+                        [{'type': 'tag', 'params': {'tag': 'a\x00b'}}]):
+            resp = self.api.post(f'{BASE}regles-dossier/',
+                                 {**corps, 'actions': actions}, format='json')
+            self.assertEqual(resp.status_code, 400, (actions, resp.content))
+        resp = self.api.post(f'{BASE}regles-dossier/', {**corps, 'actions': [
+            {'type': 'tag', 'params': {'t\x00': 'a'}}]}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_modele_sections_canoniques(self):
+        section = {'titre': 'T', 'corps_html': '<p>x</p>', '': {'a': 1},
+                   'conditions': {'op': 'or', 'cle\x00': {}, 'conditions': [
+                       {'field': 'pays', 'operator': 'in'}]}}
+        resp = self.api.post(f'{BASE}modeles-document/', {
+            'nom': 'M', 'corps_html': '<p>c</p>', 'sections': [section]},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        from apps.ged.models import ModeleDocument
+        self.assertEqual(
+            ModeleDocument.objects.get(pk=resp.json()['id']).sections,
+            [{'titre': 'T', 'corps_html': '<p>x</p>', 'conditions': {
+                'op': 'or',
+                'conditions': [{'field': 'pays', 'operator': 'in'}]}}])
+        for mauvaise in ({'titre': 'a\x00'}, {'corps_html': 3}):
+            resp = self.api.post(f'{BASE}modeles-document/', {
+                'nom': 'M2', 'corps_html': '<p>c</p>', 'sections': [mauvaise]},
+                format='json')
+            self.assertEqual(resp.status_code, 400, (mauvaise, resp.content))
+
+    def test_alias_email_motif_publie_et_tenu(self):
+        for alias in ('\u00d9', ' compta', 'compta\n', '-x'):
+            resp = self.api.post(f'{BASE}dossiers/', {
+                'cabinet': self.cab.pk, 'nom': 'A', 'alias_email': alias},
+                format='json')
+            self.assertEqual(resp.status_code, 400, (alias, resp.content))
+            self.assertIn('alias_email', resp.json())
+        resp = self.api.post(f'{BASE}dossiers/', {
+            'cabinet': self.cab.pk, 'nom': 'B', 'alias_email': 'Compta.2'},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.json()['alias_email'], 'compta.2')
+
+    def test_creer_multi_rang_hors_colonne_400(self):
+        resp = self.api.post(f'{BASE}demandes-signature/creer-multi/', {
+            'document': self.doc.pk, 'destinataires': [
+                {'nom': 'A', 'email': 'a@b.ma',
+                 'ordre': 56348967293236349698248115580247562015}]},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('destinataires', resp.json())
+
+    def test_nom_de_fichier_sur_pour_l_en_tete(self):
+        from apps.ged.views import _nom_fichier_sur
+        self.assertEqual(_nom_fichier_sur('\x12@"a\\b.pdf'), '@ab.pdf')
+        self.assertEqual(_nom_fichier_sur('\x01'), 'document')
+        self.assertEqual(_nom_fichier_sur('Devis é.pdf'), 'Devis é.pdf')

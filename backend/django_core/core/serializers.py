@@ -337,8 +337,8 @@ CREATION_PUBLIEE = {**ETAPES_PUBLIEES, 'required': ['steps']}
 
 
 class WorkflowDefinitionSerializer(
-    ChampsStrictsSansDecimalMixin, CompanyScopedRelationsMixin,
-    serializers.ModelSerializer
+    IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
+    CompanyScopedRelationsMixin, serializers.ModelSerializer
 ):
     """WIR51 — définition de workflow (chaîne d'approbation multi-étapes) +
     ses étapes imbriquées.
@@ -350,6 +350,9 @@ class WorkflowDefinitionSerializer(
     (renumérotées 1..n dans l'ordre du tableau)."""
 
     steps = WorkflowStepDefinitionSerializer(many=True, required=False)
+    # api-fuzz-full 24/10 — ``steps[].formulaire``/``definition`` bien formés
+    # mais inexistants (ou d'une autre société) : 404, comme au premier niveau.
+    ids_inconnus_imbriques = True
 
     class Meta:
         model = WorkflowDefinition
@@ -515,10 +518,12 @@ class MatriceApprobationSerializer(
             getattr(self.instance, 'montant_max', None))
         if (montant_min is not None and montant_max is not None
                 and montant_min > montant_max):
-            raise serializers.ValidationError({
-                'montant_min': (
+            # api-fuzz-full 24/10 — deux montants conformes dont l'ORDRE
+            # (relation inexprimable au schéma) s'oppose : 409.
+            raise ConflitEtat({
+                'montant_min': [
                     'Le montant minimum ne peut pas dépasser le montant '
-                    'maximum.'),
+                    'maximum.'],
             })
         return attrs
 

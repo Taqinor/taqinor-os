@@ -35,8 +35,13 @@ def _parse_csv(file_bytes, filename):
     reader = csv.DictReader(io.StringIO(text))
     rows = []
     for i, raw in enumerate(reader, start=2):  # ligne 1 = en-têtes
+        # api-fuzz-full 24/10 — une ligne PLUS LONGUE que l'en-tête range ses
+        # cellules en trop sous la clé ``None`` (``restkey``), en LISTE : leur
+        # ``.strip()`` levait AttributeError (500). Les colonnes sans en-tête
+        # sont ignorées, comme toute colonne inconnue.
         rows.append((i, {(k or '').strip().lower(): (v or '').strip()
-                         for k, v in raw.items()}))
+                         for k, v in raw.items()
+                         if k is not None and not isinstance(v, list)}))
     return rows
 
 
