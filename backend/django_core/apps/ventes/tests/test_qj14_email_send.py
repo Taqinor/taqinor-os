@@ -162,8 +162,10 @@ class TestEnvoyerEmailAction(TestCase):
         objet est refusé (400) AVANT tout effet : pas d'EmailLog, pas d'envoi."""
         devis = make_devis(self.company, self.user, self.client_obj, 'brouillon',
                            'DEV-QJ14-005B')
+        # api-fuzz : une adresse mal formée est un 400, plus un 502 SMTP.
         for corps in ({'to_email': 5}, {'sujet': None}, {'pdf_mode': 1},
-                      {'gamme_envoi': []}, [1, 2]):
+                      {'gamme_envoi': []}, [1, 2],
+                      {'to_email': 'pas une adresse'}):
             resp = self.api.post(url(devis.id), corps, format='json')
             self.assertEqual(resp.status_code, 400, (corps, resp.data))
         self.assertFalse(EmailLog.objects.filter(devis=devis).exists())

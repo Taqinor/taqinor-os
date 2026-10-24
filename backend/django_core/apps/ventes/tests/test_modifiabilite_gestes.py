@@ -302,3 +302,22 @@ class PlusAucuneCopieDeLaRegle(SimpleTestCase):
             with self.subTest(fichier=chemin.name):
                 self.assertNotIn('_MODIFIABLES', source)
                 self.assertIsNone(re.search(r'\bFROZEN\s*=', source))
+
+
+class ProduitInconnuOffresTaillesTests(_Base):
+    """api-fuzz — PATCH offres-tailles/config : un id de produit bien formé
+    absent de la société est une ressource manquante (404, même corps) ; un
+    rôle inconnu mêlé à lui garde le 400."""
+
+    def test_produit_inconnu_404_et_mele_400(self):
+        devis = self._devis('brouillon')
+        url = f'/api/django/ventes/devis/{devis.id}/offres-tailles/config/'
+        resp = self.api.patch(
+            url, {'cle': 'eco', 'config': {'equipements': {
+                'batterie': 11984}}}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content[:400])
+        self.assertIn('batterie', json.dumps(resp.json()))
+        resp = self.api.patch(
+            url, {'cle': 'eco', 'config': {'equipements': {
+                'batterie': 11984, 'ovni': 11984}}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content[:400])
