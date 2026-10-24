@@ -512,9 +512,11 @@ test('CALX386: atelier → simulation → électrique → documents → devis �
     await lancerSimulation.click()
     // Le résultat SERVI : soit la simulation aboutit (le panneau total
     // s'affiche), soit le serveur la refuse en NOMMANT le motif — les deux
-    // sont un résultat SERVI, aucun des deux n'est un écran muet.
+    // sont un résultat SERVI, aucun des deux n'est un écran muet. Un total
+    // déjà servi peut rester affiché à côté d'un refus : `.first()` évite la
+    // violation de mode strict quand les deux sont visibles (merge queue #1034).
     await expect(
-      page.getByTestId('cal236-total').or(page.getByTestId('calx48-refus')),
+      page.getByTestId('cal236-total').or(page.getByTestId('calx48-refus')).first(),
     ).toBeVisible({ timeout: 15_000 })
   } else {
     // Bouton désactivé (aucun poste de perte saisi, CALX48) : l'état
