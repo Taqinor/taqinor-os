@@ -93,8 +93,10 @@ class Ciq342SiteMT(SimpleTestCase):
                       texte)
         self.assertNotIn("n'est pas rémunéré", texte)
         # Pied de page sur la base servie (CIQ315) : HT.
-        self.assertIn("Investissement HT (clé en main) : 1 458 333,33 MAD HT",
+        # Le titre dit « HT » : le montant ne le répète pas.
+        self.assertIn("Investissement HT (clé en main) : 1 458 333,33 MAD",
                       texte)
+        self.assertNotIn("1 458 333,33 MAD HT", texte)
 
     def test_jamais_n_est_pas_remunere(self):
         for exemple in ("exemple", "exemple_industriel_mt"):
@@ -156,7 +158,9 @@ class Amot80PageFinance(SimpleTestCase):
         texte = _texte(_pages(_data())[3])
         self.assertIn("valorisation heure par heure au tarif de chaque poste",
                       texte)
-        self.assertIn("durée d'analyse : 25 ans", texte)
+        # « Horizon : 25 ans », une seule mention (la source le répétait).
+        self.assertIn("Horizon : 25 ans", texte)
+        self.assertNotIn("durée d'analyse", texte)
 
 
 def _data_energie(exemple="exemple"):
@@ -237,7 +241,7 @@ class Amot91Hypotheses(SimpleTestCase):
         texte = _texte(_pages(d)[3])
         self.assertIn("Ce que la centrale produit pour votre site", texte)
         tableau = texte[texte.index("Hypothèses de l'estimation"):]
-        self.assertIn("Entretien (O&M) non déduite des économies", tableau)
+        self.assertIn("Entretien (O&M) non déduit des économies", tableau)
         self.assertIn("Règle de dimensionnement", tableau)
         # Compact : jamais l'investissement (incomplet ici) dans le tableau.
         self.assertNotIn("Investissement 247 500", tableau)

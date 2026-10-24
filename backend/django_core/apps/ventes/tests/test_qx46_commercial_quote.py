@@ -694,7 +694,7 @@ class TestAmot91Hypotheses(SimpleTestCase):
                 "facture (grille du 16/02/2025).",
                 "Indexation du tarif 0 % / an", "Dégradation des panneaux",
                 "Horizon 25 ans",
-                "Entretien (O&M) non déduite des économies",
+                "Entretien (O&M) non déduit des économies",
                 "Remplacement onduleur en année 11 55 000,00 MAD TTC",
                 f"Base de production {production['inclinaison_deg']}° "
                 "d'inclinaison, plein sud — à confirmer au calepinage",
@@ -714,7 +714,7 @@ class TestAmot91Hypotheses(SimpleTestCase):
         data["economie_ci"]["om"] = {"statut": "souscrit",
                                      "montant_mad_an": 12000.0,
                                      "source": "ligne O&M souscrite"}
-        self.assertIn("Entretien (O&M) déduite des économies : 12 000,00 "
+        self.assertIn("Entretien (O&M) déduit des économies : 12 000,00 "
                       "MAD/an", self._p3(data))
 
     def test_calepinage_et_etude_d_une_autre_puissance(self):

@@ -188,6 +188,12 @@ LIBELLES_ACCEPTATION = (
     ("ice", None, "ICE"), ("date", "bpa_date", "Date"))
 
 
+def _date_signature(valeur):
+    """« 24/10/2026 » pour une date ISO servie, sinon la valeur telle quelle."""
+    from ..agricole.mentions import _date_jjmmaaaa
+    return _date_jjmmaaaa(valeur) or _txt(valeur)
+
+
 def bloc_acceptation(d, prefixe, couleur_texte="#1F2937",
                      couleur_ligne="#E5E7EB"):
     """Contenu de la case client « Bon pour accord — pour la société »
@@ -208,7 +214,9 @@ def bloc_acceptation(d, prefixe, couleur_texte="#1F2937",
                                             _txt(sig.get("signataire_qualite")))
                                 if v),
         "ice": _txt(sig.get("ice")),
-        "date": _txt(sig.get("date")),
+        # Date de signature servie en ISO (« 2026-10-24 ») : imprimée
+        # jj/mm/aaaa comme le « Le 24/10/2026 » voisin.
+        "date": _date_signature(sig.get("date")),
     }
     lignes = "".join(
         f'<div style="margin-top:3px;">'

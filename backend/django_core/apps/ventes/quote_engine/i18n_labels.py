@@ -2799,10 +2799,10 @@ LIBELLES = {
     'ci_h_om': {'fr': 'Entretien (O&amp;M)', 'en': 'Maintenance (O&amp;M)',
                 'ar': 'الصيانة (التشغيل والصيانة)'},
     'ci_h_om_deduite': {
-        'fr': 'déduite des économies : {montant} MAD/an',
+        'fr': 'déduit des économies : {montant} MAD/an',
         'en': 'deducted from the savings: {montant} MAD/yr',
         'ar': 'مخصومة من الوفورات: {montant} درهم/سنة'},
-    'ci_h_om_non_deduite': {'fr': 'non déduite des économies',
+    'ci_h_om_non_deduite': {'fr': 'non déduit des économies',
                             'en': 'not deducted from the savings',
                             'ar': 'غير مخصومة من الوفورات'},
     # AMOT92 — la couverture est le PROJET du client.

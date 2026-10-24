@@ -205,6 +205,12 @@ def _rangees_flux(flux, fmt, L, d, compact):
         if valeur is None:
             continue
         cat, fr = LIBELLES_HYPOTHESES[h["cle"]]
+        if h["cle"] == "horizon_ans" and ci_couverture.SOURCES_CLIENT.get(
+                str(h.get("source") or "").strip()) == "ci_src_horizon":
+            # « Horizon : 25 ans » — la source servie (« durée d'analyse :
+            # 25 ans ») ne ferait que le répéter.
+            rangees.append((L(cat, fr), valeur))
+            continue
         # AMOT80 — chaque source dans les mots du client (aucun code interne).
         # AMOT84 — une source servie sous un code stable (``source_code``)
         # est imprimée dans la langue du document ; le texte servi en repli.
@@ -298,15 +304,16 @@ def _rangees_estimation(synthese, L):
 
 
 def _rangee_om(argent, fmt_mad, L):
-    """AMOT91 — l'entretien (O&M) : « déduite des économies : N MAD/an »
-    seulement souscrite et chiffrée (CIQ342), sinon « non déduite »."""
+    """AMOT91 — l'entretien (O&M) : « déduit des économies : N MAD/an »
+    seulement souscrit et chiffré (CIQ342), sinon « non déduit »
+    (accordé à « entretien »)."""
     om = argent.get("om") if isinstance(argent, dict) else None
     om = om if isinstance(om, dict) else {}
     montant = _num(om.get("montant_mad_an"))
-    valeur = (L("ci_h_om_deduite", "déduite des économies : {montant} MAD/an",
+    valeur = (L("ci_h_om_deduite", "déduit des économies : {montant} MAD/an",
                 montant=fmt_mad(montant))
               if om.get("statut") == "souscrit" and montant else
-              L("ci_h_om_non_deduite", "non déduite des économies"))
+              L("ci_h_om_non_deduite", "non déduit des économies"))
     return [(L("ci_h_om", "Entretien (O&amp;M)"), valeur)]
 
 
@@ -541,8 +548,9 @@ def _pied_investissement(d, argent, fmt_mad, L):
     # AMOT86 — jamais « clé en main » quand des postes sont hors total.
     synthese = d.get("ind_synthese")
     if base == "ht" and ht is not None:
+        # Le titre dit déjà « HT » : le montant ne le répète pas.
         return (ci_couverture.titre_investissement(d, synthese, "ht")
-                + f" : <b>{fmt_mad(ht)} MAD {l_ht}</b>")
+                + f" : <b>{fmt_mad(ht)} MAD</b>")
     if base == "deux" and ht is not None:
         return (ci_couverture.titre_investissement(d, synthese, "deux")
                 + f" : <b>{fmt_mad(ttc)} MAD {l_ttc}</b> "
