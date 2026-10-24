@@ -191,10 +191,13 @@ class TestRecouvrement(TestCase):
             resp = self.api.post(url, mauvais, format='json')
             self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
             self.assertIn('exclu', resp.data)
-        # Corps liste : pas de 500 — l'exclusion par défaut s'applique.
-        self.assertEqual(self.api.post(url, [None], format='json').status_code, 200)
+        # Corps non objet (liste, chaîne JSON) : 400, la facture n'est pas touchée
+        # (api-fuzz-full 24/10 ; avant, lu comme {} → exclusion en 200).
+        avant = self.facture.exclu_relances
+        for corps in ([None], 'texte'):
+            self.assertEqual(self.api.post(url, corps, format='json').status_code, 400, corps)
         self.facture.refresh_from_db()
-        self.assertTrue(self.facture.exclu_relances)
+        self.assertEqual(self.facture.exclu_relances, avant)
 
     def test_paid_facture_not_in_relances(self):
         # Une facture payée ne doit pas figurer dans les impayés.

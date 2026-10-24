@@ -130,7 +130,11 @@ class FactureRecouvrementActionsMixin:
     def exclure_relance(self, request, pk=None):
         """Bascule l'exclusion de la facture des listes d'impayés."""
         facture = self.get_object()
-        corps = request.data if isinstance(request.data, dict) else {}
+        corps = request.data
+        if not isinstance(corps, dict):
+            # api-fuzz-full 24/10 : corps publié objet ; une liste ou une chaîne
+            # était lue comme {} et basculait l'exclusion en 200.
+            raise ValidationError({'detail': 'Corps JSON objet attendu.'})
         exclu = corps.get('exclu', True)
         if not isinstance(exclu, bool):
             raise ValidationError({'exclu': ['Booléen attendu.']})
