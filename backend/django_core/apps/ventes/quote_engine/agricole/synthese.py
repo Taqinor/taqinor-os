@@ -62,7 +62,7 @@ NON_INCLUS = ("forage", "genie_civil")
 #: (contrat crm ``lead_pompage.json`` : ``mesure_visite`` ; contrat AGR2 :
 #: ``foreur`` = essai de débit du foreur). Tout le reste (déclaration du
 #: client, site web, dérivé) reste « à confirmer par la visite » (D-AGR-4).
-DETAILS_MESURES = frozenset({"mesure_visite", "foreur"})
+DETAILS_MESURES = frozenset({"mesure_visite", "foreur", "essai"})
 
 #: Entrées du point d'eau dont la MESURE conditionne le devis (D-AGR-4), dans
 #: l'ordre d'affichage.

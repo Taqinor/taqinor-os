@@ -261,6 +261,18 @@ class LeadTests(_Base):
                     for j in data['profil_charge']['jours_types'])
         self.assertAlmostEqual(conso, 48000, delta=1)
 
+    def test_kwh_annuel_contredisant_la_facture_bloque_aussi(self):
+        # ADEV100 (L3) — le générateur pré-rempli envoie le kWh en ANNUEL :
+        # la décision du 30/09 (kWh ≠ facture > 2× ⇒ bloquant) vaut aussi.
+        lead = self._lead(facture_hiver=Decimal('5000'), categorie_commerciale='bureau',
+                          tension_raccordement='bt', contrat_electricite='bt_patente')
+        corps = self._corps_lead(lead)
+        corps['consommation'] = {'kwh_annuel': 480000}
+        data = self.post(corps)
+        codes = {a['code']: a for a in data['alertes']}
+        self.assertIn('kwh_incoherent_factures', codes)
+        self.assertEqual(codes['kwh_incoherent_factures']['niveau'], 'bloquant')
+
     def test_lead_kwh_seulement_meme_taille_aperçu_et_moteur(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale='bureau')
         corps = self._corps_lead(lead)
@@ -319,3 +331,31 @@ class LeadTests(_Base):
         self.assertEqual(data['profil_charge']['archetype']['cle'], 'bureau')
         self.assertEqual(data['profil_charge']['archetype']['source'],
                          'relevé de compteur 2025')
+
+
+class BornePoseParDefautAdev90(_Base):
+    """ADEV90 (D-ACI-13=a) — une surface déclarée SANS mode de pose borne la
+    taille avec une pose ESTIMÉE (terrasse → lestée, sinon surimposition),
+    dite « pose estimée, à confirmer au calepinage » ; plus d'alerte « non
+    bornée » quand une surface est déclarée."""
+
+    def _bornes(self, **toit):
+        # La contenance d'une surface déclarée se calcule sur les COTES du
+        # module (fiche technique) : le module 710 W du catalogue de test les reçoit.
+        FicheTechnique.objects.filter(pmax_wc=Decimal('710')).update(
+            longueur_mm=2384, largeur_mm=1303)
+        corps = self.corps()
+        corps['toit'] = dict({'type_pose': None, 'surface_utile_m2': 200}, **toit)
+        return self.post(corps)
+
+    def test_surface_sans_pose_bornee_en_surimposition(self):
+        rep = self._bornes()
+        toit = rep['taille']['bornes']['toit']
+        self.assertIsNotNone(toit['kwc'])
+        self.assertIn('pose estimée « toiture_inclinee »', toit['source'])
+        self.assertNotIn('contenance_toit_inconnue', [a['code'] for a in rep['alertes']])
+
+    def test_pose_declaree_inchangee(self):
+        rep = self._bornes(type_pose='toit_plat_leste')
+        toit = rep['taille']['bornes']['toit']
+        self.assertNotIn('pose estimée', toit['source'])

@@ -13,7 +13,10 @@
     "entreprise": {
       "raison_sociale": "Hôtel Exemple SARL",
       "signataire_qualite": "Directeur général",
-      "ice": "000000000000000"
+      "ice": "000000000000000",
+      "signataire_nom": "Karim Exemple",
+      "signataire_email": "karim@hotel-exemple.test",
+      "pouvoir_engager": true
     }
   },
   "exemple_portail": {
@@ -48,10 +51,11 @@
     "autres_segments": "résidentiel / agricole : le bloc `entreprise` est IGNORÉ (ni erreur, ni écriture).",
     "ice": "Validé par le validateur EXISTANT `apps/parametres/tax_id_validators.validate_ice_ma` (15 chiffres) — jamais une seconde règle ; erreur ⇒ 400 nommant `entreprise.ice`.",
     "statuts": "Aucun statut nouveau : l'acceptation bascule le devis en `accepte` comme aujourd'hui (règle #4).",
-    "cachet": "Le PDF signé porte une case « cachet de l'entreprise » (D-CIQ-11) — rendu seulement, aucune saisie."
+    "cachet": "Le PDF signé porte une case « cachet de l'entreprise » (D-CIQ-11) — rendu seulement, aucune saisie.",
+    "signataire_lien": "ADEV95 (L3 lien public, 24/10/2026) — LIEN PUBLIC seulement (le portail et l'ERP gardent les trois champs) : en plus, `entreprise.signataire_nom` (= le `nom` tapé pour signer, sinon 400 qui le nomme), `entreprise.signataire_email` (e-mail valide) et `entreprise.pouvoir_engager` (booléen `true` : « j'agis en la qualité indiquée et j'ai le pouvoir d'engager la société ») sont OBLIGATOIRES — 400 {detail, champ}. Enregistrés sur `DevisSignature` (`signataire_email`, `pouvoir_engager`). Un ICE déclaré DIFFÉRENT de celui que le Client porte déjà ⇒ 409 {detail, code: 'ice_divergent'} qui nomme les deux ICE, rien n'est écrit (jamais accepté en silence) ; contrat `proposal_accept.json` › `codes_409`."
   },
   "reponse": {
-    "forme": "réponse 200 existante {detail, reference, statut, accepte_par_nom, paiement} + `entreprise` relu (même forme que le corps) ou null hors C&I",
+    "forme": "réponse 200 existante {detail, reference, statut, accepte_par_nom, paiement} + `entreprise` relu (même forme que le corps : raison_sociale, signataire_qualite, ice, signataire_nom, signataire_email, pouvoir_engager) ou null hors C&I",
     "exemple": {
       "detail": "Proposition acceptée. Merci !",
       "reference": "DEV-202610-0004",
@@ -61,12 +65,19 @@
       "entreprise": {
         "raison_sociale": "Hôtel Exemple SARL",
         "signataire_qualite": "Directeur général",
-        "ice": "000000000000000"
+        "ice": "000000000000000",
+        "signataire_nom": "Karim Exemple",
+        "signataire_email": "karim@hotel-exemple.test",
+        "pouvoir_engager": true
       }
     },
     "exemple_400": {
       "detail": "L'ICE de l'entreprise est requis pour accepter ce devis.",
       "champ": "entreprise.ice"
+    },
+    "exemple_409_ice_divergent": {
+      "detail": "L'ICE saisi (000000000000000) ne correspond pas à l'ICE enregistré pour votre société (111111111111111). Vérifiez-le ou contactez votre conseiller avant de signer.",
+      "code": "ice_divergent"
     }
   },
   "signature_entreprise": {

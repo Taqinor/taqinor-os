@@ -27,12 +27,37 @@ import fieldLabels from './fieldLabels.js'
 // la carte unique `fieldLabels` — plus jamais par le texte du libellé (la
 // carte DEVIS_AUTO_FIELD_IDS indexée sur les libellés est supprimée :
 // renommer un libellé cassait la puce sans rien signaler).
-export function missingFieldTarget(champ) {
+// ADEV89 × ALEA53 — pour un lead COMMERCIAL / INDUSTRIEL, la phase du site
+// (`raccordement`) n'est montée que dans la section « pro » (la section énergie
+// n'affiche qu'un renvoi) : « Compléter » doit ouvrir CETTE section, sinon il ne
+// fait que défiler vers l'énergie quand « pro » est repliée.
+const MARCHES_PRO = ['commercial', 'industriel']
+const CHAMPS_SECTION_PRO = ['raccordement']
+
+export function missingFieldTarget(champ, typeInstallation = null) {
   const entree = fieldLabels[champ]
-  return entree ? { field: entree.inputId, section: entree.section } : null
+  if (!entree) return null
+  const section = CHAMPS_SECTION_PRO.includes(champ) && MARCHES_PRO.includes(typeInstallation)
+    ? 'pro'
+    : entree.section
+  return { field: entree.inputId, section }
 }
 
 const vide = (v) => v === '' || v === null || v === undefined
+
+// ALEA53 — la puce « Jours et heures d'ouverture (ou catégorie d'activité) » d'un
+// lead COMMERCIAL sans activité mène à l'ACTIVITÉ (2 clics : une catégorie à
+// archétype lève le manque), pas aux jours (6 clics + 2 champs). Activité déjà
+// choisie, ou industriel (pas de catégorie) : le chemin des jours, inchangé. Une
+// seule règle, partagée par la puce de l'onglet Devis et le bandeau du centre.
+const CHAMPS_RYTHME = ['jours_ouverture', 'heure_debut']
+export function missingChampPourLead(champ, state) {
+  return CHAMPS_RYTHME.includes(champ)
+    && getField(state, 'type_installation') === 'commercial'
+    && vide(getField(state, 'categorie_commerciale'))
+    ? 'categorie_commerciale'
+    : champ
+}
 
 // Les étapes où une relance NON planifiée est une vraie lacune : un devis est
 // parti (ou on est déjà en relance) et personne ne sait quand rappeler. Avant
@@ -57,7 +82,7 @@ export function chipsAComplete(state) {
   // les écrit, pour que l'écran et l'API disent exactement la même chose ;
   // cible résolue par le NOM DU CHAMP servi (QJR601).
   for (const { champ, label } of state?.server?.devis_auto?.manquants_detail ?? []) {
-    const cible = missingFieldTarget(champ)
+    const cible = missingFieldTarget(missingChampPourLead(champ, state), getField(state, 'type_installation'))
     chips.push({
       id: `devis:${champ}`,
       label,

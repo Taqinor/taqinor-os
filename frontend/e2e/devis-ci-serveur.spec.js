@@ -132,6 +132,8 @@ test('CIQ127 — devis automatique commercial depuis la fiche lead : brouillon a
     data: {
       nom: uniq('Commerce CIQ127'), ville: 'Casablanca', telephone: telephoneMobileUnique(),
       type_installation: 'commercial', conso_mensuelle_kwh: '12000', taille_souhaitee_kwc: '20',
+      // ADEV89 — la phase du site est un prérequis du devis automatique C&I.
+      raccordement: 'triphase',
       jours_ouverture: [1, 2, 3, 4, 5, 6], heure_debut: 8, heure_fin: 18,
       contrat_electricite: 'bt_patente',
     },

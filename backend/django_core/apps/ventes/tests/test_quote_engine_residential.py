@@ -649,9 +649,8 @@ class TestQuoteSignLinkAndPageNumbers(TestCase):
         html = render.build_html(renderer._augment(data))
         link = ShareLink.for_devis(devis)
         # le lien texte « Signez en ligne » pointe vers la proposition tokenisée
-        # PV84 — chemin partagé : slug du client ('Alaoui Karim', make_client)
-        # devant le token.
-        self.assertIn(f'/proposition/alaoui-karim/{link.token}', html)
+        # ADEV97 — chemin partagé, sans le nom du client devant le token.
+        self.assertIn(f'/proposition/{link.token}', html)
         self.assertNotIn('taqinor.ma/signer/', html)
 
     @tag('pdf')

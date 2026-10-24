@@ -283,8 +283,8 @@ describe('AGW301 — page /proposition agricole : cartes retirées, heures affic
     expect(code).not.toMatch(/pouvant atteindre 30/);
   });
   it('les heures de pompage sont lues et affichées sous l\'eau/jour (hypothèse)', () => {
-    expect(code).toContain('agri.heures_pompage');
-    expect(code).toContain('h de pompage (hypothèse)');
-    expect(code).toContain('of pumping (assumption)');
+    // Rejeu AGQ du 24/10 — la phrase vit dans `heuresEauAgricole` (mois de conception, parité PDF).
+    expect(code).toContain('heuresEauAgricole(data, agri?.heures_pompage');
+    expect(code).toContain('data-fr={heuresAgri.fr}');
   });
 });

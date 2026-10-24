@@ -23,6 +23,8 @@ import type { OccupancyId, SeasonId, ServedProduction } from './dayProfiles';
 // STRICTEMENT le même validateur que `courbes_journalieres.production`
 // (aucune seconde définition de « forme 24 h valide »).
 import { parseServedProductionEntry, parseServedProductionMap } from './dayProfiles';
+// ADEV95 — bloc `entreprise` B2B (validation + mise en forme) : module séparé (C20).
+import { entrepriseNettoyee, validerEntreprise } from './propositionB2b';
 
 /** Une ligne d'équipement telle que renvoyée par le backend (champs publics). */
 export interface ProposalItem {
@@ -1100,6 +1102,10 @@ export interface SignEntreprise {
   raison_sociale: string;
   signataire_qualite: string;
   ice: string;
+  /** ADEV95 — nom tapé pour signer, e-mail du signataire et attestation de pouvoir (lien public). */
+  signataire_nom?: string;
+  signataire_email?: string;
+  pouvoir_engager?: boolean;
 }
 
 export interface SignFormState {
@@ -1115,7 +1121,9 @@ export type SignChamp =
   | 'option'
   | 'entreprise.raison_sociale'
   | 'entreprise.signataire_qualite'
-  | 'entreprise.ice';
+  | 'entreprise.ice'
+  | 'entreprise.signataire_email'
+  | 'entreprise.pouvoir_engager';
 
 export interface SignValidation {
   valid: boolean;
@@ -1137,20 +1145,11 @@ export function validateSign(
 ): SignValidation {
   const nom = (form.nom ?? '').trim();
   if (!nom) return { valid: false, error: 'Veuillez saisir votre nom complet.', champ: 'nom' };
-  // CIW305 — commercial / industriel : les TROIS champs entreprise sont OBLIGATOIRES ; l'erreur
-  // nomme le champ fautif. Aucune règle de format ici (l'ICE est validé par le serveur, une seule règle).
-  if (entrepriseRequise) {
-    const e = form.entreprise ?? { raison_sociale: '', signataire_qualite: '', ice: '' };
-    if (!(e.raison_sociale ?? '').trim()) {
-      return { valid: false, error: 'Veuillez saisir la raison sociale de l’entreprise.', champ: 'entreprise.raison_sociale' };
-    }
-    if (!(e.signataire_qualite ?? '').trim()) {
-      return { valid: false, error: 'Veuillez indiquer votre qualité (gérant, DAF, DG…).', champ: 'entreprise.signataire_qualite' };
-    }
-    if (!(e.ice ?? '').trim()) {
-      return { valid: false, error: 'Veuillez saisir l’ICE de l’entreprise.', champ: 'entreprise.ice' };
-    }
-  }
+  // CIW305 / ADEV95 — commercial / industriel : raison sociale, qualité, ICE, e-mail du signataire
+  // et attestation de pouvoir OBLIGATOIRES ; l'erreur nomme le champ fautif (`propositionB2b`).
+  // Aucune règle de format de l'ICE ici (validé par le serveur, une seule règle).
+  const erreurEntreprise = entrepriseRequise ? validerEntreprise(form) : null;
+  if (erreurEntreprise) return erreurEntreprise;
   if (twoOptions && form.option !== 'sans_batterie' && form.option !== 'avec_batterie') {
     return { valid: false, error: 'Veuillez choisir une option avant de signer.', champ: 'option' };
   }
@@ -1174,16 +1173,10 @@ export function buildAcceptBody(form: SignFormState, twoOptions: boolean): Accep
   if (twoOptions && (form.option === 'sans_batterie' || form.option === 'avec_batterie')) {
     body.option = form.option;
   }
-  // CIW305 — `entreprise` (trois champs trimés) seulement quand le formulaire en porte une saisie.
-  const e = form.entreprise;
-  if (e) {
-    const entreprise: SignEntreprise = {
-      raison_sociale: (e.raison_sociale ?? '').trim(),
-      signataire_qualite: (e.signataire_qualite ?? '').trim(),
-      ice: (e.ice ?? '').trim(),
-    };
-    if (entreprise.raison_sociale || entreprise.signataire_qualite || entreprise.ice) body.entreprise = entreprise;
-  }
+  // CIW305 — `entreprise` (champs trimés) seulement quand le formulaire en porte une saisie ;
+  // ADEV95 — plus le nom tapé, l'e-mail et l'attestation du signataire quand la page les porte.
+  const entreprise = entrepriseNettoyee(form.entreprise, form.nom);
+  if (entreprise) body.entreprise = entreprise;
   return body;
 }
 
@@ -4745,19 +4738,24 @@ export function dateJjMmAaaa(iso: string | null | undefined): string | null {
   return /^\d{4}-\d{2}-\d{2}$/.test(t) ? `${t.slice(8, 10)}/${t.slice(5, 7)}/${t.slice(0, 4)}` : null;
 }
 
-export type ProvenanceKind = 'declare' | 'mesure' | 'a_confirmer';
+export type ProvenanceKind = 'declare' | 'mesure' | 'mesure_foreur' | 'mesure_essai' | 'a_confirmer';
 
 /**
  * Classe une provenance servie — MÊME règle que le renderer agricole
- * (`pages._provenance`) : `mesure_visite` / `foreur` → mesuré par TAQINOR ;
- * origine `saisie` / `lead` → déclaré par vous ; sinon à confirmer. Sans date lisible,
+ * (`mentions.cle_provenance`) : `mesure_visite` → mesuré par TAQINOR ; `foreur` → relevé
+ * par votre foreur ; `essai` → relevé à l'essai de pompage (rejeu AGQ du 24/10 : un relevé
+ * du foreur n'est jamais « mesuré par TAQINOR ») ; origine `saisie` / `lead` → déclaré
+ * par vous ; sinon à confirmer. Sans date lisible,
  * « déclaré » / « mesuré » retombent sur « à confirmer par la visite » (jamais une
  * date inventée).
  */
 export function provenanceKind(e: SyntheseProvenance): { kind: ProvenanceKind; date: string | null } {
   const date = dateJjMmAaaa(e.date);
-  if (e.detail === 'mesure_visite' || e.detail === 'foreur') {
-    return date ? { kind: 'mesure', date } : { kind: 'a_confirmer', date: null };
+  const mesure = ({ mesure_visite: 'mesure', foreur: 'mesure_foreur', essai: 'mesure_essai' } as const)[
+    e.detail as 'mesure_visite' | 'foreur' | 'essai'
+  ];
+  if (mesure) {
+    return date ? { kind: mesure, date } : { kind: 'a_confirmer', date: null };
   }
   if (e.origine === 'saisie' || e.origine === 'lead') {
     return date ? { kind: 'declare', date } : { kind: 'a_confirmer', date: null };
@@ -4801,6 +4799,16 @@ export const AGR_LBL = {
   aConfirmerVisite: { fr: 'À confirmer par la visite :', en: 'To be confirmed by the site visit:', ar: 'يؤكد خلال الزيارة:' },
   declare: { fr: 'déclaré par vous le {date}', en: 'declared by you on {date}', ar: 'صرحتم به بتاريخ {date}' },
   mesure: { fr: 'mesuré par TAQINOR le {date}', en: 'measured by TAQINOR on {date}', ar: 'قاسته TAQINOR بتاريخ {date}' },
+  mesureForeur: {
+    fr: 'relevé par votre foreur (saisi le {date})',
+    en: 'recorded by your driller (entered on {date})',
+    ar: 'سجله حفار البئر (أُدخل بتاريخ {date})',
+  },
+  mesureEssai: {
+    fr: "relevé à l'essai de pompage (saisi le {date})",
+    en: 'recorded at the pumping test (entered on {date})',
+    ar: 'سُجل خلال تجربة الضخ (أُدخل بتاريخ {date})',
+  },
   aConfirmer: { fr: 'à confirmer par la visite', en: 'to be confirmed by the site visit', ar: 'يجب تأكيده خلال الزيارة' },
   agronomique: { fr: 'besoin agronomique plein (FAO-56)', en: 'full agronomic need (FAO-56)', ar: 'الحاجة الفلاحية الكاملة (FAO-56)' },
   pompeExistante: { fr: 'Votre pompe existante', en: 'Your existing pump', ar: 'مضختكم الحالية' },
@@ -4858,6 +4866,8 @@ export function phraseProvenance(e: SyntheseProvenance): Lbl3 {
   const { kind, date } = provenanceKind(e);
   if (kind === 'declare') return remplirLbl(AGR_LBL.declare, { date: date as string });
   if (kind === 'mesure') return remplirLbl(AGR_LBL.mesure, { date: date as string });
+  if (kind === 'mesure_foreur') return remplirLbl(AGR_LBL.mesureForeur, { date: date as string });
+  if (kind === 'mesure_essai') return remplirLbl(AGR_LBL.mesureEssai, { date: date as string });
   return AGR_LBL.aConfirmer;
 }
 

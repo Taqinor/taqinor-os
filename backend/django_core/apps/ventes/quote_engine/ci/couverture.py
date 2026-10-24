@@ -13,6 +13,7 @@ garde ses littéraux d'hier, octet pour octet.
 """
 from __future__ import annotations
 
+import html
 import re
 
 from .blocs import langue, libelle
@@ -47,6 +48,9 @@ SOURCES_CLIENT = {
     "etude_ci.bilan (moteur C&I)": "ci_src_production",
     "etude_ci.bilan": "ci_src_production",
     "D-CIQ-10 : 25 ans": "ci_src_horizon",
+    # AMOT88 — chemin d'écran interne : jamais imprimé au client.
+    "réglage société — Paramètres › Tarification & ROI":
+        "ci_src_reglage_societe",
     "conventions Groupe CIQ": "ci_src_methode",
     ("remplacement à mi-vie (principe IEA PVPS, décision Q1 du 20/08/2026), "
      "au montant réel de la ligne onduleur du devis"): "ci_src_onduleur",
@@ -69,7 +73,10 @@ _CODES_INTERNES = re.compile(
     r"|\bD-[A-Z]+-\d+\s*:\s*"
     r"|,?\s*décision Q\d+ du [\d/]+"
     r"|\b[\w.]+\.json\s*(?:—\s*)?"
-    r"|\b(?:saisies_economie_ci|economie_ci|etude_ci)\.[\w.]+\s*")
+    r"|\b(?:saisies_economie_ci|economie_ci|etude_ci)\.[\w.]+\s*"
+    # AMOT91 — un nom de champ interne entre parenthèses
+    # (« (taux_actualisation_client) »).
+    r"|\s*\([a-z]+(?:_[a-z]+)+\)")
 
 
 def texte_client(d, texte):
@@ -91,6 +98,15 @@ def motif_investissement(d, cle):
     from .synthese import chiffres_cles
     motif = chiffres_cles(d.get(f"{cle}_synthese") or {})[
         "motif_investissement"]
+    visite = re.search(r"\((\d+) postes? hors total\)", motif or "")
+    if visite is not None:
+        # AMOT85 — seuls des postes hors total (visite) manquent.
+        if visite.group(1) == "1":
+            return libelle(d, "ci_invest_apres_visite_1", "Investissement à "
+                           "compléter après la visite technique (1 poste hors total)")
+        return libelle(d, "ci_invest_apres_visite_n", "Investissement à compléter "
+                       "après la visite technique ({n} postes hors total)",
+                       n=visite.group(1))
     n = re.search(r"\((\d+) articles? sans prix\)", motif or "")
     if not motif or n is None:
         return motif and libelle(d, "ci_invest_non_chiffre",
@@ -107,11 +123,16 @@ def _a_confirmer(d, cle):
     connu du moteur (``ci_confirmer_<clé>``) est traduit ; un motif propre
     au dossier reste tel quel."""
     from .. import i18n_labels
-    libelles = [texte_client(d, a)
-                for a in d.get(f"{cle}_a_confirmer") or [] if a]
+    cles = d.get(f"{cle}_a_confirmer_cles") or []
+    # AMOT88 — les postes hors total ont leur propre ligne du bandeau
+    # (``bandeau_reserve``) : jamais « À confirmer : À chiffrer… ».
+    paires = [(texte_client(d, a), cles[i] if i < len(cles) else "")
+              for i, a in enumerate(d.get(f"{cle}_a_confirmer") or []) if a]
+    paires = [(t, c) for t, c in paires if c != "a_chiffrer_visite"]
+    libelles = [t for t, _c in paires]
+    cles = [c for _t, c in paires]
     if langue(d) == "fr":
         return libelles
-    cles = d.get(f"{cle}_a_confirmer_cles") or []
     sortie = []
     for i, texte_fr in enumerate(libelles):
         cat = f"ci_confirmer_{cles[i]}" if i < len(cles) else ""
@@ -136,10 +157,28 @@ def bandeau_reserve(d, cle, prefixe):
     liste = (f'<div class="{prefixe}-reserve-l">'
              + libelle(d, "ci_a_confirmer", "À confirmer : ")
              + " · ".join(a_confirmer) + "</div>") if a_confirmer else ""
+    postes = ligne_postes_hors_total(d, d.get(f"{cle}_synthese"))
+    if postes:
+        liste = (f'<div class="{prefixe}-reserve-l">' + postes
+                 + "</div>") + liste
     bandeau = (BANDEAU_RESERVE if langue(d) == "fr"
                else texte(TEXTES_VISITE, langue(d)).rstrip("."))
     return (f'<div class="{prefixe}-reserve"><b>{bandeau}</b>'
             f'{liste}</div>')
+
+
+def ligne_postes_hors_total(d, synthese):
+    """AMOT86/AMOT88 — « À chiffrer après la visite technique (hors total) :
+    câble DC — <article>, structure de fixation » (rôle en mots simples,
+    dans la langue du document, JAMAIS un montant), ou '' sans poste — UNE
+    phrase pour le bandeau des couvertures et le une-page C&I."""
+    postes = postes_hors_total(synthese)
+    if not postes:
+        return ""
+    from .synthese import texte_postes
+    return (libelle(d, "ci_a_chiffrer_hors_total", "À chiffrer après la "
+                    "visite technique (hors total) : ")
+            + texte_postes(postes_echappes(postes), roles_client(d)))
 
 
 def css_bandeau(prefixe, gold, ink, muted):
@@ -220,6 +259,56 @@ def ans(valeur):
 NOTE_TVA_RECUPERABLE = ("TVA récupérable selon votre régime fiscal — à "
                         "confirmer avec votre comptable.")
 
+#: AMOT86 (D-ACI-2=a) — titre du bloc investissement par base servie :
+#: ``(clé, littéral)`` « clé en main » d'hier, puis la version « hors postes
+#: à chiffrer après la visite » quand des postes restent hors total.
+TITRES_INVESTISSEMENT = {
+    "ht": (("ci_invest_ht", "Investissement HT (clé en main)"),
+           ("ci_invest_ht_hv", "Investissement HT hors postes à chiffrer "
+                               "après la visite")),
+    "deux": (("ci_invest", "Investissement (clé en main)"),
+             ("ci_invest_hv", "Investissement hors postes à chiffrer après "
+                              "la visite")),
+    "ttc": (("ci_invest_ttc", "Investissement (TTC, clé en main)"),
+            ("ci_invest_ttc_hv", "Investissement TTC hors postes à chiffrer "
+                                 "après la visite")),
+}
+
+
+def postes_hors_total(synthese):
+    """AMOT86 — les postes « à chiffrer après la visite » restés hors total
+    (``chiffres_cles(synthese)['postes_hors_total']``), ou []."""
+    from .synthese import chiffres_cles
+    return chiffres_cles(synthese if isinstance(synthese, dict) else {})[
+        "postes_hors_total"]
+
+
+def postes_echappes(postes):
+    """Les postes servis, désignation ÉCHAPPÉE pour le HTML (une désignation
+    du catalogue n'est pas passée par ``builder.echapper_textes_client``) —
+    les mots du rôle, eux, sont des libellés du gabarit (déjà du HTML, et
+    isolés en arabe)."""
+    return [dict(p, designation=html.escape(str(p.get("designation") or ""),
+                                            quote=False)) for p in postes]
+
+
+def roles_client(d):
+    """AMOT88 — la table « rôle → mots du client » dans la langue du
+    document (``ci_role_<rôle>``), pour ``synthese.libelle_poste``."""
+    from .synthese import ROLES_POSTES_CLIENT
+    return {role: libelle(d, f"ci_role_{role}", fr)
+            for role, fr in ROLES_POSTES_CLIENT.items()}
+
+
+def titre_investissement(d, synthese, base):
+    """AMOT86 — le titre du bloc investissement : jamais « clé en main »
+    quand des postes sont hors total (« Investissement hors postes à chiffrer
+    après la visite »). ``base`` : ``ht`` / ``deux`` / ``ttc``."""
+    sans_reserve, hors_visite = TITRES_INVESTISSEMENT.get(
+        base, TITRES_INVESTISSEMENT["ttc"])
+    cle, fr = hors_visite if postes_hors_total(synthese) else sans_reserve
+    return libelle(d, cle, fr)
+
 
 def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
     """CIQ315 — le bloc « Investissement » de la couverture, sur la base de
@@ -246,34 +335,55 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
     if base in ("ht", "deux") and ht is not None:
         ht_txt = fmt_mad(ht)
         if base == "ht":
-            titre = libelle(d, "ci_invest_ht",
-                            "Investissement HT (clé en main)")
-            return (
-                f'<div class="{prefixe}-inv">\n'
-                f'      <div class="{prefixe}-inv-l">{titre}</div>\n'
-                f'      <div class="{prefixe}-inv-v">{ht_txt}<span>&nbsp;MAD'
-                f' {l_ht}</span></div>{ancre("total_ht", ht_txt)}\n'
-                f'      <div style="font-size:7.5pt;margin-top:2px;">{l_soit} '
-                f'{ttc_txt}&nbsp;MAD {l_ttc}{ancre("total_affiche", ttc_txt)}'
-                f' · {note_tva}</div>\n'
-                f'    </div>')
-        titre = libelle(d, "ci_invest", "Investissement (clé en main)")
-        return (
-            f'<div class="{prefixe}-inv">\n'
-            f'      <div class="{prefixe}-inv-l">{titre}</div>\n'
-            f'      <div class="{prefixe}-inv-v">{ttc_txt}<span>&nbsp;MAD'
-            f' {l_ttc}</span></div>{ancre("total_affiche", ttc_txt)}\n'
-            f'      <div style="font-size:7.5pt;margin-top:2px;">{l_soit} '
-            f'{ht_txt}&nbsp;MAD {l_ht}{ancre("total_ht", ht_txt)} · '
-            f'{note_tva}</div>\n'
-            f'    </div>')
-    titre = libelle(d, "ci_invest_ttc", "Investissement (TTC, clé en main)")
+            return _html_investissement(
+                prefixe, titre_investissement(d, synthese, "ht"), ht_txt,
+                l_ht, ancre("total_ht", ht_txt),
+                f'{l_soit} {ttc_txt}&nbsp;MAD&nbsp;{l_ttc}'
+                f'{ancre("total_affiche", ttc_txt)} · {note_tva}')
+        return _html_investissement(
+            prefixe, titre_investissement(d, synthese, "deux"), ttc_txt,
+            l_ttc, ancre("total_affiche", ttc_txt),
+            f'{l_soit} {ht_txt}&nbsp;MAD&nbsp;{l_ht}'
+            f'{ancre("total_ht", ht_txt)} · {note_tva}')
+    return _html_investissement(
+        prefixe, titre_investissement(d, synthese, "ttc"), ttc_txt, "",
+        ancre("total_affiche", ttc_txt))
+
+
+def _html_investissement(prefixe, titre, montant, base, ancre_html, note=""):
+    """AMOT87 — le titre et le montant sur UNE rangée (montant et unité
+    insécables : jamais « TTC » seul à la ligne), la note « soit … · TVA
+    récupérable… » sur sa PROPRE rangée pleine largeur sous le montant —
+    plus jamais une cellule anonyme qui écrase le montant."""
+    unite = f"&nbsp;{base}" if base else ""
+    note_html = (f'\n      <div class="{prefixe}-inv-n">{note}</div>'
+                 if note else "")
     return (
         f'<div class="{prefixe}-inv">\n'
-        f'      <div class="{prefixe}-inv-l">{titre}</div>\n'
-        f'      <div class="{prefixe}-inv-v">{ttc_txt}<span>&nbsp;MAD</span>'
-        f'</div>{ancre("total_affiche", ttc_txt)}\n'
+        f'      <div class="{prefixe}-inv-r">'
+        f'<div class="{prefixe}-inv-l">{titre}</div>'
+        f'<div class="{prefixe}-inv-v">{montant}<span>&nbsp;MAD{unite}'
+        f'</span></div></div>{ancre_html}{note_html}\n'
         f'    </div>')
+
+
+def css_investissement(prefixe, couleurs, police, taille_pt, marge_px,
+                       padding):
+    """AMOT87 — la feuille du bloc investissement, UNE définition pour les
+    deux couvertures. ``couleurs`` = (line, wash, muted, navy, ink)."""
+    line, wash, muted, navy, ink = couleurs
+    return (
+        f".{prefixe}-inv{{margin-top:{marge_px}px;border:1px solid {line};"
+        f"border-radius:12px;background:{wash};padding:{padding};}}"
+        f".{prefixe}-inv-r{{display:table;width:100%;}}"
+        f".{prefixe}-inv-l{{display:table-cell;vertical-align:middle;"
+        f"font-size:8.5pt;color:{muted};padding-right:10px;}}"
+        f".{prefixe}-inv-v{{display:table-cell;vertical-align:middle;"
+        f"text-align:right;white-space:nowrap;font-family:{police};"
+        f"font-size:{taille_pt}pt;color:{navy};}}"
+        f".{prefixe}-inv-v span{{font-size:10pt;color:{muted};}}"
+        f".{prefixe}-inv-n{{margin-top:4px;font-size:7.5pt;color:{ink};"
+        f"line-height:1.35;}}")
 
 
 def tuiles_taux(d, cle, kpi):
@@ -281,19 +391,75 @@ def tuiles_taux(d, cle, kpi):
     C&I lus sur ``synthese_ci``), ou [] — UNE définition pour les deux
     couvertures (CIQ333 : libellés dans la langue du document)."""
     tuiles = []
+    # AMOT89 — la définition SERVIE de chaque taux (``synthese_ci.energie.
+    # definitions``, IEA PVPS T1-28) en légende sous la tuile.
+    from .synthese import chiffres_cles
+    definitions = chiffres_cles(d.get(f"{cle}_synthese") or {})["definitions"]
     autoconso = d.get(f"{cle}_autoconso")
     if autoconso is not None:
-        tuiles.append(kpi(f"{round(autoconso)}", "&nbsp;%",
-                          libelle(d, "ci_autoconsommation",
-                                  "Autoconsommation"),
-                          "autoconsommation_pct"))
+        tuiles.append(kpi(f"{round(autoconso)}", "&nbsp;%", _avec_definition(
+            d, libelle(d, "ci_autoconsommation", "Autoconsommation"),
+            definitions.get("autoconso")), "autoconsommation_pct"))
     couverture = d.get(f"{cle}_couverture")
     if couverture is not None:
-        tuiles.append(kpi(f"{round(couverture)}", "&nbsp;%",
-                          libelle(d, "ci_couverture_conso",
-                                  "Couverture conso"),
-                          "couverture_pct"))
+        tuiles.append(kpi(f"{round(couverture)}", "&nbsp;%", _avec_definition(
+            d, libelle(d, "ci_part_conso_couverte",
+                       "Part de votre consommation couverte"),
+            definitions.get("couverture")), "couverture_pct"))
     return tuiles
+
+
+def _avec_definition(d, libelle_tuile, definition):
+    """AMOT89 — le libellé d'une tuile de taux suivi de la définition SERVIE
+    (petite ligne, isolée en arabe) — sauf quand le libellé la dit déjà
+    (« Part de votre consommation couverte » : la définition n'ajouterait
+    qu'une redite)."""
+    texte_def = html.escape(str(definition or "").strip(), quote=False)
+    brut = re.sub(r"<[^>]+>", "", libelle_tuile).strip()
+    if not texte_def or texte_def.casefold().startswith(brut.casefold()):
+        return libelle_tuile
+    if langue(d) == "ar":
+        texte_def = f'<span class="i18n-rtl" dir="rtl">{texte_def}</span>'
+    return (f'{libelle_tuile}<div style="font-size:6.2pt;margin-top:1px;'
+            f'line-height:1.25;">{texte_def}</div>')
+
+
+def ligne_surplus(d, cle, prefixe):
+    """AMOT89 — « Surplus non valorisé : ≈ N kWh/an (M % de la production) »
+    lu sur le bilan servi (``synthese_ci.energie.surplus``), dit selon la
+    règle 82-21 (``constants_82_21``) : en basse tension, aucune revente
+    ouverte ; en MT/HT avec revente, la part valorisée sous le plafond légal
+    puis le reste. '' sans surplus servi ou sans surplus du tout."""
+    from ..constants_82_21 import PLAFOND_INJECTION_PCT
+    from .synthese import chiffres_cles, est_site_mt
+    surplus = chiffres_cles(d.get(f"{cle}_synthese") or {})["surplus"]
+    if not surplus or not surplus.get("kwh_an"):
+        return ""
+    from ..residential.theme import fmt
+    reste = {"kwh": fmt(round(surplus["non_valorise_kwh_an"])),
+             "pct": f"{surplus['non_valorise_pct_production']:g}"}
+    if surplus.get("valorise_kwh_an"):
+        phrase = libelle(
+            d, "ci_surplus_injecte_kwh", "Surplus injecté : ≈ {kwh} kWh/an "
+            "valorisés (plafond légal : {plafond} % de la production "
+            "annuelle, loi 82-21 art. 12)",
+            kwh=fmt(round(surplus["valorise_kwh_an"])),
+            plafond=PLAFOND_INJECTION_PCT)
+        if surplus["non_valorise_kwh_an"]:
+            phrase += libelle(d, "ci_surplus_reste", " ; ≈ {kwh} kWh/an non "
+                              "valorisés ({pct} % de la production).", **reste)
+        else:
+            phrase += "."
+    else:
+        phrase = libelle(d, "ci_surplus_non_valorise", "Surplus non valorisé "
+                         ": ≈ {kwh} kWh/an ({pct} % de la production)",
+                         **reste)
+        phrase += (libelle(d, "ci_surplus_bt", " — revente non ouverte en "
+                           "basse tension à ce jour (ANRE, décision 04/26).")
+                   if not est_site_mt(d) else
+                   libelle(d, "ci_surplus_sans_revente",
+                           " — revente du surplus non retenue."))
+    return f'<div class="{prefixe}-mtsrc">{phrase}</div>'
 
 
 def tuiles_argent(d, cle, kpi, fmt):
@@ -310,6 +476,13 @@ def tuiles_argent(d, cle, kpi, fmt):
         libelle_eco = (libelle(d, "ci_economies_estimees",
                                "Économies estimées / an")
                        + (f" ({base})" if base else ""))
+        if postes_hors_total(d.get(f"{cle}_synthese")):
+            # AMOT86 (D-ACI-2=a) — postes hors total : le retour n'est pas
+            # imprimé, la légende dit sur quel prix il le sera.
+            libelle_eco += (
+                '<div style="font-size:6.3pt;margin-top:1px;">'
+                + libelle(d, "ci_retour_prix_complet", "retour calculé sur "
+                          "le prix complet, après la visite") + "</div>")
         tuiles.append(kpi(fmt(economies), "&nbsp;MAD", libelle_eco,
                           "economie_annuelle"))
     payback = d.get(f"{cle}_payback")
@@ -333,3 +506,153 @@ def tuiles_argent(d, cle, kpi, fmt):
             f'{motif_investissement(d, cle)}</span>', "",
             libelle(d, "ci_retour_estime", "Retour estimé")))
     return tuiles
+
+
+# ── AMOT92 — la couverture est le PROJET du client ─────────────────────────
+
+def format_telephone(brut):
+    """« 212661234590 » / « 0661234590 » → « +212 6 61 23 45 90 » (numéro
+    marocain, mise en forme seule) ; tout autre numéro reste tel quel."""
+    texte = str(brut or "").strip()
+    chiffres = re.sub(r"\D", "", texte)
+    if chiffres.startswith("00212"):
+        chiffres = chiffres[2:]
+    if len(chiffres) == 10 and chiffres.startswith("0"):
+        chiffres = "212" + chiffres[1:]
+    if len(chiffres) != 12 or not chiffres.startswith("212"):
+        return texte
+    reste = chiffres[4:]
+    return (f"+212 {chiffres[3]} "
+            + " ".join(reste[i:i + 2] for i in range(0, 8, 2)))
+
+
+def identite_client(d):
+    """``(nom, adresse · ville · téléphone)`` du client sous le bandeau des
+    deux couvertures — le téléphone mis en forme (AMOT92)."""
+    from ..residential import theme
+    nom = theme.titlecase_name(d.get("client_full") or d.get("client_name")
+                               or "Client")
+    meta = theme.join_meta(
+        d.get("client_addr", ""),
+        d.get("client_ville_libelle") or d.get("client_city", ""),
+        format_telephone(d.get("client_phone", "")))
+    return nom, meta
+
+
+def titre_projet(d, cle, kwc_txt, nom_client):
+    """« Centrale solaire 90 kWc — Hôtel Atlas Riad SARL, Marrakech » : la
+    raison sociale servie (``entreprise_client``), sinon le nom du client
+    imprimé ; la ville du devis quand elle est connue."""
+    entreprise = (d.get(f"{cle}_synthese") or {}).get("entreprise_client")
+    raison = str((entreprise or {}).get("raison_sociale") or "").strip() \
+        if isinstance(entreprise, dict) else ""
+    ville = str(d.get("client_ville_libelle") or d.get("client_city")
+                or "").strip()
+    client = raison or nom_client
+    if langue(d) == "ar":
+        # AMOT92 — titre arabe : le nom du client et sa ville forment UN
+        # segment isolé (U+2068 … U+2069, sens tiré de son premier
+        # caractère fort), le kWc un autre — la virgule reste entre le nom
+        # et la ville, dans l'ordre latin, au lieu d'être renvoyée devant le
+        # nom par l'algorithme bidirectionnel. Français et anglais inchangés.
+        client = ISOLE.format(client + (f", {ville}" if ville else ""))
+        return libelle(d, "ci_titre_projet", "Centrale solaire {kwc} kWc — "
+                       "{client}", kwc=ISOLE.format(kwc_txt), client=client)
+    titre = libelle(d, "ci_titre_projet", "Centrale solaire {kwc} kWc — "
+                    "{client}", kwc=kwc_txt, client=client)
+    return titre + (f", {ville}" if ville else "")
+
+
+#: AMOT92 — isolat bidirectionnel (FIRST STRONG ISOLATE … POP DIRECTIONAL
+#: ISOLATE) autour d'un segment latin dans un texte arabe.
+ISOLE = "\u2068{}\u2069"
+
+
+def ligne_interlocuteur(d, prefixe):
+    """« Votre interlocuteur : Yassine Cherkaoui · +212 6 12 34 56 78 » — le
+    créateur du devis servi par le builder (``seller``, QG7) ; '' sans nom
+    (jamais un nom inventé, jamais le seul numéro de la société)."""
+    vendeur = d.get("seller") if isinstance(d.get("seller"), dict) else {}
+    nom = str(vendeur.get("nom") or "").strip()
+    if not nom:
+        return ""
+    contact = " · ".join(x for x in (
+        nom, format_telephone(vendeur.get("telephone")),
+        str(vendeur.get("email") or "").strip()) if x)
+    return (f'<div class="{prefixe}-int" style="margin-top:1.5mm;'
+            f'font-size:7.5pt;">'
+            + libelle(d, "ci_votre_interlocuteur", "Votre interlocuteur")
+            + f"&#160;: <b>{contact}</b></div>")
+
+
+def qr_proposition(d):
+    """``(data-uri, lien affiché)`` du QR vers la proposition en ligne quand
+    le builder sert un vrai lien de partage (``links.signer`` contenant
+    « /proposition/ », QX6), sinon ``("", "")`` — même règle que la
+    couverture résidentielle (jamais un QR vers un 404)."""
+    from ..residential import theme
+    lien = str((d.get("links") or {}).get("signer") or "").strip()
+    if "/proposition/" not in lien:
+        return "", ""
+    uri = theme.qr_data_uri(theme.normaliser_lien(lien), logo=False,
+                            correction="M", box_size=10, border=4)
+    return (uri, theme.lien_affiche(lien)) if uri else ("", "")
+
+
+def rangee_bas(d, graphique, etapes, prefixe):
+    """AMOT92 — la rangée basse de la couverture : l'énergie mois par mois à
+    gauche (AMOT90), les prochaines étapes et le QR à droite ; sans
+    graphique servi, les étapes seules. Toute la rangée est CÉDABLE
+    (``data-graphique``) : le rendu adaptatif la retire en entier
+    (``_sans_graphiques``) plutôt que de pousser une page de plus."""
+    from .graphiques import cede
+    if cede(d, "etapes"):
+        return ""
+    if not graphique:
+        return (f'<div data-graphique="etapes" style="margin-top:10px;">'
+                f'{etapes}</div>')
+    return (f'<table class="{prefixe}-bas" data-graphique="etapes"><tr>'
+            f'<td>{graphique}</td><td class="{prefixe}-bas-d">{etapes}</td>'
+            f'</tr></table>')
+
+
+#: AMOT92 — les prochaines étapes, sans date promise.
+ETAPES_SUIVANTES = (
+    ("ci_etape_suivante_visite", "Visite technique de votre site"),
+    ("ci_etape_suivante_validation", "Validation de l'offre définitive"),
+    ("ci_etape_suivante_pose", "Pose et mise en service"))
+
+
+def bloc_etapes(d, prefixe, couleurs, en_ligne=False):
+    """« Prochaines étapes » (visite technique, validation de l'offre
+    définitive, pose et mise en service — sans date promise) et, quand un
+    lien de partage existe, le QR de la proposition en ligne.
+    ``couleurs`` = (navy, muted, gold) ; ``en_ligne`` : les étapes sur une
+    ligne et le QR à droite (couverture industrielle, plus dense)."""
+    navy, muted, gold = couleurs
+    puces = [f'<span style="color:{gold};font-weight:700;">{i}</span>&#160;'
+             f'{libelle(d, cle, fr)}'
+             for i, (cle, fr) in enumerate(ETAPES_SUIVANTES, start=1)]
+    corps = (" &#160;·&#160; ".join(puces) if en_ligne else "".join(
+        f'<div style="margin-top:2px;">{p}</div>' for p in puces))
+    uri, lien = qr_proposition(d)
+    legende = (f'<div style="font-size:6.5pt;color:{muted};margin-top:2px;">'
+               + libelle(d, "ci_proposition_en_ligne",
+                         "Votre proposition en ligne")
+               + f' · {html.escape(lien)}</div>') if uri else ""
+    image = (f'<img src="{uri}" alt="QR" style="width:19mm;height:19mm;'
+             f'display:block;">') if uri else ""
+    titre = (f'<div style="font-size:8.5pt;font-weight:700;color:{navy};'
+             f'margin-bottom:2px;">'
+             + libelle(d, "ci_prochaines_etapes", "Prochaines étapes")
+             + "</div>")
+    if en_ligne:
+        return (f'<table class="{prefixe}-etapes" style="width:100%;'
+                f'border-collapse:collapse;font-size:7.5pt;"><tr>'
+                f'<td style="vertical-align:middle;">{titre}{corps}{legende}'
+                f'</td><td style="width:21mm;vertical-align:middle;">{image}'
+                f'</td></tr></table>')
+    return (f'<div class="{prefixe}-etapes" style="font-size:7.5pt;'
+            f'line-height:1.35;">{titre}{corps}'
+            + (f'<div style="margin-top:6px;">{image}{legende}</div>'
+               if uri else "") + "</div>")

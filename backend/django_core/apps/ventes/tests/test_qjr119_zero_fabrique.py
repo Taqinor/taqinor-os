@@ -136,7 +136,7 @@ class TestNonRegressionDossierChiffre(SimpleTestCase):
         txt = _visible(i_render.build_html(self.ind))
         # CIQ341 — la baseline est titrée par sa SOURCE servie (synthese_ci) ;
         # sans source, plus de « 12 mois » affirmé.
-        self.assertIn("Baseline énergétique", txt)
+        self.assertIn("Votre consommation et votre production", txt)
         self.assertNotIn("— 12 mois", txt)
         self.assertIn("Facture électrique actuelle", txt)
         # CIQ301 — plus aucune économie reprise du modèle BT : la carte et la
@@ -149,7 +149,7 @@ class TestNonRegressionDossierChiffre(SimpleTestCase):
         data["economie_ci"] = i_sample.economie_ci()
         txt = _visible(i_render.build_html(i_renderer._augment(data)))
         self.assertIn("Cumul net de l'investissement", txt)
-        self.assertIn("Retour (même flux)", txt)
+        self.assertIn("Délai de retour", txt)
 
     def test_commercial_n_imprime_plus_l_economie_bt(self):
         # CIQ301 — la carte « Économies / an » ne reprend plus ``eco_s_ann``.

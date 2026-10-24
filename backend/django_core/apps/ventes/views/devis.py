@@ -62,6 +62,34 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 CONCEVABLE = ['1', 'true']
 
 
+def _resume_devis_auto(devis):
+    """ALEA51 — le RETOUR du devis automatique pour la bannière de succès :
+    ``total_ttc``, ``economie_an_1_ht``, ``retour_ans`` (``None`` quand
+    l'investissement est incomplet ou sans étude C&I) et ``postes_apres_visite``
+    (désignations « à chiffrer après la visite »). Tout est LU du devis créé
+    (``etude_params.etude_ci`` stocké ; la valorisation et le retour sont ceux
+    que lit déjà le document, ``economie_ci_pour_devis``) : rien n'est
+    recalculé ici et aucun statut n'est touché. Jamais bloquant."""
+    total = devis.total_ttc
+    resume = {'total_ttc': float(total) if total is not None else None,
+              'economie_an_1_ht': None, 'retour_ans': None,
+              'postes_apres_visite': []}
+    etude = (devis.etude_params or {}).get('etude_ci')
+    if not isinstance(etude, dict):
+        return resume
+    composition = etude.get('composition') or {}
+    resume['postes_apres_visite'] = list(composition.get('a_chiffrer_visite') or [])
+    try:
+        from ..economie_ci import economie_ci_pour_devis
+        bloc = economie_ci_pour_devis(devis, devis.company) or {}
+        resume['economie_an_1_ht'] = (bloc.get('economie_annee1') or {}).get('total_mad')
+        resume['retour_ans'] = (bloc.get('indicateurs') or {}).get('retour_ans')
+    except Exception:  # lecture seule : la bannière se passe de ces chiffres
+        logger.warning('devis/auto : résumé économique indisponible (dégradé)',
+                       exc_info=True)
+    return resume
+
+
 def _idempotente(suffixe):
     """AGQ23 (C-AGQ-022) — pose le contrat ``Idempotency-Key`` de
     ``core.idempotency`` (``IdempotentCreateMixin._avec_idempotence``, LA
@@ -456,16 +484,22 @@ class DevisViewSet(DevisEditionActionsMixin,
             permission_classes=[IsResponsableOrAdmin])
     @_idempotente('auto')  # AGQ23 — rejoue le 1ᵉʳ devis d'une même clé
     def auto(self, request):
-        """Copilote — crée un devis RÉSIDENTIEL automatiquement dimensionné à
-        partir de la fiche lead (JAMAIS un brouillon vide). C'est le seul chemin
-        de création de devis offert à l'agent.
+        """Copilote — crée un devis automatiquement dimensionné à partir de la
+        fiche lead, pour les QUATRE marchés : résidentiel, agricole (pompage,
+        AGR124), commercial et industriel (moteur C&I, CIQ120) — JAMAIS un
+        brouillon vide. C'est le seul chemin de création de devis offert à
+        l'agent.
 
         Corps : ``{lead}`` (ou ``{client}``, dont on remonte au lead le plus
         récent) + ``taux_tva?`` / ``remise_globale?``. La société est TOUJOURS
         celle du user ; le lead est borné à cette société (404 sinon). 409 si les
-        données de dimensionnement manquent ou si le marché n'est pas résidentiel
-        — l'agent demande alors la donnée / oriente vers le générateur. Aucun
-        statut n'est touché : le service renvoie un brouillon (règle #4).
+        données de dimensionnement manquent (le refus nomme le champ du lead
+        ``field``), si un poste fixe C&I n'a pas de prix (« Prix à renseigner »,
+        ALEA50) ou si rien ne se compose — l'agent demande alors la donnée /
+        oriente vers le générateur. La réponse porte de quoi dire le succès :
+        ``total_ttc``, ``economie_an_1_ht``, ``retour_ans`` (null si
+        l'investissement est incomplet) et ``postes_apres_visite`` (ALEA51).
+        Aucun statut n'est touché : le service renvoie un brouillon (règle #4).
 
         AGQ23 (C-AGQ-022) — IDEMPOTENTE (``_idempotente``) : une
         ``Idempotency-Key`` (une par ouverture du panneau lead) rejoue le
@@ -569,6 +603,7 @@ class DevisViewSet(DevisEditionActionsMixin,
                 created_by=request.user).first()
             if deja is not None:
                 link = ShareLink.for_devis(deja)
+                resume = _resume_devis_auto(deja)
                 return Response(
                     {
                         'id': deja.id,
@@ -579,6 +614,10 @@ class DevisViewSet(DevisEditionActionsMixin,
                         'proposal_token': link.token,
                         'proposal_path': chemin_proposition(deja, link.token),
                         'alertes': list(trace.get('alertes') or []),
+                        'total_ttc': resume['total_ttc'],
+                        'economie_an_1_ht': resume['economie_an_1_ht'],
+                        'retour_ans': resume['retour_ans'],
+                        'postes_apres_visite': resume['postes_apres_visite'],
                     },
                     status=status.HTTP_200_OK)
 
@@ -620,6 +659,7 @@ class DevisViewSet(DevisEditionActionsMixin,
         except Exception:
             logger.warning('devis/auto : cache indisponible — étape ignorée (mode dégradé)', exc_info=True)
         link = ShareLink.for_devis(devis)
+        resume = _resume_devis_auto(devis)
         return Response(
             {
                 'id': devis.id,
@@ -630,6 +670,10 @@ class DevisViewSet(DevisEditionActionsMixin,
                 'proposal_token': link.token,
                 'proposal_path': chemin_proposition(devis, link.token),
                 'alertes': alertes,
+                'total_ttc': resume['total_ttc'],
+                'economie_an_1_ht': resume['economie_an_1_ht'],
+                'retour_ans': resume['retour_ans'],
+                'postes_apres_visite': resume['postes_apres_visite'],
             },
             status=status.HTTP_201_CREATED)
 

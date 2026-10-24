@@ -98,6 +98,26 @@ class EmpreinteSignatureTests(TestCase):
         # CLAUSE PERSISTANCE : relire après le 409 → toujours rien de signé.
         self.assertFalse(self._lire()['accepted'])
 
+    def test_correction_commitee_entre_la_garde_et_le_verrou_409(self):
+        """Course : la garde de la vue PASSE (contenu encore identique), puis
+        le commercial corrige une ligne AVANT le verrou d'``accept_devis`` —
+        l'empreinte re-comparée SOUS le verrou refuse : 409
+        ``empreinte_perimee``, rien n'est écrit."""
+        from apps.ventes.public import signature_views
+        e0 = self._lire()['empreinte_contenu']
+        vraie_garde = signature_views._refus_empreinte
+
+        def garde_puis_correction(request, devis, link=None):
+            refus = vraie_garde(request, devis, link)
+            self.assertIsNone(refus)  # la voie rapide a bien laissé passer
+            LigneDevis.objects.filter(pk=self.ligne.pk).update(
+                quantite=Decimal('11'))
+            return refus
+
+        with mock.patch.object(signature_views, '_refus_empreinte',
+                               side_effect=garde_puis_correction):
+            self._assert_rien_ecrit(self._signer(e0))
+
     def test_empreinte_courante_200(self):
         lu = self._lire()
         resp = self._signer(lu['empreinte_contenu'])
@@ -112,3 +132,49 @@ class EmpreinteSignatureTests(TestCase):
         Devis.objects.filter(pk=self.devis.pk).update(
             statut=Devis.Statut.ACCEPTE)
         self.assertNotIn('empreinte_contenu', self._lire())
+
+    # ── ADEV96 — le sceau couvre les chiffres de l'étude C&I lue ───────────
+
+    @staticmethod
+    def _synthese_ci(**energie):
+        synthese = {
+            'segment': 'commercial', 'statut_etude': 'offre_ferme',
+            'systeme': {'kwc': 55, 'production_kwh_an': 95425},
+            'energie': {'taux_autoconso_pct': 72.8,
+                        'taux_couverture_pct': 46.6},
+            'argent': {'base': 'ht',
+                       'economie_annee1': {'total_mad': 98933.48},
+                       'indicateurs': {'retour_ans': 3, 'tri_pct': 39.8}},
+            'hypotheses': [{'cle': 'autoconsommation'}, {'cle': 'tarif'}],
+        }
+        synthese['energie'].update(energie)
+        return synthese
+
+    def test_figures_etude_changent_l_empreinte(self):
+        import hashlib
+        from apps.ventes.domain.modifiabilite import empreinte_visible
+        from apps.ventes.public.signature_views import empreinte_contenu
+        base = empreinte_contenu(self.devis, self._synthese_ci())
+        self.assertEqual(base,
+                         empreinte_contenu(self.devis, self._synthese_ci()))
+        self.assertNotEqual(base, empreinte_contenu(
+            self.devis, self._synthese_ci(taux_autoconso_pct=80)))
+        # Hors C&I (aucune synthèse) : l'empreinte d'avant, à l'octet.
+        brut = json.dumps(empreinte_visible(self.devis), sort_keys=True,
+                          ensure_ascii=False, default=str)
+        self.assertEqual(empreinte_contenu(self.devis),
+                         hashlib.sha256(brut.encode('utf-8')).hexdigest())
+
+    def test_correction_de_l_etude_seule_409(self):
+        """Une correction de l'étude SEULE (autoconsommation 72,8 → 80 %)
+        entre la lecture et la signature ⇒ 409, rien n'est écrit."""
+        from apps.ventes.public.signature_views import empreinte_contenu
+        cible = 'apps.ventes.domain.modifiabilite.synthese_ci_lue'
+        with mock.patch(cible, return_value=self._synthese_ci()):
+            lue = empreinte_contenu(self.devis)
+        with mock.patch(cible, return_value=self._synthese_ci(
+                taux_autoconso_pct=80)):
+            self._assert_rien_ecrit(self._signer(lue))
+        with mock.patch(cible, return_value=self._synthese_ci()):
+            resp = self._signer(lue)
+        self.assertEqual(resp.status_code, 200, resp.data)

@@ -91,6 +91,69 @@ class TestPdfPublicAccepteSigne(TestCase):
         self.assertEqual(contenu, OCTETS_RERENDU)
         self.assertTrue(mock_gen.called)
 
+    # ── L'exemplaire signé suit la règle du LIEN (revue du 24/10/2026) ────
+
+    @staticmethod
+    def _deverrouiller(link):
+        from django.core.cache import cache
+        from apps.ventes.domain.cycle_vie import _otp_lecture_verified_key
+        cache.set(_otp_lecture_verified_key(link.token), True, 3600)
+
+    def _demander(self, link):
+        return DjangoClient().post(
+            f'/api/django/public/proposal/{link.token}/otp-lecture/demander/')
+
+    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/rerendu.pdf')
+    def test_exemplaire_signe_suit_la_regle_du_lien(self, mock_gen, _dl):
+        """Lien SANS code : l'exemplaire signé part au jeton (client joignable
+        ou non), aucun code demandé. Lien SOUS code : 403 ``otp_required``
+        jusqu'au code, puis les octets signés."""
+        from django.core.cache import cache
+        from apps.ventes.domain.cycle_vie import _otp_lecture_cache_key
+        _, link = self._devis('DEV-ADEV97-A', 'accepte', CLE_SIGNEE)
+        for url in ('public-proposal-pdf', 'public-document'):
+            self.assertEqual(self._get(url, link, mock_gen), OCTETS_SIGNES, url)
+        self.assertEqual(self._demander(link).json().get('code_requis'), False)
+        link.otp_lecture = True
+        link.save(update_fields=['otp_lecture'])
+        for url in ('public-proposal-pdf', 'public-document'):
+            resp = DjangoClient().get(reverse(url, args=[link.token]))
+            self.assertEqual(resp.status_code, 403, url)
+            self.assertEqual(resp.json()['detail'], 'otp_required')
+        with patch('apps.ventes.domain.cycle_vie._send_otp_email',
+                   return_value=True) as envoi:
+            resp = self._demander(link)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(envoi.called)
+        self.assertIsNotNone(cache.get(_otp_lecture_cache_key(link.token)))
+        self._deverrouiller(link)
+        self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
+                         OCTETS_SIGNES)
+        # Déjà déverrouillé : aucun second code.
+        self.assertEqual(self._demander(link).json().get('code_requis'), False)
+
+    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/rerendu.pdf')
+    def test_sans_canal_le_pdf_signe_reste_servi(self, mock_gen, _dl):
+        """Aucun code ne peut partir (client sans e-mail) : inchangé, jamais
+        un exemplaire rendu illisible."""
+        self.client_obj.email = ''
+        self.client_obj.save(update_fields=['email'])
+        _, link = self._devis('DEV-ADEV97-B', 'accepte', CLE_SIGNEE)
+        self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
+                         OCTETS_SIGNES)
+        self.assertEqual(self._demander(link).json().get('code_requis'), False)
+
+    def test_envoye_aucun_code_requis(self):
+        _, link = self._devis('DEV-ADEV97-C', 'envoye')
+        resp = self._demander(link)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {
+            'detail': 'Aucun code requis pour ce lien.', 'code_requis': False})
+
 
 class _StockageMemoire:
     """Bouchon MinIO en mémoire (put_object / get_object) : suit les écritures

@@ -432,15 +432,9 @@ def _provenance(synthese, lg, nom_societe):
     for cle, p in prov.items():
         if not isinstance(p, dict):
             continue
-        detail = p.get("detail")
-        if detail in ("mesure_visite", "foreur"):
-            phrase = mentions.phrase_provenance(
-                "mesure", lg, date=p.get("date"), nom_societe=nom_societe)
-        elif p.get("origine") in ("saisie", "lead"):
-            phrase = mentions.phrase_provenance(
-                "declare", lg, date=p.get("date"))
-        else:
-            phrase = mentions.phrase_provenance("a_confirmer", lg)
+        phrase = mentions.phrase_provenance(
+            mentions.cle_provenance(p) or "a_confirmer", lg,
+            date=p.get("date"), nom_societe=nom_societe)
         valeur = _valeur_provenance(lg, cle, p.get("valeur"))
         lignes.append(f'<div class="ag-li"><b>{_entree(lg, cle)}</b> : '
                       + (f'{valeur} — ' if valeur else "")
@@ -1073,11 +1067,7 @@ def _hmt_annexe(d, synthese, lg, nom_societe):
     # Une HMT CALCULÉE se lit par ses composantes ci-dessus ; seule une HMT
     # mesurée ou déclarée porte une phrase de provenance (jamais « à
     # confirmer » plaqué sur un calcul).
-    cle = None
-    if isinstance(prov, dict):
-        cle = ("mesure" if prov.get("detail") in ("mesure_visite", "foreur")
-               else "declare" if prov.get("origine") in ("saisie", "lead")
-               else None)
+    cle = mentions.cle_provenance(prov)
     if cle:
         phrase = _t(lg, "agr_annexe_provenance",
                     phrase=mentions.phrase_provenance(

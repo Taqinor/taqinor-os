@@ -9,8 +9,9 @@ import { useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 import BlocEtudeReseau, {
-  MENTION_REVENTE_BT, LIBELLE_REVENTE_MT, CarteTarifFacture,
+  MENTION_REVENTE_BT, LIBELLE_REVENTE_MT, CarteTarifFacture, CarteProfilCi,
 } from './BlocEtudeReseau'
+import CarteResultatCi from './CarteResultatCi'
 import PanneauIndustriel from './PanneauIndustriel'
 import PanneauCommercial from './PanneauCommercial'
 import {
@@ -170,5 +171,158 @@ describe('CIQ222 — carte « Tarif de la facture »', () => {
     for (const input of screen.getByTestId('ci-tarif-mt').querySelectorAll('input[type=number]')) {
       expect(input.getAttribute('step')).toBe('any')
     }
+  })
+})
+
+describe('ADEV100 — champs repris du lead : badge, valeur éditable, « Retenu » seulement pour le reste', () => {
+  const RESOLUES = {
+    surface_utile_m2: { valeur: 650, provenance: { origine: 'lead', detail: 'client', date: '2026-09-10' } },
+    phases: { valeur: 'tri', provenance: { origine: 'lead', detail: 'client', date: '2026-09-10' } },
+  }
+
+  it('un champ semé montre « repris du lead » à la place de « Retenu », et reste éditable', () => {
+    let profil = null
+    const initial = poserProfilCi(profilCiVide(), 'surfaceUtile', '650')
+    const { container } = render(
+      <BlocEtudeReseauRepris initial={initial} resolues={RESOLUES} repris={['surfaceUtile']}
+                             onProfil={(p) => { profil = p }} />)
+    expect(screen.getByTestId('ci-repris-surfaceUtile')).toHaveTextContent('repris du lead')
+    expect(screen.queryByTestId('ci-retenu-surface_utile_m2')).toBeNull()
+    // un champ NON semé garde l'indication « Retenu »
+    expect(screen.getByTestId('ci-retenu-phases')).toHaveTextContent('Retenu')
+    expect(screen.queryByTestId('ci-repris-phases')).toBeNull()
+    const champ = container.querySelector('#gen-ci-surface')
+    expect(champ).not.toBeDisabled()
+    expect(champ.value).toBe('650')
+    fireEvent.change(champ, { target: { value: '700' } })
+    expect(profil.surfaceUtile).toBe('700')
+  })
+
+  it('le contrat repris du lead porte son badge dans la carte tarif', () => {
+    render(<CarteTarifFacture tarif={{ ...TARIF_SAISIE_VIDE, contrat: 'bt_patente' }} setTarifChamp={() => {}}
+                              tension="bt" repris={['contrat']} />)
+    expect(screen.getByTestId('ci-repris-contrat')).toHaveTextContent('repris du lead')
+    expect(screen.getByLabelText(/Contrat/).value).toBe('bt_patente')
+  })
+
+  it('sans rien de semé : aucun badge, les « Retenu » du serveur comme avant', () => {
+    render(<BlocEtudeReseauRepris initial={profilCiVide()} resolues={RESOLUES} repris={[]} onProfil={() => {}} />)
+    expect(document.querySelector('[data-testid^="ci-repris-"]')).toBeNull()
+    expect(screen.getByTestId('ci-retenu-surface_utile_m2')).toBeInTheDocument()
+  })
+})
+
+function BlocEtudeReseauRepris({ initial, resolues, repris, onProfil }) {
+  const [profil, setProfil] = useState(initial)
+  onProfil(profil)
+  return (
+    <BlocEtudeReseau profil={profil} resolues={resolues} repris={repris}
+                     setChamp={(c, v) => setProfil((p) => poserProfilCi(p, c, v))} />
+  )
+}
+
+describe('ADEV101 — carte résultat : 4 chiffres en tête, détails du calcul repliés', () => {
+  const ECO = exempleContrat('ventes', 'economie_ci')
+  const donnees = (extra = {}) => ({ ...EXEMPLE, economie_ci: ECO, ...extra })
+
+  it('kWc retenue, économie / an HT, autoconsommation et couverture en tête ; le reste replié', () => {
+    render(<CarteResultatCi donnees={donnees()} />)
+    const synthese = screen.getByTestId('ci-synthese')
+    expect(screen.getByTestId('ci-taille-retenue')).toHaveTextContent('kWc')
+    expect(screen.getByTestId('ci-economie-an')).toHaveTextContent(/MAD/)
+    expect(screen.getByTestId('ci-economie-an')).toHaveTextContent('Économie estimée / an (HT)')
+    expect(screen.getByTestId('ci-autoconso')).toHaveTextContent('%')
+    expect(screen.getByTestId('ci-couverture')).toHaveTextContent('%')
+    expect(synthese).toContainElement(screen.getByTestId('ci-couverture'))
+    // le relevé d'ingénieur est sous « Détails du calcul », fermé par défaut
+    const details = screen.getByTestId('ci-details-calcul')
+    expect(details.open).toBe(false)
+    expect(details).toHaveTextContent('Détails du calcul')
+    expect(details).toContainElement(screen.getByTestId('ci-paliers'))
+    expect(details).toContainElement(screen.getByTestId('ci-raison-arret'))
+    expect(synthese).not.toContainElement(screen.getByTestId('ci-paliers'))
+    expect(screen.queryByText(/Ratio marginal|Admis/)).toBeNull()
+    expect(screen.getByTestId('ci-alertes')).toHaveTextContent('Vendeur seulement')
+  })
+
+  it('« retour » seulement quand le serveur le sert ; économie « — » quand elle est omise', () => {
+    const { rerender } = render(<CarteResultatCi donnees={donnees()} />)
+    const sert = ECO.indicateurs?.retour_ans != null
+    expect(Boolean(screen.queryByTestId('ci-retour'))).toBe(sert)
+    rerender(<CarteResultatCi donnees={donnees({ economie_ci: { statut: 'omis' } })} />)
+    expect(screen.queryByTestId('ci-retour')).toBeNull()
+    expect(screen.getByTestId('ci-economie-an')).toHaveTextContent('—')
+    rerender(<CarteResultatCi donnees={donnees({ economie_ci: { ...ECO, indicateurs: { ...ECO.indicateurs, retour_ans: 4.2 } } })} />)
+    expect(screen.getByTestId('ci-retour')).toHaveTextContent('4,2')
+  })
+
+  it('aucune clé interne brute : bornes et raison d’arrêt en français, inconnues sous « Autres »', () => {
+    const taille = {
+      ...EXEMPLE.taille, raison_arret: 'raison_secrete',
+      paliers: [
+        { kwc: 5, cout_ht: 1, economie_annuelle: 1, ratio_marginal_annees: 1, admis: true, borne: null },
+        { kwc: 10, cout_ht: 1, economie_annuelle: 1, ratio_marginal_annees: 1, admis: false, borne: 'toit' },
+        { kwc: 15, cout_ht: 1, economie_annuelle: 1, ratio_marginal_annees: 1, admis: false, borne: 'borne_x' },
+      ],
+    }
+    render(<CarteResultatCi donnees={donnees({ taille })} />)
+    const paliers = screen.getByTestId('ci-paliers')
+    expect(paliers).toHaveTextContent('non — toit plein')
+    expect(paliers).not.toHaveTextContent('(toit)')
+    expect(paliers).not.toHaveTextContent('borne_x')
+    expect(screen.getByTestId('ci-raison-arret')).not.toHaveTextContent('raison_secrete')
+    expect(screen.getByTestId('ci-autres')).toHaveTextContent('raison_secrete, borne_x')
+  })
+})
+
+describe('ADEV102 — les 5 questions de l’appel d’abord, l’analyse sous « Affiner l’étude »', () => {
+  const rendre = (extra = {}) => render(
+    <CarteProfilCi profilCi={profilCiVide()} setChampCi={() => {}} apercuCi={{}} errors={{}}
+                   tarifSaisie={TARIF_SAISIE_VIDE} setTarifChamp={() => {}} {...extra}>
+      <p data-testid="bloc-activite">catégorie</p>
+    </CarteProfilCi>)
+  const avant = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+  it('consommation, contrat, phase, activité/horaires, surface — dans cet ordre, avec la phrase posée au client', () => {
+    const { container } = rendre()
+    const ordre = [
+      container.querySelector('#gen-ci-kwh-0'),
+      container.querySelector('#gen-tarif-contrat'),
+      container.querySelector('#gen-ci-phases'),
+      screen.getByTestId('bloc-activite'),
+      container.querySelector('#gen-ci-surface'),
+    ]
+    ordre.forEach((el) => expect(el).not.toBeNull())
+    for (let i = 0; i < ordre.length - 1; i += 1) expect(avant(ordre[i], ordre[i + 1])).toBe(true)
+    for (const id of ['conso', 'contrat', 'phase', 'horaires', 'surface']) {
+      expect(screen.getByTestId(`ci-aide-${id}`).textContent).toMatch(/^«.+»$/s)
+    }
+    // aucune note interne ni identifiant de tâche dans les aides
+    const aides = ['conso', 'contrat', 'phase', 'horaires', 'surface']
+      .map((id) => screen.getByTestId(`ci-aide-${id}`).textContent).join(' ')
+    expect(aides).not.toMatch(/(^|\s)[A-Z]{2,5}\d{2,4}(\s|$)|D-[A-Z]+-\d+|\.json|\.py/)
+  })
+
+  it('prix imprimés, source des prix, talon, tension, puissance, revente : repliés sous « Affiner l’étude (facultatif) »', () => {
+    const { container } = rendre()
+    const affiner = screen.getByTestId('ci-affiner')
+    expect(affiner.open).toBe(false)
+    expect(affiner).toHaveTextContent("Affiner l'étude (facultatif)")
+    for (const sel of ['#gen-tarif-base', '#gen-tarif-provenance', '#gen-tarif-date', '#gen-ci-talon',
+      '#gen-ci-tension', '#gen-ci-puissance', '[data-testid="gen-ci-revente"]']) {
+      const el = container.querySelector(sel)
+      expect(el, sel).not.toBeNull()
+      expect(affiner.contains(el), sel).toBe(true)
+    }
+    // les 5 questions, elles, restent hors de la section repliée
+    for (const sel of ['#gen-ci-kwh-0', '#gen-tarif-contrat', '#gen-ci-phases', '#gen-ci-surface']) {
+      expect(affiner.contains(container.querySelector(sel)), sel).toBe(false)
+    }
+  })
+
+  it('une erreur serveur sur un détail du tarif ouvre la section (jamais une erreur cachée)', () => {
+    rendre({ errors: { tarifDeclare: { base_tarifs: 'Base des prix obligatoire.' } } })
+    expect(screen.getByTestId('ci-affiner').open).toBe(true)
+    expect(screen.getByTestId('erreur-tarif-base_tarifs')).toBeInTheDocument()
   })
 })

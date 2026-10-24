@@ -45,6 +45,24 @@ class CasDeReferenceTest(SimpleTestCase):
         self.assertIn('NREL/JA-5200-51664', hyp['degradation_pct']['source'])
 
 
+class ProductionParAnneeTest(SimpleTestCase):
+    def test_production_de_chaque_annee_meme_degradation(self):
+        """AMOT94 — chaque ligne du flux porte sa production : 100 000 kWh ×
+        0,995^(t−1) (la dégradation servie), None en année 0 — recalcul
+        indépendant, au kWh près."""
+        res = eco.flux_ci(_base(), production_annee1_kwh=100000)
+        lignes = {f['annee']: f['production_kwh'] for f in
+                  res['flux_ht']['flux']}
+        self.assertIsNone(lignes[0])
+        for t in range(1, 26):
+            self.assertEqual(lignes[t], round(100000 * 0.995 ** (t - 1)), t)
+
+    def test_sans_production_servie_aucune_production(self):
+        res = eco.flux_ci(_base(), production_annee1_kwh=None)
+        self.assertTrue(all(f.get('production_kwh') is None
+                            for f in res['flux_ht']['flux']))
+
+
 class OnduleurTest(SimpleTestCase):
     def test_remplacement_annee_12_au_montant_de_sa_ligne(self):
         res = eco.flux_ci(_base(), production_annee1_kwh=100000,

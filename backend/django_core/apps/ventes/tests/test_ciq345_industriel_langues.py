@@ -147,14 +147,23 @@ class Ciq345LanguesIndustriel(SimpleTestCase):
                 self.assertEqual(_valeurs(langue), fr)
 
     def test_quatre_pages_dans_les_trois_langues(self):
+        """Le document LIVRÉ (``equip.document_adaptatif``, la décision de
+        ``render_pdf_bytes`` : blocs cédables retirés dans l'ordre
+        ``ORDRE_CEDABLES`` plutôt qu'une 5ᵉ page) fait 4 pages et AUCUNE ne
+        descend sous le pied, dans les trois langues."""
         from weasyprint import HTML
 
-        from apps.ventes.quote_engine.commercial.equip import deborde
+        from apps.ventes.quote_engine.commercial.equip import (
+            deborde, document_adaptatif,
+        )
         for langue in ("fr", "en", "ar"):
             with self.subTest(langue=langue):
-                doc = HTML(string=_html(_data(langue))).render()
+                doc = document_adaptatif(
+                    renderer._augment(_data(langue)), render.build_html,
+                    lambda html: HTML(string=html).render())
+                self.assertIsNotNone(doc)
                 self.assertEqual(len(doc.pages), 4)
-                self.assertFalse(deborde(doc.pages[2]))
+                self.assertFalse(any(deborde(page) for page in doc.pages))
 
 
 #: AMOT84 — textes DYNAMIQUES français que le moteur sert ou imprime.

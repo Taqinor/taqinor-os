@@ -10,8 +10,6 @@ import {
   // QJR100 — `ShoppingCart` et `Trash2` sont partis avec la table de lignes
   // (`generator/LigneTable.jsx`), qui les importe désormais elle-même.
   FileText, Sun,
-  // EZ3 — actions du panneau de succès (envoyer / aperçu).
-  Send, Eye,
   // SPL55 — `Zap` et `RefreshCw` (Auto-remplir / Recalculer) sont partis avec
   // la carte « Paramètres Techniques » (`generator/CarteParametresTechniques.jsx`).
 } from 'lucide-react'
@@ -143,7 +141,10 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 // QJR658 — devis ⇄ état d'écran : un module pur.
 // CIQ125 — profil déclaré C&I (corps de l'aperçu serveur + entrées v2).
 import { useEtudeCiPreview } from '../../features/ventes/etudeCiPreview'
-import { profilCiVide, poserProfilCi, corpsCiDepuisProfil, profilCiAncre } from '../../features/ventes/quote/profilCi'
+import { useProfilCiLead } from './generator/hooks/useProfilCiLead'
+import {
+  profilCiVide, corpsCiDepuisProfil, profilCiAncre,
+} from '../../features/ventes/quote/profilCi'
 // Forfaits au panneau (barème du catalogue) : l'écran pose le prix que le serveur écrira.
 import { retarifierForfaitsEcran } from '../../features/ventes/quote/forfaitsPanneau'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
@@ -166,6 +167,7 @@ import MargeIndicative from './generator/MargeIndicative'
 import IndicationRegistre from './generator/IndicationRegistre'
 import PanneauSurcharges from './generator/PanneauSurcharges'
 import CarteCreation from './generator/CarteCreation'
+import PanneauSucces from './generator/PanneauSucces'
 import BlocsEditionComplete from './generator/BlocsEditionComplete'
 import CarteLeadClient from './generator/CarteLeadClient'
 import ApercuSimulation from './generator/ApercuSimulation'
@@ -191,8 +193,7 @@ import { useChargeurEdition } from '../../features/ventes/quote/hooks/useChargeu
 import { useRegistreOverrides } from '../../features/ventes/quote/hooks/useRegistreOverrides'
 import { useLignesEcran } from './generator/hooks/useLignesEcran'
 import { useCompositionEcran } from './generator/hooks/useCompositionEcran'
-// AGQ25 — `AlertesDevisAuto` : le journal du devis automatique, même rendu que la fiche lead.
-import { useLeadClientEcran, AlertesDevisAuto } from './generator/hooks/useLeadClientEcran'
+import { useLeadClientEcran } from './generator/hooks/useLeadClientEcran'
 import { useApercuEtude } from './generator/hooks/useApercuEtude'
 import { useBrouillonEcran } from './generator/hooks/useBrouillonEcran'
 // SPL43 — aides de module déplacées (fabrique de lignes, défauts d'écran).
@@ -353,7 +354,7 @@ export default function DevisGenerator({
   // Désormais, la création en pleine page ouvre un PANNEAU DE SUCCÈS qui offre
   // l'action suivante évidente (envoyer, aperçu) sans re-chercher quoi que ce
   // soit. Le mode embarqué est INCHANGÉ.
-  const [succes, setSucces] = useState(null) // { id, reference, total }
+  const [succes, setSucces] = useState(null) // { id, reference, total, alertes, resultat }
   const finish = (devisId, devisData) => {
     if (embedded) { onDone?.(devisId); return }
     setSucces({
@@ -362,6 +363,10 @@ export default function DevisGenerator({
       // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — le total d'AFFICHAGE
       // canonique (celui de la liste et du PDF), pas une somme de lignes.
       total: devisData?.total_affiche ?? devisData?.total_ttc ?? null,
+      // ALEA51 — devis AUTOMATIQUE lancé d'ici (`?auto=1`) : les alertes du
+      // serveur et le retour (économie, postes à chiffrer…) suivent le devis.
+      alertes: devisData?.alertes ?? [],
+      resultat: devisData?.resultat ?? null,
     })
   }
   const cancel = () => {
@@ -635,7 +640,6 @@ export default function DevisGenerator({
   const [profilCi, setProfilCi] = useState(profilCiVide)
   // CIQ222 — le tarif de SA facture (contrat `tarifs_ci.json`), tel que tapé.
   const [tarifSaisie, setTarifSaisie] = useState(TARIF_SAISIE_VIDE)
-  const setTarifChamp = (champ, valeur) => setTarifSaisie((t) => ({ ...t, [champ]: valeur }))
   // CIQ223 — les saisies de l'économie C&I (contrat `economie_ci.json`).
   const [ecoCi, setEcoCi] = useState(ECO_CI_VIDE)
   const setEcoChamp = (champ, valeur) => setEcoCi((e) => ({ ...e, [champ]: valeur }))
@@ -643,8 +647,9 @@ export default function DevisGenerator({
   // réponses par catégorie (clés snake_case), stockées dans etude_params.
   const [categorieCommerciale, setCategorieCommerciale] = useState(CATEGORIE_NON_PRECISEE)
   const [commercialAnswers, setCommercialAnswers] = useState({})
-  const setCommercialAnswer = (key, val) =>
-    setCommercialAnswers(prev => ({ ...prev, [key]: val }))
+  // ADEV100 — pré-remplissage C&I depuis le lead (badge de provenance, LIBELLE_REPRIS_LEAD) + gestes de saisie.
+  const ci = useProfilCiLead({ profilCi, setProfilCi, categorieCommerciale, setCategorieCommerciale,
+    commercialAnswers, setCommercialAnswers, tarifSaisie, setTarifSaisie })
   const [prixCible, setPrixCible] = useState('')
   // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
   // historiques du simulateur, donc le devis est identique tant que rien n'est
@@ -1099,10 +1104,14 @@ export default function DevisGenerator({
   const resoluesCi = apercuCi.donnees?.entrees_resolues || {}
   // Consommation connue : saisie dans le profil (ou taille explicite), ou
   // reprise de la fiche lead par le serveur (valeur résolue non vide).
+  // ADEV91 (rejeu « humain » 23/10/2026) — un lead Meta ne porte qu'un kWh
+  // MENSUEL (`conso_mensuelle_kwh`) : le serveur le résout sous
+  // `kwh_mensuel_declare` (étude calculée, 30,53 kWc), mais l'écran ne lisait
+  // que les 12 mois / l'annuel et refusait « Créer le devis ».
   const consoCiConnue = profilCiAncre(profilCi)
-    || [resoluesCi.kwh_mensuels?.valeur, resoluesCi.kwh_annuel?.valeur]
+    || [resoluesCi.kwh_mensuels?.valeur, resoluesCi.kwh_annuel?.valeur,
+      resoluesCi.kwh_mensuel_declare?.valeur]
       .some((v) => (Array.isArray(v) ? v.some((x) => Number(x) > 0) : Number(v) > 0))
-  const setChampCi = (chemin, valeur) => setProfilCi((p) => poserProfilCi(p, chemin, valeur))
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -1197,7 +1206,7 @@ export default function DevisGenerator({
 
   // SPL50 — lien lead/client du devis (déplacé tel quel dans le hook ; l'effet d'arrivée du lead reste plus bas).
   const {
-    applyLead, applyClient, runAutoQuote, alertesAuto,
+    applyLead, applyClient, runAutoQuote,
   } = useLeadClientEcran({
     leads, structuresCatalogue, setSaving, setErrors, sizing, dispatchSizing, finish, leadId,
     setLeadId, clientId, setClientId, setFHiver, setFEte, setMonthly: poserMoisDerives, modeInstallation,
@@ -1315,6 +1324,7 @@ export default function DevisGenerator({
       }
       // Initialisation unique (garde autoRan) — pas de cascade.
       applyLead(leadParam, lead)
+      ci.appliquerProfilCiDuLead(lead)
       const wantAuto = embedded ? autoProp : (searchParams.get('auto') === '1')
       const discount = embedded ? (discountProp || '0') : (searchParams.get('discount') || '0')
       if (wantAuto) {
@@ -1704,47 +1714,7 @@ export default function DevisGenerator({
       : `${lignesQuantiteNulle.length} lignes à quantité 0 ne seront pas enregistrées : `
         + lignesQuantiteNulle.map(l => l.designation || '—').join(', ')
 
-  if (succes && !embedded) {
-    return (
-      <div className="page gen-page">
-        <Card className="mx-auto max-w-xl" data-testid="devis-succes">
-          <CardContent className="flex flex-col gap-4 pt-6 text-center">
-            <div>
-              <p className="text-sm text-muted-foreground">Devis enregistré</p>
-              <p className="font-display text-xl font-bold">{succes.reference || '—'}</p>
-              {succes.total != null && (
-                <p className="num mt-1 text-2xl font-semibold">{formatMoney(succes.total)}</p>
-              )}
-            </div>
-            {/* AGQ25 — le journal du devis automatique (même rendu que la fiche lead). */}
-            <AlertesDevisAuto alertes={alertesAuto} />
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <Button
-                onClick={() => navigate(`/ventes/devis?devis=${succes.id}&envoyer=1`)}
-                data-testid="succes-whatsapp"
-              >
-                <Send /> Envoyer par WhatsApp
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => navigate(`/ventes/devis?devis=${succes.id}&apercu=1`)}
-                data-testid="succes-apercu"
-              >
-                <Eye /> Aperçu du PDF
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => navigate(`/ventes/devis?devis=${succes.id}`)}
-                data-testid="succes-liste"
-              >
-                Retour à la liste
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  if (succes && !embedded) return <PanneauSucces succes={succes} navigate={navigate} />
 
   // QJR101 — le branchement des trois panneaux raccordés au réseau
   // (résidentiel / industriel / commercial). QUE des props : aucun calcul ne
@@ -1762,7 +1732,7 @@ export default function DevisGenerator({
   // QJR101 — les entrées d'étude que l'industriel et le commercial partagent.
   // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
-    profilCi, setChampCi, apercuCi, tarifSaisie, setTarifChamp,
+    profilCi, apercuCi, tarifSaisie, setChampCi: ci.setChampCi, setTarifChamp: ci.setTarifChamp, reprisLead: ci.reprisLead,
     apercuEcoCi, ecoCi, setEcoChamp,
   }
 
@@ -1987,9 +1957,9 @@ export default function DevisGenerator({
           {...socleFactures}
           {...socleEtudeReseau}
           categorieCommerciale={categorieCommerciale}
-          setCategorieCommerciale={setCategorieCommerciale}
+          setCategorieCommerciale={ci.choisirCategorieCommerciale}
           commercialAnswers={commercialAnswers}
-          setCommercialAnswer={setCommercialAnswer}
+          setCommercialAnswer={ci.setCommercialAnswer}
         />
         {bandeauSegment && (
           <div role="status" data-testid="bandeau-segment-lead"
@@ -2057,7 +2027,7 @@ export default function DevisGenerator({
           deuxValeursDim={deuxValeursDim} showAvec={showAvec}
           sizingServeurMessage={sizingServeurMessage} dayUsage={dayUsage}
           errors={errors} pompageManquants={pompageManquants} autoFillLoading={autoFillLoading}
-          marcheCi={marcheCi} apercuCi={apercuCi} fHiver={fHiver}
+          marcheCi={marcheCi} fHiver={fHiver}
           recalculerDimensionnement={recalculerDimensionnement}
           avecQuantitesFigees={avecQuantitesFigees} handleAutoFill={handleAutoFill}
           compositionErreur={compositionErreur} editDevis={editDevis}

@@ -8,6 +8,7 @@
    ne compose et n'étudie plus rien : plus de balayage C&I par paliers, plus
    d'étude locale, plus de `createDevisAtomic`. Lit le lead directement (pas d'état React). */
 import ventesApi from '../../api/ventesApi'
+import { formatMAD, formatNumber } from '../../lib/format'
 import {
   panneauxPourKwc,
   // QJR576 — UNE conversion panneaux ↔ kWc et UN wattage par défaut.
@@ -49,7 +50,7 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
 // nommé) ; ses `alertes` vont à `onAlertes` (internes comprises : l'écran les
 // marque « vendeur seulement »). Une cible kWc saisie POUR CE devis (EZ5)
 // part en `target_kwc`, souveraine (D-QJR5-13), sans toucher le lead.
-async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marche, idempotencyKey }) {
+async function creerDevisServeur({ lead, discountStr, onAlertes, onResultat, targetKwc, marche, idempotencyKey }) {
   const cible = parseFloat(targetKwc)
   let creation
   try {
@@ -88,6 +89,9 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
   if (typeof onAlertes === 'function') {
     onAlertes(Array.isArray(creation.data.alertes) ? creation.data.alertes : [])
   }
+  // ALEA51 — le retour du serveur (réf., kWc, total TTC, économie, retour,
+  // postes à chiffrer) pour la bannière de succès : lu tel quel, rien calculé ici.
+  if (typeof onResultat === 'function') onResultat(creation.data)
   return id
 }
 
@@ -100,6 +104,10 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
  * @param {string}   discountStr  Remise globale en %
  * @param {function} onAlertes    rappel facultatif recevant les `alertes` du
  *                                devis créé par le serveur ([] sans alerte)
+ * @param {function} onResultat   ALEA51 — rappel facultatif recevant la réponse du
+ *                                serveur ({reference, kwc, total_ttc,
+ *                                economie_an_1_ht, retour_ans,
+ *                                postes_apres_visite…}) pour la bannière de succès
  * @param {string|number} targetKwc  EZ5 — puissance cible (kWc) demandée POUR
  *                                CE devis-là, sans toucher la fiche du lead.
  *                                Vide/absent = la taille souhaitée du lead,
@@ -108,7 +116,7 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
  * ordreLignes, dispatch) sont acceptés et IGNORÉS : le serveur lit le
  * catalogue, les marques épinglées et l'ordre des lignes de la société.
  */
-export async function createAutoQuote({ lead, discountStr, onAlertes, targetKwc, idempotencyKey }) {
+export async function createAutoQuote({ lead, discountStr, onAlertes, onResultat, targetKwc, idempotencyKey }) {
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
   // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
@@ -187,9 +195,42 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, targetKwc,
     if (!id) {
       throw { detail: 'Devis créé sans identifiant — ouvrez-le depuis la liste des devis.' }
     }
+    if (typeof onResultat === 'function') onResultat(reponse.data)
     return id
   }
   // CIQ127 — agricole (AGR126) et commercial / industriel : le serveur
   // étudie, dimensionne, compose et crée le brouillon ; rien n'est calculé ici.
-  return creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marche: mode, idempotencyKey })
+  return creerDevisServeur({ lead, discountStr, onAlertes, onResultat, targetKwc, marche: mode, idempotencyKey })
+}
+
+/**
+ * ALEA51 — la phrase du bandeau de SUCCÈS après un devis automatique :
+ * « DEV-… · 65 kWc · 212 100 MAD TTC · économie ≈ 102 000 MAD/an · retour ≈
+ * 4,2 ans · 3 postes à chiffrer après la visite ». Chaque morceau vient de la
+ * réponse du serveur ; un morceau absent (null) est OMIS — jamais un chiffre
+ * inventé (retour null = investissement incomplet).
+ */
+export function libelleSuccesDevisAuto(resultat) {
+  if (!resultat) return ''
+  const morceaux = []
+  if (resultat.reference) morceaux.push(resultat.reference)
+  const kwc = Number(resultat.kwc)
+  if (Number.isFinite(kwc) && kwc > 0) morceaux.push(`${formatNumber(kwc, { decimals: 0 })} kWc`)
+  const ttc = Number(resultat.total_ttc)
+  if (resultat.total_ttc != null && Number.isFinite(ttc)) {
+    morceaux.push(`${formatMAD(ttc, { decimals: 0 })} TTC`)
+  }
+  const eco = Number(resultat.economie_an_1_ht)
+  if (resultat.economie_an_1_ht != null && Number.isFinite(eco) && eco > 0) {
+    morceaux.push(`économie ≈ ${formatMAD(Math.round(eco / 100) * 100, { decimals: 0 })}/an`)
+  }
+  const retour = Number(resultat.retour_ans)
+  if (resultat.retour_ans != null && Number.isFinite(retour) && retour > 0) {
+    morceaux.push(`retour ≈ ${formatNumber(retour, { decimals: 1 })} ans`)
+  }
+  const postes = Array.isArray(resultat.postes_apres_visite) ? resultat.postes_apres_visite.length : 0
+  if (postes > 0) {
+    morceaux.push(`${postes} poste${postes > 1 ? 's' : ''} à chiffrer après la visite`)
+  }
+  return morceaux.join(' · ')
 }

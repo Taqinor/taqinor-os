@@ -36,11 +36,12 @@ from .models import (
     WebsiteLeadPayload,
 )
 from .devis_auto import (
-    champs_manquants_detail, champs_requis, message_manquants,
+    catalogue_ci, champs_manquants_detail, champs_requis, message_manquants,
     mode_pompe_du_lead, source_conso, visite_avant_devis,
     visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 import logging
+from apps.customfields.serializers import ChampsPersonnalisesField
 
 logger = logging.getLogger(__name__)
 
@@ -349,6 +350,27 @@ class LeadDecimalField(DecimalSouple):
         return super().to_internal_value(brut)
 
 
+#: AGQ10 / api-fuzz (24/10/2026) — motif de la branche « chaîne » du schéma :
+#: 0 exclu, une décimale, ≤ 7 (« 0 » et « 7.5 » ne sont plus « conformes au
+#: schéma » alors que le serveur les refuse en nommant le champ).
+MOTIF_JOURS_IRRIGATION = r'^(?:0\.[1-9]|[1-6](?:\.\d)?|7(?:\.0)?)$'
+
+
+class _JoursIrrigationField(LeadDecimalField):
+    """Jours d'irrigation par semaine : les bornes publiées valent pour les
+    DEUX branches du schéma (nombre : minimum/maximum ; chaîne : motif)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        branches = [
+            {'type': 'string', 'format': 'decimal',
+             'pattern': MOTIF_JOURS_IRRIGATION},
+            {'type': 'number', 'minimum': 0.1, 'maximum': 7.0}]
+        set_override(self, 'field', {'anyOf': [
+            dict(b, nullable=True) if self.allow_null else b
+            for b in branches]})
+
+
 class _PuissanceKwField(LeadDecimalField):
     """Puissance d'ÉQUIPEMENT saisie en kW (questionnaire d'appel).
 
@@ -478,6 +500,9 @@ _MSG_JOURS_IRRIGATION = "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu)
 class LeadSerializer(SameCompanyFKSerializerMixin,
                      _CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
+    # api-fuzz #1022 — ``custom_data`` publié comme OBJET nullable (un tableau
+    # « conforme » au JSON libre était refusé 400 « Format invalide. »).
+    custom_data = ChampsPersonnalisesField(required=False, allow_null=True)
     # CRX13 — ``deleted_by`` (auto-construit depuis ``__all__``) désignait
     # n'importe quel utilisateur, toutes sociétés confondues. CRX15 l'a depuis
     # verrouillé en LECTURE SEULE (cf. ``Meta.read_only_fields``) : la
@@ -547,7 +572,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # AGQ10 (D-AGQ-6) — bornes DANS le schéma publié (api-fuzz CI #1021 : un
     # corps conforme au schéma était refusé) : 0 < jours ≤ 7, message nommé.
     # ALEA : `LeadDecimalField` garde la normalisation d'une décimale de trop.
-    jours_irrigation_semaine = LeadDecimalField(
+    jours_irrigation_semaine = _JoursIrrigationField(
         max_digits=3, decimal_places=1, required=False, allow_null=True,
         min_value=Decimal('0.1'), max_value=Decimal('7'),
         error_messages={'min_value': _MSG_JOURS_IRRIGATION,
@@ -764,6 +789,14 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # industriel seulement, null ailleurs ; jamais un blocage.
             'source_conso': source_conso(obj),
             'visite_avant_devis': visite_avant_devis(obj),
+            # ALEA50 (D-ACI-6=a) — « prêt » inclut le CATALOGUE : les postes
+            # fixes C&I sans prix (forfaits, coffrets, protection, comptage).
+            # null hors C&I (ou si la lecture échoue : jamais un blocage muet).
+            # CIQ428/CIQ405 — détail seulement (même porte que `entrees_ci`) :
+            # la liste garde son budget de requêtes, le cache 5 min ne la fait
+            # pas varier (tests « garde ses requêtes »).
+            'catalogue_ci': (catalogue_ci(obj)
+                             if self.context.get('include_chatter_recent') else None),
             # AGQ39 (D-AGQ-10) — {valeur, par_defaut} pour un agricole (mode
             # vide ⇒ « neuve » étiqueté « par défaut »), null ailleurs.
             'mode_pompe': mode_pompe_du_lead(obj),

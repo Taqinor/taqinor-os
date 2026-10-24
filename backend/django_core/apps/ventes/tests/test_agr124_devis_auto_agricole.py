@@ -165,6 +165,12 @@ class DevisAutoAgricoleTests(TestCase):
         rep = self._post(lead)
         self.assertEqual(rep.status_code, 201, rep.data)
         self.assertIsInstance(rep.data['alertes'], list)
+        # ALEA51 — le retour pour la bannière de succès : hors C&I, ni économie
+        # ni retour ni poste « après visite » (rien d'inventé), mais le total TTC.
+        self.assertGreater(rep.data['total_ttc'], 0)
+        self.assertIsNone(rep.data['economie_an_1_ht'])
+        self.assertIsNone(rep.data['retour_ans'])
+        self.assertEqual(rep.data['postes_apres_visite'], [])
         devis = Devis.objects.get(pk=rep.data['id'])
         self.assertEqual(devis.statut, 'brouillon')
         self.assertEqual(devis.mode_installation, 'agricole')

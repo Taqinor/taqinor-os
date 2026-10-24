@@ -50,6 +50,7 @@ from .services.import_plan import (
     ROTATION_CALAGE_MAX_DEG,
 )
 from .services.presentation import image_apercu, reference_calepinage
+from apps.customfields.serializers import ChampsPersonnalisesField  # noqa: E402 — champ partagé (fuzz #997/#1022)
 
 
 def _lead_apercu(lead):
@@ -245,19 +246,6 @@ class _CalepinageListSerializer(serializers.ListSerializer):
                         company, ids, avec_corbeille=True).items():
                     cache[(company.pk, lead_id)] = lead
         return [self.child.to_representation(ligne) for ligne in lignes]
-
-
-@extend_schema_field({
-    'type': 'object', 'additionalProperties': False, 'nullable': True,
-    'description': (
-        "Champs personnalisés « code : valeur ». Les codes admis sont ceux "
-        "des définitions ACTIVES du module Calepinage de la société (propres "
-        "à chacune, donc non énumérés ici) : une clé inconnue est refusée en "
-        "la nommant.")})
-class ChampsPersonnalisesField(serializers.JSONField):
-    """CI #997 fuzz (2) — ``custom_data`` est un OBJET (ou ``null``) : publié
-    en JSON libre, un tableau « conforme » était refusé 400
-    (``validate_custom_data``)."""
 
 
 @extend_schema_field({
