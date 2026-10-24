@@ -66,7 +66,9 @@ def _schema_gabarit():
     un corps hors forme est refusé 400 nommé par le serveur."""
     from ..services import gabarits as g
     nombre = {'type': 'number', 'minimum': 0}
-    angle = {'type': 'number', 'minimum': 0, 'exclusiveMaximum': 90}
+    # OpenAPI 3.0 : les bornes exclusives sont des BOOLÉENS sur minimum/maximum.
+    angle = {'type': 'number', 'minimum': 0, 'maximum': 90,
+             'exclusiveMaximum': True}
     props = {}
     for cle, _libelle in g.REGLAGES:
         if cle == 'libelle':
@@ -89,8 +91,8 @@ def _schema_gabarit():
         elif cle == 'facingAzimuthDeg':
             props[cle] = {'type': 'number', 'minimum': 0, 'maximum': 360}
         elif cle == 'chassis_sous_pente_deg':
-            props[cle] = {'type': 'number', 'exclusiveMinimum': 0,
-                          'exclusiveMaximum': 90}
+            props[cle] = {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True,
+                          'maximum': 90, 'exclusiveMaximum': True}
         elif cle in ('pitchDeg', 'chassis_inclinaison_deg'):
             props[cle] = dict(angle)
         else:
