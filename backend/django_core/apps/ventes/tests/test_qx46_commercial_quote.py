@@ -509,6 +509,16 @@ class TestAmot88VocabulaireClient(SimpleTestCase):
         self.assertIn("Tarif ONEE BT publié — à confirmer sur votre facture "
                       "(grille du 16/02/2025).", p1)
 
+    def test_postes_arabes_sans_balise_echappee(self):
+        """Les mots du rôle (libellés isolés en arabe) ne sont jamais
+        ré-échappés ; seule la désignation du catalogue l'est."""
+        pages = _pages_ci(_data_ci(hors_total=True, langue="ar"))
+        for i in (1, 2):
+            with self.subTest(page=i):
+                self.assertNotIn("&lt;span", pages[i])
+                self.assertIn("كابل التيار المستمر", pages[i])
+        self.assertIn("هيكل التثبيت", pages[1])
+
     def test_kicker_arabe_generique(self):
         html = "".join(_pages_ci(_data_ci(langue="ar")))
         self.assertIn("للمنشآت التجارية", html)

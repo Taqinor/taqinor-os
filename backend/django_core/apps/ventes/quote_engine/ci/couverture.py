@@ -165,8 +165,8 @@ def bandeau_reserve(d, cle, prefixe):
         liste = (f'<div class="{prefixe}-reserve-l">'
                  + libelle(d, "ci_a_chiffrer_hors_total", "À chiffrer après "
                            "la visite technique (hors total) : ")
-                 + html.escape(texte_postes(postes, roles_client(d)),
-                               quote=False) + "</div>") + liste
+                 + texte_postes(postes_echappes(postes), roles_client(d))
+                 + "</div>") + liste
     bandeau = (BANDEAU_RESERVE if langue(d) == "fr"
                else texte(TEXTES_VISITE, langue(d)).rstrip("."))
     return (f'<div class="{prefixe}-reserve"><b>{bandeau}</b>'
@@ -273,6 +273,15 @@ def postes_hors_total(synthese):
     from .synthese import chiffres_cles
     return chiffres_cles(synthese if isinstance(synthese, dict) else {})[
         "postes_hors_total"]
+
+
+def postes_echappes(postes):
+    """Les postes servis, désignation ÉCHAPPÉE pour le HTML (une désignation
+    du catalogue n'est pas passée par ``builder.echapper_textes_client``) —
+    les mots du rôle, eux, sont des libellés du gabarit (déjà du HTML, et
+    isolés en arabe)."""
+    return [dict(p, designation=html.escape(str(p.get("designation") or ""),
+                                            quote=False)) for p in postes]
 
 
 def roles_client(d):

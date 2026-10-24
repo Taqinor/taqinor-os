@@ -170,9 +170,10 @@ def rangees_hors_total(d, L, navy, muted, wash):
     hors total : une ligne chacun sous un intertitre, « à chiffrer après la
     visite technique » SANS montant (jamais un 0), hors de la chaîne de
     totaux. Aucun poste ⇒ ''."""
-    import html as _html
-    from ..ci.couverture import postes_hors_total, roles_client
-    postes = postes_hors_total(d.get("com_synthese") or d.get("ind_synthese"))
+    from ..ci.couverture import postes_echappes, postes_hors_total, \
+        roles_client
+    postes = postes_echappes(postes_hors_total(
+        d.get("com_synthese") or d.get("ind_synthese")))
     if not postes:
         return ""
     roles = roles_client(d)
@@ -186,7 +187,7 @@ def rangees_hors_total(d, L, navy, muted, wash):
             "Postes à chiffrer après la visite technique (hors total)")
         + '</td></tr>')
     for poste in postes:
-        nom = _html.escape(libelle_poste(poste, roles), quote=False)
+        nom = libelle_poste(poste, roles)
         qte = poste.get("quantite")
         rangees += (
             f'<tr><td class="c2-d">{nom[:1].upper() + nom[1:]}</td>'
