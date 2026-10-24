@@ -131,7 +131,7 @@ def _appeler(client, verbe, url, corps, societe, o, attendu_refus=False):
     reponse = client.get(url) if verbe == "get" else getattr(client, verbe)(url, corps or {}, format="json")
     try:
         donnees = reponse.json()
-    except Exception:  # réponse non JSON (PDF, vide)
+    except ValueError:  # réponse non JSON (PDF, corps vide) : le client de test lève ValueError
         donnees = None
     o["appels"].append({"verbe": verbe.upper(), "url": url, "statut": reponse.status_code,
                         "etrangers": _etrangers(donnees, societe), "attendu_refus": attendu_refus})
@@ -214,13 +214,12 @@ def _jouer_appel(etape, o, modele, params, routes, client, ctx, societe):
         return
     label = modele._meta.label if modele is not None else None
     avant, url = _etat(modele, ctx.get(label)), _url(route, ctx)
-    corps = (etape.get("rejeu") or {}).get("corps")
-    statut, _ = _appeler(client, route["verbe"], url, corps, societe, o)
+    statut, _ = _appeler(client, route["verbe"], url, None, societe, o)  # corps vide : la table n'en déclare pas
     o.update(statut="joue", verbe=route["verbe"], ecrit=_ecrit(avant, _etat(modele, ctx.get(label))),
              modele_route=route["modele"]._meta.label if route["modele"] is not None else None)
     types = {r.get("type") for r in etape.get("regle_aval") or [] if isinstance(r, dict)}
     if "refus_409" in types and statut < 400:
-        second, _ = _appeler(client, route["verbe"], url, corps, societe, o, attendu_refus=True)
+        second, _ = _appeler(client, route["verbe"], url, None, societe, o, attendu_refus=True)
         o["regles"]["refus_409"] = 400 <= second < 500
 
 
