@@ -18,15 +18,19 @@ export default function CarteParametresTechniques({
   kwcCible, onKwcCibleChange, nbPanneaux, onNbPanneauxChange, panelW, dispatchSizing, kwp,
   panneauxLignes, produits, structureProduitId, structureType, sizingInfo, modeInstallation,
   showSans, deuxValeursDim, showAvec, sizingServeurMessage, dayUsage, errors,
-  pompageManquants, autoFillLoading, marcheCi, apercuCi, fHiver, recalculerDimensionnement,
+  pompageManquants, autoFillLoading, marcheCi, fHiver, recalculerDimensionnement,
   avecQuantitesFigees, handleAutoFill, compositionErreur, editDevis, leadValeursModifiees,
   setLeadValeursModifiees, clear, setRechargeEdit, onduleursIncomplets, pompageAutoFilled,
   apercuPompage,
 }) {
   return (
     <Card id="gen-sec-technique" data-nav-libelle="Technique">
-      <GenCardHeader icon={Zap} title="Paramètres Techniques" />
+      <GenCardHeader icon={Zap} title={marcheCi ? 'Composition du devis' : 'Paramètres Techniques'} />
       <CardContent className="pt-4">
+        {/* ADEV103 — en commercial / industriel la composition est faite par le
+            serveur : ni panneaux, ni puissance panneau, ni structure, ni cible
+            ici ; la taille se règle par « Taille explicite (kWc) » du profil. */}
+        {!marcheCi && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {/* EZ5 — on DIMENSIONNE en kWc, pas en nombre de panneaux : le
               client et le commercial disent « 3 kWc », jamais « 5 panneaux
@@ -93,6 +97,7 @@ export default function CarteParametresTechniques({
             )}
           />
         </div>
+        )}
         {/* Règle fondateur du 18/08 — justifie la taille retenue par le
             dimensionnement facture → paliers : palier de 5 kWc, besoin lu
             sur la facture d'hiver, payback le plus court parmi les
@@ -208,15 +213,15 @@ export default function CarteParametresTechniques({
               panneaux COURANT sans jamais le redériver. Désactivé sans
               facture hiver exploitable, ou en agricole (dimensionnement
               pompage, aucune notion de facture → kWc). */}
+          {!marcheCi && (
           <Button type="button" variant="outline"
                   data-testid="btn-recalculer-dimensionnement"
                   loading={autoFillLoading}
-                  disabled={modeInstallation === 'agricole' || (marcheCi
-                    ? !(Number(apercuCi.donnees?.taille?.nb_panneaux) > 0)
-                    : !(parseFloat(fHiver) > 0))}
+                  disabled={modeInstallation === 'agricole' || !(parseFloat(fHiver) > 0)}
                   onClick={recalculerDimensionnement}>
             <RefreshCw /> Recalculer le dimensionnement
           </Button>
+          )}
           <Button type="button" className="bg-brass-400 text-nuit hover:bg-brass-500"
                   data-testid="btn-auto-remplir"
                   disabled={pompageManquants.length > 0}

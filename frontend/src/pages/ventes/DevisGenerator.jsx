@@ -2017,7 +2017,7 @@ export default function DevisGenerator({
           deuxValeursDim={deuxValeursDim} showAvec={showAvec}
           sizingServeurMessage={sizingServeurMessage} dayUsage={dayUsage}
           errors={errors} pompageManquants={pompageManquants} autoFillLoading={autoFillLoading}
-          marcheCi={marcheCi} apercuCi={apercuCi} fHiver={fHiver}
+          marcheCi={marcheCi} fHiver={fHiver}
           recalculerDimensionnement={recalculerDimensionnement}
           avecQuantitesFigees={avecQuantitesFigees} handleAutoFill={handleAutoFill}
           compositionErreur={compositionErreur} editDevis={editDevis}

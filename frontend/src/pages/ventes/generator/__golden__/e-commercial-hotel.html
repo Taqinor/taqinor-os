@@ -470,9 +470,10 @@
 </details>
 <div class="grid gap-1.5 sm:max-w-xs">
 <div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-taille">Taille explicite (kWc, optionnelle)</label>
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-taille">Taille explicite (kWc)</label>
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-taille" min="0" step="any" data-testid="gen-ci-taille" type="number" value="">
 </div>
+<p class="text-xs text-muted-foreground" data-testid="ci-taille-aide">vide = taille calculée par la règle des 10 ans</p>
 </div>
 </div>
 <p class="mt-3 text-xs text-muted-foreground" data-testid="ci-resultat-chargement">Calcul du moteur C&amp;I…</p>
@@ -594,47 +595,10 @@
 <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">
 </path>
 </svg>
-<span class="font-display text-base font-semibold tracking-tight">Paramètres Techniques</span>
+<span class="font-display text-base font-semibold tracking-tight">Composition du devis</span>
 </div>
 <div class="p-4 sm:p-5 sm:pt-0 pt-4">
-<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-kwc-cible">Puissance cible (kWc)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-kwc-cible" min="0" step="any" placeholder="ex: 3" data-testid="gen-kwc-cible" type="number" value="28.6">
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-nbpanneaux">Nombre de panneaux<span class="ml-0.5 text-destructive" aria-hidden="true">*</span>
-</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-nbpanneaux" min="1" max="500" step="any" placeholder="ex: 14" type="number" value="40">
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-panelw">Puissance Panneau (W)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-panelw" min="100" max="1000" step="any" type="number" value="715">
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Puissance PV (kWp) — calculée</label>
-<div class="gen-kwp">28,60 kWp</div>
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Type de Structure</label>
-<div role="radiogroup" class="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted p-0.5">
-<button type="button" role="radio" aria-checked="true" tabindex="0" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 bg-card text-foreground shadow-ui-xs">Acier galvanisé</button>
-<button type="button" role="radio" aria-checked="false" tabindex="-1" class="inline-flex items-center gap-1.5 rounded-md font-medium transition-[color,background-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring px-3 py-1.5 text-sm [@media(hover:hover)]:active:scale-[0.98] active:brightness-95 text-muted-foreground hover:text-foreground">Aluminium</button>
-</div>
-</div>
-</div>
 <div class="mt-3 flex flex-wrap items-center justify-end gap-3">
-<button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4" disabled="" type="button" data-testid="btn-recalculer-dimensionnement">
-<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-refresh-cw" aria-hidden="true">
-<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8">
-</path>
-<path d="M21 3v5h-5">
-</path>
-<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16">
-</path>
-<path d="M8 16H3v5">
-</path>
-</svg> Recalculer le dimensionnement</button>
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 active:bg-primary/80 shadow-ui-xs hover:shadow-ui-primary-hover h-[var(--control-h)] px-[var(--control-px)] text-sm [&amp;_svg]:size-4 bg-brass-400 text-nuit hover:bg-brass-500" type="button" data-testid="btn-auto-remplir">
 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap" aria-hidden="true">
 <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z">

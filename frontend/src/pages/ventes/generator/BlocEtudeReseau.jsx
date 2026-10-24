@@ -512,9 +512,12 @@ export default function BlocEtudeReseau({
 
       {/* Taille explicite : le seul réglage de taille (D-QJR5-13, souveraine). */}
       <div className="grid gap-1.5 sm:max-w-xs">
-        <Nombre id="gen-ci-taille" label="Taille explicite (kWc, optionnelle)"
+        <Nombre id="gen-ci-taille" label="Taille explicite (kWc)"
                 value={p.tailleExplicite}
                 onChange={(v) => setChamp('tailleExplicite', v)} />
+        <p className="text-xs text-muted-foreground" data-testid="ci-taille-aide">
+          vide = taille calculée par la règle des 10 ans
+        </p>
       </div>
     </div>
   )
