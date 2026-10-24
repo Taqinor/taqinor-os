@@ -286,6 +286,25 @@ class ScopingApiTests(XGed2Base):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(len(resp.data['signataires']), 3)
 
+    def test_email_signataire_vide_publie_en_reponse_refuse_en_ecriture(self):
+        # api-fuzz 24/10 : le circuit multi sert ``signataire_email: ""`` --
+        # la réponse le publie (adresse OU vide) ; l'écriture reste stricte.
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ged import urls as ged_urls
+        from rest_framework.exceptions import ValidationError
+
+        from apps.ged.corps_requete import EmailSignataire
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ged/', include(ged_urls)),
+        ]).get_schema(request=None, public=True)
+        champ = schema['components']['schemas'][
+            'DemandeSignatureDocument']['properties']['signataire_email']
+        self.assertIn({'maxLength': 0}, champ['anyOf'])
+        with self.assertRaises(ValidationError):
+            EmailSignataire(max_length=254).run_validation('')
+
     def test_annuler_api(self):
         demande = services.demander_signature(
             self.doc_a, signataire_nom='X', signataire_email='x@x.com',
