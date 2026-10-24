@@ -461,3 +461,89 @@ class SchemaOpenApiDuModuleTest(SimpleTestCase):
         lecture = self._operation('get', '{id}/layout/')
         self.assertNotIn('If-Match', [p['name'] for p in
                                       lecture.get('parameters', [])])
+
+
+class SchemaPublieDuDrainTest(SimpleTestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE (nocturne 24/10) - le schema dit les types de
+    contenu et les regles que le serveur applique vraiment."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        generateur = SchemaGenerator(patterns=[
+            path('api/django/calepinage/', include('apps.calepinage.urls'))])
+        cls.schema = generateur.get_schema(request=None, public=True)
+
+    def _operation(self, chemin, methode):
+        return self.schema['paths']['/api/django/calepinage/' + chemin][
+            methode]
+
+    def _contenus(self, chemin, methode):
+        return set(self._operation(chemin, methode)['requestBody']['content'])
+
+    def test_les_depots_de_fichier_ne_se_publient_qu_en_multipart(self):
+        for chemin in ('calepinages/{id}/fond-plan/',
+                       'calepinages/{id}/importer-plan/',
+                       'calepinages/{id}/roof-image/',
+                       'calepinages/{id}/photos/',
+                       'calepinages/{id}/meteo-fichier/'):
+            self.assertEqual(self._contenus(chemin, 'post'),
+                             {'multipart/form-data'}, chemin)
+
+    def test_les_corps_d_objets_ne_se_publient_qu_en_json(self):
+        for chemin, methode in (
+                ('calepinages/{id}/layout/', 'post'),
+                ('calepinages/{id}/import-layout/', 'post'),
+                ('calepinages/{id}/evaluer-electrique/', 'post'),
+                ('calepinages/{id}/entree-electrique/', 'post'),
+                ('calepinages/{id}/etiquettes/', 'post'),
+                ('calepinages/{id}/fixation/', 'post'),
+                ('calepinages/{id}/variantes/', 'post'),
+                ('calepinages/{id}/schema-unifilaire/', 'post'),
+                ('calepinages/{id}/releve/', 'post'),
+                ('calepinages/{id}/chatter/noter/', 'post')):
+            self.assertEqual(self._contenus(chemin, methode),
+                             {'application/json'}, chemin)
+
+    def test_image_document_dit_fichier_binaire_ou_data_url(self):
+        chemin = 'calepinages/{id}/image-document/'
+        self.assertEqual(self._contenus(chemin, 'post'),
+                         {'application/json', 'multipart/form-data'})
+        contenu = self._operation(chemin, 'post')['requestBody']['content']
+        composants = self.schema['components']['schemas']
+        nom = contenu['application/json']['schema']['$ref'].rsplit('/', 1)[-1]
+        self.assertIn('pattern', composants[nom]['properties']['fichier'])
+
+    def test_colonnes_de_l_export_csv_publient_leur_vocabulaire(self):
+        operation = self._operation('calepinages/{id}/export-csv/', 'get')
+        colonnes = [p for p in operation['parameters']
+                    if p['name'] == 'colonnes'][0]
+        self.assertIn('pattern', colonnes['schema'])
+
+    def test_depuis_de_la_liste_est_une_date(self):
+        operation = self._operation('calepinages/', 'get')
+        depuis = [p for p in operation['parameters']
+                  if p['name'] == 'depuis'][0]
+        self.assertEqual(depuis['schema'].get('format'), 'date')
+
+    def test_entree_electrique_ferme_la_liste_des_cles(self):
+        import json
+
+        from apps.calepinage.services.electrique import CHAMPS_ENTREE
+
+        corps = self._operation(
+            'calepinages/{id}/entree-electrique/', 'post')['requestBody']
+        texte = json.dumps(corps)
+        self.assertIn('"additionalProperties": false', texte)
+        for cle in CHAMPS_ENTREE:
+            self.assertIn('"%s"' % cle, texte)
+
+    def test_schema_unifilaire_ferme_les_rubriques(self):
+        import json
+
+        corps = self._operation(
+            'calepinages/{id}/schema-unifilaire/', 'post')['requestBody']
+        self.assertIn('"additionalProperties": false', json.dumps(corps))

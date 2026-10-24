@@ -37,8 +37,12 @@ from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.champs_stricts import ChaineStricte
+
+from core.conflit_etat import ConflitEtat
+
 from ..permissions import PeutLireOuEcrireCalepinage
-from ..serializers import forme_du_contrat
+from ..serializers import corps_obligatoire, forme_du_contrat
 from .calepinages import CalepinageViewSet
 
 __all__ = ['etiquettes']
@@ -64,9 +68,9 @@ _FORME_ETIQUETTES = forme_du_contrat(
         component_name='CalepinageEtiquetteCorps',
         resource_type_field_name=None, serializers=[
             inline_serializer('CalepinageEtiquetteParId',
-                              {'tag_id': serializers.IntegerField()}),
+                              {'tag_id': serializers.IntegerField(min_value=1)}),
             inline_serializer('CalepinageEtiquetteParNom',
-                              {'nom': serializers.CharField()})]),
+                              {'nom': ChaineStricte()})]),
     responses=_FORME_ETIQUETTES)
 @extend_schema(
     methods=['DELETE'],
@@ -75,6 +79,7 @@ _FORME_ETIQUETTES = forme_du_contrat(
         OpenApiParameter('nom', OpenApiTypes.STR, required=False),
     ],
     responses={200: _FORME_ETIQUETTES})
+@corps_obligatoire  # POST sans corps = « Indiquez l'etiquette » (400) : schema
 @action(detail=True, methods=['get', 'post', 'delete'],
         url_path='etiquettes', url_name='etiquettes',
         permission_classes=[PeutLireOuEcrireCalepinage])
@@ -89,8 +94,16 @@ def etiquettes(self, request, pk=None):
     if request.method == 'GET':
         return Response(etiquettes_du_calepinage(calepinage))
     geste = poser_etiquette if request.method == 'POST' else retirer_etiquette
+    corps = _corps(request)
+    if request.method == 'DELETE' and not corps:
+        # ``tag_id`` et ``nom`` sont tous deux FACULTATIFS au schema (deux
+        # parametres de requete, « l'un OU l'autre » ne s'y exprime pas) :
+        # n'en designer aucun est un refus de la situation, 409 nomme.
+        raise ConflitEtat(
+            "Indiquez l'étiquette à retirer : « tag_id » (identifiant) ou "
+            "« nom » (nom exact).")
     try:
-        return Response(geste(calepinage, _corps(request), user=request.user))
+        return Response(geste(calepinage, corps, user=request.user))
     except EtiquetteRefusee as refus:
         return Response({refus.champ or 'tag_id': str(refus)},
                         status=(status.HTTP_404_NOT_FOUND if refus.introuvable

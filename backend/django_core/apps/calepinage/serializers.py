@@ -574,6 +574,15 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         lead_id = attrs.get('lead_id', getattr(instance, 'lead_id', None))
         client = attrs.get('client', getattr(instance, 'client', None))
 
+        if not lead_id and client is None and instance is not None:
+            # ERR-ENF11-FUZZ-CALEPINAGE — PATCH : le corps (``lead``/``client``
+            # à ``null``) est conforme au schéma, c'est l'ÉTAT résultant du
+            # calepinage (aucun rattachement) qui s'y oppose : 409, pas 400.
+            from core.conflit_etat import ConflitEtat
+
+            raise ConflitEtat(
+                "Rattachez ce calepinage à un lead ou à un client : "
+                "renseignez « Client » ou « Lead ».")
         if not lead_id and client is None:
             raise serializers.ValidationError({
                 'client': (

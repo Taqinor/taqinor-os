@@ -194,3 +194,36 @@ class EcritureTest(TestCase):
         enregistrer_parametres(self.company, {'imagerie': {'pays': 'ma'}})
         self.assertEqual(parametres_de_societe(self.autre),
                          _sections_ecrivables(CONTRAT['exemple_vide']))
+
+
+class SchemaGabaritsDispositionTest(TestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE - le schema de requete de la section
+    ``gabarits_disposition`` suit les reglages que le service applique."""
+
+    def test_proprietes_et_bornes_suivent_le_service(self):
+        from apps.calepinage.services import gabarits as g
+        from apps.calepinage.views.parametres import (
+            _schema_gabarits_disposition,
+        )
+
+        gabarit = _schema_gabarits_disposition()['additionalProperties']
+        self.assertIs(gabarit['additionalProperties'], False)
+        self.assertEqual(sorted(gabarit['properties']),
+                         sorted(cle for cle, _ in g.REGLAGES))
+        self.assertEqual(gabarit['properties']['orientation']['enum'],
+                         list(g.ORIENTATIONS))
+        self.assertEqual(gabarit['properties']['rangees']['minimum'], 1)
+
+    def test_un_gabarit_valide_au_schema_est_accepte_du_service(self):
+        from apps.calepinage.services.gabarits import (
+            normaliser_section_gabarits_disposition,
+        )
+
+        section = {'portrait_2x10': {
+            'libelle': 'Portrait', 'orientation': 'portrait',
+            'famille': 'south', 'roofType': 'pitched', 'pitchDeg': 30,
+            'facingAzimuthDeg': 180, 'rangees': 2, 'colonnes': 10,
+            'rives': {'laterale_m': 0.3}, 'facingManual': True,
+            'priorite': 1}}
+        self.assertIn('portrait_2x10',
+                      normaliser_section_gabarits_disposition(section))

@@ -46,7 +46,7 @@ from __future__ import annotations
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from ..analyse_plan import TAILLE_MAX_OCTETS
@@ -192,7 +192,7 @@ def _format_refuse(contenu):
 @action(detail=True, methods=['post'], url_path='importer-plan',
         url_name='importer-plan',
         permission_classes=[PeutGererCalepinage],
-        parser_classes=[MultiPartParser, FormParser])
+        parser_classes=[MultiPartParser])
 def importer_plan(self, request, pk=None):
     """CALX39 — analyse un plan déposé et rend ses calques (et un contour).
 

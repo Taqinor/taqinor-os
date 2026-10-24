@@ -51,6 +51,7 @@ from .calepinages import CalepinageViewSet, contexte_conception
 from ..services.valeurs import nombre as _nombre
 
 import logging
+import math
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +158,30 @@ _NOMBRES_POMPAGE = (
     'kwc')
 
 
+class FlottantFini(serializers.FloatField):
+    """Nombre FINI : ``1e999`` (lu ``inf`` par le JSON) etait « conforme » au
+    schema (un nombre) puis, une fois calcule, faisait lever le rendu JSON de
+    la reponse (``Out of range float values``) - un 500 HTML hors enveloppe."""
+
+    def to_internal_value(self, data):
+        valeur = super().to_internal_value(data)
+        if not math.isfinite(valeur):
+            self.fail('invalid')
+        return valeur
+
+
+def _sans_non_fini(valeur):
+    """La reponse SANS ``inf`` / ``nan`` (``None`` a la place) : un calcul qui
+    deborde sur une saisie enorme ne doit jamais faire echouer le rendu."""
+    if isinstance(valeur, float):
+        return valeur if math.isfinite(valeur) else None
+    if isinstance(valeur, dict):
+        return {cle: _sans_non_fini(sous) for cle, sous in valeur.items()}
+    if isinstance(valeur, (list, tuple)):
+        return [_sans_non_fini(sous) for sous in valeur]
+    return valeur
+
+
 def _champs_corps():
     """Les champs du corps — UNE déclaration pour le schéma ET la validation.
 
@@ -165,13 +190,13 @@ def _champs_corps():
     ``"type_pompe": 0`` est un 400 nommé, jamais un choix par défaut
     silencieux (api-fuzz). Fabrique : un champ DRF ne se lie qu'une fois."""
     return {
-        **{nom: serializers.FloatField(required=False, allow_null=True)
+        **{nom: FlottantFini(required=False, allow_null=True)
            for nom in _NOMBRES_POMPAGE},
         'type_pompe': ChaineStricte(required=False),
         'alim': ChaineStricte(required=False),
         'materiau_conduite': ChaineStricte(required=False),
         'besoin_m3_mois': serializers.ListField(
-            child=serializers.FloatField(allow_null=True), required=False)}
+            child=FlottantFini(allow_null=True), required=False)}
 
 
 @extend_schema(
@@ -339,7 +364,7 @@ def pompage(self, request, pk=None):
         production_m3_mois=(volumes or {}).get('m3_mois_pvgis')
         or (volumes or {}).get('m3_mois_plat'))
 
-    return Response({
+    return Response(_sans_non_fini({
         'calepinage': calepinage.id,
         'entrees': {
             'hmt_saisie': _nombre(corps.get('hmt_saisie')),
@@ -357,7 +382,7 @@ def pompage(self, request, pk=None):
         'besoin': besoin,
         'erreurs': erreurs,
         'avertissements': avertissements,
-    })
+    }))
 
 
 # Rattachement au viewset PIVOT — voir la docstring du module.

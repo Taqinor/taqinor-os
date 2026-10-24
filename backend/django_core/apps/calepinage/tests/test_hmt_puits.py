@@ -115,3 +115,27 @@ class HmtPuitsIttereeTest(unittest.TestCase):
             hauteur_refoulement_m=2)
         self.assertEqual(resultat['source'], 'saisie')
         self.assertEqual(resultat['hmt_m'], 55.0)
+
+
+class PompageNombresFinisTest(unittest.TestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE - ``1e999`` (lu ``inf``) est refuse au corps et
+    jamais rendu : un ``inf`` en reponse faisait lever le rendu JSON (500)."""
+
+    def test_flottant_fini_refuse_inf_et_accepte_un_nombre(self):
+        from rest_framework.exceptions import ValidationError
+
+        from apps.calepinage.views.pompage import FlottantFini
+
+        champ = FlottantFini()
+        self.assertEqual(champ.run_validation(12.5), 12.5)
+        for faux in (float('inf'), -float('inf'), float('nan')):
+            with self.assertRaises(ValidationError):
+                champ.run_validation(faux)
+
+    def test_reponse_sans_non_fini(self):
+        from apps.calepinage.views.pompage import _sans_non_fini
+
+        rendu = _sans_non_fini({'a': float('inf'), 'b': [1.5, float('nan')],
+                                'c': {'d': 2}, 'e': 'x'})
+        self.assertEqual(rendu, {'a': None, 'b': [1.5, None],
+                                 'c': {'d': 2}, 'e': 'x'})
