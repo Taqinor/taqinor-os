@@ -468,7 +468,8 @@ class TestFuzzCrmTour2(TestCase):
         200 sur un mois valide) ; membre d'équipe inconnu → 404."""
         url = '/api/django/crm/forecast/rollup/'
         self.assertEqual(self.api.get(url, {'periode': '2026-13'}).status_code, 400)
-        self.assertEqual(self.api.get(url, {'periode': ''}).status_code, 400)
+        # api-fuzz-full 24/10 : ``periode`` vide est PUBLIÉE (ou vide) = tout.
+        self.assertEqual(self.api.get(url, {'periode': ''}).status_code, 200)
         self.assertEqual(self.api.get(url, {'periode': '2026-05'}).status_code, 200)
         resp = self.api.post('/api/django/crm/equipes/', {
             'nom': 'Equipe X', 'membres': [999999999]}, format='json')

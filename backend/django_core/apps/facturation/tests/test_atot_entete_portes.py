@@ -126,14 +126,15 @@ class EntetePortesTests(TestCase):
 
     def test_vnt89_porte_manuelle_fermee_au_devis(self):
         """VNT89 — le CRUD des factures ne pose ni ne change jamais ``devis``
-        (400 ``facture_de_devis``, « passez par Facturer la vente ») ; la
+        (409 ``facture_de_devis`` — refus d'ÉTAT, api-fuzz-full 24/10 —,
+        « passez par Facturer la vente ») ; la
         même facture SANS devis se crée et se modifie."""
         from apps.ventes.models import Facture
         devis = self._devis()
         corps = {'client': self.client_obj.id, 'taux_tva': '20.00'}
         r = self.api.post('/api/django/ventes/factures/',
                           dict(corps, devis=devis.id), format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'facture_de_devis')
         self.assertIn('Facturer la vente', str(r.data['devis']))
         self.assertFalse(Facture.objects.filter(devis=devis).exists())
@@ -143,6 +144,6 @@ class EntetePortesTests(TestCase):
         pk = r.data['id']
         r = self.api.patch(f'/api/django/ventes/factures/{pk}/',
                            {'devis': devis.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['code'], 'facture_de_devis')
         self.assertIsNone(Facture.objects.get(pk=pk).devis_id)

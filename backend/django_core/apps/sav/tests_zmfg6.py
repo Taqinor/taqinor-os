@@ -10,6 +10,7 @@ Couvre :
 Run :
     docker compose exec django_core python manage.py test apps.sav.tests_zmfg6 -v 2
 """
+import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -69,10 +70,10 @@ class ZMFG6WorksheetTest(TestCase):
     def test_modele_champs_nul_et_substituts_isoles_acceptes(self):
         # api-fuzz-full : un NUL ou un substitut isolé dans ``champs`` (clés
         # comprises) faisait répondre 500 au stockage jsonb.
-        resp = self.api.post('/api/django/sav/worksheet-modeles/', {
+        resp = self.api.post('/api/django/sav/worksheet-modeles/', json.dumps({
             'nom': 'Fuzz\ud9d1', 'champs': [
                 {'o\u0000x\ud955': ['a\u0000', {'k\ud800': None}]}],
-        }, format='json')
+        }), content_type='application/json')  # substituts isolés : JSON brut
         self.assertEqual(resp.status_code, 201, resp.content)
         modele = WorksheetMaintenanceModele.objects.get(pk=resp.data['id'])
         self.assertEqual(modele.nom, 'Fuzz')

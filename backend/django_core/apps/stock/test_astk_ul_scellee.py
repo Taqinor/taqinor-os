@@ -81,7 +81,9 @@ class UniteLogistiqueScelleeTests(TestCase):
             self.assertIn('scellée', str(r.data), (corps, r.content))
         r = self.api.patch(
             f'{URL}{self.u.id}/', {'parent': self.u.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        # Le cycle (unité parente d'elle-même) est un refus d'ÉTAT : 409
+        # (api-fuzz-full 24/10), rendu avant le verrou « scellée » du viewset.
+        self.assertEqual(r.status_code, 409, r.content)
         # Persistance relue : U inchangée.
         self.assertEqual(self._etat_u(), avant)
         self.assertEqual(self.u.poids_kg, Decimal('12'))

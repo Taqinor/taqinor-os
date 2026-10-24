@@ -7,6 +7,7 @@ Run :
     docker compose exec django_core python manage.py test \
         apps.ventes.tests.test_fg270_subvention -v 2
 """
+import json
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -105,10 +106,10 @@ class SubventionDossierApiTest(TestCase):
             with self.subTest(params=params):
                 resp = self.api.get(self.url, params)
                 self.assertEqual(resp.status_code, 400, resp.content)
-        resp = self.api.post(self.url, {
+        resp = self.api.post(self.url, json.dumps({
             'devis': self.devis.id, 'programme': 'masen',
-            'pieces': [{'code': 'a\x00b', 'label': 'x\ud800y'}]},
-            format='json')
+            'pieces': [{'code': 'a\x00b', 'label': 'x\ud800y'}]}),
+            content_type='application/json')  # substitut isolé : JSON brut
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.data['pieces'],
                          [{'code': 'ab', 'label': 'x�y'}])

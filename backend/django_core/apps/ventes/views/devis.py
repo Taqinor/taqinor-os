@@ -92,6 +92,9 @@ class DevisViewSet(DevisEditionActionsMixin,
                    DevisCadenceActionsMixin,
                    IdempotentCreateMixin, EntiteScopeMixin,
                    CompanyScopedModelViewSet):
+    # ENF17 / api-fuzz-full — ``DevisWriteSerializer`` porte ``IdInconnu404Mixin``
+    # (``client``/``lead`` inconnus = 404) : ``entite`` répond pareil.
+    entite_inconnue_404 = True
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # YAPIC9 — pilote de core.idempotency.IdempotentCreateMixin : sans
     # en-tête `Idempotency-Key`, comportement inchangé (le mixin ne fait que

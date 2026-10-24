@@ -27,10 +27,6 @@ on:
         default: '4200'
   schedule:
     - cron: '0 3 * * 0'   # dimanche 03:00 UTC
-  # TEMPORAIRE (drainage) : un workflow absent de main ne se dispatche pas par nom ;
-  # retiré avant la fusion.
-  push:
-    branches: [claude/api-fuzz-drain]
 
 concurrency:
   group: api-fuzz-full-${{ github.ref }}

@@ -9,6 +9,7 @@ Couvre :
 Run :
     docker compose exec django_core python manage.py test apps.sav.tests_xsav23 -v 2
 """
+import json
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -137,7 +138,7 @@ class XSAV23ReponseTypeTest(TestCase):
             self.assertEqual(resp.status_code, 400, (corps, resp.content))
         resp = api.post(url, {'reponse_type_id': 987654}, format='json')
         self.assertEqual(resp.status_code, 404, resp.content)
-        resp = api.post(url, {'body': 'ok\ud9d1', 'visible_client': True},
-                        format='json')
+        resp = api.post(url, json.dumps({'body': 'ok\ud9d1', 'visible_client': True}),
+                        content_type='application/json')  # substitut isolé
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.data['body'], 'ok')

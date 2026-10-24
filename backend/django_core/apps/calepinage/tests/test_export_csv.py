@@ -250,13 +250,15 @@ class ColonnesPublieesTest(unittest.TestCase):
         from apps.calepinage.services.export_csv import COLONNES_HORAIRE
         from apps.calepinage.views.export_csv import _MOTIF_COLONNES
 
+        # fullmatch : le ``$`` publié vaut « fin de chaîne » (ECMA) ; en
+        # Python ``match`` tolérerait un saut de ligne final.
         motif = re.compile(_MOTIF_COLONNES)
         noms = sorted(COLONNES_HORAIRE)
-        self.assertTrue(motif.match(noms[0]))
-        self.assertTrue(motif.match(','.join(noms)))
+        self.assertTrue(motif.fullmatch(noms[0]))
+        self.assertTrue(motif.fullmatch(','.join(noms)))
         for faux in ('', ',', 'inconnue', noms[0] + ',inconnue',
                      noms[0] + ',', noms[0] + chr(10)):
-            self.assertIsNone(motif.match(faux), repr(faux))
+            self.assertIsNone(motif.fullmatch(faux), repr(faux))
 
 
 if __name__ == '__main__':  # pragma: no cover
