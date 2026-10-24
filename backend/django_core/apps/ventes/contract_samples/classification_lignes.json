@@ -172,6 +172,15 @@
         "onduleur_offgrid": true,
         "onduleur": true,
         "role": "onduleur_offgrid"
+      },
+      {
+        "designation": "Câble AC Onduleur réseau Huawei 150kW Triphasé → TGBT",
+        "panneau": false,
+        "batterie": false,
+        "onduleur_hybride": false,
+        "onduleur_reseau": false,
+        "kwh_lisible": null,
+        "role": "cable_dc"
       }
     ],
     "cas_ligne_produit": [

@@ -83,7 +83,10 @@ class Qx21AtomicDevisTests(TestCase):
             'lignes': [{'produit': foreign.id, 'quantite': '1',
                         'prix_unitaire': '1'}],
         }, format='json')
-        self.assertEqual(resp.status_code, 409)  # CI #997 fuzz : atomic, refus d'état / de contenu, 409
+        # api-fuzz 24/10/2026 — un produit d'une AUTRE société est un id bien
+        # formé qui ne désigne aucune ligne visible : 404 (contrat
+        # ``IdInconnu404Mixin``), identique à un id inexistant, rien n'est créé.
+        self.assertEqual(resp.status_code, 404, resp.content)
         # Rollback total : aucun devis créé.
         self.assertEqual(Devis.objects.filter(company=self.company).count(), 0)
 
@@ -200,7 +203,7 @@ class Qx21AtomicDevisTests(TestCase):
                 'lignes': [{'produit': 999999, 'quantite': '1',
                             'prix_unitaire': '1'}],
             }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404, resp.content)  # api-fuzz 24/10 : id inconnu ⇒ 404
         devis.refresh_from_db()
         # Rollback : la ligne d'origine survit.
         self.assertEqual(devis.lignes.count(), 1)

@@ -13,7 +13,7 @@ from decimal import Decimal
 from unittest import mock
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, SimpleTestCase
 
 from apps.calepinage.models import ProfilTypeConsommation
 from apps.crm.models import Lead
@@ -391,3 +391,30 @@ class ReponseAutoALEA51Tests(_Base):
                     'postes_apres_visite'):
             self.assertIn(cle, rejeu.data)
             self.assertEqual(rejeu.data[cle], premiere.data[cle])
+
+
+class PostesNonChiffresUniques(SimpleTestCase):
+    """C-L3-MOT-02 (24/10/2026) — les postes « après visite » et « prix à
+    renseigner » sont listés UNE fois chacun : un câble AC ajouté au devis sous
+    le nom de l'onduleur qu'il dessert multipliait la liste (une entrée par
+    mètre de câble pris pour un onduleur)."""
+
+    def test_designations_uniques_ordre_garde(self):
+        from apps.ventes.moteur_ci.composition import postes_non_chiffres
+        lignes = [{'designation': 'Câble AC X - TGBT', 'a_chiffrer_visite': True}] * 200
+        lignes += [{'designation': 'Structure C&I', 'a_chiffrer_visite': True},
+                   {'designation': 'Coffret DC', 'prix_connu': False},
+                   {'designation': 'Coffret DC', 'prix_connu': False}]
+        a_renseigner, visite = postes_non_chiffres(lignes)
+        self.assertEqual(visite, ['Câble AC X - TGBT', 'Structure C&I'])
+        self.assertEqual(a_renseigner, ['Coffret DC'])
+
+    def test_un_cable_nomme_d_apres_l_onduleur_n_est_pas_un_onduleur(self):
+        from apps.ventes.domain.catalogue import classer_produit
+        from apps.stock.selectors import _role_ci_par_nom
+
+        class _P:
+            nom = 'Câble AC Onduleur réseau Huawei 150kW Triphasé - TGBT'
+        self.assertEqual(classer_produit(_P.nom), 'cable_dc')
+        self.assertIsNone(_role_ci_par_nom(_P()))
+        self.assertEqual(classer_produit('Onduleur réseau Huawei 150kW Triphasé'), 'onduleur_reseau')

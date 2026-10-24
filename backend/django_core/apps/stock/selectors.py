@@ -3380,6 +3380,12 @@ def _role_ci_par_fiche(produit, fiche):
 
 def _role_ci_par_nom(produit):
     nom = _norme(produit.nom)
+    # C-L3-MOT-02 (24/10/2026) — un CÂBLE nommé d'après l'onduleur qu'il
+    # dessert (« Câble AC Onduleur réseau Huawei 150kW → TGBT », le poste
+    # que le moteur lui-même écrit) n'est jamais un onduleur : seul le motif
+    # câble (h1z2z2) peut lui donner un rôle par le nom.
+    if 'cable' in nom:
+        return 'cable_dc' if 'h1z2z2' in nom else None
     if 'onduleur' in nom and ('triphas' in nom or ' tri' in nom) and (
             'reseau' in nom or 'injection' in nom):
         if 'hybride' not in nom:

@@ -1197,7 +1197,7 @@ export const _norm = (s) =>
   (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 
 export const isBattery = (d) => _norm(d).includes('batterie')
-export const isHybridInverter = (d) => _norm(d).includes('onduleur') && _norm(d).includes('hybride')
+export const isHybridInverter = (d) => !_norm(d).includes('cable') && _norm(d).includes('onduleur') && _norm(d).includes('hybride')
 // OFFGRID (fondateur, ajout produit onduleur hors réseau) — MÊME CONTRAT que
 // le backend (apps/ventes/services.py côté serveur) : mot pour mot les mêmes
 // mots-clés, jamais un seul divergent. « Onduleur hors réseau » contient le
@@ -1232,7 +1232,7 @@ export const isOffgridInverter = (d) => {
 }
 export const isReseauInverter = (d) => {
   const n = _sansSeparateurs(d)
-  return n.includes('onduleur') && (n.includes('reseau') || n.includes('injection'))
+  return !n.includes('cable') && n.includes('onduleur') && (n.includes('reseau') || n.includes('injection'))
     && !_isOffgridDesignation(n)
 }
 // Q1 (fondateur 20/08/2026) — TOUT onduleur, hybride/réseau/non classé (ex.
@@ -1240,7 +1240,9 @@ export const isReseauInverter = (d) => {
 // suffit). Sert à repérer la ligne dont le prix réel provisionne le
 // remplacement à l'année 12 — jamais un forfait sur l'investissement.
 // AMOT57 — union des familles : « Deye off-Grid 6kw » est un onduleur.
-export const isAnyInverter = (d) => _norm(d).includes('onduleur') || isOffgridInverter(d)
+// C-L3-MOT-02 — un câble (« Câble AC Onduleur … → TGBT ») n'est jamais un onduleur.
+export const isAnyInverter = (d) => !_norm(d).includes('cable')
+  && (_norm(d).includes('onduleur') || isOffgridInverter(d))
 
 // ── QJR92a (29/08/2026) — DÉTECTION PANNEAU ÉLARGIE CÔTÉ ÉCRAN ──────────────
 // Le seul mot « panneau » rejetait les désignations que les vendeurs écrivent
@@ -1501,6 +1503,12 @@ export function parsePhaseIsTri(text) {
 export function classifyProduct(nom) {
   const n = _norm(nom)
   if (!n) return null
+  // C-L3-MOT-02 (24/10/2026, paire avec classer_produit côté serveur) — un
+  // CÂBLE nommé d'après l'onduleur qu'il dessert (« Câble AC Onduleur réseau
+  // … → TGBT ») est un câble, jamais un onduleur : le test câble passe AVANT.
+  if (n.includes('cable')) {
+    return (n.includes('terre') || n.includes('mise a la terre')) ? 'cable_terre' : 'cable_dc'
+  }
   if (n.includes('onduleur') && n.includes('hybride')) return 'onduleur_hybride'
   // Hors réseau (site isolé) — AVANT le test réseau/injection ci-dessous :
   // « onduleur hors réseau » contient le sous-mot « réseau », il faut donc le

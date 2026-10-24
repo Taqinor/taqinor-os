@@ -820,6 +820,12 @@ def classer_produit(nom):
     n = _sans_accents(nom)
     if not n:
         return None
+    # C-L3-MOT-02 (24/10/2026, paire avec solar.js::classifyProduct) — un
+    # CÂBLE nommé d'après l'onduleur qu'il dessert (« Câble AC Onduleur réseau
+    # … → TGBT ») est un câble, jamais un onduleur : le test câble passe
+    # AVANT tout test onduleur.
+    if 'cable' in n:
+        return 'cable_terre' if ('terre' in n or 'mise a la terre' in n) else 'cable_dc'
     if 'onduleur' in n and 'hybride' in n:
         return 'onduleur_hybride'
     # QJR-OFFGRID — AVANT le réseau, et ce n'est pas un détail : « hors réseau »
