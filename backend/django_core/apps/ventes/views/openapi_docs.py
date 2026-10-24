@@ -471,8 +471,54 @@ CompositionRequest = {
         'anyOf': [{'required': ['kwc']}, {'required': ['nb_panneaux']}],
     },
 }
+
+
+_DECIMAL_SOUPLE = {
+    'anyOf': [{'type': 'string', 'format': 'decimal',
+               'pattern': r'^-?\d{1,10}(?:[.,]\d{1,4})?$'},
+              {'type': 'number'}],
+    'nullable': True}
+
+
+class _LigneEntree(s.DictField):
+    """api-fuzz (24/10/2026, replace-lines) — une ligne de devis publiée telle
+    que ``domain/lignes.remplacer_lignes`` la lit : soit une ligne PRODUIT
+    (``produit`` entier ≥ 1 obligatoire ; un id bien formé mais inconnu répond
+    404), soit une ligne de SECTION / NOTE (``type_ligne`` + ``designation``
+    non blanche). Une clé inconnue est hors schéma, comme le serveur l'ignore
+    ou la refuse — plus jamais « rejected schema-compliant »."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        communs = {
+            'designation': {'type': 'string', 'maxLength': 255},
+            'quantite': _DECIMAL_SOUPLE, 'prix_unitaire': _DECIMAL_SOUPLE,
+            'remise': _DECIMAL_SOUPLE, 'taux_tva': _DECIMAL_SOUPLE,
+            'ordre': {'type': 'integer', 'minimum': 0, 'nullable': True},
+            'optionnelle': {'type': 'boolean'},
+            'variante': {'type': 'string', 'maxLength': 20},
+            'groupe_index': {'type': 'integer', 'minimum': 0, 'nullable': True},
+            'groupe_label': {'type': 'string', 'maxLength': 120},
+            'tva_base_legale': {'type': 'string', 'maxLength': 200},
+            'id': {'type': 'integer', 'nullable': True},
+        }
+        produit = {
+            'type': 'object', 'required': ['produit'],
+            'properties': {**communs, 'produit': {'type': 'integer', 'minimum': 1},
+                           'type_ligne': {'type': 'string', 'enum': ['produit']}},
+            'additionalProperties': False,
+        }
+        section = {
+            'type': 'object', 'required': ['type_ligne', 'designation'],
+            'properties': {**communs, 'designation': {'type': 'string', 'minLength': 1, 'maxLength': 255, 'pattern': r'\S'},
+                           'type_ligne': {'type': 'string', 'enum': ['section', 'note']}},
+            'additionalProperties': False,
+        }
+        set_override(self, 'field', {'oneOf': [produit, section]})
+
+
 CompositionResponse = _ser('DevisCompositionResponse', {
-    'lignes': s.ListField(child=s.DictField()),
+    'lignes': s.ListField(child=_LigneEntree()),
     'scenario': s.CharField(allow_null=True),
     'nb_panneaux': s.IntegerField(),
     'panel_watt': s.FloatField(),
@@ -730,7 +776,7 @@ class DevisAtomic(DevisWriteSerializer):
     """Corps de ``POST /devis/atomic/`` : les champs d'en-tête du devis (comme
     ``POST /devis/``) + ``lignes`` (au moins une) + ``etude_params`` (écrit
     par l'écrivain unique d'étude, pas par le sérialiseur d'en-tête)."""
-    lignes = s.ListField(child=s.DictField(), min_length=1)
+    lignes = s.ListField(child=_LigneEntree(), min_length=1)
     etude_params = _EtudeParamsEntree()
 
     class Meta(DevisWriteSerializer.Meta):
@@ -738,7 +784,7 @@ class DevisAtomic(DevisWriteSerializer):
 
 
 ReplaceLinesRequest = _ser('DevisReplaceLinesRequest', {
-    'lignes': s.ListField(child=s.DictField(), min_length=1),
+    'lignes': s.ListField(child=_LigneEntree(), min_length=1),
     'entete': s.DictField(required=False, allow_null=True),
     'etude_params': _EtudeParamsEntree(),
     'expected_updated_at': _JETON,

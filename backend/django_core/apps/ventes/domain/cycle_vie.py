@@ -760,7 +760,14 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     from apps.ventes.domain.modifiabilite import (
         SyntheseCiIllisible, figures_sceau)
     figures = None
-    if refus_etude is not None \
+    # Refus fermé SEULEMENT quand le devis PORTE une étude C&I illisible :
+    # un devis commercial / industriel composé à la main, sans étude
+    # (``etude_params`` sans ``etude_ci``), se scelle sans chiffres d'étude
+    # comme avant — sinon le portail et le lien refusaient toute acceptation
+    # de ces devis (CI #1022 : ciq409 / ciq321 en 409 ``validation_requise``).
+    porte_etude = isinstance(
+        (getattr(devis, 'etude_params', None) or {}).get('etude_ci'), dict)
+    if refus_etude is not None and porte_etude \
             and not DevisSignature.objects.filter(devis=devis).exists():
         try:
             figures = figures_sceau(devis, strict=True)
@@ -773,7 +780,7 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
             return
         # NPLUS1 — lignes déjà chargées par l'appelant quand il les a (le hash
         # est identique : elles sont retriées par ``id`` côté modèle).
-        if refus_etude is None:
+        if figures is None:
             figures = figures_sceau(devis)
         figures = DevisSignature.figures_canoniques(figures)
         content_hash = DevisSignature.compute_content_hash(

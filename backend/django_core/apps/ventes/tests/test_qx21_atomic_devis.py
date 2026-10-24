@@ -163,6 +163,28 @@ class Qx21AtomicDevisTests(TestCase):
         self.assertIn('lignes', str(resp.data.get('detail', '')))
         self.assertEqual(devis.lignes.count(), 1)
 
+    def test_replace_lines_produit_inconnu_404(self):
+        """api-fuzz (24/10/2026) — un id de produit BIEN FORMÉ qui ne désigne
+        aucun article (société ou catalogue global) répond 404, jamais 400 ;
+        les lignes d'origine restent intactes."""
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-QX2105',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal('20'), created_by=self.user)
+        from apps.ventes.models import LigneDevis
+        LigneDevis.objects.create(
+            devis=devis, produit=self.p1, designation='Old',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'))
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/replace-lines/', {
+                'lignes': [{'produit': 987654321, 'quantite': '1',
+                            'prix_unitaire': '10'}]}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertIn('inconnu', str(resp.data))
+        self.assertEqual(devis.lignes.count(), 1)
+        self.assertEqual(devis.lignes.first().produit_id, self.p1.id)
+
     def test_replace_lines_rollback_preserves_old(self):
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-QX2102',

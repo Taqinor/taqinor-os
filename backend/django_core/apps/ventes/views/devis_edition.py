@@ -40,9 +40,19 @@ from .devis_gardes import (
 from ..domain.pipeline import (
     MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_ECRAN, IntentionDevis, appliquer,
 )
+import re
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+_RE_PRODUIT_INCONNU = re.compile(r'^Produit \d+ inconnu\.$')
+
+
+def _produit_inconnu(exc):
+    """Vrai pour le refus « Produit N inconnu. » de ``domain/lignes`` (id bien
+    formé qui ne désigne aucun article de la société ni du catalogue global)."""
+    return bool(_RE_PRODUIT_INCONNU.match(str(exc)))
 
 
 def _garde_kwh_declare(devis):
@@ -337,6 +347,9 @@ class DevisEditionActionsMixin:
             # même corps ({detail, code} / {detail, champ}).
             raise ConflitEtat(refus.detail)
         except ValueError as exc:
+            if _produit_inconnu(exc):
+                return Response({'lignes': [str(exc)]},
+                                status=status.HTTP_404_NOT_FOUND)
             # Messages FRANÇAIS de l'écrivain unique (produit inconnu…) ;
             # CI #997 fuzz : contenu de ligne refusé = 409.
             return Response({'detail': f'Enregistrement échoué : {exc}'},
@@ -500,6 +513,11 @@ class DevisEditionActionsMixin:
         except ValidationError:
             raise
         except ValueError as exc:  # rollback : lignes d'origine
+            if _produit_inconnu(exc):
+                # api-fuzz (24/10/2026) — id bien formé, ressource absente : 404
+                # (même contrat que ``IdInconnu404Mixin``), jamais 400.
+                return Response({'lignes': [str(exc)]},
+                                status=status.HTTP_404_NOT_FOUND)
             # Messages FRANÇAIS de l'écrivain unique (produit inconnu…).
             return Response({'detail': f'Remplacement échoué : {exc}'},
                             status=status.HTTP_400_BAD_REQUEST)

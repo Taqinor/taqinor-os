@@ -99,6 +99,9 @@ class AcceptationEntreprise(TestCase):
         for mode in ('commercial', 'industriel'):
             with self.subTest(mode=mode):
                 devis = self._devis(mode)
+                # Le refus fermé ne vaut que pour un devis qui PORTE une étude.
+                Devis.objects.filter(pk=devis.pk).update(
+                    etude_params={'etude_ci': {'statut': 'ok', 'kwc': 10}})
                 with patch('apps.ventes.quote_engine.ci.synthese.synthese_ci',
                            side_effect=RuntimeError('moteur C&I en panne')):
                     resp = self._post(devis, ENTREPRISE)
@@ -110,6 +113,19 @@ class AcceptationEntreprise(TestCase):
                 self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
                 self.assertFalse(
                     DevisSignature.objects.filter(devis=devis).exists())
+
+    def test_ci_sans_etude_s_accepte_sans_refus_ferme(self):
+        """CI #1022 — un devis C&I composé à la main, SANS étude
+        (``etude_params`` sans ``etude_ci``), s'accepte comme avant : aucun
+        refus fermé, signature enregistrée, sceau sans chiffres d'étude."""
+        devis = self._devis('commercial')
+        with patch('apps.ventes.quote_engine.ci.synthese.synthese_ci',
+                   side_effect=RuntimeError('moteur C&I en panne')):
+            resp = self._post(devis, ENTREPRISE)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        sig = DevisSignature.objects.get(devis=devis)
+        self.assertTrue(sig.content_hash)
+        self.assertFalse((sig.figures_scellees or {}).get('etude'))
 
     def test_ci_signature_porte_ses_chiffres_scelles(self):
         """C — la signature C&I stocke les chiffres de l'étude scellés."""
