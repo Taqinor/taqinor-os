@@ -1115,8 +1115,10 @@ def _debit_et_mois_annexe(d, synthese, lg):
                 f'{" %" if cle.endswith("couverture") and _num(v) is not None else ""}</td>'
                 for v in valeurs) + '</tr>'
             for cle, valeurs, dec in rangs)
+        titre = ("agr_annexe_besoin_livre_mois" if len(rangs) > 1
+                 else "agr_annexe_m3_mois")
         blocs.append(f'<div class="ag-small" style="margin-top:4px;">'
-                     f'{_t(lg, "agr_annexe_m3_mois")}</div>'
+                     f'{_t(lg, titre)}</div>'
                      f'<table class="ag-tbl"><tr><td></td>{entetes}</tr>'
                      f'{corps_tbl}</table>')
     if not blocs:

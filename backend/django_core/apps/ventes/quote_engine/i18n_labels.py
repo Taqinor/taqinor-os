@@ -771,6 +771,10 @@ LIBELLES = {
     'agr_annexe_hmt_saisie': {'fr': 'HMT saisie telle quelle (aucune composante calculée).',
                               'en': 'Head entered as such (no component computed).',
                               'ar': 'الارتفاع المانومتري أُدخل كما هو (دون حساب المكونات).'},
+    'agr_annexe_besoin_livre_mois': {
+        'fr': 'Besoin, eau livrée et couverture par jour, mois par mois',
+        'en': 'Need, water delivered and coverage per day, month by month',
+        'ar': 'الحاجة والماء المضخوخ والتغطية يوميا، شهرا بشهر'},
     'agr_annexe_ligne_besoin': {'fr': 'Besoin (m³/j)', 'en': 'Need (m³/day)', 'ar': 'الحاجة (م³/يوم)'},
     'agr_annexe_ligne_livre': {'fr': 'Livré (m³/j)', 'en': 'Delivered (m³/day)', 'ar': 'المضخوخ (م³/يوم)'},
     'agr_annexe_ligne_couverture': {'fr': 'Couverture', 'en': 'Coverage', 'ar': 'التغطية'},

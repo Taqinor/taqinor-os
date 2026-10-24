@@ -161,6 +161,7 @@ _CLES_AGQ = frozenset((
     'agr_note_rendement_variateur', 'agr_note_plafond_forage',
     # AGQ31 — annexe FDA complétée.
     'agr_annexe_site_titre', 'agr_annexe_site', 'agr_annexe_cultures',
+    'agr_annexe_besoin_livre_mois',
     'agr_annexe_besoin_declare', 'agr_annexe_besoin_fao56', 'agr_annexe_irradiation_pvgis',
     'agr_annexe_irradiation_repli', 'agr_annexe_hmt_saisie', 'agr_annexe_ligne_besoin',
     'agr_annexe_ligne_livre', 'agr_annexe_ligne_couverture', 'agr_annexe_dimensionnement_titre',
