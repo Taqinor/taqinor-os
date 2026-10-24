@@ -216,11 +216,15 @@ class EntiteScopeMixin:
             return
         try:
             data = request.data
-        except (ParseError, UnsupportedMediaType):
+        except ParseError:
             # api-fuzz — DRF met le corps en cache VIDE après un échec de
-            # lecture : l'avaler ici faisait lire ``{}`` à la vue, qui
-            # répondait 2xx à un corps illisible. 400 / 415 tels quels.
+            # LECTURE : l'avaler ici faisait lire ``{}`` à la vue, qui
+            # répondait 2xx à un corps illisible. 400 tel quel.
             raise
+        except UnsupportedMediaType:
+            # Rien n'est mis en cache : la vue relève elle-même le 415 quand
+            # ELLE lit le corps, après ses gardes d'état (devis figé = 409).
+            return
         except Exception:  # noqa: BLE001 — corps illisible : le parseur DRF (D-ENF22-BLE001)
             logger.warning("initial : échec ignoré, comportement dégradé", exc_info=True)
             return           # de la vue tranchera (400/415), jamais un 500 ici

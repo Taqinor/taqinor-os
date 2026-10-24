@@ -142,7 +142,7 @@ class PortesFacturationTests(TestCase):
                             [f.statut for f in self._actives(devis)
                              if f.statut != 'brouillon'], ['emise'])
                         continue
-                    self.assertEqual(r3.status_code, 400, r3.data)
+                    self.assertEqual(r3.status_code, 409, r3.data)  # refus d'état (api-fuzz-full)
                     self.assertIn('avoir', str(r3.data))
                     emises = [f for f in self._actives(devis)
                               if f.statut != 'brouillon']
