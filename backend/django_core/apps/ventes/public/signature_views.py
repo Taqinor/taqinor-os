@@ -700,6 +700,14 @@ def proposal_decliner(request, token):
     refus = _refus_brouillon(link)
     if refus is not None:
         return refus
+    # F (revue du 24/10/2026) — même garde que l'acceptation (QJR132/QJR418) :
+    # décliner engage la relation commerciale (note au lead, vendeur notifié) ;
+    # sur un lien qui exige le code de lecture, pas sans lui. Posée AVANT la
+    # lecture du corps et tout effet de bord ; no-op sans ``otp_lecture``.
+    from ..services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
     motif, refus = _texte_du_corps(request, 'motif')
     if refus is not None:
         return refus
@@ -717,8 +725,17 @@ def proposal_decliner(request, token):
         return _noindex(Response(
             {'detail': 'Cette proposition est déjà acceptée.',
              'code': 'statut'}, status=status.HTTP_409_CONFLICT))
-    from django.core.cache import cache
-    deja = not cache.add(f'adev98-declin:{link.pk}', True, 3600)
+    # Idempotence (une réponse par lien et par heure) — comme
+    # ``proposal_contact_request`` : un cache indisponible ne donne jamais un
+    # 500, la réponse du client est transmise (au pire deux fois).
+    deja = False
+    try:
+        from django.core.cache import cache
+        deja = not cache.add(f'adev98-declin:{link.pk}', True, 3600)
+    except Exception:  # noqa: BLE001 — un cache indisponible ne bloque rien (D-ENF22-BLE001)
+        logger.warning('%s : échec ignoré (dégradé)', 'proposal_decliner',
+                       exc_info=True)
+        deja = False
     if not deja:
         enregistrer_declin(link.devis, motif=motif, texte=texte[:2000])
     return _noindex(Response({

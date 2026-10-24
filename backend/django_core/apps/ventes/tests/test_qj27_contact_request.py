@@ -249,6 +249,37 @@ class DeclinPropositionTests(ContactRequestBase):
                 self.assertEqual(resp.data['champ'], 'motif')
         self.assertFalse(Notification.objects.exists())
 
+    def test_lien_sous_code_de_lecture_403_sans_rien_ecrire(self):
+        """F (revue du 24/10/2026) — même garde que l'acceptation : lien qui
+        exige le code de lecture, code non saisi ⇒ 403 ``otp_required``, ni
+        note ni notification ; code vérifié ⇒ 200."""
+        from apps.ventes.domain.cycle_vie import _otp_lecture_verified_key
+        from apps.ventes.models import DevisActivity
+        self.link.otp_lecture = True
+        self.link.save(update_fields=['otp_lecture'])
+        notes = DevisActivity.objects.filter(devis=self.devis).count()
+        resp = self._decliner({'motif': 'prix'})
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(resp.data['detail'], 'otp_required')
+        self.assertFalse(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).exists())
+        self.assertEqual(
+            DevisActivity.objects.filter(devis=self.devis).count(), notes)
+        cache.set(_otp_lecture_verified_key(self.link.token), True, 3600)
+        self.assertEqual(self._decliner({'motif': 'prix'}).status_code, 200)
+
+    def test_cache_indisponible_jamais_500(self):
+        """F — l'idempotence par ``cache.add`` est enrobée comme celle de
+        ``contact`` : un cache en panne n'empêche pas la réponse (200)."""
+        from unittest import mock
+        with mock.patch.object(cache, 'add',
+                               side_effect=RuntimeError('cache en panne')):
+            resp = self._decliner({'motif': 'delai'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['already_sent'])
+        self.assertTrue(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).exists())
+
     def test_accepte_409_jeton_inconnu_404_apercu_interne_refuse(self):
         self.assertEqual(self._decliner(
             {'motif': 'prix'}, token='inconnu').status_code, 404)
