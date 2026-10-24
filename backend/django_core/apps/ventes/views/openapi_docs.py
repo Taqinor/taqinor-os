@@ -820,9 +820,11 @@ AccepterRequest = _ser('DevisAccepterRequest', {
     # ENF11 — date d'acceptation AAAA-MM-JJ (``format: date`` publié) ; la vue
     # relisait une chaîne libre puis répondait « Date invalide » en 400.
     'date': DateStricte(required=False),
-    # api-fuzz-full 24/10 — la vue n'accepte que vide ou une option du devis.
-    'option': s.ChoiceField(choices=Devis.OptionAcceptee.choices, required=False,
-                            allow_blank=True),
+    # api-fuzz-full 24/10 — la vue n'accepte que vide ou une option du devis : motif
+    # (et non une énumération : `OptionAccepteeEnum` porte déjà ces valeurs, un 2e nom
+    # pour le même jeu est un avertissement drf-spectacular).
+    'option': ChaineStricte(required=False, allow_blank=True, validators=[_RegexValidator(
+        '^(?:' + '|'.join(Devis.OptionAcceptee.values) + ')?$')]),
     'entreprise': s.DictField(required=False, allow_null=True),
     'override_credit': BooleenStrict(required=False),
     'override_avertissement': BooleenStrict(required=False),
