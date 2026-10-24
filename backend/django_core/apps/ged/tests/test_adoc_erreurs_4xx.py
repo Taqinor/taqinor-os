@@ -1255,3 +1255,24 @@ class ApiFuzzFull2410GedTests(TestCase):
         self.assertEqual(_nom_fichier_sur('\x12@"a\\b.pdf'), '@ab.pdf')
         self.assertEqual(_nom_fichier_sur('\x01'), 'document')
         self.assertEqual(_nom_fichier_sur('Devis é.pdf'), 'Devis é.pdf')
+
+    def test_nul_publie_sur_revue_et_partage_et_409_export_annote(self):
+        # api-fuzz-full 24/10 : « rejected schema-compliant request » (NUL dans
+        # ``commentaire`` / ``password``) et « undocumented status » (409 d'un
+        # PDF sans page sur une LECTURE : le crochet ne le déclare pas seul).
+        import json
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ged import urls as ged_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ged/', include(ged_urls)),
+        ]).get_schema(request=None, public=True)
+        composants = schema['components']['schemas']
+        for champ in (composants['GedDemanderRevueCorpsRequest'][
+                'properties']['commentaire'],
+                composants['PartageGedRequest']['properties']['password']):
+            self.assertIn('u0000', json.dumps(champ))
+        lecture = schema['paths'][
+            '/api/django/ged/annotations/export-annote/']['get']
+        self.assertIn('409', lecture['responses'])

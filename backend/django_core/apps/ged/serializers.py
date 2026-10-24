@@ -667,7 +667,9 @@ class PartageGedSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True)
     # Mot de passe en clair, write-only : sert UNIQUEMENT à poser le hash.
-    password = serializers.CharField(
+    # api-fuzz-full 24/10 : ``ChaineStricte`` publie le motif sans caractère
+    # nul que DRF applique (« Le caractère nul n'est pas autorisé » = 400).
+    password = ChaineStricte(
         write_only=True, required=False, allow_blank=True,
         style={'input_type': 'password'})
     has_password = serializers.BooleanField(read_only=True)

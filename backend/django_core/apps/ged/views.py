@@ -4017,7 +4017,8 @@ class AnnotationDocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelView
     @extend_schema(
         parameters=[oa.P('version', oa.ID, required=True,
                          description='Version à exporter.')],
-        responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+        responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+                   409: oa.REFUS_ETAT})
     @action(detail=False, methods=['get'], url_path='export-annote')
     def export_annote(self, request):
         """XGED16 — Exporte un PDF annoté APLATI (nouveau fichier séparé).

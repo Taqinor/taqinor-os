@@ -132,7 +132,9 @@ CYCLE_VIE_CORPS = S('CycleVieCorps', {
     'statut': s.ChoiceField(choices=[c for c, _ in LIFECYCLE_CHOICES])})
 REVUE_CORPS = S('DemanderRevueCorps', {
     'approbateur': s.IntegerField(required=False, allow_null=True),
-    'commentaire': s.CharField(required=False, allow_blank=True),
+    # api-fuzz-full 24/10 : le serveur refuse le caractère nul (``_txt``) -> le
+    # motif sans NUL est publié, comme les autres textes stricts.
+    'commentaire': ChaineStricte(required=False, allow_blank=True),
 })
 ZONE = S('ZoneCaviardage', {
     'page': s.IntegerField(min_value=0),
