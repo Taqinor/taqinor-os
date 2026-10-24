@@ -128,3 +128,17 @@ class ImportRelevesTest(TestCase):
         op = module.Migration.operations[0]
         self.assertIsInstance(op, migrations.AlterField)
         self.assertIn(('import', 'Import CSV'), op.field.choices)
+
+    def test_fichier_publie_non_vide(self):
+        """3e drainage api-fuzz : un fichier vide est refusé (400) — le schéma
+        multipart le publie donc ``minLength: 1``."""
+        from apps.monitoring.views import FichierReleves
+
+        champ = FichierReleves()
+        self.assertEqual(champ._spectacular_annotation['field'],
+                         {'type': 'string', 'format': 'binary',
+                          'minLength': 1})
+        resp = self.api.post(
+            self.url, {'fichier': SimpleUploadedFile('vide.csv', b'')},
+            format='multipart')
+        self.assertEqual(resp.status_code, 400, resp.content)
