@@ -193,9 +193,10 @@ def public_document(request, token):
     # règle permanente 2), posée AVANT tout effet de bord (stamp de vue) :
     # une tentative non vérifiée ne compte pas comme une consultation.
     # L-INTPREV — le jeton interne dispense de l'OTP (c'est le commercial),
-    # exactement comme sur les trois autres lectures.
+    # exactement comme sur les trois autres lectures. ADEV97 — exemplaire
+    # signé d'un accepté : même code de lecture que ``proposal_pdf``.
     from .services import otp_lecture_verified
-    if not via_interne and not otp_lecture_verified(link):
+    if not via_interne and not otp_lecture_verified(link, pdf=True):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
@@ -1823,11 +1824,11 @@ def proposal_data(request, token):
         # la lecture : la page la renvoie à ``/accept/``, qui refuse (409
         # ``empreinte_perimee``) si le devis a été corrigé entre-temps.
         # Additive : absente quand rien n'est signable (aperçu interne,
-        # brouillon, remplacé, accepté…).
-        from .public.signature_views import (
-            empreinte_contenu, signable_au_jeton)
-        if not link.via_interne and signable_au_jeton(devis):
-            payload['empreinte_contenu'] = empreinte_contenu(devis)
+        # brouillon, remplacé, accepté…). ADEV96 — scelle aussi les chiffres
+        # de l'étude C&I que la page montre (la ``synthese_ci`` déjà lue).
+        from .public.signature_views import empreinte_servie
+        if (_empreinte := empreinte_servie(devis, link, synthese_ci_pub)) is not None:
+            payload['empreinte_contenu'] = _empreinte
         # ADEV52 (C-ADEV-019) — LA règle d'expiration, servie : la page ne
         # calcule plus rien (« 12:00 UTC du dernier jour » supprimé). Deux clés
         # additives, absentes quand aucune validité n'est déterminable.
@@ -2115,8 +2116,10 @@ def proposal_pdf(request, token):
     # L-NIV (24/08/2026) — même gate otp_lecture que proposal_data (voir son
     # commentaire) : le flux PDF public est aussi une LECTURE.
     # L-INTPREV (25/08/2026) — jeton interne → jamais d'OTP exigé.
+    # ADEV97 — l'exemplaire SIGNÉ d'un accepté exige aussi le code de lecture
+    # dès qu'un code peut partir (``pdf=True``, ``pdf_signe_sous_otp``).
     from .services import otp_lecture_verified
-    if not link.via_interne and not otp_lecture_verified(link):
+    if not link.via_interne and not otp_lecture_verified(link, pdf=True):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 

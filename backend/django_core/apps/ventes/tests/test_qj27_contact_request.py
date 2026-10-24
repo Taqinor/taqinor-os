@@ -208,3 +208,55 @@ class QJ2SupervisorExtensionTests(TestCase):
             event_type=EventType.LEAD_NEW,
         ).values_list('recipient_id', flat=True))
         self.assertEqual(recipients, {self.owner.pk, manager.pk})
+
+
+class DeclinPropositionTests(ContactRequestBase):
+    """ADEV98 — « Décliner / demander un délai » : motif fermé consigné au
+    chatter du devis ET du lead, responsable notifié, aucun statut écrit."""
+
+    def _decliner(self, body, token=None):
+        return self.api.post(
+            f'/api/django/public/proposal/{token or self.link.token}/decliner/',
+            body, format='json')
+
+    def test_motif_consigne_notifie_sans_statut(self):
+        from apps.ventes.models import DevisActivity
+        resp = self._decliner({'motif': 'prix', 'texte': 'Trop cher pour nous'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['already_sent'])
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
+        for qs in (LeadActivity.objects.filter(lead=self.lead),
+                   DevisActivity.objects.filter(devis=self.devis)):
+            self.assertTrue(any('décline' in (a.body or '')
+                                and 'le prix' in a.body
+                                and 'Trop cher' in a.body for a in qs))
+        destinataires = set(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST,
+        ).values_list('recipient_id', flat=True))
+        self.assertEqual(destinataires, {self.owner.pk, self.boss.pk})
+        # Une réponse par lien et par heure : aucune seconde notification.
+        resp = self._decliner({'motif': 'delai'})
+        self.assertTrue(resp.data['already_sent'])
+        self.assertEqual(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).count(), 2)
+
+    def test_motif_invalide_ou_autre_sans_texte_400(self):
+        for corps in ({'motif': 'inconnu'}, {'motif': 'autre'}, {}):
+            with self.subTest(corps=corps):
+                resp = self._decliner(corps)
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.data['champ'], 'motif')
+        self.assertFalse(Notification.objects.exists())
+
+    def test_accepte_409_jeton_inconnu_404_apercu_interne_refuse(self):
+        self.assertEqual(self._decliner(
+            {'motif': 'prix'}, token='inconnu').status_code, 404)
+        interne = self.link.jeton_interne_effectif()
+        self.assertEqual(self._decliner(
+            {'motif': 'prix'}, token=interne).status_code, 403)
+        Devis.objects.filter(pk=self.devis.pk).update(
+            statut=Devis.Statut.ACCEPTE)
+        resp = self._decliner({'motif': 'concurrent'})
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data['code'], 'statut')

@@ -4,9 +4,26 @@ Abonne ``ventes`` aux événements du bus ``core.events`` exposés par d'autres
 apps/la fondation, pour réagir à un changement d'état sans import direct.
 Câblé au démarrage par ``VentesConfig.ready()``.
 """
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 
-from core.events import payment_captured, chantier_annule, effet_rejete
+from core.events import (
+    chantier_annule, devis_refused, devis_revise, effet_rejete,
+    payment_captured,
+)
+
+from .domain.suivi import on_devis_refused, on_devis_revise, on_lead_enregistre
+
+# ADEV97 (L3 lien public) — fin de vie automatique du lien public : refus,
+# remplacement par une nouvelle version, lead perdu (``post_save`` de
+# ``crm.Lead`` par RÉFÉRENCE PARESSEUSE : aucun import du modèle CRM).
+devis_refused.connect(
+    on_devis_refused, dispatch_uid='ventes_revoquer_lien_on_devis_refused')
+devis_revise.connect(
+    on_devis_revise, dispatch_uid='ventes_revoquer_lien_on_devis_revise')
+post_save.connect(
+    on_lead_enregistre, sender='crm.Lead',
+    dispatch_uid='ventes_revoquer_lien_on_lead_perdu')
 
 
 # QJR48 (29/08/2026) — LES DEUX RÉCEPTEURS QX24 ONT ÉTÉ SUPPRIMÉS.

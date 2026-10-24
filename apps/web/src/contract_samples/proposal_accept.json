@@ -10,11 +10,14 @@
     "signed_at_client": "2026-10-08T10:15:00+00:00",
     "on_behalf_of": "",
     "otp_code": "",
-    "empreinte_contenu": "3f9a1c0e7b2d4a65c8e1f0b97d3a2c4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c"
+    "empreinte_contenu": "3f9a1c0e7b2d4a65c8e1f0b97d3a2c4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c",
+    "langue": "fr"
   },
   "corps": {
     "empreinte_contenu": "Texte, OBLIGATOIRE : la valeur `empreinte_contenu` servie par `proposal_data` (contrat `proposal_data.json`, fragment `exemple_adev2`) au moment où le client a lu la proposition. Différente de l'empreinte courante ⇒ 409 `empreinte_perimee` (le client a lu un autre contenu que celui qu'il signerait).",
     "entreprise": "Bloc C&I défini par `acceptation_entreprise.json` (CIW305) — référencé, pas dupliqué.",
+    "recu": "ADEV96 — réponse 200 : le REÇU de la signature enregistrée (la première fait foi) — `signe_le` (ISO), `empreinte_contenu` = `DevisSignature.content_hash` (sceau v3 : lignes, totaux, option ET chiffres de l'étude C&I), `empreinte_pdf` = SHA-256 des octets du PDF signé figé (`signed_pdf_sha256`, vide tant qu'il n'est pas stocké). Mêmes champs dans `signature_info` de l'ERP (certificat). `null` sans signature.",
+    "langue": "ADEV99 — facultatif, `fr` | `en` | `ar` (toute autre valeur ignorée) : la langue de la page au moment de signer, gardée sur `DevisSignature.langue_page`. La confirmation e-mail part en anglais pour `en`, en français sinon ; elle va au signataire (`entreprise.signataire_email`) ET au contact du lead (à défaut le client), avec raison sociale / ICE, horodatage (Africa/Casablanca) et empreintes, exemplaire signé joint ; copie PDF au vendeur (responsable du lead, sinon créateur du devis).",
     "autres": "`nom`, `option`, `consent_esign`, `signature_data_url`, `signed_at_client`, `on_behalf_of`, `otp_code` : inchangés (vue `public/signature_views.proposal_accept`)."
   },
   "reponse_200": {
@@ -29,7 +32,12 @@
       "message": "",
       "declare_url": "/api/django/public/proposal/<token>/virement/"
     },
-    "entreprise": null
+    "entreprise": null,
+    "recu": {
+      "signe_le": "2026-10-08T10:15:02+00:00",
+      "empreinte_contenu": "9c2e4f6a8b0d1e3f5a7c9e1b3d5f7a9c2e4f6a8b0d1e3f5a7c9e1b3d5f7a9c2e",
+      "empreinte_pdf": "5b7d9f1a3c5e7a9b1d3f5a7c9e1b3d5f7a9c2e4f6a8b0d1e3f5a7c9e1b3d5f7a"
+    }
   },
   "codes_409": [
     "version_remplacee",
@@ -39,7 +47,8 @@
     "empreinte_perimee",
     "validation_requise",
     "statut",
-    "vente_active_existante"
+    "vente_active_existante",
+    "ice_divergent"
   ],
   "reponses_409": {
     "forme": "Toute réponse 409 de l'acceptation porte EXACTEMENT `{detail, code}` : `detail` = phrase française affichée telle quelle par la page, `code` ∈ `codes_409` (liste FERMÉE — un code hors liste est un bug du serveur). La page ne traite JAMAIS un 409 comme un succès.",
@@ -74,6 +83,10 @@
     "vente_active_existante": {
       "detail": "Cette proposition ne peut pas être signée en l'état : contactez votre conseiller.",
       "code": "vente_active_existante"
+    },
+    "ice_divergent": {
+      "detail": "L'ICE saisi (000000000000000) ne correspond pas à l'ICE enregistré pour votre société (111111111111111). Vérifiez-le ou contactez votre conseiller avant de signer.",
+      "code": "ice_divergent"
     }
   },
   "avenant_signe": {
@@ -86,6 +99,17 @@
       "avenant_signe": {"signe_le": "2026-10-12T09:30:00+00:00"}
     }
   },
+  "decliner": {
+    "pourquoi": "ADEV98 — « Décliner / demander un délai » depuis la proposition : un motif FERMÉ plutôt qu'un silence. Consigné au chatter du devis ET du lead, responsable du lead notifié ; AUCUN statut écrit (règle #4 : le devis reste « envoyé »). Une réponse par lien et par heure (`already_sent`). Aperçu interne 403, brouillon 409 `brouillon`, accepté 409 `statut`, motif invalide ou « autre » sans texte 400 {detail, champ: 'motif'}.",
+    "endpoint": "POST /api/django/public/proposal/<token>/decliner/",
+    "motifs": ["prix", "delai", "concurrent", "projet_reporte", "autre"],
+    "exemple": {"motif": "delai", "texte": "Nous revenons vers vous après le conseil d'administration de novembre."},
+    "reponse_200": {"detail": "Merci, votre réponse a bien été transmise à votre conseiller.", "already_sent": false}
+  },
+  "vu": {
+    "pourquoi": "ADEV98 — balise de lecture HUMAINE, postée par la page après 3 s de visibilité : c'est elle qui compte l'ouverture (compteur, note, notification au conseiller). Le rendu serveur de la page (`X-Proposition-Rendu: ssr` sur `proposal_data`) n'est qu'un APERÇU daté (`ShareLink.apercu_le`), sans note ni notification — les scanners de liens des messageries d'entreprise (SafeLinks, Proofpoint, Mimecast, Barracuda…) le déclenchaient. Corps ignoré, toujours 204 (jeton inconnu 404).",
+    "endpoint": "POST /api/django/public/proposal/<token>/vu/"
+  },
   "otp": {
     "endpoints": [
       "POST /api/django/public/proposal/<token>/otp/",
@@ -95,6 +119,11 @@
     "reponse_200": {
       "detail": "Code envoyé."
     },
+    "reponse_200_aucun_code": {
+      "detail": "Aucun code requis pour ce lien.",
+      "code_requis": false
+    },
+    "exemplaire_signe": "ADEV97 — `otp-lecture/demander/` et `otp-lecture/verifier/` répondent `reponse_200_aucun_code` quand le lien n'exige AUCUN code de lecture : ni `otp_lecture` posé, ni exemplaire SIGNÉ à protéger, ou déjà déverrouillé dans l'heure. Un devis ACCEPTÉ dont le PDF signé est stocké et dont le client est joignable par e-mail exige le code de lecture pour `/pdf/` et `/document/` (403 `otp_required`) ; la page et `/suivi/` restent lisibles au jeton. Une acceptation FRAÎCHE au jeton déverrouille l'exemplaire une heure (le signataire le télécharge tout de suite), jamais une resoumission sur un accepté.",
     "reponse_409": {
       "detail": "Aucun moyen d'envoyer le code : contactez votre conseiller.",
       "code": "aucun_canal"

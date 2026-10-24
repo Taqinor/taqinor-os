@@ -56,8 +56,38 @@ _ROBOT_APERCU_RE = re.compile(
     r'|pinterestbot|redditbot|vkshare|applebot|googlebot|bingbot|duckduckbot'
     r'|yandexbot|baiduspider|petalbot|headlesschrome|python-requests'
     r'|python-urllib|curl/|wget/|go-http-client|okhttp'
+    # ADEV98 — scanners de liens des messageries d'entreprise (B2B) : ils
+    # ouvrent chaque lien d'un e-mail avant le destinataire (Microsoft
+    # SafeLinks / Defender et la sonde Office, Proofpoint, Mimecast, Barracuda,
+    # Symantec/Broadcom, Cisco Umbrella/IronPort, Google Safe Browsing…).
+    r'|safelinks|ms-office|msoffice|microsoft office|proofpoint|ppops'
+    r'|mimecast|barracuda|symantec|bluecoat|cisco|umbrella|ironport'
+    r'|google-safety|safebrowsing|googleother|google-inspectiontool'
+    r'|trendmicro|forcepoint|zscaler|sophos|fortiguard'
     r'|crawler|spider|preview|bot(?![a-z])',
     re.IGNORECASE)
+
+
+#: ADEV98 — en-tête posé par le rendu SERVEUR de la page ``/proposition``
+#: (apps/web) sur sa lecture de ``proposal_data`` : ce GET n'est qu'un APERÇU
+#: (un scanner de messagerie le déclenche autant qu'un humain). La lecture
+#: humaine arrive par le beacon ``proposal_vu`` (JS, après quelques secondes
+#: de visibilité). Le forger ne permet que de s'auto-exclure du comptage.
+EN_TETE_RENDU_SSR = 'HTTP_X_PROPOSITION_RENDU'
+
+
+def _rendu_serveur(request):
+    meta = getattr(request, 'META', None) or {}
+    return str(meta.get(EN_TETE_RENDU_SSR, '') or '').strip().lower() == 'ssr'
+
+
+def _dater_apercu(link):
+    """ADEV98 — date l'aperçu serveur (``ShareLink.apercu_le``) : aucune
+    vue comptée, aucune note, aucune notification. Best-effort."""
+    try:
+        ShareLink.objects.filter(pk=link.pk).update(apercu_le=timezone.now())
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant (D-ENF22-BLE001)
+        logger.warning('%s : échec ignoré (dégradé)', '_dater_apercu', exc_info=True)
 
 
 #: QJ-ROBOTS-2 (fondateur 09/09/2026, lead Mekapa, nginx 12:34:34-36Z) — Meta
@@ -205,6 +235,11 @@ def _stamp_view_si_public(link, via_interne, request=None):
     n'excluait donc RIEN à l'ouverture d'une proposition."""
     if via_interne or _lecture_equipe(link, request) \
             or _est_robot_apercu(request):
+        return False
+    # ADEV98 — le rendu serveur de la page est un APERÇU daté, jamais une
+    # lecture : ``_notify_open`` ne fait rien sans stamp (``_vue_stampee``).
+    if _rendu_serveur(request):
+        _dater_apercu(link)
         return False
     resultat = _stamp_view(link)
     _tracer_ouverture_publique(link, request)
@@ -710,3 +745,29 @@ def _tracer_engagement_public(link, request, section, seconds):
         )
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_tracer_engagement_public', exc_info=True)
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_vu(request, token):
+    """ADEV98 — beacon « la proposition a VRAIMENT été lue ».
+
+    Posté par la page ``/proposition`` après quelques secondes de visibilité
+    (un scanner de messagerie ne l'émet pas : il n'exécute pas la page, ou pas
+    assez longtemps). C'est LUI qui compte la lecture humaine — compteur,
+    première ouverture, note chatter, notification au responsable, trace —
+    par le MÊME ``_stamp_view_si_public`` + ``_notify_open`` que la lecture
+    d'hier (robots, appareils d'équipe et jeton interne exclus de la même
+    façon, fenêtre de 15 min ``REOUVERTURE_FENETRE`` comprise). Toujours 204,
+    corps ignoré ; jamais compté quand la lecture exige un code non saisi."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    from ..services import otp_lecture_verified
+    if link.via_interne or not otp_lecture_verified(link):
+        return _noindex(Response(status=status.HTTP_204_NO_CONTENT))
+    is_first = _stamp_view_si_public(link, False, request)
+    _notify_open(link, request, is_first=is_first)
+    return _noindex(Response(status=status.HTTP_204_NO_CONTENT))

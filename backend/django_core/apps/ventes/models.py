@@ -7,6 +7,8 @@ from core.models import TenantModel
 # tuple sans pouvoir importer ``apps.ventes``. Voir ``ROLES_AUTO_COMPOSITION``
 # plus bas : le nom historique reste, la copie a disparu.
 from core.product_roles import ROLES_DEVIS
+# L3 lien public — champs de preuve déportés (mixins abstraits, models_preuves).
+from .models_preuves import PreuveSignatureB2B, SuiviLienPublic
 import logging
 import secrets
 from datetime import timedelta
@@ -1095,7 +1097,7 @@ def _default_share_expiry():
     return timezone.now() + timedelta(days=SHARE_LINK_TTL_DAYS)
 
 
-class ShareLink(models.Model):
+class ShareLink(SuiviLienPublic, models.Model):
     """Lien public, lecture seule, expirant (30 j) vers le PDF CLIENT d'un devis
     ou d'une facture. Jeton long et imprévisible. Aucun login pour le client,
     aucune autre donnée accessible, jamais de prix d'achat ni de marge (le PDF
@@ -1466,7 +1468,7 @@ def _default_payment_expiry():
     return timezone.now() + timedelta(days=PAYMENT_LINK_TTL_DAYS)
 
 
-class DevisSignature(models.Model):
+class DevisSignature(PreuveSignatureB2B, models.Model):
     """QJ10 — Enregistrement IMMUABLE de signature électronique (loi 53-05).
 
     Créé UNE SEULE FOIS au moment de l'acceptation de la proposition.
@@ -1601,8 +1603,8 @@ class DevisSignature(models.Model):
     CONTENT_HASH_V1 = 1
     #: QJR144 — v1 + ``taux_tva``/``optionnelle`` par ligne + ``option_acceptee``.
     CONTENT_HASH_V2 = 2
-    #: La version dont sont scellées les NOUVELLES signatures.
-    CONTENT_HASH_VERSION = CONTENT_HASH_V2
+    #: La version dont sont scellées les NOUVELLES signatures :
+    #: ``CONTENT_HASH_VERSION``, portée par ``models_preuves.PreuveSignatureB2B``.
 
     @staticmethod
     def _norme_decimale(valeur):
@@ -1709,7 +1711,8 @@ class DevisSignature(models.Model):
             # différentes ne peuvent pas produire la même chaîne.
             payload = (f"v{cls.CONTENT_HASH_V2}|{payload}|"
                        f"option={getattr(devis, 'option_acceptee', '') or ''}")
-        return payload
+        # ADEV96 — v3 : + les chiffres de l'étude C&I (``models_preuves``).
+        return payload + cls._suffixe_sceau_etude(devis, version)
 
     @classmethod
     def compute_content_hash(cls, devis, lignes=None, *, version=None):
@@ -1750,7 +1753,8 @@ class DevisSignature(models.Model):
         scelle = (self.content_hash or '').strip()
         if not scelle:
             return None, None
-        for version in (self.CONTENT_HASH_V2, self.CONTENT_HASH_V1):
+        for version in (self.CONTENT_HASH_V3, self.CONTENT_HASH_V2,
+                        self.CONTENT_HASH_V1):
             if self.compute_content_hash(
                     self.devis, lignes=lignes, version=version) == scelle:
                 return True, version

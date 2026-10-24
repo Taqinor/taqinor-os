@@ -140,3 +140,74 @@ class SuiviProlongationTests(TestCase):
         self.assertEqual(resp.status_code, 404)
         self.link.refresh_from_db()
         self.assertIsNone(self.link.revoque_le)
+
+
+class FinDeVieDuLienTests(TestCase):
+    """ADEV97 — refus, remplacement par une nouvelle version, lead perdu :
+    le lien public se révoque de lui-même (note au chatter) ; un devis
+    ACCEPTÉ garde le sien (ADOC131)."""
+
+    def setUp(self):
+        from apps.crm.models import Lead
+        self.company = Company.objects.create(nom='ADEV97 Co')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client', prenom='ADEV97')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Lead', prenom='ADEV97')
+        self.n = 0
+
+    def _devis(self, statut=Devis.Statut.ENVOYE):
+        self.n += 1
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-202610-AD97{self.n:02d}',
+            client=self.client_obj, lead=self.lead, statut=statut,
+            taux_tva=Decimal('20'))
+        return devis, ShareLink.for_devis(devis)
+
+    def _revoque(self, link):
+        link.refresh_from_db()
+        return link.revoque_le is not None
+
+    def test_devis_refuse_revoque_son_lien(self):
+        from core.events import devis_refused
+        from apps.ventes.models import DevisActivity
+        devis, link = self._devis()
+        devis_refused.send(sender=Devis, devis=devis, user=None,
+                           motif_refus='prix')
+        self.assertTrue(self._revoque(link))
+        self.assertTrue(DevisActivity.objects.filter(
+            devis=devis, body__contains='révoqué automatiquement').exists())
+        self.assertEqual(self.api_get(link), 404)
+
+    def test_version_remplacee_revoque_l_ancien_lien(self):
+        from core.events import devis_revise
+        v1, lien1 = self._devis()
+        v2, lien2 = self._devis()
+        devis_revise.send(sender=Devis, ancien=v1, nouveau=v2, user=None)
+        self.assertTrue(self._revoque(lien1))
+        self.assertFalse(self._revoque(lien2))
+
+    def test_lead_perdu_revoque_les_liens_non_acceptes(self):
+        envoye, lien_envoye = self._devis()
+        accepte, lien_accepte = self._devis(Devis.Statut.ACCEPTE)
+        self.lead.perdu = True
+        self.lead.motif_perte = 'concurrent'
+        self.lead.save(update_fields=['perdu', 'motif_perte'])
+        self.assertTrue(self._revoque(lien_envoye))
+        # ADOC131 — un accepté garde son lien (page en lecture + suivi).
+        self.assertFalse(self._revoque(lien_accepte))
+
+    def test_accepte_jamais_revoque_par_un_refus_ou_une_revision(self):
+        from core.events import devis_refused, devis_revise
+        accepte, lien = self._devis(Devis.Statut.ACCEPTE)
+        autre, _ = self._devis()
+        devis_refused.send(sender=Devis, devis=accepte, user=None,
+                           motif_refus='')
+        devis_revise.send(sender=Devis, ancien=accepte, nouveau=autre,
+                          user=None)
+        self.assertFalse(self._revoque(lien))
+
+    @staticmethod
+    def api_get(link):
+        return APIClient().get(
+            f'/api/django/ventes/proposal/{link.token}/').status_code

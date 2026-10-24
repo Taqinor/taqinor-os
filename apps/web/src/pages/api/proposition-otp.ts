@@ -100,8 +100,14 @@ export const POST: APIRoute = async ({ request }) => {
   const payload = (upstreamPayload ?? {}) as Record<string, unknown>;
   const detail = typeof payload.detail === 'string' ? payload.detail : '';
   const ok = upstreamStatus >= 200 && upstreamStatus < 300;
+  // ADEV97 — `code_requis: false` (aucun code de lecture sur ce lien) relayé tel quel : au clic
+  // « Télécharger », la page sait si l'exemplaire signé exige un code avant de l'ouvrir.
   return json(
-    { ok, detail: detail || (ok ? 'Code envoyé.' : 'Une erreur est survenue. Veuillez réessayer.') },
+    {
+      ok,
+      detail: detail || (ok ? 'Code envoyé.' : 'Une erreur est survenue. Veuillez réessayer.'),
+      ...(payload.code_requis === false ? { code_requis: false } : {}),
+    },
     upstreamStatus >= 200 && upstreamStatus < 600 ? upstreamStatus : 502,
   );
 };

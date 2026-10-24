@@ -5,7 +5,7 @@ from .public_views import (
     proposal_taille_detail,  # OPTIONS CHARGEABLES (29/08/2026)
     suivi_public,  # QX34
 )
-from .public.lecture_views import proposal_engagement  # XSAL16, SPL246
+from .public.lecture_views import proposal_engagement, proposal_vu  # XSAL16, SPL246, ADEV98
 from .public.paiement_views import (  # SPL252
     pay_page, pay_webhook,
     proposal_virement_declare,  # QX33be
@@ -15,6 +15,7 @@ from .public.signature_views import (  # SPL253
     proposal_contact_request, proposal_request_otp,
     proposal_request_otp_lecture, proposal_verify_otp_lecture,  # L-NIV
     proposal_activate_option,  # XSAL5
+    proposal_decliner,  # ADEV98
 )
 
 urlpatterns = [
@@ -57,6 +58,10 @@ urlpatterns = [
     # docs/WEB_PLAN.md — ce mount couvre uniquement la réception backend.
     path('proposal/<str:token>/engagement/', proposal_engagement,
          name='public-proposal-engagement'),
+    # ADEV98 — beacon de lecture HUMAINE + « Décliner / demander un délai ».
+    path('proposal/<str:token>/vu/', proposal_vu, name='public-proposal-vu'),
+    path('proposal/<str:token>/decliner/', proposal_decliner,
+         name='public-proposal-decliner'),
     # FG53 — page publique « Payer en ligne » + webhook (jeton PaymentLink).
     path('pay/<str:token>/', pay_page, name='public-pay-page'),
     path('pay/<str:token>/webhook/', pay_webhook, name='public-pay-webhook'),

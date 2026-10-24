@@ -448,6 +448,74 @@ def empreinte_visible(devis):
     }
 
 
+#: ADEV96 — les chiffres de l'étude C&I SCELLÉS (projection ``chiffres_cles``
+#: de ``quote_engine/ci/synthese``, celle que lisent la page et le PDF) :
+#: kWc, production, consommation, autoconsommation, couverture, économie de
+#: l'année 1 et sa base, retour, revente, « sous réserve ».
+CLES_CHIFFRES_SCELLES = (
+    'kwc', 'production_kwh_an', 'conso_kwh_an', 'taux_autoconso_pct',
+    'taux_couverture_pct', 'economie_annuelle_mad', 'base_economie',
+    'payback_ans', 'revente_kwh_an', 'revente_mad_an', 'sous_reserve',
+)
+
+
+def synthese_ci_lue(devis, link=None):
+    """ADEV96 — la ``synthese_ci`` que la page ``/proposition`` montre : MÊME
+    fonction que le PDF, sur la charge moteur assainie (``_strip_confidential
+    _deep``) ; argent retiré quand la section « économies » n'est pas servie
+    sur ``link``. ``None`` hors commercial / industriel (sans rendu moteur).
+    Point de sauvegarde : appelée DANS la transaction d'acceptation, un
+    incident de lecture ne la rend jamais invalide (``None``, journalisé)."""
+    mode = str(getattr(devis, 'mode_installation', '') or '').strip().lower()
+    if devis is None or mode not in ('commercial', 'industriel'):
+        return None
+    from django.db import transaction
+    from apps.ventes.public.noyau import _strip_confidential_deep
+    from apps.ventes.public.payload_economie import _sans_internes_bancables
+    from apps.ventes.quote_engine.builder import build_quote_data
+    from apps.ventes.quote_engine.ci.synthese import synthese_ci
+    opts = {'pdf_mode': 'full'}
+    if (getattr(link, 'token', '') or '').strip():
+        opts['share_token'] = link.token.strip()
+    try:
+        with transaction.atomic():
+            # Les MÊMES étapes que ``proposal_data`` avant sa ``synthese_ci``.
+            synthese = synthese_ci(_sans_internes_bancables(
+                _strip_confidential_deep(build_quote_data(devis, opts))))
+    except Exception:  # noqa: BLE001 — sceau sans étude plutôt qu'une signature cassée (D-ENF22-BLE001)
+        logger.warning('ADEV96 : synthèse C&I illisible (devis %s)',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return None
+    if synthese is not None and link is not None \
+            and not link.section_servie('economies'):
+        synthese = {cle: val for cle, val in synthese.items() if cle != 'argent'}
+    return synthese
+
+
+def figures_etude_scellees(synthese):
+    """ADEV96 — ce que le sceau couvre de l'étude C&I : les chiffres de
+    :data:`CLES_CHIFFRES_SCELLES`, les indicateurs (retour, TRI et son
+    horizon), l'économie de l'année 1 HT/TTC, les hypothèses chiffrées du bloc
+    argent et les CLÉS des hypothèses imprimées. ``None`` sans synthèse (hors
+    C&I) : le contenu scellé est alors celui d'avant, à l'octet."""
+    if not isinstance(synthese, dict):
+        return None
+    from apps.ventes.quote_engine.ci.synthese import chiffres_cles
+    chiffres = chiffres_cles(synthese)
+    argent = synthese.get('argent') if isinstance(synthese.get('argent'), dict) else {}
+    eco = argent.get('economie_annee1') if isinstance(
+        argent.get('economie_annee1'), dict) else {}
+    return {
+        'chiffres': {cle: chiffres.get(cle) for cle in CLES_CHIFFRES_SCELLES},
+        'indicateurs': argent.get('indicateurs') or {},
+        'economie_annee1': {'ht': eco.get('total_mad'),
+                            'ttc': eco.get('total_mad_ttc')},
+        'hypotheses_argent': argent.get('hypotheses') or {},
+        'hypotheses': sorted(str(h.get('cle')) for h in synthese.get(
+            'hypotheses') or [] if isinstance(h, dict)),
+    }
+
+
 def _est_envoye(devis):
     from apps.ventes.models import Devis
     statut = (Devis.objects.filter(pk=getattr(devis, 'pk', None))

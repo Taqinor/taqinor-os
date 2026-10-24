@@ -621,11 +621,33 @@ def validate_otp_lecture(link, otp_code):
     return None
 
 
-def otp_lecture_verified(link):
+def pdf_signe_sous_otp(link):
+    """ADEV97 — vrai quand le PDF de ``link`` est l'EXEMPLAIRE SIGNÉ figé
+    (devis accepté, ``signed_pdf_key`` posé : raison sociale, ICE, signature)
+    ET qu'un code de lecture peut réellement partir vers le client
+    (:func:`canal_otp_disponible`) : son téléchargement exige alors l'OTP de
+    lecture, même sur un lien sans ``otp_lecture``. Sans canal : inchangé (un
+    lien n'est jamais rendu illisible). La page et ``/suivi/`` restent lisibles
+    au jeton (ADOC131 : jusqu'à la réception + 90 jours)."""
+    devis = getattr(link, 'devis', None)
+    if devis is None or getattr(link, 'via_interne', False) \
+            or getattr(devis, 'statut', None) != 'accepte':
+        return False
+    try:
+        signe = bool(devis.signature.signed_pdf_key)
+    except AttributeError:  # aucune signature liée (RelatedObjectDoesNotExist)
+        return False
+    return signe and canal_otp_disponible(getattr(devis, 'client', None))
+
+
+def otp_lecture_verified(link, *, pdf=False):
     """True si la lecture de ``link`` a déjà été déverrouillée par un OTP
     valide dans la dernière heure. Toujours True si ``link.otp_lecture`` est
-    False (rien à déverrouiller — comportement d'aujourd'hui)."""
-    if not getattr(link, 'otp_lecture', False):
+    False (rien à déverrouiller — comportement d'aujourd'hui). ADEV97 —
+    ``pdf=True`` (téléchargement du PDF) : l'exemplaire signé exige aussi le
+    code quand :func:`pdf_signe_sous_otp`."""
+    if not getattr(link, 'otp_lecture', False) \
+            and not (pdf and pdf_signe_sous_otp(link)):
         return True
     from django.core.cache import cache
     return bool(cache.get(_otp_lecture_verified_key(link.token)))
@@ -689,7 +711,8 @@ def _send_otp_email(email, code, devis_ref, company=None):
 
 def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                          signature_image='', signed_at_client=None,
-                         on_behalf_of='', lignes=None, entreprise=None):
+                         on_behalf_of='', lignes=None, entreprise=None,
+                         langue=''):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
 
     Idempotent : un enregistrement existant n'est jamais écrasé (la première
@@ -736,6 +759,8 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
             on_behalf_of=(on_behalf_of or '')[:150],
             # CIQ319 — identité de l'entreprise signataire (vide hors C&I).
             **_champs_signature_entreprise(entreprise),
+            # ADEV99 — langue de la page (confirmation FR, EN si 'en').
+            langue_page=str(langue or '')[:5],
         )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
@@ -798,6 +823,22 @@ def _copier_exemplaire_signe(cle_rendu, *, devis):
     return cle_signee
 
 
+def _empreinte_pdf(cle, devis=None):
+    """ADEV96 — SHA-256 hex des OCTETS stockés sous ``cle`` (l'exemplaire
+    signé remis au client) ; ``''`` sans clé ou stockage illisible (jamais une
+    empreinte inventée)."""
+    if not cle:
+        return ''
+    try:
+        import hashlib
+        from apps.ventes.utils.pdf import download_pdf
+        return hashlib.sha256(download_pdf(cle)).hexdigest()
+    except Exception:  # noqa: BLE001 — best-effort, journalisé (D-ENF22-BLE001)
+        logger.warning('ADEV96 : empreinte du PDF signé illisible (devis %s)',
+                       getattr(devis, 'reference', '?'), exc_info=True)
+        return ''
+
+
 def _store_signed_pdf(*, devis):
     """QJ22 — Génère et stocke le PDF de la proposition SIGNÉE dans MinIO.
 
@@ -820,7 +861,9 @@ def _store_signed_pdf(*, devis):
         key = generate_premium_devis_pdf(
             devis.id, clean_pdf_options({}), persist=True)
         key = _copier_exemplaire_signe(key, devis=devis)
-        DevisSignature.objects.filter(pk=sig.pk).update(signed_pdf_key=key)
+        # ADEV96 — le SHA-256 des octets figés, posé avec la clé (certificat).
+        DevisSignature.objects.filter(pk=sig.pk).update(
+            signed_pdf_key=key, signed_pdf_sha256=_empreinte_pdf(key, devis))
         logger.info(
             'QJ22: PDF signé stocké pour devis %s → %s',
             devis.reference, key)
@@ -875,72 +918,20 @@ def _send_acceptance_emails(*, devis, user, lignes=None):
     Le PDF joint est récupéré depuis MinIO si disponible ; sinon l'email part
     sans pièce jointe (comportement réseau conforme à email_service.py).
     Jamais de prix_achat / marge dans les emails (règle #4).
+
+    ADEV99 — confirmation aux DEUX parties (``domain.confirmation_acceptation``) :
+    signataire ET contact du lead (à défaut le client), copie PDF au vendeur,
+    raison sociale / ICE / horodatage Casablanca / empreinte dans le corps,
+    anglais quand la page était lue en anglais. QJR134 / ES11 tient : sans
+    enregistrement de signature, aucune signature ni exemplaire n'est promis.
     """
     try:
-        from apps.ventes.email_service import send_document_email
-        from apps.ventes.email_service import _signature as _signature_societe
-        client = getattr(devis, 'client', None)
-        dest = (getattr(client, 'email', '') or '').strip()
-        nom_client = ''
-        if client is not None:
-            nom_client = (
-                f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
-            )
-        salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+        from apps.ventes.domain.confirmation_acceptation import envoyer_confirmations
         # QX33be — bloc acompte (tranche 1 sur le TTC REMISÉ per QX1) + RIB si
-        # configuré. Vide (aucune ligne) quand rien n'est configurable → texte
-        # de confirmation inchangé.
-        acompte_bloc = _acceptance_deposit_block(devis, lignes=lignes)
-        # ── QJR134 / ES11 — L'EMAIL NE PROMET QUE CE QUI EXISTE ────────────
-        #
-        # CE QUI ÉTAIT FAUX. ``_create_esign_record`` est best-effort : son
-        # échec est avalé en WARNING, ``_store_signed_pdf`` sort alors
-        # silencieusement, et cet email affirmait INCONDITIONNELLEMENT « Votre
-        # signature électronique a été enregistrée » — au client, par écrit,
-        # alors qu'il pouvait n'exister ni image, ni IP, ni empreinte, ni PDF
-        # scellé. Le devis étant gelé à l'édition après acceptation, la
-        # situation n'était même pas rattrapable.
-        #
-        # La phrase (et la mention de l'exemplaire signé joint) ne part
-        # désormais que si l'enregistrement de signature EXISTE vraiment. Sur
-        # le chemin nominal — celui de toutes les signatures en ligne — il
-        # existe, et l'email est byte-identique à celui d'hier.
-        preuve = False
-        try:
-            from apps.ventes.models import DevisSignature
-            preuve = DevisSignature.objects.filter(devis=devis).exists()
-        except Exception:  # noqa: BLE001 — dans le doute, on ne promet rien (D-ENF22-BLE001)
-            logger.warning('%s : échec ignoré (dégradé)', '_send_acceptance_emails', exc_info=True)
-            preuve = False
-        bloc_signature = (
-            "Votre signature électronique a été enregistrée conformément "
-            "à la loi 43-20 relative à l'échange électronique de données "
-            "juridiques.\n\n"
-        ) if preuve else ''
-        bloc_exemplaire = (
-            "Vous trouverez ci-joint votre exemplaire signé pour vos "
-            "archives.\n\n"
-        ) if preuve else ''
-        corps = (
-            f"{salut}\n\n"
-            f"Nous avons bien reçu votre acceptation du devis "
-            f"{devis.reference}.\n\n"
-            f"{bloc_signature}"
-            f"{acompte_bloc}"
-            f"{bloc_exemplaire}"
-            f"Merci pour votre confiance.\n\n"
-            f"Cordialement,\n{_signature_societe(devis.company)}"
-        )
-        if dest:
-            send_document_email(
-                devis,
-                to_email=dest,
-                sujet=f'Proposition acceptée — {devis.reference}',
-                corps=corps,
-                user=user,
-                attach_pdf=True,
-                log_activity=False,  # l'acceptation a déjà son propre chatter
-            )
+        # configuré. Vide (aucune ligne) quand rien n'est configurable.
+        envoyer_confirmations(
+            devis=devis, user=user,
+            acompte_bloc=_acceptance_deposit_block(devis, lignes=lignes))
     except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
         logger.warning('QJ10: email client échec pour devis %s : %s',
                        getattr(devis, 'reference', '?'), exc)
@@ -1066,7 +1057,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True, rejouer_aval=False,
                  entreprise=None, override_credit=False,
-                 override_avertissement=False, canal=''):
+                 override_avertissement=False, canal='', langue=''):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1364,7 +1355,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 on_behalf_of=on_behalf_of, lignes=lignes_devis,
                 # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
                 # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
-                entreprise=entreprise,
+                entreprise=entreprise, langue=langue,
             )
         # CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent
         # au Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE

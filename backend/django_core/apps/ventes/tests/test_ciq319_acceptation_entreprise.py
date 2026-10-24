@@ -134,16 +134,62 @@ class AcceptationEntreprise(TestCase):
                          'A &amp; &lt;B&gt; SARL')
 
     def test_ice_different_deja_present_divergence(self):
+        """ADEV95 — un ICE différent de celui du Client n'est plus accepté en
+        silence : 409 ``ice_divergent`` qui nomme les deux, rien n'est écrit."""
         from apps.ventes.domain.cycle_vie import divergence_ice
         self.client_obj.ice = '111111111111111'
         self.client_obj.save(update_fields=['ice'])
         devis = self._devis()
-        self.assertEqual(self._post(devis, ENTREPRISE).status_code, 200)
+        resp = self._post(devis, ENTREPRISE)
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(set(resp.data), {'detail', 'code'})
+        self.assertEqual(resp.data['code'], 'ice_divergent')
+        self.assertIn('111111111111111', resp.data['detail'])
+        self.assertIn(ENTREPRISE['ice'], resp.data['detail'])
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+        self.assertFalse(DevisSignature.objects.filter(devis=devis).exists())
         self.client_obj.refresh_from_db()
         # Jamais écrasé.
         self.assertEqual(self.client_obj.ice, '111111111111111')
         self.assertTrue(divergence_ice(devis, ENTREPRISE['ice']))
         self.assertFalse(divergence_ice(devis, '111111111111111'))
+        # Le même ICE que celui du Client passe.
+        resp = self._post(devis, dict(ENTREPRISE, ice='111111111111111'))
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_signataire_b2b_exige_email_pouvoir_et_nom(self):
+        """ADEV95 — lien public C&I : e-mail valide, attestation de pouvoir
+        (booléen vrai) et nom = celui tapé pour signer ; 400 qui nomme le
+        champ, rien n'est écrit."""
+        cas = (
+            (dict(ENTREPRISE, signataire_email=''), 'entreprise.signataire_email'),
+            (dict(ENTREPRISE, signataire_email='pas-un-email'),
+             'entreprise.signataire_email'),
+            (dict(ENTREPRISE, pouvoir_engager=False), 'entreprise.pouvoir_engager'),
+            (dict(ENTREPRISE, pouvoir_engager='true'), 'entreprise.pouvoir_engager'),
+            (dict(ENTREPRISE, signataire_nom='Autre Personne'),
+             'entreprise.signataire_nom'),
+            ({k: v for k, v in ENTREPRISE.items() if k != 'signataire_nom'},
+             'entreprise.signataire_nom'),
+        )
+        for corps, champ in cas:
+            with self.subTest(champ=champ, corps=corps):
+                devis = self._devis()
+                resp = self._post(devis, corps)
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.data['champ'], champ)
+                self.assertFalse(
+                    DevisSignature.objects.filter(devis=devis).exists())
+
+    def test_signataire_b2b_enregistre_sur_la_signature(self):
+        devis = self._devis('commercial')
+        resp = self._post(devis, dict(ENTREPRISE, signataire_nom=' karim  exemple '))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        sig = DevisSignature.objects.get(devis=devis)
+        self.assertEqual(sig.signataire_email, ENTREPRISE['signataire_email'])
+        self.assertIs(sig.pouvoir_engager, True)
+        self.assertEqual(sig.signataire_nom, 'Karim Exemple')
 
     def test_residentiel_inchange(self):
         devis = self._devis('residentiel')
