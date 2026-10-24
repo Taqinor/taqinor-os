@@ -5,6 +5,7 @@ import { jumpToField } from '../jumpToField'
 import fieldLabels from '../fieldLabels'
 import { COMMERCIAL_CATEGORY_QUESTIONS } from '../../../ventes/solar'
 import SelectEnum from './SelectEnum'
+import PlanifierVisiteModal from '../../relances/PlanifierVisiteModal'
 
 /* CIQ418 — « Professionnel » : la fiche d'un lead COMMERCIAL ou INDUSTRIEL.
    Contrat partagé `lead_pro.json` (CIQ1, check_api_shapes) : chaque colonne
@@ -592,6 +593,31 @@ function BlocSurface({ ctx, segment }) {
   )
 }
 
+// ALEA55 — la note « Visite avant devis » n'était qu'un texte : elle porte
+// maintenant le geste (« Planifier la visite » = la modale partagée, qui écrit la
+// vraie visite technique et rafraîchit la section Visite).
+function VisiteAvantDevis({ visite, leadId }) {
+  const [ouvert, setOuvert] = useState(false)
+  return (
+    <>
+      <p className="gen-hint" role="note" data-visite-avant-devis>
+        Visite avant devis : {(visite.motifs ?? []).join(' ; ') || 'requise'}.
+        {leadId != null && (
+          <>
+            {' '}
+            <button type="button" className="link-button" data-planifier-visite onClick={() => setOuvert(true)}>
+              Planifier la visite
+            </button>
+          </>
+        )}
+      </p>
+      {leadId != null && (
+        <PlanifierVisiteModal leadId={leadId} open={ouvert} onOpenChange={setOuvert} />
+      )}
+    </>
+  )
+}
+
 export default function SectionPro({ state, setField, errors = {} }) {
   // L'étoile « requis devis auto » : les SEULS groupes de la règle servie
   // (`devis_auto.requis`, CIQ404) — jamais une liste recopiée ici.
@@ -613,9 +639,7 @@ export default function SectionPro({ state, setField, errors = {} }) {
         </p>
       )}
       {visite?.requise && (
-        <p className="gen-hint" role="note" data-visite-avant-devis>
-          Visite avant devis : {(visite.motifs ?? []).join(' ; ') || 'requise'}.
-        </p>
+        <VisiteAvantDevis visite={visite} leadId={state?.leadId} />
       )}
 
       <Bloc titre="Facture & conso">

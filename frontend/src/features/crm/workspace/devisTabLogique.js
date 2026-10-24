@@ -152,3 +152,13 @@ export function noteDemandeCatalogueCi(devisAuto) {
   return 'Demande au responsable : le devis automatique C&I est bloqué, '
     + `${raisonCatalogueCi(devisAuto)}. Postes à chiffrer : ${postes.join(' ; ')}.`
 }
+
+// ALEA55 — « Proposer une relance J+3 » : la date de relance du lead (DateField
+// `relance_date`, 'YYYY-MM-DD') trois jours après AUJOURD'HUI à Casablanca (jamais
+// le fuseau du navigateur — même ancrage que le journal d'appel).
+export function dateRelanceJ3(maintenant = new Date()) {
+  const jour = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(maintenant)
+  const d = new Date(`${jour}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 3)
+  return d.toISOString().slice(0, 10)
+}

@@ -53,8 +53,10 @@ test('le payload reste une CHAÎNE sans cible, et devient un objet avec cible', 
   assert.match(tab, /export function devisIntent\(mode, kwcCible\) \{/)
   assert.match(tab, /if \(!cible \|\| mode === 'edit'\) return mode/)
   assert.match(tab, /return \{ mode, targetKwc: cible \}/)
-  // Les 4 modes qui DIMENSIONNENT passent par elle…
-  for (const mode of ['auto', 'remise', 'onepage', 'premium']) {
+  // Les modes qui CRÉENT un devis passent par elle… ALEA55 — « onepage » et
+  // « premium » n'en font plus partie : ce sont des FORMATS du PDF d'un devis
+  // existant (menu « PDF » de la carte), jamais un second devis.
+  for (const mode of ['auto', 'remise']) {
     assert.match(tab, new RegExp(`devisIntent\\('${mode}', kwcCible\\)`),
       `le mode ${mode} doit passer par devisIntent`)
   }

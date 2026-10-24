@@ -5,12 +5,10 @@
    aucune logique de prix ni de PDF dupliquée. Le PDF vient du chemin canonique
    /proposal (CLAUDE.md règle #4). */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
   Download, ExternalLink, Pencil, Send, Zap,
 } from 'lucide-react'
-import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
 import { createAutoQuote, libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
@@ -25,7 +23,6 @@ import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
-import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { toast, useConfirmDialog } from '../../../ui/confirm'
 // EDC6 (suite) — un « pointeur hors panneau » de Radix est-il un vrai geste de sortie ?
 import { estGesteHorsPanneau } from './gesteHorsPanneau'
@@ -43,6 +40,35 @@ import {
 // PdfPreviewSheet) : octets en BLOB via axios — MÊME chemin que « Télécharger »
 // —, dessinés par PDF.js sur canvas (jamais un cadre embarqué bloquable), refresh
 // silencieux du token rejoué, annulation réelle des rendus longs.
+
+// ALEA55 — la création automatique dure ~30 s (étude, composition, PDF) : au lieu
+// d'un cercle muet, trois étapes dont la courante est mise en avant. Le serveur
+// ne renvoie qu'UNE réponse : l'avancement est indicatif (minuteur), la dernière
+// étape reste active jusqu'au retour.
+const ETAPES_CREATION = ['Étude', 'Composition', 'PDF']
+const DELAIS_ETAPES_MS = [0, 5000, 14000]
+
+function EtapesCreationDevis() {
+  const [courante, setCourante] = useState(0)
+  useEffect(() => {
+    const minuteurs = DELAIS_ETAPES_MS.map((delai, i) => (
+      i === 0 ? null : setTimeout(() => setCourante(i), delai)))
+    return () => minuteurs.forEach((m) => m && clearTimeout(m))
+  }, [])
+  return (
+    <div role="status" aria-live="polite" data-testid="ldp-etapes-creation">
+      <p className="gen-hint"><Spinner /> Création du devis automatique…</p>
+      <ol className="ldp-etapes flex gap-2 text-sm" aria-label="Étapes de la création">
+        {ETAPES_CREATION.map((nom, i) => (
+          <li key={nom} data-etape={nom} aria-current={i === courante ? 'step' : undefined}
+              className={i === courante ? 'font-semibold' : (i < courante ? 'text-muted-foreground' : 'opacity-50')}>
+            {i < courante ? '✓ ' : ''}{nom}{i < ETAPES_CREATION.length - 1 ? ' →' : ''}
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
 
 const TITLES = {
   auto: 'Devis automatique',
@@ -64,8 +90,7 @@ const LARGEUR_EDITION = 'w-[min(1800px,100%)]'
 // fiche lead (« Devis automatique »). Optionnelle ; vide = comportement
 // historique (taille souhaitée du lead, sinon facture d'hiver). Elle n'écrit
 // RIEN sur le lead — c'est un paramètre de dimensionnement ponctuel.
-export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, existingDevisId = null, targetKwc = null }) {
-  const dispatch = useDispatch()
+export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, existingDevisId = null, targetKwc = null, pdfInitial = null }) {
   const navigate = useNavigate()
 
   // phase: 'remise-input' | 'creating' | 'chargement' | 'edit' | 'preview' | 'error'
@@ -132,6 +157,8 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     leadEmail: (lead.email || '').trim(),
     leadNom: `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim(),
     onRefresh: () => onDevisChanged?.(),
+    leadId: lead.id,
+    relanceActuelle: lead.relance_date ?? null,
   })
   const [envoiOuvert, setEnvoiOuvert] = useState(false)
   // Marché du devis : hors résidentiel, ni options 1/2/3 (boîte d'envoi) ni
@@ -148,11 +175,12 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
 
   // Format d'aperçu PDF
-  const [pdfMode, setPdfMode] = useState(mode === 'onepage' ? 'onepage' : 'full')
+  // ALEA55 — « 1 page » / « Premium » sont des FORMATS du PDF d'un devis existant
+  // (`pdfInitial` : choix fait sur la carte), jamais un second devis.
+  const [pdfMode, setPdfMode] = useState(
+    mode === 'onepage' || pdfInitial === 'onepage' ? 'onepage' : 'full')
   const [includeEtude, setIncludeEtude] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const produitsRef = useRef(null)
-  const marquesRef = useRef(undefined) // PVMRQ — cache du réglage marques
   const startedRef = useRef(false)
 
   // Octets du PDF : récupérés par usePdfPreview (MÊME source que le
@@ -189,41 +217,15 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     setErrorMsg(null)
     setErrorField(null)
     try {
-      if (!produitsRef.current) {
-        // RÉGRESSION CONFIRMÉE (CI run 32200473257, e2e devis.spec.js E4) —
-        // `stockApi.getProduits()` SANS paramètre ne renvoie que la PAGE 1
-        // (50 produits, triés par nom). Dès que le catalogue dépasse 50
-        // références, une famille de produits triée alphabétiquement APRÈS
-        // la coupure (ex. « Panneau… ») disparaît silencieusement du
-        // dimensionnement automatique — `autoFillLines` la voit comme
-        // ABSENTE DU STOCK et jette « aucun panneau du stock ne correspond »
-        // alors que le catalogue en porte réellement. Trace réseau du run
-        // rouge : count=101, page 1 s'arrête à « Onduleur réseau… », les DEUX
-        // panneaux tombent en page 2. `fetchAllPages` (VX54, déjà le chemin
-        // correct de stockSlice.js pour StockList/DevisList/FactureList/
-        // Dashboard) lit le catalogue ENTIER, en parallèle borné.
-        produitsRef.current = await fetchAllPages(
-          (page) => stockApi.getProduits({ page }).then((r) => r.data))
-      }
-      // PVMRQ — les marques épinglées (Paramètres → Gammes) s'appliquent AUSSI
-      // au devis automatique du lead : sans ce fil, ce chemin rapide recomposait
-      // hors préférence (le trou « panneau 500 W » par la porte de côté). Best-
-      // effort : réglage illisible → aucune préférence, jamais un échec du devis.
-      if (marquesRef.current === undefined) {
-        try {
-          const r = await ventesApi.getParametresGammes()
-          marquesRef.current = (r.data?.marques || {})['Essentielle'] || null
-        } catch {
-          marquesRef.current = null
-        }
-      }
+      // ALEA55 — AUCUN préchargement du catalogue ni des gammes avant l'appel :
+      // le serveur lit lui-même le catalogue, les marques épinglées (PVMRQ) et
+      // l'ordre des lignes de la société (`createAutoQuote` ignorait déjà ces
+      // données) — ces deux lectures ne faisaient qu'ajouter des secondes
+      // d'attente avant le premier octet du devis.
       setAlertes([])
       setResume(null)
       const id = await createAutoQuote({
-        lead, produits: produitsRef.current, discountStr, dispatch, targetKwc,
-        marques: marquesRef.current || undefined,
-        onAlertes: setAlertes,
-        onResultat: setResume,
+        lead, discountStr, targetKwc, onAlertes: setAlertes, onResultat: setResume,
       })
       setDevisId(id)
       onDevisChanged?.()
@@ -239,7 +241,8 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
   useEffect(() => {
     if (startedRef.current) return
-    if (mode === 'auto' || mode === 'onepage' || mode === 'premium') {
+    // ALEA55 — jamais de création quand le panneau s'ouvre sur un devis EXISTANT.
+    if (!existingDevisId && (mode === 'auto' || mode === 'onepage' || mode === 'premium')) {
       startedRef.current = true
       // eslint-disable-next-line react-hooks/set-state-in-effect -- création automatique au montage, une seule fois (startedRef) (D-ENF22)
       doCreateAuto('0')
@@ -502,7 +505,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
           {phase === 'creating' && (
             <div className="ldp-center">
-              <p className="gen-hint"><Spinner /> Création du devis et dimensionnement automatique…</p>
+              <EtapesCreationDevis />
             </div>
           )}
 

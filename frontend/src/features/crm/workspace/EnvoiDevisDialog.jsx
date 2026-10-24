@@ -8,6 +8,7 @@ import {
 // vendeur existant des tailles Éco/Recommandé/Max comme point d'entrée « Modifier
 // les options » du dialogue d'envoi — rien n'est réinventé.
 import DevisOffresTailles from '../../../pages/ventes/DevisOffresTailles'
+import { formatDate } from '../../../lib/format'
 import { SECTIONS_ENVOI, optionsCountFromTailles } from './devisTabLogique'
 import { optionsTaillesOffertes } from './useEnvoiDevis'
 
@@ -66,6 +67,28 @@ function CanauxEnvoi({ devis: d, envoi }) {
         <ExternalLink size={14} aria-hidden="true" />
       </Button>
     </div>
+  )
+}
+
+// ALEA55 — « Proposer une relance J+3 » : posée APRÈS l'envoi, via l'API de
+// relance existante (la date de relance du lead) ; jamais sur une relance déjà là.
+function RelanceJ3({ relance }) {
+  if (relance.posee) {
+    return <p className="gen-hint" role="status">Relance planifiée le {formatDate(relance.posee)}.</p>
+  }
+  if (relance.actuelle) {
+    return <p className="gen-hint">Relance déjà planifiée le {formatDate(relance.actuelle)} — conservée.</p>
+  }
+  if (!relance.proposable) return null
+  return (
+    <label className="lw-context-devis-section" data-testid="envoi-relance-j3">
+      <Checkbox
+        checked={relance.cochee}
+        onCheckedChange={(v) => relance.setCochee(v === true)}
+        aria-label="Proposer une relance J+3"
+      />
+      Proposer une relance J+3 (le {formatDate(relance.date)})
+    </label>
   )
 }
 
@@ -237,6 +260,7 @@ export default function EnvoiDevisDialog({ devis: d, envoi, ouvert, onOuvertChan
             </DialogDescription>
           </DialogHeader>
           <CanauxEnvoi devis={d} envoi={envoi} />
+          <RelanceJ3 relance={envoi.relance} />
           {envoi.actionMsg && <p className="gen-hint" role="status">{envoi.actionMsg}</p>}
           <Button
             type="button" size="sm" variant="link"

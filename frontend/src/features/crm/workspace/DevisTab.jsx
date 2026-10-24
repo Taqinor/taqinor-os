@@ -172,6 +172,8 @@ export default function DevisTab({
     leadEmail: (state.server?.email || '').trim(),
     leadNom: `${state.server?.nom ?? ''} ${state.server?.prenom ?? ''}`.trim(),
     onRefresh: () => onAction?.('refresh'),
+    leadId: state.leadId,
+    relanceActuelle: state.server?.relance_date ?? null,
   })
   // Quel devis a sa boîte d'envoi ouverte (id | null).
   const [envoiOuvert, setEnvoiOuvert] = useState(null)
@@ -254,9 +256,10 @@ export default function DevisTab({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
+              {/* ALEA55 — « Devis 1 page » / « Devis premium » CRÉAIENT un second
+                  devis (anti-doublon 120 s) : ce sont des FORMATS du PDF d'un devis
+                  existant, au menu « PDF » de chaque carte. */}
               <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('remise', kwcCible))}>Remise %…</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('onepage', kwcCible))}>Devis 1 page</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('premium', kwcCible))}>Devis premium</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           {/* EZ5 — cible kWc facultative. `step="any"` + aucune validation
@@ -385,6 +388,25 @@ export default function DevisTab({
                 >
                   <Eye size={14} aria-hidden="true" /> Aperçu interne (sans notification)
                 </Button>
+                {/* ALEA55 — le FORMAT du PDF d'un devis existant (jamais un second devis). */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button" size="sm" variant="outline"
+                      aria-label={`Format du PDF de ${d.reference}`}
+                    >
+                      <FileText size={14} aria-hidden="true" /> PDF ▾
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onSelect={() => onAction?.('view-devis', { id: d.id, pdf: 'full' })}>
+                      Premium (PDF complet)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onAction?.('view-devis', { id: d.id, pdf: 'onepage' })}>
+                      1 page
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 {/* QJR534 (D-QJR5-1/2) — l'UNIQUE porteur de « Modifier » et de
                     « Réviser » sur la carte. Droits LUS du serveur (QJR516) :
                     brouillon/envoyé → Modifier (correction sur place) ;

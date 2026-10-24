@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import ventesApi from '../../../api/ventesApi'
+import crmApi from '../../../api/crmApi'
 import stockApi from '../../../api/stockApi'
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { normalizePhoneE164 } from '../../../lib/format'
@@ -8,7 +9,7 @@ import { errorMessageFrom } from '../../../lib/toast'
 // FORMAT que l'outil 3D (ToitureDesign.jsx). Fonctions pures, testées à part.
 import { clientProposalUrl, proposalWhatsappText, buildWaUrl } from '../../ventes/clientProposalLink'
 import {
-  sectionsDepuisServeur, taillesDepuisServeur, taillesFromOptionsCount,
+  sectionsDepuisServeur, taillesDepuisServeur, taillesFromOptionsCount, dateRelanceJ3,
 } from './devisTabLogique'
 
 // ALEA52 — l'ÉTAT et les GESTES de la boîte « Envoyer au client » (partagée par
@@ -85,11 +86,31 @@ function useCatalogueSubstitutions(editTaillesOuvert) {
   return produits
 }
 
+/** ALEA55 — « Proposer une relance J+3 » : case décochée par défaut (jamais un
+ *  effet caché) ; cochée, APRÈS un envoi réussi `relance_date` du lead = J+3 par
+ *  l'API existante (`updateLead`). Une relance déjà planifiée n'est JAMAIS
+ *  écrasée, et la relance n'est posée qu'une fois. */
+function useRelanceJ3({ leadId, relanceActuelle }) {
+  const [cochee, setCochee] = useState(false)
+  const [posee, setPosee] = useState(null)
+  const proposable = !!leadId && !relanceActuelle && !posee
+  const appliquer = async () => {
+    if (!cochee || !proposable) return
+    const date = dateRelanceJ3()
+    await crmApi.updateLead(leadId, { relance_date: date })
+    setPosee(date)
+  }
+  return { cochee, setCochee, posee, actuelle: relanceActuelle, proposable, date: dateRelanceJ3(), appliquer }
+}
+
 /** Tous les gestes d'envoi d'un devis (copier / ouvrir / WhatsApp / e-mail /
  *  aperçu interne) et leur état. `onRefresh` recharge la fiche après un ENVOI
  *  (le devis passe « envoyé », le funnel avance — QJ-FUNNEL). */
-export function useEnvoiDevis({ leadPhone, leadEmail, leadNom, onRefresh }) {
+export function useEnvoiDevis({
+  leadPhone, leadEmail, leadNom, onRefresh, leadId = null, relanceActuelle = null,
+}) {
   const reglages = useReglagesLien()
+  const relance = useRelanceJ3({ leadId, relanceActuelle })
   const [linkBusy, setLinkBusy] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
   // L-INTPREV — feedback « Copié » DISTINCT de `copiedId`.
@@ -99,6 +120,12 @@ export function useEnvoiDevis({ leadPhone, leadEmail, leadNom, onRefresh }) {
   const produitsCatalogue = useCatalogueSubstitutions(editTaillesOuvert)
   const leadPhoneOk = !!normalizePhoneE164(leadPhone)
   const { getNiveau, getOtp, getSections, memoriserLien } = reglages
+
+  // Après un ENVOI réussi : relance J+3 si demandée, puis rechargement de la fiche.
+  const apresEnvoi = async () => {
+    await relance.appliquer()
+    onRefresh?.()
+  }
 
   // Un geste réseau : busy PAR devis + PAR action, message d'échec commun.
   const lancer = async (busyKey, echec, geste) => {
@@ -144,7 +171,7 @@ export function useEnvoiDevis({ leadPhone, leadEmail, leadNom, onRefresh }) {
   const copierPageClient = (d) => lancer(`l-${d.id}`, 'Lien de la page client indisponible.', async () => {
     // QJ-FUNNEL — copier le lien = l'envoyer (devis « envoyé », funnel avance).
     await copier(await mint(d, { envoi: true }), setCopiedId, d.id)
-    onRefresh?.()
+    await apresEnvoi()
   })
   const ouvrirPageClient = (d) => lancer(`o-${d.id}`, 'Lien de la page client indisponible.', async () => {
     window.open(await mint(d), '_blank', 'noopener')
@@ -156,7 +183,7 @@ export function useEnvoiDevis({ leadPhone, leadEmail, leadNom, onRefresh }) {
       const url = await mint(d, { envoi: true })
       const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(leadNom, url))
       if (waUrl) window.open(waUrl, '_blank', 'noopener')
-      onRefresh?.()
+      await apresEnvoi()
     })
   }
   // E-mail (QJ14) : PDF premium + lien tokenisé → le client, consigné et marqué
@@ -164,7 +191,7 @@ export function useEnvoiDevis({ leadPhone, leadEmail, leadNom, onRefresh }) {
   const envoyerEmail = (d) => lancer(`e-${d.id}`, 'Envoi e-mail impossible.', async () => {
     await ventesApi.envoyerEmailDevis(d.id, leadEmail ? { to_email: leadEmail } : {})
     setActionMsg(`E-mail envoyé à ${leadEmail || 'l’adresse du client'}.`)
-    onRefresh?.()
+    await apresEnvoi()
   })
 
   // L-NIV-UI — niveau/OTP : si un lien EXISTE DÉJÀ, on re-poste tout de suite
@@ -188,7 +215,7 @@ export function useEnvoiDevis({ leadPhone, leadEmail, leadNom, onRefresh }) {
   }
 
   return {
-    ...reglages, leadPhoneOk, leadEmail, linkBusy, copiedId, copiedInterneId,
+    ...reglages, leadPhoneOk, leadEmail, relance, linkBusy, copiedId, copiedInterneId,
     actionMsg, setActionMsg, editTaillesOuvert, setEditTaillesOuvert,
     produitsCatalogue, copierApercuInterne, ouvrirApercuInterne, copierPageClient,
     ouvrirPageClient, envoyerWhatsAppUnique, envoyerEmail, onNiveauChange,

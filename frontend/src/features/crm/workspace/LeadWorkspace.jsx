@@ -271,6 +271,9 @@ export default function LeadWorkspace({
   // quand le commercial en a tapé une. Vit à côté du mode (et non DANS lui)
   // pour que `devisPanel` reste la chaîne que tout le reste compare.
   const [devisKwc, setDevisKwc] = useState(null)
+  // ALEA55 — format du PDF demandé sur la carte d'un devis EXISTANT ('onepage' |
+  // null = premium) : un format, jamais un second devis.
+  const [panelPdf, setPanelPdf] = useState(null)
   const [signeOpen, setSigneOpen] = useState(false)
   const [planOpen, setPlanOpen] = useState(false)
   const [convertOpen, setConvertOpen] = useState(false)
@@ -439,7 +442,13 @@ export default function LeadWorkspace({
         setDevisKwc(intent.targetKwc || null)
         return setDevisPanel(intent.mode || 'auto')
       }
-      case 'view-devis': setPanelDevisId(payload); return setDevisPanel('view')
+      // ALEA55 — `payload` = id du devis, ou { id, pdf: 'onepage' } (format choisi).
+      case 'view-devis': {
+        const cible = (payload && typeof payload === 'object') ? payload : { id: payload }
+        setPanelDevisId(cible.id)
+        setPanelPdf(cible.pdf || null)
+        return setDevisPanel('view')
+      }
       // QJR534 — « Modifier » une carte devis : ouvre le panneau en phase
       // `edit` SUR CE devis (existingDevisId), plus un nouveau devis.
       case 'edit-devis': setPanelDevisId(payload); return setDevisPanel('edit')
@@ -979,8 +988,9 @@ export default function LeadWorkspace({
           mode={devisPanel}
           existingDevisId={(devisPanel === 'view' || devisPanel === 'edit') ? panelDevisId : null}
           targetKwc={devisKwc}
+          pdfInitial={panelPdf}
           onDevisChanged={draft.refreshServer}
-          onClose={() => { setDevisPanel(null); setPanelDevisId(null); setDevisKwc(null); draft.refreshServer() }}
+          onClose={() => { setDevisPanel(null); setPanelDevisId(null); setDevisKwc(null); setPanelPdf(null); draft.refreshServer() }}
         />
       )}
       {signeOpen && (

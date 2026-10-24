@@ -31,6 +31,7 @@ vi.mock('../../ventes/DevisGenerator', async () => (await import('../../../test/
   .generateurSimule(() => <ProduitPicker produits={PRODUITS} value="" onChange={() => {}} />))
 
 import ventesApi from '../../../api/ventesApi'
+import stockApi from '../../../api/stockApi'
 import { jumpToField } from '../../../features/crm/workspace/jumpToField'
 import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
 import { libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
@@ -381,5 +382,43 @@ describe('ALEA52 — aperçu : « Envoyer au client » ouvre la boîte partagée
     await userEvent.keyboard('{Escape}')
     await boiteFermee()
     expect(screen.queryByText("Inclure l'étude")).toBeNull()
+  })
+})
+
+// ALEA55 — nettoyages : plus de préchargement du catalogue avant le devis auto,
+// étapes visibles pendant la création, format PDF choisi sur la carte.
+describe('ALEA55 — devis automatique : pas de préchargement, étapes, format PDF', () => {
+  const LEAD_PRO = { id: 91, nom: 'Usine', type_installation: 'industriel' }
+
+  it('aucune lecture du catalogue ni des gammes avant (ni pendant) l’appel serveur', async () => {
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: { id: 413, reference: 'DEV-1', kwc: 10 } })
+    rendrePanneau({ lead: LEAD_PRO, mode: 'auto', existingDevisId: undefined })
+    await screen.findByTestId('ldp-succes-auto')
+    expect(ventesApi.creerDevisAuto).toHaveBeenCalledTimes(1)
+    expect(stockApi.getProduits).not.toHaveBeenCalled()
+    expect(ventesApi.getParametresGammes).not.toHaveBeenCalled()
+    // Le corps part tel quel : le lead, la remise — jamais un catalogue.
+    expect(ventesApi.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 91, remise_globale: '0' })
+  })
+
+  it('pendant la création : Étude → Composition → PDF, l’étape courante marquée', async () => {
+    ventesApi.creerDevisAuto.mockReturnValueOnce(new Promise(() => {}))
+    rendrePanneau({ lead: LEAD_PRO, mode: 'auto', existingDevisId: undefined })
+    const etapes = await screen.findByTestId('ldp-etapes-creation')
+    expect(etapes).toHaveTextContent(/Étude.*Composition.*PDF/s)
+    expect(etapes.querySelector('[aria-current="step"]')).toHaveAttribute('data-etape', 'Étude')
+  })
+
+  it('un format « 1 page » choisi sur la carte ouvre le devis EXISTANT en 1 page, sans création', async () => {
+    rendrePanneau({ mode: 'view', existingDevisId: 413, pdfInitial: 'onepage' })
+    await screen.findByRole('button', { name: /Télécharger le PDF/ })
+    expect(screen.getByRole('radio', { name: '1 page' })).toHaveAttribute('aria-checked', 'true')
+    expect(ventesApi.creerDevisAuto).not.toHaveBeenCalled()
+  })
+
+  it('même en mode « onepage », un devis existant n’est jamais recréé', async () => {
+    rendrePanneau({ mode: 'onepage', existingDevisId: 413 })
+    await screen.findByRole('button', { name: /Télécharger le PDF/ })
+    expect(ventesApi.creerDevisAuto).not.toHaveBeenCalled()
   })
 })

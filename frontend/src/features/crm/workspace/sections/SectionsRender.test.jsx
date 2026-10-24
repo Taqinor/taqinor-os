@@ -25,6 +25,10 @@ vi.mock('../../useCanaux', () => ({ default: () => ({ labels: { walk_in: 'Visite
 vi.mock('../../../../components/AssigneePicker', () => ({ default: () => <div data-testid="assignee" /> }))
 vi.mock('../../../../components/CustomFieldsInput', () => ({ default: () => null }))
 vi.mock('../../../../pages/crm/leads/AppointmentBooker', () => ({ default: () => <div data-testid="booker" /> }))
+// ALEA55 — la modale de planification (module visites) : seul son ouverture compte ici.
+vi.mock('../../relances/PlanifierVisiteModal', () => ({
+  default: ({ open, leadId }) => (open ? <div data-testid="modal-planifier-visite" data-lead={leadId} /> : null),
+}))
 
 // Le repli des sections est PERSISTÉ (localStorage `taqinor.lw.collapsed`) et
 // les choix de l'utilisatrice priment sur le repli automatique : sans ce
@@ -810,6 +814,23 @@ describe('CIQ418 — SectionPro : chaque colonne du contrat est atteignable', ()
     monterPro()
     expect(document.querySelector('[data-visite-avant-devis]').textContent)
       .toContain('puissance souscrite inconnue')
+  })
+
+  // ALEA55 — la note « Visite avant devis » porte le geste : « Planifier la visite »
+  // ouvre la modale de planification du lead (module visites), sans quitter la fiche.
+  it('« Planifier la visite » à côté de la note « Visite avant devis » ouvre la planification', () => {
+    monterPro()
+    const note = document.querySelector('[data-visite-avant-devis]')
+    const bouton = note.querySelector('[data-planifier-visite]')
+    expect(bouton).toHaveTextContent('Planifier la visite')
+    expect(screen.queryByTestId('modal-planifier-visite')).toBeNull()
+    fireEvent.click(bouton)
+    expect(screen.getByTestId('modal-planifier-visite')).toHaveAttribute('data-lead', String(leadCommercial.id))
+  })
+
+  it('pas de note « Visite avant devis » (rien à planifier) ⇒ pas de bouton', () => {
+    monterPro({ ...leadCommercial, devis_auto: { ...leadCommercial.devis_auto, visite_avant_devis: { requise: false, motifs: [] } } })
+    expect(document.querySelector('[data-planifier-visite]')).toBeNull()
   })
 
   it('les provenances servies s’affichent en lecture seule', () => {

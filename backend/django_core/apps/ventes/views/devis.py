@@ -461,16 +461,22 @@ class DevisViewSet(DevisEditionActionsMixin,
     @action(detail=False, methods=['post'], url_path='auto',
             permission_classes=[IsResponsableOrAdmin])
     def auto(self, request):
-        """Copilote — crée un devis RÉSIDENTIEL automatiquement dimensionné à
-        partir de la fiche lead (JAMAIS un brouillon vide). C'est le seul chemin
-        de création de devis offert à l'agent.
+        """Copilote — crée un devis automatiquement dimensionné à partir de la
+        fiche lead, pour les QUATRE marchés : résidentiel, agricole (pompage,
+        AGR124), commercial et industriel (moteur C&I, CIQ120) — JAMAIS un
+        brouillon vide. C'est le seul chemin de création de devis offert à
+        l'agent.
 
         Corps : ``{lead}`` (ou ``{client}``, dont on remonte au lead le plus
         récent) + ``taux_tva?`` / ``remise_globale?``. La société est TOUJOURS
         celle du user ; le lead est borné à cette société (404 sinon). 409 si les
-        données de dimensionnement manquent ou si le marché n'est pas résidentiel
-        — l'agent demande alors la donnée / oriente vers le générateur. Aucun
-        statut n'est touché : le service renvoie un brouillon (règle #4)."""
+        données de dimensionnement manquent (le refus nomme le champ du lead
+        ``field``), si un poste fixe C&I n'a pas de prix (« Prix à renseigner »,
+        ALEA50) ou si rien ne se compose — l'agent demande alors la donnée /
+        oriente vers le générateur. La réponse porte de quoi dire le succès :
+        ``total_ttc``, ``economie_an_1_ht``, ``retour_ans`` (null si
+        l'investissement est incomplet) et ``postes_apres_visite`` (ALEA51).
+        Aucun statut n'est touché : le service renvoie un brouillon (règle #4)."""
         from decimal import Decimal
         from ..services import build_devis_auto, AutoDevisError
         from ..models import ShareLink

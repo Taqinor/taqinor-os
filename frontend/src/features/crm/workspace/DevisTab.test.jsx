@@ -12,7 +12,7 @@ import {
   devisTrackCurrent, devisIntent, waArmed,
   SECTIONS_ENVOI, sectionsDepuisServeur,
   TAILLES_ENVOI, taillesDepuisServeur, optionsCountFromTailles, taillesFromOptionsCount,
-  lectureClientLabel,
+  lectureClientLabel, dateRelanceJ3,
 } from './devisTabLogique'
 import { missingFieldTarget, missingChampPourLead, chipsAComplete } from './missingFields'
 import { resolveCss } from '../../../test/readCss.mjs'
@@ -25,7 +25,7 @@ import { resolveCss } from '../../../test/readCss.mjs'
 
 const {
   apercuFacturerVente, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
-  getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis, noterLead, envoyerEmailDevis,
+  getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis, noterLead, envoyerEmailDevis, updateLead,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
   // du chargement paresseux ci-dessous (MÊME forme que DevisOffresTailles.
@@ -68,6 +68,8 @@ const {
     reviserDevis: vi.fn(() => Promise.resolve({ data: { id: 99, reference: 'DEV-V2' } })),
     // ALEA50 — « Demander au responsable » : note chatter nommant les postes.
     noterLead: vi.fn(() => Promise.resolve({ data: {} })),
+    // ALEA55 — « Proposer une relance J+3 » : la date de relance du lead (API existante).
+    updateLead: vi.fn(() => Promise.resolve({ data: {} })),
     // ALEA52 — canal e-mail de la boîte d'envoi (QJ14).
     envoyerEmailDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
   }
@@ -88,6 +90,7 @@ vi.mock('../../../api/crmApi', () => ({
     whatsappDevis,
     whatsappDevisApercu,
     noterLead,
+    updateLead,
     getLeadSalleVenteAnalytics: () => Promise.resolve({ data: null }),
   },
 }))
@@ -1734,5 +1737,67 @@ describe('ALEA53 — puce « Jours et heures d’ouverture » : le plus court ch
     } finally {
       input.remove()
     }
+  })
+})
+
+/* ALEA55 — « Devis 1 page » / « Devis premium » ne créent plus de second devis :
+   ce sont des formats du PDF d'un devis existant ; relance J+3 à l'envoi. */
+describe('ALEA55 — formats du PDF sur la carte, relance J+3 dans la boîte d’envoi', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'brouillon', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  it('le menu de création ne propose plus « Devis 1 page » ni « Devis premium »', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis_auto: { pret: true, manquants: [] } }) })
+    await user.click(screen.getByRole('button', { name: /Devis modifiable/ }))
+    expect(screen.getByText('Remise %…')).toBeInTheDocument()
+    expect(screen.queryByText('Devis 1 page')).toBeNull()
+    expect(screen.queryByText('Devis premium')).toBeNull()
+  })
+
+  it('le menu « PDF » de la carte ouvre le MÊME devis au format choisi (aucune création)', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ devis: [devis1] }) })
+    await user.click(screen.getByRole('button', { name: /Format du PDF de DEV-1/ }))
+    await user.click(screen.getByRole('menuitem', { name: '1 page' }))
+    expect(onAction).toHaveBeenCalledWith('view-devis', { id: 1, pdf: 'onepage' })
+    await user.click(screen.getByRole('button', { name: /Format du PDF de DEV-1/ }))
+    await user.click(screen.getByRole('menuitem', { name: /Premium/ }))
+    expect(onAction).toHaveBeenCalledWith('view-devis', { id: 1, pdf: 'full' })
+    expect(onAction).not.toHaveBeenCalledWith('open-devis', expect.anything())
+  })
+
+  it('dateRelanceJ3 : J+3 à Casablanca, passage de mois compris', () => {
+    expect(dateRelanceJ3(new Date('2026-10-24T10:00:00Z'))).toBe('2026-10-27')
+    expect(dateRelanceJ3(new Date('2026-10-30T23:30:00Z'))).toBe('2026-11-03')
+  })
+
+  it('relance J+3 : décochée par défaut ; cochée, posée APRÈS l’envoi (relance_date du lead)', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(() => Promise.resolve()) }, configurable: true, writable: true,
+    })
+    const { onAction } = renderTab({ state: leadState({ devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    const case_ = screen.getByRole('checkbox', { name: 'Proposer une relance J+3' })
+    expect(case_).not.toBeChecked()
+    // Sans la case : envoyer ne touche pas la relance.
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
+    await waitFor(() => expect(onAction).toHaveBeenCalledWith('refresh'))
+    expect(updateLead).not.toHaveBeenCalled()
+    await user.click(case_)
+    await user.click(screen.getByRole('button', { name: /Copier le lien|Copié/ }))
+    await waitFor(() => expect(updateLead).toHaveBeenCalledWith(7, { relance_date: dateRelanceJ3() }))
+    expect(await screen.findByText(/Relance planifiée le/)).toBeInTheDocument()
+  })
+
+  it('relance déjà planifiée : jamais écrasée, la case n’est pas proposée', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ devis: [devis1], relance_date: '2026-11-02' }) })
+    await ouvrirEnvoi(user, { avance: false })
+    expect(screen.queryByRole('checkbox', { name: 'Proposer une relance J+3' })).toBeNull()
+    expect(screen.getByText(/Relance déjà planifiée le/)).toBeInTheDocument()
   })
 })
