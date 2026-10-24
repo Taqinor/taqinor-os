@@ -45,7 +45,10 @@ class _MotifEntier(_RegexValidator):
 
 
 # ---------------------------------------------------------------- devis
-GAMME_ENVOI = ChaineStricte(required=False, allow_blank=True)
+# api-fuzz (24/10/2026) — vocabulaire FERMÉ (``domain.gammes.GAMME_ENVOIS``),
+# vide ou absent = mode déjà posé ; tout autre texte est refusé 400 nommé.
+GAMME_ENVOI = s.ChoiceField(choices=['seule', 'les_deux'], required=False,
+                            allow_blank=True, allow_null=True)
 
 _SECTIONS_LIEN = ('roof3d', 'sld', 'pdf', 'bankable', 'economies',
                   'jour_type', 'gammes', 'taille_eco', 'taille_max')
@@ -80,14 +83,14 @@ EnvoyerEmailRequest = _ser('DevisEnvoyerEmailRequest', {
 })
 EnvoyerEmailResponse = _ser('DevisEnvoyerEmailResponse', {
     'detail': s.CharField(),
-    'log_id': s.IntegerField(),
+    'log_id': s.IntegerField(required=False, allow_null=True),
     'email_statut': s.CharField(),
     'devis_statut': s.CharField(),
     'proposal_path': s.CharField(required=False, allow_null=True),
 })
 EnvoyerEmailEchec = _ser('DevisEnvoyerEmailEchec', {
     'detail': s.CharField(),
-    'log_id': s.IntegerField(),
+    'log_id': s.IntegerField(required=False, allow_null=True),
     'email_statut': s.CharField(),
     'devis_statut': s.CharField(),
 })
@@ -95,7 +98,7 @@ EnvoyerEmailEchec = _ser('DevisEnvoyerEmailEchec', {
 #: ENF11 — aucune adresse (ni ``to_email`` ni e-mail du client) : refus d'état.
 EnvoyerEmailSansDestinataire = _ser('DevisEnvoyerEmailSansDestinataire', {
     'detail': s.CharField(),
-    'log_id': s.IntegerField(),
+    'log_id': s.IntegerField(required=False, allow_null=True),
     'statut': s.CharField(),
 })
 
@@ -473,52 +476,38 @@ CompositionRequest = {
 }
 
 
-_DECIMAL_SOUPLE = {
-    'anyOf': [{'type': 'string', 'format': 'decimal',
-               'pattern': r'^-?\d{1,10}(?:[.,]\d{1,4})?$'},
-              {'type': 'number'}],
-    'nullable': True}
-
-
 class _LigneEntree(s.DictField):
-    """api-fuzz (24/10/2026, replace-lines) — une ligne de devis publiée telle
+    """api-fuzz (24/10/2026, replace-lines / atomic) — une ligne de devis telle
     que ``domain/lignes.remplacer_lignes`` la lit : soit une ligne PRODUIT
     (``produit`` entier ≥ 1 obligatoire ; un id bien formé mais inconnu répond
     404), soit une ligne de SECTION / NOTE (``type_ligne`` + ``designation``
-    non blanche). Une clé inconnue est hors schéma, comme le serveur l'ignore
-    ou la refuse — plus jamais « rejected schema-compliant »."""
+    non blanche). Seules les clés que le serveur VALIDE sont typées ; les
+    autres (quantité, prix, remise, ordre…) restent libres (le serveur les lit
+    avec tolérance) — ni « rejected schema-compliant » ni « accepted
+    schema-violating »."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        communs = {
-            'designation': {'type': 'string', 'maxLength': 255},
-            'quantite': _DECIMAL_SOUPLE, 'prix_unitaire': _DECIMAL_SOUPLE,
-            'remise': _DECIMAL_SOUPLE, 'taux_tva': _DECIMAL_SOUPLE,
-            'ordre': {'type': 'integer', 'minimum': 0, 'nullable': True},
-            'optionnelle': {'type': 'boolean'},
-            'variante': {'type': 'string', 'maxLength': 20},
-            'groupe_index': {'type': 'integer', 'minimum': 0, 'nullable': True},
-            'groupe_label': {'type': 'string', 'maxLength': 120},
-            'tva_base_legale': {'type': 'string', 'maxLength': 200},
-            'id': {'type': 'integer', 'nullable': True},
-        }
         produit = {
             'type': 'object', 'required': ['produit'],
-            'properties': {**communs, 'produit': {'type': 'integer', 'minimum': 1},
-                           'type_ligne': {'type': 'string', 'enum': ['produit']}},
-            'additionalProperties': False,
+            'properties': {
+                'produit': {'type': 'integer', 'minimum': 1},
+                'type_ligne': {'not': {'enum': ['section', 'note']}},
+            },
         }
         section = {
             'type': 'object', 'required': ['type_ligne', 'designation'],
-            'properties': {**communs, 'designation': {'type': 'string', 'minLength': 1, 'maxLength': 255, 'pattern': r'\S'},
-                           'type_ligne': {'type': 'string', 'enum': ['section', 'note']}},
-            'additionalProperties': False,
+            'properties': {
+                'type_ligne': {'type': 'string', 'enum': ['section', 'note']},
+                'designation': {'type': 'string', 'minLength': 1,
+                                'pattern': r'\S'},
+            },
         }
         set_override(self, 'field', {'oneOf': [produit, section]})
 
 
 CompositionResponse = _ser('DevisCompositionResponse', {
-    'lignes': s.ListField(child=_LigneEntree()),
+    'lignes': s.ListField(child=s.DictField()),
     'scenario': s.CharField(allow_null=True),
     'nb_panneaux': s.IntegerField(),
     'panel_watt': s.FloatField(),

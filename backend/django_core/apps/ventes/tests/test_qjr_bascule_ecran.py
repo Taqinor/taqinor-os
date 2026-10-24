@@ -241,7 +241,7 @@ class GoldenMonoOption(_BaseEcran):
             'lignes': [{'produit': etranger.id, 'quantite': '1',
                         'prix_unitaire': '1'}],
         }, format='json')
-        self.assertEqual(reponse.status_code, 409)  # CI #997 fuzz : atomic, refus d'état / de contenu, 409
+        self.assertEqual(reponse.status_code, 404, reponse.content)  # api-fuzz 24/10 : produit d'une autre société ⇒ 404
         self.assertEqual(
             Devis.objects.filter(company=self.company).count(), 0)
         self.assertEqual(LigneDevis.objects.count(), 0)
@@ -470,7 +470,7 @@ class GoldenDevisRemise(_BaseEcran):
             'lignes': [{'produit': 999999, 'quantite': '1',
                         'prix_unitaire': '1'}],
         }, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404, reponse.content)  # api-fuzz 24/10 : produit inconnu ⇒ 404
         devis.refresh_from_db()
         self.assertEqual(devis.lignes.count(), 1)
         self.assertEqual(devis.lignes.get().designation, 'Ancienne ligne')

@@ -60,6 +60,13 @@ def _corps_lien_invalide(corps):
         return "niveau invalide (attendu : 'standard' ou 'confiance')."
     if 'gamme_envoi' in corps and not isinstance(corps['gamme_envoi'], str):
         return 'gamme_envoi : texte attendu.'
+    # api-fuzz (24/10/2026) — un mode hors vocabulaire était ignoré en
+    # silence (200) alors que le schéma le refuse : 400 nommé.
+    if corps.get('gamme_envoi'):
+        from ..domain.gammes import GAMME_ENVOIS
+        if corps['gamme_envoi'].strip() not in GAMME_ENVOIS:
+            return ('gamme_envoi invalide (attendu : %s).'
+                    % ' ou '.join(repr(m) for m in GAMME_ENVOIS))
     return None
 
 

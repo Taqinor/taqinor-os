@@ -448,7 +448,8 @@ class Amot94TableauVingtCinqAns(SimpleTestCase):
         def _tient(html, _doc):
             return 'data-graphique="hypotheses"' not in html
 
-        with mock.patch.object(equip, "deborde", lambda page: page == "p2"),                 mock.patch.object(equip, "_tient", _tient):
+        with mock.patch.object(equip, "deborde", lambda page: page == "p2"), \
+                mock.patch.object(equip, "_tient", _tient):
             doc = equip.document_adaptatif({}, _build, lambda _html: _Doc())
         self.assertIsNotNone(doc)
         self.assertEqual(essais, [
