@@ -169,3 +169,21 @@ class TestEndpointControleScan(Ntwms11Base):
             self._url(), {'produit': self.attendu.id, 'quantite': 1},
             format='json')
         self.assertEqual(resp.status_code, 404)
+
+
+class TestControleScanCorpsTypes(Ntwms11Base):
+    """api-fuzz 24/10 — corps typé : produit/quantité entiers publiés."""
+
+    def _url(self):
+        return (f'/api/django/stock/unites-logistiques/{self.colis.id}/'
+                'controler-scan/')
+
+    def test_corps_mal_type_400(self):
+        for corps in ({'produit': {}}, {'produit': 'abc'}, {'produit': 0},
+                      {'produit': self.attendu.id, 'quantite': 0}, [1]):
+            resp = self.api.post(self._url(), corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_produit_inconnu_404(self):
+        resp = self.api.post(self._url(), {'produit': 987654321}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)

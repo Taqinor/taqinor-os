@@ -5877,8 +5877,8 @@ def compute_date_livraison_prevue(company, fournisseur, date_commande,
     delais = [d for d in delais if d is not None]
     if not delais:
         return None
-    from datetime import timedelta
-    return date_commande + timedelta(days=max(delais))
+    from .corps_achats import ajouter_jours_ou_none
+    return ajouter_jours_ou_none(date_commande, max(delais))
 
 
 def bcf_en_retard(bon_commande, *, a_la_date=None):

@@ -231,3 +231,78 @@ class TestHausseInvalideApprobation(Xpur18Base):
             {}, format='json')
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('révisé', resp.data['detail'])
+
+
+class TestCorpsTypesEtCapacite(Xpur18Base):
+    """api-fuzz 24/10 — 500 des corps libres et des montants hors colonne."""
+    BASE = '/api/django/stock/bons-commande-fournisseur/'
+
+    def test_creation_total_hors_capacite_409_rien_ecrit(self):
+        resp = self.api.post(self.BASE, {
+            'fournisseur': self.fournisseur.id,
+            'lignes': [{'produit': self.produit.id, 'quantite': 2000000000,
+                        'prix_achat_unitaire': '99999999.99'}],
+        }, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertFalse(BonCommandeFournisseur.objects.filter(
+            company=self.company).exists())
+
+    def test_creation_prix_converti_hors_colonne_409(self):
+        resp = self.api.post(self.BASE, {
+            'fournisseur': self.fournisseur.id, 'devise': 'EUR',
+            'taux_change': '999999.000000',
+            'lignes': [{'produit': self.produit.id, 'quantite': 1,
+                        'prix_achat_unitaire_devise': '999999999.00'}],
+        }, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_reviser_corps_mal_type_400(self):
+        bc = self._bcf_envoye()
+        ligne = bc.lignes.first()
+        url = f'{self.BASE}{bc.id}/reviser/'
+        for corps in ([[1, 2]], {'lignes': [{'id': {}}]}, {'note': 5},
+                      {'lignes': [{'id': ligne.id, 'quantite': 2147483648}]},
+                      {'lignes': [{'id': ligne.id, 'designation': 'a\x00b'}]}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_reviser_hors_capacite_409_ligne_inchangee(self):
+        bc = self._bcf_envoye()
+        ligne = bc.lignes.first()
+        resp = self.api.post(f'{self.BASE}{bc.id}/reviser/', {
+            'lignes': [{'id': ligne.id, 'quantite': 2000000000,
+                        'prix_achat_unitaire': '99999999.99'}]}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        ligne.refresh_from_db()
+        self.assertEqual((ligne.quantite, ligne.prix_achat_unitaire), (2, Decimal('1000')))
+        bc.refresh_from_db()
+        self.assertEqual(bc.revision, 0)
+
+    def test_envoyer_email_corps_mal_type_400(self):
+        bc = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-X18-EM',
+            fournisseur=self.fournisseur)
+        bc.lignes.create(produit=self.produit, quantite=1, prix_achat_unitaire=Decimal('5'))
+        url = f'{self.BASE}{bc.id}/envoyer-email/'
+        for corps in ({'corps': 'a\x00b'}, {'sujet': {}}, {'to_email': 'pas-un-email'}, [1]):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
+    def test_confirmer_corps_mal_type_400(self):
+        bc = self._bcf_envoye()
+        url = f'{self.BASE}{bc.id}/confirmer/'
+        for corps in ({'date_confirmee_fournisseur': '2026-10-01',
+                       'numero_confirmation_fournisseur': 'a\x00'},
+                      {'date_confirmee_fournisseur': '2026-10-01',
+                       'numero_confirmation_fournisseur': 'N' * 101}, [1], {}):
+            resp = self.api.post(url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        ok = self.api.post(url, {'date_confirmee_fournisseur': '2026-10-01'}, format='json')
+        self.assertEqual(ok.status_code, 200, ok.content)
+
+    def test_delai_demesure_ne_fait_pas_deborder_la_date_prevue(self):
+        from apps.stock.corps_achats import ajouter_jours_ou_none
+        import datetime
+        self.assertIsNone(ajouter_jours_ou_none(datetime.date(9999, 12, 31), 5))
+        self.assertEqual(ajouter_jours_ou_none(datetime.date(2026, 1, 1), 2),
+                         datetime.date(2026, 1, 3))

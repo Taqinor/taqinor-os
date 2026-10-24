@@ -8,7 +8,7 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, inline_seri
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from ..openapi_helpers import (
@@ -20,6 +20,7 @@ from ..utils.params import (
     ID_MAX, booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps,
     id_requete_ou_400, statut_requete_ou_400, texte_sans_nul_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
+from ..corps_achats import UniteControlerScanCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, EtatIncompatible
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
@@ -371,9 +372,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('UniteControlerScanCorps', produit=serializers.IntegerField(),
-                                 quantite=serializers.IntegerField(required=False)),
-                   responses={201: UniteLogistiqueSerializer})
+    @extend_schema(request=UniteControlerScanCorps, responses={201: UniteLogistiqueSerializer})
     @action(detail=True, methods=['post'], url_path='controler-scan')
     def controler_scan(self, request, pk=None):
         """NTWMS11 — poste d'EMBALLAGE : contrôle bloquant d'un produit scanné.
@@ -386,12 +385,15 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         from ..services import controler_scan_emballage
         unite = self.get_object()
         company = request.user.company
+        saisie = valider_corps(UniteControlerScanCorps, request)
         produit = Produit.objects.filter(
-            id=request.data.get('produit'), company=company).first()
+            id=saisie['produit'], company=company).first()
+        if produit is None:  # identifiant inconnu de la société : 404, comme un id de chemin
+            raise NotFound({'produit': ['Objet inexistant.']})
         try:
             controler_scan_emballage(
                 company=company, unite=unite, produit=produit,
-                quantite=request.data.get('quantite') or 1,
+                quantite=saisie.get('quantite') or 1,
                 user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},

@@ -1,4 +1,6 @@
 import functools
+import re
+from datetime import timezone as dt_timezone
 """ENF4 — petits assistants pour déclarer EXACTEMENT le schéma OpenAPI des
 vues stock/achats (statuts, corps, paramètres de requête, exports binaires).
 
@@ -63,6 +65,34 @@ class DecimalLie(serializers.DecimalField):
             return super().get_attribute(instance)
         except SkipField:
             return None if self.default is empty else self.default
+
+
+#: Décalage horaire À SECONDES (``-00:30:20``, fuseau local d'une date très
+#: ancienne) : RFC 3339 le refuse, le schéma ``date-time`` aussi.
+_DECALAGE_A_SECONDES = re.compile(r'[+-]\d{2}:\d{2}:\d{2}(?:\.\d+)?$')
+
+
+class DateHeureRfc3339(serializers.DateTimeField):
+    """Horodatage servi TOUJOURS conforme à ``date-time`` (api-fuzz « Response
+    violates schema », rendez-vous transporteur) : le fuseau d'affichage d'une
+    date antérieure à la normalisation de l'heure porte un décalage à secondes
+    (``0451-09-13T03:38:34-00:30:20``). Dans ce seul cas l'instant est rendu en
+    UTC (``Z``) ; toute date courante garde exactement son rendu habituel."""
+
+    def to_representation(self, value):
+        rendu = super().to_representation(value)
+        if isinstance(rendu, str) and _DECALAGE_A_SECONDES.search(rendu):
+            return value.astimezone(dt_timezone.utc).isoformat().replace('+00:00', 'Z')
+        return rendu
+
+
+class DatesRfc3339Mixin:
+    """Mixin de ``ModelSerializer`` : ses ``DateTimeField`` de modèle sont des
+    ``DateHeureRfc3339``. À placer AVANT ``ChampsTexteBooleenStricts``."""
+    serializer_field_mapping = {
+        **ChampsTexteBooleenStricts.serializer_field_mapping,
+        models.DateTimeField: DateHeureRfc3339,
+    }
 
 
 class NombreStrict(serializers.FloatField):
