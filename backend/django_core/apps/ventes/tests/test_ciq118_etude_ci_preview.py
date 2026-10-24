@@ -261,6 +261,18 @@ class LeadTests(_Base):
                     for j in data['profil_charge']['jours_types'])
         self.assertAlmostEqual(conso, 48000, delta=1)
 
+    def test_kwh_annuel_contredisant_la_facture_bloque_aussi(self):
+        # ADEV100 (L3) — le générateur pré-rempli envoie le kWh en ANNUEL :
+        # la décision du 30/09 (kWh ≠ facture > 2× ⇒ bloquant) vaut aussi.
+        lead = self._lead(facture_hiver=Decimal('5000'), categorie_commerciale='bureau',
+                          tension_raccordement='bt', contrat_electricite='bt_patente')
+        corps = self._corps_lead(lead)
+        corps['consommation'] = {'kwh_annuel': 480000}
+        data = self.post(corps)
+        codes = {a['code']: a for a in data['alertes']}
+        self.assertIn('kwh_incoherent_factures', codes)
+        self.assertEqual(codes['kwh_incoherent_factures']['niveau'], 'bloquant')
+
     def test_lead_kwh_seulement_meme_taille_aperçu_et_moteur(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale='bureau')
         corps = self._corps_lead(lead)

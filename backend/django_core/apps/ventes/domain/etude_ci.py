@@ -572,6 +572,17 @@ def _garde_kwh_factures(res, tarif, alertes):
     """Décision du 30/09 : un kWh déclaré qui contredit la facture (> 2×) bloque."""
     from apps.ventes.horaire.conso import RATIO_KWH_FACTURE_MAX, RATIO_KWH_FACTURE_MIN
     kwh = _num(res.valeur('kwh_mensuel_declare'))
+    # ADEV100 (L3, 24/10/2026) — le générateur pré-rempli envoie le kWh du lead
+    # en ANNUEL (12 × mensuel) ou en 12 mois : la décision du 30/09 vaut pour
+    # tout kWh déclaré, pas seulement pour la feuille mensuelle du lead.
+    if not kwh:
+        annuel = _num(res.valeur('kwh_annuel'))
+        mensuels = [_num(v) for v in (res.valeur('kwh_mensuels') or [])]
+        mensuels = [v for v in mensuels if v]
+        if annuel:
+            kwh = annuel / 12.0
+        elif len(mensuels) == 12:
+            kwh = sum(mensuels) / 12.0
     facture = _num(res.valeur('_facture_hiver_lead'))
     if not kwh or not facture:
         return
