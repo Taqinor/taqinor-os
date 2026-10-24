@@ -418,3 +418,36 @@ class Amot94TableauVingtCinqAns(SimpleTestCase):
         self.assertEqual(equip._cedables_des_pages_debordantes(html, _Doc()),
                          frozenset({"etapes", "energie_mensuelle",
                                     "courbe_cumul"}))
+
+    def test_ordre_des_blocs_cedes_chaque_retrait_re_mesure(self):
+        """AMOT94 — page finance qui déborde : l'énergie mensuelle cède
+        d'abord, puis la courbe du cumul, puis les hypothèses, chaque retrait
+        RE-MESURÉ ; le bloc d'une page qui ne déborde pas reste."""
+        from unittest import mock
+
+        from apps.ventes.quote_engine.ci.graphiques import cede
+        from apps.ventes.quote_engine.commercial import equip
+        essais = []
+
+        def _build(donnees):
+            essais.append(donnees.get("_sans_graphiques"))
+            blocs = "".join(
+                f'<div data-graphique="{nom}"></div>'
+                for nom in ("courbe_cumul", "hypotheses", "energie_mensuelle")
+                if not cede(donnees, nom))
+            return ('<div class="page"><div data-graphique="etapes"></div>'
+                    '</div><div class="page">' + blocs + '</div>')
+
+        class _Doc:
+            pages = ["p1", "p2"]
+
+        def _tient(html, _doc):
+            return 'data-graphique="hypotheses"' not in html
+
+        with mock.patch.object(equip, "deborde", lambda page: page == "p2"),                 mock.patch.object(equip, "_tient", _tient):
+            doc = equip.document_adaptatif({}, _build, lambda _html: _Doc())
+        self.assertIsNotNone(doc)
+        self.assertEqual(essais, [
+            None, frozenset({"energie_mensuelle"}),
+            frozenset({"energie_mensuelle", "courbe_cumul"}),
+            frozenset({"energie_mensuelle", "courbe_cumul", "hypotheses"})])

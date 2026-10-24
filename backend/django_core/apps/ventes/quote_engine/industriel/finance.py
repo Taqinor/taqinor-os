@@ -757,13 +757,17 @@ def build(ctx):
         lignes_hyp = _hypotheses(argent, flux, fmt, fmt_mad, L, d)
         cfo_html = _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L,
                              (navy, ink))
+        # AMOT94 — cédable (``data-graphique="hypotheses"``) APRÈS les deux
+        # dessins de la page (``commercial.equip.ORDRE_CEDABLES``) : jamais
+        # une 5ᵉ page ni un texte sous le pied.
         hypotheses_html = (
-            f'<div class="i2-hyp"><div class="i2-hyp-t">'
+            f'<div class="i2-hyp" data-graphique="hypotheses">'
+            f'<div class="i2-hyp-t">'
             f'{L("ci_hypotheses_estimation", TITRE_HYPOTHESES)}</div>'
             # AMOT94 — sur deux colonnes : le tableau des 25 ans tient.
             + '<div class="i2-hyp-c">'
             + "".join(f'<div class="i2-hyp-i">{h}</div>' for h in lignes_hyp)
-            + '</div></div>') if lignes_hyp else ""
+            + '</div></div>') if lignes_hyp and not cede(d, "hypotheses")             else ""
         om_txt = _ligne_om(argent, fmt_mad, L)
         revente_html = _ligne_revente(argent, fmt, L, ci_blocs.langue(d))
         mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'
