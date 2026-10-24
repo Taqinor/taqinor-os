@@ -168,6 +168,8 @@ _SCHEMA_PIECE_RETIREE = _sch('SavPieceRetireeRequete', {
 _SCHEMA_ANNULER = _sch('SavAnnulerRequete', {
     'motif': TexteSansSubstitut(
         required=False, allow_blank=True, allow_null=True)})
+#: ASAV109 — champs réécrits par ``Ticket.reprendre_apres_attente``.
+_CHAMPS_PAUSE = ('en_attente_client', 'attente_depuis', 'jours_pause')
 _SCHEMA_NOTER = _sch('SavNoterRequete', {
     'body': TexteSansSubstitut(required=False, allow_blank=True),
     'reponse_type_id': EntierStrict(
@@ -1537,7 +1539,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 if not ticket.annule:
                     ticket.annule = True
                     ticket.motif_annulation = motif or None
-                    ticket.save(update_fields=['annule', 'motif_annulation'])
+                    ticket.reprendre_apres_attente()
+                    ticket.save(update_fields=[
+                        'annule', 'motif_annulation', *_CHAMPS_PAUSE])
                     activity.log_note(
                         ticket, request.user,
                         f"Ticket annulé{(' : ' + motif) if motif else ''}")
@@ -1734,7 +1738,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if not ticket.annule:
             ticket.annule = True
             ticket.motif_annulation = motif or None
-            ticket.save(update_fields=['annule', 'motif_annulation'])
+            ticket.reprendre_apres_attente()
+            ticket.save(update_fields=[
+                'annule', 'motif_annulation', *_CHAMPS_PAUSE])
             activity.log_note(
                 ticket, request.user,
                 f"Ticket annulé{(' : ' + motif) if motif else ''}")
@@ -1749,7 +1755,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if ticket.annule:
             ticket.annule = False
             ticket.motif_annulation = None
-            ticket.save(update_fields=['annule', 'motif_annulation'])
+            ticket.reprendre_apres_attente()
+            ticket.save(update_fields=[
+                'annule', 'motif_annulation', *_CHAMPS_PAUSE])
             activity.log_note(ticket, request.user, "Ticket réactivé")
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
@@ -2723,7 +2731,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
             doublon.annule = True
             doublon.motif_annulation = f'Doublon de {principal.reference}'
-            doublon.save(update_fields=['annule', 'motif_annulation'])
+            doublon.reprendre_apres_attente()
+            doublon.save(update_fields=[
+                'annule', 'motif_annulation', *_CHAMPS_PAUSE])
 
         return Response(
             TicketSerializer(principal, context={'request': request}).data)

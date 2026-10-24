@@ -109,3 +109,53 @@ class CycleSlaTests(TestCase):
         t2 = self._ticket('SAV-A16-6', en_attente_client=True,
                           attente_depuis=date(2026, 10, 9))
         self.assertEqual(t2._pause_en_cours_jours(today=mardi), 4)
+
+    # ── ASAV109 — l'annulation clôt la pause « en attente client » ──────────
+    def _ticket_en_pause(self, ref, **kw):
+        return self._ticket(
+            ref, en_attente_client=True,
+            attente_depuis=self.today - timedelta(days=3), **kw)
+
+    def _assert_pause_close(self, ticket, contexte):
+        ticket.refresh_from_db()
+        self.assertFalse(ticket.en_attente_client, contexte)
+        self.assertIsNone(ticket.attente_depuis, contexte)
+        self.assertEqual(ticket.jours_pause, 3, contexte)
+        # L'échéance effective ne glisse plus avec le temps.
+        self.assertEqual(
+            ticket.sla_due_at_effectif(today=self.today),
+            ticket.sla_due_at_effectif(today=self.today + timedelta(days=10)),
+            contexte)
+
+    def test_annulation_clot_pause(self):
+        # Annulation unitaire.
+        unitaire = self._ticket_en_pause('SAV-A109-1')
+        self._post(unitaire, 'annuler')
+        self.assertTrue(unitaire.annule)
+        self._assert_pause_close(unitaire, 'annuler')
+        # Annulation en lot.
+        lot = self._ticket_en_pause('SAV-A109-2')
+        r = self.api.post(f'{BASE}/actions-groupees/', {
+            'ids': [lot.pk], 'operation': 'annuler'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        lot.refresh_from_db()
+        self.assertTrue(lot.annule)
+        self._assert_pause_close(lot, 'actions-groupees')
+        # Fusion : le doublon est annulé, sa pause est close.
+        principal = self._ticket('SAV-A109-3')
+        doublon = self._ticket_en_pause('SAV-A109-4')
+        r = self.api.post(f'{BASE}/{principal.pk}/fusionner/', {
+            'doublon_id': doublon.pk}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        doublon.refresh_from_db()
+        self.assertTrue(doublon.annule)
+        self._assert_pause_close(doublon, 'fusionner')
+
+    def test_reactivation_clot_pause_heritee(self):
+        """Un ticket annulé resté en pause (donnée antérieure au correctif)
+        voit sa pause close à la réactivation."""
+        t = self._ticket_en_pause(
+            'SAV-A109-5', annule=True, motif_annulation='Doublon client')
+        self._post(t, 'reactiver')
+        self.assertFalse(t.annule)
+        self._assert_pause_close(t, 'reactiver')
