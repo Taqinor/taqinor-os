@@ -348,6 +348,27 @@ class LeadDecimalField(DecimalSouple):
         return super().to_internal_value(brut)
 
 
+#: AGQ10 / api-fuzz (24/10/2026) — motif de la branche « chaîne » du schéma :
+#: 0 exclu, une décimale, ≤ 7 (« 0 » et « 7.5 » ne sont plus « conformes au
+#: schéma » alors que le serveur les refuse en nommant le champ).
+MOTIF_JOURS_IRRIGATION = r'^(?:0\.[1-9]|[1-6](?:\.\d)?|7(?:\.0)?)$'
+
+
+class _JoursIrrigationField(LeadDecimalField):
+    """Jours d'irrigation par semaine : les bornes publiées valent pour les
+    DEUX branches du schéma (nombre : minimum/maximum ; chaîne : motif)."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        branches = [
+            {'type': 'string', 'format': 'decimal',
+             'pattern': MOTIF_JOURS_IRRIGATION},
+            {'type': 'number', 'minimum': 0.1, 'maximum': 7.0}]
+        set_override(self, 'field', {'anyOf': [
+            dict(b, nullable=True) if self.allow_null else b
+            for b in branches]})
+
+
 class _PuissanceKwField(LeadDecimalField):
     """Puissance d'ÉQUIPEMENT saisie en kW (questionnaire d'appel).
 
@@ -549,7 +570,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # AGQ10 (D-AGQ-6) — bornes DANS le schéma publié (api-fuzz CI #1021 : un
     # corps conforme au schéma était refusé) : 0 < jours ≤ 7, message nommé.
     # ALEA : `LeadDecimalField` garde la normalisation d'une décimale de trop.
-    jours_irrigation_semaine = LeadDecimalField(
+    jours_irrigation_semaine = _JoursIrrigationField(
         max_digits=3, decimal_places=1, required=False, allow_null=True,
         min_value=Decimal('0.1'), max_value=Decimal('7'),
         error_messages={'min_value': _MSG_JOURS_IRRIGATION,

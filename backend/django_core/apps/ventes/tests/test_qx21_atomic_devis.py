@@ -144,6 +144,25 @@ class Qx21AtomicDevisTests(TestCase):
         self.assertIn('dimensionnement', etude_params)
         self.assertIsNotNone(etude_params['dimensionnement'])
 
+    def test_replace_lines_corps_tableau_400(self):
+        """api-fuzz (24/10/2026) — un corps JSON tableau (``[null, null]``)
+        répond 400 nommé, jamais 500, et ne touche pas aux lignes."""
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-{MONTH}-QX2104',
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            taux_tva=Decimal('20'), created_by=self.user)
+        from apps.ventes.models import LigneDevis
+        LigneDevis.objects.create(
+            devis=devis, produit=self.p1, designation='Old',
+            quantite=Decimal('1'), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'))
+        resp = self.api.post(
+            f'/api/django/ventes/devis/{devis.id}/replace-lines/', [None, None],
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('lignes', str(resp.data.get('detail', '')))
+        self.assertEqual(devis.lignes.count(), 1)
+
     def test_replace_lines_rollback_preserves_old(self):
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-QX2102',

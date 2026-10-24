@@ -410,7 +410,10 @@ class DevisEditionActionsMixin:
         refus = _refus_verrou(devis, request)
         if refus is not None:
             return refus
-        lignes_in = request.data.get('lignes')
+        # api-fuzz (24/10/2026) — un corps JSON qui n'est pas un objet
+        # (``[null, null]``) faisait un 500 sur ``.get`` : 400 nommé.
+        corps = request.data if isinstance(request.data, dict) else {}
+        lignes_in = corps.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
                             status=status.HTTP_400_BAD_REQUEST)
