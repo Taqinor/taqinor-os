@@ -530,3 +530,30 @@ def nom_fichier_sur(nom):
     return ''.join(
         c for c in str(nom) if c not in '"\\' and c.isprintable()
     ) or 'document'
+
+
+class EmailSignataire(drf_serializers.EmailField):
+    """Courriel du signataire d'une demande de signature : OBLIGATOIRE en
+    écriture (une adresse valide), mais RENDU vide par le circuit multi-
+    destinataires (``creer-multi`` ne pose pas le signataire historique : la
+    demande sert ``signataire_email: ""``). api-fuzz 24/10 — la réponse
+    violait son schéma (``"" is not a "email"``) : la réponse publie « adresse
+    valide OU chaîne vide », la requête garde l'adresse valide seule."""
+
+    # Pas d'``allow_blank`` : la valeur vide n'est jamais ÉCRITE par ce champ
+    # (``to_representation`` ne valide rien) ; seul le schéma de réponse l'admet.
+
+
+class _EmailSignatairePublie(OpenApiSerializerFieldExtension):
+    target_class = 'apps.ged.corps_requete.EmailSignataire'
+    priority = 1
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'response' or 'format' not in schema:
+            return schema
+        schema = dict(schema)
+        forme = schema.pop('format')
+        schema['anyOf'] = [{'format': forme}, {'maxLength': 0}]
+        return schema
