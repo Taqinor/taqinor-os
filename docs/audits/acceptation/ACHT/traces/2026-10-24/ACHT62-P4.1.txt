@@ -1,0 +1,9 @@
+ACHT62 — P4.1 — rejeu orchestrateur, pile locale à 3a462632c (front construit à e45ab8aa4, aucun écart frontend/src jusqu'à 3a462632c), 2026-10-24, navigateur intégré, demo_admin (société 2).
+
+Données : 55 interventions créées sur la démo locale (5 chantiers × 11, date_prevue 2026-11-01 → 2026-12-25), la plus ancienne id 199 (CHT-202609-0001, 01/11/2026).
+
+1. GET /interventions → requête unique `GET /api/django/installations/interventions/?page=1&page_size=200` → 200 (count 55, 55 résultats).
+   Écran : en-tête « Interventions 55 », colonne « À préparer 55 », 55 cartes rendues (55 dates distinctes du 01/11/2026 au 25/12/2026 lues dans <main>) — la liste ne s'arrête pas à 50.
+2. GET /interventions?id=199 (la plus ancienne) → le panneau « Pose — CHT-202609-0001 » s'ouvre (Client QA-AUDIT-3009 Lead Test, Date prévue 01/11/2026) ; requêtes : interventions?page_size=200 → 200, interventions/199/historique/ → 200.
+Aucune réponse 4xx/5xx sur les requêtes de ces deux écrans ; aucune erreur console émise par ces écrans.
+Verdict : PASS.

@@ -1,0 +1,33 @@
+{
+  "sha": "080a940524a3d1bc22026edd7a65961c8fd8897c",
+  "date": "2026-10-24",
+  "groupe": "APAR",
+  "verdict": "PASS",
+  "couvre": [
+    "APAR54"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.4",
+      "taches": [
+        "APAR54"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APAR/traces/2026-10-24/APAR54-P1.4.txt"
+    }
+  ]
+}

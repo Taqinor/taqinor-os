@@ -1,0 +1,12 @@
+APAR54 — P1.4 — rejeu orchestrateur, pile locale, 2026-10-24, navigateur intégré, demo_admin (société 2).
+
+Passe 1 (front construit à e45ab8aa4 = frontend/src de 3a462632c) :
+1. Paramètres › Statuts › Statuts de chantier : libellé de `signe` « Signé » → « Contrat signé » (saisie clavier), Enregistrer → PUT /api/django/parametres/statuts/bulk/ → 200.
+2. /chantiers : badges des 10 lignes (liste), en-tête de colonne kanban, options de statut des cartes = « Contrat signé » ; MAIS la pastille de synthèse/filtre au-dessus de la liste restait « Signé 10 ».
+   Cause : `funnelSummary` lisait `STATUS_LABELS[s]` (jumeau oublié) et `InstallationsPage` mémorisait la synthèse sur `[items]` seulement (un réglage arrivé après la liste ne la recalculait pas).
+   → ÉCART, corrigé dans la vague : commit 080a94052 (statusLabel + dépendance `statutsVersion`, test useStatutConfig.test.jsx « la synthèse par statut suit un réglage arrivé APRÈS la liste »).
+
+Passe 2 (front reconstruit à 080a94052, `docker compose build frontend`) :
+3. /chantiers rechargé (F5) avec le réglage « Contrat signé » : pastilles `title="Filtrer : Contrat signé"` → « Contrat signé 10 » ; vue kanban : en-tête « Contrat signé », 10 cartes (badge + option) « Contrat signé » ; vue liste : 10 badges « Contrat signé » ; aucune occurrence restante de « Signé » seul dans <main>.
+4. Remise en état : libellé ramené à « Signé », Enregistrer → PUT statuts/bulk/ ; `GET parametres/statuts/effective/?domaine=chantier` → signe=Signé.
+Verdict (passe 2) : PASS.

@@ -1,0 +1,6 @@
+ACHT65 — P1 — rejeu orchestrateur, pile locale à 3a462632c (front construit à e45ab8aa4, aucun écart frontend/src jusqu'à 3a462632c), 2026-10-24, navigateur intégré, demo_admin (société 2).
+
+Chantier CHT-202610-0001 (id 28) avec 11 interventions démo.
+1. Aperçu (onglet sélectionné par défaut) : aucune section « Autour de ce chantier » ; aucun bouton Réserves / RFI / Journal / Avenants / DGD ; liens du panneau = /crm/leads?lead=2068, /ventes/devis?devis=643, /chantiers?id=28 — aucun vers /btp-chantier/*.
+2. Onglet Photos › bouton « Voir aussi les photos de l'intervention » → URL /interventions?installation=28 (pas de 404) ; requête GET /api/django/installations/interventions/?page=1&page_size=200&installation=28 → 200 ; écran « Interventions 11 », 11 cartes, toutes CHT-202610-0001 (seules les interventions de ce chantier, sur 55 au total).
+Verdict : PASS.

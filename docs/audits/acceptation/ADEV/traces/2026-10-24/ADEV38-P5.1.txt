@@ -1,0 +1,16 @@
+ADEV38 — P5.1 — rejeu orchestrateur, pile locale (backend monté depuis la branche à 2d4ee1b5d, qui porte ADEV38), 2026-10-24.
+Sonde : `docker exec -i erp-agentique-django_core-1 python manage.py shell < sonde_adev38.py` — APIClient sur la VRAIE route publique POST /api/django/public/proposal/<jeton>/accept/ (nom, consent_esign, empreinte_contenu servie), EMAIL_BACKEND locmem (aucun envoi réel), chaque cas dans transaction.atomic + rollback (le devis reste « envoyé »).
+Cas A : `apps.ventes.domain.cycle_vie._store_signed_pdf` neutralisé (seul l'échec de stockage est simulé). Cas B : stockage réel (MinIO local).
+
+[A — stockage du PDF signé en échec (_store_signed_pdf neutralisé)] devis DEV-202610-0028 — HTTP 200, statut accepte, signed_pdf_key=''
+  e-mail client (qa-cal-gate-d23600@example.test) « Proposition acceptée — DEV-202610-0028 » : « exemplaire signé » dans le corps = False, « ci-joint » = False, preuve de signature (empreinte) = True
+  pièces jointes : [] ; sha256[:12] de l'exemplaire signé stocké = None
+  corps : Bonjour QA-CAL-GATE g205e d23600 QA, |  | Nous avons bien reçu votre acceptation du devis DEV-202610-0028. |  | Votre signature électronique a été enregistrée conformément à la loi 43-20 relative à l'échange électronique de données juridiques. |  | Signataire : Client Rejeu | Signé le 24/10/2026 22:32 (heure de Casablanca) | Empreinte du contenu signé (SHA-256) : 70bfc33758f8b5cdfdd4b0f79965873fc8c264233e5c96ad289f75566caf488f |  | Pour démarrer votre installation, un acompte de 20 880.00 MAD est à régler. |  | Merci pour votre confiance. |  | Cordialement, | L'équipe TAQINOR Démo
+
+[B — stockage réel (MinIO local)] devis DEV-202610-0028 — HTTP 200, statut accepte, signed_pdf_key='devis/2/DEV-202610-0028__signe.pdf'
+  e-mail client (qa-cal-gate-d23600@example.test) « Proposition acceptée — DEV-202610-0028 » : « exemplaire signé » dans le corps = True, « ci-joint » = True, preuve de signature (empreinte) = True
+  pièces jointes : [['DEV-202610-0028.pdf', 478042, True, '06300fdd52a0']] ; sha256[:12] de l'exemplaire signé stocké = 06300fdd52a0
+  corps : Bonjour QA-CAL-GATE g205e d23600 QA, |  | Nous avons bien reçu votre acceptation du devis DEV-202610-0028. |  | Votre signature électronique a été enregistrée conformément à la loi 43-20 relative à l'échange électronique de données juridiques. |  | Signataire : Client Rejeu | Signé le 24/10/2026 22:32 (heure de Casablanca) | Empreinte du contenu signé (SHA-256) : 70bfc33758f8b5cdfdd4b0f79965873fc8c264233e5c96ad289f75566caf488f | Empreinte du PDF signé (SHA-256) : 06300fdd52a0b2191a4a86dbe3c81b02b0350cba377a22c2ed09a0222c174761 |  | Pour démarrer votre installation, un acompte de 20 880.00 MAD est à régler. |  | Vous trouverez ci-joint votre exemplaire signé pour vos archives. |  | Merci pour votre confiance. |  | Cordialemen
+
+Oracle : A — aucune promesse de pièce signée, aucune pièce, preuve de signature conservée ; B — phrase « Vous trouverez ci-joint votre exemplaire signé » présente ET la pièce jointe est l'exemplaire signé stocké (même sha256 que `__signe.pdf`).
+Verdict : PASS.
