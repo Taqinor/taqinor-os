@@ -46,6 +46,12 @@ MODES = ('commercial', 'industriel')
 #: Lead.type_toiture → type de pose CIQ7 : seulement les correspondances
 #: CERTAINES ; une terrasse béton (lestée ou fixée ?) reste à déclarer.
 POSE_DU_TOIT_LEAD = {'bac_acier': 'bac_acier', 'tuiles': 'toiture_inclinee'}
+#: ADEV90 (D-ACI-13=a) — mode de pose ESTIMÉ quand aucun n'est déclaré :
+#: terrasse → lestée, toute autre couverture (ou couverture inconnue) →
+#: surimposition. La borne s'applique, dite « pose estimée, à confirmer au
+#: calepinage ».
+POSE_PAR_DEFAUT_COUVERTURE = {'terrasse_beton': 'toit_plat_leste'}
+POSE_PAR_DEFAUT = 'toiture_inclinee'
 
 #: (feuille, chemin dans le corps / dans ``Devis.etude_params``).
 FEUILLES = (
@@ -763,17 +769,23 @@ def _borne_toit(res, devis, module, alertes):
         cotes = (module['longueur_mm'] / 1000.0, module['largeur_mm'] / 1000.0)
     pente = _num(res.valeur('pente_deg'))
     site = res.valeur('site') or {}
+    mode_pose = res.valeur('type_pose')
+    pose_estimee = not mode_pose
+    if pose_estimee:
+        mode_pose = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'), POSE_PAR_DEFAUT)
     resultat = calepinage_services.contenance_surface_declaree(
-        surface, mode_pose=res.valeur('type_pose'), cotes_module_m=cotes,
+        surface, mode_pose=mode_pose, cotes_module_m=cotes,
         inclinaison_deg=pente if pente is not None else PVGIS_ANGLE_DEG,
         latitude_deg=_num(site.get('lat')), puissance_module_wc=pmax)
     if resultat.get('kwc') is None:
         alertes.append(_alerte('contenance_toit_inconnue', 'toit',
                                'Contenance du toit non bornée : %s.' % resultat.get('motif')))
         return None
-    return {'kwc': round(float(resultat['kwc']), 2),
-            'source': 'surface utile déclarée (%g m²) — estimation, à confirmer au '
-                      'calepinage/visite' % surface}
+    source = 'surface utile déclarée (%g m²) — estimation, à confirmer au calepinage/visite' % surface
+    if pose_estimee:
+        source = ('surface utile déclarée (%g m²), pose estimée « %s » — estimation, à '
+                  'confirmer au calepinage/visite' % (surface, mode_pose))
+    return {'kwc': round(float(resultat['kwc']), 2), 'source': source}
 
 
 def _charge_toiture(res, catalogue, alertes):

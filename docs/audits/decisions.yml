@@ -2304,9 +2304,9 @@ decisions:
         texte: "refuser le devis automatique tant que le mode de pose n'est pas déclaré (prérequis du lead, bouton « Compléter »)"
       - cle: c
         texte: "laisser non borné (comportement actuel), l'alerte interne suffit"
-    reponse: ouverte
-    date: "2026-10-23"
-    source: "rejeu humain du 23/10/2026 (session moteur C&I) ; constat C-ACI-026"
+    reponse: a
+    date: "2026-10-24"
+    source: "rejeu humain du 23/10/2026 (session moteur C&I) ; constat C-ACI-026 ; tranchée par la question interactive du 24/10/2026"
     taches: [ADEV90]
   - id: D-ACI-14
     question: "Entretien (O&M) dans les flux C&I quand l'option n'est pas souscrite (aujourd'hui 0, production supposée propre) : que faire dans les nouveaux rendus ?"
@@ -2356,3 +2356,36 @@ decisions:
     date: "2026-10-24"
     source: "question interactive du 24/10/2026 ; vérificateur R4 (« état interne du catalogue sur un document client »)"
     taches: [AMOT98]
+  - id: D-ACI-18
+    question: "Précision des calculs C&I (journées moyennes, 30° plein sud, dégradation 0,5 %/an aujourd'hui affichés) : passer au calcul complet ?"
+    options:
+      - cle: a
+        texte: "autoconsommation sur 8 760 h (série horaire PVGIS), production selon pente/azimut/pose déclarés, dégradation selon la courbe de garantie (≈ 1 % an 1 puis 0,4 %/an)"
+      - cle: b
+        texte: "garder les journées moyennes, 30° sud, 0,5 % en les affichant (AMOT91)"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; constat C-L3-MOT-01"
+    taches: [AMOT99]
+  - id: D-ACI-19
+    question: "CO₂ évité sur le document C&I ?"
+    options:
+      - cle: a
+        texte: "oui, avec un facteur réseau marocain fourni par le fondateur (gCO₂/kWh + source), imprimé avec sa source ; rien tant que le facteur n'est pas réglé"
+      - cle: b
+        texte: "jamais (CIQ344)"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026"
+    taches: [AMOT100]
+  - id: D-ACI-20
+    question: "Signature des gros contrats C&I sur le lien public ?"
+    options:
+      - cle: a
+        texte: "signature simple + piste d'audit renforcée (attestation de pouvoir, ICE croisé, sceau v3, SHA du PDF — ADEV95/96) pour tous les montants"
+      - cle: b
+        texte: "signature qualifiée (prestataire agréé DGSSI) exigée au-delà d'un montant"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; confirme ADEV95-96"
+    taches: [ADEV95, ADEV96]

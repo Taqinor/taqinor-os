@@ -331,3 +331,27 @@ class LeadTests(_Base):
         self.assertEqual(data['profil_charge']['archetype']['cle'], 'bureau')
         self.assertEqual(data['profil_charge']['archetype']['source'],
                          'relevé de compteur 2025')
+
+
+class BornePoseParDefautAdev90(_Base):
+    """ADEV90 (D-ACI-13=a) — une surface déclarée SANS mode de pose borne la
+    taille avec une pose ESTIMÉE (terrasse → lestée, sinon surimposition),
+    dite « pose estimée, à confirmer au calepinage » ; plus d'alerte « non
+    bornée » quand une surface est déclarée."""
+
+    def _bornes(self, **toit):
+        corps = self.corps()
+        corps['toit'] = dict({'type_pose': None, 'surface_utile_m2': 200}, **toit)
+        return self.post(corps)
+
+    def test_surface_sans_pose_bornee_en_surimposition(self):
+        rep = self._bornes()
+        toit = rep['taille']['bornes']['toit']
+        self.assertIsNotNone(toit['kwc'])
+        self.assertIn('pose estimée « toiture_inclinee »', toit['source'])
+        self.assertNotIn('contenance_toit_inconnue', [a['code'] for a in rep['alertes']])
+
+    def test_pose_declaree_inchangee(self):
+        rep = self._bornes(type_pose='toit_plat_leste')
+        toit = rep['taille']['bornes']['toit']
+        self.assertNotIn('pose estimée', toit['source'])
