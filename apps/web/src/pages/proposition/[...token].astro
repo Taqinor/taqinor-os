@@ -34,7 +34,7 @@ import '../../styles/v3-photo-motion.css';
 // PV81 — l'enveloppe « Avis clients » (carte + titre) suit la MÊME condition que
 // son contenu : sans avis réel, aucun cadre vide n'est rendu chez le client.
 import { hasTestimonials } from '../../lib/testimonials';
-import { AGR_LBL_AGQ, AGR_NON_INCLUS_LBL, valeurProvenance } from '../../lib/propositionAgricole';
+import { AGR_LBL_AGQ, AGR_NON_INCLUS_LBL, AGR_ACCEPTATION_LBL, savAgricole, valeurProvenance } from '../../lib/propositionAgricole';
 import {
   type ProposalResponse,
   type OptionKey,
@@ -613,6 +613,8 @@ const raisonSocialeServie = ci?.entrepriseClient?.raisonSociale ?? '';
 // calcul (la livraison d'eau dérivée dans le navigateur, `agricoleMonthlyDelivery`, est
 // supprimée). Sans synthèse servie : cartes pompe seules, ni graphe ni schéma.
 const synth: SyntheseAgricole | null = ok ? syntheseAgricole(data!) : null;
+// D-AGQ-13 — le SAV servi (délai saisi par la société), même phrase que le PDF.
+const savAgri = ok && isAgricole ? savAgricole(data) : null;
 const bvl = synth?.besoinVsLivre ?? null;
 const bvlMax = bvl ? Math.max(...bvl.mois.map((m) => Math.max(m.besoin, m.livre)), 1) : 1;
 // AGQ3/AGQ33 — « octobre : 80 % de votre besoin ; novembre : 72 % … » (valeurs servies, jamais recalculées).
@@ -2931,6 +2933,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         )}
         {/* AGW304 — AGRICOLE : les garanties par composant SERVIES (pompe, variateur, panneaux), jamais complétées
             par une constante ; la garantie de pose n'apparaît que si la synthèse la sert. */}
+        {savAgri && (
+          <p class="mt-5 text-sm text-lune-soft" data-agri-sav data-i18n data-fr={savAgri.fr} data-en={savAgri.en} data-ar={savAgri.ar}>{savAgri.fr}</p>
+        )}
         {isAgricole && argent && argent.garanties.length > 0 && (
           <div class="cine-card mt-5 rounded-xl p-5" data-agri-garanties>
             <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.garanties.fr} data-en={AGR_ARGENT_LBL.garanties.en} data-ar={AGR_ARGENT_LBL.garanties.ar}>{AGR_ARGENT_LBL.garanties.fr}</p>
@@ -7024,7 +7029,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                      écrit celui de la case cochée, et masque le montant quand le
                      serveur n'en sert pas pour cette option (le pourcentage,
                      lui, reste vrai). */
-                  <><span data-i18n data-fr={`Acompte ${acompte.pct} %`} data-en={`${acompte.pct}% deposit`} data-ar={`تسبيق ${acompte.pct}%`}>Acompte {acompte.pct} %</span><span data-sign-acompte-montant hidden={!acompteMontantInitial}> : <span dir="ltr" data-sign-acompte-valeur>{acompteMontantInitial ?? ''}</span></span><span data-i18n data-fr=" à l’acceptation (virement ou chèque barré)" data-en=" on acceptance (bank transfer or crossed cheque)" data-ar=" عند القبول (تحويل بنكي أو شيك مسطر)"> à l’acceptation (virement ou chèque barré)</span></>
+                  <><span data-i18n data-fr={`Acompte ${acompte.pct} %`} data-en={`${acompte.pct}% deposit`} data-ar={`تسبيق ${acompte.pct}%`}>Acompte {acompte.pct} %</span><span data-sign-acompte-montant hidden={!acompteMontantInitial}> : <span dir="ltr" data-sign-acompte-valeur>{acompteMontantInitial ?? ''}</span></span>{isAgricole ? <span data-i18n data-fr={` ${AGR_ACCEPTATION_LBL.acompte.fr}`} data-en={` ${AGR_ACCEPTATION_LBL.acompte.en}`} data-ar={` ${AGR_ACCEPTATION_LBL.acompte.ar}`}> {AGR_ACCEPTATION_LBL.acompte.fr}</span> : <span data-i18n data-fr=" à l’acceptation (virement ou chèque barré)" data-en=" on acceptance (bank transfer or crossed cheque)" data-ar=" عند القبول (تحويل بنكي أو شيك مسطر)"> à l’acceptation (virement ou chèque barré)</span>}</>
                 ) : (
                   <span data-i18n
                     data-fr="Acompte à l’acceptation (virement ou chèque barré) — montant confirmé par votre conseiller"
@@ -7399,10 +7404,16 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   contrat naît de l'ACCEPTATION, l'acompte ne fait que
                   déclencher les travaux. C'est la moitié utile au client d'un
                   panneau qu'aucun flux étudié n'affiche avant sa signature. */}
+              {/* D-AGQ-12 — un pompage : ferme après l'accord FDA si l'aide est demandée. */}
+              {isAgricole ? (
+              <span data-i18n data-agri-acceptation
+                data-fr={AGR_ACCEPTATION_LBL.ferme.fr} data-en={AGR_ACCEPTATION_LBL.ferme.en} data-ar={AGR_ACCEPTATION_LBL.ferme.ar}>{AGR_ACCEPTATION_LBL.ferme.fr}</span>
+              ) : (
               <span data-i18n
                 data-fr="Votre commande est ferme dès votre acceptation ; les travaux démarrent à réception de l’acompte."
                 data-en="Your order is firm as soon as you accept; work starts once the deposit is received."
                 data-ar="يصبح طلبكم نهائياً بمجرد قبولكم؛ وتنطلق الأشغال فور استلام التسبيق.">Votre commande est ferme dès votre acceptation ; les travaux démarrent à réception de l’acompte.</span>
+              )}
               {confirmationEmail && (
                 <>{' '}<span data-i18n
                   data-fr="Confirmation par e-mail."

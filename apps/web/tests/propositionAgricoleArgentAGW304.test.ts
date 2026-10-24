@@ -19,7 +19,7 @@ import {
   syntheseAgricoleArgent,
   type ProposalResponse,
 } from '../src/lib/proposition';
-import { AGR_NON_INCLUS_LBL, valeurProvenance } from '../src/lib/propositionAgricole';
+import { AGR_ACCEPTATION_LBL, AGR_NON_INCLUS_LBL, savAgricole, valeurProvenance } from '../src/lib/propositionAgricole';
 import { garantiesCodeesEnDurAffichees } from '../src/lib/propositionPage';
 
 const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -321,5 +321,23 @@ describe('Rejeu live AGQ41 — « D’où viennent ces chiffres » : la valeur �
     expect(forage.valeur).toBe(SERVIE.provenance.debit_exploitation_m3h.valeur);
     expect(valeurProvenance('debit_exploitation_m3h', 36, (n) => String(n))).toEqual({ fr: '36 m³/h', en: '36 m³/h', ar: '36 م³/س' });
     expect(valeurProvenance('niveau_statique_m', null, String)).toBeNull();
+  });
+});
+
+describe('D-AGQ-12 / D-AGQ-13 — SAV servi et acceptation d’un pompage', () => {
+  it('le délai d’intervention servi devient la phrase du PDF ; non servi : rien', () => {
+    expect(savAgricole({ synthese_agricole: { sav: { delai_intervention_heures: 48 } } }))
+      .toEqual({
+        fr: 'Service après-vente : intervention sous 48 h après votre appel.',
+        en: 'After-sales service: intervention within 48 h of your call.',
+        ar: 'خدمة ما بعد البيع: التدخل في أجل 48 ساعة بعد اتصالكم.',
+      });
+    expect(savAgricole({ synthese_agricole: {} })).toBeNull();
+    expect(savAgricole(null)).toBeNull();
+  });
+  it('l’acceptation dit ferme APRÈS l’accord FDA quand l’aide est demandée (fr/en/ar)', () => {
+    expect(AGR_ACCEPTATION_LBL.ferme.fr).toContain('qu’après l’accord préalable FDA');
+    expect(AGR_ACCEPTATION_LBL.acompte.fr).toBe('à la commande — après l’accord FDA si vous demandez l’aide');
+    for (const lg of ['en', 'ar'] as const) expect(AGR_ACCEPTATION_LBL.ferme[lg].length).toBeGreaterThan(40);
   });
 });

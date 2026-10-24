@@ -60,9 +60,9 @@ export const ETAPES_AGRICOLES: ReadonlyArray<{ cle: string; textes: Lbl3 }> = [
   {
     cle: 'mise_en_service',
     textes: {
-      fr: 'À la mise en service : débit et HMT mesurés, écart affiché contre ce devis.',
-      en: 'At commissioning: flow and head measured, gap shown against this quote.',
-      ar: 'عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض.',
+      fr: 'À la mise en service : débit et HMT mesurés, écart affiché contre ce devis ; dossier remis (fiches techniques, schéma électrique) et formation à l\'utilisation et à l\'entretien.',
+      en: 'At commissioning: flow and head measured, gap shown against this quote; documentation handed over (data sheets, wiring diagram) and training in operation and maintenance.',
+      ar: 'عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض؛ تسليم الملف (البطاقات التقنية، المخطط الكهربائي) والتكوين على الاستعمال والصيانة.',
     },
   },
 ];
@@ -198,3 +198,33 @@ export function valeurProvenance(cle: string, valeur: number | null | undefined,
   const n = format(valeur);
   return u ? { fr: `${n} ${u.fr}`, en: `${n} ${u.en}`, ar: `${n} ${u.ar}` } : { fr: n, en: n, ar: n };
 }
+
+/** D-AGQ-13 — « Service après-vente : intervention sous N h » lu dans
+ *  `synthese_agricole.sav` (délai SAISI par la société, même texte que la page 3 du PDF,
+ *  `i18n_labels.agr_sav_delai`) ; `null` quand il n'est pas servi — jamais inventé. */
+export function savAgricole(payload: unknown): Lbl3 | null {
+  const synth = (payload as { synthese_agricole?: { sav?: { delai_intervention_heures?: unknown } } } | null)
+    ?.synthese_agricole;
+  const h = Number(synth?.sav?.delai_intervention_heures);
+  if (!Number.isFinite(h) || h <= 0) return null;
+  return {
+    fr: `Service après-vente : intervention sous ${h} h après votre appel.`,
+    en: `After-sales service: intervention within ${h} h of your call.`,
+    ar: `خدمة ما بعد البيع: التدخل في أجل ${h} ساعة بعد اتصالكم.`,
+  };
+}
+
+/** D-AGQ-12 — l'acceptation d'un pompage : ferme et acompte dû APRÈS l'accord FDA quand
+ *  le client demande l'aide (même règle que les conditions du PDF, `agr_acompte_fda`). */
+export const AGR_ACCEPTATION_LBL = {
+  ferme: {
+    fr: 'Si vous demandez l’aide FDA, votre signature vaut accord sur ce devis : la commande devient ferme et l’acompte n’est dû qu’après l’accord préalable FDA. Sans demande d’aide, votre commande est ferme dès votre acceptation.',
+    en: 'If you apply for the FDA grant, your signature is an agreement on this quote: the order becomes firm and the down payment is due only after the FDA prior approval. Without a grant application, your order is firm upon acceptance.',
+    ar: 'إن طلبتم دعم صندوق التنمية الفلاحية، فتوقيعكم موافقة على هذا العرض: يصبح الطلب نهائياً ولا تستحق الدفعة المقدمة إلا بعد الموافقة المسبقة للصندوق. بدون طلب دعم، يصبح طلبكم نهائياً بمجرد قبولكم.',
+  },
+  acompte: {
+    fr: 'à la commande — après l’accord FDA si vous demandez l’aide',
+    en: 'on order — after the FDA approval if you apply for the grant',
+    ar: 'عند الطلب — بعد موافقة صندوق التنمية الفلاحية إن طلبتم الدعم',
+  },
+} as const satisfies Record<string, Lbl3>;
