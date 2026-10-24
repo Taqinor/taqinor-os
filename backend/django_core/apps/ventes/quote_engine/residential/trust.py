@@ -497,7 +497,7 @@ def build(ctx) -> str:
     from ..clauses_cgv import bloc_clauses_html
     clauses_html = bloc_clauses_html(
         d.get("clauses_cgv"), couleur_titre=C.get("navy", "#0f2a44"),
-        couleur_texte=C.get("ink", "#1F2937"))
+        couleur_texte=C.get("ink", "#1F2937"), langue=theme.langue_doc(d))
 
     # ── Next steps ──────────────────────────────────────────────────────────
     # Q5 — les délais sont des réglages société et portent « (indicatif) » ;
