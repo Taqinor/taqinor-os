@@ -346,3 +346,40 @@ describe('ALEA51 — devis automatique créé : bannière de succès', () => {
     expect(texte).toBe('DEV-1 · 5 kWc · 41 000 MAD TTC · retour ≈ 4,3 ans · 1 poste à chiffrer après la visite')
   })
 })
+
+// ALEA52 — l'aperçu PDF porte « Envoyer au client » : la MÊME boîte que la carte
+// devis (canaux d'abord, réglages sous « Avancé »), sans les options réservées
+// au résidentiel pour un devis commercial / industriel / agricole.
+describe('ALEA52 — aperçu : « Envoyer au client » ouvre la boîte partagée', () => {
+  const ouvrirApercu = async (lead) => {
+    rendre({ mode: 'view', lead: { id: 77, nom: 'Khalid', email: 'k@example.com', ...lead } })
+    await userEvent.click(await screen.findByRole('button', { name: /Envoyer au client/ }))
+    return screen.findByRole('dialog', { name: /Envoyer au client/ })
+  }
+  const boiteFermee = () => waitFor(() => expect(
+    screen.queryByRole('dialog', { name: /Envoyer au client/ })).toBeNull())
+
+  it('résidentiel : trois canaux, « Avancé » replié, options 1/2/3 et case étude proposées', async () => {
+    const boite = await ouvrirApercu({ type_installation: 'residentiel' })
+    expect(within(boite).getByRole('button', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(within(boite).getByRole('button', { name: /E-mail/ })).toBeEnabled()
+    expect(within(boite).getByRole('button', { name: /Copier le lien/ })).toBeInTheDocument()
+    expect(within(boite).queryByText('Options présentées au client :')).toBeNull()
+    await userEvent.click(within(boite).getByRole('button', { name: /Avancé/ }))
+    expect(within(boite).getByText('Options présentées au client :')).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    await boiteFermee()
+    expect(screen.getByText("Inclure l'étude")).toBeInTheDocument()
+  })
+
+  it('industriel : ni « Inclure l’étude » ni options 1/2/3 (sans effet en C&I)', async () => {
+    const boite = await ouvrirApercu({ type_installation: 'industriel' })
+    await userEvent.click(within(boite).getByRole('button', { name: /Avancé/ }))
+    expect(within(boite).getByText('Ce que le client reçoit :')).toBeInTheDocument()
+    expect(within(boite).queryByText('Options présentées au client :')).toBeNull()
+    expect(within(boite).queryByRole('button', { name: /Modifier les options…/ })).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    await boiteFermee()
+    expect(screen.queryByText("Inclure l'étude")).toBeNull()
+  })
+})

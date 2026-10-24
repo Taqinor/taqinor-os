@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
-  Download, ExternalLink, Pencil, Zap,
+  Download, ExternalLink, Pencil, Send, Zap,
 } from 'lucide-react'
 import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
@@ -30,6 +30,9 @@ import { toast, useConfirmDialog } from '../../../ui/confirm'
 // EDC6 (suite) — un « pointeur hors panneau » de Radix est-il un vrai geste de sortie ?
 import { estGesteHorsPanneau } from './gesteHorsPanneau'
 import { jumpToField } from '../../../features/crm/workspace/jumpToField'
+// ALEA52 — la MÊME boîte « Envoyer au client » que la carte devis de l'onglet Devis.
+import EnvoiDevisDialog from '../../../features/crm/workspace/EnvoiDevisDialog'
+import { useEnvoiDevis } from '../../../features/crm/workspace/useEnvoiDevis'
 import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
 import fieldLabels from '../../../features/crm/workspace/fieldLabels'
 import {
@@ -120,6 +123,26 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     navigate,
     onApres: () => onDevisChanged?.(),
   })
+
+  // ALEA52 — « Envoyer au client » depuis l'aperçu : la même boîte que la carte
+  // devis (canaux WhatsApp / e-mail / copier le lien, réglages sous « Avancé »).
+  // Un envoi relit la fiche (le devis passe « envoyé », le funnel avance).
+  const envoi = useEnvoiDevis({
+    leadPhone: (lead.whatsapp || lead.telephone || '').trim(),
+    leadEmail: (lead.email || '').trim(),
+    leadNom: `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim(),
+    onRefresh: () => onDevisChanged?.(),
+  })
+  const [envoiOuvert, setEnvoiOuvert] = useState(false)
+  // Marché du devis : hors résidentiel, ni options 1/2/3 (boîte d'envoi) ni
+  // « Inclure l'étude » (sans effet en commercial / industriel / agricole).
+  const marcheDevis = devisRecord?.mode_installation ?? lead.type_installation ?? null
+  const marcheHorsResidentiel = !!marcheDevis && marcheDevis !== 'residentiel'
+  const devisPourEnvoi = {
+    id: devisId,
+    reference: devisRef || devisRecord?.reference || `Devis_${devisId}`,
+    share_link: (lead.devis || []).find((d) => d.id === devisId)?.share_link ?? null,
+  }
 
   // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
   // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
@@ -591,7 +614,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                       { value: 'onepage', label: '1 page' },
                     ]}
                   />
-                  {pdfMode === 'full' && (
+                  {pdfMode === 'full' && !marcheHorsResidentiel && (
                     <label className="ldp-etude-toggle">
                       <Checkbox
                         checked={includeEtude}
@@ -613,7 +636,13 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                       <Pencil /> Réviser (nouvelle version)
                     </Button>
                   )}
-                  <Button type="button" size="sm"
+                  {devisRecord && devisRecord.is_active !== false && (
+                    <Button type="button" size="sm" data-testid="ldp-envoyer"
+                            onClick={() => setEnvoiOuvert(true)}>
+                      <Send /> Envoyer au client
+                    </Button>
+                  )}
+                  <Button type="button" size="sm" variant="outline"
                           onClick={handleDownload} loading={downloading} disabled={downloading}>
                     {!downloading && <Download />}
                     {downloading ? '…' : 'Télécharger le PDF'}
@@ -669,6 +698,15 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
             </div>
           )}
         </div>
+        {devisId && (
+          <EnvoiDevisDialog
+            devis={devisPourEnvoi}
+            envoi={envoi}
+            ouvert={envoiOuvert}
+            onOuvertChange={setEnvoiOuvert}
+            modeDevis={marcheDevis}
+          />
+        )}
       </SheetContent>
     </Sheet>
   )

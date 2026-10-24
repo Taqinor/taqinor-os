@@ -25,7 +25,7 @@ import { resolveCss } from '../../../test/readCss.mjs'
 
 const {
   apercuFacturerVente, createFromDevis, whatsappDevis, whatsappDevisApercu, shareLinkDevis, getOffresTaillesDevis,
-  getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis, noterLead,
+  getProduits, CATALOGUE_SUBSTITUTIONS, reviserDevis, noterLead, envoyerEmailDevis,
 } = vi.hoisted(() => {
   // LANE E — SUBSTITUTIONS (29/08/2026) — catalogue minimal servant les tests
   // du chargement paresseux ci-dessous (MÊME forme que DevisOffresTailles.
@@ -68,11 +68,13 @@ const {
     reviserDevis: vi.fn(() => Promise.resolve({ data: { id: 99, reference: 'DEV-V2' } })),
     // ALEA50 — « Demander au responsable » : note chatter nommant les postes.
     noterLead: vi.fn(() => Promise.resolve({ data: {} })),
+    // ALEA52 — canal e-mail de la boîte d'envoi (QJ14).
+    envoyerEmailDevis: vi.fn(() => Promise.resolve({ data: { statut: 'envoye' } })),
   }
 })
 vi.mock('../../../api/ventesApi', async () => ({
   default: {
-    apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis,
+    apercuFacturerVente, shareLinkDevis, getOffresTaillesDevis, reviserDevis, envoyerEmailDevis,
     ...(await import('../../../test/mocksVentesEcrans.js')).gestesFactureVente(),
   },
 }))
@@ -753,9 +755,13 @@ const SECTIONS_SEULES = {
   economies: true, jour_type: true, gammes: true,
 }
 const TOUTES_SECTIONS = { ...SECTIONS_SEULES, taille_eco: true, taille_max: true }
-const ouvrirEnvoi = (user) => user.click(
-  screen.getByRole('button', { name: /Envoyer au client/ }),
-)
+// ALEA52 — la boîte d'envoi montre les trois canaux d'abord ; niveau, OTP,
+// sections et options 1/2/3 vivent sous « Avancé » (replié par défaut) :
+// `avance` (vrai par défaut) déplie ce panneau pour les tests de réglages.
+const ouvrirEnvoi = async (user, { avance = true } = {}) => {
+  await user.click(screen.getByRole('button', { name: /Envoyer au client/ }))
+  if (avance) await user.click(screen.getByRole('button', { name: /Avancé/ }))
+}
 
 describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dialogue d’envoi)', () => {
   const devis1 = {
@@ -774,7 +780,7 @@ describe('L5 — Page client / WhatsApp / Aperçu interne (par devis, via le dia
     })
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     // QJ-FUNNEL (09/09/2026) — copier le lien = l'ENVOYER : le POST porte
     // `envoi: true` (backend : devis « envoyé » + funnel « Devis envoyé »).
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
@@ -913,7 +919,7 @@ describe('L-INTPREV — aperçu interne de la page client (sans notification)', 
     renderTab({ state: leadState({ telephone: '0612345678', devis: [devis1] }) })
     await ouvrirEnvoi(user)
 
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith('https://taqinor.ma/proposition/karim/tok-abc'))
 
     await user.click(screen.getByRole('button', {
@@ -951,7 +957,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
       screen.getByRole('combobox', { name: /Niveau de la page client de DEV-1/ }),
       'confiance',
     )
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
       1, { envoi: true, niveau: 'confiance', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
@@ -962,7 +968,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('checkbox', { name: /Exiger un code de lecture pour la page client de DEV-1/ }))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
       1, { envoi: true, niveau: 'standard', otp_lecture: true, sections: TOUTES_SECTIONS },
     ))
@@ -1006,7 +1012,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
     renderTab({ state: leadState({ devis: [devis1] }) })
     expect(screen.queryByTitle(/Le lien reste le même/)).not.toBeInTheDocument()
     await ouvrirEnvoi(user)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     expect(await screen.findByTitle(/Le lien reste le même/)).toHaveTextContent('Standard')
   })
 
@@ -1025,7 +1031,7 @@ describe('L-NIV-UI — niveau de la page client (standard/confiance) + OTP', () 
       })
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await screen.findByTitle(/Le lien reste le même/)
 
     await user.selectOptions(
@@ -1115,7 +1121,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('checkbox', { name: /^Calepinage 3D — page client de DEV-1/ }))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
       envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, roof3d: false },
@@ -1128,7 +1134,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     await ouvrirEnvoi(user)
     await user.click(screen.getByRole('checkbox', { name: /^PDF téléchargeable — page client de DEV-1/ }))
     await user.click(screen.getByRole('checkbox', { name: /^Étude bancable — page client de DEV-1/ }))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
       envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, pdf: false, bankable: false },
@@ -1142,7 +1148,7 @@ describe('L-SECT — dialogue « Envoyer au client » : les sections servies', (
     const box = screen.getByRole('checkbox', { name: /^Schéma unifilaire — page client de DEV-1/ })
     await user.click(box)
     await user.click(box)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
       1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
@@ -1278,7 +1284,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(radio('1'))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
       envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, taille_eco: false, taille_max: false },
@@ -1290,7 +1296,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
     await user.click(radio('2'))
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(1, {
       envoi: true, niveau: 'standard', otp_lecture: false,
       sections: { ...TOUTES_SECTIONS, taille_eco: false },
@@ -1301,7 +1307,7 @@ describe('LANE E — curseur 1/2/3 options + cases Éco/Recommandé/Max', () => 
     const user = userEvent.setup()
     renderTab({ state: leadState({ devis: [devis1] }) })
     await ouvrirEnvoi(user)
-    await user.click(screen.getByRole('button', { name: /Page client/ }))
+    await user.click(screen.getByRole('button', { name: /Copier le lien/ }))
     await waitFor(() => expect(shareLinkDevis).toHaveBeenCalledWith(
       1, { envoi: true, niveau: 'standard', otp_lecture: false, sections: TOUTES_SECTIONS },
     ))
@@ -1606,5 +1612,69 @@ describe('QJR534 — cartes devis : Modifier / Réviser', () => {
     renderTab({ state: leadState({ devis: [carte('exemple_remplace')] }) })
     expect(screen.queryByRole('button', { name: /^Modifier$/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /Réviser/ })).toBeNull()
+  })
+})
+
+/* ALEA52 — UNE seule boîte « Envoyer au client » : trois canaux (WhatsApp,
+   e-mail, copier le lien) d'abord ; niveau, code de lecture, sections et options
+   1/2/3 sous « Avancé » ; pas d'options 1/2/3 hors résidentiel. */
+describe('ALEA52 — boîte d’envoi : canaux d’abord, réglages sous « Avancé »', () => {
+  const devis1 = {
+    id: 1, reference: 'DEV-1', statut: 'brouillon', total_ttc: '5000',
+    date_creation: '2026-01-01', chantier: null,
+  }
+
+  it('les trois canaux sont visibles, les réglages sont repliés', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ email: 'karim@example.com', devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    expect(screen.getByRole('button', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /E-mail/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Copier le lien/ })).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Niveau de la page client/)).toBeNull()
+    expect(screen.queryByText(/Exiger un code de lecture/)).toBeNull()
+    expect(screen.queryByText('Ce que le client reçoit :')).toBeNull()
+    expect(screen.queryByText('Options présentées au client :')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Avancé/ }))
+    expect(screen.getByLabelText(/Niveau de la page client/)).toBeInTheDocument()
+    expect(screen.getByText('Ce que le client reçoit :')).toBeInTheDocument()
+    expect(screen.getByText('Options présentées au client :')).toBeInTheDocument()
+  })
+
+  it('« E-mail » envoie la proposition à l’adresse de la fiche et recharge la fiche', async () => {
+    const user = userEvent.setup()
+    const { onAction } = renderTab({ state: leadState({ email: 'karim@example.com', devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    await user.click(screen.getByRole('button', { name: /E-mail/ }))
+    await waitFor(() => expect(envoyerEmailDevis).toHaveBeenCalledWith(1, { to_email: 'karim@example.com' }))
+    expect(await screen.findByText('E-mail envoyé à karim@example.com.')).toBeInTheDocument()
+    expect(onAction).toHaveBeenCalledWith('refresh')
+  })
+
+  it('« E-mail » désactivé sans adresse sur la fiche', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ email: '', devis: [devis1] }) })
+    await ouvrirEnvoi(user, { avance: false })
+    expect(screen.getByRole('button', { name: /E-mail/ })).toBeDisabled()
+  })
+
+  it('devis commercial / industriel : ni curseur 1/2/3, ni Éco/Max, ni « Modifier les options »', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ type_installation: 'industriel', devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    // Les réglages de la page client restent là…
+    expect(screen.getByLabelText(/Niveau de la page client/)).toBeInTheDocument()
+    expect(screen.getByText('Ce que le client reçoit :')).toBeInTheDocument()
+    // …mais les options résidentielles disparaissent.
+    expect(screen.queryByText('Options présentées au client :')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Modifier les options…/ })).toBeNull()
+    expect(screen.queryByLabelText(/Taille Éco/)).toBeNull()
+  })
+
+  it('devis résidentiel : les options 1/2/3 sont proposées', async () => {
+    const user = userEvent.setup()
+    renderTab({ state: leadState({ type_installation: 'residentiel', devis: [devis1] }) })
+    await ouvrirEnvoi(user)
+    expect(screen.getByText('Options présentées au client :')).toBeInTheDocument()
   })
 })
