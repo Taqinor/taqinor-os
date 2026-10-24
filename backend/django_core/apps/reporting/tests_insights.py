@@ -115,6 +115,14 @@ class TestAuditLog(InsightsBase):
         self.assertIn('limit', resp.data)
         self.assertEqual(
             self.api.get(f'{BASE}/audit-log/?limit=5').status_code, 200)
+        # api-fuzz full 24/10 : ``limit`` vide et ``since`` illisible = 400
+        # (ils retombaient en silence sur le défaut) ; ``since`` vide = 200.
+        for requete in ('?limit=', '?since=abc', '?since=2026-1-5',
+                        '?limit=5&limit=6'):
+            resp = self.api.get(f'{BASE}/audit-log/{requete}')
+            self.assertEqual(resp.status_code, 400, (requete, resp.data))
+        self.assertEqual(
+            self.api.get(f'{BASE}/audit-log/?since=').status_code, 200)
         vide = self.api.get(f'{BASE}/cf-group-by/?module=&code=')
         self.assertEqual(vide.status_code, 400)
 

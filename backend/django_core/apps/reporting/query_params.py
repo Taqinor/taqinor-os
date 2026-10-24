@@ -21,20 +21,45 @@ _ISO_STRICT = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 DATE_OU_VIDE = {'oneOf': [
     {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
 # ``id_param`` refuse 0, les négatifs et ``abc`` (400 nommant le paramètre, au
-# lieu d'un 500 de l'ORM) : le schéma annonce ``minimum: 1``.
-IDENTIFIANT = {'type': 'integer', 'minimum': 1}
+# lieu d'un 500 de l'ORM) : le schéma annonce ``minimum: 1`` — et (api-fuzz
+# full 24/10) ``maximum`` : au-delà d'un entier SQL, la base levait (500).
+ENTIER_MAX = 2147483647
+IDENTIFIANT = {'type': 'integer', 'minimum': 1, 'maximum': ENTIER_MAX}
+
+
+def valeur_unique(request, nom):
+    """Valeur brute du paramètre ``nom`` (``None`` si absent). api-fuzz full
+    24/10 — le schéma publie UNE valeur : un paramètre répété (``?to=a&to=b``)
+    était lu sur sa dernière occurrence ; il répond 400 nommé."""
+    valeurs = request.query_params.getlist(nom)
+    if len(valeurs) > 1:
+        raise ValidationError(
+            {nom: f"Le paramètre « {nom} » ne doit figurer qu'une fois."})
+    return valeurs[0] if valeurs else None
 
 
 def id_param(request, nom):
     """Identifiant entier STRICT du paramètre ``nom`` : ``None`` si absent ou
-    vide ; illisible ou < 1 → 400 nommant le paramètre."""
-    return entier_ou_400(request.query_params.get(nom), nom, mini=1)
+    vide ; illisible, < 1 ou > ``ENTIER_MAX`` → 400 nommant le paramètre."""
+    valeur = entier_ou_400(valeur_unique(request, nom), nom, mini=1)
+    if valeur is not None and valeur > ENTIER_MAX:
+        raise ValidationError({nom: 'Valeur hors plage.'})
+    return valeur
+
+
+def entier_param(request, nom, defaut):
+    """Entier STRICT publié ``type: integer`` : absent → ``defaut`` ; vide,
+    répété ou illisible → 400 (``?limit=`` retombait sur le défaut)."""
+    brut = valeur_unique(request, nom)
+    if brut is not None and not brut.strip():
+        raise ValidationError({nom: 'Entier attendu.'})
+    return entier_ou_400(brut, nom, defaut=defaut)
 
 
 def date_param(request, nom):
     """Chaîne ISO (inchangée) du paramètre ``nom``, ``None`` si absent ou
-    vide. Valeur non conforme ``AAAA-MM-JJ`` → 400."""
-    brut = request.query_params.get(nom)
+    vide. Valeur non conforme ``AAAA-MM-JJ`` ou répétée → 400."""
+    brut = valeur_unique(request, nom)
     if brut is None or str(brut).strip() == '':
         return None
     brut = str(brut).strip()

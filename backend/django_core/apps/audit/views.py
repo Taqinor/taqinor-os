@@ -63,6 +63,17 @@ LIMITE = OpenApiParameter(
     description='1 à 500 (défaut 100) ; au-delà de 500, plafonné à 500.')
 
 
+def _limite(params):
+    """``limit`` STRICT (``LIMITE``) : absent → 100 ; vide, répété ou
+    illisible → 400 (``?limit=`` retombait en silence sur le défaut, et la
+    dernière occurrence d'un ``limit`` répété était lue)."""
+    valeurs = params.getlist('limit')
+    if len(valeurs) > 1 or (valeurs and not valeurs[0].strip()):
+        raise serializers.ValidationError(
+            {'limit': ['Un seul entier attendu.']})
+    return entier_ou_400(valeurs[0] if valeurs else None, 'limit', 100, 1, 500)
+
+
 def _company_qs(request):
     qs = AuditLog.objects.select_related('user', 'content_type')
     user = request.user
@@ -102,6 +113,11 @@ def _apply_filters(qs, params):
             date_to, datetime.min.time(), CASABLANCA) + timedelta(days=1)
         qs = qs.filter(timestamp__lt=end)
     search = (params.get('search') or '').strip()
+    if chr(0) in search:
+        # api-fuzz full 24/10 — même règle que ``SearchFilter`` (core) : un
+        # terme porteur d'un caractère nul ne désigne AUCUNE ligne (aucun texte
+        # stocké n'en contient) → liste vide ; il levait PostgreSQL (500).
+        return qs.none()
     if search:
         from django.db.models import Q
         qs = qs.filter(
@@ -221,6 +237,11 @@ def _apply_filters_no_range(qs, params):
     if object_id:
         qs = qs.filter(object_id=str(object_id))
     search = (params.get('search') or '').strip()
+    if chr(0) in search:
+        # api-fuzz full 24/10 — même règle que ``SearchFilter`` (core) : un
+        # terme porteur d'un caractère nul ne désigne AUCUNE ligne (aucun texte
+        # stocké n'en contient) → liste vide ; il levait PostgreSQL (500).
+        return qs.none()
     if search:
         from django.db.models import Q
         qs = qs.filter(
@@ -321,8 +342,7 @@ def security_events(request):
         qs = qs.filter(action__in=[a for a in requested if a in allowed])
     else:
         qs = qs.filter(action__in=list(allowed))
-    limit = entier_ou_400(
-        request.query_params.get('limit'), 'limit', 100, 1, 500)
+    limit = _limite(request.query_params)
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
 
@@ -352,8 +372,7 @@ def portal_access_events(request):
     sécurité."""
     qs = _apply_filters(_company_qs(request), request.query_params)
     qs = qs.filter(via_portail=True)
-    limit = entier_ou_400(
-        request.query_params.get('limit'), 'limit', 100, 1, 500)
+    limit = _limite(request.query_params)
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
 
@@ -422,8 +441,7 @@ def object_history(request, content_type, object_id):
     qs = (_company_qs(request)
           .filter(content_type=ct, object_id=str(object_id))
           .order_by('-timestamp'))
-    limit = entier_ou_400(
-        request.query_params.get('limit'), 'limit', 100, 1, 500)
+    limit = _limite(request.query_params)
     data = AuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
 

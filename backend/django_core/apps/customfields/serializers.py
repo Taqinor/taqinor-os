@@ -97,6 +97,52 @@ def corps_definition_resserre():
     ]}
 
 
+class ConditionsChamp(ObjetJSON):
+    """XPLT15 — ``conditions`` d'une définition : objet dont les SEULES clés
+    sont ``CONDITION_KEYS``, chacune un arbre ``core.rules``. api-fuzz full
+    24/10 — publié ``type: object`` libre, ``{"": …}`` était « conforme » puis
+    refusé (« Clé(s) inconnue(s) ») : la forme exacte est publiée (clés
+    fermées, arbre ``schema_arbre_conditions``) et le MÊME prédicat
+    (``arbre_conditions_valide``) l'applique, avant la normalisation des
+    caractères nuls d'``ObjetJSON``."""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+
+        from core.champs_stricts import schema_arbre_conditions
+
+        super().__init__(**kwargs)
+        schema = {
+            'type': 'object', 'additionalProperties': False,
+            'properties': {
+                cle: schema_arbre_conditions() for cle in CONDITION_KEYS},
+        }
+        if self.allow_null:
+            schema['nullable'] = True
+        set_override(self, 'field', schema)
+
+    def to_internal_value(self, data):
+        from core.champs_stricts import arbre_conditions_valide
+        from core.rules import validate_condition_group
+
+        if isinstance(data, dict):
+            inconnues = set(data) - set(CONDITION_KEYS)
+            if inconnues:
+                raise serializers.ValidationError(
+                    'Clé(s) inconnue(s) : '
+                    f'{", ".join(sorted(map(repr, inconnues)))}.')
+            for cle, arbre in data.items():
+                erreurs = validate_condition_group(arbre)
+                if erreurs:
+                    raise serializers.ValidationError(
+                        f'{cle} : {"; ".join(erreurs)}')
+                if not arbre_conditions_valide(arbre):
+                    raise serializers.ValidationError(
+                        f'{cle} : arbre de conditions non conforme au schéma '
+                        'publié.')
+        return super().to_internal_value(data)
+
+
 class ModuleChamp(serializers.CharField):
     """ENF11 (api-fuzz) — ``module`` d'une définition de champ : chaîne libre
     côté DRF (un objet personnalisé pose ``custom:<code>``), mais le schéma
@@ -140,7 +186,7 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
     module = ModuleChamp(max_length=20)
     # ``JSONField`` publié `{}` (tout) alors que `validate` exige un objet :
     # `conditions: 1` était « conforme » puis refusé. Objet JSON ou null.
-    conditions = ObjetJSON(required=False, allow_null=True)
+    conditions = ConditionsChamp(required=False, allow_null=True)
     options = OptionsChamp(required=False, allow_null=True)
     rollup_config = ObjetJSON(required=False, allow_null=True)
 
