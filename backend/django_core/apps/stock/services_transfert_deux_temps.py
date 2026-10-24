@@ -101,8 +101,8 @@ def expedier_transfert(transfert, user):
         if not source.is_principal:
             ligne, _ = StockEmplacement.objects.select_for_update(
             ).get_or_create(
-                produit=transfert.produit, emplacement=source,
-                defaults={'company': transfert.company, 'quantite': 0})
+                company=transfert.company, produit=transfert.produit, emplacement=source,
+                defaults={'quantite': 0})
             if ligne.quantite < transfert.quantite:
                 raise EtatIncompatible(
                     f'Quantité insuffisante à « {source.nom} » '
@@ -176,8 +176,8 @@ def receptionner_transfert(transfert, user, *, quantite_recue=None):
             # écrasait l'incrément de la première.
             ligne, _ = StockEmplacement.objects.select_for_update(
             ).get_or_create(
-                produit=transfert.produit, emplacement=destination,
-                defaults={'company': transfert.company, 'quantite': 0})
+                company=transfert.company, produit=transfert.produit, emplacement=destination,
+                defaults={'quantite': 0})
             ligne.quantite += quantite_recue
             ligne.save(update_fields=['quantite'])
 

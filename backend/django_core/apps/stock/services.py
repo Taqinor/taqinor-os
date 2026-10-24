@@ -440,14 +440,14 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
 
         if not source.is_principal:
             se, _ = StockEmplacement.objects.select_for_update().get_or_create(
-                produit=produit, emplacement=source,
-                defaults={'company': company, 'quantite': 0})
+                company=company, produit=produit, emplacement=source,
+                defaults={'quantite': 0})
             se.quantite -= quantite
             se.save(update_fields=['quantite'])
         if not destination.is_principal:
             se, _ = StockEmplacement.objects.get_or_create(
-                produit=produit, emplacement=destination,
-                defaults={'company': company, 'quantite': 0})
+                company=company, produit=produit, emplacement=destination,
+                defaults={'quantite': 0})
             se.quantite += quantite
             se.save(update_fields=['quantite'])
 
@@ -2776,8 +2776,8 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
             and not emplacement_source.is_principal
             and type_mouvement == MouvementStock.TypeMouvement.SORTIE):
         se, _created = StockEmplacement.objects.select_for_update().get_or_create(
-            produit=produit, emplacement=emplacement_source,
-            defaults={'company': company, 'quantite': 0})
+            company=company, produit=produit, emplacement=emplacement_source,
+            defaults={'quantite': 0})
         se.quantite = max(se.quantite - quantite, 0)
         se.save(update_fields=['quantite'])
     _appliquer_casiers_mouvement(company, produit, quantite, mouvement)
@@ -3100,8 +3100,8 @@ def rebuter_produit(
             motif_rebut=motif, created_by=user)
         if emplacement is not None and not emplacement.is_principal:
             se, _ = StockEmplacement.objects.select_for_update().get_or_create(
-                produit=p, emplacement=emplacement,
-                defaults={'company': company, 'quantite': 0})
+                company=company, produit=p, emplacement=emplacement,
+                defaults={'quantite': 0})
             se.quantite = max(se.quantite - quantite, 0)
             se.save(update_fields=['quantite'])
     return {'mouvement': mouvement, 'valeur_perdue': valeur_perdue}
@@ -5168,8 +5168,8 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
             if emplacement_source is not None and \
                     not emplacement_source.is_principal:
                 se, _ = StockEmplacement.objects.select_for_update().get_or_create(
-                    produit=p, emplacement=emplacement_source,
-                    defaults={'company': company, 'quantite': 0})
+                    company=company, produit=p, emplacement=emplacement_source,
+                    defaults={'quantite': 0})
                 se.quantite = max(se.quantite - qte_conso, 0)
                 se.save(update_fields=['quantite'])
 
@@ -5189,8 +5189,8 @@ def consommer_et_produire_assemblage(*, company, kit, composants, produit_compos
         if emplacement_destination is not None and \
                 not emplacement_destination.is_principal:
             se, _ = StockEmplacement.objects.select_for_update().get_or_create(
-                produit=composite, emplacement=emplacement_destination,
-                defaults={'company': company, 'quantite': 0})
+                company=company, produit=composite, emplacement=emplacement_destination,
+                defaults={'quantite': 0})
             se.quantite += quantite_produite
             se.save(update_fields=['quantite'])
 
@@ -5260,8 +5260,8 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
         mouvements.append(mvt_sortie)
         if emplacement_source is not None and not emplacement_source.is_principal:
             se, _ = StockEmplacement.objects.select_for_update().get_or_create(
-                produit=composite, emplacement=emplacement_source,
-                defaults={'company': company, 'quantite': 0})
+                company=company, produit=composite, emplacement=emplacement_source,
+                defaults={'quantite': 0})
             se.quantite = max(se.quantite - qte_sortie, 0)
             se.save(update_fields=['quantite'])
 
@@ -5282,8 +5282,8 @@ def demonter_composite(*, company, kit, quantite_demontee, lignes_recuperation,
             if emplacement_destination is not None and \
                     not emplacement_destination.is_principal:
                 se, _ = StockEmplacement.objects.select_for_update().get_or_create(
-                    produit=p, emplacement=emplacement_destination,
-                    defaults={'company': company, 'quantite': 0})
+                    company=company, produit=p, emplacement=emplacement_destination,
+                    defaults={'quantite': 0})
                 se.quantite += qte_recup
                 se.save(update_fields=['quantite'])
 
