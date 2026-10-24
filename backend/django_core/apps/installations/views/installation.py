@@ -22,6 +22,7 @@ from ..serializers import (
 from .. import energy_report
 from ..services import create_installation_from_devis, ensure_checklist_items
 from . import _openapi as oa
+from .intervention import dispatch_prefetches
 from apps.records.serializers import AttachmentSerializer
 from ..serializers_commissioning import (
     CommissioningRecordSerializer, HandoverPackSerializer,
@@ -117,12 +118,19 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         'client', 'devis', 'lead', 'technicien_responsable',
     ).prefetch_related(
         # F3 — l'InterventionSerializer imbriqué lit l'installation liée (réf,
-        # client, devis), la camionnette et l'équipe : on précharge pour éviter
-        # un N+1 sur la liste des chantiers.
+        # client, devis), la camionnette et le technicien : on précharge pour
+        # éviter un N+1 sur la liste des chantiers.
         'interventions__installation__client',
         'interventions__installation__devis',
         'interventions__camionnette',
-        'interventions__equipe',
+        'interventions__technicien',
+        # ERR-APRF37-INTERVENTIONS-IMBRIQUEES — idem pour ce que le même
+        # sérialiseur lit par intervention : sa société (shot-list), sa
+        # préparation (+ lignes), ses réserves ouvertes et son équipe, via les
+        # préchargements des écrans de dispatch. Les photos se chargent d'un
+        # coup dans `paginate_queryset`.
+        'interventions__company',
+        *dispatch_prefetches('interventions__'),
         # Parc — l'état de garantie agrégé (parc_garantie_etat) lit les
         # équipements posés du système : on précharge pour éviter un N+1.
         'equipements',
@@ -142,6 +150,18 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     ]
     ordering_fields = ['reference', 'date_creation', 'date_pose_prevue', 'statut']
     ordering = ['-date_creation']
+
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        if page is not None and self.action == 'list':
+            # ERR-APRF37-INTERVENTIONS-IMBRIQUEES — pièces jointes de TOUTES
+            # les interventions de la page en une requête (la shot-list lit
+            # les photos de chacune) ; `page` est déjà une liste évaluée.
+            from ..field_services import precharger_photos
+            precharger_photos(
+                interv for chantier in page
+                for interv in chantier.interventions.all())
+        return page
 
     def get_queryset(self):
         qs = super().get_queryset()
