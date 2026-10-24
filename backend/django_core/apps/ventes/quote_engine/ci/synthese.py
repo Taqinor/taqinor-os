@@ -838,6 +838,12 @@ def synthese_ci(data):
     if segment == "industriel":
         from .mentions import decarbonation_ci
         synthese["decarbonation"] = decarbonation_ci(data)
+    # AMOT100 (D-ACI-19=a) — CO₂ évité SEULEMENT sur le facteur réglé par la
+    # société et le bilan de CETTE installation (AMOT62).
+    from .mentions import co2_evite
+    co2 = co2_evite(data) if etude_coherente else None
+    if co2 is not None:
+        synthese.setdefault("decarbonation", {})["co2_evite"] = co2
     # CIQ314 — services : seulement ce que le devis porte (D-CIQ-12).
     synthese["services"] = _services(data)
     synthese["echeancier"] = _echeancier(data, option)

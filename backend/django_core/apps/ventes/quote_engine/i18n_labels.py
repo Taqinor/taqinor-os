@@ -1074,6 +1074,13 @@ LIBELLES = {
     'ci_prix_a_renseigner': {'fr': 'prix à renseigner',
                              'en': 'price to be set',
                              'ar': 'السعر في انتظار التحديد'},
+    # AMOT100 (D-ACI-19=a) — CO₂ évité sur le facteur réglé par la société.
+    'ci_co2_evite': {'fr': 'CO₂ évité / an', 'en': 'CO₂ avoided / yr',
+                     'ar': 'ثاني أكسيد الكربون المُتجنَّب / سنة'},
+    'ci_co2_facteur': {
+        'fr': 'facteur réseau {g} gCO₂/kWh — {source}',
+        'en': 'grid factor {g} gCO₂/kWh — {source}',
+        'ar': 'معامل الشبكة {g} غرام CO₂/كيلوواط ساعة — {source}'},
     # AMOT98 (D-ACI-17=a) — l'O&M sans prix, côté client.
     'ci_tarif_sur_demande': {'fr': 'tarif sur demande',
                              'en': 'price on request',

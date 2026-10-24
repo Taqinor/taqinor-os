@@ -1066,3 +1066,76 @@ class TestAmot98TarifSurDemande(SimpleTestCase):
                 for interne in ("prix à renseigner", "price to be set",
                                 "السعر في انتظار التحديد"):
                     self.assertNotIn(interne, html)
+
+
+class TestAmot100Co2Evite(SimpleTestCase):
+    """AMOT100 (D-ACI-19=a) — « CO₂ évité » SEULEMENT sur le facteur réseau
+    réglé par la société (valeur + source) : kWh autoconsommés + injectés
+    valorisés du bilan × facteur, servis par ``synthese_ci`` et imprimés avec
+    la source ; facteur vide ⇒ aucune mention (CIQ344 pour ce cas)."""
+
+    FACTEUR = {"g_kwh": 700.5, "source": "Inventaire réseau exemple 2025",
+               "date": "2026-01-15"}
+
+    def _data(self, facteur=None, langue=None):
+        data = _data_ci(langue=langue)
+        if facteur is not None:
+            data["facteur_co2_reseau"] = facteur
+        return data
+
+    def test_facteur_regle_tuile_servie_avec_sa_source(self):
+        data = self._data(dict(self.FACTEUR))
+        bilan = data["etude"]["etude_ci"]["bilan"]
+        kwh = bilan["autoconso_kwh"] + (bilan.get("injecte_valorise_kwh") or 0)
+        co2 = synthese_ci(data)["decarbonation"]["co2_evite"]
+        self.assertEqual(co2["t_an"], round(kwh * 700.5 / 1e6, 1))
+        self.assertEqual(co2["source"], self.FACTEUR["source"])
+        p1 = _texte_ci(_pages_ci(data)[1])
+        self.assertIn(f"≈ {co2['t_an']:g} t".replace(".", ","), p1)
+        self.assertIn("CO₂ évité / an", p1)
+        self.assertIn("facteur réseau 700,5 gCO₂/kWh — Inventaire réseau "
+                      "exemple 2025", p1)
+
+    def test_sans_facteur_ou_sans_source_aucune_mention(self):
+        for facteur in (None, dict(self.FACTEUR, source=""),
+                        dict(self.FACTEUR, g_kwh=None)):
+            with self.subTest(facteur=facteur):
+                data = self._data(facteur)
+                self.assertNotIn("decarbonation", synthese_ci(data))
+                html = "".join(_pages_ci(data))
+                self.assertNotIn("CO₂ évité", html)
+                self.assertNotIn("gCO₂", html)
+
+    def test_industriel_tuile_servie(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["etude"] = dict(data["etude"], etude_ci=copy.deepcopy(_ETUDE_CI))
+        data["facteur_co2_reseau"] = dict(self.FACTEUR)
+        data = etude_ci_au_kwc_servi(data)
+        synthese = synthese_ci(data)
+        self.assertEqual(set(synthese["decarbonation"]),
+                         {"cbam", "textes", "co2_evite"})
+        p1 = i_render.build_html(i_rend._augment(data)).split(
+            'class="page"')[1]
+        self.assertIn("CO₂ évité / an", _texte_ci(p1))
+
+    def test_anglais(self):
+        p1 = _texte_ci(_pages_ci(self._data(dict(self.FACTEUR),
+                                            langue="en"))[1])
+        self.assertIn("CO₂ avoided / yr", p1)
+        self.assertIn("grid factor", p1)
+
+    def test_regles_d_origine_jamais_de_facteur(self):
+        from types import SimpleNamespace
+
+        from apps.ventes.quote_engine import reglages_societe
+        for regles, attendu in ((1, False), (2, True)):
+            with self.subTest(regles=regles), patch.object(
+                    reglages_societe, "facteur_co2_societe",
+                    return_value=dict(self.FACTEUR)):
+                data = {}
+                reglages_societe.poser_services_ci(
+                    data, ([], None), SimpleNamespace(regles_calcul=regles))
+                self.assertEqual("facteur_co2_reseau" in data, attendu)

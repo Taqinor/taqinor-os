@@ -421,7 +421,25 @@ def tuiles_taux(d, cle, kpi):
             d, libelle(d, "ci_part_conso_couverte",
                        "Part de votre consommation couverte"),
             definitions.get("couverture")), "couverture_pct"))
-    return tuiles
+    return tuiles + tuile_co2(d, cle, kpi)
+
+
+def tuile_co2(d, cle, kpi):
+    """AMOT100 (D-ACI-19=a) — la tuile « CO₂ évité / an » : la tonne SERVIE
+    (``synthese_ci.decarbonation.co2_evite``) et la source du facteur réglé
+    par la société ; [] sans facteur réglé (aucune mention)."""
+    co2 = ((d.get(f"{cle}_synthese") or {}).get("decarbonation") or {}).get(
+        "co2_evite")
+    if not isinstance(co2, dict) or co2.get("t_an") is None:
+        return []
+    facteur = libelle(
+        d, "ci_co2_facteur", "facteur réseau {g} gCO₂/kWh — {source}",
+        g=f"{co2['facteur_g_kwh']:g}".replace(".", ","),
+        source=html.escape(str(co2.get("source") or ""), quote=False))
+    return [kpi(f"≈&#160;{co2['t_an']:g}".replace(".", ","), "&nbsp;t",
+                libelle(d, "ci_co2_evite", "CO₂ évité / an")
+                + f'<div style="font-size:6.2pt;margin-top:1px;">{facteur}'
+                '</div>')]
 
 
 def _avec_definition(d, libelle_tuile, definition):
