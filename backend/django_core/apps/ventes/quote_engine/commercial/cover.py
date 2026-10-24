@@ -168,12 +168,7 @@ def build(ctx):
   border-radius:12px;background:linear-gradient(100deg,{green_bg},#fff 72%);
   padding:10px 14px;font-size:8.5pt;color:{ink};line-height:1.45;}}
 .c1c-note b{{color:{navy};}}
-.c1c-inv{{margin-top:12px;display:table;width:100%;border:1px solid {line};
-  border-radius:12px;background:{wash};padding:11px 16px;}}
-.c1c-inv-l{{display:table-cell;vertical-align:middle;font-size:8.5pt;color:{muted};}}
-.c1c-inv-v{{display:table-cell;vertical-align:middle;text-align:right;
-  font-family:{f_display};font-size:20pt;color:{navy};}}
-.c1c-inv-v span{{font-size:10pt;color:{muted};}}
+{ci_couverture.css_investissement("c1c", (line, wash, muted, navy, ink), f_display, 20, 12, "11px 16px")}
 </style>
 """
 

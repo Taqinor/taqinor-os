@@ -296,33 +296,55 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
     if base in ("ht", "deux") and ht is not None:
         ht_txt = fmt_mad(ht)
         if base == "ht":
-            titre = titre_investissement(d, synthese, "ht")
-            return (
-                f'<div class="{prefixe}-inv">\n'
-                f'      <div class="{prefixe}-inv-l">{titre}</div>\n'
-                f'      <div class="{prefixe}-inv-v">{ht_txt}<span>&nbsp;MAD'
-                f' {l_ht}</span></div>{ancre("total_ht", ht_txt)}\n'
-                f'      <div style="font-size:7.5pt;margin-top:2px;">{l_soit} '
-                f'{ttc_txt}&nbsp;MAD {l_ttc}{ancre("total_affiche", ttc_txt)}'
-                f' · {note_tva}</div>\n'
-                f'    </div>')
-        titre = titre_investissement(d, synthese, "deux")
-        return (
-            f'<div class="{prefixe}-inv">\n'
-            f'      <div class="{prefixe}-inv-l">{titre}</div>\n'
-            f'      <div class="{prefixe}-inv-v">{ttc_txt}<span>&nbsp;MAD'
-            f' {l_ttc}</span></div>{ancre("total_affiche", ttc_txt)}\n'
-            f'      <div style="font-size:7.5pt;margin-top:2px;">{l_soit} '
-            f'{ht_txt}&nbsp;MAD {l_ht}{ancre("total_ht", ht_txt)} · '
-            f'{note_tva}</div>\n'
-            f'    </div>')
-    titre = titre_investissement(d, synthese, "ttc")
+            return _html_investissement(
+                prefixe, titre_investissement(d, synthese, "ht"), ht_txt,
+                l_ht, ancre("total_ht", ht_txt),
+                f'{l_soit} {ttc_txt}&nbsp;MAD&nbsp;{l_ttc}'
+                f'{ancre("total_affiche", ttc_txt)} · {note_tva}')
+        return _html_investissement(
+            prefixe, titre_investissement(d, synthese, "deux"), ttc_txt,
+            l_ttc, ancre("total_affiche", ttc_txt),
+            f'{l_soit} {ht_txt}&nbsp;MAD&nbsp;{l_ht}'
+            f'{ancre("total_ht", ht_txt)} · {note_tva}')
+    return _html_investissement(
+        prefixe, titre_investissement(d, synthese, "ttc"), ttc_txt, "",
+        ancre("total_affiche", ttc_txt))
+
+
+def _html_investissement(prefixe, titre, montant, base, ancre_html, note=""):
+    """AMOT87 — le titre et le montant sur UNE rangée (montant et unité
+    insécables : jamais « TTC » seul à la ligne), la note « soit … · TVA
+    récupérable… » sur sa PROPRE rangée pleine largeur sous le montant —
+    plus jamais une cellule anonyme qui écrase le montant."""
+    unite = f"&nbsp;{base}" if base else ""
+    note_html = (f'\n      <div class="{prefixe}-inv-n">{note}</div>'
+                 if note else "")
     return (
         f'<div class="{prefixe}-inv">\n'
-        f'      <div class="{prefixe}-inv-l">{titre}</div>\n'
-        f'      <div class="{prefixe}-inv-v">{ttc_txt}<span>&nbsp;MAD</span>'
-        f'</div>{ancre("total_affiche", ttc_txt)}\n'
+        f'      <div class="{prefixe}-inv-r">'
+        f'<div class="{prefixe}-inv-l">{titre}</div>'
+        f'<div class="{prefixe}-inv-v">{montant}<span>&nbsp;MAD{unite}'
+        f'</span></div></div>{ancre_html}{note_html}\n'
         f'    </div>')
+
+
+def css_investissement(prefixe, couleurs, police, taille_pt, marge_px,
+                       padding):
+    """AMOT87 — la feuille du bloc investissement, UNE définition pour les
+    deux couvertures. ``couleurs`` = (line, wash, muted, navy, ink)."""
+    line, wash, muted, navy, ink = couleurs
+    return (
+        f".{prefixe}-inv{{margin-top:{marge_px}px;border:1px solid {line};"
+        f"border-radius:12px;background:{wash};padding:{padding};}}"
+        f".{prefixe}-inv-r{{display:table;width:100%;}}"
+        f".{prefixe}-inv-l{{display:table-cell;vertical-align:middle;"
+        f"font-size:8.5pt;color:{muted};padding-right:10px;}}"
+        f".{prefixe}-inv-v{{display:table-cell;vertical-align:middle;"
+        f"text-align:right;white-space:nowrap;font-family:{police};"
+        f"font-size:{taille_pt}pt;color:{navy};}}"
+        f".{prefixe}-inv-v span{{font-size:10pt;color:{muted};}}"
+        f".{prefixe}-inv-n{{margin-top:4px;font-size:7.5pt;color:{ink};"
+        f"line-height:1.35;}}")
 
 
 def tuiles_taux(d, cle, kpi):

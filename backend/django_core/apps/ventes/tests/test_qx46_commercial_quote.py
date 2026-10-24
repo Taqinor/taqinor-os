@@ -394,6 +394,22 @@ class TestAmot86PrixHorsTotal(SimpleTestCase):
         self.assertEqual([p["role"] for p in postes],
                          ["cable_dc", "cable_ac"])
 
+    def test_industriel_meme_titre_couverture_et_pied_finance(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        modele = _data_ci(hors_total=True)
+        data["etude"] = dict(data["etude"],
+                             etude_ci=modele["etude"]["etude_ci"])
+        data["economie_ci"] = modele["economie_ci"]
+        pages = i_render.build_html(i_rend._augment(
+            etude_ci_au_kwc_servi(data))).split('class="page"')
+        for i in (1, 3):
+            self.assertIn("hors postes à chiffrer après la visite",
+                          _texte_ci(pages[i]), i)
+        self.assertNotIn("clé en main", _texte_ci("".join(pages)))
+
     def test_anglais_et_arabe_traduits(self):
         for langue, titre in (
                 ("en", "Investment excluding items to be priced after the "
@@ -405,3 +421,48 @@ class TestAmot86PrixHorsTotal(SimpleTestCase):
                 self.assertIn(titre, texte)
                 self.assertNotIn("à chiffrer après la visite technique",
                                  texte)
+
+
+class TestAmot87BlocInvestissement(SimpleTestCase):
+    """AMOT87 — le montant et son unité sur une rangée insécable, la note
+    « soit … HT · TVA récupérable… » sur SA rangée pleine largeur (plus une
+    cellule anonyme de la table), sur les deux couvertures."""
+
+    def _bloc(self, html, prefixe):
+        debut = html.index(f'<div class="{prefixe}-inv">')
+        return html[debut:html.index("</div>\n    </div>", debut)]
+
+    def test_commercial_et_industriel(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data_i = copy.deepcopy(i_s.build())
+        # Base « deux » (TVA récupérable inconnue) : le TTC et son HT.
+        data_i["totaux_all"] = {"ht_brut": 533333.0, "remise": 0,
+                                "ht_net": 533333.0, "tva": 106667.0,
+                                "ttc": 640000.0}
+        data_i["display_total"] = 640000.0
+        data_i["etude"] = dict(data_i["etude"],
+                               etude_ci=copy.deepcopy(_ETUDE_CI))
+        data_i["economie_ci"] = economie_ci_publique(
+            copy.deepcopy(_ECONOMIE_CI))
+        cas = (("c1c", "".join(_pages_ci(_data_ci()))),
+               ("i1", i_render.build_html(i_rend._augment(
+                   etude_ci_au_kwc_servi(data_i)))))
+        for prefixe, html in cas:
+            with self.subTest(prefixe=prefixe):
+                bloc = self._bloc(html, prefixe)
+                rangee = bloc[:bloc.index(f'class="{prefixe}-inv-n"')]
+                # Montant + « MAD TTC » insécables, dans la rangée du titre.
+                self.assertIn("&nbsp;MAD&nbsp;TTC</span>", rangee)
+                self.assertIn(f'<div class="{prefixe}-inv-r">', rangee)
+                self.assertNotIn("soit", _texte_ci(rangee))
+                # La note sur sa propre rangée, sous le montant.
+                note = bloc[bloc.index(f'class="{prefixe}-inv-n"'):]
+                self.assertIn("soit 533 333,00 MAD HT",
+                              _texte_ci(note).replace("  ", " "))
+                self.assertIn("TVA récupérable", _texte_ci(note))
+                css = html[:html.index(f'<div class="{prefixe}-inv">')]
+                self.assertRegex(css, rf"\.{prefixe}-inv-v\{{[^}}]*"
+                                      r"white-space:nowrap")
+                self.assertRegex(css, rf"\.{prefixe}-inv-r\{{display:table")

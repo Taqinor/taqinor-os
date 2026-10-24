@@ -375,12 +375,7 @@ def build(ctx):
   border-radius:12px;background:linear-gradient(100deg,{green_bg},#fff 72%);
   padding:8px 14px;font-size:8pt;color:{ink};line-height:1.4;}}
 .i1-note b{{color:{navy};}}
-.i1-inv{{margin-top:8px;display:table;width:100%;border:1px solid {line};
-  border-radius:12px;background:{wash};padding:9px 16px;}}
-.i1-inv-l{{display:table-cell;vertical-align:middle;font-size:8.5pt;color:{muted};}}
-.i1-inv-v{{display:table-cell;vertical-align:middle;text-align:right;
-  font-family:{f_display};font-size:17pt;color:{navy};}}
-.i1-inv-v span{{font-size:10pt;color:{muted};}}
+{ci_couverture.css_investissement("i1", (line, wash, muted, navy, ink), f_display, 17, 8, "9px 16px")}
 </style>
 """
 
