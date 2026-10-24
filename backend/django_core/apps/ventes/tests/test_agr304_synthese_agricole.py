@@ -527,6 +527,27 @@ class SyntheseAgricoleTests(SimpleTestCase):
             '<div class="page">')[2]
         self.assertNotIn('Notes de dimensionnement', p2)
 
+    def test_sav_delai_saisi_imprime_page_3_sinon_omis(self):
+        """D-AGQ-13 (24/10) — le délai d'intervention SAISI par la société est
+        servi (``sav``) et imprimé page 3 ; non saisi : bloc omis, motivé,
+        aucune phrase SAV. Mutant : ne pas poser ``sav`` ⇒ rouge."""
+        from apps.ventes.quote_engine.agricole import renderer
+        from apps.ventes.quote_engine.agricole import pages
+        data = _data_complete()
+        data['delai_intervention_sav_heures'] = 48
+        s = synthese_agricole(data)
+        self.assertEqual(s['sav'], {'delai_intervention_heures': 48})
+        from apps.ventes.tests.test_agr310_renderer_agricole import data_complete
+        rendu = data_complete()
+        rendu['delai_intervention_sav_heures'] = 48
+        p3 = pages.build_html(renderer._augment(rendu)).split('<div class="page">')[3]
+        self.assertIn('intervention sous 48 h après votre appel', p3)
+        s2 = synthese_agricole(_data_complete())
+        self.assertNotIn('sav', s2)
+        self.assertIn('sav', [o.get('bloc') for o in s2['omissions']])
+        self.assertNotIn('Service après-vente',
+                         pages.build_html(renderer._augment(data_complete())))
+
     def test_debit_du_forage_venu_du_lead_imprime_avec_sa_valeur(self):
         """Rejeu live AGQ41 (24/10) — un débit du forage venu du LEAD (aucune
         saisie au devis) est persisté par ``derivees_de_l_etude`` et imprimé

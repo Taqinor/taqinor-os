@@ -360,6 +360,10 @@ LIBELLES = {
     'agr_energie_aucune': {'fr': 'aucune (nouveau forage)',
                            'en': 'none (new borehole)',
                            'ar': 'لا شيء (ثقب جديد)'},
+    'agr_sav_delai': {
+        'fr': 'Service après-vente : intervention sous {n} h après votre appel.',
+        'en': 'After-sales service: intervention within {n} h of your call.',
+        'ar': 'خدمة ما بعد البيع: التدخل في أجل {n} ساعة بعد اتصالكم.'},
     'agr_charges_solaires': {'fr': 'Entretien du solaire par an, selon nos tarifs',
                              'en': 'Solar upkeep per year, at our rates',
                              'ar': 'صيانة المنظومة الشمسية في السنة، حسب أسعارنا'},

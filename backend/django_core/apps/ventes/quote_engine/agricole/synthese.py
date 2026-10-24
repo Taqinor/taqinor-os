@@ -132,6 +132,11 @@ CONDITION_ECONOMIES = {
 _num = nombre_normalise
 
 
+#: D-AGQ-13 — motif d'omission du bloc SAV.
+MOTIF_SAV_NON_SAISI = ("délai d'intervention non saisi dans Paramètres "
+                       "(aucun délai inventé)")
+
+
 def _dict(v):
     return v if isinstance(v, dict) else {}
 
@@ -709,6 +714,13 @@ def synthese_agricole(data):
     garanties, omissions_garanties = garanties_pompage_et_omissions(items)
     synthese["garanties"] = garanties
     omissions.extend(omissions_garanties)
+    # D-AGQ-13 — le SAV : délai d'intervention saisi par la société (jamais
+    # un délai inventé : non saisi ⇒ bloc omis avec son motif).
+    delai_sav = _num(data.get("delai_intervention_sav_heures"))
+    if delai_sav and delai_sav > 0:
+        synthese["sav"] = {"delai_intervention_heures": int(delai_sav)}
+    else:
+        omissions.append({"bloc": "sav", "motif": MOTIF_SAV_NON_SAISI})
 
     synthese["schema"] = _bloc_schema(etude, eau)
     # AGR309 — UN seul dessin pour le PDF et la page : le SVG du schéma,

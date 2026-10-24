@@ -799,6 +799,17 @@ def _libelle_garantie(lg, g):
     return g.get("libelle") or ""
 
 
+def _sav(synthese, lg):
+    """D-AGQ-13 — « Service après-vente : intervention sous N h » (délai saisi
+    par la société) ; rien sans délai saisi."""
+    sav = synthese.get("sav") if isinstance(synthese.get("sav"), dict) else {}
+    heures = sav.get("delai_intervention_heures")
+    if not heures:
+        return ""
+    return (f'<div class="ag-small">'
+            f'{_t(lg, "agr_sav_delai", n=heures)}</div>')
+
+
 def _garanties(synthese, lg):
     gar = [g for g in synthese.get("garanties") or [] if isinstance(g, dict)]
     lignes = [_libelle_garantie(lg, g) for g in gar]
@@ -862,7 +873,8 @@ def page3(ctx):
             f'<table class="ag-lines"><tr>{entetes}</tr>'
             f'{_lignes(d)}</table>{_qj(20)}'
             f'<div class="ag-tot"><div class="ag-tot-g">'
-            f'{_garanties(synthese, lg)}{non_inclus_html}</div>'
+            f'{_garanties(synthese, lg)}{_sav(synthese, lg)}'
+            f'{non_inclus_html}</div>'
             f'<div class="ag-tot-d">{_totaux(d, lg)}</div></div>{_qj(20)}'
             f'{_formalites(synthese, lg)}{_note_et_clauses(d, lg)}'
             f'{_qj(30)}{cloture(ctx)}</div>')
