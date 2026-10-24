@@ -341,10 +341,7 @@ SYNTHESE_AGRICOLE = None
 # sur ``synthese_ci``) : la MÊME projection que la couverture du document
 # complet et /proposition. None hors commercial/industriel.
 CHIFFRES_CI = None
-# AMOT86 — la ``synthese_ci`` dont ``CHIFFRES_CI`` est la projection : le
-# une-page y lit le titre servi du bloc investissement (``ci.couverture.
-# titre_investissement``) et ses postes hors total. None hors C&I.
-SYNTHESE_CI = None
+SYNTHESE_CI = None  # AMOT86 — la ``synthese_ci`` projetée en ``CHIFFRES_CI``.
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
@@ -2928,6 +2925,7 @@ def _bankable_pct(valeur):
 # AMOT35 — LA constante vit dans ``bankable`` (règle partagée).
 from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from .agricole.garanties import garantie_ligne_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .ci import onepage as ci_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
 
 
@@ -3980,22 +3978,6 @@ def _cartes_pompage_synthese(synthese):
     return cellules
 
 
-def _doc_ci():
-    """AMOT86 — la langue et les libellés du document sous la forme que lisent
-    les morceaux partagés des couvertures C&I (``ci.couverture``)."""
-    return {"langue_sortie": LANGUE_SORTIE, "libelles_document": LIBELLES_DOC}
-
-
-def _couverture_ci():
-    """Le module ``ci.couverture`` (import paresseux, exécution directe du
-    moteur depuis son dossier comprise)."""
-    try:
-        from .ci import couverture
-    except ImportError:  # exécution directe du moteur depuis son dossier
-        from ci import couverture
-    return couverture
-
-
 def _cartes_ci_onepage(chiffres):
     """CIQ210 (complément) — vignettes « Production annuelle », « Économies
     estimées / an (base) » et « Retour estimé » du une-page C&I, lues sur
@@ -4009,11 +3991,9 @@ def _cartes_ci_onepage(chiffres):
     cellules = []
     prod = chiffres.get("production_kwh_an")
     if prod:
-        # AMOT84 — « kWh/yr » en anglais ; le français inchangé.
-        _unite = (" kWh/an" if LANGUE_SORTIE == "fr"
-                  else _L("ci_unite_kwh_an"))
         cellules.append(
-            (_L("op_production_annuelle"), f"{fnum(prod)}{_unite}",
+            (_L("op_production_annuelle"),
+             f"{fnum(prod)}{ci_onepage.unite_kwh_an(LANGUE_SORTIE, _L)}",
              _ancre_figure("production_annuelle_kwh", fnum(prod))))
     if MASQUER_ECONOMIES:
         return cellules
@@ -4024,14 +4004,8 @@ def _cartes_ci_onepage(chiffres):
         libelle = (_L("op_economies_estimees_an")
                    + (f" ({_L('ci_' + base.lower())})"
                       if base in ("HT", "TTC") else
-                      f" ({base})" if base else ""))
-        if chiffres.get("postes_hors_total"):
-            # AMOT86 (D-ACI-2=a) — postes hors total : la légende de la
-            # couverture dit sur quel prix le retour sera calculé.
-            libelle += (
-                '<div style="font-size:5pt;font-weight:600;'
-                'text-transform:none;letter-spacing:0;margin-top:1px;">'
-                + _L("ci_retour_prix_complet") + "</div>")
+                      f" ({base})" if base else "")
+                   + ci_onepage.legende_retour(chiffres, _L))
         cellules.append((libelle, f"{fnum(eco)} {_L('ci_mad_an')}",
                          _ancre_figure("economie_annuelle", fnum(eco))))
     payback = chiffres.get("payback_ans")
@@ -4137,12 +4111,8 @@ def page_onepage(items, tronquees=0):
             _sum_cells.append((_L("champ_pv"), f"{kwc_fr(KWC)} kWc",
                                _ancre_figure("puissance_kwc", kwc_fr(KWC))))
     elif KWC > 0:
-        # AMOT84 — une-page C&I : « kWp » dans un document anglais (comme
-        # le titre) ; français et résidentiel inchangés.
         _sum_cells = [
-            (_L("op_puissance_crete"),
-             _L("res_n_kwc").format(n=kwc_fr(KWC))
-             if CHIFFRES_CI is not None else f"{kwc_fr(KWC)} kWc",
+            (_L("op_puissance_crete"), ci_onepage.kwc(kwc_fr(KWC), _L, CHIFFRES_CI),
              _ancre_figure("puissance_kwc", kwc_fr(KWC))),
         ]
         if CHIFFRES_CI is not None:
@@ -4177,12 +4147,8 @@ def page_onepage(items, tronquees=0):
         _pkwc_txt = fnum(round(total / KWC))
         # AMOT86 (D-ACI-2=a) — postes « à chiffrer après la visite » hors
         # total : aucun « Prix par kWc » sur un prix incomplet.
-        # AMOT84 — « MAD/kWp » dans un une-page C&I anglais ; résidentiel
-        # et français inchangés.
-        _u_kwc = (_L("res_n_kwc").format(n="").strip()
-                  if CHIFFRES_CI is not None else "kWc")
         _sum_cells += [] if (CHIFFRES_CI or {}).get("postes_hors_total") else [
-            (_L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/{_u_kwc}",
+            (_L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/{ci_onepage.unite_kwc(_L, CHIFFRES_CI)}",
              _ancre_figure("prix_kwc", _pkwc_txt, _op_opt))]
         # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
         # contrat DIM2 est posé (voir _falaise_context) : le budget densité
@@ -4332,27 +4298,8 @@ def page_onepage(items, tronquees=0):
     # `_L(...)` : écrit en dur, il laissait « Sous-total HT » dans le document
     # anglais et arabe (un littéral français voyage dans le HTML livré, même
     # invisible à l'impression). Aucun libellé de ce bloc ne s'écrit en dur.
-    # AMOT86 (D-ACI-2=a) — une-page C&I dont des postes restent « à chiffrer
-    # après la visite » : le bloc porte le TITRE servi de la couverture
-    # (« Investissement hors postes à chiffrer après la visite ») et, sous le
-    # total, UNE ligne qui nomme ces postes sans montant. Sans poste : rien,
-    # octet pour octet.
-    _titre_hv = _postes_hv = ""
-    if isinstance(CHIFFRES_CI, dict) and CHIFFRES_CI.get("postes_hors_total"):
-        _cv = _couverture_ci()
-        _base_ci = ((SYNTHESE_CI or {}).get("argent") or {}).get("base")
-        _titre_hv = (
-            f'<div style="font-size:8pt;font-weight:800;color:{CN};'
-            f'margin-bottom:2px;">'
-            f'{_cv.titre_investissement(_doc_ci(), SYNTHESE_CI, _base_ci)}'
-            f'</div>')
-        _postes_hv = (
-            f'<div style="font-size:6.5pt;color:{CG7};margin-top:3px;'
-            f'line-height:1.3;">'
-            f'{_cv.ligne_postes_hors_total(_doc_ci(), SYNTHESE_CI)}</div>')
-    totals_html = _titre_hv + _tot_line(
-        _L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD",
-        fig="sous_total_ht")
+    totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD",
+                            fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
         _pct = pct_fr(DISCOUNT_PCT)  # AMOT24
         totals_html += _tot_line(
@@ -4383,8 +4330,10 @@ def page_onepage(items, tronquees=0):
                                  _fmt2(tva_amt) + "&nbsp;MAD", fig="tva")
     # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
     # s'imprime au CENTIME (il était seul arrondi à l'unité de son bloc).
-    totals_html += _tot_line(_L("total_ttc"), _fmt2(total) + "&nbsp;MAD", navy=True,
-                             fig="total_ttc") + _postes_hv
+    # AMOT86 — postes « à chiffrer après la visite » : titre servi + postes.
+    totals_html = ci_onepage.totaux_hors_total(totals_html + _tot_line(
+        _L("total_ttc"), _fmt2(total) + "&nbsp;MAD", navy=True, fig="total_ttc"),
+        CHIFFRES_CI, SYNTHESE_CI, LANGUE_SORTIE, LIBELLES_DOC, (CN, CG7))
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS total) ──────────────
     # Rendu SEUL : n'affiche que les add-ons proposés (P.U. + total TTC), jamais
@@ -4436,10 +4385,6 @@ def page_onepage(items, tronquees=0):
         if ONEPAGE_BRANCHE == "avec" else _libelle_avec_min)
 
     header_html = _onepage_header_html()
-    # AMOT92 — une-page C&I : le téléphone mis en forme comme sur les
-    # couvertures (« +212 6 61 23 45 93 ») ; résidentiel inchangé.
-    _tel_op = (_couverture_ci().format_telephone(CLIENT_PHONE)
-               if CHIFFRES_CI is not None else CLIENT_PHONE)
     # AGR313 — « Bon pour accord » compact du une-page agricole (nom, date,
     # signature) ; les options à cocher et le schéma restent au 3 pages.
     bpa_html = (_bon_pour_accord_compact_html()
@@ -4461,7 +4406,7 @@ def page_onepage(items, tronquees=0):
     <div style="font-size:6.5pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">{_L("client")}</div>
     <div style="font-size:11pt;font-weight:700;color:{CN};">{CLIENT_NAME}</div>
     <div style="font-size:8.5pt;color:{CG7};margin-top:2px;">{CLIENT_ADDR}</div>
-    <div style="font-size:8.5pt;color:{CG4};margin-top:1px;">{_tel_op}</div>
+    <div style="font-size:8.5pt;color:{CG4};margin-top:1px;">{ci_onepage.telephone(CLIENT_PHONE, CHIFFRES_CI)}</div>
     {'<div style="font-size:8pt;color:' + CG7 + ';margin-top:3px;"><span style="color:' + CG4 + ';font-weight:600;">ICE&#160;:</span>&#160;' + CLIENT_ICE + '</div>' if CLIENT_ICE else ''}
   </div>
 
@@ -4954,17 +4899,7 @@ def apply_quote_data(data: dict) -> None:
     # ville) ni ``eco_s_ann`` (``calculate_savings_roi``, BT/60 %). Une
     # synthèse illisible ⇒ dict VIDE ⇒ vignettes omises, jamais un repli.
     global CHIFFRES_CI, SYNTHESE_CI
-    CHIFFRES_CI = None
-    SYNTHESE_CI = None
-    if MODE_INSTALLATION.strip().lower() in ("commercial", "industriel"):
-        try:
-            from .ci.synthese import chiffres_cles, synthese_ci
-            SYNTHESE_CI = synthese_ci(data) or {}
-            CHIFFRES_CI = chiffres_cles(SYNTHESE_CI)
-        except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici (D-ENF22-BLE001)
-            logger.warning("generate_devis_premium.apply_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
-            SYNTHESE_CI = {}
-            CHIFFRES_CI = {}
+    SYNTHESE_CI, CHIFFRES_CI = ci_onepage.lire_synthese(data, MODE_INSTALLATION)
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
     INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))
     ELECTRICAL_DESIGN = data.get("electrical_design") or {}
