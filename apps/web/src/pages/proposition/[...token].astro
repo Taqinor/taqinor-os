@@ -34,7 +34,7 @@ import '../../styles/v3-photo-motion.css';
 // PV81 — l'enveloppe « Avis clients » (carte + titre) suit la MÊME condition que
 // son contenu : sans avis réel, aucun cadre vide n'est rendu chez le client.
 import { hasTestimonials } from '../../lib/testimonials';
-import { AGR_LBL_AGQ } from '../../lib/propositionAgricole';
+import { AGR_LBL_AGQ, AGR_NON_INCLUS_LBL, valeurProvenance } from '../../lib/propositionAgricole';
 import {
   type ProposalResponse,
   type OptionKey,
@@ -69,7 +69,6 @@ import {
   libelleGarantie,
   AGR_ARGENT_LBL,
   AGR_ENERGIE_LBL,
-  AGR_NON_INCLUS_LBL,
   AGR_COMPOSANT_LBL,
   remplirLbl,
   type SyntheseAgricoleArgent,
@@ -3341,9 +3340,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   {synth.provenance.map((e) => {
                     const lib = libelleEntree(e.cle);
                     const ph = phraseProvenance(e);
+                    // Rejeu AGQ41 — la valeur À CÔTÉ de sa provenance (parité PDF, AGQ28).
+                    const val = valeurProvenance(e.cle, e.valeur, (n) => formatNumber(n, 1));
                     return (
                       <li>
                         <strong class="text-lune" data-i18n data-fr={lib.fr} data-en={lib.en} data-ar={lib.ar}>{lib.fr}</strong> :
+                        {val && <span class="fig text-lune" dir="ltr" data-agri-provenance-valeur data-i18n data-fr={val.fr} data-en={val.en} data-ar={val.ar}>{' '}{val.fr} —</span>}
                         {' '}<span data-i18n data-fr={ph.fr} data-en={ph.en} data-ar={ph.ar}>{ph.fr}</span>
                       </li>
                     );

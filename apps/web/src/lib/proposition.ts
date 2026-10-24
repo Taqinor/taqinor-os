@@ -4536,6 +4536,8 @@ export interface SyntheseProvenance {
   origine: string | null;
   detail: string | null;
   date: string | null;
+  /** Rejeu AGQ41 — la valeur servie à côté de sa provenance (AGQ28), sinon `null`. */
+  valeur?: number | null;
 }
 
 export interface SyntheseBesoinLivreMois {
@@ -4594,7 +4596,7 @@ function lireProvenance(v: unknown): SyntheseProvenance[] {
   const out: SyntheseProvenance[] = [];
   for (const [cle, e] of Object.entries(v)) {
     if (!estRecord(e) || !texteServi(e.origine)) continue;
-    out.push({ cle, origine: texteServi(e.origine), detail: texteServi(e.detail), date: texteServi(e.date) });
+    out.push({ cle, origine: texteServi(e.origine), detail: texteServi(e.detail), date: texteServi(e.date), valeur: nombreServi(e.valeur) });
   }
   return out;
 }
@@ -5233,10 +5235,6 @@ export const AGR_ENERGIE_LBL: Record<string, Lbl3> = {
   aucune: { fr: 'aucune (nouveau forage)', en: 'none (new borehole)', ar: 'لا شيء (ثقب جديد)' },
 };
 
-export const AGR_NON_INCLUS_LBL: Record<string, Lbl3> = {
-  forage: { fr: 'le forage', en: 'the borehole', ar: 'الثقب' },
-  genie_civil: { fr: 'le génie civil', en: 'civil works', ar: 'الهندسة المدنية' },
-};
 
 // ════════════════════════════════════════════════════════════════════════════
 // AGW308 — options du kit à cocher sur /proposition (endpoint XSAL5 existant).

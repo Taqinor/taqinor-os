@@ -115,9 +115,9 @@ export function objectionFaqAgricole(): FaqItem[] {
       question: 'Les panneaux peuvent-ils être volés ?',
       questionAr: 'هل يمكن أن تُسرق الألواح؟',
       questionEn: 'Can the panels be stolen?',
-      answer: "Les panneaux sont fixés sur une structure au sol avec une visserie antivol et le coffret est fermé à clé ; une clôture ou un gardiennage restent de votre côté. Le choix d'une assurance se fait avec votre assureur.",
-      answerAr: 'تُثبت الألواح على هيكل أرضي ببراغي مضادة للسرقة ويُقفل الصندوق بمفتاح؛ أما السياج أو الحراسة فيبقيان على عاتقكم. اختيار التأمين يتم مع شركة التأمين.',
-      answerEn: 'The panels are fixed on a ground structure with anti-theft fasteners and the cabinet is locked; a fence or guarding remains on your side. Insurance is a decision to take with your insurer.',
+      answer: "Les panneaux sont fixés sur une structure au sol ; des fixations antivol et une clôture du champ sont proposées en option dans ce devis, le gardiennage reste de votre côté. Le choix d'une assurance se fait avec votre assureur.",
+      answerAr: 'تُثبت الألواح على هيكل أرضي؛ وتُقترح في هذا العرض تثبيتات مضادة للسرقة وسياج للحقل كخيارات، أما الحراسة فتبقى على عاتقكم. اختيار التأمين يتم مع شركة التأمين.',
+      answerEn: 'The panels are fixed on a ground structure; anti-theft fasteners and a field fence are offered as options in this quote, guarding remains on your side. Insurance is a decision to take with your insurer.',
     },
     {
       id: 'entretien-pompage',
@@ -150,3 +150,45 @@ export const AGR_LBL_AGQ = {
   notesTitre: { fr: 'Notes de dimensionnement', en: 'Sizing notes', ar: 'ملاحظات التحجيم' },
   coutM3Solaire: { fr: 'Coût du m³ avec le solaire', en: 'Cost per m³ with solar', ar: 'تكلفة المتر المكعب مع الطاقة الشمسية' },
 } as const satisfies Record<string, Lbl3>;
+
+/** Rejeu live AGQ41 — libellés des options du kit listées dans « Non inclus » (clés servies par
+ *  `synthese_agricole.non_inclus`, AGQ11) : MÊMES textes que le PDF (`i18n_labels.agr_option_<clé>`). */
+const AGR_OPTIONS_NON_INCLUS_LBL: Record<string, Lbl3> = {
+  protection_dc: { fr: "Protections DC/AC", en: "DC/AC protection devices", ar: "حمايات التيار المستمر والمتناوب" },
+  sonde_niveau: { fr: "Sonde de niveau (marche à sec)", en: "Level probe (dry-run protection)", ar: "مسبار المستوى (الحماية من التشغيل الجاف)" },
+  compteur_eau: { fr: "Compteur d'eau", en: "Water meter", ar: "عداد الماء" },
+  cable_descente: { fr: "Câble de descente", en: "Drop cable", ar: "كابل النزول" },
+  colonne_refoulement: { fr: "Colonne de refoulement", en: "Rising main", ar: "أنبوب الدفع" },
+  clapet: { fr: "Clapet anti-retour", en: "Non-return valve", ar: "صمام عدم الرجوع" },
+  tuyauterie: { fr: "Tuyauterie", en: "Pipework", ar: "الأنابيب" },
+  bassin: { fr: "Bassin", en: "Storage tank", ar: "الحوض" },
+  entretien_pompage: { fr: "Contrat d'entretien", en: "Maintenance contract", ar: "عقد الصيانة" },
+  antivol: { fr: "Fixations antivol", en: "Anti-theft fixings", ar: "تثبيتات مضادة للسرقة" },
+  cloture: { fr: "Clôture du champ", en: "Array fence", ar: "سياج الحقل" },
+  afficheur_variateur: { fr: "Afficheur du variateur", en: "Drive display", ar: "شاشة المغير" },
+};
+
+/** AGW304 — « Non inclus » : forage, génie civil et chaque option du kit (jamais une clé brute). */
+export const AGR_NON_INCLUS_LBL: Record<string, Lbl3> = {
+  forage: { fr: 'le forage', en: 'the borehole', ar: 'الثقب' },
+  genie_civil: { fr: 'le génie civil', en: 'civil works', ar: 'الهندسة المدنية' },
+  ...AGR_OPTIONS_NON_INCLUS_LBL,
+};
+
+/** Rejeu AGQ41 — unité d'une entrée de provenance (mêmes unités que le PDF, `_UNITE_ENTREE`). */
+const UNITE_ENTREE: Record<string, Lbl3> = {
+  volume_m3_jour: { fr: 'm³/j', en: 'm³/day', ar: 'م³/يوم' },
+  niveau_statique_m: { fr: 'm', en: 'm', ar: 'م' },
+  niveau_dynamique_m: { fr: 'm', en: 'm', ar: 'م' },
+  profondeur_forage_m: { fr: 'm', en: 'm', ar: 'م' },
+  hmt_m: { fr: 'm', en: 'm', ar: 'م' },
+  debit_exploitation_m3h: { fr: 'm³/h', en: 'm³/h', ar: 'م³/س' },
+};
+
+/** « 36 m³/h » à côté de la provenance (AGQ28, parité PDF) ; `null` sans valeur servie. */
+export function valeurProvenance(cle: string, valeur: number | null | undefined, format: (n: number) => string): Lbl3 | null {
+  if (valeur === null || valeur === undefined || !Number.isFinite(valeur)) return null;
+  const u = UNITE_ENTREE[cle];
+  const n = format(valeur);
+  return u ? { fr: `${n} ${u.fr}`, en: `${n} ${u.en}`, ar: `${n} ${u.ar}` } : { fr: n, en: n, ar: n };
+}
