@@ -18,6 +18,10 @@ from authentication.permissions import (
     HasPermissionOrLegacy,
 )
 
+#: ``?code=`` du scan GS1 : AI 01 + GTIN, puis tout sauf le caractère nul (refusé
+#: partout en requête — le motif ouvert ``^01[0-9]{14}`` le publiait conforme).
+MOTIF_CODE_GS1 = r'^01[0-9]{14}[^\u0000]*$'
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -138,7 +142,7 @@ class ReceptionFournisseurViewSet(DocumentFigeMixin,
 
     @extend_schema(parameters=[P('code', STR, True,
                                  'Code GS1-128 / DataMatrix (AI 01 + GTIN 14 chiffres en tête)',
-                                 pattern=r'^01[0-9]{14}')],
+                                 pattern=MOTIF_CODE_GS1)],
                    responses=corps('ReceptionScanGs1Reponse', produit_id=serializers.IntegerField(),
                                    produit_nom=serializers.CharField(),
                                    numeros_serie=serializers.ListField(child=serializers.CharField(), allow_null=True),
