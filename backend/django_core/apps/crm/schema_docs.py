@@ -10,7 +10,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema_field, inline_
 from rest_framework import serializers
 
 from core.champs_stricts import MOTIF_SANS_NUL
-from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE, MOTIF_QUERY_SANS_NUL
 
 #: Réponse « objet libre » (dict dont la forme dépend de la situation).
 OBJ = OpenApiTypes.OBJECT
@@ -55,9 +55,12 @@ P_Q = param('q', description='Texte recherché.')
 #: ``jours`` des agrégats KPI (MRY19/MRY21/CAD87) : contrat TOLÉRANT —
 #: entier borné à [1, 365] ; une valeur non entière retombe sur le défaut
 #: (``params_requete.entier_param(tolerant=True)``). Déclaré entier OU texte,
-#: pour que le schéma dise ce que le serveur fait.
+#: pour que le schéma dise ce que le serveur fait. Le texte reste « sans
+#: caractère nul » : le serveur refuse un nul partout en 400
+#: (``core.parametres_requete.verifier_caractere_nul``) — api-fuzz-full 24/10.
 P_JOURS = OpenApiParameter(
-    'jours', {'anyOf': [{'type': 'integer'}, {'type': 'string'}]},
+    'jours', {'anyOf': [{'type': 'integer'},
+                        {'type': 'string', 'pattern': MOTIF_QUERY_SANS_NUL}]},
     OpenApiParameter.QUERY, required=False,
     description='Fenêtre en jours (1 à 365, bornée) ; une valeur non entière '
                 'retombe sur le défaut de la vue.')

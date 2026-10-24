@@ -23,7 +23,8 @@ from core.serializers import (
 from drf_spectacular.drainage import set_override
 
 from .champs_lead import (
-    LienMaps, ListeJours, ListeMois, ReleveConso, TrancheDeclaree, schema_cos_phi,
+    LienMaps, ListeJours, ListeMois, PeriodeFacture, ReleveConso, TrancheDeclaree,
+    schema_cos_phi,
 )
 from .params_requete import UniciteEn409Mixin
 from .champs_api import (
@@ -685,7 +686,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # la facture DÉCLARÉE dans ce même corps (`mensuelle` | `bimestrielle`).
     # Jamais stocké (aucun champ « périodicité ») : le montant est ramené au
     # mois dans `validate`, et c'est lui qu'on enregistre et qu'on relit.
-    facture_periodicite = ChaineStricte(
+    facture_periodicite = PeriodeFacture(
         write_only=True, required=False, allow_blank=True)
 
     @staticmethod
@@ -981,7 +982,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             montants = [champ for champ in ('facture_hiver', 'facture_ete')
                         if attrs.get(champ) is not None]
             if not montants:
-                raise serializers.ValidationError({'facture_periodicite': [
+                # Règle ENTRE deux champs du corps (période + montant) : le
+                # schéma ne la dit pas -> 409 (api-fuzz-full 24/10).
+                raise ConflitEtat({'facture_periodicite': [
                     '« Période de la facture » : indiquez le montant de la '
                     'facture dans la même saisie.']})
             for champ in montants:

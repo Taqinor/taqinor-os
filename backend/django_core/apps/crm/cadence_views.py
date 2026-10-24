@@ -1344,11 +1344,13 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 status=status.HTTP_400_BAD_REQUEST)
         # CAD27 — une date de report dans le passé tirait tout le plan en
         # arrière : refusée, le champ fautif NOMMÉ (celui du corps reçu).
+        # ENF11 (api-fuzz-full 24/10) — « pas dans le passé » dépend de
+        # l'horloge du serveur, pas du corps (un date-heure ISO ancien est
+        # conforme au schéma) : refus d'ÉTAT, 409, même corps ``erreurs``.
         refus = _refus_date_passee(quand, 'Reporter au')
         if refus:
             champ = 'due_at' if brut else 'rappel_le'
-            return Response({'erreurs': {champ: refus}},
-                            status=status.HTTP_400_BAD_REQUEST)
+            raise ConflitEtat({'erreurs': {champ: refus}})
         # CAD178 — compteur BEST-EFFORT du geste « Reporter », par famille
         # d'appareil (les deux modes, decaler ET veille, comptent). ACRM22 —
         # dans son propre point de sauvegarde.
@@ -1691,9 +1693,13 @@ class LeadCadenceActionsMixin:
                 etapes, many=True, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    # ENF11 (api-fuzz-full 24/10) : textes STRICTS — motif non blanc et
+    # cadences « sans caractère nul » (le serveur refuse le nul en 400 : un
+    # texte simple le publiait permis).
     @extend_schema(request=sd.corps('CrmArreterRelanceRequest',
-                                    cadences=serializers.ListField(child=serializers.CharField(), required=False),
-                                    motif=serializers.CharField()), responses=sd.OBJ)
+                                    cadences=serializers.ListField(
+                                        child=ChaineStricte(allow_blank=True), required=False),
+                                    motif=ChaineStricte()), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='relance/arreter',
             permission_classes=[IsResponsableOrAdmin])
     def arreter_relance(self, request, pk=None):
