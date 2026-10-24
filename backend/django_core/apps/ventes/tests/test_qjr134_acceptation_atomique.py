@@ -195,6 +195,54 @@ class LeGroupeDeVariantesEstVerrouille(_BaseAcceptation):
         self.assertTrue(seul.is_active)
 
 
+class LesRefusPortentUnCodeDuContrat(_BaseAcceptation):
+    """D (revue du 24/10/2026) — tout 409 de l'acceptation est
+    ``{detail, code}`` avec un code de la liste FERMÉE de
+    ``proposal_accept.json`` ; « Seul un devis en cours… » et « Devis
+    introuvable » n'en portaient aucun."""
+
+    slug = 'qjr134-codes'
+
+    def test_devis_refuse_lien_vivant_409_statut(self):
+        import json
+        from pathlib import Path
+        from rest_framework.test import APIClient
+        from apps.ventes.models import ShareLink
+        contrat = json.loads((Path(__file__).resolve().parent.parent
+                              / 'contract_samples' / 'proposal_accept.json')
+                             .read_text(encoding='utf-8'))
+        seul = self._devis('DEV-QJR134-REF')
+        link = ShareLink.for_devis(seul)
+        # Refusé SANS passer par le service (le lien reste vivant) : la garde
+        # sous verrou d'``accept_devis`` dit pourquoi.
+        Devis.objects.filter(pk=seul.pk).update(statut=Devis.Statut.REFUSE)
+        resp = APIClient().post(
+            f'/api/django/public/proposal/{link.token}/accept/',
+            {'nom': 'M. Client', 'consent_esign': True,
+             'empreinte_contenu': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(set(resp.data), {'detail', 'code'})
+        self.assertEqual(resp.data['code'], 'statut')
+        self.assertIn(resp.data['code'], contrat['codes_409'])
+        seul.refresh_from_db()
+        self.assertEqual(seul.statut, Devis.Statut.REFUSE)
+        self.assertFalse(DevisSignature.objects.filter(devis=seul).exists())
+
+    def test_service_statut_et_introuvable_portent_leur_code(self):
+        seul = self._devis('DEV-QJR134-REF2')
+        Devis.objects.filter(pk=seul.pk).update(statut=Devis.Statut.REFUSE)
+        with self.assertRaises(AcceptError) as leve:
+            accept_devis(devis=seul, user=None, nom='M. Client')
+        self.assertEqual((leve.exception.conflict, leve.exception.code),
+                         (True, 'statut'))
+        with patch('apps.ventes.selectors.groupe_proposition',
+                   return_value=Devis.objects.none()):
+            with self.assertRaises(AcceptError) as leve:
+                accept_devis(devis=seul, user=None, nom='M. Client')
+        self.assertEqual((leve.exception.conflict, leve.exception.code),
+                         (True, 'inactive'))
+
+
 class LeRejeuDeLAval(_BaseAcceptation):
     """Le drapeau de complétion : « accepté » signifie désormais que l'aval a
     été commité — et l'aval d'un devis accepté AVANT ce lot reste rejouable."""

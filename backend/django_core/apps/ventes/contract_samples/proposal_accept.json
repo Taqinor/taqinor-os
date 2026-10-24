@@ -51,7 +51,7 @@
     "ice_divergent"
   ],
   "reponses_409": {
-    "forme": "Toute réponse 409 de l'acceptation porte EXACTEMENT `{detail, code}` : `detail` = phrase française affichée telle quelle par la page, `code` ∈ `codes_409` (liste FERMÉE — un code hors liste est un bug du serveur). La page ne traite JAMAIS un 409 comme un succès.",
+    "forme": "Toute réponse 409 de l'acceptation porte EXACTEMENT `{detail, code}` : `detail` = phrase française affichée telle quelle par la page, `code` ∈ `codes_409` (liste FERMÉE — un code hors liste est un bug du serveur). La page ne traite JAMAIS un 409 comme un succès. Revue du 24/10/2026 (point D) : `accept` émet aussi `statut` quand le devis relu sous verrou n'est plus en cours (refusé, expiré, annulé… — `detail` nomme le statut actuel) et `inactive` quand le devis du lien est introuvable sous verrou ; `validation_requise` couvre aussi l'étude C&I illisible à la signature (`detail` : « Votre proposition doit être revalidée par votre conseiller avant signature : contactez-le. »). Les `detail` des exemples ci-dessous sont ILLUSTRATIFS.",
     "version_remplacee": {
       "detail": "Cette proposition a été remplacée par une version plus récente : ouvrez le nouveau lien.",
       "code": "version_remplacee"

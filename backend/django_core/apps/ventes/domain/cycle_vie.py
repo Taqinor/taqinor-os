@@ -1213,7 +1213,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             .order_by('pk'))
         courant = next((d for d in groupe if d.pk == devis.pk), None)
         if courant is None:
-            raise AcceptError('Devis introuvable.', conflict=True)
+            # D (revue du 24/10/2026) — code du contrat ``proposal_accept.json``.
+            raise AcceptError('Devis introuvable.', conflict=True,
+                              code='inactive')
         devis = courant
 
         # Re-submit on an already-accepted devis: a no-op for the tokenized
@@ -1274,7 +1276,7 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             raise AcceptError(
                 'Seul un devis en cours (brouillon ou envoyé) peut être '
                 f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
-                conflict=True)
+                conflict=True, code='statut')  # D — code du contrat
 
         # ADEV13 (C-ADEV-005) — blocage crédit et avertissement de vente
         # bloquant : UNE garde, ici, pour les trois portes (vue interne,
