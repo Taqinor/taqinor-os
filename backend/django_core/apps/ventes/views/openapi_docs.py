@@ -568,8 +568,10 @@ FromLayoutRequest = _ser('DevisFromLayoutRequest', {
     'layout': s.DictField(),
     'lead': s.IntegerField(required=False, allow_null=True),
     'client': s.IntegerField(required=False, allow_null=True),
-    'taux_tva': s.FloatField(required=False, allow_null=True),
-    'remise_globale': s.FloatField(required=False, allow_null=True),
+    # api-fuzz — la règle de ``domain/bornes.pourcentage_saisi`` : chaîne au
+    # motif 0-100 à 2 décimales OU nombre 0-100 (arrondi au centième).
+    'taux_tva': _pourcent_souple(),
+    'remise_globale': _pourcent_souple(),
     'structure_produit_id': s.IntegerField(required=False, allow_null=True),
     'structure_type': s.CharField(required=False, allow_blank=True,
                                   allow_null=True),

@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from ..utils.client_links import chemin_proposition
 from .devis_gardes import _refus_modifiabilite, _reponse_non_modifiable
+from ..domain.bornes import arrondi_si_nombre_json
 from ..domain.bornes import pourcentage_saisi as _pourcentage_saisi  # ACAL278, ATOT21
 
 
@@ -169,10 +170,14 @@ class DevisCalepinageActionsMixin:
         # de ck_devis_remise_globale_0_100 (500).
         # APAR49 — défaut = taux STANDARD de la société (``tva_standard``).
         from ..utils.company_settings import tva_standard
+        # api-fuzz — un nombre JSON est arrondi au centième (publié ainsi :
+        # ``D.FromLayoutRequest``), une chaîne reste jugée telle quelle.
+        montants = {champ: arrondi_si_nombre_json(request.data.get(champ))
+                    for champ in ('taux_tva', 'remise_globale')}
         taux_tva, erreur = _pourcentage_saisi(
-            request.data, 'taux_tva', tva_standard(company))
+            montants, 'taux_tva', tva_standard(company))
         remise, erreur_remise = _pourcentage_saisi(
-            request.data, 'remise_globale', Decimal('0'))
+            montants, 'remise_globale', Decimal('0'))
         erreur = erreur or erreur_remise
         if erreur:
             return Response(

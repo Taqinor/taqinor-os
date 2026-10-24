@@ -73,3 +73,20 @@ def total_ligne_hors_capacite(quantite, prix_unitaire, remise):
     except (InvalidOperation, ValueError, TypeError):
         return False
     return abs(total) >= Decimal('99999999.995')
+
+
+def arrondi_si_nombre_json(brut, decimales=2):
+    """api-fuzz — un NOMBRE JSON (``17.05983349296445``, flottant) est arrondi
+    au demi supérieur à ``decimales`` avant la garde : la garde refuse « au
+    plus 2 décimales » une CHAÎNE saisie à la main, mais un flottant porte
+    toujours du bruit binaire (``0.1 + 0.2``) — comme ``DecimalSouple``, le
+    nombre est lu, jamais refusé pour sa queue. Chaîne, booléen, ``None`` et
+    flottant hors capacité sont rendus tels quels (la garde les juge)."""
+    from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+    if isinstance(brut, bool) or not isinstance(brut, float):
+        return brut
+    try:
+        return Decimal(repr(brut)).quantize(
+            Decimal(1).scaleb(-decimales), ROUND_HALF_UP)
+    except InvalidOperation:  # NaN, infini, ou plus de 28 chiffres
+        return brut

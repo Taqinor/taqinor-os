@@ -110,6 +110,34 @@ class FromLayoutMontants(TestCase):
         self.assertEqual(devis.remise_globale, Decimal('12.50'))
         self.assertEqual(devis.taux_tva, Decimal('10.00'))
 
+    def test_nombre_json_arrondi_au_centieme(self):
+        """api-fuzz — ``17.05983349296445`` (flottant JSON, schéma : nombre
+        0-100) était refusé « au plus 2 décimales » : un NOMBRE est arrondi au
+        centième comme ``DecimalSouple`` ; une CHAÎNE à 3 décimales reste
+        refusée (``test_trois_decimales_400``) et la borne 0-100 s'applique
+        après arrondi."""
+        resp = self._post(remise_globale=17.05983349296445, taux_tva=10.0)
+        self.assertEqual(resp.status_code, 201, resp.data)
+        devis = Devis.objects.get(pk=resp.data['id'])
+        self.assertEqual(devis.remise_globale, Decimal('17.06'))
+        self.assertEqual(devis.taux_tva, Decimal('10.00'))
+        hors = self._post(remise_globale=100.006)
+        self.assertEqual(hors.status_code, 400, hors.data)
+        self.assertIn('remise_globale', hors.data)
+
+    def test_schema_publie_nombre_ou_chaine_borne(self):
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include('apps.ventes.urls'))
+        ]).get_schema(request=None, public=True)
+        composant = schema['components']['schemas'][
+            'DevisFromLayoutRequestRequest']['properties']['remise_globale']
+        texte = str(composant)
+        self.assertIn("'type': 'number'", texte)
+        self.assertIn("'maximum': 100", texte)
+
 
 class AutoMontants(TestCase):
     """``auto`` portait la seconde copie de ``_dec`` : même refus nommé."""
