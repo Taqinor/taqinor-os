@@ -1,0 +1,5 @@
+Rejeu orchestrateur P4.1 (AGNR37) sur la pile locale à e45ab8aa4 (serveur et front reconstruits depuis origin/main), 24/10/2026, demo_admin, navigateur intégré.
+Générateur /ventes/devis/nouveau?edit=1025 (devis démo DEV-202610-0074, brouillon, échéancier société 30/60/10) → « Personnaliser l'échéancier » → tranches Acompte 70 %, Livraison du matériel 60 %, Solde 10 % (saisie des champs gen-echeance-0/1).
+Sous la carte : « Total des tranches : 140 % — il doit faire 100 %. »
+« Enregistrer les modifications » → AUCUNE requête /api/django/ventes/ émise, message « Échéancier de paiement : Total des tranches : 140 % — il doit faire 100 %. », bandeau « Modifications non enregistrées » ; serveur relu (sonde) : devis 1025 toujours brouillon, échéancier propre = None (rien écrit).
+Oracles : aucune réponse ≥ 400 pendant l'étape (1, 2 PASS) ; console : seulement l'enregistrement du service worker refusé par le navigateur de rejeu (3 PASS) ; aucun dialogue natif (4 PASS) ; aucun écran d'erreur (8 PASS).
