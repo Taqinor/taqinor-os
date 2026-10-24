@@ -2849,6 +2849,47 @@ LIBELLES = {
         'fr': 'non chiffré — non déduit des économies',
         'en': 'not costed — not deducted from the savings',
         'ar': 'غير محتسبة — غير مخصومة من الوفورات'},
+    # AMOT97 (D-ACI-15=a) — tableau des sensibilités et ligne prudente ;
+    # ``ci_code_sens_defaut_*`` = les sources seedées, octet pour octet.
+    'ci_ind_sens_central': {'fr': 'Scénario central', 'en': 'Central scenario',
+                            'ar': 'السيناريو المركزي'},
+    'ci_ind_sens_scenario': {'fr': 'Scénario', 'en': 'Scenario',
+                             'ar': 'السيناريو'},
+    'ci_ind_sens_contribution_art13': {
+        'fr': 'Contribution art. 13', 'en': 'Art. 13 contribution',
+        'ar': 'مساهمة المادة 13'},
+    'ci_scenario_prudent': {
+        'fr': 'scénario prudent : retour ≈ {n} ans',
+        'en': 'prudent scenario: payback ≈ {n} years',
+        'ar': 'السيناريو الحذر: استرداد ≈ {n} سنوات'},
+    'ci_code_sens_defaut_production': {
+        'fr': 'P90 annuelle : production × (1 − 1,282 × 6 %), variabilité '
+              'interannuelle retenue par la société (méthode P50/P90 de PVsyst)',
+        'en': 'annual P90: production × (1 − 1.282 × 6 %), year-to-year '
+              'variability set by the company (PVsyst P50/P90 method)',
+        'ar': 'P90 السنوي: الإنتاج × (1 − 1,282 × 6 %)، تقلب سنوي تعتمده '
+              'الشركة (طريقة P50/P90 لـ PVsyst)'},
+    'ci_code_sens_defaut_indexation_tarif': {
+        'fr': "hausse du tarif de 2 %/an, de l'ordre de l'inflation au Maroc",
+        'en': 'tariff increase of 2 %/yr, in the order of inflation in Morocco',
+        'ar': 'ارتفاع التعريفة بنسبة 2 % سنويا، في حدود التضخم بالمغرب'},
+    'ci_code_sens_defaut_degradation': {
+        'fr': 'médiane mesurée du parc, Jordan et al., Progress in '
+              'Photovoltaics, 2022',
+        'en': 'measured fleet median, Jordan et al., Progress in '
+              'Photovoltaics, 2022',
+        'ar': 'القيمة الوسيطة المقاسة للأسطول، Jordan et al.، Progress in '
+              'Photovoltaics، 2022'},
+    'ci_code_sens_defaut_contribution_art13': {
+        'fr': "contribution de l'art. 13 de la loi 82-21, non encore fixée par "
+              "l'ANRE : ordre de grandeur du tarif des services système "
+              "(6,81 c/kWh, décision ANRE 02/26)",
+        'en': 'contribution under art. 13 of law 82-21, not yet set by ANRE: '
+              'order of magnitude of the system services tariff '
+              '(6.81 c/kWh, ANRE decision 02/26)',
+        'ar': 'مساهمة المادة 13 من القانون 82-21، لم تحددها الهيئة بعد: '
+              'في حدود تعريفة خدمات النظام (6,81 سنتيم/كيلوواط ساعة، قرار '
+              'الهيئة 02/26)'},
     # AMOT92 — la couverture est le PROJET du client.
     'ci_kicker_autoconso_commerciale': {
         'fr': 'Autoconsommation solaire commerciale',

@@ -20,6 +20,7 @@ Module PUR : aucune base, aucun import de modèle, aucune clé interdite
 """
 from __future__ import annotations
 
+from apps.parametres import tariff as _tariff_reglages
 from apps.ventes import tarif_ci
 from apps.ventes.quote_engine.constants_82_21 import MENTION_ART13, MENTION_BT
 
@@ -1259,8 +1260,9 @@ HYPOTHESE_VALORISATION = {
 CLES_BLOC = ('statut', 'motifs_omission', 'base', 'motif_base', 'tarif',
              'economie_annee1', 'facture_avant', 'facture_apres', 'revente',
              'flux_ht', 'flux_ttc', 'jalons', 'jalons_ttc', 'indicateurs',
-             'remplacements', 'om', 'entretien', 'sensibilites', 'financement',
-             'hypotheses', 'omissions', 'alertes_internes', 'vue_interne')
+             'remplacements', 'om', 'entretien', 'sensibilites',
+             'scenario_prudent', 'financement', 'hypotheses', 'omissions',
+             'alertes_internes', 'vue_interne')
 
 
 def _resolue(apercu, feuille):
@@ -1368,6 +1370,7 @@ def _bloc_omis(motif, tarif, *, alertes, vue_interne):
     del bloc['jalons_ttc']
     del bloc['financement']
     del bloc['entretien']  # AMOT96 — servi avec un flux seulement.
+    del bloc['scenario_prudent']  # AMOT97 — idem.
     return bloc
 
 
@@ -1556,13 +1559,19 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
     if financement is None:
         omissions.append({'cle': 'financement',
                           'motif': MOTIF_FINANCEMENT_ABSENT})
-    sensibilites = []
-    if str(mode_installation or '').strip().lower() == 'industriel':
-        # CIQ231 — industriel SEULEMENT, sur le flux de la base principale.
-        cle_base = 'ttc' if flux['base'] == BASE_TTC else 'ht'
-        sensibilites, omis = sensibilites_ci(
+    # CIQ231 — sur le flux de la base principale ; AMOT97 — calculées aussi
+    # en commercial pour sa SEULE ligne « scénario prudent » ; prix incomplet
+    # ⇒ aucun scénario (comme le retour).
+    cle_base = 'ttc' if flux['base'] == BASE_TTC else 'ht'
+    sensibilites, omis = ([], {'cle': 'sensibilites',
+                               'motif': motif_investissement}) \
+        if motif_investissement else sensibilites_ci(
             collecteur.get(cle_base), apercu, tarif, reglages,
             tarif_declare=tarif_declare, cle_base=cle_base)
+    prudent = scenario_prudent(sensibilites)
+    if str(mode_installation or '').strip().lower() != 'industriel':
+        sensibilites = []
+    else:
         if omis is not None:
             omissions.append(omis)
         # CIQ233 — vue INTERNE après impôt (industriel, saisie du client).
@@ -1592,6 +1601,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
         'om': flux['om'],
         'entretien': flux['entretien'],
         'sensibilites': sensibilites,
+        'scenario_prudent': prudent,
         'financement': financement,
         'hypotheses': hypotheses,
         'omissions': omissions,
@@ -1619,11 +1629,16 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
 #   production       ⇒ production de chaque cellule horaire × (1 + v),
 #                      autoconsommé = min(production, charge déclarée) cellule
 #                      par cellule, puis :func:`valoriser` (jamais une économie
-#                      mise à l'échelle linéairement).
-# Aucun scénario par défaut, aucun P90 inventé.
+#                      mise à l'échelle linéairement) ;
+#   contribution_art13 ⇒ valeur du kWh évité × (1 + v), comme tarif_kwh.
+# AMOT97 (D-ACI-15=a) — défaut : les 4 scénarios SEEDÉS et sourcés du réglage
+# (``parametres.tariff.SENSIBILITES_CI_DEFAUT``), retirables dans Paramètres.
 
-SENSIBILITE_CLES = ('indexation_tarif', 'degradation', 'tarif_kwh',
-                    'production')
+SENSIBILITE_CLES = _tariff_reglages.SENSIBILITE_CI_CLES
+#: AMOT97 — source seedée inchangée ⇒ ``source_code`` (libellé traduit).
+CODES_SOURCES_SENSIBILITES = {
+    s['source']: f"sens_defaut_{s['cle']}"
+    for s in _tariff_reglages.SENSIBILITES_CI_DEFAUT}
 SENSIBILITES_MAX = 4
 MOTIF_SANS_SENSIBILITE = (
     "aucun scénario saisi (Paramètres — sensibilités C&I) : aucune "
@@ -1717,7 +1732,7 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
             entrees['indexation_pct'] = {'valeur': v, 'source': libelle}
         elif cle == 'degradation':
             entrees['degradation_pct'] = {'valeur': v, 'source': libelle}
-        elif cle == 'tarif_kwh':
+        elif cle in ('tarif_kwh', 'contribution_art13'):
             eco = _economie_valorisee(
                 apercu, _tarif_mis_a_l_echelle(tarif, 1.0 + v / 100.0),
                 tarif_declare, cle_base)
@@ -1751,11 +1766,29 @@ def sensibilites_ci(flux_entrees, apercu_ci, tarif, reglages, *,
                  'ecart_retour_ans': _ecart(_indicateur(bloc, 'retour_ans'),
                                             base.get('retour_ans')),
                  'ecart_tri_pct': _ecart(_indicateur(bloc, 'tri_pct'),
-                                         base.get('tri_pct'))}
+                                         base.get('tri_pct')),
+                 # AMOT97 — le cumul net à l'horizon du flux du scénario.
+                 'cumul_mad': ((bloc or {}).get('flux') or [{}])[-1].get(
+                     'cumul_mad')}
+        if source in CODES_SOURCES_SENSIBILITES:
+            ligne['source_code'] = CODES_SOURCES_SENSIBILITES[source]
         if motif is not None:
             ligne['motif'] = motif
         sorties.append(ligne)
     return sorties, None
+
+
+def scenario_prudent(sensibilites):
+    """AMOT97 — ``{cle, variation_pct, source, retour_ans}`` du scénario
+    chiffré au retour le plus LONG, s'il est plus long que le central (la
+    ligne « scénario prudent » du commercial) ; None sinon."""
+    plus_longs = [s for s in sensibilites or []
+                  if (s.get('ecart_retour_ans') or 0) > 0]
+    if not plus_longs:
+        return None
+    s = max(plus_longs, key=lambda s: s['retour_ans'])
+    return {k: s.get(k) for k in ('cle', 'variation_pct', 'source',
+                                  'retour_ans')}
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1935,7 +1968,7 @@ def reglages_economie_ci(company):
     """``{mention_credit_bail_autorisee, sensibilites_ci}`` du
     ``TariffSettings`` (CIQ211) et ``{entretien_minimum_mad_kwc_an,
     tva_standard}`` du ``CompanyProfile`` (AMOT96), lus sans jamais les
-    créer ; vide sans réglage."""
+    créer ; sans réglage tarifaire, ses défauts (AMOT97)."""
     if company is None:
         return {}
     from apps.parametres.models_company import CompanyProfile
@@ -1945,7 +1978,9 @@ def reglages_economie_ci(company):
         'entretien_minimum_mad_kwc_an', 'tva_standard').first() or {}
     reglage = TariffSettings.objects.filter(company=company).first()
     if reglage is None:
-        return dict(profil)
+        # AMOT97 — réglage jamais enregistré : ses défauts (scénarios seedés).
+        return dict(profil, sensibilites_ci=_tariff_reglages
+                    .sensibilites_ci_defaut())
     return {
         'mention_credit_bail_autorisee': bool(
             getattr(reglage, 'mention_credit_bail_autorisee', False)),
@@ -1973,14 +2008,24 @@ def economie_ci_pour_devis(devis, company):
             params.get('tarif'), dict) else None
     from apps.ventes.domain.regles_calcul import calcul_corrige
     totaux = option_totaux(devis)
-    return assembler_economie_ci(
+    reglages = reglages_economie_ci(company)
+    if not calcul_corrige(devis):
+        # AMOT97 — nouveaux rendus seulement : un devis envoyé sous les règles
+        # d'origine ne reçoit ni les scénarios seedés ni la ligne prudente.
+        reglages['sensibilites_ci'] = [
+            s for s in reglages.get('sensibilites_ci') or []
+            if s not in _tariff_reglages.SENSIBILITES_CI_DEFAUT]
+    bloc = assembler_economie_ci(
         apercu if isinstance(apercu, dict) else {},
         saisies=params.get('saisies_economie_ci'),
         tarif_declare=tarif_declare,
         investissement={'ht': totaux.get('ht'), 'ttc': totaux.get('ttc')},
         lignes=lignes_pour_economie_ci(devis),
         mode_installation=getattr(devis, 'mode_installation', None),
-        reglages=reglages_economie_ci(company),
+        reglages=reglages,
         # ADEV81 — nouveaux rendus seulement (``regles_calcul``) : un devis
         # envoyé sous les règles d'origine garde ce que le client a reçu.
         controle_lignes=calcul_corrige(devis))
+    if not calcul_corrige(devis):
+        bloc.pop('scenario_prudent', None)
+    return bloc

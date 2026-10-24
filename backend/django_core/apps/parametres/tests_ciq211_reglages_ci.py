@@ -49,10 +49,13 @@ class ValidationPureTest(unittest.TestCase):
                               tariff.erreurs_sensibilites_ci(faute))
 
     def test_quatre_scenarios_sources_acceptes(self):
-        scenarios = [{**SCENARIO, 'cle': cle}
-                     for cle in tariff.SENSIBILITE_CI_CLES]
+        scenarios = [{**SCENARIO, 'cle': cle} for cle in
+                     tariff.SENSIBILITE_CI_CLES[:tariff.SENSIBILITES_CI_MAX]]
         self.assertEqual(len(scenarios), tariff.SENSIBILITES_CI_MAX)
         self.assertEqual(tariff.erreurs_sensibilites_ci(scenarios), {})
+        # AMOT97 — les 4 scénarios seedés sont eux-mêmes valides et sourcés.
+        self.assertEqual(tariff.erreurs_sensibilites_ci(
+            tariff.sensibilites_ci_defaut()), {})
 
     def test_credit_bail_sans_source_refuse(self):
         self.assertIn('mention_credit_bail_source',
@@ -77,7 +80,9 @@ class ApiReglagesCiTest(TestCase):
     def test_lecture_vierge(self):
         resp = self.api.get(URL)
         self.assertEqual(resp.status_code, 200, resp.data)
-        self.assertEqual(resp.data['sensibilites_ci'], [])
+        # AMOT97 (D-ACI-15=a) — un réglage neuf porte les 4 scénarios seedés.
+        self.assertEqual(resp.data['sensibilites_ci'],
+                         tariff.sensibilites_ci_defaut())
         self.assertIs(resp.data['mention_credit_bail_autorisee'], False)
         self.assertEqual(resp.data['mention_credit_bail_source'], '')
 

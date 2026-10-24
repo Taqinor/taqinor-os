@@ -956,3 +956,50 @@ class TestAmot93VotreInstallation(SimpleTestCase):
         sans = i_render.build_html(dict(augmente, _sans_graphiques=True))
         self.assertNotIn("Votre installation en bref",
                          sans.split('class="page"')[2])
+
+
+class TestAmot97ScenarioPrudent(SimpleTestCase):
+    """AMOT97 (D-ACI-15=a) — le commercial résume les scénarios seedés en
+    UNE ligne sous le retour : « scénario prudent : retour ≈ N ans », N
+    servi par ``economie_ci`` (le scénario au retour le plus long) ; aucun
+    tableau. Test-du-test : imprimer la ligne sans scénario servi ⇒ rouge."""
+
+    def _prudent(self):
+        from apps.parametres.tariff import sensibilites_ci_defaut
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.tests.test_ciq231_sensibilites import (
+            INVESTISSEMENT, TARIF_MT_DECLARE, _apercu_contrat)
+        bloc = eco.assembler_economie_ci(
+            _apercu_contrat(), tarif_declare=TARIF_MT_DECLARE,
+            investissement=INVESTISSEMENT, mode_installation="commercial",
+            reglages={"sensibilites_ci": sensibilites_ci_defaut()})
+        self.assertEqual(bloc["sensibilites"], [])
+        return bloc["scenario_prudent"]
+
+    def test_ligne_prudente_servie(self):
+        prudent = self._prudent()
+        self.assertGreater(prudent["retour_ans"], 0)
+        data = _data_ci()
+        data["economie_ci"]["scenario_prudent"] = prudent
+        p1 = _texte_ci(_pages_ci(data)[1])
+        n = f"{prudent['retour_ans']:g}".replace(".", ",")
+        self.assertIn(f"scénario prudent : retour ≈ {n} ans", p1)
+        self.assertNotIn("Scénario central", p1)
+        anglais = _texte_ci(_pages_ci(dict(data, langue_sortie="en"))[1])
+        self.assertIn(f"prudent scenario: payback ≈ {n} years", anglais)
+
+    def test_sans_scenario_servi_aucune_ligne(self):
+        data = _data_ci()
+        self.assertIsNone(data["economie_ci"].get("scenario_prudent"))
+        self.assertNotIn("scénario prudent", _texte_ci(_pages_ci(data)[1]))
+
+    def test_industriel_tableau_pas_de_ligne(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["economie_ci"] = i_s.economie_ci("exemple")
+        data["economie_ci"]["scenario_prudent"] = self._prudent()
+        html = i_render.build_html(i_rend._augment(data))
+        self.assertIn("Retour estimé", _texte_ci(html.split('class="page"')[1]))
+        self.assertNotIn("scénario prudent", _texte_ci(html))

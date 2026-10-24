@@ -476,3 +476,101 @@ class Amot94TableauVingtCinqAns(SimpleTestCase):
             None, frozenset({"energie_mensuelle"}),
             frozenset({"energie_mensuelle", "courbe_cumul"}),
             frozenset({"energie_mensuelle", "courbe_cumul", "hypotheses"})])
+
+
+def _fr(montant):
+    return fmt_centimes(montant).replace(" ", " ")
+
+
+class Amot97Sensibilites(SimpleTestCase):
+    """AMOT97 (D-ACI-15=a) — les 4 scénarios SEEDÉS, calculés par
+    ``economie_ci`` sur la même série que le central, imprimés en tableau
+    (central + scénarios : retour, TRI, cumul 25 ans, source).
+    Test-du-test : imprimer un scénario non servi ⇒ rouge."""
+
+    def _servi(self, scenarios=None, investissement=None):
+        from apps.parametres.tariff import sensibilites_ci_defaut
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.tests.test_ciq231_sensibilites import (
+            INVESTISSEMENT, TARIF_MT_DECLARE, _apercu_contrat)
+        return eco.assembler_economie_ci(
+            _apercu_contrat(), tarif_declare=TARIF_MT_DECLARE,
+            investissement=investissement or INVESTISSEMENT,
+            mode_installation="industriel", reglages={"sensibilites_ci": (
+                sensibilites_ci_defaut() if scenarios is None
+                else scenarios)})
+
+    def test_quatre_scenarios_seedes_servis_sur_la_meme_serie(self):
+        from apps.parametres.tariff import SENSIBILITES_CI_DEFAUT
+        bloc = self._servi()
+        sens = {s["cle"]: s for s in bloc["sensibilites"]}
+        self.assertEqual(list(sens), ["production", "indexation_tarif",
+                                      "degradation", "contribution_art13"])
+        central = finance.flux_principal(bloc)[1]["flux"][-1]["cumul_mad"]
+        for s in SENSIBILITES_CI_DEFAUT:
+            servi = sens[s["cle"]]
+            self.assertEqual(servi["source"], s["source"])
+            self.assertEqual(servi["source_code"], f"sens_defaut_{s['cle']}")
+            self.assertIsNotNone(servi["retour_ans"])
+        # Indexation +2 %/an : plus de cumul ; P90, dégradation 0,75 %/an et
+        # contribution art. 13 : moins (même flux, une grandeur changée).
+        self.assertGreater(sens["indexation_tarif"]["cumul_mad"], central)
+        for cle in ("production", "degradation", "contribution_art13"):
+            self.assertLess(sens[cle]["cumul_mad"], central)
+        prudent = bloc["scenario_prudent"]
+        self.assertEqual(prudent["retour_ans"], max(
+            s["retour_ans"] for s in sens.values()
+            if s["ecart_retour_ans"] > 0))
+
+    def test_prix_incomplet_aucun_scenario(self):
+        bloc = self._servi(investissement={"ht": 0, "ttc": 0})
+        self.assertEqual(bloc["sensibilites"], [])
+        self.assertIsNone(bloc["scenario_prudent"])
+        self.assertIn("sensibilites", [o["cle"] for o in bloc["omissions"]])
+
+    def test_scenario_retire_absent(self):
+        from apps.parametres.tariff import sensibilites_ci_defaut
+        garde = [s for s in sensibilites_ci_defaut()
+                 if s["cle"] != "contribution_art13"]
+        self.assertNotIn("contribution_art13", [
+            s["cle"] for s in self._servi(garde)["sensibilites"]])
+
+    def test_tableau_central_et_scenarios_servis(self):
+        d = _data()
+        d["economie_ci"]["sensibilites"] = self._servi()["sensibilites"]
+        argent = synthese_ci(dict(d))["argent"]
+        p3 = _pages(d)[3]
+        debut = p3.index('data-graphique="sensibilites"')
+        tableau = p3[debut:p3.index("</table>", debut)]
+        self.assertEqual(tableau.count("<tr>"),
+                         2 + len(argent["sensibilites"]))
+        texte = _texte(tableau)
+        self.assertIn("Scénario central", texte)
+        self.assertIn(_fr(argent["flux_ht"]["flux"][-1]["cumul_mad"]), texte)
+        for s in argent["sensibilites"]:
+            self.assertIn(_fr(s["cumul_mad"]), texte)
+            self.assertIn(f"{s['tri_pct']:.1f} %".replace(".", ","), texte)
+            self.assertIn(s["source"], texte)
+        self.assertIn("Contribution art. 13 -5 %", texte)
+        # Test-du-test : aucun scénario non servi (prix du kWh) imprimé.
+        self.assertNotIn("Prix du kWh", texte)
+
+    def test_tableau_cedable_et_absent_sans_scenario(self):
+        d = _data()
+        self.assertNotIn('data-graphique="sensibilites"', _pages(d)[3])
+        d["economie_ci"]["sensibilites"] = self._servi()["sensibilites"]
+        d["_sans_graphiques"] = frozenset({"sensibilites"})
+        self.assertNotIn('data-graphique="sensibilites"', _pages(d)[3])
+
+    def test_sources_seedees_traduites(self):
+        from apps.parametres.tariff import SENSIBILITES_CI_DEFAUT
+        from apps.ventes.quote_engine import i18n_labels
+        for s in SENSIBILITES_CI_DEFAUT:
+            cle = f"ci_code_sens_defaut_{s['cle']}"
+            self.assertEqual(i18n_labels.LIBELLES[cle]["fr"], s["source"])
+        d = dict(_data(), langue_sortie="en")
+        d["economie_ci"]["sensibilites"] = self._servi()["sensibilites"]
+        texte = _texte(_pages(d)[3])
+        self.assertIn("Central scenario", texte)
+        self.assertIn("measured fleet median, Jordan et al.", texte)
+        self.assertNotIn("médiane mesurée du parc", texte)

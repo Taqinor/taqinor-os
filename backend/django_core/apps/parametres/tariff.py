@@ -1367,11 +1367,35 @@ def regle_fda_depuis_reglages(reglages):
 # ═════════════════════════════════════════════════════════════════════════════
 #: Paramètres qu'un scénario de sensibilité peut faire varier.
 SENSIBILITE_CI_CLES = ('indexation_tarif', 'degradation', 'tarif_kwh',
-                       'production')
+                       'production', 'contribution_art13')
 #: Clés admises d'un scénario saisi.
 SENSIBILITE_CI_CHAMPS = ('cle', 'variation_pct', 'source')
 #: Au plus 4 scénarios, comme ``apps.ventes.economie.SCENARIOS_MAX``.
 SENSIBILITES_CI_MAX = 4
+#: AMOT97 (D-ACI-15=a) — les 4 scénarios SEEDÉS (défaut du réglage, posés par
+#: la migration parametres 0128 sur les listes vides) : modifiables et
+#: retirables dans Paramètres ; chaque valeur porte sa source.
+SENSIBILITES_CI_DEFAUT = (
+    {'cle': 'production', 'variation_pct': -7.7,
+     'source': "P90 annuelle : production × (1 − 1,282 × 6 %), variabilité "
+               "interannuelle retenue par la société (méthode P50/P90 de "
+               "PVsyst)"},
+    {'cle': 'indexation_tarif', 'variation_pct': 2,
+     'source': "hausse du tarif de 2 %/an, de l'ordre de l'inflation au "
+               "Maroc"},
+    {'cle': 'degradation', 'variation_pct': 0.75,
+     'source': "médiane mesurée du parc, Jordan et al., Progress in "
+               "Photovoltaics, 2022"},
+    {'cle': 'contribution_art13', 'variation_pct': -5,
+     'source': "contribution de l'art. 13 de la loi 82-21, non encore fixée "
+               "par l'ANRE : ordre de grandeur du tarif des services système "
+               "(6,81 c/kWh, décision ANRE 02/26)"},
+)
+
+
+def sensibilites_ci_defaut():
+    """AMOT97 — une COPIE des scénarios seedés (défaut du champ)."""
+    return [dict(s) for s in SENSIBILITES_CI_DEFAUT]
 
 
 def erreurs_sensibilites_ci(scenarios):

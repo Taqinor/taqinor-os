@@ -271,7 +271,14 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_tarif_sur_demande',
         # AMOT96 — entretien minimum (nouvelles clés).
         'ci_fx_entretien', 'ci_h_entretien_minimum',
-        'ci_h_entretien_non_chiffre')),
+        'ci_h_entretien_non_chiffre',
+        # AMOT97 — sensibilités seedées (nouvelles clés).
+        'ci_ind_sens_central', 'ci_ind_sens_scenario',
+        'ci_ind_sens_contribution_art13', 'ci_scenario_prudent',
+        'ci_code_sens_defaut_production',
+        'ci_code_sens_defaut_indexation_tarif',
+        'ci_code_sens_defaut_degradation',
+        'ci_code_sens_defaut_contribution_art13')),
     *_LIBELLES_APDF, *_LIBELLES_AGQ)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

@@ -1213,8 +1213,8 @@ function ReglagesPompage({
 // ═══════════════════════════════════════════════════════════════════════════
 // CIQ227 (Groupe CIQ, 03/10/2026) — études commerciales et industrielles
 // ═══════════════════════════════════════════════════════════════════════════
-// `TariffSettings.sensibilites_ci` = [{cle, variation_pct, source}] (au plus 4,
-// VIDE par défaut : aucune sensibilité n'existe tant qu'elle n'est pas saisie)
+// `TariffSettings.sensibilites_ci` = [{cle, variation_pct, source}] (au plus 4 ;
+// AMOT97 : 4 scénarios sourcés seedés par défaut, modifiables et retirables)
 // et `mention_credit_bail_autorisee` + `mention_credit_bail_source` (CIQ211 ;
 // la référence de l'avis juridique est obligatoire pour autoriser le mot
 // « crédit-bail » au client, D-CIQ-15).
@@ -1226,6 +1226,7 @@ const SENSIBILITES_CI_CLES = [
   ['degradation', 'Dégradation'],
   ['tarif_kwh', 'Tarif du kWh'],
   ['production', 'Production'],
+  ['contribution_art13', 'Contribution art. 13 (loi 82-21)'],
 ]
 
 /** État d'édition servi par le serveur — `null` si les clés sont absentes. */

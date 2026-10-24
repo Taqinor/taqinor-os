@@ -525,12 +525,21 @@ def tuiles_argent(d, cle, kpi, fmt):
         argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
         base = libelle(d, "ci_ttc", "TTC") if argent.get("base") == "ttc" \
             else libelle(d, "ci_ht", "HT")
+        # AMOT97 (D-ACI-15=a) — le scénario prudent SERVI, en une ligne, sur
+        # le commercial (l'industriel imprime le tableau, page finance).
+        prudent = (argent.get("scenario_prudent") or {}).get("retour_ans") \
+            if cle == "com" else None
         tuiles.append(kpi(ans(payback),
                           libelle(d, "ci_unite_ans", "&nbsp;ans"),
-                          libelle(d, "ci_retour_estime_base",
-                                  "Retour estimé ({base})", base=base)
-                          if argent else
-                          libelle(d, "ci_retour_estime", "Retour estimé"),
+                          (libelle(d, "ci_retour_estime_base",
+                                   "Retour estimé ({base})", base=base)
+                           if argent else
+                           libelle(d, "ci_retour_estime", "Retour estimé"))
+                          + ('<div style="font-size:6.3pt;margin-top:1px;">'
+                             + libelle(d, "ci_scenario_prudent", "scénario "
+                                       "prudent : retour ≈ {n} ans",
+                                       n=ans(prudent)) + "</div>"
+                             if prudent is not None else ""),
                           "payback_ans"))
     elif motif_investissement(d, cle):
         # AMOT80 (D-ACI-8=a) — investissement non chiffré : le MOTIF à la

@@ -28,6 +28,8 @@ from decimal import Decimal
 
 from django.db import models
 
+from apps.parametres.tariff import sensibilites_ci_defaut
+
 
 # ── Barème résidentiel ONEE — défauts TTC (jamais de TVA en plus) ─────────────
 # Tranches mensuelles (kWh) → prix MAD/kWh TTC. ORDRE FONDATEUR (19/08/2026) —
@@ -416,11 +418,13 @@ class TariffSettings(models.Model):
     # sensibilité n'existe tant qu'il n'en saisit pas), chacun avec sa source ;
     # au plus 4 (``tariff.SENSIBILITES_CI_MAX``). Refus nommant
     # ``sensibilites_ci[i].source`` (``tariff.erreurs_sensibilites_ci``).
+    # AMOT97 (D-ACI-15=a) — défaut : les 4 scénarios seedés et sourcés.
     sensibilites_ci = models.JSONField(
-        default=list, blank=True,
+        default=sensibilites_ci_defaut, blank=True,
         verbose_name='Scénarios de sensibilité C&I',
         help_text="Liste [{cle (indexation_tarif|degradation|tarif_kwh|"
-                  "production), variation_pct, source}] — vide par défaut.")
+                  "production|contribution_art13), variation_pct, source}] — "
+                  "4 scénarios sourcés par défaut (AMOT97).")
     # D-CIQ-15 — le mot « crédit-bail » n'est montré au client qu'après un
     # avis juridique (loi 82-21 art. 2) : FAUX par défaut ; la référence de
     # l'avis est obligatoire pour passer à vrai.
