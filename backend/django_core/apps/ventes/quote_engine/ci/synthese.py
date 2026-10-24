@@ -284,6 +284,21 @@ def _surplus(bilan):
     }
 
 
+def _co2_evite(data, etude_ci):
+    """AMOT100 — ``{t_an, g_kwh, source, date}`` : (autoconsommée + injectée
+    valorisée du bilan) × le facteur réseau SERVI (``economie_ci.facteur_co2``,
+    réglage société sourcé), en tonnes au dixième ; None sans facteur ou
+    sans bilan."""
+    facteur = _dict(_dict(data.get("economie_ci")).get("facteur_co2"))
+    bilan = _dict(etude_ci.get("bilan"))
+    g_kwh, auto = _num(facteur.get("g_kwh")), _num(bilan.get("autoconso_kwh"))
+    if not g_kwh or auto is None or not facteur.get("source"):
+        return None
+    kwh = auto + (_num(bilan.get("injecte_valorise_kwh")) or 0)
+    return {"t_an": round(kwh * g_kwh / 1e6, 1), "g_kwh": g_kwh,
+            "source": facteur["source"], "date": facteur.get("date")}
+
+
 def _bloc_energie(etude_ci, langue):
     bilan = _dict(etude_ci.get("bilan"))
     autoconso = _pct(bilan.get("taux_autoconso"))
@@ -838,6 +853,10 @@ def synthese_ci(data):
     if segment == "industriel":
         from .mentions import decarbonation_ci
         synthese["decarbonation"] = decarbonation_ci(data)
+    # AMOT100 (D-ACI-19=a) — CO₂ évité, SEULEMENT avec le facteur réglé.
+    co2 = _co2_evite(data, etude_ci)
+    if co2 is not None:
+        synthese.setdefault("decarbonation", {})["co2_evite"] = co2
     # CIQ314 — services : seulement ce que le devis porte (D-CIQ-12).
     synthese["services"] = _services(data)
     synthese["echeancier"] = _echeancier(data, option)

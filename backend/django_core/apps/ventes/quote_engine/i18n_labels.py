@@ -2849,6 +2849,13 @@ LIBELLES = {
         'fr': 'non chiffré — non déduit des économies',
         'en': 'not costed — not deducted from the savings',
         'ar': 'غير محتسبة — غير مخصومة من الوفورات'},
+    # AMOT100 (D-ACI-19=a) — CO₂ évité, seulement avec le facteur réglé.
+    'ci_co2_evite': {'fr': 'de CO₂ évitées par an',
+                     'en': 'of CO₂ avoided per year',
+                     'ar': 'من ثاني أكسيد الكربون المتجنب سنويا'},
+    'ci_co2_source': {'fr': 'facteur réseau {g} gCO₂/kWh — {source}',
+                      'en': 'grid factor {g} gCO₂/kWh — {source}',
+                      'ar': 'معامل الشبكة {g} غرام CO₂/كيلوواط ساعة — {source}'},
     # AMOT97 (D-ACI-15=a) — tableau des sensibilités et ligne prudente ;
     # ``ci_code_sens_defaut_*`` = les sources seedées, octet pour octet.
     'ci_ind_sens_central': {'fr': 'Scénario central', 'en': 'Central scenario',

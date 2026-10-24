@@ -1003,3 +1003,60 @@ class TestAmot97ScenarioPrudent(SimpleTestCase):
         html = i_render.build_html(i_rend._augment(data))
         self.assertIn("Retour estimé", _texte_ci(html.split('class="page"')[1]))
         self.assertNotIn("scénario prudent", _texte_ci(html))
+
+
+class TestAmot100Co2Evite(SimpleTestCase):
+    """AMOT100 (D-ACI-19=a) — avec le facteur réseau réglé (valeur + source),
+    la tuile « ≈ N t de CO₂ évitées par an » et sa source, N servi par
+    ``synthese_ci.decarbonation.co2_evite`` ; facteur vide ⇒ aucune mention
+    CO₂ (CIQ344). Test-du-test : imprimer sans facteur ⇒ rouge."""
+
+    FACTEUR = {"g_kwh": 650.0, "source": "rapport réseau 2025 (test)",
+               "date": "2026-10-01"}
+
+    def test_facteur_servi_seulement_avec_sa_source(self):
+        from apps.ventes.economie_ci import facteur_co2
+        reglages = {"facteur_co2_reseau_g_kwh": Decimal("650.00"),
+                    "facteur_co2_reseau_source": "rapport réseau 2025 (test)",
+                    "facteur_co2_reseau_date": None}
+        self.assertEqual(facteur_co2(reglages)["g_kwh"], 650.0)
+        self.assertIsNone(facteur_co2(dict(
+            reglages, facteur_co2_reseau_source=" ")))
+        self.assertIsNone(facteur_co2(dict(
+            reglages, facteur_co2_reseau_g_kwh=None)))
+
+    def test_tuile_servie_avec_sa_source(self):
+        data = _data_ci()
+        data["economie_ci"]["facteur_co2"] = dict(self.FACTEUR)
+        bilan = data["etude"]["etude_ci"]["bilan"]
+        attendu = round((bilan["autoconso_kwh"]
+                         + bilan["injecte_valorise_kwh"]) * 650 / 1e6, 1)
+        co2 = synthese_ci(data)["decarbonation"]["co2_evite"]
+        self.assertEqual(co2["t_an"], attendu)
+        p1 = _texte_ci(_pages_ci(data)[1])
+        n = f"{attendu:g}".replace(".", ",")
+        self.assertIn(f"≈ {n} t de CO₂ évitées par an", p1)
+        self.assertIn("facteur réseau 650 gCO₂/kWh — rapport réseau 2025 "
+                      "(test) (01/10/2026)", p1)
+        anglais = _texte_ci(_pages_ci(dict(data, langue_sortie="en"))[1])
+        self.assertIn("t of CO₂ avoided per year", anglais)
+
+    def test_facteur_vide_aucune_mention(self):
+        data = _data_ci()
+        self.assertNotIn("decarbonation", synthese_ci(data))
+        self.assertNotIn("CO₂", _texte_ci(_pages_ci(data)[1]))
+
+    def test_industriel_tuile_servie(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["etude"] = dict(data["etude"], etude_ci=copy.deepcopy(_ETUDE_CI))
+        data["economie_ci"] = i_s.economie_ci("exemple")
+
+        def p1(donnees):
+            return _texte_ci(i_render.build_html(i_rend._augment(
+                etude_ci_au_kwc_servi(donnees))).split('class="page"')[1])
+        self.assertNotIn("CO₂", p1(copy.deepcopy(data)))
+        data["economie_ci"]["facteur_co2"] = dict(self.FACTEUR)
+        self.assertIn("t de CO₂ évitées par an", p1(data))

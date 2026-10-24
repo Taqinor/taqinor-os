@@ -91,12 +91,17 @@ class Ciq344Decarbonation(SimpleTestCase):
         self.assertNotIn("CBAM", _html(_data("non", "ciment")))
 
     def test_jamais_tracabilite_ni_tonnage(self):
+        # AMOT100 (D-ACI-19=a) — « jamais sans facteur réglé » : ces données
+        # n'en portent pas (``economie_ci.facteur_co2`` absent) ; le cas
+        # réglé est tenu par test_qx46::TestAmot100Co2Evite.
         for d in (_data(), _data("oui", "ciment")):
+            self.assertNotIn("facteur_co2", d.get("economie_ci") or {})
             with self.subTest():
                 html = _html(d).lower()
                 self.assertNotIn("traçabilité", html)
                 self.assertNotIn("tco2", html)
                 self.assertNotIn("tonnes de co", html)
+                self.assertNotIn("co₂ évitées", html)
 
     def test_forme_du_contrat(self):
         s = synthese_ci(_data("oui", "ciment"))

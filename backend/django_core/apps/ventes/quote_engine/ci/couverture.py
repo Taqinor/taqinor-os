@@ -492,9 +492,10 @@ def ligne_surplus(d, cle, prefixe):
 
 def tuiles_argent(d, cle, kpi, fmt):
     """Tuiles « Économies estimées / an (base) » et « Retour estimé », ou []
-    (argent non servi ⇒ tuiles OMISES, jamais un « 0 », QJR119)."""
+    (argent non servi ⇒ tuiles OMISES, jamais un « 0 », QJR119) ; AMOT100 —
+    puis la tuile « CO₂ évité » quand elle est servie."""
     if d.get(f"{cle}_masquer_economies"):
-        return []
+        return tuile_co2(d, cle, kpi)
     tuiles = []
     economies = d.get(f"{cle}_economies")
     if economies is not None:
@@ -548,7 +549,26 @@ def tuiles_argent(d, cle, kpi, fmt):
             f'<span style="font-size:9pt;">'
             f'{motif_investissement(d, cle)}</span>', "",
             libelle(d, "ci_retour_estime", "Retour estimé")))
-    return tuiles
+    return tuiles + tuile_co2(d, cle, kpi)
+
+
+def tuile_co2(d, cle, kpi):
+    """AMOT100 (D-ACI-19=a) — « ≈ N t de CO₂ évitées par an » avec la source
+    du facteur réseau, lue sur ``synthese_ci.decarbonation.co2_evite`` ;
+    [] sans facteur réglé (aucune mention CO₂, CIQ344)."""
+    co2 = ((d.get(f"{cle}_synthese") or {}).get("decarbonation") or {}).get(
+        "co2_evite") or {}
+    if co2.get("t_an") is None:
+        return []
+    source = html.escape(str(co2.get("source") or ""), quote=False)
+    if co2.get("date"):
+        jour = "/".join(reversed(str(co2["date"])[:10].split("-")))
+        source += f" ({html.escape(jour, quote=False)})"
+    return [kpi(f"≈&nbsp;{ans(co2['t_an'])}", "&nbsp;t", libelle(
+        d, "ci_co2_evite", "de CO₂ évitées par an")
+        + '<div style="font-size:6.2pt;margin-top:1px;line-height:1.25;">'
+        + libelle(d, "ci_co2_source", "facteur réseau {g} gCO₂/kWh — {source}",
+                  g=ans(co2.get("g_kwh")), source=source) + "</div>")]
 
 
 # ── AMOT92 — la couverture est le PROJET du client ─────────────────────────

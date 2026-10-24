@@ -242,6 +242,18 @@ class CompanyProfile(models.Model):
         verbose_name='Entretien minimum à la charge du client (MAD HT/kWc/an)',
         help_text='Déduit des économies C&I quand aucune O&M n’est souscrite ; '
                   'vide = entretien non chiffré.')
+    # AMOT100 (D-ACI-19=a) — facteur d'émission du réseau marocain, fourni par
+    # le fondateur avec sa source : VIDE par défaut ⇒ aucune mention CO₂.
+    facteur_co2_reseau_g_kwh = models.DecimalField(
+        max_digits=7, decimal_places=2, null=True, blank=True,
+        verbose_name="Facteur d'émission du réseau (gCO₂/kWh)",
+        help_text='Vide = aucune mention CO₂ sur les documents C&I.')
+    facteur_co2_reseau_source = models.TextField(
+        blank=True, default='',
+        verbose_name="Source du facteur d'émission du réseau")
+    facteur_co2_reseau_date = models.DateField(
+        null=True, blank=True,
+        verbose_name="Date du facteur d'émission du réseau")
     # ── Constantes ROI éditables (T6) — défauts = valeurs historiques codées
     # en dur dans le simulateur (solar.js). Tant qu'elles ne sont pas éditées,
     # le comportement reste identique ; le simulateur garde son repli interne.

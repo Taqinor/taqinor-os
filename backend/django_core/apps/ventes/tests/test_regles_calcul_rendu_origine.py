@@ -278,7 +278,9 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_code_sens_defaut_production',
         'ci_code_sens_defaut_indexation_tarif',
         'ci_code_sens_defaut_degradation',
-        'ci_code_sens_defaut_contribution_art13')),
+        'ci_code_sens_defaut_contribution_art13',
+        # AMOT100 — CO₂ évité (nouvelles clés).
+        'ci_co2_evite', 'ci_co2_source')),
     *_LIBELLES_APDF, *_LIBELLES_AGQ)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

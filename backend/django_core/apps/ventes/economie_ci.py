@@ -1975,7 +1975,8 @@ def reglages_economie_ci(company):
     from apps.parametres.models_tariff import TariffSettings
     # AMOT96 — entretien minimum + TVA standard du profil, lus sans le créer.
     profil = CompanyProfile.objects.filter(company=company).values(
-        'entretien_minimum_mad_kwc_an', 'tva_standard').first() or {}
+        'entretien_minimum_mad_kwc_an', 'tva_standard',
+        *CHAMPS_FACTEUR_CO2).first() or {}
     reglage = TariffSettings.objects.filter(company=company).first()
     if reglage is None:
         # AMOT97 — réglage jamais enregistré : ses défauts (scénarios seedés).
@@ -2028,4 +2029,25 @@ def economie_ci_pour_devis(devis, company):
         controle_lignes=calcul_corrige(devis))
     if not calcul_corrige(devis):
         bloc.pop('scenario_prudent', None)
+    elif facteur_co2(reglages):
+        bloc['facteur_co2'] = facteur_co2(reglages)
     return bloc
+
+
+#: AMOT100 (D-ACI-19=a) — le facteur d'émission du réseau (``CompanyProfile``).
+CHAMPS_FACTEUR_CO2 = ('facteur_co2_reseau_g_kwh', 'facteur_co2_reseau_source',
+                      'facteur_co2_reseau_date')
+
+
+def facteur_co2(reglages):
+    """AMOT100 — ``{g_kwh, source, date}`` quand la société a réglé le
+    facteur ET sa source (nouveaux rendus seulement) ; None sinon."""
+    reglages = reglages or {}
+    g_kwh = _montant(reglages.get(CHAMPS_FACTEUR_CO2[0]),
+                     strictement_positif=True)
+    source = str(reglages.get(CHAMPS_FACTEUR_CO2[1]) or '').strip()
+    if g_kwh is None or not source:
+        return None
+    date = reglages.get(CHAMPS_FACTEUR_CO2[2])
+    return {'g_kwh': g_kwh, 'source': source,
+            'date': date.isoformat() if hasattr(date, 'isoformat') else date}
