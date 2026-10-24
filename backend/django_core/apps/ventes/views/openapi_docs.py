@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError as _ErreurDjango
 from django.core.validators import RegexValidator as _RegexValidator
+from drf_spectacular.drainage import set_override
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers as s
@@ -519,6 +520,50 @@ def _pourcent_souple(**kwargs):
                   required=False, allow_null=True, **kwargs)
 
 
+def _proprietes_etude_params():
+    """CI #1001 (merge group) — le corps PATCH publie EXACTEMENT les clés que
+    ``domain/etude_schema.SCHEMA`` accepte de l'écran : les ENTRÉES non
+    exclusives, typées d'après ``type_attendu`` et nullables (``null`` retire la
+    clé). Une clé inconnue, dérivée, exclusive ou retirée est donc hors schéma
+    (400 attendu) — plus jamais « rejected schema-compliant ».
+    """
+    from ..domain import etude_schema as _es
+    _json = {str: {'type': 'string'}, int: {'type': 'number'}, float: {'type': 'number'},
+             bool: {'type': 'boolean'}, dict: {'type': 'object'}, list: {'type': 'array'}}
+    props = {}
+    for cle, regle in _es.SCHEMA.items():
+        if regle['nature'] != _es.ENTREE or regle['exclusif']:
+            continue
+        formes = []
+        for t in regle['type']:
+            f = dict(_json[t])
+            if f not in formes:
+                formes.append(f)
+        forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
+        props[cle] = {**forme, 'nullable': True}
+    props['expected_updated_at'] = {'type': 'string', 'nullable': True}
+    return props
+
+
+class _EtudeParamsEntree(s.DictField):
+    """api-fuzz (24/10/2026, replace-lines) — ``etude_params`` d'un corps de
+    création / remplacement publie les ENTRÉES d'étude clé par clé (mêmes
+    propriétés que le PATCH, ``_proprietes_etude_params``) et
+    ``additionalProperties: false`` : une clé inconnue est hors schéma, comme
+    ``domain/etude_schema`` la refuse (400 nommé) — plus jamais « rejected
+    schema-compliant »."""
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault('required', False)
+        kwargs.setdefault('allow_null', True)
+        super().__init__(**kwargs)
+        proprietes = {cle: forme for cle, forme in _proprietes_etude_params().items()
+                      if cle != 'expected_updated_at'}
+        set_override(self, 'field', {
+            'type': 'object', 'properties': proprietes,
+            'additionalProperties': False, 'nullable': True})
+
+
 AutoDevisRequest = _ser('DevisAutoRequest', {
     # CI #997 fuzz — corps validé tel que publié (la vue le relisait à la
     # main) ; « un lead OU un client » publié (``CORPS_LEAD_OU_CLIENT``).
@@ -527,7 +572,7 @@ AutoDevisRequest = _ser('DevisAutoRequest', {
     'target_kwc': NombreStrict(required=False, allow_null=True),
     'scenario': ChaineStricte(required=False, allow_blank=True,
                               allow_null=True),
-    'etude_params': s.DictField(required=False, allow_null=True),
+    'etude_params': _EtudeParamsEntree(),
     'taux_tva': _pourcent_souple(),
     'remise_globale': _pourcent_souple(),
     'structure_produit_id': EntierStrict(required=False, allow_null=True),
@@ -686,7 +731,7 @@ class DevisAtomic(DevisWriteSerializer):
     ``POST /devis/``) + ``lignes`` (au moins une) + ``etude_params`` (écrit
     par l'écrivain unique d'étude, pas par le sérialiseur d'en-tête)."""
     lignes = s.ListField(child=s.DictField(), min_length=1)
-    etude_params = s.DictField(required=False, allow_null=True)
+    etude_params = _EtudeParamsEntree()
 
     class Meta(DevisWriteSerializer.Meta):
         fields = list(DevisWriteSerializer.Meta.fields) + ['lignes']
@@ -695,7 +740,7 @@ class DevisAtomic(DevisWriteSerializer):
 ReplaceLinesRequest = _ser('DevisReplaceLinesRequest', {
     'lignes': s.ListField(child=s.DictField(), min_length=1),
     'entete': s.DictField(required=False, allow_null=True),
-    'etude_params': s.DictField(required=False, allow_null=True),
+    'etude_params': _EtudeParamsEntree(),
     'expected_updated_at': _JETON,
 })
 
@@ -840,31 +885,6 @@ EtudeParamsGetResponse = _ser('DevisEtudeParamsResponse', {
 })
 
 
-def _proprietes_etude_params():
-    """CI #1001 (merge group) — le corps PATCH publie EXACTEMENT les clés que
-    ``domain/etude_schema.SCHEMA`` accepte de l'écran : les ENTRÉES non
-    exclusives, typées d'après ``type_attendu`` et nullables (``null`` retire la
-    clé). Une clé inconnue, dérivée, exclusive ou retirée est donc hors schéma
-    (400 attendu) — plus jamais « rejected schema-compliant ».
-    """
-    from ..domain import etude_schema as _es
-    _json = {str: {'type': 'string'}, int: {'type': 'number'}, float: {'type': 'number'},
-             bool: {'type': 'boolean'}, dict: {'type': 'object'}, list: {'type': 'array'}}
-    props = {}
-    for cle, regle in _es.SCHEMA.items():
-        if regle['nature'] != _es.ENTREE or regle['exclusif']:
-            continue
-        formes = []
-        for t in regle['type']:
-            f = dict(_json[t])
-            if f not in formes:
-                formes.append(f)
-        forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
-        props[cle] = {**forme, 'nullable': True}
-    props['expected_updated_at'] = {'type': 'string', 'nullable': True}
-    return props
-
-
 EtudeParamsPatchRequest = {
     'application/json': {
         'type': 'object',
@@ -876,6 +896,8 @@ EtudeParamsPatchRequest = {
         'additionalProperties': False,
     },
 }
+
+
 OffresTaillesResponse = _ser('DevisOffresTailles', {
     'offres_tailles': s.DictField(allow_null=True),
     'editable': s.BooleanField(),
