@@ -889,8 +889,12 @@ def normaliser_patch(data):
     Lève ``ValueError`` sur une origine inconnue — jamais une quatrième valeur
     inventée sans que le contrat ne soit d'abord mis à jour.
     """
+    from core.parseurs import sans_nul
+
     propre = {}
-    for chemin, entree in (data or {}).items():
+    # api-fuzz — le caractère nul (clés et valeurs imbriquées comprises) ne se
+    # stocke pas en jsonb (DataError → 500) : il est retiré, jamais refusé.
+    for chemin, entree in sans_nul(data or {}).items():
         if isinstance(entree, dict) and 'valeur' in entree:
             origine = entree.get('origine', ORIGINE_MANUEL)
             valeur = entree['valeur']
