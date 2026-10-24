@@ -198,8 +198,6 @@ jobs:
       # CI-5MIN (23/10/2026) — paquets d'API modifies (portee du fuzz PR),
       # calcules UNE fois ici au lieu d'une fois par tranche `api-fuzz-pr`.
       fuzz_owners: ${{ steps.detect.outputs.fuzz_owners }}
-      # CI-5MIN — liste JSON des tranches du fuzz PR (`[0,1,…]`), 2 par paquet.
-      fuzz_shards: ${{ steps.detect.outputs.fuzz_shards }}
       # WOW8-ONCE — 'true' ssi un dump EXACT existe deja pour l'ensemble de
       # migrations courant (cf. le job `backend-testdb`).
       testdb_hit: ${{ steps.testdb.outputs.cache-hit }}
@@ -355,19 +353,14 @@ jobs:
             fuzz_files="$changed"
           fi
           fuzz_owners="$(python3 scripts/fuzz/api_fuzz_scope.py proprietaires <<< "$fuzz_files" | tr '\n' ' ' | sed 's/ *$//')"
-          # CI-5MIN (23/10/2026) — NOMBRE DE TRANCHES PROPORTIONNEL A LA PORTEE :
-          # 2 par paquet modifie, plafond 8 (l'ancienne matrice fixe). La
-          # partition `k % N` de `api_fuzz_scope.py schema --shard i/N` couvre
-          # TOUTE la portee pour n'importe quel N : memes operations, memes
-          # checks, seules les mises en place dupliquees disparaissent. Mesure
-          # (run 40043647668, portee `apps.ventes` seule) : 8 tranches de 21 a
-          # 39 s de Schemathesis chacune derriere ~2,5 min de mise en place —
-          # 8 creneaux pour ~4 min de fuzz utile. Portee vide -> `[0]` (la
-          # matrice est de toute facon sautee, mais l'expression reste valide).
-          fuzz_n=$(( $(wc -w <<< "$fuzz_owners") * 2 ))
-          if [ "$fuzz_n" -gt 8 ]; then fuzz_n=8; fi
-          if [ "$fuzz_n" -lt 1 ]; then fuzz_n=1; fi
-          fuzz_shards="[$(seq -s, 0 $(( fuzz_n - 1 )))]"
+          # CI-5MIN (23/10/2026) — LE NOMBRE DE TRANCHES RESTE FIXE A 8 : essaye a
+          # 2 tranches par paquet (run 40047148006, portee `apps.ventes`, 2
+          # tranches), le verdict a sorti 5 constats NOUVEAUX (500 sur
+          # `devis/{id}/noter/` et `proforma-pdf/`, PUT/PATCH d'etat sur
+          # `plans-commission/{id}/`) que la meme portee a 8 tranches ne sortait
+          # pas (runs 40041213676 et 40043647668, 0 nouveau). Le verdict depend
+          # des operations qui partagent une base : changer la partition change
+          # le test. Retire.
 
           {
             echo "backend=$backend"
@@ -377,10 +370,9 @@ jobs:
             echo "fastapi=$fastapi"
             echo "code=$code"
             echo "fuzz_owners=$fuzz_owners"
-            echo "fuzz_shards=$fuzz_shards"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved -> backend=$backend frontend=$frontend web=$web yanbow=$yanbow fastapi=$fastapi e2e(code)=$code"
-          echo "Paquets d'API modifiés (fuzz PR) : ${fuzz_owners:-aucun} — tranches $fuzz_shards"
+          echo "Paquets d'API modifiés (fuzz PR) : ${fuzz_owners:-aucun}"
 
   # ---------------------------------------------------------------------------
   # WOW-CI RONDE 5 (20/08/2026) — L'IMAGE CI BACKEND PRE-CONSTRUITE.
@@ -1116,8 +1108,10 @@ jobs:
           # erreur franche. Le harnais local (`scripts/test-backend.ps1`) tourne
           # en `--parallel 4` sur ces memes classes depuis toujours.
           PARALLEL=4
-          # CI-5MIN (23/10/2026) — mesure d'occupation CPU de la lane (lecture de
-          # /proc/stat avant/apres) : decide si `--parallel` peut monter.
+          # CI-5MIN (23/10/2026) — occupation CPU de la lane (/proc/stat avant/
+          # apres), une ligne en fin d'etape. Mesure du run 40043647668 : 78 a
+          # 93 %, iowait 0 % -> monter `--parallel` n'acheterait presque rien.
+          # Gardee : c'est la donnee a relire avant tout futur reglage.
           read -r _ u1 n1 s1 i1 w1 q1 sq1 st1 _ < /proc/stat
           t0=$(date +%s)
           python manage.py test $LABELS -v 2 --exclude-tag=pdf --exclude-tag=slow --parallel "$PARALLEL" --keepdb
@@ -1268,14 +1262,10 @@ jobs:
     # → tranche k % 8) : chaque tranche fuzze TOUT son lot, l'union = toute la
     # surface, à chaque run, en parallèle — même patron que
     # `backend-tests-shard`.
-    #
-    # CI-5MIN (23/10/2026) — la matrice vient de `changes` (`fuzz_shards`) : 2
-    # tranches par paquet modifie, plafond 8. Le total passe par
-    # `strategy.job-total` (patron AUD830), jamais par un litteral.
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(needs.changes.outputs.fuzz_shards) }}
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     permissions:
       contents: read
       packages: read
@@ -1355,7 +1345,7 @@ jobs:
         working-directory: backend/django_core
         run: |
           gunicorn -c ../../scripts/fuzz/gunicorn_fuzz.py erp_agentique.wsgi:application \
-            --bind 127.0.0.1:8000 --workers 4 --timeout 120 --worker-class sync \
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
             > "$GITHUB_WORKSPACE/gunicorn-fuzz.log" 2>&1 &
           for i in $(seq 1 30); do
             code=$(curl -s -o /dev/null -w "%{http_code}" \
@@ -1386,7 +1376,7 @@ jobs:
           python ../../scripts/fuzz/api_fuzz_scope.py schema \
             --in "$GITHUB_WORKSPACE/openapi-brut.json" \
             --out "$GITHUB_WORKSPACE/openapi-fuzz.json" \
-            --shard "${{ matrix.shard }}/${{ strategy.job-total }}" \
+            --shard "${{ matrix.shard }}/8" \
             --proprietaires ${{ needs.changes.outputs.fuzz_owners }}
       - name: schemathesis run (phase coverage, tous les checks — tranche entière)
         if: ${{ needs.changes.outputs.fuzz_owners != '' }}
@@ -1397,14 +1387,13 @@ jobs:
           # l'étape suivante contre la dette gelée ; tout autre code (schéma
           # illisible, crash) fait échouer ICI.
           rc=0
-          # CI-5MIN (23/10/2026) — `--workers 4` (defaut Schemathesis : 1). Mesure,
-          # run 40032000655 tranche 6 : 15 459 cas en 248 s, envoyes UN PAR UN,
-          # pendant que les workers gunicorn attendaient la requete suivante.
-          # Les workers se partagent les OPERATIONS (memes cas, memes checks,
-          # meme schema) ; gunicorn passe de 3 a 4 workers pour les servir.
+          # CI-5MIN (23/10/2026) — `--workers 4` ESSAYE PUIS RETIRE : ~1,5x par
+          # tranche (run 40043647668), mais des requetes concurrentes sur la
+          # meme base changent l'ordre des ecritures, donc les constats (voir la
+          # note sur le nombre de tranches dans `changes`). Le fuzz PR reste
+          # sequentiel, comme le nocturne contre lequel la dette a ete gelee.
           schemathesis run \
             --url "$FUZZ_BASE_URL" \
-            --workers 4 \
             --checks all \
             --phases coverage \
             --mode all \
