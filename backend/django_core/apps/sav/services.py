@@ -2692,12 +2692,14 @@ def decision_facturation(ticket, user, override=False):
     Renvoie un dict ``{'refuse': bool, 'http': int|None, 'detail': str,
     'couverture': str, 'couvert': bool}``. ``couvert`` = garantie ou contrat
     : la facture est posée à 0 DH et aucun devis n'est créé."""
+    from authentication.models import CustomUser
     from .models import Ticket
 
     if ticket.non_facturable:
-        est_responsable = (
-            getattr(user, 'is_admin_role', False)
-            or getattr(user, 'is_responsable', False))
+        # ASAV104 — palier Administrateur/Responsable (``menu_tier``), celui
+        # qui affiche le bouton : ``is_responsable`` passe pour tout rôle.
+        est_responsable = getattr(user, 'menu_tier', None) in (
+            CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE)
         if not override or not est_responsable:
             return {
                 'refuse': True, 'http': 403,
