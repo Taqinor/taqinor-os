@@ -1442,6 +1442,10 @@ class ParametresGammesSerializer(ChampsStrictsSansDecimalMixin,  # CI #997 (2)
 # TAILLES (ordre fondateur, 26/08/2026) — l'ÉDITION des trois tailles
 # ════════════════════════════════════════════════════════════════════════════
 
+#: Code d'erreur d'un id de produit bien formé mais absent de la société.
+CODE_PRODUIT_INCONNU = 'does_not_exist'
+
+
 class OffreTailleConfigSerializer(serializers.Serializer):
     """La CONFIGURATION d'UNE taille — et rien d'autre.
 
@@ -1560,7 +1564,9 @@ class OffreTailleConfigSerializer(serializers.Serializer):
             produit = produits_qs().filter(
                 pk=produit_id, company=company).first()
             if produit is None:
-                erreurs[role] = 'Produit introuvable dans votre catalogue.'
+                erreurs[role] = serializers.ErrorDetail(
+                    'Produit introuvable dans votre catalogue.',
+                    code=CODE_PRODUIT_INCONNU)
                 continue
             if not (produit.prix_vente or 0) > 0:
                 erreurs[role] = (
@@ -1577,6 +1583,26 @@ class OffreTailleEcritureSerializer(serializers.Serializer):
 
     cle = serializers.CharField()
     config = OffreTailleConfigSerializer()
+
+    def is_valid(self, *, raise_exception=False):
+        """api-fuzz — un id de produit BIEN FORMÉ absent de la société (ou
+        d'une autre) est une ressource manquante : 404, même corps que le 400
+        (aucun oracle inter-société). Toute autre erreur, seule ou mêlée, garde
+        le 400."""
+        valide = super().is_valid(raise_exception=False)
+        if not valide and raise_exception:
+            from rest_framework.exceptions import NotFound
+            config = self.errors.get('config')
+            if (list(self.errors) == ['config'] and isinstance(config, dict)
+                    and list(config) == ['equipements']
+                    and isinstance(config['equipements'], dict)
+                    and all(getattr(d, 'code', None) == CODE_PRODUIT_INCONNU
+                            for details in config['equipements'].values()
+                            for d in (details if isinstance(details, list)
+                                      else [details]))):
+                raise NotFound(self.errors)
+            raise serializers.ValidationError(self.errors)
+        return valide
 
     def validate_cle(self, value):
         from .offres_tailles import CLES

@@ -44,9 +44,14 @@ def _deja_notifie_aujourdhui(event_type, link, company):
         return False
 
 
-def _recipients_reappro(company):
-    """Responsables/admins actifs de la société (destinataires de l'alerte).
-    À défaut (aucun rôle taggé), tous les utilisateurs actifs."""
+def _recipients_reappro(company, event_type):
+    """Destinataires de l'alerte ``event_type`` : APAR72 — une règle de routage
+    ACTIVE (Paramètres › Notifications) fait foi ; sinon responsables/admins
+    actifs de la société. À défaut (aucun rôle taggé), tous les actifs."""
+    from apps.notifications.services import (
+        regle_de_routage_active, resolve_recipients)
+    if regle_de_routage_active(company, event_type):
+        return list(resolve_recipients(company, event_type))
     from django.contrib.auth import get_user_model
     User = get_user_model()
     qs = User.objects.filter(
@@ -88,7 +93,7 @@ def recompute_reordering_task():
         if _deja_notifie_aujourdhui(EventType.STOCK_LOW, link, company):
             result[company.id] = 0
             continue
-        recipients = _recipients_reappro(company)
+        recipients = _recipients_reappro(company, EventType.STOCK_LOW)
         noms = ', '.join(b['nom'] for b in besoins[:10])
         suffixe = '…' if len(besoins) > 10 else ''
         try:
@@ -384,7 +389,8 @@ def alerter_surcapacite_zones_task(seuil_pct=None):
             # plutôt que d'écrire une valeur non déclarée dans le TextChoices
             # (le libellé de la notification, lui, est sans ambiguïté).
             notify_many(
-                _recipients_reappro(company), EventType.STOCK_LOW,
+                _recipients_reappro(company, EventType.STOCK_LOW),
+                EventType.STOCK_LOW,
                 title=f'{len(zones)} zone(s) entrepôt en sur-capacité',
                 body=f'Seuil de remplissage franchi : {noms}{suffixe}.',
                 link=link, company=company)
@@ -430,7 +436,8 @@ def expiration_alerts_task():
         try:
             from apps.notifications.services import notify_many
             from apps.notifications.types_evenements import EventType
-            recipients = _recipients_reappro(company)
+            recipients = _recipients_reappro(
+                company, EventType.STOCK_EXPIRATION_SOON)
             noms = ', '.join(
                 e['produit_nom'] for e in expirants[:10])
             suffixe = '…' if len(expirants) > 10 else ''

@@ -11,6 +11,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 _SUBSTITUTS_SEULS = re.compile(r'[\ud800-\udfff]')
 
@@ -33,6 +34,18 @@ class TexteSansSubstitut(ChaineStricte):
     def to_internal_value(self, data):
         return super().to_internal_value(sans_substituts(data))
 
+
+#: 3e drainage api-fuzz 24/10 — ``pieces-retirees`` : une pièce en ``recyclage``
+#: n'a qu'une destination, ``stock_occasion`` (``services.retirer_piece``, 400
+#: sinon — y compris SANS ``destination``, qui retombe sur ``rebut``). Règle
+#: ENTRE deux champs, donc publiée en ``anyOf`` : retrait (ou opération absente)
+#: OU recyclage avec sa destination.
+CORPS_PIECE_RETIREE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'properties': {'operation': {'enum': ['retrait']}}},
+    {'required': ['operation', 'destination'],
+     'properties': {'operation': {'enum': ['recyclage']},
+                    'destination': {'enum': ['stock_occasion']}}},
+]}}
 
 #: Décimal STRICTEMENT positif, 10 entiers + 2 décimales au plus, écrit sans
 #: signe ni zéros de tête : ``"0"``/``"-1"`` ne sont plus « conformes » puis

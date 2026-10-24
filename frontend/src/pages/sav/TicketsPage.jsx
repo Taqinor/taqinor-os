@@ -787,8 +787,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     </>
   )
 
-  // L299/L1 — compte-à-rebours de garantie de l'équipement lié.
-  // ASAV45 — fin de garantie EFFECTIVE servie (max légale / constructeur).
+  // L299/L1 — bandeau de garantie de l'équipement lié.
+  // ASAV45 — fin de garantie EFFECTIVE servie (max légale / constructeur) ;
+  // ASAV111 — le verdict (en cours / expirée) est celui du serveur, jugé à
+  // l'ouverture du ticket : aucun calcul de jours sur la date du navigateur.
   const finGarantie = current.equipement_fin_garantie_effective
     ?? current.equipement_fin_garantie
   const baseGarantie = current.equipement_fin_garantie_effective
@@ -797,13 +799,9 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const headerContent = finGarantie ? (
     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
       <ShieldCheck className="size-3.5" aria-hidden="true" />
-      {(() => {
-        const fin = new Date(`${finGarantie}T00:00:00`)
-        const jours = Math.round((fin - new Date()) / 86400000)
-        return jours >= 0
-          ? `Garantie jusqu'au ${formatDateFR(finGarantie)}${baseGarantie} (${jours} j restant${jours > 1 ? 's' : ''})`
-          : `Garantie expirée le ${formatDateFR(finGarantie)}${baseGarantie} (${-jours} j)`
-      })()}
+      {current.sous_garantie_effectif === 'non'
+        ? `Garantie expirée le ${formatDateFR(finGarantie)}${baseGarantie}`
+        : `Garantie jusqu'au ${formatDateFR(finGarantie)}${baseGarantie}`}
     </span>
   ) : null
 
@@ -1048,11 +1046,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
               <Button type="button" size="sm" variant="outline" loading={attenteBusy} onClick={reprendreApresAttente}>
                 Reprendre après attente client
               </Button>
-            ) : (
+            ) : TICKET_OPEN_STATUSES.includes(current.statut) && !current.annule ? (
               <Button type="button" size="sm" variant="outline" loading={attenteBusy} onClick={mettreEnAttenteClient}>
                 Mettre en attente client
               </Button>
-            )}
+            ) : null}
           </div>
         </CollapsibleSection>
 

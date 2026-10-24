@@ -170,7 +170,10 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
                             'sous_garantie': 0, 'non_renseignee': 0},
                 '_prochaine': None,
             }
-        st = _statut(eq.date_fin_garantie)
+        # ASAV107 — statut, totaux et échéance jugés sur la fin EFFECTIVE
+        # (max légale loi 31-08 / constructeur), comme la fiche équipement.
+        fin = eq.date_fin_garantie_effective
+        st = _statut(fin)
         st_prod = _statut(eq.date_fin_garantie_production)
         item = {
             'equipement': eq.id,
@@ -184,6 +187,7 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
             'date_fin_garantie_production': (
                 eq.date_fin_garantie_production.isoformat()
                 if eq.date_fin_garantie_production else None),
+            'date_fin_garantie_effective': fin.isoformat() if fin else None,
             'statut_garantie': st,
             'statut_garantie_production': st_prod,
             'statut': eq.statut,
@@ -200,10 +204,10 @@ def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
         totaux['equipements'] += 1
         totaux[_stat_key[st]] += 1
         # Prochaine échéance du parc = la plus proche date de fin non nulle.
-        if eq.date_fin_garantie is not None:
+        if fin is not None:
             cur = parc['_prochaine']
-            if cur is None or eq.date_fin_garantie < cur:
-                parc['_prochaine'] = eq.date_fin_garantie
+            if cur is None or fin < cur:
+                parc['_prochaine'] = fin
 
     # Tri des parcs : échéance la plus proche d'abord (None = tout en fin).
     _MAX = datetime.date.max
@@ -235,8 +239,9 @@ def client_a_contrat_actif(client, company):
 
     if client is None:
         return False
-    return ContratMaintenance.objects.filter(
-        client=client, company=company, actif=True).exists()
+    # ASAV113 — « actif » = ``est_actif()`` (début, expiration + grâce).
+    return any(c.est_actif() for c in ContratMaintenance.objects.filter(
+        client=client, company=company, actif=True))
 
 
 def clients_sans_contrat_actif(company, client_ids):
@@ -252,10 +257,10 @@ def clients_sans_contrat_actif(company, client_ids):
     ids = {int(i) for i in (client_ids or [])}
     if not ids:
         return set()
-    avec_contrat = set(
-        ContratMaintenance.objects.filter(
+    avec_contrat = {
+        c.client_id for c in ContratMaintenance.objects.filter(
             company=company, client_id__in=ids, actif=True)
-        .values_list('client_id', flat=True))
+        if c.est_actif()}  # ASAV113 — expiration + grâce
     return ids - avec_contrat
 
 
@@ -324,10 +329,10 @@ def contrats_maintenance_facturables(company):
     qs = ContratMaintenance.objects.filter(
         company=company, actif=True, facturation_active=True,
         prix__isnull=False,
-    ).only('id', 'prix', 'periodicite')
+    ).only('id', 'prix', 'periodicite', 'actif', 'date_debut', 'duree_mois')
     return [
         {'id': cm.id, 'prix': cm.prix, 'periodicite': cm.periodicite}
-        for cm in qs
+        for cm in qs if cm.est_actif()  # ASAV113 — échu hors grâce exclu
     ]
 
 

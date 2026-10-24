@@ -184,9 +184,9 @@ class TestKanbanScanCreatesDemande(TenantAPITestCase):
         resp = self._scan(token=token)
         self.assertEqual(resp.status_code, 400)
 
-    def test_malformed_kanban_token_400(self):
+    def test_malformed_kanban_token_404(self):
         resp = self._scan(token=f'KANBAN:{self.produit.id}:abc')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)
 
     def test_cross_tenant_produit_cannot_be_scanned(self):
         other_client = self.client_as(user=self.other_user)

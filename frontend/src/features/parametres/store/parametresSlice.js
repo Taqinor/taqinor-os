@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
+import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import parametresApi from '../../../api/parametresApi'
 
 export const fetchProfile = createAsyncThunk('parametres/fetchProfile', async (_, { rejectWithValue }) => {
@@ -68,10 +68,17 @@ const parametresSlice = createSlice({
     uploading: false,
     error: null,
     saveSuccess: false,
+    // APAR73 — horodatage du verrou optimiste (`updated_at` du profil), rangé
+    // à part : une écriture instantanée le fait avancer SANS toucher `profile`
+    // (donc sans resynchroniser le formulaire en cours de saisie).
+    verrouUpdatedAt: null,
   },
   reducers: {
     clearSaveSuccess(state) { state.saveSuccess = false },
     clearError(state) { state.error = null },
+    majVerrouProfil(state, action) {
+      if (action.payload) state.verrouUpdatedAt = action.payload
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -129,8 +136,15 @@ const parametresSlice = createSlice({
       })
 
       .addCase(deleteSignature.fulfilled, (state, action) => { state.profile = action.payload; state.error = null })
+
+      // APAR73 — toute réponse qui rend le profil complet repose le verrou.
+      .addMatcher(
+        isAnyOf(fetchProfile.fulfilled, saveProfile.fulfilled, uploadLogo.fulfilled,
+          deleteLogo.fulfilled, uploadSignature.fulfilled, deleteSignature.fulfilled),
+        (state, action) => { state.verrouUpdatedAt = action.payload?.updated_at ?? null },
+      )
   },
 })
 
-export const { clearSaveSuccess, clearError } = parametresSlice.actions
+export const { clearSaveSuccess, clearError, majVerrouProfil } = parametresSlice.actions
 export default parametresSlice.reducer

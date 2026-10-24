@@ -841,6 +841,7 @@ def _for_each(rule, instance, company, context, user):
     Une sous-action en échec n'interrompt pas la boucle ; une sous-action
     ``FOR_EACH`` imbriquée est refusée (pas de boucle de boucles).
     """
+    from .engine import executer_action
     from .list_sources import MAX_ITERATIONS, resolve_list
 
     cfg = rule.action_config or {}
@@ -875,7 +876,10 @@ def _for_each(rule, instance, company, context, user):
                 continue  # pas de boucle imbriquée (garde anti-DoS)
             vue = _SubActionView(
                 rule, action_type, spec.get('action_config') or {})
-            statut, _message = run(vue, instance, company, sous_contexte, user)
+            # APAR69 — même aiguillage que les actions de premier niveau :
+            # point de sauvegarde, et un envoi attend le commit de l'émetteur.
+            statut, _message = executer_action(
+                vue, instance, company, sous_contexte, user)
             if statut == Status.FAILED:
                 echecs += 1
             else:

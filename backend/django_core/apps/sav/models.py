@@ -1812,10 +1812,13 @@ class ContratMaintenance(models.Model):
         ticket et la facturation récurrente."""
         if not self.actif:
             return False
+        ref = today or timezone.localdate()
+        if self.date_debut and self.date_debut > ref:  # ASAV105 — pas avant son début
+            return False
         fin = self.date_fin_grace()
         if fin is None:
             return True
-        return (today or timezone.localdate()) <= fin
+        return ref <= fin
 
     def a_renouveler(self, today=None):
         """AUD502 — le contrat doit être renouvelé : soit la date de

@@ -519,11 +519,14 @@ BLOCS_LISTE = ('pertes',)
 
 
 class EntreeInvalide(ValueError):
-    """Refus métier d'une entrée électrique — champ fautif NOMMÉ."""
+    """Refus métier d'une entrée électrique — champ fautif NOMMÉ.
 
-    def __init__(self, message, *, champ=''):
+    ``introuvable`` : l'identifiant (bien formé) désigne une ligne que la
+    société n'a pas — la vue répond 404 et non 400 (ENF11)."""
+
+    def __init__(self, message, *, champ='', introuvable=False):
         super().__init__(message)
-        self.champ = champ
+        self.champ, self.introuvable = champ, introuvable
 
 
 def entree_stockee(calepinage):
@@ -729,7 +732,7 @@ def _valider_produits_designes(calepinage, donnees):
         if produit is None:
             raise EntreeInvalide(
                 "Produit introuvable dans votre catalogue (#%s)." % valeur,
-                champ=cle)
+                champ=cle, introuvable=True)
 
 
 #: ACAL150 — les longueurs et bornes numériques de l'entrée : ``(clé,

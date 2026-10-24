@@ -14,12 +14,22 @@ la garde en la nommant.
 
 Test-du-test : retirer ``context=`` d'un seul sérialiseur (la réponse de
 ``convertir-client``) ⇒ la garde échoue en nommant l'action.
+
+ACRM71 — une lecture qui n'a rien à rendre (``message-visite`` sans ``?cle=``,
+un seul lead, aucune ``relance_date``) ne contient jamais le numéro, masqué ou
+non : la garde restait verte sous le mutant. Les quatre lectures qui servent
+un numéro (``SERVENT_UN_NUMERO``) doivent répondre 2xx avec leur contenu ; une
+``erreur`` ou un GET non 2xx non déclaré (``NON_2XX``, raison écrite) échoue en
+nommant l'action. Test-du-test : retirer ``masquer_pii_dict`` de ``doublons``
+ou ``masquer_numero=`` de ``message_visite`` ⇒ la garde échoue.
 """
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
+
+from core.dates import aujourd_hui_local
 
 from apps.crm import stages
 from apps.crm.models import Client, Lead, LeadActivity
@@ -49,6 +59,7 @@ CHARGES = {
     ('LeadViewSet', 'bulk'): {'action': 'add_tag', 'ids': ['{L}'],
                               'tag': 'garde'},
     ('LeadViewSet', 'relances'): {'scope': 'all'},
+    ('LeadViewSet', 'message_visite'): {'cle': 'visite_proposition'},
     ('LeadViewSet', 'placement_cadences'): {'apply': False},
     ('ClientViewSet', 'export_xlsx'): {'ids': ['{C}']},
     ('ClientViewSet', 'search'): {'q': 'Temoin', 'telephone': TEMOIN},
@@ -64,6 +75,21 @@ EXCLUES = {
     ('LeadViewSet', 'devis_auto'): 'écriture coûteuse : fabrique un devis '
                                    'complet côté ventes',
 }
+
+#: ACRM71 — les lectures qui SERVENT un numéro quand leur masque saute →
+#: marqueur que leur réponse 2xx doit contenir (preuve qu'elles ont un contenu
+#: à masquer : un 400, « aucun doublon » ou une liste vide n'en ont pas).
+SERVENT_UN_NUMERO = {
+    ('LeadViewSet', 'duplicates'): 'Temoin',
+    ('LeadViewSet', 'doublons'): 'Temoin',
+    ('LeadViewSet', 'relances'): 'Temoin',
+    ('LeadViewSet', 'message_visite'): 'corps_fr',
+}
+
+#: GET qui répondent légitimement non 2xx au rôle témoin — une ligne par
+#: raison (patron ``EXCLUES``). Aucun aujourd'hui : un GET non 2xx est un état
+#: de fixture oublié, pas une réponse sûre.
+NON_2XX = {}
 
 
 class _Annule(Exception):
@@ -89,7 +115,15 @@ class GardePiiTests(TestCase):
             company=self.company, nom='Temoin', prenom='Lead',
             telephone=TEMOIN, whatsapp=TEMOIN,
             email='temoin-acrm53@example.com', owner=self.user,
-            stage=stages.CONTACTED, client=self.client_c)
+            stage=stages.CONTACTED, client=self.client_c,
+            relance_date=aujourd_hui_local())
+        # ACRM71 — un second lead au numéro témoin : sans lui ``doublons`` et
+        # ``duplicates`` répondent « aucun doublon », donc sans numéro à masquer.
+        self.lead_bis = Lead.objects.create(
+            company=self.company, nom='Temoin', prenom='Doublon',
+            telephone=TEMOIN, whatsapp=TEMOIN,
+            email='temoin-acrm53@example.com', owner=self.user,
+            stage=stages.CONTACTED)
         self.activite = LeadActivity.objects.create(
             company=self.company, lead=self.lead, user=self.user,
             kind=LeadActivity.Kind.MODIFICATION, field='telephone',
@@ -147,6 +181,7 @@ class GardePiiTests(TestCase):
                 for a in vs.get_extra_actions()}
         self.assertEqual(
             sorted(k for k in list(EXCLUES) + list(CHARGES)
+                   + list(SERVENT_UN_NUMERO) + list(NON_2XX)
                    if k not in noms), [],
             'exclusion/charge pour une action qui n’existe plus')
 
@@ -158,15 +193,26 @@ class GardePiiTests(TestCase):
             for nom, verbe, url, charge in self._appels(
                     viewset, prefixe, pk):
                 sortie = self._rejouer(verbe, url, charge)
+                quoi = f'{viewset.__name__}.{nom} {verbe.upper()}'
                 if 'erreur' in sortie:
-                    erreurs.append(f'{viewset.__name__}.{nom} '
-                                   f'{verbe.upper()} → {sortie["erreur"]}')
+                    erreurs.append(f'{quoi} → {sortie["erreur"]}')
                     continue
-                texte = sortie['texte']
+                texte, statut = sortie['texte'], sortie['statut']
+                cle = (viewset.__name__, nom)
+                if cle in SERVENT_UN_NUMERO:
+                    marqueur = SERVENT_UN_NUMERO[cle]
+                    if not (200 <= statut < 300 and marqueur in texte):
+                        erreurs.append(
+                            f'{quoi} → {statut} sans « {marqueur} » : la '
+                            'garde ne prouve rien')
+                elif (verbe == 'get' and not 200 <= statut < 300
+                      and cle not in NON_2XX):
+                    erreurs.append(f'{quoi} → {statut} non déclaré (NON_2XX)')
                 for numero in (TEMOIN, TEMOIN_NORMALISE):
                     if numero in texte:
                         fuites.append(
                             f'{viewset.__name__}.{nom} {verbe.upper()} '
                             f'{url} → {sortie["statut"]} contient {numero}')
-        self.assertEqual(fuites, [], 'numéro témoin rendu à un rôle sans '
-                         'client_pii_voir :\n' + '\n'.join(fuites + erreurs))
+        self.assertEqual(fuites + erreurs, [], 'numéro témoin rendu à un rôle '
+                         'sans client_pii_voir, ou lecture sans contenu :\n'
+                         + '\n'.join(fuites + erreurs))

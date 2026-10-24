@@ -140,6 +140,20 @@ def corps_obligatoire(vue):
     return vue
 
 
+def corps_objet(request):
+    """Corps de requête GARANTI objet (``.get`` disponible), sinon 400 FR.
+
+    ENF11 — un scalaire ou un tableau JSON en corps (``2.2e-313``, ``[]``)
+    levait ``AttributeError`` sur ``request.data.get`` (500)."""
+    from collections.abc import Mapping
+
+    from rest_framework.exceptions import ValidationError
+
+    if not isinstance(request.data, Mapping):
+        raise ValidationError({'detail': 'Un objet est attendu en corps.'})
+    return request.data
+
+
 class LeadApercuSerializer(serializers.Serializer):
     """``{id, nom, ville, supprime}`` : ce que ``to_representation`` publie
     à la place de l'identifiant ``lead`` (lecture seule)."""

@@ -13,6 +13,7 @@ POST réel de la vue ``bulk`` ; aucun mock.
 from urllib.parse import unquote
 
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -79,3 +80,39 @@ class BulkWhatsappGardesTests(TestCase):
             # Le lien existe : il suit la phrase.
             self.assertRegex(texte, r'Réservez votre visite : \S+')
         self.assertFalse(texte.rstrip().endswith(':'))
+
+    def test_jumeau_darija_rendu_pour_lead_darija(self):
+        # ACRM70 — « RDV » FR et « RDV » darija coexistent (unicité société +
+        # nom + langue) ; le lead darija reçoit le texte darija, le lead FR
+        # le texte FR, pour le MÊME ``template_id`` (le FR).
+        MessageTemplate.objects.create(
+            company=self.company, nom='RDV', langue='darija',
+            corps='Salam {prenom}, bghiti nji nchouf s-sath dyalek ?')
+        darija = Lead.objects.create(
+            company=self.company, nom='Darija', prenom='D', owner=self.user,
+            telephone='+212661151504', langue_preferee='darija')
+        francais = Lead.objects.create(
+            company=self.company, nom='Francais', prenom='F', owner=self.user,
+            telephone='+212661151505', langue_preferee='fr')
+        resp = self.api.post(URL, {
+            'action': 'prepare_whatsapp', 'ids': [darija.pk, francais.pk],
+            'template_id': self.tpl.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        textes = {q['lead_id']: unquote(q['wa_url'].split('text=', 1)[-1])
+                  for q in resp.data['queue']}
+        self.assertIn('Salam D', textes[darija.pk])
+        self.assertNotIn('Bonjour', textes[darija.pk])
+        self.assertIn('Bonjour F', textes[francais.pk])
+        self.assertNotIn('Salam', textes[francais.pk])
+
+    def test_second_modele_meme_nom_meme_langue_refuse(self):
+        # ACRM70 — la contrainte reste serrée : un second « RDV » FR de la
+        # même société est refusé, seul le jumeau d'une AUTRE langue passe.
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            MessageTemplate.objects.create(
+                company=self.company, nom='RDV', langue='fr', corps='doublon')
+        MessageTemplate.objects.create(
+            company=self.company, nom='RDV', langue='darija', corps='jumeau')
+        self.assertEqual(
+            MessageTemplate.objects.filter(
+                company=self.company, nom='RDV').count(), 2)

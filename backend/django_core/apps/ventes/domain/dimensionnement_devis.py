@@ -904,7 +904,7 @@ def _echelle_paliers_batterie(devis):
             lignes = composer(panneaux, kwc, cible, journal)
             if lignes is None:
                 continue
-            vue = _lire_composition(lignes, taux_tva)
+            vue = _lire_composition(lignes, taux_tva, sonde_devis.company)
             capacite = round(_num(vue.get('batterie_kwh')), 3)
             if capacite <= 0:
                 continue

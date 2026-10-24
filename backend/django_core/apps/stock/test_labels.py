@@ -225,13 +225,15 @@ class TestResolve(LabelsApiBase):
         self.assertEqual(res.status_code, 404)
 
     def test_resolve_bad_code_is_400(self):
-        # Codes vides ou malformés AVEC ':' (jeton interne mal formé) restent
-        # 400. Un code SANS ':' (ex. 'garbage') est désormais tenté comme
-        # code-barres fabricant (XSTK3) — voir test_resolve_bad_code_no_colon.
-        for code in ('', 'PRODUIT:', 'PRODUIT:abc', ':12'):
+        # Code vide : 400 (le schéma publie « non blanc »). Un code malformé
+        # mais non blanc (jeton interne mal formé, avec ou sans ':') ne désigne
+        # AUCUN objet : 404 (api-fuzz-full 24/10, il est conforme au schéma).
+        res = self.api.get('/api/django/stock/produits/resolve/?code=')
+        self.assertEqual(res.status_code, 400)
+        for code in ('PRODUIT:', 'PRODUIT:abc', ':12', '%14!%C2%82:j'):
             res = self.api.get(
                 f'/api/django/stock/produits/resolve/?code={code}')
-            self.assertIn(res.status_code, (400,), msg=f'code={code!r}')
+            self.assertEqual(res.status_code, 404, msg=f'code={code!r}')
 
     def test_resolve_et_tracer_caractere_nul_400_jamais_500(self):
         # ENF11 (nocturne 15/10) — le nul atteignait PostgreSQL (ValueError).
@@ -249,10 +251,10 @@ class TestResolve(LabelsApiBase):
             '/api/django/stock/produits/resolve/?code=garbage')
         self.assertEqual(res.status_code, 404)
 
-    def test_resolve_unknown_prefix_is_400(self):
+    def test_resolve_unknown_prefix_is_404(self):
         res = self.api.get(
             '/api/django/stock/produits/resolve/?code=FACTURE:1')
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
 
     def test_resolve_systeme_read_only(self):
         # Crée une installation minimale et vérifie résolution SANS écriture.

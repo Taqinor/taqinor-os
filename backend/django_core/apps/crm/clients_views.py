@@ -1144,10 +1144,14 @@ class LeadClientsActionsMixin:
     def salle_vente_analytics_view(self, request, pk=None):
         """NTCRM19 — résumé de consultation de la salle de vente la plus
         récente de ce lead, pour le widget « le client a consulté N fois,
-        dernière fois <date> » de la fiche lead. `null` si aucune salle."""
+        dernière fois <date> » de la fiche lead. `null` si aucune salle, ou
+        si le réglage société `salles_vente_actif` est éteint (ACRM75 : les
+        salles sont parquées, la fiche n'en affiche plus la consultation)."""
+        from .parcage import salles_vente_actives
         from .selectors import salle_vente_summary_for_lead
         lead = self.get_object()
-        summary = salle_vente_summary_for_lead(request.user.company, lead.pk)
+        summary = (salle_vente_summary_for_lead(request.user.company, lead.pk)
+                   if salles_vente_actives(request.user.company_id) else None)
         if summary is None:
             # ENF11 — ``Response(None)`` rendait un corps VIDE sans
             # Content-Type : le contrat dit « `null` si aucune salle ».

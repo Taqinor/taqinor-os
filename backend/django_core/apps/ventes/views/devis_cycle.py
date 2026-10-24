@@ -686,8 +686,11 @@ class DevisCycleActionsMixin:
             status=status.HTTP_201_CREATED)
 
     @extend_schema(request=D.AccepterRequest,
+                   # api-fuzz : le 409 « date future » est un ConflitEtat
+                   # (``{date_acceptation: [...], error: {...}}``, sans
+                   # ``detail``) — champs facultatifs comme ``refuser``.
                    responses={200: DevisSerializer, 403: D.ErreurGarde,
-                              409: D.ErreurDetail})
+                              409: D.ErreurDevisFige})
     @action(detail=True, methods=['post'], url_path='accepter',
             permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):

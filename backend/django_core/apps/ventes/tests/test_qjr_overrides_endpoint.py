@@ -114,6 +114,17 @@ class PatchFusionTests(_OverridesBase):
                               format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_le_caractere_nul_est_retire_et_pas_un_500(self):
+        # api-fuzz — un NUL dans une clé/valeur imbriquée ne se stocke pas en
+        # jsonb (DataError → 500) : il est retiré, la surcharge est posée.
+        resp = self.api.patch(
+            self.url, json.dumps({'scenario': {'a\u0000b': ['x\u0000y']}}),
+            content_type='application/json')
+        self.assertEqual(resp.status_code, 200, resp.content[:300])
+        valeur = Devis.objects.get(pk=self.devis.pk).overrides[
+            'scenario']['valeur']
+        self.assertEqual(valeur, {'ab': ['xy']})
+
     def test_l_effectif_reflete_l_override(self):
         self.api.patch(self.url, {'scenario': 'Les deux (Sans + Avec)'},
                        format='json')

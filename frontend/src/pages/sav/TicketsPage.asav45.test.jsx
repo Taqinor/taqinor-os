@@ -44,3 +44,53 @@ describe('TicketDetail — ASAV45 garantie effective servie', () => {
     expect(screen.getAllByRole('combobox').some((c) => c.textContent === 'Oui')).toBe(true)
   })
 })
+
+describe('TicketDetail — ASAV110 mise en attente client réservée aux tickets ouverts', () => {
+  const MISE_EN_ATTENTE = { name: /Mettre en attente client/ }
+  const REPRISE = { name: /Reprendre après attente client/ }
+
+  it('un ticket résolu n\'offre aucun bouton « Mettre en attente client »', async () => {
+    renderDetail({ statut: 'resolu', en_attente_client: false })
+    await screen.findByText('Suivi client & SLA')
+    expect(screen.queryByRole('button', MISE_EN_ATTENTE)).toBeNull()
+    expect(screen.queryByRole('button', REPRISE)).toBeNull()
+  })
+
+  it('un ticket annulé n\'offre aucun bouton « Mettre en attente client »', async () => {
+    renderDetail({ statut: 'en_cours', annule: true, en_attente_client: false })
+    await screen.findByText('Suivi client & SLA')
+    expect(screen.queryByRole('button', MISE_EN_ATTENTE)).toBeNull()
+  })
+
+  it('un ticket en cours offre le bouton « Mettre en attente client »', async () => {
+    renderDetail({ statut: 'en_cours', annule: false, en_attente_client: false })
+    expect(await screen.findByRole('button', MISE_EN_ATTENTE)).not.toBeNull()
+    expect(screen.queryByRole('button', REPRISE)).toBeNull()
+  })
+
+  it('un ticket encore en pause garde « Reprendre après attente client »', async () => {
+    renderDetail({ statut: 'resolu', en_attente_client: true, attente_depuis: '2026-10-06' })
+    expect(await screen.findByRole('button', REPRISE)).not.toBeNull()
+    expect(screen.queryByRole('button', MISE_EN_ATTENTE)).toBeNull()
+  })
+})
+
+describe('TicketDetail — ASAV111 bandeau de garantie = verdict servi', () => {
+  it('c : horloge du navigateur au 01/01/2028, verdict servi « oui » → « Garantie jusqu\'au », jamais expirée', async () => {
+    vi.setSystemTime(new Date('2028-01-01T10:00:00'))
+    renderDetail({ equipement_fin_garantie: '2026-04-02',
+      equipement_fin_garantie_effective: '2027-02-10', sous_garantie_effectif: 'oui' })
+    const [bandeau] = await screen.findAllByText(/Garantie jusqu'au 10\/02\/2027 \(légale\)/)
+    // Le texte du bandeau est le verdict seul : aucun compte de jours.
+    expect(bandeau.textContent).toBe('Garantie jusqu\'au 10/02/2027 (légale)')
+    expect(screen.queryByText(/Garantie expirée/)).toBeNull()
+  })
+
+  it('d : verdict servi « non » → « Garantie expirée le », sans compte de jours', async () => {
+    renderDetail({ equipement_fin_garantie: '2026-04-02',
+      equipement_fin_garantie_effective: '2026-12-12', sous_garantie_effectif: 'non' })
+    const [bandeau] = await screen.findAllByText(/Garantie expirée le 12\/12\/2026 \(légale\)/)
+    expect(bandeau.textContent).toBe('Garantie expirée le 12/12/2026 (légale)')
+    expect(screen.queryByText(/Garantie jusqu'au/)).toBeNull()
+  })
+})

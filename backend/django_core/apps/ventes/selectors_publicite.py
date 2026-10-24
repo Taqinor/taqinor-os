@@ -54,6 +54,13 @@ def _client_contact(client):
     return {'email': email, 'telephone': telephone}
 
 
+def _sans_opposes(qs):
+    """ACRM72 (D-ACRM-5) — retire les devis d'un lead « ne plus contacter » et
+    ceux d'un client rattaché à un tel lead (règle d'ACRM56), par FK texte."""
+    return (qs.exclude(lead__ne_plus_contacter=True)
+            .exclude(client__leads__ne_plus_contacter=True))
+
+
 def _devis_contact(devis):
     """Contact ``{'email', 'telephone'}`` résolu depuis le LEAD d'origine du
     devis si présent, sinon le client. ``None`` si aucun identifiant."""
@@ -85,8 +92,8 @@ def devis_view_tracking_segments(company):
 
     # ADEV45 — une V1 remplacée par sa révision n'est jamais un contact à
     # relancer : seule la version en jeu entre dans un panier.
-    qs = (devis_en_jeu(Devis.objects
-                       .filter(company=company, statut=Devis.Statut.ENVOYE))
+    qs = (_sans_opposes(devis_en_jeu(
+        Devis.objects.filter(company=company, statut=Devis.Statut.ENVOYE)))
           .select_related('client', 'lead')
           .prefetch_related('share_links'))
 
@@ -117,9 +124,8 @@ def expired_devis_contacts(company):
     from .selectors import devis_en_jeu
 
     # ADEV45 — une V1 remplacée (et expirée) n'est pas une offre à relancer.
-    expired = list(
-        devis_en_jeu(Devis.objects
-                     .filter(company=company, statut=Devis.Statut.EXPIRE))
+    expired = list(_sans_opposes(devis_en_jeu(
+        Devis.objects.filter(company=company, statut=Devis.Statut.EXPIRE)))
         .select_related('client'))
     if not expired:
         return []
@@ -164,7 +170,7 @@ def signed_clients_cross_sell_segments(company):
 
     if company is None:  # VNT84 — None = toutes sociétés : jamais ici
         return {'sans_contrat': [], 'sans_batterie': []}
-    accepted = (devis_signes_en_vigueur(company)
+    accepted = (_sans_opposes(devis_signes_en_vigueur(company))
                 .select_related('client')
                 .order_by('client_id', 'date_creation'))
 
