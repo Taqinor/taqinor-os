@@ -117,3 +117,15 @@ class UniteAjouterLigneCorps(serializers.Serializer):
     produit = EntierStrict(min_value=1, max_value=ID_MAX)
     quantite = EntierStrict(min_value=1, max_value=QUANTITE_MAX)
     lot = EntierStrict(required=False, allow_null=True, min_value=1, max_value=ID_MAX)
+
+
+class ProduitDecoupeCorps(serializers.Serializer):
+    """``POST produits/decoupes/`` : des quantités hors colonne entière faisaient
+    un 500 au crédit du stock ; plafond ``QUANTITE_MAX`` publié. ``emplacement`` /
+    ``lot_source`` : nul ou absent = non précisé."""
+    produit_source = EntierStrict(min_value=1, max_value=ID_MAX)
+    quantite_consommee = EntierStrict(min_value=1, max_value=QUANTITE_MAX)
+    produit_cible = EntierStrict(min_value=1, max_value=ID_MAX)
+    quantite_produite = EntierStrict(min_value=1, max_value=QUANTITE_MAX)
+    emplacement = EntierStrict(required=False, allow_null=True, min_value=1, max_value=ID_MAX)
+    lot_source = EntierStrict(required=False, allow_null=True, min_value=1, max_value=ID_MAX)

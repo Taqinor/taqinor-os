@@ -26,7 +26,8 @@ from ..utils.params import (
     id_corps, id_requete_ou_400, ids_requete_ou_400, valeur_unique_ou_400,
 )
 from core.viewsets import CompanyScopedModelViewSet
-from ..erreurs_achats import IntrouvableMetier
+from ..corps_achats import ProduitDecoupeCorps, valider_corps
+from ..erreurs_achats import ConflitEtat, IntrouvableMetier
 from ..models import Produit, Categorie, Fournisseur, MouvementStock, EmplacementStock, RegleCodeBarres
 from ..serializers import ProduitSerializer, PrixFournisseurSerializer
 from authentication.permissions import (
@@ -684,13 +685,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(valorisation_a_date(request.user.company, date))
 
-    @extend_schema(request=corps('ProduitDecoupeCorps', produit_source=serializers.IntegerField(),
-                                 quantite_consommee=serializers.IntegerField(min_value=1),
-                                 produit_cible=serializers.IntegerField(),
-                                 quantite_produite=serializers.IntegerField(min_value=1),
-                                 emplacement=serializers.IntegerField(required=False, allow_null=True),
-                                 lot_source=serializers.IntegerField(required=False, allow_null=True)),
-                   responses={201: corps('ProduitDecoupeReponse', reference=serializers.CharField(),
+    @extend_schema(request=ProduitDecoupeCorps,
+                   responses={200: corps('ProduitDecoupeReponse', reference=serializers.CharField(),
                                          valeur_transferee=serializers.CharField(),
                                          cout_unitaire=serializers.CharField(),
                                          produit_source_quantite_stock=serializers.IntegerField(),
@@ -703,51 +699,43 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         crédite `produit_cible` (peut être le même SKU) en transférant la
         valeur au coût moyen. Corps : {"produit_source", "quantite_consommee",
         "produit_cible", "quantite_produite", "emplacement" (optionnel),
-        "lot_source" (optionnel, id LotEntrepot)}."""
+        "lot_source" (optionnel, id LotEntrepot)}. Réponse 200 (jamais 201 :
+        aucune ressource n'est créée sous une URL). Produit/lot/emplacement
+        inconnu : 404 ; stock ou lot insuffisant : 409."""
         from ..services import decouper_produit
         company = request.user.company
-        # ERR fuzz : corps non objet / id non entier ({}) -> 400, pas 500.
-        donnees = corps_objet(request)
-        source = Produit.objects.filter(company=company, id=entier_ou_400(
-            donnees.get('produit_source'), 'produit_source')).first()
-        cible = Produit.objects.filter(company=company, id=entier_ou_400(
-            donnees.get('produit_cible'), 'produit_cible')).first()
+        saisie = valider_corps(ProduitDecoupeCorps, request)
+        source = Produit.objects.filter(company=company, id=saisie['produit_source']).first()
+        cible = Produit.objects.filter(company=company, id=saisie['produit_cible']).first()
         if source is None or cible is None:
             return Response(
                 {'detail': 'Produit source ou cible introuvable.'},
                 status=status.HTTP_404_NOT_FOUND)
-        try:
-            quantite_consommee = int(request.data.get('quantite_consommee'))
-            quantite_produite = int(request.data.get('quantite_produite'))
-        except (TypeError, ValueError):
-            return Response(
-                {'detail': 'Quantités invalides.'},
-                status=status.HTTP_400_BAD_REQUEST)
         lot_source = None
-        lot_source_id = entier_ou_400(donnees.get('lot_source'), 'lot_source')
-        if lot_source_id:
+        if saisie.get('lot_source'):
             from ..models import LotEntrepot
             lot_source = LotEntrepot.objects.filter(
-                company=company, id=lot_source_id).first()
+                company=company, id=saisie['lot_source']).first()
             if lot_source is None:
                 return Response(
                     {'detail': 'Lot source introuvable.'},
                     status=status.HTTP_404_NOT_FOUND)
         emplacement = None
-        emplacement_id = entier_ou_400(
-            donnees.get('emplacement'), 'emplacement')
-        if emplacement_id:
+        if saisie.get('emplacement'):
             emplacement = EmplacementStock.objects.filter(
-                company=company, id=emplacement_id).first()
+                company=company, id=saisie['emplacement']).first()
+            if emplacement is None:
+                return Response(
+                    {'detail': 'Emplacement introuvable.'},
+                    status=status.HTTP_404_NOT_FOUND)
         try:
             result = decouper_produit(
                 company=company, produit_source=source,
-                quantite_consommee=quantite_consommee, produit_cible=cible,
-                quantite_produite=quantite_produite, user=request.user,
+                quantite_consommee=saisie['quantite_consommee'], produit_cible=cible,
+                quantite_produite=saisie['quantite_produite'], user=request.user,
                 emplacement=emplacement, lot_source=lot_source)
-        except ValueError as exc:
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:  # stock / lot insuffisant, lot périmé ou bloqué : refus d'état
+            raise ConflitEtat(detail=str(exc)) from exc
         return Response({
             'reference': result['reference'],
             'valeur_transferee': str(result['valeur_transferee']),
