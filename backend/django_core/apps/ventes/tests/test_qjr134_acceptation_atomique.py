@@ -389,6 +389,31 @@ class LaConfirmationVaAuxDeuxParties(_BaseAcceptation):
         self.assertTrue(copie.sujet.startswith('Copie'))
         self.assertIn('dg@hotel-exemple.test', copie.corps)
 
+    def test_un_destinataire_en_echec_n_arrete_pas_l_autre(self):
+        """G (revue du 24/10/2026) — l'envoi au signataire lève : le contact
+        du lead reçoit QUAND MÊME sa confirmation (outbox), l'acceptation
+        tient."""
+        from django.core import mail
+        from apps.ventes import email_service
+        self._avec_lead_et_vendeur()
+        vrai_envoi = email_service.send_document_email
+
+        def envoi(devis, *, to_email, **kwargs):
+            if to_email == 'dg@hotel-exemple.test':
+                raise RuntimeError('SMTP refuse ce destinataire (simulé)')
+            return vrai_envoi(devis, to_email=to_email, **kwargs)
+
+        mail.outbox = []
+        with patch.object(email_service, 'send_document_email',
+                          side_effect=envoi):
+            accept_devis(devis=self.racine, user=None, nom='Karim Exemple',
+                         entreprise=dict(self.ENTREPRISE))
+        destinataires = {to for m in mail.outbox for to in m.to}
+        self.assertIn('contact@hotel-exemple.test', destinataires)
+        self.assertNotIn('dg@hotel-exemple.test', destinataires)
+        self.racine.refresh_from_db()
+        self.assertEqual(self.racine.statut, Devis.Statut.ACCEPTE)
+
     def test_confirmation_en_anglais_quand_la_page_l_etait(self):
         accept_devis(devis=self.racine, user=None, nom='Mr Client',
                      langue='en')

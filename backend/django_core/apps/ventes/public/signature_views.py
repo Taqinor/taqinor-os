@@ -519,7 +519,10 @@ def proposal_accept(request, token):
             status=(status.HTTP_409_CONFLICT if exc.conflict
                     else status.HTTP_400_BAD_REQUEST)))
     # ADEV97 — qui VIENT de signer télécharge son exemplaire sans code (1 h).
-    _deverrouiller_exemplaire_signe(link, statut_avant, devis)
+    # G (revue du 24/10/2026) — APRÈS LE COMMIT, le devis EST accepté : un
+    # incident ici (cache, lecture du reçu, acompte) dégrade la réponse
+    # (champ à null, journalisé) au lieu d'un 500 sur une signature réussie.
+    _apres_signature(_deverrouiller_exemplaire_signe, link, statut_avant, devis)
     # QX33be — état de succès post-signature : acompte (tranche 1 sur le TTC
     # REMISÉ per QX1) + instructions de virement (RIB) + ``declare_url``.
     # ADEV53 — plus de lien carte (aucune route ``pay-card``) ; RIB vide quand
@@ -529,13 +532,24 @@ def proposal_accept(request, token):
         'reference': devis.reference,
         'statut': devis.statut,
         'accepte_par_nom': devis.accepte_par_nom,
-        'paiement': _deposit_success_payload(devis, token),
+        'paiement': _apres_signature(_deposit_success_payload, devis, token),
         # CIQ319 — l'identité d'entreprise RELUE sur la signature enregistrée
         # (la première fait foi), même forme que le corps ; null hors C&I.
         'entreprise': _entreprise_relue(devis),
         # ADEV96 — le reçu : horodatage, sceau du contenu, SHA-256 du PDF.
-        'recu': recu_signature(devis),
+        'recu': _apres_signature(recu_signature, devis),
     }))
+
+
+def _apres_signature(fonction, *args):
+    """G — appel best-effort APRÈS le commit de l'acceptation : ``None`` (et
+    une trace) si ``fonction`` lève, jamais une exception vers le client."""
+    try:
+        return fonction(*args)
+    except Exception:  # noqa: BLE001 — la signature est commitée : dégrader, jamais 500 (D-ENF22-BLE001)
+        logger.warning('proposal_accept : %s en échec après le commit (dégradé)',
+                       getattr(fonction, '__name__', '?'), exc_info=True)
+        return None
 
 
 def _langue_du_corps(request):
