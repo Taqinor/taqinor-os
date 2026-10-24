@@ -50,11 +50,15 @@ class TrancheEcheancierSerializer(serializers.Serializer):
 # ne sait pas dire « JSON valide », on déclare donc le sous-ensemble plat
 # (clé -> chaîne/nombre/booléen/null) que l'API accepte à coup sûr — du texte
 # libre (ex. « 0 ») était un cas « conforme » refusé en 400.
+# Blancs JSON = espace, tabulation, LF, CR (jamais ``\s``, qui admet aussi \x0b / \x0c
+# que ``json.loads`` refuse) ; entiers sans zéro de tête (``01`` n'est pas du JSON).
+_BLANCS = r'[ \t\n\r]*'
 _CHAINE = r'"[^"\\\x00-\x1f]*"'
-_VAL = r'(?:' + _CHAINE + r'|-?[0-9]+(?:\.[0-9]+)?|null|true|false)'
-_PAIRE = _CHAINE + r'\s*:\s*' + _VAL
+_VAL = r'(?:' + _CHAINE + r'|-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?|null|true|false)'
+_PAIRE = _CHAINE + _BLANCS + ':' + _BLANCS + _VAL
 _REGEX_OBJET_JSON_PLAT = (
-    r'^\s*\{\s*(?:' + _PAIRE + r'(?:\s*,\s*' + _PAIRE + r')*)?\s*\}\s*$')
+    r'^' + _BLANCS + r'\{' + _BLANCS + r'(?:' + _PAIRE + r'(?:' + _BLANCS + ',' + _BLANCS + _PAIRE + r')*)?'
+    + _BLANCS + r'\}' + _BLANCS + r'$')
 
 
 @extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT, False, 'Fournisseur (id)'), P('statut', STR,
