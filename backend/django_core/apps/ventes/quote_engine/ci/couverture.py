@@ -548,9 +548,24 @@ def titre_projet(d, cle, kwc_txt, nom_client):
         if isinstance(entreprise, dict) else ""
     ville = str(d.get("client_ville_libelle") or d.get("client_city")
                 or "").strip()
+    client = raison or nom_client
+    if langue(d) == "ar":
+        # AMOT92 — titre arabe : le nom du client et sa ville forment UN
+        # segment isolé (U+2068 … U+2069, sens tiré de son premier
+        # caractère fort), le kWc un autre — la virgule reste entre le nom
+        # et la ville, dans l'ordre latin, au lieu d'être renvoyée devant le
+        # nom par l'algorithme bidirectionnel. Français et anglais inchangés.
+        client = ISOLE.format(client + (f", {ville}" if ville else ""))
+        return libelle(d, "ci_titre_projet", "Centrale solaire {kwc} kWc — "
+                       "{client}", kwc=ISOLE.format(kwc_txt), client=client)
     titre = libelle(d, "ci_titre_projet", "Centrale solaire {kwc} kWc — "
-                    "{client}", kwc=kwc_txt, client=raison or nom_client)
+                    "{client}", kwc=kwc_txt, client=client)
     return titre + (f", {ville}" if ville else "")
+
+
+#: AMOT92 — isolat bidirectionnel (FIRST STRONG ISOLATE … POP DIRECTIONAL
+#: ISOLATE) autour d'un segment latin dans un texte arabe.
+ISOLE = "\u2068{}\u2069"
 
 
 def ligne_interlocuteur(d, prefixe):

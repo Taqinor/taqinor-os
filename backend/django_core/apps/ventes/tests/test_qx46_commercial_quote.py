@@ -751,6 +751,19 @@ class TestAmot92CouvertureProjet(SimpleTestCase):
         data.update(surcharges)
         return data
 
+    def test_titre_arabe_segments_latins_isoles(self):
+        """Arabe : « nom, ville » forment UN isolat bidirectionnel (U+2068 …
+        U+2069) et le kWc un autre — la virgule reste entre le nom et la
+        ville ; français et anglais sans isolat."""
+        p1 = unescape(self._p1(self._data(langue_sortie="ar")))
+        self.assertIn("\u2068Hôtel Atlas Riad SARL, Marrakech\u2069", p1)
+        self.assertIn("\u206890\u2069", p1)
+        for langue in ("fr", "en"):
+            with self.subTest(langue=langue):
+                p1 = unescape(self._p1(self._data(langue_sortie=langue)))
+                self.assertNotIn("\u2068", p1)
+                self.assertIn("Hôtel Atlas Riad SARL, Marrakech", p1)
+
     def test_titre_projet_et_categorie_en_surtitre(self):
         p1 = self._p1(self._data())
         texte = _texte_ci(p1)
