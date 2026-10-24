@@ -793,3 +793,49 @@ class TestAmot92CouvertureProjet(SimpleTestCase):
         sans = i_render.build_html(dict(i_rend._augment(data),
                                         _sans_graphiques=True))
         self.assertNotIn("Prochaines étapes", sans.split('class="page"')[1])
+
+
+class TestAmot93VotreInstallation(SimpleTestCase):
+    """AMOT93 — « Votre installation en bref » sous le tableau de la page 2
+    (commercial ET industriel) : modules (modèle, Wc, nombre, kWc),
+    onduleurs (modèle × n, kW AC SEULEMENT quand la composition décrit les
+    onduleurs du devis), type de pose et surface DÉCLARÉS."""
+
+    def _fiche(self, html_page):
+        debut = html_page.index('data-graphique="installation"')
+        return _texte_ci(html_page[debut:html_page.index("</table>", debut)])
+
+    def test_fiche_lue_sur_les_lignes_et_la_synthese(self):
+        fiche = self._fiche(_pages_ci(_data_ci())[2])
+        self.assertIn("Votre installation en bref", fiche)
+        self.assertIn("Modules 127 × Panneau Jinko 710W · 710 Wc par module · "
+                      "90 kWc au total", fiche)
+        # Composition (50 kW) ≠ onduleur du devis (100 kW) : aucun kW AC.
+        self.assertIn("Onduleurs 1 × Onduleur réseau Huawei 100kW Triphasé",
+                      fiche)
+        self.assertNotIn("kW AC", fiche)
+        self.assertIn("Type de pose Toit plat — lesté", fiche)
+        self.assertIn("Surface disponible (déclarée) 650 m²", fiche)
+
+    def test_kw_ac_quand_la_composition_decrit_les_onduleurs_du_devis(self):
+        data = _data_ci()
+        data["all_items"][1]["designation"] = \
+            "Onduleur réseau Huawei 50kW Triphasé"
+        self.assertEqual(synthese_ci(data)["installation"]["onduleurs"],
+                         [{"kw_ac": 50, "quantite": 1}])
+        self.assertIn("1 × Onduleur réseau Huawei 50kW Triphasé · 50 kW AC "
+                      "au total", self._fiche(_pages_ci(data)[2]))
+
+    def test_industriel_et_cedable(self):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["etude"] = dict(data["etude"], etude_ci=copy.deepcopy(_ETUDE_CI))
+        augmente = i_rend._augment(etude_ci_au_kwc_servi(data))
+        p2 = i_render.build_html(augmente).split('class="page"')[2]
+        self.assertIn("Modules 352 × Panneau Canadien Solar 710W",
+                      self._fiche(p2))
+        sans = i_render.build_html(dict(augmente, _sans_graphiques=True))
+        self.assertNotIn("Votre installation en bref",
+                         sans.split('class="page"')[2])

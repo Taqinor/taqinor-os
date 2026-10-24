@@ -349,6 +349,49 @@ def _bloc_estimation(etude_ci, coherente):
     return sortie or None
 
 
+def _onduleurs_au_devis(etude_ci, data):
+    """AMOT93 — les onduleurs de la composition sont-ils ceux des lignes du
+    devis (désignations) ? Sinon leur puissance AC décrirait une AUTRE
+    installation que celle imprimée au tableau."""
+    composition = _dict(etude_ci.get("composition"))
+    noms = {_norme(li.get("designation"))
+            for li in composition.get("lignes") or []
+            if isinstance(li, dict)
+            and str(li.get("role") or "").startswith("onduleur")}
+    au_devis = {_norme(it.get("designation"))
+                for it in _dict(data).get("all_items") or []
+                if isinstance(it, dict) and not it.get("optionnelle")}
+    return bool(noms) and noms <= au_devis
+
+
+def _bloc_installation(etude_ci, coherente, data=None):
+    """AMOT93 — ce que la fiche « Votre installation » lit sur l'étude : la
+    puissance AC des onduleurs de la composition (``composition.onduleurs.
+    combinaison`` — seulement quand l'étude décrit le kWc servi ET que ses
+    onduleurs sont ceux du devis), le type de pose et la surface disponible
+    DÉCLARÉS (``entrees_resolues``). None quand rien n'est servi — jamais
+    une surface occupée estimée ici."""
+    sortie = {}
+    combinaison = _dict(_dict(etude_ci.get("composition")).get(
+        "onduleurs")).get("combinaison")
+    if coherente and isinstance(combinaison, list) \
+            and _onduleurs_au_devis(etude_ci, data):
+        onduleurs = [{"kw_ac": _num(c.get("kw_ac")),
+                      "quantite": _num(c.get("quantite")) or 1}
+                     for c in combinaison
+                     if isinstance(c, dict) and _num(c.get("kw_ac"))]
+        if onduleurs:
+            sortie["onduleurs"] = onduleurs
+    entrees = _dict(etude_ci.get("entrees_resolues"))
+    pose = _dict(entrees.get("type_pose")).get("valeur")
+    if isinstance(pose, str) and pose.strip():
+        sortie["type_pose"] = pose.strip()
+    surface = _num(_dict(entrees.get("surface_utile_m2")).get("valeur"))
+    if surface and surface > 0:
+        sortie["surface_disponible_m2"] = surface
+    return sortie or None
+
+
 def _option_servie(data):
     servie = data.get("option_servie")
     if servie == "avec":
@@ -762,6 +805,9 @@ def synthese_ci(data):
     estimation = _bloc_estimation(etude_ci, etude_coherente)
     if estimation is not None:
         synthese["estimation"] = estimation
+    installation = _bloc_installation(etude_ci, etude_coherente, data)
+    if installation is not None:
+        synthese["installation"] = installation
     synthese["option_servie"] = option
     option_batterie = _option_batterie(data)
     if option_batterie is not None:

@@ -205,7 +205,13 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_kicker_autoconso_commerciale', 'ci_titre_projet',
         'ci_votre_interlocuteur', 'ci_prochaines_etapes',
         'ci_etape_suivante_visite', 'ci_etape_suivante_validation',
-        'ci_etape_suivante_pose', 'ci_proposition_en_ligne')),
+        'ci_etape_suivante_pose', 'ci_proposition_en_ligne',
+        # AMOT93 — « Votre installation en bref ».
+        'ci_inst_titre', 'ci_inst_modules', 'ci_inst_wc', 'ci_inst_kwc_total',
+        'ci_inst_onduleurs', 'ci_inst_kw_ac', 'ci_inst_pose',
+        'ci_inst_surface', 'ci_pose_toiture_inclinee', 'ci_pose_bac_acier',
+        'ci_pose_toit_plat_leste', 'ci_pose_toit_plat_fixe',
+        'ci_pose_ombriere', 'ci_pose_sol')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

@@ -178,6 +178,73 @@ def rangees_hors_total(d, L, navy, muted, wash):
     return rangees
 
 
+def _rangees_installation(d, L, fmt):
+    """AMOT93 — ``[(libellé, valeur)]`` de la fiche « Votre installation en
+    bref » : lignes du devis (modules, onduleurs) et ``synthese_ci``
+    (nombre de modules et kWc servis, kW AC de la composition, type de pose
+    et surface disponible déclarés) — rien d'estimé ici."""
+    from apps.ventes import solar_classification as sc
+    from core.product_roles import LIBELLES_TYPES_POSE
+    synthese = d.get("com_synthese") or d.get("ind_synthese") or {}
+    systeme = synthese.get("systeme") or {}
+    installation = synthese.get("installation") or {}
+    items = [it for it in d.get("all_items") or []
+             if _num(it.get("quantite")) > 0]
+    rangees = []
+    panneaux = [f'{_num(it.get("quantite")):g} × {it.get("designation")}'
+                for it in items if sc.is_panel(it.get("designation") or "",
+                                               it.get("_produit_nom") or "")]
+    if panneaux:
+        watt = _num(d.get("watt_par_panneau"), None)
+        kwc = premium_base.kwc_str(systeme.get("kwc"), "")
+        rangees.append((L("ci_inst_modules", "Modules"), " · ".join(
+            [", ".join(panneaux)]
+            + ([L("ci_inst_wc", "{w} Wc par module", w=f"{watt:g}")]
+               if watt else [])
+            + ([L("ci_inst_kwc_total", "{kwc} kWc au total", kwc=kwc)]
+               if kwc else []))))
+    onduleurs = [f'{_num(it.get("quantite")):g} × {it.get("designation")}'
+                 for it in items if sc.is_inverter(it.get("designation") or "")]
+    kw_ac = sum(o["kw_ac"] * o["quantite"]
+                for o in installation.get("onduleurs") or [])
+    if onduleurs:
+        rangees.append((L("ci_inst_onduleurs", "Onduleurs"), " · ".join(
+            [", ".join(onduleurs)]
+            + ([L("ci_inst_kw_ac", "{kw} kW AC au total",
+                  kw=f"{kw_ac:g}".replace(".", ","))] if kw_ac else []))))
+    pose = installation.get("type_pose")
+    if pose in LIBELLES_TYPES_POSE:
+        rangees.append((L("ci_inst_pose", "Type de pose"),
+                        L(f"ci_pose_{pose}", LIBELLES_TYPES_POSE[pose])))
+    surface = _num(installation.get("surface_disponible_m2"), None)
+    if surface:
+        rangees.append((L("ci_inst_surface", "Surface disponible (déclarée)"),
+                        f"{fmt(round(surface))}&nbsp;m²"))
+    return rangees
+
+
+def bloc_installation(d, L, fmt, couleurs):
+    """AMOT93 — la fiche technique sous le tableau des équipements, ou ''.
+    Cédable (``data-graphique``) : le rendu adaptatif la retire avant de
+    densifier la page. ``couleurs`` = (navy, muted, line_soft, wash)."""
+    rangees = _rangees_installation(d, L, fmt)
+    if not rangees or d.get("_sans_graphiques"):
+        return ""
+    navy, muted, line_soft, wash = couleurs
+    lignes = "".join(
+        f'<tr><td style="color:{muted};width:24%;padding:3px 8px;'
+        f'border-bottom:1px solid {line_soft};vertical-align:top;">{lib}</td>'
+        f'<td style="padding:3px 8px;border-bottom:1px solid {line_soft};">'
+        f'{val}</td></tr>' for lib, val in rangees)
+    return (f'<div class="c2v" data-graphique="installation" '
+            f'style="margin-top:12px;border-radius:12px;background:{wash};'
+            f'padding:8px 6px;"><div style="font-size:9pt;font-weight:700;'
+            f'color:{navy};padding:0 8px 3px 8px;">'
+            + L("ci_inst_titre", "Votre installation en bref")
+            + f'</div><table style="width:100%;border-collapse:collapse;'
+            f'font-size:7.8pt;">{lignes}</table></div>')
+
+
 def build(ctx):
     d = ctx["d"]
 
@@ -410,6 +477,7 @@ def build(ctx):
   {note_html}{clauses_html}
   {options_html}{injection_html}
   {block}
+  {bloc_installation(d, L, fmt, (navy, muted, line_soft, wash))}
 </div>
 """
     return html
