@@ -591,6 +591,27 @@ class PiedSiteCiHtmlTests(SimpleTestCase):
                 self.assertIn('<a>taqinor.ma</a>', self._html(marche, {}))
 
 
+class TitreLegacyHtmlTests(SimpleTestCase):
+    """APDF101 — fast tier (aucune BD) : le ``<title>`` du HTML legacy plein
+    format (source de la métadonnée ``title`` du PDF) nomme la société
+    émettrice par ``ENT_NOM_MARQUE``, comme le une-page ; aucun profil ⇒
+    « Devis TAQINOR N° … » d'hier. Rouge d'abord : le littéral « TAQINOR » du
+    ``<title>`` de ``build_html`` ⇒ les trois cas avec profil échouent."""
+
+    def test_titre_nomme_la_societe(self):
+        import re
+        from apps.ventes.tests import _moteur_fixtures as F
+        ent = {'nom': 'Solaire Exemple SARL', 'ice': '001111111000011'}
+        for options in ({}, {'include_etude': True},
+                        {'devis_final': True, 'include_etude': True}):
+            html = G.render_html_for(F.donnees_legacy(entreprise=ent, **options))
+            titre = re.search(r'<title>(.*?)</title>', html).group(1)
+            self.assertEqual(titre, 'Devis SOLAIRE EXEMPLE SARL N° DEV-RES-DEMO',
+                             options)
+        self.assertIn('<title>Devis TAQINOR N° DEV-RES-DEMO</title>',
+                      G.render_html_for(F.donnees_legacy(entreprise={})))
+
+
 # APDF45 (C-APDF-001) — garde de la classe « identité d'une autre société ».
 #
 # Un profil « SOLAIRE EXEMPLE SARL » (ICE 001111111000011, sans RIB, sans site,
@@ -696,3 +717,20 @@ class GardeIdentiteTests(TestCase):
                     self.assertNotIn(taille_taqinor, tailles)
         # Le test LISTE les rendus effectués : 4 marchés × 5 formats.
         self.assertEqual(len(rendus), len(MARCHES) * len(FORMATS_GARDE), rendus)
+
+    def test_titre_pdf_nomme_la_societe(self):
+        """APDF101 (C-APDF-VER-001) — la métadonnée ``title`` du PDF legacy
+        plein format (/proposal réel, ``include_etude`` puis ``devis_final`` +
+        ``include_etude``) nomme la société, jamais TAQINOR. Mutant : remettre
+        « TAQINOR » dans le ``<title>`` de ``build_html`` ⇒ échec."""
+        import fitz
+        devis = self._devis('residentiel')
+        for nom in ('include_etude', 'devis_final_etude'):
+            doc = fitz.open(stream=rendre_pdf(devis, FORMATS_GARDE[nom]),
+                            filetype='pdf')
+            try:
+                titre = (doc.metadata or {}).get('title') or ''
+            finally:
+                doc.close()
+            self.assertIn('SOLAIRE EXEMPLE SARL', titre, nom)
+            self.assertNotIn('TAQINOR', titre.upper(), nom)

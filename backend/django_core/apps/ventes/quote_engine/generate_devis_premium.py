@@ -3771,7 +3771,7 @@ def build_html():
     domicile_html = page_annexe_domicile() if SIGNE_AU_DOMICILE else ""
     return f"""<!DOCTYPE html>
 <html {_attributs_langue_html()} style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
-<title>Devis TAQINOR N\u00b0 {REF}</title>
+<title>Devis {ENT_NOM_MARQUE} N\u00b0 {REF}</title>
 <style>{CSS}{_css_arabe() if i18n_labels.est_rtl(LANGUE_SORTIE) else ""}</style></head>
 <body style="background:#FFFFFF !important;">
 {page1()}
