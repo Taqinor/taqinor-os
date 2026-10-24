@@ -258,6 +258,35 @@ def ans(valeur):
 #: régime du client (une clinique est exonérée sans droit à déduction).
 NOTE_TVA_RECUPERABLE = ("TVA récupérable selon votre régime fiscal — à "
                         "confirmer avec votre comptable.")
+#: AMOT95 — la note TVA de la page 1 dit le drapeau DÉCLARÉ, lu sur la base
+#: servie (``synthese_ci.argent.base``, D-CIQ-3) : « oui » ⇒ HT ; rien de
+#: déclaré (ou « ne sait pas ») ⇒ HT et TTC. Toute autre base : la note d'hier.
+NOTES_TVA_BASE = {
+    "ht": ("ci_note_tva_declaree",
+           "TVA récupérable déclarée : économies en HT."),
+    "deux": ("ci_note_tva_non_declaree",
+             "TVA récupérable non déclarée ou inconnue : économies en HT et "
+             "TTC — à confirmer avec votre comptable."),
+}
+
+
+def note_tva(d, base):
+    """AMOT95 — la note TVA de la base servie (:data:`NOTES_TVA_BASE`)."""
+    return libelle(d, *NOTES_TVA_BASE.get(
+        base, ("ci_note_tva_recuperable", NOTE_TVA_RECUPERABLE)))
+
+
+def economie_ttc_base_deux(d, cle):
+    """AMOT95 — l'économie TTC de l'année 1 SERVIE
+    (``argent.economie_annee1.total_mad_ttc``) quand la base est « deux » :
+    imprimée à côté de l'HT. ``None`` sur toute autre base."""
+    argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
+    if argent.get("base") != "deux":
+        return None
+    from ..lecture_pure import nombre_normalise
+    return nombre_normalise(
+        (argent.get("economie_annee1") or {}).get("total_mad_ttc"))
+
 
 #: AMOT86 (D-ACI-2=a) — titre du bloc investissement par base servie :
 #: ``(clé, littéral)`` « clé en main » d'hier, puis la version « hors postes
@@ -331,7 +360,6 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
     l_ht = libelle(d, "ci_ht", "HT")
     l_ttc = libelle(d, "ci_ttc", "TTC")
     l_soit = libelle(d, "ci_soit", "soit")
-    note_tva = libelle(d, "ci_note_tva_recuperable", NOTE_TVA_RECUPERABLE)
     if base in ("ht", "deux") and ht is not None:
         ht_txt = fmt_mad(ht)
         if base == "ht":
@@ -339,12 +367,12 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
                 prefixe, titre_investissement(d, synthese, "ht"), ht_txt,
                 l_ht, ancre("total_ht", ht_txt),
                 f'{l_soit} {ttc_txt}&nbsp;MAD&nbsp;{l_ttc}'
-                f'{ancre("total_affiche", ttc_txt)} · {note_tva}')
+                f'{ancre("total_affiche", ttc_txt)} · {note_tva(d, base)}')
         return _html_investissement(
             prefixe, titre_investissement(d, synthese, "deux"), ttc_txt,
             l_ttc, ancre("total_affiche", ttc_txt),
             f'{l_soit} {ht_txt}&nbsp;MAD&nbsp;{l_ht}'
-            f'{ancre("total_ht", ht_txt)} · {note_tva}')
+            f'{ancre("total_ht", ht_txt)} · {note_tva(d, base)}')
     return _html_investissement(
         prefixe, titre_investissement(d, synthese, "ttc"), ttc_txt, "",
         ancre("total_affiche", ttc_txt))
@@ -485,6 +513,12 @@ def tuiles_argent(d, cle, kpi, fmt):
                           "le prix complet, après la visite") + "</div>")
         tuiles.append(kpi(fmt(economies), "&nbsp;MAD", libelle_eco,
                           "economie_annuelle"))
+        # AMOT95 — base « deux » : l'économie TTC servie, à côté de l'HT.
+        economie_ttc = economie_ttc_base_deux(d, cle)
+        if economie_ttc is not None:
+            tuiles.append(kpi(fmt(economie_ttc), "&nbsp;MAD", libelle(
+                d, "ci_economies_estimees", "Économies estimées / an")
+                + f" ({libelle(d, 'ci_ttc', 'TTC')})"))
     payback = d.get(f"{cle}_payback")
     if payback is not None:
         # AMOT80 — la tuile retour dit sa base (celle du flux servi).

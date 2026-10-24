@@ -963,6 +963,20 @@ LIBELLES = {
               'confirmed with your accountant.',
         'ar': 'الضريبة على القيمة المضافة قابلة للاسترجاع حسب نظامكم '
               'الضريبي — يُؤكد مع محاسبكم.'},
+    # AMOT95 — la note TVA dit le drapeau déclaré (``ci.couverture``).
+    'ci_note_tva_declaree': {
+        'fr': 'TVA récupérable déclarée : économies en HT.',
+        'en': 'Recoverable VAT declared: savings excluding VAT.',
+        'ar': 'الضريبة على القيمة المضافة القابلة للاسترجاع مصرّح بها: '
+              'الاقتصاد دون احتساب الضريبة.'},
+    'ci_note_tva_non_declaree': {
+        'fr': 'TVA récupérable non déclarée ou inconnue : économies en HT et '
+              'TTC — à confirmer avec votre comptable.',
+        'en': 'Recoverable VAT not declared or unknown: savings excluding '
+              'and including VAT — to be confirmed with your accountant.',
+        'ar': 'الضريبة على القيمة المضافة القابلة للاسترجاع غير مصرّح بها أو '
+              'غير معروفة: الاقتصاد دون احتساب الضريبة ومع احتسابها — يُؤكد '
+              'مع محاسبكم.'},
     'ci_raison_sociale': {'fr': 'Raison sociale', 'en': 'Company name',
                           'ar': 'الاسم التجاري'},
     'ci_siege': {'fr': 'Siège', 'en': 'Head office',

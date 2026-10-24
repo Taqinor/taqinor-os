@@ -12,7 +12,9 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.ventes.economie_ci import economie_ci_publique
-from apps.ventes.quote_engine.ci.couverture import NOTE_TVA_RECUPERABLE
+from apps.ventes.quote_engine.ci.couverture import (
+    NOTE_TVA_RECUPERABLE, NOTES_TVA_BASE,
+)
 from apps.ventes.quote_engine.commercial import render as c_render
 from apps.ventes.quote_engine.commercial import renderer as c_renderer
 from apps.ventes.quote_engine.commercial import sample_data as c_sample
@@ -69,7 +71,11 @@ class BaseHtTtc(SimpleTestCase):
             with self.subTest(gabarit=nom):
                 d, html = _rendu(sample, renderer, render, "ht")
                 self.assertIn("Investissement HT (clé en main)", html)
-                self.assertIn(NOTE_TVA_RECUPERABLE, html)
+                # AMOT95 — drapeau déclaré « oui » : la note le dit, plus
+                # jamais « selon votre régime fiscal ».
+                self.assertIn(NOTES_TVA_BASE["ht"][1], html)
+                self.assertNotIn(NOTE_TVA_RECUPERABLE, html)
+                self.assertNotIn("Économies estimées / an (TTC)", html)
                 self.assertNotIn("Investissement (TTC, clé en main)",
                                  _couverture(html, racine))
                 ht = Decimal(str(d["totaux_all"]["ht_net"]))
@@ -86,6 +92,8 @@ class BaseHtTtc(SimpleTestCase):
                 self.assertIn("Investissement (TTC, clé en main)", html)
                 self.assertNotIn("Investissement HT", html)
                 self.assertNotIn(NOTE_TVA_RECUPERABLE, html)
+                for _cle, note in NOTES_TVA_BASE.values():
+                    self.assertNotIn(note, html)
                 self.assertIn("Économies estimées / an (TTC)", html)
 
     def test_base_inconnue_ht_et_ttc(self):
@@ -99,6 +107,17 @@ class BaseHtTtc(SimpleTestCase):
                 self.assertIn("MAD&nbsp;HT", html)
                 self.assertIn(Decimal(str(d["totaux_all"]["ht_net"])),
                               _valeurs(html, "total_ht"))
+                # AMOT95 — économies HT ET TTC côte à côte, chacune étiquetée
+                # (la valeur TTC SERVIE), et la note du drapeau non déclaré.
+                # Test-du-test : masquer la valeur TTC ⇒ rouge.
+                from apps.ventes.quote_engine.residential.theme import fmt
+                couverture = _couverture(html, racine)
+                ttc = ECONOMIE["economie_annee1"]["total_mad_ttc"]
+                self.assertIn("Économies estimées / an (HT)", couverture)
+                self.assertIn("Économies estimées / an (TTC)", couverture)
+                self.assertIn(fmt(ttc), couverture)
+                self.assertIn(NOTES_TVA_BASE["deux"][1], couverture)
+                self.assertNotIn(NOTE_TVA_RECUPERABLE, html)
 
     def test_sans_argent_libelle_d_hier(self):
         for nom, sample, renderer, render, racine, _p2 in GABARITS:
