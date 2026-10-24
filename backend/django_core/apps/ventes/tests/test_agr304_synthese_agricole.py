@@ -527,6 +527,25 @@ class SyntheseAgricoleTests(SimpleTestCase):
             '<div class="page">')[2]
         self.assertNotIn('Notes de dimensionnement', p2)
 
+    def test_debit_du_forage_venu_du_lead_imprime_avec_sa_valeur(self):
+        """Rejeu live AGQ41 (24/10) — un débit du forage venu du LEAD (aucune
+        saisie au devis) est persisté par ``derivees_de_l_etude`` et imprimé
+        À CÔTÉ de sa provenance ; avant : « déclaré par vous le … » sans
+        valeur. Mutant : retirer la clé de ``CLES_ENTREES_POMPAGE`` ⇒ rouge."""
+        from apps.ventes.domain.pompage import derivees_de_l_etude
+        derivees = derivees_de_l_etude({'entrees_resolues': {
+            'debit_exploitation_m3h': {'valeur': 36, 'provenance': {
+                'origine': 'lead', 'detail': 'client', 'date': '2026-10-24'}}}})
+        self.assertEqual(derivees['entrees_pompage']['debit_exploitation_m3h'], 36)
+        data = _data_complete()
+        data['etude'].pop('source', None)
+        data['etude']['entrees_pompage'] = derivees['entrees_pompage']
+        data['etude']['provenance_pompage'] = {'entrees': {
+            'debit_exploitation_m3h': {'origine': 'lead', 'detail': 'client',
+                                       'date': '2026-10-24'}}}
+        prov = synthese_agricole(data)['provenance']['debit_exploitation_m3h']
+        self.assertEqual(prov['valeur'], 36)
+
     def test_option_deja_ligne_du_devis_non_reproposee(self):
         data = _data_complete()
         data['etude']['kit'] = _kit_du_moteur()

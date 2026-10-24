@@ -1268,10 +1268,13 @@ def _au_mois_critique(serie, mois):
 #: AMOT63 — entrées RÉSOLUES persistées (``etude_params['entrees_pompage']``,
 #: forme figée dans ``contract_samples/etude_pompage_preview.json``) : ce que
 #: le schéma et la comparaison besoin/livré impriment.
+#: Rejeu live AGQ41 (24/10) — ``debit_exploitation_m3h`` en fait partie : sans
+#: lui, un débit du forage venu du LEAD s'imprimait « déclaré par vous le … »
+#: SANS sa valeur (« D'où viennent ces chiffres », AGQ28).
 CLES_ENTREES_POMPAGE = (
     'cultures', 'region', 'niveau_statique_m', 'niveau_dynamique_m',
-    'profondeur_forage_m', 'volume_reservoir_m3', 'distance_champ_m',
-    'plaque',
+    'debit_exploitation_m3h', 'profondeur_forage_m', 'volume_reservoir_m3',
+    'distance_champ_m', 'plaque',
 )
 
 
