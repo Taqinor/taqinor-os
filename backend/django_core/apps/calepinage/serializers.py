@@ -31,13 +31,17 @@ from __future__ import annotations
 
 import math
 
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.utils import (
     OpenApiResponse, extend_schema_field, inline_serializer,
 )
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
+from core.champs_stricts import (
+    MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, ChampsStrictsMixin,
+    IdInconnu404Mixin,
+)
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import Calepinage, CalepinageVariante
@@ -255,6 +259,71 @@ class ContraintesSiteCreationField(serializers.JSONField):
     que l'objet vide, une clé de plus répondait 400 « Clé(s) inconnue(s) »."""
 
 
+class ContraintesSiteField(serializers.JSONField):
+    """``contraintes_site`` en écriture (PATCH) : objet fermé dont le schéma de
+    REQUÊTE est celui de ``normaliser_contraintes_site`` (api-fuzz-full 24/10 :
+    publié en JSON libre, une clé de plus était « conforme » puis refusée
+    « Clé(s) inconnue(s) »)."""
+
+
+def schema_contraintes_site():
+    """Le schéma de requête de ``contraintes_site`` : MÊMES clés, MÊMES bornes
+    et MÊME exigence de source que ``services.degagements``
+    (``normaliser_contraintes_site``) — jamais plus large que lui."""
+    from .services.degagements import ASSUREURS, CLES_DEGAGEMENT_PROJET
+
+    metre = {'type': 'number', 'minimum': 0, 'nullable': True}
+    texte = {'type': 'string', 'pattern': MOTIF_SANS_NUL}
+    ilot_dim = {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True}
+    # ``null`` = absent : c'est ce que le détail sert quand rien n'est saisi.
+    vide = {'type': 'object', 'maxProperties': 0, 'nullable': True}
+    return {
+        'type': 'object', 'additionalProperties': False, 'nullable': True,
+        'properties': {
+            'assureur': {'type': 'string',
+                         'pattern': '^(?:%s)$' % '|'.join(ASSUREURS)},
+            'degagements_m': {
+                'type': 'object', 'additionalProperties': False,
+                'properties': {cle: dict(metre)
+                               for cle in CLES_DEGAGEMENT_PROJET}},
+            # Îlot maximal : longueur ET largeur, strictement positives.
+            'ilot_max_m': {'anyOf': [vide, {
+                'type': 'object', 'additionalProperties': False,
+                'required': ['longueur', 'largeur'],
+                'properties': {'longueur': dict(ilot_dim),
+                               'largeur': dict(ilot_dim)}}]},
+            'allee_ilot_m': dict(metre),
+            'source': {
+                'type': 'object', 'additionalProperties': False,
+                'properties': {'document': dict(texte),
+                               'date': {**texte, 'nullable': True},
+                               'reference': dict(texte)}},
+            'regles': {'type': 'object', 'additionalProperties': dict(texte)},
+        },
+        # Une valeur saisie (dégagement, îlot, allée) exige sa source : soit
+        # AUCUNE valeur, soit un ``source.document`` non blanc.
+        'anyOf': [
+            {'properties': {
+                'degagements_m': {'type': 'object', 'maxProperties': 0},
+                'ilot_max_m': dict(vide),
+                'allee_ilot_m': {'type': 'number', 'nullable': True,
+                                 'enum': [None]}}},
+            {'required': ['source'], 'properties': {'source': {
+                'required': ['document'], 'properties': {'document': {
+                    'type': 'string', 'pattern': MOTIF_NON_BLANC_SANS_NUL}}}}},
+        ],
+    }
+
+
+class _ContraintesSiteRequete(OpenApiSerializerFieldExtension):
+    target_class = 'apps.calepinage.serializers.ContraintesSiteField'
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        return schema_contraintes_site() if direction == 'request' else schema
+
+
 class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                            SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
@@ -271,6 +340,7 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                                     allow_null=True)
     custom_data = ChampsPersonnalisesField(required=False, allow_null=True,
                                            write_only=True)
+    contraintes_site = ContraintesSiteField(required=False, allow_null=True)
     #: ACAL114 (D-ACAL-19) — ``statut`` et son libellé sont DÉRIVÉS de
     #: l'approbation (brouillon | valide | perime), en LECTURE SEULE : un
     #: PATCH ``{statut}`` est sans effet. La colonne reste en base.
