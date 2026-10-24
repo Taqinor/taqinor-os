@@ -909,6 +909,28 @@ class TestAmot93VotreInstallation(SimpleTestCase):
         self.assertIn("1 × Onduleur réseau Huawei 50kW Triphasé · 50 kW AC "
                       "au total", self._fiche(_pages_ci(data)[2]))
 
+    def test_kw_ac_total_lu_tel_que_servi(self):
+        """Le total AC vient de ``synthese_ci.installation.kw_ac_total``
+        (servi une fois), imprimé tel quel ; un bloc sans ``kw_ac_total``
+        n'imprime aucun total — le gabarit ne recalcule rien."""
+        data = _data_ci()
+        data["all_items"][1]["designation"] = (
+            "Onduleur réseau Huawei 50kW Triphasé")
+        self.assertEqual(synthese_ci(data)["installation"]["kw_ac_total"],
+                         50)
+        augmente = renderer._augment(data)
+        installation = augmente["com_synthese"]["installation"]
+        installation["kw_ac_total"] = 75
+        fiche = self._fiche(render.build_html(augmente).split(
+            'class="page"')[2])
+        self.assertIn("75 kW AC au total", fiche)
+        self.assertNotIn("50 kW AC", fiche)
+        del installation["kw_ac_total"]
+        fiche = self._fiche(render.build_html(augmente).split(
+            'class="page"')[2])
+        self.assertIn("1 × Onduleur réseau Huawei 50kW Triphasé", fiche)
+        self.assertNotIn("kW AC", fiche)
+
     def test_industriel_et_cedable(self):
         from apps.ventes.quote_engine.industriel import render as i_render
         from apps.ventes.quote_engine.industriel import renderer as i_rend

@@ -382,6 +382,10 @@ def _bloc_installation(etude_ci, coherente, data=None):
                      if isinstance(c, dict) and _num(c.get("kw_ac"))]
         if onduleurs:
             sortie["onduleurs"] = onduleurs
+            # AMOT93 — la puissance AC totale, servie UNE fois ici (le
+            # gabarit l'imprime telle quelle, sans la recalculer).
+            sortie["kw_ac_total"] = sum(o["kw_ac"] * o["quantite"]
+                                        for o in onduleurs)
     entrees = _dict(etude_ci.get("entrees_resolues"))
     pose = _dict(entrees.get("type_pose")).get("valeur")
     if isinstance(pose, str) and pose.strip():

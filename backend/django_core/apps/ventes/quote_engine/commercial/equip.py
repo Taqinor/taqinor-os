@@ -253,8 +253,9 @@ def _rangees_installation(d, L, fmt):
                if kwc else []))))
     onduleurs = [f'{_num(it.get("quantite")):g} × {it.get("designation")}'
                  for it in items if sc.is_inverter(it.get("designation") or "")]
-    kw_ac = sum(o["kw_ac"] * o["quantite"]
-                for o in installation.get("onduleurs") or [])
+    # AMOT93 — le total AC SERVI par ``synthese_ci.installation`` (jamais
+    # recalculé ici) ; absent ⇒ aucun total imprimé.
+    kw_ac = _num(installation.get("kw_ac_total"), None)
     if onduleurs:
         rangees.append((L("ci_inst_onduleurs", "Onduleurs"), " · ".join(
             [", ".join(onduleurs)]
