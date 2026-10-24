@@ -188,6 +188,21 @@ class RefusTest(BaseGabarits):
         self.assertIn('PDF', word.data['fichier'])
         self.assertFalse(GabaritDossierReglementaire.objects.exists())
 
+    def test_corps_json_sans_fichier_vide_accepte_texte_refuse(self):
+        """CI #1021 api-fuzz (5) — en JSON, ``fichier: ""`` (ou null) vaut
+        « pas de fichier » : 201 sans PDF ; un texte à sa place reste un 400
+        nommé (jamais un fichier inventé)."""
+        corps = {'pays': 'ma', 'code': 'json_sans_fichier', 'genre': '',
+                 'intitule': 'Gabarit sans PDF', 'fichier': '',
+                 'pieces_attendues': PIECES, 'champs': []}
+        reponse = self.api.post(URL, corps, format='json')
+        self.assertEqual(reponse.status_code, 201, reponse.data)
+        self.assertIsNone(reponse.data['gabarit']['fichiers'])
+        reponse = self.api.post(URL, dict(corps, code='json_texte',
+                                          fichier='pas-un-pdf'), format='json')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('fichier', reponse.data)
+
     def test_liste_json_qui_n_est_pas_une_liste_400_nommee(self):
         """CI #1021 api-fuzz (5) — ``champs=0`` / ``champs={}`` en multipart
         étaient ACCEPTÉS (201, liste vide en silence) : refus 400 nommé, rien

@@ -137,6 +137,12 @@ def _fichier_mal_forme(request):
                                    "(multipart ou JSON)."},
                         status=status.HTTP_400_BAD_REQUEST)
     if 'fichier' in request.data and 'fichier' not in request.FILES:
+        # CI #1021 api-fuzz (5) — corps JSON : « fichier » vide ou null = pas
+        # de fichier (le schéma le dit facultatif) ; seul un TEXTE à la place
+        # d'un fichier, ou une valeur de formulaire multipart, est refusé.
+        if (not isinstance(request.data, QueryDict)
+                and request.data.get('fichier') in ('', None)):
+            return None
         return Response({'fichier': [
             "Le gabarit se dépose en fichier PDF (envoi multipart) : "
             "« fichier » n'est pas un fichier."]},
