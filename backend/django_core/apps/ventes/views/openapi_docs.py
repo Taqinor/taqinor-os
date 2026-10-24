@@ -870,7 +870,8 @@ SavePresetRequest = _ser('DevisSavePresetRequest', {
 LotCreationRequest = _ser('DevisLotCreationRequest', {
     'nom_lot': s.CharField(),
     'adresse_site': s.CharField(required=False, allow_blank=True),
-    'ordre': s.IntegerField(required=False),
+    # api-fuzz (#1022) — ``ordre: null`` est accepté (rang par défaut) : publié.
+    'ordre': s.IntegerField(required=False, allow_null=True),
     # api-fuzz (#1022) — le serveur accepte ``lignes: null`` (_LotCreationSerializer
     # allow_null) : le schéma le dit, sinon « accepted schema-violating request ».
     'lignes': s.ListField(child=s.IntegerField(), required=False, allow_null=True),

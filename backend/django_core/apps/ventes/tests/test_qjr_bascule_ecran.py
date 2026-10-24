@@ -241,7 +241,8 @@ class GoldenMonoOption(_BaseEcran):
             'lignes': [{'produit': etranger.id, 'quantite': '1',
                         'prix_unitaire': '1'}],
         }, format='json')
-        self.assertEqual(reponse.status_code, 404, reponse.content)  # api-fuzz 24/10 : produit d'une autre société ⇒ 404
+        # api-fuzz 24/10 : produit d'une autre société ⇒ 404
+        self.assertEqual(reponse.status_code, 404, reponse.content)
         self.assertEqual(
             Devis.objects.filter(company=self.company).count(), 0)
         self.assertEqual(LigneDevis.objects.count(), 0)
