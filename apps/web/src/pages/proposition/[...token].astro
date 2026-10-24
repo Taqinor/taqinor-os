@@ -2167,6 +2167,8 @@ const signConfig = ok
       entrepriseRequise,
       // ADEV51 — l'empreinte du contenu LU, renvoyée à la signature.
       empreinte: data?.empreinte_contenu ?? '',
+      // ADEV97 — le flux `/pdf/` : l'exemplaire signé d'un accepté est gardé par le code.
+      pdfUrl,
     })
   : null;
 
@@ -7432,6 +7434,19 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             <span id="pdf-download-spinner" class="spinner" hidden aria-hidden="true"></span>
             <span id="pdf-download-label" data-i18n data-fr="Télécharger le devis (PDF)" data-en="Download the quote (PDF)" data-ar="تحميل العرض (PDF)">Télécharger le devis (PDF)</span>
           </a>
+          {/* ADEV97 — code de lecture de l'exemplaire SIGNÉ (révélé par
+              `installerGardePdfSigne` seulement si le serveur l'exige). */}
+          <div id="pdf-otp-block" hidden class="mx-auto mt-4 max-w-md border border-brass-400/40 bg-brass-400/10 p-4 text-start">
+            <label for="pdf-otp-code" class="tech-label text-brass-300" data-i18n
+              data-fr="Code de sécurité" data-en="Security code" data-ar="رمز الأمان">Code de sécurité</label>
+            <p id="pdf-otp-status" class="mt-1 text-xs text-lune-soft" role="status" aria-live="polite" hidden></p>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <input id="pdf-otp-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456"
+                class="w-32 border border-white/15 bg-nuit-800 px-3 py-2.5 text-base tracking-widest text-white outline-none focus:border-brass-400" />
+              <button type="button" id="pdf-otp-valider" class="btn-pill py-2.5 px-4 text-sm font-semibold" data-i18n
+                data-fr="Valider et télécharger" data-en="Confirm and download" data-ar="تأكيد وتحميل">Valider et télécharger</button>
+            </div>
+          </div>
         </div>)}
 
         <p class="mt-6 text-center text-xs text-lune-faint" data-i18n
@@ -7959,6 +7974,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   } from '../../lib/proposition';
   // ADEV95 — 409 `ice_divergent` (signature B2B) : jamais traité comme « déjà signé ».
   import { estIceDivergent } from '../../lib/propositionB2b';
+  // ADEV97 — l'exemplaire signé se télécharge avec le code de lecture (si exigé).
+  import { installerGardePdfSigne } from '../../lib/propositionPdfSigne';
   // LANE T-WEB (25/08/2026) — empreinte d'appareil anonyme (voir lib/visite.ts) :
   // jointe au beacon d'engagement /api/proposition-track ci-dessous, jamais à
   // un aperçu interne (trackProposalEvent le refuse déjà, cf. cfg.apercuInterne).
@@ -8036,6 +8053,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     acompteMontants?: Record<string, string>;
     /** ADEV51 — empreinte du contenu lu (`empreinte_contenu` de `/data/`), renvoyée à `/accept/`. */
     empreinte?: string;
+    /** ADEV97 — URL du flux `/pdf/` (garde de l'exemplaire signé). */
+    pdfUrl?: string;
   }
 
   // ── WJ17/WJ43 · bascule de langue FR/EN/عربي — MÊME mécanisme dual-node que
@@ -8922,7 +8941,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     // scroll lui-même n'est pas une "animation" au sens strict, mais on lui
     // demande explicitement un comportement 'auto' — pas de smooth-scroll
     // forcé — quand le client préfère un mouvement réduit).
+    // ADEV97 — vrai dès l'état confirmé : le PDF est alors l'exemplaire SIGNÉ,
+    // gardé par le code de lecture (`installerGardePdfSigne`, plus bas).
+    let propositionAcceptee = false;
     function showSuccess(name: string, when?: Date, signatureDataUrl?: string, scrollIntoView = false): void {
+      propositionAcceptee = true;
       // WJ104 — « proposition signée » : émis à chaque affichage de l'état
       // confirmé (chargement déjà accepté OU signature qui vient d'aboutir),
       // dédupliqué comme les autres beacons (une fois par onglet/session).
@@ -9095,6 +9118,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         repli.open = !repli.open;
         if (repli.open) repli.scrollIntoView({ block: 'nearest' });
       });
+    });
+
+    // ADEV97 — exemplaire signé : au clic « Télécharger », code de lecture si le
+    // serveur l'exige (jamais pour qui vient de signer : déverrouillé 1 h).
+    installerGardePdfSigne({
+      token: cfg.token,
+      pdfUrl: cfg.pdfUrl ?? '',
+      estAccepte: () => cfg.accepted || propositionAcceptee,
+      langue: () => currentLang,
     });
 
     let submitting = false;

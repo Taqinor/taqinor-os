@@ -107,6 +107,20 @@ def _refus_empreinte(request, devis, link=None):
         status=status.HTTP_409_CONFLICT))
 
 
+def _aucun_code_requis(link):
+    """L-NIV / ADEV97 — 200 « Aucun code requis » (``code_requis: false``)
+    quand ce lien n'exige AUCUN code de lecture — ni ``otp_lecture`` posé, ni
+    exemplaire signé à protéger (``pdf_signe_sous_otp``), ou déjà
+    déverrouillé dans l'heure ; ``None`` sinon (un code part). La page s'en
+    sert au clic « Télécharger » : jamais un second code pour rien."""
+    from ..domain.cycle_vie import otp_lecture_verified, pdf_signe_sous_otp
+    if (link.otp_lecture or pdf_signe_sous_otp(link)) \
+            and not otp_lecture_verified(link, pdf=True):
+        return None
+    return _noindex(Response({'detail': 'Aucun code requis pour ce lien.',
+                              'code_requis': False}))
+
+
 def _refus_aucun_canal(err):
     """ADEV20 (C-ADEV-021) — « Code envoyé. » seulement si un code est
     réellement parti : quand le service rend ``OTP_AUCUN_CANAL``, 409
@@ -267,6 +281,8 @@ def proposal_request_otp(request, token):
 # DOIT déclarer sa forme au lieu de laisser le générateur deviner).
 _OTP_LECTURE_DETAIL_RESPONSE = inline_serializer('PublicOtpLectureDetail', {
     'detail': drf_serializers.CharField(),
+    # ADEV97 — ``false`` quand aucun code n'est requis sur ce lien.
+    'code_requis': drf_serializers.BooleanField(required=False),
 })
 
 
@@ -300,8 +316,9 @@ def proposal_request_otp_lecture(request, token):
     refus = _refus_brouillon(link)
     if refus is not None:
         return refus
-    if not link.otp_lecture:
-        return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
+    refus = _aucun_code_requis(link)
+    if refus is not None:
+        return refus
     from ..services import request_otp_lecture
     err = request_otp_lecture(link)
     refus = _refus_aucun_canal(err)
@@ -337,8 +354,9 @@ def proposal_verify_otp_lecture(request, token):
     refus = _refus_brouillon(link)
     if refus is not None:
         return refus
-    if not link.otp_lecture:
-        return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
+    refus = _aucun_code_requis(link)
+    if refus is not None:
+        return refus
     from ..services import validate_otp_lecture
     # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
     otp_code, refus = _texte_du_corps(request, 'otp_code')
@@ -482,6 +500,7 @@ def proposal_accept(request, token):
                 'accepte_par_nom': devis.accepte_par_nom,
                 'avenant_signe': {'signe_le': signature.signed_at.isoformat()},
             }))
+    statut_avant = devis.statut
     try:
         # ── QJR135 / ES4 — L'ÉCRAN DE CONFIRMATION LIT CE QUI VIENT D'ÊTRE
         #    ÉCRIT. ``accept_devis`` REBIND son nom local sur la relecture
@@ -514,6 +533,8 @@ def proposal_accept(request, token):
             corps,
             status=(status.HTTP_409_CONFLICT if exc.conflict
                     else status.HTTP_400_BAD_REQUEST)))
+    # ADEV97 — qui VIENT de signer télécharge son exemplaire sans code (1 h).
+    _deverrouiller_exemplaire_signe(link, statut_avant, devis)
     # QX33be — état de succès post-signature : acompte (tranche 1 sur le TTC
     # REMISÉ per QX1) + instructions de virement (RIB) + ``declare_url``.
     # ADEV53 — plus de lien carte (aucune route ``pay-card``) ; RIB vide quand
@@ -530,6 +551,22 @@ def proposal_accept(request, token):
         # ADEV96 — le reçu : horodatage, sceau du contenu, SHA-256 du PDF.
         'recu': recu_signature(devis),
     }))
+
+
+def _deverrouiller_exemplaire_signe(link, statut_avant, devis):
+    """ADEV97 — une acceptation FRAÎCHE (envoyé → accepté par CET appel) pose
+    le drapeau de lecture vérifiée du lien pour ``OTP_LECTURE_VERIFIED_TTL`` :
+    l'écran de succès offre l'exemplaire signé tout de suite. Une
+    resoumission sur un devis déjà accepté (idempotente, 200) ne déverrouille
+    JAMAIS rien : sans quoi tout détenteur du jeton contournerait le code."""
+    if statut_avant == 'accepte' or getattr(devis, 'statut', None) != 'accepte':
+        return
+    from django.core.cache import cache
+    from ..domain.cycle_vie import (
+        OTP_LECTURE_VERIFIED_TTL, _otp_lecture_verified_key,
+    )
+    cache.set(_otp_lecture_verified_key(link.token), True,
+              timeout=OTP_LECTURE_VERIFIED_TTL)
 
 
 def recu_signature(devis):

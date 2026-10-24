@@ -95,10 +95,9 @@ class TestFromLayoutEndpoint(TestCase):
         self.assertTrue(resp.data['reference'].startswith('DEV-'))
         token = resp.data['proposal_token']
         self.assertTrue(token)
-        # PV84 — le chemin porte le slug du nom du client (résolu depuis le
-        # lead 'Layout Lead' par resolve_client_for_lead) devant le token.
+        # ADEV97 — le chemin ne porte plus le nom du client (PV84 retiré).
         self.assertEqual(
-            resp.data['proposal_path'], f'/proposition/layout-lead/{token}')
+            resp.data['proposal_path'], f'/proposition/{token}')
         # The Devis is company-scoped with lines off the layout.
         devis = Devis.objects.get(pk=resp.data['id'])
         self.assertEqual(devis.company_id, self.company.id)
@@ -233,8 +232,8 @@ class TestShareLinkAction(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         token = resp.data['token']
         self.assertTrue(token)
-        # PV84 — slug du nom du client ('Cli Share') devant le token.
-        self.assertEqual(resp.data['path'], f'/proposition/cli-share/{token}')
+        # ADEV97 — plus de slug du nom du client devant le token.
+        self.assertEqual(resp.data['path'], f'/proposition/{token}')
         from apps.ventes.models import ShareLink
         link = ShareLink.objects.get(token=token)
         self.assertEqual(link.devis_id, self.devis.id)
