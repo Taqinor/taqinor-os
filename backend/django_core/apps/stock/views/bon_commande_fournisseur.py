@@ -672,7 +672,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         en_retard = bcf_en_retard_list(request.user.company)
         return Response(self.get_serializer(en_retard, many=True).data)
 
-    @extend_schema(request=corps('BcfRecevoirCorps', receptions=serializers.ListField(child=serializers.DictField())),
+    @extend_schema(request=corps('BcfRecevoirCorps',
+                                 receptions=serializers.ListField(child=serializers.DictField(), min_length=1)),
                    responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='recevoir')
     def recevoir(self, request, pk=None):

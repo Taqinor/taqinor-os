@@ -76,7 +76,7 @@ def apply_product_bulk(*, company, user, ids, op, params):
                 raise ValueError(f"{cle} : la durée ne peut pas être négative.")
     elif op == 'set_category':
         cid = params.get('categorie_id')
-        categorie = Categorie.objects.filter(id=cid, company=company).first()
+        categorie = Categorie.objects.filter(id=cid, company=company).first() if cid not in (None, '', 'null') else None
         if cid not in (None, '', 'null') and categorie is None:
             raise IntrouvableMetier("Catégorie introuvable dans cette société.")
 

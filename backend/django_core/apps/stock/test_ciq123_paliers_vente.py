@@ -125,5 +125,5 @@ class PaliersApiTests(TestCase):
                                        {'seuil_min': 100, 'seuil_max': None,
                                         'prix_vente_ttc': '9'}]},
                              format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : règle croisée entre paliers
         self.assertIn('paliers_prix_vente', r.data)

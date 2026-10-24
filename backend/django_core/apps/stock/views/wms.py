@@ -341,8 +341,8 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         super().perform_update(serializer)
 
     @extend_schema(request=corps('UniteAjouterLigneCorps', produit=serializers.IntegerField(),
-                                 quantite=serializers.IntegerField(), lot=serializers.IntegerField(required=False,
-                                                                                                   allow_null=True)),
+                                 quantite=serializers.IntegerField(min_value=1),
+                                 lot=serializers.IntegerField(required=False, allow_null=True)),
                    responses={201: UniteLogistiqueSerializer})
     @action(detail=True, methods=['post'], url_path='lignes')
     def ajouter_ligne(self, request, pk=None):

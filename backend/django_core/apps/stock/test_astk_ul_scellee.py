@@ -89,7 +89,7 @@ class UniteLogistiqueScelleeTests(TestCase):
     def test_parent_egal_a_soi_refuse(self):
         r = self.api.patch(
             f'{URL}{self.v.id}/', {'parent': self.v.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF11 : cycle = état
         self.assertIn('cycle', str(r.data))
         self.v.refresh_from_db()
         self.assertIsNone(self.v.parent_id)
@@ -100,7 +100,7 @@ class UniteLogistiqueScelleeTests(TestCase):
         self.assertEqual(r.status_code, 200, r.content)
         r = self.api.patch(
             f'{URL}{self.v.id}/', {'parent': self.w.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)  # ENF11 : cycle = état
         self.assertIn('cycle', str(r.data))
         self.v.refresh_from_db()
         self.assertIsNone(self.v.parent_id)

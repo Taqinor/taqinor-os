@@ -797,7 +797,7 @@ class TestDC16FactureLieeAuBonCommande(TestCase):
         r = self.client.patch(
             f'/api/django/stock/factures-fournisseur/{fid}/',
             {'montant_ht': '1.00'}, format='json')
-        self.assertEqual(r.status_code, 400, r.json())
+        self.assertEqual(r.status_code, 409, r.json())  # ENF11 : montants dérivés = état
         self.assertIn('montant_ht', r.json())
         # Un champ non-montant reste éditable (ex. la note).
         r = self.client.patch(

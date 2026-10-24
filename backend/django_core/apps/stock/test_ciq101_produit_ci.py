@@ -251,7 +251,7 @@ class TestSaisieEtLecture(CIQ101Base):
             'produit': p.pk, 'type_fiche': 'structure',
             'struct_type_pose': 'toit_plat_leste',
             'struct_masse_kg_m2': 12}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : règle croisée masse/notice
         self.assertIn('struct_notice', r.data)
         r = client.post(URL_FICHES, {
             'produit': p.pk, 'type_fiche': 'structure',

@@ -1155,7 +1155,7 @@ def configurer_liberation_vague(*, vague, mode, seuil_lignes=None):
         # lecture et l'écriture n'est jamais reconfigurée.
         verrou = VaguePicking.objects.select_for_update().get(pk=vague.pk)
         if verrou.statut != VaguePicking.Statut.BROUILLON:
-            raise ValueError(
+            raise EtatIncompatible(
                 'Seule une vague en brouillon peut changer de mode de '
                 'libération.')
         vague.mode_liberation = mode

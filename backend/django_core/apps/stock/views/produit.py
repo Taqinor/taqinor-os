@@ -685,9 +685,9 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return Response(valorisation_a_date(request.user.company, date))
 
     @extend_schema(request=corps('ProduitDecoupeCorps', produit_source=serializers.IntegerField(),
-                                 quantite_consommee=serializers.IntegerField(),
+                                 quantite_consommee=serializers.IntegerField(min_value=1),
                                  produit_cible=serializers.IntegerField(),
-                                 quantite_produite=serializers.IntegerField(),
+                                 quantite_produite=serializers.IntegerField(min_value=1),
                                  emplacement=serializers.IntegerField(required=False, allow_null=True),
                                  lot_source=serializers.IntegerField(required=False, allow_null=True)),
                    responses={201: corps('ProduitDecoupeReponse', reference=serializers.CharField(),
