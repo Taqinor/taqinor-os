@@ -22,7 +22,7 @@ from authentication.models import Company
 from apps.roles.models import Role
 from apps.stock.models import BonCommandeFournisseur, Produit
 from apps.stock.tasks import recompute_reordering_task
-from apps.notifications.models import Notification
+from apps.notifications.models import Notification, NotificationRoutingRule
 from apps.notifications.types_evenements import EventType
 
 User = get_user_model()
@@ -79,6 +79,42 @@ class TestRecomputeReordering(Zstk1Base):
             Notification.objects.filter(
                 company=self.company,
                 event_type=EventType.STOCK_LOW).count(), 1)
+
+    def _produit_sous_seuil(self):
+        return Produit.objects.create(
+            company=self.company, nom='Câble APAR72', sku='CAB-APAR72',
+            prix_vente=Decimal('50'), quantite_stock=2, seuil_alerte=10)
+
+    def _destinataires(self):
+        return set(Notification.objects.filter(
+            company=self.company, event_type=EventType.STOCK_LOW,
+        ).values_list('recipient__username', flat=True))
+
+    def test_regle_stock_low_vers_commercial_respectee(self):
+        # APAR72 — une règle de routage « stock_low → X » fait notifier X, et
+        # ni l'admin ni le responsable (repli historique) de la société.
+        User.objects.create_user(
+            username='zstk1-admin', password='x', company=self.company,
+            role_legacy='admin')
+        commercial = User.objects.create_user(
+            username='zstk1-commercial', password='x', company=self.company,
+            role_legacy='normal')
+        NotificationRoutingRule.objects.create(
+            company=self.company, event_type=EventType.STOCK_LOW,
+            target_user=commercial, enabled=True)
+        self._produit_sous_seuil()
+        recompute_reordering_task()
+        self.assertEqual(self._destinataires(), {'zstk1-commercial'})
+
+    def test_sans_regle_les_managers_restent_notifies(self):
+        # APAR72 — sans règle, repli historique inchangé (admin/responsable).
+        User.objects.create_user(
+            username='zstk1-admin', password='x', company=self.company,
+            role_legacy='admin')
+        self._produit_sous_seuil()
+        recompute_reordering_task()
+        self.assertEqual(
+            self._destinataires(), {'zstk1-admin', 'zstk1-user'})
 
     def test_aucun_bcf_cree_automatiquement(self):
         Produit.objects.create(

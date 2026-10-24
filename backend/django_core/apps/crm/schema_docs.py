@@ -9,7 +9,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema_field, inline_serializer
 from rest_framework import serializers
 
-from core.champs_stricts import MOTIF_SANS_NUL
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE, MOTIF_QUERY_SANS_NUL
 
 #: Réponse « objet libre » (dict dont la forme dépend de la situation).
@@ -198,29 +198,38 @@ CONVERSION_LIER_CLIENT = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
 ]}}
 
 
-def _texte_avec(motif):
-    return {'type': 'string', 'pattern': motif}
+def _texte_avec(motif, longueur_max=None):
+    schema = {'type': 'string', 'pattern': motif}
+    if longueur_max:
+        schema['maxLength'] = longueur_max
+    return schema
 
 
 #: ERR-ENF11-FUZZ-CRM — « locataire » (``cadence_reponses.refus_proprietaire``) :
 #: ``proprietaire_inconnu: true`` OU les coordonnées du propriétaire — un nom
-#: non blanc et un numéro joignable (au moins un chiffre non nul ; le
-#: téléphone prime sur le WhatsApp quand il est renseigné). Textes sans NUL.
+#: non blanc et un numéro joignable. Textes sans NUL, bornés comme les colonnes
+#: de ``crm.Lead`` (nom/prénom 255, téléphone/WhatsApp 50 : au-delà, Postgres
+#: refusait l'écriture).
+#: 3e drainage 24/10 : le motif du nom était ``\S`` (qui MATCHE le NUL : un nom
+#: « abc\0 » passait pour conforme) — c'est ``MOTIF_NON_BLANC_SANS_NUL``. Le
+#: numéro exige un chiffre 3-9 : ``normalize_phone`` retire l'indicatif ``212``
+#: et les zéros de tête, donc « 2120 » (chiffres 0-2 seuls) devient vide et le
+#: serveur répond 400 ; un chiffre 3-9 survit à toute normalisation.
 _SANS_NUL = r'^[^\x00]*$'
-_NUMERO = r'^[^\x00]*[1-9][^\x00]*$'
+_NUMERO = r'^[^\x00]*[3-9][^\x00]*$'
 LOCATAIRE_SUITE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
     {'required': ['proprietaire_inconnu'],
      'properties': {'proprietaire_inconnu': {'enum': [True]}}},
     {'required': ['proprietaire'], 'properties': {'proprietaire': {
         'type': 'object', 'required': ['nom'],
-        'properties': {'nom': _texte_avec(r'^[^\x00]*\S[^\x00]*$'),
-                       'prenom': _texte_avec(_SANS_NUL)},
+        'properties': {'nom': _texte_avec(MOTIF_NON_BLANC_SANS_NUL, 255),
+                       'prenom': _texte_avec(_SANS_NUL, 255)},
         'anyOf': [
             {'required': ['telephone'],
-             'properties': {'telephone': _texte_avec(_NUMERO),
-                            'whatsapp': _texte_avec(_SANS_NUL)}},
+             'properties': {'telephone': _texte_avec(_NUMERO, 50),
+                            'whatsapp': _texte_avec(_SANS_NUL, 50)}},
             {'required': ['whatsapp'],
-             'properties': {'whatsapp': _texte_avec(_NUMERO),
+             'properties': {'whatsapp': _texte_avec(_NUMERO, 50),
                             'telephone': {'type': 'string', 'maxLength': 0}}},
         ]}}},
 ]}}

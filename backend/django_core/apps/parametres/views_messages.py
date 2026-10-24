@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminOrResponsableTier, IsAnyRole,
 )
+from .gabarits_schema import corps_messages_par_cle
 from .requetes_strictes import (
     MessageTemplateEcritRequestSerializer, valider_corps,
 )
@@ -102,12 +103,19 @@ _MESSAGE_ECRIT = inline_serializer('MessageTemplateEcrit', {
 })
 
 
+# 3e drainage api-fuzz — un texte n'a que les placeholders de SA clé (L775) ;
+# ``reset: true`` ne lit aucun texte.
+_CORPS_ECRIT = corps_messages_par_cle(
+    [c for c, _ in MessageTemplate.Cle.choices], placeholders_autorises)
+
+
 @extend_schema(methods=['GET'], responses=_MESSAGE_LIGNE)
 # ENF11 — PUT seul : l'écriture identifie la ligne par ``cle`` (obligatoire).
 # Un PATCH « partiel » annonçait au schéma un corps sans ``cle`` que le serveur
 # refusait (400) ; l'écran n'a toujours utilisé que PUT.
 @extend_schema(methods=['PUT'],
                request=MessageTemplateEcritRequestSerializer,
+               extensions=_CORPS_ECRIT,
                responses=_MESSAGE_ECRIT)
 @api_view(['GET', 'PUT'])
 @parser_classes([JSONParser])  # ENF8 (D2) — aucun upload

@@ -313,6 +313,17 @@ class CalepinageApiTest(BaseApiCalepinage):
         self.assertEqual(reponse.status_code, 409)
         self.assertIn('fichier', reponse.data)
 
+    def test_corps_non_objet_ou_genre_non_texte_400_jamais_500(self):
+        """api-fuzz-full 24/10 : un scalaire JSON en corps (``2.2e-313``) ou
+        un ``genre`` qui n'est pas un texte levait ``AttributeError`` (500)."""
+        for corps in (2.2250738585e-313, [], 'texte',
+                      {'genre': 5, 'fichier': _data_uri_png()},
+                      {'genre': ['ombrage'], 'fichier': _data_uri_png()}):
+            with self.subTest(corps=corps):
+                reponse = self.api.post(
+                    self._url(self.calepinage), corps, format='json')
+                self.assertEqual(reponse.status_code, 400, reponse.content)
+
     def test_fichier_json_vide_reste_400(self):
         reponse = self.api.post(
             self._url(self.calepinage),

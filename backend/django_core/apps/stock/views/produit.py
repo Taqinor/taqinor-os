@@ -1497,7 +1497,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             if len(parts) != 3 or not parts[1].strip().isdigit():
                 return Response(
                     {'detail': 'Code illisible.'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
             produit_id = int(parts[1].strip())
             valeur = parts[2].strip()
             if first_prefix == labels.LOT_PREFIX:
@@ -1552,7 +1552,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                     or not parts[2].strip().isdigit():
                 return Response(
                     {'detail': 'Code illisible.'},
-                    status=status.HTTP_400_BAD_REQUEST)
+                    status=status.HTTP_404_NOT_FOUND)
             produit_id = int(parts[1].strip())
             emplacement_id = int(parts[2].strip())
             from apps.installations.services import (
@@ -1583,7 +1583,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if not raw_id.isdigit():
             return Response(
                 {'detail': 'Code illisible.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_404_NOT_FOUND)
         obj_id = int(raw_id)
 
         if prefix == labels.PRODUIT_PREFIX:
@@ -1699,7 +1699,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
         return Response(
             {'detail': 'Type de code inconnu.'},
-            status=status.HTTP_400_BAD_REQUEST)
+            status=status.HTTP_404_NOT_FOUND)
 
     @extend_schema(request=corps('ProduitRebutCorps', quantite=serializers.IntegerField(min_value=1),
                                  motif=serializers.ChoiceField(choices=MouvementStock.MotifRebut.choices),

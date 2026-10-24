@@ -505,6 +505,16 @@ def object_as_of(request, content_type, object_id):
     })
 
 
+def _date_heure_ou_none(brut):
+    """``?from=`` / ``?to=`` : une date-heure bien formée mais impossible
+    (« 2026-13-45T10:00:00 ») faisait lever ``parse_datetime`` (500) ; comme un
+    texte illisible, elle ne borne rien."""
+    try:
+        return parse_datetime(brut or '')
+    except ValueError:
+        return None
+
+
 # NTSEC15 — export CSV des évènements de sécurité (Directeur only, scopé société).
 # Garde IsAdminRole (Directeur/Administrateur, y compris les comptes admin
 # hérités) plutôt que CanViewActivityLog : ce dernier exige la permission fine
@@ -539,8 +549,8 @@ def security_events_export(request):
         # Un superuser sans société active n'a pas de périmètre CSV défini.
         return Response({'detail': 'Aucune société active.'}, status=400)
 
-    since = parse_datetime(request.query_params.get('from', '') or '')
-    until = parse_datetime(request.query_params.get('to', '') or '')
+    since = _date_heure_ou_none(request.query_params.get('from', ''))
+    until = _date_heure_ou_none(request.query_params.get('to', ''))
     qs = _security_events(company, since=since, until=until)
     # Mêmes filtres user/search que l'onglet « Sécurité » (company déjà fixée).
     users = (request.query_params.getlist('user')
@@ -548,7 +558,12 @@ def security_events_export(request):
     if users:
         qs = qs.filter(user_id__in=_ids_utilisateurs(users))
     search = (request.query_params.get('search') or '').strip()
-    if search:
+    if chr(0) in search:
+        # Même règle que le journal (``_apply_filters``) : un terme porteur d'un
+        # caractère nul ne désigne AUCUNE ligne et levait PostgreSQL (500) —
+        # api-fuzz-full, 3e drainage 24/10 : CSV sans ligne.
+        qs = qs.none()
+    elif search:
         from django.db.models import Q
         qs = qs.filter(
             Q(object_repr__icontains=search)

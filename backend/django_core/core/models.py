@@ -625,6 +625,11 @@ class WorkflowInstance(TimestampedModel):
 
     started_le = models.DateTimeField('Démarré le', null=True, blank=True)
     ended_le = models.DateTimeField('Terminé le', null=True, blank=True)
+    # APAR76 — qui a démarré le workflow (séparation des tâches : il ne
+    # décide pas sa propre étape). NULL = démarrage système ou antérieur.
+    demandeur = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,  # on_delete: l'instance survit au compte
+        null=True, blank=True, related_name='+', verbose_name='Demandeur')
 
     class Meta:
         verbose_name = 'Instance de workflow'

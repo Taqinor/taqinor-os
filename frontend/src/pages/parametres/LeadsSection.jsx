@@ -12,6 +12,7 @@ import { SectionTitle, Field } from './peComponents'
 import EquipesCommercialesSection from './EquipesCommercialesSection'
 import MessageTemplatesCrmSection from './MessageTemplatesCrmSection'
 import parametresApi from '../../api/parametresApi'
+import { majVerrouProfil } from '../../features/parametres/store/parametresSlice'
 
 // Sentinel pour l'option « aucun » : Radix Select n'autorise pas la valeur ''.
 const NONE = '__none__'
@@ -38,7 +39,7 @@ function messageErreurChamp(err, champ) {
 }
 
 export default function LeadsSection({
-  form, set, setForm, assignables, profile,
+  form, set, setForm, assignables, profile, dispatch,
   tags, newTag, setNewTag, addTag, renameTag, delTag, archiveTag, setTagColor,
   motifs, newMotif, setNewMotif, addMotif, renameMotif, delMotif, archiveMotif,
   canaux, newCanal, setNewCanal, addCanal, renameCanal, delCanal, archiveCanal,
@@ -72,6 +73,9 @@ export default function LeadsSection({
       })
       const serveur = r?.data?.responsable_leads_pro
       setRespPro(serveur === undefined ? valeur : serveur)
+      // APAR73 — le verrou du profil avance (le « Enregistrer » suivant porte
+      // ce nouvel horodatage) sans resynchroniser le formulaire.
+      dispatch?.(majVerrouProfil(r?.data?.updated_at))
     } catch (err) {
       setRespProErreur(messageErreurChamp(err, 'responsable_leads_pro'))
     }

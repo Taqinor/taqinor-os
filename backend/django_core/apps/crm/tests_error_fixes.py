@@ -1127,3 +1127,41 @@ class TestFuzzCrmNocturne2410(TestCase):
             'client': self.client_obj.pk, 'gps_lat': '33.5731',
             'gps_lng': '-7.5898'}, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_client_doublon_code_parrainage_et_liste_prix_inconnue_404(self):
+        """3e drainage api-fuzz : un doublon (``code_parrainage``) MÊLÉ à un id
+        inconnu (``liste_prix``) répondait 400 ; l'id inconnu l'emporte (404)."""
+        autre = Client.objects.create(
+            company=self.company, nom='Autre', email='autre2410@exemple.ma')
+        url = f'/api/django/crm/clients/{self.client_obj.pk}/'
+        resp = self.api.patch(url, {
+            'code_parrainage': autre.code_parrainage,
+            'liste_prix': 987654321}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        # Le doublon seul reste un 409.
+        resp = self.api.patch(
+            url, {'code_parrainage': autre.code_parrainage}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
+    def test_locataire_schema_refuse_nul_et_numero_sans_chiffre_utile(self):
+        """3e drainage api-fuzz : le motif du nom était « non-espace » (qui MATCHE le
+        NUL) et « 2120 » (indicatif + zéros) se normalise en vide."""
+        import re
+
+        from apps.crm import schema_docs as sd
+
+        branche = sd.LOCATAIRE_SUITE['x-corps-resserre']['anyOf'][1]
+        proprietaire = branche['properties']['proprietaire']
+        nom = proprietaire['properties']['nom']
+        self.assertEqual(nom['maxLength'], 255)
+        self.assertTrue(re.search(nom['pattern'], 'Ali'))
+        for refuse in ('abc' + chr(0), '   ', ''):
+            self.assertFalse(re.search(nom['pattern'], refuse), repr(refuse))
+        numero = proprietaire['anyOf'][0]['properties']['telephone']
+        self.assertTrue(re.search(numero['pattern'], '0612345678'))
+        self.assertFalse(re.search(numero['pattern'], '2120'))
+        # Ce que le serveur refuse bien (400), pour ne jamais re-diverger.
+        url = f'/api/django/crm/leads/{self.lead.pk}/locataire/'
+        resp = self.api.post(url, {'proprietaire': {
+            'nom': 'Ali', 'telephone': '2120'}}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)

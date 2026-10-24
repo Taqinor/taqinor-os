@@ -39,6 +39,7 @@ from core.permissions import ScopedPermission
 
 from ..models import ParametresCalepinage
 from ..permissions import CAL_GERER, CAL_VOIR
+from ..serializers import _SchemaCorpsObligatoire
 from ..selectors import (
     kits_de_pose_disponibles, parametres_de_societe, registre_des_reglages,
 )
@@ -300,6 +301,9 @@ class ParametresCalepinageView(APIView):
     permission_classes = [ScopedPermission]
     read_permission = CAL_VOIR
     write_permission = CAL_GERER
+    # ENF11 : le corps du PUT est OBLIGATOIRE (sans corps : 400 « Corps de
+    # requête manquant »), ce que le schéma ne disait pas (sections facultatives).
+    schema = _SchemaCorpsObligatoire()
 
     @extend_schema(responses={200: _forme_reglages(
         'CalepinageParametresReponse', avec_registre=True)})

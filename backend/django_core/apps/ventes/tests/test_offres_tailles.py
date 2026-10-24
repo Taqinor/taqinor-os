@@ -1152,6 +1152,59 @@ class SubstitutionTests(TestCase):
         self.assertEqual(ot._resoudre_substitutions(None), {})
 
 
+class TvaRepliSocieteTests(TestCase):
+    """APAR79 — une ligne sans ``Produit.tva`` se chiffre au taux du devis,
+    sinon au repli société (``_fallback_taux_tva``), jamais à 20 % codé.
+    Test-du-test : rétablir ``_TVA_REPLI`` (20) ⇒ 12 000 au lieu de 11 400."""
+
+    def setUp(self):
+        from authentication.models import Company
+        from apps.parametres.models import CompanyProfile
+        self.company = Company.objects.create(slug='apar79', nom='apar79')
+        profil = CompanyProfile.get(company=self.company)
+        CompanyProfile.objects.filter(pk=profil.pk).update(
+            tva_standard=Decimal('14'))
+        nom = 'Onduleur hybride Deye 10kW Triphasé'
+        onduleur = Produit.objects.create(
+            company=self.company, nom=nom, prix_vente='10000',
+            quantite_stock=1, sku='APAR79-OND')
+        self.assertIsNone(onduleur.tva)
+        self.lignes = type('Compo', (list,), {})([SimpleNamespace(
+            produit=onduleur, designation=nom, quantite=1,
+            prix_unitaire=10000)])
+        self.lignes.roles = ['onduleur_hybride']
+
+    def test_carte_ligne_sans_tva_au_taux_societe(self):
+        contexte = _contexte_factice(SimpleNamespace(taux_tva=Decimal('14')))
+        contexte.entrees = {'company': self.company}
+        contexte.composer = (lambda nb, avec_batterie=False, cible_kwh=None:
+                             None if avec_batterie else self.lignes)
+        with mock.patch('apps.ventes.etude_horaire.calculer_etude_horaire',
+                        return_value=None):
+            cartes = ot._carte_moteur(contexte, 10, avec_servable=False)
+        self.assertEqual(cartes['sans']['prix_ttc'], 11400.0)
+        self.assertEqual(ot._cout_onduleur_ttc(
+            self.lignes, self.lignes.roles, 1.0, Decimal('14')), 11400.0)
+        remplacant = Produit.objects.create(
+            company=self.company, nom='Onduleur hybride 10kW bis',
+            prix_vente='10000', quantite_stock=1, sku='APAR79-OND-2')
+        vue = ot._substituer({'cout_ttc': 0.0}, self.lignes,
+                             {'onduleur_hybride': remplacant}, Decimal('14'))
+        self.assertEqual(vue['cout_ttc'], 11400.0)
+
+    def test_balayage_sans_devis_au_repli_societe(self):
+        import inspect
+        from apps.ventes.dimensionnement import (
+            _lire_composition, balayer_tailles)
+        self.assertIsNone(inspect.signature(
+            balayer_tailles).parameters['taux_tva'].default)
+        vue = _lire_composition(self.lignes, None, self.company)
+        self.assertEqual(vue['cout_ttc'], 11400.0)
+        # Un taux de devis explicite (y compris 0) prime sur le repli.
+        self.assertEqual(_lire_composition(
+            self.lignes, Decimal('0'), self.company)['cout_ttc'], 10000.0)
+
+
 class ConfigStockeeTests(TestCase):
 
     def _devis(self):

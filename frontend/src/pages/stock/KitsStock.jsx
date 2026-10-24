@@ -9,6 +9,7 @@ import { EnteteStock, BandeauxStock } from './EnteteStock'
 import kitsApi from '../../features/stock/api/kitsApi'
 import { messageServeur } from '../../features/stock/api/erreurs'
 import { formatDateTime } from '../../lib/format'
+import { lireToutesLesPages } from '../../utils/fetchAllPages'
 
 /* ASTK229 — écran « Nomenclatures de stock (kits) » (contrat kits_stock.json).
 
@@ -85,8 +86,9 @@ export default function KitsStock() {
 
   useEffect(() => {
     Promise.resolve().then(charger)
-    kitsApi.listProduits({ page_size: 1000 })
-      .then((r) => setProduits(liste(r.data))).catch(() => {})
+    // APAR78 — tout le catalogue en suivant la pagination serveur (plafond 200).
+    lireToutesLesPages((p) => kitsApi.listProduits(p))
+      .then(setProduits).catch(() => {})
   }, [charger])
 
   const ouvrir = async (kit) => {

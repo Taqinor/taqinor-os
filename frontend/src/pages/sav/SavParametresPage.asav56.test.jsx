@@ -72,4 +72,27 @@ describe('SavParametresPage — ASAV56 réglages SLA', () => {
     expect(screen.queryByLabelText('Urgente — résolution (heures ouvrées)')).toBeNull()
     expect(screen.getByLabelText('Début des horaires ouvrés')).toBeInTheDocument()
   }, 60000)
+
+  // ASAV112 — un seul contrôle de `sla_heures_ouvrees_actif` : celui de
+  // l'onglet SLA, avec son éditeur d'horaires ; Service client ne l'offre plus.
+  it('un seul interrupteur heures ouvrées sur la page', async () => {
+    const user = userEvent.setup()
+    serveur.reglages.sla_heures_ouvrees_actif = true
+    serveur.posts = []
+    monter()
+    await user.click(screen.getByRole('tab', { name: 'Service client' }))
+    await screen.findByRole('switch', { name: 'Enquête de satisfaction détaillée' })
+    expect(screen.queryAllByRole('switch', { name: 'Décompter le SLA en heures ouvrées' })).toHaveLength(0)
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(serveur.posts).toHaveLength(1))
+    expect(Object.keys(serveur.posts[0]).sort()).toEqual(['affectation_par_competence', 'csat_detaille_actif'])
+
+    // Recharger : la valeur de l'onglet SLA est relue intacte.
+    cleanup()
+    monter()
+    await ouvrirSla(user)
+    const interrupteurs = screen.getAllByRole('switch', { name: 'Décompter le SLA en heures ouvrées' })
+    expect(interrupteurs).toHaveLength(1)
+    expect(interrupteurs[0]).toHaveAttribute('aria-checked', 'true')
+  }, 60000)
 })

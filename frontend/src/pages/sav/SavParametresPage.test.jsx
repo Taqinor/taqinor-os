@@ -132,15 +132,15 @@ describe('SavParametresPage', () => {
   })
 
   describe('NTSRV33 — onglet Service client', () => {
-    it('rassemble les trois réglages du groupe NTSRV', async () => {
+    it('rassemble les réglages du groupe NTSRV (heures ouvrées : onglet SLA seul)', async () => {
       const user = userEvent.setup()
       render(<SavParametresPage />)
       await user.click(screen.getByRole('tab', { name: 'Service client' }))
       await waitFor(() => expect(api.get).toHaveBeenCalledWith('/sav/sla-settings/'))
       expect(await screen.findByRole('switch',
         { name: 'Affecter uniquement des techniciens qualifiés' })).toBeInTheDocument()
-      expect(screen.getByRole('switch',
-        { name: 'Décompter le SLA en heures ouvrées' })).toBeInTheDocument()
+      expect(screen.queryByRole('switch',
+        { name: 'Décompter le SLA en heures ouvrées' })).toBeNull()
       expect(screen.getByRole('switch',
         { name: 'Enquête de satisfaction détaillée' })).toBeInTheDocument()
     })
@@ -167,7 +167,6 @@ describe('SavParametresPage', () => {
       const envoye = api.post.mock.calls[0][1]
       expect(Object.keys(envoye).sort()).toEqual([
         'affectation_par_competence', 'csat_detaille_actif',
-        'sla_heures_ouvrees_actif',
       ])
     })
   })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { documentContrat, exempleContrat } from '../../test/fixtures/contractSamples'
@@ -52,6 +52,25 @@ beforeEach(() => {
 })
 
 describe('ASTK229 — nomenclatures de stock (kits)', () => {
+  it('APAR78 — 250 produits paginés à 200 ⇒ 250 composants', async () => {
+    const produit = (n) => ({ id: 1000 + n, nom: `Produit ${n}`, sku: `P${n}` })
+    const page1 = Array.from({ length: 200 }, (_, i) => produit(i + 1))
+    const page2 = Array.from({ length: 50 }, (_, i) => produit(i + 201))
+    kitsApi.listProduits.mockImplementation(({ page = 1 } = {}) => Promise.resolve({
+      data: page === 1
+        ? { count: 250, next: 'page=2', previous: null, results: page1 }
+        : { count: 250, next: null, previous: 'page=1', results: page2 },
+    }))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: /Nouveau kit/ }))
+    // Le 250e produit (page 2) est proposé comme composant ; aucun page_size géant demandé.
+    await screen.findAllByRole('option', { name: /Produit 250/ })
+    const liste = screen.getByLabelText('Produit du composant 1')
+    expect(within(liste).getAllByRole('option', { name: /^Produit \d+/ })).toHaveLength(250)
+    expect(kitsApi.listProduits.mock.calls.map(([p]) => p.page)).toEqual([1, 2])
+    expect(kitsApi.listProduits.mock.calls.every(([p]) => p.page_size <= 200)).toBe(true)
+  })
+
   it('créer un kit avec taux de perte', async () => {
     renderPage()
     fireEvent.click(await screen.findByRole('button', { name: /Nouveau kit/ }))

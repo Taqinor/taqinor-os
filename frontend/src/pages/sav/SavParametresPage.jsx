@@ -612,13 +612,6 @@ const SERVICE_CLIENT_TOGGLES = [
       + "automatique n'est pas activée dans SLA / Automatisation.",
   },
   {
-    key: 'sla_heures_ouvrees_actif',
-    label: 'Décompter le SLA en heures ouvrées',
-    aide: 'Exclut aussi les HEURES hors plage de travail du décompte, pas '
-      + 'seulement les jours : une demande reçue vendredi 17 h avec 4 h de '
-      + 'délai est due lundi 11 h. Par défaut lun-ven 8 h-18 h.',
-  },
-  {
     key: 'csat_detaille_actif',
     label: 'Enquête de satisfaction détaillée',
     aide: 'Ajoute au formulaire public trois sous-notes optionnelles '
@@ -630,7 +623,6 @@ const SERVICE_CLIENT_TOGGLES = [
 function ServiceClientSection() {
   const [form, setForm] = useState({
     affectation_par_competence: false,
-    sla_heures_ouvrees_actif: false,
     csat_detaille_actif: false,
   })
   const [loading, setLoading] = useState(true)

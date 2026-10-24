@@ -26,6 +26,22 @@ export function compter() {
   return api.get('/x/', { params: { page_size: 1000 } }).then((r) => r.data.count)
 }
 """
+HELPER_DE_MODULE = """
+const liste = (d) => (Array.isArray(d) ? d : d?.results ?? [])
+
+export function KitsStock() {
+  api.get('/p/', { params: { page_size: 1000 } }).then((r) => setProduits(liste(r.data)))
+}
+"""
+HELPER_AVEC_NEXT = HELPER_DE_MODULE.replace(
+    "setProduits(liste(r.data))", "fetchAllPages(liste(r.data))")
+HELPER_SANS_APPEL = """
+const liste = (d) => (Array.isArray(d) ? d : d?.results ?? [])
+
+export function compter() {
+  api.get('/p/', { params: { page_size: 1000 } }).then((r) => setN(r.data.count))
+}
+"""
 
 
 class PageSizeFrontTests(unittest.TestCase):
@@ -51,6 +67,15 @@ class PageSizeFrontTests(unittest.TestCase):
         self.assertEqual(guard.verifier(trouves, {"a.jsx::charger": "r"}, 200), [])
         erreurs = guard.verifier({}, {"a.jsx::charger": "r"}, 200)
         self.assertTrue(any("MORTE" in e for e in erreurs))
+
+    def test_lecteur_results_de_module_suivi(self):
+        # un helper de module qui lit `results`, appele par la fonction a page_size > plafond
+        self.assertEqual(list(guard.analyser_source(HELPER_DE_MODULE, 200)), ["KitsStock"])
+        self.assertTrue(guard.verifier(
+            {"a.jsx::KitsStock": 6}, {}, 200))
+        # le helper seul, un appel qui suit `next`/fetchAllPages ou sans appel : vert
+        for source in (HELPER_AVEC_NEXT, HELPER_SANS_APPEL):
+            self.assertEqual(guard.analyser_source(source, 200), {})
 
     def test_depot_reel_vert(self):
         self.assertEqual(guard.verifier(guard.analyser(), max_ps=guard.plafond()), [])

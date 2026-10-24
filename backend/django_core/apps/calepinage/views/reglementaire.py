@@ -43,6 +43,8 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
+
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
 from ..serializers import corps_obligatoire
 from ..services.reglementaire import (
@@ -306,12 +308,21 @@ _FORME_PIECE_JOINTE = _forme_piece_jointe()  # UNE instance : 200 et 201
 # ``multipart/form-data`` SEUL (l'écran envoie un FormData). Publié aussi en
 # JSON / formulaire, le champ binaire y faisait planter le moteur du fuzz
 # (« Unsupported type: 'Binary' ») et l'opération n'était jamais testée.
+# api-fuzz-full 24/10 (« Unsupported type: 'Binary' ») : le ``oneOf`` (dossier
+# OU gabarit) portant un ``format: binary`` plante le générateur (il valide
+# chaque branche contre la valeur binaire). Le corps est UN objet multipart
+# plat, ``fichier`` propriété binaire de premier niveau ; « dossier OU
+# gabarit » devient un ``anyOf`` de ``required`` (sans filtre d'exclusivité).
 @extend_schema(
-    request={'multipart/form-data': _corps_designant_un_dossier(
-        'CalepinageJoindrePieceCorps',
-        piece=serializers.CharField(),
-        fichier=serializers.FileField(required=False),
-        retirer=serializers.BooleanField(required=False))},
+    request={'multipart/form-data': inline_serializer(
+        'CalepinageJoindrePieceCorps', {
+            'piece': serializers.CharField(),
+            'dossier': serializers.IntegerField(required=False),
+            'gabarit': serializers.IntegerField(required=False),
+            'fichier': serializers.FileField(required=False),
+            'retirer': serializers.BooleanField(required=False)})},
+    extensions={EXTENSION_CORPS_RESSERRE: {'anyOf': [
+        {'required': ['dossier']}, {'required': ['gabarit']}]}},
     responses={200: _FORME_PIECE_JOINTE, 201: _FORME_PIECE_JOINTE})
 @corps_obligatoire
 @action(detail=True, methods=['post'], url_path='joindre-piece',

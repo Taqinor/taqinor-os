@@ -6,12 +6,15 @@
 //     n° de série, QA photo IA). Vide = no-op total (aucun coût, aucune clé).
 // Section autonome (charge/enregistre seule). Texte en français.
 import { useEffect, useState } from 'react'
+import { useDispatch } from 'react-redux'
 import { Plus, Trash2, ChevronUp, ChevronDown, AlertCircle } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import toutesLesPages from './toutesLesPages'
 import api from '../../api/axios'
 import { apiErrorMessage } from '../../lib/apiError'
+import { frenchError } from '../../lib/frenchError'
 import parametresApi from '../../api/parametresApi'
+import { saveProfile as saveProfileThunk } from '../../features/parametres/store/parametresSlice'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
   toast,
@@ -23,6 +26,7 @@ import { slugifyCle as slugify, permuterOrdre } from './listeOrdonnee'
 
 
 export default function SecuriteTerrainSection() {
+  const dispatch = useDispatch()
   const [slots, setSlots] = useState([])
   const [loading, setLoading] = useState(true)
   // ERR62 — un échec de chargement affiche une erreur + Réessayer (au lieu d'un
@@ -86,10 +90,11 @@ export default function SecuriteTerrainSection() {
   }
   const saveProfile = async (patch) => {
     try {
-      const r = await parametresApi.updateProfile(patch)
-      setProfile(r.data)
+      // APAR82 — par le thunk du store : le profil du store (donc le verrou
+      // `updated_at` que « Enregistrer » enverra) suit la réponse du serveur.
+      setProfile(await dispatch(saveProfileThunk(patch)).unwrap())
       toast.success('Enregistré.')
-    } catch (e) { toast.error(apiErrorMessage(e, 'Enregistrement impossible.')) }
+    } catch (e) { toast.error(frenchError(e, 'Enregistrement impossible.')) }
   }
 
   if (loading || loadError) {

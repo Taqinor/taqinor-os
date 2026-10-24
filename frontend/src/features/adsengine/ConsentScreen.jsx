@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useSelector } from 'react-redux'
 import { ShieldCheck, Plus, Ban, MessageCircle } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import fetchAllPages from '../../utils/fetchAllPages'
@@ -45,14 +46,17 @@ function statusOf(rec) {
 }
 
 // Lien WhatsApp signable simple : message FR pré-rempli demandant l'accord.
-function whatsappLink(rec) {
+// APDF109 — la société est celle de la session (`company_nom`), formule neutre
+// sans marque quand elle manque : jamais un nom de société codé en dur.
+function whatsappLink(rec, societe) {
   const msg = `Bonjour ${rec.client_nom || ''}, confirmez-vous votre accord `
-    + `pour l'utilisation de votre image / témoignage par Taqinor ? `
+    + `pour l'utilisation de votre image / témoignage par ${societe || 'notre société'} ? `
     + `(référence ${rec.reference || rec.id})`
   return `https://wa.me/?text=${encodeURIComponent(msg)}`
 }
 
 export default function ConsentScreen() {
+  const societe = useSelector((s) => s.auth.user?.company_nom)
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [draft, setDraft] = useState(EMPTY)
@@ -203,7 +207,7 @@ export default function ConsentScreen() {
                     <a
                       className="btn btn-sm btn-light"
                       data-testid={`ae-consent-wa-${rec.id}`}
-                      href={whatsappLink(rec)}
+                      href={whatsappLink(rec, societe)}
                       target="_blank" rel="noreferrer">
                       <MessageCircle size={14} aria-hidden="true" /> Lien WhatsApp
                     </a>
