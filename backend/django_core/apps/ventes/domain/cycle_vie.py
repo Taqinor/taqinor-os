@@ -1067,7 +1067,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  signature_image='', signed_at_client=None, on_behalf_of='',
                  idempotent_reaccept=True, rejouer_aval=False,
                  entreprise=None, override_credit=False,
-                 override_avertissement=False, canal='', langue=''):
+                 override_avertissement=False, canal='', langue='',
+                 empreinte_attendue=None, lien=None):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -1091,6 +1092,13 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     restent APRÈS le commit (entrées-sorties best-effort). ``rejouer_aval=True``
     rejoue l'aval d'un devis DÉJÀ accepté — le geste de réparation d'un devis
     accepté AVANT ce lot, quand le statut pouvait être commité seul.
+
+    ADEV51 — ``empreinte_attendue`` (signature publique) : l'empreinte du
+    contenu que le client a LU (``modifiabilite.empreinte_contenu_signable``
+    sur ``lien``). Elle est re-comparée SOUS le verrou du groupe : une
+    correction sur place commitée entre la garde de la vue et ce verrou donne
+    ``AcceptError(conflict=True, code='empreinte_perimee')`` — rien n'est
+    écrit. ``None`` (défaut, toutes les autres portes) : aucun contrôle.
 
     Raises ``AcceptError`` on a non-acceptable status or an invalid option.
     """
@@ -1211,6 +1219,20 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 'Seul un devis en cours (brouillon ou envoyé) peut être '
                 f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
                 conflict=True)
+
+        # ADEV51 (C-ADEV-018) — CE QUE LE CLIENT SIGNE = CE QU'IL A LU, revu
+        # SOUS LE VERROU. La vue compare l'empreinte AVANT d'appeler ce
+        # service (voie rapide) ; une correction commitée entre cette garde et
+        # le ``select_for_update`` ci-dessus passait. Même calcul que la
+        # lecture, sur le devis relu verrouillé (lignes relues en base).
+        if (empreinte_attendue is not None
+                and devis.statut == Devis.Statut.ENVOYE):
+            from apps.ventes.domain.modifiabilite import (
+                EMPREINTE_PERIMEE, empreinte_contenu_signable)
+            if empreinte_attendue != empreinte_contenu_signable(
+                    devis, link=lien):
+                raise AcceptError(EMPREINTE_PERIMEE, conflict=True,
+                                  code='empreinte_perimee')
 
         # ADEV13 (C-ADEV-005) — blocage crédit et avertissement de vente
         # bloquant : UNE garde, ici, pour les trois portes (vue interne,

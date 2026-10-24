@@ -524,6 +524,39 @@ def figures_sceau(devis):
     return figures_etude_scellees(synthese_ci_lue(devis))
 
 
+#: ADEV51 — le refus 409 du contrat ``proposal_accept.json``
+#: (``reponses_409.empreinte_perimee``), mot pour mot.
+EMPREINTE_PERIMEE = ('La proposition a changé depuis votre lecture : '
+                     'rechargez la page avant de signer.')
+
+
+def empreinte_contenu_signable(devis, synthese=None, link=None):
+    """ADEV51 (C-ADEV-018) — empreinte du CONTENU signable de ce devis :
+    SHA-256 de :func:`empreinte_visible` (lignes, en-tête, note, option,
+    conception — relus en base). Une correction SUR PLACE d'un envoyé
+    (D-QJR5-1) la change ; rien d'autre ne la change.
+
+    ADEV96 — en commercial / industriel, elle couvre AUSSI les chiffres de
+    l'étude que la page montre (:func:`figures_etude_scellees` de la
+    ``synthese_ci`` : kWc, production, autoconsommation, couverture, économie
+    de l'année 1, retour/TRI, hypothèses) : une correction de l'étude seule
+    après l'envoi donne 409 ``empreinte_perimee``. ``synthese`` = celle déjà
+    calculée par la lecture (``proposal_data``) ; absente, elle est relue
+    (:func:`synthese_ci_lue`, mêmes sections servies que ``link``). Hors C&I :
+    l'empreinte d'avant, à l'octet. UNE fonction pour la lecture, la garde de
+    la vue et la re-vérification SOUS le verrou d'``accept_devis``."""
+    import hashlib
+    import json
+    contenu = empreinte_visible(devis)
+    if synthese is None:
+        synthese = synthese_ci_lue(devis, link)
+    etude = figures_etude_scellees(synthese)
+    if etude is not None:
+        contenu = dict(contenu, etude_ci=etude)
+    brut = json.dumps(contenu, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(brut.encode('utf-8')).hexdigest()
+
+
 def _est_envoye(devis):
     from apps.ventes.models import Devis
     statut = (Devis.objects.filter(pk=getattr(devis, 'pk', None))

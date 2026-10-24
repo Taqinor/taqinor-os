@@ -24,45 +24,16 @@ from .noyau import (
     _resolve_proposal_link, _texte_du_corps,
 )
 from .paiement_views import _deposit_success_payload
+# ADEV51 — le refus 409 ``empreinte_perimee`` du contrat
+# ``proposal_accept.json`` (mot pour mot) et l'empreinte du contenu signable
+# vivent dans la couche domaine : ``accept_devis`` les relève aussi SOUS le
+# verrou. Ré-exportés ici sous leurs noms d'hier.
+from ..domain.modifiabilite import (
+    EMPREINTE_PERIMEE, empreinte_contenu_signable as empreinte_contenu,
+)
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-#: ADEV51 — le refus 409 du contrat ``proposal_accept.json``
-#: (``reponses_409.empreinte_perimee``), mot pour mot.
-EMPREINTE_PERIMEE = ('La proposition a changé depuis votre lecture : '
-                     'rechargez la page avant de signer.')
-
-
-def empreinte_contenu(devis, synthese=None, link=None):
-    """ADEV51 (C-ADEV-018) — empreinte du CONTENU signable de ce devis :
-    SHA-256 de ``modifiabilite.empreinte_visible`` (lignes, en-tête, note,
-    option, conception — relus en base). Une correction SUR PLACE d'un envoyé
-    (D-QJR5-1) la change ; rien d'autre ne la change.
-
-    ADEV96 — en commercial / industriel, elle couvre AUSSI les chiffres de
-    l'étude que la page montre (``figures_etude_scellees`` de la
-    ``synthese_ci`` : kWc, production, autoconsommation, couverture, économie
-    de l'année 1, retour/TRI, hypothèses) : une correction de l'étude seule
-    après l'envoi donne 409 ``empreinte_perimee``. ``synthese`` = celle déjà
-    calculée par la lecture (``proposal_data``) ; absente, elle est relue
-    (``synthese_ci_lue``, mêmes sections servies que ``link``). Hors C&I :
-    l'empreinte d'avant, à l'octet."""
-    import hashlib
-    import json
-
-    from ..domain.modifiabilite import (
-        empreinte_visible, figures_etude_scellees, synthese_ci_lue,
-    )
-    contenu = empreinte_visible(devis)
-    if synthese is None:
-        synthese = synthese_ci_lue(devis, link)
-    etude = figures_etude_scellees(synthese)
-    if etude is not None:
-        contenu = dict(contenu, etude_ci=etude)
-    brut = json.dumps(contenu, sort_keys=True, ensure_ascii=False, default=str)
-    return hashlib.sha256(brut.encode('utf-8')).hexdigest()
 
 
 def empreinte_servie(devis, link, synthese=None):
@@ -98,13 +69,20 @@ def _refus_empreinte(request, devis, link=None):
     l'empreinte courante) ; ``None`` sinon. Rien n'est écrit."""
     if not signable_au_jeton(devis):
         return None
-    recue = request.data.get('empreinte_contenu')
-    if isinstance(recue, str) and recue.strip() == empreinte_contenu(
-            devis, link=link):
+    recue = _empreinte_recue(request)
+    if recue is not None and recue == empreinte_contenu(devis, link=link):
         return None
     return _noindex(Response(
         {'detail': EMPREINTE_PERIMEE, 'code': 'empreinte_perimee'},
         status=status.HTTP_409_CONFLICT))
+
+
+def _empreinte_recue(request):
+    """ADEV51 — l'``empreinte_contenu`` renvoyée par la page (``None`` si
+    absente ou d'un autre type)."""
+    recue = request.data.get('empreinte_contenu') if hasattr(
+        request.data, 'get') else None
+    return recue.strip() if isinstance(recue, str) else None
 
 
 def _aucun_code_requis(link):
@@ -524,6 +502,12 @@ def proposal_accept(request, token):
             entreprise=entreprise,
             # ADEV99 — la confirmation part dans la langue de la page (EN/FR).
             langue=_langue_du_corps(request),
+            # ADEV51 — l'empreinte lue est RE-COMPARÉE sous le verrou du
+            # devis : une correction commitée entre la garde ci-dessus et le
+            # verrou donne aussi 409 ``empreinte_perimee`` (rien d'écrit).
+            empreinte_attendue=(_empreinte_recue(request)
+                                if signable_au_jeton(devis) else None),
+            lien=link,
         )
     except AcceptError as exc:
         corps = {'detail': exc.message}
