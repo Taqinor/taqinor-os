@@ -20,7 +20,7 @@ from ..utils.params import (
     ID_MAX, booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps,
     id_requete_ou_400, statut_requete_ou_400, texte_sans_nul_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
-from ..corps_achats import UniteControlerScanCorps, valider_corps
+from ..corps_achats import UniteAjouterLigneCorps, UniteControlerScanCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, EtatIncompatible, statut_refus_metier
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
@@ -343,31 +343,31 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 'Unité scellée : elle ne peut plus être modifiée.')})
         super().perform_update(serializer)
 
-    @extend_schema(request=corps('UniteAjouterLigneCorps', produit=serializers.IntegerField(),
-                                 quantite=serializers.IntegerField(min_value=1),
-                                 lot=serializers.IntegerField(required=False, allow_null=True)),
-                   responses={201: UniteLogistiqueSerializer})
+    @extend_schema(request=UniteAjouterLigneCorps, responses={201: UniteLogistiqueSerializer})
     @action(detail=True, methods=['post'], url_path='lignes')
     def ajouter_ligne(self, request, pk=None):
         """Ajoute une ligne de contenu (``{produit, quantite, lot?}``).
-        Refusée si l'unité est déjà scellée."""
+        Produit ou lot inconnu : 404 ; unité déjà scellée : 409."""
         from ..models import LotEntrepot, Produit
         from ..services import ajouter_ligne_unite_logistique
         unite = self.get_object()
         company = request.user.company
-        produit = Produit.objects.filter(
-            id=request.data.get('produit'), company=company).first()
+        saisie = valider_corps(UniteAjouterLigneCorps, request)
+        produit = Produit.objects.filter(id=saisie['produit'], company=company).first()
+        if produit is None:  # identifiant inconnu de la société : 404, comme un id de chemin
+            raise NotFound({'produit': ['Objet inexistant.']})
         lot = None
-        if request.data.get('lot'):
-            lot = LotEntrepot.objects.filter(
-                id=request.data.get('lot'), company=company).first()
+        if saisie.get('lot'):
+            lot = LotEntrepot.objects.filter(id=saisie['lot'], company=company).first()
+            if lot is None:
+                raise NotFound({'lot': ['Objet inexistant.']})
         try:
             ajouter_ligne_unite_logistique(
                 company=company, unite=unite, produit=produit,
-                quantite=request.data.get('quantite'), lot=lot)
+                quantite=saisie['quantite'], lot=lot)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         unite.refresh_from_db()
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
@@ -449,7 +449,8 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             'lignes': serializers.ListField(child=serializers.DictField()),
             'totaux': serializers.DictField(),
         }),
-        400: inline_serializer('StockUniteAsnErreur', {
+        # Unité non scellée = refus d'ÉTAT (GET : le 409 n'est pas déclaré globalement).
+        409: inline_serializer('StockUniteAsnErreur', {
             'detail': serializers.CharField(),
         }),
     })

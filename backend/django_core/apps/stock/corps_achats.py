@@ -108,3 +108,12 @@ class RapprocherPeseesCorps(serializers.Serializer):
     facultative, vraie chaîne JSON sans caractère nul (un corps non objet
     répondait 500)."""
     note = ChaineStricte(required=False, allow_blank=True)
+
+
+class UniteAjouterLigneCorps(serializers.Serializer):
+    """``POST unites-logistiques/{id}/lignes/`` : une quantité hors colonne
+    (entier 32 bits) faisait un 500 à l'écriture ; le plafond est celui des
+    autres saisies de stock (``QUANTITE_MAX``). ``lot`` : nul / absent = sans lot."""
+    produit = EntierStrict(min_value=1, max_value=ID_MAX)
+    quantite = EntierStrict(min_value=1, max_value=QUANTITE_MAX)
+    lot = EntierStrict(required=False, allow_null=True, min_value=1, max_value=ID_MAX)

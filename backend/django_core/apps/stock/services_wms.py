@@ -674,9 +674,10 @@ def ajouter_ligne_unite_logistique(*, company, unite, produit, quantite,
     from django.db import transaction
     from django.db.models import F
     from .models_wms import UniteLogistique, UniteLogistiqueLigne
+    from .utils.params import ID_MAX
 
     if unite.est_figee:
-        raise ValueError(
+        raise EtatIncompatible(
             'Cette unité logistique est scellée : son contenu est figé.')
     try:
         quantite = int(quantite)
@@ -695,6 +696,8 @@ def ajouter_ligne_unite_logistique(*, company, unite, produit, quantite,
             return UniteLogistiqueLigne.objects.create(
                 company=company, unite=unite, produit=produit,
                 quantite=quantite, lot=lot, ligne_picking=ligne_picking)
+        if ligne.quantite + quantite > ID_MAX:  # cumul hors colonne entière : refus d'état, pas un 500
+            raise EtatIncompatible('Quantité cumulée de la ligne trop grande.')
         ligne.quantite = F('quantite') + quantite
         ligne.save(update_fields=['quantite'])
         ligne.refresh_from_db(fields=['quantite'])
