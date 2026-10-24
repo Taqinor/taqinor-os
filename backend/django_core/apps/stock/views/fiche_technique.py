@@ -42,7 +42,8 @@ class FicheTechniqueViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        produit_id = self.request.query_params.get('produit')
+        from ..utils.params import id_requete_ou_400
+        produit_id = id_requete_ou_400(self.request, 'produit')
         if produit_id:
             qs = qs.filter(produit_id=produit_id)
         return qs

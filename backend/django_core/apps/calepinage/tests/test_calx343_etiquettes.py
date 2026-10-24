@@ -304,3 +304,21 @@ class EtiquettesApiEnBaseTest(BaseApiCalepinage):
         reponse = self.api.get(URL, {'etiquette': 'abc'})
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('etiquette', reponse.data)
+
+
+class NomIllisibleTest(SimpleTestCase):
+    """ERR-ENF11-FUZZ-CALEPINAGE - un nom portant U+0000 ou un demi-substitut ne
+    part jamais en SQL (500) : introuvable (404), nom non renvoye."""
+
+    def test_nom_avec_caractere_nul_ou_substitut_est_introuvable(self):
+        from unittest import mock
+
+        company = object()
+        for nom in ('a' + chr(0) + 'b', 'x' + chr(0xD800)):
+            with mock.patch('apps.records.models.Tag.objects') as tags:
+                with self.assertRaises(EtiquetteRefusee) as capture:
+                    _resoudre(company, {'nom': nom})
+            tags.filter.assert_not_called()
+            self.assertTrue(capture.exception.introuvable)
+            self.assertEqual(capture.exception.champ, 'nom')
+            self.assertNotIn(nom, str(capture.exception))

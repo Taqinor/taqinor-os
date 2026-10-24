@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, LISTE, P, PDF, STR, corps
 from core.viewsets import CompanyScopedModelViewSet
-from ..utils.params import MOTIF_IDS, choix_ou_400, corps_objet, ids_requete_ou_400
+from ..utils.params import MOTIF_IDS, choix_ou_400, corps_objet, etiquette_options_ou_400, ids_requete_ou_400
 from ..models import Produit, EmplacementStock, TransfertStock
 from ..serializers import EmplacementStockSerializer, TransfertStockSerializer
 from authentication.permissions import IsAnyRole, IsAdminRole
@@ -23,10 +23,9 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('type_proprietaire', STR, False, 'Propriétaire', ['interne',
-                                                                                                       'chez_tiers',
-                                                                                                       'de_tiers']),
-                                                   P('tiers_nom', STR, False, 'Nom du tiers (contient)')]))
+@extend_schema_view(list=extend_schema(parameters=[
+    P('type_proprietaire', STR, False, 'Propriétaire', ['interne', 'chez_tiers', 'de_tiers'], vide=True),
+    P('tiers_nom', STR, False, 'Nom du tiers (contient)')]))
 class EmplacementStockViewSet(CompanyScopedModelViewSet):
     """N15 — emplacements de stock (dépôt principal + camionnette amorcés au
     premier accès). Lecture tout rôle, écriture admin. Le principal ne peut être
@@ -204,8 +203,8 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[P('ids', STR, True, 'Ids produits séparés par virgule', pattern=MOTIF_IDS),
-                               P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
-                               P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])],
+                               P('symbology', STR, False, 'Symbologie', ['qr', 'code128'], vide=True),
+                               P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'], vide=True)],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquettes-kanban')
     def etiquettes_kanban(self, request, *args, **kwargs):
@@ -221,9 +220,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
         emplacement = self.get_object()
         ids = ids_requete_ou_400(request)
 
-        symbology = request.query_params.get('symbology', 'qr')
-        if symbology not in ('qr', 'code128'):
-            symbology = 'qr'
+        symbology, sortie = etiquette_options_ou_400(request)
 
         produits = (Produit.objects
                     .filter(company=request.user.company, id__in=ids)
@@ -250,7 +247,7 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
                             status=status.HTTP_404_NOT_FOUND)
 
         html = labels.render_labels_html(items, symbology=symbology)
-        if request.query_params.get('sortie') == 'html':
+        if sortie == 'html':
             return HttpResponse(html, content_type='text/html; charset=utf-8')
         pdf_bytes = _html_to_pdf(html)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')

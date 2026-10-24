@@ -412,11 +412,27 @@ IMAGE_DOCUMENT_SCHEMA = inline_serializer('CalepinageImageDocumentDepot', {
 })
 
 
+#: ERR-ENF11-FUZZ-CALEPINAGE — la forme du ``fichier`` dépend du type de
+#: contenu : un fichier en ``multipart``, une DATA-URL base64 en JSON (ce que
+#: produit le navigateur, ``deposerImage.js``). Un schéma unique (« fichier »
+#: binaire) laissait le fuzz JSON envoyer une chaîne vide, refusée. Le contenu
+#: décodable (octets, dimensions) n'est pas dans le schéma : refus = 409.
+_MOTIF_DATA_URL_IMAGE = r'^data:image/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$'
+_REQUETE_IMAGE_DOCUMENT = {
+    'multipart/form-data': inline_serializer(
+        'CalepinageImageDocumentCorps', {
+            'genre': drf_serializers.ChoiceField(choices=['ombrage']),
+            'fichier': drf_serializers.FileField()}),
+    'application/json': inline_serializer(
+        'CalepinageImageDocumentCorpsJson', {
+            'genre': drf_serializers.ChoiceField(choices=['ombrage']),
+            'fichier': drf_serializers.RegexField(_MOTIF_DATA_URL_IMAGE)}),
+}
+
+
 @extend_schema(
-    request=inline_serializer('CalepinageImageDocumentCorps', {
-        'genre': drf_serializers.ChoiceField(choices=['ombrage']),
-        'fichier': drf_serializers.FileField()}),
-    responses={201: IMAGE_DOCUMENT_SCHEMA})
+    request=_REQUETE_IMAGE_DOCUMENT,
+    responses={201: IMAGE_DOCUMENT_SCHEMA, 409: REPONSE_REFUS_ETAT})
 @action(detail=True, methods=['post'], url_path='image-document',
         url_name='image-document', permission_classes=[PeutGererCalepinage])
 def image_document(self, request, pk=None):
@@ -446,8 +462,13 @@ def image_document(self, request, pk=None):
             calepinage, genre=genre, fichier=fichier,
             user=getattr(request, 'user', None))
     except ImageDocumentRefuse as refus:
+        # Le corps est conforme au schéma ; c'est le CONTENU (octets illisibles,
+        # dimensions, format) ou l'absence de fichier qui est refusé : la forme
+        # ne peut pas le dire. Genre inconnu / fichier absent restent 400.
+        contenu = (refus.champ == 'fichier' and fichier not in (None, ''))
         return Response({refus.champ or 'fichier': str(refus)},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=(status.HTTP_409_CONFLICT if contenu
+                                else status.HTTP_400_BAD_REQUEST))
     return Response({
         'ok': True,
         'genre': depot['genre'],

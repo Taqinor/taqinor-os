@@ -21,8 +21,8 @@ def exiger_objet(donnees):
     return donnees
 
 
-def _refus(cle, message):
-    return Response({cle: message}, status=400)
+def _refus(cle, message, statut=400):
+    return Response({cle: message}, status=statut)
 
 
 def lire_releve(corps):
@@ -56,5 +56,7 @@ def lire_releve(corps):
     # Pas de refus « futur » (contrats et tests datent leurs relevés en
     # 2027) : seule l'année hors de toute saisie plausible est refusée.
     if date_releve.year > timezone.localdate().year + 10:
-        return _refus('date', 'date hors bornes (année trop lointaine).')
+        # ENF11 : la borne dépend de la date du jour (donc de l'ÉTAT), le
+        # schéma ne peut la publier -> 409, jamais un 400 « conforme refusé ».
+        return _refus('date', 'date hors bornes (année trop lointaine).', 409)
     return type_releve, valeur, date_releve

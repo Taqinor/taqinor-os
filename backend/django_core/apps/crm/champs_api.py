@@ -30,7 +30,8 @@ from django.db.models import SmallIntegerField as ModelSmallIntegerField
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte, DecimalBornee, EntierStrict
+from core.champs_stricts import (
+    ChaineStricte, DecimalBornee, DecimalStricte, EntierStrict)
 
 
 class BooleenStrict(serializers.BooleanField):
@@ -109,6 +110,29 @@ MAPPING_DATE_HEURE_RFC3339 = {
     **MAPPING_TEXTE_STRICT,
     ModelDateTimeField: DateHeureRfc3339,
 }
+
+
+class CoordonneeGps(DecimalStricte):
+    """Coordonnée GPS (décimal-chaîne à 6 décimales, nullable) BORNÉE à
+    ±``limite`` (90 latitude, 180 longitude) : le schéma publie un motif qui
+    exclut tout ce que le validateur refuse (nocturne 24/10 — « rejected
+    schema-compliant request » sur ``site-profiles``), ``""`` = non renseigné."""
+
+    def __init__(self, limite, **kwargs):
+        from drf_spectacular.drainage import set_override
+
+        kwargs.setdefault('max_digits', 9)
+        kwargs.setdefault('decimal_places', 6)
+        kwargs.setdefault('required', False)
+        kwargs.setdefault('allow_null', True)
+        super().__init__(min_value=-limite, max_value=limite, **kwargs)
+        entier = str(limite)
+        bas = '[0-8]?[0-9]' if limite == 90 else '1[0-7][0-9]|[0-9]{1,2}'
+        # ``limite`` pile : seulement des décimales nulles (90.000000).
+        motif = (r'^(|-?(' + entier + r')(\.0{1,6})?|-?(' + bas
+                 + r')(\.[0-9]{1,6})?)$')
+        set_override(self, 'field', {
+            'type': 'string', 'pattern': motif, 'nullable': True})
 
 
 def _schema_blanc_autorise(auto_schema, champ, direction):

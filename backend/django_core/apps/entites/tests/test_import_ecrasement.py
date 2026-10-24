@@ -52,6 +52,18 @@ class ApercuEcrasementTests(TestCase):
         result = dry_run(csv_bytes, 'f.csv', self.company)
         self.assertEqual(result['conflits'], [])
 
+    def test_ligne_plus_longue_que_l_en_tete_jamais_500(self):
+        """api-fuzz-full 24/10 — ``\\n\\x05`` : en-tête vide, la cellule en trop
+        tombait sous la clé ``None`` (liste) et levait AttributeError (500)."""
+        from ..import_service import commit, dry_run
+
+        result = dry_run(b'\n\x05', 'fichier', self.company)
+        self.assertEqual(result['conflits'], [])
+        self.assertTrue(result['erreurs'])
+        resultat = commit(b'code,nom\nA,Alpha,en-trop\n', 'f.csv', self.company)
+        self.assertEqual(resultat['erreurs'], [])
+        self.assertEqual(resultat['created'], 1)
+
 
 class RemplissageSeulTests(TestCase):
     """`commit()` par défaut (`ecraser=False`) : jamais de remplacement silencieux."""

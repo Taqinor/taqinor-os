@@ -205,7 +205,7 @@ class FkRetourModeleBcfTests(TestCase):
                 f'{prefix}bons-commande-fournisseur/{bc.pk}/recevoir/',
                 {'receptions': [{'ligne': ligne.pk, 'quantite': 3}]},
                 format='json')
-            self.assertEqual(r.status_code, 400, r.content)
+            self.assertEqual(r.status_code, 404, r.content)  # id inconnu de ce BCF (api-fuzz)
             self.assertIn('introuvable sur ce BCF', r.json()['detail'])
         ligne.refresh_from_db()
         self.assertEqual(ligne.quantite_recue, 0)

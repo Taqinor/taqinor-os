@@ -123,6 +123,22 @@ class TestPublicLink(DashboardPartageBase):
         self.assertEqual(partage.company_id, self.company.id)
         self.assertEqual(partage.created_by_id, self.owner.id)
 
+    def test_date_ancienne_rendue_en_rfc3339_utc(self):
+        # api-fuzz-full 24/10 — une date de 1263 prenait le décalage LMT
+        # ``-00:30:20`` du fuseau local (secondes : pas du RFC 3339) ; tout
+        # ``DateTimeField`` DRF la rend désormais en UTC (même instant).
+        import re
+        resp = self.api.post('/api/django/core/dashboards-partages/', {
+            'dashboard': self.dashboard.id,
+            'expires_at': '1263-05-04T05:01:29.27705-19:51'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        rendu = resp.data['expires_at']
+        self.assertTrue(rendu.endswith('Z'), rendu)
+        self.assertIsNone(re.search(r'[+-]\d{2}:\d{2}:\d{2}$', rendu), rendu)
+        relu = self.api.get('/api/django/core/dashboards-partages/')
+        self.assertEqual(relu.status_code, 200, relu.data)
+        self.assertEqual(relu.data['results'][0]['expires_at'], rendu)
+
 
 class TestInternalSharing(DashboardPartageBase):
     def test_non_shared_user_cannot_view_personal_dashboard(self):

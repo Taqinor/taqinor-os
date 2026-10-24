@@ -91,7 +91,7 @@ class TestLeadQuoteCreation(TestCase):
         other = make_company(slug='lead-devis-other')
         foreign = Lead.objects.create(company=other, nom='Foreign')
         resp = self._create_from_lead(foreign)
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 404)  # IdInconnu404Mixin : lead étranger = inconnu
 
     def test_client_only_path_still_works(self):
         client = Client.objects.create(

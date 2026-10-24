@@ -1,0 +1,441 @@
+# api-fuzz-full — fuzz d'API sur la POPULATION ENTIÈRE (décision fondateur,
+# 24/10/2026) : le job quotidien `api-fuzz` de release-verify.yml tirait, sous
+# `--max-time 1800`, un ÉCHANTILLON différent chaque nuit (~113 000 cas, ~42 000
+# sautés sur ~7 500 opérations) — une traîne qu'aucune nuit ne vidait. Ici :
+# toutes les phases, graine fixe (`--seed 1`, rejouable), 16 tranches
+# DÉTERMINISTES de chemins (`api_fuzz_scope.py schema --shard i/16`, même rang que
+# `api-fuzz-pr`), chacune sans plafond utile (4 200 s), HEBDOMADAIRE (dimanche
+# 03:00 UTC) + à la demande (dispatch ; `paquets` = passe ciblée sur des paquets
+# propriétaires, `max_time` = plafond par tranche).
+# Le verdict par tranche (constats hors dette gelée) est dans l'artefact
+# `schemathesis-report-<i>/verdict-<i>.md` et dans le résumé du job.
+name: api-fuzz-full (hebdomadaire, population entière)
+
+on:
+  workflow_dispatch:
+    inputs:
+      paquets:
+        description: >-
+          Portée : paquets d'API propriétaires séparés par des espaces (ex. « apps.stock
+          apps.ventes ») — vide = population entière. Les 16 tranches se partagent
+          alors les seules opérations de ces paquets (passe ciblée, quelques minutes).
+        type: string
+        default: ''
+      max_time:
+        description: 'Plafond Schemathesis par tranche, en secondes (4200 = 70 min).'
+        type: string
+        default: '4200'
+  schedule:
+    - cron: '0 3 * * 0'   # dimanche 03:00 UTC
+
+concurrency:
+  group: api-fuzz-full-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-image-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.tag.outputs.image }}
+      image_e2e: ${{ steps.tag.outputs.image_e2e }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Calculer les etiquettes des images
+        id: tag
+        run: bash .github/ci-image/tag.sh "${{ github.repository }}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Les images sont-elles deja publiees ?
+        id: exists
+        run: |
+          set -uo pipefail
+          for couple in "backend:${{ steps.tag.outputs.image }}" "e2e:${{ steps.tag.outputs.image_e2e }}"; do
+            cle="${couple%%:*}"; ref="${couple#*:}"
+            if docker manifest inspect "$ref" >/dev/null 2>&1; then
+              echo "Presente — chemin rapide : $ref"
+              echo "${cle}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "ABSENTE — construction en ligne : $ref"
+              echo "${cle}=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+          exit 0
+      - uses: docker/setup-buildx-action@v3
+        if: ${{ steps.exists.outputs.backend != 'true' || steps.exists.outputs.e2e != 'true' }}
+      - name: Construire et pousser ci-backend si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.backend != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: backend/django_core
+          file: .github/ci-image/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Construire et pousser ci-e2e si elle manque (chemin lent)
+        if: ${{ steps.exists.outputs.e2e != 'true' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: .github/ci-image/Dockerfile.e2e
+          build-args: |
+            CI_BACKEND_IMAGE=${{ steps.tag.outputs.image }}
+          push: true
+          tags: ${{ steps.tag.outputs.image_e2e }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+      - name: Resume
+        run: |
+          echo "ci-backend = ${{ steps.tag.outputs.image }} (deja presente = ${{ steps.exists.outputs.backend }})"
+          echo "ci-e2e     = ${{ steps.tag.outputs.image_e2e }} (deja presente = ${{ steps.exists.outputs.e2e }})"
+
+  fuzz-shard:
+    needs: ci-image-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      # Plan GitHub Free : ~20 jobs concurrents pour tout le dépôt — on en laisse
+      # aux PR gates (mesure de la session « CI gate » du 24/10).
+      max-parallel: 8
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    permissions:
+      contents: read
+      packages: read
+    # ENF11 — lus par `api-fuzz-alerte` : issue d'alerte dès la PREMIÈRE nuit
+    # où un constat sort de la dette gelée (régression), fermée au retour.
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.ci-image-check.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    services:
+      redis:
+        image: mirror.gcr.io/library/redis:7.4-alpine
+        ports:
+          - 6379:6379
+    env:
+      # ENFP (D1) — refus des paramètres de requête non déclarés, actif pour le fuzz.
+      API_QUERY_PARAMS_STRICT: '1'
+      DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      # STAGES.py (racine du dépôt) importable par le serveur du fuzz : sans lui,
+      # toute route qui touche les étapes répondait 500 (48 traces, 24/10/2026).
+      PYTHONPATH: ${{ github.workspace }}
+      DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
+      DJANGO_DEBUG: 'True'
+      DB_NAME: erp_db
+      DB_USER: erp_user
+      DB_PASSWORD: ci_password
+      DB_HOST: localhost
+      DB_PORT: '5432'
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ROOT_USER: erp_admin
+      MINIO_ROOT_PASSWORD: erp_minio_password
+      MINIO_BUCKET_PDF: erp-pdf
+      MINIO_BUCKET_UPLOADS: erp-uploads
+      # Meme garde que `e2e-full`/`e2e-shard` : sans elle, les centaines de
+      # requetes de Schemathesis contre la meme societe demo epuisent le
+      # budget 1200/min et font pleuvoir des 429 (bruit, pas un vrai bug).
+      TENANT_RATE_LIMIT: '0'
+      # ENF1 — lus par scripts/fuzz/schemathesis_hooks.py.
+      FUZZ_BASE_URL: http://127.0.0.1:8000
+      FUZZ_USERNAME: fuzz_admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/backend-env
+        with:
+          testdb-cache-into: erp_db
+          prebuilt-image: 'true'
+          testdb-save: 'true'
+      - name: Migrate + seed throwaway demo data (repris de e2e-full)
+        working-directory: backend/django_core
+        run: |
+          python manage.py migrate --noinput
+          python manage.py seed_demo
+          python manage.py seed_catalogue
+      - name: Compte de fuzz dédié + ids FK connus (ENF1)
+        working-directory: backend/django_core
+        run: |
+          set -euo pipefail
+          # Mot de passe ALÉATOIRE par run, masqué, jamais dans le dépôt.
+          FUZZ_PASSWORD="Fz9-$(python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+          echo "::add-mask::$FUZZ_PASSWORD"
+          echo "FUZZ_PASSWORD=$FUZZ_PASSWORD" >> "$GITHUB_ENV"
+          # `$GITHUB_WORKSPACE` (chemin DANS le conteneur) — jamais
+          # `github.workspace`, qui donne le chemin de l'hôte en job conteneurisé.
+          FUZZ_STATE_FILE="$GITHUB_WORKSPACE/fuzz-state.json"
+          echo "FUZZ_STATE_FILE=$FUZZ_STATE_FILE" >> "$GITHUB_ENV"
+          export FUZZ_PASSWORD FUZZ_STATE_FILE
+          python ../../scripts/fuzz/prepare_fuzz_env.py "$FUZZ_STATE_FILE"
+      - name: Démarrer Django (gunicorn, throttles coupés — ENF1)
+        working-directory: backend/django_core
+        # ENF1b — sortie de gunicorn redirigée vers un FICHIER : lancé en
+        # arrière-plan, il héritait du tube stdout de CETTE étape, fermé dès
+        # qu'elle se termine. Tout `print()`/écriture stdout d'une vue levait
+        # alors `BrokenPipeError` : `envoyer-email` (backend e-mail console)
+        # répondait 502 « [Errno 32] Broken pipe » et `/proposal` 500 (le
+        # moteur imprime « Generating charts... »). Le journal est publié avec
+        # le rapport Schemathesis (traces des 500).
+        run: |
+          gunicorn -c ../../scripts/fuzz/gunicorn_fuzz.py erp_agentique.wsgi:application \
+            --bind 127.0.0.1:8000 --workers 3 --timeout 120 --worker-class sync \
+            > "$GITHUB_WORKSPACE/gunicorn-fuzz.log" 2>&1 &
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" \
+              http://127.0.0.1:8000/api/django/admin/login/ || true)
+            if [ -n "$code" ] && [ "$code" != "000" ]; then
+              echo "Django prêt (HTTP $code)"; break
+            fi
+            echo "Attente Django ($i)…"; sleep 2
+            if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
+          done
+      - name: Vérifier la connexion fuzz_admin (échec franc avant le run)
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, requests
+          r = requests.post(os.environ['FUZZ_BASE_URL'] + '/api/django/token/',
+                            json={'username': os.environ['FUZZ_USERNAME'],
+                                  'password': os.environ['FUZZ_PASSWORD']}, timeout=120)
+          assert r.status_code == 200 and r.cookies.get('access_token'), \
+              f'connexion fuzz_admin refusée : HTTP {r.status_code}'
+          print('connexion fuzz_admin OK (cookie access_token posé)')
+          PY
+      - name: Générer le schéma OpenAPI (hors worker gunicorn)
+        # CAD177 — `GET /api/schema/` met ~5 min à construire les ~10 Mo du
+        # schéma (mesuré en local : 289 s). Le worker gunicorn sync est tué à
+        # 120 s (`--timeout 120`) : Schemathesis lisait alors un « HTTP 500
+        # Internal Server Error » (« Schema Loading Error ») et le job tombait
+        # avant d'envoyer UNE requête. On produit donc le MÊME schéma
+        # (drf-spectacular) en ligne de commande, sans limite de worker, et
+        # Schemathesis le lit en fichier ; les requêtes de fuzzing visent
+        # toujours le serveur gunicorn via `--url`.
+        # ENF11 — rendu JSON (lu 56x plus vite, WOW-CI3), puis schéma FUZZÉ :
+        # miroir `/api/v1/` retiré et liens stateful CRUD déclarés
+        # (`scripts/fuzz/api_fuzz_scope.py schema`, sans filtre de portée : le
+        # nocturne fuzze TOUTE l'API). Le run 38129616897 n'avait que des liens
+        # inférés : « API Links: 3 covered / 36872 selected ».
+        working-directory: backend/django_core
+        run: |
+          set -euo pipefail
+          python manage.py spectacular --format openapi-json --file ../../openapi-brut.json
+          python ../../scripts/fuzz/api_fuzz_scope.py schema \
+            --in ../../openapi-brut.json --out ../../openapi-schema.json \
+            --shard "${{ matrix.shard }}/16" \
+            ${{ inputs.paquets != '' && format('--proprietaires {0}', inputs.paquets) || '' }}
+      - name: Ids réels pour les paramètres de chemin (ENF11)
+        # Les listes `GET /x/` de fuzz_admin → {préfixe: [ids]} ; lu par le
+        # crochet before_call (substitution des cas positifs, 1 sur 4 garde
+        # un id aléatoire). Fichier dans RUNNER_TEMP, réutilisé par la phase
+        # stateful (même processus de crochets).
+        run: |
+          set -euo pipefail
+          FUZZ_IDS_FILE="$RUNNER_TEMP/fuzz-ids-chemin.json"
+          echo "FUZZ_IDS_FILE=$FUZZ_IDS_FILE" >> "$GITHUB_ENV"
+          python scripts/fuzz/inventorier_ids_chemin.py             --schema openapi-schema.json --out "$FUZZ_IDS_FILE"
+      - name: schemathesis run (fuzzing + stateful, tous les checks — BLOQUANT)
+        # Lancé depuis la RACINE : `schemathesis.toml` y est découvert.
+        run: |
+          set -euo pipefail
+          export SCHEMATHESIS_HOOKS="$GITHUB_WORKSPACE/scripts/fuzz/schemathesis_hooks.py"
+          schemathesis run \
+            --url "$FUZZ_BASE_URL" \
+            --checks all \
+            --phases examples,coverage,fuzzing,stateful \
+            --mode all \
+            --max-time "${{ inputs.max_time || '4200' }}" \
+            --seed 1 \
+            --report junit,json \
+            --report-dir schemathesis-report \
+            openapi-schema.json \
+            2>&1 | tee schemathesis-output.log
+      - name: Ventilation des constats (résumé du job)
+        if: ${{ !cancelled() }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import glob, json
+          fichiers = sorted(glob.glob('schemathesis-report/json-*.json'))
+          if not fichiers:
+              print('Aucun rapport JSON Schemathesis produit.')
+              raise SystemExit(0)
+          d = json.load(open(fichiers[-1], encoding='utf-8'))
+          ops, tc = d.get('operations', {}), d.get('test_cases', {})
+          print('### api-fuzz — ventilation\n')
+          print(f"Opérations : {ops.get('selected')}/{ops.get('total')} sélectionnées, "
+                f"{ops.get('tested')} testées, {ops.get('errored')} en erreur")
+          print(f"Cas : {tc.get('generated')} générés, {tc.get('with_failures')} en échec, "
+                f"{tc.get('unique_failures')} constats uniques\n")
+          print('| Check | Constats | Opérations |')
+          print('|---|---:|---:|')
+          for f in d.get('failures', []):
+              print(f"| {f.get('title')} | {f.get('count')} | {len(f.get('operations', []))} |")
+          for w in d.get('warnings', []) or []:
+              print(f"\n- avertissement : {json.dumps(w, ensure_ascii=False)[:300]}")
+          PY
+          # ENF11 — lignes de la dette gelée du job PR que ce run COMPLET ne
+          # revoit plus : à retirer de scripts/fuzz/api_fuzz_dette.txt.
+          rapport=$(ls schemathesis-report/json-*.json 2>/dev/null | tail -1)
+          if [ -n "$rapport" ]; then
+            python scripts/fuzz/api_fuzz_scope.py soldes --rapport "$rapport" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Régressions hors dette gelée (verdict d'alerte — ENF11)
+        # Le job est déjà ROUGE sur le moindre constat (étape schemathesis) ;
+        # tant que la dette n'est pas à zéro il l'est chaque nuit, et l'alerte
+        # « 2 nuits rouges » ne distingue plus rien. Cette étape isole ce qui
+        # est NOUVEAU (constat hors dette, erreur du moteur, run incomplet ou
+        # session perdue) — même verdict que le job PR `api-fuzz-pr` — et
+        # alimente `api-fuzz-alerte`. Rapport absent = run cassé = rouge.
+        id: regression
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/api-fuzz-regressions.md"
+          shopt -s nullglob
+          rapports=(schemathesis-report/json-*.json)
+          if [ "${#rapports[@]}" -eq 0 ]; then
+            echo "Aucun rapport JSON Schemathesis : run inexploitable." | tee "$RUNNER_TEMP/api-fuzz-regressions.md"
+            exit 1
+          fi
+          python scripts/fuzz/api_fuzz_scope.py verdict --rapport "${rapports[-1]}" \
+            --resume "$RUNNER_TEMP/api-fuzz-regressions.md" || true
+          cp "$RUNNER_TEMP/api-fuzz-regressions.md" "verdict-${{ matrix.shard }}.md"
+      - name: Upload le rapport Schemathesis
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: schemathesis-report-${{ matrix.shard }}
+          path: |
+            schemathesis-report/
+            schemathesis-output.log
+            verdict-${{ matrix.shard }}.md
+            fuzz-state.json
+            gunicorn-fuzz.log
+          retention-days: 14
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # ENF11 — ALERTE API-FUZZ DÈS LA PREMIÈRE NUIT (régression hors dette gelée).
+  #
+  # `alert-on-repeated-failure` n'alerte qu'après 2 nuits rouges du workflow
+  # ENTIER — et tant que la dette api-fuzz n'est pas à zéro, `api-fuzz` est
+  # rouge chaque nuit : l'issue `nightly-alert` reste ouverte en permanence et
+  # une régression NOUVELLE s'y noie. Ce job lit le verdict d'alerte du job
+  # (`steps.regression` : constat hors `scripts/fuzz/api_fuzz_dette.txt`,
+  # erreur du moteur, run incomplet/session perdue) et :
+  #   * régression -> ouvre (ou commente) l'issue `api-fuzz-regression` avec
+  #     les constats NOMMÉS, et échoue franchement ;
+  #   * aucune régression -> ferme l'issue ouverte (commentaire daté).
+  # Même patron « opens-or-updates » que `alert-on-repeated-failure` ; aucun
+  # secret externe (GITHUB_TOKEN, `issues: write` sur CE job seulement).
+  # ---------------------------------------------------------------------------
+
+  # Verdict GLOBAL : les 16 verdicts de tranche (constats hors dette gelée)
+  # concaténés → issue `api-fuzz-regression` ouverte / mise à jour / fermée,
+  # comme l'ancien `api-fuzz-alerte` quotidien ; rouge si une tranche porte un
+  # constat NOUVEAU ou n'a rendu aucun verdict.
+  alerte:
+    if: ${{ always() && needs.fuzz-shard.result != 'skipped' }}
+    needs: fuzz-shard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: schemathesis-report-*
+          path: rapports
+      - name: Agréger les verdicts des tranches
+        id: verdict
+        shell: bash
+        run: |
+          set -uo pipefail
+          corps="$RUNNER_TEMP/api-fuzz-regressions.md"
+          : > "$corps"
+          nb_tranches=0; nb_verdicts=0; nb_nouveaux=0
+          for d in rapports/schemathesis-report-*/; do
+            nb_tranches=$((nb_tranches+1))
+            v=$(ls "$d"/verdict-*.md 2>/dev/null | head -1)
+            if [ -z "$v" ]; then
+              echo "## $(basename "$d") : AUCUN verdict rendu (tranche interrompue ?)" >> "$corps"; continue
+            fi
+            nb_verdicts=$((nb_verdicts+1))
+            n=$(grep -c '^  NOUVEAU' "$v" || true)
+            nb_nouveaux=$((nb_nouveaux+n))
+            { echo "## $(basename "$d") — $n constat(s) NOUVEAU(x)"; grep '^  NOUVEAU' "$v" || true; echo; } >> "$corps"
+          done
+          echo "Tranches : $nb_tranches, verdicts rendus : $nb_verdicts, constats hors dette : $nb_nouveaux" | tee -a "$corps"
+          cat "$corps" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$nb_tranches" -eq 16 ] && [ "$nb_verdicts" -eq 16 ] && [ "$nb_nouveaux" -eq 0 ]; then
+            echo "regression=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "regression=failure" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Ouvrir/mettre à jour ou fermer l'issue api-fuzz-regression
+        if: ${{ github.event_name == 'schedule' }}
+        uses: actions/github-script@v7
+        env:
+          REGRESSION: ${{ steps.verdict.outputs.regression }}
+          CORPS: ${{ runner.temp }}/api-fuzz-regressions.md
+        with:
+          script: |
+            const fs = require('fs');
+            const title = '[api-fuzz] Régression hors dette gelée (population entière, hebdomadaire)';
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const regression = process.env.REGRESSION !== 'success';
+            const resume = fs.existsSync(process.env.CORPS) ? fs.readFileSync(process.env.CORPS, 'utf8') : '';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'api-fuzz-regression',
+            });
+            const dup = existing.data.find(i => i.title === title);
+            if (!regression) {
+              if (dup) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: dup.number,
+                  body: `Passe hebdomadaire sans constat hors dette gelée : ${run}`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: dup.number, state: 'closed',
+                });
+              }
+              return;
+            }
+            const body = [
+              `Run : ${run}`, '', resume.slice(0, 60000) || 'Aucun verdict rendu.', '',
+              'Corriger la cause (schéma exact ou validation de la vue) — jamais un ajout',
+              'à `scripts/fuzz/api_fuzz_dette.txt` (ne fait que rétrécir, ENF11).',
+            ].join('\n');
+            if (dup) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: dup.number, body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body, labels: ['api-fuzz-regression'],
+              });
+            }
+      - name: Échouer franchement (constats hors dette gelée)
+        if: ${{ steps.verdict.outputs.regression != 'success' }}
+        shell: bash
+        run: |
+          echo "::error::api-fuzz-full : constat(s) hors dette gelée ou tranche sans verdict — voir le résumé du job."
+          exit 1

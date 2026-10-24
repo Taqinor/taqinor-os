@@ -187,6 +187,16 @@ class NTSRV17CandidatsProblemeTest(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn('fenetre_jours', resp.json())
 
+    def test_endpoint_fenetre_demesuree_400_pas_500(self):
+        # api-fuzz-full : 1564147056 jours faisait déborder ``timedelta`` (500).
+        base = '/api/django/sav/problemes/regroupements-suggeres/'
+        for requete, champ in (('?fenetre_jours=1564147056', 'fenetre_jours'),
+                               ('?seuil=99999', 'seuil'),
+                               ('?seuil=1&seuil=2', 'seuil')):
+            resp = self.api.get(base + requete)
+            self.assertEqual(resp.status_code, 400, (requete, resp.content))
+            self.assertIn(champ, resp.json())
+
     def test_endpoint_ne_cree_rien(self):
         for _ in range(3):
             self._ticket()

@@ -25,7 +25,7 @@ périmètre se lit via ``user.role.entites_visibles``, une simple traversée
 d'ORM, jamais un import de ``apps.roles``/``apps.entites``).
 """
 from django.db.models import Q
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.relations import PrimaryKeyRelatedField
 
 import logging
@@ -110,9 +110,12 @@ def scope_entite_queryset(qs, user, champ='entite'):
         Q(**{f'{champ}_id__isnull': True}) | Q(**{f'{champ}_id__in': ids}))
 
 
-def _assert_entite_de_la_societe(user, entite_id):
+def _assert_entite_de_la_societe(user, entite_id, inconnu_404=False):
     """ASEC7 — lève ``ValidationError`` (400, champ ``entite``) si l'entité
-    ``entite_id`` n'est pas une entité de la société de ``user``.
+    ``entite_id`` n'est pas une entité de la société de ``user`` ;
+    ``NotFound`` (404, MÊME corps) quand ``inconnu_404`` — la surface dont le
+    sérialiseur porte ``IdInconnu404Mixin`` (devis : ``client``/``lead``
+    répondent 404) ne doit pas faire de ``entite`` l'exception à 400.
 
     Sans société de référence (superuser plateforme, appel hors requête) :
     aucune vérification, comme le scoping de lecture. Lecture du modèle par
@@ -132,12 +135,13 @@ def _assert_entite_de_la_societe(user, entite_id):
         # répond AVANT le sérialiseur ; avec un texte propre (code ``invalid``)
         # il faisait de l'entité étrangère deux réponses selon la couche.
         gabarit = PrimaryKeyRelatedField.default_error_messages['does_not_exist']
-        raise ValidationError(
-            {'entite': [str(gabarit).format(pk_value=entite_id)]},
-            code='does_not_exist')
+        detail = {'entite': [str(gabarit).format(pk_value=entite_id)]}
+        if inconnu_404:
+            raise NotFound(ValidationError(detail, code='does_not_exist').detail)
+        raise ValidationError(detail, code='does_not_exist')
 
 
-def assert_entite_assignable(user, entite_id):
+def assert_entite_assignable(user, entite_id, *, inconnu_404=False):
     """NTADM3 — lève ``PermissionDenied`` (403) si ``user`` n'a pas le droit
     de rattacher une ligne à l'entité ``entite_id``.
 
@@ -155,7 +159,7 @@ def assert_entite_assignable(user, entite_id):
     # None) : avant, ce cas rendait la main sans rien vérifier et une entité
     # d'une AUTRE société était acceptée. 400 sur ``entite``, réponse
     # identique pour un id étranger et un id inexistant (aucun oracle).
-    _assert_entite_de_la_societe(user, valeur)
+    _assert_entite_de_la_societe(user, valeur, inconnu_404=inconnu_404)
     ids = entites_visibles_ids(user)
     if ids is None:
         return
@@ -185,6 +189,10 @@ class EntiteScopeMixin:
 
     #: nom du champ FK vers ``entites.Entite`` sur le modèle du viewset.
     entite_field = 'entite'
+    #: ENF17 — vrai sur un viewset dont le sérialiseur d'écriture porte
+    #: ``IdInconnu404Mixin`` : l'entité inconnue/étrangère répond alors 404
+    #: comme ses autres FK (sinon 400, réponse historique des factures).
+    entite_inconnue_404 = False
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -211,4 +219,5 @@ class EntiteScopeMixin:
             return           # de la vue tranchera (400/415), jamais un 500 ici
         if not hasattr(data, 'get') or self.entite_field not in data:
             return
-        assert_entite_assignable(request.user, data.get(self.entite_field))
+        assert_entite_assignable(request.user, data.get(self.entite_field),
+                                 inconnu_404=self.entite_inconnue_404)

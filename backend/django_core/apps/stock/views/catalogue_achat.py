@@ -29,7 +29,8 @@ from core.mixins import TenantMixin
 from core.serializers import CompanyScopedRelationsMixin
 
 from ..openapi_helpers import BOOL, ID_OU_VIDE, P, STR, corps
-from ..utils.params import booleen_requete_ou_400, id_requete_ou_400
+from core.champs_stricts import MOTIF_SANS_NUL
+from ..utils.params import booleen_requete_ou_400, id_requete_ou_400, texte_sans_nul_ou_400
 from ..models import FavorisCatalogueAchat, Produit
 
 
@@ -86,7 +87,8 @@ class CatalogueAchatSerializer(CompanyScopedRelationsMixin,
         return obj.prix_achat
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('q', STR, False, 'Recherche nom/SKU/catégorie'),
+@extend_schema_view(list=extend_schema(parameters=[P('q', STR, False, 'Recherche nom/SKU/catégorie',
+                                                     pattern=MOTIF_SANS_NUL),
                                                    P('categorie', ID_OU_VIDE), P('fournisseur', ID_OU_VIDE),
                                                    P('recent', BOOL, False, 'Derniers produits demandés')]))
 class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
@@ -109,7 +111,7 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
-        recherche = (params.get('q') or '').strip()
+        recherche = (texte_sans_nul_ou_400(params.get('q'), 'q') or '').strip()
         if recherche:
             qs = qs.filter(
                 Q(nom__icontains=recherche)

@@ -7,9 +7,13 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
-from ..erreurs_achats import EtatIncompatible, IntrouvableMetier
-from ..utils.params import corps_objet
-from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, P, PDF, STR, corps, detail_reponse
+from ..erreurs_achats import controler_capacite_bcf, EtatIncompatible, IntrouvableMetier
+from ..utils.params import corps_objet, id_requete_ou_400
+from ..corps_achats import (
+    BcfConfirmerCorps, BcfEnvoyerEmailCorps, BcfRecevoirCorps, BcfReviserCorps, valider_corps)
+from ..openapi_helpers import (
+    BINARY, DATE_OU_VIDE, ID_ENTIER, ID_OU_VIDE, INT, LISTE, P, PDF, STR, corps, detail_reponse,
+)
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -194,8 +198,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         })
 
     @extend_schema(
-        request=corps('BcfEnvoyerEmailCorps', to_email=serializers.EmailField(required=False),
-                      sujet=serializers.CharField(required=False), corps=serializers.CharField(required=False)),
+        request=BcfEnvoyerEmailCorps,
         responses=corps('BcfEnvoyerEmailReponse', detail=serializers.CharField(), log_id=serializers.IntegerField(),
                         email_statut=serializers.CharField(), statut=serializers.CharField()))
     @action(detail=True, methods=['post'], url_path='envoyer-email')
@@ -219,7 +222,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         refus = self._refus_approbation(bc)
         if refus is not None:
             return refus
-        to_email = ((request.data.get('to_email') or '').strip()
+        saisie = valider_corps(BcfEnvoyerEmailCorps, request)
+        to_email = ((saisie.get('to_email') or '').strip()
                     or (bc.fournisseur.email if bc.fournisseur_id else '')
                     or '')
         if not to_email:
@@ -238,9 +242,9 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 ": erreur ignorée (mode dégradé)", exc_info=True)
 
         fournisseur_nom = bc.fournisseur.nom if bc.fournisseur_id else ''
-        sujet = ((request.data.get('sujet') or '').strip()
+        sujet = ((saisie.get('sujet') or '').strip()
                  or f'Bon de commande {bc.reference}')
-        corps = ((request.data.get('corps') or '').strip() or (
+        corps = ((saisie.get('corps') or '').strip() or (
             f'Bonjour {fournisseur_nom},\n\n'
             f'Veuillez trouver ci-joint notre bon de commande '
             f'{bc.reference}.\n\n'
@@ -395,10 +399,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         return response
 
     @extend_schema(
-        request=corps('BcfReviserCorps', date_commande=serializers.DateField(required=False, allow_null=True),
-                      date_livraison_prevue=serializers.DateField(required=False, allow_null=True),
-                      note=serializers.CharField(required=False, allow_blank=True),
-                      lignes=serializers.ListField(child=serializers.DictField(), required=False)),
+        request=BcfReviserCorps,
         responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='reviser')
     def reviser(self, request, pk=None):
@@ -411,15 +412,21 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         "..."}]}``."""
         from ..services import reviser_bcf
         bc = self.get_object()
+        saisie = valider_corps(BcfReviserCorps, request)
+        date_commande = saisie.get('date_commande')
+        date_livraison = saisie.get('date_livraison_prevue')
         try:
-            bc, reapprobation_requise = reviser_bcf(
-                request.user.company, request.user, bc,
-                lignes=request.data.get('lignes'),
-                date_commande=request.data.get('date_commande'),
-                date_livraison_prevue=request.data.get(
-                    'date_livraison_prevue'),
-                note=request.data.get('note'),
-            )
+            # Quantité × prix qui ne tiendrait pas en base : 409, rien d'écrit
+            # (la transaction est annulée avec l'exception).
+            with transaction.atomic():
+                bc, reapprobation_requise = reviser_bcf(
+                    request.user.company, request.user, bc,
+                    lignes=saisie.get('lignes'),
+                    date_commande=date_commande and date_commande.isoformat(),
+                    date_livraison_prevue=date_livraison and date_livraison.isoformat(),
+                    note=saisie.get('note'),
+                )
+                controler_capacite_bcf(bc)
         except EtatIncompatible as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
@@ -549,10 +556,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             body='BCF réouvert (repassé en brouillon).')
         return Response(self.get_serializer(bc).data)
 
-    @extend_schema(
-        request=corps('BcfConfirmerCorps', date_confirmee_fournisseur=serializers.DateField(),
-                      numero_confirmation_fournisseur=serializers.CharField(required=False, allow_blank=True)),
-        responses=BonCommandeFournisseurSerializer)
+    @extend_schema(request=BcfConfirmerCorps, responses=BonCommandeFournisseurSerializer)
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):
         """XPUR7 — accusé de commande fournisseur : date confirmée + numéro
@@ -561,27 +565,16 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         ``{"date_confirmee_fournisseur": "YYYY-MM-DD",
         "numero_confirmation_fournisseur": "..."}``."""
         bc = self.get_object()
-        date_confirmee = request.data.get('date_confirmee_fournisseur')
-        if not date_confirmee:
-            return Response(
-                {'detail': 'date_confirmee_fournisseur est requise.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        try:
-            date_confirmee = serializers.DateField().to_internal_value(
-                date_confirmee)
-        except serializers.ValidationError:
-            return Response(
-                {'detail': 'date_confirmee_fournisseur : date AAAA-MM-JJ attendue.'},
-                status=status.HTTP_400_BAD_REQUEST)
-        bc.date_confirmee_fournisseur = date_confirmee
+        saisie = valider_corps(BcfConfirmerCorps, request)
+        bc.date_confirmee_fournisseur = saisie['date_confirmee_fournisseur']
         bc.numero_confirmation_fournisseur = (
-            request.data.get('numero_confirmation_fournisseur') or '')
+            saisie.get('numero_confirmation_fournisseur') or '')
         bc.save(update_fields=[
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur'])
         return Response(self.get_serializer(bc).data)
 
-    @extend_schema(parameters=[P('fournisseur', INT, True, 'Fournisseur (id)'), P('produits', STR, False,
-                                                                                  'Ids produits séparés par virgule')],
+    @extend_schema(parameters=[P('fournisseur', INT, True, 'Fournisseur (id)', mini=1, maxi=2147483647),
+                               P('produits', STR, False, 'Ids produits séparés par virgule')],
                    responses=LISTE)
     @action(detail=False, methods=['get'], url_path='bcf-similaires')
     def bcf_similaires(self, request):
@@ -590,22 +583,23 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         Query params : ``fournisseur`` (requis), ``produits`` (ids séparés
         par virgule, optionnel). LECTURE SEULE, jamais bloquant."""
         from ..services import bcf_similaires_ouverts
-        fournisseur_id = request.query_params.get('fournisseur')
+        fournisseur_id = id_requete_ou_400(request, 'fournisseur')
         if not fournisseur_id:
             return Response(
                 {'detail': 'Le paramètre fournisseur est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
         produits_param = request.query_params.get('produits') or ''
         produit_ids = [
-            int(p) for p in produits_param.split(',') if p.strip().isdigit()
+            int(p) for p in produits_param.split(',')
+            if p.strip().isascii() and p.strip().isdigit() and len(p.strip()) <= 9
         ]
         similaires = bcf_similaires_ouverts(
             request.user.company, fournisseur_id=fournisseur_id,
             produit_ids=produit_ids)
         return Response(similaires)
 
-    @extend_schema(parameters=[P('produit', INT, True, 'Produit (id)'), P('fournisseur', INT, False,
-                                                                          'Fournisseur (id)')], responses=LISTE)
+    @extend_schema(parameters=[P('produit', ID_ENTIER, True, 'Produit (id)'),
+                               P('fournisseur', ID_OU_VIDE, False, 'Fournisseur (id)')], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='historique-prix')
     def historique_prix(self, request):
         """XPUR13 — popover « historique des prix » : derniers achats (toutes
@@ -613,12 +607,13 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         Query params : ``produit`` (requis), ``fournisseur`` (optionnel).
         LECTURE SEULE."""
         from ..services import historique_prix_produit
-        produit_id = request.query_params.get('produit')
+        from ..utils.params import id_requete_ou_400
+        produit_id = id_requete_ou_400(request, 'produit')
         if not produit_id:
             return Response(
                 {'detail': 'Le paramètre produit est requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        fournisseur_id = request.query_params.get('fournisseur')
+        fournisseur_id = id_requete_ou_400(request, 'fournisseur')
         historique = historique_prix_produit(
             request.user.company, produit_id, fournisseur_id=fournisseur_id)
         return Response(historique)
@@ -669,7 +664,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         en_retard = bcf_en_retard_list(request.user.company)
         return Response(self.get_serializer(en_retard, many=True).data)
 
-    @extend_schema(request=corps('BcfRecevoirCorps', receptions=serializers.ListField(child=serializers.DictField())),
+    @extend_schema(request=BcfRecevoirCorps,
                    responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='recevoir')
     def recevoir(self, request, pk=None):
@@ -689,9 +684,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         quantité non entière répond 400 (plus de ``int()`` muet). Réponse
         inchangée : le BCF sérialisé.
         """
-        from decimal import Decimal, InvalidOperation
-
         bc = self.get_object()
+        receptions = valider_corps(BcfRecevoirCorps, request)['receptions']
         if bc.statut in (
             BonCommandeFournisseur.Statut.BROUILLON,
             BonCommandeFournisseur.Statut.ANNULE,
@@ -705,12 +699,6 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        receptions = request.data.get('receptions') or []
-        if not isinstance(receptions, list) or not receptions:
-            return Response(
-                {'detail': 'Aucune réception fournie.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         # Index par id de ligne (scopé à ce BC uniquement).
         lignes = {ligne.id: ligne for ligne in bc.lignes.select_related(
             'produit')}
@@ -719,52 +707,32 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         )
         plan = []
         for rec in receptions:
-            try:
-                ligne_id = int(rec.get('ligne'))
-                qte_brute = Decimal(str(rec.get('quantite')))
-                if not qte_brute.is_finite():
-                    raise ValueError
-            except (TypeError, ValueError, InvalidOperation):
-                return Response(
-                    {'detail': 'Réception invalide.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            ligne_id = rec['ligne']
             ligne = lignes.get(ligne_id)
             # ASTK2 — une ligne (héritée) pointant le produit d'une autre
             # société est traitée comme absente : jamais son stock touché.
             if ligne is not None and ligne.produit_id is not None and (
                     ligne.produit.company_id != bc.company_id):
                 ligne = None
-            if ligne is None:
+            if ligne is None:  # identifiant inconnu de CE bon : 404, comme un id de chemin
                 return Response(
                     {'detail': f'Ligne {ligne_id} introuvable sur ce BCF.'},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_404_NOT_FOUND,
                 )
-            # ASTK62 — quantité non entière : 400 lisible, jamais tronquée.
-            if qte_brute != qte_brute.to_integral_value():
-                designation = (
-                    ligne.produit.nom if ligne.produit_id
-                    else (ligne.designation or f'ligne {ligne_id}'))
-                affichee = format(qte_brute.normalize(), 'f').replace(
-                    '.', ',')
-                return Response(
-                    {'quantite': [
-                        f'Quantité non entière ({affichee}) pour '
-                        f'{designation} — unité de stock entière exigée.']},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            qte = int(qte_brute)
-            if qte <= 0:
-                continue
+            qte = rec['quantite']
             # XSTK15 — conditionnement optionnel (touret/carton…) : la
             # quantité saisie compte des CONDITIONNEMENTS, convertie en
             # unités de stock avant tout plafonnement (comportement
             # historique inchangé quand aucun conditionnement n'est fourni).
-            conditionnement = resoudre_conditionnement(
-                bc.company,
-                conditionnement_id=rec.get('conditionnement'),
-                code_barres=rec.get('conditionnement_code_barres'))
-            if conditionnement is not None:
+            if rec.get('conditionnement') or rec.get('conditionnement_code_barres'):
+                conditionnement = resoudre_conditionnement(
+                    bc.company,
+                    conditionnement_id=rec.get('conditionnement'),
+                    code_barres=rec.get('conditionnement_code_barres'))
+                if conditionnement is None:  # nommé mais inconnu : jamais des unités de stock devinées
+                    return Response(
+                        {'detail': 'Conditionnement introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
                 qte = convertir_en_unites_stock(qte, conditionnement)
             # Plafonnement au reste dû — jamais plus que commandé (idempotence).
             qte = min(qte, ligne.quantite_restante)

@@ -23,11 +23,13 @@ from core.serializers import (
 from drf_spectacular.drainage import set_override
 
 from .champs_lead import (
-    LienMaps, ListeJours, ListeMois, ReleveConso, TrancheDeclaree, schema_cos_phi,
+    LienMaps, ListeJours, ListeMois, PeriodeFacture, ReleveConso, TrancheDeclaree,
+    schema_cos_phi,
 )
 from .params_requete import UniciteEn409Mixin
 from .champs_api import (
-    MAPPING_DATE_HEURE_RFC3339, MAPPING_TEXTE_STRICT, DateHeureRfc3339,
+    MAPPING_DATE_HEURE_RFC3339, MAPPING_TEXTE_STRICT, CoordonneeGps,
+    DateHeureRfc3339,
 )
 from .models import (
     Appointment, Client, Lead, LeadActivity, PointContact, SavedView, SiteProfile,
@@ -684,7 +686,7 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # la facture DÉCLARÉE dans ce même corps (`mensuelle` | `bimestrielle`).
     # Jamais stocké (aucun champ « périodicité ») : le montant est ramené au
     # mois dans `validate`, et c'est lui qu'on enregistre et qu'on relit.
-    facture_periodicite = ChaineStricte(
+    facture_periodicite = PeriodeFacture(
         write_only=True, required=False, allow_blank=True)
 
     @staticmethod
@@ -953,6 +955,13 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
 
         return _is(last.old_value, target) and _is(last.new_value, current)
 
+    def to_internal_value(self, data):
+        # Nocturne 24/10 : un NUL dans un champ JSON libre du lead (releve_conso,
+        # custom_data, web_*…) n'est pas stockable en jsonb (DataError : 500) ;
+        # les textes simples le refusent déjà (400) — seuls les JSON sont purgés.
+        from core.parseurs import sans_nul
+        return sans_nul(super().to_internal_value(data))
+
     def validate(self, attrs):
         # LB39 — marqueur d'annulation : jamais persisté (champ hors modèle),
         # retiré ici pour ne jamais atteindre ``.save()``.
@@ -973,7 +982,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             montants = [champ for champ in ('facture_hiver', 'facture_ete')
                         if attrs.get(champ) is not None]
             if not montants:
-                raise serializers.ValidationError({'facture_periodicite': [
+                # Règle ENTRE deux champs du corps (période + montant) : le
+                # schéma ne la dit pas -> 409 (api-fuzz-full 24/10).
+                raise ConflitEtat({'facture_periodicite': [
                     '« Période de la facture » : indiquez le montant de la '
                     'facture dans la même saisie.']})
             for champ in montants:
@@ -1604,6 +1615,8 @@ class SiteProfileSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
     — un nombre JSON pour un décimal-chaîne (``pompe_debit_m3h: 0``) est un 400,
     et ``""`` (non renseigné) est publié au schéma d'un décimal nullable."""
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    gps_lat = CoordonneeGps(90)
+    gps_lng = CoordonneeGps(180)
 
     class Meta:
         model = SiteProfile
@@ -1764,7 +1777,9 @@ class SavedViewSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
     d'un 400 propre).
     """
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
-    payload = serializers.DictField(required=False)
+    # Nocturne 24/10 : un NUL dans le JSON libre est retiré (jsonb le refuse :
+    # 500) ; ``ObjetJSON`` publie ``type: object``.
+    payload = ObjetJSON(required=False)
 
     class Meta:
         model = SavedView

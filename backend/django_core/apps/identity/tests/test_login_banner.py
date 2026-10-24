@@ -81,6 +81,15 @@ class LoginBannerTests(TestCase):
         self.assertEqual(resp.status_code, 400, resp.content)
         resp = self.api.post(url, {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
+        # api-fuzz full 24/10 : le schéma PUBLIE le corps requis (sinon le
+        # POST vide était « conforme » puis refusé).
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[path(
+            'api/django/identity/', include('apps.identity.urls'))]
+        ).get_schema(request=None, public=True)
+        self.assertTrue(schema['paths']['/api/django/identity/login-banner/'][
+            'post']['requestBody']['required'])
 
     def test_ack_noop_without_banner(self):
         self._profile('')

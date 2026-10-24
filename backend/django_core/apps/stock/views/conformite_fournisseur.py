@@ -4,7 +4,8 @@ from rest_framework.parsers import JSONParser
 from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..openapi_helpers import DATE_OU_VIDE, INT, OBJET, P, PID, SchemaObjetUnique
+from ..openapi_helpers import DATE_OU_VIDE, ID_OU_VIDE, INT, OBJET, P, PID, SchemaObjetUnique
+from ..utils.params import id_requete_ou_400
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
     DocumentConformiteFournisseur, AchatsParametres,
@@ -20,7 +21,7 @@ READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT)]))
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', ID_OU_VIDE)]))
 class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR1 — documents de conformité fournisseur (ARF/CNSS/RC/assurance).
 
@@ -45,7 +46,7 @@ class DocumentConformiteFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        fournisseur_id = self.request.query_params.get('fournisseur')
+        fournisseur_id = id_requete_ou_400(self.request, 'fournisseur')
         if fournisseur_id:
             qs = qs.filter(fournisseur_id=fournisseur_id)
         return qs

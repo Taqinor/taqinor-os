@@ -22,7 +22,8 @@ from .constants import ENV_LIVE, ENV_TEST
 from .models import ApiKey, SandboxTenant, Webhook, WebhookDelivery
 from .serializers import (
     ApiKeySerializer, ApiKeyCreateSerializer, WebhookSerializer,
-    WebhookDeliverySerializer, ApiUsagePlanSerializer, scope_catalogue,
+    WebhookDeliverySerializer, ApiUsagePlanSerializer, expiration_future,
+    scope_catalogue,
 )
 from . import delivery as delivery_service
 from rest_framework.parsers import JSONParser
@@ -165,6 +166,9 @@ class ServiceAccountCreerSerializer(drf_serializers.Serializer):
     scopes = drf_serializers.ListField(
         child=ChaineStricte(), required=False)
     expire_le = drf_serializers.DateTimeField(required=False, allow_null=True)
+
+    def validate_expire_le(self, value):
+        return expiration_future(value)
 
 
 class SandboxEssaiSerializer(drf_serializers.Serializer):
@@ -373,8 +377,15 @@ class MonitoringView(APIView):
             FENETRE_JOURS_DEFAUT, FENETRE_JOURS_MAX, tableau_de_bord,
         )
 
-        brut = request.query_params.get('jours')
-        if brut in (None, ''):
+        # api-fuzz full 24/10 — le schéma publie UN entier : répété
+        # (``?jours=a&jours=``, lu sur sa dernière occurrence) ou vide (qui
+        # retombait sur le défaut) = 400.
+        valeurs = request.query_params.getlist('jours')
+        if len(valeurs) > 1:
+            raise ValidationError(
+                {'jours': "Le paramètre « jours » ne doit figurer qu'une fois."})
+        brut = valeurs[0] if valeurs else None
+        if brut is None:
             jours = FENETRE_JOURS_DEFAUT
         else:
             try:

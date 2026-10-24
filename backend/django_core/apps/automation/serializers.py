@@ -280,7 +280,14 @@ class ApprovalRequestTypeSerializer(ChampsStrictsMixin, serializers.ModelSeriali
     # le schéma JSONField annonçait `null`, que l'API refuse à raison (400).
     champs_requis = serializers.ListField(child=ChaineStricte(), required=False)
     champs_optionnels = serializers.ListField(child=ChaineStricte(), required=False)
-    champs_config = serializers.DictField(required=False)
+    champs_config = ConfigRegleJSON(required=False)
+
+    def to_internal_value(self, data):
+        # ENF11 (api-fuzz-full) : un substitut isolé (nom, listes) fait lever
+        # une erreur d'encodage à l'écriture -> 500 ; il est retiré d'abord.
+        if isinstance(data, dict):
+            data = _sans_substituts(data)
+        return super().to_internal_value(data)
 
     class Meta:
         model = ApprovalRequestType

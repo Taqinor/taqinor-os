@@ -16,6 +16,7 @@ from django.db.models import F, Value
 from core.pdf import render_pdf
 
 from .models import Cabinet, Document, DocumentVersion, Folder, RoutageDocumentaire
+from .pdf_etat import ouvrir_pdf_exploitable
 
 logger = logging.getLogger(__name__)
 
@@ -5826,8 +5827,7 @@ def exporter_pdf_annote(version):
     except Exception:
         raise ValueError(_pdf_lib_indisponible_message())
     data = _octets_version(version)
-    _exiger_pdf(data)  # ADOC22
-    doc = fitz.open(stream=data, filetype='pdf')
+    doc = ouvrir_pdf_exploitable(fitz, data, _exiger_pdf)
     try:
         # ADOC1 — seules les annotations de la société de la version.
         for annot in version.annotations.filter(

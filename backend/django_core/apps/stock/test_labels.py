@@ -128,6 +128,14 @@ class TestEtiquettesAction(LabelsApiBase):
             f'&sortie=html')
         self.assertEqual(res.status_code, 403)
 
+    def test_symbology_et_sortie_strictes(self):
+        # api-fuzz stock B : énumération publiée (vide = défaut), le reste -> 400.
+        base = f'/api/django/stock/produits/etiquettes/?ids={self.p1.id}&sortie=html'
+        self.assertEqual(self.api.get(base + '&symbology=').status_code, 200)
+        self.assertEqual(self.api.get(base + '&symbology=ean13').status_code, 400)
+        self.assertEqual(self.api.get(
+            f'/api/django/stock/produits/etiquettes/?ids={self.p1.id}&sortie=docx').status_code, 400)
+
     def test_html_output_lists_selected(self):
         res = self.api.get(
             f'/api/django/stock/produits/etiquettes/?ids={self.p1.id}'

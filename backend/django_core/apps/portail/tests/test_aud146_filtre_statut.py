@@ -91,6 +91,10 @@ class FiltreStatutPaiementPortailTests(TestCase):
     def test_un_statut_inconnu_est_refuse_plutot_que_tout_rendre(self):
         res = self.api.get(f'{RACINE}?statut=nimportequoi')
         self.assertEqual(res.status_code, 400, res.content)
+        # api-fuzz full 24/10 : répété ou entouré de blancs = hors énumération.
+        for requete in ('?statut=paye&statut=initie', '?statut=%20paye'):
+            res = self.api.get(f'{RACINE}{requete}')
+            self.assertEqual(res.status_code, 400, (requete, res.content))
 
     def test_le_filtre_reste_borne_a_la_societe(self):
         autre = make_company('aud146-co-b', 'AUD146 Société B')

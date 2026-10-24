@@ -80,8 +80,13 @@ _ELEMENT_CHAMP = inline_serializer('CalepinageGabaritChampSaisi', {
     'obligatoire': BooleenStrict(required=False),
 })
 
-_CORPS_GABARIT = inline_serializer('CalepinageGabaritDossierCorps', {
-    'fichier': serializers.FileField(required=False),
+#: ERR-ENF11-FUZZ-CALEPINAGE — le fichier PDF ne voyage qu'en ``multipart`` :
+#: le corps JSON n'a PAS de champ ``fichier`` (une chaîne vide « conforme » à un
+#: champ binaire était refusée). Les listes ``pieces_attendues`` / ``champs``
+#: sont du JSON natif en ``application/json``, du TEXTE JSON en multipart (le
+#: formulaire) : le schéma multipart ne publie donc que le fichier et les
+#: champs scalaires.
+_SCALAIRES_GABARIT = {
     'pays': serializers.RegexField(r'^[A-Za-z]{2}$', max_length=2),
     'code': serializers.SlugField(max_length=60),
     # CI #997 api-fuzz : le formulaire envoie ``genre`` vide (facultatif) et le
@@ -91,11 +96,21 @@ _CORPS_GABARIT = inline_serializer('CalepinageGabaritDossierCorps', {
     'intitule': ChaineStricte(max_length=200),
     'version': ChaineStricte(required=False, max_length=20, allow_blank=True),
     'actif': serializers.BooleanField(required=False),
+}
+
+_CORPS_GABARIT = inline_serializer('CalepinageGabaritDossierCorps', {
+    **_SCALAIRES_GABARIT,
     'pieces_attendues': serializers.ListField(
         child=_ELEMENT_PIECE, required=False),
     'champs': serializers.ListField(
         child=_ELEMENT_CHAMP, required=False),
 })
+_CORPS_GABARIT_MULTIPART = inline_serializer(
+    'CalepinageGabaritDossierCorpsFichier', {
+        'fichier': serializers.FileField(required=False),
+        **_SCALAIRES_GABARIT})
+_REQUETE_GABARIT = {'application/json': _CORPS_GABARIT,
+                    'multipart/form-data': _CORPS_GABARIT_MULTIPART}
 
 
 @extend_schema_serializer(many=False)
@@ -179,7 +194,7 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return Response(gabarit_publie(self.get_object()))
 
-    @extend_schema(request=_CORPS_GABARIT, responses={201: inline_serializer(
+    @extend_schema(request=_REQUETE_GABARIT, responses={201: inline_serializer(
         'CalepinageGabaritDepose', {'gabarit': serializers.DictField()})})
     def create(self, request, *args, **kwargs):
         mal_forme = _fichier_mal_forme(request)
@@ -194,7 +209,7 @@ class GabaritDossierViewSet(CompanyScopedModelViewSet):
         return Response({'gabarit': gabarit_publie(gabarit)},
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=_CORPS_GABARIT, responses={200: _FORME_GABARIT})
+    @extend_schema(request=_REQUETE_GABARIT, responses={200: _FORME_GABARIT})
     def partial_update(self, request, *args, **kwargs):
         gabarit = self.get_object()
         mal_forme = _fichier_mal_forme(request)

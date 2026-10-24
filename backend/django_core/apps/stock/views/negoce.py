@@ -20,11 +20,12 @@ from authentication.permissions import (
 )
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
 from ..permissions import MasqueMontantsAchatMixin, PeutVoirPrixAchat
-from ..openapi_helpers import ID_OU_VIDE, INT, P, STR, corps
+from ..openapi_helpers import ID_OU_VIDE, INT, P, STR, choix_ou_vide, corps
 from core.viewsets import CompanyScopedModelViewSet
 from ..erreurs_achats import ConflitEtat, EtatIncompatible, statut_refus_metier
 from ..utils.params import (
-    corps_objet, date_ou_400, entier_ou_400, id_requete_ou_400, types_corps_ou_400, valeur_unique_ou_400,
+    corps_objet, date_ou_400, entier_ou_400, id_requete_ou_400, statut_requete_ou_400, types_corps_ou_400,
+    valeur_unique_ou_400,
 )
 
 from ..models import (
@@ -121,7 +122,8 @@ class DepotConsignationSerializer(CompanyScopedRelationsMixin,
         return super().validate(attrs)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('statut', STR), P('client', INT)]))
+@extend_schema_view(list=extend_schema(parameters=[
+    P('statut', choix_ou_vide(DepotConsignation.Statut.values)), P('client', ID_OU_VIDE)]))
 class DepotConsignationViewSet(CompanyScopedModelViewSet):
     """NTDST3 — dépôts de consignation chez les clients.
 
@@ -150,12 +152,12 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         # Filtrage MANUEL (aucun DjangoFilterBackend branché ici).
         qs = super().get_queryset()
-        params = self.request.query_params
-        statut = params.get('statut')
+        statut = statut_requete_ou_400(
+            self.request, DepotConsignation.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
-        client = params.get('client')
-        if client:
+        client = id_requete_ou_400(self.request, 'client')
+        if client is not None:
             qs = qs.filter(client_id=client)
         return qs
 
@@ -298,7 +300,7 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
             f'inline; filename="releve-consignation-{depot.id}.pdf"')
         return reponse
 
-    @extend_schema(parameters=[P('statut', STR)], responses={
+    @extend_schema(parameters=[P('statut', choix_ou_vide(DepotConsignation.Statut.values))], responses={
         (200, 'application/vnd.openxmlformats-officedocument.'
               'spreadsheetml.sheet'): bytes})
     @action(detail=False, methods=['get'], url_path='export-xlsx',
@@ -313,9 +315,6 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         from apps.records.xlsx import build_xlsx_response
 
         depots = self.filter_queryset(self.get_queryset())
-        statut = request.query_params.get('statut')
-        if statut:
-            depots = depots.filter(statut=statut)
 
         entetes = ['Client', 'Produit', 'SKU', 'Site', 'Déposé', 'Consommé',
                    'Restant', 'Dernière déclaration', 'Statut']
@@ -412,7 +411,7 @@ class AccordRFAFournisseurSerializer(MasqueMontantsAchatMixin,
         return attrs
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('statut', STR)]))
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', ID_OU_VIDE), P('statut', STR)]))
 class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
     """NTDST5 — accords de remise arrière fournisseur.
 
@@ -438,7 +437,7 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        fournisseur = self.request.query_params.get('fournisseur')
+        fournisseur = id_requete_ou_400(self.request, 'fournisseur')
         if fournisseur:
             qs = qs.filter(fournisseur_id=fournisseur)
         statut = self.request.query_params.get('statut')

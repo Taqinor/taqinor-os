@@ -51,6 +51,25 @@ class TestConditionsDefinitionValidation(CF15Base):
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
 
+    def test_forme_publiee_cles_fermees_et_arbre(self):
+        # api-fuzz full 24/10 : ``{"": …}`` était « conforme » au schéma
+        # (objet libre) puis refusé ; la forme exacte est publiée.
+        resp = self.api.post('/api/django/custom-fields/definitions/', {
+            'module': 'lead', 'code': 'w', 'libelle': 'W', 'type': 'text',
+            'conditions': {'': {'field': 'a', 'operator': 'eq'}},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[path(
+            'api/django/custom-fields/', include('apps.customfields.urls'))]
+        ).get_schema(request=None, public=True)
+        conditions = schema['components']['schemas'][
+            'CustomFieldDefRequest']['properties']['conditions']
+        self.assertFalse(conditions['additionalProperties'])
+        self.assertEqual(set(conditions['properties']),
+                         {'visible_si', 'requis_si', 'lecture_seule_si'})
+
     def test_conditions_not_a_dict_rejected(self):
         resp = self.api.post('/api/django/custom-fields/definitions/', {
             'module': 'lead', 'code': 'z', 'libelle': 'Z', 'type': 'text',

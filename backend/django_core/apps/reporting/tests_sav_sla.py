@@ -206,3 +206,13 @@ class TestParametresStrictsFuzzR12(SavSlaBase):
             resp = self.api.get('/api/django/reporting/insights/sav-sla/', {'technicien': valeur})
             self.assertEqual(resp.status_code, 400, (valeur, resp.content))
             self.assertIn('technicien', resp.data)
+
+    def test_fuzz_full_repetition_id_geant_et_nul_400(self):
+        # api-fuzz full 24/10 : ``to`` répété, id au-delà d'un entier SQL et
+        # ``priorite`` porteuse d'un caractère nul levaient la base (500).
+        url = '/api/django/reporting/insights/sav-sla/'
+        for requete in ('?from=&to=2026-01-01&to=2026-02-01',
+                        '?technicien=99999999999999999999',
+                        '?priorite=a%00b'):
+            resp = self.api.get(url + requete)
+            self.assertEqual(resp.status_code, 400, (requete, resp.content))

@@ -559,4 +559,5 @@ class TestDC35FicheTechniqueAPI(DCBase):
         resp = self.client.post(
             '/api/django/stock/fiches-techniques/',
             {'produit': other_prod.id, 'pmax_wc': '550'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # Produit d'une autre société = id inconnu pour la société : 404 (api-fuzz, sans oracle).
+        self.assertEqual(resp.status_code, 404, resp.content)

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4814, operations: 7566, components: 3532}
+counts: {paths: 4814, operations: 7566, components: 3550}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -9165,6 +9165,9 @@ components:
 - AcompteFournisseur
 - AcompteFournisseurRequest
 - ActionEcheanceEnum
+- ActionRegleDossier
+- ActionRegleDossierRequest
+- ActionRegleDossierTypeEnum
 - ActionTypeEnum
 - Activity
 - ActivityRequest
@@ -9469,7 +9472,9 @@ components:
 - BcfEnvoyerEmailReponse
 - BcfFusionnerCorpsRequest
 - BcfRecevoirCorpsRequest
+- BcfRecevoirLigneCorpsRequest
 - BcfReviserCorpsRequest
+- BcfReviserLigneCorpsRequest
 - BcfWhatsappReponse
 - BesoinEauSourceEnum
 - BillRangeBucketEnum
@@ -9591,6 +9596,7 @@ components:
 - CalepinageGabaritChampSaisiTypeEnum
 - CalepinageGabaritDepose
 - CalepinageGabaritDossier
+- CalepinageGabaritDossierCorpsFichierRequest
 - CalepinageGabaritDossierCorpsRequest
 - CalepinageGabaritPieceAttendueRequest
 - CalepinageGabaritsListe
@@ -9600,6 +9606,7 @@ components:
 - CalepinageGenererDossierCorpsParGabaritRequest
 - CalepinageGenererDossierCorpsRequest
 - CalepinageHorizon
+- CalepinageImageDocumentCorpsJsonRequest
 - CalepinageImageDocumentCorpsRequest
 - CalepinageImageDocumentDepot
 - CalepinageImportLayout
@@ -9668,7 +9675,7 @@ components:
 - CalepinageSyncDevisCorpsRequest
 - CalepinageTroncons
 - CalepinageVariante
-- CalepinageVarianteRequest
+- CalepinageVarianteCorpsRequest
 - CalepinageVersionLigne
 - CalepinageVersionRestauree
 - CalepinageVersionsDiff
@@ -10280,6 +10287,7 @@ components:
 - ExperimentRequest
 - ExperimentStatusEnum
 - ExportListeRequeteRequest
+- ExportObjetJson
 - ExportObjetRequeteRequest
 - ExportObjetsListe
 - ExportReversibiliteRequeteRequest
@@ -10345,6 +10353,7 @@ components:
 - FactureListe
 - FactureMarquerPayeeRequestRequest
 - FactureMontantTrancheRequest
+- FacturePeriodiciteEnum
 - FactureRelanceApercu
 - FactureRelancee
 - FactureReprendreAbandonRequestRequest
@@ -10651,6 +10660,7 @@ components:
 - LigneBonCommandeFournisseurRequest
 - LigneDevis
 - LigneDevisRequest
+- LigneEquipementRequeteRequest
 - LigneFacture
 - LigneFactureFournisseur
 - LigneFactureFournisseurRequest
@@ -10670,6 +10680,7 @@ components:
 - LigneRetourClientRequest
 - LigneRetourFournisseur
 - LigneRetourFournisseurRequest
+- LigneSerieRequeteRequest
 - LimModeEnum
 - ListePrix
 - ListePrixLigneSaisieRequest
@@ -10847,6 +10858,7 @@ components:
 - NiveauTensionSourceEnum
 - NomenclatureCodeBarres
 - NomenclatureCodeBarresRequest
+- NonReleveRequeteRequest
 - NoteDebit
 - NoteDebitAnnulationResponse
 - NoteDecisionRequest
@@ -11350,6 +11362,7 @@ components:
 - PatchedCabinetRequest
 - PatchedCadenceRelanceEtapeRequest
 - PatchedCalageRequest
+- PatchedCalepinageGabaritDossierCorpsFichierRequest
 - PatchedCalepinageGabaritDossierCorpsRequest
 - PatchedCalepinagePhotoCalageCorpsRequest
 - PatchedCalepinagePhotoModifCorpsRequest
@@ -12049,6 +12062,7 @@ components:
 - ReportsServiceReportReponse
 - ReportsStockReportReponse
 - Reserve
+- ReserveChantierRequeteOrigineEnum
 - ReserveChantierRequeteRequest
 - ReserveOrigineEnum
 - ReserveStatutEnum
@@ -12106,6 +12120,7 @@ components:
 - RotationCleRequest
 - RoutageDocumentaire
 - RoutageDocumentaireRequest
+- RouteEnum
 - RulePolicy
 - RulePolicyModeEnum
 - RulePolicyRequest
@@ -12129,6 +12144,7 @@ components:
 - SauvegardeRequeteRequest
 - SavActionsGroupeesReponse
 - SavActionsGroupeesRequeteRequest
+- SavAnnulerRequeteRequest
 - SavChecklistInitRequeteRequest
 - SavCloturerDowntimeRequeteRequest
 - SavCreerDevisReponse
@@ -12159,6 +12175,8 @@ components:
 - SavPerformanceAgentInsight
 - SavPerformanceAgentLigne
 - SavPieceConsommeeRequeteRequest
+- SavPieceRetireeRequeteDestinationEnum
+- SavPieceRetireeRequeteOperationEnum
 - SavPieceRetireeRequeteRequest
 - SavPiecesCompatiblesReponse
 - SavPivotSavTauxAttacheReponse

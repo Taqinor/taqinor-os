@@ -217,10 +217,11 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             company=self.request.user.company, owner=self.request.user,
         ).count()
         if actuel >= limite:
-            raise ValidationError({'detail': (
+            # api-fuzz full 24/10 — corps conforme, c'est le NOMBRE de vues
+            # déjà enregistrées (état) qui s'y oppose : 409, plus 400.
+            raise ConflitEtat(
                 f'Limite de {limite} vues personnelles atteinte. '
-                'Supprimez-en une avant d\'en créer une nouvelle.'
-            )})
+                'Supprimez-en une avant d\'en créer une nouvelle.')
 
     def perform_update(self, serializer):
         instance = self.get_object()
@@ -580,10 +581,10 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         limite = parametres.max_favoris_par_utilisateur
         actuel = self.get_queryset().count()
         if actuel >= limite:
-            raise ValidationError({'detail': (
+            # Même règle que les vues : la limite est un état (409).
+            raise ConflitEtat(
                 f'Limite de {limite} favoris atteinte. '
-                'Supprimez-en un avant d\'en épingler un nouveau.'
-            )})
+                'Supprimez-en un avant d\'en épingler un nouveau.')
 
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company, owner=self.request.user)

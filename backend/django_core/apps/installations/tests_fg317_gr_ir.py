@@ -81,6 +81,14 @@ class TestProvisionCreation(TestCase):
         self.assertFalse(prov.lettre)
         self.assertEqual(float(r.data['montant_a_provisionner']), 25000.0)
 
+    def test_montant_negatif_400_nomme(self):
+        # api-fuzz full : borne basse publiée (motif sans signe `-`).
+        r = self.api.post(f'{BASE}/receptions-non-facturees/', {
+            'bon_commande': self.bcf.id, 'montant_provision': '-10.05',
+        })
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('montant_provision', r.data)
+
     def test_foreign_bcf_rejected(self):
         autre = make_company()
         bcf_o = make_bcf(autre)

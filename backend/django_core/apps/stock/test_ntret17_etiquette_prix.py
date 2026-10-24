@@ -126,9 +126,11 @@ class Ntret17EndpointTests(TestCase):
         self.assertEqual(html.count('class="etiquette"'), 3)
         self.assertNotIn('Robinet', html)
 
-    def test_sans_selection_lappel_est_refuse(self):
+    def test_sans_selection_aucun_produit_404(self):
+        # api-fuzz : ids/categorie/zone sont facultatifs au schéma ; sans aucun,
+        # la sélection est vide -> 404 (plus un 400 sur une requête conforme).
         res = auth(self.admin).get(URL, {'sortie': 'html'})
-        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.status_code, 404)
 
     def test_une_categorie_vide_renvoie_404(self):
         vide = Categorie.objects.create(

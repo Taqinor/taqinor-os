@@ -85,6 +85,27 @@ class ReglagesPompageTests(TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn('agricole_marge_cable_descente_m', resp.data)
 
+    def test_borne_basse_et_plafond_publies_sur_la_chaine(self):
+        # api-fuzz full 24/10 : ``"-.52"`` passait le motif publié (signé) puis
+        # était refusé ; le motif de la branche chaîne suit les bornes, et le
+        # serveur refuse exactement ce que le motif refuse (``"-0"`` compris).
+        import re
+        from apps.parametres.serializers_company import CompanyProfileSerializer
+        from apps.parametres.requetes_strictes import (
+            _motif_plafond_puissance_dix)
+        for corps in ({'agricole_marge_cable_descente_m': '-.52'},
+                      {'agricole_marge_cable_descente_m': '-0'},
+                      {'tva_standard': '150'}):
+            resp = self.api.patch('/api/django/parametres/update/', corps,
+                                  format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        tva = CompanyProfileSerializer().fields['tva_standard']
+        motif = _motif_plafond_puissance_dix(tva)
+        for ok in ('0', '100', '100.00', '99.99', '099', '.5'):
+            self.assertIsNotNone(re.fullmatch(motif, ok), ok)
+        for ko in ('-1', '150', '100.01', '1000', ''):
+            self.assertIsNone(re.fullmatch(motif, ko), ko)
+
     def test_patch_sur_une_autre_societe_refuse(self):
         autre, _ = _client('agr107-b')
         resp = self.api.patch(

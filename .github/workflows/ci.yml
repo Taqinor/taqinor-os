@@ -613,6 +613,18 @@ jobs:
         run: python -m unittest scripts.tests.test_check_openapi_schema -v
       - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
         run: python scripts/check_openapi_schema.py
+      # PACT6 — quand l'instantané est en retard, le régénérer ICI (même image,
+      # mêmes dépendances) et l'offrir en artefact : un poste sans Docker le
+      # télécharge et le committe au lieu de deviner l'inventaire.
+      - name: Instantané régénéré (artefact, seulement si le contrôle échoue)
+        if: failure()
+        run: python scripts/check_openapi_schema.py --write
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: openapi-schema-regenere
+          path: docs/openapi-schema.yml
+          if-no-files-found: ignore
       # ASEC48 — settings.prod chargé dans un interpréteur neuf avec un
       # environnement type prod (valeurs factices) : `check --deploy` sans
       # erreur ni avertissement non documenté, is_secure() derrière le proxy,

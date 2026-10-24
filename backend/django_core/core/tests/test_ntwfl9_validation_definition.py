@@ -109,6 +109,24 @@ class ReglesPublieesTests(TenantAPITestCase):
             operation['requestBody']['content']['application/json']['schema'],
             {'allOf': [ref, {'required': ['steps']}]})
 
+    def test_regle_sous_allof_rend_le_corps_obligatoire(self):
+        # api-fuzz-full 24/10 (POST ged/acls/) — une règle de racine en
+        # ``allOf`` dont un membre exige (oneOf/required) rend le corps
+        # obligatoire ; un ``anyOf`` seul sous ``allOf`` (PATCH partiel) non.
+        from core.openapi_erreurs import (
+            EXTENSION_CORPS_RESSERRE, aligner_motifs_sur_drf)
+
+        def _operation(regle):
+            operation = {EXTENSION_CORPS_RESSERRE: regle, 'requestBody': {
+                'content': {'application/json': {'schema': {}}}}}
+            aligner_motifs_sur_drf({'paths': {'/x/': {'post': operation}}})
+            return operation['requestBody'].get('required', False)
+
+        self.assertTrue(_operation({'allOf': [{'oneOf': [{}, {}]}]}))
+        self.assertTrue(_operation({'allOf': [{'required': ['a']}]}))
+        self.assertFalse(_operation({'allOf': [{'anyOf': [{}, {}]}]}))
+        self.assertFalse(_operation({'not': {'required': ['a', 'b']}}))
+
 
 class WorkflowDefinitionApiValidationTests(TenantAPITestCase):
     """Intégration API — le rejet est bien renvoyé en 400 par le CRUD."""

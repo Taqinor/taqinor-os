@@ -76,7 +76,7 @@ def apply_product_bulk(*, company, user, ids, op, params):
                 raise ValueError(f"{cle} : la durée ne peut pas être négative.")
     elif op == 'set_category':
         cid = params.get('categorie_id')
-        categorie = Categorie.objects.filter(id=cid, company=company).first()
+        categorie = Categorie.objects.filter(id=cid, company=company).first() if cid not in (None, '', 'null') else None
         if cid not in (None, '', 'null') and categorie is None:
             raise IntrouvableMetier("Catégorie introuvable dans cette société.")
 
@@ -1560,7 +1560,7 @@ def confirm_reception_fournisseur(reception, user):
             'peut pas être confirmée.')
     lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
     if not lignes:
-        raise ValueError('La réception ne contient aucune ligne.')
+        raise EtatIncompatible('La réception ne contient aucune ligne.')
     # NTWMS34 — un plan d'échantillonnage applicable BLOQUE la confirmation
     # tant que le résultat du contrôle qualité n'est pas saisi. No-op total
     # pour une société sans plan (comportement historique inchangé).
@@ -3826,7 +3826,7 @@ def facturer_reception(company, user, reception):
         reception = ReceptionFournisseur.objects.select_for_update().get(
             pk=reception.pk)
         if reception.statut != 'confirme':
-            raise ValueError("Seule une réception confirmée peut être facturée.")
+            raise EtatIncompatible("Seule une réception confirmée peut être facturée.")
 
         # Garde idempotence : si une FF porte déjà ce bon de commande et la même
         # réception (on lie via note), on refuse.
@@ -5877,8 +5877,8 @@ def compute_date_livraison_prevue(company, fournisseur, date_commande,
     delais = [d for d in delais if d is not None]
     if not delais:
         return None
-    from datetime import timedelta
-    return date_commande + timedelta(days=max(delais))
+    from .corps_achats import ajouter_jours_ou_none
+    return ajouter_jours_ou_none(date_commande, max(delais))
 
 
 def bcf_en_retard(bon_commande, *, a_la_date=None):
@@ -6150,11 +6150,11 @@ def creer_avoir_depuis_retour(company, retour, user=None):
 
     def _verifier(doc):
         if doc.statut != RetourFournisseur.Statut.VALIDE:
-            raise ValueError(
+            raise EtatIncompatible(
                 'Seul un retour validé peut générer un avoir (« attente '
                 "d'avoir » tant que non reçu).")
         if AvoirFournisseur.objects.filter(retour=doc).exists():
-            raise ValueError('Ce retour a déjà un avoir associé.')
+            raise EtatIncompatible('Ce retour a déjà un avoir associé.')
 
     _verifier(retour)
     with transaction.atomic():

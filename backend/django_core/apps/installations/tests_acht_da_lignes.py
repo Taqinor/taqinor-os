@@ -66,7 +66,8 @@ class DaLignesTests(TestCase):
 
     def test_prix_negatif_refuse(self):
         r = self._post_ligne(prix_estime='-5')
-        self.assertEqual(r.status_code, 400, r.data)
+        # api-fuzz full : le motif publié ne sait pas exclure `-` -> 409.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('prix_estime', r.data)
         self.assertEqual(self.da.lignes.count(), 0)
 

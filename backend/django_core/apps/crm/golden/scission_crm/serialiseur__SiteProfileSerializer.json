@@ -121,13 +121,13 @@
    "required": false
   },
   {
-   "classe": "DecimalStricte",
+   "classe": "CoordonneeGps",
    "nom": "gps_lat",
    "read_only": false,
    "required": false
   },
   {
-   "classe": "DecimalStricte",
+   "classe": "CoordonneeGps",
    "nom": "gps_lng",
    "read_only": false,
    "required": false

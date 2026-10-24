@@ -21,7 +21,7 @@ from uuid import uuid4
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from core.champs_stricts import ChaineStricte, non_blanc
@@ -53,7 +53,7 @@ REFUS_FOND_PLAN = ("Seuls les plans PNG et JPEG se posent en fond : un DXF ou "
     })})
 @action(detail=True, methods=['post'], url_path='fond-plan',
         url_name='fond-plan', permission_classes=[PeutGererCalepinage],
-        parser_classes=[MultiPartParser, FormParser])
+        parser_classes=[MultiPartParser])
 def fond_plan(self, request, pk=None):
     """ACAL72 — téléverse une image de plan (PNG/JPEG) comme fond du document.
 

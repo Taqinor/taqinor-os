@@ -11,6 +11,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
+from core.conflit_etat import ConflitEtat
 
 from .champs_api import MAPPING_STRICT_COMPLET, MAPPING_TEXTE_STRICT, IcePublie
 from .params_requete import UniciteEn409Mixin
@@ -53,11 +54,12 @@ class SalleVenteSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
     # relations sont re-scopées société.
     scoped_relations = ('lead', 'client')
 
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # nocturne 24/10 : pas de NUL
     company = serializers.HiddenField(default=_CurrentCompanyDefault())
     items = SalleVenteItemSerializer(many=True, read_only=True)
     has_password = serializers.BooleanField(read_only=True)
     lien_public = serializers.SerializerMethodField()
-    mot_de_passe = serializers.CharField(
+    mot_de_passe = ChaineStricte(
         write_only=True, required=False, allow_blank=True)
 
     class Meta:
@@ -300,16 +302,21 @@ class PartenaireSerializer(serializers.ModelSerializer):
             'date_expiration_certification',
             getattr(instance, 'date_expiration_certification', None))
         if debut and fin and fin < debut:
-            raise serializers.ValidationError({
-                'date_expiration_certification': (
+            # Nocturne 24/10 : règle ENTRE deux champs (le schéma ne peut pas
+            # la dire) : refus d'état, 409.
+            raise ConflitEtat({
+                'date_expiration_certification': [
                     "L'expiration ne peut pas précéder la date de "
-                    'certification.')})
+                    'certification.']})
         return attrs
 
 
 class ClientSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
                        _CompanyScopedRelationsMixin,
                        serializers.ModelSerializer):
+    # Nocturne 24/10 : textes/booléens STRICTS — le schéma exclut le caractère
+    # nul (Postgres le refuse : 400 sur un corps « conforme »).
+    serializer_field_mapping = MAPPING_TEXTE_STRICT
     # CRX13 — la liste de prix négociée et la fiche du répertoire unifié sont
     # deux relations SORTANTES (ventes/tiers) : sans re-scope, un PATCH pouvait
     # rattacher le client au tarif d'une autre société.
@@ -372,16 +379,18 @@ class ClientSerializer(UniciteEn409Mixin, IdInconnu404Mixin,
             raise serializers.ValidationError(
                 'La société mère doit appartenir à la même société.')
         if self.instance is not None:
+            # Nocturne 24/10 : l'identité (corps vs chemin) et le cycle sont des
+            # règles d'ÉTAT que le schéma ne peut pas dire : 409, pas 400.
             if value.pk == self.instance.pk:
-                raise serializers.ValidationError(
-                    "Un client ne peut pas être sa propre société mère.")
+                raise ConflitEtat({'parent': [
+                    "Un client ne peut pas être sa propre société mère."]})
             seen = {self.instance.pk}
             current = value
             depth = 0
             while current is not None:
                 if current.pk in seen or depth > 100:
-                    raise serializers.ValidationError(
-                        'Cette hiérarchie créerait un cycle.')
+                    raise ConflitEtat({'parent': [
+                        'Cette hiérarchie créerait un cycle.']})
                 seen.add(current.pk)
                 current = current.parent
                 depth += 1
@@ -597,7 +606,8 @@ class ObjectifAttainmentSerializer(serializers.Serializer):
     period_end = serializers.DateField()
 
 
-class ConcurrentPerteSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
+class ConcurrentPerteSerializer(IdInconnu404Mixin, _LeadEnPorteeMixin,
+                                serializers.ModelSerializer):
     """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant
@@ -754,6 +764,7 @@ class RevueCompteSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
     # n'a pas de ``company`` propre) : sans re-scope, une revue pouvait être
     # accrochée au plan de compte d'une autre société.
     scoped_relations = ('plan',)
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # nocturne 24/10 : pas de NUL
 
     class Meta:
         model = RevueCompte

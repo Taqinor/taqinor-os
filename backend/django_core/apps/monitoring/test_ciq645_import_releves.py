@@ -101,6 +101,16 @@ class ImportRelevesTest(TestCase):
         self.assertIn('Date illisible', lignes[4])
         self.assertEqual(self._releves().count(), 1)
 
+    def test_csv_non_texte_ou_blanc_400_pas_500(self):
+        # api-fuzz-full : ``{"csv": [null, null]}`` était accepté (200) et un
+        # corps tableau levait AttributeError (500) ; le schéma publie
+        # ``csv`` chaîne non blanche.
+        for corps in ({'csv': [None, None]}, {'csv': 5}, {'csv': '   '},
+                      {}, [None]):
+            resp = self.api.post(self.url, corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+        self.assertEqual(self._releves().count(), 0)
+
     def test_chantier_d_une_autre_societe_404(self):
         autre, _ = Company.objects.get_or_create(
             slug='ciq645-autre', defaults={'nom': 'CIQ645 Autre'})

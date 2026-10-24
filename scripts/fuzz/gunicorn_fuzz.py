@@ -33,3 +33,12 @@ def post_worker_init(worker):
     # délèguent à `super().allow_request` (publicapi).
     SimpleRateThrottle.allow_request = _toujours_autorise
     worker.log.info('ENF1 : throttles DRF coupés (serveur de fuzz seul)')
+
+
+# Nocturne 24/10/2026 (api-fuzz-full) — 86 constats « Undocumented Content-Type » :
+# les chaînes de requête du fuzzeur dépassaient la limite gunicorn par défaut
+# (4 094 octets) et recevaient SA page HTML « Request Line is too large », jamais
+# Django. Ligne de requête non bornée ICI seulement (serveur du fuzz) : la réponse
+# redevient celle de l'API (JSON), que le schéma documente.
+limit_request_line = 0
+limit_request_field_size = 0

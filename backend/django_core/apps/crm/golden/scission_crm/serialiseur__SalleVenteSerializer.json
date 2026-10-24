@@ -25,13 +25,13 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "titre",
    "read_only": false,
    "required": true
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "token",
    "read_only": true,
    "required": false
@@ -43,7 +43,7 @@
    "required": false
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "actif",
    "read_only": false,
    "required": false
@@ -55,7 +55,7 @@
    "required": false
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "mot_de_passe",
    "read_only": false,
    "required": false

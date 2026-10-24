@@ -111,17 +111,25 @@ def _resoudre(company, corps):
         if tag is None:
             raise EtiquetteRefusee(
                 'Étiquette introuvable dans le vocabulaire de cette société '
-                '(tag_id : %s).' % (brut_id,), champ='tag_id',
+                '(tag_id : %s).' % (brut_id if isinstance(brut_id, int)
+                                    or str(brut_id).isascii()
+                                    else '(illisible)',), champ='tag_id',
                 introuvable=True)
         champ = 'tag_id'
     elif nom:
+        # U+0000 / demi-substitut : aucun nom de vocabulaire ne peut en porter,
+        # et la requete SQL levait une erreur (500) : « introuvable » (404),
+        # sans renvoyer ce nom dans le message.
+        illisible = any(c == chr(0) or 0xD800 <= ord(c) <= 0xDFFF
+                        for c in nom)
         tag = (Tag.objects.filter(company=company, nom=nom).first()
-               if company is not None else None)
+               if company is not None and not illisible else None)
         if tag is None:
             raise EtiquetteRefusee(
                 "Aucune étiquette « %s » dans le vocabulaire de la société : "
                 "une étiquette ne se crée pas depuis un calepinage — "
-                "ajoutez-la d'abord au vocabulaire des étiquettes." % nom,
+                "ajoutez-la d'abord au vocabulaire des étiquettes."
+                % ('(illisible)' if illisible else nom),
                 champ='nom', introuvable=True)
         champ = 'nom'
     else:

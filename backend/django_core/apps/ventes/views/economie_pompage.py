@@ -63,8 +63,7 @@ def _refus(refus):
 
 # api-only: AGR206 — lecture interne du bloc (contrat AGR3) ; /proposition
 # et le PDF le lisent côté serveur (selectors), aucun écran ne l'appelle encore.
-@extend_schema(responses={200: D.EconomiePompageResponse,
-                          400: D.ErreurEconomie})
+@extend_schema(responses={200: D.EconomiePompageResponse})
 @action(detail=True, methods=['get'], url_path='economie-pompage',
         permission_classes=[IsAnyRole])
 def economie_pompage(self, request, pk=None):
@@ -73,7 +72,12 @@ def economie_pompage(self, request, pk=None):
     try:
         bloc = economie_pompage_pour_devis(devis.pk, devis.company)
     except EconomieInvalide as refus:
-        return _refus(refus)
+        # CI #997 fuzz (24/10) : la requête est conforme, c'est le DEVIS stocké
+        # (ligne au total négatif, réglage société invalide…) qui s'oppose au
+        # calcul → refus d'état 409 nommant le champ, jamais un 400.
+        from core.conflit_etat import ConflitEtat
+        raise ConflitEtat(f'{refus} (champ : {refus.champ})'
+                          if refus.champ else str(refus))
     return Response(bloc)
 
 

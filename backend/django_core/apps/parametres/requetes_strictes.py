@@ -9,6 +9,7 @@ diverger. Les noms de classe (suffixe « Serializer » retiré) restent ceux des
 composants OpenAPI d'avant.
 """
 from django.db import models as django_models
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
 
 from core.champs_stricts import (
@@ -36,6 +37,66 @@ class TypageStrictParametres(TypageStrictMixin):
     }
 
 
+class DecimalSoupleReglages(DecimalSouple):
+    """``DecimalSouple`` des réglages société : acceptation inchangée ; sa
+    borne basse ``>= 0`` est publiée AUSSI sur la branche chaîne (voir
+    ``_DecimalSoupleReglagesBorne``) — et appliquée telle quelle : ``"-0"``,
+    que le motif sans signe refuse, est refusé aussi."""
+
+    def to_internal_value(self, data):
+        if (isinstance(data, str) and data.startswith('-')
+                and self.min_value is not None and self.min_value >= 0):
+            self.fail('min_value', min_value=self.min_value)
+        return super().to_internal_value(data)
+
+
+class _DecimalSoupleReglagesBorne(OpenApiSerializerFieldExtension):
+    """api-fuzz full (24/10, ``PUT/PATCH parametres/update/``) — la branche
+    NOMBRE publiait ``minimum: 0`` mais la branche CHAÎNE gardait un motif
+    signé : ``"-.52"`` était conforme au schéma puis refusé en 400
+    (« supérieure ou égale à 0 »). Borne ``>= 0`` → motif sans signe."""
+    target_class = 'apps.parametres.requetes_strictes.DecimalSoupleReglages'
+    priority = 1
+
+    def map_serializer_field(self, auto_schema, direction):
+        from core.champs_stricts import _DecimalChaineNonVide
+        champ = self.target
+        schema = _DecimalChaineNonVide(champ).map_serializer_field(
+            auto_schema, direction)
+        if (direction != 'request' or champ.min_value is None
+                or champ.min_value < 0):
+            return schema
+        motif_plafond = _motif_plafond_puissance_dix(champ)
+        for branche in schema.get('anyOf', ()):
+            motif = branche.get('pattern')
+            if motif and motif.startswith('^-?'):
+                branche['pattern'] = motif_plafond or '^' + motif[3:]
+        return schema
+
+
+def _motif_plafond_puissance_dix(champ):
+    """Motif non signé EXACT d'un décimal borné à ``[0, 10^k]`` (pourcentage
+    ``[0, 100]``) : partie entière d'au plus ``k`` chiffres, ou ``10^k`` sans
+    décimale non nulle — ``"150"`` passait le motif puis était refusé (400).
+    ``None`` si le plafond n'est pas une puissance de dix."""
+    plafond, decimales = champ.max_value, champ.decimal_places
+    if plafond is None or decimales is None:
+        return None
+    texte = format(plafond, 'f')  # int 100 → "100.000000", Decimal → "100"
+    if '.' in texte:
+        texte = texte.rstrip('0').rstrip('.')
+    if not (texte.startswith('1') and set(texte[1:]) == {'0'}):
+        return None
+    k = len(texte) - 1
+    # Zéros de tête permis tant que la partie entière tient dans les
+    # ``max_whole_digits`` signes du motif de ``core`` (``"099"`` passe).
+    entiers = champ.max_whole_digits or k + 1
+    zeros, zeros_plafond = max(entiers - k, 0), max(entiers - k - 1, 0)
+    return (fr'^(?:0{{0,{zeros}}}\d{{1,{k}}}(?:\.\d{{0,{decimales}}})?'
+            fr'|\.\d{{1,{decimales}}}'
+            fr'|0{{0,{zeros_plafond}}}{texte}(?:\.0{{0,{decimales}}})?)$')
+
+
 # ENF11 (api-fuzz « accepted schema-violating request ») — variante des écrans de
 # RÉGLAGES société (profil, tarification, modèles de documents) : textes
 # (``CharField`` ET ``TextField``) et booléens STRICTS, décimaux acceptés en
@@ -49,7 +110,7 @@ class TypageStrictReglages:
         django_models.CharField: ChaineStricte,
         django_models.TextField: ChaineStricte,
         django_models.BooleanField: BooleenStrict,
-        django_models.DecimalField: DecimalSouple,
+        django_models.DecimalField: DecimalSoupleReglages,
     }
 
 

@@ -101,3 +101,48 @@ class TestQJR204(APITestCase):
         }]}, format='json')
         self.assertEqual(resp.status_code, 200, getattr(resp, 'data', resp))
         self.assertEqual(self.devis.lignes.count(), 1)
+
+    # ── api-fuzz : forme du corps ────────────────────────────────────────────
+    def test_corps_qui_n_est_pas_un_objet_400_sans_500(self):
+        """``null`` / liste / nombre : ``request.data.get`` levait
+        ``AttributeError`` (500). Lignes intactes."""
+        for corps in ('null', '[]', '12'):
+            with self.subTest(corps=corps):
+                resp = self.api.post(self._url(), data=corps,
+                                     content_type='application/json')
+                self.assertEqual(resp.status_code, 400,
+                                 getattr(resp, 'data', resp))
+        self.assertEqual(self.devis.lignes.count(), len(LIGNES))
+
+    def test_etude_params_cle_inconnue_400_et_schema_ferme(self):
+        """api-fuzz — une clé inconnue de l'étude est refusée (« le schéma est
+        la seule porte ») ET le corps publié le dit : ``etude_params`` est un
+        objet fermé (``additionalProperties: false``) dont les propriétés sont
+        les entrées d'écran de ``domain/etude_schema``."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        from apps.ventes.domain import etude_schema
+
+        produit = self.devis.lignes.first().produit
+        ligne = {'produit': produit.id, 'designation': 'P',
+                 'quantite': '1', 'prix_unitaire': '10', 'ordre': 0}
+        resp = self.api.post(self._url(), {
+            'lignes': [ligne], 'etude_params': {'cle_inventee': 1}},
+            format='json')
+        self.assertEqual(resp.status_code, 400, getattr(resp, 'data', resp))
+        self.assertEqual(self.devis.lignes.count(), len(LIGNES))
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include('apps.ventes.urls'))
+        ]).get_schema(request=None, public=True)
+        etude = schema['components']['schemas'][
+            'DevisReplaceLinesRequestRequest']['properties']['etude_params']
+        self.assertIs(etude['additionalProperties'], False)
+        self.assertNotIn('expected_updated_at', etude['properties'])
+        ecran = {cle for cle, regle in etude_schema.SCHEMA.items()
+                 if regle['nature'] == etude_schema.ENTREE
+                 and not regle['exclusif']}
+        self.assertEqual(set(etude['properties']), ecran)
+        # ``nombre_proprietes`` n'accepte QUE des entiers côté serveur.
+        self.assertEqual(etude['properties']['nombre_proprietes']['type'],
+                         'integer')

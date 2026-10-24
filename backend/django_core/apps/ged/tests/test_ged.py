@@ -1009,7 +1009,7 @@ class DocumentTagTaxonomyTests(GedBase):
             company=self.co_a, nom='Juridique', slug='juridique')
         resp = auth(self.admin_a).post('/api/django/ged/tags/', {
             'nom': 'Autre', 'slug': 'juridique'}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)  # api-fuzz 24/10 : état
         self.assertIn('slug', resp.data)
 
     def test_hierarchy_and_chemin(self):
@@ -1034,10 +1034,10 @@ class DocumentTagTaxonomyTests(GedBase):
         b = DocumentTag.objects.create(
             company=self.co_a, nom='B', slug='b', parent=a)
         api = auth(self.admin_a)
-        # Tenter de mettre A sous B (son descendant) → cycle → 400.
+        # Tenter de mettre A sous B (son descendant) → cycle → 409 (état).
         resp = api.patch(f'/api/django/ged/tags/{a.id}/',
                          {'parent': b.id}, format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)
 
     def test_tagger_and_detagger_document(self):
         tag = DocumentTag.objects.create(
@@ -2544,14 +2544,14 @@ class DemandeApprobationTests(GedBase):
         self.doc_a.refresh_from_db()
         self.assertEqual(self.doc_a.statut, 'revue')
 
-    def test_endpoint_demander_revue_duplicate_400(self):
-        """Une 2e demande via l'endpoint renvoie 400."""
+    def test_endpoint_demander_revue_duplicate_409(self):
+        """Une 2e demande via l'endpoint renvoie 409 (état, api-fuzz 24/10)."""
         services.request_review(self.doc_a, user=self.admin_a)
         api = auth(self.admin_a)
         resp = api.post(
             f'/api/django/ged/documents/{self.doc_a.id}/demander-revue/',
             {}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_endpoint_demander_revue_other_company_404(self):
         """Lancer une revue sur le doc d'une autre société → 404."""

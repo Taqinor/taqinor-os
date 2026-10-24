@@ -61,6 +61,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from core.champs_stricts import ChaineStricte
+from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 from ..permissions import PeutLireOuEcrireCalepinage, PeutVoirCalepinage
 from ..serializers import (
@@ -115,7 +116,12 @@ class SchemaUnifilaireMixin:
     @extend_schema(methods=['GET'], responses=_FORME_SLD)
     @extend_schema(
         methods=['POST'], responses=_FORME_SLD,
-        request=EditionSldCorpsSerializer)
+        request=EditionSldCorpsSerializer,
+        # ERR-ENF11-FUZZ-CALEPINAGE - une rubrique hors libelles / reperes /
+        # positions est refusee (« Rubrique inconnue ») : la liste est fermee.
+        extensions={EXTENSION_CORPS_RESSERRE: {
+            'additionalProperties': False,
+            'properties': {'libelles': {}, 'reperes': {}, 'positions': {}}}})
     @action(detail=True, methods=['get', 'post'],
             url_path='schema-unifilaire',
             permission_classes=[PeutLireOuEcrireCalepinage])

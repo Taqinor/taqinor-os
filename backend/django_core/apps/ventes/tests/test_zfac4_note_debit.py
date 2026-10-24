@@ -117,3 +117,22 @@ class TestNoteDebit(TestCase):
             f'/api/django/ventes/factures/{self.facture.id}/creer-note-debit/',
             {'motif': 'Tentative cross-company'}, format='json')
         self.assertEqual(resp.status_code, 404)
+
+    def test_lignes_dont_le_total_deborde_409_et_produit_inconnu_404(self):
+        # CI #997 fuzz (24/10) : chaque ligne est dans ses bornes (< 10^8) mais
+        # leur produit déborde les 10 chiffres entiers des montants : refus
+        # d'état 409 (500 « numeric field overflow » avant), rien d'écrit ; un
+        # produit bien formé mais absent du catalogue = 404.
+        api = self._api(self.admin)
+        url = f'/api/django/ventes/factures/{self.facture.id}/creer-note-debit/'
+        avant = NoteDebit.objects.count()
+        resp = api.post(url, {'motif': 'x', 'lignes': [{
+            'produit': self.panneau.id, 'designation': 'Gros',
+            'quantite': '99999999', 'prix_unitaire': '99999999'}]},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        resp = api.post(url, {'motif': 'x', 'lignes': [{
+            'produit': 987654321, 'designation': 'Inconnu',
+            'quantite': '1', 'prix_unitaire': '10'}]}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.data)
+        self.assertEqual(NoteDebit.objects.count(), avant)
