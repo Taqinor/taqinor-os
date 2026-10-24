@@ -479,6 +479,18 @@ MENTION_INDEXATION_CONSTANTE = 'tarif de vente constant (hypothèse)'
 #: Dégradation annuelle des modules : médiane publiée, source unique
 #: ``quote_engine.pricing.PANEL_DEGRADATION``.
 DEGRADATION_CI_SOURCE = 'médiane Jordan & Kurtz, NREL/JA-5200-51664, 2012'
+#: AMOT84 — code machine STABLE servi À CÔTÉ de chaque texte français
+#: qu'un document client imprime (``source_code`` d'une hypothèse du flux,
+#: ``valeur_code`` d'une hypothèse de l'argent) : le gabarit en imprime le
+#: libellé ``ci_code_<code>`` dans la langue du document ; le texte
+#: français reste servi tel quel (lecteurs d'hier, repli sans code).
+CODE_INDEXATION_CONSTANTE = 'indexation_constante'
+CODE_DEGRADATION_NREL = 'degradation_nrel_2012'
+CODE_METHODE_HORAIRE = 'methode_horaire_poste'
+CODES_SOURCES_FLUX = {
+    MENTION_INDEXATION_CONSTANTE: CODE_INDEXATION_CONSTANTE,
+    DEGRADATION_CI_SOURCE: CODE_DEGRADATION_NREL,
+}
 #: Remplacement de l'onduleur à mi-vie (``pricing.INVERTER_REPLACE_YEAR`` ;
 #: principe IEA PVPS), au montant RÉEL de sa ligne (décision Q1 du 20/08).
 ONDULEUR_MOTIF = "remplacement à mi-vie (principe IEA PVPS, décision Q1 du " \
@@ -558,6 +570,14 @@ def _om(om, cle_base):
                      'source': source}
 
 
+def _codes_sources(hypotheses):
+    """AMOT84 — pose ``source_code`` (``CODES_SOURCES_FLUX``) à côté de
+    chaque source servie connue ; la source française reste intacte."""
+    for h in hypotheses or []:
+        if isinstance(h, dict) and h.get('source') in CODES_SOURCES_FLUX:
+            h['source_code'] = CODES_SOURCES_FLUX[h['source']]
+
+
 def _production_par_annee(bloc, production_annee1, deg_pct):
     """AMOT94 — la production de CHAQUE année du flux servi (``production_kwh``
     sur chaque ligne ; ``None`` en année 0) : la production de l'année 1 du
@@ -618,6 +638,7 @@ def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
         # :func:`sensibilites_ci` en ne changeant qu'UNE grandeur.
         collecteur[cle_base] = entrees
     bloc = eco_mod.flux_de_tresorerie(**entrees)
+    _codes_sources(bloc.get('hypotheses'))
     _production_par_annee(bloc, production['valeur'], deg_pct)
     omissions = [o for o in bloc['omissions']
                  if o['cle'] not in ('remplacements', 'charges_annuelles_mad')]
@@ -1201,6 +1222,7 @@ MOTIF_AIDE_AUTRE = ("parcours d'aide « autre » déclaré — non évalué, jam
 HYPOTHESE_VALORISATION = {
     'cle': 'valorisation',
     'valeur': 'tarif du poste horaire couvert, heure par heure',
+    'valeur_code': CODE_METHODE_HORAIRE,
     'statut': 'source', 'source': 'conventions Groupe CIQ'}
 #: Ordre des clés du contrat (``exemple``).
 CLES_BLOC = ('statut', 'motifs_omission', 'base', 'motif_base', 'tarif',

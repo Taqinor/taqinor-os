@@ -631,7 +631,7 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
 
         def _build(donnees):
             essais.append((donnees.get("_palier_equip"),
-                           bool(donnees.get("_sans_graphiques"))))
+                           donnees.get("_sans_graphiques")))
             return render.build_html(donnees)
 
         def _tient(html, _doc):
@@ -641,7 +641,37 @@ class TestAmot90EnergieMensuelle(SimpleTestCase):
         with patch.object(equip, "_tient", _tient):
             pdf = equip.pdf_adaptatif(d, _build, lambda _html: _Doc())
         self.assertEqual(pdf, b"%PDF-sans-graphique")
-        self.assertEqual(essais, [(None, False), (None, True)])
+        # Palier 0 partout ; le GRAPHIQUE cède seul d'abord (re-mesuré),
+        # puis les autres blocs cédables encore posés — jamais la densité.
+        self.assertEqual([palier for palier, _r in essais], [None] * 3)
+        self.assertIsNone(essais[0][1])
+        self.assertEqual(essais[1][1], frozenset({"energie_mensuelle"}))
+        self.assertIn("energie_mensuelle", essais[2][1])
+        self.assertIn("etapes", essais[2][1])
+
+    def test_rendu_adaptatif_le_graphique_seul_suffit(self):
+        """AMOT90 — quand retirer le seul graphique suffit, la page 1 garde
+        ses prochaines étapes et la page 2 sa fiche d'installation."""
+        from apps.ventes.quote_engine.commercial import equip
+        essais = []
+
+        class _Doc:
+            def write_pdf(self):
+                return b"%PDF"
+
+        def _build(donnees):
+            essais.append(donnees.get("_sans_graphiques"))
+            return render.build_html(donnees)
+
+        def _tient(html, _doc):
+            return 'data-graphique="energie_mensuelle"' not in html
+
+        d = renderer._augment(_data_ci())
+        with patch.object(equip, "_tient", _tient):
+            self.assertEqual(
+                equip.pdf_adaptatif(d, _build, lambda _html: _Doc()),
+                b"%PDF")
+        self.assertEqual(essais, [None, frozenset({"energie_mensuelle"})])
 
 
 class TestAmot91Hypotheses(SimpleTestCase):
@@ -664,7 +694,7 @@ class TestAmot91Hypotheses(SimpleTestCase):
                 "facture (grille du 16/02/2025).",
                 "Indexation du tarif 0 % / an", "Dégradation des panneaux",
                 "Horizon 25 ans",
-                "Entretien (O&M) non déduite des économies",
+                "Entretien (O&M) non déduit des économies",
                 "Remplacement onduleur en année 11 55 000,00 MAD TTC",
                 f"Base de production {production['inclinaison_deg']}° "
                 "d'inclinaison, plein sud — à confirmer au calepinage",
@@ -684,7 +714,7 @@ class TestAmot91Hypotheses(SimpleTestCase):
         data["economie_ci"]["om"] = {"statut": "souscrit",
                                      "montant_mad_an": 12000.0,
                                      "source": "ligne O&M souscrite"}
-        self.assertIn("Entretien (O&M) déduite des économies : 12 000,00 "
+        self.assertIn("Entretien (O&M) déduit des économies : 12 000,00 "
                       "MAD/an", self._p3(data))
 
     def test_calepinage_et_etude_d_une_autre_puissance(self):
@@ -720,6 +750,19 @@ class TestAmot92CouvertureProjet(SimpleTestCase):
         data = _data_ci()
         data.update(surcharges)
         return data
+
+    def test_titre_arabe_segments_latins_isoles(self):
+        """Arabe : « nom, ville » forment UN isolat bidirectionnel (U+2068 …
+        U+2069) et le kWc un autre — la virgule reste entre le nom et la
+        ville ; français et anglais sans isolat."""
+        p1 = unescape(self._p1(self._data(langue_sortie="ar")))
+        self.assertIn("\u2068Hôtel Atlas Riad SARL, Marrakech\u2069", p1)
+        self.assertIn("\u206890\u2069", p1)
+        for langue in ("fr", "en"):
+            with self.subTest(langue=langue):
+                p1 = unescape(self._p1(self._data(langue_sortie=langue)))
+                self.assertNotIn("\u2068", p1)
+                self.assertIn("Hôtel Atlas Riad SARL, Marrakech", p1)
 
     def test_titre_projet_et_categorie_en_surtitre(self):
         p1 = self._p1(self._data())
@@ -805,6 +848,36 @@ class TestAmot92CouvertureProjet(SimpleTestCase):
         self.assertNotIn("Prochaines étapes", sans.split('class="page"')[1])
 
 
+class TestAmot84UnitesCouverture(SimpleTestCase):
+    """AMOT84 — la tuile « Puissance crête » des couvertures C&I dit son
+    unité dans la langue du document : « kWp » en anglais (comme le titre),
+    « kWc » en français, octet pour octet."""
+
+    def _p1_industriel(self, langue=None):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["etude"] = dict(data["etude"], etude_ci=copy.deepcopy(_ETUDE_CI))
+        if langue:
+            data["langue_sortie"] = langue
+        return i_render.build_html(i_rend._augment(
+            etude_ci_au_kwc_servi(data))).split('class="page"')[1]
+
+    def test_anglais_kwp(self):
+        for p1 in (_pages_ci(_data_ci(langue="en"))[1],
+                   self._p1_industriel("en")):
+            texte = _texte_ci(p1)
+            self.assertIn(" kWp", texte)
+            self.assertNotIn("kWc", texte)
+            self.assertNotIn("kWh/an", texte)
+
+    def test_francais_inchange(self):
+        for p1 in (_pages_ci(_data_ci())[1], self._p1_industriel()):
+            self.assertIn("&nbsp;kWc", p1)
+            self.assertNotIn("kWp", _texte_ci(p1))
+
+
 class TestAmot93VotreInstallation(SimpleTestCase):
     """AMOT93 — « Votre installation en bref » sous le tableau de la page 2
     (commercial ET industriel) : modules (modèle, Wc, nombre, kWc),
@@ -835,6 +908,28 @@ class TestAmot93VotreInstallation(SimpleTestCase):
                          [{"kw_ac": 50, "quantite": 1}])
         self.assertIn("1 × Onduleur réseau Huawei 50kW Triphasé · 50 kW AC "
                       "au total", self._fiche(_pages_ci(data)[2]))
+
+    def test_kw_ac_total_lu_tel_que_servi(self):
+        """Le total AC vient de ``synthese_ci.installation.kw_ac_total``
+        (servi une fois), imprimé tel quel ; un bloc sans ``kw_ac_total``
+        n'imprime aucun total — le gabarit ne recalcule rien."""
+        data = _data_ci()
+        data["all_items"][1]["designation"] = (
+            "Onduleur réseau Huawei 50kW Triphasé")
+        self.assertEqual(synthese_ci(data)["installation"]["kw_ac_total"],
+                         50)
+        augmente = renderer._augment(data)
+        installation = augmente["com_synthese"]["installation"]
+        installation["kw_ac_total"] = 75
+        fiche = self._fiche(render.build_html(augmente).split(
+            'class="page"')[2])
+        self.assertIn("75 kW AC au total", fiche)
+        self.assertNotIn("50 kW AC", fiche)
+        del installation["kw_ac_total"]
+        fiche = self._fiche(render.build_html(augmente).split(
+            'class="page"')[2])
+        self.assertIn("1 × Onduleur réseau Huawei 50kW Triphasé", fiche)
+        self.assertNotIn("kW AC", fiche)
 
     def test_industriel_et_cedable(self):
         from apps.ventes.quote_engine.industriel import render as i_render

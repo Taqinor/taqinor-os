@@ -109,11 +109,19 @@ def pdf_adaptatif(d, build_html, rendre, index_page=1):
     société) est TRONQUÉE avec un renvoi déclaré (« suite des conditions :
     proposition en ligne », ``ci.blocs.puces_conditions``) avant tout
     refus — jamais une bande légale, une signature ou un financement coupés."""
+    doc = document_adaptatif(d, build_html, rendre)
+    return None if doc is None else doc.write_pdf()
+
+
+def document_adaptatif(d, build_html, rendre):
+    """Le document RENDU que livre :func:`pdf_adaptatif` (pages exactes,
+    rien sous le pied), ou ``None`` — la MÊME décision, pour qu'un test de
+    pages mesure le PDF livré et non le HTML du palier 0."""
     for palier in range(len(PALIERS_DENSITE)):
         donnees = d if palier == 0 else dict(d, _palier_equip=palier)
         doc = _rendu_tenu(donnees, build_html, rendre)
         if doc is not None:
-            return doc.write_pdf()
+            return doc
     from ..ci.blocs import puces_conditions
     dernier = len(PALIERS_DENSITE) - 1
     n = len(puces_conditions(d))
@@ -123,7 +131,7 @@ def pdf_adaptatif(d, build_html, rendre, index_page=1):
         html = build_html(donnees)
         doc = rendre(html)
         if _tient(html, doc):
-            return doc.write_pdf()
+            return doc
     return None
 
 
@@ -141,15 +149,36 @@ def _rendu_tenu(donnees, build_html, rendre):
         return doc
     if 'data-graphique="' not in html or donnees.get("_sans_graphiques"):
         return None
-    # D'abord les seuls blocs des pages qui débordent, puis tous.
-    for retires in (_cedables_des_pages_debordantes(html, doc), True):
-        if not retires:
+    # Les blocs cédables des pages qui débordent cèdent dans l'ORDRE
+    # ``ORDRE_CEDABLES``, chaque retrait RE-MESURÉ ; enfin tous.
+    retires = frozenset()
+    for etape in ORDRE_CEDABLES:
+        candidats = _cedables_des_pages_debordantes(html, doc) - retires
+        ajout = candidats if etape is None else candidats & etape
+        if not ajout:
             continue
+        retires = retires | ajout
         html = build_html(dict(donnees, _sans_graphiques=retires))
         doc = rendre(html)
         if _tient(html, doc):
             return doc
-    return None
+    if 'data-graphique="' not in html:
+        return None
+    html = build_html(dict(donnees, _sans_graphiques=True))
+    doc = rendre(html)
+    return doc if _tient(html, doc) else None
+
+
+#: AMOT90/AMOT94 — l'ORDRE dans lequel les blocs cédables (``data-graphique``)
+#: des pages qui débordent cèdent leur place, chaque retrait re-mesuré :
+#: 1. l'énergie mois par mois (un dessin : le texte porte ses chiffres) ;
+#: 2. la courbe du cumul (le tableau des 25 ans porte déjà le cumul) ;
+#: 3. (``None``) tout autre bloc cédable encore posé sur une page qui
+#:    déborde — tableau des hypothèses, fiche « Votre installation en bref »,
+#:    rangée des prochaines étapes ;
+#: puis, en dernier recours, tous les blocs cédables du document.
+ORDRE_CEDABLES = (frozenset({"energie_mensuelle"}),
+                  frozenset({"courbe_cumul"}), None)
 
 
 def _cedables_des_pages_debordantes(html, doc):
@@ -224,8 +253,9 @@ def _rangees_installation(d, L, fmt):
                if kwc else []))))
     onduleurs = [f'{_num(it.get("quantite")):g} × {it.get("designation")}'
                  for it in items if sc.is_inverter(it.get("designation") or "")]
-    kw_ac = sum(o["kw_ac"] * o["quantite"]
-                for o in installation.get("onduleurs") or [])
+    # AMOT93 — le total AC SERVI par ``synthese_ci.installation`` (jamais
+    # recalculé ici) ; absent ⇒ aucun total imprimé.
+    kw_ac = _num(installation.get("kw_ac_total"), None)
     if onduleurs:
         rangees.append((L("ci_inst_onduleurs", "Onduleurs"), " · ".join(
             [", ".join(onduleurs)]

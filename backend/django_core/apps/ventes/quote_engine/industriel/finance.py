@@ -184,6 +184,16 @@ CLES_MONTANTS_FLUX = ("investissement_mad", "economie_annee1_mad",
                       "production_annee1_kwh")
 
 
+def _texte_code(d, L, code, servi):
+    """AMOT84 — le libellé ``ci_code_<code>`` dans la langue du document
+    (le texte ``servi`` en français, octet pour octet), ou ``servi`` tel
+    quel sans code connu du catalogue."""
+    cle = f"ci_code_{code}" if code else ""
+    if cle and cle in _cles_catalogue():
+        return L(cle, servi)
+    return servi
+
+
 def _rangees_flux(flux, fmt, L, d, compact):
     """``(libellé, valeur — source)`` des hypothèses du flux servi."""
     rangees = []
@@ -195,8 +205,17 @@ def _rangees_flux(flux, fmt, L, d, compact):
         if valeur is None:
             continue
         cat, fr = LIBELLES_HYPOTHESES[h["cle"]]
+        if h["cle"] == "horizon_ans" and ci_couverture.SOURCES_CLIENT.get(
+                str(h.get("source") or "").strip()) == "ci_src_horizon":
+            # « Horizon : 25 ans » — la source servie (« durée d'analyse :
+            # 25 ans ») ne ferait que le répéter.
+            rangees.append((L(cat, fr), valeur))
+            continue
         # AMOT80 — chaque source dans les mots du client (aucun code interne).
-        source = ci_couverture.texte_client(d, h.get("source"))
+        # AMOT84 — une source servie sous un code stable (``source_code``)
+        # est imprimée dans la langue du document ; le texte servi en repli.
+        source = _texte_code(d, L, h.get("source_code"),
+                             ci_couverture.texte_client(d, h.get("source")))
         rangees.append((L(cat, fr), valeur + (f" — {source}" if source
                                               else "")))
     return rangees
@@ -221,12 +240,19 @@ def _rangees_argent(argent, fmt_mad, L, d):
             rangees.append((
                 L("ci_h_valorisation", "Valorisation de vos kWh")
                 if h.get("cle") == "valorisation" else None,
-                ci_blocs._txt(h.get("valeur"))
+                _texte_code(d, L, h.get("valeur_code"),
+                            ci_blocs._txt(h.get("valeur")))
                 + (f" — {source}" if source else "")))
+    # AMOT94 — le montant du remplacement sur la BASE servie : HT quand la
+    # TVA est récupérable (``argent.base == 'ht'``, D-CIQ-3), TTC sinon.
+    en_ht = argent.get("base") == "ht"
     for r in argent.get("remplacements") or []:
         if not isinstance(r, dict) or r.get("annee") is None:
             continue
         montant = r.get("montant_ttc_mad")
+        unite = L("ci_ttc", "TTC")
+        if en_ht and r.get("montant_ht_mad") is not None:
+            montant, unite = r.get("montant_ht_mad"), L("ci_ht", "HT")
         composant = ci_blocs._txt(r.get("composant"))
         cle_composant = f"ci_garantie_{composant}"
         if ci_blocs.langue(d) != "fr" and cle_composant in _cles_catalogue():
@@ -238,7 +264,7 @@ def _rangees_argent(argent, fmt_mad, L, d):
               "{annee}", composant=composant,
               annee=f"{r['annee']:g}" if isinstance(r["annee"], (int, float))
               else r["annee"]),
-            (f"{fmt_mad(montant)}&nbsp;MAD {L('ci_ttc', 'TTC')}"
+            (f"{fmt_mad(montant)}&nbsp;MAD {unite}"
              if montant is not None else "") + motif))
     return rangees
 
@@ -278,15 +304,16 @@ def _rangees_estimation(synthese, L):
 
 
 def _rangee_om(argent, fmt_mad, L):
-    """AMOT91 — l'entretien (O&M) : « déduite des économies : N MAD/an »
-    seulement souscrite et chiffrée (CIQ342), sinon « non déduite »."""
+    """AMOT91 — l'entretien (O&M) : « déduit des économies : N MAD/an »
+    seulement souscrit et chiffré (CIQ342), sinon « non déduit »
+    (accordé à « entretien »)."""
     om = argent.get("om") if isinstance(argent, dict) else None
     om = om if isinstance(om, dict) else {}
     montant = _num(om.get("montant_mad_an"))
-    valeur = (L("ci_h_om_deduite", "déduite des économies : {montant} MAD/an",
+    valeur = (L("ci_h_om_deduite", "déduit des économies : {montant} MAD/an",
                 montant=fmt_mad(montant))
               if om.get("statut") == "souscrit" and montant else
-              L("ci_h_om_non_deduite", "non déduite des économies"))
+              L("ci_h_om_non_deduite", "non déduit des économies"))
     return [(L("ci_h_om", "Entretien (O&amp;M)"), valeur)]
 
 
@@ -521,8 +548,9 @@ def _pied_investissement(d, argent, fmt_mad, L):
     # AMOT86 — jamais « clé en main » quand des postes sont hors total.
     synthese = d.get("ind_synthese")
     if base == "ht" and ht is not None:
+        # Le titre dit déjà « HT » : le montant ne le répète pas.
         return (ci_couverture.titre_investissement(d, synthese, "ht")
-                + f" : <b>{fmt_mad(ht)} MAD {l_ht}</b>")
+                + f" : <b>{fmt_mad(ht)} MAD</b>")
     if base == "deux" and ht is not None:
         return (ci_couverture.titre_investissement(d, synthese, "deux")
                 + f" : <b>{fmt_mad(ttc)} MAD {l_ttc}</b> "
@@ -737,13 +765,17 @@ def build(ctx):
         lignes_hyp = _hypotheses(argent, flux, fmt, fmt_mad, L, d)
         cfo_html = _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L,
                              (navy, ink))
+        # AMOT94 — cédable (``data-graphique="hypotheses"``) APRÈS les deux
+        # dessins de la page (``commercial.equip.ORDRE_CEDABLES``) : jamais
+        # une 5ᵉ page ni un texte sous le pied.
         hypotheses_html = (
-            f'<div class="i2-hyp"><div class="i2-hyp-t">'
+            f'<div class="i2-hyp" data-graphique="hypotheses">'
+            f'<div class="i2-hyp-t">'
             f'{L("ci_hypotheses_estimation", TITRE_HYPOTHESES)}</div>'
             # AMOT94 — sur deux colonnes : le tableau des 25 ans tient.
             + '<div class="i2-hyp-c">'
             + "".join(f'<div class="i2-hyp-i">{h}</div>' for h in lignes_hyp)
-            + '</div></div>') if lignes_hyp else ""
+            + '</div></div>') if lignes_hyp and not cede(d, "hypotheses")             else ""
         om_txt = _ligne_om(argent, fmt_mad, L)
         revente_html = _ligne_revente(argent, fmt, L, ci_blocs.langue(d))
         mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'

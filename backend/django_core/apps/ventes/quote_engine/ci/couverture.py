@@ -157,20 +157,28 @@ def bandeau_reserve(d, cle, prefixe):
     liste = (f'<div class="{prefixe}-reserve-l">'
              + libelle(d, "ci_a_confirmer", "À confirmer : ")
              + " · ".join(a_confirmer) + "</div>") if a_confirmer else ""
-    postes = postes_hors_total(d.get(f"{cle}_synthese"))
+    postes = ligne_postes_hors_total(d, d.get(f"{cle}_synthese"))
     if postes:
-        # AMOT88 — chaque poste dit son rôle en mots simples (« câble DC —
-        # <article> », « structure de fixation »), dans la langue du document.
-        from .synthese import texte_postes
-        liste = (f'<div class="{prefixe}-reserve-l">'
-                 + libelle(d, "ci_a_chiffrer_hors_total", "À chiffrer après "
-                           "la visite technique (hors total) : ")
-                 + texte_postes(postes_echappes(postes), roles_client(d))
+        liste = (f'<div class="{prefixe}-reserve-l">' + postes
                  + "</div>") + liste
     bandeau = (BANDEAU_RESERVE if langue(d) == "fr"
                else texte(TEXTES_VISITE, langue(d)).rstrip("."))
     return (f'<div class="{prefixe}-reserve"><b>{bandeau}</b>'
             f'{liste}</div>')
+
+
+def ligne_postes_hors_total(d, synthese):
+    """AMOT86/AMOT88 — « À chiffrer après la visite technique (hors total) :
+    câble DC — <article>, structure de fixation » (rôle en mots simples,
+    dans la langue du document, JAMAIS un montant), ou '' sans poste — UNE
+    phrase pour le bandeau des couvertures et le une-page C&I."""
+    postes = postes_hors_total(synthese)
+    if not postes:
+        return ""
+    from .synthese import texte_postes
+    return (libelle(d, "ci_a_chiffrer_hors_total", "À chiffrer après la "
+                    "visite technique (hors total) : ")
+            + texte_postes(postes_echappes(postes), roles_client(d)))
 
 
 def css_bandeau(prefixe, gold, ink, muted):
@@ -540,9 +548,24 @@ def titre_projet(d, cle, kwc_txt, nom_client):
         if isinstance(entreprise, dict) else ""
     ville = str(d.get("client_ville_libelle") or d.get("client_city")
                 or "").strip()
+    client = raison or nom_client
+    if langue(d) == "ar":
+        # AMOT92 — titre arabe : le nom du client et sa ville forment UN
+        # segment isolé (U+2068 … U+2069, sens tiré de son premier
+        # caractère fort), le kWc un autre — la virgule reste entre le nom
+        # et la ville, dans l'ordre latin, au lieu d'être renvoyée devant le
+        # nom par l'algorithme bidirectionnel. Français et anglais inchangés.
+        client = ISOLE.format(client + (f", {ville}" if ville else ""))
+        return libelle(d, "ci_titre_projet", "Centrale solaire {kwc} kWc — "
+                       "{client}", kwc=ISOLE.format(kwc_txt), client=client)
     titre = libelle(d, "ci_titre_projet", "Centrale solaire {kwc} kWc — "
-                    "{client}", kwc=kwc_txt, client=raison or nom_client)
+                    "{client}", kwc=kwc_txt, client=client)
     return titre + (f", {ville}" if ville else "")
+
+
+#: AMOT92 — isolat bidirectionnel (FIRST STRONG ISOLATE … POP DIRECTIONAL
+#: ISOLATE) autour d'un segment latin dans un texte arabe.
+ISOLE = "\u2068{}\u2069"
 
 
 def ligne_interlocuteur(d, prefixe):

@@ -63,7 +63,10 @@ class BlocAcceptation(SimpleTestCase):
                 self.assertIn(f"<b>{SIGNATURE['signataire_nom']}, "
                               f"{SIGNATURE['signataire_qualite']}</b>", case)
                 self.assertIn(f"<b>{SIGNATURE['ice']}</b>", case)
-                self.assertIn(f"<b>{SIGNATURE['date']}</b>", case)
+                # Date ISO servie, imprimée jj/mm/aaaa (« Le 24/10/2026 »).
+                annee, mois, jour = SIGNATURE['date'][:10].split("-")
+                self.assertIn(f"<b>{jour}/{mois}/{annee}</b>", case)
+                self.assertNotIn(SIGNATURE['date'], case)
                 self.assertIn("Cachet de la société", case)
 
     def test_texte_signe_echappe_une_fois(self):

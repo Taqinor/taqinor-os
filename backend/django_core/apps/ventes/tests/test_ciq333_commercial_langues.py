@@ -161,13 +161,19 @@ class Ciq333LanguesCommercial(SimpleTestCase):
         self.assertEqual(_html(_data("fr")), html)
 
     def test_trois_pages_dans_les_trois_langues(self):
-        from weasyprint import HTML
+        """Le PDF LIVRÉ (``render_pdf_bytes`` : rendu adaptatif AMOT36/90,
+        blocs cédables retirés plutôt qu'une page de plus) fait 3 pages dans
+        les trois langues — compté sur ses octets, comme CIQ331, et non sur
+        le HTML du palier 0 que le rendu adaptatif corrige justement."""
+        import fitz
         for langue in ("fr", "en", "ar"):
             with self.subTest(langue=langue):
                 pdf = renderer.render_pdf_bytes(_data(langue))
                 self.assertEqual(pdf[:4], b"%PDF")
-                doc = HTML(string=_html(_data(langue))).render()
-                self.assertEqual(len(doc.pages), 3)
+                self.assertEqual(
+                    len(fitz.open(stream=pdf, filetype="pdf")), 3)
+                self.assertEqual(
+                    _html(_data(langue)).count('<div class="page">'), 3)
 
     def test_les_donnees_saisies_ne_sont_pas_traduites(self):
         html = _html(_data("ar"))

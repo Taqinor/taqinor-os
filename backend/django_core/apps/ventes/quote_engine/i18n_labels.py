@@ -2799,10 +2799,10 @@ LIBELLES = {
     'ci_h_om': {'fr': 'Entretien (O&amp;M)', 'en': 'Maintenance (O&amp;M)',
                 'ar': 'الصيانة (التشغيل والصيانة)'},
     'ci_h_om_deduite': {
-        'fr': 'déduite des économies : {montant} MAD/an',
+        'fr': 'déduit des économies : {montant} MAD/an',
         'en': 'deducted from the savings: {montant} MAD/yr',
         'ar': 'مخصومة من الوفورات: {montant} درهم/سنة'},
-    'ci_h_om_non_deduite': {'fr': 'non déduite des économies',
+    'ci_h_om_non_deduite': {'fr': 'non déduit des économies',
                             'en': 'not deducted from the savings',
                             'ar': 'غير مخصومة من الوفورات'},
     # AMOT92 — la couverture est le PROJET du client.
@@ -2874,6 +2874,21 @@ LIBELLES = {
                            'ar': 'الاستبدال'},
     'ci_fx_flux': {'fr': 'Flux net', 'en': 'Net cash flow',
                    'ar': 'التدفق الصافي'},
+    # AMOT84 — textes SERVIS par ``economie_ci`` sous un code stable
+    # (``source_code`` / ``valeur_code``) : le français est celui que le
+    # moteur sert, octet pour octet.
+    'ci_code_indexation_constante': {
+        'fr': 'tarif de vente constant (hypothèse)',
+        'en': 'constant selling tariff (assumption)',
+        'ar': 'تعريفة بيع ثابتة (فرضية)'},
+    'ci_code_degradation_nrel_2012': {
+        'fr': 'médiane Jordan & Kurtz, NREL/JA-5200-51664, 2012',
+        'en': 'median from Jordan &amp; Kurtz, NREL/JA-5200-51664, 2012',
+        'ar': 'القيمة الوسيطة حسب Jordan &amp; Kurtz، NREL/JA-5200-51664، 2012'},
+    'ci_code_methode_horaire_poste': {
+        'fr': 'tarif du poste horaire couvert, heure par heure',
+        'en': 'tariff of the time-of-use period covered, hour by hour',
+        'ar': 'تعريفة الفترة الزمنية المغطاة، ساعة بساعة'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},

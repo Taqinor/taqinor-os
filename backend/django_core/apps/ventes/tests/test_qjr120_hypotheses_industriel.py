@@ -70,7 +70,10 @@ class TestFluxServi(SimpleTestCase):
         self.assertIn("Hypothèses de l'estimation", self.txt)
         self.assertNotIn("moteur", self.txt)
         # AMOT80 — la source en mots du client, jamais « D-CIQ-10 ».
-        self.assertIn("durée d'analyse : 25 ans", self.txt)
+        # « Horizon : 25 ans » — une seule mention, la source servie le
+        # répétait (« durée d'analyse : 25 ans »).
+        self.assertIn("Horizon : 25 ans", self.txt)
+        self.assertNotIn("durée d'analyse", self.txt)
         self.assertNotIn("D-CIQ", self.txt)
         self.assertIn("Remplacement onduleur en année 11", self.txt)
         self.assertNotIn("économies maintenues constantes", self.txt)
