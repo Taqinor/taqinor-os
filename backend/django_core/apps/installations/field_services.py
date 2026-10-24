@@ -381,11 +381,54 @@ def intervention_photos(intervention):
             .order_by('-created_at', 'id'))
 
 
+#: Attribut où `precharger_photos` dépose les pièces jointes d'une intervention.
+PHOTOS_PRECHARGEES_ATTR = '_photos_precharges'
+
+
+def precharger_photos(interventions):
+    """APRF37 — charge en UNE requête les pièces jointes de toutes les
+    `interventions` données (liste des chantiers : N chantiers × M
+    interventions) et les dépose sur chacune, au lieu d'une requête
+    `Attachment` par intervention dans `missing_required_shots`. Même filtre
+    (type, objet, société de l'intervention) et même tri que
+    `intervention_photos`.
+
+    Même court-circuit que `missing_required_shots` : si aucune société des
+    interventions n'a de créneau OBLIGATOIRE actif, il n'y a rien à comparer et
+    rien n'est chargé (le repli par intervention reste de toute façon
+    correct)."""
+    interventions = list(interventions)
+    societes = {i.company_id for i in interventions if i.company_id is not None}
+    if not societes or not ShotListSlot.objects.filter(
+            company_id__in=societes, actif=True, obligatoire=True).exists():
+        return
+    from django.contrib.contenttypes.models import ContentType
+    from apps.records.models import Attachment
+    par_id = {i.id: i for i in interventions}
+    for interv in interventions:
+        setattr(interv, PHOTOS_PRECHARGEES_ATTR, [])
+    ct = ContentType.objects.get_for_model(Intervention)
+    pieces = (Attachment.objects
+              .filter(content_type=ct, object_id__in=list(par_id))
+              .select_related('uploaded_by')
+              .order_by('-created_at', 'id'))
+    for att in pieces:
+        interv = par_id[att.object_id]
+        if att.company_id == interv.company_id:
+            getattr(interv, PHOTOS_PRECHARGEES_ATTR).append(att)
+
+
 def photos_by_slot(intervention):
     """Map {slot_cle: [attachment, ...]} pour l'intervention (le créneau est
-    porté par le `filename` préfixé `slot:<cle>|`, voir la vue photos)."""
+    porté par le `filename` préfixé `slot:<cle>|`, voir la vue photos).
+
+    APRF37 — lit la liste déposée par `precharger_photos` quand elle existe
+    (aucune requête) ; sinon la requête unitaire d'origine, inchangée."""
+    precharges = getattr(intervention, PHOTOS_PRECHARGEES_ATTR, None)
+    photos = (precharges if precharges is not None
+              else intervention_photos(intervention))
     out = {}
-    for att in intervention_photos(intervention):
+    for att in photos:
         cle = _slot_of_attachment(att)
         out.setdefault(cle, []).append(att)
     return out

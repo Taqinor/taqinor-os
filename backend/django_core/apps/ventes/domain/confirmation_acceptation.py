@@ -11,8 +11,11 @@ Le corps dit ce que le client a engagé : raison sociale / ICE quand le devis C&
 porte, l'horodatage de la signature (Africa/Casablanca) et l'empreinte du contenu
 signé (+ celle du PDF quand elle est connue). Français, anglais quand la page était
 lue en anglais (``DevisSignature.langue_page``). QJR134 tient : sans enregistrement de
-signature, l'e-mail n'affirme ni signature ni exemplaire signé. Best-effort : rien
-ici ne peut défaire l'acceptation. Aucun prix d'achat / marge (règle #4).
+signature, l'e-mail n'affirme ni signature ni exemplaire signé. ADEV38 : « votre
+exemplaire signé ci-joint » n'est écrit que si le PDF signé est stocké
+(``signed_pdf_key``) ET lisible, donc réellement joint ; sinon le corps ne promet
+aucune pièce signée. Best-effort : rien ici ne peut défaire l'acceptation. Aucun
+prix d'achat / marge (règle #4).
 """
 import logging
 
@@ -102,8 +105,31 @@ def _bloc_preuve(sig, t):
     return '\n'.join(lignes) + '\n\n'
 
 
-def corps_confirmation(devis, sig, *, acompte_bloc='', langue='fr'):
-    """Le corps de la confirmation (FR, EN si ``langue == 'en'``)."""
+def exemplaire_signe_joint(sig):
+    """ADEV38 — l'exemplaire signé sera-t-il VRAIMENT en pièce jointe ?
+
+    Vrai seulement si la signature porte une ``signed_pdf_key`` non vide ET que
+    ses octets se lisent (c'est ce que ``_document_pdf`` joint alors). Une clé
+    vide (stockage du PDF signé en échec) ou illisible ⇒ faux : le corps ne
+    promet pas une pièce absente. Jamais d'exception."""
+    cle = (getattr(sig, 'signed_pdf_key', '') or '').strip()
+    if not cle:
+        return False
+    try:
+        from apps.ventes.utils.pdf import download_pdf
+        return bool(download_pdf(cle))
+    except Exception:  # noqa: BLE001 — illisible = non joint, journalisé (D-ENF22-BLE001)
+        logger.warning('ADEV38 : exemplaire signé illisible (clé %s) — non annoncé',
+                       cle, exc_info=True)
+        return False
+
+
+def corps_confirmation(devis, sig, *, acompte_bloc='', langue='fr',
+                       exemplaire_joint=None):
+    """Le corps de la confirmation (FR, EN si ``langue == 'en'``).
+
+    ``exemplaire_joint`` (ADEV38) : l'exemplaire signé est-il joint ? ``None`` ⇒
+    lu sur la signature (``signed_pdf_key`` non vide), sans lire le stockage."""
     from apps.ventes.email_service import _signature as _signature_societe
     t = TEXTES['en' if langue == 'en' else 'fr']
     client = getattr(devis, 'client', None)
@@ -112,11 +138,13 @@ def corps_confirmation(devis, sig, *, acompte_bloc='', langue='fr'):
         nom = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
     salut = t['salut'].format(nom=nom) if nom else t['salut_vide']
     preuve = sig is not None
+    if exemplaire_joint is None:
+        exemplaire_joint = preuve and bool(sig.signed_pdf_key)
     return (
         f"{salut}\n\n{t['recu'].format(ref=devis.reference)}\n\n"
         + (f"{t['signature']}\n\n{_bloc_preuve(sig, t)}" if preuve else '')
         + (acompte_bloc or '')
-        + (f"{t['exemplaire']}\n\n" if preuve else '')
+        + (f"{t['exemplaire']}\n\n" if exemplaire_joint else '')
         + f"{t['merci']}\n\n{t['cordialement']}\n{_signature_societe(devis.company)}"
     )
 
@@ -135,9 +163,16 @@ def envoyer_confirmations(*, devis, user, acompte_bloc=''):
     second ; seules les adresses réellement servies sont rendues."""
     from apps.ventes.email_service import send_document_email
     sig = _signature_de(devis)
+    if sig is not None:
+        # ADEV38 — ``_document_pdf`` lit ``devis.signature``, mis en cache à la
+        # création de la signature (clé vide) AVANT que ``_store_signed_pdf``
+        # n'écrive ``signed_pdf_key`` : on y remet la signature relue pour que
+        # la pièce jointe soit bien l'exemplaire signé annoncé dans le corps.
+        devis.signature = sig
     langue = 'en' if getattr(sig, 'langue_page', '') == 'en' else 'fr'
     t = TEXTES[langue]
-    corps = corps_confirmation(devis, sig, acompte_bloc=acompte_bloc, langue=langue)
+    corps = corps_confirmation(devis, sig, acompte_bloc=acompte_bloc, langue=langue,
+                               exemplaire_joint=exemplaire_signe_joint(sig))
     dests = destinataires_client(devis, sig)
     vendeur = _vendeur(devis)
     email_vendeur = (getattr(vendeur, 'email', '') or '').strip()

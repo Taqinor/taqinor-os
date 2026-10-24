@@ -1,0 +1,99 @@
+{
+  "sha": "3a462632ce0c6083bcd92b5ccbfab2bb6832624b",
+  "date": "2026-10-24",
+  "groupe": "ACHT",
+  "verdict": "PASS",
+  "couvre": [
+    "ACHT62",
+    "ACHT65",
+    "ACHT67",
+    "ACHT102"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P4.1",
+      "taches": [
+        "ACHT62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-24/ACHT62-P4.1.txt"
+    },
+    {
+      "id": "P1",
+      "taches": [
+        "ACHT65"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-24/ACHT65-P1.txt"
+    },
+    {
+      "id": "P1.3",
+      "taches": [
+        "ACHT67"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-24/ACHT67-P1.3.txt"
+    },
+    {
+      "id": "PA",
+      "taches": [
+        "ACHT102"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-24/ACHT102-PA.txt"
+    }
+  ]
+}

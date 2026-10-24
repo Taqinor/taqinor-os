@@ -1,0 +1,9 @@
+ACHT102 — PA — rejeu orchestrateur, pile locale à 3a462632c (front construit à e45ab8aa4, aucun écart frontend/src jusqu'à 3a462632c), 2026-10-24, navigateur intégré, demo_admin (société 2).
+
+Chantier CHT-202610-0004 (id 234), onglet « Jalons & gates », section « Mise en service » : date, production test, tension, notes vides au chargement.
+1. Saisie en cours (non enregistrée) : « Saisie en cours rejeu ACHT102 » tapé dans Notes / PV.
+2. Changement serveur (autre utilisateur simulé, sonde manage.py shell) : mes_tension = 231.00, mes_production_test = 4.20 sur l'installation 234 (mes_pv_notes reste vide côté serveur).
+3. Rafraîchissement déclenché depuis l'écran : coche « Photos prises » de la checklist → POST chantiers/234/cocher-checklist/ → 200, puis GET chantiers/234/ → 200 (refreshInstallation).
+4. Après le rafraîchissement : Production test = « 4.20 », Tension = « 231.00 » (valeurs serveur, champs non touchés resynchronisés) ; Notes / PV = « Saisie en cours rejeu ACHT102 » (saisie en cours gardée) ; date toujours vide.
+Toutes les requêtes chantiers/234/* de l'écran → 200.
+Verdict : PASS.

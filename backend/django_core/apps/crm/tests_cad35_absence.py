@@ -109,7 +109,6 @@ class CouvertureTests(SimpleTestCase):
         vide = CouvertureAbsences([])
         self.assertFalse(bool(vide))
         self.assertFalse(vide.couvre(7, _jour(3)))
-        self.assertEqual(vide.resume(), [])
 
 
 class _Base(TestCase):

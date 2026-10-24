@@ -1,0 +1,13 @@
+AGNR34 — P3.4 + P5.1 — rejeu orchestrateur, pile locale (backend monté à ccf89572b, front construit à 080a94052), 2026-10-24, navigateur intégré, demo_admin (société 2).
+Données : leads créés par l'API leads — « Rejeu AGNR34 A » (2618) hiver 500 / été 1 200 « été différent » ; « Rejeu AGNR34 B » (2619) hiver 800 / été 1 600 « été différent ».
+Corps des requêtes relevés par un enregistreur XHR posé dans la page (méthode, URL, corps JSON).
+
+P3.4 (a) — générateur /ventes/devis/nouveau, lead A choisi : Facture hiver 500.00 / été 1200.00 ; grille des 12 mois = [500, 500, 500, 500, 1200, 1200, 1200, 1200, 1200, 1200, 500, 500], les 12 cases marquées « estimé » (aucune rampe).
+  « Auto-remplir depuis le stock » puis « Créer » → POST devis/atomic/ (etude_params {scenario, recommended_option, nombre_proprietes} : aucune `factures_mensuelles_reelles`, aucune `conso_annuelle`) puis PATCH devis/1088/etude-params/ {scenario, recommended_option, nombre_proprietes, factures_hiver_ete: {hiver_mad 500, ete_mad 1200, ete_differente true}} — aucune série dérivée. Devis DEV-202610-0093 (1088).
+  Persistance : /ventes/devis/nouveau?edit=1088 → même grille, 12 « estimé », aucun « Modifications non enregistrées » ; « Enregistrer » sans rien toucher → POST replace-lines/ (sans factures_mensuelles_reelles) + PATCH etude-params/ au corps IDENTIQUE à la création.
+P3.4 (b) — fiche du lead B › « Devis automatique » → POST devis/auto/ {lead, remise_globale} seulement (ni rampe, ni conso_annuelle du navigateur). Devis DEV-202610-0094 (1089).
+  Serveur : 1088 et 1089 — `factures_mensuelles_reelles` absente de etude_params, `etude_horaire.source_consommation` = facture_hiver_ete ; consommation annuelle de l'étude : 5779.2 kWh (A), 8338.2 kWh (B, = 8 338 attendu par la tâche).
+P5.1 — libellé client (CLAUSE CLIENT) :
+  page publique (GET /api/django/ventes/proposal/<jeton>/, devis passé « envoyé » dans une transaction annulée) : `economies_mensuelles.note` = « Estimation — deux factures (hiver/été) : votre consommation d'hiver et d'été, répétée sur les douze mois, face à la production estimée de votre installation. » (A et B identiques) ; « factures mensuelles réelles » absent.
+  /proposal (GET devis/<id>/proposal/ → 200 application/pdf, 3 et 4 pages) : le libellé est la note du graphe mensuel (image matplotlib, texte non extractible) — `charts.note_variation_mensuelle(build_quote_data(devis))` = « Estimation — deux factures (hiver/été) » pour les deux devis (source facture_hiver_ete, factures_mensuelles_estimation true) ; « factures mensuelles réelles » absent du texte du PDF.
+Verdict : PASS.

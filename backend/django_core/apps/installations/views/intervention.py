@@ -65,14 +65,17 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 RESERVES_OUVERTES_ATTR = '_reserves_ouvertes_prefetch'
 
 
-def dispatch_prefetches():
+# ``prefixe`` (avec son séparateur final, ex. ``'interventions__'``) rend ces
+# préchargements utilisables depuis le chantier qui imbrique ses interventions
+# (liste des chantiers) : mêmes définitions, aucune copie.
+def dispatch_prefetches(prefixe=''):
     from django.db.models import Prefetch
     return (
-        'equipe',
-        'preparation__materiel',
-        'preparation__outils',
+        f'{prefixe}equipe',
+        f'{prefixe}preparation__materiel',
+        f'{prefixe}preparation__outils',
         Prefetch(
-            'reserves',
+            f'{prefixe}reserves',
             queryset=Reserve.objects.filter(statut=Reserve.Statut.OUVERTE),
             to_attr=RESERVES_OUVERTES_ATTR),
     )

@@ -2,6 +2,7 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
@@ -12,10 +13,14 @@ from authentication.models import Company
 from core.events import devis_accepted
 
 from apps.crm.models import Client, Lead
+from apps.records.models import Attachment
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis
 
-from apps.installations.models import Installation
+from apps.installations.models import (
+    Installation, Intervention, InterventionPreparation, Reserve,
+    ShotListSlot,
+)
 from apps.installations.regime import suggest_regime_8221, suggest_for_company
 from apps.installations.services import create_installation_from_devis
 from apps.installations.tests import make_company, auth, make_accepted_devis
@@ -368,6 +373,7 @@ class ChantiersListeBlocsDetailTests(TestCase):
         with CaptureQueriesContext(connection) as ctx:
             r = self.api.get(BASE, {'page_size': 50})
         self.assertEqual(r.status_code, 200)
+        self.sql = [q['sql'] for q in ctx.captured_queries]
         return len(ctx), r
 
     def test_budget_de_la_liste_identique_a_deux_tailles(self):
@@ -393,3 +399,70 @@ class ChantiersListeBlocsDetailTests(TestCase):
         self.assertEqual(set(detail.data['regime_suggere']), {'code', 'label'})
         self.assertIsInstance(detail.data['dossier_8221_resume'], dict)
         self.assertIn('calepinage', detail.data)
+
+    def _chantier_aux_interventions(self, nb=11):
+        """ERR-APRF37-INTERVENTIONS-IMBRIQUEES — un chantier portant `nb`
+        interventions (technicien, équipe, préparation 1 sur 2, réserve ouverte
+        1 sur 3, photo du créneau obligatoire 1 sur 4). Renvoie
+        {id intervention: (photos obligatoires manquantes, réserves ouvertes)}."""
+        self.n += 1
+        chantier = Installation.objects.create(
+            company=self.company, reference=f'APRF37-INT-{self.n}',
+            statut=Installation.Statut.EN_COURS)
+        ct = ContentType.objects.get_for_model(Intervention)
+        attendu = {}
+        for k in range(nb):
+            interv = Intervention.objects.create(
+                company=self.company, installation=chantier,
+                type_intervention=Intervention.Type.POSE,
+                statut=Intervention.Statut.PRETE, technicien=self.user)
+            interv.equipe.add(self.user)
+            if k % 2 == 0:
+                InterventionPreparation.objects.create(
+                    company=self.company, intervention=interv)
+            if k % 3 == 0:
+                Reserve.objects.create(
+                    company=self.company, intervention=interv,
+                    description='Reprise', statut=Reserve.Statut.OUVERTE)
+            if k % 4 == 0:
+                Attachment.objects.create(
+                    company=self.company, content_type=ct,
+                    object_id=interv.id, file_key=f'aprf37/{interv.id}',
+                    filename='slot:avant|toit.jpg')
+            attendu[interv.id] = (0 if k % 4 == 0 else 1,
+                                  1 if k % 3 == 0 else 0)
+        return attendu
+
+    def test_interventions_imbriquees_budget_identique_5_et_10_chantiers(self):
+        """ROUGE avant le correctif : 4 requêtes par intervention imbriquée
+        (préparation, société, pièces jointes, réserves) — 9 requêtes pour 5
+        chantiers de 11 interventions, 231 pour 10."""
+        ShotListSlot.objects.create(
+            company=self.company, cle='avant', libelle='Avant travaux',
+            phase='avant', obligatoire=True, ordre=0)
+        attendu = {}
+        for _ in range(5):
+            attendu.update(self._chantier_aux_interventions())
+        self._requetes_liste()  # échauffement (caches de session, société)
+        cinq, _ = self._requetes_liste()
+        for _ in range(5):
+            attendu.update(self._chantier_aux_interventions())
+        dix, r = self._requetes_liste()
+        self.assertEqual(cinq, dix)
+        table = Attachment._meta.db_table
+        self.assertEqual(sum(1 for s in self.sql if table in s), 1)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        servi = {
+            interv['id']: (interv['photos_obligatoires_manquantes'],
+                           interv['reserves_ouvertes'])
+            for chantier in rows for interv in chantier['interventions']}
+        self.assertEqual(servi, attendu)
+
+    def test_sans_creneau_obligatoire_aucune_requete_pieces_jointes(self):
+        ShotListSlot.objects.create(
+            company=self.company, cle='avant', libelle='Avant travaux',
+            phase='avant', obligatoire=False, ordre=0)
+        self._chantier_aux_interventions(3)
+        self._requetes_liste()
+        table = Attachment._meta.db_table
+        self.assertEqual(sum(1 for s in self.sql if table in s), 0)

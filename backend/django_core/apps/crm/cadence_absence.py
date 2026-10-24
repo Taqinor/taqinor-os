@@ -56,24 +56,6 @@ class CouvertureAbsences:
                 return True
         return False
 
-    def resume(self):
-        """Ce que le cockpit AFFICHE : une ligne par période déclarée, sans
-        prénom en dur — l'identifiant de la personne et son remplaçant, que
-        l'écran résout en nom."""
-        return [
-            {
-                'id': periode.pk,
-                'utilisateur_id': periode.utilisateur_id,
-                'remplacant_id': periode.remplacant_id,
-                'motif': periode.motif,
-                'date_debut': periode.date_debut.isoformat(),
-                'date_fin': periode.date_fin.isoformat(),
-            }
-            for periode in sorted(
-                self._periodes,
-                key=lambda p: (p.date_debut, p.utilisateur_id or 0))
-        ]
-
 
 def couverture(company, debut, fin, *, utilisateurs=None):
     """Charge les absences de ``company`` qui CHEVAUCHENT [debut, fin].

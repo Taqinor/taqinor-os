@@ -1,0 +1,9 @@
+ACHT63 — P2.1 — rejeu orchestrateur, pile locale (front reconstruit à 080a94052 ; DemandesAchatList.jsx identique depuis 3a462632c), 2026-10-24, navigateur intégré, demo_admin (société 2).
+
+Avant : GET installations/demandes-achat/?page_size=200 → count 0.
+1. /chantiers/demandes-achat › « Nouvelle demande » : Objet « Rejeu ACHT63 fixations », Chantier = CHT-202609-0001 (sélecteur), ligne libre « Vis inox M8 », Qté 10, Prix est. 12.345 (saisie clavier).
+2. 1er clic « Enregistrer en brouillon » : message « Ligne 1 : le prix estimé accepte 2 décimales au plus. » dans le dialogue, dialogue resté ouvert ; AUCUNE requête POST émise ; serveur : count 0.
+3. Prix corrigé en 12.35, 2e clic « Enregistrer en brouillon » : POST demandes-achat/ → 201 puis POST demandes-achat-lignes/ → 201 (une seule fois chacun) ; dialogue fermé.
+4. Liste relue (serveur) : count 1 — DA-202610-0001 « Rejeu ACHT63 fixations », une ligne [Vis inox M8, 10.00, 12.35] ; tableau : colonne Chantier « CHT-202609-0001 », Brouillon, 123,50 MAD.
+5. Réouverture de DA-202610-0001 : « Chantier : CHT-202609-0001 », article Vis inox M8 10.00 × 12,35 MAD = 123,50 MAD.
+Verdict : PASS.

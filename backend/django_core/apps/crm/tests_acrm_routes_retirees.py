@@ -55,6 +55,26 @@ class RoutesRetireesTests(TestCase):
     def test_mes_stats_404(self):
         self._assert_404_pour_tous('relance-etapes/mes-stats/')
 
+    # ── ACRM74 — le calcul mort de ces deux routes part avec elles ──────────
+    def test_calcul_des_routes_retirees_supprime(self):
+        """Aucun des cinq noms ni ``CouvertureAbsences.resume`` n'existe plus,
+        ni sur ``cadence_selectors`` ni sur la façade ``selectors`` (import et
+        ``__all__`` compris) ; les primitives lues par ``controle_suivi``
+        restent exposées."""
+        from apps.crm import cadence_absence, cadence_selectors, selectors
+        morts = ('_conversion_par_stage', '_lundi', '_mediane_decimale',
+                 'LEADS_SANS_TOUCHE_MAX', '_STATUTS_CLOS_HUMAIN')
+        for module in (cadence_selectors, selectors):
+            for nom in morts:
+                self.assertFalse(hasattr(module, nom), (module.__name__, nom))
+        for nom in morts:
+            self.assertNotIn(nom, selectors.__all__)
+        self.assertFalse(
+            hasattr(cadence_absence.CouvertureAbsences, 'resume'))
+        for nom in ('_pct', '_a_lheure', '_a_lheure_ou_excusee'):
+            self.assertTrue(hasattr(cadence_selectors, nom), nom)
+            self.assertIn(nom, selectors.__all__)
+
     # ── ACRM67 — famille (iv) : routes sans appelant front ──────────────────
     def _fixture_iv(self):
         import datetime
