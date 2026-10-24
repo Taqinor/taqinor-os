@@ -38,7 +38,7 @@ from apps.records.champs_stricts import RegexStricte
 
 from . import activity
 from .champs_corps import (
-    CORPS_PIECE_RETIREE, QuantitePositive, TexteSansSubstitut,
+    CORPS_PIECE_RETIREE, QuantitePositive, TexteSansSubstitut, refus_stock_en_conflit,
 )
 from .validations_releve import exiger_objet
 from .models import (
@@ -2155,7 +2155,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
                     status=409)  # ENF11 : état du parc
         equipement_neuf = None
         try:
-            with transaction.atomic():
+            with transaction.atomic(), refus_stock_en_conflit():
                 piece = retirer_piece(
                     company=ticket.company, ticket=ticket, produit=produit,
                     quantite=quantite, numero_serie=numero_serie,

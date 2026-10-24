@@ -277,6 +277,21 @@ class ScopingApiTests(XGed3Base):
         data = resp.data['results'] if isinstance(resp.data, dict) else resp.data
         self.assertEqual(len(data), 0)
 
+    def test_filtre_identifiant_hors_plage_400(self):
+        """4e drainage api-fuzz : un identifiant de filtre hors des bornes du
+        schéma (entier de 30 chiffres) est refusé, plus servi en liste vide."""
+        from django.test import override_settings
+        with override_settings(API_QUERY_PARAMS_STRICT=True):
+            for nom in ('demande', 'modele'):
+                resp = auth(self.admin_a).get(
+                    '/api/django/ged/champs-signature/',
+                    {nom: '9' * 30})
+                self.assertEqual(resp.status_code, 400, (nom, resp.content))
+            resp = auth(self.admin_a).get(
+                '/api/django/ged/champs-signature/',
+                {'demande': str(self.demande.id)})
+            self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_create_champ_via_api_sets_company_server_side(self):
         resp = auth(self.admin_a).post(
             '/api/django/ged/champs-signature/',

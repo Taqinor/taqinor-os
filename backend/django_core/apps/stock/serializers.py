@@ -1599,7 +1599,8 @@ class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
         return attrs
 
 
-class BonCommandeFournisseurSerializer(CapaciteMontantsBcfMixin, SameCompanyFKSerializerMixin,
+class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMixin,
+                                       SameCompanyFKSerializerMixin,
                                        CompanyScopedRelationsMixin,
                                        ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
@@ -1955,6 +1956,7 @@ CHAMPS_MONTANTS_FACTURE_FOURNISSEUR = (
 
 class LigneFactureFournisseurSerializer(ChampsLigneFactureFournisseur,
                                         CompanyScopedRelationsMixin,
+                                        ChampsTexteBooleenStricts,
                                         serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).
@@ -2043,6 +2045,7 @@ class EcheanceFactureFournisseurSerializer(CompanyScopedRelationsMixin,
 
 class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                    CompanyScopedRelationsMixin,
+                                   ChampsTexteBooleenStricts,
                                    serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

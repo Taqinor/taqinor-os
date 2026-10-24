@@ -3837,7 +3837,7 @@ def facturer_reception(company, user, reception):
                 bon_commande=reception.bon_commande,
                 note__startswith=f'Facture réception {reception.reference}'
         ).exists():
-            raise ValueError(
+            raise EtatIncompatible(
                 f"Cette réception ({reception.reference}) est déjà facturée.")
 
         from .models import Produit
@@ -3850,7 +3850,7 @@ def facturer_reception(company, user, reception):
             != Produit.PolitiqueFacturationAchat.SUR_COMMANDE
         ]
         if not lignes_reception:
-            raise ValueError(
+            raise EtatIncompatible(
                 'Rien à facturer à la réception : toutes les lignes de '
                 f'{reception.reference} sont « sur commande » (facturées sur le '
                 'bon de commande).')
@@ -7200,7 +7200,7 @@ def _valider_revision_ligne_bcf(bc, ligne, ligne_data):
                 f'Ligne {ligne.id} — la quantité doit être strictement '
                 'positive.')
         if quantite < (ligne.quantite_recue or 0):
-            raise ValueError(
+            raise EtatIncompatible(
                 f'Ligne {ligne.id} — la quantité ({quantite}) ne peut pas '
                 f'être inférieure à la quantité déjà reçue '
                 f'({ligne.quantite_recue}).')
@@ -7226,7 +7226,7 @@ def _valider_revision_ligne_bcf(bc, ligne, ligne_data):
             raise ValueError(f'Ligne {ligne.id} — prix négatif.')
         if prix_mad != (ligne.prix_achat_unitaire or Decimal('0')):
             if (ligne.quantite_recue or 0) > 0:
-                raise ValueError(
+                raise EtatIncompatible(
                     f'Ligne {ligne.id} — le prix d\'une quantité déjà '
                     'reçue est figé : passer par une revalorisation.')
             valeurs['prix_achat_unitaire'] = prix_mad

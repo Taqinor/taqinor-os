@@ -169,6 +169,17 @@ class TestOrdreAssemblage(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_note_avec_nul_400_et_kit_inconnu_404(self):
+        """4e drainage api-fuzz : le NUL de ``note`` est un refus de forme (le
+        schéma publie le motif « sans NUL »), un kit inconnu SEUL reste 404."""
+        resp = self.api.post(f'{BASE}/ordres-assemblage/', {
+            'kit': self.kit.id, 'quantite': 1, 'note': 'a\x00b'},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(f'{BASE}/ordres-assemblage/', {
+            'kit': 2147483000, 'quantite': 1, 'note': 'ok'}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
     def test_kit_other_company_rejected(self):
         other = make_company()
         kit_other = Kit.objects.create(company=other, nom='K2')

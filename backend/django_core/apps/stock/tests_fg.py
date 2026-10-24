@@ -314,7 +314,7 @@ class TestFG56FacturerReception(TestCase):
         r = self.client.post(
             f'/api/django/stock/receptions-fournisseur/{self.reception.id}/facturer/',
             {}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : état de la réception
         self.assertIn('déjà', r.json()['detail'].lower())
 
     def test_facturer_non_confirme_rejected(self):

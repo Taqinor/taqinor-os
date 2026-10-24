@@ -6,11 +6,14 @@ Le décodage JSON laisse passer une moitié de paire de substitution isolée
 retirée avant toute validation (le schéma publié reste ``type: string``).
 """
 import re
+from contextlib import contextmanager
 from decimal import Decimal
 
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 
 from core.champs_stricts import ChaineStricte
+from core.conflit_etat import ConflitEtat
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 _SUBSTITUTS_SEULS = re.compile(r'[\ud800-\udfff]')
@@ -47,23 +50,36 @@ CORPS_PIECE_RETIREE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
                     'destination': {'enum': ['stock_occasion']}}},
 ]}}
 
-#: Décimal STRICTEMENT positif, 10 entiers + 2 décimales au plus, écrit sans
-#: signe ni zéros de tête : ``"0"``/``"-1"`` ne sont plus « conformes » puis
-#: refusés « Quantité invalide ». Plus étroit que le serveur (qui lit aussi
-#: ``"007"``) : le schéma n'annonce jamais une valeur que le serveur refuse.
+#: Décimal STRICTEMENT positif, 8 entiers + 2 décimales au plus (colonnes
+#: ``numeric(10,2)`` de ``PieceRetiree``/``PieceConsommee`` : 9 entiers ou plus
+#: débordaient en 500), écrit sans signe ni zéros de tête : ``"0"``/``"-1"``
+#: ne sont plus « conformes » puis refusés « Quantité invalide ». Plus étroit
+#: que le serveur (qui lit aussi ``"007"``) : le schéma n'annonce jamais une
+#: valeur que le serveur refuse.
 MOTIF_QUANTITE_POSITIVE = (
-    r'^(?:[1-9][0-9]{0,9}(?:\.[0-9]{0,2})?|0?\.(?:0[1-9]|[1-9][0-9]?))$')
+    r'^(?:[1-9][0-9]{0,7}(?:\.[0-9]{0,2})?|0?\.(?:0[1-9]|[1-9][0-9]?))$')
 
 
 class QuantitePositive(serializers.DecimalField):
-    """Quantité de pièces (``numeric(12,2)``) > 0, publiée avec son motif exact."""
+    """Quantité de pièces (``numeric(10,2)``) > 0, publiée avec son motif exact."""
 
     def __init__(self, **kwargs):
         from drf_spectacular.drainage import set_override
 
         super().__init__(
-            max_digits=12, decimal_places=2, min_value=Decimal('0.01'),
+            max_digits=10, decimal_places=2, min_value=Decimal('0.01'),
             **kwargs)
         set_override(self, 'field', {
             'type': 'string', 'format': 'decimal',
             'pattern': MOTIF_QUANTITE_POSITIVE})
+
+
+@contextmanager
+def refus_stock_en_conflit():
+    """Le service stock refuse la quantité (fractionnaire sur un stock en
+    unités entières) par un ``ValidationError`` : le corps était conforme au
+    schéma, c'est l'ÉTAT du stock qui s'oppose -> 409 (``ConflitEtat``)."""
+    try:
+        yield
+    except ValidationError as exc:
+        raise ConflitEtat(exc.detail)
