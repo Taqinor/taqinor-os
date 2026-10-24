@@ -9,7 +9,8 @@ from rest_framework.response import Response
 from rest_framework import serializers
 from ..erreurs_achats import controler_capacite_bcf, EtatIncompatible, IntrouvableMetier
 from ..utils.params import corps_objet, id_requete_ou_400
-from ..corps_achats import BcfConfirmerCorps, BcfEnvoyerEmailCorps, BcfReviserCorps, valider_corps
+from ..corps_achats import (
+    BcfConfirmerCorps, BcfEnvoyerEmailCorps, BcfRecevoirCorps, BcfReviserCorps, valider_corps)
 from ..openapi_helpers import (
     BINARY, DATE_OU_VIDE, ID_ENTIER, ID_OU_VIDE, INT, LISTE, P, PDF, STR, corps, detail_reponse,
 )
@@ -663,8 +664,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         en_retard = bcf_en_retard_list(request.user.company)
         return Response(self.get_serializer(en_retard, many=True).data)
 
-    @extend_schema(request=corps('BcfRecevoirCorps',
-                                 receptions=serializers.ListField(child=serializers.DictField(), min_length=1)),
+    @extend_schema(request=BcfRecevoirCorps,
                    responses={200: BonCommandeFournisseurSerializer, 409: detail_reponse()})
     @action(detail=True, methods=['post'], url_path='recevoir')
     def recevoir(self, request, pk=None):
@@ -684,9 +684,8 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         quantité non entière répond 400 (plus de ``int()`` muet). Réponse
         inchangée : le BCF sérialisé.
         """
-        from decimal import Decimal, InvalidOperation
-
         bc = self.get_object()
+        receptions = valider_corps(BcfRecevoirCorps, request)['receptions']
         if bc.statut in (
             BonCommandeFournisseur.Statut.BROUILLON,
             BonCommandeFournisseur.Statut.ANNULE,
@@ -700,12 +699,6 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_409_CONFLICT,
             )
 
-        receptions = request.data.get('receptions') or []
-        if not isinstance(receptions, list) or not receptions:
-            return Response(
-                {'detail': 'Aucune réception fournie.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         # Index par id de ligne (scopé à ce BC uniquement).
         lignes = {ligne.id: ligne for ligne in bc.lignes.select_related(
             'produit')}
@@ -714,52 +707,32 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         )
         plan = []
         for rec in receptions:
-            try:
-                ligne_id = int(rec.get('ligne'))
-                qte_brute = Decimal(str(rec.get('quantite')))
-                if not qte_brute.is_finite():
-                    raise ValueError
-            except (TypeError, ValueError, InvalidOperation):
-                return Response(
-                    {'detail': 'Réception invalide.'},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+            ligne_id = rec['ligne']
             ligne = lignes.get(ligne_id)
             # ASTK2 — une ligne (héritée) pointant le produit d'une autre
             # société est traitée comme absente : jamais son stock touché.
             if ligne is not None and ligne.produit_id is not None and (
                     ligne.produit.company_id != bc.company_id):
                 ligne = None
-            if ligne is None:
+            if ligne is None:  # identifiant inconnu de CE bon : 404, comme un id de chemin
                 return Response(
                     {'detail': f'Ligne {ligne_id} introuvable sur ce BCF.'},
-                    status=status.HTTP_400_BAD_REQUEST,
+                    status=status.HTTP_404_NOT_FOUND,
                 )
-            # ASTK62 — quantité non entière : 400 lisible, jamais tronquée.
-            if qte_brute != qte_brute.to_integral_value():
-                designation = (
-                    ligne.produit.nom if ligne.produit_id
-                    else (ligne.designation or f'ligne {ligne_id}'))
-                affichee = format(qte_brute.normalize(), 'f').replace(
-                    '.', ',')
-                return Response(
-                    {'quantite': [
-                        f'Quantité non entière ({affichee}) pour '
-                        f'{designation} — unité de stock entière exigée.']},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            qte = int(qte_brute)
-            if qte <= 0:
-                continue
+            qte = rec['quantite']
             # XSTK15 — conditionnement optionnel (touret/carton…) : la
             # quantité saisie compte des CONDITIONNEMENTS, convertie en
             # unités de stock avant tout plafonnement (comportement
             # historique inchangé quand aucun conditionnement n'est fourni).
-            conditionnement = resoudre_conditionnement(
-                bc.company,
-                conditionnement_id=rec.get('conditionnement'),
-                code_barres=rec.get('conditionnement_code_barres'))
-            if conditionnement is not None:
+            if rec.get('conditionnement') or rec.get('conditionnement_code_barres'):
+                conditionnement = resoudre_conditionnement(
+                    bc.company,
+                    conditionnement_id=rec.get('conditionnement'),
+                    code_barres=rec.get('conditionnement_code_barres'))
+                if conditionnement is None:  # nommé mais inconnu : jamais des unités de stock devinées
+                    return Response(
+                        {'detail': 'Conditionnement introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)
                 qte = convertir_en_unites_stock(qte, conditionnement)
             # Plafonnement au reste dû — jamais plus que commandé (idempotence).
             qte = min(qte, ligne.quantite_restante)

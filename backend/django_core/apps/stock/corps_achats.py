@@ -129,3 +129,19 @@ class ProduitDecoupeCorps(serializers.Serializer):
     quantite_produite = EntierStrict(min_value=1, max_value=QUANTITE_MAX)
     emplacement = EntierStrict(required=False, allow_null=True, min_value=1, max_value=ID_MAX)
     lot_source = EntierStrict(required=False, allow_null=True, min_value=1, max_value=ID_MAX)
+
+
+class BcfRecevoirLigneCorps(serializers.Serializer):
+    """Une réception de ``bons-commande-fournisseur/{id}/recevoir/`` : la ligne du
+    BCF, la quantité (entière — de CONDITIONNEMENTS si un conditionnement est
+    nommé, par id ou par code-barres scanné). Le schéma annonçait un objet libre
+    (``{}`` = « Réception invalide ») et ``int()`` / ``Decimal()`` lisaient tout."""
+    ligne = EntierStrict(min_value=1, max_value=ID_MAX)
+    quantite = EntierStrict(min_value=1, max_value=ID_MAX)
+    conditionnement = EntierStrict(required=False, allow_null=True, min_value=1, max_value=ID_MAX)
+    conditionnement_code_barres = ChaineStricte(required=False, allow_null=True, allow_blank=True, max_length=64)
+
+
+class BcfRecevoirCorps(serializers.Serializer):
+    """``POST bons-commande-fournisseur/{id}/recevoir/``."""
+    receptions = serializers.ListField(child=BcfRecevoirLigneCorps(), min_length=1)
