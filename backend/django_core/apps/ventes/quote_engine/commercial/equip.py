@@ -139,12 +139,30 @@ def _rendu_tenu(donnees, build_html, rendre):
     # document ne tient que s'il a exactement ses pages et rien de coupé.
     if _tient(html, doc):
         return doc
-    if 'data-graphique="' in html and not donnees.get("_sans_graphiques"):
-        html = build_html(dict(donnees, _sans_graphiques=True))
+    if 'data-graphique="' not in html or donnees.get("_sans_graphiques"):
+        return None
+    # D'abord les seuls blocs des pages qui débordent, puis tous.
+    for retires in (_cedables_des_pages_debordantes(html, doc), True):
+        if not retires:
+            continue
+        html = build_html(dict(donnees, _sans_graphiques=retires))
         doc = rendre(html)
         if _tient(html, doc):
             return doc
     return None
+
+
+def _cedables_des_pages_debordantes(html, doc):
+    """Les noms ``data-graphique`` posés sur les pages qui débordent (toutes
+    les pages quand le document a une page de trop ou de moins : on ne sait
+    plus laquelle a poussé)."""
+    import re
+    segments = html.split('<div class="page">')[1:]
+    pages = list(getattr(doc, "pages", None) or [])
+    if len(pages) == len(segments):
+        segments = [s for s, page in zip(segments, pages) if deborde(page)]
+    return frozenset(nom for s in segments
+                     for nom in re.findall(r'data-graphique="([\w-]+)"', s))
 
 
 def rangees_hors_total(d, L, navy, muted, wash):
@@ -228,7 +246,8 @@ def bloc_installation(d, L, fmt, couleurs):
     Cédable (``data-graphique``) : le rendu adaptatif la retire avant de
     densifier la page. ``couleurs`` = (navy, muted, line_soft, wash)."""
     rangees = _rangees_installation(d, L, fmt)
-    if not rangees or d.get("_sans_graphiques"):
+    from ..ci.graphiques import cede
+    if not rangees or cede(d, "installation"):
         return ""
     navy, muted, line_soft, wash = couleurs
     lignes = "".join(

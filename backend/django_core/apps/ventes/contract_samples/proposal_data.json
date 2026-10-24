@@ -680,6 +680,7 @@
           "flux": [
             {
               "annee": 0,
+              "production_kwh": null,
               "economie_mad": 0.0,
               "flux_mad": -95000.0,
               "cumul_mad": -95000.0,
@@ -687,6 +688,7 @@
             },
             {
               "annee": 1,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 32271.45,
               "cumul_mad": -62728.55,
@@ -694,6 +696,7 @@
             },
             {
               "annee": 2,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 32271.45,
               "cumul_mad": -30457.1,
@@ -701,6 +704,7 @@
             },
             {
               "annee": 3,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 32271.45,
               "cumul_mad": 1814.35,
@@ -708,6 +712,7 @@
             },
             {
               "annee": 4,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 32271.45,
               "cumul_mad": 34085.8,
@@ -715,6 +720,7 @@
             },
             {
               "annee": 5,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 32271.45,
               "cumul_mad": 66357.25,
@@ -722,6 +728,7 @@
             },
             {
               "annee": 6,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 32271.45,
               "cumul_mad": 98628.7,
@@ -729,6 +736,7 @@
             },
             {
               "annee": 7,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 14271.45,
               "cumul_mad": 112900.15,
@@ -736,6 +744,7 @@
             },
             {
               "annee": 8,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 32271.45,
               "cumul_mad": 145171.6,
@@ -743,6 +752,7 @@
             },
             {
               "annee": 9,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 32271.45,
               "cumul_mad": 177443.05,
@@ -750,6 +760,7 @@
             },
             {
               "annee": 10,
+              "production_kwh": null,
               "economie_mad": 32871.45,
               "flux_mad": 32271.45,
               "cumul_mad": 209714.5,
@@ -1306,6 +1317,7 @@
           "flux": [
             {
               "annee": 0,
+              "production_kwh": null,
               "economie_mad": 0.0,
               "flux_mad": -247500.0,
               "cumul_mad": -247500.0,
@@ -1313,6 +1325,7 @@
             },
             {
               "annee": 1,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": -148566.52,
@@ -1320,6 +1333,7 @@
             },
             {
               "annee": 2,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": -49633.05,
@@ -1327,6 +1341,7 @@
             },
             {
               "annee": 3,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 49300.43,
@@ -1334,6 +1349,7 @@
             },
             {
               "annee": 4,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 148233.91,
@@ -1341,6 +1357,7 @@
             },
             {
               "annee": 5,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 247167.39,
@@ -1348,6 +1365,7 @@
             },
             {
               "annee": 6,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 346100.86,
@@ -1355,6 +1373,7 @@
             },
             {
               "annee": 7,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 445034.34,
@@ -1362,6 +1381,7 @@
             },
             {
               "annee": 8,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 543967.82,
@@ -1369,6 +1389,7 @@
             },
             {
               "annee": 9,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 642901.29,
@@ -1376,6 +1397,7 @@
             },
             {
               "annee": 10,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 741834.77,
@@ -1383,6 +1405,7 @@
             },
             {
               "annee": 11,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 53100.15,
               "cumul_mad": 794934.92,
@@ -1390,6 +1413,7 @@
             },
             {
               "annee": 12,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 893868.4,
@@ -1397,6 +1421,7 @@
             },
             {
               "annee": 13,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 992801.87,
@@ -1404,6 +1429,7 @@
             },
             {
               "annee": 14,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1091735.35,
@@ -1411,6 +1437,7 @@
             },
             {
               "annee": 15,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1190668.83,
@@ -1418,6 +1445,7 @@
             },
             {
               "annee": 16,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1289602.31,
@@ -1425,6 +1453,7 @@
             },
             {
               "annee": 17,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1388535.78,
@@ -1432,6 +1461,7 @@
             },
             {
               "annee": 18,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1487469.26,
@@ -1439,6 +1469,7 @@
             },
             {
               "annee": 19,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1586402.74,
@@ -1446,6 +1477,7 @@
             },
             {
               "annee": 20,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1685336.21,
@@ -1453,6 +1485,7 @@
             },
             {
               "annee": 21,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1784269.69,
@@ -1460,6 +1493,7 @@
             },
             {
               "annee": 22,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1883203.17,
@@ -1467,6 +1501,7 @@
             },
             {
               "annee": 23,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 1982136.65,
@@ -1474,6 +1509,7 @@
             },
             {
               "annee": 24,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 2081070.12,
@@ -1481,6 +1517,7 @@
             },
             {
               "annee": 25,
+              "production_kwh": 95425,
               "economie_mad": 98933.48,
               "flux_mad": 98933.48,
               "cumul_mad": 2180003.6,
@@ -1539,6 +1576,7 @@
           "flux": [
             {
               "annee": 0,
+              "production_kwh": null,
               "economie_mad": 0.0,
               "flux_mad": -297000.0,
               "cumul_mad": -297000.0,
@@ -1546,6 +1584,7 @@
             },
             {
               "annee": 1,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": -178282.61,
@@ -1553,6 +1592,7 @@
             },
             {
               "annee": 2,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": -59565.21,
@@ -1560,6 +1600,7 @@
             },
             {
               "annee": 3,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 59152.18,
@@ -1567,6 +1608,7 @@
             },
             {
               "annee": 4,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 177869.58,
@@ -1574,6 +1616,7 @@
             },
             {
               "annee": 5,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 296586.97,
@@ -1581,6 +1624,7 @@
             },
             {
               "annee": 6,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 415304.36,
@@ -1588,6 +1632,7 @@
             },
             {
               "annee": 7,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 534021.76,
@@ -1595,6 +1640,7 @@
             },
             {
               "annee": 8,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 652739.15,
@@ -1602,6 +1648,7 @@
             },
             {
               "annee": 9,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 771456.55,
@@ -1609,6 +1656,7 @@
             },
             {
               "annee": 10,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 890173.94,
@@ -1616,6 +1664,7 @@
             },
             {
               "annee": 11,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 63717.39,
               "cumul_mad": 953891.33,
@@ -1623,6 +1672,7 @@
             },
             {
               "annee": 12,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 1072608.73,
@@ -1630,6 +1680,7 @@
             },
             {
               "annee": 13,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 1191326.12,
@@ -1637,6 +1688,7 @@
             },
             {
               "annee": 14,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 1310043.52,
@@ -1644,6 +1696,7 @@
             },
             {
               "annee": 15,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 1428760.91,
@@ -1651,6 +1704,7 @@
             },
             {
               "annee": 16,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 1547478.3,
@@ -1658,6 +1712,7 @@
             },
             {
               "annee": 17,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 1666195.7,
@@ -1665,6 +1720,7 @@
             },
             {
               "annee": 18,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 1784913.09,
@@ -1672,6 +1728,7 @@
             },
             {
               "annee": 19,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 1903630.49,
@@ -1679,6 +1736,7 @@
             },
             {
               "annee": 20,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 2022347.88,
@@ -1686,6 +1744,7 @@
             },
             {
               "annee": 21,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 2141065.27,
@@ -1693,6 +1752,7 @@
             },
             {
               "annee": 22,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 2259782.67,
@@ -1700,6 +1760,7 @@
             },
             {
               "annee": 23,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 2378500.06,
@@ -1707,6 +1768,7 @@
             },
             {
               "annee": 24,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 2497217.46,
@@ -1714,6 +1776,7 @@
             },
             {
               "annee": 25,
+              "production_kwh": 95425,
               "economie_mad": 118717.39,
               "flux_mad": 118717.39,
               "cumul_mad": 2615934.85,

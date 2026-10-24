@@ -23,6 +23,7 @@ from ..ci import couverture as ci_couverture
 # CIQ309 — bloc client entreprise (raison sociale, ICE, RC, IF, interlocuteur).
 from ..ci import blocs as ci_blocs
 from ..ci.mentions import texte
+from ..ci.graphiques import cede
 from ..lecture_pure import nombre_ou_none
 # QJR651 — kwc_str et la cellule KPI : harnais premium commun.
 from .. import premium_base
@@ -314,7 +315,7 @@ def build(ctx):
                  if prod else "")
     # AMOT92 — les prochaines étapes et le QR, sur une ligne ; cédables au
     # rendu adaptatif (la couverture industrielle est la plus dense).
-    etapes = ("" if d.get("_sans_graphiques") else
+    etapes = ("" if cede(d, "etapes") else
               '<div data-graphique="etapes" style="margin-top:8px;">'
               + ci_couverture.bloc_etapes(d, "i1", (navy, muted, gold),
                                           en_ligne=True) + '</div>')

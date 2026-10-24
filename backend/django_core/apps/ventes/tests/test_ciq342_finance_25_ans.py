@@ -249,3 +249,86 @@ class Amot91Hypotheses(SimpleTestCase):
         self.assertNotIn("taux_actualisation_client", texte)
         self.assertIn("Prix du kWh : ceux de votre facture d'électricité",
                       texte)
+
+
+class Amot94TableauVingtCinqAns(SimpleTestCase):
+    """AMOT94 — le flux servi année par année (0 → 25) à la place des cinq
+    jalons : production, économie, O&M (si déduite), remplacement, flux net
+    et cumul de CHAQUE ligne servie ; le cumul de l'année 25 reste ancré."""
+
+    def _tableau(self, d):
+        p3 = _pages(d)[3]
+        debut = p3.index('class="i2-tbl i2-fx"')
+        return p3, p3[debut:p3.index("</table>", debut)]
+
+    def test_chaque_ligne_servie(self):
+        d = _data()
+        argent = synthese_ci(dict(d))["argent"]
+        _p3, tableau = self._tableau(d)
+        texte = _texte(tableau)
+        flux = argent["flux_ht"]["flux"]
+        self.assertEqual(len(flux), 26)
+        self.assertEqual(tableau.count("<tr>"), 27)  # en-tête + 26 années
+        for f in flux:
+            with self.subTest(annee=f["annee"]):
+                self.assertIn(f"Année {f['annee']}", texte)
+                self.assertIn(fmt_centimes(f["cumul_mad"]).replace(
+                    " ", " "), texte)
+                self.assertIn(fmt_centimes(f["flux_mad"]).replace(
+                    " ", " "), texte)
+        for entete in ("Production (kWh)", "Économie", "Remplacement",
+                       "Flux net", "Cumul net (HT)"):
+            self.assertIn(entete, texte)
+        # Remplacement de l'onduleur au montant HT servi, l'année servie.
+        remplacement = argent["remplacements"][0]
+        ligne = texte[texte.index(f"Année {remplacement['annee']} "):]
+        self.assertTrue(ligne.split("Année")[1].count(fmt_centimes(
+            -remplacement["montant_ht_mad"]).replace(" ", " ")))
+        # O&M non souscrite : non déduite, aucune colonne.
+        self.assertNotIn("O&M", texte)
+        self.assertIn('data-figure="cumul_net_25_ans_mad"', tableau)
+
+    def test_production_lue_sur_la_ligne_servie(self):
+        d = _data()
+        flux = d["economie_ci"]["flux_ht"]["flux"]
+        for f in flux:
+            if f["annee"]:
+                f["production_kwh"] = 90000 + f["annee"]
+        texte = _texte(self._tableau(d)[1])
+        self.assertIn("Année 7 90 007", texte)
+
+    def test_om_souscrite_colonne_deduite(self):
+        d = _data()
+        d["economie_ci"]["om"] = {"statut": "souscrit",
+                                  "montant_mad_an": 12000.0,
+                                  "source": "ligne O&M souscrite"}
+        texte = _texte(self._tableau(d)[1])
+        self.assertIn("O&M", texte)
+        self.assertEqual(texte.count("-12 000,00"), 25)
+
+    def test_courbe_cedable_tableau_garde(self):
+        p3 = _pages(dict(_data(), _sans_graphiques=frozenset(
+            {"courbe_cumul"})))[3]
+        self.assertNotIn('class="i2-courbe"', p3)
+        self.assertIn('class="i2-tbl i2-fx"', p3)
+
+    def test_rendu_adaptatif_cede_les_blocs_de_la_seule_page_qui_deborde(self):
+        from unittest import mock
+
+        from apps.ventes.quote_engine.commercial import equip
+        html = ('<div class="page"><div data-graphique="etapes"></div></div>'
+                '<div class="page"><div data-graphique="energie_mensuelle">'
+                '</div><div data-graphique="courbe_cumul"></div></div>')
+
+        class _Doc:
+            pages = ["p1", "p2"]
+
+        with mock.patch.object(equip, "deborde", lambda page: page == "p2"):
+            self.assertEqual(
+                equip._cedables_des_pages_debordantes(html, _Doc()),
+                frozenset({"energie_mensuelle", "courbe_cumul"}))
+        # Page de trop : on ne sait plus laquelle a poussé — toutes.
+        _Doc.pages = ["p1", "p2", "p3"]
+        self.assertEqual(equip._cedables_des_pages_debordantes(html, _Doc()),
+                         frozenset({"etapes", "energie_mensuelle",
+                                    "courbe_cumul"}))

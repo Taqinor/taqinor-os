@@ -560,7 +560,8 @@ def rangee_bas(d, graphique, etapes, prefixe):
     graphique servi, les étapes seules. Toute la rangée est CÉDABLE
     (``data-graphique``) : le rendu adaptatif la retire en entier
     (``_sans_graphiques``) plutôt que de pousser une page de plus."""
-    if d.get("_sans_graphiques"):
+    from .graphiques import cede
+    if cede(d, "etapes"):
         return ""
     if not graphique:
         return (f'<div data-graphique="etapes" style="margin-top:10px;">'

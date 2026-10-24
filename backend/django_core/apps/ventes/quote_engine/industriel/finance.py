@@ -28,7 +28,7 @@ from ..ci import couverture as ci_couverture
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
-from ..ci.graphiques import bloc_energie_mensuelle, css_graphique
+from ..ci.graphiques import bloc_energie_mensuelle, cede, css_graphique
 
 #: Années des jalons (D-CIQ-10) — l'ordre d'impression, pas un calcul.
 JALONS_ANS = (5, 10, 15, 20, 25)
@@ -67,11 +67,6 @@ def flux_principal(argent):
     return cle, bloc if isinstance(bloc, dict) else {}
 
 
-def _cumuls(jalons):
-    return {j.get("annee"): _num(j.get("cumul_mad")) for j in jalons or []
-            if isinstance(j, dict)}
-
-
 def _courbe(flux, couleurs):
     """Courbe du cumul net, une barre par année sur TOUT l'horizon servi
     (au-dessus de l'axe : positif ; en dessous : négatif). Seule la HAUTEUR
@@ -98,6 +93,72 @@ def _courbe(flux, couleurs):
         for a, _c in points)
     return (f'<table class="i2-courbe"><tr>{haut}</tr>'
             f'<tr class="i2-axe">{bas}</tr><tr>{etiquettes}</tr></table>')
+
+
+def _charges_par_annee(argent, cle_flux):
+    """AMOT94 — ``(O&M annuelle | None, {année: remplacement})`` du flux
+    servi : l'O&M seulement souscrite et chiffrée (CIQ342 — sinon elle n'est
+    pas déduite, la colonne est omise) ; chaque remplacement au montant de
+    la base du flux (HT pour ``flux_ht``, TTC pour ``flux_ttc``)."""
+    om = argent.get("om") if isinstance(argent.get("om"), dict) else {}
+    om_an = (_num(om.get("montant_mad_an"))
+             if om.get("statut") == "souscrit" else None)
+    cle_montant = "montant_ttc_mad" if cle_flux == "flux_ttc" \
+        else "montant_ht_mad"
+    remplacements = {}
+    for r in argent.get("remplacements") or []:
+        if isinstance(r, dict) and _num(r.get("annee")) is not None \
+                and _num(r.get(cle_montant)) is not None:
+            annee = int(_num(r["annee"]))
+            remplacements[annee] = remplacements.get(annee, 0.0) \
+                + _num(r[cle_montant])
+    return om_an or None, remplacements
+
+
+def _tableau_flux(argent, lignes_flux, fmt, fmt_mad, L, base_txt):
+    """AMOT94 — le flux de trésorerie servi, année par année (0 → horizon) :
+    année, production (kWh), économie, O&M (si déduite), remplacement (si
+    servi), flux net et cumul — chaque nombre est celui de la ligne servie
+    par ``economie_ci`` (aucun recalcul) ; le cumul de l'année 25 est ancré
+    (``cumul_net_25_ans_mad``). Typographie compacte : le contrat de 4 pages
+    tient."""
+    cle_flux, _bloc = flux_principal(argent)
+    om_an, remplacements = _charges_par_annee(argent, cle_flux)
+    colonnes = [L("ci_fx_production", "Production (kWh)"),
+                L("ci_fx_economie", "Économie")]
+    colonnes += [L("ci_fx_om", "O&amp;M")] if om_an else []
+    colonnes += [L("ci_fx_remplacement", "Remplacement")] \
+        if remplacements else []
+    colonnes += [L("ci_fx_flux", "Flux net"),
+                 f'{L("ci_ind_cumul_net", "Cumul net")} ({base_txt})']
+    entete = (f'<tr><th>{L("ci_fx_annee", "Année")}</th>'
+              + "".join(f'<th class="i2-r">{c}</th>' for c in colonnes)
+              + "</tr>")
+    rangees = ""
+    for f in lignes_flux:
+        annee = int(_num(f.get("annee")) or 0)
+        cumul = _num(f.get("cumul_mad"))
+        if cumul is None:
+            continue
+        txt = fmt_mad(cumul)
+        production = _num(f.get("production_kwh"))
+        cellules = [fmt(production) if production else "—",
+                    fmt_mad(_num(f.get("economie_mad")) or 0) if annee
+                    else "—"]
+        # Les charges sont des SORTIES du flux : le signe du formateur.
+        if om_an:
+            cellules.append(fmt_mad(-om_an) if annee else "—")
+        if remplacements:
+            cellules.append(fmt_mad(-remplacements[annee])
+                            if annee in remplacements else "—")
+        cellules.append(fmt_mad(_num(f.get("flux_mad")) or 0))
+        fig = ancre("cumul_net_25_ans_mad", txt) if annee == 25 else ""
+        cls = "i2-pos" if cumul >= 0 else "i2-neg"
+        rangees += (f'<tr><td>{L("ci_ind_annee", "Année {n}", n=annee)}</td>'
+                    + "".join(f'<td class="i2-n">{c}</td>' for c in cellules)
+                    + f'<td class="i2-c {cls}">{txt}{fig}</td></tr>')
+    return (f'<table class="i2-tbl i2-fx">{entete}{rangees}</table>'
+            if rangees else "")
 
 
 def _valeur_hypothese(h, fmt, L):
@@ -266,7 +327,7 @@ def tableau_hypotheses(d, synthese, fmt, fmt_mad, L, prefixe,
     ``optionnel`` : le bloc cède sa place (``data-graphique``, retiré par le
     rendu adaptatif) avant que les conditions ne soient tronquées."""
     rangees = rangees_hypotheses(d, synthese, fmt, fmt_mad, L, **options)
-    if not rangees or (optionnel and d.get("_sans_graphiques")):
+    if not rangees or (optionnel and cede(d, "hypotheses")):
         return ""
     lignes = "".join(
         f'<tr><td class="{prefixe}-hy-l">{libelle or ""}</td>'
@@ -582,6 +643,12 @@ def build(ctx):
 .i2-tbl th.i2-r,.i2-tbl td.i2-c{{text-align:right;}}
 .i2-tbl td{{padding:4px 8px;border-bottom:1px solid {line_soft};}}
 .i2-c{{font-weight:700;}}
+.i2-fx{{margin-top:4px;font-size:6.3pt;line-height:1.05;}}
+.i2-fx th{{font-size:5.8pt;padding:2px 5px;}}
+.i2-fx td{{padding:0.4px 5px;border-bottom:none;}}
+.i2-fx tr:nth-child(even) td{{background:{wash};}}
+.i2-n{{text-align:right;white-space:nowrap;}}
+.i2-fx td.i2-c{{text-align:right;white-space:nowrap;}}
 .i2-pos{{color:{green};}}
 .i2-neg{{color:{muted_2};}}
 .i2-courbe{{width:100%;border-collapse:collapse;margin-top:8px;table-layout:fixed;}}
@@ -605,8 +672,9 @@ def build(ctx):
 .i2-hyp{{margin-top:8px;border:1px solid {line_soft};border-radius:10px;
   background:{wash};padding:8px 12px;}}
 .i2-hyp-t{{font-size:8pt;font-weight:700;color:{navy};}}
-.i2-hyp-i{{font-size:6.8pt;color:{muted};line-height:1.3;margin-top:3px;
-  padding-left:10px;position:relative;}}
+.i2-hyp-c{{column-count:2;column-gap:14px;}}
+.i2-hyp-i{{font-size:6.6pt;color:{muted};line-height:1.25;margin-top:2px;
+  padding-left:10px;position:relative;break-inside:avoid;}}
 .i2-hyp-i:before{{content:'';position:absolute;left:0;top:4px;width:4px;
   height:4px;border-radius:50%;background:{blue};}}
 .i2-motif{{margin-top:6px;font-size:7.5pt;color:{muted};line-height:1.4;}}
@@ -659,41 +727,23 @@ def build(ctx):
                 + '<td class="i2-kgap"></td>'.join(cellules)
                 + '</tr></table>') if cellules else ""
 
-        jalons = _cumuls(argent.get("jalons"))
-        jalons_ttc = (_cumuls(argent.get("jalons_ttc"))
-                      if argent.get("base") == "deux" else {})
-        entete_ttc = (f'<th class="i2-r">{L("ci_ind_cumul_net", "Cumul net")} '
-                      f'({L("ci_ttc", "TTC")})</th>' if jalons_ttc else "")
-        rangees = ""
-        for annee in JALONS_ANS:
-            cumul = jalons.get(annee)
-            if cumul is None:
-                continue
-            txt = fmt_mad(cumul)
-            fig = ancre("cumul_net_25_ans_mad", txt) if annee == 25 else ""
-            cls = "i2-pos" if cumul >= 0 else "i2-neg"
-            ttc_td = ""
-            if jalons_ttc:
-                cumul_ttc = jalons_ttc.get(annee)
-                ttc_td = (f'<td class="i2-c {cls}">{fmt_mad(cumul_ttc)}</td>'
-                          if cumul_ttc is not None else '<td></td>')
-            rangees += (
-                f'<tr><td>{L("ci_ind_annee", "Année {n}", n=annee)}</td>'
-                f'<td class="i2-c {cls}">{txt}{fig}</td>{ttc_td}</tr>')
-        table = (
-            f'<table class="i2-tbl"><tr><th>{L("ci_ind_jalon", "Jalon")}</th>'
-            f'<th class="i2-r">{L("ci_ind_cumul_net", "Cumul net")} '
-            f'({base_txt})</th>{entete_ttc}</tr>{rangees}</table>'
-            if rangees else "")
-        courbe = _courbe(lignes_flux, None)
+        # AMOT94 — le tableau des 25 ans (flux servi, ligne par ligne) à la
+        # place des 5 jalons ; la courbe du cumul cède sa place si la page
+        # déborde (le tableau porte déjà le cumul).
+        table = _tableau_flux(argent, lignes_flux, fmt, fmt_mad, L, base_txt)
+        courbe = ("" if cede(d, "courbe_cumul") else
+                  '<div data-graphique="courbe_cumul">'
+                  + _courbe(lignes_flux, None) + "</div>")
         lignes_hyp = _hypotheses(argent, flux, fmt, fmt_mad, L, d)
         cfo_html = _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L,
                              (navy, ink))
         hypotheses_html = (
             f'<div class="i2-hyp"><div class="i2-hyp-t">'
             f'{L("ci_hypotheses_estimation", TITRE_HYPOTHESES)}</div>'
+            # AMOT94 — sur deux colonnes : le tableau des 25 ans tient.
+            + '<div class="i2-hyp-c">'
             + "".join(f'<div class="i2-hyp-i">{h}</div>' for h in lignes_hyp)
-            + '</div>') if lignes_hyp else ""
+            + '</div></div>') if lignes_hyp else ""
         om_txt = _ligne_om(argent, fmt_mad, L)
         revente_html = _ligne_revente(argent, fmt, L, ci_blocs.langue(d))
         mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'

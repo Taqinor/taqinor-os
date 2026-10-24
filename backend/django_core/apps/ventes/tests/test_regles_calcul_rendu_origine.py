@@ -211,7 +211,10 @@ CLES_HORS_RENDU_ORIGINE = (
         'ci_inst_onduleurs', 'ci_inst_kw_ac', 'ci_inst_pose',
         'ci_inst_surface', 'ci_pose_toiture_inclinee', 'ci_pose_bac_acier',
         'ci_pose_toit_plat_leste', 'ci_pose_toit_plat_fixe',
-        'ci_pose_ombriere', 'ci_pose_sol')),
+        'ci_pose_ombriere', 'ci_pose_sol',
+        # AMOT94 — tableau des 25 ans.
+        'ci_fx_annee', 'ci_fx_production', 'ci_fx_economie', 'ci_fx_om',
+        'ci_fx_remplacement', 'ci_fx_flux')),
     *_LIBELLES_APDF)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

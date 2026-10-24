@@ -23,6 +23,17 @@ LARGEUR = 520
 MARGE_G, MARGE_D, MARGE_H, MARGE_B = 6, 6, 16, 16
 
 
+def cede(d, nom):
+    """Le bloc cédable ``nom`` (son ``data-graphique``) est-il retiré par le
+    rendu adaptatif ? ``d['_sans_graphiques']`` : ``True`` (tous) ou
+    l'ensemble des noms posés sur les pages qui débordaient."""
+    retires = d.get("_sans_graphiques") if isinstance(d, dict) else None
+    if retires is True:
+        return True
+    return isinstance(retires, (set, frozenset, list, tuple)) \
+        and nom in retires
+
+
 def _rect(x, y, largeur, hauteur, couleur):
     return (f'<rect x="{x:.1f}" y="{y:.1f}" width="{largeur:.1f}" '
             f'height="{max(hauteur, 0):.1f}" fill="{couleur}"/>')
@@ -98,7 +109,7 @@ def bloc_energie_mensuelle(d, synthese, couleurs, police, fmt, prefixe,
     ``synthese['energie']['par_mois']`` ; '' quand les 12 mois ne sont pas
     servis, ou quand le rendu adaptatif l'a retiré (``_sans_graphiques``)."""
     mois = mois_servis(synthese)
-    if mois is None or d.get("_sans_graphiques"):
+    if mois is None or cede(d, "energie_mensuelle"):
         return ""
     reperes = REPERES_MOIS.get(langue(d)) or [str(i) for i in range(1, 13)]
     plafond = max(max(m["consommation_kwh"], m["production_kwh"])
