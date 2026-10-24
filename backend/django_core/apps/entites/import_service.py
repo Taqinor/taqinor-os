@@ -32,17 +32,43 @@ from .models import Entite
 
 def _parse_csv(file_bytes, filename):
     text = file_bytes.decode('utf-8-sig', errors='replace') if isinstance(file_bytes, bytes) else file_bytes
+    # api-fuzz-full 24/10 — un retour chariot SEUL (``\r``) au milieu d'une
+    # cellule non guillemetée levait ``csv.Error`` (500) : toutes les fins de
+    # ligne sont ramenées à ``\n`` avant la lecture.
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
     reader = csv.DictReader(io.StringIO(text))
     rows = []
-    for i, raw in enumerate(reader, start=2):  # ligne 1 = en-têtes
-        # api-fuzz-full 24/10 — une ligne PLUS LONGUE que l'en-tête range ses
-        # cellules en trop sous la clé ``None`` (``restkey``), en LISTE : leur
-        # ``.strip()`` levait AttributeError (500). Les colonnes sans en-tête
-        # sont ignorées, comme toute colonne inconnue.
-        rows.append((i, {(k or '').strip().lower(): (v or '').strip()
-                         for k, v in raw.items()
-                         if k is not None and not isinstance(v, list)}))
+    try:
+        for i, raw in enumerate(reader, start=2):  # ligne 1 = en-têtes
+            # api-fuzz-full 24/10 — une ligne PLUS LONGUE que l'en-tête range
+            # ses cellules en trop sous la clé ``None`` (``restkey``), en
+            # LISTE : leur ``.strip()`` levait AttributeError (500). Les
+            # colonnes sans en-tête sont ignorées, comme toute colonne inconnue.
+            rows.append((i, {(k or '').strip().lower(): (v or '').strip()
+                             for k, v in raw.items()
+                             if k is not None and not isinstance(v, list)}))
+    except csv.Error:
+        # Fichier illisible (cellule démesurée…) : aucune ligne n'est retenue,
+        # l'aperçu le DIT (« Aucune ligne lisible »), rien n'est importé.
+        return []
     return rows
+
+
+#: Longueurs des colonnes cibles (``Entite.code`` / ``Entite.nom``) : une cellule
+#: plus longue, ou portant le caractère nul, serait refusée par PostgreSQL (500).
+_LONGUEUR_MAX = {'code': 50, 'nom': 150, 'code_parent': 50}
+
+
+def _cellule_refusee(row):
+    """Motif de refus d'une cellule que la base refuserait (nul, trop longue),
+    ou ``None`` : l'erreur est rapportée PAR LIGNE, l'import ne casse pas."""
+    for champ, maxi in _LONGUEUR_MAX.items():
+        valeur = row.get(champ, '')
+        if '\x00' in valeur:
+            return f"{champ} : le caractère nul n'est pas autorisé."
+        if len(valeur) > maxi:
+            return f'{champ} : {maxi} caractères au plus.'
+    return None
 
 
 def _valider(rows):
@@ -60,6 +86,10 @@ def _valider(rows):
     for ligne, row in rows:
         code = row.get('code', '')
         nom = row.get('nom', '')
+        illisible = _cellule_refusee(row)
+        if illisible:
+            erreurs.append({'ligne': ligne, 'motif': illisible})
+            continue
         if not code:
             erreurs.append({'ligne': ligne, 'motif': 'Code manquant.'})
             continue
