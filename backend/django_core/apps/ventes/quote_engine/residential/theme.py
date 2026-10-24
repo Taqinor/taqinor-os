@@ -135,6 +135,13 @@ def logo_imprime_b64(data, sombre: bool = True) -> str:
     return logo_dark_b64() if sombre else logo_color_b64()
 
 
+def logo_qr(data):
+    """APDF102 — logo central des QR « Scannez pour signer » (``qr_data_uri``) :
+    celui de la société (``logo_societe_b64``), sinon l'asset TAQINOR (True)."""
+    societe = logo_societe_b64(data)
+    return True if societe is None else societe
+
+
 # This renderer's own bundled assets (the page-1 hero photo).
 _RESID_ASSETS = Path(__file__).resolve().parent / "assets"
 
@@ -179,7 +186,7 @@ def lien_affiche(url: str, segments: int = 2) -> str:
 
 
 @functools.lru_cache(maxsize=64)
-def qr_data_uri(url: str, *, logo: bool = True, correction: str = "H",
+def qr_data_uri(url: str, *, logo=True, correction: str = "H",
                 box_size: int = 16, border: int = 2,
                 front=(26, 43, 74)) -> str:
     """QR scannable rendu en PNG data-URI (aucun accès réseau au rendu).
@@ -193,6 +200,9 @@ def qr_data_uri(url: str, *, logo: bool = True, correction: str = "H",
     ``correction='M'`` + ``logo=False`` servent la petite vignette de la
     page 1 : sans logo central ni redondance H, le même lien tient en nettement
     moins de modules, donc reste scannable à ~20 mm.
+
+    APDF102 — ``logo`` vaut aussi le base64 PNG de ``logo_qr`` (logo de la
+    société) ; son pixel transparent ⇒ aucun logo central.
 
     Dépendance ``qrcode`` (BSD, pur Python, déjà épinglée dans
     ``requirements.txt``) importée DÉFENSIVEMENT : une roue manquante rend ''
@@ -224,10 +234,14 @@ def qr_data_uri(url: str, *, logo: bool = True, correction: str = "H",
             module_drawer=RoundedModuleDrawer(),
             color_mask=SolidFillColorMask(front_color=tuple(front),
                                           back_color=(255, 255, 255)))
-        if logo:
+        if logo is True:
             chemin = _LIVE_ASSETS / "logo.png"
             if chemin.exists():
                 kw["embeded_image_path"] = str(chemin)
+        elif logo and logo != _PIXEL_TRANSPARENT_B64:
+            from PIL import Image
+            kw["embeded_image"] = Image.open(io.BytesIO(
+                base64.b64decode(logo)))
         img = qr.make_image(**kw)
         buf = io.BytesIO()
         img.save(buf, "PNG")
