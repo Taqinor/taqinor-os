@@ -144,7 +144,8 @@
   ],
   "destroy": [
    "IsAdminOrResponsableTier",
-   "IsResponsableOrAdmin"
+   "IsResponsableOrAdmin",
+   "DroitDeLaGrille_ventes_supprimer"
   ],
   "dgi_conformite": [
    "IsResponsableOrAdmin"

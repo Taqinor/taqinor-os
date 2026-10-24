@@ -966,3 +966,114 @@ class CodesGrilleAppliquesTests(TestCase):
                                    masse, format='json').status_code, 200)
         self.assertEqual(chef.post('/api/django/installations/interventions/',
                                    interv, format='json').status_code, 201)
+
+    # ── D-ASEC-50 (24/10/2026) : sav_export, installation_export,
+    # ventes_supprimer — Responsable aligné (migration roles 0010) ─────────
+    _SAV_EXPORTS = ('/api/django/sav/insights/sav-fcr/',
+                    '/api/django/sav/insights/sav-performance-agent/')
+    _INTERVENTIONS = '/api/django/installations/interventions/'
+
+    def _api_role(self, nom, permissions, est_systeme=False):
+        """Compte à rôle fin ; ``role_legacy`` suit le palier du rôle comme à
+        la création par l'API des comptes (l'export des interventions relit
+        encore ce palier, garde existante conservée)."""
+        role = Role.objects.create(
+            company=self.company, nom=nom, est_systeme=est_systeme,
+            permissions=list(permissions))
+        user = User.objects.create_user(
+            username=f'asec50-d50-{role.pk}', password='x',
+            company=self.company, role=role,
+            role_legacy=User.tier_for_role(role))
+        api = APIClient()
+        api.force_authenticate(user)
+        return api
+
+    def _facture_brouillon(self):
+        from decimal import Decimal
+        from apps.ventes.models import Facture
+        # Référence vide → « BROUILLON-<id> » (supprimable, VNT14).
+        return Facture.objects.create(
+            company=self.company, reference='', client=self.client_obj,
+            statut=Facture.Statut.BROUILLON, taux_tva=Decimal('20'))
+
+    def test_d_asec_50_role_sans_le_code_refuse(self):
+        """Pour chaque code, un rôle IDENTIQUE au Responsable canonique sauf
+        ce code reçoit le 403 nommé ; la lecture JSON du même écran reste
+        ouverte. CLAUSE PERSISTANCE : la facture refusée est toujours là."""
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from apps.ventes.models import Facture
+        responsable = dict(CANONICAL_SYSTEM_ROLES)['Responsable']
+
+        def sans(code):
+            self.assertIn(code, responsable)
+            return self._api_role(f'Responsable sans {code}',
+                                  [c for c in responsable if c != code])
+
+        api = sans('sav_export')
+        for url in self._SAV_EXPORTS:
+            self._refus(api.get(url + '?export=xlsx'), 'sav_export')
+            self.assertEqual(api.get(url).status_code, 200)
+        api = sans('installation_export')
+        self._refus(api.get(self._INTERVENTIONS + '?export=xlsx'),
+                    'installation_export')
+        self.assertEqual(api.get(self._INTERVENTIONS).status_code, 200)
+        api = sans('ventes_supprimer')
+        facture = self._facture_brouillon()
+        self._refus(api.delete(f'/api/django/ventes/factures/{facture.pk}/'),
+                    'ventes_supprimer')
+        self.assertTrue(Facture.objects.filter(pk=facture.pk).exists())
+
+    def test_d_asec_50_responsable_et_directeur_gardent_les_gestes(self):
+        """Rôles SYSTÈME réels (``CANONICAL_SYSTEM_ROLES``) : le Responsable
+        aligné et le Directeur exportent et suppriment toujours."""
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        from apps.ventes.models import Facture
+        grille = dict(CANONICAL_SYSTEM_ROLES)
+        for nom in ('Responsable', 'Directeur'):
+            api = self._api_role(nom, grille[nom], est_systeme=True)
+            for url in self._SAV_EXPORTS + (self._INTERVENTIONS,):
+                resp = api.get(url + '?export=xlsx')
+                self.assertEqual(resp.status_code, 200, (nom, url))
+                self.assertIn('spreadsheetml', resp['Content-Type'])
+            facture = self._facture_brouillon()
+            resp = api.delete(f'/api/django/ventes/factures/{facture.pk}/')
+            self.assertEqual(resp.status_code, 204,
+                             (nom, getattr(resp, 'data', resp)))
+            self.assertFalse(Facture.objects.filter(pk=facture.pk).exists())
+
+    def test_migration_0010_aligne_le_seul_responsable_systeme(self):
+        """Aller : le rôle SYSTÈME « Responsable » reçoit les trois codes en
+        fin de liste (idempotente) ; un rôle personnalisé — même nommé
+        « Responsable » dans une autre société — et le Directeur ne changent
+        pas. Retour : retrait des trois codes de ce seul rôle système."""
+        import importlib
+        from django.apps import apps as django_apps
+        migration = importlib.import_module(
+            'apps.roles.migrations.0010_asec50_responsable_exports')
+        autre = Company.objects.create(nom='ASEC50 0010', slug='asec50-0010')
+        systeme = Role.objects.create(
+            company=self.company, nom='Responsable', est_systeme=True,
+            permissions=['crm_voir', 'sav_export'])
+        perso = Role.objects.create(
+            company=autre, nom='Responsable', permissions=['crm_voir'])
+        directeur = Role.objects.create(
+            company=self.company, nom='Directeur', est_systeme=True,
+            permissions=['crm_voir', 'ventes_supprimer'])
+
+        migration.aligner(django_apps, None)
+        migration.aligner(django_apps, None)
+        self.assertEqual(Role.objects.get(pk=systeme.pk).permissions, [
+            'crm_voir', 'sav_export', 'installation_export',
+            'ventes_supprimer'])
+        self.assertEqual(Role.objects.get(pk=perso.pk).permissions,
+                         ['crm_voir'])
+        self.assertEqual(Role.objects.get(pk=directeur.pk).permissions,
+                         ['crm_voir', 'ventes_supprimer'])
+
+        migration.desaligner(django_apps, None)
+        self.assertEqual(Role.objects.get(pk=systeme.pk).permissions,
+                         ['crm_voir'])
+        self.assertEqual(Role.objects.get(pk=perso.pk).permissions,
+                         ['crm_voir'])
+        self.assertEqual(Role.objects.get(pk=directeur.pk).permissions,
+                         ['crm_voir', 'ventes_supprimer'])
