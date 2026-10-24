@@ -27,4 +27,6 @@ pour le fondateur : `docs/deploy-notes-vague3.md`.
   serveur (valeur jamais au dépôt) ; l'ancien `/api/django/admin/` répond 404. Production en
   `settings.prod` + `DEBUG=False` depuis le 10/10 10:54 UTC (`docs/production.md`).
 
+- **D-ASEC-50 (24/10/2026, ASEC50)** : le rôle système **Responsable** reçoit `sav_export`, `installation_export` et `ventes_supprimer` par migration roles (comme 0009) ; les endpoints concernés (exports SAV `sav-fcr`/`sav-performance-agent`, export des interventions, suppression d'une facture brouillon) appliquent alors le code.
+
 Ne jamais re-demander ces questions.
