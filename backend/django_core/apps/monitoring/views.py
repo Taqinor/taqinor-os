@@ -274,19 +274,6 @@ class MonitoringEmailOmReportSerializer(serializers.Serializer):
     recipient = serializers.EmailField(required=False)
 
 
-class FichierReleves(serializers.FileField):
-    """Fichier CSV du multipart d'``import-releves`` : le schéma le publie NON
-    VIDE (``minLength: 1``) — un fichier vide recevait 400 « Fichier CSV vide »
-    alors qu'il était conforme (api-fuzz-full, 3e drainage 24/10)."""
-
-    def __init__(self, **kwargs):
-        from drf_spectacular.drainage import set_override
-
-        super().__init__(**kwargs)
-        set_override(self, 'field', {
-            'type': 'string', 'format': 'binary', 'minLength': 1})
-
-
 class MonitoringImportRelevesCsv(serializers.Serializer):
     """Corps JSON de ``import-releves`` (alternative au fichier multipart)."""
     csv = RegexStricte(MOTIF_NON_BLANC_SANS_NUL)
@@ -362,7 +349,7 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         request={
             'multipart/form-data': inline_serializer(
                 'MonitoringImportRelevesFichier', {
-                    'fichier': FichierReleves()}),
+                    'fichier': serializers.FileField()}),
             'application/json': MonitoringImportRelevesCsv,
         },
         responses=inline_serializer('MonitoringImportReleves', {
@@ -393,11 +380,8 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             # ENF11 : corps validé par le serializer PUBLIÉ (``csv`` chaîne
             # non blanche) — un tableau/nombre ne plante plus, ne passe plus.
             texte = corps_valide(request, MonitoringImportRelevesCsv)['csv']
-        if not texte.strip():
-            return Response(
-                {'detail': 'Fichier CSV vide ou absent (champ « fichier » ou '
-                           '« csv »).'},
-                status=status.HTTP_400_BAD_REQUEST)
+        # Un fichier vide est un fichier conforme : 0 relevé créé, l'en-tête
+        # absent est rapporté dans ``erreurs`` (jamais un 400).
         lignes, erreurs = _lire_csv_releves(texte)
         installation = config.installation
         existants = set(ProductionReading.objects.filter(

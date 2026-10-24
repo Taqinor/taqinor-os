@@ -158,14 +158,16 @@ class FkAchatsTests(TestCase):
     def test_bcf_acheteur_autre_societe(self):
         nb = BonCommandeFournisseur.objects.filter(company=self.co_a).count()
         self._post_compare('/api/django/stock/bons-commande-fournisseur/',
-                           self._bcf_payload(), 'acheteur', self.user_b.pk)
+                           self._bcf_payload(), 'acheteur', self.user_b.pk,
+                           statut=404)  # ENF11 : clé de premier niveau
         self.assertEqual(
             BonCommandeFournisseur.objects.filter(company=self.co_a).count(),
             nb)
 
     def test_bcf_fournisseur_autre_societe(self):
         self._post_compare('/api/django/stock/bons-commande-fournisseur/',
-                           self._bcf_payload(), 'fournisseur', self.fb.pk)
+                           self._bcf_payload(), 'fournisseur', self.fb.pk,
+                           statut=404)  # ENF11 : clé de premier niveau
 
     def test_bcf_ligne_produit_autre_societe(self):
         url = '/api/django/stock/bons-commande-fournisseur/'
@@ -182,7 +184,7 @@ class FkAchatsTests(TestCase):
         url = f'/api/django/stock/bons-commande-fournisseur/{brouillon.pk}/'
         r = self.api.patch(url, {'acheteur': self.user_b.pk}, format='json')
         r_absent = self.api.patch(url, {'acheteur': ID_ABSENT}, format='json')
-        self._assert_comme_absent(r, r_absent, self.user_b.pk)
+        self._assert_comme_absent(r, r_absent, self.user_b.pk, statut=404)
         brouillon.refresh_from_db()
         self.assertIsNone(brouillon.acheteur_id)
 

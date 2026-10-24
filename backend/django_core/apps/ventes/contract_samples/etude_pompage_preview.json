@@ -1405,7 +1405,8 @@
         "profondeur_forage_m": 80,
         "volume_reservoir_m3": null,
         "distance_champ_m": 25,
-        "plaque": null
+        "plaque": null,
+        "volume_m3_jour": 135
       }
     },
     "derivees_v1_lues_par_le_rendu": [

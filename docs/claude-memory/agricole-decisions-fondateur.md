@@ -38,3 +38,5 @@ lecture seule, sources primaires : CGI 2026, Guide FDA 2024, loi 82-21, FAO-56, 
 **How to apply:** ne pas les re-demander ; toute tâche agricole les applique. Restent ouverts (manuels, pas des
 décisions de produit) : avis écrit du fiscaliste sur la TVA du kit, prix des pompes OSP (QXG3), garanties écrites
 des fournisseurs, confirmation DPA du processus FDA. Voir [[qjr5-decisions-fondateur]], [[kwh-declare-vs-factures]].
+
+**24/10/2026 — D-AGQ-12 à 15 (phase 2, `docs/audits/decisions.yml`) :** acceptation d'un pompage = accord sur le devis, commande ferme et acompte dû seulement APRÈS l'accord préalable FDA quand l'aide est demandée (sans aide : ferme à l'acceptation) ; SAV imprimé page 3 et sur la page = le délai d'intervention SAISI dans Paramètres (`delai_intervention_suivi_heures`), rien sinon ; étape « mise en service » = débit/HMT mesurés + dossier remis (fiches, schéma) + formation utilisation/entretien ; message WhatsApp du lien d'un lead pompage = texte « étude de pompage solaire » en français, sans chiffre.

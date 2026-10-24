@@ -129,16 +129,14 @@ class ImportRelevesTest(TestCase):
         self.assertIsInstance(op, migrations.AlterField)
         self.assertIn(('import', 'Import CSV'), op.field.choices)
 
-    def test_fichier_publie_non_vide(self):
-        """3e drainage api-fuzz : un fichier vide est refusé (400) — le schéma
-        multipart le publie donc ``minLength: 1``."""
-        from apps.monitoring.views import FichierReleves
-
-        champ = FichierReleves()
-        self.assertEqual(champ._spectacular_annotation['field'],
-                         {'type': 'string', 'format': 'binary',
-                          'minLength': 1})
+    def test_fichier_vide_200_zero_releve(self):
+        """4e drainage api-fuzz : Schemathesis envoie un fichier vide (il
+        ignore ``minLength`` sur un binaire) — fichier conforme, 0 relevé
+        créé et l'en-tête absent rapporté, jamais un 400."""
         resp = self.api.post(
             self.url, {'fichier': SimpleUploadedFile('vide.csv', b'')},
             format='multipart')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.json()['crees'], 0)
+        self.assertEqual(resp.json()['erreurs'][0]['ligne'], 1)
+        self.assertEqual(self._releves().count(), 0)

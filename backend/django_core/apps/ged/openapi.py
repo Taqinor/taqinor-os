@@ -24,7 +24,17 @@ def S(nom, champs, **kw):
     return inline_serializer('Ged' + nom, champs, **kw)
 
 
+#: 4e drainage api-fuzz — un identifiant de requête est une clé primaire entière
+#: (``1`` à ``2**31 - 1``) : borné au schéma, il est refusé 400 hors plage par le
+#: contrôle générique des valeurs (``core.parametres_requete``). Sans bornes un
+#: entier de 30 chiffres passait en filtre (200 vide) alors que Schemathesis le
+#: tient pour une chaîne.
+ID_REQUETE = {'type': 'integer', 'minimum': 1, 'maximum': 2147483647}
+
+
 def P(nom, type_=OpenApiTypes.STR, **kw):
+    if type_ is OpenApiTypes.INT:
+        type_ = ID_REQUETE
     return OpenApiParameter(nom, type_, **kw)
 
 

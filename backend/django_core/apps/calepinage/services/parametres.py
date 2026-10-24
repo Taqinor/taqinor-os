@@ -38,7 +38,8 @@ class CaractereInterditEnCle(ReglageInvalide):
     """ENF11 — le caractère interdit (NUL, demi-substitut isolé) est dans une CLÉ
     d'objet : le schéma OpenAPI 3.0 ne borne pas les clés (pas de
     ``propertyNames``), refus d'ÉTAT inexprimable au schéma = 409 (même corps).
-    Dans une VALEUR il reste un 400, le motif « sans NUL » étant publié."""
+    Dans une VALEUR d'une section à registre il reste un 400, le motif « sans
+    NUL » étant publié ; dans une section libre la valeur est nettoyée."""
 
 
 class ReglageInterdit(ReglageInvalide):
@@ -104,6 +105,28 @@ def _chemin_caractere_interdit(valeur, chemin):
             if trouve:
                 return trouve
     return None
+
+
+#: Sections au schéma de requête LIBRE (objet quelconque, aucun motif publié) :
+#: un NUL ou un demi-substitut dans une VALEUR y est conforme au schéma, donc
+#: retiré ici (jamais refusé) — PostgreSQL ne range ni l'un ni l'autre en JSONB.
+#: Les clés restent refusées (409) : les retirer fusionnerait deux clés.
+SECTIONS_A_VALEURS_LIBRES = ('presets', 'favoris_materiel',
+                             'norme_electrique', 'documents')
+
+
+def _valeurs_sans_caractere_interdit(valeur):
+    """``valeur`` dont tous les TEXTES-VALEURS (pas les clés) sont privés de
+    U+0000 et des demi-substituts isolés."""
+    if isinstance(valeur, str):
+        return ''.join(c for c in valeur
+                       if c != '\x00' and not '\ud800' <= c <= '\udfff')
+    if isinstance(valeur, dict):
+        return {cle: _valeurs_sans_caractere_interdit(sous)
+                for cle, sous in valeur.items()}
+    if isinstance(valeur, (list, tuple)):
+        return [_valeurs_sans_caractere_interdit(sous) for sous in valeur]
+    return valeur
 
 
 def _texte_journal(valeur):
@@ -178,6 +201,9 @@ def enregistrer_parametres(company, donnees, *, remplacer=False, user=None):
             f"{', '.join(SECTIONS_PARAMETRES)}.",
             champ=inconnues[0])
 
+    donnees = {section: (_valeurs_sans_caractere_interdit(valeur)
+                         if section in SECTIONS_A_VALEURS_LIBRES else valeur)
+               for section, valeur in donnees.items()}
     for section, valeur in donnees.items():
         if not isinstance(valeur, dict):
             raise ReglageInvalide(

@@ -19,7 +19,7 @@ import {
   syntheseAgricoleArgent,
   type ProposalResponse,
 } from '../src/lib/proposition';
-import { AGR_ACCEPTATION_LBL, AGR_NON_INCLUS_LBL, savAgricole, valeurProvenance } from '../src/lib/propositionAgricole';
+import { AGR_ACCEPTATION_LBL, AGR_NON_INCLUS_LBL, heuresEauAgricole, moisIrrigationDeclares, savAgricole, valeurProvenance } from '../src/lib/propositionAgricole';
 import { garantiesCodeesEnDurAffichees } from '../src/lib/propositionPage';
 
 const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -339,5 +339,26 @@ describe('D-AGQ-12 / D-AGQ-13 — SAV servi et acceptation d’un pompage', () =
     expect(AGR_ACCEPTATION_LBL.ferme.fr).toContain('qu’après l’accord préalable FDA');
     expect(AGR_ACCEPTATION_LBL.acompte.fr).toBe('à la commande — après l’accord FDA si vous demandez l’aide');
     for (const lg of ['en', 'ar'] as const) expect(AGR_ACCEPTATION_LBL.ferme[lg].length).toBeGreaterThan(40);
+  });
+});
+
+describe('Rejeu AGQ du 24/10 — jumeaux page des phrases PDF (AGQ3, AGQ18)', () => {
+  const fmt = (n: number) => String(n).replace('.', ',');
+  it('la carte eau nomme le mois de conception et le plus bas, comme le héro du PDF', () => {
+    const p = { synthese_agricole: { eau: { mois_conception: 10, m3_jour_min: 112.3, mois_m3_jour_min: 11 } } };
+    expect(heuresEauAgricole(p, 5.1, fmt)!.fr).toBe(
+      'estimation, sur 5,1 h de pompage équivalentes à plein débit en octobre, mois de conception · au plus bas : 112,3 m³/j en novembre (hypothèse)',
+    );
+    expect(heuresEauAgricole(p, 5.1, fmt)!.ar).toContain('أكتوبر');
+    // le plus bas tombe sur le mois de conception : rien de plus ; sans mois servi : la phrase d'hier.
+    expect(heuresEauAgricole({ synthese_agricole: { eau: { mois_conception: 10, m3_jour_min: 9, mois_m3_jour_min: 10 } } }, 5.1, fmt)!.fr)
+      .not.toContain('au plus bas');
+    expect(heuresEauAgricole({ synthese_agricole: { eau: {} } }, 5.1, fmt)!.fr).toBe('estimation, sur 5,1 h de pompage (hypothèse)');
+    expect(heuresEauAgricole(p, null, fmt)).toBeNull();
+  });
+  it('« Mois d’irrigation : déclarés par vous le … » lu sur l’entrée servie ; sans entrée, rien', () => {
+    const p = { synthese_agricole: { economies: { entrees_declarees: [{ cle: 'mois_irrigation', saisi_le: '2026-10-24' }] } } };
+    expect(moisIrrigationDeclares(p)!.fr).toBe("Mois d'irrigation : déclarés par vous le 24/10/2026.");
+    expect(moisIrrigationDeclares({ synthese_agricole: { economies: { entrees_declarees: [] } } })).toBeNull();
   });
 });

@@ -83,6 +83,20 @@ class TestSavPieces(TestCase):
                 url, {'produit': self.produit.id, **corps}, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.data))
 
+    def test_retrait_quantite_debordante_400_fractionnaire_stock_409(self):
+        """api-fuzz 24/10 — au-delà des 8 entiers de la colonne : refus de forme
+        (400, plus de 500) ; une quantité fractionnaire remise en stock
+        occasion s'oppose par l'état du stock entier : 409."""
+        url = f'/api/django/sav/tickets/{self.ticket.id}/pieces-retirees/'
+        r = self.api.post(
+            url, {'produit': self.produit.id, 'quantite': '8656376060.4',
+                  'destination': 'stock_occasion'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(
+            url, {'produit': self.produit.id, 'quantite': '0.9',
+                  'destination': 'stock_occasion'}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+
     def test_decrement_over_stock_blocked(self):
         # ERR80 — décrémenter plus que le stock en main est refusé (jamais
         # négatif) et ne crée pas la pièce.

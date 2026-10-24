@@ -2396,7 +2396,7 @@ class OrdreAssemblageLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerM
 
 
 class OrdreAssemblageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
-                                serializers.ModelSerializer):
+                                ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
     """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
     poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`/`annuler`."""
     # ACHT52 — FK inscriptibles bornées à la société (id étranger/inconnu = 404 ENF11, sans écriture)

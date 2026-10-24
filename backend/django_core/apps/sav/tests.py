@@ -748,13 +748,13 @@ class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
         from apps.sav.champs_corps import (
             MOTIF_QUANTITE_POSITIVE, QuantitePositive)
         champ = QuantitePositive()
-        for bonne in ('1', '12.5', '9999999999.99', '0.01', '.5', '0.10'):
+        for bonne in ('1', '12.5', '99999999.99', '0.01', '.5', '0.10'):
             self.assertTrue(re.fullmatch(MOTIF_QUANTITE_POSITIVE, bonne), bonne)
             champ.run_validation(bonne)
-        for mauvaise in ('0', '0.00', '-1', '', '.', '1.234', '12345678901'):
+        for mauvaise in ('0', '0.00', '-1', '', '.', '1.234', '123456789'):
             self.assertFalse(
                 re.fullmatch(MOTIF_QUANTITE_POSITIVE, mauvaise), mauvaise)
-        for mauvaise in ('0', '0.00', '-1', '1.234', '12345678901'):
+        for mauvaise in ('0', '0.00', '-1', '1.234', '123456789'):
             with self.assertRaises(ValidationError, msg=mauvaise):
                 champ.run_validation(mauvaise)
 
