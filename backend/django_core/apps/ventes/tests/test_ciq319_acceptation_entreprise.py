@@ -90,6 +90,37 @@ class AcceptationEntreprise(TestCase):
                 self.assertFalse(
                     DevisSignature.objects.filter(devis=devis).exists())
 
+    def test_ci_etude_illisible_409_validation_requise_rien_ecrit(self):
+        """C (revue du 24/10/2026) — REFUS FERMÉ : l'étude C&I ne se lit pas
+        à l'acceptation ⇒ 409 ``validation_requise`` (message client), aucune
+        signature, le devis reste « envoyé » — jamais un sceau C&I sans son
+        étude en silence."""
+        from apps.ventes.domain.cycle_vie import ETUDE_ILLISIBLE_REFUS
+        for mode in ('commercial', 'industriel'):
+            with self.subTest(mode=mode):
+                devis = self._devis(mode)
+                with patch('apps.ventes.quote_engine.ci.synthese.synthese_ci',
+                           side_effect=RuntimeError('moteur C&I en panne')):
+                    resp = self._post(devis, ENTREPRISE)
+                self.assertEqual(resp.status_code, 409, resp.data)
+                self.assertEqual(resp.data, {
+                    'detail': ETUDE_ILLISIBLE_REFUS,
+                    'code': 'validation_requise'})
+                devis.refresh_from_db()
+                self.assertEqual(devis.statut, Devis.Statut.ENVOYE)
+                self.assertFalse(
+                    DevisSignature.objects.filter(devis=devis).exists())
+
+    def test_ci_signature_porte_ses_chiffres_scelles(self):
+        """C — la signature C&I stocke les chiffres de l'étude scellés."""
+        devis = self._devis('commercial')
+        resp = self._post(devis, ENTREPRISE)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        sig = DevisSignature.objects.get(devis=devis)
+        self.assertIn('etude', sig.figures_scellees)
+        self.assertEqual(sig.verifier_contenu(),
+                         (True, DevisSignature.CONTENT_HASH_V3))
+
     def test_ci_bloc_absent_nomme_le_premier_champ(self):
         resp = self._post(self._devis())
         self.assertEqual(resp.status_code, 400, resp.data)

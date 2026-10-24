@@ -208,8 +208,11 @@ def verifier_empreinte_signature(devis, *, lignes=None):
             'message': "Ce devis ne porte aucune signature électronique.",
         }
     from apps.ventes.domain.modifiabilite import figures_sceau
+    # Les chiffres scellés STOCKÉS font foi ; l'étude n'est relue que pour une
+    # signature antérieure au champ ``figures_scellees`` (compatibilité).
+    stockees, _figures = signature.figures_du_sceau()
     intacte, version = signature.verifier_contenu(
-        lignes=lignes, figures=figures_sceau(devis))
+        lignes=lignes, figures=None if stockees else figures_sceau(devis))
     if intacte is None:
         return {
             'signee': True, 'intacte': None, 'version': None,

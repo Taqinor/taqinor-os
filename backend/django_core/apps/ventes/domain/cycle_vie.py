@@ -80,6 +80,18 @@ VALIDATION_REQUISE_REFUS = (
     'signée.')
 
 
+#: C (revue du 24/10/2026) — 409 ``validation_requise`` quand l'étude C&I
+#: d'un devis commercial / industriel ne se lit pas à l'acceptation (le sceau
+#: ne la couvrirait pas) : message CLIENT (lien public, portail)…
+ETUDE_ILLISIBLE_REFUS = (
+    'Votre proposition doit être revalidée par votre conseiller avant '
+    'signature : contactez-le.')
+#: … et message de l'acceptation INTERNE (vendeur).
+ETUDE_ILLISIBLE_REFUS_INTERNE = (
+    "L'étude de ce devis commercial / industriel ne peut pas être relue : "
+    "corrigez-la (ou régénérez le devis) avant d'enregistrer l'acceptation.")
+
+
 class AcceptationBloquee(AcceptError):
     """ADEV13 (C-ADEV-005) — acceptation refusée par un blocage crédit
     (XFAC28) ou un avertissement de vente bloquant (ZSAL9).
@@ -109,13 +121,23 @@ def peut_passer_outre(user):
 
 
 def _garde_blocages_acceptation(devis, *, user, override_credit=False,
-                                override_avertissement=False):
+                                override_avertissement=False,
+                                empreinte_attendue=None, lien=None):
     """ADEV13 — LA garde unique des trois portes d'acceptation (interne,
     signature publique, portail) : blocage crédit dur (XFAC28) puis
     avertissement de vente bloquant (ZSAL9). Lève ``AcceptationBloquee`` ;
     un override n'est honoré que s'il est demandé (les portes client ne le
     demandent jamais) ET que ``peut_passer_outre(user)`` (ADEV14) — un
-    drapeau posé par un Commercial est ignoré, le refus tombe."""
+    drapeau posé par un Commercial est ignoré, le refus tombe.
+
+    ADEV51 (C-ADEV-018) — d'abord, CE QUE LE CLIENT SIGNE = CE QU'IL A LU,
+    revu SOUS LE VERROU d'``accept_devis`` (appelée sur le devis relu
+    verrouillé) : la vue compare l'empreinte AVANT le service (voie rapide),
+    mais une correction commitée entre cette garde-là et le
+    ``select_for_update`` passait. Même calcul que la lecture
+    (``empreinte_contenu_signable``, lignes relues en base) ; écart ⇒
+    ``AcceptError`` 409 ``empreinte_perimee``. ``None`` : aucun contrôle."""
+    _garde_empreinte_sous_verrou(devis, empreinte_attendue, lien)
     from apps.ventes.domain.recouvrement import (
         CreditHoldError, SaleWarningError, verifier_credit_hold,
         verifier_sale_warnings,
@@ -136,6 +158,18 @@ def _garde_blocages_acceptation(devis, *, user, override_credit=False,
             chatter_target=devis)
     except SaleWarningError as exc:
         raise AcceptationBloquee('sale_warning', exc.motif) from exc
+
+
+def _garde_empreinte_sous_verrou(devis, empreinte_attendue, lien):
+    """ADEV51 — voir :func:`_garde_blocages_acceptation`."""
+    from apps.ventes.models import Devis
+    if empreinte_attendue is None or devis.statut != Devis.Statut.ENVOYE:
+        return
+    from apps.ventes.domain.modifiabilite import (
+        EMPREINTE_PERIMEE, empreinte_contenu_signable)
+    if empreinte_attendue != empreinte_contenu_signable(devis, link=lien):
+        raise AcceptError(EMPREINTE_PERIMEE, conflict=True,
+                          code='empreinte_perimee')
 
 
 #: ADEV11 — message du 409 ``brouillon`` (contrat ``proposal_accept.json``,
@@ -713,8 +747,16 @@ def _send_otp_email(email, code, devis_ref, company=None):
 def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
                          signature_image='', signed_at_client=None,
                          on_behalf_of='', lignes=None, entreprise=None,
-                         langue=''):
+                         langue='', refus_etude=None):
     """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
+
+    ADEV96 — les chiffres de l'étude C&I scellés sont lus ici et stockés sur
+    la signature (``figures_scellees``) : la vérification rejoue le sceau
+    depuis eux, jamais depuis le moteur. ``refus_etude`` (``accept_devis``) —
+    REFUS FERMÉ : l'étude d'un devis C&I illisible lève
+    ``AcceptError(refus_etude, conflict=True, code='validation_requise')``
+    AVANT le best-effort ci-dessous (qui, lui, n'arrête jamais rien) ; sans
+    lui (avenant VNT61), l'étude illisible donne ``etude=null`` comme hier.
 
     Idempotent : un enregistrement existant n'est jamais écrasé (la première
     signature fait foi). Best-effort : une exception ne remonte jamais —
@@ -732,16 +774,28 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     migrera jamais vers ``core.esign``. Voir ``core/esign.py`` et
     ``docs/esign-socle.md``.
     """
+    from apps.ventes.models import DevisSignature
+    from apps.ventes.domain.modifiabilite import (
+        SyntheseCiIllisible, figures_sceau)
+    figures = None
+    if refus_etude is not None \
+            and not DevisSignature.objects.filter(devis=devis).exists():
+        try:
+            figures = figures_sceau(devis, strict=True)
+        except SyntheseCiIllisible:
+            raise AcceptError(refus_etude, conflict=True,
+                              code='validation_requise') from None
     try:
         from django.utils import timezone
-        from apps.ventes.models import DevisSignature
-        from apps.ventes.domain.modifiabilite import figures_sceau
         if DevisSignature.objects.filter(devis=devis).exists():
             return
         # NPLUS1 — lignes déjà chargées par l'appelant quand il les a (le hash
         # est identique : elles sont retriées par ``id`` côté modèle).
+        if refus_etude is None:
+            figures = figures_sceau(devis)
+        figures = DevisSignature.figures_canoniques(figures)
         content_hash = DevisSignature.compute_content_hash(
-            devis, lignes=lignes, figures=figures_sceau(devis))
+            devis, lignes=lignes, figures=figures)
         # ``signature_image`` peut être une data-URL volumineuse — on la borne
         # raisonnablement (les payloads canvas font ~quelques Ko).
         img = (signature_image or '')
@@ -764,6 +818,8 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
             **_champs_signature_entreprise(entreprise),
             # ADEV99 — langue de la page (confirmation FR, EN si 'en').
             langue_page=str(langue or '')[:5],
+            # ADEV96 — les chiffres scellés, pour un sceau reproductible.
+            figures_scellees={'etude': figures},
         )
         logger.info(
             'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
@@ -1220,28 +1276,17 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 f'accepté ; statut actuel : « {devis.get_statut_display()} ».',
                 conflict=True)
 
-        # ADEV51 (C-ADEV-018) — CE QUE LE CLIENT SIGNE = CE QU'IL A LU, revu
-        # SOUS LE VERROU. La vue compare l'empreinte AVANT d'appeler ce
-        # service (voie rapide) ; une correction commitée entre cette garde et
-        # le ``select_for_update`` ci-dessus passait. Même calcul que la
-        # lecture, sur le devis relu verrouillé (lignes relues en base).
-        if (empreinte_attendue is not None
-                and devis.statut == Devis.Statut.ENVOYE):
-            from apps.ventes.domain.modifiabilite import (
-                EMPREINTE_PERIMEE, empreinte_contenu_signable)
-            if empreinte_attendue != empreinte_contenu_signable(
-                    devis, link=lien):
-                raise AcceptError(EMPREINTE_PERIMEE, conflict=True,
-                                  code='empreinte_perimee')
-
         # ADEV13 (C-ADEV-005) — blocage crédit et avertissement de vente
         # bloquant : UNE garde, ici, pour les trois portes (vue interne,
         # signature publique, portail client). Auparavant seule la vue
         # interne la posait — le lien public et le portail acceptaient un
         # client bloqué (chantier créé). Rien n'est écrit sur refus.
+        # ADEV51 — la garde re-compare aussi, SOUS CE VERROU, l'empreinte du
+        # contenu lu par le client (``empreinte_attendue``).
         _garde_blocages_acceptation(
             devis, user=user, override_credit=override_credit,
-            override_avertissement=override_avertissement)
+            override_avertissement=override_avertissement,
+            empreinte_attendue=empreinte_attendue, lien=lien)
 
         # Resolve the option exactly like the viewset (two-option devis require
         # an explicit choice; single-option devis deduce it from the scenario).
@@ -1380,6 +1425,10 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # on ne crée pas de second enregistrement — la signature d'origine fait
         # foi.
         if not avenant:
+            # C (revue du 24/10/2026) — REFUS FERMÉ (``refus_etude``) : un
+            # devis commercial / industriel dont l'étude ne se lit pas ne se
+            # scelle pas sans elle — 409 ``validation_requise`` levé AVANT le
+            # best-effort, qui annule la transaction entière (rien d'écrit).
             _create_esign_record(
                 devis=devis, nom=nom, ip=ip,
                 user_agent=user_agent, consentement=consentement,
@@ -1388,6 +1437,9 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                 # CIQ319 — raison sociale, qualité et ICE du signataire C&I,
                 # enregistrés AVEC la signature (aucun statut nouveau, règle #4).
                 entreprise=entreprise, langue=langue,
+                refus_etude=(ETUDE_ILLISIBLE_REFUS
+                             if _acceptation_par_le_client(user)
+                             else ETUDE_ILLISIBLE_REFUS_INTERNE),
             )
         # CIQ319 (complément) — l'ICE / la raison sociale déclarés remontent
         # au Client qui n'en a pas (service CRM du contrat CIQ8) ; un ICE

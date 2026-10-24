@@ -1725,8 +1725,10 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         Le hash couvre : référence, client (nom/email), date_creation,
         ``taux_tva`` global, ``remise_globale``, les lignes
         (designation/qte/pu_ht/remise **+ taux_tva de ligne + optionnelle**) et
-        l'**option acceptée**. JAMAIS prix_achat ni marge. Déterministe et
-        reproductible.
+        l'**option acceptée** (+ v3 : les chiffres de l'étude C&I passés en
+        ``figures``). JAMAIS prix_achat ni marge. Déterministe et
+        reproductible : il ne lit que le devis, ses lignes et ``figures`` —
+        jamais le moteur.
 
         ``version`` — ``None`` (le défaut, et tous les appelants de production)
         scelle dans la version COURANTE. La vérification (:meth:`verifier_
@@ -1759,8 +1761,13 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         * ``(None, None)`` — aucune empreinte scellée (signatures très
           anciennes) : « on ne sait pas » n'est pas « falsifié ».
 
-        ``figures`` — les chiffres de l'étude C&I à rejouer dans la part v3
-        (fournis par ``domain.identite_entreprise``).
+        ``figures`` — la part v3 (étude C&I) : les chiffres STOCKÉS sur la
+        signature (:attr:`figures_scellees`, posés à l'acceptation) font foi,
+        si bien que le sceau se reproduit quel que soit le moteur
+        d'aujourd'hui. Compatibilité : une signature v3 posée AVANT ce champ
+        n'en a pas — on rejoue alors ``figures``, l'étude relue par l'appelant
+        domaine (``identite_entreprise``), seul cas où une évolution du moteur
+        peut encore rendre ce sceau-là irreproductible.
         """
         scelle = (self.content_hash or '').strip()
         if not scelle:
@@ -1769,7 +1776,7 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
                         self.CONTENT_HASH_V1):
             if self.compute_content_hash(
                     self.devis, lignes=lignes, version=version,
-                    figures=figures) == scelle:
+                    figures=self.figures_a_rejouer(figures)) == scelle:
                 return True, version
         return False, None
 
