@@ -70,15 +70,17 @@ class BcMandatRelanceRemiseTests(TestCase):
             company=self.a, technicien=self.user, reference='REM-ASEC28-1',
             date_collecte=date.today(), montant_declare=Decimal('10.00'))
 
-    def test_bc_fk_etrangere_400(self):
+    def test_bc_fk_etrangere_404(self):
+        # api-fuzz-full 24/10 — BonCommandeSerializer porte IdInconnu404Mixin :
+        # FK d'une autre société = id inconnu, 404 de même corps, sans écriture.
         url = f'/api/django/ventes/bons-commande/{self.bc.id}/'
         for champ, valeur in (('client', self.client_b.pk),
                               ('devis', self.devis_b.pk),
                               ('lead', self.lead_b.pk)):
             with self.subTest(champ=champ):
                 r = self.api.patch(url, {champ: valeur}, format='json')
-                self.assertEqual(r.status_code, 400, r.data)
-                self.assertIn(champ, r.data)
+                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.data[champ][0].code, 'does_not_exist', r.data)
         self.bc.refresh_from_db()
         self.assertEqual(self.bc.client_id, self.client_a.pk)
         self.assertIsNone(self.bc.devis_id)

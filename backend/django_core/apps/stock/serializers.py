@@ -155,7 +155,7 @@ class PortailFournisseurTokenSerializer(CompanyScopedRelationsMixin,
         ]
 
 
-class FournisseurSerializer(ChampsStrictsMixin, CompanyScopedRelationsMixin,
+class FournisseurSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanyScopedRelationsMixin,
                             serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
     # refusée comme un id absent (« objet inexistant » de DRF).

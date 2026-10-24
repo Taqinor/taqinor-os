@@ -886,7 +886,9 @@ class DevisCycleActionsMixin:
         """Ajoute une note manuelle au chatter du devis."""
         from .. import activity
         devis = self.get_object()
-        body = (request.data.get('body') or '').strip()
+        # api-fuzz-full 24/10 — le corps suit sa forme publiée (texte non blanc,
+        # sans NUL) : un NUL atteignait PostgreSQL (500).
+        body = valider_corps(request, D.NoterRequest)['body'].strip()
         if not body:
             return Response({'detail': 'Note vide.'},
                             status=status.HTTP_400_BAD_REQUEST)

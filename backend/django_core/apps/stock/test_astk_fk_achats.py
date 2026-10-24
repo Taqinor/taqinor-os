@@ -363,7 +363,7 @@ class FkAchatsTests(TestCase):
         r = self.api.patch(url, {'categorie': self.cat_b.pk}, format='json')
         r_absent = self.api.patch(url, {'categorie': ID_ABSENT},
                                   format='json')
-        self._assert_comme_absent(r, r_absent, self.cat_b.pk)
+        self._assert_comme_absent(r, r_absent, self.cat_b.pk, statut=404)  # api-fuzz-full 24/10
         self.fa.refresh_from_db()
         self.assertIsNone(self.fa.categorie_id)
         # Aucun PROTECT posé par A : la catégorie de B reste supprimable.
@@ -375,7 +375,7 @@ class FkAchatsTests(TestCase):
                            format='json')
         r_absent = self.api.patch(url, {'condition_paiement_ref': ID_ABSENT},
                                   format='json')
-        self._assert_comme_absent(r, r_absent, self.cond_b.pk)
+        self._assert_comme_absent(r, r_absent, self.cond_b.pk, statut=404)  # api-fuzz-full 24/10
         self.fa.refresh_from_db()
         self.assertIsNone(self.fa.condition_paiement_ref_id)
 

@@ -69,20 +69,22 @@ class CaviardageTests(TestCase):
         self._blobs[key] = data
         return key, {'filename': key, 'size': len(data), 'mime': mime}
 
-    def test_zone_hors_page_400(self):
+    def test_zone_hors_page_409(self):
+        # api-fuzz-full 24/10 — le nombre de pages est l'état du fichier stocké.
         avant = Document.objects.count()
         resp = auth(self.admin).post(self.url, {'zones': [
             {'page': 9, 'x0': 0, 'y0': 0, 'x1': 100, 'y1': 100}]},
             format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('hors page (page 9 / 2 pages)', resp.data['detail'])
         self.assertEqual(Document.objects.count(), avant)
 
-    def test_zone_vide_400(self):
+    def test_zone_vide_409(self):
+        # api-fuzz-full 24/10 — « x1 > x0 » : règle que le schéma ne porte pas.
         avant = Document.objects.count()
         resp = auth(self.admin).post(self.url, {'zones': [
             {'page': 0, 'x0': 0, 'y0': 0, 'x1': 0, 'y1': 0}]}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('vide', resp.data['detail'])
         self.assertEqual(Document.objects.count(), avant)
 

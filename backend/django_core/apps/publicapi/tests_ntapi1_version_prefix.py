@@ -136,7 +136,9 @@ class Ntapi1VersionedPrefixTests(TestCase):
                 ('get', '/api/public/v1/calepinages/0.5/resultat/'),
                 ('patch', '/api/public/v1/leads-write/null%2Cnull/'),
                 ('post', '/api/public/v1/jobs/0.5/relancer/'),
-                ('post', '/api/public/v1/leads-write/abc/activites/')):
+                ('post', '/api/public/v1/leads-write/abc/activites/'),
+                # api-fuzz-full 24/10 : identifiant réduit à un saut de ligne.
+                ('post', '/api/public/v1/leads-write/%0A/activites/')):
             resp = getattr(client, methode)(chemin)
             self.assertEqual(resp.status_code, 404, chemin)
             self.assertTrue(

@@ -1343,8 +1343,8 @@ class DocumentViewSet(CorpsObjetMixin, TenantMixin, viewsets.ModelViewSet):
         contenu = file.read()
         file.seek(0)
         meta, err = store_attachment(file, company=company)
-        if err:
-            return Response({'file': err}, status=status.HTTP_400_BAD_REQUEST)
+        if err:  # api-fuzz-full 24/10 : format lu dans les octets, hors schéma (409)
+            return Response({'file': err}, status=status.HTTP_409_CONFLICT)
         try:
             version = services.add_version(
                 document, file_key=meta['file_key'], company=company,
@@ -2312,7 +2312,6 @@ class DocumentVersionViewSet(CorpsObjetMixin, ParsersParActionMixin, TenantMixin
         except services.SignatureEnCoursError as exc:
             raise _conflit(str(exc))
         # ASEC37 — stockage serveur (préfixe société) APRÈS toutes les gardes.
-        from rest_framework.exceptions import ValidationError
         company = self.request.user.company
         fichier, taille = self._fichier_version
         try:
@@ -2321,8 +2320,8 @@ class DocumentVersionViewSet(CorpsObjetMixin, ParsersParActionMixin, TenantMixin
         except QuotaDepasseError as exc:  # ADOC23
             raise PermissionDenied(str(exc))
         meta, err = store_attachment(fichier, company=company)
-        if err:
-            raise ValidationError({'file': err})
+        if err:  # api-fuzz-full 24/10 : format lu dans les octets, hors schéma (409)
+            raise _conflit({'file': err})
         # GED16/ADOC17 — le check-out d'autrui est gardé par add_version(user=).
         try:
             instance = services.add_version(

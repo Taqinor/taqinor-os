@@ -8,6 +8,8 @@ sans argument garde la même chaîne MRO. Les imports function-locaux des corps
 restent dans les corps (les ``mock.patch`` ``apps.ventes.services.*``
 n'interceptent qu'ainsi).
 """
+from decimal import Decimal
+
 from drf_spectacular.utils import extend_schema
 from . import openapi_docs as D
 from rest_framework import status
@@ -215,6 +217,25 @@ MSG_ECRITURE_REFUSEE = ('Enregistrement refusé : une quantité, un prix ou une 
                         'remise est hors bornes (0 à 100 % pour une remise, '
                         'positif ou nul et au plus 2 décimales pour un montant).')
 
+#: api-fuzz-full 24/10 — ``DevisSerializer`` sert ``total_ht``/``total_tva``/
+#: ``total_ttc`` en ``DecimalField(max_digits=10, decimal_places=2)`` : un devis
+#: écrit au-delà (prix catalogue × quantité) levait ``InvalidOperation`` à
+#: CHAQUE lecture (500), la création comprise, alors que le devis était commité.
+_PLAFOND_TOTAL_SERVI = Decimal('99999999.995')
+
+
+def _garde_capacite_totaux(devis):
+    """Sous la transaction d'écriture : un total que la réponse ne peut pas
+    servir est un refus d'état (409), rien n'est écrit."""
+    from core.conflit_etat import ConflitEtat
+    for nom in ('total_ht', 'total_tva', 'total_ttc'):
+        valeur = getattr(devis, nom, None)
+        if valeur is not None and abs(Decimal(valeur)) >= _PLAFOND_TOTAL_SERVI:
+            raise ConflitEtat({
+                'detail': 'Montant du devis hors capacité : un total dépasse '
+                          '99 999 999,99.',
+                'champ': nom})
+
 
 class DevisEditionActionsMixin:
     """SPL135 — actions d'édition de ``DevisViewSet`` (mixin, aucune base)."""
@@ -342,6 +363,7 @@ class DevisEditionActionsMixin:
                         origine=ORIGINE_ECRAN, mode=MODE_ECRIRE,
                         company=company, user=request.user,
                         composition=lignes_in))
+                    _garde_capacite_totaux(devis)
                     return devis
                 create_numbered(Devis, company, 'devis', _save)
         except ValidationError as refus:
@@ -350,6 +372,8 @@ class DevisEditionActionsMixin:
             # libres) ou l'état du dossier (kWh déclaré contredit) — 409,
             # même corps ({detail, code} / {detail, champ}).
             raise ConflitEtat(refus.detail)
+        except ConflitEtat:
+            raise
         except ValueError as exc:
             if _produit_inconnu(exc):
                 return Response({'lignes': [str(exc)]},
@@ -454,6 +478,7 @@ class DevisEditionActionsMixin:
         # comportement identique à l'octet. ``statut`` dans l'en-tête est
         # IGNORÉ (QJR541). Tout est VALIDÉ avant la première écriture.
         from rest_framework.exceptions import ValidationError
+        from core.conflit_etat import ConflitEtat
         entete_in = request.data.get('entete')
         etude_in = request.data.get('etude_params')
         entete_ser = None
@@ -505,6 +530,7 @@ class DevisEditionActionsMixin:
                     company=devis.company, user=request.user,
                     composition=lignes_in,
                     tracer_correction=not geste_complet))
+                _garde_capacite_totaux(devis)
                 # QJR539 — remise plus profonde au-dessus du seuil sur un
                 # envoyé : la garde T17 s'applique, un refus annule le geste.
                 if envoye:
@@ -517,7 +543,7 @@ class DevisEditionActionsMixin:
         except RemiseNonApprouvee as erreur:
             return Response({'detail': erreur.message},
                             status=status.HTTP_400_BAD_REQUEST)
-        except ValidationError:
+        except (ValidationError, ConflitEtat):
             raise
         except ValueError as exc:  # rollback : lignes d'origine
             if _produit_inconnu(exc):
@@ -532,8 +558,10 @@ class DevisEditionActionsMixin:
             # ATOT21 — jamais le texte d'une exception brute (contrainte SQL).
             logger.warning(
                 "devis_edition.DevisEditionActionsMixin.replace_lines : erreur ignorée (mode dégradé)", exc_info=True)
+            # api-fuzz-full 24/10 — même statut que ``/atomic`` : le corps est
+            # conforme, c'est l'écriture (contrainte de la base) qui est refusée.
             return Response({'detail': MSG_ECRITURE_REFUSEE},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         # CJ2b — C'EST LE CHEMIN D'ENREGISTREMENT DU GÉNÉRATEUR. L'écran de
         # devis sauvegarde une édition en deux appels : ``PATCH /devis/<id>/``
         # puis CE remplacement atomique de TOUTES les lignes. Sans ce

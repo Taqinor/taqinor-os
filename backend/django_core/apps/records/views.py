@@ -85,7 +85,9 @@ _MINE = _S('ActivitesMine', {
 })
 
 _ACTIVITE_CREATION = _S('ActiviteCreation', {
-    'activity_type': drf.IntegerField(),
+    # api-fuzz-full 24/10 — type facultatif : à-faire et relance d'appel sans type.
+    'activity_type': drf.IntegerField(
+        required=False, allow_null=True, min_value=1, max_value=_ID_MAX),
     'summary': ChaineStricte(required=False, allow_blank=True, max_length=255),
     'note': ChaineStricte(required=False, allow_blank=True),
     'due_date': drf.DateField(required=False, allow_null=True),

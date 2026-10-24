@@ -77,6 +77,9 @@ class LegacyPublicApiRedirectView(View):
 
 
 urlpatterns = [
-    re_path(r'^(?P<rest>.*)$', LegacyPublicApiRedirectView.as_view(),
+    # api-fuzz-full 24/10 — ``[\s\S]`` et non ``.`` : un identifiant de chemin
+    # réduit à un saut de ligne (``leads-write/%0A/activites/``) échappait à
+    # l'attrape-tout et recevait la page HTML 404 de Django.
+    re_path(r'^(?P<rest>[\s\S]*)$', LegacyPublicApiRedirectView.as_view(),
             name='public-legacy-alias'),
 ]

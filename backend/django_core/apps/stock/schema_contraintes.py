@@ -251,8 +251,10 @@ CONTRAINTES = {
                                    'motifs': {'taux_perte_pct': MOTIF_TAUX_0_100},
                                    'racine': PRODUIT_XOR_SOUS_KIT},
     'ProfilSaisonnierRequest': {'racine': PRODUIT_XOR_CATEGORIE},
-    'ProduitRequest': {'remplacer': CHAMPS_JSON_PRODUIT},
-    'PatchedProduitRequest': {'remplacer': CHAMPS_JSON_PRODUIT},
+    # api-fuzz-full 24/10 — ``tva`` 0..100 (``validate_tva``) : ``"808"`` était conforme.
+    'ProduitRequest': {'remplacer': CHAMPS_JSON_PRODUIT, 'motifs': {'tva': MOTIF_TAUX_TVA_LIGNE}},
+    'PatchedProduitRequest': {'remplacer': CHAMPS_JSON_PRODUIT,
+                              'motifs': {'tva': MOTIF_TAUX_TVA_LIGNE}},
     'ProduitBulkCorpsRequest': {'racine': PRIX_EN_MASSE, 'remplacer': {
         'garantie_mois': GARANTIE_EN_MASSE, 'garantie_production_mois': GARANTIE_EN_MASSE,
         'categorie_id': CATEGORIE_EN_MASSE}},

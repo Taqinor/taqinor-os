@@ -5,6 +5,13 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from core.champs_stricts import DecimalBornee
+from core.conflit_etat import ConflitEtat
+
+#: api-fuzz-full 24/10 — ``total_ht`` d'une ligne est SERVI en
+#: ``DecimalField(max_digits=14, decimal_places=2)`` alors que quantité et prix
+#: valent chacun jusqu'à 10 chiffres entiers : leur produit levait
+#: ``InvalidOperation`` à la lecture de la facture DÉJÀ commitée (500).
+PLAFOND_TOTAL_LIGNE = Decimal('999999999999.995')
 
 
 class TauxTvaLigne(DecimalBornee):
@@ -36,3 +43,20 @@ class ChampsLigneFactureFournisseur(serializers.Serializer):
     taux_tva = TauxTvaLigne(
         max_digits=5, decimal_places=2, min_value=Decimal('0'),
         max_value=Decimal('100'), required=False, allow_null=True)
+
+    def validate(self, attrs):
+        """Un montant de ligne que la réponse ne peut pas servir est un refus
+        d'état de la capacité du document (409, même corps par champ), comme
+        les lignes de facture client (``ventes.serializers_facturation``)."""
+        attrs = super().validate(attrs)
+
+        def _valeur(nom, defaut):
+            valeur = attrs.get(nom, getattr(self.instance, nom, None))
+            return defaut if valeur is None else valeur
+
+        total = _valeur('quantite', Decimal('1')) * _valeur('prix_unitaire_ht', Decimal('0'))
+        if abs(total) >= PLAFOND_TOTAL_LIGNE:
+            raise ConflitEtat({'quantite': [
+                'Montant de ligne trop élevé : la quantité multipliée par le '
+                'prix unitaire dépasse 999 999 999 999,99.']})
+        return attrs
