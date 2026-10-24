@@ -34,9 +34,10 @@ from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from ..permissions import (
     PeutApprouverCalepinage, PeutLireOuEcrireCalepinage, PeutVoirCalepinage,
 )
+from ..champs_entree import corps_entree_resserre, refuser_caractere_interdit
 from ..serializers import forme_du_contrat, forme_reponse
 from ..services.electrique import (
-    CHAMPS_ENTREE, CLE_PUBLICATION, EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
+    CLE_PUBLICATION, EntreeInvalide, TemperaturesInvalides, enregistrer_entree,
     entree_electrique_servie, entree_stockee, evaluation_electrique,
     resultat_calepinage, verdict_publiable,
 )
@@ -131,11 +132,9 @@ class ElectriqueActionsMixin:
         request=inline_serializer('CalepinageEntreeElectriqueCorps', {
             'derogations': drf_serializers.JSONField(required=False)}),
         # ERR-ENF11-FUZZ-CALEPINAGE - ``enregistrer_entree`` refuse (400) toute
-        # cle hors ``CHAMPS_ENTREE`` : le corps publie la liste fermee (le
-        # contenu de chaque champ reste juge par le service).
-        extensions={EXTENSION_CORPS_RESSERRE: {
-            'properties': {cle: {} for cle in CHAMPS_ENTREE},
-            'additionalProperties': False}},
+        # cle hors ``CHAMPS_ENTREE`` ; chaque champ est publie avec la forme
+        # que le service accepte (``champs_entree.py``).
+        extensions={EXTENSION_CORPS_RESSERRE: corps_entree_resserre()},
         responses=_FORME_RESULTAT)
     @action(detail=True, methods=['get', 'post'], url_path='entree-electrique',
             permission_classes=[PeutLireOuEcrireCalepinage])
@@ -174,12 +173,15 @@ class ElectriqueActionsMixin:
                                 "droit « calepinage_approuver » : demandez à "
                                 "un approbateur de poser la dérogation."},
                 status=status.HTTP_403_FORBIDDEN)
+        refuser_caractere_interdit(corps)  # 409 : inexprimable au schéma
         try:
             enregistrer_entree(calepinage, corps, user=request.user)
             return Response(resultat_calepinage(calepinage))
         except (EntreeInvalide, *_REFUS_DE_LECTURE) as refus:
+            introuvable = getattr(refus, 'introuvable', False)
             return Response({refus.champ or 'entree_electrique': str(refus)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=(status.HTTP_404_NOT_FOUND if introuvable
+                                    else status.HTTP_400_BAD_REQUEST))
 
     @extend_schema(request=inline_serializer(
         'CalepinageEvaluerElectriqueRequete', {
