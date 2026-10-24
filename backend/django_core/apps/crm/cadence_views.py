@@ -1344,11 +1344,13 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 status=status.HTTP_400_BAD_REQUEST)
         # CAD27 — une date de report dans le passé tirait tout le plan en
         # arrière : refusée, le champ fautif NOMMÉ (celui du corps reçu).
+        # ENF11 (api-fuzz-full 24/10) — « pas dans le passé » dépend de
+        # l'horloge du serveur, pas du corps (un date-heure ISO ancien est
+        # conforme au schéma) : refus d'ÉTAT, 409, même corps ``erreurs``.
         refus = _refus_date_passee(quand, 'Reporter au')
         if refus:
             champ = 'due_at' if brut else 'rappel_le'
-            return Response({'erreurs': {champ: refus}},
-                            status=status.HTTP_400_BAD_REQUEST)
+            raise ConflitEtat({'erreurs': {champ: refus}})
         # CAD178 — compteur BEST-EFFORT du geste « Reporter », par famille
         # d'appareil (les deux modes, decaler ET veille, comptent). ACRM22 —
         # dans son propre point de sauvegarde.
