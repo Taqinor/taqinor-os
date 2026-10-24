@@ -114,6 +114,20 @@ class ActionRaccordementTest(BaseApiCalepinage):
             self.calepinage.resultat[CLE_SAISIE]['tension_nominale_v'],
             400.0)
 
+    def test_bornes_publiees_ENF11(self):
+        """Strictement positif (0 et négatif refusés) ; plafond >= 0."""
+        for champ in ('puissance_souscrite_kva', 'tension_nominale_v',
+                      'limite_elevation_pct', 'cos_phi_impose'):
+            for valeur in (0, -1):
+                with self.subTest(champ=champ, valeur=valeur):
+                    reponse = self.api.post(
+                        url_raccordement(self.calepinage.pk),
+                        {champ: valeur}, format='json')
+                    self.assertEqual(reponse.status_code, 400)
+        reponse = self.api.post(url_raccordement(self.calepinage.pk),
+                                {'plafond_injection_kw': -1}, format='json')
+        self.assertEqual(reponse.status_code, 400)
+
     def test_la_saisie_survit_au_get_suivant(self):
         self.api.post(url_raccordement(self.calepinage.pk),
                       {'phases': 1, 'tension_nominale_v': 230},
@@ -163,6 +177,40 @@ class ActionRaccordementTest(BaseApiCalepinage):
 
         self.assertEqual(reponse.status_code, 400, reponse.data)
         self.assertIn('phases', reponse.data)
+
+    def test_phases_publie_1_ou_3_au_schema(self):
+        # ENF11 — la règle de ``_phases_saisies`` est publiée (enum 1|3, vide
+        # permis) : le fuzz n'envoie plus un régime que le serveur refuse.
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.calepinage import urls as calepinage_urls
+
+        schema = SchemaGenerator(patterns=[
+            path('api/django/calepinage/', include(calepinage_urls)),
+        ]).get_schema(request=None, public=True)
+        corps = schema['paths'][
+            '/api/django/calepinage/calepinages/{id}/raccordement/']['post'][
+            'requestBody']['content']['application/json']['schema']
+        nom = corps['$ref'].rsplit('/', 1)[-1]
+        phases = schema['components']['schemas'][nom]['properties']['phases']
+        composants = schema['components']['schemas']
+
+        def valeurs_enum(noeud):
+            # La forme dépend du post-traitement des enums (``$ref`` direct,
+            # ``allOf``/``oneOf`` + NullEnum, ``enum`` en ligne) : on la
+            # parcourt jusqu'à trouver les valeurs.
+            if '$ref' in noeud:
+                return valeurs_enum(composants[noeud['$ref'].rsplit('/', 1)[-1]])
+            trouvees = list(noeud.get('enum') or [])
+            for cle in ('allOf', 'oneOf', 'anyOf'):
+                for sous in noeud.get(cle, []):
+                    trouvees += valeurs_enum(sous)
+            return trouvees
+
+        enum = valeurs_enum(phases)
+        self.assertEqual(sorted(v for v in enum if v is not None
+                                and v != ''), [1, 3])
 
     def test_un_refus_ne_laisse_aucune_trace_en_base(self):
         self.api.post(url_raccordement(self.calepinage.pk),

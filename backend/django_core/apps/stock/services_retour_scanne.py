@@ -151,6 +151,7 @@ def valider_retour_scanne(retour, user, *, bins_source=None):
     elle-même reste ``apply_retour_fournisseur`` (N19/YPROC8) : aucun second
     chemin de sortie de stock n'est créé.
     """
+    from .erreurs_achats import EtatIncompatible
     from .services import apply_retour_fournisseur
 
     bins_source = bins_source or {}
@@ -180,7 +181,7 @@ def valider_retour_scanne(retour, user, *, bins_source=None):
     with transaction.atomic():
         frais = type(retour).objects.select_for_update().get(pk=retour.pk)
         if frais.statut != type(retour).Statut.BROUILLON:
-            raise ValueError('Seul un retour en brouillon peut être validé.')
+            raise EtatIncompatible('Seul un retour en brouillon peut être validé.')
         retour.statut = frais.statut
         for ligne in retour.lignes.select_related('produit'):
             deplacer_vers_casier_retours(

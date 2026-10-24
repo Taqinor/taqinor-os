@@ -49,12 +49,12 @@ def _conflit(code, detail, **extra):
 
 
 def _exiger_vente_en_jeu(devis):
-    """400 hors devis accepté ; 409 ``version_remplacee`` (corps unique de
+    """409 hors devis accepté (état du document) ; 409 ``version_remplacee`` (corps unique de
     VNT24, tête de chaîne en ``successeur``) pour une version inactive."""
     if devis.statut != 'accepte':
         raise FacturationVenteRefusee(
             'Seul un devis accepté se facture : ce devis est au statut '
-            f'« {devis.get_statut_display()} ».')
+            f'« {devis.get_statut_display()} ».', status=409)
     if not devis.is_active:
         from .modifiabilite import corps_version_remplacee
         corps = corps_version_remplacee(devis)

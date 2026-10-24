@@ -5,6 +5,7 @@ from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from ..erreurs_achats import statut_refus_metier
 from ..openapi_helpers import INT, P, corps
 from core.viewsets import CompanyScopedModelViewSet
 from .document_fige import DocumentFigeMixin
@@ -110,9 +111,9 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
         retour = self.get_object()
         try:
             apply_retour_fournisseur(retour, request.user)
-        except ValueError as exc:
+        except ValueError as exc:  # ENF11 : retour pas en brouillon = 409
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         return Response(self.get_serializer(retour).data)
 
     @extend_schema(request=corps('RetourValiderScanneCorps', bins_source=serializers.DictField(required=False)),
@@ -142,9 +143,9 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
             valider_retour_scanne(
                 retour, request.user,
                 bins_source=request.data.get('bins_source') or {})
-        except ValueError as exc:
+        except ValueError as exc:  # ENF11 : retour pas en brouillon = 409
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         retour.refresh_from_db()
         return Response({
             'id': retour.id, 'reference': retour.reference,
@@ -159,7 +160,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Un retour validé ne peut pas être annulé '
                            '(le stock a déjà été décrémenté).'},
-                status=status.HTTP_400_BAD_REQUEST)
+                status=status.HTTP_409_CONFLICT)  # ENF11 : état
         retour.statut = RetourFournisseur.Statut.ANNULE
         retour.save(update_fields=['statut'])
         return Response(self.get_serializer(retour).data)

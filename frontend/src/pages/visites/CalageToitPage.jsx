@@ -23,6 +23,7 @@ import { Button, Card, Spinner, Select, SelectTrigger, SelectValue, SelectConten
 import { toast } from '../../ui/confirm'
 import { dessinerApercuDrape } from '../../lib/calage/apercuDrape'
 import { ZOOM_INITIAL, poserFondCarte } from '../../lib/calage/fondCarte'
+import { retirerCarte } from '../../lib/leaflet/retirerCarte'
 
 const DEFAULT_CENTER = [31.7917, -7.0926] // Maroc — repli si le lead n'a pas de GPS.
 const DELTA = 0.00012 // ≈13 m — écart initial des 4 poignées autour du centre.
@@ -125,7 +126,7 @@ export default function CalageToitPage() {
     })
     map.on('move zoom', redessiner)
     mapRef.current = map
-    return () => { map.remove(); mapRef.current = null }
+    return () => { retirerCarte(map); mapRef.current = null }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- carte Leaflet recréée uniquement quand la visite change; redessiner est relié aux marqueurs par ref (D-ENF22)
   }, [visite])
 

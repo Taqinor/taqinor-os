@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 348d8b4cd0aaa3114d909f227074e943b5e637cbd084230fd97312705a7453d5
+Structure fingerprint: d146c138a06cea2ba8a48b56ec471cfe74f6a9c67688721781b5b315d337bb28
 Plan fingerprint: c906b1250447f67969432495cfe436d272971157d08bd90fea8f0ba5ab4e9e3c
 
 
@@ -443,7 +443,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 ### Features (`frontend/src/features`) — 27 folders
 
 - **auth** — session/JWT (`authSlice.js`).
-- **crm** — leads/clients state; `crmSlice.js`, `bulk.js`, `stages.js` (mirrors STAGES.py, CI-checked); **`workspace/`** = the lead cockpit (`LeadWorkspace.jsx` over the pure autosave engine `draftCore.js` via `useLeadDraft.js`, with `IdentityRail`/`SectionsPane`/`ContextRail`, `TimelineTab`, `DevisTab`, `ArbreHistorique.jsx`, `StageControl`); `traceToit.js` (pure: `Lead.roof_outline` -> SVG polygon + area, via `features/calepinage`'s roof-marker helper), `leadPrefetch.js`, `rotting.js`.
+- **crm** — leads/clients state; `crmSlice.js`, `bulk.js`, `stages.js` (mirrors STAGES.py, CI-checked); **`workspace/`** = the lead cockpit (`LeadWorkspace.jsx` over the pure autosave engine `draftCore.js` via `useLeadDraft.js`, with `IdentityRail`/`SectionsPane`/`ContextRail`, `TimelineTab`, `DevisTab`, `ArbreHistorique.jsx`, `StageControl`; ALEA52: la boîte unique « Envoyer au client » = `EnvoiDevisDialog.jsx` + `useEnvoiDevis.js`, partagée par la carte devis et l'aperçu de `LeadDevisPanel`; ALEA51: `pages/ventes/generator/PanneauSucces.jsx` = panneau de succès du générateur); `traceToit.js` (pure: `Lead.roof_outline` -> SVG polygon + area, via `features/calepinage`'s roof-marker helper), `leadPrefetch.js`, `rotting.js`.
 - **ventes** — quotes/invoices/credit notes; `ventesSlice.js`, **`solar.js`** (solar math + auto-fill: GHI/ONEE/ROI, panel/inverter/battery sizing, pompage HMT+débit -> pump + VEICHI variateur, all TTC), `autoQuote.js`, `PdfCanvas.jsx`, `previewPdf.js`.
 - **calepinage** — the roof-design studio (module.config-registered): library, sources, variantes, plan/pente/terrain/ombrière/schéma/production tabs, `repere.js` roof-marker helper (repatriated from `ao` by SOLMVP15).
 - **visites** — field technical visits (module.config-registered).

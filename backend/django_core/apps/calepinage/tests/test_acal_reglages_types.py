@@ -282,8 +282,9 @@ class RouteParametresTest(TestCase):
         self.assertIn('seuil_bas_dc_ac.reference',
                       reponse.data['electrique_societe'])
         # Une section à objet libre et une clé d'objet sont couvertes aussi.
+        # ENF11 : NUL dans une CLÉ (schéma 3.0 sans propertyNames) = refus d état 409.
         autre = self.api.put(URL, {'presets': {'a\x00': 1}}, format='json')
-        self.assertEqual(autre.status_code, 400, autre.content)
+        self.assertEqual(autre.status_code, 409, autre.content)
         self.assertIn('presets', autre.data)
         self.assertFalse(
             ParametresCalepinage.objects.filter(company=self.company).exists())

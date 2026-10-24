@@ -91,6 +91,13 @@ EnvoyerEmailEchec = _ser('DevisEnvoyerEmailEchec', {
     'devis_statut': s.CharField(),
 })
 
+#: ENF11 — aucune adresse (ni ``to_email`` ni e-mail du client) : refus d'état.
+EnvoyerEmailSansDestinataire = _ser('DevisEnvoyerEmailSansDestinataire', {
+    'detail': s.CharField(),
+    'log_id': s.IntegerField(),
+    'statut': s.CharField(),
+})
+
 WhatsappRequest = _ser('DevisWhatsappRequest', {
     'langue': ChaineStricte(required=False, allow_blank=True),
     'gamme_envoi': GAMME_ENVOI,
@@ -238,32 +245,13 @@ RevoquerLienPaiementResponse = _ser('FactureRevoquerLienPaiementResponse', {
 ReleveDryRunRequest = _ser('ReleveImportDryRunRequest', {
     'file': s.FileField(),
 })
-ReleveCommitRequest = {
-    'application/json': {
-        'type': 'object',
-        'required': ['token'],
-        'properties': {
-            # ENF11 — un jeton vide est refusé « Jeton de dry-run requis ».
-            'token': {'type': 'string', 'minLength': 1, 'pattern': r'\S'},
-            # Numéros de ligne validés, ou `{ligne, facture_reference}` pour
-            # une ligne ambiguë résolue (AFAC6).
-            'lignes': {
-                'type': 'array',
-                'items': {
-                    'oneOf': [
-                        {'type': 'integer'},
-                        {'type': 'object',
-                         'required': ['ligne'],
-                         'properties': {
-                             'ligne': {'type': 'integer'},
-                             'facture_reference': {'type': 'string'}}},
-                    ],
-                },
-            },
-        },
-    },
-}
-
+#: ENF11 — ``token`` requis (le serializer déclaré rend le CORPS requis au
+#: schéma : sans lui un client conforme pouvait n'envoyer aucun corps) ; les
+#: éléments de ``lignes`` sont resserrés par ``CORPS_RELEVE_LIGNES``.
+ReleveCommitRequest = _ser('ReleveImportCommitRequest', {
+    'token': ChaineStricte(),
+    'lignes': s.ListField(child=s.JSONField(), required=False),
+})
 ReleveDryRunResponse = _ser('ReleveImportDryRunResponse', {
     'token': s.CharField(),
     'columns': s.DictField(child=s.CharField()),
@@ -370,6 +358,18 @@ def corps_resserre(regle):
     """Extension d'opération ``x-corps-resserre`` (``core.openapi_erreurs``) :
     ``regle`` est combinée en ``allOf`` au corps publié de CETTE opération."""
     return {EXTENSION_CORPS_RESSERRE: regle}
+
+
+#: Numéros de ligne validés, ou `{ligne, facture_reference}` pour une ligne
+#: ambiguë résolue (AFAC6).
+CORPS_RELEVE_LIGNES = corps_resserre({
+    'required': ['token'],
+    'properties': {'lignes': {'items': {'oneOf': [
+        {'type': 'integer'},
+        {'type': 'object', 'required': ['ligne'],
+         'properties': {'ligne': {'type': 'integer'},
+                        'facture_reference': {'type': 'string'}}},
+    ]}}}})
 
 
 #: Le ``montant`` d'un encaissement est requis et strictement positif.
@@ -549,6 +549,11 @@ AutoDevisResponse = _ser('DevisAutoResponse', {
     'proposal_token': s.CharField(),
     'proposal_path': s.CharField(),
     'alertes': s.ListField(child=s.JSONField()),
+    # ALEA51 — le retour pour la bannière de succès (lu du devis créé).
+    'total_ttc': s.FloatField(allow_null=True),
+    'economie_an_1_ht': s.FloatField(allow_null=True),
+    'retour_ans': s.FloatField(allow_null=True),
+    'postes_apres_visite': s.ListField(child=s.CharField()),
 })
 
 FromLayoutRequest = _ser('DevisFromLayoutRequest', {
@@ -663,7 +668,7 @@ RoofImageResponse = _ser('DevisRoofImageResponse', {
 })
 
 SimulerRequest = _ser('DevisSimulerRequest', {
-    'force_refresh': s.BooleanField(required=False),
+    'force_refresh': BooleenStrict(required=False),
 })
 SimulerResponse = _ser('DevisSimulerResponse', {
     'detail': s.CharField(),
@@ -704,12 +709,68 @@ DeriveResponse = _ser('DevisDeriveResponse', {
 
 AccepterRequest = _ser('DevisAccepterRequest', {
     'nom': ChaineStricte(required=False, allow_blank=True),
-    'date': ChaineStricte(required=False, allow_blank=True),
+    # ENF11 — date d'acceptation AAAA-MM-JJ (``format: date`` publié) ; la vue
+    # relisait une chaîne libre puis répondait « Date invalide » en 400.
+    'date': DateStricte(required=False),
     'option': ChaineStricte(required=False, allow_blank=True),
     'entreprise': s.DictField(required=False, allow_null=True),
     'override_credit': BooleenStrict(required=False),
     'override_avertissement': BooleenStrict(required=False),
 })
+#: ENF11 — « Prix négocié » : le corps tel que la vue l'applique
+#: (``utils.corps.valider_corps_schema`` lit CE dict). Un prix TTC non nul OU
+#: une remise 0..100 (virgule ou point), exactement un des deux ; le reste
+#: (montant rond, au-dessus du prix actuel…) dépend du devis = 409.
+MOTIF_PRIX_NEGOCIE = r'^(?![0.,]*$)[0-9]{1,12}(?:[.,][0-9]{0,6})?$'
+MOTIF_REMISE_NEGOCIEE = r'^(?:100(?:[.,]0{0,6})?|[0-9]{1,2}(?:[.,][0-9]{0,6})?)$'
+PrixNegocieRequest = {
+    'application/json': {
+        'type': 'object',
+        'description': (
+            'Indiquez le prix TTC OU la remise en pourcentage (un seul des '
+            'deux), en texte décimal.'),
+        'properties': {
+            'prix_ttc': {'type': 'string', 'pattern': MOTIF_PRIX_NEGOCIE},
+            'remise_pct': {'type': 'string',
+                           'pattern': MOTIF_REMISE_NEGOCIEE},
+            'mode': {'type': 'string', 'enum': ['apercu', 'appliquer']},
+            'confirmer_avoir': {'type': 'boolean'},
+        },
+        'oneOf': [{'required': ['prix_ttc']}, {'required': ['remise_pct']}],
+    },
+}
+
+
+def _schema_tranche_put():
+    """Une tranche du ``PUT devis/<id>/echeancier/`` : la forme PUBLIÉE de
+    ``Devis.echeancier`` (``utils.echeancier.schema_echeancier``, jumelle du
+    contrôle ``forme_tranche_ecriture``) acceptée aussi sous la forme du
+    contrat ``{cle, libelle, unite, valeur}`` (``valeur`` = ``pct_or_montant``)."""
+    import copy
+    from core.champs_stricts import MOTIF_SANS_NUL
+    from ..utils.echeancier import schema_echeancier
+    tranche = copy.deepcopy(schema_echeancier()['anyOf'][0]['items'])
+    tranche['properties']['valeur'] = copy.deepcopy(
+        tranche['properties']['pct_or_montant'])
+    tranche['properties']['cle'] = {'type': 'string',
+                                    'pattern': MOTIF_SANS_NUL}
+    tranche.pop('required', None)
+    tranche['anyOf'] = [{'required': ['pct_or_montant']},
+                        {'required': ['valeur']}]
+    return tranche
+
+
+#: ENF11 — le plan de tranches est requis et non vide (``minItems: 1``).
+EcheancierRequest = {
+    'application/json': {
+        'type': 'object',
+        'required': ['tranches'],
+        'properties': {'tranches': {
+            'type': 'array', 'minItems': 1, 'items': _schema_tranche_put()}},
+    },
+}
+
+
 RefuserRequest = _ser('DevisRefuserRequest', {
     'motif': ChaineStricte(required=False, allow_blank=True),
     'note': ChaineStricte(required=False, allow_blank=True),
@@ -940,8 +1001,10 @@ FacturerCompletResponse = _ser('DevisFacturerCompletResponse', {
 # VNT31 — « Facturer la vente » (contrat ``devis_facturer.json``) : montants
 # en TEXTE décimal, natures = ``Facture.TypeFacture``.
 FacturerVenteRequest = _ser('DevisFacturerVenteRequest', {
-    # acompte | intermediaire | solde | complete (validée par le service).
-    'nature': ChaineStricte(),
+    # ENF11 — énumération PUBLIÉE (= ``facturation_vente.NATURES``, gardée par
+    # un test) : une nature hors liste est un refus de forme, pas du service.
+    'nature': ChoixDocumente(choices=[
+        'acompte', 'intermediaire', 'solde', 'complete']),
     'montant_ttc': ChaineStricte(required=False, allow_null=True,
                                  allow_blank=True),
     'pourcentage': ChaineStricte(required=False, allow_null=True,

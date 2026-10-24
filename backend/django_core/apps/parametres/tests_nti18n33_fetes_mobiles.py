@@ -144,6 +144,16 @@ class FetesMobilesEndpointTests(TestCase):
             {'annee': annee, 'dates': _dates_valides(annee)}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
 
+    def test_post_cles_inconnues_de_dates_ignorees(self):
+        """ENF11 : le schéma ne déclare que les 4 fêtes — une autre clé (même
+        à valeur non texte) est ignorée, jamais un 400."""
+        api = _auth(self.admin)
+        annee = _annee_future()
+        dates = dict(_dates_valides(annee), autre={'': 1.5}, x=[None, True])
+        resp = api.post(BASE + 'enregistrer/',
+                        {'annee': annee, 'dates': dates}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
     def test_post_dates_hors_annee_ou_passees_409(self):
         # ENF11 — saisie BIEN FORMÉE (quatre dates ISO) que la règle refuse
         # (hors de l'année cible, passé) : conflit d'état 409, erreurs par

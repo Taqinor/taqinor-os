@@ -10,8 +10,6 @@ import {
   // QJR100 — `ShoppingCart` et `Trash2` sont partis avec la table de lignes
   // (`generator/LigneTable.jsx`), qui les importe désormais elle-même.
   FileText, Sun,
-  // EZ3 — actions du panneau de succès (envoyer / aperçu).
-  Send, Eye,
   // SPL55 — `Zap` et `RefreshCw` (Auto-remplir / Recalculer) sont partis avec
   // la carte « Paramètres Techniques » (`generator/CarteParametresTechniques.jsx`).
 } from 'lucide-react'
@@ -169,6 +167,7 @@ import MargeIndicative from './generator/MargeIndicative'
 import IndicationRegistre from './generator/IndicationRegistre'
 import PanneauSurcharges from './generator/PanneauSurcharges'
 import CarteCreation from './generator/CarteCreation'
+import PanneauSucces from './generator/PanneauSucces'
 import BlocsEditionComplete from './generator/BlocsEditionComplete'
 import CarteLeadClient from './generator/CarteLeadClient'
 import ApercuSimulation from './generator/ApercuSimulation'
@@ -355,7 +354,7 @@ export default function DevisGenerator({
   // Désormais, la création en pleine page ouvre un PANNEAU DE SUCCÈS qui offre
   // l'action suivante évidente (envoyer, aperçu) sans re-chercher quoi que ce
   // soit. Le mode embarqué est INCHANGÉ.
-  const [succes, setSucces] = useState(null) // { id, reference, total }
+  const [succes, setSucces] = useState(null) // { id, reference, total, alertes, resultat }
   const finish = (devisId, devisData) => {
     if (embedded) { onDone?.(devisId); return }
     setSucces({
@@ -364,6 +363,10 @@ export default function DevisGenerator({
       // ERR-QAH-VENTES-TOTAL-DIVERGENCE-CREATION — le total d'AFFICHAGE
       // canonique (celui de la liste et du PDF), pas une somme de lignes.
       total: devisData?.total_affiche ?? devisData?.total_ttc ?? null,
+      // ALEA51 — devis AUTOMATIQUE lancé d'ici (`?auto=1`) : les alertes du
+      // serveur et le retour (économie, postes à chiffrer…) suivent le devis.
+      alertes: devisData?.alertes ?? [],
+      resultat: devisData?.resultat ?? null,
     })
   }
   const cancel = () => {
@@ -1701,45 +1704,7 @@ export default function DevisGenerator({
       : `${lignesQuantiteNulle.length} lignes à quantité 0 ne seront pas enregistrées : `
         + lignesQuantiteNulle.map(l => l.designation || '—').join(', ')
 
-  if (succes && !embedded) {
-    return (
-      <div className="page gen-page">
-        <Card className="mx-auto max-w-xl" data-testid="devis-succes">
-          <CardContent className="flex flex-col gap-4 pt-6 text-center">
-            <div>
-              <p className="text-sm text-muted-foreground">Devis enregistré</p>
-              <p className="font-display text-xl font-bold">{succes.reference || '—'}</p>
-              {succes.total != null && (
-                <p className="num mt-1 text-2xl font-semibold">{formatMoney(succes.total)}</p>
-              )}
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
-              <Button
-                onClick={() => navigate(`/ventes/devis?devis=${succes.id}&envoyer=1`)}
-                data-testid="succes-whatsapp"
-              >
-                <Send /> Envoyer par WhatsApp
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => navigate(`/ventes/devis?devis=${succes.id}&apercu=1`)}
-                data-testid="succes-apercu"
-              >
-                <Eye /> Aperçu du PDF
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => navigate(`/ventes/devis?devis=${succes.id}`)}
-                data-testid="succes-liste"
-              >
-                Retour à la liste
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  if (succes && !embedded) return <PanneauSucces succes={succes} navigate={navigate} />
 
   // QJR101 — le branchement des trois panneaux raccordés au réseau
   // (résidentiel / industriel / commercial). QUE des props : aucun calcul ne

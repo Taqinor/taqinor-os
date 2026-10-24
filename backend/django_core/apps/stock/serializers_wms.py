@@ -440,7 +440,7 @@ class LigneRetourClientSerializer(CompanyScopedRelationsMixin,
         read_only_fields = ['retour', 'stock_mouvemente']
 
 
-class RetourClientSerializer(CompanyScopedRelationsMixin,
+class RetourClientSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                              serializers.ModelSerializer):
     """NTWMS23 — retour client (RMA). Référence et statut posés côté
     serveur ; les lignes sont fournies à la création."""

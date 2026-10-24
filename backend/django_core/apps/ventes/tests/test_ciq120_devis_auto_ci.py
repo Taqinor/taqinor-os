@@ -184,12 +184,18 @@ class DevisAutoCITests(_Base):
 
     def test_sans_categorie_ni_heures_nomme_les_jours_puis_les_heures(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None)
-        self.assertEqual(self._refus(lead).field, 'jours_ouverture')
+        erreur = self._refus(lead)
+        self.assertEqual(erreur.field, 'jours_ouverture')
+        # ALEA54 — une consigne à la commerciale, pas le jargon du moteur.
+        self.assertTrue(erreur.message.startswith('Demandez au client quels jours'))
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale=None,
                           jours_ouverture=[1, 2, 3, 4, 5])
         erreur = self._refus(lead)
         self.assertEqual(erreur.field, 'heure_debut')
-        self.assertIn("Heures d'ouverture", erreur.message)
+        self.assertIn("heures d'ouverture", erreur.message)
+        self.assertTrue(erreur.message.startswith('Demandez au client'))
+        for jargon in ('profil', 'archétype', 'sourcé', 'sur le lead'):
+            self.assertNotIn(jargon, erreur.message)
 
     def test_facture_mad_seule_sans_contrat_nomme_le_contrat(self):
         lead = self._lead(facture_hiver=Decimal('3500'))
@@ -328,3 +334,50 @@ class DevisAutoCITests(_Base):
             build_devis_auto(lead=lead, user=self.user, company=self.co,
                              origine='tunnel')
         self.assertEqual(ctx.exception.field, 'type_installation')
+
+
+class ReponseAutoALEA51Tests(_Base):
+    """ALEA51 — ``POST /ventes/devis/auto/`` rend de quoi dire le SUCCÈS :
+    ``total_ttc``, ``economie_an_1_ht``, ``retour_ans`` (null si
+    l'investissement est incomplet) et ``postes_apres_visite`` — lus du devis
+    créé (aucun recalcul, aucun statut touché)."""
+
+    URL = '/api/django/ventes/devis/auto/'
+
+    def _post(self, lead):
+        from rest_framework.test import APIClient
+        api = APIClient()
+        api.force_authenticate(user=self.user)
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            return api.post(self.URL, {'lead': lead.id}, format='json')
+
+    def test_reponse_dit_total_economie_retour_et_postes_apres_visite(self):
+        from apps.ventes.economie_ci import economie_ci_pour_devis
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), type_toiture=None)
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 201, rep.data)
+        devis = Devis.objects.get(pk=rep.data['id'])
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        self.assertEqual(rep.data['total_ttc'], float(devis.total_ttc))
+        self.assertGreater(rep.data['total_ttc'], 0)
+        self.assertIn('Structure C&I', rep.data['postes_apres_visite'])
+        self.assertEqual(
+            rep.data['postes_apres_visite'],
+            devis.etude_params['etude_ci']['composition']['a_chiffrer_visite'])
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            bloc = economie_ci_pour_devis(devis, self.co)
+        self.assertEqual(rep.data['economie_an_1_ht'],
+                         (bloc.get('economie_annee1') or {}).get('total_mad'))
+        self.assertEqual(rep.data['retour_ans'],
+                         (bloc.get('indicateurs') or {}).get('retour_ans'))
+
+    def test_rejeu_200_porte_les_memes_champs(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        premiere = self._post(lead)
+        rejeu = self._post(lead)
+        self.assertEqual(premiere.status_code, 201, premiere.data)
+        self.assertEqual(rejeu.status_code, 200, rejeu.data)
+        for cle in ('total_ttc', 'economie_an_1_ht', 'retour_ans',
+                    'postes_apres_visite'):
+            self.assertIn(cle, rejeu.data)
+            self.assertEqual(rejeu.data[cle], premiere.data[cle])

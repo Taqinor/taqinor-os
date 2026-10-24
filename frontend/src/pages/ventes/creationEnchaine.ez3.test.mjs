@@ -12,6 +12,9 @@ import { lireSourcesDevisList } from './devisList/lireSources.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const gen = readFileSync(path.join(__dirname, 'DevisGenerator.jsx'), 'utf8')
+// ALEA51 (C20) — le panneau de succès a quitté le fichier-mur DevisGenerator.jsx :
+// ses assertions lisent `generator/PanneauSucces.jsx` (texte du panneau inchangé).
+const succesSrc = readFileSync(path.join(__dirname, 'generator', 'PanneauSucces.jsx'), 'utf8')
 // SPL205 — l'effet EZ3 vit dans devisList/useDevisEnvoi.js : DevisList.jsx +
 // devisList/*.{js,jsx} (le code suit son déplacement, assertions intactes).
 const liste = lireSourcesDevisList()
@@ -20,23 +23,23 @@ test('l’id du devis créé n’est plus jeté', () => {
   assert.doesNotMatch(gen, /const finish = \(devisId\) => \{[\s\S]{0,160}?navigate\('\/ventes\/devis'\)/)
   assert.match(gen, /const finish = \(devisId, devisData\) => \{/)
   // Le panneau de succès porte le numéro ET le total du devis.
-  assert.match(gen, /data-testid="devis-succes"/)
-  assert.match(gen, /\{succes\.reference \|\| '—'\}/)
-  assert.match(gen, /formatMoney\(succes\.total\)/)
+  assert.match(succesSrc, /data-testid="devis-succes"/)
+  assert.match(succesSrc, /\{succes\.reference \|\| '—'\}/)
+  assert.match(succesSrc, /formatMoney\(succes\.total\)/)
 })
 
 test('le mode EMBARQUÉ est byte-identique (il recevait déjà l’id)', () => {
   assert.match(gen, /if \(embedded\) \{ onDone\?\.\(devisId\); return \}/)
   // Le panneau de succès ne s'affiche jamais en embarqué.
-  assert.match(gen, /if \(succes && !embedded\) \{/)
+  assert.match(gen, /if \(succes && !embedded\) return <PanneauSucces /)
 })
 
 test('l’action SUIVANTE est offerte : envoyer, aperçu, retour ciblé', () => {
-  assert.match(gen, /data-testid="succes-whatsapp"[\s\S]{0,80}?|\/ventes\/devis\?devis=\$\{succes\.id\}&envoyer=1/)
-  assert.match(gen, /navigate\(`\/ventes\/devis\?devis=\$\{succes\.id\}&envoyer=1`\)/)
-  assert.match(gen, /navigate\(`\/ventes\/devis\?devis=\$\{succes\.id\}&apercu=1`\)/)
+  assert.match(succesSrc, /data-testid="succes-whatsapp"[\s\S]{0,80}?|\/ventes\/devis\?devis=\$\{succes\.id\}&envoyer=1/)
+  assert.match(succesSrc, /navigate\(`\/ventes\/devis\?devis=\$\{succes\.id\}&envoyer=1`\)/)
+  assert.match(succesSrc, /navigate\(`\/ventes\/devis\?devis=\$\{succes\.id\}&apercu=1`\)/)
   // Le retour à la liste pointe le devis (surlignage QX12 déjà livré).
-  assert.match(gen, /navigate\(`\/ventes\/devis\?devis=\$\{succes\.id\}`\)/)
+  assert.match(succesSrc, /navigate\(`\/ventes\/devis\?devis=\$\{succes\.id\}`\)/)
 })
 
 test('la liste enchaîne sur les flux EXISTANTS, jamais un second chemin', () => {
@@ -58,5 +61,5 @@ test('budget de clics : création → WhatsApp prêt en 2 clics', () => {
   //    QX22 — la modale ne marque JAMAIS « envoyé » à l'ouverture).
   assert.match(liste, /const openWhatsApp = async \(\) => \{/)
   // Aucune recherche intermédiaire : l'id voyage dans l'URL.
-  assert.match(gen, /succes\.id/)
+  assert.match(succesSrc, /succes\.id/)
 })

@@ -155,9 +155,49 @@ class CleaningEventSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin, Ch
         return value
 
 
+#: ENF11 (nocturne 23/10) — garantie de production : les motifs publiés disent
+#: la forme EXACTE que ``DecimalLitteral`` accepte (``-.90`` / ``12.`` étaient
+#: « conformes » au motif générique puis refusés en 400). Productible garanti :
+#: >= 0, 10 chiffres entiers, 2 décimales.
+MOTIF_GARANTI_KWH = r'^0*[0-9]{1,10}(\.[0-9]{1,2})?$'
+MOTIF_POURCENT_GARANTIE = r'^-?0*[0-9]{1,3}(\.[0-9]{1,2})?$'
+MOTIF_COMPENSATION_KWH = r'^-?0*[0-9]{1,4}(\.[0-9]{1,4})?$'
+#: Années de référence de l'engagement (même plage que les fêtes mobiles).
+ANNEE_GARANTIE_MIN, ANNEE_GARANTIE_MAX = 1900, 2200
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_GARANTI_KWH})
+class _GarantiKwhLitteral(DecimalLitteral):
+    """Productible garanti de la 1re année : chaîne décimale >= 0."""
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_POURCENT_GARANTIE})
+class _PourcentGarantieLitteral(DecimalLitteral):
+    """Pourcentage de garantie (dégradation, tolérance) à 2 décimales."""
+
+
+@extend_schema_field({'type': 'string', 'format': 'decimal',
+                      'pattern': MOTIF_COMPENSATION_KWH})
+class _CompensationKwhLitterale(DecimalLitteral):
+    """Tarif de compensation par kWh : 4 décimales."""
+
+
 class ProductionWarrantySerializer(IdInconnu404Mixin, UniciteEn409Mixin, CompanyScopedRelationsMixin,
                                    ChampsStrictsLitterauxMixin,
                                    serializers.ModelSerializer):
+    guaranteed_year1_kwh = _GarantiKwhLitteral(
+        max_digits=12, decimal_places=2, min_value=0)
+    degradation_pct_per_year = _PourcentGarantieLitteral(
+        max_digits=5, decimal_places=2, required=False)
+    tolerance_pct = _PourcentGarantieLitteral(
+        max_digits=5, decimal_places=2, required=False)
+    compensation_mad_per_kwh = _CompensationKwhLitterale(
+        max_digits=8, decimal_places=4, required=False)
+    start_year = serializers.IntegerField(
+        min_value=ANNEE_GARANTIE_MIN, max_value=ANNEE_GARANTIE_MAX)
+
     class Meta:
         model = ProductionWarranty
         fields = [

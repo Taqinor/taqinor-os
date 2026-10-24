@@ -10,7 +10,7 @@ from rest_framework.validators import UniqueValidator
 
 from core.champs_stricts import (
     BooleenStrict, ChaineStricte, ChampsStrictsBornesMixin, ChampsStrictsMixin,
-    DecimalSouple,
+    DecimalSouple, IdInconnu404Mixin,
 )
 from core.conflit_etat import ConflitEtat
 from core.parseurs import ObjetJSON
@@ -34,7 +34,7 @@ from .models import (
     WebsiteLeadPayload,
 )
 from .devis_auto import (
-    champs_manquants_detail, champs_requis, message_manquants,
+    catalogue_ci, champs_manquants_detail, champs_requis, message_manquants,
     source_conso, visite_avant_devis, visite_point_eau_avant_devis)
 from .scoring import compute_score, score_label, score_reasons
 import logging
@@ -747,6 +747,10 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             # industriel seulement, null ailleurs ; jamais un blocage.
             'source_conso': source_conso(obj),
             'visite_avant_devis': visite_avant_devis(obj),
+            # ALEA50 (D-ACI-6=a) — « prêt » inclut le CATALOGUE : les postes
+            # fixes C&I sans prix (forfaits, coffrets, protection, comptage).
+            # null hors C&I (ou si la lecture échoue : jamais un blocage muet).
+            'catalogue_ci': catalogue_ci(obj),
         }
 
     @extend_schema_field(serializers.DictField(allow_null=True))
@@ -1654,8 +1658,8 @@ class AppointmentSerializer(_LeadEnPorteeMixin, serializers.ModelSerializer):
 # ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
 
 
-class PointContactSerializer(ChampsStrictsBornesMixin, _LeadEnPorteeMixin,
-                             serializers.ModelSerializer):
+class PointContactSerializer(IdInconnu404Mixin, ChampsStrictsBornesMixin,
+                             _LeadEnPorteeMixin, serializers.ModelSerializer):
     """FG204 — point de contact du parcours multi-touch d'un lead.
 
     La société est posée côté serveur (HiddenField depuis l'utilisateur courant

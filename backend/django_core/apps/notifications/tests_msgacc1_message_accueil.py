@@ -247,8 +247,8 @@ class ValidationParChampTests(TestCase):
             'visible_a_partir_de': timezone.now().isoformat(),
             'corps': 'Bonjour',
         }, format='json')
-        self.assertEqual(res.status_code, 400, res.data)
-        self.assertIn('destinataire', res.data)
+        self.assertEqual(res.status_code, 409, res.data)
+        self.assertIn('detail', res.data)
 
     def test_destinataire_autre_societe_rejete(self):
         autre = _company('AutreCo2')
@@ -258,8 +258,8 @@ class ValidationParChampTests(TestCase):
             'visible_a_partir_de': timezone.now().isoformat(),
             'corps': 'Bonjour',
         }, format='json')
-        self.assertEqual(res.status_code, 400, res.data)
-        self.assertIn('destinataire', res.data)
+        self.assertEqual(res.status_code, 404, res.data)
+        self.assertIn('destinataire', str(res.data))
 
     def test_datetime_invalide_rejete(self):
         res = _auth(self.admin).post(URL_LIST, {

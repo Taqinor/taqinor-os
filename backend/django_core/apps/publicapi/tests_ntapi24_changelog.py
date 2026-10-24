@@ -54,3 +54,12 @@ class Ntapi24ChangelogTests(TestCase):
         # Document de découverte global, comme openapi.json (NTAPI20).
         resp = APIClient().get('/api/public/v1/changelog/')
         self.assertEqual(resp.status_code, 200)
+
+    def test_version_with_nul_byte_is_400_not_500(self):
+        # api-fuzz : NUL dans ?version= faisait lever ValueError à Postgres.
+        resp = APIClient().get('/api/public/v1/changelog/?version=a%00b')
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('version', resp.data)
+        resp = APIClient().get(
+            '/api/public/v1/changelog/', {'version': 'x' * 41})
+        self.assertEqual(resp.status_code, 400)

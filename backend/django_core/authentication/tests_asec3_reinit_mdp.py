@@ -97,6 +97,16 @@ class ReinitialisationMotDePasseTests(TestCase):
         self.api.get(f'/api/django/users/{self.cible.id}/')
         self.assertEqual(lignes.count(), 1)
 
+    def test_forme_400_politique_409(self):
+        # ENF11 : forme publiée (< 8 car., tout numérique) = 400 ; refus de
+        # politique que le schéma ne dit pas (trop courant) = 409.
+        for mdp, attendu in (('a', 400), ('12345678901', 400),
+                             ('password123', 409)):
+            resp = self.api.post(
+                _URL.format(self.cible.id), {'password': mdp}, format='json')
+            self.assertEqual(resp.status_code, attendu, (mdp, resp.data))
+            self.assertIn('password', resp.data)
+
     def test_password_refuse_dans_patch(self):
         for methode in ('patch', 'put'):
             with self.subTest(methode=methode):
@@ -144,3 +154,14 @@ class ReinitialisationMotDePasseTests(TestCase):
             UserModificationSerializer, UserSerializer)
         self.assertIn('password', UserSerializer().fields)
         self.assertNotIn('password', UserModificationSerializer().fields)
+
+    def test_corps_publie_minlength_8_et_motif_non_numerique(self):
+        """ENF11 : le champ déclaré porte ``min_length=8`` (publié ``minLength``)
+        et le motif « pas entièrement numérique » (publié ``pattern``)."""
+        from authentication.corps_requetes import MotDePasseReinit
+        champ = MotDePasseReinit()
+        self.assertEqual(champ.min_length, 8)
+        champ.run_validation('abcdefg1')
+        for mauvais in (':', '1234567890'):
+            with self.assertRaises(Exception):
+                champ.run_validation(mauvais)

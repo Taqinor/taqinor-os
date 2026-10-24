@@ -6,6 +6,7 @@ from rest_framework.exceptions import MethodNotAllowed, ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsAdminOrResponsableTier
+from core.conflit_etat import ConflitEtat
 from core.permissions import declared_action_permissions
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -14,7 +15,9 @@ from .permissions import PeutConsulterCorbeille, PeutRestaurerCorbeille
 from .serializers import ElementSupprimeSerializer
 from .services import RestaurationImpossible, restaurer
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view, inline_serializer
+from drf_spectacular.utils import (
+    OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_view, inline_serializer,
+)
 from rest_framework import serializers
 from rest_framework.parsers import JSONParser
 from django.utils import timezone
@@ -29,8 +32,14 @@ _ORDRES = ('supprime_le', '-supprime_le', 'expire_le', '-expire_le',
 
 _FILTRES = [
     OpenApiParameter('type', OpenApiTypes.STR, required=False),
-    OpenApiParameter('depuis', OpenApiTypes.DATETIME, required=False),
-    OpenApiParameter('jusqua', OpenApiTypes.DATETIME, required=False),
+    OpenApiParameter(
+        'depuis', OpenApiTypes.DATETIME, required=False,
+        description="Date ou date-heure ISO ; hors des années 1970-2100, "
+                    "ramenée à la borne (jamais refusée)."),
+    OpenApiParameter(
+        'jusqua', OpenApiTypes.DATETIME, required=False,
+        description="Date ou date-heure ISO ; hors des années 1970-2100, "
+                    "ramenée à la borne (jamais refusée)."),
     OpenApiParameter('restaures', OpenApiTypes.STR, required=False,
                      enum=['0', '1', 'true', 'false']),
     OpenApiParameter('ordering', OpenApiTypes.STR, required=False,
@@ -61,8 +70,13 @@ def _borne_temporelle(valeur, nom):
         dt = dt.astimezone(dt_utc)
     except (ValueError, OverflowError):
         raise erreur
-    if not _ANNEE_MIN <= dt.year <= _ANNEE_MAX:
-        raise ValidationError({nom: 'Date hors de la plage admise.'})
+    # ENF11 : une date-heure valide hors des années servies n'est pas un refus
+    # (le schéma `date-time` ne peut pas publier de bornes) : elle est ramenée
+    # à la borne — `depuis` en 2999 ne trouve rien, `jusqua` en 1900 non plus.
+    if dt.year < _ANNEE_MIN:
+        return datetime(_ANNEE_MIN, 1, 1, tzinfo=dt_utc)
+    if dt.year > _ANNEE_MAX:
+        return datetime(_ANNEE_MAX, 12, 31, 23, 59, 59, tzinfo=dt_utc)
     return dt
 
 
@@ -162,9 +176,12 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
         # d'événements) — POST reste ouvert pour l'action `restaurer/`.
         raise MethodNotAllowed('POST')
 
-    @extend_schema(request=None, responses=inline_serializer('CorbeilleRestauration', {
-        'restaure': serializers.BooleanField(),
-        'element': ElementSupprimeSerializer()}))
+    @extend_schema(request=None, responses={
+        200: inline_serializer('CorbeilleRestauration', {
+            'restaure': serializers.BooleanField(),
+            'element': ElementSupprimeSerializer()}),
+        409: OpenApiResponse(
+            description="Élément déjà restauré : {\"detail\": …}.")})
     @action(detail=True, methods=['post'], url_path='restaurer',
             permission_classes=[IsAdminOrResponsableTier, PeutRestaurerCorbeille])
     def restaurer(self, request, pk=None):
@@ -172,7 +189,8 @@ class CorbeilleViewSet(CompanyScopedModelViewSet):
         NTUX7), jamais par un accès direct à son modèle."""
         element = self.get_object()
         if element.restaure_le is not None:
-            raise ValidationError({'detail': 'Cet élément a déjà été restauré.'})
+            # ENF11 : c'est l'ÉTAT de l'élément qui s'oppose (corps conforme).
+            raise ConflitEtat('Cet élément a déjà été restauré.')
         try:
             obj = restaurer(element, user=request.user)
         except RestaurationImpossible as exc:

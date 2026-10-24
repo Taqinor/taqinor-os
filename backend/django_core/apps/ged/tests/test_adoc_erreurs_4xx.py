@@ -1063,3 +1063,87 @@ class Ci997FuzzGedTour4Tests(TestCase):
             {'statut': ['revue']}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
         self.assertIn('statut', resp.json())
+
+    def test_nocturne_acl_cible_partielle_409_et_regle_publiee(self):
+        """Nocturne 22/10 — PATCH d'une ACL : un corps qui ne nomme qu'UN des
+        champs liés (``folder``/``document``) ne dit pas seul si la règle
+        « exactement une cible » tient → 409 d'état ; deux champs nommés qui la
+        violent restent un 400 (règle publiée en ``oneOf`` au corps)."""
+        from apps.ged.models import AclGed
+        from apps.roles.models import Role
+
+        role = Role.objects.create(company=self.co, nom='R nocturne')
+        acl = AclGed.objects.create(
+            company=self.co, folder=self.folder, role=role, niveau='lecture')
+        resp = self.api.patch(f'{BASE}acls/{acl.pk}/', {'folder': None},
+                              format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        resp = self.api.patch(f'{BASE}acls/{acl.pk}/',
+                              {'document': self.doc.pk}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        resp = self.api.patch(
+            f'{BASE}acls/{acl.pk}/',
+            {'folder': None, 'document': None}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.put(
+            f'{BASE}acls/{acl.pk}/',
+            {'folder': None, 'document': None, 'role': role.pk,
+             'niveau': 'lecture'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
+        from drf_spectacular.generators import SchemaGenerator
+        from django.urls import include, path
+
+        from apps.ged import urls as ged_urls
+
+        chemins = SchemaGenerator(patterns=[
+            path('api/django/ged/', include(ged_urls)),
+        ]).get_schema(request=None, public=True)['paths']
+        for route, methode in (('acls/{id}/', 'put'), ('acls/{id}/', 'patch'),
+                               ('champs-signature/{id}/', 'put'),
+                               ('champs-signature/{id}/', 'patch')):
+            corps = chemins[f'/api/django/ged/{route}'][methode][
+                'requestBody']['content']['application/json']['schema']
+            self.assertIn('allOf', corps, (route, methode))
+
+    def test_nocturne_regle_acl_arbre_nul_et_cles_etrangeres_jamais_500(self):
+        """Nocturne 22/10 — ``PUT regles-acl-metadonnee`` : un arbre dont la
+        feuille porte un NUL ou un objet en ``value`` est refusé 400 (Postgres
+        lèverait sur le JSONB : 500) ; les clés que le moteur ignore sont
+        ÉCARTÉES, pas stockées."""
+        from apps.ged.models import RegleAclMetadonnee
+        from apps.roles.models import Role
+
+        role = Role.objects.create(company=self.co, nom='R arbre')
+        regle = RegleAclMetadonnee.objects.create(
+            company=self.co, nom='r', role=role, niveau='lecture',
+            condition_group={'op': 'and', 'conditions': [
+                {'field': 'type', 'operator': 'eq', 'value': 'x'}]})
+        url = f'{BASE}regles-acl-metadonnee/{regle.pk}/'
+
+        def corps(arbre):
+            return {'nom': 'r', 'role': role.pk, 'niveau': 'lecture',
+                    'condition_group': arbre}
+        for arbre in (
+                {'op': 'and', 'conditions': [
+                    {'field': 'type', 'operator': 'eq', 'value': 'a\u0000b'}]},
+                {'op': 'and', 'conditions': [
+                    {'field': 'type', 'operator': 'eq', 'value': {'x': 1}}]},
+                {'op': 'and', 'conditions': [
+                    {'field': 'ty\u0000pe', 'operator': 'eq'}]},
+                # élément ``null`` dans une liste : hors schéma, refusé nommé
+                {'op': 'and', 'conditions': [
+                    {'field': '0', 'operator': 'eq', 'value': [None],
+                     'op': None}]}):
+            resp = self.api.put(url, corps(arbre), format='json')
+            self.assertEqual(resp.status_code, 400, resp.content)
+            self.assertIn('condition_group', resp.json())
+        resp = self.api.put(url, corps({
+            'op': 'and', 'poubelle\u0000': [1],
+            'conditions': [{'field': 'type', 'operator': 'in',
+                            'value': ['a', 2], 'x\u0000': {'y': None}}]}),
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        regle.refresh_from_db()
+        self.assertEqual(regle.condition_group, {'op': 'and', 'conditions': [
+            {'field': 'type', 'operator': 'in', 'value': ['a', 2]}]})

@@ -309,6 +309,27 @@ class ReviserDevisService(TestCase):
         self.assertEqual(r.data['code'], 'version_remplacee')
         self.assertEqual(r.data['successeur']['id'], v2.pk)
 
+    def test_vnt60_corps_publie_400_et_refus_du_devis_409(self):
+        """ENF11 — forme du corps = schéma publié (400) ; un corps conforme
+        que le devis refuse (prix non rond / supérieur au prix actuel) = 409
+        au même corps ``{detail, code}``."""
+        v1 = self._devis(Devis.Statut.ACCEPTE)
+        for corps in ({}, {'prix_ttc': ''}, {'prix_ttc': 'abc'},
+                      {'prix_ttc': '0'}, {'remise_pct': '101'},
+                      {'prix_ttc': '10800', 'remise_pct': '10'},
+                      {'prix_ttc': '10800', 'mode': 'autre'},
+                      {'prix_ttc': 10800}):
+            with self.subTest(corps=corps):
+                r = self._prix_negocie(v1, **corps)
+                self.assertEqual(r.status_code, 400, r.content)
+        for corps, code in (({'prix_ttc': '10850'}, 'prix_non_rond'),
+                            ({'prix_ttc': '99999900'}, 'prix_superieur')):
+            with self.subTest(code=code):
+                r = self._prix_negocie(v1, mode='apercu', **corps)
+                self.assertEqual(r.status_code, 409, r.content)
+                self.assertEqual(r.data['code'], code)
+        self.assertFalse(self._v2_de(v1).exists())
+
     def test_vnt60_demander_signature_deux_fois_une_tache_meme_lien(self):
         from apps.crm.models import Lead
         from apps.crm.receivers_cadence import LIBELLE_FAIRE_SIGNER_AVENANT

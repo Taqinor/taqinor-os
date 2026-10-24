@@ -112,7 +112,8 @@ class CrudVarianteTest(BaseVariantes):
         retenir_variante(variante)
         reponse = self.api.delete(
             url_variante(self.calepinage.pk, variante.pk))
-        self.assertEqual(reponse.status_code, 400)
+        # ENF11 — refus d'ÉTAT (requête conforme) : 409, même corps.
+        self.assertEqual(reponse.status_code, 409)
         self.assertIn('retenue', reponse.data)
         self.assertTrue(CalepinageVariante.objects.filter(
             pk=variante.pk).exists())

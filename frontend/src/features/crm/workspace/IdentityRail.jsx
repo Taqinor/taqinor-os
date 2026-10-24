@@ -23,6 +23,7 @@ import StageControl from './StageControl'
 import { STATUT_DEVIS_LABELS as STATUT_DEVIS } from '../../ventes/devisStatuts'
 import { CANAL_LABELS, latestDevisTotal, formatMAD } from '../stages'
 import { getField } from './draftCore'
+import { catalogueCiBloque, raisonCatalogueCi } from './devisTabLogique'
 // CAD152 — le panneau d'appel guidé : « Appeler » l'ouvre AVANT de composer.
 import PanneauScriptAppel from '../relances/PanneauScriptAppel'
 // SUIVI-BLOCAGE (30/09/2026) — la fenêtre « Appeler » montre la LIGNE de la
@@ -270,8 +271,11 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
     && server.roof_outline.length >= 3
   const roofReady = roofOutlineReady || !!server.roof_point
   const factureReady = server.facture_hiver != null && server.facture_hiver !== ''
-  const devisReady = !!(server.devis_auto && server.devis_auto.pret)
-  const devisNotReadyMsg = (server.devis_auto && server.devis_auto.message)
+  // ALEA50 — « prêt » inclut le catalogue C&I (postes fixes sans prix).
+  const catalogueBloque = catalogueCiBloque(server.devis_auto)
+  const devisReady = !!(server.devis_auto && server.devis_auto.pret) && !catalogueBloque
+  const devisNotReadyMsg = (catalogueBloque && raisonCatalogueCi(server.devis_auto))
+    || (server.devis_auto && server.devis_auto.message)
     || 'Renseignez la facture du lead pour activer le devis automatique.'
 
   // PV22 — conception 3D DÉJÀ faite pour ce lead : `{kwc, image_url}` servis par

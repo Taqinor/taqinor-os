@@ -1,30 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Zap, FileText, Link2, Check, ExternalLink, MessageCircle, Eye, Send, Layers3, Pencil,
+  Zap, FileText, Eye, Send, Pencil,
 } from 'lucide-react'
 import {
-  Button, Checkbox, Input, StatusPill, Segmented,
+  Button, Checkbox, Input, StatusPill,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
 } from '../../../ui'
 import DocumentStageTrack from '../../../ui/DocumentStageTrack'
 import crmApi from '../../../api/crmApi'
-import ventesApi from '../../../api/ventesApi'
 import PanneauVente from '../../ventes/vente/PanneauVente'
 import installationsApi from '../../../api/installationsApi'
-import stockApi from '../../../api/stockApi'
-import { fetchAllPages } from '../../../utils/fetchAllPages'
-// LANE E (fondateur 28/08/2026, spec_3_options.md) — réutilise TEL QUEL l'écran
-// vendeur existant des tailles Éco/Recommandé/Max (nb_panneaux, batterie,
-// équipements par taille) comme point d'entrée « Modifier les options » du
-// dialogue d'envoi — rien n'est réinventé.
-import DevisOffresTailles from '../../../pages/ventes/DevisOffresTailles'
 import { formatMAD, formatDate, normalizePhoneE164 } from '../../../lib/format'
 import { toastError, errorMessageFrom } from '../../../lib/toast'
-// L5 (fondateur 21/08/2026) — lien PAGE CLIENT + message WhatsApp, MÊME
-// FORMAT que l'outil 3D (ToitureDesign.jsx). Fonctions pures, testées à part.
-import { clientProposalUrl, proposalWhatsappText, buildWaUrl } from '../../ventes/clientProposalLink'
+// ALEA52 — la boîte « Envoyer au client » (partagée avec l'aperçu du panneau devis).
+import EnvoiDevisDialog from './EnvoiDevisDialog'
+import { useEnvoiDevis } from './useEnvoiDevis'
 // QJR41 (audit L3 29/08/2026) — MÊME formule que la doctrine fondateur du
 // 18/08 (`autoQuote.js:146-152`, palier de 5 kWc, jamais retirée) : lue ici en
 // PURE LECTURE pour prévenir le commercial, jamais pour arrondir le champ lui-même.
@@ -34,11 +26,10 @@ import { reviserEtOuvrir } from '../../ventes/reviserDevis'
 // ROUND 5 — LE saut canonique (déplie toujours la section cible), partagé avec
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
-import { missingFieldTarget } from './missingFields'
+import { missingFieldTarget, missingChampPourLead } from './missingFields'
 import {
-  DEVIS_MINI_TRACK, devisTrackCurrent, SECTIONS_ENVOI,
-  sectionsDepuisServeur, taillesDepuisServeur, optionsCountFromTailles,
-  taillesFromOptionsCount, waArmed, devisIntent, lectureClientLabel,
+  DEVIS_MINI_TRACK, devisTrackCurrent, waArmed, devisIntent, lectureClientLabel,
+  catalogueCiBloque, raisonCatalogueCi, noteDemandeCatalogueCi,
 } from './devisTabLogique'
 import { libelleStatutDevis } from '../../ventes/devisStatuts'
 // NTCRM19 — badge de consultation de la salle de vente digitale (NTCRM17/18).
@@ -65,17 +56,13 @@ import SalleVenteAnalyticsBadge from '../../../pages/crm/leads/SalleVenteAnalyti
 // — sûr par CONSTRUCTION, pas par un indicateur qu'on pourrait oublier de
 // vérifier.
 
-// L5 — site public (page client), même résolution que ToitureDesign.jsx.
-const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma'
-
-
 // ROUND 5 — plus de saut maison : `jumpToField` DÉPLIE toujours la section
 // cible avant de scroller et de focaliser. Avant, ce chemin ne dépliait pas —
 // un champ dans une section repliée n'est pas dans le DOM, on retombait donc
 // sur l'en-tête de section et le même clic donnait deux résultats différents
 // selon l'état de repli. Un seul chemin, partagé avec le centre.
-function jumpToMissingField(champ) {
-  const target = missingFieldTarget(champ)
+function jumpToMissingField(champ, state) {
+  const target = missingFieldTarget(missingChampPourLead(champ, state))
   if (!target) return
   jumpToField(target)
 }
@@ -108,6 +95,52 @@ function BoutonReviser({ devis }) {
   )
 }
 
+// ALEA50 (D-ACI-6=a) — le devis automatique C&I est BLOQUÉ tant que des postes
+// fixes (forfaits société, coffrets, protection AC, comptage) n'ont pas de prix :
+// le bouton est désactivé AVEC son motif, les liens mènent où les régler, et
+// « Demander au responsable » laisse une note chatter qui NOMME les postes.
+function BlocCatalogueCi({ devisAuto, leadId }) {
+  const [demande, setDemande] = useState('idle') // idle | envoi | ok | erreur
+  const postes = devisAuto.catalogue_ci?.manquants ?? []
+  const demander = () => {
+    if (!leadId || demande === 'envoi') return
+    setDemande('envoi')
+    crmApi.noterLead(leadId, noteDemandeCatalogueCi(devisAuto))
+      .then(() => setDemande('ok'))
+      .catch((err) => {
+        setDemande('erreur')
+        toastError(errorMessageFrom(err, 'La demande n’a pas pu être enregistrée — réessayez.'))
+      })
+  }
+  return (
+    <div className="lw-context-devis-cta lw-context-devis-bloque" data-testid="lw-devis-catalogue-ci">
+      <Button
+        type="button" variant="default" disabled
+        data-testid="lw-devis-auto-bloque"
+        title={raisonCatalogueCi(devisAuto)}
+      >
+        <Zap size={14} aria-hidden="true" /> Devis automatique
+      </Button>
+      <p className="gen-hint" role="status">{raisonCatalogueCi(devisAuto)}</p>
+      <ul className="lw-context-missing-list">
+        {postes.map((p) => <li key={p}>{p}</li>)}
+      </ul>
+      <p className="gen-hint">
+        À régler dans <Link to="/parametres">Paramètres</Link> (prestations) ou{' '}
+        <Link to="/stock">Produits</Link> (articles).
+      </p>
+      <Button
+        type="button" size="sm" variant="outline"
+        data-testid="lw-devis-demander-responsable"
+        disabled={demande === 'envoi' || demande === 'ok'}
+        onClick={demander}
+      >
+        {demande === 'ok' ? 'Demande enregistrée dans le fil' : 'Demander au responsable'}
+      </Button>
+    </div>
+  )
+}
+
 export default function DevisTab({
   state, onAction, wa, onWaToggle, onWaLangue, onWaPreview, onWaReset,
 }) {
@@ -131,279 +164,19 @@ export default function DevisTab({
   // automatique n'arrondit plus au palier de 5 kWc, plus aucun avis à montrer.
   const [waBusy, setWaBusy] = useState(false)
 
-  // L5 — les 3 actions « Page client / WhatsApp / Aperçu interne » ci-dessous.
-  // Busy PAR devis + PAR action (préfixes `l-`/`o-`/`w-`/`n-`), distinct de
-  // `busyAction` (facture/chantier) : deux familles d'actions indépendantes,
-  // jamais de collision de clé.
-  const [linkBusy, setLinkBusy] = useState(null)
-  const [copiedId, setCopiedId] = useState(null)
-  // L-INTPREV (fondateur 25/08/2026) — feedback « Copié » DISTINCT de
-  // `copiedId` : les deux liens (public/interne) peuvent être copiés l'un
-  // après l'autre sans se remplacer visuellement.
-  const [copiedInterneId, setCopiedInterneId] = useState(null)
-
-  // L-NIV-UI — niveau de la page client choisi PAR devis avant le premier
-  // mint (défaut 'standard', comme le backend), l'exigence d'OTP lecture, et
-  // les métadonnées du DERNIER share-link minté (niveau/otp_lecture/token
-  // renvoyés par le serveur) — sert au badge et à prouver que changer de
-  // niveau NE régénère PAS le token (même lien, choix revocable).
-  //
-  // BUGFIX (24/08/2026) — au rechargement de la fiche, `linkMeta` repartait
-  // vide : le badge (et le sélecteur) n'affichaient donc RIEN tant que le
-  // commercial n'avait pas re-cliqué, alors même que le serveur connaît déjà
-  // le niveau du lien (`GET` fiche lead → `Lead.devis[].share_link`, posé par
-  // `apps.crm.serializers.LeadDetailSerializer.get_devis` via le sélecteur
-  // cross-app `apps.ventes.selectors.share_link_niveau_map` — lecture seule,
-  // jamais de mint). `getNiveau`/`getOtp`/le badge retombent maintenant sur
-  // `d.share_link` (l'état déjà connu du serveur) quand aucune action locale
-  // n'a encore eu lieu dans CETTE session d'écran.
-  const [niveauSel, setNiveauSel] = useState({}) // id -> 'standard'|'confiance'
-  const [otpSel, setOtpSel] = useState({}) // id -> bool
-  const [linkMeta, setLinkMeta] = useState({}) // id -> { niveau, otp_lecture, token }
-  const serverLinkMeta = (d) => (d?.share_link ? d.share_link : null)
-  const currentLinkMeta = (d) => linkMeta[d.id] ?? serverLinkMeta(d)
-  const getNiveau = (d) => niveauSel[d.id] ?? serverLinkMeta(d)?.niveau ?? 'standard'
-  const getOtp = (d) => otpSel[d.id] ?? serverLinkMeta(d)?.otp_lecture ?? false
-
-  // L-SECT — dialogue « Envoyer au client » : quel devis est ouvert, et quelles
-  // sections sont cochées pour lui. Comme le niveau, le choix local prime, et à
-  // défaut on repart de l'état RÉEL du lien déjà connu du serveur
-  // (`share_link.sections`) plutôt que des défauts — rouvrir le dialogue sur un
-  // lien déjà envoyé montre ce que le client reçoit VRAIMENT aujourd'hui.
-  const [envoiOuvert, setEnvoiOuvert] = useState(null) // id du devis | null
-  const [sectionsSel, setSectionsSel] = useState({}) // id -> { clé: bool }
-  // LANE E — mêmes 7 clés SECTIONS_ENVOI, lues/écrites indépendamment des 2
-  // clés de tailles ci-dessous (`getSections` les fusionne toutes les deux
-  // dans le SEUL objet posté au serveur).
-  const sectionsChoisies = (d) => (
-    sectionsSel[d.id] ?? sectionsDepuisServeur(currentLinkMeta(d)?.sections)
-  )
-  const onSectionChange = (d, cle, valeur) => {
-    setSectionsSel((cur) => ({
-      ...cur, [d.id]: { ...sectionsChoisies(d), [cle]: !!valeur },
-    }))
-  }
-
-  // LANE E (spec_3_options.md) — 1/2/3 options servies au client, MÊME motif
-  // que `sectionsSel` (choix local prime, sinon état réel du dernier lien).
-  const [taillesSel, setTaillesSel] = useState({}) // id -> { taille_eco, taille_max }
-  const [editTaillesOuvert, setEditTaillesOuvert] = useState(null) // id du devis | null
-
-  // LANE E — SUBSTITUTIONS (fondateur 29/08/2026) — « Modifier les options »
-  // (DevisOffresTailles.jsx) ne propose de remplacer un équipement que si on
-  // lui passe `produits` (le catalogue société) : sans lui, ses selects par
-  // rôle ne rendent RIEN (produitsParRole([]) → listes vides). DevisGenerator
-  // charge ce même catalogue AU MONTAGE (`fetchAllPages` + `stockApi.
-  // getProduits`, VX54 — la pagination DRF simple perd silencieusement les
-  // familles triées après la page 1 au-delà de 50 références), mais cet onglet
-  // reste chaud en permanence sur la fiche lead alors que ce dialogue est
-  // rare : on ne le charge qu'À L'OUVERTURE du dialogue, une seule fois par
-  // session d'écran (le ref empêche tout second aller-retour réseau à la
-  // réouverture, y compris pour un autre devis de la même fiche — même
-  // catalogue société pour tous). Un échec réseau dégrade SANS bloquer le
-  // dialogue : `produits` reste `null`, l'écran se comporte comme avant
-  // (éditeur sans substitutions).
-  const produitsFetchStarted = useRef(false)
-  const [produitsCatalogue, setProduitsCatalogue] = useState(null)
-  useEffect(() => {
-    if (editTaillesOuvert == null) return
-    if (produitsFetchStarted.current) return
-    produitsFetchStarted.current = true
-    fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
-      .then(setProduitsCatalogue)
-      .catch(() => { /* dégrade : éditeur sans substitutions, jamais un dialogue cassé */ })
-  }, [editTaillesOuvert])
-
-  const getTailles = (d) => (
-    taillesSel[d.id] ?? taillesDepuisServeur(currentLinkMeta(d)?.sections)
-  )
-  const onTailleToggle = (d, cle, valeur) => {
-    setTaillesSel((cur) => ({
-      ...cur, [d.id]: { ...getTailles(d), [cle]: !!valeur },
-    }))
-  }
-  const onOptionsCountChange = (d, count) => {
-    setTaillesSel((cur) => ({
-      ...cur, [d.id]: taillesFromOptionsCount(count, getTailles(d)),
-    }))
-  }
-  // Le corps posté au serveur : les 7 clés de sections + les 2 clés de
-  // tailles, dans le MÊME objet `sections` (whitelist serveur étendue,
-  // ShareLink.SECTIONS_CLES) — un seul appel réseau, jamais deux mécanismes.
-  const getSections = (d) => ({ ...sectionsChoisies(d), ...getTailles(d) })
-
-  // Mint (ou réutilise — idempotent côté serveur) le ShareLink du devis, AU
-  // niveau/OTP actuellement choisis pour CE devis, et renvoie l'URL ABSOLUE
-  // de la page client (chemin_proposition backend), MÊME lien que celui déjà
-  // envoyé par email/WhatsApp/l'outil 3D.
-  //
-  // QJ-FUNNEL (fondateur 09/09/2026) — `envoi: true` dit au backend que ce
-  // POST est un ENVOI au client (copier pour envoyer, WhatsApp par devis) :
-  // le devis passe brouillon → « envoyé » (mark_devis_sent, chemin unique
-  // U4/QJ14) et le funnel du lead avance vers « Devis envoyé ». Jamais posé
-  // par « Ouvrir » (regarder la page n'est pas envoyer), ni par l'aperçu
-  // interne, ni par les re-POSTs de réglage niveau/OTP/sections.
-  const mintProposalUrl = async (d, { envoi = false } = {}) => {
-    const res = await ventesApi.shareLinkDevis(d.id, {
-      niveau: getNiveau(d), otp_lecture: getOtp(d), sections: getSections(d),
-      ...(envoi ? { envoi: true } : {}),
-    })
-    setLinkMeta((cur) => ({
-      ...cur,
-      [d.id]: {
-        niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture,
-        token: res.data?.token, sections: res.data?.sections,
-      },
-    }))
-    return clientProposalUrl(res.data?.path, PUBLIC_SITE_URL)
-  }
-
-  // L-INTPREV (fondateur 25/08/2026) — même mint, mais renvoie l'URL ABSOLUE
-  // du jeton INTERNE (``path_interne``) : MÊME page publique, MÊME
-  // niveau/sections choisis pour ce devis, mais aucune trace d'ouverture
-  // côté backend (voir apps/ventes/public_views.py::_resolve_share_link_by_
-  // token). Appel réseau séparé de `mintProposalUrl` (idempotent côté
-  // serveur — `ShareLink.for_devis` réutilise le même lien) : les deux
-  // boutons restent indépendants, jamais de risque de mélanger les deux
-  // jetons dans un seul état.
-  const mintInternalPreviewUrl = async (d) => {
-    const res = await ventesApi.shareLinkDevis(d.id, {
-      niveau: getNiveau(d), otp_lecture: getOtp(d), sections: getSections(d),
-    })
-    setLinkMeta((cur) => ({
-      ...cur,
-      [d.id]: {
-        niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture,
-        token: res.data?.token, sections: res.data?.sections,
-      },
-    }))
-    return clientProposalUrl(res.data?.path_interne, PUBLIC_SITE_URL)
-  }
-
-  const copierApercuInterne = async (d) => {
-    setLinkBusy(`i-${d.id}`)
-    setActionMsg(null)
-    try {
-      const url = await mintInternalPreviewUrl(d)
-      try {
-        await navigator.clipboard?.writeText(url)
-        setCopiedInterneId(d.id)
-        window.setTimeout(() => setCopiedInterneId((cur) => (cur === d.id ? null : cur)), 2000)
-      } catch { /* presse-papier indisponible — le lien reste ouvrable */ }
-    } catch (err) {
-      setActionMsg(errorMessageFrom(err, 'Lien d’aperçu interne indisponible.'))
-    } finally {
-      setLinkBusy(null)
-    }
-  }
-
-  const ouvrirApercuInterne = async (d) => {
-    setLinkBusy(`io-${d.id}`)
-    setActionMsg(null)
-    try {
-      const url = await mintInternalPreviewUrl(d)
-      window.open(url, '_blank', 'noopener')
-    } catch (err) {
-      setActionMsg(errorMessageFrom(err, 'Lien d’aperçu interne indisponible.'))
-    } finally {
-      setLinkBusy(null)
-    }
-  }
-
-  // L-NIV-UI — le sélecteur/case OTP changent le choix immédiatement ; si un
-  // lien EXISTE DÉJÀ pour ce devis (minté cette session OU connu du serveur
-  // depuis le chargement de la fiche — `currentLinkMeta`, pas seulement
-  // `linkMeta` local), on re-poste tout de suite sur la MÊME route
-  // share-link avec le nouveau choix : le backend renvoie le MÊME token
-  // (lien inchangé, seul le niveau affiché au client change) — le badge se
-  // met à jour depuis la réponse, jamais deviné côté écran.
-  const appliquerNiveauSiMinte = async (d, niveau, otpLecture) => {
-    if (!currentLinkMeta(d)) return
-    setLinkBusy(`n-${d.id}`)
-    setActionMsg(null)
-    try {
-      const res = await ventesApi.shareLinkDevis(d.id, {
-        niveau, otp_lecture: otpLecture, sections: getSections(d),
-      })
-      setLinkMeta((cur) => ({
-        ...cur,
-        [d.id]: {
-          niveau: res.data?.niveau, otp_lecture: res.data?.otp_lecture,
-          token: res.data?.token, sections: res.data?.sections,
-        },
-      }))
-    } catch (err) {
-      setActionMsg(errorMessageFrom(err, 'Changement de niveau impossible.'))
-    } finally {
-      setLinkBusy(null)
-    }
-  }
-
-  const onNiveauChange = (d, niveau) => {
-    setNiveauSel((cur) => ({ ...cur, [d.id]: niveau }))
-    appliquerNiveauSiMinte(d, niveau, getOtp(d))
-  }
-
-  const onOtpChange = (d, otpLecture) => {
-    setOtpSel((cur) => ({ ...cur, [d.id]: otpLecture }))
-    appliquerNiveauSiMinte(d, getNiveau(d), otpLecture)
-  }
-
-  const copierPageClient = async (d) => {
-    setLinkBusy(`l-${d.id}`)
-    setActionMsg(null)
-    try {
-      // QJ-FUNNEL — copier le lien = l'envoyer : le devis passe « envoyé »
-      // et le funnel du lead avance (backend). `refresh` recharge la fiche
-      // pour que la pastille de statut et l'étape le montrent tout de suite.
-      const url = await mintProposalUrl(d, { envoi: true })
-      try {
-        await navigator.clipboard?.writeText(url)
-        setCopiedId(d.id)
-        window.setTimeout(() => setCopiedId((cur) => (cur === d.id ? null : cur)), 2000)
-      } catch { /* presse-papier indisponible — le lien reste ouvrable */ }
-      onAction?.('refresh')
-    } catch (err) {
-      setActionMsg(errorMessageFrom(err, 'Lien de la page client indisponible.'))
-    } finally {
-      setLinkBusy(null)
-    }
-  }
-
-  const ouvrirPageClient = async (d) => {
-    setLinkBusy(`o-${d.id}`)
-    setActionMsg(null)
-    try {
-      const url = await mintProposalUrl(d)
-      window.open(url, '_blank', 'noopener')
-    } catch (err) {
-      setActionMsg(errorMessageFrom(err, 'Lien de la page client indisponible.'))
-    } finally {
-      setLinkBusy(null)
-    }
-  }
-
-  // WhatsApp PAR devis (distinct de la barre multi-devis LW22 ci-dessous :
-  // celle-ci lie le PDF direct `/api/django/public/document/<token>/` ; ici on
-  // partage la PAGE CLIENT web, MÊME message que ToitureDesign.jsx).
-  const envoyerWhatsAppUnique = async (d) => {
-    if (!leadPhoneOk) return
-    setLinkBusy(`w-${d.id}`)
-    setActionMsg(null)
-    try {
-      // QJ-FUNNEL — envoyer par WhatsApp = envoyer : devis « envoyé » +
-      // funnel « Devis envoyé » (backend), fiche rechargée pour le montrer.
-      const url = await mintProposalUrl(d, { envoi: true })
-      const nom = `${state.server?.nom ?? ''} ${state.server?.prenom ?? ''}`.trim()
-      const waUrl = buildWaUrl(normalizePhoneE164(leadPhone), proposalWhatsappText(nom, url))
-      if (waUrl) window.open(waUrl, '_blank', 'noopener')
-      onAction?.('refresh')
-    } catch (err) {
-      setActionMsg(errorMessageFrom(err, 'Lien WhatsApp indisponible.'))
-    } finally {
-      setLinkBusy(null)
-    }
-  }
+  // ALEA52 — la boîte « Envoyer au client » (état + gestes : WhatsApp, e-mail,
+  // copier le lien, réglages avancés) est PARTAGÉE avec l'aperçu du panneau devis
+  // de la fiche (LeadDevisPanel) : useEnvoiDevis.js / EnvoiDevisDialog.jsx.
+  const envoi = useEnvoiDevis({
+    leadPhone,
+    leadEmail: (state.server?.email || '').trim(),
+    leadNom: `${state.server?.nom ?? ''} ${state.server?.prenom ?? ''}`.trim(),
+    onRefresh: () => onAction?.('refresh'),
+    leadId: state.leadId,
+    relanceActuelle: state.server?.relance_date ?? null,
+  })
+  // Quel devis a sa boîte d'envoi ouverte (id | null).
+  const [envoiOuvert, setEnvoiOuvert] = useState(null)
 
   const creerChantier = (d) => {
     setBusyAction(`c-${d.id}`)
@@ -465,7 +238,9 @@ export default function DevisTab({
           <FileText size={14} aria-hidden="true" /> Nouveau devis (édition complète)…
         </Button>
       </div>
-      {devisAuto.pret ? (
+      {devisAuto.pret && catalogueCiBloque(devisAuto) ? (
+        <BlocCatalogueCi devisAuto={devisAuto} leadId={state.leadId} />
+      ) : devisAuto.pret ? (
         <div className="lw-context-devis-cta">
           <Button
             type="button"
@@ -481,9 +256,10 @@ export default function DevisTab({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
+              {/* ALEA55 — « Devis 1 page » / « Devis premium » CRÉAIENT un second
+                  devis (anti-doublon 120 s) : ce sont des FORMATS du PDF d'un devis
+                  existant, au menu « PDF » de chaque carte. */}
               <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('remise', kwcCible))}>Remise %…</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('onepage', kwcCible))}>Devis 1 page</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onAction?.('open-devis', devisIntent('premium', kwcCible))}>Devis premium</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           {/* EZ5 — cible kWc facultative. `step="any"` + aucune validation
@@ -517,7 +293,7 @@ export default function DevisTab({
                 <button
                   type="button"
                   className="lw-context-missing-link"
-                  onClick={() => jumpToMissingField(champ)}
+                  onClick={() => jumpToMissingField(champ, state)}
                 >
                   {label}
                 </button>
@@ -580,14 +356,14 @@ export default function DevisTab({
               {/* L-NIV-UI — badge d'état du lien, TOUJOURS visible sur la carte
                   (le dialogue d'envoi ci-dessous n'a pas à être ouvert pour
                   savoir ce que le client reçoit aujourd'hui). */}
-              {currentLinkMeta(d) && (
+              {envoi.currentLinkMeta(d) && (
                 <div className="lw-context-devis-niveau">
                   <span
                     className="lw-context-devis-niveau-badge"
                     title="Le lien reste le même — seul le niveau affiché au client change."
                   >
-                    {currentLinkMeta(d).niveau === 'confiance' ? 'Confiance' : 'Standard'}
-                    {currentLinkMeta(d).otp_lecture ? ' · OTP' : ''}
+                    {envoi.currentLinkMeta(d).niveau === 'confiance' ? 'Confiance' : 'Standard'}
+                    {envoi.currentLinkMeta(d).otp_lecture ? ' · OTP' : ''}
                   </span>
                 </div>
               )}
@@ -612,6 +388,25 @@ export default function DevisTab({
                 >
                   <Eye size={14} aria-hidden="true" /> Aperçu interne (sans notification)
                 </Button>
+                {/* ALEA55 — le FORMAT du PDF d'un devis existant (jamais un second devis). */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button" size="sm" variant="outline"
+                      aria-label={`Format du PDF de ${d.reference}`}
+                    >
+                      <FileText size={14} aria-hidden="true" /> PDF ▾
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onSelect={() => onAction?.('view-devis', { id: d.id, pdf: 'full' })}>
+                      Premium (PDF complet)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onAction?.('view-devis', { id: d.id, pdf: 'onepage' })}>
+                      1 page
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 {/* QJR534 (D-QJR5-1/2) — l'UNIQUE porteur de « Modifier » et de
                     « Réviser » sur la carte. Droits LUS du serveur (QJR516) :
                     brouillon/envoyé → Modifier (correction sur place) ;
@@ -627,233 +422,13 @@ export default function DevisTab({
                 )}
                 {peutReviserDevis(d) && <BoutonReviser devis={d} />}
               </div>
-              <Dialog
-                open={envoiOuvert === d.id}
-                onOpenChange={(o) => setEnvoiOuvert(o ? d.id : null)}
-              >
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Envoyer au client</DialogTitle>
-                    <DialogDescription>
-                      Devis {d.reference} — choisissez ce que le client verra sur
-                      sa page, puis copiez ou envoyez le lien.
-                    </DialogDescription>
-                  </DialogHeader>
-                  {/* L-NIV-UI — niveau de la page client (contrat L-NIV) :
-                      choix AVANT mint, et re-postable après (le lien reste le
-                      même — seul le niveau affiché au client change). Jamais de
-                      chiffre différent entre niveaux : la seule différence est
-                      le dimensionnement technique masqué ou non. */}
-                  <div className="lw-context-devis-niveau">
-                    <label className="lw-context-devis-niveau-select">
-                      <select
-                        value={getNiveau(d)}
-                        disabled={linkBusy === `n-${d.id}`}
-                        aria-label={`Niveau de la page client de ${d.reference}`}
-                        onChange={(e) => onNiveauChange(d, e.target.value)}
-                      >
-                        <option value="standard">Client standard</option>
-                        <option value="confiance">Client de confiance</option>
-                      </select>
-                    </label>
-                    <label className="lw-context-devis-otp">
-                      <Checkbox
-                        checked={getOtp(d)}
-                        disabled={linkBusy === `n-${d.id}`}
-                        onCheckedChange={(v) => onOtpChange(d, !!v)}
-                        aria-label={`Exiger un code de lecture pour la page client de ${d.reference}`}
-                      />
-                      Exiger un code de lecture (OTP)
-                    </label>
-                  </div>
-                  {/* L-NIV-VU (24/08/2026) — le texte DÉCRIT l'inventaire RÉEL
-                      des dégradations (public_views : agrégation kit, schéma
-                      sans nomenclature, calibres/câbles retirés, filigrane PDF),
-                      et prévient que sur un devis sans lignes de pose ni étude
-                      électrique il n'y a RIEN à masquer : c'est exactement le cas
-                      où le commercial ne voyait « aucune différence ». */}
-                  <p className="gen-hint lw-context-devis-niveau-hint">
-                    {getNiveau(d) === 'confiance'
-                      ? 'Confiance : dossier technique complet — nomenclature détaillée, calibres et sections de câble, schéma avec sa nomenclature, PDF sans filigrane.'
-                      : 'Standard : les fournitures de pose sont regroupées en une ligne « kit », les calibres/sections disparaissent du schéma et du détail électrique, et le PDF porte un filigrane au nom du prospect. Marques, modèles et prix restent entièrement visibles. Sur un devis sans lignes de pose ni étude électrique, il n’y a rien à masquer : les deux niveaux rendent alors la même page.'}
-                  </p>
-                  {/* L-SECT — les sections servies. Toutes cochées par défaut ;
-                      décocher RETIRE la section de la page client (et, pour le
-                      PDF, rend son lien introuvable). Aucun montant du devis ne
-                      change jamais. */}
-                  <div className="lw-context-devis-sections">
-                    <p className="gen-hint">Ce que le client reçoit :</p>
-                    {SECTIONS_ENVOI.map(({ key, label }) => (
-                      <label key={key} className="lw-context-devis-section">
-                        <Checkbox
-                          checked={getSections(d)[key]}
-                          onCheckedChange={(v) => onSectionChange(d, key, v)}
-                          aria-label={`${label} — page client de ${d.reference}`}
-                        />
-                        {label}
-                      </label>
-                    ))}
-                    <p className="gen-hint">
-                      Le comparatif de gammes n’apparaît que sur un devis qui en
-                      porte une ; décocher les autres cases retire la section de
-                      la page, jamais un montant du devis.
-                    </p>
-                  </div>
-                  {/* LANE E (spec_3_options.md, fondateur 28/08/2026) — combien
-                      de tailles (Éco/Recommandé/Max) le client voit sur sa
-                      page. Recommandé EST le devis : toujours servie, case
-                      verrouillée cochée. Le curseur segmenté et les 2 cases
-                      restent synchronisés dans les deux sens via `getTailles`/
-                      `onOptionsCountChange`/`onTailleToggle`. */}
-                  <div className="lw-context-devis-tailles">
-                    <p className="gen-hint">Options présentées au client :</p>
-                    <Segmented
-                      size="sm"
-                      aria-label={`Nombre d'options présentées — page client de ${d.reference}`}
-                      options={[1, 2, 3].map((n) => ({ value: n, label: String(n) }))}
-                      value={optionsCountFromTailles(getTailles(d))}
-                      onChange={(n) => onOptionsCountChange(d, n)}
-                    />
-                    <label className="lw-context-devis-taille-toggle">
-                      <Checkbox
-                        checked
-                        disabled
-                        aria-label={`Taille Recommandé — toujours servie — page client de ${d.reference}`}
-                      />
-                      Recommandé
-                    </label>
-                    <label className="lw-context-devis-taille-toggle">
-                      <Checkbox
-                        checked={getTailles(d).taille_eco}
-                        onCheckedChange={(v) => onTailleToggle(d, 'taille_eco', v)}
-                        aria-label={`Taille Éco — page client de ${d.reference}`}
-                      />
-                      Éco
-                    </label>
-                    <label className="lw-context-devis-taille-toggle">
-                      <Checkbox
-                        checked={getTailles(d).taille_max}
-                        onCheckedChange={(v) => onTailleToggle(d, 'taille_max', v)}
-                        aria-label={`Taille Max — page client de ${d.reference}`}
-                      />
-                      Max
-                    </label>
-                    <Button
-                      type="button" size="sm" variant="outline"
-                      onClick={() => setEditTaillesOuvert(d.id)}
-                    >
-                      <Layers3 size={14} aria-hidden="true" /> Modifier les options…
-                    </Button>
-                  </div>
-                  <div className="lw-context-devis-links">
-                    <Button
-                      type="button" size="sm" variant="outline"
-                      disabled={linkBusy === `l-${d.id}`}
-                      title="Copier le lien de la page client (page devis web publique)"
-                      onClick={() => copierPageClient(d)}
-                    >
-                      {copiedId === d.id
-                        ? <Check size={14} aria-hidden="true" />
-                        : <Link2 size={14} aria-hidden="true" />}
-                      {copiedId === d.id ? 'Copié' : 'Page client'}
-                    </Button>
-                    <Button
-                      type="button" size="sm" variant="ghost"
-                      disabled={linkBusy === `o-${d.id}`}
-                      aria-label={`Ouvrir la page client de ${d.reference} dans un nouvel onglet`}
-                      title="Ouvrir la VRAIE page client (compte comme une lecture côté suivi — pour regarder sans notifier, utilisez l'aperçu interne ci-dessous)"
-                      onClick={() => ouvrirPageClient(d)}
-                    >
-                      <ExternalLink size={14} aria-hidden="true" />
-                    </Button>
-                    <Button
-                      type="button" size="sm" variant="outline"
-                      disabled={!leadPhoneOk || linkBusy === `w-${d.id}`}
-                      title={leadPhoneOk
-                        ? 'Envoyer le lien de la page client par WhatsApp'
-                        : 'Aucun numéro de téléphone exploitable'}
-                      onClick={() => envoyerWhatsAppUnique(d)}
-                    >
-                      <MessageCircle size={14} aria-hidden="true" /> WhatsApp
-                    </Button>
-                  </div>
-                  {/* L-INTPREV (fondateur 25/08/2026) — « le lien de devis
-                      doit aussi avoir un lien interne secondaire que le
-                      commercial peut visiter sans déclencher la
-                      notification ». MÊME page client publique que ci-dessus
-                      (`/proposition/<slug>/<jeton>`), un jeton INTERNE
-                      différent (`ShareLink.token_interne`, backend) qui ne
-                      pose AUCUNE trace (compteur de vues, note chatter,
-                      avance de stage funnel, notification, beacon
-                      d'engagement — apps/ventes/public_views.py). Ligne
-                      discrète, distincte du bouton « Aperçu interne (sans
-                      notification) » de la carte (celui-là ouvre le PDF via
-                      le panneau CRM authentifié /proposal, jamais le
-                      ShareLink) : ceci ouvre la VRAIE page publique, avec ses
-                      niveaux/sections choisis ci-dessus, sans notifier. Ne
-                      jamais brancher ce lien sur WhatsApp/l'envoi — voir
-                      copierPageClient/envoyerWhatsAppUnique qui n'utilisent
-                      QUE le jeton public. */}
-                  <p className="gen-hint lw-context-devis-apercu-interne">
-                    <button
-                      type="button"
-                      className="lw-context-devis-apercu-interne-btn"
-                      disabled={linkBusy === `i-${d.id}`}
-                      title="Copier le lien d'aperçu interne de la page client — le client n'est jamais notifié ni marqué comme ayant consulté sa proposition"
-                      onClick={() => copierApercuInterne(d)}
-                    >
-                      {copiedInterneId === d.id
-                        ? <Check size={12} aria-hidden="true" />
-                        : <Eye size={12} aria-hidden="true" />}
-                      {copiedInterneId === d.id
-                        ? 'Copié'
-                        : 'Aperçu interne de la page client (sans notification)'}
-                    </button>
-                    {' '}
-                    <button
-                      type="button"
-                      className="lw-context-devis-apercu-interne-open"
-                      disabled={linkBusy === `io-${d.id}`}
-                      aria-label={`Ouvrir l'aperçu interne de la page client de ${d.reference}`}
-                      title="Ouvrir la page client SANS notifier le lead ni compter comme une consultation"
-                      onClick={() => ouvrirApercuInterne(d)}
-                    >
-                      <ExternalLink size={12} aria-hidden="true" />
-                    </button>
-                  </p>
-                  {actionMsg && <p className="gen-hint" role="status">{actionMsg}</p>}
-                </DialogContent>
-              </Dialog>
-              {/* LANE E — « Modifier les options » ouvre l'écran vendeur EXISTANT
-                  (DevisOffresTailles.jsx) pour ce devis, AVANT l'envoi : le
-                  commercial ajuste panneaux/batterie/équipements par taille,
-                  puis revient au dialogue d'envoi ci-dessus. Rien n'est
-                  réimplémenté — même composant que DevisGenerator.jsx.
-                  `modeInstallation` n'est pas exposé par `Lead.devis[]`
-                  (apps/crm/serializers.py::get_devis) : on force 'residentiel'
-                  pour toujours déclencher le chargement — un devis non
-                  résidentiel se voit alors via `block.editable === false` et
-                  son message serveur (`raison_non_editable`), jamais deviné
-                  côté écran. */}
-              <Dialog
-                open={editTaillesOuvert === d.id}
-                onOpenChange={(o) => setEditTaillesOuvert(o ? d.id : null)}
-              >
-                <DialogContent className="lw-context-devis-edit-tailles">
-                  <DialogHeader>
-                    <DialogTitle>Modifier les options — {d.reference}</DialogTitle>
-                    <DialogDescription>
-                      Ajustez panneaux, batterie et équipements de chaque
-                      taille avant d’envoyer la page au client.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DevisOffresTailles
-                    devisId={d.id}
-                    modeInstallation="residentiel"
-                    produits={produitsCatalogue}
-                  />
-                </DialogContent>
-              </Dialog>
+              <EnvoiDevisDialog
+                devis={d}
+                envoi={envoi}
+                ouvert={envoiOuvert === d.id}
+                onOuvertChange={(o) => setEnvoiOuvert(o ? d.id : null)}
+                modeDevis={d.mode_installation ?? state.server?.type_installation ?? null}
+              />
               {d.statut === 'accepte' && (
                 <>
                   <DocumentStageTrack

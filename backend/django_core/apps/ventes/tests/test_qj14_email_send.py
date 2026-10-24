@@ -8,7 +8,7 @@ Covers:
   - Idempotent: a second call on an already-envoyé devis still sends the email
     but does NOT re-stamp date_envoi or add a duplicate status chatter entry.
   - Company scoping: a request user from company A cannot reach a devis from B.
-  - Missing email address (no client.email, no to_email body) → 400 + EmailLog
+  - Missing email address (no client.email, no to_email body) → 409 + EmailLog
     with statut=echec.
   - A devis in a terminal status (accepté/refusé) is NOT regressed to envoyé,
     but the email is still delivered.
@@ -168,14 +168,14 @@ class TestEnvoyerEmailAction(TestCase):
             self.assertEqual(resp.status_code, 400, (corps, resp.data))
         self.assertFalse(EmailLog.objects.filter(devis=devis).exists())
 
-    def test_missing_email_returns_400_and_logs_echec(self):
-        """No client email + no to_email in body → 400 + EmailLog echec."""
+    def test_missing_email_returns_409_and_logs_echec(self):
+        """No client email + no to_email in body → 409 (refus d état, ENF11) + EmailLog echec."""
         client_no_email = Client.objects.create(
             company=self.company, nom='Inconnu', telephone='+212611000002')
         devis = make_devis(self.company, self.user, client_no_email, 'brouillon',
                            'DEV-QJ14-006')
         resp = self.api.post(url(devis.id), {}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
         log = EmailLog.objects.filter(devis=devis).first()
         self.assertIsNotNone(log)

@@ -37,7 +37,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import serializers
 
-from core.champs_stricts import ChampsStrictsMixin
+from core.champs_stricts import ChampsStrictsMixin, IdInconnu404Mixin
 from core.mixins import SameCompanyFKSerializerMixin
 
 from .models import Calepinage, CalepinageVariante
@@ -243,7 +243,8 @@ class ContraintesSiteCreationField(serializers.JSONField):
     que l'objet vide, une clé de plus répondait 400 « Clé(s) inconnue(s) »."""
 
 
-class CalepinageSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
+                           SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
     """Le calepinage en liste et en écriture (le DÉTAIL agrégé est CAL17).
 
@@ -639,9 +640,11 @@ class CalepinageSerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
             return None
         lead = self._lead_de_la_requete(lead_id)
         if lead is None:
-            raise serializers.ValidationError({
-                'lead': f"Lead introuvable (#{lead_id}).",
-            })
+            # ENF11 — un id de lead bien formé qui ne désigne rien (ou un lead
+            # d'une autre société, même réponse) est introuvable : 404.
+            from rest_framework.exceptions import NotFound
+
+            raise NotFound({'lead': [f"Lead introuvable (#{lead_id})."]})
         return lead
 
 

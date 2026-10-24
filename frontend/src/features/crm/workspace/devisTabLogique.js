@@ -131,3 +131,34 @@ export function lectureClientLabel(lecture, corrigeLe = null) {
     : ''
   return `Ouvert ${vues} fois par le client${quand}${avantCorrection}`
 }
+
+// ALEA50 (D-ACI-6=a) — « prêt » inclut le CATALOGUE : pour un lead C&I, le
+// serveur sert `devis_auto.catalogue_ci` = { pret, manquants: [libellés] } (les
+// postes fixes sans prix : forfaits société, coffrets, protection AC, comptage).
+// `null` (hors C&I, lecture en échec) ne bloque jamais : seul `pret === false`.
+export function catalogueCiBloque(devisAuto) {
+  return devisAuto?.catalogue_ci?.pret === false
+}
+
+// « 3 postes sans prix — à régler par l'administrateur » (singulier géré).
+export function raisonCatalogueCi(devisAuto) {
+  const n = devisAuto?.catalogue_ci?.manquants?.length ?? 0
+  return `${n} poste${n > 1 ? 's' : ''} sans prix — à régler par l'administrateur`
+}
+
+// Le texte de la note chatter « Demander au responsable » : nomme les postes.
+export function noteDemandeCatalogueCi(devisAuto) {
+  const postes = devisAuto?.catalogue_ci?.manquants ?? []
+  return 'Demande au responsable : le devis automatique C&I est bloqué, '
+    + `${raisonCatalogueCi(devisAuto)}. Postes à chiffrer : ${postes.join(' ; ')}.`
+}
+
+// ALEA55 — « Proposer une relance J+3 » : la date de relance du lead (DateField
+// `relance_date`, 'YYYY-MM-DD') trois jours après AUJOURD'HUI à Casablanca (jamais
+// le fuseau du navigateur — même ancrage que le journal d'appel).
+export function dateRelanceJ3(maintenant = new Date()) {
+  const jour = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(maintenant)
+  const d = new Date(`${jour}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 3)
+  return d.toISOString().slice(0, 10)
+}

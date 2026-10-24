@@ -79,7 +79,7 @@ test('autoQuote.js : `target_kwc` est OMIS (pas envoyé à 0) quand aucune taill
 
 test('CIQ127 — autoQuote.js : industriel/commercial partent au serveur, qui refuse en nommant la donnée', () => {
   assert.match(SRC,
-    /return creerDevisServeur\(\{ lead, discountStr, onAlertes, targetKwc, marche: mode \}\)/)
+    /return creerDevisServeur\(\{ lead, discountStr, onAlertes, onResultat, targetKwc, marche: mode \}\)/)
   const idx = SRC.indexOf('async function creerDevisServeur(')
   const bloc = SRC.slice(idx, idx + 1200)
   assert.match(bloc, /ventesApi\.creerDevisAuto\(/)

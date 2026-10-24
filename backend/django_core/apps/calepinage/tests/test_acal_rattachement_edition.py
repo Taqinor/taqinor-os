@@ -118,7 +118,7 @@ class RattachementEditionTest(BaseApiCalepinage):
 
     def test_responsable_autre_societe_refuse(self):
         reponse = self._patch({'responsable': self.user_autre.pk})
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertEqual(reponse.status_code, 404, reponse.data)
         self.assertIn('responsable', reponse.data)
         self.c.refresh_from_db()
         self.assertIsNone(self.c.responsable_id)
