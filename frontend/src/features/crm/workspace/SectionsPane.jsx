@@ -112,7 +112,10 @@ export default function SectionsPane({
     // renvoi vers les autres questions du même appel (raccordement, factures)
     // déjà portées ailleurs. Compose la courbe de consommation journalière
     // montrée au client.
-    { id: 'equipements', label: "Questionnaire d'appel", Icon: Phone, Comp: SectionEquipements },
+    // ALEA53 — le questionnaire d'appel RÉSIDENTIEL (présence en journée,
+    // piscine / VE / clim / chauffe-eau) ne s'applique pas à un lead commercial
+    // ou industriel : son rythme se pose dans « Professionnel ».
+    ...(pro ? [] : [{ id: 'equipements', label: "Questionnaire d'appel", Icon: Phone, Comp: SectionEquipements }]),
     ...(agricole ? [{ id: 'pompage', label: 'Pompage', Icon: Droplet, Comp: SectionPompage }] : []),
     { id: 'toiture', label: 'Toiture & site', Icon: Home, Comp: SectionSite },
     { id: 'visite', label: 'Visite technique', Icon: ClipboardList, Comp: SectionVisite },

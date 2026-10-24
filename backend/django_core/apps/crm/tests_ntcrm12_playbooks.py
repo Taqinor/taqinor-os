@@ -74,6 +74,15 @@ class PlaybookEndToEndApiTests(TestCase):
         self.client_api = APIClient()
         self.client_api.force_authenticate(self.user)
 
+    def test_cocher_une_tache_n_accepte_que_du_json(self):
+        # api-fuzz 24/10 : le schéma publiait aussi un corps de formulaire où
+        # ``tache``/``fait`` ne sont que du texte (« Identifiant … attendu »).
+        resp = self.client_api.post(
+            f'/api/django/crm/leads/{self.lead.pk}/playbook/',
+            {'tache': self.tache.pk, 'fait': 'False'},
+            content_type='application/x-www-form-urlencoded')
+        self.assertEqual(resp.status_code, 415)
+
     def test_changement_stage_via_api_genere_puis_cocher_tache(self):
         resp = self.client_api.patch(
             f'/api/django/crm/leads/{self.lead.pk}/', {'stage': stages.QUOTE_SENT}, format='json')

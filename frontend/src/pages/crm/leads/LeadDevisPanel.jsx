@@ -5,14 +5,12 @@
    aucune logique de prix ni de PDF dupliquée. Le PDF vient du chemin canonique
    /proposal (CLAUDE.md règle #4). */
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import {
-  Download, ExternalLink, Pencil, Zap,
+  Download, ExternalLink, Pencil, Send, Zap,
 } from 'lucide-react'
-import stockApi from '../../../api/stockApi'
 import ventesApi from '../../../api/ventesApi'
-import { createAutoQuote } from '../../../features/ventes/autoQuote'
+import { createAutoQuote, libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
 import { proposalParams, pdfBlob } from '../../../features/ventes/previewPdf'
 import { usePdfPreview } from '../../../features/ventes/usePdfPreview'
 import PdfPreviewBody from '../../../features/ventes/PdfPreviewBody'
@@ -25,11 +23,13 @@ import { reviserEtOuvrir } from '../../../features/ventes/reviserDevis'
 import BandeauDeriveLead from '../../../features/ventes/quote/BandeauDeriveLead'
 import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 import { openPdfInGesture } from '../../../utils/pdfBlob'
-import { fetchAllPages } from '../../../utils/fetchAllPages'
 import { toast, useConfirmDialog } from '../../../ui/confirm'
 // EDC6 (suite) — un « pointeur hors panneau » de Radix est-il un vrai geste de sortie ?
 import { estGesteHorsPanneau } from './gesteHorsPanneau'
 import { jumpToField } from '../../../features/crm/workspace/jumpToField'
+// ALEA52 — la MÊME boîte « Envoyer au client » que la carte devis de l'onglet Devis.
+import EnvoiDevisDialog from '../../../features/crm/workspace/EnvoiDevisDialog'
+import { useEnvoiDevis } from '../../../features/crm/workspace/useEnvoiDevis'
 import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
 import fieldLabels from '../../../features/crm/workspace/fieldLabels'
 // AGQ25 — le journal du devis automatique, même rendu que le générateur.
@@ -43,11 +43,38 @@ import {
 // —, dessinés par PDF.js sur canvas (jamais un cadre embarqué bloquable), refresh
 // silencieux du token rejoué, annulation réelle des rendus longs.
 
+// ALEA55 — la création automatique dure ~30 s (étude, composition, PDF) : au lieu
+// d'un cercle muet, trois étapes dont la courante est mise en avant. Le serveur
+// ne renvoie qu'UNE réponse : l'avancement est indicatif (minuteur), la dernière
+// étape reste active jusqu'au retour.
+const ETAPES_CREATION = ['Étude', 'Composition', 'PDF']
+const DELAIS_ETAPES_MS = [0, 5000, 14000]
+
+function EtapesCreationDevis() {
+  const [courante, setCourante] = useState(0)
+  useEffect(() => {
+    const minuteurs = DELAIS_ETAPES_MS.map((delai, i) => (
+      i === 0 ? null : setTimeout(() => setCourante(i), delai)))
+    return () => minuteurs.forEach((m) => m && clearTimeout(m))
+  }, [])
+  return (
+    <div role="status" aria-live="polite" data-testid="ldp-etapes-creation">
+      <p className="gen-hint"><Spinner /> Création du devis automatique…</p>
+      <ol className="ldp-etapes flex gap-2 text-sm" aria-label="Étapes de la création">
+        {ETAPES_CREATION.map((nom, i) => (
+          <li key={nom} data-etape={nom} aria-current={i === courante ? 'step' : undefined}
+              className={i === courante ? 'font-semibold' : (i < courante ? 'text-muted-foreground' : 'opacity-50')}>
+            {i < courante ? '✓ ' : ''}{nom}{i < ETAPES_CREATION.length - 1 ? ' →' : ''}
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
 const TITLES = {
   auto: 'Devis automatique',
   remise: 'Devis automatique avec remise',
-  onepage: 'Devis 1 page',
-  premium: 'Devis premium',
   edit: 'Édition complète du devis',
   view: 'Devis',
 }
@@ -63,8 +90,7 @@ const LARGEUR_EDITION = 'w-[min(1800px,100%)]'
 // fiche lead (« Devis automatique »). Optionnelle ; vide = comportement
 // historique (taille souhaitée du lead, sinon facture d'hiver). Elle n'écrit
 // RIEN sur le lead — c'est un paramètre de dimensionnement ponctuel.
-export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, existingDevisId = null, targetKwc = null }) {
-  const dispatch = useDispatch()
+export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, existingDevisId = null, targetKwc = null, pdfInitial = null }) {
   const navigate = useNavigate()
 
   // phase: 'remise-input' | 'creating' | 'chargement' | 'edit' | 'preview' | 'error'
@@ -102,6 +128,9 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // AGR126 — alertes renvoyées par le serveur avec le devis automatique
   // (agricole : étude pompage, articles « prix à renseigner » omis).
   const [alertes, setAlertes] = useState([])
+  // ALEA51 — le retour du serveur après le devis automatique (réf., kWc, TTC,
+  // économie, retour, postes à chiffrer) : bannière de SUCCÈS, pas d'erreur.
+  const [resume, setResume] = useState(null)
   const [devisId, setDevisId] = useState(existingDevisId || null)
   const [devisRef, setDevisRef] = useState('')
   // QJR534 — le devis CHARGÉ (droits `modifiable` / `revision_possible` lus du
@@ -120,15 +149,39 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     onApres: () => onDevisChanged?.(),
   })
 
+  // ALEA52 — « Envoyer au client » depuis l'aperçu : la même boîte que la carte
+  // devis (canaux WhatsApp / e-mail / copier le lien, réglages sous « Avancé »).
+  // Un envoi relit la fiche (le devis passe « envoyé », le funnel avance).
+  const envoi = useEnvoiDevis({
+    leadPhone: (lead.whatsapp || lead.telephone || '').trim(),
+    leadEmail: (lead.email || '').trim(),
+    leadNom: `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim(),
+    onRefresh: () => onDevisChanged?.(),
+    leadId: lead.id,
+    relanceActuelle: lead.relance_date ?? null,
+    agricole: lead?.type_installation === 'agricole',
+  })
+  const [envoiOuvert, setEnvoiOuvert] = useState(false)
+  // Marché du devis : hors résidentiel, ni options 1/2/3 (boîte d'envoi) ni
+  // « Inclure l'étude » (sans effet en commercial / industriel / agricole).
+  const marcheDevis = devisRecord?.mode_installation ?? lead.type_installation ?? null
+  const marcheHorsResidentiel = !!marcheDevis && marcheDevis !== 'residentiel'
+  const devisPourEnvoi = {
+    id: devisId,
+    reference: devisRef || devisRecord?.reference || `Devis_${devisId}`,
+    share_link: (lead.devis || []).find((d) => d.id === devisId)?.share_link ?? null,
+  }
+
   // QJR602 suivi (D-QJR5-13) — une taille explicite est respectée telle
   // quelle : plus d'arrondi au palier de 5 kWc, donc plus d'avis de palier.
 
   // Format d'aperçu PDF
-  const [pdfMode, setPdfMode] = useState(mode === 'onepage' ? 'onepage' : 'full')
+  // ALEA55 — « 1 page » / « Premium » sont des FORMATS du PDF d'un devis existant
+  // (`pdfInitial` : choix fait sur la carte), jamais un second devis.
+  const [pdfMode, setPdfMode] = useState(
+    mode === 'onepage' || pdfInitial === 'onepage' ? 'onepage' : 'full')
   const [includeEtude, setIncludeEtude] = useState(false)
   const [downloading, setDownloading] = useState(false)
-  const produitsRef = useRef(null)
-  const marquesRef = useRef(undefined) // PVMRQ — cache du réglage marques
   const startedRef = useRef(false)
   const cleIdempotenceRef = useRef(null) // AGQ23 — une clé par ouverture
 
@@ -154,58 +207,34 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
   // ALEA48 — même geste que les puces « manquants » de DevisTab : on ferme le
   // panneau (modal) puis `jumpToField` déplie, scrolle et focalise le champ.
   const completerChamp = (champ) => {
-    const cible = missingFieldTarget(champ)
+    const cible = missingFieldTarget(champ, lead?.type_installation)
     if (!cible) return
     onClose?.()
     setTimeout(() => jumpToField(cible), 0)
   }
 
-  // ── Création auto (auto / onepage / premium : pas de saisie préalable) ──
+  // ── Création auto (mode « auto » : pas de saisie préalable) ──
   const doCreateAuto = async (discountStr) => {
     setPhase('creating')
     setErrorMsg(null)
     setErrorField(null)
     try {
-      if (!produitsRef.current) {
-        // RÉGRESSION CONFIRMÉE (CI run 32200473257, e2e devis.spec.js E4) —
-        // `stockApi.getProduits()` SANS paramètre ne renvoie que la PAGE 1
-        // (50 produits, triés par nom). Dès que le catalogue dépasse 50
-        // références, une famille de produits triée alphabétiquement APRÈS
-        // la coupure (ex. « Panneau… ») disparaît silencieusement du
-        // dimensionnement automatique — `autoFillLines` la voit comme
-        // ABSENTE DU STOCK et jette « aucun panneau du stock ne correspond »
-        // alors que le catalogue en porte réellement. Trace réseau du run
-        // rouge : count=101, page 1 s'arrête à « Onduleur réseau… », les DEUX
-        // panneaux tombent en page 2. `fetchAllPages` (VX54, déjà le chemin
-        // correct de stockSlice.js pour StockList/DevisList/FactureList/
-        // Dashboard) lit le catalogue ENTIER, en parallèle borné.
-        produitsRef.current = await fetchAllPages(
-          (page) => stockApi.getProduits({ page }).then((r) => r.data))
-      }
-      // PVMRQ — les marques épinglées (Paramètres → Gammes) s'appliquent AUSSI
-      // au devis automatique du lead : sans ce fil, ce chemin rapide recomposait
-      // hors préférence (le trou « panneau 500 W » par la porte de côté). Best-
-      // effort : réglage illisible → aucune préférence, jamais un échec du devis.
-      if (marquesRef.current === undefined) {
-        try {
-          const r = await ventesApi.getParametresGammes()
-          marquesRef.current = (r.data?.marques || {})['Essentielle'] || null
-        } catch {
-          marquesRef.current = null
-        }
-      }
+      // ALEA55 — AUCUN préchargement du catalogue ni des gammes avant l'appel :
+      // le serveur lit lui-même le catalogue, les marques épinglées (PVMRQ) et
+      // l'ordre des lignes de la société (`createAutoQuote` ignorait déjà ces
+      // données) — ces deux lectures ne faisaient qu'ajouter des secondes
+      // d'attente avant le premier octet du devis.
       setAlertes([])
+      setResume(null)
       // AGQ23 (C-AGQ-022) — UNE clé d'idempotence par ouverture du panneau :
       // un 2ᵉ clic (après un délai dépassé) rejoue le 1ᵉʳ devis au serveur.
       if (!cleIdempotenceRef.current) {
         cleIdempotenceRef.current = globalThis.crypto?.randomUUID?.()
           || `auto-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
       }
-      // AGQ23 — `idempotencyKey` : une clé par ouverture du panneau.
       const id = await createAutoQuote({
-        lead, produits: produitsRef.current, discountStr, dispatch,
-        marques: marquesRef.current || undefined, onAlertes: setAlertes,
-        idempotencyKey: cleIdempotenceRef.current, targetKwc,
+        lead, discountStr, targetKwc, onAlertes: setAlertes, onResultat: setResume,
+        idempotencyKey: cleIdempotenceRef.current,
       })
       setDevisId(id)
       onDevisChanged?.()
@@ -227,7 +256,8 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
   useEffect(() => {
     if (startedRef.current) return
-    if (mode === 'auto' || mode === 'onepage' || mode === 'premium') {
+    // ALEA55 — jamais de création quand le panneau s'ouvre sur un devis EXISTANT.
+    if (!existingDevisId && mode === 'auto') {
       startedRef.current = true
       // eslint-disable-next-line react-hooks/set-state-in-effect -- création automatique au montage, une seule fois (startedRef) (D-ENF22)
       doCreateAuto('0')
@@ -490,7 +520,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
           {phase === 'creating' && (
             <div className="ldp-center">
-              <p className="gen-hint"><Spinner /> Création du devis et dimensionnement automatique…</p>
+              <EtapesCreationDevis />
             </div>
           )}
 
@@ -504,7 +534,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
           {phase === 'error' && (
             <div className="ldp-center">
               <div className="form-error-box" role="alert">{errorMsg}</div>
-              {errorField && missingFieldTarget(errorField) && (
+              {errorField && missingFieldTarget(errorField, lead?.type_installation) && (
                 <Button type="button" variant="outline" data-testid="ldp-completer"
                         onClick={() => completerChamp(errorField)}>
                   Compléter : {fieldLabels[errorField].label}
@@ -548,9 +578,19 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
 
           {phase === 'preview' && (
             <div className="ldp-preview">
+              {/* ALEA51 — SUCCÈS : une phrase qui dit ce qui vient d'être créé
+                  (référence · kWc · TTC · économie · retour · postes à chiffrer
+                  après la visite), jamais la boîte rouge des erreurs. */}
+              {resume && (
+                <div className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm"
+                     role="status" data-testid="ldp-succes-auto">
+                  <strong>Devis créé :</strong> {libelleSuccesDevisAuto(resume)}
+                </div>
+              )}
               {/* AGR126 — ce que le devis automatique serveur signale (jamais
-                  un chiffre inventé : le message du serveur, tel quel).
-                  AGQ25 — rendu UNIQUE, partagé avec le générateur. */}
+                  un chiffre inventé : le message du serveur, tel quel), en
+                  AVERTISSEMENT sous le succès (ALEA51). AGQ25 — rendu UNIQUE,
+                  partagé avec le générateur. */}
               <AlertesDevisAuto alertes={alertes} />
               {/* QJR589 — dérive lead → devis : reprendre / garder, sur place
                   (envoyé : le client verra la version corrigée) ; figé →
@@ -578,7 +618,7 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                       { value: 'onepage', label: '1 page' },
                     ]}
                   />
-                  {pdfMode === 'full' && (
+                  {pdfMode === 'full' && !marcheHorsResidentiel && (
                     <label className="ldp-etude-toggle">
                       <Checkbox
                         checked={includeEtude}
@@ -600,7 +640,13 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
                       <Pencil /> Réviser (nouvelle version)
                     </Button>
                   )}
-                  <Button type="button" size="sm"
+                  {devisRecord && devisRecord.is_active !== false && (
+                    <Button type="button" size="sm" data-testid="ldp-envoyer"
+                            onClick={() => setEnvoiOuvert(true)}>
+                      <Send /> Envoyer au client
+                    </Button>
+                  )}
+                  <Button type="button" size="sm" variant="outline"
                           onClick={handleDownload} loading={downloading} disabled={downloading}>
                     {!downloading && <Download />}
                     {downloading ? '…' : 'Télécharger le PDF'}
@@ -656,6 +702,15 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
             </div>
           )}
         </div>
+        {devisId && (
+          <EnvoiDevisDialog
+            devis={devisPourEnvoi}
+            envoi={envoi}
+            ouvert={envoiOuvert}
+            onOuvertChange={setEnvoiOuvert}
+            modeDevis={marcheDevis}
+          />
+        )}
       </SheetContent>
     </Sheet>
   )

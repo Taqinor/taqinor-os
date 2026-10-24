@@ -21,7 +21,7 @@ WEB = DEPOT / 'apps' / 'web' / 'src' / 'contract_samples'
 CODES_409 = [
     'version_remplacee', 'inactive', 'expiree', 'brouillon',
     'empreinte_perimee', 'validation_requise', 'statut',
-    'vente_active_existante',
+    'vente_active_existante', 'ice_divergent',
 ]
 CLES_ADDITIVES = {
     'economies_cumul_25_ans', 'empreinte_contenu', 'offre_expiree',

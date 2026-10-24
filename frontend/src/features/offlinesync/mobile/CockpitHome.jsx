@@ -50,8 +50,9 @@ export default function CockpitHome() {
       const caDuMois = caMensuel.length > 0 ? caMensuel[caMensuel.length - 1].ca : 0
       const facturesEnRetard = (d.statuts_factures || [])
         .find((s) => s.name === 'En retard')?.value ?? 0
-      const chantiersEnCours = chantiersRes.data?.count
-        ?? chantiersRes.data?.results?.length ?? 0
+      // Total serveur (`count`) d'une requête page_size=1 : ce n'est pas une
+      // lecture de la page 1, le compte reste exact au-delà de 100 chantiers.
+      const chantiersEnCours = chantiersRes.data?.count ?? 0
       setKpis({
         caDuMois,
         pipelinePondere: pipelineRes.data?.prevision_ponderee,

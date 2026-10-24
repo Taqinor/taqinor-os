@@ -72,6 +72,15 @@ describe('CockpitHome (NTMOB5)', () => {
     expect(screen.getByText('Factures en retard')).toBeInTheDocument()
   })
 
+  it('affiche le total serveur de chantiers en cours, pas la longueur de la page lue', async () => {
+    // page_size=1 : la page ne porte qu'une ligne, `count` porte les 137 chantiers.
+    installationsApiMock.getInstallations.mockResolvedValue({
+      data: { count: 137, results: [{ id: 1 }] },
+    })
+    renderPage()
+    expect(await screen.findByText('137')).toBeInTheDocument()
+  })
+
   it('liste chaque approbation en attente, ouvrable', async () => {
     renderPage()
     expect(await screen.findByRole('button', { name: /Contrat X — étape 1/ })).toBeInTheDocument()

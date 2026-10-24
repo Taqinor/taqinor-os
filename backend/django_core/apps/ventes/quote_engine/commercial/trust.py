@@ -13,6 +13,9 @@ from ..premium_base import bande_legale
 # CIQ311 — blocs C&I communs (conditions, Bon pour accord).
 from ..ci import blocs as ci_blocs
 from .. import premium_base
+# AMOT91 — LE tableau « Hypothèses de l'estimation » (même source que la page
+# finance industrielle : ``industriel.finance.rangees_hypotheses``).
+from ..industriel.finance import css_tableau_hypotheses, tableau_hypotheses
 
 
 def build(ctx):
@@ -86,6 +89,12 @@ def build(ctx):
     # CIQ314 — seulement les services que le devis porte (O&M nommée,
     # délai saisi) : plus d'étape « supervision », ni de « performance
     # garantie », ni de cellule O&M sans ligne derrière.
+    # AMOT91 — tarif et sa date, indexation, dégradation, horizon, entretien,
+    # remplacement de l'onduleur, base de production, règle de
+    # dimensionnement : tout lu sur ``synthese_ci`` (rien d'inventé).
+    hypotheses_html = tableau_hypotheses(
+        d, d.get("com_synthese") or {}, fmt, ctx.get("fmt_mad") or fmt, L,
+        "c3", optionnel=True, compact=True, om=True)
     services_html = ci_blocs.bloc_services(
         d.get("com_synthese") or {}, "c3", navy, ink, doc=d)
     # CIQ331 — échéancier en N jalons (``synthese_ci['echeancier']``,
@@ -142,6 +151,7 @@ def build(ctx):
 .c3-sign-blank{{margin-top:8px;font-size:8pt;color:{muted_2};font-style:italic;}}
 .c3-sign-co{{font-size:8pt;color:{muted};margin-top:8px;}}
 .c3-sign-co b{{color:{navy};}}
+{css_tableau_hypotheses("c3", navy, muted, ink, line_soft)}
 </style>
 """
 
@@ -155,7 +165,7 @@ def build(ctx):
 
   {echeancier_html}{financement_html}
 
-  {services_html}
+  {services_html}{hypotheses_html}
 
   {conditions_html}
 

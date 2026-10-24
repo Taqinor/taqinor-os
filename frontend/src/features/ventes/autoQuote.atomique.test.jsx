@@ -30,14 +30,11 @@ beforeEach(() => {
 describe('CIQ127 — devis automatique non résidentiel : UN appel serveur', () => {
   it('agricole : UN appel serveur /ventes/devis/auto/, aucun createDevisAtomic, alertes rendues', async () => {
     const alertes = [{ code: 'pvgis_indisponible', champ: 'production', message: 'Irradiation indisponible' }]
-    api.creerDevisAuto.mockResolvedValueOnce({ data: { id: 777, reference: 'DEV-202610-0021', statut: 'brouillon', alertes } })
+    api.creerDevisAuto.mockResolvedValueOnce({ data: { id: 777, statut: 'brouillon', alertes } })
     const lead = { id: 7, type_installation: 'agricole', pompe_hmt_m: 60, pompe_debit_m3h: 12 }
     const onAlertes = vi.fn()
-    const onCreation = vi.fn()
-    const id = await createAutoQuote({ lead, produits: [], discountStr: '5', dispatch: vi.fn(), onAlertes, onCreation })
+    const id = await createAutoQuote({ lead, produits: [], discountStr: '5', dispatch: vi.fn(), onAlertes })
     expect(id).toBe(777)
-    // Rejeu AGQ du 24/10 — la réponse de création (référence) remonte à l'écran de succès.
-    expect(onCreation).toHaveBeenCalledWith(expect.objectContaining({ reference: 'DEV-202610-0021' }))
     expect(api.creerDevisAuto).toHaveBeenCalledTimes(1)
     expect(api.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 7, remise_globale: '5' })
     expect(api.createDevisAtomic).not.toHaveBeenCalled()

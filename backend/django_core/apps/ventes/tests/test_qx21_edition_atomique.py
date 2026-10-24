@@ -91,7 +91,7 @@ class TestEditionAtomique(TestCase):
         r = self._post(devis, {
             'lignes': lignes,
             'entete': {'remise_globale': '7', 'taux_tva': '10'}})
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)  # api-fuzz 24/10 : produit inconnu ⇒ 404
         devis.refresh_from_db()
         self.assertEqual(devis.remise_globale, Decimal('0'))
         self.assertEqual(devis.taux_tva, Decimal('20'))

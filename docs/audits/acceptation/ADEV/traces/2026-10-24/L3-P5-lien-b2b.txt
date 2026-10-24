@@ -1,0 +1,102 @@
+Rejeu API du lien public B2B (pile locale erp-agentique, code 003c111b7, APIClient dans le conteneur Django, scanner = UA « Microsoft Office Existence Discovery / SafeLinks », humain = Chrome, IP 196.200.1.10) — 2026-10-24.
+Devis DEV-202610-0075 (hôtel, commercial, 65,32 kWc, client 901 avec ICE de test 001234567000089) ; DEV-202610-0077 / DEV-202610-0078 (déclin puis refus). Page apps/web non jouée (pile web absente en local) : les champs du formulaire sont couverts par les tests apps/web (web-build-test CI).
+
+=== Passe 1 (corps « option: sans » du contrat — refusé 400 : le contrat est corrigé en « sans_batterie ») ===
+Traceback (most recent call last):
+ModuleNotFoundError: No module named 'STAGES'
+Traceback (most recent call last):
+KeyError: 'contrat'
+Traceback (most recent call last):
+LookupError: App 'contrats' doesn't have a 'contrat' model.
+Traceback (most recent call last):
+KeyError: 'kbarticle'
+Traceback (most recent call last):
+LookupError: App 'kb' doesn't have a 'kbarticle' model.
+P-L3-5 | devis 1 DEV-202610-0075 envoye commercial lead 2572 client 901 212100.00
+P-L3-5 | share-link DEV-202610-0075 200 {'token': 'wIZD_5vvtR8fMMCR_B7FYwkBZ177zdIpH8HdEoWUCn8', 'path': '/proposition/wIZD_5vvtR8fMMCR_B7FYwkBZ177zdIpH8HdEoWUCn8'}
+P-L3-5 | ADEV97 chemin sans slug nominatif : /proposition/wIZD_5vvtR8fMMCR_B7FYwkBZ177zdIpH8HdEoWUCn8 OK
+P-L3-5 | statut après envoi : envoye
+Traceback (most recent call last):
+  File "/app/apps/ventes/domain/cycle_vie.py", line 781, in signature_entreprise
+P-L3-5 | ADEV98 GET scanner SafeLinks 200 vues 0 -> 0 OK
+Traceback (most recent call last):
+  File "/app/apps/ventes/domain/cycle_vie.py", line 781, in signature_entreprise
+P-L3-5 | GET humain 200 vues 1 (attendu inchangé avant la balise) empreinte servie OK
+P-L3-5 |    clés servies : ['accepte_par_nom', 'accepted', 'acompte', 'annual_after', 'annual_before', 'apercu_interne', 'categorie_commerciale', 'client_name', 'conception_electrique', 'conditions', 'conditions_titre', 'confirmation_email', 'courbes_journalieres', 'coverage_estimated', 'coverage_pct', 'date', 'date_acceptation', 'date_expiration', 'date_validite', 'display_total_multi', 'empreinte_contenu', 'facture_avec_solaire_a', 'facture_avec_solaire_s', 'facture_sans_solaire', 'gammes', 'hypotheses', 'layout_nb_panneaux', 'layout_stale', 'lignes_structure', 'mode_installation', 'mode_kpis', 'monthly_consumption', 'monthly_production', 'multi_villa', 'niveau', 'niveau_masque', 'nombre_proprietes', 'note_client', 'offre_expiree', 'option_totals']
+P-L3-5 | ADEV98 balise vu/ 204 vues 1 OK
+P-L3-5 | ADEV98 balise par un scanner 204 vues 1 OK
+P-L3-5 | ICE du client connu : 001234567000089
+P-L3-5 | ADEV95 sans attestation de pouvoir -> 400 {'detail': "Cochez l'attestation : vous agissez en la qualité indiquée et avez le pouvoir d'engager la société.", 'champ': 'entreprise.pouvoir_engager'} OK
+P-L3-5 | ADEV95 e-mail invalide -> 400 {'detail': "L'e-mail du signataire est invalide.", 'champ': 'entreprise.signataire_email'} OK
+P-L3-5 | ADEV95 ICE divergent -> 409 {'detail': "L'ICE saisi (000000000000099) ne correspond pas à l'ICE enregistré pour votre société (001234567000089). Vérifiez-le ou contactez votre conseiller avant de signer.", 'code': 'ice_divergent'} OK
+Traceback (most recent call last):
+  File "/app/apps/ventes/domain/cycle_vie.py", line 781, in signature_entreprise
+P-L3-5 | ADEV96 empreinte périmée -> 409 empreinte_perimee OK
+P-L3-5 | signatures avant : 0
+Traceback (most recent call last):
+  File "/app/apps/ventes/domain/cycle_vie.py", line 781, in signature_entreprise
+P-L3-5 | ACCEPT -> 400 {'detail': 'Option invalide (attendu « sans_batterie » ou « avec_batterie »).'}
+P-L3-5 | ADEV99 e-mails envoyés : 0
+P-L3-5 | statut devis : envoye | notifications + 0
+Traceback (most recent call last):
+  File "/app/apps/ventes/domain/cycle_vie.py", line 781, in signature_entreprise
+P-L3-5 | 2e acceptation (idempotence) -> 400 None
+P-L3-5 | devis 2 DEV-202610-0077 brouillon lead 2574
+P-L3-5 | share-link DEV-202610-0077 200 {'token': 'qcGgIWK1d4-DprG4pQqd6qCv-at566LTAidK3-VmroI', 'path': '/proposition/qcGgIWK1d4-DprG4pQqd6qCv-at566LTAidK3-VmroI'}
+P-L3-5 | ADEV98 déclin « autre » sans texte -> 400 {'detail': 'Choisissez un motif (prix, délai, concurrent, projet reporté ou autre — précisez « autre »).', 'champ': 'motif'} OK
+P-L3-5 | ADEV98 déclin délai -> 200 {'detail': 'Merci, votre réponse a bien été transmise à votre conseiller.', 'already_sent': False}
+P-L3-5 |    activités lead + 1 | notifications + 2
+P-L3-5 |    dernière activité :  2574 note
+P-L3-5 |    2e déclin dans l'heure -> 200 {'detail': 'Merci, votre réponse a bien été transmise à votre conseiller.', 'already_sent': True}
+P-L3-5 |    statut devis 2 (aucun statut écrit) : envoye OK
+Traceback (most recent call last):
+  File "/app/apps/ventes/domain/cycle_vie.py", line 781, in signature_entreprise
+Traceback (most recent call last):
+  File "/app/apps/ventes/serializers.py", line 880, in get_est_signe
+Traceback (most recent call last):
+  File "/app/apps/ventes/serializers.py", line 889, in get_signature_info
+P-L3-5 | refuser -> 200 refuse
+P-L3-5 | ADEV97 lien après refus : actif = None revoked_at = None | GET -> 404 OK
+P-L3-5 | FIN
+
+=== Passe 2 (option sans_batterie) ===
+ModuleNotFoundError: No module named 'STAGES'
+KeyError: 'contrat'
+LookupError: App 'contrats' doesn't have a 'contrat' model.
+KeyError: 'kbarticle'
+LookupError: App 'kb' doesn't have a 'kbarticle' model.
+P-L3-5 | devis 1 DEV-202610-0075 envoye commercial lead 2572 client 901 212100.00
+P-L3-5 | share-link DEV-202610-0075 200 {'token': 'wIZD_5vvtR8fMMCR_B7FYwkBZ177zdIpH8HdEoWUCn8', 'path': '/proposition/wIZD_5vvtR8fMMCR_B7FYwkBZ177zdIpH8HdEoWUCn8'}
+P-L3-5 | ADEV97 chemin sans slug nominatif : /proposition/wIZD_5vvtR8fMMCR_B7FYwkBZ177zdIpH8HdEoWUCn8 OK
+P-L3-5 | statut après envoi : envoye
+P-L3-5 | ADEV98 GET scanner SafeLinks 200 vues 1 -> 1 OK
+P-L3-5 | GET humain 200 vues 1 (attendu inchangé avant la balise) empreinte servie OK
+P-L3-5 |    clés servies : ['accepte_par_nom', 'accepted', 'acompte', 'annual_after', 'annual_before', 'apercu_interne', 'categorie_commerciale', 'client_name', 'conception_electrique', 'conditions', 'conditions_titre', 'confirmation_email', 'courbes_journalieres', 'coverage_estimated', 'coverage_pct', 'date', 'date_acceptation', 'date_expiration', 'date_validite', 'display_total_multi', 'empreinte_contenu', 'facture_avec_solaire_a', 'facture_avec_solaire_s', 'facture_sans_solaire', 'gammes', 'hypotheses', 'layout_nb_panneaux', 'layout_stale', 'lignes_structure', 'mode_installation', 'mode_kpis', 'monthly_consumption', 'monthly_production', 'multi_villa', 'niveau', 'niveau_masque', 'nombre_proprietes', 'note_client', 'offre_expiree', 'option_totals']
+P-L3-5 | ADEV98 balise vu/ 204 vues 1 KO
+P-L3-5 | ADEV98 balise par un scanner 204 vues 1 KO
+P-L3-5 | ICE du client connu : 001234567000089
+P-L3-5 | ADEV95 sans attestation de pouvoir -> 400 {'detail': "Cochez l'attestation : vous agissez en la qualité indiquée et avez le pouvoir d'engager la société.", 'champ': 'entreprise.pouvoir_engager'} OK
+P-L3-5 | ADEV95 e-mail invalide -> 400 {'detail': "L'e-mail du signataire est invalide.", 'champ': 'entreprise.signataire_email'} OK
+P-L3-5 | ADEV95 ICE divergent -> 409 {'detail': "L'ICE saisi (000000000000099) ne correspond pas à l'ICE enregistré pour votre société (001234567000089). Vérifiez-le ou contactez votre conseiller avant de signer.", 'code': 'ice_divergent'} OK
+P-L3-5 | ADEV96 empreinte périmée -> 409 empreinte_perimee OK
+P-L3-5 | signatures avant : 0
+P-L3-5 | ACCEPT -> 200 {'statut': Devis.Statut.ACCEPTE, 'reference': 'DEV-202610-0075', 'accepte_par_nom': 'Youssef Benjelloun', 'recu': {'signe_le': '2026-10-24T03:43:40.524041+00:00', 'empreinte_contenu': '30923bd58c656d209f6bfce8d19f47acee944d491e5ab038d0062b9947c0ddab', 'empreinte_pdf': '58c9eadd53fa07859d86f53f1f7c7da37e5335608a94c74b4967559445dbeebf'}, 'entreprise': {'raison_sociale': 'Hôtel Atlas Mogador SARL', 'signataire_qualite': 'Directeur général', 'ice': '001234567000089', 'signataire_nom': 'Youssef Benjelloun', 'signataire_email': 'youssef@atlas-mogador.test', 'pouvoir_engager': True}}
+P-L3-5 | ADEV99 e-mails envoyés : 2
+P-L3-5 |    -> (['demo_resp@taqinor.local'], 'Copie — proposition acceptée — DEV-202610-0075', 1, [], [])
+P-L3-5 |    -> (['youssef@atlas-mogador.test'], 'Proposition acceptée — DEV-202610-0075', 1, [], [])
+P-L3-5 | statut devis : accepte | notifications + 3
+P-L3-5 | ADEV95 signature : {'nom': 'Youssef Benjelloun', 'qualite': 'Directeur général', 'raison_sociale': 'Hôtel Atlas Mogador SARL', 'ice': '001234567000089', 'email': 'youssef@atlas-mogador.test', 'pouvoir': True, 'langue_page': 'fr', 'ip': '196.200.1.10', 'hash': '30923bd58c65', 'pdf_sha': '58c9eadd53fa', 'pdf_key': True}
+P-L3-5 | ADEV96/99 PDF signé servi : 200 62813 sha = 58c9eadd53fa OK
+P-L3-5 | 2e acceptation (idempotence) -> 200 accepte
+P-L3-5 | devis 2 DEV-202610-0078 brouillon lead 2574
+P-L3-5 | share-link DEV-202610-0078 200 {'token': 'FjfJSpVEtWxdj-4vsD1D8D-FYHmEbU40tv3kRLTk5tA', 'path': '/proposition/FjfJSpVEtWxdj-4vsD1D8D-FYHmEbU40tv3kRLTk5tA'}
+P-L3-5 | ADEV98 déclin « autre » sans texte -> 400 {'detail': 'Choisissez un motif (prix, délai, concurrent, projet reporté ou autre — précisez « autre »).', 'champ': 'motif'} OK
+P-L3-5 | ADEV98 déclin délai -> 200 {'detail': 'Merci, votre réponse a bien été transmise à votre conseiller.', 'already_sent': False}
+P-L3-5 |    activités lead + 1 | notifications + 2
+P-L3-5 |    dernière activité :  2574 note
+P-L3-5 |    2e déclin dans l'heure -> 200 {'detail': 'Merci, votre réponse a bien été transmise à votre conseiller.', 'already_sent': True}
+P-L3-5 |    statut devis 2 (aucun statut écrit) : envoye OK
+P-L3-5 | refuser -> 200 refuse
+P-L3-5 | ADEV97 lien après refus : actif = None revoked_at = None | GET -> 404 OK
+P-L3-5 | FIN
+

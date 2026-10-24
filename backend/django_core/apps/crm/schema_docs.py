@@ -240,6 +240,29 @@ LOCATAIRE_SUITE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
 #: facultative) ; un corps vide est refusé (400 « Échéance invalide »).
 MOTIF_JOUR = r'^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
 MOTIF_HEURE = r'^([01][0-9]|2[0-3]):[0-5][0-9]$'
+#: Jour PUBLIÉ de ``rappel_le`` : un jour du calendrier de l'an 0001 à 9999
+#: (``date.fromisoformat`` refuse l'an 0000 et les jours inexistants). Le
+#: 29 février est exclu du motif publié (année bissextile non connue) ; le
+#: serveur, lui, l'accepte les années bissextiles.
+MOTIF_JOUR_PUBLIE = (
+    r'^(?:0(?:00[1-9]|0[1-9][0-9]|[1-9][0-9]{2})|[1-9][0-9]{3})-'
+    r'(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])'
+    r'|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)'
+    r'|02-(?:0[1-9]|1[0-9]|2[0-8]))$')
+
+
+class ChampJour(serializers.RegexField):
+    """``rappel_le`` : le serveur valide la forme (``MOTIF_JOUR``) puis le
+    calendrier (400 nommé) ; le schéma publie le motif calendaire exact.
+    (Le surcharge est posée dans ``__init__`` : un champ copié par DRF la
+    perd sinon.)"""
+
+    def __init__(self, **kwargs):
+        from drf_spectacular.drainage import set_override
+        super().__init__(MOTIF_JOUR, **kwargs)
+        set_override(self, 'field', {'type': 'string', 'pattern': MOTIF_JOUR_PUBLIE})
+
+
 REPORTER_ECHEANCE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
     {'required': ['due_at'], 'properties': {'due_at': {'minLength': 1}}},
     {'required': ['rappel_le']},

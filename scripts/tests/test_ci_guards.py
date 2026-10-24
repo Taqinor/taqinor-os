@@ -229,30 +229,70 @@ def _sous_surface_frontend(chemin):
         or rel in ("frontend", "apps/web")
 
 
-class GardeBackendNeLitPasLeFrontendTests(unittest.TestCase):
-    def test_garde_backend_lint_fast_ne_lit_pas_le_frontend(self):
+def _candidats_backend_lint_fast():
+    import shlex
+    candidates = []
+    for nom, commande, wd in ci_guards.GARDES["backend-lint-fast"]:
+        mots = shlex.split(commande)
+        if mots[0] != "python" or mots[1] in ("-m",) and mots[2] == "compileall":
+            continue
+        candidates.append((nom, commande, wd))
+    return candidates
+
+
+_TRACES = None
+
+
+def _traces_backend_lint_fast():
+    """[(commande, [fichiers ouverts])] pour chaque garde Python de `backend-lint-fast`.
+
+    CI-5MIN (23/10/2026) — calcule UNE fois par processus et partage par ADEP12 et
+    ADEP13 (ci-dessous). Les deux tests rejouaient chacun TOUTES les gardes du job
+    sous la meme sonde, dans deux processus de `stage-names` : ~110 s de mur
+    chacun sur le run 40032000655, le meme travail deux fois.
+    """
+    global _TRACES
+    if _TRACES is None:
         import tempfile
         from concurrent.futures import ThreadPoolExecutor
-        import shlex
-        candidates = []
-        for nom, commande, wd in ci_guards.GARDES["backend-lint-fast"]:
-            mots = shlex.split(commande)
-            if mots[0] != "python" or mots[1] in ("-m",) and mots[2] == "compileall":
-                continue
-            candidates.append((nom, commande, wd))
-        self.assertGreaterEqual(len(candidates), 20)
-        fautives = []
         with tempfile.TemporaryDirectory() as tmp:
             with ThreadPoolExecutor(max_workers=6) as pool:
-                futs = [(nom, commande, pool.submit(_fichiers_ouverts, commande, wd, tmp, i))
-                        for i, (nom, commande, wd) in enumerate(candidates)]
-                for nom, commande, fut in futs:
-                    lus = [c for c in fut.result() if _sous_surface_frontend(c)]
-                    if lus:
-                        fautives.append(f"{commande} lit {os.path.relpath(lus[0], REPO_ROOT)}")
+                futs = [(commande, pool.submit(_fichiers_ouverts, commande, wd, tmp, i))
+                        for i, (_nom, commande, wd) in enumerate(_candidats_backend_lint_fast())]
+                _TRACES = [(commande, fut.result()) for commande, fut in futs]
+    return _TRACES
+
+
+class GardeBackendNeLitPasLeFrontendTests(unittest.TestCase):
+    def test_garde_backend_lint_fast_ne_lit_pas_le_frontend(self):
+        self.assertGreaterEqual(len(_candidats_backend_lint_fast()), 20)
+        fautives = []
+        for commande, ouverts in _traces_backend_lint_fast():
+            lus = [c for c in ouverts if _sous_surface_frontend(c)]
+            if lus:
+                fautives.append(f"{commande} lit {os.path.relpath(lus[0], REPO_ROOT)}")
         self.assertEqual(fautives, [],
                          "gardes de `backend-lint-fast` qui lisent le frontend — a deplacer "
                          "dans GARDES['stage-names'] : " + "; ".join(fautives))
+
+    def test_fichiers_lus_par_gardes_gatees_declenchent_le_job(self):
+        """ADEP13 — fichiers OUVERTS (sys.addaudithook) par les gardes de
+        `backend-lint-fast`, job gate sur `backend == true` : chacun situe dans le
+        depot doit declencher `backend`. Deplace ici depuis
+        test_check_filtre_chemins_ci (CI-5MIN) pour partager la trace d'ADEP12."""
+        from pathlib import Path
+        import check_filtre_chemins_ci as cf
+        rules = cf.regles(Path(REPO_ROOT))
+        rouges = {}
+        for commande, ouverts in _traces_backend_lint_fast():
+            for chemin in ouverts:
+                rel = os.path.relpath(chemin, REPO_ROOT).replace(os.sep, "/")
+                if rel.startswith("..") or rel.startswith(".git/")                         or "/__pycache__" in rel or not os.path.isfile(chemin):
+                    continue
+                if not cf.filtre._resolve(rules, [rel])["backend"]:
+                    rouges.setdefault(rel, commande)
+        self.assertEqual(rouges, {}, "fichiers ouverts par une garde de `backend-lint-fast` "
+                                     "sans declencher `backend` dans le filtre `changes`")
 
 
 # ADEP21 - test inverse : tout `scripts/tests/test_*.py` et tout `scripts/check_*.py` est

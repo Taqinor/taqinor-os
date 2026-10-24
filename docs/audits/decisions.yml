@@ -2345,3 +2345,108 @@ decisions:
     date: "2026-10-23"
     source: "question interactive du 23/10/2026 ; constat C-ACI-015"
     taches: [AMOT83]
+  - id: D-ACI-13
+    question: "Borne de toit du moteur C&I quand le mode de pose n'est pas déclaré (constat C-ACI-026 : 92 panneaux retenus sur 200 m² déclarés, la contenance restait « non bornée ») : que faire ?"
+    options:
+      - cle: a
+        texte: "estimer la contenance avec un mode de pose par défaut selon le type de surface (toiture → surimposition, terrasse/sol → lestée) et la dire « estimation, à confirmer au calepinage » ; la borne s'applique"
+      - cle: b
+        texte: "refuser le devis automatique tant que le mode de pose n'est pas déclaré (prérequis du lead, bouton « Compléter »)"
+      - cle: c
+        texte: "laisser non borné (comportement actuel), l'alerte interne suffit"
+    reponse: a
+    date: "2026-10-24"
+    source: "rejeu humain du 23/10/2026 (session moteur C&I) ; constat C-ACI-026 ; tranchée par la question interactive du 24/10/2026"
+    taches: [ADEV90]
+  - id: D-ACI-14
+    question: "Entretien (O&M) dans les flux C&I quand l'option n'est pas souscrite (aujourd'hui 0, production supposée propre) : que faire dans les nouveaux rendus ?"
+    options:
+      - cle: a
+        texte: "un « entretien minimum à votre charge » (MAD/kWc/an) réglé dans Paramètres, toujours déduit des économies et étiqueté sur le document"
+      - cle: b
+        texte: "sans O&M souscrite, une perte de production d'encrassement réglable"
+      - cle: c
+        texte: "rien (D-CIQ-12 / CIQ342 tels quels)"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 (L3 « best quote making machine ») ; constat C-L3-MOT-01"
+    taches: [AMOT96]
+  - id: D-ACI-15
+    question: "Incertitude par défaut sur le document C&I (production P90, tarif +x %/an, dégradation 0,75 %, contribution art. 13) ?"
+    options:
+      - cle: a
+        texte: "4 scénarios seedés dans Paramètres (valeurs sourcées, modifiables), imprimés sur l'industriel et résumés sur le commercial à côté du scénario central"
+      - cle: b
+        texte: "rien tant que le fondateur ne saisit pas (D-CIQ-10 tel quel)"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; constat C-L3-MOT-01"
+    taches: [AMOT97]
+  - id: D-ACI-16
+    question: "Postes hors total (structure, câbles à chiffrer après la visite) : provision estimée ajoutée au total, ou omission ?"
+    options:
+      - cle: a
+        texte: "garder l'omission (D-ACI-2=a) avec le titre « Investissement hors postes à chiffrer après la visite » et la liste des postes sans montant"
+      - cle: b
+        texte: "provision estimée par poste (fourchette Paramètres) ajoutée au total avec mention"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; confirme D-ACI-2=a et AMOT86"
+    taches: [AMOT86]
+  - id: D-ACI-17
+    question: "« Exploitation et maintenance (O&M) C&I — prix à renseigner » sur le document client (D-ACI-12=a) : formulation côté client ?"
+    options:
+      - cle: a
+        texte: "« tarif sur demande » côté client ; l'ERP garde l'alerte interne « prix à renseigner »"
+      - cle: b
+        texte: "garder « prix à renseigner »"
+      - cle: c
+        texte: "masquer la ligne tant qu'elle n'a pas de prix"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; vérificateur R4 (« état interne du catalogue sur un document client »)"
+    taches: [AMOT98]
+  - id: D-ACI-18
+    question: "Précision des calculs C&I (journées moyennes, 30° plein sud, dégradation 0,5 %/an aujourd'hui affichés) : passer au calcul complet ?"
+    options:
+      - cle: a
+        texte: "autoconsommation sur 8 760 h (série horaire PVGIS), production selon pente/azimut/pose déclarés, dégradation selon la courbe de garantie (≈ 1 % an 1 puis 0,4 %/an)"
+      - cle: b
+        texte: "garder les journées moyennes, 30° sud, 0,5 % en les affichant (AMOT91)"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; constat C-L3-MOT-01"
+    taches: [AMOT99]
+  - id: D-ACI-19
+    question: "CO₂ évité sur le document C&I ?"
+    options:
+      - cle: a
+        texte: "oui, avec un facteur réseau marocain fourni par le fondateur (gCO₂/kWh + source), imprimé avec sa source ; rien tant que le facteur n'est pas réglé"
+      - cle: b
+        texte: "jamais (CIQ344)"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026"
+    taches: [AMOT100]
+  - id: D-ACI-20
+    question: "Signature des gros contrats C&I sur le lien public ?"
+    options:
+      - cle: a
+        texte: "signature simple + piste d'audit renforcée (attestation de pouvoir, ICE croisé, sceau v3, SHA du PDF — ADEV95/96) pour tous les montants"
+      - cle: b
+        texte: "signature qualifiée (prestataire agréé DGSSI) exigée au-delà d'un montant"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; confirme ADEV95-96"
+    taches: [ADEV95, ADEV96]
+  - id: D-ACI-21
+    question: "Format des nombres dans les documents C&I en anglais (aujourd'hui « 484 992,48 », comme en français) ?"
+    options:
+      - cle: a
+        texte: "format anglais dans les rendus EN (« 484,992.48 MAD », « 65.32 kWp ») ; FR et AR inchangés"
+      - cle: b
+        texte: "garder le format français partout"
+    reponse: a
+    date: "2026-10-24"
+    source: "question interactive du 24/10/2026 ; constat C-L3-DOC-06"
+    taches: [AMOT101]

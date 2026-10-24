@@ -123,3 +123,30 @@ class RappelDepuisLeFaitTests(_Base):
         # Rien n'est écrit : la touche reste à faire.
         self.etape.refresh_from_db()
         self.assertEqual(self.etape.statut, RelanceEtape.Statut.A_FAIRE)
+
+
+class InstantHorsPlageTests(_Base):
+    """api-fuzz 24/10 — un décalage ``-17:25`` (hors plage Postgres) mettait
+    le réveil en 500 ; les bords an 1 / an 9999 ne lèvent plus d'overflow."""
+    slug = 'cad27-hors-plage'
+
+    def test_decalage_hors_plage_postgres_ramene_en_utc(self):
+        resp = self._reporter(due_at='2030-12-09T15:35:00-17:25',
+                              mode='veille')
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_bords_du_calendrier(self):
+        resp = self._reporter(due_at='0001-01-01T00:00:00+14:00')
+        self.assertEqual(resp.status_code, 409)
+        self.assertIn('due_at', resp.data['erreurs'])
+        resp = self._reporter(due_at='9999-12-31T23:59:59-17:25')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_motif_publie_du_jour_suit_le_calendrier(self):
+        import re
+        from apps.crm.schema_docs import MOTIF_JOUR_PUBLIE
+        for jour in ('0000-10-01', '2026-02-30', '2026-04-31', '2026-13-01'):
+            self.assertIsNone(re.fullmatch(MOTIF_JOUR_PUBLIE, jour), jour)
+        for jour in ('0001-01-01', '0999-12-31', '2026-02-28', '9999-12-31'):
+            self.assertTrue(re.fullmatch(MOTIF_JOUR_PUBLIE, jour), jour)
+            datetime.date.fromisoformat(jour)

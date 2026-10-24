@@ -131,13 +131,21 @@ class Ciq343Financement(SimpleTestCase):
                       texte)
 
     def test_quatre_pages_avec_tout(self):
+        """Le document LIVRÉ (``equip.document_adaptatif`` = la décision de
+        ``render_pdf_bytes``) : 4 pages, les blocs cédables retirés dans
+        l'ordre ``ORDRE_CEDABLES`` (énergie mensuelle, courbe du cumul, puis
+        hypothèses) plutôt qu'une 5ᵉ page."""
         from weasyprint import HTML
+
+        from apps.ventes.quote_engine.commercial.equip import (
+            deborde, document_adaptatif,
+        )
         d = _data("exemple_industriel_mt", sensibilites=SENSIBILITES,
                   bancable=True)
-        html = render.build_html(renderer._augment(d))
-        doc = HTML(string=html).render()
+        doc = document_adaptatif(renderer._augment(d), render.build_html,
+                                 lambda html: HTML(string=html).render())
+        self.assertIsNotNone(doc)
         self.assertEqual(len(doc.pages), 4)
-        # Densité MESURÉE : aucun texte de la page finance ne descend dans la
-        # bande de pied (la page fixe le couperait en silence).
-        from apps.ventes.quote_engine.commercial.equip import deborde
-        self.assertFalse(deborde(doc.pages[2]))
+        # Densité MESURÉE : aucun texte ne descend dans la bande de pied
+        # (la page fixe le couperait en silence).
+        self.assertFalse(any(deborde(page) for page in doc.pages))

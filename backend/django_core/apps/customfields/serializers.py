@@ -3,6 +3,7 @@ import re
 from django.db import models
 from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from core.champs_stricts import (
     BooleenStrict, ChampsStrictsEntiersMixin, IdInconnu404Mixin,
     MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL)
@@ -14,6 +15,28 @@ from .models import (
 
 # XPLT15 — clés reconnues du JSON `conditions` (visible/requis/lecture seule).
 CONDITION_KEYS = ('visible_si', 'requis_si', 'lecture_seule_si')
+
+#: Formule PUBLIÉE (api-fuzz 24/10 : ``formule`` libre « conforme » puis refusée
+#: pour sa syntaxe, ``Syntaxe invalide``) : une opération entière sur des
+#: nombres (``2 * 30 - 4``), que le serveur accepte toujours. La syntaxe ne
+#: s'exprime pas en schéma ; le serveur, lui, accepte aussi les codes des
+#: champs frères, comparaisons et fonctions sûres (``core.formula``).
+MOTIF_FORMULE_PUBLIEE = (
+    r'^(?:0|[1-9][0-9]{0,5})(?: ?[-+*] ?(?:0|[1-9][0-9]{0,5})){0,4}$')
+
+
+@extend_schema_field({
+    'type': 'object', 'additionalProperties': False, 'nullable': True,
+    'description': (
+        "Champs personnalisés « code : valeur ». Les codes admis sont ceux "
+        "des définitions ACTIVES du module pour la société (propres à "
+        "chacune, donc non énumérés ici) : une clé inconnue est refusée en "
+        "la nommant.")})
+class ChampsPersonnalisesField(serializers.JSONField):
+    """CI #997 fuzz (2) puis #1022 (api-fuzz, leads) — ``custom_data`` est un
+    OBJET (ou ``null``) : publié en JSON libre, un tableau « conforme » était
+    refusé 400 « Format invalide. » (``validate_custom_data``). Champ partagé
+    par les modules à champs personnalisés (calepinage, crm)."""
 
 
 class SlugStrict(serializers.SlugField):
@@ -100,7 +123,7 @@ def corps_definition_resserre():
         exige('relation',
               relation_module={'type': 'string', 'enum': cibles}),
         exige('formula', formule={
-            'type': 'string', 'pattern': MOTIF_NON_BLANC_SANS_NUL}),
+            'type': 'string', 'pattern': MOTIF_FORMULE_PUBLIEE}),
     ]}
 
 

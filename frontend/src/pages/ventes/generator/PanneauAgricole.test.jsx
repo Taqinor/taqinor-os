@@ -428,7 +428,8 @@ describe('alertes du devis automatique (AGQ25)', () => {
       await result.current.runAutoQuote({ id: 91, type_installation: 'agricole' }, '0')
     })
     expect(typeof createAutoQuote.mock.calls[0][0].onAlertes).toBe('function')
-    expect(contexte.finish).toHaveBeenCalledWith(615)
+    // ALEA51 — `finish` reçoit aussi le retour (réf., TTC, alertes) en second argument.
+    expect(contexte.finish.mock.calls[0][0]).toBe(615)
     expect(result.current.alertesAuto).toEqual(alertes)
 
     render(<AlertesDevisAuto alertes={result.current.alertesAuto} />)

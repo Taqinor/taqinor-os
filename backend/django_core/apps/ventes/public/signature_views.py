@@ -24,29 +24,26 @@ from .noyau import (
     _resolve_proposal_link, _texte_du_corps,
 )
 from .paiement_views import _deposit_success_payload
+# ADEV51 — le refus 409 ``empreinte_perimee`` du contrat
+# ``proposal_accept.json`` (mot pour mot) et l'empreinte du contenu signable
+# vivent dans la couche domaine : ``accept_devis`` les relève aussi SOUS le
+# verrou. Ré-exportés ici sous leurs noms d'hier.
+from ..domain.modifiabilite import (
+    EMPREINTE_PERIMEE, empreinte_contenu_signable as empreinte_contenu,
+)
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-#: ADEV51 — le refus 409 du contrat ``proposal_accept.json``
-#: (``reponses_409.empreinte_perimee``), mot pour mot.
-EMPREINTE_PERIMEE = ('La proposition a changé depuis votre lecture : '
-                     'rechargez la page avant de signer.')
-
-
-def empreinte_contenu(devis):
-    """ADEV51 (C-ADEV-018) — empreinte du CONTENU signable de ce devis :
-    SHA-256 de ``modifiabilite.empreinte_visible`` (lignes, en-tête, note,
-    option, conception — relus en base). Une correction SUR PLACE d'un envoyé
-    (D-QJR5-1) la change ; rien d'autre ne la change."""
-    import hashlib
-    import json
-
-    from ..domain.modifiabilite import empreinte_visible
-    brut = json.dumps(empreinte_visible(devis), sort_keys=True,
-                      ensure_ascii=False, default=str)
-    return hashlib.sha256(brut.encode('utf-8')).hexdigest()
+def empreinte_servie(devis, link, synthese=None):
+    """ADEV51 / ADEV96 — la clé ADDITIVE ``empreinte_contenu`` de
+    ``proposal_data`` (le contenu SIGNABLE au moment de la lecture, renvoyé à
+    ``/accept/``) ; ``None`` quand rien n'est signable (aperçu interne,
+    brouillon, remplacé, accepté…)."""
+    if link.via_interne or not signable_au_jeton(devis):
+        return None
+    return empreinte_contenu(devis, synthese, link)
 
 
 def signable_au_jeton(devis):
@@ -66,18 +63,39 @@ def signable_au_jeton(devis):
     return permis
 
 
-def _refus_empreinte(request, devis):
+def _refus_empreinte(request, devis, link=None):
     """ADEV51 — 409 ``empreinte_perimee`` quand le client signe un contenu
     autre que celui qu'il a lu (empreinte absente ou différente de
     l'empreinte courante) ; ``None`` sinon. Rien n'est écrit."""
     if not signable_au_jeton(devis):
         return None
-    recue = request.data.get('empreinte_contenu')
-    if isinstance(recue, str) and recue.strip() == empreinte_contenu(devis):
+    recue = _empreinte_recue(request)
+    if recue is not None and recue == empreinte_contenu(devis, link=link):
         return None
     return _noindex(Response(
         {'detail': EMPREINTE_PERIMEE, 'code': 'empreinte_perimee'},
         status=status.HTTP_409_CONFLICT))
+
+
+def _empreinte_recue(request):
+    """ADEV51 — l'``empreinte_contenu`` renvoyée par la page (``None`` si
+    absente ou d'un autre type)."""
+    recue = request.data.get('empreinte_contenu') if hasattr(
+        request.data, 'get') else None
+    return recue.strip() if isinstance(recue, str) else None
+
+
+def _aucun_code_requis(link):
+    """L-NIV / ADEV97 — 200 « Aucun code requis » (``code_requis: false``)
+    quand ce lien n'exige AUCUN code de lecture — ``otp_lecture`` non posé, ou
+    déjà déverrouillé dans l'heure ; ``None`` sinon (un code part). La page
+    s'en sert au clic « Télécharger » : jamais un second code pour rien. LA
+    garde unique (``services.otp_lecture_verified``, QJR417)."""
+    from ..services import otp_lecture_verified
+    if link.otp_lecture and not otp_lecture_verified(link):
+        return None
+    return _noindex(Response({'detail': 'Aucun code requis pour ce lien.',
+                              'code_requis': False}))
 
 
 def _refus_aucun_canal(err):
@@ -240,6 +258,8 @@ def proposal_request_otp(request, token):
 # DOIT déclarer sa forme au lieu de laisser le générateur deviner).
 _OTP_LECTURE_DETAIL_RESPONSE = inline_serializer('PublicOtpLectureDetail', {
     'detail': drf_serializers.CharField(),
+    # ADEV97 — ``false`` quand aucun code n'est requis sur ce lien.
+    'code_requis': drf_serializers.BooleanField(required=False),
 })
 
 
@@ -273,8 +293,9 @@ def proposal_request_otp_lecture(request, token):
     refus = _refus_brouillon(link)
     if refus is not None:
         return refus
-    if not link.otp_lecture:
-        return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
+    refus = _aucun_code_requis(link)
+    if refus is not None:
+        return refus
     from ..services import request_otp_lecture
     err = request_otp_lecture(link)
     refus = _refus_aucun_canal(err)
@@ -310,8 +331,9 @@ def proposal_verify_otp_lecture(request, token):
     refus = _refus_brouillon(link)
     if refus is not None:
         return refus
-    if not link.otp_lecture:
-        return _noindex(Response({'detail': 'Aucun code requis pour ce lien.'}))
+    refus = _aucun_code_requis(link)
+    if refus is not None:
+        return refus
     from ..services import validate_otp_lecture
     # QJR413 (b) — garde de type sur le corps public (voir _texte_du_corps).
     otp_code, refus = _texte_du_corps(request, 'otp_code')
@@ -415,18 +437,12 @@ def proposal_accept(request, token):
     on_behalf_of = on_behalf_of[:150]
     # CIQ319 (D-CIQ-11) — devis commercial / industriel : raison sociale,
     # qualité du signataire et ICE OBLIGATOIRES en ligne (400 qui nomme le
-    # champ) ; ignorés pour tout autre segment.
-    from ..domain.cycle_vie import (
-        EntrepriseInvalide, lire_entreprise_acceptation,
-        signature_entreprise,
-    )
-    try:
-        entreprise = lire_entreprise_acceptation(
-            devis, request.data.get('entreprise'), obligatoire=True)
-    except EntrepriseInvalide as exc:
-        return _noindex(Response(
-            {'detail': exc.detail, 'champ': exc.champ},
-            status=status.HTTP_400_BAD_REQUEST))
+    # champ) ; ignorés pour tout autre segment. ADEV95 — plus le nom, l'e-mail
+    # et l'attestation de pouvoir du signataire ; un ICE différent de celui du
+    # Client donne 409 ``ice_divergent`` (rien n'est écrit).
+    entreprise, refus = _entreprise_du_corps(request, devis, nom)
+    if refus is not None:
+        return refus
     # QJ11 — code OTP si le toggle est actif (service gère la validation).
     otp_code, refus = _texte_du_corps(request, 'otp_code')
     if refus is not None:
@@ -441,7 +457,7 @@ def proposal_accept(request, token):
     # ADEV51 (C-ADEV-018) — ce que le client signe = ce qu'il a lu : le corps
     # renvoie l'``empreinte_contenu`` servie à la lecture ; un devis corrigé
     # depuis (ou une empreinte absente) ⇒ 409 ``empreinte_perimee``.
-    refus = _refus_empreinte(request, devis)
+    refus = _refus_empreinte(request, devis, link)
     if refus is not None:
         return refus
     # VNT61 — un AVENANT accepté en interne : la signature seule (preuve +
@@ -461,6 +477,7 @@ def proposal_accept(request, token):
                 'accepte_par_nom': devis.accepte_par_nom,
                 'avenant_signe': {'signe_le': signature.signed_at.isoformat()},
             }))
+    statut_avant = devis.statut
     try:
         # ── QJR135 / ES4 — L'ÉCRAN DE CONFIRMATION LIT CE QUI VIENT D'ÊTRE
         #    ÉCRIT. ``accept_devis`` REBIND son nom local sur la relecture
@@ -482,6 +499,14 @@ def proposal_accept(request, token):
             signed_at_client=signed_at_client,
             on_behalf_of=on_behalf_of,
             entreprise=entreprise,
+            # ADEV99 — la confirmation part dans la langue de la page (EN/FR).
+            langue=_langue_du_corps(request),
+            # ADEV51 — l'empreinte lue est RE-COMPARÉE sous le verrou du
+            # devis : une correction commitée entre la garde ci-dessus et le
+            # verrou donne aussi 409 ``empreinte_perimee`` (rien d'écrit).
+            empreinte_attendue=(_empreinte_recue(request)
+                                if signable_au_jeton(devis) else None),
+            lien=link,
         )
     except AcceptError as exc:
         corps = {'detail': exc.message}
@@ -493,6 +518,11 @@ def proposal_accept(request, token):
             corps,
             status=(status.HTTP_409_CONFLICT if exc.conflict
                     else status.HTTP_400_BAD_REQUEST)))
+    # ADEV97 — qui VIENT de signer télécharge son exemplaire sans code (1 h).
+    # G (revue du 24/10/2026) — APRÈS LE COMMIT, le devis EST accepté : un
+    # incident ici (cache, lecture du reçu, acompte) dégrade la réponse
+    # (champ à null, journalisé) au lieu d'un 500 sur une signature réussie.
+    _apres_signature(_deverrouiller_exemplaire_signe, link, statut_avant, devis)
     # QX33be — état de succès post-signature : acompte (tranche 1 sur le TTC
     # REMISÉ per QX1) + instructions de virement (RIB) + ``declare_url``.
     # ADEV53 — plus de lien carte (aucune route ``pay-card``) ; RIB vide quand
@@ -502,19 +532,98 @@ def proposal_accept(request, token):
         'reference': devis.reference,
         'statut': devis.statut,
         'accepte_par_nom': devis.accepte_par_nom,
-        'paiement': _deposit_success_payload(devis, token),
+        'paiement': _apres_signature(_deposit_success_payload, devis, token),
         # CIQ319 — l'identité d'entreprise RELUE sur la signature enregistrée
         # (la première fait foi), même forme que le corps ; null hors C&I.
-        'entreprise': _entreprise_relue(signature_entreprise(devis)),
+        'entreprise': _entreprise_relue(devis),
+        # ADEV96 — le reçu : horodatage, sceau du contenu, SHA-256 du PDF.
+        'recu': _apres_signature(recu_signature, devis),
     }))
 
 
-def _entreprise_relue(bloc):
+def _apres_signature(fonction, *args):
+    """G — appel best-effort APRÈS le commit de l'acceptation : ``None`` (et
+    une trace) si ``fonction`` lève, jamais une exception vers le client."""
+    try:
+        return fonction(*args)
+    except Exception:  # noqa: BLE001 — la signature est commitée : dégrader, jamais 500 (D-ENF22-BLE001)
+        logger.warning('proposal_accept : %s en échec après le commit (dégradé)',
+                       getattr(fonction, '__name__', '?'), exc_info=True)
+        return None
+
+
+def _langue_du_corps(request):
+    """ADEV99 — ``fr``/``en``/``ar`` envoyé par la page, sinon ``''``."""
+    brut = request.data.get('langue') if hasattr(request.data, 'get') else ''
+    return brut if brut in ('fr', 'en', 'ar') else ''
+
+
+def _deverrouiller_exemplaire_signe(link, statut_avant, devis):
+    """ADEV97 — une acceptation FRAÎCHE (envoyé → accepté par CET appel) pose
+    le drapeau de lecture vérifiée du lien pour ``OTP_LECTURE_VERIFIED_TTL`` :
+    l'écran de succès offre l'exemplaire signé tout de suite. Une
+    resoumission sur un devis déjà accepté (idempotente, 200) ne déverrouille
+    JAMAIS rien : sans quoi tout détenteur du jeton contournerait le code."""
+    if statut_avant == 'accepte' or getattr(devis, 'statut', None) != 'accepte':
+        return
+    from django.core.cache import cache
+    from ..domain.cycle_vie import (
+        OTP_LECTURE_VERIFIED_TTL, _otp_lecture_verified_key,
+    )
+    cache.set(_otp_lecture_verified_key(link.token), True,
+              timeout=OTP_LECTURE_VERIFIED_TTL)
+
+
+def recu_signature(devis):
+    """ADEV96 — le REÇU de la signature enregistrée (la première fait foi) :
+    ``{signe_le, empreinte_contenu, empreinte_pdf}`` — sceau du contenu
+    (``content_hash``, v3 : étude C&I comprise) et SHA-256 des octets du PDF
+    signé remis (``signed_pdf_sha256``, ``''`` tant qu'il n'est pas stocké) ;
+    ``None`` sans signature."""
+    from ..models import DevisSignature
+    sig = DevisSignature.objects.filter(devis=devis).first()
+    if sig is None:
+        return None
+    return {'signe_le': sig.signed_at.isoformat() if sig.signed_at else None,
+            'empreinte_contenu': sig.content_hash or '',
+            'empreinte_pdf': sig.signed_pdf_sha256 or ''}
+
+
+def _entreprise_du_corps(request, devis, nom):
+    """ADEV95 — ``(entreprise, None)`` ou ``(None, refus)`` : 400 qui nomme le
+    champ fautif (``entreprise.<cle>``), 409 ``ice_divergent`` qui nomme les
+    deux ICE. ``(None, None)`` hors commercial / industriel."""
+    from ..domain.identite_entreprise import (
+        EntrepriseInvalide, IceDivergent, lire_signataire_lien,
+    )
+    try:
+        return lire_signataire_lien(
+            devis, request.data.get('entreprise'), nom=nom), None
+    except EntrepriseInvalide as exc:
+        return None, _noindex(Response(
+            {'detail': exc.detail, 'champ': exc.champ},
+            status=status.HTTP_400_BAD_REQUEST))
+    except IceDivergent as exc:
+        return None, _noindex(Response(
+            {'detail': exc.detail, 'code': 'ice_divergent'},
+            status=status.HTTP_409_CONFLICT))
+
+
+def _entreprise_relue(devis):
+    """CIQ319 / ADEV95 — l'identité d'entreprise RELUE sur la signature
+    enregistrée (la première fait foi), même forme que le corps ; ``None``
+    hors C&I."""
+    from ..domain.cycle_vie import signature_entreprise
+    bloc = signature_entreprise(devis)
     if not bloc:
         return None
+    sig = devis.signature
     return {'raison_sociale': bloc.get('raison_sociale') or '',
             'signataire_qualite': bloc.get('signataire_qualite') or '',
-            'ice': bloc.get('ice') or ''}
+            'ice': bloc.get('ice') or '',
+            'signataire_nom': bloc.get('signataire_nom') or '',
+            'signataire_email': sig.signataire_email or '',
+            'pouvoir_engager': bool(sig.pouvoir_engager)}
 
 
 @api_view(['POST'])
@@ -579,4 +688,71 @@ def proposal_activate_option(request, token):
         'detail': 'Option activée. Elle est désormais incluse dans votre total.',
         'ligne_id': ligne.id,
         'designation': ligne.designation,
+    }))
+
+
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_decliner(request, token):
+    """ADEV98 — « Décliner / demander un délai » depuis la proposition.
+
+    Corps : ``{"motif": "prix|delai|concurrent|projet_reporte|autre",
+    "texte": "…"}`` (``texte`` obligatoire pour ``autre``, borné à 2 000).
+    Consigné au chatter du devis ET du lead, responsable notifié
+    (``domain.declin_client``) ; AUCUN statut écrit (règle #4). Même jeton,
+    mêmes refus que les autres actions client (aperçu interne 403, brouillon
+    409) ; un devis déjà accepté ⇒ 409 ``statut``. Idempotent : une réponse
+    par lien et par heure (``already_sent``), sans re-notifier."""
+    link = _resolve_proposal_link(token, refuser_brouillon=False)
+    if link is None:
+        return _not_found()
+    if link.via_interne:
+        return _refus_apercu_interne()
+    refus = _refus_brouillon(link)
+    if refus is not None:
+        return refus
+    # F (revue du 24/10/2026) — même garde que l'acceptation (QJR132/QJR418) :
+    # décliner engage la relation commerciale (note au lead, vendeur notifié) ;
+    # sur un lien qui exige le code de lecture, pas sans lui. Posée AVANT la
+    # lecture du corps et tout effet de bord ; no-op sans ``otp_lecture``.
+    from ..services import otp_lecture_verified
+    if not otp_lecture_verified(link):
+        return _noindex(Response(
+            {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
+    motif, refus = _texte_du_corps(request, 'motif')
+    if refus is not None:
+        return refus
+    texte, refus = _texte_du_corps(request, 'texte')
+    if refus is not None:
+        return refus
+    from ..domain.declin_client import (
+        MESSAGE_MOTIF_INVALIDE, enregistrer_declin, motif_valide,
+    )
+    if not motif_valide(motif, texte):
+        return _noindex(Response({'detail': MESSAGE_MOTIF_INVALIDE,
+                                  'champ': 'motif'},
+                                 status=status.HTTP_400_BAD_REQUEST))
+    if link.devis.statut == 'accepte':
+        return _noindex(Response(
+            {'detail': 'Cette proposition est déjà acceptée.',
+             'code': 'statut'}, status=status.HTTP_409_CONFLICT))
+    # Idempotence (une réponse par lien et par heure) — comme
+    # ``proposal_contact_request`` : un cache indisponible ne donne jamais un
+    # 500, la réponse du client est transmise (au pire deux fois).
+    deja = False
+    try:
+        from django.core.cache import cache
+        deja = not cache.add(f'adev98-declin:{link.pk}', True, 3600)
+    except Exception:  # noqa: BLE001 — un cache indisponible ne bloque rien (D-ENF22-BLE001)
+        logger.warning('%s : échec ignoré (dégradé)', 'proposal_decliner',
+                       exc_info=True)
+        deja = False
+    if not deja:
+        enregistrer_declin(link.devis, motif=motif, texte=texte[:2000])
+    return _noindex(Response({
+        'detail': ('Merci, votre réponse a bien été transmise à votre '
+                   'conseiller.'),
+        'already_sent': deja,
     }))

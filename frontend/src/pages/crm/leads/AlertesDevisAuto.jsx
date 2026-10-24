@@ -3,11 +3,13 @@
    CIQ127 : alertes INTERNES du moteur C&I marquées « Vendeur seulement »).
    Extrait de LeadDevisPanel.jsx pour que la fiche lead ET le générateur
    affichent la MÊME chose : une seule implémentation. Jamais un chiffre
-   inventé — le message du serveur, tel quel. */
+   inventé — le message du serveur, tel quel. ALEA51 — en AVERTISSEMENT
+   (sous le succès), jamais en rouge. */
 export default function AlertesDevisAuto({ alertes }) {
   if (!Array.isArray(alertes) || alertes.length === 0) return null
   return (
-    <div className="form-error-box" role="status" data-testid="ldp-alertes-auto">
+    <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-left text-sm"
+         role="status" data-testid="ldp-alertes-auto">
       <strong>Alertes du devis automatique :</strong>
       <ul>
         {alertes.map((a, i) => (

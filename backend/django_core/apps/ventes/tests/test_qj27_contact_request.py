@@ -208,3 +208,97 @@ class QJ2SupervisorExtensionTests(TestCase):
             event_type=EventType.LEAD_NEW,
         ).values_list('recipient_id', flat=True))
         self.assertEqual(recipients, {self.owner.pk, manager.pk})
+
+
+class DeclinPropositionTests(ContactRequestBase):
+    """ADEV98 — « Décliner / demander un délai » : motif fermé consigné au
+    chatter du devis ET du lead, responsable notifié, aucun statut écrit."""
+
+    def _decliner(self, body, token=None):
+        return self.api.post(
+            f'/api/django/public/proposal/{token or self.link.token}/decliner/',
+            body, format='json')
+
+    def test_motif_consigne_notifie_sans_statut(self):
+        from apps.ventes.models import DevisActivity
+        resp = self._decliner({'motif': 'prix', 'texte': 'Trop cher pour nous'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['already_sent'])
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, Devis.Statut.ENVOYE)
+        for qs in (LeadActivity.objects.filter(lead=self.lead),
+                   DevisActivity.objects.filter(devis=self.devis)):
+            self.assertTrue(any('décline' in (a.body or '')
+                                and 'le prix' in a.body
+                                and 'Trop cher' in a.body for a in qs))
+        destinataires = set(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST,
+        ).values_list('recipient_id', flat=True))
+        self.assertEqual(destinataires, {self.owner.pk, self.boss.pk})
+        # Une réponse par lien et par heure : aucune seconde notification.
+        resp = self._decliner({'motif': 'delai'})
+        self.assertTrue(resp.data['already_sent'])
+        self.assertEqual(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).count(), 2)
+
+    def test_motif_invalide_ou_autre_sans_texte_400(self):
+        from apps.ventes.models import DevisActivity
+        # La notification LEAD_NEW posée par la création du lead (setUp) n'est
+        # pas un effet du déclin : on mesure ce que le 400 aurait écrit.
+        avant = (Notification.objects.count(),
+                 LeadActivity.objects.filter(lead=self.lead).count(),
+                 DevisActivity.objects.filter(devis=self.devis).count())
+        for corps in ({'motif': 'inconnu'}, {'motif': 'autre'}, {}):
+            with self.subTest(corps=corps):
+                resp = self._decliner(corps)
+                self.assertEqual(resp.status_code, 400, resp.data)
+                self.assertEqual(resp.data['champ'], 'motif')
+        self.assertFalse(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).exists())
+        self.assertEqual(
+            (Notification.objects.count(),
+             LeadActivity.objects.filter(lead=self.lead).count(),
+             DevisActivity.objects.filter(devis=self.devis).count()), avant)
+
+    def test_lien_sous_code_de_lecture_403_sans_rien_ecrire(self):
+        """F (revue du 24/10/2026) — même garde que l'acceptation : lien qui
+        exige le code de lecture, code non saisi ⇒ 403 ``otp_required``, ni
+        note ni notification ; code vérifié ⇒ 200."""
+        from apps.ventes.domain.cycle_vie import _otp_lecture_verified_key
+        from apps.ventes.models import DevisActivity
+        self.link.otp_lecture = True
+        self.link.save(update_fields=['otp_lecture'])
+        notes = DevisActivity.objects.filter(devis=self.devis).count()
+        resp = self._decliner({'motif': 'prix'})
+        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(resp.data['detail'], 'otp_required')
+        self.assertFalse(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).exists())
+        self.assertEqual(
+            DevisActivity.objects.filter(devis=self.devis).count(), notes)
+        cache.set(_otp_lecture_verified_key(self.link.token), True, 3600)
+        self.assertEqual(self._decliner({'motif': 'prix'}).status_code, 200)
+
+    def test_cache_indisponible_jamais_500(self):
+        """F — l'idempotence par ``cache.add`` est enrobée comme celle de
+        ``contact`` : un cache en panne n'empêche pas la réponse (200)."""
+        from unittest import mock
+        with mock.patch.object(cache, 'add',
+                               side_effect=RuntimeError('cache en panne')):
+            resp = self._decliner({'motif': 'delai'})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['already_sent'])
+        self.assertTrue(Notification.objects.filter(
+            event_type=EventType.CLIENT_CONTACT_REQUEST).exists())
+
+    def test_accepte_409_jeton_inconnu_404_apercu_interne_refuse(self):
+        self.assertEqual(self._decliner(
+            {'motif': 'prix'}, token='inconnu').status_code, 404)
+        interne = self.link.jeton_interne_effectif()
+        self.assertEqual(self._decliner(
+            {'motif': 'prix'}, token=interne).status_code, 403)
+        Devis.objects.filter(pk=self.devis.pk).update(
+            statut=Devis.Statut.ACCEPTE)
+        resp = self._decliner({'motif': 'concurrent'})
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.data['code'], 'statut')

@@ -157,3 +157,14 @@ test('toiture : cœur = surface + orientation + type', () => {
   // Une toiture où on n'a rempli QUE des détails reste ouverte.
   assert.equal(sectionAutoRepliee(etat({ ombrage_notes: 'arbre au sud' }), 'toiture'), false)
 })
+
+// ADEV89 × ALEA53 — la phase d'un lead pro est dans la section « pro », celle
+// d'un résidentiel reste dans « énergie » ; les autres champs ne bougent pas.
+test('« Compléter : phase » cible la section pro pour un commercial / industriel', () => {
+  assert.deepEqual(missingFieldTarget('raccordement', 'commercial'), { field: 'lf-raccordement', section: 'pro' })
+  assert.deepEqual(missingFieldTarget('raccordement', 'industriel'), { field: 'lf-raccordement', section: 'pro' })
+  assert.equal(missingFieldTarget('raccordement', 'residentiel').section, 'energie')
+  assert.equal(missingFieldTarget('raccordement').section, 'energie')
+  assert.equal(missingFieldTarget('bill_kwh', 'commercial').section, 'energie')
+  assert.equal(missingFieldTarget('champ_inconnu', 'commercial'), null)
+})

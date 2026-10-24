@@ -56,7 +56,7 @@ class FactureCycleActionsMixin:
         except EmissionRefusee as exc:
             vide = not (facture.lignes.exists() or facture.libelle)
             return Response({'detail': exc.motif}, status=(
-                status.HTTP_409_CONFLICT if vide
+                status.HTTP_409_CONFLICT if vide or exc.etat
                 else status.HTTP_400_BAD_REQUEST))
         except CreditHoldError as exc:
             return Response({'detail': exc.motif},

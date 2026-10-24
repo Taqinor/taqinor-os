@@ -71,6 +71,8 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
   const v = (k) => getField(state, k) ?? ''
   const eteDifferente = !!getField(state, 'ete_differente')
   const regularisation = !!getField(state, 'regularisation_8221')
+  // ALEA53 — lead commercial / industriel : pas de blocs résidentiels ici.
+  const pro = ['commercial', 'industriel'].includes(getField(state, 'type_installation'))
   // CAD158 — « elle couvre un mois ou deux mois ? » : sur deux mois, la
   // commerciale tape le montant de la FACTURE et c'est le montant MENSUEL
   // (÷ 2) qui part au serveur — et qui s'affiche, pour qu'elle voie ce qui
@@ -150,26 +152,44 @@ export default function SectionEnergie({ state, setField, errors = {} }) {
             value={v('conso_mensuelle_kwh')} onChange={(e) => setField('conso_mensuelle_kwh', e.target.value)}
           />
         </FormField>
-        {/* CAD157 — texte libre qu'AUCUN calcul ne lit : la fiche le dit. */}
-        <FormField
-          label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee" error={errors.tranche_onee}
-          hint={NON_COMPTE_TRANCHE_ONEE}
-        >
-          <Input
-            id="lf-tranche-onee" invalid={!!errors.tranche_onee}
-            value={v('tranche_onee')} onChange={(e) => setField('tranche_onee', e.target.value)}
-          />
-        </FormField>
-        <FormField label="Raccordement" htmlFor="lf-raccordement" error={errors.raccordement}>
-          <select
-            id="lf-raccordement"
-            className={errors.raccordement ? 'form-select is-invalid' : 'form-select'}
-            aria-invalid={errors.raccordement ? true : undefined}
-            value={v('raccordement')} onChange={(e) => setField('raccordement', e.target.value)}
-          >
-            {enumOptions(RACCORDEMENTS)}
-          </select>
-        </FormField>
+        {/* ALEA53 — un lead C&I n'a ni « tranche ONEE » (résidentiel : texte libre
+            qu'aucun calcul ne lit) ni second « Raccordement » : la phase du site
+            vit dans « Professionnel », ici un simple renvoi. */}
+        {!pro && (
+          <>
+            {/* CAD157 — texte libre qu'AUCUN calcul ne lit : la fiche le dit. */}
+            <FormField
+              label="Tarif / tranche ONEE" htmlFor="lf-tranche-onee" error={errors.tranche_onee}
+              hint={NON_COMPTE_TRANCHE_ONEE}
+            >
+              <Input
+                id="lf-tranche-onee" invalid={!!errors.tranche_onee}
+                value={v('tranche_onee')} onChange={(e) => setField('tranche_onee', e.target.value)}
+              />
+            </FormField>
+            <FormField label="Raccordement" htmlFor="lf-raccordement" error={errors.raccordement}>
+              <select
+                id="lf-raccordement"
+                className={errors.raccordement ? 'form-select is-invalid' : 'form-select'}
+                aria-invalid={errors.raccordement ? true : undefined}
+                value={v('raccordement')} onChange={(e) => setField('raccordement', e.target.value)}
+              >
+                {enumOptions(RACCORDEMENTS)}
+              </select>
+            </FormField>
+          </>
+        )}
+        {pro && (
+          <p className="gen-hint" data-renvois>
+            Saisi ailleurs :{' '}
+            <button
+              type="button" className="link-button" data-renvoi="raccordement"
+              onClick={() => jumpToField({ section: 'pro', field: fieldLabels.raccordement.inputId })}
+            >
+              Phase du site (monophasé / triphasé) — section « Professionnel »
+            </button>
+          </p>
+        )}
         <div className="form-group" style={{ alignSelf: 'flex-end' }}>
           <label className="pdf-toggle">
             <input

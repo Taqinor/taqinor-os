@@ -164,7 +164,11 @@ class AcceptationRemonteAuClient(TestCase):
         self.client_obj.ice = '111111111111111'
         self.client_obj.save(update_fields=['ice'])
         devis = self._devis('commercial')
-        self.assertEqual(self._post(devis, ENTREPRISE).status_code, 200)
+        # ADEV95 — l'ICE divergent est refusé au lien public (409
+        # ``ice_divergent``) : le Client n'est jamais écrasé.
+        resp = self._post(devis, ENTREPRISE)
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertEqual(resp.data['code'], 'ice_divergent')
         self.client_obj.refresh_from_db()
         self.assertEqual(self.client_obj.ice, '111111111111111')
         self.assertTrue(divergence_ice(devis, ENTREPRISE['ice']))

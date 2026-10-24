@@ -222,3 +222,34 @@ class EcritureFactureBornesTests(TestCase):
                 r = self._poster(remise_globale=brut)
                 self.assertEqual(r.status_code, 400, r.content)
                 self.assertIn('remise_globale', r.json())
+
+    def test_champs_texte_avec_caractere_nul_400_nommes(self):
+        """api-fuzz — ``libelle`` / ``conditions_paiement`` / ``note`` /
+        ``reference_commande_client`` / ``devise`` publient « sans caractère
+        nul » (``ChaineStricte``) : le nul est refusé en 400 nommé, jamais
+        écrit en base."""
+        from apps.ventes.models import Facture
+        avant = Facture.objects.count()
+        for champ in ('libelle', 'conditions_paiement', 'note',
+                      'reference_commande_client', 'devise'):
+            with self.subTest(champ=champ):
+                r = self._poster(**{champ: 'a\x00b'})
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn(champ, r.json())
+        self.assertEqual(Facture.objects.count(), avant)
+
+    def test_schema_facture_publie_texte_sans_nul(self):
+        import json
+
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from core.champs_stricts import MOTIF_SANS_NUL
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include('apps.ventes.urls'))
+        ]).get_schema(request=None, public=True)
+        props = schema['components']['schemas'][
+            'FactureCreationRequest']['properties']
+        for champ in ('libelle', 'conditions_paiement', 'note'):
+            self.assertIn(json.dumps(MOTIF_SANS_NUL)[1:-1],
+                          json.dumps(props[champ]), champ)

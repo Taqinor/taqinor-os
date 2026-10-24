@@ -991,7 +991,7 @@ def cloture(ctx):
     lien = _lien_signature(d)
     qr_html = ""
     if lien:
-        uri = theme.qr_data_uri(lien, front=(26, 43, 74))
+        uri = theme.qr_data_uri(lien, logo=theme.logo_qr(d), front=(26, 43, 74))
         if uri:
             qr_html = (f'<td class="ag-qr"><img src="{uri}" alt="QR">'
                        f'<div>{_t(lg, "agr_scannez")}</div></td>')

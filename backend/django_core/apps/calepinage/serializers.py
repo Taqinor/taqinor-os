@@ -50,6 +50,7 @@ from .services.import_plan import (
     ROTATION_CALAGE_MAX_DEG,
 )
 from .services.presentation import image_apercu, reference_calepinage
+from apps.customfields.serializers import ChampsPersonnalisesField  # noqa: E402 — champ partagé (fuzz #997/#1022)
 
 
 def _lead_apercu(lead):
@@ -245,19 +246,6 @@ class _CalepinageListSerializer(serializers.ListSerializer):
                         company, ids, avec_corbeille=True).items():
                     cache[(company.pk, lead_id)] = lead
         return [self.child.to_representation(ligne) for ligne in lignes]
-
-
-@extend_schema_field({
-    'type': 'object', 'additionalProperties': False, 'nullable': True,
-    'description': (
-        "Champs personnalisés « code : valeur ». Les codes admis sont ceux "
-        "des définitions ACTIVES du module Calepinage de la société (propres "
-        "à chacune, donc non énumérés ici) : une clé inconnue est refusée en "
-        "la nommant.")})
-class ChampsPersonnalisesField(serializers.JSONField):
-    """CI #997 fuzz (2) — ``custom_data`` est un OBJET (ou ``null``) : publié
-    en JSON libre, un tableau « conforme » était refusé 400
-    (``validate_custom_data``)."""
 
 
 @extend_schema_field({
@@ -689,7 +677,7 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
             if lead is None:
                 lead = self._lead_de_la_requete(lead_id)
             if lead is not None and lead.client_id != client.pk:
-                raise serializers.ValidationError({
+                erreur = {
                     'client': (
                         "Le client doit être celui du lead : ce lead "
                         + (f"est rattaché à un autre client (#{lead.client_id})"
@@ -697,7 +685,15 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
                         + ". Laissez « Client » vide, ou choisissez le "
                         "client du lead."
                     ),
-                })
+                }
+                if instance is not None:
+                    # api-fuzz 24/10 — PATCH ``{"client": 1}`` : le corps est
+                    # conforme, c'est le lead DÉJÀ rattaché qui s'y oppose
+                    # (état du calepinage) : 409, même corps nommant le champ.
+                    from core.conflit_etat import ConflitEtat
+
+                    raise ConflitEtat(erreur)
+                raise serializers.ValidationError(erreur)
         return attrs
 
     def _refuser_cles_non_inscriptibles(self):

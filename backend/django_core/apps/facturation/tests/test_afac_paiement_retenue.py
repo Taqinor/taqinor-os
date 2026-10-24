@@ -122,3 +122,39 @@ class PaiementRetenueTests(TestCase):
             facture=self.facture).exists())
         self.assertFalse(RetenueSubie.objects.filter(
             facture=self.facture).exists())
+
+    def test_taux_publie_pourcentage_et_textes_sans_nul(self):
+        """api-fuzz — ``taux`` est publié « pourcentage 0-100 » (chaîne OU
+        nombre) : hors bornes = 400 nommé, un nombre JSON passe ; ``reference``
+        et ``note`` n'admettent pas le caractère nul."""
+        from apps.ventes.models import Paiement
+        for extra in ({'taux': '-317.88'}, {'taux': '100.5'},
+                      {'taux': 150}, {'reference': 'a\x00b'},
+                      {'note': 'a\x00b'}):
+            r = self.api.post(self.url, self._corps(**extra), format='json')
+            champ = next(iter(extra))
+            self.assertEqual(r.status_code, 400, (extra, r.data))
+            self.assertIn(champ, r.data, (extra, r.data))
+        self.assertFalse(Paiement.objects.filter(
+            facture=self.facture).exists())
+        r = self.api.post(self.url, self._corps(taux=75), format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+
+    def test_schema_reponse_facture_sans_blocs_du_detail(self):
+        """api-fuzz (« Response violates schema ») — la facture rendue ici n'a
+        pas de contexte de vue : ni ``situation_vente`` ni
+        ``prochaines_echeances`` (détail seul) ne sont promis."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include('apps.ventes.urls'))
+        ]).get_schema(request=None, public=True)
+        composants = schema['components']['schemas']
+        facture = composants['PaiementAvecRetenueResponse']['properties'][
+            'facture']
+        cible = composants[facture['$ref'].rsplit('/', 1)[-1]]
+        self.assertNotIn('prochaines_echeances', cible['required'])
+        self.assertNotIn('situation_vente', cible['required'])
+        r = self.api.post(self.url, self._corps(), format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertNotIn('prochaines_echeances', r.data['facture'])

@@ -59,4 +59,28 @@ describe('QJR641 — plus de « Type d’installation » : le Marché pilote la 
     await screen.findByTestId('ci-profil')
     expect(curseur()).toBeNull()
   })
+
+  it('ADEV103 — Industriel et Commercial : ni panneaux, ni puissance panneau, ni structure, ni cible, ni « Recalculer » ; seule la taille explicite règle la taille', async () => {
+    const user = userEvent.setup()
+    rendre('/ventes/devis/nouveau')
+    // résidentiel : la carte technique et « Recalculer » sont là
+    await screen.findByTestId('gen-kwc-cible')
+    expect(document.getElementById('gen-nbpanneaux')).not.toBeNull()
+    expect(screen.getByTestId('btn-recalculer-dimensionnement')).toBeInTheDocument()
+    for (const marche of [/Industriel/, /Commercial/]) {
+      await user.click(screen.getByRole('radio', { name: marche }))
+      await screen.findByTestId('ci-profil')
+      expect(screen.queryByTestId('gen-kwc-cible')).toBeNull()
+      expect(document.getElementById('gen-nbpanneaux')).toBeNull()
+      expect(document.getElementById('gen-panelw')).toBeNull()
+      expect(document.getElementById('gen-structure-produit')).toBeNull()
+      expect(screen.queryByTestId('btn-recalculer-dimensionnement')).toBeNull()
+      // la composition serveur reste lançable ; la taille se règle ici seulement
+      expect(screen.getByTestId('btn-auto-remplir')).toBeInTheDocument()
+      expect(document.getElementById('gen-ci-taille')).not.toBeNull()
+      expect(screen.getByLabelText(/Taille explicite \(kWc\)/)).toBe(document.getElementById('gen-ci-taille'))
+      expect(screen.getByTestId('ci-taille-aide'))
+        .toHaveTextContent('vide = taille calculée par la règle des 10 ans')
+    }
+  })
 })

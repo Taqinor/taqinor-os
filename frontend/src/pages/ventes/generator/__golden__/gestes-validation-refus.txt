@@ -8,7 +8,6 @@ Au moins une ligne avec un produit et une quantité > 0
 Renseignez la consommation du site (12 mois, total annuel ou factures) ou une taille explicite — l'étude en dépend.
 *
 Renseignez la consommation du site (12 mois, total annuel ou factures) ou une taille explicite — l'étude en dépend.
-*
 Au moins une ligne avec un produit et une quantité > 0
 Au moins une ligne avec un produit et une quantité > 0
 == kWh déclaré incohérent ==

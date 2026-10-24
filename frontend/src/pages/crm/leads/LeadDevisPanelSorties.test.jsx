@@ -31,8 +31,10 @@ vi.mock('../../ventes/DevisGenerator', async () => (await import('../../../test/
   .generateurSimule(() => <ProduitPicker produits={PRODUITS} value="" onChange={() => {}} />))
 
 import ventesApi from '../../../api/ventesApi'
+import stockApi from '../../../api/stockApi'
 import { jumpToField } from '../../../features/crm/workspace/jumpToField'
 import { missingFieldTarget } from '../../../features/crm/workspace/missingFields'
+import { libelleSuccesDevisAuto } from '../../../features/ventes/autoQuote'
 
 // ALEA48 — le saut DOM est espionné : seul l'appel (cible) compte ici.
 vi.mock('../../../features/crm/workspace/jumpToField', () => ({ jumpToField: vi.fn() }))
@@ -306,5 +308,117 @@ describe('ALEA48 — 409 du devis automatique : bouton « Compléter »', () => 
     rendrePanneau({ lead: LEAD_RESIDENTIEL, mode: 'auto', existingDevisId: undefined })
     expect(await screen.findByText('Champ exotique.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Compléter/ })).toBeNull()
+  })
+})
+
+// ALEA51 — après le devis automatique : une phrase de SUCCÈS (jamais la boîte
+// rouge des erreurs), les alertes du serveur en avertissement dessous.
+describe('ALEA51 — devis automatique créé : bannière de succès', () => {
+  const normaliser = (t) => t.replace(/[\u202f\u00a0]/g, ' ')
+  const REPONSE = {
+    id: 413, reference: 'DEV-2026-0412', statut: 'brouillon', kwc: 65, nb_lignes: 14,
+    total_ttc: 212100, economie_an_1_ht: 102040, retour_ans: null,
+    postes_apres_visite: ['Structure C&I', 'Câble solaire DC', 'Câble AC'],
+    alertes: [{ code: 'a_chiffrer_visite', message: 'À chiffrer après la visite.', interne: true }],
+  }
+
+  it('réf. · kWc · TTC · économie ≈ · postes à chiffrer, alertes en avertissement', async () => {
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: REPONSE })
+    rendrePanneau({
+      lead: { id: 91, nom: 'Usine', type_installation: 'industriel' },
+      mode: 'auto', existingDevisId: undefined,
+    })
+    const banniere = await screen.findByTestId('ldp-succes-auto')
+    expect(normaliser(banniere.textContent)).toContain(
+      'DEV-2026-0412 · 65 kWc · 212 100 MAD TTC · économie ≈ 102 000 MAD/an · 3 postes à chiffrer après la visite')
+    // retour_ans null (investissement incomplet) ⇒ aucun « retour » inventé.
+    expect(banniere.textContent).not.toMatch(/retour/)
+    const alertes = screen.getByTestId('ldp-alertes-auto')
+    expect(alertes).toHaveTextContent('À chiffrer après la visite.')
+    expect(document.querySelector('.form-error-box')).toBeNull()
+  })
+
+  it('le libellé omet ce que le serveur ne sert pas et garde le retour chiffré', () => {
+    expect(libelleSuccesDevisAuto(null)).toBe('')
+    const texte = normaliser(libelleSuccesDevisAuto({
+      reference: 'DEV-1', kwc: 5, total_ttc: 41000, economie_an_1_ht: null,
+      retour_ans: 4.26, postes_apres_visite: ['Structure C&I'],
+    }))
+    expect(texte).toBe('DEV-1 · 5 kWc · 41 000 MAD TTC · retour ≈ 4,3 ans · 1 poste à chiffrer après la visite')
+  })
+})
+
+// ALEA52 — l'aperçu PDF porte « Envoyer au client » : la MÊME boîte que la carte
+// devis (canaux d'abord, réglages sous « Avancé »), sans les options réservées
+// au résidentiel pour un devis commercial / industriel / agricole.
+describe('ALEA52 — aperçu : « Envoyer au client » ouvre la boîte partagée', () => {
+  const ouvrirApercu = async (lead) => {
+    rendre({ mode: 'view', lead: { id: 77, nom: 'Khalid', email: 'k@example.com', ...lead } })
+    await userEvent.click(await screen.findByRole('button', { name: /Envoyer au client/ }))
+    return screen.findByRole('dialog', { name: /Envoyer au client/ })
+  }
+  const boiteFermee = () => waitFor(() => expect(
+    screen.queryByRole('dialog', { name: /Envoyer au client/ })).toBeNull())
+
+  it('résidentiel : trois canaux, « Avancé » replié, options 1/2/3 et case étude proposées', async () => {
+    const boite = await ouvrirApercu({ type_installation: 'residentiel' })
+    expect(within(boite).getByRole('button', { name: 'WhatsApp' })).toBeInTheDocument()
+    expect(within(boite).getByRole('button', { name: /E-mail/ })).toBeEnabled()
+    expect(within(boite).getByRole('button', { name: /Copier le lien/ })).toBeInTheDocument()
+    expect(within(boite).queryByText('Options présentées au client :')).toBeNull()
+    await userEvent.click(within(boite).getByRole('button', { name: /Avancé/ }))
+    expect(within(boite).getByText('Options présentées au client :')).toBeInTheDocument()
+    await userEvent.keyboard('{Escape}')
+    await boiteFermee()
+    expect(screen.getByText("Inclure l'étude")).toBeInTheDocument()
+  })
+
+  it('industriel : ni « Inclure l’étude » ni options 1/2/3 (sans effet en C&I)', async () => {
+    const boite = await ouvrirApercu({ type_installation: 'industriel' })
+    await userEvent.click(within(boite).getByRole('button', { name: /Avancé/ }))
+    expect(within(boite).getByText('Ce que le client reçoit :')).toBeInTheDocument()
+    expect(within(boite).queryByText('Options présentées au client :')).toBeNull()
+    expect(within(boite).queryByRole('button', { name: /Modifier les options…/ })).toBeNull()
+    await userEvent.keyboard('{Escape}')
+    await boiteFermee()
+    expect(screen.queryByText("Inclure l'étude")).toBeNull()
+  })
+})
+
+// ALEA55 — nettoyages : plus de préchargement du catalogue avant le devis auto,
+// étapes visibles pendant la création, format PDF choisi sur la carte.
+describe('ALEA55 — devis automatique : pas de préchargement, étapes, format PDF', () => {
+  const LEAD_PRO = { id: 91, nom: 'Usine', type_installation: 'industriel' }
+
+  it('aucune lecture du catalogue ni des gammes avant (ni pendant) l’appel serveur', async () => {
+    ventesApi.creerDevisAuto.mockResolvedValueOnce({ data: { id: 413, reference: 'DEV-1', kwc: 10 } })
+    rendrePanneau({ lead: LEAD_PRO, mode: 'auto', existingDevisId: undefined })
+    await screen.findByTestId('ldp-succes-auto')
+    expect(ventesApi.creerDevisAuto).toHaveBeenCalledTimes(1)
+    expect(stockApi.getProduits).not.toHaveBeenCalled()
+    expect(ventesApi.getParametresGammes).not.toHaveBeenCalled()
+    // Le corps part tel quel : le lead, la remise — jamais un catalogue.
+    expect(ventesApi.creerDevisAuto.mock.calls[0][0]).toEqual({ lead: 91, remise_globale: '0' })
+  })
+
+  it('pendant la création : Étude → Composition → PDF, l’étape courante marquée', async () => {
+    ventesApi.creerDevisAuto.mockReturnValueOnce(new Promise(() => {}))
+    rendrePanneau({ lead: LEAD_PRO, mode: 'auto', existingDevisId: undefined })
+    const etapes = await screen.findByTestId('ldp-etapes-creation')
+    expect(etapes).toHaveTextContent(/Étude.*Composition.*PDF/s)
+    expect(etapes.querySelector('[aria-current="step"]')).toHaveAttribute('data-etape', 'Étude')
+  })
+
+  it('un format « 1 page » choisi sur la carte ouvre le devis EXISTANT en 1 page, sans création', async () => {
+    rendrePanneau({ mode: 'view', existingDevisId: 413, pdfInitial: 'onepage' })
+    await screen.findByRole('button', { name: /Télécharger le PDF/ })
+    expect(screen.getByRole('radio', { name: '1 page' })).toHaveAttribute('aria-checked', 'true')
+    expect(ventesApi.creerDevisAuto).not.toHaveBeenCalled()
+  })
+
+  it('même en mode « onepage », un devis existant n’est jamais recréé', async () => {
+    rendrePanneau({ mode: 'onepage', existingDevisId: 413 })
+    await screen.findByRole('button', { name: /Télécharger le PDF/ })
+    expect(ventesApi.creerDevisAuto).not.toHaveBeenCalled()
   })
 })

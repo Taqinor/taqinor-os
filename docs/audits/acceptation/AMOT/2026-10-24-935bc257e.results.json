@@ -1,0 +1,50 @@
+{
+  "sha": "935bc257ebc59af217398e6a4b39505368c3d902",
+  "date": "2026-10-24",
+  "groupe": "AMOT",
+  "verdict": "PASS",
+  "couvre": [
+    "AMOT86",
+    "AMOT87",
+    "AMOT88",
+    "AMOT89",
+    "AMOT90",
+    "AMOT91",
+    "AMOT92",
+    "AMOT93"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P-L3-7",
+      "taches": [
+        "AMOT86",
+        "AMOT87",
+        "AMOT88",
+        "AMOT89",
+        "AMOT90",
+        "AMOT91",
+        "AMOT92",
+        "AMOT93"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMOT/traces/2026-10-24/L3-P7-documents-fusion.txt",
+      "notes": [
+        "rendus réels /proposal re-faits sur l’arbre fusionné (conteneur, code 935bc257e) : hôtel 1043 full fr/en/ar = 3 pages, une-page fr/en = 1 ; usine 1044 full fr/en/ar = 4 pages, une-page fr/en = 1 ; une-page C&I : titre servi « Investissement hors postes à chiffrer après la visite », ligne « À chiffrer après la visite technique (hors total) : câble DC …, câble AC, structure de fixation », légende « retour calculé sur le prix complet, après la visite », téléphone « +212 6 61 23 45 93 » ; EN : « 65,32 kWp », « kWh/yr », « Replacement of the Inverter in year 12 : 102 500,00 MAD excl. VAT » (base HT) ; aucun « hypothèse / médiane / heure par heure » dans les rendus EN ; AR : titre « محطة شمسية … — Hôtel Atlas Mogador SARL, Marrakech » lisible (isolats bidi) ; « non déduit des économies », « Le 24/10/2026 ». AMOT94 (table 25 ans) toujours non rejouée en direct : aucun devis industriel entièrement chiffré sur la démo."
+      ]
+    }
+  ]
+}

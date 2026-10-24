@@ -4,6 +4,7 @@ notes de débit, relances, remises, mandats) — déplacés tels quels de
 from decimal import Decimal
 
 from django.core.validators import RegexValidator
+from django.db import models
 from drf_spectacular.drainage import set_override
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -237,6 +238,14 @@ class LigneFactureSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
 
 
 class PaiementSerializer(serializers.ModelSerializer):
+    # api-fuzz — champs texte du modèle (``numero_cheque``, ``reference``,
+    # ``note``…) en ``ChaineStricte`` : le schéma publie « sans caractère nul »
+    # (DRF le refuse en 400, ``enregistrer-paiement``).
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+    }
     mode_display = serializers.CharField(source='get_mode_display', read_only=True)
     # Champs d'affichage (lecture seule) pour la page Encaissements : référence
     # de la facture, nom du client et auteur de l'encaissement (« par qui »).
@@ -271,7 +280,7 @@ class PaiementSerializer(serializers.ModelSerializer):
     # champ est obligatoire » sur chaque encaissement manuel. La déclaration
     # explicite court-circuite cette logique auto ; la contrainte DB reste
     # l'arbitre de l'unicité pour les vrais appels idempotents.
-    idempotency_key = serializers.CharField(
+    idempotency_key = ChaineStricte(
         required=False, allow_null=True, allow_blank=True)
 
     def __init__(self, *args, **kwargs):
@@ -372,6 +381,15 @@ class PaiementEnvoyerRecuRequestSerializer(serializers.Serializer):
         required=False, allow_blank=True, allow_null=True)
 
 
+@extend_schema_field(_decimal_borne(MOTIF_REMISE, 100))
+class PourcentSouple(DecimalSouple):
+    """api-fuzz — ``remise_globale`` d'une facture : chaîne au motif 0-100 à
+    2 décimales OU nombre JSON 0-100 arrondi au centième (``DecimalSouple``),
+    publié ainsi. Un flottant (``0.3333333333333333``) était refusé « pas plus
+    de 5 chiffres » alors qu'il est conforme ; la borne 0-100 reste jugée par
+    ``validate_remise_globale`` (message français de la garde unique)."""
+
+
 class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
     """AFAC30 (C-AFAC-029) — valide l'ENTRÉE de `paiement-avec-retenue` :
     montant décimal > 0, date requise, `mode` ∈ `Paiement.Mode`,
@@ -398,7 +416,9 @@ class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
         choices=RetenueSubie.TypeRetenue.choices,
         default=RetenueSubie.TypeRetenue.RAS_TVA,
         error_messages={'invalid_choice': 'Type de retenue inconnu.'})
-    taux = serializers.DecimalField(
+    # api-fuzz — publié « pourcentage 0-100 » (chaîne au motif OU nombre) :
+    # le schéma annonçait tout décimal et ``-317.88`` répondait 400.
+    taux = PourcentSouple(
         max_digits=5, decimal_places=2, min_value=Decimal('0'),
         max_value=Decimal('100'),
         error_messages={
@@ -407,9 +427,9 @@ class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
             'min_value': 'Le taux de RAS doit être compris entre 0 et 100 %%.',
             'max_value': 'Le taux de RAS doit être compris entre 0 et 100 %%.',
         })
-    reference = serializers.CharField(
+    reference = ChaineStricte(
         required=False, allow_blank=True, default='', max_length=120)
-    note = serializers.CharField(required=False, allow_blank=True, default='')
+    note = ChaineStricte(required=False, allow_blank=True, default='')
 
 
 class FactureSerializer(SameCompanyFKSerializerMixin,
@@ -572,15 +592,6 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
         return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
 
 
-@extend_schema_field(_decimal_borne(MOTIF_REMISE, 100))
-class PourcentSouple(DecimalSouple):
-    """api-fuzz — ``remise_globale`` d'une facture : chaîne au motif 0-100 à
-    2 décimales OU nombre JSON 0-100 arrondi au centième (``DecimalSouple``),
-    publié ainsi. Un flottant (``0.3333333333333333``) était refusé « pas plus
-    de 5 chiffres » alors qu'il est conforme ; la borne 0-100 reste jugée par
-    ``validate_remise_globale`` (message français de la garde unique)."""
-
-
 #: api-fuzz — montant d'une tranche : positif ou nul (``ck_facture_montants_
 #: positifs``), 10 chiffres entiers, 2 décimales ; la chaîne ``"-0"`` vaut 0.
 _MONTANT_FACTURE_PUBLIE = {'type': 'string', 'format': 'decimal',
@@ -602,6 +613,15 @@ class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
     ``bon_commande``) répond 409 ``unique_conflict``, plus 400."""
     same_company_fields = ('client', 'devis', 'bon_commande', 'lead',
                            'entite', 'condition_paiement_ref')
+    # api-fuzz — les champs TEXTE du modèle (``libelle``, ``note``,
+    # ``conditions_paiement``, ``reference_commande_client``, ``devise``) sont
+    # générés en ``ChaineStricte`` : le schéma publie « sans caractère nul »
+    # (DRF le refuse en 400) ; les décimaux et booléens restent inchangés.
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+    }
 
     # ENF11 — lecture seule, posés par les actions dédiées : DRF retire
     # ``allow_blank`` d'un champ de modèle en lecture seule, le schéma

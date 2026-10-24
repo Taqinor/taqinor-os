@@ -204,10 +204,13 @@ def postes_non_chiffres(lignes):
     la visite (hors total, chiffrées ou non)."""
     a_renseigner, visite = [], []
     for ligne in lignes or []:
+        # C-L3-MOT-02 — une désignation n'est listée qu'une fois (ordre gardé).
         if ligne.get('a_chiffrer_visite'):
-            visite.append(ligne['designation'])
+            if ligne['designation'] not in visite:
+                visite.append(ligne['designation'])
         elif not ligne.get('prix_connu'):
-            a_renseigner.append(ligne['designation'])
+            if ligne['designation'] not in a_renseigner:
+                a_renseigner.append(ligne['designation'])
     return a_renseigner, visite
 
 

@@ -46,6 +46,12 @@ MODES = ('commercial', 'industriel')
 #: Lead.type_toiture → type de pose CIQ7 : seulement les correspondances
 #: CERTAINES ; une terrasse béton (lestée ou fixée ?) reste à déclarer.
 POSE_DU_TOIT_LEAD = {'bac_acier': 'bac_acier', 'tuiles': 'toiture_inclinee'}
+#: ADEV90 (D-ACI-13=a) — mode de pose ESTIMÉ quand aucun n'est déclaré :
+#: terrasse → lestée, toute autre couverture (ou couverture inconnue) →
+#: surimposition. La borne s'applique, dite « pose estimée, à confirmer au
+#: calepinage ».
+POSE_PAR_DEFAUT_COUVERTURE = {'terrasse_beton': 'toit_plat_leste'}
+POSE_PAR_DEFAUT = 'toiture_inclinee'
 
 #: (feuille, chemin dans le corps / dans ``Devis.etude_params``).
 FEUILLES = (
@@ -572,6 +578,17 @@ def _garde_kwh_factures(res, tarif, alertes):
     """Décision du 30/09 : un kWh déclaré qui contredit la facture (> 2×) bloque."""
     from apps.ventes.horaire.conso import RATIO_KWH_FACTURE_MAX, RATIO_KWH_FACTURE_MIN
     kwh = _num(res.valeur('kwh_mensuel_declare'))
+    # ADEV100 (L3, 24/10/2026) — le générateur pré-rempli envoie le kWh du lead
+    # en ANNUEL (12 × mensuel) ou en 12 mois : la décision du 30/09 vaut pour
+    # tout kWh déclaré, pas seulement pour la feuille mensuelle du lead.
+    if not kwh:
+        annuel = _num(res.valeur('kwh_annuel'))
+        mensuels = [_num(v) for v in (res.valeur('kwh_mensuels') or [])]
+        mensuels = [v for v in mensuels if v]
+        if annuel:
+            kwh = annuel / 12.0
+        elif len(mensuels) == 12:
+            kwh = sum(mensuels) / 12.0
     facture = _num(res.valeur('_facture_hiver_lead'))
     if not kwh or not facture:
         return
@@ -752,17 +769,23 @@ def _borne_toit(res, devis, module, alertes):
         cotes = (module['longueur_mm'] / 1000.0, module['largeur_mm'] / 1000.0)
     pente = _num(res.valeur('pente_deg'))
     site = res.valeur('site') or {}
+    mode_pose = res.valeur('type_pose')
+    pose_estimee = not mode_pose
+    if pose_estimee:
+        mode_pose = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'), POSE_PAR_DEFAUT)
     resultat = calepinage_services.contenance_surface_declaree(
-        surface, mode_pose=res.valeur('type_pose'), cotes_module_m=cotes,
+        surface, mode_pose=mode_pose, cotes_module_m=cotes,
         inclinaison_deg=pente if pente is not None else PVGIS_ANGLE_DEG,
         latitude_deg=_num(site.get('lat')), puissance_module_wc=pmax)
     if resultat.get('kwc') is None:
         alertes.append(_alerte('contenance_toit_inconnue', 'toit',
                                'Contenance du toit non bornée : %s.' % resultat.get('motif')))
         return None
-    return {'kwc': round(float(resultat['kwc']), 2),
-            'source': 'surface utile déclarée (%g m²) — estimation, à confirmer au '
-                      'calepinage/visite' % surface}
+    source = 'surface utile déclarée (%g m²) — estimation, à confirmer au calepinage/visite' % surface
+    if pose_estimee:
+        source = ('surface utile déclarée (%g m²), pose estimée « %s » — estimation, à '
+                  'confirmer au calepinage/visite' % (surface, mode_pose))
+    return {'kwc': round(float(resultat['kwc']), 2), 'source': source}
 
 
 def _charge_toiture(res, catalogue, alertes):
@@ -1263,11 +1286,20 @@ CHAMP_LEAD_DES_ALERTES = {
 }
 #: L'ordre dans lequel un refus nomme le premier champ manquant du lead.
 ORDRE_CHAMPS_LEAD_CI = ('contrat_electricite', 'jours_ouverture', 'heure_debut')
+#: ADEV89 — phases du site admises par le devis automatique (jamais « inconnu »).
+PHASES_DECLAREES = ('mono', 'tri')
+# ALEA54 — ces refus s'adressent à la COMMERCIALE : une consigne à suivre auprès
+# du client, jamais le jargon du moteur (« profil de charge », « archétype »).
 MESSAGES_CHAMP_LEAD_CI = {
-    'jours_ouverture': ("Jours d'ouverture du site à déclarer sur le lead : profil de "
-                        'charge déclaré exigé (aucun week-end supposé).'),
-    'heure_debut': ("Heures d'ouverture (ou régime d'équipes) à déclarer sur le lead : "
-                    'aucun archétype sourcé pour cette activité, profil déclaré exigé.'),
+    'raccordement': ('Demandez au client si son site est en monophasé ou en triphasé — '
+                     "c'est écrit sur sa facture ou sur son compteur ; le choix des "
+                     'onduleurs en dépend.'),
+    'jours_ouverture': ("Demandez au client quels jours le site est ouvert (ou en "
+                        "production), ou choisissez son activité : le week-end n'est "
+                        'jamais supposé.'),
+    'heure_debut': ("Demandez au client ses heures d'ouverture (début et fin de journée, "
+                    "ou régime d'équipes), ou choisissez son activité : pour celle-ci, "
+                    "aucun horaire type n'est connu."),
 }
 #: ADEV78 — champs d'alerte (racine) dont le refus porte sur la composition.
 CHAMPS_COMPOSITION = frozenset({'composition', 'onduleurs', 'taille_explicite_kwc'})
@@ -1281,8 +1313,8 @@ MESSAGES_ARRET = {
                             'tranche de 5 kWc : aucune taille C&I.', 'compteur_puissance_kva'),
 }
 MESSAGE_PRIX_A_RENSEIGNER = (
-    'Prix à renseigner avant un devis automatique C&I : %s → Paramètres › Devis › '
-    'Prestations C&I ou fiche produit.')
+    "Prix à renseigner avant un devis automatique C&I : %s. À régler par "
+    "l'administrateur dans Paramètres › Devis › Prestations C&I, ou sur la fiche de l'article.")
 MESSAGE_MAD_SANS_CONTRAT = (
     "Facture en MAD sans contrat d'électricité déclaré : précisez le contrat "
     '(BT patenté / force motrice) ou saisissez la conso en kWh.')
@@ -1327,6 +1359,13 @@ def refus_devis_auto_ci(etude):
     if manquant is not None:
         champ, alerte = manquant
         return MESSAGES_CHAMP_LEAD_CI.get(champ) or alerte.get('message'), champ
+    # ADEV89 (rejeu « humain » 23/10/2026) — la PHASE du site est un prérequis
+    # du devis automatique : sans elle, un hôtel triphasé à 14 MWh/mois sortait
+    # composé d'onduleurs monophasés de 5 kW (puis refusé sur un disjoncteur
+    # mono sans prix). Le refus nomme le champ du lead (bouton « Compléter »).
+    phase = ((etude.get('entrees_resolues') or {}).get('phases') or {}).get('valeur')
+    if phase not in PHASES_DECLAREES:
+        return MESSAGES_CHAMP_LEAD_CI['raccordement'], 'raccordement'
     taille = etude.get('taille') or {}
     bloquants = [a for a in alertes if a.get('niveau') == 'bloquant']
     # ADEV78 — la VRAIE cause d'un arrêt « module » ou « onduleurs ».

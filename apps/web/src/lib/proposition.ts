@@ -23,6 +23,8 @@ import type { OccupancyId, SeasonId, ServedProduction } from './dayProfiles';
 // STRICTEMENT le même validateur que `courbes_journalieres.production`
 // (aucune seconde définition de « forme 24 h valide »).
 import { parseServedProductionEntry, parseServedProductionMap } from './dayProfiles';
+// ADEV95 — bloc `entreprise` B2B (validation + mise en forme) : module séparé (C20).
+import { entrepriseNettoyee, validerEntreprise } from './propositionB2b';
 
 /** Une ligne d'équipement telle que renvoyée par le backend (champs publics). */
 export interface ProposalItem {
@@ -1100,6 +1102,10 @@ export interface SignEntreprise {
   raison_sociale: string;
   signataire_qualite: string;
   ice: string;
+  /** ADEV95 — nom tapé pour signer, e-mail du signataire et attestation de pouvoir (lien public). */
+  signataire_nom?: string;
+  signataire_email?: string;
+  pouvoir_engager?: boolean;
 }
 
 export interface SignFormState {
@@ -1115,7 +1121,9 @@ export type SignChamp =
   | 'option'
   | 'entreprise.raison_sociale'
   | 'entreprise.signataire_qualite'
-  | 'entreprise.ice';
+  | 'entreprise.ice'
+  | 'entreprise.signataire_email'
+  | 'entreprise.pouvoir_engager';
 
 export interface SignValidation {
   valid: boolean;
@@ -1137,20 +1145,11 @@ export function validateSign(
 ): SignValidation {
   const nom = (form.nom ?? '').trim();
   if (!nom) return { valid: false, error: 'Veuillez saisir votre nom complet.', champ: 'nom' };
-  // CIW305 — commercial / industriel : les TROIS champs entreprise sont OBLIGATOIRES ; l'erreur
-  // nomme le champ fautif. Aucune règle de format ici (l'ICE est validé par le serveur, une seule règle).
-  if (entrepriseRequise) {
-    const e = form.entreprise ?? { raison_sociale: '', signataire_qualite: '', ice: '' };
-    if (!(e.raison_sociale ?? '').trim()) {
-      return { valid: false, error: 'Veuillez saisir la raison sociale de l’entreprise.', champ: 'entreprise.raison_sociale' };
-    }
-    if (!(e.signataire_qualite ?? '').trim()) {
-      return { valid: false, error: 'Veuillez indiquer votre qualité (gérant, DAF, DG…).', champ: 'entreprise.signataire_qualite' };
-    }
-    if (!(e.ice ?? '').trim()) {
-      return { valid: false, error: 'Veuillez saisir l’ICE de l’entreprise.', champ: 'entreprise.ice' };
-    }
-  }
+  // CIW305 / ADEV95 — commercial / industriel : raison sociale, qualité, ICE, e-mail du signataire
+  // et attestation de pouvoir OBLIGATOIRES ; l'erreur nomme le champ fautif (`propositionB2b`).
+  // Aucune règle de format de l'ICE ici (validé par le serveur, une seule règle).
+  const erreurEntreprise = entrepriseRequise ? validerEntreprise(form) : null;
+  if (erreurEntreprise) return erreurEntreprise;
   if (twoOptions && form.option !== 'sans_batterie' && form.option !== 'avec_batterie') {
     return { valid: false, error: 'Veuillez choisir une option avant de signer.', champ: 'option' };
   }
@@ -1174,16 +1173,10 @@ export function buildAcceptBody(form: SignFormState, twoOptions: boolean): Accep
   if (twoOptions && (form.option === 'sans_batterie' || form.option === 'avec_batterie')) {
     body.option = form.option;
   }
-  // CIW305 — `entreprise` (trois champs trimés) seulement quand le formulaire en porte une saisie.
-  const e = form.entreprise;
-  if (e) {
-    const entreprise: SignEntreprise = {
-      raison_sociale: (e.raison_sociale ?? '').trim(),
-      signataire_qualite: (e.signataire_qualite ?? '').trim(),
-      ice: (e.ice ?? '').trim(),
-    };
-    if (entreprise.raison_sociale || entreprise.signataire_qualite || entreprise.ice) body.entreprise = entreprise;
-  }
+  // CIW305 — `entreprise` (champs trimés) seulement quand le formulaire en porte une saisie ;
+  // ADEV95 — plus le nom tapé, l'e-mail et l'attestation du signataire quand la page les porte.
+  const entreprise = entrepriseNettoyee(form.entreprise, form.nom);
+  if (entreprise) body.entreprise = entreprise;
   return body;
 }
 

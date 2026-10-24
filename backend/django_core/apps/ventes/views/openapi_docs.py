@@ -9,13 +9,14 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError as _ErreurDjango
 from django.core.validators import RegexValidator as _RegexValidator
+from drf_spectacular.drainage import set_override
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers as s
 
 from core.champs_stricts import (
     BooleenStrict, ChaineStricte, DateStricte, DecimalSouple, DecimalStricte,
-    EntierStrict,
+    EntierStrict, MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import ChoixDocumente
@@ -25,7 +26,7 @@ from ..serializers import (
     DevisSerializer, DevisWriteSerializer, PlanCommissionSerializer,
 )
 from ..serializers_facturation import (
-    AvoirSerializer, FactureListeSerializer, FactureSerializer, FactureWriteSerializer,
+    AvoirSerializer, FactureListeSerializer, FactureWriteSerializer,
     NoteDebitSerializer, PaiementSerializer, RetenueSubieSerializer,
 )
 
@@ -44,7 +45,10 @@ class _MotifEntier(_RegexValidator):
 
 
 # ---------------------------------------------------------------- devis
-GAMME_ENVOI = ChaineStricte(required=False, allow_blank=True)
+# api-fuzz (24/10/2026) — vocabulaire FERMÉ (``domain.gammes.GAMME_ENVOIS``),
+# vide ou absent = mode déjà posé ; tout autre texte est refusé 400 nommé.
+GAMME_ENVOI = s.ChoiceField(choices=['seule', 'les_deux'], required=False,
+                            allow_blank=True, allow_null=True)
 
 _SECTIONS_LIEN = ('roof3d', 'sld', 'pdf', 'bankable', 'economies',
                   'jour_type', 'gammes', 'taille_eco', 'taille_max')
@@ -81,14 +85,14 @@ EnvoyerEmailRequest = _ser('DevisEnvoyerEmailRequest', {
 })
 EnvoyerEmailResponse = _ser('DevisEnvoyerEmailResponse', {
     'detail': s.CharField(),
-    'log_id': s.IntegerField(),
+    'log_id': s.IntegerField(required=False, allow_null=True),
     'email_statut': s.CharField(),
     'devis_statut': s.CharField(),
     'proposal_path': s.CharField(required=False, allow_null=True),
 })
 EnvoyerEmailEchec = _ser('DevisEnvoyerEmailEchec', {
     'detail': s.CharField(),
-    'log_id': s.IntegerField(),
+    'log_id': s.IntegerField(required=False, allow_null=True),
     'email_statut': s.CharField(),
     'devis_statut': s.CharField(),
 })
@@ -96,7 +100,7 @@ EnvoyerEmailEchec = _ser('DevisEnvoyerEmailEchec', {
 #: ENF11 — aucune adresse (ni ``to_email`` ni e-mail du client) : refus d'état.
 EnvoyerEmailSansDestinataire = _ser('DevisEnvoyerEmailSansDestinataire', {
     'detail': s.CharField(),
-    'log_id': s.IntegerField(),
+    'log_id': s.IntegerField(required=False, allow_null=True),
     'statut': s.CharField(),
 })
 
@@ -483,6 +487,38 @@ CompositionRequest = {
         'anyOf': [{'required': ['kwc']}, {'required': ['nb_panneaux']}],
     },
 }
+
+
+class _LigneEntree(s.DictField):
+    """api-fuzz (24/10/2026, replace-lines / atomic) — une ligne de devis telle
+    que ``domain/lignes.remplacer_lignes`` la lit : soit une ligne PRODUIT
+    (``produit`` entier ≥ 1 obligatoire ; un id bien formé mais inconnu répond
+    404), soit une ligne de SECTION / NOTE (``type_ligne`` + ``designation``
+    non blanche). Seules les clés que le serveur VALIDE sont typées ; les
+    autres (quantité, prix, remise, ordre…) restent libres (le serveur les lit
+    avec tolérance) — ni « rejected schema-compliant » ni « accepted
+    schema-violating »."""
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        produit = {
+            'type': 'object', 'required': ['produit'],
+            'properties': {
+                'produit': {'type': 'integer', 'minimum': 1},
+                'type_ligne': {'not': {'enum': ['section', 'note']}},
+            },
+        }
+        section = {
+            'type': 'object', 'required': ['type_ligne', 'designation'],
+            'properties': {
+                'type_ligne': {'type': 'string', 'enum': ['section', 'note']},
+                'designation': {'type': 'string', 'minLength': 1,
+                                'pattern': r'\S'},
+            },
+        }
+        set_override(self, 'field', {'oneOf': [produit, section]})
+
+
 #: api-fuzz — « une puissance OU un nombre de panneaux » rend le CORPS
 #: obligatoire (drf-spectacular ne pose ``required: true`` que sur un
 #: sérialiseur à champ requis, jamais sur un ``request`` en dict) : le fuzz
@@ -575,6 +611,11 @@ AutoDevisResponse = _ser('DevisAutoResponse', {
     'proposal_token': s.CharField(),
     'proposal_path': s.CharField(),
     'alertes': s.ListField(child=s.JSONField()),
+    # ALEA51 — le retour pour la bannière de succès (lu du devis créé).
+    'total_ttc': s.FloatField(allow_null=True),
+    'economie_an_1_ht': s.FloatField(allow_null=True),
+    'retour_ans': s.FloatField(allow_null=True),
+    'postes_apres_visite': s.ListField(child=s.CharField()),
 })
 
 FromLayoutRequest = _ser('DevisFromLayoutRequest', {
@@ -772,7 +813,7 @@ class DevisAtomic(DevisWriteSerializer):
     """Corps de ``POST /devis/atomic/`` : les champs d'en-tête du devis (comme
     ``POST /devis/``) + ``lignes`` (au moins une) + ``etude_params`` (écrit
     par l'écrivain unique d'étude, pas par le sérialiseur d'en-tête)."""
-    lignes = s.ListField(child=s.DictField(), min_length=1)
+    lignes = s.ListField(child=_LigneEntree(), min_length=1)
     etude_params = EtudeParamsEcran(required=False, allow_null=True)
 
     class Meta(DevisWriteSerializer.Meta):
@@ -780,7 +821,7 @@ class DevisAtomic(DevisWriteSerializer):
 
 
 ReplaceLinesRequest = _ser('DevisReplaceLinesRequest', {
-    'lignes': s.ListField(child=s.DictField(), min_length=1),
+    'lignes': s.ListField(child=_LigneEntree(), min_length=1),
     'entete': s.DictField(required=False, allow_null=True),
     'etude_params': EtudeParamsEcran(required=False, allow_null=True),
     'expected_updated_at': _JETON,
@@ -794,11 +835,17 @@ CORPS_REPLACE_LINES = corps_resserre({'properties': {'lignes': {'items': {
         {'required': ['type_ligne', 'designation'],
          'properties': {
              'type_ligne': {'type': 'string', 'enum': ['section', 'note']},
-             'designation': {'type': 'string', 'pattern': r'\S'}}},
+             'designation': {'type': 'string',
+                             'pattern': MOTIF_NON_BLANC_SANS_NUL},
+             'groupe_label': {'type': 'string', 'pattern': MOTIF_SANS_NUL}}},
         {'required': ['produit'],
          'properties': {
              'type_ligne': {'type': 'string', 'enum': ['produit']},
-             'produit': {'type': 'integer', 'minimum': 1}}},
+             'produit': {'type': 'integer', 'minimum': 1},
+             'designation': {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+             'groupe_label': {'type': 'string', 'pattern': MOTIF_SANS_NUL},
+             'tva_base_legale': {'type': 'string',
+                                 'pattern': MOTIF_SANS_NUL}}},
     ]}}}})
 
 # --------------------------------------------------------------- cycle de vie
@@ -849,7 +896,6 @@ def _schema_tranche_put():
     contrôle ``forme_tranche_ecriture``) acceptée aussi sous la forme du
     contrat ``{cle, libelle, unite, valeur}`` (``valeur`` = ``pct_or_montant``)."""
     import copy
-    from core.champs_stricts import MOTIF_SANS_NUL
     from ..utils.echeancier import schema_echeancier
     tranche = copy.deepcopy(schema_echeancier()['anyOf'][0]['items'])
     tranche['properties']['valeur'] = copy.deepcopy(
@@ -960,6 +1006,8 @@ EtudeParamsPatchRequest = {
         'additionalProperties': False,
     },
 }
+
+
 OffresTaillesResponse = _ser('DevisOffresTailles', {
     'offres_tailles': s.DictField(allow_null=True),
     'editable': s.BooleanField(),
@@ -1495,10 +1543,13 @@ DgiTransmissionResponse = _ser('FactureDgiTransmission', {
 
 
 # ---------------------------------------------------------------- paiements
+# api-fuzz — la facture rendue ici n'a pas de contexte de vue : comme toute
+# réponse d'action elle part de la forme LISTE (sans ``situation_vente`` ni
+# ``prochaines_echeances``, que seul le détail sert).
 PaiementAvecRetenueResponse = _ser('PaiementAvecRetenueResponse', {
     'paiement': PaiementSerializer(),
     'retenue': RetenueSubieSerializer(),
-    'facture': FactureSerializer(),
+    'facture': FactureListeSerializer(),
 })
 AttestationRecueRequest = _ser('PaiementAttestationRecueRequest', {
     'attestation_date': s.DateField(required=False),

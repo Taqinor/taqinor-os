@@ -11,7 +11,10 @@
 // n'est arrondi ; aucun jour n'est coché d'office (le week-end n'est jamais
 // supposé) ; fonctions PURES, sans React ni réseau (node --test).
 import { normaliserCorpsCi, construireCorpsCi } from '../etudeCiPreviewPur.js'
-import { ligneProduitCatalogue, TVA_STANDARD_DEFAUT } from '../solar.js'
+import {
+  ligneProduitCatalogue, TVA_STANDARD_DEFAUT, ttcExactFromHt,
+  COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS,
+} from '../solar.js'
 import { retarifierForfaitsEcran } from './forfaitsPanneau.js'
 import { ROLES_CI_PRESTATION, ROUTE_PARAMETRES_PRESTATIONS_CI } from '../../stock/catalogue.js'
 
@@ -353,13 +356,24 @@ export function lignesDepuisCompositionCi(composition, produits, tvaStandard) {
     const p = (it.produit == null || it.prix_connu === false) ? null
       : (produits || []).find((x) => String(x.id) === String(it.produit)) || null
     // ATOT28 — un produit tarifé : ligne catalogue (HT d'origine porté).
-    rows.push(p ? ligneProduitCatalogue(p, quantite) : {
+    const row = p ? ligneProduitCatalogue(p, quantite) : {
       produit: '',
       designation: `${it.designation || 'Article C&I'} — prix à renseigner`,
       quantite,
       prix_unit_ttc: 0,
       taux_tva: tva,
-    })
+    }
+    // ADEV92 (rejeu « humain » 23/10/2026) — le serveur sert le prix HT de la
+    // ligne (`prix_unitaire_ht` : forfait société de Paramètres pour une
+    // prestation, D-ACI-4=a ; prix catalogue pour un article) : l'écran le
+    // porte tel quel, comme le devis automatique — un même site ne sort plus
+    // à deux totaux selon le chemin (108 100 vs 123 500 MAD mesurés).
+    const htServeur = Number(it.prix_unitaire_ht)
+    if (p && Number.isFinite(htServeur) && htServeur > 0) {
+      row.prix_unit_ttc = ttcExactFromHt(htServeur, row.taux_tva)
+      row.prixHtOrigine = htServeur.toFixed(2)
+    }
+    rows.push(row)
   }
   // Forfaits au panneau : le barème du catalogue sur le compte de CE kit,
   // comme le serveur à l'enregistrement (`forfaitsPanneau.js`).
@@ -391,3 +405,133 @@ export function avertissementsCompositionCi(composition) {
 /** Le devis porte-t-il des entrées C&I v2 ? */
 export const etudePorteProfilCi = (e) => Boolean(e && typeof e === 'object'
   && ['consommation', 'rythme', 'toit', 'taille_explicite_kwc'].some((k) => e[k] != null))
+
+// ── ADEV100 — le générateur s'OUVRE PRÉ-REMPLI depuis la fiche lead ──
+// (rejeu « humain » R1-07 : catégorie « Non précisée », contrat vide, lead
+// « Hôtel » non repris — la commerciale retapait ce que le lead savait déjà).
+// `semisCiDepuisLead` calcule, SANS rien écrire, ce que la fiche lead apporte à
+// l'écran : des valeurs ÉDITABLES (jamais verrouillées), repérées par un badge
+// de provenance (LIBELLE_REPRIS_LEAD). Règles : une valeur absente du lead n'est pas semée ; un
+// champ que la commerciale a DÉJÀ rempli n'est jamais écrasé ; la consommation
+// du lead n'est reprise que si le lead n'a pas de relevé de factures (le
+// serveur le lit mieux). Les champs que l'écran n'édite pas (équipes de travail
+// d'un commerce) ne sont pas semés : ils resteraient cachés. Pure, sans React.
+export const LIBELLE_REPRIS_LEAD = 'repris du lead'
+
+const CONTRATS_LEAD = ['bt_domestique', 'bt_patente', 'bt_force_motrice', 'mt_general']
+//: Réponses de catégorie que l'écran sait afficher en plus des questions.
+const REPONSES_HEURES = ['heures', 'heures_cuisson', 'heures_garde', 'fermeture_du', 'fermeture_au']
+const PHASES_LEAD = { monophase: 'mono', triphase: 'tri' }
+
+/** Le type de pose que la fiche lead permet d'affirmer (jamais une terrasse béton : lestée ou fixée ?). */
+function poseDuLead(lead) {
+  if (lead.type_surface === 'ombriere') return 'ombriere'
+  if (lead.type_surface === 'terrain') return 'sol'
+  if (lead.type_toiture === 'bac_acier') return 'bac_acier'
+  if (lead.type_toiture === 'tuiles') return 'toiture_inclinee'
+  return ''
+}
+
+const nombrePositif = (v) => {
+  const x = Number(v)
+  return vide(v) || !Number.isFinite(x) || x <= 0 ? null : x
+}
+
+/**
+ * `lead` : le DÉTAIL du lead (champs pro). `courant` : ce que l'écran porte
+ * déjà — `{ profil, categorie, reponses, tarif }`. Rend `null` (rien à semer)
+ * ou `{ profil: [[chemin, valeur]…], categorie, reponses, tarif, marques }` ;
+ * `marques` = les clés des champs semés (badge « repris du lead »).
+ */
+export function semisCiDepuisLead(lead, courant = {}) {
+  const type = lead && lead.type_installation
+  if (type !== 'commercial' && type !== 'industriel') return null
+  const p = { ...profilCiVide(), ...(courant.profil || {}) }
+  const profil = []
+  const marques = []
+  const semer = (cle, chemin, valeur) => {
+    profil.push([chemin, valeur])
+    if (!marques.includes(cle)) marques.push(cle)
+  }
+
+  // Consommation : le kWh MENSUEL du lead vaut 12× en annuel.
+  const mensuel = nombrePositif(lead.conso_mensuelle_kwh)
+  const releve = lead.releve_conso && Array.isArray(lead.releve_conso.mois)
+    && lead.releve_conso.mois.length > 0
+  const consoVide = (p.kwhMensuels || []).every(vide) && vide(p.kwhAnnuel)
+    && !(p.factures || []).length
+  if (mensuel && !releve && consoVide) {
+    profil.push(['saisieConso', 'annuel'])
+    semer('kwhAnnuel', 'kwhAnnuel', String(Math.round(mensuel * 12 * 100) / 100))
+  }
+
+  // Raccordement : tension (jamais « je ne sais pas » ni le défaut visible du site web), phase.
+  if (['bt', 'mt'].includes(lead.tension_raccordement)
+      && lead.tension_source !== 'site_defaut_visible' && vide(p.tension)) {
+    semer('tension', 'tension', lead.tension_raccordement)
+  }
+  const phase = PHASES_LEAD[lead.raccordement]
+  if (phase && vide(p.phases)) semer('phases', 'phases', phase)
+
+  // Rythme : jours, heures d'ouverture.
+  if (Array.isArray(lead.jours_ouverture) && lead.jours_ouverture.length
+      && !(p.joursOuverts || []).some(Boolean)) {
+    const jours = new Set(lead.jours_ouverture.map(Number))
+    semer('joursOuverts', 'joursOuverts', Array.from({ length: 7 }, (_, i) => jours.has(i + 1)))
+  }
+  const plage = (p.plages || {}).ouvre || {}
+  if (!vide(lead.heure_debut) && !vide(lead.heure_fin) && vide(plage.debut) && vide(plage.fin)) {
+    semer('plages', 'plages.ouvre.debut', texte(lead.heure_debut))
+    profil.push(['plages.ouvre.fin', texte(lead.heure_fin)])
+  }
+
+  // Toit : surface et type de pose.
+  const surface = nombrePositif(lead.surface_toiture_m2)
+  if (surface && vide(p.surfaceUtile)) semer('surfaceUtile', 'surfaceUtile', String(surface))
+  const pose = poseDuLead(lead)
+  if (pose && vide(p.typePose)) semer('typePose', 'typePose', pose)
+
+  // Catégorie commerciale et ses réponses (commercial seulement).
+  let categorie = null
+  let reponses = null
+  if (type === 'commercial') {
+    const courante = courant.categorie && courant.categorie !== 'non_precisee' ? courant.categorie : null
+    if (!courante && COMMERCIAL_CATEGORIES.some((c) => c.value === lead.categorie_commerciale)) {
+      categorie = lead.categorie_commerciale
+      marques.push('categorie')
+    }
+    const active = categorie || courante
+    const brutes = lead.reponses_categorie && typeof lead.reponses_categorie === 'object'
+      ? lead.reponses_categorie : {}
+    const deja = courant.reponses || {}
+    const acceptees = new Set([
+      ...(COMMERCIAL_CATEGORY_QUESTIONS[active] || []).map((q) => q.key), ...REPONSES_HEURES,
+    ])
+    const posees = {}
+    for (const [cle, valeur] of Object.entries(active && active === lead.categorie_commerciale ? brutes : {})) {
+      if (!acceptees.has(cle) || vide(valeur) || !vide(deja[cle])) continue
+      posees[cle] = valeur
+      marques.push(`reponses.${cle}`)
+    }
+    if (Object.keys(posees).length) reponses = posees
+  }
+
+  // Contrat d'électricité (+ option bi-horaire de la force motrice).
+  let tarif = null
+  const contrat = lead.contrat_electricite
+  if (CONTRATS_LEAD.includes(contrat) && vide((courant.tarif || {}).contrat)) {
+    tarif = {
+      contrat,
+      optionBiHoraire: contrat === 'bt_force_motrice' && lead.option_tarifaire_bt === 'bi_horaire',
+    }
+    marques.push('contrat')
+  }
+
+  return marques.length ? { profil, categorie, reponses, tarif, marques } : null
+}
+
+/** La clé « repris du lead » qu'une modification du champ `chemin` du profil efface. */
+export function cleReprisDuChamp(chemin) {
+  const tete = String(chemin).split('.')[0]
+  return ['saisieConso', 'kwhMensuels', 'factures'].includes(tete) ? 'kwhAnnuel' : tete
+}

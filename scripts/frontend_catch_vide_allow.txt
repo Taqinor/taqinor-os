@@ -20,8 +20,6 @@ frontend/src/features/crm/relances/RelanceEtapeRow.jsx::effacerBrouillon  1
 frontend/src/features/crm/relances/ToucheMessageDialog.jsx::copier  1
 frontend/src/features/crm/relances/ToucheMessageDialog.jsx::ouvrirWhatsApp  1
 frontend/src/features/crm/workspace/ContextRail.jsx::writeTab  1
-frontend/src/features/crm/workspace/DevisTab.jsx::copierApercuInterne  1
-frontend/src/features/crm/workspace/DevisTab.jsx::copierPageClient  1
 frontend/src/features/crm/workspace/LeadWorkspace.jsx::relay  1
 frontend/src/features/crm/workspace/QuestionnaireDialog.jsx::copier  1
 frontend/src/features/crm/workspace/SectionsPane.jsx::calculerRepliAuto  1
