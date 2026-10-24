@@ -40,5 +40,11 @@ def refuser_portes_fermees(donnees, facture=None):
                            'code': 'bon_commande_de_devis'})
     devis = donnees.get('devis')
     if devis is not None and (facture is None or devis.pk != facture.devis_id):
-        raise ValidationError({'devis': FACTURE_DE_DEVIS_REFUSE,
-                               'code': 'facture_de_devis'})
+        corps = {'devis': FACTURE_DE_DEVIS_REFUSE, 'code': 'facture_de_devis'}
+        if facture is not None:
+            # CI #997 fuzz (24/10) : en MODIFICATION le corps est conforme au
+            # schéma ; c'est la facture (son devis courant) qui s'oppose =
+            # refus d'ÉTAT, 409. À la création le schéma publie ``devis`` nul :
+            # un devis posé reste un corps refusé, 400.
+            raise ConflitEtat(corps)
+        raise ValidationError(corps)

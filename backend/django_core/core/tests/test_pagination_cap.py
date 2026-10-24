@@ -101,3 +101,19 @@ class PageSizeInvalideTests(SimpleTestCase):
             with self.subTest(query=query):
                 self.assertEqual(
                     self.paginator.get_page_size(self._req(query)), attendu)
+
+
+class PageEntierTests(SimpleTestCase):
+    """Nocturne 24/10/2026 — ``?page=`` était lu comme la page 1 (200) alors que
+    le schéma publie un entier : 400 nommé, comme page_size."""
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.paginator = StandardPagination()
+
+    def test_page_vide_ou_non_entiere_400(self):
+        from rest_framework.exceptions import ValidationError
+        for brut in ('', 'abc', '1.5'):
+            with self.assertRaises(ValidationError, msg=repr(brut)):
+                self.paginator.paginate_queryset(
+                    list(range(5)), Request(self.factory.get('/x/', {'page': brut})))

@@ -58,7 +58,7 @@ def _corps_lien_invalide(corps):
             return f'{cle} : booléen attendu.'
     if 'niveau' in corps and corps['niveau'] not in ('standard', 'confiance'):
         return "niveau invalide (attendu : 'standard' ou 'confiance')."
-    if 'gamme_envoi' in corps and not isinstance(corps['gamme_envoi'], str):
+    if corps.get('gamme_envoi') is not None and not isinstance(corps['gamme_envoi'], str):
         return 'gamme_envoi : texte attendu.'
     # api-fuzz (24/10/2026) — un mode hors vocabulaire était ignoré en
     # silence (200) alors que le schéma le refuse : 400 nommé.
@@ -122,7 +122,8 @@ def _exiger_remise_envoi(devis, user, *, enregistrer=True):
 class DevisEnvoiActionsMixin:
     """SPL138 — actions d'envoi de ``DevisViewSet`` (mixin, aucune base)."""
 
-    @extend_schema(request=D.ShareLinkRequest, responses=D.ShareLinkResponse)
+    @extend_schema(request=D.ShareLinkRequest, responses=D.ShareLinkResponse,
+                   extensions=D.CORPS_SHARE_LINK)
     @action(detail=True, methods=['post'], url_path='share-link',
             permission_classes=[IsResponsableOrAdmin])
     def share_link(self, request, pk=None):

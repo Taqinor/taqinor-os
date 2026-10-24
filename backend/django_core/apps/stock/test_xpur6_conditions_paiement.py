@@ -198,3 +198,25 @@ class TestEscompte(Xpur6Base):
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertIn('escompte_disponible_pct', resp.data)
+
+
+class TestEcheancierCapacite(Xpur6Base):
+    def test_montant_derive_hors_colonne_409_rien_ecrit(self):
+        """api-fuzz 24/10 — TTC × pourcentage au-delà de numeric(14, 2) : 409
+        nommé (500 avant), aucune tranche écrite."""
+        f = Fournisseur.objects.create(company=self.company, nom='Gros montant')
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-XPUR6-CAP', fournisseur=f,
+            montant_ttc=Decimal('900000000000.00'))
+        url = f'/api/django/stock/factures-fournisseur/{facture.id}/echeancier/'
+        resp = self.api.post(url, {'tranches': [
+            {'pourcentage': '200', 'date_echeance': '2026-07-01'}]}, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertFalse(EcheanceFactureFournisseur.objects.filter(facture=facture).exists())
+
+    def test_corps_non_objet_400(self):
+        f = Fournisseur.objects.create(company=self.company, nom='Corps liste')
+        facture = FactureFournisseur.objects.create(
+            company=self.company, reference='FF-XPUR6-LST', fournisseur=f)
+        url = f'/api/django/stock/factures-fournisseur/{facture.id}/echeancier/'
+        self.assertEqual(self.api.post(url, [[1, None]], format='json').status_code, 400)

@@ -191,3 +191,12 @@ class ConflitDePorteeApiTests(TenantAPITestCase):
         r = client.post(URL, self._payload(montant_min=''), format='json')
         self.assertEqual(r.status_code, 201, r.content)
         self.assertIsNone(r.json()['montant_min'])
+
+    def test_montant_min_superieur_au_max_409(self):
+        """api-fuzz-full 24/10 — deux montants conformes dont l'ordre s'oppose
+        (relation inexprimable au schéma) : 409 nommé, plus 400."""
+        client = self.client_as(role=CustomUser.ROLE_ADMIN)
+        r = client.post(URL, self._payload(
+            montant_min='6', montant_max='0'), format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('montant_min', r.json())

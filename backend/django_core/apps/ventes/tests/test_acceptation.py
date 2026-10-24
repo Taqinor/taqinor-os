@@ -395,7 +395,7 @@ class DateAcceptationFutureTests(TestCase):
     setUp = TestDevisAcceptation.setUp
     _devis = TestDevisAcceptation._devis
 
-    def test_future_400(self):
+    def test_future_409(self):
         from datetime import timedelta
         from apps.ventes.domain.cycle_vie import DATE_ACCEPTATION_FUTURE
         devis = self._devis(num=341)
@@ -403,7 +403,7 @@ class DateAcceptationFutureTests(TestCase):
         r = self.api.post(
             f'/api/django/ventes/devis/{devis.id}/accepter/',
             {'nom': 'Client', 'date': demain.isoformat()}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertEqual(r.data['date_acceptation'], [DATE_ACCEPTATION_FUTURE])
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)

@@ -123,7 +123,8 @@ class TestLotsDevis(TestCase):
         resp = auth(self.user).post(
             f'/api/django/ventes/devis/{self.devis.id}/lots/',
             {'nom_lot': 'Site A'}, format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # CI #997 fuzz (24/10) : lot déjà présent = refus d'ÉTAT, 409.
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_qjr648_ordre_non_numerique_400(self):
         """QJR648 — ROUGE AVANT : ``int('abc')`` → 500."""
@@ -150,6 +151,28 @@ class TestLotsDevis(TestCase):
             {'adresse_site': 'Fès'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         self.assertIn('nom_lot', resp.data)
+
+    def test_api_fuzz_ordre_hors_entier_32_bits_400_sans_lot(self):
+        """api-fuzz — ``ordre: 2291855056940682054`` débordait la colonne
+        (500) : l'entier 32 bits est publié ET appliqué ; un entier JSON
+        seulement (``"3"`` est refusé), des identifiants de ligne >= 1."""
+        url = f'/api/django/ventes/devis/{self.devis.id}/lots/'
+        api = auth(self.user)
+        for corps in ({'nom_lot': 'Z', 'ordre': 2291855056940682054},
+                      {'nom_lot': 'Z', 'ordre': -7769636442879071543},
+                      {'nom_lot': 'Z', 'ordre': '3'},
+                      {'nom_lot': 'Z', 'lignes': [0]},
+                      {'nom_lot': 'Z', 'lignes': [2291855056940682054]},
+                      {'nom_lot': 'x' * 151},
+                      {'nom_lot': ' \u001c '}):
+            with self.subTest(corps=corps):
+                resp = api.post(url, corps, format='json')
+                self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertFalse(LotDevis.objects.filter(
+            devis=self.devis, nom_lot__in=('Z', 'x' * 151)).exists())
+        resp = api.post(url, {'nom_lot': 'Z', 'ordre': 2147483647},
+                        format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
 
     def test_endpoint_isole_les_societes(self):
         autre = DevisFactory(company=CompanyFactory())

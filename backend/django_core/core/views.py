@@ -19,8 +19,8 @@ une couche de base (import-linter).
 """
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_serializer, extend_schema_view,
-    inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_serializer,
+    extend_schema_view, inline_serializer,
 )
 from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import (
@@ -53,6 +53,7 @@ from . import payment as payment_infra
 from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
+from .views_periode import _PERIODE_OPTIONNELLE_TYPE, _RE_PERIODE, _periode_ou_400
 from .champs_stricts import ChaineStricte, EntierStrict
 from .conflit_etat import ConflitEtat
 from .mixins import TenantMixin
@@ -561,7 +562,7 @@ def mes_processus_view(request):
 
 
 _P_CHARGE = [
-    _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
+    _q('periode', _PERIODE_OPTIONNELLE_TYPE, 'Période AAAA-MM (vide : tout).'),
     # ERR-ENF11-FUZZ-CORE — ``minimum`` publié : ``seuil=-538`` était
     # conforme au schéma puis refusé (400 « doit être positif »).
     _q('seuil', {'type': 'integer', 'minimum': 0},
@@ -603,7 +604,7 @@ def charge_approbateurs_view(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
     return Response(core_selectors.rapport_charge_approbateurs(
-        company, periode=request.query_params.get('periode'), seuil=seuil))
+        company, periode=_periode_ou_400(request), seuil=seuil))
 
 
 #: NTWFL34 — colonnes de la piste d'audit des décisions, dans l'ordre affiché
@@ -622,7 +623,7 @@ _COLONNES_CONFORMITE = [
 
 
 _P_CONFORMITE = [
-    _q('periode', OpenApiTypes.STR, 'Période AAAA-MM.'),
+    _q('periode', _PERIODE_OPTIONNELLE_TYPE, 'Période AAAA-MM (vide : tout).'),
     _q('export', OpenApiTypes.STR, 'xlsx : classeur téléchargeable.',
        enum=['xlsx'])]
 
@@ -660,7 +661,7 @@ def rapport_conformite_view(request):
     from . import workflow as workflow_engine
 
     company = getattr(request.user, 'company', None)
-    periode = request.query_params.get('periode')
+    periode = _periode_ou_400(request)
     rapport = workflow_engine.decisions_conformite(company, periode=periode)
     # ERR-ENF11-FUZZ-CORE — ``?export=AAA`` (hors énum publiée) = 400.
     if choix_ou_400(request, 'export', ('xlsx',)) == 'xlsx':
@@ -2245,7 +2246,10 @@ def _est_directeur_ou_admin(user):
            required=True),
         _q('periode_fin', _PERIODE_TYPE, 'Fin AAAA-MM (>= début).',
            required=True)],
-    responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+               409: OpenApiResponse(description=(
+                   "Conflit d'état : `periode_fin` antérieure à `periode_debut` "
+                   "(relation entre deux paramètres, inexprimable au schéma)."))})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def registre_fiabilite_export_pdf(request):
@@ -2263,17 +2267,20 @@ def registre_fiabilite_export_pdf(request):
 
     debut_str = request.query_params.get('periode_debut')
     fin_str = request.query_params.get('periode_fin')
-    try:
-        debut = datetime.strptime(debut_str, '%Y-%m').date().replace(day=1)
-        fin = datetime.strptime(fin_str, '%Y-%m').date().replace(day=1)
-    except (TypeError, ValueError):
+    # Même règle que le motif publié (``_PERIODE_TYPE``) : ``2026-1`` que
+    # ``strptime`` lisait est refusé comme le schéma le dit.
+    if not all(isinstance(v, str) and _RE_PERIODE.fullmatch(v)
+               for v in (debut_str, fin_str)):
         return Response(
             {'detail': 'Format de période invalide (attendu YYYY-MM).'},
             status=status.HTTP_400_BAD_REQUEST)
+    debut = datetime.strptime(debut_str, '%Y-%m').date().replace(day=1)
+    fin = datetime.strptime(fin_str, '%Y-%m').date().replace(day=1)
     if fin < debut:
-        return Response(
-            {'detail': 'periode_fin doit être postérieure à periode_debut.'},
-            status=status.HTTP_400_BAD_REQUEST)
+        # api-fuzz-full 24/10 — deux paramètres conformes dont l'ORDRE (relation
+        # inexprimable au schéma) s'oppose : 409, comme les bornes min/max.
+        raise ConflitEtat(
+            {'periode_fin': ['periode_fin doit être postérieure à periode_debut.']})
 
     pdf_bytes = generer_pdf_registre_fiabilite(
         request.user.company, debut, fin)

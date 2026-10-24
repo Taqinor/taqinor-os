@@ -393,7 +393,8 @@ class DevisEditionActionsMixin:
             devis, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=D.ReplaceLinesRequest, responses=DevisSerializer)
+    @extend_schema(request=D.ReplaceLinesRequest, responses=DevisSerializer,
+                   extensions=D.CORPS_REPLACE_LINES)
     @action(detail=True, methods=['post'], url_path='replace-lines',
             permission_classes=[IsResponsableOrAdmin])
     def replace_lines(self, request, pk=None):
@@ -423,10 +424,12 @@ class DevisEditionActionsMixin:
         refus = _refus_verrou(devis, request)
         if refus is not None:
             return refus
-        # api-fuzz (24/10/2026) — un corps JSON qui n'est pas un objet
-        # (``[null, null]``) faisait un 500 sur ``.get`` : 400 nommé.
-        corps = request.data if isinstance(request.data, dict) else {}
-        lignes_in = corps.get('lignes')
+        # api-fuzz — ``null``, une liste ou un nombre en corps : 400, pas
+        # ``AttributeError`` (500) sur ``request.data.get``.
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
                             status=status.HTTP_400_BAD_REQUEST)

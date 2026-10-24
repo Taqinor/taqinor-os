@@ -5,21 +5,116 @@ Un corps qui n'est pas un objet JSON (``[null]``, ``-1``…) levait une 500 sur
 sérialiseurs répondent 400 (DRF) et servent aussi de déclaration OpenAPI.
 """
 from django.core.validators import RegexValidator
+from drf_spectacular.extensions import OpenApiSerializerExtension
+from drf_spectacular.openapi import AutoSchema
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_field, inline_serializer,
 )
 from rest_framework import serializers, status
 
-from core.champs_stricts import BooleenStrict, ChaineStricte
+from core.champs_stricts import (
+    MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL, BooleenStrict, ChaineStricte,
+)
+
+from .selectors import MOBILE_HOME_ALLOWED_ROUTES
 
 
 class SwitchCompanyRequete(serializers.Serializer):
     company_id = serializers.IntegerField(min_value=1, max_value=2147483647)
 
 
+@extend_schema_field({'type': 'string', 'nullable': True,
+                      'enum': sorted(MOBILE_HOME_ALLOWED_ROUTES)})
+class RouteAccueilChamp(ChaineStricte):
+    """api-fuzz full 24/10 — la route d'accueil est une valeur de la
+    whitelist (``''`` = tableau de bord) ou ``null`` : l'énumération est
+    PUBLIÉE (``"f"`` était « conforme » puis refusé « Route inconnue. »). Le
+    contrôle de la vue reste (défense en profondeur)."""
+
+
 class MobileHomeRouteRequete(serializers.Serializer):
-    route = ChaineStricte(required=False, allow_null=True, allow_blank=True)
+    route = RouteAccueilChamp(required=False, allow_null=True, allow_blank=True)
+
+
+def nom_requetable(texte):
+    """Vrai si ``texte`` (identifiant saisi) peut être cherché en base : non
+    vide et SANS caractère nul (PostgreSQL lève dessus — 500). Faux :
+    aucune recherche, la validation DRF qui suit répond 400."""
+    return bool(texte) and chr(0) not in texte
+
+
+def role_demande(champ, brut):
+    """Le rôle que le PATCH résoudrait (MÊME champ DRF que la mise à jour),
+    ou ``None`` si ce champ le refuse — la mise à jour échouera alors en 400.
+    api-fuzz full 24/10 : ``Role.objects.filter(pk="abc")`` levait (500)."""
+    try:
+        return champ.to_internal_value(brut)
+    except (serializers.ValidationError, TypeError, ValueError):
+        return None
+
+
+class _SchemaCorpsObligatoire(AutoSchema):
+    """Corps de requête publié ``required`` (drf-spectacular ne le fait que
+    si le composant porte un champ requis — un schéma brut passait pour
+    FACULTATIF, et un PATCH sans corps, refusé en 400, était « conforme »)."""
+
+    def _get_request_body(self, direction='request'):
+        corps = super()._get_request_body(direction)
+        if corps:
+            corps['required'] = True
+        return corps
+
+
+def exiger_corps(methode):
+    """api-fuzz full 24/10 — pose ``_SchemaCorpsObligatoire`` SOUS le schéma
+    déjà étendu par ``@extend_schema`` de ``methode`` (qui reste la base) ;
+    appelé depuis ``urls.py`` (``views.py`` est un fichier-mur, C20)."""
+    kwargs = getattr(methode, 'kwargs', None)
+    if kwargs is None:
+        kwargs = methode.kwargs = {}
+    base = kwargs.get('schema') or AutoSchema
+    kwargs['schema'] = type(
+        'CorpsObligatoire' + base.__name__, (_SchemaCorpsObligatoire, base), {})
+    return methode
+
+
+def _chaines_sans_nul(serialiseur, schema):
+    """Publie, sur chaque champ texte d'écriture de ``serialiseur``, le motif
+    que DRF applique sans le dire : aucun caractère nul (non blanc quand le
+    champ refuse le vide après rognage — règle de ``core.champs_stricts``)."""
+    schema = dict(schema)
+    proprietes = dict(schema.get('properties', {}))
+    for nom, champ in serialiseur.fields.items():
+        prop = proprietes.get(nom)
+        if (champ.read_only or not isinstance(champ, serializers.CharField)
+                or not prop or prop.get('type') != 'string'
+                or any(cle in prop for cle in ('pattern', 'format', 'enum'))):
+            continue
+        non_blanc = champ.trim_whitespace and not champ.allow_blank
+        proprietes[nom] = {**prop, 'pattern': (
+            MOTIF_NON_BLANC_SANS_NUL if non_blanc else MOTIF_SANS_NUL)}
+    schema['properties'] = proprietes
+    return schema
+
+
+class _JetonsSansNul(OpenApiSerializerExtension):
+    """api-fuzz full 24/10 (``POST token/verify/``, ``POST token/``) — un
+    caractère nul était « conforme » au schéma puis refusé (400) par DRF : le
+    motif est publié. Schéma seul ; vérification des jetons inchangée."""
+    target_class = 'rest_framework_simplejwt.serializers.TokenVerifySerializer'
+    priority = 1
+
+    def map_serializer(self, auto_schema, direction):
+        schema = auto_schema._map_serializer(
+            self.target, direction, bypass_extensions=True)
+        if direction != 'request':
+            return schema
+        return _chaines_sans_nul(self.target, schema)
+
+
+class _ConnexionSansNul(_JetonsSansNul):
+    target_class = 'authentication.serializers.CustomTokenObtainPairSerializer'
 
 
 @extend_schema_field({'type': 'string', 'enum': ['fr', 'en', 'ar']})

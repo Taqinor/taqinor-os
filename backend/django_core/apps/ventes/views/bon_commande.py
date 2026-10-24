@@ -128,6 +128,22 @@ def _erreur_lignes_livraison(lignes, date_livraison):
             return 'quantite doit être un nombre.'
         if not quantite.is_finite():
             return 'quantite doit être un nombre fini.'
+        # CI #997 fuzz (24/10) — la règle publiée au schéma (``LigneLivraison``) :
+        # strictement positive, 2 décimales au plus, 10 chiffres entiers au plus.
+        # Une chaîne suit ``MOTIF_MONTANT_SAISI`` mot pour mot ; un nombre JSON
+        # est jugé sur sa valeur.
+        from .openapi_docs import MOTIF_MONTANT_SAISI
+        import re
+        brut = entree['quantite']
+        if isinstance(brut, bool):
+            return 'quantite doit être un nombre.'
+        if isinstance(brut, str) and not re.fullmatch(
+                MOTIF_MONTANT_SAISI, brut):
+            return ('quantite doit être strictement positive, avec au plus '
+                    '2 décimales.')
+        if not isinstance(brut, str) and not (
+                Decimal('0.01') <= quantite <= Decimal('9999999999.99')):
+            return 'quantite doit être strictement positive.'
     if date_livraison not in (None, ''):
         try:
             date.fromisoformat(str(date_livraison))
@@ -539,11 +555,13 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=[IsResponsableOrAdmin])
     def annuler(self, request, pk=None):
+        # CI #997 fuzz (24/10) : sans corps, tout refus ci-dessous vient de l'ÉTAT
+        # du BC (livré, livraison partielle, facture vivante) : 409, plus 400.
         bc = self.get_object()
         if bc.statut == BonCommande.Statut.LIVRE:
             return Response(
                 {'detail': 'Un BC livré ne peut pas être annulé.'},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AFAC15 (C-AFAC-006) — un BC PARTIELLEMENT livré a déjà sorti du
         # stock : l'annuler laissait des sorties orphelines (aucune extourne).
@@ -553,7 +571,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     'Ce BC a déjà été livré partiellement : il ne peut plus '
                     'être annulé (le matériel livré est sorti du stock).'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         # AUD118 — UN BC DÉJÀ FACTURÉ NE S'ANNULE PAS EN SILENCE. Le bouton
         # « Facture » est proposé dès `confirme` et le bouton Annuler restait
@@ -574,7 +592,7 @@ class BonCommandeViewSet(CompanyScopedModelViewSet):
                     'ce bon de commande : annulez-la d\'abord, puis annulez '
                     'le bon de commande.'
                 )},
-                status=status.HTTP_400_BAD_REQUEST,
+                status=status.HTTP_409_CONFLICT,
             )
         bc.statut = BonCommande.Statut.ANNULE
         bc.save()

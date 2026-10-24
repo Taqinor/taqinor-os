@@ -20,7 +20,8 @@ from .facture_gardes import PeutEncaisser
 from ..domain.encaissements import proposer_arrondi_caisse
 from ..models import Facture, Paiement
 from ..openapi_params import qstr
-from ..serializers_facturation import FactureSerializer, PaiementSerializer
+from ..serializers_facturation import (
+    FactureListeSerializer, FactureSerializer, PaiementSerializer)
 
 #: Plus grand identifiant d'une clé ``integer`` PostgreSQL (publié en borne).
 _ENTIER_MAX = 2 ** 31 - 1
@@ -68,7 +69,7 @@ class FactureEncaissementActionsMixin:
         })
 
     @extend_schema(request=PaiementSerializer,
-                   responses={201: FactureSerializer},
+                   responses={201: FactureListeSerializer},
                    extensions=D.CORPS_MONTANT_POSITIF)
     @action(detail=True, methods=['post'], url_path='enregistrer-paiement',
             permission_classes=[PeutEncaisser])
@@ -227,7 +228,7 @@ class FactureEncaissementActionsMixin:
                          'montant_repris': str(abandon.montant)})
 
     @extend_schema(request=D.LibererRetenueRequest,
-                   responses={200: FactureSerializer,
+                   responses={200: FactureListeSerializer,
                               400: D.ErreurRetenue, 409: D.ErreurRetenue})
     @action(detail=True, methods=['post'], url_path='liberer-retenue',
             permission_classes=[IsResponsableOrAdmin])

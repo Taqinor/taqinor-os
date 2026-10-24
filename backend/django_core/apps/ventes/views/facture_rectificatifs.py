@@ -22,7 +22,8 @@ from . import openapi_docs as D
 from .facture_gardes import PeutEncaisser
 from ..models import Facture, LigneNoteDebit, NoteDebit
 from ..serializers_facturation import (
-    AvoirSerializer, FactureSerializer, NoteDebitSerializer,
+    AvoirSerializer, FactureListeSerializer, FactureSerializer,
+    NoteDebitSerializer,
 )
 from ..utils.company_settings import create_numbered, create_provisoire
 from ..utils.corps import valider_corps, valider_corps_lignes
@@ -277,15 +278,38 @@ class FactureRectificatifsActionsMixin:
                         status=status.HTTP_400_BAD_REQUEST)
                 from apps.stock.selectors import get_produit_scoped
                 if get_produit_scoped(facture.company, produit_id) is None:
+                    # CI #997 fuzz (24/10) : produit bien formé mais absent
+                    # du catalogue = 404 (comme ``retour-client``).
                     return Response(
                         {'detail': f'Ligne {i} : produit inconnu.'},
-                        status=status.HTTP_400_BAD_REQUEST)
+                        status=status.HTTP_404_NOT_FOUND)
                 clean_lignes.append({
                     'produit_id': produit_id,
                     'designation': designation[:255],
                     'quantite': qte, 'prix_unitaire': pu,
                     'remise': remise, 'taux_tva': taux_tva,
                 })
+
+        if clean_lignes:
+            # CI #997 fuzz (24/10) : chaque ligne est dans ses bornes (< 10^8)
+            # mais leur PRODUIT ne l'est pas : le total TTC de la note doit
+            # tenir dans les 10 chiffres entiers des montants (colonne et
+            # schéma). Un total qui déborde est un refus d'ÉTAT (409), plus
+            # une 500 « numeric field overflow » à l'écriture.
+            from decimal import Decimal as _D
+            taux_facture = facture.taux_tva or _D('0')
+            total_ttc = sum(
+                (ln['quantite'] * ln['prix_unitaire']
+                 * (1 - ln['remise'] / _D('100'))
+                 * (1 + (taux_facture if ln['taux_tva'] is None
+                         else ln['taux_tva']) / _D('100'))
+                 for ln in clean_lignes), _D('0'))
+            if total_ttc >= _D('10') ** 10:
+                from core.conflit_etat import ConflitEtat
+                raise ConflitEtat(
+                    'Le total de la note de débit dépasse le maximum '
+                    "admis (10 000 000 000) : réduisez les quantités ou les "
+                    'prix.')
 
         # AFAC32 (C-AFAC-026, D-AFAC-C4) — note de débit PARTIELLE seulement :
         # des `lignes` saisies, ou un `montant` HT + `taux_tva`. Plus jamais
@@ -419,7 +443,7 @@ class FactureRectificatifsActionsMixin:
                         status=status.HTTP_201_CREATED)
 
     @extend_schema(request=None,
-                   responses={201: FactureSerializer, 403: D.ErreurDetail})
+                   responses={201: FactureListeSerializer, 403: D.ErreurDetail})
     @action(detail=True, methods=['post'], url_path='facturer-penalites',
             permission_classes=[IsResponsableOrAdmin])
     def facturer_penalites(self, request, pk=None):

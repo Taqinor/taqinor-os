@@ -1,7 +1,7 @@
 from django.urls import path, include
 from drf_spectacular.utils import extend_schema_view
 from rest_framework.routers import DefaultRouter
-from .corps_requetes import SCHEMA_LOGOUT
+from .corps_requetes import SCHEMA_LOGOUT, exiger_corps
 from .views import (
     RegisterView,
     RegisterCompanyView,
@@ -29,6 +29,11 @@ from .views_console import (
     TenantConsoleNoteView,
 )
 from .views_demo_wizard import DemoWizardCreateView, DemoWizardStatusView
+
+# api-fuzz full 24/10 — PATCH sans corps refusé (400 « champ obligatoire ») :
+# le corps est publié ``required`` (schéma seul ; ``views.py`` est un mur, C20).
+exiger_corps(LangueInterfaceView.patch)
+exiger_corps(CalendrierHegirienView.patch)
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='users')

@@ -68,8 +68,11 @@ class WebhookSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     # ENF11 — la règle « https uniquement » est exprimée dans le schéma
     # (``pattern``) ; l'hôte public/résolvable reste contrôlé par
     # ``validate_target_url`` (DNS, anti-SSRF), non exprimable.
+    # api-fuzz full 24/10 — ``\S`` laissait passer le caractère nul et les
+    # contrôles (que DRF refuse, 400 sur un corps « conforme ») : le motif
+    # publié les exclut, comme le serveur.
     target_url = serializers.RegexField(
-        r'^https://\S+$', max_length=500,
+        r'^https://[^\s\x00-\x1f]+$', max_length=500,
         error_messages={'invalid': "L'URL du webhook doit utiliser https."})
     # ENF11 — liste de textes : un non-tableau ou un code non texte levait
     # TypeError dans ``validate_events`` (500) ; désormais 400.
@@ -171,6 +174,21 @@ class ApiUsagePlanSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
+def expiration_future(valeur):
+    """api-fuzz full 24/10 (``identity/service-accounts``) — une expiration
+    DÉJÀ PASSÉE est refusée : ``0192-12-23T…`` était enregistrée puis rendue
+    à l'heure locale historique (``-00:30:20``, décalage hors RFC 3339 : la
+    réponse violait son ``format: date-time``). « Passée » dépend de l'horloge
+    du serveur, pas du corps : 409. ``None`` (aucune expiration) passe."""
+    from django.utils import timezone
+
+    from core.conflit_etat import ConflitEtat
+    if valeur is not None and valeur <= timezone.now():
+        raise ConflitEtat({'expire_le': [
+            "La date d'expiration doit être dans le futur."]})
+    return valeur
+
+
 class ServiceAccountSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
     """NTSEC24 — compte de service (jeton renvoyé UNE fois à la création)."""
     # ENF11 — liste de textes (le JSONField générique laissait passer ``null``
@@ -185,3 +203,6 @@ class ServiceAccountSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'prefix', 'last_used_at', 'created_at']
+
+    def validate_expire_le(self, value):
+        return expiration_future(value)

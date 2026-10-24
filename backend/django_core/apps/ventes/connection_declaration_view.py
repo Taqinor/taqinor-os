@@ -11,7 +11,8 @@ et le moteur premium n'est pas touché). Jamais de prix d'achat / marge en sorti
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from . import openapi_shapes as SH
-from .openapi_params import qstr
+from .models_regulatory import REGIME_CHOICES
+from .openapi_params import choix_requete, qstr
 from django.http import HttpResponse, Http404
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -27,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 
 @extend_schema(
-    parameters=[qstr('regime'), qstr('format', enum=['pdf'])],
+    parameters=[qstr('regime', enum=[c for c, _ in REGIME_CHOICES]),
+                qstr('format', enum=['pdf'])],
     responses={
         (200, 'application/json'): SH.DeclarationRaccordementResponse,
         (200, 'application/pdf'): OpenApiTypes.BINARY,
@@ -72,7 +74,7 @@ def declaration_raccordement(request, pk):
             "connection_declaration_view.declaration_raccordement : erreur ignorée (mode dégradé)", exc_info=True)
         chantier = None
 
-    regime = request.query_params.get('regime')
+    regime = choix_requete(request, 'regime', [c for c, _ in REGIME_CHOICES])
     # Repli : si non fourni, prendre le régime du chantier lié s'il existe.
     if not regime and chantier is not None:
         regime = getattr(chantier, 'regime_8221', None)
@@ -87,7 +89,7 @@ def declaration_raccordement(request, pk):
     data = build_declaration_data(devis, chantier=chantier, regime_8221=regime,
                                   niveau_chantier=niveau_chantier)
 
-    if request.query_params.get('format') == 'pdf':
+    if choix_requete(request, 'format', ['pdf']) == 'pdf':
         try:
             pdf_bytes = render_declaration_pdf(data)
         except Exception as exc:

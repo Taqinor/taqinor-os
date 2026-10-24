@@ -160,7 +160,22 @@ class DecoupesEndpointTests(Xstk16Base):
             {'produit_source': self.touret.pk, 'quantite_consommee': 99,
              'produit_cible': self.coupe.pk, 'quantite_produite': 990},
             format='json')
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 409)  # refus d'ÉTAT (api-fuzz), pas un corps invalide
+
+    def test_endpoint_corps_hors_schema_400_et_fk_inconnue_404(self):
+        url = '/api/django/stock/produits/decoupes/'
+        base = {'produit_source': self.touret.pk, 'quantite_consommee': 1,
+                'produit_cible': self.coupe.pk, 'quantite_produite': 10}
+        for surcharge in ({'quantite_produite': 10 ** 38}, {'quantite_consommee': 0},
+                          {'quantite_produite': 2_000_000}, {'lot_source': {}},
+                          {'emplacement': 'x'}):
+            resp = self.api.post(url, {**base, **surcharge}, format='json')
+            self.assertEqual(resp.status_code, 400, (surcharge, resp.content))
+        for surcharge in ({'emplacement': 987654}, {'lot_source': 987654}):
+            resp = self.api.post(url, {**base, **surcharge}, format='json')
+            self.assertEqual(resp.status_code, 404, (surcharge, resp.content))
+        self.touret.refresh_from_db()
+        self.assertEqual(self.touret.quantite_stock, 1)
 
     def test_endpoint_produit_introuvable(self):
         resp = self.api.post(

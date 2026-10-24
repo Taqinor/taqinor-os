@@ -24,11 +24,11 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
-from core.champs_stricts import QUANTITE_MAX
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, QUANTITE_MAX
 from ..erreurs_achats import debordement_compteur_en_409, statut_refus_metier
 
 
-@extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=r'\S')], responses={
+@extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=MOTIF_NON_BLANC_SANS_NUL)], responses={
     200: inline_serializer('StockScannerResoudreResultat', {
         'type': serializers.CharField(),
         'id': serializers.IntegerField(),
@@ -56,7 +56,7 @@ def scanner_resoudre_view(request):
     from ..selectors import resoudre_code_scanne
 
     code = (request.query_params.get('code') or '').strip()
-    if not code:
+    if not code or '\x00' in code:
         return Response({'detail': 'Code illisible.'},
                         status=status.HTTP_400_BAD_REQUEST)
     resultat = resoudre_code_scanne(request.user.company, code)
@@ -152,7 +152,8 @@ def scanner_mouvement_view(request):
     }, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU', pattern=r'\S'), P('quantite', INT)], responses={
+@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU', pattern=MOTIF_NON_BLANC_SANS_NUL),
+                           P('quantite', INT)], responses={
     200: inline_serializer('StockScannerRetourFournisseurLigne', {
         'produit': serializers.IntegerField(),
         'produit_nom': serializers.CharField(),
@@ -188,6 +189,10 @@ def scanner_retour_fournisseur_view(request):
     from ..services_retour_scanne import (
         CodeInconnu, preparer_ligne_retour_scannee,
     )
+
+    if '\x00' in (request.query_params.get('code') or ''):  # nul publié interdit (500 SQL avant)
+        return Response({'detail': 'Code illisible.'},
+                        status=status.HTTP_400_BAD_REQUEST)
 
     try:
         ligne = preparer_ligne_retour_scannee(

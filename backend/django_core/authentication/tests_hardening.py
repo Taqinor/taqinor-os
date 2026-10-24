@@ -188,3 +188,24 @@ class CookieVideTests(TestCase):
         api = APIClient()
         api.cookies['access_token'] = str(AccessToken.for_user(self.user))
         self.assertEqual(api.get(self.url).status_code, 200)
+
+
+class AuthorizationMalFormeTests(TestCase):
+    """Nocturne 24/10/2026 — un en-tête Authorization présent mais qui n'est pas
+    « Bearer <jeton> » répond 401, même avec un cookie valide."""
+
+    def test_en_tete_mal_forme_401_meme_avec_cookie(self):
+        from authentication.cookie_auth import CookieJWTAuthentication
+        from rest_framework.exceptions import AuthenticationFailed
+        from rest_framework.test import APIRequestFactory
+        fab = APIRequestFactory()
+        for valeur in ('0', 'Basic abc', 'Bearer', 'Bearer é!!', 'Token x'):
+            req = fab.get('/api/django/x/', HTTP_AUTHORIZATION=valeur)
+            req.COOKIES['access_token'] = 'jeton-quelconque'
+            with self.assertRaises(AuthenticationFailed, msg=valeur):
+                CookieJWTAuthentication().authenticate(req)
+
+    def test_bearer_bien_forme_passe_la_garde(self):
+        from authentication.cookie_auth import _BEARER_BIEN_FORME
+        self.assertTrue(_BEARER_BIEN_FORME.match('Bearer abc.DEF-123_~+/=='))
+        self.assertFalse(_BEARER_BIEN_FORME.match('Bearer '))

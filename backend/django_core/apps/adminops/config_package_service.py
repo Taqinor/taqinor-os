@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from core.conflit_etat import ConflitEtat
+
 from .models import ConfigPackage, ConfigPackageApplication
 
 _INT_MAX = 2147483647
@@ -32,15 +34,46 @@ def _contient_nul(valeur):
     return False
 
 
+def _objets(requis, textes, extra=None):
+    """Schéma d'une catégorie : liste d'objets portant la clé naturelle
+    ``requis`` (texte) et des champs texte bornés ``{champ: longueur}``."""
+    proprietes = {
+        champ: {'type': 'string', **({'maxLength': maxi} if maxi else {})}
+        for champ, maxi in textes.items()}
+    proprietes.update(extra or {})
+    return {'type': 'array', 'items': {
+        'type': 'object', 'required': [requis], 'properties': proprietes}}
+
+
+#: La forme que ``valider_contenu_import`` exige, publiée telle quelle (les
+#: refus de forme répondaient 400 sur un ``contenu`` publié « objet libre »).
+SCHEMA_CONTENU = {
+    'type': 'object',
+    'properties': {
+        '_nom': {'type': 'string', 'maxLength': 150},
+        '_version': {'type': 'integer', 'minimum': 0, 'maximum': _INT_MAX},
+        'roles_custom': _objets('nom', {'nom': 100}, {'permissions': {
+            'type': 'array', 'items': {'type': 'string'}}}),
+        'custom_fields': _objets('code', {
+            'code': 50, 'module': 60, 'type': 12, 'libelle': 120}),
+        'message_templates': _objets('cle', {
+            'cle': 40, 'corps_fr': None, 'corps_darija': None}),
+    },
+}
+
+
 def valider_contenu_import(contenu):
     """ENF11 (api-fuzz « Server error ») — valide la FORME d'un package avant
     toute lecture/écriture : un contenu mal formé (liste là où une chaîne est
     attendue, clé naturelle absente ou non texte, NUL…) levait ``KeyError`` /
-    ``TypeError`` / ``DataError`` (500). Lève une 400 nommant le champ fautif ;
-    un package bien formé (même vide) passe inchangé."""
+    ``TypeError`` / ``DataError`` (500). Lève une 400 nommant le champ fautif
+    (forme PUBLIÉE au schéma : ``SCHEMA_CONTENU``) ; un package bien formé
+    (même vide) passe inchangé.
+
+    api-fuzz full 24/10 — un caractère nul (clé ou valeur, à toute profondeur,
+    propriétés libres comprises) est un refus que le schéma ne peut pas dire
+    (OpenAPI 3.0 sans ``propertyNames``) : 409, après les refus de forme."""
     erreurs = {}
-    if _contient_nul(contenu):
-        erreurs['contenu'] = ['Caractère nul interdit.']
     nom = contenu.get('_nom', '')
     if not isinstance(nom, str) or len(nom) > 150:
         erreurs['_nom'] = ['Chaîne de 150 caractères maximum attendue.']
@@ -80,6 +113,10 @@ def valider_contenu_import(contenu):
                 break
     if erreurs:
         raise serializers.ValidationError(erreurs)
+    if _contient_nul(contenu):
+        raise ConflitEtat(
+            "Le package porte un caractère nul : il ne peut pas être "
+            'enregistré.')
 
 
 def _roles_custom(company):

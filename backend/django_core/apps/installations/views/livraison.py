@@ -70,9 +70,11 @@ def _exiger_transition_livraison(liv, cible):
     effet (stock, notification, webhook)."""
     if cible in TRANSITIONS_LIVRAISON.get(liv.statut, set()):
         return
+    # api-fuzz full : refus d'ETAT (transition interdite depuis le statut
+    # courant) -> 409, plus un 400 sur une requete sans corps conforme.
     if liv.statut == _LS.PLANIFIEE and cible == _LS.LIVREE:
-        raise ValidationError({'statut': "Expédiez d'abord la livraison."})
-    raise ValidationError({'statut': (
+        raise ConflitEtat({'statut': "Expédiez d'abord la livraison."})
+    raise ConflitEtat({'statut': (
         f"Livraison {liv.get_statut_display().lower()} : impossible de "
         f"{_VERBES_LIVRAISON.get(cible, 'changer son statut')}.")})
 
@@ -204,7 +206,7 @@ class LivraisonViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 liv.statut = Livraison.Statut.EN_TRANSIT
                 liv.save(update_fields=['statut', 'date_modification'])
         except ExpeditionImpossible as exc:
-            raise ValidationError({'lignes': str(exc)})
+            raise ConflitEtat({'lignes': str(exc)})
         self._notify_client(liv, Livraison.Statut.EN_TRANSIT, request)
         return Response(self.get_serializer(liv).data)
 

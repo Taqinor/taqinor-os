@@ -79,7 +79,8 @@ class AliasEmailTests(TestCase):
                   format='json')
         resp = api.patch(f'{BASE}{self.autre.pk}/', {'alias_email': 'compta'},
                          format='json')
-        self.assertEqual(resp.status_code, 400, resp.content)
+        # api-fuzz-full 24/10 — alias déjà pris = conflit d'état (409).
+        self.assertEqual(resp.status_code, 409, resp.content)
         self.assertIn('déjà utilisé', str(resp.data['alias_email']))
         self.autre.refresh_from_db()
         self.assertEqual(self.autre.alias_email, '')

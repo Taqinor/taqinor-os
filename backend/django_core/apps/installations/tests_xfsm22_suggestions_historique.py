@@ -182,6 +182,15 @@ class TestSuggestionsCreationApi(TestCase):
         self.api = auth(self.user)
         self.inst = make_installation(self.company)
 
+    def test_parametres_texte_nul_400_jamais_500(self):
+        # api-fuzz full : un caractère nul fait lever le pilote Postgres.
+        url = f'{BASE}/interventions/suggestions-creation/'
+        for params in ({'type_intervention': 'a\x00b'},
+                       {'type_intervention': 'pose',
+                        'type_installation': 'a\x00b'}):
+            r = self.api.get(url, params)
+            self.assertEqual(r.status_code, 400, (params, r.content))
+
     def test_requires_type_intervention(self):
         r = self.api.get(f'{BASE}/interventions/suggestions-creation/')
         self.assertEqual(r.status_code, 400)

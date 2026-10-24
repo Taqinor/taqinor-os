@@ -122,6 +122,7 @@ class TestSchemaFicheBornes(SimpleTestCase):
             'ond_rendement_cec_pct': r'^-?(?:\d{1,3}(?:\.\d{0,1})?|\.\d{1,1})$',
             'bat_c_rate_charge': r'^-?(?:\d{1,2}(?:\.\d{0,2})?|\.\d{1,2})$',
             'bat_c_rate_decharge': r'^-?(?:\d{1,2}(?:\.\d{0,2})?|\.\d{1,2})$',
+            'ond_conso_nuit_w': r'^-?(?:\d{1,5}(?:\.\d{0,2})?|\.\d{1,2})$',
             'lim_phases': None,
         }
         props = {n: ({**base, 'pattern': m} if m else {'type': 'integer'})
@@ -143,7 +144,7 @@ class TestSchemaFicheBornes(SimpleTestCase):
                    '0.5', '.5', '.01', '1', '1.0', '5.', '99.9', '100',
                    '100.0', '100.1', '101', '-1', '12.345', '99.99']
         for nom in ('ond_rendement_max_pct', 'ond_rendement_cec_pct',
-                    'bat_c_rate_charge', 'bat_c_rate_decharge'):
+                    'bat_c_rate_charge', 'bat_c_rate_decharge', 'ond_conso_nuit_w'):
             motif = re.compile(props[nom]['pattern'])
             for v in valeurs:
                 if not motif.search(v):
@@ -152,6 +153,15 @@ class TestSchemaFicheBornes(SimpleTestCase):
                     champs[nom].run_validation(v)
                 except ValidationError as exc:
                     self.fail(f'{nom}={v!r} publié mais refusé : {exc.detail}')
+
+    def test_conso_nuit_sans_signe_zero_publie(self):
+        # api-fuzz : ``ond_conso_nuit_w`` >= 0 (MinValueValidator) — « -.17 » était publié.
+        import re
+        motif = self._schema()['ond_conso_nuit_w']['pattern']
+        for refuse in ('-.17', '-1', '-0'):
+            self.assertIsNone(re.search(motif, refuse), refuse)
+        for accepte in ('0', '.17', '5', '12345.67'):
+            self.assertIsNotNone(re.search(motif, accepte), accepte)
 
     def test_zero_n_est_plus_publie_et_phases_limitees(self):
         import re
@@ -251,7 +261,7 @@ class TestSaisieEtLecture(CIQ101Base):
             'produit': p.pk, 'type_fiche': 'structure',
             'struct_type_pose': 'toit_plat_leste',
             'struct_masse_kg_m2': 12}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : règle croisée masse/notice
         self.assertIn('struct_notice', r.data)
         r = client.post(URL_FICHES, {
             'produit': p.pk, 'type_fiche': 'structure',

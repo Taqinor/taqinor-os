@@ -260,6 +260,17 @@ class TestPlanChargeTenant(TestCase):
         self.assertIn(tech_a.id, ids)
         self.assertNotIn(tech_b.id, ids)
 
+    def test_fenetre_trop_longue_409_et_heures_hors_bornes_400(self):
+        # api-fuzz full : une fenêtre de siècles faisait boucler puis déborder
+        # (500) ; heures_par_jour 1e308 donnait un JSON invalide.
+        url = f'{BASE}/interventions/plan-de-charge/'
+        r = self.api.get(url, {'debut': '2463-12-19', 'fin': '9711-11-24'})
+        self.assertEqual(r.status_code, 409, r.content)
+        for valeur in ('1.7976931348623155e+308', '25', '-1'):
+            r = self.api.get(url, {'heures_par_jour': valeur})
+            self.assertEqual(r.status_code, 400, (valeur, r.content))
+            self.assertIn('heures_par_jour', r.json())
+
     def test_endpoint_returns_plan(self):
         """FG299 — l'endpoint ``plan-de-charge`` renvoie le plan de charge sur
         la fenêtre passée en paramètres."""

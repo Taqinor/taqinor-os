@@ -213,7 +213,7 @@ class TestEndpointsCrossDock(Ntwms15Base):
         url = (f'/api/django/stock/receptions-fournisseur/{reception.id}/'
                'affecter-cross-dock/')
         reponse = self.api.post(url, {}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 409)  # ENF11 : aucune vague en attente = état
         self.assertIn('detail', reponse.data)
 
     def test_autre_societe_ne_voit_pas_la_reception(self):

@@ -178,6 +178,16 @@ class TestFG71CoutEndpoint(TestCase):
         self.inst = make_chantier(
             self.company, self.admin, [(self.panneau, 10, 100)])
 
+    def test_tarif_jour_non_nombre_ou_hors_bornes_400(self):
+        # api-fuzz full : `?tarif_jour=false` était accepté (retombait à 0).
+        url = f'/api/django/installations/chantiers/{self.inst.id}/cout/'
+        api = auth(self.admin)
+        for valeur in ('false', 'nan', '-1', '1e308', '1_0'):
+            r = api.get(url, {'tarif_jour': valeur})
+            self.assertEqual(r.status_code, 400, (valeur, r.content))
+            self.assertIn('tarif_jour', r.json())
+        self.assertEqual(api.get(url, {'tarif_jour': ''}).status_code, 200)
+
     def test_endpoint_admin_ok(self):
         api = auth(self.admin)
         r = api.get(f'/api/django/installations/chantiers/{self.inst.id}/cout/')

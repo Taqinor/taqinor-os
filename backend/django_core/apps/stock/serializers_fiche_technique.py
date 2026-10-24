@@ -1,11 +1,14 @@
 """SPL115 — ``FicheTechniqueSerializer`` déplacé tel quel depuis
 ``serializers.py`` (move only). Même app : aucun ré-export, les appelants
 importent ce module."""
+from django.db import models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.records.storage import AttachmentSerializerMixin, attachment_url
+from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
+from .erreurs_achats import ConflitEtat
 
 # Import DIRECT du module du modèle (pas la façade ``.models``) : sans cycle
 # (``models_fiche_technique`` n'importe rien de stock), et c'est ce que lit
@@ -32,7 +35,8 @@ class FichierFacultatifField(serializers.FileField):
         return super().validate_empty_values(data)
 
 
-class FicheTechniqueSerializer(UniciteEn409Mixin,
+class FicheTechniqueSerializer(IdInconnu404Mixin,
+                               UniciteEn409Mixin,
                                AttachmentSerializerMixin,
                                CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
@@ -45,6 +49,14 @@ class FicheTechniqueSerializer(UniciteEn409Mixin,
     est l'entrée d'upload (écriture seule), ``pdf_url`` l'URL présignée de
     relecture (``None`` pour une fiche antérieure à la bascule)."""
     attachment_fields = ('pdf',)
+
+    # api-fuzz stock B : un texte JSON sans caractère nul (motif publié) —
+    # DRF refusait « \u0000 » en 400 alors que le schéma l'autorisait.
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+    }
 
     pdf = FichierFacultatifField(
         write_only=True, required=False, allow_null=True)
@@ -231,7 +243,9 @@ class FicheTechniqueSerializer(UniciteEn409Mixin,
         notice = attrs.get('struct_notice',
                            getattr(inst, 'struct_notice', None)) or {}
         if masse is not None and not (notice.get('document') or '').strip():
-            raise serializers.ValidationError({
+            # Règle croisée (masse ↔ notice, relue sur l'instance en PATCH)
+            # que le schéma ne dit pas : 409, plus un 400 sur un corps conforme.
+            raise ConflitEtat({
                 'struct_notice': (
                     'Masse de structure saisie sans notice : renseignez le '
                     'document fabricant (`struct_notice.document`).')})

@@ -13,20 +13,38 @@ from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 # Borne haute d'une clé primaire PostgreSQL (integer).
 ID_MAX = 2147483647
 
+
+def ou_vide(schema):
+    """ENF11 (api-fuzz-full) — ``entier_param``/``nombre_param`` lisent un
+    paramètre VIDE comme « absent » : le schéma le dit (valeur ou chaîne vide)
+    au lieu d'annoncer le seul type, que ``?produit=`` contredisait."""
+    return {'oneOf': [schema, {'type': 'string', 'enum': ['']}]}
+
+
+def valeur_param(request, nom):
+    """Valeur brute du paramètre ``nom`` (``None`` si absent) ; un paramètre
+    RÉPÉTÉ est un tableau, que le schéma (scalaire) ne publie pas -> 400."""
+    valeurs = request.query_params.getlist(nom)
+    if len(valeurs) > 1:
+        raise ValidationError(
+            {nom: f"Le paramètre « {nom} » ne doit figurer qu'une fois."})
+    return valeurs[0] if valeurs else None
+
+
 #: CI #956 (api-fuzz « rejected schema-compliant », sav/equipements/?produit=0) —
 #: schéma OpenAPI d'un paramètre d'identifiant lu par ``entier_param`` : les
 #: bornes PUBLIÉES sont celles que la vue applique (``0`` n'est pas un id).
-ENTIER_ID = {'type': 'integer', 'minimum': 1, 'maximum': ID_MAX}
+ENTIER_ID = ou_vide({'type': 'integer', 'minimum': 1, 'maximum': ID_MAX})
 
 #: Plafond de ``?limit=`` (classements de fiabilité du parc).
 LIMITE_MAX = 1000
-LIMITE = {'type': 'integer', 'minimum': 1, 'maximum': LIMITE_MAX}
+LIMITE = ou_vide({'type': 'integer', 'minimum': 1, 'maximum': LIMITE_MAX})
 
 
 def entier_param(request, nom, defaut=None, *, mini=1, maxi=ID_MAX):
     """Entier du paramètre ``nom`` (``defaut`` si absent ou vide), borné à
     ``[mini, maxi]`` ; sinon 400."""
-    brut = request.query_params.get(nom)
+    brut = valeur_param(request, nom)
     if brut is None or str(brut).strip() == '':
         return defaut
     try:
@@ -53,7 +71,7 @@ _ISO_STRICT = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 def date_param(request, nom):
     """Date ``AAAA-MM-JJ`` du paramètre ``nom`` (``None`` si absent ou vide) ;
     toute autre forme → 400 nommant le paramètre, jamais ignorée en silence."""
-    brut = (request.query_params.get(nom) or '').strip()
+    brut = (valeur_param(request, nom) or '').strip()
     if not brut:
         return None
     try:
@@ -68,7 +86,7 @@ def date_param(request, nom):
 def choix_param(request, nom, choix, defaut=None):
     """Valeur du paramètre ``nom`` parmi ``choix`` (``defaut`` si absent ou
     vide) ; toute autre valeur → 400 nommant le paramètre."""
-    brut = request.query_params.get(nom)
+    brut = valeur_param(request, nom)
     if brut is None or brut == '':
         return defaut
     if brut not in choix:
@@ -80,7 +98,7 @@ def choix_param(request, nom, choix, defaut=None):
 def nombre_param(request, nom, mini, maxi):
     """Nombre décimal fini du paramètre ``nom`` dans ``[mini, maxi]`` (``None``
     si absent ou vide) ; sinon 400 nommant le paramètre."""
-    brut = (request.query_params.get(nom) or '').strip()
+    brut = (valeur_param(request, nom) or '').strip()
     if not brut:
         return None
     try:

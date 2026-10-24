@@ -4,6 +4,7 @@ notes de débit, relances, remises, mandats) — déplacés tels quels de
 from decimal import Decimal
 
 from django.core.validators import RegexValidator
+from drf_spectacular.drainage import set_override
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
@@ -18,9 +19,13 @@ from core.champs_stricts import (
     BooleenStrict, ChaineStricte, ChampsStrictsMixin,
     ChampsStrictsSansDecimalMixin, DecimalSouple, EntierStrict, IdInconnu404Mixin, MOTIF_NON_BLANC_SANS_NUL,
 )
+from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
-from .domain.bornes import montant_saisi, pourcentage_saisi
+from .domain.bornes import (
+    montant_saisi, pourcentage_saisi, total_ligne_hors_capacite,
+)
+from .domain.conditions_ci import MOTIF_ACOMPTE, MOTIF_REMISE, _decimal_borne
 
 
 def _retirer_unicite_tranche(serializer):
@@ -193,6 +198,28 @@ class LigneFactureSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,
         # ENF11 (nocturne 15/10) — DRF refuse le caractère nul dans tout texte :
         # le motif PUBLIÉ le dit (non blanc, sans nul), même prédicat appliqué.
         extra_kwargs = {'designation': {'validators': [RegexValidator(MOTIF_NON_BLANC_SANS_NUL)]}}
+
+    def validate(self, attrs):
+        """api-fuzz — quantité et prix valent chacun jusqu'à 8 chiffres
+        entiers, mais leur produit, lui, est SERVI par ``total_ht`` (10
+        chiffres) : une ligne enregistrée au-delà faisait lever
+        ``InvalidOperation`` à CHAQUE lecture (GET, PATCH, PUT → 500). Un
+        corps conforme au schéma dont le montant de ligne ne tient pas est un
+        refus d'état de la capacité du document : 409, même corps par champ ;
+        sur une modification, les valeurs absentes du corps sont celles de la
+        ligne."""
+        instance = self.instance
+
+        def _valeur(nom):
+            return attrs[nom] if nom in attrs else getattr(instance, nom, None)
+
+        if total_ligne_hors_capacite(_valeur('quantite'),
+                                     _valeur('prix_unitaire'),
+                                     _valeur('remise')):
+            raise ConflitEtat({'quantite': (
+                'Montant de ligne trop élevé : la quantité multipliée par le '
+                'prix unitaire dépasse 99 999 999,99.')})
+        return attrs
 
     def create(self, validated_data):
         # Réforme TVA : taux par ligne, copié du produit, repli sur le taux
@@ -545,6 +572,21 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
         return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
 
 
+@extend_schema_field(_decimal_borne(MOTIF_REMISE, 100))
+class PourcentSouple(DecimalSouple):
+    """api-fuzz — ``remise_globale`` d'une facture : chaîne au motif 0-100 à
+    2 décimales OU nombre JSON 0-100 arrondi au centième (``DecimalSouple``),
+    publié ainsi. Un flottant (``0.3333333333333333``) était refusé « pas plus
+    de 5 chiffres » alors qu'il est conforme ; la borne 0-100 reste jugée par
+    ``validate_remise_globale`` (message français de la garde unique)."""
+
+
+#: api-fuzz — montant d'une tranche : positif ou nul (``ck_facture_montants_
+#: positifs``), 10 chiffres entiers, 2 décimales ; la chaîne ``"-0"`` vaut 0.
+_MONTANT_FACTURE_PUBLIE = {'type': 'string', 'format': 'decimal',
+                           'pattern': MOTIF_ACOMPTE, 'nullable': True}
+
+
 class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
                              SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
@@ -570,6 +612,8 @@ class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
     abandon_motif = serializers.ChoiceField(
         choices=Facture.MotifAbandon.choices, allow_blank=True,
         read_only=True)
+    remise_globale = PourcentSouple(
+        max_digits=5, decimal_places=2, required=False)
 
     class Meta:
         model = Facture
@@ -617,6 +661,34 @@ class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _retirer_unicite_tranche(self)
+
+    def get_fields(self):
+        # CI #997 fuzz (24/10) : la remise globale (0-100, 2 décimales) est
+        # PUBLIÉE telle que ``validate_remise_globale`` l'applique — le schéma
+        # annonçait tout décimal et ``101`` répondait 400. Même publication que
+        # l'en-tête du devis (``conditions_ci.publier``).
+        from .domain.conditions_ci import publier
+        fields = super().get_fields()
+        publier(fields)
+        for nom in ('montant_ht', 'montant_tva', 'montant_ttc'):
+            if nom in fields:
+                set_override(fields[nom], 'field', _MONTANT_FACTURE_PUBLIE)
+        return fields
+
+    # api-fuzz — ``ck_facture_montants_positifs`` : un montant négatif était
+    # écrit tel quel et heurtait la contrainte base (IntegrityError → 500).
+    def _montant_facture(self, valeur, champ):
+        return self._borne_montant(
+            valeur, champ, 'Le montant ne peut pas être négatif.')
+
+    def validate_montant_ht(self, valeur):
+        return self._montant_facture(valeur, 'montant_ht')
+
+    def validate_montant_tva(self, valeur):
+        return self._montant_facture(valeur, 'montant_tva')
+
+    def validate_montant_ttc(self, valeur):
+        return self._montant_facture(valeur, 'montant_ttc')
 
 
 class LigneAvoirSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,

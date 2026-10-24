@@ -21,7 +21,7 @@ donc elle ne passe évidemment PAS par le moteur de devis premium ni par
 """
 from drf_spectacular.utils import extend_schema
 from . import openapi_shapes as SH
-from .openapi_params import qstr
+from .openapi_params import choix_requete, qstr
 import re
 
 from django.http import HttpResponse, Http404
@@ -154,7 +154,7 @@ def schema_unifilaire(request):
     corps_valide(request, SH.SchemaUnifilaireRequest)
     params = normalize_diagram_params(request.data or {})
     svg = build_single_line_svg(params)
-    format_demande = request.query_params.get('format')
+    format_demande = choix_requete(request, 'format', ['json', 'pdf'])
     if format_demande == 'json':
         return Response({"params": params, "svg": svg})
     if format_demande == 'pdf':
@@ -196,7 +196,7 @@ def schema_unifilaire_devis(request, pk):
 
     params = diagram_params_from_devis(devis)
     svg = build_single_line_svg(params)
-    format_demande = request.query_params.get('format')
+    format_demande = choix_requete(request, 'format', ['json', 'pdf'])
     if format_demande == 'json':
         return Response({"params": params, "svg": svg})
     if format_demande == 'pdf':

@@ -163,7 +163,6 @@ class Qx21AtomicDevisTests(TestCase):
             f'/api/django/ventes/devis/{devis.id}/replace-lines/', [None, None],
             format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
-        self.assertIn('lignes', str(resp.data.get('detail', '')))
         self.assertEqual(devis.lignes.count(), 1)
 
     def test_replace_lines_produit_inconnu_404(self):

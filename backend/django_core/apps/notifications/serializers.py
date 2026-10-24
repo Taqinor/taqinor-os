@@ -1,10 +1,13 @@
+import datetime
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
 
 from core.mixins import SameCompanyFKSerializerMixin
 from core.champs_stricts import (
-    ChampsStrictsSansDecimalMixin, EntierStrict, IdInconnu404Mixin,
+    MOTIF_NON_BLANC_SANS_NUL, ChampsStrictsSansDecimalMixin, EntierStrict,
+    IdInconnu404Mixin,
 )
 from core.conflit_etat import ConflitEtat
 from apps.records.champs_stricts import (
@@ -213,6 +216,15 @@ class AnnonceSerializer(ChampsStrictsBornesMixin, serializers.ModelSerializer):
         source='auteur.username', read_only=True, default='')
     is_expiree = serializers.SerializerMethodField()
     lus_count = serializers.SerializerMethodField()
+    # ENF11 (api-fuzz-full) — dates rendues en UTC (``…Z``) : le fuseau local
+    # rendait le décalage historique ``-00:30:20`` des dates anciennes, invalide
+    # en RFC 3339 (la réponse violait son schéma).
+    date_publication = serializers.DateTimeField(
+        required=False, allow_null=True,
+        default_timezone=datetime.timezone.utc)
+    date_expiration = serializers.DateTimeField(
+        required=False, allow_null=True,
+        default_timezone=datetime.timezone.utc)
 
     class Meta:
         model = Annonce
@@ -253,7 +265,9 @@ class MessageAccueilSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     same_company_fields = ('destinataire',)
     # Motif publié au schéma : un corps fait de blancs est refusé (400) — le
     # schéma l'annonçait valide (``minLength: 1``).
-    corps = RegexStricte(r'\S')
+    corps = RegexStricte(MOTIF_NON_BLANC_SANS_NUL)
+    visible_a_partir_de = serializers.DateTimeField(
+        default_timezone=datetime.timezone.utc)
     auteur_nom = serializers.CharField(
         source='auteur.username', read_only=True, default='')
     destinataire_nom = serializers.CharField(

@@ -250,6 +250,28 @@ class EnfSchemaValidationTests(TestCase):
                 self.assertEqual(
                     resp.status_code, 400, (action, contenu, resp.content))
 
+    def test_config_package_caractere_nul_409_et_forme_publiee(self):
+        """api-fuzz full 24/10 — un caractère nul (clé ou valeur libre) est
+        inexprimable au schéma : 409, plus 400 ; la forme validée est publiée."""
+        base = '/api/django/adminops/config-packages/'
+        for action in ('previsualiser', 'appliquer'):
+            for contenu in ({'libre': {'a': ['x\x00']}}, {'\x00': 1},
+                            {'_nom': 'a\x00'}):
+                resp = self.client_api.post(
+                    f'{base}{action}/', {'contenu': contenu}, format='json')
+                self.assertEqual(
+                    resp.status_code, 409, (action, contenu, resp.content))
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[path(
+            'api/django/adminops/', include('apps.adminops.urls'))]
+        ).get_schema(request=None, public=True)
+        contenu = schema['components']['schemas']['ContenuConfigRequest'][
+            'properties']['contenu']
+        self.assertEqual(contenu['properties']['_nom']['maxLength'], 150)
+        self.assertEqual(contenu['properties']['roles_custom']['items'][
+            'required'], ['nom'])
+
     def test_reglages_booleen_strict(self):
         # api-fuzz (#988) : `sandbox_autorise: 0` n'est pas un booléen JSON.
         resp = self.client_api.patch(

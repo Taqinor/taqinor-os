@@ -302,11 +302,20 @@ class CalepinageApiTest(BaseApiCalepinage):
         self.assertIn('<img class="ombrage-image"', html)
         self.assertIn('data:image/png;base64,', html)
 
-    def test_format_refuse_400_champ_fichier(self):
+    def test_format_refuse_409_champ_fichier(self):
+        # ERR-ENF11-FUZZ-CALEPINAGE — la chaîne data-URL est conforme au schéma
+        # JSON ; c'est le CONTENU (pas une image) que seul le serveur juge : 409.
         illisible = 'data:image/png;base64,' + base64.b64encode(
             b'ceci n est pas une image').decode('ascii')
         reponse = self.api.post(
             self._url(self.calepinage),
             {'genre': 'ombrage', 'fichier': illisible}, format='json')
+        self.assertEqual(reponse.status_code, 409)
+        self.assertIn('fichier', reponse.data)
+
+    def test_fichier_json_vide_reste_400(self):
+        reponse = self.api.post(
+            self._url(self.calepinage),
+            {'genre': 'ombrage', 'fichier': ''}, format='json')
         self.assertEqual(reponse.status_code, 400)
         self.assertIn('fichier', reponse.data)

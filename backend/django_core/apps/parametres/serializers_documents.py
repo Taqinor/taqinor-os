@@ -7,6 +7,8 @@ byte-identique tant que rien n'est édité)."""
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from core.champs_stricts import MOTIF_SANS_NUL
+
 from .models_documents import DocumentTemplates
 from .requetes_strictes import TypageStrictReglages
 
@@ -14,14 +16,15 @@ from .requetes_strictes import TypageStrictReglages
 #: champs libres du modèle, PUBLIÉES au schéma ET tenues par ``validate_*``
 #: ci-dessous (une seule règle) : le schéma disait « n'importe quel JSON », le
 #: serveur refusait ``true`` ou ``null`` (400) sur un corps « conforme ».
-SCHEMA_PUCES = {'type': 'array', 'items': {'type': 'string'},
-                'nullable': True}
+#: api-fuzz full 24/10 — une puce porteuse d'un caractère nul faisait lever la
+#: base (JSONB, 500) : le motif ``MOTIF_SANS_NUL`` est publié ET appliqué.
+TEXTE_PUCE = {'type': 'string', 'pattern': MOTIF_SANS_NUL}
+SCHEMA_PUCES = {'type': 'array', 'items': TEXTE_PUCE, 'nullable': True}
 SCHEMA_VARIANTE_CGV = {
     'type': 'object', 'nullable': True,
     'properties': {
-        'titre': {'type': 'string', 'nullable': True},
-        'bullets': {'type': 'array', 'items': {'type': 'string'},
-                    'nullable': True},
+        'titre': {**TEXTE_PUCE, 'nullable': True},
+        'bullets': {'type': 'array', 'items': TEXTE_PUCE, 'nullable': True},
     },
 }
 SCHEMA_CGV_PAR_MODE = {
@@ -30,6 +33,11 @@ SCHEMA_CGV_PAR_MODE = {
                    'industriel': SCHEMA_VARIANTE_CGV},
     'additionalProperties': False,
 }
+
+
+def _texte_sans_nul(valeur):
+    """Vrai si ``valeur`` est une chaîne sans caractère nul (``TEXTE_PUCE``)."""
+    return isinstance(valeur, str) and chr(0) not in valeur
 
 
 @extend_schema_field(SCHEMA_PUCES)
@@ -71,7 +79,7 @@ class DocumentTemplatesSerializer(TypageStrictReglages, serializers.ModelSeriali
         if value is None:
             return None
         if not isinstance(value, list) or not all(
-                isinstance(x, str) for x in value):
+                _texte_sans_nul(x) for x in value):
             raise serializers.ValidationError(
                 'Les puces des conditions générales doivent être une liste '
                 'de textes.')
@@ -99,9 +107,9 @@ class DocumentTemplatesSerializer(TypageStrictReglages, serializers.ModelSeriali
             if isinstance(variante, dict):
                 titre, puces = variante.get('titre'), variante.get('bullets')
             if (not isinstance(variante, dict)
-                    or not (titre is None or isinstance(titre, str))
+                    or not (titre is None or _texte_sans_nul(titre))
                     or not (puces is None or (isinstance(puces, list) and all(
-                        isinstance(x, str) for x in puces)))):
+                        _texte_sans_nul(x) for x in puces)))):
                 raise serializers.ValidationError(
                     f'cgv_par_mode.{mode} : attendu {{titre, bullets: [...]}} '
                     'avec des textes.')

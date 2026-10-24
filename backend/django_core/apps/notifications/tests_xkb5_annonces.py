@@ -226,3 +226,25 @@ class AnnonceApiTests(TestCase):
         annonce = Annonce.objects.get(pk=resp.data['id'])
         self.assertEqual(annonce.company_id, self.company.pk)
         self.assertEqual(annonce.auteur_id, self.admin.pk)
+
+
+class AnnonceDatesAncienneRfc3339Tests(TestCase):
+    """api-fuzz-full : une date ancienne était rendue avec le décalage
+    historique du fuseau local (``-00:30:20``), invalide en RFC 3339."""
+
+    def test_dates_rendues_en_utc(self):
+        from rest_framework.test import APIClient
+        admin = _make_user(
+            _make_company('AnnonceAncienneCo'), 'ann_ancienne',
+            role_legacy='admin')
+        client = APIClient()
+        client.force_authenticate(admin)
+        resp = client.post('/api/django/notifications/annonces/', {
+            'titre': 'Ancienne', 'date_publication': '1434-11-16T06:04:25.8+00:00',
+            'date_expiration': '2999-01-01T00:00:00+01:00',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertTrue(resp.data['date_publication'].endswith('Z'),
+                        resp.data['date_publication'])
+        self.assertTrue(resp.data['date_expiration'].endswith('Z'),
+                        resp.data['date_expiration'])

@@ -216,3 +216,28 @@ class XSAV16DowntimeTest(TestCase):
             resp = api.get(url + requete)
             self.assertEqual(resp.status_code, 400, (requete, resp.content))
         self.assertEqual(api.get(url + '?debut=&fin=').status_code, 200)
+
+    def test_api_downtime_nul_ticket_inconnu_et_schema_publie(self):
+        # api-fuzz-full 24/10 : NUL dans ``motif`` (publié sans motif -> 400
+        # sur un corps « conforme ») ; un ticket inconnu est un 404, pas un 400.
+        import json
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.sav import urls as sav_urls
+        api = auth(self.admin)
+        url = f'/api/django/sav/equipements/{self.equip.id}/downtime/'
+        resp = api.post(url, json.dumps({'motif': 'a\u0000b'}),
+                        content_type='application/json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = api.post(url, {'ticket': 2147483000}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertFalse(self.equip.downtimes.exists())
+        schema = SchemaGenerator(patterns=[
+            path('api/django/sav/', include(sav_urls)),
+        ]).get_schema(request=None, public=True)
+        composants = schema['components']['schemas']
+        self.assertIn('u0000', json.dumps(
+            composants['SavDowntimeRequeteRequest']['properties']['motif']))
+        self.assertIn('u0000', json.dumps(
+            composants['TicketRequest']['properties']['instructions']))

@@ -165,6 +165,19 @@ def _q(nom, type_, description):
         description=description)
 
 
+def _param_unique(params, nom):
+    """ENF11 (api-fuzz full, 24/10) — paramètre numérique publié comme UNE
+    valeur : répété (``?lat=x&lat=``) ou vide → 400 nommé ; il était lu sur sa
+    dernière occurrence et un vide retombait en silence sur le repli."""
+    valeurs = params.getlist(nom)
+    if len(valeurs) > 1:
+        raise serializers.ValidationError(
+            {nom: [f"Le paramètre « {nom} » ne doit figurer qu'une fois."]})
+    if valeurs and not valeurs[0].strip():
+        raise serializers.ValidationError({nom: ['Nombre attendu.']})
+    return valeurs[0] if valeurs else None
+
+
 @extend_schema(
     request=_ROI_REQUEST,
     responses={200: {'type': 'object', 'additionalProperties': {
@@ -223,13 +236,17 @@ def get_productible(request):
     obj = _settings(request)
     # ENF11 — le schéma déclare des NOMBRES : une valeur illisible est un 400
     # nommant le paramètre (``int('abc')`` levait un 500) ; absent/vide garde
-    # le repli documenté (coordonnées manquantes → productible manuel).
+    # le repli documenté (coordonnées manquantes → productible manuel) ; un
+    # paramètre répété ou vide est hors schéma (400, ``_param_unique``).
     params = request.query_params
-    lat = nombre_ou_400(params.get('lat'), 'lat')
-    lon = nombre_ou_400(params.get('lon'), 'lon')
-    peak = nombre_ou_400(params.get('peakpower'), 'peakpower', defaut=1.0)
-    tilt = entier_ou_400(params.get('tilt'), 'tilt', maxi=2147483647)
-    azimuth = entier_ou_400(params.get('azimuth'), 'azimuth', maxi=2147483647)
+    lat = nombre_ou_400(_param_unique(params, 'lat'), 'lat')
+    lon = nombre_ou_400(_param_unique(params, 'lon'), 'lon')
+    peak = nombre_ou_400(
+        _param_unique(params, 'peakpower'), 'peakpower', defaut=1.0)
+    tilt = entier_ou_400(
+        _param_unique(params, 'tilt'), 'tilt', maxi=2147483647)
+    azimuth = entier_ou_400(
+        _param_unique(params, 'azimuth'), 'azimuth', maxi=2147483647)
     result = pvgis_client.fetch_productible(
         obj, lat, lon, peakpower_kwc=peak, tilt=tilt, azimuth=azimuth)
     return Response(result)

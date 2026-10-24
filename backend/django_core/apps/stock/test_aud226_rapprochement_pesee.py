@@ -173,3 +173,35 @@ class TestRapprochementPesee(Aud226Base):
 
         self.cable.refresh_from_db()
         self.assertEqual(self.cable.quantite_stock, 103)
+
+
+class TestRapprochementPeseeApi(Aud226Base):
+    """api-fuzz : corps non objet / note non texte = 400 (plus de 500) ; refus
+    d'ÉTAT (non confirmée, déjà rapprochée) = 409."""
+
+    def setUp(self):
+        super().setUp()
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')
+        self.url = (f'/api/django/stock/receptions-fournisseur/'
+                    f'{self.reception.pk}/rapprocher-pesees/')
+
+    def test_corps_invalide_400(self):
+        for corps in ([], 3.5, {'note': 5}, {'note': None}, {'note': {}}):
+            rep = self.api.post(self.url, corps, format='json')
+            self.assertEqual(rep.status_code, 400, (corps, rep.data))
+
+    def test_non_confirmee_409(self):
+        rep = self.api.post(self.url, {}, format='json')
+        self.assertEqual(rep.status_code, 409, rep.data)
+
+    def test_deja_rapproche_409(self):
+        self._peser('98.400')
+        self._confirmer()
+        rep = self.api.post(self.url, {'note': 'ok'}, format='json')
+        self.assertEqual(rep.status_code, 200, rep.data)
+        rep = self.api.post(self.url, {}, format='json')
+        self.assertEqual(rep.status_code, 409, rep.data)

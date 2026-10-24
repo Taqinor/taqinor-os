@@ -8,8 +8,8 @@ Deux sociétés A et B. Un utilisateur de A ne peut :
   * écrire ``roof_image`` par le corps du devis (seule porte : la génération
     du calepinage, clé ``roofs/<company_id>/<ref>.png``).
 
-Chaque refus est un 400 sur le champ nommé, sans écriture ; un id inexistant
-donne le même 400 (jamais un 500) ; les ids de A passent comme avant.
+Chaque refus est un 404 sur le champ nommé, sans écriture ; un id inexistant
+donne le même 404 (jamais un 500) ; les ids de A passent comme avant.
 
 ENF17 — la ligne (``devis``), le devis (``client``/``lead``/``entite``/
 ``remise_approuvee_par``), les listes de prix (``liste``) et les fils
@@ -101,7 +101,7 @@ class FkDevisSocieteTests(TestCase):
     # ── LigneDevis.produit ──────────────────────────────────────────────
     def test_ligne_produit_etranger_400(self):
         r = self._ligne(produit=self.produit_b.id)
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('produit', r.data)
         self.assertFalse(
             LigneDevis.objects.filter(produit=self.produit_b).exists())
@@ -112,20 +112,34 @@ class FkDevisSocieteTests(TestCase):
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
         r = self.api.patch(f'{LIGNES}{ligne.id}/',
                            {'produit': self.produit_b.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('produit', r.data)
         ligne.refresh_from_db()
         self.assertEqual(ligne.produit_id, self.produit_a.id)
 
         # Id inexistant : même 400 nommé, jamais un 500.
         r = self._ligne(produit=999999999)
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('produit', r.data)
+
+    def test_patch_section_sans_produit_rend_produit_tva_null(self):
+        # CI #997 fuzz (24/10) : DRF saute un champ lu via ``produit.tva`` dont
+        # le produit est vide dès que le sérialiseur est partiel (PATCH) : la
+        # clé ``produit_tva``, obligatoire au schéma, disparaissait de la
+        # réponse d'une section. Elle est rendue ``null``.
+        section = LigneDevis.objects.create(
+            devis=self.devis_a, designation='Section',
+            type_ligne=LigneDevis.TypeLigne.SECTION)
+        r = self.api.patch(f'{LIGNES}{section.id}/',
+                           {'designation': 'Section bis'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIn('produit_tva', r.data)
+        self.assertIsNone(r.data['produit_tva'])
 
     # ── LigneDevis.lot ──────────────────────────────────────────────────
     def test_ligne_lot_etranger_400(self):
         r = self._ligne(lot=self.lot_b.id)
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('lot', r.data)
         self.assertFalse(LigneDevis.objects.filter(lot=self.lot_b).exists())
 
@@ -134,13 +148,13 @@ class FkDevisSocieteTests(TestCase):
             quantite=Decimal('1'), prix_unitaire=Decimal('1000'))
         r = self.api.patch(f'{LIGNES}{ligne.id}/',
                            {'lot': self.lot_b.id}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('lot', r.data)
         ligne.refresh_from_db()
         self.assertIsNone(ligne.lot_id)
 
         r = self._ligne(lot=999999999)
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertIn('lot', r.data)
 
     # ── RegleListePrix.produit ──────────────────────────────────────────
@@ -223,7 +237,7 @@ class FkDevisSocieteTests(TestCase):
 
     # ── ENF17 — FK restantes du devis bornées société ───────────────────
     def _assert_comme_absent(self, r, r_absent, champ, id_etranger):
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)
         self.assertEqual(r.data[champ][0].code, 'does_not_exist', r.content)
         self.assertEqual(
             str(r.data[champ][0]).replace(str(id_etranger), '<ID>'),

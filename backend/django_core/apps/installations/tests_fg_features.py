@@ -398,6 +398,26 @@ class TestFG75Releves(TestCase):
             format='multipart')
         self.assertEqual(r.status_code, 400)
 
+    def test_corps_ajouter_releve_publie_obligatoire(self):
+        """api-fuzz-full 24/10 : le corps multipart est un composant nommé dont
+        ``requestBody.required`` est vrai -- sans lui le fuzz envoyait une
+        requête SANS corps, refusée « Fichier requis » (400)."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        operation = schema['paths'][
+            '/api/django/installations/chantiers/{id}/ajouter-releve/']['post']
+        corps = operation['requestBody']
+        self.assertTrue(corps['required'])
+        self.assertIn('multipart/form-data', corps['content'])
+        composant = schema['components']['schemas']['AjouterReleveRequeteRequest']
+        self.assertEqual(composant['required'], ['file'])
+        self.assertEqual(composant['properties']['file']['format'], 'binary')
+
     def test_releves_company_isolation(self):
         """FG75 — /releves d'une autre société renvoie 404."""
         company2 = make_company()

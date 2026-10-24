@@ -22,7 +22,8 @@ from rest_framework.response import Response
 
 from authentication.permissions import IsAdminRole, IsResponsableOrAdmin
 from apps.roles.permissions import DroitDeLaGrille  # ASEC50
-from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, entier_ou_400
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+from .query_params import DATE_OU_VIDE, date_param, entier_param
 from apps.crm.exports import build_xlsx_response
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -212,7 +213,7 @@ _INSIGHTS_AUDIT_LOG_REPONSE = inline_serializer('InsightsAuditLogReponse', {
 @extend_schema(
     parameters=[
         OpenApiParameter('limit', OpenApiTypes.INT, required=False),
-        OpenApiParameter('since', OpenApiTypes.STR, required=False),
+        OpenApiParameter('since', DATE_OU_VIDE, required=False),
         OpenApiParameter('type', OpenApiTypes.STR, required=False),
         OpenApiParameter('user', OpenApiTypes.STR, required=False),
     ],
@@ -239,17 +240,13 @@ def audit_log(request):
 
     type_filter = request.query_params.get('type')
     user_filter = request.query_params.get('user')
-    since_raw = request.query_params.get('since')
-    since = None
-    if since_raw:
-        try:
-            since = datetime.strptime(since_raw, '%Y-%m-%d').date()
-        except ValueError:
-            since = None
+    # api-fuzz full 24/10 — ``since`` est une date au schéma (ou vide = borne
+    # non posée) : une valeur illisible = 400 (elle était ignorée en silence).
+    since_raw = date_param(request, 'since')
+    since = datetime.strptime(since_raw, '%Y-%m-%d').date() if since_raw else None
     # ERR-ENF11-FUZZ-REPORTING — ``limit`` est un entier au schéma : une valeur
-    # illisible = 400 (elle retombait silencieusement sur 200).
-    limit = max(1, min(entier_ou_400(
-        request.query_params.get('limit'), 'limit', defaut=200), 1000))
+    # illisible, vide ou répétée = 400 (elle retombait sur 200).
+    limit = max(1, min(entier_param(request, 'limit', 200), 1000))
 
     def _user_match(user_obj):
         """Filtre utilisateur tolérant : id numérique OU username."""

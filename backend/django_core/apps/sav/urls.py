@@ -23,7 +23,7 @@ from .views import (
 )
 from .public_views import portail_creer_ticket, whatsapp_inbound_webhook
 from .maintenance import ContratMaintenanceViewSet
-from .query_params import DATE_OU_VIDE, EXPORT_XLSX, LIMITE
+from .query_params import DATE_OU_VIDE, EXPORT_XLSX, LIMITE, ou_vide
 
 router = DefaultRouter()
 router.register(r'equipements', EquipementViewSet)
@@ -48,7 +48,7 @@ router.register(r'problemes', ProblemeViewSet)
 
 @extend_schema(
     parameters=[OpenApiParameter(
-        'months', {'type': 'integer', 'minimum': 1, 'maximum': 1200},
+        'months', ou_vide({'type': 'integer', 'minimum': 1, 'maximum': 1200}),
         required=False, description='Fenêtre en mois (défaut 12).')],
     responses=inline_serializer('SavPartsForecastLigne', {
         'produit': drf_serializers.IntegerField(),

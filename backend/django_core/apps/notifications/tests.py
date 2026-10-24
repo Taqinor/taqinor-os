@@ -1007,6 +1007,7 @@ class Enf11Notifications2eTourTests(TestCase):
                 ('annonces/', 'active=zzz'),
                 ('annonces/', 'epinglee=zzz'),
                 ('holidays/', 'year=abc'),
+                ('holidays/', 'year='),
                 ('calendar/check/', 'date=20250101'),
                 ('calendar/check/', 'date=2025-W01-1')):
             r = self.client.get(f'{self.base}{chemin}?{requete}')

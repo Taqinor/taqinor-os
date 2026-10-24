@@ -122,7 +122,7 @@ class TestFormeInvalideEst400(STKCAT20Base):
 
     def test_longueurs_differentes_400(self):
         r = self._post({'debits_m3h': [0, 6, 12], 'hmt_m': [91, 85]})
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : règle croisée, pas la forme
         self.assertIn('courbe_pompe', r.data)
 
     def test_moins_de_deux_points_400(self):

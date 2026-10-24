@@ -161,6 +161,17 @@ class TestScanGs1Endpoint(Xstk4ApiBase):
             '?code=notgs1')
         self.assertEqual(resp.status_code, 400)
 
+    def test_scan_gs1_nul_refuse_et_motif_publie_sans_nul(self):
+        # api-fuzz : le motif publié exclut le caractère nul (400 serveur).
+        import re
+        from apps.stock.views.reception_fournisseur import MOTIF_CODE_GS1
+        self.assertIsNone(re.search(MOTIF_CODE_GS1, '0104006381333931' + chr(0) + 'x'))
+        self.assertIsNotNone(re.search(MOTIF_CODE_GS1, '0104006381333931:Z5ò"'))
+        resp = self.api.get(
+            '/api/django/stock/receptions-fournisseur/scan-gs1/'
+            '?code=0104006381333931%00x')
+        self.assertEqual(resp.status_code, 400)
+
     def test_scan_gs1_cross_tenant_404(self):
         other = _company('xstk4-other')
         other_user = _user(other, 'xstk4-other-user')
