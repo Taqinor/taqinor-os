@@ -172,3 +172,50 @@ describe('CIQ222 — carte « Tarif de la facture »', () => {
     }
   })
 })
+
+describe('ADEV100 — champs repris du lead : badge, valeur éditable, « Retenu » seulement pour le reste', () => {
+  const RESOLUES = {
+    surface_utile_m2: { valeur: 650, provenance: { origine: 'lead', detail: 'client', date: '2026-09-10' } },
+    phases: { valeur: 'tri', provenance: { origine: 'lead', detail: 'client', date: '2026-09-10' } },
+  }
+
+  it('un champ semé montre « repris du lead » à la place de « Retenu », et reste éditable', () => {
+    let profil = null
+    const initial = poserProfilCi(profilCiVide(), 'surfaceUtile', '650')
+    const { container } = render(
+      <BlocEtudeReseauRepris initial={initial} resolues={RESOLUES} repris={['surfaceUtile']}
+                             onProfil={(p) => { profil = p }} />)
+    expect(screen.getByTestId('ci-repris-surfaceUtile')).toHaveTextContent('repris du lead')
+    expect(screen.queryByTestId('ci-retenu-surface_utile_m2')).toBeNull()
+    // un champ NON semé garde l'indication « Retenu »
+    expect(screen.getByTestId('ci-retenu-phases')).toHaveTextContent('Retenu')
+    expect(screen.queryByTestId('ci-repris-phases')).toBeNull()
+    const champ = container.querySelector('#gen-ci-surface')
+    expect(champ).not.toBeDisabled()
+    expect(champ.value).toBe('650')
+    fireEvent.change(champ, { target: { value: '700' } })
+    expect(profil.surfaceUtile).toBe('700')
+  })
+
+  it('le contrat repris du lead porte son badge dans la carte tarif', () => {
+    render(<CarteTarifFacture tarif={{ ...TARIF_SAISIE_VIDE, contrat: 'bt_patente' }} setTarifChamp={() => {}}
+                              tension="bt" repris={['contrat']} />)
+    expect(screen.getByTestId('ci-repris-contrat')).toHaveTextContent('repris du lead')
+    expect(screen.getByLabelText(/Contrat/).value).toBe('bt_patente')
+  })
+
+  it('sans rien de semé : aucun badge, les « Retenu » du serveur comme avant', () => {
+    render(<BlocEtudeReseauRepris initial={profilCiVide()} resolues={RESOLUES} repris={[]} onProfil={() => {}} />)
+    expect(document.querySelector('[data-testid^="ci-repris-"]')).toBeNull()
+    expect(screen.getByTestId('ci-retenu-surface_utile_m2')).toBeInTheDocument()
+  })
+})
+
+function BlocEtudeReseauRepris({ initial, resolues, repris, onProfil }) {
+  const [profil, setProfil] = useState(initial)
+  onProfil(profil)
+  return (
+    <BlocEtudeReseau profil={profil} resolues={resolues} repris={repris}
+                     setChamp={(c, v) => setProfil((p) => poserProfilCi(p, c, v))} />
+  )
+}

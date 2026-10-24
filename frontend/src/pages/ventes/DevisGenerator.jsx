@@ -144,8 +144,9 @@ import { deuxValeursDim as selecteurDeuxValeursDim }
 // QJR658 — devis ⇄ état d'écran : un module pur.
 // CIQ125 — profil déclaré C&I (corps de l'aperçu serveur + entrées v2).
 import { useEtudeCiPreview } from '../../features/ventes/etudeCiPreview'
+import { useProfilCiLead } from './generator/hooks/useProfilCiLead'
 import {
-  profilCiVide, poserProfilCi, corpsCiDepuisProfil, profilCiAncre,
+  profilCiVide, corpsCiDepuisProfil, profilCiAncre,
 } from '../../features/ventes/quote/profilCi'
 // QJR100 — les trois morceaux extraits de cet écran. `CarteMetrique` est LE
 // seul déballeur d'une valeur signée ; `LigneTable` possède la table de lignes
@@ -640,7 +641,6 @@ export default function DevisGenerator({
   const [profilCi, setProfilCi] = useState(profilCiVide)
   // CIQ222 — le tarif de SA facture (contrat `tarifs_ci.json`), tel que tapé.
   const [tarifSaisie, setTarifSaisie] = useState(TARIF_SAISIE_VIDE)
-  const setTarifChamp = (champ, valeur) => setTarifSaisie((t) => ({ ...t, [champ]: valeur }))
   // CIQ223 — les saisies de l'économie C&I (contrat `economie_ci.json`).
   const [ecoCi, setEcoCi] = useState(ECO_CI_VIDE)
   const setEcoChamp = (champ, valeur) => setEcoCi((e) => ({ ...e, [champ]: valeur }))
@@ -648,8 +648,9 @@ export default function DevisGenerator({
   // réponses par catégorie (clés snake_case), stockées dans etude_params.
   const [categorieCommerciale, setCategorieCommerciale] = useState(CATEGORIE_NON_PRECISEE)
   const [commercialAnswers, setCommercialAnswers] = useState({})
-  const setCommercialAnswer = (key, val) =>
-    setCommercialAnswers(prev => ({ ...prev, [key]: val }))
+  // ADEV100 — pré-remplissage C&I depuis le lead (badge « repris du lead ») + gestes de saisie.
+  const ci = useProfilCiLead({ profilCi, setProfilCi, categorieCommerciale, setCategorieCommerciale,
+    commercialAnswers, setCommercialAnswers, tarifSaisie, setTarifSaisie })
   const [prixCible, setPrixCible] = useState('')
   // ── Logique de devis éditable (D5 ; Paramètres → Avancé). Défauts = constantes
   // historiques du simulateur, donc le devis est identique tant que rien n'est
@@ -1107,7 +1108,6 @@ export default function DevisGenerator({
     || [resoluesCi.kwh_mensuels?.valeur, resoluesCi.kwh_annuel?.valeur,
       resoluesCi.kwh_mensuel_declare?.valeur]
       .some((v) => (Array.isArray(v) ? v.some((x) => Number(x) > 0) : Number(v) > 0))
-  const setChampCi = (chemin, valeur) => setProfilCi((p) => poserProfilCi(p, chemin, valeur))
 
   // L-2OPT — kWc de la branche AVEC batterie POUR LA COMPOSITION EN COURS :
   // le moteur horaire serveur (recommandation_avec, source de vérité) prime
@@ -1317,6 +1317,7 @@ export default function DevisGenerator({
       }
       // Initialisation unique (garde autoRan) — pas de cascade.
       applyLead(leadParam, lead)
+      ci.appliquerProfilCiDuLead(lead)
       const wantAuto = embedded ? autoProp : (searchParams.get('auto') === '1')
       const discount = embedded ? (discountProp || '0') : (searchParams.get('discount') || '0')
       if (wantAuto) {
@@ -1722,7 +1723,7 @@ export default function DevisGenerator({
   // QJR101 — les entrées d'étude que l'industriel et le commercial partagent.
   // CIQ125 — le profil déclaré C&I + la réponse du moteur serveur.
   const socleEtudeReseau = {
-    profilCi, setChampCi, apercuCi, tarifSaisie, setTarifChamp,
+    profilCi, apercuCi, tarifSaisie, setChampCi: ci.setChampCi, setTarifChamp: ci.setTarifChamp, reprisLead: ci.reprisLead,
     apercuEcoCi, ecoCi, setEcoChamp,
   }
 
@@ -1947,9 +1948,9 @@ export default function DevisGenerator({
           {...socleFactures}
           {...socleEtudeReseau}
           categorieCommerciale={categorieCommerciale}
-          setCategorieCommerciale={setCategorieCommerciale}
+          setCategorieCommerciale={ci.choisirCategorieCommerciale}
           commercialAnswers={commercialAnswers}
-          setCommercialAnswer={setCommercialAnswer}
+          setCommercialAnswer={ci.setCommercialAnswer}
         />
         {bandeauSegment && (
           <div role="status" data-testid="bandeau-segment-lead"

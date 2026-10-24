@@ -17,7 +17,9 @@ import { Card, CardContent, Input, Label, Button } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
 import { MONTHS_FR } from '../../../features/ventes/solar'
 import { libelleProvenance } from '../../../features/ventes/etudeCiPreview'
-import { JOURS_SEMAINE, TYPES_JOUR } from '../../../features/ventes/quote/profilCi'
+import {
+  JOURS_SEMAINE, TYPES_JOUR, LIBELLE_REPRIS_LEAD,
+} from '../../../features/ventes/quote/profilCi'
 import { GenCardHeader } from './CarteMetrique'
 import CarteResultatCi from './CarteResultatCi'
 
@@ -30,7 +32,7 @@ import CarteResultatCi from './CarteResultatCi'
  */
 export function CarteProfilCi({
   profilCi, setChampCi, apercuCi, errors, children,
-  tarifSaisie = null, setTarifChamp = null,
+  tarifSaisie = null, setTarifChamp = null, reprisLead = [],
 }) {
   return (
     <Card>
@@ -39,6 +41,7 @@ export function CarteProfilCi({
         <BlocEtudeReseau
           profil={profilCi} setChamp={setChampCi}
           resolues={apercuCi?.donnees?.entrees_resolues || null}
+          repris={reprisLead}
           erreurConso={errors?.conso}
           mentionReventeServeur={apercuCi?.donnees?.economie_ci?.revente?.statut === 'absente_bt'
             ? apercuCi.donnees.economie_ci.revente.mentions?.[0] : null}
@@ -47,6 +50,7 @@ export function CarteProfilCi({
           <CarteTarifFacture tarif={tarifSaisie} setTarifChamp={setTarifChamp}
                              tension={profilCi?.tension}
                              erreurs={errors?.tarifDeclare || {}}
+                             repris={reprisLead}
                              resolues={apercuCi?.donnees?.entrees_resolues || null} />
         )}
         {children}
@@ -78,7 +82,9 @@ function ErreurChamp({ erreurs, champ }) {
  * Vide ⇒ la grille ONEE sert en repli (annoncé). Chaque nombre tel que tapé,
  * jamais corrigé ; les 400 du serveur s'affichent SOUS le champ nommé.
  */
-export function CarteTarifFacture({ tarif, setTarifChamp, tension, erreurs = {}, resolues = null }) {
+export function CarteTarifFacture({
+  tarif, setTarifChamp, tension, erreurs = {}, resolues = null, repris = [],
+}) {
   const t = tarif || {}
   const mt = t.contrat === 'mt_general'
   const vide = !t.contrat && !t.pointe && !t.pleines && !t.creuses && !t.primeFixe
@@ -88,7 +94,7 @@ export function CarteTarifFacture({ tarif, setTarifChamp, tension, erreurs = {},
       <legend className="text-sm font-semibold">Tarif de la facture</legend>
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="gen-tarif-contrat">Contrat</Label>
+          <Label htmlFor="gen-tarif-contrat">Contrat<BadgeRepris cle="contrat" repris={repris} /></Label>
           <select id="gen-tarif-contrat" className={SELECT} value={t.contrat || ''}
                   onChange={(e) => setTarifChamp('contrat', e.target.value)}>
             <option value="">—</option>
@@ -181,8 +187,27 @@ function valeurLisible(v) {
   return String(v)
 }
 
-/** La valeur retenue par le serveur + sa provenance, sous un champ. */
-function Retenu({ resolues, cle }) {
+/** ADEV100 — « repris du lead » : la valeur du champ vient de la fiche lead, elle reste éditable. */
+export function BadgeRepris({ cle, repris }) {
+  if (!Array.isArray(repris) || !repris.includes(cle)) return null
+  return (
+    <span className="ml-1.5 rounded bg-info/10 px-1.5 py-0.5 text-[11px] font-normal text-info"
+          data-testid={`ci-repris-${cle}`}>
+      {LIBELLE_REPRIS_LEAD}
+    </span>
+  )
+}
+
+/**
+ * La valeur retenue par le serveur + sa provenance, sous un champ. ADEV100 —
+ * `champ` = la clé du champ d'écran que ce « Retenu » décrit : s'il a été
+ * SEMÉ depuis le lead (`repris`), le badge « repris du lead » le remplace
+ * (la valeur est déjà dans le champ, éditable) ; sinon l'indication reste.
+ */
+function Retenu({ resolues, cle, champ = null, repris = [] }) {
+  if (champ && Array.isArray(repris) && repris.includes(champ)) {
+    return <p className="text-xs"><BadgeRepris cle={champ} repris={repris} /></p>
+  }
   const r = resolues && resolues[cle]
   if (!r) return null
   return (
@@ -204,7 +229,7 @@ function Nombre({ id, label, value, onChange, placeholder, testid }) {
 }
 
 export default function BlocEtudeReseau({
-  profil, setChamp, resolues = null, erreurConso, mentionReventeServeur = null,
+  profil, setChamp, resolues = null, erreurConso, mentionReventeServeur = null, repris = [],
 }) {
   const p = profil || {}
   const estMt = p.tension === 'mt'
@@ -272,8 +297,8 @@ export default function BlocEtudeReseau({
             </div>
           </div>
         )}
-        <Retenu resolues={resolues} cle="kwh_mensuels" />
-        <Retenu resolues={resolues} cle="kwh_annuel" />
+        <Retenu resolues={resolues} cle="kwh_mensuels" champ="kwhAnnuel" repris={repris} />
+        {!repris.includes('kwhAnnuel') && <Retenu resolues={resolues} cle="kwh_annuel" />}
         {/* ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES / CIQ125 — le refus s'affiche SOUS le champ. */}
         {erreurConso && (
           <p className="text-xs text-destructive" data-testid="erreur-conso">{erreurConso}</p>
@@ -293,7 +318,7 @@ export default function BlocEtudeReseau({
             </label>
           ))}
         </div>
-        <Retenu resolues={resolues} cle="jours_ouverts" />
+        <Retenu resolues={resolues} cle="jours_ouverts" champ="joursOuverts" repris={repris} />
         <div className="grid gap-3 sm:grid-cols-3">
           {TYPES_JOUR.map(({ cle, libelle }) => (
             <div className="grid gap-1.5" key={cle}>
@@ -311,7 +336,7 @@ export default function BlocEtudeReseau({
             </div>
           ))}
         </div>
-        <Retenu resolues={resolues} cle="plages" />
+        <Retenu resolues={resolues} cle="plages" champ="plages" repris={repris} />
         <div className="grid gap-2" data-testid="ci-fermetures">
           {fermetures.map((f, i) => (
             <div className="grid gap-2 sm:grid-cols-3" key={i}>
@@ -358,12 +383,12 @@ export default function BlocEtudeReseau({
             <option value="">—</option>
             {TYPES_POSE.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-          <Retenu resolues={resolues} cle="type_pose" />
+          <Retenu resolues={resolues} cle="type_pose" champ="typePose" repris={repris} />
         </div>
         <div className="grid gap-1.5">
           <Nombre id="gen-ci-surface" label="Surface utile (m²)" value={p.surfaceUtile}
                   onChange={(v) => setChamp('surfaceUtile', v)} />
-          <Retenu resolues={resolues} cle="surface_utile_m2" />
+          <Retenu resolues={resolues} cle="surface_utile_m2" champ="surfaceUtile" repris={repris} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="gen-ci-couverture">Couverture</Label>
@@ -386,7 +411,7 @@ export default function BlocEtudeReseau({
             <option value="mt">Moyenne tension (MT)</option>
             <option value="inconnue">Inconnue</option>
           </select>
-          <Retenu resolues={resolues} cle="tension" />
+          <Retenu resolues={resolues} cle="tension" champ="tension" repris={repris} />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="gen-ci-phases">Phases</Label>
@@ -397,7 +422,7 @@ export default function BlocEtudeReseau({
             <option value="tri">Triphasé</option>
             <option value="inconnu">Inconnu</option>
           </select>
-          <Retenu resolues={resolues} cle="phases" />
+          <Retenu resolues={resolues} cle="phases" champ="phases" repris={repris} />
         </div>
         <div className="grid gap-1.5">
           <Nombre id="gen-ci-puissance" label="Puissance souscrite (kVA)"

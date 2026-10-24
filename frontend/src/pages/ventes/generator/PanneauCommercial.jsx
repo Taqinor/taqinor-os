@@ -30,7 +30,7 @@ import {
   COMMERCIAL_CATEGORIES, COMMERCIAL_CATEGORY_QUESTIONS,
 } from '../../../features/ventes/solar'
 // CIQ125 — la carte C&I partagée (profil déclaré + résultat du moteur serveur).
-import { CarteProfilCi } from './BlocEtudeReseau'
+import { CarteProfilCi, BadgeRepris } from './BlocEtudeReseau'
 // CIQ223 — la carte « Économies » servie par le serveur (`economie_ci`).
 import CarteEconomieCi from './CarteEconomieCi'
 
@@ -115,7 +115,7 @@ export default function PanneauCommercial({
   // ── CIQ125/CIQ222 — la carte C&I (profil, aperçu serveur, tarif, erreurs) ──
   ...carte
 }) {
-  const { apercuCi } = carte
+  const { apercuCi, reprisLead = [] } = carte
   if (marche !== CLE) return null
   return (
     <>
@@ -124,7 +124,7 @@ export default function PanneauCommercial({
       <div className="mt-3.5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="grid gap-1.5">
-            <Label>Catégorie commerciale</Label>
+            <Label>Catégorie commerciale<BadgeRepris cle="categorie" repris={reprisLead} /></Label>
             <Select value={categorieCommerciale} onValueChange={setCategorieCommerciale}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -140,7 +140,9 @@ export default function PanneauCommercial({
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
             {(COMMERCIAL_CATEGORY_QUESTIONS[categorieCommerciale] || []).map(q => (
               <div className="grid gap-1.5" key={q.key}>
-                <Label htmlFor={`gen-com-${q.key}`}>{q.label}</Label>
+                <Label htmlFor={`gen-com-${q.key}`}>
+                  {q.label}<BadgeRepris cle={`reponses.${q.key}`} repris={reprisLead} />
+                </Label>
                 {q.type === 'number' && (
                   <Input id={`gen-com-${q.key}`} type="number" min="0" step="any"
                          value={commercialAnswers[q.key] ?? ''}

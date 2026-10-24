@@ -79,3 +79,23 @@ describe('CIQ131 — PanneauCommercial', () => {
     expect(ecr1.etude.rythme.reponses_categorie.heures_cuisson).toEqual([[2, 6]])
   })
 })
+
+describe('ADEV100 — catégorie et réponses reprises du lead', () => {
+  it('le badge « repris du lead » marque la catégorie et chaque réponse semée, tous deux restent éditables', () => {
+    const { container } = render(
+      <PanneauCommercial
+        marche="commercial" errors={{}}
+        profilCi={profilCiVide()} setChampCi={() => {}} apercuCi={{}}
+        reprisLead={['categorie', 'reponses.chambres']}
+        categorieCommerciale="hotel" setCategorieCommerciale={() => {}}
+        commercialAnswers={{ chambres: 40, occupation_pct: '60' }}
+        setCommercialAnswer={() => {}}
+      />)
+    expect(screen.getByTestId('ci-repris-categorie')).toHaveTextContent('repris du lead')
+    expect(screen.getByTestId('ci-repris-reponses.chambres')).toBeInTheDocument()
+    expect(screen.queryByTestId('ci-repris-reponses.occupation_pct')).toBeNull()
+    const chambres = container.querySelector('#gen-com-chambres')
+    expect(chambres.value).toBe('40')
+    expect(chambres).not.toBeDisabled()
+  })
+})
