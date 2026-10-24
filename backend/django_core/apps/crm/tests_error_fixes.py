@@ -403,6 +403,11 @@ class TestEntreesTypeesEnf11(TestCase):
         resp = self.api.post('/api/django/crm/appareils-equipe/ce-navigateur/',
                              {'navigateur': {}}, format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
+        # api-fuzz-full 24/10 : le nul est publié refusé (ChaineStricte) ET
+        # refusé par le serveur — le schéma dit ce que fait la vue.
+        resp = self.api.post('/api/django/crm/appareils-equipe/ce-navigateur/',
+                             {'navigateur': 'a' + chr(0) + 'b'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
 
     def test_fait_langue_liste_400_pas_500(self):
         lead = Lead.objects.create(company=self.company, nom='Fait liste')

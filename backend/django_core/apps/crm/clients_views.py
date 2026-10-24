@@ -18,6 +18,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
+from core.champs_stricts import ChaineStricte
 from core.parametres_requete import choix_ou_400
 from core.parseurs import corps_valide
 from core.permissions import declared_action_permissions
@@ -448,11 +449,13 @@ _COOKIES_EQUIPE_MAX_AGE = 730 * 24 * 3600
 #: pour reconnaître l'appareil dans la liste, jamais un user-agent entier.
 _MAX_NAVIGATEUR = 80
 
-#: Corps publié (et validé) de ``appareils-equipe/ce-navigateur/``.
+#: Corps publié (et validé) de ``appareils-equipe/ce-navigateur/``. Textes
+#: STRICTS (publiés « sans caractère nul » : ``CorpsTexteMixin`` refuse le nul
+#: en 400 — api-fuzz-full 24/10 « rejected schema-compliant request »).
 _CE_NAVIGATEUR_REQUETE = inline_serializer(
     'AppareilEquipeCeNavigateurRequest', {
-        'appareil_id': serializers.CharField(required=False, allow_blank=True),
-        'navigateur': serializers.CharField(required=False, allow_blank=True),
+        'appareil_id': ChaineStricte(required=False, allow_blank=True),
+        'navigateur': ChaineStricte(required=False, allow_blank=True),
     })
 
 
