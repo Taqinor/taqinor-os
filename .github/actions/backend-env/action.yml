@@ -383,7 +383,12 @@ runs:
         KEY='testdb-v1-'
         if command -v git >/dev/null 2>&1; then
           git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
-          if git fetch --no-tags --depth=1 origin main >/dev/null 2>&1 \n             && git rev-parse --verify -q origin/main >/dev/null 2>&1; then
+          # CI-5MIN (23/10/2026) — la ligne portait un `\n` LITTERAL a la place du
+          # retour a la ligne : bash le lisait comme un argument `n` passe a
+          # `git fetch` (refspec inexistante), le fetch echouait TOUJOURS et la
+          # cle exacte de main n'etait jamais proposee (repli sur le prefixe seul).
+          if git fetch --no-tags --depth=1 origin main >/dev/null 2>&1 \
+             && git rev-parse --verify -q origin/main >/dev/null 2>&1; then
             KEY="$(python scripts/ci_testdb_main_key.py origin/main)" || KEY='testdb-v1-'
           fi
         fi
