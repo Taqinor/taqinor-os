@@ -100,10 +100,18 @@ class BcMandatRelanceRemiseTests(TestCase):
         self.assertEqual(self.relance.responsable_id, self.user.pk)
         self.assertEqual(self.relance.client_id, self.client_a.pk)
 
-    def test_remise_technicien_etranger_400(self):
+    def test_remise_technicien_etranger_404(self):
+        # ENF11 — id bien formé qui n'est pas de la société : 404 (corps
+        # DRF identique à un id absent), via ``IdInconnu404Mixin``.
         url = f'/api/django/ventes/remises-encaissement/{self.remise.id}/'
-        r = self.api.patch(url, {'technicien': self.user_b.pk},
-                           format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        for methode, corps in (('patch', {'technicien': self.user_b.pk}),
+                               ('put', {'technicien': 999999,
+                                        'date_collecte': '2026-10-01',
+                                        'montant_declare': '10'})):
+            with self.subTest(methode=methode):
+                r = getattr(self.api, methode)(url, corps, format='json')
+                self.assertEqual(r.status_code, 404, r.data)
+                self.assertEqual(r.data['technicien'][0].code,
+                                 'does_not_exist', r.data)
         self.remise.refresh_from_db()
         self.assertEqual(self.remise.technicien_id, self.user.pk)

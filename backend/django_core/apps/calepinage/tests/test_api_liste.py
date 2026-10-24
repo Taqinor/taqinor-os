@@ -207,15 +207,32 @@ class CreationTest(BaseApiCalepinage):
     def test_lead_d_une_autre_societe_introuvable(self):
         lead_voisin = Lead.objects.create(company=self.autre, nom='Voisin')
         reponse = self.api.post(URL, {'lead': lead_voisin.pk}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        # ENF11 — id bien formé qui ne désigne rien de la société : 404.
+        self.assertEqual(reponse.status_code, 404)
         self.assertIn('lead', reponse.data)
+
+    def test_lead_inexistant_404_comme_un_lead_etranger(self):
+        reponse = self.api.post(URL, {'lead': 99999999}, format='json')
+        self.assertEqual(reponse.status_code, 404)
+        self.assertIn('lead', reponse.data)
+
+    def test_patch_multipart_refuse_json_seul(self):
+        # ENF11 — ``contraintes_site`` est un objet JSON : le PATCH n'accepte
+        # que du JSON (un formulaire n'en porte que des chaînes).
+        from apps.calepinage.models import Calepinage
+        cal = Calepinage.objects.create(company=self.company,
+                                        lead_id=self.lead.pk, titre='P')
+        reponse = self.api.patch(f'{URL}{cal.pk}/',
+                                 {'contraintes_site': 'pas du json'},
+                                 format='multipart')
+        self.assertEqual(reponse.status_code, 415, reponse.content)
 
     def test_client_d_une_autre_societe_refuse(self):
         client_voisin = Client.objects.create(company=self.autre,
                                               nom='Client voisin')
         reponse = self.api.post(URL, {'client': client_voisin.pk},
                                 format='json')
-        self.assertEqual(reponse.status_code, 400)
+        self.assertEqual(reponse.status_code, 404)
         self.assertIn('client', reponse.data)
 
     def test_company_du_corps_est_ignoree(self):

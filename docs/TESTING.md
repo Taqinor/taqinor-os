@@ -186,9 +186,9 @@ mutant. Lancé UNIQUEMENT par `.github/workflows/mutation.yml` (nightly +
 bouton, `continue-on-error`, jamais un gate par-commit — le coût est
 O(mutants × suite complète)).
 
-**Périmètre (QAH5, `setup.cfg [mutmut]`)** : `apps/ventes/quote_engine/builder.py`,
-`apps/ventes/utils/references.py`, `apps/roles/models.py` (héritage YTEST9) ;
-plus, depuis QAH5, la CHAÎNE D'ARGENT ventes — `apps/ventes/domain/argent.py`
+**Périmètre (`setup.cfg [mutmut]`, clé `source_paths` — resserré le 23/10/2026)** :
+`core/numbering.py` (l'algorithme derrière le shim `apps/ventes/utils/references.py`),
+`apps/roles/models.py` (héritage YTEST9) ; la CHAÎNE D'ARGENT ventes — `apps/ventes/domain/argent.py`
 (la façade dont délèguent `Devis.total_ht`/`total_tva`/`total_ttc`) et
 `apps/facturation/totaux.py` (`TotauxDocumentMixin`, le SEUL propriétaire de
 la chaîne HT → remise globale → TVA → TTC partagé par `Facture`/`Avoir`
@@ -197,6 +197,19 @@ AUD105-107) — et les MIXINS/PERMISSIONS DE SCOPING SOCIÉTÉ —
 `core/mixins.py` (`TenantMixin`, `SameCompanyFKSerializerMixin`) et
 `core/permissions.py` (`ScopedPermission`, `WriteScopedPermissionMixin`),
 la base ARC2/ARC55 dont hérite `CompanyScopedModelViewSet`.
+*23/10/2026 — `apps/ventes/quote_engine/builder.py` (5 305 lignes) et
+`apps/roles/permissions_registre.py` SORTENT du périmètre : le job nocturne
+mourait CHAQUE nuit (« runner shutdown signal » ~8 min après `mutmut run`,
+phase « Generating mutants », ~5 600 mutants dont l'essentiel dans builder.py —
+runner 2 cœurs / 7 Go + Postgres épuisé). Les 6 modules restants font ~1 480
+lignes et la génération prend ~3 s. Même correctif : les clés 2.x
+`paths_to_mutate`/`tests_dir` (alias dépréciés) sont renommées
+`source_paths`/`pytest_add_cli_args_test_selection`, et `also_copy` recopie
+le projet Django (paquets, tests, settings, `setup.cfg`) sous `mutants/` — mutmut
+3.7 lance pytest DEPUIS `mutants/` (`change_cwd` codé en dur), sans quoi la
+sélection n'y existe pas (pytest code 4, avalé par le spinner en
+`BadTestExecutionCommandsException`). Le workflow fait d'abord une collecte
+pytest à blanc de la sélection, qui échoue AVANT mutmut avec l'erreur lisible.*
 
 *(28/09/2026, PR #722 : épinglé finalement sur **mutmut 3.7.0** — la 3.8.0 exige click ≥ 8.4.2, incompatible avec pyHanko 0.28.0 (click < 8.2) ; `process_isolation=forkserver` n'existant qu'en 3.8, il est retiré au profit de `--reuse-db`. Les constats ci-dessous sur le lecteur de config restent vrais en 3.7.0, vérifié.)*
 
@@ -281,8 +294,8 @@ test RÉELS de ce dépôt, `--no-migrations`, l'exclusion `pdf`/`slow`) :
   base de test ici).
 * **`mutmut run` n'a plus de flag `--CI`** (seul `--max-children` et une
   liste optionnelle de noms de mutants sur la ligne de commande) ; le
-  workflow appelle maintenant `mutmut run --max-children 2` (concurrence
-  modeste, périmètre volontairement petit).
+  workflow appelle maintenant `mutmut run --max-children 1` (23/10/2026 :
+  2 → 1, périmètre volontairement petit).
 * **`mutmut junitxml` n'existe plus.** Remplacé par `mutmut results --all`
   (texte, tous les mutants) et `mutmut export-cicd-stats` (JSON global dans
   `mutants/mutmut-cicd-stats.json`) — le workflow écrit un tableau par
@@ -306,7 +319,7 @@ CI) :
   explicitement dans `setup.cfg` avec un commentaire justifiant pourquoi.
 
 Lancer localement (contre une vraie base Postgres) : éditer temporairement
-`paths_to_mutate`/`only_mutate` dans `setup.cfg` pour ne garder qu'un seul
+`source_paths`/`only_mutate` dans `setup.cfg` pour ne garder qu'un seul
 fichier, puis `mutmut run` — il n'y a plus de flag CLI `--paths-to-mutate`
 en 3.x (toute la config vit dans `setup.cfg`). Pour vérifier juste le pont
 pytest (sans mutmut, sans base pour les modules `SimpleTestCase`) :

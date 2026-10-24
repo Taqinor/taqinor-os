@@ -401,12 +401,26 @@ CAVIARDER_ZONES_REQUISES = {EXTENSION_CORPS_RESSERRE: {
     'properties': {'zones': {'type': 'array', 'minItems': 1}}}}
 
 
+def _seul(a, b):
+    """``a`` est un entier ET ``b`` absent ou nul — branche EXCLUSIVE (un
+    ``oneOf`` de branches qui se recouvrent laissait passer « les deux »)."""
+    return {'required': [a], 'properties': {
+        a: {'type': 'integer'},
+        b: {'type': 'integer', 'nullable': True, 'enum': [None]}}}
+
+
 def _cible_unique(a, b):
     """Exactement UN de ``a`` / ``b`` (entier) — l'autre absent ou nul."""
-    return {EXTENSION_CORPS_RESSERRE: {'oneOf': [
-        {'required': [a], 'properties': {a: {'type': 'integer'}}},
-        {'required': [b], 'properties': {b: {'type': 'integer'}}},
-    ]}}
+    return {EXTENSION_CORPS_RESSERRE: {'oneOf': [_seul(a, b), _seul(b, a)]}}
+
+
+def _cible_unique_partielle(a, b):
+    """PATCH — la règle ne porte que sur ce que le CORPS dit : si ``a`` ET
+    ``b`` y figurent, exactement un est un entier ; si un seul y figure, c'est
+    l'ÉTAT de la ligne qui tranche (refus 409 côté vue)."""
+    return {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+        {'not': {'required': [a, b]}},
+        {'oneOf': [_seul(a, b), _seul(b, a)]}]}}
 
 
 def _au_moins_un(*noms):
@@ -415,11 +429,23 @@ def _au_moins_un(*noms):
                       for n in noms]}
 
 
+def _au_moins_un_partiel(*noms):
+    """PATCH — si TOUS les ``noms`` figurent au corps, au moins un est un
+    entier ; sinon la ligne en base complète (état, 409 côté vue)."""
+    return {'anyOf': [{'not': {'required': list(noms)}},
+                      _au_moins_un(*noms)]}
+
+
 #: Une entrée ACL cible exactement un dossier OU un document ET désigne au
 #: moins un principal (utilisateur, rôle ou client portail) — création.
 ACL_CIBLE_UNIQUE = {EXTENSION_CORPS_RESSERRE: {'allOf': [
     _cible_unique('folder', 'document')[EXTENSION_CORPS_RESSERRE],
     _au_moins_un('utilisateur', 'role', 'client')]}}
+
+#: PATCH d'une entrée ACL — mêmes règles, limitées à ce que le corps dit.
+ACL_CIBLE_UNIQUE_PARTIELLE = {EXTENSION_CORPS_RESSERRE: {'allOf': [
+    _cible_unique_partielle('folder', 'document')[EXTENSION_CORPS_RESSERRE],
+    _au_moins_un_partiel('utilisateur', 'role', 'client')]}}
 
 #: Circuit multi-signataires (``CreerMultiSignatairesSerializer``) : au moins
 #: un destinataire, dont au moins un de rôle « signataire » (rôle absent =
@@ -438,6 +464,7 @@ RETENTION_CIBLE_AU_PLUS_UNE = {EXTENSION_CORPS_RESSERRE: {'not': {
                    'folder': {'type': 'integer'}}}}}
 #: Un champ de signature cible exactement une demande OU un modèle (création).
 CHAMP_CIBLE_UNIQUE = _cible_unique('demande', 'modele')
+CHAMP_CIBLE_UNIQUE_PARTIELLE = _cible_unique_partielle('demande', 'modele')
 #: Un coffre-fort a exactement un propriétaire : employé OU client (création,
 #: ``services.validate_coffre_owner``).
 COFFRE_PROPRIETAIRE_UNIQUE = _cible_unique('proprietaire', 'client')

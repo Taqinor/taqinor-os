@@ -93,3 +93,28 @@ class TestRetour(RetourBase):
         self.assertEqual(retour.bon_commande_id, bon.id)
         self.produit.refresh_from_db()
         self.assertEqual(self.produit.quantite_stock, 47)
+
+
+class TestRetourEtatsHttp(RetourBase):
+    """ENF11 (api-fuzz) — refus d'ÉTAT d'un retour = 409, jamais 400."""
+
+    def setUp(self):
+        super().setUp()
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+
+    def test_valider_deux_fois_et_annuler_valide_409(self):
+        retour = self._retour(qte=5)
+        base = f'/api/django/stock/retours-fournisseur/{retour.id}'
+        self.assertEqual(self.api.post(f'{base}/valider/').status_code, 200)
+        for suite in ('valider/', 'valider-scanne/'):
+            r = self.api.post(f'{base}/{suite}', {}, format='json')
+            self.assertEqual(r.status_code, 409, (suite, r.content))
+            self.assertIn('brouillon', r.data['detail'])
+        r = self.api.post(f'{base}/annuler/')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.produit.refresh_from_db()
+        self.assertEqual(self.produit.quantite_stock, 45)  # un seul décrément

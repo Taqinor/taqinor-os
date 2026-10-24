@@ -12,6 +12,7 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, inline_serializer,
 )
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -19,6 +20,12 @@ from rest_framework.views import APIView
 from core.models import ChangelogEntry
 
 from .auth import ApiKeyRateThrottle
+
+#: Borne du filtre ``?version=`` = ``ChangelogEntry.version.max_length`` (40).
+VERSION_MAX = ChangelogEntry._meta.get_field('version').max_length
+#: Même prédicat que le contrôle serveur : sans NUL, longueur bornée — déclaré
+#: au schéma pour que le fuzz ne génère que des valeurs acceptées.
+MOTIF_VERSION = r'^[^\u0000]{0,%d}$' % VERSION_MAX
 
 # Correspondance NTAPI24 (breaking/feature/fix) ↔ FG399 (`categorie`
 # nouveauté/amélioration/correctif) — jamais un second jeu de catégories.
@@ -56,7 +63,11 @@ class PublicChangelogView(APIView):
     throttle_classes = [ApiKeyRateThrottle]
 
     @extend_schema(
-        parameters=[OpenApiParameter('version', OpenApiTypes.STR, required=False)],
+        parameters=[OpenApiParameter(
+            'version', OpenApiTypes.STR, required=False,
+            description="Filtre par version (sans caractère nul, "
+                        f"{VERSION_MAX} caractères au plus).",
+            pattern=MOTIF_VERSION)],
         responses=inline_serializer('PublicChangelog', {
             'results': inline_serializer('PublicChangelogEntree', {
                 'id': serializers.IntegerField(),
@@ -72,5 +83,10 @@ class PublicChangelogView(APIView):
             '-publie_le', '-id')
         version = request.query_params.get('version')
         if version:
+            # Postgres refuse NUL dans un littéral : 400 net, jamais un 500.
+            if '\x00' in version or len(version) > VERSION_MAX:
+                raise ValidationError({
+                    'version': 'Version invalide (caractère nul interdit, '
+                               f'{VERSION_MAX} caractères au plus).'})
             qs = qs.filter(version=version)
         return Response({'results': [_serialize(e) for e in qs]})

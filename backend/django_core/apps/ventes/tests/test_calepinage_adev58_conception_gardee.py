@@ -88,6 +88,24 @@ class ConceptionGardeeTests(TestCase):
         tache.assert_not_called()
         self.assertEqual(self._etat(devis), avant)
 
+    def test_simuler_sans_pan_409_et_force_refresh_booleen(self):
+        """ENF11 — sans pan de toiture exploitable : refus d'ÉTAT 409 (le
+        corps est conforme) ; ``force_refresh`` non booléen : 400."""
+        devis = self._devis()
+        with mock.patch(
+                "apps.ventes.tasks.zones_etude_du_devis", return_value=[]
+        ), mock.patch(
+                "apps.ventes.tasks.task_simulate_bankable_study.apply_async"
+        ) as tache:
+            resp = self.api.post(self._url(devis, "simuler"), {},
+                                 format="json")
+            self.assertEqual(resp.status_code, 409, resp.data)
+            self.assertIn("pan de toiture", resp.data["detail"])
+            resp = self.api.post(self._url(devis, "simuler"),
+                                 {"force_refresh": "oui"}, format="json")
+            self.assertEqual(resp.status_code, 400, resp.data)
+        tache.assert_not_called()
+
     def test_get_accepte_sans_ecriture(self):
         devis = self._devis(statut=Devis.Statut.ACCEPTE)
         # Témoin : une réécriture le ferait disparaître.

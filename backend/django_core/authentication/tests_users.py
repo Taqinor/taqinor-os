@@ -129,6 +129,20 @@ class TestEmployeeAdmin(TestCase):
             f'/api/django/users/{self.employee.id}/avatar/', {}, format='multipart')
         self.assertEqual(resp.status_code, 400)
 
+    def test_avatar_contenu_refuse_415_et_413(self):
+        # ENF11 : le type réel / la taille ne se publient pas au schéma :
+        # 415 / 413 déclarés (même corps {"detail"}), jamais un 400.
+        faux = SimpleUploadedFile('x.png', b'pas une image 1234567',
+                                  content_type='image/png')
+        url = f'/api/django/users/{self.employee.id}/avatar/'
+        r = self.api.post(url, {'file': faux}, format='multipart')
+        self.assertEqual(r.status_code, 415, r.content)
+        self.assertIn('Format non supporté', r.json()['detail'])
+        gros = SimpleUploadedFile('g.png', _PNG_BYTES + b'0' * (2 * 1024 * 1024),
+                                  content_type='image/png')
+        r = self.api.post(url, {'file': gros}, format='multipart')
+        self.assertEqual(r.status_code, 413, r.content)
+
     def test_avatar_endpoint_blocks_limited_tier_allows_responsable(self):
         # Gestion des utilisateurs (dont l'avatar) : ouverte à l'Administrateur
         # ET au Responsable (promu), fermée au palier limité.

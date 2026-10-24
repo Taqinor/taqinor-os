@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import calepinageApi from '../../api/calepinageApi'
 import { urlFichierCalepinage, crossOriginFichierCalepinage } from '../../lib/calage/fichierCalepinage'
 import { ZOOM_INITIAL, poserFondCarte } from '../../lib/calage/fondCarte'
+import { retirerCarte } from '../../lib/leaflet/retirerCarte'
 import useDocumentCalepinage, { ecrireSection } from './useDocumentCalepinage'
 import {
   Button, Card, FileUpload, Input, Label, Select, SelectContent, SelectItem,
@@ -221,7 +222,7 @@ export default function PhotoSiteCalage({ calepinageId: idPropose, documentVivan
     map.on('move zoom', redessiner)
     mapRef.current = map
     return () => {
-      map.remove()
+      retirerCarte(map)
       mapRef.current = null
       markersRef.current = []
       polygonRef.current = null

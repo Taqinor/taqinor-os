@@ -373,6 +373,15 @@ class FacturerVenteTrancheVNT26(_BaseVente):
         for lg in devis.lignes.select_related('produit'):
             self.assertEqual(lg.produit.quantite_stock, stocks[lg.produit_id])
 
+    def test_devis_refuse_est_un_conflit_409(self):
+        """Un devis non accepté est un refus d'ÉTAT (409), même corps."""
+        devis = self._388('DEV-VNT26-REF')
+        devis.statut = 'refuse'
+        devis.save(update_fields=['statut'])
+        refus = self._refus(devis, nature='solde')
+        self.assertEqual(refus.status, 409)
+        self.assertIn('Seul un devis accepté', refus.corps['detail'])
+
     def test_rien_a_facturer(self):
         devis = self._388('DEV-VNT26-FIN', echeancier=[
             {'type': 'solde', 'libelle': 'Solde', 'unite': 'pct',
@@ -713,6 +722,20 @@ class FacturerVenteEndpointVNT31(_BaseVente):
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertEqual(resp.data['code'], 'cle_inattendue')
         self.assertEqual(resp.data['cle_attendue'], 'materiel')
+
+    def test_nature_enumeration_publiee_est_celle_du_service(self):
+        """ENF11 — la nature est une énumération PUBLIÉE (= ``NATURES``) ;
+        hors liste = 400 du sérialiseur déclaré, aucune facture."""
+        from apps.ventes.domain.facturation_vente import NATURES
+        from apps.ventes.views import openapi_docs as D
+        champ = D.FacturerVenteRequest.fields['nature']
+        self.assertEqual(tuple(champ.choices), NATURES)
+        devis = self._388('DEV-VNT31-NATURE')
+        for brut in ('0', 'Acompte', '', 7):
+            resp = self.api.post(self._url(devis), {'nature': brut},
+                                 format='json')
+            self.assertEqual(resp.status_code, 400, (brut, resp.data))
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
 
     def test_emettre_exige_le_code_d_encaissement(self):
         from apps.roles.permissions_registre import (

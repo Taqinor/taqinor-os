@@ -196,7 +196,9 @@ class PlanifierVisiteApiTests(VisiteApiBase):
                 {'date_prevue': (
                     AUJOURDHUI - datetime.timedelta(days=1)).isoformat()},
                 format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # ENF11 : refus d'ÉTAT (horloge serveur), pas de corps → 409, même
+        # corps ``{date_prevue: [message]}``.
+        self.assertEqual(reponse.status_code, 409, reponse.data)
         self.assertIn('date_prevue', reponse.data)
         self.assertEqual(VisiteTerrain.objects.count(), 0)
 

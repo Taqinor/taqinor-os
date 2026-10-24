@@ -22,7 +22,7 @@ from authentication.permissions import (
     HasPermissionOrLegacy, IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
 from apps.roles.permissions import DroitDeLaGrille, droits_de_la_grille  # ASEC50
-from core.champs_stricts import BooleenStrict, ChaineStricte, entier_ou_400
+from core.champs_stricts import BooleenStrict, ChaineStricte, DecimalBornee, entier_ou_400
 from core.conflit_etat import ConflitEtat
 from core.parametres_requete import choix_ou_400
 from core.parseurs import PARSEURS_JSON, JsonSeulementMixin
@@ -758,8 +758,10 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
         methods=['POST'],
         request=_sch('SavReleveCompteurRequete', {
             'type': drf_serializers.RegexField(r'^(heures|kwh|m3)$'),
-            'valeur': drf_serializers.DecimalField(
-                max_digits=12, decimal_places=2, min_value=0),
+            # ENF11 — bornes 0..9999999999.99 PUBLIÉES au motif (sans signe) :
+            # ``lire_releve`` refuse tout le reste (400 « hors bornes »).
+            'valeur': DecimalBornee(
+                max_digits=12, decimal_places=2, min_value=Decimal('0')),
             'date': drf_serializers.DateField(required=False),
         }),
         responses={201: _sch('SavReleveCompteurReponse', {
@@ -1054,7 +1056,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # client est optionnel au niveau sérialiseur (peut venir de l'équipement) ;
         # s'il n'a pas pu être résolu, on rétablit l'exigence ici.
         if not serializer.validated_data.get('client'):
-            raise ValidationError({'client': 'Ce champ est obligatoire.'})
+            # ENF11 — corps conforme au schéma publié (client OU équipement) :
+            # l'ÉTAT d'un équipement sans chantier ni client de vente empêche
+            # la déduction → 409 ; ni l'un ni l'autre → 400.
+            raise (ConflitEtat(
+                "Le client ne peut pas être déduit de cet équipement "
+                "(aucun chantier ni client de vente) : précisez le client.")
+                if serializer.validated_data.get('equipement') is not None
+                else ValidationError({'client': 'Ce champ est obligatoire.'}))
         date_ouverture = (
             serializer.validated_data.get('date_ouverture')
             or timezone.localdate())

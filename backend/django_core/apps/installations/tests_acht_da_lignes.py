@@ -80,9 +80,28 @@ class DaLignesTests(TestCase):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['importees'], 1)
         self.assertEqual(len(r.data['erreurs']), 4)  # dont quantité nulle (409 de ligne)
+        # ENF11 — forme déclarée : entiers pour lignes_creees, {ligne, erreur}.
+        self.assertTrue(all(isinstance(i, int) for i in r.data['lignes_creees']))
+        self.assertTrue(all(set(e) == {'ligne', 'erreur'} for e in r.data['erreurs']))
         self.assertEqual(self.da.lignes.count(), 1)
         self.da.refresh_from_db()
         self.assertEqual(self.da.montant_estime, Decimal('20'))
+
+    def test_csv_vide_est_un_conflit_409(self):
+        # ENF11 — fichier multipart bien formé mais sans en-tête : 409 (le
+        # schéma publie un FileField, rien n'y distingue un fichier vide) ;
+        # un fichier non UTF-8 reste 400.
+        url = f'{BASE}/demandes-achat/{self.da.id}/importer-lignes-csv/'
+        r = self.api.post(
+            url, {'fichier': SimpleUploadedFile('v.csv', b'')},
+            format='multipart')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('fichier', r.data)
+        r = self.api.post(
+            url, {'fichier': SimpleUploadedFile('b.csv', b'\xff\xfe\x00')},
+            format='multipart')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(self.da.lignes.count(), 0)
 
     def _approuver(self):
         DemandeAchat.objects.filter(pk=self.da.pk).update(

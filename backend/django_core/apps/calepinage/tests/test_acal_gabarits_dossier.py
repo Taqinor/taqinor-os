@@ -242,7 +242,7 @@ class RefusTest(BaseGabarits):
     def test_bornes_de_colonne_400_nomme_jamais_500(self):
         # CI #993 api-fuzz-pr (Qay0Hc) : un intitulé de 201 caractères en
         # JSON (``fichier`` vide) cassait à l'INSERT (500) — 400 nommé.
-        corps = {'fichier': '', 'pays': 'AA', 'code': '0', 'genre': '0',
+        corps = {'pays': 'AA', 'code': '0', 'genre': '0',
                  'intitule': '0' * 201, 'version': '', 'actif': False,
                  'pieces_attendues': [], 'champs': []}
         reponse = self.api.post(URL, corps, format='json')
@@ -256,7 +256,7 @@ class RefusTest(BaseGabarits):
             self.assertEqual(refus.status_code, 400, (champ, refus.data))
             self.assertIn(champ, refus.data)
         self.assertFalse(GabaritDossierReglementaire.objects.exists())
-        # Le même corps à intitulé borné passe (``fichier`` vide = absent).
+        # Le même corps à intitulé borné passe (sans ``fichier``).
         ok = self.api.post(URL, dict(corps, intitule='0' * 200),
                            format='json')
         self.assertEqual(ok.status_code, 201, ok.data)
@@ -272,6 +272,23 @@ class RefusTest(BaseGabarits):
                  'intitule': 'Dossier', 'version': ''}
         reponse = self.api.post(URL, corps, format='json')
         self.assertEqual(reponse.status_code, 201, reponse.data)
+
+    def test_fichier_vide_ou_texte_refuse_400_nomme(self):
+        # ENF11 (api-fuzz « accepted schema-violating request », ``fichier=``)
+        # — ``fichier`` est un fichier : une valeur de formulaire vide n'est
+        # plus ignorée en silence, et rien n'est créé.
+        avant = GabaritDossierReglementaire.objects.count()
+        corps = {'pays': 'AA', 'code': 'zero', 'intitule': 'Zéro',
+                 'fichier': ''}
+        reponse = self.api.post(URL, corps, format='multipart')
+        self.assertEqual(reponse.status_code, 400, reponse.data)
+        self.assertIn('fichier', reponse.data)
+        self.assertEqual(GabaritDossierReglementaire.objects.count(), avant)
+        # corps JSON non objet (null, liste) : 400 nommé, jamais 500
+        for brut in ('null', '[]'):
+            r = self.api.post(URL, brut, content_type='application/json')
+            self.assertEqual(r.status_code, 400, (brut, r.data))
+        self.assertEqual(GabaritDossierReglementaire.objects.count(), avant)
 
     def test_403_sans_calepinage_gerer(self):
         lecteur = Role.objects.create(

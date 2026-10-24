@@ -139,7 +139,7 @@ export default function PlanifierVisiteModal({
       // (objet de champs) s'affiche SOUS les champs + un bandeau qui les
       // nomme ; toute autre erreur (réseau, 500…) affiche UNE phrase claire,
       // jamais « Non enregistré ».
-      if (err?.response?.status === 400 && data && typeof data === 'object' && !Array.isArray(data)) {
+      if ([400, 409].includes(err?.response?.status) && data && typeof data === 'object' && !Array.isArray(data)) {
         setErreurs(data)
       } else {
         setErreurGenerale('La planification de la visite a échoué — réessayez.')

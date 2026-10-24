@@ -243,3 +243,29 @@ def corps_lu(request, corps):
 CORPS_RESOUDRE_GPS, CORPS_VILLE_STATUT, _REGLE_GPS = _corps_gps()
 #: ``extensions`` de ``resoudre-gps`` (règle combinée au corps publié).
 RESOUDRE_GPS_REPERE = {'x-corps-resserre': _REGLE_GPS}
+
+
+def _corps_noter():
+    """ENF11 nocturne — corps de ``leads/{id}/noter/`` : le texte doit être
+    NON BLANC (``texte_verifie`` le rogne, « Note vide. » sinon) ; en
+    multipart, une pièce jointe seule EST une note. La règle « texte non blanc
+    OU fichier » est publiée à la racine du corps (``x-corps-resserre``)."""
+    from rest_framework import serializers
+
+    from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, ChaineStricte
+
+    from . import schema_docs as sd
+
+    json_ = sd.corps('CrmNoterRequest', body=ChaineStricte())
+    multipart = sd.corps(
+        'CrmNoterMultipartRequest',
+        body=ChaineStricte(required=False, allow_blank=True),
+        file=serializers.FileField(required=False))
+    regle = {'anyOf': [
+        {'required': ['body'],
+         'properties': {'body': {'pattern': MOTIF_NON_BLANC_SANS_NUL}}},
+        {'required': ['file']}]}
+    return json_, multipart, {'x-corps-resserre': regle}
+
+
+CORPS_NOTER_JSON, CORPS_NOTER_MULTIPART, NOTER_REPERE = _corps_noter()

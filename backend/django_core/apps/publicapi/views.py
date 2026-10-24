@@ -6,7 +6,7 @@ société vient TOUJOURS de l'utilisateur connecté, jamais du corps de requête
 """
 from django.db.models import Q
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_serializer, inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_serializer, inline_serializer,
 )
 from rest_framework import serializers as drf_serializers, viewsets, status
 from rest_framework.decorators import action
@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAdminOrResponsableTier
+from core.conflit_etat import ConflitEtat
 from core.api_usage import plan_pour_societe
 
 from .constants import ENV_LIVE, ENV_TEST
@@ -145,6 +146,10 @@ class OcrToCrmSerializer(drf_serializers.Serializer):
             if not isinstance(value.get(cle) or '', str):
                 raise drf_serializers.ValidationError(
                     f'« {cle} » : texte attendu.')
+        # Le service lit `fournisseur or client` : un `fournisseur` blanc
+        # masquerait un `client` valable (le schéma publié accepte ce corps).
+        value = {c: v for c, v in value.items()
+                 if not (c in ('fournisseur', 'client') and not (v or '').strip())}
         return value
 
 
@@ -205,7 +210,9 @@ class OcrToCrmView(APIView):
 
     @extend_schema(request=OcrToCrmSerializer,
                    extensions={EXTENSION_CORPS_RESSERRE: REGLE_CORPS_OCR},
-                   responses={201: _OCR_REPONSE})
+                   responses={201: _OCR_REPONSE, 409: OpenApiResponse(
+                       description="Les services CRM/ventes refusent le "
+                                   "document : {\"detail\": …}.")})
     def post(self, request):
         # Imports paresseux locaux : pas d'import des models/views des apps cibles.
         from apps.crm.services import create_draft_lead_from_ocr
@@ -216,6 +223,10 @@ class OcrToCrmView(APIView):
         corps.is_valid(raise_exception=True)
         mode = corps.validated_data.get('mode', 'lead')
         fields = corps.validated_data.get('fields') or {}
+        if not (fields.get('fournisseur') or fields.get('client')):
+            # Corps contraire au schéma publié (REGLE_CORPS_OCR) : 400.
+            raise ValidationError({'fields': 'Un « fournisseur » ou un '
+                                   '« client » non vide est requis.'})
 
         try:
             lead = create_draft_lead_from_ocr(
@@ -227,8 +238,9 @@ class OcrToCrmView(APIView):
                 payload['devis_id'] = devis.id
                 payload['devis_reference'] = devis.reference
         except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+            # ENF11 : le corps est conforme au schéma ; c'est ce que les
+            # services en font qui échoue — refus d'ÉTAT, 409 (jamais 400).
+            raise ConflitEtat(str(exc))
         return Response(payload, status=status.HTTP_201_CREATED)
 
 

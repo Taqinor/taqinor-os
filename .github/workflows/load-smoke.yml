@@ -58,6 +58,7 @@ jobs:
       DB_HOST: localhost
       DB_PORT: '5432'
       REDIS_URL: redis://localhost:6379/0
+      PYTHONPATH: ${{ github.workspace }}   # STAGES.py (racine du dépôt) importable
       LOCUST_USER: charge
       LOCUST_PASSWORD: charge-password-not-secret
       LOAD_USERNAME: charge

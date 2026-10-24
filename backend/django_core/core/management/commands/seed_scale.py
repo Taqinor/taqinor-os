@@ -276,9 +276,16 @@ class Command(BaseCommand):
             orphelins = list(Produit.objects.filter(
                 pk__in=pools.get('stock.produit', []), company__isnull=True
             ).values_list('pk', flat=True))
-            for pk in orphelins:
+            # Unicité (company, nom) quand sku vide : le ``nom`` Faker peut
+            # déjà exister dans la société tirée → suffixe ``#pk`` (pk unique,
+            # idempotent : un nom déjà suffixé n'est pas re-suffixé).
+            for pk, nom in Produit.objects.filter(pk__in=orphelins).values_list(
+                    'pk', 'nom'):
+                suffixe = f' #{pk}'
+                if not nom.endswith(suffixe):
+                    nom = nom[:100 - len(suffixe)] + suffixe
                 Produit.objects.filter(pk=pk).update(
-                    company_id=random.choice(company_ids))
+                    company_id=random.choice(company_ids), nom=nom)
             produits = list(Produit.objects.filter(
                 company_id__in=company_ids
             ).values_list('pk', 'company_id')[:200])

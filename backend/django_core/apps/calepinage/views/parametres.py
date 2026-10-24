@@ -43,7 +43,8 @@ from ..selectors import (
     kits_de_pose_disponibles, parametres_de_societe, registre_des_reglages,
 )
 from ..services.parametres import (
-    ReglageInterdit, ReglageInvalide, enregistrer_parametres,
+    CaractereInterditEnCle, ReglageInterdit, ReglageInvalide,
+    enregistrer_parametres,
 )
 
 __all__ = ['ParametresCalepinageView', 'SuggestionPenteIGNView']
@@ -337,6 +338,10 @@ class ParametresCalepinageView(APIView):
             # ACAL132 — une clé d'une section À REGISTRE est nommée DANS sa
             # section (``{simulation: {sigma_modele_pct: motif}}``, contrat
             # ``parametres_calepinage.json::exemple_refus_type``).
+            if isinstance(refus, CaractereInterditEnCle):
+                # ENF11 — clé d'objet interdite : inexprimable au schéma → 409.
+                return Response({refus.champ or 'detail': str(refus)},
+                                status=status.HTTP_409_CONFLICT)
             if getattr(refus, 'section', ''):
                 return Response({refus.section: {refus.champ: str(refus)}},
                                 status=status.HTTP_400_BAD_REQUEST)

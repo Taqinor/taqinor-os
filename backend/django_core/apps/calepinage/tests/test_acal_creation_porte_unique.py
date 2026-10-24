@@ -176,7 +176,9 @@ class PorteUniqueTest(BaseApiCalepinage):
         reponse = self.api.post(URL, {'lead': lead.pk,
                                       'responsable': self.user_autre.pk},
                                 format='json')
-        self.assertEqual(reponse.status_code, 400, reponse.data)
+        # compte d'une autre société = id inconnu pour celle-ci : 404 (doctrine
+        # IdInconnu404Mixin), corps nommé sous ``responsable``.
+        self.assertEqual(reponse.status_code, 404, reponse.data)
         self.assertIn('responsable', reponse.data)
         self.assertFalse(Calepinage.objects.filter(lead_id=lead.pk).exists())
 

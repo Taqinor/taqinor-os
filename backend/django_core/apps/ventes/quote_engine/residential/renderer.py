@@ -419,6 +419,7 @@ def render_pdf_bytes(data: dict) -> bytes:
     # s'il rétablit vraiment le compte de pages. Sinon on sert le passe-1 :
     # jamais de régression par rapport au comportement historique.
     compact_p3 = False
+    compact_level = 0
     pages_logiques = html.count('<div class="page">')
     if pages_logiques and len(doc1.pages) > pages_logiques:
         html_c = residential_render.build_html(d, compact_p3=True)
@@ -426,12 +427,35 @@ def render_pdf_bytes(data: dict) -> bytes:
         if len(doc_c.pages) <= pages_logiques:
             html, doc1, compact_p3 = html_c, doc_c, True
 
+    # Nocturne 23/10/2026 — le resserrement de la page 3 ne suffit pas quand ce
+    # sont les pages 1 et 2 qui débordent (arabe : libellés en police système à
+    # l'interligne plus haut, titres et badges sur deux lignes → 5 pages au
+    # lieu de 3). On tente alors les niveaux de ``theme.compact_css`` dans
+    # l'ordre et on retient le PREMIER qui rétablit le compte de pages ; sinon
+    # le passe-1 est servi, comme avant.
+    if pages_logiques and len(doc1.pages) > pages_logiques:
+        for niveau in (1, 2, 3):
+            html_n = residential_render.build_html(
+                d, compact_p3=True, compact_level=niveau)
+            doc_n = HTML(string=html_n, base_url=f"file://{base}/").render()
+            if len(doc_n.pages) <= pages_logiques:
+                html, doc1 = html_n, doc_n
+                compact_p3, compact_level = True, niveau
+                break
+
     pdf_bytes = doc1.write_pdf()
 
-    slack = _measure_page_slack(pdf_bytes)
+    # QRES62 mesure le vide PAR FEUILLE en supposant une feuille par page
+    # logique : si la pagination est encore fausse, une feuille de débordement
+    # presque vide se lirait comme 68 mm de vide à injecter dans les joints de
+    # la page logique suivante — ce qui aggravait le débordement (arabe).
+    slack = {}
+    if not pages_logiques or len(doc1.pages) == pages_logiques:
+        slack = _measure_page_slack(pdf_bytes)
     if slack:
         html2 = residential_render.build_html(
-            d, elastic=slack, compact_p3=compact_p3)
+            d, elastic=slack, compact_p3=compact_p3,
+            compact_level=compact_level)
         doc2 = HTML(string=html2, base_url=f"file://{base}/").render()
         if len(doc2.pages) == len(doc1.pages):
             pdf_bytes = doc2.write_pdf()

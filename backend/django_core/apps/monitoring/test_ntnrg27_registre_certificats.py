@@ -202,6 +202,20 @@ class TestAsav102RegistreApi(TestCase):
         # Doublon exact refusé (anti-double-comptage) : refus d'ÉTAT = 409.
         self.assertEqual(self._emettre().status_code, 409)
 
+    def test_periode_obligatoire_publiee_a_la_racine(self):
+        """ENF11 : la période est ``required`` à la racine du corps publié
+        (pas seulement dans les branches ``oneOf``) ; sans elle = 400."""
+        from apps.monitoring.views import _CORPS_CERTIFICAT_CARBONE
+        corps = _CORPS_CERTIFICAT_CARBONE['application/json']
+        self.assertEqual(corps['required'], ['periode_debut', 'periode_fin'])
+        for manquant in ('periode_debut', 'periode_fin'):
+            r = self.api.post(
+                self.URL, {'installation_id': self.inst.id,
+                           **{k: '2026-01-01' for k in
+                              ('periode_debut', 'periode_fin')
+                              if k != manquant}}, format='json')
+            self.assertEqual(r.status_code, 400, r.data)
+
     def test_refus_sans_production_cible_ou_autre_societe(self):
         r = self._emettre(periode_debut='2025-01-01', periode_fin='2025-06-30')
         self.assertEqual(r.status_code, 409)  # aucune production : refus d'ÉTAT

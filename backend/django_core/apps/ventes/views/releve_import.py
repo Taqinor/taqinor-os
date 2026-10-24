@@ -65,7 +65,8 @@ def releve_dry_run(request):
 
 
 @extend_schema(request=D.ReleveCommitRequest, responses={
-    200: D.ReleveCommitResponse, 201: D.ReleveCommitResponse})
+    200: D.ReleveCommitResponse, 201: D.ReleveCommitResponse},
+    extensions=D.CORPS_RELEVE_LIGNES)
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 @parser_classes([JSONParser])  # ENF11/D2 : le commit ne reçoit plus de fichier
@@ -93,6 +94,8 @@ def releve_commit(request):
     token = request.data.get('token')
     if token is not None and not isinstance(token, str):
         return Response({'token': ['Chaîne attendue.']}, status=400)
+    if token is not None and '\x00' in token:
+        return Response({'token': ['Caractère nul interdit.']}, status=400)
     lignes = request.data.get('lignes')
     # AFAC6 — `lignes` accepte des numéros de ligne ET des objets
     # `{ligne, facture_reference}` (ligne ambiguë résolue) ; le service

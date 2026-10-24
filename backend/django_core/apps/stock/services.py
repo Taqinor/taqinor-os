@@ -1418,7 +1418,7 @@ def apply_retour_fournisseur(retour, user):
     from django.db import transaction
     from .models import Produit, RetourFournisseur, MouvementStock
     if retour.statut != RetourFournisseur.Statut.BROUILLON:
-        raise ValueError('Seul un retour en brouillon peut être validé.')
+        raise EtatIncompatible('Seul un retour en brouillon peut être validé.')
     lignes = list(retour.lignes.select_related('produit'))
     if not lignes:
         raise ValueError('Le retour ne contient aucune ligne.')
@@ -1428,7 +1428,7 @@ def apply_retour_fournisseur(retour, user):
         verrou = (RetourFournisseur.objects.select_for_update()
                   .get(pk=retour.pk))
         if verrou.statut != RetourFournisseur.Statut.BROUILLON:
-            raise ValueError('Seul un retour en brouillon peut être validé.')
+            raise EtatIncompatible('Seul un retour en brouillon peut être validé.')
         for ligne in lignes:
             # ERR24 — verrou de ligne produit dans la transaction pour que des
             # retours concurrents du même produit ne perdent pas de décrément.
