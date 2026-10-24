@@ -57,6 +57,29 @@ class CleContenuTests(unittest.TestCase):
                     mock.patch.object(cnd, "TIMESTAMP_AS_DATEFIELD_ALLOWLIST", set()):
                 self.assertEqual(_scan(r), [])
 
+    def test_nom_horodatage_mot_entier(self):
+        # `sent` enfoui dans « consentement » n'est pas un horodatage ; `sent_at` en est un.
+        for nom in ("sent_at", "last_updated", "created_at", "paye_le", "date_creation"):
+            self.assertTrue(cnd.TIMESTAMP_NAME_RE.search(nom), nom)
+        for nom in ("date_consentement", "consentement_le", "presents"):
+            self.assertIsNone(cnd.TIMESTAMP_NAME_RE.search(nom), nom)
+
+    def test_datefield_consentement_non_signale(self):
+        modele = (
+            "from django.db import models\n\n\nclass Consent(models.Model):\n"
+            "    date_consentement = models.DateField()\n"
+            "    envoye_le = models.DateField()\n"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "backend" / "django_core" / "apps" / "adsengine"
+            d.mkdir(parents=True)
+            (d / "models.py").write_text(modele, encoding="utf-8")
+            with mock.patch.object(cnd, "TIMESTAMP_AS_DATEFIELD_ALLOWLIST", set()), \
+                    mock.patch.object(cnd, "DATEFIELD_AUTO_NOW_ALLOWLIST", set()):
+                messages = [m for code, m in _scan(Path(tmp)) if code == "TIMESTAMP_AS_DATEFIELD"]
+        self.assertEqual(len(messages), 1, messages)
+        self.assertIn("envoye_le", messages[0])
+
     def test_depot_reel_vert(self):
         self.assertEqual(cnd.check_naive_datetime()[1], [])
         self.assertEqual(cnd.check_datefield_timestamps()[1], [])
