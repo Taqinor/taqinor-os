@@ -27,6 +27,8 @@ PAGINATION = Path("backend") / "django_core" / "core" / "pagination.py"
 FRONT = Path("frontend") / "src"
 # Dette connue (cliquet) : 'fichier::fonction' -> raison. Corriger = sortir.
 DETTES = {
+    "frontend/src/pages/stock/KitsStock.jsx::KitsStock":
+        "APAR78 : page_size 1000 lu via le helper `liste`, `next` non suivi",
 }
 _RE_PAGE_SIZE = re.compile(r"""page_size['"]?\s*[:=]\s*(\d+)""")
 _RE_RESULTS = re.compile(r"\bresults\b")
@@ -73,10 +75,13 @@ def analyser_source(source: str, max_ps: int) -> dict:
     # portions : (nom, début, fin) ; le préambule avant la 1re déclaration = <module>
     portions = [("<module>", 0, bornes[0] if decls else len(lignes))]
     portions += [(nom, debut, bornes[k + 1]) for k, (debut, nom) in enumerate(decls)]
+    corps_de = [chr(10).join(lignes[debut:fin]) for _, debut, fin in portions]
+    # un niveau : une portion lit aussi `results` en appelant un lecteur du même fichier
+    lecteurs = [nom for (nom, _, _), c in zip(portions, corps_de) if nom != "<module>" and _RE_RESULTS.search(c)]
     trouves = {}
-    for nom, debut, fin in portions:
-        corps = chr(10).join(lignes[debut:fin])
-        if not _RE_RESULTS.search(corps) or _RE_SUIT_NEXT.search(corps):
+    for (nom, debut, fin), corps in zip(portions, corps_de):
+        lit = _RE_RESULTS.search(corps) or any(re.search(rf"(?<![\w.]){re.escape(lec)}\s*\(", corps) for lec in lecteurs)
+        if not lit or _RE_SUIT_NEXT.search(corps):
             continue
         for k in range(debut, fin):
             m = _RE_PAGE_SIZE.search(lignes[k])
