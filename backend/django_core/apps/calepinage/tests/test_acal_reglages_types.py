@@ -289,6 +289,15 @@ class RouteParametresTest(TestCase):
         self.assertFalse(
             ParametresCalepinage.objects.filter(company=self.company).exists())
 
+    def test_section_libre_valeur_nettoyee_du_nul(self):
+        # 4e drainage api-fuzz : un NUL dans une VALEUR d'une section libre est
+        # conforme au schéma publié ; il est retiré (200), jamais un 400.
+        reponse = self.api.put(URL, {'presets': {
+            'a': 'x\x00y', 'b': ['\x00z', {'c': 'd\x00'}]}}, format='json')
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertEqual(reponse.data['presets']['a'], 'xy')
+        self.assertEqual(reponse.data['presets']['b'], ['z', {'c': 'd'}])
+
 
 class CaractereInterditTest(SimpleTestCase):
     """CI #997 api-fuzz (3) — le chemin du premier texte que JSONB refuse."""
