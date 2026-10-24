@@ -728,6 +728,15 @@ def _facteur_ttc_ligne(produit, designation, taux_tva, company):
     return 1.0 + tva / 100.0
 
 
+def _taux_sans_devis(taux_tva, company):
+    """APAR79 — taux de composition d'un balayage : celui du devis s'il est
+    fourni, sinon le taux standard de la société (jamais un 20 % codé)."""
+    if taux_tva is not None:
+        return taux_tva
+    from apps.ventes.serializers import _fallback_taux_tva
+    return _fallback_taux_tva(company, '')
+
+
 def _lire_composition(lignes, taux_tva, company=None):
     """Extrait d'une composition ce dont le tableau a besoin.
 
@@ -1034,7 +1043,6 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         reglages_de_composition,
         sonder_wattage,
     )
-    from apps.ventes.serializers import _fallback_taux_tva
 
     mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
     if not mensuel:
@@ -1058,9 +1066,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         structure_type=structure_type,
         structure_produit_id=structure_produit_id,
         phase=phase, mppt_paires=mppt_paires or 1,
-        # APAR79 — sans devis (None), le taux standard de la société.
-        taux_tva=(taux_tva if taux_tva is not None
-                  else _fallback_taux_tva(company, '')),
+        taux_tva=_taux_sans_devis(taux_tva, company),
         hors_reseau=bool(hors_reseau))
 
     # Watt du panneau RÉELLEMENT retenu par le catalogue — LA sonde partagée
