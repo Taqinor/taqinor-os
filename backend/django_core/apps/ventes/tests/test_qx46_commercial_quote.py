@@ -513,3 +513,54 @@ class TestAmot88VocabulaireClient(SimpleTestCase):
         html = "".join(_pages_ci(_data_ci(langue="ar")))
         self.assertIn("للمنشآت التجارية", html)
         self.assertNotIn("للمحلات", html)
+
+
+class TestAmot89DefinitionsEtSurplus(SimpleTestCase):
+    """AMOT89 — la définition servie sous la tuile d'autoconsommation (la
+    tuile de couverture SE dit déjà « Part de votre consommation
+    couverte ») et le surplus chiffré en kWh du bilan, dit selon 82-21."""
+
+    def test_definition_sous_la_tuile_sans_redite(self):
+        p1 = _texte_ci(_pages_ci(_data_ci())[1])
+        self.assertIn("Autoconsommation part de la production consommée sur "
+                      "place", p1)
+        self.assertIn("Part de votre consommation couverte", p1)
+        self.assertNotIn("couverte par le solaire", p1)
+
+    def test_surplus_bt_en_kwh_du_bilan(self):
+        data = _data_ci()
+        bilan = data["etude"]["etude_ci"]["bilan"]
+        self.assertEqual(synthese_ci(data)["energie"]["surplus"], {
+            "kwh_an": bilan["surplus_kwh"], "valorise_kwh_an": 0,
+            "non_valorise_kwh_an": bilan["non_valorise_kwh"],
+            "non_valorise_pct_production": round(
+                bilan["non_valorise_kwh"] / bilan["production_kwh"] * 100)})
+        self.assertIn("Surplus non valorisé : ≈ 25 959 kWh/an (27 % de la "
+                      "production) — revente non ouverte en basse tension à "
+                      "ce jour (ANRE, décision 04/26).",
+                      _texte_ci(_pages_ci(data)[1]))
+
+    def test_surplus_mt_revendu_sous_plafond(self):
+        data = _data_ci()
+        etude_ci = data["etude"]["etude_ci"]
+        etude_ci["entrees_resolues"]["tension"]["valeur"] = "mt"
+        etude_ci["bilan"].update(injecte_valorise_kwh=19085,
+                                 non_valorise_kwh=6874)
+        self.assertIn("Surplus injecté : ≈ 19 085 kWh/an valorisés (plafond "
+                      "légal : 20 % de la production annuelle, loi 82-21 art. "
+                      "12) ; ≈ 6 874 kWh/an non valorisés (7 % de la "
+                      "production).", _texte_ci(_pages_ci(data)[1]))
+
+    def test_sans_surplus_servi_ligne_omise(self):
+        data = _data_ci()
+        for cle in ("surplus_kwh", "non_valorise_kwh"):
+            data["etude"]["etude_ci"]["bilan"].pop(cle)
+        self.assertNotIn("surplus", synthese_ci(data)["energie"])
+        self.assertNotIn("Surplus", _texte_ci(_pages_ci(data)[1]))
+
+    def test_anglais(self):
+        p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])
+        self.assertIn("Self-consumption share of the solar production "
+                      "consumed on site", p1)
+        self.assertIn("Surplus not valued: ≈ 25 959 kWh/yr (27 % of the "
+                      "production)", p1)

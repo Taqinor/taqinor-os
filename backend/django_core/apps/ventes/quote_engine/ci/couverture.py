@@ -371,19 +371,75 @@ def tuiles_taux(d, cle, kpi):
     C&I lus sur ``synthese_ci``), ou [] — UNE définition pour les deux
     couvertures (CIQ333 : libellés dans la langue du document)."""
     tuiles = []
+    # AMOT89 — la définition SERVIE de chaque taux (``synthese_ci.energie.
+    # definitions``, IEA PVPS T1-28) en légende sous la tuile.
+    from .synthese import chiffres_cles
+    definitions = chiffres_cles(d.get(f"{cle}_synthese") or {})["definitions"]
     autoconso = d.get(f"{cle}_autoconso")
     if autoconso is not None:
-        tuiles.append(kpi(f"{round(autoconso)}", "&nbsp;%",
-                          libelle(d, "ci_autoconsommation",
-                                  "Autoconsommation"),
-                          "autoconsommation_pct"))
+        tuiles.append(kpi(f"{round(autoconso)}", "&nbsp;%", _avec_definition(
+            d, libelle(d, "ci_autoconsommation", "Autoconsommation"),
+            definitions.get("autoconso")), "autoconsommation_pct"))
     couverture = d.get(f"{cle}_couverture")
     if couverture is not None:
-        tuiles.append(kpi(f"{round(couverture)}", "&nbsp;%",
-                          libelle(d, "ci_part_conso_couverte",
-                                  "Part de votre consommation couverte"),
-                          "couverture_pct"))
+        tuiles.append(kpi(f"{round(couverture)}", "&nbsp;%", _avec_definition(
+            d, libelle(d, "ci_part_conso_couverte",
+                       "Part de votre consommation couverte"),
+            definitions.get("couverture")), "couverture_pct"))
     return tuiles
+
+
+def _avec_definition(d, libelle_tuile, definition):
+    """AMOT89 — le libellé d'une tuile de taux suivi de la définition SERVIE
+    (petite ligne, isolée en arabe) — sauf quand le libellé la dit déjà
+    (« Part de votre consommation couverte » : la définition n'ajouterait
+    qu'une redite)."""
+    texte_def = html.escape(str(definition or "").strip(), quote=False)
+    brut = re.sub(r"<[^>]+>", "", libelle_tuile).strip()
+    if not texte_def or texte_def.casefold().startswith(brut.casefold()):
+        return libelle_tuile
+    if langue(d) == "ar":
+        texte_def = f'<span class="i18n-rtl" dir="rtl">{texte_def}</span>'
+    return (f'{libelle_tuile}<div style="font-size:6.2pt;margin-top:1px;'
+            f'line-height:1.25;">{texte_def}</div>')
+
+
+def ligne_surplus(d, cle, prefixe):
+    """AMOT89 — « Surplus non valorisé : ≈ N kWh/an (M % de la production) »
+    lu sur le bilan servi (``synthese_ci.energie.surplus``), dit selon la
+    règle 82-21 (``constants_82_21``) : en basse tension, aucune revente
+    ouverte ; en MT/HT avec revente, la part valorisée sous le plafond légal
+    puis le reste. '' sans surplus servi ou sans surplus du tout."""
+    from ..constants_82_21 import PLAFOND_INJECTION_PCT
+    from .synthese import chiffres_cles, est_site_mt
+    surplus = chiffres_cles(d.get(f"{cle}_synthese") or {})["surplus"]
+    if not surplus or not surplus.get("kwh_an"):
+        return ""
+    from ..residential.theme import fmt
+    reste = {"kwh": fmt(round(surplus["non_valorise_kwh_an"])),
+             "pct": f"{surplus['non_valorise_pct_production']:g}"}
+    if surplus.get("valorise_kwh_an"):
+        phrase = libelle(
+            d, "ci_surplus_injecte_kwh", "Surplus injecté : ≈ {kwh} kWh/an "
+            "valorisés (plafond légal : {plafond} % de la production "
+            "annuelle, loi 82-21 art. 12)",
+            kwh=fmt(round(surplus["valorise_kwh_an"])),
+            plafond=PLAFOND_INJECTION_PCT)
+        if surplus["non_valorise_kwh_an"]:
+            phrase += libelle(d, "ci_surplus_reste", " ; ≈ {kwh} kWh/an non "
+                              "valorisés ({pct} % de la production).", **reste)
+        else:
+            phrase += "."
+    else:
+        phrase = libelle(d, "ci_surplus_non_valorise", "Surplus non valorisé "
+                         ": ≈ {kwh} kWh/an ({pct} % de la production)",
+                         **reste)
+        phrase += (libelle(d, "ci_surplus_bt", " — revente non ouverte en "
+                           "basse tension à ce jour (ANRE, décision 04/26).")
+                   if not est_site_mt(d) else
+                   libelle(d, "ci_surplus_sans_revente",
+                           " — revente du surplus non retenue."))
+    return f'<div class="{prefixe}-mtsrc">{phrase}</div>'
 
 
 def tuiles_argent(d, cle, kpi, fmt):

@@ -265,6 +265,25 @@ def _bloc_baseline_source(entrees):
     return None, MOTIF_BASELINE_ABSENTE
 
 
+def _surplus(bilan):
+    """AMOT89 — le surplus annuel du bilan horaire, en kWh SERVIS
+    (``surplus_kwh``, ``injecte_valorise_kwh``, ``non_valorise_kwh``) et la
+    part non valorisée exprimée en % de la production (un changement
+    d'unité, au point près) ; None quand le bilan ne le dit pas."""
+    production = _num(bilan.get("production_kwh"))
+    surplus = _num(bilan.get("surplus_kwh"))
+    non_valorise = _num(bilan.get("non_valorise_kwh"))
+    if not production or production <= 0 or surplus is None \
+            or non_valorise is None:
+        return None
+    return {
+        "kwh_an": surplus,
+        "valorise_kwh_an": _num(bilan.get("injecte_valorise_kwh")) or 0,
+        "non_valorise_kwh_an": non_valorise,
+        "non_valorise_pct_production": round(non_valorise / production * 100),
+    }
+
+
 def _bloc_energie(etude_ci, langue):
     bilan = _dict(etude_ci.get("bilan"))
     autoconso = _pct(bilan.get("taux_autoconso"))
@@ -272,12 +291,16 @@ def _bloc_energie(etude_ci, langue):
     if autoconso is None or couverture is None:
         return None, MOTIF_TAUX_ABSENTS
     methode = _dict(etude_ci.get("profil_charge")).get("methode")
-    return {
+    energie = {
         "taux_autoconso_pct": autoconso,
         "taux_couverture_pct": couverture,
         "methode": METHODES.get(methode, METHODE_INCONNUE),
         "definitions": dict(DEFINITIONS.get(langue) or DEFINITIONS["fr"]),
-    }, None
+    }
+    surplus = _surplus(bilan)
+    if surplus is not None:
+        energie["surplus"] = surplus
+    return energie, None
 
 
 def _option_servie(data):
@@ -518,6 +541,15 @@ def _est_mt(data, etude_ci, economie):
     if isinstance(tension, str) and tension.strip().lower() in ("mt", "ht"):
         return True
     return _dict(_dict(economie).get("tarif")).get("contrat") == "mt_general"
+
+
+def est_site_mt(data):
+    """AMOT89 — le site est-il raccordé en MT/HT (entrée résolue du moteur,
+    sinon tension déclarée à l'écran, sinon contrat MT du tarif servi) ?
+    La même lecture que le motif d'argent MT — jamais devinée."""
+    data = _dict(data)
+    etude_ci = _dict(_dict(data.get("etude")).get("etude_ci"))
+    return _est_mt(data, etude_ci, data.get("economie_ci"))
 
 
 def _bloc_argent(data, etude_ci, segment):
@@ -787,5 +819,8 @@ def chiffres_cles(synthese):
         "argent_mt": motif_argent == MOTIF_ARGENT_MT,
         "motif_investissement": motif_investissement,
         "postes_hors_total": list(hors_total or []),
+        # AMOT89 — définitions servies des deux taux et surplus du bilan.
+        "definitions": dict(_dict(energie.get("definitions"))),
+        "surplus": _dict(energie.get("surplus")) or None,
         "note_pointe": _dict(_dict(pointe).get("textes")).get("fr"),
     }

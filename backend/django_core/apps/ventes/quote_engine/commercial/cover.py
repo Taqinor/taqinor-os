@@ -109,7 +109,9 @@ def build(ctx):
                    + (f'<div class="c1c-mtsrc">{grille}</div>' if grille
                       else "")) if argent else ""
     bandeau = ci_couverture.bandeau_reserve(d, "com", "c1c")
-    methode_line = ci_couverture.ligne_methode(d, "com", "c1c")
+    # AMOT89 — le surplus chiffré (kWh du bilan) sous la ligne de méthode.
+    methode_line = (ci_couverture.ligne_methode(d, "com", "c1c")
+                    + ci_couverture.ligne_surplus(d, "com", "c1c"))
     note_pointe = ci_couverture.note_pointe(d, "com")
 
     # QXMT — la SOURCE du barème voyage avec le chiffre, ou l'explication de

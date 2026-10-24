@@ -2439,6 +2439,37 @@ LIBELLES = {
     'ci_src_reglage_societe': {'fr': "hypothèse retenue par l'installateur",
                                'en': "assumption set by the installer",
                                'ar': 'افتراض اعتمده المركِّب'},
+    # AMOT89 — le surplus chiffré depuis le bilan horaire (kWh servis), dit
+    # selon la règle 82-21 (``constants_82_21`` : BT sans revente ; MT/HT :
+    # plafond légal de la production annuelle).
+    'ci_surplus_non_valorise': {
+        'fr': 'Surplus non valorisé : ≈ {kwh} kWh/an ({pct} % de la '
+              'production)',
+        'en': 'Surplus not valued: ≈ {kwh} kWh/yr ({pct} % of the '
+              'production)',
+        'ar': 'فائض غير مُثمَّن: ≈ {kwh} kWh/سنة ({pct} % من الإنتاج)'},
+    'ci_surplus_bt': {
+        'fr': ' — revente non ouverte en basse tension à ce jour (ANRE, '
+              'décision 04/26).',
+        'en': ' — no surplus sale open at low voltage to date (ANRE, '
+              'decision 04/26).',
+        'ar': ' — بيع الفائض غير متاح بالجهد المنخفض حاليا (الهيئة الوطنية '
+              'لضبط الكهرباء، القرار 04/26).'},
+    'ci_surplus_sans_revente': {
+        'fr': ' — revente du surplus non retenue.',
+        'en': ' — surplus sale not selected.',
+        'ar': ' — بيع الفائض غير معتمد.'},
+    'ci_surplus_injecte_kwh': {
+        'fr': 'Surplus injecté : ≈ {kwh} kWh/an valorisés (plafond légal : '
+              '{plafond} % de la production annuelle, loi 82-21 art. 12)',
+        'en': 'Surplus fed in: ≈ {kwh} kWh/yr valued (legal cap: {plafond} '
+              '% of annual production, law 82-21 art. 12)',
+        'ar': 'الفائض المحقون: ≈ {kwh} kWh/سنة مُثمَّنة (السقف القانوني: '
+              '{plafond} % من الإنتاج السنوي، القانون 82-21 المادة 12)'},
+    'ci_surplus_reste': {
+        'fr': ' ; ≈ {kwh} kWh/an non valorisés ({pct} % de la production).',
+        'en': '; ≈ {kwh} kWh/yr not valued ({pct} % of the production).',
+        'ar': '؛ ≈ {kwh} kWh/سنة غير مُثمَّنة ({pct} % من الإنتاج).'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},

@@ -281,7 +281,9 @@ def build(ctx):
                    "votre consommation, vos flux annuels et le délai de "
                    "retour.") if flux_principal(
         (d.get("ind_synthese") or {}).get("argent"))[1].get("flux") else ""
-    methode_line = ci_couverture.ligne_methode(d, "ind", "i1")
+    # AMOT89 — le surplus chiffré (kWh du bilan) sous la ligne de méthode.
+    methode_line = (ci_couverture.ligne_methode(d, "ind", "i1")
+                    + ci_couverture.ligne_surplus(d, "ind", "i1"))
     note_pointe = ci_couverture.note_pointe(d, "ind")
 
     # QXMT — la SOURCE du barème voyage avec le chiffre. CIQ341 — argent non

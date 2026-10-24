@@ -19,6 +19,8 @@ from apps.ventes.quote_engine.ci.mentions import TEXTES_PUISSANCE
 from apps.ventes.quote_engine.ci.synthese import MOTIF_ARGENT_MT
 from apps.ventes.quote_engine.industriel import render, renderer, sample_data
 
+from ._moteur_fixtures import etude_ci_au_kwc_servi
+
 _CONTRATS = Path(__file__).resolve().parents[1] / "contract_samples"
 
 
@@ -192,3 +194,23 @@ class Amot80OffreFermeEtTitresCfo(SimpleTestCase):
         sans = _texte(_html(_data(economie=None)))
         self.assertNotIn("Analyse de rentabilité :", sans)
         self.assertNotIn("Rentabilité sur 25 ans", sans)
+
+
+class Amot89DefinitionsEtSurplus(SimpleTestCase):
+    """AMOT89 — couverture industrielle : définition servie sous la tuile
+    d'autoconsommation et surplus en kWh du bilan (règle 82-21)."""
+
+    def test_definition_et_surplus(self):
+        # L'étude décrit le kWc servi (garde AMOT62) : taux et bilan servis.
+        p1 = _texte(_page1(etude_ci_au_kwc_servi(_data())))
+        self.assertIn("Autoconsommation part de la production consommée sur "
+                      "place", p1)
+        self.assertIn("Surplus non valorisé : ≈ 25 959 kWh/an (27 % de la "
+                      "production) — revente non ouverte en basse tension",
+                      p1)
+
+    def test_site_mt_sans_revente(self):
+        p1 = _texte(_page1(etude_ci_au_kwc_servi(_data(
+            "exemple_industriel_mt", "exemple_industriel_mt"))))
+        self.assertIn("— revente du surplus non retenue.", p1)
+        self.assertNotIn("basse tension à ce jour", p1)
