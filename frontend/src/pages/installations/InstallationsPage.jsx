@@ -231,8 +231,9 @@ function CalendarView({ items, onOpen, onReschedule }) {
 }
 
 export default function InstallationsPage() {
-  // APAR54 — libellés de statuts réglés dans Paramètres › Statuts.
-  useStatutConfig('chantier')
+  // APAR54 — libellés de statuts réglés dans Paramètres › Statuts ; la version
+  // change à l'arrivée du réglage et recalcule les libellés mémorisés.
+  const statutsVersion = useStatutConfig('chantier')
   const dispatch = useDispatch()
   const { items, loading, error } = useSelector(s => s.installations)
   const currentUser = useSelector(s => s.auth?.user)
@@ -273,7 +274,8 @@ export default function InstallationsPage() {
   // N13/N14 — synthèses calculées à la lecture (aucun appel serveur en plus) :
   // poses à venir (≤ 7 j) et répartition funnel + nombre en retard.
   const aVenir = useMemo(() => upcomingPoses(items, 7), [items])
-  const synthese = useMemo(() => funnelSummary(items), [items])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `statutsVersion` : réglage des libellés arrivé après la liste (APAR54)
+  const synthese = useMemo(() => funnelSummary(items), [items, statutsVersion])
   const charge = useMemo(() => installerLoad(filtered, 14), [filtered])
 
   const [selected, setSelected] = useState(null)

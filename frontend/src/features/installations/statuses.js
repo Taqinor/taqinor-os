@@ -164,7 +164,7 @@ export function funnelSummary(items, today = new Date()) {
     if (isPoseEnRetard(it, today)) retard += 1
   }
   const rows = INSTALLATION_STATUSES.map((s) => ({
-    key: s, label: STATUS_LABELS[s], count: counts[s],
+    key: s, label: statusLabel(s), count: counts[s],
   }))
   return { rows, retard }
 }

@@ -115,6 +115,21 @@ describe('useStatutConfig (APAR54)', () => {
     expect(screen.getAllByText('Clôturé').length).toBeGreaterThan(0)
   })
 
+  it('chantiers : la synthèse par statut suit un réglage arrivé APRÈS la liste', async () => {
+    let livrer
+    mocks.getStatutsEffective.mockReturnValue(new Promise((resolve) => { livrer = resolve }))
+    mocks.getInstallations.mockResolvedValue({
+      data: { count: 1, results: [
+        { id: 1, reference: 'CH-APAR54-3', client_nom: 'Client A', statut: 'cloture' },
+      ] },
+    })
+    renderPage(<InstallationsPage />)
+    await waitFor(() => expect(screen.getByTitle('Filtrer : Clôturé')).toBeTruthy())
+    livrer({ data: { results: [{ cle: 'cloture', libelle: 'Livré', ordre: 6 }] } })
+    await waitFor(() => expect(screen.getByTitle('Filtrer : Livré')).toBeTruthy())
+    expect(screen.queryByTitle('Filtrer : Clôturé')).toBeNull()
+  })
+
   it('tickets SAV : « Résolu » renommé « Clos » s\'affiche (liste + filtre)', async () => {
     mocks.getStatutsEffective.mockResolvedValue({
       data: { results: [{ cle: 'resolu', libelle: 'Clos', ordre: 3 }] },
