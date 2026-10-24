@@ -246,6 +246,63 @@ class Amot91Hypotheses(SimpleTestCase):
         # Compact : jamais l'investissement (incomplet ici) dans le tableau.
         self.assertNotIn("Investissement 247 500", tableau)
 
+    def test_methode_8760_dite(self):
+        """AMOT99 (D-ACI-18=a) — la méthode retenue par le moteur est dite :
+        série 8 760 h de l'année type (``production.methode_autoconso``)."""
+        texte = _texte(_pages(_data_energie())[3])
+        self.assertIn("Méthode de calcul : autoconsommation calculée heure "
+                      "par heure sur l'année type (8 760 h)", texte)
+        self.assertNotIn("journées moyennes", texte)
+
+    def test_methode_repli_journees_moyennes_dite(self):
+        d = _data_energie()
+        d["etude"]["etude_ci"]["production"]["methode_autoconso"] = \
+            "journees_moyennes"
+        texte = _texte(_pages(d)[3])
+        self.assertIn("autoconsommation : estimation sur journées moyennes",
+                      texte)
+        self.assertNotIn("8 760 h", texte)
+
+    def test_methode_absente_rien_d_imprime(self):
+        """Une étude stockée avant AMOT99 (sans méthode) : aucune ligne."""
+        d = _data_energie()
+        d["etude"]["etude_ci"]["production"].pop("methode_autoconso", None)
+        self.assertNotIn("Méthode de calcul", _texte(_pages(d)[3]))
+
+    def test_methode_tableau_commun_commercial_et_anglais(self):
+        """La SEULE source (``rangees_hypotheses``) des deux documents ; en
+        anglais, le libellé du catalogue."""
+        from apps.ventes.quote_engine import i18n_labels
+        for methode, cle in (("horaire_8760", "ci_h_methode_8760"),
+                             ("journees_moyennes", "ci_h_methode_journees")):
+            synthese = {"estimation": {"methode_autoconso": methode}}
+            for langue in ("fr", "en"):
+                def L(c, fr, langue=langue, **kw):
+                    return i18n_labels.libelle(c, langue)
+                rangees = finance.rangees_hypotheses(
+                    {"langue_sortie": langue}, synthese, str, str, L)
+                with self.subTest(methode=methode, langue=langue):
+                    self.assertIn(
+                        (i18n_labels.libelle("ci_h_methode_autoconso",
+                                             langue),
+                         i18n_labels.libelle(cle, langue)), rangees)
+
+    def test_degradation_de_la_fiche_dite(self):
+        """AMOT99 — la dégradation de la fiche module et sa 1re année."""
+        from apps.ventes.moteur_ci import degradation
+        d = _data_energie()
+        hyps = d["economie_ci"]["flux_ht"]["hypotheses"]
+        for h in hyps:
+            if h["cle"] == "degradation_pct":
+                h.update(valeur=0.4, source=degradation.SOURCE_FICHE,
+                         source_code="degradation_fiche_module")
+        hyps.append({"cle": "degradation_annee1_pct", "valeur": 1.0,
+                     "source": degradation.SOURCE_FICHE,
+                     "source_code": "degradation_fiche_module"})
+        texte = _texte(_pages(d)[3])
+        self.assertIn("Dégradation de la 1re année : 1 % — fiche module : "
+                      "courbe de garantie de performance du fabricant", texte)
+
     def test_taux_declare_sans_nom_de_champ_interne(self):
         texte = _texte(_pages(_data("exemple_industriel_mt"))[3])
         self.assertIn("Taux d'actualisation : 8 % — déclaré par le client",

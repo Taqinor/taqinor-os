@@ -52,11 +52,12 @@ def _nombre(valeur):
         return None
 
 
-def lignes_ecran(company, lignes):
+def lignes_ecran(company, lignes, produits=None):
     """``(investissement {ht, ttc}, lignes)`` depuis les lignes de l'écran.
 
     Montants = totaux CLIENT transmis ; rôle onduleur / O&M lus sur le
-    produit DE la société (jamais son prix d'achat)."""
+    produit DE la société (jamais son prix d'achat). ``produits`` (AMOT99) :
+    liste facultative qui reçoit les produits des lignes non optionnelles."""
     from apps.stock.selectors import get_produit_scoped
 
     from .economie_ci import _est_onduleur
@@ -79,6 +80,8 @@ def lignes_ecran(company, lignes):
         if not optionnelle:
             ht_total += ht or 0.0
             ttc_total += ttc or 0.0
+            if produits is not None and produit is not None:
+                produits.append(produit)
         sorties.append({
             'designation': ligne.get('designation')
             or (getattr(produit, 'nom', '') if produit else ''),
@@ -116,14 +119,21 @@ def economie_ci_preview(request):
     company = getattr(request.user, 'company', None)
     sortie = corps.get('sortie_etude_ci')
     saisies = corps.get('saisies')
-    investissement, lignes = lignes_ecran(company, corps.get('lignes'))
+    produits = []
+    investissement, lignes = lignes_ecran(company, corps.get('lignes'),
+                                          produits)
     sortie = sortie if isinstance(sortie, dict) else {}
     mode = _mode(sortie)
+    # AMOT99 — la courbe de garantie de la fiche module, comme le document.
+    from .domain.etude_ci import courbe_degradation_des_produits
+    reglages = dict(reglages_economie_ci(company),
+                    degradation_module=courbe_degradation_des_produits(
+                        produits))
     try:
         bloc = assembler_economie_ci(
             sortie, saisies=saisies if isinstance(saisies, dict) else {},
             investissement=investissement, lignes=lignes,
-            mode_installation=mode, reglages=reglages_economie_ci(company))
+            mode_installation=mode, reglages=reglages)
     except SaisieEconomieCiInvalide as refus:
         return refus_saisie(refus)
     return Response(bloc)

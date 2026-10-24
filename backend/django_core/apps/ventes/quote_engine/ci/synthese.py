@@ -328,10 +328,16 @@ def _par_mois(bilan):
     return [mois[i] for i in range(1, 13)]
 
 
+#: AMOT99 — ``production.methode_autoconso`` servie par le moteur C&I
+#: (``moteur_ci.production`` : série 8 760 h ou repli journées moyennes).
+METHODES_AUTOCONSO = ("horaire_8760", "journees_moyennes")
+
+
 def _bloc_estimation(etude_ci, coherente):
     """AMOT91 — ce sur quoi l'estimation repose, lu sur l'étude du moteur :
     la base de production (``production.source`` / ``inclinaison_deg`` /
-    ``azimut_deg``) et la règle de dimensionnement (``taille.pas_kwc`` /
+    ``azimut_deg``), la méthode d'autoconsommation (AMOT99,
+    ``production.methode_autoconso``) et la règle de dimensionnement (``taille.pas_kwc`` /
     ``horizon_marginal_annees``, D-CIQ-2 — seulement quand l'étude décrit le
     kWc servi). None quand l'étude ne dit rien de tel."""
     sortie = {}
@@ -341,6 +347,9 @@ def _bloc_estimation(etude_ci, coherente):
             "source": production["source"],
             "inclinaison_deg": _num(production.get("inclinaison_deg")),
             "azimut_deg": _num(production.get("azimut_deg"))}
+    # AMOT99 (D-ACI-18=a) — la méthode d'autoconsommation retenue, dite.
+    if production.get("methode_autoconso") in METHODES_AUTOCONSO:
+        sortie["methode_autoconso"] = production["methode_autoconso"]
     taille = _dict(etude_ci.get("taille"))
     pas = _num(taille.get("pas_kwc"))
     horizon = _num(taille.get("horizon_marginal_annees"))

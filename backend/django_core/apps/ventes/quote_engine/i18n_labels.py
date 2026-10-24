@@ -2955,6 +2955,46 @@ LIBELLES = {
         'fr': 'tarif du poste horaire couvert, heure par heure',
         'en': 'tariff of the time-of-use period covered, hour by hour',
         'ar': 'تعريفة الفترة الزمنية المغطاة، ساعة بساعة'},
+    # AMOT99 (D-ACI-18=a) — la source de la dégradation (fiche module ou
+    # défaut, fiche muette) et la méthode d'autoconsommation retenue.
+    'ci_code_degradation_fiche_module': {
+        'fr': 'fiche module : courbe de garantie de performance du fabricant',
+        'en': "module datasheet: manufacturer's performance warranty curve",
+        'ar': 'البطاقة التقنية للوحدة: منحنى ضمان الأداء من الصانع'},
+    'ci_code_degradation_fiche_sans_annee1': {
+        'fr': 'fiche module : 1re année non publiée, taux annuel de la fiche '
+              'appliqué dès la 1re année',
+        'en': "module datasheet: first year not published, the datasheet's "
+              'annual rate applied from year 1',
+        'ar': 'البطاقة التقنية للوحدة: السنة الأولى غير منشورة، يُطبَّق '
+              'المعدل السنوي للبطاقة منذ السنة الأولى'},
+    'ci_code_degradation_defaut_fiche_muette': {
+        'fr': 'défaut, fiche muette : la fiche du module ne publie pas sa '
+              'courbe de garantie',
+        'en': 'default, datasheet silent: the module datasheet does not '
+              'publish its warranty curve',
+        'ar': 'قيمة افتراضية، البطاقة صامتة: لا تنشر البطاقة التقنية للوحدة '
+              'منحنى ضمانها'},
+    'ci_ind_h_degradation_annee1': {'fr': 'Dégradation de la 1re année',
+                                    'en': 'First-year degradation',
+                                    'ar': 'تدهور السنة الأولى'},
+    'ci_h_methode_autoconso': {'fr': 'Méthode de calcul',
+                               'en': 'Calculation method',
+                               'ar': 'طريقة الحساب'},
+    'ci_h_methode_8760': {
+        'fr': "autoconsommation calculée heure par heure sur l'année type "
+              '(8 760 h)',
+        'en': 'self-consumption calculated hour by hour over the typical '
+              'year (8,760 h)',
+        'ar': 'الاستهلاك الذاتي محسوب ساعة بساعة على السنة النموذجية '
+              '(8760 ساعة)'},
+    'ci_h_methode_journees': {
+        'fr': 'autoconsommation : estimation sur journées moyennes (série '
+              'horaire indisponible)',
+        'en': 'self-consumption: estimate based on average days (hourly '
+              'series unavailable)',
+        'ar': 'الاستهلاك الذاتي: تقدير على أساس أيام متوسطة (السلسلة '
+              'الساعية غير متاحة)'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},

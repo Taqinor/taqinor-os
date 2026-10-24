@@ -1569,3 +1569,24 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         logger.warning('etude_ci non rafraîchie sur %s',
                        getattr(devis, 'reference', '?'), exc_info=True)
         return None
+
+
+# ── AMOT99 — la courbe de garantie de la fiche module ───────────────────────
+
+def courbe_degradation_des_produits(produits):
+    """AMOT99 (D-ACI-18=a) — la courbe de dégradation retenue
+    (``moteur_ci.degradation.courbe_depuis_fiches``) depuis les fiches
+    MODULE des produits, lues par la façade ``apps.stock.selectors`` ; aucun
+    module à fiche publiée ⇒ le défaut, dit « fiche muette »."""
+    from apps.stock.selectors import specs_for_produit, type_fiche_produit
+    from apps.ventes.moteur_ci.degradation import courbe_depuis_fiches
+    return courbe_depuis_fiches([
+        specs_for_produit(p) or {} for p in produits
+        if p is not None and type_fiche_produit(p) == 'module'])
+
+
+def courbe_degradation_du_devis(devis):
+    """AMOT99 — la courbe des modules de l'option RETENUE du devis."""
+    from apps.ventes.utils.options import option_lines
+    return courbe_degradation_des_produits(
+        getattr(ligne, 'produit', None) for ligne in option_lines(devis))
