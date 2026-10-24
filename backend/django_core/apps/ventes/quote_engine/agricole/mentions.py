@@ -250,12 +250,17 @@ _ETAPES = (
      "Pose : pompe, variateur, champ solaire et protections.",
      "Installation: pump, drive, solar array and protections.",
      "التركيب: المضخة والمغير والحقل الشمسي والحمايات."),
+    # D-AGQ-14 (24/10/2026) — dossier remis + formation (SPIS SET UP 6-7).
     ("mise_en_service",
      "À la mise en service : débit et HMT mesurés, écart affiché contre ce "
-     "devis.",
+     "devis ; dossier remis (fiches techniques, schéma électrique) et "
+     "formation à l'utilisation et à l'entretien.",
      "At commissioning: flow and head measured, gap shown against this "
-     "quote.",
-     "عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض."),
+     "quote; documentation handed over (data sheets, wiring diagram) and "
+     "training in operation and maintenance.",
+     "عند التشغيل: قياس الصبيب والارتفاع، وإظهار الفرق مقارنة بهذا العرض؛ "
+     "تسليم الملف (البطاقات التقنية، المخطط الكهربائي) والتكوين على "
+     "الاستعمال والصيانة."),
 )
 
 #: L'entretien, dit au client à côté des étapes (contrat en option).

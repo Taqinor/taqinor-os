@@ -388,6 +388,7 @@
           "colonne": "debit_forage_m3h",
           "valeur": 36,
           "provenance": "foreur",
+          "origine": "foreur",
           "date": "2026-09-12",
           "cle_etude": "source",
           "chemin": "source.debit_exploitation_m3h"

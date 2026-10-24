@@ -59,3 +59,11 @@ test('buildWaUrl : aucun numéro -> null, jamais un lien wa.me/ invalide', () =>
   assert.equal(buildWaUrl('', 'texte'), null)
   assert.equal(buildWaUrl(undefined, 'texte'), null)
 })
+
+test('proposalWhatsappText : un pompage reçoit le texte agricole, sans chiffre (D-AGQ-15)', () => {
+  const t = proposalWhatsappText('Karim', 'https://taqinor.ma/proposition/karim/abc', { agricole: true })
+  assert.match(t, /^Bonjour Karim, voici votre étude de pompage solaire Taqinor : https:\/\/taqinor\.ma\/proposition\/karim\/abc /)
+  assert.match(t, /accord FDA si vous demandez l'aide/)
+  assert.doesNotMatch(t, /installation solaire|\d+\s*(CV|kWc|m³)/)
+  assert.equal(proposalWhatsappText('Karim', 'u'), proposalWhatsappText('Karim', 'u', { agricole: false }))
+})

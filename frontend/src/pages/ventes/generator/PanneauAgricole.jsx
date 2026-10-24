@@ -31,7 +31,9 @@ import {
 import { Sprout } from 'lucide-react'
 import { GenCardHeader } from './CarteMetrique'
 import { formatNumber } from '../../../lib/format'
-import { alertesAffichables } from '../../../features/ventes/etudePompagePreviewPur'
+import {
+  alertesAffichables, besoinDepuisDebitSouhaite, refusAutoRemplirPompage,
+} from '../../../features/ventes/etudePompagePreviewPur'
 import CarteEconomiePompage from './CarteEconomiePompage'
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? formatNumber(v) : 'N/A'
@@ -111,6 +113,7 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
   const besoin = d.besoin?.m3_jour_mois || null
   const couv = d.couverture_pct_mois || null
   const moisCritique = d.conception?.mois_critique ?? null
+  const refusAuto = refusAutoRemplirPompage(d)
   return (
     <div className="mt-4 grid gap-3" data-testid="resultat-pompage">
       <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-sm">
@@ -131,6 +134,13 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
           </div>
         )}
       </div>
+
+      {refusAuto && (
+        <p role="alert" data-testid="refus-auto-remplir"
+           className="rounded-lg border border-warning/40 bg-warning/10 p-2 text-sm text-warning">
+          {refusAuto}
+        </p>
+      )}
 
       {couv && (
         <table className="w-full text-xs" data-testid="resultat-mois">
@@ -505,6 +515,14 @@ export default function PanneauAgricole({
             onChange={maj('besoin.mode')}
           />
         </div>
+        {/* Rejeu live AGQ41 — parité serveur : sans mode choisi, le débit
+            souhaité fait le besoin (débit × heures de pompage du site). */}
+        {besoinDepuisDebitSouhaite({ ...besoin, debit_souhaite_m3h: pompeDebit }) && (
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="besoin-debit-souhaite">
+            Besoin en eau : calculé depuis le débit souhaité ({pompeDebit} m³/h)
+            × les heures de pompage du site.
+          </p>
+        )}
         {besoin.mode === 'volume_declare' && (
           <div className="mt-3 grid gap-4 sm:grid-cols-2">
             <ChampNombre id="gen-besoin-volume" label="Volume par jour (m³/jour)"

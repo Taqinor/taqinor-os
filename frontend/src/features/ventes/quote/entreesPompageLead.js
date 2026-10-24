@@ -48,6 +48,7 @@ export const LIBELLES_ENTREES_LEAD = {
   pompe_actuelle_kw: 'Plaque : puissance (kW)',
   pompe_actuelle_tension_v: 'Plaque : tension (V)',
   pompe_actuelle_phases: 'Plaque : phases',
+  debit_forage_m3h: 'Débit d’exploitation du forage (m³/h)',
 }
 
 // AGQ39 (D-AGQ-10) — colonne du lead → chemin de `pompageSaisie` (mode de
@@ -60,6 +61,15 @@ const SAISIE_PAR_COLONNE = {
   pompe_actuelle_phases: 'plaque.phases',
 }
 const PHASES_ECRAN = { 1: 'mono', 3: 'tri' }
+
+// Rejeu live AGQ41 (24/10) — le débit du forage du lead (`debit_forage_m3h`)
+// alimente « Débit d'exploitation du forage » (`source.debit_exploitation_m3h`) ;
+// son ORIGINE (`debit_forage_source`, servie sous `entree.origine`) alimente
+// « Origine du débit » avec les 4 valeurs que le sélecteur de l'écran accepte.
+// Sans origine servie, le sélecteur reste « Non renseigné » : la `provenance`
+// de l'entrée n'est PAS une origine (elle retombe sur « client »/« site_web »
+// quand la colonne source est vide) — jamais d'origine inventée.
+const ORIGINES_DEBIT_FORAGE = ['essai', 'foreur', 'client', 'mesure_visite']
 
 const vide = (v) => v === null || v === undefined || v === ''
 
@@ -113,6 +123,11 @@ export function entreesPompageDuLead(lead) {
     } else if (col === 'jours_irrigation_semaine') {
       // AGQ10 (D-AGQ-6) — les jours d'une conso « par jour d'irrigation ».
       eco.joursSemaine = String(e.valeur)
+    } else if (col === 'debit_forage_m3h') {
+      saisie['source.debit_exploitation_m3h'] = String(e.valeur)
+      if (ORIGINES_DEBIT_FORAGE.includes(e.origine)) {
+        saisie['source.debit_exploitation_origine'] = e.origine
+      }
     } else if (SAISIE_PAR_COLONNE[col]) {
       const valeur = col === 'pompe_actuelle_phases'
         ? PHASES_ECRAN[Number(e.valeur)] : String(e.valeur)

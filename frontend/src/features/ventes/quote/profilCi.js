@@ -12,6 +12,7 @@
 // supposé) ; fonctions PURES, sans React ni réseau (node --test).
 import { normaliserCorpsCi, construireCorpsCi } from '../etudeCiPreviewPur.js'
 import { ligneProduitCatalogue, TVA_STANDARD_DEFAUT } from '../solar.js'
+import { retarifierForfaitsEcran } from './forfaitsPanneau.js'
 import { ROLES_CI_PRESTATION, ROUTE_PARAMETRES_PRESTATIONS_CI } from '../../stock/catalogue.js'
 
 export const JOURS_SEMAINE = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
@@ -360,7 +361,9 @@ export function lignesDepuisCompositionCi(composition, produits, tvaStandard) {
       taux_tva: tva,
     })
   }
-  return rows
+  // Forfaits au panneau : le barème du catalogue sur le compte de CE kit,
+  // comme le serveur à l'enregistrement (`forfaitsPanneau.js`).
+  return retarifierForfaitsEcran(rows, produits)
 }
 
 // ADEV84 — l'avertissement « devis incomplet » de l'Auto-remplir : chaque poste

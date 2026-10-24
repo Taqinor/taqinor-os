@@ -73,7 +73,7 @@ export const POST: APIRoute = async ({ request }) => {
       : 'rappel';
   const revisionKindRaw = body.revision_kind;
   const revisionKind =
-    revisionKindRaw === 'kwc' || revisionKindRaw === 'batterie' || revisionKindRaw === 'autre'
+    revisionKindRaw === 'kwc' || revisionKindRaw === 'batterie' || revisionKindRaw === 'eau' || revisionKindRaw === 'autre'
       ? revisionKindRaw
       : undefined;
   const upstreamBody = buildContactBody({
