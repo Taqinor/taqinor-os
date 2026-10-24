@@ -1,0 +1,117 @@
+# Traces du rejeu AGQ phase 3 du 24/10/2026 — toutes les tâches restantes
+
+Pile locale : base `erp-agentique` (copie anonymisée, société 4, compte anon_admin). API : conteneur temporaire
+`agq-django` monté sur la branche (main e659f9c13 puis correctifs 6a2f3f802..4c37e3859), appelé en HTTP réel
+(gunicorn, jeton JWT) ; front ERP construit depuis la branche (`vite preview`, proxy vers l'API) ; site public
+`astro dev` sur la même API. Leads de test « [TEST AGQ3] … » clonés du lead 1038 ; produits de test « [TEST AGQ] » /
+« [TEST AGQ3] » (copies OSP 30/8 et 30/13 chiffrées) ; réglages société posés pour le rejeu puis restaurés.
+Jetons de partage masqués (`<jeton>`).
+
+## P1.2 — refus nommés du devis automatique (POST /ventes/devis/auto/)
+- Base (lead cloné, Rabat) : 201 DEV-202610-0006 en 10,4 s, 5 alertes listées.
+- AGQ9 — niveau 45 m sans HMT : lead.devis_auto = {pret: false, manquants_detail: [{champ: pompe_hmt_m, label:
+  « HMT (m) »}]} ; garde lead 409 « Manque : HMT (m) » ; devis auto 409 {field: pompe_hmt_m}.
+- AGQ7 — raccordement « inconnu » : 409 « Alimentation de la pompe inconnue : renseignez mono ou tri (raccordement
+  du lead) », field raccordement. Aperçu sans `alim` : pompe « Pompe — alimentation à renseigner », placeholder
+  vrai, alerte alimentation_inconnue (champ alim).
+- AGQ4 — structure au sol de test à prix 0 : 409 « Structure au sol : prix à renseigner au catalogue », field
+  kit.structure, 0 devis créé (prix restauré).
+- AGQ6 — petite pompe mono (5 m³/h, 45 m) : « Pompe immergée solaire 3 CV Monophasé » + « VARIATEUR VEICHI SI22
+  2.2KW 220V », alerte kw_plaque_a_relever ; variateurs 220 V archivés le temps du test : 409 « Variateur : aucun
+  modèle compatible au catalogue (1,1 kW mono) », field kit.variateur (restaurés).
+- AGQ23 — deux POST avec la même Idempotency-Key : 201 et 201, même id 1062, un seul devis pour le lead.
+- AGQ24 — site GPS jamais vu (Marrakech 31,6137 / -7,9811) : 201 en 2,4 s.
+- AGQ36 — `seed_catalogue --company-slug taqinor-anon` rejoué deux fois (transaction annulée) : un seul produit
+  STR-SOL-PMP, rôle structure_sol, prix 0, fiche struct_type_pose « sol ». AGQ14 : garantie_mois des OSP/VEICHI
+  vide après le seeder.
+- AGQ5 — installation de test (barème 3 000 + 150/panneau, prix_vente 0) : ligne « Installation pompage solaire »
+  6 450 HT (= 3 000 + 150 × 23) + « Socles » 46 ; installation de test archivée : repli « Installation » 4 750 HT.
+
+## P2.2 — conception (devis auto Marrakech, besoin 120 m³/j avril-octobre, HMT 70, OSP 30/8 de test)
+- AGQ2 : conception.mois_critique = 10 (octobre) ; couverture_pct_mois avril-octobre [113, 109, 108, 108, 108, 108,
+  103] ; contrôle « conforme », couverture du mois critique 103 %.
+- AGQ29 : pompe_cv = 10.0 (plaque), pompe_kw 7,5.
+- AGQ8 (aperçu, 12 m³/h à 70 m, pompes génériques) : sans fiche, kW min 6,54 (η EST.), pompe 10 CV, alerte
+  rendement_non_publie (pompe.fiche) ; fiches pompe_rendement_pct 55 et var_rendement_mppt_pct 97 posées : kW min
+  4,16 « η publié », pompe 7,5 CV, alerte de rendement levée (fiches retirées ensuite).
+- AGQ40 : forage 25 m³/h, besoin 120 → plafond 25, pompe 24 m³/h, aucune limite ; besoin 250 → alerte
+  debit_limite_forage, production plafonnée à 25 m³/h, champ 35,2 kWc (3,2× la pompe), 250 livrés chaque mois ;
+  forage 5 m³/h, besoin 250 → 409 « Besoin déclaré incouvrable : débit limité par votre forage (5 m³/h
+  exploitables) — mois sous la tolérance : 4…10 », field debit_forage_m3h, 0 devis.
+  DÉFAUT C-AGQ-045 (avant correctif) : le devis 250 imprimait page 2 « Débit limité par le forage : 25 m³/h au plus ;
+  le besoin du mois le plus défavorable n'est pas entièrement couvert » alors que 250 m³ étaient livrés chaque mois
+  (héro et barres). Après 6a2f3f802 : note absente, « Pompe 36 m³/h > forage 25 m³/h : à vérifier à la visite ».
+
+## P2.4 — économie (GET devis/<pk>/economie-pompage/ et POST economie-pompage/preview/)
+- AGQ10 : lead butane 3 bouteilles/jour, 6 j/semaine, 50 MAD : statut calcule, dépense avril 3 857,14 MAD (= 3 × 6 ×
+  30 ÷ 7 × 50), annuelle 27 514,29 MAD.
+- AGQ21 : PATCH tarification `regle_fda_pompage` {source seule} → 409 « taux_pct, plafond_mad_par_ha,
+  plafond_mad_par_kwc, plafond_mad_par_projet obligatoire(s) » ; règle complète datée du 20/10/2026 → document
+  « Source : Guide FDA édition 2024, p.21-23 (relevé le 20/10/2026) » (avant : repli « relevé le 02/10/2026 »).
+- Barème des charges posé (1 200 MAD/an) : publiable_client vrai, retour 3 ans.
+- AGQ15 : lignes [] → statut omis, publiable faux, motif « aucune ligne chiffrée : investissement inconnu ».
+- AGQ17 : énergie « aucune » (lead nouveau forage) → cas nouveau_forage, remplacements [], coût du m³ solaire 0,39 ;
+  document : « Votre argent — Coût de l'eau solaire 0,39 MAD/m³ — Calcul : (investissement + charges du solaire sur
+  10 ans) ÷ (volume d'eau utile par an × 10). », aucune ligne carburant ni remplacement.
+- AGQ18 : mois à provenance calendrier_culture non confirmés → publiable faux, motif « mois d'irrigation pré-cochés
+  par le calendrier, non confirmés avec le client » ; mois déclarés → « Mois d'irrigation : déclarés par vous le
+  24/10/2026 » (PDF ; page après f85971343).
+- AGQ19 : butane en litres → 400 {champ: consommation.unite} « le butane se déclare en bouteilles de 12 kg » ; lead
+  aux deux colonnes (3 bouteilles + 300 litres/mois) → consommation {unite: bouteille_12kg, quantite: 3}.
+- AGQ20 : économie nette an 1 = 27 514,29 − 1 200 = 26 314,29 ; « 3 ans » ; lead à 0,2 bouteille/jour →
+  « Retour sur investissement, sans aide : au-delà de 10 ans ».
+
+## P3.1 — documents (/proposal) du devis Marrakech
+- fr 3 pages, note de calcul 4, ar 3, en 3, une-page 1. Aucun « prix_achat », aucun « None ».
+- AGQ3 : héro « 123,2 m³ d'eau par jour à 70 m de hauteur — sur 5,1 h de pompage équivalentes à plein débit en
+  octobre, mois de conception · au plus bas : 112,3 m³/j en novembre » ; une-page idem (« (HYPOTHÈSE) ») ; page 2
+  « Mois le plus serré : octobre » ; aucun mois sous 95 %.
+- AGQ14 : « Garantie constructeur de la pompe : selon fiche fournisseur », idem variateur (3 pages et une-page).
+- AGQ32 : valeurs sur les barres, « Mois grisés : aucun besoin — eau disponible », aucune phrase « Aucune
+  référence » ; ligne installation passée à 10 % : « TVA (10 %) 645,00 / TVA (20 %) 11 100,83 » sur 3 pages ET
+  une-page.
+- AGQ48 : « Entretien du solaire par an, selon nos tarifs », « Prix du carburant supposé stable (aucune hausse
+  comptée) », « Remplacement pompe prévu l'année 7 (déjà compté dans le calcul) » ; ni « barème », ni
+  « Indexation », ni « (compté) ».
+- AGQ50 : délai 48 h saisi → « Service après-vente : intervention sous 48 h après votre appel. » (fr), « After-sales
+  service: intervention within 48 h of your call. » (en), arabe présent ; non saisi : rien.
+- AGQ51 : étape 5 « … dossier remis (fiches techniques, schéma électrique) et formation à l'utilisation et à
+  l'entretien » (fr/en/ar).
+- AGQ52 (PDF) : « Acompte à la commande — après l'accord FDA si vous demandez l'aide. »
+- arabe et anglais : aucune ligne française hors noms de produits.
+- DÉFAUTS (avant correctif) : C-AGQ-046 « Volume d'eau par jour : déclaré par vous le 24/10/2026 » sans valeur ;
+  C-AGQ-047 « Débit d'exploitation du forage : 36 m³/h — mesuré par TAQINOR Anonymisé (QA) le 24/10/2026 » pour un
+  relevé du foreur, et un débit d'essai « déclaré par vous » + « à confirmer par la visite ». Après 6a2f3f802 :
+  « 120 m³/j — déclaré par vous », « relevé par votre foreur (saisi le 24/10/2026) », « relevé à l'essai de
+  pompage (saisi le 24/10/2026) » (essai hors « à confirmer »), arabe « سجله حفار البئر ».
+
+## P1.1 — fiche lead (navigateur, 1440 × 900)
+- AGQ22 : lead au débit du forage inconnu, onglet Devis : « Devis automatique » inactif (title « Relevé du point
+  d'eau requis avant devis (D-AGR-4) »), puce « débit du forage (visite) » ; le bouton « ⚡ Devis auto » du rail
+  ouvre ce même onglet, aucun devis créé. Lead au raccordement inconnu : « Devis automatique » → fenêtre « Alimentation
+  de la pompe inconnue : renseignez mono ou tri (raccordement du lead) » + « Compléter : Raccordement », aucun toast
+  en double ; clic → fenêtre fermée, focus sur le champ « Raccordement » (#lf-raccordement).
+- AGQ53 : devis envoyé d'un lead agricole, « Envoyer au client » → « WhatsApp » (window.open intercepté, rien
+  envoyé) : « Bonjour …, voici votre étude de pompage solaire Taqinor : https://taqinor.ma/proposition/mansouri-2nm/
+  <jeton> Vous y trouvez la pompe et le champ solaire choisis pour votre point d'eau, l'eau livrée mois par mois, le
+  prix et les étapes (dont l'accord FDA si vous demandez l'aide). N'hésitez pas à me poser vos questions. »
+
+## P4.1 — générateur (navigateur)
+- AGQ49 : bloc économie pré-rempli du lead (butane, 3, bouteille 12 kg, par jour d'irrigation, 6) ; prix 50, mois
+  mai-octobre confirmés, auto-remplir : carte « 3 bouteille(s) de 12 kg par jour d'irrigation × 50 MAD par
+  bouteille × 6 mois, déclaré le 24/10 ».
+- AGQ25 : `/ventes/devis/nouveau?lead=…&auto=1` : « Devis enregistré » + « Alertes du devis automatique : Rendement
+  MPPT du variateur … non publié … ; Chaîne PV non vérifiable … ; Ratio champ/pompe 0,81× … ».
+  DÉFAUT C-AGQ-049 (avant 4c37e3859) : « Devis enregistré — » sans référence ; après : « DEV-202610-0022 ».
+
+## P3.4 — page /proposition (site public, devis DEV-202610-0018 envoyé)
+- AGQ52 : « Si vous demandez l'aide FDA, votre signature vaut accord sur ce devis : la commande devient ferme et
+  l'acompte n'est dû qu'après l'accord préalable FDA. Sans demande d'aide, votre commande est ferme dès votre
+  acceptation. » ; « Acompte 30 % : 22 290 MAD à la commande — après l'accord FDA si vous demandez l'aide ».
+- AGQ50 : « Service après-vente : intervention sous 48 h après votre appel. » ; AGQ48 : mêmes mots que le PDF ;
+  AGQ51 : étape 5 (dossier remis + formation) dans « Et ensuite ».
+- DÉFAUT C-AGQ-048 (avant f85971343) : carte eau « estimation, sur 5,1 h de pompage (hypothèse) » sans mois, note
+  argent sans « Mois d'irrigation » ; après : « estimation, sur 5,1 h de pompage équivalentes à plein débit en
+  octobre, mois de conception · au plus bas : 112,3 m³/j en novembre (hypothèse) » et « Mois d'irrigation :
+  déclarés par vous le 24/10/2026. » ; provenance « relevé par votre foreur (saisi le 24/10/2026) », « 120 m³/j ».
+- Console : seuls des « An unknown error occurred when fetching the script » du serveur de développement astro.
