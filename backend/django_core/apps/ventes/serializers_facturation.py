@@ -4,6 +4,7 @@ notes de débit, relances, remises, mandats) — déplacés tels quels de
 from decimal import Decimal
 
 from django.core.validators import RegexValidator
+from drf_spectacular.drainage import set_override
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
@@ -24,6 +25,7 @@ from core.unicite import UniciteEn409Mixin
 from .domain.bornes import (
     montant_saisi, pourcentage_saisi, total_ligne_hors_capacite,
 )
+from .domain.conditions_ci import MOTIF_ACOMPTE, MOTIF_REMISE, _decimal_borne
 
 
 def _retirer_unicite_tranche(serializer):
@@ -570,6 +572,21 @@ class FactureSerializer(SameCompanyFKSerializerMixin,
         return obj.statut == Facture.Statut.EN_RETARD and obj.montant_du > 0
 
 
+@extend_schema_field(_decimal_borne(MOTIF_REMISE, 100))
+class PourcentSouple(DecimalSouple):
+    """api-fuzz — ``remise_globale`` d'une facture : chaîne au motif 0-100 à
+    2 décimales OU nombre JSON 0-100 arrondi au centième (``DecimalSouple``),
+    publié ainsi. Un flottant (``0.3333333333333333``) était refusé « pas plus
+    de 5 chiffres » alors qu'il est conforme ; la borne 0-100 reste jugée par
+    ``validate_remise_globale`` (message français de la garde unique)."""
+
+
+#: api-fuzz — montant d'une tranche : positif ou nul (``ck_facture_montants_
+#: positifs``), 10 chiffres entiers, 2 décimales ; la chaîne ``"-0"`` vaut 0.
+_MONTANT_FACTURE_PUBLIE = {'type': 'string', 'format': 'decimal',
+                           'pattern': MOTIF_ACOMPTE, 'nullable': True}
+
+
 class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
                              SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
@@ -595,6 +612,8 @@ class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
     abandon_motif = serializers.ChoiceField(
         choices=Facture.MotifAbandon.choices, allow_blank=True,
         read_only=True)
+    remise_globale = PourcentSouple(
+        max_digits=5, decimal_places=2, required=False)
 
     class Meta:
         model = Facture
@@ -642,6 +661,28 @@ class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         _retirer_unicite_tranche(self)
+
+    def get_fields(self):
+        fields = super().get_fields()
+        for nom in ('montant_ht', 'montant_tva', 'montant_ttc'):
+            if nom in fields:
+                set_override(fields[nom], 'field', _MONTANT_FACTURE_PUBLIE)
+        return fields
+
+    # api-fuzz — ``ck_facture_montants_positifs`` : un montant négatif était
+    # écrit tel quel et heurtait la contrainte base (IntegrityError → 500).
+    def _montant_facture(self, valeur, champ):
+        return self._borne_montant(
+            valeur, champ, 'Le montant ne peut pas être négatif.')
+
+    def validate_montant_ht(self, valeur):
+        return self._montant_facture(valeur, 'montant_ht')
+
+    def validate_montant_tva(self, valeur):
+        return self._montant_facture(valeur, 'montant_tva')
+
+    def validate_montant_ttc(self, valeur):
+        return self._montant_facture(valeur, 'montant_ttc')
 
 
 class LigneAvoirSerializer(_BornesArgentMixin, SameCompanyFKSerializerMixin,

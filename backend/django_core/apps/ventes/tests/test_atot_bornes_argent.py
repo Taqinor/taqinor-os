@@ -168,3 +168,57 @@ class TotalLigneFactureHorsCapaciteTests(TestCase):
                            format='json')
         self.assertEqual(r.status_code, 200, r.content)
         self.assertEqual(r.json()['total_ht'], '99999990.00')
+
+
+class EcritureFactureBornesTests(TestCase):
+    """api-fuzz (POST factures/) — un montant de tranche négatif heurtait
+    ``ck_facture_montants_positifs`` (IntegrityError → 500) ; une
+    ``remise_globale`` en nombre JSON à queue binaire (``0.3333333333333333``)
+    était refusée « pas plus de 5 chiffres » alors que le schéma l'annonce
+    conforme (chaîne au motif 0-100 OU nombre 0-100, arrondi au centième)."""
+
+    URL = '/api/django/ventes/factures/'
+
+    def setUp(self):
+        self.company = CompanyFactory()
+        self.user = UserFactory(company=self.company, role_legacy='admin')
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.client_id = DevisFactory(company=self.company).client_id
+
+    def _poster(self, **champs):
+        return self.api.post(
+            self.URL, dict(client=self.client_id, **champs), format='json')
+
+    def test_montant_negatif_400_nomme_jamais_500(self):
+        from apps.ventes.models import Facture
+        avant = Facture.objects.count()
+        for champ in ('montant_ht', 'montant_tva', 'montant_ttc'):
+            with self.subTest(champ=champ):
+                r = self._poster(**{champ: '-962'})
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn(champ, r.json())
+                self.assertIn('négatif', str(r.json()[champ]))
+        self.assertEqual(Facture.objects.count(), avant)
+
+    def test_montants_positifs_et_zero_negatif_acceptes(self):
+        r = self._poster(montant_ht='1000.50', montant_tva='-0',
+                         montant_ttc='1200.60')
+        self.assertEqual(r.status_code, 201, r.content)
+
+    def test_remise_globale_nombre_json_arrondi_au_centieme(self):
+        from apps.ventes.models import Facture
+        r = self._poster(remise_globale=0.3333333333333333)
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(Facture.objects.get(pk=r.json()['id']).remise_globale,
+                         Decimal('0.33'))
+        r = self._poster(remise_globale='12.5')
+        self.assertEqual(r.status_code, 201, r.content)
+
+    def test_remise_globale_hors_0_100_toujours_400_nomme(self):
+        for brut in ('150', 150, '-5', 100.4):
+            with self.subTest(brut=brut):
+                r = self._poster(remise_globale=brut)
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn('remise_globale', r.json())
