@@ -1199,7 +1199,10 @@ _PourcentLigne = _decimal_publie(_MOTIF_POURCENT)
 #: (``LigneDevisSerializer.validate`` + garde ``domain/bornes``) publiées sur
 #: ``devis-lignes`` : quantité / prix >= 0, remise 0-100, et un taux de TVA à
 #: 0 % porte sa base légale (AGR217).
-_ZERO_DECIMAL = r'^0*(?:\.0*)?$'
+#: ``-0`` / ``-0.00`` valent zéro pour le serveur (``Decimal('-0') == 0``) : le
+#: signe est dans le motif, sinon ``"-0"`` était publié « taux non nul » (pas de
+#: base légale requise) puis refusé en 400 (api-fuzz, PATCH devis-lignes).
+_ZERO_DECIMAL = r'^-?0*(?:\.0*)?$'
 _REGLES_LIGNE_DEVIS = {
     'properties': {
         'quantite': {'type': 'string', 'pattern': _MOTIF_POSITIF},
