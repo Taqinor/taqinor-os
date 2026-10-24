@@ -27,6 +27,7 @@ from .. import premium_base
 from ..ci import couverture as ci_couverture
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
+from ..montants import decimale
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
 from ..ci.graphiques import bloc_energie_mensuelle, cede, css_graphique
 
@@ -174,7 +175,7 @@ def _valeur_hypothese(h, fmt, L):
         if cle == "horizon_ans":
             return L("ci_ind_n_ans", "{n} ans", n=f"{valeur:g}")
         texte = fmt(valeur) if unite in ("MAD", "kWh") else \
-            f"{valeur:g}".replace(".", ",")
+            decimale(f"{valeur:g}")
         if unite == "% / an":
             unite = L("ci_ind_pct_an", unite)
         return f"{texte}&nbsp;{unite}" if unite else texte
@@ -461,7 +462,7 @@ def _ligne_revente(argent, fmt, L, langue):
 
 def _decimal_txt(valeur):
     """« 0,1221 » — un nombre servi, sans arrondi propre."""
-    return f"{valeur:g}".replace(".", ",")
+    return decimale(f"{valeur:g}")
 
 
 def _p90_bancable(d):
@@ -556,7 +557,7 @@ def _nom_scenario(s, L):
     cle_sens = f"ci_ind_sens_{s.get('cle')}"
     nom = (L(cle_sens, catalogue[cle_sens]["fr"]) if cle_sens in catalogue
            else ci_blocs._txt(s.get("cle")))
-    return (f"{nom} {variation:+g}&#160;%".replace(".", ",")
+    return (decimale(f"{nom} {variation:+g}&#160;%")
             if variation is not None else nom)
 
 
@@ -583,7 +584,7 @@ def _tableau_sensibilites(d, argent, fmt_mad, L):
 
     unite_ans = L("ci_unite_ans", "&nbsp;ans")
     formats = (lambda v: ci_couverture.ans(v) + unite_ans,
-               lambda v: f"{v:.1f}".replace(".", ",") + "&#160;%",
+               lambda v: decimale(f"{v:.1f}") + "&#160;%",
                lambda v: fmt_mad(v) + "&#160;MAD")
     lignes = ""
     for nom, *valeurs, source in rangees:
@@ -796,7 +797,7 @@ def build(ctx):
             base_eco = L(f"ci_{base_eco.lower()}", base_eco)
         payback = _num(indicateurs.get("retour_ans"))
         tri = _num(indicateurs.get("tri_pct"))
-        tri_txt = f"{tri:.1f}".replace(".", ",") if tri is not None else None
+        tri_txt = decimale(f"{tri:.1f}") if tri is not None else None
 
         def kpi(valeur, unite, libelle, cle_fig=None, texte_fig=None):
             a = ancre(cle_fig, texte_fig) if cle_fig else ""

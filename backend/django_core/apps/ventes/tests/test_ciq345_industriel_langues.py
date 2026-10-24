@@ -235,3 +235,32 @@ class Amot84TextesDynamiquesIndustriel(SimpleTestCase):
                 self.assertIn(ht, html)
                 self.assertNotIn(">3 ans<", html)
                 self.assertNotIn("MAD/an<", html)
+
+
+class Amot101FormatAnglaisIndustriel(SimpleTestCase):
+    """AMOT101 (D-ACI-21=a) — l'industriel en ``en`` : montants au centime
+    « 1,750,000.00 », TRI « 39.8 % », cumul du tableau des 25 ans au format
+    anglais ; FR et AR inchangés ; une-page EN au format anglais aussi."""
+
+    def test_anglais_format_anglais(self):
+        from apps.ventes.quote_engine.montants import fmt_centimes
+        d = renderer._augment(_data())
+        ttc = d["_invest_ttc"]
+        tri = d["ind_synthese"]["argent"]["indicateurs"]["tri_pct"]
+        from apps.ventes.tests.test_ciq333_commercial_langues import visible
+        en, fr, ar = (visible(_html(_data(langue)))
+                      for langue in ("en", None, "ar"))
+        self.assertIn(f"{ttc:,.2f}", en)
+        self.assertIn(f"{tri:.1f}", en)
+        self.assertNotIn(fmt_centimes(ttc), en)
+        for html in (fr, ar):
+            self.assertIn(fmt_centimes(ttc), html)
+            self.assertIn(f"{tri:.1f}".replace(".", ","), html)
+
+    def test_une_page_anglaise(self):
+        from apps.ventes.tests.test_ciq210_onepage_ci import _onepage
+        data, en = _onepage("industriel", langue_sortie="en")
+        _data_fr, fr = _onepage("industriel")
+        kwc = f"{float(data['puissance_kwc']):.2f}".rstrip("0").rstrip(".")
+        self.assertIn(f"{kwc} kWp", en)
+        self.assertIn(kwc.replace(".", ",") + " kWc", fr)

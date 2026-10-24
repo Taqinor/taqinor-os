@@ -17,6 +17,7 @@ import html
 import re
 
 from .blocs import langue, libelle
+from ..montants import decimale
 from .mentions import TEXTES_POINTE_SANS, TEXTES_VISITE, texte
 
 #: Bandeau (sans le point final de la phrase de la table des mentions).
@@ -251,7 +252,7 @@ def ans(valeur):
     """« 3 » / « 3,4 » — le payback servi, sans arrondi propre."""
     texte_ans = (f"{valeur:g}" if isinstance(valeur, (int, float))
                  else str(valeur))
-    return texte_ans.replace(".", ",")
+    return decimale(texte_ans)
 
 
 def note_tva(d, base):
@@ -434,9 +435,9 @@ def tuile_co2(d, cle, kpi):
         return []
     facteur = libelle(
         d, "ci_co2_facteur", "facteur réseau {g} gCO₂/kWh — {source}",
-        g=f"{co2['facteur_g_kwh']:g}".replace(".", ","),
+        g=decimale(f"{co2['facteur_g_kwh']:g}"),
         source=html.escape(str(co2.get("source") or ""), quote=False))
-    return [kpi(f"≈&#160;{co2['t_an']:g}".replace(".", ","), "&nbsp;t",
+    return [kpi(decimale(f"≈&#160;{co2['t_an']:g}"), "&nbsp;t",
                 libelle(d, "ci_co2_evite", "CO₂ évité / an")
                 + f'<div style="font-size:6.2pt;margin-top:1px;">{facteur}'
                 '</div>')]

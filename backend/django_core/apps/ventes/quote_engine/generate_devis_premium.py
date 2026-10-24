@@ -38,11 +38,11 @@ except ImportError:  # exécution directe du moteur depuis son dossier
 # QJR613 — formateur monétaire au centime UNIQUE (stdlib), partagé avec les
 # paquets premium ; même double chemin d'import.
 try:
-    from .montants import (fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr,
-                           poser_regles_origine, regles_origine)
+    from .montants import (decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams, format_anglais,
+                           format_langue, pct_fr, poser_regles_origine, regles_origine)
 except ImportError:  # exécution directe du moteur depuis son dossier
-    from montants import (fmt_centimes, fmt_centimes_mad, fmt_dirhams, pct_fr,
-                          poser_regles_origine, regles_origine)
+    from montants import (decimale, fmt_centimes, fmt_centimes_mad, fmt_dirhams, format_anglais,
+                          format_langue, pct_fr, poser_regles_origine, regles_origine)
 
 # QJR617 — ordre d'affichage sections / notes ↔ lignes produit (XSAL14), UNE
 # fonction pure partagée ; même double chemin d'import.
@@ -1049,7 +1049,7 @@ def fmt(v):
 def fnum(v):
     """Format number with French thin-space thousands separator."""
     try:
-        return f"{int(round(float(v))):,}".replace(",", "\u202f")
+        return f"{int(round(float(v))):,}".replace(",", "," if format_anglais() else "\u202f")
     except Exception:
         logger.warning("generate_devis_premium.fnum : erreur ignorée (mode dégradé)", exc_info=True)
         return str(v)
@@ -1065,7 +1065,7 @@ def kwc_fr(v):
         f = float(v)
     except (TypeError, ValueError):
         return str(v)
-    return (f"{f:.2f}".rstrip("0").rstrip(".") or "0").replace(".", ",")
+    return decimale(f"{f:.2f}".rstrip("0").rstrip(".") or "0")
 
 
 def _fdec_fr(v, decimales=2):
@@ -4762,7 +4762,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     # ERR17 — serialize the whole render: the body writes module globals and
     # reads them back while building the HTML, so concurrent renders must not
     # interleave (one client's data leaking into another's PDF).
-    with _RENDER_LOCK:
+    with _RENDER_LOCK, format_langue(data):  # AMOT101 — nombres C&I EN
         return _render_premium_pdf(data, out_path)
 
 
@@ -5178,18 +5178,19 @@ def render_html_for(data: dict) -> str:
     if ((data.get("mode_installation") or "").strip().lower() == "agricole"
             and data.get("pdf_mode", "full") != "onepage"):
         data = {**data, "pdf_mode": "onepage"}
-    apply_quote_data(data)
-    if data.get("pdf_mode", "full") == "onepage":
-        # QJR124 — plus de re-filtrage ici : ``builder`` filtre les accessoires
-        # Huawei orphelins EN AMONT, avant de figer ``totaux_all``. Retirer une
-        # ligne au rendu la laissait dans le Total TTC imprimé juste dessous.
-        # QJR162 (b) — ACCÈS DUR. ``data.get("all_items", [])`` était un défaut
-        # SILENCIEUX à liste vide alors que le même appel exige
-        # ``data["sans_items"]`` en dur : une charge utile privée d'``all_items``
-        # mais porteuse de ``totaux_all`` produisait un tableau d'équipements
-        # VIDE sous un Total TTC complet.
-        return _onepage_html_qui_tient(_esc_items(data["all_items"]))
-    return build_html()
+    with format_langue(data):  # AMOT101 — nombres C&I EN
+        apply_quote_data(data)
+        if data.get("pdf_mode", "full") == "onepage":
+            # QJR124 — plus de re-filtrage ici : ``builder`` filtre les accessoires
+            # Huawei orphelins EN AMONT, avant de figer ``totaux_all``. Retirer une
+            # ligne au rendu la laissait dans le Total TTC imprimé juste dessous.
+            # QJR162 (b) — ACCÈS DUR. ``data.get("all_items", [])`` était un défaut
+            # SILENCIEUX à liste vide alors que le même appel exige
+            # ``data["sans_items"]`` en dur : une charge utile privée d'``all_items``
+            # mais porteuse de ``totaux_all`` produisait un tableau d'équipements
+            # VIDE sous un Total TTC complet.
+            return _onepage_html_qui_tient(_esc_items(data["all_items"]))
+        return build_html()
 
 
 #: QJR161 — nombre maximum de passes de mesure. Chaque passe compose la page,

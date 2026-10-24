@@ -25,6 +25,7 @@ from ..ci import blocs as ci_blocs
 from ..ci.mentions import texte
 from ..ci.graphiques import cede
 from ..lecture_pure import nombre_ou_none
+from ..montants import decimale
 # QJR651 — kwc_str et la cellule KPI : harnais premium commun.
 from .. import premium_base
 
@@ -68,7 +69,7 @@ def _taux_declare(argent):
 
 def _pct_txt(valeur):
     """« 39,8 » — un pourcentage servi, au dixième pour l'affichage."""
-    return f"{valeur:.1f}".replace(".", ",")
+    return decimale(f"{valeur:.1f}")
 
 
 def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
@@ -121,7 +122,7 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
         taux = _taux_declare(argent)
         if van is not None and taux is not None:
             lignes.append((L("ci_ind_van", "VAN au taux déclaré de {taux} %",
-                             taux=f"{taux:g}".replace(".", ",")),
+                             taux=decimale(f"{taux:g}")),
                            f"{fmt_mad(van)}&nbsp;MAD"))
         offre = argent.get("financement")
         if isinstance(offre, dict) and offre.get("echeance_mad") is not None:
