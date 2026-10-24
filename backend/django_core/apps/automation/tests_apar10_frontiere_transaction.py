@@ -79,25 +79,36 @@ class FrontiereTransactionTests(WideTeardownTimeoutMixin, TransactionTestCase):
         self.assertEqual(runs.get().status, AutomationRun.Status.SUCCESS)
 
     def test_erreur_sql_n_avorte_pas_l_emetteur(self):
+        # APAR70 — ticket SAV : ``priorite`` (max_length=10) reçoit 12 car. =>
+        # VRAIE erreur SQL (sur un lead, la validation APAR51 refuse avant).
+        from apps.crm.models import Client
+        from apps.sav.models import Ticket
+        from apps.sav.services import emettre_changement_statut_ticket
+
         regle = AutomationRule.objects.create(
             company=self.co, nom='Priorité trop longue', enabled=True,
-            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            trigger_type=TriggerType.RECORD_STATE_CHANGE,
+            trigger_config={'model': 'sav.ticket', 'field': 'statut',
+                            'value': Ticket.Statut.EN_COURS},
             action_type=ActionType.SET_FIELD,
             action_config={'field': 'priorite', 'value': 'x' * 12})
-        lead = self._lead()
+        ticket = Ticket.objects.create(
+            company=self.co, reference='APAR70-1', statut=Ticket.Statut.NOUVEAU,
+            client=Client.objects.create(company=self.co, nom='Client APAR70'))
         with transaction.atomic():
-            lead.stage = CONTACTED
-            lead.save()
-            # La transaction de l'émetteur reste utilisable.
-            self.assertEqual(
-                Lead.objects.filter(company=self.co).count(), 1)
-            lead.save()  # la valeur refusée n'est pas restée en mémoire
+            ticket.statut = Ticket.Statut.EN_COURS
+            ticket.save()
+            emettre_changement_statut_ticket(
+                ticket, company=self.co, ancien_statut=Ticket.Statut.NOUVEAU)
+            # La transaction de l'émetteur reste utilisable : il relit, réécrit.
+            ticket.refresh_from_db()
+            ticket.save()
         run = AutomationRun.objects.get(rule=regle)
         self.assertEqual(run.status, AutomationRun.Status.FAILED)
         self.assertTrue(run.message)
-        lead.refresh_from_db()
-        self.assertEqual(lead.stage, CONTACTED)
-        self.assertNotEqual(lead.priorite, 'x' * 12)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.statut, Ticket.Statut.EN_COURS)
+        self.assertNotEqual(ticket.priorite, 'x' * 12)
 
     def test_for_each_envoi_differe_au_commit(self):
         # APAR69 — une sous-action d'envoi d'une boucle FOR_EACH attend le
