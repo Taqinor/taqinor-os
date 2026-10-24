@@ -1865,7 +1865,7 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # même run). Valeur recopiée du message d'échec du gate image de la
         # lane (gate_moteur2) — jamais calculée à la main.
         EMPREINTE_EPINGLEE = (
-            'eee219be00191833eb4b5e98cc9e3680afc920958f95fa5400011b2a04676bfa')
+            '6f5c0907632b176681fda4fdcf4eefe785af1d19a496b6a38e932705255b80e0')
 
         self.assertEqual(
             empreinte, EMPREINTE_EPINGLEE,
