@@ -154,6 +154,10 @@ class OpenAPISchemaGenerationTests(TestCase):
         self.assertTrue(
             any(b.get('pattern') == MOTIF_SANS_NUL
                 or '\\u0000' in b.get('pattern', '') for b in branches), sujet)
+        # api-fuzz-full 24/10 — répétition bornée par ``maxLength`` : Schemathesis
+        # ne réécrit plus le motif (sa réécriture produisait une regex ECMA invalide).
+        self.assertTrue(any(b.get('pattern', '').endswith('{0,255}$')
+                            for b in branches), sujet)
         self.assertNotIn(
             'pattern', schemas['EmailTemplate']['properties']['sujet'])
 
