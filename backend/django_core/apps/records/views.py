@@ -86,8 +86,8 @@ _MINE = _S('ActivitesMine', {
 
 _ACTIVITE_CREATION = _S('ActiviteCreation', {
     'activity_type': drf.IntegerField(),
-    'summary': drf.CharField(required=False, allow_blank=True, max_length=255),
-    'note': drf.CharField(required=False, allow_blank=True),
+    'summary': ChaineStricte(required=False, allow_blank=True, max_length=255),
+    'note': ChaineStricte(required=False, allow_blank=True),
     'due_date': drf.DateField(required=False, allow_null=True),
     'assigned_to': drf.IntegerField(required=False, allow_null=True),
     'personnelle': drf.BooleanField(required=False),
@@ -98,9 +98,9 @@ _ACTIVITE_CREATION = _S('ActiviteCreation', {
 _ACTIVITE_FAITE_CORPS = _S('ActiviteFaiteCorps', {
     'next': _S('ActiviteSuite', {
         'activity_type': drf.IntegerField(min_value=1, max_value=_ID_MAX),
-        'summary': drf.CharField(
+        'summary': ChaineStricte(
             required=False, allow_blank=True, max_length=255),
-        'note': drf.CharField(required=False, allow_blank=True),
+        'note': ChaineStricte(required=False, allow_blank=True),
         'due_date': drf.DateField(required=False, allow_null=True),
     }, required=False, allow_null=True),
 })

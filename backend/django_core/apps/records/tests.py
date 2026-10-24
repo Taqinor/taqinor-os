@@ -1233,6 +1233,19 @@ class TestFollowers(TestCase):
         self.api_follower = auth(self.follower_user)
         self.api_owner = auth(self.owner)
 
+    def test_corps_activite_publie_le_texte_sans_nul(self):
+        """4e drainage api-fuzz : ``summary``/``note`` d'une activité portent le
+        motif « sans NUL » au schéma (le serveur les refuse déjà)."""
+        from core.champs_stricts import ChaineStricte
+        from apps.records.views import _ACTIVITE_CREATION
+        for nom in ('summary', 'note'):
+            self.assertIsInstance(_ACTIVITE_CREATION.fields[nom], ChaineStricte)
+        resp = self.api_follower.post(
+            '/api/django/records/activities/',
+            {'activity_type': 1, 'summary': 'a\x00b',
+             'model': 'crm.lead', 'id': self.lead.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+
     def test_sous_type_avec_nul_ou_demi_substitut_400_pas_500(self):
         """4e drainage api-fuzz : U+0000 dans ``sous_type`` cassait l'INSERT
         (500) ; refus nommé, rien d'écrit."""
