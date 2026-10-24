@@ -14,6 +14,11 @@ APAR80 — ``test_trois_entrees_http_relues_en_base`` : ``/devis/auto/``,
 ``Decimal('20')`` au lieu de ``tva_standard(company)`` dans
 ``DevisViewSet.auto`` ou dans ``DevisCalepinageActionsMixin.from_layout`` ⇒
 ce test échoue.
+
+APAR81 — ``test_creation_crud_et_atomic_sans_taux`` : ``POST /devis/`` et
+``/devis/atomic/`` sans taux naissent au taux société. Test-du-test : retirer
+l'affectation ``tva_standard`` de ``DevisViewSet.perform_create`` ou de
+``DevisEditionActionsMixin._creer_atomique`` ⇒ ce test échoue.
 """
 from decimal import Decimal
 
@@ -101,3 +106,25 @@ class TvaDefautSocieteTests(qjr80._Base):
             self.assertEqual(resp.status_code, 200, resp.content[:300])
             self.assertEqual({Decimal(li['taux_tva'])
                               for li in resp.json()['lignes']}, {attendu})
+
+    def test_creation_crud_et_atomic_sans_taux(self):
+        """APAR81 — sans taux : 14.00 ; ``taux_tva: 0`` respecté. Relu en base
+        par l'ORM ; boucle sans ``subTest`` (test d'API)."""
+        from apps.stock.models import Produit
+        from apps.ventes.models import Devis
+        api = APIClient()
+        api.force_authenticate(self.user)
+        produit = Produit.objects.get(company=self.company, nom='Accessoires')
+        lignes = [{'produit': produit.id, 'designation': produit.nom,
+                   'quantite': '1', 'prix_unitaire': '2000'}]
+        for taux, attendu in ((None, Decimal('14.00')), (0, Decimal('0.00'))):
+            extra = {} if taux is None else {'taux_tva': taux}
+            for route, corps in (('', {}), ('atomic/', {'lignes': lignes})):
+                resp = api.post('/api/django/ventes/devis/%s' % route,
+                                dict(corps, lead=self.lead.id, **extra),
+                                format='json')
+                self.assertEqual(resp.status_code, 201,
+                                 (route, taux, resp.content[:300]))
+                devis = Devis.objects.get(pk=resp.json()['id'],
+                                          company=self.company)
+                self.assertEqual(devis.taux_tva, attendu, (route, taux))

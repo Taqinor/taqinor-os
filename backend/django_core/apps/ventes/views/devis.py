@@ -341,6 +341,10 @@ class DevisViewSet(DevisEditionActionsMixin,
             # QJR563 — UN helper, partagé avec /devis/atomic/.
             from ..domain.creation import devise_par_defaut
             save_kwargs['devise'] = devise_par_defaut(company)
+        if 'taux_tva' not in serializer.validated_data:
+            # APAR81 (D-APAR-1) — le taux standard de la société, comme la devise.
+            from ..utils.company_settings import tva_standard
+            save_kwargs['taux_tva'] = tva_standard(company)
 
         # QJR541 — ``statut`` n'est plus écrivable : un devis créé par POST
         # est toujours un brouillon, le funnel n'avance que par les
