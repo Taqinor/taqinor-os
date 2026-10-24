@@ -26,7 +26,8 @@ from core.viewsets import CompanyScopedModelViewSet
 from .. import selectors
 from ..models import DocumentFournisseur, DossierOnboardingFournisseur
 from ..permissions import PeutValiderDossierFournisseur
-from ..utils.params import UniciteEn409Mixin, id_requete_ou_400, statut_requete_ou_400
+from ..utils.params import (
+    UniciteEn409Mixin, corps_objet, id_requete_ou_400, statut_requete_ou_400)
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 
@@ -149,12 +150,14 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
         from .fournisseur import parse_bool_strict
 
         dossier = self.get_object()
-        valider = parse_bool_strict(request.data.get('valider'))
+        # api-fuzz : un corps JSON non objet (``[]``) levait AttributeError (500).
+        donnees = corps_objet(request)
+        valider = parse_bool_strict(donnees.get('valider'))
         if valider is None:
             return Response(
                 {'valider': ['Paramètre requis (true/false).']},
                 status=status.HTTP_400_BAD_REQUEST)
-        motif_rejet = (request.data.get('motif_rejet') or '')
+        motif_rejet = (donnees.get('motif_rejet') or '')
         motif_rejet = motif_rejet.strip() if isinstance(motif_rejet, str) \
             else ''
         if not valider and not motif_rejet:
