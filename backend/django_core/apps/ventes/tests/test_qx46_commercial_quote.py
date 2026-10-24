@@ -835,6 +835,36 @@ class TestAmot92CouvertureProjet(SimpleTestCase):
         self.assertNotIn("Prochaines étapes", sans.split('class="page"')[1])
 
 
+class TestAmot84UnitesCouverture(SimpleTestCase):
+    """AMOT84 — la tuile « Puissance crête » des couvertures C&I dit son
+    unité dans la langue du document : « kWp » en anglais (comme le titre),
+    « kWc » en français, octet pour octet."""
+
+    def _p1_industriel(self, langue=None):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["etude"] = dict(data["etude"], etude_ci=copy.deepcopy(_ETUDE_CI))
+        if langue:
+            data["langue_sortie"] = langue
+        return i_render.build_html(i_rend._augment(
+            etude_ci_au_kwc_servi(data))).split('class="page"')[1]
+
+    def test_anglais_kwp(self):
+        for p1 in (_pages_ci(_data_ci(langue="en"))[1],
+                   self._p1_industriel("en")):
+            texte = _texte_ci(p1)
+            self.assertIn(" kWp", texte)
+            self.assertNotIn("kWc", texte)
+            self.assertNotIn("kWh/an", texte)
+
+    def test_francais_inchange(self):
+        for p1 in (_pages_ci(_data_ci())[1], self._p1_industriel()):
+            self.assertIn("&nbsp;kWc", p1)
+            self.assertNotIn("kWp", _texte_ci(p1))
+
+
 class TestAmot93VotreInstallation(SimpleTestCase):
     """AMOT93 — « Votre installation en bref » sous le tableau de la page 2
     (commercial ET industriel) : modules (modèle, Wc, nombre, kWc),

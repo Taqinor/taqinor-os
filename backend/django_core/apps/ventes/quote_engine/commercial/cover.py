@@ -76,7 +76,9 @@ def build(ctx):
     def kpi(val, unit, label, fig=None):
         return premium_base.kpi(val, unit, label, fig, prefixe="c1c")
 
-    cellules = [kpi(kwc, "&nbsp;kWc",
+    # AMOT84 — l'unité dans la langue du document (« kWp » en anglais,
+    # comme le titre) ; « &nbsp;kWc » en français, octet pour octet.
+    cellules = [kpi(kwc, L("res_unite_kwc", "&nbsp;kWc"),
                     L("ci_puissance_crete", "Puissance crête"),
                     "puissance_kwc")]
     # CIQ331 — la production annuelle du moteur C&I (``synthese_ci``), ancrée

@@ -4009,8 +4009,11 @@ def _cartes_ci_onepage(chiffres):
     cellules = []
     prod = chiffres.get("production_kwh_an")
     if prod:
+        # AMOT84 — « kWh/yr » en anglais ; le français inchangé.
+        _unite = (" kWh/an" if LANGUE_SORTIE == "fr"
+                  else _L("ci_unite_kwh_an"))
         cellules.append(
-            (_L("op_production_annuelle"), f"{fnum(prod)} kWh/an",
+            (_L("op_production_annuelle"), f"{fnum(prod)}{_unite}",
              _ancre_figure("production_annuelle_kwh", fnum(prod))))
     if MASQUER_ECONOMIES:
         return cellules
@@ -4134,8 +4137,12 @@ def page_onepage(items, tronquees=0):
             _sum_cells.append((_L("champ_pv"), f"{kwc_fr(KWC)} kWc",
                                _ancre_figure("puissance_kwc", kwc_fr(KWC))))
     elif KWC > 0:
+        # AMOT84 — une-page C&I : « kWp » dans un document anglais (comme
+        # le titre) ; français et résidentiel inchangés.
         _sum_cells = [
-            (_L("op_puissance_crete"), f"{kwc_fr(KWC)} kWc",
+            (_L("op_puissance_crete"),
+             _L("res_n_kwc").format(n=kwc_fr(KWC))
+             if CHIFFRES_CI is not None else f"{kwc_fr(KWC)} kWc",
              _ancre_figure("puissance_kwc", kwc_fr(KWC))),
         ]
         if CHIFFRES_CI is not None:
@@ -4170,8 +4177,12 @@ def page_onepage(items, tronquees=0):
         _pkwc_txt = fnum(round(total / KWC))
         # AMOT86 (D-ACI-2=a) — postes « à chiffrer après la visite » hors
         # total : aucun « Prix par kWc » sur un prix incomplet.
+        # AMOT84 — « MAD/kWp » dans un une-page C&I anglais ; résidentiel
+        # et français inchangés.
+        _u_kwc = (_L("res_n_kwc").format(n="").strip()
+                  if CHIFFRES_CI is not None else "kWc")
         _sum_cells += [] if (CHIFFRES_CI or {}).get("postes_hors_total") else [
-            (_L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/kWc",
+            (_L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/{_u_kwc}",
              _ancre_figure("prix_kwc", _pkwc_txt, _op_opt))]
         # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
         # contrat DIM2 est posé (voir _falaise_context) : le budget densité

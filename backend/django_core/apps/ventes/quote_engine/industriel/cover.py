@@ -260,7 +260,9 @@ def build(ctx):
     def kpi(val, unit, label, fig=None):
         return premium_base.kpi(val, unit, label, fig, prefixe="i1")
 
-    cellules = [kpi(kwc, "&nbsp;kWc",
+    # AMOT84 — l'unité dans la langue du document (« kWp » en anglais,
+    # comme le titre) ; « &nbsp;kWc » en français, octet pour octet.
+    cellules = [kpi(kwc, L("res_unite_kwc", "&nbsp;kWc"),
                     L("ci_puissance_crete", "Puissance crête"),
                     "puissance_kwc")]
     cellules.extend(ci_couverture.tuiles_taux(d, "ind", kpi))

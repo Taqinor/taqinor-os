@@ -291,3 +291,39 @@ class Amot86OnePagePostesHorsTotal(SimpleTestCase):
             with self.subTest(mode=mode):
                 _data, html = _onepage_hors_total(mode)
                 self.assertEqual(len(HTML(string=html).render().pages), 1)
+
+
+class Amot84UnitesDuUnePageCi(SimpleTestCase):
+    """AMOT84 — le une-page C&I anglais imprime « kWp » et « kWh/yr » (comme
+    son titre) ; le français garde « kWc » / « kWh/an », octet pour octet,
+    et le résidentiel est inchangé."""
+
+    def _texte(self, html):
+        import re
+        texte = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+        texte = unescape(re.sub(r"<[^>]+>", " ", texte))
+        return re.sub(r"\s+", " ", texte.replace(" ", " "))
+
+    def test_anglais_kwp_kwh_yr(self):
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data, html = _onepage(mode, langue_sortie="en")
+                texte = self._texte(html)
+                kwc = legacy.kwc_fr(float(data["puissance_kwc"]))
+                self.assertIn(f"{kwc} kWp", texte)
+                self.assertNotIn(f"{kwc} kWc", texte)
+                self.assertIn("MAD/kWp", texte)
+                self.assertNotIn("MAD/kWc", texte)
+                self.assertIn(" kWh/yr", texte)
+                self.assertNotIn(" kWh/an", texte)
+
+    def test_francais_inchange(self):
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode):
+                data, html = _onepage(mode)
+                texte = self._texte(html)
+                kwc = legacy.kwc_fr(float(data["puissance_kwc"]))
+                self.assertIn(f"{kwc} kWc", texte)
+                self.assertIn("MAD/kWc", texte)
+                self.assertIn(" kWh/an", texte)
+                self.assertNotIn("kWp", texte)
