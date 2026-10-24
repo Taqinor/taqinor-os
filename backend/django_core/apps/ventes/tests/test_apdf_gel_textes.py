@@ -13,9 +13,10 @@ du tout pour une société sans puces). Test-du-test : retirer l'écriture de
 ``doc_texts_geles`` dans ``figer_clauses_devis`` ⇒
 ``test_gel_complet_avec_version`` échoue. Source réelle, aucun mock.
 """
+import html as html_lib
 import re
 import unicodedata
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -155,10 +156,9 @@ class GelTextesEnvoiTests(TestCase):
 # rendu ne touche ni au statut ni aux clauses gelées (empreinte avant = après) ;
 # ``TestCase`` : transaction annulée.
 #
-# Écart déclaré (constat, pas une exemption silencieuse) : le une-page du
-# moteur legacy imprime les puces (``_conditions_onepage_html``) mais AUCUN
-# titre de conditions — le titre n'y est donc pas exigé
-# (``FORMATS_SANS_TITRE``) ; les puces et le marqueur le sont.
+# ERR-APDF48 — le une-page (``_conditions_onepage_html``) imprime désormais le
+# titre lui aussi : il est exigé dans les TROIS formats (l'ancienne exemption
+# ``FORMATS_SANS_TITRE = {'onepage'}`` est retirée).
 #
 # Rouge d'abord : sur le commit pré-APDF13, le résidentiel premium composait en
 # dur son bloc « Conditions » (validité / paiement / TVA) sans lire
@@ -180,8 +180,6 @@ FORMATS = {
     'onepage': {'pdf_mode': 'onepage'},
     'include_etude': {'include_etude': True},
 }
-#: Le une-page legacy n'imprime aucun titre de conditions (écart déclaré).
-FORMATS_SANS_TITRE = {'onepage'}
 NON_SUBSTITUE = re.compile(r'\{[A-Za-z_]+\}')
 
 
@@ -249,8 +247,7 @@ class PariteCgvTests(TestCase):
                     self.assertIn(_norme(MARQUEUR), pdf)
                     for puce in puces:
                         self.assertIn(_norme(puce), pdf)
-                    if nom not in FORMATS_SANS_TITRE:
-                        self.assertIn(_norme(titre), pdf)
+                    self.assertIn(_norme(titre), pdf)
                     self.assertIsNone(NON_SUBSTITUE.search(brut))
 
     def test_parite_marche_format_statut(self):
@@ -264,3 +261,43 @@ class PariteCgvTests(TestCase):
         self._verifier(Devis.Statut.ENVOYE, rendus)
         # Le test LISTE ses rendus : 4 marchés × 3 formats × 2 états.
         self.assertEqual(len(rendus), len(MARCHES) * len(FORMATS) * 2, rendus)
+
+
+#: ERR-APDF48 — cas du une-page : (surcharges du devis, titre attendu) —
+#: défaut du moteur, variante C&I (SON titre), surcharge société du titre.
+CAS_TITRE_UNE_PAGE = {
+    'defaut': ({}, DEFAULT_DOC_TEXTS['cgv_titre']),
+    'variante_ci': ({'mode_installation': 'commercial',
+                     'cgv_ci': [f'{MARQUEUR} clause commercial'],
+                     'cgv_ci_titre': TITRES_CI['commercial']},
+                    TITRES_CI['commercial']),
+    'surcharge_societe': ({'doc_texts': {'cgv_titre': 'TITRE CG SOCIETE'}},
+                          'TITRE CG SOCIETE'),
+}
+
+
+class TitreUnePageTests(SimpleTestCase):
+    """ERR-APDF48 — fast tier (aucune BD) : le HTML du une-page porte le titre
+    de conditions que la page publique sert (``_conditions_titre_publique``),
+    en tête de la ligne de conditions, AVANT la première puce.
+
+    Rouge d'abord : sans le titre dans ``_conditions_onepage_html``, il est
+    absent du HTML du une-page ⇒ ``assertIn(titre, page)`` échoue pour les
+    trois cas."""
+
+    def test_titre_public_en_tete_de_la_ligne(self):
+        from apps.ventes.public.payload_conditions import (
+            _conditions_titre_publique)
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine.clauses_cgv import cgv_imprimees
+        from apps.ventes.tests import _moteur_fixtures as F
+        for nom, (surcharges, attendu) in CAS_TITRE_UNE_PAGE.items():
+            data = F.donnees_legacy(pdf_mode='onepage', **surcharges)
+            titre = _conditions_titre_publique(data)
+            self.assertEqual(titre, attendu, nom)
+            page = html_lib.unescape(G.render_html_for(data))
+            puce = html_lib.unescape(re.sub(
+                r'<[^>]+>', '', cgv_imprimees(data)['puces'][0])).strip()
+            self.assertIn(titre, page, nom)
+            self.assertIn(puce, page, nom)
+            self.assertLess(page.index(titre), page.index(puce), nom)

@@ -1,0 +1,33 @@
+{
+  "sha": "e45ab8aa425ca8462d24cd591e3583ef962a0ced",
+  "date": "2026-10-24",
+  "groupe": "ADEV",
+  "verdict": "PASS",
+  "couvre": [
+    "ADEV34"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P5.1",
+      "taches": [
+        "ADEV34"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ADEV/traces/2026-10-24/ADEV34-P5.1.txt"
+    }
+  ]
+}

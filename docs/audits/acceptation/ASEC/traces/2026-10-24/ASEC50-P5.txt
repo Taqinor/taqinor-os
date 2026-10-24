@@ -1,0 +1,19 @@
+Rejeu orchestrateur ASEC50 / D-ASEC-50 sur la pile locale à e45ab8aa4 (origin/main, migration roles 0010 appliquée), 2026-10-24.
+Sonde API en transaction ANNULÉE (docker exec … manage.py shell, APIClient + JWT, e-mail locmem) ; deux rôles de rejeu créés dans la société démo :
+« sans Exporter » = Responsable canonique moins crm_export/sav_export/installation_export/ventes_export/reporting_export/ventes_supprimer ; « Directeur » = codes canoniques du Directeur.
+Contexte : societe=2 leads=[2616, 2615, 2614] client=140.
+
+[sans Exporter] GET /api/django/sav/insights/sav-fcr/?export=xlsx → 403 (attendu 403, OK) — {"detail": "Droit « Exporter » manquant (sav_export).", "code": "droit_manquant", "error": {"code": "permission_denied", "message": "Droit « Exporter » manquant
+[sans Exporter] GET /api/django/sav/insights/sav-fcr/ (JSON) → 200 (attendu 200, OK) — {"date_debut": null, "date_fin": null, "nb_tickets_periode": 0, "nb_clotures": 0, "nb_non_clotures_exclus": 0, "nb_fcr": 0, "taux_fcr": null, "echanges_max": 2,
+[sans Exporter] GET /api/django/sav/insights/sav-performance-agent/?export=xlsx → 403 (attendu 403, OK) — {"detail": "Droit « Exporter » manquant (sav_export).", "code": "droit_manquant", "error": {"code": "permission_denied", "message": "Droit « Exporter » manquant
+[sans Exporter] GET /api/django/sav/insights/sav-performance-agent/ (JSON) → 200 (attendu 200, OK) — {"date_debut": null, "date_fin": null, "nb_tickets_traites": 0, "agents": []}
+[sans Exporter] GET installations/interventions/?export=xlsx → 403 (attendu 403, OK) — {"detail": "Droit « Exporter » manquant (installation_export).", "code": "droit_manquant", "error": {"code": "permission_denied", "message": "Droit « Exporter »
+[sans Exporter] DELETE ventes/factures/<brouillon>/ → 403 (attendu 403, OK) — {"detail": "Droit « Supprimer » manquant (ventes_supprimer).", "code": "droit_manquant", "error": {"code": "permission_denied", "message": "Droit « Supprimer » 
+[sans Exporter] facture relue → existe=True
+[Directeur] GET /api/django/sav/insights/sav-fcr/?export=xlsx → 200 (attendu 200, OK) — application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+[Directeur] GET /api/django/sav/insights/sav-fcr/ (JSON) → 200 (attendu 200, OK) — {"date_debut": null, "date_fin": null, "nb_tickets_periode": 0, "nb_clotures": 0, "nb_non_clotures_exclus": 0, "nb_fcr": 0, "taux_fcr": null, "echanges_max": 2,
+[Directeur] GET /api/django/sav/insights/sav-performance-agent/?export=xlsx → 200 (attendu 200, OK) — application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+[Directeur] GET /api/django/sav/insights/sav-performance-agent/ (JSON) → 200 (attendu 200, OK) — {"date_debut": null, "date_fin": null, "nb_tickets_traites": 0, "agents": []}
+[Directeur] GET installations/interventions/?export=xlsx → 200 (attendu 200, OK) — application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+[Directeur] DELETE ventes/factures/<brouillon>/ → 204 (attendu 204, OK) — 
+[Directeur] facture relue → existe=False

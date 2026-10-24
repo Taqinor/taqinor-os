@@ -1,0 +1,37 @@
+{
+  "sha": "e45ab8aa425ca8462d24cd591e3583ef962a0ced",
+  "date": "2026-10-24",
+  "groupe": "ATOT",
+  "verdict": "PASS",
+  "couvre": [
+    "ATOT37",
+    "ATOT38",
+    "ATOT39"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA4.1",
+      "taches": [
+        "ATOT37",
+        "ATOT38",
+        "ATOT39"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ATOT/traces/2026-10-24/ATOT-PA4.1.txt"
+    }
+  ]
+}

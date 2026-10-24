@@ -1,0 +1,54 @@
+{
+  "sha": "e45ab8aa425ca8462d24cd591e3583ef962a0ced",
+  "date": "2026-10-24",
+  "groupe": "ASEC",
+  "verdict": "PASS",
+  "couvre": [
+    "ASEC50"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1",
+      "taches": [
+        "ASEC50"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-24/ASEC50-P1.txt"
+    },
+    {
+      "id": "P5",
+      "taches": [
+        "ASEC50"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ASEC/traces/2026-10-24/ASEC50-P5.txt"
+    }
+  ]
+}
