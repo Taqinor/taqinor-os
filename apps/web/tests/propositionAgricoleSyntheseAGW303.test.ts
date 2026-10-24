@@ -122,7 +122,11 @@ describe('AGW303 — provenance : déclaré / mesuré / à confirmer', () => {
 
   it('même règle que le renderer : mesure_visite / foreur → mesuré ; saisie / lead → déclaré', () => {
     expect(provenanceKind({ cle: 'a', origine: 'lead', detail: 'mesure_visite', date: '2026-09-15' })).toEqual({ kind: 'mesure', date: '15/09/2026' });
-    expect(provenanceKind({ cle: 'a', origine: 'saisie', detail: 'foreur', date: '2026-09-15' }).kind).toBe('mesure');
+    expect(provenanceKind({ cle: 'a', origine: 'saisie', detail: 'foreur', date: '2026-09-15' }).kind).toBe('mesure_foreur');
+    expect(provenanceKind({ cle: 'a', origine: 'lead', detail: 'essai', date: '2026-09-15' }).kind).toBe('mesure_essai');
+    expect(phraseProvenance({ cle: 'a', origine: 'lead', detail: 'foreur', date: '2026-10-24' }).fr).toBe(
+      'relevé par votre foreur (saisi le 24/10/2026)',
+    );
     expect(provenanceKind({ cle: 'a', origine: 'lead', detail: 'client', date: '2026-09-12' })).toEqual({ kind: 'declare', date: '12/09/2026' });
     expect(provenanceKind({ cle: 'a', origine: 'derive', detail: null, date: '2026-09-12' }).kind).toBe('a_confirmer');
   });

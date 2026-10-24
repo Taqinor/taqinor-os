@@ -228,3 +228,58 @@ export const AGR_ACCEPTATION_LBL = {
     ar: 'عند الطلب — بعد موافقة صندوق التنمية الفلاحية إن طلبتم الدعم',
   },
 } as const satisfies Record<string, Lbl3>;
+
+/** Mois en toutes lettres — `i18n_labels.agr_mois_N` du PDF (aucune valeur importée de
+ *  `proposition.ts` : ce module n'en prend que des types). */
+const MOIS_AGRI: Record<keyof Lbl3, string[]> = {
+  fr: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
+  en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+  ar: ['يناير', 'فبراير', 'مارس', 'أبريل', 'ماي', 'يونيو', 'يوليوز', 'غشت', 'شتنبر', 'أكتوبر', 'نونبر', 'دجنبر'],
+};
+const moisServi = (v: unknown): number | null =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 12 ? v : null;
+
+/** Rejeu AGQ du 24/10 (jumeau page d'AGQ3, D-AGQ-2) — la carte « Eau / jour » dit la phrase
+ *  du héro PDF (`synthese.texte_heures_eau`) : « sur 5,1 h de pompage équivalentes à plein
+ *  débit en octobre, mois de conception · au plus bas : 112,3 m³/j en novembre », lue dans
+ *  `synthese_agricole.eau` ; sans mois de conception servi : la phrase d'hier. `null` sans heures. */
+export function heuresEauAgricole(payload: unknown, heures: number | null | undefined, fmt: (n: number) => string): Lbl3 | null {
+  if (typeof heures !== 'number' || !Number.isFinite(heures) || heures <= 0) return null;
+  const eau = (payload as { synthese_agricole?: { eau?: Record<string, unknown> } } | null)?.synthese_agricole?.eau ?? {};
+  const mois = moisServi(eau.mois_conception);
+  const h = fmt(heures);
+  if (mois === null) {
+    return {
+      fr: `estimation, sur ${h} h de pompage (hypothèse)`,
+      en: `estimate, over ${h} h of pumping (assumption)`,
+      ar: `تقدير، على ${h} س من الضخّ (فرضية)`,
+    };
+  }
+  const bas = typeof eau.m3_jour_min === 'number' && Number.isFinite(eau.m3_jour_min) ? fmt(eau.m3_jour_min) : null;
+  const moisBas = moisServi(eau.mois_m3_jour_min);
+  const auPlusBas = bas !== null && moisBas !== null && moisBas !== mois;
+  return {
+    fr: `estimation, sur ${h} h de pompage équivalentes à plein débit en ${MOIS_AGRI.fr[mois - 1]}, mois de conception`
+      + (auPlusBas ? ` · au plus bas : ${bas} m³/j en ${MOIS_AGRI.fr[moisBas - 1]}` : '') + ' (hypothèse)',
+    en: `estimate, over ${h} h of pumping at equivalent full flow in ${MOIS_AGRI.en[mois - 1]}, design month`
+      + (auPlusBas ? ` · at its lowest: ${bas} m³/day in ${MOIS_AGRI.en[moisBas - 1]}` : '') + ' (assumption)',
+    ar: `تقدير، على مدى ${h} ساعات ضخ مكافئة بالصبيب الكامل في ${MOIS_AGRI.ar[mois - 1]}، شهر التصميم`
+      + (auPlusBas ? ` · في أدناه: ${bas} م³/يوم في ${MOIS_AGRI.ar[moisBas - 1]}` : '') + ' (فرضية)',
+  };
+}
+
+/** Rejeu AGQ du 24/10 (jumeau page d'AGQ18) — « Mois d'irrigation : déclarés par vous le
+ *  JJ/MM/AAAA. » lu sur l'entrée `mois_irrigation` de `synthese_agricole.economies`
+ *  (`pages._mois_declares` du PDF) ; `null` sans cette entrée. */
+export function moisIrrigationDeclares(payload: unknown): Lbl3 | null {
+  const eco = (payload as { synthese_agricole?: { economies?: { entrees_declarees?: unknown } } } | null)
+    ?.synthese_agricole?.economies;
+  const entrees = Array.isArray(eco?.entrees_declarees) ? (eco.entrees_declarees as Array<Record<string, unknown>>) : [];
+  const e = entrees.find((x) => x && typeof x === 'object' && x.cle === 'mois_irrigation');
+  if (!e) return null;
+  const brut = String(e.saisi_le ?? (e.provenance as { date?: unknown } | undefined)?.date ?? '').slice(0, 10);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(brut) ? `${brut.slice(8, 10)}/${brut.slice(5, 7)}/${brut.slice(0, 4)}` : null;
+  return d
+    ? { fr: `Mois d'irrigation : déclarés par vous le ${d}.`, en: `Irrigation months: declared by you on ${d}.`, ar: `أشهر السقي: صرحتم بها بتاريخ ${d}.` }
+    : { fr: "Mois d'irrigation : à confirmer par la visite.", en: 'Irrigation months: to be confirmed by the site visit.', ar: 'أشهر السقي: يجب تأكيده خلال الزيارة.' };
+}
