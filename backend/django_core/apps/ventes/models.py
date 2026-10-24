@@ -1673,10 +1673,10 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
 
     @classmethod
     def _payload_content_hash(cls, devis, lignes=None, *, version=None,
-                              figures=None):
+                              figures=None, lien=None):
         """Le payload canonique, dans la VERSION demandée (jamais du hash).
-        ``figures`` — chiffres scellés de l'étude C&I (v3), fournis par
-        l'appelant (voir ``models_preuves._suffixe_sceau_etude``)."""
+        ``figures`` / ``lien`` — chiffres de l'étude C&I et lien signé (v3),
+        fournis par l'appelant (voir ``models_preuves._suffixe_sceau_etude``)."""
         version = version or cls.CONTENT_HASH_VERSION
         client = getattr(devis, 'client', None)
         client_str = ''
@@ -1714,12 +1714,12 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
             # différentes ne peuvent pas produire la même chaîne.
             payload = (f"v{cls.CONTENT_HASH_V2}|{payload}|"
                        f"option={getattr(devis, 'option_acceptee', '') or ''}")
-        # ADEV96 — v3 : + les chiffres de l'étude C&I (``models_preuves``).
-        return payload + cls._suffixe_sceau_etude(figures, version)
+        # ADEV96/ADEV104 — v3 : + étude C&I et lien signé (``models_preuves``).
+        return payload + cls._suffixe_sceau_etude(figures, version, lien)
 
     @classmethod
     def compute_content_hash(cls, devis, lignes=None, *, version=None,
-                             figures=None):
+                             figures=None, lien=None):
         """SHA-256 du payload canonique du devis (sans aucune donnée interne).
 
         Le hash couvre : référence, client (nom/email), date_creation,
@@ -1737,10 +1737,10 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
 
         ``figures`` — ADEV96 : les chiffres scellés de l'étude C&I (part v3),
         calculés par la couche domaine (``modifiabilite.figures_sceau``) ;
-        ``None`` hors C&I. Le modèle ne relance JAMAIS le moteur lui-même.
+        ``None`` hors C&I (``lien`` : ADEV104). Le modèle ne relance JAMAIS le moteur.
         """
         payload = cls._payload_content_hash(devis, lignes, version=version,
-                                            figures=figures)
+                                            figures=figures, lien=lien)
         return hashlib.sha256(payload.encode('utf-8')).hexdigest()
 
     def verifier_contenu(self, lignes=None, figures=None):
@@ -1767,7 +1767,7 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         d'aujourd'hui. Compatibilité : une signature v3 posée AVANT ce champ
         n'en a pas — on rejoue alors ``figures``, l'étude relue par l'appelant
         domaine (``identite_entreprise``), seul cas où une évolution du moteur
-        peut encore rendre ce sceau-là irreproductible.
+        peut encore rendre ce sceau-là irreproductible (lien : ``lien_scelle``).
         """
         scelle = (self.content_hash or '').strip()
         if not scelle:
@@ -1775,7 +1775,7 @@ class DevisSignature(PreuveSignatureB2B, models.Model):
         for version in (self.CONTENT_HASH_V3, self.CONTENT_HASH_V2,
                         self.CONTENT_HASH_V1):
             if self.compute_content_hash(
-                    self.devis, lignes=lignes, version=version,
+                    self.devis, lignes=lignes, version=version, lien=self.lien_scelle,
                     figures=self.figures_a_rejouer(figures)) == scelle:
                 return True, version
         return False, None

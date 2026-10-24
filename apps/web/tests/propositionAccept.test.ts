@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('cloudflare:workers', () => ({ env: {} }));
 
 import { POST } from '../src/pages/api/proposition-accept';
+import { lireRecuAcceptation } from '../src/lib/proposition';
 // W316 — le proxy est désormais rate-limité (bucket dédié, 10/min) : sans
 // remise à zéro entre tests, les nombreux appels de ce fichier (partageant
 // tous la même IP « unknown ») finiraient par se faire 429 entre eux.
@@ -284,5 +285,33 @@ describe('ADEV53 — succès post-signature : acompte, RIB, déclaration de vire
     const { status } = await callVirement({});
     expect(status).toBe(400);
     expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+// ── ADEV104 (C-L3-LIEN-10) — le reçu nomme deux empreintes : le défi lu ≠ le sceau stocké ──────
+describe('ADEV104 — reçu de signature à deux empreintes', () => {
+  const RECU = CONTRAT.reponse_200.recu as Record<string, string>;
+
+  it('lit le reçu du contrat : défi lu, sceau stocké, PDF ; l’alias n’est qu’un repli', () => {
+    expect(lireRecuAcceptation(RECU)).toEqual({
+      signe_le: RECU.signe_le,
+      empreinte_lue: RECU.empreinte_lue,
+      empreinte_scellee: RECU.empreinte_scellee,
+      empreinte_pdf: RECU.empreinte_pdf,
+    });
+    expect(RECU.empreinte_lue).not.toBe(RECU.empreinte_scellee);
+    // Serveur d'avant ADEV104 : seule la clé `empreinte_contenu` (= le sceau) est servie.
+    const ancien = lireRecuAcceptation({ signe_le: RECU.signe_le, empreinte_contenu: 'c'.repeat(64), empreinte_pdf: '' });
+    expect(ancien).toMatchObject({ empreinte_lue: '', empreinte_scellee: 'c'.repeat(64) });
+    expect(lireRecuAcceptation(null)).toBeUndefined();
+  });
+
+  it('le proxy relaie le reçu de la réponse 200 du contrat, jamais sur un refus', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(200, CONTRAT.reponse_200)));
+    const ok = await call({ token: 'tok', nom: 'Karim Exemple', twoOptions: false });
+    expect(ok.json.recu).toEqual(lireRecuAcceptation(RECU));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(409, { detail: 'Refus.', code: 'statut', recu: RECU })));
+    const refus = await call({ token: 'tok', nom: 'Karim Exemple', twoOptions: false });
+    expect(refus.json).not.toHaveProperty('recu');
   });
 });
