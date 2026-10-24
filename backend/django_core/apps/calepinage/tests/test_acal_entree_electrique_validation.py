@@ -136,7 +136,6 @@ class Ecriture(BaseValidation):
         self.calepinage.refresh_from_db()
         self.assertEqual(self.calepinage.resultat[CLE_ENTREE]['dc_m'], 25.0)
 
-
     def test_caractere_nul_est_un_conflit_409_et_n_ecrit_rien(self):
         """ENF11 (api-fuzz-full 24/10) : un NUL (clé OU valeur, à toute
         profondeur) ne se range pas en JSONB et un sous-objet libre ne peut
