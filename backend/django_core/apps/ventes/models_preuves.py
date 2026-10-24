@@ -53,6 +53,9 @@ class PreuveSignatureB2B(models.Model):
     # sceau v3 depuis CE champ, jamais en relançant le moteur : une évolution
     # du moteur après la signature ne rend plus le sceau irreproductible.
     # ``NULL`` = signature antérieure à ce champ (voir ``verifier_contenu``).
+    # ADEV104 — signature au jeton : + ``"lien": {niveau, sections_masquees}``
+    # (``modifiabilite.lien_scelle``) ; ``<figures>`` est alors l'étude que CE
+    # lien a montrée (sans ``argent`` sur un lien « sans économies »).
     figures_scellees = models.JSONField(
         null=True, blank=True,
         verbose_name="Chiffres de l'étude C&I scellés à la signature")
@@ -70,6 +73,15 @@ class PreuveSignatureB2B(models.Model):
         import json
         return json.loads(json.dumps(
             figures, sort_keys=True, ensure_ascii=False, default=str))
+
+    @staticmethod
+    def contenu_scelle(figures, lien=None):
+        """ADEV104 — la valeur de :attr:`figures_scellees` : ``{"etude":
+        figures}``, plus ``"lien"`` (niveau du lien scellé) quand la signature
+        vient d'un lien public ; portail et ERP : ``{"etude": …}`` seul."""
+        if lien is None:
+            return {'etude': figures}
+        return {'etude': figures, 'lien': lien}
 
     def figures_du_sceau(self):
         """``(True, figures)`` quand la signature porte ses chiffres scellés ;

@@ -527,13 +527,30 @@ def figures_etude_scellees(synthese):
     }
 
 
-def figures_sceau(devis, *, strict=False):
+def figures_sceau(devis, *, strict=False, link=None):
     """ADEV96 — les chiffres de l'étude C&I que le sceau v3 de
-    ``DevisSignature`` couvre (étude complète, sans filtre de lien). Calculés
-    ICI, dans la couche domaine : ``ventes.models`` ne relance jamais le
-    moteur (contrat import-linter « Core domain models stay decoupled »).
-    ``strict`` — voir :func:`synthese_ci_lue` (acceptation : refus fermé)."""
-    return figures_etude_scellees(synthese_ci_lue(devis, strict=strict))
+    ``DevisSignature`` couvre. Calculés ICI, dans la couche domaine :
+    ``ventes.models`` ne relance jamais le moteur (contrat import-linter
+    « Core domain models stay decoupled »). ``strict`` — voir
+    :func:`synthese_ci_lue` (acceptation : refus fermé).
+
+    ADEV104 — ``link`` (signature au jeton) : l'étude telle que CE lien la
+    montre, mêmes sections servies que le défi (``argent`` retiré d'un lien
+    « sans économies ») ; ``None`` (portail, ERP) : l'étude complète."""
+    return figures_etude_scellees(synthese_ci_lue(devis, link, strict=strict))
+
+
+def lien_scelle(link):
+    """ADEV104 — le niveau du lien gardé avec le sceau
+    (``DevisSignature.figures_scellees['lien']``) : ``{niveau,
+    sections_masquees}`` — avec ``figures_scellees['etude']`` il suffit à
+    recalculer ce que ce lien a montré. ``None`` sans lien (portail, ERP)."""
+    if link is None:
+        return None
+    return {'niveau': getattr(link, 'niveau', '') or '',
+            'sections_masquees': sorted(
+                cle for cle in link.SECTIONS_CLES
+                if not link.section_servie(cle))}
 
 
 #: ADEV51 — le refus 409 du contrat ``proposal_accept.json``

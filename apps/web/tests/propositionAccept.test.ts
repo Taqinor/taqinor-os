@@ -24,6 +24,8 @@ import {
   virementMessage,
   VIREMENT_MSG,
 } from '../src/lib/paiementAcceptation';
+// ADEV104 — reçu de signature : le défi lu et le sceau stocké, deux empreintes nommées.
+import { lireRecuSignature } from '../src/lib/propositionRecu';
 
 function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/proposition-accept', {
@@ -284,5 +286,32 @@ describe('ADEV53 — succès post-signature : acompte, RIB, déclaration de vire
     const { status } = await callVirement({});
     expect(status).toBe(400);
     expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe('ADEV104 — le reçu nomme le défi lu et le sceau stocké', () => {
+  it('le proxy relaie `recu` du contrat : `empreinte_lue` ≠ `empreinte_scellee`, jamais sur un refus', async () => {
+    const recu = CONTRAT.reponse_200.recu as Record<string, string>;
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(200, CONTRAT.reponse_200)));
+    const ok = await call({ token: 'tok', nom: 'Karim Exemple', twoOptions: false });
+    expect(ok.json.recu).toEqual({
+      signe_le: recu.signe_le,
+      empreinte_lue: recu.empreinte_lue,
+      empreinte_scellee: recu.empreinte_scellee,
+      empreinte_pdf: recu.empreinte_pdf,
+    });
+    expect(recu.empreinte_lue).not.toBe(recu.empreinte_scellee);
+    // `empreinte_contenu` : alias du sceau servi un cycle — lu en repli, jamais pris pour le défi.
+    expect(recu.empreinte_contenu).toBe(recu.empreinte_scellee);
+    expect(lireRecuSignature({ empreinte_contenu: recu.empreinte_scellee })).toEqual({
+      signe_le: null,
+      empreinte_lue: '',
+      empreinte_scellee: recu.empreinte_scellee,
+      empreinte_pdf: '',
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(409, { detail: 'Refus.', code: 'statut', recu: {} })));
+    const refus = await call({ token: 'tok', nom: 'Karim Exemple', twoOptions: false });
+    expect(refus.json).not.toHaveProperty('recu');
   });
 });
