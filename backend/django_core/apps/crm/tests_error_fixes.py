@@ -370,6 +370,10 @@ class TestEntreesTypeesEnf11(TestCase):
             # hors plage : borné [1, 365], pas refusé.
             self.assertEqual(
                 self.api.get(url, {'jours': 99999}).status_code, 200, url)
+            # api-fuzz-full 24/10 : le texte publié est « sans caractère nul »
+            # (P_JOURS) — le serveur refuse le nul en 400, il ne le tolère pas.
+            resp = self.api.get(url, {'jours': 'a\x00b'})
+            self.assertEqual(resp.status_code, 400, (url, resp.content))
 
     def test_cadences_echues_jours_enorme_ne_leve_plus_500(self):
         resp = self.api.get('/api/django/crm/relance-etapes/cadences-echues/',
