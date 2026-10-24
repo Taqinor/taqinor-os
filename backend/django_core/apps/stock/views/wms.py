@@ -18,7 +18,7 @@ from ..utils.params import (
     ID_MAX, booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps,
     id_requete_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
-from ..erreurs_achats import ConflitEtat, EtatIncompatible
+from ..erreurs_achats import ConflitEtat, EtatIncompatible, statut_refus_metier
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
 )
@@ -212,7 +212,7 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
             lancer_vague(vague)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         vague.refresh_from_db()
         return Response(self.get_serializer(vague).data)
 
@@ -232,7 +232,7 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
                 seuil_lignes=request.data.get('seuil_lignes'))
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         vague.refresh_from_db()
         return Response(self.get_serializer(vague).data)
 
@@ -435,7 +435,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
                 user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         return Response(resultat)
 
     @extend_schema(parameters=[P('telecharger', BOOL, False, 'Renvoyer en pièce jointe')], responses={
@@ -462,7 +462,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             bordereau = exporter_asn(unite)
         except ValueError as exc:
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         reponse = Response(bordereau)
         if request.query_params.get('telecharger'):
             reponse['Content-Disposition'] = (
@@ -504,9 +504,8 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         unite.refresh_from_db()
         return Response(self.get_serializer(unite).data)
 
-    @extend_schema(parameters=[P('sortie', STR, False, 'html ou pdf', ['html', 'pdf']), P('symbology', STR, False,
-                                                                                          'Symbologie', ['qr',
-                                                                                                         'code128'])],
+    @extend_schema(parameters=[P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'], vide=True),
+                               P('symbology', STR, False, 'Symbologie', ['qr', 'code128'], vide=True)],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=True, methods=['get'], url_path='etiquette-pdf')
     def etiquette_pdf(self, request, pk=None):
@@ -516,6 +515,8 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         from .. import labels
         from apps.ventes.utils.pdf import _html_to_pdf
 
+        from ..utils.params import etiquette_options_ou_400
+        _symbology, sortie = etiquette_options_ou_400(request)
         unite = self.get_object()
         contenu = ', '.join(
             f'{ligne.produit.nom} × {ligne.quantite}'
@@ -525,7 +526,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             'titre': f'{unite.get_type_unite_display()} {unite.sscc}',
             'sous_titre': contenu,
         }])
-        if request.query_params.get('sortie') == 'html':
+        if sortie == 'html':
             return HttpResponse(html, content_type='text/html; charset=utf-8')
         response = HttpResponse(_html_to_pdf(html),
                                 content_type='application/pdf')
@@ -1341,8 +1342,8 @@ def _date_param(valeur, nom='date', *, ignorer_illisible=False):
 
 
 @extend_schema(parameters=[P('emplacement', INT, True, 'Emplacement (id)', mini=1, maxi=2147483647),
-                           P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
-                           P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'])],
+                           P('symbology', STR, False, 'Symbologie', ['qr', 'code128'], vide=True),
+                           P('sortie', STR, False, 'html ou pdf', ['html', 'pdf'], vide=True)],
                responses={
     (200, 'application/pdf'): bytes, (200, 'text/html'): STR,
     400: inline_serializer('StockEtiquettesCasiersErreur', {

@@ -6,7 +6,7 @@ from rest_framework import filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import serializers
-from ..openapi_helpers import PTOKEN, BINARY, INT, LISTE, OBJET, P, STR, XLSX, corps
+from ..openapi_helpers import PTOKEN, BINARY, ID_OU_VIDE, INT, LISTE, OBJET, P, STR, XLSX, corps
 from ..serializers import PortailFournisseurTokenSerializer
 from core.viewsets import CompanyScopedModelViewSet
 from ..models import (
@@ -52,12 +52,12 @@ def parse_bool_strict(valeur):
 
 
 from .fournisseur_scm import ScmFournisseurActionsMixin  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
-from ..utils.params import choix_ou_400  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from ..utils.params import choix_ou_400, id_requete_ou_400, valeur_unique_ou_400  # noqa: E402 (D-ENF22)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('categorie', INT, False, 'Catégorie fournisseur (id)'),
+@extend_schema_view(list=extend_schema(parameters=[P('categorie', ID_OU_VIDE, False, 'Catégorie fournisseur (id)'),
                                                    P('show_archived', STR, False, 'true pour inclure les archivés',
-                                                     ['true', 'false'])]))
+                                                     ['true', 'false'], vide=True)]))
 class FournisseurViewSet(ScmFournisseurActionsMixin,
                          CompanyScopedModelViewSet):
     queryset = Fournisseur.objects.all()
@@ -135,14 +135,14 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
                 nb_bons_commande_annot=Count('bons_commande', distinct=True),
             )
         # XPUR5 — filtre liste par catégorie fournisseur.
-        categorie_id = self.request.query_params.get('categorie')
+        categorie_id = id_requete_ou_400(self.request, 'categorie')
         if categorie_id:
             qs = qs.filter(categorie_id=categorie_id)
         # Archivage — même patron que `ProduitViewSet` : les fournisseurs
         # archivés sortent des listes par défaut, restent consultables avec
         # `?show_archived=true`, et sont toujours visibles pour les actions
         # qui n'ont de sens que sur un archivé.
-        if choix_ou_400(self.request.query_params.get('show_archived'),
+        if choix_ou_400(valeur_unique_ou_400(self.request, 'show_archived'),
                         'show_archived', ('true', 'false')) == 'true':
             return qs
         if self.action in ('force_delete', 'unarchive'):
@@ -489,7 +489,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
     @extend_schema(parameters=[
         P('debut', STR, False, 'Date AAAA-MM-JJ ; ignoré si illisible (période ouverte)'),
         P('fin', STR, False, 'Date AAAA-MM-JJ ; ignoré si illisible (période ouverte)'),
-        P('export', STR, False, 'xlsx pour télécharger', ['xlsx'])], responses={200: LISTE, XLSX: BINARY})
+        P('export', STR, False, 'xlsx pour télécharger', ['xlsx'], vide=True)], responses={200: LISTE, XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='export-conformite')
     def export_conformite(self, request):
         """NTP2P19 — audit achats : conformité par fournisseur actif.
@@ -527,7 +527,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         if not voit_montants:
             for ligne in lignes:
                 ligne.pop('montant_achete', None)
-        if choix_ou_400(request.query_params.get('export'), 'export',
+        if choix_ou_400(valeur_unique_ou_400(request, 'export'), 'export',
                         ('xlsx',)) != 'xlsx':
             return Response(lignes)
 
@@ -552,7 +552,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             sheet_title='Conformité fournisseurs')
 
     @extend_schema(parameters=[P('within', INT, False, 'Horizon en jours (défaut 30)',
-                                 mini=0, maxi=36500)], responses=LISTE)
+                                 mini=0, maxi=36500, vide=True)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='documents-expirants')
     def documents_expirants(self, request):
         """NTP2P20 — pièces d'onboarding (NTP2P7) expirant dans
@@ -563,7 +563,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
 
         from ..utils.params import entier_ou_400
         within = entier_ou_400(
-            request.query_params.get('within'), 'within', 30, 0, 36500)
+            valeur_unique_ou_400(request, 'within'), 'within', 30, 0, 36500)
         return Response(stock_selectors.documents_fournisseur_expirant(
             request.user.company, within_days=within))
 
@@ -695,7 +695,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         return Response(donnees)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT)]))
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', ID_OU_VIDE)]))
 class ContactFournisseurViewSet(CompanyScopedModelViewSet):
     """XPUR5 — contacts secondaires d'un fournisseur (N par fournisseur)."""
     queryset = ContactFournisseur.objects.select_related('fournisseur').all()
@@ -716,7 +716,7 @@ class ContactFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        fournisseur_id = self.request.query_params.get('fournisseur')
+        fournisseur_id = id_requete_ou_400(self.request, 'fournisseur')
         if fournisseur_id:
             qs = qs.filter(fournisseur_id=fournisseur_id)
         return qs

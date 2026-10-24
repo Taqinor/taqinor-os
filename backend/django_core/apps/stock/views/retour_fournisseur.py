@@ -178,7 +178,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
                 request.user.company, retour, user=request.user)
         except ValueError as exc:
             return Response(
-                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                {'detail': str(exc)}, status=statut_refus_metier(exc))
         return Response(
             AvoirFournisseurSerializer(avoir).data,
             status=status.HTTP_201_CREATED)

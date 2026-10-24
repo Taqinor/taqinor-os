@@ -326,7 +326,7 @@ class TestFG56FacturerReception(TestCase):
         r = self.client.post(
             f'/api/django/stock/receptions-fournisseur/{reception2.id}/facturer/',
             {}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)  # ENF11 : état de la réception, pas la forme
 
 
 # ── FG55 — PDF facture fournisseur ────────────────────────────────────────────

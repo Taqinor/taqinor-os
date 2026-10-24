@@ -39,13 +39,20 @@ XLSX = (
 CSV = (200, 'text/csv')
 
 
-def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None, pattern=None):
-    """Paramètre de requête (query string) ; ``mini``/``maxi`` bornent un entier."""
+def P(name, typ=STR, required=False, desc='', enum=None, mini=None, maxi=None, pattern=None, vide=False):
+    """Paramètre de requête (query string) ; ``mini``/``maxi`` bornent un entier.
+    ``vide`` : le serveur lit la chaîne VIDE comme « non renseigné » -> publiée."""
     if typ == STR and pattern is not None:
         typ = {'type': 'string', 'pattern': pattern}
     if typ == INT and (mini is not None or maxi is not None):
         typ = {'type': 'integer', **({'minimum': mini} if mini is not None else {}),
                **({'maximum': maxi} if maxi is not None else {})}
+    if vide and enum is not None:
+        enum = [*enum, '']
+    elif vide:
+        from drf_spectacular.plumbing import build_basic_type
+        typ = {'oneOf': [typ if isinstance(typ, dict) else build_basic_type(typ),
+                         {'type': 'string', 'enum': ['']}]}
     return OpenApiParameter(
         name=name, type=typ, location=OpenApiParameter.QUERY,
         required=required, description=desc or name, enum=enum)
@@ -278,6 +285,9 @@ class _BudgetPeriodeCoherente(OpenApiSerializerExtension):
 #: « date OU chaîne vide », ce que le serveur accepte.
 DATE_OU_VIDE = {'oneOf': [
     {'type': 'string', 'format': 'date'}, {'type': 'string', 'enum': ['']}]}
+
+#: Identifiant de requête OBLIGATOIRE (1..2147483647), sans « vide ».
+ID_ENTIER = {'type': 'integer', 'minimum': 1, 'maximum': 2147483647}
 
 #: CI #997 fuzz — filtre d'identifiant lu par ``utils.params.id_requete_ou_400`` :
 #: un id 1..2147483647, ou la chaîne vide (= filtre non posé).

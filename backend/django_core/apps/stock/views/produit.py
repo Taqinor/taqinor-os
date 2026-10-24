@@ -22,8 +22,8 @@ from ..openapi_helpers import (
     BINARY, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, LISTE, OBJET, P, PDF, STR, XLSX, QuantiteComptee, corps,
 )
 from ..utils.params import (
-    ID_MAX, MOTIF_IDS, choix_ou_400, corps_objet, date_ou_400, entier_ou_400,
-    id_corps, id_requete_ou_400, ids_requete_ou_400,
+    ID_MAX, MOTIF_IDS, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, etiquette_options_ou_400,
+    id_corps, id_requete_ou_400, ids_requete_ou_400, valeur_unique_ou_400,
 )
 from core.viewsets import CompanyScopedModelViewSet
 from ..erreurs_achats import IntrouvableMetier
@@ -845,7 +845,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(parameters=[P('quantite', INT, False, 'Quantité à prélever (défaut 1)'),
                                P('strategie', STR, False, 'Stratégie de prélèvement',
-                                 ['aucune', 'fifo', 'fefo', 'zone'])],
+                                 ['aucune', 'fifo', 'fefo', 'zone'], vide=True)],
                    responses=corps('ProduitPlanPicking', strategie=serializers.CharField(),
                                    lignes=serializers.ListField(child=serializers.DictField())))
     @action(detail=True, methods=['get'], url_path='plan-picking',
@@ -864,7 +864,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         except (TypeError, ValueError):
             return Response({'detail': 'Quantité invalide.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        strategie = request.query_params.get('strategie') or None
+        strategie = valeur_unique_ou_400(request, 'strategie') or None
         if strategie and strategie not in dict(
                 Categorie.StrategiePicking.choices):
             return Response({'detail': 'Stratégie de prélèvement inconnue.'},
@@ -947,8 +947,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
     @extend_schema(parameters=[P('ids', STR, True, 'Ids produits (répétés ou séparés par virgule)',
                                  pattern=MOTIF_IDS),
-                               P('symbology', STR, False, 'Symbologie', ['qr', 'code128']),
-                               P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'])],
+                               P('symbology', STR, False, 'Symbologie', ['qr', 'code128'], vide=True),
+                               P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'], vide=True)],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=False, methods=['get'], url_path='etiquettes',
             permission_classes=[IsAdminRole])
@@ -970,9 +970,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
         ids = ids_requete_ou_400(request)
 
-        symbology = request.query_params.get('symbology', 'qr')
-        if symbology not in ('qr', 'code128'):
-            symbology = 'qr'
+        symbology, sortie = etiquette_options_ou_400(request)
 
         produits = (Produit.objects
                     .filter(company=request.user.company, id__in=ids)
@@ -987,7 +985,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                             status=status.HTTP_404_NOT_FOUND)
 
         html = labels.render_labels_html(items, symbology=symbology)
-        if request.query_params.get('sortie') == 'html':
+        if sortie == 'html':
             return HttpResponse(html, content_type='text/html; charset=utf-8')
         pdf_bytes = _html_to_pdf(html)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
@@ -995,11 +993,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             'inline; filename="etiquettes-produits.pdf"')
         return response
 
-    @extend_schema(parameters=[P('categorie', INT, True, 'Catégorie (ou ids / zone)'),
+    @extend_schema(parameters=[P('categorie', ID_OU_VIDE, False, 'Catégorie (ou ids / zone)'),
                                P('ids', STR, False, 'Ids produits séparés par virgule'),
                                P('zone', STR, False, 'Zone de casiers'),
-                               P('largeur', INT, False, 'Largeur du gabarit (mm, 30-105)'),
-                               P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'])],
+                               P('largeur', INT, False, 'Largeur du gabarit (mm, 30-105)', vide=True),
+                               P('sortie', STR, False, 'html (aperçu) ou pdf', ['html', 'pdf'], vide=True)],
                    responses={PDF: BINARY, (200, 'text/html'): STR})
     @action(detail=False, methods=['get'], url_path='etiquettes-prix',
             permission_classes=[IsAnyRole])
@@ -1026,7 +1024,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if len(ids) == 1 and ',' in ids[0]:
             ids = ids[0].split(',')
         ids = [i for i in (str(x).strip() for x in ids) if i.isdigit()]
-        categorie = request.query_params.get('categorie')
+        categorie = id_requete_ou_400(request, 'categorie')
+        sortie = choix_ou_400(valeur_unique_ou_400(request, 'sortie'), 'sortie', ('html', 'pdf'))
         zone = (request.query_params.get('zone') or '').strip()
 
         if ids:
@@ -1051,10 +1050,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             return Response({'detail': 'Aucun produit correspondant.'},
                             status=status.HTTP_404_NOT_FOUND)
 
-        try:
-            largeur = int(request.query_params.get('largeur') or 58)
-        except (TypeError, ValueError):
-            largeur = 58
+        largeur = entier_ou_400(valeur_unique_ou_400(request, 'largeur'), 'largeur', 58)
         largeur = max(30, min(largeur, 105))
 
         lignes = [{
@@ -1067,7 +1063,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
 
         html = labels.render_etiquettes_prix_html(
             lignes, largeur_mm=largeur)
-        if request.query_params.get('sortie') == 'html':
+        if sortie == 'html':
             return HttpResponse(html, content_type='text/html; charset=utf-8')
         response = HttpResponse(_html_to_pdf(html),
                                 content_type='application/pdf')
@@ -1110,7 +1106,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return Response(result, status=status.HTTP_201_CREATED)
 
     @extend_schema(parameters=[P('jours', INT, False, 'Fenêtre en jours (défaut 180)',
-                                 mini=0, maxi=36500)], responses=LISTE)
+                                 mini=0, maxi=36500, vide=True)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='rotation',
             permission_classes=[IsAdminRole])
     def rotation(self, request):
@@ -1119,7 +1115,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from ..services import rotation_report
         from ..utils.params import entier_ou_400
         jours = entier_ou_400(
-            request.query_params.get('jours'), 'jours', 180, 0, 36500)
+            valeur_unique_ou_400(request, 'jours'), 'jours', 180, 0, 36500)
         return Response(rotation_report(request.user.company, jours=jours))
 
     @extend_schema(responses=LISTE)
@@ -1133,7 +1129,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         return Response(comparer_fournisseurs(request.user.company, produit))
 
     @extend_schema(parameters=[P('jours', INT, False, 'Horizon en jours (défaut 90)',
-                                 mini=0, maxi=36500)], responses=LISTE)
+                                 mini=0, maxi=36500, vide=True)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='expirant-bientot',
             permission_classes=[IsAdminRole])
     def expirant_bientot(self, request):
@@ -1142,11 +1138,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from ..services import produits_expirant_bientot
         from ..utils.params import entier_ou_400
         jours = entier_ou_400(
-            request.query_params.get('jours'), 'jours', 90, 0, 36500)
+            valeur_unique_ou_400(request, 'jours'), 'jours', 90, 0, 36500)
         return Response(produits_expirant_bientot(request.user.company, jours=jours))
 
     @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)',
-                                 mini=1, maxi=120)], responses=LISTE)
+                                 mini=1, maxi=120, vide=True)], responses=LISTE)
     @action(detail=False, methods=['get'], url_path='previsions-reappro',
             permission_classes=[IsAdminRole])
     def previsions_reappro(self, request):
@@ -1155,11 +1151,11 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from ..services import previsions_reappro
         from ..utils.params import entier_ou_400
         nb_mois = entier_ou_400(
-            request.query_params.get('nb_mois'), 'nb_mois', 6, 1, 120)
+            valeur_unique_ou_400(request, 'nb_mois'), 'nb_mois', 6, 1, 120)
         return Response(previsions_reappro(request.user.company, nb_mois=nb_mois))
 
     @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)',
-                                 mini=0, maxi=120), P('date_debut', DATE_OU_VIDE),
+                                 mini=0, maxi=120, vide=True), P('date_debut', DATE_OU_VIDE),
                                P('date_fin', DATE_OU_VIDE)], responses=OBJET)
     @action(detail=False, methods=['get'], url_path='analyse-achats',
             permission_classes=[IsResponsableOrAdmin])
@@ -1171,7 +1167,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from ..services import analyse_achats_dashboard
         from ..utils.params import entier_ou_400
         nb_mois = entier_ou_400(
-            request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
+            valeur_unique_ou_400(request, 'nb_mois'), 'nb_mois', 6, 0, 120)
         return Response(analyse_achats_dashboard(
             request.user.company,
             date_debut=date_ou_400(
@@ -1180,7 +1176,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois))
 
-    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)],
+    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)', mini=0, maxi=120, vide=True),
+                               P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)],
                    responses={XLSX: BINARY})
     @action(detail=False, methods=['get'], url_path='analyse-achats/export-xlsx',
             permission_classes=[IsResponsableOrAdmin])
@@ -1190,7 +1187,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from ..services import export_analyse_achats_xlsx
         from ..utils.params import entier_ou_400
         nb_mois = entier_ou_400(
-            request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
+            valeur_unique_ou_400(request, 'nb_mois'), 'nb_mois', 6, 0, 120)
         return export_analyse_achats_xlsx(
             request.user.company,
             date_debut=date_ou_400(
@@ -1199,7 +1196,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 request.query_params.get('date_fin'), 'date_fin'),
             nb_mois=nb_mois)
 
-    @extend_schema(parameters=[P('nb_mois', INT), P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)],
+    @extend_schema(parameters=[P('nb_mois', INT, False, 'Nombre de mois (défaut 6)', mini=0, maxi=120, vide=True),
+                               P('date_debut', DATE_OU_VIDE), P('date_fin', DATE_OU_VIDE)],
                    responses={PDF: BINARY})
     @action(detail=False, methods=['get'], url_path='analyse-achats/pdf',
             permission_classes=[IsResponsableOrAdmin])
@@ -1213,7 +1211,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         from ..utils.pdf_analyse_achats import generate_analyse_achats_pdf
         from ..utils.params import entier_ou_400
         nb_mois = entier_ou_400(
-            request.query_params.get('nb_mois'), 'nb_mois', 6, 0, 120)
+            valeur_unique_ou_400(request, 'nb_mois'), 'nb_mois', 6, 0, 120)
         pdf_bytes = generate_analyse_achats_pdf(
             request.user.company,
             date_debut=date_ou_400(

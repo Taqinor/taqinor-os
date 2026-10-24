@@ -18,6 +18,7 @@ comptage (`inventaire-sessions/`).
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from ..openapi_helpers import INT, P, STR, corps
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 from rest_framework import serializers, status
 from rest_framework.parsers import JSONParser
 from rest_framework.decorators import api_view, parser_classes, permission_classes
@@ -152,7 +153,8 @@ def scanner_mouvement_view(request):
     }, status=status.HTTP_201_CREATED)
 
 
-@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU', pattern=r'\S'), P('quantite', INT)], responses={
+@extend_schema(parameters=[P('code', STR, True, 'GTIN ou SKU', pattern=MOTIF_NON_BLANC_SANS_NUL),
+                           P('quantite', INT)], responses={
     200: inline_serializer('StockScannerRetourFournisseurLigne', {
         'produit': serializers.IntegerField(),
         'produit_nom': serializers.CharField(),
@@ -188,6 +190,10 @@ def scanner_retour_fournisseur_view(request):
     from ..services_retour_scanne import (
         CodeInconnu, preparer_ligne_retour_scannee,
     )
+
+    if '\x00' in (request.query_params.get('code') or ''):  # nul publié interdit (500 SQL avant)
+        return Response({'detail': 'Code illisible.'},
+                        status=status.HTTP_400_BAD_REQUEST)
 
     try:
         ligne = preparer_ligne_retour_scannee(

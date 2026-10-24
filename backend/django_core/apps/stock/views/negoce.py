@@ -412,7 +412,7 @@ class AccordRFAFournisseurSerializer(MasqueMontantsAchatMixin,
         return attrs
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('statut', STR)]))
+@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', ID_OU_VIDE), P('statut', STR)]))
 class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
     """NTDST5 — accords de remise arrière fournisseur.
 
@@ -438,7 +438,7 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        fournisseur = self.request.query_params.get('fournisseur')
+        fournisseur = id_requete_ou_400(self.request, 'fournisseur')
         if fournisseur:
             qs = qs.filter(fournisseur_id=fournisseur)
         statut = self.request.query_params.get('statut')
