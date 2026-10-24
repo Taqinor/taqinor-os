@@ -106,7 +106,13 @@ jobs:
       fail-fast: false
       # Plan GitHub Free : ~20 jobs concurrents pour tout le dépôt — on en laisse
       # aux PR gates (mesure de la session « CI gate » du 24/10).
-      max-parallel: 8
+      # CI-5MIN (décision fondateur, 24/10/2026) : 8 -> 6. Pendant les mesures
+      # de docs/ci-timing-2026-10-23.md, ce workflow + release-verify tenaient
+      # jusqu'à 16 des 20 créneaux et une CI de PR a attendu 62 min. 6 tranches
+      # à la fois : la passe hebdomadaire dure plus longtemps, les PR passent.
+      # release-verify n'a pas de matrice : 5 jobs de travail au plus à la fois,
+      # déjà sous le plafond — rien à y changer.
+      max-parallel: 6
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     permissions:
