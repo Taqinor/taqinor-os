@@ -451,7 +451,12 @@ PREFIXE_HORS_TOTAL = "À chiffrer après la visite technique, hors total : "
 
 
 def _norme(texte):
-    return " ".join(str(texte or "").split()).casefold()
+    # C-L3-DOC-07 (24/10/2026) — les désignations de ``all_items`` arrivent
+    # ÉCHAPPÉES HTML (« Structure C&amp;I ») alors que la composition garde
+    # le texte brut : sans ``html.unescape``, un poste au nom à « & » ajouté
+    # au devis restait listé « à chiffrer après la visite » (titre « hors
+    # postes » et légende du retour maintenus sur un prix pourtant complet).
+    return " ".join(html.unescape(str(texte or "")).split()).casefold()
 
 
 def postes_hors_total(data, etude_ci):

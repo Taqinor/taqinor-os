@@ -394,6 +394,17 @@ class TestAmot86PrixHorsTotal(SimpleTestCase):
         self.assertEqual([p["role"] for p in postes],
                          ["cable_dc", "cable_ac"])
 
+    def test_poste_ajoute_au_devis_designation_echappee_html(self):
+        """C-L3-DOC-07 — le moteur reçoit ``all_items`` ÉCHAPPÉS (« C&amp;I ») :
+        la ligne « Structure C&I » ajoutée au devis retire bien le poste."""
+        data = _data_ci(hors_total=True)
+        data["all_items"].append({
+            "designation": "Structure C&amp;I", "quantite": 100,
+            "prix_unit_ht": 300.0, "prix_unit_ttc": 360.0, "taux_tva": 20})
+        postes = chiffres_cles(synthese_ci(data))["postes_hors_total"]
+        self.assertEqual([p["role"] for p in postes],
+                         ["cable_dc", "cable_ac"])
+
     def test_industriel_meme_titre_couverture_et_pied_finance(self):
         from apps.ventes.quote_engine.industriel import render as i_render
         from apps.ventes.quote_engine.industriel import renderer as i_rend
