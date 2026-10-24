@@ -60,6 +60,26 @@ def decimal_ou_400(valeur, nom, defaut=None):
     return n
 
 
+#: Montant de requête (colonne ``numeric(12, 2)``) : positif, sans signe ni
+#: exposant ; vide = non renseigné. La MÊME forme est publiée (chaîne à motif —
+#: en query string un nombre et sa chaîne sont indiscernables) et lue.
+MOTIF_MONTANT_REQUETE = r'^([0-9]{1,10}(\.[0-9]{1,2})?)?$'
+_MONTANT_REQUETE = re.compile(MOTIF_MONTANT_REQUETE)
+
+
+def montant_requete_ou_400(valeur, nom):
+    """Montant positif de requête STRICT : absent/vide -> ``None`` ; hors de
+    ``MOTIF_MONTANT_REQUETE`` (``NaN``, exposant, signe, espace) -> 400 nommant le
+    paramètre (``Decimal()`` lisait tout cela, ou débordait en 500)."""
+    from decimal import Decimal
+    from rest_framework.exceptions import ValidationError
+    if valeur is None or valeur == '':
+        return None
+    if not _MONTANT_REQUETE.fullmatch(valeur):
+        raise ValidationError({nom: ['Montant positif attendu (au plus 2 décimales).']})
+    return Decimal(valeur)
+
+
 def corps_objet(request):
     """Corps de requête OBJET (ERR fuzz stock) : un corps JSON non objet
     (``[null, null]``, ``null``, nombre) levait AttributeError sur ``.get``
