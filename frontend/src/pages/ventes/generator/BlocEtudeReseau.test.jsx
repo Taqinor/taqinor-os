@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 
 import BlocEtudeReseau, {
-  MENTION_REVENTE_BT, LIBELLE_REVENTE_MT, CarteTarifFacture,
+  MENTION_REVENTE_BT, LIBELLE_REVENTE_MT, CarteTarifFacture, CarteProfilCi,
 } from './BlocEtudeReseau'
 import CarteResultatCi from './CarteResultatCi'
 import PanneauIndustriel from './PanneauIndustriel'
@@ -272,5 +272,57 @@ describe('ADEV101 — carte résultat : 4 chiffres en tête, détails du calcul 
     expect(paliers).not.toHaveTextContent('borne_x')
     expect(screen.getByTestId('ci-raison-arret')).not.toHaveTextContent('raison_secrete')
     expect(screen.getByTestId('ci-autres')).toHaveTextContent('raison_secrete, borne_x')
+  })
+})
+
+describe('ADEV102 — les 5 questions de l’appel d’abord, l’analyse sous « Affiner l’étude »', () => {
+  const rendre = (extra = {}) => render(
+    <CarteProfilCi profilCi={profilCiVide()} setChampCi={() => {}} apercuCi={{}} errors={{}}
+                   tarifSaisie={TARIF_SAISIE_VIDE} setTarifChamp={() => {}} {...extra}>
+      <p data-testid="bloc-activite">catégorie</p>
+    </CarteProfilCi>)
+  const avant = (a, b) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+  it('consommation, contrat, phase, activité/horaires, surface — dans cet ordre, avec la phrase posée au client', () => {
+    const { container } = rendre()
+    const ordre = [
+      container.querySelector('#gen-ci-kwh-0'),
+      container.querySelector('#gen-tarif-contrat'),
+      container.querySelector('#gen-ci-phases'),
+      screen.getByTestId('bloc-activite'),
+      container.querySelector('#gen-ci-surface'),
+    ]
+    ordre.forEach((el) => expect(el).not.toBeNull())
+    for (let i = 0; i < ordre.length - 1; i += 1) expect(avant(ordre[i], ordre[i + 1])).toBe(true)
+    for (const id of ['conso', 'contrat', 'phase', 'horaires', 'surface']) {
+      expect(screen.getByTestId(`ci-aide-${id}`).textContent).toMatch(/^«.+»$/s)
+    }
+    // aucune note interne ni identifiant de tâche dans les aides
+    const aides = ['conso', 'contrat', 'phase', 'horaires', 'surface']
+      .map((id) => screen.getByTestId(`ci-aide-${id}`).textContent).join(' ')
+    expect(aides).not.toMatch(/(^|\s)[A-Z]{2,5}\d{2,4}(\s|$)|D-[A-Z]+-\d+|\.json|\.py/)
+  })
+
+  it('prix imprimés, source des prix, talon, tension, puissance, revente : repliés sous « Affiner l’étude (facultatif) »', () => {
+    const { container } = rendre()
+    const affiner = screen.getByTestId('ci-affiner')
+    expect(affiner.open).toBe(false)
+    expect(affiner).toHaveTextContent("Affiner l'étude (facultatif)")
+    for (const sel of ['#gen-tarif-base', '#gen-tarif-provenance', '#gen-tarif-date', '#gen-ci-talon',
+      '#gen-ci-tension', '#gen-ci-puissance', '[data-testid="gen-ci-revente"]']) {
+      const el = container.querySelector(sel)
+      expect(el, sel).not.toBeNull()
+      expect(affiner.contains(el), sel).toBe(true)
+    }
+    // les 5 questions, elles, restent hors de la section repliée
+    for (const sel of ['#gen-ci-kwh-0', '#gen-tarif-contrat', '#gen-ci-phases', '#gen-ci-surface']) {
+      expect(affiner.contains(container.querySelector(sel)), sel).toBe(false)
+    }
+  })
+
+  it('une erreur serveur sur un détail du tarif ouvre la section (jamais une erreur cachée)', () => {
+    rendre({ errors: { tarifDeclare: { base_tarifs: 'Base des prix obligatoire.' } } })
+    expect(screen.getByTestId('ci-affiner').open).toBe(true)
+    expect(screen.getByTestId('erreur-tarif-base_tarifs')).toBeInTheDocument()
   })
 })

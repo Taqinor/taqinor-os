@@ -19,7 +19,7 @@
 // Base partagée, workers: 1 : nettoyage best-effort en afterAll.
 import { test, expect } from '@playwright/test'
 import {
-  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, uniq,
+  API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, uniq, ouvrirAffinerCi,
   nombrePagesPdf, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner, tariferPostesCiDemo,
 } from './helpers'
 
@@ -80,6 +80,7 @@ test('CIQ346 — créer (MT, 12 factures, taux d’actualisation déclaré), rou
   await choisirMarche(page, /Industriel/)
   await expect(page.getByTestId('ci-profil')).toBeVisible()
   await expect(page.getByTestId('ci-industriel-mt')).toBeVisible()
+  await ouvrirAffinerCi(page)
   await page.locator('#gen-ci-tension').selectOption('mt')
 
   // Consommation par 12 FACTURES MT déclarées.

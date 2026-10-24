@@ -246,6 +246,7 @@
 <div class="mt-3.5 grid gap-4" data-testid="ci-profil">
 <fieldset class="grid gap-2">
 <legend class="text-sm font-semibold">Consommation du site</legend>
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-conso">« Combien payez-vous d'électricité par mois, à peu près ? Ou combien de kWh, si vous l'avez sous les yeux ? »</p>
 <div class="flex flex-wrap gap-3 text-sm" role="radiogroup" aria-label="Forme de la consommation">
 <label class="flex items-center gap-1.5 cursor-pointer">
 <input data-testid="ci-saisie-mensuel" type="radio" value="mensuel" checked="" name="ci-saisie-conso">12 mois (kWh)</label>
@@ -305,8 +306,39 @@
 </div>
 </div>
 </fieldset>
+<fieldset class="grid gap-3 rounded-lg border border-border p-3" data-testid="ci-tarif-facture">
+<legend class="text-sm font-semibold">Contrat d'électricité</legend>
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-contrat">« Quel est votre contrat d'électricité : basse tension patenté, force motrice, domestique, ou moyenne tension ? Il est écrit sur votre facture. »</p>
+<div class="grid gap-1.5 sm:max-w-xs">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-contrat">Contrat</label>
+<select id="gen-tarif-contrat" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="bt_domestique">BT domestique</option>
+<option value="bt_patente">BT patenté</option>
+<option value="bt_force_motrice">BT force motrice</option>
+<option value="mt_general">MT (Tarif Général)</option>
+</select>
+</div>
+<p class="text-xs text-muted-foreground" data-testid="ci-tarif-repli">Aucun tarif saisi : la grille ONEE officielle sert en repli (Tarif Général MT).</p>
+</fieldset>
+<fieldset class="grid gap-2 sm:grid-cols-3">
+<legend class="text-sm font-semibold">Phase du compteur</legend>
+<div class="sm:col-span-3">
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-phase">« Votre compteur est-il monophasé ou triphasé ? »</p>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-phases">Phases</label>
+<select id="gen-ci-phases" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="mono">Monophasé</option>
+<option value="tri">Triphasé</option>
+<option value="inconnu">Inconnu</option>
+</select>
+</div>
+</fieldset>
 <fieldset class="grid gap-2">
-<legend class="text-sm font-semibold">Calendrier d'activité</legend>
+<legend class="text-sm font-semibold">Activité et horaires</legend>
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-horaires">« Quelle est votre activité ? Quels jours et à quelles heures êtes-vous ouverts ? Fermez-vous certains mois de l’année ? »</p>
 <div class="flex flex-wrap gap-3 text-sm">
 <label class="flex items-center gap-1.5 cursor-pointer">
 <input data-testid="gen-ci-jour-0" type="checkbox" checked="">Lun</label>
@@ -351,17 +383,12 @@
 <button class="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium select-none transition-[color,background-color,border-color,box-shadow,transform] duration-150 [transition-timing-function:cubic-bezier(0.23,1,0.32,1)] focus-ring disabled:pointer-events-none disabled:opacity-50 [@media(hover:hover)]:active:scale-[0.97] aria-busy:cursor-progress [&amp;_svg]:pointer-events-none [&amp;_svg]:shrink-0 border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80 h-[var(--control-h-sm)] px-3 text-xs [&amp;_svg]:size-3.5" type="button">Ajouter une fermeture</button>
 </div>
 </div>
-<div class="grid gap-4 sm:grid-cols-2">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-talon">Talon de consommation (kW)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-talon" min="0" step="any" type="number" value="12">
-<label class="flex items-center gap-2 text-xs cursor-pointer">
-<input data-testid="gen-ci-talon-inconnu" type="checkbox">Je ne sais pas</label>
-</div>
-</div>
 </fieldset>
 <fieldset class="grid gap-4 sm:grid-cols-3">
-<legend class="text-sm font-semibold">Toit</legend>
+<legend class="text-sm font-semibold">Surface disponible</legend>
+<div class="sm:col-span-3">
+<p class="text-xs text-muted-foreground" data-testid="ci-aide-surface">« Où pourrait-on poser les panneaux, et quelle surface est disponible, à peu près ? »</p>
+</div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-type-pose">Type de pose</label>
 <select id="gen-ci-type-pose" class="form-control form-control-sm">
@@ -380,62 +407,12 @@
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-surface" min="0" step="any" data-testid="gen-ci-surface" type="number" value="1200">
 </div>
 </div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-couverture">Couverture</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-couverture" placeholder="ex: béton, bac acier…" type="text" value="tôle">
-</div>
 </fieldset>
-<fieldset class="grid gap-4 sm:grid-cols-3">
-<legend class="text-sm font-semibold">Raccordement</legend>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-tension">Tension</label>
-<select id="gen-ci-tension" data-testid="gen-tension" class="form-control form-control-sm">
-<option value="">—</option>
-<option value="bt">Basse tension (BT)</option>
-<option value="mt">Moyenne tension (MT)</option>
-<option value="inconnue">Inconnue</option>
-</select>
-</div>
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-phases">Phases</label>
-<select id="gen-ci-phases" class="form-control form-control-sm">
-<option value="">—</option>
-<option value="mono">Monophasé</option>
-<option value="tri">Triphasé</option>
-<option value="inconnu">Inconnu</option>
-</select>
-</div>
-<div class="grid gap-1.5">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-puissance">Puissance souscrite (kVA)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-puissance" min="0" step="any" data-testid="gen-ci-puissance" type="number" value="250">
-</div>
-</div>
-<div class="grid gap-1.5 sm:col-span-2">
-<label class="flex items-center gap-2 text-sm cursor-pointer">
-<input data-testid="gen-ci-revente" type="checkbox">Revente du surplus (MT, plafond légal 20 %, tarif ANRE 04/26 HT)</label>
-</div>
-<div class="grid gap-1.5">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-taille">Taille explicite (kWc, optionnelle)</label>
-<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-taille" min="0" step="any" data-testid="gen-ci-taille" type="number" value="">
-</div>
-</div>
-</fieldset>
-</div>
-<fieldset class="mt-4 grid gap-3 rounded-lg border border-border p-3" data-testid="ci-tarif-facture">
-<legend class="text-sm font-semibold">Tarif de la facture</legend>
+<details class="rounded-lg border border-border p-3" data-testid="ci-affiner">
+<summary class="cursor-pointer text-sm font-semibold">Affiner l'étude (facultatif)</summary>
+<div class="mt-3 grid gap-4">
+<div class="grid gap-3" data-testid="ci-tarif-affiner">
 <div class="grid gap-4 sm:grid-cols-3">
-<div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-contrat">Contrat</label>
-<select id="gen-tarif-contrat" class="form-control form-control-sm">
-<option value="">—</option>
-<option value="bt_domestique">BT domestique</option>
-<option value="bt_patente">BT patenté</option>
-<option value="bt_force_motrice">BT force motrice</option>
-<option value="mt_general">MT (Tarif Général)</option>
-</select>
-</div>
 <div class="grid gap-1.5">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-tarif-base">Prix imprimés</label>
 <select id="gen-tarif-base" class="form-control form-control-sm">
@@ -457,8 +434,50 @@
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-tarif-date" type="date" value="">
 </div>
 </div>
-<p class="text-xs text-muted-foreground" data-testid="ci-tarif-repli">Aucun tarif saisi : la grille ONEE officielle sert en repli (Tarif Général MT).</p>
+</div>
+<div class="grid gap-4 sm:grid-cols-2">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-talon">Talon de consommation (kW)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-talon" min="0" step="any" type="number" value="12">
+<label class="flex items-center gap-2 text-xs cursor-pointer">
+<input data-testid="gen-ci-talon-inconnu" type="checkbox">Je ne sais pas</label>
+</div>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-couverture">Couverture</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-couverture" placeholder="ex: béton, bac acier…" type="text" value="tôle">
+</div>
+</div>
+<fieldset class="grid gap-4 sm:grid-cols-3">
+<legend class="text-sm font-semibold">Raccordement</legend>
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-tension">Tension</label>
+<select id="gen-ci-tension" data-testid="gen-tension" class="form-control form-control-sm">
+<option value="">—</option>
+<option value="bt">Basse tension (BT)</option>
+<option value="mt">Moyenne tension (MT)</option>
+<option value="inconnue">Inconnue</option>
+</select>
+</div>
+<div class="grid gap-1.5">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-puissance">Puissance souscrite (kVA)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-puissance" min="0" step="any" data-testid="gen-ci-puissance" type="number" value="250">
+</div>
+</div>
+<div class="grid gap-1.5">
+<label class="flex items-center gap-2 text-sm cursor-pointer">
+<input data-testid="gen-ci-revente" type="checkbox">Revente du surplus (MT, plafond légal 20 %, tarif ANRE 04/26 HT)</label>
+</div>
 </fieldset>
+</div>
+</details>
+<div class="grid gap-1.5 sm:max-w-xs">
+<div class="grid gap-1.5">
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-ci-taille">Taille explicite (kWc, optionnelle)</label>
+<input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-ci-taille" min="0" step="any" data-testid="gen-ci-taille" type="number" value="">
+</div>
+</div>
+</div>
 <p class="mt-3 text-xs text-muted-foreground" data-testid="ci-resultat-chargement">Calcul du moteur C&amp;I…</p>
 </div>
 </div>

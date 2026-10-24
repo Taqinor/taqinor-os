@@ -448,6 +448,15 @@ export async function choisirMarche(page, nom) {
   await expect(radio).toBeChecked()
 }
 
+/** ADEV102 — la tension (détail d'analyste) est repliée sous « Affiner l'étude (facultatif) » :
+ *  l'ouvrir avant d'y toucher (sans effet si déjà ouverte). */
+export async function ouvrirAffinerCi(page) {
+  const affiner = page.getByTestId('ci-affiner')
+  if (!(await affiner.evaluate((el) => el.open))) {
+    await affiner.locator('summary').click()
+  }
+}
+
 /** Le PROFIL DÉCLARÉ minimal que le moteur C&I exige (D-CIQ-2, CIQ131 :
  *  « profil déclaré exigé », aucun archétype supposé ; CIQ222 : « aucun prix
  *  plat supposé » sans contrat) : jours ouverts lundi→samedi, plage des jours
@@ -703,6 +712,7 @@ export async function creerDevisIndustrielDepuisLead(page, leadId, { tension = '
   await expect(page.getByTestId('ci-profil')).toBeVisible()
   await expect(page.getByTestId('ci-industriel-mt')).toBeVisible()
   for (let i = 0; i < 12; i += 1) await page.locator(`#gen-ci-kwh-${i}`).fill(String(KWH_INDUSTRIEL[i]))
+  await ouvrirAffinerCi(page)
   await page.locator('#gen-ci-tension').selectOption(tension)
   // Calendrier + taille saisie (voir declarerProfilCi) ; en MT le contrat est
   // le Tarif Général, reconnu par la tension.
