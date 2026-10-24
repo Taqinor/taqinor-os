@@ -33,6 +33,12 @@ def _sha(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def _televerse(client):
+    """ACRM72 — tout ce que ``add_users_to_audience`` a réellement reçu."""
+    return json.dumps([k for (n, k) in client.calls
+                       if n == 'add_users_to_audience'], default=str)
+
+
 class RecordingClient:
     """Double du ``MetaClient`` qui ENREGISTRE chaque appel (aucun réseau).
 
@@ -389,6 +395,21 @@ class Pub58DevisViewAudiencesTests(TestCase):
         self.assertTrue(result['ouvert_non_signe']['audience_id'])
         self.assertIsNotNone(never)
 
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_lead_oppose_exclu(self):
+        """ACRM72 (D-ACRM-5) — le devis d'un lead « ne plus contacter »
+        n'entre dans aucun panier ; le témoin, si."""
+        oppose = Lead.objects.create(
+            company=self.company, nom='Opposé', email='oppose58@example.ma',
+            ne_plus_contacter=True)
+        self._devis('DEV-PUB58-TEMOIN')
+        self._devis('DEV-PUB58-OPPOSE', lead=oppose)
+        client = RecordingClient()
+        result = aud.sync_devis_view_audiences(self.company, client=client)
+        self.assertEqual(result['jamais_ouvert']['matched_rows'], 1)
+        self.assertNotIn(_sha('oppose58@example.ma'), _televerse(client))
+        self.assertIn(_sha('x@example.ma'), _televerse(client))
+
 
 class Pub59ExpiredDevisAudienceTests(TestCase):
     """PUB59 — sync_expired_devis_audience : angle « devis expiré », avec
@@ -430,6 +451,26 @@ class Pub59ExpiredDevisAudienceTests(TestCase):
         result = aud.sync_expired_devis_audience(self.company, client=client)
         self.assertEqual(result['name'], 'Devis expiré')
         self.assertEqual(result['matched_rows'], 1)  # seul le client_expired
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_client_oppose_exclu(self):
+        """ACRM72 — un client rattaché à un lead « ne plus contacter » sort
+        de l'audience « devis expiré » ; le témoin y reste."""
+        oppose = Client.objects.create(
+            company=self.company, nom='Opposé', prenom='Client',
+            email='oppose59@example.ma', telephone='+212600000022')
+        Lead.objects.create(company=self.company, nom='Opposé',
+                            client=oppose, ne_plus_contacter=True)
+        for ref, cli in (('DEV-PUB59-TEMOIN', self.client_expired),
+                         ('DEV-PUB59-OPPOSE', oppose)):
+            Devis.objects.create(
+                company=self.company, reference=ref, client=cli,
+                taux_tva=Decimal('20'), statut=Devis.Statut.EXPIRE)
+        client = RecordingClient()
+        result = aud.sync_expired_devis_audience(self.company, client=client)
+        self.assertEqual(result['matched_rows'], 1)
+        self.assertNotIn(_sha('oppose59@example.ma'), _televerse(client))
+        self.assertIn(_sha('expire@example.ma'), _televerse(client))
 
 
 class Pub60UpsellAudiencesTests(TestCase):
@@ -475,6 +516,22 @@ class Pub60UpsellAudiencesTests(TestCase):
         self.assertEqual(result['entretien']['matched_rows'], 1)
         # sans_batterie : seul 'SansRien' (option_acceptee='') qualifie.
         self.assertEqual(result['batterie']['matched_rows'], 1)
+
+    @override_settings(META_CUSTOM_AUDIENCE_CONSENT='1')
+    def test_client_oppose_exclu(self):
+        """ACRM72 — un client signé rattaché à un lead « ne plus contacter »
+        sort des DEUX paniers du cross-sell ; le témoin y reste."""
+        self._signed_client('Temoin')
+        oppose = self._signed_client('Oppose')
+        Lead.objects.create(company=self.company, nom='Opposé',
+                            client=oppose, ne_plus_contacter=True)
+        client = RecordingClient()
+        result = aud.sync_installed_base_upsell_audiences(
+            self.company, client=client)
+        self.assertEqual(result['entretien']['matched_rows'], 1)
+        self.assertEqual(result['batterie']['matched_rows'], 1)
+        self.assertNotIn(_sha('oppose@example.ma'), _televerse(client))
+        self.assertIn(_sha('temoin@example.ma'), _televerse(client))
 
 
 class Pub61SignedLookalikeTests(TestCase):

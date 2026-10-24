@@ -27,6 +27,11 @@ Seul le stockage est local (``utils.pdf._download``). Test-du-test : faire
 renvoyer à ``theme.logo_imprime_b64`` l'asset sans lire
 ``entreprise['logo_uri']`` ⇒ ``test_logo_societe_tous_formats`` échoue.
 
+APDF102 — QR « Scannez pour signer » : logo de la société (``theme.logo_qr``),
+jamais l'asset TAQINOR quand un profil existe. Test-du-test : remettre
+``logo=True`` dans ``trust._qr_data_uri`` ⇒ ``test_qr_signature_sans_logo_taqinor``
+échoue.
+
 APDF5 — liens de site (``LiensSiteTests``) : une société identifiée SANS site
 n'imprime aucun lien taqinor.ma (réalisations, produits, garanties, pied) ;
 AVEC site, les siens ; le lien tokenisé de la proposition reste. Test-du-test :
@@ -361,6 +366,30 @@ class LogoTests(TestCase):
                 images = images_page(rendre_pdf(devis, FORMATS[nom]))
                 self.assertFalse(any(i.size == taille for i in images), nom)
 
+    def test_qr_signature_sans_logo_taqinor(self):
+        """APDF102 — société sans logo, devis envoyé et partagé : chaque QR
+        du rendu égale sa version sans logo (aucun ``assets/logo.png``)."""
+        from apps.ventes.models import Devis, ShareLink
+        from apps.ventes.quote_engine.residential import theme
+        autre = make_company(slug='apdf102-co', nom='APDF102')
+        profil(autre, nom='SOLAIRE EXEMPLE SARL', ice='001111111000011')
+        devis = devis_residentiel(autre, 'DEV-APDF102-1')
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        devis.refresh_from_db()
+        ShareLink.for_devis(devis)
+        origine, rendus = theme.qr_data_uri, []
+
+        def espion(url, **k):
+            rendus.append((origine(url, **k),
+                           origine(url, **dict(k, logo=False))))
+            return rendus[-1][0]
+
+        with mock.patch.object(theme, 'qr_data_uri', side_effect=espion):
+            rendre_pdf(devis, FORMATS['defaut'])
+        self.assertTrue(rendus)
+        for uri, sans_logo in rendus:
+            self.assertEqual(uri, sans_logo)
+
 
 class LogoRegleTests(SimpleTestCase):
     """APDF4 — LA règle du logo, sans base ni rendu PDF."""
@@ -398,6 +427,26 @@ class LogoRegleTests(SimpleTestCase):
         G._apply_entreprise(ent)
         self.assertIn(b64, G.logo_html())
         self.assertIn(b64, G.logo_p1_dark())
+
+    def test_logo_qr_regle_unique(self):
+        """APDF102 — QR : aucun profil ⇒ asset (octet-identique) ; profil
+        sans logo ⇒ aucun logo central ; logo téléversé ⇒ ce logo."""
+        import base64
+        import io
+        from PIL import Image
+        from apps.ventes.quote_engine.residential import theme
+        url = 'https://taqinor.ma/proposition/apdf102'
+        self.assertEqual(theme.qr_data_uri(url, logo=theme.logo_qr({})),
+                         theme.qr_data_uri(url))
+        sans = {'entreprise': {'nom': 'SOLAIRE EXEMPLE SARL'}}
+        self.assertEqual(theme.qr_data_uri(url, logo=theme.logo_qr(sans)),
+                         theme.qr_data_uri(url, logo=False))
+        uri = 'data:image/png;base64,' + base64.b64encode(
+            png_rouge()).decode()
+        qr = theme.qr_data_uri(url, logo=theme.logo_qr(
+            {'entreprise': {'nom': 'X', 'logo_uri': uri}}))
+        img = Image.open(io.BytesIO(base64.b64decode(qr.split(',', 1)[1])))
+        self.assertTrue(est_rouge(img.convert('RGB')))
 
 
 def texte_hors_proposition(texte):

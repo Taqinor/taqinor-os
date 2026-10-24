@@ -109,3 +109,59 @@ class PurgeRetentionTests(TestCase):
             timestamp=timezone.now() - timedelta(days=500))
         call_command('purge_audit_log', '--company', str(company.id))
         self.assertFalse(AuditLog.objects.filter(pk=ancient.pk).exists())
+
+    # APAR77 — une purge de rétention tracée n'est pas une rupture de chaîne.
+    def _six_lignes_chainees_dont_deux_antiques(self):
+        from apps.parametres.models import CompanyProfile
+
+        company = CompanyFactory()
+        CompanyProfile.objects.create(company=company, audit_retention_days=365)
+        for i in range(6):
+            record(AuditLog.Action.LOGIN, user=None, company=company,
+                   detail=f'evt-{i}')
+        rows = list(AuditLog.objects.filter(company=company).order_by('id'))
+        AuditLog.objects.filter(pk__in=[r.pk for r in rows[:2]]).update(
+            timestamp=timezone.now() - timedelta(days=500))
+        return company, rows
+
+    def _verifier(self, company):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command('verify_audit_chain', company.id, stdout=out)
+        return out.getvalue()
+
+    def test_chaine_integre_apres_purge_tracee(self):
+        from apps.parametres.retention import purge_company_audit
+
+        company, rows = self._six_lignes_chainees_dont_deux_antiques()
+        self.assertEqual(purge_company_audit(company)[0], 2)
+        self.assertIn('Chaîne intègre : 4 lignes vérifiées', self._verifier(company))
+
+    def test_alteration_apres_purge_detectee(self):
+        from django.core.management.base import CommandError
+
+        from apps.parametres.retention import purge_company_audit
+
+        company, rows = self._six_lignes_chainees_dont_deux_antiques()
+        purge_company_audit(company)
+        AuditLog.objects.filter(pk=rows[2].pk).update(detail='ALTERED')
+        with self.assertRaisesMessage(CommandError, f'pk={rows[2].pk} '):
+            self._verifier(company)
+
+    def test_tete_supprimee_sans_trace_reste_une_rupture(self):
+        company, rows = self._six_lignes_chainees_dont_deux_antiques()
+        AuditLog.objects.filter(pk__in=[r.pk for r in rows[:2]]).delete()
+        res = verify_audit_chain(company.id)
+        self.assertFalse(res['ok'])
+        self.assertEqual(res['broken_pk'], rows[2].pk)
+
+    def test_chaine_integre_apres_purge_par_la_commande(self):
+        from django.core.management import call_command
+
+        company, rows = self._six_lignes_chainees_dont_deux_antiques()
+        call_command('purge_audit_log', '--company', str(company.id))
+        self.assertFalse(AuditLog.objects.filter(pk=rows[0].pk).exists())
+        self.assertIn('Chaîne intègre : 4 lignes vérifiées', self._verifier(company))

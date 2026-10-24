@@ -16,6 +16,9 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 from apps.crm.models import Client
 from apps.installations.models import Installation
+from apps.roles.models import Role
+from apps.roles.permissions_registre import (
+    TECHNICIEN_PERMISSIONS, TECHNICIEN_RESP_PERMISSIONS)
 from apps.sav.models import ContratMaintenance, PieceConsommee, Ticket
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, Facture
@@ -120,3 +123,53 @@ class DecisionFacturationTests(TestCase):
         self.assertIsNone(ticket.devis_id_ext)
         self.assertEqual(Devis.objects.filter(
             company=self.company).count(), 0)
+
+    def _api_role(self, username, nom, permissions):
+        role = Role.objects.create(
+            company=self.company, nom=nom, permissions=list(permissions))
+        user = User.objects.create_user(
+            username=username, password='x', company=self.company,
+            role=role)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+        return user, api
+
+    def test_override_technicien_refuse_trois_portes(self):
+        """ASAV104 — l'override d'une récidive non facturable est réservé au
+        palier Administrateur/Responsable (``menu_tier``) : le rôle système
+        Technicien porte ``sav_gerer`` mais reçoit 403 sur les trois portes."""
+        tech, api_tech = self._api_role(
+            'asav104_tech', 'Technicien', TECHNICIEN_PERMISSIONS)
+        self.assertTrue(tech.is_responsable)
+        for porte, ref in (('facturer', 'SAV-A104-1'),
+                           ('generer-facture', 'SAV-A104-2'),
+                           ('creer-devis', 'SAV-A104-3')):
+            ticket = self._ticket(ref, non_facturable=True,
+                                  est_recidive=True,
+                                  technicien_responsable=tech)
+            r = api_tech.post(f'{BASE}/{ticket.pk}/{porte}/',
+                              {'override': True}, format='json')
+            self.assertEqual(r.status_code, 403, (porte, r.content))
+            self.assertIn('override responsable requis', r.data['detail'])
+            ticket = Ticket.objects.get(pk=ticket.pk)
+            self.assertIsNone(ticket.facture_id_ext)
+            self.assertIsNone(ticket.devis_id_ext)
+        self.assertEqual(Facture.objects.filter(
+            client=self.client_obj).count(), 0)
+        self.assertEqual(Devis.objects.filter(
+            company=self.company).count(), 0)
+        # Palier responsable : l'override passe, une facture à 5000.00.
+        resp, api_resp = self._api_role(
+            'asav104_resp', 'Technicien responsable',
+            TECHNICIEN_RESP_PERMISSIONS)
+        self.assertEqual(resp.menu_tier, 'responsable')
+        ticket = self._ticket('SAV-A104-4', non_facturable=True,
+                              est_recidive=True,
+                              technicien_responsable=resp)
+        r = api_resp.post(f'{BASE}/{ticket.pk}/facturer/',
+                          {'override': True}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(self._prix_lignes(ticket), [Decimal('5000')])
+        self.assertEqual(Facture.objects.filter(
+            client=self.client_obj).count(), 1)

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 /* PUB75 — Écran de collecte des consentements (CNDP) : enregistrer, lister avec
    statut (actif/révoqué/expiré), révoquer (retrait de rotation côté serveur). */
@@ -21,7 +23,11 @@ vi.mock('./adsengineApi', () => ({
 
 import ConsentScreen from './ConsentScreen'
 
-const renderScreen = () => render(<MemoryRouter><ConsentScreen /></MemoryRouter>)
+// APDF109 — l'écran lit la société de la session (`auth.user.company_nom`).
+const renderScreen = (user = { company_nom: 'SOLAIRE EXEMPLE SARL' }) => {
+  const store = configureStore({ reducer: { auth: (state = { user }) => state } })
+  return render(<Provider store={store}><MemoryRouter><ConsentScreen /></MemoryRouter></Provider>)
+}
 
 const RECORDS = [
   {
@@ -83,5 +89,26 @@ describe('ConsentScreen', () => {
     await waitFor(() => expect(screen.getByTestId('ae-consent-wa-1')).toBeTruthy())
     const href = screen.getByTestId('ae-consent-wa-1').getAttribute('href')
     expect(href).toContain('https://wa.me/?text=')
+  })
+
+  it('APDF109 — le lien WhatsApp nomme la société de la session, jamais Taqinor', async () => {
+    mocks.list.mockResolvedValue({ data: [{
+      id: 1, client_nom: 'Karim', reference: 'CONS-1', scopes: ['photo'], is_active: true, revoked_at: null,
+    }] })
+    const texte = async (user) => {
+      const { unmount } = renderScreen(user)
+      await waitFor(() => expect(screen.getByTestId('ae-consent-wa-1')).toBeTruthy())
+      const href = screen.getByTestId('ae-consent-wa-1').getAttribute('href')
+      unmount()
+      return decodeURIComponent(href.split('?text=')[1])
+    }
+    const nomme = await texte({ company_nom: 'SOLAIRE EXEMPLE SARL' })
+    expect(nomme).toContain('par SOLAIRE EXEMPLE SARL ?')
+    expect(nomme).toContain('(référence CONS-1)')
+    expect(nomme).not.toMatch(/taqinor/i)
+    const neutre = await texte({})
+    expect(neutre).toContain('par notre société ?')
+    expect(neutre).toContain('(référence CONS-1)')
+    expect(neutre).not.toMatch(/taqinor/i)
   })
 })

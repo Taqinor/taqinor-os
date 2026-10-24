@@ -12,12 +12,18 @@ transaction jamais validée — ``on_commit`` n'y tire jamais et un rollback
 
 Test-du-test : retirer le ``transaction.atomic()`` de ``engine._run_isole`` ⇒
 ``test_erreur_sql_n_avorte_pas_l_emetteur`` rouge ; retirer ``on_commit`` de
-``engine._execute_au_commit`` ⇒ ``test_rollback_n_envoie_rien`` rouge.
+``engine.executer_action`` ⇒ ``test_rollback_n_envoie_rien`` rouge.
+
+APAR69 — la boucle FOR_EACH passe par le MÊME aiguillage
+(``engine.executer_action``) : rappeler ``actions.run`` en direct dans
+``actions._for_each`` ⇒ ``test_for_each_envoi_differe_au_commit`` rouge
+(un e-mail de sous-action part malgré le rollback de l'émetteur).
 """
 from django.core import mail
 from django.db import transaction
 from django.test import TransactionTestCase
 
+from apps.automation import engine
 from apps.automation.models import (
     ActionType, AutomationRule, AutomationRun, TriggerType,
 )
@@ -73,22 +79,67 @@ class FrontiereTransactionTests(WideTeardownTimeoutMixin, TransactionTestCase):
         self.assertEqual(runs.get().status, AutomationRun.Status.SUCCESS)
 
     def test_erreur_sql_n_avorte_pas_l_emetteur(self):
+        # APAR70 — ticket SAV : ``priorite`` (max_length=10) reçoit 12 car. =>
+        # VRAIE erreur SQL (sur un lead, la validation APAR51 refuse avant).
+        from apps.crm.models import Client
+        from apps.sav.models import Ticket
+        from apps.sav.services import emettre_changement_statut_ticket
+
         regle = AutomationRule.objects.create(
             company=self.co, nom='Priorité trop longue', enabled=True,
-            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            trigger_type=TriggerType.RECORD_STATE_CHANGE,
+            trigger_config={'model': 'sav.ticket', 'field': 'statut',
+                            'value': Ticket.Statut.EN_COURS},
             action_type=ActionType.SET_FIELD,
             action_config={'field': 'priorite', 'value': 'x' * 12})
-        lead = self._lead()
+        ticket = Ticket.objects.create(
+            company=self.co, reference='APAR70-1', statut=Ticket.Statut.NOUVEAU,
+            client=Client.objects.create(company=self.co, nom='Client APAR70'))
         with transaction.atomic():
-            lead.stage = CONTACTED
-            lead.save()
-            # La transaction de l'émetteur reste utilisable.
-            self.assertEqual(
-                Lead.objects.filter(company=self.co).count(), 1)
-            lead.save()  # la valeur refusée n'est pas restée en mémoire
+            ticket.statut = Ticket.Statut.EN_COURS
+            ticket.save()
+            emettre_changement_statut_ticket(
+                ticket, company=self.co, ancien_statut=Ticket.Statut.NOUVEAU)
+            # La transaction de l'émetteur reste utilisable : il relit, réécrit.
+            ticket.refresh_from_db()
+            ticket.save()
         run = AutomationRun.objects.get(rule=regle)
         self.assertEqual(run.status, AutomationRun.Status.FAILED)
         self.assertTrue(run.message)
-        lead.refresh_from_db()
-        self.assertEqual(lead.stage, CONTACTED)
-        self.assertNotEqual(lead.priorite, 'x' * 12)
+        ticket.refresh_from_db()
+        self.assertEqual(ticket.statut, Ticket.Statut.EN_COURS)
+        self.assertNotEqual(ticket.priorite, 'x' * 12)
+
+    def test_for_each_envoi_differe_au_commit(self):
+        # APAR69 — une sous-action d'envoi d'une boucle FOR_EACH attend le
+        # commit de l'émetteur, comme une action de premier niveau.
+        regle = AutomationRule.objects.create(
+            company=self.co, nom='Boucle e-mail', enabled=True,
+            trigger_type=TriggerType.LEAD_STAGE_CHANGE, trigger_config={},
+            action_type=ActionType.FOR_EACH,
+            action_config={
+                'source': 'contexte:lignes',
+                'sous_actions': [{
+                    'action_type': ActionType.SEND_EMAIL,
+                    'action_config': {'subject': 'Ligne', 'body': 'Bonjour'},
+                }],
+            })
+        lead = self._lead()
+        contexte = {'lignes': [{'n': 1}]}
+        # (A) l'émetteur annule : aucun e-mail, aucun run.
+        with self.assertRaises(_Annule):
+            with transaction.atomic():
+                engine.run_action(regle, lead, self.co, context=contexte)
+                self.assertEqual(len(mail.outbox), 0)
+                raise _Annule()
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(AutomationRun.objects.filter(rule=regle).count(), 0)
+        # (B) l'émetteur valide : rien avant le commit, un e-mail après, et
+        # le seul run journalisé est celui de la boucle (aucun par sous-action).
+        with transaction.atomic():
+            engine.run_action(regle, lead, self.co, context=contexte)
+            self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(len(mail.outbox), 1)
+        runs = AutomationRun.objects.filter(rule=regle)
+        self.assertEqual(runs.count(), 1)
+        self.assertEqual(runs.get().status, AutomationRun.Status.SUCCESS)

@@ -422,35 +422,42 @@ def _run_isole(action_source, instance, company, context, user):
     return resultat
 
 
+def executer_action(action_source, instance, company, context, user,
+                    journaliser=None):
+    """APAR10/APAR69 — aiguillage UNIQUE d'une action : un envoi part en
+    ``on_commit(_run_isole)``, tout le reste en ``_run_isole`` tout de suite.
+
+    ``journaliser(status, message)`` (optionnel) est appelé APRÈS l'exécution
+    réelle — donc au commit pour un envoi. ``_execute`` y branche le run de la
+    règle ; la boucle FOR_EACH n'en branche aucun (pas de run par sous-action).
+    """
+    resultat = {}
+
+    def _jouer():
+        resultat['run'] = _run_isole(
+            action_source, instance, company, context, user)
+        if journaliser:
+            journaliser(*resultat['run'])
+
+    if action_source.action_type not in ACTIONS_ENVOI:
+        _jouer()
+        return resultat['run']
+    transaction.on_commit(_jouer)
+    if 'run' in resultat:  # autocommit : exécuté immédiatement
+        return resultat['run']
+    return AutomationRun.Status.NOOP, MESSAGE_ENVOI_DIFFERE
+
+
 def _execute(action_source, rule, instance, company, context, user):
     """Exécute UNE action (règle mono-action ou étape) et journalise son run.
 
     APAR10 — une action d'envoi est différée au commit (et journalisée là) ;
     les autres s'exécutent tout de suite, isolées dans un point de sauvegarde.
     """
-    if action_source.action_type in ACTIONS_ENVOI:
-        return _execute_au_commit(
-            action_source, rule, instance, company, context, user)
-    status, message = _run_isole(
-        action_source, instance, company, context, user)
-    _log_run(rule, company, instance, status, message)
-    return status, message
-
-
-def _execute_au_commit(action_source, rule, instance, company, context, user):
-    """APAR10 — programme l'envoi au commit de la transaction en cours."""
-    resultat = {}
-
-    def _envoyer():
-        status, message = _run_isole(
-            action_source, instance, company, context, user)
-        _log_run(rule, company, instance, status, message)
-        resultat['run'] = (status, message)
-
-    transaction.on_commit(_envoyer)
-    if 'run' in resultat:  # autocommit : exécuté immédiatement
-        return resultat['run']
-    return AutomationRun.Status.NOOP, MESSAGE_ENVOI_DIFFERE
+    return executer_action(
+        action_source, instance, company, context, user,
+        lambda status, message: _log_run(
+            rule, company, instance, status, message))
 
 
 def run_action(rule, instance, company, *, context=None, user=None):

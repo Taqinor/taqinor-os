@@ -72,7 +72,6 @@ from __future__ import annotations
 
 import logging
 import math
-from decimal import Decimal
 
 from django.utils import timezone
 
@@ -83,11 +82,6 @@ CLES = ('eco', 'recommande', 'max')
 
 #: Le titre FR de chaque taille (noms approuvés par le fondateur).
 TITRES = {'eco': 'Éco', 'recommande': 'Recommandé', 'max': 'Max'}
-
-#: TVA de repli — MÊME réglage que ``rafraichir_dimensionnement_devis`` et que
-#: l'échelle de paliers : chaque produit porte DÉJÀ son taux
-#: (``_lire_composition``), celui-ci n'est que le repli.
-_TVA_REPLI = Decimal('20')
 
 #: Les rôles de composition, regroupés en FAMILLES. ANTICOPIE : la comparaison
 #: « ce qui change » entre deux tailles ne nomme que des familles — jamais un
@@ -516,7 +510,8 @@ def _part_batterie(annuel):
     return max(0.0, avec - sans) / avec
 
 
-def _cout_onduleur_ttc(lignes, roles, facteur_remise):
+def _cout_onduleur_ttc(lignes, roles, facteur_remise, taux_tva=None,
+                       company=None):
     """Le prix TTC RÉEL des lignes onduleur d'une composition (Q1), ou ``None``.
 
     C'est la provision de remplacement que le cashflow 25 ans retranche à
@@ -526,7 +521,9 @@ def _cout_onduleur_ttc(lignes, roles, facteur_remise):
     jamais un forfait de repli.
 
     Remisé comme le prix de la carte : les deux doivent partager une base.
+    TVA de la ligne : ``dimensionnement._facteur_ttc_ligne`` (APAR79).
     """
+    from apps.ventes.dimensionnement import _facteur_ttc_ligne
     total = 0.0
     for index, ligne in enumerate(lignes or []):
         role = roles[index] if index < len(roles or ()) else None
@@ -534,10 +531,9 @@ def _cout_onduleur_ttc(lignes, roles, facteur_remise):
             continue
         quantite = _num(getattr(ligne, 'quantite', 0))
         pu_ht = _num(getattr(ligne, 'prix_unitaire', 0))
-        tva = _num(getattr(getattr(ligne, 'produit', None), 'tva', None),
-                   defaut=-1.0)
-        facteur = 1.0 + (tva if tva >= 0 else float(_TVA_REPLI)) / 100.0
-        total += quantite * pu_ht * facteur
+        total += quantite * pu_ht * _facteur_ttc_ligne(
+            getattr(ligne, 'produit', None),
+            getattr(ligne, 'designation', ''), taux_tva, company)
     total *= float(facteur_remise or 1.0)
     return round(total, 2) if total > 0 else None
 
@@ -900,10 +896,12 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
     if lignes_sans is None and lignes_avec is None:
         return {'sans': None, 'avec': None}
 
-    vue_sans = _substituer(_lire_composition(lignes_sans, _TVA_REPLI),
-                           lignes_sans, substitutions) if lignes_sans else None
-    vue_avec = _substituer(_lire_composition(lignes_avec, _TVA_REPLI),
-                           lignes_avec, substitutions) if lignes_avec else None
+    # APAR79 — repli TVA d'une ligne : le taux du devis, puis la société.
+    tva = (contexte.devis.taux_tva, (contexte.entrees or {}).get('company'))
+    vue_sans = _substituer(_lire_composition(lignes_sans, *tva), lignes_sans,
+                           substitutions, *tva) if lignes_sans else None
+    vue_avec = _substituer(_lire_composition(lignes_avec, *tva), lignes_avec,
+                           substitutions, *tva) if lignes_avec else None
 
     capacite = _positif((vue_avec or {}).get('batterie_kwh'))
     bornes = {}
@@ -995,7 +993,8 @@ def _carte_moteur(contexte, nb_panneaux, config=None, *, avec_servable=True,
             'part_batterie': (0.0 if variante == 'avec' else None),
             'cout_onduleur_ttc': _cout_onduleur_ttc(
                 lignes, list(getattr(lignes, 'roles', ()) or ()),
-                contexte.facteur_remise),
+                contexte.facteur_remise, contexte.devis.taux_tva,
+                (contexte.entrees or {}).get('company')),
             # AMOT30 — le rendement aller-retour que le moteur horaire a
             # RÉELLEMENT appliqué (fiche prouvée), comme ``pricing``.
             'battery_roundtrip': (etude or {}).get('rendement_batterie'),
@@ -1216,7 +1215,7 @@ def _resoudre_substitutions(equipements, company=None):
     return par_role
 
 
-def _substituer(vue, lignes, substitutions):
+def _substituer(vue, lignes, substitutions, taux_tva=None, company=None):
     """Rechiffre une composition avec les produits que le vendeur a substitués.
 
     PORTÉE VOLONTAIREMENT ÉTROITE, ET DITE. Un remplacement change le PRIX, la
@@ -1233,7 +1232,8 @@ def _substituer(vue, lignes, substitutions):
     """
     if not substitutions or not vue:
         return vue
-    from apps.ventes.dimensionnement import capacite_utile_batterie
+    from apps.ventes.dimensionnement import (
+        _facteur_ttc_ligne, capacite_utile_batterie)
 
     roles = list(getattr(lignes, 'roles', ()) or ())
     cout_ht = cout_ttc = batterie_kwh = 0.0
@@ -1243,12 +1243,12 @@ def _substituer(vue, lignes, substitutions):
         remplacant = substitutions.get(role)
         if remplacant is not None:
             pu_ht = _num(getattr(remplacant, 'prix_vente', 0))
-            tva = _num(getattr(remplacant, 'tva', None), defaut=-1.0)
         else:
             pu_ht = _num(getattr(ligne, 'prix_unitaire', 0))
-            tva = _num(getattr(getattr(ligne, 'produit', None), 'tva', None),
-                       defaut=-1.0)
-        facteur = 1.0 + (tva if tva >= 0 else float(_TVA_REPLI)) / 100.0
+        facteur = _facteur_ttc_ligne(
+            remplacant if remplacant is not None
+            else getattr(ligne, 'produit', None),
+            getattr(ligne, 'designation', ''), taux_tva, company)
         cout_ht += quantite * pu_ht
         cout_ttc += quantite * pu_ht * facteur
         if role == 'batterie':

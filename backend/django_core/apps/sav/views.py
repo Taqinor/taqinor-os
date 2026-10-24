@@ -168,6 +168,8 @@ _SCHEMA_PIECE_RETIREE = _sch('SavPieceRetireeRequete', {
 _SCHEMA_ANNULER = _sch('SavAnnulerRequete', {
     'motif': TexteSansSubstitut(
         required=False, allow_blank=True, allow_null=True)})
+#: ASAV109 — champs réécrits par ``Ticket.reprendre_apres_attente``.
+_CHAMPS_PAUSE = ('en_attente_client', 'attente_depuis', 'jours_pause')
 _SCHEMA_NOTER = _sch('SavNoterRequete', {
     'body': TexteSansSubstitut(required=False, allow_blank=True),
     'reponse_type_id': EntierStrict(
@@ -1192,9 +1194,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # XCTR2). Un client sans contrat, ou un ticket sans équipement, ne
         # déclenche rien (comportement historique inchangé).
         if inst.equipement_id and inst.client_id:
-            from .models import ContratMaintenance
-            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
-            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
+            # ASAV108 — contrat couvrant à la date de référence du ticket.
+            contrat = inst._contrat_couvrant(inst.date_reference_couverture)
             if contrat is not None and not contrat.couvre_equipement(inst.equipement):
                 activity.log_note(
                     inst, self.request.user,
@@ -1205,12 +1206,12 @@ class TicketViewSet(CompanyScopedModelViewSet):
         # visites/déplacements inclus au contrat (droits_restants). NULL sur le
         # contrat = illimité : aucun avertissement possible dans ce cas.
         if inst.client_id and inst.type in (Ticket.Type.PREVENTIF, Ticket.Type.CORRECTIF):
-            from .models import ContratMaintenance
             from .droits_contrat import droits_restants
-            # ASAV26 — contrat VALIDE (expiration + grâce), pas le seul drapeau.
-            contrat = ContratMaintenance.valide_pour_client(inst.client_id)
+            # ASAV108 — même contrat couvrant ; le ticket ne se compte pas.
+            contrat = inst._contrat_couvrant(inst.date_reference_couverture)
             if contrat is not None:
-                droits = droits_restants(contrat, inst.date_ouverture.year)
+                droits = droits_restants(
+                    contrat, inst.date_ouverture.year, ticket=inst)
                 if (inst.type == Ticket.Type.PREVENTIF
                         and droits['visites_restantes'] == 0):
                     activity.log_note(
@@ -1538,7 +1539,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 if not ticket.annule:
                     ticket.annule = True
                     ticket.motif_annulation = motif or None
-                    ticket.save(update_fields=['annule', 'motif_annulation'])
+                    ticket.reprendre_apres_attente()
+                    ticket.save(update_fields=[
+                        'annule', 'motif_annulation', *_CHAMPS_PAUSE])
                     activity.log_note(
                         ticket, request.user,
                         f"Ticket annulé{(' : ' + motif) if motif else ''}")
@@ -1735,7 +1738,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if not ticket.annule:
             ticket.annule = True
             ticket.motif_annulation = motif or None
-            ticket.save(update_fields=['annule', 'motif_annulation'])
+            ticket.reprendre_apres_attente()
+            ticket.save(update_fields=[
+                'annule', 'motif_annulation', *_CHAMPS_PAUSE])
             activity.log_note(
                 ticket, request.user,
                 f"Ticket annulé{(' : ' + motif) if motif else ''}")
@@ -1750,7 +1755,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         if ticket.annule:
             ticket.annule = False
             ticket.motif_annulation = None
-            ticket.save(update_fields=['annule', 'motif_annulation'])
+            ticket.reprendre_apres_attente()
+            ticket.save(update_fields=[
+                'annule', 'motif_annulation', *_CHAMPS_PAUSE])
             activity.log_note(ticket, request.user, "Ticket réactivé")
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
@@ -2639,6 +2646,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         Pendant la pause, l'échéance SLA effective (``sla_due_at_effectif``)
         avance d'autant de jours — l'horloge SLA ignore le temps d'attente."""
         ticket = self.get_object()
+        if ticket.statut not in Ticket.OPEN_STATUTS or ticket.annule:  # ASAV110
+            raise ConflitEtat("Seul un ticket ouvert non annulé se met en attente client.")
         if not ticket.en_attente_client:
             ticket.mettre_en_attente_client()
             ticket.save(update_fields=['en_attente_client', 'attente_depuis'])
@@ -2726,7 +2735,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
             doublon.annule = True
             doublon.motif_annulation = f'Doublon de {principal.reference}'
-            doublon.save(update_fields=['annule', 'motif_annulation'])
+            doublon.reprendre_apres_attente()
+            doublon.save(update_fields=[
+                'annule', 'motif_annulation', *_CHAMPS_PAUSE])
 
         return Response(
             TicketSerializer(principal, context={'request': request}).data)

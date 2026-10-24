@@ -74,6 +74,32 @@ describe('PlacementAnciensLeadsCard (MRY33)', () => {
     expect(screen.getByText(DONNEES.apercu[0].nom)).toBeInTheDocument()
   })
 
+  it("ACRM73 — un badge par clé de ignores servie sur l'exemple committé", async () => {
+    render(<PlacementAnciensLeadsCard />)
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+    const { ignores } = DONNEES
+    expect(await screen.findByText(`Déjà en cadence : ${ignores.deja_en_cadence}`)).toBeInTheDocument()
+    expect(screen.getByText(`Devis accepté non signé : ${ignores.devis_accepte_non_signe}`)).toBeInTheDocument()
+    expect(screen.getByText(`Rappel manuel à venir : ${ignores.rappel_manuel_a_venir}`)).toBeInTheDocument()
+  })
+
+  it("ACRM73 — une clé inconnue s'affiche sous son nom brut, une clé à 0 ne s'affiche pas", async () => {
+    crmApi.placerAnciensLeads.mockResolvedValueOnce({
+      data: { ...DONNEES, ignores: { ...DONNEES.ignores, cle_future: 5, deja_en_cadence: 0 } },
+    })
+    render(<PlacementAnciensLeadsCard />)
+    fireEvent.click(screen.getByRole('button', { name: 'Aperçu' }))
+    expect(await screen.findByText('cle_future : 5')).toBeInTheDocument()
+    expect(screen.queryByText(/Déjà en cadence/)).not.toBeInTheDocument()
+  })
+
+  it("ACRM73 — l'exemple du contrat est cohérent : total = a_placer + ignorés, Σ par_etape = a_placer", () => {
+    const somme = (valeurs) => valeurs.reduce((s, v) => s + v, 0)
+    expect(DONNEES.total_candidats)
+      .toBe(DONNEES.a_placer + somme(Object.values(DONNEES.ignores)))
+    expect(somme(DONNEES.par_etape.map((e) => e.nombre))).toBe(DONNEES.a_placer)
+  })
+
   it('« Appliquer » est désactivé avant tout aperçu, puis ouvre la confirmation et appelle l\'API avec apply=true, limite=40', async () => {
     render(<PlacementAnciensLeadsCard />)
     expect(screen.getByRole('button', { name: 'Appliquer' })).toBeDisabled()

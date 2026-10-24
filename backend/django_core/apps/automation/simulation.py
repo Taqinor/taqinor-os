@@ -49,6 +49,10 @@ def _decrire_email(source, instance, company, context):
 
     from .models import CanalMessage, ModeleMessage
 
+    refus = actions._refus_opposition(instance, 'email')  # APAR71 — ACRM17
+    if refus is not None:
+        return _effet(source.action_type, refus[1], destinataire='',
+                      statut_prevu='skipped')
     destinataire = actions._resolve_email(instance)
     if not destinataire:
         return _effet(source.action_type,
@@ -88,6 +92,9 @@ def _decrire_message(source, instance, company, context):
                       statut_prevu='noop')
     if source.action_type != ActionType.SEND_WHATSAPP:  # pragma: no cover
         return _decrire_defaut(source, instance, company, context)
+    refus = actions._refus_opposition(instance, 'whatsapp')  # APAR71 — ACRM17
+    if refus is not None:
+        return _effet(source.action_type, refus[1], statut_prevu='skipped')
     # APAR25 — même prédicat que ``actions._send_whatsapp``.
     motif, phone, url, corps = actions.preparer_whatsapp(
         source, instance, company, context)
