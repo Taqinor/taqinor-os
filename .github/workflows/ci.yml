@@ -188,6 +188,12 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # CI-5MIN (24/10/2026) — `actions: read` + `pull-requests: read` : lus par
+    # scripts/ci_merge_group_reuse.py (merge queue seulement, voir `detect`).
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     outputs:
       backend: ${{ steps.detect.outputs.backend }}
       frontend: ${{ steps.detect.outputs.frontend }}
@@ -198,6 +204,9 @@ jobs:
       # CI-5MIN (23/10/2026) — paquets d'API modifies (portee du fuzz PR),
       # calcules UNE fois ici au lieu d'une fois par tranche `api-fuzz-pr`.
       fuzz_owners: ${{ steps.detect.outputs.fuzz_owners }}
+      # CI-5MIN (24/10/2026) — merge queue : identifiant du run PR vert dont le
+      # groupe reprend le resultat (vide = gate complet).
+      reused_run: ${{ steps.detect.outputs.reused_run }}
       # WOW8-ONCE — 'true' ssi un dump EXACT existe deja pour l'ensemble de
       # migrations courant (cf. le job `backend-testdb`).
       testdb_hit: ${{ steps.testdb.outputs.cache-hit }}
@@ -226,6 +235,9 @@ jobs:
           PUSH_AFTER: ${{ github.sha }}
           MG_BASE: ${{ github.event.merge_group.base_sha }}
           MG_HEAD: ${{ github.event.merge_group.head_sha }}
+          MG_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           backend=false; frontend=false; web=false; yanbow=false; fastapi=false
@@ -362,6 +374,30 @@ jobs:
           # des operations qui partagent une base : changer la partition change
           # le test. Retire.
 
+          # CI-5MIN (decision fondateur, 24/10/2026) — LA MERGE QUEUE REPREND LE
+          # VERT DE LA PR. Le groupe rejouait tout le gate (12,4 min, run
+          # 40034106320) alors qu'une PR a jour, seule dans son groupe, porte le
+          # MEME arbre que le commit du groupe. Le script prouve : meme arbre,
+          # run PR `ci.yml` vert sur cette tete, et ce run a couvert chaque
+          # surface et chaque paquet fuzze que le groupe ferait tourner. Prouve
+          # -> toutes les surfaces a false : les lanes lourdes sont sautees et
+          # les checks requis passent comme pour une PR docs seule
+          # (`stage-names` reste non gate et tourne). Le moindre doute (API,
+          # journal, groupe a plusieurs PR, PR en retard) -> rien ne change.
+          reused_run=""
+          if [ "$EVENT_NAME" = "merge_group" ] && [ "$run_all" = false ]; then
+            reused_run="$(python3 scripts/ci_merge_group_reuse.py \
+              --repo "$REPO" --head-ref "$MG_HEAD_REF" \
+              --group-tree "$(git rev-parse "${head}^{tree}")" \
+              --flags "backend=$backend frontend=$frontend web=$web yanbow=$yanbow fastapi=$fastapi code=$code" \
+              --fuzz "$fuzz_owners" || true)"
+          fi
+          if [ -n "$reused_run" ]; then
+            backend=false; frontend=false; web=false; yanbow=false; fastapi=false; code=false
+            fuzz_owners=""
+            echo "Merge queue : resultat repris du run PR ${reused_run} (meme arbre) - lanes lourdes sautees." | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
           {
             echo "backend=$backend"
             echo "frontend=$frontend"
@@ -370,6 +406,7 @@ jobs:
             echo "fastapi=$fastapi"
             echo "code=$code"
             echo "fuzz_owners=$fuzz_owners"
+            echo "reused_run=$reused_run"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved -> backend=$backend frontend=$frontend web=$web yanbow=$yanbow fastapi=$fastapi e2e(code)=$code"
           echo "Paquets d'API modifiés (fuzz PR) : ${fuzz_owners:-aucun}"
