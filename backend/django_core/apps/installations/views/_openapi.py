@@ -20,7 +20,6 @@ from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_view, inline_serializer,
 )
 from drf_spectacular.utils import extend_schema_field
-from django.core.validators import RegexValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -31,7 +30,7 @@ from core.champs_stricts import (
 from core.conflit_etat import ConflitEtat
 
 from ..signature_validation import (
-    MESSAGE_SIGNATURE_INVALIDE, MOTIF_DATA_URL, SIGNATURE_MAX_CARACTERES,
+    SignatureDataUrl,
 )
 
 UPLOAD_PARSERS = [MultiPartParser, FormParser]
@@ -470,8 +469,8 @@ class NonReleveRequete(serializers.Serializer):
     motif = ChaineStricte(required=False, allow_blank=True)
 
 
-class SeriesLotRequete(serializers.Serializer):
-    """CIQ633 — import en lot des numéros de série (JSON ou fichier)."""
+class SeriesLotCorpsJson(serializers.Serializer):
+    """CIQ633 — import en lot des numéros de série, corps JSON."""
     lignes = serializers.ListField(
         child=LigneSerieRequete(), required=False, max_length=500)
     texte = ChaineStricte(required=False, allow_blank=True)
@@ -479,7 +478,20 @@ class SeriesLotRequete(serializers.Serializer):
         min_value=1, max_value=ID_MAX, required=False, allow_null=True)
     non_releves = serializers.ListField(
         child=NonReleveRequete(), required=False, max_length=500)
-    fichier = serializers.FileField(required=False)
+
+
+class SeriesLotRequete(SeriesLotCorpsJson):
+    """CIQ633 — import en lot (JSON ou fichier) : la validation serveur."""
+    fichier = serializers.FileField(required=False, allow_empty_file=True)
+
+
+class SeriesLotCorpsFichier(serializers.Serializer):
+    """CIQ633 — import en lot par FICHIER (multipart) : ``fichier`` porte le
+    CSV ; ``lignes``/``non_releves`` (listes d'objets) ne s'envoient qu'en
+    JSON. Un ``fichier`` en JSON est refusé (400 « pas un fichier »)."""
+    fichier = serializers.FileField()
+    produit = serializers.IntegerField(
+        min_value=1, max_value=ID_MAX, required=False)
 
 
 class CommanderBesoinRequete(serializers.Serializer):
@@ -537,9 +549,7 @@ class SignerChantierRequete(serializers.Serializer):
     """NTMOB16/CIQ631 — signature client du bon de livraison : la data-URL
     acceptée est PUBLIÉE (motif + longueur), les autres champs sont des textes
     facultatifs (``null`` toléré = vide, comme le lisait la vue)."""
-    signature_client = ChaineStricte(
-        max_length=SIGNATURE_MAX_CARACTERES, validators=[RegexValidator(
-            MOTIF_DATA_URL, message=MESSAGE_SIGNATURE_INVALIDE)])
+    signature_client = ChaineStricte(validators=[SignatureDataUrl()])
     signataire_nom = _texte_facultatif()
     motif_override_signature = _texte_facultatif()
     motif_override = _texte_facultatif()

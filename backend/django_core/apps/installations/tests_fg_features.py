@@ -418,6 +418,44 @@ class TestFG75Releves(TestCase):
         self.assertEqual(composant['required'], ['file'])
         self.assertEqual(composant['properties']['file']['format'], 'binary')
 
+    def test_series_lot_et_signer_client_publies_exactement(self):
+        """api-fuzz-full 24/10 : ``fichier`` n'existe qu'en multipart (un
+        ``"fichier": ""`` JSON était « conforme » puis refusé) ; la signature
+        du chantier est UN motif simple (health check « filtered out »)."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        composants = schema['components']['schemas']
+        chemin = '/api/django/installations/chantiers/{id}/'
+        contenu = schema['paths'][chemin + 'series-lot/']['post'][
+            'requestBody']['content']
+        self.assertIn('multipart/form-data', contenu)
+        json_ref = contenu['application/json']['schema']['$ref']
+        corps_json = composants[json_ref.rsplit('/', 1)[-1]]
+        self.assertNotIn('fichier', corps_json['properties'])
+        multipart_ref = contenu['multipart/form-data']['schema']['$ref']
+        corps_fichier = composants[multipart_ref.rsplit('/', 1)[-1]]
+        self.assertEqual(corps_fichier['properties']['fichier']['format'],
+                         'binary')
+        signature = composants['SignerChantierRequeteRequest'][
+            'properties']['signature_client']
+        self.assertNotIn('maxLength', signature)
+        self.assertNotIn('\\s', signature['pattern'])
+        # Les textes de ces trois écritures publient « sans caractère nul »
+        # (un NUL « conforme » était refusé 400, mêlé à un id inconnu).
+        for composant, champ in (
+                ('BudgetEngagementRequest', 'libelle'),
+                ('RetourMaterielLigneRequest', 'designation'),
+                ('CommissioningRecordRequest', 'technicien')):
+            with self.subTest(composant=composant):
+                self.assertEqual(
+                    composants[composant]['properties'][champ]['pattern'],
+                    '^[^\\u0000]*$')
+
     def test_releves_company_isolation(self):
         """FG75 — /releves d'une autre société renvoie 404."""
         company2 = make_company()
