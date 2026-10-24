@@ -4,7 +4,7 @@ import re
 from rest_framework import serializers
 
 from core.conflit_etat import ConflitEtat
-from .gabarits_schema import PublieMotif, motif_gabarit
+from .gabarits_schema import motif_gabarit, promouvoir_texte_gabarit
 from .requetes_strictes import TypageStrictParametres
 
 from .models_email import (
@@ -41,10 +41,15 @@ class EmailTemplateSerializer(TypageStrictParametres, serializers.ModelSerialize
     class Meta:
         model = EmailTemplate
         fields = ['id', 'cle', 'sujet', 'corps']
-        extra_kwargs = {
-            champ: {'validators': [PublieMotif(_MOTIF_TEXTE)]}
-            for champ in ('sujet', 'corps')}
         # company posée côté serveur (TenantMixin) — jamais depuis le corps.
+
+    def get_fields(self):
+        # Motif des placeholders publié côté REQUÊTE seulement (gabarits_schema).
+        fields = super().get_fields()
+        for champ in ('sujet', 'corps'):
+            if champ in fields:
+                promouvoir_texte_gabarit(fields[champ], _MOTIF_TEXTE)
+        return fields
 
     def _check_placeholders(self, attrs):
         # La clé effective (création : du corps ; mise à jour : conservée).

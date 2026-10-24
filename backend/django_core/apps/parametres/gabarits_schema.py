@@ -12,8 +12,9 @@ rendu accepte, n'est pas annoncé) ; le serveur, lui, n'est pas modifié.
 """
 import re
 
-from django.core.validators import RegexValidator
+from drf_spectacular.extensions import OpenApiSerializerFieldExtension
 
+from core.champs_stricts import ChaineStricte
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 
@@ -26,16 +27,35 @@ def motif_gabarit(jetons):
     return r'^(?:[^{}\u0000]|\{(?:' + noms + r')\})*$'
 
 
-class PublieMotif(RegexValidator):
-    """PUBLIE un motif dans le schéma sans rien valider : la vue garde ses
-    messages précis (placeholder inconnu, accolade isolée). Même patron que
-    ``crm.champs_api.IcePublie``."""
+class TexteGabarit(ChaineStricte):
+    """``ChaineStricte`` dont le motif de REQUÊTE est celui du gabarit
+    (``motif_requete``) ; validation et schéma de LECTURE inchangés (la vue garde
+    ses messages précis : placeholder inconnu, accolade isolée)."""
 
-    def __init__(self, motif):
-        super().__init__(regex=motif, message='Texte invalide.', code='invalid')
+    motif_requete = None
 
-    def __call__(self, value):
-        return None
+
+def promouvoir_texte_gabarit(champ, motif):
+    """Promeut SUR PLACE un ``ChaineStricte`` construit en ``TexteGabarit``
+    (réaffectation de ``__class__`` : arguments d'origine conservés, même patron
+    que ``core.serializers.scope_related_field``)."""
+    if type(champ) is ChaineStricte:
+        champ.__class__ = TexteGabarit
+        champ.motif_requete = motif
+    return champ
+
+
+class _TexteGabaritSchema(OpenApiSerializerFieldExtension):
+    target_class = 'apps.parametres.gabarits_schema.TexteGabarit'
+    priority = 1  # devant l'extension générique de ChaineStricte (sans NUL)
+
+    def map_serializer_field(self, auto_schema, direction):
+        schema = auto_schema._map_serializer_field(
+            self.target, direction, bypass_extensions=True)
+        if direction == 'request' and schema.get('type') == 'string':
+            schema = dict(schema)
+            schema['pattern'] = self.target.motif_requete
+        return schema
 
 
 def corps_messages_par_cle(cles, jetons_de):
