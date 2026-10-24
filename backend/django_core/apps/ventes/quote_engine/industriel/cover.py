@@ -101,9 +101,11 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
             base_eco = d.get("ind_economie_base")
             if base_eco in ("HT", "TTC"):
                 base_eco = L(f"ci_{base_eco.lower()}", base_eco)
+            ttc = ci_couverture.economie_ttc(d, "ind", fmt)
             lignes.append((L("ci_ind_economie_an1", "Économie de l'année 1"),
                            f"{fmt(eco)}&nbsp;MAD"
-                           + (f" {base_eco}" if base_eco else "")))
+                           + (f" {base_eco}" if base_eco else "")
+                           + (f" ({ttc})" if ttc else "")))
         payback = d.get("ind_payback")
         if payback is not None:
             lignes.append((L("ci_retour_estime", "Retour estimé"),

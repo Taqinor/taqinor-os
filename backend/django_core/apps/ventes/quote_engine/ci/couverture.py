@@ -254,10 +254,26 @@ def ans(valeur):
     return texte_ans.replace(".", ",")
 
 
-#: CIQ315 — jamais un avantage fiscal promis : la récupération dépend du
-#: régime du client (une clinique est exonérée sans droit à déduction).
-NOTE_TVA_RECUPERABLE = ("TVA récupérable selon votre régime fiscal — à "
-                        "confirmer avec votre comptable.")
+def note_tva(d, base):
+    """CIQ315 / AMOT95 — jamais un avantage fiscal promis : la mention dit le
+    statut TVA DÉCLARÉ (``mentions.cle_mention_tva``), ou ''."""
+    from .. import i18n_labels
+    from .mentions import cle_mention_tva
+    cle = cle_mention_tva(d, base)
+    return libelle(d, cle, i18n_labels.LIBELLES[cle]["fr"]) if cle else ""
+
+
+def economie_ttc(d, cle, fmt):
+    """AMOT95 — base « deux » : « soit N MAD TTC », l'économie de l'année 1
+    TTC SERVIE (``chiffres_cles``) à côté de la HT ; '' sinon."""
+    from .synthese import chiffres_cles
+    ttc = chiffres_cles(d.get(f"{cle}_synthese") or {})[
+        "economie_annuelle_ttc_mad"]
+    if ttc is None:
+        return ""
+    return (f'{libelle(d, "ci_soit", "soit")} {fmt(ttc)}&nbsp;MAD&nbsp;'
+            f'{libelle(d, "ci_ttc", "TTC")}')
+
 
 #: AMOT86 (D-ACI-2=a) — titre du bloc investissement par base servie :
 #: ``(clé, littéral)`` « clé en main » d'hier, puis la version « hors postes
@@ -331,7 +347,6 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
     l_ht = libelle(d, "ci_ht", "HT")
     l_ttc = libelle(d, "ci_ttc", "TTC")
     l_soit = libelle(d, "ci_soit", "soit")
-    note_tva = libelle(d, "ci_note_tva_recuperable", NOTE_TVA_RECUPERABLE)
     if base in ("ht", "deux") and ht is not None:
         ht_txt = fmt_mad(ht)
         if base == "ht":
@@ -339,12 +354,12 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
                 prefixe, titre_investissement(d, synthese, "ht"), ht_txt,
                 l_ht, ancre("total_ht", ht_txt),
                 f'{l_soit} {ttc_txt}&nbsp;MAD&nbsp;{l_ttc}'
-                f'{ancre("total_affiche", ttc_txt)} · {note_tva}')
+                f'{ancre("total_affiche", ttc_txt)} · {note_tva(d, base)}')
         return _html_investissement(
             prefixe, titre_investissement(d, synthese, "deux"), ttc_txt,
             l_ttc, ancre("total_affiche", ttc_txt),
             f'{l_soit} {ht_txt}&nbsp;MAD&nbsp;{l_ht}'
-            f'{ancre("total_ht", ht_txt)} · {note_tva}')
+            f'{ancre("total_ht", ht_txt)} · {note_tva(d, base)}')
     return _html_investissement(
         prefixe, titre_investissement(d, synthese, "ttc"), ttc_txt, "",
         ancre("total_affiche", ttc_txt))
@@ -483,6 +498,9 @@ def tuiles_argent(d, cle, kpi, fmt):
                 '<div style="font-size:6.3pt;margin-top:1px;">'
                 + libelle(d, "ci_retour_prix_complet", "retour calculé sur "
                           "le prix complet, après la visite") + "</div>")
+        if economie_ttc(d, cle, fmt):
+            libelle_eco += ('<div style="font-size:6.3pt;margin-top:1px;">'
+                            + economie_ttc(d, cle, fmt) + "</div>")
         tuiles.append(kpi(fmt(economies), "&nbsp;MAD", libelle_eco,
                           "economie_annuelle"))
     payback = d.get(f"{cle}_payback")

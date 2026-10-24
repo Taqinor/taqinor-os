@@ -66,6 +66,17 @@ def legende_retour(chiffres, L):
             + L("ci_retour_prix_complet") + "</div>")
 
 
+def economie_ttc(chiffres, fnum, L):
+    """AMOT95 — base « deux » : sous l'économie HT, « soit N MAD TTC » (la
+    TTC servie par ``chiffres_cles``), sinon ''."""
+    ttc = (chiffres or {}).get("economie_annuelle_ttc_mad")
+    if ttc is None:
+        return ""
+    return ('<div style="font-size:5pt;font-weight:600;text-transform:none;'
+            f'letter-spacing:0;margin-top:1px;">{L("ci_soit")} {fnum(ttc)} '
+            f'MAD {L("ci_ttc")}</div>')
+
+
 def totaux_hors_total(totaux_html, chiffres, synthese, langue, libelles,
                       couleurs):
     """AMOT86 (D-ACI-2=a) — une-page C&I dont des postes restent « à chiffrer

@@ -956,6 +956,8 @@ LIBELLES = {
                       'en': 'Investment (incl. VAT, turnkey)',
                       'ar': 'الاستثمار (شامل الضريبة، تسليم مفتاح)'},
     'ci_soit': {'fr': 'soit', 'en': 'i.e.', 'ar': 'أي'},
+    # AMOT95 — plus imprimée (statut déclaré ci-dessous) ; gardée au
+    # catalogue servi, que le golden du rendu d'origine fige.
     'ci_note_tva_recuperable': {
         'fr': 'TVA récupérable selon votre régime fiscal — à confirmer avec '
               'votre comptable.',
@@ -963,6 +965,23 @@ LIBELLES = {
               'confirmed with your accountant.',
         'ar': 'الضريبة على القيمة المضافة قابلة للاسترجاع حسب نظامكم '
               'الضريبي — يُؤكد مع محاسبكم.'},
+    # AMOT95 — la mention TVA dit le statut DÉCLARÉ (base servie).
+    'ci_tva_declaree_ht': {
+        'fr': 'TVA récupérable déclarée : économies en HT.',
+        'en': 'Recoverable VAT declared: savings excl. VAT.',
+        'ar': 'استرجاع الضريبة مصرح به: الوفورات دون احتساب الضريبة.'},
+    'ci_tva_non_declaree': {
+        'fr': 'TVA récupérable non déclarée : économies en HT et en TTC.',
+        'en': 'Recoverable VAT not declared: savings excl. and incl. VAT.',
+        'ar': 'استرجاع الضريبة غير مصرح به: الوفورات دون احتساب الضريبة '
+              'وشاملة لها.'},
+    'ci_tva_inconnue': {
+        'fr': 'TVA récupérable inconnue : économies en HT et en TTC — à '
+              'confirmer avec votre comptable.',
+        'en': 'Recoverable VAT unknown: savings excl. and incl. VAT — to be '
+              'confirmed with your accountant.',
+        'ar': 'استرجاع الضريبة غير معروف: الوفورات دون احتساب الضريبة '
+              'وشاملة لها — يُؤكد مع محاسبكم.'},
     'ci_raison_sociale': {'fr': 'Raison sociale', 'en': 'Company name',
                           'ar': 'الاسم التجاري'},
     'ci_siege': {'fr': 'Siège', 'en': 'Head office',

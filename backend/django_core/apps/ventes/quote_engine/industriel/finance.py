@@ -739,7 +739,9 @@ def build(ctx):
             cellules.append(kpi(
                 fmt(economie), "&nbsp;MAD",
                 L("ci_ind_economie_an1", "Économie de l'année 1")
-                + (f" ({base_eco})" if base_eco else ""),
+                + (f" ({base_eco})" if base_eco else "")
+                + (f" — {ci_couverture.economie_ttc(d, 'ind', fmt)}"
+                   if ci_couverture.economie_ttc(d, "ind", fmt) else ""),
                 "economie_annuelle", fmt(economie)))
         if payback is not None:
             cellules.append(kpi(

@@ -4005,7 +4005,7 @@ def _cartes_ci_onepage(chiffres):
                    + (f" ({_L('ci_' + base.lower())})"
                       if base in ("HT", "TTC") else
                       f" ({base})" if base else "")
-                   + ci_onepage.legende_retour(chiffres, _L))
+                   + ci_onepage.legende_retour(chiffres, _L) + ci_onepage.economie_ttc(chiffres, fnum, _L))
         cellules.append((libelle, f"{fnum(eco)} {_L('ci_mad_an')}",
                          _ancre_figure("economie_annuelle", fnum(eco))))
     payback = chiffres.get("payback_ans")

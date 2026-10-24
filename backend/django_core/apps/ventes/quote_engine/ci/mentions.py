@@ -454,6 +454,24 @@ def _declare_lead(data, colonne):
     return None
 
 
+def cle_mention_tva(data, base):
+    """AMOT95 — la clé de la mention TVA de la page 1, lue sur le statut
+    DÉCLARÉ : base ``ht`` (« oui ») ⇒ économies en HT ; base ``deux`` ⇒ HT
+    et TTC, « inconnue » quand le client a répondu « ne sait pas » (entrée
+    résolue de l'étude, sinon colonne du lead) ; autre base ⇒ None."""
+    if base not in ("ht", "deux"):
+        return None
+    if base == "ht":
+        return "ci_tva_declaree_ht"
+    entree = _dict(_dict(_dict(_dict(data).get("etude")).get("etude_ci")).get(
+        "entrees_resolues")).get("tva_recuperable")
+    valeur = entree.get("valeur") if isinstance(entree, dict) else entree
+    valeur = valeur or _declare_lead(_dict(data), "tva_recuperable")
+    if str(valeur or "").strip().lower() in ("inconnu", "ne_sait_pas"):
+        return "ci_tva_inconnue"
+    return "ci_tva_non_declaree"
+
+
 def decarbonation_ci(data):
     """``{cbam, textes{fr,en,ar}}`` (contrat ``proposal_data.json`` ›
     ``synthese_ci.decarbonation``) : la phrase CBAM sourcée SEULEMENT pour un

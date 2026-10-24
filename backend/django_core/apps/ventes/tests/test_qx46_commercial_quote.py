@@ -955,3 +955,60 @@ class TestAmot93VotreInstallation(SimpleTestCase):
         sans = i_render.build_html(dict(augmente, _sans_graphiques=True))
         self.assertNotIn("Votre installation en bref",
                          sans.split('class="page"')[2])
+
+
+class TestAmot95BaseDeclaree(SimpleTestCase):
+    """AMOT95 — base « deux » (TVA récupérable non déclarée) : l'économie de
+    l'année 1 HT ET la TTC servie, chacune étiquetée, sur la couverture et la
+    page énergie ; la mention TVA de la page 1 dit le statut déclaré."""
+
+    TTC = "soit 118 717 MAD TTC"
+
+    def _industriel(self, base="deux"):
+        from apps.ventes.quote_engine.industriel import render as i_render
+        from apps.ventes.quote_engine.industriel import renderer as i_rend
+        from apps.ventes.quote_engine.industriel import sample_data as i_s
+        data = copy.deepcopy(i_s.build())
+        data["totaux_all"] = {"ht_brut": 533333.0, "remise": 0,
+                              "ht_net": 533333.0, "tva": 106667.0,
+                              "ttc": 640000.0}
+        data["etude"] = dict(data["etude"], etude_ci=copy.deepcopy(_ETUDE_CI))
+        economie = copy.deepcopy(_ECONOMIE_CI)
+        economie["base"] = base
+        data["economie_ci"] = economie_ci_publique(economie)
+        return i_render.build_html(i_rend._augment(
+            etude_ci_au_kwc_servi(data))).split('class="page"')
+
+    def test_commercial_couverture_ht_et_ttc(self):
+        self.assertEqual(_ECONOMIE_CI["base"], "deux")
+        p1 = _texte_ci(_pages_ci(_data_ci())[1])
+        self.assertIn("Économies estimées / an (HT)", p1)
+        self.assertIn(self.TTC, p1)
+        self.assertIn("TVA récupérable non déclarée : économies en HT et en "
+                      "TTC.", p1)
+        self.assertNotIn("selon votre régime", p1)
+
+    def test_industriel_couverture_et_page_energie(self):
+        pages = self._industriel()
+        self.assertIn(self.TTC, _texte_ci(pages[1]))
+        self.assertIn(self.TTC, _texte_ci("".join(pages[2:])))
+        sans = self._industriel("ht")
+        self.assertNotIn(self.TTC, _texte_ci("".join(sans)))
+        self.assertIn("TVA récupérable déclarée : économies en HT.",
+                      _texte_ci(sans[1]))
+
+    def test_une_page_ttc_servie(self):
+        from apps.ventes.quote_engine.ci import onepage
+        from apps.ventes.quote_engine.residential.theme import fmt
+        chiffres = chiffres_cles(synthese_ci(_data_ci()))
+        self.assertEqual(chiffres["economie_annuelle_ttc_mad"], 118717.39)
+        mots = {"ci_soit": "soit", "ci_ttc": "TTC"}
+        self.assertIn("118 717 MAD TTC",
+                      onepage.economie_ttc(chiffres, fmt, mots.get))
+        self.assertEqual(onepage.economie_ttc(
+            dict(chiffres, economie_annuelle_ttc_mad=None), fmt, str), "")
+
+    def test_anglais(self):
+        p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])
+        self.assertIn("Recoverable VAT not declared", p1)
+        self.assertIn("i.e. 118 717 MAD incl. VAT", p1)

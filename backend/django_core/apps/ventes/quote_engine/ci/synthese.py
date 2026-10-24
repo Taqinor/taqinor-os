@@ -912,6 +912,9 @@ def chiffres_cles(synthese):
         "libelle_methode": LIBELLES_METHODE.get(methode) if methode else None,
         "economie_annuelle_mad": _num(valeur),
         "base_economie": libelle_base,
+        # AMOT95 — base « deux » : la TTC servie, imprimée à côté de la HT.
+        "economie_annuelle_ttc_mad": _num(economie.get("total_mad_ttc"))
+        if argent.get("base") == "deux" and valeur is not None else None,
         "payback_ans": _num(_dict(argent.get("indicateurs")).get(
             "retour_ans")),
         "revente_kwh_an": _num(revente.get("kwh_an")),
