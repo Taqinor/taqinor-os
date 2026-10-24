@@ -89,6 +89,21 @@ def _gh(*args: str) -> str:
                           text=True, encoding="utf-8", errors="replace").stdout
 
 
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _journal(repo: str, job: str) -> str:
+    """Journal d'un job. Il contient des séquences de couleur : sans
+    `--allow-escape-sequences`, `gh api` refuse de l'afficher (vu en local,
+    gh 2.8x) ; une gh plus ancienne ne connaît pas l'option -> second essai."""
+    url = f"repos/{repo}/actions/jobs/{job}/logs"
+    try:
+        texte = _gh(url, "--allow-escape-sequences")
+    except subprocess.CalledProcessError:
+        texte = _gh(url)
+    return _ANSI_RE.sub("", texte)
+
+
 def chercher(repo: str, head_ref: str, arbre_groupe: str, groupe: dict,
              fuzz_groupe: set) -> str | None:
     def non(raison: str):
@@ -111,7 +126,7 @@ def chercher(repo: str, head_ref: str, arbre_groupe: str, groupe: dict,
                   '.jobs[] | select(.name == "changes") | .id').split()
         if not job:
             continue
-        lu = lire_journal_changes(_gh(f"repos/{repo}/actions/jobs/{job[0]}/logs"))
+        lu = lire_journal_changes(_journal(repo, job[0]))
         if lu is None:
             print(f"Merge queue : run {run}, journal `changes` illisible.", file=sys.stderr)
             continue
