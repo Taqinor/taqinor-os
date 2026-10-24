@@ -203,7 +203,7 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
         fournisseur.save(update_fields=['is_archived'])
         return Response(self.get_serializer(fournisseur).data)
 
-    @extend_schema(request=None, responses=OBJET)
+    @extend_schema(request=None, responses={200: OBJET})  # DELETE servi 200 + detail (api-fuzz-full 24/10)
     @action(detail=True, methods=['delete'], url_path='force-delete')
     def force_delete(self, request, *args, **kwargs):
         """Suppression DÉFINITIVE d'un fournisseur déjà archivé (rôle Admin).

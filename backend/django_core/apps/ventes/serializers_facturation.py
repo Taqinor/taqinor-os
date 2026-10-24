@@ -598,7 +598,7 @@ _MONTANT_FACTURE_PUBLIE = {'type': 'string', 'format': 'decimal',
                            'pattern': MOTIF_ACOMPTE, 'nullable': True}
 
 
-class FactureWriteSerializer(UniciteEn409Mixin, _BornesArgentMixin,
+class FactureWriteSerializer(IdInconnu404Mixin, UniciteEn409Mixin, _BornesArgentMixin,
                              SameCompanyFKSerializerMixin,
                              serializers.ModelSerializer):
     """Création/modification sans lignes imbriquées.

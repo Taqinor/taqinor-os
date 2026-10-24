@@ -163,7 +163,8 @@ class TestBonCommandeFactureTenant(TestCase):
         r = self.api.post('/api/django/ventes/factures/', {
             'client': self.client_b.id, 'taux_tva': '20.00',
         }, format='json')
-        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        # api-fuzz-full 24/10 : client d'une autre société = id inconnu (404).
+        self.assertEqual(r.status_code, 404, getattr(r, 'data', r))
         self.assertEqual(
             Facture.objects.filter(client=self.client_b).count(), 0)
 

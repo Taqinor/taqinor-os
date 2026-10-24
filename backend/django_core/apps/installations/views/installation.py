@@ -760,6 +760,11 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         lignes = list(corps.get('lignes', []))
         texte = corps.get('texte')
         fichier = request.FILES.get('fichier') if request.FILES else None
+        if fichier is None and (request.content_type or '').startswith('multipart/'):
+            # api-fuzz-full 24/10 — le corps multipart publié EXIGE ``fichier`` :
+            # sans lui, l'import « réussissait » à vide (200).
+            return Response({'fichier': ['Ce champ est obligatoire.']},
+                            status=status.HTTP_400_BAD_REQUEST)
         if fichier is not None:
             # Un caractère nul du fichier ferait lever la base (500).
             texte = fichier.read().decode(

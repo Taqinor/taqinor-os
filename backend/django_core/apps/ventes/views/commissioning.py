@@ -207,6 +207,14 @@ class IVCurveCaptureViewSet(CompanyScopedModelViewSet):  # ARC5 (voir note ci-de
                 'pmax_attendu_w',
                 getattr(serializer.instance, 'pmax_attendu_w', None)),
             tolerance_pct=tolerance)
+        if ecart is not None and abs(ecart) >= 10000:
+            # api-fuzz-full 24/10 — ``ecart_pmax_pct`` est un numeric(6,2) :
+            # au-delà de ±9 999,99 % l'écriture levait ``DataError`` (500). Des
+            # mesures conformes au schéma mais incompatibles = refus d'état.
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'pmax_mesure_w': [
+                'Écart Pmax hors capacité (±9 999,99 %) : vérifiez les '
+                'puissances mesurée et attendue.']})
         return ecart, defaut
 
     def create(self, request, *args, **kwargs):

@@ -531,12 +531,27 @@ ContactResponse = _ser('PublicContactResponse', {
 })
 ContactResponses = {200: ContactResponse, 403: DetailResponse}
 
+
 # ADEV98 — « Décliner / demander un délai » (motif fermé, aucun statut écrit).
+def _motifs_declin():
+    from .domain.declin_client import MOTIFS_DECLIN  # domaine léger (aucun modèle)
+    return sorted(MOTIFS_DECLIN)
+
+
 DeclinRequest = _ser('PublicDeclinRequest', {
-    # prix | delai | concurrent | projet_reporte | autre (400 sinon).
+    # api-fuzz-full 24/10 — clé FERMÉE (``motif_valide``) : l'énumération est
+    # publiée par ``DECLIN_AUTRE_TEXTE`` (chaque branche), sans composant d'enum.
     'motif': s.CharField(),
     'texte': s.CharField(required=False, allow_blank=True),
 })
+#: « autre » exige un ``texte`` non blanc après ``strip`` (``motif_valide``) ;
+#: blanc au sens de Python, que ``\s`` (regex du schéma) ne couvre pas en entier.
+DECLIN_AUTRE_TEXTE = {EXTENSION_CORPS_RESSERRE: {'anyOf': [
+    {'properties': {'motif': {'enum': [m for m in _motifs_declin() if m != 'autre']}}},
+    {'required': ['texte'], 'properties': {
+        'motif': {'enum': ['autre']},
+        'texte': {'type': 'string', 'pattern': r'[^\s\u001c-\u001f\u0085]'}}},
+]}}
 DeclinResponse = _ser('PublicDeclinResponse', {
     'detail': s.CharField(),
     'already_sent': s.BooleanField(),
