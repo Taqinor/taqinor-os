@@ -8,16 +8,19 @@ from drf_spectacular.utils import extend_schema, extend_schema_view, inline_seri
 from rest_framework.parsers import JSONParser
 from rest_framework import serializers, status
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
-from ..openapi_helpers import BINARY, BOOL, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, OBJET, P, PDF, STR, corps
-from core.champs_stricts import ChaineStricte, IdInconnu404Mixin, _ids_inconnus_seulement
+from ..openapi_helpers import (
+    BINARY, BOOL, DATE, DATE_OU_VIDE, ID_OU_VIDE, INT, OBJET, P, PDF, STR, choix_ou_vide, corps,
+)
+from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte, IdInconnu404Mixin, _ids_inconnus_seulement
 from core.viewsets import CompanyScopedModelViewSet
 from ..utils.params import (
     ID_MAX, booleen_requete_ou_400, choix_ou_400, corps_objet, date_ou_400, entier_ou_400, id_corps,
-    id_requete_ou_400, types_corps_ou_400, valeur_unique_ou_400,
+    id_requete_ou_400, statut_requete_ou_400, texte_sans_nul_ou_400, types_corps_ou_400, valeur_unique_ou_400,
 )
+from ..corps_achats import UniteControlerScanCorps, valider_corps
 from ..erreurs_achats import ConflitEtat, EtatIncompatible
 from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
@@ -369,9 +372,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
 
-    @extend_schema(request=corps('UniteControlerScanCorps', produit=serializers.IntegerField(),
-                                 quantite=serializers.IntegerField(required=False)),
-                   responses={201: UniteLogistiqueSerializer})
+    @extend_schema(request=UniteControlerScanCorps, responses={201: UniteLogistiqueSerializer})
     @action(detail=True, methods=['post'], url_path='controler-scan')
     def controler_scan(self, request, pk=None):
         """NTWMS11 — poste d'EMBALLAGE : contrôle bloquant d'un produit scanné.
@@ -384,12 +385,15 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         from ..services import controler_scan_emballage
         unite = self.get_object()
         company = request.user.company
+        saisie = valider_corps(UniteControlerScanCorps, request)
         produit = Produit.objects.filter(
-            id=request.data.get('produit'), company=company).first()
+            id=saisie['produit'], company=company).first()
+        if produit is None:  # identifiant inconnu de la société : 404, comme un id de chemin
+            raise NotFound({'produit': ['Objet inexistant.']})
         try:
             controler_scan_emballage(
                 company=company, unite=unite, produit=produit,
-                quantite=request.data.get('quantite') or 1,
+                quantite=saisie.get('quantite') or 1,
                 user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
@@ -647,7 +651,8 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
         self._sauver(serializer)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('statut', STR)]))
+@extend_schema_view(list=extend_schema(parameters=[
+    P('statut', choix_ou_vide(ExpeditionTransporteur.Statut.values))]))
 class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
     """NTWMS9 — expéditions transporteur (étiquette réelle GATED, NoOp sinon).
 
@@ -697,7 +702,8 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        statut = self.request.query_params.get('statut')
+        statut = statut_requete_ou_400(
+            self.request, ExpeditionTransporteur.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
         return qs
@@ -1179,7 +1185,8 @@ class MouvementRebutViewSet(CompanyScopedModelViewSet):
                         status=status.HTTP_201_CREATED)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('statut', STR), P('client', ID_OU_VIDE)]))
+@extend_schema_view(list=extend_schema(parameters=[
+    P('statut', choix_ou_vide(RetourClient.Statut.values)), P('client', ID_OU_VIDE)]))
 class RetourClientViewSet(CompanyScopedModelViewSet):
     """NTWMS23 — retours client (RMA) côté entrepôt.
 
@@ -1204,8 +1211,7 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        params = self.request.query_params
-        statut = params.get('statut')
+        statut = statut_requete_ou_400(self.request, RetourClient.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
         client = id_requete_ou_400(self.request, 'client')  # CI #997 : `null` -> 400
@@ -1289,7 +1295,7 @@ class RetourClientViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(retour).data)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('tiers_nom', STR)]))
+@extend_schema_view(list=extend_schema(parameters=[P('tiers_nom', STR, pattern=MOTIF_SANS_NUL)]))
 class PortailTiersTokenViewSet(CompanyScopedModelViewSet):
     """NTWMS20 — jetons du portail 3PL (lecture seule côté dépositaire).
 
@@ -1308,7 +1314,8 @@ class PortailTiersTokenViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        tiers = self.request.query_params.get('tiers_nom')
+        tiers = texte_sans_nul_ou_400(
+            self.request.query_params.get('tiers_nom'), 'tiers_nom')
         if tiers:
             qs = qs.filter(tiers_nom__icontains=tiers)
         return qs

@@ -5,8 +5,9 @@ from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from ..corps_achats import RetourValiderScanneCorps, valider_corps
 from ..erreurs_achats import statut_refus_metier
-from ..openapi_helpers import INT, P, corps
+from ..openapi_helpers import INT, P
 from core.viewsets import CompanyScopedModelViewSet
 from .document_fige import DocumentFigeMixin
 from apps.ventes.utils.references import create_with_reference
@@ -116,8 +117,7 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
                             status=statut_refus_metier(exc))
         return Response(self.get_serializer(retour).data)
 
-    @extend_schema(request=corps('RetourValiderScanneCorps', bins_source=serializers.DictField(required=False)),
-                   responses={
+    @extend_schema(request=RetourValiderScanneCorps, responses={
         200: inline_serializer('StockRetourValideScanne', {
             'id': serializers.IntegerField(),
             'reference': serializers.CharField(),
@@ -138,11 +138,12 @@ class RetourFournisseurViewSet(DocumentFigeMixin, CompanyScopedModelViewSet):
         from ..services_retour_scanne import valider_retour_scanne
 
         retour = self.get_object()
+        saisie = valider_corps(RetourValiderScanneCorps, request)
         nb_lignes = retour.lignes.count()
         try:
             valider_retour_scanne(
                 retour, request.user,
-                bins_source=request.data.get('bins_source') or {})
+                bins_source=saisie.get('bins_source') or {})
         except ValueError as exc:  # ENF11 : retour pas en brouillon = 409
             return Response({'detail': str(exc)},
                             status=statut_refus_metier(exc))

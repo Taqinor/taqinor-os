@@ -20,13 +20,13 @@ from rest_framework.response import Response
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.champs_stricts import IdInconnu404Mixin
 from core.serializers import ChampsTexteBooleenStricts, CompanyScopedRelationsMixin
-from ..openapi_helpers import BINARY, INT, OBJET, P, STR, corps
+from ..openapi_helpers import BINARY, ID_OU_VIDE, OBJET, P, choix_ou_vide, corps
 from core.viewsets import CompanyScopedModelViewSet
 
 from .. import selectors
 from ..models import DocumentFournisseur, DossierOnboardingFournisseur
 from ..permissions import PeutValiderDossierFournisseur
-from ..utils.params import UniciteEn409Mixin
+from ..utils.params import UniciteEn409Mixin, id_requete_ou_400, statut_requete_ou_400
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 
@@ -81,7 +81,8 @@ class DossierOnboardingFournisseurSerializer(UniciteEn409Mixin,
         return selectors.progression_onboarding(obj)
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('fournisseur', INT), P('statut', STR)]))
+@extend_schema_view(list=extend_schema(parameters=[
+    P('fournisseur', ID_OU_VIDE), P('statut', choix_ou_vide(DossierOnboardingFournisseur.Statut.values))]))
 class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
     """NTP2P7 — dossiers d'entrée en relation fournisseur.
 
@@ -108,11 +109,11 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        params = self.request.query_params
-        fournisseur = params.get('fournisseur')
-        if fournisseur:
+        fournisseur = id_requete_ou_400(self.request, 'fournisseur')
+        if fournisseur is not None:
             qs = qs.filter(fournisseur_id=fournisseur)
-        statut = params.get('statut')
+        statut = statut_requete_ou_400(
+            self.request, DossierOnboardingFournisseur.Statut.values)
         if statut:
             qs = qs.filter(statut=statut)
         return qs
@@ -197,7 +198,8 @@ class DossierOnboardingFournisseurViewSet(CompanyScopedModelViewSet):
             selectors.progression_onboarding(self.get_object()))
 
 
-@extend_schema_view(list=extend_schema(parameters=[P('dossier', INT), P('type_document', STR)]))
+@extend_schema_view(list=extend_schema(parameters=[
+    P('dossier', ID_OU_VIDE), P('type_document', choix_ou_vide(DocumentFournisseur.Type.values))]))
 class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
     """NTP2P7 — pièces légales d'un dossier d'onboarding.
 
@@ -217,11 +219,11 @@ class DocumentFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        params = self.request.query_params
-        dossier = params.get('dossier')
-        if dossier:
+        dossier = id_requete_ou_400(self.request, 'dossier')
+        if dossier is not None:
             qs = qs.filter(dossier_id=dossier)
-        type_document = params.get('type_document')
+        type_document = statut_requete_ou_400(
+            self.request, DocumentFournisseur.Type.values, 'type_document')
         if type_document:
             qs = qs.filter(type_document=type_document)
         return qs

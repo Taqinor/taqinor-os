@@ -219,7 +219,7 @@ class FkViewsSerializersTests(TestCase):
         r = self.api.post(
             f'{BASE}/retours-fournisseur/{retour.id}/valider-scanne/',
             {'bins_source': {str(ligne.id): self.bin_b.id}}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 404, r.content)  # id inconnu de la société
         retour.refresh_from_db()
         self.assertEqual(retour.statut, RetourFournisseur.Statut.BROUILLON)
         self.assertFalse(MouvementStock.objects.filter(
@@ -693,4 +693,71 @@ class CorpsFuzzTests(TestCase):
         self.assertEqual(champ.run_validation([]), [])
         self.assertIsNone(champ.run_validation(None))
         r = self._api_admin().get(f'{BASE}/produits/tracabilite/?serie=0')
+        self.assertEqual(r.status_code, 404, r.content)
+
+
+class FuzzFiltresEtCorpsStockATests(TestCase):
+    """api-fuzz 24/10 — filtres de liste et corps libres : jamais 500."""
+
+    def setUp(self):
+        self.co = make_company('drain-stock-a', 'Drain stock A')
+        self.admin = User.objects.create_user(
+            username='drain_a_admin', password='x', role_legacy='admin',
+            company=self.co)
+        self.api = auth_client(self.admin)
+
+    def test_filtres_de_liste_illisibles_en_400(self):
+        for chemin in (
+                'dossiers-onboarding-fournisseur/?statut=%00',
+                'dossiers-onboarding-fournisseur/?statut=inconnu',
+                'dossiers-onboarding-fournisseur/?fournisseur=abc',
+                'documents-fournisseur/?type_document=%00',
+                'documents-fournisseur/?dossier=99999999999',
+                'expeditions/?statut=%00',
+                'receptions-fournisseur/?statut=%00',
+                'receptions-fournisseur/?bon_commande=abc',
+                'retours-client/?statut=%00',
+                'consignations/?statut=%00',
+                'consignations/?client=abc',
+                'consignations/export-xlsx/?statut=%00',
+                'portails-tiers/?tiers_nom=%00',
+                'catalogue-achat/?q=a%00b',
+                'scanner/resoudre/?code=a%00b',
+                'bons-commande-fournisseur/bcf-similaires/?fournisseur=1&fournisseur=2',
+                'bons-commande-fournisseur/bcf-similaires/?fournisseur=%EE%9E%87',
+        ):
+            r = self.api.get(f'{BASE}/{chemin}')
+            self.assertEqual(r.status_code, 400, (chemin, r.content))
+
+    def test_filtres_de_liste_conformes_200(self):
+        for chemin in (
+                'dossiers-onboarding-fournisseur/?statut=&fournisseur=',
+                'documents-fournisseur/?dossier=1&type_document=autre',
+                'expeditions/?statut=brouillon',
+                'receptions-fournisseur/?statut=brouillon&bon_commande=1',
+                'retours-client/?statut=demande',
+                'consignations/?statut=actif&client=1',
+                'portails-tiers/?tiers_nom=abc',
+                'catalogue-achat/?q=abc',
+        ):
+            r = self.api.get(f'{BASE}/{chemin}')
+            self.assertEqual(r.status_code, 200, (chemin, r.content))
+
+    def test_bcf_similaires_produits_non_ascii_ignores(self):
+        fournisseur = Fournisseur.objects.create(company=self.co, nom='Fourn. drain A')
+        r = self.api.get(
+            f'{BASE}/bons-commande-fournisseur/bcf-similaires/'
+            f'?fournisseur={fournisseur.id}&produits=%C2%B2,3,99999999999999999999')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_valider_scanne_corps_mal_type_400(self):
+        fournisseur = Fournisseur.objects.create(company=self.co, nom='Fourn. drain B')
+        retour = RetourFournisseur.objects.create(
+            company=self.co, reference='RET-DRAIN-A', fournisseur=fournisseur)
+        url = f'{BASE}/retours-fournisseur/{retour.id}/valider-scanne/'
+        for corps in ({'bins_source': [1]}, {'bins_source': {'1': {}}},
+                      {'bins_source': {'1': 1.5}}, [1]):
+            r = self.api.post(url, corps, format='json')
+            self.assertEqual(r.status_code, 400, (corps, r.content))
+        r = self.api.post(url, {'bins_source': {'1': 987654321}}, format='json')
         self.assertEqual(r.status_code, 404, r.content)

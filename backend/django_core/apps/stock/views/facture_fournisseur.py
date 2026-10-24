@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework import serializers
 from ..openapi_helpers import BINARY, DATE_OU_VIDE, INT, LISTE, NUM, P, PDF, STR, corps
-from ..erreurs_achats import IntrouvableMetier
+from ..erreurs_achats import IntrouvableMetier, debordement_compteur_en_409
 from ..utils.params import corps_objet, date_ou_400, id_corps
 from core.viewsets import CompanyScopedModelViewSet
 from apps.ventes.utils.references import create_with_reference
@@ -590,7 +590,7 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
             rows = echeances_facture_fournisseur(
                 request.user.company, facture.pk)
             return Response(rows)
-        tranches = request.data.get('tranches') or []
+        tranches = corps_objet(request).get('tranches') or []
         if not isinstance(tranches, list) or not tranches:
             return Response(
                 {'detail': 'Au moins une tranche est requise.'},
@@ -599,8 +599,11 @@ class FactureFournisseurViewSet(CompanyScopedModelViewSet):
         saisie.is_valid(raise_exception=True)
         tranches = saisie.validated_data
         from ..services import creer_echeancier_facture_fournisseur
-        created = creer_echeancier_facture_fournisseur(
-            request.user.company, facture, tranches)
+        # Montant dérivé (TTC × pourcentage) hors de la colonne : 409, rien d'écrit.
+        with debordement_compteur_en_409(
+                "Montant d'échéance hors capacité : TTC × pourcentage dépasse la limite de la colonne."):
+            created = creer_echeancier_facture_fournisseur(
+                request.user.company, facture, tranches)
         return Response(
             EcheanceFactureFournisseurSerializer(created, many=True).data,
             status=status.HTTP_201_CREATED)

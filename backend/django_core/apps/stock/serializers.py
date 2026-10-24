@@ -18,7 +18,7 @@ from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, ROLES_CI, TYPES_POSE,
 )
 
-from .erreurs_achats import ConflitEtat, IdInconnu404LignesMixin
+from .erreurs_achats import CapaciteMontantsBcfMixin, ConflitEtat, IdInconnu404LignesMixin
 from .openapi_helpers import ChampsStrictsProduitMixin, ChampsStrictsSouplesMixin, DecimalLie
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -1598,7 +1598,7 @@ class LigneBonCommandeFournisseurSerializer(CompanyScopedRelationsMixin,
         return attrs
 
 
-class BonCommandeFournisseurSerializer(SameCompanyFKSerializerMixin,
+class BonCommandeFournisseurSerializer(CapaciteMontantsBcfMixin, SameCompanyFKSerializerMixin,
                                        CompanyScopedRelationsMixin,
                                        ChampsStrictsSouplesMixin, serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est

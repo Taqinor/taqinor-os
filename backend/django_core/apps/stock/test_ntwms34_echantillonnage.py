@@ -267,3 +267,29 @@ class Ntwms34ApiTests(Ntwms34Base):
             enregistrer_controle_reception(
                 reception=reception, user=self.admin,
                 resultat=ControleReception.Resultat.NON_CONFORME)
+
+
+class TestControleQualiteCorpsTypes(Ntwms34Base):
+    """api-fuzz 24/10 — corps libre du verdict : types publiés, jamais 500."""
+
+    def test_corps_mal_type_400(self):
+        reception = self._reception(quantite=2)
+        url = (f'/api/django/stock/receptions-fournisseur/{reception.id}/'
+               'controle-qualite/')
+        api = auth(self.admin)
+        for corps in ({'resultat': 'conforme', 'observation': {}},
+                      {'resultat': 'conforme', 'observation': 'a\x00b'},
+                      {'resultat': 'conforme', 'unites_controlees': 2147483648},
+                      {'resultat': 'conforme', 'unites_controlees': '3'},
+                      {'resultat': 'conforme', 'unites_controlees': -1}, [1]):
+            res = api.post(url, corps, format='json')
+            self.assertEqual(res.status_code, 400, (corps, res.content))
+
+    def test_corps_conforme_200(self):
+        reception = self._reception(quantite=2)
+        res = auth(self.admin).post(
+            f'/api/django/stock/receptions-fournisseur/{reception.id}/'
+            'controle-qualite/',
+            {'resultat': 'conforme', 'unites_controlees': 2, 'observation': 'RAS'},
+            format='json')
+        self.assertEqual(res.status_code, 200, res.content)

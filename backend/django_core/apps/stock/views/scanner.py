@@ -24,11 +24,11 @@ from rest_framework.decorators import api_view, parser_classes, permission_class
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
-from core.champs_stricts import QUANTITE_MAX
+from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL, QUANTITE_MAX
 from ..erreurs_achats import debordement_compteur_en_409, statut_refus_metier
 
 
-@extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=r'\S')], responses={
+@extend_schema(parameters=[P('code', STR, True, 'Code scanné', pattern=MOTIF_NON_BLANC_SANS_NUL)], responses={
     200: inline_serializer('StockScannerResoudreResultat', {
         'type': serializers.CharField(),
         'id': serializers.IntegerField(),
@@ -56,7 +56,7 @@ def scanner_resoudre_view(request):
     from ..selectors import resoudre_code_scanne
 
     code = (request.query_params.get('code') or '').strip()
-    if not code:
+    if not code or '\x00' in code:
         return Response({'detail': 'Code illisible.'},
                         status=status.HTTP_400_BAD_REQUEST)
     resultat = resoudre_code_scanne(request.user.company, code)
