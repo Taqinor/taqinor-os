@@ -5,17 +5,28 @@
 # toutes les phases, graine fixe (`--seed 1`, rejouable), 16 tranches
 # DÉTERMINISTES de chemins (`api_fuzz_scope.py schema --shard i/16`, même rang que
 # `api-fuzz-pr`), chacune sans plafond utile (4 200 s), HEBDOMADAIRE (dimanche
-# 03:00 UTC) + à la demande (dispatch) + à chaque push de la branche de drainage.
+# 03:00 UTC) + à la demande (dispatch ; `paquets` = passe ciblée sur des paquets
+# propriétaires, `max_time` = plafond par tranche).
 # Le verdict par tranche (constats hors dette gelée) est dans l'artefact
 # `schemathesis-report-<i>/verdict-<i>.md` et dans le résumé du job.
 name: api-fuzz-full (hebdomadaire, population entière)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      paquets:
+        description: >-
+          Portée : paquets d'API propriétaires séparés par des espaces (ex. « apps.stock
+          apps.ventes ») — vide = population entière. Les 16 tranches se partagent
+          alors les seules opérations de ces paquets (passe ciblée, quelques minutes).
+        type: string
+        default: ''
+      max_time:
+        description: 'Plafond Schemathesis par tranche, en secondes (4200 = 70 min).'
+        type: string
+        default: '4200'
   schedule:
     - cron: '0 3 * * 0'   # dimanche 03:00 UTC
-  push:
-    branches: [claude/api-fuzz-drain]
 
 concurrency:
   group: api-fuzz-full-${{ github.ref }}
@@ -93,6 +104,9 @@ jobs:
     timeout-minutes: 90
     strategy:
       fail-fast: false
+      # Plan GitHub Free : ~20 jobs concurrents pour tout le dépôt — on en laisse
+      # aux PR gates (mesure de la session « CI gate » du 24/10).
+      max-parallel: 8
       matrix:
         shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     permissions:
@@ -219,7 +233,8 @@ jobs:
           python manage.py spectacular --format openapi-json --file ../../openapi-brut.json
           python ../../scripts/fuzz/api_fuzz_scope.py schema \
             --in ../../openapi-brut.json --out ../../openapi-schema.json \
-            --shard "${{ matrix.shard }}/16"
+            --shard "${{ matrix.shard }}/16" \
+            ${{ inputs.paquets != '' && format('--proprietaires {0}', inputs.paquets) || '' }}
       - name: Ids réels pour les paramètres de chemin (ENF11)
         # Les listes `GET /x/` de fuzz_admin → {préfixe: [ids]} ; lu par le
         # crochet before_call (substitution des cas positifs, 1 sur 4 garde
@@ -240,7 +255,7 @@ jobs:
             --checks all \
             --phases examples,coverage,fuzzing,stateful \
             --mode all \
-            --max-time 4200 \
+            --max-time "${{ inputs.max_time || '4200' }}" \
             --seed 1 \
             --report junit,json \
             --report-dir schemathesis-report \
