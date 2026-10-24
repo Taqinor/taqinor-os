@@ -101,3 +101,10 @@ class UniteControlerScanCorps(serializers.Serializer):
     """``POST unites-logistiques/{id}/controler-scan/``."""
     produit = EntierStrict(min_value=1, max_value=ID_MAX)
     quantite = EntierStrict(required=False, min_value=1, max_value=QUANTITE_MAX)
+
+
+class RapprocherPeseesCorps(serializers.Serializer):
+    """``POST receptions-fournisseur/{id}/rapprocher-pesees/`` : ``note``
+    facultative, vraie chaîne JSON sans caractère nul (un corps non objet
+    répondait 500)."""
+    note = ChaineStricte(required=False, allow_blank=True)

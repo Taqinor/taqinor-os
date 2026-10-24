@@ -10,15 +10,9 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
-from core.champs_stricts import ChaineStricte
 
+from ..corps_achats import RapprocherPeseesCorps, valider_corps
 from ..erreurs_achats import statut_refus_metier
-
-
-class RapprocherPeseesCorps(serializers.Serializer):
-    """Corps de ``rapprocher-pesees`` (api-fuzz) : ``note`` facultative, vraie
-    chaîne JSON sans caractère nul — un corps non objet répondait 500."""
-    note = ChaineStricte(required=False, allow_blank=True)
 
 
 def _pesee_payload(ligne, pesee):
@@ -129,12 +123,11 @@ class PeseeLigneActionsMixin:
         from ..services_catch_weight import rapprocher_pesee_reception
 
         reception = self.get_object()
-        corps_valide = RapprocherPeseesCorps(data=request.data)
-        corps_valide.is_valid(raise_exception=True)
+        corps_valide = valider_corps(RapprocherPeseesCorps, request)
         try:
             result = rapprocher_pesee_reception(
                 reception=reception, user=request.user,
-                note=corps_valide.validated_data.get('note') or None)
+                note=corps_valide.get('note') or None)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=statut_refus_metier(exc))
