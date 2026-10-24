@@ -202,8 +202,8 @@ def public_document(request, token):
 
     # QJ1 — stamp (True = 1re ouverture) ; jamais via le jeton interne (L-INTPREV), ni
     # (ADEV105, jumeau de proposal_pdf) pour l'exemplaire signé d'un devis ACCEPTÉ.
-    accepte = bool(link.devis_id) and link.devis.statut == 'accepte'
-    is_first = _stamp_view_si_public(link, via_interne or accepte, request)
+    is_first = _stamp_view_si_public(
+        link, via_interne or (bool(link.devis_id) and link.devis.statut == 'accepte'), request)
 
     try:
         from .utils.filenames import document_filename
