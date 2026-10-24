@@ -181,6 +181,7 @@ def demarrer_workflow(definition, target, company, user=None, now=None):
         statut=WorkflowInstance.STATUT_EN_COURS,
         etape_courante=1,
         started_le=started,
+        demandeur=user,  # APAR76 — séparation des tâches (verifier_decideur)
     )
 
     step_defs = list(definition.steps.order_by('ordre', 'id'))
@@ -678,14 +679,31 @@ def a_palier_approbateur(user):
     return getattr(user, 'menu_tier', None) in ('admin', 'responsable')
 
 
-def verifier_decideur(user, *, on_behalf_of=None):
+MOTIF_PROPRE_DEMANDE = (
+    'Vous ne pouvez pas approuver votre propre demande '
+    '(séparation des tâches).')
+
+
+def decide_sa_propre_demande(user, demandeur):
+    """APAR76 — vrai si ``user`` est le ``demandeur`` du workflow, hors Admin
+    (règle et message de ``automation.engine.enforce_requester_not_approver``
+    — ``core`` n'importe pas ``automation``). Demandeur inconnu : faux."""
+    return (user is not None and demandeur is not None
+            and user.pk == demandeur.pk
+            and not getattr(user, 'is_admin_role', False))
+
+
+def verifier_decideur(user, *, on_behalf_of=None, demandeur=None):
     """APAR46 — lève ``PermissionDenied`` (403) si ``user`` n'a pas le palier
     approbateur. Une décision prise AU NOM d'un délégant (NTWFL3) vaut le
-    palier du délégant. ``user=None`` (système) passe toujours."""
+    palier du délégant. ``user=None`` (système) passe toujours. APAR76 —
+    refuse aussi le ``demandeur`` qui déciderait sa propre étape."""
     from django.core.exceptions import PermissionDenied
 
     if user is None:
         return
+    if decide_sa_propre_demande(user, demandeur):
+        raise PermissionDenied(MOTIF_PROPRE_DEMANDE)
     if a_palier_approbateur(user) or a_palier_approbateur(on_behalf_of):
         return
     raise PermissionDenied(MOTIF_PALIER)
@@ -716,7 +734,8 @@ def decide_step(
     instance séquentielle classique (un seul membre en attente), ``step``
     EST déjà l'étape que ``etape_courante_de`` aurait résolue — comportement
     identique."""
-    verifier_decideur(user, on_behalf_of=on_behalf_of)  # APAR46
+    verifier_decideur(  # APAR46 (palier) + APAR76 (séparation des tâches)
+        user, on_behalf_of=on_behalf_of, demandeur=step.instance.demandeur)
     if on_behalf_of is not None:
         commentaire = (
             f'[Décidé par {user} au nom de {on_behalf_of}] {commentaire}'
@@ -783,9 +802,10 @@ def approuver_en_masse(steps, *, user=None, commentaire='', now=None):
     porte TOUJOURS un motif explicite en français, jamais un silence.
 
     Sont écartées : une étape qui n'est plus en attente, une étape dont le
-    processus n'est plus en cours, une étape dont un formulaire requis
-    (NTWFL12) n'est pas complété, et une étape dont le formulaire diverge de
-    celui des autres lignes retenues.
+    processus n'est plus en cours, une étape dont ``user`` est le demandeur
+    (APAR76), une étape dont un formulaire requis (NTWFL12) n'est pas
+    complété, et une étape dont le formulaire diverge de celui des autres
+    lignes retenues.
 
     Lève ``ValueError`` si la sélection est vide ou mélange plusieurs
     cohortes (types d'objet ou paliers différents) — aucune approbation
@@ -818,6 +838,9 @@ def approuver_en_masse(steps, *, user=None, commentaire='', now=None):
                 'step_id': step.pk,
                 'motif': "Le processus de cet élément n'est plus en cours.",
             })
+            continue
+        if decide_sa_propre_demande(user, step.instance.demandeur):  # APAR76
+            exclusions.append({'step_id': step.pk, 'motif': MOTIF_PROPRE_DEMANDE})
             continue
         if _formulaire_incomplet(step):
             exclusions.append({
