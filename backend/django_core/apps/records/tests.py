@@ -1233,6 +1233,22 @@ class TestFollowers(TestCase):
         self.api_follower = auth(self.follower_user)
         self.api_owner = auth(self.owner)
 
+    def test_sous_type_avec_nul_ou_demi_substitut_400_pas_500(self):
+        """4e drainage api-fuzz : U+0000 dans ``sous_type`` cassait l'INSERT
+        (500) ; refus nommé, rien d'écrit."""
+        import json
+        for sous_type in ('a\x00b', 'a\ud800b'):
+            resp = self.api_follower.post(
+                '/api/django/records/followers/',
+                json.dumps({'model': 'crm.lead', 'id': self.lead.id,
+                            'sous_type': sous_type}),
+                content_type='application/json')
+            self.assertEqual(resp.status_code, 400, (sous_type, resp.content))
+            self.assertIn('sous_type', resp.json())
+        from apps.records.models import Follower
+        self.assertFalse(Follower.objects.filter(
+            object_id=self.lead.id).exists())
+
     def test_follow_then_comment_notifies_follower(self):
         resp = self.api_follower.post('/api/django/records/followers/', {
             'model': 'crm.lead', 'id': self.lead.id,

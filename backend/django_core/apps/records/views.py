@@ -160,7 +160,7 @@ _TAGGED_CREATION = _S('TagAssocCreation', {
 _FOLLOWER_CREATION = _S('AbonnementCreation', {
     'model': CibleModelField(),
     'id': drf.IntegerField(),
-    'sous_type': drf.CharField(
+    'sous_type': ChaineStricte(
         required=False, allow_blank=True, max_length=40),
 })
 
@@ -271,11 +271,19 @@ def _corps_valide(schema, data):
     return corps.validated_data
 
 
+_CARACTERE_INTERDIT = _re.compile('[\x00\ud800-\udfff]')
+
+
 def _texte_ou_400(valeur, nom):
     """Valeur optionnelle qui doit être une vraie chaîne (400 nommant le
     champ sinon) — ``.strip()`` sur un nombre/une liste levait un 500."""
     if valeur is not None and not isinstance(valeur, str):
         raise drf.ValidationError({nom: ['Chaîne attendue.']})
+    # Un NUL (ou un demi-substitut isolé) ne se range pas en base : 500 à
+    # l'INSERT (api-fuzz, abonnements ``sous_type``). Refus nommé, jamais un 500.
+    if valeur and _CARACTERE_INTERDIT.search(valeur):
+        raise drf.ValidationError({nom: [
+            'Le caractère nul n\u2019est pas autorisé.']})
     return valeur
 
 
