@@ -49,7 +49,7 @@
    "required": false
   },
   {
-   "classe": "LeadDecimalField",
+   "classe": "_JoursIrrigationField",
    "nom": "jours_irrigation_semaine",
    "read_only": false,
    "required": false
