@@ -1156,14 +1156,11 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         return Response(AttachmentSerializer(qs, many=True).data)
 
     @oa.extend_schema(
-        request={'multipart/form-data': {
-            'type': 'object',
-            'properties': {
-                'file': {'type': 'string', 'format': 'binary', 'minLength': 1},
-                'phase': {'type': 'string', 'enum': list(_RELEVE_PHASES)},
-            },
-            'required': ['file'],
-        }},
+        # Corps NOMMÉ (et non un dict libre) : le composant porte
+        # ``requestBody.required`` -- sans lui le fuzz n'envoyait AUCUN corps
+        # et recevait « Fichier requis » (400) sur une requête « conforme ».
+        request=oa.body('AjouterReleveRequete', file=oa.serializers.FileField(),
+                        phase=oa.choice(_RELEVE_PHASES)),
         responses={201: AttachmentSerializer},
     )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-releve',

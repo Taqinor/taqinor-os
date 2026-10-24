@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from rest_framework import serializers
+from django.db import models
 from django.utils import timezone
 
 from core.champs_stricts import (
@@ -14,7 +15,7 @@ from core.mixins import SameCompanyFKSerializerMixin
 from core.champs_stricts import TypageStrictMixin
 from core.serializers import CompanyScopedRelationsMixin
 
-from .champs_corps import sans_substituts
+from .champs_corps import TexteSansSubstitut, sans_substituts
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
@@ -328,6 +329,11 @@ class TicketChecklistItemSerializer(serializers.ModelSerializer):
 
 class TicketSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                        serializers.ModelSerializer):
+    # api-fuzz-full 24/10 — textes de modèle STRICTS (chaîne JSON seulement) :
+    # leur motif publié exclut le caractère nul que DRF refuse (400).
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte, models.TextField: ChaineStricte}
     # ASEC34 — un id d'une autre société reçoit la réponse d'un id absent
     # (400 « objet inexistant »), à la création comme au PATCH.
     # ENF17 — étendu à toutes les FK inscriptibles (client, chantier,
@@ -1077,5 +1083,5 @@ class DowntimeEntreeSerializer(serializers.Serializer):
     debut = serializers.DateTimeField(required=False, allow_null=True)
     ticket = serializers.IntegerField(
         required=False, allow_null=True, min_value=1, max_value=2147483647)
-    motif = serializers.CharField(
+    motif = TexteSansSubstitut(
         required=False, allow_blank=True, allow_null=True)

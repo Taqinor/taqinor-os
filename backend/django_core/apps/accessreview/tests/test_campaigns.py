@@ -35,6 +35,19 @@ class AccessReviewTests(TenantAPITestCase):
             campaign.items.filter(company=self.company).count(),
             campaign.items.count())
 
+    def test_perimetre_role_reference_illisible_perimetre_vide(self):
+        # api-fuzz-full 24/10 : ``perimetre_ref`` est un texte libre au schéma ;
+        # une référence de rôle illisible (ou hors entier 32 bits) ne désigne
+        # aucun rôle -> campagne créée (201) sans item, jamais un 400.
+        for ref in ('\x88î=á', 'abc', '²', '9' * 30):
+            with self.subTest(ref=ref):
+                r = self._admin().post(
+                    self.BASE, {'nom': 'R', 'perimetre': 'role',
+                                'perimetre_ref': ref}, format='json')
+                self.assertEqual(r.status_code, 201, r.content)
+                campagne = AccessReviewCampaign.objects.get(pk=r.json()['id'])
+                self.assertEqual(campagne.items.count(), 0)
+
     def test_textes_stricts_pas_de_nombre_converti(self):
         # CI #997 fuzz : ``perimetre_ref: 0`` était converti en « 0 » (201).
         for champ in ('perimetre_ref', 'nom'):

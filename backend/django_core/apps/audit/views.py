@@ -12,6 +12,7 @@ d'activité » (Directeur par défaut) :
 Tout est company-scopé côté serveur. Les horodatages sont stockés en UTC ; le
 bucketing et l'affichage se font en Africa/Casablanca.
 """
+import re
 from datetime import datetime, timedelta, date as date_cls
 from zoneinfo import ZoneInfo
 
@@ -84,11 +85,20 @@ def _company_qs(request):
     return qs.none()
 
 
+def _ids_utilisateurs(valeurs):
+    """Identifiants d'utilisateur lisibles d'un filtre ``?user=`` : chiffres
+    ASCII seulement et dans l'entier 32 bits (api-fuzz-full 24/10 : « ² » passe
+    ``str.isdigit`` mais pas ``int()`` -> 400 ; un entier géant déborde la
+    colonne). Une valeur illisible est ignorée, comme avant."""
+    return [int(v) for v in valeurs
+            if re.fullmatch(r'[0-9]{1,10}', str(v)) and int(v) <= 2147483647]
+
+
 def _apply_filters(qs, params):
     """Filtres communs au graphe et à la liste."""
     users = params.getlist('user') or params.getlist('user[]')
     if users:
-        qs = qs.filter(user_id__in=[u for u in users if str(u).isdigit()])
+        qs = qs.filter(user_id__in=_ids_utilisateurs(users))
     actions = params.getlist('action') or params.getlist('action[]')
     if actions:
         qs = qs.filter(action__in=actions)
@@ -222,7 +232,7 @@ def _apply_filters_no_range(qs, params):
     période du graphe)."""
     users = params.getlist('user') or params.getlist('user[]')
     if users:
-        qs = qs.filter(user_id__in=[u for u in users if str(u).isdigit()])
+        qs = qs.filter(user_id__in=_ids_utilisateurs(users))
     actions = params.getlist('action') or params.getlist('action[]')
     if actions:
         qs = qs.filter(action__in=actions)
@@ -536,7 +546,7 @@ def security_events_export(request):
     users = (request.query_params.getlist('user')
              or request.query_params.getlist('user[]'))
     if users:
-        qs = qs.filter(user_id__in=[u for u in users if str(u).isdigit()])
+        qs = qs.filter(user_id__in=_ids_utilisateurs(users))
     search = (request.query_params.get('search') or '').strip()
     if search:
         from django.db.models import Q

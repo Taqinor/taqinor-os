@@ -19,8 +19,8 @@ une couche de base (import-linter).
 """
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
-    OpenApiParameter, extend_schema, extend_schema_serializer, extend_schema_view,
-    inline_serializer,
+    OpenApiParameter, OpenApiResponse, extend_schema, extend_schema_serializer,
+    extend_schema_view, inline_serializer,
 )
 from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import (
@@ -2246,7 +2246,10 @@ def _est_directeur_ou_admin(user):
            required=True),
         _q('periode_fin', _PERIODE_TYPE, 'Fin AAAA-MM (>= début).',
            required=True)],
-    responses={(200, 'application/pdf'): OpenApiTypes.BINARY})
+    responses={(200, 'application/pdf'): OpenApiTypes.BINARY,
+               409: OpenApiResponse(description=(
+                   "Conflit d'état : `periode_fin` antérieure à `periode_debut` "
+                   "(relation entre deux paramètres, inexprimable au schéma)."))})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def registre_fiabilite_export_pdf(request):

@@ -103,3 +103,17 @@ class RegistreFiabiliteEndpointTest(TestCase):
             '/api/django/core/registre-fiabilite/export-pdf/'
             '?periode_debut=2026-6&periode_fin=2026-06')
         self.assertEqual(resp.status_code, 400)
+
+    def test_409_de_l_ordre_des_periodes_declare_au_schema(self):
+        # api-fuzz-full 24/10 : le crochet plateforme ne déclare le 409 que sur
+        # les écritures ; cette LECTURE le sert, elle doit le dire.
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from core import urls as core_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/core/', include(core_urls)),
+        ]).get_schema(request=None, public=True)
+        lecture = schema['paths'][
+            '/api/django/core/registre-fiabilite/export-pdf/']['get']
+        self.assertIn('409', lecture['responses'])
