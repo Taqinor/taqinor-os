@@ -870,6 +870,12 @@ def _parts_nuls_absents(case):
     corps = getattr(case, 'body', None)
     if not isinstance(corps, dict) or not _est_multipart(case.operation):
         return
+    # Cas NÉGATIF (CI #1021 fuzz (5)) : un ``null`` tiré POUR violer le schéma
+    # (« champs: Incorrect type ») doit atteindre le serveur — le retirer
+    # rendait la requête conforme et l'oracle « accepted schema-violating »
+    # rouge à tort ; le part « None » part alors tel quel (400 nommé attendu).
+    if not _est_positif(case):
+        return
     for cle in [k for k, v in corps.items() if v is None]:
         corps.pop(cle)
 
