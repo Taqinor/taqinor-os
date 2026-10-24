@@ -451,7 +451,7 @@ class EmailExemplaireSigneTests(_BaseAcceptation):
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
             accept_devis(devis=self.racine, user=None, nom='M. Client')
         sig = DevisSignature.objects.get(devis=self.racine)
-        self.assertEqual(sig.signed_pdf_key, '')
+        self.assertFalse(sig.signed_pdf_key)  # None ou '' : rien de stocké
         corps = self._message_au_client().body
         self.assertIn(PHRASE_SIGNATURE, corps)  # la preuve, elle, existe
         self.assertNotIn('exemplaire signé', corps)
