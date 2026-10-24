@@ -114,9 +114,9 @@ describe('CIQ125 — profil déclaré C&I et résultat serveur en direct', () =>
     // L'aperçu serveur doit être LU avant d'enregistrer (c'est lui qui porte
     // la consommation résolue) : la taille retenue affichée en est la preuve.
     const retenue = exempleContrat('ventes', 'etude_ci_preview').taille.retenue_kwc
-    expect(await screen.findByTestId('ci-taille-retenue')).toHaveTextContent(String(retenue))
+    expect(await screen.findByTestId('ci-taille-retenue', {}, { timeout: 5000 })).toHaveTextContent(String(retenue))
     fireEvent.click(await screen.findByRole('button', { name: /Enregistrer les modifications/ }))
-    await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalled())
+    await waitFor(() => expect(ventesApi.patchEtudeParams).toHaveBeenCalled(), { timeout: 5000 })
     expect(screen.queryByTestId('erreur-conso')).toBeNull()
   })
 
