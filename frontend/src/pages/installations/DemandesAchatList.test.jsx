@@ -209,6 +209,23 @@ describe('DemandesAchatList (FG310)', () => {
     // Le chantier ciblé est pré-sélectionné dans le formulaire.
     expect(screen.getByText('Villa Anfa')).toBeInTheDocument()
   })
+
+  it('ENF15 : le picker lit toutes les pages du catalogue (la page 2 est demandée et listée)', async () => {
+    stockApi.getCatalogueAchat.mockImplementation(({ page } = {}) => Promise.resolve({
+      data: page === 2
+        ? { count: 3, next: null, previous: 'p1', results: [{ id: 3, nom: 'Disjoncteur 32A', sku: 'DJ-32' }] }
+        : {
+          count: 3, next: 'p2', previous: null,
+          results: [{ id: 1, nom: 'Câble 6mm', sku: 'CB-6' }, { id: 2, nom: 'Chevilles', sku: 'CH-1' }],
+        },
+    }))
+    render(<DemandesAchatList />, { wrapper: makeWrapper() })
+    await screen.findAllByText('DA-202607-0007')
+    fireEvent.click(screen.getByRole('button', { name: /Nouvelle demande/i }))
+    fireEvent.click(await screen.findByTestId('catalogue-achat-trigger'))
+    expect(await screen.findByRole('option', { name: /Disjoncteur 32A/ })).toBeInTheDocument()
+    expect(stockApi.getCatalogueAchat).toHaveBeenCalledWith(expect.objectContaining({ page: 2 }))
+  })
 })
 
 // ACHT63 — chantier identifié par sa référence (les chantiers n'ont pas de `nom`).
