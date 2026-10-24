@@ -24,7 +24,7 @@ from .models import (
 )
 from . import services
 from .corps_requete import (
-    GroupeConditionsField, SectionsModeleField, arbre_canonique,
+    EmailSignataire, GroupeConditionsField, SectionsModeleField, arbre_canonique,
     erreurs_groupe_conditions)
 
 #: ADOC26 / api-fuzz-full 24/10 — alias d'ingestion e-mail d'un dossier : vide,
@@ -918,6 +918,9 @@ class DemandeSignatureDocumentSerializer(ChampsStrictsSansDecimalMixin,
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, allow_null=True)
 
+    # api-fuzz 24/10 — vide en réponse d'un circuit multi, adresse valide en écriture.
+    signataire_email = EmailSignataire(
+        max_length=254, label='Email du signataire')
     signataires = serializers.SerializerMethodField()
     # ADOC63 — lien ABSOLU de la cérémonie (« Copier le lien de signature »).
     # Mono : jeton de la demande ; circuit multi : None (chaque destinataire a

@@ -25,6 +25,7 @@ from .models import Lead, LeadActivity, MessageTemplate, PlanActivite, RelanceEt
 from .serializers_cadence import MessageTemplateSerializer, RelanceEtapeSerializer
 from . import schema_docs as sd
 from .cadence_selectors import STATUTS_SUIVI
+from .cadence_temps import instant_utc
 from .controle_suivi import SEGMENTS_ADMIS
 from .params_requete import CorpsTexteMixin, corps_objet, entier_param, texte_verifie
 from .cadence_reponses import CLES_MESSAGE_REPONSE, REPONSES_TOUCHE, TYPES_PIECE_RECUE
@@ -1293,7 +1294,7 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
     @extend_schema(request=sd.corps('CrmReporterRequest',
                                     mode=serializers.ChoiceField(choices=['decaler', 'veille'], required=False),
                                     due_at=serializers.DateTimeField(required=False),
-                                    rappel_le=serializers.RegexField(sd.MOTIF_JOUR, required=False),
+                                    rappel_le=sd.ChampJour(required=False),
                                     rappel_heure=serializers.RegexField(sd.MOTIF_HEURE, required=False)),
                    extensions=sd.REPORTER_ECHEANCE, responses=RelanceEtapeSerializer)
     @action(detail=True, methods=['post'])
@@ -1338,6 +1339,17 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
             quand = _parse_rappel(
                 (request.data.get('rappel_le') or '').strip(),
                 (request.data.get('rappel_heure') or '').strip())
+        # api-fuzz (24/10) — un décalage horaire hors plage Postgres (±15:59,
+        # ex. ``-17:25``) était écrit tel quel dans les touches du réveil :
+        # 500. L'instant est ramené en UTC avant tout calcul (``instant_utc``) ;
+        # un instant non représentable : an 1 → passé (409), an 9999 → invalide.
+        if quand is not None:
+            quand, trop_ancien = instant_utc(quand)
+            if trop_ancien:
+                raise ConflitEtat({'erreurs': {
+                    'due_at' if brut else 'rappel_le': (
+                        '« Reporter au » : cette date est déjà passée — '
+                        'choisissez aujourd’hui ou une date à venir.')}})
         if quand is None:
             return Response(
                 {'due_at': 'Échéance invalide (datetime ISO attendu).'},
