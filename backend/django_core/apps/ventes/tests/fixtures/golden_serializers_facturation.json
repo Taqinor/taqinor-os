@@ -1150,7 +1150,7 @@
      false
     ],
     "cle_tranche": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
@@ -1178,7 +1178,7 @@
      false
     ],
     "conditions_paiement": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
@@ -1220,21 +1220,21 @@
      false
     ],
     "devise": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
      false
     ],
     "dgi_motif_rejet": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
      false
     ],
     "dgi_reference": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
@@ -1283,7 +1283,7 @@
      false
     ],
     "fichier_ubl": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
@@ -1304,7 +1304,7 @@
      false
     ],
     "libelle": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
@@ -1332,7 +1332,7 @@
      false
     ],
     "note": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
@@ -1374,7 +1374,7 @@
      false
     ],
     "reference_commande_client": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
@@ -2050,21 +2050,21 @@
      false
     ],
     "note": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
      false
     ],
     "reference": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
      false
     ],
     "taux": [
-     "DecimalField",
+     "PourcentSouple",
      false,
      true,
      null,
@@ -2103,7 +2103,7 @@
      false
     ],
     "banque_tiree": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
@@ -2201,7 +2201,7 @@
      false
     ],
     "idempotency_key": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
@@ -2236,49 +2236,49 @@
      false
     ],
     "motif_annulation": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
      false
     ],
     "motif_rejet": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
      false
     ],
     "note": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
      false
     ],
     "numero_cheque": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
      false
     ],
     "numero_recu": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
      false
     ],
     "provider_ref": [
-     "CharField",
+     "ChaineStricte",
      true,
      false,
      null,
      false
     ],
     "reference": [
-     "CharField",
+     "ChaineStricte",
      false,
      false,
      null,
