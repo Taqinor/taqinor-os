@@ -187,11 +187,12 @@ def deposer_image_document(calepinage, *, genre, fichier, user=None):
         raise ImageDocumentRefuse(
             'Calepinage non enregistré : aucune image ne peut être '
             'déposée.', champ='calepinage')
-    genre_propre = (genre or '').strip()
+    genre_propre = genre.strip() if isinstance(genre, str) else ''
     if genre_propre not in GENRES_IMAGE:
         raise ImageDocumentRefuse(
             'Genre d’image inconnu : « %s ». Genres admis : %s.'
-            % (genre or '', ', '.join(GENRES_IMAGE)), champ='genre')
+            % (genre if isinstance(genre, str) else '', ', '.join(GENRES_IMAGE)),
+            champ='genre')
 
     octets, nom_recu = _decoder_fichier(fichier)
     if not octets:
