@@ -68,12 +68,11 @@ class StandardPagination(PageNumberPagination):
         return super().get_page_size(request)
 
     def paginate_queryset(self, queryset, request, view=None):
-        # ``page`` répété → 400 ; ``page`` non entier garde le 404 « Page non
-        # valide » de DRF (déjà documenté, déjà un refus).
-        if len(request.query_params.getlist(self.page_query_param)) > 1:
-            raise ValidationError({self.page_query_param: [
-                f'Le paramètre « {self.page_query_param} » ne doit figurer '
-                "qu'une fois."]})
+        # ``page`` répété ou NON ENTIER → 400 (nocturne 24/10/2026, api-fuzz-full :
+        # 205 constats « accepted schema-violating » — DRF lit ``?page=`` vide
+        # comme la page 1 alors que le schéma publie un entier). Un entier hors
+        # plage garde le 404 « Page non valide » de DRF.
+        valider_parametre_entier(request, self.page_query_param)
         return super().paginate_queryset(queryset, request, view)
 
 
