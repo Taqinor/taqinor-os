@@ -242,11 +242,11 @@ unites:
     statut: audité
     groupe: ACRM
     plan: docs/plans/PLAN_AUDIT_CRM.md
-    plans_alimentes: [docs/plans/PLAN_AUDIT_CRM.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md]
+    plans_alimentes: [docs/plans/PLAN_AUDIT_CRM.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_LEAD.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_ACQUISITION.md]
     pr: 863
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-crm.md
-    notes: "Tailles (wc -l, 02/10) : services.py 13 547, selectors.py 5 889, views.py 5 817. Une lane partagée par les précisions v1 pour éviter le triple rapport. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-crm.md) : 45 constats (0 S1, 13 S2, 32 S3), 61 tâches ACRM (TRANSVERSE 49, LEAD 6, DEPLOY 5, CRM 1 — PLAN_AUDIT_CRM.md créé) ; 500 sur clients/segments?segment=dormants rejoué en direct ; société 43 non sondée."
+    notes: "vérifie ACRM du 24/10/2026 (clôture, 64/66 cochées ; dossier docs/audits/2026-10-24-crm-verifie.md) : 16 tâches échantillonnées (graine 641a2266d) — 8 ok, 8 partielles ; aucun S1-S2, 6 écarts S3 → ACRM70-ACRM75 (LEAD 5, ACQUISITION 1), pas de Fable. Tailles (wc -l, 02/10) : services.py 13 547, selectors.py 5 889, views.py 5 817. Une lane partagée par les précisions v1 pour éviter le triple rapport. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-crm.md) : 45 constats (0 S1, 13 S2, 32 S3), 61 tâches ACRM (TRANSVERSE 49, LEAD 6, DEPLOY 5, CRM 1 — PLAN_AUDIT_CRM.md créé) ; 500 sur clients/segments?segment=dormants rejoué en direct ; société 43 non sondée."
 
   - id: X1
     rang: 7
@@ -483,11 +483,11 @@ unites:
     statut: audité
     groupe: APAR
     plan: docs/plans/PLAN_AUDIT_PARAMETRES.md
-    plans_alimentes: [docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_STOCK.md]
+    plans_alimentes: [docs/plans/PLAN_AUDIT_PARAMETRES.md, docs/plans/PLAN_AUDIT_TRANSVERSE.md, docs/plans/PLAN_AUDIT_DEPLOY.md, docs/plans/PLAN_AUDIT_CHANTIERS.md, docs/plans/PLAN_AUDIT_DEVIS.md, docs/plans/PLAN_AUDIT_ACQUISITION.md, docs/plans/PLAN_AUDIT_FACTURATION.md, docs/plans/PLAN_AUDIT_SECURITE.md, docs/plans/PLAN_AUDIT_STOCK.md, docs/plans/PLAN_AUDIT_MOTEUR.md]
     pr: 874
     date: 2026-10-08
     dossier: docs/audits/2026-10-08-parametres.md
-    notes: "Documents envoyés/signés gardent leur version figée ; aucun texte client codé en dur ailleurs. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-parametres.md) : 58 constats (2 S1, 19 S2), 67 tâches APAR ; purge d'audit sans plancher légal, tolérance kWh qui fait diverger facture et devis, textes vivants relus sur des devis envoyés."
+    notes: "vérifie APAR du 24/10/2026 (clôture, 63/65 cochées ; dossier docs/audits/2026-10-24-parametres-verifie.md) : 17 tâches échantillonnées (graine b3c7e4065) — 9 ok, 7 partielles, 1 régression ; 3 écarts S1-S2 reproduits par sonde (TVA 20 % codée sur les cartes Éco/Max de la page client, auto-approbation d'une étape de workflow, composants de kit tronqués à 200) + 10 S3 → APAR69-APAR82 (7 plans) ; 1 critique Fable. Documents envoyés/signés gardent leur version figée ; aucun texte client codé en dur ailleurs. Audit L2 du 08/10/2026 (dossier docs/audits/2026-10-08-parametres.md) : 58 constats (2 S1, 19 S2), 67 tâches APAR ; purge d'audit sans plancher légal, tolérance kWh qui fait diverger facture et devis, textes vivants relus sur des devis envoyés."
 
   - id: D4
     rang: 14
