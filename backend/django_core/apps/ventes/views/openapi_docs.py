@@ -691,12 +691,55 @@ SimulerResponse = _ser('DevisSimulerResponse', {
 # ------------------------------------------------------------ atomic / lignes
 
 
+def _proprietes_etude_params(avec_jeton=True):
+    """CI #1001 (merge group) — le corps PATCH publie EXACTEMENT les clés que
+    ``domain/etude_schema.SCHEMA`` accepte de l'écran : les ENTRÉES non
+    exclusives, typées d'après ``type_attendu`` et nullables (``null`` retire la
+    clé). Une clé inconnue, dérivée, exclusive ou retirée est donc hors schéma
+    (400 attendu) — plus jamais « rejected schema-compliant ».
+
+    api-fuzz — un type ``(int,)`` seul se publie ``integer`` (le serveur refuse
+    ``2.5``) ; ``(int, float)`` reste ``number``. ``avec_jeton=False`` : le
+    jeton optimiste n'est pas une clé d'étude (il vit en tête du corps de
+    ``replace-lines``, jamais DANS ``etude_params``).
+    """
+    from ..domain import etude_schema as _es
+    _json = {str: {'type': 'string'}, int: {'type': 'number'}, float: {'type': 'number'},
+             bool: {'type': 'boolean'}, dict: {'type': 'object'}, list: {'type': 'array'}}
+    props = {}
+    for cle, regle in _es.SCHEMA.items():
+        if regle['nature'] != _es.ENTREE or regle['exclusif']:
+            continue
+        formes = []
+        for t in regle['type']:
+            f = dict(_json[t])
+            if t is int and float not in regle['type']:
+                f = {'type': 'integer'}
+            if f not in formes:
+                formes.append(f)
+        forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
+        props[cle] = {**forme, 'nullable': True}
+    if avec_jeton:
+        props['expected_updated_at'] = {'type': 'string', 'nullable': True}
+    return props
+
+
+#: api-fuzz — ``etude_params`` d'un corps de devis (``replace-lines``,
+#: ``atomic``) : la MÊME liste de clés que le PATCH ``etude-params``, fermée
+#: (``_valider_etude_ecran`` → ``etude_schema.valider`` refuse toute autre clé
+#: en 400 : « le schéma est la seule porte »).
+EtudeParamsEcran = extend_schema_field({
+    'type': 'object', 'nullable': True, 'additionalProperties': False,
+    'properties': _proprietes_etude_params(avec_jeton=False)})(
+    type('EtudeParamsEcran', (s.DictField,), {}))
+
+
 class DevisAtomic(DevisWriteSerializer):
     """Corps de ``POST /devis/atomic/`` : les champs d'en-tête du devis (comme
     ``POST /devis/``) + ``lignes`` (au moins une) + ``etude_params`` (écrit
     par l'écrivain unique d'étude, pas par le sérialiseur d'en-tête)."""
     lignes = s.ListField(child=s.DictField(), min_length=1)
-    etude_params = s.DictField(required=False, allow_null=True)
+    etude_params = EtudeParamsEcran(required=False, allow_null=True)
 
     class Meta(DevisWriteSerializer.Meta):
         fields = list(DevisWriteSerializer.Meta.fields) + ['lignes']
@@ -705,7 +748,7 @@ class DevisAtomic(DevisWriteSerializer):
 ReplaceLinesRequest = _ser('DevisReplaceLinesRequest', {
     'lignes': s.ListField(child=s.DictField(), min_length=1),
     'entete': s.DictField(required=False, allow_null=True),
-    'etude_params': s.DictField(required=False, allow_null=True),
+    'etude_params': EtudeParamsEcran(required=False, allow_null=True),
     'expected_updated_at': _JETON,
 })
 
@@ -855,31 +898,6 @@ EtudeParamsGetResponse = _ser('DevisEtudeParamsResponse', {
     'etude_params': s.DictField(),
     'updated_at': s.CharField(required=False, allow_null=True),
 })
-
-
-def _proprietes_etude_params():
-    """CI #1001 (merge group) — le corps PATCH publie EXACTEMENT les clés que
-    ``domain/etude_schema.SCHEMA`` accepte de l'écran : les ENTRÉES non
-    exclusives, typées d'après ``type_attendu`` et nullables (``null`` retire la
-    clé). Une clé inconnue, dérivée, exclusive ou retirée est donc hors schéma
-    (400 attendu) — plus jamais « rejected schema-compliant ».
-    """
-    from ..domain import etude_schema as _es
-    _json = {str: {'type': 'string'}, int: {'type': 'number'}, float: {'type': 'number'},
-             bool: {'type': 'boolean'}, dict: {'type': 'object'}, list: {'type': 'array'}}
-    props = {}
-    for cle, regle in _es.SCHEMA.items():
-        if regle['nature'] != _es.ENTREE or regle['exclusif']:
-            continue
-        formes = []
-        for t in regle['type']:
-            f = dict(_json[t])
-            if f not in formes:
-                formes.append(f)
-        forme = formes[0] if len(formes) == 1 else {'anyOf': formes}
-        props[cle] = {**forme, 'nullable': True}
-    props['expected_updated_at'] = {'type': 'string', 'nullable': True}
-    return props
 
 
 EtudeParamsPatchRequest = {

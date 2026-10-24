@@ -410,6 +410,11 @@ class DevisEditionActionsMixin:
         refus = _refus_verrou(devis, request)
         if refus is not None:
             return refus
+        # api-fuzz — ``null``, une liste ou un nombre en corps : 400, pas
+        # ``AttributeError`` (500) sur ``request.data.get``.
+        if not isinstance(request.data, dict):
+            return Response({'detail': 'Corps JSON objet attendu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
