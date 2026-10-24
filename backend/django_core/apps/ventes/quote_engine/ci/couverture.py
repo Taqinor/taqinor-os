@@ -157,20 +157,28 @@ def bandeau_reserve(d, cle, prefixe):
     liste = (f'<div class="{prefixe}-reserve-l">'
              + libelle(d, "ci_a_confirmer", "À confirmer : ")
              + " · ".join(a_confirmer) + "</div>") if a_confirmer else ""
-    postes = postes_hors_total(d.get(f"{cle}_synthese"))
+    postes = ligne_postes_hors_total(d, d.get(f"{cle}_synthese"))
     if postes:
-        # AMOT88 — chaque poste dit son rôle en mots simples (« câble DC —
-        # <article> », « structure de fixation »), dans la langue du document.
-        from .synthese import texte_postes
-        liste = (f'<div class="{prefixe}-reserve-l">'
-                 + libelle(d, "ci_a_chiffrer_hors_total", "À chiffrer après "
-                           "la visite technique (hors total) : ")
-                 + texte_postes(postes_echappes(postes), roles_client(d))
+        liste = (f'<div class="{prefixe}-reserve-l">' + postes
                  + "</div>") + liste
     bandeau = (BANDEAU_RESERVE if langue(d) == "fr"
                else texte(TEXTES_VISITE, langue(d)).rstrip("."))
     return (f'<div class="{prefixe}-reserve"><b>{bandeau}</b>'
             f'{liste}</div>')
+
+
+def ligne_postes_hors_total(d, synthese):
+    """AMOT86/AMOT88 — « À chiffrer après la visite technique (hors total) :
+    câble DC — <article>, structure de fixation » (rôle en mots simples,
+    dans la langue du document, JAMAIS un montant), ou '' sans poste — UNE
+    phrase pour le bandeau des couvertures et le une-page C&I."""
+    postes = postes_hors_total(synthese)
+    if not postes:
+        return ""
+    from .synthese import texte_postes
+    return (libelle(d, "ci_a_chiffrer_hors_total", "À chiffrer après la "
+                    "visite technique (hors total) : ")
+            + texte_postes(postes_echappes(postes), roles_client(d)))
 
 
 def css_bandeau(prefixe, gold, ink, muted):

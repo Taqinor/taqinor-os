@@ -341,6 +341,10 @@ SYNTHESE_AGRICOLE = None
 # sur ``synthese_ci``) : la MÊME projection que la couverture du document
 # complet et /proposition. None hors commercial/industriel.
 CHIFFRES_CI = None
+# AMOT86 — la ``synthese_ci`` dont ``CHIFFRES_CI`` est la projection : le
+# une-page y lit le titre servi du bloc investissement (``ci.couverture.
+# titre_investissement``) et ses postes hors total. None hors C&I.
+SYNTHESE_CI = None
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
 PAY_A, PAY_M, PAY_S = 30, 60, 10
@@ -3976,6 +3980,22 @@ def _cartes_pompage_synthese(synthese):
     return cellules
 
 
+def _doc_ci():
+    """AMOT86 — la langue et les libellés du document sous la forme que lisent
+    les morceaux partagés des couvertures C&I (``ci.couverture``)."""
+    return {"langue_sortie": LANGUE_SORTIE, "libelles_document": LIBELLES_DOC}
+
+
+def _couverture_ci():
+    """Le module ``ci.couverture`` (import paresseux, exécution directe du
+    moteur depuis son dossier comprise)."""
+    try:
+        from .ci import couverture
+    except ImportError:  # exécution directe du moteur depuis son dossier
+        from ci import couverture
+    return couverture
+
+
 def _cartes_ci_onepage(chiffres):
     """CIQ210 (complément) — vignettes « Production annuelle », « Économies
     estimées / an (base) » et « Retour estimé » du une-page C&I, lues sur
@@ -4002,6 +4022,13 @@ def _cartes_ci_onepage(chiffres):
                    + (f" ({_L('ci_' + base.lower())})"
                       if base in ("HT", "TTC") else
                       f" ({base})" if base else ""))
+        if chiffres.get("postes_hors_total"):
+            # AMOT86 (D-ACI-2=a) — postes hors total : la légende de la
+            # couverture dit sur quel prix le retour sera calculé.
+            libelle += (
+                '<div style="font-size:5pt;font-weight:600;'
+                'text-transform:none;letter-spacing:0;margin-top:1px;">'
+                + _L("ci_retour_prix_complet") + "</div>")
         cellules.append((libelle, f"{fnum(eco)} {_L('ci_mad_an')}",
                          _ancre_figure("economie_annuelle", fnum(eco))))
     payback = chiffres.get("payback_ans")
@@ -4294,8 +4321,27 @@ def page_onepage(items, tronquees=0):
     # `_L(...)` : écrit en dur, il laissait « Sous-total HT » dans le document
     # anglais et arabe (un littéral français voyage dans le HTML livré, même
     # invisible à l'impression). Aucun libellé de ce bloc ne s'écrit en dur.
-    totals_html = _tot_line(_L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD",
-                            fig="sous_total_ht")
+    # AMOT86 (D-ACI-2=a) — une-page C&I dont des postes restent « à chiffrer
+    # après la visite » : le bloc porte le TITRE servi de la couverture
+    # (« Investissement hors postes à chiffrer après la visite ») et, sous le
+    # total, UNE ligne qui nomme ces postes sans montant. Sans poste : rien,
+    # octet pour octet.
+    _titre_hv = _postes_hv = ""
+    if isinstance(CHIFFRES_CI, dict) and CHIFFRES_CI.get("postes_hors_total"):
+        _cv = _couverture_ci()
+        _base_ci = ((SYNTHESE_CI or {}).get("argent") or {}).get("base")
+        _titre_hv = (
+            f'<div style="font-size:8pt;font-weight:800;color:{CN};'
+            f'margin-bottom:2px;">'
+            f'{_cv.titre_investissement(_doc_ci(), SYNTHESE_CI, _base_ci)}'
+            f'</div>')
+        _postes_hv = (
+            f'<div style="font-size:6.5pt;color:{CG7};margin-top:3px;'
+            f'line-height:1.3;">'
+            f'{_cv.ligne_postes_hors_total(_doc_ci(), SYNTHESE_CI)}</div>')
+    totals_html = _titre_hv + _tot_line(
+        _L("sous_total_ht"), _fmt2(total_ht) + "&nbsp;MAD",
+        fig="sous_total_ht")
     if DISCOUNT_PCT > 0:
         _pct = pct_fr(DISCOUNT_PCT)  # AMOT24
         totals_html += _tot_line(
@@ -4327,7 +4373,7 @@ def page_onepage(items, tronquees=0):
     # QJR122 — même chaîne additive que la page 2 : le Total TTC du une-page
     # s'imprime au CENTIME (il était seul arrondi à l'unité de son bloc).
     totals_html += _tot_line(_L("total_ttc"), _fmt2(total) + "&nbsp;MAD", navy=True,
-                             fig="total_ttc")
+                             fig="total_ttc") + _postes_hv
 
     # ── XSAL5 — Bloc « Options proposées » (opt-in, HORS total) ──────────────
     # Rendu SEUL : n'affiche que les add-ons proposés (P.U. + total TTC), jamais
@@ -4379,6 +4425,10 @@ def page_onepage(items, tronquees=0):
         if ONEPAGE_BRANCHE == "avec" else _libelle_avec_min)
 
     header_html = _onepage_header_html()
+    # AMOT92 — une-page C&I : le téléphone mis en forme comme sur les
+    # couvertures (« +212 6 61 23 45 93 ») ; résidentiel inchangé.
+    _tel_op = (_couverture_ci().format_telephone(CLIENT_PHONE)
+               if CHIFFRES_CI is not None else CLIENT_PHONE)
     # AGR313 — « Bon pour accord » compact du une-page agricole (nom, date,
     # signature) ; les options à cocher et le schéma restent au 3 pages.
     bpa_html = (_bon_pour_accord_compact_html()
@@ -4400,7 +4450,7 @@ def page_onepage(items, tronquees=0):
     <div style="font-size:6.5pt;font-weight:700;color:{CG4};text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">{_L("client")}</div>
     <div style="font-size:11pt;font-weight:700;color:{CN};">{CLIENT_NAME}</div>
     <div style="font-size:8.5pt;color:{CG7};margin-top:2px;">{CLIENT_ADDR}</div>
-    <div style="font-size:8.5pt;color:{CG4};margin-top:1px;">{CLIENT_PHONE}</div>
+    <div style="font-size:8.5pt;color:{CG4};margin-top:1px;">{_tel_op}</div>
     {'<div style="font-size:8pt;color:' + CG7 + ';margin-top:3px;"><span style="color:' + CG4 + ';font-weight:600;">ICE&#160;:</span>&#160;' + CLIENT_ICE + '</div>' if CLIENT_ICE else ''}
   </div>
 
@@ -4892,14 +4942,17 @@ def apply_quote_data(data: dict) -> None:
     # le document complet et /proposition ; plus jamais ``prod_kwh`` (par
     # ville) ni ``eco_s_ann`` (``calculate_savings_roi``, BT/60 %). Une
     # synthèse illisible ⇒ dict VIDE ⇒ vignettes omises, jamais un repli.
-    global CHIFFRES_CI
+    global CHIFFRES_CI, SYNTHESE_CI
     CHIFFRES_CI = None
+    SYNTHESE_CI = None
     if MODE_INSTALLATION.strip().lower() in ("commercial", "industriel"):
         try:
             from .ci.synthese import chiffres_cles, synthese_ci
-            CHIFFRES_CI = chiffres_cles(synthese_ci(data) or {})
+            SYNTHESE_CI = synthese_ci(data) or {}
+            CHIFFRES_CI = chiffres_cles(SYNTHESE_CI)
         except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici (D-ENF22-BLE001)
             logger.warning("generate_devis_premium.apply_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
+            SYNTHESE_CI = {}
             CHIFFRES_CI = {}
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
     INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))
