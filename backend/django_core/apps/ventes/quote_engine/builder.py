@@ -4469,19 +4469,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # est saisie : sinon le module retombe sur son repli daté (Guide FDA 2024)
     # et tout autre devis reste octet-identique. Ne casse jamais un rendu.
     if mode == "agricole":
-        try:
-            from apps.parametres.selectors import regle_fda_pompage_pour
-            _regle_fda = regle_fda_pompage_pour(
-                getattr(devis, "company", None))
-        except Exception:  # noqa: BLE001 — repli daté du module (D-ENF22-BLE001)
-            logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
-            _regle_fda = {}
-        if _regle_fda:
-            data["regle_fda_societe"] = _regle_fda
-        # D-AGQ-13 — le SAV : délai d'intervention saisi par la société.
-        _delai_sav = _delai_intervention_societe(devis)
-        if _delai_sav:
-            data["delai_intervention_sav_heures"] = _delai_sav
+        # AGR306 + D-AGQ-13 — règle FDA et délai SAV saisis par la société.
+        _poser_fda_et_sav(data, devis)
         # ── AGR307 — le bloc PUBLIC ``economie_pompage`` (AGR3, calculé à la
         # lecture, jamais stocké ; SANS ``vue_interne``), recopié tel quel par
         # ``agricole/synthese`` dans ``synthese_agricole['economies']``. Posé
@@ -4702,6 +4691,23 @@ def services_ci_du_devis(devis):
         logger.exception("services_ci: lignes O&M illisibles (devis %s)",
                          getattr(devis, "reference", "?"))
     return om, _delai_intervention_societe(devis)
+
+
+def _poser_fda_et_sav(data, devis):
+    """AGR306 — la règle FDA SAISIE par la société (``regle_fda_societe``) et,
+    D-AGQ-13, le délai d'intervention SAV saisi (``delai_intervention_sav_heures``) :
+    posés SEULEMENT quand ils sont saisis ; ne casse jamais un rendu."""
+    try:
+        from apps.parametres.selectors import regle_fda_pompage_pour
+        regle = regle_fda_pompage_pour(getattr(devis, "company", None))
+    except Exception:  # noqa: BLE001 — repli daté du module (D-ENF22-BLE001)
+        logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
+        regle = {}
+    if regle:
+        data["regle_fda_societe"] = regle
+    delai = _delai_intervention_societe(devis)
+    if delai:
+        data["delai_intervention_sav_heures"] = delai
 
 
 def _delai_intervention_societe(devis):
