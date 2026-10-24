@@ -1,0 +1,54 @@
+{
+  "sha": "ccf89572b6864b54ff7a2e825eca752cf80622a9",
+  "date": "2026-10-24",
+  "groupe": "AGNR",
+  "verdict": "PASS",
+  "couvre": [
+    "AGNR34"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P3.4",
+      "taches": [
+        "AGNR34"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-24/AGNR34-P3.4-P5.1.txt"
+    },
+    {
+      "id": "P5.1",
+      "taches": [
+        "AGNR34"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-24/AGNR34-P3.4-P5.1.txt"
+    }
+  ]
+}
