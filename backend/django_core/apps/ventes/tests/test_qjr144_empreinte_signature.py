@@ -206,19 +206,24 @@ class LesSignaturesDejaPoseesRestentValides(_BaseEmpreinte):
         """ADEV96 — une correction de l'étude C&I SEULE change le sceau v3,
         jamais le v2 (portée d'hier)."""
         from unittest import mock
+        from apps.ventes.domain.modifiabilite import figures_sceau
         cible = 'apps.ventes.domain.modifiabilite.synthese_ci_lue'
         etude = {'systeme': {'kwc': 55, 'production_kwh_an': 95425},
                  'energie': {'taux_autoconso_pct': 72.8}}
         with mock.patch(cible, return_value=etude):
-            v3_avant = DevisSignature.compute_content_hash(self.devis)
-            v2_avant = DevisSignature.compute_content_hash(
-                self.devis, version=DevisSignature.CONTENT_HASH_V2)
+            figures = figures_sceau(self.devis)
+        v3_avant = DevisSignature.compute_content_hash(
+            self.devis, figures=figures)
+        v2_avant = DevisSignature.compute_content_hash(
+            self.devis, version=DevisSignature.CONTENT_HASH_V2)
         etude['energie']['taux_autoconso_pct'] = 80
         with mock.patch(cible, return_value=etude):
-            self.assertNotEqual(
-                DevisSignature.compute_content_hash(self.devis), v3_avant)
-            self.assertEqual(DevisSignature.compute_content_hash(
-                self.devis, version=DevisSignature.CONTENT_HASH_V2), v2_avant)
+            figures = figures_sceau(self.devis)
+        self.assertNotEqual(DevisSignature.compute_content_hash(
+            self.devis, figures=figures), v3_avant)
+        self.assertEqual(DevisSignature.compute_content_hash(
+            self.devis, version=DevisSignature.CONTENT_HASH_V2,
+            figures=figures), v2_avant)
 
     def test_le_pdf_signe_porte_son_empreinte_sha256(self):
         """ADEV96 — ``_store_signed_pdf`` pose le SHA-256 des octets remis ;

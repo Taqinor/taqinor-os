@@ -207,7 +207,9 @@ def verifier_empreinte_signature(devis, *, lignes=None):
             'signee': False, 'intacte': None, 'version': None,
             'message': "Ce devis ne porte aucune signature électronique.",
         }
-    intacte, version = signature.verifier_contenu(lignes=lignes)
+    from apps.ventes.domain.modifiabilite import figures_sceau
+    intacte, version = signature.verifier_contenu(
+        lignes=lignes, figures=figures_sceau(devis))
     if intacte is None:
         return {
             'signee': True, 'intacte': None, 'version': None,

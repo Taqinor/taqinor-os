@@ -735,11 +735,13 @@ def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True,
     try:
         from django.utils import timezone
         from apps.ventes.models import DevisSignature
+        from apps.ventes.domain.modifiabilite import figures_sceau
         if DevisSignature.objects.filter(devis=devis).exists():
             return
         # NPLUS1 — lignes déjà chargées par l'appelant quand il les a (le hash
         # est identique : elles sont retriées par ``id`` côté modèle).
-        content_hash = DevisSignature.compute_content_hash(devis, lignes=lignes)
+        content_hash = DevisSignature.compute_content_hash(
+            devis, lignes=lignes, figures=figures_sceau(devis))
         # ``signature_image`` peut être une data-URL volumineuse — on la borne
         # raisonnablement (les payloads canvas font ~quelques Ko).
         img = (signature_image or '')

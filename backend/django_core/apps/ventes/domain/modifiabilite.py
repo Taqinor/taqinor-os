@@ -516,6 +516,14 @@ def figures_etude_scellees(synthese):
     }
 
 
+def figures_sceau(devis):
+    """ADEV96 — les chiffres de l'étude C&I que le sceau v3 de
+    ``DevisSignature`` couvre (étude complète, sans filtre de lien). Calculés
+    ICI, dans la couche domaine : ``ventes.models`` ne relance jamais le
+    moteur (contrat import-linter « Core domain models stay decoupled »)."""
+    return figures_etude_scellees(synthese_ci_lue(devis))
+
+
 def _est_envoye(devis):
     from apps.ventes.models import Devis
     statut = (Devis.objects.filter(pk=getattr(devis, 'pk', None))

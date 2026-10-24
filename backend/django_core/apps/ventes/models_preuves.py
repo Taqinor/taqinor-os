@@ -50,17 +50,21 @@ class PreuveSignatureB2B(models.Model):
         abstract = True
 
     @classmethod
-    def _suffixe_sceau_etude(cls, devis, version):
+    def _suffixe_sceau_etude(cls, figures, version):
         """ADEV96 — la part ÉTUDE du payload v3 (``''`` avant v3 : les
-        empreintes v1/v2 déjà posées se reproduisent à l'octet). Hors C&I, la
-        part vaut ``etude=null`` sans aucune requête (le mode suffit)."""
+        empreintes v1/v2 déjà posées se reproduisent à l'octet).
+
+        ``figures`` — les chiffres scellés de l'étude C&I
+        (``domain.modifiabilite.figures_etude_scellees``), FOURNIS par
+        l'appelant : la couche domaine à l'acceptation, la signature relue à la
+        vérification. ``None`` (hors C&I) donne ``etude=null``. Ce module
+        n'importe RIEN de la couche domaine : ``ventes.models`` le charge en
+        tête, et le contrat import-linter « Core domain models stay
+        decoupled » interdit toute arête modèles → domaine (qui atteint
+        crm/stock/sav/installations par les services)."""
         if (version or cls.CONTENT_HASH_VERSION) < cls.CONTENT_HASH_V3:
             return ''
         import json
-        from apps.ventes.domain.modifiabilite import (
-            figures_etude_scellees, synthese_ci_lue,
-        )
-        figures = figures_etude_scellees(synthese_ci_lue(devis))
         return (f"|v{cls.CONTENT_HASH_V3}|etude="
                 f"{json.dumps(figures, sort_keys=True, ensure_ascii=False, default=str)}")
 
