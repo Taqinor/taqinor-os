@@ -29,8 +29,18 @@ export function clientProposalUrl(proposalPath, siteUrl = DEFAULT_PUBLIC_SITE_UR
 }
 
 // Texte du message WhatsApp qui accompagne le lien de la proposition.
-export function proposalWhatsappText(name, proposalUrl) {
+export function proposalWhatsappText(name, proposalUrl, { agricole = false } = {}) {
   const hello = name?.trim() ? `Bonjour ${name.trim()}, ` : 'Bonjour, '
+  // D-AGQ-15 (fondateur, 24/10/2026) — un fermier reçoit le texte du pompage :
+  // ce que la page contient, sans aucun chiffre (la ligne de devis n'en porte pas).
+  if (agricole) {
+    return (
+      `${hello}voici votre étude de pompage solaire Taqinor : ${proposalUrl} ` +
+      `Vous y trouvez la pompe et le champ solaire choisis pour votre point d'eau, ` +
+      `l'eau livrée mois par mois, le prix et les étapes (dont l'accord FDA si vous demandez l'aide). ` +
+      `N'hésitez pas à me poser vos questions.`
+    )
+  }
   return (
     `${hello}voici votre proposition d'installation solaire Taqinor : ${proposalUrl} ` +
     `N'hésitez pas à me poser vos questions.`
