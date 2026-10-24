@@ -2128,9 +2128,9 @@ def proposal_pdf(request, token):
     if not _section_servie(link, 'pdf'):
         return _not_found()
 
-    # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV :
-    # jamais de stamp/notification via le jeton interne.
-    is_first = _stamp_view_si_public(link, link.via_interne, request)
+    # QJ1 — stamp (True = 1re ouverture) ; jamais via le jeton interne, ni (ADEV105)
+    # pour l'exemplaire signé d'un devis ACCEPTÉ : seule la lecture d'avant compte.
+    is_first = _stamp_view_si_public(link, link.via_interne or link.devis.statut == 'accepte', request)
     _notify_open(link, request, is_first=is_first)
 
     try:
