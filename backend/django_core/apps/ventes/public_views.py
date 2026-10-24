@@ -199,10 +199,10 @@ def public_document(request, token):
         return _noindex(Response(
             {'detail': 'otp_required'}, status=status.HTTP_403_FORBIDDEN))
 
-    # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV : jamais
-    # de stamp/notification via le jeton interne (via_interne=True → toujours
-    # False, voir _stamp_view_si_public).
-    is_first = _stamp_view_si_public(link, via_interne, request)
+    # QJ1 — stamp (True = 1re ouverture) ; jamais via le jeton interne (L-INTPREV), ni
+    # (ADEV105, jumeau de proposal_pdf) pour l'exemplaire signé d'un devis ACCEPTÉ.
+    accepte = bool(link.devis_id) and link.devis.statut == 'accepte'
+    is_first = _stamp_view_si_public(link, via_interne or accepte, request)
 
     try:
         from .utils.filenames import document_filename

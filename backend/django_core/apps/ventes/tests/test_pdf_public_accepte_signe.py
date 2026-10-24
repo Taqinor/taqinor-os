@@ -174,6 +174,23 @@ class TestPdfPublicAccepteSigne(TestCase):
         premiere.assert_not_called()
         reouverture.assert_not_called()
 
+    @patch('apps.crm.services.notify_devis_opened')
+    @patch('apps.ventes.public.lecture_views._notify_first_open')
+    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/rerendu.pdf')
+    def test_route_document_jumelle_ne_compte_pas_l_exemplaire_signe(
+            self, mock_gen, _dl, premiere, reouverture):
+        """ADEV105 — jumeau : ``public-document`` sert le MÊME exemplaire signé
+        par le MÊME jeton ; il ne compte pas non plus de lecture."""
+        _, link = self._devis('DEV-ADEV105-C', 'accepte', CLE_SIGNEE)
+        self.assertEqual(self._get('public-document', link, mock_gen),
+                         OCTETS_SIGNES)
+        link.refresh_from_db()
+        self.assertEqual((link.view_count, link.first_viewed_at), (0, None))
+        premiere.assert_not_called()
+        reouverture.assert_not_called()
+
     @patch('apps.ventes.public.lecture_views._notify_first_open')
     @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
     @patch('apps.ventes.public_views.generate_premium_devis_pdf',
