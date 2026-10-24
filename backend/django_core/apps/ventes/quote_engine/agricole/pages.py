@@ -1278,14 +1278,10 @@ def _dimensionnement_annexe(d, synthese, lg):
 def _garanties_et_cartouche_annexe(d, synthese, lg, nom_societe):
     """AGQ31 — garanties par composant (lues sur les lignes, AGR305) et le
     cartouche « Étude réalisée par … le … »."""
-    gars = []
-    for g in synthese.get("garanties") or []:
-        if not isinstance(g, dict) or not g.get("libelle"):
-            continue
-        mois = g.get("mois")
-        duree = (_duree(lg, mois) if isinstance(mois, int)
-                 and not isinstance(mois, bool) and mois > 0 else None)
-        gars.append(theme._esc(str(g["libelle"])) + (f" : {duree}" if duree else ""))
+    # Même libellé TRADUIT que la page 3 (``_libelle_garantie``) : plus de
+    # libellé français brut ni de durée répétée dans l'annexe (rejeu 24/10).
+    gars = [_libelle_garantie(lg, g) for g in synthese.get("garanties") or []
+            if isinstance(g, dict) and g.get("libelle")]
     html = (f'<div class="ag-li">{_t(lg, "agr_annexe_garanties", liste="; ".join(gars))}'
             f'</div>' if gars else "")
     return html + (f'<div class="ag-note">{_t(lg, "agr_annexe_cartouche", societe=theme._esc(str(nom_societe or "")), date=theme._esc(str(d.get("date") or "")))}</div>')
