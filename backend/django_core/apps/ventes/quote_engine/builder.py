@@ -4470,7 +4470,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # et tout autre devis reste octet-identique. Ne casse jamais un rendu.
     if mode == "agricole":
         # AGR306 + D-AGQ-13 — règle FDA et délai SAV saisis par la société.
-        _poser_fda_et_sav(data, devis)
+        from .reglages_societe import poser_fda_et_sav
+        poser_fda_et_sav(data, devis)
         # ── AGR307 — le bloc PUBLIC ``economie_pompage`` (AGR3, calculé à la
         # lecture, jamais stocké ; SANS ``vue_interne``), recopié tel quel par
         # ``agricole/synthese`` dans ``synthese_agricole['economies']``. Posé
@@ -4690,40 +4691,10 @@ def services_ci_du_devis(devis):
     except Exception:  # noqa: BLE001 — un PDF ne casse jamais là-dessus (D-ENF22-BLE001)
         logger.exception("services_ci: lignes O&M illisibles (devis %s)",
                          getattr(devis, "reference", "?"))
-    return om, _delai_intervention_societe(devis)
+    from .reglages_societe import delai_intervention_societe
+    return om, delai_intervention_societe(devis)
 
 
-def _poser_fda_et_sav(data, devis):
-    """AGR306 — la règle FDA SAISIE par la société (``regle_fda_societe``) et,
-    D-AGQ-13, le délai d'intervention SAV saisi (``delai_intervention_sav_heures``) :
-    posés SEULEMENT quand ils sont saisis ; ne casse jamais un rendu."""
-    try:
-        from apps.parametres.selectors import regle_fda_pompage_pour
-        regle = regle_fda_pompage_pour(getattr(devis, "company", None))
-    except Exception:  # noqa: BLE001 — repli daté du module (D-ENF22-BLE001)
-        logger.warning("builder.build_quote_data : erreur ignorée (mode dégradé)", exc_info=True)
-        regle = {}
-    if regle:
-        data["regle_fda_societe"] = regle
-    delai = _delai_intervention_societe(devis)
-    if delai:
-        data["delai_intervention_sav_heures"] = delai
-
-
-def _delai_intervention_societe(devis):
-    """``CompanyProfile.delai_intervention_suivi_heures`` de la société du
-    devis (CIQ622, D-AGQ-13), ``None`` s'il n'est pas saisi — aucun défaut."""
-    company = getattr(devis, "company", None)
-    if company is None:
-        return None
-    try:
-        from apps.parametres.models_company import CompanyProfile
-        return (CompanyProfile.objects.filter(company=company)
-                .values_list("delai_intervention_suivi_heures",
-                             flat=True).first())
-    except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
-        logger.warning("builder.services_ci_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
-        return None
 
 
 # ── QJR30 — ÉCHAPPEMENT DES TEXTES CLIENT POUR LES RENDERERS « MAISON » ─────
