@@ -175,8 +175,14 @@ export function useLeadClientEcran(ctx) {
       // les quatre marchés sont créés par le SERVEUR, qui lit lui-même le
       // catalogue, les marques épinglées (PVMRQ) et l'ordre des lignes de la
       // société (PVORD) : rien de cela ne part d'ici.
-      const devisId = await createAutoQuote({ lead, discountStr, bareme: baremeSociete, onAlertes: setAlertesAuto })
-      finish(devisId)
+      // Rejeu AGQ du 24/10 — l'écran de succès montre la RÉFÉRENCE du devis
+      // créé (avant : « Devis enregistré — » sans numéro).
+      let cree = null
+      const devisId = await createAutoQuote({
+        lead, discountStr, bareme: baremeSociete, onAlertes: setAlertesAuto,
+        onCreation: (data) => { cree = data },
+      })
+      finish(devisId, cree)
     } catch (err) {
       // AGQ22 (C-AGQ-021) — un refus qui NOMME un champ du lead (`field` du
       // 409) dit lequel corriger sur la fiche ; un seul message (le toast

@@ -49,7 +49,7 @@ export const buildEtudePompage = (sel, { typePompe, alim, hmt, debit, heures,
 // nommé) ; ses `alertes` vont à `onAlertes` (internes comprises : l'écran les
 // marque « vendeur seulement »). Une cible kWc saisie POUR CE devis (EZ5)
 // part en `target_kwc`, souveraine (D-QJR5-13), sans toucher le lead.
-async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marche, idempotencyKey }) {
+async function creerDevisServeur({ lead, discountStr, onAlertes, onCreation, targetKwc, marche, idempotencyKey }) {
   const cible = parseFloat(targetKwc)
   let creation
   try {
@@ -88,6 +88,7 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
   if (typeof onAlertes === 'function') {
     onAlertes(Array.isArray(creation.data.alertes) ? creation.data.alertes : [])
   }
+  onCreation?.(creation.data)
   return id
 }
 
@@ -100,6 +101,9 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
  * @param {string}   discountStr  Remise globale en %
  * @param {function} onAlertes    rappel facultatif recevant les `alertes` du
  *                                devis créé par le serveur ([] sans alerte)
+ * @param {function} onCreation   rappel facultatif recevant la réponse de
+ *                                création (`reference`…) — rejeu AGQ du 24/10 :
+ *                                l'écran de succès du générateur la montre
  * @param {string|number} targetKwc  EZ5 — puissance cible (kWc) demandée POUR
  *                                CE devis-là, sans toucher la fiche du lead.
  *                                Vide/absent = la taille souhaitée du lead,
@@ -108,7 +112,7 @@ async function creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marc
  * ordreLignes, dispatch) sont acceptés et IGNORÉS : le serveur lit le
  * catalogue, les marques épinglées et l'ordre des lignes de la société.
  */
-export async function createAutoQuote({ lead, discountStr, onAlertes, targetKwc, idempotencyKey }) {
+export async function createAutoQuote({ lead, discountStr, onAlertes, onCreation, targetKwc, idempotencyKey }) {
   const mode = LEAD_TYPE_TO_MODE[lead.type_installation] || 'residentiel'
   // ── U3 (fondateur 20/08/2026) — LE RÉSIDENTIEL NE COMPOSE PLUS ICI ─────
   // Ordre fondateur APPLIQUÉ par ce fichier : la composition n'a plus
@@ -187,9 +191,10 @@ export async function createAutoQuote({ lead, discountStr, onAlertes, targetKwc,
     if (!id) {
       throw { detail: 'Devis créé sans identifiant — ouvrez-le depuis la liste des devis.' }
     }
+    onCreation?.(reponse.data)
     return id
   }
   // CIQ127 — agricole (AGR126) et commercial / industriel : le serveur
   // étudie, dimensionne, compose et crée le brouillon ; rien n'est calculé ici.
-  return creerDevisServeur({ lead, discountStr, onAlertes, targetKwc, marche: mode, idempotencyKey })
+  return creerDevisServeur({ lead, discountStr, onAlertes, onCreation, targetKwc, marche: mode, idempotencyKey })
 }
