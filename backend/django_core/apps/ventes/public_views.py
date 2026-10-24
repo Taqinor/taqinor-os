@@ -2140,8 +2140,13 @@ def proposal_pdf(request, token):
 
     # QJ1 — stamp the view (best-effort; True = first open). L-INTPREV :
     # jamais de stamp/notification via le jeton interne.
-    is_first = _stamp_view_si_public(link, link.via_interne, request)
-    _notify_open(link, request, is_first=is_first)
+    # ADEV105 (C-L3-LIEN-11) — devis ACCEPTÉ : le signataire télécharge SON
+    # exemplaire signé, ce n'est plus une « ouverture » de l'offre (ni
+    # compteur, ni note, ni notification au vendeur) ; seule la lecture AVANT
+    # acceptation compte.
+    if link.devis.statut != 'accepte':
+        is_first = _stamp_view_si_public(link, link.via_interne, request)
+        _notify_open(link, request, is_first=is_first)
 
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.

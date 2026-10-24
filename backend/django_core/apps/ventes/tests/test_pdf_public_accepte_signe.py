@@ -154,6 +154,44 @@ class TestPdfPublicAccepteSigne(TestCase):
         self.assertEqual(resp.json(), {
             'detail': 'Aucun code requis pour ce lien.', 'code_requis': False})
 
+    @patch('apps.ventes.public_views.download_pdf', side_effect=_telecharger)
+    @patch('apps.ventes.public_views.generate_premium_devis_pdf',
+           return_value='devis/rerendu.pdf')
+    def test_exemplaire_signe_telecharge_n_est_pas_une_ouverture(
+            self, mock_gen, _dl):
+        """ADEV105 (C-L3-LIEN-11) — accepté : télécharger l'exemplaire signé
+        ne compte pas une ouverture (``view_count`` et ``first_viewed_at``
+        inchangés, aucune note au lead, aucune notification au vendeur) ;
+        envoyé : comptage d'aujourd'hui (1 vue, note « ouvert », notification).
+        Test-du-test : retirer la condition sur le statut ⇒ rouge."""
+        from apps.crm.models import Lead, LeadActivity
+        from apps.notifications.models import Notification
+        lead = Lead.objects.create(
+            company=self.company, nom='Signataire ADEV105', owner=self.user)
+
+        def _traces():
+            return (LeadActivity.objects.filter(lead=lead).count(),
+                    Notification.objects.filter(recipient=self.user).count())
+
+        devis, link = self._devis('DEV-ADEV105-A', 'accepte', CLE_SIGNEE)
+        Devis.objects.filter(pk=devis.pk).update(lead=lead)
+        avant = _traces()
+        self.assertEqual(self._get('public-proposal-pdf', link, mock_gen),
+                         OCTETS_SIGNES)
+        link.refresh_from_db()
+        self.assertEqual((link.view_count, link.first_viewed_at), (0, None))
+        self.assertEqual(_traces(), avant)
+
+        devis_e, link_e = self._devis('DEV-ADEV105-B', 'envoye')
+        Devis.objects.filter(pk=devis_e.pk).update(lead=lead)
+        avant = _traces()
+        self._get('public-proposal-pdf', link_e, mock_gen)
+        link_e.refresh_from_db()
+        self.assertEqual(link_e.view_count, 1)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, body__contains='ouvert le devis DEV-ADEV105-B').exists())
+        self.assertGreater(_traces()[1], avant[1])
+
 
 class _StockageMemoire:
     """Bouchon MinIO en mémoire (put_object / get_object) : suit les écritures
