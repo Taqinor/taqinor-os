@@ -131,6 +131,9 @@ jobs:
       # ENFP (D1) — refus des paramètres de requête non déclarés, actif pour le fuzz.
       API_QUERY_PARAMS_STRICT: '1'
       DJANGO_SETTINGS_MODULE: erp_agentique.settings.dev
+      # STAGES.py (racine du dépôt) importable par le serveur du fuzz : sans lui,
+      # toute route qui touche les étapes répondait 500 (48 traces, 24/10/2026).
+      PYTHONPATH: ${{ github.workspace }}
       DJANGO_SECRET_KEY: ci-only-secret-key-not-used-in-production
       DJANGO_DEBUG: 'True'
       DB_NAME: erp_db
