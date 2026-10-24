@@ -1029,13 +1029,15 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 installations_bin_affectations__bin__archived=False,
             ).distinct()
         else:
-            return Response(
-                {'detail': 'Précisez « ids », « categorie » ou « zone ».'},
-                status=status.HTTP_400_BAD_REQUEST)
+            # Aucune sélection : le schéma ne sait pas dire « l'un des trois »
+            # (tous facultatifs) — une requête conforme sans sélection ne
+            # désigne AUCUN produit : 404 comme toute sélection vide.
+            produits = produits.none()
 
         produits = list(produits.order_by('nom', 'id'))
         if not produits:
-            return Response({'detail': 'Aucun produit correspondant.'},
+            return Response({'detail': 'Aucun produit correspondant (précisez « ids », '
+                                       '« categorie » ou « zone »).'},
                             status=status.HTTP_404_NOT_FOUND)
 
         largeur = entier_ou_400(valeur_unique_ou_400(request, 'largeur'), 'largeur', 58)
