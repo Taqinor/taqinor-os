@@ -105,3 +105,15 @@ class ActionLayoutTest(BaseApiCalepinage):
     def test_sans_permission_d_ecriture_403(self):
         reponse = self._poster(self.calepinage.pk, LAYOUT, api=self.api_sans)
         self.assertEqual(reponse.status_code, 403)
+
+    def test_caractere_nul_en_cle_ou_en_valeur_est_un_conflit_409(self):
+        """ENF11 (api-fuzz-full 24/10) : le document est un objet libre, un
+        NUL (clé OU texte imbriqué) ne se dit pas au schéma -> 409, jamais 400
+        sur un corps « conforme » ni 500 à l'INSERT JSONB ; rien n'est écrit."""
+        for corps in ({'zones': [{'id': 1}], 'cl\x00e': 1},
+                      {'zones': [{'id': 1, 'nom': 'a\x00b'}]}):
+            with self.subTest(corps=corps):
+                reponse = self._poster(self.calepinage.pk, corps)
+                self.assertEqual(reponse.status_code, 409, reponse.data)
+        self.calepinage.refresh_from_db()
+        self.assertIsNone(self.calepinage.roof_layout)

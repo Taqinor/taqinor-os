@@ -1186,7 +1186,7 @@ class ProjetTacheSerializer(
 
 # ── FG294 — Budget projet vs réel (engagé / dépensé) ──────────────────────────
 
-class BudgetEngagementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class BudgetEngagementSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG294 — rattachement d'un coût fournisseur (BCF ou facture fournisseur)
     à un budget de programme, par string-FK (jamais d'import des modèles stock).
     `source`/`categorie` ventilent la dépense ; la société est posée côté
@@ -2756,7 +2756,7 @@ class TransporteurSerializer(ChampsStrictsMixin, serializers.ModelSerializer):
         return value
 
 
-class RetourMaterielLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class RetourMaterielLigneSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """YSTCK4 - ligne d'un retour de materiel chantier (SKU + quantite)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
     same_company_fields = ('retour', 'produit')

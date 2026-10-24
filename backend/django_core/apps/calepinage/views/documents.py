@@ -33,7 +33,7 @@ from rest_framework.response import Response
 from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
 
 from ..permissions import PeutGererCalepinage, PeutVoirCalepinage
-from ..serializers import REPONSE_REFUS_ETAT
+from ..serializers import REPONSE_REFUS_ETAT, corps_objet
 from .calepinages import CalepinageViewSet
 from .sorties import porte_execution  # ACAL116
 from drf_spectacular.utils import inline_serializer
@@ -453,10 +453,11 @@ def image_document(self, request, pk=None):
     )
 
     calepinage = self.get_object()  # borné société par get_queryset
+    corps = corps_objet(request)  # ENF11 : un scalaire JSON en corps = 400
     fichier = request.FILES.get('fichier')
     if fichier is None:
-        fichier = request.data.get('fichier')
-    genre = request.data.get('genre')
+        fichier = corps.get('fichier')
+    genre = corps.get('genre')
     try:
         depot = deposer_image_document(
             calepinage, genre=genre, fichier=fichier,
