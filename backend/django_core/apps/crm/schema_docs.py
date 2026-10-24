@@ -9,7 +9,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema_field, inline_serializer
 from rest_framework import serializers
 
-from core.champs_stricts import MOTIF_SANS_NUL, ChaineStricte  # noqa: F401 (réexporté)
+from core.champs_stricts import MOTIF_SANS_NUL
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 
 #: Réponse « objet libre » (dict dont la forme dépend de la situation).

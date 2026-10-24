@@ -98,7 +98,7 @@ from .models import (
 )
 from .serializers_bornes import (
     CautionUnitaireBorneMixin, MontantProvisionBorneMixin, MotifSansNulMixin,
-    SeuilResponsableBorneMixin,
+    PrixEstimeNonNegatifMixin, SeuilResponsableBorneMixin,
 )
 
 
@@ -1429,7 +1429,8 @@ def _retirer_estimations_achat(serializer, fields):
     return fields
 
 
-class DemandeAchatLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class DemandeAchatLigneSerializer(PrixEstimeNonNegatifMixin, IdInconnu404Mixin,
+                                  SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """FG310 — ligne d'une demande d'achat (produit catalogue OU désignation
     libre, quantité, prix estimé INTERNE)."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -1453,15 +1454,6 @@ class DemandeAchatLigneSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixi
         # ACHT11 — quantité finie et strictement positive.
         if value is None or not value.is_finite() or value <= 0:
             raise ConflitEtat({'quantite': ['La quantité doit être supérieure à 0.']})
-        return value
-
-    def validate_prix_estime(self, value):
-        # ACHT11 — prix estimé fini et non négatif.
-        # api-fuzz full : le motif publie d'un decimal souple ne sait pas
-        # exclure le signe `-` -> refus d'ETAT (409), comme la quantite.
-        if value is not None and (not value.is_finite() or value < 0):
-            raise ConflitEtat(
-                {'prix_estime': ['Le prix estimé ne peut pas être négatif.']})
         return value
 
     def validate(self, attrs):

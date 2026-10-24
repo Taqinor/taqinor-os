@@ -76,6 +76,32 @@ def texte_param(request, nom):
     return brut
 
 
+def _corps_reorder():
+    """Corps publié de ``saved-views/reorder/`` (``page`` texte strict)."""
+    from rest_framework import serializers
+
+    from core.champs_stricts import ChaineStricte
+
+    from . import schema_docs as sd
+    return sd.corps('CrmSavedViewReorderRequest', page=ChaineStricte(),
+                    ids=serializers.ListField(child=serializers.IntegerField()))
+
+
+CORPS_REORDER_VUE = _corps_reorder()
+
+
+def refus_page_reorder(page):
+    """Réponse 400 si ``page`` du réordonnancement est absente/vide/non texte
+    ou porte un octet NUL (api-fuzz-full 24/10), sinon ``None``."""
+    from rest_framework.response import Response
+    if not isinstance(page, str) or not page.strip():
+        return Response(
+            {'detail': "Paramètres 'page' et 'ids' (liste) requis."}, status=400)
+    if chr(0) in page:
+        return Response({'page': 'Caractère nul interdit.'}, status=400)
+    return None
+
+
 def rejeter_param_repete(request, *noms):
     """400 nommant le paramètre de requête ``nom`` répété (``?a=1&a=2``) :
     le schéma publie une valeur unique, DRF lisait silencieusement la

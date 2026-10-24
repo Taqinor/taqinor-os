@@ -9,6 +9,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from core.champs_stricts import ChaineStricte, DecimalBornee
+from core.conflit_etat import ConflitEtat
 
 
 class SeuilResponsableBorneMixin(serializers.Serializer):
@@ -33,3 +34,15 @@ class CautionUnitaireBorneMixin(serializers.Serializer):
     bornes → 500 à la sérialisation de ``caution_totale``."""
     caution_unitaire = DecimalBornee(
         max_digits=10, decimal_places=2, min_value=Decimal('0'), required=False)
+
+
+class PrixEstimeNonNegatifMixin:
+    """ACHT11 — prix estimé fini et non négatif. api-fuzz full : le motif publié
+    d'un décimal souple ne sait pas exclure le signe ``-`` -> refus d'ÉTAT
+    (409), comme la quantité."""
+
+    def validate_prix_estime(self, value):
+        if value is not None and (not value.is_finite() or value < 0):
+            raise ConflitEtat(
+                {'prix_estime': ['Le prix estimé ne peut pas être négatif.']})
+        return value

@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.ged import services
+from apps.ged.pdf_etat import PdfInexploitable
 from apps.ged.models import (
     ArchivageLegal, Cabinet, DemandeDisposition, Document, Folder,
     PolitiqueRetention, TamponSociete,
@@ -1182,7 +1183,7 @@ class ApiFuzzFull2410GedTests(TestCase):
         version = self.doc.versions.first()
         with mock.patch.object(
                 services, 'exporter_pdf_annote',
-                side_effect=services.PdfInexploitable('aucune page')):
+                side_effect=PdfInexploitable('aucune page')):
             resp = self.api.get(
                 f'{BASE}annotations/export-annote/?version={version.pk}')
         self.assertEqual(resp.status_code, 409, resp.content)

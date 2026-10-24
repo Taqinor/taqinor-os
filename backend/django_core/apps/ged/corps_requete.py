@@ -8,6 +8,9 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers as drf_serializers
 
 from core.champs_stricts import ChaineStricte, EntierStrict
+from core.conflit_etat import ConflitEtat
+
+from .pdf_etat import PdfInexploitable
 
 
 # Aucune clé primaire GED ne dépasse un entier PostgreSQL 32 bits : au-delà, la
@@ -495,3 +498,35 @@ class _SectionsModeleSchema(OpenApiSerializerFieldExtension):
                 'conditions': {
                     'anyOf': [{'type': 'object', 'maxProperties': 0},
                               schema_groupe_conditions()]}}}}
+
+
+def refus_etat(exc):
+    """api-fuzz-full 24/10 — l'ÉTAT du document s'oppose (409), corps conforme."""
+    return ConflitEtat(str(exc))
+
+
+def reponse_valeur_ou_409(exc):
+    """``ValueError`` d'un service : 409 si c'est l'état du fichier (PDF
+    inexploitable), sinon la réponse 400 historique."""
+    if isinstance(exc, PdfInexploitable):
+        raise refus_etat(exc)
+    from rest_framework.response import Response
+    return Response({'detail': str(exc)}, status=400)
+
+
+def liste_ou_400(ids):
+    """``{"documents": 6.4e16}`` : ``len()`` d'un nombre levait TypeError (500).
+    Le schéma publie une liste d'entiers."""
+    if not isinstance(ids, (list, tuple)):
+        raise drf_serializers.ValidationError(
+            {'documents': ["Une liste d'identifiants est attendue."]})
+    return ids
+
+
+def nom_fichier_sur(nom):
+    """Nom de fichier sûr pour ``Content-Disposition`` : sans guillemet,
+    antislash ni caractère de contrôle (un nom téléversé à caractère de
+    contrôle produisait un en-tête refusé par gunicorn, page HTML 400)."""
+    return ''.join(
+        c for c in str(nom) if c not in '"\\' and c.isprintable()
+    ) or 'document'

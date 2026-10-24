@@ -366,8 +366,7 @@ def lancer_vague(vague):
         return vague
     if not vague.lignes.exists():
         raise EtatIncompatible('Une vague sans ligne ne peut pas être lancée.')
-    vague.statut = VaguePicking.Statut.LANCEE
-    vague.date_lancement = timezone.now()
+    vague.statut, vague.date_lancement = VaguePicking.Statut.LANCEE, timezone.now()
     vague.save(update_fields=['statut', 'date_lancement'])
     return vague
 

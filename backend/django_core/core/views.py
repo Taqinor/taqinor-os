@@ -17,8 +17,6 @@ Découplage : aucune importation d'app domaine ici — seulement l'infra Celery
 via ``core.jobs`` (qui fait ``from celery import current_app``). ``core`` reste
 une couche de base (import-linter).
 """
-import re
-
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter, extend_schema, extend_schema_serializer, extend_schema_view,
@@ -55,6 +53,7 @@ from . import payment as payment_infra
 from . import scheduled_export as scheduled_export_infra
 from . import trash as trash_infra
 from . import workflow_templates
+from .views_periode import _PERIODE_OPTIONNELLE_TYPE, _RE_PERIODE, _periode_ou_400
 from .champs_stricts import ChaineStricte, EntierStrict
 from .conflit_etat import ConflitEtat
 from .mixins import TenantMixin
@@ -134,25 +133,6 @@ _LISTE_OBJETS = {'type': 'array', 'items': _OBJET}
 # répondait 400 « Format de période invalide » à une valeur conforme).
 _PERIODE_TYPE = {
     'type': 'string', 'pattern': r'^[1-9]\d{3}-(0[1-9]|1[0-2])$'}
-_RE_PERIODE = re.compile(r'[1-9]\d{3}-(0[1-9]|1[0-2])')
-#: api-fuzz-full 24/10 — période FACULTATIVE des rapports d'approbation
-#: (vide = tout l'historique) : ``periode=q…`` était lue en silence comme
-#: « tout » et, en export xlsx, ses caractères de contrôle finissaient dans
-#: l'en-tête ``Content-Disposition`` (page HTML 400 de gunicorn).
-_PERIODE_OPTIONNELLE_TYPE = {
-    'type': 'string', 'pattern': r'^([1-9]\d{3}-(0[1-9]|1[0-2]))?$'}
-
-
-def _periode_ou_400(request):
-    """``periode`` de requête : absente/vide → ``None`` ; ``AAAA-MM`` sinon
-    400 nommant le paramètre (règle de ``_PERIODE_OPTIONNELLE_TYPE``)."""
-    brut = request.query_params.get('periode')
-    if brut in (None, ''):
-        return None
-    if not _RE_PERIODE.fullmatch(brut):
-        raise drf_serializers.ValidationError(
-            {'periode': ['Période attendue au format AAAA-MM.']})
-    return brut
 
 
 # ERR-ENF11-FUZZ-CORE — corps validé par ce serializer déclaré
