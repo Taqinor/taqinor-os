@@ -100,9 +100,22 @@ function construireHmt(h = {}) {
   }
 }
 
+/**
+ * Rejeu live AGQ41 (24/10) — PARITÉ avec le serveur (`pompage.py::_besoin`) :
+ * sans mode choisi (ou mode `debit_souhaite`), le besoin en eau vient du seul
+ * DÉBIT SOUHAITÉ × les heures-pic du mois. Le corps n'envoie alors que ce que
+ * le serveur lit (`besoin.debit_souhaite_m3h`) : `construireBesoin` met déjà à
+ * `null` le volume et la pompe actuelle hors de leur mode (AGQ27).
+ */
+export function besoinDepuisDebitSouhaite(besoin) {
+  const b = besoin || {}
+  return (!b.mode || b.mode === 'debit_souhaite') && positif(b.debit_souhaite_m3h)
+}
+
 /** Le besoin en eau est-il exprimé (selon son mode) ? */
 export function besoinExprime(besoin) {
   const b = besoin || {}
+  if (besoinDepuisDebitSouhaite(b)) return true
   if (b.mode === 'volume_declare') return positif(b.volume_m3_jour)
   if (b.mode === 'pompe_actuelle') {
     return positif(b.debit_actuel_m3h) && positif(b.heures_actuelles_jour)
@@ -308,6 +321,29 @@ export const libelleProvenance = creerLibelleProvenance(LIBELLES_ORIGINE, LIBELL
 export const alertesAffichables = (reponse) => alertesDuServeur(
   reponse, 'Alerte du moteur de pompage',
 )
+
+/**
+ * Rejeu live AGQ41 (24/10) — un kit de pompage SANS l'un de ses rôles minimum
+ * (variateur, panneaux, structure, installation : `roles_minimum_manquants`,
+ * servi par l'aperçu, même liste que le refus du devis automatique) n'est
+ * JAMAIS posé par « Auto-remplir ». Seul un rôle sans AUCUNE ligne dans
+ * `kit.inclus` refuse (un article « prix à renseigner » reste une ligne
+ * visible, AGR130). La cause est celle que le serveur sert : pour un variateur
+ * absent, `variateur.motif` (ex. « kW de plaque à relever … »).
+ * Rend le message FR, ou `null` quand rien ne s'oppose.
+ */
+export function refusAutoRemplirPompage(donnees) {
+  const d = donnees || {}
+  const lignes = Array.isArray(d.kit?.inclus) ? d.kit.inclus : []
+  const absents = (Array.isArray(d.roles_minimum_manquants) ? d.roles_minimum_manquants : [])
+    .filter((r) => r && r.cle && !lignes.some((l) => l?.cle === r.cle))
+  if (!absents.length) return null
+  const causes = absents.map((r) => {
+    const cause = r.cle === 'variateur' && d.variateur?.motif ? d.variateur.motif : r.motif
+    return `${r.libelle || r.cle}${cause ? ` : ${cause}` : ''}`
+  })
+  return `Auto-remplir indisponible — kit incomplet (${causes.join(' ; ')}).`
+}
 
 /** AGQ26 (C-AGQ-025) — le site du lead pour l'aperçu : ville de calcul + GPS, jamais inventés. */
 export function siteDuLead(villeCalcul, lead) {
