@@ -622,7 +622,9 @@ class TitreLegacyHtmlTests(SimpleTestCase):
 # MinIO remplacé en mémoire — ``test_pdf_apdf_identite.rendre_pdf``) puis lu par
 # PyMuPDF : aucun texte TAQINOR (RC, ICE, RIB Saham, gérant, liens du site) et
 # aucune image aux dimensions de l'asset ``assets/logo.png``. Couvre les
-# appelants d'APDF2 à APDF5. Le test liste les rendus effectués.
+# appelants d'APDF2 à APDF5. Le test liste les rendus effectués. APDF103 —
+# chaque format est rendu en brouillon PUIS envoyé (lien de partage, QR) ; le
+# titre du PDF et les QR à l'asset TAQINOR sont gardés aussi.
 #
 # Test-du-test : réintroduire un littéral « RIB 022 780 » dans un seul gabarit
 # ⇒ le cas (marché, format) correspondant échoue.
@@ -660,22 +662,32 @@ FORMATS_GARDE = {
 
 
 def lire_pdf(octets):
-    """(texte de toutes les pages, tailles des images embarquées)."""
+    """(texte de toutes les pages, images embarquées en RGB, métadonnée
+    ``title``) — APDF103 : les images et le titre, plus seulement les tailles."""
     import io
     import fitz
     from PIL import Image
     doc = fitz.open(stream=octets, filetype='pdf')
     try:
         texte = '\n'.join(page.get_text() for page in doc)
-        tailles = []
+        images = []
         for page in doc:
             for info in page.get_images(full=True):
                 brut = doc.extract_image(info[0])
                 with Image.open(io.BytesIO(brut['image'])) as img:
-                    tailles.append(img.size)
-        return texte, tailles
+                    images.append(img.convert('RGB'))
+        return texte, images, (doc.metadata or {}).get('title') or ''
     finally:
         doc.close()
+
+
+def image_data_uri(uri):
+    """Image RGB d'un PNG data-URI (``theme.qr_data_uri``)."""
+    import base64
+    import io
+    from PIL import Image
+    return Image.open(io.BytesIO(base64.b64decode(
+        uri.split(',', 1)[1]))).convert('RGB')
 
 
 @tag('pdf')
@@ -699,24 +711,49 @@ class GardeIdentiteTests(TestCase):
         return devis
 
     def test_aucune_identite_taqinor_marche_par_format(self):
+        """APDF103 — brouillon PUIS envoyé : titre du PDF sans TAQINOR, aucune
+        image égale au QR à l'asset (``qr_data_uri(url)``) d'un lien encodé.
+        Mutant : ``logo=True`` dans ``trust._qr_data_uri`` ⇒ échec."""
+        from apps.ventes.models import Devis, ShareLink
+        from apps.ventes.quote_engine.residential import theme
         taille_taqinor = taille_logo_taqinor()
-        rendus = []
+        rendus, qr_encodes = [], {}
         for marche in MARCHES:
             devis = self._devis(marche)
-            for nom, options in FORMATS_GARDE.items():
-                with self.subTest(marche=marche, format=nom):
-                    texte, tailles = lire_pdf(rendre_pdf(devis, options))
-                    rendus.append((marche, nom))
-                    self.assertTrue(texte.strip())
-                    for interdit in INTERDITS:
-                        self.assertNotIn(interdit, texte)
-                    # ERR-APDF-CI-PIED-TAQINOR-MA — aucun « taqinor.ma » nu
-                    # (pied compris) hors lien de proposition.
-                    self.assertNotIn('taqinor.ma',
-                                     texte_hors_proposition(texte))
-                    self.assertNotIn(taille_taqinor, tailles)
-        # Le test LISTE les rendus effectués : 4 marchés × 5 formats.
-        self.assertEqual(len(rendus), len(MARCHES) * len(FORMATS_GARDE), rendus)
+            for etat in ('brouillon', 'envoye'):
+                if etat == 'envoye':  # lien de partage frappé ⇒ signer + QR
+                    Devis.objects.filter(pk=devis.pk).update(statut=etat)
+                    ShareLink.for_devis(devis)
+                for nom, options in FORMATS_GARDE.items():
+                    with self.subTest(marche=marche, format=nom, etat=etat), \
+                            mock.patch.object(theme, 'qr_data_uri',
+                                              wraps=theme.qr_data_uri) as qr:
+                        texte, images, titre = lire_pdf(rendre_pdf(devis, options))
+                        rendus.append((marche, nom, etat))
+                        self.assertTrue(texte.strip())
+                        for interdit in INTERDITS:
+                            self.assertNotIn(interdit, texte)
+                        # ERR-APDF-CI-PIED-TAQINOR-MA — aucun « taqinor.ma »
+                        # nu (pied compris) hors lien de proposition.
+                        self.assertNotIn('taqinor.ma',
+                                         texte_hors_proposition(texte))
+                        self.assertNotIn(taille_taqinor,
+                                         [i.size for i in images])
+                        self.assertNotIn('TAQINOR', titre.upper())
+                        urls = {c.args[0] for c in qr.call_args_list}
+                        qr_encodes.setdefault((marche, etat), set()).update(urls)
+                        for url in urls:
+                            asset = image_data_uri(theme.qr_data_uri(url))
+                            self.assertFalse([i for i in images if (
+                                i.size, i.tobytes()) == (asset.size, asset.tobytes())], url)
+        # Témoin : chaque marché envoyé encode au moins un QR (sinon la
+        # garde du QR serait vide) ; aucun brouillon n'en encode (ADEV68).
+        for marche in MARCHES:
+            self.assertTrue(qr_encodes[(marche, 'envoye')], marche)
+            self.assertFalse(qr_encodes[(marche, 'brouillon')], marche)
+        # Le test LISTE ses rendus : 4 marchés × 5 formats × 2 états.
+        self.assertEqual(len(rendus), len(MARCHES) * len(FORMATS_GARDE) * 2,
+                         rendus)
 
     def test_titre_pdf_nomme_la_societe(self):
         """APDF101 (C-APDF-VER-001) — la métadonnée ``title`` du PDF legacy
