@@ -6,7 +6,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.records.storage import AttachmentSerializerMixin, attachment_url
-from core.champs_stricts import ChaineStricte
+from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
 from .erreurs_achats import ConflitEtat
 
@@ -35,7 +35,8 @@ class FichierFacultatifField(serializers.FileField):
         return super().validate_empty_values(data)
 
 
-class FicheTechniqueSerializer(UniciteEn409Mixin,
+class FicheTechniqueSerializer(IdInconnu404Mixin,
+                               UniciteEn409Mixin,
                                AttachmentSerializerMixin,
                                CompanyScopedRelationsMixin,
                                serializers.ModelSerializer):
