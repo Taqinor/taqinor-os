@@ -1693,9 +1693,13 @@ class LeadCadenceActionsMixin:
                 etapes, many=True, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    # ENF11 (api-fuzz-full 24/10) : textes STRICTS — motif non blanc et
+    # cadences « sans caractère nul » (le serveur refuse le nul en 400 : un
+    # texte simple le publiait permis).
     @extend_schema(request=sd.corps('CrmArreterRelanceRequest',
-                                    cadences=serializers.ListField(child=serializers.CharField(), required=False),
-                                    motif=serializers.CharField()), responses=sd.OBJ)
+                                    cadences=serializers.ListField(
+                                        child=ChaineStricte(allow_blank=True), required=False),
+                                    motif=ChaineStricte()), responses=sd.OBJ)
     @action(detail=True, methods=['post'], url_path='relance/arreter',
             permission_classes=[IsResponsableOrAdmin])
     def arreter_relance(self, request, pk=None):
