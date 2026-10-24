@@ -505,6 +505,25 @@ MOTIF_LCOE_NON_ACTUALISE = (
 MOTIF_OM_PROPOSE = "O&M proposé, non souscrit — non déduit"
 MOTIF_OM_SANS_PRIX = "tarif O&M à renseigner — non déduit"
 MOTIF_OM_ABSENT = "aucune option O&M sur le devis — aucune charge annuelle"
+#: AMOT96 (D-ACI-14=a) — source de la charge quand aucune O&M n'est souscrite
+#: et que la société a réglé un entretien minimum (``CompanyProfile``).
+SOURCE_ENTRETIEN_MINIMUM = "entretien minimum à votre charge (réglage société)"
+
+
+def entretien_minimum(reglages, apercu):
+    """AMOT96 — ``{mad_kwc_an, kwc, ht, ttc, source}`` : le réglage société
+    × le kWc retenu par l'étude (``taille.retenue_kwc``), TTC à la TVA
+    standard du profil ; ``None`` sans réglage (> 0) ou sans kWc."""
+    mad = _montant((reglages or {}).get('entretien_minimum_mad_kwc_an'),
+                   strictement_positif=True)
+    kwc = _montant(((apercu or {}).get('taille') or {}).get('retenue_kwc'),
+                   strictement_positif=True)
+    if mad is None or kwc is None:
+        return None
+    tva = _f((reglages or {}).get('tva_standard', 20))
+    return {'mad_kwc_an': mad, 'kwc': kwc, 'ht': _montant(mad * kwc),
+            'ttc': _montant(mad * kwc * (1 + tva / 100.0)),
+            'source': SOURCE_ENTRETIEN_MINIMUM}
 
 
 def _pricing():
@@ -694,7 +713,7 @@ def _jalons(bloc):
 
 def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
             onduleur=None, om=None, taux_actualisation_client=None,
-            collecteur=None):
+            collecteur=None, entretien=None):
     """Le flux 25 ans d'un devis C&I et ses indicateurs (forme
     ``economie_ci.json`` : ``flux_ht`` / ``flux_ttc``, ``jalons``,
     ``indicateurs``, ``remplacements``, ``om``).
@@ -706,25 +725,37 @@ def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
     :func:`lire_taux_client`). La revente n'entre jamais ici.
     ``collecteur`` (CIQ231) : dict facultatif qui reçoit, par base
     (``ht``/``ttc``), les entrées exactes passées à ``flux_de_tresorerie``.
+    ``entretien`` (AMOT96) : sortie de :func:`entretien_minimum` — déduit
+    seulement quand l'O&M n'est pas souscrite et chiffrée (jamais les deux).
     """
     taux = lire_taux_client(taux_actualisation_client)
     sortie = {'base': base_eco['base'], 'motif_base': base_eco['motif_base'],
               'flux_ht': None, 'flux_ttc': None, 'jalons': [],
-              'indicateurs': None, 'remplacements': [], 'om': None}
+              'indicateurs': None, 'remplacements': [], 'om': None,
+              'entretien': None}
     principal = 'flux_ttc' if base_eco['base'] == BASE_TTC else 'flux_ht'
     actualise = False
     for cle in base_eco['flux']:
         cle_base = 'ht' if cle == 'flux_ht' else 'ttc'
         charge, om_bloc = _om(om, cle_base)
+        source_charge = om_bloc
+        if charge is None and entretien:
+            charge = entretien[cle_base]
+            source_charge = {'source': entretien['source']}
         bloc, remplacement, actualise_ = _un_flux(
             base_eco[f'investissement_{cle_base}_mad'],
             base_eco[f'economie_annee1_{cle_base}_mad'],
             production=production_annee1_kwh, taux=taux, onduleur=onduleur,
-            charge=charge, om_bloc=om_bloc, cle_base=cle_base,
+            charge=charge, om_bloc=source_charge, cle_base=cle_base,
             collecteur=collecteur)
         sortie[cle] = bloc
         if cle == principal:
             sortie['om'] = om_bloc
+            if source_charge is not om_bloc:
+                sortie['entretien'] = {
+                    'mad_kwc_an': entretien['mad_kwc_an'],
+                    'kwc': entretien['kwc'], 'montant_mad_an': charge,
+                    'source': entretien['source']}
             actualise = actualise_
             if remplacement is not None:
                 sortie['remplacements'] = [remplacement]
@@ -1228,7 +1259,7 @@ HYPOTHESE_VALORISATION = {
 CLES_BLOC = ('statut', 'motifs_omission', 'base', 'motif_base', 'tarif',
              'economie_annee1', 'facture_avant', 'facture_apres', 'revente',
              'flux_ht', 'flux_ttc', 'jalons', 'jalons_ttc', 'indicateurs',
-             'remplacements', 'om', 'sensibilites', 'financement',
+             'remplacements', 'om', 'entretien', 'sensibilites', 'financement',
              'hypotheses', 'omissions', 'alertes_internes', 'vue_interne')
 
 
@@ -1336,6 +1367,7 @@ def _bloc_omis(motif, tarif, *, alertes, vue_interne):
     })
     del bloc['jalons_ttc']
     del bloc['financement']
+    del bloc['entretien']  # AMOT96 — servi avec un flux seulement.
     return bloc
 
 
@@ -1495,7 +1527,8 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
                    kwh_evites_an=kwh_evites, onduleur=onduleur, om=om,
                    taux_actualisation_client=saisies.get(
                        'taux_actualisation_client'),
-                   collecteur=collecteur)
+                   collecteur=collecteur,
+                   entretien=entretien_minimum(reglages, apercu))
     if motif_investissement:
         flux = _sans_investissement(flux, motif_investissement)
     revente = valo['revente']
@@ -1557,6 +1590,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
         'indicateurs': flux['indicateurs'],
         'remplacements': flux['remplacements'],
         'om': flux['om'],
+        'entretien': flux['entretien'],
         'sensibilites': sensibilites,
         'financement': financement,
         'hypotheses': hypotheses,
@@ -1898,19 +1932,26 @@ def lignes_pour_economie_ci(devis):
 
 
 def reglages_economie_ci(company):
-    """``{mention_credit_bail_autorisee}`` du ``TariffSettings`` (CIQ211),
-    lu sans jamais le créer ; vide sans réglage."""
+    """``{mention_credit_bail_autorisee, sensibilites_ci}`` du
+    ``TariffSettings`` (CIQ211) et ``{entretien_minimum_mad_kwc_an,
+    tva_standard}`` du ``CompanyProfile`` (AMOT96), lus sans jamais les
+    créer ; vide sans réglage."""
     if company is None:
         return {}
+    from apps.parametres.models_company import CompanyProfile
     from apps.parametres.models_tariff import TariffSettings
+    # AMOT96 — entretien minimum + TVA standard du profil, lus sans le créer.
+    profil = CompanyProfile.objects.filter(company=company).values(
+        'entretien_minimum_mad_kwc_an', 'tva_standard').first() or {}
     reglage = TariffSettings.objects.filter(company=company).first()
     if reglage is None:
-        return {}
+        return dict(profil)
     return {
         'mention_credit_bail_autorisee': bool(
             getattr(reglage, 'mention_credit_bail_autorisee', False)),
         'sensibilites_ci': list(getattr(reglage, 'sensibilites_ci', None)
                                 or []),
+        **profil,
     }
 
 

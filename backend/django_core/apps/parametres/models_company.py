@@ -234,6 +234,14 @@ class CompanyProfile(models.Model):
         max_digits=5, decimal_places=2, default=20)
     tva_panneaux = models.DecimalField(
         max_digits=5, decimal_places=2, default=10)
+    # AMOT96 (D-ACI-14=a) — entretien minimum à la charge du client C&I, en
+    # MAD HT par kWc et par an : déduit du flux 25 ans quand aucune O&M n'est
+    # souscrite (``economie_ci``). NULL = non chiffré (flux d'hier).
+    entretien_minimum_mad_kwc_an = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Entretien minimum à la charge du client (MAD HT/kWc/an)',
+        help_text='Déduit des économies C&I quand aucune O&M n’est souscrite ; '
+                  'vide = entretien non chiffré.')
     # ── Constantes ROI éditables (T6) — défauts = valeurs historiques codées
     # en dur dans le simulateur (solar.js). Tant qu'elles ne sont pas éditées,
     # le comportement reste identique ; le simulateur garde son repli interne.

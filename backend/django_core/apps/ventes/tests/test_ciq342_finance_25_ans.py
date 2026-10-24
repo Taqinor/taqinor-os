@@ -241,7 +241,9 @@ class Amot91Hypotheses(SimpleTestCase):
         texte = _texte(_pages(d)[3])
         self.assertIn("Ce que la centrale produit pour votre site", texte)
         tableau = texte[texte.index("Hypothèses de l'estimation"):]
-        self.assertIn("Entretien (O&M) non déduit des économies", tableau)
+        # AMOT96 — réglage vide : l'entretien est dit « non chiffré ».
+        self.assertIn("Entretien (O&M) non chiffré — non déduit des "
+                      "économies", tableau)
         self.assertIn("Règle de dimensionnement", tableau)
         # Compact : jamais l'investissement (incomplet ici) dans le tableau.
         self.assertNotIn("Investissement 247 500", tableau)
@@ -395,6 +397,24 @@ class Amot94TableauVingtCinqAns(SimpleTestCase):
         texte = _texte(self._tableau(d)[1])
         self.assertIn("O&M", texte)
         self.assertEqual(texte.count("-12 000,00"), 25)
+
+    def test_entretien_minimum_colonne_et_hypothese(self):
+        """AMOT96 (D-ACI-14=a) — entretien minimum servi (O&M non souscrite) :
+        colonne « Entretien » déduite chaque année et hypothèse étiquetée
+        « réglage société » ; sans réglage : « entretien non chiffré ».
+        Test-du-test : ne plus lire ``argent.entretien`` ⇒ rouge."""
+        d = _data_energie()
+        self.assertNotIn("réglage société) :", _texte(_pages(d)[3]))
+        d["economie_ci"]["entretien"] = {
+            "mad_kwc_an": 30.0, "kwc": 200.0, "montant_mad_an": 6000.0,
+            "source": "entretien minimum à votre charge (réglage société)"}
+        p3, tableau = self._tableau(d)
+        texte = _texte(tableau)
+        self.assertIn("Entretien", texte)
+        self.assertNotIn("O&M", texte)
+        self.assertEqual(texte.count("-6 000,00"), 25)
+        self.assertIn("entretien minimum à votre charge (réglage société) : "
+                      "6 000,00 MAD/an déduits", _texte(p3))
 
     def test_courbe_cedable_tableau_garde(self):
         p3 = _pages(dict(_data(), _sans_graphiques=frozenset(

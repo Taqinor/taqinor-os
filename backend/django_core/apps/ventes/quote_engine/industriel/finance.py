@@ -103,6 +103,8 @@ def _charges_par_annee(argent, cle_flux):
     om = argent.get("om") if isinstance(argent.get("om"), dict) else {}
     om_an = (_num(om.get("montant_mad_an"))
              if om.get("statut") == "souscrit" else None)
+    # AMOT96 — sinon l'entretien minimum servi (jamais les deux).
+    om_an = om_an or _num((argent.get("entretien") or {}).get("montant_mad_an"))
     cle_montant = "montant_ttc_mad" if cle_flux == "flux_ttc" \
         else "montant_ht_mad"
     remplacements = {}
@@ -126,7 +128,8 @@ def _tableau_flux(argent, lignes_flux, fmt, fmt_mad, L, base_txt):
     om_an, remplacements = _charges_par_annee(argent, cle_flux)
     colonnes = [L("ci_fx_production", "Production (kWh)"),
                 L("ci_fx_economie", "Économie")]
-    colonnes += [L("ci_fx_om", "O&amp;M")] if om_an else []
+    colonnes += [L("ci_fx_entretien", "Entretien") if argent.get("entretien")
+                 else L("ci_fx_om", "O&amp;M")] if om_an else []
     colonnes += [L("ci_fx_remplacement", "Remplacement")] \
         if remplacements else []
     colonnes += [L("ci_fx_flux", "Flux net"),
@@ -310,10 +313,20 @@ def _rangee_om(argent, fmt_mad, L):
     om = argent.get("om") if isinstance(argent, dict) else None
     om = om if isinstance(om, dict) else {}
     montant = _num(om.get("montant_mad_an"))
-    valeur = (L("ci_h_om_deduite", "déduit des économies : {montant} MAD/an",
-                montant=fmt_mad(montant))
-              if om.get("statut") == "souscrit" and montant else
-              L("ci_h_om_non_deduite", "non déduit des économies"))
+    # AMOT96 (D-ACI-14=a) — sans O&M chiffrée : l'entretien minimum réglé
+    # par la société (servi par ``economie_ci``), sinon « non chiffré ».
+    entretien = _num(((argent.get("entretien") if isinstance(argent, dict)
+                       else None) or {}).get("montant_mad_an"))
+    if om.get("statut") == "souscrit" and montant:
+        valeur = L("ci_h_om_deduite", "déduit des économies : {montant} MAD/an",
+                   montant=fmt_mad(montant))
+    elif entretien:
+        valeur = L("ci_h_entretien_minimum", "entretien minimum à votre charge "
+                   "(réglage société) : {montant} MAD/an déduits des économies",
+                   montant=fmt_mad(entretien))
+    else:
+        valeur = L("ci_h_entretien_non_chiffre",
+                   "non chiffré — non déduit des économies")
     return [(L("ci_h_om", "Entretien (O&amp;M)"), valeur)]
 
 
@@ -382,14 +395,20 @@ def css_tableau_hypotheses(prefixe, navy, muted, ink, line_soft):
 def _ligne_om(argent, fmt_mad, L):
     """CIQ342 — l'O&M n'est dite DÉDUITE que si l'option est chiffrée
     (``argent.om`` souscrite avec un montant) ; proposée ou à chiffrer ⇒
-    « non déduite » ; absente du devis ⇒ rien (D-CIQ-12)."""
+    « non déduite » ; absente du devis ⇒ rien (D-CIQ-12). AMOT96 — sans O&M
+    chiffrée, l'entretien minimum servi (réglage société) est dit déduit."""
     om = argent.get("om") if isinstance(argent, dict) else None
-    if not isinstance(om, dict):
-        return ""
+    om = om if isinstance(om, dict) else {}
     montant = _num(om.get("montant_mad_an"))
     if om.get("statut") == "souscrit" and montant:
         return L("ci_ind_om_deduite", "O&amp;M déduite du flux : {montant} MAD/an",
                  montant=fmt_mad(montant))
+    entretien = _num((argent.get("entretien") or {}).get("montant_mad_an")
+                     if isinstance(argent, dict) else None)
+    if entretien:
+        return L("ci_h_entretien_minimum", "entretien minimum à votre charge "
+                 "(réglage société) : {montant} MAD/an déduits des économies",
+                 montant=fmt_mad(entretien))
     if om.get("statut") in ("propose", "tarif_a_renseigner"):
         return L("ci_ind_om_non_deduite",
                  "O&amp;M proposée, non déduite de ces montants")

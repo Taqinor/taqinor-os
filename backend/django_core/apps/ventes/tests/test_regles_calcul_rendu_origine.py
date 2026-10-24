@@ -268,7 +268,10 @@ CLES_HORS_RENDU_ORIGINE = (
         # AMOT95 — la note TVA dit le drapeau déclaré (nouvelles clés).
         'ci_note_tva_declaree', 'ci_note_tva_non_declaree',
         # AMOT98 — « tarif sur demande » (nouvelle clé).
-        'ci_tarif_sur_demande')),
+        'ci_tarif_sur_demande',
+        # AMOT96 — entretien minimum (nouvelles clés).
+        'ci_fx_entretien', 'ci_h_entretien_minimum',
+        'ci_h_entretien_non_chiffre')),
     *_LIBELLES_APDF, *_LIBELLES_AGQ)
 _RE_NOMBRE = re.compile(r'\d+(?:[.,]\d+)?')
 

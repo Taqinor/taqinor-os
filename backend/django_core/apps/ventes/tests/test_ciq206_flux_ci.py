@@ -140,6 +140,62 @@ class OmTest(SimpleTestCase):
         self.assertEqual(res['om']['statut'], 'tarif_a_renseigner')
 
 
+class EntretienMinimumTest(SimpleTestCase):
+    """AMOT96 (D-ACI-14=a) — 30 MAD/kWc/an × 200 kWc = 6 000 MAD/an déduits
+    du flux quand l'O&M n'est pas souscrite ; jamais en plus d'une O&M
+    souscrite ; réglage vide ⇒ flux d'hier. Test-du-test : retirer la
+    déduction ⇒ rouge."""
+
+    ENTRETIEN = eco.entretien_minimum(
+        {'entretien_minimum_mad_kwc_an': 30, 'tva_standard': 20},
+        {'taille': {'retenue_kwc': 200}})
+
+    def test_reglage_fois_kwc_ttc_a_la_tva_standard(self):
+        self.assertEqual(self.ENTRETIEN, {
+            'mad_kwc_an': 30.0, 'kwc': 200.0, 'ht': 6000.0, 'ttc': 7200.0,
+            'source': eco.SOURCE_ENTRETIEN_MINIMUM})
+        for reglages in ({}, {'entretien_minimum_mad_kwc_an': None},
+                         {'entretien_minimum_mad_kwc_an': 0}):
+            self.assertIsNone(eco.entretien_minimum(
+                reglages, {'taille': {'retenue_kwc': 200}}))
+        self.assertIsNone(eco.entretien_minimum(
+            {'entretien_minimum_mad_kwc_an': 30}, {}))
+
+    def test_deduit_sans_om_retour_allonge(self):
+        sans = eco.flux_ci(_base(), production_annee1_kwh=100000)
+        res = eco.flux_ci(_base(), production_annee1_kwh=100000,
+                          entretien=self.ENTRETIEN)
+        for f in res['flux_ht']['flux'][1:]:
+            self.assertAlmostEqual(f['economie_mad'] - f['flux_mad'], 6000.0)
+        self.assertEqual(res['entretien']['montant_mad_an'], 6000.0)
+        self.assertEqual(res['entretien']['source'],
+                         eco.SOURCE_ENTRETIEN_MINIMUM)
+        self.assertGreaterEqual(res['indicateurs']['retour_ans'],
+                                sans['indicateurs']['retour_ans'])
+        self.assertLess(res['flux_ht']['flux'][-1]['cumul_mad'],
+                        sans['flux_ht']['flux'][-1]['cumul_mad'])
+        self.assertLess(res['indicateurs']['tri_pct'],
+                        sans['indicateurs']['tri_pct'])
+        self.assertIsNone(sans['entretien'])
+
+    def test_om_souscrite_seule_deduite(self):
+        res = eco.flux_ci(_base(), production_annee1_kwh=100000,
+                          om={'activee': True, 'ht': 5000.0, 'ttc': 6000.0},
+                          entretien=self.ENTRETIEN)
+        an1 = res['flux_ht']['flux'][1]
+        self.assertAlmostEqual(an1['economie_mad'] - an1['flux_mad'], 5000.0)
+        self.assertIsNone(res['entretien'])
+        self.assertEqual(res['om']['statut'], 'souscrit')
+
+    def test_om_proposee_entretien_deduit(self):
+        res = eco.flux_ci(_base(), production_annee1_kwh=100000,
+                          om={'activee': False, 'ht': 5000.0, 'ttc': 6000.0},
+                          entretien=self.ENTRETIEN)
+        self.assertEqual(res['om']['statut'], 'propose')
+        an1 = res['flux_ht']['flux'][1]
+        self.assertAlmostEqual(an1['economie_mad'] - an1['flux_mad'], 6000.0)
+
+
 class ReventeHorsFluxTest(SimpleTestCase):
     def test_une_revente_ne_change_pas_le_retour(self):
         import inspect

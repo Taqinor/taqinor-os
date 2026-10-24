@@ -2835,6 +2835,20 @@ LIBELLES = {
     'ci_h_om_non_deduite': {'fr': 'non déduit des économies',
                             'en': 'not deducted from the savings',
                             'ar': 'غير مخصومة من الوفورات'},
+    # AMOT96 (D-ACI-14=a) — entretien minimum réglé par la société.
+    'ci_fx_entretien': {'fr': 'Entretien', 'en': 'Maintenance',
+                        'ar': 'الصيانة'},
+    'ci_h_entretien_minimum': {
+        'fr': 'entretien minimum à votre charge (réglage société) : '
+              '{montant} MAD/an déduits des économies',
+        'en': 'minimum maintenance at your expense (company setting): '
+              '{montant} MAD/yr deducted from the savings',
+        'ar': 'الحد الأدنى من الصيانة على نفقتكم (إعداد الشركة): {montant} '
+              'درهم/سنة مخصومة من الوفورات'},
+    'ci_h_entretien_non_chiffre': {
+        'fr': 'non chiffré — non déduit des économies',
+        'en': 'not costed — not deducted from the savings',
+        'ar': 'غير محتسبة — غير مخصومة من الوفورات'},
     # AMOT92 — la couverture est le PROJET du client.
     'ci_kicker_autoconso_commerciale': {
         'fr': 'Autoconsommation solaire commerciale',
