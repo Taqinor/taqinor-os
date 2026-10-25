@@ -536,6 +536,30 @@ class LiensSiteTests(TestCase):
                 self.assertTrue([u for u in uris if '/proposition/' in u
                                  and self.lien.token in u], uris)
 
+    def test_lien_proposition_plateforme_avec_site(self):
+        """APDF104 (C-APDF-VER-004) — société AVEC site : le lien et le QR de
+        la proposition visent la page de la PLATEFORME (``url_proposition``,
+        celle du courriel), jamais le site de la société qui ne l'héberge pas ;
+        les liens réalisations restent sur son site. La une-page (moteur
+        legacy) n'imprime que le QR et sa forme courte « <hôte>/proposition ».
+        Test-du-test : rétablir ``_signer_base = "https://" + _tenant_site``
+        dans le builder ⇒ échec."""
+        from apps.ventes.utils.client_links import url_proposition
+        profil(self.company, site_web='solaire-exemple.ma')
+        attendu = url_proposition(self.devis, self.lien.token)
+        court = attendu.split('://', 1)[1].rsplit('/', 1)[0]
+        for nom in ('defaut', 'onepage'):
+            texte, uris = texte_et_liens(rendre_pdf(self.devis, FORMATS[nom]))
+            propositions = [u for u in uris if '/proposition/' in u]
+            self.assertTrue(set(propositions) <= {attendu}, (nom, uris))
+            self.assertNotIn('solaire-exemple.ma/proposition', texte, nom)
+            if nom == 'defaut':
+                self.assertEqual(set(propositions), {attendu}, uris)
+                self.assertTrue([u for u in uris
+                                 if 'solaire-exemple.ma/realisations' in u])
+            else:
+                self.assertIn(court, texte)
+
     def test_ci_sans_site_aucun_taqinor_ma(self):
         """Commercial et industriel, chaque format servi par /proposal : le
         pied suit la règle du résidentiel (site de la société, sinon rien)."""

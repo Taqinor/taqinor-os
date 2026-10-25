@@ -3635,18 +3635,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # ── QX6 — CTA de signature : lien tokenisé VERS LA VRAIE proposition ──────
     # L'ancien « taqinor.ma/signer/<ref> » (404) est remplacé par un ShareLink
     # tokenisé vers la page proposition publique (<base>/proposition/<token>).
-    # RÈGLE #4 (fusion SCA27) : la BASE du lien est le site DU TENANT quand il
-    # est renseigné (helios.ma) — jamais le domaine fondateur — de sorte qu'aucun
-    # « taqinor.ma » ne fuit dans le PDF d'un autre tenant. Sans site tenant, on
-    # retombe sur ``SITE_URL`` (taqinor.ma) : rendu fondateur inchangé. Mint/
-    # réutilise un ShareLink (lecture seule, expirant) — cela NE CHANGE AUCUN
-    # statut. Repli silencieux : sur toute erreur, le renderer garde son lien
-    # historique (aucun PDF ne casse ici).
+    # APDF104 — cette page est hébergée par la PLATEFORME, jamais par le site
+    # de la société : le lien (et son QR) est ``url_proposition`` (base
+    # ``SITE_URL``), le MÊME que le courriel d'envoi, site renseigné ou non.
+    # Lecture d'un ShareLink existant — cela NE CHANGE AUCUN statut. Repli
+    # silencieux : sur toute erreur, le renderer garde son lien historique
+    # (aucun PDF ne casse ici).
     links = {}
     try:
-        from django.conf import settings
         from apps.ventes.models import ShareLink
-        from apps.ventes.utils.client_links import chemin_proposition
+        from apps.ventes.utils.client_links import url_proposition
         _pk = getattr(devis, "pk", None)
         # APRF3 — aucun lien de partage lu sur le chemin des totaux de liste.
         if _pk is not None and not _totaux_seuls:
@@ -3693,14 +3691,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                     .order_by('-expires_at').first())
                 if _share is None:
                     raise _PasDeLienSigner()
-            if _tenant_site:
-                _signer_base = "https://" + _tenant_site
-            else:
-                # Repli plateforme : settings.SITE_URL (SCA29 — jamais de marque
-                # en dur ici ; le défaut vit dans settings.base, configurable).
-                _signer_base = (getattr(settings, "SITE_URL", "") or "").rstrip("/")
-            # PV84 — chemin partagé, nom du client inclus (cosmétique).
-            links["signer"] = f"{_signer_base}{chemin_proposition(devis, _share.token)}"
+            links["signer"] = url_proposition(devis, _share.token)
     except _PasDeLienSigner:
         links = {}
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus (D-ENF22-BLE001)
