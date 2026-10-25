@@ -802,6 +802,8 @@ class PlanCompteSerializer(UniciteEn409Mixin, _ClientEnPorteeMixin,
 
 
 class PlaybookTacheSerializer(IdInconnu404Mixin, serializers.ModelSerializer):
+    serializer_field_mapping = MAPPING_TEXTE_STRICT  # api-fuzz-full 25/10 : NUL publié
+
     class Meta:
         model = PlaybookTache
         fields = ['id', 'etape', 'libelle', 'obligatoire', 'ordre']

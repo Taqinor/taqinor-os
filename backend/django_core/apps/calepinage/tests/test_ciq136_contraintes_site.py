@@ -113,6 +113,10 @@ class NormalisationTests(SimpleTestCase):
                  'source': {'document': 'd\x00'}}):
             with self.assertRaises(ContraintesSiteInvalides):
                 normaliser_contraintes_site(valeur)
+        # api-fuzz-full 25/10 — dans une CLÉ (inexprimable en OpenAPI 3.0) : 409.
+        from apps.calepinage.services.degagements import CleInterdite
+        with self.assertRaises(CleInterdite):
+            normaliser_contraintes_site({'regles': {'a\x00b': 'x'}})
 
     def test_nombre_hors_flottant_refuse_sans_exception(self):
         with self.assertRaises(ContraintesSiteInvalides):

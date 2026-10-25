@@ -480,6 +480,11 @@ class ContraintesSiteInvalides(ValueError):
         self.message = message
 
 
+class CleInterdite(ContraintesSiteInvalides):
+    """Caractère nul dans une CLÉ (``regles``) : OpenAPI 3.0 ne borne pas les
+    clés (pas de ``propertyNames``) — refus inexprimable au schéma = 409."""
+
+
 def _metre(valeur, champ):
     if valeur in (None, ''):
         return None
@@ -503,7 +508,9 @@ def _refuser_nul(valeur, champ='contraintes_site'):
                 champ, f"{champ} : le caractère nul n'est pas autorisé.")
     elif isinstance(valeur, dict):
         for cle, sous in valeur.items():
-            _refuser_nul(cle, champ)
+            if isinstance(cle, str) and '\x00' in cle:
+                raise CleInterdite(
+                    champ, f"{champ} : le caractère nul n'est pas autorisé.")
             _refuser_nul(sous, champ)
     elif isinstance(valeur, (list, tuple)):
         for sous in valeur:

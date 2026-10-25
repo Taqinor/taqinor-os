@@ -433,12 +433,16 @@ class CalepinageSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
 
     def validate_contraintes_site(self, value):
         """CIQ136 — normalisées ; une valeur sans source → 400 FR."""
+        from core.conflit_etat import ConflitEtat
+
         from .services.degagements import (
-            ContraintesSiteInvalides, normaliser_contraintes_site,
+            CleInterdite, ContraintesSiteInvalides, normaliser_contraintes_site,
         )
 
         try:
             return normaliser_contraintes_site(value)
+        except CleInterdite as refus:  # api-fuzz-full 25/10 — clé : 409
+            raise ConflitEtat({'contraintes_site': [refus.message]})
         except ContraintesSiteInvalides as refus:
             raise serializers.ValidationError(refus.message)
 
