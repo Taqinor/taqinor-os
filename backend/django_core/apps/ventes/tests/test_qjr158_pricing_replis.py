@@ -37,7 +37,7 @@ from pathlib import Path
 
 from django.test import SimpleTestCase
 
-from apps.ventes.quote_engine import builder, pricing, productible
+from apps.ventes.quote_engine import etude_chiffrage, pricing, productible
 
 
 def bloc_horaire(**surcharges):
@@ -223,7 +223,7 @@ class TestD_ProductibleCanonique(SimpleTestCase):
 
         On les identifie par ce que leur ``try`` importe, jamais par un numéro
         de ligne (qui dériverait au premier ajout au-dessus)."""
-        source = Path(inspect.getsourcefile(builder)).read_text(
+        source = Path(inspect.getsourcefile(etude_chiffrage)).read_text(
             encoding="utf-8")
         arbre = ast.parse(source)
         attendus = {"tariff_for", "productible_for_city"}
@@ -246,7 +246,7 @@ class TestD_ProductibleCanonique(SimpleTestCase):
                 for h in noeud.handlers for n in ast.walk(h))
             self.assertTrue(
                 journalise,
-                f"le repli de {cible} est encore muet dans builder.py")
+                f"le repli de {cible} est encore muet dans etude_chiffrage.py")
             trouves |= cible
         self.assertEqual(trouves, attendus,
                          "les deux replis de productible n'ont pas été trouvés")

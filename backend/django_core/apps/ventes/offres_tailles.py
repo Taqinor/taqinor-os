@@ -1357,9 +1357,9 @@ def _annuel_frais(devis, kwc):
 
     I7 — sur un devis à champs PV divergents, chaque option a SON bloc
     (``etude_horaire_sans`` pour l'option SANS) : la carte lit celui de SA
-    puissance (``builder.bloc_horaire_pour_kwc``), puis la même garde.
+    puissance (``etude_chiffrage.bloc_horaire_pour_kwc``), puis la même garde.
     """
-    from .quote_engine.builder import bloc_horaire_pour_kwc
+    from .quote_engine.etude_chiffrage import bloc_horaire_pour_kwc
     from .quote_engine.pricing import _lire_etude_horaire
 
     etude_params = getattr(devis, 'etude_params', None) or {}

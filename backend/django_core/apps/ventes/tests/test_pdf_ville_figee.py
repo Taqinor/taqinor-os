@@ -25,7 +25,7 @@ User = get_user_model()
 
 class LibelleVille(SimpleTestCase):
     def test_pres_de_quand_elles_different(self):
-        from apps.ventes.quote_engine.builder import _libelle_ville
+        from apps.ventes.quote_engine.etude_chiffrage import _libelle_ville
         self.assertEqual(_libelle_ville('Douar X', 'Settat'),
                          'Douar X, près de Settat')
         self.assertEqual(_libelle_ville('Settat', 'Settat'), 'Settat')

@@ -107,6 +107,8 @@ TARGET_FILES = [
     VENTES / "quote_engine" / "builder.py",
     # SPL162 — helpers de classement déplacés de builder.py (move only).
     VENTES / "quote_engine" / "lignes_classement.py",
+    # SPL163 — phase D1 de build_quote_data déplacée de builder.py (move only).
+    VENTES / "quote_engine" / "etude_chiffrage.py",
     VENTES / "quote_engine" / "generate_devis_premium.py",
     VENTES / "quote_engine" / "pricing.py",
     VENTES / "quote_engine" / "bareme.py",

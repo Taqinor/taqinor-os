@@ -98,13 +98,82 @@ class Spl162LignesClassementTests(SimpleTestCase):
         from apps.ventes.quote_engine import builder, lignes_classement
         for nom in ("_is_battery", "_is_panel", "_parse_marque",
                     "_line_to_item", "panneaux_et_watt_lu",
-                    "_item_classement", "_item_marque", "_cout_onduleur"):
+                    "_item_classement", "_item_marque"):
             with self.subTest(nom=nom):
                 self.assertIs(getattr(builder, nom),
                               getattr(lignes_classement, nom))
         # C20 FACADE — builder n'expose plus ce qu'il n'utilise pas : les
         # importeurs lisent ces noms dans ``lignes_classement`` directement.
+        # SPL163 — ``_cout_onduleur`` n'est plus lu que par la phase D1
+        # (``etude_chiffrage``) : builder ne le lie plus.
         for nom in ("_is_inverter", "_is_smart_meter", "_is_wifi_dongle",
-                    "_parse_watt", "_parse_kwh"):
+                    "_parse_watt", "_parse_kwh", "_cout_onduleur"):
+            with self.subTest(absent=nom):
+                self.assertFalse(hasattr(builder, nom))
+
+
+#: SPL163 — phase D1 de build_quote_data (chiffrage de l'étude) et les helpers
+#: de niveau module qu'elle est seule à lire : builder.py → etude_chiffrage.py.
+NOMS_SPL163 = (
+    "_DERIVEES_ETUDE_IC_ANCIENNES", "_etude_rendue", "_etude_ic_fraiche",
+    "_etude_horaire_sans_stockage", "CLES_BLOCS_HORAIRES",
+    "bloc_horaire_pour_kwc", "_libelle_ville", "_ville_du_devis", "_nombre",
+    "chiffrer_etude",
+)
+
+
+def _source_de(nom_fichier, fonction):
+    texte = (_MOTEUR / nom_fichier).read_text(encoding="utf-8")
+    noeud = next(n for n in _arbre(nom_fichier).body
+                 if isinstance(n, ast.FunctionDef) and n.name == fonction)
+    return ast.get_source_segment(texte, noeud)
+
+
+def _tous_imports(arbre):
+    """Modules importés n'importe où (imports locaux compris)."""
+    mods = []
+    for noeud in ast.walk(arbre):
+        if isinstance(noeud, ast.ImportFrom):
+            mods.append(("." * noeud.level) + (noeud.module or ""))
+            mods.extend(a.name for a in noeud.names if not noeud.module)
+        elif isinstance(noeud, ast.Import):
+            mods.extend(a.name for a in noeud.names)
+    return mods
+
+
+class Spl163EtudeChiffrageTests(SimpleTestCase):
+    def test_noms_definis_dans_etude_chiffrage_et_plus_dans_builder(self):
+        ec = _definis(_arbre("etude_chiffrage.py"))
+        builder = _definis(_arbre("builder.py"))
+        for nom in NOMS_SPL163:
+            with self.subTest(nom=nom):
+                self.assertIn(nom, ec)
+                self.assertNotIn(nom, builder)
+
+    def test_build_quote_data_delegue_la_phase_d1(self):
+        corps = _source_de("builder.py", "build_quote_data")
+        self.assertNotIn("QX38 — productible CANONIQUE", corps)
+        self.assertNotIn("Canonical performance figures", corps)
+        self.assertIn("chiffrer_etude(", corps)
+        self.assertIn("QX38 — productible CANONIQUE",
+                      _source_de("etude_chiffrage.py", "chiffrer_etude"))
+
+    def test_etude_chiffrage_n_importe_jamais_builder(self):
+        for mod in _tous_imports(_arbre("etude_chiffrage.py")):
+            with self.subTest(mod=mod):
+                self.assertNotIn("builder", mod)
+                self.assertNotEqual(mod, "apps.ventes.utils.options")
+
+    def test_reexport_pour_les_autres_proprietaires(self):
+        """public_views (CLES_BLOCS_HORAIRES), tests devis test_options et
+        test_ciq129_cles_v1 lisent toujours le MÊME objet via builder."""
+        from apps.ventes.quote_engine import builder, etude_chiffrage
+        for nom in ("CLES_BLOCS_HORAIRES", "_etude_horaire_sans_stockage",
+                    "_etude_rendue", "_nombre"):
+            with self.subTest(nom=nom):
+                self.assertIs(getattr(builder, nom),
+                              getattr(etude_chiffrage, nom))
+        for nom in ("bloc_horaire_pour_kwc", "_libelle_ville",
+                    "_ville_du_devis", "_etude_ic_fraiche"):
             with self.subTest(absent=nom):
                 self.assertFalse(hasattr(builder, nom))
