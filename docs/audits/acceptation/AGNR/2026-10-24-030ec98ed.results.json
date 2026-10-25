@@ -1,0 +1,33 @@
+{
+  "sha": "030ec98ed79f21212a11eb31b5ab2687903b22ea",
+  "date": "2026-10-24",
+  "groupe": "AGNR",
+  "verdict": "PASS",
+  "couvre": [
+    "AGNR47"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "AGNR47"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AGNR/traces/2026-10-24/AGNR47-P1.1.txt"
+    }
+  ]
+}

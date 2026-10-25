@@ -1,0 +1,8 @@
+AGNR47 — P1.1 — rejeu orchestrateur, pile locale (backend monté à 030ec98ed, front construit à 080a94052), 2026-10-24, navigateur intégré, demo_admin (société 2).
+Leads : A = « Rejeu AGNR34 A » (2618, hiver 500 / été 1 200, été différent) ; B = « Rejeu AGNR47 sans facture » (2620, créé par l'API leads, aucune facture). Corps relevés par un enregistreur XHR posé dans la page.
+
+1. /ventes/devis/nouveau, lead A choisi : hiver 500.00 / été 1200.00, grille [500×4, 1200×6, 500×2], 12 cases « estimé ».
+2. Même écran, lead B choisi à la place : hiver et été VIDES ; grille = valeurs d'exemple [500, 450, 400, 380, 360, 500, 700, 680, 580, 480, 430, 480] sans marque « estimé »/« tapé » (aucune valeur de A) ; bandeaux « aucune facture enregistrée sur ce lead », « Aucune facture exploitable … », « ESTIMATION D'EXEMPLE ».
+3. « Auto-remplir depuis le stock » puis « Créer » → POST devis/atomic/ {lead 2620, etude_params {scenario, recommended_option, nombre_proprietes}} puis PATCH devis/1090/etude-params/ (mêmes clés) : ni `factures_mensuelles_reelles`, ni `factures_hiver_ete` envoyées. Devis DEV-202610-0095 (1090).
+4. Réouverture /ventes/devis/nouveau?edit=1090 : hiver et été vides, grille d'exemple sans marque, bandeau « aucune facture enregistrée sur ce lead », aucun « Modifications non enregistrées » — aucune facture de A héritée.
+Verdict : PASS.
