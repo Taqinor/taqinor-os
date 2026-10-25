@@ -125,6 +125,30 @@ class BlueprintTests(TestCase):
         regle = AutomationRule.objects.get(company=self.vierge)
         self.assertEqual(regle.steps.count(), 2)
 
+    def test_import_tolere_un_doublon_sans_contrainte(self):
+        """ENF18 : un rapport n'a aucune unicité en base sur (société, titre) — un doublon laissé
+        par deux imports simultanés ne fait plus lever ``MultipleObjectsReturned`` : la plus
+        ancienne ligne est mise à jour, aucune troisième n'est créée."""
+        blueprint = exporter_blueprint(self.pilote)
+        importer_blueprint(self.vierge, blueprint)
+        premier = RapportDefinition.objects.get(
+            company=self.vierge, titre='CA par commercial')
+        double = RapportDefinition.objects.create(
+            company=self.vierge, titre='CA par commercial', dataset='vitals',
+            spec={'group_by': ['route']},
+            partage=RapportDefinition.Partage.SOCIETE)
+        blueprint['sections']['rapports'][0]['spec'] = {'group_by': ['mois']}
+
+        resultat = importer_blueprint(self.vierge, blueprint)
+
+        self.assertEqual(resultat['rapports'], {'crees': 0, 'majs': 1})
+        premier.refresh_from_db()
+        double.refresh_from_db()
+        self.assertEqual(premier.spec, {'group_by': ['mois']})
+        self.assertEqual(double.spec, {'group_by': ['route']})
+        self.assertEqual(RapportDefinition.objects.filter(
+            company=self.vierge, titre='CA par commercial').count(), 2)
+
     def test_import_never_touches_the_source_company(self):
         blueprint = exporter_blueprint(self.pilote)
         importer_blueprint(self.vierge, blueprint)

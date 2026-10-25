@@ -205,6 +205,13 @@ class UptimeDayBucket(TenantModel):
             models.UniqueConstraint(
                 fields=['company', 'composant', 'region', 'date'],
                 name='statuspage_uptimebucket_jour'),
+            # ENF18 — la contrainte ci-dessus ne protège PAS les composants SYSTÈME
+            # (``company`` NULL : NULL != NULL en base) : ``tasks._accumuler_uptime_jour``
+            # n'écrit QUE ceux-là, deux ticks simultanés créaient deux buckets du jour.
+            models.UniqueConstraint(
+                fields=['composant', 'region', 'date'],
+                condition=models.Q(company__isnull=True),
+                name='statuspage_uptimebucket_jour_systeme'),
         ]
         indexes = [
             models.Index(fields=['composant', '-date'],

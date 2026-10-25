@@ -1,12 +1,13 @@
 import RetourAtelier from './atelier/RetourAtelier'
 import useSurfacePose from './useSurfacePose'
 import ActionsSurfacePose from './ActionsSurfacePose'
-import { demandeMoteur, planVue2D } from './ModeTerrain.helpers'
+import TracePlanPose from './TracePlanPose'
+import { demandeMoteur, vueDuChamp } from './ModeTerrain.helpers'
 import {
   nombre, pasMesure, contourTerrain, documentSurfacePose, remplacerSurface, KIND_OMBRIERE,
+  SAISIE_MODULE_VIDE,
 } from './surfacePose'
 import { formatCote, milieu } from './plan2d'
-import { formatNumber } from '../../lib/format'
 import { coupeOmbriere, totauxParBatiment } from './Ombriere.helpers'
 
 /* ============================================================================
@@ -47,11 +48,7 @@ const SAISIE_VIDE = {
   clearHeightM: '',
   tiltDeg: '',
   flowAzimuthDeg: '',
-  moduleLongM: '',
-  moduleCourtM: '',
-  puissanceWc: '',
-  modulesParTable: '',
-  alleeM: '',
+  ...SAISIE_MODULE_VIDE,
 }
 
 const CHAMPS = [
@@ -66,6 +63,16 @@ const CHAMPS = [
   ['modulesParTable', 'Modules par travée'],
   ['alleeM', 'Allée imposée entre rangées (m) — vide = politique du moteur'],
 ]
+
+/** ENF19 — les `data-testid` du tracé en plan (le tracé lui-même est `TracePlanPose`). */
+const IDS_TRACE = {
+  svg: 'cal-ombriere-svg',
+  contour: 'cal-ombriere-emprise-tracee',
+  rangee: 'cal-ombriere-rangee',
+  table: 'cal-ombriere-travee',
+  cote: 'cal-ombriere-cote',
+  emprise: 'cal-ombriere-emprise',
+}
 
 function auDixieme(v) {
   return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
@@ -124,15 +131,7 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
       aireTerrainM2: aire,
     })
     : null
-  const vue = champ
-    ? planVue2D({
-      contourM: contourTerrain(saisie.largeurM, saisie.profondeurM),
-      tables: champ.tables,
-      rangees: plan?.rangees ?? [],
-      pasM: champ.pasInterRangeeM,
-      compteModules: champ.modules,
-    })
-    : null
+  const vue = vueDuChamp(champ, plan, saisie)
   const coupe = champ ? coupeOmbriere({ tables: champ.tables }) : null
   // L'ALTITUDE AFFICHÉE est celle que le service a posée sur les tables, pas la
   // saisie relue : c'est la seule façon de voir qu'une hauteur absente ne lève
@@ -261,73 +260,7 @@ export default function Ombriere({ calepinageId: idPropose = null, persister = t
               </p>
             )}
 
-            {vue && (
-              <>
-                <svg
-                  data-testid="cal-ombriere-svg"
-                  viewBox={`0 0 ${vue.largeurPx} ${vue.hauteurPx}`}
-                  width="100%"
-                  role="img"
-                  aria-label={`Ombrière en plan — ${vue.tables.length} travée(s) posée(s) par le moteur`}
-                  className="mt-2 text-brass-200"
-                >
-                  <polygon
-                    data-testid="cal-ombriere-emprise-tracee"
-                    points={vue.contour.map((p) => p.join(',')).join(' ')}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  />
-                  {vue.rangees.map((r) => (
-                    <line
-                      key={r.y0}
-                      data-testid="cal-ombriere-rangee"
-                      x1={r.from[0]}
-                      y1={r.from[1]}
-                      x2={r.to[0]}
-                      y2={r.to[1]}
-                      stroke="currentColor"
-                      strokeWidth="0.75"
-                      strokeDasharray="6 5"
-                      strokeOpacity="0.55"
-                    />
-                  ))}
-                  {vue.tables.map((q, i) => (
-                    <polygon
-                      key={i}
-                      data-testid="cal-ombriere-travee"
-                      points={q.map((p) => p.join(',')).join(' ')}
-                      fill="currentColor"
-                      fillOpacity="0.25"
-                      stroke="currentColor"
-                      strokeWidth="0.75"
-                    />
-                  ))}
-                  {vue.cotes.map((c, i) => {
-                    const [mx, my] = milieu(c.from, c.to)
-                    return (
-                      <text
-                        key={i}
-                        data-testid="cal-ombriere-cote"
-                        x={mx}
-                        y={my}
-                        fontSize="12"
-                        textAnchor="middle"
-                        fill="currentColor"
-                      >
-                        {formatCote(c.lengthM)}
-                      </text>
-                    )
-                  })}
-                </svg>
-
-                <p className="mt-2 text-xs text-lune-faint" data-testid="cal-ombriere-emprise">
-                  {vue.tables.length} travée(s) dessinée(s) — emprise{' '}
-                  {formatNumber(champ.empriseTablesM2, { decimals: 1 })} m² ;{' '}
-                  {champ.modules ?? '—'} module(s) posé(s) par le moteur.
-                </p>
-              </>
-            )}
+            {vue && <TracePlanPose vue={vue} champ={champ} ids={IDS_TRACE} nom="travée" titre="Ombrière en plan" />}
 
             {coupe && (
               <svg

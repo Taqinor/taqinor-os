@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from authentication.models import Company
 from apps.crm.management.commands.snapshot_forecast_hebdo import (
-    snapshot_forecast_hebdo,
+    _semaine_iso, snapshot_forecast_hebdo,
 )
 from apps.crm.models import ForecastEntry, ForecastSnapshot, Lead
 from apps.roles.models import Role
@@ -53,3 +53,27 @@ class SnapshotForecastHebdoTests(TestCase):
         self.assertEqual(
             [s.montant_total for s in snapshots],
             montants_hebdo)
+
+    def test_doublon_societe_deja_present_est_tolere(self):
+        """ENF18 : le snapshot SOCIÉTÉ (owner NULL) n'a aucune unicité en base (NULL != NULL) ;
+        un doublon laissé par une course passée ne fait plus lever ``MultipleObjectsReturned`` :
+        la plus ancienne ligne est mise à jour, aucune troisième n'est créée."""
+        now = timezone.now()
+        semaine = _semaine_iso(now)
+        premier = ForecastSnapshot.objects.create(
+            company=self.company, semaine_iso=semaine, categorie='commit',
+            montant_total=Decimal('1'), nb_leads=1)
+        second = ForecastSnapshot.objects.create(
+            company=self.company, semaine_iso=semaine, categorie='commit',
+            montant_total=Decimal('2'), nb_leads=1)
+
+        snapshot_forecast_hebdo(now=now)
+
+        premier.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(premier.montant_total, Decimal('5000'))
+        self.assertEqual(second.montant_total, Decimal('2'))
+        self.assertEqual(
+            ForecastSnapshot.objects.filter(
+                company=self.company, semaine_iso=semaine, categorie='commit',
+                owner__isnull=True).count(), 2)

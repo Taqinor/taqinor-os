@@ -4,6 +4,7 @@ import { Download, Upload } from 'lucide-react'
 import calepinageApi from '../../../api/calepinageApi'
 import { Button, Card } from '../../../ui'
 import { downloadBlob } from '../../../utils/downloadBlob'
+import EntreeFichierJson from '../commun/EntreeFichierJson'
 
 /* ============================================================================
    CALX371 — MONTER L'EXPORT ET L'IMPORT DE PROJET EN ONGLET DE L'ATELIER.
@@ -224,13 +225,10 @@ export default function Projet({ calepinageId: idPropose } = {}) {
             <Upload className="mr-1 h-4 w-4" aria-hidden="true" />
             Choisir un fichier
           </Button>
-          <input
-            ref={entreeFichier}
-            type="file"
-            accept="application/json"
-            className="hidden"
-            aria-label="Importer un projet de calepinage (JSON)"
-            data-testid="cal-projet-fichier"
+          <EntreeFichierJson
+            entreeRef={entreeFichier}
+            ariaLabel="Importer un projet de calepinage (JSON)"
+            testid="cal-projet-fichier"
             onChange={choisir}
           />
         </div>

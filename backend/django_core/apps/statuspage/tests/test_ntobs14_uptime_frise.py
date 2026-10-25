@@ -1,6 +1,7 @@
 """NTOBS14 — historique d'uptime affiché en frise chronologique 90 jours."""
 from unittest import mock
 
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -41,6 +42,20 @@ class AccumulerUptimeJourTest(TestCase):
             'API', 'EU-West/Hetzner', ComponentStatus.Statut.OPERATIONAL, now)
         bucket = UptimeDayBucket.objects.get(composant='API', date=now.date())
         self.assertEqual(bucket.statut_pire_du_jour, ComponentStatus.Statut.MAJOR_OUTAGE)
+
+    def test_un_seul_bucket_systeme_par_composant_region_jour(self):
+        """ENF18 : ``company`` NULL n'épinglait rien (NULL != NULL) — la contrainte partielle
+        refuse un second bucket système du même (composant, région, jour)."""
+        now = timezone.now()
+        _accumuler_uptime_jour(
+            'API', 'EU-West/Hetzner', ComponentStatus.Statut.OPERATIONAL, now)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            UptimeDayBucket.objects.create(
+                company=None, composant='API', region='EU-West/Hetzner',
+                date=now.date())
+        self.assertEqual(
+            UptimeDayBucket.objects.filter(
+                composant='API', date=now.date()).count(), 1)
 
     def test_never_raises_on_db_error(self):
         with mock.patch(

@@ -25,21 +25,13 @@ const get = vi.fn()
 const calerPhoto = vi.fn()
 const layout = vi.fn()
 const enregistrerSectionLayout = vi.fn()
-vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      photos: (...a) => photos(...a),
-      get: (...a) => get(...a),
-      calerPhoto: (...a) => calerPhoto(...a),
-      layout: (...a) => layout(...a),
-      enregistrerSectionLayout: (...a) => enregistrerSectionLayout(...a),
-    },
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock'))
+  .apiCalepinages({ photos, get, calerPhoto, layout, enregistrerSectionLayout }, {
     // CAL70 — `AtelierPanneaux` (monté ici pour le test d'atteignabilité)
     // porte aussi `PanneauAllees`, qui lit les réglages société au montage.
     parametres: { get: vi.fn().mockResolvedValue({ data: { degagements: {} } }) },
     moteur: { calculer: vi.fn() },
-  },
-}))
+  }))
 
 vi.mock('leaflet', async () => (await import('./leafletFauxMock')).leafletFauxMock())
 

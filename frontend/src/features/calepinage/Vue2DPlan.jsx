@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { formatCote, milieu } from './plan2d'
+import { formatCote } from './plan2d'
+import { ContourPlan, PolygonePose, CotesPlan } from './TracePlanPose'
 // CALX111 câblage — étiquettes de NUMÉRO de module en vue plan. Le module est le MÊME que
 // celui du builder (alias `@roofpro`, résolu sur le fichier de `apps/web`), donc c'est la
 // mémoire de l'atelier qui est lue — jamais une numérotation recalculée ici.
@@ -134,23 +135,9 @@ export default function Vue2DPlan({ plan, compte3d, titre, panId }) {
             role="img"
             aria-label={`Plan orthographique — ${plan.panelCount} modules`}
           >
-            <polygon
-              data-testid="v2d-contour"
-              points={plan.outline.map((p) => p.join(',')).join(' ')}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            />
+            <ContourPlan sommets={plan.outline} testid="v2d-contour" />
             {plan.panels.map((q, i) => (
-              <polygon
-                key={i}
-                data-testid="v2d-module"
-                points={q.map((p) => p.join(',')).join(' ')}
-                fill="currentColor"
-                fillOpacity="0.25"
-                stroke="currentColor"
-                strokeWidth="0.75"
-              />
+              <PolygonePose key={i} sommets={q} testid="v2d-module" />
             ))}
             {/* CALX111 — numéros de module, posés au centre du rectangle projeté. */}
             {etiquettes.map((e) => (
@@ -167,14 +154,7 @@ export default function Vue2DPlan({ plan, compte3d, titre, panId }) {
                 {e.texte}
               </text>
             ))}
-            {plan.cotes.map((c, i) => {
-              const [mx, my] = milieu(c.from, c.to)
-              return (
-                <text key={i} data-testid="v2d-cote" x={mx} y={my} fontSize="12" textAnchor="middle" fill="currentColor">
-                  {formatCote(c.lengthM)}
-                </text>
-              )
-            })}
+            <CotesPlan cotes={plan.cotes} testid="v2d-cote" />
           </svg>
         </>
       )}

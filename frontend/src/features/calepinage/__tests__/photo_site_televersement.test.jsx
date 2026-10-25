@@ -19,16 +19,8 @@ const photos = vi.fn()
 const get = vi.fn()
 const calerPhoto = vi.fn()
 const ajouterPhoto = vi.fn()
-vi.mock('../../../api/calepinageApi', () => ({
-  default: {
-    calepinages: {
-      photos: (...a) => photos(...a),
-      get: (...a) => get(...a),
-      calerPhoto: (...a) => calerPhoto(...a),
-      ajouterPhoto: (...a) => ajouterPhoto(...a),
-    },
-  },
-}))
+vi.mock('../../../api/calepinageApi', async () => (await import('../../../test/fixtures/calepinageApiMock'))
+  .apiCalepinages({ photos, get, calerPhoto, ajouterPhoto }))
 
 vi.mock('leaflet', async () => (await import('./leafletFauxMock')).leafletFauxMock())
 vi.mock('leaflet/dist/leaflet.css', () => ({}))

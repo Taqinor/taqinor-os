@@ -79,6 +79,19 @@ export function contourTerrain(largeurM, profondeurM) {
 export const KIND_SOL = 'sol'
 export const KIND_OMBRIERE = 'ombriere'
 
+/**
+ * ENF19 — la fin de saisie commune au champ au sol et à l'ombrière : le module
+ * (dimensions, puissance, modules par table) et l'allée imposée entre rangées.
+ * Vide ⇒ rien n'est envoyé au moteur, aucune valeur par défaut inventée.
+ */
+export const SAISIE_MODULE_VIDE = {
+  moduleLongM: '',
+  moduleCourtM: '',
+  puissanceWc: '',
+  modulesParTable: '',
+  alleeM: '',
+}
+
 const PAR_DEFAUT = {
   [KIND_SOL]: { repere: 'TERRAIN', label: 'Champ au sol' },
   [KIND_OMBRIERE]: { repere: 'OMBRIERE', label: 'Ombrière' },

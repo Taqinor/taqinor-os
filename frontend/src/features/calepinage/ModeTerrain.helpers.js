@@ -246,3 +246,20 @@ export function planVue2D({
     compteModules,
   }
 }
+
+/**
+ * ENF19 — la mise en page 2D du champ PLACÉ par le service (terrain ou
+ * ombrière) : le contour vient des dimensions SAISIES, les tables, le pas et le
+ * compte du `champ` rendu par le service, les rangées du plan du moteur. Pas de
+ * champ posé ⇒ rien à dessiner (`null`), jamais un champ supposé.
+ */
+export function vueDuChamp(champ, plan, saisie) {
+  if (!champ) return null
+  return planVue2D({
+    contourM: contourTerrain(saisie.largeurM, saisie.profondeurM),
+    tables: champ.tables,
+    rangees: plan?.rangees ?? [],
+    pasM: champ.pasInterRangeeM,
+    compteModules: champ.modules,
+  })
+}

@@ -6,15 +6,8 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 
 | Clé | Appel | Récepteur | Clés de lookup |
 |---|---|---|---|
-| `backend/django_core/apps/adsengine/reconciliation.py::run_daily_reconciliation::RS` | update_or_create | RS.objects | campaign, company, date |
-| `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py::snapshot_forecast_hebdo::ForecastSnapshot` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
-| `backend/django_core/apps/customfields/blueprint.py::importer_blueprint::modele` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/installations/services.py::_publier_jalon_statut::JalonProjet` | get_or_create | JalonProjet.objects | installation, phase |
 | `backend/django_core/apps/installations/services.py::ensure_default_template::ChecklistEtapeModele` | get_or_create | ChecklistEtapeModele.objects | cle, company, template |
 | `backend/django_core/apps/installations/services.py::notifier_reception_solde_a_facturer::JalonProjet` | get_or_create | JalonProjet.objects | installation, phase |
 | `backend/django_core/apps/installations/views/program.py::ProjetViewSet._attach::link_model` | get_or_create | link_model.objects | projet |
-| `backend/django_core/apps/portail/services.py::upsert_jalon_chantier::JalonChantierPortail` | update_or_create | JalonChantierPortail.objects | chantier_id, cle_phase, company |
-| `backend/django_core/apps/portail/views_client.py::MesDevisPortailViewSet.accepter::AcceptationDevisPortail` | get_or_create | AcceptationDevisPortail.objects | company, devis |
-| `backend/django_core/apps/portail/views_client.py::MesFacturesPortailViewSet.payer::PaiementFacturePortail` | get_or_create | PaiementFacturePortail.objects | company, facture, statut |
-| `backend/django_core/apps/statuspage/tasks.py::_accumuler_uptime_jour::UptimeDayBucket` | get_or_create | UptimeDayBucket.objects | company, composant, date, region |
 | `backend/django_core/apps/stock/services.py::get_or_create_produit::Produit` | get_or_create | Produit.objects | company |

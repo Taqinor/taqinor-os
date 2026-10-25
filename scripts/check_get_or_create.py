@@ -27,10 +27,19 @@ de base ; ``Base.Meta`` comprise). ``company_id`` equivaut a ``company`` (le
 suffixe ``_id`` est ignore des deux cotes) ; ``pk=`` est toujours unique.
 Prudence : une contrainte a ``condition=`` ne couvre l'appel que si chaque
 terme de sa condition (``Q(a=1, b__isnull=True) & Q(...)``) est repris tel quel
-dans le lookup (meme cle, meme valeur litterale) ; une condition en OR / NOT /
-expression non lisible n'est jamais comptee ; un champ du lookup passe a la
-valeur litterale ``None`` n'est pas compte (NULL != NULL en base). Limite assumee :
-un champ ``null=True`` dont la valeur est une variable est compte. Recepteurs
+dans le lookup (meme cle, meme valeur litterale) ; un terme ``~Q(f__isnull=True)`` /
+``Q(f__isnull=False)`` / ``~Q(f='')`` est satisfait quand la valeur de ``f`` dans le
+lookup est PROUVEE non nulle / non vide (voir ci-dessous) ; une condition en OR /
+expression non lisible n'est jamais comptee ; un champ du lookup passe a la valeur
+litterale ``None`` n'est pas compte (NULL != NULL en base).
+
+VALEUR PROUVEE NON NULLE (ENF18) : un champ ``null=True`` dont la valeur est une VARIABLE
+n'epingle rien (NULL != NULL) -- sauf si la fonction l'ecarte avant l'appel :
+``if x is None: return|continue|raise`` / ``if not x or not y: ...`` (garde-fou d'entree,
+sortie obligatoire), un appel DANS ``if x is not None:`` / ``if x:``, ou ``assert x``.
+Le nom ne doit etre ni reaffecte entre le garde-fou et l'appel (boucles comprises).
+``x is None`` ecarte prouve NON NUL ; ``not x`` ecarte prouve NON NUL ET NON VIDE.
+Rien d'autre n'est devine (attribut, appel, lambda : jamais prouve). Recepteurs
 resolus : ``Modele.objects`` (+ ``.select_for_update()``/``.all()``/``.using()``
 ...), un alias ``from .models import X as Y``, ``cls.objects`` / ``self.__class__``
 / ``type(self)`` dans une classe de modele. Tout le reste (variable, manager
@@ -162,17 +171,23 @@ def _aplatir(node):
 
 
 def _atomes_condition(node):
-    """Condition d'une contrainte partielle -> conjonction ``[(cle, dump_valeur)]``
-    (``Q(a=1, b__isnull=True) & Q(c=2)``) ; ``None`` si illisible (OR, NOT, expression)."""
+    """Condition d'une contrainte partielle -> conjonction ``[(cle, dump_valeur, nie)]``
+    (``Q(a=1, b__isnull=True) & ~Q(c='')`` ; ``nie`` = terme precede de ``~``) ; ``None`` si
+    illisible (OR, expression, ``~`` d'un terme multiple)."""
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitAnd):
         gauche, droite = _atomes_condition(node.left), _atomes_condition(node.right)
         return None if gauche is None or droite is None else gauche + droite
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Invert):
+        sous = _atomes_condition(node.operand)
+        if sous is None or len(sous) != 1 or sous[0][2]:
+            return None
+        return [(sous[0][0], sous[0][1], True)]
     if isinstance(node, ast.Call) and _nom_terminal(node.func) == "Q":
         atomes = []
         for kw in node.keywords:
             if kw.arg is None or kw.arg.startswith("_"):
                 return None
-            atomes.append((kw.arg, ast.dump(kw.value)))
+            atomes.append((kw.arg, ast.dump(kw.value), False))
         for arg in node.args:
             sous = _atomes_condition(arg)
             if sous is None:
@@ -370,13 +385,57 @@ def garanties(modele, index):
     return _garanties_champs(modele, index, set()) + _garanties_meta(modele, index, set())
 
 
-def _couvre(modele, index, valeurs):
-    """Le lookup ``valeurs`` ({cle: noeud}) pointe-t-il au plus UNE ligne de ``modele`` ?"""
+_DUMP_VRAI = ast.dump(ast.Constant(value=True))
+_DUMP_FAUX = ast.dump(ast.Constant(value=False))
+_DUMP_VIDE = ast.dump(ast.Constant(value=""))
+
+
+def _prouve(noeud, prouves, niveau):
+    """La valeur ``noeud`` est-elle PROUVEE non nulle (``niveau='nonnul'``) ou non nulle ET non vide
+    (``'vrai'``) ? Une constante se lit telle quelle ; une variable par ``prouves`` ({nom: niveau})."""
+    if isinstance(noeud, ast.Constant):
+        return noeud.value is not None and (niveau == "nonnul" or bool(noeud.value))
+    if isinstance(noeud, ast.Name):
+        return prouves.get(noeud.id) == "vrai" or (niveau == "nonnul" and noeud.id in prouves)
+    return False
+
+
+def _valeur_du_champ(valeurs, champ):
+    """Noeud de la valeur passee pour ``champ`` (``champ`` ou ``champ_id``, jamais ``champ__lookup``)."""
+    for cle, noeud in valeurs.items():
+        if "__" not in cle and _norm(cle) == _norm(champ):
+            return noeud
+    return None
+
+
+def _atome_ok(atome, valeurs, dumps, prouves):
+    """Un terme ``(cle, dump, nie)`` de la condition d'une contrainte partielle est-il satisfait par le
+    lookup ? Repris tel quel (meme cle, meme litteral) ; ou ``~Q(f__isnull=True)`` / ``Q(f__isnull=False)``
+    avec ``f`` prouve non nul ; ou ``~Q(f='')`` avec ``f`` prouve non nul ET non vide."""
+    cle, dump, nie = atome
+    if not nie and dumps.get(cle) == dump:
+        return True
+    champ, _, suffixe = cle.partition("__")
+    valeur = _valeur_du_champ(valeurs, champ)
+    if valeur is None:
+        return False
+    if suffixe == "isnull" and dump in (_DUMP_VRAI, _DUMP_FAUX):
+        return (dump == _DUMP_FAUX) != nie and _prouve(valeur, prouves, "nonnul")
+    if nie and not suffixe and dump == _DUMP_VIDE:
+        return _prouve(valeur, prouves, "vrai")
+    return False
+
+
+def _couvre(modele, index, valeurs, prouves=None):
+    """Le lookup ``valeurs`` ({cle: noeud}) pointe-t-il au plus UNE ligne de ``modele`` ?
+    ``prouves`` = {nom: niveau} des variables prouvees non nulles a cet appel (``_prouves_par_appel``)."""
+    prouves = prouves or {}
     if "id" in valeurs:
         return True
     # Un champ NULLABLE d'une contrainte n'epingle rien quand sa valeur peut etre NULL (NULL != NULL :
-    # `owner_id=None` cree un doublon) : seule une constante non nulle compte. `company` fait exception
-    # (FK tenant `null=True` historique, toujours posee a l'appel ; le litteral `None` reste exclu).
+    # `owner_id=None` cree un doublon) : seule une constante non nulle -- ou une variable PROUVEE non nulle
+    # par un garde-fou de la fonction -- compte. `company` fait exception (FK tenant `null=True`
+    # historique, toujours posee a l'appel ; le litteral `None` reste exclu).
     nullables = _nullables(modele, index, set()) - {"company"}
     epingles = set()
     for cle, noeud in valeurs.items():
@@ -385,14 +444,14 @@ def _couvre(modele, index, valeurs):
         constante = isinstance(noeud, ast.Constant)
         if constante and noeud.value is None:
             continue
-        if _norm(cle) in nullables and not constante:
+        if _norm(cle) in nullables and not constante and not _prouve(noeud, prouves, "nonnul"):
             continue
         epingles.add(_norm(cle))
     dumps = {cle: ast.dump(noeud) for cle, noeud in valeurs.items()}
     for champs, atomes in garanties(modele, index):
         if atomes is None or not champs <= epingles:
             continue
-        if all(dumps.get(cle) == dump for cle, dump in atomes):
+        if all(_atome_ok(atome, valeurs, dumps, prouves) for atome in atomes):
             return True
     return False
 
@@ -440,6 +499,7 @@ class Appel(NamedTuple):
     cible: object   # nom de la classe visee ou None
     valeurs: dict
     indices: tuple  # apps d'ou le fichier importe ce nom (preference de resolution)
+    prouves: dict = {}  # {nom: 'nonnul'|'vrai'} des variables prouvees non nulles a cet appel
 
 
 def est_couvert(appel, index):
@@ -449,7 +509,7 @@ def est_couvert(appel, index):
     if not appel.cible:
         return False
     candidats = _candidats(appel.cible, appel.app, index, appel.indices)
-    return bool(candidats) and all(_couvre(m, index, appel.valeurs) for m in candidats)
+    return bool(candidats) and all(_couvre(m, index, appel.valeurs, appel.prouves) for m in candidats)
 
 
 class _Visiteur(ast.NodeVisitor):
@@ -496,6 +556,148 @@ def _imports(tree):
     return out
 
 
+# --------------------------------------------------------------------------
+# ENF18 — variables PROUVEES non nulles a un appel (garde-fous de la fonction)
+# --------------------------------------------------------------------------
+
+
+def _fusion(base, plus):
+    """Fusionne deux {nom: niveau} ; ``'vrai'`` (non nul ET non vide) l'emporte sur ``'nonnul'``."""
+    out = dict(base)
+    for nom, niveau in plus.items():
+        if out.get(nom) != "vrai":
+            out[nom] = niveau
+    return out
+
+
+def _prouve_si(test, vrai=True):
+    """{nom: niveau} PROUVE quand ``test`` vaut ``vrai`` (False : quand il est faux).
+
+    ``x is not None`` vrai / ``x is None`` faux -> ``nonnul`` ; ``x`` vrai / ``not x`` faux -> ``vrai`` ;
+    ``a and b`` vrai et ``a or b`` faux combinent leurs termes. Tout le reste ne prouve rien."""
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+        return _prouve_si(test.operand, not vrai)
+    if isinstance(test, ast.Name):
+        return {test.id: "vrai"} if vrai else {}
+    if (isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.left, ast.Name)
+            and isinstance(test.comparators[0], ast.Constant) and test.comparators[0].value is None):
+        if (isinstance(test.ops[0], ast.IsNot) and vrai) or (isinstance(test.ops[0], ast.Is) and not vrai):
+            return {test.left.id: "nonnul"}
+        return {}
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And) == vrai:
+        out = {}
+        for terme in test.values:
+            out = _fusion(out, _prouve_si(terme, vrai))
+        return out
+    return {}
+
+
+def _affectes(noeuds):
+    """Noms (re)lies par ces noeuds : cibles d'affectation / ``for`` / ``with .. as`` / ``:=`` / ``del``,
+    ``except .. as``, imports et ``def``/``class`` imbriques (sur-approximation : un nom en trop ne fait que
+    retirer une preuve, jamais en inventer)."""
+    out = set()
+    for noeud in noeuds:
+        for n in ast.walk(noeud):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                out.add(n.id)
+            elif isinstance(n, ast.ExceptHandler) and n.name:
+                out.add(n.name)
+            elif isinstance(n, (ast.Import, ast.ImportFrom)):
+                out.update((a.asname or a.name).split(".")[0] for a in n.names)
+            elif isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                out.add(n.name)
+    return out
+
+
+def _sort_toujours(stmts):
+    """Le bloc finit-il TOUJOURS par une sortie (``return`` / ``raise`` / ``continue`` / ``break``) ?"""
+    return bool(stmts) and isinstance(stmts[-1], (ast.Return, ast.Raise, ast.Continue, ast.Break))
+
+
+def _noter(noeud, connus, out):
+    """Note, pour chaque appel get_or_create/update_or_create sous ``noeud``, les preuves en vigueur
+    (``connus``). Un ``lambda`` s'execute plus tard : rien n'y est prouve."""
+    if isinstance(noeud, ast.Lambda):
+        connus = {}
+    if isinstance(noeud, ast.Call) and isinstance(noeud.func, ast.Attribute) and noeud.func.attr in CALL_NAMES:
+        out[id(noeud)] = dict(connus)
+    for enfant in ast.iter_child_nodes(noeud):
+        _noter(enfant, connus, out)
+
+
+def _sans(connus, noms):
+    return {nom: niveau for nom, niveau in connus.items() if nom not in noms}
+
+
+def _parcourir(stmts, connus, out):
+    """Parcourt un bloc d'instructions en propageant les preuves ``connus`` ({nom: niveau}) : un garde-fou
+    ``if x is None: return`` prouve ``x`` pour la suite du bloc, un ``if x:`` pour son corps, un ``assert``
+    pour la suite ; toute reaffectation du nom retire la preuve (boucles comprises)."""
+    connus = dict(connus)
+    for stmt in stmts:
+        if isinstance(stmt, ast.If):
+            _noter(stmt.test, connus, out)
+            vrai, faux = _prouve_si(stmt.test, True), _prouve_si(stmt.test, False)
+            _parcourir(stmt.body, _fusion(connus, vrai), out)
+            _parcourir(stmt.orelse, _fusion(connus, faux), out)
+            corps_sort, autre_sort = _sort_toujours(stmt.body), bool(stmt.orelse) and _sort_toujours(stmt.orelse)
+            if corps_sort and not autre_sort:    # seule la branche sinon (ou le passage direct) continue
+                perdus = _affectes(stmt.orelse)
+                connus = _fusion(_sans(connus, perdus), _sans(faux, perdus))
+            elif autre_sort and not corps_sort:  # seule la branche alors continue
+                perdus = _affectes(stmt.body)
+                connus = _fusion(_sans(connus, perdus), _sans(vrai, perdus))
+            else:
+                connus = _sans(connus, _affectes([stmt]))
+        elif isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):
+            base = _sans(connus, _affectes([stmt]))
+            if isinstance(stmt, ast.While):
+                _noter(stmt.test, base, out)
+                _parcourir(stmt.body, _fusion(base, _prouve_si(stmt.test, True)), out)
+            else:
+                _noter(stmt.iter, connus, out)
+                _parcourir(stmt.body, base, out)
+            _parcourir(stmt.orelse, base, out)
+            connus = base
+        elif isinstance(stmt, (ast.With, ast.AsyncWith)):
+            for item in stmt.items:
+                _noter(item.context_expr, connus, out)
+            interieur = _sans(connus, _affectes([item.optional_vars for item in stmt.items if item.optional_vars]))
+            _parcourir(stmt.body, interieur, out)
+            connus = _sans(connus, _affectes([stmt]))
+        elif isinstance(stmt, (ast.Try, getattr(ast, "TryStar", ast.Try))):
+            apres_corps = _sans(connus, _affectes(stmt.body))
+            _parcourir(stmt.body, connus, out)
+            for gestionnaire in stmt.handlers:
+                _parcourir(gestionnaire.body, _sans(apres_corps, _affectes([gestionnaire])), out)
+            _parcourir(stmt.orelse, apres_corps, out)
+            _parcourir(stmt.finalbody, _sans(connus, _affectes([stmt])), out)
+            connus = _sans(connus, _affectes([stmt]))
+        elif isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for expr in stmt.decorator_list + stmt.args.defaults + [d for d in stmt.args.kw_defaults if d]:
+                _noter(expr, connus, out)
+            _parcourir(stmt.body, {}, out)
+            connus = _sans(connus, {stmt.name})
+        elif isinstance(stmt, ast.ClassDef):
+            _parcourir(stmt.body, {}, out)
+            connus = _sans(connus, {stmt.name})
+        elif isinstance(stmt, ast.Assert):
+            _noter(stmt, connus, out)
+            connus = _fusion(connus, _prouve_si(stmt.test, True))
+        else:  # instruction simple (ou compose non suivi -- match : jamais rien de prouve a l'interieur)
+            _noter(stmt, {} if isinstance(stmt, getattr(ast, "Match", ())) else connus, out)
+            connus = _sans(connus, _affectes([stmt]))
+    return connus
+
+
+def _prouves_par_appel(tree):
+    """{id(noeud d'appel): {nom: niveau}} des variables prouvees non nulles a chaque appel du fichier."""
+    out = {}
+    _parcourir(tree.body, {}, out)
+    return out
+
+
 def analyser(path: Path):
     """Appels get_or_create/update_or_create d'un fichier (liste d'``Appel``)."""
     source = path.read_text(encoding="utf-8")
@@ -507,6 +709,7 @@ def analyser(path: Path):
     visiteur = _Visiteur()
     visiteur.visit(tree)
     imports = _imports(tree) if visiteur.appels else {}
+    prouves = _prouves_par_appel(tree) if visiteur.appels else {}
     app = path.relative_to(APPS_DIR).parts[0]
     rows = []
     for node, fonction, classe in visiteur.appels:
@@ -514,7 +717,7 @@ def analyser(path: Path):
         cle = f"{_rel(path)}::{fonction}::{_modele(receiver)}"
         cible, indices = _cible(node.func.value, classe, imports)
         rows.append(Appel(cle, node.lineno, node.func.attr, receiver, _lookup_keys(node), app,
-                          cible, _lookup_valeurs(node), indices))
+                          cible, _lookup_valeurs(node), indices, prouves.get(id(node), {})))
     return rows
 
 

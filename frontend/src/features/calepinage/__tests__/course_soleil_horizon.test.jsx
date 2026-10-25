@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { reponseLayoutSite } from '../../../test/fixtures/calepinageApiMock'
 
 /* ============================================================================
    CALX118 — LA COURSE DU SOLEIL DU SITE, ENRICHIE DANS L'ATELIER.
@@ -37,9 +38,7 @@ const ZONE = {
 
 describe('CALX118 — sans profil d’horizon, le diagramme s’affiche sans remplissage et le dit', () => {
   it('document sans horizonProfile : aucun remplissage d’horizon, message explicite', async () => {
-    layout.mockResolvedValue({
-      data: { roof_layout: { pin: { lat: 33.6, lng: -7.6 }, activeAreaId: 'z1', zones: [ZONE] } },
-    })
+    layout.mockResolvedValue(reponseLayoutSite([ZONE]))
     rendre()
     await screen.findByTestId('cal-course-soleil')
     expect(screen.getByTestId('cal-sundiagram')).toBeInTheDocument()
@@ -49,9 +48,7 @@ describe('CALX118 — sans profil d’horizon, le diagramme s’affiche sans rem
 
 describe('CALX118 — le repère du soleil suit scene.sunDay/scene.sunHour', () => {
   it('document sans `scene` : le repère suit le défaut NOMMÉ (solstice d’hiver, midi)', async () => {
-    layout.mockResolvedValue({
-      data: { roof_layout: { pin: { lat: 33.6, lng: -7.6 }, activeAreaId: 'z1', zones: [ZONE] } },
-    })
+    layout.mockResolvedValue(reponseLayoutSite([ZONE]))
     rendre()
     await screen.findByTestId('cal-course-soleil')
     const mention = screen.getByTestId('cal-course-soleil-scene')
@@ -62,16 +59,7 @@ describe('CALX118 — le repère du soleil suit scene.sunDay/scene.sunHour', () 
   })
 
   it('document AVEC `scene` : le repère suit l’instant enregistré, pas le défaut', async () => {
-    layout.mockResolvedValue({
-      data: {
-        roof_layout: {
-          pin: { lat: 33.6, lng: -7.6 },
-          activeAreaId: 'z1',
-          zones: [ZONE],
-          scene: { sunDay: 172, sunHour: 14.5 },
-        },
-      },
-    })
+    layout.mockResolvedValue(reponseLayoutSite([ZONE], { scene: { sunDay: 172, sunHour: 14.5 } }))
     rendre()
     await screen.findByTestId('cal-course-soleil')
     const mention = screen.getByTestId('cal-course-soleil-scene')
@@ -82,16 +70,8 @@ describe('CALX118 — le repère du soleil suit scene.sunDay/scene.sunHour', () 
   })
 
   it('soleil sous l’horizon à l’instant enregistré (nuit) : aucun repère tracé, le dit', async () => {
-    layout.mockResolvedValue({
-      data: {
-        roof_layout: {
-          pin: { lat: 33.6, lng: -7.6 },
-          activeAreaId: 'z1',
-          zones: [ZONE],
-          scene: { sunDay: 355, sunHour: 2 }, // 2 h du matin, solstice d'hiver : nuit
-        },
-      },
-    })
+    // 2 h du matin, solstice d'hiver : nuit.
+    layout.mockResolvedValue(reponseLayoutSite([ZONE], { scene: { sunDay: 355, sunHour: 2 } }))
     rendre()
     await screen.findByTestId('cal-course-soleil')
     expect(screen.queryByTestId('cal-sundiagram-soleil-courant')).not.toBeInTheDocument()

@@ -42,6 +42,33 @@ export function apiDocument({ moteur = false, horizon = false } = {}) {
   return { default: api }
 }
 
+/**
+ * ENF19 — la réponse de `calepinages.layout` pour un SITE REPÉRÉ (épingle GPS
+ * posée), pan actif `z1` : les suites « course du soleil » en montaient chacune
+ * la leur, à l'identique. `extra` ajoute les clés propres au test (`scene`,
+ * `horizonProfile`, `environment`, `buildings`…).
+ */
+export function reponseLayoutSite(zones, extra = {}) {
+  return {
+    data: { roof_layout: { pin: { lat: 33.6, lng: -7.6 }, activeAreaId: 'z1', zones, ...extra } },
+  }
+}
+
+/**
+ * ENF19 — `calepinages.*` relayés vers des espions PROPRES au fichier de test
+ * (`{ nom: vi.fn() }`) : pour les suites qui pilotent leurs propres appels
+ * (photos de site, calage). `extra` ajoute les autres familles de la doublure
+ * (`parametres`, `moteur`…). Les espions sont lus à l'appel : la fabrique reste
+ * valable même si le fichier les déclare après le `vi.mock` hissé.
+ */
+export function apiCalepinages(espionsLocaux, extra = {}) {
+  const calepinages = {}
+  for (const [nom, espion] of Object.entries(espionsLocaux)) {
+    calepinages[nom] = (...a) => espion(...a)
+  }
+  return { default: { calepinages, ...extra } }
+}
+
 /** Les réglages société (`parametres.*`), + `recalculerSimulations` sur demande. */
 export function apiParametres({ recalculer = false } = {}) {
   const parametres = { get: relais('getParametres'), update: relais('putParametres') }

@@ -22,6 +22,8 @@ Garanties :
 """
 import logging
 
+from django.db import transaction
+
 logger = logging.getLogger(__name__)
 
 __all__ = ['SECTIONS', 'exporter_blueprint', 'importer_blueprint',
@@ -149,6 +151,33 @@ def exporter_blueprint(company):
     return blueprint
 
 
+def _poser_ligne(modele, company, recherche, defauts):
+    """Upsert d'UNE ligne de section sous le verrou de la ligne société (ENF18).
+
+    Le modèle d'une section est résolu à l'exécution et plusieurs d'entre eux
+    (règles d'automatisation, rapports, vues) n'ont AUCUNE contrainte d'unicité sur leur clé
+    naturelle : deux imports simultanés créaient deux lignes, puis ``update_or_create`` levait
+    ``MultipleObjectsReturned`` à chaque import suivant. Le verrou sérialise les imports d'une
+    même société (relecture + écriture dans la même transaction) ; un doublon déjà présent est
+    toléré (la plus ancienne ligne est mise à jour). Renvoie ``(objet, cree)``."""
+    with transaction.atomic():
+        type(company).objects.select_for_update().filter(pk=company.pk).first()
+        objet = modele.objects.filter(**recherche).order_by('id').first()
+        if objet is None:
+            return modele.objects.create(**recherche, **defauts), True
+        for champ, valeur in defauts.items():
+            setattr(objet, champ, valeur)
+        # Comme ``update_or_create`` : les champs ``auto_now`` suivent l'écriture, et une clé qui
+        # n'est pas un champ concret retombe sur une sauvegarde complète.
+        concrets = {f.name: f for f in modele._meta.concrete_fields}
+        if set(defauts) <= set(concrets):
+            auto = [nom for nom, f in concrets.items() if getattr(f, 'auto_now', False)]
+            objet.save(update_fields=[*defauts, *auto])
+        else:
+            objet.save()
+        return objet, False
+
+
 def importer_blueprint(company, blueprint):
     """Recrée la config d'un blueprint DANS ``company``. Idempotent.
 
@@ -198,8 +227,7 @@ def importer_blueprint(company, blueprint):
                 champ: ligne.get(champ) for champ in section.champs
                 if champ not in section.cle_naturelle
             }
-            objet, cree = modele.objects.update_or_create(
-                defaults=defauts, **recherche)
+            objet, cree = _poser_ligne(modele, company, recherche, defauts)
             crees += 1 if cree else 0
             majs += 0 if cree else 1
             for enfant in section.enfants:
