@@ -897,7 +897,11 @@ def _parts_nuls_absents(case):
     # (« champs: Incorrect type ») doit atteindre le serveur — le retirer
     # rendait la requête conforme et l'oracle « accepted schema-violating »
     # rouge à tort ; le part « None » part alors tel quel (400 nommé attendu).
-    if not _est_positif(case):
+    # api-fuzz-full 25/10 — SANS revalidation : ``case.meta`` lu après la
+    # substitution de FK (``_ids_fk_connus``) revalidait le corps à octets et le
+    # déclarait NÉGATIF (series-lot : 23 cas positifs sur 79 basculaient).
+    meta = _meta_sans_revalidation(case)
+    if meta is None or meta.generation.mode != GenerationMode.POSITIVE:
         return
     for cle in [k for k, v in corps.items() if v is None]:
         corps.pop(cle)

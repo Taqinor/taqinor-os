@@ -519,6 +519,26 @@ class FichiersPdfTests(unittest.TestCase):
 
         self.assertIs(self.hooks._meta_sans_revalidation(Cas()), Cas._meta)
 
+    def test_parts_nuls_absents_sans_revalidation(self):
+        # api-fuzz-full 25/10 (series-lot) — lu APRÈS la substitution de FK,
+        # ``case.meta`` revalidait le corps à octets et le déclarait NÉGATIF.
+        hooks = self.hooks
+
+        class Cas:
+            operation = types.SimpleNamespace(body=[types.SimpleNamespace(
+                media_type='multipart/form-data')])
+            _meta = types.SimpleNamespace(generation=types.SimpleNamespace(
+                mode=hooks.GenerationMode.POSITIVE))
+            body = {'fichier': 'f', 'produit': None}
+
+            @property
+            def meta(self):
+                raise AssertionError('case.meta lu : revalidation déclenchée')
+
+        cas = Cas()
+        hooks._parts_nuls_absents(cas)
+        self.assertEqual(cas.body, {'fichier': 'f'})
+
     def test_corps_a_fichier_non_marque_a_revalider(self):
         # Schemathesis déclare invalide tout corps à octets REVALIDÉ : le
         # drapeau « à revalider » du corps est retiré, celui de la query reste.

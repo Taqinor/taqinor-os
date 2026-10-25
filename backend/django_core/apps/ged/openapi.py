@@ -130,9 +130,10 @@ IMPORT_MASSE_CORPS = S('ImportMasseCorps', {
     'zip': s.FileField(required=False),
 })
 # CI #997 fuzz — ``type_piece: null`` vaut « deviné » (``_txt(None)`` -> ``''``) :
-# publié nullable.
+# publié nullable ; texte strict (api-fuzz-full 25/10 : le NUL, refusé par
+# ``_txt``, est publié).
 OCR_CORPS = S('OcrPieceCorps', {
-    'type_piece': s.CharField(
+    'type_piece': ChaineStricte(
         required=False, allow_blank=True, allow_null=True)})
 VERSION_CORPS = S('VersionRestaurerCorps', {'version': s.IntegerField()})
 FICHIER_CORPS = S('FichierCorps', {'file': s.FileField()})

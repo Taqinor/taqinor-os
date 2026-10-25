@@ -105,6 +105,10 @@ def cible_corps_ou_400(data):
     model, oid = data.get('model'), data.get('id')
     if model is not None and not isinstance(model, str):
         raise serializers.ValidationError({'model': ['Chaîne attendue.']})
+    if model == '':
+        # api-fuzz-full 25/10 — ``""`` passait pour « sans cible » (à-faire
+        # personnel créé, 201) alors que le schéma n'accepte qu'une cible.
+        raise serializers.ValidationError({'model': ['Cible « app.modele » attendue.']})
     if oid is not None:
         if isinstance(oid, str) and oid.isascii() and oid.isdigit():
             oid = int(oid)

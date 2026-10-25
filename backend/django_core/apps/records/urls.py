@@ -1,11 +1,17 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from authentication.corps_requetes import exiger_corps
+
 from .views import (
     ActivityTypeViewSet, ActivityViewSet, AttachmentViewSet,
     CommentViewSet, FollowerViewSet, TaggedItemViewSet, TagViewSet,
     attachments_all, attachments_count,
 )
+
+# api-fuzz-full 25/10 — le corps de création n'a plus de champ requis (type facultatif) :
+# il est publié OBLIGATOIRE, comme la vue le contrôle (« Corps JSON obligatoire. »).
+exiger_corps(ActivityViewSet.create)
 
 router = DefaultRouter()
 router.register(r'activity-types', ActivityTypeViewSet, basename='activity-type')
