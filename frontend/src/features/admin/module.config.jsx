@@ -73,6 +73,7 @@ const config = {
   routes: [
     { path: '/admin/users', component: UsersManagement, roles: ['responsable', 'admin'] },
     { path: '/admin/roles', component: RolesManagement, roles: ['responsable', 'admin'] },
+    // contextuelle: console fondateur (SCA22), le serveur exige superuser : volontairement hors menu, accès direct par URL
     { path: '/admin/tenants', component: TenantsConsole, roles: ['admin'] },
     // WIR134 — Sécurité & Identité (admin only : le backend exige IsAdminRole).
     { path: '/admin/securite-identite', component: SecuriteIdentitePage, roles: ['admin'] },
@@ -81,6 +82,7 @@ const config = {
     // NTADM32 — demande de session support (le serveur exige is_taqinor_support).
     { path: '/admin/impersonation/demander', component: ImpersonationWizard, roles: ['admin'] },
     // NTADM22 — consentement du tenant (le serveur exige l'Administrateur).
+    // contextuelle: atteint par le lien de la notification et de l'e-mail « Demande de session support » (adminops/impersonation_service.py, lien='/admin/impersonation'), jamais par le menu
     { path: '/admin/impersonation', component: ImpersonationConsentement, roles: ['admin'] },
     // NTDMO25 — wizard démo (le serveur exige superuser, comme /admin/tenants).
     // contextuelle: écran superadmin fondateur, volontairement hors menu (accès direct par URL, comme /admin/tenants)

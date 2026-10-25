@@ -16,5 +16,4 @@
 #
 # La signature est le CHEMIN (jamais `fichier:ligne`) : deplacer du code ne doit
 # pas invalider la base.
-sans-nav|frontend/src/features/admin/module.config.jsx::/admin/impersonation
-sans-nav|frontend/src/features/admin/module.config.jsx::/admin/tenants
+
