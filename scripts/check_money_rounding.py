@@ -111,6 +111,8 @@ TARGET_FILES = [
     VENTES / "quote_engine" / "etude_chiffrage.py",
     # SPL164 — phase E + helpers de paiement déplacés de builder.py (move only).
     VENTES / "quote_engine" / "conditions_commerciales.py",
+    # SPL165 — liste blanche des options PDF (aucun round(), couverture seule).
+    VENTES / "quote_engine" / "options_pdf.py",
     VENTES / "quote_engine" / "generate_devis_premium.py",
     VENTES / "quote_engine" / "pricing.py",
     VENTES / "quote_engine" / "bareme.py",

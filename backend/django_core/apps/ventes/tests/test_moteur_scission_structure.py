@@ -236,3 +236,35 @@ class Spl164ConditionsCommercialesTests(SimpleTestCase):
                     "_PasDeLienSigner"):
             with self.subTest(absent=nom):
                 self.assertFalse(hasattr(builder, nom))
+
+
+#: SPL165 — liste blanche des options PDF : builder.py → options_pdf.py.
+NOMS_SPL165 = ("DEFAULT_PDF_OPTIONS", "LANGUES_SORTIE_PDF", "VARIANTES_PDF",
+               "_SHARE_TOKEN_RE", "clean_pdf_options")
+
+
+class Spl165OptionsPdfTests(SimpleTestCase):
+    def test_noms_definis_dans_options_pdf_et_plus_dans_builder(self):
+        op = _definis(_arbre("options_pdf.py"))
+        builder = _definis(_arbre("builder.py"))
+        for nom in NOMS_SPL165:
+            with self.subTest(nom=nom):
+                self.assertIn(nom, op)
+                self.assertNotIn(nom, builder)
+
+    def test_options_pdf_n_importe_que_re(self):
+        self.assertEqual(_tous_imports(_arbre("options_pdf.py")),
+                         ["__future__", "re"])
+
+    def test_api_publique_et_builder_lisent_le_meme_objet(self):
+        """``quote_engine.clean_pdf_options`` (public_views, tasks, vues devis)
+        et l'usage propre de builder ; DEFAULT_PDF_OPTIONS ré-exporté pour
+        test_pdf (facturation) et les tests devis."""
+        from apps.ventes import quote_engine
+        from apps.ventes.quote_engine import builder, options_pdf
+        self.assertIs(quote_engine.clean_pdf_options,
+                      options_pdf.clean_pdf_options)
+        for nom in NOMS_SPL165[:3] + ("clean_pdf_options",):
+            with self.subTest(nom=nom):
+                self.assertIs(getattr(builder, nom), getattr(options_pdf, nom))
+        self.assertFalse(hasattr(builder, "_SHARE_TOKEN_RE"))
