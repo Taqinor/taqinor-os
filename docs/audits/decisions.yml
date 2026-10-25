@@ -1901,6 +1901,20 @@ decisions:
     source: "docs/claude-memory/decisions-audit-0810.md (ADEP91)"
     taches: [ADEP91]
 
+  - id: D-ADEP-103
+    question: "L'origine croit l'IP transmise par TOUTE plage Cloudflare (un Worker tiers forge X-Forwarded-For) alors qu'api.taqinor.ma n'est pas derrière le proxy Cloudflare : quel correctif ? (C-L3-LIEN-09)"
+    options:
+      - cle: a
+        texte: "proxifier api.taqinor.ma derrière Cloudflare + Authenticated Origin Pulls + client_auth (limites 100 Mo / 100 s, bascule DNS)"
+      - cle: b
+        texte: "certificat client mTLS lié au Worker + client_auth verify_if_given, IP crue seulement avec le certificat"
+      - cle: c
+        texte: "en-tête secret de relais du Worker (X-Taqinor-Relais = RELAIS_API_SECRET) ; sans lui Caddy retire l'IP transmise ; clé absente = inchangé"
+    reponse: c
+    date: "2026-10-25"
+    source: "session 2026-10-25 (AskUserQuestion) ; constat C-L3-LIEN-09 ; DONE LOG ADEP103 du 24/10 (prémisse fausse de l'option AOP écrite)"
+    taches: [ADEP103, ADEP104]
+
   - id: D-AGNR-1
     question: "Devis avec deux factures hiver / ete (AGNR4) ?"
     options:
