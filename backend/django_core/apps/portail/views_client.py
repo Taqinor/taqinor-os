@@ -802,9 +802,10 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
                    else PaiementFacturePortail.Methode.VIREMENT)
         try:
             with transaction.atomic():
+                # ``statut='initie'`` = ``Statut.INITIE``, écrit en littéral : c'est le terme de
+                # la condition de ``uniq_paiement_portail_facture_initie`` (check_get_or_create).
                 paiement, _ = PaiementFacturePortail.objects.get_or_create(
-                    company=company, facture=facture,
-                    statut=PaiementFacturePortail.Statut.INITIE,
+                    company=company, facture=facture, statut='initie',
                     defaults={'montant': montant_exigible,
                               'methode': methode})
         except IntegrityError:

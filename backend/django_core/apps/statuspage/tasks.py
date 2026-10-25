@@ -94,8 +94,10 @@ def _accumuler_uptime_jour(nom, region, statut, now):
     trace exploitable de la journée — jamais une exception remontée
     (best-effort, un échec d'agrégation n'affecte jamais le statut public)."""
     try:
+        # ``company__isnull=True`` (et non ``company=None``) : c'est le terme de la condition de
+        # ``statuspage_uptimebucket_jour_systeme`` (ENF18) -- la création laisse ``company`` NULL.
         bucket, _created = UptimeDayBucket.objects.get_or_create(
-            company=None, composant=nom, region=region, date=now.date(),
+            company__isnull=True, composant=nom, region=region, date=now.date(),
             defaults={'statut_pire_du_jour': statut},
         )
         if _ORDRE_GRAVITE.index(statut) > _ORDRE_GRAVITE.index(

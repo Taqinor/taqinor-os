@@ -32,7 +32,7 @@ def snapshot_forecast_hebdo(now=None):
     Renvoie le nombre de lignes ``ForecastSnapshot`` créées/mises à jour."""
     from authentication.models import Company
 
-    from apps.crm.models import ForecastEntry, ForecastSnapshot
+    from apps.crm.models import ForecastEntry
 
     semaine = _semaine_iso(now)
     nb = 0
@@ -55,10 +55,34 @@ def snapshot_forecast_hebdo(now=None):
                 bucket['nb'] += 1
 
         for (categorie, owner_id), agg in buckets.items():
-            ForecastSnapshot.objects.update_or_create(
-                company=company, semaine_iso=semaine, categorie=categorie,
-                owner_id=owner_id,
-                defaults={'montant_total': agg['montant'], 'nb_leads': agg['nb']},
-            )
+            _poser_snapshot(company, semaine, categorie, owner_id, agg)
             nb += 1
     return nb
+
+
+def _poser_snapshot(company, semaine, categorie, owner_id, agg):
+    """Upsert d'UN ``ForecastSnapshot`` sous le verrou de la ligne société (ENF18).
+
+    La contrainte ``crm_forecast_snapshot_uniq_semaine_owner`` ne protège PAS le snapshot
+    SOCIÉTÉ (``owner`` NULL : NULL ≠ NULL en base) — deux exécutions simultanées créaient deux
+    lignes. Le verrou sérialise les exécutions concurrentes d'une même société : relecture +
+    écriture dans la même transaction, jamais deux créations. Un doublon déjà présent est toléré
+    (la plus ancienne ligne est mise à jour) au lieu de lever ``MultipleObjectsReturned``."""
+    from django.db import transaction
+
+    from apps.crm.models import ForecastSnapshot
+
+    valeurs = {'montant_total': agg['montant'], 'nb_leads': agg['nb']}
+    with transaction.atomic():
+        type(company).objects.select_for_update().filter(pk=company.pk).first()
+        snapshot = ForecastSnapshot.objects.filter(
+            company=company, semaine_iso=semaine, categorie=categorie,
+            owner_id=owner_id).order_by('id').first()
+        if snapshot is None:
+            ForecastSnapshot.objects.create(
+                company=company, semaine_iso=semaine, categorie=categorie,
+                owner_id=owner_id, **valeurs)
+            return
+        for champ, valeur in valeurs.items():
+            setattr(snapshot, champ, valeur)
+        snapshot.save(update_fields=[*valeurs, 'updated_at'])

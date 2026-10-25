@@ -181,7 +181,7 @@ class UniciteTests(Depot):
 
     def test_condition_illisible_n_est_jamais_comptee(self):
         appel = "def creer(c, a):\n    return Foo.objects.get_or_create(company=c, nom=a, actif=True)\n"
-        for condition in ("~Q(nom='')", "Q(actif=True) | Q(nom='x')", "Q(actif=True, _connector='OR')"):
+        for condition in ("~Q(nom='', actif=False)", "Q(actif=True) | Q(nom='x')", "Q(actif=True, _connector='OR')"):
             with self.subTest(condition=condition):
                 self.assertListe(self.partielle(condition), appel)
 
@@ -200,6 +200,86 @@ class UniciteTests(Depot):
         modeles = ("class Foo(models.Model):\n    company = models.ForeignKey('x.C', models.CASCADE, null=True)\n"
                    "    class Meta:\n        unique_together = [('company', 'nom')]\n")
         self.assertCouvert(modeles, "def creer(c, a):\n    return Foo.objects.get_or_create(company=c, nom=a)\n")
+
+    # -- valeur PROUVEE non nulle par un garde-fou (ENF18) -----------------------------------
+    MODELE_OWNER = ("class Foo(models.Model):\n"
+                    "    owner = models.ForeignKey('x.U', models.CASCADE, null=True)\n"
+                    "    class Meta:\n        unique_together = [('company', 'owner')]\n")
+    CREER = "def creer(c, o, autre, journal):\n"
+    APPEL_OWNER = "Foo.objects.get_or_create(company=c, owner_id=o)\n"
+
+    def test_garde_fou_prouve_la_valeur_nullable(self):
+        a = self.APPEL_OWNER
+        formes = (
+            "    if o is None:\n        return None\n    return " + a,
+            "    if not o:\n        raise ValueError('o')\n    return " + a,
+            "    if autre is None or o is None:\n        return None\n    return " + a,
+            "    if not autre or not o:\n        return None\n    return " + a,
+            "    if o is not None:\n        return " + a,
+            "    if o:\n        return " + a,
+            "    if o is not None and autre:\n        return " + a,
+            "    assert o is not None\n    return " + a,
+            "    if o is None:\n        journal()\n    else:\n        return " + a,
+            "    for x in autre:\n        if o is None:\n            continue\n        " + a,
+            "    if o is None:\n        return None\n    with journal:\n        return " + a,
+            "    if o is None:\n        return None\n    try:\n        return " + a
+            + "    except KeyError:\n        return None\n",
+        )
+        for corps in formes:
+            with self.subTest(corps=corps):
+                self.assertCouvert(self.MODELE_OWNER, self.CREER + corps)
+
+    def test_sans_preuve_la_valeur_nullable_reste_signalee(self):
+        a = self.APPEL_OWNER
+        formes = (
+            "    return " + a,
+            "    if o is None:\n        journal()\n    return " + a,              # le garde-fou ne sort pas
+            "    if o is None:\n        return None\n    o = autre\n    return " + a,   # reaffecte
+            "    if o is None:\n        return None\n    for o in autre:\n        " + a,  # boucle reaffecte
+            "    if autre is None:\n        return None\n    return " + a,           # autre variable
+            "    if o is not None:\n        journal()\n    return " + a,             # appel hors du bloc
+            "    if o is None and autre:\n        return None\n    return " + a,     # `and` ne prouve rien au faux
+            "    if o is None:\n        return None\n    return Foo.objects.get_or_create(company=c, owner_id=o.pk)\n",
+            "    if o is None:\n        return None\n    return lambda: " + a,         # s'execute plus tard
+            "    def interne():\n        return " + a
+            + "    if o is None:\n        return None\n    return interne()\n",
+        )
+        for corps in formes:
+            with self.subTest(corps=corps):
+                self.assertListe(self.MODELE_OWNER, self.CREER + corps)
+
+    def test_condition_negee_satisfaite_par_une_valeur_prouvee(self):
+        non_vide = ("class Foo(models.Model):\n    phase = models.CharField(max_length=9, blank=True, default='')\n"
+                    "    class Meta:\n        constraints = [\n            models.UniqueConstraint(\n"
+                    "                fields=['company', 'phase'], name='u', condition=~Q(phase='')),\n        ]\n")
+        appel = "    return Foo.objects.get_or_create(company=c, phase=p)\n"
+        self.assertCouvert(non_vide, "def creer(c, p):\n    if not p:\n        return None\n" + appel)
+        self.assertListe(non_vide, "def creer(c, p):\n" + appel)
+        # non nul n'est pas non vide : `if p is None` ne prouve pas `~Q(phase='')`
+        self.assertListe(non_vide, "def creer(c, p):\n    if p is None:\n        return None\n" + appel)
+        self.assertCouvert(non_vide, "def creer(c):\n    return Foo.objects.get_or_create(company=c, phase='pose')\n")
+        self.assertListe(non_vide, "def creer(c):\n    return Foo.objects.get_or_create(company=c, phase='')\n")
+
+    def test_conjonction_isnull_et_vide_exige_une_valeur_non_nulle_et_non_vide(self):
+        modeles = ("class Foo(models.Model):\n    cle = models.CharField(max_length=9, null=True, blank=True)\n"
+                   "    class Meta:\n        constraints = [\n            models.UniqueConstraint(\n"
+                   "                fields=['company', 'cle'], name='u',\n"
+                   "                condition=~Q(cle__isnull=True) & ~Q(cle='')),\n        ]\n")
+        appel = "    return Foo.objects.get_or_create(company=c, cle=k)\n"
+        self.assertCouvert(modeles, "def creer(c, k):\n    if not k:\n        return None\n" + appel)
+        self.assertListe(modeles, "def creer(c, k):\n    if k is None:\n        return None\n" + appel)  # peut etre ''
+        self.assertListe(modeles, "def creer(c, k):\n" + appel)
+
+    def test_condition_isnull_faux_positive_satisfaite_par_une_valeur_non_nulle(self):
+        modeles = ("class Foo(models.Model):\n    cle = models.CharField(max_length=9, null=True, blank=True)\n"
+                   "    class Meta:\n        constraints = [\n            models.UniqueConstraint(\n"
+                   "                fields=['company', 'cle'], name='u', condition=Q(cle__isnull=False)),\n        ]\n")
+        appel = "    return Foo.objects.get_or_create(company=c, cle=k)\n"
+        self.assertCouvert(modeles, "def creer(c, k):\n    if k is None:\n        return None\n" + appel)
+        self.assertListe(modeles, "def creer(c, k):\n" + appel)
+        # `Q(cle__isnull=True)` n'est pas satisfait par une valeur non nulle
+        nulle = modeles.replace("isnull=False", "isnull=True")
+        self.assertListe(nulle, "def creer(c, k):\n    if k is None:\n        return None\n" + appel)
 
     # -- heritage ---------------------------------------------------------------------------
     def test_champ_unique_herite_d_une_base_abstraite(self):
