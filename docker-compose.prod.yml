@@ -31,6 +31,10 @@ services:
       - "443:443"
     environment:
       PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:?PUBLIC_HOSTNAME requis en production}
+      # ADEP103 (D-ADEP-103 = c) — secret de relais du Worker (hexadécimal) :
+      # vide = IP Cloudflare crue comme avant ; posé = seule une requête qui
+      # porte `X-Taqinor-Relais` égal à ce secret garde son X-Forwarded-For.
+      RELAIS_API_SECRET: ${RELAIS_API_SECRET:-}
     volumes:
       # Montage du DOSSIER (pas du fichier) : un bind mount de fichier colle
       # à l'inode — git pull remplace le fichier par rename et le conteneur

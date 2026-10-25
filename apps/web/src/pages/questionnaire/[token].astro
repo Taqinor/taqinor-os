@@ -47,6 +47,7 @@ import {
   TYPE_TOITURE_VALUES,
 } from '../../lib/questionnaire';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
+import { entetesIpVisiteur } from '../api/_apiBase';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 
@@ -79,9 +80,7 @@ if (!rl.allowed) {
         // discipline que /proposition/[...token].astro) : sans ceci, le
         // backend enregistrait l'IP de sortie du Worker pour toutes les
         // visites. Best-effort : en-têtes omis si l'IP n'est pas identifiable.
-        ...(visitorIp && visitorIp !== 'unknown'
-          ? { 'X-Forwarded-For': visitorIp, 'CF-Connecting-IP': visitorIp }
-          : {}),
+        ...entetesIpVisiteur(visitorIp),
       },
       signal: controller.signal,
     });

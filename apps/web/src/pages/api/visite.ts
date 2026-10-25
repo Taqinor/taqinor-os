@@ -26,7 +26,7 @@ import { validateVisiteBody } from '../../lib/visite';
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
-import { resolveApiBase } from './_apiBase';
+import { entetesIpVisiteur, resolveApiBase } from './_apiBase';
 
 function visiteEndpoint(apiBase: string): string {
   return `${apiBase.replace(/\/+$/, '')}/api/django/crm/public/visite/`;
@@ -78,9 +78,7 @@ export const POST: APIRoute = async ({ request }) => {
           accept: 'application/json',
           'X-Webhook-Secret': secret,
           'X-Webhook-Timestamp': new Date().toISOString(),
-          ...(clientIp
-            ? { 'X-Forwarded-For': clientIp, 'CF-Connecting-IP': clientIp }
-            : {}),
+          ...entetesIpVisiteur(clientIp),
         },
         body: JSON.stringify(validated),
         signal: AbortSignal.timeout(5000),

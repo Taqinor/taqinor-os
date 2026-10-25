@@ -42,9 +42,9 @@ describe('proposition/[...token].astro — bandeau + désactivation aperçu inte
   it('F3#8-web — le fetch SSR transmet l’IP réelle du visiteur (X-Forwarded-For + CF-Connecting-IP)', () => {
     expect(src).toContain('const visitorIp = clientIpFromRequest(Astro.request);');
     const fetchBlock = src.slice(src.indexOf('await fetch(proposalEndpoint'), src.indexOf('await fetch(proposalEndpoint') + 700);
-    expect(fetchBlock).toContain("'X-Forwarded-For': visitorIp");
-    expect(fetchBlock).toContain("'CF-Connecting-IP': visitorIp");
-    expect(fetchBlock).toContain("visitorIp !== 'unknown'");
+    // ADEP103 — une seule copie des en-têtes d'IP et du secret de relais (`entetesIpVisiteur`,
+    // `_apiBase.ts`), qui omet aussi l'IP 'unknown' (propositionAcceptEnTetes.test.ts).
+    expect(fetchBlock).toContain('...entetesIpVisiteur(visitorIp),');
   });
 
   it('transmet skipVisitBeacon={apercuInterne} au Layout — aucune balise en aperçu interne', () => {
@@ -111,9 +111,9 @@ describe('questionnaire/[token].astro — appareil_id joint au POST', () => {
   it('F3#8-web — le fetch SSR transmet l’IP réelle du visiteur (X-Forwarded-For + CF-Connecting-IP)', () => {
     expect(src).toContain('const visitorIp = clientIpFromRequest(Astro.request);');
     const fetchBlock = src.slice(src.indexOf('await fetch(questionnaireEndpoint'), src.indexOf('await fetch(questionnaireEndpoint') + 700);
-    expect(fetchBlock).toContain("'X-Forwarded-For': visitorIp");
-    expect(fetchBlock).toContain("'CF-Connecting-IP': visitorIp");
-    expect(fetchBlock).toContain("visitorIp !== 'unknown'");
+    // ADEP103 — une seule copie des en-têtes d'IP et du secret de relais (`entetesIpVisiteur`,
+    // `_apiBase.ts`), qui omet aussi l'IP 'unknown' (propositionAcceptEnTetes.test.ts).
+    expect(fetchBlock).toContain('...entetesIpVisiteur(visitorIp),');
   });
 });
 
