@@ -778,3 +778,30 @@ class FiguresNormaliseurTests(SimpleTestCase):
                          Decimal('1000'))
         self.assertEqual(f['payback_ans@sans'][0].valeur, Decimal('4.2'))
         self.assertNotIn('remise@sans', f)  # 0 = non imprimé, non comparé
+
+    def test_mappeur_devis_api_production_par_option(self):
+        """ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — champs PV divergents
+        (6 panneaux « sans », 8 « avec ») : ``prod_kwh`` est celle de l'option
+        AVEC ; l'API la compare option par option, comme la proposition."""
+        roi = {'prod_kwh': 9084, 'prod_kwh_sans': 6813, 'prod_kwh_avec': 9084,
+               'panneaux_divergents': True, 'eco_s_ann': 7588,
+               'eco_a_ann': 7899}
+        f = figures_depuis_devis_api(
+            {'comparaison_options': {'nb_options': 2, 'roi': roi}})
+        self.assertNotIn('production_annuelle_kwh', f)
+        self.assertEqual(f['production_annuelle_kwh@sans'][0].valeur,
+                         Decimal('6813'))
+        self.assertEqual(f['production_annuelle_kwh@avec'][0].valeur,
+                         Decimal('9084'))
+        payload = {'quote': {'deux_options': True, 'avec_ok': True,
+                             'panneaux_divergents': True, 'prod_kwh': 9084,
+                             'prod_kwh_sans': 6813, 'prod_kwh_avec': 9084}}
+        self.assertEqual(compare_surfaces({
+            'api_devis': f,
+            'proposition': figures_depuis_proposition(payload)}), [])
+        # Options égales : l'identité unique d'hier, inchangée.
+        egal = figures_depuis_devis_api({'comparaison_options': {'roi': dict(
+            roi, prod_kwh_sans=9084, panneaux_divergents=False)}})
+        self.assertEqual(egal['production_annuelle_kwh'][0].valeur,
+                         Decimal('9084'))
+        self.assertNotIn('production_annuelle_kwh@sans', egal)

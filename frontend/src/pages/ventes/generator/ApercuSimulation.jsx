@@ -25,13 +25,15 @@ export default function ApercuSimulation({
   etudeHoraireDonnees, etudeHoraireLignes, ligneStockageOuverte, appliquerTailleDimensionnement,
   setLigneStockageOuverte, etudeHoraireFalaise, etudeHoraireGlitch, etudeHoraireEstimationConso,
   marcheCi, roi, etudeHoraireAnnuel, sansRec, showAvec, etudeHoraireAnnuelAvec, distributeur,
-  apercuProductionKwh, showSans, signerEcoOuRoi, apercuEcoSans, apercuPaybackSansJamais,
+  apercuProductionKwh, apercuProductionKwhAvec = null, showSans, signerEcoOuRoi, apercuEcoSans, apercuPaybackSansJamais,
   apercuPaybackSans, totals, avecRec, batterieInvendableServeur, verdictBatterieServeur,
   apercuEcoAvec, apercuPaybackAvecJamais, apercuPaybackAvec, capaciteBatterieInconnue,
   facturesSaisies, chartData,
   // EDC9 — repli en Édition complète (état tenu par l'écran, choix mémorisé).
   editDevis = null, simulationRepliee = false, basculerCarte = () => {},
 }) {
+  // Deux options montrées ET deux champs PV : une production par option.
+  const productionParOption = apercuProductionKwhAvec != null && showSans && showAvec
   return (
     <Card id="gen-sec-simulation" data-nav-libelle="Simulation">
       {/* EDC9 — repliable en Édition complète (repliée par défaut, jamais
@@ -398,10 +400,29 @@ export default function ApercuSimulation({
                   apps/ventes/quote_engine/figures.py) : la parité écran /
                   PDF / page publique / API est vérifiée par
                   e2e/figures-parite.spec.js. */}
-              <CarteMetrique label="Production annuelle"
-                             valeur={moteur(fmtNum(Math.round(apercuProductionKwh)))}
-                             unit="kWh / an" accent
-                             figure="production_annuelle_kwh" />
+              {!productionParOption && (
+                <CarteMetrique label="Production annuelle"
+                               valeur={moteur(fmtNum(Math.round(apercuProductionKwh)))}
+                               unit="kWh / an" accent
+                               figure="production_annuelle_kwh" />
+              )}
+              {/* ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — champs PV
+                  divergents (« Les deux », panneaux ajoutés pour la
+                  batterie) : une production PAR OPTION, comme le document
+                  (`prod_kwh_sans` / `prod_kwh_avec`), jamais celle de
+                  l'option sans sous une étiquette commune. */}
+              {productionParOption && (
+                <>
+                  <CarteMetrique label="Production annuelle (sans batterie)"
+                                 valeur={moteur(fmtNum(Math.round(apercuProductionKwh)))}
+                                 unit="kWh / an" accent
+                                 figure="production_annuelle_kwh" figureOption="sans" />
+                  <CarteMetrique label="Production annuelle (avec batterie)"
+                                 valeur={moteur(fmtNum(Math.round(apercuProductionKwhAvec)))}
+                                 unit="kWh / an" accent
+                                 figure="production_annuelle_kwh" figureOption="avec" />
+                </>
+              )}
               {etudeHoraireSourceServeur && (
                 <>
                   {/* QJR426 — ces deux cartes ne rendent QUE dans la

@@ -33,31 +33,25 @@ const CREATION_DEVIS = /\/api\/django\/ventes\/devis\/(auto\/)?$/
 // fait échouer la spec (« retirez-la ») ; on n'en ajoute une qu'avec un repro
 // et une tâche ERR-*. Toute AUTRE identité reste comparée strictement — ne
 // jamais élargir une tolérance pour faire passer un écart.
-// ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — l'éditeur affiche l'étude
-// horaire RECALCULÉE en direct (écran 6 813 kWh, 2 742 / 5 932 MAD/an, stable
-// d'un run à l'autre) alors que le devis enregistré — donc le PDF et la
-// proposition — porte d'AUTRES chiffres, qui VARIENT sur une saisie identique :
-// run 36656394445 = 6 543 kWh, 4 580 / 10 064 MAD/an ; run 36658107506 =
-// production égale à l'écran, 5 158 / 7 822 MAD/an. Ces identités sont donc
-// TOLÉRÉES DANS LES DEUX SENS (un écart présent ou absent ne fait pas échouer) —
-// sinon la spec serait instable. Les retirer quand l'ERR est corrigée.
-const ECARTS_INTERMITTENTS = new Set([
-  'production_annuelle_kwh',
-  'economie_annuelle@sans',
-  'economie_annuelle@avec',
-])
 // Vide depuis CI #752 : payback_ans@sans/avec (formule moteur à l'écran +
 // aperçu à la même occupation que le bloc du devis) et total_ttc@sans/avec
 // (prix rouverts au centime) ne divergent plus.
+// ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — plus AUCUNE tolérance sur la
+// production ni sur les économies : l'écart « intermittent » comparait deux
+// options DIFFÉRENTES. Sur un devis « Les deux » aux champs PV divergents
+// (panneaux ajoutés pour remplir la batterie), la carte unique de l'écran
+// décrivait l'option SANS et l'API sa production de tête, celle de l'option
+// AVEC (CI : api 6 813 / écran 4 542 = 6 / 4 panneaux). Les trois surfaces
+// portent désormais la production PAR OPTION sur un tel devis
+// (`production_annuelle_kwh@sans|@avec`), comparée strictement.
 const ECARTS_CONNUS = new Set([])
 const identiteEcart = (msg) => msg.split(' : ')[0]
 
-/** Écarts NOUVEAUX (hors listes) + identités connues (stables) qui ne divergent PLUS. */
+/** Écarts NOUVEAUX (hors liste) + identités connues (stables) qui ne divergent PLUS. */
 function ecartsHorsConnus(surfaces) {
   const ecarts = comparer(surfaces)
   const vus = new Set(ecarts.map(identiteEcart))
-  const nouveaux = ecarts.filter((e) => !ECARTS_CONNUS.has(identiteEcart(e))
-    && !ECARTS_INTERMITTENTS.has(identiteEcart(e)))
+  const nouveaux = ecarts.filter((e) => !ECARTS_CONNUS.has(identiteEcart(e)))
   const perimes = [...ECARTS_CONNUS].filter((id) => !vus.has(id)).map((id) => `${id} : écart `
     + 'connu qui ne se reproduit plus — retirez-le de ECARTS_CONNUS (la liste ne fait que rétrécir)')
   return [...nouveaux, ...perimes]
@@ -111,6 +105,18 @@ test('QA-FIGURES : écran, API et proposition publique affichent les mêmes chif
   const data = await page.request.get(`/api/django/public/proposal/${jeton}/data/`)
   expect(data.ok()).toBeTruthy()
   const proposition = figuresDepuisProposition(await data.json())
+  // Champs PV divergents : le document chiffre la production de CHAQUE
+  // option ; l'écran doit alors montrer ces mêmes identités, une par option.
+  const productionsParOption = Object.keys(proposition)
+    .filter((id) => id.startsWith('production_annuelle_kwh@')).sort()
+  const blocSans = etudeRangee.etude_horaire_sans
+  console.log('[ERR-QAH-FIG-EDITION] production par option : '
+    + (productionsParOption.length
+      ? productionsParOption.map((id) => `${id} proposition ${proposition[id][0].texte}, `
+        + `API ${apiDevis[id]?.[0]?.texte}`).join(' ; ')
+      : 'options non divergentes')
+    + ` ; bloc horaire sans : ${blocSans ? `kWc ${blocSans.kwc}, `
+      + `production ${blocSans.annuel?.production_kwh}` : 'ABSENT'}`)
 
   // ── Écran : l'éditeur complet du MÊME devis ──────────────────────────────
   await page.getByRole('button', { name: /Édition complète/ }).click()
@@ -128,7 +134,11 @@ test('QA-FIGURES : écran, API et proposition publique affichent les mêmes chif
     const cles = Object.keys(ecran)
     const manquantes = ETUDE_ECRAN.filter((p) => !cles.some((id) => id.startsWith(p)))
     return [...ecartsHorsConnus(surfaces),
-      ...manquantes.map((p) => `${p} : pas encore affiché à l'écran (étude non lue)`)]
+      ...manquantes.map((p) => `${p} : pas encore affiché à l'écran (étude non lue)`),
+      ...productionsParOption.filter((id) => !(id in ecran))
+        .map((id) => `${id} : production de cette option absente de l'écran`),
+      ...cles.filter((id) => id.startsWith('production_annuelle_kwh@') && !productionsParOption.includes(id))
+        .map((id) => `${id} : production par option à l'écran, unique dans le document`)]
   }, {
     message: 'le même chiffre diffère entre l\'écran, l\'API et la proposition publique '
       + '(hors ECARTS_CONNUS), ou un écart connu ne se reproduit plus',
@@ -141,4 +151,5 @@ test('QA-FIGURES : écran, API et proposition publique affichent les mêmes chif
   const comparees = [...identitesComparees(surfaces)]
   expect(comparees.some((id) => id.startsWith('total_ttc@')), comparees.join(', ')).toBe(true)
   expect(comparees.some((id) => id.startsWith('production_annuelle_kwh')), comparees.join(', ')).toBe(true)
+  for (const id of productionsParOption) expect(comparees.includes(id), comparees.join(', ')).toBe(true)
 })

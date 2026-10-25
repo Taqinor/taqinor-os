@@ -791,7 +791,15 @@ def figures_depuis_devis_api(detail: dict) -> dict[str, list[Mesure]]:
         # (production par ville, ``eco_s_ann``) que ni le PDF ni /proposition
         # n'impriment plus : il n'est pas une surface de ces chiffres.
         return c.figures
-    c.mettre("production_annuelle_kwh", roi.get("prod_kwh"))
+    # ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — même garde que la
+    # proposition : sur des champs PV divergents, ``prod_kwh`` ne décrit que
+    # l'option AVEC ; chaque option est alors comparée sous SON identité.
+    if _divergent(roi, "prod_kwh"):
+        for opt in OPTIONS:
+            c.mettre("production_annuelle_kwh", roi.get(f"prod_kwh_{opt}"),
+                     opt)
+    else:
+        c.mettre("production_annuelle_kwh", roi.get("prod_kwh"))
     c.mettre("economie_annuelle", roi.get("eco_s_ann"), "sans")
     c.mettre("economie_annuelle", roi.get("eco_a_ann"), "avec")
     c.mettre("payback_ans", roi.get("roi_s"), "sans")

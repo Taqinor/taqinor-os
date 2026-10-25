@@ -851,6 +851,13 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
                 },
                 'roi': {
                     'prod_kwh': data.get('prod_kwh'),
+                    # ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — champs PV
+                    # divergents : ``prod_kwh`` est celle de l'option AVEC ;
+                    # la production de CHAQUE option, déjà chiffrée par le
+                    # moteur, est servie à côté (aucun calcul ici).
+                    'prod_kwh_sans': data.get('prod_kwh_sans'),
+                    'prod_kwh_avec': data.get('prod_kwh_avec'),
+                    'panneaux_divergents': bool(data.get('panneaux_divergents')),
                     'eco_s_ann': data.get('eco_s_ann'),
                     'eco_a_ann': data.get('eco_a_ann'),
                     'roi_s': data.get('roi_s'),
