@@ -13,13 +13,13 @@
    "required": true
   },
   {
-   "classe": "CharField",
+   "classe": "ChaineStricte",
    "nom": "libelle",
    "read_only": false,
    "required": true
   },
   {
-   "classe": "BooleanField",
+   "classe": "BooleenStrict",
    "nom": "obligatoire",
    "read_only": false,
    "required": false
