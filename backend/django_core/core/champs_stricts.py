@@ -23,6 +23,10 @@ class ChaineStricte(serializers.CharField):
     def to_internal_value(self, data):
         if not isinstance(data, str):
             self.fail('invalid')
+        # api-fuzz-full 25/10 — ``maxLength`` publié borne la chaîne ENVOYÉE ;
+        # DRF ne mesure qu'APRÈS rognage : 4 espaces + 150 car. passaient (201).
+        if self.max_length is not None and len(data) > self.max_length:
+            self.fail('max_length', max_length=self.max_length)
         return super().to_internal_value(data)
 
 
