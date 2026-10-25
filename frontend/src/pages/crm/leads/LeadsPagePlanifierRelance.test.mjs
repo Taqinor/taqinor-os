@@ -39,6 +39,15 @@ test('QX25/EZ1 : LeadsPage définit onPlanifierRelance (mémoïsée) et ouvre le
   assert.match(PAGE_SRC, /mode="planification"/)
 })
 
+// EZ1 (déplacé de CallPlanner.ez1.test.mjs, converti en comportement côté
+// CallLogPopover) — LeadsPage monte CE popover, une instance par lead, avec la
+// relance DÉJÀ posée transmise (le popover l'affiche au lieu de l'écraser).
+// LeadsPage n'est pas montable sous vitest : ce câblage reste un verrou de SOURCE.
+test('EZ1 : LeadsPage pointe le popover de planification sur le lead choisi, relance existante transmise', () => {
+  assert.match(PAGE_SRC, /<CallLogPopover\s+key=\{relanceLead\.id\}\s+leadId=\{relanceLead\.id\}/)
+  assert.match(PAGE_SRC, /relanceActuelle=\{relanceLead\.relance_date \?\? null\}/)
+})
+
 test('QX25 : viewProps transmet désormais onPlanifierRelance (c\'était le trou verifié)', () => {
   // LB6 — viewProps est désormais useMemo (bug #4) : `const viewProps = {`
   // est devenu `const viewProps = useMemo(() => ({`.

@@ -33,6 +33,13 @@ test('affiche le nombre d\'activités créées après application (pas de succè
   assert.match(SRC, /activité\(s\) planifiée\(s\)/)
 })
 
+// EZ1 (déplacé de CallPlanner.ez1.test.mjs) — le dialogue garde son rôle de
+// GABARIT multi-étapes : il ne pose jamais de date de relance libre, c'est le
+// domaine du popover de planification rapide (CallLogPopover).
+test('EZ1 : PlanActiviteDialog n\'écrit aucune date de relance libre (domaine du gabarit)', () => {
+  assert.doesNotMatch(SRC, /relance_date/)
+})
+
 test('ContextRail : le bouton « Appliquer un plan » déclenche onAction(\'plan\')', () => {
   assert.match(CONTEXTRAIL_SRC, /Appliquer un plan/)
   assert.match(CONTEXTRAIL_SRC, /onClick=\{\(\) => onAction\?\.\('plan'\)\}/)

@@ -9,7 +9,11 @@ import { PIPELINE_STAGES, STAGE_LABELS, CONVERSION_STAGE } from '../stages'
    rangée) ; le CONTRAT ne change pas : onChangeStage(key) / onSigne(). On lit
    les clés/labels depuis stages.js (règle #2), jamais de littéral local. */
 
-afterEach(() => cleanup())
+// Le contrôle ne patche jamais : le moindre appel réseau d'écriture le prouverait.
+vi.mock('../../../api/crmApi', () => ({ default: { updateLead: vi.fn() } }))
+import crmApi from '../../../api/crmApi'
+
+afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 const CONTACTED = PIPELINE_STAGES[1]
 const QUOTE_SENT = PIPELINE_STAGES[2]
@@ -96,6 +100,20 @@ describe('LW16 — StageControl', () => {
     ouvrirMenu(container)
     fireEvent.click(await screen.findByRole('menuitem', { name: STAGE_LABELS[QUOTE_SENT] }))
     expect(onChangeStage).toHaveBeenCalledWith(QUOTE_SENT)
+  })
+
+  it('reste un DÉCLENCHEUR : un RECUL est transmis tel quel (un seul argument), sans jugement ni écriture', async () => {
+    // Le sens (avancée/recul) et la confirmation se décident dans LeadWorkspace
+    // (LW16/LW23, reculer d'étape) ; ici aucun marqueur n'est ajouté, rien n'est patché.
+    const onChangeStage = vi.fn()
+    const { container } = render(
+      <StageControl state={makeState({ stage: QUOTE_SENT })} onChangeStage={onChangeStage} onSigne={vi.fn()} />,
+    )
+    ouvrirMenu(container)
+    fireEvent.click(await screen.findByRole('menuitem', { name: STAGE_LABELS[CONTACTED] }))
+    expect(onChangeStage).toHaveBeenCalledTimes(1)
+    expect(onChangeStage).toHaveBeenCalledWith(CONTACTED)
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
   })
 
   it('n\'utilise aucun <select> d\'étape (StatusPill uniquement)', () => {
