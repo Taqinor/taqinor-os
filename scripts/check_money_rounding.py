@@ -113,6 +113,8 @@ TARGET_FILES = [
     VENTES / "quote_engine" / "conditions_commerciales.py",
     # SPL165 — liste blanche des options PDF (aucun round(), couverture seule).
     VENTES / "quote_engine" / "options_pdf.py",
+    # SPL166 — phase D2 de build_quote_data (aucun round() classé argent).
+    VENTES / "quote_engine" / "etude_restitution.py",
     VENTES / "quote_engine" / "generate_devis_premium.py",
     VENTES / "quote_engine" / "pricing.py",
     VENTES / "quote_engine" / "bareme.py",

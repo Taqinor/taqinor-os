@@ -268,3 +268,34 @@ class Spl165OptionsPdfTests(SimpleTestCase):
             with self.subTest(nom=nom):
                 self.assertIs(getattr(builder, nom), getattr(options_pdf, nom))
         self.assertFalse(hasattr(builder, "_SHARE_TOKEN_RE"))
+
+
+class Spl166EtudeRestitutionTests(SimpleTestCase):
+    """SPL166 — phase D2 (méthode, hypothèses, série mensuelle) et
+    ``ligne_tarif_hypothese`` : builder.py → etude_restitution.py."""
+
+    def test_noms_definis_dans_etude_restitution_et_plus_dans_builder(self):
+        er = _definis(_arbre("etude_restitution.py"))
+        builder = _definis(_arbre("builder.py"))
+        for nom in ("restituer_etude", "ligne_tarif_hypothese"):
+            with self.subTest(nom=nom):
+                self.assertIn(nom, er)
+                self.assertNotIn(nom, builder)
+
+    def test_build_quote_data_delegue_la_phase_d2(self):
+        corps = _source_de("builder.py", "build_quote_data")
+        self.assertNotIn("# ── QF3 — bloc « Comment nous calculons", corps)
+        self.assertNotIn("def _fr_int(", corps)
+        self.assertIn("restituer_etude(", corps)
+        self.assertIn("def _fr_int(",
+                      _source_de("etude_restitution.py", "restituer_etude"))
+
+    def test_etude_restitution_n_importe_jamais_builder(self):
+        for mod in _tous_imports(_arbre("etude_restitution.py")):
+            with self.subTest(mod=mod):
+                self.assertNotIn("builder", mod)
+
+    def test_reexport_pour_test_devis(self):
+        from apps.ventes.quote_engine import builder, etude_restitution
+        self.assertIs(builder.ligne_tarif_hypothese,
+                      etude_restitution.ligne_tarif_hypothese)
