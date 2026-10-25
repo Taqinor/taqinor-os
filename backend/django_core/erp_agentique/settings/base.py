@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import timedelta
 
 from . import placeholders
+from .reglages_lus import *  # noqa: F403, F401 — réglages lus par le code, déclarés à côté (ENF15, D-ENF22)
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -2092,12 +2093,3 @@ GED_PADES_KEY_PATH = os.environ.get('GED_PADES_KEY_PATH', '').strip()
 CMI_ENABLED = (
     os.environ.get('CMI_ENABLED', '').strip().lower() in ('1', 'true'))
 CMI_MERCHANT_KEY = os.environ.get('CMI_MERCHANT_KEY', '').strip()
-
-# ENF28 (ADEP20) — apps.notifications : seuils du filet « lead chaud non contacté »
-# (`sweeps._sweep_hot_leads`), mêmes valeurs que les défauts du module.
-HOT_LEAD_SCORE_THRESHOLD = 60
-HOT_LEAD_MINUTES_OUVREES = 30
-# ENF28 : défauts de reporting.calendar et core (bi_cache, ai, tenant_ratelimit) ; None = repli du module
-ICS_TOKEN_MAX_AGE_DAYS, BI_WIDGET_CACHE_TTL, AI_GUARD_MAX_CHARS, AI_TOXIC_TERMS, TENANT_TASK_RATE_LIMITS = (
-    180, 300, 6000, None, None
-)
