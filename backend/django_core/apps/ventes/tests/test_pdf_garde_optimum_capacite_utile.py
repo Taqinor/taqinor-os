@@ -20,6 +20,7 @@ from apps.crm.models import Client
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.quote_engine import generate_devis_premium as moteur
+from apps.ventes.quote_engine import legacy_etude
 
 User = get_user_model()
 
@@ -94,9 +95,9 @@ class GardeUtileContreUtile(TestCase):
                                batterie_kwh=optimum['batterie_kwh']),
             config_vendue_du_devis(self.devis))
         self.assertTrue(verdict_web)
-        self.assertTrue(moteur._optimum_decrit_ce_devis(optimum))
+        self.assertTrue(legacy_etude._optimum_decrit_ce_devis(optimum))
         # Un optimum chiffré en NOMINAL ne décrit plus ce devis côté PDF.
-        self.assertFalse(moteur._optimum_decrit_ce_devis(
+        self.assertFalse(legacy_etude._optimum_decrit_ce_devis(
             dict(optimum, batterie_kwh=16.0)))
 
 

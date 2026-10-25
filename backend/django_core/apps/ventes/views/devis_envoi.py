@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from ..models import Devis
 from ..domain.modifiabilite import ENVOYER
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
-from ..utils.client_links import chemin_proposition
+from ..utils.client_links import chemin_proposition, url_proposition
 from ..utils.corps import valider_corps
 import logging
 
@@ -348,7 +348,7 @@ class DevisEnvoiActionsMixin:
             rendu = EmailTemplate.render(
                 devis.company, 'envoi_devis',
                 civilite=civilite, nom=salut,
-                reference=devis.reference or '', lien=proposal_url,
+                reference=devis.reference or '', lien=url_proposition(devis, link.token),
                 validite=(devis.date_validite.strftime('%d/%m/%Y')
                           if devis.date_validite else ''),
                 lien_rdv=lien_rdv,

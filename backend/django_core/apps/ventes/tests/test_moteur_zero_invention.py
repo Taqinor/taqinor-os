@@ -237,14 +237,14 @@ class Q1ProvisionOnduleurTests(SimpleTestCase):
         self.assertNotIn("remplacement onduleur provisionn", html)
 
     def test_le_builder_lit_le_prix_ttc_reel_des_lignes_onduleur(self):
-        from apps.ventes.quote_engine import builder
+        from apps.ventes.quote_engine import lignes_classement
         rows = [{"designation": "Onduleur hybride Deye 10kW",
                  "quantite": 2, "prix_unit_ttc": 12000},
                 {"designation": "Batterie Dyness 10 kWh",
                  "quantite": 1, "prix_unit_ttc": 25000}]
-        self.assertEqual(builder._cout_onduleur(rows), 24000)
-        self.assertIsNone(builder._cout_onduleur(rows[1:]))
-        self.assertIsNone(builder._cout_onduleur([]))
+        self.assertEqual(lignes_classement._cout_onduleur(rows), 24000)
+        self.assertIsNone(lignes_classement._cout_onduleur(rows[1:]))
+        self.assertIsNone(lignes_classement._cout_onduleur([]))
 
 
 class M9AbattementBatterieTests(SimpleTestCase):
@@ -500,9 +500,10 @@ class M7DateDeValiditeTests(SimpleTestCase):
     def test_le_builder_lit_la_regle_d_expiration_du_backend(self):
         # Une seconde règle de validité à côté de utils/expiry serait
         # exactement le défaut corrigé : deux dates pour un même devis.
-        from apps.ventes.quote_engine import builder
+        from apps.ventes.quote_engine import conditions_commerciales
         import inspect
-        self.assertIn("date_expiration", inspect.getsource(builder))
+        self.assertIn("date_expiration",
+                      inspect.getsource(conditions_commerciales))
 
 
 class Q5DelaisIndicatifsTests(SimpleTestCase):

@@ -1310,7 +1310,7 @@ class TestNormalizeSiteHost(SimpleTestCase):
     """SCA27 — forme d'affichage d'un site tenant (fonction pure, aucune DB)."""
 
     def test_strips_scheme_www_path_and_trailing_slash(self):
-        from apps.ventes.quote_engine.builder import _normalize_site_host
+        from apps.ventes.quote_engine.conditions_commerciales import _normalize_site_host
         self.assertEqual(_normalize_site_host('https://www.helios.ma/'),
                          'helios.ma')
         self.assertEqual(_normalize_site_host('http://helios.ma'), 'helios.ma')
@@ -1318,7 +1318,7 @@ class TestNormalizeSiteHost(SimpleTestCase):
         self.assertEqual(_normalize_site_host('  helios.ma  '), 'helios.ma')
 
     def test_empty_or_none_yields_empty(self):
-        from apps.ventes.quote_engine.builder import _normalize_site_host
+        from apps.ventes.quote_engine.conditions_commerciales import _normalize_site_host
         self.assertEqual(_normalize_site_host(''), '')
         self.assertEqual(_normalize_site_host(None), '')
         self.assertEqual(_normalize_site_host('   '), '')
@@ -1362,21 +1362,20 @@ class TestBuilderWiresTenantSite(TestCase):
         from apps.ventes.models import ShareLink
         type(devis).objects.filter(pk=devis.pk).update(statut='envoye')
         devis.refresh_from_db()
-        ShareLink.for_devis(devis)
+        lien = ShareLink.for_devis(devis)
         data = build_quote_data(devis)
         # Ligne site du pied de page = SON site (forme d'affichage normalisée).
         self.assertEqual(data['site_url'], 'helios.ma')
         # Base des liens fiches = SON site → theme.fiche_href omet taqinor.ma.
         self.assertEqual(data['links']['produits'], 'helios.ma/produits')
         self.assertEqual(data['links']['realisations'], 'helios.ma/realisations')
-        # QX6 (fusion) — le lien de signature est tokenisé VERS LA VRAIE
-        # proposition (ShareLink), sur la base DU TENANT : plus jamais l'ancien
-        # « /signer/<ref> » 404, et aucun domaine fondateur ne fuit.
-        self.assertIn('/proposition/', data['links']['signer'])
-        self.assertTrue(data['links']['signer'].startswith('https://helios.ma/'))
-        self.assertNotIn('/signer/', data['links']['signer'])
-        # Aucune valeur ne fuit vers le site du fondateur.
-        for v in [data['site_url']] + list(data['links'].values()):
+        # QX6 / APDF104 — lien tokenisé vers la proposition hébergée par la
+        # PLATEFORME (``url_proposition``, le lien du courriel), jamais le site
+        # de la société qui n'héberge pas cette page, jamais « /signer/<ref> ».
+        from apps.ventes.utils.client_links import url_proposition
+        self.assertEqual(data['links']['signer'], url_proposition(devis, lien.token))
+        # Aucune autre valeur ne fuit vers le site du fondateur.
+        for v in [data['site_url']] + [v for k, v in data['links'].items() if k != 'signer']:
             self.assertNotIn('taqinor', v.lower())
 
     def test_siteless_tenant_omits_keys_founder_defaults_preserved(self):

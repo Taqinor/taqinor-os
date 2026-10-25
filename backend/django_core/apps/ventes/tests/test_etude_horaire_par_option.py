@@ -287,7 +287,7 @@ class SelectionDuBlocParPuissanceTests(TestCase):
         self.bloc_sans['annuel']['taux_autoconso_sans'] = 0.77
 
     def test_le_builder_rend_le_bloc_de_chaque_puissance(self):
-        from apps.ventes.quote_engine.builder import bloc_horaire_pour_kwc
+        from apps.ventes.quote_engine.etude_chiffrage import bloc_horaire_pour_kwc
         etude = {'etude_horaire': self.bloc_avec,
                  'etude_horaire_sans': self.bloc_sans}
         self.assertIs(bloc_horaire_pour_kwc(etude, KWC_AVEC), self.bloc_avec)

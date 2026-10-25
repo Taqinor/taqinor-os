@@ -107,7 +107,19 @@ TARGET_FILES = [
     VENTES / "quote_engine" / "builder.py",
     # SPL162 — helpers de classement déplacés de builder.py (move only).
     VENTES / "quote_engine" / "lignes_classement.py",
+    # SPL163 — phase D1 de build_quote_data déplacée de builder.py (move only).
+    VENTES / "quote_engine" / "etude_chiffrage.py",
+    # SPL164 — phase E + helpers de paiement déplacés de builder.py (move only).
+    VENTES / "quote_engine" / "conditions_commerciales.py",
+    # SPL165 — liste blanche des options PDF (aucun round(), couverture seule).
+    VENTES / "quote_engine" / "options_pdf.py",
+    # SPL166 — phase D2 de build_quote_data (aucun round() classé argent).
+    VENTES / "quote_engine" / "etude_restitution.py",
     VENTES / "quote_engine" / "generate_devis_premium.py",
+    # SPL168 — format une-page legacy déplacé de generate_devis_premium.py.
+    VENTES / "quote_engine" / "legacy_onepage.py",
+    # SPL169 — page d'étude legacy déplacée de generate_devis_premium.py.
+    VENTES / "quote_engine" / "legacy_etude.py",
     VENTES / "quote_engine" / "pricing.py",
     VENTES / "quote_engine" / "bareme.py",
     VENTES / "quote_engine" / "agricole" / "economics.py",

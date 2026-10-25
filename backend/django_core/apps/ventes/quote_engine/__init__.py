@@ -16,13 +16,14 @@ Public API:
 """
 from .builder import (
     build_quote_data,
-    clean_pdf_options,
     cle_pdf_a_jour,
     empreinte_donnees_pdf,
     generate_premium_devis_pdf,
 )
 # SPL162 — la dérivation panneaux vit dans ``lignes_classement`` (move only).
 from .lignes_classement import puissance_panneaux_lignes
+# SPL165 — la liste blanche des options PDF vit dans ``options_pdf`` (move only).
+from .options_pdf import clean_pdf_options
 from .pricing import calculate_savings_roi
 
 __all__ = [
