@@ -301,6 +301,64 @@ class Spl166EtudeRestitutionTests(SimpleTestCase):
                       etude_restitution.ligne_tarif_hypothese)
 
 
+#: SPL167 — artefacts de rendu (toiture, schéma unifilaire, planche) et le bloc
+#: post-littéral : builder.py → artefacts_rendu.py.
+NOMS_SPL167 = (
+    "_roof_photo_data_uri", "cle_toit_de_la_societe", "_roof_render_data_uri",
+    "_sld_svg", "CALEPINAGE_LARGEUR_PX", "CALEPINAGE_HAUTEUR_PX",
+    "_SVG_PROLOGUE_RE", "_SVG_TAILLE_RE", "_svg_planche_inline",
+    "_conception_divergente_du_devis", "_planche_calepinage",
+    "ajouter_artefacts_rendu",
+)
+
+
+class Spl167ArtefactsRenduTests(SimpleTestCase):
+    def test_noms_definis_dans_artefacts_rendu_et_plus_dans_builder(self):
+        ar = _definis(_arbre("artefacts_rendu.py"))
+        builder = _definis(_arbre("builder.py"))
+        for nom in NOMS_SPL167:
+            with self.subTest(nom=nom):
+                self.assertIn(nom, ar)
+                self.assertNotIn(nom, builder)
+
+    def test_build_quote_data_delegue_le_bloc_post_litteral(self):
+        corps = _source_de("builder.py", "build_quote_data")
+        for entete in ("CALEPDF/A8 — L'AFFICHE DU CALEPINAGE",
+                       "CAL182 — LA PLANCHE EST UN ARTEFACT DE RENDU",
+                       '"_embed_calepinage_planche"'):
+            with self.subTest(entete=entete):
+                self.assertNotIn(entete, corps)
+        self.assertIn("ajouter_artefacts_rendu(", corps)
+        self.assertIn('"_embed_calepinage_planche"',
+                      _source_de("artefacts_rendu.py",
+                                 "ajouter_artefacts_rendu"))
+
+    def test_artefacts_rendu_n_importe_jamais_builder(self):
+        for mod in _tous_imports(_arbre("artefacts_rendu.py")):
+            with self.subTest(mod=mod):
+                self.assertNotIn("builder", mod)
+
+    def test_lecteur_d_affiche_plus_lie_dans_builder(self):
+        """Un ``patch.object(builder, '_roof_render_data_uri')`` périmé doit
+        lever, jamais devenir un no-op qui lit MinIO (CODE-FACTS)."""
+        from apps.ventes.quote_engine import artefacts_rendu, builder
+        self.assertFalse(hasattr(builder, "_roof_render_data_uri"))
+        # Le littéral appelle le nom IMPORTÉ : le patch de l'auditeur
+        # (coherence/contexte.py) sur builder reste effectif.
+        self.assertIs(builder._roof_photo_data_uri,
+                      artefacts_rendu._roof_photo_data_uri)
+        # Ré-export pour test_pv41 (calepinage) et
+        # test_acal_planche_devis_remplace (devis).
+        for nom in ("_sld_svg", "_svg_planche_inline"):
+            with self.subTest(nom=nom):
+                self.assertIs(getattr(builder, nom),
+                              getattr(artefacts_rendu, nom))
+        for nom in ("cle_toit_de_la_societe", "CALEPINAGE_LARGEUR_PX",
+                    "_planche_calepinage", "_conception_divergente_du_devis"):
+            with self.subTest(absent=nom):
+                self.assertFalse(hasattr(builder, nom))
+
+
 #: SPL168 — format une-page legacy : generate_devis_premium.py →
 #: legacy_onepage.py (liaison tardive ``_g.NOM``).
 NOMS_SPL168 = ("_proposition_link", "_onepage_qr_uri", "_onepage_header_html",

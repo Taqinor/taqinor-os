@@ -1384,12 +1384,12 @@ class TestRoofRenderDataUri(SimpleTestCase):
 
     def _uri(self, key, octets=b'\x89PNG\r\n\x1a\n data', boom=False):
         from unittest import mock
-        from apps.ventes.quote_engine import builder
+        from apps.ventes.quote_engine import artefacts_rendu
         cible = 'apps.ventes.utils.pdf.download_roof_image'
         effet = (mock.Mock(side_effect=OSError('minio down')) if boom
                  else mock.Mock(return_value=octets))
         with mock.patch(cible, effet):
-            return builder._roof_render_data_uri(self._Devis(key))
+            return artefacts_rendu._roof_render_data_uri(self._Devis(key))
 
     def test_png_embarque_en_data_uri(self):
         uri = self._uri('roofs/1/DEV-1.png')
@@ -1400,11 +1400,12 @@ class TestRoofRenderDataUri(SimpleTestCase):
         self.assertTrue(uri.startswith('data:image/jpeg;base64,'))
 
     def test_sans_cle_aucun_acces(self):
-        from apps.ventes.quote_engine import builder
+        from apps.ventes.quote_engine import artefacts_rendu
         self.assertEqual(
-            builder._roof_render_data_uri(self._Devis('')), '')
+            artefacts_rendu._roof_render_data_uri(self._Devis('')), '')
         self.assertEqual(
-            builder._roof_render_data_uri(self._Devis(None)), '')
+            artefacts_rendu._roof_render_data_uri(self._Devis(None)),
+            '')
 
     def test_minio_indisponible_ne_casse_pas_le_pdf(self):
         self.assertEqual(self._uri('roofs/1/DEV-1.png', boom=True), '')

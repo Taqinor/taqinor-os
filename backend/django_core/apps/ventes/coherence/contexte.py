@@ -50,11 +50,12 @@ def rendu_sans_reseau():
     """Neutralise les deux lectures d'images MinIO du constructeur, le temps
     du bloc seulement (le prototype COUV-HOR patchait ``_roof_photo_data_uri``
     pour tout le processus ; ici le patch est RESTAURÉ — un worker Celery
-    continue de rendre de vrais PDF après l'audit)."""
-    from apps.ventes.quote_engine import builder
+    continue de rendre de vrais PDF après l'audit). SPL167 — l'affiche est
+    lue par ``artefacts_rendu`` : c'est LÀ qu'elle est patchée."""
+    from apps.ventes.quote_engine import artefacts_rendu, builder
     with mock.patch.object(builder, '_roof_photo_data_uri',
                            lambda devis: ''), \
-            mock.patch.object(builder, '_roof_render_data_uri',
+            mock.patch.object(artefacts_rendu, '_roof_render_data_uri',
                               lambda devis: ''):
         yield
 
