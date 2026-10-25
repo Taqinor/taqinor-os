@@ -146,6 +146,24 @@ class TestEnvoyerEmailAction(TestCase):
             status_activities_before, status_activities_after,
             'No duplicate status chatter entry on idempotent re-send')
 
+    @override_settings(SITE_URL='https://plateforme.exemple.test')
+    def test_lien_proposition_absolu_dans_le_corps(self):
+        """APDF104 (rejeu en direct) — le corps par défaut porte l'URL ABSOLUE de
+        la proposition (``url_proposition``, celle du PDF), jamais le seul
+        chemin relatif « /proposition/<jeton> », inutilisable dans un e-mail."""
+        from django.core import mail
+        from apps.ventes.models import ShareLink
+        from apps.ventes.utils.client_links import url_proposition
+        devis = make_devis(self.company, self.user, self.client_obj, 'brouillon',
+                           'DEV-QJ14-ABS')
+        mail.outbox = []
+        self.api.post(url(devis.id), {}, format='json')
+        token = ShareLink.objects.filter(devis=devis).latest('created_at').token
+        corps = mail.outbox[-1].body
+        self.assertIn(url_proposition(devis, token), corps)
+        self.assertTrue(url_proposition(devis, token).startswith('https://plateforme.exemple.test/'))
+        self.assertNotIn(f'\n/proposition/{token}', corps)
+
     def test_custom_to_email_in_body(self):
         """Body to_email overrides client.email."""
         devis = make_devis(self.company, self.user, self.client_obj, 'brouillon',
