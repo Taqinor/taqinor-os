@@ -49,7 +49,9 @@ vi.mock('@roofpro/scene3d', () => ({
 }))
 
 const { default: ModeTerrain } = await import('../ModeTerrain')
-const { demandeMoteur, documentTerrain, planVue2D, AXE_AUTO, motifChampVide, motifRefus } = await import('../ModeTerrain.helpers')
+const {
+  demandeMoteur, documentTerrain, planVue2D, vueDuChamp, AXE_AUTO, motifChampVide, motifRefus,
+} = await import('../ModeTerrain.helpers')
 const { pasMesure, tauxOccupation, empriseTablesM2, contourTerrain } = await import('../surfacePose')
 const { formatCote } = await import('../plan2d')
 
@@ -318,6 +320,32 @@ describe('CALX50 — la mise en page du champ ne décide d’aucune géométrie'
       pasM: null,
     })
     expect(v.cotePas).toBeNull()
+  })
+})
+
+describe('ENF19 — vueDuChamp : la mise en page du champ PLACÉ par le service', () => {
+  const DIMENSIONS = { largeurM: '20', profondeurM: '10' }
+  const CHAMP = {
+    tables: [{ cx: 2, cy: 1.5, largeurM: 2, profondeurM: 1 }],
+    pasInterRangeeM: 4,
+    modules: 12,
+  }
+
+  it('pas de champ posé ⇒ rien n’est dessiné (jamais un champ supposé)', () => {
+    expect(vueDuChamp(null, { rangees: [{ y0: 1 }] }, DIMENSIONS)).toBeNull()
+  })
+
+  it('le contour vient de la saisie, tables/pas/compte du champ, rangées du plan', () => {
+    const vue = vueDuChamp(CHAMP, { rangees: [{ y0: 1 }, { y0: 5 }] }, DIMENSIONS)
+    expect(vue.contour).toHaveLength(4)
+    expect(vue.tables).toHaveLength(1)
+    expect(vue.rangees).toHaveLength(2)
+    expect(vue.cotePas.lengthM).toBe(4)
+    expect(vue.compteModules).toBe(12)
+  })
+
+  it('dimensions du terrain incomplètes ⇒ pas de contour, donc rien à dessiner', () => {
+    expect(vueDuChamp(CHAMP, { rangees: [] }, { largeurM: '', profondeurM: '10' })).toBeNull()
   })
 })
 

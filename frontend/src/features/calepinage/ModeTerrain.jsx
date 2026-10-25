@@ -1,10 +1,11 @@
 import RetourAtelier from './atelier/RetourAtelier'
 import useSurfacePose from './useSurfacePose'
 import ActionsSurfacePose from './ActionsSurfacePose'
-import { nombre, pasMesure, tauxOccupation, contourTerrain, KIND_SOL } from './surfacePose'
-import { formatCote, milieu } from './plan2d'
-import { formatNumber } from '../../lib/format'
-import { demandeMoteur, planVue2D } from './ModeTerrain.helpers'
+import TracePlanPose from './TracePlanPose'
+import {
+  nombre, pasMesure, tauxOccupation, contourTerrain, KIND_SOL, SAISIE_MODULE_VIDE,
+} from './surfacePose'
+import { demandeMoteur, vueDuChamp } from './ModeTerrain.helpers'
 
 /* ============================================================================
    CAL89 — LE MODE TERRAIN : UNE CENTRALE AU SOL DANS L'ATELIER.
@@ -54,11 +55,7 @@ const SAISIE_VIDE = {
   penteTerrainDeg: '',
   rowAzimuthDeg: '',
   tiltDeg: '',
-  moduleLongM: '',
-  moduleCourtM: '',
-  puissanceWc: '',
-  modulesParTable: '',
-  alleeM: '',
+  ...SAISIE_MODULE_VIDE,
 }
 
 const CHAMPS = [
@@ -73,6 +70,18 @@ const CHAMPS = [
   ['modulesParTable', 'Modules par table'],
   ['alleeM', 'Allée imposée entre rangées (m) — vide = politique du moteur'],
 ]
+
+/** ENF19 — les `data-testid` du tracé du champ (le tracé lui-même est `TracePlanPose`). */
+const IDS_TRACE = {
+  svg: 'cal-terrain-svg',
+  contour: 'cal-terrain-contour',
+  rangee: 'cal-terrain-rangee',
+  table: 'cal-terrain-table',
+  cote: 'cal-terrain-cote',
+  traitPas: 'cal-terrain-trait-pas',
+  cotePas: 'cal-terrain-cote-pas',
+  emprise: 'cal-terrain-emprise',
+}
 
 function auDixieme(v) {
   return v === null || v === undefined ? '—' : Math.round(v * 10) / 10
@@ -122,15 +131,7 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
       aireTerrainM2: aire,
     })
     : null
-  const vue = champ
-    ? planVue2D({
-      contourM: contourTerrain(saisie.largeurM, saisie.profondeurM),
-      tables: champ.tables,
-      rangees: plan?.rangees ?? [],
-      pasM: champ.pasInterRangeeM,
-      compteModules: champ.modules,
-    })
-    : null
+  const vue = vueDuChamp(champ, plan, saisie)
 
   return (
     <>
@@ -234,96 +235,7 @@ export default function ModeTerrain({ calepinageId: idPropose = null, persister 
               </p>
             )}
 
-            {vue && (
-              <>
-                <svg
-                  data-testid="cal-terrain-svg"
-                  viewBox={`0 0 ${vue.largeurPx} ${vue.hauteurPx}`}
-                  width="100%"
-                  role="img"
-                  aria-label={`Champ au sol — ${vue.tables.length} table(s) posée(s) par le moteur`}
-                  className="mt-2 text-brass-200"
-                >
-                  <polygon
-                    data-testid="cal-terrain-contour"
-                    points={vue.contour.map((p) => p.join(',')).join(' ')}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  />
-                  {vue.rangees.map((r) => (
-                    <line
-                      key={r.y0}
-                      data-testid="cal-terrain-rangee"
-                      x1={r.from[0]}
-                      y1={r.from[1]}
-                      x2={r.to[0]}
-                      y2={r.to[1]}
-                      stroke="currentColor"
-                      strokeWidth="0.75"
-                      strokeDasharray="6 5"
-                      strokeOpacity="0.55"
-                    />
-                  ))}
-                  {vue.tables.map((q, i) => (
-                    <polygon
-                      key={i}
-                      data-testid="cal-terrain-table"
-                      points={q.map((p) => p.join(',')).join(' ')}
-                      fill="currentColor"
-                      fillOpacity="0.25"
-                      stroke="currentColor"
-                      strokeWidth="0.75"
-                    />
-                  ))}
-                  {vue.cotes.map((c, i) => {
-                    const [mx, my] = milieu(c.from, c.to)
-                    return (
-                      <text
-                        key={i}
-                        data-testid="cal-terrain-cote"
-                        x={mx}
-                        y={my}
-                        fontSize="12"
-                        textAnchor="middle"
-                        fill="currentColor"
-                      >
-                        {formatCote(c.lengthM)}
-                      </text>
-                    )
-                  })}
-                  {vue.cotePas && (
-                    <>
-                      <line
-                        data-testid="cal-terrain-trait-pas"
-                        x1={vue.cotePas.from[0]}
-                        y1={vue.cotePas.from[1]}
-                        x2={vue.cotePas.to[0]}
-                        y2={vue.cotePas.to[1]}
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                      />
-                      <text
-                        data-testid="cal-terrain-cote-pas"
-                        x={milieu(vue.cotePas.from, vue.cotePas.to)[0]}
-                        y={milieu(vue.cotePas.from, vue.cotePas.to)[1]}
-                        fontSize="12"
-                        textAnchor="middle"
-                        fill="currentColor"
-                      >
-                        {formatCote(vue.cotePas.lengthM)}
-                      </text>
-                    </>
-                  )}
-                </svg>
-
-                <p className="mt-2 text-xs text-lune-faint" data-testid="cal-terrain-emprise">
-                  {vue.tables.length} table(s) dessinée(s) — emprise{' '}
-                  {formatNumber(champ.empriseTablesM2, { decimals: 1 })} m² ;{' '}
-                  {champ.modules ?? '—'} module(s) posé(s) par le moteur.
-                </p>
-              </>
-            )}
+            {vue && <TracePlanPose vue={vue} champ={champ} ids={IDS_TRACE} nom="table" titre="Champ au sol" />}
 
             {champ && champ.nonMesure.length > 0 && (
               <ul

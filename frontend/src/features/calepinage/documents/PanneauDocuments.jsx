@@ -6,6 +6,7 @@ import { downloadBlob, filenameFromResponse } from '../../../utils/downloadBlob'
 import { formatDateTime } from '../../../lib/format'
 import { Button, Card, Spinner } from '../../../ui'
 import { PARAM_ONGLET, ONGLETS } from '../atelier/onglets'
+import EntreeFichierJson from '../commun/EntreeFichierJson'
 import { deposerCarteDeChaleur, svgTexteEnPng } from './deposerImage'
 
 /* ============================================================================
@@ -372,13 +373,10 @@ function SectionConception({
         >
           Importer une conception
         </Button>
-        <input
-          ref={entreeFichier}
-          type="file"
-          accept="application/json"
-          className="hidden"
-          aria-label="Importer un document de conception (JSON)"
-          data-testid="cal-doc-fichier-import-layout"
+        <EntreeFichierJson
+          entreeRef={entreeFichier}
+          ariaLabel="Importer un document de conception (JSON)"
+          testid="cal-doc-fichier-import-layout"
           onChange={(evenement) => {
             const fichier = evenement.target.files?.[0]
             evenement.target.value = '' // même fichier ré-importable deux fois de suite

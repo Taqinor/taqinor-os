@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { reponseLayoutSite } from '../../../test/fixtures/calepinageApiMock'
 
 /* ============================================================================
    CAL96 — LA COURSE DU SOLEIL, PAR PAN.
@@ -83,15 +84,7 @@ describe('CAL96 — l’écran', () => {
   })
 
   it('avec repère GPS, la course est tracée et les obstructions apparaissent', async () => {
-    layout.mockResolvedValue({
-      data: {
-        roof_layout: {
-          pin: { lat: 33.6, lng: -7.6 },
-          activeAreaId: 'z1',
-          zones: [ZONE],
-        },
-      },
-    })
+    layout.mockResolvedValue(reponseLayoutSite([ZONE]))
     rendre()
     await screen.findByTestId('cal-course-soleil')
     expect(screen.queryByText(/Latitude du site inconnue/)).not.toBeInTheDocument()
@@ -100,15 +93,7 @@ describe('CAL96 — l’écran', () => {
   })
 
   it('aucune obstruction à hauteur saisie ⇒ le dit explicitement, rien d’inventé', async () => {
-    layout.mockResolvedValue({
-      data: {
-        roof_layout: {
-          pin: { lat: 33.6, lng: -7.6 },
-          activeAreaId: 'z1',
-          zones: [{ ...ZONE, obstacles: [] }],
-        },
-      },
-    })
+    layout.mockResolvedValue(reponseLayoutSite([{ ...ZONE, obstacles: [] }]))
     rendre()
     await screen.findByTestId('cal-course-soleil')
     expect(screen.queryByTestId('cal-sundiagram-obstruction')).not.toBeInTheDocument()
@@ -117,11 +102,7 @@ describe('CAL96 — l’écran', () => {
 
   it('plusieurs pans : un sélecteur change le pan affiché', async () => {
     const zoneNord = { ...ZONE, id: 'z2', label: 'Pan Nord', obstacles: [] }
-    layout.mockResolvedValue({
-      data: {
-        roof_layout: { pin: { lat: 33.6, lng: -7.6 }, activeAreaId: 'z1', zones: [ZONE, zoneNord] },
-      },
-    })
+    layout.mockResolvedValue(reponseLayoutSite([ZONE, zoneNord]))
     rendre()
     await screen.findByTestId('cal-course-soleil')
     expect(screen.getAllByTestId('cal-sundiagram-obstruction')).toHaveLength(1)
@@ -137,20 +118,13 @@ describe('CAL96 — l’écran', () => {
   })
 
   it('l’horizon lointain (CAL93) est surimprimé quand le document en porte un', async () => {
-    layout.mockResolvedValue({
-      data: {
-        roof_layout: {
-          pin: { lat: 33.6, lng: -7.6 },
-          activeAreaId: 'z1',
-          zones: [ZONE],
-          horizonProfile: {
-            source: 'saisie',
-            points: [{ azimuthDeg: 90, heightDeg: 8 }, { azimuthDeg: 270, heightDeg: 5 }],
-            hauteurMaxDeg: 8,
-          },
-        },
+    layout.mockResolvedValue(reponseLayoutSite([ZONE], {
+      horizonProfile: {
+        source: 'saisie',
+        points: [{ azimuthDeg: 90, heightDeg: 8 }, { azimuthDeg: 270, heightDeg: 5 }],
+        hauteurMaxDeg: 8,
       },
-    })
+    }))
     rendre()
     await screen.findByTestId('cal-course-soleil')
     expect(screen.queryByText(/Aucun horizon lointain saisi/)).not.toBeInTheDocument()
@@ -174,17 +148,10 @@ const ENVIRONNEMENT = [
 ]
 
 const rendreAvecEnvironnement = ({ buildings, buildingId } = {}) => {
-  layout.mockResolvedValue({
-    data: {
-      roof_layout: {
-        pin: { lat: 33.6, lng: -7.6 },
-        activeAreaId: 'z1',
-        zones: [{ ...ZONE_AVEC_ENVIRONNEMENT, ...(buildingId ? { buildingId } : {}) }],
-        environment: ENVIRONNEMENT,
-        ...(buildings ? { buildings } : {}),
-      },
-    },
-  })
+  layout.mockResolvedValue(reponseLayoutSite(
+    [{ ...ZONE_AVEC_ENVIRONNEMENT, ...(buildingId ? { buildingId } : {}) }],
+    { environment: ENVIRONNEMENT, ...(buildings ? { buildings } : {}) },
+  ))
   return rendre()
 }
 
