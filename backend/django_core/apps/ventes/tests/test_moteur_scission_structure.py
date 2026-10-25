@@ -362,3 +362,101 @@ class Spl168LegacyOnepageTests(SimpleTestCase):
         for nom in ("page_onepage", "_onepage_header_html"):
             with self.subTest(absent=nom):
                 self.assertFalse(hasattr(G, nom))
+
+
+#: SPL169 — page d'étude legacy et gardes d'optimum : generate_devis_premium.py
+#: → legacy_etude.py (groupe clos ; ``_phrase_methode_etude`` et
+#: ``_libelle_avec_minuscule``, nés après le plan, ne servent que lui).
+NOMS_SPL169 = (
+    "make_chart_etude", "_BANKABLE_POSTES_FR", "_bankable_pct",
+    "_bankable_decrit_ce_champ", "_bankable_concorde_avec_la_page",
+    "_bankable_block_html", "_capacite_batterie_vendue",
+    "_capacite_batterie_utile_vendue", "TOLERANCE_CAPACITE_KWH",
+    "_branche_nommee", "_branche_phrase", "_phrase_methode_etude",
+    "_libelle_avec_minuscule", "_config_identifiante", "_decrit",
+    "_optimum_decrit_ce_devis", "_falaise_context", "_part_glitch_pct",
+    "page_etude",
+)
+
+
+def _noms_globaux_gdp():
+    """Noms de niveau module de gdp — définis ou importés au niveau module
+    (blocs if/try/with compris, jamais un corps de fonction), ou déclarés
+    ``global`` dans une de ses fonctions (posés par ``apply_quote_data``)."""
+    arbre = _arbre("generate_devis_premium.py")
+    noms, pile = set(), list(arbre.body)
+    while pile:
+        noeud = pile.pop()
+        if isinstance(noeud, (ast.FunctionDef, ast.AsyncFunctionDef,
+                              ast.ClassDef)):
+            noms.add(noeud.name)
+            continue
+        if isinstance(noeud, (ast.Import, ast.ImportFrom)):
+            noms.update((a.asname or a.name).split(".")[0]
+                        for a in noeud.names)
+        if isinstance(noeud, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            noms.update(n.id for n in ast.walk(noeud) if isinstance(n, ast.Name)
+                        and isinstance(n.ctx, ast.Store))
+        for champ in ("body", "orelse", "finalbody", "handlers"):
+            pile.extend(getattr(noeud, champ, None) or ())
+    for noeud in ast.walk(arbre):
+        if isinstance(noeud, ast.Global):
+            noms.update(noeud.names)
+    return noms
+
+
+class Spl169LegacyEtudeTests(SimpleTestCase):
+    def test_noms_definis_dans_legacy_etude_et_plus_dans_gdp(self):
+        le = _definis(_arbre("legacy_etude.py"))
+        gdp = _definis(_arbre("generate_devis_premium.py"))
+        for nom in NOMS_SPL169:
+            with self.subTest(nom=nom):
+                self.assertIn(nom, le)
+                self.assertNotIn(nom, gdp)
+
+    def test_seule_reecriture_declaree_aucun_globals(self):
+        arbre = _arbre("legacy_etude.py")
+        self.assertEqual(_appels_interdits(arbre), [])
+        texte = (_MOTEUR / "legacy_etude.py").read_text(encoding="utf-8")
+        self.assertIn('getattr(_g, "ETUDE", None)', texte)
+        tete = [n for n in arbre.body
+                if isinstance(n, (ast.Import, ast.ImportFrom))]
+        self.assertEqual([(a.name, a.asname) for n in tete for a in n.names],
+                         [("generate_devis_premium", "_g")])
+
+    def test_chaque_g_nom_existe_dans_gdp(self):
+        """Toute qualification ``_g.NOM`` des modules legacy désigne un nom de
+        niveau module de gdp (un nettoyage d'import « inutilisé » de gdp —
+        ``garantie_ligne_onepage``… — casserait le rendu)."""
+        globaux = _noms_globaux_gdp()
+        for fichier in ("legacy_onepage.py", "legacy_etude.py"):
+            for noeud in ast.walk(_arbre(fichier)):
+                if (isinstance(noeud, ast.Attribute)
+                        and isinstance(noeud.value, ast.Name)
+                        and noeud.value.id == "_g"):
+                    with self.subTest(fichier=fichier, nom=noeud.attr):
+                        self.assertIn(noeud.attr, globaux)
+
+    def test_appelants_par_import_local(self):
+        self.assertIn("from .legacy_etude import page_etude",
+                      _source_de("generate_devis_premium.py", "build_html"))
+        self.assertIn("from .legacy_etude import _falaise_context",
+                      _source_de("legacy_onepage.py", "page_onepage"))
+        self.assertNotIn("_g._falaise_context",
+                         _source_de("legacy_onepage.py", "page_onepage"))
+
+    def test_reexport_pep562_pour_les_tests_devis(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import legacy_etude
+        for nom in ("TOLERANCE_CAPACITE_KWH", "_bankable_block_html",
+                    "_bankable_concorde_avec_la_page",
+                    "_bankable_decrit_ce_champ", "_branche_nommee",
+                    "_branche_phrase", "_config_identifiante", "_decrit",
+                    "_part_glitch_pct", "_phrase_methode_etude",
+                    "_falaise_context"):
+            with self.subTest(nom=nom):
+                self.assertIs(getattr(G, nom), getattr(legacy_etude, nom))
+        for nom in ("page_etude", "_optimum_decrit_ce_devis",
+                    "make_chart_etude"):
+            with self.subTest(absent=nom):
+                self.assertFalse(hasattr(G, nom))

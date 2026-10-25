@@ -265,7 +265,8 @@ def page_onepage(items, tronquees=0):
         # adaptative de cette page ne dépend que du nombre de LIGNES produit
         # (ci-dessous), pas du nombre de vignettes du résumé — une cellule de
         # plus dans cette rangée fixe ne fait jamais déborder la page.
-        _fctx_onepage = _g._falaise_context()
+        from .legacy_etude import _falaise_context  # SPL169 — import local
+        _fctx_onepage = _falaise_context()
         if _fctx_onepage and _fctx_onepage.get("residuel_kwh_mois") is not None:
             _rtxt = f"{_g.fnum(_fctx_onepage['residuel_kwh_mois'])} kWh/mois"
             if _fctx_onepage.get("tranche_apres"):

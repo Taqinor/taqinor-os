@@ -118,6 +118,8 @@ TARGET_FILES = [
     VENTES / "quote_engine" / "generate_devis_premium.py",
     # SPL168 — format une-page legacy déplacé de generate_devis_premium.py.
     VENTES / "quote_engine" / "legacy_onepage.py",
+    # SPL169 — page d'étude legacy déplacée de generate_devis_premium.py.
+    VENTES / "quote_engine" / "legacy_etude.py",
     VENTES / "quote_engine" / "pricing.py",
     VENTES / "quote_engine" / "bareme.py",
     VENTES / "quote_engine" / "agricole" / "economics.py",
