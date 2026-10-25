@@ -970,7 +970,7 @@ class GelCompletLectureTests(TestCase):
         puis correction sur place : ``figer_clauses_devis`` pose un
         ``doc_texts_geles`` aux CGV B — le rendu imprime toujours A.
         Test-du-test : rappliquer ``cgv_gelees`` AVANT le choix de
-        ``_doc_texts_geles`` (builder) ⇒ ce test échoue."""
+        ``_doc_texts_geles`` (conditions_commerciales) ⇒ ce test échoue."""
         from apps.ventes.domain.envoi import figer_clauses_devis
         self._envoyer()
         Devis.objects.filter(pk=self.devis.pk).update(clauses_appliquees=[
@@ -1002,7 +1002,7 @@ class DocTextsGelesFiltreTests(SimpleTestCase):
 
     def test_defauts_geles_ignores(self):
         from types import SimpleNamespace
-        from apps.ventes.quote_engine.builder import _doc_texts_geles
+        from apps.ventes.quote_engine.conditions_commerciales import _doc_texts_geles
         from apps.ventes.quote_engine.generate_devis_premium import (
             DEFAULT_DOC_TEXTS)
         entree = {'type': 'doc_texts_geles', 'version': 2, 'textes': {

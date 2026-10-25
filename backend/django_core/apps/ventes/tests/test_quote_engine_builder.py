@@ -1310,7 +1310,7 @@ class TestNormalizeSiteHost(SimpleTestCase):
     """SCA27 — forme d'affichage d'un site tenant (fonction pure, aucune DB)."""
 
     def test_strips_scheme_www_path_and_trailing_slash(self):
-        from apps.ventes.quote_engine.builder import _normalize_site_host
+        from apps.ventes.quote_engine.conditions_commerciales import _normalize_site_host
         self.assertEqual(_normalize_site_host('https://www.helios.ma/'),
                          'helios.ma')
         self.assertEqual(_normalize_site_host('http://helios.ma'), 'helios.ma')
@@ -1318,7 +1318,7 @@ class TestNormalizeSiteHost(SimpleTestCase):
         self.assertEqual(_normalize_site_host('  helios.ma  '), 'helios.ma')
 
     def test_empty_or_none_yields_empty(self):
-        from apps.ventes.quote_engine.builder import _normalize_site_host
+        from apps.ventes.quote_engine.conditions_commerciales import _normalize_site_host
         self.assertEqual(_normalize_site_host(''), '')
         self.assertEqual(_normalize_site_host(None), '')
         self.assertEqual(_normalize_site_host('   '), '')

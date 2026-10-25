@@ -177,3 +177,62 @@ class Spl163EtudeChiffrageTests(SimpleTestCase):
                     "_ville_du_devis", "_etude_ic_fraiche"):
             with self.subTest(absent=nom):
                 self.assertFalse(hasattr(builder, nom))
+
+
+#: SPL164 — phase E de build_quote_data (trois fonctions) et les helpers de
+#: paiement / mentions : builder.py → conditions_commerciales.py.
+NOMS_SPL164 = (
+    "PAYMENT_TERMS_BY_MODE", "_PasDeLienSigner", "_normalize_site_host",
+    "_taux_libelle", "_pct_simple", "repartition_paiement",
+    "tranches_echeancier_en_montant", "tva_note_des_lignes",
+    "_doc_texts_geles", "_doc_texts_envoyes", "_entreprise_avec_logo",
+    "delais_validite_et_kit", "remises_et_puces", "conditions_et_liens",
+)
+
+
+class Spl164ConditionsCommercialesTests(SimpleTestCase):
+    def test_noms_definis_dans_conditions_commerciales_et_plus_dans_builder(self):
+        cc = _definis(_arbre("conditions_commerciales.py"))
+        builder = _definis(_arbre("builder.py"))
+        for nom in NOMS_SPL164:
+            with self.subTest(nom=nom):
+                self.assertIn(nom, cc)
+                self.assertNotIn(nom, builder)
+
+    def test_build_quote_data_delegue_la_phase_e(self):
+        corps = _source_de("builder.py", "build_quote_data")
+        for entete in ("Q5 (décision fondateur du 20/08/2026) — DÉLAIS",
+                       "QJRREM — CHAQUE LIGNE PORTE LA REMISE GLOBALE",
+                       "QX6 — CTA de signature"):
+            with self.subTest(entete=entete):
+                self.assertNotIn(entete, corps)
+        for fonction in ("delais_validite_et_kit(", "remises_et_puces(",
+                         "conditions_et_liens("):
+            with self.subTest(fonction=fonction):
+                self.assertIn(fonction, corps)
+        # Le ShareLink est LU une seule fois, dans E3 (jamais dupliqué).
+        e3 = _source_de("conditions_commerciales.py", "conditions_et_liens")
+        self.assertEqual(e3.count("ShareLink.objects.filter("), 2)
+        self.assertNotIn("ShareLink.objects", corps)
+
+    def test_conditions_commerciales_n_importe_jamais_builder(self):
+        for mod in _tous_imports(_arbre("conditions_commerciales.py")):
+            with self.subTest(mod=mod):
+                self.assertNotIn("builder", mod)
+                self.assertNotEqual(mod, "apps.ventes.utils.options")
+
+    def test_reexport_et_usage_propre_de_builder(self):
+        """utils/company_settings et les tests devis (PAYMENT_TERMS_BY_MODE,
+        tva_note_des_lignes) ; F-post de builder (répartition, tranches)."""
+        from apps.ventes.quote_engine import builder, conditions_commerciales
+        for nom in ("PAYMENT_TERMS_BY_MODE", "tva_note_des_lignes",
+                    "repartition_paiement", "tranches_echeancier_en_montant",
+                    "_pct_simple"):
+            with self.subTest(nom=nom):
+                self.assertIs(getattr(builder, nom),
+                              getattr(conditions_commerciales, nom))
+        for nom in ("_normalize_site_host", "_taux_libelle", "_doc_texts_geles",
+                    "_doc_texts_envoyes", "_entreprise_avec_logo",
+                    "_PasDeLienSigner"):
+            with self.subTest(absent=nom):
+                self.assertFalse(hasattr(builder, nom))

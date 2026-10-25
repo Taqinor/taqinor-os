@@ -500,9 +500,10 @@ class M7DateDeValiditeTests(SimpleTestCase):
     def test_le_builder_lit_la_regle_d_expiration_du_backend(self):
         # Une seconde règle de validité à côté de utils/expiry serait
         # exactement le défaut corrigé : deux dates pour un même devis.
-        from apps.ventes.quote_engine import builder
+        from apps.ventes.quote_engine import conditions_commerciales
         import inspect
-        self.assertIn("date_expiration", inspect.getsource(builder))
+        self.assertIn("date_expiration",
+                      inspect.getsource(conditions_commerciales))
 
 
 class Q5DelaisIndicatifsTests(SimpleTestCase):
