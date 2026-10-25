@@ -150,6 +150,15 @@ class SchemaChampsStrictsTests(SimpleTestCase):
         self.assertIsNone(re.search(MOTIF_SANS_NUL, 'a\x00b'))
         self.assertNotIn('pattern', self._schema(ChaineStricte(), 'response'))
 
+    def test_longueur_mesuree_avant_rognage(self):
+        """api-fuzz-full 25/10 (sav/categories-ticket) — ``maxLength`` borne la
+        chaîne ENVOYÉE : des blancs autour ne la font plus passer."""
+        from core.champs_stricts import ChaineStricte
+        champ = ChaineStricte(max_length=5)
+        self.assertEqual(champ.run_validation(' abc '), 'abc')
+        with self.assertRaises(ValidationError):
+            champ.run_validation('  abcde')
+
     def test_cle_primaire_entiere_vaut_au_moins_un_en_requete(self):
         from django.contrib.auth import get_user_model
         from rest_framework import serializers

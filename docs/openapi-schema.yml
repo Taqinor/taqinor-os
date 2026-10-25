@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4820, operations: 7572, components: 3553}
+counts: {paths: 4820, operations: 7572, components: 3552}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -12406,7 +12406,6 @@ components:
 - StockUniteAsnErreur
 - StockUniteAsnImport
 - StockUniteDeplacement
-- StockUniteDeplacementErreur
 - StockZonesSurcapacite
 - StrategiePickingDefautEnum
 - StructTypePoseEnum

@@ -414,9 +414,8 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             'unites_deplacees': serializers.ListField(
                 child=serializers.IntegerField()),
         }),
-        400: inline_serializer('StockUniteDeplacementErreur', {
-            'detail': serializers.CharField(),
-        }),
+        # api-fuzz-full 25/10 — pas de 400 propre : celui de l'enveloppe commune
+        # (``detail`` OU erreurs par champ, ex. ``bin_destination`` non entier).
     })
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):
