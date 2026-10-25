@@ -96,13 +96,15 @@ test('QJR213/QJR426 — les 9 autres cartes ne signent JAMAIS en dur avec apercu
   }
 })
 
-test('QJR213/QJR426/CIQ126 — 9 cartes CarteMetrique au total, aucune marquée apercu() en dur', () => {
+// ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — 9 + les 2 productions PAR
+// OPTION (champs PV divergents), signées moteur() comme la carte commune.
+test('QJR213/QJR426/CIQ126 — 11 cartes CarteMetrique au total, aucune marquée apercu() en dur', () => {
   const total = (DG.match(/<CarteMetrique label=/g) || []).length
-  assert.equal(total, 9, 'le nombre total de sites CarteMetrique a changé — revoir le périmètre DV3')
+  assert.equal(total, 11, 'le nombre total de sites CarteMetrique a changé — revoir le périmètre DV3')
   const marquees = (DG.match(/valeur=\{apercu\(/g) || []).length
   assert.equal(marquees, 0, 'plus aucune carte ne signe en dur avec apercu() (CIQ126)')
-  // Toutes les 9 cartes doivent être passées à la prop signée `valeur=` —
+  // Toutes les 11 cartes doivent être passées à la prop signée `valeur=` —
   // le littéral `value=` d'hier a disparu de CHAQUE site CarteMetrique.
   const total_valeur = (DG.match(/<CarteMetrique label="[^"]*"\s*\r?\n\s*valeur=\{/g) || []).length
-  assert.equal(total_valeur, 9, 'les 9 appels doivent tous porter `valeur=` (QJR426/DR5)')
+  assert.equal(total_valeur, 11, 'les 11 appels doivent tous porter `valeur=` (QJR426/DR5)')
 })

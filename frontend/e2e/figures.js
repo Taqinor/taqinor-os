@@ -271,7 +271,13 @@ export function figuresDepuisDevisApi(detail) {
     mettre(figs, 'remise', b.remise, opt)
   }
   const roi = comp.roi || {}
-  mettre(figs, 'production_annuelle_kwh', roi.prod_kwh)
+  // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — champs PV divergents :
+  // `prod_kwh` ne décrit que l'option AVEC ; chaque option sous SON identité.
+  if (divergent(roi, 'prod_kwh')) {
+    for (const opt of OPTIONS) mettre(figs, 'production_annuelle_kwh', roi[`prod_kwh_${opt}`], opt)
+  } else {
+    mettre(figs, 'production_annuelle_kwh', roi.prod_kwh)
+  }
   mettre(figs, 'economie_annuelle', roi.eco_s_ann, 'sans')
   mettre(figs, 'economie_annuelle', roi.eco_a_ann, 'avec')
   mettre(figs, 'payback_ans', roi.roi_s, 'sans')

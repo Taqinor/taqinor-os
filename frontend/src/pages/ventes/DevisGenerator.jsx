@@ -991,7 +991,7 @@ export default function DevisGenerator({
     etudeHoraireSourceLabel, etudeHoraireFalaise,
     etudeHoraireGlitch, etudeHoraireEstimationConso,
     ligneStockageOuverte, setLigneStockageOuverte,
-    apercuProductionKwh, apercuEcoSans,
+    apercuProductionKwh, apercuProductionKwhAvec, apercuEcoSans,
     verdictBatterieServeur, batterieInvendableServeur,
     apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec,
     apercuPaybackSansJamais, apercuPaybackAvecJamais,
@@ -2053,7 +2053,7 @@ export default function DevisGenerator({
           etudeHoraireEstimationConso={etudeHoraireEstimationConso} marcheCi={marcheCi} roi={roi}
           etudeHoraireAnnuel={etudeHoraireAnnuel} sansRec={sansRec} showAvec={showAvec}
           etudeHoraireAnnuelAvec={etudeHoraireAnnuelAvec} distributeur={distributeur}
-          apercuProductionKwh={apercuProductionKwh} showSans={showSans}
+          apercuProductionKwh={apercuProductionKwh} apercuProductionKwhAvec={apercuProductionKwhAvec} showSans={showSans}
           signerEcoOuRoi={signerEcoOuRoi} apercuEcoSans={apercuEcoSans}
           apercuPaybackSansJamais={apercuPaybackSansJamais} apercuPaybackSans={apercuPaybackSans}
           totals={totals} avecRec={avecRec} batterieInvendableServeur={batterieInvendableServeur}

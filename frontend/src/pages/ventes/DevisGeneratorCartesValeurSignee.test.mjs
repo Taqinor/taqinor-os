@@ -44,9 +44,16 @@ test('QJR426 — unwrap() lève un TypeError si un nombre (ou toute valeur non s
 // ── Les 13 appels utilisent TOUS `valeur=`, plus jamais `value=` ────────────
 
 // CIQ126 — les 4 cartes de l'étude C&I locale sont supprimées : 9 sites.
+// ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — + les 2 productions PAR OPTION
+// (champs PV divergents) : 11 sites.
+const PRODUCTIONS_PAR_OPTION = [
+  { label: 'Production annuelle (sans batterie)', expr: 'fmtNum(Math.round(apercuProductionKwh))', option: 'sans' },
+  { label: 'Production annuelle (avec batterie)', expr: 'fmtNum(Math.round(apercuProductionKwhAvec))', option: 'avec' },
+]
 const TOUTES_LES_CARTES_LABELS = [
   'Production annuelle', "Taux d'autoconsommation (sans)",
   'Taux de couverture (sans)', 'Économies', 'ROI', 'Coût',
+  ...PRODUCTIONS_PAR_OPTION.map((p) => p.label),
 ]
 
 function tousLesBlocsDeLabel(label) {
@@ -62,9 +69,9 @@ function tousLesBlocsDeLabel(label) {
   return blocs
 }
 
-test('QJR426 — les 9 sites CarteMetrique du générateur portent `valeur=`, aucun `value=` littéral ne subsiste', () => {
+test('QJR426 — les 11 sites CarteMetrique du générateur portent `valeur=`, aucun `value=` littéral ne subsiste', () => {
   const total = (DG.match(/<CarteMetrique label=/g) || []).length
-  assert.equal(total, 9, 'le nombre de cartes CarteMetrique a changé — revoir le périmètre QJR426')
+  assert.equal(total, 11, 'le nombre de cartes CarteMetrique a changé — revoir le périmètre QJR426')
   for (const label of TOUTES_LES_CARTES_LABELS) {
     for (const bloc of tousLesBlocsDeLabel(label)) {
       assert.match(bloc, /\bvaleur=\{/, `carte "${label}" : doit porter la prop \`valeur=\``)
@@ -109,6 +116,7 @@ test('CIQ126 — les 4 cartes de l’étude locale n’existent plus ; la puce P
 // nouveau badge introduit par ce changement de prop.
 const LABELS_TOUJOURS_MOTEUR_SANS_PUCE = [
   'Production annuelle', "Taux d'autoconsommation (sans)", 'Taux de couverture (sans)',
+  ...PRODUCTIONS_PAR_OPTION.map((p) => p.label),
 ]
 
 test('QJR426 — les cartes toujours-serveur/toujours-certaines signent moteur() : aucune puce nouvelle (byte-identique)', () => {
@@ -161,6 +169,21 @@ const EXPRESSIONS_INCHANGEES = [
     expr: '`${formatNumber(etudeHoraireAnnuel.couverture_sans * 100, { decimals: 0 })} %`',
   },
 ]
+
+// ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — chaque production par option
+// lit la valeur de SON option et porte l'ancre `data-figure` de SON option
+// (figures-parite.spec.js la compare au document option par option).
+test('ERR-QAH-FIG-EDITION — les productions par option lisent et ancrent CHACUNE leur option', () => {
+  for (const { label, expr, option } of PRODUCTIONS_PAR_OPTION) {
+    const [bloc] = tousLesBlocsDeLabel(label)
+    assert.ok(bloc.includes(`valeur={moteur(${expr})}`), `carte "${label}" : doit lire ${expr}`)
+    assert.ok(bloc.includes(`figure="production_annuelle_kwh" figureOption="${option}"`),
+      `carte "${label}" : ancre data-figure de l'option ${option}`)
+  }
+  // La carte commune reste celle des options égales, sans option.
+  assert.doesNotMatch(tousLesBlocsDeLabel('Production annuelle')[0].split('/>')[0], /figureOption=/)
+  assert.match(DG, /const productionParOption = apercuProductionKwhAvec != null && showSans && showAvec/)
+})
 
 test('QJR426 — les expressions de valeur des cartes à occurrence UNIQUE sont préservées mot pour mot', () => {
   for (const { label, expr } of EXPRESSIONS_INCHANGEES) {

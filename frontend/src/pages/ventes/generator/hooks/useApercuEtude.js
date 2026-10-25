@@ -365,6 +365,13 @@ export function useApercuEtude(ctx) {
   // lignes / économie réelle serveur — jamais un chiffre inventé.
   const apercuProductionKwh = etudeHoraireSourceServeur
     ? etudeHoraireAnnuel.production_kwh : roi?.production_annuelle_kwh
+  // ERR-QAH-FIG-EDITION-ETUDE-LIVE-VS-DOCUMENT — champs PV DIVERGENTS : la
+  // carte ci-dessus décrit l'option SANS (son kWc) ; l'option AVEC a SA
+  // production, lue sur SA réponse serveur (sinon le miroir local au même
+  // kWc). `null` hors divergence : la carte unique d'hier.
+  const apercuProductionKwhAvec = etudeHoraireCorpsAvec
+    ? (etudeHoraireAnnuelAvec?.production_kwh ?? roiAvec?.production_annuelle_kwh ?? null)
+    : null
   const apercuEcoSans = etudeHoraireSourceServeur
     ? etudeHoraireAnnuel.economie_sans_mad : roi?.eco_annuelle_sans
   // CJ2b — ORDRE FONDATEUR (« l'omission honnête, jamais un zéro inventé ») :
@@ -465,8 +472,8 @@ export function useApercuEtude(ctx) {
     etudeHoraireErreur, etudeHoraireAnnuel, etudeHoraireSourceServeur, etudeHoraireAnnuelAvec,
     etudeHoraireLignes, etudeHoraireSourceLabel, etudeHoraireFalaise, etudeHoraireGlitch,
     etudeHoraireEstimationConso, ligneStockageOuverte, setLigneStockageOuverte,
-    apercuProductionKwh, apercuEcoSans, verdictBatterieServeur, batterieInvendableServeur,
-    apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec, apercuPaybackSansJamais,
+    apercuProductionKwh, apercuProductionKwhAvec, apercuEcoSans, verdictBatterieServeur,
+    batterieInvendableServeur, apercuEcoAvec, apercuPaybackSans, apercuPaybackAvec, apercuPaybackSansJamais,
     apercuPaybackAvecJamais, signerEcoOuRoi, chartData,
   }
 }
