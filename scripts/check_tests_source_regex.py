@@ -178,7 +178,6 @@ _CRM_RAISON_GELEE = (
 )
 
 CRM_ALLOWLIST: dict[str, str] = {
-    "frontend/src/pages/crm/ClientDetailPanelTable.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/CrmIdentity.apx10.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/AppointmentBooker.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/ConvertirClientDialog.test.mjs": _CRM_RAISON_GELEE,
@@ -236,18 +235,10 @@ CRM_ALLOWLIST: dict[str, str] = {
     "frontend/src/pages/crm/leads/ViewSwitcherSegmented.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/VX95ForgivenessKanbanArchive.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/pages/crm/leads/WIR229_bulk_whatsapp.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/features/crm/CallLogPopover.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/features/crm/CallNudgeDesktop.ez2.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/features/crm/CallPlanner.ez1.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/features/crm/module.config.vx22.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/features/crm/stagesTagColor.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/features/crm/store/crmSliceFetchLeadsObsolescence.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/features/crm/store/crmSliceLeadsChunk.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/features/crm/workspace/devisAutoKwc.ez5.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/features/crm/workspace/DevisTab.test.jsx": _CRM_RAISON_GELEE,
     "frontend/src/features/crm/workspace/DevisTabKwcPalier.test.mjs": _CRM_RAISON_GELEE,
     "frontend/src/features/crm/workspace/NoteComposerSize.test.mjs": _CRM_RAISON_GELEE,
-    "frontend/src/features/crm/workspace/StageBackwardConfirm.test.mjs": _CRM_RAISON_GELEE,
 }
 
 

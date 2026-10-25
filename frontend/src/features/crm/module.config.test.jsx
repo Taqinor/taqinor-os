@@ -1,4 +1,18 @@
-import { describe, it, expect } from 'vitest'
+import { Suspense } from 'react'
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { render, screen, cleanup } from '@testing-library/react'
+
+// VX22 — les deux écrans lead sont remplacés par des doublures identifiables :
+// le test monte le composant que CHAQUE route désigne réellement et lit ce qui
+// s'affiche (la route est lazy : le montage résout le vrai `import()`).
+vi.mock('../../pages/crm/leads/LeadDetailPage', () => ({
+  default: () => <div data-testid="ecran-fiche-lead" />,
+}))
+vi.mock('../../pages/crm/leads/LeadsPage', () => ({
+  default: () => <div data-testid="ecran-liste-leads" />,
+}))
+
+afterEach(cleanup)
 
 /* WIR15/NTCRM7 — Forecast (`ForecastPage.jsx`) était construit/testé (appelle
    déjà `forecast-entries/`, `forecast/rollup/`, `forecast/historique/`) mais
@@ -89,5 +103,41 @@ describe('crm — module.config (ODY15 : cockpit + parité route↔nav)', () => 
       expect(Array.isArray(item.roles)).toBe(true)
       expect(item.roles.length).toBeGreaterThan(0)
     }
+  })
+})
+
+/* VX22 — la fiche lead est adressable par une vraie route `/crm/leads/:id`,
+   distincte de la liste `/crm/leads`, et charge sa PROPRE page (LeadDetailPage)
+   au lieu de dépendre du cache de la liste. On monte le composant que chaque
+   route déclare : c'est ce que le routeur rendrait. */
+describe('crm — module.config (VX22 : fiche lead adressable)', () => {
+  async function monter(chemin) {
+    const { default: config } = await import('./module.config.jsx')
+    const route = config.routes.find((r) => r.path === chemin)
+    expect(route, `route ${chemin} absente`).toBeTruthy()
+    const Ecran = route.component
+    render(<Suspense fallback={null}><Ecran /></Suspense>)
+    return route
+  }
+
+  it('/crm/leads/:id monte la page DÉDIÉE de la fiche, pas la liste', async () => {
+    await monter('/crm/leads/:id')
+    expect(await screen.findByTestId('ecran-fiche-lead')).toBeInTheDocument()
+    expect(screen.queryByTestId('ecran-liste-leads')).not.toBeInTheDocument()
+  })
+
+  it('/crm/leads reste la LISTE (jamais écrasée par la route fiche)', async () => {
+    await monter('/crm/leads')
+    expect(await screen.findByTestId('ecran-liste-leads')).toBeInTheDocument()
+    expect(screen.queryByTestId('ecran-fiche-lead')).not.toBeInTheDocument()
+  })
+
+  it('les deux routes sont distinctes : deux composants, deux chemins', async () => {
+    const { default: config } = await import('./module.config.jsx')
+    const liste = config.routes.find((r) => r.path === '/crm/leads')
+    const fiche = config.routes.find((r) => r.path === '/crm/leads/:id')
+    expect(liste.component).not.toBe(fiche.component)
+    expect(config.routes.filter((r) => r.path === '/crm/leads')).toHaveLength(1)
+    expect(config.routes.filter((r) => r.path === '/crm/leads/:id')).toHaveLength(1)
   })
 })

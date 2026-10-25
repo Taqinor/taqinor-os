@@ -17,19 +17,24 @@ const { apiGet, apiPost } = vi.hoisted(() => ({
 }))
 vi.mock('../../../api/axios', () => ({ default: { get: apiGet, post: apiPost } }))
 
-const { getLeadPointsContact, createPointContact, getLeadJalonsDevis } = vi.hoisted(() => ({
+const {
+  getLeadPointsContact, createPointContact, getLeadJalonsDevis, logInteraction,
+} = vi.hoisted(() => ({
   getLeadPointsContact: vi.fn(() => Promise.resolve({ data: { count: 0, timeline: [] } })),
   createPointContact: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   // CRX37 — jalons devis fusionnés dans la timeline (enrichissement passif).
   getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+  // VX87 — le journal d'appel monté par le composer écrit via cette méthode.
+  logInteraction: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 vi.mock('../../../api/crmApi', () => ({
-  default: { getLeadPointsContact, createPointContact, getLeadJalonsDevis },
+  default: { getLeadPointsContact, createPointContact, getLeadJalonsDevis, logInteraction },
 }))
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
 vi.mock('../../../lib/toast', () => ({
   toastError,
+  toastSuccess: vi.fn(),
   errorMessageFrom: (err, fallback) => fallback,
 }))
 
@@ -134,6 +139,18 @@ describe('LW20 — notes épinglées (📌) + épingler/désépingler', () => {
 })
 
 describe('LW20 — composer (état MOTEUR via props, jamais local)', () => {
+  it('VX87 — monte le journal d’appel du lead : journaliser appelle logInteraction puis rafraîchit l’historique', async () => {
+    const user = userEvent.setup()
+    const { refreshHistorique } = renderTab()
+    await user.click(screen.getByTitle('Journaliser un appel'))
+    await user.click(await screen.findByText('Joint'))
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(logInteraction).toHaveBeenCalledWith(
+      7, expect.objectContaining({ kind: 'appel', outcome: 'joint' }),
+    ))
+    await waitFor(() => expect(refreshHistorique).toHaveBeenCalled())
+  })
+
   it('taper dans le champ appelle setComposer({note}) — jamais un state local', () => {
     const { setComposer } = renderTab()
     fireEvent.change(screen.getByPlaceholderText('Écrire une note (appel, commentaire…)'), {

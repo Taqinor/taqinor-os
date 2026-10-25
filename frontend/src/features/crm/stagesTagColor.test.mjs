@@ -6,12 +6,9 @@
 //   node --test src/features/crm/stagesTagColor.test.mjs
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
-import { tagColor } from './stages.js'
+import * as stages from './stages.js'
 
-const HERE = dirname(fileURLToPath(import.meta.url))
+const { tagColor } = stages
 
 test('LB16 : tagColor renvoie des tokens var(--tag-N-…), jamais de hex', () => {
   for (const tag of ['solaire', 'chaud', 'B2B', 'reda', 'meriem', 'urgent', 'VIP', 'x', '', 'agricole']) {
@@ -37,9 +34,22 @@ test('LB16 : tagColor est déterministe (même tag → même couleur)', () => {
   assert.deepEqual(tagColor('B2B'), tagColor('B2B'))
 })
 
-test('LB16 : la source stages.js ne contient plus les anciens hex de palette', () => {
-  const src = readFileSync(join(HERE, 'stages.js'), 'utf8')
-  assert.doesNotMatch(src, /TAG_PALETTE/)
-  assert.doesNotMatch(src, /TAG_TEXT/)
-  assert.doesNotMatch(src, /#[0-9a-fA-F]{6}/)
+test('LB16 : aucun hex en sortie, quel que soit le tag, et les 10 buckets restent atteignables', () => {
+  // Échantillon large de tags (mots, chiffres, accents, vide, casse) : la
+  // palette hex d'origine ne peut plus réapparaître par aucune branche.
+  const echantillon = ['', ' ', 'é', 'Å', '0', '12345', 'a'.repeat(40)]
+  for (let i = 0; i < 400; i += 1) echantillon.push(`tag-${i}`, `Client ${i * 7}`)
+  const buckets = new Set()
+  for (const tag of echantillon) {
+    const { bg, color } = tagColor(tag)
+    assert.doesNotMatch(`${bg} ${color}`, /#[0-9a-fA-F]{3,8}/)
+    buckets.add(bg)
+  }
+  assert.equal(buckets.size, 10)
+})
+
+test("LB16 : le module n'exporte plus l'ancienne palette hex (TAG_PALETTE / TAG_TEXT)", () => {
+  assert.equal('TAG_PALETTE' in stages, false)
+  assert.equal('TAG_TEXT' in stages, false)
+  assert.equal(typeof stages.tagColor, 'function')
 })

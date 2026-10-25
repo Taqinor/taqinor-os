@@ -50,3 +50,29 @@ describe('LW42 — changeStage messages d’erreur fidèles', () => {
     expect(toast.error).toHaveBeenCalledWith("Échec du changement d'étape — réessayez.")
   })
 })
+
+// ORDRE FONDATEUR 2026-08-01 (reculer d'étape) — le MOTEUR transporte la
+// réponse jusqu'au corps du PATCH, il ne la produit pas : il n'a pas d'UI, donc
+// ne pose aucune question, et le marqueur est OMIS quand il est faux.
+describe('changeStage — transport du marqueur confirme_recul', () => {
+  it('une avancée reste un PATCH nu : { stage } seulement', async () => {
+    const { result } = renderHook(() => useLeadDraft(LEAD_A, { mode: 'edit', currentUserId: 42 }))
+    await act(async () => { await result.current.changeStage('CONTACTED') })
+    expect(crmApi.updateLead).toHaveBeenCalledWith(1, { stage: 'CONTACTED' })
+  })
+
+  it('une réponse « oui » (confirmeRecul) part dans le corps du PATCH', async () => {
+    const { result } = renderHook(() => useLeadDraft(LEAD_A, { mode: 'edit', currentUserId: 42 }))
+    await act(async () => { await result.current.changeStage('CONTACTED', { confirmeRecul: true }) })
+    expect(crmApi.updateLead).toHaveBeenCalledWith(1, { stage: 'CONTACTED', confirme_recul: true })
+  })
+
+  it('un confirmeRecul faux est omis du corps, et le moteur ne pose jamais de question', async () => {
+    const confirmNatif = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { result } = renderHook(() => useLeadDraft(LEAD_A, { mode: 'edit', currentUserId: 42 }))
+    await act(async () => { await result.current.changeStage('CONTACTED', { confirmeRecul: false }) })
+    expect(crmApi.updateLead).toHaveBeenCalledWith(1, { stage: 'CONTACTED' })
+    expect(confirmNatif).not.toHaveBeenCalled()
+    confirmNatif.mockRestore()
+  })
+})

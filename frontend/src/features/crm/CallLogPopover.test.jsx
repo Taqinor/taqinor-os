@@ -18,6 +18,13 @@ vi.mock('../../lib/toast', () => ({
   toastError: vi.fn(),
 }))
 
+// EZ1 — le client `recordsApi` est RÉEL : seul le transport (axios) est simulé,
+// pour lire l'endpoint et le corps réellement postés par l'objet de relance.
+const { apiPost } = vi.hoisted(() => ({
+  apiPost: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+}))
+vi.mock('../../api/axios', () => ({ default: { post: apiPost } }))
+
 import crmApi from '../../api/crmApi'
 import { OUTCOME_LABELS } from '../../components/ChatterTimeline'
 import { exempleContrat } from '../../test/fixtures/contractSamples'
@@ -107,5 +114,185 @@ describe('CallLogPopover (VX87)', () => {
     fireEvent.click(screen.getByText('Intéressé'))
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(onLogged).toHaveBeenCalled())
+  })
+})
+
+/* VX87 — structure du journal : les issues proposées viennent de la table
+   partagée `OUTCOME_LABELS` (hors la clé vide), les 4 délais de prochaine
+   action posent J+0/1/3/7 en DATE LOCALE. Date figée (seule `Date` est
+   simulée) pour que « aujourd'hui + N » soit exact. */
+describe('VX87 — issues proposées et délais de prochaine action', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it('propose exactement les issues d’OUTCOME_LABELS, sans la clé vide', () => {
+    render(<CallLogPopover leadId={42} open onOpenChange={() => {}} />)
+    const groupe = screen.getByRole('group', { name: "Résultat de l'appel" })
+    const attendues = Object.entries(OUTCOME_LABELS).filter(([cle]) => cle)
+    const proposees = [...groupe.querySelectorAll('button')]
+    expect(proposees.map((b) => b.dataset.outcome)).toEqual(attendues.map(([cle]) => cle))
+    expect(proposees.map((b) => b.textContent)).toEqual(attendues.map(([, libelle]) => libelle))
+  })
+
+  it.each([
+    ["Aujourd'hui", '2026-08-10'],
+    ['Demain', '2026-08-11'],
+    ['Dans 3 j', '2026-08-13'],
+    ['Dans 7 j', '2026-08-17'],
+  ])('« %s » pose la relance au %s, en date locale', async (libelle, attendu) => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // 23 h 30 locales : un ISO UTC décalerait le jour.
+    vi.setSystemTime(new Date(2026, 7, 10, 23, 30))
+    render(<CallLogPopover leadId={42} open onOpenChange={() => {}} mode="planification" />)
+    fireEvent.click(screen.getByText(libelle))
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(42, { relance_date: attendu }))
+  })
+})
+
+/* EZ1 — le popover EST le planificateur rapide : une relance déjà posée est
+   AFFICHÉE et jamais écrasée sans choix explicite, une seule valeur de date,
+   pas d'heure native (la date part en local), un objet crée une vraie activité. */
+describe('EZ1 — la relance existante n’est jamais écrasée en silence', () => {
+  const frFr = (annee, mois, jour) => new Date(annee, mois - 1, jour).toLocaleDateString('fr-FR')
+
+  afterEach(() => { vi.useRealTimers() })
+
+  function ouvrirAvecRelance(relanceActuelle) {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 7, 10, 9, 0))
+    return render(
+      <CallLogPopover
+        leadId={42} open onOpenChange={() => {}} relanceActuelle={relanceActuelle}
+      />,
+    )
+  }
+
+  it('sans relance existante, la date choisie s’écrit directement (aucun conflit à trancher)', async () => {
+    ouvrirAvecRelance(null)
+    fireEvent.click(screen.getByText('Joint'))
+    fireEvent.click(screen.getByText('Demain'))
+    expect(screen.queryByRole('group', { name: 'Relance déjà planifiée' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(42, { relance_date: '2026-08-11' }))
+  })
+
+  it('une relance existante différente est AFFICHÉE avec les deux choix, « Garder » par défaut', () => {
+    ouvrirAvecRelance('2026-08-20')
+    fireEvent.click(screen.getByText('Demain'))
+    const groupe = screen.getByRole('group', { name: 'Relance déjà planifiée' })
+    expect(groupe).toHaveTextContent(`Une relance est déjà prévue le ${frFr(2026, 8, 20)}`)
+    const garder = screen.getByRole('button', { name: `Garder le ${frFr(2026, 8, 20)}` })
+    const remplacer = screen.getByRole('button', { name: `Remplacer par le ${frFr(2026, 8, 11)}` })
+    expect(garder).toHaveAttribute('aria-pressed', 'true')
+    expect(remplacer).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('le défaut ne détruit RIEN : l’appel est journalisé mais la relance existante reste', async () => {
+    ouvrirAvecRelance('2026-08-20')
+    fireEvent.click(screen.getByText('Joint'))
+    fireEvent.click(screen.getByText('Demain'))
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.logInteraction).toHaveBeenCalled())
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  })
+
+  it('« Remplacer » est le seul chemin vers l’écriture de la nouvelle date', async () => {
+    ouvrirAvecRelance('2026-08-20')
+    fireEvent.click(screen.getByText('Joint'))
+    fireEvent.click(screen.getByText('Demain'))
+    fireEvent.click(screen.getByRole('button', { name: `Remplacer par le ${frFr(2026, 8, 11)}` }))
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(42, { relance_date: '2026-08-11' }))
+  })
+
+  it('re-choisir la MÊME date n’est pas un conflit : écriture idempotente, aucune décision', async () => {
+    ouvrirAvecRelance('2026-08-11')
+    fireEvent.click(screen.getByText('Joint'))
+    fireEvent.click(screen.getByText('Demain'))
+    expect(screen.queryByRole('group', { name: 'Relance déjà planifiée' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(42, { relance_date: '2026-08-11' }))
+  })
+
+  it('aucune date choisie = aucune écriture de relance (la relance existante n’est même pas proposée)', async () => {
+    ouvrirAvecRelance('2026-08-20')
+    fireEvent.click(screen.getByText('Joint'))
+    expect(screen.queryByRole('group', { name: 'Relance déjà planifiée' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.logInteraction).toHaveBeenCalled())
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+  })
+})
+
+describe('EZ1 — une seule valeur de date, des chips qui la REMPLISSENT', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  it('un chip remplit la date libre, un second clic la vide, « Effacer » aussi', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 7, 10, 9, 0))
+    render(<CallLogPopover leadId={42} open onOpenChange={() => {}} mode="planification" />)
+    const champ = screen.getByRole('button', { name: 'Date de relance' })
+    expect(champ).toHaveTextContent('jj/mm/aaaa')
+    fireEvent.click(screen.getByText('Demain'))
+    expect(champ).toHaveTextContent(new Date(2026, 7, 11).toLocaleDateString('fr-FR'))
+    fireEvent.click(screen.getByText('Demain'))
+    expect(champ).toHaveTextContent('jj/mm/aaaa')
+    fireEvent.click(screen.getByText('Dans 3 j'))
+    fireEvent.click(screen.getByRole('button', { name: 'Effacer la date' }))
+    expect(champ).toHaveTextContent('jj/mm/aaaa')
+  })
+
+  it('PAS D’HEURE NATIVE : aucun champ datetime-local ; l’heure promise n’existe qu’avec une date', () => {
+    render(<CallLogPopover leadId={42} open onOpenChange={() => {}} />)
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull()
+    expect(screen.queryByLabelText('Heure promise (facultative)')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Demain'))
+    expect(screen.getByLabelText('Heure promise (facultative)')).toHaveAttribute('type', 'time')
+    expect(document.querySelector('input[type="datetime-local"]')).toBeNull()
+  })
+})
+
+describe('EZ1 — un OBJET crée une vraie activité datée (zéro backend)', () => {
+  afterEach(() => { vi.useRealTimers() })
+
+  function planifier(objet) {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(2026, 7, 10, 9, 0))
+    render(<CallLogPopover leadId={42} open onOpenChange={() => {}} mode="planification" />)
+    fireEvent.click(screen.getByText('Demain'))
+    if (objet) {
+      fireEvent.change(screen.getByLabelText('Objet (facultatif)'), { target: { value: objet } })
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+  }
+
+  it('POST /records/activities/ sur crm.lead avec l’objet nettoyé et la date de relance', async () => {
+    planifier('  Rappeler après le devis  ')
+    await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/records/activities/', {
+      model: 'crm.lead', id: 42, summary: 'Rappeler après le devis', due_date: '2026-08-11',
+    }))
+    expect(crmApi.updateLead).toHaveBeenCalledWith(42, { relance_date: '2026-08-11' })
+  })
+
+  it('sans objet, aucune activité n’est créée (une relance suffit souvent)', async () => {
+    planifier('')
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalled())
+    expect(apiPost).not.toHaveBeenCalled()
+  })
+})
+
+describe('EZ1 — planification pure : ni issue demandée ni exigée', () => {
+  it('pas de choix d’issue ; « Enregistrer » exige une date, pas une issue ; rien n’est journalisé', async () => {
+    render(<CallLogPopover leadId={42} open onOpenChange={() => {}} mode="planification" />)
+    expect(screen.getByText('Planifier une relance')).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: "Résultat de l'appel" })).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Note (facultative)…')).not.toBeInTheDocument()
+    const enregistrer = screen.getByRole('button', { name: 'Enregistrer' })
+    expect(enregistrer).toBeDisabled()
+    fireEvent.click(screen.getByText('Demain'))
+    expect(enregistrer).toBeEnabled()
+    fireEvent.click(enregistrer)
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalled())
+    expect(crmApi.logInteraction).not.toHaveBeenCalled()
   })
 })
