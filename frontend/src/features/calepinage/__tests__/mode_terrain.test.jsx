@@ -11,6 +11,7 @@ import { exempleContrat } from '../../../test/fixtures/contractSamples'
 import { SAISIE_SOL } from '../../../test/fixtures/saisiesSurfacePose'
 import { champPoseMock } from '../../../test/fixtures/champPoseMock'
 import { RACINE_FRONTEND, racineDepot } from '../../../test/fixtures/racineDepot'
+import TracePlanPose from '../TracePlanPose'
 
 /* ============================================================================
    CAL89 — LE MODE TERRAIN SE TRACE, SE CALCULE ET SE RECHARGE.
@@ -638,5 +639,76 @@ describe('ACAL75 — champ pente du terrain grisé avec la mention', () => {
   it('le champ terrain ne force PAS d’allée : vide ⇒ politique du moteur (aucun allee_m)', () => {
     expect(demandeMoteur({ ...SAISIE, alleeM: '' }).parametres.allee_m).toBeUndefined()
     expect(demandeMoteur({ ...SAISIE, alleeM: '0' }).parametres.allee_m).toBe(0)
+  })
+})
+
+/* ENF19 — le tracé partagé du terrain et de l'ombrière (`TracePlanPose`) : les
+   `data-testid` restent ceux de CHAQUE écran (passés en `ids`), la cote du pas
+   n'existe que si l'écran en fournit les identifiants, et la ligne d'emprise
+   reprend le compte du SERVICE (`champ`), jamais le nombre de formes dessinées. */
+describe('TracePlanPose (ENF19)', () => {
+  afterEach(() => { cleanup() })
+
+  const VUE_TRACE = planVue2D({
+    contourM: [[0, 0], [30, 0], [30, 12], [0, 12]],
+    tables: [
+      { cx: 3, cy: 2, largeurM: 4, profondeurM: 2 },
+      { cx: 9, cy: 7, largeurM: 4, profondeurM: 2 },
+      { cx: 15, cy: 12, largeurM: 4, profondeurM: 2 },
+    ],
+    rangees: [{ y0: 2 }, { y0: 7 }, { y0: 12 }],
+    pasM: 5,
+    compteModules: 18,
+  })
+  const CHAMP_TRACE = { empriseTablesM2: 24, modules: 18 }
+  const IDS_TRACE = {
+    svg: 'x-svg', contour: 'x-contour', rangee: 'x-rangee', table: 'x-table', cote: 'x-cote', emprise: 'x-emprise',
+  }
+  const IDS_TRACE_PAS = { ...IDS_TRACE, traitPas: 'x-trait-pas', cotePas: 'x-cote-pas' }
+
+  const monterTrace = (ids = IDS_TRACE, champ = CHAMP_TRACE) => render(
+    <TracePlanPose vue={VUE_TRACE} champ={champ} ids={ids} nom="travée" titre="Ombrière en plan" />,
+  )
+
+  describe('TracePlanPose — le dessin du plan', () => {
+    it('un contour, une ligne par rangée, une forme par table, une cote par côté', () => {
+      monterTrace()
+      expect(screen.getAllByTestId('x-contour')).toHaveLength(1)
+      expect(screen.getAllByTestId('x-rangee')).toHaveLength(3)
+      expect(screen.getAllByTestId('x-table')).toHaveLength(3)
+      expect(screen.getAllByTestId('x-cote')).toHaveLength(4)
+    })
+
+    it('le texte alternatif nomme l’écran et compte les formes posées', () => {
+      monterTrace()
+      expect(screen.getByTestId('x-svg'))
+        .toHaveAttribute('aria-label', 'Ombrière en plan — 3 travée(s) posée(s) par le moteur')
+    })
+
+    it('sans identifiants de pas, aucune cote de pas n’est tracée', () => {
+      monterTrace()
+      expect(screen.queryByTestId('x-trait-pas')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('x-cote-pas')).not.toBeInTheDocument()
+    })
+
+    it('avec les identifiants de pas, le pas MESURÉ est coté', () => {
+      monterTrace(IDS_TRACE_PAS)
+      expect(screen.getByTestId('x-trait-pas')).toBeInTheDocument()
+      expect(screen.getByTestId('x-cote-pas').textContent).toBe(formatCote(5))
+    })
+  })
+
+  describe('TracePlanPose — la ligne d’emprise', () => {
+    it('reprend l’emprise et le compte de modules du service', () => {
+      monterTrace()
+      const ligne = screen.getByTestId('x-emprise')
+      expect(ligne).toHaveTextContent(/3 travée\(s\) dessinée\(s\) — emprise/)
+      expect(ligne).toHaveTextContent(/18 module\(s\) posé\(s\) par le moteur\./)
+    })
+
+    it('compte de modules absent : « — », jamais le nombre de formes', () => {
+      monterTrace(IDS_TRACE, { empriseTablesM2: 24, modules: null })
+      expect(screen.getByTestId('x-emprise')).toHaveTextContent(/— module\(s\) posé\(s\) par le moteur\./)
+    })
   })
 })
