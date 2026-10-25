@@ -18,7 +18,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // On le stube avant d'importer le handler (même patron que propositionAccept.test.ts).
 vi.mock('cloudflare:workers', () => ({ env: {} }));
 
+import * as cf from 'cloudflare:workers';
 import { POST } from '../src/pages/api/proposition-accept';
+import { entetesIpVisiteur } from '../src/pages/api/_apiBase';
 import { resetRateLimit } from '../src/lib/rateLimit';
 
 function makeRequest(body: unknown, extraHeaders: Record<string, string> = {}): Request {
@@ -141,5 +143,40 @@ describe('QJW25 — le corps transmis et le reste des en-têtes restent inchang�
     expect(headers['content-type']).toBe('application/json');
     expect(headers['accept']).toBe('application/json');
     expect(JSON.parse(init.body as string)).toEqual({ nom: 'Reda' });
+  });
+});
+
+// ADEP103 (D-ADEP-103 = c) — l'origine ne croit l'IP transmise que si le relais porte le secret
+// partagé `RELAIS_API_SECRET` (en-tête `X-Taqinor-Relais`) : les plages Cloudflare sont communes à
+// tous les comptes. Une seule copie (`entetesIpVisiteur`) sert les 8 relais Worker → API.
+describe('ADEP103 — secret de relais Worker → API', () => {
+  const env = (cf as unknown as { env: Record<string, string | undefined> }).env;
+  afterEach(() => {
+    delete env.RELAIS_API_SECRET;
+  });
+
+  it('secret posé : le fetch d\'acceptation porte X-Taqinor-Relais avec l\'IP du signataire', async () => {
+    env.RELAIS_API_SECRET = '  9f3c1a  ';
+    const fn = vi.fn().mockResolvedValue(upstream(200, { detail: 'OK', accepte_par_nom: 'Reda' }));
+    vi.stubGlobal('fetch', fn);
+
+    await call({ token: 'tok123', nom: 'Reda', twoOptions: false }, { 'cf-connecting-ip': '41.248.10.5' });
+
+    const headers = (fn.mock.calls[0] as [string, RequestInit])[1].headers as Record<string, string>;
+    expect(headers['X-Taqinor-Relais']).toBe('9f3c1a');
+    expect(headers['X-Forwarded-For']).toBe('41.248.10.5');
+  });
+
+  it('secret absent : en-têtes d\'IP seuls, aucun X-Taqinor-Relais (comportement d\'avant)', () => {
+    expect(entetesIpVisiteur('41.248.10.5')).toEqual({
+      'X-Forwarded-For': '41.248.10.5',
+      'CF-Connecting-IP': '41.248.10.5',
+    });
+  });
+
+  it('IP indéterminable : aucun en-tête, même avec le secret (jamais un relais « prouvé » sans IP)', () => {
+    env.RELAIS_API_SECRET = '9f3c1a';
+    expect(entetesIpVisiteur('')).toEqual({});
+    expect(entetesIpVisiteur('unknown')).toEqual({});
   });
 });

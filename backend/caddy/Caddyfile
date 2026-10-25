@@ -19,9 +19,24 @@
 # favori — Caddy gère un certificat par hôte, ça ne coûte rien.
 {$PUBLIC_HOSTNAME}, api.taqinor.ma {
 	encode gzip
+	# ADEP103 (D-ADEP-103 = c, 25/10/2026) — SECRET DE RELAIS. Les plages
+	# Cloudflare ci-dessus sont communes à TOUS les clients Cloudflare : un
+	# Worker d'un autre compte qui joint l'origine forgeait `X-Forwarded-For`
+	# (IP de preuve de signature, seaux de limite de débit). Désormais l'IP
+	# transmise n'est crue que si la requête porte `X-Taqinor-Relais` égal au
+	# secret partagé avec NOTRE Worker (`RELAIS_API_SECRET`, même nom des deux
+	# côtés) ; sinon elle est retirée et Caddy repose l'IP de son pair. Sans
+	# clé dans le .env, rien ne change (D-ADEP-3 : une fonction ne s'allume
+	# qu'en ajoutant sa clé). Ordre de bascule : secret Worker D'ABORD, puis
+	# .env du serveur — docs/production.md.
+	@relais_non_prouve expression `"{$RELAIS_API_SECRET}" != "" && {http.request.header.X-Taqinor-Relais} != "{$RELAIS_API_SECRET}"`
+	request_header @relais_non_prouve -X-Forwarded-For
+	request_header @relais_non_prouve -CF-Connecting-IP
 	reverse_proxy nginx:80 {
 		header_up Host {host}
 		header_up X-Forwarded-Proto {scheme}
+		# Le secret ne sort jamais de Caddy (ni nginx, ni journaux Django).
+		header_up -X-Taqinor-Relais
 	}
 }
 

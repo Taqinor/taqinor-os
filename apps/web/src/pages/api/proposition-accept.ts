@@ -20,6 +20,7 @@ export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
+import { entetesIpVisiteur } from './_apiBase';
 import {
   acceptEndpoint,
   buildAcceptBodyRich,
@@ -140,7 +141,7 @@ export const POST: APIRoute = async ({ request }) => {
       headers: {
         'content-type': 'application/json',
         accept: 'application/json',
-        ...(signerIp ? { 'X-Forwarded-For': signerIp, 'CF-Connecting-IP': signerIp } : {}),
+        ...entetesIpVisiteur(signerIp),
       },
       body: JSON.stringify(upstream),
     });

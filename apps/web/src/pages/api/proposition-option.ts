@@ -21,6 +21,7 @@ import { buildOptionBody, normalizeOptionResponse, optionEndpoint } from '../../
 import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest } from '../../lib/rateLimit';
 import { corpsAvecToken, jsonResponse as json, relayJson, resolveApiBase } from './_proxy';
+import { entetesIpVisiteur } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   // W317 — un POST cross-site forgé est refusé avant tout traitement : activer une option
@@ -44,7 +45,7 @@ export const POST: APIRoute = async ({ request }) => {
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      ...(ip ? { 'X-Forwarded-For': ip, 'CF-Connecting-IP': ip } : {}),
+      ...entetesIpVisiteur(ip),
     },
     body: JSON.stringify(upstreamBody),
   });

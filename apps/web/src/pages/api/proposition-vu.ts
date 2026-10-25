@@ -20,6 +20,7 @@ import { crossSiteRejection, isSameOriginRequest } from '../../lib/lead';
 import { clientIpFromRequest } from '../../lib/rateLimit';
 import { isPlausibleUuid, lireCookie } from '../../lib/visite';
 import { corpsAvecToken, jsonResponse as json, relayJson, resolveApiBase } from './_proxy';
+import { entetesIpVisiteur } from './_apiBase';
 
 export const POST: APIRoute = async ({ request }) => {
   if (!isSameOriginRequest(request)) return crossSiteRejection();
@@ -35,7 +36,7 @@ export const POST: APIRoute = async ({ request }) => {
     headers: {
       'content-type': 'application/json',
       accept: 'application/json',
-      ...(ip && ip !== 'unknown' ? { 'X-Forwarded-For': ip, 'CF-Connecting-IP': ip } : {}),
+      ...entetesIpVisiteur(ip),
       ...(ua ? { 'user-agent': ua } : {}),
       ...(lireCookie(cookies, 'tq_equipe') === '1' ? { 'X-Equipe-Appareil': '1' } : {}),
       ...(isPlausibleUuid(appareil) ? { 'X-Appareil-Id': appareil as string } : {}),

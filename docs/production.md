@@ -291,6 +291,41 @@ CLI sur le PC) : pour le basculer, dash.cloudflare.com → Workers & Pages →
 valeur `https://api.taqinor.ma/api/django/crm/webhooks/website-leads/` →
 Deploy. Une minute, à faire par Reda.
 
+### Secret de relais Worker → API (ADEP103, D-ADEP-103 = c)
+
+Les plages Cloudflare que Caddy croit (ADEP102 : l'IP du signataire relayée
+par le Worker de `/proposition`) sont communes à TOUS les comptes
+Cloudflare : un Worker tiers qui joint l'origine pouvait forger
+`X-Forwarded-For` (IP de preuve de signature, seaux de limite de débit).
+Avec la clé `RELAIS_API_SECRET`, Caddy ne garde l'IP transmise que si la
+requête porte `X-Taqinor-Relais` égal à ce secret ; sinon il la retire et
+repose l'IP de son pair. **Sans clé, rien ne change** (D-ADEP-3). Même nom
+des deux côtés ; le secret ne sort jamais de Caddy (ni nginx, ni Django).
+
+Bascule (Reda) — **le Worker D'ABORD**, sinon les relais perdent l'IP du
+visiteur entre les deux gestes :
+
+1. Générer le secret, **hexadécimal seulement** (il est inséré entre
+   guillemets dans la Caddyfile) : sur le serveur, `openssl rand -hex 32`.
+2. Worker : dash.cloudflare.com → Workers & Pages → `taqinor-web` →
+   Settings → Variables and Secrets → Add → type **Secret**, nom
+   `RELAIS_API_SECRET`, la valeur → Deploy. Sans effet tant que le serveur
+   n'a pas la clé (l'en-tête est ignoré).
+3. Serveur : ajouter `RELAIS_API_SECRET=<la même valeur>` dans
+   `/opt/taqinor-os/.env`, puis recréer Caddy (un reload ne relit pas
+   l'environnement) :
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d caddy`
+4. Vérifier sans afficher la valeur :
+   `docker compose -f docker-compose.yml -f docker-compose.prod.yml exec caddy sh -c 'test -n "$RELAIS_API_SECRET" && echo pose'`,
+   puis ouvrir un lien de proposition depuis un téléphone : la dernière
+   consultation enregistrée porte l'IP du téléphone, pas une 162.158.x /
+   172.68.x (nœud Cloudflare).
+
+Retour arrière : retirer la ligne du `.env` puis la même commande `up -d
+caddy` (le secret du Worker peut rester, il est alors ignoré). Rotation :
+même ordre (Worker puis serveur) ; entre les deux, les relais retombent sur
+l'IP du nœud Cloudflare pendant la minute du changement.
+
 ## Restaurer une sauvegarde
 
 Console Hetzner → serveur `taqinor-os` → onglet **Backups** → choisir un
