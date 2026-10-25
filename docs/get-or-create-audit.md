@@ -6,8 +6,3 @@ Clé de CONTENU `fichier::fonction::Modèle` (jamais un numéro de ligne : une i
 
 | Clé | Appel | Récepteur | Clés de lookup |
 |---|---|---|---|
-| `backend/django_core/apps/installations/services.py::_publier_jalon_statut::JalonProjet` | get_or_create | JalonProjet.objects | installation, phase |
-| `backend/django_core/apps/installations/services.py::ensure_default_template::ChecklistEtapeModele` | get_or_create | ChecklistEtapeModele.objects | cle, company, template |
-| `backend/django_core/apps/installations/services.py::notifier_reception_solde_a_facturer::JalonProjet` | get_or_create | JalonProjet.objects | installation, phase |
-| `backend/django_core/apps/installations/views/program.py::ProjetViewSet._attach::link_model` | get_or_create | link_model.objects | projet |
-| `backend/django_core/apps/stock/services.py::get_or_create_produit::Produit` | get_or_create | Produit.objects | company |

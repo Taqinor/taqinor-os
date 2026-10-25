@@ -17,7 +17,9 @@ from apps.installations.models import (
     ChantierChecklistItem, ChecklistEtapeModele, ChecklistTemplate,
     Installation,
 )
-from apps.installations.services import ensure_checklist_items
+from apps.installations.services import (
+    DEFAULT_CHECKLIST_ETAPES, ensure_checklist_items, ensure_default_template,
+)
 
 
 class PropagationChecklistTests(TestCase):
@@ -81,3 +83,19 @@ class PropagationChecklistTests(TestCase):
         self.assertEqual(ensure_checklist_items(vide), [])
         self.assertEqual(ChantierChecklistItem.objects.filter(
             installation=vide).count(), 0)
+
+
+class AmorcageEtapesDefautTests(TestCase):
+    """ENF18 — `ChecklistEtapeModele.amorcer_etapes`, l'amorçage de
+    `ensure_default_template` : idempotent, et jamais d'étape orpheline."""
+
+    def test_amorcage_idempotent_et_template_nul_refuse(self):
+        co = Company.objects.create(nom='ENF18', slug='enf18-checklist')
+        tpl = ensure_default_template(co)
+        self.assertEqual(tpl.etapes.count(), len(DEFAULT_CHECKLIST_ETAPES))
+        ChecklistEtapeModele.amorcer_etapes(co, tpl, DEFAULT_CHECKLIST_ETAPES)
+        self.assertEqual(tpl.etapes.count(), len(DEFAULT_CHECKLIST_ETAPES))
+        with self.assertRaises(ValueError):
+            ChecklistEtapeModele.amorcer_etapes(co, None, DEFAULT_CHECKLIST_ETAPES)
+        self.assertFalse(ChecklistEtapeModele.objects.filter(
+            company=co, template__isnull=True).exists())

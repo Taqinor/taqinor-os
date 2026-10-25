@@ -86,6 +86,22 @@ def _check_projet_tenant(serializer, company):
     _check_tenant(serializer, company, 'projet')
 
 
+def _lier(field, projet, cible_id, company):
+    """ENF18 — rattachement idempotent d'une cible au programme : un
+    ``get_or_create`` EXPLICITE par table de liaison, chacune bornée par son
+    ``unique_together(projet, <cible>)`` (course-safe, la base refuse le
+    doublon). ``field`` est ``installation`` | ``devis`` | ``ticket``."""
+    defaults = {'company': company}
+    if field == 'installation':
+        return ProjetChantier.objects.get_or_create(
+            projet=projet, installation_id=cible_id, defaults=defaults)
+    if field == 'devis':
+        return ProjetDevis.objects.get_or_create(
+            projet=projet, devis_id=cible_id, defaults=defaults)
+    return ProjetTicket.objects.get_or_create(
+        projet=projet, ticket_id=cible_id, defaults=defaults)
+
+
 @oa.listing(p0=oa.qi('client'), p1=oa.qs('statut'))
 class ProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanyScopedModelViewSet):
     """FG291 — programme/projet multi-chantiers (ferme à 4 forages, toiture par
@@ -150,9 +166,7 @@ class ProjetViewSet(oa.JsonOnlyMixin, DeprecatedProgrammeSurfaceMixin, CompanySc
         # Idempotent : ne duplique pas un rattachement déjà présent (on ne passe
         # PAS par la validation du serializer, qui rejetterait le doublon via le
         # contrôle d'unicité — get_or_create EST le comportement idempotent voulu).
-        obj, created = link_model.objects.get_or_create(
-            projet=projet, **{f'{field}_id': target_id},
-            defaults={'company': company})
+        obj, created = _lier(field, projet, target_id, company)
         return Response(
             serializer_class(obj).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)

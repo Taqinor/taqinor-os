@@ -119,6 +119,18 @@ class JalonProjet(models.Model):
     def __str__(self):
         return f'{self.installation_id} · {self.libelle}'
 
+    @classmethod
+    def obtenir_ou_creer_phase(cls, installation, phase, defaults=None):
+        """ENF18 — ``get_or_create`` du jalon de PHASE TYPE d'un chantier, sur
+        ``(installation, phase)`` : idempotent, course-safe par
+        ``uniq_jalonprojet_installation_phase``. Refuse une phase vide ou NULL :
+        c'est un jalon AD HOC, que la contrainte laisse libre — un
+        ``get_or_create`` dessus créerait un doublon à chaque appel."""
+        if not phase:
+            raise ValueError('Une phase type est requise (un jalon ad hoc n\'est pas unique).')
+        return cls.objects.get_or_create(
+            installation=installation, phase=phase, defaults=defaults or {})
+
 
 # ── FG296 — Modèles de projet (templates de chantier-type) ───────────────────
 class ModeleProjet(models.Model):
