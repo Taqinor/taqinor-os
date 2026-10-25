@@ -299,3 +299,66 @@ class Spl166EtudeRestitutionTests(SimpleTestCase):
         from apps.ventes.quote_engine import builder, etude_restitution
         self.assertIs(builder.ligne_tarif_hypothese,
                       etude_restitution.ligne_tarif_hypothese)
+
+
+#: SPL168 — format une-page legacy : generate_devis_premium.py →
+#: legacy_onepage.py (liaison tardive ``_g.NOM``).
+NOMS_SPL168 = ("_proposition_link", "_onepage_qr_uri", "_onepage_header_html",
+               "page_onepage", "build_html_onepage")
+#: Restent dans generate_devis_premium (lus ``G.*``, liste ARC11, ``globals()``
+#: de ``_renvoi_detail_complet``, ou partagés avec ``build_html``).
+RESTENT_DANS_GDP_SPL168 = (
+    "ONEPAGE_HEADER_MM", "ONEPAGE_FOOTER_PX", "_mesure_onepage",
+    "_render_pdf_weasyprint", "_onepage_html_qui_tient",
+    "_renvoi_detail_complet", "_fdec_fr", "_css_arabe",
+    "_attributs_langue_html",
+)
+
+
+def _appels_interdits(arbre):
+    return [n.func.id for n in ast.walk(arbre) if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id in ("globals", "locals", "vars")]
+
+
+class Spl168LegacyOnepageTests(SimpleTestCase):
+    def test_noms_definis_dans_legacy_onepage_et_plus_dans_gdp(self):
+        lo = _definis(_arbre("legacy_onepage.py"))
+        gdp = _definis(_arbre("generate_devis_premium.py"))
+        for nom in NOMS_SPL168:
+            with self.subTest(nom=nom):
+                self.assertIn(nom, lo)
+                self.assertNotIn(nom, gdp)
+        for nom in RESTENT_DANS_GDP_SPL168:
+            with self.subTest(reste=nom):
+                self.assertIn(nom, gdp)
+                self.assertNotIn(nom, lo)
+
+    def test_liaison_tardive_jamais_un_global_fige(self):
+        """Seul import de tête : le MODULE ``_g`` ; jamais ``from
+        .generate_devis_premium import KWC`` (même local) ; aucun ``globals()``."""
+        arbre = _arbre("legacy_onepage.py")
+        tete = [n for n in arbre.body
+                if isinstance(n, (ast.Import, ast.ImportFrom))]
+        self.assertEqual(len(tete), 1)
+        self.assertEqual((tete[0].level, tete[0].module), (1, None))
+        self.assertEqual([(a.name, a.asname) for a in tete[0].names],
+                         [("generate_devis_premium", "_g")])
+        figes = [n.lineno for n in ast.walk(arbre)
+                 if isinstance(n, ast.ImportFrom)
+                 and (n.module or "").endswith("generate_devis_premium")]
+        self.assertEqual(figes, [])
+        self.assertEqual(_appels_interdits(arbre), [])
+
+    def test_gdp_n_importe_pas_legacy_onepage_en_tete(self):
+        for mod in _imports_tete(_arbre("generate_devis_premium.py")):
+            with self.subTest(mod=mod):
+                self.assertNotIn("legacy_", mod)
+
+    def test_reexport_pep562_pour_les_autres_proprietaires(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.quote_engine import legacy_onepage
+        self.assertIs(G.build_html_onepage, legacy_onepage.build_html_onepage)
+        for nom in ("page_onepage", "_onepage_header_html"):
+            with self.subTest(absent=nom):
+                self.assertFalse(hasattr(G, nom))

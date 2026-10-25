@@ -26,6 +26,7 @@ Run (sans base de données) :
 from django.test import SimpleTestCase
 
 from apps.ventes.quote_engine import generate_devis_premium as moteur
+from apps.ventes.quote_engine import legacy_onepage
 from apps.ventes.tests import _moteur_fixtures as F
 
 
@@ -44,7 +45,7 @@ class TestRepliA_LienDeProposition(SimpleTestCase):
 
     def _lien(self, signer):
         moteur.LINKS = {"signer": signer}
-        return moteur._proposition_link()
+        return legacy_onepage._proposition_link()
 
     def test_url_absolue_rendue_telle_quelle(self):
         href, court = self._lien(

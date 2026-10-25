@@ -37,7 +37,7 @@ backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::f
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::4aa80d83238a | Carte option "Avec batterie" page 1 (QJR53) : meme regle d'arrondi que fmt() -- affichage seul, jumeau du site ci-dessus.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::ede41a9a2000 | Prix barre (avant remise) de la carte "Sans batterie" -- QJR53 : doit suivre le meme arrondi que le total qu'il barre, affichage seul.
 backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page1::e0078433f1a0 | Prix barre (avant remise) de la carte "Avec batterie" -- QJR53, affichage seul, jumeau du site ci-dessus.
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::a379dbcff3dd | "Prix par kWc" affiche en case-resume du one-page (total/KWC) -- indicateur d'affichage, non persiste.
+backend/django_core/apps/ventes/quote_engine/legacy_onepage.py::page_onepage::f144a6d881a6 | "Prix par kWc" affiche en case-resume du one-page (total/KWC) -- indicateur d'affichage, non persiste.
 
 # --- backend/django_core/apps/ventes/quote_engine/pricing.py
 backend/django_core/apps/ventes/quote_engine/pricing.py::kwh_from_bill::46412da316ea | Repli plat kWh<-facture quand aucune table tarifaire n'est resolue -- resultat marque "approximatif"/"estimation" (ESTIMATION_LABEL), jamais un chiffre precis non etiquete.
@@ -105,5 +105,5 @@ backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a5
 backend/django_core/apps/ventes/domain/resynchronisation.py::reconcilier::9f86a510d34c#2 | idem, second site de la meme fonction (meme expression, departage par le suffixe #2).
 backend/django_core/apps/ventes/quote_engine/conditions_commerciales.py::repartition_paiement::7799b0034dd5 | QJR623 — répartition AFFICHÉE des tranches de paiement au centime (ROUND_HALF_UP du Decimal par défaut du contexte), jamais persistée
 backend/django_core/apps/ventes/quote_engine/builder.py::build_quote_data::f4b512886cc4 | QJR616 — total d'option ×N villas affiché par le PDF (moteur en float), jamais persisté
-backend/django_core/apps/ventes/quote_engine/generate_devis_premium.py::page_onepage::1a21ab458ac6 | QJR616 — prix TTC d'option affiché par le one-page (moteur en float), jamais persisté
+backend/django_core/apps/ventes/quote_engine/legacy_onepage.py::page_onepage::1a21ab458ac6 | QJR616 — prix TTC d'option affiché par le one-page (moteur en float), jamais persisté
 backend/django_core/apps/ventes/selectors.py::promesse_production_devis::c78ef06fb352 | CIQ627 — ratio de performance modélisé (sans unité, 3 décimales), jamais un montant
