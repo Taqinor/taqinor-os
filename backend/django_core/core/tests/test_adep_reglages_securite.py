@@ -27,7 +27,9 @@ from django.test import SimpleTestCase
 
 DJANGO_CORE = Path(__file__).resolve().parents[2]
 CLES = ('GEOIP_PATH', 'GEOIP2_CITY_DB', 'OPENSEARCH_URL',
-        'CF_CONNECTING_IP_TRUSTED', 'DJANGO_SETTINGS_MODULE')
+        'CF_CONNECTING_IP_TRUSTED', 'DJANGO_SETTINGS_MODULE',
+        'WEBHOOK_AUTO_DISABLE_THRESHOLD', 'WEBHOOK_AUTO_DISABLE_WINDOW_HOURS',
+        'VENTES_EXPORT_ASYNC_ROW_THRESHOLD', 'INBOUND_REPLY_EMAIL')
 
 _SCRIPT = r"""
 import json, sys, types
@@ -63,12 +65,49 @@ print('RESULTAT=' + json.dumps({
 """
 
 
-def _charger(env_impose):
+# ENF15 (ADEP20) — réglages lus par le code (`getattr(settings, 'X', repli)`) puis déclarés dans
+# `settings/reglages_lus.py` : chaque déclaration porte EXACTEMENT le repli de son lecteur, et la
+# variable d'environnement documentée atteint ce lecteur.
+_SCRIPT_LUS = r"""
+import json
+import django
+django.setup()
+from django.conf import settings
+from apps.adsengine import tasks
+from apps.publicapi import oauth, webhook_health
+from apps.ventes import email_service, exports, models as ventes_models
+
+lus = ('ADSENGINE_GRAPH_EOL_ALERT_MONTHS', 'ADSENGINE_ROLLUP_AFTER_MONTHS', 'GEOIP2_CITY_DB',
+       'PUBLIC_API_OAUTH_TOKEN_TTL', 'WEBHOOK_AUTO_DISABLE_THRESHOLD',
+       'WEBHOOK_AUTO_DISABLE_WINDOW_HOURS', 'LOGIN_PLANCHER_ECHECS', 'LOGIN_PLANCHER_VERROU_MINUTES',
+       'DEVIS_NUDGE_DAYS', 'INBOUND_REPLY_EMAIL', 'VENTES_EXPORT_ASYNC_ROW_THRESHOLD',
+       'VENTES_COMPTA_ACCOUNT_CODES', 'VENTES_COMPTA_ACCOUNT_CODES_BY_COMPANY')
+print('RESULTAT=' + json.dumps({
+    'declares': {cle: getattr(settings, cle) for cle in lus},
+    'replis': {
+        'ADSENGINE_GRAPH_EOL_ALERT_MONTHS': tasks._DEFAULT_GRAPH_EOL_ALERT_MONTHS,
+        'ADSENGINE_ROLLUP_AFTER_MONTHS': tasks._DEFAULT_ROLLUP_AFTER_MONTHS,
+        'PUBLIC_API_OAUTH_TOKEN_TTL': oauth.DEFAULT_TOKEN_TTL_SECONDS,
+        'WEBHOOK_AUTO_DISABLE_THRESHOLD': webhook_health.DEFAULT_AUTO_DISABLE_THRESHOLD,
+        'WEBHOOK_AUTO_DISABLE_WINDOW_HOURS': webhook_health.DEFAULT_AUTO_DISABLE_WINDOW_HOURS,
+        'DEVIS_NUDGE_DAYS': ventes_models.DEVIS_NUDGE_DEFAULT_DAYS,
+    },
+    'lecteurs': {
+        'seuil': webhook_health._seuil(),
+        'fenetre': webhook_health._fenetre_heures(),
+        'export': exports.export_async_row_threshold(),
+        'reply_to': email_service._reply_to_address(),
+    },
+}))
+"""
+
+
+def _charger(env_impose, script=_SCRIPT):
     env = {k: v for k, v in os.environ.items() if k not in CLES}
     env['DJANGO_SETTINGS_MODULE'] = 'erp_agentique.settings.dev'
     env.update(env_impose)
     out = subprocess.run(
-        [sys.executable, '-c', _SCRIPT], cwd=str(DJANGO_CORE), env=env,
+        [sys.executable, '-c', script], cwd=str(DJANGO_CORE), env=env,
         capture_output=True, text=True, timeout=180)
     for ligne in out.stdout.splitlines():
         if ligne.startswith('RESULTAT='):
@@ -103,3 +142,38 @@ class ReglagesSecuriteDeclaresTests(SimpleTestCase):
         self.assertIsNone(res['geoip'])
         self.assertEqual(res['opensearch'], '')
         self.assertEqual(res['ip'], '10.0.0.1')
+
+
+class ReglagesLusDeclaresTests(SimpleTestCase):
+    def test_declarations_egales_au_repli_du_lecteur(self):
+        res = _charger({}, _SCRIPT_LUS)
+        declares = res["declares"]
+        for cle, repli in res["replis"].items():
+            self.assertEqual(declares[cle], repli, cle)
+        self.assertEqual(declares["LOGIN_PLANCHER_ECHECS"], 10)
+        self.assertEqual(declares["LOGIN_PLANCHER_VERROU_MINUTES"], 15)
+        self.assertEqual(declares["VENTES_EXPORT_ASYNC_ROW_THRESHOLD"], 2000)
+        self.assertEqual(declares["GEOIP2_CITY_DB"], "")
+        self.assertEqual(declares["INBOUND_REPLY_EMAIL"], "")
+        self.assertEqual(declares["VENTES_COMPTA_ACCOUNT_CODES"], {})
+        self.assertEqual(declares["VENTES_COMPTA_ACCOUNT_CODES_BY_COMPANY"], {})
+        self.assertEqual(res["lecteurs"], {
+            "seuil": 20, "fenetre": 24, "export": 2000, "reply_to": ""})
+
+    def test_variables_d_environnement_atteignent_leur_lecteur(self):
+        chemin = os.path.join(tempfile.gettempdir(), "GeoLite2-City.mmdb")
+        res = _charger({
+            "WEBHOOK_AUTO_DISABLE_THRESHOLD": "7",
+            "WEBHOOK_AUTO_DISABLE_WINDOW_HOURS": "6",
+            "VENTES_EXPORT_ASYNC_ROW_THRESHOLD": "500",
+            "INBOUND_REPLY_EMAIL": "retour@exemple.ma",
+            "GEOIP2_CITY_DB": chemin,
+        }, _SCRIPT_LUS)
+        self.assertEqual(res["lecteurs"], {
+            "seuil": 7, "fenetre": 6, "export": 500,
+            "reply_to": "retour@exemple.ma"})
+        self.assertEqual(res["declares"]["GEOIP2_CITY_DB"], chemin)
+
+    def test_seuil_zero_desactive_la_coupure_automatique(self):
+        res = _charger({"WEBHOOK_AUTO_DISABLE_THRESHOLD": "0"}, _SCRIPT_LUS)
+        self.assertEqual(res["lecteurs"]["seuil"], 0)

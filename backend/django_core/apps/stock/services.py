@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from django.db import models
 
 from .erreurs_achats import ConflitEtat, EtatIncompatible, IntrouvableMetier
+from .services_produit import get_or_create_produit
 
 logger = logging.getLogger('stock.audit')
 
@@ -9142,7 +9143,8 @@ __all__ = [
     'declarer_mouvement_rebut', 'decrementer_stock_expedition',
     'demande_transfert_approuvee_existe', 'deplacer_unite_logistique',
     'enregistrer_arrivee_chauffeur', 'enregistrer_mouvement_scanne', 'exporter_asn',
-    'generer_comptages_tournants', 'generer_etiquette_expedition', 'impact_rappel', 'importer_asn',
+    'generer_comptages_tournants', 'generer_etiquette_expedition', 'get_or_create_produit',
+    'impact_rappel', 'importer_asn',
     'inspecter_retour_client', 'lancer_vague', 'lever_quarantaine', 'lever_quarantaine_bin',
     'liberer_vagues_planifiees', 'mettre_en_quarantaine', 'notifier_rappel',
     'ordonner_parcours_serpentin', 'prelever_ligne_picking', 'proposer_cross_dock',
@@ -9159,11 +9161,3 @@ def creer_produit(company, **champs):
     cross-app : ventes ne touche jamais ``apps.stock.models``)."""
     from .models import Produit
     return Produit.objects.create(company=company, **champs)
-
-
-def get_or_create_produit(company, *, defaults=None, **lookup):
-    """ADEV56 — ``get_or_create`` d'un ``Produit`` de la société (même
-    contrat que Django : ``(produit, cree)``)."""
-    from .models import Produit
-    return Produit.objects.get_or_create(
-        company=company, defaults=defaults or {}, **lookup)

@@ -104,6 +104,21 @@ class ChecklistEtapeModele(models.Model):
     def __str__(self):
         return self.libelle
 
+    @classmethod
+    def amorcer_etapes(cls, company, template, etapes):
+        """ENF18 — amorce, sous ``template``, les étapes SYSTÈME ``etapes``
+        (``(cle, libelle, capture_serie)``) : ``get_or_create`` sur
+        ``(company, template, cle)``, idempotent et course-safe par le
+        ``unique_together``. Refuse ``template=None`` : NULL ≠ NULL en base, une
+        étape orpheline ne serait pas dédoublonnée et chaque appel en recréerait une."""
+        if template is None:
+            raise ValueError('Un template est requis pour amorcer ses étapes.')
+        for i, (cle, libelle, capture) in enumerate(etapes):
+            cls.objects.get_or_create(
+                company=company, template=template, cle=cle,
+                defaults={'libelle': libelle, 'ordre': i,
+                          'capture_serie': capture, 'protege': True})
+
 
 class StageModele(models.Model):
     """CH1 — étape/gate CONFIGURABLE du cycle de vie chantier, par société.

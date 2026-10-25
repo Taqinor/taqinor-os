@@ -70,6 +70,25 @@ class JalonUniqueParPhaseTests(TestCase):
                 installation=self.inst,
                 phase=JalonProjet.Phase.RECEPTION).count(), 1)
 
+    def test_obtenir_ou_creer_phase_idempotent_et_refuse_une_phase_vide(self):
+        """ENF18 — l'unique porte du `get_or_create` de jalon : idempotente sur
+        une phase type ; une phase vide/NULL (jalon ad hoc, hors contrainte)
+        est refusée au lieu de créer un doublon à chaque appel."""
+        jalon, cree = JalonProjet.obtenir_ou_creer_phase(
+            self.inst, JalonProjet.Phase.APPRO,
+            defaults={'company': self.company, 'libelle': 'Appro'})
+        self.assertTrue(cree)
+        relu, cree = JalonProjet.obtenir_ou_creer_phase(
+            self.inst, JalonProjet.Phase.APPRO)
+        self.assertFalse(cree)
+        self.assertEqual(relu.pk, jalon.pk)
+        with self.assertRaises(ValueError):
+            JalonProjet.obtenir_ou_creer_phase(self.inst, '')
+        with self.assertRaises(ValueError):
+            JalonProjet.obtenir_ou_creer_phase(self.inst, None)
+        self.assertEqual(
+            JalonProjet.objects.filter(installation=self.inst).count(), 1)
+
     def test_phases_differentes_coexistent(self):
         self._jalon(JalonProjet.Phase.RECEPTION)
         self._jalon(JalonProjet.Phase.POSE, 'Pose')

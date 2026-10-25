@@ -323,3 +323,31 @@ class TestSiteAppelFraisRefactures(TestCase):
                 side_effect=IntegrityError('autre contrainte')):
             with self.assertRaises(IntegrityError):
                 domaine_facturation_ops._produit_frais_refactures(self.company)
+
+
+class TestGetOrCreateProduitParSku(TestCase):
+    """ENF18 — ``get_or_create_produit(company, *, sku)`` : idempotent sur
+    ``(company, sku)`` ; un SKU vide est refusé (NULL ≠ NULL : un produit sans
+    SKU n'est pas dédoublonné)."""
+
+    def setUp(self):
+        self.company = make_company('enf18-sku', 'ENF18 SKU')
+        from apps.stock.services import get_or_create_produit
+        self.get_or_create_produit = get_or_create_produit
+
+    def test_deux_appels_renvoient_la_meme_fiche(self):
+        defaults = {'nom': 'Service ENF18', 'prix_vente': Decimal('0'), 'quantite_stock': 0}
+        a, cree_a = self.get_or_create_produit(self.company, sku='ENF18-MO', defaults=defaults)
+        b, cree_b = self.get_or_create_produit(self.company, sku='ENF18-MO', defaults=defaults)
+        self.assertTrue(cree_a)
+        self.assertFalse(cree_b)
+        self.assertEqual(a.pk, b.pk)
+        self.assertEqual(Produit.objects.filter(
+            company=self.company, sku='ENF18-MO').count(), 1)
+
+    def test_un_sku_vide_est_refuse(self):
+        with self.assertRaises(ValueError):
+            self.get_or_create_produit(self.company, sku='')
+        with self.assertRaises(ValueError):
+            self.get_or_create_produit(self.company, sku=None)
+        self.assertFalse(Produit.objects.filter(company=self.company).exists())

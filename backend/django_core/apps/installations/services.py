@@ -124,11 +124,7 @@ def ensure_default_template(company):
     # Aucune étape sous le Défaut (ni rattachée ni amorcée) → on amorce les
     # étapes système par défaut. Idempotent : ne touche rien si déjà présent.
     if not template.etapes.exists():
-        for i, (cle, libelle, capture) in enumerate(DEFAULT_CHECKLIST_ETAPES):
-            ChecklistEtapeModele.objects.get_or_create(
-                company=company, template=template, cle=cle,
-                defaults={'libelle': libelle, 'ordre': i,
-                          'capture_serie': capture, 'protege': True})
+        ChecklistEtapeModele.amorcer_etapes(company, template, DEFAULT_CHECKLIST_ETAPES)
     return template
 
 
@@ -5352,8 +5348,8 @@ def _publier_jalon_statut(inst, canon_old, canon_new, user):
         from django.utils import timezone
         from .models import JalonProjet
         with transaction.atomic():
-            jalon, _ = JalonProjet.objects.get_or_create(
-                installation=inst, phase=phase,
+            jalon, _ = JalonProjet.obtenir_ou_creer_phase(
+                inst, phase,
                 defaults={'company': inst.company, 'libelle': libelle})
             champs = []
             if not jalon.atteint:
@@ -6212,8 +6208,8 @@ def notifier_reception_solde_a_facturer(installation, user=None):
     if devis is None:
         return False
     from .models import JalonProjet
-    jalon, _ = JalonProjet.objects.get_or_create(
-        installation=installation, phase=JalonProjet.Phase.RECEPTION,
+    jalon, _ = JalonProjet.obtenir_ou_creer_phase(
+        installation, JalonProjet.Phase.RECEPTION,
         defaults={
             'company': installation.company,
             'libelle': 'Réception',
