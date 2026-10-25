@@ -2526,7 +2526,7 @@ class TestPageCalepinage(TestCase):
     def test_le_svg_est_embarque_sans_prologue_xml(self):
         """Un ``<?xml …?>`` au milieu d'un document HTML est une erreur de
         syntaxe, et ``width="420mm"`` déborderait la page A4."""
-        from apps.ventes.quote_engine.builder import (
+        from apps.ventes.quote_engine.artefacts_rendu import (
             CALEPINAGE_HAUTEUR_PX, CALEPINAGE_LARGEUR_PX)
 
         self._creer_calepinage()

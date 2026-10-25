@@ -18,7 +18,7 @@ import fitz
 from django.test import TestCase
 
 from apps.ventes.models import Devis
-from apps.ventes.quote_engine import builder
+from apps.ventes.quote_engine import artefacts_rendu, builder
 from apps.ventes.tests._quote_engine_common import (
     DEUX_OPTIONS, make_client, make_company, make_devis, make_user,
 )
@@ -63,7 +63,7 @@ class ToitPrefixeSocieteTests(TestCase):
         with mock.patch('apps.ventes.utils.pdf.download_roof_image',
                         return_value=PNG) as telecharger, \
                 self.assertLogs('apps.ventes', level='WARNING') as journal:
-            uri = builder._roof_render_data_uri(self.devis)
+            uri = artefacts_rendu._roof_render_data_uri(self.devis)
         self.assertEqual(uri, '')
         telecharger.assert_not_called()
         texte = '\n'.join(journal.output)
@@ -74,7 +74,7 @@ class ToitPrefixeSocieteTests(TestCase):
         self._poser('roofs/%s/DEV-ASEC24-1.png' % self.societe_a.pk)
         with mock.patch('apps.ventes.utils.pdf.download_roof_image',
                         return_value=PNG) as telecharger:
-            uri = builder._roof_render_data_uri(self.devis)
+            uri = artefacts_rendu._roof_render_data_uri(self.devis)
         telecharger.assert_called_once()
         self.assertTrue(uri.startswith('data:image/png;base64,'))
 
@@ -84,9 +84,18 @@ class ToitPrefixeSocieteTests(TestCase):
                     'autre/%s/x.png' % self.societe_a.pk,
                     'roofs/%s0/x.png' % self.societe_a.pk):
             with self.subTest(cle=cle):
-                self.assertFalse(builder.cle_toit_de_la_societe(self.devis, cle))
-        self.assertTrue(builder.cle_toit_de_la_societe(
+                self.assertFalse(
+                    artefacts_rendu.cle_toit_de_la_societe(self.devis, cle))
+        self.assertTrue(artefacts_rendu.cle_toit_de_la_societe(
             self.devis, 'roofs/%s/x.png' % self.societe_a.pk))
+
+    def test_photo_de_toiture_sans_piece_jointe_vide(self):
+        """SPL167 — cas direct du lecteur de photo (le golden le neutralise) :
+        aucune pièce jointe image ⇒ '' par le chemin NORMAL, sans passer par
+        le repli d'erreur (qui journaliserait un avertissement)."""
+        with self.assertNoLogs('apps.ventes', level='WARNING'):
+            self.assertEqual(
+                artefacts_rendu._roof_photo_data_uri(self.devis), '')
 
     def test_nombre_de_pages_inchange(self):
         """CLIENT — toit légitime : même nombre de pages que sans toit ;

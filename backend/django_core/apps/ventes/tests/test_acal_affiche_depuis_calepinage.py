@@ -35,7 +35,7 @@ from apps.stock.models import Produit
 from apps.ventes import services as ventes_services
 from apps.ventes.domain.geometrie import layout_hash
 from apps.ventes.models import Devis, LigneDevis
-from apps.ventes.quote_engine.builder import _roof_render_data_uri
+from apps.ventes.quote_engine.artefacts_rendu import _roof_render_data_uri
 from authentication.models import Company
 
 User = get_user_model()
