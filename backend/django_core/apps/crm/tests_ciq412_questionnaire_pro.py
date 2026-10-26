@@ -70,6 +70,8 @@ class QuestionnairePro(TestCase):
         lead = self._pro(tension_raccordement='bt', tension_source='declare',
                          categorie_commerciale='hotel',
                          surface_toiture_m2=Decimal('650'),
+                         type_surface='toiture',
+                         type_toiture='terrasse_beton',
                          societe='Hôtel Exemple SARL',
                          email='h@example.ma', ville='Marrakech',
                          adresse='Route X')
@@ -129,6 +131,19 @@ class QuestionnairePro(TestCase):
         # Hors section : jamais écrit.
         self.assertEqual(lead.email, 'h@example.ma')
         self.assertIsNone(lead.decideur)
+
+    def test_site_manquant_tant_que_type_de_surface_ou_toiture_vide(self):
+        # Fondateur 26/10/2026 — pas seulement la surface.
+        complet = dict(surface_toiture_m2=Decimal('650'),
+                       type_surface='toiture', type_toiture='bac_acier')
+        self.assertFalse(quest.manquantes(self._pro(**complet))['site'])
+        for vide in ('type_surface', 'type_toiture', 'surface_toiture_m2'):
+            lead = self._pro(**dict(complet, **{vide: None}))
+            self.assertTrue(quest.manquantes(lead)['site'], vide)
+        # Une ombrière ou un terrain n'a pas de couverture à déclarer.
+        ombriere = self._pro(**dict(complet, type_surface='ombriere',
+                                    type_toiture=None))
+        self.assertFalse(quest.manquantes(ombriere)['site'])
 
     def test_reseau_manquant_tant_que_contrat_ou_phase_vide(self):
         # Fondateur 26/10/2026 — contrat et phase bloquent le devis auto.

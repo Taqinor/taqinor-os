@@ -294,7 +294,9 @@
       "equipements": "AU MOINS UN booléen equip_* à None — None = « jamais posée », ce qui est DIFFÉRENT de False (« le client a dit non »).",
       "photo_facture / photo_compteur / photo_tableau": "aucune pièce jointe du type sur le lead. APPROXIMATION assumée : on reconnaît le type au LIBELLÉ du fichier (mots-clés facture/bill, compteur/meter, tableau/disjoncteur) — le magasin `records.Attachment` ne porte pas de type métier. En cas de doute → MANQUANTE (on repose la question plutôt que de supposer).",
       "pompage (agricole)": "AGR411 — lead AGRICOLE seulement : source_eau, niveau_statique_m, besoin_eau_m3j, surface_irriguee_ha ou pompe_alim_actuelle vide.",
-      "photo_pompe / photo_forage (agricole)": "AGR411 — aucune pièce jointe dont le libellé porte pompe/plaque (plaque de la pompe) ou forage/puits (tête de forage)."
+      "photo_pompe / photo_forage (agricole)": "AGR411 — aucune pièce jointe dont le libellé porte pompe/plaque (plaque de la pompe) ou forage/puits (tête de forage).",
+      "reseau (pro)": "Fondateur 26/10/2026 — tension inconnue (vide, « ne sait pas » ou défaut visible du site), puissance souscrite nulle, contrat_electricite vide OU raccordement vide.",
+      "site (pro)": "Fondateur 26/10/2026 — surface_toiture_m2 nulle, type_surface vide, OU type_toiture vide quand la surface est une toiture (une ombrière ou un terrain n’a pas de couverture)."
     }
   },
   "segment_agricole": "AGR411 — filtre de SEGMENT (`crm.questionnaire.sections_du_lead`). Lead AGRICOLE : sections pompage, photo_pompe, photo_forage, gps, contact, photo_compteur ; l'envoi sans corps ne coche que pompage, photo_pompe, photo_forage, gps et contact MANQUANTS ; occupation, equipements, energie, toiture, photo_facture et photo_tableau sont REFUSÉES en 400 avec un message qui nomme la section. Les colonnes orales (autorisation de prélèvement, aide FDA reçue, décideur) ne sont jamais posées par écrit. Lead NON agricole : périmètre historique, identique à l'octet (les sections de pompage y restent inconnues).",

@@ -399,6 +399,20 @@ def _tension_inconnue(lead) -> bool:
             or lead.tension_source == 'site_defaut_visible')
 
 
+#: Surfaces sans toiture : la couverture n'y a pas de sens.
+_SURFACES_SANS_TOIT = ('ombriere', 'terrain')
+
+
+def _site_inconnu(lead) -> bool:
+    """Fondateur 26/10/2026 — la section « site » est manquante tant que la
+    surface, le type de surface OU la couverture manquent (la couverture
+    n'est pas exigée d'une ombrière ni d'un terrain)."""
+    if lead.surface_toiture_m2 is None or _vide(lead.type_surface):
+        return True
+    return (lead.type_surface not in _SURFACES_SANS_TOIT
+            and _vide(lead.type_toiture))
+
+
 def _manquantes_pro(lead, libelles) -> dict:
     """CIQ412 — règles ``manquantes_pro`` (contrat CIQ400) : une section pro
     est MANQUANTE quand la tension, la puissance souscrite, le rythme, la
@@ -414,7 +428,7 @@ def _manquantes_pro(lead, libelles) -> dict:
                    or _vide(lead.raccordement)),
         'activite': (not activite_connue or not lead.jours_ouverture
                      or lead.heure_debut is None or lead.heure_fin is None),
-        'site': lead.surface_toiture_m2 is None,
+        'site': _site_inconnu(lead),
         'gps': not _gps_connu(lead),
         'photo_factures': not _photo_presente('photo_factures', libelles),
         'photo_poste': not _photo_presente('photo_poste', libelles),
