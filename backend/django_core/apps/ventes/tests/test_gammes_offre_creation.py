@@ -75,6 +75,18 @@ class TestCreerVarianteGamme(GammeBase):
         noms = {g['nom'] for g in resp.data['gammes']}
         self.assertEqual(noms, {'Essentielle', 'Premium'})
 
+    def test_endpoint_gamme_chaine_sur_la_source_201(self):
+        # api-fuzz-full 26/10 — le schéma d'étude admet ``gamme`` en CHAÎNE
+        # (PATCH etude-params) : ``dict("x")`` levait ValueError → 400 brut.
+        d = make_devis(self.company, self.user, self.client_obj, 'DEV-GAM-019')
+        add_ligne(d, self.panneau, qty='8')
+        d.etude_params = {'gamme': 'Ancien libellé'}
+        d.save(update_fields=['etude_params'])
+        resp = self.api.post(url_gamme(d.id), {'': True}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        d.refresh_from_db()
+        self.assertEqual(gamme_nom(d), 'Essentielle')
+
     def test_endpoint_recommandee_non_booleen_400(self):
         # ENF11 — « recommandee » doit être un booléen reconnu : une valeur
         # fantaisiste valait silencieusement « non ».
