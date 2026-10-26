@@ -32,10 +32,12 @@ import {
 } from '../../ui'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { usePullToRefresh } from '../../ui/usePullToRefresh'
-// NTMOB9 — suivi de position watchPosition derrière un consentement
-// explicite, limité à la session d'intervention ouverte (coexiste avec le
-// check-in manuel F6 ci-dessous, jamais remplacé).
-import GpsTrackingToggle from '../../features/installations/GpsTrackingToggle'
+// Revue chantier 26/10/2026 — suivi de position AUTOMATIQUE pendant la
+// session d'intervention ouverte (en route / sur site), bandeau visible, après
+// un accusé de réception unique de la notice (loi 09-08). Monté au niveau de
+// la PAGE (plus dans la fiche) : il tourne sans que le technicien ouvre quoi
+// que ce soit. Coexiste avec le check-in manuel F6, jamais remplacé.
+import GpsTrackingToggle, { MesPositionsDuJour } from '../../features/installations/GpsTrackingToggle'
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
 } from '../../features/installations/InterventionFieldExecution'
@@ -332,6 +334,11 @@ export default function MaJourneePage() {
   // (`load`), sans changer son contrat.
   const { containerProps, pullDistance, refreshing } = usePullToRefresh(load)
 
+  // Revue chantier 26/10/2026 — l'intervention dont la session est OUVERTE
+  // (en route / sur site) porte le suivi de position automatique.
+  const sessionGps = rows.find(
+    (r) => ['en_route', 'sur_site'].includes(r.statut) && !r.annulee) ?? null
+
   return (
     <div
       className="mx-auto flex max-w-2xl flex-col gap-3 overflow-y-auto p-3 sm:p-4"
@@ -358,6 +365,11 @@ export default function MaJourneePage() {
       {/* NTMOB27 — la tournée affichée vient du cache hors-ligne : on datte
           la donnée plutôt que de la faire passer pour fraîche. */}
       <DonneesHorsLigneBanner cachedAt={cachedAt} />
+
+      {/* Revue chantier 26/10/2026 — suivi de position de l'intervention EN
+          COURS (en route / sur site) : démarre seul, bandeau visible ; carte
+          de la notice à accepter la première fois. Rien hors session. */}
+      {sessionGps && <GpsTrackingToggle key={sessionGps.id} intervention={sessionGps} />}
 
       {/* NTMOB21 — alerte météo du jour au point du premier chantier
           (Open-Meteo, informatif : ne bloque et ne masque jamais rien). */}
@@ -483,6 +495,11 @@ export default function MaJourneePage() {
         onIndiceStatut={setIndiceStatut}
         /* EZ6 — chaque action terrain repasse par le dérivateur de statut. */
         onChanged={onFieldChanged} />
+
+      {/* Revue chantier 26/10/2026 — droit d'accès (loi 09-08 art. 7) : le
+          technicien consulte ses propres positions du jour (chargées à
+          l'ouverture du volet seulement). */}
+      <MesPositionsDuJour />
 
       {/* VX42 — FAB « Photo rapide » : ouvre directement la première
           intervention du jour sur l'onglet Photos (le pouce vit dans le
@@ -633,8 +650,8 @@ function InterventionFlowSheet({
               </p>
             )}
           </div>
-          {/* NTMOB9 — suivi de position, coexiste avec le check-in manuel F6. */}
-          <GpsTrackingToggle intervention={interv} />
+          {/* Revue chantier 26/10/2026 — le suivi de position vit au niveau de
+              la page (bandeau en tête de « Ma journée »), plus ici. */}
           <div className="pt-1"><CompteRenduButton intervention={interv} /></div>
         </SheetHeader>
 

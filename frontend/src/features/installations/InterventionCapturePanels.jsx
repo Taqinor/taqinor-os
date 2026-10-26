@@ -13,8 +13,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Tag, Mic, Square, Trash2, ListChecks, ShieldCheck, FileText, QrCode,
-  Wrench, AlertTriangle,
+  Wrench, AlertTriangle, ScanLine,
 } from 'lucide-react'
+import BarcodeScanner from '../pwa/BarcodeScanner'
+import { barcodeScanSupported } from '../pwa/useBarcodeScanner'
 import installationsApi from '../../api/installationsApi'
 import {
   Button, Badge, Spinner, Checkbox, Input, Textarea, toast, ErrorBoundary,
@@ -40,24 +42,91 @@ const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
 // checklist N9). Une série saisie côté F9 est détectée en doublon côté N9 et
 // réciproquement. Les deux magasins ne sont jamais fusionnés — seul le
 // contrôle de doublon est unifié.
+//
+// Revue chantier 26/10/2026 — le relevé part d'un PRODUIT de la nomenclature
+// (`serials-attendus`, liste fermée) : une désignation libre sans produit
+// n'atteignait jamais le parc SAV. Jauge « N° de série : 3/11 relevés » par
+// produit, scanner code-barres/QR (BarcodeScanner existant), caractéristiques
+// de plaque repliées, photo de plaque prise à la caméra arrière.
+const AUTRE_COMPOSANT = '__autre__'
+const SCAN_INDISPONIBLE = 'Scanner non disponible sur ce navigateur — saisissez le numéro'
+// `fabricant: null` = « pas touché » → la marque du produit s'affiche.
+const CARAC_VIDES = { modele: '', puissance_wc: '', fabricant: null }
+
+function toneProgression(p) {
+  if (p.manquant === 0) return 'success'
+  return p.releve > 0 ? 'warning' : 'danger'
+}
+
+function caracteristiquesPropres(carac, fabricant) {
+  const out = {}
+  if (carac.modele.trim()) out.modele = carac.modele.trim()
+  if (String(fabricant || '').trim()) out.fabricant = String(fabricant).trim()
+  const puissance = String(carac.puissance_wc).trim().replace(',', '.')
+  if (puissance) {
+    const n = Number(puissance)
+    out.puissance_wc = Number.isFinite(n) ? n : puissance
+  }
+  return out
+}
+
 export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const id = intervention.id
   const [rows, setRows] = useState([])
+  const [attendus, setAttendus] = useState(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [choix, setChoix] = useState('')
   const [designation, setDesignation] = useState('')
   const [numero, setNumero] = useState('')
+  const [source, setSource] = useState('saisie')
+  const [carac, setCarac] = useState(CARAC_VIDES)
+  const [scanOuvert, setScanOuvert] = useState(false)
+  const [scanAbsent, setScanAbsent] = useState(false)
+  const [erreurNumero, setErreurNumero] = useState('')
   const fileRef = useRef(null)
   // VX94 — refocus sur le premier champ après un ajout réussi (recette
   // `newCatRef` prouvée dans ProduitForm) : la saisie sérialisée au pouce
   // enchaîne sans viser « Ajouter » puis re-viser le champ.
   const firstFieldRef = useRef(null)
 
-  const load = useCallback(() => installationsApi.getSerials(id)
-    .then((r) => setRows(r.data || []))
-    .catch(() => setRows([]))
-    .finally(() => setLoading(false)), [id])
+  const load = useCallback(() => Promise.all([
+    installationsApi.getSerials(id)
+      .then((r) => setRows(r.data || []))
+      .catch(() => setRows([])),
+    Promise.resolve()
+      .then(() => installationsApi.getSerialsAttendus(id))
+      .then((r) => setAttendus(r?.data || null))
+      .catch(() => setAttendus(null)),
+  ]).finally(() => setLoading(false)), [id])
   useEffect(() => { load() }, [load])
+
+  const produits = attendus?.produits || []
+  const avecListe = produits.length > 0
+  // Produit proposé par défaut : le premier encore incomplet (choix
+  // explicite de l'utilisateur prioritaire).
+  const produitDefaut = produits.find((p) => p.manquant > 0) || produits[0]
+  const choixEffectif = choix || (produitDefaut ? String(produitDefaut.produit_id) : '')
+  const produitChoisi = produits.find((p) => String(p.produit_id) === choixEffectif) || null
+  const autreComposant = !avecListe || choixEffectif === AUTRE_COMPOSANT
+  // Fabricant pré-rempli depuis la marque du produit choisi (modifiable).
+  const fabricant = carac.fabricant ?? (produitChoisi?.marque || '')
+  const choisir = (valeur) => {
+    setChoix(valeur)
+    setCarac((c) => ({ ...c, fabricant: null }))
+  }
+
+  const onScan = (valeur) => {
+    setNumero(String(valeur || '').trim())
+    setSource('scan')
+    setErreurNumero('')
+    setScanOuvert(false)
+  }
+  const ouvrirScanner = () => {
+    if (!barcodeScanSupported()) { setScanAbsent(true); return }
+    setScanAbsent(false)
+    setScanOuvert(true)
+  }
 
   // Union des séries connues : relevés F9 déjà enregistrés + séries du chantier
   // (parc/checklist). La comparaison est insensible à la casse et aux espaces.
@@ -71,6 +140,15 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   }
 
   const add = async () => {
+    const produit = autreComposant ? null : produitChoisi?.produit_id ?? null
+    const nomComposant = autreComposant
+      ? designation.trim() : (produitChoisi?.designation || '')
+    if (!produit && !nomComposant) {
+      toast.error('Choisissez le composant ou saisissez sa désignation.')
+      return
+    }
+    const caracteristiques = caracteristiquesPropres(carac, fabricant)
+    setErreurNumero('')
     setBusy(true)
     try {
       // VX77 — compresse la photo de plaque AVANT envoi (bord long ≤1600px,
@@ -84,18 +162,27 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
       // plaque part donc dans la file BINAIRE existante (EZ8), sur les photos
       // de l'intervention ; si même ça échoue, on le DIT en français plutôt
       // que de laisser croire qu'elle est partie.
+      // Revue chantier 26/10/2026 — produit, caractéristiques et source de
+      // capture voyagent EN LIGNE comme dans la file hors-ligne.
+      const champs = {
+        ...(produit ? { produit } : {}),
+        designation: nomComposant,
+        numero_serie: numero,
+        ...(Object.keys(caracteristiques).length ? { caracteristiques } : {}),
+        capture_source: source,
+      }
       const r = await withOfflineFallback(
         // ADEP45 — la clé d'idempotence de l'appel en ligne est celle de l'op filée.
         (clientOpId) => installationsApi.ajouterSerial(id, {
-          designation, numero_serie: numero, file, client_op_id: clientOpId }),
-        FIELD_OPS.SERIAL, { intervention: id, designation, numero_serie: numero })
+          ...champs, file, client_op_id: clientOpId }),
+        FIELD_OPS.SERIAL, { intervention: id, ...champs })
       let photoFilee = true
       if (r.queued && file) {
         try {
           await queuePhoto(file, { intervention: id, slot: 'plaque' })
         } catch { photoFilee = false }
       }
-      setDesignation(''); setNumero('')
+      setDesignation(''); setNumero(''); setSource('saisie'); setCarac(CARAC_VIDES)
       if (fileRef.current) fileRef.current.value = ''
       if (r.queued) {
         toast.success(QUEUED_MSG)
@@ -110,7 +197,15 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
       firstFieldRef.current?.focus()
       if (!r.queued) { await load(); onChanged?.() }
     } catch (err) {
-      toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
+      const data = err?.response?.data || {}
+      // Doublon / numéro refusé : affiché sous le champ, pas seulement en toast.
+      const surNumero = Array.isArray(data.numero_serie)
+        ? data.numero_serie[0] : data.numero_serie
+      if (surNumero) setErreurNumero(String(surNumero))
+      const autre = data.detail ?? surNumero
+        ?? (Array.isArray(data.designation) ? data.designation[0] : data.designation)
+        ?? data.caracteristiques
+      toast.error(autre ? String(autre) : 'Enregistrement impossible.')
     } finally { setBusy(false) }
   }
   const remove = async (sid) => {
@@ -123,24 +218,85 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   return (
     <ErrorBoundary>
     <div className="flex flex-col gap-3 py-2 text-sm">
+      {attendus && attendus.nb_attendus > 0 && (
+        <div data-testid="serials-progression"
+          className="flex flex-col gap-1 rounded border border-border p-2">
+          <span className="font-medium">
+            N° de série : {attendus.nb_releves}/{attendus.nb_attendus} relevés
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {produits.map((p) => (
+              <Badge key={p.produit_id} tone={toneProgression(p)}>
+                {p.designation} {Math.min(p.releve, p.attendu)}/{p.attendu}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
       <p className="text-[12px] text-muted-foreground">
-        Photographiez la plaque signalétique et saisissez le numéro de série. Le
-        numéro peut rester vide — il ne bloque jamais la suite.
+        Choisissez le composant, scannez ou saisissez son numéro de série et
+        photographiez la plaque. Le numéro peut rester vide — il ne bloque
+        jamais la suite.
       </p>
       <div className="flex flex-col gap-2 rounded border border-border p-2">
-        <Input ref={firstFieldRef} placeholder="Composant (onduleur, panneau…)"
-          value={designation} onChange={(e) => setDesignation(e.target.value)}
+        {avecListe && (
+          <select aria-label="Composant" value={choixEffectif}
+            onChange={(e) => choisir(e.target.value)}
+            className="h-10 rounded-md border border-border bg-background px-2 text-sm">
+            {produits.map((p) => (
+              <option key={p.produit_id} value={String(p.produit_id)}>
+                {p.designation} ({Math.min(p.releve, p.attendu)}/{p.attendu})
+              </option>
+            ))}
+            <option value={AUTRE_COMPOSANT}>Autre composant</option>
+          </select>
+        )}
+        {autreComposant && (
+          <Input ref={firstFieldRef} placeholder="Composant (onduleur, panneau…)"
+            value={designation} onChange={(e) => setDesignation(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) add() } }} />
+        )}
+        <Button type="button" size="lg" variant="secondary" onClick={ouvrirScanner}>
+          <ScanLine className="size-5" aria-hidden="true" /> Scanner
+        </Button>
+        {scanAbsent && (
+          <span role="status" className="text-[12px] text-muted-foreground">
+            {SCAN_INDISPONIBLE}
+          </span>
+        )}
+        {scanOuvert && (
+          <BarcodeScanner onDetected={onScan} onClose={() => setScanOuvert(false)} />
+        )}
+        <Input ref={autreComposant ? undefined : firstFieldRef}
+          placeholder="N° de série (optionnel)" aria-label="N° de série"
+          value={numero}
+          onChange={(e) => { setNumero(e.target.value); setSource('saisie'); setErreurNumero('') }}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) add() } }} />
-        <Input placeholder="N° de série (optionnel)"
-          value={numero} onChange={(e) => setNumero(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!busy) add() } }} />
-        {isDoublon(numero) && (
+        {erreurNumero && (
+          <span role="alert" className="text-[12px] text-destructive">{erreurNumero}</span>
+        )}
+        {!erreurNumero && isDoublon(numero) && (
           <span className="text-[12px] text-destructive">
             Ce numéro de série existe déjà sur ce chantier (parc ou checklist).
           </span>
         )}
-        <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
-          className="text-[12px]" />
+        <details className="rounded border border-border px-2 py-1">
+          <summary className="cursor-pointer text-[12px]">Caractéristiques</summary>
+          <div className="mt-2 flex flex-col gap-2">
+            <Input placeholder="Modèle" aria-label="Modèle" value={carac.modele}
+              onChange={(e) => setCarac((c) => ({ ...c, modele: e.target.value }))} />
+            <Input placeholder="Puissance (Wc)" aria-label="Puissance (Wc)"
+              inputMode="decimal" value={carac.puissance_wc}
+              onChange={(e) => setCarac((c) => ({ ...c, puissance_wc: e.target.value }))} />
+            <Input placeholder="Fabricant" aria-label="Fabricant" value={fabricant}
+              onChange={(e) => setCarac((c) => ({ ...c, fabricant: e.target.value }))} />
+          </div>
+        </details>
+        <label className="flex flex-col gap-1 text-[12px]">
+          Photo de la plaque
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
+            capture="environment" className="text-[12px]" />
+        </label>
         <Button size="sm" disabled={busy} onClick={add}>
           <Tag className="size-4" aria-hidden="true" /> Ajouter le relevé
         </Button>

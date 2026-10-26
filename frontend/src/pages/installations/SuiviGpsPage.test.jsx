@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest'
 import { render, screen, cleanup, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -13,6 +13,8 @@ const inst = vi.hoisted(() => ({
     data: [{
       id: 1, technicien: 10, technicien_nom: 'ahmed', consent_ref: 'CG-1',
       consent_recorded_at: '2026-07-18T09:00:00Z', is_active: true,
+      accepte_le: null, is_acknowledged: false, statut: 'a_accepter',
+      notice_version: 'v1', recepisse_cndp: '',
     }],
   })),
   createGpsConsentement: vi.fn(() => Promise.resolve({ data: { id: 2 } })),
@@ -44,7 +46,7 @@ const inst = vi.hoisted(() => ({
       data: [{
         id: 5, technicien: 10, technicien_nom: 'ahmed', distance_site_km: '3.20',
         rayon_attendu_km: '1.00', created_at: '2026-07-18T10:00:00Z',
-        acquittee: false, type_franchissement: 'sortie',
+        acquittee: false, type_franchissement: 'sortie', intervention: 12,
       }],
     })
   }),
@@ -52,6 +54,22 @@ const inst = vi.hoisted(() => ({
   getInstallations: vi.fn(() => Promise.resolve({
     data: [{ id: 100, reference: 'CH-2026-001' }],
   })),
+  // Revue chantier 26/10/2026 — tracé du jour, interventions du jour et
+  // présence (forme = contrat committé, posée dans beforeEach).
+  getPositionsTechniciens: vi.fn(() => Promise.resolve({
+    data: [
+      { id: 31, technicien: 10, technicien_nom: 'ahmed', intervention: 12, lat: '33.570000',
+        lng: '-7.580000', accuracy_m: '9.00', captured_at: '2026-10-26T08:10:00+01:00',
+        distance_site_km: '1.200', hors_perimetre: true },
+      { id: 32, technicien: 10, technicien_nom: 'ahmed', intervention: 12, lat: '33.573150',
+        lng: '-7.589800', accuracy_m: '6.00', captured_at: '2026-10-26T08:50:00+01:00',
+        distance_site_km: '0.005', hors_perimetre: false },
+    ],
+  })),
+  getInterventions: vi.fn(() => Promise.resolve({
+    data: { results: [{ id: 12, installation_reference: 'CH-2026-012', technicien_nom: 'ahmed' }] },
+  })),
+  getPresenceIntervention: vi.fn(),
 }))
 vi.mock('../../api/installationsApi', () => ({ default: inst }))
 vi.mock('../../api/crmApi', () => ({
@@ -68,7 +86,12 @@ vi.mock('../../components/MapView', () => ({
 
 import SuiviGpsPage from './SuiviGpsPage'
 import { mockMatchMedia } from '../../test/matchMedia'
+import { reponseContrat } from '../../test/fixtures/contractSamples'
 
+beforeEach(() => {
+  inst.getPresenceIntervention.mockResolvedValue(
+    reponseContrat('installations', 'intervention_presence'))
+})
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 describe('SuiviGpsPage (WIR113)', () => {
@@ -165,5 +188,79 @@ describe('SuiviGpsPage (WIR113)', () => {
       expect.objectContaining({ chantier: '100', type_franchissement: 'sortie' })))
     expect(screen.queryByTestId('presence-1-entree')).not.toBeInTheDocument()
     expect(screen.getByTestId('presence-2-sortie')).toBeInTheDocument()
+  })
+
+  // ── Revue chantier 26/10/2026 ──────────────────────────────────────────
+  it("dit si le technicien a donné son accord ou s'il est attendu", async () => {
+    render(<SuiviGpsPage />)
+    const row = await screen.findByTestId('consentement-1')
+    expect(row.textContent).toContain("En attente d'accord du technicien")
+    expect(row.textContent).toContain('récépissé CNDP non encore déclaré')
+  })
+
+  it('le dialogue transmet la version de la notice et le récépissé CNDP', async () => {
+    const user = userEvent.setup()
+    render(<SuiviGpsPage />)
+    await screen.findByTestId('consentement-1')
+    await user.click(screen.getByRole('button', { name: /Enregistrer un consentement/i }))
+    await user.selectOptions(await screen.findByLabelText('Technicien'), '10')
+    await user.type(screen.getByLabelText(/récépissé de la déclaration CNDP/i), 'D-123/2026')
+    await user.click(screen.getByRole('checkbox'))
+    await user.click(screen.getByRole('button', { name: /^Enregistrer$/i }))
+    await waitFor(() => expect(inst.createGpsConsentement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        technicien: 10, notice_version: 'v1', recepisse_cndp: 'D-123/2026',
+      })))
+  })
+
+  it("carte live : âge des positions et tracé du jour d'un technicien", async () => {
+    const user = userEvent.setup()
+    const ilYa3Min = new Date(Date.now() - 3 * 60000).toISOString()
+    inst.getCarteLivePositions.mockResolvedValue({
+      data: [{
+        id: 40, technicien: 10, technicien_nom: 'ahmed', intervention: 12,
+        lat: '33.573150', lng: '-7.589800', accuracy_m: '6.00',
+        captured_at: ilYa3Min, distance_site_km: '0.005', hors_perimetre: false,
+      }],
+    })
+    try {
+      render(<SuiviGpsPage />)
+      await screen.findByTestId('consentement-1')
+      await user.click(screen.getByRole('tab', { name: /Carte live/i }))
+      const ages = await screen.findByTestId('carte-live-ages')
+      expect(ages.textContent).toContain('ahmed · il y a 3 min')
+      expect(screen.getByText(/plus de 15 min/)).toBeInTheDocument()
+
+      await user.selectOptions(screen.getByLabelText('Tracé du technicien'), '10')
+      await waitFor(() => expect(inst.getPositionsTechniciens).toHaveBeenCalledWith(
+        expect.objectContaining({ technicien: '10', date: expect.any(String) })))
+      expect((await screen.findByTestId('trace-compte')).textContent).toContain('2 relevé(s)')
+    } finally {
+      inst.getCarteLivePositions.mockResolvedValue({ data: [] })
+    }
+  })
+
+  it('alertes : ouvertes par défaut, acquittées sur filtre, lien vers l\'intervention', async () => {
+    const user = userEvent.setup()
+    render(<SuiviGpsPage />)
+    await screen.findByTestId('consentement-1')
+    await user.click(screen.getByRole('tab', { name: /Alertes géofence/i }))
+    const alerte = await screen.findByTestId('alerte-5')
+    expect(alerte.querySelector('a').getAttribute('href')).toBe('/interventions?id=12')
+    await user.selectOptions(screen.getByLabelText('Filtre des alertes'), 'acquittees')
+    expect(screen.queryByTestId('alerte-5')).not.toBeInTheDocument()
+  })
+
+  it("Historique : temps sur site du jour calculé par le serveur (contrat)", async () => {
+    const user = userEvent.setup()
+    render(<SuiviGpsPage />)
+    await screen.findByTestId('consentement-1')
+    await user.click(screen.getByRole('tab', { name: /Historique de présence/i }))
+    const ligne = await screen.findByTestId('presence-interv-12')
+    expect(inst.getPresenceIntervention).toHaveBeenCalledWith(12)
+    // duree_sur_site_min = 404 dans le contrat → « 6 h 44 ».
+    expect(ligne.textContent).toContain('6 h 44')
+    expect(ligne.textContent).toContain('positions GPS')
+    expect(ligne.textContent).toContain('CH-2026-012')
   })
 })

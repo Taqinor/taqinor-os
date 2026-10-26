@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Plus, FileText, Undo2, Package, Copy, RotateCcw, Receipt, LayoutTemplate, ClipboardList,
   Pencil, BadgeCheck, History, AlertTriangle, BarChart3,
@@ -328,6 +328,9 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   // Chantier source (BCF issu d'un besoin matériel) : la note contient
   // « chantier <ref> » — on l'extrait pour la mettre en avant (728).
   const chantierRef = useMemo(() => {
+    // Champ serveur d'abord (chantier_origine_reference) ; la regex sur la
+    // note ne sert que si le champ est absent de la charge utile.
+    if (bcf && 'chantier_origine_reference' in bcf) return bcf.chantier_origine_reference || null
     const m = (bcf?.note ?? note ?? '').match(/chantier\s+([A-Za-z0-9\-/]+)/i)
     return m ? m[1] : null
   }, [bcf, note])
@@ -731,7 +734,10 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             {!isNew && <StatusPill status={statut} label={bcfStatutLabel(statut)} />}
             {chantierRef && (
               <span className="inline-flex items-center gap-1 rounded-md border border-info/30 bg-info/10 px-2 py-0.5 text-xs font-normal text-info">
-                <Package className="size-3" /> Chantier {chantierRef}
+                <Package className="size-3" /> Chantier{' '}
+                {bcf?.chantier_origine
+                  ? <Link className="underline" to={`/chantiers?id=${bcf.chantier_origine}`}>{chantierRef}</Link>
+                  : chantierRef}
               </span>
             )}
           </DialogTitle>
@@ -1278,6 +1284,10 @@ export default function BonsCommandeFournisseur() {
   const voitPrixListe = useVoitPrixAchat()
   const location = useLocation()
   const navigate = useNavigate()
+  // Lien profond `?ref=<référence>` (autres écrans) : filtre la liste sur
+  // cette référence ; le bouton « Réinitialiser » l'enlève.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const refFiltre = searchParams.get('ref') || ''
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [fournisseurs, setFournisseurs] = useState([])
@@ -1374,9 +1384,10 @@ export default function BonsCommandeFournisseur() {
   // (référence / fournisseur) est gérée par le DataTable via globalColumns.
   const rows = useMemo(() => {
     let list = statutFiltre ? items.filter((b) => b.statut === statutFiltre) : items
+    if (refFiltre) list = list.filter((b) => (b.reference ?? '').toLowerCase().includes(refFiltre.toLowerCase()))
     if (filtreRetard) list = list.filter((b) => enRetardIds.has(b.id))
     return list
-  }, [items, statutFiltre, filtreRetard, enRetardIds])
+  }, [items, statutFiltre, filtreRetard, enRetardIds, refFiltre])
   // BCF envoyés en attente de réception (raccourci de filtrage en un clic).
   const attenteReception = useMemo(() => nbEnvoyesNonRecus(items), [items])
 
@@ -1502,8 +1513,16 @@ export default function BonsCommandeFournisseur() {
             <AlertTriangle className="size-3.5" /> En retard ({enRetardIds.size})
           </Button>
         )}
-        {(statutFiltre || filtreRetard) && (
-          <Button variant="ghost" size="sm" onClick={() => { setStatutFiltre(''); setFiltreRetard(false) }}>
+        {refFiltre && (
+          <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs">
+            Référence : {refFiltre}
+          </span>
+        )}
+        {(statutFiltre || filtreRetard || refFiltre) && (
+          <Button variant="ghost" size="sm" onClick={() => {
+            setStatutFiltre(''); setFiltreRetard(false)
+            if (refFiltre) setSearchParams((p) => { const n = new URLSearchParams(p); n.delete('ref'); return n }, { replace: true })
+          }}>
             Réinitialiser
           </Button>
         )}

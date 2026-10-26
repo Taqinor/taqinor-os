@@ -1,5 +1,20 @@
 import api from './axios'
 
+// Corps multipart d'une photo d'intervention (F7) ; geo = lat, lng,
+// accuracy_m, client_ts best-effort (revue chantier 26/10/2026).
+function formulairePhoto(file, slot, phase, geo) {
+  const fd = new FormData()
+  fd.append('file', file)
+  if (slot) fd.append('slot', slot)
+  if (phase) fd.append('phase', phase)
+  const g = geo || {}
+  if (g.lat != null) fd.append('lat', String(g.lat))
+  if (g.lng != null) fd.append('lng', String(g.lng))
+  if (g.accuracy_m != null) fd.append('accuracy_m', String(g.accuracy_m))
+  if (g.client_ts) fd.append('client_ts', g.client_ts)
+  return fd
+}
+
 const installationsApi = {
   // Chantiers
   getInstallations: (params) => api.get('/installations/chantiers/', { params }),
@@ -116,9 +131,17 @@ const installationsApi = {
 
   // N13 — besoin matériel (lecture seule) + création d'un BCF brouillon.
   besoinMateriel: (id) => api.get(`/installations/chantiers/${id}/besoin-materiel/`),
-  commanderBesoin: (id, fournisseurId) =>
+  // Le 2e argument reste compatible : un nombre = id fournisseur (historique) ;
+  // un objet `{ produits: [ids], fournisseurs: { "<produit_id>": <fournisseur_id> } }`
+  // est transmis tel quel (revue chantier 26/10/2026).
+  commanderBesoin: (id, body = {}) =>
     api.post(`/installations/chantiers/${id}/commander-besoin/`,
-      fournisseurId ? { fournisseur: fournisseurId } : {}),
+      body && typeof body === 'object' ? body : { fournisseur: body }),
+  // Revue chantier 26/10/2026 — UNE réponse « approvisionnement » : lignes
+  // (requis/réservé/commandé/reçu/manque), BCF, DA, réservations, verdict
+  // « prêt à poser ». Contrat : contract_samples/chantier_approvisionnement.json.
+  getApprovisionnement: (id) =>
+    api.get(`/installations/chantiers/${id}/approvisionnement/`),
 
   // FG74 — Gantt multi-chantier (lecture seule, jalons par chantier actif).
   getGanttChantiers: () => api.get('/installations/chantiers/gantt/'),
@@ -191,11 +214,10 @@ const installationsApi = {
 
   // F7/F8 — Photos guidées par shot list (stockage objet générique).
   getPhotos: (id) => api.get(`/installations/interventions/${id}/photos/`),
-  ajouterPhoto: (id, file, slot, phase) => {
-    const fd = new FormData()
-    fd.append('file', file)
-    if (slot) fd.append('slot', slot)
-    if (phase) fd.append('phase', phase)
+  // Revue chantier 26/10/2026 — geo optionnel : lat, lng, accuracy_m,
+  // client_ts (best-effort, jamais requis).
+  ajouterPhoto: (id, file, slot, phase, geo) => {
+    const fd = formulairePhoto(file, slot, phase, geo)
     return api.post(`/installations/interventions/${id}/ajouter-photo/`, fd,
       { headers: { 'Content-Type': 'multipart/form-data' } })
   },
@@ -218,7 +240,10 @@ const installationsApi = {
 
   // ── F9 — N° de série par composant (+ OCR swappable no-op) ──
   getSerials: (id) => api.get(`/installations/interventions/${id}/serials/`),
-  ajouterSerial: (id, { produit, designation, slot, numero_serie, file, client_op_id }) => {
+  ajouterSerial: (id, {
+    produit, designation, slot, numero_serie, file, client_op_id,
+    caracteristiques, capture_source,
+  }) => {
     const fd = new FormData()
     // ADEP45 — clé d'idempotence (contrat op_terrain_en_ligne.json).
     if (client_op_id) fd.append('client_op_id', client_op_id)
@@ -226,6 +251,11 @@ const installationsApi = {
     if (designation) fd.append('designation', designation)
     if (slot) fd.append('slot', slot)
     if (numero_serie != null) fd.append('numero_serie', numero_serie)
+    // Revue chantier 26/10/2026 — caractéristiques (JSON) + source.
+    if (caracteristiques && Object.keys(caracteristiques).length) {
+      fd.append('caracteristiques', JSON.stringify(caracteristiques))
+    }
+    if (capture_source) fd.append('capture_source', capture_source)
     if (file) fd.append('file', file)
     return api.post(`/installations/interventions/${id}/ajouter-serial/`, fd,
       { headers: { 'Content-Type': 'multipart/form-data' } })
@@ -737,6 +767,43 @@ const installationsApi = {
     api.post('/installations/controle-qualite-modeles/', data),
   updateControleQualiteModele: (id, data) =>
     api.patch(`/installations/controle-qualite-modeles/${id}/`, data),
+
+  // Demandes d'achat — génération du BCF + plan d'approbation par étapes.
+  genererBcfDemandeAchat: (id, body) =>
+    api.post(`/installations/demandes-achat/${id}/generer-bcf/`, body ?? {}),
+  getEtapesApprobationDA: (id) =>
+    api.get(`/installations/demandes-achat/${id}/etapes-approbation/`),
+  approuverEtapeDA: (id, body) =>
+    api.post(`/installations/demandes-achat/${id}/approuver-etape/`, body ?? {}),
+  rejeterEtapeDA: (id, body) =>
+    api.post(`/installations/demandes-achat/${id}/rejeter-etape/`, body ?? {}),
+
+  // Revue chantier 26/10/2026 — séries attendues vs relevées d'une
+  // intervention (contrat intervention_serials_attendus.json).
+  getSerialsAttendus: (id) =>
+    api.get(`/installations/interventions/${id}/serials-attendus/`),
+
+  // ── Revue chantier 26/10/2026 — suivi GPS automatique (loi 09-08 / CNDP
+  // 17-2014). Le technicien lit la notice et en accuse réception UNE fois ;
+  // ensuite sa position part toute seule pendant les interventions « en
+  // route » / « sur site » (bandeau visible), avec rattrapage hors-ligne par
+  // lot ; il consulte ses propres positions (droit d'accès). Contrats :
+  // apps/installations/contract_samples/gps_mon_consentement.json et
+  // intervention_presence.json. ──
+  getMonConsentementGps: () =>
+    api.get('/installations/gps-consentements/mon-consentement/'),
+  accepterConsentementGps: () =>
+    api.post('/installations/gps-consentements/mon-consentement/accepter/', {}),
+  // `positions` : [{ lat, lng, accuracy_m, captured_at }] (≤ 20) ; les
+  // doublons (même intervention + même heure) sont ignorés serveur.
+  pingPositionsBatch: (interventionId, positions) =>
+    api.post('/installations/positions-techniciens/ping-lot/',
+      { intervention: interventionId, positions }),
+  getMesPositions: (date) =>
+    api.get('/installations/positions-techniciens/mes-positions/',
+      { params: date ? { date } : {} }),
+  getPresenceIntervention: (id) =>
+    api.get(`/installations/interventions/${id}/presence/`),
 }
 
 export default installationsApi

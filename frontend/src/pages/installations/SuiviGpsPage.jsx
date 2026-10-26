@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, lazy, Suspense } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react'
 import {
   MapPin, ShieldCheck, TriangleAlert, PlusCircle, Ban, Check, History,
   LogIn, LogOut,
@@ -63,9 +63,11 @@ function ConsentementsTab({ techniciens }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Le suivi de position n'est possible qu'avec un consentement actif du
-        technicien. Sans consentement, le serveur refuse toute remontée de
-        position — jamais de suivi silencieux.
+        Le suivi de position n&apos;est possible qu&apos;avec un consentement
+        actif ET l&apos;accord du technicien, donné une fois dans « Ma journée »
+        après lecture de la notice (loi 09-08). Il est ensuite automatique
+        pendant les interventions en route / sur site, avec un bandeau visible
+        — jamais de suivi caché.
       </p>
       <div className="flex justify-end">
         <Button size="sm" onClick={() => setShowCreate(true)}>
@@ -84,6 +86,15 @@ function ConsentementsTab({ techniciens }) {
             </Badge>
             <span className="text-sm text-muted-foreground">
               Recueilli le {formatDateTime(r.consent_recorded_at)}
+            </span>
+            {/* Revue chantier 26/10/2026 — l'accusé de réception de la notice
+                vient du TECHNICIEN lui-même (« Ma journée ») ; tant qu'il
+                manque, aucune position n'est relevée. */}
+            {r.is_active && (r.accepte_le
+              ? <Badge tone="success">Accord donné le {formatDateTime(r.accepte_le)}</Badge>
+              : <Badge tone="warning">En attente d&apos;accord du technicien</Badge>)}
+            <span className="text-sm text-muted-foreground">
+              Notice {r.notice_version || 'v1'} · récépissé CNDP {r.recepisse_cndp || 'non encore déclaré'}
             </span>
             {r.consent_ref && <Badge tone="info">{r.consent_ref}</Badge>}
             {!r.is_active && r.revoked_reason && (
@@ -110,6 +121,8 @@ function ConsentementsTab({ techniciens }) {
 function ConsentementDialog({ techniciens, onClose, onCreated }) {
   const [technicien, setTechnicien] = useState('')
   const [consentRef, setConsentRef] = useState('')
+  const [noticeVersion, setNoticeVersion] = useState('v1')
+  const [recepisse, setRecepisse] = useState('')
   const [confirme, setConfirme] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -124,6 +137,7 @@ function ConsentementDialog({ techniciens, onClose, onCreated }) {
     try {
       await installationsApi.createGpsConsentement({
         technicien: Number(technicien), consent_ref: consentRef || '',
+        notice_version: noticeVersion, recepisse_cndp: recepisse.trim(),
       })
       onCreated?.()
     } catch (err) {
@@ -149,13 +163,29 @@ function ConsentementDialog({ techniciens, onClose, onCreated }) {
         </label>
         <input id="gps-ref" type="text" className="form-control" value={consentRef}
           onChange={(e) => setConsentRef(e.target.value)} />
+        <label className="form-label" htmlFor="gps-notice-version">
+          Version de la notice d&apos;information
+        </label>
+        <select id="gps-notice-version" className="form-control" value={noticeVersion}
+          onChange={(e) => setNoticeVersion(e.target.value)}>
+          <option value="v1">v1 — notice en vigueur</option>
+        </select>
+        <label className="form-label" htmlFor="gps-recepisse">
+          N° de récépissé de la déclaration CNDP (vide = « non encore déclaré »)
+        </label>
+        <input id="gps-recepisse" type="text" className="form-control" value={recepisse}
+          maxLength={60} onChange={(e) => setRecepisse(e.target.value)} />
+        <p className="text-sm text-muted-foreground">
+          Le technicien devra ensuite lire la notice et donner son accord dans
+          « Ma journée » : aucune position n&apos;est relevée avant.
+        </p>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={confirme}
             onChange={(e) => setConfirme(e.target.checked)} />
           <span>
-            Je confirme que ce technicien a donné son accord explicite au suivi
-            de sa position pendant ses interventions, et qu'il peut le retirer à
-            tout moment.
+            Je confirme que ce technicien a été informé et a donné son accord
+            explicite au suivi de sa position pendant ses interventions, et
+            qu&apos;il peut en demander le retrait à un responsable.
           </span>
         </label>
         {error && <p className="form-error" role="alert">{error}</p>}
@@ -171,38 +201,151 @@ function ConsentementDialog({ techniciens, onClose, onCreated }) {
 }
 
 // ── Carte live ──────────────────────────────────────────────────────────────
-function CarteLiveTab() {
-  const { rows, loading, error } = useFilteredList(installationsApi.getCarteLivePositions)
+// Revue chantier 26/10/2026 — la carte se rafraîchit toute seule (30 s), dit
+// l'âge de chaque position (« il y a 3 min ») et n'affiche que les positions
+// de moins de 15 min (filtre SERVEUR `max_age_min`, défaut 15) ; un
+// technicien + une date dessinent le tracé de sa journée.
+const RAFRAICHISSEMENT_MS = 30 * 1000
+const AGE_MAX_MIN = 15
+
+function ageRelatif(iso, maintenant) {
+  if (!iso || !maintenant) return ''
+  const minutes = Math.max(0, Math.round((maintenant - new Date(iso).getTime()) / 60000))
+  if (minutes < 1) return "à l'instant"
+  if (minutes < 60) return `il y a ${minutes} min`
+  return `il y a ${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')}`
+}
+
+function popupPosition(p, maintenant) {
+  // ERR26 — échapper chaque valeur serveur avant de l'injecter dans le HTML.
+  return '<div style="margin-top:4px;color:#475569;font-size:0.8rem">'
+    + `Relevé ${escapeHtml(formatDateTime(p.captured_at))}`
+    + (maintenant ? ` (${escapeHtml(ageRelatif(p.captured_at, maintenant))})` : '')
+    + (p.distance_site_km != null
+      ? `<br/>${escapeHtml(String(p.distance_site_km))} km du site` : '')
+    + (p.hors_perimetre ? '<br/>Hors périmètre' : '')
+    + '</div>'
+}
+
+function todayIso() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function CarteLiveTab({ techniciens }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+  // Horodatage du dernier chargement : sert à calculer l'âge (jamais
+  // `Date.now()` pendant le rendu).
+  const [maintenant, setMaintenant] = useState(null)
+  const [technicien, setTechnicien] = useState('')
+  const [jour, setJour] = useState(todayIso)
+  const [trace, setTrace] = useState([])
+
+  // Rafraîchissement silencieux : la carte n'est jamais démontée entre deux
+  // relevés (pas de « chargement » toutes les 30 s).
+  const dejaChargeRef = useRef(false)
+  useEffect(() => {
+    let vivant = true
+    const charger = () => installationsApi.getCarteLivePositions()
+      .then((r) => {
+        if (!vivant) return
+        dejaChargeRef.current = true
+        setRows(Array.isArray(r?.data) ? r.data : (r?.data?.results ?? []))
+        setMaintenant(Date.now())
+        setError(null)
+      })
+      // Un raté de rafraîchissement garde la dernière carte (pas d'écran
+      // d'erreur toutes les 30 s sur un réseau capricieux).
+      .catch(() => { if (vivant && !dejaChargeRef.current) setError('Chargement impossible.') })
+      .finally(() => { if (vivant) setLoading(false) })
+    charger()
+    const id = setInterval(charger, RAFRAICHISSEMENT_MS)
+    return () => { vivant = false; clearInterval(id) }
+  }, [])
+
+  useEffect(() => {
+    if (!technicien || !jour) return undefined
+    let vivant = true
+    installationsApi.getPositionsTechniciens({ technicien, date: jour })
+      .then((r) => {
+        if (!vivant) return
+        setTrace(Array.isArray(r?.data) ? r.data : (r?.data?.results ?? []))
+      })
+      .catch(() => { if (vivant) setTrace([]) })
+    return () => { vivant = false }
+  }, [technicien, jour])
 
   const located = useMemo(
     () => rows.filter((p) => p.lat != null && p.lng != null), [rows])
+  const traceAffichee = useMemo(() => (technicien ? trace : []), [technicien, trace])
 
-  const markers = useMemo(() => located.map((p) => ({
-    id: p.id,
-    lat: Number(p.lat),
-    lng: Number(p.lng),
-    label: p.technicien_nom || `#${p.technicien}`,
-    color: p.hors_perimetre ? MARKER_HORS : MARKER_OK,
-    // ERR26 — échapper chaque valeur serveur avant de l'injecter dans le HTML.
-    popupHtml: '<div style="margin-top:4px;color:#475569;font-size:0.8rem">'
-      + `Relevé ${escapeHtml(formatDateTime(p.captured_at))}`
-      + (p.distance_site_km != null
-        ? `<br/>${escapeHtml(String(p.distance_site_km))} km du site` : '')
-      + (p.hors_perimetre ? '<br/>Hors périmètre' : '')
-      + '</div>',
-  })), [located])
+  const markers = useMemo(() => {
+    const live = located.map((p) => ({
+      id: p.id,
+      lat: Number(p.lat),
+      lng: Number(p.lng),
+      label: `${p.technicien_nom || `#${p.technicien}`} · ${ageRelatif(p.captured_at, maintenant)}`,
+      color: p.hors_perimetre ? MARKER_HORS : MARKER_OK,
+      popupHtml: popupPosition(p, maintenant),
+    }))
+    if (traceAffichee.length === 0) return live
+    const premier = traceAffichee[0]
+    const dernier = traceAffichee[traceAffichee.length - 1]
+    return live.concat([
+      { id: `debut-${premier.id}`, lat: Number(premier.lat), lng: Number(premier.lng),
+        label: `Début ${formatDateTime(premier.captured_at)}`, color: '#2563eb',
+        popupHtml: popupPosition(premier, null) },
+      { id: `fin-${dernier.id}`, lat: Number(dernier.lat), lng: Number(dernier.lng),
+        label: `Dernier relevé ${formatDateTime(dernier.captured_at)}`, color: '#2563eb',
+        popupHtml: popupPosition(dernier, null) },
+    ])
+  }, [located, maintenant, traceAffichee])
+
+  const path = useMemo(
+    () => traceAffichee.map((p) => [Number(p.lat), Number(p.lng)]), [traceAffichee])
 
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Dernière position connue par technicien consentant ({located.length} affiché(s)).
-        Marqueur rouge = hors du périmètre du site de l'intervention.
+        Dernière position par technicien, rafraîchie toutes les 30 s
+        ({located.length} affiché(s)). Les positions de plus de {AGE_MAX_MIN} min
+        sont masquées : un technicien hors intervention n&apos;est pas suivi.
+        Marqueur rouge = hors du périmètre du site de l&apos;intervention.
       </p>
+      <div className="flex flex-wrap gap-3">
+        <select value={technicien} onChange={(e) => setTechnicien(e.target.value)}
+          aria-label="Tracé du technicien"
+          className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+          <option value="">— Tracé d&apos;un technicien —</option>
+          {techniciens.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}
+        </select>
+        <input type="date" value={jour} onChange={(e) => setJour(e.target.value)}
+          aria-label="Jour du tracé"
+          className="h-9 rounded-md border border-border bg-card px-3 text-sm" />
+        {technicien && (
+          <span className="self-center text-sm text-muted-foreground" data-testid="trace-compte">
+            {traceAffichee.length} relevé(s) ce jour-là
+          </span>
+        )}
+      </div>
+      {located.length > 0 && (
+        <ul className="flex flex-wrap gap-2 text-sm" data-testid="carte-live-ages">
+          {located.map((p) => (
+            <li key={p.id}>
+              <Badge tone={p.hors_perimetre ? 'danger' : 'success'}>
+                {p.technicien_nom || `#${p.technicien}`} · {ageRelatif(p.captured_at, maintenant)}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
       <ListShell loading={loading} error={error} icon={MapPin}
-        empty="Aucune position remontée">
-        {located.length > 0 && (
+        empty={`Aucune position de moins de ${AGE_MAX_MIN} min`}>
+        {(located.length > 0 || traceAffichee.length > 0) && (
           <Suspense fallback={<p className="page-loading"><Spinner /> Chargement de la carte…</p>}>
-            <MapView markers={markers} />
+            <MapView markers={markers} path={path.length > 1 ? path : null} />
           </Suspense>
         )}
       </ListShell>
@@ -220,20 +363,36 @@ function AlertesTab() {
     (p) => installationsApi.getGeofenceAlertes({ ...p, type_franchissement: 'sortie' }),
   )
 
+  const [filtre, setFiltre] = useState('ouvertes')
+
   const acquitter = async (id) => {
     await installationsApi.acquitterGeofenceAlerte(id).catch(() => {})
     reload()
   }
 
+  // Revue chantier 26/10/2026 — ouvertes d'abord (une seule par
+  // intervention jusqu'à une ré-entrée), acquittées consultables.
+  const visibles = rows.filter((a) => (
+    filtre === 'toutes' ? true : filtre === 'ouvertes' ? !a.acquittee : a.acquittee))
+  const nbOuvertes = rows.filter((a) => !a.acquittee).length
+
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Une alerte est levée quand la position remontée s'éloigne du site de
-        l'intervention au-delà du rayon attendu.
+        Une alerte est levée quand, pendant une intervention SUR SITE, la
+        position du technicien sort du rayon du chantier (une seule alerte
+        ouverte jusqu&apos;à son retour ; le responsable est notifié).
       </p>
+      <select value={filtre} onChange={(e) => setFiltre(e.target.value)}
+        aria-label="Filtre des alertes"
+        className="h-9 w-fit rounded-md border border-border bg-card px-3 text-sm">
+        <option value="ouvertes">Ouvertes ({nbOuvertes})</option>
+        <option value="acquittees">Acquittées</option>
+        <option value="toutes">Toutes</option>
+      </select>
       <ListShell loading={loading} error={error} icon={TriangleAlert}
-        empty="Aucune alerte de géofence">
-        {rows.length > 0 && rows.map((a) => (
+        empty={filtre === 'ouvertes' ? 'Aucune alerte ouverte' : 'Aucune alerte de géofence'}>
+        {visibles.length > 0 && visibles.map((a) => (
           <div key={a.id}
             className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3"
             data-testid={`alerte-${a.id}`}>
@@ -247,6 +406,10 @@ function AlertesTab() {
             <span className="text-sm text-muted-foreground">
               {formatDateTime(a.created_at)}
             </span>
+            <a className="text-sm text-primary underline"
+              href={`/interventions?id=${a.intervention}`}>
+              Voir l&apos;intervention #{a.intervention}
+            </a>
             {!a.acquittee && (
               <Button size="sm" variant="outline" className="ml-auto"
                 onClick={() => acquitter(a.id)}>
@@ -274,6 +437,94 @@ const TYPE_FRANCHISSEMENT = [
   { value: 'entree', label: 'Entrées' },
   { value: 'sortie', label: 'Sorties' },
 ]
+
+// Revue chantier 26/10/2026 — temps passé sur site, par intervention du jour,
+// calculé SERVEUR (`interventions/<id>/presence/`, contrat
+// intervention_presence.json) ; la source du début est toujours dite.
+const SOURCE_DEBUT = {
+  positions: 'positions GPS',
+  alertes: 'franchissements (positions purgées)',
+  pointage: 'pointage manuel',
+}
+const PRESENCE_MAX_INTERVENTIONS = 50
+
+function heure(iso) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function dureeLisible(minutes) {
+  if (minutes == null) return '—'
+  const h = Math.floor(minutes / 60)
+  return h ? `${h} h ${String(minutes % 60).padStart(2, '0')}` : `${minutes} min`
+}
+
+function PresenceDuJour() {
+  const [jour, setJour] = useState(todayIso)
+  const [lignes, setLignes] = useState(null)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    if (!jour) return undefined
+    let vivant = true
+    installationsApi.getInterventions({ date_prevue: jour, page_size: PRESENCE_MAX_INTERVENTIONS })
+      .then((r) => {
+        const intervs = (Array.isArray(r?.data) ? r.data : (r?.data?.results ?? []))
+          .slice(0, PRESENCE_MAX_INTERVENTIONS)
+        return Promise.all(intervs.map((iv) => installationsApi.getPresenceIntervention(iv.id)
+          .then((p) => ({ interv: iv, presence: p.data }))
+          .catch(() => ({ interv: iv, presence: null }))))
+      })
+      .then((res) => { if (vivant) { setLignes(res); setError(null) } })
+      .catch(() => { if (vivant) setError('Chargement impossible.') })
+    return () => { vivant = false }
+  }, [jour])
+
+  return (
+    <div className="flex flex-col gap-2" data-testid="presence-du-jour">
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="text-sm font-semibold">Temps sur site du jour</h3>
+        <input type="date" value={jour} onChange={(e) => setJour(e.target.value)}
+          aria-label="Jour de présence"
+          className="h-9 rounded-md border border-border bg-card px-3 text-sm" />
+      </div>
+      <ListShell loading={lignes === null && !error} error={error} icon={History}
+        empty="Aucune intervention ce jour-là">
+        {lignes?.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-muted-foreground">
+                  <th className="p-2">Intervention</th>
+                  <th className="p-2">Technicien</th>
+                  <th className="p-2">Arrivée</th>
+                  <th className="p-2" title="Dernière position relevée dans le rayon du chantier">Dernier relevé sur site</th>
+                  <th className="p-2">Sur site</th>
+                  <th className="p-2">Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.map(({ interv, presence }) => (
+                  <tr key={interv.id} className="border-t border-border"
+                    data-testid={`presence-interv-${interv.id}`}>
+                    <td className="p-2">{interv.installation_reference || `#${interv.id}`}</td>
+                    <td className="p-2">{interv.technicien_nom || '—'}</td>
+                    <td className="p-2">{heure(presence?.premiere_entree)}</td>
+                    <td className="p-2">{heure(presence?.derniere_sortie)}</td>
+                    <td className="p-2">{dureeLisible(presence?.duree_sur_site_min)}</td>
+                    <td className="p-2 text-muted-foreground">
+                      {presence ? (SOURCE_DEBUT[presence.source_debut] || 'aucun relevé') : 'indisponible'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </ListShell>
+    </div>
+  )
+}
 
 function HistoriquePresenceTab() {
   const [chantiers, setChantiers] = useState([])
@@ -312,6 +563,7 @@ function HistoriquePresenceTab() {
 
   return (
     <div className="flex flex-col gap-3">
+      <PresenceDuJour />
       <p className="text-sm text-muted-foreground">
         Entrées/sorties de périmètre par chantier, journalisées par le serveur
         à chaque franchissement détecté (NTMOB9).
@@ -389,7 +641,7 @@ export default function SuiviGpsPage() {
           <ConsentementsTab techniciens={techniciens} />
         </TabsContent>
         <TabsContent value="carte">
-          <CarteLiveTab />
+          <CarteLiveTab techniciens={techniciens} />
         </TabsContent>
         <TabsContent value="alertes">
           <AlertesTab />

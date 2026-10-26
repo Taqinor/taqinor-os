@@ -137,7 +137,9 @@ describe('SerialsPanel — WIR210 hors-ligne (F9)', () => {
 
     await waitFor(() => expect(outbox.enqueue).toHaveBeenCalledWith(
       'intervention.serial',
-      { intervention: 42, designation: 'Onduleur', numero_serie: 'SN-1234' },
+      // Revue chantier 26/10/2026 — la source de capture voyage aussi.
+      { intervention: 42, designation: 'Onduleur', numero_serie: 'SN-1234',
+        capture_source: 'saisie' },
     ))
     expect(toasts.success).toHaveBeenCalledWith(
       'Hors ligne — enregistré, synchro au retour du réseau.')
