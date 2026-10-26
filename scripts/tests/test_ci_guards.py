@@ -368,6 +368,12 @@ class RegistresDeriveTests(unittest.TestCase):
             with self.subTest(script=script):
                 self.assertIn(f"python scripts/{script} --check", commandes)
 
+    def test_garde_des_parcours_dans_stage_names(self):
+        """AMET98 - les tables de parcours sont validees globalement dans stage-names."""
+        commandes = [c for _n, c, _w in ci_guards.GARDES["stage-names"]]
+        self.assertIn("python scripts/check_parcours.py", commandes)
+        self.assertIn("python -m unittest scripts.tests.test_check_parcours -v", commandes)
+
 
 class TypeDeCleTests(unittest.TestCase):
     """AMET100 - toute garde qui lit une baseline / allowlist declare `TYPE_DE_CLE` (lu par
