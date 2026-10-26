@@ -185,6 +185,12 @@ def _valeur_hypothese(h, fmt, L):
     return ci_blocs._txt(valeur)
 
 
+#: Décision fondateur 26/10/2026 — codes de source (AMOT84) qui ne sont
+#: qu'une réserve interne : la valeur est imprimée, jamais cette source.
+CODES_SOURCES_RESERVE = frozenset({
+    "indexation_constante", "degradation_defaut_fiche_muette",
+    "degradation_fiche_sans_annee1"})
+
 #: AMOT91 — hypothèses du flux dont le montant est déjà imprimé ailleurs sur
 #: le document commercial (couverture, page 2) : hors du tableau compact.
 CLES_MONTANTS_FLUX = ("investissement_mad", "economie_annee1_mad",
@@ -223,6 +229,12 @@ def _rangees_flux(flux, fmt, L, d, compact):
         # est imprimée dans la langue du document ; le texte servi en repli.
         source = _texte_code(d, L, h.get("source_code"),
                              ci_couverture.texte_client(d, h.get("source")))
+        # Décision fondateur 26/10/2026 — une source qui n'est qu'une
+        # réserve interne (« défaut, fiche muette », « tarif de vente
+        # constant (hypothèse) »…) n'est pas imprimée : la valeur seule.
+        if h.get("source_code") in CODES_SOURCES_RESERVE:
+            source = ""
+        source = ci_couverture.sans_reserve(source)
         rangees.append((L(cat, fr), valeur + (f" — {source}" if source
                                               else "")))
     return rangees
@@ -243,7 +255,8 @@ def _rangees_argent(argent, fmt_mad, L, d):
         if tarif_txt:
             rangees.append((L("ci_h_prix_kwh", "Prix du kWh"), tarif_txt))
         elif h.get("valeur"):
-            source = ci_couverture.texte_client(d, h.get("source"))
+            source = ci_couverture.sans_reserve(
+                ci_couverture.texte_client(d, h.get("source")))
             rangees.append((
                 L("ci_h_valorisation", "Valorisation de vos kWh")
                 if h.get("cle") == "valorisation" else None,
@@ -264,8 +277,9 @@ def _rangees_argent(argent, fmt_mad, L, d):
         cle_composant = f"ci_garantie_{composant}"
         if ci_blocs.langue(d) != "fr" and cle_composant in _cles_catalogue():
             composant = L(cle_composant, composant)
-        motif = (f" — {ci_couverture.texte_client(d, r.get('motif'))}"
-                 if r.get("motif") else "")
+        motif = ci_couverture.sans_reserve(
+            ci_couverture.texte_client(d, r.get("motif")))
+        motif = f" — {motif}" if motif else ""
         rangees.append((
             L("ci_ind_remplacement", "Remplacement {composant} en année "
               "{annee}", composant=composant,
@@ -297,8 +311,8 @@ def _rangees_estimation(synthese, L):
                        L("ci_h_azimut", "azimut {a}° (0° = plein sud)",
                          a=_decimal_txt(azimut)))
         rangees.append((titre, L(
-            "ci_h_base_pvgis", "{incl}° d'inclinaison, {orientation} — à "
-            "confirmer au calepinage", orientation=orientation,
+            "ci_h_base_pvgis", "{incl}° d'inclinaison, {orientation}",
+            orientation=orientation,
             incl=_decimal_txt(_num(prod["inclinaison_deg"])))))
     rangees += _rangee_methode(estimation, L)
     dim = estimation.get("dimensionnement") or {}
@@ -321,7 +335,7 @@ def _rangee_methode(estimation, L):
                 "heure sur l'année type (8 760 h)")
               if methode == "horaire_8760" else
               L("ci_h_methode_journees", "autoconsommation : estimation sur "
-                "journées moyennes (série horaire indisponible)"))
+                "journées moyennes"))
     return [(L("ci_h_methode_autoconso", "Méthode de calcul"), valeur)]
 
 
@@ -330,11 +344,17 @@ def _rangee_om(argent, fmt_mad, L):
     seulement souscrit et chiffré (CIQ342), sinon « non déduit »
     (accordé à « entretien »)."""
     om = argent.get("om") if isinstance(argent, dict) else None
-    # AMOT96 — l'entretien minimum servi : déduit (il remplace la phrase),
-    # ou « entretien non chiffré » (seul sans O&M au devis).
+    # AMOT96 — l'entretien minimum servi : déduit (il remplace la phrase).
+    # Décision fondateur 26/10/2026 — « entretien non chiffré » n'est plus
+    # imprimé (réserve interne) : avec une option O&M au devis, la rangée dit
+    # « non déduit des économies » ; SANS option O&M, aucune rangée (la règle
+    # d'hier : aucun mot « O&M » sans option).
     entretien = _ligne_entretien(argent, fmt_mad, L)
     if not isinstance(om, dict) and entretien:
         return [(None, entretien)]
+    if not isinstance(om, dict) and isinstance(
+            (argent or {}).get("entretien"), dict):
+        return []
     om = om if isinstance(om, dict) else {}
     montant = _num(om.get("montant_mad_an"))
     valeur = (L("ci_h_om_deduite", "déduit des économies : {montant} MAD/an",
@@ -367,7 +387,9 @@ def _ligne_entretien(argent, fmt_mad, L):
         return L("ci_entretien_minimum", "entretien minimum à votre charge "
                  "(réglage société) : {montant} MAD/an, déduit des économies",
                  montant=fmt_mad(_entretien_deduit(argent)))
-    return L("ci_entretien_non_chiffre", "entretien non chiffré")
+    # Décision fondateur 26/10/2026 — « entretien non chiffré » (réserve
+    # interne) n'est plus imprimé au client.
+    return ""
 
 
 def rangees_hypotheses(d, synthese, fmt, fmt_mad, L, *, compact=False,
@@ -882,7 +904,7 @@ def build(ctx):
   {bloc_energie_mensuelle(d, synthese, couleurs_gr, f_sans, fmt, "i2", hauteur=90, largeur_mm=182)}
   <div class="i2-foot">
     {(om_txt + '. ') if om_txt else ''}{pied}.
-    {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle) ; prix ferme, économies estimées.")}
+    {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle).")}
     {mt_source}
   </div>"""
         lead_txt = L("ci_ind_lead_client",

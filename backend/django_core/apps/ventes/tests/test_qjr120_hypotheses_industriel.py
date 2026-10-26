@@ -197,7 +197,12 @@ class TestEtudePerimeeQjr625(TestCase):
         self.assertEqual(data['etude'].get('kwc'), 100.11)
         self.assertNotIn('taux_autoconso', data['etude'])
         self.assertNotIn('62 %', txt)
-        self.assertIn('étude détaillée de votre site à finaliser', txt)
+        # Décision fondateur 26/10/2026 — la liste « À confirmer : … » (dont
+        # « étude détaillée de votre site à finaliser : chiffres
+        # préliminaires ») n'est plus imprimée : le bandeau « Devis
+        # préliminaire », imprimé sur tout document C&I, le dit à sa place.
+        self.assertNotIn('étude détaillée de votre site à finaliser', txt)
+        self.assertIn('Devis préliminaire', txt)
         self.assertNotIn("étude industrielle périmée — relancer l'étude",
                          data.get('avertissements_internes') or [])
 

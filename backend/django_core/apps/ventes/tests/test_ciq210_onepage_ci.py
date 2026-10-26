@@ -181,7 +181,8 @@ class Amot82OnePageSousReserve(SimpleTestCase):
     bandeau de la couverture et la ligne de méthode sous les cartes ; sans
     réserve, ni l'un ni l'autre ; plus jamais « Prix ONEE en hausse »."""
 
-    BANDEAU = "Estimation sous réserve de la visite technique"
+    BANDEAU = ("Devis préliminaire — les prix pourront être ajustés après "
+               "la visite technique")
 
     def test_sous_reserve_bandeau_et_methode(self):
         for mode, *_ in GABARITS:
@@ -197,14 +198,16 @@ class Amot82OnePageSousReserve(SimpleTestCase):
             with self.subTest(mode=mode):
                 data, html = _onepage_reserve(mode, False)
                 methode = chiffres_cles(synthese_ci(data))["libelle_methode"]
-                self.assertNotIn(self.BANDEAU, unescape(html))
+                # Décision fondateur 26/10/2026 — « Devis préliminaire » sur
+                # TOUT une-page C&I ; la méthode reste réservée à la réserve.
+                self.assertIn(self.BANDEAU, unescape(html))
                 self.assertNotIn(methode, unescape(html))
                 self.assertNotIn("Prix ONEE en hausse", unescape(html))
 
     def test_traduit_en_anglais(self):
         _data, html = _onepage_reserve("industriel", True, langue_sortie="en")
-        self.assertIn("Estimate subject to the technical site visit",
-                      unescape(html))
+        self.assertIn("Preliminary quote — prices may be adjusted after the "
+                      "technical site visit", unescape(html))
         self.assertNotIn(self.BANDEAU, unescape(html))
 
     @tag("weasyprint")  # rendu PDF réel

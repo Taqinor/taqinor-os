@@ -697,6 +697,23 @@ describe('CIW406 — sections pro : corps POST', () => {
     expect((out.releve_conso as { mois: unknown[] }).mois.length).toBeLessThanOrEqual(12);
   });
 
+  it('réseau : contrat, option bi-horaire (force motrice seulement) et phase en listes fermées', () => {
+    const fm = buildSectionReponses('reseau', {
+      contrat_electricite: 'bt_force_motrice', option_tarifaire_bt: 'bi_horaire', raccordement: 'triphase',
+    });
+    expect(fm).toEqual({ contrat_electricite: 'bt_force_motrice', option_tarifaire_bt: 'bi_horaire', raccordement: 'triphase' });
+    const patente = buildSectionReponses('reseau', {
+      contrat_electricite: 'bt_patente', option_tarifaire_bt: 'bi_horaire', raccordement: 'tri',
+    });
+    expect(patente.contrat_electricite).toBe('bt_patente');
+    expect(patente.option_tarifaire_bt).toBeUndefined();
+    // le vocabulaire résidentiel (mono/tri) n'est pas un choix de la section « reseau »
+    expect(patente.raccordement).toBeUndefined();
+    expect(buildSectionReponses('reseau', { facture_hiver: '4200' }).facture_hiver).toBe(4200);
+    expect(buildSectionReponses('reseau', { facture_hiver: '-5' }).facture_hiver).toBeUndefined();
+    expect(buildSectionReponses('reseau', { contrat_electricite: 'ht' }).contrat_electricite).toBeUndefined();
+  });
+
   it('activité commerciale : catégorie + SEULES ses clés fermées, typées', () => {
     const out = buildSectionReponses('activite', {
       categorie_commerciale: 'hotel',
@@ -741,6 +758,12 @@ describe('CIW406 — sections pro : corps POST', () => {
     expect(out.reponses_categorie).toBeUndefined();
   });
 
+  it('activité : « nous ne fermons jamais » = liste vide ; des mois choisis priment', () => {
+    expect(buildSectionReponses('activite', { fermeture_mois: [], fermeture_aucune: true }).fermeture_mois).toEqual([]);
+    expect(buildSectionReponses('activite', { fermeture_mois: [8], fermeture_aucune: true }).fermeture_mois).toEqual([8]);
+    expect(buildSectionReponses('activite', { fermeture_mois: [] }).fermeture_mois).toBeUndefined();
+  });
+
   it('une consigne de froid négative est conservée (−18 °C)', () => {
     const out = buildSectionReponses('activite', {
       categorie_commerciale: 'froid', reponses_categorie: { temperature_consigne: '-18', volume_m3: '900' },
@@ -753,6 +776,10 @@ describe('CIW406 — sections pro : corps POST', () => {
     expect(out).toEqual({ type_surface: 'ombriere', type_toiture: 'bac_acier', surface_toiture_m2: 650 });
     // le vocabulaire résidentiel (villa…) n'est pas un choix de la section « site »
     expect(buildSectionReponses('site', { type_toiture: 'villa' }).type_toiture).toBeUndefined();
+    // Fondateur 26/10/2026 — pente (0 = plat, < 90) et orientation fermée.
+    expect(buildSectionReponses('site', { inclinaison_deg: '0', orientation: 'sud_est' }))
+      .toEqual({ inclinaison_deg: 0, orientation: 'sud_est' });
+    expect(buildSectionReponses('site', { inclinaison_deg: '95', orientation: 'nord' })).toEqual({});
   });
 
   it('société : identité complète, e-mail secondaire validé, TVA en liste fermée', () => {
@@ -813,6 +840,9 @@ describe('CIW406 — contrat : exemple_pro et choix fermés', () => {
     const lib = await import('../src/lib/questionnaire');
     expect([...lib.TENSION_VALUES]).toEqual(choix('tension_raccordement'));
     expect([...lib.TYPE_SURFACE_VALUES]).toEqual(choix('type_surface'));
+    expect([...lib.CONTRAT_ELECTRICITE_VALUES]).toEqual(choix('contrat_electricite'));
+    expect([...lib.OPTION_TARIFAIRE_BT_VALUES]).toEqual(choix('option_tarifaire_bt'));
+    expect([...lib.PHASE_PRO_VALUES]).toEqual(choix('raccordement'));
     expect([...lib.TYPE_TOITURE_PRO_VALUES]).toEqual(choix('type_toiture'));
     expect([...lib.REGIME_EQUIPES_VALUES]).toEqual(choix('regime_equipes'));
     expect([...lib.TVA_RECUPERABLE_VALUES]).toEqual(choix('tva_recuperable'));

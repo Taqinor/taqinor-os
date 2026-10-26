@@ -288,7 +288,8 @@ def page_onepage(items, tronquees=0):
         # AMOT82 (D-ACI-10=a) — une-page C&I « sous réserve de visite » : le
         # bandeau de la couverture puis la ligne de méthode des taux, sous les
         # cartes (deux lignes fines ; la densité adaptative des lignes produit
-        # garde la page unique). Sans réserve : rien, octet pour octet.
+        # garde la page unique). Décision fondateur 26/10/2026 : le bandeau
+        # « Devis préliminaire » est imprimé même sans réserve.
         summary_html = (
             f'<div style="display:flex;background:{_g.CAL};border-bottom:2px solid {_g.CA};'
             f'padding:8px 24px;">{cells}</div>'
@@ -296,14 +297,17 @@ def page_onepage(items, tronquees=0):
                 f'<div style="padding:2px 24px;font-size:6.5pt;color:{_g.CG7};'
                 f'line-height:1.3;">{texte}</div>'
                 for texte in (
+                    # Décision fondateur 26/10/2026 — « Devis préliminaire »
+                    # sur TOUT une-page C&I ; la méthode, seulement sous
+                    # réserve (inchangé).
                     [f"<b>{_g._L('op_reserve_visite')}</b>"]
                     + ([_g._L(f"ci_methode_{_g.CHIFFRES_CI['methode']}")
                         if f"ci_methode_{_g.CHIFFRES_CI['methode']}"
                         in _g.i18n_labels.LIBELLES
                         else _g.CHIFFRES_CI["libelle_methode"]]
-                       if _g.CHIFFRES_CI.get("libelle_methode") else [])
-                    if isinstance(_g.CHIFFRES_CI, dict)
-                    and _g.CHIFFRES_CI.get("sous_reserve") else ())))
+                       if _g.CHIFFRES_CI.get("libelle_methode")
+                       and _g.CHIFFRES_CI.get("sous_reserve") else [])
+                    if isinstance(_g.CHIFFRES_CI, dict) else ())))
 
     # Build table rows (per-line HT, with description + warranty detail lines).
     # Densité ADAPTATIVE pour tenir sur UNE page quoi qu'il arrive :

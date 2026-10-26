@@ -749,6 +749,19 @@ class TestInterventionF3(TestCase):
             n = self.api.post(url, corps, format='json')
             self.assertEqual(n.status_code, 400, (corps, n.content))
 
+    def test_compte_rendu_nul_publie_et_refuse(self):
+        # api-fuzz-full 26/10 : le schéma publie le motif sans NUL
+        # (``ChaineStricte``) — le 400 n'est plus « rejected schema-compliant ».
+        from core.champs_stricts import ChaineStricte
+        from apps.installations.serializers import InterventionSerializer
+        self.assertIsInstance(
+            InterventionSerializer().fields['compte_rendu'], ChaineStricte)
+        r = self._create_interv(compte_rendu='a\x00b')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('compte_rendu', r.data)
+        self.assertEqual(
+            self._create_interv(compte_rendu='RAS').status_code, 201)
+
     def test_cloturee_notifiee_le_jamais_du_corps(self):
         # api-fuzz full : horodatage posé par le service de clôture — l'an
         # 1194 rendait un décalage LMT hors RFC 3339 (réponse hors schéma).

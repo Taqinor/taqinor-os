@@ -377,6 +377,15 @@ export type OccupationJourId = (typeof OCCUPATION_JOUR_VALUES)[number];
 // (colonnes crm.Lead : choix fermés). Épinglé par un test contre le JSON.
 export const TENSION_VALUES = ['bt', 'mt', 'ne_sait_pas'] as const;
 export const TYPE_SURFACE_VALUES = ['toiture', 'ombriere', 'terrain'] as const;
+// Fondateur 26/10/2026 — contrat d'électricité, option de la force motrice et
+// phase du site : posés par écrit (ils bloquent le devis automatique).
+export const CONTRAT_ELECTRICITE_VALUES = [
+  'bt_domestique', 'bt_patente', 'bt_force_motrice', 'mt_general', 'ne_sait_pas',
+] as const;
+export const OPTION_TARIFAIRE_BT_VALUES = ['normale', 'bi_horaire'] as const;
+export const PHASE_PRO_VALUES = ['monophase', 'triphase', 'inconnu'] as const;
+/** Orientation du toit (crm.Lead.orientation) ; « je ne sais pas » = rien envoyé. */
+export const ORIENTATION_VALUES = ['sud', 'sud_est', 'sud_ouest', 'est', 'ouest', 'autre'] as const;
 export const TYPE_TOITURE_PRO_VALUES = [
   'terrasse_beton', 'tole_metal', 'tuiles', 'bac_acier', 'fibrociment', 'autre',
 ] as const;
@@ -676,12 +685,22 @@ export function buildSectionReponses(
     case 'reseau': {
       const tension = cleanEnum(raw.tension_raccordement, TENSION_VALUES);
       if (tension) out.tension_raccordement = tension;
+      const contrat = cleanEnum(raw.contrat_electricite, CONTRAT_ELECTRICITE_VALUES);
+      if (contrat) out.contrat_electricite = contrat;
+      // L'option bi-horaire n'existe qu'en force motrice (jamais un reste de champ masqué).
+      const option = cleanEnum(raw.option_tarifaire_bt, OPTION_TARIFAIRE_BT_VALUES);
+      if (option && contrat === 'bt_force_motrice') out.option_tarifaire_bt = option;
+      const phase = cleanEnum(raw.raccordement, PHASE_PRO_VALUES);
+      if (phase) out.raccordement = phase;
       const kva = cleanBoundedNumber(raw.compteur_puissance_kva, 0.01, 100_000);
       if (kva != null) out.compteur_puissance_kva = kva;
       const kwh = cleanBoundedNumber(raw.conso_mensuelle_kwh, 0.01, 100_000_000);
       if (kwh != null) out.conso_mensuelle_kwh = kwh;
       const releve = cleanReleveConso(raw.releve_conso, tension);
       if (releve) out.releve_conso = releve;
+      // Montant de la dernière facture (MAD, un mois) — Lead.facture_hiver.
+      const facture = cleanPositiveNumber(raw.facture_hiver, 10_000_000);
+      if (facture != null) out.facture_hiver = facture;
       // cos φ : décimal ]0 ; 1], jamais supposé (colonne industriel seulement,
       // le serveur ne la sert pas à un commerce).
       const cos = cleanBoundedNumber(raw.cos_phi, 0.01, 1);
@@ -712,6 +731,8 @@ export function buildSectionReponses(
       }
       const fermeture = cleanEntiersDistincts(raw.fermeture_mois, 1, 12);
       if (fermeture) out.fermeture_mois = fermeture;
+      // « Nous ne fermons jamais » : une RÉPONSE (liste vide), jamais un défaut.
+      else if (raw.fermeture_aucune === true) out.fermeture_mois = [];
       const groupe = cleanEnum(raw.groupe_electrogene, OUI_NON_VALUES);
       if (groupe) out.groupe_electrogene = groupe;
       // Les détails du groupe ne valent que s'il y en a un (jamais une valeur
@@ -735,6 +756,11 @@ export function buildSectionReponses(
       if (type) out.type_toiture = type;
       const m2 = cleanPositiveNumber(raw.surface_toiture_m2, 10_000_000);
       if (m2 != null) out.surface_toiture_m2 = m2;
+      // Pente du toit en degrés : 0 (plat) compris, 90 exclu.
+      const pente = cleanBoundedNumber(raw.inclinaison_deg, 0, 89.99);
+      if (pente != null) out.inclinaison_deg = pente;
+      const orientation = cleanEnum(raw.orientation, ORIENTATION_VALUES);
+      if (orientation) out.orientation = orientation;
       break;
     }
     case 'societe': {
@@ -865,13 +891,16 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
   energie: ['facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh', 'raccordement'],
   toiture: ['type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership'],
   occupation: ['occupation_jour'],
-  reseau: ['tension_raccordement', 'compteur_puissance_kva', 'conso_mensuelle_kwh', 'releve_conso', 'cos_phi'],
+  reseau: [
+    'tension_raccordement', 'contrat_electricite', 'option_tarifaire_bt', 'raccordement',
+    'compteur_puissance_kva', 'conso_mensuelle_kwh', 'releve_conso', 'facture_hiver', 'cos_phi',
+  ],
   activite: [
     'categorie_commerciale', 'reponses_categorie', 'secteur_industriel', 'export_ue_declare',
     'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin', 'fermeture_mois',
     'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois', 'pv_existant_kwc',
   ],
-  site: ['type_surface', 'type_toiture', 'surface_toiture_m2'],
+  site: ['type_surface', 'type_toiture', 'surface_toiture_m2', 'inclinaison_deg', 'orientation'],
   societe: [
     'societe', 'ice', 'rc', 'if_fiscal', 'adresse_siege', 'fonction_contact',
     'contact_secondaire_nom', 'contact_secondaire_telephone', 'contact_secondaire_email',

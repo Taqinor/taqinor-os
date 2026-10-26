@@ -1,4 +1,5 @@
-"""CIQ111 — combinaison d'onduleurs C&I au coût de VENTE minimal, sous
+"""CIQ111 — combinaison d'onduleurs C&I : le MOINS d'appareils, puis le coût
+de VENTE minimal (fondateur 26/10/2026), sous
 contraintes de fiche (fin du plafond de taille par la marche d'onduleur).
 
 Aujourd'hui le résidentiel (et le JS C&I) prend UN modèle : « le plus petit ≥
@@ -29,12 +30,13 @@ quand les fiches module/onduleur le permettent, sinon alerte « chaînes à
 vérifier ».
 
 PUR : ni Django, ni base, ni ``apps.*`` (garde AST du test). Résultat
-déterministe (bris d'égalité : coût, puis nombre d'appareils, puis puissance
+déterministe (bris d'égalité : nombre d'appareils, puis coût, puis puissance
 AC, puis identifiants). Jamais de prix d'achat : ``prix`` est le prix de
 VENTE HT du catalogue.
 """
 from __future__ import annotations
 
+import itertools
 import math
 from decimal import Decimal, InvalidOperation
 
@@ -155,9 +157,10 @@ def _chercher(retenus, besoin_unites, borne_haute):
         items.append((i, unites, cout, c['kw_ac']))
     if not items or besoin_unites <= 0:
         return None
-    # meilleur[u] = la combinaison la moins chère qui couvre AU MOINS u
-    # unités : (coût, nb appareils, kW AC × 10, tuple trié des index) — l'ordre
-    # du tuple EST le bris d'égalité (déterministe).
+    # meilleur[u] = la combinaison qui couvre AU MOINS u unités avec le MOINS
+    # d'onduleurs, puis la moins chère (fondateur 26/10/2026 : 40 kWc → 1 × 50
+    # kW, jamais 2 × 15 kW) : (nb appareils, coût, kW AC × 10, tuple trié des
+    # index) — l'ordre du tuple EST le bris d'égalité (déterministe).
     meilleur = [None] * (besoin_unites + 1)
     meilleur[0] = (0, 0, 0, ())
     for u in range(1, besoin_unites + 1):
@@ -166,7 +169,7 @@ def _chercher(retenus, besoin_unites, borne_haute):
             base = meilleur[max(0, u - unites)]
             if base is None:
                 continue
-            cand = (base[0] + cout, base[1] + 1,
+            cand = (base[0] + 1, base[1] + cout,
                     base[2] + int(round(kw * 10)),
                     tuple(sorted(base[3] + (i,))))
             if best is None or cand < best:
@@ -179,6 +182,37 @@ def _chercher(retenus, besoin_unites, borne_haute):
     for i in choix[3]:
         quantites[i] = quantites.get(i, 0) + 1
     return quantites
+
+
+#: Au-delà, la recherche bornée par la puissance AC renonce (perf) et garde
+#: la combinaison au moins d'appareils (la taille la bornera alors).
+MAX_APPAREILS_BORNES = 10
+
+
+def _chercher_sous_ac(retenus, besoin_unites, borne_haute, ac_max_kw):
+    """Le moins d'onduleurs, puis le moins cher, dont la puissance AC totale
+    reste ≤ ``ac_max_kw`` (puissance souscrite) ; ``None`` si aucune."""
+    items = []
+    for i, c in enumerate(retenus):
+        unites = int(math.floor(_capacite_kwc(c, borne_haute)[0] / PAS_KWC + 1e-9))
+        if unites > 0 and c['kw_ac'] <= ac_max_kw + 1e-9:
+            items.append((i, unites, c['prix'], c['kw_ac']))
+    for nb in range(1, MAX_APPAREILS_BORNES + 1):
+        best = None
+        for combo in itertools.combinations_with_replacement(items, nb):
+            if sum(x[1] for x in combo) < besoin_unites \
+                    or sum(x[3] for x in combo) > ac_max_kw + 1e-9:
+                continue
+            cle = (sum(x[2] for x in combo), sum(x[3] for x in combo),
+                   tuple(x[0] for x in combo))
+            if best is None or cle < best:
+                best = cle
+        if best is not None:
+            quantites = {}
+            for i in best[2]:
+                quantites[i] = quantites.get(i, 0) + 1
+            return quantites
+    return None
 
 
 def _chaines(kwc, module, combinaison, retenus, alertes):
@@ -230,7 +264,7 @@ def _chaines(kwc, module, combinaison, retenus, alertes):
 
 
 def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
-                       module=None):
+                       module=None, ac_max_kw=None):
     """La combinaison d'onduleurs au coût de vente minimal pour ``kwc``.
 
     ``candidats`` : ``[{produit, nom, kw_ac, prix (vente HT), triphase,
@@ -299,6 +333,12 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
 
     besoin = int(math.ceil(kwc / PAS_KWC - 1e-9))
     quantites = _chercher(retenus, besoin, haute.valeur)
+    # Le moins d'appareils ne dépasse jamais la puissance souscrite quand une
+    # autre combinaison tient dessous (sinon la taille se bornerait trop tôt).
+    if quantites and ac_max_kw and sum(
+            retenus[i]['kw_ac'] * q for i, q in quantites.items()) > ac_max_kw + 1e-9:
+        quantites = _chercher_sous_ac(retenus, besoin, haute.valeur,
+                                      float(ac_max_kw)) or quantites
     if not quantites:
         motif = 'aucune combinaison d\'onduleurs ne porte %.1f kWc' % kwc
         alertes.append(_alerte('OND_AUCUNE_COMBINAISON', motif,

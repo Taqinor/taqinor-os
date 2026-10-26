@@ -83,8 +83,11 @@ def _set_gamme(devis, **champs):
     chaque appelant."""
     from apps.ventes.domain.etude_schema import ECRAN, ecrire
 
-    params = dict(getattr(devis, 'etude_params', None) or {})
-    gamme = dict(params.get('gamme') or {})
+    # api-fuzz-full 26/10 — ``gamme`` peut être une CHAÎNE (le schéma
+    # d'étude admet ``(str, dict)``) : ``dict("x")`` levait ValueError et
+    # ``dupliquer-variante-gamme`` répondait un 400 brut. ``gamme_info`` ne
+    # garde que le dict.
+    gamme = gamme_info(devis)
     gamme.update({k: v for k, v in champs.items() if v is not None})
     ecrire(devis, proprietaire=ECRAN, gamme=gamme)
     return gamme

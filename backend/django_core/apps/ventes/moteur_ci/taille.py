@@ -1,14 +1,16 @@
 """CIQ116 — taille C&I par la règle des 10 ans, sur l'autoconsommation HORAIRE.
 
-La taille retenue est la plus grande dont CHAQUE tranche de 5 kWc se rembourse
-encore en ≤ ``HORIZON_MARGINAL_PV`` (D-CIQ-2), bornée par le toit, la puissance
+La taille retenue est la plus grande dont chaque tranche de 5 kWc — ou, pour
+un palier cher seul (saut d'onduleur), le groupe qu'il forme avec les paliers
+suivants (fondateur 26/10/2026) — se rembourse encore en ≤
+``HORIZON_MARGINAL_PV`` (D-CIQ-2), bornée par le toit, la puissance
 souscrite DÉCLARÉE, la faisabilité de la combinaison d'onduleurs (CIQ111) et,
 revente choisie, le plafond 82-21 (traité dans le bilan, CIQ110). Fin de
 « facture d'hiver ÷ 900 × 5 » pour le C&I.
 
 La doctrine est RÉUTILISÉE telle quelle depuis ``apps.ventes.dimensionnement``
 (``point_depart_meilleur_payback``, ``depart_dans_horizon``,
-``grimper_par_pas_marginaux``, ``ratio_pas_marginal``,
+``ratio_pas_marginal``,
 ``HORIZON_MARGINAL_PV``) : aucune copie, aucun second horizon.
 
 Module PUR : aucun prix ici. L'orchestrateur (CIQ118) injecte
@@ -29,7 +31,6 @@ from decimal import Decimal, InvalidOperation
 from apps.ventes.dimensionnement import (
     HORIZON_MARGINAL_PV,
     depart_dans_horizon,
-    grimper_par_pas_marginaux,
     point_depart_meilleur_payback,
     ratio_pas_marginal,
 )
@@ -37,6 +38,12 @@ from apps.ventes.moteur_ci.autoconso import bilan_horaire
 from apps.ventes.moteur_ci.composition import prix_palier_ht
 
 PAS_KWC = 5
+#: Fondateur 26/10/2026 (boulangerie 30 → 40 kWc) : un palier cher SEUL (saut
+#: d'onduleur 25 → 50 kW) est gardé si, avec les paliers suivants, l'ensemble
+#: se rembourse dans l'horizon. On regarde jusqu'à ce nombre de paliers après
+#: un palier refusé seul (C&I seulement ; le résidentiel garde la chaîne
+#: ininterrompue de ``grimper_par_pas_marginaux``).
+PALIERS_REGARDES = 4
 #: Garde de terminaison du balayage (nombre de pas), jamais une taille : la
 #: montée s'arrête bien avant, au premier pas sans économie marginale.
 MAX_PAS = 2000
@@ -201,6 +208,24 @@ def _nb_panneaux(e):
     return None
 
 
+def grimper_avec_regard(depart, suivants, horizon, cout, economie):
+    """La montée C&I : depuis le palier courant, le PREMIER palier suivant (au
+    plus ``PALIERS_REGARDES`` plus loin) dont le pas groupé courant → palier se
+    rembourse dans ``horizon`` est franchi ; aucun ⇒ arrêt."""
+    def rembourse(de, vers):
+        ratio = ratio_pas_marginal(cout(de), economie(de), cout(vers), economie(vers))
+        return ratio is not None and ratio <= horizon + 1e-9
+
+    courant, i, suivants = depart, 0, list(suivants or ())
+    while i < len(suivants):
+        fenetre = range(i, min(i + PALIERS_REGARDES, len(suivants)))
+        j = next((k for k in fenetre if rembourse(courant, suivants[k])), None)
+        if j is None:
+            break
+        courant, i = suivants[j], j + 1
+    return courant
+
+
 def _palier(e, precedent, admis, borne):
     cout_avant = precedent['cout'] if precedent else 0.0
     eco_avant = (precedent['economie'] or 0.0) if precedent else 0.0
@@ -260,7 +285,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
                                  alertes, hypotheses)
 
     evals, paliers = [], []
-    meilleur = None
+    meilleur, refus = None, 0
     for rang in range(1, MAX_PAS + 1):
         e = evaluer(PAS_KWC * rang)
         if e['sans_panneau']:
@@ -296,10 +321,13 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         if admis and e['economie']:
             payback = e['cout'] / e['economie']
             meilleur = payback if meilleur is None else min(meilleur, payback)
-        # Terminaison : un pas sans gain, ou au-delà de l'horizon ET du meilleur
-        # payback global — la montée et le départ sont tous deux derrière nous.
-        if precedent is not None and (ratio is None or (
-                ratio > HORIZON_MARGINAL_PV and meilleur is not None and ratio > meilleur)):
+        # Terminaison : un pas sans gain, ou ``PALIERS_REGARDES`` pas de suite
+        # au-delà de l'horizon ET du meilleur payback global (un saut
+        # d'onduleur isolé ne clôt plus le balayage — fondateur 26/10/2026).
+        hors = ratio is not None and ratio > HORIZON_MARGINAL_PV and (
+            meilleur is not None and ratio > meilleur)
+        refus = refus + 1 if hors else 0
+        if precedent is not None and (ratio is None or refus >= PALIERS_REGARDES):
             break
 
     eligibles = [
@@ -324,7 +352,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
             break
         suivants.append(e)
     if depart_dans_horizon(meilleur_payback):
-        retenu, _franchis = grimper_par_pas_marginaux(
+        retenu = grimper_avec_regard(
             depart['eval'], suivants, HORIZON_MARGINAL_PV,
             lambda e: e['cout'], lambda e: e['economie'] or 0.0)
     else:
@@ -335,6 +363,9 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
             'payback, sans montée.' % (meilleur_payback, HORIZON_MARGINAL_PV)))
 
     index = evals.index(retenu)
+    for p in paliers[index_depart:index + 1]:
+        if p['borne'] == 'horizon_marginal':   # franchi en groupe (saut d'onduleur)
+            p['admis'], p['borne'] = True, None
     if index + 1 < len(evals) and paliers[index + 1]['borne'] in (
             'toit', 'onduleurs', 'puissance_souscrite'):
         raison = paliers[index + 1]['borne']

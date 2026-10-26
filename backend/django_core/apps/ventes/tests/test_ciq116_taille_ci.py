@@ -17,7 +17,7 @@ from apps.stock.management.commands.seed_catalogue import CATALOGUE, ht_at
 from apps.ventes import economie_ci, tarif_ci
 from apps.ventes.dimensionnement import HORIZON_MARGINAL_PV
 from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
-from apps.ventes.moteur_ci.taille import cout_vente_ht, dimensionner_ci
+from apps.ventes.moteur_ci.taille import cout_vente_ht, dimensionner_ci, grimper_avec_regard
 from apps.ventes.tests.test_ciq110_autoconso_horaire import _charge, _production
 from apps.ventes.tests.test_ciq111_combinaison_onduleurs import _catalogue_huawei
 
@@ -244,6 +244,36 @@ class TailleCITests(unittest.TestCase):
         admis = [p for p in r['taille']['paliers'] if p['admis']]
         self.assertTrue(all(p['ratio_marginal_annees'] <= HORIZON_MARGINAL_PV for p in admis))
         self.assertEqual(admis[-1]['kwc'], r['taille']['retenue_kwc'])
+
+
+class SautOnduleurTests(unittest.TestCase):
+    """Fondateur 26/10/2026 — boulangerie : 30 → 35 kWc coûte +41 281 HT (onduleur
+    25 → 50 kW) pour +3 585 MAD/an (11,5 ans seul) ; 30 → 40 ensemble se
+    rembourse en ~8,6 ans ⇒ 40 kWc retenu, jamais bloqué au saut d'onduleur."""
+
+    @staticmethod
+    def _cumul(marges):
+        cout = eco = 0
+        sortie = []
+        for kwc, d_cout, d_eco in marges:
+            cout, eco = cout + d_cout, eco + d_eco
+            sortie.append({'kwc': kwc, 'cout': cout, 'eco': eco})
+        return sortie
+
+    def _monter(self, marges):
+        paliers = self._cumul(marges)
+        return grimper_avec_regard(paliers[0], paliers[1:], HORIZON_MARGINAL_PV,
+                                   lambda e: e['cout'], lambda e: e['eco'])['kwc']
+
+    def test_palier_cher_seul_garde_si_le_groupe_se_rembourse(self):
+        self.assertEqual(self._monter([
+            (25, 122982, 54466), (30, 18974, 5393), (35, 41281, 3585),
+            (40, 12000, 2607)]), 40)
+
+    def test_groupe_hors_horizon_arret_au_dernier_palier_rentable(self):
+        self.assertEqual(self._monter([
+            (25, 122982, 54466), (30, 18974, 5393), (35, 41281, 1000),
+            (40, 30000, 500)]), 30)
 
 
 class GardeAstTests(unittest.TestCase):
