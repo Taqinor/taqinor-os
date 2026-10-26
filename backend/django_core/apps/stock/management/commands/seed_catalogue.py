@@ -656,7 +656,7 @@ def _articles_ci():
     lignes = []
     for s in SECTIONS_MM2_CI:
         lignes.append((
-            f'Câble AC cuivre {_fmt(s)} mm² (au mètre)',
+            f'Câble AC cuivre 5×{_fmt(s)} mm² (au mètre)',  # 3P+N+PE (26/10/2026)
             f'CI-CAB-AC-CU-{"%g" % s}-M', 'cable_ac', '', 5000, 200,
             {'type_fiche': 'cable', 'cable_cote': 'ac',
              'cable_section_mm2': float(s), 'cable_ame': 'cu'}))

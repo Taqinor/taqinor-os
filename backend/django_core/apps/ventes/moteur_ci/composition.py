@@ -68,6 +68,14 @@ MOTIF_FOURNISSEUR = 'à confirmer fournisseur (fiche muette)'
 MOTIF_BUREAU = ("section/calibre à dimensionner par le bureau d'études "
                 "(hors barème relevé)")
 MOTIF_LONGUEUR = 'longueur non déclarée : à relever à la visite'
+#: Fondateur 26/10/2026 — un devis C&I ne laisse JAMAIS un prix vide : avant
+#: la visite, câbles et structure sont chiffrés sur ces hypothèses (devis
+#: préliminaire, prix ajustés après la visite).
+LONGUEUR_AC_DEFAUT_M = 30.0         # par onduleur, onduleur → TGBT
+DISTANCE_DC_DEFAUT_M = 30.0         # champ → onduleur ; câble = 2 × chaînes × distance
+PANNEAUX_PAR_CHAINE_DEFAUT = 12     # chaînes non calculées (fiches muettes)
+TYPE_POSE_DEFAUT = 'toit_plat_leste'
+MOTIF_PRELIMINAIRE = 'estimation préliminaire (%s) : ajustée après la visite'
 
 
 def _d(valeur):
@@ -278,11 +286,9 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
             'protection_ac', disj,
             'Disjoncteur AC %g A sortie %s' % (calibre, nom), 1, 'u'))
     longueur = _f(entrees.get('longueur_ac_m'))
-    if longueur is None or longueur <= 0:
-        lignes.append(_ligne('cable_ac', None,
-                             'Câble AC %s → TGBT' % nom, None, 'm',
-                             motif=MOTIF_LONGUEUR, a_confirmer=True, visite=True))
-        return
+    defaut = longueur is None or longueur <= 0
+    if defaut:
+        longueur = LONGUEUR_AC_DEFAUT_M
     base = AMPACITE_U1000R2V_TRI if triphase else AMPACITE_U1000R2V_MONO
     bareme = bareme_pour(base, ib, calibre)
     proposee = proposer_section(
@@ -300,7 +306,10 @@ def _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
         and _f(f.get('cable_section_mm2')) == section))
     lignes.append(_ligne(
         'cable_ac', cable, 'Câble AC %g mm² %s → TGBT' % (section, nom),
-        longueur, 'm'))
+        longueur, 'm', a_confirmer=defaut))
+    if defaut:
+        lignes[-1]['motif'] = lignes[-1]['motif'] or MOTIF_PRELIMINAIRE % (
+            '%g m par onduleur' % LONGUEUR_AC_DEFAUT_M)
     hypotheses.append({
         'cle': 'section_ac_%s' % (ondu.get('produit') or nom),
         'valeur': section, 'statut': 'source',
@@ -526,19 +535,20 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     chaines = (onduleurs or {}).get('chaines')
     longueur_dc = _f(entrees.get('longueur_dc_m'))
     cable_dc = _du_role(catalogue, 'cable_dc')
-    if not chaines:
-        lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
-                             'm', motif='chaînes à vérifier : quantité non '
-                             'calculée', a_confirmer=True, visite=True))
-    elif any(c.get('bloquants') for c in chaines):
+    if any(c.get('bloquants') for c in chaines or ()):
         # ADEV87 — chaînes infaisables (alerte bloquante de la combinaison) :
         # aucune quantité tirée d'une conception impossible.
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
                              'm', motif='chaînes non faisables : quantité non '
                              'calculée', a_confirmer=True, visite=True))
-    elif longueur_dc is None or longueur_dc <= 0:
-        lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', None,
-                             'm', motif=MOTIF_LONGUEUR, a_confirmer=True, visite=True))
+    elif not chaines or longueur_dc is None or longueur_dc <= 0:
+        nb_chaines = (sum(int(c.get('nb_chaines') or 0) for c in chaines) if chaines
+                      else int(math.ceil(nb_panneaux / PANNEAUX_PAR_CHAINE_DEFAUT)))
+        metres = 2 * nb_chaines * DISTANCE_DC_DEFAUT_M
+        lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', metres, 'm',
+                             a_confirmer=True))
+        lignes[-1]['motif'] = lignes[-1]['motif'] or MOTIF_PRELIMINAIRE % (
+            '2 × %d chaînes × %g m' % (nb_chaines, DISTANCE_DC_DEFAUT_M))
     else:
         nb_chaines = sum(int(c.get('nb_chaines') or 0) for c in chaines)
         lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC',
@@ -563,18 +573,18 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
         _protections_dc_et_terre(catalogue, unitaires, lignes, alertes)
 
     # ── Structure par type de pose du toit
-    type_pose = (entrees.get('type_pose') or '').strip()
-    if type_pose:
-        structure = _du_role(catalogue, 'structure_ci', lambda f, p: (
-            (p.get('type_pose') or f.get('struct_type_pose')) == type_pose))
-        lignes.append(_ligne('structure_ci', structure,
-                             'Structure C&I (%s)' % type_pose, nb_panneaux,
-                             'module'))
-    else:
-        lignes.append(_ligne('structure_ci', None, 'Structure C&I',
-                             nb_panneaux, 'module',
-                             motif='type de pose non déclaré : structure à '
-                             'confirmer à la visite', a_confirmer=True, visite=True))
+    declare = (entrees.get('type_pose') or '').strip()
+    type_pose = declare or TYPE_POSE_DEFAUT
+    structure = _du_role(catalogue, 'structure_ci', lambda f, p: (
+        (p.get('type_pose') or f.get('struct_type_pose')) == type_pose))
+    if structure is None and not declare:
+        structure = _du_role(catalogue, 'structure_ci')
+    lignes.append(_ligne('structure_ci', structure,
+                         'Structure C&I (%s)' % type_pose, nb_panneaux,
+                         'module', a_confirmer=not declare))
+    if not declare:
+        lignes[-1]['motif'] = lignes[-1]['motif'] or MOTIF_PRELIMINAIRE % (
+            'type de pose non déclaré : %s' % TYPE_POSE_DEFAUT)
 
     # ── Comptage / limitation, logger, coffret AC
     _comptage(catalogue, nb_ond, entrees, lignes, alertes, onduleurs)

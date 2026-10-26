@@ -25,6 +25,7 @@ from apps.ventes.models import Devis
 from apps.ventes.services import AutoDevisError, build_devis_auto
 from apps.ventes.tests.test_ciq118_etude_ci_preview import _production_casablanca
 from authentication.models import Company
+from core.electrique.cables import SECTIONS_MM2_CI
 
 User = get_user_model()
 FORFAITS_TEST = ('etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
@@ -65,6 +66,19 @@ class _Base(TestCase):
                                 ('logger_supervision', 'Logger C&I', '2200')):
             Produit.objects.create(company=cls.co, nom=nom, prix_vente=Decimal(prix),
                                    prix_achat=Decimal('100'), role_ci=role)
+        # Fondateur 26/10/2026 — câbles chiffrés d'office (devis préliminaire) :
+        # câble DC et câbles AC de chaque section du moteur, tarifés.
+        Produit.objects.create(company=cls.co, nom='Câble solaire 6 mm² (au mètre)',
+                               prix_vente=Decimal('11'), prix_achat=Decimal('5'),
+                               role_ci='cable_dc')
+        for section in SECTIONS_MM2_CI:
+            cable = Produit.objects.create(
+                company=cls.co, nom='Câble AC cuivre 5×%g mm² (au mètre)' % section,
+                prix_vente=Decimal(str(round(10 * section + 30, 2))),
+                prix_achat=Decimal('1'), role_ci='cable_ac')
+            FicheTechnique.objects.create(
+                company=cls.co, produit=cable, type_fiche='cable', cable_cote='ac',
+                cable_section_mm2=float(section), cable_ame='cu')
         cls.disjoncteur = Produit.objects.create(
             company=cls.co, nom='Disjoncteur AC 80 A 4P', prix_vente=Decimal('900'),
             prix_achat=Decimal('400'), role_ci='protection_ac')
@@ -321,24 +335,21 @@ class DevisAutoCITests(_Base):
         self.assertEqual(erreur.field, 'composition')
         self.assertIn('Coffret AC C&I', erreur.message)
 
-    def test_type_de_toit_inconnu_brouillon_sous_reserve_sans_structure(self):
+    def test_type_de_toit_inconnu_structure_et_cables_chiffres_d_office(self):
+        # Fondateur 26/10/2026 — jamais de prix vide : toit inconnu ⇒ structure
+        # chiffrée (toit plat lesté, sinon la structure tarifée du catalogue),
+        # câbles DC/AC estimés ; aucun poste « à chiffrer après la visite ».
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), type_toiture=None)
-        journal = {}
         with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
-            devis = build_devis_auto(lead=lead, user=self.user, company=self.co,
-                                     journal_auto=journal)
+            devis = build_devis_auto(lead=lead, user=self.user, company=self.co)
         produits = set(devis.lignes.values_list('produit_id', flat=True))
-        self.assertNotIn(self.structure.id, produits)
+        self.assertIn(self.structure.id, produits)
         self.assertIn(self.panneau.id, produits)
+        noms = ' '.join(devis.lignes.values_list('designation', flat=True)).lower()
+        self.assertIn('câble solaire', noms)
+        self.assertIn('câble ac', noms)
         etude = devis.etude_params['etude_ci']
-        self.assertIn('Structure C&I', etude['composition']['a_chiffrer_visite'])
-        self.assertIn('Câble solaire DC', etude['composition']['a_chiffrer_visite'])
-        self.assertEqual(etude['taille']['statut'], 'estimation')
-        self.assertTrue(journal['alertes'])
-        self.assertIn('Structure C&I', ' '.join(a['message'] for a in journal['alertes']))
-        # Persistance : rouvert, le brouillon relit la même liste.
-        relu = Devis.objects.get(pk=devis.pk).etude_params['etude_ci']['composition']
-        self.assertEqual(relu['a_chiffrer_visite'], etude['composition']['a_chiffrer_visite'])
+        self.assertEqual(etude['composition']['a_chiffrer_visite'], [])
 
     def test_agricole_tunnel_toujours_refuse(self):
         # AGR124 — l'agricole est ouvert au bouton (origine « auto ») ; le
@@ -374,7 +385,7 @@ class ReponseAutoALEA51Tests(_Base):
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
         self.assertEqual(rep.data['total_ttc'], float(devis.total_ttc))
         self.assertGreater(rep.data['total_ttc'], 0)
-        self.assertIn('Structure C&I', rep.data['postes_apres_visite'])
+        self.assertEqual(rep.data['postes_apres_visite'], [])
         self.assertEqual(
             rep.data['postes_apres_visite'],
             devis.etude_params['etude_ci']['composition']['a_chiffrer_visite'])
