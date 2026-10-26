@@ -198,8 +198,9 @@ class Amot81OrigineDuTarif(SimpleTestCase):
     def test_ligne_grille_sur_repli_absente_sur_facture(self):
         p1 = self._page1(_data())
         # AMOT88 — en mots du client : ni « repli », ni « capture ».
-        self.assertIn("Tarif ONEE BT publié — à confirmer sur votre facture",
-                      p1)
+        self.assertIn("Tarif ONEE BT publié", p1)
+        # Décision fondateur 26/10/2026 — sans la réserve interne.
+        self.assertNotIn("à confirmer sur votre facture", p1)
         for mot in ("repli", "capture", "reconfirm"):
             self.assertNotIn(mot, p1)
         data = _data()
@@ -210,8 +211,8 @@ class Amot81OrigineDuTarif(SimpleTestCase):
         data = _data()
         for poste in data["economie_ci"]["tarif"]["tarifs_par_poste"]:
             poste["releve_le"] = "2025-02-16"
-        self.assertIn("Tarif ONEE BT publié — à confirmer sur votre facture "
-                      "(grille du 16/02/2025).", self._page1(data))
+        self.assertIn("Tarif ONEE BT publié (grille du 16/02/2025).",
+                      self._page1(data))
 
     def test_tension_lue_sous_ses_deux_cles(self):
         for tension in ("mt", "bt"):

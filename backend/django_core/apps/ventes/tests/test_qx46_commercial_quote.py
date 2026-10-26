@@ -499,6 +499,9 @@ class TestAmot88VocabulaireClient(SimpleTestCase):
     def test_bandeau_sans_begaiement_postes_par_role(self):
         p1 = _texte_ci(_pages_ci(_data_ci(hors_total=True))[1])
         self.assertNotIn("À confirmer : À chiffrer", p1)
+        # Décision fondateur 26/10/2026 — plus aucune liste « À confirmer :
+        # … » (puissance souscrite, toiture) sur la couverture.
+        self.assertNotIn("À confirmer", p1)
         self.assertIn(
             "À chiffrer après la visite technique (hors total) : câble DC — "
             "Câble solaire Nexans H1Z2Z2-K 4 mm² (au mètre), câble AC, "
@@ -517,8 +520,10 @@ class TestAmot88VocabulaireClient(SimpleTestCase):
     def test_tuile_couverture_et_tarif_en_mots_du_client(self):
         p1 = _texte_ci(_pages_ci(_data_ci())[1])
         self.assertIn("Part de votre consommation couverte", p1)
-        self.assertIn("Tarif ONEE BT publié — à confirmer sur votre facture "
-                      "(grille du 16/02/2025).", p1)
+        # Décision fondateur 26/10/2026 — sans « à confirmer sur votre
+        # facture » (réserve interne).
+        self.assertIn("Tarif ONEE BT publié (grille du 16/02/2025).", p1)
+        self.assertNotIn("à confirmer sur votre facture", p1)
 
     def test_postes_arabes_sans_balise_echappee(self):
         """Les mots du rôle (libellés isolés en arabe) ne sont jamais
@@ -702,14 +707,13 @@ class TestAmot91Hypotheses(SimpleTestCase):
         taille = _ETUDE_CI["taille"]
         for rangee in (
                 "Hypothèses de l'estimation",
-                "Prix du kWh Tarif ONEE BT publié — à confirmer sur votre "
-                "facture (grille du 16/02/2025).",
+                "Prix du kWh Tarif ONEE BT publié (grille du 16/02/2025).",
                 "Indexation du tarif 0 % / an", "Dégradation des panneaux",
                 "Horizon 25 ans",
                 "Entretien (O&M) non déduit des économies",
                 "Remplacement onduleur en année 11 55 000,00 MAD TTC",
                 f"Base de production {production['inclinaison_deg']}° "
-                "d'inclinaison, plein sud — à confirmer au calepinage",
+                "d'inclinaison, plein sud",
                 f"Règle de dimensionnement chaque palier de "
                 f"{taille['pas_kwc']} kWc retenu se rembourse en moins de "
                 f"{taille['horizon_marginal_annees']} ans"):

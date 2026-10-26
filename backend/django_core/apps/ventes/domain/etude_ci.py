@@ -1194,7 +1194,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             return _combinaison_imposee(onduleurs_imposes, catalogue['onduleurs'])
         # ADEV87 — module et fiches onduleur passés : les chaînes se calculent.
         return combiner_onduleurs(kwc, catalogue['onduleurs'], phase=phase,
-                                  module=catalogue.get('module_spec'))
+                                  module=catalogue.get('module_spec'),
+                                  ac_max_kw=_num(res.valeur('puissance_souscrite_kva')))
 
     def composer(kwc, onduleurs):
         return _completer_prix(composer_ci(kwc, catalogue['elements'], onduleurs=onduleurs,
@@ -1435,6 +1436,7 @@ def lignes_du_devis_ci(composition):
     renseigner », « à confirmer à la visite ») reste dans l'étude, jamais une
     ligne à 0 ; une ligne « à chiffrer après visite » (ADEV79, D-ACI-2=a)
     reste hors du devis, listée dans ``composition.a_chiffrer_visite``."""
+    from apps.ventes.moteur_ci.composition import nom_client
     lignes = []
     for ligne in (composition or {}).get('lignes') or []:
         if ligne.get('a_chiffrer_visite'):
@@ -1445,8 +1447,13 @@ def lignes_du_devis_ci(composition):
         if not produit or not quantite or quantite <= 0 or prix is None \
                 or not ligne.get('prix_connu'):
             continue
+        meme = next((x for x in lignes if x['produit_id'] == produit
+                     and x['prix_unitaire'] == Decimal(str(prix))), None)
+        if meme is not None:  # même article au même prix : une seule ligne
+            meme['quantite'] += Decimal(str(quantite))
+            continue
         lignes.append({'produit_id': produit,
-                       'designation': ligne.get('designation') or '',
+                       'designation': nom_client(ligne.get('designation') or ''),
                        'quantite': Decimal(str(quantite)),
                        'prix_unitaire': Decimal(str(prix))})
     return lignes

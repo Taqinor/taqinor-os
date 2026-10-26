@@ -200,13 +200,18 @@ class Amot84TextesDynamiquesIndustriel(SimpleTestCase):
             for fr in MOTIFS_VISITE_FR + (MOTIF_SENSIBILITE_FR,):
                 with self.subTest(langue=langue, fr=fr):
                     self.assertNotIn(fr, html)
-        self.assertIn("site survey before the final quote",
-                      self._avec_motifs("en"))
+        # Décision fondateur 26/10/2026 — la liste « À confirmer : … » (les
+        # motifs de réserve de visite) n'est plus imprimée, en aucune langue.
+        self.assertNotIn("site survey before the final quote",
+                         self._avec_motifs("en"))
 
     def test_francais_inchange_sans_code_interne(self):
         html = self._avec_motifs(None)
-        for fr in MOTIFS_VISITE_FR + (MOTIF_SENSIBILITE_FR,):
-            self.assertIn(fr, html)
+        self.assertIn(MOTIF_SENSIBILITE_FR, html)
+        # Décision fondateur 26/10/2026 — motifs de réserve non imprimés.
+        for fr in MOTIFS_VISITE_FR:
+            self.assertNotIn(fr, html)
+        self.assertNotIn("À confirmer", html)
         self.assertNotIn("D-CIQ-5", html)
 
     def test_mention_mt_dans_la_langue_du_document(self):

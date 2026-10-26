@@ -40,6 +40,7 @@ from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.domain import etude_ci
 from apps.ventes.moteur_ci.production import plan_de_production
 from authentication.models import Company
+from core.electrique.cables import SECTIONS_MM2_CI
 
 User = get_user_model()
 
@@ -90,6 +91,19 @@ class _Base(TestCase):
         FicheTechnique.objects.create(
             company=cls.co, produit=disjoncteur, type_fiche='protection',
             prot_type='disjoncteur', prot_cote='ac', prot_calibre_a=80, prot_poles=4)
+        # Fondateur 26/10/2026 — devis préliminaire jamais vide : câbles et
+        # structure (toit plat lesté par défaut) chiffrés d'office, tarifés ici.
+        cls._produit(cls.co, 'Câble solaire 6 mm² (au mètre)', role_ci='cable_dc',
+                     prix_vente=Decimal('11'))
+        cls._produit(cls.co, 'Structure toit plat lestée', role_ci='structure_ci',
+                     type_pose='toit_plat_leste', prix_vente=Decimal('450'))
+        for section in SECTIONS_MM2_CI:
+            cable = cls._produit(cls.co, 'Câble AC cuivre 5×%g mm² (au mètre)' % section,
+                                 role_ci='cable_ac',
+                                 prix_vente=Decimal(str(round(10 * section + 30, 2))))
+            FicheTechnique.objects.create(
+                company=cls.co, produit=cable, type_fiche='cable', cable_cote='ac',
+                cable_section_mm2=float(section), cable_ame='cu')
         CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
             cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ118 de test'}
             for cle in ('pose_structure', 'pose_modules')}})
@@ -210,7 +224,9 @@ class ContratTests(_Base):
     def test_longueur_dc_declaree_fiches_completes_cable_dc_quantifie(self):
         # ADEV87 — module et onduleurs à fiches complètes : les chaînes se
         # calculent, le câble DC = Σ chaînes × longueur DÉCLARÉE, au prix
-        # catalogue.
+        # catalogue. Le câble DC du catalogue de base (_Base) est retiré : seul
+        # celui-ci doit être retenu.
+        Produit.objects.filter(company=self.co, role_ci='cable_dc').delete()
         cable = self._produit(self.co, 'Câble solaire Nexans H1Z2Z2-K 6 mm² (au mètre)',
                               role_devis='cable_dc', prix_vente=Decimal('12'))
         corps = self.corps()

@@ -134,13 +134,8 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
         motif_html = ci_couverture.ligne_non_chiffre(d, "ind", prefixe)
         lignes.append((L("ci_ind_rentabilite", "Rentabilité"),
                        motif_html))
-    # AMOT80 — « offre ferme » seulement sans réserve de visite ET sur un
-    # tarif lu sur la facture du client (jamais sur la grille de repli).
-    if not d.get("ind_sous_reserve") and isinstance(argent, dict) and \
-            (argent.get("tarif") or {}).get("origine") == "declare_facture":
-        lignes.append((L("ci_ind_statut", "Statut de l'étude"),
-                       L("ci_ind_prix_ferme",
-                         "prix ferme, économies estimées")))
+    # Décision fondateur 26/10/2026 — le devis C&I entier est préliminaire :
+    # plus jamais de rangée « Statut de l'étude : prix ferme » (ex-AMOT80).
     rangees = "".join(
         f'<tr><td class="{prefixe}-sy-l">{lib}</td>'
         f'<td class="{prefixe}-sy-v">{val}</td></tr>'
