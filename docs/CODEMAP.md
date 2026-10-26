@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: ecaf1c976275a4ffd54a3a500b648c1bab20d0ec6ef9ab79137b5be6d1c2175d
+Structure fingerprint: c93ee376f28e07219427a6b0608103eaa547383ccece9d619b263653cf8a5771
 Plan fingerprint: 9ff85832041c83c75ab1d3b42ef0286640538faca6eb558523be2504365752e1
 
 
@@ -229,7 +229,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 | `facturation` | `facturation/` | 7 | Factures, `Paiement`, `Avoir`, `FollowupLevel`, `RelanceLog` — state-only split out of `ventes` (ODX17); legacy `/ventes/factures…` paths still served. |
 | `stock` | `stock/` | 71 | Catalogue (`Produit`, `Marque`, `Categorie`, kits, `courbe_pompe`), `Fournisseur`, `MouvementStock`, emplacements/lots/inventaires, portail fournisseur. |
 | `achats` | `achats/` | 11 | Supplier POs/receptions/invoices/payments/returns, `PrixFournisseur`, `ImputationAcompteFournisseur` (ASTK106) — state-only split out of `stock` (ODX19). |
-| `installations` | `installations/` | 115 | Chantiers **core + GPS**: `Installation`, planning, interventions, checklists, field documents, demandes d'achat, `DossierImport`, kitting, livraisons, `RecettePompage` (recette pompage, `/recettes-pompage/`, AGR). Public token page: `/api/django/public/installations/intervention-rapport/<token>/` (+`pdf/`, `photo(s)/<att_id>/` — APDF38/ACHT68). |
+| `installations` | `installations/` | 115 | Chantiers **core + GPS**: `Installation`, planning, interventions, checklists, field documents, demandes d'achat, `DossierImport`, kitting, livraisons, `RecettePompage` (recette pompage, `/recettes-pompage/`, AGR). Public token page: `/api/django/public/installations/intervention-rapport/<token>/` (+`pdf/`, `photo(s)/<att_id>/` — APDF38/ACHT68). Revue 26/10 : `chantiers/<id>/approvisionnement/`, `interventions/<id>/serials-attendus/`, `interventions/<id>/presence/`, GPS `gps-consentements/mon-consentement/` + `positions-techniciens/ping-lot|mes-positions`, migrations 0132-0133. |
 | `outillage` | `outillage/` | 3 | Durable tools and loans (`Outillage`, `KitOutillage`). |
 | `sav` | `sav/` | 32 | Equipment registry (`Equipement`, warranty clock), tickets + SLA, `ContratMaintenance`, worksheets, `Probleme`, `KbArticle`, `AlarmeOnduleur`. |
 | `monitoring` | `monitoring/` | 9 | Production supervision: `ProductionReading`, `UnderperformanceFlag`, `SlaDisponibilite`, `CertificatCarbone`. Swappable provider, no-op by default. |

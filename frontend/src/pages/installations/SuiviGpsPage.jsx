@@ -14,7 +14,7 @@ import { formatDate } from '../../lib/format'
 // importée normalement pour construire les popups.
 import { escapeHtml } from '../../components/MapView'
 import installationsApi from '../../api/installationsApi'
-import fetchAllPages from '../../utils/fetchAllPages'
+import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 import crmApi from '../../api/crmApi'
 import { useFilteredList } from '../../features/installations/chargementListe'
 import ListShell from '../../features/installations/ListeEtat'
@@ -248,11 +248,11 @@ function CarteLiveTab({ techniciens }) {
   const dejaChargeRef = useRef(false)
   useEffect(() => {
     let vivant = true
-    const charger = () => installationsApi.getCarteLivePositions()
-      .then((r) => {
+    const charger = () => lireToutesLesPages((p) => installationsApi.getCarteLivePositions(p))
+      .then((lignes) => {
         if (!vivant) return
         dejaChargeRef.current = true
-        setRows(Array.isArray(r?.data) ? r.data : (r?.data?.results ?? []))
+        setRows(lignes)
         setMaintenant(Date.now())
         setError(null)
       })
@@ -467,10 +467,9 @@ function PresenceDuJour() {
   useEffect(() => {
     if (!jour) return undefined
     let vivant = true
-    installationsApi.getInterventions({ date_prevue: jour, page_size: PRESENCE_MAX_INTERVENTIONS })
-      .then((r) => {
-        const intervs = (Array.isArray(r?.data) ? r.data : (r?.data?.results ?? []))
-          .slice(0, PRESENCE_MAX_INTERVENTIONS)
+    lireToutesLesPages((p) => installationsApi.getInterventions({ date_prevue: jour, ...p }))
+      .then((lignes) => {
+        const intervs = lignes.slice(0, PRESENCE_MAX_INTERVENTIONS)
         return Promise.all(intervs.map((iv) => installationsApi.getPresenceIntervention(iv.id)
           .then((p) => ({ interv: iv, presence: p.data }))
           .catch(() => ({ interv: iv, presence: null }))))

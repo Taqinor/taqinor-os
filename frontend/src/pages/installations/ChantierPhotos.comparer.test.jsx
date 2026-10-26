@@ -41,6 +41,18 @@ describe('apparierAvantApres', () => {
     expect(surplusApres.map((p) => p.id)).toEqual([11])
   })
 
+  it('une photo sans créneau s’apparie avec n’importe laquelle, des deux côtés', () => {
+    const libreAvant = apparierAvantApres(
+      [photo(1)], [photo(10, 'toiture_apres', 'Toiture après pose')])
+    expect(libreAvant.pairs.map((p) => [p.before.id, p.after.id])).toEqual([[1, 10]])
+    expect(libreAvant.pairs[0].label).toBeNull()
+    const libreApres = apparierAvantApres(
+      [photo(2, 'toiture_avant', 'Toiture avant pose')], [photo(11)])
+    expect(libreApres.pairs.map((p) => [p.before.id, p.after.id])).toEqual([[2, 11]])
+    expect(libreApres.surplusAvant).toEqual([])
+    expect(libreApres.surplusApres).toEqual([])
+  })
+
   it('jamais de paire inventée : le surplus reste à part', () => {
     const { pairs, surplusAvant } = apparierAvantApres(
       [photo(1, 'toiture_avant', 'Toiture avant pose'), photo(2)], [])

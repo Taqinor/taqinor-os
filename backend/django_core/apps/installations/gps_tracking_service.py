@@ -175,6 +175,7 @@ def _notifier_sortie_perimetre(alert):
         from apps.notifications.services import notify_many
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
+        logger.exception('notifier sortie périmètre : imports indisponibles')
         return
     interv = alert.intervention
     destinataires = _responsables_a_notifier(interv)
@@ -195,14 +196,12 @@ def _notifier_sortie_perimetre(alert):
                         titre, body=corps, link=LIEN_SUIVI_GPS,
                         company=company)
         except Exception:  # pragma: no cover - défensif
-            logger.warning('notifier sortie périmètre : échec ignoré',
-                           exc_info=True)
+            logger.exception('notifier sortie périmètre : échec ignoré')
 
     try:
         transaction.on_commit(_envoyer)
     except Exception:  # pragma: no cover - défensif
-        logger.warning('notifier sortie périmètre : échec ignoré',
-                       exc_info=True)
+        logger.exception('notifier sortie périmètre : échec ignoré')
 
 
 def revoke_consent(company, technicien, reason=None):

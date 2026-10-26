@@ -7,7 +7,6 @@ frontend/src/pages/parametres/CadenceRelanceEditor.jsx::CadenceRelanceEditor  pa
 frontend/src/pages/parametres/ApplicationsSection.jsx::load  core/modules/toggles/  ModuleToggleViewSet pagination_class=None (la liste complète des bascules ; l'action journal renvoie un Response non paginé) @backend/django_core/core/views.py:1283
 frontend/src/pages/parametres/HistoriqueStatutPage.jsx::HistoriqueStatutPage  statuspage/historique-statut/  HistoriqueStatutComponentView pagination_class=None @backend/django_core/apps/statuspage/views.py:229
 frontend/src/pages/admin/SecuriteIdentitePage.jsx::load  identity/break-glass/  vue APIView, liste plafonnée aux 100 derniers octrois (aucune page suivante) @backend/django_core/apps/identity/views.py:334
-frontend/src/pages/stock/BonsCommandeFournisseur.jsx::reloadEnRetard  stock/bons-commande-fournisseur/en-retard/  @action(pagination_class=None), liste complète des BCF en retard @backend/django_core/apps/stock/views/bon_commande_fournisseur.py:659
 
 frontend/src/pages/ia/AgentActions.jsx::load  agent/logs/  vue APIView, journal plafonné aux 200 plus récents (réponse {count, results}) @backend/django_core/apps/agent/views.py:149
 frontend/src/pages/ventes/DevisList.jsx::chargerVariantes  ventes/devis/<id>/variantes/  @action(pagination_class=None), liste complète des variantes du devis @backend/django_core/apps/ventes/views/devis_cycle.py:389

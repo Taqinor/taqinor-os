@@ -379,7 +379,9 @@ export default function DemandesAchatList() {
         try {
           const b = await stockApi.getBonCommandeFournisseur(res.data.bon_commande)
           reference = b.data?.reference ?? null
-        } catch { /* le lien reste utilisable sans la référence */ }
+        } catch {
+          reference = null // le lien reste utilisable sans la référence
+        }
       }
       setBcfCree({ id: res.data?.bon_commande ?? null, reference })
       toastSuccess('Bon de commande généré.')

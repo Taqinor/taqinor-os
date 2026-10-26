@@ -698,8 +698,8 @@ const installationsApi = {
   // en boucle.
   pingPosition: (data) =>
     api.post('/installations/positions-techniciens/ping/', data),
-  getCarteLivePositions: () =>
-    api.get('/installations/positions-techniciens/carte-live/'),
+  getCarteLivePositions: (params) =>
+    api.get('/installations/positions-techniciens/carte-live/', { params }),
   // NTMOB9 — franchissements du rayon chantier, journalisés SERVEUR
   // (`GeofenceAlertViewSet`, jamais dérivés côté écran) ; filtrable par
   // `intervention`, `chantier` et `type_franchissement` (`entree`/`sortie`).

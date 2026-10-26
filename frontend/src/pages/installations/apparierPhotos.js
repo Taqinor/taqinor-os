@@ -13,7 +13,8 @@ const sujetCreneau = (cle) => {
 }
 
 // Paires avant/après : même sujet de créneau d'abord (libellé « Toiture avant
-// pose → Toiture après pose »), puis repli par ordre d'ajout sur le reste.
+// pose → Toiture après pose »), puis repli par ordre d'ajout sur le reste
+// (une photo sans créneau peut s'apparier avec n'importe quelle photo).
 // Jamais une paire inventée : le surplus d'un côté reste listé à part.
 export function apparierAvantApres(avant, apres) {
   const pairs = []
@@ -34,15 +35,22 @@ export function apparierAvantApres(avant, apres) {
       avantRestants.push(before)
     }
   }
-  // Repli par ordre d'ajout : UNIQUEMENT les photos sans créneau des deux côtés
-  // (jamais deux sujets différents). Un orphelin avec créneau reste en surplus.
-  const avantSansCreneau = avantRestants.filter((p) => !sujetCreneau(p.slotCle))
-  const apresSansCreneau = apresLibres.filter((p) => !sujetCreneau(p.slotCle))
-  const n = Math.min(avantSansCreneau.length, apresSansCreneau.length)
-  for (let i = 0; i < n; i += 1) {
-    pairs.push({ before: avantSansCreneau[i], after: apresSansCreneau[i], label: null })
+  // Repli par ordre d'ajout sur le reste : une paire est permise dès qu'AU
+  // MOINS UN côté est sans créneau (une photo libre se range avec n'importe
+  // quoi) ; deux photos AVEC créneau de sujets différents ne s'apparient
+  // jamais. Pas de libellé : l'appariement est alors par ordre, pas par sujet.
+  const prises = new Set()
+  for (const before of avantRestants) {
+    const idx = apresLibres.findIndex(
+      (a) => !prises.has(a) && (!sujetCreneau(before.slotCle) || !sujetCreneau(a.slotCle)),
+    )
+    if (idx >= 0) {
+      const after = apresLibres[idx]
+      prises.add(before)
+      prises.add(after)
+      pairs.push({ before, after, label: null })
+    }
   }
-  const prises = new Set([...avantSansCreneau.slice(0, n), ...apresSansCreneau.slice(0, n)])
   return {
     pairs,
     surplusAvant: avantRestants.filter((p) => !prises.has(p)),

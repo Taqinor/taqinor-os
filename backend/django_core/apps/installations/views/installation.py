@@ -237,7 +237,8 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if self.action == 'a_facturer':
             return [(IsAdminRole | HasPermissionOrLegacy('ventes_creer'))()]
         if self.action in READ_ACTIONS + [
-            'historique', 'besoin_materiel', 'checklist', 'regime_suggestion',
+            'historique', 'besoin_materiel', 'approvisionnement', 'checklist',
+            'regime_suggestion',
             'rapport_energie',
             # FG74 — Gantt multi-chantier (lecture seule).
             'gantt',

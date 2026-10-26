@@ -23,6 +23,10 @@ const mocks = vi.hoisted(() => ({
   creerInterventionsStandard: vi.fn(),
 }))
 
+vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
+vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
+vi.mock('../../api/ventesApi', async () => (await import('../../test/selectNatif')).ventesApiMock)
+vi.mock('./ChantierGateTimeline', async () => (await import('../../test/selectNatif')).composantNul)
 vi.mock('../../api/installationsApi', async () => ({
   default: {
     ...(await import('../../test/selectNatif')).installationsLecturesVides,
@@ -30,10 +34,6 @@ vi.mock('../../api/installationsApi', async () => ({
     creerInterventionsStandard: (...a) => mocks.creerInterventionsStandard(...a),
   },
 }))
-vi.mock('../../api/savApi', async () => (await import('../../test/selectNatif')).savApiMock)
-vi.mock('../../api/crmApi', async () => (await import('../../test/selectNatif')).crmApiMock)
-vi.mock('../../api/ventesApi', async () => (await import('../../test/selectNatif')).ventesApiMock)
-vi.mock('./ChantierGateTimeline', async () => (await import('../../test/selectNatif')).composantNul)
 vi.mock('./ChantierChecklist', async () => (await import('../../test/selectNatif')).composantNul)
 vi.mock('../../features/installations/offline/OfflineSyncIndicator', async () => (await import('../../test/selectNatif')).composantNul)
 

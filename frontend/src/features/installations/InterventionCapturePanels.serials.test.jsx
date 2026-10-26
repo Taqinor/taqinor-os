@@ -18,11 +18,9 @@ const outbox = vi.hoisted(() => ({
     return { queued: false, data }
   },
 }))
-vi.mock('./offline/fieldOutbox', () => ({
-  withOfflineFallback: outbox.withOfflineFallback,
-  queuePhoto: outbox.queuePhoto,
-  FIELD_OPS: outbox.FIELD_OPS,
-}))
+vi.mock('./offline/fieldOutbox', () => (
+  import('./InterventionCapturePanels.testkit.js').then((m) => m.fieldOutboxMock(outbox))
+))
 
 const api = vi.hoisted(() => ({
   getSerials: vi.fn(),
@@ -32,9 +30,9 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
-vi.mock('../../pages/preferences/prefs', () => ({
-  compressPhotoForUpload: vi.fn((f) => Promise.resolve(f)),
-}))
+vi.mock('../../pages/preferences/prefs', () => (
+  import('./InterventionCapturePanels.testkit.js').then((m) => m.prefsMock())
+))
 
 const scanner = vi.hoisted(() => ({ supported: true, onDetected: null }))
 vi.mock('../pwa/useBarcodeScanner', () => ({

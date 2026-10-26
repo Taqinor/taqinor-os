@@ -82,6 +82,7 @@ import {
   Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
 import TableauDefilant from '../../ui/TableauDefilant'
+import { carteTitree, TABLEAU_ENVELOPPE, TABLEAU_CLASSE, enTeteTableau } from './approvisionnementShared'
 import SelectStatutEquipement from '../../features/sav/SelectStatutEquipement'
 import { EQUIP_STATUTS } from '../../features/sav/equipement'
 import RaisonsBlocageGate from '../../ui/RaisonsBlocageGate'
@@ -105,33 +106,14 @@ function timeAgo(iso) {
 // Sous-titre de section (mêmes intitulés/émojis qu'avant, mais en composant
 // du système de design — surface Card + titre cohérent).
 function Section({ icon: Icon, title, action, children }) {
-  return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-          {title}
-        </CardTitle>
-        {action}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">{children}</CardContent>
-    </Card>
-  )
+  return carteTitree({ icon: Icon, title, action, children })
 }
 
 // Petite table tokenisée réutilisée par les sous-listes (interventions, etc.).
 function MiniTable({ head, children }) {
   return (
-    <TableauDefilant enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full border-collapse text-sm">
-      <thead className="bg-muted/60">
-        <tr>
-          {head.map((h) => (
-            <th key={h} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
+    <TableauDefilant enveloppe={TABLEAU_ENVELOPPE} className={TABLEAU_CLASSE}>
+      {enTeteTableau(head)}
       <tbody>{children}</tbody>
     </TableauDefilant>
   )

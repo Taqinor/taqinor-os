@@ -5,7 +5,7 @@ import {
   Pencil, BadgeCheck, History, AlertTriangle, BarChart3,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
-import fetchAllPages from '../../utils/fetchAllPages'
+import fetchAllPages, { lireToutesLesPages } from '../../utils/fetchAllPages'
 import coreApi from '../../api/coreApi'
 import { formatMAD } from '../../lib/format'
 import BcfProduitPicker from './BcfProduitPicker'
@@ -1345,8 +1345,8 @@ export default function BonsCommandeFournisseur() {
       .finally(() => setLoading(false))
   }
   const reloadEnRetard = () => {
-    stockApi.getBcfEnRetard()
-      .then((r) => setEnRetardIds(new Set((r.data?.results ?? r.data ?? []).map((b) => b.id))))
+    lireToutesLesPages((p) => stockApi.getBcfEnRetard(p))
+      .then((rows) => setEnRetardIds(new Set(rows.map((b) => b.id))))
       .catch(() => setEnRetardIds(new Set()))
   }
   const reloadSuggestions = () => {

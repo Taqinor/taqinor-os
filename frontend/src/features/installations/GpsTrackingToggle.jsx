@@ -56,11 +56,16 @@ function lireTampon(id) {
   } catch { return [] }
 }
 
+// Rend `false` quand le stockage est indisponible (navigation privée) : le
+// tampon mémoire reste alors seul gardien des points, sans bruit à l'écran.
 function ecrireTampon(id, points) {
   try {
     if (points.length) window.localStorage.setItem(PREFIXE_TAMPON + id, JSON.stringify(points))
     else window.localStorage.removeItem(PREFIXE_TAMPON + id)
-  } catch { /* stockage indisponible (navigation privée) : tampon mémoire seul */ }
+    return true
+  } catch {
+    return false
+  }
 }
 
 // Envoie `tampon` (muté sur place) par lots de 20, du plus ancien au plus

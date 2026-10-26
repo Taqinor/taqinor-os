@@ -7,6 +7,7 @@ import { toast } from '../../ui/confirm'
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, StatusPill } from '../../ui'
 import { Skeleton } from '../../ui/Skeleton'
 import TableauDefilant from '../../ui/TableauDefilant'
+import { carteTitree, TABLEAU_ENVELOPPE, TABLEAU_CLASSE, enTeteTableau } from './approvisionnementShared'
 
 /* Onglet « Matériel & BC » du chantier — UNE réponse serveur
    (`GET chantiers/<id>/approvisionnement/`, contrat
@@ -21,33 +22,15 @@ import TableauDefilant from '../../ui/TableauDefilant'
 const plur = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`
 
 function Bloc({ icon: Icon, title, children }) {
-  return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-          {title}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">{children}</CardContent>
-    </Card>
-  )
+  return carteTitree({ icon: Icon, title, children })
 }
 
 const Vide = ({ children }) => <p className="text-sm text-muted-foreground">{children}</p>
 
 function Tableau({ head, children }) {
   return (
-    <TableauDefilant enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full border-collapse text-sm">
-      <thead className="bg-muted/60">
-        <tr>
-          {head.map((h) => (
-            <th key={h || 'vide'} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
+    <TableauDefilant enveloppe={TABLEAU_ENVELOPPE} className={TABLEAU_CLASSE}>
+      {enTeteTableau(head)}
       <tbody>{children}</tbody>
     </TableauDefilant>
   )
