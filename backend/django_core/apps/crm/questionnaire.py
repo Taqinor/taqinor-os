@@ -93,7 +93,7 @@ CHAMPS_PAR_SECTION = {
     'reseau': ('tension_raccordement', 'contrat_electricite',
                'option_tarifaire_bt', 'raccordement',
                'compteur_puissance_kva', 'conso_mensuelle_kwh',
-               'releve_conso', 'cos_phi'),
+               'releve_conso', 'facture_hiver', 'cos_phi'),
     'activite': ('categorie_commerciale', 'reponses_categorie',
                  'secteur_industriel', 'export_ue_declare', 'regime_equipes',
                  'jours_ouverture', 'heure_debut', 'heure_fin',

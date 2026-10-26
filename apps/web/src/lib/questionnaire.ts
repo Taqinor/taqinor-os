@@ -696,6 +696,9 @@ export function buildSectionReponses(
       if (kwh != null) out.conso_mensuelle_kwh = kwh;
       const releve = cleanReleveConso(raw.releve_conso, tension);
       if (releve) out.releve_conso = releve;
+      // Montant de la dernière facture (MAD, un mois) — Lead.facture_hiver.
+      const facture = cleanPositiveNumber(raw.facture_hiver, 10_000_000);
+      if (facture != null) out.facture_hiver = facture;
       // cos φ : décimal ]0 ; 1], jamais supposé (colonne industriel seulement,
       // le serveur ne la sert pas à un commerce).
       const cos = cleanBoundedNumber(raw.cos_phi, 0.01, 1);
@@ -881,7 +884,7 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
   occupation: ['occupation_jour'],
   reseau: [
     'tension_raccordement', 'contrat_electricite', 'option_tarifaire_bt', 'raccordement',
-    'compteur_puissance_kva', 'conso_mensuelle_kwh', 'releve_conso', 'cos_phi',
+    'compteur_puissance_kva', 'conso_mensuelle_kwh', 'releve_conso', 'facture_hiver', 'cos_phi',
   ],
   activite: [
     'categorie_commerciale', 'reponses_categorie', 'secteur_industriel', 'export_ue_declare',

@@ -111,7 +111,7 @@ class QuestionnairePro(TestCase):
                 'releve_conso': {'mois': [
                     {'mois': '2026-08', 'kwh': 40000, 'kwh_pointe': 6000}],
                     'source': 'ocr_confirme'},
-                'facture_hiver': 1, 'email': 'pirate@example.ma',
+                'facture_hiver': 4200, 'email': 'pirate@example.ma',
                 'decideur': 'seul'}}),
             content_type='application/json')
         self.assertEqual(res.status_code, 200, res.content)
@@ -123,8 +123,10 @@ class QuestionnairePro(TestCase):
                          '6000.00')
         # Une valeur existante non répondue n'est jamais vidée.
         self.assertEqual(lead.compteur_puissance_kva, Decimal('60'))
+        # Fondateur 26/10/2026 — la dernière facture (MAD) est une colonne
+        # de la section réseau.
+        self.assertEqual(lead.facture_hiver, Decimal('4200'))
         # Hors section : jamais écrit.
-        self.assertEqual(lead.facture_hiver, Decimal('5000'))
         self.assertEqual(lead.email, 'h@example.ma')
         self.assertIsNone(lead.decideur)
 

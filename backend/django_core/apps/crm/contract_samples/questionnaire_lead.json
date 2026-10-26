@@ -319,6 +319,7 @@
         "compteur_puissance_kva",
         "conso_mensuelle_kwh",
         "releve_conso",
+        "facture_hiver",
         "cos_phi"
       ],
       "activite": [
@@ -372,6 +373,7 @@
       "compteur_puissance_kva": null,
       "conso_mensuelle_kwh": null,
       "releve_conso": null,
+      "facture_hiver": null,
       "cos_phi": null,
       "categorie_commerciale": "hotel",
       "reponses_categorie": null,

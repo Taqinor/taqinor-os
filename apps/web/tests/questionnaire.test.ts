@@ -709,6 +709,8 @@ describe('CIW406 — sections pro : corps POST', () => {
     expect(patente.option_tarifaire_bt).toBeUndefined();
     // le vocabulaire résidentiel (mono/tri) n'est pas un choix de la section « reseau »
     expect(patente.raccordement).toBeUndefined();
+    expect(buildSectionReponses('reseau', { facture_hiver: '4200' }).facture_hiver).toBe(4200);
+    expect(buildSectionReponses('reseau', { facture_hiver: '-5' }).facture_hiver).toBeUndefined();
     expect(buildSectionReponses('reseau', { contrat_electricite: 'ht' }).contrat_electricite).toBeUndefined();
   });
 

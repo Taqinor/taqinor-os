@@ -712,6 +712,16 @@ const estIndustriel =
                               </button>
                             </fieldset>
                           )}
+                          {demande('reseau', 'facture_hiver') && (
+                            <div>
+                              <label for="q-facture-reseau" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Amount of your latest bill (MAD), for one month"
+                                data-ar="مبلغ آخر فاتورة لكم (درهم)، عن شهر واحد">
+                                Montant de votre dernière facture (MAD), pour un mois
+                              </label>
+                              <input id="q-facture-reseau" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_hiver')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
                           {demande('reseau', 'cos_phi') && (
                             <div>
                               <label for="q-cos-phi" class="mb-1 block text-sm font-semibold" data-i18n
@@ -1906,6 +1916,7 @@ const estIndustriel =
             compteur_puissance_kva: numOrUndef('q-kva'),
             conso_mensuelle_kwh: numOrUndef('q-conso-kwh-reseau'),
             releve_conso: releveLignes(),
+            facture_hiver: numOrUndef('q-facture-reseau'),
             cos_phi: numOrUndef('q-cos-phi'),
           };
         case 'activite':
