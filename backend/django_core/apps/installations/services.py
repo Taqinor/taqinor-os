@@ -4490,10 +4490,12 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
 
     propositions = []
     reserves_dans_le_lot = set()
-    for interv in qs.select_related('installation'):
-        suggestions = selectors.suggerer_creneau(
-            company, chantier_id=interv.installation_id,
-            type_intervention=interv.type_intervention, n=10)
+    interventions = list(qs.select_related('installation'))
+    # APRF41 — ressources de la fenêtre chargées UNE fois pour tout le lot.
+    suggestions_lot = selectors.suggerer_creneaux_lot(
+        company, [i.installation_id for i in interventions], n=10)
+    for interv in interventions:
+        suggestions = suggestions_lot[interv.installation_id]
         proposition = None
         for candidat in suggestions['propositions']:
             cle = (candidat['technicien_id'], candidat['date'])

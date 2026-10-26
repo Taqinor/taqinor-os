@@ -2424,43 +2424,22 @@ def _techniciens_eligibles(company):
     return list(User.objects.filter(company=company, id__in=ids))
 
 
-def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
-                     date_cible=None, n=3):
-    """XFSM2 — les N (défaut 3) meilleures propositions de créneau + technicien
-    pour un chantier/type/durée donnés, classées par :
-      1. pas de conflit (FG300 : le technicien n'a AUCUNE intervention prévue
-         ce jour) ni d'indisponibilité (FG302) ;
-      2. charge la plus faible (nb d'interventions déjà planifiées, FG299) ;
-      3. distance au site la plus courte depuis les interventions DÉJÀ
-         planifiées du technicien ce jour-là (0 si aucune — dépôt inconnu).
-    Fenêtre de recherche : 14 jours ouvrés à partir de ``date_cible`` (défaut
-    aujourd'hui). Lecture seule, NE MUTE RIEN, scopée société. Renvoie
-    ``{propositions: [{technicien_id, nom, date, score...}], chantier_id}``."""
-    import datetime
-
-    chantier = installation_scoped(company, chantier_id)
-    if chantier is None:
-        return {'chantier_id': chantier_id, 'propositions': []}
-
-    if date_cible is None:
-        date_cible = datetime.date.today()
-
-    techniciens = _techniciens_eligibles(company)
-    if not techniciens:
-        return {'chantier_id': chantier_id, 'propositions': []}
-
-    eligibles = techniciens
-
-    site_lat = getattr(chantier, 'gps_lat', None)
-    site_lng = getattr(chantier, 'gps_lng', None)
-
-    # ACHT39 — occupation lue par LE sélecteur partagé (annulées exclues,
-    # équipe canonique résolue) : {jour: [interventions]} et
-    # {technicien: [jours occupés]}, chargés UNE fois pour toute la fenêtre.
+def _duree_valide(duree_jours):
     try:
-        duree_jours = max(int(duree_jours or 1), 1)
+        return max(int(duree_jours or 1), 1)
     except (TypeError, ValueError):
-        duree_jours = 1
+        return 1
+
+
+def _contexte_planification(company, techniciens, date_cible, duree_jours):
+    """APRF41 — ressources de la fenêtre de recherche, chargées UNE fois :
+    occupation (ACHT39 : ``interventions_actives``, équipe canonique résolue)
+    ``par_jour`` / ``occupe`` et indisponibilités FG302 par technicien
+    (``indispos``). Partagé par ``suggerer_creneau`` (un chantier) et
+    ``suggerer_creneaux_lot`` (N chantiers, mêmes requêtes)."""
+    import datetime
+    from .models import IndisponibiliteRessource
+
     fin_fenetre = date_cible + datetime.timedelta(days=14 + duree_jours * 2 + 4)
     par_jour = {}
     occupe = {}
@@ -2469,6 +2448,27 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
         par_jour.setdefault(iv.date_prevue, []).append(iv)
         for membre_id in membres_intervention(iv):
             occupe.setdefault(membre_id, []).append(iv.date_prevue)
+    # FG302 — mêmes lignes que ``ressource_indisponible`` (technicien, société,
+    # chevauchement de la fenêtre), lues en une requête.
+    indispos = {}
+    lignes = IndisponibiliteRessource.objects.filter(
+        company=company, technicien_id__in=[t.id for t in techniciens],
+        date_debut__lte=fin_fenetre, date_fin__gte=date_cible,
+    ).values_list('technicien_id', 'date_debut', 'date_fin')
+    for tech_id, debut, fin in lignes:
+        indispos.setdefault(tech_id, []).append((debut, fin))
+    return {'techniciens': techniciens, 'par_jour': par_jour,
+            'occupe': occupe, 'indispos': indispos}
+
+
+def _propositions_chantier(chantier, ctx, date_cible, duree_jours, n):
+    """APRF41 — le calcul de ``suggerer_creneau`` pour UN chantier, en mémoire
+    sur le contexte chargé (aucune requête)."""
+    import datetime
+
+    site_lat = getattr(chantier, 'gps_lat', None)
+    site_lng = getattr(chantier, 'gps_lng', None)
+    par_jour, occupe, indispos = ctx['par_jour'], ctx['occupe'], ctx['indispos']
 
     def _bloc(depart):
         # ACHT39 — un créneau de ``duree_jours`` s'étale sur autant de jours
@@ -2491,11 +2491,10 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
         # jour-là minimise le trajet total.
         interventions_du_jour = par_jour.get(jour, [])
         bloc = _bloc(jour)
-        for tech in eligibles:
-            # FG302 — indisponibilité sur TOUT le bloc.
-            if ressource_indisponible(company, tech.id, bloc[0], bloc[-1]) \
-                    and any(ressource_indisponible(company, tech.id, j, j)
-                            for j in bloc):
+        for tech in ctx['techniciens']:
+            # FG302 — indisponibilité sur AU MOINS un jour du bloc.
+            if any(d <= j <= f for j in bloc
+                   for d, f in indispos.get(tech.id, ())):
                 continue
             # FG300 — conflit : le technicien (principal OU membre d'équipe)
             # porte déjà une intervention active sur un jour du bloc →
@@ -2535,10 +2534,77 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
         c['charge'],
         c['distance_km'] if c['distance_km'] is not None else float('inf'),
         c['date'], c['nom'].lower()))
+    return candidats[:max(int(n or 3), 1)]
+
+
+def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
+                     date_cible=None, n=3):
+    """XFSM2 — les N (défaut 3) meilleures propositions de créneau + technicien
+    pour un chantier/type/durée donnés, classées par :
+      1. pas de conflit (FG300 : le technicien n'a AUCUNE intervention prévue
+         ce jour) ni d'indisponibilité (FG302) ;
+      2. charge la plus faible (nb d'interventions déjà planifiées, FG299) ;
+      3. distance au site la plus courte depuis les interventions DÉJÀ
+         planifiées du technicien ce jour-là (0 si aucune — dépôt inconnu).
+    Fenêtre de recherche : 14 jours ouvrés à partir de ``date_cible`` (défaut
+    aujourd'hui). Lecture seule, NE MUTE RIEN, scopée société. Renvoie
+    ``{propositions: [{technicien_id, nom, date, score...}], chantier_id}``."""
+    import datetime
+
+    chantier = installation_scoped(company, chantier_id)
+    if chantier is None:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    if date_cible is None:
+        date_cible = datetime.date.today()
+
+    techniciens = _techniciens_eligibles(company)
+    if not techniciens:
+        return {'chantier_id': chantier_id, 'propositions': []}
+
+    duree_jours = _duree_valide(duree_jours)
+    ctx = _contexte_planification(company, techniciens, date_cible, duree_jours)
     return {
         'chantier_id': chantier_id,
-        'propositions': candidats[:max(int(n or 3), 1)],
+        'propositions': _propositions_chantier(
+            chantier, ctx, date_cible, duree_jours, n),
     }
+
+
+def suggerer_creneaux_lot(company, chantier_ids, *, duree_jours=1,
+                          date_cible=None, n=10):
+    """APRF41 — ``suggerer_creneau`` pour PLUSIEURS chantiers d'un coup : les
+    techniciens éligibles, les indisponibilités, la charge et les interventions
+    de la fenêtre sont chargés UNE fois pour tout le lot, puis le calcul se
+    fait en mémoire par chantier. Mêmes propositions que l'appel unitaire.
+    Renvoie ``{chantier_id: {'chantier_id', 'propositions'}}`` (un chantier
+    inconnu de la société a ``propositions: []``)."""
+    import datetime
+    from .models import Installation
+
+    ids = list(dict.fromkeys(chantier_ids))
+    vide = {cid: {'chantier_id': cid, 'propositions': []} for cid in ids}
+    if not ids:
+        return vide
+    if date_cible is None:
+        date_cible = datetime.date.today()
+    techniciens = _techniciens_eligibles(company)
+    if not techniciens:
+        return vide
+    duree_jours = _duree_valide(duree_jours)
+    chantiers = {c.id: c for c in Installation.objects.filter(
+        company=company, id__in=ids).select_related('client')}
+    ctx = _contexte_planification(company, techniciens, date_cible, duree_jours)
+    resultat = dict(vide)
+    for cid in ids:
+        chantier = chantiers.get(cid)
+        if chantier is not None:
+            resultat[cid] = {
+                'chantier_id': cid,
+                'propositions': _propositions_chantier(
+                    chantier, ctx, date_cible, duree_jours, n),
+            }
+    return resultat
 
 
 # ── XFSM7 — lien public « technicien en route » ──────────────────────────────
