@@ -963,7 +963,7 @@ const estIndustriel =
                             </div>
                           )}
                           {demande('site', 'type_toiture') && (
-                            <div>
+                            <div id="q-site-toiture-wrap" class:list={[['ombriere', 'terrain'].includes(prefillStr('type_surface')) ? 'hidden' : '']}>
                               <label for="q-site-type-toiture" class="mb-1 block text-sm font-semibold" data-i18n
                                 data-en="What is your roof made of?" data-ar="مم يتكوّن سطحكم؟">
                                 Comment est faite votre toiture ?
@@ -1711,6 +1711,11 @@ const estIndustriel =
       document.querySelectorAll<HTMLElement>('.q-releve-mt').forEach((el) => el.classList.toggle('hidden', !mt));
     }
     $('q-tension')?.addEventListener('change', syncTension);
+    // Une ombrière ou un terrain n'a pas de couverture : la question se masque.
+    $('q-site-type-surface')?.addEventListener('change', () => {
+      const sansToit = ['ombriere', 'terrain'].includes(fieldVal('q-site-type-surface'));
+      $('q-site-toiture-wrap')?.classList.toggle('hidden', sansToit);
+    });
     $('q-contrat')?.addEventListener('change', () => {
       $('q-option-bt-wrap')?.classList.toggle('hidden', fieldVal('q-contrat') !== 'bt_force_motrice');
     });
@@ -1939,7 +1944,8 @@ const estIndustriel =
         case 'site':
           return {
             type_surface: fieldVal('q-site-type-surface') || undefined,
-            type_toiture: fieldVal('q-site-type-toiture') || undefined,
+            type_toiture: ['ombriere', 'terrain'].includes(fieldVal('q-site-type-surface'))
+              ? undefined : fieldVal('q-site-type-toiture') || undefined,
             surface_toiture_m2: numOrUndef('q-site-surface'),
           };
         case 'societe':

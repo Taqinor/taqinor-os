@@ -329,6 +329,18 @@ class LeadTests(_Base):
             resolue = etude['entrees_resolues'].get('type_pose') or {}
             self.assertEqual(resolue.get('valeur'), pose, toit)
 
+    def test_type_de_surface_du_lead_ombriere_terrain_fondateur_2610(self):
+        # Fondateur 26/10/2026 — ombrière / terrain : leur pose prime sur la
+        # couverture ; une toiture garde la pose de sa couverture.
+        attendu = {'ombriere': 'ombriere', 'terrain': 'sol', 'toiture': 'bac_acier'}
+        for surface, pose in attendu.items():
+            lead = self._lead(conso_mensuelle_kwh=Decimal('6000'),
+                              categorie_commerciale='bureau', type_toiture='tole_metal',
+                              type_surface=surface)
+            etude = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)
+            self.assertEqual(etude['entrees_resolues']['type_pose']['valeur'], pose, surface)
+            self.assertNotIn('_type_surface', etude['entrees_resolues'])
+
     def test_lead_dune_autre_societe_ignore(self):
         lead = Lead.objects.create(company=self.autre, nom='Étranger',
                                    type_installation='commercial',

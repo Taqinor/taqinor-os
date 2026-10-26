@@ -56,6 +56,9 @@ MODES = ('commercial', 'industriel')
 POSE_DU_TOIT_LEAD = {'bac_acier': 'bac_acier', 'tole_metal': 'bac_acier',
                      'fibrociment': 'bac_acier', 'tuiles': 'toiture_inclinee',
                      'terrasse_beton': 'toit_plat_leste'}
+#: Lead.type_surface → pose CIQ7 (fondateur 26/10/2026) : une ombrière ou un
+#: terrain n'est pas un toit — sa pose prime sur la couverture déclarée.
+POSE_DE_LA_SURFACE_LEAD = {'ombriere': 'ombriere', 'terrain': 'sol'}
 #: ADEV90 (D-ACI-13=a) — mode de pose ESTIMÉ quand aucun n'est déclaré :
 #: terrasse → lestée, toute autre couverture (ou couverture inconnue) →
 #: surimposition. La borne s'applique, dite « pose estimée, à confirmer au
@@ -112,6 +115,8 @@ CHEMINS_LEAD = {
     'rythme.reponses_categorie': 'reponses_categorie',
     'toit.surface_utile_m2': 'surface_utile_m2',
     'toit.type_toiture': 'couverture',
+    # Feuille PRIVÉE : elle ne sert qu'à choisir la pose (ombrière / sol).
+    'toit.type_surface': '_type_surface',
     'tva_recuperable': 'tva_recuperable',
     # CIQ666 — le contrat d'électricité déclaré au lead (vocabulaire CIQ222).
     'tarif_declare': 'tarif_declare',
@@ -291,8 +296,10 @@ def _couche_lead(res, lead):
         if feuille == 'fermetures':
             valeur = _fermetures_des_mois(valeur)
         res.poser(feuille, valeur, prov)
-        if feuille == 'couverture':
+        if feuille == 'couverture' and                 res.valeur('_type_surface') not in POSE_DE_LA_SURFACE_LEAD:
             res.poser('type_pose', POSE_DU_TOIT_LEAD.get(valeur), prov)
+        if feuille == '_type_surface':
+            res.poser('type_pose', POSE_DE_LA_SURFACE_LEAD.get(valeur), prov)
         if feuille == 'surface_utile_m2':
             res.poser('surface_type', 'declaree', prov)
     # CIQ134 — cos φ DÉCLARÉ (information du lead, avec sa provenance) :
