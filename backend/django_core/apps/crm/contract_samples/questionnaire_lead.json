@@ -294,7 +294,11 @@
       "equipements": "AU MOINS UN booléen equip_* à None — None = « jamais posée », ce qui est DIFFÉRENT de False (« le client a dit non »).",
       "photo_facture / photo_compteur / photo_tableau": "aucune pièce jointe du type sur le lead. APPROXIMATION assumée : on reconnaît le type au LIBELLÉ du fichier (mots-clés facture/bill, compteur/meter, tableau/disjoncteur) — le magasin `records.Attachment` ne porte pas de type métier. En cas de doute → MANQUANTE (on repose la question plutôt que de supposer).",
       "pompage (agricole)": "AGR411 — lead AGRICOLE seulement : source_eau, niveau_statique_m, besoin_eau_m3j, surface_irriguee_ha ou pompe_alim_actuelle vide.",
-      "photo_pompe / photo_forage (agricole)": "AGR411 — aucune pièce jointe dont le libellé porte pompe/plaque (plaque de la pompe) ou forage/puits (tête de forage)."
+      "photo_pompe / photo_forage (agricole)": "AGR411 — aucune pièce jointe dont le libellé porte pompe/plaque (plaque de la pompe) ou forage/puits (tête de forage).",
+      "reseau (pro)": "Fondateur 26/10/2026 — tension inconnue (vide, « ne sait pas » ou défaut visible du site), puissance souscrite nulle, contrat_electricite vide OU raccordement vide.",
+      "site (pro)": "Fondateur 26/10/2026 — surface_toiture_m2 nulle, type_surface vide, OU type_toiture vide quand la surface est une toiture (une ombrière ou un terrain n’a pas de couverture).",
+      "activite (pro)": "Fondateur 26/10/2026 — catégorie (commerce) ou secteur (industrie) vide, jours d’ouverture vides, heure de début ou de fin nulle, regime_equipes vide, OU fermeture_mois nul (une liste VIDE = « nous ne fermons jamais », une réponse).",
+      "societe (pro)": "Fondateur 26/10/2026 — societe, ice OU tva_recuperable vide."
     }
   },
   "segment_agricole": "AGR411 — filtre de SEGMENT (`crm.questionnaire.sections_du_lead`). Lead AGRICOLE : sections pompage, photo_pompe, photo_forage, gps, contact, photo_compteur ; l'envoi sans corps ne coche que pompage, photo_pompe, photo_forage, gps et contact MANQUANTS ; occupation, equipements, energie, toiture, photo_facture et photo_tableau sont REFUSÉES en 400 avec un message qui nomme la section. Les colonnes orales (autorisation de prélèvement, aide FDA reçue, décideur) ne sont jamais posées par écrit. Lead NON agricole : périmètre historique, identique à l'octet (les sections de pompage y restent inconnues).",
@@ -305,6 +309,7 @@
       "reseau",
       "activite",
       "site",
+      "gps",
       "societe",
       "photo_factures",
       "photo_poste",
@@ -313,9 +318,13 @@
     "champs": {
       "reseau": [
         "tension_raccordement",
+        "contrat_electricite",
+        "option_tarifaire_bt",
+        "raccordement",
         "compteur_puissance_kva",
         "conso_mensuelle_kwh",
         "releve_conso",
+        "facture_hiver",
         "cos_phi"
       ],
       "activite": [
@@ -337,7 +346,13 @@
       "site": [
         "type_surface",
         "type_toiture",
-        "surface_toiture_m2"
+        "surface_toiture_m2",
+        "inclinaison_deg",
+        "orientation"
+      ],
+      "gps": [
+        "gps_lat",
+        "gps_lng"
       ],
       "societe": [
         "societe",
@@ -363,9 +378,13 @@
     },
     "prefill": {
       "tension_raccordement": "bt",
+      "contrat_electricite": null,
+      "option_tarifaire_bt": null,
+      "raccordement": null,
       "compteur_puissance_kva": null,
       "conso_mensuelle_kwh": null,
       "releve_conso": null,
+      "facture_hiver": null,
       "cos_phi": null,
       "categorie_commerciale": "hotel",
       "reponses_categorie": null,
@@ -384,6 +403,8 @@
       "type_surface": null,
       "type_toiture": null,
       "surface_toiture_m2": 650.0,
+      "inclinaison_deg": null,
+      "orientation": null,
       "societe": "Hôtel Exemple SARL",
       "ice": null,
       "rc": null,
@@ -394,7 +415,9 @@
       "contact_secondaire_telephone": null,
       "contact_secondaire_email": null,
       "contact_secondaire_fonction": null,
-      "tva_recuperable": null
+      "tva_recuperable": null,
+      "gps_lat": null,
+      "gps_lng": null
     },
     "repondu": {
       "contact": true
@@ -407,6 +430,7 @@
       "reseau",
       "activite",
       "site",
+      "gps",
       "societe",
       "photo_factures",
       "photo_poste",
@@ -425,6 +449,7 @@
     "regle_400": "Lead commercial/industriel : les sections occupation, equipements, toiture résidentielle et energie résidentielle sont REFUSÉES en 400, avec un message qui NOMME la section (patron AGR411).",
     "jamais_par_ecrit": "Q21 tient : budget, délai, décideur et concurrents ne sont JAMAIS demandés par écrit. `ownership` n'est jamais posé à un pro (le document du propriétaire des murs relève de la visite ou du dossier).",
     "colonnes": "Les champs de section sont les colonnes du contrat `lead_pro.json` (CIQ1) ; `contact_secondaire_nom` / `contact_secondaire_telephone` = colonnes existantes du contact secondaire (`lead_contact_secondaire.json`).",
-    "note": "Valeurs ILLUSTRATIVES ; aucune question résidentielle dans `exemple_pro`."
+    "note": "Valeurs ILLUSTRATIVES ; aucune question résidentielle dans `exemple_pro`.",
+    "gps": "Fondateur 26/10/2026 — le GPS fait partie des sections pro par défaut (cochée tant que gps_lat/gps_lng manquent) : la page dit au client « votre position permet un calcul heure par heure de la production »."
   }
 }

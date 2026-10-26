@@ -111,6 +111,27 @@ describe('questionnaire pro — parité exemple_pro ↔ collectSectionRaw', () =
     });
   }
 
+  it('fondateur 26/10/2026 : kVA jamais « facultatif » (photo de facture acceptée), GPS expliqué au pro', () => {
+    const debut = src.indexOf("{demande('reseau', 'compteur_puissance_kva')");
+    const blocKva = src.slice(debut, src.indexOf('</div>', debut));
+    expect(blocKva).not.toContain('facultatif');
+    expect(blocKva).toContain('une photo de votre facture nous suffit');
+    expect(src).toContain('votre position permet un calcul heure par heure de la production');
+  });
+
+  it('fondateur 26/10/2026 : les kWh mois par mois sont la question principale, un seul mois le repli', () => {
+    const releve = src.indexOf("{demande('reseau', 'releve_conso')");
+    const unMois = src.indexOf("{demande('reseau', 'conso_mensuelle_kwh')");
+    const tension = src.indexOf("{demande('reseau', 'tension_raccordement')");
+    expect(releve).toBeGreaterThan(-1);
+    expect(releve).toBeLessThan(unMois);
+    expect(unMois).toBeLessThan(tension);
+    const legende = src.slice(releve, src.indexOf('</legend>', releve));
+    expect(legende).toContain('mois par mois');
+    expect(legende).not.toContain('facultatif');
+    expect(src.slice(unMois, src.indexOf('</label>', unMois))).toContain("qu'un seul mois");
+  });
+
   it('les sections pro du contrat sont TOUTES des sections connues de la page', async () => {
     const lib = await import('../src/lib/questionnaire');
     for (const s of pro.segment_pro.sections_pro) {

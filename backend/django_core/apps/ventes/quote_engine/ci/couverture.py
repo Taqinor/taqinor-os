@@ -2,7 +2,8 @@
 industrielle (``i1``), lus sur ``synthese_ci`` (via ``chiffres_cles``).
 
 Un seul endroit pour : le bandeau « Estimation sous réserve de la visite
-technique » + la liste ``a_confirmer`` (D-CIQ-5, W4-22), la ligne de
+technique » (D-CIQ-5, W4-22 ; la liste ``a_confirmer`` n'est plus imprimée
+— décision fondateur 26/10/2026), la ligne de
 méthode des taux (C3-07), la tuile payback, la note sur la pointe (CIQ305)
 et le motif quand l'argent n'est pas chiffré. Rendu seul — aucun calcul,
 aucun statut touché (règle #4).
@@ -59,16 +60,29 @@ SOURCES_CLIENT = {
     ("charge horaire déclarée absente : production non recalculable heure "
      "par heure — scénario non chiffré"): "ci_ind_sens_motif_sans_charge",
 }
-#: AMOT84 — motifs de réserve de visite (``etude_ci.sous_reserve_visite``,
-#: séparés par « ; », codes internes déjà retirés) → clé du catalogue.
-RESERVES_CLIENT = {
-    "site MT : visite avant le devis final": "ci_reserve_site_mt",
-    "tension de raccordement inconnue": "ci_reserve_tension",
-    "puissance souscrite inconnue": "ci_reserve_puissance",
-    "surface disponible inconnue": "ci_reserve_surface",
-    "profil horaire non déclaré : estimation sous réserve de visite":
-        "ci_reserve_profil",
-}
+#: Décision fondateur 26/10/2026 — le document C&I ne justifie jamais une
+#: incertitude interne : une source / un qualificatif servi qui n'est qu'une
+#: RÉSERVE (« défaut, fiche muette », « (hypothèse) », « non sourcée »,
+#: « série horaire indisponible », « à confirmer »…) n'est pas imprimé ; la
+#: valeur, elle, reste. FR / EN / AR.
+_RESERVES_INTERNES = re.compile(
+    r"fiche muette|datasheet silent|البطاقة صامتة"
+    r"|\((?:hypothèse|assumption|فرضية)\)"
+    r"|non sourcée|unsourced"
+    r"|série horaire indisponible|hourly series unavailable"
+    r"|à confirmer|to be confirmed"
+    r"|1re année non publiée|first year not published"
+    r"|السنة الأولى غير منشورة"
+    r"|^\s*(?:défaut|default)\b", re.IGNORECASE)
+
+
+def sans_reserve(texte):
+    """Décision fondateur 26/10/2026 — ``texte`` tel quel, ou '' quand il
+    n'est qu'une réserve interne (``_RESERVES_INTERNES``)."""
+    texte = str(texte or "")
+    return "" if _RESERVES_INTERNES.search(texte) else texte
+
+
 _CODES_INTERNES = re.compile(
     r"\s*\((?:D-[A-Z]+-\d+(?:\s*,\s*)?)+\)"
     r"|\bD-[A-Z]+-\d+\s*:\s*"
@@ -119,49 +133,20 @@ def motif_investissement(d, cle):
                    "chiffré ({n} articles sans prix)", n=n.group(1))
 
 
-def _a_confirmer(d, cle):
-    """Les points « à confirmer » dans la langue du document : un libellé
-    connu du moteur (``ci_confirmer_<clé>``) est traduit ; un motif propre
-    au dossier reste tel quel."""
-    from .. import i18n_labels
-    cles = d.get(f"{cle}_a_confirmer_cles") or []
-    # AMOT88 — les postes hors total ont leur propre ligne du bandeau
-    # (``bandeau_reserve``) : jamais « À confirmer : À chiffrer… ».
-    paires = [(texte_client(d, a), cles[i] if i < len(cles) else "")
-              for i, a in enumerate(d.get(f"{cle}_a_confirmer") or []) if a]
-    paires = [(t, c) for t, c in paires if c != "a_chiffrer_visite"]
-    libelles = [t for t, _c in paires]
-    cles = [c for _t, c in paires]
-    if langue(d) == "fr":
-        return libelles
-    sortie = []
-    for i, texte_fr in enumerate(libelles):
-        cat = f"ci_confirmer_{cles[i]}" if i < len(cles) else ""
-        if cat in i18n_labels.LIBELLES and \
-                texte_fr == i18n_labels.LIBELLES[cat]["fr"]:
-            sortie.append(libelle(d, cat, texte_fr))
-        else:
-            # AMOT84 — chaque motif connu du moteur dans la langue du
-            # document ; un motif propre au dossier reste tel quel.
-            sortie.append("; ".join(
-                libelle(d, RESERVES_CLIENT[m.strip()], m.strip())
-                if m.strip() in RESERVES_CLIENT else m.strip()
-                for m in texte_fr.split(";")))
-    return sortie
-
-
 def bandeau_reserve(d, cle, prefixe):
-    """``<div>`` du bandeau quand l'étude est « sous réserve », sinon ''."""
-    if not d.get(f"{cle}_sous_reserve"):
-        return ""
-    a_confirmer = _a_confirmer(d, cle)
-    liste = (f'<div class="{prefixe}-reserve-l">'
-             + libelle(d, "ci_a_confirmer", "À confirmer : ")
-             + " · ".join(a_confirmer) + "</div>") if a_confirmer else ""
+    """``<div>`` du bandeau « Devis préliminaire — les prix pourront être
+    ajustés après la visite technique » : imprimé sur TOUT document C&I
+    (décision fondateur 26/10/2026 — le devis C&I entier est préliminaire),
+    plus seulement quand l'étude est « sous réserve ».
+
+    Décision fondateur 26/10/2026 — le bandeau garde son titre et la ligne
+    des postes « À chiffrer après la visite technique (hors total) », mais
+    plus JAMAIS la liste interne « À confirmer : … » (puissance souscrite,
+    toiture…) : ``synthese_ci['a_confirmer']`` reste servi, pas imprimé."""
+    liste = ""
     postes = ligne_postes_hors_total(d, d.get(f"{cle}_synthese"))
     if postes:
-        liste = (f'<div class="{prefixe}-reserve-l">' + postes
-                 + "</div>") + liste
+        liste = f'<div class="{prefixe}-reserve-l">' + postes + "</div>"
     bandeau = (BANDEAU_RESERVE if langue(d) == "fr"
                else texte(TEXTES_VISITE, langue(d)).rstrip("."))
     return (f'<div class="{prefixe}-reserve"><b>{bandeau}</b>'

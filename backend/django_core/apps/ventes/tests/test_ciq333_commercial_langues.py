@@ -195,8 +195,12 @@ class Amot84MotifsVisiteCommercial(SimpleTestCase):
         return _html(d)
 
     def test_motifs_traduits(self):
-        self.assertIn("site MT : visite avant le devis final; surface "
-                      "disponible inconnue", self._html(None))
+        # Décision fondateur 26/10/2026 — la liste « À confirmer : … » n'est
+        # plus imprimée : aucun motif de réserve, dans aucune langue.
+        html = self._html(None)
+        self.assertNotIn("visite avant le devis final", html)
+        self.assertNotIn("surface disponible inconnue", html)
+        self.assertNotIn("À confirmer", html)
         for langue in ("en", "ar"):
             html = self._html(langue)
             with self.subTest(langue=langue):

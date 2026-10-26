@@ -48,9 +48,21 @@ METHODE_8760 = (
 CLES_INTERDITES = frozenset({'prix_achat', 'marge'})
 MODES = ('commercial', 'industriel')
 
-#: Lead.type_toiture → type de pose CIQ7 : seulement les correspondances
-#: CERTAINES ; une terrasse béton (lestée ou fixée ?) reste à déclarer.
-POSE_DU_TOIT_LEAD = {'bac_acier': 'bac_acier', 'tuiles': 'toiture_inclinee'}
+#: Lead.type_toiture → type de pose CIQ7 DÉCLARÉ. Fondateur 26/10/2026 : la
+#: terrasse béton se pose LESTÉE ; tôle et fibrociment (couvertures en plaques
+#: sur pannes, comme le bac acier) prennent la pose bac acier, la plus proche
+#: du catalogue — le fibrociment garde son alerte amiante (couverture). Une
+#: couverture « autre » reste NON déclarée (pose estimée).
+POSE_DU_TOIT_LEAD = {'bac_acier': 'bac_acier', 'tole_metal': 'bac_acier',
+                     'fibrociment': 'bac_acier', 'tuiles': 'toiture_inclinee',
+                     'terrasse_beton': 'toit_plat_leste'}
+#: Lead.type_surface → pose CIQ7 (fondateur 26/10/2026) : une ombrière ou un
+#: terrain n'est pas un toit — sa pose prime sur la couverture déclarée.
+POSE_DE_LA_SURFACE_LEAD = {'ombriere': 'ombriere', 'terrain': 'sol'}
+#: Poses où les panneaux SUIVENT le toit (affleurantes, CIQ112) : la pente et
+#: l'orientation du toit y sont celles des panneaux. Ailleurs (toit plat lesté,
+#: ombrière, sol) les tables ont leur propre inclinaison : jamais celle du toit.
+POSES_SUIVANT_LE_TOIT = ('bac_acier', 'toiture_inclinee')
 #: ADEV90 (D-ACI-13=a) — mode de pose ESTIMÉ quand aucun n'est déclaré :
 #: terrasse → lestée, toute autre couverture (ou couverture inconnue) →
 #: surimposition. La borne s'applique, dite « pose estimée, à confirmer au
@@ -107,6 +119,11 @@ CHEMINS_LEAD = {
     'rythme.reponses_categorie': 'reponses_categorie',
     'toit.surface_utile_m2': 'surface_utile_m2',
     'toit.type_toiture': 'couverture',
+    # Feuille PRIVÉE : elle ne sert qu'à choisir la pose (ombrière / sol).
+    'toit.type_surface': '_type_surface',
+    # Fondateur 26/10/2026 — pente / orientation DU TOIT déclarées au lead :
+    # feuilles privées, retenues seulement quand les panneaux suivent le toit.
+    'toit.pente_deg': '_pente_toit', 'toit.azimut_deg': '_azimut_toit',
     'tva_recuperable': 'tva_recuperable',
     # CIQ666 — le contrat d'électricité déclaré au lead (vocabulaire CIQ222).
     'tarif_declare': 'tarif_declare',
@@ -286,10 +303,16 @@ def _couche_lead(res, lead):
         if feuille == 'fermetures':
             valeur = _fermetures_des_mois(valeur)
         res.poser(feuille, valeur, prov)
-        if feuille == 'couverture':
+        sans_toit = res.valeur('_type_surface') in POSE_DE_LA_SURFACE_LEAD
+        if feuille == 'couverture' and not sans_toit:
             res.poser('type_pose', POSE_DU_TOIT_LEAD.get(valeur), prov)
+        if feuille == '_type_surface':
+            res.poser('type_pose', POSE_DE_LA_SURFACE_LEAD.get(valeur), prov)
         if feuille == 'surface_utile_m2':
             res.poser('surface_type', 'declaree', prov)
+    if res.valeur('type_pose') in POSES_SUIVANT_LE_TOIT:
+        for prive, feuille in (('_pente_toit', 'pente_deg'), ('_azimut_toit', 'azimut_deg')):
+            res.poser(feuille, res.valeur(prive), res.provenance(prive))
     # CIQ134 — cos φ DÉCLARÉ (information du lead, avec sa provenance) :
     # feuille PRIVÉE (``_``) — il ne sert qu'à l'alerte interne de
     # ``moteur_ci.reactif``, jamais aux entrées résolues ni au client.
@@ -1194,7 +1217,8 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             return _combinaison_imposee(onduleurs_imposes, catalogue['onduleurs'])
         # ADEV87 — module et fiches onduleur passés : les chaînes se calculent.
         return combiner_onduleurs(kwc, catalogue['onduleurs'], phase=phase,
-                                  module=catalogue.get('module_spec'))
+                                  module=catalogue.get('module_spec'),
+                                  ac_max_kw=_num(res.valeur('puissance_souscrite_kva')))
 
     def composer(kwc, onduleurs):
         return _completer_prix(composer_ci(kwc, catalogue['elements'], onduleurs=onduleurs,
@@ -1435,6 +1459,7 @@ def lignes_du_devis_ci(composition):
     renseigner », « à confirmer à la visite ») reste dans l'étude, jamais une
     ligne à 0 ; une ligne « à chiffrer après visite » (ADEV79, D-ACI-2=a)
     reste hors du devis, listée dans ``composition.a_chiffrer_visite``."""
+    from apps.ventes.moteur_ci.composition import nom_client
     lignes = []
     for ligne in (composition or {}).get('lignes') or []:
         if ligne.get('a_chiffrer_visite'):
@@ -1445,8 +1470,13 @@ def lignes_du_devis_ci(composition):
         if not produit or not quantite or quantite <= 0 or prix is None \
                 or not ligne.get('prix_connu'):
             continue
+        meme = next((x for x in lignes if x['produit_id'] == produit
+                     and x['prix_unitaire'] == Decimal(str(prix))), None)
+        if meme is not None:  # même article au même prix : une seule ligne
+            meme['quantite'] += Decimal(str(quantite))
+            continue
         lignes.append({'produit_id': produit,
-                       'designation': ligne.get('designation') or '',
+                       'designation': nom_client(ligne.get('designation') or ''),
                        'quantite': Decimal(str(quantite)),
                        'prix_unitaire': Decimal(str(prix))})
     return lignes

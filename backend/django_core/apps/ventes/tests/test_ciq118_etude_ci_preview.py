@@ -40,6 +40,7 @@ from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.domain import etude_ci
 from apps.ventes.moteur_ci.production import plan_de_production
 from authentication.models import Company
+from core.electrique.cables import SECTIONS_MM2_CI
 
 User = get_user_model()
 
@@ -90,6 +91,19 @@ class _Base(TestCase):
         FicheTechnique.objects.create(
             company=cls.co, produit=disjoncteur, type_fiche='protection',
             prot_type='disjoncteur', prot_cote='ac', prot_calibre_a=80, prot_poles=4)
+        # Fondateur 26/10/2026 — devis préliminaire jamais vide : câbles et
+        # structure (toit plat lesté par défaut) chiffrés d'office, tarifés ici.
+        cls._produit(cls.co, 'Câble solaire 6 mm² (au mètre)', role_ci='cable_dc',
+                     prix_vente=Decimal('11'))
+        cls._produit(cls.co, 'Structure toit plat lestée', role_ci='structure_ci',
+                     type_pose='toit_plat_leste', prix_vente=Decimal('450'))
+        for section in SECTIONS_MM2_CI:
+            cable = cls._produit(cls.co, 'Câble AC cuivre 5×%g mm² (au mètre)' % section,
+                                 role_ci='cable_ac',
+                                 prix_vente=Decimal(str(round(10 * section + 30, 2))))
+            FicheTechnique.objects.create(
+                company=cls.co, produit=cable, type_fiche='cable', cable_cote='ac',
+                cable_section_mm2=float(section), cable_ame='cu')
         CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
             cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ118 de test'}
             for cle in ('pose_structure', 'pose_modules')}})
@@ -210,7 +224,9 @@ class ContratTests(_Base):
     def test_longueur_dc_declaree_fiches_completes_cable_dc_quantifie(self):
         # ADEV87 — module et onduleurs à fiches complètes : les chaînes se
         # calculent, le câble DC = Σ chaînes × longueur DÉCLARÉE, au prix
-        # catalogue.
+        # catalogue. Le câble DC du catalogue de base (_Base) est retiré : seul
+        # celui-ci doit être retenu.
+        Produit.objects.filter(company=self.co, role_ci='cable_dc').delete()
         cable = self._produit(self.co, 'Câble solaire Nexans H1Z2Z2-K 6 mm² (au mètre)',
                               role_devis='cable_dc', prix_vente=Decimal('12'))
         corps = self.corps()
@@ -315,6 +331,47 @@ class LeadTests(_Base):
         etude = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)
         self.assertNotIn('consommation_absente', [a['code'] for a in etude['alertes']])
         self.assertIn('facture_hiver_mad', etude['entrees_resolues'])
+
+    def test_couverture_du_lead_pose_declaree_fondateur_2610(self):
+        # Fondateur 26/10/2026 — terrasse béton = pose lestée ; tôle et
+        # fibrociment = bac acier ; « autre » reste non déclarée.
+        attendu = {'terrasse_beton': 'toit_plat_leste', 'tole_metal': 'bac_acier',
+                   'fibrociment': 'bac_acier', 'bac_acier': 'bac_acier',
+                   'tuiles': 'toiture_inclinee', 'autre': None}
+        for toit, pose in attendu.items():
+            lead = self._lead(conso_mensuelle_kwh=Decimal('6000'),
+                              categorie_commerciale='bureau', type_toiture=toit)
+            etude = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)
+            resolue = etude['entrees_resolues'].get('type_pose') or {}
+            self.assertEqual(resolue.get('valeur'), pose, toit)
+
+    def test_type_de_surface_du_lead_ombriere_terrain_fondateur_2610(self):
+        # Fondateur 26/10/2026 — ombrière / terrain : leur pose prime sur la
+        # couverture ; une toiture garde la pose de sa couverture.
+        attendu = {'ombriere': 'ombriere', 'terrain': 'sol', 'toiture': 'bac_acier'}
+        for surface, pose in attendu.items():
+            lead = self._lead(conso_mensuelle_kwh=Decimal('6000'),
+                              categorie_commerciale='bureau', type_toiture='tole_metal',
+                              type_surface=surface)
+            etude = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)
+            self.assertEqual(etude['entrees_resolues']['type_pose']['valeur'], pose, surface)
+            self.assertNotIn('_type_surface', etude['entrees_resolues'])
+
+    def test_pente_et_orientation_du_lead_si_les_panneaux_suivent_le_toit(self):
+        # Fondateur 26/10/2026 — bac acier : la pente / l'orientation du toit
+        # sont celles des panneaux ; toit plat lesté : jamais (tables inclinées).
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale='bureau',
+                          type_toiture='bac_acier', inclinaison_deg=Decimal('15'),
+                          orientation='est')
+        resolues = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)['entrees_resolues']
+        self.assertEqual(resolues['pente_deg']['valeur'], 15)
+        self.assertEqual(resolues['azimut_deg']['valeur'], -90)
+        self.assertNotIn('_pente_toit', resolues)
+        Lead.objects.filter(pk=lead.pk).update(type_toiture='terrasse_beton')
+        lead.refresh_from_db()
+        resolues = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)['entrees_resolues']
+        self.assertNotIn('pente_deg', resolues)
+        self.assertNotIn('azimut_deg', resolues)
 
     def test_lead_dune_autre_societe_ignore(self):
         lead = Lead.objects.create(company=self.autre, nom='Étranger',

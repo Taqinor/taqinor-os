@@ -111,14 +111,33 @@ class CompositionTests(TestCase):
             self.assertGreater(section, 25.0)
         self.assertEqual(ac['quantite'], 30)
 
-    def test_longueur_non_declaree_sans_quantite(self):
+    def test_longueur_non_declaree_estimee_jamais_vide(self):
+        # Fondateur 26/10/2026 — devis préliminaire : 30 m par onduleur,
+        # chiffré, ajusté après la visite (jamais une ligne vide).
         ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50,
                                 'quantite': 1}]}
         comp = composer_ci(60, self.cat, onduleurs=ond,
                            entrees=_entrees(longueur_ac_m=None), forfaits={})
         ac = self._lignes(comp, 'cable_ac')[0]
-        self.assertIsNone(ac['quantite'])
+        self.assertEqual(ac['quantite'], 30.0)
         self.assertTrue(ac['a_confirmer_visite'])
+        self.assertFalse(ac.get('a_chiffrer_visite'))
+
+    def test_cable_dc_et_structure_estimes_avant_visite(self):
+        # Chaînes non calculées : 1 chaîne / 12 panneaux, 2 × chaînes × 30 m ;
+        # type de toit inconnu : toit plat lesté.
+        ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50,
+                                'quantite': 1}]}
+        comp = composer_ci(40, self.cat, onduleurs=ond,
+                           entrees=_entrees(longueur_dc_m=None, type_pose=''),
+                           forfaits={})
+        nb_pan = math.ceil(40 * 1000 / 710)
+        dc = self._lignes(comp, 'cable_dc')[0]
+        self.assertEqual(dc['quantite'], 2 * math.ceil(nb_pan / 12) * 30.0)
+        structure = self._lignes(comp, 'structure_ci')[0]
+        poses = {p['id']: p['type_pose'] for p in self.cat}
+        self.assertEqual(poses[structure['produit']], 'toit_plat_leste')
+        self.assertEqual(comp['a_chiffrer_visite'], [])
 
     def test_trois_onduleurs_sans_revente_comptage_present(self):
         ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50,

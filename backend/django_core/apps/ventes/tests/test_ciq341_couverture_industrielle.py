@@ -135,7 +135,8 @@ class Ciq341Synthese(SimpleTestCase):
         self.assertIn("VAN au taux déclaré de 8 %", p1)
         self.assertIn("1 670 759,73", p1.replace(" ", " "))
         self.assertIn("Financement", p1)
-        self.assertIn("Estimation sous réserve de la visite technique", p1)
+        self.assertIn("Devis préliminaire — les prix pourront être ajustés "
+                      "après la visite technique", p1)
 
     def test_sans_argent_motif(self):
         p1 = _texte(_page1(_data(economie=None)))
@@ -154,9 +155,9 @@ class Ciq341Synthese(SimpleTestCase):
 
 
 class Amot80OffreFermeEtTitresCfo(SimpleTestCase):
-    """AMOT80 — le statut (AMOT88 : « prix ferme, économies estimées »)
-    seulement sans réserve de visite ET sur un tarif lu sur la facture du
-    client ; le sous-titre de rentabilité seulement avec un flux."""
+    """AMOT80 — plus de statut « prix ferme » (décision fondateur
+    26/10/2026 : devis C&I préliminaire) ; le sous-titre de rentabilité
+    seulement avec un flux."""
 
     def _sans_reserve(self, etude, economie):
         d = _data(etude, economie)
@@ -172,16 +173,25 @@ class Amot80OffreFermeEtTitresCfo(SimpleTestCase):
     def test_offre_ferme_sur_facture_declaree_sans_reserve(self):
         p1 = self._sans_reserve("exemple_industriel_mt",
                                 "exemple_industriel_mt")
-        # AMOT88 — une règle : prix ferme, économies estimées (jamais
-        # « offre ferme » à côté de « chiffres indicatifs »).
-        self.assertIn("Statut de l'étude prix ferme, économies estimées", p1)
+        # Décision fondateur 26/10/2026 — le devis C&I entier est
+        # préliminaire : plus jamais « prix ferme » (ni la rangée « Statut de
+        # l'étude »), même sur une facture déclarée sans réserve.
+        self.assertNotIn("prix ferme", p1)
+        self.assertNotIn("Statut de l'étude", p1)
+        texte = _texte(_html(_data("exemple_industriel_mt",
+                                   "exemple_industriel_mt")))
+        self.assertNotIn("prix ferme", texte)
+        # Décision fondateur 26/10/2026 — le bandeau « Devis préliminaire »
+        # est imprimé sur TOUT document C&I, même sans réserve.
+        self.assertIn("Devis préliminaire", p1)
         self.assertNotIn("offre ferme", _texte(_html(_data(
             "exemple_industriel_mt", "exemple_industriel_mt"))))
 
     def test_jamais_offre_ferme_sous_reserve(self):
         p1 = _texte(_page1(_data("exemple_industriel_mt",
                                  "exemple_industriel_mt")))
-        self.assertIn("Estimation sous réserve de la visite technique", p1)
+        self.assertIn("Devis préliminaire — les prix pourront être ajustés "
+                      "après la visite technique", p1)
         self.assertNotIn("prix ferme", p1)
 
     def test_titres_cfo_seulement_avec_un_flux(self):

@@ -87,15 +87,23 @@ CHAMPS_PAR_SECTION = {
     # — sections du lead PRO : les colonnes du contrat CIQ1 que le CLIENT
     # écrit lui-même. Q21 tient : budget, délai, décideur et concurrents ne
     # sont JAMAIS demandés par écrit.
-    'reseau': ('tension_raccordement', 'compteur_puissance_kva',
-               'conso_mensuelle_kwh', 'releve_conso', 'cos_phi'),
+    # Fondateur 26/10/2026 — le contrat d'électricité (+ l'option tarifaire
+    # de la force motrice) et la phase du site bloquent le devis automatique :
+    # le client les lit sur sa facture, on les lui demande par écrit.
+    'reseau': ('tension_raccordement', 'contrat_electricite',
+               'option_tarifaire_bt', 'raccordement',
+               'compteur_puissance_kva', 'conso_mensuelle_kwh',
+               'releve_conso', 'facture_hiver', 'cos_phi'),
     'activite': ('categorie_commerciale', 'reponses_categorie',
                  'secteur_industriel', 'export_ue_declare', 'regime_equipes',
                  'jours_ouverture', 'heure_debut', 'heure_fin',
                  'fermeture_mois', 'groupe_electrogene', 'groupe_kva',
                  'groupe_litres_mois', 'groupe_depense_mad_mois',
                  'pv_existant_kwc'),
-    'site': ('type_surface', 'type_toiture', 'surface_toiture_m2'),
+    # Fondateur 26/10/2026 — pente et orientation du toit (facultatives :
+    # « je ne sais pas » n'écrit rien), lues par le moteur C&I.
+    'site': ('type_surface', 'type_toiture', 'surface_toiture_m2',
+             'inclinaison_deg', 'orientation'),
     'societe': ('societe', 'ice', 'rc', 'if_fiscal', 'adresse_siege',
                 'fonction_contact', 'contact_secondaire_nom',
                 'contact_secondaire_telephone', 'contact_secondaire_email',
@@ -394,6 +402,20 @@ def _tension_inconnue(lead) -> bool:
             or lead.tension_source == 'site_defaut_visible')
 
 
+#: Surfaces sans toiture : la couverture n'y a pas de sens.
+_SURFACES_SANS_TOIT = ('ombriere', 'terrain')
+
+
+def _site_inconnu(lead) -> bool:
+    """Fondateur 26/10/2026 — la section « site » est manquante tant que la
+    surface, le type de surface OU la couverture manquent (la couverture
+    n'est pas exigée d'une ombrière ni d'un terrain)."""
+    if lead.surface_toiture_m2 is None or _vide(lead.type_surface):
+        return True
+    return (lead.type_surface not in _SURFACES_SANS_TOIT
+            and _vide(lead.type_toiture))
+
+
 def _manquantes_pro(lead, libelles) -> dict:
     """CIQ412 — règles ``manquantes_pro`` (contrat CIQ400) : une section pro
     est MANQUANTE quand la tension, la puissance souscrite, le rythme, la
@@ -404,14 +426,21 @@ def _manquantes_pro(lead, libelles) -> dict:
         activite_connue = not _vide(lead.categorie_commerciale)
     return {
         'reseau': (_tension_inconnue(lead)
-                   or lead.compteur_puissance_kva is None),
+                   or lead.compteur_puissance_kva is None
+                   or _vide(lead.contrat_electricite)
+                   or _vide(lead.raccordement)),
+        # Fondateur 26/10/2026 — équipes et mois de fermeture aussi (une
+        # liste VIDE = « jamais fermé », une réponse ; None = jamais posée).
         'activite': (not activite_connue or not lead.jours_ouverture
-                     or lead.heure_debut is None or lead.heure_fin is None),
-        'site': lead.surface_toiture_m2 is None,
+                     or lead.heure_debut is None or lead.heure_fin is None
+                     or _vide(lead.regime_equipes)
+                     or lead.fermeture_mois is None),
+        'site': _site_inconnu(lead),
         'gps': not _gps_connu(lead),
         'photo_factures': not _photo_presente('photo_factures', libelles),
         'photo_poste': not _photo_presente('photo_poste', libelles),
-        'societe': _vide(lead.societe) or _vide(lead.ice),
+        'societe': (_vide(lead.societe) or _vide(lead.ice)
+                    or _vide(lead.tva_recuperable)),
         'contact': (_vide(lead.email) or _encore_a_obtenir(lead, 'adresse')
                     or _vide(lead.ville)),
     }
@@ -750,6 +779,15 @@ def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
             if not isinstance(valeur, dict) or set(valeur) - permises:
                 continue
         out[cle] = valeur
+    # Une pente de toit se dit en degrés, de 0 (plat) à moins de 90.
+    if 'inclinaison_deg' in out and not 0 <= out['inclinaison_deg'] < 90:
+        out.pop('inclinaison_deg')
+    # L'option bi-horaire n'existe qu'en force motrice (CIQ666) : jamais
+    # enregistrée pour un autre contrat.
+    if 'option_tarifaire_bt' in out and out.get(
+            'contrat_electricite',
+            lead.contrat_electricite) != 'bt_force_motrice':
+        out.pop('option_tarifaire_bt')
     if 'heure_debut' in out or 'heure_fin' in out:
         debut = out.get('heure_debut', lead.heure_debut)
         fin = out.get('heure_fin', lead.heure_fin)
