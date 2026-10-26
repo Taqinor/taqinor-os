@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.db import models as dj_models
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
@@ -296,6 +297,14 @@ class InterventionSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     same_company_fields = (
         'technicien', 'equipe', 'equipe_ref', 'installation', 'camionnette',
         'ticket')
+    # api-fuzz-full 26/10 — textes STRICTS : DRF refusait le caractère nul de
+    # ``compte_rendu`` (400) que le schéma autorisait ; ``ChaineStricte``
+    # publie le motif sans NUL. Booléens et décimaux inchangés.
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        dj_models.CharField: ChaineStricte,
+        dj_models.TextField: ChaineStricte,
+    }
     type_intervention_display = serializers.CharField(
         source='get_type_intervention_display', read_only=True)
     statut_display = serializers.CharField(
