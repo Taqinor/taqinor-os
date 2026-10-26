@@ -339,7 +339,7 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
                     lng=oa.f(True, min_value=-180, max_value=180),
                     accuracy_m=oa.f(null=True, min_value=0, max_value=999999.99),
                     captured_at=oa.dt(True),
-                )(),
+                ),
                 required=True, min_length=1,
                 max_length=gps_tracking_service.LOT_MAX_POSITIONS),
         ),
