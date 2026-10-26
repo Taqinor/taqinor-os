@@ -14,7 +14,7 @@ Technique
 Lignes
 Texte client
 Enregistrement
-Brouillon enregistré à 09:00
+Brouillon enregistré à 10:00
 Marché / Mode d'installation
 🏠 Résidentiel
 🏭 Industriel
@@ -432,21 +432,24 @@ Ligne optionnelle (add-on hors total)=on [ ]
   "crmApi.getClients": [
     [
       {
-        "page": 1
+        "page": 1,
+        "page_size": 200
       }
     ]
   ],
   "crmApi.getLeads": [
     [
       {
-        "page": 1
+        "page": 1,
+        "page_size": 200
       }
     ]
   ],
   "stockApi.getProduits": [
     [
       {
-        "page": 1
+        "page": 1,
+        "page_size": 200
       }
     ]
   ],

@@ -157,12 +157,12 @@ Marge indicative (interne)
 hover:bg-muted/30 transition-colors rounded-lg" aria-expanded="false">
 Modèles de devis
 Historique des versions
-30/09/2026 08:41
+30/09/2026 09:41
 Sami Alaoui
 12 ligne(s)
 48 500,00 MAD TTC
 Voir les différences
-29/09/2026 08:00
+29/09/2026 09:00
 Sami Alaoui
 12 ligne(s)
 48 500,00 MAD TTC
@@ -267,21 +267,24 @@ gen-cond-acompte-financeur=
   "crmApi.getClients": [
     [
       {
-        "page": 1
+        "page": 1,
+        "page_size": 200
       }
     ]
   ],
   "crmApi.getLeads": [
     [
       {
-        "page": 1
+        "page": 1,
+        "page_size": 200
       }
     ]
   ],
   "stockApi.getProduits": [
     [
       {
-        "page": 1
+        "page": 1,
+        "page_size": 200
       }
     ]
   ],
