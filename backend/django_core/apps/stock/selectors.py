@@ -3472,9 +3472,6 @@ def produits_ci(company, avec_prix=False):
           .filter(Q(company=company) | Q(company__isnull=True),
                   is_archived=False)
           .select_related('categorie', 'fiche_technique'))
-    if avec_prix:
-        qs = qs.filter(Q(prix_vente__gt=0) | Q(prix_fixe_ht__isnull=False)
-                       | Q(prix_par_panneau_ht__isnull=False))
     out = []
     for p in qs.order_by('nom', 'id'):
         role, classement = role_ci_pour(p)
@@ -3483,8 +3480,7 @@ def produits_ci(company, avec_prix=False):
         prix_connu = bool(p.prix_vente and p.prix_vente > 0) or (
             role in ROLES_CI_BAREME_COFFRET
             and (p.prix_fixe_ht is not None or p.prix_par_panneau_ht is not None))
-        if avec_prix and not prix_connu:
-            continue
+        if avec_prix and not prix_connu: continue  # noqa: E701 — fichier-mur (C20)
         eligible, motif = _eligibilite_ci(p, role, prix_connu)
         out.append({
             'id': p.id,
