@@ -738,3 +738,15 @@ class SchemaVisitesPublieTests(SimpleTestCase):
             set(entete['properties']),
             {'id', 'lead', 'commercial', 'statut', 'date_prevue',
              'date_realisee', 'notes'})
+
+    def test_le_motif_de_renvoi_publie_non_blanc_sans_nul(self):
+        # api-fuzz-full 27/10 : « /@Bl\x00 » était publié conforme puis
+        # refusé 400 — le corps publie désormais le motif « non blanc, sans
+        # NUL » que la validation applique.
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+        operation = self.schema['paths'][
+            '/api/django/visites/visites/{id}/renvoyer/']['post']
+        corps = self._composant(operation['requestBody']['content'][
+            'application/json']['schema'])
+        self.assertEqual(corps['properties']['motif']['pattern'],
+                         MOTIF_NON_BLANC_SANS_NUL)

@@ -11,7 +11,7 @@ dédiées (``terminer``/``valider``/``renvoyer``), jamais par un PATCH de champ.
 """
 from rest_framework import serializers
 
-from core.champs_stricts import IdInconnu404Mixin
+from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
 from core.serializers import CompanyScopedRelationsMixin
 
 from .models import VisiteTerrain
@@ -93,7 +93,9 @@ class VisiteRenvoiSerializer(serializers.Serializer):
         child=serializers.IntegerField(), required=False, default=list)
     mesures = serializers.ListField(
         child=serializers.DictField(), required=False, default=list)
-    motif = serializers.CharField(allow_blank=False)
+    # api-fuzz-full 27/10 — ``ChaineStricte`` publie le motif « non blanc,
+    # sans NUL » que la validation applique (400 sur un corps « conforme »).
+    motif = ChaineStricte(allow_blank=False)
 
     def validate_motif(self, value):
         if not (value or '').strip():
