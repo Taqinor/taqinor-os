@@ -330,6 +330,15 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         sortie['alertes'].append(_alerte('BATTERIE_FICHE_INCOMPLETE', (
             "Batteries écartées de l'option « avec » (fiche sans capacité utile ni tension "
             'nominale) : %s.' % ', '.join(bat['ecartees']))))
+    if choix != 'avec' and resultat['prix_a_renseigner']:
+        # Fondateur 27/10/2026 — « les deux » : un article de l'option « avec »
+        # sans prix ne refuse pas le devis ; l'offre réseau part seule, les
+        # articles sont nommés en alerte INTERNE (jamais au client).
+        sortie['prix_a_renseigner'] = []
+        sortie['alertes'].append(_alerte('OPTION_BATTERIE_PRIX_A_RENSEIGNER', (
+            'Option « avec batterie » non proposée — prix à renseigner : %s.'
+            % ', '.join(str(p) for p in resultat['prix_a_renseigner']))))
+        return sortie
     if resultat['evaluation'] is None:
         sortie['alertes'].append(_alerte(
             'OPTION_BATTERIE_NON_COMPOSEE', 'Option « avec batterie » non composée : %s.'

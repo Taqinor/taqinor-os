@@ -454,6 +454,27 @@ class OptionBatterieCITests(_Base):
                                      self.b10.id, self.b5.id})
         self.assertNotIn('option_avec', devis.etude_params['etude_ci'])
 
+    def test_les_deux_batteries_sans_prix_offre_reseau_seule_alerte_interne(self):
+        """Fondateur 27/10/2026 — « les deux » : aucune batterie tarifée ⇒ le
+        devis part avec l'offre réseau seule, les batteries nommées en alerte
+        interne ; jamais un refus."""
+        Produit.objects.filter(pk__in=[self.b5.pk, self.b10.pk, self.b16.pk]).update(
+            prix_vente=Decimal('0'))
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            devis = build_devis_auto(lead=self._boulangerie(), user=self.user, company=self.co,
+                                     journal_auto=journal)
+        produits = set(devis.lignes.values_list('produit_id', flat=True))
+        self.assertIn(self.onduleur.id, produits)
+        self.assertFalse(produits & {self.b5.id, self.b10.id, self.b16.id, self.h10.id,
+                                     self.h15.id, self.h20.id})
+        self.assertFalse(devis.lignes.exclude(variante='').exists())
+        self.assertNotIn('option_avec', devis.etude_params['etude_ci'])
+        alerte = next(a for a in journal['alertes']
+                      if a['code'] == 'OPTION_BATTERIE_PRIX_A_RENSEIGNER')
+        self.assertIn('Batterie Dyness 10 kWh', alerte['message'])
+        self.assertTrue(alerte['interne'])
+
     def test_batteries_sans_prix_refus_prix_a_renseigner_nommant_la_batterie(self):
         Produit.objects.filter(pk__in=[self.b5.pk, self.b10.pk, self.b16.pk]).update(
             prix_vente=Decimal('0'))
