@@ -428,6 +428,25 @@ def _logger(catalogue, nb_ond, lignes):
                          a_confirmer=not max_sup))
 
 
+def _appliquer_bareme_coffret(ligne, article, nb_ond, nb_panneaux):
+    """Coffret C&I au barème (fondateur, 26/10/2026), comme le tableau
+    résidentiel : total HT = par onduleur × onduleurs + par panneau ×
+    panneaux, réparti sur la quantité de la ligne (centime). Sans barème :
+    ligne inchangée (prix catalogue)."""
+    bareme = (article or {}).get('bareme_coffret')
+    if not bareme:
+        return
+    par_ond = _d(bareme.get('par_onduleur_ht')) or Decimal('0')
+    par_pan = _d(bareme.get('par_panneau_ht')) or Decimal('0')
+    quantite = Decimal(str(ligne.get('quantite') or 1))
+    total = par_ond * Decimal(int(nb_ond or 0)) + par_pan * Decimal(int(nb_panneaux or 0))
+    ligne['prix_unitaire_ht'] = str((total / quantite).quantize(Decimal('0.01')))
+    ligne['prix_connu'] = True
+    ligne['motif'] = None
+    for cle in ('palier', 'prix_unitaire_ttc'):
+        ligne.pop(cle, None)
+
+
 def _prestation(cle, libelle, forfait, article, kwc, nb_panneaux):
     montants = [_d((forfait or {}).get(k))
                 for k in ('fixe_ht', 'par_kwc_ht', 'par_panneau_ht')]
@@ -524,6 +543,8 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     if nb_ond:
         lignes.append(_ligne('coffret_dc', _du_role(catalogue, 'coffret_dc'),
                              'Coffret DC C&I', nb_ond, 'u'))
+        _appliquer_bareme_coffret(lignes[-1], _du_role(catalogue, 'coffret_dc'),
+                                  nb_ond, nb_panneaux)
     for ondu in unitaires:
         _protection_et_cable_ac(catalogue, ondu, entrees, lignes, alertes,
                                 hypotheses)
@@ -550,6 +571,8 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     _logger(catalogue, nb_ond, lignes)
     lignes.append(_ligne('coffret_ac', _du_role(catalogue, 'coffret_ac'),
                          'Coffret AC C&I', 1, 'u'))
+    _appliquer_bareme_coffret(lignes[-1], _du_role(catalogue, 'coffret_ac'),
+                              nb_ond, nb_panneaux)
 
     # ── Cellule MT
     tension = (entrees.get('tension') or '').upper()
