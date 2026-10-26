@@ -1,0 +1,49 @@
+ACAL358 — PA2.5 — rejeu API (helper de l'orchestrateur), pile locale docker (projet erp-agentique, backend monté = origin/main e5a02b61e, hachés sha256 de services/layout.py, chaines.py, electrique.py, modules_pans.py, views/electrique.py, views/calepinages.py identiques worktree/conteneur), 2026-10-26.
+Sonde manage.py shell : APIClient(HTTP_HOST='localhost') force_authenticate demo_admin (société 1) sur les VRAIES routes ; transaction.atomic + rollback forcé : rien ne reste (compté après rollback). Les tracebacks d'auto-import du shell (STAGES, contrats, kb) en tête de sortie sont du bruit d'import, sans lien.
+Portée : la moitié serveur de la preuve (l'alerte servie aux routes électriques, lue par l'onglet électrique). L'affichage écran n'est PAS joué ici.
+
+Setup (société 1) : produits M550 (fiche module 550 Wc, Vmp 41,6), M400 (fiche 400 Wc), Ond10 (fiche onduleur 2 MPPT) ; société voisine créée avec son produit M400V ;
+devis DEV-ACCEPT-ACAL358 (lignes M550 + Ond10 → module par défaut = M550) ; calepinage à 2 pans A (10 × M550) / B (10 × module m400), températures saisies -5/70 °C.
+Pour chaque cas : POST /api/django/calepinage/calepinages/<pk>/evaluer-electrique/ (corps vide = conception enregistrée) + GET …/entree-electrique/.
+
+Sortie brute :
+setup (company 1 ): produits M550 1558 M400 1559 Ond10 1560 ; société voisine 153 produit M400V 1561 ; devis DEV-ACCEPT-ACAL358 (lignes M550 + Ond10) ; Calepinage 22
+--- cas 1-B-fiche-resolue : B.produitId = 1559
+  POST evaluer-electrique/ -> 200 verdict= alerte ; alertes « sans fiche » = []
+  autres alertes ( 3 ): ["champ à 2 modèles de module : chaque modèle est chaîné avec SA fiche sur ses propres entrées MPPT (1 entrée(s), 1 entrée(s)) — aucune chaîne", "Pan « B » : module posé « M400 », différent du module par défaut « M550 » — le pan est chaîné et chiffré avec SON module", "Coefficients de température NON SOURCÉS sur la fiche de M550 (« temp_coeff_voc_pct_c » — coefficient de la tension à vide (β Voc) : -0,270 %"]
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}, {"pan": "B", "module_id": "m400", "designation": "M400", "produit_id": 1559, "fiche_resolue": true, "fiche_complete": true}]
+--- cas 2-B-module-saisi : B.produitId = None
+  POST evaluer-electrique/ -> 200 verdict= alerte ; alertes « sans fiche » = ["Pan « B » : module « M400 saisi » sans fiche produit — chaîné avec la fiche « M550 » ; tensions et courants de ce pan non garantis"]
+  autres alertes ( 1 ): ["Coefficients de température NON SOURCÉS sur la fiche de M550 (« temp_coeff_voc_pct_c » — coefficient de la tension à vide (β Voc) : -0,270 %"]
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}, {"pan": "B", "module_id": "m400", "designation": "M400 saisi", "produit_id": null, "fiche_resolue": false, "fiche_complete": false}]
+--- cas 3-B-produitId-introuvable : B.produitId = 99999999
+  POST evaluer-electrique/ -> 200 verdict= alerte ; alertes « sans fiche » = ["Pan « B » : module « M400 fantome » sans fiche produit — chaîné avec la fiche « M550 » ; tensions et courants de ce pan non garantis"]
+  autres alertes ( 1 ): ["Coefficients de température NON SOURCÉS sur la fiche de M550 (« temp_coeff_voc_pct_c » — coefficient de la tension à vide (β Voc) : -0,270 %"]
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}, {"pan": "B", "module_id": "m400", "designation": "M400 fantome", "produit_id": 99999999, "fiche_resolue": false, "fiche_complete": false}]
+--- cas 4-B-produit-autre-societe : B.produitId = 1561
+  POST evaluer-electrique/ -> 200 verdict= alerte ; alertes « sans fiche » = ["Pan « B » : module « M400 voisin » sans fiche produit — chaîné avec la fiche « M550 » ; tensions et courants de ce pan non garantis"]
+  autres alertes ( 1 ): ["Coefficients de température NON SOURCÉS sur la fiche de M550 (« temp_coeff_voc_pct_c » — coefficient de la tension à vide (β Voc) : -0,270 %"]
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}, {"pan": "B", "module_id": "m400", "designation": "M400 voisin", "produit_id": 1561, "fiche_resolue": false, "fiche_complete": false}]
+--- cas 5-mono-module : B.produitId = -
+  POST evaluer-electrique/ -> 200 verdict= alerte ; alertes « sans fiche » = []
+  autres alertes ( 1 ): ["Coefficients de température NON SOURCÉS sur la fiche de M550 (« temp_coeff_voc_pct_c » — coefficient de la tension à vide (β Voc) : -0,270 %"]
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}]
+rollback: produits ACCEPT restants = 0 ; calepinages = 0 ; société voisine = 0
+VERDICT ACAL358: PASS
+VERDICT ACAL359 serveur: PASS
+
+Rejeu de la sonde REPRO docs/audits/sondes/ACAL/C-ACAL-VER-005.py (même conteneur, sous rollback) :
+  « pan B kWc [4.0] chaîné à Vmp/module [41.6], alerte=True » → SONDE_RESULT {'repro': False} (rouge sur 5ea32b58b : alerte=False).
+
+Attendu (plan) vs observé :
+- B module saisi (produitId null, « M400 saisi ») → alerte « Pan « B » : module « M400 saisi » sans fiche produit — chaîné avec la fiche « M550 » ; tensions et courants de ce pan non garantis » : OBSERVÉ mot pour mot.
+- B produitId introuvable (99999999) → même alerte nommant le pan B : OBSERVÉ.
+- B produit d'une autre société (1561, get_produit_scoped → None) → même alerte : OBSERVÉ.
+- B à fiche résolue (M400 du stock) et champ mono-module → aucune alerte « sans fiche » : OBSERVÉ (seule l'alerte d'écart existante ACAL264 « module posé « M400 », différent… » pour le cas résolu).
+- Statuts : 10 réponses 200, aucun 4xx/5xx.
+Verdict : PASS (serveur). Oracles API : 1,2 PASS ; 3,4,8 NA (pas de navigateur) ; 5-7,9,10 NA.

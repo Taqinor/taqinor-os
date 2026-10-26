@@ -1,0 +1,19 @@
+APDF36 — P5 — rejeu orchestrateur, pile locale (backend monté et front reconstruit à e5a02b61e), 2026-10-26, navigateur intégré.
+Compte portail client acc_portail_test (société démo 1, client 1) ; « Mes devis » (/portail/client/devis, GET /api/django/portail/mes-devis/ 200).
+
+1. Devis DEV-202610-0034 (id 861, « Envoyé », 53 500,00 MAD TTC) → clic « Accepter » : le dialogue « Accepter le devis DEV-202610-0034 » affiche
+   la section data-testid=portail-devis-conditions : titre « Conditions générales du devis » + puces servies
+   (« Validité de l'offre : jusqu'au 11/11/2026 », « Acompte à la commande : 30% », « 60% à la réception du matériel », « 10% après la mise en marche »,
+   « TVA : 10% panneaux photovoltaïques · 20% autres équipements et prestations », « Tarifs de référence : barème ONEE/SRM »)
+   et la case « J'accepte ce devis et les conditions générales, et je consens à sa signature électronique. ».
+2. Nom saisi « Client Démo Acceptation », case NON cochée → « Confirmer l'acceptation » désactivé (disabled=true) ; case cochée → activé (disabled=false).
+3. Confirmer → POST /api/django/portail/mes-devis/861/accepter/ ; le serveur (APDF35 : refuse 400 sans accepte_conditions vrai,
+   views_client.py::accepter) enregistre l'acceptation : DevisSignature 90 (signataire_nom « Client Démo Acceptation », consentement_explicite True,
+   consent_esign True, signed_at 2026-10-26 12:53:01Z, signed_pdf_key devis/1/DEV-202610-0034__signe.pdf), Devis 861 statut « accepte ».
+4. Persistance : rechargement de la liste → DEV-202610-0034 « Accepté », plus de bouton « Accepter » sur cette ligne.
+Écart observé hors clauses d'APDF36 (déposé dans docs/ERROR_PLAN.md) :
+   - la réponse du POST a dépassé le délai axios de 20 s (nginx 499 à 12:53:17 pour une signature écrite à 12:53:01, pile chargée par des rendus PDF
+     concurrents) : le client n'a vu ni toast de succès ni fermeture du dialogue alors que le devis était accepté → ERR-PORTAIL-ACCEPTATION-DELAI-20S ;
+   - « Accepter » est proposé sur les devis Refusés (condition `!d.accepte`, PortailClientDevis.jsx:182) → 409 « Seul un devis en cours… »
+     (sonde APIClient en transaction annulée, DEV-202610-0033) → ERR-PORTAIL-ACCEPTER-DEVIS-REFUSE.
+Verdict APDF36 (titre + puces, case obligatoire, accepte_conditions envoyé, statut « Accepté » relu) : PASS.

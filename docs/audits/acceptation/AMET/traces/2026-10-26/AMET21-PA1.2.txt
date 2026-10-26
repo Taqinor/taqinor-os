@@ -1,0 +1,12 @@
+AMET21 — PA1.2 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient demo_admin sur les VRAIES routes PATCH /api/django/crm/leads/<id>/ et POST /api/django/crm/leads/<id>/merge/ ; transaction.atomic + rollback). Société démo 1.
+
+1. POST /crm/leads/ survivant (ville Rabat, nb_etages 3) et doublon (ville Fès, nb_etages 2, email acc.doublon.amet21@example.com) → 201/201.
+   Fiche : PATCH survivant {nb_etages: 0, ville: ""} → 200 ; relu nb_etages 0.00, ville '' ; saisies_humaines [] (voir note).
+2. POST /crm/leads/<survivant>/merge/ {others: [doublon]} → 200 ; servi nb_etages 0.00, email du doublon repris (champ réellement vide).
+   Relu : nb_etages 0.00 (le 0 saisi est CONSERVÉ, pas remplacé par 2) ; doublon archivé (True) ; 0 ligne système sur nb_etages/ville ; 2 notes de fusion.
+3. Contrôle marqueur posé en base (saisies_humaines ['nb_etages','ville']) : merge → 200, nb_etages 0.00, ville '' gardée, email repris.
+Note : la clause « une clé de saisies_humaines du survivant n'est jamais remplacée » n'est tenue qu'avec un marqueur posé en base : la ville
+   vidée par la FICHE est remplie par la fusion (ville 'Fès') parce que la fiche ne persiste pas le marqueur (défaut AMET23 constaté en
+   AMET19-PA1.1, apps/crm/views.py:599/631). L'observable de la preuve PA1.2 (0 saisi conservé) est vérifié.
+Verdict : PASS.

@@ -1,0 +1,34 @@
+Rejeu orchestrateur P3.6 (ASEC54 — toit LÉGITIME roofs/<société>/ : même nombre de pages, image intégrée) sur la pile locale à e5a02b61e (origin/main), 26/10/2026, demo_admin (société 1) — sonde API (manage.py shell, APIClient(HTTP_HOST='localhost') authentifié), PDF /proposal RÉEL (WeasyPrint de l'image), pages + images intégrées lues par PyMuPDF ; stockage RÉEL : MinIO de la pile (aucun double) — `download_roof_image` réel, seulement ESPIONNÉ (`mock.patch(..., wraps=<la vraie fonction>)`) pour compter ses appels.
+
+Setup : aucun devis démo n'a de toit (`roof_image` vide partout, MinIO sans aucune clé roofs/1/). Dans une transaction ANNULÉE, le toit est posé par la VRAIE route d'upload POST /api/django/ventes/devis/<id>/roof-image/ (PNG 800×500 généré) — la clé est dérivée côté serveur : roofs/1/<référence>.png. Après le rollback, `roof_image` relu à None et les 2 objets MinIO créés par le rejeu supprimés (liste roofs/1/ relue : 0 objet).
+
+Sortie brute — (statut HTTP, pages, nb d'images par page, (largeur, hauteur) des images de chaque page) :
+DEVIS 834 DEV-202610-0007 brouillon roof_image avant= None
+  TEMOIN  (200, 3, [3, 3, 3], [[(376, 376), (1, 1), (1600, 1200)], ...])
+  TEMOIN ?pdf_mode=onepage (200, 1, [1], [[(1, 1)]])
+  UPLOAD 201 {'roof_image': 'roofs/1/DEV-202610-0007.png', 'url': '/api/django/ventes/devis/834/roof-image/fichier/'}
+  PREFIXE_OK True
+  AVEC_TOIT  (200, 3, [3, 3, 3], [[(376, 376), (1, 1), (1600, 1200)], ...])
+  AVEC_TOIT ?pdf_mode=onepage (200, 1, [1], [[(1, 1)]])
+  download_roof_image appels= 0 []
+  roof_render data uri=  0
+  APRES roof_image= None
+DEVIS 1 DEV-DEMO-0001 brouillon roof_image avant= None
+  TEMOIN  (200, 3, [4, 4, 4], [[(376, 376), (2071, 188), (1, 1), (1600, 1200)], ...])
+  TEMOIN ?pdf_mode=onepage (200, 1, [1], [[(1, 1)]])
+  UPLOAD 201 {'roof_image': 'roofs/1/DEV-DEMO-0001.png', 'url': '/api/django/ventes/devis/1/roof-image/fichier/'}
+  PREFIXE_OK True
+  AVEC_TOIT  (200, 3, [4, 4, 4], [[(2071, 188), (800, 500), (1, 1), (1600, 1200)], ...])
+  AVEC_TOIT ?pdf_mode=onepage (200, 1, [1], [[(1, 1)]])
+  download_roof_image appels= 2 [('roofs/1/DEV-DEMO-0001.png',), ('roofs/1/DEV-DEMO-0001.png',)]
+  roof_render data uri= data:image/png;base64,iVBORw0K 3422
+  APRES roof_image= None
+CLEANUP deleted roofs/1/DEV-202610-0007.png
+CLEANUP deleted roofs/1/DEV-DEMO-0001.png
+RESTE roofs/1/ 0
+
+Lecture : DEV-DEMO-0001 — la clé légitime roofs/1/… passe la garde (`cle_toit_de_la_societe` = True), le vrai `download_roof_image` la lit dans MinIO, l'affiche 800×500 est INTÉGRÉE au PDF (elle prend la place de l'image 376×376 de la bande, cf. `residential/options.py` « plan dans la bande ») et le document garde 3 pages (= témoin sans toit) ; le une-page reste 1 page.
+DEV-202610-0007 — même upload légitime, mais l'affiche n'est pas demandée au stockage (0 appel) : le devis porte une conception/calepinage dont l'état retire la page (QJR522 `layout_stale` / ACAL46 conception divergente — `artefacts_rendu.py` l.~318-330) ; page count inchangé (3 = 3). Comportement d'un autre garde, hors périmètre ASEC54, noté pour information.
+
+Verdict : PASS — un rendu de toit légitime garde son nombre de pages (3 = 3 plein format, 1 = 1 une-page) et son image de toit (DEV-DEMO-0001), via le vrai `download_roof_image` sur le MinIO réel.
+Oracles : 1 PASS, 2 PASS (2 uploads 201, 8 rendus 200), 6 PASS (8/8 /proposal rendus), 7 PASS (aucun prix d'achat dans les PDF de DEV-DEMO-0001 / DEV-202610-0007, contrôle par valeur exacte), autres NA (rejeu API).

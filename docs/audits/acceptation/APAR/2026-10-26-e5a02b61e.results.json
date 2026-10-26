@@ -1,0 +1,78 @@
+{
+  "sha": "e5a02b61e23228d92e3f7ba6f6e71d021bb849eb",
+  "date": "2026-10-26",
+  "groupe": "APAR",
+  "verdict": "PASS",
+  "couvre": [
+    "APAR44",
+    "APAR52",
+    "APAR56"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.2",
+      "taches": [
+        "APAR44"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APAR/traces/2026-10-26/APAR44-P1.2.txt"
+    },
+    {
+      "id": "P6",
+      "taches": [
+        "APAR52"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APAR/traces/2026-10-26/APAR52-P6.txt",
+      "notes": "écart hors preuve : libellé premier_devis toujours « Créer votre 1er devis » en base (aucune migration ne ressème le catalogue)"
+    },
+    {
+      "id": "P2.1",
+      "taches": [
+        "APAR56"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APAR/traces/2026-10-26/APAR56-P2.1.txt"
+    }
+  ]
+}
