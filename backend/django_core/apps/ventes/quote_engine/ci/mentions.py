@@ -42,12 +42,12 @@ LANGUES = ("fr", "en", "ar")
 #: c'est la grille ONEE publiée ({date} : la date de la grille, jamais
 #: inventée). AMOT88 — en mots du client : ni « repli », ni « capture »,
 #: ni « non reconfirmée » ; la grille est datée sous une forme neutre.
+#: Décision fondateur 26/10/2026 — sans « à confirmer sur votre facture »
+#: (réserve interne, jamais imprimée au client).
 TEXTES_TARIF_GRILLE = {
-    "fr": "Tarif ONEE {tension}publié — à confirmer sur votre facture{date}.",
-    "en": "Published ONEE {tension}tariff — to be confirmed on your bill"
-          "{date}.",
-    "ar": "تعريفة المكتب الوطني {tension}المنشورة — تُؤكَّد على فاتورتكم"
-          "{date}.",
+    "fr": "Tarif ONEE {tension}publié{date}.",
+    "en": "Published ONEE {tension}tariff{date}.",
+    "ar": "تعريفة المكتب الوطني {tension}المنشورة{date}.",
 }
 TEXTES_GRILLE_DATEE = {"fr": " (grille du {date})",
                        "en": " (tariff of {date})",

@@ -2830,11 +2830,10 @@ LIBELLES = {
         'en': 'production of the panel layout selected for your roof',
         'ar': 'إنتاج تصميم الألواح المعتمد لسقفكم'},
     'ci_h_base_pvgis': {
-        'fr': "{incl}° d'inclinaison, {orientation} — à confirmer au "
-              "calepinage",
-        'en': '{incl}° tilt, {orientation} — to be confirmed by the panel '
-              'layout',
-        'ar': 'ميل {incl}°، {orientation} — يُؤكَّد عند تصميم الألواح'},
+        # Décision fondateur 26/10/2026 — sans « à confirmer au calepinage ».
+        'fr': "{incl}° d'inclinaison, {orientation}",
+        'en': '{incl}° tilt, {orientation}',
+        'ar': 'ميل {incl}°، {orientation}'},
     'ci_h_plein_sud': {'fr': 'plein sud', 'en': 'due south',
                        'ar': 'جنوبا تماما'},
     'ci_h_azimut': {'fr': 'azimut {a}° (0° = plein sud)',
@@ -2989,12 +2988,11 @@ LIBELLES = {
         'ar': 'الاستهلاك الذاتي محسوب ساعة بساعة على السنة النموذجية '
               '(8760 ساعة)'},
     'ci_h_methode_journees': {
-        'fr': 'autoconsommation : estimation sur journées moyennes (série '
-              'horaire indisponible)',
-        'en': 'self-consumption: estimate based on average days (hourly '
-              'series unavailable)',
-        'ar': 'الاستهلاك الذاتي: تقدير على أساس أيام متوسطة (السلسلة '
-              'الساعية غير متاحة)'},
+        # Décision fondateur 26/10/2026 — sans « (série horaire
+        # indisponible) ».
+        'fr': 'autoconsommation : estimation sur journées moyennes',
+        'en': 'self-consumption: estimate based on average days',
+        'ar': 'الاستهلاك الذاتي: تقدير على أساس أيام متوسطة'},
     'ci_retour_estime_base': {'fr': 'Retour estimé ({base})',
                               'en': 'Estimated payback ({base})',
                               'ar': 'مدة الاسترداد المقدرة ({base})'},

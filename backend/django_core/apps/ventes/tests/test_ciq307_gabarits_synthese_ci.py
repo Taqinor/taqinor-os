@@ -109,7 +109,10 @@ class GabaritsLisentSyntheseCi(SimpleTestCase):
                 html = render.build_html(renderer._augment(
                     _data(sample, reserve=True)))
                 self.assertIn(BANDEAU_RESERVE, html)
-                self.assertIn("Toiture à relever à la visite", html)
+                # Décision fondateur 26/10/2026 — le bandeau garde son
+                # titre, jamais la liste interne « À confirmer : … ».
+                self.assertNotIn("Toiture à relever à la visite", html)
+                self.assertNotIn("À confirmer", html)
                 ferme = render.build_html(renderer._augment(_data(sample)))
                 self.assertNotIn(BANDEAU_RESERVE, ferme)
 

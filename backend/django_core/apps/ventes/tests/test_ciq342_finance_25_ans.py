@@ -223,8 +223,10 @@ class Amot91Hypotheses(SimpleTestCase):
 
     def test_page_finance_deux_rangees_nouvelles(self):
         texte = _texte(_pages(_data_energie())[3])
-        self.assertIn("Base de production : 10° d'inclinaison, plein sud — à "
-                      "confirmer au calepinage", texte)
+        self.assertIn("Base de production : 10° d'inclinaison, plein sud",
+                      texte)
+        # Décision fondateur 26/10/2026 — aucune réserve interne imprimée.
+        self.assertNotIn("à confirmer au calepinage", texte)
         self.assertIn("Règle de dimensionnement : chaque palier de 5 kWc "
                       "retenu se rembourse en moins de 10 ans", texte)
         self.assertIn("Prix du kWh : Tarif ONEE BT publié", texte)
@@ -262,6 +264,9 @@ class Amot91Hypotheses(SimpleTestCase):
         self.assertIn("autoconsommation : estimation sur journées moyennes",
                       texte)
         self.assertNotIn("8 760 h", texte)
+        # Décision fondateur 26/10/2026 — sans « (série horaire
+        # indisponible) ».
+        self.assertNotIn("série horaire indisponible", texte)
 
     def test_methode_absente_rien_d_imprime(self):
         """Une étude stockée avant AMOT99 (sans méthode) : aucune ligne."""
@@ -335,19 +340,64 @@ class Amot84SourcesServiesParCode(SimpleTestCase):
         texte = self._texte("en")
         hyp = texte[texte.index("Estimate assumptions"):]
         hyp = hyp[:hyp.index("kWh price")]
-        for en in ("constant selling tariff (assumption)",
-                   "median from Jordan & Kurtz, NREL/JA-5200-51664, 2012",
+        for en in ("median from Jordan & Kurtz, NREL/JA-5200-51664, 2012",
                    "tariff of the time-of-use period covered, hour by hour"):
             self.assertIn(en, hyp)
+        # Décision fondateur 26/10/2026 — l'indexation constante est une
+        # réserve interne : la valeur seule, jamais « (assumption) ».
+        self.assertNotIn("assumption", hyp)
         for fr in ("hypothèse", "médiane", "heure par heure"):
             self.assertNotIn(fr, hyp)
 
     def test_francais_texte_servi(self):
         from apps.ventes import economie_ci as eco
         texte = self._texte("fr")
-        for fr in (eco.MENTION_INDEXATION_CONSTANTE, eco.DEGRADATION_CI_SOURCE,
+        for fr in (eco.DEGRADATION_CI_SOURCE,
                    eco.HYPOTHESE_VALORISATION["valeur"]):
             self.assertIn(fr, texte)
+        # Décision fondateur 26/10/2026 — « 0 % / an », sans « tarif de
+        # vente constant (hypothèse) ».
+        self.assertIn("Indexation du tarif : 0 % / an", texte)
+        self.assertNotIn(eco.MENTION_INDEXATION_CONSTANTE, texte)
+
+    def test_aucune_reserve_interne_imprimee(self):
+        """Décision fondateur 26/10/2026 — le document C&I ne justifie
+        jamais une incertitude interne : dégradation par défaut (fiche
+        muette), indexation constante, entretien non chiffré, base PVGIS,
+        méthode de repli, tarif de grille — la VALEUR reste, la réserve
+        part. FR et EN."""
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.moteur_ci import degradation
+        for langue in ("fr", "en"):
+            d = _data_energie()
+            d["langue_sortie"] = langue
+            production = d["etude"]["etude_ci"]["production"]
+            production["methode_autoconso"] = "journees_moyennes"
+            for h in d["economie_ci"]["flux_ht"]["hypotheses"]:
+                if h["cle"] == "indexation_pct":
+                    h.update(source=eco.MENTION_INDEXATION_CONSTANTE,
+                             source_code=eco.CODE_INDEXATION_CONSTANTE)
+                elif h["cle"] == "degradation_pct":
+                    h.update(valeur=0.5, source=degradation.SOURCE_DEFAUT,
+                             source_code="degradation_defaut_fiche_muette")
+            texte = "".join(_texte(p) for p in _pages(d))
+            with self.subTest(langue=langue):
+                for reserve in (
+                        "fiche muette", "datasheet silent", "(hypothèse)",
+                        "(assumption)", "entretien non chiffré",
+                        "maintenance not quantified",
+                        "à confirmer au calepinage",
+                        "to be confirmed by the panel layout",
+                        "to be confirmed on your bill", "À confirmer :",
+                        "To be confirmed:", "série horaire indisponible",
+                        "hourly series unavailable", "non sourcée",
+                        "à confirmer sur votre facture"):
+                    self.assertNotIn(reserve, texte)
+            if langue == "fr":
+                for valeur in ("Dégradation des panneaux : 0,5 % / an",
+                               "Indexation du tarif : 0 % / an",
+                               "non déduit des économies"):
+                    self.assertIn(valeur, texte)
 
     def test_le_moteur_sert_les_codes(self):
         from apps.ventes import economie_ci as eco
@@ -599,8 +649,10 @@ class Amot94TableauVingtCinqAns(SimpleTestCase):
                          "non_chiffre")
         p3, tableau = self._tableau(d)
         self.assertNotIn("Entretien", _texte(tableau))
-        self.assertIn("non déduit des économies — entretien non chiffré",
-                      _texte(p3))
+        # Décision fondateur 26/10/2026 — « non déduit des économies »,
+        # sans la réserve « entretien non chiffré ».
+        self.assertIn("non déduit des économies", _texte(p3))
+        self.assertNotIn("entretien non chiffré", _texte(p3))
 
     def test_courbe_cedable_tableau_garde(self):
         p3 = _pages(dict(_data(), _sans_graphiques=frozenset(
