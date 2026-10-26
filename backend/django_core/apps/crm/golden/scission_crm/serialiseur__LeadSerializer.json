@@ -1291,6 +1291,12 @@
    "required": false
   },
   {
+   "classe": "ChoiceField",
+   "nom": "equipements_hors_horaires",
+   "read_only": false,
+   "required": false
+  },
+  {
    "classe": "ListeMois",
    "nom": "fermeture_mois",
    "read_only": false,
