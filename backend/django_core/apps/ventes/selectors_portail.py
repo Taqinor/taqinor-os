@@ -69,6 +69,11 @@ def devis_du_client_portail(company, client_id, *, limit=200,
         'date_validite': d.date_validite,
         'total_ttc': str(d.total_ttc),
         'accepte': d.statut == Devis.Statut.ACCEPTE,
+        # ERR-PORTAIL-ACCEPTER-DEVIS-REFUSE (contrat ``mes_devis_liste.json``)
+        # — LE verdict « ce devis peut être accepté » que l'écran lit pour
+        # afficher « Accepter » : mêmes règles que ``accept_devis`` (statut en
+        # cours + non expiré), jamais une liste de statuts côté front.
+        'acceptable': _acceptable_portail(d),
         # QJR565 (contrat portail ``mes_devis_liste.json``) — date de la
         # dernière correction après envoi (``etude_params.resync_apres_envoi``),
         # null sinon — JAMAIS updated_at.
@@ -87,6 +92,16 @@ def devis_du_client_portail(company, client_id, *, limit=200,
         # publique /proposition.
         **(_conditions_portail(d) if avec_conditions else {}),
     } for d in qs]
+
+
+def _acceptable_portail(devis):
+    """Vrai si ``accept_devis`` accepterait ce devis (ERR33 : brouillon /
+    envoyé ; ADEV52 : pas expiré). Une seule source pour l'écran portail."""
+    from .models import Devis
+    from .utils.expiry import is_expired
+
+    return (devis.statut in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
+            and not is_expired(devis))
 
 
 def _conditions_portail(devis):
