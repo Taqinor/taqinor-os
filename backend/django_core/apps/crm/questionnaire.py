@@ -429,13 +429,18 @@ def _manquantes_pro(lead, libelles) -> dict:
                    or lead.compteur_puissance_kva is None
                    or _vide(lead.contrat_electricite)
                    or _vide(lead.raccordement)),
+        # Fondateur 26/10/2026 — équipes et mois de fermeture aussi (une
+        # liste VIDE = « jamais fermé », une réponse ; None = jamais posée).
         'activite': (not activite_connue or not lead.jours_ouverture
-                     or lead.heure_debut is None or lead.heure_fin is None),
+                     or lead.heure_debut is None or lead.heure_fin is None
+                     or _vide(lead.regime_equipes)
+                     or lead.fermeture_mois is None),
         'site': _site_inconnu(lead),
         'gps': not _gps_connu(lead),
         'photo_factures': not _photo_presente('photo_factures', libelles),
         'photo_poste': not _photo_presente('photo_poste', libelles),
-        'societe': _vide(lead.societe) or _vide(lead.ice),
+        'societe': (_vide(lead.societe) or _vide(lead.ice)
+                    or _vide(lead.tva_recuperable)),
         'contact': (_vide(lead.email) or _encore_a_obtenir(lead, 'adresse')
                     or _vide(lead.ville)),
     }

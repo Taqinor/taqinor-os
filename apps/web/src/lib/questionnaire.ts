@@ -731,6 +731,8 @@ export function buildSectionReponses(
       }
       const fermeture = cleanEntiersDistincts(raw.fermeture_mois, 1, 12);
       if (fermeture) out.fermeture_mois = fermeture;
+      // « Nous ne fermons jamais » : une RÉPONSE (liste vide), jamais un défaut.
+      else if (raw.fermeture_aucune === true) out.fermeture_mois = [];
       const groupe = cleanEnum(raw.groupe_electrogene, OUI_NON_VALUES);
       if (groupe) out.groupe_electrogene = groupe;
       // Les détails du groupe ne valent que s'il y en a un (jamais une valeur

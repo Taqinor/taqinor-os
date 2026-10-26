@@ -345,6 +345,7 @@ const entiersPrefill = (key: string): number[] =>
     : [];
 const joursPrefill = entiersPrefill('jours_ouverture');
 const fermeturePrefill = entiersPrefill('fermeture_mois');
+const fermetureAucunePrefill = Array.isArray(prefill.fermeture_mois) && prefill.fermeture_mois.length === 0;
 const tensionPrefill = prefillStr('tension_raccordement');
 const groupePrefill = prefillStr('groupe_electrogene');
 const contratPrefill = prefillStr('contrat_electricite');
@@ -913,6 +914,11 @@ const estIndustriel =
                                   </button>
                                 ))}
                               </div>
+                              {/* Fondateur 26/10/2026 — « jamais fermé » est une réponse (liste vide). */}
+                              <button type="button" id="q-fermeture-aucune" data-group="fermeture-aucune" data-section="activite" aria-pressed={fermetureAucunePrefill}
+                                class:list={['q-toggle-btn mt-2 w-full', PRO_TOGGLE_CLS, fermetureAucunePrefill ? 'border-brass-400 bg-brass-50' : 'border-azur-900/15']}>
+                                <span data-i18n data-en="We never close" data-ar="لا نغلق أبداً">Nous ne fermons jamais</span>
+                              </button>
                             </fieldset>
                           )}
                           {demande('activite', 'groupe_electrogene') && (
@@ -1780,6 +1786,15 @@ const estIndustriel =
         touched.add((btn.dataset.section || 'activite') as QuestionnaireSectionId);
       });
     });
+    // « Nous ne fermons jamais » et les mois de fermeture s'excluent.
+    document.querySelectorAll<HTMLButtonElement>('.q-toggle-btn[data-group^="fermeture"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (init.interne || btn.getAttribute('aria-pressed') !== 'true') return;
+        const autre = btn.dataset.group === 'fermeture' ? 'fermeture-aucune' : 'fermeture';
+        document.querySelectorAll<HTMLButtonElement>(`.q-toggle-btn[data-group="${autre}"][aria-pressed="true"]`)
+          .forEach((b) => b.click());
+      });
+    });
     $('q-categorie')?.addEventListener('change', () => {
       const cat = fieldVal('q-categorie');
       document.querySelectorAll<HTMLElement>('.q-cat-block').forEach((el) => el.classList.toggle('hidden', el.dataset.cat !== cat));
@@ -1979,6 +1994,7 @@ const estIndustriel =
             heure_debut: numOrUndef('q-heure-debut'),
             heure_fin: numOrUndef('q-heure-fin'),
             fermeture_mois: pressedValues('fermeture'),
+            fermeture_aucune: $('q-fermeture-aucune')?.getAttribute('aria-pressed') === 'true',
             groupe_electrogene: radioValue('q-groupe-electrogene'),
             groupe_kva: numOrUndef('q-groupe-kva'),
             groupe_litres_mois: numOrUndef('q-groupe-litres'),

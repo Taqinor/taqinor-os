@@ -96,6 +96,35 @@ class QuestionnairePro(TestCase):
             self.assertEqual(res.status_code, 409, section)  # ENF11 : hors segment
             self.assertIn(section, res.data['detail'])
 
+    def test_activite_et_societe_manquantes_equipes_fermeture_tva(self):
+        # Fondateur 26/10/2026 — régime d'équipes, mois de fermeture (liste
+        # vide = « jamais fermé », une réponse) et TVA récupérable comptent.
+        activite = dict(categorie_commerciale='hotel', jours_ouverture=[1, 2],
+                        heure_debut=8, heure_fin=18, regime_equipes='1x8',
+                        fermeture_mois=[])
+        self.assertFalse(quest.manquantes(self._pro(**activite))['activite'])
+        for vide in ('regime_equipes', 'fermeture_mois'):
+            lead = self._pro(**dict(activite, **{vide: None}))
+            self.assertTrue(quest.manquantes(lead)['activite'], vide)
+        societe = dict(societe='Hôtel SARL', ice='001234567000089',
+                       tva_recuperable='oui')
+        self.assertFalse(quest.manquantes(self._pro(**societe))['societe'])
+        lead = self._pro(**dict(societe, tva_recuperable=None))
+        self.assertTrue(quest.manquantes(lead)['societe'])
+
+    def test_post_activite_jamais_ferme_enregistre_une_liste_vide(self):
+        lead = self._pro()
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead, questions={'activite': True})
+        res = self.client.post(
+            PUBLIC.format(lien.token),
+            data=json.dumps({'section': 'activite',
+                             'reponses': {'fermeture_mois': []}}),
+            content_type='application/json')
+        self.assertEqual(res.status_code, 200, res.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.fermeture_mois, [])
+
     def test_post_reseau_n_ecrit_que_ses_colonnes_jamais_de_vide(self):
         lead = self._pro(email='h@example.ma', compteur_puissance_kva=60,
                          facture_hiver=Decimal('5000'))

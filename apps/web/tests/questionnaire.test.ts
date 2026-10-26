@@ -758,6 +758,12 @@ describe('CIW406 — sections pro : corps POST', () => {
     expect(out.reponses_categorie).toBeUndefined();
   });
 
+  it('activité : « nous ne fermons jamais » = liste vide ; des mois choisis priment', () => {
+    expect(buildSectionReponses('activite', { fermeture_mois: [], fermeture_aucune: true }).fermeture_mois).toEqual([]);
+    expect(buildSectionReponses('activite', { fermeture_mois: [8], fermeture_aucune: true }).fermeture_mois).toEqual([8]);
+    expect(buildSectionReponses('activite', { fermeture_mois: [] }).fermeture_mois).toBeUndefined();
+  });
+
   it('une consigne de froid négative est conservée (−18 °C)', () => {
     const out = buildSectionReponses('activite', {
       categorie_commerciale: 'froid', reponses_categorie: { temperature_consigne: '-18', volume_m3: '900' },
