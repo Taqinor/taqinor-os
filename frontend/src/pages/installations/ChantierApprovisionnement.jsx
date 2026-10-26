@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Package, ShoppingCart, ClipboardList, TriangleAlert, Boxes } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import { toast } from '../../ui/confirm'
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Checkbox, StatusPill } from '../../ui'
 import { Skeleton } from '../../ui/Skeleton'
@@ -110,6 +111,9 @@ export function ResumeApprovisionnement({ resume }) {
 export default function ChantierApprovisionnement({
   chantierId, data, loading = false, error = null, onReload, onChantierChange,
 }) {
+  // F3 — « Commander les manques » crée des BCF : réservé à `achats_commander`
+  // (compte légacy sans codes : le serveur arbitre).
+  const peutCommander = usePermissionAchats('achats_commander')
   const [selection, setSelection] = useState(() => new Set())
   const [busy, setBusy] = useState(false)
   const [resultat, setResultat] = useState(null)
@@ -233,12 +237,14 @@ export default function ChantierApprovisionnement({
                 </tr>
               ))}
             </Tableau>
-            {enManque.length > 0 ? (
+            {enManque.length > 0 ? (peutCommander ? (
               <Button size="sm" className="self-start" onClick={commander} loading={busy} disabled={nbACommander === 0}>
                 <ShoppingCart className="size-4" aria-hidden="true" />
                 Commander les manques ({nbACommander})
               </Button>
             ) : (
+              <Vide>Permission achats_commander requise pour commander les manques.</Vide>
+            )) : (
               <Vide>Aucun manque : tout le matériel est couvert par le stock ou les commandes envoyées.</Vide>
             )}
           </>
@@ -336,7 +342,7 @@ export default function ChantierApprovisionnement({
               <tr key={d.id} className="border-t border-border">
                 <td className="px-3 py-2">
                   <Link
-                    to={`/chantiers/demandes-achat?chantier=${chantierId}`}
+                    to={`/chantiers/demandes-achat?da=${d.id}`}
                     className="font-medium text-primary underline-offset-2 hover:underline"
                   >
                     {d.reference}

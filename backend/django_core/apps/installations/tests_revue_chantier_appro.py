@@ -37,7 +37,9 @@ from apps.installations.models import (
     DemandeAchat, DemandeAchatLigne, Installation, Intervention,
     StockReservation,
 )
-from apps.installations.services import _gate_check_materiel
+from apps.installations.services import (
+    _gate_check_materiel, consume_reservations, seed_stages,
+)
 from apps.roles.models import Role
 from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
 from apps.stock.models import (
@@ -221,6 +223,30 @@ class ApprovisionnementEndpointTests(ApproBase):
                           {}, format='json')
         self.assertEqual(r.status_code, 404, r.content)
 
+    def test_installe_consomme_n14_compte_comme_deja_sorti(self):
+        # F1 — la sortie N14 de « Installé » (réservation consommée) compte
+        # comme déjà sortie : la nomenclature ne repasse pas en manque.
+        Installation.objects.filter(pk=self.chantier.pk).update(bom=[
+            {'produit_id': self.panneau.id, 'designation': 'Panneau',
+             'quantite': 10.0}])
+        Produit.objects.filter(pk=self.panneau.pk).update(quantite_stock=10)
+        self.chantier.refresh_from_db()
+        StockReservation.objects.create(
+            company=self.company, installation=self.chantier,
+            produit=self.panneau, quantite=10)
+        self.assertEqual(consume_reservations(self.chantier, self.admin), 1)
+        Installation.objects.filter(pk=self.chantier.pk).update(
+            statut=Installation.Statut.INSTALLE)
+        self.panneau.refresh_from_db()
+        self.assertEqual(self.panneau.quantite_stock, 0)
+        data = self.api.get(
+            f'{BASE}/{self.chantier.id}/approvisionnement/').json()
+        pan = self._lignes(data)[self.panneau.id]
+        self.assertEqual(pan['deja_sorti'], 10)
+        self.assertEqual(pan['reserve_chantier'], 0)
+        self.assertEqual(pan['manque'], 0)
+        self.assertEqual(data['resume']['nb_manques'], 0)
+
 
 class CommanderBesoinTests(ApproBase):
     def test_un_bcf_par_fournisseur_et_avance_statut(self):
@@ -303,6 +329,30 @@ class CommanderBesoinTests(ApproBase):
             statut=BonCommandeFournisseur.Statut.ENVOYE)
         self.assertIsNone(_gate_check_materiel(self.chantier))
 
+    def test_etapes_amorcees_materiel_commande_a_l_envoi(self):
+        # F2 — étape bloquante « approvisionnement » : les brouillons ne
+        # font pas avancer, l'ENVOI des BCF qui couvrent tout le manque oui.
+        seed_stages(self.company)
+        r = self.api.post(f'{BASE}/{self.chantier.id}/commander-besoin/',
+                          {}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(r.data['statut_chantier'], Installation.Statut.SIGNE)
+        self.assertIn('Matériel en pénurie', r.data['statut_raison'])
+        self.chantier.refresh_from_db()
+        self.assertEqual(self.chantier.statut, Installation.Statut.SIGNE)
+        bons = {b['fournisseur']: b['id'] for b in r.data['bons_commande']}
+        url = '/api/django/stock/bons-commande-fournisseur/{}/envoyer/'
+        r = self.api.post(url.format(bons[self.four_a.id]))
+        self.assertEqual(r.status_code, 200, r.content)
+        self.chantier.refresh_from_db()
+        # La batterie (fournisseur B) manque encore : pas d'avancée.
+        self.assertEqual(self.chantier.statut, Installation.Statut.SIGNE)
+        r = self.api.post(url.format(bons[self.four_b.id]))
+        self.assertEqual(r.status_code, 200, r.content)
+        self.chantier.refresh_from_db()
+        self.assertEqual(self.chantier.statut,
+                         Installation.Statut.MATERIEL_COMMANDE)
+
 
 class PreparationAccordTests(ApproBase):
     def _ligne_prep(self, produit):
@@ -332,3 +382,28 @@ class PreparationAccordTests(ApproBase):
         ligne = self._ligne_prep(self.panneau)
         self.assertEqual(ligne.quantite_requise, 3)
         self.assertEqual(ligne.quantite_manquante, 3)
+
+    def test_deux_lignes_meme_produit_couverture_partagee(self):
+        # F3 — deux lignes P × 5, stock 0, un BCF envoyé de 5 : la commande
+        # couvre UNE ligne ; la somme des manques = le manque produit (5).
+        Installation.objects.filter(pk=self.chantier.pk).update(bom=[
+            {'produit_id': self.batterie.id, 'designation': 'Batterie A',
+             'quantite': 5.0},
+            {'produit_id': self.batterie.id, 'designation': 'Batterie B',
+             'quantite': 5.0}])
+        self.chantier.refresh_from_db()
+        self._bcf(self.four_b, BonCommandeFournisseur.Statut.ENVOYE,
+                  [(self.batterie, 5, 0)])
+        interv = Intervention.objects.create(
+            company=self.company, installation=self.chantier,
+            type_intervention='pose', technicien=self.admin)
+        prep = field_services.ensure_preparation(interv)
+        lignes = list(prep.materiel.filter(produit=self.batterie))
+        self.assertEqual(len(lignes), 2)
+        self.assertEqual(
+            [(li.designation, li.quantite_manquante)
+             for li in lignes if li.manquant],
+            [('Batterie B', 5)])
+        data = self.api.get(
+            f'{BASE}/{self.chantier.id}/approvisionnement/').json()
+        self.assertEqual(self._lignes(data)[self.batterie.id]['manque'], 5)

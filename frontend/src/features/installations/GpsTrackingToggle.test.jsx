@@ -31,7 +31,7 @@ vi.mock('../../api/installationsApi', () => ({
   },
 }))
 
-import GpsTrackingToggle, { MesPositionsDuJour } from './GpsTrackingToggle'
+import GpsTrackingToggle, { MesPositionsDuJour, viderTamponsGpsEnAttente } from './GpsTrackingToggle'
 
 const watchPosition = vi.fn()
 const clearWatch = vi.fn()
@@ -48,6 +48,7 @@ beforeEach(() => {
   for (const f of [pingPosition, pingPositionsBatch, getMonConsentementGps,
     accepterConsentementGps, getMesPositions, watchPosition, clearWatch]) f.mockReset()
   enLigne = true
+  window.localStorage.clear()
   getMonConsentementGps.mockResolvedValue(reponseContrat('installations', 'gps_mon_consentement'))
   vi.stubGlobal('navigator', {
     get onLine() { return enLigne },
@@ -151,6 +152,58 @@ describe('GpsTrackingToggle — suivi automatique (revue chantier 26/10/2026)', 
     await waitFor(() => expect(pingPositionsBatch).toHaveBeenCalledWith(7, [
       expect.objectContaining({ lat: 33.5, lng: -7.6, captured_at: expect.any(String) }),
     ]))
+  })
+
+  it('F2 : le tampon hors-ligne part AVANT le relevé live suivant', async () => {
+    enLigne = false
+    let rappel
+    watchPosition.mockImplementation((success) => { rappel = success; return 3 })
+    pingPositionsBatch.mockResolvedValue({ data: { enregistrees: 1, doublons: 0 } })
+    pingPosition.mockResolvedValue({ data: {} })
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1767225600000)
+    render(<GpsTrackingToggle intervention={interv()} />)
+
+    act(() => { rappel(position) })
+    expect(window.localStorage.getItem('gps-tampon-7')).not.toBeNull()
+
+    enLigne = true
+    now.mockReturnValue(1767225600000 + 61 * 1000) // throttle 60 s passé
+    act(() => { rappel({ ...position, timestamp: 1767225661000 }) })
+    await waitFor(() => expect(pingPosition).toHaveBeenCalledTimes(1))
+    expect(pingPositionsBatch).toHaveBeenCalledTimes(1)
+    expect(pingPositionsBatch.mock.invocationCallOrder[0])
+      .toBeLessThan(pingPosition.mock.invocationCallOrder[0])
+    expect(window.localStorage.getItem('gps-tampon-7')).toBeNull()
+    now.mockRestore()
+  })
+
+  it('F3 : reprend au montage le tampon laissé dans localStorage et l\'envoie', async () => {
+    const garde = [{ lat: 33.5, lng: -7.6, accuracy_m: 9, captured_at: '2026-10-26T09:00:00.000Z' }]
+    window.localStorage.setItem('gps-tampon-7', JSON.stringify(garde))
+    watchPosition.mockReturnValue(1)
+    pingPositionsBatch.mockResolvedValue({ data: { enregistrees: 1, doublons: 0 } })
+    render(<GpsTrackingToggle intervention={interv()} />)
+    await waitFor(() => expect(pingPositionsBatch).toHaveBeenCalledWith(7, garde))
+    await waitFor(() => expect(window.localStorage.getItem('gps-tampon-7')).toBeNull())
+  })
+
+  it('F3 : session fermée hors ligne ⇒ le tampon survit au démontage puis part depuis « Ma journée »', async () => {
+    enLigne = false
+    let rappel
+    watchPosition.mockImplementation((success) => { rappel = success; return 3 })
+    pingPositionsBatch.mockResolvedValue({ data: { enregistrees: 1, doublons: 0 } })
+    const { unmount } = render(<GpsTrackingToggle intervention={interv()} />)
+    act(() => { rappel(position) })
+    unmount()
+    expect(pingPositionsBatch).not.toHaveBeenCalled()
+    expect(JSON.parse(window.localStorage.getItem('gps-tampon-7'))).toHaveLength(1)
+
+    enLigne = true
+    await viderTamponsGpsEnAttente()
+    expect(pingPositionsBatch).toHaveBeenCalledWith(7, [
+      expect.objectContaining({ lat: 33.5, lng: -7.6 }),
+    ])
+    expect(window.localStorage.getItem('gps-tampon-7')).toBeNull()
   })
 
   it('démonter arrête watchPosition (clearWatch)', () => {

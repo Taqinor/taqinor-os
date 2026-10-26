@@ -48,12 +48,12 @@ import stockApi from '../../api/stockApi'
 import DemandesAchatList from './DemandesAchatList.jsx'
 import { erreurLigne } from './demandeAchatLigne'
 
-function makeWrapper({ role = 'responsable', initialEntries = ['/chantiers/demandes-achat'] } = {}) {
+function makeWrapper({ role = 'responsable', permissions = [], initialEntries = ['/chantiers/demandes-achat'] } = {}) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
       auth: {
-        user: { id: 1 }, role, role_nom: 'Directeur', permissions: [],
+        user: { id: 1 }, role, role_nom: 'Directeur', permissions,
         isAuthenticated: true, loading: false,
       },
     },
@@ -313,7 +313,38 @@ describe('DemandesAchatList — générer le BCF / étapes', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Générer le BCF/ }))
     await waitFor(() => expect(installationsApi.genererBcfDemandeAchat).toHaveBeenCalledWith(8))
     const lien = await screen.findByRole('link', { name: 'BCF-2026-10-0055' })
-    expect(lien.getAttribute('href')).toContain('/stock/bons-commande-fournisseur?ref=BCF-2026-10-0055')
+    // F2 — le lien porte l'id du BCF dans le state de navigation (jamais un ?ref= vide).
+    expect(lien.getAttribute('href')).toBe('/stock/bons-commande-fournisseur')
+  })
+
+  it('F3 : « Générer le BCF » est masqué sans la permission achats_commander', async () => {
+    installationsApi.getDemandesAchat.mockResolvedValue({ data: [approuvee] })
+    render(<DemandesAchatList />, {
+      wrapper: makeWrapper({ permissions: ['stock_voir'] }),
+    })
+    fireEvent.click((await screen.findAllByText('DA-202607-0008'))[0])
+    await screen.findByRole('dialog')
+    expect(screen.queryByRole('button', { name: /Générer le BCF/ })).toBeNull()
+  })
+
+  it('F3 : « Générer le BCF » reste visible avec achats_commander', async () => {
+    installationsApi.getDemandesAchat.mockResolvedValue({ data: [approuvee] })
+    render(<DemandesAchatList />, {
+      wrapper: makeWrapper({ permissions: ['stock_voir', 'achats_commander'] }),
+    })
+    fireEvent.click((await screen.findAllByText('DA-202607-0008'))[0])
+    expect(await screen.findByRole('button', { name: /Générer le BCF/ })).toBeInTheDocument()
+  })
+
+  it('F1 : ?da=<id> ouvre le détail de cette demande, sans ouvrir le formulaire de création', async () => {
+    installationsApi.getDemandesAchat.mockResolvedValue({ data: [approuvee] })
+    render(<DemandesAchatList />, {
+      wrapper: makeWrapper({ initialEntries: ['/chantiers/demandes-achat?da=8'] }),
+    })
+    // Le détail (bouton d'action propre au détail) s'ouvre ; le formulaire non.
+    expect(await screen.findByRole('button', { name: /Générer le BCF/ })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Objet')).toBeNull()
+    expect(screen.queryByText("Nouvelle demande d'achat")).toBeNull()
   })
 
   it('sur 409 « approuver-etape », liste les étapes avec Approuver / Rejeter', async () => {

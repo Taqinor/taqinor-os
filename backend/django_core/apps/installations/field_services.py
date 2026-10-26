@@ -205,7 +205,7 @@ def _kit_for_intervention(intervention):
 
 
 def _shortfall_for(produit, requis, company, own_reserved, en_commande=None,
-                   deja_sorti=None):
+                   deja_sorti=None, couverture=None):
     """F5 — manque sur un SKU au moment de la préparation : requis − disponible.
     Le disponible tient compte de la réservation de stock existante (engagé non
     consommé), MAIS pas de la réservation propre à CE chantier (sinon le besoin
@@ -217,17 +217,32 @@ def _shortfall_for(produit, requis, company, own_reserved, en_commande=None,
     chantier (``compute_besoin_materiel``) : ``max(requis − déjà sorti −
     disponible, 0) − en commande sur un BCF ENVOYÉ`` (``en_commande`` /
     ``deja_sorti`` : maps ``{produit_id: qte}``) ; un brouillon ne compte
-    pas."""
+    pas.
+
+    Revue chantier (F3) — la COUVERTURE d'un produit (déjà sorti + disponible
+    + en commande envoyée, des totaux PAR PRODUIT) est consommée ligne à
+    ligne via ``couverture`` (``{produit_id: reste}``, partagé par l'appelant
+    entre les lignes) : deux lignes du même produit ne se servent plus deux
+    fois des mêmes totaux, la SOMME des manques des lignes = le manque du
+    produit. Équivalent à ``max(max(requis − sorti − dispo, 0) − en
+    commande, 0)`` pour une ligne seule."""
     if produit is None:
         return 0
-    from apps.stock.services import reserved_quantity
-    # Réservé par les AUTRES chantiers = total réservé − réservé par celui-ci.
-    reserve_autres = max(
-        reserved_quantity(produit) - own_reserved.get(produit.id, 0), 0)
-    dispo = produit.quantite_stock - reserve_autres
-    sorti = (deja_sorti or {}).get(produit.id, 0)
-    brut = max(requis - sorti - dispo, 0)
-    return max(brut - (en_commande or {}).get(produit.id, 0), 0)
+    if couverture is None:
+        couverture = {}
+    if produit.id not in couverture:
+        from apps.stock.services import reserved_quantity
+        # Réservé par les AUTRES chantiers = total réservé − réservé par
+        # celui-ci.
+        reserve_autres = max(
+            reserved_quantity(produit) - own_reserved.get(produit.id, 0), 0)
+        dispo = produit.quantite_stock - reserve_autres
+        couverture[produit.id] = (
+            dispo + (deja_sorti or {}).get(produit.id, 0)
+            + (en_commande or {}).get(produit.id, 0))
+    reste = couverture[produit.id]
+    couverture[produit.id] = max(reste - requis, 0)
+    return max(requis - reste, 0)
 
 
 def ensure_preparation(intervention):
@@ -270,6 +285,8 @@ def _sync_materiel(prep):
         installation)
     deja_sorti = quantites_deja_sorties_chantier(
         installation, {b['produit_id'] for b in lignes if b['produit_id']})
+    # F3 — couverture par produit consommée ligne à ligne (dans l'ordre).
+    couverture = {}
     for i, b in enumerate(lignes):
         produit = None
         if b['produit_id']:
@@ -278,7 +295,7 @@ def _sync_materiel(prep):
         seen.add(key)
         manque = _shortfall_for(produit, b['quantite'], company, own_reserved,
                                 en_commande=en_commande_envoye,
-                                deja_sorti=deja_sorti)
+                                deja_sorti=deja_sorti, couverture=couverture)
         li = existing.get(key)
         if li is None:
             PreparationMaterielLigne.objects.create(

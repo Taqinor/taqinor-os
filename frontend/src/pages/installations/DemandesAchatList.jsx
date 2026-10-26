@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import { Plus, Trash2, Send, Check, X } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
@@ -68,6 +69,8 @@ const emptyForm = () => ({
 
 export default function DemandesAchatList() {
   const isManager = useIsAdminOrResponsable()
+  // F3 — « Générer le BCF » crée un bon de commande : réservé à `achats_commander`.
+  const peutCommander = usePermissionAchats('achats_commander')
   // VX227 — pré-remplissage depuis une intervention : un tap dans la
   // préparation ouvre la DA avec le chantier (et l'intervention) déjà
   // renseignés dans l'objet, pour ne pas ressaisir le contexte terrain.
@@ -166,6 +169,24 @@ export default function DemandesAchatList() {
     // remontage (retour arrière, refresh) — le pré-remplissage est ponctuel.
     setSearchParams({}, { replace: true })
   }, [searchParams, setSearchParams])
+
+  // F1 — `?da=<id>` (lien d'une référence DA depuis l'onglet « Matériel & BC » du
+  // chantier) ouvre le DÉTAIL de cette demande, jamais le formulaire de création.
+  // Attend la fin du chargement de la liste, puis retire le param de l'URL.
+  useEffect(() => {
+    const daParam = searchParams.get('da')
+    if (!daParam || loading) return
+    const d = items.find((x) => String(x.id) === daParam)
+    if (d) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture du détail depuis l'URL (comme le pré-remplissage ci-dessus)
+      setDetail(d)
+      setRefusing(false)
+      setMotifRefus('')
+      setEtapes(null)
+      setBcfCree(null)
+    }
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams, items, loading])
 
   const openCreate = () => {
     reprise.current = { id: null, faites: 0 }
@@ -694,7 +715,8 @@ export default function DemandesAchatList() {
                   <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-2">
                     Bon de commande :{' '}
                     <Link className="font-medium underline"
-                          to={`/stock/bons-commande-fournisseur?ref=${encodeURIComponent(bcfCree?.reference ?? '')}`}>
+                          to="/stock/bons-commande-fournisseur"
+                          state={{ ouvrirBcfId: bcfCree?.id ?? detail.bon_commande }}>
                       {bcfCree?.reference ?? `BCF #${detail.bon_commande}`}
                     </Link>
                   </div>
@@ -738,7 +760,7 @@ export default function DemandesAchatList() {
                     </Button>
                   </>
                 )}
-                {detail.statut === 'approuvee' && isManager && !detail.bon_commande && (
+                {detail.statut === 'approuvee' && isManager && peutCommander && !detail.bon_commande && (
                   <Button onClick={genererBcf} loading={acting}>Générer le BCF</Button>
                 )}
                 {!(detail.statut === 'brouillon' || (detail.statut === 'soumise' && isManager)) && (

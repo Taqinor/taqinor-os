@@ -19,7 +19,10 @@ Couvre :
   * la purge : les alertes survivent (position → NULL), la présence aussi ;
   * le calcul de présence + son endpoint (forme = contrat) ;
   * la carte live bornée en âge, le tracé du jour, « mes positions » ;
-  * l'isolation société de chaque route neuve ; les champs du serializer.
+  * l'isolation société de chaque route neuve ; les champs du serializer ;
+  * correctifs de revue : présence réservée (F1), lot rattrapé après un
+    relevé live plus récent (F2), lot reçu après clôture (F3), présence datée
+    du relevé (F4), retour arrière de 0132 (F5).
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
@@ -317,6 +320,62 @@ class LotHorsLigneTests(Base):
             format='json')
         self.assertEqual(resp.status_code, 400, resp.content)
 
+    def test_lot_rattrape_apres_un_releve_live_plus_recent(self):
+        """F2 — relevé live DEDANS à T, puis lot hors-ligne [T-10 dehors,
+        T-5 dedans] : exactement une sortie puis une entrée, aucune sortie
+        ouverte à la fin (la vraie sortie suivante est donc journalisée)."""
+        self.assertEqual(self.ping(DEDANS).status_code, 201)
+        resp = self.api.post(self.url, {
+            'intervention': self.interv.id,
+            'positions': [self._point(10, DEHORS), self._point(5, DEDANS)],
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        types = list(GeofenceAlert.objects.filter(intervention=self.interv)
+                     .order_by('created_at', 'id')
+                     .values_list('type_franchissement', flat=True))
+        self.assertEqual(types, ['sortie', 'entree'])
+        self.assertFalse(gps_tracking_service._sortie_deja_ouverte(self.interv))
+        sortie = self.ping(DEHORS)
+        self.assertEqual(sortie.data['geofence_alert']['type_franchissement'], 'sortie')
+
+    def _terminer(self, **champs):
+        self.interv.statut = Intervention.Statut.TERMINEE
+        for nom, valeur in champs.items():
+            setattr(self.interv, nom, valeur)
+        self.interv.save(update_fields=['statut', *champs])
+
+    def test_lot_apres_cloture_accepte_si_releve_avant_la_fin(self):
+        """F3 — le tampon relevé pendant la session, envoyé après « terminée »,
+        est reçu ; un point postérieur au retour dépôt est refusé (409)."""
+        self._terminer(retour_depot_le=timezone.now() - timedelta(minutes=30))
+        resp = self.api.post(self.url, {
+            'intervention': self.interv.id, 'positions': [self._point(60)]},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertEqual(resp.data['enregistrees'], 1)
+        apres = self.api.post(self.url, {
+            'intervention': self.interv.id,
+            'positions': [self._point(45), self._point(10)]}, format='json')
+        self.assertEqual(apres.status_code, 409, apres.content)
+        self.assertEqual(
+            PositionTechnicien.objects.filter(intervention=self.interv).count(), 1)
+        # Le ping LIVE reste fermé sur une intervention close.
+        self.assertEqual(self.ping(DEDANS).status_code, 409)
+
+    def test_lot_apres_cloture_borne_par_la_date_realisee(self):
+        self._terminer(date_realisee=timezone.localdate())
+        resp = self.api.post(self.url, {
+            'intervention': self.interv.id, 'positions': [self._point(5)]},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+
+    def test_lot_apres_cloture_sans_fin_connue_409(self):
+        self._terminer()
+        resp = self.api.post(self.url, {
+            'intervention': self.interv.id, 'positions': [self._point(5)]},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+
     def test_lot_garde_le_consentement(self):
         autre = make_user(self.company, role='normal')
         self.interv.equipe.add(autre)
@@ -443,8 +502,10 @@ class PurgeEtPresenceTests(Base):
         self.assertTrue(all(a.position_id is None for a in alertes))
         presence = gps_tracking_service.presence_intervention(self.interv)
         self.assertEqual(presence['source_debut'], 'alertes')
-        self.assertIsNotNone(presence['premiere_entree'])
-        self.assertIsNotNone(presence['derniere_sortie'])
+        # F4 — datée du RELEVÉ, pas de l'insertion de l'alerte (aujourd'hui).
+        self.assertEqual(presence['premiere_entree'], ancien + timedelta(minutes=10))
+        self.assertEqual(presence['derniere_sortie'], ancien + timedelta(minutes=200))
+        self.assertEqual(presence['duree_sur_site_min'], 190)
         self.assertEqual(presence['nb_positions'], 0)
 
     def test_endpoint_presence_forme_du_contrat(self):
@@ -479,6 +540,30 @@ class PurgeEtPresenceTests(Base):
         self.assertEqual(resp.status_code, 404, resp.content)
         resp = auth(etranger).get(f'{BASE}/interventions/99999999999/presence/')
         self.assertEqual(resp.status_code, 404, resp.content)
+
+    def test_presence_membre_sans_point_de_carte(self):
+        """F1 — le technicien membre lit son temps sur site, jamais un point
+        de carte ; le responsable garde la réponse complète."""
+        self.poser(DEHORS, 0)
+        self.poser(DEDANS, 5)
+        self.poser(DEDANS, 65)
+        url = f'{BASE}/interventions/{self.interv.id}/presence/'
+        resp = self.api.get(url)
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['duree_sur_site_min'], 60)
+        self.assertIsNone(resp.data['derniere_position'])
+        complet = auth(self.responsable).get(url)
+        self.assertIsNotNone(complet.data['derniere_position'])
+
+    def test_presence_collegue_non_membre_403(self):
+        """F1 — portée « toute la société » d'un rôle sans marqueur d'équipe :
+        un collègue ne lit pas la présence (ni la position) d'un autre."""
+        self.poser(DEDANS, 5)
+        collegue = make_user(self.company, role='normal')
+        resp = auth(collegue).get(
+            f'{BASE}/interventions/{self.interv.id}/presence/')
+        self.assertEqual(resp.status_code, 403, resp.content)
+        self.assertNotIn('derniere_position', resp.data)
 
 
 class LecturesTests(Base):
@@ -636,3 +721,39 @@ class SerializerInterventionTests(Base):
         self.assertEqual(
             sorted(v for k, v in statuts.items() if k != self.technicien.id),
             ['actif', 'actif', 'actif'])
+
+
+class Migration0132RetourArriereTests(Base):
+    """F5 — le retour arrière de 0132 ne bute pas sur les alertes purgées."""
+
+    def setUp(self):
+        super().setUp()
+        import importlib
+        self.module = importlib.import_module(
+            'apps.installations.migrations.0132_gps_consentement_geofence')
+
+    def test_runpython_apres_alterfield_donc_defait_avant(self):
+        from django.db import migrations
+        ops = self.module.Migration.operations
+        i_alter = next(i for i, op in enumerate(ops)
+                       if isinstance(op, migrations.AlterField)
+                       and op.name == 'position')
+        i_run = next(i for i, op in enumerate(ops)
+                     if isinstance(op, migrations.RunPython))
+        self.assertGreater(i_run, i_alter)
+        self.assertIs(ops[i_run].reverse_code,
+                      self.module._supprimer_alertes_sans_position)
+
+    def test_reverse_supprime_seulement_les_alertes_sans_position(self):
+        from django.apps import apps as registre
+        consentement_accepte(self.company, self.technicien)
+        self.ping(DEHORS)
+        self.ping(DEDANS)
+        self.assertEqual(GeofenceAlert.objects.count(), 2)
+        GeofenceAlert.objects.filter(
+            type_franchissement=GeofenceAlert.TypeFranchissement.SORTIE,
+        ).update(position=None)
+        self.module._supprimer_alertes_sans_position(registre, None)
+        self.assertEqual(
+            list(GeofenceAlert.objects.values_list('type_franchissement', flat=True)),
+            ['entree'])

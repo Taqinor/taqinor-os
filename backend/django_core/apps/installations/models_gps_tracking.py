@@ -307,6 +307,13 @@ class GeofenceAlert(models.Model):
         default=TypeFranchissement.SORTIE,
         verbose_name='Type de franchissement')
     created_at = models.DateTimeField(auto_now_add=True)
+    # Revue 26/10/2026 (F4) — instant du RELEVÉ qui a levé le franchissement
+    # (``created_at`` = insertion, faux pour un lot hors-ligne rattrapé après
+    # coup). Copié de la position : survit à sa purge (présence après 30 j).
+    # Nul pour les alertes antérieures (repli sur ``created_at``).
+    captured_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text='Instant du relevé GPS ayant levé le franchissement.')
     acquittee = models.BooleanField(default=False)
     acquittee_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

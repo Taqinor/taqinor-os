@@ -1128,22 +1128,16 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def _avancer_materiel_commande(inst, user):
         """Chantier « Signé » → « Matériel commandé » par
         ``changer_statut_chantier`` (gardes + cascade). Jamais d'exception :
-        renvoie la raison du refus (texte) ou None."""
-        from ..services import TransitionRefusee, changer_statut_chantier
-        if (Installation.canonical_statut(inst.statut)
-                != Installation.Statut.SIGNE):
-            return None
-        try:
-            changer_statut_chantier(
-                inst, Installation.Statut.MATERIEL_COMMANDE, user)
-        except TransitionRefusee as exc:
-            # Refus AVANT toute écriture (gardes) : l'instance est intacte.
-            return ' ; '.join(exc.raisons) or 'Transition refusée.'
-        activity.log_note(
-            inst, user,
-            "Chantier passé à « Matériel commandé » (bons de commande "
-            "fournisseur créés).")
-        return None
+        renvoie la raison du refus (texte) ou None. Tentative au brouillon
+        (société sans étapes) ; sinon l'ENVOI des BCF fait avancer
+        (``services.avancer_materiel_commande_si_couvert``, la seule
+        implémentation)."""
+        from ..services import avancer_materiel_commande_si_couvert
+        _avance, raison = avancer_materiel_commande_si_couvert(
+            inst, user, exiger_couverture=False,
+            note=("Chantier passé à « Matériel commandé » (bons de commande "
+                  "fournisseur créés)."))
+        return raison
 
     @oa.extend_schema(
         parameters=[

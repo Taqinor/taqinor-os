@@ -349,6 +349,9 @@ class Command(BaseCommand):
 
         # QAH12 — la base NEUVE reçoit aussi le compte portail + SAV démo.
         self._seed_portail_et_sav(company)
+        # F4 — la base NEUVE reçoit aussi le chantier démo terrain (technicien,
+        # GPS, intervention « Pose » du jour) : idempotent.
+        self._seed_chantier_terrain(company)
 
         self.stdout.write(self.style.SUCCESS(
             '\nDemo data seeded for "TAQINOR Démo".\n'
@@ -498,6 +501,11 @@ class Command(BaseCommand):
             chantier.gps_lat = D('33.573100')
             chantier.gps_lng = D('-7.589800')
             champs.extend(['gps_lat', 'gps_lng'])
+        if chantier.date_pose_prevue is None:
+            # Pose prévue à J+7 : « Prêt à poser » peut être vrai une fois le
+            # matériel couvert (la date de pose non fixée est une raison de blocage).
+            chantier.date_pose_prevue = timezone.now().date() + timedelta(days=7)
+            champs.append('date_pose_prevue')
         if champs:
             chantier.save(update_fields=champs)
 

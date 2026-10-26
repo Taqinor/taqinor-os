@@ -3,7 +3,14 @@
 
 // Sujet d'un créneau : sa clé sans le suffixe de phase (`toiture_avant` →
 // `toiture`) ; `null` pour une photo sans créneau.
-const sujetCreneau = (cle) => (cle ? String(cle).replace(/_(avant|apres)$/, '') : null)
+// Alias : le créneau « avant » de la zone onduleur a pour pendant « après » la
+// photo de l'onduleur installé.
+const ALIAS_SUJET = { zone_onduleur: 'onduleur_installe' }
+const sujetCreneau = (cle) => {
+  if (!cle) return null
+  const sujet = String(cle).replace(/_(avant|apres)$/, '')
+  return ALIAS_SUJET[sujet] || sujet
+}
 
 // Paires avant/après : même sujet de créneau d'abord (libellé « Toiture avant
 // pose → Toiture après pose »), puis repli par ordre d'ajout sur le reste.
@@ -27,13 +34,18 @@ export function apparierAvantApres(avant, apres) {
       avantRestants.push(before)
     }
   }
-  const n = Math.min(avantRestants.length, apresLibres.length)
+  // Repli par ordre d'ajout : UNIQUEMENT les photos sans créneau des deux côtés
+  // (jamais deux sujets différents). Un orphelin avec créneau reste en surplus.
+  const avantSansCreneau = avantRestants.filter((p) => !sujetCreneau(p.slotCle))
+  const apresSansCreneau = apresLibres.filter((p) => !sujetCreneau(p.slotCle))
+  const n = Math.min(avantSansCreneau.length, apresSansCreneau.length)
   for (let i = 0; i < n; i += 1) {
-    pairs.push({ before: avantRestants[i], after: apresLibres[i], label: null })
+    pairs.push({ before: avantSansCreneau[i], after: apresSansCreneau[i], label: null })
   }
+  const prises = new Set([...avantSansCreneau.slice(0, n), ...apresSansCreneau.slice(0, n)])
   return {
     pairs,
-    surplusAvant: avantRestants.slice(n),
-    surplusApres: apresLibres.slice(n),
+    surplusAvant: avantRestants.filter((p) => !prises.has(p)),
+    surplusApres: apresLibres.filter((p) => !prises.has(p)),
   }
 }

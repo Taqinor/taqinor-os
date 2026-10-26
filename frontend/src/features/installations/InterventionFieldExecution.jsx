@@ -642,7 +642,7 @@ export function PhotosPanel({ intervention, onChanged }) {
           Silencieux quand tout est envoyé. */}
       <OfflineSyncIndicator />
       <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
-        capture="environment" className="hidden" onChange={onFile} />
+        className="hidden" onChange={onFile} />
       <input ref={burstRef} type="file" accept="image/png,image/jpeg,image/webp"
         multiple capture="environment" className="hidden" onChange={onBurstFiles} />
 

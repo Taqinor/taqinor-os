@@ -11,8 +11,9 @@ import installationsApi from '../../api/installationsApi'
        notice acceptée par le technicien) + intervention « en route » / « sur
        site » ⇒ `watchPosition` démarre tout seul (même throttle 60 s ; haute
        précision seulement sur site) et un BANDEAU visible le dit ;
-     * hors ligne, les positions sont gardées en mémoire (200 max) puis
-       envoyées par lots de 20 (`pingPositionsBatch`) au retour du réseau ;
+     * hors ligne, les positions sont gardées en mémoire (200 max, copie dans
+       `localStorage`) puis envoyées par lots de 20 (`pingPositionsBatch`), du
+       plus ancien au plus récent et AVANT le relevé live suivant ;
      * `'a_accepter'` ⇒ carte de la notice + bouton « J'ai lu et j'accepte » ;
      * `'absent'` / `'revoque'` ⇒ une ligne discrète, aucun suivi.
    Nom de fichier/composant conservés : « Ma journée » l'importe tel quel.
@@ -35,8 +36,73 @@ const PING_MIN_INTERVAL_MS = 60 * 1000
 const TAMPON_MAX = 200
 const LOT_TAILLE = 20
 
+// Revue 26/10/2026 (F3) — le tampon est recopié dans `localStorage` sous
+// `gps-tampon-<id>` : il survit à un rechargement ET au démontage du composant
+// quand la session se ferme (« terminée ») hors ligne. Le serveur accepte ce
+// rattrapage tant que les points datent d'avant la fin de la session.
+const PREFIXE_TAMPON = 'gps-tampon-'
+// Ids dont un composant monté gère lui-même le tampon.
+const tamponsMontes = new Set()
+let attenteEnCours = false
+
 function estHorsLigne() {
   return typeof navigator !== 'undefined' && navigator.onLine === false
+}
+
+function lireTampon(id) {
+  try {
+    const brut = JSON.parse(window.localStorage.getItem(PREFIXE_TAMPON + id) || '[]')
+    return Array.isArray(brut) ? brut : []
+  } catch { return [] }
+}
+
+function ecrireTampon(id, points) {
+  try {
+    if (points.length) window.localStorage.setItem(PREFIXE_TAMPON + id, JSON.stringify(points))
+    else window.localStorage.removeItem(PREFIXE_TAMPON + id)
+  } catch { /* stockage indisponible (navigation privée) : tampon mémoire seul */ }
+}
+
+// Envoie `tampon` (muté sur place) par lots de 20, du plus ancien au plus
+// récent (F2 : le serveur juge chaque franchissement d'après le relevé
+// précédent). Un refus serveur (4xx) jette le lot (le renvoyer en boucle ne
+// servirait à rien), une coupure garde le reste. `persister` après chaque lot.
+async function envoyerTampon(id, tampon, persister) {
+  tampon.sort((a, b) => String(a.captured_at).localeCompare(String(b.captured_at)))
+  while (tampon.length && !estHorsLigne()) {
+    const lot = tampon.slice(0, LOT_TAILLE)
+    try {
+      await installationsApi.pingPositionsBatch(id, lot)
+    } catch (err) {
+      if (!err?.response) break // réseau : on garde, on réessaiera
+    }
+    tampon.splice(0, lot.length)
+    persister()
+  }
+}
+
+/** Positions restées en attente pour une intervention dont la session s'est
+ *  fermée hors ligne (composant démonté) : envoyées par « Ma journée » à
+ *  l'ouverture et au retour du réseau. Ignore les tampons d'un suivi monté. */
+// eslint-disable-next-line react-refresh/only-export-components -- helper pur co-localisé avec le tampon qu'il vide (D-ENF22)
+export async function viderTamponsGpsEnAttente() {
+  if (attenteEnCours || typeof window === 'undefined' || estHorsLigne()) return
+  attenteEnCours = true
+  try {
+    const ids = []
+    try {
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const cle = window.localStorage.key(i)
+        if (cle?.startsWith(PREFIXE_TAMPON)) ids.push(cle.slice(PREFIXE_TAMPON.length))
+      }
+    } catch { return }
+    for (const id of ids) {
+      if (!/^\d+$/.test(id) || tamponsMontes.has(Number(id))) continue
+      const tampon = lireTampon(id)
+      await envoyerTampon(Number(id), tampon, () => ecrireTampon(id, tampon))
+      if (!tampon.length) ecrireTampon(id, tampon)
+    }
+  } finally { attenteEnCours = false }
 }
 
 /** Notice d'information (loi 09-08 art. 5), telle que servie par le serveur. */
@@ -139,25 +205,35 @@ export default function GpsTrackingToggle({ intervention }) {
     const t = tamponRef.current
     t.push(point)
     if (t.length > TAMPON_MAX) t.splice(0, t.length - TAMPON_MAX)
-  }, [])
+    if (interventionId) ecrireTampon(interventionId, t)
+  }, [interventionId])
 
-  // Vide le tampon par lots de 20 ; un refus serveur (4xx) jette le lot (le
-  // renvoyer en boucle ne servirait à rien), une coupure le garde.
+  // Vide le tampon (mémoire + copie locale) par lots de 20, chronologique.
   const viderTampon = useCallback(async () => {
     if (envoiLotRef.current || !interventionId) return
     envoiLotRef.current = true
     try {
-      while (tamponRef.current.length && !estHorsLigne()) {
-        const lot = tamponRef.current.slice(0, LOT_TAILLE)
-        try {
-          await installationsApi.pingPositionsBatch(interventionId, lot)
-        } catch (err) {
-          if (!err?.response) break // réseau : on garde, on réessaiera
-        }
-        tamponRef.current.splice(0, lot.length)
-      }
+      await envoyerTampon(interventionId, tamponRef.current,
+        () => ecrireTampon(interventionId, tamponRef.current))
     } finally { envoiLotRef.current = false }
   }, [interventionId])
+
+  // F3 — au montage : reprend le tampon laissé par une page rechargée et
+  // l'envoie ; au démontage (session fermée) : dernier envoi best-effort —
+  // ce qui ne part pas reste dans `localStorage` pour « Ma journée ».
+  useEffect(() => {
+    if (!interventionId) return undefined
+    tamponsMontes.add(interventionId)
+    const restaure = lireTampon(interventionId)
+    if (restaure.length) {
+      tamponRef.current = [...restaure, ...tamponRef.current]
+      viderTampon()
+    }
+    return () => {
+      tamponsMontes.delete(interventionId)
+      viderTampon()
+    }
+  }, [interventionId, viderTampon])
 
   // Appelé par le callback `watchPosition` (asynchrone, jamais synchrone
   // dans le corps de l'effet) — seul endroit où `Date.now()` est lu.
@@ -172,7 +248,7 @@ export default function GpsTrackingToggle({ intervention }) {
       captured_at: new Date(position.timestamp || maintenant).toISOString(),
     }
     if (estHorsLigne()) { garder(point); return }
-    installationsApi.pingPosition({ ...point, intervention: interventionId })
+    const envoyerLive = () => installationsApi.pingPosition({ ...point, intervention: interventionId })
       .then(() => { if (tamponRef.current.length) viderTampon() })
       .catch((err) => {
         const code = err?.response?.status
@@ -184,6 +260,14 @@ export default function GpsTrackingToggle({ intervention }) {
             : "Suivi de position arrêté : l'intervention n'est plus en cours.")
         }
       })
+    if (!tamponRef.current.length) { envoyerLive(); return }
+    // F2 — les relevés plus anciens du tampon partent AVANT le relevé live.
+    // S'il reste du tampon (coupure, ou envoi déjà en cours), le relevé live
+    // le rejoint en queue : l'ordre chronologique est gardé.
+    viderTampon().then(() => {
+      if (tamponRef.current.length) garder(point)
+      else envoyerLive()
+    })
   }, [interventionId, garder, viderTampon])
 
   useEffect(() => {

@@ -1031,6 +1031,7 @@ def equipements_series_du_chantier(company, installation_id):
     return list(
         Equipement.objects
         .filter(company=company, installation_id=installation_id)
+        .exclude(statut=Equipement.Statut.REMPLACE)
         .exclude(numero_serie__isnull=True).exclude(numero_serie='')
         .order_by('id')
         .values('id', 'produit_id', 'numero_serie'))

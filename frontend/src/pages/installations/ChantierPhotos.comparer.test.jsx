@@ -26,6 +26,21 @@ describe('apparierAvantApres', () => {
     expect(surplusApres).toEqual([])
   })
 
+  it('alias zone_onduleur_avant ↔ onduleur_installe, jamais deux sujets différents', () => {
+    const avant = [
+      photo(1, 'zone_onduleur_avant', 'Zone onduleur'),
+      photo(2, 'compteur_avant', 'Compteur (avant)'),
+    ]
+    const apres = [
+      photo(10, 'onduleur_installe', 'Onduleur installé'),
+      photo(11, 'toiture_apres', 'Toiture après pose'),
+    ]
+    const { pairs, surplusAvant, surplusApres } = apparierAvantApres(avant, apres)
+    expect(pairs.map((p) => [p.before.id, p.after.id])).toEqual([[1, 10]])
+    expect(surplusAvant.map((p) => p.id)).toEqual([2])
+    expect(surplusApres.map((p) => p.id)).toEqual([11])
+  })
+
   it('jamais de paire inventée : le surplus reste à part', () => {
     const { pairs, surplusAvant } = apparierAvantApres(
       [photo(1, 'toiture_avant', 'Toiture avant pose'), photo(2)], [])

@@ -37,7 +37,9 @@ import { usePullToRefresh } from '../../ui/usePullToRefresh'
 // un accusé de réception unique de la notice (loi 09-08). Monté au niveau de
 // la PAGE (plus dans la fiche) : il tourne sans que le technicien ouvre quoi
 // que ce soit. Coexiste avec le check-in manuel F6, jamais remplacé.
-import GpsTrackingToggle, { MesPositionsDuJour } from '../../features/installations/GpsTrackingToggle'
+import GpsTrackingToggle, {
+  MesPositionsDuJour, viderTamponsGpsEnAttente,
+} from '../../features/installations/GpsTrackingToggle'
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
 } from '../../features/installations/InterventionFieldExecution'
@@ -315,6 +317,16 @@ export default function MaJourneePage() {
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [load])
+
+  // Revue 26/10/2026 (F3) — positions GPS restées en attente d'une session
+  // fermée hors ligne (le suivi s'est démonté à « terminée ») : envoyées à
+  // l'ouverture de la page et au retour du réseau.
+  useEffect(() => {
+    viderTamponsGpsEnAttente()
+    const enLigne = () => { viderTamponsGpsEnAttente() }
+    window.addEventListener('online', enLigne)
+    return () => window.removeEventListener('online', enLigne)
+  }, [])
 
   // VX226(b) — bouton « Actualiser » discret (cohérent OfflineSyncIndicator :
   // RefreshCw + rotation pendant le fetch).

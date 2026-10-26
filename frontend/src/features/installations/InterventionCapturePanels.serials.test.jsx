@@ -80,7 +80,7 @@ describe('SerialsPanel — séries attendues (revue chantier 26/10/2026)', () =>
     const user = userEvent.setup()
     render(<SerialsPanel intervention={INTERVENTION} />)
     const liste = await screen.findByRole('combobox', { name: 'Composant' })
-    // Défaut : le premier produit encore incomplet (les panneaux).
+    // Un seul produit encore incomplet (les panneaux) : défaut automatique.
     expect(liste.value).toBe('34')
     await user.type(screen.getByLabelText('N° de série'), 'CS710-0003')
     await user.click(screen.getByRole('button', { name: /Ajouter le relevé/ }))
@@ -91,6 +91,25 @@ describe('SerialsPanel — séries attendues (revue chantier 26/10/2026)', () =>
       numero_serie: 'CS710-0003', capture_source: 'saisie',
       caracteristiques: { fabricant: 'Canadian Solar' },
     })
+  })
+
+  it('plusieurs produits incomplets : aucun défaut, ajout refusé sans choix', async () => {
+    const user = userEvent.setup()
+    const deux = JSON.parse(JSON.stringify(CONTRAT.exemple))
+    deux.produits.forEach((p) => { p.releve = 0; p.manquant = p.attendu })
+    api.getSerialsAttendus.mockResolvedValue({ data: deux })
+    render(<SerialsPanel intervention={INTERVENTION} />)
+    const liste = await screen.findByRole('combobox', { name: 'Composant' })
+    expect(liste.value).toBe('')
+    expect(screen.getByRole('option', { name: 'Choisir le composant…' })).toBeTruthy()
+    await user.type(screen.getByLabelText('N° de série'), 'INV-0001')
+    await user.click(screen.getByRole('button', { name: /Ajouter le relevé/ }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Choisissez le composant')
+    expect(api.ajouterSerial).not.toHaveBeenCalled()
+    await user.selectOptions(liste, String(deux.produits[1].produit_id))
+    await user.click(screen.getByRole('button', { name: /Ajouter le relevé/ }))
+    await waitFor(() => expect(api.ajouterSerial).toHaveBeenCalled())
+    expect(api.ajouterSerial.mock.calls[0][1].produit).toBe(deux.produits[1].produit_id)
   })
 
   it('« Autre composant » rouvre la désignation libre', async () => {

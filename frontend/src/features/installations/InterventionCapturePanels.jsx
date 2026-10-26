@@ -84,6 +84,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const [scanOuvert, setScanOuvert] = useState(false)
   const [scanAbsent, setScanAbsent] = useState(false)
   const [erreurNumero, setErreurNumero] = useState('')
+  const [erreurComposant, setErreurComposant] = useState('')
   const fileRef = useRef(null)
   // VX94 — refocus sur le premier champ après un ajout réussi (recette
   // `newCatRef` prouvée dans ProduitForm) : la saisie sérialisée au pouce
@@ -103,9 +104,11 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
 
   const produits = attendus?.produits || []
   const avecListe = produits.length > 0
-  // Produit proposé par défaut : le premier encore incomplet (choix
-  // explicite de l'utilisateur prioritaire).
-  const produitDefaut = produits.find((p) => p.manquant > 0) || produits[0]
+  // Aucun composant présélectionné à l'aveugle (un onduleur scanné sans toucher
+  // la liste partirait sous « panneaux ») : défaut UNIQUEMENT s'il ne reste
+  // qu'un produit incomplet ; sinon l'utilisateur choisit.
+  const incomplets = produits.filter((p) => p.manquant > 0)
+  const produitDefaut = incomplets.length === 1 ? incomplets[0] : null
   const choixEffectif = choix || (produitDefaut ? String(produitDefaut.produit_id) : '')
   const produitChoisi = produits.find((p) => String(p.produit_id) === choixEffectif) || null
   const autreComposant = !avecListe || choixEffectif === AUTRE_COMPOSANT
@@ -113,6 +116,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   const fabricant = carac.fabricant ?? (produitChoisi?.marque || '')
   const choisir = (valeur) => {
     setChoix(valeur)
+    setErreurComposant('')
     setCarac((c) => ({ ...c, fabricant: null }))
   }
 
@@ -140,6 +144,11 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
   }
 
   const add = async () => {
+    if (avecListe && !choixEffectif) {
+      setErreurComposant('Choisissez le composant')
+      return
+    }
+    setErreurComposant('')
     const produit = autreComposant ? null : produitChoisi?.produit_id ?? null
     const nomComposant = autreComposant
       ? designation.trim() : (produitChoisi?.designation || '')
@@ -243,6 +252,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
           <select aria-label="Composant" value={choixEffectif}
             onChange={(e) => choisir(e.target.value)}
             className="h-10 rounded-md border border-border bg-background px-2 text-sm">
+            <option value="">Choisir le composant…</option>
             {produits.map((p) => (
               <option key={p.produit_id} value={String(p.produit_id)}>
                 {p.designation} ({Math.min(p.releve, p.attendu)}/{p.attendu})
@@ -250,6 +260,11 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
             ))}
             <option value={AUTRE_COMPOSANT}>Autre composant</option>
           </select>
+        )}
+        {erreurComposant && (
+          <span role="alert" className="text-[12px] text-destructive">
+            {erreurComposant}
+          </span>
         )}
         {autreComposant && (
           <Input ref={firstFieldRef} placeholder="Composant (onduleur, panneau…)"
@@ -295,7 +310,7 @@ export function SerialsPanel({ intervention, onChanged, knownSeries = [] }) {
         <label className="flex flex-col gap-1 text-[12px]">
           Photo de la plaque
           <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
-            capture="environment" className="text-[12px]" />
+            className="text-[12px]" />
         </label>
         <Button size="sm" disabled={busy} onClick={add}>
           <Tag className="size-4" aria-hidden="true" /> Ajouter le relevé

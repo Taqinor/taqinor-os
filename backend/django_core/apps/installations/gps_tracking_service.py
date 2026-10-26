@@ -220,13 +220,21 @@ def _position_precedente(position):
 
     Sert à distinguer un FRANCHISSEMENT (NTMOB9) d'un simple ping : sans
     position précédente évaluée, on ne sait pas si le technicien vient
-    d'entrer — on ne journalise donc aucune entrée."""
+    d'entrer — on ne journalise donc aucune entrée.
+
+    Revue 26/10/2026 (F2) : bornée aux relevés ANTÉRIEURS à celui-ci
+    (``captured_at`` plus petit ; à égalité, id plus petit). Un lot de
+    rattrapage hors-ligne arrive APRÈS un relevé live plus récent : sans cette
+    borne, ses points étaient comparés au relevé live (sortie fantôme levée,
+    vraie entrée/sortie ultérieure étouffée)."""
+    from django.db.models import Q
     return (PositionTechnicien.objects
             .filter(company_id=position.company_id,
                     technicien_id=position.technicien_id,
                     intervention_id=position.intervention_id,
                     distance_site_km__isnull=False)
-            .exclude(pk=position.pk)
+            .filter(Q(captured_at__lt=position.captured_at)
+                    | Q(captured_at=position.captured_at, id__lt=position.pk))
             .order_by('-captured_at', '-id')
             .first())
 
@@ -295,7 +303,10 @@ def enregistrer_position(
             company=company, intervention=intervention, technicien=technicien,
             position=position, distance_site_km=distance,
             rayon_attendu_km=radius_km,
-            type_franchissement=type_franchissement)
+            type_franchissement=type_franchissement,
+            # F4 — l'instant du RELEVÉ (≠ insertion : un lot hors-ligne
+            # arrive après coup) ; survit à la purge des positions.
+            captured_at=position.captured_at)
         if type_franchissement == GeofenceAlert.TypeFranchissement.SORTIE:
             _notifier_sortie_perimetre(alert)
     return position, alert
@@ -401,7 +412,8 @@ def presence_intervention(intervention):
     """Temps passé sur site d'une intervention, calculé côté serveur.
 
     * ``premiere_entree`` : première position relevée DANS le rayon ; à
-      défaut (positions purgées après 30 j), la première alerte d'entrée ;
+      défaut (positions purgées après 30 j), la première alerte d'entrée
+      (datée de son relevé, ``GeofenceAlert.captured_at``) ;
       à défaut, le pointage manuel ``arrivee_site_le`` (F6).
     * ``derniere_sortie`` : dernière position relevée dans le rayon (dernier
       instant vu sur site) ; à défaut, la dernière alerte de sortie
@@ -424,10 +436,15 @@ def presence_intervention(intervention):
     if dedans:
         debut, fin, source = dedans[0]['captured_at'], dedans[-1]['captured_at'], 'positions'
     else:
-        alertes = list(
-            GeofenceAlert.objects.filter(intervention=intervention)
-            .order_by('created_at', 'id')
-            .values_list('type_franchissement', 'created_at'))
+        # F4 — instant du relevé (``captured_at``), jamais l'instant
+        # d'insertion : un lot hors-ligne est inséré après coup. Repli sur
+        # ``created_at`` pour les alertes antérieures au champ.
+        alertes = sorted(
+            ((t, capt or cree) for t, capt, cree in
+             GeofenceAlert.objects.filter(intervention=intervention)
+             .order_by('created_at', 'id')
+             .values_list('type_franchissement', 'captured_at', 'created_at')),
+            key=lambda ligne: ligne[1])
         entrees = [c for t, c in alertes
                    if t == GeofenceAlert.TypeFranchissement.ENTREE]
         if entrees:

@@ -6,7 +6,11 @@ import { MemoryRouter } from 'react-router-dom'
 // payload écrit à la main.
 import CONTRAT from '../../../../backend/django_core/apps/installations/contract_samples/chantier_approvisionnement.json'
 
-const mocks = vi.hoisted(() => ({ commanderBesoin: vi.fn() }))
+const mocks = vi.hoisted(() => ({ commanderBesoin: vi.fn(), peutCommander: true }))
+
+vi.mock('../../features/stock/useVoitPrixAchat', () => ({
+  usePermissionAchats: () => mocks.peutCommander,
+}))
 
 vi.mock('../../api/installationsApi', () => ({
   default: { commanderBesoin: (...a) => mocks.commanderBesoin(...a) },
@@ -23,7 +27,7 @@ const rendre = (props = {}) => render(
   </MemoryRouter>,
 )
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); mocks.peutCommander = true })
 
 describe('ChantierApprovisionnement — contrat chantier_approvisionnement.json', () => {
   it('affiche les pastilles de synthèse et le verdict « pas prêt » avec ses raisons', () => {
@@ -94,8 +98,16 @@ describe('ChantierApprovisionnement — contrat chantier_approvisionnement.json'
     expect(screen.getByRole('progressbar', { name: 'Réception BCF-202610-0003' })
       .getAttribute('aria-valuenow')).toBe('0')
     const da = screen.getByRole('link', { name: 'DA-202610-0001' })
-    expect(da.getAttribute('href')).toBe('/chantiers/demandes-achat?chantier=43')
+    // F1 — ouvre le DÉTAIL de la DA (?da=), jamais le formulaire de création (?chantier=).
+    expect(da.getAttribute('href')).toBe('/chantiers/demandes-achat?da=3')
     expect(screen.getByText('10 × Panneau Canadian Solar 710W')).toBeTruthy()
+  })
+
+  it('F3 : sans la permission achats_commander, « Commander les manques » n’est pas proposé', () => {
+    mocks.peutCommander = false
+    rendre()
+    expect(screen.queryByRole('button', { name: /Commander les manques/ })).toBeNull()
+    expect(screen.getByText(/Permission achats_commander requise/)).toBeTruthy()
   })
 
   it('états vides en français quand le chantier n’a rien', () => {

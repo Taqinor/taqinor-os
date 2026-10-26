@@ -69,17 +69,23 @@ MESSAGE_SERIE_SANS_COMPOSANT = (
 CAPTURE_SOURCES = ('scan', 'saisie', 'photo')
 
 
+def _refuse_constante(nom):
+    raise ValueError(f'constante JSON refusée : {nom}')
+
+
 def valider_caracteristiques(valeur):
     """Revue chantier 26/10/2026 — ``(dict, None)`` ou ``(None, message)``.
     Dict PLAT d'au plus 10 clés texte, valeurs texte ou nombre (jamais une
     liste/un objet imbriqué) ; ``None``/vide → ``{}``. Une chaîne JSON
     (corps multipart) est décodée."""
     import json
+    import math
     if valeur in (None, ''):
         return {}, None
     if isinstance(valeur, str):
         try:
-            valeur = json.loads(valeur)
+            # NaN / Infinity / -Infinity refusés (jsonb ne les accepte pas).
+            valeur = json.loads(valeur, parse_constant=_refuse_constante)
         except ValueError:
             return None, "Caractéristiques illisibles (objet attendu)."
     if not isinstance(valeur, dict):
@@ -94,6 +100,9 @@ def valider_caracteristiques(valeur):
         if isinstance(val, bool) or not isinstance(val, (str, int, float)):
             return None, (f"Caractéristiques : « {cle} » doit être un texte "
                           "ou un nombre.")
+        if isinstance(val, float) and not math.isfinite(val):
+            return None, (f"Caractéristiques : « {cle} » doit être un nombre "
+                          "fini.")
         if isinstance(val, str):
             val = val.strip()[:255]
             if not val:
@@ -209,10 +218,16 @@ def push_serials_to_parc(intervention, user):
             serial.save(update_fields=['produit'])
     if non_rattaches:
         from . import intervention_activity
-        intervention_activity.log_note(
-            intervention, user,
+        from .models import InterventionActivity
+        note = (
             f"{non_rattaches} n° de série sans composant catalogue : non "
             "poussé(s) au parc SAV — choisissez le produit sur le relevé.")
+        # Pas de répétition : la poussée tourne à chaque ajout sur une
+        # intervention close ; une note identique déjà au chatter suffit.
+        if not InterventionActivity.objects.filter(
+                intervention=intervention,
+                kind=InterventionActivity.Kind.NOTE, body=note).exists():
+            intervention_activity.log_note(intervention, user, note)
     for serial in intervention.serials.filter(
             pousse_parc=False, produit__isnull=False):
         numero = (serial.numero_serie or '').strip() or None

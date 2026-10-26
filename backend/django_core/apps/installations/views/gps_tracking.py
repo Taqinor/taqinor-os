@@ -117,11 +117,43 @@ def _point_valide(brut, nom='positions'):
             'captured_at': captured_at}
 
 
-def _intervention_du_ping(request):
+def _fin_de_session(intervention):
+    """Instant de fin de la session terrain d'une intervention close, ou
+    ``None`` s'il est inconnu. L'Intervention n'a pas d'``updated_at`` ni
+    d'horodatage de clôture : on prend la borne la plus honnête disponible —
+    ``retour_depot_le`` (fin du trajet, horodatée à la seconde), sinon la fin
+    du jour de ``date_realisee`` (posée au passage à terminée/validée, au jour
+    près). Sans l'un ni l'autre : inconnu → le rattrapage est refusé."""
+    if intervention.retour_depot_le is not None:
+        return intervention.retour_depot_le
+    if intervention.date_realisee is not None:
+        from datetime import datetime, time
+        return timezone.make_aware(
+            datetime.combine(intervention.date_realisee, time.max))
+    return None
+
+
+def _rattrapage_apres_cloture(intervention, points):
+    """F3 — un lot hors-ligne relevé PENDANT la session mais envoyé après sa
+    clôture (le composant se démonte à « terminée ») reste recevable : vrai
+    si l'intervention est terminée/validée et que CHAQUE point est daté au
+    plus tard à la fin de la session."""
+    if intervention.statut not in (Intervention.Statut.TERMINEE,
+                                   Intervention.Statut.VALIDEE):
+        return False
+    fin = _fin_de_session(intervention)
+    return fin is not None and all(p['captured_at'] <= fin for p in points)
+
+
+def _intervention_du_ping(request, points_rattrapage=None):
     """L'intervention d'un ping, contrôlée : présente (400), de la société
     (400 « inconnue »), dont l'appelant est membre (403) et en route / sur
     site (409). Le suivi ne s'applique QUE pendant le temps de travail
-    terrain effectif — jamais hors intervention."""
+    terrain effectif — jamais hors intervention.
+
+    ``points_rattrapage`` (``ping-lot`` seulement) : une intervention
+    terminée/validée est acceptée si tous les points datent d'avant la fin de
+    sa session (``_rattrapage_apres_cloture``) — jamais pour un ping live."""
     intervention_id = request.data.get('intervention')
     if intervention_id in (None, ''):
         raise ValidationError({
@@ -140,7 +172,10 @@ def _intervention_du_ping(request):
     if not gps_tracking_service.membre_de_l_intervention(intervention, request.user):
         raise PermissionDenied(
             "Vous n'êtes ni le technicien ni un membre de l'équipe de cette intervention.")
-    if intervention.annulee or intervention.statut not in GPS_TRACKING_REQUIRED_STATUTS:
+    if intervention.annulee or (
+            intervention.statut not in GPS_TRACKING_REQUIRED_STATUTS
+            and not (points_rattrapage
+                     and _rattrapage_apres_cloture(intervention, points_rattrapage))):
         raise ConflitEtat(
             "Le suivi de position ne s'applique qu'aux interventions « en route » "
             "ou « sur site ».")
@@ -354,7 +389,9 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
         captured_at}]}`` → 201 ``{enregistrees, doublons, positions,
         geofence_alerts}``. Un point déjà reçu (même intervention + même
         ``captured_at``) est ignoré et compté dans ``doublons``. Mêmes gardes
-        que ``ping``."""
+        que ``ping``, sauf une : une intervention terminée/validée est
+        acceptée quand tous les points datent d'avant la fin de sa session
+        (tampon envoyé après la clôture, F3) — sinon 409."""
         oa.corps_objet(request)
         company = request.user.company
         self._garde_consentement(company, request.user)
@@ -368,7 +405,7 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
         if any(p['captured_at'] is None for p in points):
             raise ValidationError({
                 'captured_at': 'Chaque position du lot doit porter son heure de relevé.'})
-        intervention = _intervention_du_ping(request)
+        intervention = _intervention_du_ping(request, points_rattrapage=points)
         creees, alertes, doublons = gps_tracking_service.enregistrer_lot_positions(
             company, request.user, intervention, points)
         return Response({
@@ -467,10 +504,17 @@ class InterventionPresenceView(oa.JsonOnlyMixin, APIView):
     Même permission que le détail de l'intervention : ``ScopedPermission``
     (authentifié interne) + l'intervention doit être dans la portée de
     visibilité de l'appelant (``selectors.interventions_visibles``) et de sa
-    société — sinon 404, jamais une fuite d'existence."""
+    société — sinon 404, jamais une fuite d'existence.
+
+    Revue 26/10/2026 (F1, loi 09-08) : la portée de visibilité vaut « toute
+    la société » pour un rôle sans marqueur d'équipe — un technicien lisait
+    la dernière position d'un collègue. Responsable/admin : réponse complète.
+    Tout autre rôle : membre de l'intervention, sinon 403 ; et même membre,
+    ``derniere_position`` est servie ``null`` (son temps sur site, pas un
+    point de carte)."""
     permission_classes = [ScopedPermission]
 
-    @oa.extend_schema(responses={200: oa.OBJ, 404: oa.OBJ})
+    @oa.extend_schema(responses={200: oa.OBJ, 403: oa.OBJ, 404: oa.OBJ})
     def get(self, request, pk):
         from ..selectors import interventions_visibles
         if not 1 <= int(pk) <= oa.ID_MAX:  # id hors bigint : 404, jamais un 500 ORM
@@ -478,8 +522,13 @@ class InterventionPresenceView(oa.JsonOnlyMixin, APIView):
         intervention = interventions_visibles(request.user).filter(pk=pk).first()
         if intervention is None:
             raise NotFound('Intervention introuvable.')
+        superviseur = IsResponsableOrAdmin().has_permission(request, self)
+        if not superviseur and not gps_tracking_service.membre_de_l_intervention(
+                intervention, request.user):
+            raise PermissionDenied(
+                "Présence réservée aux membres de l'intervention et à leur responsable.")
         presence = gps_tracking_service.presence_intervention(intervention)
-        derniere = presence['derniere_position']
+        derniere = presence['derniere_position'] if superviseur else None
         return Response({
             'intervention': presence['intervention'],
             'premiere_entree': _iso(presence['premiere_entree']),

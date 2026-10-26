@@ -3413,10 +3413,20 @@ def quantites_deja_sorties_chantier(installation, produit_ids):
     """``{produit_id: quantité entière déjà SORTIE}`` pour ce chantier — la
     source unique ``services.quantite_deja_sortie_chantier`` (vente soldée +
     consommation terrain F11), lisible par ``stock`` (besoin matériel) sans
-    importer les services installations. Lecture seule."""
-    from .services import quantite_deja_sortie_chantier
-    return {pid: quantite_deja_sortie_chantier(installation, pid)
-            for pid in produit_ids if pid}
+    importer les services installations. Lecture seule.
+
+    Revue chantier (F1) — s'y ajoute la sortie N14 de ``consume_reservations``
+    au passage « Installé » (réservation ``consomme=True``), au montant
+    RÉELLEMENT sorti (``_quantite_sortie_chantier`` : le manque CHT5 d'une
+    consommation partielle reste un manque) : sans elle, un chantier installé
+    réaffichait toute sa nomenclature en manque. ``quantite_deja_sortie_
+    chantier`` reste inchangé (les écrivains de réservation en dépendent)."""
+    from decimal import ROUND_HALF_UP, Decimal
+    from .services import _quantite_sortie_chantier
+    return {
+        pid: int(Decimal(str(_quantite_sortie_chantier(installation, pid)))
+                 .quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        for pid in produit_ids if pid}
 
 
 def _raisons_pret_a_poser(installation, lignes, nb_manques, besoins):

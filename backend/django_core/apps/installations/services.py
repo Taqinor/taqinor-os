@@ -5971,6 +5971,42 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
             'effets': effets}
 
 
+def avancer_materiel_commande_si_couvert(installation, user=None, *,
+                                         exiger_couverture=True, note=None):
+    """Revue chantier (F2) — chantier « Signé » → « Matériel commandé » par
+    ``changer_statut_chantier`` (gardes + cascade), UNE implémentation pour
+    `commander-besoin` (tentative au brouillon, ``exiger_couverture=False`` :
+    passe pour une société sans étapes) et l'ENVOI d'un BCF du chantier
+    (``stock`` : « Matériel commandé » est atteint quand les commandes sont
+    ENVOYÉES — avec l'étape bloquante `approvisionnement`, un brouillon ne
+    sécurise rien). Avec ``exiger_couverture``, rien n'est tenté tant que
+    ``compute_besoin_materiel`` montre un manque. Ne lève jamais : renvoie
+    ``(avancé, raison)`` — raison None quand rien n'est à dire."""
+    from apps.stock.services import compute_besoin_materiel
+    from . import activity
+    if (installation is None
+            or Installation.canonical_statut(installation.statut)
+            != Installation.Statut.SIGNE):
+        return False, None
+    if exiger_couverture:
+        nb = sum(1 for b in compute_besoin_materiel(installation)
+                 if b.get('manque', 0) > 0)
+        if nb:
+            return False, (f'{nb} article{"s" if nb > 1 else ""} '
+                           'encore en manque.')
+    try:
+        changer_statut_chantier(
+            installation, Installation.Statut.MATERIEL_COMMANDE, user)
+    except TransitionRefusee as exc:
+        # Refus AVANT toute écriture (gardes) : l'instance est intacte.
+        return False, ' ; '.join(exc.raisons) or 'Transition refusée.'
+    activity.log_note(
+        installation, user,
+        note or ("Chantier passé à « Matériel commandé » (bons de commande "
+                 "fournisseur envoyés : le besoin matériel est couvert)."))
+    return True, None
+
+
 # ── YSERV6 — annulation de chantier : solder les interventions ouvertes ────
 
 # ═════════════════════════════════════════════════════════════════════════════

@@ -206,6 +206,27 @@ class AjouterSerialTests(_Base):
         self.assertEqual(ok, {'modele': 'A'})
         self.assertIsNone(err)
 
+    def test_caracteristiques_non_finies_refusees(self):
+        # NaN / Infinity / 1e400 (→ inf) feraient une DataError jsonb (500).
+        for brut in ('{"puissance_wc": NaN}', '{"puissance_wc": Infinity}',
+                     '{"puissance_wc": -Infinity}', '{"puissance_wc": 1e400}'):
+            ok, err = field_capture.valider_caracteristiques(brut)
+            self.assertIsNone(ok, brut)
+            self.assertTrue(err, brut)
+        ok, err = field_capture.valider_caracteristiques(
+            {'puissance_wc': float('inf')})
+        self.assertIsNone(ok)
+        self.assertTrue(err)
+        ok, err = field_capture.valider_caracteristiques('{"puissance_wc": 710.5}')
+        self.assertEqual(ok, {'puissance_wc': 710.5})
+
+    def test_caracteristiques_multipart_nan_400(self):
+        r = self.api.post(f'{self.url}/ajouter-serial/', {
+            'produit': self.panneau.id, 'numero_serie': 'X-NAN',
+            'caracteristiques': '{"puissance_wc": NaN}'}, format='multipart')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('caracteristiques', r.data)
+
 
 class PousseeParcTests(_Base):
     def test_designation_rattachee_puis_poussee(self):
@@ -222,6 +243,33 @@ class PousseeParcTests(_Base):
         self.assertIsNone(orphelin.produit_id)
         self.assertFalse(orphelin.pousse_parc)
         self.assertEqual(resultat.non_rattaches, 1)
+
+    def test_note_sans_composant_non_repetee(self):
+        from apps.installations.models import InterventionActivity
+        self._serial(self.iv, 'ZZ-2', designation='Truc inconnu')
+        field_capture.push_serials_to_parc(self.iv, self.user)
+        field_capture.push_serials_to_parc(self.iv, self.user)
+        self.assertEqual(InterventionActivity.objects.filter(
+            intervention=self.iv, body__contains='sans composant catalogue',
+        ).count(), 1)
+        # Un orphelin de plus change le compte : nouvelle note.
+        self._serial(self.iv, 'ZZ-3', designation='Autre inconnu')
+        field_capture.push_serials_to_parc(self.iv, self.user)
+        self.assertEqual(InterventionActivity.objects.filter(
+            intervention=self.iv, body__contains='sans composant catalogue',
+        ).count(), 2)
+
+    def test_equipement_remplace_non_compte(self):
+        from apps.sav.selectors import equipements_series_du_chantier
+        Equipement.objects.create(
+            company=self.company, produit=self.panneau, installation=self.inst,
+            numero_serie='OLD-1', statut=Equipement.Statut.REMPLACE)
+        Equipement.objects.create(
+            company=self.company, produit=self.panneau, installation=self.inst,
+            numero_serie='NEW-1')
+        releve = [e['numero_serie'] for e in equipements_series_du_chantier(
+            self.company, self.inst.id)]
+        self.assertEqual(releve, ['NEW-1'])
 
 
 class AvertissementSeriesTests(_Base):
