@@ -3904,7 +3904,10 @@ def cout_prevu_assemblage(ordre):
             prix = getattr(ligne.produit, 'prix_achat', None) or Decimal('0')
             total += Decimal(str(ligne.quantite or 0)) * Decimal(str(prix))
         return total
-    for c in ordre.kit.composants.select_related('produit').all():
+    composants = ordre.kit.composants
+    if 'composants' not in getattr(ordre.kit, '_prefetched_objects_cache', {}):
+        composants = composants.select_related('produit')  # APRF39 : sinon préchargé
+    for c in composants.all():
         if c.produit_id is None:
             continue
         prix = getattr(c.produit, 'prix_achat', None) or Decimal('0')
@@ -4195,14 +4198,15 @@ def instancier_etapes_ordre(ordre):
     etapes_modele = ordre.kit.etapes_assemblage.all()
     if not etapes_modele:
         return []
-    existants = set(
-        ordre.etapes.values_list('etape_modele_id', flat=True))
+    existants = {e.etape_modele_id for e in ordre.etapes.all()}  # APRF39 : cache préchargé
     a_creer = [
         EtapeOrdre(ordre=ordre, etape_modele=etape)
         for etape in etapes_modele if etape.id not in existants
     ]
     if a_creer:
         EtapeOrdre.objects.bulk_create(a_creer)
+    elif 'etapes' in getattr(ordre, '_prefetched_objects_cache', {}):
+        return list(ordre.etapes.all())  # APRF39 : déjà préchargé avec etape_modele
     return list(ordre.etapes.select_related('etape_modele').all())
 
 

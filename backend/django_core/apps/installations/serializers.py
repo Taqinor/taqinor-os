@@ -2446,15 +2446,21 @@ class OrdreAssemblageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         from .services import cout_prevu_assemblage
         return str(cout_prevu_assemblage(obj))
 
+    def _totaux_temps(self, obj):
+        # APRF39 — UN calcul par ordre et par sérialiseur (prévu puis réel).
+        cache = self.__dict__.setdefault('_totaux_temps_cache', {})
+        if obj.pk not in cache:
+            from .services import totaux_temps_ordre
+            cache[obj.pk] = totaux_temps_ordre(obj)
+        return cache[obj.pk]
+
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_temps_prevu_min(self, obj):
-        from .services import totaux_temps_ordre
-        return totaux_temps_ordre(obj)['prevu']
+        return self._totaux_temps(obj)['prevu']
 
     @extend_schema_field(serializers.IntegerField())
     def get_temps_reel_min(self, obj):
-        from .services import totaux_temps_ordre
-        return totaux_temps_ordre(obj)['reel']
+        return self._totaux_temps(obj)['reel']
 
 
 class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):
