@@ -241,7 +241,9 @@ def _ecrire_devis_auto_par_pipeline(*, company, user, lead, creer, lignes,
          'designation': ligne['designation'],
          'quantite': str(ligne['quantite']),
          'prix_unitaire': str(ligne['prix_unitaire']),
-         'ordre': ordre}
+         'ordre': ordre,
+         # Fondateur 26/10/2026 — C&I à deux options : la ligne dit son option.
+         **({'variante': ligne['variante']} if ligne.get('variante') else {})}
         for ordre, ligne in enumerate(lignes)]
     with transaction.atomic():
         devis = create_numbered(Devis, company, 'devis', creer)
@@ -275,8 +277,8 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         taux_tva = tva_standard(company)
     from apps.crm.services import resolve_client_for_lead
     from apps.ventes.domain.etude_ci import (
-        entrees_pour_etude_params, etudier_ci, lignes_du_devis_ci,
-        refus_devis_auto_ci)
+        entrees_pour_etude_params, etudier_ci, refus_devis_auto_ci)
+    from apps.ventes.domain.etude_ci_batterie import lignes_des_options
     from apps.ventes.models import Devis
 
     taille = target_kwc if target_kwc not in (None, '') else getattr(
@@ -295,7 +297,9 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     refus = refus_devis_auto_ci(etude)
     if refus:
         raise AutoDevisError(refus[0], field=refus[1])
-    lignes = lignes_du_devis_ci(etude.get('composition'))
+    # Fondateur 26/10/2026 — « sans » et « avec batterie » par défaut, comme
+    # le résidentiel ; le choix du lead (``batterie_souhaitee``) restreint.
+    lignes, scenario = lignes_des_options(etude, lead)
     if not any(ligne['produit_id'] for ligne in lignes):
         raise AutoDevisError('Aucun article C&I chiffré à composer.',
                              field='composition')
@@ -303,6 +307,8 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     client = resolve_client_for_lead(lead)
     entrees = entrees_pour_etude_params(etude.get('entrees_resolues'))
     entrees['mode'] = lead.type_installation
+    if scenario:
+        entrees['scenario'] = scenario
 
     def _create(ref):
         return Devis.objects.create(
