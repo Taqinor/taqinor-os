@@ -29,6 +29,41 @@ def _puces(n):
             for i in range(1, n + 1)]
 
 
+def _avec_option_batterie(data):
+    """Le panier « avec » d'un C&I à deux options (forme ``build_quote_data``)
+    et l'option chiffrée par le moteur (``etude_ci.option_avec``)."""
+    data["option_servie"] = "sans"
+    data["option_batterie"] = {
+        "lignes": [dict(it) for it in data["all_items"] if "Onduleur" not in it["designation"]] + [
+            {"designation": "Onduleur hybride Deye SUN-20K-SG05LP3", "quantite": 2,
+             "prix_unit_ht": 40000.0, "taux_tva": 20},
+            {"designation": "Batterie Dyness 10 kWh", "quantite": 10,
+             "prix_unit_ht": 25000.0, "taux_tva": 20}],
+        "totaux": {"ht_net": 803333, "tva": 160667, "ttc": 964000},
+        "valeur_chiffree": None, "motif": "valeur non chiffrée"}
+    etude = data.setdefault("etude", {})
+    etude["etude_ci"] = dict(etude.get("etude_ci") or {}, option_avec={
+        "economie_annuelle_mad": 120000.0,
+        "bilan": {"batterie": {"capacite_utile_kwh": 92.2, "restitue_kwh_an": 31000}}})
+    return data
+
+
+class OptionAvecValeurTests(SimpleTestCase):
+    def test_valeur_chiffree_par_le_moteur(self):
+        from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
+        from apps.ventes.quote_engine.commercial import sample_data
+        valeur = valeur_option_avec(_avec_option_batterie(sample_data.build()))
+        self.assertEqual(valeur["payback_annees"], round(803333 / 120000, 1))
+        self.assertIn("92,2 kWh utiles", valeur["textes"]["fr"])
+        self.assertIn("92.2 kWh usable", valeur["textes"]["en"])
+
+    def test_sans_option_avec_rien(self):
+        from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
+        from apps.ventes.quote_engine.commercial import sample_data
+        self.assertIsNone(valeur_option_avec(sample_data.build()))
+        self.assertEqual(blocs.bloc_option_avec(sample_data.build(), None, str, ("",) * 4), "")
+
+
 class TroncatureDeclareeTests(SimpleTestCase):
     def test_puces_tronquees_avec_renvoi(self):
         d = {"cgv_ci": _puces(10), "_cgv_max": 3}
@@ -70,6 +105,23 @@ class PagesCiTests(SimpleTestCase):
                             # Aucun bloc de texte ne CHEVAUCHE le haut du pied.
                             self.assertFalse(y0 < pied - 1 and y1 > pied + 1,
                                              (nom, n, bloc[4][:60]))
+
+    def test_option_avec_batterie_tient_le_contrat_de_pages(self):
+        """Fondateur 26/10/2026 — un C&I à deux options imprime l'option
+        « avec batterie » (équipements propres, totaux, économie et retour du
+        moteur) sans page de plus."""
+        import fitz
+        for nom, sample, renderer, pages in GABARITS:
+            with self.subTest(gabarit=nom):
+                data = _avec_option_batterie(copy.deepcopy(sample.build()))
+                data["cgv_ci"] = _puces(15)
+                doc = fitz.open(stream=renderer.render_pdf_bytes(data), filetype="pdf")
+                self.assertEqual(len(doc), pages)
+                texte = " ".join(page.get_text() for page in doc)
+                self.assertIn("PROPRES À CETTE OPTION", texte)
+                self.assertIn("964 000,00 MAD", texte)
+                self.assertIn("Batterie Dyness 10 kWh", texte)
+                self.assertIn("Retour sur investissement", texte)
 
     def test_quarante_puces_renvoi_imprime(self):
         for nom, sample, renderer, _pages in GABARITS:

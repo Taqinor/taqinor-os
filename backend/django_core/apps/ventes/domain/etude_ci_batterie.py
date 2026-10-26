@@ -59,10 +59,25 @@ def _role(produit):
                          getattr(produit, 'nom', ''), classer_produit)[0]
 
 
+def designation_option_avec(nom, role_devis):
+    """La désignation de LIGNE d'un article de l'option « avec » : le nom du
+    catalogue, précédé de sa famille quand il ne la dit pas (« SUN-12K-SG05LP3 »
+    → « Onduleur hybride SUN-12K-SG05LP3 ») — le découpage des deux options du
+    document lit ces mots (``solar_classification``), le rôle les prouve."""
+    from apps.ventes.solar_classification import is_battery, is_hybrid_inverter
+    nom = (nom or '').strip()
+    if role_devis == 'onduleur_hybride' and not is_hybrid_inverter(nom):
+        return 'Onduleur hybride %s' % nom
+    if role_devis == 'batterie' and not is_battery(nom):
+        return 'Batterie %s' % nom
+    return nom
+
+
 def _element(produit, role_devis, fiche):
     """L'article à la forme des éléments ``produits_ci`` (composition)."""
     prix = produit.prix_vente if produit.prix_vente and produit.prix_vente > 0 else None
-    element = {'id': produit.id, 'nom': produit.nom, 'marque': produit.marque or '',
+    element = {'id': produit.id, 'nom': designation_option_avec(produit.nom, role_devis),
+               'marque': produit.marque or '',
                'role_devis': role_devis, 'role_ci': getattr(produit, 'role_ci', '') or '',
                'type_pose': '', 'fiche': fiche, 'prix_connu': prix is not None,
                'eligible_ci': True, 'motif_exclusion': None}

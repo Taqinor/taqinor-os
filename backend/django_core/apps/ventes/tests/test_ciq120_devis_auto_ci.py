@@ -534,3 +534,17 @@ class PostesNonChiffresUniques(SimpleTestCase):
         self.assertEqual(classer_produit(_P.nom), 'cable_dc')
         self.assertIsNone(_role_ci_par_nom(_P()))
         self.assertEqual(classer_produit('Onduleur réseau Huawei 150kW Triphasé'), 'onduleur_reseau')
+
+
+class DesignationOptionAvecTests(SimpleTestCase):
+    """Le découpage des deux options du document lit les mots de la famille :
+    un hybride ou une batterie nommés par leur seule référence la reçoivent."""
+
+    def test_famille_ajoutee_au_nom_qui_ne_la_dit_pas(self):
+        from apps.ventes.domain.etude_ci_batterie import designation_option_avec
+        self.assertEqual(designation_option_avec('SUN-12K-SG05LP3', 'onduleur_hybride'),
+                         'Onduleur hybride SUN-12K-SG05LP3')
+        self.assertEqual(designation_option_avec('Onduleur hybride Deye 20kW', 'onduleur_hybride'),
+                         'Onduleur hybride Deye 20kW')
+        self.assertEqual(designation_option_avec('Dyness PowerBrick SC 16 kWh', 'batterie'),
+                         'Batterie Dyness PowerBrick SC 16 kWh')
