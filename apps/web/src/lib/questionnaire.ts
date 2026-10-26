@@ -377,6 +377,13 @@ export type OccupationJourId = (typeof OCCUPATION_JOUR_VALUES)[number];
 // (colonnes crm.Lead : choix fermés). Épinglé par un test contre le JSON.
 export const TENSION_VALUES = ['bt', 'mt', 'ne_sait_pas'] as const;
 export const TYPE_SURFACE_VALUES = ['toiture', 'ombriere', 'terrain'] as const;
+// Fondateur 26/10/2026 — contrat d'électricité, option de la force motrice et
+// phase du site : posés par écrit (ils bloquent le devis automatique).
+export const CONTRAT_ELECTRICITE_VALUES = [
+  'bt_domestique', 'bt_patente', 'bt_force_motrice', 'mt_general', 'ne_sait_pas',
+] as const;
+export const OPTION_TARIFAIRE_BT_VALUES = ['normale', 'bi_horaire'] as const;
+export const PHASE_PRO_VALUES = ['monophase', 'triphase', 'inconnu'] as const;
 export const TYPE_TOITURE_PRO_VALUES = [
   'terrasse_beton', 'tole_metal', 'tuiles', 'bac_acier', 'fibrociment', 'autre',
 ] as const;
@@ -676,6 +683,13 @@ export function buildSectionReponses(
     case 'reseau': {
       const tension = cleanEnum(raw.tension_raccordement, TENSION_VALUES);
       if (tension) out.tension_raccordement = tension;
+      const contrat = cleanEnum(raw.contrat_electricite, CONTRAT_ELECTRICITE_VALUES);
+      if (contrat) out.contrat_electricite = contrat;
+      // L'option bi-horaire n'existe qu'en force motrice (jamais un reste de champ masqué).
+      const option = cleanEnum(raw.option_tarifaire_bt, OPTION_TARIFAIRE_BT_VALUES);
+      if (option && contrat === 'bt_force_motrice') out.option_tarifaire_bt = option;
+      const phase = cleanEnum(raw.raccordement, PHASE_PRO_VALUES);
+      if (phase) out.raccordement = phase;
       const kva = cleanBoundedNumber(raw.compteur_puissance_kva, 0.01, 100_000);
       if (kva != null) out.compteur_puissance_kva = kva;
       const kwh = cleanBoundedNumber(raw.conso_mensuelle_kwh, 0.01, 100_000_000);
@@ -865,7 +879,10 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
   energie: ['facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh', 'raccordement'],
   toiture: ['type_toiture', 'surface_toiture_m2', 'roof_age', 'ownership'],
   occupation: ['occupation_jour'],
-  reseau: ['tension_raccordement', 'compteur_puissance_kva', 'conso_mensuelle_kwh', 'releve_conso', 'cos_phi'],
+  reseau: [
+    'tension_raccordement', 'contrat_electricite', 'option_tarifaire_bt', 'raccordement',
+    'compteur_puissance_kva', 'conso_mensuelle_kwh', 'releve_conso', 'cos_phi',
+  ],
   activite: [
     'categorie_commerciale', 'reponses_categorie', 'secteur_industriel', 'export_ue_declare',
     'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin', 'fermeture_mois',

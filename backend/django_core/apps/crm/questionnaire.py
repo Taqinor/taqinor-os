@@ -87,8 +87,13 @@ CHAMPS_PAR_SECTION = {
     # — sections du lead PRO : les colonnes du contrat CIQ1 que le CLIENT
     # écrit lui-même. Q21 tient : budget, délai, décideur et concurrents ne
     # sont JAMAIS demandés par écrit.
-    'reseau': ('tension_raccordement', 'compteur_puissance_kva',
-               'conso_mensuelle_kwh', 'releve_conso', 'cos_phi'),
+    # Fondateur 26/10/2026 — le contrat d'électricité (+ l'option tarifaire
+    # de la force motrice) et la phase du site bloquent le devis automatique :
+    # le client les lit sur sa facture, on les lui demande par écrit.
+    'reseau': ('tension_raccordement', 'contrat_electricite',
+               'option_tarifaire_bt', 'raccordement',
+               'compteur_puissance_kva', 'conso_mensuelle_kwh',
+               'releve_conso', 'cos_phi'),
     'activite': ('categorie_commerciale', 'reponses_categorie',
                  'secteur_industriel', 'export_ue_declare', 'regime_equipes',
                  'jours_ouverture', 'heure_debut', 'heure_fin',
@@ -404,7 +409,9 @@ def _manquantes_pro(lead, libelles) -> dict:
         activite_connue = not _vide(lead.categorie_commerciale)
     return {
         'reseau': (_tension_inconnue(lead)
-                   or lead.compteur_puissance_kva is None),
+                   or lead.compteur_puissance_kva is None
+                   or _vide(lead.contrat_electricite)
+                   or _vide(lead.raccordement)),
         'activite': (not activite_connue or not lead.jours_ouverture
                      or lead.heure_debut is None or lead.heure_fin is None),
         'site': lead.surface_toiture_m2 is None,
@@ -750,6 +757,12 @@ def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
             if not isinstance(valeur, dict) or set(valeur) - permises:
                 continue
         out[cle] = valeur
+    # L'option bi-horaire n'existe qu'en force motrice (CIQ666) : jamais
+    # enregistrée pour un autre contrat.
+    if 'option_tarifaire_bt' in out and out.get(
+            'contrat_electricite',
+            lead.contrat_electricite) != 'bt_force_motrice':
+        out.pop('option_tarifaire_bt')
     if 'heure_debut' in out or 'heure_fin' in out:
         debut = out.get('heure_debut', lead.heure_debut)
         fin = out.get('heure_fin', lead.heure_fin)

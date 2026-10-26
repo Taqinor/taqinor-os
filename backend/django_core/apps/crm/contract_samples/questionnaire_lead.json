@@ -313,6 +313,9 @@
     "champs": {
       "reseau": [
         "tension_raccordement",
+        "contrat_electricite",
+        "option_tarifaire_bt",
+        "raccordement",
         "compteur_puissance_kva",
         "conso_mensuelle_kwh",
         "releve_conso",
@@ -363,6 +366,9 @@
     },
     "prefill": {
       "tension_raccordement": "bt",
+      "contrat_electricite": null,
+      "option_tarifaire_bt": null,
+      "raccordement": null,
       "compteur_puissance_kva": null,
       "conso_mensuelle_kwh": null,
       "releve_conso": null,

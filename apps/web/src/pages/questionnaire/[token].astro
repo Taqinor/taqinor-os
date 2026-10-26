@@ -28,11 +28,14 @@ import {
   ecransActifs,
   initialEcranIndex,
   CATEGORIE_COMMERCIALE_VALUES,
+  CONTRAT_ELECTRICITE_VALUES,
   IRRIGATION_METHODE_VALUES,
   JOURS_OUVERTURE_VALUES,
   isPhotoSection,
   MOIS_IRRIGATION_VALUES,
+  OPTION_TARIFAIRE_BT_VALUES,
   parseQuestionnaireGet,
+  PHASE_PRO_VALUES,
   POMPE_ALIM_VALUES,
   RELEVE_CONSO_MAX_MOIS,
   REGIME_EQUIPES_VALUES,
@@ -225,6 +228,23 @@ const TENSION_LABELS: Record<string, L3> = {
   mt: L('Moyenne tension (MT) — poste de transformation', 'Medium voltage (MV) — transformer substation', 'ضغط متوسط (MT) — محطة تحويل'),
   ne_sait_pas: L('Je ne sais pas', "I don't know", 'لا أعرف'),
 };
+// Fondateur 26/10/2026 — contrat, option de la force motrice et phase : lus sur la facture.
+const CONTRAT_LABELS: Record<string, L3> = {
+  bt_domestique: L('Basse tension — domestique', 'Low voltage — domestic', 'ضغط منخفض — منزلي'),
+  bt_patente: L('Basse tension — patenté (commerce)', 'Low voltage — business', 'ضغط منخفض — مهني (تجاري)'),
+  bt_force_motrice: L('Basse tension — force motrice', 'Low voltage — motive power', 'ضغط منخفض — القوة المحركة'),
+  mt_general: L('Moyenne tension', 'Medium voltage', 'ضغط متوسط'),
+  ne_sait_pas: L('Je ne sais pas', "I don't know", 'لا أعرف'),
+};
+const OPTION_BT_LABELS: Record<string, L3> = {
+  normale: L('Option normale', 'Standard option', 'الخيار العادي'),
+  bi_horaire: L('Option bi-horaire (heures pleines / heures creuses)', 'Two-rate option (peak / off-peak hours)', 'خيار التوقيتين (ساعات الذروة / الساعات العادية)'),
+};
+const PHASE_LABELS: Record<string, L3> = {
+  monophase: L('Monophasé', 'Single-phase', 'أحادي الطور'),
+  triphase: L('Triphasé', 'Three-phase', 'ثلاثي الأطوار'),
+  inconnu: L('Je ne sais pas', "I don't know", 'لا أعرف'),
+};
 const SURFACE_LABELS: Record<string, L3> = {
   toiture: L('Sur la toiture', 'On the roof', 'فوق السطح'),
   ombriere: L('Sur une ombrière de parking', 'On a parking canopy', 'فوق مظلة موقف السيارات'),
@@ -318,6 +338,7 @@ const joursPrefill = entiersPrefill('jours_ouverture');
 const fermeturePrefill = entiersPrefill('fermeture_mois');
 const tensionPrefill = prefillStr('tension_raccordement');
 const groupePrefill = prefillStr('groupe_electrogene');
+const contratPrefill = prefillStr('contrat_electricite');
 // Relevé de consommation déjà connu : { mois: [{ mois, kwh, kwh_pointe… }] }.
 const relevePrefill: Array<Record<string, unknown>> =
   prefill.releve_conso && typeof prefill.releve_conso === 'object' && Array.isArray((prefill.releve_conso as { mois?: unknown }).mois)
@@ -590,6 +611,51 @@ const estIndustriel =
                                 <option value="" selected={tensionPrefill === ''}>—</option>
                                 {TENSION_VALUES.map((v) => (
                                   <option value={v} selected={tensionPrefill === v} data-fr={TENSION_LABELS[v].fr} data-en={TENSION_LABELS[v].en} data-ar={TENSION_LABELS[v].ar}>{TENSION_LABELS[v].fr}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('reseau', 'contrat_electricite') && (
+                            <div>
+                              <label for="q-contrat" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="What is your electricity contract? It is written on your bill."
+                                data-ar="ما هو نوع عقد الكهرباء لديكم؟ مكتوب في فاتورتكم.">
+                                Quel est votre contrat d'électricité ? Il est écrit sur votre facture.
+                              </label>
+                              <select id="q-contrat" class={PRO_INPUT_CLS}>
+                                <option value="" selected={contratPrefill === ''}>—</option>
+                                {CONTRAT_ELECTRICITE_VALUES.map((v) => (
+                                  <option value={v} selected={contratPrefill === v} data-fr={CONTRAT_LABELS[v].fr} data-en={CONTRAT_LABELS[v].en} data-ar={CONTRAT_LABELS[v].ar}>{CONTRAT_LABELS[v].fr}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('reseau', 'option_tarifaire_bt') && (
+                            <div id="q-option-bt-wrap" class:list={[contratPrefill === 'bt_force_motrice' ? '' : 'hidden']}>
+                              <label for="q-option-bt" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="In motive power, are you on the standard option or the two-rate option? It is written on your bill."
+                                data-ar="في القوة المحركة، هل أنتم على الخيار العادي أم خيار التوقيتين؟ مكتوب في فاتورتكم.">
+                                En force motrice, êtes-vous en option normale ou en option bi-horaire ? C'est écrit sur votre facture.
+                              </label>
+                              <select id="q-option-bt" class={PRO_INPUT_CLS}>
+                                <option value="" selected={prefillStr('option_tarifaire_bt') === ''}>—</option>
+                                {OPTION_TARIFAIRE_BT_VALUES.map((v) => (
+                                  <option value={v} selected={prefillStr('option_tarifaire_bt') === v} data-fr={OPTION_BT_LABELS[v].fr} data-en={OPTION_BT_LABELS[v].en} data-ar={OPTION_BT_LABELS[v].ar}>{OPTION_BT_LABELS[v].fr}</option>
+                                ))}
+                              </select>
+                            </div>
+                          )}
+                          {demande('reseau', 'raccordement') && (
+                            <div>
+                              <label for="q-phase" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Is your installation single-phase or three-phase? It is written on your bill or on your meter."
+                                data-ar="هل تركيبكم الكهربائي أحادي الطور أم ثلاثي الأطوار؟ مكتوب في فاتورتكم أو على عدادكم.">
+                                Votre installation est-elle en monophasé ou en triphasé ? C'est écrit sur votre facture ou votre compteur.
+                              </label>
+                              <select id="q-phase" class={PRO_INPUT_CLS}>
+                                <option value="" selected={prefillStr('raccordement') === ''}>—</option>
+                                {PHASE_PRO_VALUES.map((v) => (
+                                  <option value={v} selected={prefillStr('raccordement') === v} data-fr={PHASE_LABELS[v].fr} data-en={PHASE_LABELS[v].en} data-ar={PHASE_LABELS[v].ar}>{PHASE_LABELS[v].fr}</option>
                                 ))}
                               </select>
                             </div>
@@ -1635,6 +1701,9 @@ const estIndustriel =
       document.querySelectorAll<HTMLElement>('.q-releve-mt').forEach((el) => el.classList.toggle('hidden', !mt));
     }
     $('q-tension')?.addEventListener('change', syncTension);
+    $('q-contrat')?.addEventListener('change', () => {
+      $('q-option-bt-wrap')?.classList.toggle('hidden', fieldVal('q-contrat') !== 'bt_force_motrice');
+    });
     $('q-releve-add')?.addEventListener('click', () => {
       if (init.interne) return;
       document.querySelector<HTMLElement>('.q-releve-row.hidden')?.classList.remove('hidden');
@@ -1831,6 +1900,9 @@ const estIndustriel =
         case 'reseau':
           return {
             tension_raccordement: fieldVal('q-tension') || undefined,
+            contrat_electricite: fieldVal('q-contrat') || undefined,
+            option_tarifaire_bt: fieldVal('q-option-bt') || undefined,
+            raccordement: fieldVal('q-phase') || undefined,
             compteur_puissance_kva: numOrUndef('q-kva'),
             conso_mensuelle_kwh: numOrUndef('q-conso-kwh-reseau'),
             releve_conso: releveLignes(),

@@ -128,6 +128,45 @@ class QuestionnairePro(TestCase):
         self.assertEqual(lead.email, 'h@example.ma')
         self.assertIsNone(lead.decideur)
 
+    def test_reseau_manquant_tant_que_contrat_ou_phase_vide(self):
+        # Fondateur 26/10/2026 — contrat et phase bloquent le devis auto.
+        complet = dict(tension_raccordement='bt', tension_source='declare',
+                       compteur_puissance_kva=60,
+                       contrat_electricite='bt_patente',
+                       raccordement='triphase')
+        self.assertFalse(quest.manquantes(self._pro(**complet))['reseau'])
+        for vide in ('contrat_electricite', 'raccordement'):
+            lead = self._pro(**dict(complet, **{vide: None}))
+            self.assertTrue(quest.manquantes(lead)['reseau'], vide)
+
+    def test_post_reseau_contrat_phase_option_force_motrice_seulement(self):
+        lead = self._pro()
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead, questions={'reseau': True})
+        res = self.client.post(
+            PUBLIC.format(lien.token),
+            data=json.dumps({'section': 'reseau', 'reponses': {
+                'contrat_electricite': 'bt_patente',
+                'option_tarifaire_bt': 'bi_horaire',
+                'raccordement': 'triphase'}}),
+            content_type='application/json')
+        self.assertEqual(res.status_code, 200, res.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.contrat_electricite, 'bt_patente')
+        self.assertEqual(lead.raccordement, 'triphase')
+        self.assertIsNone(lead.option_tarifaire_bt)
+        res = self.client.post(
+            PUBLIC.format(lien.token),
+            data=json.dumps({'section': 'reseau', 'reponses': {
+                'contrat_electricite': 'bt_force_motrice',
+                'option_tarifaire_bt': 'bi_horaire',
+                'raccordement': 'mono'}}),
+            content_type='application/json')
+        self.assertEqual(res.status_code, 200, res.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.option_tarifaire_bt, 'bi_horaire')
+        self.assertEqual(lead.raccordement, 'triphase')  # « mono » : refusé
+
     def test_post_occupation_pour_un_pro_refuse(self):
         lead = self._pro()
         lien = QuestionnaireLien.objects.create(

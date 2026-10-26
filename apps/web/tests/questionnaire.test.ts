@@ -697,6 +697,21 @@ describe('CIW406 — sections pro : corps POST', () => {
     expect((out.releve_conso as { mois: unknown[] }).mois.length).toBeLessThanOrEqual(12);
   });
 
+  it('réseau : contrat, option bi-horaire (force motrice seulement) et phase en listes fermées', () => {
+    const fm = buildSectionReponses('reseau', {
+      contrat_electricite: 'bt_force_motrice', option_tarifaire_bt: 'bi_horaire', raccordement: 'triphase',
+    });
+    expect(fm).toEqual({ contrat_electricite: 'bt_force_motrice', option_tarifaire_bt: 'bi_horaire', raccordement: 'triphase' });
+    const patente = buildSectionReponses('reseau', {
+      contrat_electricite: 'bt_patente', option_tarifaire_bt: 'bi_horaire', raccordement: 'tri',
+    });
+    expect(patente.contrat_electricite).toBe('bt_patente');
+    expect(patente.option_tarifaire_bt).toBeUndefined();
+    // le vocabulaire résidentiel (mono/tri) n'est pas un choix de la section « reseau »
+    expect(patente.raccordement).toBeUndefined();
+    expect(buildSectionReponses('reseau', { contrat_electricite: 'ht' }).contrat_electricite).toBeUndefined();
+  });
+
   it('activité commerciale : catégorie + SEULES ses clés fermées, typées', () => {
     const out = buildSectionReponses('activite', {
       categorie_commerciale: 'hotel',
@@ -813,6 +828,9 @@ describe('CIW406 — contrat : exemple_pro et choix fermés', () => {
     const lib = await import('../src/lib/questionnaire');
     expect([...lib.TENSION_VALUES]).toEqual(choix('tension_raccordement'));
     expect([...lib.TYPE_SURFACE_VALUES]).toEqual(choix('type_surface'));
+    expect([...lib.CONTRAT_ELECTRICITE_VALUES]).toEqual(choix('contrat_electricite'));
+    expect([...lib.OPTION_TARIFAIRE_BT_VALUES]).toEqual(choix('option_tarifaire_bt'));
+    expect([...lib.PHASE_PRO_VALUES]).toEqual(choix('raccordement'));
     expect([...lib.TYPE_TOITURE_PRO_VALUES]).toEqual(choix('type_toiture'));
     expect([...lib.REGIME_EQUIPES_VALUES]).toEqual(choix('regime_equipes'));
     expect([...lib.TVA_RECUPERABLE_VALUES]).toEqual(choix('tva_recuperable'));
