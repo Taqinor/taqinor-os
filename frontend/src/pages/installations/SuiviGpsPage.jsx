@@ -248,8 +248,11 @@ function CarteLiveTab({ techniciens }) {
   const dejaChargeRef = useRef(false)
   useEffect(() => {
     let vivant = true
-    const charger = () => lireToutesLesPages((p) => installationsApi.getCarteLivePositions(p))
-      .then((lignes) => {
+    // carte-live/ n'est PAS paginé (pagination_class=None sur l'@action) :
+    // lecture directe, jamais ?page= (garde check_frontend_query_params).
+    const charger = () => installationsApi.getCarteLivePositions({ max_age_min: 15 })
+      .then((r) => {
+        const lignes = Array.isArray(r.data) ? r.data : (r.data?.results ?? [])
         if (!vivant) return
         dejaChargeRef.current = true
         setRows(lignes)
