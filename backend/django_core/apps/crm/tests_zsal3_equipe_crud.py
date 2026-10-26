@@ -202,3 +202,26 @@ class TestVisibiliteMembreEquipe(TestCase):
         self.assertEqual(
             set(leads_visibles(chef, company).values_list('id', flat=True)),
             {la.id, lb.id})
+
+
+class TestEquipeAnterieureEditable(TestCase):
+    """Une équipe d'avant la règle « une seule équipe » dont un membre figure
+    aussi ailleurs reste renommable ; seul un AJOUT est contrôlé."""
+
+    def test_renommer_equipe_chevauchante_autorise(self):
+        company = make_company('legacy-co')
+        admin = User.objects.create_user(
+            username='legacy_admin', password='x', role_legacy='admin',
+            company=company)
+        m = User.objects.create_user(
+            username='legacy_m', password='x', company=company)
+        e1 = EquipeCommerciale.objects.create(company=company, nom='Un')
+        e2 = EquipeCommerciale.objects.create(company=company, nom='Deux')
+        e1.membres.set([m])
+        e2.membres.set([m])
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(admin)}')
+        r = api.patch(f'/api/django/crm/equipes/{e1.id}/', {'nom': 'Un bis'},
+                      format='json')
+        self.assertEqual(r.status_code, 200, r.content)

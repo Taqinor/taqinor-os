@@ -710,11 +710,12 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
         inst = self.instance
         actif = attrs.get('actif', inst.actif if inst else True)
         if actif:
-            membres = attrs.get(
-                'membres', list(inst.membres.all()) if inst else [])
+            actuels = list(inst.membres.all()) if inst else []
+            membres = attrs.get('membres', actuels)
+            nouveaux = {u.pk for u in membres} - {u.pk for u in actuels}
             chef = attrs.get(
                 'responsable', inst.responsable if inst else None)
-            valider_membres_uniques(inst, membres, chef)
+            valider_membres_uniques(inst, membres, chef, nouveaux)
         return attrs
 
     def save(self, **kwargs):

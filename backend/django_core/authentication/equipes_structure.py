@@ -28,10 +28,14 @@ def _nom(user):
     return nom or user.username
 
 
-def valider_membres_uniques(equipe, membres, chef):
+def valider_membres_uniques(equipe, membres, chef, nouveaux=None):
     """Lève une ``ValidationError`` sous ``membres`` si l'un des ``membres``
     appartient déjà à une AUTRE équipe active (commerciale ou terrain), ou si
-    un membre encadre déjà — directement ou non — le ``chef`` (cycle)."""
+    un membre encadre déjà — directement ou non — le ``chef`` (cycle).
+
+    ``nouveaux`` (ids) borne le contrôle « une seule équipe » aux personnes
+    AJOUTÉES par la requête : une équipe d'avant la règle dont un membre
+    figure aussi ailleurs reste renommable/archivable. None = tous."""
     from core.scoping import subtree_user_ids
 
     erreurs = []
@@ -39,6 +43,8 @@ def valider_membres_uniques(equipe, membres, chef):
         if chef is not None and membre.pk == chef.pk:
             continue
         for relation, libelle in _RELATIONS_EQUIPES:
+            if nouveaux is not None and membre.pk not in nouveaux:
+                break
             autres = getattr(membre, relation).filter(actif=True)
             if equipe is not None and equipe.pk is not None and \
                     type(equipe)._meta.label_lower == getattr(
