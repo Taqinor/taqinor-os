@@ -2709,9 +2709,6 @@ LIBELLES = {
               'bills and your reference consumption is calculated.',
         'ar': 'فاتورة الكهرباء الحالية غير مقدمة — أرسلوا فواتير 12 شهرا '
               'ليُحسب استهلاككم المرجعي.'},
-    'ci_ind_prix_ferme': {'fr': 'prix ferme, économies estimées',
-                          'en': 'firm price, estimated savings',
-                          'ar': 'سعر نهائي، وفورات مقدرة'},
     'ci_ind_lead_client': {
         'fr': 'Projection sur {n} ans : flux annuels, délai de retour et TRI '
               'tirés de la même série ; hypothèses détaillées ci-dessous.',
@@ -2726,12 +2723,14 @@ LIBELLES = {
                                  'en': 'Estimate assumptions',
                                  'ar': 'افتراضات التقدير'},
     'ci_ind_methode_tri_client': {
+        # Décision fondateur 26/10/2026 — sans « prix ferme » (devis C&I
+        # préliminaire).
         'fr': 'TRI et délai de retour calculés sur ces flux annuels (méthode '
-              'actuarielle) ; prix ferme, économies estimées.',
+              'actuarielle).',
         'en': 'IRR and payback period calculated on these annual cash flows '
-              '(actuarial method); firm price, estimated savings.',
+              '(actuarial method).',
         'ar': 'معدل العائد الداخلي ومدة الاسترداد محسوبان على هذه التدفقات '
-              'السنوية (طريقة اكتوارية)؛ سعر نهائي ووفورات مقدرة.'},
+              'السنوية (طريقة اكتوارية).'},
     'ci_ind_revente_hors_flux': {
         'fr': 'revente du surplus, hors flux annuels (non comptée dans le '
               'délai de retour ni le TRI).',
@@ -3063,10 +3062,14 @@ LIBELLES = {
     'op_unite_ans': {'fr': ' ans', 'en': ' years', 'ar': ' سنوات'},
     # AMOT82 (D-ACI-10=a) — bandeau « sous réserve » du une-page C&I (même
     # phrase que la couverture, ``ci.mentions.TEXTES_VISITE``, sans le point).
+    # Décision fondateur 26/10/2026 — « Devis préliminaire », sur TOUT
+    # une-page C&I.
     'op_reserve_visite': {
-        'fr': 'Estimation sous réserve de la visite technique',
-        'en': 'Estimate subject to the technical site visit',
-        'ar': 'تقدير رهين بالزيارة التقنية'},
+        'fr': 'Devis préliminaire — les prix pourront être ajustés après la '
+              'visite technique',
+        'en': 'Preliminary quote — prices may be adjusted after the '
+              'technical site visit',
+        'ar': 'عرض أولي — يمكن تعديل الأسعار بعد الزيارة التقنية'},
     # ── Pied de page ────────────────────────────────────────────────────────
     'reference': {
         'fr': 'R&#233;f.',

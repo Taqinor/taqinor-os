@@ -134,14 +134,15 @@ def motif_investissement(d, cle):
 
 
 def bandeau_reserve(d, cle, prefixe):
-    """``<div>`` du bandeau quand l'étude est « sous réserve », sinon ''.
+    """``<div>`` du bandeau « Devis préliminaire — les prix pourront être
+    ajustés après la visite technique » : imprimé sur TOUT document C&I
+    (décision fondateur 26/10/2026 — le devis C&I entier est préliminaire),
+    plus seulement quand l'étude est « sous réserve ».
 
     Décision fondateur 26/10/2026 — le bandeau garde son titre et la ligne
     des postes « À chiffrer après la visite technique (hors total) », mais
     plus JAMAIS la liste interne « À confirmer : … » (puissance souscrite,
     toiture…) : ``synthese_ci['a_confirmer']`` reste servi, pas imprimé."""
-    if not d.get(f"{cle}_sous_reserve"):
-        return ""
     liste = ""
     postes = ligne_postes_hors_total(d, d.get(f"{cle}_synthese"))
     if postes:

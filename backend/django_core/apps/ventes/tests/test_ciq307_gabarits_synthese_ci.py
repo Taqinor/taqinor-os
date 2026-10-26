@@ -1,6 +1,8 @@
 """CIQ307 — les gabarits commercial et industriel lisent ``synthese_ci`` :
 une seule source pour la couverture et /proposition, ancrée pour la parité,
-avec le bandeau « Estimation sous réserve de la visite technique ».
+avec le bandeau « Devis préliminaire — les prix pourront être ajustés
+après la visite technique » (décision fondateur 26/10/2026 : sur TOUT
+document C&I).
 
 Tests PURS (``SimpleTestCase``) : rendu HTML RÉEL des deux gabarits sur leurs
 fixtures, enrichies de la sortie du moteur C&I (contrat
@@ -114,7 +116,11 @@ class GabaritsLisentSyntheseCi(SimpleTestCase):
                 self.assertNotIn("Toiture à relever à la visite", html)
                 self.assertNotIn("À confirmer", html)
                 ferme = render.build_html(renderer._augment(_data(sample)))
-                self.assertNotIn(BANDEAU_RESERVE, ferme)
+                # Décision fondateur 26/10/2026 — le devis C&I entier est
+                # préliminaire : le bandeau est imprimé même sans réserve.
+                self.assertIn(BANDEAU_RESERVE, ferme)
+                self.assertTrue(BANDEAU_RESERVE.startswith(
+                    "Devis préliminaire — les prix pourront être ajustés"))
 
     def test_sans_argent_tuiles_omises_jamais_zero(self):
         for nom, sample, renderer, render, _pages in GABARITS:

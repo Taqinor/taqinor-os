@@ -899,7 +899,7 @@ def build(ctx):
   {bloc_energie_mensuelle(d, synthese, couleurs_gr, f_sans, fmt, "i2", hauteur=90, largeur_mm=182)}
   <div class="i2-foot">
     {(om_txt + '. ') if om_txt else ''}{pied}.
-    {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle) ; prix ferme, économies estimées.")}
+    {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle).")}
     {mt_source}
   </div>"""
         lead_txt = L("ci_ind_lead_client",

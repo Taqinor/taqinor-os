@@ -117,11 +117,15 @@ TEXTES_POINTE_AVEC_NON_CHIFFREE = {
           "quantified.",
     "ar": "تغطية المساء حسب السعة المركبة — غير مقدرة بالأرقام.",
 }
-#: D-CIQ-5 — tant que la visite n'a pas eu lieu.
+#: D-CIQ-5 — tant que la visite n'a pas eu lieu. Décision fondateur
+#: 26/10/2026 — le devis C&I entier est dit préliminaire (bandeau imprimé
+#: sur chaque document C&I, ``ci.couverture.bandeau_reserve``).
 TEXTES_VISITE = {
-    "fr": "Estimation sous réserve de la visite technique.",
-    "en": "Estimate subject to the technical site visit.",
-    "ar": "تقدير رهين بالزيارة التقنية.",
+    "fr": "Devis préliminaire — les prix pourront être ajustés après la "
+          "visite technique.",
+    "en": "Preliminary quote — prices may be adjusted after the technical "
+          "site visit.",
+    "ar": "عرض أولي — يمكن تعديل الأسعار بعد الزيارة التقنية.",
 }
 SOURCE_CONVENTION_2 = "conventions Groupe CIQ (convention 2)"
 SOURCE_POINTE = "composition de l'offre servie (CIQ302)"
