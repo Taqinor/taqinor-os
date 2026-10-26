@@ -341,6 +341,22 @@ class LeadTests(_Base):
             self.assertEqual(etude['entrees_resolues']['type_pose']['valeur'], pose, surface)
             self.assertNotIn('_type_surface', etude['entrees_resolues'])
 
+    def test_pente_et_orientation_du_lead_si_les_panneaux_suivent_le_toit(self):
+        # Fondateur 26/10/2026 — bac acier : la pente / l'orientation du toit
+        # sont celles des panneaux ; toit plat lesté : jamais (tables inclinées).
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale='bureau',
+                          type_toiture='bac_acier', inclinaison_deg=Decimal('15'),
+                          orientation='est')
+        resolues = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)['entrees_resolues']
+        self.assertEqual(resolues['pente_deg']['valeur'], 15)
+        self.assertEqual(resolues['azimut_deg']['valeur'], -90)
+        self.assertNotIn('_pente_toit', resolues)
+        Lead.objects.filter(pk=lead.pk).update(type_toiture='terrasse_beton')
+        lead.refresh_from_db()
+        resolues = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)['entrees_resolues']
+        self.assertNotIn('pente_deg', resolues)
+        self.assertNotIn('azimut_deg', resolues)
+
     def test_lead_dune_autre_societe_ignore(self):
         lead = Lead.objects.create(company=self.autre, nom='Étranger',
                                    type_installation='commercial',

@@ -59,6 +59,10 @@ POSE_DU_TOIT_LEAD = {'bac_acier': 'bac_acier', 'tole_metal': 'bac_acier',
 #: Lead.type_surface → pose CIQ7 (fondateur 26/10/2026) : une ombrière ou un
 #: terrain n'est pas un toit — sa pose prime sur la couverture déclarée.
 POSE_DE_LA_SURFACE_LEAD = {'ombriere': 'ombriere', 'terrain': 'sol'}
+#: Poses où les panneaux SUIVENT le toit (affleurantes, CIQ112) : la pente et
+#: l'orientation du toit y sont celles des panneaux. Ailleurs (toit plat lesté,
+#: ombrière, sol) les tables ont leur propre inclinaison : jamais celle du toit.
+POSES_SUIVANT_LE_TOIT = ('bac_acier', 'toiture_inclinee')
 #: ADEV90 (D-ACI-13=a) — mode de pose ESTIMÉ quand aucun n'est déclaré :
 #: terrasse → lestée, toute autre couverture (ou couverture inconnue) →
 #: surimposition. La borne s'applique, dite « pose estimée, à confirmer au
@@ -117,6 +121,9 @@ CHEMINS_LEAD = {
     'toit.type_toiture': 'couverture',
     # Feuille PRIVÉE : elle ne sert qu'à choisir la pose (ombrière / sol).
     'toit.type_surface': '_type_surface',
+    # Fondateur 26/10/2026 — pente / orientation DU TOIT déclarées au lead :
+    # feuilles privées, retenues seulement quand les panneaux suivent le toit.
+    'toit.pente_deg': '_pente_toit', 'toit.azimut_deg': '_azimut_toit',
     'tva_recuperable': 'tva_recuperable',
     # CIQ666 — le contrat d'électricité déclaré au lead (vocabulaire CIQ222).
     'tarif_declare': 'tarif_declare',
@@ -302,6 +309,9 @@ def _couche_lead(res, lead):
             res.poser('type_pose', POSE_DE_LA_SURFACE_LEAD.get(valeur), prov)
         if feuille == 'surface_utile_m2':
             res.poser('surface_type', 'declaree', prov)
+    if res.valeur('type_pose') in POSES_SUIVANT_LE_TOIT:
+        for prive, feuille in (('_pente_toit', 'pente_deg'), ('_azimut_toit', 'azimut_deg')):
+            res.poser(feuille, res.valeur(prive), res.provenance(prive))
     # CIQ134 — cos φ DÉCLARÉ (information du lead, avec sa provenance) :
     # feuille PRIVÉE (``_``) — il ne sert qu'à l'alerte interne de
     # ``moteur_ci.reactif``, jamais aux entrées résolues ni au client.

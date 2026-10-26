@@ -184,6 +184,22 @@ class QuestionnairePro(TestCase):
         self.assertEqual(lead.option_tarifaire_bt, 'bi_horaire')
         self.assertEqual(lead.raccordement, 'triphase')  # « mono » : refusé
 
+    def test_post_site_pente_et_orientation(self):
+        # Fondateur 26/10/2026 — pente en degrés [0 ; 90[, orientation fermée.
+        lead = self._pro()
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead, questions={'site': True})
+        for reponses in ({'inclinaison_deg': 120, 'orientation': 'nord'},
+                         {'inclinaison_deg': 15, 'orientation': 'est'}):
+            res = self.client.post(
+                PUBLIC.format(lien.token),
+                data=json.dumps({'section': 'site', 'reponses': reponses}),
+                content_type='application/json')
+            self.assertEqual(res.status_code, 200, res.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.inclinaison_deg, Decimal('15'))
+        self.assertEqual(lead.orientation, 'est')
+
     def test_post_occupation_pour_un_pro_refuse(self):
         lead = self._pro()
         lien = QuestionnaireLien.objects.create(

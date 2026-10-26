@@ -100,7 +100,10 @@ CHAMPS_PAR_SECTION = {
                  'fermeture_mois', 'groupe_electrogene', 'groupe_kva',
                  'groupe_litres_mois', 'groupe_depense_mad_mois',
                  'pv_existant_kwc'),
-    'site': ('type_surface', 'type_toiture', 'surface_toiture_m2'),
+    # Fondateur 26/10/2026 — pente et orientation du toit (facultatives :
+    # « je ne sais pas » n'écrit rien), lues par le moteur C&I.
+    'site': ('type_surface', 'type_toiture', 'surface_toiture_m2',
+             'inclinaison_deg', 'orientation'),
     'societe': ('societe', 'ice', 'rc', 'if_fiscal', 'adresse_siege',
                 'fonction_contact', 'contact_secondaire_nom',
                 'contact_secondaire_telephone', 'contact_secondaire_email',
@@ -771,6 +774,9 @@ def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
             if not isinstance(valeur, dict) or set(valeur) - permises:
                 continue
         out[cle] = valeur
+    # Une pente de toit se dit en degrés, de 0 (plat) à moins de 90.
+    if 'inclinaison_deg' in out and not 0 <= out['inclinaison_deg'] < 90:
+        out.pop('inclinaison_deg')
     # L'option bi-horaire n'existe qu'en force motrice (CIQ666) : jamais
     # enregistrée pour un autre contrat.
     if 'option_tarifaire_bt' in out and out.get(

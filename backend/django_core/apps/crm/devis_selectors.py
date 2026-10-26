@@ -422,6 +422,9 @@ _CI_INFORMATIONS = (
 
 
 _CI_PHASES = {'monophase': 'mono', 'triphase': 'tri', 'inconnu': 'inconnu'}
+#: Lead.orientation → azimut PVGIS (0 = sud, −90 = est, 90 = ouest).
+_CI_AZIMUT_PVGIS = {'sud': 0, 'sud_est': -45, 'sud_ouest': 45, 'est': -90,
+                    'ouest': 90}
 
 
 _CI_REGISTRES_MT = ('kwh_pointe', 'kwh_pleines', 'kwh_creuses',
@@ -519,7 +522,8 @@ def entrees_ci_du_lead(lead):
         'jours_ouverture', 'heure_debut', 'heure_fin', 'regime_equipes',
         'fermeture_mois', 'categorie_commerciale', 'reponses_categorie',
         'secteur_industriel', 'type_surface', 'type_toiture',
-        'surface_toiture_m2', 'tva_recuperable') + _CI_INFORMATIONS
+        'surface_toiture_m2', 'inclinaison_deg', 'orientation',
+        'tva_recuperable') + _CI_INFORMATIONS
     renseignees = [c for c in colonnes_lues
                    if not _entree_vide(getattr(lead, c, None))]
     derniere = {}
@@ -661,6 +665,16 @@ def entrees_ci_du_lead(lead):
             _entree(colonne,
                     (_ci_nombre(valeur) if colonne == 'surface_toiture_m2'
                      else _entree_valeur(valeur)), 'toit', chemin)
+
+    # 5 bis. Pente et orientation DÉCLARÉES du toit (fondateur 26/10/2026) :
+    # facultatives (jamais « manquantes »), l'orientation en azimut PVGIS
+    # (0 = sud, −90 = est) ; « autre » n'en donne aucun.
+    if lead.inclinaison_deg is not None:
+        _entree('inclinaison_deg', _entree_valeur(lead.inclinaison_deg), 'toit',
+                'toit.pente_deg')
+    if lead.orientation in _CI_AZIMUT_PVGIS:
+        _entree('orientation', _CI_AZIMUT_PVGIS[lead.orientation], 'toit',
+                'toit.azimut_deg')
 
     # 6. TVA récupérable (forme posée par `economie_ci.json`, CIQ3).
     if _entree_vide(lead.tva_recuperable):

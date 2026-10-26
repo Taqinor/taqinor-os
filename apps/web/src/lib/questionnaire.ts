@@ -384,6 +384,8 @@ export const CONTRAT_ELECTRICITE_VALUES = [
 ] as const;
 export const OPTION_TARIFAIRE_BT_VALUES = ['normale', 'bi_horaire'] as const;
 export const PHASE_PRO_VALUES = ['monophase', 'triphase', 'inconnu'] as const;
+/** Orientation du toit (crm.Lead.orientation) ; « je ne sais pas » = rien envoyé. */
+export const ORIENTATION_VALUES = ['sud', 'sud_est', 'sud_ouest', 'est', 'ouest', 'autre'] as const;
 export const TYPE_TOITURE_PRO_VALUES = [
   'terrasse_beton', 'tole_metal', 'tuiles', 'bac_acier', 'fibrociment', 'autre',
 ] as const;
@@ -752,6 +754,11 @@ export function buildSectionReponses(
       if (type) out.type_toiture = type;
       const m2 = cleanPositiveNumber(raw.surface_toiture_m2, 10_000_000);
       if (m2 != null) out.surface_toiture_m2 = m2;
+      // Pente du toit en degrés : 0 (plat) compris, 90 exclu.
+      const pente = cleanBoundedNumber(raw.inclinaison_deg, 0, 89.99);
+      if (pente != null) out.inclinaison_deg = pente;
+      const orientation = cleanEnum(raw.orientation, ORIENTATION_VALUES);
+      if (orientation) out.orientation = orientation;
       break;
     }
     case 'societe': {
@@ -891,7 +898,7 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
     'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin', 'fermeture_mois',
     'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois', 'pv_existant_kwc',
   ],
-  site: ['type_surface', 'type_toiture', 'surface_toiture_m2'],
+  site: ['type_surface', 'type_toiture', 'surface_toiture_m2', 'inclinaison_deg', 'orientation'],
   societe: [
     'societe', 'ice', 'rc', 'if_fiscal', 'adresse_siege', 'fonction_contact',
     'contact_secondaire_nom', 'contact_secondaire_telephone', 'contact_secondaire_email',

@@ -343,7 +343,9 @@
       "site": [
         "type_surface",
         "type_toiture",
-        "surface_toiture_m2"
+        "surface_toiture_m2",
+        "inclinaison_deg",
+        "orientation"
       ],
       "societe": [
         "societe",
@@ -394,6 +396,8 @@
       "type_surface": null,
       "type_toiture": null,
       "surface_toiture_m2": 650.0,
+      "inclinaison_deg": null,
+      "orientation": null,
       "societe": "Hôtel Exemple SARL",
       "ice": null,
       "rc": null,

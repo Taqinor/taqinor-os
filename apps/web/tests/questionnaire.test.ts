@@ -770,6 +770,10 @@ describe('CIW406 — sections pro : corps POST', () => {
     expect(out).toEqual({ type_surface: 'ombriere', type_toiture: 'bac_acier', surface_toiture_m2: 650 });
     // le vocabulaire résidentiel (villa…) n'est pas un choix de la section « site »
     expect(buildSectionReponses('site', { type_toiture: 'villa' }).type_toiture).toBeUndefined();
+    // Fondateur 26/10/2026 — pente (0 = plat, < 90) et orientation fermée.
+    expect(buildSectionReponses('site', { inclinaison_deg: '0', orientation: 'sud_est' }))
+      .toEqual({ inclinaison_deg: 0, orientation: 'sud_est' });
+    expect(buildSectionReponses('site', { inclinaison_deg: '95', orientation: 'nord' })).toEqual({});
   });
 
   it('société : identité complète, e-mail secondaire validé, TVA en liste fermée', () => {

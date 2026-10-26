@@ -34,6 +34,7 @@ import {
   isPhotoSection,
   MOIS_IRRIGATION_VALUES,
   OPTION_TARIFAIRE_BT_VALUES,
+  ORIENTATION_VALUES,
   parseQuestionnaireGet,
   PHASE_PRO_VALUES,
   POMPE_ALIM_VALUES,
@@ -245,6 +246,14 @@ const PHASE_LABELS: Record<string, L3> = {
   triphase: L('Triphasé', 'Three-phase', 'ثلاثي الأطوار'),
   inconnu: L('Je ne sais pas', "I don't know", 'لا أعرف'),
 };
+const ORIENTATION_LABELS: Record<string, L3> = {
+  sud: L('Sud', 'South', 'الجنوب'),
+  sud_est: L('Sud-Est', 'South-East', 'الجنوب الشرقي'),
+  sud_ouest: L('Sud-Ouest', 'South-West', 'الجنوب الغربي'),
+  est: L('Est', 'East', 'الشرق'),
+  ouest: L('Ouest', 'West', 'الغرب'),
+  autre: L('Nord ou autre', 'North or other', 'الشمال أو غيره'),
+};
 const SURFACE_LABELS: Record<string, L3> = {
   toiture: L('Sur la toiture', 'On the roof', 'فوق السطح'),
   ombriere: L('Sur une ombrière de parking', 'On a parking canopy', 'فوق مظلة موقف السيارات'),
@@ -339,6 +348,8 @@ const fermeturePrefill = entiersPrefill('fermeture_mois');
 const tensionPrefill = prefillStr('tension_raccordement');
 const groupePrefill = prefillStr('groupe_electrogene');
 const contratPrefill = prefillStr('contrat_electricite');
+/** Ombrière ou terrain : ni couverture, ni pente, ni orientation de toit. */
+const sansToitPrefill = ['ombriere', 'terrain'].includes(prefillStr('type_surface'));
 // Relevé de consommation déjà connu : { mois: [{ mois, kwh, kwh_pointe… }] }.
 const relevePrefill: Array<Record<string, unknown>> =
   prefill.releve_conso && typeof prefill.releve_conso === 'object' && Array.isArray((prefill.releve_conso as { mois?: unknown }).mois)
@@ -963,7 +974,7 @@ const estIndustriel =
                             </div>
                           )}
                           {demande('site', 'type_toiture') && (
-                            <div id="q-site-toiture-wrap" class:list={[['ombriere', 'terrain'].includes(prefillStr('type_surface')) ? 'hidden' : '']}>
+                            <div class:list={['q-site-toit', sansToitPrefill ? 'hidden' : '']}>
                               <label for="q-site-type-toiture" class="mb-1 block text-sm font-semibold" data-i18n
                                 data-en="What is your roof made of?" data-ar="مم يتكوّن سطحكم؟">
                                 Comment est faite votre toiture ?
@@ -984,6 +995,30 @@ const estIndustriel =
                                 Quelle surface est disponible pour les panneaux, à peu près ? (m²)
                               </label>
                               <input id="q-site-surface" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('surface_toiture_m2')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('site', 'inclinaison_deg') && (
+                            <div class:list={['q-site-toit', sansToitPrefill ? 'hidden' : '']}>
+                              <label for="q-site-pente" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="What is the slope of your roof, in degrees? Enter 0 for a flat roof; leave empty if you don't know."
+                                data-ar="ما هو ميل سطحكم بالدرجات؟ اكتبوا 0 لسطح مسطح؛ اتركوا الخانة فارغة إن لم تعرفوا.">
+                                Quelle est la pente de votre toit, en degrés ? Mettez 0 pour un toit plat ; laissez vide si vous ne savez pas.
+                              </label>
+                              <input id="q-site-pente" type="number" min="0" max="89" step="any" inputmode="decimal" value={prefillStr('inclinaison_deg')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('site', 'orientation') && (
+                            <div class:list={['q-site-toit', sansToitPrefill ? 'hidden' : '']}>
+                              <label for="q-site-orientation" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Which way does your roof face?" data-ar="إلى أي اتجاه يتجه سطحكم؟">
+                                Vers où est tourné votre toit ?
+                              </label>
+                              <select id="q-site-orientation" class={PRO_INPUT_CLS}>
+                                <option value="" selected={prefillStr('orientation') === ''} data-fr="Je ne sais pas" data-en="I don't know" data-ar="لا أعرف">Je ne sais pas</option>
+                                {ORIENTATION_VALUES.map((v) => (
+                                  <option value={v} selected={prefillStr('orientation') === v} data-fr={ORIENTATION_LABELS[v].fr} data-en={ORIENTATION_LABELS[v].en} data-ar={ORIENTATION_LABELS[v].ar}>{ORIENTATION_LABELS[v].fr}</option>
+                                ))}
+                              </select>
                             </div>
                           )}
                         </>
@@ -1711,10 +1746,10 @@ const estIndustriel =
       document.querySelectorAll<HTMLElement>('.q-releve-mt').forEach((el) => el.classList.toggle('hidden', !mt));
     }
     $('q-tension')?.addEventListener('change', syncTension);
-    // Une ombrière ou un terrain n'a pas de couverture : la question se masque.
+    // Une ombrière ou un terrain n'a pas de toit : couverture, pente et orientation se masquent.
+    const sansToit = () => ['ombriere', 'terrain'].includes(fieldVal('q-site-type-surface'));
     $('q-site-type-surface')?.addEventListener('change', () => {
-      const sansToit = ['ombriere', 'terrain'].includes(fieldVal('q-site-type-surface'));
-      $('q-site-toiture-wrap')?.classList.toggle('hidden', sansToit);
+      document.querySelectorAll<HTMLElement>('.q-site-toit').forEach((el) => el.classList.toggle('hidden', sansToit()));
     });
     $('q-contrat')?.addEventListener('change', () => {
       $('q-option-bt-wrap')?.classList.toggle('hidden', fieldVal('q-contrat') !== 'bt_force_motrice');
@@ -1944,9 +1979,10 @@ const estIndustriel =
         case 'site':
           return {
             type_surface: fieldVal('q-site-type-surface') || undefined,
-            type_toiture: ['ombriere', 'terrain'].includes(fieldVal('q-site-type-surface'))
-              ? undefined : fieldVal('q-site-type-toiture') || undefined,
+            type_toiture: sansToit() ? undefined : fieldVal('q-site-type-toiture') || undefined,
             surface_toiture_m2: numOrUndef('q-site-surface'),
+            inclinaison_deg: sansToit() ? undefined : numOrUndef('q-site-pente'),
+            orientation: sansToit() ? undefined : fieldVal('q-site-orientation') || undefined,
           };
         case 'societe':
           return {
