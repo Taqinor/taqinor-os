@@ -35,7 +35,7 @@ import unicodedata
 # ``solar_classification`` (SPL261) est du stdlib pur : cet import ne tire
 # ni Django, ni modèle, ni I/O, et ne peut donc pas boucler.
 from apps.ventes import solar_classification as _sc
-from core.product_roles import est_panneau as _est_panneau
+from core.product_roles import ROLES_CI_BAREME_COFFRET, est_panneau as _est_panneau
 import logging
 
 # Noms ré-exportés volontairement (façade) : pas la surface complète du module.
@@ -741,6 +741,10 @@ def porte_bareme_par_panneau(produit):
     barème » de « barème à zéro panneau ».
     """
     if produit is None:
+        return False
+    # Coffret C&I (26/10/2026) : son barème est PAR ONDULEUR + par panneau,
+    # chiffré par la composition C&I — jamais re-tarifé « fixe + panneaux ».
+    if getattr(produit, 'role_ci', None) in ROLES_CI_BAREME_COFFRET:
         return False
     return not (getattr(produit, 'prix_fixe_ht', None) is None
                 and getattr(produit, 'prix_par_panneau_ht', None) is None)
