@@ -346,10 +346,15 @@ def _rangee_om(argent, fmt_mad, L):
     om = argent.get("om") if isinstance(argent, dict) else None
     # AMOT96 — l'entretien minimum servi : déduit (il remplace la phrase).
     # Décision fondateur 26/10/2026 — « entretien non chiffré » n'est plus
-    # imprimé (réserve interne) : la rangée dit « non déduit des économies ».
+    # imprimé (réserve interne) : avec une option O&M au devis, la rangée dit
+    # « non déduit des économies » ; SANS option O&M, aucune rangée (la règle
+    # d'hier : aucun mot « O&M » sans option).
     entretien = _ligne_entretien(argent, fmt_mad, L)
     if not isinstance(om, dict) and entretien:
         return [(None, entretien)]
+    if not isinstance(om, dict) and isinstance(
+            (argent or {}).get("entretien"), dict):
+        return []
     om = om if isinstance(om, dict) else {}
     montant = _num(om.get("montant_mad_an"))
     valeur = (L("ci_h_om_deduite", "déduit des économies : {montant} MAD/an",

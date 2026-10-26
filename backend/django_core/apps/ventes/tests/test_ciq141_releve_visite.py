@@ -77,7 +77,8 @@ class ReleveVisiteTests(TestCase):
         self.assertEqual(dc['valeur'], 85)
         self.assertEqual(dc['provenance']['origine'], 'mesure_visite')
         self.assertEqual(avec['entrees_resolues']['longueur_ac_m']['valeur'], 40)
-        self.assertIsNone(self._ligne(sans, 'cable_ac')['quantite'])
+        # Fondateur 26/10/2026 — avant la visite : 30 m par onduleur (estimé).
+        self.assertEqual(self._ligne(sans, 'cable_ac')['quantite'], 30.0)
         self.assertEqual(self._ligne(avec, 'cable_ac')['quantite'], 40)
         self.assertNotIn('longueurs_non_relevees', [a['code'] for a in avec['alertes']])
 

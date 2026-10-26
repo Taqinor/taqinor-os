@@ -345,7 +345,7 @@ class Amot84SourcesServiesParCode(SimpleTestCase):
             self.assertIn(en, hyp)
         # Décision fondateur 26/10/2026 — l'indexation constante est une
         # réserve interne : la valeur seule, jamais « (assumption) ».
-        self.assertNotIn("assumption", hyp)
+        self.assertNotIn("(assumption)", hyp)
         for fr in ("hypothèse", "médiane", "heure par heure"):
             self.assertNotIn(fr, hyp)
 
