@@ -622,6 +622,26 @@ def tranche_facturee(devis, type_facture):
                for f in factures_de_la_vente(devis))
 
 
+def tranches_facturees(devis_list):
+    """APRF24 — jumeau LOT de ``tranche_facturee`` : ``{devis.pk: {type_facture,
+    ...}}`` des tranches d'échéancier ÉMISES de chaque devis, pour N devis d'un
+    coup. Les chaînes de versions et les factures de tous les devis sont
+    chargées en lot (``ventes_prechargees``, VNT68) : le nombre de requêtes ne
+    grandit pas avec N. Même définition que l'unitaire (``factures_de_la_vente``
+    + ``STATUTS_EMIS`` : annulées et brouillons ne comptent pas). Les ``None``
+    sont ignorés."""
+    from .vente_facturation import (
+        STATUTS_EMIS, factures_de_la_vente, ventes_prechargees)
+    uniques = {d.pk: d for d in devis_list if d is not None
+               and getattr(d, 'pk', None) is not None}
+    sortie = {}
+    with ventes_prechargees(list(uniques.values())):
+        for pk, devis in uniques.items():
+            sortie[pk] = {f.type_facture for f in factures_de_la_vente(devis)
+                          if f.statut in STATUTS_EMIS}
+    return sortie
+
+
 def jours_impaye_facture(facture_id, company):
     """ZCTR2 — Nombre de jours DEPUIS lesquels une facture est impayée.
 
