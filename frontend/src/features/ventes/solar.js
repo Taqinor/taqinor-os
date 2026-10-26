@@ -99,16 +99,30 @@ export const DAY_USAGE_DEFAULTS = {
 // SUPPRIMÉE : la catégorie et ses réponses partent au
 // moteur serveur C&I (`rythme.categorie_commerciale`), qui choisit l'archétype.
 // Miroir informatif du questionnaire webhook (QX51) — clés snake_case.
+// Décision fondateur 26/10/2026 — 23 commerces (crm.Lead.CategorieCommerciale).
 export const COMMERCIAL_CATEGORIES = [
   { value: 'hotel', label: 'Hôtel / Riad' },
-  { value: 'restaurant', label: 'Restaurant / Café' },
-  { value: 'commerce', label: 'Commerce / Supermarché' },
+  { value: 'restaurant', label: 'Restaurant' },
+  { value: 'cafe', label: 'Café / salon de thé / glacier' },
+  { value: 'boulangerie', label: 'Boulangerie / pâtisserie' },
+  { value: 'commerce', label: 'Commerce / boutique' },
+  { value: 'supermarche', label: 'Supermarché / épicerie (avec frigos)' },
+  { value: 'boucherie', label: 'Boucherie / poissonnerie' },
+  { value: 'pharmacie', label: 'Pharmacie' },
+  { value: 'coiffure', label: 'Coiffure / esthétique' },
+  { value: 'pressing', label: 'Pressing / laverie' },
   { value: 'bureau', label: 'Bureau / Siège' },
   { value: 'sante', label: 'Santé (clinique / cabinet)' },
   { value: 'ecole', label: 'École privée' },
-  { value: 'hammam', label: 'Hammam / Spa / Gym' },
-  { value: 'boulangerie', label: 'Boulangerie' },
+  { value: 'salle_sport', label: 'Salle de sport' },
+  { value: 'hammam', label: 'Hammam / Spa' },
+  { value: 'garage', label: 'Garage / atelier mécanique' },
+  { value: 'atelier', label: 'Atelier (menuiserie, ferronnerie, couture)' },
+  { value: 'imprimerie', label: 'Imprimerie' },
+  { value: 'station_service', label: 'Station-service' },
+  { value: 'entrepot', label: 'Entrepôt / logistique (sans froid)' },
   { value: 'froid', label: 'Entrepôt froid' },
+  { value: 'mosquee', label: 'Mosquée / association' },
   { value: 'autre', label: 'Autre commerce' },
 ]
 
