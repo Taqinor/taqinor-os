@@ -367,6 +367,75 @@ def bloc_financement(synthese, prefixe="ci", couleur_titre="#0F1E35",
 TITRE_CGV_DEFAUT = "Conditions générales du devis"
 
 
+#: Fondateur 26/10/2026 — libellés du bloc « option avec batterie » C&I.
+LIBELLES_OPTION_AVEC = {
+    "titre": {"fr": "Option avec batterie", "en": "Battery option",
+              "ar": "خيار مع بطارية"},
+    "equipements": {"fr": "&Eacute;quipements propres &agrave; cette option",
+                    "en": "Equipment specific to this option",
+                    "ar": "معدات خاصة بهذا الخيار"},
+    "economie": {"fr": "&Eacute;conomie annuelle HT", "en": "Annual saving excl. VAT",
+                 "ar": "التوفير السنوي دون ضريبة"},
+    "retour": {"fr": "Retour sur investissement", "en": "Payback",
+               "ar": "مدة استرداد الاستثمار"},
+    "ans": {"fr": "ans", "en": "years", "ar": "سنوات"},
+}
+
+
+def _num_bloc(valeur):
+    try:
+        return float(valeur)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def bloc_option_avec(d, L, fmt_mad, couleurs):
+    """Fondateur 26/10/2026 — un C&I à DEUX options imprime, sous le tableau
+    de l'offre réseau, l'option « avec batterie » comme le résidentiel : ses
+    équipements propres (les lignes de l'option absentes de l'offre réseau),
+    SA chaîne de totaux (Total HT, TVA, Total TTC du builder, aucun
+    recalcul) et l'économie / le retour chiffrés par le moteur C&I (le
+    retour : total HT ÷ économie HT). Sans option « avec » au document ⇒ ''."""
+    from .mentions import valeur_option_avec
+    bloc = d.get("option_batterie")
+    tot = (bloc or {}).get("totaux") if isinstance(bloc, dict) else None
+    if not isinstance(tot, dict) or _num_bloc(tot.get("ttc")) <= 0:
+        return ""
+    navy, muted, line_soft, wash = couleurs
+    lg = langue(d)
+
+    def t(cle):
+        return LIBELLES_OPTION_AVEC[cle].get(lg) or LIBELLES_OPTION_AVEC[cle]["fr"]
+
+    reseau = {(it.get("designation"), _num_bloc(it.get("quantite")))
+              for it in d.get("all_items") or [] if isinstance(it, dict)}
+    rows = "".join(
+        f'<tr><td class="c2-d">{it.get("designation") or ""}</td>'
+        f'<td class="c2-q">{_num_bloc(it.get("quantite")):g}</td></tr>'
+        for it in bloc.get("lignes") or [] if isinstance(it, dict)
+        and _num_bloc(it.get("quantite")) > 0
+        and (it.get("designation"), _num_bloc(it.get("quantite"))) not in reseau)
+    valeur = valeur_option_avec(d) or {}
+    lignes_valeur = ""
+    if valeur.get("economie_annuelle_mad"):
+        lignes_valeur += (f'<tr><td>{t("economie")}</td>'
+                          f'<td>{fmt_mad(valeur["economie_annuelle_mad"])} MAD</td></tr>')
+    if valeur.get("payback_annees"):
+        lignes_valeur += (f'<tr><td>{t("retour")}</td><td>'
+                          f'{decimale(str(valeur["payback_annees"]))} {t("ans")}</td></tr>')
+    return (
+        f'<div style="margin-top:12px;border:1px solid {line_soft};border-radius:12px;'
+        f'background:{wash};padding:9px 12px;"><div class="c2-kicker">{t("titre")}</div>'
+        + (f'<table class="c2-tbl"><tr><th>{t("equipements")}</th>'
+           f'<th class="c2-rr">{L("qte", "Qté")}</th></tr>{rows}</table>' if rows else "")
+        + '<table class="c2-tot-tbl" style="margin-top:6px;">'
+        f'<tr><td>{L("total_ht", "Total HT")}</td><td>{fmt_mad(_num_bloc(tot.get("ht_net")))} MAD</td></tr>'
+        f'<tr><td>{L("tva", "TVA")}</td><td>{fmt_mad(_num_bloc(tot.get("tva")))} MAD</td></tr>'
+        f'<tr class="c2-tot-ttc"><td>{L("total_ttc", "Total TTC")}</td>'
+        f'<td>{fmt_mad(_num_bloc(tot.get("ttc")))} MAD</td></tr>'
+        f'{lignes_valeur}</table></div>')
+
+
 def _doc_texts(d):
     textes = d.get("doc_texts")
     return textes if isinstance(textes, dict) else {}
