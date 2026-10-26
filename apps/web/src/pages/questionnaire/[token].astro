@@ -663,9 +663,9 @@ const estIndustriel =
                           {demande('reseau', 'compteur_puissance_kva') && (
                             <div>
                               <label for="q-kva" class="mb-1 block text-sm font-semibold" data-i18n
-                                data-en="What is your subscribed power, in kVA? It is written on your bill or contract (optional)."
-                                data-ar="ما هي القدرة المشترك بها بالكيلوفولت أمبير (kVA)؟ مكتوبة في فاتورتكم أو عقدكم (اختياري).">
-                                Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat (facultatif).
+                                data-en="What is your subscribed power, in kVA? It is written on your bill or contract. If you can't find it, a photo of your bill is enough."
+                                data-ar="ما هي القدرة المشترك بها بالكيلوفولت أمبير (kVA)؟ مكتوبة في فاتورتكم أو عقدكم. إن لم تجدوها، تكفينا صورة لفاتورتكم.">
+                                Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. Si vous ne la trouvez pas, une photo de votre facture nous suffit.
                               </label>
                               <input id="q-kva" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('compteur_puissance_kva')} class={PRO_INPUT_CLS} />
                             </div>
