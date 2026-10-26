@@ -332,6 +332,47 @@ class LeadTests(_Base):
         self.assertNotIn('consommation_absente', [a['code'] for a in etude['alertes']])
         self.assertIn('facture_hiver_mad', etude['entrees_resolues'])
 
+    def test_couverture_du_lead_pose_declaree_fondateur_2610(self):
+        # Fondateur 26/10/2026 — terrasse béton = pose lestée ; tôle et
+        # fibrociment = bac acier ; « autre » reste non déclarée.
+        attendu = {'terrasse_beton': 'toit_plat_leste', 'tole_metal': 'bac_acier',
+                   'fibrociment': 'bac_acier', 'bac_acier': 'bac_acier',
+                   'tuiles': 'toiture_inclinee', 'autre': None}
+        for toit, pose in attendu.items():
+            lead = self._lead(conso_mensuelle_kwh=Decimal('6000'),
+                              categorie_commerciale='bureau', type_toiture=toit)
+            etude = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)
+            resolue = etude['entrees_resolues'].get('type_pose') or {}
+            self.assertEqual(resolue.get('valeur'), pose, toit)
+
+    def test_type_de_surface_du_lead_ombriere_terrain_fondateur_2610(self):
+        # Fondateur 26/10/2026 — ombrière / terrain : leur pose prime sur la
+        # couverture ; une toiture garde la pose de sa couverture.
+        attendu = {'ombriere': 'ombriere', 'terrain': 'sol', 'toiture': 'bac_acier'}
+        for surface, pose in attendu.items():
+            lead = self._lead(conso_mensuelle_kwh=Decimal('6000'),
+                              categorie_commerciale='bureau', type_toiture='tole_metal',
+                              type_surface=surface)
+            etude = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)
+            self.assertEqual(etude['entrees_resolues']['type_pose']['valeur'], pose, surface)
+            self.assertNotIn('_type_surface', etude['entrees_resolues'])
+
+    def test_pente_et_orientation_du_lead_si_les_panneaux_suivent_le_toit(self):
+        # Fondateur 26/10/2026 — bac acier : la pente / l'orientation du toit
+        # sont celles des panneaux ; toit plat lesté : jamais (tables inclinées).
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'), categorie_commerciale='bureau',
+                          type_toiture='bac_acier', inclinaison_deg=Decimal('15'),
+                          orientation='est')
+        resolues = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)['entrees_resolues']
+        self.assertEqual(resolues['pente_deg']['valeur'], 15)
+        self.assertEqual(resolues['azimut_deg']['valeur'], -90)
+        self.assertNotIn('_pente_toit', resolues)
+        Lead.objects.filter(pk=lead.pk).update(type_toiture='terrasse_beton')
+        lead.refresh_from_db()
+        resolues = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)['entrees_resolues']
+        self.assertNotIn('pente_deg', resolues)
+        self.assertNotIn('azimut_deg', resolues)
+
     def test_lead_dune_autre_societe_ignore(self):
         lead = Lead.objects.create(company=self.autre, nom='Étranger',
                                    type_installation='commercial',

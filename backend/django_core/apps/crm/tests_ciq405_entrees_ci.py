@@ -55,6 +55,21 @@ class EntreesCi(TestCase):
                         'tva_recuperable'):
             self.assertIn(colonne, bloc['manquants'])
 
+    def test_pente_et_orientation_du_toit_facultatives(self):
+        # Fondateur 26/10/2026 — pente en degrés, orientation en azimut PVGIS ;
+        # jamais « manquantes », « autre » n'émet rien.
+        bloc = entrees_ci_du_lead(self._lead())
+        self.assertNotIn('inclinaison_deg', bloc['manquants'])
+        self.assertNotIn('orientation', bloc['manquants'])
+        bloc = entrees_ci_du_lead(self._lead(inclinaison_deg=12,
+                                             orientation='sud_ouest'))
+        par_chemin = {e['chemin']: e['valeur'] for e in bloc['entrees']}
+        self.assertEqual(par_chemin['toit.pente_deg'], 12)
+        self.assertEqual(par_chemin['toit.azimut_deg'], 45)
+        bloc = entrees_ci_du_lead(self._lead(orientation='autre'))
+        self.assertNotIn('toit.azimut_deg',
+                         [e['chemin'] for e in bloc['entrees']])
+
     def test_null_hors_commercial_et_industriel(self):
         for mode in ('residentiel', 'agricole', None):
             self.assertIsNone(entrees_ci_du_lead(
