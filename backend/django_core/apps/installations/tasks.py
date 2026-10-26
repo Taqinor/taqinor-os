@@ -458,3 +458,22 @@ def purger_demandes_achat_brouillon_task():
             continue
         result[company.id] = nb
     return result
+
+
+# ── Revue chantier 26/10/2026 — rétention des positions GPS (loi 09-08) ────
+# ``purge_positions_expirees`` existait depuis XFSM23 mais RIEN ne l'appelait :
+# les positions des techniciens s'accumulaient sans limite. Les alertes de
+# franchissement survivent (``GeofenceAlert.position`` passe à NULL) : seul le
+# détail point par point disparaît, l'historique de présence reste.
+
+@shared_task(name='installations.purger_positions_gps')
+def purger_positions_gps_task():
+    """Supprime chaque nuit les positions GPS de plus de
+    ``POSITION_RETENTION_JOURS`` (30 j), toutes sociétés. Idempotente.
+    Renvoie le nombre de positions supprimées."""
+    from .gps_tracking_service import purge_positions_expirees
+    try:
+        return purge_positions_expirees()
+    except Exception:  # best-effort : relancée la nuit suivante
+        logger.warning('installations.purger_positions_gps: échec', exc_info=True)
+        return 0

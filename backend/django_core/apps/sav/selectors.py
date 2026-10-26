@@ -1019,6 +1019,23 @@ def contrat_maintenance_du_client(company, client_id, contrat_id):
         company=company, client_id=client_id, id=contrat_id).first()
 
 
+def equipements_series_du_chantier(company, installation_id):
+    """Revue chantier 26/10/2026 — équipements du parc d'un chantier qui
+    PORTENT déjà un n° de série, en dicts bruts ``{id, produit_id,
+    numero_serie}`` (lecture seule, bornée à la société). Lu par
+    ``installations.selectors.serials_attendus_intervention`` pour compter
+    les séries déjà au parc (import CSV, checklist) sans importer
+    ``sav.models``."""
+    if company is None or not installation_id:
+        return []
+    return list(
+        Equipement.objects
+        .filter(company=company, installation_id=installation_id)
+        .exclude(numero_serie__isnull=True).exclude(numero_serie='')
+        .order_by('id')
+        .values('id', 'produit_id', 'numero_serie'))
+
+
 def equipement_scoped_by_serial(company, numero_serie):
     """XSTK7 — un ``sav.Equipement`` scopé société, par n° de série (lecture
     seule). Point d'entrée cross-app pour le rapport de traçabilité
@@ -2094,3 +2111,14 @@ def blocage_annulation_acceptation(devis_id, company):
             return (f'le contrat de maintenance n° {contrat.pk} est déjà '
                     'engagé (facturation ou visite). Désactivez-le d’abord.')
     return None
+
+
+def types_equipement_hors_parc():
+    """Revue chantier 26/10/2026 — les ``Categorie.type_equipement`` qui
+    n'entrent JAMAIS au parc installé (``services.TYPES_HORS_PARC`` :
+    prestations, câbles, structures, protections, accessoires). Lu par
+    ``installations`` pour dire si un article est de nature à porter un
+    numéro de série (``serie_attendue``) sans importer ``sav.services``.
+    Une catégorie non typée (None) n'y figure pas : elle entre au parc."""
+    from .services import TYPES_HORS_PARC
+    return TYPES_HORS_PARC

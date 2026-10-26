@@ -1,0 +1,38 @@
+{
+  "endpoint": "GET /api/django/installations/gps-consentements/mon-consentement/",
+  "pourquoi": "Revue chantier 26/10/2026 — loi 09-08 art. 5 et délibération CNDP 17-2014 : le suivi de position pendant les interventions est automatique, jamais caché. Sert au TECHNICIEN connecté (« Ma journée ») son propre consentement et la notice d'information à lire AVANT tout suivi : responsable du traitement, finalités, données, destinataires, durée de conservation, droits, n° de récépissé CNDP (« non encore déclaré » tant que la société ne l'a pas saisi — jamais un numéro inventé). `statut` = absent | a_accepter | actif | revoque ; `actif` = non révoqué ; `accepte_le` = son accusé de réception (POST mon-consentement/accepter/ renvoie la même forme). Le frontend importe cet exemple au lieu d'inventer son PAYLOAD.",
+  "exemple": {
+    "existe": true,
+    "actif": true,
+    "statut": "a_accepter",
+    "accepte_le": null,
+    "notice": {
+      "version": "v1",
+      "titre": "Information sur la géolocalisation pendant vos interventions",
+      "texte": "Pendant vos interventions, votre position est relevée automatiquement par l'application, uniquement lorsque l'intervention est « en route » ou « sur site ». Elle n'est jamais relevée en dehors de ces périodes ni en dehors de votre temps de travail. Un bandeau visible vous l'indique pendant tout le suivi.",
+      "responsable": "Votre employeur (la société qui vous a créé ce compte), responsable du traitement au sens de la loi 09-08.",
+      "finalites": [
+        "Organiser les interventions et le déplacement des équipes.",
+        "Constater l'arrivée et la présence sur le chantier (heure d'arrivée, temps passé sur site).",
+        "Assurer la sécurité des techniciens isolés sur chantier."
+      ],
+      "donnees": [
+        "Position GPS (latitude, longitude) et sa précision.",
+        "Heure de chaque relevé.",
+        "Intervention et chantier concernés.",
+        "Distance au chantier et franchissements de son périmètre."
+      ],
+      "destinataires": [
+        "Votre responsable et les administrateurs de la société.",
+        "Aucun tiers, aucun client : la position n'est jamais montrée au client."
+      ],
+      "retention_jours": 30,
+      "droits": [
+        "Droit d'accès : vous consultez vos propres positions dans « Ma journée » (Mes positions du jour).",
+        "Droit de rectification et d'opposition pour motif légitime : adressez-vous à votre responsable ou à l'administrateur.",
+        "Réclamation possible auprès de la CNDP (www.cndp.ma)."
+      ],
+      "recepisse_cndp": "non encore déclaré"
+    }
+  }
+}

@@ -706,6 +706,13 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response({'detail': 'Étape inconnue.'},
                             status=status.HTTP_404_NOT_FOUND)
         fait = corps.get('fait', True)
+        # Revue chantier 26/10/2026 — étape à photo obligatoire : pas de
+        # coche sans photo de l'étape (garde partagée avec la synchro).
+        from ..services import raison_refus_cocher_etape
+        refus = raison_refus_cocher_etape(item, fait)
+        if refus:
+            return Response({'detail': refus, 'cle': item.cle},
+                            status=status.HTTP_409_CONFLICT)
         item.fait = fait
         item.fait_par = request.user if fait else None
         item.fait_le = timezone.now() if fait else None
@@ -1013,6 +1020,12 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 # N14 — quantité engagée-mais-non-consommée (toutes réservations
                 # actives de la société, ce chantier inclus).
                 'reserve': b.get('reserve', 0),
+                # Revue chantier 26/10/2026 (additif) — `manque` ne retranche
+                # que l'ENVOYÉ ; le brouillon est servi à part.
+                'deja_sorti': b.get('deja_sorti', 0),
+                'manque_brut': b.get('manque_brut', 0),
+                'en_commande': b.get('en_commande', 0),
+                'en_commande_brouillon': b.get('en_commande_brouillon', 0),
                 'manque': b['manque'],
                 'fournisseur_id': b['fournisseur_id'],
                 'fournisseur_nom': b['fournisseur_nom'],
@@ -1026,46 +1039,111 @@ class InstallationViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'nb_manques': sum(1 for it in items if it['manque'] > 0),
         })
 
+    @oa.extend_schema(responses=oa.OBJ)
+    @action(detail=True, methods=['get'], url_path='approvisionnement',
+            permission_classes=[IsAnyRole])
+    def approvisionnement(self, request, pk=None):
+        """Revue chantier 26/10/2026 — ce qui manque, ce qui est commandé,
+        ce qui est arrivé, en UNE réponse (contrat
+        ``contract_samples/chantier_approvisionnement.json``). Lecture seule,
+        bornée à la société (404 hors société), aucun prix."""
+        from ..selectors import approvisionnement_chantier
+        inst = self.get_object()
+        return Response(approvisionnement_chantier(inst))
+
     @oa.extend_schema(request=oa.CommanderBesoinRequete, responses={201: oa.OBJ})
     @action(detail=True, methods=['post'], url_path='commander-besoin',
             permission_classes=[IsResponsableOrAdmin])
     def commander_besoin(self, request, pk=None):
-        """Crée un BonCommandeFournisseur BROUILLON pour les manques (N13).
+        """BCF BROUILLONS pour les manques du chantier, UN PAR FOURNISSEUR
+        (N13 ; revue chantier 26/10/2026).
 
-        Corps : {"fournisseur": <id>} (optionnel : sinon le fournisseur du
-        premier produit en pénurie). Renvoie le BCF brouillon créé."""
-        from apps.stock.services import (
-            draft_bcf_for_shortfall, resolve_fournisseur,
-        )
+        Corps (tout optionnel) : ``fournisseur`` (id imposé aux lignes sans
+        surcharge — comportement historique), ``fournisseurs``
+        (``{"<produit_id>": <fournisseur_id>}``), ``produits`` (ids : ne
+        commander que ceux-là). Renvoie ``{bons_commande: [BCF…],
+        sans_fournisseur: [{produit_id, designation}], statut_chantier,
+        statut_raison}`` en 201 ; 409 si rien n'est créé (aucun manque, BCF
+        ouvert qui couvre déjà tout, aucun fournisseur résolu). Un chantier
+        « Signé » avance à « Matériel commandé » par le service unique."""
+        from apps.stock.selectors import get_fournisseur_by_id
+        from apps.stock.services import draft_bcfs_for_shortfall
         from apps.stock.serializers import BonCommandeFournisseurSerializer
         inst = self.get_object()
         company = request.user.company
         demande = oa.corps_valide(oa.CommanderBesoinRequete, request)
-        fournisseur = resolve_fournisseur(
-            company, demande.get('fournisseur'), inst)
-        if fournisseur is None and demande.get('fournisseur'):
-            # Identifiant bien formé mais inconnu de la société : 404.
-            return Response({'fournisseur': 'Fournisseur inconnu.'},
-                            status=status.HTTP_404_NOT_FOUND)
-        if fournisseur is None:
-            return Response(
-                {'detail': (
-                    'Aucun fournisseur indiqué et aucun fournisseur par '
-                    'défaut sur les produits manquants.'
-                )},
-                status=status.HTTP_409_CONFLICT)  # ERR-ENF11 : état du chantier
+        fournisseur = None
+        if demande.get('fournisseur'):
+            fournisseur = get_fournisseur_by_id(
+                company, demande['fournisseur'])
+            if fournisseur is None:
+                # Identifiant bien formé mais inconnu de la société : 404.
+                return Response({'fournisseur': 'Fournisseur inconnu.'},
+                                status=status.HTTP_404_NOT_FOUND)
+        overrides = {}
+        for produit_id, fournisseur_id in (
+                demande.get('fournisseurs') or {}).items():
+            if get_fournisseur_by_id(company, fournisseur_id) is None:
+                return Response(
+                    {'fournisseurs': {
+                        str(produit_id): 'Fournisseur inconnu.'}},
+                    status=status.HTTP_404_NOT_FOUND)
+            overrides[int(produit_id)] = fournisseur_id
         try:
-            bon, nb = draft_bcf_for_shortfall(
-                inst, fournisseur, request.user, company)
+            crees, sans_fournisseur = draft_bcfs_for_shortfall(
+                inst, request.user, company, overrides=overrides,
+                produits=demande.get('produits'), fournisseur=fournisseur)
         except ValueError as exc:
             # api-fuzz full : « aucun manque » / « BCF déjà ouvert » = état du
             # chantier (409), le corps était conforme.
             return Response({'detail': str(exc)},
                             status=status.HTTP_409_CONFLICT)
-        data = BonCommandeFournisseurSerializer(
-            bon, context={'request': request}).data
-        data['nb_lignes'] = nb
-        return Response(data, status=status.HTTP_201_CREATED)
+        if not crees:
+            return Response(
+                {'detail': (
+                    'Aucun fournisseur indiqué et aucun fournisseur par '
+                    'défaut sur les produits manquants.'),
+                 'sans_fournisseur': sans_fournisseur},
+                status=status.HTTP_409_CONFLICT)  # ERR-ENF11 : état du chantier
+        refs = ', '.join(bon.reference for bon, _nb in crees)
+        activity.log_note(
+            inst, request.user,
+            f"Besoin matériel commandé : {len(crees)} bon(s) de commande "
+            f"fournisseur brouillon ({refs}).")
+        statut_raison = self._avancer_materiel_commande(inst, request.user)
+        bons_commande = []
+        for bon, nb in crees:
+            data = BonCommandeFournisseurSerializer(
+                bon, context={'request': request}).data
+            data['nb_lignes'] = nb
+            bons_commande.append(data)
+        return Response({
+            'bons_commande': bons_commande,
+            'sans_fournisseur': sans_fournisseur,
+            'statut_chantier': inst.statut,
+            'statut_raison': statut_raison,
+        }, status=status.HTTP_201_CREATED)
+
+    @staticmethod
+    def _avancer_materiel_commande(inst, user):
+        """Chantier « Signé » → « Matériel commandé » par
+        ``changer_statut_chantier`` (gardes + cascade). Jamais d'exception :
+        renvoie la raison du refus (texte) ou None."""
+        from ..services import TransitionRefusee, changer_statut_chantier
+        if (Installation.canonical_statut(inst.statut)
+                != Installation.Statut.SIGNE):
+            return None
+        try:
+            changer_statut_chantier(
+                inst, Installation.Statut.MATERIEL_COMMANDE, user)
+        except TransitionRefusee as exc:
+            # Refus AVANT toute écriture (gardes) : l'instance est intacte.
+            return ' ; '.join(exc.raisons) or 'Transition refusée.'
+        activity.log_note(
+            inst, user,
+            "Chantier passé à « Matériel commandé » (bons de commande "
+            "fournisseur créés).")
+        return None
 
     @oa.extend_schema(
         parameters=[

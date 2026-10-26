@@ -254,9 +254,13 @@ class TestBesoinMateriel(ProcurementBase):
             f'/api/django/installations/chantiers/{inst.id}/commander-besoin/',
             {'fournisseur': self.fournisseur.id}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
-        self.assertEqual(r.data['statut'], 'brouillon')
-        self.assertEqual(len(r.data['lignes']), 1)
-        ligne = r.data['lignes'][0]
+        # Revue chantier 26/10/2026 : un BCF par fournisseur, servis sous
+        # ``bons_commande`` (plus ``sans_fournisseur``, ``statut_chantier``).
+        self.assertEqual(len(r.data['bons_commande']), 1)
+        bon = r.data['bons_commande'][0]
+        self.assertEqual(bon['statut'], 'brouillon')
+        self.assertEqual(len(bon['lignes']), 1)
+        ligne = bon['lignes'][0]
         self.assertEqual(ligne['quantite'], 9)  # manque
         self.assertEqual(Decimal(ligne['prix_achat_unitaire']), Decimal('80'))
 

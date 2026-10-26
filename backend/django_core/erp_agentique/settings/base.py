@@ -1287,6 +1287,8 @@ CELERY_TASK_ROUTES = {
     'ged.notifier_planifications_echues': {'queue': 'scheduled'},
     'installations.rappel_rdv_j1': {'queue': 'scheduled'},
     'installations.meteo_planning_j3': {'queue': 'scheduled'},
+    # Revue chantier 26/10/2026 — purge quotidienne des positions GPS (30 j).
+    'installations.purger_positions_gps': {'queue': 'scheduled'},
     # NTP2P33 — relance RFQ non répondue à J-2 de la date limite de réponse.
     'installations.relancer_rfq_en_attente': {'queue': 'scheduled'},
     # NTP2P35 — archivage mensuel des brouillons de demande d'achat abandonnés.

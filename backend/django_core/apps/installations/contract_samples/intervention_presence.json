@@ -1,0 +1,26 @@
+{
+  "endpoint": "GET /api/django/installations/interventions/<int:pk>/presence/",
+  "pourquoi": "Revue chantier 26/10/2026 (fondateur : suivre la position des techniciens pendant les installations sans qu'ils aient rien à faire). Sert au responsable (onglet « Historique de présence » de /planification/suivi-gps) le temps passé sur site d'une intervention, calculé SERVEUR à partir des positions relevées automatiquement : `premiere_entree` = première position dans le rayon du chantier (à défaut, après la purge des positions à 30 jours, la première alerte d'entrée ; à défaut le pointage manuel `arrivee_site_le`), `derniere_sortie` = dernière position dans le rayon (à défaut la dernière alerte de sortie), `duree_sur_site_min` entre les deux (null sans les deux bornes), `source_debut` dit d'où vient le début (`positions` | `alertes` | `pointage` | null) pour que l'écran n'affiche jamais un chiffre sans source. `derniere_position` = dernier relevé (dans ou hors rayon), null sans aucun relevé. Même permission que le détail de l'intervention (portée de visibilité). Aucun prix. Le frontend importe cet exemple au lieu d'inventer son PAYLOAD.",
+  "exemple": {
+    "intervention": 12,
+    "premiere_entree": "2026-10-26T08:47:12+01:00",
+    "derniere_sortie": "2026-10-26T15:31:40+01:00",
+    "duree_sur_site_min": 404,
+    "nb_positions": 412,
+    "source_debut": "positions",
+    "derniere_position": {
+      "lat": 33.573150,
+      "lng": -7.589800,
+      "captured_at": "2026-10-26T15:31:40+01:00"
+    }
+  },
+  "exemple_vide": {
+    "intervention": 13,
+    "premiere_entree": null,
+    "derniere_sortie": null,
+    "duree_sur_site_min": null,
+    "nb_positions": 0,
+    "source_debut": null,
+    "derniere_position": null
+  }
+}

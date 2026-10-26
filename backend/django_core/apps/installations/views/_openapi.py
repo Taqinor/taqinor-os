@@ -498,9 +498,29 @@ class SeriesLotCorpsFichier(serializers.Serializer):
 
 
 class CommanderBesoinRequete(serializers.Serializer):
-    """N13 — {[fournisseur]} : id entier 1..ID_MAX (sinon fournisseur par défaut)."""
+    """N13 — {[fournisseur], [fournisseurs], [produits]} (revue chantier
+    26/10/2026) : ``fournisseur`` id imposé aux lignes sans surcharge (sinon
+    le moins cher / le catalogue) ; ``fournisseurs`` = ``{"<produit_id>":
+    <fournisseur_id>}`` ; ``produits`` = ids à commander (défaut : tous)."""
     fournisseur = serializers.IntegerField(
         min_value=1, max_value=ID_MAX, required=False)
+    fournisseurs = serializers.DictField(
+        child=serializers.IntegerField(min_value=1, max_value=ID_MAX),
+        required=False)
+    produits = serializers.ListField(
+        child=serializers.IntegerField(min_value=1, max_value=ID_MAX),
+        required=False, max_length=500)
+
+    def validate_fournisseurs(self, value):
+        for cle in value:
+            try:
+                ok = 1 <= int(str(cle)) <= ID_MAX
+            except (TypeError, ValueError):
+                ok = False
+            if not ok:
+                raise serializers.ValidationError(
+                    f"Clé « {cle} » : identifiant de produit attendu.")
+        return value
 
 
 def _origines_reserve():

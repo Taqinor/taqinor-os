@@ -165,15 +165,20 @@ def distance_to_site(intervention):
 # ── F5 — construction / synchronisation de la liste de préparation ───────────
 def _bom_lines(installation):
     """Lignes matériel (produit_id, designation, quantite entier ≥ 1) depuis la
-    nomenclature gelée du chantier. Réutilise la même lecture que la réservation
-    de stock. Ignore les quantités nulles/illisibles."""
+    nomenclature gelée du chantier. Ignore les quantités nulles/illisibles.
+
+    Revue chantier 26/10/2026 — arrondi au PLAFOND, comme
+    ``quantites_nomenclature_chantier(plafond=True)`` (le besoin matériel du
+    chantier) : la préparation et l'approvisionnement disent le même manque."""
+    import math
+    from decimal import Decimal, InvalidOperation
     out = []
     for ligne in (installation.bom or []):
         if not isinstance(ligne, dict):
             continue
         try:
-            qte = int(round(float(ligne.get('quantite') or 0)))
-        except (TypeError, ValueError):
+            qte = int(math.ceil(Decimal(str(ligne.get('quantite') or 0))))
+        except (InvalidOperation, TypeError, ValueError):
             continue
         if qte <= 0:
             continue
@@ -199,13 +204,20 @@ def _kit_for_intervention(intervention):
             .order_by('ordre', 'id').first())
 
 
-def _shortfall_for(produit, requis, company, own_reserved):
+def _shortfall_for(produit, requis, company, own_reserved, en_commande=None,
+                   deja_sorti=None):
     """F5 — manque sur un SKU au moment de la préparation : requis − disponible.
     Le disponible tient compte de la réservation de stock existante (engagé non
     consommé), MAIS pas de la réservation propre à CE chantier (sinon le besoin
     serait compté deux fois — le chantier a déjà réservé sa nomenclature à la
     création). 0 si pas de produit catalogue ou pas de pénurie. Réutilise la
-    réservation de stock du module stock."""
+    réservation de stock du module stock.
+
+    Revue chantier 26/10/2026 — même formule que le besoin matériel du
+    chantier (``compute_besoin_materiel``) : ``max(requis − déjà sorti −
+    disponible, 0) − en commande sur un BCF ENVOYÉ`` (``en_commande`` /
+    ``deja_sorti`` : maps ``{produit_id: qte}``) ; un brouillon ne compte
+    pas."""
     if produit is None:
         return 0
     from apps.stock.services import reserved_quantity
@@ -213,7 +225,9 @@ def _shortfall_for(produit, requis, company, own_reserved):
     reserve_autres = max(
         reserved_quantity(produit) - own_reserved.get(produit.id, 0), 0)
     dispo = produit.quantite_stock - reserve_autres
-    return max(requis - dispo, 0)
+    sorti = (deja_sorti or {}).get(produit.id, 0)
+    brut = max(requis - sorti - dispo, 0)
+    return max(brut - (en_commande or {}).get(produit.id, 0), 0)
 
 
 def ensure_preparation(intervention):
@@ -249,15 +263,22 @@ def _sync_materiel(prep):
                 for li in prep.materiel.all()}
     seen = set()
     from apps.stock.selectors import get_produit_scoped
-    from .selectors import own_reservation_map
+    from apps.stock.services import en_commande_chantier_par_statut
+    from .selectors import own_reservation_map, quantites_deja_sorties_chantier
     own_reserved = own_reservation_map(installation)
+    en_commande_envoye, _brouillon = en_commande_chantier_par_statut(
+        installation)
+    deja_sorti = quantites_deja_sorties_chantier(
+        installation, {b['produit_id'] for b in lignes if b['produit_id']})
     for i, b in enumerate(lignes):
         produit = None
         if b['produit_id']:
             produit = get_produit_scoped(company, b['produit_id'])
         key = (produit.id if produit else None, b['designation'])
         seen.add(key)
-        manque = _shortfall_for(produit, b['quantite'], company, own_reserved)
+        manque = _shortfall_for(produit, b['quantite'], company, own_reserved,
+                                en_commande=en_commande_envoye,
+                                deja_sorti=deja_sorti)
         li = existing.get(key)
         if li is None:
             PreparationMaterielLigne.objects.create(
@@ -459,6 +480,103 @@ def display_filename(att):
     if name.startswith(_SLOT_PREFIX) and _SLOT_SEP in name:
         return name.split(_SLOT_SEP, 1)[1]
     return name
+
+
+def _nombre_ou_none(valeur, borne=None):
+    """Nombre fini (|x| ≤ ``borne`` si donnée) ou ``None`` — jamais
+    d'exception : la géoloc d'une photo est best-effort."""
+    import math
+    if valeur in (None, ''):
+        return None
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(nombre) or (borne is not None and abs(nombre) > borne):
+        return None
+    return nombre
+
+
+def enregistrer_meta_photo_intervention(intervention, attachment, data):
+    """Revue chantier 26/10/2026 — méta d'une photo d'intervention
+    (``PhotoChecklistMeta`` liée à l'intervention) : horodatage SERVEUR posé
+    à la création, géoloc ``lat``/``lng``/``accuracy_m`` et instant appareil
+    ``client_ts`` BEST-EFFORT (valeur illisible = ignorée, jamais un refus de
+    la photo). Renvoie la méta créée."""
+    from decimal import Decimal
+    from django.utils.dateparse import parse_datetime
+    from .models import PhotoChecklistMeta
+    lat = _nombre_ou_none(data.get('lat'), 90)
+    lng = _nombre_ou_none(data.get('lng'), 180)
+    if lat is None or lng is None:
+        lat = lng = None
+    precision = _nombre_ou_none(data.get('accuracy_m'))
+    if precision is not None and precision < 0:
+        precision = None
+    horodatage_client = None
+    brut = data.get('client_ts')
+    if isinstance(brut, str) and brut.strip():
+        try:
+            horodatage_client = parse_datetime(brut.strip())
+        except ValueError:
+            horodatage_client = None
+        if horodatage_client is not None and timezone.is_naive(
+                horodatage_client):
+            horodatage_client = timezone.make_aware(horodatage_client)
+    return PhotoChecklistMeta.objects.create(
+        company=intervention.company, attachment=attachment,
+        intervention=intervention,
+        latitude=(Decimal(str(round(lat, 6))) if lat is not None else None),
+        longitude=(Decimal(str(round(lng, 6))) if lng is not None else None),
+        precision_m=precision, horodatage_client=horodatage_client)
+
+
+def metas_photos_intervention(intervention):
+    """``{attachment_id: PhotoChecklistMeta}`` des photos de l'intervention."""
+    from .models import PhotoChecklistMeta
+    return {m.attachment_id: m for m in PhotoChecklistMeta.objects.filter(
+        company=intervention.company, intervention=intervention)}
+
+
+def meta_photo_payload(meta):
+    """Champs additifs d'une photo : ``lat``, ``lng``, ``accuracy_m``,
+    ``horodatage_serveur``, ``client_ts`` (``None`` quand absents)."""
+    if meta is None:
+        return {'lat': None, 'lng': None, 'accuracy_m': None,
+                'horodatage_serveur': None, 'client_ts': None}
+    return {
+        'lat': float(meta.latitude) if meta.latitude is not None else None,
+        'lng': float(meta.longitude) if meta.longitude is not None else None,
+        'accuracy_m': meta.precision_m,
+        'horodatage_serveur': meta.horodatage_capture,
+        'client_ts': meta.horodatage_client,
+    }
+
+
+def avertissements_terminee(intervention, new_statut):
+    """Revue chantier 26/10/2026 — avertissements CONSULTATIFS (jamais
+    bloquants) d'un passage à « Terminée » / « Validée » : séries de
+    composants encore à relever (« Séries manquantes : 8 panneaux,
+    1 onduleur »). Liste vide hors de ce passage. Aucun réglage société
+    ne le rend bloquant aujourd'hui."""
+    order = list(Intervention.STATUT_ORDER)
+
+    def rank(s):
+        try:
+            return order.index(s)
+        except ValueError:
+            return -1
+
+    if not (rank(new_statut) >= rank(Intervention.Statut.TERMINEE)
+            and rank(intervention.statut) < rank(Intervention.Statut.TERMINEE)):
+        return []
+    try:
+        from .selectors import avertissement_series_manquantes
+        phrase = avertissement_series_manquantes(intervention)
+    except Exception:
+        logger.warning("avertissements terminee : échec ignoré, comportement dégradé", exc_info=True)
+        return []
+    return [phrase] if phrase else []
 
 
 def missing_required_shots(intervention, slots=None):
