@@ -8,7 +8,7 @@
 import { fetchAllPages } from '../../../utils/fetchAllPages'
 
 export function chargerToutesLesPages(liste, etat) {
-  const lignes = fetchAllPages((page) => liste(page).then((r) => r.data))
+  const lignes = fetchAllPages((page, { page_size: pageSize } = {}) => liste(page, pageSize).then((r) => r.data))
     .then((data) => (Array.isArray(data) ? data : (data?.results ?? [])))
   if (!etat) return lignes
   return lignes

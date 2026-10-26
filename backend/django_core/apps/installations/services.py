@@ -3904,7 +3904,10 @@ def cout_prevu_assemblage(ordre):
             prix = getattr(ligne.produit, 'prix_achat', None) or Decimal('0')
             total += Decimal(str(ligne.quantite or 0)) * Decimal(str(prix))
         return total
-    for c in ordre.kit.composants.select_related('produit').all():
+    composants = ordre.kit.composants
+    if 'composants' not in getattr(ordre.kit, '_prefetched_objects_cache', {}):
+        composants = composants.select_related('produit')  # APRF39 : sinon préchargé
+    for c in composants.all():
         if c.produit_id is None:
             continue
         prix = getattr(c.produit, 'prix_achat', None) or Decimal('0')
@@ -4195,14 +4198,15 @@ def instancier_etapes_ordre(ordre):
     etapes_modele = ordre.kit.etapes_assemblage.all()
     if not etapes_modele:
         return []
-    existants = set(
-        ordre.etapes.values_list('etape_modele_id', flat=True))
+    existants = {e.etape_modele_id for e in ordre.etapes.all()}  # APRF39 : cache préchargé
     a_creer = [
         EtapeOrdre(ordre=ordre, etape_modele=etape)
         for etape in etapes_modele if etape.id not in existants
     ]
     if a_creer:
         EtapeOrdre.objects.bulk_create(a_creer)
+    elif 'etapes' in getattr(ordre, '_prefetched_objects_cache', {}):
+        return list(ordre.etapes.all())  # APRF39 : déjà préchargé avec etape_modele
     return list(ordre.etapes.select_related('etape_modele').all())
 
 
@@ -4486,10 +4490,12 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
 
     propositions = []
     reserves_dans_le_lot = set()
-    for interv in qs.select_related('installation'):
-        suggestions = selectors.suggerer_creneau(
-            company, chantier_id=interv.installation_id,
-            type_intervention=interv.type_intervention, n=10)
+    interventions = list(qs.select_related('installation'))
+    # APRF41 — ressources de la fenêtre chargées UNE fois pour tout le lot.
+    suggestions_lot = selectors.suggerer_creneaux_lot(
+        company, [i.installation_id for i in interventions], n=10)
+    for interv in interventions:
+        suggestions = suggestions_lot[interv.installation_id]
         proposition = None
         for candidat in suggestions['propositions']:
             cle = (candidat['technicien_id'], candidat['date'])
@@ -6239,7 +6245,7 @@ def chantiers_a_facturer(company, user=None):
     tranches sont dues). Lecture seule ; import ventes via selectors seulement.
     ``user`` (optionnel) borne aux chantiers de SA portée, comme la liste des
     chantiers (``selectors.scoper_chantiers``)."""
-    from apps.ventes.selectors import tranche_facturee
+    from apps.ventes.selectors import tranches_facturees
     from .models import Installation, JalonProjet
     out = []
     jalons = (
@@ -6255,12 +6261,17 @@ def chantiers_a_facturer(company, user=None):
         visibles = scoper_chantiers(
             Installation.objects.filter(company=company), user)
         jalons = jalons.filter(installation__in=visibles)
+    jalons = list(jalons)
+    # APRF24 — factures de TOUS les devis des jalons lues en lot (une seule
+    # résolution pour N jalons), même verdict que ``tranche_facturee``.
+    facturees = tranches_facturees(
+        [getattr(j.installation, 'devis', None) for j in jalons])
     for jalon in jalons:
         installation = jalon.installation
         devis = getattr(installation, 'devis', None)
         if devis is None:
             continue
-        if tranche_facturee(devis, jalon.tranche_echeancier):
+        if jalon.tranche_echeancier in facturees.get(devis.pk, ()):
             continue
         out.append({
             'installation_id': installation.id,

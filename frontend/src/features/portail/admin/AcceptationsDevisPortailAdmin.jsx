@@ -23,7 +23,7 @@ export default function AcceptationsDevisPortailAdmin() {
 
   // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
   const fetchAcceptations = () => chargerToutesLesPages(
-    (page) => portailApi.admin.acceptationsDevis.liste({ page }),
+    (page, pageSize) => portailApi.admin.acceptationsDevis.liste({ page, page_size: pageSize }),
     { setRows, setLoadError, setLoading },
   )
 

@@ -817,11 +817,11 @@ export default function DevisGenerator({
     Promise.allSettled([
       // ALEA40 — clients et leads lus EN ENTIER (pagination DRF 50) : un
       // client ou un lead hors des 50 plus récents reste sélectionnable.
-      fetchAllPages((page) => crmApi.getClients({ page }).then((r) => r.data))
+      fetchAllPages((page, { page_size: pageSize } = {}) => crmApi.getClients({ page, page_size: pageSize }).then((r) => r.data))
         .then((d) => setClients(d?.results ?? d)).catch(() => { fail('clients'); throw 0 }),
-      fetchAllPages((page) => crmApi.getLeads({ page }).then((r) => r.data))
+      fetchAllPages((page, { page_size: pageSize } = {}) => crmApi.getLeads({ page, page_size: pageSize }).then((r) => r.data))
         .then((d) => setLeads(d?.results ?? d)).catch(() => { fail('leads'); throw 0 }),
-      fetchAllPages((page) => stockApi.getProduits({ page }).then((r) => r.data))
+      fetchAllPages((page, { page_size: pageSize } = {}) => stockApi.getProduits({ page, page_size: pageSize }).then((r) => r.data))
         .then(setProduits).catch(() => { fail('produits'); throw 0 }),
     ]).finally(() => setRefsLoading(false))
   }, [])
