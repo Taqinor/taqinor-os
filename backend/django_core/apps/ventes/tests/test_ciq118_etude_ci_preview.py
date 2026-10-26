@@ -224,7 +224,9 @@ class ContratTests(_Base):
     def test_longueur_dc_declaree_fiches_completes_cable_dc_quantifie(self):
         # ADEV87 — module et onduleurs à fiches complètes : les chaînes se
         # calculent, le câble DC = Σ chaînes × longueur DÉCLARÉE, au prix
-        # catalogue.
+        # catalogue. Le câble DC du catalogue de base (_Base) est retiré : seul
+        # celui-ci doit être retenu.
+        Produit.objects.filter(company=self.co, role_ci='cable_dc').delete()
         cable = self._produit(self.co, 'Câble solaire Nexans H1Z2Z2-K 6 mm² (au mètre)',
                               role_devis='cable_dc', prix_vente=Decimal('12'))
         corps = self.corps()

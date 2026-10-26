@@ -30,6 +30,7 @@ from apps.stock.management.commands.seed_catalogue import CATALOGUE, ht_at
 from apps.ventes.domain import etude_ci
 from apps.ventes.quote_engine.constants_82_21 import PLAFOND_INJECTION_PCT
 from apps.ventes.tests.test_ciq111_combinaison_onduleurs import _catalogue_huawei
+from core.electrique.cables import SECTIONS_MM2_CI
 from core.electrique.onduleurs import bornes_dc_ac
 
 FIXTURE = Path(__file__).resolve().parent / 'fixtures' / 'ciq122_pvgis_casablanca.json'
@@ -61,14 +62,26 @@ DISJONCTEURS = [{'id': 9100 + i, 'nom': 'Disjoncteur AC %g A 4P (test)' % calibr
                            'prot_calibre_a': calibre, 'prot_poles': 4},
                  'prix_connu': True, 'eligible_ci': True, 'prix_vente_ht': Decimal('900')}
                 for i, calibre in enumerate((16.0, 25.0, 32.0, 40.0, 80.0, 160.0, 250.0))]
+#: Fondateur 26/10/2026 — devis préliminaire jamais vide : câbles DC/AC
+#: chiffrés d'office (longueurs estimées avant la visite), tarifés ici.
+CABLES = [{'id': 9200, 'nom': 'Câble solaire 6 mm² (test)', 'role_ci': 'cable_dc',
+           'role_devis': '', 'type_pose': '', 'fiche': {}, 'prix_connu': True,
+           'eligible_ci': True, 'prix_vente_ht': Decimal('11')}] + [
+    {'id': 9300 + i, 'nom': 'Câble AC 5×%g mm² (test)' % s, 'role_ci': 'cable_ac',
+     'role_devis': '', 'type_pose': '',
+     'fiche': {'type_fiche': 'cable', 'cable_cote': 'ac', 'cable_section_mm2': float(s),
+               'cable_ame': 'cu'},
+     'prix_connu': True, 'eligible_ci': True,
+     'prix_vente_ht': Decimal(str(round(10 * s + 30, 2)))}
+    for i, s in enumerate(SECTIONS_MM2_CI)]
 CATALOGUE_TEST = {
-    'elements': [STRUCTURE, COFFRET_DC] + DISJONCTEURS,
+    'elements': [STRUCTURE, COFFRET_DC] + DISJONCTEURS + CABLES,
     'onduleurs': _catalogue_huawei(),
     'module': MODULE,
     'prix_par_id': {MODULE['produit']: MODULE['prix_vente_ht'],
                     STRUCTURE['id']: STRUCTURE['prix_vente_ht'],
                     COFFRET_DC['id']: COFFRET_DC['prix_vente_ht'],
-                    **{d['id']: d['prix_vente_ht'] for d in DISJONCTEURS}},
+                    **{d['id']: d['prix_vente_ht'] for d in DISJONCTEURS + CABLES}},
 }
 #: ADEV79 — la pose (structure, modules) est un rôle de taille : forfaits de
 #: TEST sourcés (réglage société injecté, aucune base).
