@@ -9,8 +9,12 @@ JAMAIS verrouiller personne :
   Directeur/Administrateur.
 * ``records_scope_sous_arbre`` (responsables) → soi-même + tout le sous-arbre
   (toute personne remontant à soi, récursivement via ``supervisor``).
-* ``records_scope_equipe`` (Commercial/Technicien/Viewer) → soi-même + ses
+* ``records_scope_equipe`` (Technicien/Viewer) → soi-même + ses
   pairs (même superviseur direct) + son propre sous-arbre éventuel.
+* ``records_scope_soi`` (Commercial) → soi-même + son propre sous-arbre
+  éventuel, JAMAIS ses pairs : un membre d'équipe ne voit pas les
+  enregistrements de ses coéquipiers ; le responsable d'équipe (qui est leur
+  superviseur) les voit par son sous-arbre.
 
 Un utilisateur voit TOUJOURS les enregistrements qu'il possède / lui sont
 assignés / qu'il a créés : ``visible_user_ids`` inclut toujours son propre id, et
@@ -32,7 +36,7 @@ __all__ = [
 
 
 def record_scope_for(user):
-    """'all' | 'subtree' | 'team' pour un utilisateur."""
+    """'all' | 'subtree' | 'team' | 'self' pour un utilisateur."""
     if user is None or not user.is_authenticated:
         return 'all'
     if user.is_superuser:
@@ -54,6 +58,8 @@ def record_scope_for(user):
         return 'subtree'
     if registre.SCOPE_TEAM in perms:
         return 'team'
+    if registre.SCOPE_SELF in perms:
+        return 'self'
     return 'all'
 
 
@@ -105,7 +111,9 @@ def visible_user_ids(user):
     scope = record_scope_for(user)
     if scope == 'all':
         return None  # None = aucun filtrage par propriétaire (voit tout)
-    if scope == 'subtree':
+    if scope in ('subtree', 'self'):
+        # self : ses propres enregistrements + ceux des personnes qu'il
+        # encadre (sous-arbre) — jamais ceux de ses pairs.
         return subtree_user_ids(user)
     # team : pairs + son propre sous-arbre (au cas où il a des subordonnés).
     return peer_user_ids(user) | subtree_user_ids(user)

@@ -75,3 +75,12 @@ class EquipeViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, CompanyScopedMod
         company = self.request.user.company
         _check_members_tenant(serializer, company)
         serializer.save(company=company)
+
+    def perform_destroy(self, instance):
+        # Fondateur 26/10/2026 — l'équipe supprimée rend leur superviseur à
+        # ses membres (posé par l'équipe, jamais à la main).
+        from authentication.equipes_structure import synchroniser_superviseurs
+        chef, membres = instance.chef, list(instance.membres.all())
+        company_id = instance.company_id
+        super().perform_destroy(instance)
+        synchroniser_superviseurs(company_id, chef, membres, None, [], False)

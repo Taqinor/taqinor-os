@@ -1352,6 +1352,15 @@ class EquipeCommercialeViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
+    def perform_destroy(self, instance):
+        # Fondateur 26/10/2026 — l'équipe supprimée rend leur superviseur à
+        # ses membres (posé par l'équipe, jamais à la main).
+        from authentication.equipes_structure import synchroniser_superviseurs
+        chef, membres = instance.responsable, list(instance.membres.all())
+        company_id = instance.company_id
+        super().perform_destroy(instance)
+        synchroniser_superviseurs(company_id, chef, membres, None, [], False)
+
 
 @extend_schema_view(list=extend_schema(parameters=[sd.param('metric', enum=ObjectifCommercial.Metric.values),
                                                    sd.param('year', OpenApiTypes.INT),
