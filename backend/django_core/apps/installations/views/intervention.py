@@ -251,6 +251,15 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 qs = qs.filter(annulee=False)
         return qs
 
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        if page is not None and self.action == 'list':
+            # APRF40 — pièces jointes de TOUTES les interventions de la page
+            # en UNE requête (la shot-list lit les photos de chacune).
+            from ..field_services import precharger_photos
+            precharger_photos(page)
+        return page
+
     def list(self, request, *args, **kwargs):
         """ZFSM7 — ``?export=xlsx`` télécharge la liste FILTRÉE (mêmes filtres
         `statut`/`type_intervention`/`priorite`/plage de dates) en xlsx
