@@ -1268,20 +1268,28 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
             'saisies_humaines',
         ]
 
+    def champs_a_marquer(self, validated_data):
+        """AMET23 — SOURCE UNIQUE des champs qu'un PATCH/PUT de la fiche marque
+        comme saisie humaine (clés réelles du corps, jamais le marqueur lui-même).
+        Réutilisée par ``update`` et par ``LeadViewSet.perform_update`` (qui borne
+        l'écriture aux champs touchés : le marqueur doit en faire partie)."""
+        corps = getattr(self, 'initial_data', None)
+        user = getattr(self.context.get('request'), 'user', None)
+        if corps is None or not getattr(user, 'is_authenticated', False):
+            return []
+        return [c for c in validated_data
+                if c in corps and c != 'saisies_humaines']
+
     def update(self, instance, validated_data):
         """AMET23 — un PATCH/PUT de la fiche est une saisie humaine : les clés du
         corps (champs réels du lead) rejoignent ``saisies_humaines``."""
         from apps.records.provenance import marquer_saisie_humaine
-        corps = getattr(self, 'initial_data', None)
-        user = getattr(self.context.get('request'), 'user', None)
-        if corps is not None and getattr(user, 'is_authenticated', False):
-            champs = [c for c in validated_data
-                      if c in corps and c != 'saisies_humaines']
-            if champs:
-                marquer_saisie_humaine(instance, champs)
-                validated_data = {
-                    **validated_data,
-                    'saisies_humaines': instance.saisies_humaines}
+        champs = self.champs_a_marquer(validated_data)
+        if champs:
+            marquer_saisie_humaine(instance, champs)
+            validated_data = {
+                **validated_data,
+                'saisies_humaines': instance.saisies_humaines}
         return super().update(instance, validated_data)
 
     # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
