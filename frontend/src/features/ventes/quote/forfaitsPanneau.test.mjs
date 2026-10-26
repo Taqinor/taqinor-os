@@ -55,6 +55,8 @@ test('prixForfaitHt — bords : 0 panneau = part fixe, nombre tronqué, valeurs 
   assert.equal(porteBaremeParPanneau(null), false)
   assert.equal(porteBaremeParPanneau({ prix_fixe_ht: '0.00', prix_par_panneau_ht: null }), true)
   assert.equal(porteBaremeParPanneau({ prix_vente: '10' }), false)
+  // Coffret C&I : barème par onduleur + par panneau, chiffré par le moteur C&I.
+  assert.equal(porteBaremeParPanneau({ role_ci: 'coffret_dc', prix_fixe_ht: '1000.00', prix_par_panneau_ht: '120.0000' }), false)
 })
 
 const ligne = (p, quantite, extra = {}) => ({

@@ -48,6 +48,8 @@ function auCentime(micro) {
  */
 export function porteBaremeParPanneau(produit) {
   if (!produit) return false
+  // Coffret C&I : barème par onduleur + par panneau, chiffré par le moteur C&I.
+  if (['coffret_dc', 'coffret_ac'].includes(produit.role_ci)) return false
   return !(absent(produit.prix_fixe_ht) && absent(produit.prix_par_panneau_ht))
 }
 

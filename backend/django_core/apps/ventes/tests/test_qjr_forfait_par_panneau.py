@@ -120,6 +120,13 @@ class LeBaremeSeReconnaitSansCalculerDePrix(SimpleTestCase):
             _FauxProduit('Panneau Jinko 550W', '1100')))
         self.assertFalse(porte_bareme_par_panneau(None))
 
+    def test_coffret_ci_jamais_retarife_au_panneau(self):
+        # 26/10/2026 — devis boulangerie : le coffret DC C&I (×2 onduleurs)
+        # re-tarifé « fixe + panneaux » PAR UNITÉ comptait les panneaux deux fois.
+        coffret = _FauxProduit('Coffret DC C&I', '0', fixe='1000', par_panneau='120')
+        coffret.role_ci = 'coffret_dc'
+        self.assertFalse(porte_bareme_par_panneau(coffret))
+
 
 class LeCompteDePanneauxSeLitParOption(SimpleTestCase):
     """``_comptes_panneaux`` — la base de toute re-tarification."""

@@ -131,6 +131,12 @@ ROLES_CI = (
 PHASES_ONDULEUR_CI = {'onduleur_string_tri': 3, 'onduleur_string_mono': 1}
 ROLES_ONDULEUR_CI = tuple(PHASES_ONDULEUR_CI)
 
+#: Coffrets C&I tarifés comme le tableau résidentiel (décision fondateur du
+#: 26/10/2026) : ``Produit.prix_fixe_ht`` = prix PAR ONDULEUR,
+#: ``Produit.prix_par_panneau_ht`` = prix par panneau. Un de ces deux champs
+#: saisi vaut prix connu (stock) ; la composition C&I en fait le prix.
+ROLES_CI_BAREME_COFFRET = ('coffret_dc', 'coffret_ac')
+
 #: Libellés FR des rôles C&I (voyagent par l'API : aucun miroir JS).
 LIBELLES_ROLES_CI = {
     'onduleur_string_tri': 'Onduleur string triphasé',
