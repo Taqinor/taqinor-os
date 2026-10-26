@@ -216,6 +216,13 @@ def prix_palier_ht(ligne, taux_tva_pct=None):
     return (ttc / (1 + tva / 100)).quantize(Decimal('0.01'))
 
 
+def ligne_batterie(article, quantite):
+    """Option « avec batterie » (fondateur 26/10/2026) : la banque HOMOGÈNE de
+    modules, au prix de VENTE du catalogue (palier compris) ; sans prix ⇒
+    « prix à renseigner » nommé, jamais un 0."""
+    return _ligne('batterie_ci', article, 'Batterie', quantite, 'u')
+
+
 def postes_non_chiffres(lignes):
     """ADEV79 — ``(prix à renseigner, à chiffrer après visite)`` : les
     désignations des lignes sans prix (hors visite) et celles qui attendent

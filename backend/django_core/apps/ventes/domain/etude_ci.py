@@ -33,6 +33,8 @@ import logging
 import math
 from decimal import Decimal
 
+from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, option_avec_de_l_etude
+
 logger = logging.getLogger(__name__)
 
 VERSION_MOTEUR = 'ci-1'
@@ -795,8 +797,11 @@ def lire_catalogue_ci(company):
     prix_par_id = {e['id']: e['prix_vente_ht'] for e in elements if e.get('prix_vente_ht')}
     if module and module.get('prix_vente_ht'):
         prix_par_id[module['produit']] = module['prix_vente_ht']
+    # Fondateur 26/10/2026 — hybrides BT et batteries de l'option « avec ».
+    from .etude_ci_batterie import catalogue_batterie_ci
     return {'elements': elements, 'onduleurs': onduleurs, 'module': module,
-            'module_spec': module_spec, 'prix_par_id': prix_par_id}
+            'module_spec': module_spec, 'prix_par_id': prix_par_id,
+            'batterie': catalogue_batterie_ci(objets.values())}
 
 
 def _reglages_societe(company):
@@ -986,6 +991,23 @@ def _apercu_valorisation(bilan, jours_types, tension):
             'entrees_resolues': {'tension': {'valeur': tension}}}
 
 
+def _valoriseur(tarif, tarif_declare, jours_types, tension):
+    """``valoriser(bilan)`` → l'économie annuelle (MAD, ``economie_annee1``)
+    de la valorisation horaire C&I (``economie_ci``) ; ``valoriser.complet``
+    → le bloc ``economie_ci`` entier (la même valorisation)."""
+    from apps.ventes import economie_ci
+
+    def complet(bilan):
+        return economie_ci.valoriser(_apercu_valorisation(bilan, jours_types, tension),
+                                     tarif, tarif_declare=tarif_declare)
+
+    def valoriser(bilan):
+        return (complet(bilan).get('economie_annee1') or {}).get('total_mad')
+
+    valoriser.complet = complet
+    return valoriser
+
+
 def _forme_composition(composition):
     if composition is None:
         return None
@@ -1090,8 +1112,61 @@ def _alertes_phase_du_site(alertes, phase):
             else a for a in alertes]
 
 
+def _entrees_composition(res, catalogue, phase, tension, revente):
+    """Les entrées de ``moteur_ci.composition.composer_ci`` (extraction C20)."""
+    return {
+        'module': catalogue['module'], 'phase': phase,
+        'tension': (tension or '').upper(), 'type_pose': res.valeur('type_pose'),
+        'longueur_dc_m': res.valeur('longueur_dc_m'),
+        'longueur_ac_m': res.valeur('longueur_ac_m'),
+        'nb_points_raccordement': res.valeur('nb_points_raccordement'),
+        'revente_choisie': revente,
+        'besoin_cellule_mt': res.valeur('besoin_cellule_mt'),
+        'batterie_souhaitee': bool(res.valeur('batterie_souhaitee')),
+    }
+
+
+def _composition_prix_manquants(resultat):
+    """ADEV79 (D-ACI-6=a) — les postes de taille ET les postes fixes sans
+    prix : le refus les nomme tous, une seule fois (extraction C20)."""
+    a_renseigner = list(resultat['prix_manquants'])
+    a_renseigner += [p for p in resultat.get('postes_fixes_sans_prix') or []
+                     if p not in a_renseigner]
+    return {'lignes': [], 'onduleurs': {'combinaison': [], 'ratio_dc_ac': {
+        'valeur': None, 'bornes': None, 'source': None}, 'chaines': None},
+        'prix_a_renseigner': a_renseigner, 'a_chiffrer_visite': [],
+        'incomplet': True, 'options': []}
+
+
+def _alertes_postes(composition, avec):
+    """Les alertes des postes non chiffrés de la composition — option « avec
+    batterie » comprise (fondateur 26/10/2026 : un article de l'option sans
+    prix fait refuser, nommé) — et celles de l'option « avec ». L'option
+    « avec » composée remplace l'ancienne mention « batterie : valeur non
+    chiffrée » des options de la composition."""
+    alertes = list(avec['alertes'])
+    if composition is None:
+        return alertes
+    manquants = list(composition.get('prix_a_renseigner') or [])
+    manquants += [p for p in avec['prix_a_renseigner'] if p not in manquants]
+    if manquants:
+        composition.update(prix_a_renseigner=manquants, incomplet=True)
+        alertes.append(_alerte('prix_a_renseigner', 'composition.lignes',
+                               '%d articles C&I sans prix de vente : devis incomplet.'
+                               % len(manquants)))
+    if composition.get('a_chiffrer_visite'):
+        alertes.append(_alerte(
+            'a_chiffrer_visite', 'composition.lignes',
+            'À chiffrer après la visite technique, hors total (estimation sous réserve '
+            'de visite) : %s.' % ', '.join(composition['a_chiffrer_visite'])))
+    if avec['bloc'] is not None:
+        composition['options'] = [o for o in composition.get('options') or []
+                                  if o.get('cle') != 'batterie']
+    return alertes
+
+
 def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None,
-               onduleurs_imposes=None, source_production_figee=None):
+               onduleurs_imposes=None, source_production_figee=None, option_avec_imposee=None):
     """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture.
 
     ``production_figee`` (CIQ119) : le bloc ``production`` déjà figé sur le
@@ -1100,8 +1175,11 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     combinaison n'est alors pas recherchée. ``source_production_figee``
     (CAD177) : le libellé PVGIS qui accompagnait ``production_figee`` — la
     production reprise rend les MÊMES hypothèses/alertes que son calcul.
+    ``option_avec_imposee`` (CIQ119) : l'option « avec batterie » lue sur les
+    LIGNES (``etude_ci_batterie.option_imposee_des_lignes``), évaluée telle
+    quelle.
     """
-    from apps.ventes import economie_ci, tarif_ci
+    from apps.ventes import tarif_ci
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     from apps.ventes.moteur_ci.production import (
@@ -1201,16 +1279,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     forfaits = getattr(reglages, 'forfaits_ci', None) or {}
     phase = res.valeur('phases')
     revente = bool(res.valeur('revente_choisie'))
-    entrees_compo = {
-        'module': catalogue['module'], 'phase': phase,
-        'tension': (tension or '').upper(), 'type_pose': res.valeur('type_pose'),
-        'longueur_dc_m': res.valeur('longueur_dc_m'),
-        'longueur_ac_m': res.valeur('longueur_ac_m'),
-        'nb_points_raccordement': res.valeur('nb_points_raccordement'),
-        'revente_choisie': revente,
-        'besoin_cellule_mt': res.valeur('besoin_cellule_mt'),
-        'batterie_souhaitee': bool(res.valeur('batterie_souhaitee')),
-    }
+    entrees_compo = _entrees_composition(res, catalogue, phase, tension, revente)
 
     def combiner(kwc):
         if onduleurs_imposes:
@@ -1220,19 +1289,13 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
                                   module=catalogue.get('module_spec'),
                                   ac_max_kw=_num(res.valeur('puissance_souscrite_kva')))
 
-    def composer(kwc, onduleurs):
-        return _completer_prix(composer_ci(kwc, catalogue['elements'], onduleurs=onduleurs,
+    def composer(kwc, onduleurs, extra=()):
+        return _completer_prix(composer_ci(kwc, catalogue['elements'] + list(extra), onduleurs=onduleurs,
                                            entrees=entrees_compo, forfaits=forfaits),
                                catalogue['prix_par_id'],
                                getattr(reglages, 'tva_standard', None))
 
-    td = res.valeur('tarif_declare')
-
-    def valoriser(bilan):
-        resultat = economie_ci.valoriser(
-            _apercu_valorisation(bilan, jours_types, tension), tarif, tarif_declare=td)
-        return (resultat.get('economie_annee1') or {}).get('total_mad')
-
+    valoriser = _valoriseur(tarif, res.valeur('tarif_declare'), jours_types, tension)
     hypotheses.append({'cle': 'base_taille', 'valeur': 'HT', 'statut': 'estimation',
                        'source': 'coût de vente HT ÷ économie HT (la base HT/TTC du '
                                  'document suit D-CIQ-3, economie_ci)'})
@@ -1263,31 +1326,21 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         alertes.extend(composition.get('alertes') or [])
         alertes.extend((evaluation['onduleurs'] or {}).get('alertes') or [])
         hypotheses.extend(composition.get('hypotheses') or [])
-        economie = economie_ci.valoriser(
-            _apercu_valorisation(bilan, jours_types, tension), tarif, tarif_declare=td)
+        economie = valoriser.complet(bilan)
         regime = _regime(evaluation['kwc'], evaluation['puissance_ac'], tension)
         alertes.extend(_alertes_reactif(res, tension, bilan, registres))
         alertes.extend(_alerte_bande_prix_kwc(reglages, evaluation))
     elif resultat.get('prix_manquants'):
-        # ADEV79 (D-ACI-6=a) — les postes de taille ET les postes fixes sans
-        # prix : le refus les nomme tous, une seule fois.
-        a_renseigner = list(resultat['prix_manquants'])
-        a_renseigner += [p for p in resultat.get('postes_fixes_sans_prix') or []
-                         if p not in a_renseigner]
-        composition = {'lignes': [], 'onduleurs': {'combinaison': [], 'ratio_dc_ac': {
-            'valeur': None, 'bornes': None, 'source': None}, 'chaines': None},
-            'prix_a_renseigner': a_renseigner, 'a_chiffrer_visite': [],
-            'incomplet': True, 'options': []}
-    if composition is not None and composition.get('prix_a_renseigner'):
-        alertes.append(_alerte(
-            'prix_a_renseigner', 'composition.lignes',
-            '%d articles C&I sans prix de vente : devis incomplet.'
-            % len(composition['prix_a_renseigner'])))
-    if composition is not None and composition.get('a_chiffrer_visite'):
-        alertes.append(_alerte(
-            'a_chiffrer_visite', 'composition.lignes',
-            'À chiffrer après la visite technique, hors total (estimation sous réserve '
-            'de visite) : %s.' % ', '.join(composition['a_chiffrer_visite'])))
+        composition = _composition_prix_manquants(resultat)
+    # Fondateur 26/10/2026 — l'option « avec batterie » (hybrides BT + banque).
+    avec = option_avec_de_l_etude(
+        catalogue, None if onduleurs_imposes else evaluation, choix=res.valeur('batterie_souhaitee'),
+        lead=lead, charge=jours_types, production=production_pour_bilan(production), tension=tension,
+        revente_choisie=revente, valoriser=valoriser, taux_tva_pct=getattr(reglages, 'tva_standard', None),
+        phase=phase, ps_kva=_num(res.valeur('puissance_souscrite_kva')), composer=composer,
+        borne_toit=borne_toit, imposee=option_avec_imposee)
+    alertes.extend(_alertes_postes(composition, avec))
+    hypotheses.extend(avec['hypotheses'])
 
     etude = {
         'entrees_resolues': res.entrees_resolues(),
@@ -1300,6 +1353,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         'economie_ci': economie,
         'composition': _forme_composition(composition),
         'regime_8221_suggere': regime,
+        **({CLE_OPTION_AVEC: avec['bloc']} if avec['bloc'] else {}),
         'alertes': _uniques(alertes),
         'hypotheses': _uniques(hypotheses, cle=('cle',)),
         'methode': METHODE_8760 if production.get('serie_horaire') else METHODE,
@@ -1502,12 +1556,16 @@ def _onduleurs_des_lignes(devis, catalogue):
     return [dict(par_id[pid], quantite=q) for pid, q in sorted(quantites.items()) if q > 0]
 
 
-def _empreinte(entrees_stockees, kwc, onduleurs):
+def _empreinte(entrees_stockees, kwc, onduleurs, option_avec=None):
     import hashlib
     import json
     charge = {'entrees': entrees_stockees, 'kwc': kwc,
               'onduleurs': [(o['produit'], o['quantite']) for o in onduleurs],
               'version': VERSION_MOTEUR}
+    if option_avec:
+        # Fondateur 26/10/2026 — l'option « avec batterie » des lignes ; clé
+        # absente sans elle (les empreintes d'hier restent identiques).
+        charge['option_avec'] = option_avec['empreinte']
     return hashlib.sha256(json.dumps(_json(charge), sort_keys=True, default=str)
                           .encode('utf-8')).hexdigest()[:16]
 
@@ -1529,6 +1587,30 @@ def _kwc_option_servie(devis, kwc_avec, kwc_sans):
     if (getattr(devis, 'option_acceptee', '') or '') == AVEC_BATTERIE:
         return kwc_avec or kwc_sans
     return kwc_sans
+
+
+def _option_avec_du_devis(devis, catalogue, kwc_avec, kwc_sans):
+    """L'option « avec batterie » des LIGNES (``None`` sans hybride ET
+    batterie) et ``mono`` : vrai quand le devis ne porte QUE cette option
+    (aucun champ « sans » distinct, aucun onduleur string C&I en ligne)."""
+    from .etude_ci_batterie import option_imposee_des_lignes
+    lignes = list(devis.lignes.all())
+    imposee = option_imposee_des_lignes(lignes, catalogue, kwc_avec)
+    string = {o['produit'] for o in catalogue['onduleurs']}
+    mono = imposee is not None and not kwc_sans and not any(
+        li.produit_id in string for li in lignes)
+    return imposee, mono
+
+
+def _servir_option_avec_seule(bloc, avec):
+    """Devis à option « avec » SEULE : l'étude décrit l'installation vendue —
+    bilan, économie et taille de l'option « avec » (jamais un champ « sans »
+    que personne n'achète)."""
+    if not avec or not avec.get('economie_ci'):
+        return bloc
+    bilan = dict(bloc.get('bilan') or {}, **avec['bilan'])
+    taille = dict(bloc.get('taille') or {}, retenue_kwc=avec['kwc'])
+    return dict(bloc, bilan=bilan, economie_ci=avec['economie_ci'], taille=taille)
 
 
 def _source_production(etude):
@@ -1568,12 +1650,14 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         company = getattr(devis, 'company', None)
         catalogue = lire_catalogue_ci(company)
         onduleurs = _onduleurs_des_lignes(devis, catalogue)
+        # Fondateur 26/10/2026 — l'option « avec batterie » des lignes.
+        imposee, mono = _option_avec_du_devis(devis, catalogue, *puissances_etude_horaire(devis))
         # CIQ129 — une clé v1 retirée (jamais une entrée du moteur) n'entre
         # pas dans l'empreinte.
         stockees = {k: v for k, v in params.items()
                     if k not in CLES_DERIVEES_NON_COPIEES
                     and k not in CLES_RETIREES_CI_V1}
-        empreinte = _empreinte(stockees, kwc, onduleurs)
+        empreinte = _empreinte(stockees, kwc, onduleurs, imposee)
         existant = params.get(CLE_ETUDE_CI) or {}
         if not force and existant.get('empreinte') == empreinte:
             return existant
@@ -1582,7 +1666,8 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
             lead=getattr(devis, 'lead', None),
             production_figee=params.get(CLE_PRODUCTION_FIGEE),
             onduleurs_imposes=onduleurs or None,
-            source_production_figee=_source_production(existant))
+            source_production_figee=_source_production(existant),
+            option_avec_imposee=imposee)
         if etude.get('bilan') is None:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,
@@ -1591,6 +1676,11 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         bloc = {cle: etude.get(cle) for cle in (
             'entrees_resolues', 'profil_charge', 'production', 'taille', 'bilan',
             'composition', 'economie_ci', 'alertes', 'hypotheses')}
+        if etude.get(CLE_OPTION_AVEC):
+            # Clé ADDITIVE : absente sans option « avec » aux lignes.
+            bloc[CLE_OPTION_AVEC] = etude[CLE_OPTION_AVEC]
+            if mono:
+                bloc = _servir_option_avec_seule(bloc, etude[CLE_OPTION_AVEC])
         bloc['version'] = VERSION_MOTEUR
         bloc['empreinte'] = empreinte
         serie = (bloc.get('production') or {}).get('serie_horaire')
