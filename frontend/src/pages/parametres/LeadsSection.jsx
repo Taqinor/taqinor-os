@@ -307,9 +307,13 @@ export default function LeadsSection({
               sautant qui dépasse le plafond de leads ouverts ci-dessous. */}
           <p className="mb-1 mt-3.5 text-[12.5px] text-muted-foreground">
             Répartit automatiquement les leads entrants (site + création
-            manuelle sans responsable) entre les commerciaux, en sautant ceux
-            qui ont déjà trop de leads ouverts. Repli sur le responsable par
-            défaut si tous sont au plafond.
+            manuelle sans responsable). Si une équipe est marquée « Reçoit les
+            nouveaux leads » (Équipes commerciales ci-dessous), les nouveaux
+            leads tournent entre ses membres actifs, le moins chargé d'abord ;
+            sinon, la rotation se fait entre tous les utilisateurs au rôle
+            Commercial. Ceux qui ont déjà atteint le plafond de leads ouverts
+            sont sautés ; repli sur le responsable par défaut si tous sont au
+            plafond.
           </p>
           <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
             <Switch name="round_robin_leads_actif"
