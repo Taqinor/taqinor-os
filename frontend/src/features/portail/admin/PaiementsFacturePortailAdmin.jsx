@@ -39,7 +39,7 @@ export default function PaiementsFacturePortailAdmin() {
 
   // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
   const fetchPaiements = useCallback(() => chargerToutesLesPages(
-    (page) => portailApi.admin.paiementsFacture.liste(statutFiltre ? { statut: statutFiltre, page } : { page }),
+    (page, pageSize) => portailApi.admin.paiementsFacture.liste(statutFiltre ? { statut: statutFiltre, page, page_size: pageSize } : { page, page_size: pageSize }),
     { setRows, setLoadError, setLoading },
   ), [statutFiltre])
 

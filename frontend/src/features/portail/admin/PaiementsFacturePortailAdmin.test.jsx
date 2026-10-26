@@ -26,7 +26,7 @@ describe('PaiementsFacturePortailAdmin — PACT98', () => {
     portailApi.admin.paiementsFacture.liste.mockResolvedValue({ data: enveloppe([]) })
     renderPage(<PaiementsFacturePortailAdmin />)
     await waitFor(() => expect(portailApi.admin.paiementsFacture.liste)
-      .toHaveBeenCalledWith({ statut: 'initie', page: 1 }))
+      .toHaveBeenCalledWith({ statut: 'initie', page: 1, page_size: 200 }))
   })
 
   it('affiche le montant formaté et le statut', async () => {

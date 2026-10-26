@@ -13,7 +13,7 @@ export const fetchTickets = createAsyncThunk(
     try {
       const q = { ouvert: 'tous', ...(params ?? {}) }
       const all = await fetchAllPages(
-        (page) => savApi.getTickets({ ...q, page }).then((r) => r.data),
+        (page, { page_size: pageSize } = {}) => savApi.getTickets({ ...q, page, page_size: pageSize }).then((r) => r.data),
         { concurrency: 20 },
       )
       return all

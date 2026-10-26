@@ -38,7 +38,7 @@ export default function ComptesPortailAdmin() {
   // compte au-delà de la page 1 (ordering -id ⇒ les plus anciens) restait
   // invisible donc impossible à révoquer.
   const fetchComptes = () => chargerToutesLesPages(
-    (page) => portailApi.admin.comptes.liste({ page }),
+    (page, pageSize) => portailApi.admin.comptes.liste({ page, page_size: pageSize }),
     { setRows, setLoadError, setLoading },
   )
 
@@ -53,7 +53,7 @@ export default function ComptesPortailAdmin() {
   // (50 clients sur 139) : tous les autres — dont ceux qui ont des factures —
   // ne pouvaient pas recevoir d'accès. On lit TOUTES les pages (`next` suivi).
   useEffect(() => {
-    fetchAllPages((page) => crmApi.getClients({ page }).then((r) => r.data))
+    fetchAllPages((page, { page_size: pageSize } = {}) => crmApi.getClients({ page, page_size: pageSize }).then((r) => r.data))
       .then((data) => setClients(Array.isArray(data) ? data : (data?.results ?? [])))
       .catch(() => {})
   }, [])

@@ -11,7 +11,7 @@ export const fetchInstallations = createAsyncThunk(
   async (params, { rejectWithValue }) => {
     try {
       const all = await fetchAllPages(
-        (page) => installationsApi.getInstallations({ ...(params ?? {}), page }).then((r) => r.data),
+        (page, { page_size: pageSize } = {}) => installationsApi.getInstallations({ ...(params ?? {}), page, page_size: pageSize }).then((r) => r.data),
         { concurrency: 20 },
       )
       return all
