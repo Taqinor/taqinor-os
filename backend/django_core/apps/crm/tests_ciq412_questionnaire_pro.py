@@ -4,9 +4,9 @@ activité, site, société — et plus jamais une question résidentielle.
 Contrats partagés : ``questionnaire_lead.json`` (``exemple_pro``,
 ``segment_pro``) et ``questionnaire_lien_mint.json`` (``exemple_pro``), CIQ400.
 
-Écart assumé : le GPS reste une section du lead pro (« plus gps et contact
-s'ils manquent », texte de la tâche) ; ``exemple_pro`` du contrat ne le
-montre pas. Les clés servies sont un SUR-ensemble de celles du contrat.
+Le GPS est une section du lead pro, cochée par défaut tant qu'il manque
+(fondateur 26/10/2026 : calcul heure par heure de la production) ;
+``exemple_pro`` du contrat le montre.
 
 Run :
     python manage.py test apps.crm.tests_ciq412_questionnaire_pro -v 2
@@ -63,7 +63,7 @@ class QuestionnairePro(TestCase):
             self.assertEqual(list(quest.CHAMPS_PAR_SECTION[section]),
                              colonnes, section)
         self.assertEqual(
-            set(CONTRAT['segment_pro']['sections_pro']) - {'contact'},
+            set(CONTRAT['segment_pro']['sections_pro']) - {'contact', 'gps'},
             set(quest.SECTIONS_PRO_SEULES))
 
     def test_envoi_pro_coche_les_sections_pro_manquantes(self):
@@ -131,6 +131,14 @@ class QuestionnairePro(TestCase):
         # Hors section : jamais écrit.
         self.assertEqual(lead.email, 'h@example.ma')
         self.assertIsNone(lead.decideur)
+
+    def test_gps_coche_par_defaut_tant_qu_il_manque(self):
+        # Fondateur 26/10/2026 — le GPS fait partie des sections pro par défaut.
+        sans = self._pro()
+        self.assertTrue(quest.questions_par_defaut(sans)['gps'])
+        self.assertIn('gps', quest.sections_du_lead(sans))
+        avec = self._pro(gps_lat=Decimal('33.57'), gps_lng=Decimal('-7.59'))
+        self.assertFalse(quest.questions_par_defaut(avec)['gps'])
 
     def test_site_manquant_tant_que_type_de_surface_ou_toiture_vide(self):
         # Fondateur 26/10/2026 — pas seulement la surface.
