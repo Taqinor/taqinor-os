@@ -299,6 +299,27 @@ class CompositionTests(TestCase):
         for nom in ('Parafoudre', 'Mise à la terre', 'Protection DC'):
             self.assertFalse(any(nom in d for d in comp['prix_a_renseigner']), nom)
 
+    def test_coffrets_au_bareme_par_onduleur_et_par_panneau(self):
+        # Fondateur 26/10/2026 — coffrets C&I tarifés comme le tableau
+        # résidentiel : par onduleur + par panneau.
+        for p in self.cat:
+            if p['role_ci'] in ('coffret_dc', 'coffret_ac'):
+                p['prix_connu'] = True
+                p['bareme_coffret'] = {'par_onduleur_ht': Decimal('500'),
+                                       'par_panneau_ht': Decimal('20')}
+        comp = composer_ci(100, self.cat, onduleurs=_onduleurs(self.cat, 100),
+                           entrees=_entrees(), forfaits={})
+        nb_pan = math.ceil(100 * 1000 / 710)
+        dc = self._lignes(comp, 'coffret_dc')[0]
+        ac = self._lignes(comp, 'coffret_ac')[0]
+        nb_ond = dc['quantite']
+        attendu = Decimal(500 * nb_ond + 20 * nb_pan)
+        self.assertTrue(dc['prix_connu'] and ac['prix_connu'])
+        self.assertEqual(Decimal(ac['prix_unitaire_ht']), attendu)
+        self.assertAlmostEqual(Decimal(dc['prix_unitaire_ht']) * nb_ond, attendu,
+                               delta=Decimal('0.01') * nb_ond)
+        self.assertFalse(any('Coffret' in d for d in comp['prix_a_renseigner']))
+
     def test_aucune_cle_prix_achat(self):
         comp = composer_ci(100, self.cat, onduleurs=_onduleurs(self.cat, 100),
                            entrees=_entrees(), forfaits={})

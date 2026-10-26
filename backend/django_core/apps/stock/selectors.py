@@ -3464,6 +3464,8 @@ def produits_ci(company, avec_prix=False):
     """
     from django.db.models import Q
 
+    from core.product_roles import ROLES_CI_BAREME_COFFRET
+
     from .models import Produit
 
     qs = (Produit.objects
@@ -3471,13 +3473,18 @@ def produits_ci(company, avec_prix=False):
                   is_archived=False)
           .select_related('categorie', 'fiche_technique'))
     if avec_prix:
-        qs = qs.filter(prix_vente__gt=0)
+        qs = qs.filter(Q(prix_vente__gt=0) | Q(prix_fixe_ht__isnull=False)
+                       | Q(prix_par_panneau_ht__isnull=False))
     out = []
     for p in qs.order_by('nom', 'id'):
         role, classement = role_ci_pour(p)
         if role is None:
             continue
-        prix_connu = bool(p.prix_vente and p.prix_vente > 0)
+        prix_connu = bool(p.prix_vente and p.prix_vente > 0) or (
+            role in ROLES_CI_BAREME_COFFRET
+            and (p.prix_fixe_ht is not None or p.prix_par_panneau_ht is not None))
+        if avec_prix and not prix_connu:
+            continue
         eligible, motif = _eligibilite_ci(p, role, prix_connu)
         out.append({
             'id': p.id,

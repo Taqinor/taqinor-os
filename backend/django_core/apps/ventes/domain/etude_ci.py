@@ -685,7 +685,7 @@ def lire_catalogue_ci(company):
     catalogue de la société + module retenu. Jamais ``prix_achat``."""
     from apps.calepinage.services.chaines import specs_module, specs_onduleur
     from apps.stock.selectors import produits_ci, specs_for_produit
-    from core.product_roles import ROLES_ONDULEUR_CI
+    from core.product_roles import ROLES_CI_BAREME_COFFRET, ROLES_ONDULEUR_CI
 
     from ..compatibilites import est_triphase_produit
     from .catalogue import catalogue_de_la_societe, classer_produit
@@ -700,6 +700,12 @@ def lire_catalogue_ci(company):
                                getattr(produit, 'paliers_prix_vente', None) or []),
                            # ADEV79 — la TVA de l'article (TTC des paliers → HT).
                            tva_pct=getattr(produit, 'tva', None))
+        if produit is not None and element.get('role_ci') in ROLES_CI_BAREME_COFFRET and (
+                produit.prix_fixe_ht is not None or produit.prix_par_panneau_ht is not None):
+            # Coffret au barème (26/10/2026) : par onduleur + par panneau.
+            element = dict(element, bareme_coffret={
+                'par_onduleur_ht': produit.prix_fixe_ht,
+                'par_panneau_ht': produit.prix_par_panneau_ht})
         elements.append(element)
 
     onduleurs = []
