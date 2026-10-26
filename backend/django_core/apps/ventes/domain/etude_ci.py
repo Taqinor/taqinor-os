@@ -48,9 +48,14 @@ METHODE_8760 = (
 CLES_INTERDITES = frozenset({'prix_achat', 'marge'})
 MODES = ('commercial', 'industriel')
 
-#: Lead.type_toiture → type de pose CIQ7 : seulement les correspondances
-#: CERTAINES ; une terrasse béton (lestée ou fixée ?) reste à déclarer.
-POSE_DU_TOIT_LEAD = {'bac_acier': 'bac_acier', 'tuiles': 'toiture_inclinee'}
+#: Lead.type_toiture → type de pose CIQ7 DÉCLARÉ. Fondateur 26/10/2026 : la
+#: terrasse béton se pose LESTÉE ; tôle et fibrociment (couvertures en plaques
+#: sur pannes, comme le bac acier) prennent la pose bac acier, la plus proche
+#: du catalogue — le fibrociment garde son alerte amiante (couverture). Une
+#: couverture « autre » reste NON déclarée (pose estimée).
+POSE_DU_TOIT_LEAD = {'bac_acier': 'bac_acier', 'tole_metal': 'bac_acier',
+                     'fibrociment': 'bac_acier', 'tuiles': 'toiture_inclinee',
+                     'terrasse_beton': 'toit_plat_leste'}
 #: ADEV90 (D-ACI-13=a) — mode de pose ESTIMÉ quand aucun n'est déclaré :
 #: terrasse → lestée, toute autre couverture (ou couverture inconnue) →
 #: surimposition. La borne s'applique, dite « pose estimée, à confirmer au

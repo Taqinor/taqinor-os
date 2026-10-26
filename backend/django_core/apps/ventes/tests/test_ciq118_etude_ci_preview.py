@@ -316,6 +316,19 @@ class LeadTests(_Base):
         self.assertNotIn('consommation_absente', [a['code'] for a in etude['alertes']])
         self.assertIn('facture_hiver_mad', etude['entrees_resolues'])
 
+    def test_couverture_du_lead_pose_declaree_fondateur_2610(self):
+        # Fondateur 26/10/2026 — terrasse béton = pose lestée ; tôle et
+        # fibrociment = bac acier ; « autre » reste non déclarée.
+        attendu = {'terrasse_beton': 'toit_plat_leste', 'tole_metal': 'bac_acier',
+                   'fibrociment': 'bac_acier', 'bac_acier': 'bac_acier',
+                   'tuiles': 'toiture_inclinee', 'autre': None}
+        for toit, pose in attendu.items():
+            lead = self._lead(conso_mensuelle_kwh=Decimal('6000'),
+                              categorie_commerciale='bureau', type_toiture=toit)
+            etude = etude_ci.etudier_ci(self.co, {'mode': 'commercial'}, lead=lead)
+            resolue = etude['entrees_resolues'].get('type_pose') or {}
+            self.assertEqual(resolue.get('valeur'), pose, toit)
+
     def test_lead_dune_autre_societe_ignore(self):
         lead = Lead.objects.create(company=self.autre, nom='Étranger',
                                    type_installation='commercial',
