@@ -361,15 +361,9 @@ const releveVal = (i: number, key: string): string => {
   return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
 };
 const releveRows = Array.from({ length: RELEVE_CONSO_MAX_MOIS }, (_, i) => i);
-// Un industriel (cos φ ou secteur servis par le serveur) : sa consommation en
-// kWh du dernier mois passe EN PREMIER, avant la tension.
 // Fondateur 26/10/2026 — un lead pro (une section pro servie) : le GPS sert au
 // calcul heure par heure de la production, la page le lui dit.
 const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'photo_factures', 'photo_poste'].includes(s));
-const estIndustriel =
-  (champs.reseau ?? []).includes('cos_phi') ||
-  (champs.activite ?? []).includes('secteur_industriel') ||
-  prefillStr('secteur_industriel') !== '';
 ---
 
 <Layout
@@ -610,15 +604,68 @@ const estIndustriel =
 
                       {id === 'reseau' && (
                         <>
-                          {/* CIW406 — kWh du dernier mois : un INDUSTRIEL le voit EN PREMIER
-                              (order-first), avant la tension. Jamais de chiffre inventé. */}
+                          {/* Fondateur 26/10/2026 — la question PRINCIPALE : les kWh mois par mois. */}
+                          {demande('reseau', 'releve_conso') && (
+                            <fieldset class="border-0 p-0">
+                              <legend class="mb-1 text-sm font-semibold" data-i18n
+                                data-en="Your consumption in kWh, month by month: it is written on each bill. Start with the most recent month; up to twelve months."
+                                data-ar="استهلاككم بالكيلوواط ساعة، شهراً بشهر: مكتوب في كل فاتورة. ابدؤوا بآخر شهر؛ حتى اثني عشر شهراً.">
+                                Votre consommation en kWh, mois par mois : elle est écrite sur chaque facture. Commencez par le mois le plus récent ; jusqu'à douze mois.
+                              </legend>
+                              <div id="q-releve-rows" class="flex flex-col gap-3">
+                                {releveRows.map((i) => (
+                                  <div class:list={['q-releve-row grid grid-cols-2 gap-2 border border-azur-900/10 p-3', i >= Math.max(1, relevePrefill.length) ? 'hidden' : '']}>
+                                    <div>
+                                      <label for={`q-releve-mois-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Month" data-ar="الشهر">Mois</label>
+                                      <input id={`q-releve-mois-${i}`} data-r="mois" type="month" placeholder="AAAA-MM" value={releveVal(i, 'mois')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
+                                    </div>
+                                    <div>
+                                      <label for={`q-releve-kwh-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="kWh" data-ar="كيلوواط ساعة">kWh</label>
+                                      <input id={`q-releve-kwh-${i}`} data-r="kwh" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
+                                    </div>
+                                    {/* Registres pointe / pleines / creuses : MOYENNE TENSION seulement. */}
+                                    <div class:list={['q-releve-mt col-span-2 grid grid-cols-3 gap-2', tensionPrefill === 'mt' ? '' : 'hidden']}>
+                                      <div>
+                                        <label for={`q-releve-pointe-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Peak (kWh)" data-ar="الذروة (ك.و.س)">Pointe (kWh)</label>
+                                        <input id={`q-releve-pointe-${i}`} data-r="kwh_pointe" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh_pointe')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-2 py-2 text-base outline-none focus:border-azur-600" />
+                                      </div>
+                                      <div>
+                                        <label for={`q-releve-pleines-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Standard (kWh)" data-ar="العادية (ك.و.س)">Pleines (kWh)</label>
+                                        <input id={`q-releve-pleines-${i}`} data-r="kwh_pleines" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh_pleines')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-2 py-2 text-base outline-none focus:border-azur-600" />
+                                      </div>
+                                      <div>
+                                        <label for={`q-releve-creuses-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Off-peak (kWh)" data-ar="الدنيا (ك.و.س)">Creuses (kWh)</label>
+                                        <input id={`q-releve-creuses-${i}`} data-r="kwh_creuses" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh_creuses')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-2 py-2 text-base outline-none focus:border-azur-600" />
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              <button type="button" id="q-releve-add" class:list={['mt-2 border border-azur-600 px-4 py-2 text-sm font-semibold text-azur-700', relevePrefill.length >= RELEVE_CONSO_MAX_MOIS ? 'hidden' : '']}
+                                data-i18n data-en="+ Add a month" data-ar="+ إضافة شهر">
+                                + Ajouter un mois
+                              </button>
+                            </fieldset>
+                          )}
+                          {/* Fondateur 26/10/2026 — repli : UN seul mois quand le client n'a
+                              pas ses kWh mois par mois. Jamais de chiffre inventé. */}
                           {demande('reseau', 'conso_mensuelle_kwh') && (
-                            <div class:list={[estIndustriel ? 'order-first' : '']}>
+                            <div>
                               <label for="q-conso-kwh-reseau" class="mb-1 block text-sm font-semibold" data-i18n
-                                data-en="How many kWh did you use last month? It is on your bill." data-ar="كم كيلوواط ساعة استهلكتم الشهر الماضي؟ الرقم مكتوب في فاتورتكم.">
-                                Combien de kWh avez-vous consommés le mois dernier ? Le chiffre est sur votre facture.
+                                data-en="Only one month at hand? How many kWh did you use that month? It is on your bill." data-ar="ليس لديكم إلا شهر واحد؟ كم كيلوواط ساعة استهلكتم في ذلك الشهر؟ الرقم مكتوب في فاتورتكم.">
+                                Vous n'avez qu'un seul mois sous la main ? Combien de kWh avez-vous consommés ce mois-là ? Le chiffre est sur votre facture.
                               </label>
                               <input id="q-conso-kwh-reseau" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('conso_mensuelle_kwh')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          {demande('reseau', 'facture_hiver') && (
+                            <div>
+                              <label for="q-facture-reseau" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Amount of your latest bill (MAD), for one month"
+                                data-ar="مبلغ آخر فاتورة لكم (درهم)، عن شهر واحد">
+                                Montant de votre dernière facture (MAD), pour un mois
+                              </label>
+                              <input id="q-facture-reseau" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_hiver')} class={PRO_INPUT_CLS} />
                             </div>
                           )}
                           {demande('reseau', 'tension_raccordement') && (
@@ -689,58 +736,6 @@ const estIndustriel =
                                 Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. Si vous ne la trouvez pas, une photo de votre facture nous suffit.
                               </label>
                               <input id="q-kva" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('compteur_puissance_kva')} class={PRO_INPUT_CLS} />
-                            </div>
-                          )}
-                          {demande('reseau', 'releve_conso') && (
-                            <fieldset class="border-0 p-0">
-                              <legend class="mb-1 text-sm font-semibold" data-i18n
-                                data-en="Your latest electricity bills (optional — up to 12 months help us be precise; one is enough)"
-                                data-ar="آخر فواتير الكهرباء (اختياري — حتى 12 شهراً تساعدنا على الدقة؛ وواحدة تكفي)">
-                                Vos dernières factures d'électricité (facultatif — jusqu'à douze mois nous aident à être précis ; une seule suffit)
-                              </legend>
-                              <div id="q-releve-rows" class="flex flex-col gap-3">
-                                {releveRows.map((i) => (
-                                  <div class:list={['q-releve-row grid grid-cols-2 gap-2 border border-azur-900/10 p-3', i >= Math.max(1, relevePrefill.length) ? 'hidden' : '']}>
-                                    <div>
-                                      <label for={`q-releve-mois-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Month" data-ar="الشهر">Mois</label>
-                                      <input id={`q-releve-mois-${i}`} data-r="mois" type="month" placeholder="AAAA-MM" value={releveVal(i, 'mois')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
-                                    </div>
-                                    <div>
-                                      <label for={`q-releve-kwh-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="kWh" data-ar="كيلوواط ساعة">kWh</label>
-                                      <input id={`q-releve-kwh-${i}`} data-r="kwh" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
-                                    </div>
-                                    {/* Registres pointe / pleines / creuses : MOYENNE TENSION seulement. */}
-                                    <div class:list={['q-releve-mt col-span-2 grid grid-cols-3 gap-2', tensionPrefill === 'mt' ? '' : 'hidden']}>
-                                      <div>
-                                        <label for={`q-releve-pointe-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Peak (kWh)" data-ar="الذروة (ك.و.س)">Pointe (kWh)</label>
-                                        <input id={`q-releve-pointe-${i}`} data-r="kwh_pointe" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh_pointe')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-2 py-2 text-base outline-none focus:border-azur-600" />
-                                      </div>
-                                      <div>
-                                        <label for={`q-releve-pleines-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Standard (kWh)" data-ar="العادية (ك.و.س)">Pleines (kWh)</label>
-                                        <input id={`q-releve-pleines-${i}`} data-r="kwh_pleines" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh_pleines')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-2 py-2 text-base outline-none focus:border-azur-600" />
-                                      </div>
-                                      <div>
-                                        <label for={`q-releve-creuses-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Off-peak (kWh)" data-ar="الدنيا (ك.و.س)">Creuses (kWh)</label>
-                                        <input id={`q-releve-creuses-${i}`} data-r="kwh_creuses" type="number" min="0" step="any" inputmode="decimal" value={releveVal(i, 'kwh_creuses')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-2 py-2 text-base outline-none focus:border-azur-600" />
-                                      </div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                              <button type="button" id="q-releve-add" class:list={['mt-2 border border-azur-600 px-4 py-2 text-sm font-semibold text-azur-700', relevePrefill.length >= RELEVE_CONSO_MAX_MOIS ? 'hidden' : '']}
-                                data-i18n data-en="+ Add a month" data-ar="+ إضافة شهر">
-                                + Ajouter un mois
-                              </button>
-                            </fieldset>
-                          )}
-                          {demande('reseau', 'facture_hiver') && (
-                            <div>
-                              <label for="q-facture-reseau" class="mb-1 block text-sm font-semibold" data-i18n
-                                data-en="Amount of your latest bill (MAD), for one month"
-                                data-ar="مبلغ آخر فاتورة لكم (درهم)، عن شهر واحد">
-                                Montant de votre dernière facture (MAD), pour un mois
-                              </label>
-                              <input id="q-facture-reseau" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_hiver')} class={PRO_INPUT_CLS} />
                             </div>
                           )}
                           {demande('reseau', 'cos_phi') && (
