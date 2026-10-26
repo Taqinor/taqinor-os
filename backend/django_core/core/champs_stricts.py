@@ -539,6 +539,18 @@ class ChampsStrictsSansDecimalMixin:
     }
 
 
+class ChampsTexteStrictsMixin:
+    """Textes de modèle STRICTS seulement (``ChaineStricte`` : vraie chaîne,
+    motif sans NUL publié) ; booléens, entiers et décimaux inchangés —
+    api-fuzz-full 26/10, ``compte_rendu`` d'intervention."""
+
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte,
+        models.TextField: ChaineStricte,
+    }
+
+
 class TypageStrictMixin:
     """Variante (lane parametres/sav) : champs modèle texte / booléen / ENTIER
     générés en version stricte (``"5"`` pour un entier → 400) ; ``TextField``
