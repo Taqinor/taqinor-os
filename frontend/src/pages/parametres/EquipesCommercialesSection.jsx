@@ -9,6 +9,7 @@ import EquipesAdminPanel from './EquipesAdminPanel'
 import crmApi from '../../api/crmApi'
 import { useConfirmDialog } from '../../ui/confirm'
 import toutesLesPages from './toutesLesPages'
+import { apiErrorMessage } from '../../lib/apiError'
 
 export default function EquipesCommercialesSection({ assignables = [] }) {
   // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
@@ -48,7 +49,10 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
       await crmApi.saveEquipe(equipe.id, {
         responsable: responsableId || null,
       })
+      setError(null)
       load()
+    } catch (e) {
+      setError(apiErrorMessage(e, 'Le changement de responsable a échoué.'))
     } finally {
       setBusyId(null)
     }
@@ -62,7 +66,24 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
     setBusyId(equipe.id)
     try {
       await crmApi.saveEquipe(equipe.id, { membres: next })
+      setError(null)
       load()
+    } catch (e) {
+      // 400 « X est déjà membre de l'équipe Y » : on l'affiche tel quel.
+      setError(apiErrorMessage(e, 'La mise à jour des membres a échoué.'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const toggleRecoitLeads = async (equipe, valeur) => {
+    setBusyId(equipe.id)
+    try {
+      await crmApi.saveEquipe(equipe.id, { recoit_leads: valeur })
+      setError(null)
+      load()
+    } catch (e) {
+      setError(apiErrorMessage(e, 'Le réglage « reçoit les nouveaux leads » a échoué.'))
     } finally {
       setBusyId(null)
     }
@@ -82,9 +103,12 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
   return (
     <EquipesAdminPanel
       titre="Équipes commerciales"
-      description={`Regroupez des commerciaux pour le tableau de bord « Mes équipes »
-          (pipeline, activités en retard, CA signé agrégés). Un commercial
-          sans équipe reste visible partout ailleurs.`}
+      description={`Les équipes définissent qui manage qui : le responsable d'une
+          équipe devient le manager de ses membres et voit leurs leads ; un
+          membre ne voit que les siens. Une personne = une seule équipe.
+          L'équipe cochée « Reçoit les nouveaux leads » se partage les
+          nouveaux leads en rotation. Alimente aussi le tableau de bord
+          « Mes équipes ».`}
       vide="Aucune équipe configurée."
       placeholder="Nouvelle équipe"
       chefLabel="Responsable d'équipe" chefField="responsable" chefIdPrefix="ec-resp"
@@ -92,6 +116,7 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
       assignables={assignables}
       onRename={renameEquipe} onArchive={archiveEquipe} onDelete={delEquipe}
       onSetChef={toggleResponsable} onToggleMembre={toggleMembre}
+      onToggleRecoitLeads={toggleRecoitLeads}
       newNom={newNom} setNewNom={setNewNom} onAdd={addEquipe} />
   )
 }
