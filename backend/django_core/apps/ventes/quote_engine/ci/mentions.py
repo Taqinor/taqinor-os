@@ -101,14 +101,21 @@ TEXTES_PUISSANCE = {
     "ar": ("تقلص المحطة الطاقة المشتراة؛ القدرة المكتتبة والإتاوة الثابتة "
            "لا تتغيران."),
 }
-#: Note sur la pointe SANS batterie (texte des couvertures, C3-25).
+#: Note sur la pointe SANS batterie (texte des couvertures, C3-25). Fondateur
+#: 27/10/2026 — un fait, jamais une réserve ; devis SANS option « avec ».
 TEXTES_POINTE_SANS = {
-    "fr": ("La pointe (soir/nuit) n'est sécurisée qu'avec un stockage — non "
-           "promise sans batterie."),
-    "en": ("The evening/night peak is only secured with storage — not "
-           "promised without a battery."),
-    "ar": ("لا تُؤمَّن فترة الذروة (المساء/الليل) إلا بالتخزين — غير موعودة "
-           "دون بطارية."),
+    "fr": "Le soir et la nuit, votre consommation reste fournie par le réseau.",
+    "en": "In the evening and at night, your consumption is still supplied by "
+          "the grid.",
+    "ar": "في المساء والليل، يظل استهلاككم مزودًا من الشبكة.",
+}
+#: Fondateur 27/10/2026 — même note quand le devis PORTE l'option « avec ».
+TEXTES_POINTE_SANS_OPTION_AVEC = {
+    "fr": ("Le soir et la nuit, votre consommation reste fournie par le "
+           "réseau ; l'option avec batterie la couvre."),
+    "en": ("In the evening and at night, your consumption is still supplied "
+           "by the grid; the battery option covers it."),
+    "ar": "في المساء والليل، يظل استهلاككم مزودًا من الشبكة؛ ويغطيه خيار البطارية.",
 }
 #: Note sur la pointe AVEC batterie que le moteur ne chiffre pas.
 TEXTES_POINTE_AVEC_NON_CHIFFREE = {
@@ -398,7 +405,13 @@ def valeur_option_avec(data):
 
 def _mention_pointe(data):
     if not _batterie_servie(data):
-        return _entree("pointe", TEXTES_POINTE_SANS, SOURCE_POINTE)
+        # L'offre réseau d'un devis À DEUX options (``option_batterie`` servi
+        # par le builder) renvoie à l'option « avec » ; sinon la phrase seule.
+        textes = (TEXTES_POINTE_SANS_OPTION_AVEC
+                  if isinstance(data.get("option_batterie"), dict)
+                  and not data.get("avec_batterie_differee")
+                  else TEXTES_POINTE_SANS)
+        return _entree("pointe", textes, SOURCE_POINTE)
     # Batterie servie : SEULEMENT ce que le moteur chiffre (un texte qu'il
     # sert), sinon « non chiffrée » — jamais une promesse.
     chiffre = (_dict(data.get("option_batterie")).get("valeur_chiffree")
