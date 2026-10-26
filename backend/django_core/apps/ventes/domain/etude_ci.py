@@ -303,7 +303,8 @@ def _couche_lead(res, lead):
         if feuille == 'fermetures':
             valeur = _fermetures_des_mois(valeur)
         res.poser(feuille, valeur, prov)
-        if feuille == 'couverture' and                 res.valeur('_type_surface') not in POSE_DE_LA_SURFACE_LEAD:
+        sans_toit = res.valeur('_type_surface') in POSE_DE_LA_SURFACE_LEAD
+        if feuille == 'couverture' and not sans_toit:
             res.poser('type_pose', POSE_DU_TOIT_LEAD.get(valeur), prov)
         if feuille == '_type_surface':
             res.poser('type_pose', POSE_DE_LA_SURFACE_LEAD.get(valeur), prov)
