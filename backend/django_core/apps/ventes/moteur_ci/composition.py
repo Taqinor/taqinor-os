@@ -41,6 +41,7 @@ PUR : aucun Django, aucune base, aucun ``apps.*`` (garde AST du test).
 from __future__ import annotations
 
 import math
+import re
 from decimal import Decimal, InvalidOperation
 
 from core.electrique.cables import (
@@ -85,6 +86,15 @@ def _f(valeur):
     except (TypeError, ValueError):
         return None
     return x if math.isfinite(x) else None
+
+
+def nom_client(nom):
+    """Le nom d'un article tel que le CLIENT le lit : sans le marqueur interne
+    « C&I » du catalogue (fondateur 26/10/2026) — « Coffret DC C&I » →
+    « Coffret DC », « Disjoncteur AC 25 A tétrapolaire (C&I) » → « … tétrapolaire »."""
+    if not nom:
+        return nom
+    return re.sub(r'\s*\(C&I\)|\s+C&I\b', '', nom).strip()
 
 
 def _alerte(code, message, niveau='alerte', champ='composition'):
@@ -592,7 +602,7 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
     # ── Options : O&M nommée toujours ; batterie seulement si catalogue+besoin
     om = _du_role(catalogue, 'om_ci')
     options = [{'cle': 'om',
-                'libelle': (om or {}).get('nom')
+                'libelle': nom_client((om or {}).get('nom'))
                 or 'Exploitation et maintenance (O&M)',
                 'prix_connu': bool(om and om.get('prix_connu')),
                 'valeur': 'valeur non chiffrée'}]

@@ -63,6 +63,18 @@ class CombinaisonTests(TestCase):
         self.assertEqual(Decimal(r['prix_vente_total_ht']),
                          _cout(r, self.cat).quantize(Decimal('0.01')))
 
+    def test_le_moins_d_onduleurs_d_abord(self):
+        # Fondateur 26/10/2026 (boulangerie 40 kWc) : 1 × 50 kW, jamais 2 × 15.
+        r = combiner_onduleurs(40, self.cat, phase='tri')
+        self.assertEqual([(x['kw_ac'], x['quantite']) for x in r['combinaison']],
+                         [(50.0, 1)])
+
+    def test_puissance_souscrite_jamais_depassee_si_evitable(self):
+        r = combiner_onduleurs(70, self.cat, phase='tri', ac_max_kw=60)
+        ac = sum(x['kw_ac'] * x['quantite'] for x in r['combinaison'])
+        self.assertLessEqual(ac, 60)
+        self.assertEqual(sum(x['quantite'] for x in r['combinaison']), 2)
+
     def test_fiche_incomplete_jamais_retenue_et_nommee(self):
         cat = [dict(c) for c in self.cat]
         for c in cat:

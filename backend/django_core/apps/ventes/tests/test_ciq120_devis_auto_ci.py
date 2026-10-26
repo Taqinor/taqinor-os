@@ -122,6 +122,10 @@ class DevisAutoCITests(_Base):
         noms = ' '.join(devis.lignes.values_list('designation', flat=True)).lower()
         self.assertNotIn('hybride', noms)
         self.assertNotIn('batterie', noms)
+        # Fondateur 26/10/2026 — le marqueur interne « C&I » n'est jamais lu
+        # par le client (« Coffret DC C&I » → « Coffret DC »).
+        self.assertNotIn('c&i', noms)
+        self.assertIn('coffret dc', noms)
         etude = devis.etude_params['etude_ci']
         for cle in ('entrees_resolues', 'profil_charge', 'production', 'taille',
                     'bilan', 'alertes', 'hypotheses', 'version', 'empreinte'):
