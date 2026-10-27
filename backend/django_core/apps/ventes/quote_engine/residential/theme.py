@@ -185,6 +185,45 @@ def lien_affiche(url: str, segments: int = 2) -> str:
     return "/".join(parts[:segments]) if len(parts) > segments else url
 
 
+def _recolorer_par_table(masque, image) -> bool:
+    """ERR-MOTEUR-QR-MASQUE-LENT-ACCEPTATION — applique ``masque`` (couleur
+    unie) à ``image`` EXACTEMENT comme ``QRColorMask.apply_mask`` de la
+    bibliothèque, mais sans sa boucle Python ``getpixel``/``putpixel`` par
+    pixel (≈ 41 % du PDF signé rendu dans la requête d'acceptation).
+
+    La cible d'un pixel ne dépend que de sa propre couleur : chaque couleur
+    DISTINCTE (quelques dizaines — fond, modules, anticrénelage) est convertie
+    par les fonctions mêmes de la bibliothèque (``extrap_color`` /
+    ``interp_color``), puis réécrite sur une sonde 1×1 du même mode (même
+    sémantique ``putpixel``, alpha compris). Le dessin des modules étant en
+    niveaux de gris, la cible est une fonction du canal rouge → une table par
+    canal appliquée par ``Image.point``. Renvoie False (l'appelant retombe sur
+    la boucle de la bibliothèque, exacte) dès qu'une hypothèse ne tient pas."""
+    from PIL import Image
+    if image.mode not in ("RGB", "RGBA"):
+        return False
+    largeur, hauteur = image.size
+    couleurs = image.getcolors(maxcolors=largeur * hauteur) or []
+    fond = masque.get_bg_pixel(image, 0, 0)
+    encre = masque.get_fg_pixel(image, 0, 0)
+    sonde = Image.new(image.mode, (1, 1))
+    par_rouge = {}
+    for _, px in couleurs:
+        norm = masque.extrap_color(masque.back_color, masque.paint_color, px)
+        cible = (masque.interp_color(fond, encre, norm)
+                 if norm is not None else fond)
+        sonde.putpixel((0, 0), px)
+        sonde.putpixel((0, 0), cible)
+        rendu = sonde.getpixel((0, 0))
+        if par_rouge.setdefault(px[0], rendu) != rendu:
+            return False
+    rouge = image.getchannel(0)
+    tables = [[par_rouge[v][i] if v in par_rouge else 0 for v in range(256)]
+              for i in range(len(image.getbands()))]
+    image.paste(Image.merge(image.mode, [rouge.point(t) for t in tables]), (0, 0))
+    return True
+
+
 @functools.lru_cache(maxsize=64)
 def qr_data_uri(url: str, *, logo=True, correction: str = "H",
                 box_size: int = 16, border: int = 2,
@@ -217,6 +256,17 @@ def qr_data_uri(url: str, *, logo=True, correction: str = "H",
         from qrcode.image.styledpil import StyledPilImage
         from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
         from qrcode.image.styles.colormasks import SolidFillColorMask
+
+        class _MasqueUni(SolidFillColorMask):
+            # Même PNG que ``SolidFillColorMask`` (pixel pour pixel), sans la
+            # boucle par pixel — voir ``_recolorer_par_table``. Noir sur blanc :
+            # la bibliothèque ne touche à rien, on lui laisse ce cas.
+            def apply_mask(self, image):
+                noir_sur_blanc = (tuple(self.back_color), tuple(self.front_color)) == (
+                    (255, 255, 255), (0, 0, 0))
+                if noir_sur_blanc or not _recolorer_par_table(self, image):
+                    SolidFillColorMask.apply_mask(self, image)
+
         niveaux = {
             "L": qrcode.constants.ERROR_CORRECT_L,
             "M": qrcode.constants.ERROR_CORRECT_M,
@@ -232,8 +282,8 @@ def qr_data_uri(url: str, *, logo=True, correction: str = "H",
         kw = dict(
             image_factory=StyledPilImage,
             module_drawer=RoundedModuleDrawer(),
-            color_mask=SolidFillColorMask(front_color=tuple(front),
-                                          back_color=(255, 255, 255)))
+            color_mask=_MasqueUni(front_color=tuple(front),
+                                  back_color=(255, 255, 255)))
         if logo is True:
             chemin = _LIVE_ASSETS / "logo.png"
             if chemin.exists():

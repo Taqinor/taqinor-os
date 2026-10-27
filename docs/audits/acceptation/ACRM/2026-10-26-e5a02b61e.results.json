@@ -1,0 +1,77 @@
+{
+  "sha": "e5a02b61e23228d92e3f7ba6f6e71d021bb849eb",
+  "date": "2026-10-26",
+  "groupe": "ACRM",
+  "verdict": "PASS",
+  "couvre": [
+    "ACRM55",
+    "ACRM57",
+    "ACRM62"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P2.1",
+      "taches": [
+        "ACRM55"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACRM/traces/2026-10-26/ACRM55-P2.1.txt"
+    },
+    {
+      "id": "P5.2",
+      "taches": [
+        "ACRM57"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACRM/traces/2026-10-26/ACRM57-P5.2.txt"
+    },
+    {
+      "id": "P1.4",
+      "taches": [
+        "ACRM62"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACRM/traces/2026-10-26/ACRM62-P1.4.txt"
+    }
+  ]
+}

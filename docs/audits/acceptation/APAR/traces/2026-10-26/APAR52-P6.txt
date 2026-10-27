@@ -1,0 +1,15 @@
+APAR52 — P6 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient demo_admin sur la VRAIE route POST /api/django/ventes/factures/<id>/enregistrer-paiement/ et GET /api/django/onboarding/progress/ ;
+EMAIL_BACKEND locmem ; transaction.atomic + rollback). Société démo 1. Commercial = acc_commercial_test (société 1).
+Montage : la progression « premier_paiement » de demo_admin et du commercial est effacée DANS la transaction (pour observer la bascule).
+
+1. Cas 1 — FAC-202610-0027 (émise, reste dû 14 700,00), created_by passé à acc_commercial_test ; demo_admin encaisse
+   POST …/enregistrer-paiement/ {montant 14700.00, date du jour, mode virement} → 201 ; facture relue « payee ».
+   OnboardingProgress(demo_admin, premier_paiement).complete_le posé (coché True) ; commercial : aucune ligne (n'est plus crédité).
+   GET /onboarding/progress/ (demo_admin) : item ('premier_paiement', 'Encaisser votre 1er paiement', fait True).
+2. Cas 2 — FAC-202610-0024, created_by NULL ; demo_admin encaisse → 201, payee ; demo_admin coché True (plus d'item perdu faute de créateur).
+Écart HORS preuve P6 (clause « renommer l'item premier_devis ») : l'API sert encore ('premier_devis', 'Créer votre 1er devis') ;
+   le nouveau libellé « Envoyer votre 1er devis » n'existe que dans le catalogue code apps/onboarding/services.py:41 (DEFAULT_ITEMS) — aucune
+   migration de données ne rejoue seed_default_items après APAR52 (dernières : 0002/0003/0006), donc toute base déjà semée (démo, prod) garde l'ancien libellé.
+Hors preuve : le paiement public par lien (repli created_by) non rejoué ici.
+Verdict : PASS (preuve P6 : item coché à l'encaisseur) — écart de libellé signalé.

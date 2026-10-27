@@ -1,0 +1,14 @@
+APAR56 — P2.1 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient demo_admin sur les VRAIES routes GET/PUT /api/django/parametres/messages/ et GET /api/django/crm/relance-etapes/<id>/message/ ;
+transaction.atomic + rollback : la personnalisation et les touches sont annulées). Société démo 1.
+Montage : lead « Nadia Alaoui » (fr, e-mail + téléphone) ; touche J9 « apres_devis » ordre 9, template_cle j9_validite, créée successivement en canal e-mail puis WhatsApp.
+
+1. GET /parametres/messages/ : j9_validite corps_fr = défaut (« Votre proposition est valable jusqu'au {date_validite}. Après, je dois revalider… »), non personnalisé.
+   Rendu SANS personnalisation : e-mail → 200, forme e-mail codée (« Bonjour Nadia, je vous joins de nouveau votre proposition. Au-delà, je dois revalider les… ») ;
+   WhatsApp → 200, texte de la clé (« … Après, je dois revalider les prix et la disponibilité du matériel… »), sans la forme codée. (comportement gardé ✔)
+2. PUT /parametres/messages/ {cle j9_validite, corps_fr « CUSTOM ACC APAR56 : votre proposition reste valable, {prenom}. »} → 200.
+3. Rendu AVEC personnalisation : e-mail → 200 message « CUSTOM ACC APAR56 : votre proposition reste valable, Nadia. » (forme codée absente) ;
+   WhatsApp → 200 message identique. Corps e-mail == corps WhatsApp : True.
+Note : `objet` vide dans les deux cas (avec ou sans personnalisation) — l'objet de la forme « Validité de votre proposition {reference} » est omis faute de devis
+   sur ce lead de sonde (règle des phrases à variable manquante, préexistante) ; hors preuve P2.1.
+Verdict : PASS.

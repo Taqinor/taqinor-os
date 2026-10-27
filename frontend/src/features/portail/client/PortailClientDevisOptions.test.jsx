@@ -33,7 +33,7 @@ function serveur() {
     // que la ligne du contrat exige aussi a son propre fichier de test.
     r.data.results[0] = { ...r.data.results[0], exige_identite_entreprise: false }
     if (accepte) {
-      r.data.results[0] = { ...r.data.results[0], accepte: true, statut: 'accepte', statut_display: 'Accepté' }
+      r.data.results[0] = { ...r.data.results[0], accepte: true, acceptable: false, statut: 'accepte', statut_display: 'Accepté' }
     }
     return Promise.resolve(r)
   })
@@ -105,7 +105,7 @@ function serveurConditions({ refuse = false } = {}) {
     r.data.results = [{
       ...r.data.results[0], deux_options: mono.deux_options, options: mono.options,
       exige_identite_entreprise: false,
-      ...(etat.accepte ? { accepte: true, statut: 'accepte', statut_display: 'Accepté' } : {}),
+      ...(etat.accepte ? { accepte: true, acceptable: false, statut: 'accepte', statut_display: 'Accepté' } : {}),
     }]
     return Promise.resolve(r)
   })

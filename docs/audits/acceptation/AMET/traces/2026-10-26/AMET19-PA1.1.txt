@@ -1,0 +1,21 @@
+AMET19 — PA1.1 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient demo_admin sur la VRAIE fiche PATCH /api/django/crm/leads/<id>/ ; rejeu = create_lead_from_meta_lead_ads, la fonction que le webhook Meta appelle — même payload de forme Graph API que le test ; EMAIL_BACKEND locmem ; transaction.atomic + rollback : rien ne reste). Société démo 1.
+
+Attendu (Preuve en direct) : vider le WhatsApp d'un lead Meta dans la fiche, rejouer le webhook : champ toujours vide.
+1. POST /crm/leads/ {nom, telephone +212600019019, whatsapp idem, priorite haute} → 201 ; lead marqué Meta (external_system meta_lead_ads, external_id ACC-AMET19-1, sans note « [Formulaire Meta] » = chemin AMET19).
+   saisies_humaines avant : [].
+2. Fiche : PATCH {whatsapp: "", priorite: "basse"} → 200 (servi whatsapp '' , priorite basse).
+   saisies_humaines servi dans la réponse : [] ; relu en base : [] ⇒ AUCUNE clé marquée par la fiche.
+3. Rejeu Meta (même leadgen) → même lead ; whatsapp relu '212600019019' (RE-REMPLI), priorite basse (gardée) ;
+   1 nouvelle ligne LeadActivity système (user NULL) sur priorite/whatsapp (0 → 1). GET fiche : whatsapp '212600019019'.
+   ⇒ OBSERVÉ ≠ ATTENDU : le WhatsApp vidé à la main revient.
+4. Contrôles : (a) témoin Meta jamais touché (saisies []) → rempli (whatsapp +212600019020, priorite haute) comme avant ✔ ;
+   (b) même lead avec saisies_humaines ['priorite','whatsapp'] POSÉ EN BASE (comme le test) → rejeu : whatsapp '' et priorite basse gardés, 0 ligne système ✔.
+   ⇒ le code AMET19 (ecrire_si_libre) respecte bien le marqueur ; c'est le MARQUEUR qui n'est jamais posé par la fiche.
+Cause suspectée (AMET23, écrivain unique du marqueur) : backend/django_core/apps/crm/views.py::LeadViewSet.perform_update
+   l.599 `ecrits = set(vd.keys())` est calculé AVANT que LeadSerializer.update (apps/crm/serializers.py:1271-1285) ajoute 'saisies_humaines'
+   à validated_data ; l.631-633 `_save_borne_aux_champs(instance, self._champs_ecrivables(ecrits))` borne le save() à update_fields sans
+   'saisies_humaines' (vérifié : LeadViewSet._champs_ecrivables({'whatsapp','priorite','relance_date','company','updated_by'}) ne le contient pas),
+   puis new_lead.refresh_from_db() relit [] ⇒ le marqueur est perdu à chaque PATCH de fiche (CRX25 × AMET23). Aucun test ne couvre
+   « PATCH fiche ⇒ saisies_humaines persisté » (les tests AMET19-21 posent le marqueur en base).
+Verdict : FAIL.
