@@ -295,7 +295,6 @@ class TestDispatchLeads(TestCase):
     def test_changement_de_responsable_rapatrie_la_file(self):
         # Revue Fable 27/10 : les leads en attente suivent le nouveau
         # responsable ; sans responsable, ils partent à leur proposition.
-        from django.utils import timezone
         from apps.crm.models_clients import AttributionEnAttente
         self.auth_as(self.admin)
         url = f'/api/django/crm/equipes/{self.equipe.pk}/'
@@ -306,10 +305,12 @@ class TestDispatchLeads(TestCase):
         self.assertEqual(self.lead.owner_id, self.autre_chef.pk)
         self.assertTrue(AttributionEnAttente.objects.filter(
             lead=self.lead).exists())
+        avant = AttributionEnAttente.objects.get(lead=self.lead).echeance
         r = self.api.patch(url, {'responsable': None}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
+        # Échéance avancée (« maintenant ») : la tâche l'attribue à la minute.
         attente = AttributionEnAttente.objects.get(lead=self.lead)
-        self.assertLessEqual(attente.echeance, timezone.now())
+        self.assertLess(attente.echeance, avant)
 
     def test_file_reservee_au_responsable_et_a_la_direction(self):
         from apps.roles.models import Role
