@@ -571,17 +571,21 @@ def build(ctx) -> str:
         _reco = option_recommandee(d)
         _mini = ('<span class="p3-reco-mini">' + LC(d, "res_recommande_min")
                  + '</span>')
+        # RPDF24 — chaque option (case, nom, prix, pastille) est un bloc
+        # insécable ; la ligne, elle, peut passer à la ligne ENTRE les deux
+        # options (devis 1315 : « recommandé » coupé au bord droit).
         accord_pick_html = (
             '<div class="p3-accord-pick">'
             + LF(d, "res_cochez_option", "Cochez votre option :")
-            + ''
+            + ' <span class="p3-pick-opt">'
             f'<span class="p3-box"></span> {nom_option(d, "sans")} — '
             f'<b>{fmt_mad(_ts)} {LC(d, "cgv_mad_ttc")}</b>'
             + (_mini if _reco == "sans" else "")
-            + f'<span class="p3-box"></span> {_libelle_avec} — '
+            + '</span> <span class="p3-pick-opt">'
+            f'<span class="p3-box"></span> {_libelle_avec} — '
             f'<b>{fmt_mad(_ta)} {LC(d, "cgv_mad_ttc")}</b>'
             + (_mini if _reco == "avec" else "")
-            + '</div>')
+            + '</span></div>')
     else:
         accord_opt_html = (_libelle_avec if _avec_ok
                            else nom_option(d, "sans"))
@@ -747,8 +751,9 @@ def build(ctx) -> str:
   border-radius:2px; margin:0 4px 0 10px; vertical-align:-1px; }}
 /* QRES44 — bandeau de choix d'option CHIFFRÉ sous l'en-tête d'accord */
 .p3-accord-pick {{ padding:7px 16px; background:{C['wash']};
-  border-bottom:1px solid {C['line']}; font-size:8.1pt; color:{C['ink']};
-  white-space:nowrap; }}
+  border-bottom:1px solid {C['line']}; font-size:8.1pt; color:{C['ink']}; }}
+/* RPDF24 — une option ne se coupe jamais ; la ligne passe à la ligne entre deux. */
+.p3-pick-opt {{ display:inline-block; white-space:nowrap; }}
 .p3-accord-pick b {{ color:{C['navy']}; }}
 .p3-accord-pick .p3-box {{ width:12px; height:12px; border:1.4px solid
   {C['navy']}; vertical-align:-2px; margin:0 5px 0 11px; }}
