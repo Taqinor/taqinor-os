@@ -343,3 +343,41 @@ class TestSaisieEtLecture(CIQ101Base):
             self.assertEqual(avant_p[c], apres_p[c], c)
         for c in champs_f:
             self.assertEqual(avant_f[c], apres_f[c], c)
+
+
+class TestCCAT1PrixConnuCi(CIQ101Base):
+    """CCAT1 — UNE règle « prix connu C&I » pour la fiche produit
+    (``etat_ci_produit``) et le catalogue de l'étude (``produits_ci``)."""
+
+    def _etats(self, produit):
+        from apps.stock.selectors import etat_ci_produit, produits_ci
+        catalogue = {e['id']: e for e in produits_ci(self.company)}
+        return etat_ci_produit(produit), catalogue[produit.pk]
+
+    def test_coffret_au_bareme_sans_prix_de_vente_est_connu(self):
+        from decimal import Decimal
+        p = Produit.objects.create(
+            company=self.company, nom='Coffret AC bareme', prix_vente=0,
+            role_ci='coffret_ac', prix_fixe_ht=Decimal('1200'))
+        etat, entree = self._etats(p)
+        self.assertTrue(etat['prix_connu'])
+        self.assertTrue(entree['prix_connu'])
+        self.assertEqual(etat['eligible_ci'], entree['eligible_ci'])
+
+    def test_coffret_sans_bareme_ni_prix_est_inconnu(self):
+        p = Produit.objects.create(
+            company=self.company, nom='Coffret AC nu', prix_vente=0,
+            role_ci='coffret_ac')
+        etat, entree = self._etats(p)
+        self.assertFalse(etat['prix_connu'])
+        self.assertFalse(entree['prix_connu'])
+
+    def test_bareme_ne_vaut_que_pour_les_coffrets(self):
+        from decimal import Decimal
+        from apps.stock.etat_ci import prix_connu_ci
+        p = Produit(nom='Structure', prix_vente=0,
+                    prix_fixe_ht=Decimal('500'))
+        self.assertFalse(prix_connu_ci(p, 'structure_ci'))
+        self.assertTrue(prix_connu_ci(p, 'coffret_dc'))
+        p.prix_fixe_ht, p.prix_vente = None, Decimal('10')
+        self.assertTrue(prix_connu_ci(p, 'structure_ci'))
