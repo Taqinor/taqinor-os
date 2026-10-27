@@ -7,19 +7,23 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { CatalogueTable } from './CatalogueTable.jsx'
 
 /* ============================================================================
-   CCAT9 — encadré « Prêt pour le devis C&I » + `/stock?ci=a_completer`.
-   Contrat partagé : pret_devis_ci.json — LU dans le fichier (PACT10), jamais
-   recopié. Fichier neuf : l'encadré est monté par StockList (dont le module de
-   test mocke tout le store) et non par CatalogueTable ; le test du paramètre
-   `?ci=` s'appuie, lui, sur le vrai CatalogueTable ci-dessous.
+   CCAT9 / CCAT14 — encadré « Prêt pour les devis » (onglets C&I + agricole) et
+   `/stock?ci=a_completer`. Contrats partagés : pret_devis_ci.json et
+   pret_devis_agricole.json — LUS dans les fichiers (PACT10), jamais recopiés.
+   L'encadré est monté par StockList (dont le module de test mocke tout le
+   store) et non par CatalogueTable ; le test du paramètre `?ci=` s'appuie, lui,
+   sur le vrai CatalogueTable ci-dessous.
    ========================================================================== */
 
-const { getPretDevisCi } = vi.hoisted(() => ({ getPretDevisCi: vi.fn() }))
-vi.mock('../../api/stockApi', () => ({ default: { getPretDevisCi } }))
+const { getPretDevisCi, getPretDevisAgricole } = vi.hoisted(() => ({
+  getPretDevisCi: vi.fn(), getPretDevisAgricole: vi.fn(),
+}))
+vi.mock('../../api/stockApi', () => ({ default: { getPretDevisCi, getPretDevisAgricole } }))
 
 import PretDevisCi from './PretDevisCi.jsx'
 
 const contrat = documentContrat('stock', 'pret_devis_ci').exemple
+const contratAgri = documentContrat('stock', 'pret_devis_agricole').exemple
 
 function Lieu() {
   const l = useLocation()
@@ -39,10 +43,24 @@ function monter(ui, entree = '/stock') {
 }
 
 const nbManquants = contrat.nb_obligatoires_manquants
+const nbManquantsAgri = contratAgri.nb_obligatoires_manquants
 
-describe('PretDevisCi (CCAT9)', () => {
+function reponsesContrat() {
+  getPretDevisCi.mockResolvedValue(reponseContrat('stock', 'pret_devis_ci'))
+  getPretDevisAgricole.mockResolvedValue(reponseContrat('stock', 'pret_devis_agricole'))
+}
+
+const toutOk = (c) => ({
+  data: {
+    ...c, pret: true, nb_obligatoires_manquants: 0,
+    postes: c.postes.map((p) => ({ ...p, statut: 'ok', articles: [] })),
+  },
+})
+
+describe('PretDevisCi (CCAT9, CCAT14)', () => {
   beforeEach(() => {
     getPretDevisCi.mockReset()
+    getPretDevisAgricole.mockReset()
     if (!window.matchMedia) {
       window.matchMedia = vi.fn().mockImplementation((q) => ({
         matches: false, media: q, onchange: null,
@@ -52,11 +70,12 @@ describe('PretDevisCi (CCAT9)', () => {
     }
   })
 
-  it("manque : titre avec N, ouvert, article + motif, bouton vers son lien", async () => {
-    getPretDevisCi.mockResolvedValue(reponseContrat('stock', 'pret_devis_ci'))
+  it('manque : titre = somme des deux segments, ouvert, article + motif, bouton vers son lien', async () => {
+    reponsesContrat()
     monter(<PretDevisCi />)
+    const total = nbManquants + nbManquantsAgri
     expect(await screen.findByText(
-      new RegExp(`${nbManquants} éléments obligatoires à compléter`))).toBeTruthy()
+      `Prêt pour les devis : ${total} éléments obligatoires à compléter`)).toBeTruthy()
     expect(screen.getByRole('button', { expanded: true })).toBeTruthy()
     const poste = contrat.postes.find((p) => p.statut === 'a_completer' && p.obligatoire)
     const ligne = screen.getByTestId(`poste-ci-${poste.cle}`)
@@ -74,14 +93,42 @@ describe('PretDevisCi (CCAT9)', () => {
     expect(document.body.textContent).not.toMatch(/prix_achat|MAD|DH/)
   })
 
-  it('tout est ok : « Prêt pour le devis C&I », replié ; clic ouvre ; OK facultatif derrière « Voir tout »', async () => {
-    const pret = {
-      ...contrat, pret: true, nb_obligatoires_manquants: 0,
-      postes: contrat.postes.map((p) => ({ ...p, statut: 'ok', articles: [] })),
-    }
-    getPretDevisCi.mockResolvedValue({ data: pret })
+  it('deux onglets avec leur compte ; le premier non prêt est ouvert ; changer d’onglet montre l’agricole', async () => {
+    reponsesContrat()
     monter(<PretDevisCi />)
-    const bouton = await screen.findByRole('button', { name: /Prêt pour le devis C&I/ })
+    const ongletCi = await screen.findByRole('tab', {
+      name: `Commercial & industriel (${nbManquants})` })
+    const ongletAgri = screen.getByRole('tab', { name: `Agricole (${nbManquantsAgri})` })
+    expect(ongletCi.getAttribute('aria-selected')).toBe('true')
+    expect(ongletAgri.getAttribute('aria-selected')).toBe('false')
+    expect(screen.queryByTestId('poste-ci-pompe:mono')).toBeNull()
+    fireEvent.click(ongletAgri)
+    expect(ongletAgri.getAttribute('aria-selected')).toBe('true')
+    const ligne = screen.getByTestId('poste-ci-pompe:mono')
+    expect(within(ligne).getByText('Pompe à courbe constructeur, monophasée')).toBeTruthy()
+    expect(within(ligne).getByText('Absent du catalogue')).toBeTruthy()
+    // les postes C&I ne sont plus affichés
+    const posteCi = contrat.postes.find((p) => p.statut === 'a_completer' && p.obligatoire)
+    expect(screen.queryByTestId(`poste-ci-${posteCi.cle}`)).toBeNull()
+  })
+
+  it('C&I prêt, agricole non : l’onglet agricole est ouvert d’office ; compte « prêt » sans chiffre', async () => {
+    getPretDevisCi.mockResolvedValue(toutOk(contrat))
+    getPretDevisAgricole.mockResolvedValue(reponseContrat('stock', 'pret_devis_agricole'))
+    monter(<PretDevisCi />)
+    expect(await screen.findByRole('tab', { name: 'Commercial & industriel (prêt)' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: `Agricole (${nbManquantsAgri})` })
+      .getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByTestId('poste-ci-pompe:mono')).toBeTruthy()
+    expect(screen.getByText(
+      `Prêt pour les devis : ${nbManquantsAgri} éléments obligatoires à compléter`)).toBeTruthy()
+  })
+
+  it('tout est ok : « Prêt pour les devis », replié ; clic ouvre ; OK facultatif derrière « Voir tout »', async () => {
+    getPretDevisCi.mockResolvedValue(toutOk(contrat))
+    getPretDevisAgricole.mockResolvedValue(toutOk(contratAgri))
+    monter(<PretDevisCi />)
+    const bouton = await screen.findByRole('button', { name: /^Prêt pour les devis$/ })
     expect(bouton.getAttribute('aria-expanded')).toBe('false')
     expect(screen.queryByTestId(`poste-ci-${contrat.postes[0].cle}`)).toBeNull()
     fireEvent.click(bouton)
@@ -92,10 +139,30 @@ describe('PretDevisCi (CCAT9)', () => {
     expect(screen.getByTestId(`poste-ci-${facultatif.cle}`)).toBeTruthy()
   })
 
-  it('erreur serveur : rien à l’écran (aide, pas un verrou)', async () => {
+  it('un segment en erreur est masqué, l’autre reste affiché', async () => {
+    getPretDevisCi.mockResolvedValue(reponseContrat('stock', 'pret_devis_ci'))
+    getPretDevisAgricole.mockRejectedValue(new Error('500'))
+    const { unmount } = monter(<PretDevisCi />)
+    expect(await screen.findByText(
+      `Prêt pour les devis : ${nbManquants} éléments obligatoires à compléter`)).toBeTruthy()
+    expect(screen.getByRole('tab', { name: `Commercial & industriel (${nbManquants})` })).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: /Agricole/ })).toBeNull()
+    unmount()
+
     getPretDevisCi.mockRejectedValue(new Error('500'))
+    getPretDevisAgricole.mockResolvedValue(reponseContrat('stock', 'pret_devis_agricole'))
+    monter(<PretDevisCi />)
+    expect(await screen.findByRole('tab', { name: `Agricole (${nbManquantsAgri})` })).toBeTruthy()
+    expect(screen.queryByRole('tab', { name: /Commercial/ })).toBeNull()
+    expect(screen.getByTestId('poste-ci-pompe:mono')).toBeTruthy()
+  })
+
+  it('les deux en erreur : rien à l’écran (aide, pas un verrou)', async () => {
+    getPretDevisCi.mockRejectedValue(new Error('500'))
+    getPretDevisAgricole.mockRejectedValue(new Error('500'))
     monter(<PretDevisCi />)
     await waitFor(() => expect(getPretDevisCi).toHaveBeenCalled())
+    await waitFor(() => expect(getPretDevisAgricole).toHaveBeenCalled())
     expect(screen.queryByTestId('pret-devis-ci')).toBeNull()
   })
 })

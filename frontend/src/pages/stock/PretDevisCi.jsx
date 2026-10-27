@@ -5,10 +5,18 @@ import { Badge, Button, Card } from '../../ui'
 import stockApi from '../../api/stockApi'
 
 /* ============================================================================
-   CCAT9 — Encadré « Prêt pour le devis C&I » en tête du catalogue Stock.
-   Contrat partagé : `pret_devis_ci.json` (lu par les tests, jamais recopié).
-   Une AIDE, pas un verrou : en cas d'erreur on ne rend rien. Aucun prix ici.
+   CCAT9/CCAT14 — Encadré « Prêt pour les devis » en tête du catalogue Stock,
+   un onglet par segment. Contrats partagés : `pret_devis_ci.json` et
+   `pret_devis_agricole.json` (même forme ; lus par les tests, jamais recopiés).
+   Une AIDE, pas un verrou : un segment en erreur est masqué, tous en erreur =
+   rien à l'écran. Aucun prix ici.
    ========================================================================== */
+
+// Segments : une ligne par segment (le résidentiel, même forme, s'ajoutera ici).
+const SEGMENTS = [
+  { cle: 'ci', label: 'Commercial & industriel', charger: () => stockApi.getPretDevisCi() },
+  { cle: 'agricole', label: 'Agricole', charger: () => stockApi.getPretDevisAgricole() },
+]
 
 const GROUPES = [
   ['materiel', 'Matériel'],
@@ -51,34 +59,71 @@ function LignePoste({ poste }) {
 }
 
 const aTraiter = (p) => p.obligatoire && p.statut !== 'ok'
+const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? 's' : ''}`
 
-export default function PretDevisCi() {
-  const [data, setData] = useState(null)
-  const [ouvert, setOuvert] = useState(null) // null = défaut selon `pret`
+function PanneauSegment({ data }) {
   const [toutVoir, setToutVoir] = useState(false)
-
-  useEffect(() => {
-    let actif = true
-    ;(async () => {
-      try {
-        const res = await stockApi.getPretDevisCi()
-        if (actif && res?.data && Array.isArray(res.data.postes)) setData(res.data)
-      } catch {
-        /* aide, pas un verrou : silence */
-      }
-    })()
-    return () => { actif = false }
-  }, [])
-
-  if (!data) return null
-  const { pret, nb_obligatoires_manquants: n } = data
-  const estOuvert = ouvert ?? !pret
   // Les postes `ok` facultatifs sont repliés derrière « Voir tout ».
   const postes = data.postes.filter((p) => toutVoir || p.statut !== 'ok' || p.obligatoire)
   const nbCaches = data.postes.length - postes.length
-  const titre = pret
-    ? 'Prêt pour le devis C&I'
-    : `Devis commerciaux et industriels : ${n} élément${n > 1 ? 's' : ''} obligatoire${n > 1 ? 's' : ''} à compléter`
+  return (
+    <div className="flex flex-col gap-3">
+      {GROUPES.map(([groupe, label]) => {
+        const lignes = postes
+          .filter((p) => p.groupe === groupe)
+          .sort((a, b) => Number(aTraiter(b)) - Number(aTraiter(a)))
+        if (lignes.length === 0) return null
+        return (
+          <section key={groupe} aria-label={label}>
+            <h4 className="pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h4>
+            <ul className="divide-y divide-border">
+              {lignes.map((p) => <LignePoste key={p.cle} poste={p} />)}
+            </ul>
+          </section>
+        )
+      })}
+      {(nbCaches > 0 || toutVoir) && (
+        <Button type="button" variant="ghost" size="sm" className="self-start"
+                onClick={() => setToutVoir((v) => !v)}>
+          {toutVoir ? 'Masquer les postes OK facultatifs' : 'Voir tout'}
+        </Button>
+      )}
+    </div>
+  )
+}
+
+export default function PretDevisCi() {
+  const [donnees, setDonnees] = useState({}) // cle -> réponse ; absent = pas (encore) chargé
+  const [ouvert, setOuvert] = useState(null) // null = défaut selon `pret`
+  const [onglet, setOnglet] = useState(null) // null = premier segment non prêt
+
+  useEffect(() => {
+    let actif = true
+    SEGMENTS.forEach(({ cle, charger }) => {
+      ;(async () => {
+        try {
+          const res = await charger()
+          if (actif && res?.data && Array.isArray(res.data.postes)) {
+            setDonnees((d) => ({ ...d, [cle]: res.data }))
+          }
+        } catch {
+          /* aide, pas un verrou : segment masqué, silence */
+        }
+      })()
+    })
+    return () => { actif = false }
+  }, [])
+
+  const charges = SEGMENTS.filter((s) => donnees[s.cle])
+  if (charges.length === 0) return null
+  const tousPrets = charges.every((s) => donnees[s.cle].pret)
+  const total = charges.reduce((t, s) => t + (donnees[s.cle].nb_obligatoires_manquants ?? 0), 0)
+  const estOuvert = ouvert ?? !tousPrets
+  const actif = charges.find((s) => s.cle === onglet)
+    ?? charges.find((s) => !donnees[s.cle].pret) ?? charges[0]
+  const titre = tousPrets
+    ? 'Prêt pour les devis'
+    : `Prêt pour les devis : ${pluriel(total, 'élément')} obligatoire${total > 1 ? 's' : ''} à compléter`
 
   return (
     <Card data-testid="pret-devis-ci" className="mb-4">
@@ -86,36 +131,31 @@ export default function PretDevisCi() {
               onClick={() => setOuvert(!estOuvert)}
               className="flex w-full items-center justify-between gap-2 p-3 text-left sm:p-4">
         <span className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          {pret
+          {tousPrets
             ? <CheckCircle2 className="size-4 shrink-0 text-success-text" aria-hidden="true" />
             : <AlertTriangle className="size-4 shrink-0 text-warning" aria-hidden="true" />}
-          <span className={pret ? 'text-success-text' : 'text-foreground'}>{titre}</span>
+          <span className={tousPrets ? 'text-success-text' : 'text-foreground'}>{titre}</span>
         </span>
         <ChevronDown aria-hidden="true"
                      className={`size-4 shrink-0 text-muted-foreground transition-transform ${estOuvert ? 'rotate-180' : ''}`} />
       </button>
       {estOuvert && (
-        <div className="flex flex-col gap-3 border-t border-border px-3 pb-3 sm:px-4">
-          {GROUPES.map(([groupe, label]) => {
-            const lignes = postes
-              .filter((p) => p.groupe === groupe)
-              .sort((a, b) => Number(aTraiter(b)) - Number(aTraiter(a)))
-            if (lignes.length === 0) return null
-            return (
-              <section key={groupe} aria-label={label}>
-                <h4 className="pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</h4>
-                <ul className="divide-y divide-border">
-                  {lignes.map((p) => <LignePoste key={p.cle} poste={p} />)}
-                </ul>
-              </section>
-            )
-          })}
-          {(nbCaches > 0 || toutVoir) && (
-            <Button type="button" variant="ghost" size="sm" className="self-start"
-                    onClick={() => setToutVoir((v) => !v)}>
-              {toutVoir ? 'Masquer les postes OK facultatifs' : 'Voir tout'}
-            </Button>
-          )}
+        <div className="flex flex-col gap-1 border-t border-border px-3 pb-3 sm:px-4">
+          <div role="tablist" aria-label="Segments de devis" className="flex flex-wrap gap-2 pt-3">
+            {charges.map((s) => {
+              const d = donnees[s.cle]
+              const choisi = s.cle === actif.cle
+              return (
+                <Button key={s.cle} type="button" role="tab" size="sm"
+                        variant={choisi ? 'secondary' : 'outline'}
+                        aria-selected={choisi} data-testid={`onglet-pret-${s.cle}`}
+                        onClick={() => setOnglet(s.cle)}>
+                  {s.label} ({d.pret ? 'prêt' : d.nb_obligatoires_manquants})
+                </Button>
+              )
+            })}
+          </div>
+          <PanneauSegment key={actif.cle} data={donnees[actif.cle]} />
         </div>
       )}
     </Card>

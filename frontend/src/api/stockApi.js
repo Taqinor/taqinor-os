@@ -110,6 +110,8 @@ const stockApi = {
   valorisation: () => api.get('/stock/produits/valorisation/'),
   // CCAT9 — tableau « Prêt pour le devis C&I » (contrat pret_devis_ci.json).
   getPretDevisCi: () => api.get('/stock/produits/pret-devis-ci/'),
+  // CCAT14 — volet agricole du même tableau (contrat pret_devis_agricole.json).
+  getPretDevisAgricole: () => api.get('/stock/produits/pret-devis-agricole/'),
   exportProduitsXlsx: (ids) =>
     api.post('/stock/produits/export-xlsx/', { ids }, { responseType: 'blob' }),
   // N15 — Stock multi-emplacements (dépôt principal + camionnette …).
