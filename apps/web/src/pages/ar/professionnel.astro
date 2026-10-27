@@ -1,8 +1,8 @@
 ---
 /**
  * AR — Business & industrial solar (W67, RTL). Faithful Arabic translation of
- * /professionnel ; EVERY figure kept EXACT in Latin digits (3–5 years, +20 years,
- * 5 MW, 17,04 kWc, 3,72 kWc, ref. 468, Canadian Solar 710 Wc,
+ * /professionnel ; EVERY figure kept EXACT in Latin digits (+20 years,
+ * 5 MW, Canadian Solar 710 Wc,
  * Deye 15 kW, law 82-21). WB — fabricated annual kWh production figures
  * removed (no real Deye reading backed them); production is monitored via
  * real-time production monitoring, never promised. Price-bracket data + solar math (localEstimateBand /
@@ -62,30 +62,30 @@ const RC_PRO_ASSURANCE: string | null = null;
 // إلى زاويتي قراءة.
 const segments = [
   {
-    n: '01', title: 'مستودع / مصنع',
+    n: '01', mode: 'industriel', title: 'مستودع / مصنع',
     body: "كل kWh يدخل في سعر تكلفة قطعة مُنتَجة. سطح عريض ومستوٍ ينتج بالضبط في الساعات التي تشتغل فيها الآلات — يأتي الإنتاج حين يكون الطلب حاضراً.",
     proof: '',
     financier: 'عبء تشغيلي يتحوّل إلى أصل مُهلَك',
     technique: 'سطح عريض ومستوٍ · تركيب دون توقيف الإنتاج',
   },
   {
-    n: '02', title: 'حظيرة فلاحية-صناعية',
+    n: '02', mode: 'industriel', title: 'حظيرة فلاحية-صناعية',
     body: "تجفيف، تبريد، تحويل: الحظيرة الفلاحية تستهلك في وضح النهار، بالضبط حين تعطي الشمس. السطح يحمل الألواح دون أن يأكل متراً مربعاً من الأرض.",
     proof: 'ضمان: هيكل فولاذي مُجلفن 20 سنة، مُركَّب على السطح القائم',
     financier: 'لا مساحة أرضية مستعملة',
     technique: 'هيكل فولاذي مُجلفن بضمان 20 سنة · لا خسارة لمساحة أرضية',
   },
   {
-    n: '03', title: 'تجارة / فندقة',
+    n: '03', mode: 'commercial', title: 'تجارة / فندقة',
     body: "تكييف بعد الظهر، مغسلة في الصباح، مضخّات مسبح بلا انقطاع: منحنى المتجر أو الفندق يعانق منحنى الشمس، ساعة بساعة. تأتي الطاقة الشمسية لتسقّف بنداً يتسلّق كل موسم.",
     proof: '',
     financier: 'يُسقّف بند تكاليف يتصاعد كل موسم سياحي',
     technique: 'منحنى استهلاك مُطابق لسطوع الشمس، ساعة بساعة',
   },
   {
-    n: '04', title: 'مرافق جماعية',
+    n: '04', mode: 'commercial', title: 'مرافق جماعية',
     body: "مبنى عمومي أو عيادة يستهلك أيضاً في المساء وفي الليل. مع عاكسات هجينة (قادرة على التبديل بين الشبكة والطاقة الشمسية والبطارية) وبطاريات تتولى الأمر في المساء وفي الليل، تنخفض الفاتورة في النهار على باقي البناية.",
-    proof: 'ضمان: عاكسات هجينة Deye/Huawei، 10 سنوات',
+    proof: 'ضمان: مدة الضمان حسب بطاقة المنتج',
     financier: 'يخفّض فاتورة المبنى في النهار؛ البطاريات تتولى الأمر في المساء وفي الليل',
     technique: 'عاكسات هجينة + بطاريات · البطاريات تتولى الأمر في المساء وفي الليل',
   },
@@ -189,7 +189,7 @@ const capexOpex = [
         {segments.map((s, i) => (
           <div class="v2-rise border-s-2 border-brass-400/60 ps-6" style={`--v2-i:${i}`}>
             <p class="fig lum text-2xl">{s.n}</p>
-            <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
+            <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
             {/* W335 — سطرا قراءة: مالي (المدير المالي) ثم تقني/تشغيلي */}
             <dl class="mt-4 space-y-2 border-t border-white/10 pt-3">
@@ -203,6 +203,7 @@ const capexOpex = [
               </div>
             </dl>
             {s.proof && <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>}
+            <a href={s.mode === 'commercial' ? `${L('/devis/mon-toit')}?mode=commercial` : `${L('/devis/mon-toit')}?mode=industriel`} class="mt-4 inline-block border-b border-white/40 pb-0.5 text-sm font-semibold text-lune" data-segment-cta={s.mode}>ابدأوا الدراسة <span class="inline-block rtl:-scale-x-100" aria-hidden="true">→</span></a>
           </div>
         ))}
       </div>

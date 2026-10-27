@@ -1,8 +1,8 @@
 ---
 /**
  * EN — Business & industrial solar (W67). Faithful translation of /professionnel ;
- * EVERY figure kept EXACT in Latin digits (3–5 years, +20 years, 5 MW, 17,04 kWc,
- * 3,72 kWc, ref. 468, Canadian Solar 710 Wc, Deye 15 kW, law
+ * EVERY figure kept EXACT in Latin digits (+20 years, 5 MW,
+ * Canadian Solar 710 Wc, Deye 15 kW, law
  * 82-21) — UK spelling (authorisation). WB — fabricated annual kWh production
  * figures removed (no real Deye reading backed them); production is monitored
  * via real-time production monitoring, never promised. Price-bracket data + solar math (localEstimateBand / formatMAD) reused
@@ -66,30 +66,30 @@ const RC_PRO_ASSURANCE: string | null = null;
 // figure, just the same already-published proof split into two reading angles.
 const segments = [
   {
-    n: '01', title: 'Warehouse / plant',
+    n: '01', mode: 'industriel', title: 'Warehouse / plant',
     body: "Every kWh enters the cost price of a manufactured part. A wide, flat roof produces exactly when the machines are running — production lands when demand is there.",
     proof: '',
     financial: 'An operating cost that becomes a depreciated asset',
     technical: 'Wide, flat roof · install with no production stoppage',
   },
   {
-    n: '02', title: 'Agro-industrial shed',
+    n: '02', mode: 'industriel', title: 'Agro-industrial shed',
     body: "Drying, cold storage, processing: an agricultural shed consumes in broad daylight, exactly when the sun gives. The roof carries the panels without eating a square metre of ground.",
     proof: 'Warranty: galvanised steel structure, 20 years, mounted on the existing roof',
     financial: 'No ground surface used',
     technical: 'Galvanised steel structure, 20-year warranty · no ground surface lost',
   },
   {
-    n: '03', title: 'Retail / hospitality',
+    n: '03', mode: 'commercial', title: 'Retail / hospitality',
     body: "Air conditioning in the afternoon, laundry in the morning, pool pumps running non-stop: a shop or hotel's curve hugs the sun's, hour for hour. Solar comes to cap a cost item that climbs every season.",
     proof: '',
     financial: 'Caps a cost line that climbs every tourist season',
     technical: 'Consumption curve tracks sunshine, hour for hour',
   },
   {
-    n: '04', title: 'Public sites',
+    n: '04', mode: 'commercial', title: 'Public sites',
     body: "A public building or clinic also consumes in the evening and at night. With hybrid inverters (able to switch between the grid, solar and the battery) and batteries that take over in the evening and at night, the bill drops by day on the rest of the building.",
-    proof: 'Warranty: Deye/Huawei hybrid inverters, 10 years',
+    proof: 'Warranty: warranty duration per the product sheet',
     financial: 'Lowers the building bill by day; batteries take over in the evening and at night',
     technical: 'Hybrid inverters + batteries · batteries take over in the evening and at night',
   },
@@ -199,7 +199,7 @@ const capexOpex = [
         {segments.map((s, i) => (
           <div class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
             <p class="fig lum text-2xl">{s.n}</p>
-            <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
+            <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
             {/* W335 — two reading lines: financial (CFO) then technical/operational */}
             <dl class="mt-4 space-y-2 border-t border-white/10 pt-3">
@@ -213,6 +213,7 @@ const capexOpex = [
               </div>
             </dl>
             {s.proof && <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>}
+            <a href={s.mode === 'commercial' ? `${L('/devis/mon-toit')}?mode=commercial` : `${L('/devis/mon-toit')}?mode=industriel`} class="mt-4 inline-block border-b border-white/40 pb-0.5 text-sm font-semibold text-lune" data-segment-cta={s.mode}>Start the study →</a>
           </div>
         ))}
       </div>

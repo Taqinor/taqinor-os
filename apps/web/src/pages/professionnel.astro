@@ -63,30 +63,30 @@ const RC_PRO_ASSURANCE: string | null = null;
 // scindée en deux angles de lecture.
 const segments = [
   {
-    n: '01', title: 'Entrepôt / usine',
+    n: '01', mode: 'industriel', title: 'Entrepôt / usine',
     body: "Chaque kWh entre dans le prix de revient d'une pièce produite. Une toiture large et plane produit pile aux heures où les machines tournent — la production tombe quand la demande est là.",
     proof: '',
     financier: 'Charge d’exploitation qui devient un actif amorti',
     technique: 'Toiture large et plane · pose sans arrêt de production',
   },
   {
-    n: '02', title: 'Hangar agro-industriel',
+    n: '02', mode: 'industriel', title: 'Hangar agro-industriel',
     body: "Séchage, froid, transformation : un hangar agricole consomme en plein jour, exactement quand le soleil donne. La toiture porte les panneaux sans grignoter un mètre carré au sol.",
     proof: 'Garantie : structure acier galvanisé 20 ans, posée sur toiture existante',
     financier: 'Aucune surface au sol utilisée',
     technique: 'Structure acier galvanisé 20 ans · aucune surface au sol perdue',
   },
   {
-    n: '03', title: 'Commerce / hôtellerie',
+    n: '03', mode: 'commercial', title: 'Commerce / hôtellerie',
     body: "Climatisation l'après-midi, blanchisserie le matin, pompes de piscine en continu : la courbe d'un commerce ou d'un hôtel épouse celle du soleil, heure pour heure. Le solaire vient plafonner un poste qui grimpe chaque saison.",
     proof: '',
     financier: 'Plafonne un poste de charges qui grimpe chaque saison touristique',
     technique: 'Courbe de consommation calée sur l’ensoleillement, heure pour heure',
   },
   {
-    n: '04', title: 'Collectivités',
+    n: '04', mode: 'commercial', title: 'Collectivités',
     body: "Un bâtiment public ou une clinique consomme aussi le soir et la nuit. Avec des onduleurs hybrides (capables de basculer entre le réseau, le solaire et la batterie) et des batteries, qui prennent le relais le soir et la nuit, et en journée la facture baisse sur le reste du bâtiment.",
-    proof: 'Garantie : onduleurs hybrides Deye/Huawei, 10 ans',
+    proof: 'Garantie : durée de garantie selon la fiche produit',
     financier: 'Baisse la facture du bâtiment en journée ; les batteries prennent le relais le soir et la nuit',
     technique: 'Onduleurs hybrides + batteries · relais le soir et la nuit',
   },
@@ -197,7 +197,7 @@ const capexOpex = [
         {segments.map((s, i) => (
           <div class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
             <p class="fig lum text-2xl">{s.n}</p>
-            <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
+            <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
             {/* W335 — deux lignes de lecture : financière (CFO) puis technique/opérationnelle */}
             <dl class="mt-4 space-y-2 border-t border-white/10 pt-3">
@@ -211,6 +211,7 @@ const capexOpex = [
               </div>
             </dl>
             {s.proof && <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>}
+            <a href={s.mode === 'commercial' ? '/devis/mon-toit?mode=commercial' : '/devis/mon-toit?mode=industriel'} class="mt-4 inline-block border-b border-white/40 pb-0.5 text-sm font-semibold text-lune" data-segment-cta={s.mode}>Démarrer l'étude →</a>
           </div>
         ))}
       </div>

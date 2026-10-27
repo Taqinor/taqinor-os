@@ -105,3 +105,29 @@ describe('CPRW12 — professionnel EN/AR : mêmes retraits que le FR', () => {
     });
   }
 });
+
+// ── CPRW20 — /professionnel : segments Collectivités sans promesse 10 ans, CTA par mode, titres h3 ──
+describe('CPRW20 — /professionnel : sources des 3 pages', () => {
+  const PAGES20 = ['../src/pages/professionnel.astro', '../src/pages/en/professionnel.astro', '../src/pages/ar/professionnel.astro'];
+  for (const rel of PAGES20) {
+    const src = read(rel);
+    it(`${rel} — la ligne Collectivités ne promet aucune durée de 10 ans`, () => {
+      const bloc = src.slice(src.indexOf("n: '04'"), src.indexOf('];', src.indexOf("n: '04'")));
+      const proof = /proof: '([^']*)'/.exec(bloc)![1]!;
+      expect(proof).not.toMatch(/10\s*(ans|years)/);
+      expect(proof).not.toContain('10 سنوات');
+      expect(proof).not.toMatch(/\d/);
+    });
+    it(`${rel} — chaque segment pointe son CTA vers son mode ; titres en h3 ; plus de commentaire périmé`, () => {
+      expect(src).toMatch(/n: '01', mode: 'industriel'/);
+      expect(src).toMatch(/n: '02', mode: 'industriel'/);
+      expect(src).toMatch(/n: '03', mode: 'commercial'/);
+      expect(src).toMatch(/n: '04', mode: 'commercial'/);
+      expect(src).toContain('data-segment-cta');
+      expect(src).toContain('<h3 class="display mt-2 text-xl text-white">{s.title}</h3>');
+      expect(src).not.toContain('<h2 class="display mt-2 text-xl text-white">{s.title}</h2>');
+      const tete = src.slice(0, src.indexOf('---', 4));
+      for (const vieux of ['17,04', '3,72', 'ref. 468', '3–5']) expect(tete).not.toContain(vieux);
+    });
+  }
+});
