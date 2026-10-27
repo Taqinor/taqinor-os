@@ -34,6 +34,12 @@ EXPIRING_SOON_DAYS = 90
 
 class EquipementSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                            serializers.ModelSerializer):
+    # api-fuzz-full 27/10 (ENF11) — textes de modèle STRICTS (comme le ticket) :
+    # leur motif publié exclut le caractère nul que DRF refuse — un
+    # ``numero_serie`` à ``\u0000`` était « conforme » puis refusé 400.
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte, models.TextField: ChaineStricte}
     # ENF17 — FK inscriptibles bornées à la société : un id d'ailleurs reçoit
     # la réponse d'un id absent (400), à la création comme au PATCH.
     same_company_fields = (

@@ -7,7 +7,7 @@ from drf_spectacular.utils import (
     extend_schema, extend_schema_serializer, inline_serializer,
 )
 from rest_framework.parsers import JSONParser
-from rest_framework import serializers, status
+from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -18,6 +18,7 @@ from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStri
 from core.viewsets import CompanyScopedModelViewSet
 
 from ..corps_achats import ControleQualiteCorps, valider_corps
+from ..erreurs_achats import statut_refus_metier
 from ..openapi_helpers import EntierBornePublie
 from ..serializers_wms import TexteLie
 from ..models import ControleReception, PlanEchantillonnage
@@ -164,6 +165,8 @@ class ControleReceptionActionsMixin:
                 unites_controlees=saisie.get('unites_controlees') or 0,
                 observation=saisie.get('observation') or '')
         except ValueError as exc:
+            # api-fuzz-full 27/10 (ENF11) : réception déjà confirmée = refus
+            # d'ÉTAT → 409 ; une saisie illisible reste un 400.
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=statut_refus_metier(exc))
         return Response(ControleReceptionSerializer(controle).data)

@@ -2,6 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from .views.commissioning import RecettePompageViewSet
+from .views.gps_tracking import InterventionPresenceView
 
 from .views import (
     InstallationViewSet, InterventionViewSet, TypeInterventionViewSet,
@@ -162,5 +163,10 @@ urlpatterns = [
     # FG332 — tournée de livraison optimisée pour un jour (consultatif).
     path('tournee-livraison/', TourneeLivraisonView.as_view(),
          name='installations-tournee-livraison'),
+    # Revue chantier 26/10/2026 — temps passé sur site d'une intervention,
+    # calculé serveur à partir des positions GPS (contrat
+    # contract_samples/intervention_presence.json). Avant le routeur.
+    path('interventions/<int:pk>/presence/', InterventionPresenceView.as_view(),
+         name='installations-intervention-presence'),
     path('', include(router.urls)),
 ]

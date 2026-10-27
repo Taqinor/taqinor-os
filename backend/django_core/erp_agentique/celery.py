@@ -397,6 +397,19 @@ app.conf.beat_schedule = {
         'task': 'installations.purger_demandes_achat_brouillon',
         'schedule': crontab(hour=3, minute=55, day_of_month=1),
     },
+    # Revue chantier 26/10/2026 — rétention 30 j des positions GPS des
+    # techniciens (loi 09-08), quotidienne, heure creuse.
+    'installations-purger-positions-gps': {
+        'task': 'installations.purger_positions_gps',
+        'schedule': crontab(hour=3, minute=35),
+    },
+    # Fondateur 27/10/2026 — suivi GPS interrompu (> 15 min sans position
+    # pendant une intervention en route / sur site) : alerte + notification
+    # du responsable, toutes les 10 minutes.
+    'installations-signaler-interruptions-gps': {
+        'task': 'installations.signaler_interruptions_gps',
+        'schedule': crontab(minute='*/10'),
+    },
     # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
     # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
     # seulement (aucun BCF créé automatiquement), idempotent par société.
