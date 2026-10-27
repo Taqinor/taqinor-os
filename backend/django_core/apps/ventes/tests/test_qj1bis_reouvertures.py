@@ -125,3 +125,17 @@ class ReouvertureTests(TestCase):
         b = ShareLink.objects.get(pk=self.link.pk)
         self.assertTrue(_stamp_view(a))
         self.assertFalse(_stamp_view(b))
+
+    def test_cprs9_sans_lead_auteur_notifie(self):
+        """CPRS9 — un devis sans lead prévient son auteur à l'ouverture."""
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-QJ1BIS-0002',
+            client=self.client_obj, created_by=self.owner,
+            taux_tva=Decimal('20'))
+        lien = ShareLink.objects.create(company=self.company, devis=devis)
+        avant = Notification.objects.filter(recipient=self.owner).count()
+        with _PATCH_GEN, _PATCH_DL:
+            APIClient().get(f'/api/django/public/document/{lien.token}/')
+        self.assertEqual(
+            Notification.objects.filter(recipient=self.owner).count(),
+            avant + 1)

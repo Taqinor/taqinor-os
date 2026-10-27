@@ -379,6 +379,8 @@ def _notify_first_open(link, request=None):
         if not link.devis_id:
             return
         lead = getattr(link.devis, 'lead', None)
+        if lead is None:
+            _notifier_auteur_sans_lead(link)  # CPRS9
         if lead is not None:
             devis_ref = link.devis.reference
             # QJ1 — note chatter (toujours).
@@ -399,6 +401,23 @@ def _notify_first_open(link, request=None):
         _notifier_variante_consultee(link)
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_notify_first_open', exc_info=True)
+
+
+def _notifier_auteur_sans_lead(link, *, reprise=False):
+    """CPRS9 — un devis fait sur un client SANS lead n'a pas de responsable
+    de lead à prévenir : son auteur l'est, avec le même titre que QJ2."""
+    devis = link.devis
+    auteur = getattr(devis, 'created_by', None)
+    if auteur is None or not getattr(auteur, 'is_active', False):
+        return
+    from apps.notifications.types_evenements import EventType
+    from apps.notifications.services import notify
+    verbe = 'rouvert' if reprise else 'ouvert'
+    notify(
+        auteur, EventType.DEVIS_OPENED,
+        f'Devis {devis.reference} {verbe} par le client',
+        body=f'Le client a {verbe} le devis {devis.reference}.',
+        link=f'/ventes/devis?devis={devis.id}', company=devis.company)
 
 
 def _notifier_variante_consultee(link):
@@ -481,6 +500,7 @@ def _notify_open(link, request=None, *, is_first):
             return
         lead = getattr(link.devis, 'lead', None)
         if lead is None:
+            _notifier_auteur_sans_lead(link, reprise=True)  # CPRS9
             return
         from apps.crm.services import (
             noter_devis_reouvert, notify_devis_opened)
