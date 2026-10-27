@@ -641,6 +641,33 @@ class RevisionApresVisiteCorc2Tests(_Base):
         self.assertIn('longueur_ac_m', [m['cle'] for m in resultat['mesures_utilisees']])
         self.assertTrue(resultat['lignes_changees'])
 
+    def test_taille_vendue_gardee(self):
+        from apps.ventes.domain.etudes import puissances_etude_horaire
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        devis = self._auto(lead)
+        avant = puissances_etude_horaire(devis)
+        self._visite(lead)
+        apres = puissances_etude_horaire(self._reviser(devis)['devis'])
+        self.assertEqual(apres, avant)
+
+    def test_refus_apres_revision_rien_ecrit(self):
+        # Fable pré-merge : un refus (ici prestations non réglées) après la
+        # révision d'un envoyé ne laisse ni V1 remplacée ni V2 orpheline.
+        from apps.ventes.domain.revision_visite_ci import RevisionVisiteError
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        devis = self._auto(lead)
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        devis.refresh_from_db()
+        self._visite(lead)
+        CompanyProfile.objects.filter(company=self.co).update(forfaits_ci={})
+        avant = Devis.objects.filter(company=self.co).count()
+        with self.assertRaises(RevisionVisiteError):
+            self._reviser(devis)
+        devis.refresh_from_db()
+        self.assertTrue(devis.is_active)
+        self.assertIsNone(devis.superseded_by_id)
+        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+
     def test_devis_envoye_v2_creee_v1_intacte(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
         devis = self._auto(lead)
