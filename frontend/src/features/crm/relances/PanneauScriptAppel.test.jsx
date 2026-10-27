@@ -768,6 +768,37 @@ describe('CIQ420 — script d’appel pro', () => {
       COMMERCIAL.lead_id, { reponses_categorie: { occupation_pct: 60, piscine: true } }))
   })
 
+  it('CSV1 — deux réponses d’activité coup sur coup : la seconde garde la première (panneau pas encore rechargé)', async () => {
+    // Rejeu en direct (lead 2232) : « 65 » puis « Oui » avant le rechargement
+    // ⇒ la fusion partait de l'ancien `prefill` et effaçait le taux.
+    armer({ panneau: hotel(null, ['chambres', 'occupation_pct', 'piscine']) })
+    crmApi.getPanneauAppel.mockResolvedValue({ data: hotel(null, ['chambres', 'occupation_pct', 'piscine']) })
+    crmApi.updateLead.mockImplementation((_id, corps) => Promise.resolve({
+      data: { id: COMMERCIAL.lead_id, reponses_categorie: corps.reponses_categorie },
+    }))
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    const occupation = await screen.findByTestId('sous-question-occupation_pct')
+    fireEvent.change(within(occupation).getByRole('textbox'), { target: { value: '65' } })
+    fireEvent.click(within(occupation).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(within(screen.getByTestId('sous-question-piscine'))
+      .getByRole('button', { name: 'Oui' })).not.toBeDisabled())
+    fireEvent.click(within(screen.getByTestId('sous-question-piscine'))
+      .getByRole('button', { name: 'Oui' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenLastCalledWith(
+      COMMERCIAL.lead_id, { reponses_categorie: { occupation_pct: 65, piscine: true } }))
+  })
+
+  it('CSV2 — la case de facture affiche son unité (kWh / mois ou MAD / mois)', async () => {
+    armer({ panneau: COMMERCIAL })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    await screen.findByTestId('questions-appel')
+    const unites = ['conso_mensuelle_kwh', 'facture_hiver']
+      .map((c) => screen.queryByTestId(`unite-${c}`)?.textContent).filter(Boolean)
+    expect(unites.length).toBeGreaterThan(0)
+    for (const u of unites) expect(u).toMatch(/^(kWh|MAD) \/ mois$/)
+  })
+
   it('CSV1 — une clé « choix » (restaurant : horaires) s’écrit en chaîne, pas en booléen', async () => {
     const panneau = hotel(null, ['horaires'])
     panneau.prefill.categorie_commerciale = 'restaurant'

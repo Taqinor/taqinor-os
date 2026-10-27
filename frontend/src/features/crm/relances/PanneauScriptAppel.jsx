@@ -58,6 +58,14 @@ const LANGUES_RTL = ['darija', 'ar']
  *  champ (`fieldLabels`) plutôt que le `verbose_name` technique. Découpé en
  *  `{ question, consigne }` : la question seule se lit au client, la
  *  consigne (remarques internes du `help_text`) s'affiche en retrait. */
+/** CSV2 — l'unité affichée à côté des saisies de facture : la question parle
+ *  de dirhams ET de kWh, la case ne prend qu'une unité (jamais « 12 000 » MAD
+ *  tapé dans la case des kWh). */
+const UNITES_SAISIE = Object.freeze({
+  conso_mensuelle_kwh: 'kWh / mois',
+  facture_hiver: 'MAD / mois',
+})
+
 function texteDeLaQuestion(entree) {
   return decouperQuestion(
     entree?.question || fieldLabels[entree?.champ]?.label || texteQuestion(entree))
@@ -231,6 +239,11 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
             inputMode={entree.nature === 'nombre' ? 'decimal' : undefined}
             onChange={(e) => onSaisie(e.target.value)}
           />
+          {UNITES_SAISIE[entree.champ] && (
+            <span className="text-sm text-muted-foreground" data-testid={`unite-${entree.champ}`}>
+              {UNITES_SAISIE[entree.champ]}
+            </span>
+          )}
           <Button type="button" size="sm" disabled={occupe} onClick={onEnregistrer}>
             Enregistrer
           </Button>
@@ -238,7 +251,8 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
       )}
       {entree.complements?.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          Ensuite, selon la réponse : {entree.complements.map((c) => c.libelle).join(', ')}.
+          Ensuite, selon la réponse : {entree.complements
+            .map((c) => fieldLabels[c.champ]?.label || c.libelle).join(', ')}.
         </p>
       )}
       {erreur && (
@@ -279,6 +293,7 @@ export default function PanneauScriptAppel({
   const [saisies, setSaisies] = useState({})
   const [erreurs, setErreurs] = useState({})
   const [enCours, setEnCours] = useState('')
+  const [objetsEcrits, setObjetsEcrits] = useState({})
   const [score, setScore] = useState(null)
 
   const etapeId = etape?.id ?? null
@@ -404,6 +419,16 @@ export default function PanneauScriptAppel({
         // (`LeadViewSet.perform_update`) : on AFFICHE le sien, jamais un
         // calcul d'écran.
         if (data && data.score !== undefined && data.score !== null) setScore(data.score)
+        // CSV1 — un objet écrit (réponses d'activité) devient la base de la
+        // prochaine fusion tout de suite, sans attendre le rechargement du
+        // panneau : deux réponses données coup sur coup ne s'effacent pas.
+        if (valeur && typeof valeur === 'object' && !Array.isArray(valeur)) {
+          const ecrit = data?.[entree.champ]
+          setObjetsEcrits((o) => ({
+            ...o,
+            [`${leadId}.${entree.champ}`]: ecrit && typeof ecrit === 'object' ? ecrit : valeur,
+          }))
+        }
         setSaisies((s) => {
           const suite = { ...s }
           delete suite[entree.champ]
@@ -447,7 +472,7 @@ export default function PanneauScriptAppel({
     <SousQuestions
       key={entree.champ}
       entree={entree}
-      existant={panneau?.prefill?.[entree.champ] || {}}
+      existant={objetsEcrits[`${leadId}.${entree.champ}`] || panneau?.prefill?.[entree.champ] || {}}
       categorie={panneau?.prefill?.categorie_commerciale}
       saisies={saisies}
       occupe={Boolean(enCours)}
