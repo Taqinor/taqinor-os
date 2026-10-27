@@ -839,6 +839,30 @@ def _site_du_calcul(res, reglages, sans_tmy):
     return profils, alertes_pvgis, coordonnees, temperatures, heures_repli
 
 
+def _lire_mode_pompe(brut):
+    """AGM6 — ``(mode, alertes)`` : un mode vide vaut ``neuve`` (défaut
+    AGQ39, aucune alerte) ; un mode inconnu bascule sur ``neuve`` en le DISANT
+    (``mode_pompe_invalide``), jamais en silence."""
+    mode = brut or 'neuve'
+    if mode in ('neuve', 'existante'):
+        return mode, []
+    return 'neuve', [_alerte(
+        'mode_pompe_invalide', 'mode_pompe',
+        "Mode de pompe « %s » inconnu (attendu : neuve ou existante) : "
+        "pompe neuve étudiée." % mode)]
+
+
+def _alerte_type_suppose(mode_pompe, type_pompe):
+    """AGM6 — ``[alerte]`` d'une pompe neuve sans type déclaré (immergée
+    supposée), sinon ``[]``."""
+    if mode_pompe != 'neuve' or type_pompe:
+        return []
+    return [_alerte(
+        'type_pompe_supposee', 'type_pompe',
+        "Type de pompe non renseigné (immergée ou de surface) : pompe "
+        "immergée supposée.")]
+
+
 def etudier_pompage(company, entrees, *, devis=None, lead=None,
                     facture=None, sans_tmy=False):
     """AGR121 — l'étude de pompage complète, forme EXACTE du contrat
@@ -862,25 +886,12 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
         lead = getattr(devis, 'lead', None)
     res, reglages = resoudre_entrees(company, entrees or {}, devis=devis,
                                      lead=lead)
-    alertes_entree = []
-
-    mode_pompe = res.valeur('mode_pompe') or 'neuve'
-    if mode_pompe not in ('neuve', 'existante'):
-        # AGM6 — jamais de bascule silencieuse : le mode lu est nommé.
-        alertes_entree.append(_alerte(
-            'mode_pompe_invalide', 'mode_pompe',
-            "Mode de pompe « %s » inconnu (attendu : neuve ou existante) : "
-            "pompe neuve étudiée." % mode_pompe))
-        mode_pompe = 'neuve'
+    mode_pompe, alertes_entree = _lire_mode_pompe(res.valeur('mode_pompe'))
     alim = res.valeur('alim')
     type_pompe = res.valeur('type_pompe')
     if mode_pompe == 'existante' and not type_pompe:
         type_pompe = res.valeur('_type_pompe_actuelle')
-    if mode_pompe == 'neuve' and not type_pompe:
-        alertes_entree.append(_alerte(
-            'type_pompe_supposee', 'type_pompe',
-            "Type de pompe non renseigné (immergée ou de surface) : pompe "
-            "immergée supposée."))
+    alertes_entree.extend(_alerte_type_suppose(mode_pompe, type_pompe))
     taille_voulue = res.valeur('taille')
     if taille_voulue not in TAILLES_VALIDES:
         taille_voulue = 'recommandee'
