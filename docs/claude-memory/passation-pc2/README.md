@@ -50,15 +50,18 @@ arrive au plafond hebdomadaire et te passe le relais. Fais exactement ceci :
 
 | # | Lane | Branche distante à reprendre | État au 23:10 UTC | Premier geste sur PC2 |
 |---|------|------------------------------|-------------------|-----------------------|
-| 1 | **CSV** script d'appel C&I (CSV1-7) | `claude/loving-mcnulty-85acea` (le bloc de la section 4 fait foi) | prête, attendait Docker (rejeu réel vague 2 ~40 min) | rejeu réel sur la pile PC2, puis PR + file sous jeton |
-| 2 | **RSIZ** taille et composition résidentiel R2 (RSIZ2-10) + R3 | `claude/intelligent-swanson-6f8745` | lane B (RSIZ7-10) commitée, lane A (RSIZ2, 4) en cours ; AUCUN test contre une vraie base | tests du module touché sur la pile PC2, finir lane A, ombrage câblé mais éteint (voir bloc) |
-| 3 | **AGC** client agricole (PDF 3 pages, web) | `claude/vigorous-banach-394458` | vague 1 (13 tâches) faite, round 2/3 en cours | rendu pompage réel ; recapture des goldens `agricole__*` APRÈS #1114 |
-| 4 | **AGV** vendeur agricole | `claude/eager-ellis-77752e` | 211 tests OK (7 modules), migration crm 0144 ; rendu du parcours réel différé | vérifier le numéro de migration contre `main`, rendu réel, PR |
-| 5 | **CPRS** devis web serveur (3 segments) | `claude/fervent-tharp-bd909e` | prête (rendu 20:44) | PR + file sous jeton |
-| 6 | **RWEB** site, tunnel, page devis résidentiel | `claude/zealous-morse-b178c0` | prête ; porte aussi la régression CSS impression de #1104 | `astro build`, PR |
-| 7 | **CEC v4** CEC18 (nan/inf refusés, 400 nommé), S3 | `claude/ci-cec-v4` @ `b7f0bb76a` | prête | fusion `main`, PR |
-| 8 | **CCAT** rounds 2+3 (table « prêt pour devis » C&I+agricole, fiche Deye, migration stock 0175) | `claude/ci-ccat-r3` | prête, critique Fable en cours | renuméroter la migration si `main` a avancé, PR |
-| 9 | **CE2E** recette finale de bout en bout | `claude/beautiful-shannon-68c69b` (rien construit) | jamais démarrée | en DERNIER, quand tout est mergé : parcours C&I (boulangerie, lead 1637), résidentiel, agricole ; preuves en direct RHOR8, AMOT64, CLD9, CLD13 |
+| 1 | **CSV** script d'appel C&I (CSV1-18) | `claude/ci-csv` @ `3110893e6` | construite (rien coché : preuves en direct manquantes), Fable GO ; attendait Docker (rejeu réel ~40 min) | rejeu réel sur la pile PC2 (recette notes/csv-notes.md), CSV11 acceptation, puis PR + file sous jeton |
+| 2 | **RSIZ** taille et composition résidentiel R2 (RSIZ2-11) + R3 | `claude/res-rsiz` @ `26d601ad0` | RSIZ2-4, 7-11 commités, RSIZ5 WIP (recapture golden split_dm_comp interrompue), RSIZ6 à faire ; AUCUN test contre une vraie base | finir RSIZ5/6, tâches v3 + DONE LOG, Docker : 8 devis re-rendus + 7 modules de tests, Fable, PR |
+| 3 | **AGC** client agricole (PDF 3 pages, web) | `claude/agr-agc` @ `61faa0a7b` | 13 tâches faites (8 commits), round 2 construit, tests R2 non joués, vérif R3 non rendue | tests Django R2 + rendu pompage réel ; AGC14 (contrat `depense_declaree`) ; recapture `agricole__*` APRÈS #1114 ; Fable ; PR |
+| 4 | **AGV** vendeur agricole | `claude/agr-agv` @ `7b545201b` | AGV1-11, 13, 14 faites, 211 tests OK (7 modules), migration crm 0144 ; rendu du parcours réel différé | re-fusionner main (0144 à re-chaîner si prise), gardes, goldens générateur agricoles (TZ=UTC, `-t agricole`), PR ; rendu réel après merge |
+| 5 | **CPRS** devis web serveur (3 segments) | `claude/ci-cprs` @ `eb9da2c81` | CPRS1-11 cochés, 182 tests OK, acceptation CPRS10 enregistrée | lignes DONE LOG CPRS9-11 + Fable, merge main, contrôles, PR + file sous jeton (pas de Docker) |
+| 6 | **RWEB** site, tunnel, page devis résidentiel | `claude/res-rweb` @ `4852b2839` | RWEB1-7, 9, 11-23, 25, 26 cochés ; tsc/astro build/vitest verts ; RWEB24 ouvert | merge main (fichiers ≥ 2 000 l. sans croissance), `astro build`, PR ; régression CSS impression #1104 à examiner |
+| 7 | **CEC v4** CEC18 (nan/inf refusés, 400 nommé), S3 | `claude/ci-cec-v4` @ `b7f0bb76a` | prête, Fable PUSHABLE | fusion `main` (DONE LOG : garder les deux côtés), contrôles, PR ; round 11 après merge |
+| 8 | **CCAT** rounds 2+3 (table « prêt pour devis » C&I+agricole, fiche Deye, migration stock 0175) | `claude/ci-ccat-r3` @ `c54b9c0b0` | CCAT8-15, 102, 103 construits, critique Fable r2+r3 NON rendue | relancer la critique Fable, renuméroter 0175 si `main` a avancé, CODEMAP → `codemap_fingerprint.py --write`, PR ; CCAT16 après RSIZ |
+| 9 | **CE2E** recette finale de bout en bout | repartir de `origin/main` (la branche `claude/beautiful-shannon-68c69b` = main, rien construit) | jamais démarrée | en DERNIER, quand tout est mergé : 10 profils C&I (boulangerie lead 1637) + 4 résidentiels + 2 pompage ; preuves en direct RHOR8, AMOT64, CLD9, CLD13 |
+
+Les blocs d'état complets (FAIT / RESTE / CONTRÔLES / ATTENTES / FICHIERS / PIÈGES, rédigés par chaque session) sont
+dans **`blocs-sessions.md`** de ce dossier — à lire avant de briefer chaque lane.
 
 Les sessions PC1 de ces lanes ont reçu l'ordre de pousser puis de NE PLUS TOUCHER leur branche. Une branche = une
 machine. Si un bloc de la section 4 manque pour une lane, lis la branche elle-même (`git log origin/<branche>`) : le
@@ -123,10 +126,11 @@ monophasée, pompes OSP sans prix → 0/10 devis agricoles auto chiffrables). Pr
 du 27/10+ gardées par `regles_au_moins(devis, 3)` (REGLES_CORRIGEES_2710 = 3), jamais par `calcul_corrige`.
 `Produit.prix_achat` jamais côté client. Règle #4 : `/proposal` seul chemin PDF client.
 
-## 4. Blocs d'état des sessions PC1 (collés tels quels à leur arrivée — voir aussi `notes/<session>-*.md`)
+## 4. Blocs d'état des sessions PC1
 
-(en cours de collecte — `git pull` cette branche dans 10 min ; en attendant, la branche distante de chaque lane et
-son dernier commit font foi)
+Collectés à 23:35 UTC : **`blocs-sessions.md`** (9 lanes cédées + l'état des 6 lanes PC1). Voir aussi
+`notes/<session>-*.md`. Les pushes de CSV et RWEB ont été refusés par le garde-fou de leurs sessions ; la coordinatrice
+PC1 a poussé ces deux branches elle-même sur ordre du fondateur (vérifié par `git ls-remote`).
 
 ## 5. Rapport du matin attendu par Reda (langage clair, en français)
 Combien de PR mergées et ce que chacune change pour un devis (C&I, résidentiel, agricole) ; ce qui reste ouvert et
