@@ -477,7 +477,9 @@ def _repli_borne(nb, kwc0, pmax, plaque):
     if not (kwc0 and plaque and plaque > 0):
         return nb, ""
     bande_max = valeur("ratio_champ_pompe_bande_alerte").max
-    nb_borne = int(math.ceil(bande_max * plaque * 1000.0 / pmax))
+    # AGM16 — par défaut (jamais au-delà de la bande : un arrondi au-dessus
+    # imprimait « champ 1,56× hors bande » sur un champ borné à 1,5×).
+    nb_borne = int(math.floor(bande_max * plaque * 1000.0 / pmax + 1e-9))
     if nb_borne >= nb:
         return nb, ""
     nb = max(nb_borne, 1)
@@ -648,10 +650,14 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
     else:
         raison = (prod.get("motif") or prod.get("mode")
                   or "production indisponible")
+        # AGM14 (D-AGM-2 étendue) — sans production heure par heure, le kWc
+        # de départ est borné à la plaque comme le repli « non couvert » : une
+        # pompe de 22 kW ne consomme jamais 61 kWc.
+        nb, borne = _repli_borne(nb, kwc0, pmax, plaque)
         alertes.append(_alerte(
             "champ_kwc_depart", "champ.nb_panneaux",
             "Production heure par heure non calculable (%s) : champ au kWc de "
-            "départ E / (η × E_d)." % raison))
+            "départ E / (η × E_d)%s." % (raison, borne)))
 
     # Chaînes : variateur retenu, sinon le suivant (courant / fenêtre).
     chaines = _chaines_vides("aucun variateur retenu")

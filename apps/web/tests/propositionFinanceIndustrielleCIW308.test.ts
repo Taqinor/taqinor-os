@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { rentabiliteCi, syntheseCi, type ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const JALONS = [
   { annee: 5, cumul_mad: 331750.0 },
@@ -113,7 +114,7 @@ describe('CIW308 — rentabiliteCi (extracteur pur)', () => {
 });
 
 describe('CIW308 — la page : ancres par lecteur et figures data-figure', () => {
-  const page = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+  const page = lirePageProposition();
   it('ancres #direction, #exploitation, #achats', () => {
     expect(page).toContain('id="direction"');
     expect(page).toContain('id="exploitation"');

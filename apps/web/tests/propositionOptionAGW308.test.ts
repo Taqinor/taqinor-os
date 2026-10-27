@@ -19,6 +19,7 @@ import {
   optionEndpoint,
   optionMessage,
 } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 vi.mock('cloudflare:workers', () => ({ env: {} }));
 
@@ -157,7 +158,7 @@ describe('POST /api/proposition-option — le proxy', () => {
 });
 
 describe('AGW308 — la page', () => {
-  const page = lire('../src/pages/proposition/[...token].astro');
+  const page = lirePageProposition();
   const bloc = page.slice(page.indexOf('data-agri-options-kit'), page.indexOf('data-agri-non-inclus'));
 
   it('chaque option servie porte « Ajouter au devis », gaté par la fonction pure', () => {

@@ -2543,7 +2543,7 @@ decisions:
     reponse: a
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — session L3 AGM"
-    taches: [AGM2]
+    taches: [AGM2, AGM14]
   - id: D-AGM-3
     question: "Pompe sans courbe (couverture du besoin non vérifiable) : le bloc « Votre argent » reste-t-il publiable au client ?"
     options:

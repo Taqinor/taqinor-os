@@ -386,6 +386,34 @@ class CodesChampNonDimensionneTests(SimpleTestCase):
         self.assertIn("irradiation_inconnue", codes)
 
 
+class MotifVariateurAbsentTests(SimpleTestCase):
+    """AGM15 — rendu R2 : « Variateur : aucun article au catalogue » alors
+    que le catalogue porte 16 VEICHI (pompe existante au CV seul, ou aucune
+    pompe retenue). La cause servie par ``variateur.motif`` est reprise."""
+
+    def _manquants(self, motif):
+        sortie = {'pompe': {'mode': 'existante'},
+                  'variateur': {'nom': None, 'motif': motif},
+                  'champ': {'nb_panneaux': 6}, 'kit': {'inclus': []}}
+        return {m['cle']: m['motif']
+                for m in pompage.roles_minimum_manquants(sortie)}
+
+    def test_kw_de_plaque_a_relever_nomme(self):
+        motif = ("kW de plaque à relever (visite « relevé du point d'eau », "
+                 "D-AGR-4) : variateur non choisi")
+        self.assertEqual(self._manquants(motif)['variateur'], motif)
+
+    def test_aucune_pompe_retenue_nomme(self):
+        motif = 'aucune pompe retenue : variateur non choisi'
+        self.assertEqual(self._manquants(motif)['variateur'], motif)
+
+    def test_absence_au_catalogue_inchangee(self):
+        # Le refus AGQ6 du devis auto reformule CE motif : il reste tel quel.
+        for motif in (pompage.MOTIF_VARIATEUR_CATALOGUE, None):
+            self.assertEqual(self._manquants(motif)['variateur'],
+                             'aucun article au catalogue')
+
+
 class ModeEtTypePompeAlertesTests(SimpleTestCase):
     """AGM6 — jamais de bascule silencieuse : un mode de pompe inconnu et un
     type de pompe absent sont DITS au vendeur (SimpleTestCase : catalogue,
