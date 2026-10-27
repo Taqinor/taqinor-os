@@ -1283,19 +1283,21 @@ class OrganigrammeTest(TestCase):
         self.assertEqual(self._sup(libre), rc.pk)        # (f) inchangé
 
     def test_boucle_refusee_et_annulee(self):
+        # Deux chefs d'équipe qui s'encadreraient mutuellement : c1 dirige T1
+        # (membre m) ; T2 dirigée par m avec c1 pour membre ferait c1 → m → c1.
         from apps.roles.models import EquipeOrg
-        x, y = self._user('org_x'), self._user('org_y')
-        a, b = self._dep('A', x), self._dep('B', y)
+        c1, m = self._user('org_c1'), self._user('org_m')
         r = self.api.post('/api/django/roles/equipes/', {
-            'nom': 'T1', 'departement': a.pk, 'chef': y.pk}, format='json')
+            'nom': 'T1', 'chef': c1.pk, 'membres': [m.pk]}, format='json')
         self.assertEqual(r.status_code, 201, r.content)
-        self.assertEqual(self._sup(y), x.pk)
+        self.assertEqual(self._sup(m), c1.pk)
         r = self.api.post('/api/django/roles/equipes/', {
-            'nom': 'T2', 'departement': b.pk, 'chef': x.pk}, format='json')
+            'nom': 'T2', 'chef': m.pk, 'membres': [c1.pk]}, format='json')
         self.assertEqual(r.status_code, 409, r.content)
-        self.assertIn('hierarchie', r.data)
+        self.assertTrue({'membres', 'hierarchie'} & set(r.data), r.data)
         self.assertFalse(EquipeOrg.objects.filter(nom='T2').exists())
-        self.assertIsNone(self._sup(x))
+        self.assertEqual(self._sup(m), c1.pk)
+        self.assertIsNone(self._sup(c1))
 
     def test_une_seule_equipe_active_trois_types(self):
         from django.apps import apps as django_apps
