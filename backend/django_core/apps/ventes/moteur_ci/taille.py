@@ -145,6 +145,16 @@ def statut_taille(composition):
     return 'calculee'
 
 
+def _unite_puissance_ac(onduleurs):
+    """CLD10 — unité de ``_puissance_ac`` : ``kVA`` quand CHAQUE appareil de la
+    combinaison publie sa S max, sinon ``kW AC`` (puissance active nominale,
+    comparée aux kVA souscrits faute de S max publiée)."""
+    combinaison = (onduleurs or {}).get('combinaison') or []
+    if combinaison and all(_pos(i.get('s_max_kva')) for i in combinaison):
+        return 'kVA'
+    return 'kW AC'
+
+
 def _puissance_ac(onduleurs):
     total = 0.0
     for item in (onduleurs or {}).get('combinaison') or []:
@@ -199,6 +209,7 @@ def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
         'economie': None if economie is None else float(economie),
         'cout': float(cout_vente_ht(composition, onduleurs, taux_tva_pct=taux_tva_pct)),
         'puissance_ac': _puissance_ac(onduleurs),
+        'unite_puissance_ac': _unite_puissance_ac(onduleurs),
         'prix_manquants': de_taille,
         'postes_fixes_sans_prix': fixes,
     }
@@ -497,7 +508,8 @@ def _alertes_injection(e, ps_kva, revente_choisie):
         return []
     return [_alerte(
         'injection_au_dela_ps', 'puissance_souscrite_kva',
-        '%.1f kVA injectés pour %.1f kVA souscrits : la puissance souscrite est dépassée — '
+        '%.1f kW injectés (pointe horaire) pour %.1f kVA souscrits : la puissance souscrite '
+        'est dépassée — '
         'augmentez l’abonnement ou bridez l’injection avant le dépôt du dossier de '
         'raccordement.' % (pointe, ps_kva))]
 
@@ -534,8 +546,11 @@ def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses)
                                % kwc_toit))
     if ps_kva is not None and e['puissance_ac'] > ps_kva + 1e-9:
         alertes.append(_alerte('taille_au_dela_ps', 'taille_explicite_kwc',
-                               'Puissance AC %.1f kVA au-delà de la puissance souscrite '
-                               'déclarée (%g kVA).' % (e['puissance_ac'], ps_kva)))
+                               'Puissance AC %.1f %s au-delà de la puissance souscrite '
+                               'déclarée (%g kVA)%s.' % (
+                                   e['puissance_ac'], e['unite_puissance_ac'], ps_kva,
+                                   '' if e['unite_puissance_ac'] == 'kVA'
+                                   else ' — S max non publiée sur la fiche')))
     if not e['onduleurs'].get('combinaison'):
         alertes.append(_alerte('onduleurs_infaisables', 'taille_explicite_kwc',
                                e['onduleurs'].get('motif') or 'aucune combinaison d’onduleurs',

@@ -133,6 +133,35 @@ class TailleCITests(unittest.TestCase):
         self.assertIn('taille_au_dela_du_toit', codes)
         self.assertIn('taille_au_dela_ps', codes)
 
+    def test_unite_de_la_puissance_ac_comparee_a_la_ps(self):
+        # CLD10 — S max non publiée (Huawei seedés) : la puissance comparée à
+        # la PS est en kW AC, jamais libellée « kVA » ; publiée : en kVA.
+        r = self._taille('hotel', 20000, taille_explicite_kwc=120, puissance_souscrite_kva=50)
+        msg = next(a['message'] for a in r['alertes'] if a['code'] == 'taille_au_dela_ps')
+        self.assertIn('kW AC', msg)
+        self.assertNotIn('kVA au-delà', msg)
+        self.assertEqual(r['evaluation']['unite_puissance_ac'], 'kW AC')
+
+        def avec_smax(kwc):
+            o = combiner_onduleurs(kwc, self.huawei, phase='tri')
+            for item in o.get('combinaison') or []:
+                item['s_max_kva'] = item['kw_ac'] * 1.1
+            return o
+        r = self._taille('hotel', 20000, taille_explicite_kwc=120, puissance_souscrite_kva=50,
+                         combiner=avec_smax)
+        msg = next(a['message'] for a in r['alertes'] if a['code'] == 'taille_au_dela_ps')
+        self.assertIn('kVA au-delà', msg)
+        self.assertEqual(r['evaluation']['unite_puissance_ac'], 'kVA')
+
+    def test_injection_au_dela_ps_en_kw(self):
+        # CLD10 — le surplus horaire est une énergie par heure : une puissance
+        # ACTIVE (kW), comparée aux kVA souscrits.
+        from apps.ventes.moteur_ci.taille import _alertes_injection
+        a = _alertes_injection({'bilan': {'horaire': [{'surplus_kwh': [12.0, 30.0]}]}}, 20.0, True)
+        self.assertEqual(len(a), 1)
+        self.assertIn('30.0 kW injectés', a[0]['message'])
+        self.assertIn('20.0 kVA souscrits', a[0]['message'])
+
     def test_structure_sans_prix_prix_manquants(self):
         r = self._taille('bureau', 6000, composer=partial(_composer, prix_structure=None))
         self.assertIsNone(r['taille']['retenue_kwc'])
