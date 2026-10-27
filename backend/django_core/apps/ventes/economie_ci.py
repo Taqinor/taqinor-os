@@ -1951,8 +1951,9 @@ def reglages_economie_ci(company):
         'entretien_minimum': {'mad_kwc_an': float(profil[0]),
                               'tva_pct': float(profil[1] or 0)}}
     reglage = TariffSettings.objects.filter(company=company).first()
-    if reglage is None:
-        return entretien
+    if reglage is None:  # CEC7 — les scénarios que la 1re lecture du barème seede
+        from apps.parametres.tariff import sensibilites_ci_par_defaut
+        return {**entretien, 'sensibilites_ci': sensibilites_ci_par_defaut()}
     return {
         **entretien,
         'mention_credit_bail_autorisee': bool(

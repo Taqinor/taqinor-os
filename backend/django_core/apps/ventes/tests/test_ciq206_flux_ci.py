@@ -558,3 +558,18 @@ class OptionAvecBatterieTest(SimpleTestCase):
         batterie = [r for r in avec['remplacements']
                     if r['composant'] == 'batterie']
         self.assertEqual(batterie[0]['montant_ht_mad'], 60000.0)
+
+
+class ReglagesSansTariffSettingsTest(SimpleTestCase):
+    def test_cec7_sans_reglage_les_scenarios_que_le_bareme_seede(self):
+        """CEC7 — une société sans réglage lit les scénarios seedés : le même
+        devis ne change plus d'économie selon que le PDF a déjà été rendu."""
+        from unittest import mock
+        from apps.parametres.tariff import SENSIBILITES_CI_DEFAUT
+        with mock.patch('apps.parametres.models_company.CompanyProfile.objects') as profil, \
+                mock.patch('apps.parametres.models_tariff.TariffSettings.objects') as reglage:
+            profil.filter.return_value.values_list.return_value.first.return_value = None
+            reglage.filter.return_value.first.return_value = None
+            lus = eco.reglages_economie_ci(object())
+        self.assertEqual(lus['sensibilites_ci'],
+                         [dict(s) for s in SENSIBILITES_CI_DEFAUT])
