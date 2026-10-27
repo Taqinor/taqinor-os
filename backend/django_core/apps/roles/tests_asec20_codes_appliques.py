@@ -73,6 +73,9 @@ EXEMPTIONS = {
     'records_scope_sous_arbre': (
         "marqueur de portée (pas une action) lu par PRÉFIXE ``records_scope_`` dans "
         "core/scoping.py : narrowing opt-in, jamais comparé au littéral"),
+    'records_scope_soi': (
+        "marqueur de portée (pas une action) lu par PRÉFIXE ``records_scope_`` dans "
+        "core/scoping.py : narrowing opt-in, jamais comparé au littéral"),
 }
 
 

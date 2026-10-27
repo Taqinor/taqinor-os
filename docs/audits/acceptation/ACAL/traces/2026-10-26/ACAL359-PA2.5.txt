@@ -1,0 +1,10 @@
+ACAL359 — PA2.5 — rejeu orchestrateur, pile locale (backend monté et front reconstruit à e5a02b61e), 2026-10-26, navigateur intégré, demo_admin (société 1).
+Moitié serveur : voir ACAL359-PA2.5-serveur.txt (materiel.modules_par_pan, 6 clés, ordre du document ; fiche résolue / saisie / inconnue / autre société / mono-module).
+Moitié écran — fixture persistante créée pour l'écran puis SUPPRIMÉE : produits ACCEPT M550 (fiche module 550 Wc) et Ond10 (fiche onduleur), lead « ACCEPT ACAL358 »,
+client, devis DEV-ACCEPT-ACAL358 (lignes M550 + Ond10), Calepinage 24 à deux pans : A = 10 × M550 (produitId résolu), B = 10 × « M400 saisi » (produitId null, 400 Wc).
+1. /calepinage/24/fiches (onglet Fiches équipements › « Matériel utilisé par le calcul ») :
+   « Module — M550 (ligne du devis lié) », « Onduleur — Ond10 (ligne du devis lié) », « Optimiseur — aucun »,
+   « Pan A — M550 », « Pan B — M400 saisi — sans fiche : chaîné avec la fiche du module par défaut »
+   + « Un pan qui porte son propre module dans le plan est chiffré et chaîné avec CE module ; le module ci-dessus n'est que le défaut des autres pans. »
+2. Aucune réponse >= 400 sur la page.
+Verdict : PASS (une ligne par pan, pan sans fiche nommé).

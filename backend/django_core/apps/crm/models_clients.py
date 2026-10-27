@@ -1422,6 +1422,12 @@ class EquipeCommerciale(models.Model):
     membres = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name='equipes_commerciales')
     actif = models.BooleanField(default=True)
+    # Équipe qui reçoit les nouveaux leads : ils tournent entre ses membres
+    # actifs (le moins de leads ouverts d'abord, plafond du profil société).
+    # Une seule par société (posé par le serializer). Faux partout = rotation
+    # inchangée (XSAL11 / responsable par défaut).
+    recoit_leads = models.BooleanField(
+        default=False, verbose_name='Reçoit les nouveaux leads')
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

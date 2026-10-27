@@ -13,6 +13,7 @@
         "date_validite": "2026-10-28",
         "total_ttc": "48500.00",
         "accepte": false,
+        "acceptable": true,
         "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
         "deux_options": true,
         "options": [
@@ -42,6 +43,24 @@
         "date_validite": "2026-10-01",
         "total_ttc": "36000.00",
         "accepte": true,
+        "acceptable": false,
+        "mis_a_jour_le": null,
+        "deux_options": false,
+        "options": null,
+        "exige_identite_entreprise": false,
+        "conditions_titre": "Conditions générales du devis",
+        "conditions": null
+      },
+      {
+        "id": 401,
+        "reference": "DEV-202609-0013",
+        "statut": "refuse",
+        "statut_display": "Refusé",
+        "date_creation": "2026-09-01T08:00:00+00:00",
+        "date_validite": "2026-10-01",
+        "total_ttc": "36000.00",
+        "accepte": false,
+        "acceptable": false,
         "mis_a_jour_le": null,
         "deux_options": false,
         "options": null,
@@ -63,6 +82,7 @@
         "date_validite": "2026-10-28",
         "total_ttc": "48500.00",
         "accepte": false,
+        "acceptable": true,
         "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
         "deux_options": true,
         "options": [
@@ -86,6 +106,7 @@
         "date_validite": "2026-10-01",
         "total_ttc": "36000.00",
         "accepte": true,
+        "acceptable": false,
         "mis_a_jour_le": null,
         "deux_options": false,
         "options": null,
@@ -106,6 +127,7 @@
         "date_validite": "2026-10-28",
         "total_ttc": "48500.00",
         "accepte": false,
+        "acceptable": true,
         "mis_a_jour_le": "2026-09-29T14:05:00+00:00",
         "deux_options": true,
         "options": [
@@ -135,6 +157,7 @@
         "date_validite": "2026-10-01",
         "total_ttc": "36000.00",
         "accepte": true,
+        "acceptable": false,
         "mis_a_jour_le": null,
         "deux_options": false,
         "options": null,
@@ -186,5 +209,6 @@
     },
     "source": "MesDevisPortailViewSet.accepter (portail/views_client.py) → accept_devis (ventes/domain/cycle_vie.py:1388-1391) ; le corps lit déjà `option` aujourd'hui, le message 400 vient d'AcceptError (le préfixe « Ce devis comporte deux options — précisez » est stable).",
     "deja_accepte": "ADOC127 — un devis déjà au statut « accepte » SANS preuve d'acceptation portail (accepté AILLEURS, ex. par le commercial en interne) répond 409 {detail:'Ce devis est déjà accepté.'} sans créer ni signer d'AcceptationDevisPortail ni écrire d'audit ; un devis déjà accepté AU PORTAIL puis re-posté répond 200 (corps de « 200 »), preuve et horodatage d'origine inchangés."
-  }
+  },
+  "acceptable": "ERR-PORTAIL-ACCEPTER-DEVIS-REFUSE — booléen ADDITIF sur chaque élément : vrai si `accept_devis` accepterait ce devis (statut brouillon/envoyé ET non expiré, ventes/domain/cycle_vie.py + utils/expiry.is_expired). SOURCE UNIQUE : l'écran n'affiche « Accepter » que si `acceptable` est vrai — jamais une liste de statuts recopiée côté front."
 }

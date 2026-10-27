@@ -1,0 +1,19 @@
+APDF35 — P5 (moitié serveur) — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient authentifié comme le compte PORTAIL démo acc_portail_test — client 1, société 1 — sur les VRAIES routes
+/api/django/portail/mes-devis/ et …/<id>/accepter/, + APIClient anonyme sur /api/django/public/proposal/<jeton>/data/ ; transaction.atomic + rollback).
+L'écran (dialogue d'acceptation) est couvert par la trace orchestrateur APDF36-P5.txt du même jour.
+
+1. GET /portail/mes-devis/ → 200, 33 devis ; chaque ligne porte les clés `conditions_titre` et `conditions` (contrat mes_devis_liste.json).
+2. Égalité avec la page publique : pour chaque devis non brouillon, lien ShareLink.for_devis → GET public …/data/ :
+   7 devis servis par la page publique (200 : 6 acceptés/envoyés de 10/2026 + DEV-202609-0003) → `conditions_titre` ET `conditions` IDENTIQUES 7/7 ;
+   26 devis refusés → page publique 404 (lien public non servi pour un refusé) : pas de comparaison possible, hors clause.
+   Ex. DEV-202610-0004 (C&I) : titre « CGV INDUSTRIEL SPECIFIQUES » + puces société personnalisées ; DEV-202609-0003 : « Conditions générales du devis ».
+3. Devis ENVOYÉ DEV-202609-0003 (id 76, deux options) :
+   POST …/76/accepter/ {nom, consent_esign, option sans_batterie} (sans accepte_conditions) → 400 {detail « Acceptez les conditions générales pour signer. », champ accepte_conditions} ; statut relu envoye.
+   Même chose avec accepte_conditions=false → 400 idem ; statut envoye.
+   (Sur DEV-202610-0004 C&I : sans accepte_conditions → 400 même message, statut envoye.)
+   POST avec accepte_conditions=true → 200 « Devis accepté. Merci ! », statut accepte ; relu : statut accepte, option_acceptee sans_batterie, accepte_par_nom « Client ACC ».
+Note : en base tout est annulé ; l'acceptation a pu déposer un exemplaire signé dans le stockage objet local (non transactionnel).
+Bruit relevé (hors clause) : la liste portail journalise « ValueError … aucune option ne contient d'onduleur — génération du PDF à options refusée »
+   pour les devis refusés DEV-202610-0008…0011 (réponse 200 quand même).
+Verdict : PASS (moitié serveur).

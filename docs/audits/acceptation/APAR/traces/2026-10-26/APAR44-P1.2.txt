@@ -1,0 +1,15 @@
+APAR44 — P1.2 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient demo_admin sur les VRAIES routes /api/django/parametres/…, /api/django/ventes/devis-lignes/ ; transaction.atomic + rollback). Société démo 1.
+Décisions appliquées : D-APAR-1 = (a), D-APAR-2 = (a) (09/10/2026).
+
+0. Postgres : information_schema parametres_tauxtva.defaut = boolean, is_nullable YES (migration 0125 en deux temps, colonne conservée nullable) ;
+   état des modèles : TauxTVA sans champ `defaut`, sans `default_taux`.
+1. Référentiel : GET /parametres/taux-tva/ → 200 (0 ligne en démo) ; POST {code TVA14ACC, taux 14.00, libelle, defaut: true} → 201
+   {id 32, code, libelle, taux 14.00, actif True} — aucune clé `defaut` servie ; en base defaut NULL (le corps est ignoré).
+   POST …/32/set_defaut/ → 404 ; POST …/32/set-defaut/ → 404 (action retirée).
+2. Approbations (D-APAR-2 a) : GET /parametres/approbations/ → 404 ; POST → 404. Le profil sert encore discount_approval_threshold (seul réglage gardé).
+3. TVA par défaut = profil seul : GET /parametres/ tva_standard 20.00 ; PATCH /parametres/update/ {tva_standard 14} → 200 14.00 ; GET (rouvrir) → 14.00.
+   POST /ventes/devis-lignes/ sur le brouillon DEV-202610-0058, produit démo 1315 « Onduleur hybride Deye 5kW » (tva NULL), sans taux → 201 taux_tva 14.00 ; relu 14.00.
+   PATCH tva_standard 20 puis même POST → 201 taux_tva 20.00 (la valeur réglée change la ligne créée ensuite).
+Hors preuve : l'écran Paramètres (badge/bouton « Par défaut » et section Approbations retirés côté front) non rejoué ici.
+Verdict : PASS.

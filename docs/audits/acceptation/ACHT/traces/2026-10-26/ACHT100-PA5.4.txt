@@ -1,0 +1,14 @@
+ACHT100 — PA5.4 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient demo_admin sur les VRAIES routes /api/django/installations/kits/, kit-composants/, ordres-assemblage/,
+ordre-assemblage-lignes/, ordres-demontage/, ordre-demontage-lignes/ ; transaction.atomic + rollback). Société démo 1 (aucun kit démo : kit créé par l'API).
+
+1. POST kits/ {nom « Coffret ACC ACHT100 »} → 201 ; POST kit-composants/ {produit 1, quantite 2} → 201.
+2. POST ordres-assemblage/ {kit, quantite 1} → 201 ASM-202610-0001 ; lignes : (produit 1, 2, kit).
+   POST ordre-assemblage-lignes/ {ordre, produit 1792, quantite 7} → 201 (origine « ajout », posée par le serveur).
+   Lignes avant : [(1, 2.0, kit), (1792, 7.0, ajout)].
+3. PATCH ordres-assemblage/<id>/ {quantite 2} → 200 ; lignes : [(1792, 7.0, ajout), (1, 4.0, kit)] — kit recalculé ×2, ligne manuelle conservée telle quelle.
+   Second PATCH identique → 200, lignes identiques (2 lignes, aucun changement). GET ordre : quantite 2, lignes servies [(1792, 7, ajout), (1, 4, kit)].
+4. Jumeau démontage : POST ordres-demontage/ {kit, quantite 1} → 201 DSM-202610-0001 ; POST ordre-demontage-lignes/ {produit 1792} → 201 (ajout) ;
+   avant [(1, 2, kit), (1792, 0, ajout)] ; PATCH {quantite 2} → 200 ; après [(1792, 0, ajout), (1, 4, kit)] — ligne manuelle conservée.
+   (La quantité attendue envoyée en `quantite_attendue: 3` est rendue 0 par l'API de ligne de démontage — hors clause ACHT100, non jugé.)
+Verdict : PASS.

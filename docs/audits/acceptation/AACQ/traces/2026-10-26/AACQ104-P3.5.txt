@@ -1,0 +1,12 @@
+AACQ104 — P3.5 — rejeu orchestrateur, pile locale (backend monté et front reconstruit à e5a02b61e), 2026-10-26, navigateur intégré, demo_admin (société 1).
+Données de rejeu (la démo n'a aucune ad synchronisée : « Aucune ad synchronisée ») créées par manage.py shell puis SUPPRIMÉES à la fin :
+AdMirror meta_id acc-aacq104-ad « ACC AACQ104 — annonce de rejeu » (ACTIVE), InsightSnapshot J-1 spend 900.00, 5 MetaLeadMirror ad_id acc-aacq104-ad J-1.
+ads_cockpit_rows(société 1) pour cette ad : depense_mad 900.00, nb_leads 5, cpl_mad 180.00, cpl_source « formulaires Meta », cpl_odoo None, cpl_odoo_source « leads Odoo ».
+
+1. /publicite/cockpit (GET adsengine/metrics/ads-cockpit/ 200) : ligne de l'ad — colonne « CPL » = « 180 MAD (formulaires Meta) » (valeur + source servie, cpl_source) ;
+   colonne « CPL (Odoo) » = « — » sans aucun libellé (Odoo non configuré en local : cpl_odoo None → aucune source fabriquée à côté d'une valeur absente).
+2. « Fiche complète » → /publicite/ad/acc-aacq104-ad, bloc Métriques : « CPL 180 MAD formulaires Meta » ; « CPL (Odoo) — » sans libellé.
+3. Persistance (lecture) : rechargement du cockpit → mêmes cellules (« 180 MAD (formulaires Meta) », « — ») ; 0 réponse >= 400.
+Limite : le cas « CPL (Odoo) chiffré + « leads Odoo » » n'est pas reproductible sur la pile locale (aucune connexion Odoo — Odoo manuel, décision du 08/10) ;
+il reste prouvé par AdsCockpitScreen.test.jsx › « AACQ104 — chaque CPL affiche sa source servie ».
+Verdict : PASS.
