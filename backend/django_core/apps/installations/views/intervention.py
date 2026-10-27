@@ -165,7 +165,7 @@ def seed_types_intervention(company):
     p8=oa.qi('ticket'),
     p9=oa.qd('date_prevue', desc='Interventions prévues ce jour exact (AAAA-MM-JJ).'),
 )
-class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
+class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
@@ -653,7 +653,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             prep.kit = None
         else:
             kit = KitOutillage.objects.filter(
-                id=kit_id, company=interv.company).first()
+                id=oa.id_ou_none(kit_id), company=interv.company).first()
             if kit is None:
                 return Response({'kit': 'Kit inconnu.'},
                                 status=oa.statut_inconnu(kit_id))
@@ -678,7 +678,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Corps : {"ligne": <id>, "charge": <bool>}."""
         interv = self.get_object()
         prep = field_services.ensure_preparation(interv)
-        ligne = prep.materiel.filter(id=request.data.get('ligne')).first()
+        ligne = prep.materiel.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
                             status=oa.statut_inconnu(request.data.get('ligne')))
@@ -702,7 +702,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Corps : {"ligne": <id>, "coche": <bool>}."""
         interv = self.get_object()
         prep = field_services.ensure_preparation(interv)
-        ligne = prep.outils.filter(id=request.data.get('ligne')).first()
+        ligne = prep.outils.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
                             status=oa.statut_inconnu(request.data.get('ligne')))
@@ -1030,7 +1030,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         interv = self.get_object()
         ct = ContentType.objects.get_for_model(Intervention)
         att = Attachment.objects.filter(
-            id=request.data.get('photo'), content_type=ct,
+            id=oa.id_ou_none(request.data.get('photo')), content_type=ct,
             object_id=interv.id, company=interv.company).first()
         if att is None:
             return Response({'detail': 'Photo inconnue.'},
@@ -1208,7 +1208,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """F9 — édite un n° de série relevé. Corps : serial, numero_serie,
         [designation]."""
         interv = self.get_object()
-        serial = interv.serials.filter(id=request.data.get('serial')).first()
+        serial = interv.serials.filter(id=oa.id_ou_none(request.data.get('serial'))).first()
         if serial is None:  # api-fuzz-full 27/10 (ENF11) : id entier absent → 404
             return Response({'detail': 'Relevé inconnu.'},
                             status=oa.statut_inconnu(request.data.get('serial')))
@@ -1249,7 +1249,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def supprimer_serial(self, request, pk=None):
         """F9 — supprime un relevé de n° de série. Corps : {"serial": <id>}."""
         interv = self.get_object()
-        serial = interv.serials.filter(id=request.data.get('serial')).first()
+        serial = interv.serials.filter(id=oa.id_ou_none(request.data.get('serial'))).first()
         if serial is None:  # api-fuzz-full 27/10 (ENF11) : id entier absent → 404
             return Response({'detail': 'Relevé inconnu.'},
                             status=oa.statut_inconnu(request.data.get('serial')))
@@ -1289,7 +1289,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         interv = self.get_object()
         ct = ContentType.objects.get_for_model(Intervention)
         att = Attachment.objects.filter(
-            id=request.data.get('photo'), content_type=ct,
+            id=oa.id_ou_none(request.data.get('photo')), content_type=ct,
             object_id=interv.id, company=interv.company).first()
         if att is None:
             return Response({'detail': 'Photo inconnue.'},
@@ -1392,7 +1392,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
                 status=status.HTTP_400_BAD_REQUEST)
-        ligne = cons.lignes.filter(id=request.data.get('ligne')).first()
+        ligne = cons.lignes.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
                             status=oa.statut_inconnu(request.data.get('ligne')))
@@ -1410,7 +1410,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             fields.append('justification')
         if 'justification_memo' in request.data:
             memo = interv.voice_memos.filter(
-                id=request.data.get('justification_memo')).first()
+                id=oa.id_ou_none(request.data.get('justification_memo'))).first()
             ligne.justification_memo = memo
             fields.append('justification_memo')
         if fields:
@@ -1432,7 +1432,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         # api-fuzz-full 27/10 (ENF11) : ligne inconnue → 404 (id entier) ;
         # ligne de la nomenclature = refus d'ÉTAT → 409 (les deux faisaient 400).
-        ligne = cons.lignes.filter(id=request.data.get('ligne')).first()
+        ligne = cons.lignes.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
         if ligne is None or not ligne.hors_nomenclature:
             return Response(
                 {'detail': 'Ligne inconnue.' if ligne is None else
@@ -1609,7 +1609,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """F14 — édite la transcription d'un mémo (l'audio reste source de
         vérité). Corps : {"memo": <id>, "transcript": str}."""
         interv = self.get_object()
-        memo = interv.voice_memos.filter(id=request.data.get('memo')).first()
+        memo = interv.voice_memos.filter(id=oa.id_ou_none(request.data.get('memo'))).first()
         if memo is None:
             return Response({'detail': 'Mémo inconnu.'},
                             status=oa.statut_inconnu(request.data.get('memo')))
@@ -1628,7 +1628,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         {"memo": <id>}."""
         from apps.records.storage import delete_attachment
         interv = self.get_object()
-        memo = interv.voice_memos.filter(id=request.data.get('memo')).first()
+        memo = interv.voice_memos.filter(id=oa.id_ou_none(request.data.get('memo'))).first()
         if memo is None:
             return Response({'detail': 'Mémo inconnu.'},
                             status=oa.statut_inconnu(request.data.get('memo')))
@@ -1683,7 +1683,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response({'detail': "Aucun gabarit pour ce type d'intervention."},
                             status=status.HTTP_409_CONFLICT)
         valeur_obj = releve.valeurs.filter(
-            id=request.data.get('valeur_id')).first()
+            id=oa.id_ou_none(request.data.get('valeur_id'))).first()
         if valeur_obj is None:
             return Response({'detail': 'Champ de fiche inconnu.'},
                             status=oa.statut_inconnu(request.data.get('valeur_id')))
@@ -1836,7 +1836,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def modifier_reserve(self, request, pk=None):
         """F16 — édite une réserve (description, assignee). Corps : reserve, ..."""
         interv = self.get_object()
-        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        reserve = interv.reserves.filter(id=oa.id_ou_none(request.data.get('reserve'))).first()
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))
@@ -1847,7 +1847,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if 'assignee' in request.data:
             from authentication.models import CustomUser
             reserve.assignee = CustomUser.objects.filter(
-                id=request.data.get('assignee'), company=interv.company).first()
+                id=oa.id_ou_none(request.data.get('assignee')), company=interv.company).first()
             fields.append('assignee')
         if fields:
             reserve.save(update_fields=fields)
@@ -1855,7 +1855,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             reserve, context={'request': request}).data)
 
     @oa.extend_schema(
-        request=oa.body('ResoudreReserveRequete', reserve=oa.i(True), statut=oa.s(), resolution=oa.s()),
+        request=oa.body('ResoudreReserveRequete', reserve=oa.i(True),
+                        statut=oa.choice(Reserve.Statut.values), resolution=oa.s()),
         responses=ReserveSerializer,
     )
     @action(detail=True, methods=['post'], url_path='resoudre-reserve',
@@ -1864,11 +1865,11 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """F16 — résout (ou ré-ouvre) une réserve. Corps : reserve, resolution,
         [statut]."""
         interv = self.get_object()
-        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        reserve = interv.reserves.filter(id=oa.id_ou_none(request.data.get('reserve'))).first()
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))
-        statut = request.data.get('statut', Reserve.Statut.RESOLUE)
+        statut = oa.choix_corps(request, 'statut', Reserve.Statut.values, Reserve.Statut.RESOLUE)
         reserve.statut = statut
         reserve.resolution = (request.data.get('resolution') or '').strip()
         reserve.resolue_le = (timezone.now()
@@ -1891,7 +1892,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         `devis_repare_id`, le renvoie sans en créer un second. Corps :
         {"reserve": <id>}."""
         interv = self.get_object()
-        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        reserve = interv.reserves.filter(id=oa.id_ou_none(request.data.get('reserve'))).first()
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))

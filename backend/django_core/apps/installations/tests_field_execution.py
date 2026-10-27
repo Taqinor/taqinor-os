@@ -183,6 +183,12 @@ class TestPreparation(TestCase):
             self.assertEqual(r.status_code, 404, (route, r.data))
             r = self.api.post(f'{self.url}/{route}/', {}, format='json')
             self.assertEqual(r.status_code, 400, (route, r.data))
+            # api-fuzz-full 27/10 : une liste / un objet en `ligne` faisait
+            # lever TypeError dans filter(id=…) → 500 ; hors int4 → DataError.
+            for brut in ([{}, []], {'a': 1}, True, 2 ** 40):
+                r = self.api.post(f'{self.url}/{route}/', {'ligne': brut},
+                                  format='json')
+                self.assertIn(r.status_code, (400, 404), (route, brut, r.content))
 
     def test_manquant_flag_and_draft_order(self):
         # Produit dont la nomenclature dépasse le stock disponible.

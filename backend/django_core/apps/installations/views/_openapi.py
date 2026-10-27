@@ -57,6 +57,20 @@ def corps_objet(request):
     return request.data
 
 
+class CorpsObjetMixin:
+    """api-fuzz-full 27/10 (ENF11) — toute ÉCRITURE de la vue lit un corps
+    OBJET (``request.data.get``) : un nombre, ``null`` ou un tableau en corps
+    faisait lever ``AttributeError`` (500) dans chaque action → 400 FR dès
+    ``initial`` (après les permissions). Corps vide et formulaire multipart
+    restent des objets."""
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if (request.method in ('POST', 'PUT', 'PATCH')
+                and getattr(self, 'action', None) is not None):
+            corps_objet(request)
+
+
 def id_entier(valeur, nom):
     """Identifiant entier 1..ID_MAX (``int`` ou chaîne de chiffres), sinon
     400 nommant le champ — évite ``TypeError``/``DataError`` côté ORM."""
@@ -66,6 +80,29 @@ def id_entier(valeur, nom):
             or not 1 <= int(valeur) <= ID_MAX):
         raise ValidationError({nom: 'Identifiant entier valide requis.'})
     return int(valeur)
+
+
+def id_ou_none(valeur):
+    """api-fuzz-full 27/10 (ENF11) — l'identifiant de corps transmis au filtre
+    ORM : un entier JSON (ou une chaîne de chiffres) 1..``ID_MAX``, sinon
+    ``None`` (aucune ligne ne correspond). Une liste ou un objet faisait lever
+    ``TypeError`` dans ``filter(id=…)`` (500) ; ``statut_inconnu`` rend ensuite
+    le 404 (entier) ou le 400 (corps invalide)."""
+    if isinstance(valeur, str) and valeur.isascii() and valeur.isdigit():
+        valeur = int(valeur)
+    if isinstance(valeur, int) and not isinstance(valeur, bool) and 1 <= valeur <= ID_MAX:
+        return valeur
+    return None
+
+
+def choix_corps(request, nom, choix, defaut):
+    """api-fuzz-full 27/10 (ENF11) — valeur du champ de corps ``nom`` parmi
+    ``choix`` (``defaut`` si absent) ; toute autre valeur → 400 nommant le
+    champ (une chaîne libre était écrite telle quelle en base)."""
+    valeur = corps_objet(request).get(nom, defaut)
+    if valeur not in list(choix):
+        raise ValidationError({nom: f"Valeur attendue parmi : {', '.join(choix)}."})
+    return valeur
 
 
 def statut_inconnu(valeur, attendu=int):
