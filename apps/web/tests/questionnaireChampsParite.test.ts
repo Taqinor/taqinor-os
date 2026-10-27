@@ -10,7 +10,10 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 const contrat = JSON.parse(
   read('../../../backend/django_core/apps/crm/contract_samples/questionnaire_lead.json'),
 ) as { colonnes_ecrites: Record<string, string[]> };
-const src = read('../src/pages/questionnaire/[token].astro');
+// CQSTW8 — les questions facultatives vivent dans ChampsAffiner.astro : on les
+// remet « en ligne » à la place de leur balise pour que les gardes lisent la page entière.
+const champsAffiner = read('../src/components/questionnaire/ChampsAffiner.astro');
+const src = read('../src/pages/questionnaire/[token].astro').replace(/<ChampsAffiner ecran="(\w+)"[^>]*\/>/g, (_m, ecran) => champsAffiner.replace(/\{ecran === '\w+' && \(/g, (x) => (x.includes(`'${ecran}'`) ? x : '{false && (')));
 const debut = src.indexOf('function collectSectionRaw');
 const fin = src.indexOf('function ', debut + 10);
 const collect = src.slice(debut, fin);

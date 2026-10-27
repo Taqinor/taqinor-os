@@ -260,3 +260,5 @@ export const AIDES_FACTURE: Record<'tension' | 'option_bt' | 'kva' | 'cos_phi', 
     'أين تجدونه: ابحثوا عن «cos φ» أو «الطاقة غير الفعالة» في فاتورتكم. اختياري: إن لم يوجد هذا السطر اتركوه فارغاً.',
   ),
 };
+// CQSTW8 — titre du repli des questions facultatives (pro).
+export const POUR_AFFINER: L3 = L('Pour affiner (facultatif)', 'To refine (optional)', 'للتدقيق أكثر (اختياري)');

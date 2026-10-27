@@ -1,0 +1,11 @@
+---
+// CQSTW8 — repli natif FERMÉ « Pour affiner (facultatif) » ; sans `ferme`, le contenu est rendu tel quel.
+import { POUR_AFFINER } from '../../lib/questionnaireChamps';
+const { ferme = true } = Astro.props;
+---
+{ferme ? (
+  <details class="border border-azur-900/10 p-3">
+    <summary class="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-azur-700" data-i18n data-en={POUR_AFFINER.en} data-ar={POUR_AFFINER.ar}>{POUR_AFFINER.fr}</summary>
+    <div class="mt-3 flex flex-col gap-4"><slot /></div>
+  </details>
+) : <slot />}
