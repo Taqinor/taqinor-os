@@ -206,3 +206,16 @@ describe('CIW300 — la page ne calcule plus, ne code plus de mention 82-21', ()
     expect(page).toContain('data-figure="economie_annuelle"');
   });
 });
+
+// CPRW2 (27/10/2026) — « Tarif utilisé » : le texte CLIENT servi, jamais la note interne.
+const SRC_AUTOCONSO = readFileSync(
+  fileURLToPath(new URL('../src/components/proposition/ci/SectionAutoconso.astro', import.meta.url)),
+  'utf-8',
+).replace(/\r\n/g, '\n');
+describe('CPRW2 — tarif utilisé = hypothèse servie', () => {
+  it('lit synthese_ci.hypotheses[cle=tarif].textes, jamais tarif.mention / tarif.source', () => {
+    expect(SRC_AUTOCONSO).toContain("h.cle === 'tarif'");
+    expect(SRC_AUTOCONSO).not.toMatch(/tarif\.mention/);
+    expect(SRC_AUTOCONSO).not.toMatch(/tarif\.source/);
+  });
+});

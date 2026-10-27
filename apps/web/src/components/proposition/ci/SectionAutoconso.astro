@@ -21,7 +21,10 @@ interface Props {
   couverture: any;
   isCommercial: any;
 }
+// CPRW2 — la phrase « tarif » est le texte CLIENT servi (hypothèse `tarif`), jamais la note interne
+// de l'argent (ni sa mention, ni sa source) ; non servie → rien.
 const { ci, ciArgent, ciCarteInd, ciEco, ciEstimation, ciInjection, ciManque, ciSousReserve, couverture, isCommercial } = Astro.props;
+const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null;
 ---
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-autoconso">
           <h2 class="tech-label rule-brass text-brass-300" data-i18n
@@ -93,11 +96,9 @@ const { ci, ciArgent, ciCarteInd, ciEco, ciEstimation, ciInjection, ciManque, ci
                   </div>
                 ) : null}
               </div>
-              {ciArgent?.tarif && (ciArgent.tarif.mention || ciArgent.tarif.source) ? (
-                <p class="mt-4 text-xs text-lune-faint" data-ci-tarif>
-                  <span data-i18n data-fr="Tarif utilisé :" data-en="Tariff used:" data-ar="التعريفة المعتمدة:">Tarif utilisé :</span>
-                  {' '}{ciArgent.tarif.mention ?? ciArgent.tarif.source}
-                </p>
+              {tarifServi ? (
+                <p class="mt-4 text-xs text-lune-faint" data-ci-tarif data-i18n
+                  data-fr={tarifServi.fr} data-en={tarifServi.en} data-ar={tarifServi.ar}>{tarifServi.fr}</p>
               ) : null}
               {ciManque.length > 0 ? (
                 <div class="mt-4 rounded-xl border border-white/10 p-4 text-sm text-lune-soft" data-ci-manque>
