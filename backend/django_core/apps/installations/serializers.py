@@ -2568,7 +2568,7 @@ class ControleQualiteOrdreSerializer(SameCompanyFKSerializerMixin, serializers.M
 
 
 class OrdreDemontageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
-                                ChampsTexteStrictsMixin, serializers.ModelSerializer):
+                               ChampsTexteStrictsMixin, serializers.ModelSerializer):
     """XMFG12 - ordre de démontage (unbuild) : composite → composants.
     Référence/société/`created_by` posés COTE SERVEUR."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
