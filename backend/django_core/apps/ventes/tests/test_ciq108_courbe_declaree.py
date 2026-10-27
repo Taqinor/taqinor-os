@@ -1,5 +1,6 @@
 """CIQ108 — courbe de charge DÉCLARÉE en jours types (unittest pur, sans base)."""
 
+import datetime
 import ast
 import json
 import os
@@ -132,6 +133,26 @@ class TestCourbeDeclaree(unittest.TestCase):
         # le Ramadan change réellement la courbe de mars
         jt_nu, _p, _a = courbe_declaree(base, [10000] * 12, annee_reference=2025, feries=[])
         self.assertNotEqual(jt_sans, jt_nu)
+
+    def test_ramadan_table_annee_a_cheval_et_double(self):
+        # 2031 porte la fin du Ramadan 1452 (01/01-23/01) ET le début du 1453
+        # (15/12-31/12) : les deux servent, jamais « table muette ».
+        self.assertEqual(charge._ramadan_table({'plages': {'ouvre': [[9, 15]]}}, 2031),
+                         [(datetime.date(2031, 1, 1), datetime.date(2031, 1, 23)),
+                          (datetime.date(2031, 12, 15), datetime.date(2031, 12, 31))])
+        rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}, 'talon': {'kw': 1},
+                  'ramadan': {'plages': {'ouvre': [[9, 15]]}}}
+        jt, prov, alertes = courbe_declaree(rythme, [10000] * 12, annee_reference=2033,
+                                            feries=[])
+        self.assertNotIn('ramadan_sans_dates', {a['code'] for a in alertes})
+        self.assertEqual(prov['ramadan']['statut'], 'table')
+
+    def test_ramadan_archetype_sans_plages_aucune_provenance_de_dates(self):
+        _jt, prov, alertes = courbe_declaree({'ramadan': {'plages': {'ouvre': [[9, 15]]}}},
+                                             42000, annee_reference=2025, archetype='bureau',
+                                             feries=[])
+        self.assertNotIn('ramadan', prov)
+        self.assertIn('ramadan_sans_plages', {a['code'] for a in alertes})
 
     def test_ramadan_table_muette_garde_l_alerte(self):
         rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}, 'talon': {'kw': 1},

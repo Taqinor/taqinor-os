@@ -158,6 +158,13 @@ class TestArchetypes(unittest.TestCase):
         _jt, _p, alertes = courbe_declaree({}, 96000, annee_reference=2027,
                                            archetype='garage', feries=[])
         self.assertNotIn('horaires_a_demander', {a['code'] for a in alertes})
+        # profil de la société complet : c'est SA forme qui sert, pas l'archétype
+        profil = {'cle': 'x', 'libelle': 'x', 'provenance': 'relevé 2025',
+                  'courbe': {'annuel': [0] * 8 + [1] * 10 + [0] * 6}}
+        _jt, _p, alertes = courbe_declaree({}, 96000, annee_reference=2027,
+                                           archetype='station_service', feries=[],
+                                           profil_societe=profil)
+        self.assertNotIn('horaires_a_demander', {a['code'] for a in alertes})
 
 
 class TestFormeContrat(unittest.TestCase):

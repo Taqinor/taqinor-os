@@ -28,7 +28,7 @@ from apps.ventes.moteur_ci.profils import (
     MOTIF_PROFIL_DECLARE, SAISONS, TYPES_JOUR, forme_archetype,
 )
 from apps.ventes.moteur_ci.talons import ARCHETYPE_LE_PLUS_PROCHE, talon_par_defaut
-from apps.ventes.ramadan import plage_ramadan_pour
+from apps.ventes.ramadan import RAMADAN_PLAGES
 
 HEURES = 24
 DUREE_EQUIPES_H = {'1x8': 8, '2x8': 16, '3x8': 24, 'continu': 24}
@@ -111,16 +111,18 @@ def _jours_annee(annee):
 
 
 def _ramadan_table(ramadan, annee):
-    """CLD15 — ``(du, au)`` de la table sourcée ``apps/ventes/ramadan.py`` pour
-    l'année de RÉFÉRENCE quand le Ramadan déclaré a des plages mais aucune
-    date ; ``None`` sinon (dates saisies, ou table muette pour cette année)."""
+    """CLD15 — périodes ``[(du, au), …]`` de la table sourcée
+    ``apps/ventes/ramadan.py`` qui tombent dans l'année de RÉFÉRENCE (bornées à
+    l'année : une année peut en porter deux, ou la fin d'un Ramadan commencé en
+    décembre) quand le Ramadan déclaré a des plages mais aucune date ; ``None``
+    sinon (dates saisies, ou table muette pour cette année)."""
     if not (isinstance(ramadan, dict) and ramadan.get('plages')
             and not ramadan.get('du') and not ramadan.get('au')):
         return None
-    trouve = plage_ramadan_pour(datetime.date(annee, 1, 1))
-    if trouve is None or trouve[0]['debut'].year != annee:
-        return None
-    return trouve[0]['debut'], trouve[0]['fin']
+    debut_an, fin_an = datetime.date(annee, 1, 1), datetime.date(annee, 12, 31)
+    periodes = [(max(p['debut'], debut_an), min(p['fin'], fin_an)) for p in RAMADAN_PLAGES
+                if p['debut'] <= fin_an and p['fin'] >= debut_an]
+    return periodes or None
 
 
 def _calendrier(rythme, annee, feries, alertes):
@@ -163,14 +165,14 @@ def _calendrier(rythme, annee, feries, alertes):
                 continue
 
     ramadan = rythme.get('ramadan')
-    ramadan_bornes = None
+    ramadan_bornes = []
     if ramadan:
         table = _ramadan_table(ramadan, annee)
         try:
-            ramadan_bornes = (_date(ramadan['du'], annee), _date(ramadan['au'], annee))
+            ramadan_bornes = [(_date(ramadan['du'], annee), _date(ramadan['au'], annee))]
         except (KeyError, TypeError, ValueError, IndexError):
             if table is not None:
-                ramadan_bornes = (_date(table[0], annee), _date(table[1], annee))
+                ramadan_bornes = table
             else:
                 alertes.append(_alerte('ramadan_sans_dates', 'rythme.ramadan',
                                        'Plages Ramadan déclarées sans dates : ignorées.'))
@@ -189,7 +191,7 @@ def _calendrier(rythme, annee, feries, alertes):
         plages = None
         if plages_par_type:
             plages = plages_par_type.get(type_cal, plages_par_type.get('ouvre'))
-            if ramadan_bornes and _dans_intervalle(jour, *ramadan_bornes):
+            if any(_dans_intervalle(jour, du, au) for du, au in ramadan_bornes):
                 plages_ram = ramadan.get('plages') or {}
                 plages = plages_ram.get(type_cal, plages_ram.get('ouvre', plages))
         calendrier.append((jour, ouvert, type_cal, plages))
@@ -870,7 +872,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
                                '12 kWh mensuels ou un total annuel requis.', niveau='bloquant'))
         return None, provenance, alertes
 
-    if _ramadan_table(rythme.get('ramadan'), annee_reference) is not None:
+    if plages_declarees and _ramadan_table(rythme.get('ramadan'), annee_reference) is not None:
         provenance['ramadan'] = {
             'source': 'dates Ramadan %d : apps/ventes/ramadan.py' % annee_reference,
             'statut': 'table'}
@@ -911,7 +913,8 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
             'niveau_donnees': 'estimation',
             'talon': {'valeur': declare, 'statut': 'declare' if declare else 'estimation'},
         })
-        if archetype in CATEGORIES_HORAIRES_A_DEMANDER and archetype in ARCHETYPE_LE_PLUS_PROCHE:
+        if (archetype in CATEGORIES_HORAIRES_A_DEMANDER and archetype in ARCHETYPE_LE_PLUS_PROCHE
+                and source.get('type') != 'profil_societe'):
             alertes.append(_alerte(
                 'horaires_a_demander', 'rythme.plages',
                 "Horaires d'ouverture à demander : « %s » prend la forme de l'archétype « %s » "
