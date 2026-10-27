@@ -518,3 +518,41 @@ class LEtudeElectriqueSuitToutSeule(_Base):
         self.assertFalse(resultat['inchange'])
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+
+
+class LesAvertissementsDeCompositionSontRendus(_Base):
+    """RSIZ4 — les avertissements de la composition sont RENDUS sur son
+    résultat (``avertissements_composition``), même sans canal fourni."""
+
+    slug = 'pvkit-rsiz4'
+
+    def test_la_cle_stable_porte_la_phrase_meme_sans_canal(self):
+        from apps.ventes.domain.composition import (
+            avertissement_batterie_rupture_stock)
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=4.4, panel_watt=550, nb_panneaux=8, avec_batterie=True)
+        self.assertIn(avertissement_batterie_rupture_stock(),
+                      list(lignes.avertissements_composition))
+        self.assertNotIn('batterie', list(lignes.roles))
+
+    def test_le_canal_de_l_appelant_recoit_la_meme_phrase_une_fois(self):
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        canal = []
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=4.4, panel_watt=550, nb_panneaux=8, avec_batterie=True,
+            avertissements=canal)
+        self.assertEqual(list(lignes.avertissements_composition), canal)
+        self.assertEqual(len(canal), len(set(canal)))
+
+    def test_une_composition_sans_souci_rend_une_liste_vide(self):
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=4.4, panel_watt=550, nb_panneaux=8)
+        self.assertEqual(list(lignes.avertissements_composition), [])

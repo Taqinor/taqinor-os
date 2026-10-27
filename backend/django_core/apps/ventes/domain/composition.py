@@ -112,6 +112,11 @@ class CompositionLignes(list):
     variantes = False
     nb_panneaux_avec = 0
     kwc_reel_avec = 0.0
+    #: RSIZ4 — les avertissements FRANÇAIS de la composition (phrases prêtes à
+    #: afficher), dédoublonnés, dans l'ordre où ils ont été prononcés. Rendus
+    #: même quand l'appelant n'a fourni aucun canal ``avertissements`` : c'est
+    #: la clé STABLE que l'étude du devis recopie (``etude_params``).
+    avertissements_composition = ()
 
 
 #: STKCAT7 — la valeur de ``stock.Categorie.TypeEquipement.STRUCTURE``.
@@ -588,7 +593,20 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
             vues.add(cle)
             manquantes.append(manque)
     lignes.marques_manquantes = manquantes
+    lignes.avertissements_composition = avertissements_des_kits(
+        kit_sans, kit_avec)
     return lignes
+
+
+def avertissements_des_kits(*kits):
+    """RSIZ4 — l'UNION ordonnée et dédoublonnée des avertissements de
+    composition de plusieurs kits (``.avertissements_composition``)."""
+    union = []
+    for kit in kits:
+        for message in (getattr(kit, 'avertissements_composition', ()) or ()):
+            if message not in union:
+                union.append(message)
+    return union
 
 
 # ── PVHEAL — la resynchronisation GUÉRIT les devis SQUELETTES ────────────────

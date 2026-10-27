@@ -77,6 +77,29 @@ def _statut_couple_panneau(panneau, onduleurs):
     return pire[1], pire[2]
 
 
+def _choisir_panneau(pool, watt):
+    """Panneau : wattage demandé d'abord, à défaut le plus proche.
+
+    RSIZ4 — corps EXTRAIT tel quel de :func:`composition_residentielle`.
+    ``pool`` est le vivier DÉJÀ restreint à la marque épinglée (PVMRQ). Rend
+    ``(tries, exacts, panneau)`` : les deux listes servent au repli PVCOMPAT.
+    """
+    tries = []
+    for produit in pool:
+        w = _parse_watt(getattr(produit, 'nom', ''))
+        if w is not None:
+            tries.append((w, produit))
+    exacts = [c for c in tries if c[0] == int(watt)]
+    if exacts:
+        # Même départage qu'à l'écran : un Canadien Solar passe devant.
+        exacts.sort(key=lambda c: 0 if 'canadien' in _sans_accents(
+            getattr(c[1], 'nom', '')) else 1)
+        return tries, exacts, exacts[0][1]
+    if tries:
+        return tries, exacts, min(tries, key=lambda c: abs(c[0] - watt))[1]
+    return tries, exacts, None
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               structure_produit_id=None,
@@ -339,8 +362,15 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         PHASE_MONO, PHASE_TRI, avertissement_raccordement, normaliser_phase)
     phase_client = normaliser_phase(phase)
 
+    # RSIZ4 — TOUT avertissement de cette composition est AUSSI recueilli
+    # ici et rendu sur le résultat (``.avertissements_composition``), que
+    # l'appelant ait fourni un canal ou non.
+    recueil = []
+
     def _avertir(message):
         """Consigne un avertissement UNE fois (deux onduleurs, un message)."""
+        if message not in recueil:
+            recueil.append(message)
         if avertissements is None:
             logger.warning('PVCOMPAT: %s', message)
             return
@@ -463,21 +493,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de
     # wattage : la substitution « wattage le plus proche » ne joue plus que
     # DANS la marque retenue, jamais hors d'elle (miroir de l'écran).
-    tries = []
-    for produit in par_marque(par_type.get('panneau'), 'panneau'):
-        w = _parse_watt(getattr(produit, 'nom', ''))
-        if w is not None:
-            tries.append((w, produit))
-    exacts = [c for c in tries if c[0] == int(watt)]
-    if exacts:
-        # Même départage qu'à l'écran : un Canadien Solar passe devant.
-        exacts.sort(key=lambda c: 0 if 'canadien' in _sans_accents(
-            getattr(c[1], 'nom', '')) else 1)
-        panneau = exacts[0][1]
-    elif tries:
-        panneau = min(tries, key=lambda c: abs(c[0] - watt))[1]
-    else:
-        panneau = None
+    # RSIZ4 — corps extrait tel quel dans :func:`_choisir_panneau`.
+    tries, exacts, panneau = _choisir_panneau(
+        par_marque(par_type.get('panneau'), 'panneau'), watt)
 
     # ── PVCOMPAT — LE COUPLE PANNEAU / ONDULEUR EST VÉRIFIÉ ────────────────
     # Les deux choix ci-dessus sont INDÉPENDANTS : rien ne garantissait qu'ils
@@ -781,14 +799,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             message = avertissement_batterie_rupture_stock()
         else:
             message = avertissement_batterie_plafond_banc()
-        if avertissements is not None:
-            avertissements.append(message)
-        else:
-            logger.warning(
-                'PVOND: aucune banque batterie composable (%s) alors que le '
-                'devis est demandé AVEC batterie — composition SANS '
-                'batterie ; cet appelant ne porte aucun canal '
-                'd\'avertissement.', message)
+        # RSIZ4 — même canal que les autres avertissements (recueil + liste
+        # de l'appelant, ou journal quand il n'en porte aucune).
+        _avertir(message)
 
     bat5 = bat10 = None
     nb5, nb10 = 0, 0
@@ -973,6 +986,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             for p_m, n_m in panneaux_designes) / 1000.0, 3)
     lignes.blocs = blocs
     lignes.marques_manquantes = marques_manquantes
+    lignes.avertissements_composition = list(recueil)
     # DIM2 — LES CAPACITÉS RÉELLEMENT DISPONIBLES, en kWh nominaux, telles que
     # le vivier batterie les a retenues (compatibilité de tension avec
     # l'onduleur hybride comprise). Le balayage du stockage lit CETTE liste
