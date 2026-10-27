@@ -305,7 +305,7 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
     """Sans DB : catalogue, PVGIS et TMY simulés (``etudier_pompage(None, …)``
     ne lit aucune société)."""
 
-    def _etude(self):
+    def _etude(self, heures=7):
         corps = json.loads(json.dumps(CONTRAT['corps']))
         corps.update(
             mode_pompe='existante',
@@ -313,7 +313,7 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
                     'courant_a': None},
             besoin=dict(corps['besoin'], mode='pompe_actuelle',
                         volume_m3_jour=None, debit_actuel_m3h=12,
-                        heures_actuelles_jour=7))
+                        heures_actuelles_jour=heures))
         with mock.patch.object(pompage, 'lire_catalogue',
                                return_value=_catalogue_existante()), \
                 mock.patch.object(pompage, 'profils_horaires_site',
@@ -338,6 +338,19 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
         panneaux = next(ligne for ligne in data['kit']['inclus']
                         if ligne['cle'] == 'panneaux')
         self.assertEqual(panneaux['quantite'], data['champ']['nb_panneaux'])
+
+    def test_agm5_heures_superieures_a_24_alerte_besoin_tel_que_saisi(self):
+        """AGM5 — 30 h/jour : alerte qui nomme le champ, jamais un refus ni
+        un rognage (le besoin reste débit × heures saisies)."""
+        data = self._etude(heures=30)
+        alerte = [a for a in data['alertes']
+                  if a['code'] == 'heures_superieures_24']
+        self.assertEqual(len(alerte), 1)
+        self.assertEqual(alerte[0]['champ'], 'besoin.heures_actuelles_jour')
+        self.assertEqual(max(data['besoin']['m3_jour_mois']), 12 * 30)
+        self.assertNotIn(
+            'heures_superieures_24',
+            [a['code'] for a in self._etude(heures=7)['alertes']])
 
     def test_variateur_non_choisi_est_un_role_minimum_manquant(self):
         data = self._etude()

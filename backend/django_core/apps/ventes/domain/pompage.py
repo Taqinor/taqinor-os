@@ -683,7 +683,9 @@ def _besoin(res, *, profils=None, heures_repli=None):
     (D-AGQ-1) : sans volume ni pompe actuelle, le débit souhaité × heures-pic
     du mois fait le besoin."""
     from core.pompage.agronomie import besoin_agronomique
-    from core.pompage.conception import besoin_retenu
+    from core.pompage.conception import (
+        alerte_heures_superieures_24, besoin_retenu,
+    )
 
     mode = res.valeur('besoin.mode')
     cultures = res.valeur('besoin.cultures') or []
@@ -704,6 +706,10 @@ def _besoin(res, *, profils=None, heures_repli=None):
         if mode in (None, 'pompe_actuelle') else None
     souhaite = (_num(res.valeur('besoin.debit_souhaite_m3h'))
                 if mode in (None, 'debit_souhaite') else None)
+    # AGM5 — plus de 24 h/jour : alerte qui nomme le champ, besoin inchangé.
+    alerte_24 = alerte_heures_superieures_24(heures)
+    if alerte_24:
+        alertes.append(alerte_24)
     heures_pic, source_heures = _heures_pic_mois(profils, heures_repli)
     if volume is not None:
         prov = res.provenance('besoin.volume_m3_jour')
