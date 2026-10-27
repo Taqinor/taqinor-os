@@ -208,25 +208,26 @@ def _fmt_kwc_fr(valeur):
     return texte.replace('.', ',')
 
 
-def _ajouter_alerte(journal_auto, texte):
-    """Ajoute une phrase au vendeur dans ``journal_auto['alertes']`` (sans
-    doublon). Sans effet si le journal n'est pas un dict."""
+def _ajouter_alerte(journal_auto, code, texte):
+    """Ajoute une phrase au vendeur dans ``journal_auto['alertes']``, à la
+    MÊME forme que le C&I et l'agricole (``{code, message}`` — rendue par
+    ``AlertesDevisAuto.jsx``), sans doublon. Sans effet hors dict."""
     if not isinstance(journal_auto, dict) or not texte:
         return
     alertes = journal_auto.setdefault('alertes', [])
-    if texte not in alertes:
-        alertes.append(texte)
+    if all(a.get('message') != texte for a in alertes):
+        alertes.append({'code': code, 'message': texte})
 
 
 def _alerter_taille_demandee(journal_auto, cible, taille_demandee):
     """RGEN1 — la taille vient d'une DEMANDE (ce devis, sinon la fiche) :
     la facture n'a pas dimensionné, le vendeur doit le savoir."""
     if cible is not None:
-        _ajouter_alerte(journal_auto, (
+        _ajouter_alerte(journal_auto, 'taille_demandee', (
             'Taille imposée pour ce devis : %s kWc — la facture du lead '
             "n'a pas servi au dimensionnement." % _fmt_kwc_fr(cible)))
         return
-    _ajouter_alerte(journal_auto, (
+    _ajouter_alerte(journal_auto, 'taille_demandee', (
         'Taille demandée sur la fiche du lead : %s kWc — la facture '
         "n'a pas servi au dimensionnement. Videz « taille souhaitée » "
         'sur la fiche pour revenir à la recommandation.'
@@ -240,7 +241,7 @@ def _batterie_hors_reseau(journal_auto, hors_reseau, choix_batterie,
     if not hors_reseau:
         return wants_battery
     if choix_batterie == 'sans':
-        _ajouter_alerte(journal_auto, (
+        _ajouter_alerte(journal_auto, 'batterie_hors_reseau', (
             'Site sans réseau (raccordement « aucun ») : la batterie est '
             "ajoutée d'office, le choix « sans batterie » ne s'applique "
             'pas.'))
@@ -252,7 +253,7 @@ def _journaliser_avertissements(devis, resultat, journal_auto):
     faire : au journal serveur ET (RGEN1) au vendeur, dans les alertes."""
     for avertissement in resultat['avertissements'] or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
-        _ajouter_alerte(journal_auto, str(avertissement))
+        _ajouter_alerte(journal_auto, 'composition', str(avertissement))
 
 
 def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,

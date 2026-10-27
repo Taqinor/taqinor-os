@@ -150,6 +150,8 @@ function appliquerMarche(etat, mode, { marquerTouche = false } = {}) {
   let suivant = marquerTouche ? avecTouche(etat, 'mode') : etat
   if (cible === suivant.modeInstallation) return suivant
   suivant = { ...suivant, modeInstallation: cible }
+  // RGEN3 — la taille de la fiche ne pilote QUE le résidentiel.
+  if (cible !== 'residentiel') suivant = { ...suivant, tailleLead: null }
   const defaut = DEFAUT_SCENARIO_PAR_MODE[cible]
   if (defaut && !suivant.touche.scenario) suivant = { ...suivant, scenario: defaut }
   return suivant
@@ -199,13 +201,22 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
             tailleLead: null,
           }
         }
-        case 'panelW':
+        case 'panelW': {
+          // RGEN3 — la taille de la fiche est une PUISSANCE : un autre
+          // wattage recompte les panneaux pour la tenir (comme le devis auto).
+          const nTaille = tailleDemandeeParLead(base) != null
+            ? panneauxPourKwc(base.tailleLead, valeur) : 0
+          if (nTaille > 0) {
+            return { ...base, panelW: valeur, nbPanneaux: String(nTaille),
+              kwcCible: kwcDepuisPanneaux(nTaille, valeur) }
+          }
           // Pas de drapeau propre (comme aujourd'hui) : la puissance panneau
           // suit la frappe et la cible se recale sur le compte courant.
           return {
             ...base, panelW: valeur,
             kwcCible: kwcDepuisPanneaux(base.nbPanneaux, valeur) || base.kwcCible,
           }
+        }
         case 'mode':
           return appliquerMarche(base, valeur, { marquerTouche: true })
         case 'scenario':
@@ -297,7 +308,10 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
       const tailleKwc = nombre(lead.taille_souhaitee_kwc)
       const fromTaille = (!s.touche.nbPanneaux && tailleKwc > 0)
         ? panneauxPourKwc(tailleKwc, s.panelW) : 0
-      if (fromTaille > 0) s = { ...poserPanneaux(s, fromTaille), tailleLead: tailleKwc }
+      if (fromTaille > 0) {
+        s = poserPanneaux(s, fromTaille)
+        if (modeCible === 'residentiel') s = { ...s, tailleLead: tailleKwc }
+      }
       else if (!s.touche.nbPanneaux) s = { ...s, tailleLead: null }
       // 8. Facture : le résidentiel ATTEND le moteur serveur (U3-900, plus de
       //    repli « panneaux/900 MAD ») ; les autres marchés n'ont que le
@@ -348,7 +362,11 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
     // abandonnée, jamais appliquée par-dessus.
     case 'MOTEUR_A_REPONDU': {
       if (!base.attenteMoteur) return base
-      if (base.touche.nbPanneaux) return { ...base, attenteMoteur: false }
+      // RGEN3 — la taille de la fiche tient comme une saisie : l'attente se
+      // referme sans rien appliquer.
+      if (base.touche.nbPanneaux || tailleDemandeeParLead(base) != null) {
+        return { ...base, attenteMoteur: false }
+      }
       const reco = action.recommandation || {}
       if (!(nombre(reco.panneaux) > 0)) return base
       let s = {
@@ -365,7 +383,9 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
     // ── Le moteur SERVEUR a refusé (motif FR VERBATIM, jamais un chiffre) ──
     case 'MOTEUR_A_REFUSE': {
       if (!base.attenteMoteur) return base
-      if (base.touche.nbPanneaux) return { ...base, attenteMoteur: false }
+      if (base.touche.nbPanneaux || tailleDemandeeParLead(base) != null) {
+        return { ...base, attenteMoteur: false }
+      }
       return { ...base, attenteMoteur: false, motifMoteur: action.motif ?? null }
     }
 

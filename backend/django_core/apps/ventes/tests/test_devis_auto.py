@@ -165,7 +165,8 @@ class BuildDevisAutoServiceTest(TestCase):
                             facture_hiver=Decimal('1800')),
             user=self.user, company=self.company, journal_auto=journal)
         self.assertTrue(any(
-            'Taille demandée sur la fiche du lead : 16 kWc' in a
+            'Taille demandée sur la fiche du lead : 16 kWc' in a['message']
+            and a['code'] == 'taille_demandee'
             for a in journal.get('alertes', [])), journal)
 
         journal2 = {}
@@ -174,7 +175,7 @@ class BuildDevisAutoServiceTest(TestCase):
                             email='sans-taille@ex.com'),
             user=self.user, company=self.company, journal_auto=journal2)
         self.assertFalse(any(
-            'Taille demandée' in a or 'Taille imposée' in a
+            a['code'] == 'taille_demandee'
             for a in journal2.get('alertes', [])), journal2)
 
     def test_le_compte_de_panneaux_couvre_toujours_la_taille_demandee(self):

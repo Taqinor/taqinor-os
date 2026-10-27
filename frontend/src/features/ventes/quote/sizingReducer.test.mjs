@@ -264,6 +264,30 @@ test('RGEN3 : la taille du lead vaut pour les DEUX options, comme le devis autom
   assert.equal(toucheNbPanneauxPourComposition(autre), false)
 })
 
+test('RGEN3 (critique Fable) : l’attente moteur se referme, le marché et le wattage gardent l’invariant', () => {
+  const s = sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE',
+    lead: { type_installation: 'residentiel', taille_souhaitee_kwc: '16', facture_hiver: '4000' },
+  })
+  // Une facture retapée arme l’attente : la réponse du moteur la referme
+  // sans toucher au compte tenu par la fiche.
+  const attente = { ...s, attenteMoteur: true }
+  const repondu = sizingReducer(attente, { type: 'MOTEUR_A_REPONDU', recommandation: { panneaux: 17, kwc: 12.07 } })
+  assert.equal(repondu.attenteMoteur, false)
+  assert.equal(repondu.nbPanneaux, '23')
+  assert.equal(sizingReducer(attente, { type: 'MOTEUR_A_REFUSE', motif: 'x' }).motifMoteur, null)
+  // Hors résidentiel, la taille de la fiche ne pilote rien.
+  const indus = red(s, { type: 'MARCHE_CHANGE', mode: 'industriel' })
+  assert.equal(tailleDemandeeParLead(indus), null)
+  assert.equal(tailleDemandeeParLead(sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE', lead: { type_installation: 'agricole', taille_souhaitee_kwc: '16' },
+  })), null)
+  // Un autre wattage recompte les panneaux pour TENIR les 16 kWc.
+  const w550 = red(s, { type: 'SAISI', champ: 'panelW', valeur: '550' })
+  assert.equal(w550.nbPanneaux, '30')
+  assert.equal(tailleDemandeeParLead(w550), 16)
+})
+
 test('LEAD_APPLIQUE résidentiel avec facture : ATTEND le moteur serveur (U3-900)', () => {
   const s = sizingReducer(ETAT_INITIAL, {
     type: 'LEAD_APPLIQUE',
