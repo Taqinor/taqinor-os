@@ -577,3 +577,107 @@ class DesignationOptionAvecTests(SimpleTestCase):
                          'Onduleur hybride Deye 20kW')
         self.assertEqual(designation_option_avec('Dyness PowerBrick SC 16 kWh', 'batterie'),
                          'Batterie Dyness PowerBrick SC 16 kWh')
+
+
+class RetourOptionAvecFluxTests(SimpleTestCase):
+    """CMP6 — ``option_avec.retour_simple_ans`` est le retour lu sur le flux
+    25 ans de ``flux_option_avec`` (dégradation, remplacement des hybrides et de
+    la batterie), comparable à celui de l'option « sans » — plus le quotient
+    coût ÷ économie an 1."""
+
+    ECONOMIE_AN1 = 40000.0
+
+    class _Valoriseur:
+        def __init__(self, statut='calcule'):
+            self.statut = statut
+
+        def complet(self, bilan):
+            return {'statut': self.statut, 'economie_annee1': {
+                'total_mad': 40000.0, 'total_mad_ttc': 48000.0,
+                'par_poste': [{'kwh_evites': 30000.0}]}}
+
+    def _evaluation(self, incomplet=False):
+        return {
+            'kwc': 50, 'puissance_ac': 30, 'batterie': {'produit': 1},
+            'cout': 540000.0, 'economie': self.ECONOMIE_AN1,
+            'bilan': {'production_kwh': 80000.0},
+            'onduleurs': {'combinaison': [], 'prix_vente_total_ht': '60000.00'},
+            'composition': {'incomplet': incomplet, 'lignes': [
+                {'role': 'panneau', 'designation': 'Panneau', 'quantite': 80,
+                 'prix_connu': True, 'prix_unitaire_ht': '3000'},
+                {'role': 'batterie_ci', 'designation': 'Dyness 16 kWh', 'quantite': 4,
+                 'prix_connu': True, 'prix_unitaire_ht': '60000'}]}}
+
+    def _ctx(self):
+        return {'taux_tva_pct': 20, 'batterie': {'garantie_mois': 120}}
+
+    def test_retour_lu_sur_le_flux_pas_sur_le_quotient(self):
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.domain.etude_ci_batterie import _bloc
+        from apps.ventes.economie_ci_options import (
+            annee_remplacement_batterie, flux_option_avec,
+        )
+        bloc = _bloc(self._evaluation(), self._Valoriseur(), self._ctx())
+        base = eco.base_economique(
+            None, investissement={'ht': 540000.0, 'ttc': 648000.0},
+            economie_annee1=self._Valoriseur().complet(None)['economie_annee1'])
+        attendu = flux_option_avec(
+            base, lignes=[
+                {'designation': 'Onduleur(s) hybride(s)', 'ht': 60000.0, 'ttc': 72000.0,
+                 'onduleur': True, 'optionnelle': False},
+                {'designation': 'Panneau', 'ht': 240000.0, 'ttc': 288000.0,
+                 'optionnelle': False},
+                {'designation': 'Batterie Dyness 16 kWh', 'ht': 240000.0, 'ttc': 288000.0,
+                 'optionnelle': False}],
+            batterie=annee_remplacement_batterie(120, None),
+            production_annee1_kwh=80000.0, kwh_evites_an=30000.0)
+        retour = attendu['indicateurs']['retour_dixieme_ans']
+        self.assertEqual(bloc['retour_simple_ans'], retour)
+        self.assertEqual(bloc['economie_flux']['indicateurs']['retour_dixieme_ans'], retour)
+        # L'ancien quotient (540 000 / 40 000 = 13,5) ignorait dégradation et remplacements.
+        self.assertEqual(round(540000.0 / self.ECONOMIE_AN1, 1), 13.5)
+        self.assertNotEqual(bloc['retour_simple_ans'], 13.5)
+        self.assertGreater(bloc['retour_simple_ans'], 13.5)
+        composants = {r['composant'] for r in bloc['economie_flux']['remplacements']}
+        self.assertEqual(composants, {'onduleur', 'batterie'})
+
+    def test_aucune_entree_aucun_quotient(self):
+        from apps.ventes.domain.etude_ci_batterie import _bloc
+        # composition incomplète (prix à renseigner / après visite)
+        self.assertIsNone(_bloc(self._evaluation(incomplet=True), self._Valoriseur(),
+                                self._ctx())['retour_simple_ans'])
+        # économie omise par le valoriseur
+        omis = _bloc(self._evaluation(), self._Valoriseur('omis'), self._ctx())
+        self.assertIsNone(omis['retour_simple_ans'])
+        self.assertIsNone(omis['economie_flux'])
+        # pas de valoriseur : le bloc se sert, sans retour
+        self.assertIsNone(_bloc(self._evaluation(), None, self._ctx())['retour_simple_ans'])
+
+    def test_option_des_lignes_du_devis(self):
+        from types import SimpleNamespace as L
+
+        from apps.ventes.domain.etude_ci_batterie import _bloc, _investissement_des_lignes
+        lignes = [
+            L(produit_id=1, designation='Onduleur hybride', quantite=1, prix_unitaire=60000,
+              remise=0, taux_tva=20, type_ligne='produit'),
+            L(produit_id=2, designation='Dyness 16 kWh', quantite=4, prix_unitaire=60000,
+              remise=0, taux_tva=20, type_ligne='produit'),
+            L(produit_id=3, designation='Panneau', quantite=80, prix_unitaire=3000,
+              remise=0, taux_tva=10, type_ligne='produit'),
+            L(produit_id=9, designation='Ligne sans', quantite=1, prix_unitaire=5,
+              remise=0, taux_tva=20, type_ligne='produit', variante='sans'),
+            L(produit_id=None, designation='Section', quantite=None, prix_unitaire=None,
+              remise=0, taux_tva=None, type_ligne='section')]
+        invest = _investissement_des_lignes(lignes, {1}, {2})
+        self.assertEqual(invest['ht'], 540000.0)
+        self.assertEqual(invest['ttc'], 72000.0 + 288000.0 + 264000.0)
+        self.assertEqual([x['onduleur'] for x in invest['lignes']], [True, False, False])
+        evaluation = dict(self._evaluation(), cout=None,
+                          composition=None, onduleurs={'combinaison': []})
+        bloc = _bloc(evaluation, self._Valoriseur(), self._ctx(), investissement=invest)
+        self.assertIsNotNone(bloc['retour_simple_ans'])
+        self.assertGreater(bloc['retour_simple_ans'], 13.5)
+        # une ligne sans prix ⇒ investissement non chiffré, jamais un quotient
+        self.assertIsNone(_investissement_des_lignes(
+            [L(produit_id=3, designation='Panneau', quantite=80, prix_unitaire=None,
+               remise=0, taux_tva=10)], set(), set()))
