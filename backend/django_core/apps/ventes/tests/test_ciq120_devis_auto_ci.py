@@ -383,6 +383,18 @@ def _batterie(co, nom, utile, prix, charge_kw):
     return produit
 
 
+class RefusConsigneVendeurCorc3Tests(_Base):
+    """CORC3 (27/10/2026) — un lead sans contrat d'électricité : le refus
+    nomme le champ du lead et donne une CONSIGNE au vendeur, jamais le
+    jargon du moteur (« Tarif non déclaré … économies non chiffrées »)."""
+
+    def test_contrat_absent_consigne_vendeur(self):
+        erreur = self._refus(self._lead(conso_mensuelle_kwh=Decimal('6000')), reel=True)
+        self.assertEqual(erreur.field, 'contrat_electricite')
+        self.assertTrue(erreur.message.startswith("Demandez au client son contrat"))
+        self.assertNotIn('Tarif non déclaré', erreur.message)
+
+
 class OptionBatterieCITests(_Base):
     """Fondateur 26/10/2026 — un devis C&I automatique porte DEUX options
     « sans » / « avec batterie » comme le résidentiel : hybrides Deye BASSE
@@ -425,6 +437,10 @@ class OptionBatterieCITests(_Base):
     def test_boulangerie_deux_options_hybrides_bt_et_banque_dyness(self):
         devis = self._auto(self._boulangerie())
         self.assertEqual(devis.etude_params.get('scenario'), 'Les deux (Sans + Avec)')
+        # CORC9 — CIQ302 : l'offre réseau est mise en avant (jamais « avec »).
+        self.assertEqual(devis.etude_params.get('recommended_option'), 'Sans batterie')
+        from apps.ventes.quote_engine.builder import build_quote_data
+        self.assertEqual(build_quote_data(devis)['recommended'], 'Sans batterie')
         sans, avec = self._ids(devis, 'sans'), self._ids(devis, 'avec')
         self.assertIn(self.onduleur.id, sans)
         hybrides = {self.h10.id, self.h15.id, self.h20.id}

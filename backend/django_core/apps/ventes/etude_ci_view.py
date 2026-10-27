@@ -40,6 +40,12 @@ EtudeCiPreviewResponse = inline_serializer('EtudeCiPreviewResponse', {
     'hypotheses': serializers.ListField(child=serializers.JSONField()),
     'methode': serializers.CharField(),
     'version_moteur': serializers.CharField(),
+    # CORC1 (27/10/2026) — l'écran vendeur sait AVANT le clic si le devis
+    # automatique passera, et pourquoi (même refus que le bouton).
+    'devis_auto': serializers.JSONField(),
+    # Fondateur 26/10/2026 — ABSENTE quand l'option « avec batterie » n'est
+    # pas composée (forme ``option_avec`` du contrat).
+    'option_avec': serializers.JSONField(required=False),
 })
 
 
@@ -80,7 +86,8 @@ def _lead_de_la_societe(company, lead_id):
 @permission_classes([IsAnyRole])
 def etude_ci_preview(request):
     """POST /ventes/etude-ci/preview/ — calcule, n'écrit rien."""
-    from .domain.etude_ci import etudier_ci
+    from .domain.etude_ci import devis_auto_possible, etudier_ci
+    from .domain.etude_ci_batterie import CLE as CLE_OPTION_AVEC
 
     # CI #997 — corps non objet (``[null, null]``) : 400, plus un calcul
     # « omis » rendu 200 sur un corps hors schéma.
@@ -99,7 +106,7 @@ def etude_ci_preview(request):
     lead = _lead_de_la_societe(company, corps.get('lead'))
     entrees = {k: v for k, v in corps.items() if k not in CLES_CONTEXTE}
     etude = etudier_ci(company, entrees, devis=devis, lead=lead)
-    return Response({
+    reponse = {
         'entrees_resolues': etude['entrees_resolues'],
         'niveau_donnees': etude['niveau_donnees'],
         'sous_reserve_visite': etude['sous_reserve_visite'],
@@ -114,4 +121,8 @@ def etude_ci_preview(request):
         'hypotheses': etude['hypotheses'],
         'methode': etude['methode'],
         'version_moteur': etude['version_moteur'],
-    })
+        'devis_auto': devis_auto_possible(etude),
+    }
+    if etude.get(CLE_OPTION_AVEC):
+        reponse[CLE_OPTION_AVEC] = etude[CLE_OPTION_AVEC]
+    return Response(reponse)

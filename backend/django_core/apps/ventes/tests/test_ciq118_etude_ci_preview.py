@@ -192,6 +192,19 @@ class ContratTests(_Base):
             self.assertEqual(set(entree['provenance']), {'origine', 'detail', 'date'})
         self.assertIsNotNone(data['taille']['retenue_kwc'])
 
+    # ── CORC1 — l'aperçu dit si le devis automatique passera ────────────────
+
+    def test_devis_auto_possible_sur_etude_complete(self):
+        data = self.post(self.corps(phases='tri'))
+        self.assertEqual(data['devis_auto'], {'possible': True, 'message': None, 'champ': None})
+        self.assertNotIn('option_avec', data)  # aucun hybride au catalogue de test
+
+    def test_devis_auto_refuse_nomme_le_champ_du_lead(self):
+        data = self.post(self.corps(tarif=None))
+        self.assertFalse(data['devis_auto']['possible'])
+        self.assertEqual(data['devis_auto']['champ'], 'contrat_electricite')
+        self.assertTrue(data['devis_auto']['message'].startswith('Demandez au client'))
+
     # ── ADEV82 — bande interne DH/kWc lue ───────────────────────────────────
 
     def test_bande_prix_kwc_posee_hors_bande_alerte_interne(self):
@@ -408,11 +421,13 @@ class BornePoseParDefautAdev90(_Base):
         corps['toit'] = dict({'type_pose': None, 'surface_utile_m2': 200}, **toit)
         return self.post(corps)
 
-    def test_surface_sans_pose_bornee_en_surimposition(self):
+    def test_surface_sans_pose_bornee_en_pose_chiffree(self):
+        # CORC5 — couverture inconnue : la borne suit la pose que la
+        # composition CHIFFRE (toit plat lesté, fondateur 26/10/2026).
         rep = self._bornes()
         toit = rep['taille']['bornes']['toit']
         self.assertIsNotNone(toit['kwc'])
-        self.assertIn('pose estimée « toiture_inclinee »', toit['source'])
+        self.assertIn('pose estimée « toit_plat_leste »', toit['source'])
         self.assertNotIn('contenance_toit_inconnue', [a['code'] for a in rep['alertes']])
 
     def test_pose_declaree_inchangee(self):

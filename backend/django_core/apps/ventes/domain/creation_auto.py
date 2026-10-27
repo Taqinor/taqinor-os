@@ -121,6 +121,12 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     entrees['mode'] = lead.type_installation
     if scenario:
         entrees['scenario'] = scenario
+        if scenario == SCENARIO_LES_DEUX:
+            # CORC9 (27/10/2026) — CIQ302 (convention 5) : un C&I à deux
+            # options MET EN AVANT l'offre réseau (``options.
+            # option_mise_en_avant``) ; sans cette clé, le PDF retombait sur
+            # la règle résidentielle et marquait « Avec batterie » RECOMMANDÉ.
+            entrees['recommended_option'] = SCENARIO_SANS_BATTERIE
 
     def _create(ref):
         return Devis.objects.create(
@@ -555,6 +561,10 @@ from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-
     ORIGINE_TUNNEL,
     IntentionDevis,
     appliquer,
+)
+from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    SCENARIO_LES_DEUX,
+    SCENARIO_SANS_BATTERIE,
 )
 from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     AutoDevisError,
