@@ -268,3 +268,12 @@ class AttestationREApiTest(TestCase):
         self.assertAlmostEqual(
             float(att.facteur_co2_kg_kwh), DEFAULT_GRID_CO2_KG_PER_KWH,
             places=4)
+
+    def test_chantier_inconnu_404(self):
+        # api-fuzz-full 27/10 (ENF11) : un chantier absent (ou d'une autre
+        # société) = ressource manquante, 404 — plus un 400.
+        resp = self.api.post(self.url, {
+            'reference': 'RE-404', 'energie_kwh': '1', 'chantier': 999999999,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertFalse(AttestationRE.objects.filter(reference='RE-404').exists())
