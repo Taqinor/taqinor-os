@@ -697,9 +697,43 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
         model = EquipeCommerciale
         fields = [
             'id', 'company', 'nom', 'responsable', 'responsable_nom',
-            'membres', 'nb_membres', 'actif', 'date_creation',
+            'membres', 'nb_membres', 'actif', 'recoit_leads', 'date_creation',
         ]
         read_only_fields = ['company', 'date_creation']
+
+    def validate(self, attrs):
+        # Fondateur 26/10/2026 — une personne n'appartient qu'à UNE équipe
+        # active, et l'équipe pose son superviseur (authentication.
+        # equipes_structure). Contrôlé sur l'état FINAL de l'équipe.
+        from authentication.equipes_structure import valider_membres_uniques
+        attrs = super().validate(attrs)
+        inst = self.instance
+        actif = attrs.get('actif', inst.actif if inst else True)
+        if actif:
+            actuels = list(inst.membres.all()) if inst else []
+            membres = attrs.get('membres', actuels)
+            nouveaux = {u.pk for u in membres} - {u.pk for u in actuels}
+            chef = attrs.get(
+                'responsable', inst.responsable if inst else None)
+            valider_membres_uniques(inst, membres, chef, nouveaux)
+        return attrs
+
+    def save(self, **kwargs):
+        from authentication.equipes_structure import synchroniser_superviseurs
+        inst = self.instance
+        chef_avant = inst.responsable if inst else None
+        membres_avant = list(inst.membres.all()) if inst else []
+        equipe = super().save(**kwargs)
+        synchroniser_superviseurs(
+            equipe.company_id, chef_avant, membres_avant,
+            equipe.responsable, list(equipe.membres.all()), equipe.actif)
+        # Une seule équipe reçoit les nouveaux leads par société : cocher
+        # celle-ci décoche les autres (même société uniquement).
+        if equipe.recoit_leads:
+            EquipeCommerciale.objects.filter(
+                company_id=equipe.company_id, recoit_leads=True,
+            ).exclude(pk=equipe.pk).update(recoit_leads=False)
+        return equipe
 
     def to_internal_value(self, data):
         # CI #997 (fuzz) — ``membres`` = ``{}`` passait pour une liste vide

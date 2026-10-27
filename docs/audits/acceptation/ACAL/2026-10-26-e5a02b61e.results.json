@@ -1,0 +1,79 @@
+{
+  "sha": "e5a02b61e23228d92e3f7ba6f6e71d021bb849eb",
+  "date": "2026-10-26",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL358",
+    "ACAL360",
+    "ACAL359"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA2.5",
+      "taches": [
+        "ACAL358"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-26/ACAL358-PA2.5.txt",
+      "notes": "rejeu API (evaluer-electrique + entree-electrique), 4 cas : saisi / introuvable / autre societe / resolu + mono ; sonde VER-005 repro=False"
+    },
+    {
+      "id": "PA2.3",
+      "taches": [
+        "ACAL360"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-26/ACAL360-PA2.3.txt",
+      "notes": "rejeu API layout/section sur calepinage vierge : '' 200, second '' 409, absent/null 400, relecture egale ; sonde VER-003 repro=False"
+    },
+    {
+      "id": "PA2.5",
+      "taches": [
+        "ACAL359"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-26/ACAL359-PA2.5.txt"
+    }
+  ]
+}

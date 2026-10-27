@@ -9,6 +9,7 @@ serveur (jamais lus du corps). Les cibles (membres, chef) sont validées tenant 
 elles doivent appartenir à la société de l'utilisateur."""
 from rest_framework.exceptions import ValidationError
 
+from authentication.equipes_structure import enregistrer_equipe
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
@@ -69,9 +70,21 @@ class EquipeViewSet(oa.JsonOnlyMixin, UsageGuardedDestroyMixin, CompanyScopedMod
     def perform_create(self, serializer):
         company = self.request.user.company
         _check_members_tenant(serializer, company)
-        serializer.save(company=company, created_by=self.request.user)
+        # Fondateur 26/10/2026 — une seule équipe par personne ; le chef
+        # devient le superviseur des membres (authentication.equipes_structure).
+        enregistrer_equipe(
+            serializer, 'chef', company=company, created_by=self.request.user)
 
     def perform_update(self, serializer):
         company = self.request.user.company
         _check_members_tenant(serializer, company)
-        serializer.save(company=company)
+        enregistrer_equipe(serializer, 'chef', company=company)
+
+    def perform_destroy(self, instance):
+        # Fondateur 26/10/2026 — l'équipe supprimée rend leur superviseur à
+        # ses membres (posé par l'équipe, jamais à la main).
+        from authentication.equipes_structure import synchroniser_superviseurs
+        chef, membres = instance.chef, list(instance.membres.all())
+        company_id = instance.company_id
+        super().perform_destroy(instance)
+        synchroniser_superviseurs(company_id, chef, membres, None, [], False)

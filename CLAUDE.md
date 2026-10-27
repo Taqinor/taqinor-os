@@ -234,8 +234,8 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
   Exceptions: the ONE test you're actively fixing; `vite build` (~8 s) after any MANUAL conflict
   resolution. Local docker remains a debugging tool for reproducing a specific red, never a gate.
 - **Merge the INSTANT CI is green** (a green run sat on for an hour went BEHIND main → integrate +
-  full CI again + a woken flaky test). During an active CI wait, check every ~5 min. Skip
-  preflight.ps1 on the cache-hit path (it doubles wall-clock for nothing).
+  full CI again + a woken flaky test). During an active CI wait, check every ~5 min. Never run
+  preflight.ps1 before a push (founder, 2026-10-27 — docker is slow on every machine; see step 5).
 - **At every merge, report:** tasks done this batch (one line each: what it was for) + remaining
   open counts per plan file + (règle fondateur 2026-10-09) la sortie de `python scripts/audit_registre.py
   --du` (groupes d'audit dont le `vérifie <G>` est dû à ≥ 50 % / ≥ 95 % cochées, dette d'acceptation,
@@ -340,19 +340,18 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
 5. **ONE gate at the very end.** When the queue drains (or a cap is hit): refresh `docs/CODEMAP.md`
    if structure/plan changed (then `codemap_fingerprint.py --write`), integrate the latest
    `origin/main` into `dev` (sync-safe — merge it in, recompute the structure fingerprint if the
-   structural surface moved, NEVER force-push). **Then decide whether to run `powershell -File
-   scripts/preflight.ps1` BEFORE pushing — WOW (2026-07-11): gate it on the CI path, do NOT run it
-   reflexively.** Preflight runs EVERY fast gate (backend-lint's compileall-3.11 / flake8 / lint-imports,
-   the model↔migration drift check, and all 10 `stage-names` sub-checks) locally in the prod 3.11 image
-   in one pass (~7 min) and reports ALL failures at once — a run that skipped it once burned FOUR CI
-   round-trips discovering stage-names reds one at a time. Its ONLY value is catching a fast-gate red
-   BEFORE a SLOW CI cycle, so gate it on the WOW8-INCR cache path: **run full preflight when the push
-   will be a cold cache-MISS (new/changed migrations → ~40-min CI) or touches a high-risk fast-gate
-   surface (migrations, imports, stage-names/CODEMAP).** But on the cache-HIT path the CI gate is now
-   ~6-7 min (measured 2026-07-11) — a ~7-min preflight in front of a ~7-min CI just DOUBLES the
-   wall-clock for zero saving, so there SKIP full preflight and run only the cheap host-only checks on
-   the changed files (`flake8` + `py_compile`), letting the fast CI be the gate. Fix everything red,
-   THEN push `dev` and run the four required checks **once** over the whole batch. To WAIT on that CI, use `powershell -File scripts/watch-ci.ps1` (or
+   structural surface moved, NEVER force-push). **NO docker preflight before pushing (règle fondateur
+   2026-10-27, supersedes the WOW 2026-07-11 « run preflight on a cache-miss or high-risk surface »
+   rule).** Reda, 27/10 : « docker is always slow on any machine I own » — measured the same day: a
+   `scripts/preflight.ps1` meant to take ~7 min ran over an hour on a shared box and hung once after a
+   Docker restart, while the CI fast gates take ~6-7 min. So NEVER run `preflight.ps1` (or any local
+   docker gate) before a push, whatever the surface (migrations, imports, stage-names/CODEMAP
+   included): run only the cheap HOST checks on what the batch touched — `flake8` + `py_compile` on
+   changed Python, `eslint` on changed frontend files, and the specific `scripts/check_*.py` /
+   `scripts/tests` of any guard the batch added or edited — then push and let CI be the gate (it
+   reports every failing job of the run at once ; on a red, fix all reds of that run before re-pushing).
+   `preflight.ps1` stays available only to reproduce a specific CI red locally when Reda asks. Fix
+   everything red, THEN push `dev` and run the four required checks **once** over the whole batch. To WAIT on that CI, use `powershell -File scripts/watch-ci.ps1` (or
    `-Pr <n>`) — it wraps `gh run watch --exit-status` and prints a per-job PASS/FAIL summary, so no
    session re-invents a waiter/monitor or hand-rolls a `2>&1 | tail` status check that masks the exit
    code. Self-merge `dev` → `main` **exactly once**. The run ENDS at the merge — no deploy, no server verification (Deploys rule: Reda deploys in 2 min;

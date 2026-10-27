@@ -1,0 +1,25 @@
+Rejeu orchestrateur P3.4 (AMOT56, D-AMOT-7 = a) sur la pile locale à e5a02b61e (origin/main), 26/10/2026, demo_admin (société 1) — sonde API (manage.py shell, APIClient(HTTP_HOST='localhost') authentifié), PDF /proposal RÉEL (WeasyPrint de l'image), texte extrait par PyMuPDF ; règle nocturne jouée par la VRAIE commande `audit_coherence --company taqinor-demo --rules DOC_POMPAGE_M3_SANS_COURBE --no-persist --json`.
+
+Setup : la démo n'a AUCUN devis agricole ; un devis agricole est créé DANS une transaction ANNULÉE (aucun devis DEV-ACCEPT-AMOT56* relu après) — client de DEV-202609-0003, mode_installation = agricole, lignes catalogue réelles : VARIATEUR VEICHI SI23 5.5KW 380V ×1, Panneau mono 550W ×10, AFFICHEUR VARIATEUR SI22 ×1 (aucune ligne pompe : pompe EXISTANTE, donc aucune courbe) ; etude_params = pompe existante 5,5 CV / 5,5 kW, debit_actuel_m3h = 12, HMT 40 m, 7 h, production {mode: debit_declare, m3_jour_mois: [75]*12} (cas de la sonde VC agr9).
+
+Sortie brute :
+DEVIS 915 DEV-ACCEPT-AMOT56-A agricole
+DECLARE (plein format) 200 pages= 3
+   CTX ... 75 m³ d'eau par jour à 40 m de hauteur | sur 7 h de pompage équivalentes à plein débit (mois de conception) | estimation · débit déclaré par vous | PUISSANCE POMPE | 5,5 CV | 5,5 kW | CHAMP PV | 5,68 kWc | D'où viennent ces chiffres ...
+OP ?pdf_mode=onepage 200 1
+   CTX ... kW) HMT 40 m EAU / JOUR — ESTIMATION · DÉBIT DÉCLARÉ PAR VOUS, SUR 7 H DE POMPAGE (HYPOTHÈSE) ≈ 75 m³ CHAMP PV 5,5 kWc ...
+OP ?pdf_mode=onepage&langue=en 200 1
+   CTX ... HMT 40 m WATER / DAY — ESTIMATE · FLOW RATE DECLARED BY YOU, OVER 7 H OF PUMPING (ASSUMPTION) ≈ 75 m³ PV ARRAY 5,5 kWc ...
+PRED debit_declare_sans_courbe = True ; eau {'m3_jour': 75, 'heures_pompage': 7, 'hmt_m': 40, 'debit_hmt_m3h': None, 'estimation': True, ...}
+(le une-page met le libellé en capitales par CSS : le texte extrait est en majuscules)
+
+Règle nocturne :
+AUDIT DEMO {"companies": ["taqinor-demo"], "checked": {"devis": 93}, "violations": [], "new": [], "rule_errors": [], ...}
+AUDIT DEMO+DEVIS_DECLARE {"checked": {"devis": 94}, "violations": [], "new": [], "rule_errors": [], ...}
+AUDIT DEMO+DEVIS_DECLARE+DEVIS_HERITE_SANS_PRODUCTION {"checked": {"devis": 95}, "violations": [{"rule": "DOC_POMPAGE_M3_SANS_COURBE", "severity": "critique", "reference": "DEV-ACCEPT-AMOT56-B", "message": "m³/jour imprimé (75) pour une pompe sans courbe constructeur ni débit déclaré.", "values": {"m3_jour": 75, "attendu": null}}], ...}
+HERITE_RENDU 200 3 « 75 m³ d'eau par jour à 40 m de hauteur sur 7 h ... » sans « débit déclaré par vous » — c'est exactement le cas que la règle détecte (témoin : devis B = m³/jour hérité SANS production déclarée, créé lui aussi dans la transaction annulée).
+APRES devis DEV-ACCEPT-AMOT56* restants : 0
+
+Verdict : PASS — (a) pompe sans courbe + débit déclaré : la carte m³/jour reste et porte « estimation · débit déclaré par vous » sur le document agricole 3 pages ET sur le une-page (en anglais « flow rate declared by you ») ; la règle `DOC_POMPAGE_M3_SANS_COURBE` ne lève RIEN sur la démo (93 devis) ni sur le devis déclaré, et lève sur le témoin fautif (m³/jour imprimé sans courbe ni débit déclaré) — le contrôle n'est pas vide.
+Observation hors clause : le une-page imprime « CHAMP PV 5,5 kWc » (lignes : 10 × 550 W) quand le plein format imprime « 5,68 kWc » (champ_kwc saisi dans l'étude de la sonde) — divergence due à la donnée synthétique du rejeu (étude 5,68 vs lignes 5,5), à ne pas lire comme un écart d'AMOT56.
+Oracles : 1 PASS, 2 PASS, 6 PASS (4/4 /proposal 200), 7 PASS (prix d'achat des 3 produits — 2 375,00 / 1 941,82 / 300,00 — absents des PDF plein format et une-page), autres NA (rejeu API).

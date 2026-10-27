@@ -101,14 +101,21 @@ TEXTES_PUISSANCE = {
     "ar": ("تقلص المحطة الطاقة المشتراة؛ القدرة المكتتبة والإتاوة الثابتة "
            "لا تتغيران."),
 }
-#: Note sur la pointe SANS batterie (texte des couvertures, C3-25).
+#: Note sur la pointe SANS batterie (texte des couvertures, C3-25). Fondateur
+#: 27/10/2026 — un fait, jamais une réserve ; devis SANS option « avec ».
 TEXTES_POINTE_SANS = {
-    "fr": ("La pointe (soir/nuit) n'est sécurisée qu'avec un stockage — non "
-           "promise sans batterie."),
-    "en": ("The evening/night peak is only secured with storage — not "
-           "promised without a battery."),
-    "ar": ("لا تُؤمَّن فترة الذروة (المساء/الليل) إلا بالتخزين — غير موعودة "
-           "دون بطارية."),
+    "fr": "Le soir et la nuit, votre consommation reste fournie par le réseau.",
+    "en": "In the evening and at night, your consumption is still supplied by "
+          "the grid.",
+    "ar": "في المساء والليل، يظل استهلاككم مزودًا من الشبكة.",
+}
+#: Fondateur 27/10/2026 — même note quand le devis PORTE l'option « avec ».
+TEXTES_POINTE_SANS_OPTION_AVEC = {
+    "fr": ("Le soir et la nuit, votre consommation reste fournie par le "
+           "réseau ; l'option avec batterie la couvre."),
+    "en": ("In the evening and at night, your consumption is still supplied "
+           "by the grid; the battery option covers it."),
+    "ar": "في المساء والليل، يظل استهلاككم مزودًا من الشبكة؛ ويغطيه خيار البطارية.",
 }
 #: Note sur la pointe AVEC batterie que le moteur ne chiffre pas.
 TEXTES_POINTE_AVEC_NON_CHIFFREE = {
@@ -346,12 +353,69 @@ def _batterie_servie(data):
     return bool(data.get("avec_ok") and not data.get("sans_ok"))
 
 
+#: Fondateur 26/10/2026 — la valeur de l'option « avec batterie » CHIFFRÉE
+#: par le moteur C&I (``etude_ci.option_avec``) : des chiffres du moteur
+#: seulement, jamais une promesse ni un « non chiffré ».
+TEXTES_OPTION_AVEC = {
+    "fr": ("Batterie de {cap} kWh utiles : {rest} kWh/an restitués le soir et "
+           "la nuit, {eco} MAD HT d'économie par an avec l'option batterie."),
+    "en": ("{cap} kWh usable battery: {rest} kWh/year delivered in the evening "
+           "and at night, {eco} MAD excl. VAT saved per year with the battery "
+           "option."),
+    "ar": ("بطارية بسعة مفيدة {cap} كيلوواط ساعة: {rest} كيلوواط ساعة سنويًا "
+           "تُستعاد في المساء والليل، و{eco} درهم دون احتساب الضريبة من التوفير "
+           "سنويًا مع خيار البطارية."),
+}
+
+
+def _nombre_langue(valeur, langue, decimales=0):
+    texte_ = f"{valeur:,.{decimales}f}"
+    if langue == "en":
+        return texte_
+    return texte_.replace(",", " ").replace(".", ",")
+
+
+def valeur_option_avec(data):
+    """``{economie_annuelle_mad, retour_simple_ans, capacite_utile_kwh,
+    restitue_kwh_an, textes{fr,en,ar}}`` de l'option « avec batterie » C&I
+    (``etude_ci.option_avec`` posé par le rafraîchisseur depuis les LIGNES),
+    ou ``None`` quand le moteur ne la chiffre pas. Retour simple = total HT
+    net de l'option (``option_batterie.totaux``, sinon ``totaux_avec``) ÷
+    économie annuelle HT (la base de la taille C&I)."""
+    data = _dict(data)
+    avec = _dict(_dict(_dict(data.get("etude")).get("etude_ci")).get("option_avec"))
+    eco = nombre_normalise(avec.get("economie_annuelle_mad"))
+    stock = _dict(_dict(avec.get("bilan")).get("batterie"))
+    cap = nombre_normalise(stock.get("capacite_utile_kwh"))
+    rest = nombre_normalise(stock.get("restitue_kwh_an"))
+    if not eco or eco <= 0 or not cap or rest is None:
+        return None
+    totaux = (_dict(_dict(data.get("option_batterie")).get("totaux"))
+              or _dict(data.get("totaux_avec")))
+    ht = nombre_normalise(totaux.get("ht_net"))
+    textes = {lg: gabarit.format(cap=_nombre_langue(cap, lg, 1),
+                                 rest=_nombre_langue(rest, lg),
+                                 eco=_nombre_langue(eco, lg))
+              for lg, gabarit in TEXTES_OPTION_AVEC.items()}
+    return {"economie_annuelle_mad": round(eco, 2),
+            "retour_simple_ans": round(ht / eco, 1) if ht else None,
+            "capacite_utile_kwh": cap, "restitue_kwh_an": rest,
+            "textes": textes}
+
+
 def _mention_pointe(data):
     if not _batterie_servie(data):
-        return _entree("pointe", TEXTES_POINTE_SANS, SOURCE_POINTE)
+        # L'offre réseau d'un devis À DEUX options (``option_batterie`` servi
+        # par le builder) renvoie à l'option « avec » ; sinon la phrase seule.
+        textes = (TEXTES_POINTE_SANS_OPTION_AVEC
+                  if isinstance(data.get("option_batterie"), dict)
+                  and not data.get("avec_batterie_differee")
+                  else TEXTES_POINTE_SANS)
+        return _entree("pointe", textes, SOURCE_POINTE)
     # Batterie servie : SEULEMENT ce que le moteur chiffre (un texte qu'il
     # sert), sinon « non chiffrée » — jamais une promesse.
-    chiffre = _dict(data.get("option_batterie")).get("valeur_chiffree")
+    chiffre = (_dict(data.get("option_batterie")).get("valeur_chiffree")
+               or valeur_option_avec(data))
     if isinstance(chiffre, dict) and isinstance(chiffre.get("textes"), dict) \
             and chiffre["textes"].get("fr"):
         return _entree("pointe", chiffre["textes"], "moteur C&I",

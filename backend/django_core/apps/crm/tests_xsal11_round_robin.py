@@ -183,3 +183,55 @@ class RoundRobinAppliedToWebhookTests(TestCase):
         self.assertIsNotNone(lead1.owner_id)
         self.assertIsNotNone(lead2.owner_id)
         self.assertNotEqual(lead1.owner_id, lead2.owner_id)
+
+
+class EquipeRecevantLeadsTests(TestCase):
+    """Fondateur 26/10/2026 — l'équipe cochée « Reçoit les nouveaux leads »
+    les partage entre SES membres actifs (plafond du profil), interrupteur
+    round-robin ON ou OFF ; tous saturés → responsable par défaut."""
+
+    def setUp(self):
+        from apps.crm.models import EquipeCommerciale
+        self.company = Company.objects.create(
+            nom='Taqinor Equipe Leads', slug='taqinor-equipe-leads')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_creer', 'crm_voir'])
+        self.a = make_commercial(self.company, 'eq_leads_a', self.role)
+        self.b = make_commercial(self.company, 'eq_leads_b', self.role)
+        self.hors = make_commercial(self.company, 'eq_leads_hors', self.role)
+        self.defaut = make_commercial(self.company, 'eq_leads_def', self.role)
+        self.profile = CompanyProfile.objects.create(
+            company=self.company, responsable_defaut_leads=self.defaut,
+            round_robin_leads_actif=False,
+            round_robin_plafond_leads_ouverts=1)
+        self.equipe = EquipeCommerciale.objects.create(
+            company=self.company, nom='Casa', recoit_leads=True)
+        self.equipe.membres.set([self.a, self.b])
+
+    def _lead(self, owner):
+        return Lead.objects.create(
+            company=self.company, nom='L', owner=owner, stage=stages.NEW)
+
+    def test_rotation_entre_membres_seulement_meme_interrupteur_off(self):
+        premier = default_responsable_for(self.company)
+        self.assertIn(premier, (self.a, self.b))
+        self._lead(premier)
+        second = default_responsable_for(self.company)
+        self.assertIn(second, (self.a, self.b))
+        self.assertNotEqual(premier, second)
+
+    def test_tous_au_plafond_retombe_sur_le_responsable_par_defaut(self):
+        self._lead(self.a)
+        self._lead(self.b)
+        self.assertEqual(default_responsable_for(self.company), self.defaut)
+
+    def test_membre_inactif_saute(self):
+        self.a.is_active = False
+        self.a.save(update_fields=['is_active'])
+        self.assertEqual(default_responsable_for(self.company), self.b)
+
+    def test_equipe_archivee_ou_decochee_comportement_inchange(self):
+        self.equipe.actif = False
+        self.equipe.save(update_fields=['actif'])
+        self.assertEqual(default_responsable_for(self.company), self.defaut)

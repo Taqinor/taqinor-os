@@ -180,7 +180,7 @@ export default function PortailClientDevis() {
                     Voir le devis (PDF)
                   </a>
                 </Button>
-                {!d.accepte && (
+                {d.acceptable && (
                   <Button size="sm" onClick={() => ouvrirSignature(d)}>
                     Accepter
                   </Button>

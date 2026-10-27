@@ -1,0 +1,35 @@
+ACAL360 — PA2.3 — rejeu API (helper de l'orchestrateur), pile locale docker (projet erp-agentique, backend monté = origin/main e5a02b61e, hachés sha256 de services/layout.py, chaines.py, electrique.py, modules_pans.py, views/electrique.py, views/calepinages.py identiques worktree/conteneur), 2026-10-26.
+Sonde manage.py shell : APIClient(HTTP_HOST='localhost') force_authenticate demo_admin (société 1) sur les VRAIES routes ; transaction.atomic + rollback forcé : rien ne reste (compté après rollback). Les tracebacks d'auto-import du shell (STAGES, contrats, kb) en tête de sortie sont du bruit d'import, sans lien.
+Portée : le serveur (POST layout/section/ sur un calepinage vierge + relecture GET layout/). Le geste écran (onglet Horizon : ecrireSection qui poste '' quand l'empreinte lue est nulle) n'est PAS joué ici.
+
+Sortie brute (bloc ACAL360) :
+user demo_admin company 1
+=== ACAL360 ===
+setup: Lead 1039 Calepinage 20 roof_layout None
+1. GET /api/django/calepinage/calepinages/20/layout/ -> 200 empreinte_document= None roof_layout= None
+2. POST section/ horizonProfile base_empreinte="" -> 200 empreinte_document= '67437bba5f63dfe62c1cfb7de4f9847de300a219c2de6ff47d3f74efa9a60b81'
+3. GET re-read -> 200 horizonProfile==envoyé: True ; empreinte relue= '67437bba5f63dfe62c1cfb7de4f9847de300a219c2de6ff47d3f74efa9a60b81' ; == jeton du POST: True
+4. second POST base_empreinte="" -> 409 {"detail": "Le document a été modifié ailleurs depuis votre ouverture : rechargez avant d'enregistrer.", "code": "document_modifie", "empreinte_courante": "67437bba5f63dfe62c1cfb7de4f9847de300a219c2de6ff47d3f74efa9a60b81"}
+5. POST base_empreinte absent -> 400 {"base_empreinte": "Jeton manquant : envoyez base_empreinte, l'empreinte du document ouvert."}
+6. POST base_empreinte null -> 400 {"base_empreinte": "Jeton manquant : envoyez base_empreinte, l'empreinte du document ouvert."}
+7. GET after refusals -> empreinte unchanged: True
+VERDICT ACAL360: PASS
+
+Rejeu de la sonde REPRO docs/audits/sondes/ACAL/C-ACAL-VER-003.py (sous rollback) : « GET 200 empreinte=None ; section 200 {roof_layout: {horizonProfile: …}} » → SONDE_RESULT {'repro': False} (rouge sur 5ea32b58b : section 400 « Jeton manquant »).
+
+Attendu (plan) vs observé :
+- calepinage neuf (roof_layout NULL) : GET layout/ 200, empreinte_document null : OBSERVÉ.
+- POST section horizonProfile base_empreinte '' → 200, empreinte rendue non vide : OBSERVÉ (67437bba…).
+- relecture GET layout/ : horizonProfile présent et égal, jeton égal à celui du POST : OBSERVÉ.
+- second POST '' → 409 (code document_modifie) : OBSERVÉ ; base_empreinte absent → 400 {base_empreinte} : OBSERVÉ ; null → 400 {base_empreinte} : OBSERVÉ ; empreinte inchangée après les refus : OBSERVÉ.
+- Les 409/400 sont les refus ATTENDUS du scénario (pas des 4xx inattendus) ; aucun 5xx.
+Verdict : PASS (serveur). Oracles API : 1,2 PASS ; 3,4,8 NA ; 5-7,9,10 NA.
+
+--- Geste écran (orchestrateur, navigateur intégré, demo_admin, front reconstruit à e5a02b61e) ---
+Calepinage NEUF créé pour un lead (Calepinage 25 « ACCEPT-ACAL360 », lead 1059, roof_layout NULL), ouvert sur /calepinage/25/horizon :
+1. 8 directions saisies au clavier (0/45/90/135/180/225/270/315°, hauteur 8°, 12° à l'est) par « Ajouter le point » ; « Enregistrer le profil » actif.
+2. Clic → POST /api/django/calepinage/calepinages/25/layout/section/ {cle:'horizonProfile', valeur:{source:'saisie', points:[…8…]}, base_empreinte} → 200
+   (le document lu n'avait pas d'empreinte : l'écran a envoyé le jeton du document vide au lieu de renoncer) ; message « Profil d'horizon enregistré — la simulation affichée est périmée … ».
+3. Réouverture (rechargement complet de /calepinage/25/horizon) : les 8 points relus identiques ; aucune réponse >= 400. En base : roof_layout = {horizonProfile} (8 points).
+Fixture supprimée en fin de rejeu.
+Verdict écran : PASS.

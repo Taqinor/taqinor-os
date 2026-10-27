@@ -62,3 +62,13 @@ class TestPortailDevisMisAJour(TestCase):
         d = self._devis('DEV-QJR565-4', 'envoye')
         self.assertEqual(set(self._lignes()[d.id]),
                          set(CONTRAT['exemple']['results'][0]))
+
+    def test_acceptable_servi_par_le_serveur(self):
+        # ERR-PORTAIL-ACCEPTER-DEVIS-REFUSE — « Accepter » ne se propose que
+        # pour un devis que accept_devis accepterait (une seule source).
+        attendu = {'envoye': True, 'accepte': False, 'refuse': False,
+                   'expire': False}
+        ids = {s: self._devis('DEV-ERRP-%s' % s, s).id for s in attendu}
+        lignes = self._lignes()
+        for statut, ok in attendu.items():
+            self.assertIs(lignes[ids[statut]]['acceptable'], ok, statut)

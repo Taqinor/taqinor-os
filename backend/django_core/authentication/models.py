@@ -569,7 +569,7 @@ class CustomUser(AbstractUser):
         return False
 
     def record_scope(self):
-        """'all' | 'subtree' | 'team' — portée de visibilité (Feature F).
+        """'all' | 'subtree' | 'team' | 'self' — portée de visibilité (Feature F).
 
         Un rôle SANS marqueur de portée voit tout (légacy/personnalisé/admin)."""
         from authentication.scoping import record_scope_for

@@ -1,0 +1,14 @@
+ACRM57 — P5.2 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient sur les VRAIES routes /api/django/crm/deals-enregistres/…, EMAIL_BACKEND locmem, transaction.atomic + rollback : rien ne reste). Société démo 1, demo_admin.
+Réglage réel de la démo : apporteurs_actif = False (ACRM66) ⇒ POST rejeter → 404 ; allumé DANS la transaction pour jouer les transitions.
+Montage : apporteurs A et B ; D1 (A, lead acc57a) « à payer », commission due 1 000,00 ; D2 (A, lead acc57b) « rejeté » ; D3 (B, autre lead même e-mail acc57b) « approuvé » (protège le client) ; D4 (A) « en attente ».
+
+1. POST …/D1/rejeter/ (deal à payer) → 400 {statut: ["Transition refusée : un deal « À payer » ne peut pas être rejeté."]}.
+   Relu : D1 statut a_payer, commission 1000.00 ; GET …/a-payer/ → 200, D1 présent (a_payer, 1000.00).
+2. POST …/D2/approuver/ (deal rejeté dont le client est protégé par B) → 400 {statut: ["Transition refusée : un deal « Rejeté » ne peut pas être approuvé."]} ;
+   relu D2 rejete ; seul D3 (B, approuvé) protège le client — aucune double protection.
+3. POST …/D4/approuver/ (en attente) → 200 statut approuve ; chatter du lead +1 ligne, acteur demo_admin :
+   « Deal apporteur « ACC Apporteur A » : En attente → Approuvé. »
+   Second POST approuver → 400 {statut: ["… un deal « Approuvé » ne peut pas être approuvé."]}.
+4. full_clean rejoué : deal « en attente » sur un client déjà protégé par B → POST approuver → 400 {statut: ["Ce client est déjà enregistré par un autre apporteur (ACC B), protégé jusqu'au 24/01/2027 — enregistrement refusé."]} ; relu en_attente.
+Verdict : PASS.

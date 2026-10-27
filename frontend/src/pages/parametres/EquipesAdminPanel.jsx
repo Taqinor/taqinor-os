@@ -3,14 +3,14 @@
 // seuls les libellés, le champ « responsable » et les actions changent.
 import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 import {
-  Card, CardContent, Input, Label, Badge, IconButton, Button,
+  Card, CardContent, Input, Label, Badge, IconButton, Button, Switch,
 } from '../../ui'
 import { SectionTitle, Field, ChargementErreur } from './peComponents'
 
 export default function EquipesAdminPanel({
   titre, description, vide, placeholder, chefLabel, chefField, chefIdPrefix,
   testIdPrefix = null, loading, error, equipes, busyId, assignables,
-  onRename, onArchive, onDelete, onSetChef, onToggleMembre,
+  onRename, onArchive, onDelete, onSetChef, onToggleMembre, onToggleRecoitLeads,
   newNom, setNewNom, onAdd,
 }) {
   return (
@@ -48,6 +48,15 @@ export default function EquipesAdminPanel({
                 <Trash2 className="size-4" aria-hidden="true" />
               </IconButton>
             </div>
+            {onToggleRecoitLeads && (
+              <label className="mb-2 flex items-center gap-2 text-sm text-foreground">
+                <Switch checked={!!eq.recoit_leads}
+                        disabled={busyId === eq.id}
+                        aria-label={`Reçoit les nouveaux leads — ${eq.nom}`}
+                        onCheckedChange={(v) => onToggleRecoitLeads(eq, v)} />
+                Reçoit les nouveaux leads
+              </label>
+            )}
             <Field label={chefLabel} htmlFor={`${chefIdPrefix}-${eq.id}`}>
               <select id={`${chefIdPrefix}-${eq.id}`} className="form-control"
                       value={eq[chefField] ?? ''}

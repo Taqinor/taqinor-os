@@ -109,4 +109,9 @@ def regrouper_paniers(data, cles=("sans_items", "avec_items", "all_items")):
     for cle in cles:
         if data.get(cle):
             data[cle] = lignes_client(data[cle], data)
+    # Fondateur 26/10/2026 — le panier de l'option « avec batterie » C&I
+    # (``option_batterie.lignes``) est regroupé comme les autres.
+    option = data.get("option_batterie")
+    if isinstance(option, dict) and option.get("lignes"):
+        option["lignes"] = lignes_client(option["lignes"], data)
     return data

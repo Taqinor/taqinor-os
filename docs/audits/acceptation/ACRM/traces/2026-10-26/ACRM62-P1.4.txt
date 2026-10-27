@@ -1,0 +1,16 @@
+ACRM62 — P1.4 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient sur les VRAIES routes crm/leads et core/dsr-requests, EMAIL_BACKEND locmem, transaction.atomic + rollback : rien ne reste). Société démo 1, demo_admin.
+
+0. Base : table crm_empreinteopposition présente (migration crm 0135), index crm_empreinte_opposition_uniq (company, nature, empreinte).
+1. Lead démo « ACC Opposée » (e-mail Acc.Opposee62@Example.com, tél +212661620062) ; PATCH /api/django/crm/leads/<id>/ {ne_plus_contacter: true} → 200 (True).
+2. Effacement par la vraie route DSR : POST /api/django/core/dsr-requests/ {kind: effacement} → 201 ; …/prendre-en-charge/ → 200 en_verification ; …/traiter/ → 200 traitee.
+   Lead relu : nom « Anonymisé », email None, téléphone None.
+   Empreintes nouvelles : 2 — email cf12b632…be5e2, telephone 8ba0fc7b…139e2 ; toutes hexadécimales 64 car. ; aucune valeur en clair (e-mail brut / minuscule, tél E.164 / local / national) contenue.
+3. Effacement DSR d'un lead NON opposé (acc.nonop62@example.com) → 200, 0 empreinte ajoutée.
+4. Recréation (même personne) :
+   - POST /api/django/crm/leads/ {telephone: 0661620062} (format local) → 201, ne_plus_contacter servi True ; relu True ; 0 touche de cadence.
+   - POST /api/django/crm/leads/ {email: "  ACC.OPPOSEE62@example.COM"} (casse différente) → 201 ; relu ne_plus_contacter True ; 0 touche.
+   - POST …/relance/initialiser/ {cadence: contact} sur le lead recréé → 409 « Lead marqué « ne plus contacter ». » (aucune prospection automatique).
+   - Chemin nommé par la tâche : lead opposé effacé par erase_crm puis creer_lead_proprietaire(locataire, admin, {telephone: 0661620162}) → créé (True), ne_plus_contacter True, 0 touche.
+5. Autre société (43, démo complète) : lead au même téléphone → ne_plus_contacter False ; 0 empreinte pour cette société.
+Verdict : PASS.

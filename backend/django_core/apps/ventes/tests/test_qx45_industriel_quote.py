@@ -78,8 +78,11 @@ class TestIndustrielContent(SimpleTestCase):
 
     def test_autoconso_honesty_no_peak_promise(self):
         # jamais promettre la pointe sans batterie
+        # Fondateur 27/10/2026 — le soir et la nuit restent fournis par le
+        # réseau : dit comme un fait.
         self.assertIn("autoconsommation", self.html.lower())
-        self.assertIn("pointe", self.html.lower())
+        self.assertIn("le soir et la nuit, votre consommation reste fournie par le réseau",
+                      self.html.lower())
 
     def test_injection_omitted_without_data(self):
         # sans injection calculée (QX50), aucune ligne d'injection inventée.

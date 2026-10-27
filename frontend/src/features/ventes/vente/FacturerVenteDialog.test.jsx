@@ -159,6 +159,24 @@ describe('FacturerVenteDialog (VNT45)', () => {
     })
   })
 
+  it('acompte automatique encore en brouillon ⇒ onglet Acompte actif, « Créer » poste nature acompte', async () => {
+    const a = apercuNeuf()
+    a.plan = [
+      { cle: 'acompte', libelle: 'Acompte', statut: 'brouillon', montant_ttc: '14700.00' },
+      { cle: 'intermediaire', libelle: 'Livraison du matériel', statut: 'a_faire', montant_ttc: '29400.00' },
+      { cle: 'solde', libelle: 'Solde', statut: 'a_faire', montant_ttc: '4900.00' },
+    ]
+    a.prochaine = { cle: 'intermediaire', libelle: 'Livraison du matériel', montant_ttc: '29400.00' }
+    ventesApi.apercuFacturerVente.mockResolvedValue({ data: a })
+    const user = userEvent.setup()
+    monter()
+    await attendreApercu()
+    expect(screen.getByRole('tab', { name: 'Acompte' }).getAttribute('aria-selected')).toBe('true')
+    await user.click(screen.getByRole('button', { name: 'Créer la facture' }))
+    await waitFor(() => expect(ventesApi.facturerVente).toHaveBeenCalled())
+    expect(ventesApi.facturerVente.mock.calls[0][1].nature).toBe('acompte')
+  })
+
   it("Solde fermé tant que la prochaine tranche n'est pas le solde", async () => {
     monter()
     await attendreApercu()

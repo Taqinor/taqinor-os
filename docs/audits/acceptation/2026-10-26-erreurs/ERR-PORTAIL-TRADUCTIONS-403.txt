@@ -1,0 +1,9 @@
+ERR-PORTAIL-TRADUCTIONS-403 — rejeu orchestrateur, pile locale (backend monté et front reconstruit à e5a02b61e), 2026-10-26, navigateur intégré.
+Compte : acc_portail_test (société démo 1, portée portail_client, client 1), réactivé pour le rejeu puis désactivé.
+
+1. Déconnexion du compte précédent, connexion par /login SANS rechargement → /portail/client.
+   Requêtes API de la page (PerformanceResourceTiming) : 200 /token/, 200 /auth/me/ (×2), 200 /portail/client/tableau-de-bord/, 200 /core/theme/courant/, 200 /portail/ma-preference/.
+   Aucun appel à /api/django/parametres/traductions/effective/, aucun 4xx.
+2. Rechargements complets (iframe) de /portail/client et /portail/client/devis : 200 /auth/me/, 200 /portail/client/tableau-de-bord/, 200 /core/theme/courant/, 200 /portail/ma-preference/ (+ 200 /portail/mes-devis/) ;
+   aucun appel aux surcharges de traduction, aucun 4xx.
+Verdict : PASS.

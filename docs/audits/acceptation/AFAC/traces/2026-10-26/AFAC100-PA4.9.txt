@@ -1,0 +1,16 @@
+AFAC100 — PA4.9 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient authentifié comme le compte PORTAIL démo acc_portail_test — client 1 « Alaoui », société 1 — sur les VRAIES
+routes /api/django/portail/mes-factures/ et …/<id>/payer/ ; EMAIL_BACKEND locmem ; transaction.atomic + rollback : rien ne reste).
+(Le compte portail client-40 répond 403 « mot_de_passe_a_changer » : non utilisé.)
+Base démo : 0 facture avec retenue non libérée ⇒ montage dans la transaction : deux factures ÉMISES du client 1, TTC 32 023,50, retenue de garantie 1 000,00 ;
+la seconde a déjà reçu un paiement de 31 023,50 (seule la retenue reste).
+Modèle : f1 montant_du 32 023,50 / montant_exigible 31 023,50 ; f2 montant_du 1 000,00 / montant_exigible 0.
+
+1. GET /portail/mes-factures/ → 200 (5 lignes) :
+   FAC-ACC-AFAC100-1 : montant_du "32023.50", montant_exigible "31023.50", payable True ;
+   FAC-ACC-AFAC100-2 : montant_du "1000.00", montant_exigible "0.00", payable False. Aucune clé prix_achat dans les lignes.
+2. POST …/<f1>/payer/ → 200 {montant "31023.50", paiement_en_ligne_actif False} ;
+   PaiementFacturePortail relu : montant 31023.50, méthode virement (CMI sans clé — D-ADEP-3) ; Facture.montant_du en base inchangé 32023.50.
+3. POST …/<f2>/payer/ (retenue seule) → 400 « Rien à régler pour le moment : seule la retenue de garantie reste due, jusqu'à sa libération. » ; intentions 0 → 0.
+Hors preuve : l'écran portail (bouton « Payer ») — la page affiche le montant servi, non rejouée ici.
+Verdict : PASS.
