@@ -648,10 +648,14 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
     else:
         raison = (prod.get("motif") or prod.get("mode")
                   or "production indisponible")
+        # AGM14 (D-AGM-2 étendue) — sans production heure par heure, le kWc
+        # de départ est borné à la plaque comme le repli « non couvert » : une
+        # pompe de 22 kW ne consomme jamais 61 kWc.
+        nb, borne = _repli_borne(nb, kwc0, pmax, plaque)
         alertes.append(_alerte(
             "champ_kwc_depart", "champ.nb_panneaux",
             "Production heure par heure non calculable (%s) : champ au kWc de "
-            "départ E / (η × E_d)." % raison))
+            "départ E / (η × E_d)%s." % (raison, borne)))
 
     # Chaînes : variateur retenu, sinon le suivant (courant / fenêtre).
     chaines = _chaines_vides("aucun variateur retenu")

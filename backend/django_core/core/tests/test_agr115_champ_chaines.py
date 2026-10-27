@@ -243,6 +243,35 @@ class Champ(unittest.TestCase):
                          [a["code"] for a in res["alertes"]])
         self.assertGreaterEqual(res["production"]["m3_jour_mois"][11], 200.0)
 
+    def _sans_courbe(self, besoin, hmt):
+        # Pompe SANS courbe constructeur et sans débit déclaré (pompe
+        # existante relevée au CV, petite pompe du catalogue) : aucune
+        # production heure par heure ⇒ champ au kWc de départ.
+        return dimensionner_champ(
+            besoin_m3_jour_mois=[float(besoin)] * 12, hmt_m=hmt,
+            panneau=PANNEAU, variateurs_candidats=[_var(30, 7.5, 380)],
+            pompe={"nom": "Pompe existante"}, p_plaque_kw=7.5,
+            profils_horaires=PROFILS)
+
+    def test_agm14_sans_courbe_kwc_de_depart_borne_a_la_plaque(self):
+        # Rendu R2 (30 CV existante, 300 m3/j à 120 m) : 61,5 kWc pour une
+        # pompe de 22 kW. Ici 7,5 kW : borne = ⌈1,5 × 7,5 × 1000 / 710⌉ = 16.
+        res = self._sans_courbe(300, 120)
+        borne = math.ceil(1.5 * 7.5 * 1000 / 710)
+        self.assertLess(borne, math.ceil(res["kwc_depart"] * 1000 / 710))
+        self.assertEqual(res["nb_panneaux"], borne)
+        alerte = [a for a in res["alertes"] if a["code"] == "champ_kwc_depart"]
+        self.assertEqual(len(alerte), 1)
+        self.assertIn("borne de 1,5 × la plaque de 7,5 kW", alerte[0]["message"])
+
+    def test_agm14_sans_courbe_petit_besoin_inchange(self):
+        res = self._sans_courbe(20, 40)
+        self.assertEqual(res["nb_panneaux"],
+                         math.ceil(res["kwc_depart"] * 1000 / 710))
+        alerte = [a for a in res["alertes"] if a["code"] == "champ_kwc_depart"]
+        self.assertEqual(len(alerte), 1)
+        self.assertNotIn("borne", alerte[0]["message"])
+
     def _codes_non_dimensionne(self, **kwargs):
         params = dict(besoin_m3_jour_mois=[20.0] * 12, hmt_m=40,
                       panneau=PANNEAU, variateurs_candidats=[_var(31, 7.5, 380)],
