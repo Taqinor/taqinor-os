@@ -69,8 +69,10 @@ planifiée au 27/10.
 
 **D-RES-2710-GAR (Reda, 27/10, sur le PDF résidentiel) — une garantie client = UNE durée, celle du Maroc,
 jamais « selon site » ni « variante régionale ».** Onduleur Deye = **5 ans** (termes Deye mondiaux v1.7 :
-« 5 Years (10 Years Optional) », option non achetée) ; batterie Dyness DL5.0C = **10 ans** (version Afrique).
-Catalogue + migration stock 0174 ; si l'extension Deye 10 ans est un jour achetée, repasser à 10.
+« 5 Years (10 Years Optional) », option non achetée) ; même règle (durée de base, extension payante non
+achetée) → batterie Dyness DL5.0C V2 = **7 ans** (garantie Afrique V2-202502), Powerbox Pro = 10 ans.
+Catalogue + migration stock 0174 ; si une extension est un jour achetée, repasser à 10. Décision Dyness
+prise pour le fondateur (à revoir).
 
 Related: [[calepinage-decisions-fondateur]] (D-ACAL-6, D-ACAL-12), [[dimensionnement-decisions-2310]],
 [[devis-envoyes-nouveaux-rendus]].

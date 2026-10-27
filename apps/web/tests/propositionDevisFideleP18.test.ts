@@ -28,9 +28,10 @@ import {
 } from '../src/lib/proposition';
 import { equipmentPresence } from '../src/lib/propositionPage';
 import { resolveOfferBattery } from '../src/lib/batterySim';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
-const PAGE = read('../src/pages/proposition/[...token].astro');
+const PAGE = lirePageProposition();
 
 /** Source privée de ses commentaires : on scanne ce que la page FAIT. */
 const CODE = PAGE

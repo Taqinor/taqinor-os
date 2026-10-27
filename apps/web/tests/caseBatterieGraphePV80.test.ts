@@ -24,11 +24,9 @@ import {
   hasProductionBlock,
   type ProductionAvailability,
 } from '../src/lib/propositionPage';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const PAGE = readFileSync(
-  fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-  'utf-8',
-);
+const PAGE = lirePageProposition();
 
 const DOUZE = Array.from({ length: 12 }, (_, i) => 100 + i);
 

@@ -13,9 +13,11 @@ constructeur 5 à 10 ans (selon site d'installation) » et page 3 la tuile
    Installation in Europe » ne couvrent que l'Europe, l'option payante n'est
    pas achetée. Texte libre ET ``garantie_mois`` (120 → 60), pour que la
    page 2 et la tuile de la page 3 disent la même chose.
-2) BATTERIE DYNESS DL5.0C (BAT-DEY-5/10) — 10 ans, sans la réserve
-   « variante régionale : 7 ans » : le document officiel Dyness version
-   Afrique donne 10 ans ; ``garantie_mois`` reste 120.
+2) BATTERIES DYNESS — plus de « variante régionale » ni « version V2 ».
+   BAT-DEY-5 (DL5.0C V2) : garantie Afrique V2-202502 = 7 ans de base,
+   10 ans seulement par extension ACHETÉE → 7 ans, ``garantie_mois`` 120 → 84
+   (même règle que Deye). BAT-DEY-10 (Powerbox Pro) : 10 ans, texte relu par
+   D-BAT-2710 ; ``garantie_mois`` reste 120.
 
 Le seeder ne réécrit jamais une valeur déjà saisie (ASTK176) : cette
 migration ne touche QUE les produits qui portent encore EXACTEMENT l'ancienne
@@ -28,45 +30,56 @@ _ONDULEURS_DEYE_SKUS = (
     'OND-H-DEY-15T', 'OND-H-DEY-20T',
     'OND-DEY-15K-LV', 'OND-DEY-20K-LV',
 )
-_DYNESS_SKUS = ('BAT-DEY-5', 'BAT-DEY-10')
-
 ANCIEN_TEXTE_DEYE = "Garantie constructeur 5 à 10 ans (selon site d'installation)"
 NOUVEAU_TEXTE_DEYE = 'Garantie constructeur 5 ans'
 ANCIEN_TEXTE_DYNESS = 'Garantie 10 ans (variante régionale : 7 ans) · ≥ 6 000 cycles'
-NOUVEAU_TEXTE_DYNESS = 'Garantie constructeur 10 ans · ≥ 6 000 cycles'
+# Texte D-BAT-2710 (seeder du 27/10, posé sur une base neuve avant 0174).
+ANCIEN_TEXTE_DYNESS_V2 = ('Garantie 10 ans (version V2 : 7 ans, extensible à 10) · '
+                          '6 000 cycles (0,2C, 25 °C, DoD 90 %)')
+NOUVEAU_TEXTE_DYNESS_5 = ('Garantie constructeur 7 ans · '
+                          '6 000 cycles (0,2C, 25 °C, DoD 90 %)')
+NOUVEAU_TEXTE_DYNESS_10 = 'Garantie 10 ans · 6 000 cycles (0,2C, 25 °C, DoD 90 %)'
 
 
-def _appliquer(apps, textes_deye, mois_deye, textes_dyness):
+def _changer(qs, regles):
     """Quelques dizaines de lignes au plus (SKU semés × sociétés) : parcours
-    par ``.iterator()`` et sauvegarde ciblée, jamais un update global."""
-    Produit = apps.get_model('stock', 'Produit')
-    avant_deye, apres_deye = textes_deye
-    mois_avant, mois_apres = mois_deye
-    for p in Produit.objects.filter(sku__in=_ONDULEURS_DEYE_SKUS).iterator():
+    par ``.iterator()`` et sauvegarde ciblée, jamais un update global.
+    ``regles`` = {champ: {ancienne valeur: nouvelle}} — seule une valeur
+    SEMÉE connue change ; une saisie du fondateur reste à lui."""
+    for p in qs.iterator():
         champs = []
-        if p.garantie == avant_deye:
-            p.garantie = apres_deye
-            champs.append('garantie')
-        if p.garantie_mois == mois_avant:
-            p.garantie_mois = mois_apres
-            champs.append('garantie_mois')
+        for champ, table in regles.items():
+            actuel = getattr(p, champ)
+            if actuel in table:
+                setattr(p, champ, table[actuel])
+                champs.append(champ)
         if champs:
             p.save(update_fields=champs)
-    avant_dyness, apres_dyness = textes_dyness
-    for p in Produit.objects.filter(
-            sku__in=_DYNESS_SKUS, garantie=avant_dyness).iterator():
-        p.garantie = apres_dyness
-        p.save(update_fields=['garantie'])
 
 
 def corriger(apps, schema_editor):
-    _appliquer(apps, (ANCIEN_TEXTE_DEYE, NOUVEAU_TEXTE_DEYE), (120, 60),
-               (ANCIEN_TEXTE_DYNESS, NOUVEAU_TEXTE_DYNESS))
+    Produit = apps.get_model('stock', 'Produit')
+    _changer(Produit.objects.filter(sku__in=_ONDULEURS_DEYE_SKUS), {
+        'garantie': {ANCIEN_TEXTE_DEYE: NOUVEAU_TEXTE_DEYE},
+        'garantie_mois': {120: 60}})
+    _changer(Produit.objects.filter(sku='BAT-DEY-5'), {
+        'garantie': {ANCIEN_TEXTE_DYNESS: NOUVEAU_TEXTE_DYNESS_5,
+                     ANCIEN_TEXTE_DYNESS_V2: NOUVEAU_TEXTE_DYNESS_5},
+        'garantie_mois': {120: 84}})
+    _changer(Produit.objects.filter(sku='BAT-DEY-10'), {
+        'garantie': {ANCIEN_TEXTE_DYNESS: NOUVEAU_TEXTE_DYNESS_10}})
 
 
 def retablir(apps, schema_editor):
-    _appliquer(apps, (NOUVEAU_TEXTE_DEYE, ANCIEN_TEXTE_DEYE), (60, 120),
-               (NOUVEAU_TEXTE_DYNESS, ANCIEN_TEXTE_DYNESS))
+    Produit = apps.get_model('stock', 'Produit')
+    _changer(Produit.objects.filter(sku__in=_ONDULEURS_DEYE_SKUS), {
+        'garantie': {NOUVEAU_TEXTE_DEYE: ANCIEN_TEXTE_DEYE},
+        'garantie_mois': {60: 120}})
+    _changer(Produit.objects.filter(sku='BAT-DEY-5'), {
+        'garantie': {NOUVEAU_TEXTE_DYNESS_5: ANCIEN_TEXTE_DYNESS},
+        'garantie_mois': {84: 120}})
+    _changer(Produit.objects.filter(sku='BAT-DEY-10'), {
+        'garantie': {NOUVEAU_TEXTE_DYNESS_10: ANCIEN_TEXTE_DYNESS}})
 
 
 class Migration(migrations.Migration):

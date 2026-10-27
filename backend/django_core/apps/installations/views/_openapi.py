@@ -57,6 +57,20 @@ def corps_objet(request):
     return request.data
 
 
+class CorpsObjetMixin:
+    """api-fuzz-full 27/10 (ENF11) — toute ÉCRITURE de la vue lit un corps
+    OBJET (``request.data.get``) : un nombre, ``null`` ou un tableau en corps
+    faisait lever ``AttributeError`` (500) dans chaque action → 400 FR dès
+    ``initial`` (après les permissions). Corps vide et formulaire multipart
+    restent des objets."""
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if (request.method in ('POST', 'PUT', 'PATCH')
+                and getattr(self, 'action', None) is not None):
+            corps_objet(request)
+
+
 def id_entier(valeur, nom):
     """Identifiant entier 1..ID_MAX (``int`` ou chaîne de chiffres), sinon
     400 nommant le champ — évite ``TypeError``/``DataError`` côté ORM."""
@@ -66,6 +80,39 @@ def id_entier(valeur, nom):
             or not 1 <= int(valeur) <= ID_MAX):
         raise ValidationError({nom: 'Identifiant entier valide requis.'})
     return int(valeur)
+
+
+def id_ou_none(valeur):
+    """api-fuzz-full 27/10 (ENF11) — l'identifiant de corps transmis au filtre
+    ORM : un entier JSON (ou une chaîne de chiffres) 1..``ID_MAX``, sinon
+    ``None`` (aucune ligne ne correspond). Une liste ou un objet faisait lever
+    ``TypeError`` dans ``filter(id=…)`` (500) ; ``statut_inconnu`` rend ensuite
+    le 404 (entier) ou le 400 (corps invalide)."""
+    if isinstance(valeur, str) and valeur.isascii() and valeur.isdigit():
+        valeur = int(valeur)
+    if isinstance(valeur, int) and not isinstance(valeur, bool) and 1 <= valeur <= ID_MAX:
+        return valeur
+    return None
+
+
+def champ_requis(request, nom):
+    """api-fuzz-full 27/10 (ENF11) — valeur du champ de corps OBLIGATOIRE
+    ``nom`` (``null`` compris, s'il est publié nullable) ; absent → 400 nommant
+    le champ (le schéma le publie ``required``)."""
+    corps = corps_objet(request)
+    if nom not in corps:
+        raise ValidationError({nom: 'Ce champ est obligatoire.'})
+    return corps[nom]
+
+
+def choix_corps(request, nom, choix, defaut):
+    """api-fuzz-full 27/10 (ENF11) — valeur du champ de corps ``nom`` parmi
+    ``choix`` (``defaut`` si absent) ; toute autre valeur → 400 nommant le
+    champ (une chaîne libre était écrite telle quelle en base)."""
+    valeur = corps_objet(request).get(nom, defaut)
+    if valeur not in list(choix):
+        raise ValidationError({nom: f"Valeur attendue parmi : {', '.join(choix)}."})
+    return valeur
 
 
 def statut_inconnu(valeur, attendu=int):
@@ -105,12 +152,13 @@ def texte_corps(request, nom, *autres):
     (``''`` si absent ou nul), sans espaces de bord. ``nom`` et ``autres``
     (lus ensuite par la vue) sont publiés chaînes : un nombre JSON, ou une
     PARTIE FICHIER multipart sous ce nom, faisait lever ``.strip()`` (500) →
-    400 nommant le champ."""
+    400 nommant le champ. Le caractère nul (refusé par PostgreSQL, motif publié
+    par ``ChaineStricte``) aussi : 400, plus un 500 à l'écriture."""
     corps = corps_objet(request)
     for cle in (nom, *autres):
         valeur = corps.get(cle)
-        if valeur is not None and not isinstance(valeur, str):
-            raise ValidationError({cle: 'Texte attendu.'})
+        if valeur is not None and (not isinstance(valeur, str) or chr(0) in valeur):
+            raise ValidationError({cle: 'Texte attendu (sans caractère nul).'})
     return (corps.get(nom) or '').strip()
 
 

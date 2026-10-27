@@ -267,11 +267,9 @@ describe('WJ126 — MONTHS_SHORT (axe du mini-graphe eau)', () => {
 // AGW301 — la page ne rend plus les trois cartes retirées et affiche les heures.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lirePageProposition } from './astroBlocsHelper';
 describe('AGW301 — page /proposition agricole : cartes retirées, heures affichées', () => {
-  const page = readFileSync(
-    fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-    'utf-8',
-  );
+  const page = lirePageProposition();
   const code = page.replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
   it('plus de « Bassin recommandé », « Subvention FDA » ni « Fini le carburant »', () => {
     for (const bad of [

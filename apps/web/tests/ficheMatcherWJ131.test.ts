@@ -12,11 +12,9 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ficheSlugPourLigne } from '../src/lib/ficheMatcher';
 import { FICHES, FICHE_ALIASES, ficheBySlug } from '../src/lib/fiches';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const PROPOSITION = readFileSync(
-  fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-  'utf-8',
-);
+const PROPOSITION = lirePageProposition();
 
 // CONTRAT UNIQUE « ligne → fiche » (fondateur 2026-08-18). Ce fichier VIT dans
 // le backend parce que c'est LUI le porteur partagé (PACT10) : le moteur de

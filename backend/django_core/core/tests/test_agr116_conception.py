@@ -4,7 +4,8 @@
 import unittest
 
 from core.pompage.conception import (
-    besoin_retenu, conception, controle_conception, heures_pic,
+    alerte_heures_superieures_24, besoin_retenu, conception,
+    controle_conception, heures_pic,
 )
 from core.pompage.volumes import _CLEARSKY_HOURLY_SHAPE
 
@@ -34,6 +35,19 @@ class BesoinRetenu(unittest.TestCase):
                        debit_exploitation_m3h=100, niveau_eau_m=30)
         self.assertAlmostEqual(r["conception"]["debit_conception_m3h"],
                                round(120 / H_PIC, 1))
+
+    def test_agm5_heures_superieures_24_alerte_nommee_besoin_inchange(self):
+        alerte = alerte_heures_superieures_24(30)
+        self.assertEqual(alerte["code"], "heures_superieures_24")
+        self.assertEqual(alerte["champ"], "besoin.heures_actuelles_jour")
+        self.assertIn("30 h", alerte["message"])
+        # Jamais un rognage : le besoin reste calculé tel que saisi.
+        besoin = besoin_retenu(debit_actuel_m3h=10, heures_actuelles=30)
+        self.assertEqual(besoin["m3_jour_mois"], [300.0] * 12)
+
+    def test_agm5_24_heures_et_moins_aucune_alerte(self):
+        for heures in (None, 0, 6, 24, "24"):
+            self.assertIsNone(alerte_heures_superieures_24(heures), heures)
 
     def test_jamais_le_maximum(self):
         besoin = besoin_retenu(volume_declare_m3_jour=400,

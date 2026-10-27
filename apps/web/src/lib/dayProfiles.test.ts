@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { decalageMarocH, noteHoraire } from './dayProfiles';
+import { lirePageProposition } from '../../tests/astroBlocsHelper';
 
 describe('WJ117 — heure légale marocaine (décret 2.26.530)', () => {
   it('décalage 0 h le 21/09/2026 et +1 h le 19/09/2026', () => {
@@ -16,7 +17,7 @@ describe('WJ117 — heure légale marocaine (décret 2.26.530)', () => {
     const src = readFileSync(new URL('./dayProfiles.ts', import.meta.url), 'utf8');
     expect(src).not.toMatch(/RAMADAN_TZ_OFFSET_HOURS/);
     expect(src).not.toMatch(/SAUF pendant le Ramadan/);
-    const page = readFileSync(new URL('../pages/proposition/[...token].astro', import.meta.url), 'utf8');
+    const page = lirePageProposition();
     expect(page).not.toMatch(/Morocco reverts to UTC\+0/);
   });
 });

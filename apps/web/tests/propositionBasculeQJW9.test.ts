@@ -41,8 +41,9 @@ import {
   restaurer,
 } from '../src/lib/proposition/swap';
 import { tailleDetail, type TailleDetail } from '../src/lib/tailleDetail';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const SOURCE = readFileSync(join(process.cwd(), 'src/pages/proposition/[...token].astro'), 'utf-8');
+const SOURCE = lirePageProposition();
 
 /**
  * L'ÎLOT SEUL — à partir de `setupTaillesOffres`. Les assertions d'absence
