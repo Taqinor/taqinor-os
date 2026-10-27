@@ -1595,6 +1595,13 @@ def roles_minimum_manquants(sortie):
                     _cause_champ_vide(sortie))
             else:
                 motif = 'aucun article au catalogue'
+        elif not ligne.get('produit') and cle != 'pompe':
+            # AGM13 — la ligne PLACEHOLDER du noyau (produit None) : aucun
+            # article de ce rôle n'existe (un article sans prix est une ligne
+            # AVEC produit). La pompe placeholder reste « prix à renseigner »
+            # (ses candidats existent, sans prix).
+            motif = 'aucun article au catalogue (rôle %s)' % (
+                ligne.get('role_pompage') or cle)
         elif not ligne.get('prix_connu') or not ligne.get('produit'):
             motif = 'prix à renseigner au catalogue'
         else:
