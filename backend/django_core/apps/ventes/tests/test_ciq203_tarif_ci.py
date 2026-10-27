@@ -179,3 +179,15 @@ class SchemaTarifDeclareTest(SimpleTestCase):
         self.assertTrue(any('bt.tranches' in r for r in es.valider(
             {'tarif_declare': {'contrat': 'bt_patente',
                                'bt': {'tranches': tranches}}})))
+
+    def test_cec8_facture_2025_ht_a_la_tva_de_son_annee(self):
+        declare = {'contrat': 'bt_patente', 'base_tarifs': 'ttc',
+                   'date_facture': '2025-12-15',
+                   'bt': {'tranches': [{'tarif_kwh': 1.18}]}}
+        poste = tc.tarif_applicable(declare)['tarifs_par_poste'][0]
+        # Facture de 2025 (TVA 18 %, bareme.TVA_PAR_MILLESIME) : HT 1,00.
+        self.assertEqual(poste['tarif_kwh_ht'], 1.0)
+        self.assertEqual(poste['tarif_kwh_ttc'], 1.2)
+        self.assertIn('2025', tc.tarif_applicable(declare)['mention'])
+        origine = tc.tarif_applicable(declare, regles_origine=True)
+        self.assertEqual(origine['tarifs_par_poste'][0]['tarif_kwh_ttc'], 1.18)

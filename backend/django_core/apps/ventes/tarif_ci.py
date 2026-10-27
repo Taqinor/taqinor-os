@@ -109,9 +109,16 @@ def _omis(mention=MENTION_OMIS, contrat=None):
     }
 
 
-def _entree_declaree(poste, valeur, base, taux, source, releve_le):
+def _entree_declaree(poste, valeur, base, taux, source, releve_le,
+                     taux_facture=None):
+    """``taux_facture`` (CEC8) : TVA de l'année de la facture quand elle
+    diffère du millésime du devis — HT = TTC imprimé ÷ (1 + ce taux), TTC du
+    devis = HT × (1 + TVA du millésime)."""
     if base == 'ht':
         ht, ttc, derive = _r4(valeur), _r4(valeur * (1 + taux)), False
+    elif taux_facture is not None and taux_facture != taux:
+        ht = _r4(valeur / (1 + taux_facture))
+        ttc, derive = _r4(ht * (1 + taux)), True
     else:
         ttc, ht, derive = _r4(valeur), _r4(valeur / (1 + taux)), True
     return {'poste': poste, 'tarif_kwh_ht': ht, 'tarif_kwh_ttc': ttc,
@@ -204,6 +211,11 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
         source = f'facture du client du {_date_fr(date_facture)}' \
             if date_facture else 'facture du client'
     pct = _pourcent(taux)
+    taux_fac, annee_fac = taux, annee  # CEC8 — la TVA de l'année de la facture
+    if not regles_origine and base == 'ttc' and date_facture:
+        taux_fac, annee_fac = tva_energie(str(date_facture)[:4])
+        if taux_fac is None:
+            taux_fac, annee_fac = taux, annee
 
     def _mention_declaree():
         quoi = ('Tarifs déclarés oralement par le client (non relevés sur '
@@ -213,6 +225,10 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
         if base == 'ht':
             calc = (f"HT tels qu'imprimés ; TTC = HT × {_virgule(1 + taux)}, "
                     f"TVA électricité {annee}")
+        elif annee_fac != annee:
+            calc = (f"TTC imprimés à la TVA électricité {annee_fac} ; HT = TTC "
+                    f"÷ {_virgule(1 + taux_fac)} ; TTC {annee} = HT × "
+                    f"{_virgule(1 + taux)}")
         else:
             calc = (f"TTC tels qu'imprimés ; HT = TTC ÷ {_virgule(1 + taux)}, "
                     f"TVA électricité {annee}")
@@ -227,11 +243,12 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
         if prix is not None:
             prime_kva = _num(mt.get('prime_fixe_kva_an'))
             if prime_kva is not None and base == 'ttc':
-                prime_kva = prime_kva / (1 + taux)
+                prime_kva = prime_kva / (1 + taux_fac)
             sortie.update({
                 'origine': ORIGINE_FACTURE,
                 'tarifs_par_poste': [
-                    _entree_declaree(p, prix[p], base, taux, source, releve_le)
+                    _entree_declaree(p, prix[p], base, taux, source, releve_le,
+                                     taux_fac)
                     for p in _POSTES_MT],
                 'prime_fixe_annuelle_mad': _prime(mt, prime_kva),
                 'mention': _mention_declaree(),
@@ -263,7 +280,7 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
             'origine': ORIGINE_FACTURE,
             'tarifs_par_poste': [
                 _entree_declaree(f'tranche_{i}', _num(t['tarif_kwh']), base,
-                                 taux, source, releve_le)
+                                 taux, source, releve_le, taux_fac)
                 for i, t in enumerate(tranches, start=1)],
             'prime_fixe_annuelle_mad': None,
             'mention': _mention_declaree(),
