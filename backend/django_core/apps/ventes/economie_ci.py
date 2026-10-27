@@ -1481,7 +1481,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
                    'apres_impot': None}
     alertes = _alertes_internes(apercu, tarif) + _options.alertes_om(lignes)  # CEC9
     if not apercu.get('bilan'):
-        motif = (MOTIF_TARIF_OMIS if tarif.get('origine') ==
+        motif = (_options.motif_tarif_omis(tarif, MOTIF_TARIF_OMIS) if tarif.get('origine') ==
                  tarif_ci.ORIGINE_OMIS else MOTIF_ETUDE_CI_ABSENTE)
         return _bloc_omis(motif, tarif, alertes=alertes,
                           vue_interne=vue_interne)

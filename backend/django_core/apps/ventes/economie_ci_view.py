@@ -136,7 +136,11 @@ def economie_ci_preview(request):
         return refus_saisie(refus)
     except (TypeError, ValueError, AttributeError, KeyError):  # CEC18
         # ``sortie_etude_ci`` vient du corps : une forme hors contrat
-        # (``etude_ci_preview.json``) est un 400 nommé, jamais un 500.
+        # (``etude_ci_preview.json``) est un 400 nommé, jamais un 500 — et
+        # journalisée, pour qu'un vrai bug serveur ne s'y cache jamais.
+        import logging
+        logging.getLogger(__name__).warning(
+            "economie_ci_preview : sortie_etude_ci refusée (400)", exc_info=True)
         return Response({'detail': "sortie_etude_ci : forme hors du contrat "
                                    "etude_ci_preview.json.",
                          'champ': 'sortie_etude_ci'},
