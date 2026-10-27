@@ -157,9 +157,14 @@ class CombinaisonTests(TestCase):
         self.assertGreaterEqual(ac * self.bornes.borne_usuelle.valeur, 830)
 
     def test_un_mwc_en_moins_d_une_seconde(self):
+        # Garde de complexite (la recherche ne doit pas exploser a 1 MWc), pas
+        # un chronometre : sur un runner GitHub partage le meme appel a mesure
+        # 1,19 s le 27/10/2026 (run 40585144160) et a ejecte #1105 de la merge
+        # queue. Budget 5 s : une explosion combinatoire reste detectee, le bruit
+        # de charge non.
         debut = time.perf_counter()
         r = combiner_onduleurs(1000, self.cat, phase='tri')
-        self.assertLess(time.perf_counter() - debut, 1.0)
+        self.assertLess(time.perf_counter() - debut, 5.0)
         self.assertIsNotNone(r['combinaison'])
 
     def test_chaines_a_verifier_sans_fiches(self):
@@ -189,8 +194,11 @@ class CombinaisonTests(TestCase):
         self.assertNotIn('OND_CHAINES_NON_FAISABLES', codes)
 
     def test_chaines_infaisables_bloquant_nomme(self):
-        module, cat = self._avec_fiches({'n_mppt': 1, 'mppt_v_min': 30, 'mppt_v_max': 45,
-                                         'v_max_abs': 45, 'i_max_mppt_a': 30})
+        # CMP1/CMP2 : fenêtre de tension VIDE (démarrage 600 V ≥ ce que la
+        # tension maxi 700 V laisse monter) — la fenêtre 30-45 V d'avant
+        # raccordait 1 module par appareil, désormais comptée dans la capacité.
+        module, cat = self._avec_fiches({'n_mppt': 1, 'mppt_v_min': 600, 'mppt_v_max': 1000,
+                                         'v_max_abs': 700, 'i_max_mppt_a': 30})
         r = combiner_onduleurs(35, cat, phase='tri', module=module)
         alerte = next(a for a in r['alertes'] if a['code'] == 'OND_CHAINES_NON_FAISABLES')
         self.assertEqual(alerte['niveau'], 'bloquant')
@@ -198,6 +206,144 @@ class CombinaisonTests(TestCase):
     def test_aucune_cle_prix_achat(self):
         r = combiner_onduleurs(100, self.cat, phase='tri')
         self.assertNotIn('prix_achat', repr(r))
+
+
+def _module_cs7n():
+    from core.electrique.types import SpecModule
+    return SpecModule(vmp_v=40.4, voc_v=48.3, isc_a=18.59, imp_a=17.59, pmax_wc=710,
+                      temp_coeff_voc_pct_c=-0.25)
+
+
+def _spec_ond(n_mppt, v_min, v_max, v_abs, i_max, kw):
+    from core.electrique.types import SpecOnduleur
+    return SpecOnduleur(n_mppt=n_mppt, mppt_v_min=v_min, mppt_v_max=v_max, v_max_abs=v_abs,
+                        i_max_mppt_a=i_max, ac_kw=kw, phases=3)
+
+
+def _cand(pid, nom, kw, prix, spec):
+    return {'produit': pid, 'nom': nom, 'kw_ac': kw, 'prix': Decimal(prix), 'triphase': True,
+            'eligible_ci': True, 'motif_exclusion': None, 'spec': spec}
+
+
+def _vivier_huawei():
+    h = lambda n, i, kw: _spec_ond(n, 200, 1000, 1100, i, kw)  # noqa: E731
+    return [_cand(1, 'Huawei 15KTL-M5', 15, '19167', h(2, 20, 15)),
+            _cand(2, 'Huawei 20KTL-M5', 20, '23333', h(2, 20, 20)),
+            _cand(5, 'Huawei 50KTL-M3', 50, '45833', h(4, 30, 50)),
+            _cand(6, 'Huawei 100KTL', 100, '65000', h(10, 30, 100)),
+            _cand(7, 'Huawei 150K-MG0', 150, '102500', h(7, 48, 150))]
+
+
+def _vivier_deye():
+    d = lambda kw: _spec_ond(2, 160, 650, 800, 20, kw)  # noqa: E731
+    return [_cand(10, 'Deye 10K', 10, '23333', d(10)), _cand(11, 'Deye 15K', 15, '30000', d(15)),
+            _cand(12, 'Deye 20K', 20, '40000', d(20))]
+
+
+class ChainesCiTests(TestCase):
+    """CMP1 — chaînes conçues appareil par appareil (valeurs calculées par la
+    fenêtre ``fenetre_admissible`` : CS7N-710 → 6 à 21 modules sur Huawei)."""
+
+    def test_29_modules_sur_15ktl_deux_chaines_sans_reserve(self):
+        from apps.ventes.moteur_ci.chaines_ci import concevoir_chaines_ci
+        r = concevoir_chaines_ci(_module_cs7n(), _vivier_huawei()[0]['spec'], 29)
+        self.assertEqual(r['bloquants'], [])
+        self.assertEqual(r['nb_chaines'], 2)
+        self.assertEqual(sorted((e['longueur'] for e in r['entrees']), reverse=True), [15, 14])
+        self.assertEqual(sum(e['nb_chaines'] * e['longueur'] for e in r['entrees']), 29)
+
+    def test_282_modules_sur_150k_mg0_deux_chaines_par_entree(self):
+        from apps.ventes.moteur_ci.chaines_ci import concevoir_chaines_ci
+        module = _module_cs7n()
+        r = concevoir_chaines_ci(module, _vivier_huawei()[4]['spec'], 282)
+        self.assertEqual(r['bloquants'], [])
+        self.assertEqual(r['nb_chaines'], 14)
+        self.assertEqual(len(r['entrees']), 7)
+        for e in r['entrees']:
+            self.assertEqual(e['nb_chaines'], 2)
+            self.assertIn(e['longueur'], (20, 21))
+            self.assertLessEqual(e['nb_chaines'] * module.imp_a, 48 + 1e-9)
+        self.assertEqual(sum(e['nb_chaines'] * e['longueur'] for e in r['entrees']), 282)
+
+    def test_champ_non_raccordable_bloquant_nomme_jamais_partiel(self):
+        from apps.ventes.moteur_ci.chaines_ci import concevoir_chaines_ci
+        r = concevoir_chaines_ci(_module_cs7n(), _vivier_huawei()[0]['spec'], 60,
+                                 nom='Huawei 15KTL-M5')
+        self.assertTrue(r['bloquants'])
+        self.assertIn('Huawei 15KTL-M5', r['bloquants'][0])
+        self.assertEqual(r['entrees'], [])
+
+    def test_combiner_20_kwc_tous_les_modules_cables(self):
+        cat = [c for c in _vivier_huawei() if c['kw_ac'] == 20]
+        r = combiner_onduleurs(20.59, cat, phase='tri', module=_module_cs7n())
+        self.assertEqual(r['chaines'][0]['nb_modules'], 29)
+        self.assertEqual(r['chaines'][0]['nb_chaines'], 2)
+        self.assertEqual([a for a in r['alertes'] if a['niveau'] == 'bloquant'], [])
+
+
+class CapaciteEntreesTests(TestCase):
+    """CMP2 — la capacité d'un appareil est bornée par ses entrées."""
+
+    def test_64_kwc_jamais_un_seul_50kw_et_tout_le_champ_raccorde(self):
+        module = _module_cs7n()
+        r = combiner_onduleurs(64, _vivier_huawei(), phase='tri', module=module)
+        self.assertNotEqual([(x['kw_ac'], x['quantite']) for x in r['combinaison']], [(50.0, 1)])
+        self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), 91)
+        self.assertEqual([a for a in r['alertes'] if a['niveau'] == 'bloquant'], [])
+        self.assertTrue(any(h['cle'] == 'raccordement_entrees' for h in r['hypotheses']))
+
+    def test_50ktl_porte_59_6_kwc_pas_67_5(self):
+        cat = [c for c in _vivier_huawei() if c['kw_ac'] == 50]
+        r = combiner_onduleurs(60, cat, phase='tri', module=_module_cs7n())
+        self.assertEqual(r['combinaison'][0]['quantite'], 2)
+
+    def test_sans_module_borne_dc_ac_seule(self):
+        cat = [c for c in _vivier_huawei() if c['kw_ac'] == 50]
+        r = combiner_onduleurs(60, cat, phase='tri')
+        self.assertEqual(r['combinaison'][0]['quantite'], 1)
+
+
+class ParalleleMaxTests(TestCase):
+    """CMP3 — au plus ``max_appareils`` hybrides en parallèle."""
+
+    def test_500_kwc_au_dela_de_10_appareils_aucune_combinaison_nommee(self):
+        r = combiner_onduleurs(500, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                               max_appareils=10)
+        self.assertIsNone(r['combinaison'])
+        self.assertIn('10 appareils', r['motif'])
+        self.assertTrue(any(a['code'] == 'OND_PARALLELE_MAX' for a in r['alertes']))
+
+    def test_sous_la_borne_la_combinaison_est_rendue(self):
+        r = combiner_onduleurs(100, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                               max_appareils=10)
+        self.assertLessEqual(sum(x['quantite'] for x in r['combinaison']), 10)
+
+    def test_sans_max_appareils_inchange(self):
+        r = combiner_onduleurs(500, _vivier_deye(), phase='tri', module=_module_cs7n())
+        self.assertGreater(sum(x['quantite'] for x in r['combinaison']), 10)
+
+
+class ParalleleMemeModeleTests(TestCase):
+    """CMP11 — hybrides en parallèle d'un seul modèle (manuel Deye SG05LP3)."""
+
+    def test_combinaison_homogene_un_seul_modele(self):
+        for kwc in (35, 50, 64, 120, 150):
+            r = combiner_onduleurs(kwc, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                                   max_appareils=10, homogene=True)
+            self.assertEqual(len(r['combinaison']), 1, (kwc, r['combinaison']))
+            self.assertTrue(any(h['cle'] == 'parallele_meme_modele' for h in r['hypotheses']))
+
+    def test_sans_homogene_inchange(self):
+        a = combiner_onduleurs(64, _vivier_deye(), phase='tri', module=_module_cs7n())
+        b = combiner_onduleurs(64, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                               homogene=False)
+        self.assertEqual(a['combinaison'], b['combinaison'])
+
+    def test_aucun_modele_seul_ne_porte_le_champ(self):
+        r = combiner_onduleurs(500, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                               max_appareils=10, homogene=True)
+        self.assertIsNone(r['combinaison'])
+        self.assertTrue(r['motif'])
 
 
 class GardeAstTests(TestCase):
@@ -212,3 +358,51 @@ class GardeAstTests(TestCase):
                 continue
             self.assertFalse(mod.startswith(('django', 'apps', 'rest_framework')),
                              mod)
+
+
+def _vivier_huawei_10_a_150():
+    """Pool 10/15/20/25/50/100/150 kW, prix de vente HT (CMP1 : balayage)."""
+    h = lambda n, i, kw: _spec_ond(n, 200, 1000, 1100, i, kw)  # noqa: E731
+    return [_cand(1, 'Huawei 10KTL', 10, '20000', h(2, 20, 10)),
+            _cand(2, 'Huawei 15KTL-M5', 15, '23000', h(2, 20, 15)),
+            _cand(3, 'Huawei 20KTL-M5', 20, '28000', h(2, 20, 20)),
+            _cand(4, 'Huawei 25KTL', 25, '35000', h(3, 30, 25)),
+            _cand(5, 'Huawei 50KTL-M3', 50, '55000', h(4, 30, 50)),
+            _cand(6, 'Huawei 100KTL', 100, '78000', h(10, 30, 100)),
+            _cand(7, 'Huawei 150K-MG0', 150, '123000', h(7, 48, 150))]
+
+
+class BalayageCablageTests(TestCase):
+    """CMP1 — aucun kWc de 190 a 232 ne reste bloque par la decoupe."""
+
+    def _verifier(self, kwc, vivier, module):
+        r = combiner_onduleurs(kwc, vivier, phase='tri', module=module)
+        attendu = int(-(-round(kwc * 1000.0, 6) // 710))
+        self.assertIsNotNone(r['combinaison'], kwc)
+        self.assertEqual([a['code'] for a in r['alertes']
+                          if a['code'] == 'OND_CHAINES_NON_FAISABLES'], [], kwc)
+        self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), attendu, kwc)
+        return r
+
+    def test_balayage_190_a_232_kwc_aucun_bloquant_tous_modules_cables(self):
+        vivier, module = _vivier_huawei_10_a_150(), _module_cs7n()
+        t0 = time.perf_counter()
+        for pas in range(1900, 2321):
+            self._verifier(pas / 10.0, vivier, module)
+        self.assertLess(time.perf_counter() - t0, 120)
+
+    def test_302_modules_repartis_275_27_recables_276_26(self):
+        vivier = [c for c in _vivier_huawei_10_a_150() if c['kw_ac'] in (15, 150)]
+        r = self._verifier(213.8, vivier, _module_cs7n())
+        self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), 302)
+        self.assertNotEqual(sorted(c['nb_modules'] for c in r['chaines']), [27, 275])
+
+    def test_champ_vraiment_infaisable_reste_bloquant(self):
+        # 150K seul : 275 modules (impair) = 14 chaines -> 8 entrees > 7,
+        # aucune autre combinaison possible dans ce vivier.
+        cat = [c for c in _vivier_huawei_10_a_150() if c['kw_ac'] == 150]
+        r = combiner_onduleurs(195.25, cat, phase='tri', module=_module_cs7n(),
+                               max_appareils=1)
+        self.assertIsNotNone(r['combinaison'])
+        self.assertTrue(any(a['code'] == 'OND_CHAINES_NON_FAISABLES'
+                            and a['niveau'] == 'bloquant' for a in r['alertes']))

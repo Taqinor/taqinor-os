@@ -888,7 +888,9 @@ class ConsommationLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mode
                   'date_modification']
         read_only_fields = ['stock_applique', 'ordre', 'date_modification']
 
-    @extend_schema_field(serializers.CharField())
+    # api-fuzz-full 27/10 (ENF11) : l'écart (Decimal) est SERVI en nombre JSON
+    # (encodeur DRF) — publié ``number`` (il était annoncé chaîne).
+    @extend_schema_field(serializers.FloatField())
     def get_variance(self, obj):
         return obj.variance
 
@@ -1325,7 +1327,7 @@ class EquipeSerializer(
     le `chef` doivent appartenir à la société de l'utilisateur (validé côté
     viewset). Expose les noms des membres en lecture pour l'affichage."""
     # ACHT53 — FK inscriptibles bornées à la société.
-    same_company_fields = ('chef', 'membres')
+    same_company_fields = ('chef', 'membres', 'departement')
     membres_noms = serializers.SerializerMethodField()
     chef_nom = serializers.SerializerMethodField()
     nb_membres = serializers.SerializerMethodField()
@@ -1334,7 +1336,7 @@ class EquipeSerializer(
         model = Equipe
         fields = [
             'id', 'nom', 'membres', 'membres_noms', 'nb_membres',
-            'chef', 'chef_nom', 'actif', 'description',
+            'chef', 'chef_nom', 'actif', 'description', 'departement',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [

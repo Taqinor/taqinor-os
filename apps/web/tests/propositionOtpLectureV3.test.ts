@@ -17,9 +17,10 @@ import { fileURLToPath } from 'node:url';
 
 import { mapAcceptResponseToUiState, OTP_LECTURE_DETAIL } from '../src/lib/proposition';
 import { lireReponseAccesPdf } from '../src/lib/propositionPdfSigne';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
-const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+const PROPOSITION = lirePageProposition();
 const PROXY = read('../src/pages/api/proposition-otp.ts');
 // Formulaire et logique client PARTAGÉS avec /suivi (garde ACAL345).
 const OTP_FORM = read('../src/components/OtpLectureForm.astro');

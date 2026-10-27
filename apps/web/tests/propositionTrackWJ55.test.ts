@@ -21,8 +21,9 @@ import { corpsDeclin, declinerEndpoint, vuEndpoint } from '../src/lib/propositio
 import { POST as postVu } from '../src/pages/api/proposition-vu';
 import { POST as postDecliner } from '../src/pages/api/proposition-decliner';
 import { resetRateLimit } from '../src/lib/rateLimit';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const PAGE = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+const PAGE = lirePageProposition();
 
 describe('ADEV98 — lecture humaine (balise) et « Décliner / demander un délai »', () => {
   const requete = (url: string, body: unknown, headers: Record<string, string> = {}) =>

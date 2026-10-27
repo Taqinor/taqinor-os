@@ -60,7 +60,6 @@ export const DEFAULT_PRODUCTIBLE = 1651 // Casablanca (centre zone de service)
 export const SYSTEM_LOSS_TOTAL = 0.20   // pertes système TOTALES (fondateur 18/08)
 export const PVGIS_BUILTIN_LOSS = 0.14  // pertes déjà incluses dans le productible
 export const PRODUCTIBLE_NET_FACTOR = (1 - SYSTEM_LOSS_TOTAL) / (1 - PVGIS_BUILTIN_LOSS)
-const _PRODUCTIBLE_HISTORICAL_DEFAULT = 1600
 const _CITY_ALIASES = {
   casa: 'casablanca', kenitra: 'rabat', sale: 'rabat', salé: 'rabat',
   mohammedia: 'casablanca', 'el jadida': 'casablanca', essaouira: 'agadir',
@@ -70,11 +69,12 @@ const _CITY_ALIASES = {
 }
 
 // Productible canonique pour une ville. `override` = productible société
-// (CompanyProfile) : quand il diffère RÉELLEMENT du défaut historique 1600, il
-// prime ; sinon on lit le productible PVGIS de la ville (repli DEFAULT).
+// (CompanyProfile) : renseigné (> 0, 1600 compris — AMOT64, D-AMOT-3 = a), il
+// prime ; vide (null) on lit le productible PVGIS de la ville (repli DEFAULT).
+// Même règle que productible.py::productible_for_city (aucune sentinelle 1600).
 export function productibleForCity(city, override = null) {
   const ov = parseFloat(override)
-  if (Number.isFinite(ov) && ov > 0 && Math.abs(ov - _PRODUCTIBLE_HISTORICAL_DEFAULT) > 0.5) {
+  if (Number.isFinite(ov) && ov > 0) {
     return ov
   }
   const key = String(city || '').trim().toLowerCase()
@@ -99,17 +99,18 @@ export const DAY_USAGE_DEFAULTS = {
 // SUPPRIMÉE : la catégorie et ses réponses partent au
 // moteur serveur C&I (`rythme.categorie_commerciale`), qui choisit l'archétype.
 // Miroir informatif du questionnaire webhook (QX51) — clés snake_case.
+// Décision fondateur 26/10/2026 — 23 commerces (crm.Lead.CategorieCommerciale).
 export const COMMERCIAL_CATEGORIES = [
-  { value: 'hotel', label: 'Hôtel / Riad' },
-  { value: 'restaurant', label: 'Restaurant / Café' },
-  { value: 'commerce', label: 'Commerce / Supermarché' },
-  { value: 'bureau', label: 'Bureau / Siège' },
-  { value: 'sante', label: 'Santé (clinique / cabinet)' },
-  { value: 'ecole', label: 'École privée' },
-  { value: 'hammam', label: 'Hammam / Spa / Gym' },
-  { value: 'boulangerie', label: 'Boulangerie' },
-  { value: 'froid', label: 'Entrepôt froid' },
-  { value: 'autre', label: 'Autre commerce' },
+  { value: 'hotel', label: 'Hôtel / Riad' }, { value: 'restaurant', label: 'Restaurant' }, { value: 'cafe', label: 'Café / salon de thé / glacier' },
+  { value: 'boulangerie', label: 'Boulangerie / pâtisserie' }, { value: 'commerce', label: 'Commerce / boutique' },
+  { value: 'supermarche', label: 'Supermarché / épicerie (avec frigos)' }, { value: 'boucherie', label: 'Boucherie / poissonnerie' },
+  { value: 'pharmacie', label: 'Pharmacie' }, { value: 'coiffure', label: 'Coiffure / esthétique' }, { value: 'pressing', label: 'Pressing / laverie' },
+  { value: 'bureau', label: 'Bureau / Siège' }, { value: 'sante', label: 'Santé (clinique / cabinet)' }, { value: 'ecole', label: 'École privée' },
+  { value: 'salle_sport', label: 'Salle de sport' }, { value: 'hammam', label: 'Hammam / Spa' },
+  { value: 'garage', label: 'Garage / atelier mécanique' }, { value: 'atelier', label: 'Atelier (menuiserie, ferronnerie, couture)' },
+  { value: 'imprimerie', label: 'Imprimerie' }, { value: 'station_service', label: 'Station-service' },
+  { value: 'entrepot', label: 'Entrepôt / logistique (sans froid)' }, { value: 'froid', label: 'Entrepôt froid' },
+  { value: 'mosquee', label: 'Mosquée / association' }, { value: 'autre', label: 'Autre commerce' },
 ]
 
 // Questions 2-4 par catégorie (recherche 2026-07-16). key = clé snake_case

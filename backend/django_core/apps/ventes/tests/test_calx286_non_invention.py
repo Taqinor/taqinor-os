@@ -605,3 +605,32 @@ class AppelantsInchangesTest(SimpleTestCase):
                                                inverter_replace_cost=None)
         self.assertIs(res.pop('jamais_rembourse'), False)
         self.assertEqual(res, AVANT['cashflow'])
+
+
+class InvestissementTTCResidentielTest(SimpleTestCase):
+    """C-RHOR-003 — l'étude bancable compare des économies valorisées au prix
+    TTC du kWh : l'investissement d'un particulier est donc le total TTC
+    (niveau de règles 3) ; un devis envoyé avant garde le HT d'origine."""
+
+    def _devis(self, regles, mode='residentiel'):
+        from types import SimpleNamespace
+        return SimpleNamespace(total_ht=100000.0, total_ttc=120000.0,
+                               regles_calcul=regles, mode_installation=mode)
+
+    def test_residentiel_niveau_3_ttc(self):
+        from apps.ventes.etude import _cout_investissement
+        self.assertEqual(
+            _cout_investissement(self._devis(3), 'residentiel'), 120000.0)
+
+    def test_residentiel_niveau_2_garde_le_ht(self):
+        from apps.ventes.etude import _cout_investissement
+        self.assertEqual(
+            _cout_investissement(self._devis(2), 'residentiel'), 100000.0)
+
+    def test_autres_segments_gardent_le_ht(self):
+        from apps.ventes.etude import _cout_investissement
+        for mode in ('commercial', 'industriel', 'agricole', None):
+            with self.subTest(mode=mode):
+                self.assertEqual(
+                    _cout_investissement(self._devis(3, mode), mode),
+                    100000.0)

@@ -18,11 +18,9 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const PROPOSITION = readFileSync(
-  fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-  'utf-8',
-);
+const PROPOSITION = lirePageProposition();
 
 describe('L-VAR — un seul lien PDF, qui suit l’option cochée', () => {
   it('le sélecteur à trois boutons a quitté l’étape de signature', () => {

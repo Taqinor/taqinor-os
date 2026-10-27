@@ -191,14 +191,17 @@ def tariff_for(company) -> dict:
 
     CompanyProfile est la source de vérité déjà consommée ; tout lecteur (moteur
     de devis, simulateur) passe par ici plutôt que de dupliquer les constantes.
-    Repli sur les défauts historiques du simulateur (1.75 MAD/kWh, 1600 kWh/kWc,
-    rendement 0.8, TVA 20/10) quand aucun profil n'existe.
+    Repli sur les défauts historiques du simulateur (1.75 MAD/kWh, rendement
+    0.8, TVA 20/10) quand aucun profil n'existe. AMOT64 (D-AMOT-3 = a) —
+    ``productible_kwh_kwc`` vaut ``None`` quand la société ne l'a pas renseigné
+    (ou sans profil) : le moteur lit alors le productible PVGIS de la ville ;
+    une valeur saisie (1 600 compris) est rendue telle quelle.
     """
     p = _profile(company)
     if p is None:
         return {
             "onee_tarif_kwh": 1.75,
-            "productible_kwh_kwc": 1600.0,
+            "productible_kwh_kwc": None,
             "rendement_global": 0.8,
             "tva_standard": 20.0,
             "tva_panneaux": 10.0,
@@ -212,7 +215,8 @@ def tariff_for(company) -> dict:
 
     return {
         "onee_tarif_kwh": _f(p.onee_tarif_kwh, Decimal("1.75")),
-        "productible_kwh_kwc": _f(p.productible_kwh_kwc, Decimal("1600.0")),
+        "productible_kwh_kwc": (None if p.productible_kwh_kwc is None
+                                else float(p.productible_kwh_kwc)),
         "rendement_global": _f(p.rendement_global, Decimal("0.8")),
         "tva_standard": _f(p.tva_standard, Decimal("20")),
         "tva_panneaux": _f(p.tva_panneaux, Decimal("10")),

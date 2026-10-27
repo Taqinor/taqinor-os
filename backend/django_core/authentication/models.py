@@ -204,6 +204,13 @@ class CustomUser(AbstractUser):
     # Rien n'est perdu : la table ``rh_poste`` reste intacte et cette colonne
     # garde l'intitulé lisible (retour du module : docs/parked-modules.md §5).
     poste = models.CharField(max_length=120, blank=True, default='')
+    # Organigramme (fondateur, 27/10/2026) — FONCTION du compte : donne son
+    # département et son rôle par défaut. Son intitulé est recopié dans
+    # ``poste`` (gardé pour l'affichage). Référence string (app fondation).
+    fonction = models.ForeignKey(
+        # on_delete: le compte survit à la suppression de sa fonction
+        'roles.Poste', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='titulaires')
     # Clé MinIO (bucket erp-uploads) de la photo de profil. Vide = avatar
     # à initiales. Même mécanisme de stockage que logo/signature entreprise
     # (boto3, jamais de FileField/ImageField) — aucune dépendance nouvelle.

@@ -52,9 +52,21 @@ ICONES = {
         '2.7 2.7 0 0 0 5.4 0 2.7 2.7 0 0 0 5.3 0M5 11v10h14V11M10 21v-5h4v5"/>'),
 }
 
+#: Décision fondateur 26-27/10/2026 — les 13 activités ajoutées reprennent le
+#: pictogramme de l'activité la plus proche (repli accepté par le fondateur).
+ICONES.update({
+    "cafe": ICONES["restaurant"], "supermarche": ICONES["commerce"],
+    "boucherie": ICONES["froid"], "pharmacie": ICONES["sante"],
+    "coiffure": ICONES["commerce"], "pressing": ICONES["commerce"],
+    "salle_sport": ICONES["hammam"], "garage": ICONES["bureau"],
+    "atelier": ICONES["bureau"], "imprimerie": ICONES["bureau"],
+    "station_service": ICONES["autre"], "entrepot": ICONES["autre"],
+    "mosquee": ICONES["autre"],
+})
+
 #: Les catégories connues (mêmes clés que la table CIQ330).
 METADATA = {
-    cle: {"label": meta["libelle"]["fr"], "icon": ICONES[cle],
+    cle: {"label": meta["libelle"]["fr"], "icon": ICONES.get(cle, ICONES["autre"]),
           "accroche": meta["accroche"]["fr"]}
     for cle, meta in ci_categories.CATEGORIES.items()
 }
