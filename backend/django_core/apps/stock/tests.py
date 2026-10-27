@@ -42,7 +42,8 @@ class TestSeedCatalogue(TestCase):
         # (PVLV2 21/08/2026 : les 2 doublons « Deye basse tension 15/20 kW »
         # du 18/08 ne sont PLUS seedés — les SKU historiques SONT les LV)
         # + 70 articles C&I génériques « prix à renseigner » (CIQ103)
-        self.assertEqual(qs.count(), 174)  # AGQ36 : + STR-SOL-PMP
+        # + 1 batterie Dyness PowerBrick SC 16 kWh, BAT-DYN-PB-SC-16 (D-BAT-2710, 27/10/2026)
+        self.assertEqual(qs.count(), 175)  # AGQ36 : + STR-SOL-PMP ; D-BAT-2710 : + BAT-DYN-PB-SC-16
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -60,7 +61,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 174,  # AGQ36
+                company=self.company, reference='SEED-CATALOGUE').count(), 175,  # AGQ36 + D-BAT-2710
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -873,7 +874,7 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
         # PVLV2 — les deux doublons « Basse Tension » ne sont plus créés.
-        self.assertIn('0 created, 174 already present', out)
+        self.assertIn('0 created, 175 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price
