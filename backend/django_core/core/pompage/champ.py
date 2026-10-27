@@ -477,7 +477,9 @@ def _repli_borne(nb, kwc0, pmax, plaque):
     if not (kwc0 and plaque and plaque > 0):
         return nb, ""
     bande_max = valeur("ratio_champ_pompe_bande_alerte").max
-    nb_borne = int(math.ceil(bande_max * plaque * 1000.0 / pmax))
+    # AGM16 — par défaut (jamais au-delà de la bande : un arrondi au-dessus
+    # imprimait « champ 1,56× hors bande » sur un champ borné à 1,5×).
+    nb_borne = int(math.floor(bande_max * plaque * 1000.0 / pmax + 1e-9))
     if nb_borne >= nb:
         return nb, ""
     nb = max(nb_borne, 1)

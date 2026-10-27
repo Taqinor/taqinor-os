@@ -219,18 +219,20 @@ class Champ(unittest.TestCase):
 
     def test_agm2_besoin_incouvrable_repli_borne_a_1_5_fois_la_plaque(self):
         # OSP 30/8 7,5 kW, 800 m3/j a 70 m : jamais couvrable. Avant : repli
-        # = kWc de depart = 121 panneaux (ratio 11,45) ; borne = ⌈1,5 × 7,5 ×
-        # 1000 / 710⌉ = 16 panneaux.
+        # = kWc de depart = 121 panneaux (ratio 11,45) ; borne = ⌊1,5 × 7,5 ×
+        # 1000 / 710⌋ = 15 panneaux (AGM16 : jamais au-delà de la bande).
         res = self._osp(800, 70)
-        borne = math.ceil(1.5 * 7.5 * 1000 / 710)
-        self.assertEqual(borne, 16)
+        borne = math.floor(1.5 * 7.5 * 1000 / 710)
+        self.assertEqual(borne, 15)
         self.assertLess(borne, math.ceil(res["kwc_depart"] * 1000 / 710))
         self.assertEqual(res["nb_panneaux"], borne)
         alerte = [a for a in res["alertes"]
                   if a["code"] == "besoin_non_couvert_champ"]
         self.assertEqual(len(alerte), 1)
         self.assertIn("borne de 1,5 × la plaque de 7,5 kW", alerte[0]["message"])
-        self.assertIn("16 panneaux", alerte[0]["message"])
+        self.assertIn("15 panneaux", alerte[0]["message"])
+        # AGM16 — le champ borné reste DANS la bande (≤ 1,5 × la plaque).
+        self.assertLessEqual(res["nb_panneaux"] * 710 / 1000, 1.5 * 7.5)
         # La couverture affichee est l'honnete (< besoin), jamais masquee.
         self.assertLess(res["production"]["m3_jour_mois"][11], 800)
 
@@ -255,9 +257,9 @@ class Champ(unittest.TestCase):
 
     def test_agm14_sans_courbe_kwc_de_depart_borne_a_la_plaque(self):
         # Rendu R2 (30 CV existante, 300 m3/j à 120 m) : 61,5 kWc pour une
-        # pompe de 22 kW. Ici 7,5 kW : borne = ⌈1,5 × 7,5 × 1000 / 710⌉ = 16.
+        # pompe de 22 kW. Ici 7,5 kW : borne = ⌊1,5 × 7,5 × 1000 / 710⌋ = 15.
         res = self._sans_courbe(300, 120)
-        borne = math.ceil(1.5 * 7.5 * 1000 / 710)
+        borne = math.floor(1.5 * 7.5 * 1000 / 710)
         self.assertLess(borne, math.ceil(res["kwc_depart"] * 1000 / 710))
         self.assertEqual(res["nb_panneaux"], borne)
         alerte = [a for a in res["alertes"] if a["code"] == "champ_kwc_depart"]
