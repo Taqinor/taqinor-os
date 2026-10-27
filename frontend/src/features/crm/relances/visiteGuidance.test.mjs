@@ -124,6 +124,18 @@ test('CIQ516 — les textes du fondateur sont inchangés (octet pour octet)', ()
     + 'Confirmez sa présence au créneau choisi.')
 })
 
+test('CSV7 — pro : jamais « pas pour le changer », le discours dit « préliminaire » (bandeau du PDF)', () => {
+  for (const segment of ['commercial', 'industriel']) {
+    const script = guidanceVisite(segment).phases[2].script
+    assert.doesNotMatch(script, /pas pour le changer/)
+    assert.doesNotMatch(script, /verrouiller/)
+    assert.match(script, /préliminaire/)
+    assert.match(script, /confirme le prix définitif — il peut être ajusté/)
+  }
+  // Le texte résidentiel du fondateur est intouché.
+  assert.match(PHASE_GUIDANCE[2].script, /pour verrouiller le prix, pas pour le changer/)
+})
+
 test('CIQ516 — guidanceVisite(commercial|industriel) : ni charpente, ni maison, ni bonne, ni gardien', () => {
   for (const segment of ['commercial', 'industriel']) {
     const g = guidanceVisite(segment)
