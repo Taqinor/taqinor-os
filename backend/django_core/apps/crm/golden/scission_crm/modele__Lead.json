@@ -3148,11 +3148,39 @@
      ],
      [
       "restaurant",
-      "Restaurant / café"
+      "Restaurant"
+     ],
+     [
+      "cafe",
+      "Café / salon de thé / glacier"
+     ],
+     [
+      "boulangerie",
+      "Boulangerie / pâtisserie"
      ],
      [
       "commerce",
-      "Commerce / supermarché"
+      "Commerce / boutique"
+     ],
+     [
+      "supermarche",
+      "Supermarché / épicerie (avec frigos)"
+     ],
+     [
+      "boucherie",
+      "Boucherie / poissonnerie"
+     ],
+     [
+      "pharmacie",
+      "Pharmacie"
+     ],
+     [
+      "coiffure",
+      "Coiffure / esthétique"
+     ],
+     [
+      "pressing",
+      "Pressing / laverie"
      ],
      [
       "bureau",
@@ -3167,16 +3195,40 @@
       "École"
      ],
      [
-      "hammam",
-      "Hammam / spa / salle de sport"
+      "salle_sport",
+      "Salle de sport"
      ],
      [
-      "boulangerie",
-      "Boulangerie"
+      "hammam",
+      "Hammam / spa"
+     ],
+     [
+      "garage",
+      "Garage / atelier mécanique"
+     ],
+     [
+      "atelier",
+      "Atelier (menuiserie, ferronnerie, couture)"
+     ],
+     [
+      "imprimerie",
+      "Imprimerie"
+     ],
+     [
+      "station_service",
+      "Station-service"
+     ],
+     [
+      "entrepot",
+      "Entrepôt / logistique (sans froid)"
      ],
      [
       "froid",
       "Froid / entrepôt frigorifique"
+     ],
+     [
+      "mosquee",
+      "Mosquée / association"
      ],
      [
       "autre",
@@ -3184,7 +3236,7 @@
      ]
     ],
     "help_text": "Question à l'appel : « Quelle est votre activité : hôtel, restaurant ou café, commerce, bureaux, santé, école, hammam, boulangerie, froid, ou autre chose ? » (vide = pas encore posée).",
-    "max_length": 12,
+    "max_length": 20,
     "null": true,
     "verbose_name": "Activité (catégorie commerciale)"
    },
@@ -3323,6 +3375,32 @@
    },
    "nom": "heure_fin",
    "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "aucun",
+      "Aucun"
+     ],
+     [
+      "un_peu",
+      "Un peu"
+     ],
+     [
+      "beaucoup",
+      "Beaucoup"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Avez-vous des équipements qui tournent la nuit ou hors de vos horaires (chambres froides, frigos, fours de nuit, pompes) ? » — talon déclaré du moteur C&I (vide = pas encore posée).",
+    "max_length": 8,
+    "null": true,
+    "verbose_name": "Équipements hors horaires"
+   },
+   "nom": "equipements_hors_horaires",
+   "type": "CharField"
   },
   {
    "args": [],

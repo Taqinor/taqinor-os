@@ -8,6 +8,8 @@ from django.db.models.functions import Lower  # noqa: F401 — façade crm.model
 from core.models import SoftDeleteModel, TenantModel
 
 from .stages import STAGE_CHOICES, NEW
+from .categories_commerciales import (CategorieCommerciale, EquipementsHorsHoraires,
+                                      REPONSES_CATEGORIE_CLES)
 from .models_lead_pompage import LeadPompageMixin, valider_mois_irrigation
 
 
@@ -465,35 +467,12 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
         SITE_WEB = 'site_web', 'Saisie sur le site'
         MESURE_VISITE = 'mesure_visite', 'Mesurée en visite'
 
-    class CategorieCommerciale(models.TextChoices):
-        HOTEL = 'hotel', 'Hôtel / riad'
-        RESTAURANT = 'restaurant', 'Restaurant / café'
-        COMMERCE = 'commerce', 'Commerce / supermarché'
-        BUREAU = 'bureau', 'Bureaux'
-        SANTE = 'sante', 'Santé (clinique, cabinet)'
-        ECOLE = 'ecole', 'École'
-        HAMMAM = 'hammam', 'Hammam / spa / salle de sport'
-        BOULANGERIE = 'boulangerie', 'Boulangerie'
-        FROID = 'froid', 'Froid / entrepôt frigorifique'
-        AUTRE = 'autre', 'Autre'
-
-    #: Clés FERMÉES de ``reponses_categorie`` par catégorie (contrat CIQ1,
-    #: ``reponses_categorie_par_categorie.cles``).
-    REPONSES_CATEGORIE_CLES = {
-        'hotel': ('chambres', 'occupation_pct', 'piscine', 'heures_piscine',
-                  'blanchisserie', 'reception_24h'),
-        'restaurant': ('chambres_froides', 'horaires', 'cuisson',
-                       'ouvert_journee_ramadan'),
-        'commerce': ('surface_vente_m2', 'chambres_froides'),
-        'bureau': ('effectif', 'clim'),
-        'sante': ('lits', 'garde_nuit'),
-        'ecole': ('effectif', 'internat', 'fermeture_estivale'),
-        'hammam': ('surface_m2', 'chauffe'),
-        'boulangerie': ('four', 'cuisson_nocturne'),
-        'froid': ('temperature_consigne', 'volume_m3',
-                  'saisonnalite_recolte'),
-        'autre': (),
-    }
+    # Décision fondateur 26/10/2026 — la liste vit dans
+    # ``categories_commerciales`` (23 commerces, clés stables) ; ces noms la
+    # gardent lisible comme ``Lead.CategorieCommerciale``.
+    CategorieCommerciale = CategorieCommerciale
+    REPONSES_CATEGORIE_CLES = REPONSES_CATEGORIE_CLES
+    EquipementsHorsHoraires = EquipementsHorsHoraires
 
     class OuiNon(models.TextChoices):
         OUI = 'oui', 'Oui'
@@ -1790,7 +1769,7 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
         max_length=14, choices=PuissanceSouscriteSource.choices, null=True,
         blank=True, verbose_name='Provenance de la puissance souscrite')
     categorie_commerciale = models.CharField(
-        max_length=12, choices=CategorieCommerciale.choices, null=True,
+        max_length=20, choices=CategorieCommerciale.choices, null=True,
         blank=True, verbose_name='Activité (catégorie commerciale)',
         help_text="Question à l'appel : « Quelle est votre activité : hôtel, "
                   'restaurant ou café, commerce, bureaux, santé, école, '
@@ -1836,6 +1815,13 @@ class Lead(LeadPompageMixin, SoftDeleteModel):
         verbose_name='Heure de fin de journée',
         help_text="Question à l'appel : « Et à quelle heure se termine-t-"
                   'elle ? » (0-24 ; vide = pas encore posée).')
+    equipements_hors_horaires = models.CharField(
+        max_length=8, choices=EquipementsHorsHoraires.choices, null=True,
+        blank=True, verbose_name='Équipements hors horaires',
+        help_text="Question à l'appel : « Avez-vous des équipements qui "
+                  'tournent la nuit ou hors de vos horaires (chambres froides, '
+                  'frigos, fours de nuit, pompes) ? » — talon déclaré du '
+                  'moteur C&I (vide = pas encore posée).')
     fermeture_mois = models.JSONField(
         null=True, blank=True, validators=[valider_fermeture_mois],
         verbose_name='Mois de fermeture',

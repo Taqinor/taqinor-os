@@ -31,8 +31,9 @@ def _html(categorie):
 @tag('pdf')
 class PictosCategoriesTests(SimpleTestCase):
 
-    def test_dix_categories(self):
-        self.assertEqual(len(CATEGORIES), 10)
+    def test_vingt_trois_categories(self):
+        # Décision fondateur 26-27/10/2026 : les 23 activités du lead.
+        self.assertEqual(len(CATEGORIES), 23)
 
     def test_aucun_caractere_hors_bmp(self):
         for categorie in CATEGORIES:
