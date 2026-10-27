@@ -233,6 +233,16 @@ class TestPerformanceReceptionApiTest(TestCase):
         self.assertAlmostEqual(float(obj.pr_mesure), 0.76, places=4)
         self.assertEqual(obj.verdict, 'accepte')
 
+    def test_pr_derive_hors_capacite_409_rien_ecrit(self):
+        # api-fuzz-full 27/10 — PR dérivé ≥ 10 (numeric(5,4)) ou écart
+        # ≥ 10 000 % (numeric(6,2)) : DataError (500) → refus d'état 409.
+        for corps in ({'energie_attendue_kwh': '.2', 'pr_attendu': '.186',
+                       'energie_mesuree_kwh': '-0317773910'},
+                      {'pr_mesure': '9.9999', 'pr_attendu': '0.0001'}):
+            resp = self.api.post(self.url, corps, format='json')
+            self.assertEqual(resp.status_code, 409, (corps, resp.content))
+        self.assertFalse(TestPerformanceReception.objects.exists())
+
     def test_recette_inconnue_404(self):
         # CI #997 — ``recette`` bien formée mais absente de la société : la
         # requête est conforme, c'est la ressource qui manque (plus 400).
