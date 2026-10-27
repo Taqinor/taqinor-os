@@ -76,10 +76,19 @@ DEPLACEMENTS = {
              'apps/ventes/domain/creation_auto.py', 'SPL267', True),
     'clone': ('split_dm_clone', 'apps/ventes/domain/creation.py',
               'apps/ventes/domain/creation_clone.py', 'SPL268', True),
+    # SPL312/SPL313 (27/10/2026) — le résidentiel et l'agricole quittent
+    # ``creation_auto`` (dispatcher + C&I restent) ; empreintes capturées sur
+    # le code d'AVANT. ``build_devis_auto`` (dispatcher) est recapturé dans
+    # ``split_dm_auto`` : sa tête est identique, son corps résidentiel est
+    # ``_build_devis_auto_residentiel`` (comportement : golden (c)).
+    'auto_res': ('split_dm_auto_res', 'apps/ventes/domain/creation_auto.py',
+                 'apps/ventes/domain/creation_auto_residentiel.py', 'SPL312', True),
+    'auto_agr': ('split_dm_auto_agr', 'apps/ventes/domain/creation_auto.py',
+                 'apps/ventes/domain/creation_auto_agricole.py', 'SPL313', True),
 }
 
 #: Nombre total de symboles épinglés (somme des sept régions).
-NB_SYMBOLES = 62  # ACAL : build_devis_depuis_calepinage_retenu retiré (CAL185 remplacé)
+NB_SYMBOLES = 65  # SPL313 : +3 agricole ; ACAL : build_devis_depuis_calepinage_retenu retiré (CAL185 remplacé)
 
 
 @functools.lru_cache(maxsize=None)

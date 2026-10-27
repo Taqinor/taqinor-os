@@ -309,7 +309,16 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
                     {'montant': 'Montant invalide.'},
                     status=status.HTTP_400_BAD_REQUEST)
         reference = request.data.get('reference', '')
-        if reference is not None and len(str(reference)) > 120:
+        note = request.data.get('note', '')
+        # api-fuzz-full 27/10 (ENF11) — textes STRICTS, publiés sans caractère
+        # nul (``ChaineStricte``) : un NUL dans ``note`` faisait un 500 à
+        # l'INSERT (PostgreSQL), un non-texte (``null`` compris) passait.
+        for cle, texte in (('reference', reference), ('note', note)):
+            if not isinstance(texte, str) or '\x00' in texte:
+                return Response(
+                    {cle: 'Texte sans caractère nul attendu.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        if len(reference) > 120:
             return Response(
                 {'reference': 'Au plus 120 caractères.'},
                 status=status.HTTP_400_BAD_REQUEST)
@@ -320,7 +329,7 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
                 date_paiement=date_paiement,
                 mode=mode,
                 reference=reference,
-                note=request.data.get('note', ''),
+                note=note,
                 created_by=request.user,
             )
         except ValidationError as exc:
@@ -362,10 +371,14 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
                                      OpenApiParameter.PATH)],
         request=PaiementAvecRetenueEntreeSerializer,
         responses={201: D.PaiementAvecRetenueResponse,
-                   409: D.ErreurDetail},
-        # ENF11 — montant publié strictement positif (« Le montant doit être
-        # positif. »), comme le sérialiseur d'entrée le valide (min 0.01).
-        extensions=D.CORPS_MONTANT_POSITIF)
+                   409: D.ErreurDetail})
+    # ENF11 — montant publié strictement positif (« Le montant doit être
+    # positif. »), comme le sérialiseur d'entrée le valide (min 0.01) : le
+    # motif est porté par le CHAMP (``PaiementAvecRetenueEntreeSerializer``).
+    # api-fuzz-full 27/10 (moteur, « Failed Health Check ») — plus de
+    # surcouche ``x-corps-resserre`` qui RÉPÉTAIT ce motif : une contrainte en
+    # double masque chacune de ses mutations (le générateur négatif filtrait
+    # puis abandonnait l'opération).
     @action(detail=False, methods=['post'],
             url_path=r'factures/(?P<facture_id>[^/.]+)/paiement-avec-retenue',
             permission_classes=[IsResponsableOrAdmin])

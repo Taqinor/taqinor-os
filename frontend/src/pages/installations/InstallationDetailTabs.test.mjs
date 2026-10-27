@@ -15,13 +15,22 @@ const SRC = readFileSync(join(HERE, 'InstallationDetail.jsx'), 'utf8')
 
 // Matrice de référence : chaque section d'origine et l'onglet qui l'accueille.
 // APX26 — l'ex-section « Timeline » est fusionnée dans « Parcours & jalons ».
+// Revue chantier 26/10/2026 — « Besoin matériel » est remplacée par le composant
+// ChantierApprovisionnement (onglet Matériel & BC, voir COMPOSANTS) et l'Aperçu
+// gagne la carte « Prêt à poser ? » (même fetch partagé).
 const MATRICE = {
-  apercu: ['Liens', 'Chantier', 'Dossier réglementaire (loi 82-21)'],
+  apercu: ['Prêt à poser ?', 'Liens', 'Chantier', 'Dossier réglementaire (loi 82-21)'],
   jalons: ['Parcours & jalons', "Checklist d'exécution", 'Mise en service'],
-  materiel: ['Besoin matériel', 'Équipements'],
+  materiel: ['Équipements'],
   photos: ['Photos & fichiers'],
   interventions: ['Interventions', 'Tickets SAV', 'Suivi & maintenance'],
   documents: ['Documents après-vente', 'Historique'],
+}
+
+// Blocs rendus par un composant dédié (pas un `title=` de Section) : placés une
+// seule fois dans leur onglet.
+const COMPOSANTS = {
+  materiel: ['ChantierApprovisionnement'],
 }
 
 function panneau(valeur) {
@@ -58,6 +67,10 @@ test('matrice section → onglet : toutes les sections sont placées, aucune per
     for (const titre of sections) {
       const occurrences = corps.split(`title="${titre}"`).length - 1
       assert.equal(occurrences, 1, `« ${titre} » attendue une fois dans l'onglet ${valeur}`)
+    }
+    for (const composant of COMPOSANTS[valeur] ?? []) {
+      const occurrences = corps.split(`<${composant}`).length - 1
+      assert.equal(occurrences, 1, `<${composant}> attendu une fois dans l'onglet ${valeur}`)
     }
   }
 })

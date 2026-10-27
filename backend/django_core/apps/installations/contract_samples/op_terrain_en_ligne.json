@@ -21,6 +21,8 @@
     "plaque_attachment": null,
     "plaque_url": null,
     "serie_ocr": false,
+    "caracteristiques": {},
+    "capture_source": "saisie",
     "pousse_parc": false,
     "date_creation": "2026-10-08T09:30:00Z",
     "replayed": false
@@ -36,6 +38,8 @@
     "plaque_attachment": null,
     "plaque_url": null,
     "serie_ocr": false,
+    "caracteristiques": {},
+    "capture_source": "saisie",
     "pousse_parc": false,
     "date_creation": "2026-10-08T09:30:00Z",
     "replayed": true

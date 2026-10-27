@@ -1381,8 +1381,20 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
                 reprise = etape
             return Response(self.get_serializer(reprise).data)
         from .cadence_plan import reporter_prochaine_touche
-        etape = reporter_prochaine_touche(
-            etape.lead, request.user, quand, etape=etape)
+        try:
+            etape = reporter_prochaine_touche(
+                etape.lead, request.user, quand, etape=etape)
+        except OverflowError:
+            # api-fuzz-full 27/10 (ENF11) — date CONFORME, mais le même écart
+            # appliqué aux touches SUIVANTES déjà planifiées (ou à leur
+            # échéance d'origine) sortirait du calendrier (an > 9999) : ce
+            # sont les données enregistrées qui s'y opposent → 409, et le
+            # geste entier est annulé (``_geste_atomique``), plus un 500.
+            raise ConflitEtat({'erreurs': {
+                'due_at' if brut else 'rappel_le': (
+                    '« Reporter au » : ce report repousserait les touches '
+                    'suivantes au-delà de l’an 9999 — choisissez une date '
+                    'plus proche.')}})
         return Response(self.get_serializer(etape).data)
 
 

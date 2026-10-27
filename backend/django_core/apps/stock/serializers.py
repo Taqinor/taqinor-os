@@ -1096,9 +1096,11 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                 raise serializers.ValidationError(
                     f'Palier {rang + 1} : `prix_vente_ttc` doit être > 0.')
             if seuil_max is not None and seuil_max <= seuil_min:
-                raise serializers.ValidationError(
+                # api-fuzz-full 27/10 (ENF11) : règle à DEUX champs, que
+                # OpenAPI 3.0 ne publie pas → 409 (comme le recouvrement).
+                raise ConflitEtat({'paliers_prix_vente': [
                     f'Palier {rang + 1} : `seuil_max` doit dépasser '
-                    '`seuil_min`.')
+                    '`seuil_min`.']})
             propres.append((seuil_min, seuil_max, prix))
         propres.sort(key=lambda p: p[0])
         for (_mi, ma, _p), (mi_suivant, _ma2, _p2) in zip(propres,
@@ -1629,11 +1631,19 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
     # écriture libre sur le document interne) et ne bouge AUCUN stock — la
     # réception reste le seul acte qui fait entrer de la marchandise.
     livraisons_annoncees = serializers.SerializerMethodField()
+    # Revue chantier 26/10/2026 — chantier D'ORIGINE du besoin (YPROC10),
+    # LECTURE SEULE : posé par `draft_bcfs_for_shortfall`, jamais en écriture
+    # libre (la liste BCF retrouve enfin le chantier qui l'a demandé).
+    chantier_origine = serializers.PrimaryKeyRelatedField(read_only=True, allow_null=True)  # api-fuzz : null servi
+    chantier_origine_reference = serializers.CharField(
+        source='chantier_origine.reference', read_only=True,
+        allow_null=True)
 
     class Meta:
         model = BonCommandeFournisseur
         fields = [
             'id', 'reference', 'fournisseur', 'fournisseur_nom', 'statut',
+            'chantier_origine', 'chantier_origine_reference',
             'statut_display', 'date_commande', 'note', 'devise',
             'taux_change', 'date_livraison_prevue',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',

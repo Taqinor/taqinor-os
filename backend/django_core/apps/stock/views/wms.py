@@ -428,10 +428,21 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         from ..services import deplacer_unite_logistique
         unite = self.get_object()
         modele_bin = UniteLogistique._meta.get_field('bin_actuel').related_model
-        cible = (request.data.get('bin_destination')
-                 or request.query_params.get('bin_destination'))
+        cible = request.data.get('bin_destination')
+        if cible is None:
+            # Paramètre de requête : type entier déjà contrôlé (ENFP).
+            cible = request.query_params.get('bin_destination')
+            if cible is None:
+                raise ValidationError(
+                    {'bin_destination': ['Ce champ est obligatoire.']})
+        elif isinstance(cible, bool) or not isinstance(cible, int):
+            # api-fuzz-full 27/10 (ENF11) : seul un ENTIER JSON est publié —
+            # toute autre forme est un corps invalide (400) ; un entier bien
+            # formé qui ne désigne aucun casier de la société → 404 (service).
+            raise ValidationError(
+                {'bin_destination': ['Identifiant entier attendu.']})
         bin_destination = modele_bin.objects.filter(
-            id=cible, company=request.user.company).first()
+            id=id_corps(cible), company=request.user.company).first()
         try:
             resultat = deplacer_unite_logistique(
                 unite=unite, bin_destination=bin_destination,

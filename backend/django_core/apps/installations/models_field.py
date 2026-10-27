@@ -158,6 +158,20 @@ class ComponentSerial(models.Model):
         null=True, blank=True, related_name='+')
     # True si le n° de série a été proposé par l'OCR (sinon saisie manuelle).
     serie_ocr = models.BooleanField(default=False)
+    # Revue chantier 26/10/2026 — caractéristiques relevées sur la plaque
+    # (clés libres ; l'écran pose `modele`, `puissance_wc`, `fabricant`,
+    # `mpn`, `notes`). Dict plat ≤ 10 clés, valeurs texte/nombre : validé par
+    # `field_capture.valider_caracteristiques`. Restent ICI (aucun champ SAV).
+    caracteristiques = models.JSONField(default=dict, blank=True)
+
+    class CaptureSource(models.TextChoices):
+        SCAN = 'scan', 'Scanné (code-barres / QR)'
+        SAISIE = 'saisie', 'Saisi à la main'
+        PHOTO = 'photo', 'Lu sur la photo de plaque'
+
+    capture_source = models.CharField(
+        max_length=10, choices=CaptureSource.choices,
+        default=CaptureSource.SAISIE)
     # True une fois ce relevé poussé vers le parc installé (sav.Equipement),
     # pour ne jamais créer deux fois le même équipement.
     pousse_parc = models.BooleanField(default=False)
@@ -240,6 +254,16 @@ class PhotoChecklistMeta(TenantModel):
     checklist_item = models.ForeignKey(
         'installations.ChantierChecklistItem', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='photos')
+    # Revue chantier 26/10/2026 — photo d'INTERVENTION (shot list avant /
+    # pendant / après) : même horodatage serveur + géoloc best-effort. Une
+    # méta appartient à UN contexte : étape de checklist chantier OU
+    # intervention, jamais les deux (`clean`).
+    intervention = models.ForeignKey(
+        'installations.Intervention', on_delete=models.CASCADE,  # on_delete: méta de la photo — suit son intervention
+        null=True, blank=True, related_name='photo_metas')
+    # Instant de prise de vue déclaré par l'appareil (informatif, falsifiable)
+    # — `horodatage_capture` (serveur) reste la référence.
+    horodatage_client = models.DateTimeField(null=True, blank=True)
     # Géolocalisation BEST-EFFORT (navigator.geolocation.getCurrentPosition,
     # côté client — JAMAIS bloquante si l'utilisateur refuse) : nullable, une
     # photo sans position reste pleinement utilisable.
@@ -262,6 +286,14 @@ class PhotoChecklistMeta(TenantModel):
 
     def __str__(self):
         return f'Photo checklist · pièce {self.attachment_id}'
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        super().clean()
+        if self.intervention_id and self.checklist_item_id:
+            raise ValidationError(
+                "Une photo appartient soit à une étape de checklist, soit "
+                "à une intervention — pas aux deux.")
 
 
 # ── F11/F12 — Réconciliation du matériel consommé ────────────────────────────

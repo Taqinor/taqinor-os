@@ -321,8 +321,8 @@ test('CCAT4 — libellePrixCi : prestation, barème, à renseigner, rien', () =>
   assert.equal(libellePrixCi(_ci('compteur_injection', { prix_vente: '10.00' }, { prix_connu: true })), '')
 })
 
-// CCAT4 (revue) — les libellés des types de pose sont un MIROIR de
-// core/product_roles.py::LIBELLES_TYPES_POSE : le contrat produit_ci.json les
+// CCAT4 (revue) — les libellés des types de pose doivent être ÉGAUX à ceux
+// du serveur (core.product_roles) : le contrat produit_ci.json les
 // porte (le backend affirme la même égalité), ce test les compare (PACT10).
 test('CCAT4 — libellés de pose = contrat produit_ci.json', () => {
   assert.deepEqual({ ...LIBELLES_TYPES_POSE }, documentContrat('stock', 'produit_ci').libelles_types_pose)

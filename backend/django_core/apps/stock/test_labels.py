@@ -230,7 +230,8 @@ class TestResolve(LabelsApiBase):
         # AUCUN objet : 404 (api-fuzz-full 24/10, il est conforme au schéma).
         res = self.api.get('/api/django/stock/produits/resolve/?code=')
         self.assertEqual(res.status_code, 400)
-        for code in ('PRODUIT:', 'PRODUIT:abc', ':12', '%14!%C2%82:j'):
+        # api-fuzz-full 27/10 : « ² » passe ``isdigit`` mais pas ``int`` (500).
+        for code in ('PRODUIT:', 'PRODUIT:abc', ':12', '%14!%C2%82:j', 'PRODUIT:%C2%B2'):
             res = self.api.get(
                 f'/api/django/stock/produits/resolve/?code={code}')
             self.assertEqual(res.status_code, 404, msg=f'code={code!r}')

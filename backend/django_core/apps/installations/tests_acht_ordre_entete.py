@@ -143,3 +143,16 @@ class OrdreEnteteTests(TestCase):
         self.assertIn(FIGE, str(r.data))
         ordre.refresh_from_db()
         self.assertEqual(ordre.quantite, 3)
+
+    def test_note_de_demontage_nul_publiee_et_refusee(self):
+        # api-fuzz-full 27/10 : ``note`` avec un NUL → 400 alors que le schéma
+        # l'autorisait ; ``ChaineStricte`` publie désormais le motif sans NUL.
+        from core.champs_stricts import ChaineStricte
+        from apps.installations.serializers import OrdreDemontageSerializer
+        self.assertIsInstance(
+            OrdreDemontageSerializer().fields['note'], ChaineStricte)
+        r = self.api.post(f'{BASE}/ordres-demontage/',
+                          {'kit': self.kit_a.id, 'quantite': 1,
+                           'note': 'a\x00b'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('note', r.data)

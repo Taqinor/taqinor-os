@@ -571,3 +571,16 @@ describe('WIR220 — rapport « Achats hors contrat »', () => {
     expect(await within(dialog).findByText('Module')).toBeInTheDocument()
   })
 })
+
+describe('Chantier d\'origine du BCF', () => {
+  it('affiche la référence serveur en lien vers /chantiers?id=', () => {
+    renderDetail({ bcf: { ...bcf, note: 'sans mot-clé', chantier_origine: 9, chantier_origine_reference: 'CHT-2026-0009' } })
+    const lien = screen.getByRole('link', { name: 'CHT-2026-0009' })
+    expect(lien).toHaveAttribute('href', '/chantiers?id=9')
+  })
+
+  it('ne devine plus par regex quand le champ serveur est présent mais nul', () => {
+    renderDetail({ bcf: { ...bcf, note: 'chantier CHT-X', chantier_origine: null, chantier_origine_reference: null } })
+    expect(screen.queryByText(/Chantier/)).toBeNull()
+  })
+})

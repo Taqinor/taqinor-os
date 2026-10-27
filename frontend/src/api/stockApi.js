@@ -166,8 +166,8 @@ const stockApi = {
   // la date DEMANDÉE (`date_livraison_prevue`) n'est jamais écrasée.
   confirmerBcf: (id, data) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/confirmer/`, data),
-  getBcfEnRetard: () =>
-    api.get('/stock/bons-commande-fournisseur/en-retard/'),
+  getBcfEnRetard: (params) =>
+    api.get('/stock/bons-commande-fournisseur/en-retard/', { params }),
   // NTP2P21 — suggestions de fusion des BCF brouillon du même fournisseur
   // créés la même semaine (lecture seule, jamais de fusion automatique).
   getSuggestionsConsolidationBcf: () =>
