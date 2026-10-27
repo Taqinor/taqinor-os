@@ -713,10 +713,10 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // CIQ104 — le bloc de fiche C&I : celui du rôle C&I DÉCLARÉ, sinon celui de
   // la fiche déjà typée C&I, sinon (onduleur réseau) les champs onduleur C&I.
   const typeFicheCiCourant = typeFicheCi(fields.role_ci)
-  const libTarif = libellesTarifForfaitaire(fields.role_ci)
     ?? (['limiteur', 'logger', 'protection', 'cable', 'structure'].includes(ficheTypeServeur)
       ? ficheTypeServeur : null)
     ?? (estOnduleurReseau ? 'onduleur' : null)
+  const libTarif = libellesTarifForfaitaire(fields.role_ci)
   // CALX355 — erreurs de courbe du type courant, recalculées en direct.
   const erreursCourbes = erreursCourbesPourType(typeFicheBackend(ficheType), ficheFields)
   const propsCourbe = (cle) => ({
