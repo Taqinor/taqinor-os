@@ -37,12 +37,8 @@ ETIQUETTE_CONSO_ESTIMEE = (
 
 
 def _f(v):
-    try:
-        if v is None or isinstance(v, bool):
-            return 0.0
-        return max(0.0, float(v))
-    except (TypeError, ValueError):
-        return 0.0
+    x = None if v is None or isinstance(v, bool) else _options.fini(v)  # CEC14
+    return 0.0 if x is None else max(0.0, x)
 
 
 def _vide(motif, tarif):
@@ -393,11 +389,8 @@ def _montant(v, *, strictement_positif=False):
     """Montant lu (arrondi au centime), ou None. ``strictement_positif``
     (ADEV81, l'investissement) : 0 est refusé — un investissement nul n'est
     jamais un investissement chiffré (« retour 0 an »)."""
-    try:
-        if v is None or isinstance(v, bool):
-            return None
-        x = float(v)
-    except (TypeError, ValueError):
+    x = None if v is None or isinstance(v, bool) else _options.fini(v)  # CEC14
+    if x is None:
         return None
     if strictement_positif:
         return round(x, 2) if x > 0 else None
@@ -947,11 +940,8 @@ def _nombre_offre(offre, cle, *, entier=False, requis=False):
             raise SaisieEconomieCiInvalide(
                 f"{champ} : à saisir depuis l'offre écrite.", champ=champ)
         return None
-    try:
-        valeur = float(brut)
-    except (TypeError, ValueError):
-        valeur = None
-    if valeur is None or valeur != valeur or valeur < 0 or (
+    valeur = _options.fini(brut)  # CEC14 — ni NaN ni infini (400, jamais 500)
+    if valeur is None or valeur < 0 or valeur > _options.PLAFOND_SAISIE or (
             entier and (valeur != int(valeur) or valeur < 1)):
         raise SaisieEconomieCiInvalide(
             f"{champ} : valeur « {brut} » refusée.", champ=champ)
@@ -1011,7 +1001,7 @@ def financement_ci(offre, base_eco, *, mode_installation,
         except eco_mod.EconomieInvalide as refus:
             raise SaisieEconomieCiInvalide(
                 f"offre_financement.{refus}",
-                champ=f'offre_financement.{refus.champ}') from refus
+                champ=f'offre_financement.{_options.champ_contrat(refus.champ)}') from refus
         echeance = tableau['mensualite_mad']
     else:
         echeance = _nombre_offre(offre, 'echeance_mad', requis=True)
@@ -1065,11 +1055,8 @@ def _nombre_cse(offre, cle, *, requis=False, entier=False, strict=False):
                 f"{champ} : à saisir depuis l'offre écrite du prospect.",
                 champ=champ)
         return None
-    try:
-        valeur = float(brut)
-    except (TypeError, ValueError):
-        valeur = None
-    invalide = (valeur is None or valeur != valeur
+    valeur = _options.fini(brut)  # CEC14
+    invalide = (valeur is None or abs(valeur) > _options.PLAFOND_SAISIE
                 or (strict and valeur <= -100)
                 or (not strict and valeur < 0)
                 or (entier and (valeur != int(valeur) or valeur < 1)))
@@ -1785,11 +1772,11 @@ def _nombre_fiscal(fiscalite, cle, *, requis=True):
                 f"{champ} : à saisir (déclaré par le client ou son "
                 "comptable).", champ=champ)
         return None
-    try:
-        return float(str(brut).replace(',', '.'))
-    except (TypeError, ValueError):
+    valeur = _options.fini(str(brut).replace(',', '.'))  # CEC14
+    if valeur is None:
         raise SaisieEconomieCiInvalide(
-            f"{champ} : valeur « {brut} » refusée.", champ=champ) from None
+            f"{champ} : valeur « {brut} » refusée.", champ=champ)
+    return valeur
 
 
 def lire_fiscalite_client(fiscalite):
@@ -1854,8 +1841,7 @@ def apres_impot_ci(fiscalite, base_eco, collecteur):
         res = eco_mod.flux_apres_impot(
             taux_imposition_pct=saisie(lu['taux_is_pct']),
             amortissement_mode=saisie(lu['amortissement_mode']),
-            amortissement_duree_ans=saisie(
-                None if lu['duree_ans'] is None else int(lu['duree_ans'])),
+            amortissement_duree_ans=saisie(lu['duree_ans']),  # CEC14 : 7,5 refusé
             amortissement_coefficient=saisie(
                 lu['amortissement_coefficient']
                 if lu['amortissement_mode'] == 'degressif' else None),
@@ -1866,7 +1852,7 @@ def apres_impot_ci(fiscalite, base_eco, collecteur):
     except eco_mod.EconomieInvalide as refus:
         raise SaisieEconomieCiInvalide(
             f"fiscalite_client : {refus}",
-            champ=f'fiscalite_client.{refus.champ}') from refus
+            champ=f'fiscalite_client.{_options.champ_contrat(refus.champ)}') from refus
     bloc = res['apres_impot']
     bloc['base'] = cle_base
     return bloc, None
@@ -1995,8 +1981,8 @@ def economie_ci_pour_devis(devis, company):
     else:  # AMOT99 — la courbe de garantie de la fiche module du devis.
         from apps.ventes.domain.etude_ci import courbe_degradation_du_devis
         reglages['degradation_module'] = courbe_degradation_du_devis(devis)
-    return assembler_economie_ci(
-        apercu if isinstance(apercu, dict) else {},
+    return _options.sans_saisie_invalide(  # CEC14
+        assembler_economie_ci, apercu if isinstance(apercu, dict) else {},
         saisies=params.get('saisies_economie_ci'),
         tarif_declare=tarif_declare,
         investissement={'ht': totaux.get('ht'), 'ttc': totaux.get('ttc')},

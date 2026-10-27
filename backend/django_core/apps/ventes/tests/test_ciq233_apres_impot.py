@@ -94,6 +94,11 @@ class ApresImpotTest(SimpleTestCase):
         self.assertEqual(ctx.exception.champ,
                          'fiscalite_client.amortissement_coefficient')
 
+    def test_cec14_duree_non_entiere_refusee_au_champ_de_l_ecran(self):
+        with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
+            _bloc({'fiscalite_client': dict(FISCALITE, duree_ans=7.5)})
+        self.assertEqual(ctx.exception.champ, 'fiscalite_client.duree_ans')
+
     def test_sans_source_refuse(self):
         with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
             _bloc({'fiscalite_client': dict(FISCALITE, source='')})
