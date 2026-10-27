@@ -318,6 +318,29 @@ class ParalleleMaxTests(TestCase):
         self.assertGreater(sum(x['quantite'] for x in r['combinaison']), 10)
 
 
+class ParalleleMemeModeleTests(TestCase):
+    """CMP11 — hybrides en parallèle d'un seul modèle (manuel Deye SG05LP3)."""
+
+    def test_combinaison_homogene_un_seul_modele(self):
+        for kwc in (35, 50, 64, 120, 150):
+            r = combiner_onduleurs(kwc, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                                   max_appareils=10, homogene=True)
+            self.assertEqual(len(r['combinaison']), 1, (kwc, r['combinaison']))
+            self.assertTrue(any(h['cle'] == 'parallele_meme_modele' for h in r['hypotheses']))
+
+    def test_sans_homogene_inchange(self):
+        a = combiner_onduleurs(64, _vivier_deye(), phase='tri', module=_module_cs7n())
+        b = combiner_onduleurs(64, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                               homogene=False)
+        self.assertEqual(a['combinaison'], b['combinaison'])
+
+    def test_aucun_modele_seul_ne_porte_le_champ(self):
+        r = combiner_onduleurs(500, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                               max_appareils=10, homogene=True)
+        self.assertIsNone(r['combinaison'])
+        self.assertTrue(r['motif'])
+
+
 class GardeAstTests(TestCase):
     def test_module_pur(self):
         arbre = ast.parse(CHEMIN.read_text(encoding='utf-8'))
