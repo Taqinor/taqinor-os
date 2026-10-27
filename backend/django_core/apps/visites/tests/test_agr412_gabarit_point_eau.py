@@ -57,10 +57,8 @@ class ChecklistPointEauDuContrat(SimpleTestCase):
                      'calibre_disjoncteur_a', 'largeur_mur_cm'):
             self.assertNotIn(toit, codes)
 
-    def test_agv2_constante_deplacee_et_reexportee(self):
+    def test_agv2_gabarit_point_eau_vient_du_module_pompage(self):
         from apps.visites import visite_checklist_pompage
-        self.assertIs(checklist.CATEGORIES_POINT_EAU,
-                      visite_checklist_pompage.CATEGORIES_POINT_EAU)
         self.assertIs(checklist.categories('point_eau'),
                       visite_checklist_pompage.CATEGORIES_POINT_EAU)
 

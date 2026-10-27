@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import re
 
+from . import visite_checklist_pompage
+
 # Natures de mesure acceptées (validation champ par champ côté API VT2).
 NOMBRE = 'nombre'
 BOOLEEN = 'booleen'
@@ -179,9 +181,6 @@ CATEGORIES = [
         'mesures': [],
     },
 ]
-
-
-from .visite_checklist_pompage import CATEGORIES_POINT_EAU  # noqa: E402,F401  (AGV2)
 
 
 #: CIQ600 (D-CIQ-5, contrat CIQ5 ``visite_terrain.json`` → ``gabarit_ci``) —
@@ -668,7 +667,7 @@ GABARIT_POINT_EAU = 'point_eau'
 GABARIT_CI = 'ci'
 _PAR_GABARIT = {
     GABARIT_TOITURE: CATEGORIES,
-    GABARIT_POINT_EAU: CATEGORIES_POINT_EAU,
+    GABARIT_POINT_EAU: visite_checklist_pompage.CATEGORIES_POINT_EAU,
     GABARIT_CI: CATEGORIES_CI,
 }
 
