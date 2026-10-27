@@ -36,28 +36,16 @@ LIBELLE_BATTERIE = 'Batterie (option avec batterie)'
 MOTIF_SANS_PRIX = 'prix de vente non saisi'
 
 
-def _classer_nom(nom):
-    """Repli par mots du nom — jumelle réduite de ``ventes.domain.catalogue.
-    classer_produit`` pour les deux seuls rôles de l'option (« hybride »
-    AVANT « réseau » ; un câble n'est jamais un appareil)."""
-    from .selectors import _norme
-    n = _norme(nom)
-    if 'cable' in n:
-        return None
-    if 'onduleur' in n and 'hybride' in n:
-        return 'onduleur_hybride'
-    if 'onduleur' in n and ('reseau' in n or 'injection' in n):
-        return None
-    return 'batterie' if 'batterie' in n else None
-
-
 def _role_effectif(produit):
-    """``(role_devis, source)`` — déclaré > catégorie > nom."""
+    """``(role_devis, source)`` — déclaré > catégorie > nom ; le repli par mots
+    du nom est celui du moteur, lu par le sélecteur de ventes (même lecture
+    cross-app que ``serializers.ProduitSerializer._role_resolu``)."""
+    from apps.ventes.selectors import classer_produit_nom
     from core.product_roles import role_effectif
     categorie = getattr(produit, 'categorie', None)
     return role_effectif(getattr(produit, 'role_devis', None),
                          getattr(categorie, 'type_equipement', None),
-                         getattr(produit, 'nom', ''), _classer_nom)
+                         getattr(produit, 'nom', ''), classer_produit_nom)
 
 
 def _num(valeur):
