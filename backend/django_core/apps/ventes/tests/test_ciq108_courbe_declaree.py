@@ -125,7 +125,8 @@ class TestCourbeDeclaree(unittest.TestCase):
     def test_heure_civile_vers_gmt_par_decalage_maroc(self):
         # janvier 2026 : UTC+1 (avant le décret) ⇒ 8 h civile = 7 h GMT
         rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [[8, 9]]}, 'talon': {'kw': 0}}
-        jt, prov, _al = courbe_declaree(rythme, [31] * 12, annee_reference=2026, feries=[])
+        jt, prov, _al = courbe_declaree(rythme, [31] * 12, annee_reference=2026, feries=[],
+                                        decalage_h='historique')
         self.assertEqual(prov['heures'], 'GMT')
         janvier = _par(jt, 1, 'ouvre')
         self.assertAlmostEqual(janvier['charge_kwh'][7], 1.0)
@@ -345,6 +346,32 @@ class TestTalonParDefautArchetype(unittest.TestCase):
         self.assertEqual(prov['talon']['statut'], 'estimation')
         self.assertEqual(prov['talon']['valeur'], {'rapport_nuit_jour': 0.0})
         self.assertEqual(min(_par(jt, 3, 'ouvre')['charge_kwh']), 0.0)
+
+
+class TestDecalageConstant(unittest.TestCase):
+    """CLD3 — un site garde ses horaires d'horloge : décalage CONSTANT du régime
+    en vigueur (Maroc UTC+0 depuis le 20/09/2026), plus la date homologue."""
+
+    def _bureau(self, **kw):
+        rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]},
+                  'talon': {'kw': 1.0}}
+        return courbe_declaree(rythme, [10000] * 12, annee_reference=2025,
+                               feries=[], **kw)[0]
+
+    def test_decalage_zero_plateau_gmt_8_18_toute_l_annee(self):
+        jt = self._bureau(decalage_h=0)
+        for mois in (1, 6, 11):
+            c = _par(jt, mois, 'ouvre')['charge_kwh']
+            self.assertGreater(min(c[8:18]), max(c[:8] + c[18:]))
+
+    def test_defaut_est_le_regime_en_vigueur_constant(self):
+        from apps.parametres.pvgis_profils import decalage_maroc_h
+        d = decalage_maroc_h(None)
+        jt_defaut = self._bureau()
+        jt_fixe = self._bureau(decalage_h=d)
+        self.assertEqual(jt_defaut, jt_fixe)
+        # un décalage différent change la courbe (le paramètre agit)
+        self.assertNotEqual(self._bureau(decalage_h=d + 1), jt_fixe)
 
 
 class TestProfilChargePrerequis(unittest.TestCase):

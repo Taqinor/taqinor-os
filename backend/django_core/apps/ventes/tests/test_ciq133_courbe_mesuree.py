@@ -63,6 +63,16 @@ class CourbeMesureeTests(unittest.TestCase):
         self.assertEqual(e['profil_charge']['methode'], 'courbe_mesuree')
         self.assertEqual(e['niveau_donnees'], 'mesure')
 
+    def test_decalage_constant_serie_2025_plateau_civil_8_18_devient_gmt_8_18(self):
+        valeurs = []
+        for _ in range(365):
+            valeurs.extend([10.0 if 8 <= h < 18 else 1.0 for h in range(24)])
+        jours, _prov, _al = courbe_mesuree_jours_types(
+            valeurs, '%d-01-01' % ANNEE, annee_reference=ANNEE, decalage_h=0)
+        for jt in jours:
+            c = jt['charge_kwh']
+            self.assertEqual([h for h in range(24) if c[h] > 5], list(range(8, 18)))
+
     def test_fichier_illisible_400_nomme_la_colonne(self):
         from rest_framework.exceptions import ValidationError
         contenu = 'horodatage;conso\n2025-01-01 00:00;1,2\n2025-01-01 01:00;abc\n'

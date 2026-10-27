@@ -312,12 +312,24 @@ def _courbes_archetype(calendrier, niveaux, categorie, profil_societe, talon_kw,
     return courbes, source
 
 
-def _jours_types(calendrier, courbes, annee):
+def _resoudre_decalage(decalage_h):
+    """CLD3 — décalage civil→GMT : ``None`` ⇒ constant du régime en vigueur
+    (``decalage_maroc_h(None)``, un site garde ses horaires d'horloge) ; un
+    entier ⇒ ce décalage ; ``'historique'`` ⇒ ``None`` (date par date)."""
+    if decalage_h == 'historique':
+        return None
+    if decalage_h is None:
+        return decalage_maroc_h(None)
+    return int(decalage_h)
+
+
+def _jours_types(calendrier, courbes, annee, decalage_h=None):
+    fixe = _resoudre_decalage(decalage_h)
     groupes = {}
     for jour, ouvert, type_cal, _p in calendrier:
         type_jour = type_cal if ouvert else 'ferme'
         cle = (jour.month, type_jour)
-        gmt = _vers_gmt(courbes[jour], decalage_maroc_h(jour))
+        gmt = _vers_gmt(courbes[jour], decalage_maroc_h(jour) if fixe is None else fixe)
         cumul, n = groupes.get(cle, ([0.0] * HEURES, 0))
         groupes[cle] = ([c + g for c, g in zip(cumul, gmt)], n + 1)
     ordre = {'ouvre': 0, 'samedi': 1, 'dimanche': 2, 'ferme': 3}
@@ -383,7 +395,8 @@ def registres_lisibles(registres):
     return all(_registre(m, p) is not None for m in registres for p in POSTES_MT)
 
 
-def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None):
+def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None,
+                        decalage_h=None):
     """CIQ132 — jours types (GMT) depuis les registres pointe / pleines /
     creuses de la facture MT, provenance et alertes.
 
@@ -395,7 +408,8 @@ def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None):
     sans seuil inventé : 1x8 / plages de jour seules avec creuses > pleines, ou
     3x8 / continu avec creuses nulles ⇒ ``incoherence_equipes_registres``
     (jamais bloquant). Puissance atteinte et kvarh passent aux alertes sans
-    toucher la courbe.
+    toucher la courbe. ``decalage_h`` (CLD3) est accepté pour l'uniformité des
+    trois chemins mais SANS effet ici : les postes sont déjà en heures GMT.
     """
     from apps.parametres.tarifs_officiels import poste_horaire
 
@@ -483,7 +497,7 @@ def _mois_le_plus_proche(mois, mesures):
 
 
 def courbe_mesuree_jours_types(valeurs_horaires, debut, *, annee_reference,
-                               kwh_mensuels=None, source=None):
+                               kwh_mensuels=None, source=None, decalage_h=None):
     """CIQ133 — jours types (GMT) depuis une courbe de charge MESURÉE.
 
     ``valeurs_horaires`` : kWh de chaque heure CIVILE consécutive depuis le
@@ -514,11 +528,12 @@ def courbe_mesuree_jours_types(valeurs_horaires, debut, *, annee_reference,
         alertes.append(_alerte('courbe_mesuree_vide', 'courbe_mesuree',
                                'Courbe mesurée vide : ignorée.', niveau='bloquant'))
         return None, provenance, alertes
+    fixe = _resoudre_decalage(decalage_h)
     groupes = {}
     for i in range(nb_jours):
         date = jour + datetime.timedelta(days=i)
         civile = valeurs[i * HEURES:(i + 1) * HEURES]
-        gmt = _vers_gmt(civile, decalage_maroc_h(date))
+        gmt = _vers_gmt(civile, decalage_maroc_h(date) if fixe is None else fixe)
         cle = (date.month, _type_calendaire(date))
         cumul, n = groupes.get(cle, ([0.0] * HEURES, 0))
         groupes[cle] = ([c + g for c, g in zip(cumul, gmt)], n + 1)
@@ -657,7 +672,8 @@ def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
 
 
 def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, feries=None,
-                    profil_societe=None, production_jours_types=None, segment=None):
+                    profil_societe=None, production_jours_types=None, segment=None,
+                    decalage_h=None):
     """Jours types de charge (heures GMT), provenance et alertes.
 
     ``rythme`` : bloc ``rythme`` du contrat (jours_ouverts, plages, equipes,
@@ -669,6 +685,9 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
     requis seulement pour départager les deux bornes d'un talon inconnu.
     ``segment`` : ``commercial`` ⇒ un commerce SANS catégorie reçoit aussi le
     talon défaut fondateur (fondateur 27/10/2026) ; sinon la borne décide.
+    ``decalage_h`` (CLD3, décision prise pour le fondateur, à revoir) : ``None``
+    ⇒ décalage CONSTANT du régime en vigueur (le Maroc est à UTC+0 depuis le
+    20/09/2026), un entier ⇒ ce décalage, ``'historique'`` ⇒ date par date.
     """
     rythme = rythme or {}
     rythme_saisi = rythme
@@ -734,7 +753,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
             'profil_estime', 'rythme',
             "Profil horaire estimé (archétype) : déclarer jours et heures d'ouverture "
             'pour un chiffre déclaré.', niveau='info'))
-        return _jours_types(calendrier, courbes, annee_reference), provenance, alertes
+        return _jours_types(calendrier, courbes, annee_reference, decalage_h), provenance, alertes
 
     if FEUILLE_JOURS in manquants:
         alertes.append(_alerte(
@@ -762,8 +781,8 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
                 calendrier, niveaux, 'etale', None, None)
             incoherent = incoherent_nul or incoherent_etale
             bornes = {
-                'talon_nul': _jours_types(calendrier, courbes_nul, annee_reference),
-                'etale_24h': _jours_types(calendrier, courbes_etale, annee_reference),
+                'talon_nul': _jours_types(calendrier, courbes_nul, annee_reference, decalage_h),
+                'etale_24h': _jours_types(calendrier, courbes_etale, annee_reference, decalage_h),
             }
             alertes.append(_alerte(
                 'talon_non_declare', 'rythme.talon',
@@ -781,7 +800,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
             _alerte_talon_incoherent(incoherent, alertes)
             return bornes[retenue], provenance, alertes
     _alerte_talon_incoherent(incoherent, alertes)
-    return _jours_types(calendrier, courbes, annee_reference), provenance, alertes
+    return _jours_types(calendrier, courbes, annee_reference, decalage_h), provenance, alertes
 
 
 def _rapport_hors_plages(calendrier, archetype, profil_societe):
