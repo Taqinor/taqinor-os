@@ -1511,6 +1511,7 @@ def calculate_savings_roi(
     # appelants directs (balayages, miroir JS figé ``solar_calculs``) gardent
     # l'économie « avec » BRUTE jusqu'à l'alignement de l'écran (RGEN5).
     regles_2710: bool = False,
+    deux_options: bool = True,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1883,5 +1884,5 @@ def calculate_savings_roi(
             battery_roundtrip=_rt_prouve,
             battery_roundtrip_source=_rt_source,
             # QJR158 (c) — LES MÊMES valeurs que les deux cashflows ci-dessus.
-            **_cf_params), inverter_cost_sans, inverter_cost_avec),
+            **_cf_params), inverter_cost_sans if deux_options else None, inverter_cost_avec),
     }

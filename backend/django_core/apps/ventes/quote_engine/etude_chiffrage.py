@@ -399,6 +399,7 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         rendement_une_fois=_corrige,
         forme_mensuelle_ghi=_corrige,
         regles_2710=_regles_2710(devis),
+        deux_options=bool(deux_options),  # RPDF : provision à deux montants seulement à deux options
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le

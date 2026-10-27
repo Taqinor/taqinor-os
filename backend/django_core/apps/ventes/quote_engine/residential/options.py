@@ -978,7 +978,12 @@ def build_pages(ctx) -> list:
         (≈ 4 mm). Devis 1315 du 27/10 (9 lignes communes, arrondi + Total HT,
         « Hybride, batterie plus tard ») : 67,8 mm modélisés, bas de la
         rentabilité rogné par le pied → 80,8 mm, page rentabilité dédiée.
-        Jamais négatif : un devis aux totaux calibrés garde sa décision."""
+        Jamais négatif : un devis aux totaux calibrés garde sa décision.
+        Deux options seulement : un devis mono-option avec remise + arrondi
+        tenait sur 3 pages (rendus 1342/1344 du 28/10, passés à tort à 4)."""
+        if not deux_options:
+            return 0.0
+
         def _pos(v):
             try:
                 return float(v or 0) > 0

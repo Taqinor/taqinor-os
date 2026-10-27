@@ -2791,14 +2791,7 @@ def page3():
     </div>
   </div>
 
-  <!-- NOTRE ENGAGEMENT -->
-  <div style="background:{CA};padding:7px 18px;text-align:center;margin:0 24px 5px;border-radius:8px;">
-    <div style="font-size:8pt;letter-spacing:2px;color:{CN};font-weight:800;text-transform:uppercase;margin-bottom:2px;">{_L("lg_engagement_titre")}</div>
-    <div style="font-style:italic;color:white;font-size:9.5pt;line-height:1.4;">
-      {_L("lg_engagement_texte")}
-    </div>
-  </div>
-
+  <!-- RPDF25 : bandeau « Notre engagement » retiré (coupé par le Bon pour accord, rendu 1344 du 28/10) -->
   <!-- PROCHAINES ÉTAPES -->
   <div style="padding:0 24px;margin-bottom:5px;">
     <div style="background:#F8F6F0;border:1px solid #EAECF0;border-radius:10px;padding:8px 12px;margin:2px 0;">
