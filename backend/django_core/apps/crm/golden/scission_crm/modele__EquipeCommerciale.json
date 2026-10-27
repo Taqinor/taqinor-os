@@ -82,7 +82,7 @@
   {
    "args": [],
    "kwargs": {
-    "default": 10,
+    "default": 5,
     "verbose_name": "Délai avant attribution automatique (minutes ouvrées)"
    },
    "nom": "delai_attribution_minutes",

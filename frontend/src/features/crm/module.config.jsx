@@ -111,7 +111,7 @@ const config = {
       // rôles responsable/admin à l'intérieur de l'écran (la garde réelle
       // reste serveur, sur l'écriture d'`appareils-equipe/`).
       { to: '/crm/visiteurs',        label: 'Visiteurs & alertes', k: 'nav.visiteurs', icon: navIcon(Radar), roles: ['normal','responsable','admin'] },
-      { to: '/crm/attribution',     label: 'Attribution des leads', icon: navIcon(UserPlus), roles: ['responsable','admin'] },
+      { to: '/crm/attribution',     label: 'Attribution des leads', icon: navIcon(UserPlus), roles: ['normal','responsable','admin'] },
       // VTA8 — « Visites terrain » et « Revue technique » sont passées à l'app
       // Visites (nav `features/visites/module.config.jsx`).
     ],

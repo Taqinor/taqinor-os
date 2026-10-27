@@ -77,10 +77,10 @@ export default function AttributionLeadsPage() {
       setMessage(e?.response?.status === 409
         ? 'Ce lead vient déjà d’être attribué.'
         : apiErrorMessage(e, 'L’attribution a échoué.'))
-    } finally {
-      occupe.current = false
     }
-    await charger()
+    // Verrou gardé jusqu'au rechargement : un 2e Entrée ne vise jamais le
+    // lead suivant avant qu'il soit affiché (revue Fable 27/10).
+    try { await charger() } finally { occupe.current = false }
   }, [lead, charger])
 
   useEffect(() => {
@@ -88,6 +88,9 @@ export default function AttributionLeadsPage() {
       if (!lead || membres.length === 0 || e.altKey || e.ctrlKey || e.metaKey) return
       if (toucheIgnoree(e)) return
       if (e.key === 'Enter') {
+        // Touche maintenue : jamais plusieurs leads d'affilée ; bouton
+        // focalisé : son propre clic attribue déjà.
+        if (e.repeat || e.target?.tagName === 'BUTTON') return
         e.preventDefault()
         attribuer(selected)
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
@@ -120,7 +123,7 @@ export default function AttributionLeadsPage() {
 
       {data && !lead && (
         <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">
-          Aucun lead en attente
+          {data.equipe ? 'Aucun lead en attente' : 'Vous ne dirigez aucune équipe commerciale qui confirme ses leads.'}
         </CardContent></Card>
       )}
 

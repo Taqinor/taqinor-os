@@ -277,6 +277,32 @@ class TestDispatchLeads(TestCase):
             f'/api/django/crm/dispatch/{(lead or self.lead).pk}/attribuer/',
             {'owner': owner.pk if owner else None}, format='json')
 
+    def test_choix_fait_sur_la_fiche_jamais_defait_par_la_tache(self):
+        # Revue Fable 27/10 : le responsable change le propriétaire depuis la
+        # fiche du lead ; à l'échéance, la tâche ne le remet pas au proposé.
+        import datetime
+        from django.utils import timezone
+        from apps.crm.dispatch import attribuer_echeances
+        from apps.crm.models_clients import AttributionEnAttente
+        self.lead.owner = self.m2
+        self.lead.save(update_fields=['owner'])
+        attribuer_echeances(timezone.now() + datetime.timedelta(days=30))
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.owner_id, self.m2.pk)
+        self.assertFalse(AttributionEnAttente.objects.filter(
+            lead=self.lead).exists())
+
+    def test_file_reservee_au_responsable_et_a_la_direction(self):
+        from apps.roles.models import Role
+        rh = Role.objects.create(company=self.company, nom='Admin RH',
+                                 permissions=['users_voir'])
+        u = User.objects.create_user(username='dsp_rh', password='x',
+                                     company=self.company, role=rh)
+        self.auth_as(u)
+        r = self.api.get('/api/django/crm/dispatch/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['leads'], [])
+
     def test_file_respecte_le_contrat(self):
         import json
         import pathlib
@@ -289,7 +315,7 @@ class TestDispatchLeads(TestCase):
         self.assertEqual(_cles(r.json()), _cles(contrat['exemple']))
         self.assertEqual(r.json()['en_attente'], 1)
         self.assertEqual(r.json()['leads'][0]['nom'], 'Karim Tazi')
-        self.assertEqual(r.json()['equipe']['delai_minutes'], 10)
+        self.assertEqual(r.json()['equipe']['delai_minutes'], 5)
 
     def test_file_vide_pour_une_societe_sans_equipe(self):
         seul = User.objects.create_user(

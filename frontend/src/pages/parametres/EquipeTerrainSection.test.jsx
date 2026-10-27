@@ -264,9 +264,15 @@ describe('AttributionLeadsPage (attribution des leads)', () => {
   })
 
   it('état vide quand aucun lead n’attend', async () => {
-    getDispatch.mockResolvedValue({ data: DISPATCH.exemple_vide })
+    getDispatch.mockResolvedValue({ data: { ...DISPATCH.exemple_vide, equipe: DISPATCH.exemple.equipe } })
     render(<AttributionLeadsPage />)
     expect(await screen.findByText('Aucun lead en attente')).toBeInTheDocument()
     expect(attribuerLead).not.toHaveBeenCalled()
+  })
+
+  it('sans équipe dirigée : le dit au lieu d’une file vide', async () => {
+    getDispatch.mockResolvedValue({ data: DISPATCH.exemple_vide })
+    render(<AttributionLeadsPage />)
+    expect(await screen.findByText(/ne dirigez aucune équipe commerciale/)).toBeInTheDocument()
   })
 })

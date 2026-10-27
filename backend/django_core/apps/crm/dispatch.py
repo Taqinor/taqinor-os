@@ -187,9 +187,15 @@ def appliquer_mise_en_attente(lead):
 
 
 def _peut_tout_voir(user):
-    portee = getattr(user, 'record_scope', None)
-    return bool(getattr(user, 'is_admin_role', False)
-                or (callable(portee) and portee() == 'all'))
+    # Direction/Admin seulement (revue Fable 27/10) : un rôle sans marqueur de
+    # portée (Admin RH, compte légacy) ne voit pas les coordonnées en attente.
+    return bool(getattr(user, 'is_admin_role', False))
+
+
+def _deja_decide(attente):
+    """Le lead a changé de main hors de cet écran (fiche du lead, admin) :
+    la décision humaine prime, l'attente n'a plus d'objet."""
+    return attente.lead.owner_id != attente.equipe.responsable_id
 
 
 def _finaliser(attente, owner, acteur, corps):
@@ -221,7 +227,7 @@ def attribuer(user, lead_id, owner_id):
     with transaction.atomic():
         attente = (AttributionEnAttente.objects.select_for_update()
                    .filter(lead_id=lead_id, company_id=user.company_id).first())
-        if attente is None:
+        if attente is None or _deja_decide(attente):
             raise ConflitEtat("Ce lead n'attend plus d'attribution.")
         equipe = attente.equipe
         if not (admin or equipe.responsable_id == user.pk):
@@ -258,6 +264,9 @@ def attribuer_echeances(maintenant=None):
                 if attente is None:
                     continue
                 equipe = attente.equipe
+                if _deja_decide(attente):
+                    attente.delete()  # jamais défaire un choix humain
+                    continue
                 owner = attente.proposee
                 if not membre_actif(equipe, owner):
                     owner = rotation(equipe)
@@ -326,7 +335,8 @@ def file_attente(user):
     vide = {'equipe': None, 'en_attente': 0, 'leads': [], 'membres': []}
     if not user.company_id:
         return vide
-    equipes = EquipeCommerciale.objects.filter(company_id=user.company_id, actif=True)
+    # Équipes archivées comprises : la tâche attribue aussi leurs leads.
+    equipes = EquipeCommerciale.objects.filter(company_id=user.company_id)
     if not _peut_tout_voir(user):
         equipes = equipes.filter(responsable=user)
     equipes = list(equipes)
@@ -335,11 +345,16 @@ def file_attente(user):
     attentes = list(AttributionEnAttente.objects.filter(
         company_id=user.company_id, equipe__in=equipes,
     ).select_related('lead', 'proposee', 'company').order_by('created_at', 'id'))
-    confirmees = [e for e in equipes if e.confirmation_responsable]
-    affichee = next((e for e in confirmees if e.recoit_leads), None) or (
-        attentes[0].equipe if attentes else (confirmees[0] if confirmees else None))
+    attentes = [a for a in attentes if not _deja_decide(a)]
+    confirmees = [e for e in equipes if e.confirmation_responsable and e.actif]
+    # Une équipe à la fois : ses leads ET ses membres (revue Fable 27/10 —
+    # jamais le lead d'une équipe avec les membres d'une autre).
+    affichee = attentes[0].equipe if attentes else next(
+        (e for e in confirmees if e.recoit_leads),
+        confirmees[0] if confirmees else None)
     if affichee is None:
         return vide
+    attentes = [a for a in attentes if a.equipe_id == affichee.pk]
     maintenant = timezone.now()
     plafond = _plafond(user.company_id)
     membres = affichee.membres.filter(

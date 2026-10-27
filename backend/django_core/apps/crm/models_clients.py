@@ -1442,7 +1442,7 @@ class EquipeCommerciale(models.Model):
     # Passé ce délai en minutes OUVRÉES (horaires de la société) sans
     # décision, le lead part automatiquement au membre proposé.
     delai_attribution_minutes = models.PositiveIntegerField(
-        default=10, verbose_name="Délai avant attribution automatique (minutes ouvrées)")
+        default=5, verbose_name="Délai avant attribution automatique (minutes ouvrées)")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

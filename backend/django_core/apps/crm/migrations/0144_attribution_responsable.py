@@ -26,7 +26,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='equipecommerciale',
             name='delai_attribution_minutes',
-            field=models.PositiveIntegerField(default=10, verbose_name='Délai avant attribution automatique (minutes ouvrées)'),
+            field=models.PositiveIntegerField(default=5, verbose_name='Délai avant attribution automatique (minutes ouvrées)'),
         ),
         migrations.CreateModel(
             name='RegleAttribution',
