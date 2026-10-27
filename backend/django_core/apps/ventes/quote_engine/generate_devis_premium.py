@@ -2716,18 +2716,18 @@ def page3():
         )
 
     return f"""
-<div class="page" style="display:block;position:relative;overflow:hidden;">
-  <div style="background:{CN};padding:9px 24px;display:flex;align-items:center;justify-content:space-between;">
+<div class="page" style="position:relative;overflow:hidden;">
+  <div style="background:{CN};padding:9px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
     <div>
       <div style="color:white;font-size:10pt;font-weight:700;">{_L("lg_confiance_bpa")}</div>
       <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">{_L("lg_devis_n_nbsp").format(ref=REF)} \u2014 {CLIENT_NAME}</div>
     </div>
     {logo_html("42px")}
   </div>
-  <div style="height:3px;background:{CA};"></div>
+  <div style="height:3px;background:{CA};flex-shrink:0;"></div>
 
-  <!-- content wrapper: clipped so it never overlaps absolutely-positioned BPA + footer -->
-  <div style="overflow:hidden;max-height:820px;">
+  <!-- RPDF22 — colonne flex : le contenu prend la place LAISSÉE par le BPA (rogné, jamais dessous) -->
+  <div style="overflow:hidden;max-height:820px;flex:1;min-height:0;">
 
   <!-- QJR121 — POURQUOI NOUS : titre, marques et supervision dérivés du devis -->
   <div style="padding:6px 24px 4px;margin-bottom:5px;">
@@ -2832,8 +2832,8 @@ def page3():
 
   </div><!-- end content wrapper -->
 
-  <!-- BON POUR ACCORD — always pinned above footer via position:absolute -->
-  <div style="position:absolute;bottom:{'28' if DEVIS_FINAL else '43'}px;left:0;right:0;padding:0 24px;">
+  <!-- BON POUR ACCORD — dans le flux, en bas, au-dessus du pied (absolu) -->
+  <div style="flex-shrink:0;margin-top:auto;margin-bottom:{'28' if DEVIS_FINAL else '43'}px;padding:0 24px;">
     <div style="border-left:4px solid {CA};padding-left:10px;margin-bottom:{'4' if DEVIS_FINAL else '6'}px;">
       <div style="font-size:10pt;font-weight:700;color:{CN};text-transform:uppercase;letter-spacing:1.5px;">{_doc_text_langue("bpa_titre", "bon_pour_accord")}</div>
     </div>{_acceptance_stamp_html()}

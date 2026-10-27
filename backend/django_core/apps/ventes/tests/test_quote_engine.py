@@ -204,3 +204,18 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
         self.assertNotIn('width:680px;height:170px;', p2)
         self.assertIn(f'width:{int(680 * k)}px;height:{int(170 * k)}px;'
                       'display:block;', p2)
+
+    def test_rpdf22_bon_pour_accord_dans_le_flux_jamais_sous_le_contenu(self):
+        """Devis 1344, page 4 : le bandeau « Notre engagement » chevauchait le
+        titre « Bon pour accord » — celui-ci était épinglé en absolu
+        (``bottom:43px``) sous un contenu plafonné à 820 px, sans lien avec sa
+        propre hauteur. Il est désormais dans la colonne flex de la page : le
+        contenu (``flex:1;min-height:0``, rogné) prend la place qu'il laisse."""
+        G, html = self._html()
+        p3 = html[html.rindex(G._L('lg_confiance_bpa')):]
+        self.assertNotIn('position:absolute;bottom:43px', p3)
+        self.assertIn('flex-shrink:0;margin-top:auto;margin-bottom:43px;', p3)
+        self.assertIn('overflow:hidden;max-height:820px;flex:1;min-height:0;',
+                      p3)
+        # Le pied reste absolu au bas de la feuille ; seule la page 3 change.
+        self.assertIn('position:absolute;bottom:0;left:0;right:0;', p3)
