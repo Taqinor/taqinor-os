@@ -2,8 +2,13 @@
 // ligne par prestation, en-têtes une seule fois ; sous 640 px, une carte par
 // prestation. Mêmes ids (pe-ci-<cle>-<champ>), mêmes data-testid, même état
 // (`forfaits_ci`) que l'ancien rendu à 5 champs répétés par prestation.
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Input } from '../../ui'
-import { PRESTATIONS_CI, MONTANTS_FORFAIT_CI, _rempli, sourceManquante, MSG_SOURCE } from './peConstants'
+import stockApi from '../../api/stockApi'
+import {
+  PRESTATIONS_CI, MONTANTS_FORFAIT_CI, _rempli, sourceManquante, MSG_SOURCE, resumePrestationsCi,
+} from './peConstants'
 
 const ENTETES = ['Prestation', ...MONTANTS_FORFAIT_CI.map(([, l]) => l), 'Source', 'Date']
 // Mobile d'abord (carte) ; à partir de 640 px les mêmes balises redeviennent un tableau.
@@ -21,8 +26,30 @@ function Cellule({ titre, children }) {
 
 /** `forfaits` = `form.forfaits_ci` ; `onChange(cle, champ, valeur)` = setForfaitCi. */
 export default function PrestationsCiTable({ forfaits, onChange }) {
+  // CCAT102 — état ENREGISTRÉ lu une fois ; une aide, pas un verrou : en cas
+  // d'erreur (ou en attendant) on ne rend rien de plus.
+  const [postes, setPostes] = useState(null)
+  useEffect(() => {
+    let actif = true
+    ;(async () => {
+      try {
+        const res = await stockApi.getPretDevisCi()
+        if (actif && Array.isArray(res?.data?.postes)) setPostes(res.data.postes)
+      } catch {
+        /* silence : le formulaire fonctionne comme avant */
+      }
+    })()
+    return () => { actif = false }
+  }, [])
+  const resume = useMemo(() => resumePrestationsCi(postes), [postes])
+
   return (
     <div className="sm:overflow-x-auto" data-testid="prestations-ci">
+      {resume && (
+        <p className="mb-2 text-xs font-medium text-foreground" data-testid="prestations-ci-resume">
+          État enregistré : {resume.texte}
+        </p>
+      )}
       <table className="block w-full text-left sm:table">
         <thead className="sr-only sm:not-sr-only sm:table-header-group">
           <tr className="sm:table-row">
@@ -45,6 +72,13 @@ export default function PrestationsCiTable({ forfaits, onChange }) {
                 <th scope="row" className={`${TD} text-[11px] font-semibold text-muted-foreground`}>
                   {libelle}
                   {vide && <span className="ml-2 font-normal italic">prix à renseigner</span>}
+                  {resume?.sansArticle.has(`forfait:${cle}`) && (
+                    <span className="mt-1 block font-normal text-warning"
+                          data-testid={`prestation-ci-${cle}-sans-article`}>
+                      aucun article « {libelle} » au catalogue — le forfait n'apparaîtrait pas sur le devis{' '}
+                      <Link to="/stock" className="underline">Créer l'article en Stock</Link>
+                    </span>
+                  )}
                 </th>
                 {MONTANTS_FORFAIT_CI.map(([k, lbl]) => (
                   <Cellule key={k} titre={lbl}>
