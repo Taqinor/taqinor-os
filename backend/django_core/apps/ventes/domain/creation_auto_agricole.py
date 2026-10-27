@@ -214,4 +214,6 @@ from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cy
     AutoDevisError,
     phase_et_isolement_du_lead,
 )
-from apps.ventes.domain.creation_auto import _ecrire_devis_auto_par_pipeline  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.creation_auto import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    _ecrire_devis_auto_par_pipeline,
+)
