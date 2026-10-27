@@ -66,6 +66,8 @@ class TestVocabulaire(SimpleTestCase):
         self.assertEqual(
             list(product_roles.ROLES_CI), list(CONTRAT['roles_ci']))
         self.assertEqual(product_roles.LIBELLES_ROLES_CI, CONTRAT['roles_ci'])
+        # CCAT4 — libellés des types de pose : le contrat les porte, l'écran les lit.
+        self.assertEqual(product_roles.LIBELLES_TYPES_POSE, CONTRAT['libelles_types_pose'])
 
     def test_types_pose_egaux_au_contrat(self):
         self.assertEqual(
