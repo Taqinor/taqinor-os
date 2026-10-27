@@ -105,9 +105,12 @@ export interface ProposalQuote {
   eco_a_cumul?: number;
   roi_s?: number | string;
   roi_a?: number | string;
-  /** RWEB1 — pricing.py : jamais remboursé sur 25 ans (roi_* = sentinelle 25, à ne pas imprimer). */
+  /** RWEB1 — jamais remboursé sur 25 ans (roi_* = sentinelle 25, non imprimée). */
   roi_s_jamais?: boolean;
   roi_a_jamais?: boolean;
+  /** RWEB20 — modèle d'économie EFFECTIF de chaque option (`horaire` = calculée, sinon estimée). */
+  savings_model_sans?: string | null;
+  savings_model_avec?: string | null;
   /** Date limite de validité (peut aussi voyager au niveau racine du contrat). */
   date_validite?: string | null;
   scenario?: string;
@@ -2280,12 +2283,9 @@ export interface SavingsHeadline {
  * WJ9 — Construit le bandeau « money over time » d'une option.
  *
  *  - `annual` : économie annuelle backend (`eco_*_ann`).
- *  - `cumulative` : ADEV50 (C-ADEV-017) — le cumul 25 ans de CETTE option,
- *    SERVI par `economies_cumul_25_ans[opt]` (même flux annuel que le PDF
- *    `/proposal` : dégradation, escalade, batterie, onduleur). La page ne le
- *    recalcule plus : l'ancien « `eco_a_cumul` × 25 » affichait 400 350 MAD pour
- *    les DEUX options (sonde VA p7) là où le PDF disait 342 314 / 346 653. Clé
- *    absente ⇒ `null` ⇒ aucun cumul affiché (jamais un chiffre inventé).
+ *  - `cumulative` : ADEV50 — le cumul 25 ans de CETTE option, SERVI par
+ *    `economies_cumul_25_ans[opt]` (même flux annuel que le PDF), jamais
+ *    recalculé. Clé absente ⇒ `null` ⇒ aucun cumul affiché.
  *  - `monthly` : annuel / 12 (simple cadrage de lecture, pas un nouveau chiffre).
  */
 export function savingsHeadline(
@@ -2293,8 +2293,7 @@ export function savingsHeadline(
   opt: OptionKey,
   years: number = SAVINGS_HORIZON_YEARS,
 ): SavingsHeadline {
-  // CIW300 — le cumul ne sert plus le C&I (commercial / industriel) :
-  // son argent est `synthese_ci.argent`, servi par le moteur. Tout à `null`.
+  // CIW300 — C&I : l'argent est `synthese_ci.argent` ; tout à `null` ici.
   const modeCi = resolveInstallMode(p);
   if (modeCi === 'commercial' || modeCi === 'industriel') {
     return { annual: null, cumulative: null, years, monthly: null, payback: null, cumulativeFromBackend: false };
@@ -2302,7 +2301,9 @@ export function savingsHeadline(
   const annualRaw = opt === 'avec_batterie' ? p.quote?.eco_a_ann : p.quote?.eco_s_ann;
   const annual = typeof annualRaw === 'number' && Number.isFinite(annualRaw) && annualRaw > 0
     ? annualRaw : null;
-  const paybackRaw = opt === 'avec_batterie' ? p.quote?.roi_a : p.quote?.roi_s;
+  // RWEB25 — roi_*_jamais : aucun retour, jamais la sentinelle « 25 ans ».
+  const jamais = (opt === 'avec_batterie' ? p.quote?.roi_a_jamais : p.quote?.roi_s_jamais) === true;
+  const paybackRaw = jamais ? null : opt === 'avec_batterie' ? p.quote?.roi_a : p.quote?.roi_s;
 
   const servi = p.economies_cumul_25_ans?.[opt];
   const cumulative = typeof servi === 'number' && Number.isFinite(servi) && servi > 0 ? servi : null;
@@ -4352,11 +4353,8 @@ export function resolveInstallMode(
  * AGW300 — chiffres « phares » d'économie et de retour (sans / avec batterie /
  * héros), lus sur les clés RÉSIDENTIELLES `quote.eco_s_ann|eco_a_ann|roi_s|roi_a`.
  * Fonction PURE, SEULE source de ces chiffres pour la page : en mode agricole
- * (`resolveInstallMode(p) === 'agricole'`) TOUT est `null` — une pompe n'a ni
- * « Économie / an » ni « Rentabilisé en » résidentiels, même si un payload
- * ancien porte encore ces clés (le serveur ne les sert plus, AGR300 : cette garde
- * la double). L'argent agricole reviendra par `synthese_agricole.economies`
- * (AGW304), jamais par ces clés. `reco` = l'option recommandée (héros).
+ * TOUT est `null` (l'argent agricole vient de `synthese_agricole.economies`, AGW304).
+ * `reco` = l'option recommandée (héros).
  */
 export interface ChiffresEconomiePhare {
   ecoSans: number | null;
@@ -4365,10 +4363,12 @@ export interface ChiffresEconomiePhare {
   paybackAvec: string | null;
   ecoHero: number | null;
   paybackHero: string | null;
-  /** RWEB1 — retour du héros en FR/EN/AR (unité traduite) ; null si non réel. */
+  /** RWEB1 — retour du héros FR/EN/AR ; null si non réel. */
   paybackHeroI18n: Libelles | null;
-  /** RWEB1 — `roi_*_jamais` levé pour l'option du héros : libellé PDF, aucune année. */
+  /** RWEB1 — `roi_*_jamais` levé pour l'option du héros. */
   paybackHeroJamais: boolean;
+  /** RWEB20 — modèle d'économie de l'option du héros. */
+  modeleHero: string | null;
 }
 
 export function chiffresEconomiePhare(
@@ -4377,7 +4377,7 @@ export function chiffresEconomiePhare(
 ): ChiffresEconomiePhare {
   const vide: ChiffresEconomiePhare = {
     ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null,
-    paybackHeroI18n: null, paybackHeroJamais: false,
+    paybackHeroI18n: null, paybackHeroJamais: false, modeleHero: null,
   };
   if (!p) return vide;
   const mode = resolveInstallMode(p);
@@ -4401,7 +4401,6 @@ export function chiffresEconomiePhare(
   const q = p.quote;
   const ecoSans = q?.eco_s_ann ?? null;
   const ecoAvec = q?.eco_a_ann ?? null;
-  // RWEB1 — drapeau « jamais remboursé » (pricing.py) : la sentinelle 25 n'est jamais imprimée.
   const jamaisS = q?.roi_s_jamais === true;
   const jamaisA = q?.roi_a_jamais === true;
   const paybackSans = jamaisS ? null : formatPayback(q?.roi_s);
@@ -4417,6 +4416,7 @@ export function chiffresEconomiePhare(
     paybackHero: heroAvec ? paybackAvec : paybackSans,
     paybackHeroI18n: heroAvec ? libellesRetour(q?.roi_a, jamaisA) : libellesRetour(q?.roi_s, jamaisS),
     paybackHeroJamais: heroAvec ? jamaisA : jamaisS,
+    modeleHero: (heroAvec ? q?.savings_model_avec : q?.savings_model_sans) || null,
   };
 }
 

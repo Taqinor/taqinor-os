@@ -108,4 +108,12 @@ describe('RWEB2 — garanties /proposition par marque posée', () => {
     expect(garantieBatterieAns([{ designation: 'Dyness Powerbox Pro 10.24' }, { designation: 'Dyness DL5.0C' }])).toBe(7);
     expect(garantieBatterieAns([{ designation: 'Panneau 710 Wc' }])).toBeNull();
   });
+
+  it('RWEB19 — panneaux 12/30 ans seulement pour Canadian Solar / Jinko', async () => {
+    const { garantiesPanneauxAns } = await import('../src/lib/proposition/garanties');
+    expect(garantiesPanneauxAns([{ designation: 'Panneau Canadian Solar 710 Wc' }])).toEqual({ produit: 12, performance: 30 });
+    expect(garantiesPanneauxAns([{ designation: 'Panneau 710 Wc', marque: 'Jinko' }])).toEqual({ produit: 12, performance: 30 });
+    expect(garantiesPanneauxAns([{ designation: 'Panneau JA Solar 550 Wc' }])).toBeNull();
+    expect(garantiesPanneauxAns([{ designation: 'Onduleur Deye' }])).toBeNull();
+  });
 });

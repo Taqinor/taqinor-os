@@ -135,7 +135,7 @@ describe('CIW300 — chiffresEconomiePhare lit synthese_ci en C&I', () => {
     for (const m of ['commercial', 'industriel']) {
       for (const synth of [undefined, { ...SYNTHESE }, { ...SYNTHESE, argent: argent({ statut: 'omis', economie_annee1: undefined }) }]) {
         const r = chiffresEconomiePhare(payload(m, synth ? { synthese_ci: synth } : {}), 'sans_batterie');
-        expect(r).toEqual({ ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null, paybackHeroI18n: null, paybackHeroJamais: false });
+        expect(r).toEqual({ ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null, paybackHeroI18n: null, paybackHeroJamais: false, modeleHero: null });
       }
     }
   });

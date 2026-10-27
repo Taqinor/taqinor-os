@@ -38,7 +38,7 @@ describe('AGW300 — chiffresEconomiePhare', () => {
     for (const reco of [null, 'sans_batterie', 'avec_batterie'] as const) {
       expect(chiffresEconomiePhare(payload('agricole'), reco)).toEqual({
         ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null,
-        paybackHeroI18n: null, paybackHeroJamais: false,
+        paybackHeroI18n: null, paybackHeroJamais: false, modeleHero: null,
       });
     }
   });
@@ -76,6 +76,30 @@ describe('AGW300 — chiffresEconomiePhare', () => {
     expect(mix.paybackHero).toBeNull();
     expect(mix.paybackHeroJamais).toBe(true);
     expect(lirePageProposition()).toContain('NON_RENTABILISE_25');
+  });
+
+  it('RWEB20/21/22/25 — libellés économie « calculée/estimée », phrase « Rentabilisé en », RWEB25 sans « 25 ans »', async () => {
+    const { libellesEconomie, phraseRentabilise, libellesRetour, NON_RENTABILISE_25 } = await import('../src/lib/proposition/retour');
+    expect(libellesEconomie('horaire', '12 000 MAD')).toEqual({
+      fr: 'Économie calculée ≈ 12 000 MAD/an', en: 'Calculated savings ≈ 12 000 MAD/yr', ar: 'الوفورات المحسوبة ≈ 12 000 MAD/سنة' });
+    expect(libellesEconomie('factures')?.fr).toBe('Économie estimée / an');
+    expect(libellesEconomie(null)).toBeNull();
+    expect(chiffresEconomiePhare(payload('residentiel', { savings_model_sans: 'horaire' }), 'sans_batterie').modeleHero).toBe('horaire');
+    expect(chiffresEconomiePhare(payload('residentiel'), 'sans_batterie').modeleHero).toBeNull();
+    expect(phraseRentabilise(libellesRetour(7.5))).toEqual({ fr: 'Rentabilisé en 7,5 ans', en: 'Paid back in 7.5 years', ar: 'يُسترد خلال 7,5 سنوات' });
+    expect(phraseRentabilise(libellesRetour(25), true)).toBe(NON_RENTABILISE_25);
+    expect(phraseRentabilise(libellesRetour(null))).toBeNull();
+    const page = lirePageProposition();
+    expect(page).toContain('data-card-payback={opt}');
+    expect(page).toContain("q?.[opt === 'avec_batterie' ? 'savings_model_avec' : 'savings_model_sans']");
+    expect(page).not.toContain('Remboursé en');
+    expect(page).not.toMatch(/formatPayback\(/);
+  });
+
+  it('RWEB25 — savingsHeadline ne lit pas la sentinelle quand roi_*_jamais est levé', async () => {
+    const { savingsHeadline } = await import('../src/lib/proposition');
+    expect(savingsHeadline(payload('residentiel', { roi_s: 25, roi_s_jamais: true }), 'sans_batterie').payback).toBeNull();
+    expect(savingsHeadline(payload('residentiel'), 'avec_batterie').payback).toBe('6,1 ans');
   });
 
   it('mode absent garde ses chiffres ; industriel / commercial ne lisent plus eco_s_ann (CIW300 : synthese_ci)', () => {

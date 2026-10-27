@@ -87,7 +87,6 @@ import {
   MONTHS_SHORT,
   formatMAD,
   formatNumber,
-  formatPayback,
   hasTwoOptions,
   showVariantSelector,
   recommendedOption,
@@ -286,8 +285,8 @@ import {
   PANEL_PERFORMANCE_WARRANTY_YEARS,
   INSTALL_WARRANTY_YEARS,
 } from '../../lib/warranty';
-import { NON_RENTABILISE_25 } from '../../lib/proposition/retour';
-import { garantieBatterieAns, garantieOnduleurAns } from '../../lib/proposition/garanties';
+import { NON_RENTABILISE_25, libellesEconomie, libellesRetour, phraseRentabilise, type Libelles } from '../../lib/proposition/retour';
+import { garantieBatterieAns, garantieOnduleurAns, garantiesPanneauxAns } from '../../lib/proposition/garanties';
 // (fondateur 2026-08-17) le badge IEC ne s'affiche que s'il peut pointer vers la
 // fiche du panneau RÉELLEMENT devisé (catégorie « Panneaux photovoltaïques »).
 import { ficheBySlug } from '../../lib/fiches';
@@ -704,11 +703,10 @@ const prodKwh = q?.prod_kwh ?? null;
 // `null` en mode agricole, si bien que les quatre endroits qui les lisent
 // (héros, repli méthode, bandeau « Économie estimée / an », carte « Rentabilisé
 // en ») s'éteignent d'un coup, sans garde `isAgricole` à chacun.
-const { ecoSans, ecoAvec, paybackSans, paybackAvec, ecoHero, paybackHero, paybackHeroI18n, paybackHeroJamais } =
+const { ecoSans, ecoAvec, paybackSans, paybackAvec, ecoHero, paybackHero, paybackHeroI18n, paybackHeroJamais, modeleHero } =
   chiffresEconomiePhare(ok ? data : null, reco);
 // RWEB1 — « Rentabilisé en … » traduit, ou le libellé PDF « Non rentabilisé sur 25 ans ».
-const retourPhrase = paybackHeroJamais ? NON_RENTABILISE_25 : paybackHeroI18n
-  ? { fr: `Rentabilisé en ${paybackHeroI18n.fr}`, en: `Paid back in ${paybackHeroI18n.en}`, ar: `يُسترد خلال ${paybackHeroI18n.ar}` } : null;
+const retourPhrase = phraseRentabilise(paybackHeroI18n, paybackHeroJamais);
 
 // ── L-DEUXOPT (lane « deux optimiseurs », 25/08/2026) — DEUX DIMENSIONNEMENTS
 // DIFFÉRENTS (ex. 22 panneaux sans batterie / 26 avec), quand le backend
@@ -747,7 +745,7 @@ const battTierRealPanneaux = dimAvec?.nbPanneaux ?? nbPanneaux;
 const battTierRealKwc = dimAvec?.puissanceKwc ?? puissance;
 const battTierRealPrix = ok && hasRealPrice(data!, 'avec_batterie') ? optionTtc(data!, 'avec_batterie') : null;
 const battTierRealEco = ecoAvec;
-const battTierRealPaybackLabel = paybackAvec;
+const battTierRealPaybackI18n = paybackAvec === null ? null : isAutoconso ? libellesRetour(paybackAvec) : libellesRetour(q?.roi_a, q?.roi_a_jamais === true);
 // Sérialisé UNE fois pour le script client : les nombres sont déjà
 // sanitisés ici (finiteOrNull côté proposition.ts) — le navigateur ne relit
 // jamais le contrat backend brut, et ne recalcule rien (formatage seul).
@@ -757,7 +755,7 @@ const battTiersForClient = battTiers.map((t) => ({
   kwc: t.retenu ? battTierRealKwc : t.puissanceKwc,
   prix: t.retenu ? battTierRealPrix : t.prixTtc,
   eco: t.retenu ? battTierRealEco : t.economiesAnnuelles,
-  paybackLabel: t.retenu ? battTierRealPaybackLabel : formatPayback(t.paybackAnnees),
+  paybackI18n: t.retenu ? battTierRealPaybackI18n : libellesRetour(t.paybackAnnees),
   ok: t.remplissageOk,
   retenu: t.retenu,
 }));
@@ -2038,14 +2036,10 @@ function libelleBancTaille(v: OffreVariante | null): string {
   if (b.moduleKwh === null) return n;
   return n + ' × ' + formatNumber(b.moduleKwh, Number.isInteger(b.moduleKwh) ? 0 : 1) + ' kWh';
 }
-// (Le nombre de panneaux et la puissance sont DEUX lignes du tableau, pas une :
-//  « 22 · 12,10 kWc » dans une cellule oblige à deviner l'unité du premier
-//  nombre, et un « panneaux » écrit en dur ne se traduirait pas. Deux lignes,
-//  deux libellés `data-i18n` — chacun lisible dans les trois langues.)
 /** LE TABLEAU « CE QUI CHANGE », construit ICI (hors du gabarit) : une ligne
  *  par critère, une cellule par taille, et toute ligne dont AUCUNE taille ne
  *  porte de valeur est ÉCARTÉE — un tableau à moitié vide n'apprend rien. */
-interface LigneCompareTaille { cle: string; fr: string; en: string; ar: string; cellules: string[] }
+interface LigneCompareTaille { cle: string; fr: string; en: string; ar: string; cellules: string[]; i18n?: (Libelles | null)[] }
 const taillesComparatif: Record<string, LigneCompareTaille[]> = {};
 if (tailles) {
   for (const v of tailleVariantes) {
@@ -2060,8 +2054,9 @@ if (tailles) {
         cellules: vues.map((x) => (x?.prixTtc != null ? formatMAD(x.prixTtc) : '')) },
       { cle: 'eco', fr: 'Économies / an', en: 'Savings / year', ar: 'التوفير / سنة',
         cellules: vues.map((x) => (x?.economieAnnuelleMad != null ? formatMAD(x.economieAnnuelleMad) : '')) },
-      { cle: 'payback', fr: 'Remboursé en', en: 'Paid back in', ar: 'مسترد في',
-        cellules: vues.map((x) => formatPayback(x?.paybackAnnees ?? null) ?? '') },
+      { cle: 'payback', fr: 'Rentabilisé en', en: 'Paid back in', ar: 'يُسترد خلال',
+        cellules: vues.map((x) => libellesRetour(x?.paybackAnnees ?? null)?.fr ?? ''),
+        i18n: vues.map((x) => libellesRetour(x?.paybackAnnees ?? null)) },
       { cle: 'couverture', fr: 'Couverture', en: 'Coverage', ar: 'التغطية',
         cellules: vues.map((x) => (x?.couverturePct != null ? formatPercent(x.couverturePct, 0) : '')) },
       { cle: 'batterie', fr: 'Batterie', en: 'Battery', ar: 'البطارية',
@@ -2886,7 +2881,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  Les durées viennent de `lib/warranty.ts` (source unique) ; la
                  pose (2 ans) est un engagement adjugé, toujours affiché. */}
           <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
-            {equipPresence.panneaux && (
+            {equipPresence.panneaux && garantiesPanneauxAns(garantieLignes) && (
               <>
                 <span class="fig text-lune" dir="ltr" data-i18n
                   data-fr={`${PANEL_PRODUCT_WARRANTY_YEARS} ans`}
@@ -4286,7 +4281,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               ) : null}
               {ecoHero ? (
                 <div class="cine-card rounded-xl p-5" data-hero-eco-annual-card>
-                  <p class="tech-label text-lune-faint" data-i18n data-fr="Économie estimée / an" data-en="Estimated savings / year" data-ar="التوفير المقدّر / سنة">Économie estimée / an</p>
+                  {(() => { const l = isAutoconso ? null : libellesEconomie(modeleHero); return (
+                  <p class="tech-label text-lune-faint" data-i18n data-fr={l?.fr ?? 'Économie estimée / an'} data-en={l?.en ?? 'Estimated savings / year'} data-ar={l?.ar ?? 'التوفير المقدّر / سنة'}>{l?.fr ?? 'Économie estimée / an'}</p>); })()}
                   <p class="fig fig-md lum mt-2" dir="ltr"><span data-hero-eco-annual-value>{formatMAD(ecoHero)}</span></p>
                 </div>
               ) : null}
@@ -4777,14 +4773,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     Prix communiqué par votre conseiller
                   </p>
                 )}
-                {eco ? (
+                {eco ? (() => { const l = isAutoconso ? null : libellesEconomie(q?.[opt === 'avec_batterie' ? 'savings_model_avec' : 'savings_model_sans'], formatMAD(eco)); return (
                   <p class="mt-2 text-sm text-lune-soft" data-i18n
-                    data-fr={`Économies estimées : ${formatMAD(eco)}/an`}
-                    data-en={`Estimated savings: ${formatMAD(eco)}/year`}
-                    data-ar={`التوفير المقدّر: ${formatMAD(eco)}/سنة`}>
-                    Économies estimées : <span class="text-brass-300">{formatMAD(eco)}/an</span>
-                  </p>
-                ) : null}
+                    data-fr={l?.fr ?? `Économies estimées : ${formatMAD(eco)}/an`}
+                    data-en={l?.en ?? `Estimated savings: ${formatMAD(eco)}/year`}
+                    data-ar={l?.ar ?? `التوفير المقدّر: ${formatMAD(eco)}/سنة`}>
+                    {l ? l.fr : <>Économies estimées : <span class="text-brass-300">{formatMAD(eco)}/an</span></>}
+                  </p>); })() : null}
+                {!isAutoconso && !isAgricole && (() => { const av = opt === 'avec_batterie'; const l = phraseRentabilise(libellesRetour(av ? q?.roi_a : q?.roi_s), (av ? q?.roi_a_jamais : q?.roi_s_jamais) === true); return l ? (
+                  <p class="mt-1 text-sm text-lune-soft" data-card-payback={opt} data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</p>) : null; })()}
 
                 <!-- ── P2-C (ordre fondateur 25/08/2026, soir) — SÉLECTEUR DE
                      PALIERS BATTERIE. « add more than just 2 batteries in the
@@ -4855,9 +4852,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                           {battTierInitialClient?.eco != null ? `${formatMAD(battTierInitialClient.eco)}/an` : ''}
                         </span>
                       </p>
-                      <p id="batt-tier-payback-line" class="mt-1 flex flex-wrap items-baseline gap-x-1 text-lune-soft" hidden={!battTierInitialClient?.paybackLabel}>
+                      <p id="batt-tier-payback-line" class="mt-1 flex flex-wrap items-baseline gap-x-1 text-lune-soft" hidden={!battTierInitialClient?.paybackI18n}>
                         <span data-i18n data-fr="Retour sur investissement :" data-en="Payback period:" data-ar="مدة استرداد الاستثمار:">Retour sur investissement :</span>
-                        <span id="batt-tier-payback" dir="ltr">{battTierInitialClient?.paybackLabel ?? ''}</span>
+                        <span id="batt-tier-payback" dir="ltr" data-i18n data-fr={battTierInitialClient?.paybackI18n?.fr} data-en={battTierInitialClient?.paybackI18n?.en} data-ar={battTierInitialClient?.paybackI18n?.ar}>{battTierInitialClient?.paybackI18n?.fr ?? ''}</span>
                       </p>
                       <p id="batt-tier-disabled-note" class="mt-2 text-xs text-lune-faint" data-i18n
                         data-fr="Cette capacité ne se remplirait pas tous les jours avec votre toit."
@@ -5153,10 +5150,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                                 <dd class="fig text-brass-300" dir="ltr" data-taille-eco-value>{formatMAD(va.economieAnnuelleMad)}</dd>
                               </div>
                             )}
-                            {formatPayback(va.paybackAnnees) && (
+                            {libellesRetour(va.paybackAnnees) && (
                               <div class="flex justify-between gap-2">
-                                <dt class="text-lune-faint" data-i18n data-fr="Remboursé en" data-en="Paid back in" data-ar="مسترد في">Remboursé en</dt>
-                                <dd class="fig text-lune-soft" dir="ltr" data-taille-payback-value>{formatPayback(va.paybackAnnees)}</dd>
+                                <dt class="text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</dt>
+                                <dd class="fig text-lune-soft" dir="ltr" data-taille-payback-value data-i18n data-fr={libellesRetour(va.paybackAnnees)?.fr} data-en={libellesRetour(va.paybackAnnees)?.en} data-ar={libellesRetour(va.paybackAnnees)?.ar}>{libellesRetour(va.paybackAnnees)?.fr}</dd>
                               </div>
                             )}
                             {va.couverturePct !== null && (
@@ -5317,8 +5314,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     {(taillesComparatif[v] ?? []).map((l) => (
                       <tr class="border-t border-white/10" data-taille-ligne={l.cle}>
                         <td class="py-2 pe-3 text-lune-soft"><span data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</span></td>
-                        {l.cellules.map((c) => (
-                          <td class="py-2 text-end text-lune" dir="ltr">{c}</td>
+                        {l.cellules.map((c, ci) => (
+                          <td class="py-2 text-end text-lune" dir="ltr" data-i18n={l.i18n?.[ci] ? '' : undefined} data-fr={l.i18n?.[ci]?.fr} data-en={l.i18n?.[ci]?.en} data-ar={l.i18n?.[ci]?.ar}>{c}</td>
                         ))}
                       </tr>
                     ))}
@@ -9353,7 +9350,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       kwc: number | null;
       prix: number | null;
       eco: number | null;
-      paybackLabel: string | null;
+      paybackI18n: { fr: string; en: string; ar: string } | null;
       ok: boolean;
       retenu: boolean;
       /** CONSOLIDATION — nombre d'unités SERVI pour ce palier, apparié côté
@@ -9404,8 +9401,10 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         ecoLine.hidden = tier.eco === null;
       }
       if (paybackLine && paybackEl) {
-        paybackEl.textContent = tier.paybackLabel ?? '';
-        paybackLine.hidden = !tier.paybackLabel;
+        const pb = tier.paybackI18n;
+        if (pb) { paybackEl.dataset.fr = pb.fr; paybackEl.dataset.en = pb.en; paybackEl.dataset.ar = pb.ar; }
+        paybackEl.textContent = pb ? pb[(window as unknown as { __propCurrentLang?: () => 'fr' | 'en' | 'ar' }).__propCurrentLang?.() ?? 'fr'] : '';
+        paybackLine.hidden = !pb;
       }
       if (disabledNote) disabledNote.hidden = tier.ok;
       if (interestEl) interestEl.hidden = tier.retenu;

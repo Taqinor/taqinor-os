@@ -7,6 +7,8 @@
  * Marque non reconnue → `null` : la durée est OMISE plutôt que supposée.
  */
 import {
+  PANEL_PERFORMANCE_WARRANTY_YEARS,
+  PANEL_PRODUCT_WARRANTY_YEARS,
   BATTERY_WARRANTY_YEARS,
   DEYE_INVERTER_WARRANTY_YEARS,
   DYNESS_POWERBOX_PRO_WARRANTY_YEARS,
@@ -36,4 +38,14 @@ export function garantieBatterieAns(lignes: readonly LigneMarque[]): number | nu
   if (!t.length) return null;
   // Deux gammes dans le même devis → la plus courte (jamais promettre plus que la garantie réelle).
   return t.every((x) => x.includes('powerbox')) ? DYNESS_POWERBOX_PRO_WARRANTY_YEARS : BATTERY_WARRANTY_YEARS;
+}
+
+/**
+ * RWEB19 — garanties PANNEAUX (produit 12 ans / performance 30 ans) comme le PDF
+ * (`residential/theme.py` : spec vérifiée seulement pour les TOPCon Canadian Solar / Jinko).
+ * Autre marque (JA Solar…) ou aucun panneau → null : les deux durées sont OMISES.
+ */
+export function garantiesPanneauxAns(lignes: readonly LigneMarque[]): { produit: number; performance: number } | null {
+  const ok = lignes.map(texte).some((x) => /canadian|jinko/.test(x) && /panneau|module|panel|wc/.test(x));
+  return ok ? { produit: PANEL_PRODUCT_WARRANTY_YEARS, performance: PANEL_PERFORMANCE_WARRANTY_YEARS } : null;
 }
