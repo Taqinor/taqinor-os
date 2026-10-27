@@ -306,6 +306,25 @@ class CommanderBesoinTests(ApproBase):
         self.assertFalse(BonCommandeFournisseur.objects.filter(
             chantier_origine=self.chantier).exists())
 
+    def test_cle_fournisseurs_non_produit_409(self):
+        """api-fuzz-full 27/10 (ENF11) : une CLÉ de `fournisseurs` qui n'est
+        pas un identifiant de produit est inexprimable au schéma OpenAPI 3.0
+        (pas de `propertyNames`) → 409 (même corps) ; une VALEUR mal formée
+        reste un 400 de forme, prioritaire."""
+        for cle in ('__main__', '0', '-3', ''):
+            with self.subTest(cle=cle):
+                r = self.api.post(
+                    f'{BASE}/{self.chantier.id}/commander-besoin/',
+                    {'fournisseurs': {cle: self.four_a.id}}, format='json')
+                self.assertEqual(r.status_code, 409, r.content)
+                self.assertIn('identifiant de produit', str(r.data['fournisseurs']))
+        r = self.api.post(
+            f'{BASE}/{self.chantier.id}/commander-besoin/',
+            {'fournisseurs': {'__main__': 'x'}}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertFalse(BonCommandeFournisseur.objects.filter(
+            chantier_origine=self.chantier).exists())
+
     def test_sans_fournisseur_signale(self):
         Produit.objects.filter(pk=self.batterie.pk).update(fournisseur=None)
         r = self.api.post(f'{BASE}/{self.chantier.id}/commander-besoin/',

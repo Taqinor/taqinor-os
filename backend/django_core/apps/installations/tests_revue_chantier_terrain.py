@@ -280,7 +280,8 @@ class AvertissementSeriesTests(_Base):
                          ['Séries manquantes : 3 panneaux, 1 onduleur'])
         r = self.api.patch(f'{self.url}/', {'statut': 'terminee'},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # api-fuzz-full 27/10 (ENF11) : refus d'ÉTAT = 409, mêmes clés de corps.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('statut', r.data)
         self.assertEqual([str(a) for a in r.data['avertissements']],
                          ['Séries manquantes : 3 panneaux, 1 onduleur'])
