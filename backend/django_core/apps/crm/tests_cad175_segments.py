@@ -416,6 +416,75 @@ class CIQ410PanneauPro(SimpleTestCase):
                 panneau.prefill_du_panneau(repondu)[
                     'equipements_hors_horaires'], 'un_peu')
 
+    def test_heures_cuisson_ecrivable_et_servie(self):
+        """CSV13 — les clés d'heures que le moteur C&I lit sont écrivables
+        (clés fermées du sérialiseur) et servies seulement quand la réponse
+        qui les rend utiles est donnée ; celles qui changent la courbe passent
+        avant les autres."""
+        from apps.crm.serializers import LeadSerializer
+        from core.conflit_etat import ConflitEtat
+
+        for categorie, cle in (('boulangerie', 'heures_cuisson'),
+                               ('restaurant', 'heures'),
+                               ('sante', 'heures_garde'),
+                               ('ecole', 'fermeture_du'),
+                               ('ecole', 'fermeture_au')):
+            self.assertIn(cle, Lead.REPONSES_CATEGORIE_CLES[categorie])
+            lead = Lead(nom='P', type_installation='commercial',
+                        categorie_commerciale=categorie)
+            LeadSerializer(instance=lead)._valider_colonnes_pro(
+                {'reponses_categorie': {cle: [[2, 6]]}})
+        # Une clé hors de la catégorie reste refusée.
+        with self.assertRaises(ConflitEtat):
+            LeadSerializer(instance=Lead(
+                nom='P', type_installation='commercial',
+                categorie_commerciale='bureau'))._valider_colonnes_pro(
+                    {'reponses_categorie': {'heures_cuisson': [[2, 6]]}})
+
+        def cles(categorie, **reponses):
+            return panneau._cles_categorie_a_poser(Lead(
+                nom='P', type_installation='commercial',
+                categorie_commerciale=categorie, reponses_categorie=reponses))
+
+        # Boulangerie : les heures ne sont posées que pour une cuisson de nuit
+        # au four ÉLECTRIQUE (au gaz, le moteur n'ajoute aucune plage).
+        self.assertEqual(cles('boulangerie'), ('four', 'cuisson_nocturne'))
+        self.assertEqual(cles('boulangerie', four='electrique',
+                              cuisson_nocturne=True), ('heures_cuisson',))
+        self.assertEqual(cles('boulangerie', four='gaz',
+                              cuisson_nocturne=True), ())
+        self.assertEqual(cles('boulangerie', four='electrique',
+                              cuisson_nocturne=False), ())
+        self.assertEqual(cles('boulangerie', four='electrique',
+                              cuisson_nocturne=True,
+                              heures_cuisson=[[2, 6]]), ())
+        # Restaurant : les heures passent AVANT le reste, après les horaires.
+        self.assertNotIn('heures', cles('restaurant'))
+        self.assertEqual(cles('restaurant', horaires='soir')[0], 'heures')
+        self.assertEqual(cles('restaurant', horaires='soir',
+                              heures=[[18, 23]]),
+                         ('chambres_froides', 'cuisson'))
+        # Santé et école : seulement quand garde de nuit / fermeture d'été.
+        self.assertEqual(cles('sante'), ('lits', 'garde_nuit'))
+        self.assertEqual(cles('sante', garde_nuit=True)[0], 'heures_garde')
+        self.assertEqual(cles('ecole', fermeture_estivale=True)[:2],
+                         ('fermeture_du', 'fermeture_au'))
+        self.assertNotIn('fermeture_du', cles('ecole'))
+        # Au plus trois questions, jamais plus.
+        self.assertLessEqual(len(cles('ecole', fermeture_estivale=True)), 3)
+
+    def test_la_question_heures_est_servie_au_panneau_avec_son_libelle(self):
+        lead = Lead(nom='P', type_installation='commercial',
+                    categorie_commerciale='boulangerie',
+                    reponses_categorie={'four': 'electrique',
+                                        'cuisson_nocturne': True})
+        objet = {q['champ']: q for q in panneau.questions_a_poser(lead)}[
+            'reponses_categorie']
+        self.assertEqual(
+            [(s['cle'], s['libelle']) for s in objet['sous_questions']],
+            [('heures_cuisson', '« De quelle heure à quelle heure le four '
+                                'électrique tourne-t-il la nuit ? »')])
+
     def test_decideur_seulement_les_choix_pro(self):
         questions = {q['champ']: q for q in panneau.questions_a_poser(
             Lead(nom='P', type_installation='industriel'))}

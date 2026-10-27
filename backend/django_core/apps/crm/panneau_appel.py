@@ -249,6 +249,15 @@ LIBELLES_REPONSES_CATEGORIE = {
     'reception_24h': '« La réception est-elle ouverte 24 heures sur 24 ? »',
     'chambres_froides': 'Chambres froides',
     'horaires': 'Horaires',
+    # CSV13 — les heures et dates que le moteur C&I lit pour la courbe.
+    'heures': '« De quelle heure à quelle heure êtes-vous ouverts, à peu '
+              "près ? »",
+    'heures_cuisson': '« De quelle heure à quelle heure le four électrique '
+                      'tourne-t-il la nuit ? »',
+    'heures_garde': '« De quelle heure à quelle heure dure la garde de '
+                    'nuit ? »',
+    'fermeture_du': "« À quelle date commence la fermeture d'été ? »",
+    'fermeture_au': '« Et à quelle date se termine-t-elle ? »',
     'cuisson': 'Cuisson',
     'ouvert_journee_ramadan': '« Pendant le Ramadan, êtes-vous ouverts en '
                               'journée ? »',
@@ -391,15 +400,45 @@ def _segment_pro(lead):
     return None
 
 
+#: CSV13 — les clés d'heures et de dates que le moteur C&I lit pour la courbe
+#: (``moteur_ci/categories.py``). Elles ne se posent que SI la réponse qui les
+#: rend utiles est donnée, passent AVANT les autres questions de l'activité
+#: (celles qui changent la courbe d'abord) et ne comptent pas dans la fenêtre
+#: de base des trois premières clés.
+CLES_COURBE = ('heures', 'heures_cuisson', 'heures_garde', 'fermeture_du',
+               'fermeture_au')
+
+
+def _cle_courbe_utile(cle, reponses):
+    """CSV13 — la réponse qui rend cette clé de courbe utile est-elle donnée ?
+
+    Mêmes conditions que ``elements_horaire`` : un restaurant dont les
+    horaires sont déclarés, une cuisson de nuit au four ÉLECTRIQUE (au gaz, le
+    moteur n'ajoute aucune plage), une garde de nuit, une fermeture d'été."""
+    if cle == 'heures':
+        return bool(reponses.get('horaires'))
+    if cle == 'heures_cuisson':
+        return (reponses.get('cuisson_nocturne') is True
+                and reponses.get('four') == 'electrique')
+    if cle == 'heures_garde':
+        return reponses.get('garde_nuit') is True
+    return reponses.get('fermeture_estivale') is True
+
+
 def _cles_categorie_a_poser(lead):
     """CIQ410 — les (au plus 3) clés propres à l'activité encore sans
-    réponse ; ``()`` tant que la catégorie n'est pas connue."""
+    réponse ; ``()`` tant que la catégorie n'est pas connue. CSV13 — les clés
+    de courbe utiles passent en tête (:data:`CLES_COURBE`)."""
     categorie = getattr(lead, 'categorie_commerciale', None) or ''
     cles = Lead.REPONSES_CATEGORIE_CLES.get(categorie, ())
     reponses = getattr(lead, 'reponses_categorie', None)
     reponses = reponses if isinstance(reponses, dict) else {}
-    return tuple(c for c in cles[:MAX_REPONSES_CATEGORIE]
-                 if reponses.get(c) is None)
+    courbe = [c for c in cles if c in CLES_COURBE
+              and reponses.get(c) is None and _cle_courbe_utile(c, reponses)]
+    base = [c for c in cles if c not in CLES_COURBE]
+    base = [c for c in base[:MAX_REPONSES_CATEGORIE]
+            if reponses.get(c) is None]
+    return tuple((courbe + base)[:MAX_REPONSES_CATEGORIE])
 
 
 def _question_pro(lead, champ, segment):

@@ -82,6 +82,13 @@ function definitionSousQuestion(categorie, cle) {
   return trouve || { key: cle, type: 'text' }
 }
 
+/** CSV13 — les clés que le moteur C&I lit pour la courbe : des HEURES
+ *  (`[[début, fin]]`, heures civiles, deux cases) et des DATES (`AAAA-MM-JJ`,
+ *  le moteur y lit le mois et le jour). Aucune n'a de type dans la table du
+ *  générateur : le type vient de la clé servie. */
+const CLES_PLAGE_HEURES = Object.freeze(['heures', 'heures_cuisson', 'heures_garde'])
+const CLES_DATE = Object.freeze(['fermeture_du', 'fermeture_au'])
+
 /** CSV1 — « réponses propres à l'activité » : UNE entrée par clé encore vide,
  *  chaque réponse réécrit l'objet FUSIONNÉ `{...existant, cle: valeur}` (le PATCH
  *  remplace tout le JSON). Booléens en vrai/faux JSON, nombres numériques,
@@ -90,6 +97,16 @@ function SousQuestions({
   entree, existant, categorie, saisies, occupe, onSaisie, onEcrire, erreur, onErreur,
 }) {
   const ecrire = (cle, valeur) => onEcrire({ ...existant, [cle]: valeur })
+  const enregistrerPlage = (sous) => {
+    const cle = `${entree.champ}.${sous.cle}`
+    const [debut, fin] = ['de', 'a'].map((bout) => String(saisies[`${cle}.${bout}`] ?? '').trim())
+    const bornes = [debut, fin].map((v) => (v === '' ? NaN : Number(v.replace(',', '.'))))
+    if (bornes.some((h) => !Number.isFinite(h) || h < 0 || h > 24) || bornes[0] === bornes[1]) {
+      onErreur(`${decouperQuestion(sous.libelle).question} : indiquez deux heures différentes, de 0 à 24.`)
+      return
+    }
+    ecrire(sous.cle, [bornes])
+  }
   const enregistrerLibre = (sous, def) => {
     const brut = saisies[`${entree.champ}.${sous.cle}`] ?? ''
     if (def.type === 'number') {
@@ -137,6 +154,39 @@ function SousQuestions({
                     {c.label}
                   </Button>
                 ))}
+              </div>
+            ) : CLES_PLAGE_HEURES.includes(sous.cle) ? (
+              <div className="flex flex-wrap items-center gap-1.5" data-testid={`plage-${sous.cle}`}>
+                {[['de', 'De', 'début'], ['a', 'à', 'fin']].map(([bout, mot, nom]) => (
+                  <label key={bout} className="flex items-center gap-1 text-sm text-muted-foreground">
+                    {mot}
+                    <Input
+                      className="w-20" inputMode="decimal" aria-label={`${libelle} — ${nom}`}
+                      value={typeof saisies[`${entree.champ}.${sous.cle}.${bout}`] === 'string'
+                        ? saisies[`${entree.champ}.${sous.cle}.${bout}`] : ''}
+                      onChange={(e) => onSaisie(`${entree.champ}.${sous.cle}.${bout}`, e.target.value)}
+                    />
+                    h
+                  </label>
+                ))}
+                <Button type="button" size="sm" disabled={occupe} onClick={() => enregistrerPlage(sous)}>
+                  Enregistrer
+                </Button>
+              </div>
+            ) : CLES_DATE.includes(sous.cle) ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Input
+                  id={id} type="date" className="w-44"
+                  value={typeof saisies[`${entree.champ}.${sous.cle}`] === 'string'
+                    ? saisies[`${entree.champ}.${sous.cle}`] : ''}
+                  onChange={(e) => onSaisie(`${entree.champ}.${sous.cle}`, e.target.value)}
+                />
+                <Button
+                  type="button" size="sm" disabled={occupe}
+                  onClick={() => enregistrerLibre(sous, { type: 'date' })}
+                >
+                  Enregistrer
+                </Button>
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-1.5">

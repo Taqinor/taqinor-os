@@ -812,6 +812,49 @@ describe('CIQ420 — script d’appel pro', () => {
       COMMERCIAL.lead_id, { reponses_categorie: { horaires: 'soir' } }))
   })
 
+  it('CSV13 — heures de cuisson : deux cases, écrites en [[début, fin]] avec les réponses déjà données', async () => {
+    const panneau = hotel({ four: 'electrique', cuisson_nocturne: true }, ['heures_cuisson'])
+    panneau.prefill.categorie_commerciale = 'boulangerie'
+    panneau.champs_a_poser[0].sous_questions = [
+      { cle: 'heures_cuisson', libelle: '« De quelle heure à quelle heure le four électrique tourne-t-il la nuit ? »' },
+    ]
+    armer({ panneau })
+    crmApi.updateLead.mockResolvedValue({ data: { id: COMMERCIAL.lead_id } })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    const cuisson = await screen.findByTestId('sous-question-heures_cuisson')
+    const [debut, fin] = within(cuisson).getAllByRole('textbox')
+    // Deux heures identiques : refus sous le champ, rien n'est écrit.
+    fireEvent.change(debut, { target: { value: '2' } })
+    fireEvent.change(fin, { target: { value: '2' } })
+    fireEvent.click(within(cuisson).getByRole('button', { name: 'Enregistrer' }))
+    expect(await screen.findByTestId('erreur-question-reponses_categorie')).toBeInTheDocument()
+    expect(crmApi.updateLead).not.toHaveBeenCalled()
+    fireEvent.change(fin, { target: { value: '6' } })
+    fireEvent.click(within(cuisson).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      COMMERCIAL.lead_id,
+      { reponses_categorie: { four: 'electrique', cuisson_nocturne: true, heures_cuisson: [[2, 6]] } }))
+  })
+
+  it('CSV13 — fermeture d’été : une date par clé, écrite en chaîne', async () => {
+    const panneau = hotel({ fermeture_estivale: true }, ['fermeture_du'])
+    panneau.prefill.categorie_commerciale = 'ecole'
+    panneau.champs_a_poser[0].sous_questions = [
+      { cle: 'fermeture_du', libelle: '« À quelle date commence la fermeture d’été ? »' },
+    ]
+    armer({ panneau })
+    crmApi.updateLead.mockResolvedValue({ data: { id: COMMERCIAL.lead_id } })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    const fermeture = await screen.findByTestId('sous-question-fermeture_du')
+    const date = fermeture.querySelector('input[type="date"]')
+    expect(date).not.toBeNull()
+    fireEvent.change(date, { target: { value: '2026-07-01' } })
+    fireEvent.click(within(fermeture).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      COMMERCIAL.lead_id,
+      { reponses_categorie: { fermeture_estivale: true, fermeture_du: '2026-07-01' } }))
+  })
+
   it('CSV6 — lead pro ou agricole : ni mention D7 ni bloc « ce que le chiffre ne compte pas », la consigne renvoie au devis', async () => {
     for (const panneau of [INDUSTRIEL, COMMERCIAL, exempleContrat('crm', 'panneau_appel', 'exemple_agricole')]) {
       armer({ panneau })
