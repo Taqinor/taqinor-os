@@ -632,7 +632,8 @@ def _tableau_sensibilites(d, argent, fmt_mad, L):
     flux = [f for f in flux_principal(argent)[1].get("flux") or []
             if isinstance(f, dict)]
     rangees = [(L("ci_sens_central", "Scénario central"),
-                indicateurs.get("retour_ans"), indicateurs.get("tri_pct"),
+                ci_couverture.retour_dixieme(argent, _num(
+                    indicateurs.get("retour_ans"))), indicateurs.get("tri_pct"),
                 (flux[-1] if flux else {}).get("cumul_mad"), "")]
     rangees += [(_nom_scenario(s, L), s.get("retour_ans"), s.get("tri_pct"),
                  s.get("cumul_25_ans_mad"), _source_propre(
@@ -854,7 +855,9 @@ def build(ctx):
         base_eco = d.get("ind_economie_base")
         if base_eco in ("HT", "TTC"):
             base_eco = L(f"ci_{base_eco.lower()}", base_eco)
-        payback = _num(indicateurs.get("retour_ans"))
+        # CPDF7 — le MÊME retour que la couverture (au dixième).
+        payback = ci_couverture.retour_dixieme(
+            argent, _num(indicateurs.get("retour_ans")))
         tri = _num(indicateurs.get("tri_pct"))
         tri_txt = decimale(f"{tri:.1f}") if tri is not None else None
 

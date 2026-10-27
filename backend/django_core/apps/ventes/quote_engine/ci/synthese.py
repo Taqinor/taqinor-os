@@ -984,6 +984,11 @@ LIBELLES_METHODE = {
 }
 
 
+def _retour_dixieme(argent, servi):
+    from .couverture import retour_dixieme
+    return retour_dixieme(argent, servi)
+
+
 def chiffres_cles(synthese):
     """Les chiffres d'une ``synthese_ci`` que la couverture, la page
     /proposition et la parité lisent — UNE projection, aucun calcul.
@@ -1035,8 +1040,10 @@ def chiffres_cles(synthese):
         # AMOT95 — base « deux » : la TTC servie, imprimée à côté de la HT.
         "economie_annuelle_ttc_mad": _num(economie.get("total_mad_ttc"))
         if argent.get("base") == "deux" and valeur is not None else None,
-        "payback_ans": _num(_dict(argent.get("indicateurs")).get(
-            "retour_ans")),
+        # CPDF7 — retour au dixième sur le flux servi : LE nombre du PDF
+        # (couverture, finance, une-page) ET de /proposition.
+        "payback_ans": _retour_dixieme(argent, _num(_dict(
+            argent.get("indicateurs")).get("retour_ans"))),
         "revente_kwh_an": _num(revente.get("kwh_an")),
         "revente_mad_an": _num(revente.get("valeur_mad_an")),
         "sous_reserve": s.get("statut_etude") == STATUT_SOUS_RESERVE,

@@ -303,9 +303,10 @@ def note_tva(d, base):
     from .. import i18n_labels
     from .mentions import cle_mention_tva
     cle = cle_mention_tva(d, base)
-    # CPDF5 — « TVA récupérable non déclarée : économies en HT et en TTC »
-    # n'informe pas le client (les deux montants sont déjà là) : non imprimée.
-    if not cle or cle == "ci_tva_non_declaree":
+    # CPDF5 — « TVA récupérable non déclarée / inconnue : économies en HT et
+    # en TTC (— à confirmer) » n'informe pas le client (les deux montants
+    # sont déjà là) et l'inconnue imprime une incertitude : non imprimées.
+    if not cle or cle in ("ci_tva_non_declaree", "ci_tva_inconnue"):
         return ""
     return libelle(d, cle, i18n_labels.LIBELLES[cle]["fr"])
 

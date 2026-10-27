@@ -23,15 +23,9 @@ def lire_synthese(data, mode_installation):
             "commercial", "industriel"):
         return None, None
     try:
-        from .couverture import retour_dixieme
         from .synthese import chiffres_cles, synthese_ci
         synthese = synthese_ci(data) or {}
-        chiffres = chiffres_cles(synthese)
-        # CPDF7 — le retour au dixième sur le flux servi, le MÊME nombre que
-        # la couverture premium (« 2,3 ans ») ; sans flux, le servi.
-        chiffres["payback_ans"] = retour_dixieme(
-            synthese.get("argent"), chiffres.get("payback_ans"))
-        return synthese, chiffres
+        return synthese, chiffres_cles(synthese)
     except Exception:  # noqa: BLE001 — un rendu ne casse jamais ici (D-ENF22-BLE001)
         logger.warning("ci.onepage.lire_synthese : erreur ignorée (mode "
                        "dégradé)", exc_info=True)
