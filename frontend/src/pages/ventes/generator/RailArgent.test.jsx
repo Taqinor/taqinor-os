@@ -81,4 +81,17 @@ describe('AGV10 — rail agricole sans mot batterie', () => {
     expect(container.textContent).toContain('Total final TTC')
     expect(container.textContent).not.toMatch(/batterie/i)
   })
+
+  it('prop agricole avec showAvec : aucun libellé AVEC batterie', () => {
+    const totals = optionTotalsTTC(KIT, 7)
+    const { container } = render(
+      <RailArgent
+        agricole showSans showAvec avecRec={false} sansRec={false} totals={totals}
+        discountPct="7" setDiscountPct={() => {}} remiseMax=""
+        pkwc={null} prixCible="" setPrixCible={() => {}} applyPrixCible={() => {}} kwp={0}
+        marge={null} kpiTotal={totals.totalSans} remiseParPanier={lignesRemiseesParPanier(KIT, 7)}
+      />,
+    )
+    expect(container.textContent).not.toMatch(/batterie/i)
+  })
 })

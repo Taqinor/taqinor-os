@@ -60,7 +60,7 @@ export default function RailArgent({
         )}
         {showAvec && (
           <div className="gen-total-item">
-            <span className="gen-total-label">Total AVEC batterie{avecRec ? ' ⭐' : ''}</span>
+            <span className="gen-total-label">{agricole ? 'Total TTC' : 'Total AVEC batterie'}{avecRec ? ' ⭐' : ''}</span>
             <span className="gen-total-value orange">{formatMoney(totals.totalAvecBrut)}</span>
           </div>
         )}
@@ -95,7 +95,7 @@ export default function RailArgent({
         )}
         {parseFloat(discountPct) > 0 && showAvec && (
           <div className="gen-total-item gen-tier-3">
-            <span className="gen-total-label green">Total final AVEC batterie</span>
+            <span className="gen-total-label green">{agricole ? 'Total final TTC' : 'Total final AVEC batterie'}</span>
             <span className="gen-total-value green">{formatMoney(totals.totalAvec)}</span>
           </div>
         )}
@@ -109,7 +109,7 @@ export default function RailArgent({
         )}
         {showAvec && arrondiAvec !== 0 && (
           <div className="gen-total-item gen-tier-2" data-testid="arrondi-commercial-avec">
-            <span className="gen-total-label">Arrondi commercial{showSans ? ' AVEC batterie' : ''}</span>
+            <span className="gen-total-label">Arrondi commercial{showSans && !agricole ? ' AVEC batterie' : ''}</span>
             <span className="gen-total-value">{formatMoney(arrondiAvec)}</span>
           </div>
         )}

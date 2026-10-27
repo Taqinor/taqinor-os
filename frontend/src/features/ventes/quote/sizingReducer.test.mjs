@@ -357,6 +357,20 @@ test('REOUVERTURE : mode et scénario du devis ferment leurs drapeaux', () => {
   assert.equal(s.touche.nbPanneaux, false)     // relire les lignes n’est pas une saisie
 })
 
+test('AGV13 — REOUVERTURE agricole : « Les deux » enregistré revient en Sans ; résidentiel inchangé', () => {
+  const agri = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE',
+    devis: { mode_installation: 'agricole', scenario: SCENARIO_LES_DEUX, panneaux: 12 },
+  })
+  assert.equal(agri.modeInstallation, 'agricole')
+  assert.equal(agri.scenario, SCENARIO_SANS)
+  const res = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE',
+    devis: { mode_installation: 'residentiel', scenario: SCENARIO_LES_DEUX, panneaux: 12 },
+  })
+  assert.equal(res.scenario, SCENARIO_LES_DEUX)
+})
+
 test('QJR526 — REOUVERTURE : le wattage du devis est posé AVANT le compte (5,5 kWc, pas 7,1)', () => {
   const s = sizingReducer(ETAT_INITIAL, {
     type: 'REOUVERTURE', devis: { panneaux: 10, panel_watt: 550 },

@@ -315,7 +315,7 @@ Total TTC
 Réinitialiser
 Annuler
 Créer le devis
-Total sans batterie · TTC
+Total TTC
 0 MAD
 Système
 9,94 kWc · 14 panneaux

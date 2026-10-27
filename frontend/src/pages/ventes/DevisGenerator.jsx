@@ -2242,7 +2242,7 @@ export default function DevisGenerator({
           <Stat
             tone="impact"
             data-testid="gen-rail-total"
-            label={`Total ${scenario === 'Avec batterie' ? 'avec batterie' : 'sans batterie'} · TTC`}
+            label={modeInstallation === 'agricole' ? 'Total TTC' : `Total ${scenario === 'Avec batterie' ? 'avec batterie' : 'sans batterie'} · TTC`}
             value={formatMoney(kpiTotal)}
           />
         )}

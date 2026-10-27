@@ -405,7 +405,10 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
         }
       }
       if (SCENARIOS_VALIDES.includes(d.scenario)) {
-        s = { ...avecTouche(s, 'scenario'), scenario: d.scenario }
+        // AGV13 — le pompage n'a jamais de batterie : un devis agricole rouvert
+        // revient en « Sans » (le sélecteur de scénario y est masqué).
+        const sc = s.modeInstallation === 'agricole' ? SCENARIO_SANS : d.scenario
+        s = { ...avecTouche(s, 'scenario'), scenario: sc }
       }
       return s
     }
