@@ -175,6 +175,79 @@ class TestCourbeDeclaree(unittest.TestCase):
             self.assertNotIn(interdit, texte)
 
 
+class TestTalonParTypeDeCommerce(unittest.TestCase):
+    """Décision fondateur 26/10/2026 (lead 1637, boulangerie classée « autre »,
+    7/7, 07–21 h, 6 000 kWh/mois) : horaires déclarés, talon NON déclaré ⇒ la
+    courbe SUIT les horaires, talon par type de commerce (défaut fondateur 20 %)."""
+
+    def _courbe(self, plages, categorie='autre', talon=None, segment='commercial'):
+        rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [plages]},
+                  'categorie_commerciale': categorie}
+        if talon is not None:
+            rythme['talon'] = talon
+        return courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE, archetype=categorie,
+                               feries=[], production_jours_types=_production_cloche(),
+                               segment=segment)
+
+    def test_autre_suit_les_horaires_talon_defaut_fondateur(self):
+        jt, prov, alertes = self._courbe([7, 21])
+        self.assertEqual(prov['talon']['statut'], 'defaut_fondateur')
+        self.assertIn('défaut fondateur (20 %)', prov['talon']['source'])
+        self.assertIsNone(prov['bornes'])
+        mars = _par(jt, 3, 'ouvre')['charge_kwh']
+        self.assertAlmostEqual(mars[3] / mars[12], 0.20, places=9)   # nuit = 20 % du jour
+        self.assertNotIn('talon_non_declare', {a['code'] for a in alertes})
+        for mois in range(1, 13):
+            self.assertAlmostEqual(_energie_mois(jt, mois), 6000, delta=1e-6)
+
+    def test_regression_lead_1637_les_horaires_changent_la_courbe(self):
+        jt_long, _p, _a = self._courbe([7, 21])
+        jt_court, _p, _a = self._courbe([9, 18])
+        self.assertNotEqual(_par(jt_long, 3, 'ouvre')['charge_kwh'],
+                            _par(jt_court, 3, 'ouvre')['charge_kwh'])
+        # À la taille de référence (production annuelle = consommation), la
+        # journée plus courte et centrée sur le soleil autoconsomme PLUS.
+        production = _production_cloche()
+        prod_kwc = sum(j['nb_jours'] * sum(production[j['mois'] - 1]['production_kwh_kwc'])
+                       for j in jt_long)
+        kwc_ref = 6000 * 12 / prod_kwc
+        self.assertGreater(charge._autoconso(jt_court, production, kwc_ref),
+                           charge._autoconso(jt_long, production, kwc_ref))
+
+    def test_talon_declare_passe_devant_le_defaut(self):
+        _jt, prov, _al = self._courbe([7, 21], talon={'part_pct': 50})
+        self.assertEqual(prov['talon'], {'valeur': {'part_pct': 50.0}, 'statut': 'declare'})
+
+    def test_archetype_le_plus_proche_donne_le_talon(self):
+        _jt, prov, _al = self._courbe([7, 21], categorie='supermarche')
+        self.assertEqual(prov['talon']['statut'], 'estimation')
+        self.assertIn('BDEW G3', prov['talon']['source'])
+        self.assertIn('le plus proche', prov['talon']['source'])
+
+    def test_reponse_hors_horaires_meme_definition_que_le_defaut(self):
+        # Fondateur 27/10/2026 — « Un peu » = 20 % du niveau de jour : la MÊME
+        # courbe que le défaut fondateur de 20 %, seul le statut change.
+        jt_defaut, _p, _a = self._courbe([7, 21])
+        jt_declare, prov, _a = self._courbe([7, 21], talon={'niveau_jour_pct': 20})
+        self.assertEqual(prov['talon'], {'valeur': {'niveau_jour_pct': 20.0}, 'statut': 'declare'})
+        for a, b in zip(jt_defaut, jt_declare):
+            for x, y in zip(a['charge_kwh'], b['charge_kwh']):
+                self.assertAlmostEqual(x, y, places=9)
+        jt, _p, _a = self._courbe([7, 21], talon={'niveau_jour_pct': 50})
+        mars = _par(jt, 3, 'ouvre')['charge_kwh']
+        self.assertAlmostEqual(mars[3] / mars[12], 0.50, places=9)
+
+    def test_commerce_sans_categorie_defaut_fondateur_industriel_borne(self):
+        # Fondateur 27/10/2026 — commercial sans catégorie : 20 % ; l'industriel
+        # sans archétype garde la borne conservatrice.
+        _jt, prov, _al = self._courbe([7, 21], categorie=None)
+        self.assertEqual(prov['talon']['statut'], 'defaut_fondateur')
+        _jt, prov, _al = self._courbe([7, 21], categorie='industriel', segment='industriel')
+        self.assertEqual(prov['talon']['statut'], 'borne_conservatrice')
+        _jt, prov, _al = self._courbe([7, 21], categorie=None, segment=None)
+        self.assertEqual(prov['talon']['statut'], 'borne_conservatrice')
+
+
 class TestProfilChargePrerequis(unittest.TestCase):
     """ADEV76 — LA règle des prérequis : un cas par branche de ``courbe_declaree``."""
 
