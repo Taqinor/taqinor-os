@@ -21,6 +21,8 @@ Aucun accès base, aucun import de modèle ; ne change aucun statut (règle #4).
 """
 from __future__ import annotations
 
+import math
+
 ROLE_OM = 'om_ci'
 
 
@@ -62,7 +64,8 @@ SOURCE_DEFAUT_BATTERIE = (
     "défaut fondateur (à revoir) : garantie usuelle de 10 ans, aucune "
     "garantie ni nombre de cycles saisis sur la fiche batterie")
 CYCLES_PAR_AN = 365  # une décharge par jour (pricing.BATTERY_CYCLES_PER_DAY)
-MOTS_ACCESSOIRE = ('câble', 'cable', 'connecteur', 'support', 'rack', 'coffret')
+MOTS_ACCESSOIRE = ('câble', 'cable', 'connecteur', 'fusible', 'support',
+                   'rack', 'coffret')
 
 
 def annee_remplacement_batterie(garantie_mois=None, cycles_publies=None):
@@ -92,11 +95,16 @@ def annee_remplacement_batterie(garantie_mois=None, cycles_publies=None):
 def _est_batterie(ligne):
     """La batterie elle-même : le mot du découpage des options du document
     (``solar_classification.is_battery``), jamais une ligne onduleur (un
-    hybride « compatible batterie ») ni un câble ou un accessoire."""
+    hybride « compatible batterie ») ni un câble ou un accessoire. Une ligne
+    qui COMMENCE par « Batterie » (désignation de l'option avec,
+    ``etude_ci_batterie.designation_option_avec``) l'est toujours, même si
+    elle dit « rack » ou « support inclus » (CEC11)."""
     from apps.ventes.solar_classification import is_battery
-    nom = str(ligne.get('designation') or '').lower()
-    return (is_battery(nom) and not ligne.get('onduleur')
-            and not any(m in nom for m in MOTS_ACCESSOIRE))
+    nom = str(ligne.get('designation') or '').strip().lower()
+    if ligne.get('onduleur') or not is_battery(nom):
+        return False
+    return nom.startswith('batterie') or not any(
+        m in nom for m in MOTS_ACCESSOIRE)
 
 
 def retour_au_dixieme(bloc):
@@ -174,3 +182,85 @@ def alertes_om(lignes):
             for li in (lignes or []) if isinstance(li, dict)
             and li.get('role_ci') == ROLE_OM and not li.get('optionnelle')
             and _montant(li.get('quantite')) not in (None, 1.0)]
+
+
+# ── CEC14 — saisies de l'économie : nombres finis, champs du contrat, et une
+#    saisie FACULTATIVE invalide qui ne fait plus disparaître l'économie. ────
+def fini(valeur):
+    """``float`` fini, ou None (texte illisible, NaN, ±infini — le JSON
+    ``1e400`` se lit ``inf``)."""
+    try:
+        x = float(valeur)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return x if math.isfinite(x) else None
+
+
+#: Au-delà, une saisie d'offre est refusée : aucun prêt, taux ni tarif réel
+#: n'en approche, et un exposant énorme déborde le calcul sur 25 ans.
+PLAFOND_SAISIE = 1e12
+
+
+#: Les grandeurs de ``economie.py`` → le nom du champ de l'écran (contrat
+#: ``economie_ci.json``), pour qu'un refus s'affiche sous le bon champ.
+CHAMPS_CONTRAT = {'principal_mad': 'montant_finance_mad',
+                  'amortissement_duree_ans': 'duree_ans',
+                  'taux_imposition_pct': 'taux_is_pct'}
+
+
+def champ_contrat(champ):
+    return CHAMPS_CONTRAT.get(champ, champ)
+
+
+#: Saisies facultatives : invalides, elles sont ÉCARTÉES de la lecture d'un
+#: devis (alerte interne) au lieu d'effacer toute l'économie du document.
+SAISIES_FACULTATIVES = ('offre_financement', 'offre_cse_concurrente',
+                        'fiscalite_client', 'taux_actualisation_client')
+
+
+def sans_saisie_invalide(assembleur, apercu, *, saisies=None, **kw):
+    """La lecture d'un DEVIS : ``assembleur(apercu, saisies=…, **kw)`` ; une
+    saisie facultative refusée est retirée puis dite au vendeur
+    (``alertes_internes``, jamais servie au client). Les autres refus
+    remontent tels quels (l'aperçu de l'écran garde son 400 nommé)."""
+    from apps.ventes.economie_ci import SaisieEconomieCiInvalide
+    if (kw.get('reglages') or {}).get('regles_origine'):
+        # Devis envoyé sous le niveau 3 : le comportement d'hier (refus ; une
+        # durée d'amortissement non entière était tronquée, pas refusée).
+        return assembleur(apercu, saisies=_duree_tronquee(saisies), **kw)
+    saisies = dict(saisies) if isinstance(saisies, dict) else {}
+    ecartees = []
+    while True:
+        try:
+            bloc = assembleur(apercu, saisies=saisies, **kw)
+            break
+        except SaisieEconomieCiInvalide as refus:
+            cle = str(refus.champ or '').split('.')[0]
+            if cle not in SAISIES_FACULTATIVES or cle not in saisies:
+                raise
+            saisies.pop(cle)
+            ecartees.append(f"{refus} — saisie « {cle} » écartée du calcul, "
+                            f"à corriger dans le générateur.")
+    for message in ecartees:
+        bloc.setdefault('alertes_internes', []).append(
+            {'code': 'saisie_ecartee', 'message': message, 'interne': True})
+    return bloc
+
+
+#: Le motif d'un client bi-horaire sur un devis envoyé avant le 27/10/2026
+#: (règles d'origine) : texte d'avant CEC5, inchangé.
+MOTIF_BI_HORAIRE_ORIGINE = (
+    "option bi-horaire : plages heures pleines / normales non saisies — "
+    "économies non chiffrées (aucune plage devinée)")
+
+
+def _duree_tronquee(saisies):
+    """CEC17 — règles d'origine : ``fiscalite_client.duree_ans`` 7,5 lu 7
+    (``int()`` d'avant CEC14), jamais refusé."""
+    fiscal = (saisies or {}).get('fiscalite_client') if isinstance(
+        saisies, dict) else None
+    duree = fini(str(fiscal.get('duree_ans')).replace(',', '.')) if isinstance(
+        fiscal, dict) else None  # « 7,5 » se lit comme ``_nombre_fiscal``
+    if duree is None or duree == int(duree):
+        return saisies
+    return dict(saisies, fiscalite_client=dict(fiscal, duree_ans=int(duree)))

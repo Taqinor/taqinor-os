@@ -20,9 +20,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { resolveInstallMode } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
-const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+const PROPOSITION = lirePageProposition();
 
 describe('audit C2 — le mode qui décide de la rétractation', () => {
   it('un devis résidentiel SANS mode_installation reste un consommateur', () => {

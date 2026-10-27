@@ -23,11 +23,9 @@ import {
   variantesServables,
   type ProposalResponse,
 } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const PAGE = readFileSync(
-  fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-  'utf-8',
-);
+const PAGE = lirePageProposition();
 
 /** Surcharge de scénario : le `quote` peut n'être fourni que partiellement. */
 type ProposalOverride = Partial<Omit<ProposalResponse, 'quote'>> & {

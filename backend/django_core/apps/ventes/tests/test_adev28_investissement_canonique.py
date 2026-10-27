@@ -128,3 +128,35 @@ class InvestissementCanoniqueTests(TestCase):
             self.assertAlmostEqual(
                 bloc['flux_ttc']['flux'][0]['flux_mad'],
                 -float(option_totaux(devis)['ttc']), places=2, msg=n)
+
+    def test_cec_devis_envoye_niveau_2_garde_l_om_dans_l_an_0(self):
+        """CEC (27/10) — les corrections CEC1/4/5/8 se branchent sur le niveau
+        3 (``regles_au_moins``), jamais sur ``calcul_corrige`` : un devis
+        envoyé au niveau 2 garde son O&M dans l'an 0 ; un brouillon de niveau
+        3 la sort (déduite chaque année). Mutant : brancher sur
+        ``calcul_corrige`` ⇒ le niveau 2 change ⇒ rouge."""
+        from apps.ventes.tests.test_ciq210_branchement import _apercu
+        from apps.ventes.utils.options import option_totaux
+        devis = self._devis(400, '0', '20', '0', '1000')
+        om = make_produit(self.company, 'Contrat O&M', 'A28-OM', '500')
+        om.role_ci = 'om_ci'
+        om.save(update_fields=['role_ci'])
+        LigneDevis.objects.create(
+            devis=devis, produit=om, designation='Contrat O&M',
+            quantite=Decimal('1'), prix_unitaire=Decimal('500'),
+            remise=Decimal('0'), taux_tva=Decimal('20'))
+        apercu = _apercu('mt')
+        apercu['entrees_resolues']['tva_recuperable'] = {
+            'valeur': 'non', 'provenance': None}
+        apercu['composition']['prix_a_renseigner'] = []
+        apercu['composition']['a_chiffrer_visite'] = []
+        devis.etude_params = {'etude_ci': apercu,
+                              'saisies_economie_ci': {'tva_recuperable': 'non'}}
+        total = float(option_totaux(devis)['ttc'])
+        an0 = {}
+        for niveau in (2, 3):
+            devis.regles_calcul = niveau
+            bloc = economie_ci_pour_devis(devis, self.company)
+            an0[niveau] = bloc['flux_ttc']['flux'][0]['flux_mad']
+        self.assertAlmostEqual(an0[2], -total, places=2)
+        self.assertAlmostEqual(an0[3], -(total - 600.0), places=2)

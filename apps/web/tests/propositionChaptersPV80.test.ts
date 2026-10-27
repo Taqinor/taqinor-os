@@ -8,9 +8,10 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
-const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+const PROPOSITION = lirePageProposition();
 
 /**
  * Source PRIVÉE DE SES COMMENTAIRES. La garde anti-crédit ci-dessous doit
