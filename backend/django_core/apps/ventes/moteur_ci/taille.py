@@ -439,7 +439,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
          'couverture_sans': e['bilan']['taux_couverture'], 'eval': e}
         for e, p in zip(evals, paliers) if p['admis'] and e['economie']
     ]
-    depart, meilleur_payback, _egal = point_depart_meilleur_payback(eligibles)
+    depart, _meilleur, _egal = point_depart_meilleur_payback(eligibles)
     if depart is None:
         derniere_borne = paliers[-1]['borne'] if paliers else None
         raison = derniere_borne if derniere_borne in ('toit', 'onduleurs', 'puissance_souscrite') \
@@ -455,7 +455,11 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         if p['borne'] in ('toit', 'onduleurs', 'puissance_souscrite'):
             break
         suivants.append(e)
-    if depart_dans_horizon(meilleur_payback):
+    # CLD11 — la garde porte sur le payback du DÉPART (docstring de
+    # ``depart_dans_horizon``, comme les appelants résidentiels), jamais sur
+    # le meilleur payback du tableau : le départage « à égalité » peut retenir
+    # un départ légèrement au-dessus du meilleur.
+    if depart_dans_horizon(depart['payback_sans_annees']):
         retenu = grimper_avec_regard(
             depart['eval'], suivants, HORIZON_MARGINAL_PV,
             lambda e: e['cout'], lambda e: e['economie'] or 0.0)
@@ -463,8 +467,8 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         retenu = depart['eval']
         alertes.append(_alerte(
             'depart_hors_horizon', 'taille',
-            'Le meilleur payback (%.1f ans) dépasse l’horizon de %d ans : taille au meilleur '
-            'payback, sans montée.' % (meilleur_payback, HORIZON_MARGINAL_PV)))
+            'Le payback du point de départ (%.1f ans) dépasse l’horizon de %d ans : taille '
+            'au départ, sans montée.' % (depart['payback_sans_annees'], HORIZON_MARGINAL_PV)))
 
     index = evals.index(retenu)
     for p in paliers[index_depart:index + 1]:

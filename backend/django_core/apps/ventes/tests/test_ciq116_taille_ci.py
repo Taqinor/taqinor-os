@@ -438,6 +438,32 @@ class BalayageBorneTests(unittest.TestCase):
         self.assertEqual(r['taille']['retenue_kwc'], 5)
         self.assertEqual(len(vus), 1 + 4)
 
+    def test_garde_horizon_sur_le_payback_du_depart(self):
+        # CLD11 — meilleur payback 9,9 ans (5 kWc) mais départ départagé à
+        # 10,1 ans (10 kWc, meilleure couverture) : le départ ne tient pas
+        # dans l'horizon ⇒ aucune montée (15 kWc à 10 ans marginal refusé),
+        # alerte citant 10,1.
+        from unittest import mock
+        from apps.ventes.moteur_ci import taille as T
+        table = {5: (99.0, 10.0, 0.3), 10: (202.0, 20.0, 0.5), 15: (252.0, 25.0, 0.4)}
+
+        def evaluer(kwc, **_kw):
+            cout, eco, couv = table.get(kwc, (252.0 + 1000.0 * (kwc - 15), 25.0 + kwc - 15, 0.4))
+            return {'sans_panneau': False, 'kwc': kwc, 'composition': {'lignes': []},
+                    'onduleurs': {'combinaison': [{'produit': 1, 'kw_ac': 10.0, 'quantite': 1}]},
+                    'bilan': {'taux_couverture': couv, 'horaire': []}, 'alertes_bilan': [],
+                    'economie': eco, 'cout': cout, 'puissance_ac': 10.0,
+                    'prix_manquants': [], 'postes_fixes_sans_prix': []}
+        with mock.patch.object(T, '_evaluer', evaluer):
+            r = dimensionner_ci(
+                charge_jours_types=[{'nb_jours': 365, 'charge_kwh': [1.0] * 24}],
+                production_jours_types=[{'nb_jours': 365}], tension='bt',
+                combiner=None, composer=None, valoriser=None)
+        self.assertEqual(r['taille']['retenue_kwc'], 10)
+        alerte = next(a for a in r['alertes'] if a['code'] == 'depart_hors_horizon')
+        self.assertIn('10.1', alerte['message'])
+        self.assertNotIn('9.9', alerte['message'])
+
 
 def _hybrides_bt():
     """Deye SG05LP3 basse tension triphasés aux prix SEEDÉS (port batterie de
