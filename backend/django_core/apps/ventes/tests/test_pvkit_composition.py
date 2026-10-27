@@ -595,12 +595,14 @@ class LHybrideRetenuPorteUneBatterieDuStock(_Base):
         self.assertIn('batterie', list(lignes.roles))
 
     def test_sans_batterie_en_stock_le_vivier_reste_entier_et_le_dit(self):
-        from apps.ventes.domain.composition import (
-            avertissement_batterie_rupture_stock)
         Produit.objects.filter(
             company=self.company, sku__startswith='BAT').update(
                 quantite_stock=0)
         lignes = self._composer()
+        # Aucun hybride servable : le vivier n'est pas réduit (règle des
+        # 80 % d'hier), et l'absence de batterie est DITE.
+        self.assertIn(self.ond_hv.nom, [li.designation for li in lignes])
         self.assertNotIn('batterie', list(lignes.roles))
-        self.assertIn(avertissement_batterie_rupture_stock(),
-                      list(lignes.avertissements_composition))
+        self.assertTrue(any(
+            'SANS batterie' in message
+            for message in lignes.avertissements_composition))
