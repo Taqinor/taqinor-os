@@ -211,14 +211,16 @@ def _alerte(code, message, niveau='alerte'):
 def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, composer,
                   borne_toit, **noyau):
     from apps.ventes.etude_horaire import simuler_batterie_jour
-    from apps.ventes.moteur_ci.batterie import dimensionner_option_avec
+    from apps.ventes.moteur_ci.batterie import (
+        MAX_HYBRIDES_PARALLELE, dimensionner_option_avec,
+    )
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     return dimensionner_option_avec(
         simuler=simuler_batterie_jour,
         kwc_depart=evaluation['kwc'], pmax_wc=(catalogue.get('module') or {}).get('pmax_wc'),
         combiner=lambda kwc: combiner_onduleurs(
             kwc, bat['hybrides'], phase=phase, module=catalogue.get('module_spec'),
-            ac_max_kw=ps_kva),
+            ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE),
         composer=lambda kwc, onduleurs: composer(kwc, onduleurs, bat.get('elements')),
         batteries=batteries, hybrides=bat['hybrides'], kwc_max=(borne_toit or {}).get('kwc'),
         ps_kva=ps_kva, **noyau)
