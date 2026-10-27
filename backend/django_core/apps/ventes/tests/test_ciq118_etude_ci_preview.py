@@ -197,9 +197,13 @@ class ContratTests(_Base):
 
     # ── CORC1 — l'aperçu dit si le devis automatique passera ────────────────
 
-    def test_devis_auto_possible_sur_etude_complete(self):
+    def test_devis_auto_dit_le_refus_du_bouton_prix_a_renseigner(self):
+        # Le catalogue de test ne règle que 2 prestations sur 8 : le bouton
+        # refuserait (« Prix à renseigner ») — l'aperçu le dit AVANT le clic.
         data = self.post(self.corps(phases='tri'))
-        self.assertEqual(data['devis_auto'], {'possible': True, 'message': None, 'champ': None})
+        self.assertFalse(data['devis_auto']['possible'])
+        self.assertEqual(data['devis_auto']['champ'], 'composition')
+        self.assertTrue(data['devis_auto']['message'].startswith('Prix à renseigner'))
         self.assertIsNone(data['option_avec'])  # aucun hybride au catalogue de test
 
     def test_devis_auto_refuse_nomme_le_champ_du_lead(self):
@@ -239,7 +243,7 @@ class ContratTests(_Base):
 
     def test_longueur_dc_declaree_fiches_completes_cable_dc_quantifie(self):
         # ADEV87 — module et onduleurs à fiches complètes : les chaînes se
-        # calculent, le câble DC = Σ chaînes × longueur DÉCLARÉE, au prix
+        # calculent, le câble DC = 2 × Σ chaînes × distance DÉCLARÉE (D-CMP-2), au prix
         # catalogue. Le câble DC du catalogue de base (_Base) est retiré : seul
         # celui-ci doit être retenu.
         Produit.objects.filter(company=self.co, role_ci='cable_dc').delete()
@@ -255,7 +259,7 @@ class ContratTests(_Base):
         self.assertEqual(ligne['produit'], cable.id)
         self.assertGreater(ligne['quantite'], 0)
         self.assertEqual(ligne['quantite'],
-                         sum(c['nb_chaines'] for c in chaines) * 30)
+                         2 * sum(c['nb_chaines'] for c in chaines) * 30)
         self.assertTrue(ligne['prix_connu'])
 
     def test_pvgis_indisponible_etude_null_et_avertissement(self):
@@ -424,13 +428,11 @@ class BornePoseParDefautAdev90(_Base):
         corps['toit'] = dict({'type_pose': None, 'surface_utile_m2': 200}, **toit)
         return self.post(corps)
 
-    def test_surface_sans_pose_bornee_en_pose_chiffree(self):
-        # CORC5 — couverture inconnue : la borne suit la pose que la
-        # composition CHIFFRE (toit plat lesté, fondateur 26/10/2026).
+    def test_surface_sans_pose_bornee_en_surimposition(self):
         rep = self._bornes()
         toit = rep['taille']['bornes']['toit']
         self.assertIsNotNone(toit['kwc'])
-        self.assertIn('pose estimée « toit_plat_leste »', toit['source'])
+        self.assertIn('pose estimée « toiture_inclinee »', toit['source'])
         self.assertNotIn('contenance_toit_inconnue', [a['code'] for a in rep['alertes']])
 
     def test_pose_declaree_inchangee(self):

@@ -147,7 +147,11 @@ DevisReviseVisiteResponse = inline_serializer('DevisReviseVisiteResponse', {
     request=inline_serializer('DevisReviseVisiteRequest', {
         'devis': serializers.IntegerField()}),
     responses={200: DevisReviseVisiteResponse,
-               404: OpenApiTypes.OBJECT, 409: OpenApiTypes.OBJECT},
+               404: inline_serializer('DevisReviseVisiteIntrouvable', {
+                   'detail': serializers.CharField()}),
+               409: inline_serializer('DevisReviseVisiteRefus', {
+                   'detail': serializers.CharField(),
+                   'field': serializers.CharField()})},
 )
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])

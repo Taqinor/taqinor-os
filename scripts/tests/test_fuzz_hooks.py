@@ -335,6 +335,19 @@ class FichiersPdfTests(unittest.TestCase):
         self.assertTrue(corps['fichier'].startswith(b'%PDF-'))
         self.assertEqual(corps['client_id'], 1)
 
+    def test_fiche_technique_recoit_un_pdf(self):
+        # api-fuzz-full 27/10 — le PDF d'une fiche technique (création et
+        # édition) : le serveur lit les octets magiques.
+        for methode, chemin in (
+                ('POST', '/api/django/stock/fiches-techniques/'),
+                ('PUT', '/api/django/stock/fiches-techniques/{id}/'),
+                ('PATCH', '/api/django/stock/fiches-techniques/{id}/')):
+            with self.subTest(methode=methode):
+                corps = self._corps(methode, chemin,
+                                    {'pdf': b'd\xef\xbf\xbd', 'produit': 3})
+                self.assertTrue(corps['pdf'].startswith(b'%PDF-'))
+                self.assertEqual(corps['produit'], 3)
+
     def test_affiche_d_un_devis_recoit_un_png(self):
         # CI #997 (w4, ventes) — roof-image du devis lit les octets magiques.
         corps = self._corps('POST', '/api/django/ventes/devis/{id}/roof-image/',

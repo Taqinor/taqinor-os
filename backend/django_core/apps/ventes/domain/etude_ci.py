@@ -33,8 +33,6 @@ import logging
 import math
 from decimal import Decimal
 
-from apps.ventes.moteur_ci.composition import TYPE_POSE_DEFAUT
-
 from .etude_ci_batterie import CLE as CLE_OPTION_AVEC, option_avec_de_l_etude
 
 logger = logging.getLogger(__name__)
@@ -68,12 +66,11 @@ POSE_DE_LA_SURFACE_LEAD = {'ombriere': 'ombriere', 'terrain': 'sol'}
 #: ombrière, sol) les tables ont leur propre inclinaison : jamais celle du toit.
 POSES_SUIVANT_LE_TOIT = ('bac_acier', 'toiture_inclinee')
 #: ADEV90 (D-ACI-13=a) — mode de pose ESTIMÉ quand aucun n'est déclaré :
-#: terrasse → lestée. La borne s'applique, dite « pose estimée, à confirmer au
-#: calepinage ». CORC5 (27/10/2026, décision prise pour le fondateur, à
-#: revoir) : couverture inconnue → la MÊME pose que celle que la composition
-#: CHIFFRE (``composition.TYPE_POSE_DEFAUT`` ; fondateur 26/10 : toit
-#: inconnu = toit plat lesté) — production, borne et prix : la même pose.
+#: terrasse → lestée, toute autre couverture (ou couverture inconnue) →
+#: surimposition. La borne s'applique, dite « pose estimée, à confirmer au
+#: calepinage ».
 POSE_PAR_DEFAUT_COUVERTURE = {'terrasse_beton': 'toit_plat_leste'}
+POSE_PAR_DEFAUT = 'toiture_inclinee'
 
 #: (feuille, chemin dans le corps / dans ``Devis.etude_params``).
 FEUILLES = (
@@ -693,7 +690,7 @@ def _toit_declare(res):
     toit = {'type_pose': res.valeur('type_pose'), 'pente_deg': res.valeur('pente_deg'),
             'azimut_deg': res.valeur('azimut_deg')}
     pose = toit['type_pose'] or POSE_PAR_DEFAUT_COUVERTURE.get(
-        res.valeur('couverture'), TYPE_POSE_DEFAUT)
+        res.valeur('couverture'), POSE_PAR_DEFAUT)
     return toit, dict(toit, type_pose=pose)
 
 
@@ -856,7 +853,7 @@ def _borne_toit(res, devis, module, alertes):
     mode_pose = res.valeur('type_pose')
     pose_estimee = not mode_pose
     if pose_estimee:
-        mode_pose = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'), TYPE_POSE_DEFAUT)
+        mode_pose = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'), POSE_PAR_DEFAUT)
     resultat = calepinage_services.contenance_surface_declaree(
         surface, mode_pose=mode_pose, cotes_module_m=cotes,
         inclinaison_deg=pente if pente is not None else PVGIS_ANGLE_DEG,

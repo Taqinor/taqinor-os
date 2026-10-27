@@ -63,7 +63,7 @@ def _refus(refus):
 
 # api-only: AGR206 — lecture interne du bloc (contrat AGR3) ; /proposition
 # et le PDF le lisent côté serveur (selectors), aucun écran ne l'appelle encore.
-@extend_schema(responses={200: D.EconomiePompageResponse})
+@extend_schema(responses={200: D.EconomiePompageResponse, 409: D.ErreurDevisFige})  # devis stocké invalide
 @action(detail=True, methods=['get'], url_path='economie-pompage',
         permission_classes=[IsAnyRole])
 def economie_pompage(self, request, pk=None):

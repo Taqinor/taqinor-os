@@ -59,6 +59,8 @@ ROUTES_SONDEES = {
     'devis-schema-unifilaire', 'devis-declaration-raccordement',
     'etude-horaire-preview', 'etude-ci-preview', 'etude-pompage-preview',
     'economie-pompage-preview', 'economie-ci-preview',
+    # CORC2 — devis C&I révisé après visite (``devis`` du corps).
+    'etude-ci-reviser-apres-visite',
     'ventes-dashboard',
 }
 

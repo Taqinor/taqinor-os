@@ -376,6 +376,10 @@ CHEMINS_BASCULES = {
     # ligne_devis.py`` : même mode « rafraîchir » (études, kWc, marge).
     # Golden : ``test_adev19_option_client_geste.test_kwc_rafraichi``.
     'domain/cycle_vie.py': 1,
+    # CORC2 (27/10/2026) — le devis C&I révisé après la visite : ``MODE_ECRIRE``
+    # (sous la transaction du geste) puis ``MODE_RAFRAICHIR``. Golden :
+    # ``test_ciq120_devis_auto_ci.RevisionApresVisiteCorc2Tests``.
+    'domain/revision_visite_ci.py': 2,
 }
 
 
