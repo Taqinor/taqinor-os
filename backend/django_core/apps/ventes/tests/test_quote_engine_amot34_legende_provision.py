@@ -59,3 +59,32 @@ class ProvisionDeuxOptionsTests(SimpleTestCase):
                       'inverter_replace_year': 12})
         self.assertNotIn('option 1, 15 000 MAD option 2', html)
         self.assertIn('15 000 MAD', html)
+
+
+class ProvisionPayeeEtNoteTests(SimpleTestCase):
+    """RPDF12 — la provision vaut le prix PAYÉ (remise globale déduite) au
+    niveau de règles 3, le prix d'origine en dessous ; deux onduleurs
+    différents ⇒ la note d'hypothèse nomme les deux montants."""
+
+    def test_remise_globale_deduite_au_niveau_3_seulement(self):
+        from types import SimpleNamespace
+
+        from apps.ventes.quote_engine.etude_chiffrage import _cout_onduleur_paye
+        items = [{'designation': 'Onduleur hybride Deye 15kW', 'quantite': 1,
+                  'prix_unit_ttc': 36000.0}]
+        n3 = SimpleNamespace(remise_globale=5, regles_calcul=3)
+        n2 = SimpleNamespace(remise_globale=5, regles_calcul=2)
+        self.assertEqual(_cout_onduleur_paye(n3, items, None), 34200.0)
+        self.assertEqual(_cout_onduleur_paye(n2, items, None), 36000.0)
+
+    def test_note_deux_montants_quand_les_onduleurs_different(self):
+        from apps.ventes.quote_engine.pricing import (_provision_par_option,
+                                                      cashflow_assumptions)
+        cfa = _provision_par_option(
+            cashflow_assumptions(inverter_replace_cost=15000), 8000, 15000)
+        notes = ' '.join(cfa['notes'])
+        self.assertIn('(option 1)', notes)
+        self.assertIn('(option 2)', notes)
+        self.assertEqual(cfa['inverter_replace_cost_sans'], 8000)
+        egal = cashflow_assumptions(inverter_replace_cost=15000)
+        self.assertIs(_provision_par_option(egal, 15000, 15000), egal)

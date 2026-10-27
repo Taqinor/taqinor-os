@@ -1011,6 +1011,24 @@ def _fr_pct(v) -> str:
     return s.replace(".", ",")
 
 
+def _provision_par_option(cfa, cout_sans, cout_avec) -> dict:
+    """RPDF8 — deux onduleurs de prix différents : un creux par courbe, donc
+    les DEUX montants (clés lues par la légende du PDF) et la phrase
+    d'hypothèse qui les nomme ; sinon ``cfa`` tel quel (option unique ou
+    onduleurs identiques : rendu inchangé)."""
+    if not (cout_sans and cout_avec and cout_sans != cout_avec):
+        return cfa
+    an = cfa.get("inverter_replace_year") or INVERTER_REPLACE_YEAR
+    phrase = (f"Provision de remplacement de l'onduleur en année {an} : "
+              f"{_fr_mad(cout_sans)} MAD (option 1) et {_fr_mad(cout_avec)} MAD "
+              "(option 2) — le prix de l'onduleur de chaque option, c'est le "
+              "palier visible sur chaque courbe de rentabilité.")
+    notes = [phrase if str(n).startswith("Provision de remplacement de l'onduleur")
+             else n for n in cfa.get("notes") or []]
+    return {**cfa, "notes": notes, "inverter_replace_cost_sans": cout_sans,
+            "inverter_replace_cost_avec": cout_avec}
+
+
 def _fr_mad(v) -> str:
     """12345 -> '12 345' (espace fine insécable, format des documents).
 
@@ -1858,15 +1876,12 @@ def calculate_savings_roi(
         # (ou son absence explicite) et abattement batterie seulement s'il
         # s'applique. L'option affichée en priorité est l'option 2 quand elle
         # existe, sinon l'option 1 — même choix que la courbe 25 ans.
-        "cashflow_assumptions": cashflow_assumptions(
+        "cashflow_assumptions": _provision_par_option(cashflow_assumptions(
             inverter_replace_cost=(inverter_cost_avec if _stockage
                                    else inverter_cost_sans),
             stockage=_stockage,
             battery_roundtrip=_rt_prouve,
             battery_roundtrip_source=_rt_source,
             # QJR158 (c) — LES MÊMES valeurs que les deux cashflows ci-dessus.
-            **_cf_params) | ({"inverter_replace_cost_sans": inverter_cost_sans,  # RPDF : un creux par
-                              "inverter_replace_cost_avec": inverter_cost_avec}  # courbe, si elles diffèrent
-                             if inverter_cost_sans and inverter_cost_avec
-                             and inverter_cost_sans != inverter_cost_avec else {}),
+            **_cf_params), inverter_cost_sans, inverter_cost_avec),
     }
