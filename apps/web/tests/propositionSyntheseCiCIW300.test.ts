@@ -239,3 +239,16 @@ describe('CPRW4 — ni badge estimation ni « Ce qu\'il nous manque »', () => {
     expect(SRC_AUTOCONSO).not.toMatch(/data-fr="estimation"/);
   });
 });
+
+// CPRW5 (27/10/2026) — suffixes TTC/HT trilingues, motif de la base servi sous la carte.
+describe('CPRW5 — TTC/HT trilingues et motif de base', () => {
+  it('plus de suffixe FR en dur ; libellés FR/EN/AR ; motifBase servi affiché', () => {
+    expect(SRC_AUTOCONSO).not.toContain("' TTC'");
+    expect(SRC_AUTOCONSO).not.toContain("' HT'");
+    expect(SRC_AUTOCONSO).toContain('incl. VAT');
+    expect(SRC_AUTOCONSO).toContain('excl. VAT');
+    expect(SRC_AUTOCONSO).toContain('شامل الضريبة');
+    expect(SRC_AUTOCONSO).toContain('دون احتساب الضريبة');
+    expect(SRC_AUTOCONSO).toContain('ciArgent.motifBase');
+  });
+});
