@@ -420,6 +420,8 @@
     delie:booleen, nb_tickets:nombre, probleme:inconnu, ticket:inconnu
 - frontend/src/api/savApi.js :: genererVisitesDues -> /api/django/sav/contrats-maintenance/generer-dus
     ok:booleen, tickets_generes:inconnu
+- frontend/src/api/savApi.js :: getEquipementDisponibilite -> /api/django/sav/equipements/<>/disponibilite
+    disponibilite_pct:inconnu, duree_downtime_heures:nombre, duree_periode_heures:nombre
 - frontend/src/api/savApi.js :: getEquipementPartageQr -> /api/django/sav/equipements/<>/partage-qr
     qr:inconnu, url:inconnu
 - frontend/src/api/savApi.js :: getPiecesCompatibles -> /api/django/sav/tickets/<>/pieces-compatibles

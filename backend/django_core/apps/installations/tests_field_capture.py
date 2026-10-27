@@ -168,6 +168,47 @@ class TestSerials(_Base):
         self.assertEqual(
             field_capture.push_serials_to_parc(self.interv, self.user), 0)
 
+    def test_releve_inconnu_404_absent_400(self):
+        """api-fuzz-full 27/10 (ENF11) : un id de relevé ENTIER qui ne désigne
+        rien → 404 (il faisait 400) ; `serial` absent → 400 (corps invalide)."""
+        for action in ('modifier-serial', 'supprimer-serial'):
+            with self.subTest(action=action):
+                r = self.api.post(f'{self.url}/{action}/', {'serial': 0},
+                                  format='json')
+                self.assertEqual(r.status_code, 404, r.data)
+                r = self.api.post(f'{self.url}/{action}/', {}, format='json')
+                self.assertEqual(r.status_code, 400, r.data)
+
+    def test_ajouter_serial_textes_types_400(self):
+        """api-fuzz-full 27/10 (ENF11) : un champ texte reçu en PARTIE FICHIER
+        multipart (ou en nombre JSON) → 400 nommant le champ ; `.strip()`
+        levait AttributeError (500)."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        r = self.api.post(f'{self.url}/ajouter-serial/', {
+            'produit': self.onduleur.id,
+            'client_op_id': SimpleUploadedFile('client_op_id', b'[]')},
+            format='multipart')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('client_op_id', r.data)
+        for champ in ('numero_serie', 'designation', 'slot', 'capture_source'):
+            with self.subTest(champ=champ):
+                r = self.api.post(f'{self.url}/ajouter-serial/', {
+                    'produit': self.onduleur.id, champ: 5}, format='json')
+                self.assertEqual(r.status_code, 400, r.data)
+                self.assertIn(champ, r.data)
+        self.assertFalse(ComponentSerial.objects.filter(
+            intervention=self.interv).exists())
+
+    def test_ajouter_serial_plaque_illisible_409(self):
+        """api-fuzz-full 27/10 (ENF11) : le format de la photo de plaque est lu
+        dans ses OCTETS (hors schéma, ``binary``) → 409, plus 400."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        with mock.patch('apps.records.storage.get_minio_client'):
+            r = self.api.post(f'{self.url}/ajouter-serial/', {
+                'produit': self.onduleur.id,
+                'file': SimpleUploadedFile('file', b'')}, format='multipart')
+        self.assertEqual(r.status_code, 409, r.data)
+
 
 # ── F10 — annotation de photo ────────────────────────────────────────────────
 class TestPhotoAnnotation(_Base):
@@ -185,6 +226,25 @@ class TestPhotoAnnotation(_Base):
         self.assertTrue(r.data['probleme'])
         self.assertEqual(r.data['caption'], 'Fissure')
         self.assertEqual(len(r.data['drawing']), 1)
+
+    def test_photo_format_illisible_409(self):
+        """api-fuzz-full 27/10 (ENF11) : un fichier vide (format lu dans les
+        octets, règle hors schéma ``binary``) → 409, plus 400."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        with mock.patch('apps.records.storage.get_minio_client'):
+            r = self.api.post(f'{self.url}/ajouter-photo/',
+                              {'file': SimpleUploadedFile('file', b'')},
+                              format='multipart')
+        self.assertEqual(r.status_code, 409, r.data)
+
+    def test_supprimer_photo_inconnue_404_absente_400(self):
+        # api-fuzz-full 27/10 (ENF11) : id entier absent = 404 (14e passe,
+        # `oa.statut_inconnu`) ; `photo` absente = corps invalide, 400.
+        url = f'{self.url}/supprimer-photo/'
+        r = self.api.post(url, {'photo': 0}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        r = self.api.post(url, {}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
 
 
 # ── F11/F12 — réconciliation matériel consommé ───────────────────────────────
@@ -256,6 +316,42 @@ class TestConsommation(_Base):
                                   mauvais, format='json')
                 self.assertEqual(r.status_code, 400, r.content)
                 self.assertIn('designation', r.data)
+
+    def test_variance_servie_et_publiee_en_nombre(self):
+        """api-fuzz-full 27/10 (ENF11) : `variance` (Decimal) est servie en
+        NOMBRE JSON — le schéma l'annonçait chaîne (« Response violates
+        schema » sur `GET consommation`)."""
+        import json
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        r = self.api.get(f'{self.url}/consommation/')
+        self.assertEqual(r.status_code, 200, r.data)
+        lignes = json.loads(r.content)['lignes']
+        self.assertTrue(lignes)
+        for ligne in lignes:
+            self.assertIsInstance(ligne['variance'], (int, float))
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        self.assertEqual(schema['components']['schemas']['ConsommationLigne'][
+            'properties']['variance']['type'], 'number')
+
+    def test_supprimer_ligne_inconnue_404_nomenclature_409(self):
+        """api-fuzz-full 27/10 (ENF11) : ligne inconnue (id entier) → 404 ;
+        ligne de la nomenclature → refus d'ÉTAT 409 ; `ligne` absente → 400
+        (les trois faisaient 400)."""
+        cons = field_capture.ensure_consommation(self.interv)
+        prevue = cons.lignes.get(designation='Panneau 550W')
+        url = f'{self.url}/supprimer-ligne-consommation/'
+        r = self.api.post(url, {'ligne': 0}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
+        r = self.api.post(url, {'ligne': prevue.id}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertTrue(cons.lignes.filter(pk=prevue.pk).exists())
+        r = self.api.post(url, {}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
 
     def test_fractional_consumption_not_lost(self):
         # ERR41 — une consommation fractionnaire (0,5) n'est jamais tronquée à 0
@@ -406,10 +502,12 @@ class TestVoiceMemo(_Base):
 
     def test_audio_format_rejected_for_image_endpoint(self):
         # Un fichier image n'est pas un audio valide → refusé en mémo.
+        # api-fuzz-full 27/10 (ENF11) : format lu dans les octets, règle hors
+        # schéma (``binary``) → 409 (il faisait 400).
         with mock.patch('apps.records.storage.get_minio_client'):
             r = self.api.post(f'{self.url}/ajouter-memo/',
                               {'file': png_file()}, format='multipart')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 409)
 
 
 # ── F15 — temps d'équipe ─────────────────────────────────────────────────────

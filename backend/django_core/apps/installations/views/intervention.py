@@ -779,7 +779,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── F6 — Trajet & check-in GPS sur site ─────────────────────────────────
     @oa.extend_schema(
-        request=oa.body('PositionRequete', lat=oa.f(null=True), lng=oa.f(null=True)),
+        # api-fuzz-full 27/10 (ENF11) : bornes lat/lng publiées ET appliquées.
+        request=oa.PositionRequete,
         responses=InterventionSerializer,
     )
     @action(detail=True, methods=['post'], url_path='depart-depot',
@@ -793,10 +794,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # Fondateur 27/10/2026 — accord géolocalisation requis (terrain seul).
         if refus := field_services.refus_sans_accord_geoloc(request.user):
             return Response({'detail': refus}, status=status.HTTP_403_FORBIDDEN)
-        # ACHT43 — geste unique partagé avec la synchro terrain.
+        # ACHT43 — geste unique partagé avec la synchro terrain. Position
+        # validée (400) : hors bornes, elle débordait la colonne (500).
         field_services.enregistrer_depart_depot(
-            interv, timezone.now(), request.data.get('lat'),
-            request.data.get('lng'), request.user)
+            interv, timezone.now(), *oa.position(request), request.user)
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 
@@ -827,7 +828,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         })
 
     @oa.extend_schema(
-        request=oa.body('PositionRequete', lat=oa.f(null=True), lng=oa.f(null=True)),
+        request=oa.PositionRequete,  # même corps validé que le départ dépôt
         responses=InterventionSerializer,
     )
     @action(detail=True, methods=['post'], url_path='checkin',
@@ -843,8 +844,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # ponctualité dérivée de l'instant vs la fenêtre promise).
         try:
             field_services.enregistrer_arrivee(
-                interv, timezone.now(), request.data.get('lat'),
-                request.data.get('lng'), request.user)
+                interv, timezone.now(), *oa.position(request), request.user)
         except field_services.CoordonneesInvalides as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -963,8 +963,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # `file_key` arbitraire.
         meta, err = store_attachment(file, company=interv.company)
         if err:
+            # api-fuzz-full 27/10 (ENF11) : format lu dans les OCTETS / taille
+            # = règles hors schéma (un ``binary`` publié) → 409, pas 400.
             return Response({'detail': err},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         # Encode le créneau dans le filename pour réutiliser le modèle générique.
         meta = dict(meta)
         meta['filename'] = field_services.encode_slot_filename(
@@ -1100,7 +1102,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # ADEP44 — idempotence par `client_op_id` : le rejeu d'une op déjà
         # appliquée (en ligne OU par la synchro) renvoie l'objet existant,
         # AVANT toute autre garde (le doublon de série ne doit pas la bloquer).
-        op_id = (request.data.get('client_op_id') or '').strip()
+        # api-fuzz-full 27/10 (ENF11) : champs texte TYPÉS (un fichier
+        # multipart nommé `client_op_id` faisait lever `.strip()` → 500).
+        op_id = oa.texte_corps(request, 'client_op_id', 'numero_serie',
+                               'designation', 'slot', 'capture_source')
         try:
             memorise = field_sync.rejeu_op_en_ligne(
                 company, op_id, 'intervention.serial')
@@ -1127,8 +1132,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # plaque validées ; source de capture (scan | saisie | photo).
         champs, refus = field_capture.champs_releve_serie(
             produit, request.data)
-        if refus:
-            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
+        if refus:  # api-fuzz-full 27/10 (ENF11) : ni produit ni désignation → 409
+            return Response(refus, status=oa.statut_refus_releve(refus))
         numero = (request.data.get('numero_serie') or '').strip()
         # ACHT37 — doublon refusé dès la saisie (plus de 500 au push parc).
         raison = field_capture.raison_serie_en_double(company, numero)
@@ -1141,9 +1146,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if file is not None:
             # AUD311 (SCA42) — cle scopee societe (voir ajouter_photo).
             meta, err = store_attachment(file, company=company)
-            if err:
+            if err:  # api-fuzz-full 27/10 (ENF11) : format hors schéma → 409
                 return Response({'detail': err},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
             ct = ContentType.objects.get_for_model(Intervention)
             plaque = Attachment.objects.create(
                 company=company, content_type=ct, object_id=interv.id,
@@ -1204,9 +1209,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         [designation]."""
         interv = self.get_object()
         serial = interv.serials.filter(id=request.data.get('serial')).first()
-        if serial is None:
+        if serial is None:  # api-fuzz-full 27/10 (ENF11) : id entier absent → 404
             return Response({'detail': 'Relevé inconnu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('serial')))
         # ACHT37 — un relevé déjà poussé au parc ne se corrige plus ici.
         if serial.pousse_parc:
             return Response({'detail': field_capture.MESSAGE_SERIE_AU_PARC},
@@ -1245,9 +1250,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """F9 — supprime un relevé de n° de série. Corps : {"serial": <id>}."""
         interv = self.get_object()
         serial = interv.serials.filter(id=request.data.get('serial')).first()
-        if serial is None:
+        if serial is None:  # api-fuzz-full 27/10 (ENF11) : id entier absent → 404
             return Response({'detail': 'Relevé inconnu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('serial')))
         if serial.pousse_parc:  # ACHT37
             return Response({'detail': field_capture.MESSAGE_SERIE_AU_PARC},
                             status=status.HTTP_409_CONFLICT)
@@ -1425,12 +1430,15 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
                 status=status.HTTP_400_BAD_REQUEST)
-        ligne = cons.lignes.filter(
-            id=request.data.get('ligne'), hors_nomenclature=True).first()
-        if ligne is None:
+        # api-fuzz-full 27/10 (ENF11) : ligne inconnue → 404 (id entier) ;
+        # ligne de la nomenclature = refus d'ÉTAT → 409 (les deux faisaient 400).
+        ligne = cons.lignes.filter(id=request.data.get('ligne')).first()
+        if ligne is None or not ligne.hors_nomenclature:
             return Response(
-                {'detail': 'Seules les lignes hors-nomenclature sont supprimables.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                {'detail': 'Ligne inconnue.' if ligne is None else
+                 'Seules les lignes hors-nomenclature sont supprimables.'},
+                status=oa.statut_ligne_non_supprimable(
+                    ligne, request.data.get('ligne')))
         motif, refus = self._motif_suppression(interv)  # ACHT41
         if refus is not None:
             return refus
@@ -1572,9 +1580,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # AUD311 (SCA42) — cle scopee societe (voir ajouter_photo).
         meta, err = store_attachment(file, audio=True,
                                      company=interv.company)
-        if err:
+        if err:  # api-fuzz-full 27/10 (ENF11) : format audio hors schéma → 409
             return Response({'detail': err},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         ct = ContentType.objects.get_for_model(Intervention)
         att = Attachment.objects.create(
             company=interv.company, content_type=ct, object_id=interv.id,
