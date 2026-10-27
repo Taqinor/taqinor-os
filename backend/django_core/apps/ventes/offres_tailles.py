@@ -662,7 +662,14 @@ class _Contexte:
                 'tranches': None,
                 'charges_fixes_mad': None,
             }
-        return kwargs_moteur_horaire(self.entrees)
+        # RSIZ7 — l'ombrage servi par le calepinage, seulement si l'étude ET le
+        # balayage du stockage l'acceptent (``kwargs_ombrage``).
+        from apps.ventes.domain.entrees import kwargs_ombrage
+        from apps.ventes.etude_horaire import (
+            balayer_stockage_horaire, calculer_etude_horaire)
+        return dict(kwargs_moteur_horaire(self.entrees), **kwargs_ombrage(
+            self.entrees.get('perte_ombrage_pct'),
+            calculer_etude_horaire, balayer_stockage_horaire))
 
     def composer(self, nb_panneaux, *, avec_batterie, cible_kwh=None):
         """Une composition catalogue RÉELLE, ou ``None`` — jamais une levée.

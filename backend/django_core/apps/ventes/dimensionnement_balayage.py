@@ -50,7 +50,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
                     min_panneaux=None,
                     max_panneaux=None, source_conso=None,
                     cible_falaise_kwh_mois=None, jour_reference=None,
-                    hors_reseau=False, mppt_paires=1):
+                    hors_reseau=False, mppt_paires=1, perte_ombrage_pct=None):
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
 
     ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46). Ils
@@ -176,6 +176,11 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         'charges_fixes_mad': charges_fixes_mad,
         'jour_reference': jour_reference,
     })
+    # RSIZ7 — ombrage servi par le calepinage du devis (``None`` = lead, rien
+    # ne bouge) ; appliqué seulement si l'étude ET le balayage l'acceptent.
+    from apps.ventes.domain.entrees import kwargs_ombrage
+    etude_kwargs.update(kwargs_ombrage(
+        perte_ombrage_pct, calculer_etude_horaire, balayer_stockage_horaire))
 
     # QJR612 — CAD170 RÉELLEMENT APPLIQUÉ (décision fondateur 30/09/2026 :
     # « add more panels so battery is always charged »). Une recharge VE

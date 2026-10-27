@@ -879,8 +879,12 @@ def _echelle_paliers_batterie(devis):
     # (QJR45) et barème société (QJR46) compris ; seule la consommation est
     # celle résolue ci-dessus.
     from apps.ventes.etude_horaire import kwargs_moteur_horaire
+    # RSIZ7 — ombrage du calepinage du devis (si le balayage l'accepte).
+    from apps.ventes.domain.entrees import kwargs_ombrage
     etude_kwargs = dict(kwargs_moteur_horaire(entrees),
-                        conso_kwh_mensuelles=conso)
+                        conso_kwh_mensuelles=conso,
+                        **kwargs_ombrage(entrees.get('perte_ombrage_pct'),
+                                         balayer_stockage_horaire))
 
     sondes = {}
 
