@@ -556,7 +556,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                                  garantie_production_mois=serializers.IntegerField(
                                      required=False, allow_null=True, min_value=0, max_value=2147483647),
                                  categorie_id=serializers.IntegerField(required=False, allow_null=True),
-                                 marque=serializers.CharField(required=False, allow_blank=True, max_length=100)),
+                                 marque=ChaineStricte(required=False, allow_blank=True, max_length=100)),
                    responses=OBJET)
     @action(detail=False, methods=['post'], url_path='bulk',
             permission_classes=[HasPermissionOrLegacy('stock_modifier')])
