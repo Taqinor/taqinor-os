@@ -398,8 +398,8 @@ class TestTalonNegatif(unittest.TestCase):
                            {'jours_ouverts': TOUS}):
                 rythme = dict(rythme, talon=talon)
                 jt, prov, alertes = courbe_declaree(rythme, [6000] * 12,
-                                                     annee_reference=ANNEE,
-                                                     archetype='bureau', feries=[])
+                                                    annee_reference=ANNEE,
+                                                    archetype='bureau', feries=[])
                 self.assertTrue(all(v >= 0 for j in jt for v in j['charge_kwh']), talon)
                 self.assertEqual(len(self._alertes_negatif(alertes)), 1, talon)
                 self.assertNotEqual(prov['talon']['statut'], 'declare', talon)
