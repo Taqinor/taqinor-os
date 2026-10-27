@@ -12,7 +12,7 @@ import {
   SEV_BAS, SEV_OK, SEV_RUPTURE,
   produitsPompageACompleter, kitPompageChiffrable, roleDuProduitPompage,
   produitCiACompleter, raisonCiACompleter,
-  etatPrixCi, TEXTE_TARIF_PARAMETRES_CI, ROUTE_PARAMETRES_PRESTATIONS_CI,
+  etatPrixCi, TEXTE_TARIF_PARAMETRES_CI, TEXTE_PRIX_BAREME_CI, ROUTE_PARAMETRES_PRESTATIONS_CI,
 } from '../../features/stock/catalogue'
 import { formatMAD } from '../../lib/format'
 import {
@@ -344,7 +344,7 @@ export function CatalogueTable({
           // CCAT3 — coffret C&I tarifé par barème (par onduleur / par panneau) :
           // le prix est connu, seul le prix de vente fixe est absent.
           if (etatPrixCi(r) === 'bareme') {
-            return <Badge tone="info">au barème (par onduleur / par panneau)</Badge>
+            return <Badge tone="info">{TEXTE_PRIX_BAREME_CI}</Badge>
           }
           return <Badge tone="warning">prix à renseigner</Badge>
         }

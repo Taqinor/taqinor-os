@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 import {
   groupCatalogue, searchCatalogue, keySpec, sansPrix, MARQUE_GENERIQUE,
   typeOfProduit, familleAttendue, categorieIcone,
-  ROLES_CI_PRESTATION, etatPrixCi, produitCiACompleter, raisonCiACompleter,
+  ROLES_CI_PRESTATION, libelleTypePose, libellePrixCi, etatPrixCi, produitCiACompleter, raisonCiACompleter,
 } from './catalogue.js'
 import {
   classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
@@ -299,4 +299,22 @@ test('ASTK254 — une prestation exclue pour un autre motif reste à compléter'
 
 test('ASTK254 — le rôle se lit aussi sur role_ci quand etat_ci manque', () => {
   assert.equal(etatPrixCi({ nom: 'Pose', prix_vente: '0', role_ci: 'pose_modules' }), 'parametres')
+})
+
+test('CCAT4 — libelleTypePose : libellé FR, repli sur le code, vide → vide', () => {
+  assert.equal(libelleTypePose('toiture_inclinee'), 'Toiture inclinée')
+  assert.equal(libelleTypePose('bac_acier'), 'Bac acier')
+  assert.equal(libelleTypePose('toit_plat_leste'), 'Toit plat — lesté')
+  assert.equal(libelleTypePose('toit_plat_fixe'), 'Toit plat — fixé')
+  assert.equal(libelleTypePose('ombriere'), 'Ombrière')
+  assert.equal(libelleTypePose('sol'), 'Au sol')
+  assert.equal(libelleTypePose('inconnu'), 'inconnu')
+  assert.equal(libelleTypePose(null), '')
+})
+
+test('CCAT4 — libellePrixCi : prestation, barème, à renseigner, rien', () => {
+  assert.match(libellePrixCi(_ci('pose_modules')), /Paramètres › Devis › Prestations C&I/)
+  assert.equal(libellePrixCi(_ci('coffret_ac', {}, { prix_connu: true })), 'au barème (par onduleur / par panneau)')
+  assert.equal(libellePrixCi(_ci('compteur_injection')), 'prix à renseigner')
+  assert.equal(libellePrixCi(_ci('compteur_injection', { prix_vente: '10.00' }, { prix_connu: true })), '')
 })
