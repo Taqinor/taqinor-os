@@ -204,6 +204,16 @@ class CasReferenceTests(unittest.TestCase):
         self.assertGreater(e['bilan']['surplus_kwh'], 0)
         self.assertEqual(e['bilan']['injecte_valorise_kwh'], 0)
 
+    def test_usine_90000_saut_onduleur_amorti_sur_un_long_groupe(self):
+        # CLD8 — saut 340 kWc (1×150+1×100 → 2×150, ≈ 33 ans seul) amorti par
+        # le groupe 335 → 405 (≈ 9,9 ans ≤ 10) : l'ancienne fenêtre de 4
+        # paliers retenait 335.
+        e = _etudier(mode='industriel', tension='mt', tarif={'contrat': 'mt_general'},
+                     consommation={'kwh_mensuels': [90000] * 12},
+                     rythme={'jours_ouverts': [True] * 6 + [False], 'equipes': '2x8',
+                             'debut_equipe_h': 6})
+        self.assertEqual(e['taille']['retenue_kwc'], 405)
+
 
 if __name__ == '__main__':
     unittest.main()

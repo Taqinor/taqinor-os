@@ -26,6 +26,7 @@ Sortie : le bloc ``taille`` du contrat ``etude_ci_preview.json`` + alertes et
 hypothèses.
 """
 
+import math
 from decimal import Decimal, InvalidOperation
 
 from apps.ventes.dimensionnement import (
@@ -40,9 +41,21 @@ from apps.ventes.moteur_ci.composition import prix_palier_ht
 PAS_KWC = 5
 #: Fondateur 26/10/2026 (boulangerie 30 → 40 kWc) : un palier cher SEUL (saut
 #: d'onduleur 25 → 50 kW) est gardé si, avec les paliers suivants, l'ensemble
-#: se rembourse dans l'horizon. On regarde jusqu'à ce nombre de paliers après
-#: un palier refusé seul (C&I seulement ; le résidentiel garde la chaîne
+#: se rembourse dans l'horizon (C&I seulement ; le résidentiel garde la chaîne
 #: ininterrompue de ``grimper_par_pas_marginaux``).
+#:
+#: CLD8 — PLANCHER de la fenêtre de regard (jamais moins de paliers regardés
+#: qu'avant). Au-delà, le regard court jusqu'au premier palier ORDINAIRE (même
+#: combinaison d'onduleurs que le précédent) dont le ratio marginal SEUL
+#: dépasse l'horizon — rendements décroissants : aucun groupe à sauver plus
+#: loin — et jamais au-delà du PLAFOND physique ``ceil(kW AC du plus gros
+#: onduleur de la combinaison courante × borne haute DC/AC ÷ PAS_KWC)`` (la
+#: borne haute est celle SERVIE par la combinaison, ``ratio_dc_ac.bornes``) :
+#: un saut d'onduleur s'amortit au plus sur le champ que cet onduleur porte.
+#: Sans combinaison lisible (borne non servie), la fenêtre reste au plancher.
+#: Même critère pour ``grimper_avec_regard`` et pour l'arrêt du balayage.
+#: À ALIGNER : ``moteur_ci/batterie.py::monter_regle_10_ans`` (session CMP)
+#: arrête encore son balayage à ``PALIERS_REGARDES`` refus de suite.
 PALIERS_REGARDES = 4
 #: Garde de terminaison du balayage (nombre de pas), jamais une taille : la
 #: montée s'arrête bien avant, au premier pas sans économie marginale.
@@ -208,18 +221,60 @@ def _nb_panneaux(e):
     return None
 
 
+def _signature(e):
+    """La combinaison d'onduleurs d'un palier, ``None`` si illisible (palier
+    sans clé ``onduleurs`` ou sans combinaison : jamais « ordinaire »)."""
+    if not isinstance(e, dict) or 'onduleurs' not in e:
+        return None
+    combinaison = (e['onduleurs'] or {}).get('combinaison')
+    if not combinaison:
+        return None
+    return tuple(sorted((str(c.get('produit')), int(c.get('quantite') or 0))
+                        for c in combinaison))
+
+
+def _ordinaire(precedent, e):
+    """CLD8 — palier ORDINAIRE : même combinaison d'onduleurs que le précédent."""
+    sig = _signature(e)
+    return sig is not None and sig == _signature(precedent)
+
+
+def _fenetre_max(e):
+    """CLD8 — nombre de paliers regardés au plus depuis ``e`` : le plafond
+    physique de sa combinaison, jamais sous le plancher ``PALIERS_REGARDES``."""
+    onduleurs = (e.get('onduleurs') or {}) if isinstance(e, dict) else {}
+    haute = _pos(((onduleurs.get('ratio_dc_ac') or {}).get('bornes') or {}).get('haute'))
+    plus_gros = max((_pos(c.get('kw_ac')) or 0.0
+                     for c in onduleurs.get('combinaison') or []), default=0.0)
+    if not haute or not plus_gros:
+        return PALIERS_REGARDES
+    return max(PALIERS_REGARDES, int(math.ceil(plus_gros * haute / PAS_KWC - 1e-9)))
+
+
 def grimper_avec_regard(depart, suivants, horizon, cout, economie):
-    """La montée C&I : depuis le palier courant, le PREMIER palier suivant (au
-    plus ``PALIERS_REGARDES`` plus loin) dont le pas groupé courant → palier se
-    rembourse dans ``horizon`` est franchi ; aucun ⇒ arrêt."""
-    def rembourse(de, vers):
-        ratio = ratio_pas_marginal(cout(de), economie(de), cout(vers), economie(vers))
-        return ratio is not None and ratio <= horizon + 1e-9
+    """La montée C&I : depuis le palier courant, le PREMIER palier suivant dont
+    le pas groupé courant → palier se rembourse dans ``horizon`` est franchi ;
+    aucun ⇒ arrêt. Fenêtre (CLD8, voir ``PALIERS_REGARDES``) : au moins le
+    plancher, au plus le plafond de la combinaison courante, close au premier
+    palier ordinaire hors horizon SEUL au-delà du plancher."""
+    def ratio(de, vers):
+        return ratio_pas_marginal(cout(de), economie(de), cout(vers), economie(vers))
+
+    def hors(r):
+        return r is None or r > horizon + 1e-9
 
     courant, i, suivants = depart, 0, list(suivants or ())
     while i < len(suivants):
-        fenetre = range(i, min(i + PALIERS_REGARDES, len(suivants)))
-        j = next((k for k in fenetre if rembourse(courant, suivants[k])), None)
+        limite, j = _fenetre_max(courant), None
+        for k in range(i, len(suivants)):
+            if not hors(ratio(courant, suivants[k])):
+                j = k
+                break
+            vus = k - i + 1
+            precedent = courant if k == i else suivants[k - 1]
+            if vus >= limite or (vus >= PALIERS_REGARDES and _ordinaire(precedent, suivants[k])
+                                 and hors(ratio(precedent, suivants[k]))):
+                break
         if j is None:
             break
         courant, i = suivants[j], j + 1
@@ -285,7 +340,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
                                  alertes, hypotheses)
 
     evals, paliers = [], []
-    meilleur, refus = None, 0
+    meilleur, refus, base_refus = None, 0, None
     for rang in range(1, MAX_PAS + 1):
         e = evaluer(PAS_KWC * rang)
         if e['sans_panneau']:
@@ -321,13 +376,19 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         if admis and e['economie']:
             payback = e['cout'] / e['economie']
             meilleur = payback if meilleur is None else min(meilleur, payback)
-        # Terminaison : un pas sans gain, ou ``PALIERS_REGARDES`` pas de suite
-        # au-delà de l'horizon ET du meilleur payback global (un saut
-        # d'onduleur isolé ne clôt plus le balayage — fondateur 26/10/2026).
+        # Terminaison : un pas sans gain, ou une suite de pas au-delà de
+        # l'horizon ET du meilleur payback global close par le critère de
+        # ``grimper_avec_regard`` (CLD8 : plafond de la combinaison d'avant la
+        # suite, ou palier ordinaire hors horizon passé le plancher) — un saut
+        # d'onduleur isolé ne clôt plus le balayage (fondateur 26/10/2026).
         hors = ratio is not None and ratio > HORIZON_MARGINAL_PV and (
             meilleur is not None and ratio > meilleur)
+        if hors and not refus:
+            base_refus = precedent
         refus = refus + 1 if hors else 0
-        if precedent is not None and (ratio is None or refus >= PALIERS_REGARDES):
+        if precedent is not None and (ratio is None or (refus and (
+                refus >= _fenetre_max(base_refus) or (
+                    refus >= PALIERS_REGARDES and _ordinaire(precedent, e))))):
             break
 
     eligibles = [

@@ -275,6 +275,97 @@ class SautOnduleurTests(unittest.TestCase):
             (25, 122982, 54466), (30, 18974, 5393), (35, 41281, 1000),
             (40, 30000, 500)]), 30)
 
+    # ── CLD8 : fenêtre de regard bornée par la physique, pas par un nombre ──
+
+    @staticmethod
+    def _ond(produit, kw_ac=50.0, quantite=1):
+        return {'combinaison': [{'produit': produit, 'kw_ac': kw_ac, 'quantite': quantite}],
+                'ratio_dc_ac': {'bornes': {'haute': 1.35}}}
+
+    def test_saut_amorti_au_dela_de_4_paliers_garde(self):
+        # Départ 100 kWc (1 × 50 kW) ; 105 = saut vers 2 × 50 kW (+60 000 HT
+        # pour +500/an) ; puis des paliers ORDINAIRES (même combinaison) à
+        # 5 000 HT pour 1 000/an : le groupe 100 → 135 se rembourse en
+        # 90 000 / 7 500 = 12 ans (non), 100 → 140 = 95 000 / 8 500 ≈ 11,2,
+        # … 100 → 160 = 115 000 / 12 500 = 9,2 ans ≤ 10 : gardé jusqu'à 160
+        # (plafond ⌈50 × 1,35 / 5⌉ = 14 paliers ; l'ancienne fenêtre de 4
+        # restait à 100).
+        cout, eco = 100000.0, 30000.0
+        paliers = [{'kwc': 100, 'cout': cout, 'eco': eco, 'onduleurs': self._ond(1)}]
+        cout, eco = cout + 60000, eco + 500
+        paliers.append({'kwc': 105, 'cout': cout, 'eco': eco, 'onduleurs': self._ond(1, quantite=2)})
+        for kwc in range(110, 165, 5):
+            cout, eco = cout + 5000, eco + 1000
+            paliers.append({'kwc': kwc, 'cout': cout, 'eco': eco,
+                            'onduleurs': self._ond(1, quantite=2)})
+        retenu = grimper_avec_regard(paliers[0], paliers[1:], HORIZON_MARGINAL_PV,
+                                     lambda e: e['cout'], lambda e: e['eco'])
+        self.assertEqual(retenu['kwc'], 160)
+
+    def test_regard_arrete_au_palier_ordinaire_hors_horizon(self):
+        # Même saut, mais les paliers ordinaires sont à 11 ans SEULS : le
+        # regard s'arrête au premier d'entre eux passé le plancher (4), jamais
+        # plus loin — rendements décroissants, aucun groupe à sauver.
+        cout, eco = 100000.0, 30000.0
+        paliers = [{'kwc': 100, 'cout': cout, 'eco': eco, 'onduleurs': self._ond(1)}]
+        cout, eco = cout + 60000, eco + 500
+        paliers.append({'kwc': 105, 'cout': cout, 'eco': eco, 'onduleurs': self._ond(1, quantite=2)})
+        for kwc in range(110, 200, 5):
+            cout, eco = cout + 11000, eco + 1000
+            paliers.append({'kwc': kwc, 'cout': cout, 'eco': eco,
+                            'onduleurs': self._ond(1, quantite=2)})
+        vus = []
+
+        def cout_vu(e):
+            vus.append(e['kwc'])
+            return e['cout']
+        retenu = grimper_avec_regard(paliers[0], paliers[1:], HORIZON_MARGINAL_PV,
+                                     cout_vu, lambda e: e['eco'])
+        self.assertEqual(retenu['kwc'], 100)
+        self.assertLessEqual(max(vus), 100 + 5 * 4)
+
+
+class BalayageBorneTests(unittest.TestCase):
+    """CLD8 — une combinaison d'onduleurs DIFFÉRENTE à chaque palier (aucun
+    palier ordinaire) et des pas à 11 ans : le balayage s'arrête au plafond
+    ⌈kW AC du plus gros onduleur × borne haute DC/AC ÷ PAS_KWC⌉, jamais à
+    ``MAX_PAS``."""
+
+    def _balayer(self, kw_ac):
+        from unittest import mock
+        from apps.ventes.moteur_ci import taille as T
+        vus = []
+
+        def evaluer(kwc, **_kw):
+            rang = int(kwc // T.PAS_KWC)
+            vus.append(kwc)
+            cout = 10.0 + 11.0 * (rang - 1)
+            eco = 10.0 + 1.0 * (rang - 1)
+            return {'sans_panneau': False, 'kwc': kwc, 'composition': {'lignes': []},
+                    'onduleurs': {'combinaison': [{'produit': rang, 'kw_ac': kw_ac,
+                                                   'quantite': 1}],
+                                  'ratio_dc_ac': {'bornes': {'haute': 1.35}}},
+                    'bilan': {'taux_couverture': 0.5, 'horaire': []}, 'alertes_bilan': [],
+                    'economie': eco, 'cout': cout, 'puissance_ac': kw_ac,
+                    'prix_manquants': [], 'postes_fixes_sans_prix': []}
+        with mock.patch.object(T, '_evaluer', evaluer):
+            r = dimensionner_ci(
+                charge_jours_types=[{'nb_jours': 365, 'charge_kwh': [1.0] * 24}],
+                production_jours_types=[{'nb_jours': 365}], tension='bt',
+                combiner=None, composer=None, valoriser=None)
+        return r, vus
+
+    def test_combinaison_differente_a_chaque_palier_balayage_borne(self):
+        r, vus = self._balayer(100.0)
+        self.assertEqual(r['taille']['retenue_kwc'], 5)
+        # ⌈100 × 1,35 / 5⌉ = 27 paliers regardés après le dernier admis.
+        self.assertEqual(len(vus), 1 + 27)
+
+    def test_plancher_quatre_paliers(self):
+        r, vus = self._balayer(5.0)    # ⌈5 × 1,35 / 5⌉ = 2 < plancher 4
+        self.assertEqual(r['taille']['retenue_kwc'], 5)
+        self.assertEqual(len(vus), 1 + 4)
+
 
 def _hybrides_bt():
     """Deye SG05LP3 basse tension triphasés aux prix SEEDÉS (port batterie de
