@@ -8,6 +8,8 @@ d'origine.
 
 import logging
 
+from .etat_ci import prix_connu_ci
+
 logger = logging.getLogger(__name__)
 
 
@@ -3442,7 +3444,6 @@ def etat_ci_produit(produit):
     role, classement = role_ci_pour(produit)
     if role is None:
         return None
-    from .etat_ci import prix_connu_ci
     prix_connu = prix_connu_ci(produit, role)
     eligible, motif = _eligibilite_ci(produit, role, prix_connu)
     from core.product_roles import LIBELLES_ROLES_CI
@@ -3465,7 +3466,6 @@ def produits_ci(company, avec_prix=False):
     """
     from django.db.models import Q
 
-    from .etat_ci import prix_connu_ci
     from .models import Produit
 
     qs = (Produit.objects
