@@ -31,11 +31,9 @@ import {
   equipmentAdjustedConsumptionKwhShape,
   renderYearCurve,
 } from '../src/lib/proposalCurve';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const PAGE = readFileSync(
-  fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-  'utf-8',
-);
+const PAGE = lirePageProposition();
 
 const PISCINE_LAYER = {
   kw: 1.5, heures: [10, 11, 12, 13, 14, 15, 16, 17], saisons: ['ete'],

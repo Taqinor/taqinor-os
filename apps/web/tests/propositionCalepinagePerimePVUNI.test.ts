@@ -14,11 +14,9 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const PAGE = readFileSync(
-  fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-  'utf-8',
-);
+const PAGE = lirePageProposition();
 
 describe('PVUNI — drapeau de calepinage périmé', () => {
   it('le drapeau est LU du payload, jamais recalculé côté page', () => {

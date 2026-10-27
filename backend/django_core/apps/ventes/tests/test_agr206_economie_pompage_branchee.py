@@ -21,10 +21,14 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.stock.models import Produit
+from apps.ventes import economie_pompage as E
 from apps.ventes import selectors
 from apps.ventes.domain import etude_schema as es
 from apps.ventes.domain import pompage
 from apps.ventes.models import Devis, LigneDevis
+from apps.ventes.tests.test_agr_economie_pompage import (
+    CHARGES, ETUDE_COUVERTE, REPERES, etude_declaree, lignes_reference,
+    saisies_12000, saisies_carburant)
 from authentication.models import Company
 
 User = get_user_model()
@@ -192,3 +196,181 @@ class LectureTests(_Base):
         self.assertIsInstance(
             selectors.economie_pompage_publiable(self.devis.pk, self.co),
             bool)
+
+
+MOTIF_COUVERTURE = 'couverture non vérifiable : pompe sans courbe'
+
+
+class AGM9CouvertureNonVerifiableTests(SimpleTestCase):
+    """AGM9 (D-AGM-3) — une couverture supposée ne fonde aucun chiffre
+    client ; l'aperçu vendeur garde ses chiffres."""
+
+    def bloc(self, sortie_etude, saisies=None):
+        return E.economie_pompage(
+            saisies or saisies_12000(), sortie_etude=sortie_etude,
+            lignes=lignes_reference(), reglages=CHARGES)
+
+    def test_pompe_sans_courbe_non_publiable_avec_motif(self):
+        bloc = self.bloc({'pompe': {'mode': 'neuve'}})
+        self.assertFalse(bloc['couverture']['verifiee'])
+        self.assertFalse(bloc['publiable_client'])
+        self.assertIn(MOTIF_COUVERTURE, bloc['motifs_non_publiable'])
+        # L'écran vendeur garde l'aperçu chiffré.
+        self.assertEqual(bloc['statut'], 'calcule')
+        self.assertEqual(bloc['economie']['retour_ans'], 5)
+
+    def test_devis_envoye_regles_2_garde_la_publication(self):
+        """« Nouveaux rendus seulement » : un devis aux règles < 3 garde le
+        bloc publiable qu'il avait (ce que le client a reçu)."""
+        bloc = E.economie_pompage(
+            saisies_12000(), sortie_etude={'pompe': {'mode': 'neuve'}},
+            lignes=lignes_reference(), reglages=CHARGES, regles_2710=False)
+        self.assertTrue(bloc['publiable_client'])
+
+    def test_etude_couverte_inchangee(self):
+        bloc = self.bloc(ETUDE_COUVERTE)
+        self.assertTrue(bloc['publiable_client'])
+        self.assertNotIn(MOTIF_COUVERTURE, bloc['motifs_non_publiable'])
+
+    def test_nouveau_forage_reste_publiable(self):
+        saisies = {'energie_actuelle': {
+            'valeur': 'aucune', 'provenance': {
+                'origine': 'saisie', 'detail': None, 'date': '2026-09-12'}},
+            'consommation': {'jours_irrigation_par_semaine': 7},
+            'mois_irrigation': {'mois': list(range(1, 13)), 'provenance': {
+                'origine': 'saisie', 'detail': None, 'date': '2026-09-12'}}}
+        bloc = self.bloc({'pompe': {'mode': 'neuve'}}, saisies=saisies)
+        self.assertEqual(bloc['cas'], 'nouveau_forage')
+        self.assertNotIn(MOTIF_COUVERTURE, bloc['motifs_non_publiable'])
+        self.assertTrue(bloc['publiable_client'])
+
+
+class AGM10SansBaremeTests(SimpleTestCase):
+    """AGM10 — barème des charges solaires absent : seuil, sensibilité, coût
+    du m³ solaire, retour et scénario butane OMIS (jamais calculés avec un
+    entretien à 0)."""
+
+    @staticmethod
+    def gasoil():
+        # 10 L par jour d'irrigation x 6 j/semaine, 12 MAD/L, avril-sept.
+        return saisies_carburant(
+            energie='diesel', quantite=10, unite='litre',
+            periode='jour_irrigation', jours=6, prix=12.0,
+            mois=range(4, 10))
+
+    def bloc(self, reglages, saisies=None, **kw):
+        kw.setdefault('sortie_etude', etude_declaree())
+        return E.economie_pompage(
+            saisies or self.gasoil(), lignes=lignes_reference(),
+            reglages=reglages, **kw)
+
+    def test_sans_bareme_chaque_chiffre_dependant_est_omis(self):
+        for reglages in ({}, None):
+            with self.subTest(reglages=reglages):
+                bloc = self.bloc(reglages)
+                self.assertIsNone(bloc['seuil_rentabilite_carburant'])
+                self.assertIn('seuil_rentabilite_carburant',
+                              [o['cle'] for o in bloc['omissions']])
+                self.assertEqual(len(bloc['sensibilite_carburant']), 5)
+                for ligne in bloc['sensibilite_carburant']:
+                    self.assertIsNone(ligne['economie_nette_mad_an'])
+                    self.assertIsNone(ligne['retour_ans'])
+                self.assertIsNone(bloc['mad_par_m3']['solaire'])
+                self.assertIn('mad_par_m3.solaire',
+                              [o['cle'] for o in bloc['omissions']])
+                eco = bloc['economie']
+                self.assertIsNone(eco['retour_ans'])
+                self.assertEqual(eco['flux'], [])
+                self.assertIsNone(eco['economie_nette_an1'])
+                self.assertIn('charges_annuelles_mad',
+                              [o['cle'] for o in eco['omissions']])
+                self.assertFalse(bloc['publiable_client'])
+
+    def test_forme_inchangee_avec_ou_sans_bareme(self):
+        avec = self.bloc(CHARGES)
+        sans = self.bloc({})
+        self.assertEqual(set(avec), set(sans))
+        self.assertEqual(set(avec['economie']), set(sans['economie']))
+        self.assertEqual(set(avec['sensibilite_carburant'][0]),
+                         set(sans['sensibilite_carburant'][0]))
+        self.assertEqual(set(avec['mad_par_m3']), set(sans['mad_par_m3']))
+
+    def test_avec_bareme_inchange(self):
+        bloc = self.bloc(CHARGES)
+        self.assertIsNotNone(bloc['seuil_rentabilite_carburant'])
+        self.assertIsNotNone(bloc['mad_par_m3']['solaire'])
+        self.assertEqual(len(bloc['economie']['flux']), 11)
+        self.assertIsNotNone(bloc['economie']['economie_nette_an1'])
+        for ligne in bloc['sensibilite_carburant']:
+            self.assertIsNotNone(ligne['economie_nette_mad_an'])
+
+    def test_nouveau_forage_sans_bareme_m3_solaire_omis(self):
+        horodatage = {'origine': 'saisie', 'detail': None,
+                      'date': '2026-09-12'}
+        saisies = {'energie_actuelle': {'valeur': 'aucune',
+                                        'provenance': horodatage},
+                   'consommation': {'jours_irrigation_par_semaine': 7},
+                   'mois_irrigation': {'mois': list(range(1, 13)),
+                                       'provenance': horodatage}}
+        bloc = self.bloc({}, saisies=saisies,
+                         sortie_etude=etude_declaree(volume=50.0,
+                                                     production=40.0))
+        self.assertEqual(bloc['cas'], 'nouveau_forage')
+        self.assertIsNone(bloc['mad_par_m3']['solaire'])
+        self.assertFalse(bloc['publiable_client'])
+
+    def test_vue_interne_scenario_butane_et_van_omis(self):
+        saisies = saisies_carburant()
+        saisies['taux_actualisation'] = {'valeur': 8, 'source': 'banque'}
+        sans = self.bloc({}, saisies=saisies, reperes=REPERES)
+        interne = sans['vue_interne']
+        self.assertIsNone(interne['scenario_butane_non_subventionne'])
+        self.assertIsNone(interne['van_mad'])
+        cles = [o['cle'] for o in interne['omissions']]
+        self.assertIn('scenario_butane_non_subventionne', cles)
+        self.assertIn('van_mad', cles)
+        avec = self.bloc(CHARGES, saisies=saisies, reperes=REPERES)
+        self.assertIsNotNone(
+            avec['vue_interne']['scenario_butane_non_subventionne'])
+        self.assertIsNotNone(avec['vue_interne']['van_mad'])
+
+
+class AGM12SystemeFactureTests(_Base):
+    """AGM12 — les économies d'un devis sont calculées sur le système
+    FACTURÉ (``facture_du_devis``), jamais sur la proposition du catalogue."""
+
+    def test_l_etude_recoit_le_systeme_facture_des_lignes(self):
+        catalogue = {'pompage': []}
+        facture = {'pompe': {'id': 4242}, 'variateur': None,
+                   'panneau': None, 'nb_panneaux': 0, 'lignes': []}
+        patchs = (
+            mock.patch.object(pompage, 'lire_catalogue',
+                              return_value=catalogue),
+            mock.patch.object(pompage, 'facture_du_devis',
+                              return_value=facture),
+            mock.patch.object(pompage, 'etudier_pompage',
+                              return_value={'pompe': {'mode': 'neuve'}}),
+        )
+        with patchs[0] as lecture, patchs[1] as lecture_facture, \
+                patchs[2] as etude:
+            E.economie_pompage_pour_devis(self.devis.pk, self.co)
+        lecture.assert_called_once_with(self.co)
+        self.assertEqual(lecture_facture.call_count, 1)
+        self.assertEqual(lecture_facture.call_args.args[0].pk, self.devis.pk)
+        self.assertIs(lecture_facture.call_args.args[1], catalogue)
+        etude.assert_called_once()
+        self.assertIs(etude.call_args.kwargs['facture'], facture)
+        self.assertEqual(etude.call_args.kwargs['devis'].pk, self.devis.pk)
+
+    def test_devis_envoye_regles_2_garde_l_etude_d_hier(self):
+        """« Nouveaux rendus seulement » : un devis aux règles < 3 (envoyé
+        avant le 27/10) garde l'étude du catalogue — aucune facture lue."""
+        from apps.ventes.models import Devis
+        Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=2)
+        with mock.patch.object(pompage, 'facture_du_devis') as lecture, \
+                mock.patch.object(pompage, 'etudier_pompage',
+                                  return_value={'pompe': {'mode': 'neuve'}}
+                                  ) as etude:
+            E.economie_pompage_pour_devis(self.devis.pk, self.co)
+        lecture.assert_not_called()
+        self.assertIsNone(etude.call_args.kwargs['facture'])

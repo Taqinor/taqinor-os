@@ -223,3 +223,79 @@ class AutreMarcheInchangeTests(_Base):
         devis.refresh_from_db()
         self.assertEqual(devis.etude_params, etude)
         self.assertEqual(devis.updated_at, avant)
+
+
+class ArticlesMultiplesTests(_Base):
+    """AGM7 — plusieurs pompes, variateurs ou modèles de panneaux : l'étude ne
+    mélange plus (premier modèle × quantité totale), elle omet et le dit."""
+
+    DERIVEES_CHAMP = ('champ_kwc', 'champ', 'm3_jour', 'production',
+                      'heures_pompage')
+
+    def _ligne(self, devis, produit, quantite, ordre):
+        return LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=produit.nom,
+            quantite=Decimal(quantite), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'), ordre=ordre)
+
+    def _rafraichi(self, devis):
+        pompage.rafraichir_etude_pompage_devis(devis, force=True)
+        devis.refresh_from_db()
+        return devis.etude_params
+
+    def _codes(self, etude):
+        return [a['code'] for a in etude.get('alertes_pompage') or ()]
+
+    def test_deux_modeles_de_panneaux_champ_omis_et_dit(self):
+        devis = self.devis()
+        self.assertEqual(self._rafraichi(devis)['champ_kwc'], 7.1)
+        autre = self._produit('Panneau 600W')
+        FicheTechnique.objects.create(
+            company=self.co, produit=autre, type_fiche='module',
+            pmax_wc=Decimal('600'), vmp_v=Decimal('40'), voc_v=Decimal('48'),
+            isc_a=Decimal('18'), imp_a=Decimal('17'))
+        self._ligne(devis, autre, 4, 10)
+        etude = self._rafraichi(devis)
+        self.assertIn('panneaux_modeles_multiples', self._codes(etude))
+        for cle in self.DERIVEES_CHAMP:
+            with self.subTest(cle=cle):
+                self.assertNotIn(cle, etude)
+        # La pompe, elle, reste décrite.
+        self.assertEqual(etude['pompe_kw'], 5.5)
+
+    def test_deux_lignes_du_meme_panneau_restent_additionnees(self):
+        devis = self.devis(panneaux=6)
+        self._ligne(devis, self.panneau, 4, 10)
+        etude = self._rafraichi(devis)
+        self.assertNotIn('panneaux_modeles_multiples', self._codes(etude))
+        self.assertEqual(etude['champ']['nb_panneaux'], 10)
+        self.assertEqual(etude['champ_kwc'], 7.1)
+
+    def test_deux_lignes_pompe_pompe_et_production_omises(self):
+        devis = self.devis()
+        self.assertEqual(self._rafraichi(devis)['pompe_kw'], 5.5)
+        self._ligne(devis, self.pompe, 1, 10)
+        etude = self._rafraichi(devis)
+        self.assertIn('pompes_multiples', self._codes(etude))
+        for cle in ('pompe_kw', 'pompe_cv', 'debit_hmt_m3h') \
+                + self.DERIVEES_CHAMP:
+            with self.subTest(cle=cle):
+                self.assertNotIn(cle, etude)
+
+    def test_pompe_quantite_deux_pompe_et_production_omises(self):
+        devis = self.devis()
+        self._rafraichi(devis)
+        devis.lignes.filter(produit=self.pompe).update(quantite=Decimal(2))
+        etude = self._rafraichi(devis)
+        self.assertIn('pompes_multiples', self._codes(etude))
+        self.assertNotIn('pompe_kw', etude)
+        self.assertNotIn('m3_jour', etude)
+
+    def test_deux_variateurs_alerte_et_chaines_non_evaluees(self):
+        devis = self.devis()
+        self._ligne(devis, self.variateur, 1, 10)
+        etude = self._rafraichi(devis)
+        self.assertIn('variateurs_multiples', self._codes(etude))
+        self.assertFalse(etude['champ']['chaines']['verifiable'])
+        self.assertEqual(etude['champ']['chaines']['motif'],
+                         'plusieurs variateurs facturés')

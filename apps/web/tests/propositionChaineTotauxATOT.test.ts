@@ -13,6 +13,7 @@ import { experimental_AstroContainer as AstroContainer } from 'astro/container';
 import { describe, expect, it } from 'vitest';
 import ChainePrix from '../src/components/proposition/ChainePrix.astro';
 import { formatMADCentimes } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 type Totaux = {
   ht_brut: number;
@@ -110,8 +111,7 @@ describe('ATOT34 — chaîne de prix rendue (ChainePrix.astro)', () => {
   });
 
   it('la page n’imprime plus la chaîne en ligne : seul ChainePrix la rend', () => {
-    const page = readFileSync(
-      fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+    const page = lirePageProposition();
     expect(page).toContain('<ChainePrix');
     expect(page).not.toContain('data-figure="sous_total_ht"');
   });
