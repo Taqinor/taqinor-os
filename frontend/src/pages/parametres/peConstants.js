@@ -349,3 +349,30 @@ export function diffProfilePayload(base, next, updatedAt) {
   if (updatedAt !== undefined) diff.updated_at = updatedAt
   return diff
 }
+
+/* CIQ106 — prestations C&I réglables (CIQ105, `CompanyProfile.forfaits_ci`).
+   Chaque ligne : fixe HT, par kWc HT, par panneau HT, source (obligatoire dès
+   qu'un montant est saisi), date. Vide = « prix à renseigner » : AUCUNE valeur
+   suggérée ni pré-remplie, jamais le barème résidentiel. */
+// source-choix: parametres.serializers_company.FORFAITS_CI_PRESTATIONS
+export const PRESTATIONS_CI = [
+  ['etudes_ingenierie', 'Études et ingénierie'],
+  ['pose_structure', 'Pose de la structure'],
+  ['pose_modules', 'Pose des modules'],
+  ['raccordement_ac', 'Raccordement AC'],
+  ['mise_en_service', 'Mise en service'],
+  ['dossier_raccordement', 'Dossier de raccordement'],
+  ['levage_acces', 'Levage et accès'],
+  ['transport_ci', 'Transport C&I'],
+]
+export const MONTANTS_FORFAIT_CI = [
+  ['fixe_ht', 'Fixe HT'],
+  ['par_kwc_ht', 'Par kWc HT'],
+  ['par_panneau_ht', 'Par panneau HT'],
+]
+
+export const _rempli = (v) => v !== null && v !== undefined && String(v).trim() !== ''
+/** Un montant saisi sans source : l'erreur s'affiche sous le champ Source. */
+export const sourceManquante = (entree, montants) => !!entree
+  && montants.some(([k]) => _rempli(entree[k])) && !_rempli(entree.source)
+export const MSG_SOURCE = 'Source obligatoire (devis fournisseur, offre écrite…) : jamais un montant sans source.'

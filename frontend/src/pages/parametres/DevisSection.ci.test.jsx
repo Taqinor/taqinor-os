@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
 import { useState } from 'react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -53,6 +53,37 @@ describe('CIQ106 — prestations C&I et bande prix/kWc', () => {
     const ancre = document.getElementById('prestations-ci')
     expect(ancre).not.toBeNull()
     expect(ancre).toHaveTextContent('Prestations C&I')
+  })
+
+  // CCAT103 — tableau compact : en-têtes une fois, intro de calcul, effet de la bande.
+  it('CCAT103 — tableau : en-têtes une seule fois, une ligne par prestation', () => {
+    rendre()
+    const bloc = screen.getByTestId('prestations-ci')
+    const entetes = within(bloc).getAllByRole('columnheader').map((th) => th.textContent)
+    expect(entetes).toEqual(['Prestation', 'Fixe HT', 'Par kWc HT', 'Par panneau HT', 'Source', 'Date'])
+    expect(within(bloc).getAllByTestId(/^prestation-ci-/)).toHaveLength(8)
+    // Les ids historiques sont conservés.
+    expect(document.getElementById('pe-ci-transport_ci-par_panneau_ht')).not.toBeNull()
+    expect(document.getElementById('pe-ci-etudes_ingenierie-date')).not.toBeNull()
+  })
+
+  it('CCAT103 — intro du calcul du prix et effet de la bande prix/kWc', () => {
+    rendre()
+    expect(screen.getByText(/Prix d'une prestation = fixe \+ par kWc × puissance \+ par panneau × nombre de panneaux/))
+      .toHaveTextContent(/une seule ligne « Installation clé en main » ; le détail reste sur le devis interne\./)
+    expect(screen.getByText(/Hors de cette bande, le vendeur voit une alerte interne sur le devis ; jamais montré au client\./))
+      .toBeInTheDocument()
+  })
+
+  it('CCAT103 — la saisie envoie la même forme forfaits_ci qu’avant (montant, source, date)', () => {
+    const journal = rendre()
+    fireEvent.change(screen.getByLabelText('Transport C&I — Par panneau HT'), { target: { value: '12.5' } })
+    fireEvent.change(screen.getByLabelText('Transport C&I — source'), { target: { value: 'Offre transporteur' } })
+    fireEvent.change(screen.getByLabelText('Transport C&I — date'), { target: { value: '2026-10-01' } })
+    expect(journal.at(-1).forfaits_ci).toEqual({
+      transport_ci: { par_panneau_ht: '12.5', source: 'Offre transporteur', date: '2026-10-01' },
+    })
+    expect(screen.getByLabelText('Transport C&I — Par panneau HT')).toHaveAttribute('step', 'any')
   })
 
   it('aucune valeur pré-remplie : chaque prestation est « prix à renseigner »', () => {
