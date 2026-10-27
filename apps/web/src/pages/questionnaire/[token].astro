@@ -51,7 +51,7 @@ import {
   SOURCE_EAU_VALUES,
   TYPE_TOITURE_VALUES,
 } from '../../lib/questionnaire';
-import { type L3, AIDES_FACTURE, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, HORS_HORAIRES_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST, GPS_AGRI, GPS_TOIT } from '../../lib/questionnaireChamps';
+import { type L3, AIDES_FACTURE, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, HORS_HORAIRES_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST, RACCORDEMENT_RES_LABELS, TOITURE_RES_LABELS, GPS_AGRI, GPS_TOIT } from '../../lib/questionnaireChamps';
 import ChampsDonnees from '../../components/questionnaire/ChampsDonnees.astro';
 import ChampsHeuresActivite from '../../components/questionnaire/ChampsHeuresActivite.astro';
 import Repli from '../../components/questionnaire/Repli.astro';
@@ -200,6 +200,8 @@ const carburantMasque = alimPrefill === 'aucune' || alimPrefill === 'electrique'
 const butaneMasque = carburantMasque || alimPrefill === 'diesel';
 /** Le lead porte-t-il déjà sa position ? (les DEUX coordonnées, jamais une
  *  seule) — sert à dire au client qu'on ne la lui redemande pas. */
+// CQSTW10 — le serveur sert false par défaut : pré-coché seulement si la facture d'été est connue.
+const eteRadio = prefillStr('facture_ete') !== '' ? prefillBoolRadio('ete_differente') : '';
 const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '';
 
 // ── CIW406 — sections PRO (réseau, activité, site, société) ──────────────
@@ -440,16 +442,16 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 </legend>
                                 <div class="flex gap-4">
                                   <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                                    <input type="radio" name="q-ete-differente" id="q-ete-oui" value="oui" checked={prefillBoolRadio('ete_differente') === 'oui'} class="h-5 w-5 accent-azur-600" />
+                                    <input type="radio" name="q-ete-differente" id="q-ete-oui" value="oui" checked={eteRadio === 'oui'} class="h-5 w-5 accent-azur-600" />
                                     <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
                                   </label>
                                   <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                                    <input type="radio" name="q-ete-differente" id="q-ete-non" value="non" checked={prefillBoolRadio('ete_differente') === 'non'} class="h-5 w-5 accent-azur-600" />
+                                    <input type="radio" name="q-ete-differente" id="q-ete-non" value="non" checked={eteRadio === 'non'} class="h-5 w-5 accent-azur-600" />
                                     <span data-i18n data-en="No" data-ar="لا">Non</span>
                                   </label>
                                 </div>
                               </fieldset>
-                              <div id="q-facture-ete-wrap" class:list={['', prefillBoolRadio('ete_differente') === 'oui' ? '' : 'hidden']}>
+                              <div id="q-facture-ete-wrap" class:list={['', eteRadio === 'oui' ? '' : 'hidden']}>
                                 <label for="q-facture-ete" class="mb-1 block text-sm font-semibold" data-i18n data-en="Summer monthly bill (MAD)" data-ar="فاتورة الصيف الشهرية (درهم)">
                                   Facture d'été mensuelle (MAD)
                                 </label>
@@ -465,9 +467,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 Raccordement (si connu)
                               </label>
                               <select id="q-raccordement" class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50">
-                                <option value="" selected={prefillStr('raccordement') === ''}>— Je ne sais pas</option>
-                                <option value="mono" selected={prefillStr('raccordement') === 'mono'}>Monophasé</option>
-                                <option value="tri" selected={prefillStr('raccordement') === 'tri'}>Triphasé</option>
+                                {Object.entries(RACCORDEMENT_RES_LABELS).map(([v, l]) => (
+                                  <option value={v} data-fr={l.fr} data-en={l.en} data-ar={l.ar} selected={prefillStr('raccordement') === v}>{l.fr}</option>
+                                ))}
                               </select>
                             </div>
                           )}
@@ -1150,11 +1152,8 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                           <div>
                             <label for="q-type-toiture" class="mb-1 block text-sm font-semibold" data-i18n data-en="Roof type" data-ar="نوع السطح">Type de toiture</label>
                             <select id="q-type-toiture" class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50">
-                              <option value="" selected={prefillStr('type_toiture') === ''}>— Choisir…</option>
-                              {TYPE_TOITURE_VALUES.map((t) => (
-                                <option value={t} selected={prefillStr('type_toiture') === t}>
-                                  {t === 'villa' ? 'Villa' : t === 'hangar' ? 'Hangar industriel' : t === 'toit_plat' ? 'Toit plat' : 'Autre'}
-                                </option>
+                              {['', ...TYPE_TOITURE_VALUES].map((v) => (
+                                <option value={v} data-fr={TOITURE_RES_LABELS[v].fr} data-en={TOITURE_RES_LABELS[v].en} data-ar={TOITURE_RES_LABELS[v].ar} selected={prefillStr('type_toiture') === v}>{TOITURE_RES_LABELS[v].fr}</option>
                               ))}
                             </select>
                           </div>

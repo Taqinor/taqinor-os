@@ -127,3 +127,19 @@ describe('questionnaire — CQSTW8 repli facultatif, CQSTW9 pompe actuelle', () 
     expect(chmp).toMatch(/GPS_AGRI[^\n]*أرضكم/);
   });
 });
+
+// CQSTW10 — résidentiel : options traduites, « facture d'été différente » jamais pré-cochée sans donnée.
+describe('questionnaire — CQSTW10 résidentiel', () => {
+  const chmp = read('../src/lib/questionnaireChamps.ts');
+  it('raccordement et type de toiture portent data-fr/data-en/data-ar', () => {
+    expect(src).toContain('RACCORDEMENT_RES_LABELS');
+    expect(src).toContain('TOITURE_RES_LABELS');
+    expect(chmp).toContain("L('Monophasé', 'Single-phase'");
+    expect(chmp).toContain("L('Villa', 'Villa', 'فيلا')");
+    expect(src).not.toContain('— Je ne sais pas</option>');
+  });
+  it('« facture d’été différente » n’est pré-cochée que si facture_ete est connue', () => {
+    expect(src).toContain("const eteRadio = prefillStr('facture_ete') !== '' ? prefillBoolRadio('ete_differente') : '';");
+    expect(src).not.toContain("prefillBoolRadio('ete_differente') ===");
+  });
+});

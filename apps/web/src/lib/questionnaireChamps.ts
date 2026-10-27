@@ -267,3 +267,16 @@ export const POUR_AFFINER: L3 = L('Pour affiner (facultatif)', 'To refine (optio
 // CQSTW9 — texte GPS : « terrain / forage » pour un agriculteur, « toit » ailleurs.
 export const GPS_AGRI: L3 = L("Partagez la position de votre terrain (ou de votre forage) pour qu'on le localise précisément.", 'Share the position of your land (or your borehole) so we can locate it precisely.', 'شاركوا موقع أرضكم (أو بئركم) لنتمكن من تحديده بدقة.');
 export const GPS_TOIT: L3 = L("Partagez votre position pour qu'on localise précisément votre toit.", 'Share your position so we can locate your roof precisely.', 'شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.');
+// CQSTW10 — options du parcours résidentiel (raccordement, type de toiture) en FR/EN/AR.
+export const RACCORDEMENT_RES_LABELS: Record<string, L3> = {
+  '': L('— Je ne sais pas', "— I don't know", '— لا أعرف'),
+  mono: L('Monophasé', 'Single-phase', 'أحادي الطور'),
+  tri: L('Triphasé', 'Three-phase', 'ثلاثي الأطوار'),
+};
+export const TOITURE_RES_LABELS: Record<string, L3> = {
+  '': L('— Choisir…', '— Choose…', '— اختاروا…'),
+  villa: L('Villa', 'Villa', 'فيلا'),
+  hangar: L('Hangar industriel', 'Industrial shed', 'مستودع صناعي'),
+  toit_plat: L('Toit plat', 'Flat roof', 'سطح مسطح'),
+  autre: L('Autre', 'Other', 'أخرى'),
+};
