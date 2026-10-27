@@ -772,6 +772,9 @@ def lire_catalogue_ci(company):
             'motif_exclusion': element.get('motif_exclusion'),
             'dc_max_kwc': specs.get('dc_max_kwc'),
             's_max_kva': specs.get('s_max_kva'),
+            # Demande CMP (27/10/2026) : chaînes par entrée MPPT publiées par la
+            # fiche, lues d'abord par le concepteur de chaînes (facultatif).
+            'chaines_max_par_mppt': specs.get('chaines_max_par_mppt'),
             # ADEV87 — la fiche électrique (chaînes), ``None`` si incomplète.
             'spec': specs_onduleur(specs, element.get('nom') or '')[0] if specs else None,
         })
