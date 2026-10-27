@@ -778,6 +778,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         lien public « technicien en route » — aucune autre logique n'en
         dépend)."""
         interv = self.get_object()
+        # Fondateur 27/10/2026 — accord géolocalisation requis (terrain seul).
+        if refus := field_services.refus_sans_accord_geoloc(request.user):
+            return Response({'detail': refus}, status=status.HTTP_403_FORBIDDEN)
         # ACHT43 — geste unique partagé avec la synchro terrain.
         field_services.enregistrer_depart_depot(
             interv, timezone.now(), request.data.get('lat'),
@@ -822,6 +825,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         aucun service externe). On en dérive une distance-au-site indicative.
         Corps : {"lat": <num>, "lng": <num>}."""
         interv = self.get_object()
+        if refus := field_services.refus_sans_accord_geoloc(request.user):  # idem départ
+            return Response({'detail': refus}, status=status.HTTP_403_FORBIDDEN)
         # ACHT43 — geste unique partagé avec la synchro terrain (XFSM5 :
         # ponctualité dérivée de l'instant vs la fenêtre promise).
         try:

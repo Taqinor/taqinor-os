@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LocateFixed, ShieldAlert, ShieldCheck, Info } from 'lucide-react'
+import { LocateFixed, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { Button } from '../../ui'
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import installationsApi from '../../api/installationsApi'
 
 /* ============================================================================
@@ -22,6 +23,15 @@ import installationsApi from '../../api/installationsApi'
    DURABLE (`GpsConsentRecord`) reste posé par un responsable — ce composant
    n'en pose jamais ; il ne fait que recueillir l'ACCUSÉ DE RÉCEPTION de la
    notice par le technicien lui-même.
+
+   FONDATEUR 27/10/2026 (techniciens = prestataires externes) : le suivi est
+   OBLIGATOIRE et INÉVITABLE, jamais caché. Le gros bandeau devient une PUCE
+   DISCRÈTE « ● Suivi actif » (point vert, infobulle avec la référence de
+   l'intervention, « Pourquoi ? » ouvre la notice dans une fenêtre) ; un
+   appareil qui refuse la géolocalisation affiche « ● Suivi interrompu —
+   autorisez la géolocalisation » en orange (jamais un toast d'erreur). L'accord
+   lui-même est demandé en pleine page par « Ma journée »
+   (`ConsentementGpsBloquant`). Tampon hors-ligne / envoi par lots inchangés.
    ========================================================================== */
 
 // Session ouverte = le technicien est en déplacement ou sur place (F3).
@@ -192,6 +202,9 @@ export default function GpsTrackingToggle({ intervention }) {
   const [accepteIci, setAccepteIci] = useState(false)
   const [erreur, setErreur] = useState(null)
   const [arrete, setArrete] = useState(false)
+  // 27/10/2026 — l'appareil refuse la géolocalisation (PERMISSION_DENIED) :
+  // puce orange « Suivi interrompu », jamais un toast d'erreur.
+  const [geoRefusee, setGeoRefusee] = useState(false)
   const [pourquoi, setPourquoi] = useState(false)
   const notice = useNotice(pourquoi)
   const dernierEnvoiRef = useRef(0)
@@ -243,6 +256,7 @@ export default function GpsTrackingToggle({ intervention }) {
   // Appelé par le callback `watchPosition` (asynchrone, jamais synchrone
   // dans le corps de l'effet) — seul endroit où `Date.now()` est lu.
   const surPosition = useCallback((position) => {
+    setGeoRefusee(false) // autorisation rétablie : la puce repasse au vert
     const maintenant = Date.now()
     if (maintenant - dernierEnvoiRef.current < PING_MIN_INTERVAL_MS) return
     dernierEnvoiRef.current = maintenant
@@ -279,8 +293,12 @@ export default function GpsTrackingToggle({ intervention }) {
     if (!suivi) return undefined
     const watchId = navigator.geolocation.watchPosition(
       surPosition,
-      () => setErreur(
-        'Position indisponible — vérifiez que la géolocalisation est autorisée.'),
+      // code 1 = PERMISSION_DENIED (refus de l'appareil) ; sinon signal GPS
+      // momentanément indisponible.
+      (err) => {
+        if (err?.code === 1) setGeoRefusee(true)
+        else setErreur('Position momentanément indisponible.')
+      },
       // Haute précision (GPS, plus gourmande) seulement sur le chantier.
       { enableHighAccuracy: statut === 'sur_site', maximumAge: 30000 },
     )
@@ -315,28 +333,41 @@ export default function GpsTrackingToggle({ intervention }) {
     )
   }
 
+  // 27/10/2026 — puce discrète : verte tant que le suivi tourne, orange dès
+  // qu'il est interrompu (refus de l'appareil, appareil sans GPS, refus serveur).
+  const interrompu = !geoDisponible || geoRefusee || arrete
+  const libelle = !geoDisponible
+    ? 'Suivi interrompu — géolocalisation indisponible sur cet appareil'
+    : geoRefusee
+      ? 'Suivi interrompu — autorisez la géolocalisation'
+      : arrete ? 'Suivi interrompu' : 'Suivi actif'
+
   return (
-    <div className="flex flex-col gap-1.5 rounded-lg border border-primary/30 bg-primary/5 p-2.5"
-      data-testid="gps-tracking-toggle" role="status">
-      <p className="flex flex-wrap items-center gap-1.5 text-[12px] font-medium">
-        <LocateFixed className="size-4 text-primary" aria-hidden="true" />
-        Position partagée avec votre responsable — intervention {ref}
-        <button type="button" className="inline-flex items-center gap-0.5 text-primary underline"
-          onClick={() => setPourquoi((v) => !v)} aria-expanded={pourquoi}>
-          <Info className="size-3.5" aria-hidden="true" /> Pourquoi ?
+    <div className="flex flex-col gap-0.5" data-testid="gps-tracking-toggle">
+      <p className={`flex w-fit flex-wrap items-center gap-1 text-[11px] ${interrompu ? 'text-warning' : 'text-muted-foreground'}`}
+        role="status" data-testid="gps-suivi-puce"
+        title={`${interrompu ? 'Suivi de position interrompu' : 'Suivi de position actif'} — intervention ${ref}`}>
+        <span aria-hidden="true"
+          className={`inline-block size-2 rounded-full ${interrompu ? 'bg-warning' : 'bg-success'}`} />
+        {libelle}
+        <button type="button" className="text-primary underline underline-offset-2"
+          onClick={() => setPourquoi(true)} aria-haspopup="dialog">
+          Pourquoi ?
         </button>
       </p>
-      {pourquoi && <NoticeGeoloc notice={notice} />}
-      {!geoDisponible && (
-        <p className="flex items-center gap-1 text-[12px] text-warning">
-          <ShieldAlert className="size-3.5" aria-hidden="true" />
-          Géolocalisation indisponible sur cet appareil — utilisez le pointage manuel.
+      {geoDisponible && erreur && (
+        <p className="flex items-center gap-1 text-[11px] text-warning">
+          <ShieldAlert className="size-3" aria-hidden="true" /> {erreur}
         </p>
       )}
-      {geoDisponible && erreur && (
-        <p className="flex items-center gap-1 text-[12px] text-warning">
-          <ShieldAlert className="size-3.5" aria-hidden="true" /> {erreur}
-        </p>
+      {pourquoi && (
+        <ResponsiveDialog open onOpenChange={(o) => { if (!o) setPourquoi(false) }}
+          title={notice?.titre || 'Information sur la géolocalisation pendant vos interventions'}
+          className="sm:max-w-lg">
+          <div className="max-h-[70vh] overflow-y-auto px-1 pb-2">
+            <NoticeGeoloc notice={notice} />
+          </div>
+        </ResponsiveDialog>
       )}
     </div>
   )

@@ -22,7 +22,12 @@ Couvre :
   * l'isolation société de chaque route neuve ; les champs du serializer ;
   * correctifs de revue : présence réservée (F1), lot rattrapé après un
     relevé live plus récent (F2), lot reçu après clôture (F3), présence datée
-    du relevé (F4), retour arrière de 0132 (F5).
+    du relevé (F4), retour arrière de 0132 (F5) ;
+  * fondateur 27/10/2026 (prestataires) : consentement en attente créé pour
+    un utilisateur terrain (jamais un responsable), départ dépôt / check-in
+    refusés (403, et op de synchro gardée en file) sans accord, interruption
+    du suivi détectée / dédoublonnée / notifiée, champ du serializer,
+    isolation société.
 
 Run :
     powershell -File scripts/test-backend.ps1 -RestoreDb \
@@ -178,15 +183,20 @@ class AccuseReceptionTests(Base):
         resp = self.api.get(f'{BASE}/gps-consentements/mon-consentement/')
         self.assertEqual(resp.data['notice']['recepisse_cndp'], 'D-GC-123/2026')
 
-    def test_sans_consentement_pose_absent_et_accepter_404(self):
-        resp = self.api.get(f'{BASE}/gps-consentements/mon-consentement/')
+    def test_responsable_sans_consentement_reste_absent_et_accepter_404(self):
+        """Fondateur 27/10/2026 — la création paresseuse ne vise QUE les
+        utilisateurs terrain : un responsable reste « absent »."""
+        api = auth(self.responsable)
+        resp = api.get(f'{BASE}/gps-consentements/mon-consentement/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['statut'], 'absent')
         self.assertFalse(resp.data['existe'])
-        acc = self.api.post(
+        acc = api.post(
             f'{BASE}/gps-consentements/mon-consentement/accepter/', {},
             format='json')
         self.assertEqual(acc.status_code, 404, acc.content)
+        self.assertFalse(GpsConsentRecord.objects.filter(
+            technicien=self.responsable).exists())
 
     def test_acceptation_idempotente_garde_la_premiere_date(self):
         gps_tracking_service.record_consent(self.company, self.technicien)
@@ -219,7 +229,7 @@ class AccuseReceptionTests(Base):
         self.assertIsNotNone(ligne['accepte_le'])
         self.assertTrue(ligne['is_acknowledged'])
         self.assertEqual(ligne['statut'], 'actif')
-        self.assertEqual(ligne['notice_version'], 'v1')
+        self.assertEqual(ligne['notice_version'], 'v2')
 
     def test_le_technicien_ne_lit_pas_les_consentements_des_autres(self):
         resp = self.api.get(f'{BASE}/gps-consentements/')
@@ -727,6 +737,270 @@ class SerializerInterventionTests(Base):
             ['actif', 'actif', 'actif'])
 
 
+def make_technicien_role(company):
+    """Technicien à rôle FIN (palier « normal ») : il passe la garde
+    d'écriture du module installations (départ dépôt / check-in) — c'est le
+    vrai compte terrain, contrairement à ``role_legacy='normal'``."""
+    from apps.roles.models import Role
+    from apps.roles.permissions_registre import TECHNICIEN_PERMISSIONS
+    role = Role.objects.create(
+        company=company, nom='Technicien', permissions=list(TECHNICIEN_PERMISSIONS))
+    return User.objects.create_user(
+        username=f'rcgps-tech-{next(_seq)}', password='x', company=company, role=role)
+
+
+class AccordObligatoireTests(TestCase):
+    """Fondateur 27/10/2026 — l'accord aux conditions d'utilisation
+    (géolocalisation) est une condition BLOQUANTE des écrans terrain."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.responsable = make_user(self.company)
+        self.tech = make_technicien_role(self.company)
+        self.interv = make_intervention(
+            self.company, self.responsable, self.tech, statut=Intervention.Statut.PRETE)
+        self.api = auth(self.tech)
+        self.url = f'{BASE}/interventions/{self.interv.id}'
+
+    def test_creation_paresseuse_pour_un_utilisateur_terrain(self):
+        self.assertEqual(self.tech.menu_tier, 'normal')
+        resp = self.api.get(f'{BASE}/gps-consentements/mon-consentement/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['statut'], 'a_accepter')
+        self.assertTrue(resp.data['existe'])
+        self.assertEqual(resp.data['notice']['version'], 'v2')
+        record = GpsConsentRecord.objects.get(technicien=self.tech)
+        self.assertEqual(record.company, self.company)
+        self.assertEqual(record.consent_ref, 'conditions-app')
+        self.assertIsNone(record.recorded_by)
+        # Idempotent : un second GET ne crée rien de plus.
+        self.api.get(f'{BASE}/gps-consentements/mon-consentement/')
+        self.assertEqual(GpsConsentRecord.objects.filter(technicien=self.tech).count(), 1)
+        # Le responsable le voit « en attente d'accord ».
+        lignes = liste(auth(self.responsable).get(f'{BASE}/gps-consentements/'))
+        ligne = [r for r in lignes if r['technicien'] == self.tech.id][0]
+        self.assertEqual(ligne['statut'], 'a_accepter')
+
+    def test_technicien_legacy_normal_aussi_mais_jamais_un_responsable(self):
+        legacy = make_user(self.company, role='normal')
+        auth(legacy).get(f'{BASE}/gps-consentements/mon-consentement/')
+        self.assertTrue(GpsConsentRecord.objects.filter(technicien=legacy).exists())
+        auth(self.responsable).get(f'{BASE}/gps-consentements/mon-consentement/')
+        self.assertFalse(GpsConsentRecord.objects.filter(
+            technicien=self.responsable).exists())
+
+    def test_retrait_jamais_recree(self):
+        consentement_accepte(self.company, self.tech)
+        gps_tracking_service.revoke_consent(self.company, self.tech)
+        resp = self.api.get(f'{BASE}/gps-consentements/mon-consentement/')
+        self.assertEqual(resp.data['statut'], 'revoque')
+        self.assertEqual(GpsConsentRecord.objects.filter(technicien=self.tech).count(), 1)
+        self.assertEqual(self.api.post(f'{self.url}/depart-depot/', {}, format='json')
+                         .status_code, 403)
+
+    def test_depart_depot_et_checkin_403_avant_200_apres(self):
+        avant = self.api.post(f'{self.url}/depart-depot/', {}, format='json')
+        self.assertEqual(avant.status_code, 403, avant.content)
+        self.assertEqual(
+            avant.data['detail'],
+            "Acceptez les conditions d'utilisation (géolocalisation) dans "
+            "« Ma journée » avant de partir.")
+        self.assertEqual(
+            self.api.post(f'{self.url}/checkin/', {'lat': 33.5, 'lng': -7.6},
+                          format='json').status_code, 403)
+        self.interv.refresh_from_db()
+        self.assertIsNone(self.interv.depart_depot_le)
+
+        self.api.get(f'{BASE}/gps-consentements/mon-consentement/')
+        acc = self.api.post(f'{BASE}/gps-consentements/mon-consentement/accepter/', {},
+                            format='json')
+        self.assertEqual(acc.status_code, 200, acc.content)
+        self.assertEqual(GpsConsentRecord.objects.get(technicien=self.tech).notice_version, 'v2')
+
+        apres = self.api.post(f'{self.url}/depart-depot/', {}, format='json')
+        self.assertEqual(apres.status_code, 200, apres.content)
+        self.assertIsNotNone(apres.data['depart_depot_le'])
+        checkin = self.api.post(f'{self.url}/checkin/', {'lat': 33.5, 'lng': -7.6},
+                                format='json')
+        self.assertEqual(checkin.status_code, 200, checkin.content)
+
+    def test_responsable_pour_le_compte_du_technicien_non_bloque(self):
+        resp = auth(self.responsable).post(f'{self.url}/depart-depot/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
+    def test_synchro_garde_lop_en_file_avant_laccord(self):
+        from apps.installations import field_sync
+        op = {'client_op_id': f'gps-accord-{self.interv.id}',
+              'op_type': 'intervention.depart_depot',
+              'payload': {'intervention': self.interv.id}}
+        avant = field_sync.apply_batch(self.company, self.tech, [dict(op)])
+        self.assertEqual(avant['errors'], 1)
+        self.assertEqual(avant['results'][0]['status'], 'error')
+        self.assertIn('géolocalisation', avant['results'][0]['error'])
+        self.interv.refresh_from_db()
+        self.assertIsNone(self.interv.depart_depot_le)
+        checkin = field_sync.apply_batch(self.company, self.tech, [{
+            'client_op_id': f'gps-accord-ci-{self.interv.id}',
+            'op_type': 'intervention.checkin',
+            'payload': {'intervention': self.interv.id, 'lat': 33.5, 'lng': -7.6}}])
+        self.assertEqual(checkin['results'][0]['status'], 'error')
+
+        consentement_accepte(self.company, self.tech)
+        # La MÊME clé est rejouable (rien n'a été mémorisé au refus).
+        apres = field_sync.apply_batch(self.company, self.tech, [dict(op)])
+        self.assertEqual(apres['results'][0]['status'], 'applied', apres)
+        self.interv.refresh_from_db()
+        self.assertIsNotNone(self.interv.depart_depot_le)
+
+
+class InterruptionSuiviTests(Base):
+    """Fondateur 27/10/2026 — silence de plus de 15 min pendant une session
+    (en route / sur site) avec accord donné : UNE alerte, notifiée."""
+
+    def setUp(self):
+        super().setUp()
+        consentement_accepte(self.company, self.technicien)
+        self.maintenant = timezone.now()
+
+    def poser(self, minutes_avant, point=DEDANS):
+        return gps_tracking_service.enregistrer_position(
+            self.company, self.technicien, float(point['lat']), float(point['lng']),
+            intervention=self.interv,
+            captured_at=self.maintenant - timedelta(minutes=minutes_avant))
+
+    def interruptions(self):
+        return GeofenceAlert.objects.filter(
+            intervention=self.interv,
+            type_franchissement=GeofenceAlert.TypeFranchissement.INTERRUPTION)
+
+    def test_detection_dedoublonnage_et_nouvel_episode(self):
+        self.poser(20)
+        creees = gps_tracking_service.signaler_interruptions(
+            self.company, maintenant=self.maintenant)
+        self.assertEqual(len(creees), 1)
+        alerte = creees[0]
+        self.assertEqual(alerte.captured_at, self.maintenant - timedelta(minutes=20))
+        self.assertIsNotNone(alerte.distance_site_km)
+        self.assertIsNone(alerte.position_id)
+        self.assertEqual(alerte.technicien_id, self.technicien.id)
+        # Second passage : même épisode de silence, aucun doublon.
+        self.assertEqual(gps_tracking_service.signaler_interruptions(
+            self.company, maintenant=self.maintenant + timedelta(minutes=10)), [])
+        # Acquittée : ne renaît pas pour le même épisode.
+        self.interruptions().update(acquittee=True)
+        self.assertEqual(gps_tracking_service.signaler_interruptions(
+            self.company, maintenant=self.maintenant + timedelta(minutes=20)), [])
+        # Nouveau relevé : rien tant que le nouveau silence < 15 min…
+        self.poser(-25)  # relevé à maintenant + 25 min
+        self.assertEqual(gps_tracking_service.signaler_interruptions(
+            self.company, maintenant=self.maintenant + timedelta(minutes=35)), [])
+        # … puis une NOUVELLE alerte après 15 min de silence de plus.
+        nouvelles = gps_tracking_service.signaler_interruptions(
+            self.company, maintenant=self.maintenant + timedelta(minutes=41))
+        self.assertEqual(len(nouvelles), 1)
+        self.assertEqual(self.interruptions().count(), 2)
+
+    def test_sans_position_depuis_le_depart_depot(self):
+        self.interv.statut = Intervention.Statut.EN_ROUTE
+        self.interv.depart_depot_le = self.maintenant - timedelta(minutes=30)
+        self.interv.save(update_fields=['statut', 'depart_depot_le'])
+        creees = gps_tracking_service.signaler_interruptions(
+            self.company, maintenant=self.maintenant)
+        self.assertEqual(len(creees), 1)
+        self.assertIsNone(creees[0].distance_site_km)  # jamais une distance inventée
+
+    def test_ni_accord_ni_hors_session_ni_silence_court(self):
+        self.poser(5)
+        self.assertEqual(gps_tracking_service.signaler_interruptions(
+            self.company, maintenant=self.maintenant), [])
+        self.poser(40)
+        self.interv.statut = Intervention.Statut.PRETE
+        self.interv.save(update_fields=['statut'])
+        self.assertEqual(gps_tracking_service.signaler_interruptions(
+            self.company, maintenant=self.maintenant + timedelta(hours=1)), [])
+        self.interv.statut = Intervention.Statut.SUR_SITE
+        self.interv.save(update_fields=['statut'])
+        gps_tracking_service.revoke_consent(self.company, self.technicien)
+        self.assertEqual(gps_tracking_service.signaler_interruptions(
+            self.company, maintenant=self.maintenant + timedelta(hours=1)), [])
+
+    def test_responsable_notifie_une_seule_fois(self):
+        self.poser(20)
+        with mock.patch('apps.notifications.services.notify_many') as notify_many:
+            with self.captureOnCommitCallbacks(execute=True):
+                gps_tracking_service.signaler_interruptions(
+                    self.company, maintenant=self.maintenant)
+            with self.captureOnCommitCallbacks(execute=True):
+                gps_tracking_service.signaler_interruptions(
+                    self.company, maintenant=self.maintenant + timedelta(minutes=10))
+        self.assertEqual(notify_many.call_count, 1)
+        self.assertEqual([u.id for u in notify_many.call_args.args[0]], [self.responsable.id])
+        self.assertIn('Suivi interrompu', notify_many.call_args.args[2])
+        self.assertEqual(notify_many.call_args.kwargs['link'], '/planification/suivi-gps')
+
+    def test_une_interruption_ne_rouvre_pas_la_sortie(self):
+        self.ping(DEHORS)  # sortie ouverte (sur site)
+        GeofenceAlert.objects.create(
+            company=self.company, intervention=self.interv, technicien=self.technicien,
+            rayon_attendu_km=Decimal('0.5'),
+            type_franchissement=GeofenceAlert.TypeFranchissement.INTERRUPTION,
+            captured_at=timezone.now())
+        self.ping(DEHORS)
+        self.assertEqual(GeofenceAlert.objects.filter(
+            intervention=self.interv,
+            type_franchissement=GeofenceAlert.TypeFranchissement.SORTIE).count(), 1)
+
+    def test_champ_du_serializer_et_file_des_alertes(self):
+        PositionTechnicien.objects.create(
+            company=self.company, technicien=self.technicien, intervention=self.interv,
+            lat=Decimal(DEDANS['lat']), lng=Decimal(DEDANS['lng']),
+            captured_at=timezone.now() - timedelta(minutes=22))
+        api = auth(self.responsable)
+        url = f'{BASE}/interventions/{self.interv.id}/'
+        self.assertGreaterEqual(api.get(url).data['gps_suivi_interrompu_depuis_min'], 22)
+        gps_tracking_service.signaler_interruptions(self.company)
+        alertes = liste(api.get(
+            f'{BASE}/geofence-alertes/?type_franchissement=sortie,interruption'))
+        self.assertEqual(len(alertes), 1)
+        self.assertEqual(alertes[0]['type_franchissement'], 'interruption')
+        self.assertEqual(alertes[0]['type_franchissement_display'], 'Suivi interrompu')
+        self.assertGreaterEqual(alertes[0]['suivi_interrompu_depuis_min'], 22)
+        self.assertIsNotNone(alertes[0]['captured_at'])
+        # Le technicien reprend : plus « interrompu » (alerte gardée, à acquitter).
+        self.assertEqual(self.ping(DEDANS).status_code, 201)
+        self.assertIsNone(api.get(url).data['gps_suivi_interrompu_depuis_min'])
+        alertes = liste(api.get(f'{BASE}/geofence-alertes/?type_franchissement=interruption'))
+        self.assertIsNone(alertes[0]['suivi_interrompu_depuis_min'])
+        # Hors session : null, sans calcul.
+        self.interv.statut = Intervention.Statut.PRETE
+        self.interv.save(update_fields=['statut'])
+        self.assertIsNone(api.get(url).data['gps_suivi_interrompu_depuis_min'])
+
+    def test_isolation_societe_et_tache_beat(self):
+        autre_co = make_company()
+        resp_b = make_user(autre_co)
+        tech_b = make_user(autre_co, role='normal')
+        consentement_accepte(autre_co, tech_b)
+        interv_b = make_intervention(autre_co, resp_b, tech_b)
+        for co, tech, iv in ((self.company, self.technicien, self.interv),
+                             (autre_co, tech_b, interv_b)):
+            PositionTechnicien.objects.create(
+                company=co, technicien=tech, intervention=iv,
+                lat=Decimal(DEDANS['lat']), lng=Decimal(DEDANS['lng']),
+                captured_at=timezone.now() - timedelta(minutes=30))
+        creees = gps_tracking_service.signaler_interruptions(self.company)
+        self.assertEqual([a.intervention_id for a in creees], [self.interv.id])
+        self.assertFalse(GeofenceAlert.objects.filter(intervention=interv_b).exists())
+        from apps.installations.tasks import signaler_interruptions_gps_task
+        self.assertGreaterEqual(signaler_interruptions_gps_task(), 1)
+        self.assertEqual(GeofenceAlert.objects.filter(
+            intervention=interv_b,
+            type_franchissement=GeofenceAlert.TypeFranchissement.INTERRUPTION).count(), 1)
+        self.assertEqual(self.interruptions().count(), 1)  # pas de doublon
+        vues = liste(auth(resp_b).get(f'{BASE}/geofence-alertes/'))
+        self.assertEqual({a['intervention'] for a in vues}, {interv_b.id})
+
+
 class Migration0132RetourArriereTests(Base):
     """F5 — le retour arrière de 0132 ne bute pas sur les alertes purgées."""
 
@@ -745,6 +1019,12 @@ class Migration0132RetourArriereTests(Base):
         i_run = next(i for i, op in enumerate(ops)
                      if isinstance(op, migrations.RunPython))
         self.assertGreater(i_run, i_alter)
+        # 27/10/2026 — distance nullable (alertes d'interruption) : défaite
+        # APRÈS la suppression des alertes sans position, elle aussi.
+        i_distance = next(i for i, op in enumerate(ops)
+                          if isinstance(op, migrations.AlterField)
+                          and op.name == 'distance_site_km')
+        self.assertGreater(i_run, i_distance)
         self.assertIs(ops[i_run].reverse_code,
                       self.module._supprimer_alertes_sans_position)
 

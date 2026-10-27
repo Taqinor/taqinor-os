@@ -14,7 +14,7 @@ const inst = vi.hoisted(() => ({
       id: 1, technicien: 10, technicien_nom: 'ahmed', consent_ref: 'CG-1',
       consent_recorded_at: '2026-07-18T09:00:00Z', is_active: true,
       accepte_le: null, is_acknowledged: false, statut: 'a_accepter',
-      notice_version: 'v1', recepisse_cndp: '',
+      notice_version: 'v2', recepisse_cndp: '',
     }],
   })),
   createGpsConsentement: vi.fn(() => Promise.resolve({ data: { id: 2 } })),
@@ -145,8 +145,9 @@ describe('SuiviGpsPage (WIR113)', () => {
     await waitFor(() => expect(inst.getCarteLivePositions).toHaveBeenCalled())
 
     await user.click(screen.getByRole('tab', { name: /Alertes géofence/i }))
+    // Fondateur 27/10/2026 — sorties ET interruptions du suivi « à traiter ».
     await waitFor(() => expect(inst.getGeofenceAlertes).toHaveBeenCalledWith(
-      expect.objectContaining({ type_franchissement: 'sortie' })))
+      expect.objectContaining({ type_franchissement: 'sortie,interruption' })))
     const alerte = await screen.findByTestId('alerte-5')
     expect(alerte.textContent).toContain('À traiter')
 
@@ -209,8 +210,35 @@ describe('SuiviGpsPage (WIR113)', () => {
     await user.click(screen.getByRole('button', { name: /^Enregistrer$/i }))
     await waitFor(() => expect(inst.createGpsConsentement).toHaveBeenCalledWith(
       expect.objectContaining({
-        technicien: 10, notice_version: 'v1', recepisse_cndp: 'D-123/2026',
+        technicien: 10, notice_version: 'v2', recepisse_cndp: 'D-123/2026',
       })))
+  })
+
+  it("alertes : une interruption du suivi a son propre libellé et sa durée", async () => {
+    const user = userEvent.setup()
+    const original = inst.getGeofenceAlertes.getMockImplementation()
+    inst.getGeofenceAlertes.mockImplementation(() => Promise.resolve({
+      data: [{
+        id: 6, technicien: 10, technicien_nom: 'ahmed', distance_site_km: null,
+        rayon_attendu_km: '0.500', created_at: '2026-10-27T10:20:00Z',
+        captured_at: '2026-10-27T10:00:00Z', acquittee: false,
+        type_franchissement: 'interruption', type_franchissement_display: 'Suivi interrompu',
+        suivi_interrompu_depuis_min: 27, intervention: 12,
+      }],
+    }))
+    try {
+      render(<SuiviGpsPage />)
+      await screen.findByTestId('consentement-1')
+      await user.click(screen.getByRole('tab', { name: /Alertes géofence/i }))
+      const alerte = await screen.findByTestId('alerte-6')
+      expect(alerte.textContent).toContain('Suivi interrompu')
+      expect(alerte.textContent).not.toContain('km (rayon attendu')
+      expect(screen.getByTestId('alerte-6-interrompu').textContent)
+        .toBe('Suivi interrompu depuis 27 min')
+      expect(screen.getByTestId('alerte-6-interrompu').className).toContain('text-warning')
+    } finally {
+      inst.getGeofenceAlertes.mockImplementation(original)
+    }
   })
 
   it("carte live : âge des positions et tracé du jour d'un technicien", async () => {

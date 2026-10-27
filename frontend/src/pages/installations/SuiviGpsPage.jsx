@@ -65,9 +65,11 @@ function ConsentementsTab({ techniciens }) {
       <p className="text-sm text-muted-foreground">
         Le suivi de position n&apos;est possible qu&apos;avec un consentement
         actif ET l&apos;accord du technicien, donné une fois dans « Ma journée »
-        après lecture de la notice (loi 09-08). Il est ensuite automatique
-        pendant les interventions en route / sur site, avec un bandeau visible
-        — jamais de suivi caché.
+        après lecture de la notice (loi 09-08). Cet accord conditionne
+        l&apos;accès aux missions : un technicien qui ouvre « Ma journée » sans
+        consentement apparaît ici « En attente d&apos;accord ». Le suivi est
+        ensuite automatique pendant les interventions en route / sur site,
+        signalé par un indicateur visible — jamais de suivi caché.
       </p>
       <div className="flex justify-end">
         <Button size="sm" onClick={() => setShowCreate(true)}>
@@ -94,7 +96,7 @@ function ConsentementsTab({ techniciens }) {
               ? <Badge tone="success">Accord donné le {formatDateTime(r.accepte_le)}</Badge>
               : <Badge tone="warning">En attente d&apos;accord du technicien</Badge>)}
             <span className="text-sm text-muted-foreground">
-              Notice {r.notice_version || 'v1'} · récépissé CNDP {r.recepisse_cndp || 'non encore déclaré'}
+              Notice {r.notice_version || 'v2'} · récépissé CNDP {r.recepisse_cndp || 'non encore déclaré'}
             </span>
             {r.consent_ref && <Badge tone="info">{r.consent_ref}</Badge>}
             {!r.is_active && r.revoked_reason && (
@@ -121,7 +123,7 @@ function ConsentementsTab({ techniciens }) {
 function ConsentementDialog({ techniciens, onClose, onCreated }) {
   const [technicien, setTechnicien] = useState('')
   const [consentRef, setConsentRef] = useState('')
-  const [noticeVersion, setNoticeVersion] = useState('v1')
+  const [noticeVersion, setNoticeVersion] = useState('v2')
   const [recepisse, setRecepisse] = useState('')
   const [confirme, setConfirme] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -168,7 +170,7 @@ function ConsentementDialog({ techniciens, onClose, onCreated }) {
         </label>
         <select id="gps-notice-version" className="form-control" value={noticeVersion}
           onChange={(e) => setNoticeVersion(e.target.value)}>
-          <option value="v1">v1 — notice en vigueur</option>
+          <option value="v2">v2 — notice en vigueur (prestataires, 27/10/2026)</option>
         </select>
         <label className="form-label" htmlFor="gps-recepisse">
           N° de récépissé de la déclaration CNDP (vide = « non encore déclaré »)
@@ -357,13 +359,14 @@ function CarteLiveTab({ techniciens }) {
 }
 
 // ── Alertes de géofence ─────────────────────────────────────────────────────
-// Filtre serveur `type_franchissement=sortie` (NTMOB9/GeofenceAlertViewSet) :
-// seules les SORTIES sont actionnables (« À traiter » / Acquitter) — les
-// ENTRÉES sont informatives et vivent dans l'onglet Historique de présence,
-// jamais dans cette file d'attente.
+// Filtre serveur `type_franchissement=sortie,interruption`
+// (NTMOB9/GeofenceAlertViewSet) : seules les SORTIES et, depuis le 27/10/2026
+// (fondateur), les INTERRUPTIONS du suivi sont actionnables (« À traiter » /
+// Acquitter) — les ENTRÉES sont informatives et vivent dans l'onglet
+// Historique de présence, jamais dans cette file d'attente.
 function AlertesTab() {
   const { rows, loading, error, reload } = useFilteredList(
-    (p) => installationsApi.getGeofenceAlertes({ ...p, type_franchissement: 'sortie' }),
+    (p) => installationsApi.getGeofenceAlertes({ ...p, type_franchissement: 'sortie,interruption' }),
   )
 
   const [filtre, setFiltre] = useState('ouvertes')
@@ -384,7 +387,10 @@ function AlertesTab() {
       <p className="text-sm text-muted-foreground">
         Une alerte est levée quand, pendant une intervention SUR SITE, la
         position du technicien sort du rayon du chantier (une seule alerte
-        ouverte jusqu&apos;à son retour ; le responsable est notifié).
+        ouverte jusqu&apos;à son retour ; le responsable est notifié), et quand
+        le suivi d&apos;une intervention en route / sur site s&apos;interrompt
+        plus de 15 minutes (géolocalisation coupée, téléphone éteint ou hors
+        réseau).
       </p>
       <select value={filtre} onChange={(e) => setFiltre(e.target.value)}
         aria-label="Filtre des alertes"
@@ -403,12 +409,28 @@ function AlertesTab() {
             <Badge tone={a.acquittee ? 'neutral' : 'danger'}>
               {a.acquittee ? 'Acquittée' : 'À traiter'}
             </Badge>
-            <span className="text-sm text-muted-foreground">
-              {a.distance_site_km} km (rayon attendu {a.rayon_attendu_km} km)
-            </span>
-            <span className="text-sm text-muted-foreground">
-              {formatDateTime(a.created_at)}
-            </span>
+            {a.type_franchissement === 'interruption' ? (
+              <>
+                <Badge tone="warning">{a.type_franchissement_display || 'Suivi interrompu'}</Badge>
+                {a.suivi_interrompu_depuis_min != null && (
+                  <span className="text-sm text-warning" data-testid={`alerte-${a.id}-interrompu`}>
+                    Suivi interrompu depuis {a.suivi_interrompu_depuis_min} min
+                  </span>
+                )}
+                <span className="text-sm text-muted-foreground">
+                  Dernière position connue : {formatDateTime(a.captured_at || a.created_at)}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-muted-foreground">
+                  {a.distance_site_km} km (rayon attendu {a.rayon_attendu_km} km)
+                </span>
+                <span className="text-sm text-muted-foreground">
+                  {formatDateTime(a.created_at)}
+                </span>
+              </>
+            )}
             <a className="text-sm text-primary underline"
               href={`/interventions?id=${a.intervention}`}>
               Voir l&apos;intervention #{a.intervention}
@@ -439,6 +461,7 @@ const TYPE_FRANCHISSEMENT = [
   { value: 'tous', label: 'Tous types' },
   { value: 'entree', label: 'Entrées' },
   { value: 'sortie', label: 'Sorties' },
+  { value: 'interruption', label: 'Suivi interrompu' },
 ]
 
 // Revue chantier 26/10/2026 — temps passé sur site, par intervention du jour,
@@ -599,10 +622,13 @@ function HistoriquePresenceTab() {
           <div key={e.id} data-testid={`presence-${e.id}-${e.type_franchissement}`}
             className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-card p-3">
             <span className="font-medium text-sm">{e.technicien_nom || `#${e.technicien}`}</span>
-            <Badge tone={e.type_franchissement === 'entree' ? 'success' : 'neutral'}>
+            <Badge tone={e.type_franchissement === 'entree' ? 'success'
+              : e.type_franchissement === 'interruption' ? 'warning' : 'neutral'}>
               {e.type_franchissement === 'entree'
                 ? <><LogIn className="size-3.5" aria-hidden="true" /> Entrée</>
-                : <><LogOut className="size-3.5" aria-hidden="true" /> Sortie</>}
+                : e.type_franchissement === 'interruption'
+                  ? <><TriangleAlert className="size-3.5" aria-hidden="true" /> Suivi interrompu</>
+                  : <><LogOut className="size-3.5" aria-hidden="true" /> Sortie</>}
             </Badge>
             <span className="text-sm text-muted-foreground">{formatDateTime(e.created_at)}</span>
           </div>

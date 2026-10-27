@@ -208,8 +208,12 @@ class GpsConsentRecordViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """Le consentement du technicien CONNECTÉ et la notice d'information
         à lire (loi 09-08 art. 5 : responsable, finalités, données,
         destinataires, conservation, droits, n° de récépissé CNDP).
-        Contrat : ``contract_samples/gps_mon_consentement.json``."""
-        record = gps_tracking_service.consentement_de(
+        Contrat : ``contract_samples/gps_mon_consentement.json``.
+
+        Fondateur 27/10/2026 : un utilisateur TERRAIN sans aucun consentement
+        en reçoit un en attente de son accord (``a_accepter``) — l'accord
+        conditionne l'accès aux missions ; jamais pour un responsable/admin."""
+        record = gps_tracking_service.consentement_ou_attente(
             request.user.company, request.user)
         return Response(_mon_consentement_payload(record))
 
@@ -456,7 +460,8 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
 class GeofenceAlertViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """XFSM23/NTMOB9 — franchissements du rayon chantier (lecture +
     acquittement responsable/admin). Filtrable par ``intervention``, par
-    ``chantier`` et par ``type_franchissement`` (``entree``/``sortie``) : c'est
+    ``chantier`` et par ``type_franchissement`` (``entree``/``sortie``/
+    ``interruption``, une valeur ou une liste séparée par des virgules) : c'est
     la lecture qui alimente l'historique de présence par chantier (NTMOB9)."""
     queryset = GeofenceAlert.objects.select_related(
         'intervention', 'technicien', 'position').all()
@@ -474,9 +479,12 @@ class GeofenceAlertViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnlyModel
         chantier = params.get('chantier')
         if chantier:
             qs = qs.filter(intervention__installation_id=chantier)
-        type_franchissement = params.get('type_franchissement')
-        if type_franchissement in GeofenceAlert.TypeFranchissement.values:
-            qs = qs.filter(type_franchissement=type_franchissement)
+        # Fondateur 27/10/2026 — liste séparée par des virgules acceptée
+        # (`sortie,interruption` : la file « À traiter » de l'écran Suivi GPS).
+        types = [t for t in (params.get('type_franchissement') or '').split(',')
+                 if t in GeofenceAlert.TypeFranchissement.values]
+        if types:
+            qs = qs.filter(type_franchissement__in=types)
         return qs
 
     @oa.extend_schema(request=None)

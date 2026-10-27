@@ -24,7 +24,7 @@ from .serializers_blocs import (
     bloc_regime_suggere)
 from .serializers_stage import (
     CautionTotaleMixin, refus_protege, valider_unicite_societe)
-from .serializers_gps import InterventionGpsChampsMixin
+from .serializers_gps import GeofenceAlertGpsChampsMixin, InterventionGpsChampsMixin
 
 from .models import (
     Equipe,
@@ -3009,8 +3009,8 @@ class GpsConsentRecordSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixi
     # lui seul, `mon-consentement/accepter`) : lecture seule ici.
     is_acknowledged = serializers.BooleanField(read_only=True)
     statut = serializers.CharField(read_only=True)
-    # Une seule notice publiée à ce jour : la version est une liste fermée.
-    notice_version = serializers.ChoiceField(choices=['v1'], required=False)
+    # Une seule notice EN VIGUEUR (v2 depuis le 27/10/2026) : liste fermée.
+    notice_version = serializers.ChoiceField(choices=['v2'], required=False)
 
     class Meta:
         model = GpsConsentRecord
@@ -3049,7 +3049,8 @@ class PositionTechnicienSerializer(SameCompanyFKSerializerMixin, serializers.Mod
         ]
 
 
-class GeofenceAlertSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class GeofenceAlertSerializer(GeofenceAlertGpsChampsMixin, SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
     """XFSM23/NTMOB9 — franchissement du rayon attendu du chantier pendant une
     intervention active : ``sortie`` (position hors rayon) ou ``entree``
     (arrivée sur site, NTMOB9). Lecture seule côté API — généré uniquement par
@@ -3065,11 +3066,11 @@ class GeofenceAlertSerializer(SameCompanyFKSerializerMixin, serializers.ModelSer
         model = GeofenceAlert
         fields = [
             'id', 'intervention', 'technicien', 'technicien_nom', 'position',
-            'distance_site_km', 'rayon_attendu_km', 'created_at',
+            'distance_site_km', 'rayon_attendu_km', 'created_at', 'captured_at',
             'type_franchissement', 'type_franchissement_display',
-            'acquittee', 'acquittee_par', 'acquittee_le',
+            'acquittee', 'acquittee_par', 'acquittee_le', 'suivi_interrompu_depuis_min',
         ]
         read_only_fields = [
             'intervention', 'technicien', 'position', 'distance_site_km',
-            'rayon_attendu_km', 'created_at', 'type_franchissement',
+            'rayon_attendu_km', 'created_at', 'captured_at', 'type_franchissement',
         ]

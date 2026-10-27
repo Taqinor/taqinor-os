@@ -17,6 +17,11 @@ sans N+1 (``statuts_consentement``), rayon propre au chantier, une seule
 sortie ouverte par intervention (SUR SITE uniquement) notifiée au(x)
 responsable(s), présence calculée (``presence_intervention``) et carte live
 en UNE requête.
+
+Fondateur 27/10/2026 (techniciens = prestataires externes) : consentement en
+attente créé à la première ouverture de « Ma journée » par un utilisateur
+terrain (``consentement_ou_attente``), et détection des INTERRUPTIONS du suivi
+pendant une session (``interruptions_suivi`` / ``signaler_interruptions``).
 """
 import logging
 from datetime import timedelta
@@ -25,7 +30,10 @@ from django.utils import timezone
 
 from .field_services import haversine_km
 from .models_gps_tracking import (
+    CONSENT_REF_CONDITIONS_APP,
     DEFAULT_GEOFENCE_RADIUS_KM,
+    GPS_TRACKING_REQUIRED_STATUTS,
+    NOTICE_GEOLOC_VERSION,
     POSITION_RETENTION_JOURS,
     GeofenceAlert,
     GpsConsentRecord,
@@ -37,6 +45,42 @@ logger = logging.getLogger(__name__)
 
 #: Lien de la notification « sortie de périmètre » (écran responsable).
 LIEN_SUIVI_GPS = '/planification/suivi-gps'
+
+#: Silence (minutes) au-delà duquel le suivi d'une session est « interrompu ».
+SEUIL_INTERRUPTION_MIN = 15
+
+#: Palier de menu des utilisateurs terrain (technicien, rôle limité) —
+#: ``CustomUser.menu_tier`` fait autorité (jamais ``role_legacy`` seul).
+PALIER_TERRAIN = 'normal'
+
+
+def est_utilisateur_terrain(user):
+    """Vrai pour un utilisateur TERRAIN (palier ``normal`` : technicien ou
+    rôle limité), faux pour un responsable / administrateur / superuser —
+    eux n'ont jamais à accepter les conditions de géolocalisation."""
+    return (user is not None and getattr(user, 'is_authenticated', False)
+            and getattr(user, 'menu_tier', None) == PALIER_TERRAIN)
+
+
+def consentement_ou_attente(company, user):
+    """``consentement_de`` + création PARESSEUSE (fondateur 27/10/2026) :
+    un utilisateur terrain sans AUCUN consentement (ni actif, ni révoqué)
+    reçoit un consentement EN ATTENTE de son accord
+    (``consent_ref='conditions-app'``, ``recorded_by=None``). Un responsable
+    ou un administrateur n'en reçoit jamais ; un consentement révoqué n'est
+    jamais recréé (le retrait met fin à l'accès aux missions)."""
+    from django.db import IntegrityError, transaction
+    record = consentement_de(company, user)
+    if record is not None or company is None or not est_utilisateur_terrain(user):
+        return record
+    # Unicité garantie par ``uniq_gps_consent_actif`` (un seul actif par
+    # société + technicien) : une course entre deux ouvertures simultanées
+    # relit la ligne créée par l'autre, jamais un 500.
+    try:
+        with transaction.atomic():
+            return record_consent(company, user, consent_ref=CONSENT_REF_CONDITIONS_APP)
+    except IntegrityError:
+        return consentement_de(company, user)
 
 
 def record_consent(company, technicien, consent_ref=None, recorded_by=None):
@@ -119,7 +163,9 @@ def accepter_consentement(company, technicien, ip=None):
             ip = None
         record.accepte_le = timezone.now()
         record.accepte_depuis_ip = ip
-        record.save(update_fields=['accepte_le', 'accepte_depuis_ip'])
+        # La version de la notice LUE au moment de l'accord.
+        record.notice_version = NOTICE_GEOLOC_VERSION
+        record.save(update_fields=['accepte_le', 'accepte_depuis_ip', 'notice_version'])
     return record
 
 
@@ -141,8 +187,12 @@ def membre_de_l_intervention(intervention, user):
 
 def _sortie_deja_ouverte(intervention):
     """Une sortie est « ouverte » tant qu'aucune entrée ne l'a suivie : la
-    dernière ligne du journal de l'intervention est une sortie."""
-    derniere = (GeofenceAlert.objects.filter(intervention=intervention)
+    dernière ligne entrée/sortie du journal de l'intervention est une sortie
+    (une alerte ``interruption`` n'est pas un franchissement : ignorée)."""
+    derniere = (GeofenceAlert.objects.filter(
+                    intervention=intervention,
+                    type_franchissement__in=(GeofenceAlert.TypeFranchissement.ENTREE,
+                                             GeofenceAlert.TypeFranchissement.SORTIE))
                 .order_by('-created_at', '-id')
                 .values_list('type_franchissement', flat=True).first())
     return derniere == GeofenceAlert.TypeFranchissement.SORTIE
@@ -170,24 +220,31 @@ def _notifier_sortie_perimetre(alert):
     Clé d'événement : ``INTERVENTION_REPLANIFIEE`` est réemployée faute de
     clé dédiée — ajouter une clé à ``EventType`` exige une migration de
     l'app notifications, hors du périmètre de cette lane (point ouvert)."""
+    interv = alert.intervention
+    site = getattr(interv, 'installation', None)
+    ref = getattr(site, 'reference', None) or f'intervention #{interv.id}'
+    qui = getattr(alert.technicien, 'username', '') or 'Le technicien'
+    _notifier_responsables(
+        alert, f"Sortie du périmètre — {ref}",
+        f"{qui} est à {alert.distance_site_km} km du chantier "
+        f"(rayon {alert.rayon_attendu_km} km) alors que l'intervention "
+        "est sur site.")
+
+
+def _notifier_responsables(alert, titre, corps):
+    """Notifie (best-effort, après commit, ne lève jamais) le(s)
+    responsable(s) de l'intervention d'une alerte — sortie de périmètre ou
+    interruption du suivi (même canal, même lien vers « Suivi GPS »)."""
     try:
         from django.db import transaction
         from apps.notifications.services import notify_many
         from apps.notifications.types_evenements import EventType
     except Exception:  # pragma: no cover - défensif
-        logger.exception('notifier sortie périmètre : imports indisponibles')
+        logger.exception('notifier alerte GPS : imports indisponibles')
         return
-    interv = alert.intervention
-    destinataires = _responsables_a_notifier(interv)
+    destinataires = _responsables_a_notifier(alert.intervention)
     if not destinataires:
         return
-    site = getattr(interv, 'installation', None)
-    ref = getattr(site, 'reference', None) or f'intervention #{interv.id}'
-    qui = getattr(alert.technicien, 'username', '') or 'Le technicien'
-    titre = f"Sortie du périmètre — {ref}"
-    corps = (f"{qui} est à {alert.distance_site_km} km du chantier "
-             f"(rayon {alert.rayon_attendu_km} km) alors que l'intervention "
-             "est sur site.")
     company = alert.company
 
     def _envoyer():
@@ -471,6 +528,110 @@ def presence_intervention(intervention):
             'captured_at': derniere['captured_at'],
         } if derniere else None),
     }
+
+
+def interruptions_suivi(company, seuil_min=SEUIL_INTERRUPTION_MIN,
+                        maintenant=None, statuts=None):
+    """Fondateur 27/10/2026 — interventions dont le suivi est INTERROMPU.
+
+    Pour chaque intervention EN ROUTE / SUR SITE, non annulée, dont le
+    technicien a donné son accord (consentement ``actif``) : le dernier
+    instant connu est le dernier relevé de l'intervention, à défaut le départ
+    dépôt, à défaut l'arrivée sur site (sans aucun des trois : rien à juger).
+    Interrompu quand cet instant date de plus de ``seuil_min`` minutes.
+
+    ``statuts`` : la carte {technicien_id: statut} déjà chargée par
+    l'appelant (``statuts_consentement`` — le serializer la garde en cache),
+    sinon chargée ici. Deux requêtes au plus en plus (interventions en
+    session, dernier relevé par intervention), quel que soit leur nombre.
+
+    Renvoie ``{intervention_id: {'technicien_id', 'dernier_releve',
+    'depuis_min'}}``."""
+    from django.db.models import Max
+    maintenant = maintenant or timezone.now()
+    if statuts is None:
+        statuts = statuts_consentement(company)
+    actifs = [t for t, s in statuts.items() if s == 'actif']
+    if not actifs:
+        return {}
+    sessions = list(
+        Intervention.objects.filter(
+            company=company, statut__in=GPS_TRACKING_REQUIRED_STATUTS,
+            annulee=False, technicien_id__in=actifs)
+        .values_list('id', 'technicien_id', 'depart_depot_le', 'arrivee_site_le'))
+    if not sessions:
+        return {}
+    derniers = dict(
+        PositionTechnicien.objects.filter(intervention_id__in=[s[0] for s in sessions])
+        .values('intervention_id').annotate(dernier=Max('captured_at'))
+        .values_list('intervention_id', 'dernier'))
+    seuil = maintenant - timedelta(minutes=seuil_min)
+    resultat = {}
+    for iv_id, technicien_id, depart, arrivee in sessions:
+        dernier = derniers.get(iv_id) or depart or arrivee
+        if dernier is not None and dernier < seuil:
+            resultat[iv_id] = {
+                'technicien_id': technicien_id,
+                'dernier_releve': dernier,
+                'depuis_min': int((maintenant - dernier).total_seconds() // 60),
+            }
+    return resultat
+
+
+def signaler_interruptions(company, seuil_min=SEUIL_INTERRUPTION_MIN, maintenant=None):
+    """Lève UNE alerte ``interruption`` par épisode de silence et notifie le(s)
+    responsable(s) (même canal que la sortie de périmètre).
+
+    Dédoublonnage : un épisode est identifié par son dernier instant connu
+    (``captured_at`` de l'alerte) — aucune nouvelle alerte tant qu'une
+    alerte d'interruption existe à cet instant ou après (acquittée ou non :
+    l'acquitter ne la fait pas renaître toutes les 10 minutes). Un nouveau
+    relevé ouvre implicitement un nouvel épisode : un nouveau silence de
+    ``seuil_min`` minutes lèvera une nouvelle alerte. Renvoie les alertes
+    créées."""
+    interrompues = interruptions_suivi(company, seuil_min=seuil_min, maintenant=maintenant)
+    if not interrompues:
+        return []
+    deja = set(
+        GeofenceAlert.objects.filter(
+            company=company, intervention_id__in=list(interrompues),
+            type_franchissement=GeofenceAlert.TypeFranchissement.INTERRUPTION)
+        .values_list('intervention_id', 'captured_at'))
+    a_signaler = [
+        iv_id for iv_id, info in interrompues.items()
+        if not any(i == iv_id and c is not None and c >= info['dernier_releve']
+                   for i, c in deja)]
+    if not a_signaler:
+        return []
+    interventions = (Intervention.objects
+                     .filter(company=company, id__in=a_signaler)
+                     .select_related('installation', 'installation__technicien_responsable',
+                                     'created_by', 'technicien'))
+    derniere_distance = dict(
+        PositionTechnicien.objects.filter(
+            intervention_id__in=a_signaler, distance_site_km__isnull=False)
+        .order_by('intervention_id', '-captured_at', '-id')
+        .distinct('intervention_id')
+        .values_list('intervention_id', 'distance_site_km'))
+    creees = []
+    for interv in interventions:
+        info = interrompues[interv.id]
+        alert = GeofenceAlert.objects.create(
+            company=company, intervention=interv, technicien_id=info['technicien_id'],
+            position=None, distance_site_km=derniere_distance.get(interv.id),
+            rayon_attendu_km=rayon_geofence_km(interv),
+            type_franchissement=GeofenceAlert.TypeFranchissement.INTERRUPTION,
+            captured_at=info['dernier_releve'])
+        site = getattr(interv, 'installation', None)
+        ref = getattr(site, 'reference', None) or f'intervention #{interv.id}'
+        qui = getattr(interv.technicien, 'username', '') or 'Le technicien'
+        _notifier_responsables(
+            alert, f"Suivi interrompu — {ref}",
+            f"Aucune position de {qui} depuis {info['depuis_min']} min alors que "
+            "l'intervention est en cours (géolocalisation coupée, téléphone "
+            "éteint ou hors réseau).")
+        creees.append(alert)
+    return creees
 
 
 def purge_positions_expirees(

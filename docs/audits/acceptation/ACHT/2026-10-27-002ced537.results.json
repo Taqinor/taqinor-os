@@ -1,20 +1,201 @@
 {
-  "sha": "002ced5370000000000000000000000000000000",
+  "sha": "002ced5377b05a9d8e04d037eddad833c4b715de",
   "sha_note": "HEAD 002ced537 (branche claude/chantier-module-review-e8d307, PR #1066) — code joué en direct via Playwright MCP sur une pile à part (conteneur docker run du worktree :8010 + vite preview :5180), orchestrateur, 27/10/2026",
   "date": "2026-10-27",
   "groupe": "ACHT",
   "verdict": "PASS",
-  "couvre": ["ACHT104", "ACHT105", "ACHT106", "ACHT107", "ACHT108", "ACHT110"],
+  "couvre": [
+    "ACHT104",
+    "ACHT105",
+    "ACHT107",
+    "ACHT108",
+    "ACHT110"
+  ],
   "couvre_avec_ecart": [],
-  "non_couvert": ["ACHT109 (portail : partage ACL vérifié en base, écran client non joué — compte démo rattaché à un autre client)"],
+  "non_couvert": [
+    "ACHT106 (réception avec n° de série sur l'écran stock non rejouée)",
+    "ACHT109 (portail : partage ACL vérifié en base, écran client non joué — compte démo rattaché à un autre client)",
+    "ACHT111 (variante obligatoire/discrète construite après l'aller-retour ; à rejouer)"
+  ],
   "etapes": [
-    {"id": "P1.1", "taches": ["ACHT105"], "verdict": "PASS", "base_verdict": null, "oracles": {"1": "PASS", "2": "PASS", "3": "PASS", "4": "NA", "5": "NA", "6": "NA", "7": "PASS", "8": "PASS", "9": "NA", "10": "NA"}, "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-apercu.jpg", "notes": "Aperçu chantier 11 : carte « Prêt à poser ? », bannière « Matériel couvert : planifier la pose » ; aucun prix."},
-    {"id": "P1.2", "taches": ["ACHT104", "ACHT105"], "verdict": "PASS", "base_verdict": null, "oracles": {"1": "PASS", "2": "PASS", "3": "PASS", "4": "NA", "5": "NA", "6": "NA", "7": "PASS", "8": "PASS", "9": "NA", "10": "NA"}, "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-materiel-commande.jpg", "notes": "Manque mis en scène (batterie 0, panneaux 5) : 2 manques ; « Commander les manques (2) » → 2 BCF brouillons (un par fournisseur), toast « Chantier passé à Matériel commandé », colonne brouillon, manque inchangé ; BCF-…-0007 envoyé depuis l'écran stock (chantier d'origine affiché) → « 9 en route », manque « — »."},
-    {"id": "P1.3", "taches": ["ACHT105"], "verdict": "PASS", "base_verdict": null, "oracles": {"1": "PASS", "2": "PASS", "3": "PASS", "4": "NA", "5": "PASS", "6": "NA", "7": "NA", "8": "PASS", "9": "NA", "10": "NA"}, "trace": "", "notes": "Interventions : formulaire avec Technicien → Pose du jour créée pour demo_tech, relue dans la liste ; « Créer les interventions standard » désactivé (chantier non vierge) avec bulle d'aide."},
-    {"id": "P1.4", "taches": ["ACHT107"], "verdict": "PASS", "base_verdict": null, "oracles": {"1": "PASS", "2": "PASS", "3": "PASS", "4": "NA", "5": "PASS", "6": "NA", "7": "NA", "8": "PASS", "9": "NA", "10": "NA"}, "trace": "", "notes": "Suivi GPS → consentement demo_tech : « Actif · En attente d'accord du technicien · Notice v1 · récépissé CNDP non encore déclaré »."},
-    {"id": "P1.5", "taches": ["ACHT104", "ACHT110"], "verdict": "PASS", "base_verdict": null, "oracles": {"1": "PASS", "2": "PASS", "3": "PASS", "4": "NA", "5": "NA", "6": "NA", "7": "NA", "8": "PASS", "9": "NA", "10": "NA"}, "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-tech-sheet.jpg", "notes": "demo_tech → Ma journée : Pose visible ; Prépa : batterie « Manquant », panneaux non manquants (BCF envoyé = même manque que la fiche) ; « Tout est chargé » → Prête. 404 pré-existant sur GET chantiers/11/ pour le technicien (Infos client vides)."},
-    {"id": "P1.6", "taches": ["ACHT107"], "verdict": "PASS", "base_verdict": null, "oracles": {"1": "PASS", "2": "PASS", "3": "PASS", "4": "NA", "5": "NA", "6": "NA", "7": "NA", "8": "PASS", "9": "NA", "10": "NA"}, "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-tech-gps-banner.jpg", "notes": "Départ dépôt → En route ; notice loi 09-08 affichée ; « J'ai lu et j'accepte » → bandeau « Position partagée avec votre responsable — intervention CHT-… » (navigateur sans GPS : « Position indisponible ») ; ping API 201 (1,217 km, hors périmètre, pas d'alerte en route) ; Carte live admin : « demo_tech · il y a 6 min »."},
-    {"id": "P1.7", "taches": ["ACHT108"], "verdict": "PASS", "base_verdict": null, "oracles": {"1": "PASS", "2": "PASS", "3": "PASS", "4": "NA", "5": "NA", "6": "NA", "7": "NA", "8": "PASS", "9": "NA", "10": "NA"}, "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-tech-series-2.jpg", "notes": "Check-in → Sur site ; 6 créneaux photo obligatoires remplis → « faire signer le client » ; N° série « 0/17 » → onduleur + caractéristiques → 1/17 et 1/1 ; doublon refusé « N° de série déjà relevé » ; « Scanner non disponible sur ce navigateur — saisissez le numéro »."},
-    {"id": "P1.8", "taches": ["ACHT108", "ACHT104"], "verdict": "PASS", "base_verdict": null, "oracles": {"1": "PASS", "2": "PASS", "3": "PASS", "4": "NA", "5": "NA", "6": "NA", "7": "PASS", "8": "PASS", "9": "NA", "10": "NA"}, "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-admin-comparer.jpg", "notes": "Signature client + Retour dépôt → Terminée ; admin : parc = onduleur HW10K… « En service, garantie jusqu'au 27/10/2027 » ; Comparer : 2 paires par sujet + 2 « Après » orphelines ; statuts Planifié → En cours → Installé un pas à la fois ; checklist 8/8 ; « Signer la réception » signée ; « Marquer réceptionné » → Réceptionné ; API : avertissements_cloture = solde non facturé / non encaissé, 16 séries manquantes au parc, pack incomplet ; parc : 4 équipements (balayage) ; AclGed client posées sur PV et BL (vérifié en base)."}
+    {
+      "id": "P1.1",
+      "taches": [
+        "ACHT105"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-apercu.jpg",
+      "notes": "Aperçu chantier 11 : carte « Prêt à poser ? », bannière « Matériel couvert : planifier la pose » ; aucun prix."
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "ACHT104",
+        "ACHT105"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-materiel-commande.jpg",
+      "notes": "Manque mis en scène (batterie 0, panneaux 5) : 2 manques ; « Commander les manques (2) » → 2 BCF brouillons (un par fournisseur), toast « Chantier passé à Matériel commandé », colonne brouillon, manque inchangé ; BCF-…-0007 envoyé depuis l'écran stock (chantier d'origine affiché) → « 9 en route », manque « — »."
+    },
+    {
+      "id": "P1.3",
+      "taches": [
+        "ACHT105"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-interventions.jpg",
+      "notes": "Interventions : formulaire avec Technicien → Pose du jour créée pour demo_tech, relue dans la liste ; « Créer les interventions standard » désactivé (chantier non vierge) avec bulle d'aide."
+    },
+    {
+      "id": "P1.4",
+      "taches": [
+        "ACHT107"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-gps-consent.jpg",
+      "notes": "Suivi GPS → consentement demo_tech : « Actif · En attente d'accord du technicien · Notice v1 · récépissé CNDP non encore déclaré »."
+    },
+    {
+      "id": "P1.5",
+      "taches": [
+        "ACHT104",
+        "ACHT110"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-tech-sheet.jpg",
+      "notes": "demo_tech → Ma journée : Pose visible ; Prépa : batterie « Manquant », panneaux non manquants (BCF envoyé = même manque que la fiche) ; « Tout est chargé » → Prête. 404 pré-existant sur GET chantiers/11/ pour le technicien (Infos client vides)."
+    },
+    {
+      "id": "P1.6",
+      "taches": [
+        "ACHT107"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-tech-gps-banner.jpg",
+      "notes": "Départ dépôt → En route ; notice loi 09-08 affichée ; « J'ai lu et j'accepte » → bandeau « Position partagée avec votre responsable — intervention CHT-… » (navigateur sans GPS : « Position indisponible ») ; ping API 201 (1,217 km, hors périmètre, pas d'alerte en route) ; Carte live admin : « demo_tech · il y a 6 min »."
+    },
+    {
+      "id": "P1.7",
+      "taches": [
+        "ACHT108"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-tech-series-2.jpg",
+      "notes": "Check-in → Sur site ; 6 créneaux photo obligatoires remplis → « faire signer le client » ; N° série « 0/17 » → onduleur + caractéristiques → 1/17 et 1/1 ; doublon refusé « N° de série déjà relevé » ; « Scanner non disponible sur ce navigateur — saisissez le numéro »."
+    },
+    {
+      "id": "P1.8",
+      "taches": [
+        "ACHT108",
+        "ACHT104"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACHT/traces/2026-10-27-revue-live-admin-comparer.jpg",
+      "notes": "Signature client + Retour dépôt → Terminée ; admin : parc = onduleur HW10K… « En service, garantie jusqu'au 27/10/2027 » ; Comparer : 2 paires par sujet + 2 « Après » orphelines ; statuts Planifié → En cours → Installé un pas à la fois ; checklist 8/8 ; « Signer la réception » signée ; « Marquer réceptionné » → Réceptionné ; API : avertissements_cloture = solde non facturé / non encaissé, 16 séries manquantes au parc, pack incomplet ; parc : 4 équipements (balayage) ; AclGed client posées sur PV et BL (vérifié en base)."
+    }
   ]
 }

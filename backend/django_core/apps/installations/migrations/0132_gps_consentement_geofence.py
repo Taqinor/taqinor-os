@@ -5,6 +5,8 @@
 #     des positions (rétention 30 j) garde l'historique de présence.
 #   * Installation.geofence_rayon_m : rayon de géofence propre au chantier.
 #   * GeofenceAlert.captured_at : instant du relevé (≠ insertion), nullable.
+#   * Fondateur 27/10/2026 : GeofenceAlert.type_franchissement + 'interruption'
+#     (max_length 12) et distance_site_km nullable ; notice par défaut v2.
 # Additif et revertable : le retour arrière de l'AlterField (CASCADE, NOT NULL)
 # échouerait dès que la purge a mis une ``position`` à NULL — le RunPython
 # ci-dessous supprime d'abord ces alertes orphelines (rollback seulement).
@@ -32,7 +34,7 @@ class Migration(migrations.Migration):
             model_name='gpsconsentrecord',
             name='notice_version',
             field=models.CharField(
-                default='v1', max_length=20,
+                default='v2', max_length=20,
                 help_text="Version de la notice d'information géolocalisation montrée."),
         ),
         migrations.AddField(
@@ -62,6 +64,26 @@ class Migration(migrations.Migration):
                 on_delete=django.db.models.deletion.SET_NULL,
                 related_name='geofence_alerts',
                 to='installations.positiontechnicien'),
+        ),
+        # Fondateur 27/10/2026 — alerte « suivi interrompu » : nouveau type
+        # (12 caractères → max_length 12) et distance nulle quand aucun
+        # relevé n'a été évalué. AVANT le RunPython, comme l'AlterField
+        # ci-dessus : au retour arrière, ces alertes (position NULL) sont
+        # supprimées avant que la colonne ne redevienne NOT NULL.
+        migrations.AlterField(
+            model_name='geofencealert',
+            name='type_franchissement',
+            field=models.CharField(
+                choices=[('entree', 'Entrée'), ('sortie', 'Sortie'),
+                         ('interruption', 'Suivi interrompu')],
+                default='sortie', max_length=12,
+                verbose_name='Type de franchissement'),
+        ),
+        migrations.AlterField(
+            model_name='geofencealert',
+            name='distance_site_km',
+            field=models.DecimalField(
+                blank=True, decimal_places=3, max_digits=8, null=True),
         ),
         # Placé APRÈS l'AlterField : au retour arrière, Django défait les
         # opérations dans l'ordre INVERSE, donc ce RunPython (no-op à l'aller)

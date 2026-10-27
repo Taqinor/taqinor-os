@@ -1129,8 +1129,8 @@
     champs: categorie, categorie_display, created_by, date_creation, date_frais, dossier, id, libelle, montant
     categorie ∈ {assurance, autre, douane, fret, manutention, transit, tva_import}
 - frontend/src/api/installationsApi.js :: getGeofenceAlertes -> /api/django/installations/geofence-alertes  [GeofenceAlertSerializer]
-    champs: acquittee, acquittee_le, acquittee_par, created_at, distance_site_km, id, intervention, position, rayon_attendu_km, technicien, technicien_nom, type_franchissement, type_franchissement_display
-    type_franchissement ∈ {entree, sortie}
+    champs: acquittee, acquittee_le, acquittee_par, captured_at, created_at, distance_site_km, id, intervention, position, rayon_attendu_km, suivi_interrompu_depuis_min, technicien, technicien_nom, type_franchissement, type_franchissement_display
+    type_franchissement ∈ {entree, interruption, sortie}
 - frontend/src/api/installationsApi.js :: getGpsConsentements -> /api/django/installations/gps-consentements  [GpsConsentRecordSerializer]
     champs: accepte_le, consent_recorded_at, consent_ref, id, is_acknowledged, is_active, notice_version, recepisse_cndp, recorded_by, revoked_at, revoked_reason, statut, technicien, technicien_nom
 - frontend/src/api/installationsApi.js :: getKitComposants -> /api/django/installations/kit-composants  [KitComposantSerializer]

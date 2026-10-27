@@ -115,8 +115,18 @@ def _chantier(company, payload, user=None):
 
 
 # ── Handlers — un par op_type. Chacun POSE un état (last-write-wins). ─────────
+def _garde_accord_geoloc(user):
+    """Fondateur 27/10/2026 — même règle que la vue : sans accord aux
+    conditions (géolocalisation), l'op reste en file (non mémorisée) avec
+    l'erreur serveur, comme la garde de la checklist."""
+    refus = field_services.refus_sans_accord_geoloc(user)
+    if refus:
+        raise FieldOpError(refus)
+
+
 def _h_depart_depot(company, user, payload):
     iv = _intervention(company, payload, user)
+    _garde_accord_geoloc(user)
     # ACHT43 — même geste que la vue (position de départ incluse).
     field_services.enregistrer_depart_depot(
         iv, _instant_saisie(payload), payload.get('lat'), payload.get('lng'),
@@ -126,6 +136,7 @@ def _h_depart_depot(company, user, payload):
 
 def _h_checkin(company, user, payload):
     iv = _intervention(company, payload, user)
+    _garde_accord_geoloc(user)
     # ACHT43 — même geste que la vue (ponctualité XFSM5 incluse).
     try:
         field_services.enregistrer_arrivee(

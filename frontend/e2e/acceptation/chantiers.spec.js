@@ -153,6 +153,10 @@ async function avecTechnicien({ page, suivi, testInfo, context }, corps, onglet 
     const p = suivi.surveiller(await ctx.newPage())
     await connexionApi(p.request, TECH)
     const techId = (await lireJson(await p.request.get(`${API_DJANGO}/auth/me/`), 'profil technicien')).id
+    // Fondateur 27/10/2026 — l'accord aux conditions d'utilisation (géolocalisation)
+    // conditionne l'accès aux missions : demo_tech l'accorde (idempotent) avant sa journée.
+    await lireJson(await p.request.get(`${API}/gps-consentements/mon-consentement/`), 'consentement GPS')
+    await p.request.post(`${API}/gps-consentements/mon-consentement/accepter/`)
     await avecChantier(page.request, techId, async (t) => {
       await p.context().addInitScript(([ident, tab]) => {
         try {

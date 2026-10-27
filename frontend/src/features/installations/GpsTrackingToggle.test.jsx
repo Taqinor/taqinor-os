@@ -7,7 +7,9 @@ import { reponseContrat } from '../../test/fixtures/contractSamples'
    d'intervention (en route / sur site), jamais caché (loi 09-08 / CNDP
    17-2014). Remplace l'interrupteur NTMOB9 (OFF par défaut). Vérifie :
    (1) rien hors session ouverte ; (2) avec `gps_consentement: 'actif'`,
-   `watchPosition` démarre SEUL et le bandeau visible s'affiche ; (3) haute
+   `watchPosition` démarre SEUL et la puce discrète « Suivi actif » s'affiche
+   (fondateur 27/10/2026 — plus de gros bandeau ; refus de l'appareil ⇒ puce
+   orange « Suivi interrompu ») ; (3) haute
    précision seulement sur site ; (4) `'a_accepter'` ⇒ carte de la notice,
    aucun suivi, et « J'ai lu et j'accepte » appelle `accepterConsentementGps`
    puis démarre le suivi ; (5) `'absent'` ⇒ ligne discrète ; (6) un 403 coupe
@@ -70,7 +72,7 @@ describe('GpsTrackingToggle — suivi automatique (revue chantier 26/10/2026)', 
     expect(watchPosition).not.toHaveBeenCalled()
   })
 
-  it("avec un consentement actif, démarre seul et affiche le bandeau visible", async () => {
+  it("avec un consentement actif, démarre seul et affiche la puce discrète « Suivi actif »", async () => {
     watchPosition.mockImplementation((success) => { success(position); return 42 })
     pingPosition.mockResolvedValue({ data: {} })
     render(<GpsTrackingToggle intervention={interv()} />)
@@ -78,8 +80,12 @@ describe('GpsTrackingToggle — suivi automatique (revue chantier 26/10/2026)', 
     expect(watchPosition).toHaveBeenCalledTimes(1)
     expect(watchPosition.mock.calls[0][2]).toEqual(
       expect.objectContaining({ enableHighAccuracy: false }))
-    expect(screen.getByTestId('gps-tracking-toggle').textContent).toContain(
-      'Position partagée avec votre responsable — intervention CH-2026-007')
+    // Fondateur 27/10/2026 — puce discrète au lieu du gros bandeau, jamais cachée.
+    const puce = screen.getByTestId('gps-suivi-puce')
+    expect(puce.textContent).toContain('Suivi actif')
+    expect(puce.getAttribute('title')).toContain('intervention CH-2026-007')
+    expect(puce.querySelector('.bg-success')).not.toBeNull()
+    expect(screen.queryByText(/Position partagée avec votre responsable/)).not.toBeInTheDocument()
     // Aucun interrupteur : le technicien n'a rien à faire.
     expect(screen.queryByRole('switch')).not.toBeInTheDocument()
     await waitFor(() => expect(pingPosition).toHaveBeenCalledWith(
@@ -96,14 +102,26 @@ describe('GpsTrackingToggle — suivi automatique (revue chantier 26/10/2026)', 
       expect.objectContaining({ enableHighAccuracy: true }))
   })
 
-  it("« Pourquoi ? » affiche la notice servie par le serveur", async () => {
+  it("« Pourquoi ? » ouvre la notice servie par le serveur dans une fenêtre", async () => {
     const user = userEvent.setup()
     watchPosition.mockReturnValue(1)
     render(<GpsTrackingToggle intervention={interv()} />)
     await user.click(screen.getByRole('button', { name: /Pourquoi/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
     const notice = await screen.findByTestId('gps-notice')
     expect(notice.textContent).toContain('non encore déclaré')
     expect(notice.textContent).toContain('30 jours')
+  })
+
+  it("appareil qui refuse la géolocalisation : puce orange « Suivi interrompu », aucun ping", () => {
+    watchPosition.mockImplementation((_ok, echec) => { echec({ code: 1 }); return 8 })
+    render(<GpsTrackingToggle intervention={interv()} />)
+    const puce = screen.getByTestId('gps-suivi-puce')
+    expect(puce.textContent).toContain('Suivi interrompu — autorisez la géolocalisation')
+    expect(puce.className).toContain('text-warning')
+    expect(puce.querySelector('.bg-warning')).not.toBeNull()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(pingPosition).not.toHaveBeenCalled()
   })
 
   it("consentement à accepter : carte de la notice, aucun suivi, puis accord ⇒ suivi", async () => {

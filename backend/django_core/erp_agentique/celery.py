@@ -403,6 +403,13 @@ app.conf.beat_schedule = {
         'task': 'installations.purger_positions_gps',
         'schedule': crontab(hour=3, minute=35),
     },
+    # Fondateur 27/10/2026 — suivi GPS interrompu (> 15 min sans position
+    # pendant une intervention en route / sur site) : alerte + notification
+    # du responsable, toutes les 10 minutes.
+    'installations-signaler-interruptions-gps': {
+        'task': 'installations.signaler_interruptions_gps',
+        'schedule': crontab(minute='*/10'),
+    },
     # ZSTK1 — recompute réappro + alertes de rupture (« reordering rules
     # run » façon Odoo), quotidien, heure creuse matinale. Suggestion
     # seulement (aucun BCF créé automatiquement), idempotent par société.

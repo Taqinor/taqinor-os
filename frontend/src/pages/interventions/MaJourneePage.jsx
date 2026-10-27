@@ -40,6 +40,11 @@ import { usePullToRefresh } from '../../ui/usePullToRefresh'
 import GpsTrackingToggle, {
   MesPositionsDuJour, viderTamponsGpsEnAttente,
 } from '../../features/installations/GpsTrackingToggle'
+// Fondateur 27/10/2026 — l'accord aux conditions d'utilisation
+// (géolocalisation) est une condition BLOQUANTE de l'écran terrain.
+import ConsentementGpsBloquant, {
+  consentementBloquant,
+} from '../../features/installations/ConsentementGpsBloquant'
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
 } from '../../features/installations/InterventionFieldExecution'
@@ -351,6 +356,28 @@ export default function MaJourneePage() {
   const sessionGps = rows.find(
     (r) => ['en_route', 'sur_site'].includes(r.statut) && !r.annulee) ?? null
 
+  // Fondateur 27/10/2026 — `mon-consentement` (le serveur crée l'accord en
+  // attente d'un utilisateur terrain ; un responsable/admin reste « absent »).
+  // Réseau indisponible : rien ne bloque (le serveur, lui, refuse le départ).
+  const [consentementGps, setConsentementGps] = useState(null)
+  useEffect(() => {
+    let vivant = true
+    installationsApi.getMonConsentementGps?.()
+      ?.then((r) => { if (vivant) setConsentementGps(r?.data ?? null) })
+      .catch(() => {})
+    return () => { vivant = false }
+  }, [])
+
+  if (consentementBloquant(consentementGps)) {
+    return (
+      <ConsentementGpsBloquant consentement={consentementGps}
+        onAccepte={(data) => {
+          setConsentementGps(data ?? { ...consentementGps, statut: 'actif' })
+          load() // les interventions relisent `gps_consentement: 'actif'`
+        }} />
+    )
+  }
+
   return (
     <div
       className="mx-auto flex max-w-2xl flex-col gap-3 overflow-y-auto p-3 sm:p-4"
@@ -379,8 +406,9 @@ export default function MaJourneePage() {
       <DonneesHorsLigneBanner cachedAt={cachedAt} />
 
       {/* Revue chantier 26/10/2026 — suivi de position de l'intervention EN
-          COURS (en route / sur site) : démarre seul, bandeau visible ; carte
-          de la notice à accepter la première fois. Rien hors session. */}
+          COURS (en route / sur site) : démarre seul ; fondateur 27/10/2026 —
+          puce discrète « ● Suivi actif » (l'accord est demandé en pleine page
+          ci-dessus). Rien hors session. */}
       {sessionGps && <GpsTrackingToggle key={sessionGps.id} intervention={sessionGps} />}
 
       {/* NTMOB21 — alerte météo du jour au point du premier chantier
@@ -634,6 +662,13 @@ function InterventionFlowSheet({
             <Badge>{typeLabel(interv.type_intervention)}</Badge>
             <StatusPill status={interv.statut} label={interventionStatusLabel(interv.statut)} dot={false} />
             {interv.site_ville && <span>{interv.site_ville}</span>}
+            {/* Fondateur 27/10/2026 — silence du suivi pendant la session
+                (calculé serveur, `null` hors session). */}
+            {interv.gps_suivi_interrompu_depuis_min != null && (
+              <span className="text-warning" data-testid="mj-suivi-interrompu">
+                Suivi interrompu depuis {interv.gps_suivi_interrompu_depuis_min} min
+              </span>
+            )}
           </div>
           {/* VX105 — changer le statut depuis « Ma journée » : un technicien
               qui finit peut marquer « Terminée » sans passer par l'écran

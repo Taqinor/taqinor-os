@@ -477,3 +477,28 @@ def purger_positions_gps_task():
     except Exception:  # best-effort : relancée la nuit suivante
         logger.warning('installations.purger_positions_gps: échec', exc_info=True)
         return 0
+
+
+# ── Fondateur 27/10/2026 — interruptions du suivi GPS (prestataires) ───────
+# Toutes les 10 minutes : une intervention en route / sur site dont le
+# technicien a donné son accord mais qui n'a envoyé aucune position depuis
+# plus de 15 min lève UNE alerte « interruption » notifiée au responsable.
+
+@shared_task(name='installations.signaler_interruptions_gps')
+def signaler_interruptions_gps_task():
+    """Balaye les sociétés ACTIVES (jamais les suspendues) et lève les
+    alertes d'interruption du suivi (``gps_tracking_service.
+    signaler_interruptions``, dédoublonnées par épisode de silence). Une
+    exception sur une société n'empêche jamais les suivantes. Renvoie le
+    nombre d'alertes créées."""
+    from authentication.selectors import active_companies
+    from .gps_tracking_service import signaler_interruptions
+    total = 0
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        try:
+            total += len(signaler_interruptions(company))
+        except Exception:  # société suivante
+            logger.warning(
+                'installations.signaler_interruptions_gps: échec société %s',
+                company.id, exc_info=True)
+    return total

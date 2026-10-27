@@ -132,6 +132,27 @@ def enregistrer_arrivee(interv, instant, lat, lng, user, *, suffixe=''):
     return interv
 
 
+#: Fondateur 27/10/2026 — refus du départ dépôt / check-in d'un utilisateur
+#: terrain qui n'a pas accepté les conditions d'utilisation (géolocalisation).
+MESSAGE_ACCORD_GEOLOC_REQUIS = (
+    "Acceptez les conditions d'utilisation (géolocalisation) dans « Ma "
+    "journée » avant de partir.")
+
+
+def refus_sans_accord_geoloc(user):
+    """Raison du refus du départ dépôt / check-in (vue ET synchro hors-ligne,
+    même règle), ou ``None``. Seul l'utilisateur TERRAIN agissant depuis son
+    appareil est concerné : un responsable/administrateur qui pointe pour le
+    compte d'un technicien ne l'est jamais. Accord = consentement actif ET
+    accepté (``gps_tracking_service.has_acknowledged_consent``)."""
+    from .gps_tracking_service import est_utilisateur_terrain, has_acknowledged_consent
+    if not est_utilisateur_terrain(user):
+        return None
+    if has_acknowledged_consent(user.company, user):
+        return None
+    return MESSAGE_ACCORD_GEOLOC_REQUIS
+
+
 def enregistrer_depart_depot(interv, instant, lat, lng, user, *, suffixe=''):
     """ACHT43 — LE geste de départ dépôt (vue `depart-depot` ET synchro) :
     horodatage + position de départ (XFSM7, sert à l'ETA du lien public ;

@@ -1,20 +1,21 @@
 {
   "endpoint": "GET /api/django/installations/gps-consentements/mon-consentement/",
-  "pourquoi": "Revue chantier 26/10/2026 — loi 09-08 art. 5 et délibération CNDP 17-2014 : le suivi de position pendant les interventions est automatique, jamais caché. Sert au TECHNICIEN connecté (« Ma journée ») son propre consentement et la notice d'information à lire AVANT tout suivi : responsable du traitement, finalités, données, destinataires, durée de conservation, droits, n° de récépissé CNDP (« non encore déclaré » tant que la société ne l'a pas saisi — jamais un numéro inventé). `statut` = absent | a_accepter | actif | revoque ; `actif` = non révoqué ; `accepte_le` = son accusé de réception (POST mon-consentement/accepter/ renvoie la même forme). Le frontend importe cet exemple au lieu d'inventer son PAYLOAD.",
+  "pourquoi": "Revue chantier 26/10/2026 — loi 09-08 art. 5 et délibération CNDP 17-2014 : le suivi de position pendant les interventions est automatique, jamais caché. Sert au TECHNICIEN connecté (« Ma journée ») son propre consentement et la notice d'information à lire AVANT tout suivi : responsable du traitement, finalités, données, destinataires, durée de conservation, droits, n° de récépissé CNDP (« non encore déclaré » tant que la société ne l'a pas saisi — jamais un numéro inventé). `statut` = absent | a_accepter | actif | revoque ; `actif` = non révoqué ; `accepte_le` = son accusé de réception (POST mon-consentement/accepter/ renvoie la même forme). Fondateur 27/10/2026 (techniciens = prestataires externes) : l'accord à ces conditions conditionne l'accès aux missions — un utilisateur TERRAIN sans aucun consentement en reçoit un EN ATTENTE à ce GET (statut a_accepter, jamais pour un responsable/admin, jamais recréé après un retrait) ; « Ma journée » affiche alors un écran bloquant « J'ai lu et j'accepte », et départ dépôt / check-in renvoient 403 tant que l'accord manque. Notice v2. Le frontend importe cet exemple au lieu d'inventer son PAYLOAD.",
   "exemple": {
     "existe": true,
     "actif": true,
     "statut": "a_accepter",
     "accepte_le": null,
     "notice": {
-      "version": "v1",
+      "version": "v2",
       "titre": "Information sur la géolocalisation pendant vos interventions",
-      "texte": "Pendant vos interventions, votre position est relevée automatiquement par l'application, uniquement lorsque l'intervention est « en route » ou « sur site ». Elle n'est jamais relevée en dehors de ces périodes ni en dehors de votre temps de travail. Un bandeau visible vous l'indique pendant tout le suivi.",
-      "responsable": "Votre employeur (la société qui vous a créé ce compte), responsable du traitement au sens de la loi 09-08.",
+      "texte": "Pendant vos missions, votre position est relevée automatiquement par l'application, uniquement lorsque l'intervention est « en route » ou « sur site ». Elle n'est jamais relevée en dehors de ces périodes. Un indicateur dans l'application vous le signale pendant le suivi. L'acceptation de ces conditions est nécessaire pour utiliser l'application de terrain.",
+      "responsable": "La société qui vous confie la mission (celle qui a créé votre compte), responsable du traitement au sens de la loi 09-08.",
       "finalites": [
-        "Organiser les interventions et le déplacement des équipes.",
+        "Organiser les interventions et le déplacement des techniciens.",
         "Constater l'arrivée et la présence sur le chantier (heure d'arrivée, temps passé sur site).",
-        "Assurer la sécurité des techniciens isolés sur chantier."
+        "Assurer la sécurité des techniciens isolés sur chantier.",
+        "Établir la preuve de la prestation (arrivée, présence, durée sur site)."
       ],
       "donnees": [
         "Position GPS (latitude, longitude) et sa précision.",
@@ -30,6 +31,7 @@
       "droits": [
         "Droit d'accès : vous consultez vos propres positions dans « Ma journée » (Mes positions du jour).",
         "Droit de rectification et d'opposition pour motif légitime : adressez-vous à votre responsable ou à l'administrateur.",
+        "Droit de retrait : le retrait de l'accord met fin à l'accès aux missions dans l'application ; demandez-le à votre responsable.",
         "Réclamation possible auprès de la CNDP (www.cndp.ma)."
       ],
       "recepisse_cndp": "non encore déclaré"
