@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { carteIndustrielleCi, syntheseCi, type ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const TEXTES_PUISSANCE = {
   fr: "La centrale réduit l'énergie achetée ; la puissance souscrite et la prime fixe ne changent pas.",
@@ -97,7 +98,7 @@ describe('CIW307 — carteIndustrielleCi lit les textes SERVIS (mêmes que le PD
 });
 
 describe('CIW307 — la page n\'écrit plus ces phrases et ne calcule plus de CO₂ en C&I', () => {
-  const page = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+  const page = lirePageProposition();
   it('aucune phrase interdite dans la page (FR / EN / AR)', () => {
     for (const re of INTERDITS) expect(page).not.toMatch(re);
   });

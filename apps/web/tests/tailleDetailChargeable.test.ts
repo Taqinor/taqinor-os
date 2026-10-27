@@ -21,11 +21,12 @@ import {
   TAILLES_CHARGEABLES, arcDonut, cleCacheDetail, dasharrayDonut,
   detailProxyUrl, estChargeable, tailleDetail, tailleDetailEndpoint,
 } from '../src/lib/tailleDetail';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
-const PAGE = read('../src/pages/proposition/[...token].astro').replace(/\r\n/g, '\n');
+const PAGE = lirePageProposition().replace(/\r\n/g, '\n');
 /** Le code SEUL : un commentaire ne doit jamais faire passer une assertion. */
 const CODE = PAGE
   .replace(/<!--[\s\S]*?-->/g, ' ')

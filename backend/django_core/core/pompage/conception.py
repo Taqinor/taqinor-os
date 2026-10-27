@@ -33,6 +33,20 @@ def _alerte(code, champ, message):
     return {"code": code, "champ": champ, "message": message}
 
 
+def alerte_heures_superieures_24(heures_actuelles):
+    """AGM5 — l'alerte (ou ``None``) d'une pompe actuelle déclarée à plus de
+    24 h de pompage par jour. Le besoin reste calculé TEL QUE SAISI : jamais un
+    refus, jamais un rognage — le champ fautif est nommé pour être corrigé."""
+    heures = _flottant(heures_actuelles)
+    if heures is None or heures <= 24:
+        return None
+    return _alerte(
+        "heures_superieures_24", "besoin.heures_actuelles_jour",
+        "Heures de pompage de la pompe actuelle supérieures à 24 h par jour "
+        "(%s h saisies) : besoin calculé tel que saisi, à corriger."
+        % (("%g" % heures).replace(".", ",")))
+
+
 def _serie_declaree(volume_m3_jour, mois_irrigation):
     """12 valeurs m³/j : le volume déclaré sur les mois d'irrigation déclarés
     (1-12), 0 sur les autres ; sans mois déclarés, les 12 mois."""
