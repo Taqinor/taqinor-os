@@ -398,10 +398,9 @@ class TestCCAT2OptionBatterie(CIQ101Base):
         return Produit.objects.select_related(
             'categorie', 'fiche_technique').get(pk=p.pk)
 
-    def _hybride(self, prix=0, **plage):
-        return self._produit(
-            'Deye SUN-12K-SG05LP3 hybride', 'onduleur_hybride', prix,
-            type_fiche='onduleur', **plage)
+    def _hybride(self, prix=0, nom='Deye SUN-12K-SG05LP3 hybride', **plage):
+        return self._produit(nom, 'onduleur_hybride', prix,
+                             type_fiche='onduleur', **plage)
 
     def _etat(self, produit):
         from apps.stock.etat_ci import etat_ci_complet
@@ -444,7 +443,8 @@ class TestCCAT2OptionBatterie(CIQ101Base):
         self.assertEqual(sans_ac['motif_exclusion'],
                          'fiche incomplète : puissance AC')
         sans_phase = self._etat(self._hybride(
-            prix=9000, ond_bat_v_min=40, ond_bat_v_max=60, ond_ac_kw=12))
+            prix=9000, nom='Deye SUN-10K-SG05LP3 hybride', ond_bat_v_min=40,
+            ond_bat_v_max=60, ond_ac_kw=12))
         self.assertEqual(sans_phase['motif_exclusion'], 'phase non publiée')
 
     def test_hybride_sans_fiche_onduleur(self):
