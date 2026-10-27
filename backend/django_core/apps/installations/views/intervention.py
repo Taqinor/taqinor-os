@@ -2388,8 +2388,8 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         request=oa.body(
             'SignerInterventionRequete',
             signature_client=oa.signature_publiee(),
-            signataire_nom=oa.s(),
-            motif_override_signature=oa.s(),
+            signataire_nom=oa.ChaineStricte(required=False, allow_blank=True),
+            motif_override_signature=oa.ChaineStricte(required=False, allow_blank=True),
             motif_override=oa.s(),
         ),
         responses=InterventionSerializer,
@@ -2408,7 +2408,9 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
             SignatureRefusee, enregistrer_signature_intervention,
         )
         interv = self.get_object()
-        nom = (request.data.get('signataire_nom') or '').strip()
+        # api-fuzz-full 27/10 : un NUL dans le nom / le motif atteignait le
+        # chatter (PostgreSQL) → 500 ; textes stricts publiés et validés.
+        nom = oa.texte_corps(request, 'signataire_nom', 'motif_override_signature', 'motif_override')
         motif = (request.data.get('motif_override_signature')
                  or request.data.get('motif_override') or '')
         try:
