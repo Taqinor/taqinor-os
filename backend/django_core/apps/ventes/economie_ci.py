@@ -225,7 +225,7 @@ def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
     apercu = apercu_ci if isinstance(apercu_ci, dict) else {}
     if not isinstance(tarif, dict) or tarif.get('origine') == \
             tarif_ci.ORIGINE_OMIS or not tarif.get('tarifs_par_poste'):
-        return _vide(MOTIF_TARIF_OMIS, tarif)
+        return _vide(_options.motif_tarif_omis(tarif, MOTIF_TARIF_OMIS), tarif)  # CEC18
     cellules = _cellules(apercu)
     if not cellules:
         return _vide(MOTIF_SANS_HORAIRE, tarif)
