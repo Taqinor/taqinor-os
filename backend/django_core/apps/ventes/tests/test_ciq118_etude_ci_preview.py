@@ -598,3 +598,34 @@ class AnneeTypePvgisAmot99(TestCase):
                 33.57, -7.59, angle_deg=30, aspect_deg=0, montage='free'))
         self.assertIsNone(pp.serie_horaire_annee_type(
             None, None, angle_deg=30, aspect_deg=0, montage='free'))
+
+
+class SerieAuPointDeLaVilleCorc12(TestCase):
+    """CORC12 (27/10/2026, constat CMP) — un lead sans GPS (ville seule) :
+    la série horaire 8 760 h se calcule au point de sa ville au gazetier,
+    jamais un repli silencieux sur les journées moyennes ; ville inconnue ⇒
+    aucune position devinée."""
+
+    def _lire(self, ville):
+        from apps.parametres import pvgis_profils
+        from apps.ventes import etude_horaire
+        with mock.patch.object(etude_horaire, '_formes_production_par_saison',
+                               return_value=({'ete': [1]}, 'test')), \
+                mock.patch.object(pvgis_profils, 'productible_mensuel',
+                                  return_value=([100] * 12, 'PVGIS test')), \
+                mock.patch.object(pvgis_profils, 'serie_horaire_annee_type',
+                                  return_value={'kwh_kwc': [0.1] * 8760}) as serie:
+            lecture = etude_ci.lire_production({'ville': ville, 'lat': None, 'lon': None})
+        return lecture, serie
+
+    def test_ville_connue_serie_au_point_de_la_ville(self):
+        from apps.parametres.villes_maroc import coordonnees_ville
+        lecture, serie = self._lire('Casablanca')
+        self.assertIsNotNone(lecture[3])
+        lat, lon = serie.call_args.args[:2]
+        self.assertEqual((lat, lon), tuple(coordonnees_ville('Casablanca'))[:2])
+
+    def test_ville_inconnue_aucune_serie(self):
+        lecture, serie = self._lire('Zorglubville')
+        self.assertIsNone(lecture[3])
+        serie.assert_not_called()

@@ -665,8 +665,9 @@ def _garde_kwh_factures(res, tarif, alertes):
 def lire_production(site, toit=None):
     """``(productible_mensuel, formes_saison, source, serie)`` ou ``None`` (PVGIS).
 
-    AMOT99 — ``serie`` : l'année type HORAIRE au plan de ``toit``, au seul point
-    GPS du site ; sinon ``None`` (repli dit, hypothèse ``methode_autoconsommation``)."""
+    AMOT99 — ``serie`` : l'année type HORAIRE au plan de ``toit``, au point
+    GPS du site, sinon (CORC12) au point de sa ville au gazetier ; sinon
+    ``None`` (repli dit, hypothèse ``methode_autoconsommation``)."""
     from apps.parametres.pvgis_profils import productible_mensuel
 
     from ..etude_horaire import _formes_production_par_saison
@@ -682,6 +683,15 @@ def lire_production(site, toit=None):
     if not formes or not mensuel:
         return None
     productibles, source = mensuel
+    if lat is None or lon is None:
+        # CORC12 (27/10/2026, constat CMP) — sans GPS déclaré, la série
+        # horaire se calcule au point de la VILLE au gazetier (la ville que
+        # PVGIS lit déjà) : jamais une position devinée (ville inconnue ⇒
+        # repli dit sur les journées moyennes).
+        from apps.parametres.villes_maroc import coordonnees_ville
+        coords = coordonnees_ville(ville or '')
+        if coords:
+            lat, lon = coords[0], coords[1]
     return productibles, formes, source, _serie_horaire(lat, lon, toit)
 
 
