@@ -30,6 +30,14 @@ LIBELLES_RESIDENTIEL = {
                                'ar': 'العاكس (الخيار 1)'},
     'rpdf_gar_onduleur_opt2': {'fr': 'Onduleur (option 2)', 'en': 'Inverter (option 2)',
                                'ar': 'العاكس (الخيار 2)'},
+    'rpdf_hyp_provision_options': {
+        'fr': ("Provision de remplacement de l'onduleur en année {an} : {s} MAD (option 1) et {a} MAD "
+               "(option 2) — le prix de l'onduleur de chaque option, c'est le palier visible sur chaque "
+               "courbe de rentabilité."),
+        'en': ('Inverter replacement provision in year {an}: {s} MAD (option 1) and {a} MAD (option 2) '
+               "— the price of each option's inverter, the step visible on each return curve."),
+        'ar': ('مخصص استبدال العاكس في السنة {an}: {s} درهم (الخيار 1) و{a} درهم (الخيار 2) '
+               '— ثمن عاكس كل خيار، وهو العتبة الظاهرة على كل منحنى مردودية.')},
     # ── Graphiques et page calepinage (charts.py, render.py) ───────────────
     'rpdf_ch_mois': {
         'fr': 'Jan,Fév,Mar,Avr,Mai,Juin,Juil,Aoû,Sep,Oct,Nov,Déc',
@@ -76,6 +84,9 @@ LIBELLES_RESIDENTIEL = {
               'the quote is commercially binding.',
         'ar': 'وثيقة تقنية مرفقة بالعرض. يتم تأكيد التوزيع النهائي خلال الزيارة '
               'التقنية؛ وقائمة التجهيزات في عرض السعر وحدها هي الملزمة تجاريًا.'},
+    'rpdf_jours_ouvres': {'fr': 'jours ouvrés', 'en': 'working days',
+                          'ar': 'أيام عمل'},
+    'rpdf_heures_abr': {'fr': 'h', 'en': 'h', 'ar': 'ساعة'},
 }
 
 

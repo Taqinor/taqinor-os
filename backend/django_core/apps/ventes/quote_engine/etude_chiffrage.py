@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import logging
 
+from core.money import quantize_mad
+
 from .lignes_classement import _battery_kwh_from_items, _cout_onduleur
 
 logger = logging.getLogger(__name__)
@@ -189,6 +191,18 @@ def _nombre(valeur) -> float:
         return float(valeur)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _cout_onduleur_paye(devis, items, blob):
+    """RPDF12 — provision de remplacement = le prix que le client PAIE pour
+    l'onduleur : la remise globale du devis s'applique aussi à cette ligne
+    (devis 1344 : 36 000 imprimés, 34 200 payés). Niveau de règles 3
+    seulement : un devis déjà envoyé garde la provision qu'il a imprimée."""
+    cout = _cout_onduleur(items, blob)
+    remise = _nombre(getattr(devis, "remise_globale", None))
+    if cout and remise > 0 and _regles_2710(devis):
+        return float(quantize_mad(cout * (1 - remise / 100)))
+    return cout
 
 
 def _regles_2710(devis):
@@ -368,8 +382,8 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         stockage_present=has_batterie,
         # Q1 — provision de remplacement onduleur = prix TTC RÉEL de la ligne
         # onduleur de chaque option ; aucune ligne ⇒ aucune provision.
-        inverter_cost_sans=_cout_onduleur(sans_items, _blob),
-        inverter_cost_avec=_cout_onduleur(avec_items, _blob),
+        inverter_cost_sans=_cout_onduleur_paye(devis, sans_items, _blob),
+        inverter_cost_avec=_cout_onduleur_paye(devis, avec_items, _blob),
         # CJ2a (ORDRE FONDATEUR) — le bloc du moteur HORAIRE, quand le devis en
         # porte un : les économies deviennent l'intégration réelle production ×
         # consommation, mois par mois, au lieu du forfait 60 %. Absent ⇒

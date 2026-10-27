@@ -2506,13 +2506,13 @@ LIBELLES = {
                'البطارية (قيمة منشورة في البطاقة التقنية للمنتج المسعّر).{omis}')},
     'res_hyp_stockage_ref': {
         'fr': ('Stockage : rendement aller-retour batterie {pct} % appliqué aux kWh qui transitent par la '
-               'batterie — hypothèse de référence, le constructeur de ce produit ne publie pas cette valeur '
-               'dans notre fiche.{omis}'),
+               'batterie — valeur de référence retenue pour cette technologie.'
+               '{omis}'),
         'en': ('Storage: battery round-trip efficiency of {pct} % applied to the kWh that pass through the '
-               'battery — reference assumption, the manufacturer of this product does not publish this value '
-               'in our datasheet.{omis}'),
+               'battery — reference value used for this technology.'
+               '{omis}'),
         'ar': ('التخزين: مردود الشحن والتفريغ للبطارية {pct} % مطبق على الكيلوواط ساعة التي تمر عبر '
-               'البطارية — فرضية مرجعية، لا ينشر مصنّع هذا المنتج هذه القيمة في بطاقتنا.{omis}')},
+               'البطارية — قيمة مرجعية معتمدة لهذه التقنية.{omis}')},
     'res_hyp_batt_omis': {
         'fr': " Aucune perte de capacité ni remplacement de la batterie n'est provisionné sur les {ans} ans.",
         'en': ' No capacity loss or battery replacement is provisioned over the {ans} years.',

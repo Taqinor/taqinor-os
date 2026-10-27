@@ -144,3 +144,78 @@ class QrMasqueVectoriseTest(SimpleTestCase):
                     theme.qr_data_uri.__wrapped__(self.LIENS[2], **forme)
                     meilleur = min(meilleur, time.perf_counter() - t0)
                 self.assertLess(meilleur, 1.0)
+
+
+class RpdfLegacyMiseEnPageTest(SimpleTestCase):
+    """RPDF20-22 — rendus réels du 27/10 (devis 1344, résidentiel + étude,
+    moteur legacy) : HTML exact remis à WeasyPrint (``render_html_for``),
+    aucune base. Mise en page seulement : aucun chiffre ne change."""
+
+    #: Le ``dimensionnement`` d'un devis horaire sans étude saisie : seule la
+    #: tranche actuelle est publiable (aucun optimum ne décrit le devis).
+    _DIM = {'falaise': {'tranche_actuelle': {'rang': 6,
+                                             'libelle': '> 510 kWh/mois'}}}
+
+    @staticmethod
+    def _html(**surcharges):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.tests import _moteur_fixtures as F
+        return G, G.render_html_for(F.donnees_legacy(pdf_mode='full',
+                                                     **surcharges))
+
+    def test_rpdf20_etude_sans_contenu_ni_rendue_ni_comptee(self):
+        G, html = self._html(include_etude=True,
+                             etude={'dimensionnement': self._DIM})
+        self.assertEqual(G.PAGES_TOTAL, 3)
+        self.assertNotIn(G._L('lg_etude_pied').format(ref=G.REF), html)
+        # Test-du-test : une étude qui porte un chiffre réel garde sa page.
+        G, html = self._html(include_etude=True,
+                             etude={'dimensionnement': self._DIM,
+                                    'production_annuelle': 25415})
+        self.assertEqual(G.PAGES_TOTAL, 4)
+        self.assertIn(G._L('lg_etude_pied').format(ref=G.REF), html)
+
+    @staticmethod
+    def _page2(html):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        debut = html.index(G._L('lg_p2_titre'))
+        return html[debut:html.index('<div class="page"', debut)]
+
+    def test_rpdf21_totaux_longs_mettent_tableau_et_graphes_a_l_echelle(self):
+        """Devis 1344 : 11 lignes, remise + arrondi + Total HT + TVA 10/20
+        (7 rangées de totaux) — le graphe mensuel passait sous le pied de
+        page. Les rangées de totaux au-delà de 4 comptent une demi-rangée ;
+        sous l'échelle, les deux graphes (taille fixe, hors flex) la suivent,
+        au ratio 4:1 de leur image."""
+        from apps.ventes.tests import _moteur_fixtures as F
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        base = F.donnees_legacy('plus5', pdf_mode='full',
+                                scenario='Avec batterie')
+        self.assertEqual(len(base['avec_items']), 11)
+        p2 = self._page2(G.render_html_for(base))
+        # Test-du-test : 11 lignes et 4 totaux ⇒ page 2 d'hier, octet pour octet.
+        self.assertNotIn('<style>.eq{font-size:', p2)
+        self.assertIn('width:680px;height:170px;display:block;', p2)
+        d = dict(base, discount_pct=5,
+                 totaux_avec=dict(base['totaux_avec'], arrondi=6.5))
+        p2 = self._page2(G.render_html_for(d))
+        k = 11.0 / (11 + 0.5 * 3)
+        self.assertIn('<style>.eq{font-size:', p2)
+        self.assertNotIn('width:680px;height:170px;', p2)
+        self.assertIn(f'width:{int(680 * k)}px;height:{int(170 * k)}px;'
+                      'display:block;', p2)
+
+    def test_rpdf22_bon_pour_accord_dans_le_flux_jamais_sous_le_contenu(self):
+        """Devis 1344, page 4 : le bandeau « Notre engagement » chevauchait le
+        titre « Bon pour accord » — celui-ci était épinglé en absolu
+        (``bottom:43px``) sous un contenu plafonné à 820 px, sans lien avec sa
+        propre hauteur. Il est désormais dans la colonne flex de la page : le
+        contenu (``flex:1;min-height:0``, rogné) prend la place qu'il laisse."""
+        G, html = self._html()
+        p3 = html[html.rindex(G._L('lg_confiance_bpa')):]
+        self.assertNotIn('position:absolute;bottom:43px', p3)
+        self.assertIn('flex-shrink:0;margin-top:auto;margin-bottom:43px;', p3)
+        self.assertIn('overflow:hidden;max-height:820px;flex:1;min-height:0;',
+                      p3)
+        # Le pied reste absolu au bas de la feuille ; seule la page 3 change.
+        self.assertIn('position:absolute;bottom:0;left:0;right:0;', p3)
