@@ -439,3 +439,46 @@ describe('CPRW16 — échéancier C&I', () => {
     expect(page.indexOf('data-ci-echeancier')).toBeLessThan(page.indexOf('id="achats"'));
   });
 });
+
+// ── CPRW17 — services servis (O&M, suivi de production, raccordement) ──────────────────────
+import { servicesCi, LBL_SERVICES_CI } from '../src/components/proposition/ci/blocsCi';
+
+describe('CPRW17 — services C&I', () => {
+  const svc = (services: unknown) => syntheseCi(({ mode_installation: 'industriel', synthese_ci: { services } }) as unknown as ProposalResponse);
+  const decode = (t: string) => t.replace(/&amp;/g, '&').replace(/&#160;/g, ' ');
+  it('parité des mots avec i18n_labels.py', () => {
+    for (const [cle, lbl] of Object.entries(LBL_SERVICES_CI)) {
+      const py = labelPy(`ci_${cle}`);
+      for (const lg of ['fr', 'en', 'ar'] as const) expect(lbl[lg]).toBe(decode(py[lg]));
+    }
+  });
+  it('O&M proposé sans prix : « tarif sur demande » + « non inclus dans le total »', () => {
+    const l = servicesCi(svc({ om_option: { statut: 'propose', libelle: 'Maintenance annuelle', lignes: [{ designation: 'Maintenance annuelle', total_ht: null, total_ttc: null }] } }))!;
+    expect(l.lignes).toHaveLength(1);
+    expect(l.lignes[0]!.fr).toBe('Maintenance (O&M) : Maintenance annuelle — tarif sur demande (proposé, non inclus dans le total)');
+    expect(l.lignes[0]!.en).toContain('price on request');
+    expect(l.lignes[0]!.ar).toContain('السعر عند الطلب');
+  });
+  it('O&M souscrit avec prix servi : prix HT, pas de « non inclus »', () => {
+    const l = servicesCi(svc({ om_option: { statut: 'souscrit', libelle: 'X', lignes: [{ designation: 'X', total_ht: 12000, total_ttc: 14400 }] } }))!;
+    expect(l.lignes[0]!.fr).toContain('12 000 MAD HT');
+    expect(l.lignes[0]!.fr).not.toContain('non inclus');
+  });
+  it('suivi : « inclus » sans délai (jamais 0 h), délai seulement s\'il est servi', () => {
+    expect(servicesCi(svc({ suivi_production: { delai_intervention: null } }))!.lignes[0]!.fr).toBe('Suivi de production inclus');
+    expect(servicesCi(svc({ suivi_production: { delai_intervention: 0 } }))!.lignes[0]!.fr).toBe('Suivi de production inclus');
+    expect(servicesCi(svc({ suivi_production: { delai_intervention: 48 } }))!.lignes[0]!.fr).toBe('Suivi de production : intervention sous 48 h');
+  });
+  it('raccordement : la phrase du PDF si un régime est servi ; rien sinon', () => {
+    const l = servicesCi(svc({ raccordement: { regime: 'autoproduction' } }))!;
+    expect(l.lignes[0]!.fr).toBe('Raccordement et autorisations du site : dossier monté et suivi par TAQINOR');
+    expect(servicesCi(svc({ raccordement: {} }))).toBeNull();
+    expect(servicesCi(svc({}))).toBeNull();
+    expect(servicesCi(null)).toBeNull();
+  });
+  it('la page appelle ServicesCi avant l\'ancre exploitation', () => {
+    const page = lirePageProposition();
+    expect(page.indexOf('data-ci-services')).toBeGreaterThan(-1);
+    expect(page.indexOf('data-ci-services')).toBeLessThan(page.indexOf('id="exploitation"'));
+  });
+});

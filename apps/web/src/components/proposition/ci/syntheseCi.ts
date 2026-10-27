@@ -108,6 +108,12 @@ export interface SyntheseCi {
     suiviDelaiHeures: number | null;
     /** CPRW15 — garanties des fabricants SERVIES (`services.garanties[]`), durée extraite du texte ; jamais complétées. */
     garanties: Array<{ composant: string; annees: number | null }>;
+    /** CPRW17 — l'option O&M NOMMÉE (`services.om_option`) : statut servi et lignes (prix HT seulement s'il est servi). */
+    omOption: { statut: string | null; libelle: string; lignes: Array<{ designation: string | null; totalHt: number | null }> } | null;
+    /** CPRW17 — suivi de production nommé ; son délai (heures) seulement s'il est servi. */
+    suiviProduction: { delaiHeures: number | null } | null;
+    /** CPRW17 — régime 82-21 servi (`services.raccordement.regime`) : la société monte le dossier de raccordement. */
+    raccordementRegime: string | null;
   } | null;
   /** CIW306 — le bloc catégorie d'un devis commercial, tel que servi (`synthese_ci.categorie`). */
   categorie: SyntheseCiCategorie | null;
@@ -255,6 +261,16 @@ function lireTauxActualisationCi(argent: Record<string, unknown>): number | null
   return null;
 }
 
+function lireOmOptionCi(v: unknown): NonNullable<SyntheseCi['services']>['omOption'] {
+  if (!estRecord(v)) return null;
+  const libelle = texteServi(v.libelle);
+  if (!libelle) return null;
+  const lignes = Array.isArray(v.lignes)
+    ? v.lignes.flatMap((l) => (estRecord(l) ? [{ designation: texteServi(l.designation), totalHt: nombreServi(l.total_ht) }] : []))
+    : [];
+  return { statut: texteServi(v.statut), libelle, lignes };
+}
+
 /** CPRW15 — durée d'une garantie servie : « Onduleur : 10 ans » ou l'ancien « Garantie constructeur 10 ans » → 10. */
 export function anneesGarantieCi(texte: string | null): number | null {
   const m = texte ? /(\d+)\s*ans\b/i.exec(texte) : null;
@@ -373,6 +389,11 @@ export function syntheseCi(
             ? nombreServi(brut.services.suivi_production.delai_intervention)
             : null,
           garanties: lireGarantiesCi(brut.services.garanties),
+          omOption: lireOmOptionCi(brut.services.om_option),
+          suiviProduction: estRecord(brut.services.suivi_production)
+            ? { delaiHeures: nombreServi(brut.services.suivi_production.delai_intervention) }
+            : null,
+          raccordementRegime: estRecord(brut.services.raccordement) ? texteServi(brut.services.raccordement.regime) : null,
         }
       : null,
     categorie: lireCategorieCi(brut.categorie),

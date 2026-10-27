@@ -29,6 +29,8 @@ import SectionAgricole from '../../components/proposition/agricole/SectionAgrico
 import GarantiesAgricoles from '../../components/proposition/agricole/GarantiesAgricoles.astro';
 import GarantiesCi from '../../components/proposition/ci/GarantiesCi.astro';
 import EcheancierCi from '../../components/proposition/ci/EcheancierCi.astro';
+import ServicesCi from '../../components/proposition/ci/ServicesCi.astro';
+import { servicesCi } from '../../components/proposition/ci/blocsCi';
 // (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
 // réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
 // et la décision fondateur du jour bannit tout avis/étoile de cette page.
@@ -7136,6 +7138,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ───────────
            WJ78 — ancre ciblée par le lien « Voir « Et après ? » » du bloc de
            succès (au-dessus, plus haut sur la page). -->
+      {isAutoconso && ci && servicesCi(ci) && (<ServicesCi {ci} />)}
       {installMode === 'industriel' && <span id="exploitation" aria-hidden="true"></span>}
       <section id="etapes-suivantes" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</h2>

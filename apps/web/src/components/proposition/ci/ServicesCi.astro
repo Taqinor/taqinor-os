@@ -1,0 +1,24 @@
+---
+/**
+ * CPRW17 (27/10/2026) — les services d'un devis commercial / industriel : ce que le PDF imprime
+ * (`ci/blocs.py::bloc_services`) — O&M nommée (prix servi ou « tarif sur demande », « proposé, non inclus
+ * dans le total »), suivi de production (délai seulement s'il est servi), dossier de raccordement.
+ * Mots du PDF en FR/EN/AR. Condition d'affichage dans la page.
+ */
+import type { SyntheseCi } from '../../../lib/proposition';
+import { servicesCi } from './blocsCi';
+
+interface Props {
+  ci: SyntheseCi;
+}
+const { ci } = Astro.props;
+const services = servicesCi(ci);
+---
+<section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="services" data-ci-services>
+  <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr={services?.titre.fr} data-en={services?.titre.en} data-ar={services?.titre.ar}>{services?.titre.fr}</h2>
+  <ul class="cine-card mt-5 space-y-2 rounded-2xl p-5 text-sm text-lune-soft sm:p-6">
+    {(services?.lignes ?? []).map((l) => (
+      <li data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</li>
+    ))}
+  </ul>
+</section>
