@@ -51,6 +51,8 @@ export default function UsersManagement() {
   const { confirm: askConfirm } = useConfirmDialog()
   const [users, setUsers] = useState([])
   const [roles, setRoles] = useState([])
+  // Fonctions (postes) de la société : portent le département et le rôle par défaut.
+  const [postes, setPostes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   // NTADM8 — statut des sièges (bannière NON bloquante, jamais d'empêchement
@@ -60,7 +62,7 @@ export default function UsersManagement() {
   // VX104 — `supervisor` réglable dès la création (auparavant seul
   // EquipeSection.jsx le permettait, après coup — hiérarchie oubliée en
   // silence). '' = aucun superviseur choisi.
-  const [form, setForm] = useState({ username: '', email: '', password: '', role: '', supervisor: '', must_change_password: false })
+  const [form, setForm] = useState({ username: '', email: '', password: '', role: '', fonction: '', supervisor: '', must_change_password: false })
   const [saving, setSaving] = useState(false)
   const [createError, setCreateError] = useState(null)
 
@@ -78,6 +80,7 @@ export default function UsersManagement() {
     setEditForm({
       email: u.email || '',
       role: u.role || '',
+      fonction: u.fonction ? String(u.fonction) : '',
       poste: u.poste || '',
       is_active: u.is_active,
       password: '',
@@ -107,6 +110,7 @@ export default function UsersManagement() {
       const payload = {
         email: editForm.email,
         role: editForm.role || null,
+        fonction: editForm.fonction ? Number(editForm.fonction) : null,
         poste: editForm.poste,
         is_active: editForm.is_active,
       }
@@ -132,6 +136,7 @@ export default function UsersManagement() {
       await load()
     } catch (err) {
       setEditError(err.response?.data?.detail
+        ?? err.response?.data?.fonction?.[0]
         ?? "Échec de l'enregistrement. Vérifiez les champs.")
     } finally {
       setEditSaving(false)
@@ -160,10 +165,13 @@ export default function UsersManagement() {
     setLoading(true)
     try {
       // ADOC38 — toutes les pages (fetchAllPages), jamais la seule page 1.
-      const [userList, roleListBrut] = await Promise.all([
+      const [userList, roleListBrut, posteListBrut] = await Promise.all([
         fetchAllPages((page) => api.get('/users/', { params: { page } }).then((r) => r.data), { concurrency: 3 }),
         fetchAllPages((page) => rolesApi.getRoles({ page }).then((r) => r.data), { concurrency: 3 }),
+        fetchAllPages((page) => rolesApi.getPostes({ page }).then((r) => r.data), { concurrency: 3 }),
       ])
+      setPostes((Array.isArray(posteListBrut) ? posteListBrut : (posteListBrut?.results ?? []))
+        .filter((p) => p.actif !== false))
       setUsers(Array.isArray(userList) ? userList : (userList?.results ?? []))
       const roleList = Array.isArray(roleListBrut) ? roleListBrut : (roleListBrut?.results ?? [])
       setRoles(roleList)
@@ -190,19 +198,28 @@ export default function UsersManagement() {
 
   const handleCreate = async (e) => {
     e.preventDefault()
-    setSaving(true)
     setCreateError(null)
+    // La fonction est obligatoire dès que la société en a défini (le rôle en découle).
+    if (postes.length > 0 && !form.fonction) {
+      setCreateError('Choisissez une fonction.')
+      return
+    }
+    setSaving(true)
     try {
       // VX104 — `supervisor` n'est envoyé QUE s'il est choisi (le champ FK
       // n'accepte pas une chaîne vide) ; sinon toast de rappel avec lien vers
       // Paramètres → Équipe, où la hiérarchie reste réglable après coup.
-      const payload = { ...form, supervisor: form.supervisor ? Number(form.supervisor) : null }
+      const payload = {
+        ...form,
+        supervisor: form.supervisor ? Number(form.supervisor) : null,
+        fonction: form.fonction ? Number(form.fonction) : undefined,
+      }
       await api.post('/users/', payload)
       const hadSupervisor = !!form.supervisor
       setForm({
         username: '', email: '', password: '',
         role: roles.find(r => r.nom === 'Utilisateur')?.id || roles[0]?.id || '',
-        supervisor: '', must_change_password: false,
+        fonction: '', supervisor: '', must_change_password: false,
       })
       setShowForm(false)
       if (hadSupervisor) {
@@ -218,7 +235,8 @@ export default function UsersManagement() {
       }
       await load()
     } catch (err) {
-      setCreateError('Erreur : ' + (err.response?.data?.username?.[0] ?? err.message))
+      setCreateError('Erreur : ' + (err.response?.data?.username?.[0]
+        ?? err.response?.data?.fonction?.[0] ?? err.message))
     } finally {
       setSaving(false)
     }
@@ -460,6 +478,27 @@ export default function UsersManagement() {
                     onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
                   />
                 </FormField>
+                {postes.length > 0 && (
+                  <FormField label="Fonction" htmlFor="new-fonction" required
+                    hint="Le rôle est proposé selon la fonction ; vous pouvez le changer ensuite.">
+                    <Select
+                      value={form.fonction ? String(form.fonction) : undefined}
+                      onValueChange={v => setForm(f => {
+                        const poste = postes.find(p => String(p.id) === v)
+                        return { ...f, fonction: v, role: poste?.role ?? f.role }
+                      })}
+                    >
+                      <SelectTrigger id="new-fonction">
+                        <SelectValue placeholder="Choisir une fonction…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {postes.map(p => (
+                          <SelectItem key={p.id} value={String(p.id)}>{p.intitule}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                )}
                 <FormField label="Rôle" htmlFor="new-role">
                   <Select
                     value={form.role ? String(form.role) : undefined}
@@ -613,6 +652,28 @@ export default function UsersManagement() {
                     onChange={e => setEditForm(f => ({ ...f, poste: e.target.value }))}
                   />
                 </FormField>
+                {postes.length > 0 && (
+                  <FormField label="Fonction" htmlFor="edit-fonction">
+                    <Select
+                      value={editForm.fonction ? String(editForm.fonction) : '__none__'}
+                      onValueChange={v => setEditForm(f => {
+                        if (v === '__none__') return { ...f, fonction: '' }
+                        const poste = postes.find(p => String(p.id) === v)
+                        return { ...f, fonction: v, role: poste?.role ?? f.role }
+                      })}
+                    >
+                      <SelectTrigger id="edit-fonction">
+                        <SelectValue placeholder="—" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">—</SelectItem>
+                        {postes.map(p => (
+                          <SelectItem key={p.id} value={String(p.id)}>{p.intitule}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormField>
+                )}
                 <FormField label="Rôle (permissions)" htmlFor="edit-role">
                   <Select
                     value={editForm.role ? String(editForm.role) : '__none__'}
