@@ -1151,6 +1151,19 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
     if mode_pompe == 'existante':
         pompe, puissance, p_kw = pompe_actuelle, puissance_actuelle, plaque_kw
         declare = debit_declare
+    elif facture.get('nb_pompes', 0) > 1:
+        # AGM7 — plusieurs pompes facturées : aucune ne représente le système
+        # (jamais la première × la quantité totale) ⇒ pompe et production
+        # OMISES, dites.
+        alertes.append(_alerte(
+            'pompes_multiples', 'pompe',
+            "%d pompes au devis (lignes ou quantité) : puissance, débit et "
+            "production de la pompe omis (l'étude décrit UNE pompe)."
+            % facture['nb_pompes']))
+        return (_sortie_pompe(None, kw=None, debit_hmt=None, hmt=hmt_m),
+                {'kw': None, 'cv': None},
+                _forme_variateur(None, 'plusieurs pompes facturées'), None,
+                alertes)
     elif produit_pompe:
         p_kw, _src = kw_pompe(produit_pompe)
         brute = produit_pompe.get('courbe_pompe') or {}
@@ -1174,12 +1187,31 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
                 alertes)
 
     produit_variateur = facture.get('variateur')
+    motif_variateur = 'aucun variateur facturé'
+    if facture.get('nb_variateurs', 0) > 1:
+        # AGM7 — plusieurs variateurs : aucun ne décrit le champ.
+        alertes.append(_alerte(
+            'variateurs_multiples', 'variateur',
+            "%d variateurs au devis (lignes ou quantité) : variateur et "
+            "chaînes non évalués." % facture['nb_variateurs']))
+        produit_variateur = None
+        motif_variateur = 'plusieurs variateurs facturés'
     if produit_variateur:
         variateur = _forme_variateur(produit_variateur, None)
     elif mode_pompe == 'existante':
         variateur = variateur_actuel
     else:
-        variateur = _forme_variateur(None, 'aucun variateur facturé')
+        variateur = _forme_variateur(None, motif_variateur)
+
+    if facture.get('modeles_panneaux', 0) > 1:
+        # AGM7 — plusieurs modèles de panneaux : « premier modèle × quantité
+        # totale » serait faux (kWc, m³/jour) ⇒ champ non évalué, dit.
+        alertes.append(_alerte(
+            'panneaux_modeles_multiples', 'champ',
+            "%d modèles de panneaux au devis : champ et production omis "
+            "(l'étude décrit UN modèle de panneau)."
+            % facture['modeles_panneaux']))
+        return pompe, puissance, variateur, None, alertes
 
     module = spec_module(facture.get('panneau'))
     nb = facture.get('nb_panneaux') or 0
@@ -1201,7 +1233,7 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
         agricole_pump_hours=commun.get('agricole_pump_hours'),
         besoin_m3_jour_mois=serie, coordonnees=commun.get('coordonnees'),
         plafond_m3h=commun.get('plafond_m3h'))
-    chaines = _chaines_vides('aucun variateur facturé')
+    chaines = _chaines_vides(motif_variateur)
     if produit_variateur:
         nb_cable, chaines, alertes_chaines, _suivant = _chaines_pour(
             produit_variateur, module, nb, commun.get('temperatures'))
@@ -1244,6 +1276,10 @@ def facture_du_devis(devis, catalogue):
     par_id = {p.get('id'): p for p in catalogue.get('pompage') or ()}
     pompe = variateur = panneau = None
     nb, lignes = 0, []
+    # AGM7 — combien de pompes / variateurs (quantités additionnées) et de
+    # MODÈLES de panneaux (produits distincts) : l'étude n'en mélange aucun.
+    nb_pompes = nb_variateurs = 0
+    modeles_panneaux = set()
     lignes_devis = devis.lignes.select_related('produit').order_by('ordre',
                                                                    'id')
     for ligne in lignes_devis:
@@ -1255,15 +1291,20 @@ def facture_du_devis(devis, catalogue):
         role = (element or {}).get('role_pompage')
         if role == 'pompe':
             pompe = pompe or element
+            nb_pompes += int(_num(ligne.quantite) or 0)
         elif role == 'variateur_pompage':
             variateur = variateur or element
+            nb_variateurs += int(_num(ligne.quantite) or 0)
         elif (getattr(produit, 'role_devis', None)
               or classer_produit(produit.nom)) == 'panneau':
             nb += int(_num(ligne.quantite) or 0)
+            modeles_panneaux.add(produit.id)
             if panneau is None:
                 panneau = _dict_catalogue(produit, **_specs_module(produit))
     return {'pompe': pompe, 'variateur': variateur, 'panneau': panneau,
-            'nb_panneaux': nb, 'lignes': lignes}
+            'nb_panneaux': nb, 'lignes': lignes, 'nb_pompes': nb_pompes,
+            'nb_variateurs': nb_variateurs,
+            'modeles_panneaux': len(modeles_panneaux)}
 
 
 def _empreinte(etude, facture, lead_id):
