@@ -1412,11 +1412,18 @@ def repartir_economie_plafonnee(economie_annuelle, factures_mensuelles,
     return entiers
 
 
-def _economie_avec_nette(economie, facture_avec, part_stockee):
-    """RHOR6 — économie « avec batterie » nette de la perte aller-retour de sa
-    part stockée (modèles hors horaire, niveau 3), facture « avec » relevée
-    d'autant, part ramenée à 0 pour le cashflow (déduction unique)."""
-    if part_stockee <= 0 or economie <= 0:
+def _economie_avec_nette(economie, facture_avec, part_stockee, *,
+                         horaire_une_fois, nette):
+    """Part stockée que le cashflow déduit encore, et économie « avec » imprimée.
+
+    AMOT58 — modèle horaire (``horaire_une_fois``) : énergie déjà nette, part
+    0. RHOR6 — modèles hors horaire au niveau 3 (``nette``) : l'économie
+    imprimée devient nette de la perte aller-retour de sa part stockée, la
+    facture « avec » relevée d'autant, part 0 (déduction unique).
+    """
+    if horaire_une_fois:
+        return economie, facture_avec, 0.0
+    if not nette or part_stockee <= 0 or economie <= 0:
         return economie, facture_avec, part_stockee
     nette = int(round(
         economie * (1.0 - (1.0 - BATTERY_ROUNDTRIP) * part_stockee)))
@@ -1734,15 +1741,14 @@ def calculate_savings_roi(
     # « factures » / « estimation » : la perte Z5 reste appliquée au seul
     # cashflow — leur économie imprimée est BRUTE ; volet laissé à une tâche
     # dédiée, il re-chiffrerait des valeurs épinglées hors de cette lane.)
-    if _h and rendement_une_fois:
-        _batt_part = 0.0
     # RHOR6 (C-RHOR-006) — modèles « factures » / « estimation », niveau 3 :
     # la perte aller-retour de la part stockée est déduite UNE fois, de
     # l'économie IMPRIMÉE (carte, KPI, série mensuelle) ; le cashflow lit alors
     # ce même chiffre net (part 0), comme sur le modèle horaire (AMOT58).
-    if regles_2710 and _stockage and not _h:
-        economie_opt2, facture_avec_a, _batt_part = _economie_avec_nette(
-            economie_opt2, facture_avec_a, _batt_part)
+    economie_opt2, facture_avec_a, _batt_part = _economie_avec_nette(
+        economie_opt2, facture_avec_a, _batt_part,
+        horaire_une_fois=bool(_h and rendement_une_fois),
+        nette=bool(regles_2710 and _stockage and not _h))
     # QJR158 (c) — UNE SEULE définition des paramètres de projection, employée
     # par le CALCUL (les deux appels ci-dessous) et par le bloc d'hypothèses
     # PUBLIÉ plus bas. Tant qu'elles étaient recopiées des constantes du module
