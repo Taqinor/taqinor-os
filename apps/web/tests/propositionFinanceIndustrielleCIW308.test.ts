@@ -148,15 +148,41 @@ describe('CPRW6 — rentabilité industrielle : libellés clients FR/EN/AR', () 
     expect(SRC).not.toContain("d'écart");
     expect(SRC).toContain("différence entre l'échéance et l'économie moyenne");
   });
-  it('LCOE : une seule ligne à 2 décimales, plus de « MAD/kWh » ni de 4 décimales', () => {
+  it('LCOE : une seule ligne, valeur servie à 4 décimales comme le PDF (CPRW10), plus de « MAD/kWh »', () => {
     expect(SRC).toContain('Coût du kWh solaire');
     expect(SRC).toContain('votre kWh évité');
     expect(SRC).not.toContain('(LCOE)');
-    expect(SRC).not.toMatch(/ciRent\.lcoeMadKwh, 4/);
     expect(SRC).not.toMatch(/tarifKwhEvite, 4/);
   });
   it('nav Direction/Exploitation/Achats seulement si ciRent, aria-label neutre trilingue', () => {
     expect(SRC).not.toContain('Lire selon votre rôle');
     expect(SRC).toMatch(/\{ciRent && \(\s*<>\s*<nav/);
+  });
+});
+
+// CPRW9/CPRW10 (27/10/2026) — section #direction jamais vide ; libellés identiques au PDF.
+describe('CPRW9-CPRW10 — rentabilité industrielle : section conditionnelle, libellés du PDF', () => {
+  const SRC = readFileSync(
+    fileURLToPath(new URL('../src/components/proposition/ci/SectionRentabiliteIndustrielle.astro', import.meta.url)),
+    'utf-8',
+  ).replace(/\r\n/g, '\n');
+  const page = lirePageProposition();
+  it('CPRW9 : la page ne monte la section que si la rentabilité est servie', () => {
+    expect(page).toContain("{installMode === 'industriel' && ciRent && (");
+  });
+  it('CPRW10 : le motif interne du moteur n\'est jamais imprimé', () => {
+    expect(SRC).not.toContain('sn.motif');
+  });
+  it('CPRW10 : TRI trilingue (mêmes mots que le PDF)', () => {
+    expect(SRC).toContain('data-fr="TRI" data-en="IRR" data-ar="معدل العائد"');
+  });
+  it('CPRW10 : libellés des sensibilités = ceux du PDF', () => {
+    expect(SRC).toContain("fr: 'Indexation du tarif', en: 'Tariff indexation', ar: 'فهرسة التعريفة'");
+    expect(SRC).toContain("fr: 'Dégradation', en: 'Degradation', ar: 'التدهور'");
+    expect(SRC).toContain("fr: 'Prix du kWh', en: 'kWh price', ar: 'ثمن الكيلوواط ساعة'");
+    expect(SRC).toContain("fr: 'Production', en: 'Production', ar: 'الإنتاج'");
+  });
+  it('CPRW10 : LCOE à 4 décimales dans data-figure', () => {
+    expect(SRC).toMatch(/data-figure="lcoe_mad_kwh">\{formatNumber\(ciRent\.lcoeMadKwh, 4\)\}/);
   });
 });

@@ -17,10 +17,10 @@ const { ciRent, ciRentBaseTexte } = Astro.props;
 
 // CPRW6 — libellés CLIENT des sensibilités servies ; une clé inconnue n'imprime aucune ligne.
 const LIBELLES_SENSIBILITE: Record<string, { fr: string; en: string; ar: string }> = {
-  indexation_tarif: { fr: 'Hausse annuelle du tarif', en: 'Annual tariff increase', ar: 'الزيادة السنوية في التعريفة' },
-  degradation: { fr: 'Vieillissement des panneaux', en: 'Panel ageing', ar: 'تقادم الألواح' },
+  indexation_tarif: { fr: 'Indexation du tarif', en: 'Tariff indexation', ar: 'فهرسة التعريفة' },
+  degradation: { fr: 'Dégradation', en: 'Degradation', ar: 'التدهور' },
   tarif_kwh: { fr: 'Prix du kWh', en: 'kWh price', ar: 'ثمن الكيلوواط ساعة' },
-  production: { fr: 'Production solaire', en: 'Solar production', ar: 'الإنتاج الشمسي' },
+  production: { fr: 'Production', en: 'Production', ar: 'الإنتاج' },
 };
 const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIBILITE[sn.cle]);
 ---
@@ -48,7 +48,7 @@ const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIB
                   <div class="cine-card rounded-xl p-5 sm:col-span-2">
                     <p class="text-sm text-lune">
                       <span data-i18n data-fr="Coût du kWh solaire" data-en="Cost of your solar kWh" data-ar="كلفة الكيلوواط ساعة الشمسي">Coût du kWh solaire</span>{' '}
-                      <span class="fig" dir="ltr" data-figure="lcoe_mad_kwh">{formatNumber(ciRent.lcoeMadKwh, 2)}</span> MAD
+                      <span class="fig" dir="ltr" data-figure="lcoe_mad_kwh">{formatNumber(ciRent.lcoeMadKwh, 4)}</span> MAD
                       {ciRent.tarifKwhEvite !== null ? (
                         <>
                           {' — '}<span data-i18n data-fr="votre kWh évité" data-en="your avoided kWh" data-ar="الكيلوواط ساعة الذي توفرونه">votre kWh évité</span>{' '}
@@ -92,7 +92,7 @@ const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIB
                   <p class="tech-label text-lune-faint" data-i18n data-fr="Sensibilités" data-en="Sensitivities" data-ar="تحليل الحساسية">Sensibilités</p>
                   <ul class="mt-2 space-y-1 text-sm text-lune-soft">
                     {sensibilites.map((sn) => (
-                      <li><span data-i18n data-fr={LIBELLES_SENSIBILITE[sn.cle].fr} data-en={LIBELLES_SENSIBILITE[sn.cle].en} data-ar={LIBELLES_SENSIBILITE[sn.cle].ar}>{LIBELLES_SENSIBILITE[sn.cle].fr}</span><span dir="ltr">{sn.variationPct !== null ? ` ${sn.variationPct > 0 ? '+' : ''}${formatNumber(sn.variationPct, 1)} %` : ''}{sn.retourAns !== null ? ` — ${formatNumber(sn.retourAns, 1)} ` : ''}</span>{sn.retourAns !== null ? <span data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span> : null}<span dir="ltr">{sn.triPct !== null ? `, TRI ${formatNumber(sn.triPct, 1)} %` : ''}{sn.motif && sn.retourAns === null ? ` — ${sn.motif}` : ''}</span></li>
+                      <li><span data-i18n data-fr={LIBELLES_SENSIBILITE[sn.cle].fr} data-en={LIBELLES_SENSIBILITE[sn.cle].en} data-ar={LIBELLES_SENSIBILITE[sn.cle].ar}>{LIBELLES_SENSIBILITE[sn.cle].fr}</span><span dir="ltr">{sn.variationPct !== null ? ` ${sn.variationPct > 0 ? '+' : ''}${formatNumber(sn.variationPct, 1)} %` : ''}{sn.retourAns !== null ? ` — ${formatNumber(sn.retourAns, 1)} ` : ''}</span>{sn.retourAns !== null ? <span data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span> : null}{sn.triPct !== null ? <><span>, </span><span data-i18n data-fr="TRI" data-en="IRR" data-ar="معدل العائد">TRI</span><span dir="ltr">{` ${formatNumber(sn.triPct, 1)} %`}</span></> : null}</li>
                     ))}
                   </ul>
                 </div>
