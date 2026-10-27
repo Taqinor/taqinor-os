@@ -36,24 +36,37 @@ ANCIEN_TEXTE_DYNESS = 'Garantie 10 ans (variante régionale : 7 ans) · ≥ 6 00
 NOUVEAU_TEXTE_DYNESS = 'Garantie constructeur 10 ans · ≥ 6 000 cycles'
 
 
-def corriger(apps, schema_editor):
+def _appliquer(apps, textes_deye, mois_deye, textes_dyness):
+    """Quelques dizaines de lignes au plus (SKU semés × sociétés) : parcours
+    par ``.iterator()`` et sauvegarde ciblée, jamais un update global."""
     Produit = apps.get_model('stock', 'Produit')
-    deye = Produit.objects.filter(sku__in=_ONDULEURS_DEYE_SKUS)
-    deye.filter(garantie=ANCIEN_TEXTE_DEYE).update(garantie=NOUVEAU_TEXTE_DEYE)
-    deye.filter(garantie_mois=120).update(garantie_mois=60)
-    Produit.objects.filter(
-        sku__in=_DYNESS_SKUS, garantie=ANCIEN_TEXTE_DYNESS,
-    ).update(garantie=NOUVEAU_TEXTE_DYNESS)
+    avant_deye, apres_deye = textes_deye
+    mois_avant, mois_apres = mois_deye
+    for p in Produit.objects.filter(sku__in=_ONDULEURS_DEYE_SKUS).iterator():
+        champs = []
+        if p.garantie == avant_deye:
+            p.garantie = apres_deye
+            champs.append('garantie')
+        if p.garantie_mois == mois_avant:
+            p.garantie_mois = mois_apres
+            champs.append('garantie_mois')
+        if champs:
+            p.save(update_fields=champs)
+    avant_dyness, apres_dyness = textes_dyness
+    for p in Produit.objects.filter(
+            sku__in=_DYNESS_SKUS, garantie=avant_dyness).iterator():
+        p.garantie = apres_dyness
+        p.save(update_fields=['garantie'])
+
+
+def corriger(apps, schema_editor):
+    _appliquer(apps, (ANCIEN_TEXTE_DEYE, NOUVEAU_TEXTE_DEYE), (120, 60),
+               (ANCIEN_TEXTE_DYNESS, NOUVEAU_TEXTE_DYNESS))
 
 
 def retablir(apps, schema_editor):
-    Produit = apps.get_model('stock', 'Produit')
-    deye = Produit.objects.filter(sku__in=_ONDULEURS_DEYE_SKUS)
-    deye.filter(garantie=NOUVEAU_TEXTE_DEYE).update(garantie=ANCIEN_TEXTE_DEYE)
-    deye.filter(garantie_mois=60).update(garantie_mois=120)
-    Produit.objects.filter(
-        sku__in=_DYNESS_SKUS, garantie=NOUVEAU_TEXTE_DYNESS,
-    ).update(garantie=ANCIEN_TEXTE_DYNESS)
+    _appliquer(apps, (NOUVEAU_TEXTE_DEYE, ANCIEN_TEXTE_DEYE), (60, 120),
+               (NOUVEAU_TEXTE_DYNESS, ANCIEN_TEXTE_DYNESS))
 
 
 class Migration(migrations.Migration):
