@@ -134,7 +134,8 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
     ))
 
     roles = list(getattr(lignes, 'roles', ()) or ())
-    # AMOT69 — un 0 % EXPLICITE reste 0 % ; seul un taux absent vaut 20.
+    # AMOT69 — un 0 % EXPLICITE reste 0 % ; un taux absent a été résolu plus
+    # haut par `tva_standard(company)` (RGEN2 : plus de 20 codé en dur).
     taux_demande = Decimal(str(taux_tva))
     # APAR49 — « 14.00 » (colonne société à 2 décimales) rendu « 14 », comme
     # le taux d'une fiche produit : la forme de la valeur ne change pas.
