@@ -172,3 +172,32 @@ class CapaciteMontantsBcfMixin:
             montants.append((fusion['quantite'], fusion['prix_achat_unitaire']))
         controler_capacite_montants(montants)
         return attrs
+
+
+MESSAGE_CAPACITE_FACTURE = (
+    'Montant hors capacité : la contre-valeur MAD du TTC (montant en devise '
+    '× taux de change) dépasserait 999 999 999 999,99.')
+
+
+class CapaciteMontantsFactureMixin:
+    """Mixin de ``FactureFournisseurSerializer`` (api-fuzz-full 27/10) : la
+    contre-valeur MAD dérivée (``montant_ttc_devise`` × ``taux_change``,
+    XPUR3) qui ne tiendrait pas dans ``montant_ttc`` répond 409 AVANT toute
+    écriture — règle à deux champs que OpenAPI 3.0 ne sait pas publier —
+    au lieu d'un 500 « numeric field overflow ». À placer AVANT
+    ``serializers.ModelSerializer``."""
+
+    _CHAMPS_DEVISE = ('montant_ttc_devise', 'devise', 'taux_change')
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        instance = getattr(self, 'instance', None)
+        if instance is not None and not set(self._CHAMPS_DEVISE) & set(attrs):
+            return attrs
+        from .services import apply_devise_facture
+        mad = apply_devise_facture(*(
+            attrs.get(champ, getattr(instance, champ, None))
+            for champ in self._CHAMPS_DEVISE))
+        if mad is not None and abs(mad) > PLAFOND_MONTANT:
+            raise ConflitEtat({'montant_ttc_devise': [MESSAGE_CAPACITE_FACTURE]})
+        return attrs
