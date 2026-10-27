@@ -21,6 +21,7 @@ import {
 } from '../src/lib/proposition';
 import { AGR_ACCEPTATION_LBL, AGR_NON_INCLUS_LBL, heuresEauAgricole, moisIrrigationDeclares, savAgricole, valeurProvenance } from '../src/lib/propositionAgricole';
 import { garantiesCodeesEnDurAffichees } from '../src/lib/propositionPage';
+import { lirePageProposition, lireLibProposition } from './astroBlocsHelper';
 
 const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 const contrat = JSON.parse(lire('../src/contract_samples/proposal_data.json')) as {
@@ -202,8 +203,8 @@ describe('AGW304 — options du kit, non-inclus, formalités', () => {
 });
 
 describe('AGW304 — la page', () => {
-  const page = lire('../src/pages/proposition/[...token].astro');
-  const lib = lire('../src/lib/proposition.ts');
+  const page = lirePageProposition();
+  const lib = lireLibProposition();
 
   it('chaque bloc argent est gaté sur sa donnée servie', () => {
     expect(page).toContain('{argent?.economies && (');

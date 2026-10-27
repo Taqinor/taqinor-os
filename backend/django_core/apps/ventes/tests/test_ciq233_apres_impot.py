@@ -94,6 +94,22 @@ class ApresImpotTest(SimpleTestCase):
         self.assertEqual(ctx.exception.champ,
                          'fiscalite_client.amortissement_coefficient')
 
+    def test_cec14_duree_non_entiere_refusee_au_champ_de_l_ecran(self):
+        with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
+            _bloc({'fiscalite_client': dict(FISCALITE, duree_ans=7.5)})
+        self.assertEqual(ctx.exception.champ, 'fiscalite_client.duree_ans')
+
+    def test_cec17_devis_envoye_duree_non_entiere_tronquee(self):
+        from apps.ventes import economie_ci_options as opt
+        saisies = {'fiscalite_client': dict(FISCALITE, duree_ans=7.5)}
+        self.assertEqual(
+            opt._duree_tronquee(saisies)['fiscalite_client']['duree_ans'], 7)
+        texte = {'fiscalite_client': dict(FISCALITE, duree_ans='7,5')}
+        self.assertEqual(
+            opt._duree_tronquee(texte)['fiscalite_client']['duree_ans'], 7)
+        self.assertIs(opt._duree_tronquee({'fiscalite_client': FISCALITE}).get(
+            'fiscalite_client'), FISCALITE)
+
     def test_sans_source_refuse(self):
         with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
             _bloc({'fiscalite_client': dict(FISCALITE, source='')})

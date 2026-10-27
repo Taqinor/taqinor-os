@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { etatVide } from '../src/lib/tunnel/champs';
 import { construireCorps } from '../src/lib/tunnel/corps';
+import { lirePageProposition, lireLibProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
@@ -33,7 +34,7 @@ describe('Layout.astro — balise de visite branchée sitewide', () => {
 });
 
 describe('proposition/[...token].astro — bandeau + désactivation aperçu interne', () => {
-  const src = read('../src/pages/proposition/[...token].astro');
+  const src = lirePageProposition();
 
   it("calcule apercuInterne depuis data.apercu_interne (backend L-INTPREV)", () => {
     expect(src).toContain('const apercuInterne = ok && data?.apercu_interne === true;');
@@ -163,7 +164,7 @@ describe('lib/questionnaire.ts — appareil_id additif au corps POST par section
 });
 
 describe('lib/proposition.ts — appareil_id additif au payload de track', () => {
-  const src = read('../src/lib/proposition.ts');
+  const src = lireLibProposition();
 
   it('buildProposalTrackPayload accepte un appareilId optionnel, omis quand absent', () => {
     expect(src).toContain('appareilId?: string,');

@@ -69,12 +69,14 @@ class ReleveVisiteTests(TestCase):
         return next((ligne for ligne in etude['composition']['lignes']
                      if ligne['role'] == role), None)
 
-    def test_visite_validee_longueurs_sommees_et_metre_change(self):
+    def test_visite_validee_trajet_le_plus_long_et_metre_change(self):
         sans = self._etudier()
         self._visite()
         avec = self._etudier()
         dc = avec['entrees_resolues']['longueur_dc_m']
-        self.assertEqual(dc['valeur'], 85)
+        # CORC4 (27/10/2026) — le trajet le PLUS LONG (50 m), jamais la somme
+        # (85 m) : le DC est une distance aller simple champ → onduleur.
+        self.assertEqual(dc['valeur'], 50)
         self.assertEqual(dc['provenance']['origine'], 'mesure_visite')
         self.assertEqual(avec['entrees_resolues']['longueur_ac_m']['valeur'], 40)
         # Fondateur 26/10/2026 — avant la visite : 30 m par onduleur (estimé).
