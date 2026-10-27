@@ -653,31 +653,78 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
         # pas de valoriseur : le bloc se sert, sans retour
         self.assertIsNone(_bloc(self._evaluation(), None, self._ctx())['retour_simple_ans'])
 
-    def test_option_des_lignes_du_devis(self):
+    def test_tva_suit_le_lead_et_la_base_du_flux(self):
         from types import SimpleNamespace as L
 
+        from apps.ventes.domain.etude_ci_batterie import _bloc, option_avec_de_l_etude
+        vus = {}
+
+        def espion(imposee, contexte):
+            vus.update(contexte)
+            return {}
+        with mock.patch('apps.ventes.domain.etude_ci_batterie._option_imposee', espion):
+            option_avec_de_l_etude({}, None, choix='avec', lead=L(tva_recuperable='non'),
+                                   imposee={'x': 1}, taux_tva_pct=20)
+        self.assertEqual(vus['tva_recuperable']['valeur'], 'non')
+        self.assertEqual(vus['tva_recuperable']['provenance'], 'lead')
+        with mock.patch('apps.ventes.domain.etude_ci_batterie._option_imposee', espion):
+            option_avec_de_l_etude({}, None, choix='avec', lead=None, imposee={'x': 1})
+        self.assertEqual(vus['tva_recuperable']['valeur'], 'inconnu')
+        for valeur, base in (('oui', 'ht'), ('non', 'ttc'), ('inconnu', 'deux')):
+            ctx = dict(self._ctx(), tva_recuperable=valeur)
+            bloc = _bloc(self._evaluation(), self._Valoriseur(), ctx)
+            self.assertEqual(bloc['economie_flux']['base'], base)
+
+    def test_sans_tva_standard_le_remplacement_onduleur_reste(self):
+        from apps.ventes.domain.etude_ci_batterie import _bloc, _investissement_composition
+        avec_tva = _bloc(self._evaluation(), self._Valoriseur(), self._ctx())
+        ctx = {'taux_tva_pct': None, 'batterie': {'garantie_mois': 120}}
+        invest = _investissement_composition(self._evaluation(), None)
+        self.assertIsNone(invest['ttc'])
+        self.assertTrue(all(x['ttc'] == x['ht'] for x in invest['lignes']))
+        sans_tva = _bloc(self._evaluation(), self._Valoriseur(), ctx)
+        self.assertEqual({r['composant'] for r in sans_tva['economie_flux']['remplacements']},
+                         {'onduleur', 'batterie'})
+        self.assertEqual(sans_tva['retour_simple_ans'], avec_tva['retour_simple_ans'])
+
+    def test_option_des_lignes_lue_comme_l_option_sans(self):
+        import contextlib
+
         from apps.ventes.domain.etude_ci_batterie import _bloc, _investissement_des_lignes
-        lignes = [
-            L(produit_id=1, designation='Onduleur hybride', quantite=1, prix_unitaire=60000,
-              remise=0, taux_tva=20, type_ligne='produit'),
-            L(produit_id=2, designation='Dyness 16 kWh', quantite=4, prix_unitaire=60000,
-              remise=0, taux_tva=20, type_ligne='produit'),
-            L(produit_id=3, designation='Panneau', quantite=80, prix_unitaire=3000,
-              remise=0, taux_tva=10, type_ligne='produit'),
-            L(produit_id=9, designation='Ligne sans', quantite=1, prix_unitaire=5,
-              remise=0, taux_tva=20, type_ligne='produit', variante='sans'),
-            L(produit_id=None, designation='Section', quantite=None, prix_unitaire=None,
-              remise=0, taux_tva=None, type_ligne='section')]
-        invest = _investissement_des_lignes(lignes, {1}, {2})
-        self.assertEqual(invest['ht'], 540000.0)
-        self.assertEqual(invest['ttc'], 72000.0 + 288000.0 + 264000.0)
-        self.assertEqual([x['onduleur'] for x in invest['lignes']], [True, False, False])
-        evaluation = dict(self._evaluation(), cout=None,
-                          composition=None, onduleurs={'combinaison': []})
+        devis = object()
+        detail = [
+            {'designation': 'Onduleur hybride', 'ht': 54000.0, 'ttc': 64800.0,
+             'optionnelle': False, 'onduleur': True, 'role_ci': None},
+            {'designation': 'Batterie Dyness', 'ht': 216000.0, 'ttc': 259200.0,
+             'optionnelle': False, 'onduleur': False, 'role_ci': None},
+            {'designation': 'Panneaux', 'ht': 216000.0, 'ttc': 237600.0,
+             'optionnelle': False, 'onduleur': False, 'role_ci': None},
+            {'designation': 'O&M', 'ht': 2000.0, 'ttc': 2400.0,
+             'optionnelle': False, 'onduleur': False, 'role_ci': 'om_ci'}]
+        # totaux NETS (remise globale de 10 % déjà déduite) : jamais la somme brute des lignes
+        cibles = {'apps.ventes.utils.options.option_effective': {'return_value': ''},
+                  'apps.ventes.utils.options.option_totaux':
+                  {'return_value': {'ht': 488000.0, 'ttc': 564000.0}},
+                  'apps.ventes.economie_ci.lignes_pour_economie_ci': {'return_value': detail},
+                  'apps.ventes.domain.regles_calcul.calcul_corrige': {'return_value': True}}
+        with contextlib.ExitStack() as pile:
+            for cible, options in cibles.items():
+                pile.enter_context(mock.patch(cible, **options))
+            invest = _investissement_des_lignes([], devis)
+        self.assertEqual(invest['ht'], 486000.0)       # O&M sortie de l'année 0 (CEC1)
+        self.assertEqual(invest['ttc'], 561600.0)
+        self.assertIs(invest['lignes'], detail)
+        evaluation = dict(self._evaluation(), cout=None, composition=None,
+                          onduleurs={'combinaison': []})
         bloc = _bloc(evaluation, self._Valoriseur(), self._ctx(), investissement=invest)
-        self.assertIsNotNone(bloc['retour_simple_ans'])
-        self.assertGreater(bloc['retour_simple_ans'], 13.5)
-        # une ligne sans prix ⇒ investissement non chiffré, jamais un quotient
-        self.assertIsNone(_investissement_des_lignes(
-            [L(produit_id=3, designation='Panneau', quantite=80, prix_unitaire=None,
-               remise=0, taux_tva=10)], set(), set()))
+        self.assertGreater(bloc['retour_simple_ans'], 486000.0 / self.ECONOMIE_AN1)
+        # l'argent du devis suit l'option « sans » (accepté) : pas de retour de l'option « avec »
+        with mock.patch('apps.ventes.utils.options.option_effective', return_value='sans_batterie'):
+            self.assertIsNone(_investissement_des_lignes([], devis))
+        # sans devis (ni ``ligne.devis``) : rien
+        self.assertIsNone(_investissement_des_lignes([], None))
+
+    def test_pack_publie_sans_quantite_ne_borne_pas_a_zero(self):
+        from apps.ventes.moteur_ci.batterie import puissance_decharge_kw
+        self.assertIsNone(puissance_decharge_kw({'max_decharge_kw': 5.0, 'quantite': 0}, None, []))
+        self.assertEqual(puissance_decharge_kw({'max_decharge_kw': 5.0, 'quantite': 3}, None, []), 15.0)

@@ -180,8 +180,8 @@ def puissance_decharge_kw(banque, onduleurs, hybrides):
     borne n'est publiée (comportement d'avant : aucune borne)."""
     bornes = []
     pack = _f((banque or {}).get('max_decharge_kw'))
-    if pack:
-        bornes.append(pack * int(banque.get('quantite') or 0))
+    if pack and int((banque or {}).get('quantite') or 0):
+        bornes.append(pack * int(banque.get('quantite')))
     fiches = {h.get('produit'): h for h in hybrides or []}
     items = [(fiches.get(i.get('produit')) or {}, int(i.get('quantite') or 0))
              for i in (onduleurs or {}).get('combinaison') or []]
