@@ -661,6 +661,21 @@ def _flux(investissement, economie1, charges, remplacements, *,
     return bloc
 
 
+#: AGM10 — motif commun quand le barème des charges solaires manque.
+MOTIF_SANS_CHARGES = 'barème des charges solaires non saisi'
+
+
+def _economie_sans_charges():
+    """AGM10 — la forme ``economie`` sans flux : aucun retour n'est calculé
+    avec des charges à 0 (l'omission nomme ``charges_annuelles_mad``)."""
+    bloc = _economie_vide(MOTIF_SANS_CHARGES)
+    bloc['omissions'] = [{
+        'cle': 'charges_annuelles_mad',
+        'motif': f'{MOTIF_SANS_CHARGES} : flux annuels et retour non '
+                 'calculés'}]
+    return bloc
+
+
 def _economie_vide(motif):
     return {'horizon_ans': HORIZON_ANS, 'flux': [], 'van_mad': None,
             'tri_pct': None, 'lcoe_mad_kwh': None, 'retour_ans': None,
@@ -759,11 +774,15 @@ def _mad_par_m3(dep, sortie_etude, mois, jours_semaine, investissement,
             'cle': 'mad_par_m3.solaire',
             'motif': 'coût du m³ solaire non publié : pompe sans courbe et '
                      'aucun volume déclaré'})
+    elif charges is None:
+        omissions.append({
+            'cle': 'mad_par_m3.solaire',
+            'motif': f'coût du m³ solaire non publié : {MOTIF_SANS_CHARGES}'})
     else:
         utile = sum(utile_jour[m - 1] * jours[m] for m in mois)
         if utile > 0:
             total = (investissement + (remplacements_mad or 0.0)
-                     + (charges or 0.0) * HORIZON_ANS)
+                     + charges * HORIZON_ANS)
             bloc['solaire'] = round(total / (utile * HORIZON_ANS), 2)
             # AGQ17 — nouveau forage : aucun remplacement compté (None).
             compte = ('investissement + charges' if remplacements_mad is None
@@ -792,7 +811,10 @@ def _sensibilite(dep, parts, investissement, charges, remplacements):
     lignes = []
     for facteur in FACTEURS_SENSIBILITE:
         economie1 = _economie1_au_prix(dep, parts, facteur)
-        flux = _flux(investissement, economie1, charges, remplacements)
+        # AGM10 — sans barème : ni économie nette ni retour (jamais calculés
+        # avec des charges à 0).
+        flux = (None if charges is None else
+                _flux(investissement, economie1, charges, remplacements))
         valeur = dep['valeur_unitaire'] * facteur
         if dep['cas'] == CAS_RESEAU:
             libelle = f'si la facture était {_fmt(valeur)} DH'
@@ -802,8 +824,9 @@ def _sensibilite(dep, parts, investissement, charges, remplacements):
         lignes.append({
             'facteur': facteur, 'libelle': libelle,
             'valeur_unitaire_mad': round(valeur, 2),
-            'economie_nette_mad_an': round(economie1 - (charges or 0.0), 2),
-            'retour_ans': flux['retour_ans'],
+            'economie_nette_mad_an': (None if flux is None
+                                      else round(economie1 - charges, 2)),
+            'retour_ans': None if flux is None else flux['retour_ans'],
         })
     return lignes
 
@@ -815,12 +838,16 @@ def _seuil(dep, parts, investissement, charges, remplacements_mad):
         return None, {'cle': 'seuil_rentabilite_carburant',
                       'motif': 'sans objet : aucun prix unitaire de '
                                'carburant déclaré (cas réseau)'}
+    if charges is None:
+        return None, {'cle': 'seuil_rentabilite_carburant',
+                      'motif': f'{MOTIF_SANS_CHARGES} : seuil non '
+                               'calculable'}
     quantite = sum(q * p for q, p in zip(dep['quantite_par_mois'], parts))
     if quantite <= 0:
         return None, {'cle': 'seuil_rentabilite_carburant',
                       'motif': 'aucune quantité évitée : seuil non calculable'}
     seuil = (investissement + remplacements_mad
-             + HORIZON_ANS * ((charges or 0.0) - dep['_entretien'])) \
+             + HORIZON_ANS * (charges - dep['_entretien'])) \
         / (HORIZON_ANS * quantite)
     if seuil <= 0:
         return None, {'cle': 'seuil_rentabilite_carburant',
@@ -986,6 +1013,10 @@ def _scenario_butane(dep, parts, reperes, investissement, charges,
         return None, {'cle': 'scenario_butane_non_subventionne',
                       'motif': 'sans objet : énergie actuelle autre que le '
                                'butane en bouteilles'}
+    if charges is None:
+        return None, {'cle': 'scenario_butane_non_subventionne',
+                      'motif': f'{MOTIF_SANS_CHARGES} : scénario non '
+                               'calculable'}
     repere = _repere(reperes, 'butane_12kg_non_subventionne')
     if repere is None:
         return None, {'cle': 'scenario_butane_non_subventionne',
@@ -1005,7 +1036,7 @@ def _scenario_butane(dep, parts, reperes, investissement, charges,
             'valeur_unitaire_mad': round(valeur, 2),
             'source': repere['source'],
             'releve_le': repere.get('releve_le'),
-            'economie_nette_mad_an': round(economie1 - (charges or 0.0), 2),
+            'economie_nette_mad_an': round(economie1 - charges, 2),
             'retour_ans': flux['retour_ans']}, None
 
 
@@ -1258,7 +1289,10 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     economie1 = _economie_annee1(dep['_par_mois'],
                                  couverture['part_evitee_par_mois'],
                                  dep['_entretien'])
-    economie = _flux(investissement, economie1, charges, remplacements)
+    # AGM10 — sans barème des charges : aucun flux ni retour (jamais calculés
+    # avec des charges à 0) ; la forme ``economie`` reste celle du contrat.
+    economie = (_economie_sans_charges() if charges is None else
+                _flux(investissement, economie1, charges, remplacements))
     economie['omissions'].extend(omis_rempl)
     bloc['economie'] = economie
     parts = couverture['part_evitee_par_mois']
@@ -1290,7 +1324,11 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
             'message': f'retour sur investissement de {retour} an : à '
                        f'vérifier avec le client'})
 
-    if taux_interne is None:
+    if charges is None:
+        interne['omissions'].append({
+            'cle': 'van_mad',
+            'motif': f'{MOTIF_SANS_CHARGES} : VAN non calculée'})
+    elif taux_interne is None:
         interne['omissions'].append({'cle': 'van_mad',
                                      'motif': "taux d'actualisation non "
                                               'saisi'})

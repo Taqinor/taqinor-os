@@ -27,7 +27,8 @@ from apps.ventes.domain import etude_schema as es
 from apps.ventes.domain import pompage
 from apps.ventes.models import Devis, LigneDevis
 from apps.ventes.tests.test_agr_economie_pompage import (
-    CHARGES, ETUDE_COUVERTE, lignes_reference, saisies_12000)
+    CHARGES, ETUDE_COUVERTE, REPERES, etude_declaree, lignes_reference,
+    saisies_12000, saisies_carburant)
 from authentication.models import Company
 
 User = get_user_model()
@@ -222,3 +223,93 @@ class AGM9CouvertureNonVerifiableTests(SimpleTestCase):
         self.assertEqual(bloc['cas'], 'nouveau_forage')
         self.assertNotIn(MOTIF_COUVERTURE, bloc['motifs_non_publiable'])
         self.assertTrue(bloc['publiable_client'])
+
+
+class AGM10SansBaremeTests(SimpleTestCase):
+    """AGM10 — barème des charges solaires absent : seuil, sensibilité, coût
+    du m³ solaire, retour et scénario butane OMIS (jamais calculés avec un
+    entretien à 0)."""
+
+    @staticmethod
+    def gasoil():
+        # 10 L par jour d'irrigation x 6 j/semaine, 12 MAD/L, avril-sept.
+        return saisies_carburant(
+            energie='diesel', quantite=10, unite='litre',
+            periode='jour_irrigation', jours=6, prix=12.0,
+            mois=range(4, 10))
+
+    def bloc(self, reglages, saisies=None, **kw):
+        kw.setdefault('sortie_etude', etude_declaree())
+        return E.economie_pompage(
+            saisies or self.gasoil(), lignes=lignes_reference(),
+            reglages=reglages, **kw)
+
+    def test_sans_bareme_chaque_chiffre_dependant_est_omis(self):
+        for reglages in ({}, None):
+            with self.subTest(reglages=reglages):
+                bloc = self.bloc(reglages)
+                self.assertIsNone(bloc['seuil_rentabilite_carburant'])
+                self.assertIn('seuil_rentabilite_carburant',
+                              [o['cle'] for o in bloc['omissions']])
+                self.assertEqual(len(bloc['sensibilite_carburant']), 5)
+                for ligne in bloc['sensibilite_carburant']:
+                    self.assertIsNone(ligne['economie_nette_mad_an'])
+                    self.assertIsNone(ligne['retour_ans'])
+                self.assertIsNone(bloc['mad_par_m3']['solaire'])
+                self.assertIn('mad_par_m3.solaire',
+                              [o['cle'] for o in bloc['omissions']])
+                eco = bloc['economie']
+                self.assertIsNone(eco['retour_ans'])
+                self.assertEqual(eco['flux'], [])
+                self.assertIsNone(eco['economie_nette_an1'])
+                self.assertIn('charges_annuelles_mad',
+                              [o['cle'] for o in eco['omissions']])
+                self.assertFalse(bloc['publiable_client'])
+
+    def test_forme_inchangee_avec_ou_sans_bareme(self):
+        avec = self.bloc(CHARGES)
+        sans = self.bloc({})
+        self.assertEqual(set(avec), set(sans))
+        self.assertEqual(set(avec['economie']), set(sans['economie']))
+        self.assertEqual(set(avec['sensibilite_carburant'][0]),
+                         set(sans['sensibilite_carburant'][0]))
+        self.assertEqual(set(avec['mad_par_m3']), set(sans['mad_par_m3']))
+
+    def test_avec_bareme_inchange(self):
+        bloc = self.bloc(CHARGES)
+        self.assertIsNotNone(bloc['seuil_rentabilite_carburant'])
+        self.assertIsNotNone(bloc['mad_par_m3']['solaire'])
+        self.assertEqual(len(bloc['economie']['flux']), 11)
+        self.assertIsNotNone(bloc['economie']['economie_nette_an1'])
+        for ligne in bloc['sensibilite_carburant']:
+            self.assertIsNotNone(ligne['economie_nette_mad_an'])
+
+    def test_nouveau_forage_sans_bareme_m3_solaire_omis(self):
+        horodatage = {'origine': 'saisie', 'detail': None,
+                      'date': '2026-09-12'}
+        saisies = {'energie_actuelle': {'valeur': 'aucune',
+                                        'provenance': horodatage},
+                   'consommation': {'jours_irrigation_par_semaine': 7},
+                   'mois_irrigation': {'mois': list(range(1, 13)),
+                                       'provenance': horodatage}}
+        bloc = self.bloc({}, saisies=saisies,
+                         sortie_etude=etude_declaree(volume=50.0,
+                                                     production=40.0))
+        self.assertEqual(bloc['cas'], 'nouveau_forage')
+        self.assertIsNone(bloc['mad_par_m3']['solaire'])
+        self.assertFalse(bloc['publiable_client'])
+
+    def test_vue_interne_scenario_butane_et_van_omis(self):
+        saisies = saisies_carburant()
+        saisies['taux_actualisation'] = {'valeur': 8, 'source': 'banque'}
+        sans = self.bloc({}, saisies=saisies, reperes=REPERES)
+        interne = sans['vue_interne']
+        self.assertIsNone(interne['scenario_butane_non_subventionne'])
+        self.assertIsNone(interne['van_mad'])
+        cles = [o['cle'] for o in interne['omissions']]
+        self.assertIn('scenario_butane_non_subventionne', cles)
+        self.assertIn('van_mad', cles)
+        avec = self.bloc(CHARGES, saisies=saisies, reperes=REPERES)
+        self.assertIsNotNone(
+            avec['vue_interne']['scenario_butane_non_subventionne'])
+        self.assertIsNotNone(avec['vue_interne']['van_mad'])
