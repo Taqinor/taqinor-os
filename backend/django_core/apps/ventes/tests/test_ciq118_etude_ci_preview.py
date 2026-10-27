@@ -194,9 +194,13 @@ class ContratTests(_Base):
 
     # ── CORC1 — l'aperçu dit si le devis automatique passera ────────────────
 
-    def test_devis_auto_possible_sur_etude_complete(self):
+    def test_devis_auto_dit_le_refus_du_bouton_prix_a_renseigner(self):
+        # Le catalogue de test ne règle que 2 prestations sur 8 : le bouton
+        # refuserait (« Prix à renseigner ») — l'aperçu le dit AVANT le clic.
         data = self.post(self.corps(phases='tri'))
-        self.assertEqual(data['devis_auto'], {'possible': True, 'message': None, 'champ': None})
+        self.assertFalse(data['devis_auto']['possible'])
+        self.assertEqual(data['devis_auto']['champ'], 'composition')
+        self.assertTrue(data['devis_auto']['message'].startswith('Prix à renseigner'))
         self.assertIsNone(data['option_avec'])  # aucun hybride au catalogue de test
 
     def test_devis_auto_refuse_nomme_le_champ_du_lead(self):
@@ -421,13 +425,11 @@ class BornePoseParDefautAdev90(_Base):
         corps['toit'] = dict({'type_pose': None, 'surface_utile_m2': 200}, **toit)
         return self.post(corps)
 
-    def test_surface_sans_pose_bornee_en_pose_chiffree(self):
-        # CORC5 — couverture inconnue : la borne suit la pose que la
-        # composition CHIFFRE (toit plat lesté, fondateur 26/10/2026).
+    def test_surface_sans_pose_bornee_en_surimposition(self):
         rep = self._bornes()
         toit = rep['taille']['bornes']['toit']
         self.assertIsNotNone(toit['kwc'])
-        self.assertIn('pose estimée « toit_plat_leste »', toit['source'])
+        self.assertIn('pose estimée « toiture_inclinee »', toit['source'])
         self.assertNotIn('contenance_toit_inconnue', [a['code'] for a in rep['alertes']])
 
     def test_pose_declaree_inchangee(self):

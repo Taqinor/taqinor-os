@@ -389,7 +389,10 @@ class RefusConsigneVendeurCorc3Tests(_Base):
     jargon du moteur (« Tarif non déclaré … économies non chiffrées »)."""
 
     def test_contrat_absent_consigne_vendeur(self):
-        erreur = self._refus(self._lead(conso_mensuelle_kwh=Decimal('6000')), reel=True)
+        with self.assertRaises(AutoDevisError) as ctx:
+            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
+                             user=self.user, company=self.co)
+        erreur = ctx.exception
         self.assertEqual(erreur.field, 'contrat_electricite')
         self.assertTrue(erreur.message.startswith("Demandez au client son contrat"))
         self.assertNotIn('Tarif non déclaré', erreur.message)
