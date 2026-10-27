@@ -1095,18 +1095,6 @@ _OPTIONS_CUMUL_25_ANS = (
 )
 
 
-def _retirer_economie_ci_partout(payload):
-    """AMOT67 (C-AMOT-050) — retire ``economie_ci`` à TOUTE profondeur de la
-    charge publique, en place ; chaque bloc est copié en profondeur d'abord
-    (jamais ``devis.etude_params`` muté)."""
-    import copy
-    payload.pop('economie_ci', None)
-    for cle in list(payload):
-        bloc = copy.deepcopy(payload[cle])
-        _retirer_cles(bloc, frozenset({'economie_ci'}))
-        payload[cle] = bloc
-
-
 def _economies_cumul_25_ans_publique(data):
     """ADEV50 (C-ADEV-017) — le cumul BRUT des économies sur 25 ans de CHAQUE
     option, lu sur LE flux annuel que le PDF ``/proposal`` trace (``cashflow_*``
@@ -1869,13 +1857,12 @@ def proposal_data(request, token):
         # niveau : l'étude C&I stockée (``etude_params.etude_ci``) le porte
         # aussi en IMBRIQUÉ — retiré partout (blocs copiés d'abord : jamais
         # ``devis.etude_params`` muté). La page lit ``synthese_ci``.
-        _retirer_economie_ci_partout(payload)
+        _charge_utile_client(payload)  # AMOT67 + CPRS1-3
         # AMOT67 (D-CIQ-10) — un devis COMMERCIAL ne publie ni VAN, ni LCOE,
         # ni sensibilités, à AUCUN niveau : la liste est celle de
         # ``synthese_ci`` (``CLES_INDUSTRIEL_SEUL``), jamais une seconde.
         if _mode_public(data) == 'commercial':
             _retirer_industriel_seul(payload)
-        _charge_utile_client(payload, data)  # CPRS1-3 : chiffres/mots du PDF
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est

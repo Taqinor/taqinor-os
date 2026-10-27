@@ -111,33 +111,48 @@ def _aligner_sur_option_servie(payload, synthese):
             payload[cle_payload] = [round(v) for v in serie]
 
 
-def _libelles(data):
-    data = data or {}
-    return ({'libelles_document': data.get('libelles_document') or {},
-             'langue_sortie': data.get('langue_sortie')},
-            data.get('langue_sortie') or None)
-
-
 def synthese_ci_client(synthese, data):
     """CPRS3 — copie de ``synthese`` (la synthèse du PDF) dans les mots du
     client : mêmes nombres, textes internes traduits ou retirés."""
-    libelles, langue = _libelles(data)
+    data = data or {}
+    libelles = {'libelles_document': data.get('libelles_document') or {},
+                'langue_sortie': data.get('langue_sortie')}
+    langue = data.get('langue_sortie') or None
     synthese = copy.deepcopy(synthese)
     _assainir_synthese_ci(synthese, libelles, langue)
     return synthese
 
 
-def charge_utile_client(payload, data):
-    """CPRS1-3 — en place sur ``payload`` (blocs copiés avant mutation)."""
+def _retirer_partout(noeud, cle):
+    if isinstance(noeud, dict):
+        noeud.pop(cle, None)
+        for valeur in noeud.values():
+            _retirer_partout(valeur, cle)
+    elif isinstance(noeud, list):
+        for valeur in noeud:
+            _retirer_partout(valeur, cle)
+
+
+def charge_utile_client(payload):
+    """AMOT67 + CPRS1-3 — en place sur ``payload`` ; chaque bloc est copié
+    en profondeur d'abord (jamais ``devis.etude_params`` muté).
+
+    AMOT67 (C-AMOT-050, déplacé de ``public_views``) : ``economie_ci`` est
+    retiré à TOUTE profondeur — la page lit ``synthese_ci``."""
+    for cle in list(payload):
+        payload[cle] = copy.deepcopy(payload[cle])
+    _retirer_partout(payload, 'economie_ci')
     quote = payload.get('quote')
+    data = quote if isinstance(quote, dict) else {}
+    libelles = {'libelles_document': data.get('libelles_document') or {},
+                'langue_sortie': data.get('langue_sortie')}
     if isinstance(quote, dict):
         quote.pop('libelles_document', None)
         etude = quote.get('etude')
-        if isinstance(etude, dict) and 'etude_ci' in etude:
-            quote['etude'] = {k: v for k, v in etude.items()
-                              if k != 'etude_ci'}
+        if isinstance(etude, dict):
+            etude.pop('etude_ci', None)
     synthese = payload.get('synthese_ci')
     if not isinstance(synthese, dict):
         return
     _aligner_sur_option_servie(payload, synthese)
-    payload['synthese_ci'] = synthese_ci_client(synthese, data)
+    payload['synthese_ci'] = synthese_ci_client(synthese, libelles)
