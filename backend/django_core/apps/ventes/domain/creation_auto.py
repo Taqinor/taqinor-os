@@ -569,8 +569,13 @@ from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-
 from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     AutoDevisError,
 )
-from apps.ventes.domain.creation_auto_residentiel import _build_devis_auto_residentiel  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
-from apps.ventes.domain.creation_auto_residentiel import composer_devis_residentiel  # noqa: E402,F401 — ré-export (services.py, tests) (D-ENF22)
+from apps.ventes.domain.creation_auto_residentiel import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    _build_devis_auto_residentiel,
+)
+# Ré-export (services.py, tests) : le corps vit chez son porteur.
+from apps.ventes.domain.creation_auto_residentiel import (  # noqa: E402,F401 — (D-ENF22)
+    composer_devis_residentiel,
+)
 from apps.ventes.domain.creation_auto_agricole import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     _build_devis_auto_agricole,
 )
