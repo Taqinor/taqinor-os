@@ -723,9 +723,13 @@ def build_pages(ctx) -> list:
     _jamais_a = bool(d.get("roi_a_jamais"))
     _NON_RENTABLE = libelle_cat(d, "res_non_rentabilise_25")
 
+    def _n_ans(v, cle="res_n_ans", **valeurs):
+        from ..i18n_labels_residentiel import accord_annees_ar
+        return accord_annees_ar(libelle_cat(d, cle, **(valeurs or {"n": _yrs(v)})), v)
+
     def _roi_txt(v, jamais):
         return (libelle_cat(d, "res_non_rentabilise") if jamais
-                else libelle_cat(d, "res_n_ans", n=_yrs(v)))
+                else _n_ans(v))
     # QX5 — deux options → fourchette de ROI ; mono-option → le ROI de l'option
     # réelle seul (jamais une fourchette entre une option et un fantôme).
     _roi_jamais_affiche = False
@@ -738,7 +742,7 @@ def build_pages(ctx) -> list:
                          f"{_roi_txt(roi_a, _jamais_a)}")
     elif deux_options and roi_s and roi_a:
         lo, hi = sorted((roi_s, roi_a))
-        roi_range = libelle_cat(d, "res_n_m_ans", a=_yrs(lo), b=_yrs(hi))
+        roi_range = _n_ans(hi, "res_n_m_ans", a=_yrs(lo), b=_yrs(hi))
     else:
         _roi_one = (roi_a if avec_ok else roi_s)
         _jamais_one = _jamais_a if avec_ok else _jamais_s
@@ -746,7 +750,7 @@ def build_pages(ctx) -> list:
             roi_range = _NON_RENTABLE
             _roi_jamais_affiche = True
         else:
-            roi_range = (libelle_cat(d, "res_n_ans", n=_yrs(_roi_one))
+            roi_range = (_n_ans(_roi_one)
                          if _roi_one else "—")
     _roi_sous_titre = libelle_cat(d, "res_au_tarif_actuel"
                                   if _roi_jamais_affiche

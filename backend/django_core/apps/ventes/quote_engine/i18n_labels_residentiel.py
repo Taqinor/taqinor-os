@@ -73,3 +73,16 @@ LIBELLES_RESIDENTIEL = {
         'ar': 'وثيقة تقنية مرفقة بالعرض. يتم تأكيد التوزيع النهائي خلال الزيارة '
               'التقنية؛ وقائمة التجهيزات في عرض السعر وحدها هي الملزمة تجاريًا.'},
 }
+
+
+def accord_annees_ar(texte, n):
+    """RPDF (constat RWEB, 27/10) — l'arabe accorde « ans » au nombre :
+    « سنوات » de 3 à 10 ans entiers, « سنة » sinon (12,5 → « 12,5 سنة »).
+    Même règle que ``anneesAr`` de la page /proposition."""
+    try:
+        f = float(n)
+    except (TypeError, ValueError):
+        return texte
+    if f.is_integer() and 3 <= f <= 10:
+        return texte
+    return texte.replace('سنوات', 'سنة')
