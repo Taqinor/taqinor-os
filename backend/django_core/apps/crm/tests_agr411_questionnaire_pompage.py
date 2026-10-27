@@ -190,6 +190,33 @@ class SectionPompageTests(TestCase):
         self.assertTrue(quest.manquantes(
             self._agricole(mode_pompe='existante'))['photo_pompe'])
 
+    def test_sans_pompe_actuelle_ni_plaque_ni_debit_ecrits(self):
+        # CQST9 — alimentation « aucune » : rien de la pompe actuelle n'est
+        # écrit, une « pompe conservée » antérieure passe en neuve, la plaque
+        # n'est plus exigée ni servie (aucun cul-de-sac pour le client).
+        lead = self._agricole(mode_pompe='existante')
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead,
+            questions={s: True for s in quest.sections_du_lead(lead)})
+        self.assertIn('photo_pompe', quest.sections_a_servir(
+            lead, lien.sections_actives()))
+        self.client.post(PUBLIC.format(lien.token), data=json.dumps({
+            'section': 'pompage', 'reponses': {
+                'pompe_alim_actuelle': 'aucune', 'mode_pompe': 'existante',
+                'pompe_actuelle_debit_m3h': 10, 'pompage_heures_jour': 8,
+                'pompe_actuelle_kw': 5.5, 'pompe_hmt_m': 40}}),
+            content_type='application/json')
+        lead.refresh_from_db()
+        self.assertEqual(lead.pompe_alim_actuelle, 'aucune')
+        self.assertEqual(lead.mode_pompe, 'neuve')
+        self.assertIsNone(lead.pompe_actuelle_debit_m3h)
+        self.assertIsNone(lead.pompage_heures_jour)
+        self.assertIsNone(lead.pompe_actuelle_kw)
+        self.assertEqual(lead.pompe_hmt_m, Decimal('40'))
+        self.assertFalse(quest.manquantes(lead)['photo_pompe'])
+        self.assertNotIn('photo_pompe', quest.sections_a_servir(
+            lead, lien.sections_actives()))
+
     def test_lien_residentiel_identique(self):
         lead = Lead.objects.create(company=self.company, nom='Maison')
         res = self._mint(lead)

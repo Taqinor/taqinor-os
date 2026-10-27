@@ -353,6 +353,16 @@ _POMPAGE_COLONNES_MODELE = ('pompe_hmt_m', 'pompe_actuelle_debit_m3h',
 #: sa pompe (``mode_pompe`` = existante) : jamais à un client en pompe neuve.
 _POMPAGE_PLAQUE = ('pompe_actuelle_kw', 'pompe_actuelle_tension_v',
                    'pompe_actuelle_phases')
+# CQST9 — sans pompe aujourd'hui (alimentation « aucune ») : rien à garder ni
+# à lire sur une plaque ; le débit et les heures de la pompe actuelle n'existent pas.
+_POMPE_ACTUELLE = ('pompe_actuelle_debit_m3h', 'pompage_heures_jour',
+                   'mode_pompe') + _POMPAGE_PLAQUE
+
+
+def _sans_pompe_actuelle(lead, reponses=None) -> bool:
+    alim = (reponses or {}).get('pompe_alim_actuelle') if isinstance(
+        reponses, dict) else None
+    return (alim or getattr(lead, 'pompe_alim_actuelle', None)) == 'aucune'
 
 
 def _devis_bloque(lead) -> bool:
@@ -394,6 +404,7 @@ def manquantes(lead) -> dict:
             # CQST7 — la plaque ne sert que si le client GARDE sa pompe
             # (D-AGQ-10) : jamais demandée d'office pour une pompe neuve.
             'photo_pompe': (getattr(lead, 'mode_pompe', None) == 'existante'
+                            and not _sans_pompe_actuelle(lead)
                             and not _photo_presente('photo_pompe', libelles)),
             'photo_forage': not _photo_presente('photo_forage', libelles),
             'gps': not _gps_connu(lead),
@@ -581,6 +592,11 @@ def sections_a_servir(lead, sections):
     # voit jamais un écran énergie/toiture/équipements.
     permises = sections_du_lead(lead)
     sections = [section for section in sections if section in permises]
+    # CQST9 — lien ancien : la plaque ne s'affiche que pour une pompe conservée.
+    if (est_agricole(lead)
+            and (getattr(lead, 'mode_pompe', None) != 'existante'
+                 or _sans_pompe_actuelle(lead))):
+        sections = [section for section in sections if section != 'photo_pompe']
     carte = champs_a_poser(lead, sections)
     return [section for section in sections
             if section in _SECTIONS_PHOTO or carte.get(section)]
@@ -922,6 +938,13 @@ def _champs_pompage_modele(lead, reponses) -> dict:
         if valeur is not None and not isinstance(valeur, str) and valeur <= 0:
             continue
         out[cle] = valeur
+    if _sans_pompe_actuelle(lead, reponses):
+        for cle in _POMPE_ACTUELLE:
+            out.pop(cle, None)
+        # Pas de pompe à garder : la pompe sera neuve (sinon la plaque d'une
+        # pompe inexistante resterait exigée et le client ne pourrait rien débloquer).
+        if getattr(lead, 'mode_pompe', None) == 'existante':
+            out['mode_pompe'] = 'neuve'
     if out.get('mode_pompe', getattr(lead, 'mode_pompe', None)) != 'existante':
         for cle in _POMPAGE_PLAQUE:
             out.pop(cle, None)
