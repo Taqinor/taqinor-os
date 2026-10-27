@@ -454,6 +454,16 @@ def _chaines_pour(variateur, module, nb, temperatures):
             "bornes_non_verifiables", "variateur.fiche",
             "Bornes non vérifiables sur la fiche de %s : %s."
             % (nom, ", ".join(fenetre.bornes_non_verifiables))))
+    if module.coefficients_non_sources:
+        # AGM4 — jumeau de CALX53 (calepinage) : la chaîne est calculée, mais
+        # avec des défauts du noyau que rien ne source : on les NOMME.
+        alertes.append(_alerte(
+            "coefficients_temperature_non_sources", "panneau.fiche",
+            "Coefficients de température non sourcés sur la fiche du panneau"
+            " (%s) : défauts du noyau appliqués, tensions de chaîne à "
+            "confirmer." % ", ".join(
+                "%s = %s %%/°C" % (nom, _fr(getattr(module, nom), 2))
+                for nom in module.coefficients_non_sources)))
     chaines = {
         "serie": serie, "paralleles": paralleles,
         "voc_froid_v": round(voc_froid), "vmp_chaud_v": round(vmp_chaud),

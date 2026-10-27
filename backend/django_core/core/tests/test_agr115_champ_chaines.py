@@ -276,6 +276,37 @@ class Champ(unittest.TestCase):
         self.assertIn("besoin_nul", CODES_CHAMP_NON_DIMENSIONNE)
         self.assertIn("irradiation_inconnue", CODES_CHAMP_NON_DIMENSIONNE)
 
+    def test_agm4_coefficients_absents_alerte_nommee(self):
+        sans = {k: v for k, v in PANNEAU.items()
+                if k != "temp_coeff_voc_pct_c"}
+        params = dict(besoin_m3_jour_mois=[20.0] * 12, hmt_m=40,
+                      variateurs_candidats=[_var(32, 4, 380,
+                                                 fiche=FICHE_250_780)],
+                      p_plaque_kw=3, profils_horaires=PROFILS)
+        res = dimensionner_champ(panneau=sans, **params)
+        alerte = [a for a in res["alertes"]
+                  if a["code"] == "coefficients_temperature_non_sources"]
+        self.assertEqual(len(alerte), 1)
+        self.assertIn("temp_coeff_voc_pct_c = -0,27", alerte[0]["message"])
+        self.assertNotIn("temp_coeff_pmax_pct_c", alerte[0]["message"])
+        self.assertTrue(res["chaines"]["verifiable"])
+        # Panneau complet : aucune alerte.
+        complet = dimensionner_champ(panneau=PANNEAU, **params)
+        self.assertNotIn("coefficients_temperature_non_sources",
+                         [a["code"] for a in complet["alertes"]])
+
+    def test_agm4_fiche_variateur_non_saisie_pas_d_alerte_coefficients(self):
+        # Chaîne non calculée : rien à marquer (l'alerte chaine_non_verifiable
+        # est déjà là).
+        sans = {k: v for k, v in PANNEAU.items()
+                if not k.startswith("temp_coeff")}
+        res = dimensionner_champ(
+            besoin_m3_jour_mois=[20.0] * 12, hmt_m=40, panneau=sans,
+            variateurs_candidats=[_var(33, 4, 380)], p_plaque_kw=3,
+            profils_horaires=PROFILS)
+        self.assertNotIn("coefficients_temperature_non_sources",
+                         [a["code"] for a in res["alertes"]])
+
     def test_variateur_sans_fiche_alerte_nommee(self):
         cat = [_var(20, 7.5, 380)]
         res = dimensionner_champ(
