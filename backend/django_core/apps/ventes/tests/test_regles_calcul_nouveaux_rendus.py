@@ -6,11 +6,13 @@ rendu avec les règles d'origine ; un devis neuf naît aux règles corrigées.
 import importlib
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 from django.test import SimpleTestCase
 
 from apps.ventes.domain.regles_calcul import (
-    REGLES_CORRIGEES, REGLES_ORIGINE, calcul_corrige)
+    REGLES_CORRIGEES, REGLES_CORRIGEES_2710, REGLES_ORIGINE, calcul_corrige,
+    regles_au_moins)
 
 
 class ReglesCalculTests(SimpleTestCase):
@@ -25,8 +27,45 @@ class ReglesCalculTests(SimpleTestCase):
 
     def test_defaut_du_modele_est_corrige(self):
         from apps.ventes.models import Devis
-        self.assertEqual(
-            Devis._meta.get_field('regles_calcul').default, REGLES_CORRIGEES)
+        defaut = Devis._meta.get_field('regles_calcul').default
+        self.assertEqual(defaut, REGLES_CORRIGEES_2710)
+        self.assertTrue(calcul_corrige(SimpleNamespace(regles_calcul=defaut)))
+
+    # ── Niveau 3 (corrections résidentielles du 27/10/2026) ──
+    def test_devis_envoye_au_niveau_2_hors_corrections_2710(self):
+        envoye = SimpleNamespace(regles_calcul=REGLES_CORRIGEES)
+        self.assertFalse(regles_au_moins(envoye, REGLES_CORRIGEES_2710))
+        # Garde de niveau 2 inchangée : il reste aux règles corrigées.
+        self.assertTrue(calcul_corrige(envoye))
+
+    def test_devis_neuf_aux_corrections_2710(self):
+        from apps.ventes.models import Devis
+        neuf = Devis()  # brouillon neuf, jamais enregistré
+        self.assertTrue(regles_au_moins(neuf, REGLES_CORRIGEES_2710))
+        self.assertTrue(calcul_corrige(neuf))
+
+    def test_niveau_1_hors_des_deux_corrections(self):
+        origine = SimpleNamespace(regles_calcul=REGLES_ORIGINE)
+        self.assertFalse(calcul_corrige(origine))
+        self.assertFalse(regles_au_moins(origine, REGLES_CORRIGEES_2710))
+
+    def test_doublure_sans_champ_suit_le_niveau_courant(self):
+        self.assertTrue(regles_au_moins(SimpleNamespace(), REGLES_CORRIGEES_2710))
+        self.assertTrue(regles_au_moins(None, REGLES_CORRIGEES_2710))
+
+    def test_migration_0142_ne_touche_que_les_brouillons(self):
+        mod = importlib.import_module(
+            'apps.ventes.migrations.0142_regles_calcul_niveau_2710')
+        Devis = mock.MagicMock()
+        Devis.objects.filter.return_value.order_by.return_value             .values_list.return_value = [7]
+        apps = mock.MagicMock()
+        apps.get_model.return_value = Devis
+        mod.brouillons_au_niveau_3(apps, None)
+        self.assertEqual(Devis.objects.filter.call_args_list[0], mock.call(
+            statut='brouillon', date_envoi__isnull=True, regles_calcul=2))
+        Devis.objects.filter.assert_called_with(pk__in=[7])
+        Devis.objects.filter.return_value.update.assert_called_once_with(
+            regles_calcul=3)
 
     def test_migration_fige_les_envoyes(self):
         mod = importlib.import_module(
