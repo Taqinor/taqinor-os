@@ -8,6 +8,8 @@ d'origine.
 
 import logging
 
+from .etat_ci import prix_connu_ci
+
 logger = logging.getLogger(__name__)
 
 
@@ -3442,7 +3444,7 @@ def etat_ci_produit(produit):
     role, classement = role_ci_pour(produit)
     if role is None:
         return None
-    prix_connu = bool(produit.prix_vente and produit.prix_vente > 0)
+    prix_connu = prix_connu_ci(produit, role)
     eligible, motif = _eligibilite_ci(produit, role, prix_connu)
     from core.product_roles import LIBELLES_ROLES_CI
     return {'role_ci': role, 'libelle': LIBELLES_ROLES_CI.get(role, role),
@@ -3464,8 +3466,6 @@ def produits_ci(company, avec_prix=False):
     """
     from django.db.models import Q
 
-    from core.product_roles import ROLES_CI_BAREME_COFFRET
-
     from .models import Produit
 
     qs = (Produit.objects
@@ -3477,9 +3477,7 @@ def produits_ci(company, avec_prix=False):
         role, classement = role_ci_pour(p)
         if role is None:
             continue
-        prix_connu = bool(p.prix_vente and p.prix_vente > 0) or (
-            role in ROLES_CI_BAREME_COFFRET
-            and (p.prix_fixe_ht is not None or p.prix_par_panneau_ht is not None))
+        prix_connu = prix_connu_ci(p, role)
         if avec_prix and not prix_connu: continue  # noqa: E701 — fichier-mur (C20)
         eligible, motif = _eligibilite_ci(p, role, prix_connu)
         out.append({

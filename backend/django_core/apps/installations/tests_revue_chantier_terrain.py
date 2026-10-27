@@ -175,10 +175,12 @@ class AjouterSerialTests(_Base):
         serial = ComponentSerial.objects.get(pk=r.data['id'])
         self.assertEqual(serial.caracteristiques['modele'], 'CS7N')
 
-    def test_sans_produit_ni_designation_400(self):
+    def test_sans_produit_ni_designation_409(self):
+        # api-fuzz-full 27/10 (ENF11) : « l'un OU l'autre » de deux champs
+        # facultatifs, règle que le schéma du corps ne porte pas → 409 (400).
         r = self.api.post(f'{self.url}/ajouter-serial/', {
             'numero_serie': 'X-1'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('designation', r.data)
         self.assertFalse(ComponentSerial.objects.filter(
             numero_serie='X-1').exists())
