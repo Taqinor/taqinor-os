@@ -207,6 +207,12 @@ jobs:
       # CI-5MIN (24/10/2026) — merge queue : identifiant du run PR vert dont le
       # groupe reprend le resultat (vide = gate complet).
       reused_run: ${{ steps.detect.outputs.reused_run }}
+      # CI-UNE (fondateur, 27/10/2026 — « une seule CI par PR ») : 'true' ssi
+      # ce run est un `pull_request` d'une branche `claude/*` (sessions L3
+      # mises en file par la coordinatrice). Les lanes lourdes (dump, shards
+      # backend, fuzz PR, vitest, e2e) sont alors REPORTEES au run
+      # `merge_group`, seul gate complet ; les gardes rapides tournent toujours.
+      allege: ${{ steps.detect.outputs.allege }}
       # WOW8-ONCE — 'true' ssi un dump EXACT existe deja pour l'ensemble de
       # migrations courant (cf. le job `backend-testdb`).
       testdb_hit: ${{ steps.testdb.outputs.cache-hit }}
@@ -236,6 +242,7 @@ jobs:
           MG_BASE: ${{ github.event.merge_group.base_sha }}
           MG_HEAD: ${{ github.event.merge_group.head_sha }}
           MG_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          PR_HEAD_REF: ${{ github.head_ref }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -398,6 +405,19 @@ jobs:
             echo "Merge queue : resultat repris du run PR ${reused_run} (meme arbre) - lanes lourdes sautees." | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
+          # CI-UNE (fondateur, 27/10/2026 — « une seule CI par PR ») : un run
+          # `pull_request` d'une branche `claude/*` est ALLEGE — les lanes
+          # lourdes sont reportees au run `merge_group` (seul gate complet) ;
+          # jamais sur `merge_group`/`push`, jamais pour une autre branche
+          # (dependabot, api-fuzz, branches du fondateur). Le mot `allege=true`
+          # ci-dessous est relu par scripts/ci_merge_group_reuse.py, qui REFUSE
+          # de reprendre le vert d'un run allege.
+          allege=false
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "${PR_HEAD_REF#claude/}" != "$PR_HEAD_REF" ]; then
+            allege=true
+            echo "Run allege (pull_request sur ${PR_HEAD_REF}) : lanes lourdes reportees au merge_group - allege=true" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
           {
             echo "backend=$backend"
             echo "frontend=$frontend"
@@ -407,6 +427,7 @@ jobs:
             echo "code=$code"
             echo "fuzz_owners=$fuzz_owners"
             echo "reused_run=$reused_run"
+            echo "allege=$allege"
           } >> "$GITHUB_OUTPUT"
           echo "Resolved -> backend=$backend frontend=$frontend web=$web yanbow=$yanbow fastapi=$fastapi e2e(code)=$code"
           echo "Paquets d'API modifiés (fuzz PR) : ${fuzz_owners:-aucun}"
@@ -930,7 +951,7 @@ jobs:
   # ---------------------------------------------------------------------------
   backend-testdb:
     needs: [changes, ci-image-check]
-    if: ${{ (needs.changes.outputs.backend == 'true' || needs.changes.outputs.code == 'true') && needs.changes.outputs.testdb_hit != 'true' }}
+    if: ${{ (needs.changes.outputs.backend == 'true' || needs.changes.outputs.code == 'true') && needs.changes.outputs.testdb_hit != 'true' && needs.changes.outputs.allege != 'true' }}
     runs-on: ubuntu-latest
     # Replay froid complet possible ici (c'est precisement ce que ce job
     # absorbe a la place des lanes) : meme plafond que les shards.
@@ -987,7 +1008,7 @@ jobs:
     # WOW8-ONCE — attend le constructeur du dump (saute sur hit exact) ; `!cancelled()`
     # pour partir meme quand il est saute, et ne jamais partir s'il a echoue.
     needs: [changes, ci-image-check, backend-testdb]
-    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.changes.outputs.allege != 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
     strategy:
       fail-fast: false
       matrix:
@@ -1300,7 +1321,7 @@ jobs:
     # modifie, la matrice entiere est SAUTEE (un saut garde `backend-tests` et
     # `ci-gate` verts, comme l'ancienne sortie verte sans fuzz) et rend 8
     # creneaux a l'organisation.
-    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.changes.outputs.fuzz_owners != '' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.changes.outputs.backend == 'true' && needs.changes.outputs.allege != 'true' && needs.changes.outputs.fuzz_owners != '' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # CI #997 (fondateur, 14/10/2026) — PLUS D'ÉCHANTILLON : 14 tours rouges
@@ -1623,7 +1644,7 @@ jobs:
   # n'avait aucun consommateur et l'instrumentation coûtait sur chaque fichier.
   frontend-vitest-shard:
     needs: changes
-    if: ${{ needs.changes.outputs.frontend == 'true' }}
+    if: ${{ needs.changes.outputs.frontend == 'true' && needs.changes.outputs.allege != 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -1886,7 +1907,7 @@ jobs:
   e2e-shard:
     # WOW8-ONCE — meme attente du constructeur que backend-tests-shard.
     needs: [changes, ci-image-check, backend-testdb]
-    if: ${{ !cancelled() && needs.changes.outputs.code == 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
+    if: ${{ !cancelled() && needs.changes.outputs.code == 'true' && needs.changes.outputs.allege != 'true' && needs.ci-image-check.result == 'success' && (needs.backend-testdb.result == 'success' || needs.backend-testdb.result == 'skipped') }}
     permissions:
       contents: read
       packages: read

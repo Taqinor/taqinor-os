@@ -201,6 +201,11 @@ class TicketActiviteAFaireSerializer(SameCompanyFKSerializerMixin,
                                      serializers.ModelSerializer):
     # ENF17 — FK inscriptible bornée à la société.
     same_company_fields = ('assigne',)
+    # api-fuzz-full 27/10 (ENF11) — textes de modèle STRICTS (comme le ticket) :
+    # un ``titre`` à ``\u0000`` était « conforme » puis refusé 400.
+    serializer_field_mapping = {
+        **serializers.ModelSerializer.serializer_field_mapping,
+        models.CharField: ChaineStricte, models.TextField: ChaineStricte}
     type_display = serializers.CharField(
         source='get_type_display', read_only=True)
     assigne_nom = serializers.CharField(

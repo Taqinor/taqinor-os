@@ -13,7 +13,7 @@ import itertools
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.crm.models import Client
 from apps.stock.models import Produit
@@ -218,3 +218,56 @@ class TestHypothesesRender(TestCase):
         self.assertIn('Estimations non contractuelles', html)
         self.assertIn('proposition en ligne', html)
         self.assertEqual(len(doc.pages), 3)
+
+
+class TarifHypotheseModeleHoraireTest(SimpleTestCase):
+    """RHOR7 (C-RHOR-007) — en modèle HORAIRE, chaque mois est valorisé au
+    barème par tranche : au niveau de règles 3 la ligne « Tarif électricité »
+    le dit (même phrase que le modèle « factures », catalogue AMOT52), au lieu
+    d'un tarif plat « saisi pour ce devis » que le calcul n'a pas appliqué."""
+
+    def _lignes(self, bareme_horaire):
+        from apps.ventes import etude_horaire as EH
+        from apps.ventes.courbes_journalieres import OCCUPATION_PRESENCE
+        from apps.ventes.horaire import conso as HC
+        from apps.ventes.quote_engine.etude_restitution import restituer_etude
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        conso, _s, _d = HC.profil_depuis_factures(facture_hiver_mad=1500)
+        bloc = EH.calculer_etude_horaire(
+            kwc=6.0, conso_kwh_mensuelles=conso, ville='Casablanca',
+            occupation=OCCUPATION_PRESENCE, tranches=None,
+            charges_fixes_mad=None)
+        roi = calculate_savings_roi(6.0, 60000.0, 60000.0, etude_horaire=bloc,
+                                    utility='onee', tarif_kwh_override=1.6)
+        self.assertEqual(roi['savings_model'], 'horaire')
+        sortie = restituer_etude(
+            _client_city='Casablanca', _co_productible=None, _corrige=True,
+            _utility='onee', _bareme_horaire=bareme_horaire, etude={},
+            puissance_kwc=6.0, roi=roi, savings_model=roi['savings_model'],
+            savings_model_avec=None, savings_model_sans=None,
+            scenario='Sans batterie')
+        textes = []
+
+        def _collecter(v):
+            if isinstance(v, str):
+                textes.append(v)
+            elif isinstance(v, dict):
+                for x in v.values():
+                    _collecter(x)
+            elif isinstance(v, (list, tuple)):
+                for x in v:
+                    _collecter(x)
+        _collecter(sortie)
+        return [t for t in textes if t.startswith('Tarif électricité')]
+
+    def test_niveau_3_dit_le_bareme_par_tranche(self):
+        lignes = self._lignes(True)
+        self.assertTrue(lignes)
+        self.assertTrue(all('par tranche' in t for t in lignes), lignes)
+        self.assertFalse(any('saisi pour ce devis' in t for t in lignes))
+
+    def test_niveau_2_garde_la_ligne_d_origine(self):
+        lignes = self._lignes(False)
+        self.assertTrue(lignes)
+        self.assertFalse(any('par tranche (barème national)' in t
+                             for t in lignes), lignes)

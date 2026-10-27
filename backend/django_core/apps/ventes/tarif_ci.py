@@ -178,6 +178,17 @@ def _prime(mt, prime_kva_an):
     return round(prime_kva_an * kva, 2)
 
 
+def regles_du(devis):
+    """CEC13 — ``{regles_origine}`` pour :func:`tarif_applicable` : vrai pour
+    un devis sous le niveau 3 (envoyé avant les corrections du 27/10/2026),
+    faux sans devis (nouveau dimensionnement)."""
+    if devis is None:
+        return {'regles_origine': False}
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
+    return {'regles_origine': not regles_au_moins(devis, REGLES_CORRIGEES_2710)}
+
+
 def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
                      regles_origine=False):
     """La forme ``tarif`` du contrat ``tarifs_ci.json`` pour ce client.
@@ -195,8 +206,6 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
         contrat = 'mt_general' if est_mt else None
     if contrat is None and not (nouveau and _tranches_bt_declarees(td.get('bt'))):
         return _omis()  # CEC4 — des tranches déclarées suffisent sans contrat
-    if regles_origine and td.get('option_bi_horaire'):
-        return _omis(contrat=contrat)  # bi-horaire non valorisé avant CEC5
     taux, annee = tva_energie(millesime)
     if taux is None:
         return _omis()
@@ -235,7 +244,7 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
         return f'{quoi} ({calc}).'
 
     sortie = {'contrat': contrat, 'tva_energie_pct': pct,
-              'tva_millesime': annee}
+              'tva_millesime': annee, 'regles_origine': regles_origine}
 
     if contrat == 'mt_general':
         mt = td.get('mt')
@@ -308,9 +317,17 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
 
 
 def _ordonne(sortie):
+    """CEC17 — sous les règles d'origine, le tarif PORTE ``regles_origine:
+    True`` : ses lecteurs (valorisation de l'étude, sensibilités, factures →
+    kWh) suivent le calcul d'avant le 27/10 sans qu'on leur passe le drapeau ;
+    la clé est retirée de toute charge utile client
+    (``economie_ci.CLES_INTERNES``) et absente sinon."""
     cles = ('origine', 'contrat', 'tarifs_par_poste', 'prime_fixe_annuelle_mad',
             'tva_energie_pct', 'tva_millesime', 'mention')
-    return {k: sortie.get(k) for k in cles}
+    tarif = {k: sortie.get(k) for k in cles}
+    if sortie.get('regles_origine'):
+        tarif['regles_origine'] = True
+    return tarif
 
 
 # ── Prix d'une heure ────────────────────────────────────────────────────────
@@ -363,7 +380,10 @@ def tarif_du_poste(tarif, mois, heure_gmt, *, kwh_mois=None,
     return out
 
 
-def _seuils_bt(tarif, tarif_declare):
+def _seuils_bt(tarif, tarif_declare, origine=False):
+    """``origine`` (devis envoyé sous le niveau 3) : les seuils déclarés
+    lus tels quels, comme avant CEC2 (drapeau passé, ou porté par le tarif)."""
+    origine = origine or bool(tarif.get('regles_origine'))
     contrat = tarif.get('contrat')
     if tarif.get('origine') == ORIGINE_GRILLE:
         try:
@@ -372,7 +392,11 @@ def _seuils_bt(tarif, tarif_declare):
             return None
         return [(x['seuil_min_kwh'], x['seuil_max_kwh']) for x in lignes]
     td = tarif_declare if isinstance(tarif_declare, dict) else {}
-    return seuils_contigus(_tranches_bt_declarees(td.get('bt')))
+    tranches = _tranches_bt_declarees(td.get('bt'))
+    if origine:
+        return [(_num(t.get('seuil_min_kwh')), _num(t.get('seuil_max_kwh')))
+                for t in tranches] or None
+    return seuils_contigus(tranches)
 
 
 def seuils_contigus(tranches):

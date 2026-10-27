@@ -26,6 +26,7 @@ Sortie : le bloc ``taille`` du contrat ``etude_ci_preview.json`` + alertes et
 hypothèses.
 """
 
+import math
 from decimal import Decimal, InvalidOperation
 
 from apps.ventes.dimensionnement import (
@@ -40,9 +41,21 @@ from apps.ventes.moteur_ci.composition import prix_palier_ht
 PAS_KWC = 5
 #: Fondateur 26/10/2026 (boulangerie 30 → 40 kWc) : un palier cher SEUL (saut
 #: d'onduleur 25 → 50 kW) est gardé si, avec les paliers suivants, l'ensemble
-#: se rembourse dans l'horizon. On regarde jusqu'à ce nombre de paliers après
-#: un palier refusé seul (C&I seulement ; le résidentiel garde la chaîne
+#: se rembourse dans l'horizon (C&I seulement ; le résidentiel garde la chaîne
 #: ininterrompue de ``grimper_par_pas_marginaux``).
+#:
+#: CLD8 — PLANCHER de la fenêtre de regard (jamais moins de paliers regardés
+#: qu'avant). Au-delà, le regard court jusqu'au premier palier ORDINAIRE (même
+#: combinaison d'onduleurs que le précédent) dont le ratio marginal SEUL
+#: dépasse l'horizon — rendements décroissants : aucun groupe à sauver plus
+#: loin — et jamais au-delà du PLAFOND physique ``ceil(kW AC du plus gros
+#: onduleur de la combinaison courante × borne haute DC/AC ÷ PAS_KWC)`` (la
+#: borne haute est celle SERVIE par la combinaison, ``ratio_dc_ac.bornes``) :
+#: un saut d'onduleur s'amortit au plus sur le champ que cet onduleur porte.
+#: Sans combinaison lisible (borne non servie), la fenêtre reste au plancher.
+#: Même critère pour ``grimper_avec_regard`` et pour l'arrêt du balayage.
+#: À ALIGNER : ``moteur_ci/batterie.py::monter_regle_10_ans`` (session CMP)
+#: arrête encore son balayage à ``PALIERS_REGARDES`` refus de suite.
 PALIERS_REGARDES = 4
 #: Garde de terminaison du balayage (nombre de pas), jamais une taille : la
 #: montée s'arrête bien avant, au premier pas sans économie marginale.
@@ -132,6 +145,16 @@ def statut_taille(composition):
     return 'calculee'
 
 
+def _unite_puissance_ac(onduleurs):
+    """CLD10 — unité de ``_puissance_ac`` : ``kVA`` quand CHAQUE appareil de la
+    combinaison publie sa S max, sinon ``kW AC`` (puissance active nominale,
+    comparée aux kVA souscrits faute de S max publiée)."""
+    combinaison = (onduleurs or {}).get('combinaison') or []
+    if combinaison and all(_pos(i.get('s_max_kva')) for i in combinaison):
+        return 'kVA'
+    return 'kW AC'
+
+
 def _puissance_ac(onduleurs):
     total = 0.0
     for item in (onduleurs or {}).get('combinaison') or []:
@@ -140,10 +163,41 @@ def _puissance_ac(onduleurs):
     return total
 
 
+def _ligne_panneau(composition):
+    return next((ligne for ligne in (composition or {}).get('lignes') or []
+                 if ligne.get('role') == 'panneau'), None)
+
+
+def _kwc_pose(nb, pmax_wc):
+    return round(nb * pmax_wc / 1000.0, 6)
+
+
 def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
-             composer, valoriser, taux_tva_pct):
+             composer, valoriser, taux_tva_pct, pmax_wc=None, kwc_max=None):
+    """Évaluation d'un palier AU KWC POSÉ (CLD9, même règle que CAD177 pour la
+    taille saisie) : la composition pose ``ceil(kWc / Pmax)`` panneaux, donc
+    combinaison, composition et bilan sont calculés à ``nb × Pmax``. Pmax
+    connue d'avance (``pmax_wc``) : un seul appel, au posé ; sinon lue sur la
+    ligne panneau (``pmax_wc``) et recomposée au posé ; introuvable : le palier,
+    tel quel. ``kwc`` = kWc posé, ``kwc_palier`` = le palier."""
+    palier, pmax = kwc, _pos(pmax_wc)
+    if pmax:
+        nb = int(math.ceil(palier * 1000.0 / pmax - 1e-9))
+        if kwc_max is not None and palier <= kwc_max + 1e-9:
+            # Palier dans le toit : jamais plus de panneaux entiers que le
+            # toit n'en porte (un toit de 30,00 kWc garde le palier 30, 42
+            # panneaux, au lieu de le refuser pour 0,53 kWc).
+            nb = min(nb, int(math.floor(kwc_max * 1000.0 / pmax + 1e-9)))
+        kwc = _kwc_pose(nb, pmax)
     onduleurs = combiner(kwc) or {}
     composition = composer(kwc, onduleurs) or {}
+    ligne = _ligne_panneau(composition)
+    if not pmax and ligne is not None and _pos(ligne.get('pmax_wc')) and _pos(ligne.get('quantite')):
+        pose = _kwc_pose(int(ligne['quantite']), _pos(ligne['pmax_wc']))
+        if abs(pose - kwc) > 1e-9:
+            kwc = pose
+            onduleurs = combiner(kwc) or {}
+            composition = composer(kwc, onduleurs) or {}
     bilan, alertes_bilan = bilan_horaire(charge, production, kwc, tension=tension,
                                          revente_choisie=revente_choisie)
     economie = valoriser(bilan)
@@ -153,6 +207,7 @@ def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
     return {
         'sans_panneau': sans_panneau,
         'kwc': kwc,
+        'kwc_palier': palier,
         'onduleurs': onduleurs,
         'composition': composition,
         'bilan': bilan,
@@ -160,6 +215,7 @@ def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
         'economie': None if economie is None else float(economie),
         'cout': float(cout_vente_ht(composition, onduleurs, taux_tva_pct=taux_tva_pct)),
         'puissance_ac': _puissance_ac(onduleurs),
+        'unite_puissance_ac': _unite_puissance_ac(onduleurs),
         'prix_manquants': de_taille,
         'postes_fixes_sans_prix': fixes,
     }
@@ -208,18 +264,60 @@ def _nb_panneaux(e):
     return None
 
 
+def _signature(e):
+    """La combinaison d'onduleurs d'un palier, ``None`` si illisible (palier
+    sans clé ``onduleurs`` ou sans combinaison : jamais « ordinaire »)."""
+    if not isinstance(e, dict) or 'onduleurs' not in e:
+        return None
+    combinaison = (e['onduleurs'] or {}).get('combinaison')
+    if not combinaison:
+        return None
+    return tuple(sorted((str(c.get('produit')), int(c.get('quantite') or 0))
+                        for c in combinaison))
+
+
+def _ordinaire(precedent, e):
+    """CLD8 — palier ORDINAIRE : même combinaison d'onduleurs que le précédent."""
+    sig = _signature(e)
+    return sig is not None and sig == _signature(precedent)
+
+
+def _fenetre_max(e):
+    """CLD8 — nombre de paliers regardés au plus depuis ``e`` : le plafond
+    physique de sa combinaison, jamais sous le plancher ``PALIERS_REGARDES``."""
+    onduleurs = (e.get('onduleurs') or {}) if isinstance(e, dict) else {}
+    haute = _pos(((onduleurs.get('ratio_dc_ac') or {}).get('bornes') or {}).get('haute'))
+    plus_gros = max((_pos(c.get('kw_ac')) or 0.0
+                     for c in onduleurs.get('combinaison') or []), default=0.0)
+    if not haute or not plus_gros:
+        return PALIERS_REGARDES
+    return max(PALIERS_REGARDES, int(math.ceil(plus_gros * haute / PAS_KWC - 1e-9)))
+
+
 def grimper_avec_regard(depart, suivants, horizon, cout, economie):
-    """La montée C&I : depuis le palier courant, le PREMIER palier suivant (au
-    plus ``PALIERS_REGARDES`` plus loin) dont le pas groupé courant → palier se
-    rembourse dans ``horizon`` est franchi ; aucun ⇒ arrêt."""
-    def rembourse(de, vers):
-        ratio = ratio_pas_marginal(cout(de), economie(de), cout(vers), economie(vers))
-        return ratio is not None and ratio <= horizon + 1e-9
+    """La montée C&I : depuis le palier courant, le PREMIER palier suivant dont
+    le pas groupé courant → palier se rembourse dans ``horizon`` est franchi ;
+    aucun ⇒ arrêt. Fenêtre (CLD8, voir ``PALIERS_REGARDES``) : au moins le
+    plancher, au plus le plafond de la combinaison courante, close au premier
+    palier ordinaire hors horizon SEUL au-delà du plancher."""
+    def ratio(de, vers):
+        return ratio_pas_marginal(cout(de), economie(de), cout(vers), economie(vers))
+
+    def hors(r):
+        return r is None or r > horizon + 1e-9
 
     courant, i, suivants = depart, 0, list(suivants or ())
     while i < len(suivants):
-        fenetre = range(i, min(i + PALIERS_REGARDES, len(suivants)))
-        j = next((k for k in fenetre if rembourse(courant, suivants[k])), None)
+        limite, j = _fenetre_max(courant), None
+        for k in range(i, len(suivants)):
+            if not hors(ratio(courant, suivants[k])):
+                j = k
+                break
+            vus = k - i + 1
+            precedent = courant if k == i else suivants[k - 1]
+            if vus >= limite or (vus >= PALIERS_REGARDES and _ordinaire(precedent, suivants[k])
+                                 and hors(ratio(precedent, suivants[k]))):
+                break
         if j is None:
             break
         courant, i = suivants[j], j + 1
@@ -231,7 +329,7 @@ def _palier(e, precedent, admis, borne):
     eco_avant = (precedent['economie'] or 0.0) if precedent else 0.0
     ratio = ratio_pas_marginal(cout_avant, eco_avant, e['cout'], e['economie'] or 0.0)
     return {
-        'kwc': e['kwc'],
+        'kwc': e.get('kwc_palier', e['kwc']),
         'cout_ht': round(e['cout'] - cout_avant, 2),
         'economie_annuelle': round((e['economie'] or 0.0) - eco_avant, 2),
         'ratio_marginal_annees': None if ratio is None else round(ratio, 2),
@@ -242,13 +340,18 @@ def _palier(e, precedent, admis, borne):
 
 def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, combiner,
                     composer, valoriser, bornes=None, puissance_souscrite_kva=None,
-                    revente_choisie=False, taille_explicite_kwc=None, taux_tva_pct=None):
+                    revente_choisie=False, taille_explicite_kwc=None, taux_tva_pct=None,
+                    pmax_wc=None):
     """Bloc ``taille`` du contrat + l'évaluation retenue, alertes, hypothèses.
 
     ``bornes`` : ``{toit: {kwc, source} | None, phase: {...}, regime_8221: {...}}``
     — l'orchestrateur résout le toit (contenance mesurée > contenance de la
-    surface déclarée CIQ113 > aucune). Rend un dict ``{taille, evaluation,
-    alertes, hypotheses}`` ; ``evaluation`` = ``{kwc, onduleurs, composition,
+    surface déclarée CIQ113 > aucune). ``pmax_wc`` (CLD9) : Pmax du module
+    retenu — chaque palier est évalué et borné au kWc POSÉ (panneaux entiers),
+    ``retenue_kwc`` publie ce kWc posé ; absente, la Pmax est lue sur la ligne
+    panneau de la composition si elle y figure, sinon le palier reste tel quel.
+    Rend un dict ``{taille, evaluation,
+    alertes, hypotheses}`` ; ``evaluation`` = ``{kwc (POSÉ), kwc_palier, onduleurs, composition,
     bilan, economie, cout, ...}`` de la taille retenue (ou ``None``).
     """
     alertes = []
@@ -277,7 +380,8 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     def evaluer(kwc):
         return _evaluer(kwc, charge=charge_jours_types, production=production_jours_types,
                         tension=tension, revente_choisie=revente_choisie, combiner=combiner,
-                        composer=composer, valoriser=valoriser, taux_tva_pct=taux_tva_pct)
+                        composer=composer, valoriser=valoriser, taux_tva_pct=taux_tva_pct,
+                        pmax_wc=pmax_wc, kwc_max=kwc_toit)
 
     explicite = _pos(taille_explicite_kwc)
     if explicite is not None:
@@ -285,7 +389,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
                                  alertes, hypotheses)
 
     evals, paliers = [], []
-    meilleur, refus = None, 0
+    meilleur, refus, base_refus = None, 0, None
     for rang in range(1, MAX_PAS + 1):
         e = evaluer(PAS_KWC * rang)
         if e['sans_panneau']:
@@ -294,6 +398,17 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
             alertes.append(_alerte_module())
             return {'taille': _vide('module', bornes_pub), 'evaluation': None,
                     'alertes': alertes, 'hypotheses': hypotheses}
+        if e['prix_manquants'] and evals:
+            # CLD12 — prix manquants apparus à un palier TARDIF : les paliers
+            # chiffrés d'en dessous restent, le balayage s'arrête au dernier
+            # palier chiffrable (alerte interne, jamais bloquante).
+            alertes.append(_alerte(
+                'prix_manquants_au_dela', 'taille',
+                'À partir du palier %g kWc, tranche non chiffrable : prix de vente manquants (%s) — '
+                'taille calculée sur les paliers chiffrés.' % (
+                    e.get('kwc_palier', e['kwc']),
+                    ', '.join(str(p) for p in e['prix_manquants']))))
+            break
         if e['prix_manquants']:
             alertes.append(_alerte(
                 'prix_manquants', 'taille',
@@ -321,13 +436,19 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         if admis and e['economie']:
             payback = e['cout'] / e['economie']
             meilleur = payback if meilleur is None else min(meilleur, payback)
-        # Terminaison : un pas sans gain, ou ``PALIERS_REGARDES`` pas de suite
-        # au-delà de l'horizon ET du meilleur payback global (un saut
-        # d'onduleur isolé ne clôt plus le balayage — fondateur 26/10/2026).
+        # Terminaison : un pas sans gain, ou une suite de pas au-delà de
+        # l'horizon ET du meilleur payback global close par le critère de
+        # ``grimper_avec_regard`` (CLD8 : plafond de la combinaison d'avant la
+        # suite, ou palier ordinaire hors horizon passé le plancher) — un saut
+        # d'onduleur isolé ne clôt plus le balayage (fondateur 26/10/2026).
         hors = ratio is not None and ratio > HORIZON_MARGINAL_PV and (
             meilleur is not None and ratio > meilleur)
+        if hors and not refus:
+            base_refus = precedent
         refus = refus + 1 if hors else 0
-        if precedent is not None and (ratio is None or refus >= PALIERS_REGARDES):
+        if precedent is not None and (ratio is None or (refus and (
+                refus >= _fenetre_max(base_refus) or (
+                    refus >= PALIERS_REGARDES and _ordinaire(precedent, e))))):
             break
 
     eligibles = [
@@ -335,7 +456,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
          'couverture_sans': e['bilan']['taux_couverture'], 'eval': e}
         for e, p in zip(evals, paliers) if p['admis'] and e['economie']
     ]
-    depart, meilleur_payback, _egal = point_depart_meilleur_payback(eligibles)
+    depart, _meilleur, _egal = point_depart_meilleur_payback(eligibles)
     if depart is None:
         derniere_borne = paliers[-1]['borne'] if paliers else None
         raison = derniere_borne if derniere_borne in ('toit', 'onduleurs', 'puissance_souscrite') \
@@ -351,7 +472,11 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         if p['borne'] in ('toit', 'onduleurs', 'puissance_souscrite'):
             break
         suivants.append(e)
-    if depart_dans_horizon(meilleur_payback):
+    # CLD11 — la garde porte sur le payback du DÉPART (docstring de
+    # ``depart_dans_horizon``, comme les appelants résidentiels), jamais sur
+    # le meilleur payback du tableau : le départage « à égalité » peut retenir
+    # un départ légèrement au-dessus du meilleur.
+    if depart_dans_horizon(depart['payback_sans_annees']):
         retenu = grimper_avec_regard(
             depart['eval'], suivants, HORIZON_MARGINAL_PV,
             lambda e: e['cout'], lambda e: e['economie'] or 0.0)
@@ -359,8 +484,8 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         retenu = depart['eval']
         alertes.append(_alerte(
             'depart_hors_horizon', 'taille',
-            'Le meilleur payback (%.1f ans) dépasse l’horizon de %d ans : taille au meilleur '
-            'payback, sans montée.' % (meilleur_payback, HORIZON_MARGINAL_PV)))
+            'Le payback du point de départ (%.1f ans) dépasse l’horizon de %d ans : taille '
+            'au départ, sans montée.' % (depart['payback_sans_annees'], HORIZON_MARGINAL_PV)))
 
     index = evals.index(retenu)
     for p in paliers[index_depart:index + 1]:
@@ -404,7 +529,8 @@ def _alertes_injection(e, ps_kva, revente_choisie):
         return []
     return [_alerte(
         'injection_au_dela_ps', 'puissance_souscrite_kva',
-        '%.1f kVA injectés pour %.1f kVA souscrits : la puissance souscrite est dépassée — '
+        '%.1f kW injectés (pointe horaire) pour %.1f kVA souscrits : la puissance souscrite '
+        'est dépassée — '
         'augmentez l’abonnement ou bridez l’injection avant le dépôt du dossier de '
         'raccordement.' % (pointe, ps_kva))]
 
@@ -441,8 +567,11 @@ def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses)
                                % kwc_toit))
     if ps_kva is not None and e['puissance_ac'] > ps_kva + 1e-9:
         alertes.append(_alerte('taille_au_dela_ps', 'taille_explicite_kwc',
-                               'Puissance AC %.1f kVA au-delà de la puissance souscrite '
-                               'déclarée (%g kVA).' % (e['puissance_ac'], ps_kva)))
+                               'Puissance AC %.1f %s au-delà de la puissance souscrite '
+                               'déclarée (%g kVA)%s.' % (
+                                   e['puissance_ac'], e['unite_puissance_ac'], ps_kva,
+                                   '' if e['unite_puissance_ac'] == 'kVA'
+                                   else ' — S max non publiée sur la fiche')))
     if not e['onduleurs'].get('combinaison'):
         alertes.append(_alerte('onduleurs_infaisables', 'taille_explicite_kwc',
                                e['onduleurs'].get('motif') or 'aucune combinaison d’onduleurs',
