@@ -104,6 +104,9 @@ class ApresImpotTest(SimpleTestCase):
         saisies = {'fiscalite_client': dict(FISCALITE, duree_ans=7.5)}
         self.assertEqual(
             opt._duree_tronquee(saisies)['fiscalite_client']['duree_ans'], 7)
+        texte = {'fiscalite_client': dict(FISCALITE, duree_ans='7,5')}
+        self.assertEqual(
+            opt._duree_tronquee(texte)['fiscalite_client']['duree_ans'], 7)
         self.assertIs(opt._duree_tronquee({'fiscalite_client': FISCALITE}).get(
             'fiscalite_client'), FISCALITE)
 

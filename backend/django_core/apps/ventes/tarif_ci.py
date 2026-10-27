@@ -191,20 +191,6 @@ def regles_du(devis):
 
 def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
                      regles_origine=False):
-    """La forme ``tarif`` (voir :func:`_tarif_applicable`). CEC17 — sous les
-    règles d'origine, le tarif PORTE ``regles_origine: True`` : chacun de ses
-    lecteurs (valorisation de l'étude, sensibilités, factures → kWh) applique
-    alors le calcul d'avant le 27/10 sans qu'on lui passe le drapeau ; la clé
-    est retirée de toute charge utile client (``economie_ci.CLES_INTERNES``)."""
-    tarif = _tarif_applicable(tarif_declare, tension=tension,
-                              millesime=millesime, regles_origine=regles_origine)
-    if regles_origine:
-        tarif['regles_origine'] = True
-    return tarif
-
-
-def _tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
-                      regles_origine=False):
     """La forme ``tarif`` du contrat ``tarifs_ci.json`` pour ce client.
 
     ``tension`` ('bt' | 'mt' | None) ne sert qu'à reconnaître un contrat MT non
@@ -258,7 +244,7 @@ def _tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
         return f'{quoi} ({calc}).'
 
     sortie = {'contrat': contrat, 'tva_energie_pct': pct,
-              'tva_millesime': annee}
+              'tva_millesime': annee, 'regles_origine': regles_origine}
 
     if contrat == 'mt_general':
         mt = td.get('mt')
@@ -331,9 +317,17 @@ def _tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
 
 
 def _ordonne(sortie):
+    """CEC17 — sous les règles d'origine, le tarif PORTE ``regles_origine:
+    True`` : ses lecteurs (valorisation de l'étude, sensibilités, factures →
+    kWh) suivent le calcul d'avant le 27/10 sans qu'on leur passe le drapeau ;
+    la clé est retirée de toute charge utile client
+    (``economie_ci.CLES_INTERNES``) et absente sinon."""
     cles = ('origine', 'contrat', 'tarifs_par_poste', 'prime_fixe_annuelle_mad',
             'tva_energie_pct', 'tva_millesime', 'mention')
-    return {k: sortie.get(k) for k in cles}
+    tarif = {k: sortie.get(k) for k in cles}
+    if sortie.get('regles_origine'):
+        tarif['regles_origine'] = True
+    return tarif
 
 
 # ── Prix d'une heure ────────────────────────────────────────────────────────

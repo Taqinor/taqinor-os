@@ -259,7 +259,8 @@ def _duree_tronquee(saisies):
     (``int()`` d'avant CEC14), jamais refusé."""
     fiscal = (saisies or {}).get('fiscalite_client') if isinstance(
         saisies, dict) else None
-    duree = fini(fiscal.get('duree_ans')) if isinstance(fiscal, dict) else None
+    duree = fini(str(fiscal.get('duree_ans')).replace(',', '.')) if isinstance(
+        fiscal, dict) else None  # « 7,5 » se lit comme ``_nombre_fiscal``
     if duree is None or duree == int(duree):
         return saisies
     return dict(saisies, fiscalite_client=dict(fiscal, duree_ans=int(duree)))
