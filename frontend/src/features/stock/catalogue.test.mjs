@@ -2,7 +2,7 @@
 // Run with: node --test src/features/stock/
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { documentContrat } from '../../test/fixtures/contractSamples.js'
 import {
   groupCatalogue, searchCatalogue, keySpec, sansPrix, MARQUE_GENERIQUE,
   typeOfProduit, familleAttendue, categorieIcone,
@@ -321,12 +321,8 @@ test('CCAT4 — libellePrixCi : prestation, barème, à renseigner, rien', () =>
 })
 
 // CCAT4 (revue) — les libellés des types de pose sont un MIROIR de
-// core/product_roles.py::LIBELLES_TYPES_POSE (un dict : la garde des listes
-// ne le voit pas) — égalité exacte, lue dans le source Python.
-test('CCAT4 — libellés de pose = LIBELLES_TYPES_POSE du serveur', () => {
-  const py = readFileSync(new URL('../../../../backend/django_core/core/product_roles.py', import.meta.url), 'utf8')
-  const bloc = py.slice(py.indexOf('LIBELLES_TYPES_POSE = {'), py.indexOf('}', py.indexOf('LIBELLES_TYPES_POSE = {')))
-  const serveur = Object.fromEntries([...bloc.matchAll(/'([a-z_]+)':\s*'([^']+)'/g)].map((m) => [m[1], m[2]]))
-  assert.ok(Object.keys(serveur).length >= 6)
-  assert.deepEqual({ ...LIBELLES_TYPES_POSE }, serveur)
+// core/product_roles.py::LIBELLES_TYPES_POSE : le contrat produit_ci.json les
+// porte (le backend affirme la même égalité), ce test les compare (PACT10).
+test('CCAT4 — libellés de pose = contrat produit_ci.json', () => {
+  assert.deepEqual({ ...LIBELLES_TYPES_POSE }, documentContrat('stock', 'produit_ci').libelles_types_pose)
 })
