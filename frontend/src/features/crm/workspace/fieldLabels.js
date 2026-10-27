@@ -296,7 +296,7 @@ const fieldLabels = {
   },
   equip_ve_statut: {
     label: 'Véhicule électrique — déjà là ou prévu ?', section: 'equipements',
-    inputId: 'lf-equip-ve-statut', pending: 'PanneauScriptAppel (CAD152/153)',
+    inputId: 'lf-equip-ve-statut',
   },
   pompage_heures_jour: {
     label: 'Pompage — heures par jour', section: 'pompage',
