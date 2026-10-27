@@ -313,3 +313,31 @@ class AGM10SansBaremeTests(SimpleTestCase):
         self.assertIsNotNone(
             avec['vue_interne']['scenario_butane_non_subventionne'])
         self.assertIsNotNone(avec['vue_interne']['van_mad'])
+
+
+class AGM12SystemeFactureTests(_Base):
+    """AGM12 — les économies d'un devis sont calculées sur le système
+    FACTURÉ (``facture_du_devis``), jamais sur la proposition du catalogue."""
+
+    def test_l_etude_recoit_le_systeme_facture_des_lignes(self):
+        catalogue = {'pompage': []}
+        facture = {'pompe': {'id': 4242}, 'variateur': None,
+                   'panneau': None, 'nb_panneaux': 0, 'lignes': []}
+        patchs = (
+            mock.patch.object(pompage, 'lire_catalogue',
+                              return_value=catalogue),
+            mock.patch.object(pompage, 'facture_du_devis',
+                              return_value=facture),
+            mock.patch.object(pompage, 'etudier_pompage',
+                              return_value={'pompe': {'mode': 'neuve'}}),
+        )
+        with patchs[0] as lecture, patchs[1] as lecture_facture, \
+                patchs[2] as etude:
+            E.economie_pompage_pour_devis(self.devis.pk, self.co)
+        lecture.assert_called_once_with(self.co)
+        self.assertEqual(lecture_facture.call_count, 1)
+        self.assertEqual(lecture_facture.call_args.args[0].pk, self.devis.pk)
+        self.assertIs(lecture_facture.call_args.args[1], catalogue)
+        etude.assert_called_once()
+        self.assertIs(etude.call_args.kwargs['facture'], facture)
+        self.assertEqual(etude.call_args.kwargs['devis'].pk, self.devis.pk)

@@ -1472,7 +1472,8 @@ def economie_pompage_pour_devis(devis_id, company):
         Devis.DoesNotExist: devis inconnu ou d'une autre société.
         EconomieInvalide: saisie refusée (champ nommé).
     """
-    from .domain.pompage import etudier_pompage
+    from .domain.pompage import (
+        etudier_pompage, facture_du_devis, lire_catalogue)
     # AGR201 — le module reste PUR (aucune requête écrite ici, garde
     # ``test_module_pur_sans_modele``) : la lecture du devis passe par le
     # sélecteur de l'app.
@@ -1480,7 +1481,11 @@ def economie_pompage_pour_devis(devis_id, company):
 
     devis = devis_de_la_societe(devis_id, company)
     saisies = (devis.etude_params or {}).get('saisies_economie_pompage') or {}
-    sortie_etude = etudier_pompage(company, {}, devis=devis)
+    # AGM12 — l'étude porte sur le système FACTURÉ (les lignes du devis), pas
+    # sur la proposition du catalogue : la couverture qui fixe les économies
+    # est celle de la pompe réellement vendue (comme le rafraîchisseur).
+    facture = facture_du_devis(devis, lire_catalogue(company))
+    sortie_etude = etudier_pompage(company, {}, devis=devis, facture=facture)
     return economie_pompage_depuis(company, saisies,
                                    sortie_etude=sortie_etude,
                                    lignes=lignes_pour_economie(devis),
