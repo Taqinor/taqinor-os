@@ -12,6 +12,8 @@ import {
   motifsManquantsCi,
   ciEstUneEstimation,
   ciSousReserveVisite,
+  bandeauPreliminaireCi,
+  CI_DEVIS_PRELIMINAIRE,
   chiffresEconomiePhare,
   savingsHeadline,
   type ProposalResponse,
@@ -223,10 +225,32 @@ describe('CPRW2 — tarif utilisé = hypothèse servie', () => {
 // CPRW3 (27/10/2026) — bandeau « devis préliminaire » = l'hypothèse `visite` servie (FR/EN/AR).
 describe('CPRW3 — bandeau devis préliminaire', () => {
   it('rendu dès que le serveur sert l\'hypothèse visite ; plus de liste interne « à confirmer »', () => {
-    expect(SRC_AUTOCONSO).toContain("h.cle === 'visite'");
+    expect(SRC_AUTOCONSO).toContain('bandeauPreliminaireCi(ci)');
     expect(SRC_AUTOCONSO).toContain('data-ci-preliminaire');
     expect(SRC_AUTOCONSO).not.toContain('Estimation sous réserve de la visite technique');
     expect(SRC_AUTOCONSO).not.toContain('aConfirmer');
+  });
+});
+
+// CPRW3 — sur TOUT devis C&I (le PDF l'imprime toujours) : texte servi, sinon le MÊME que le PDF.
+describe('CPRW3 — bandeau préliminaire toujours présent en C&I', () => {
+  const base = { mode_installation: 'commercial', synthese_ci: { hypotheses: [] } } as unknown as ProposalResponse;
+  it('sans hypothèse visite servie : le texte du PDF ; hors C&I : rien', () => {
+    expect(bandeauPreliminaireCi(syntheseCi(base))).toEqual(CI_DEVIS_PRELIMINAIRE);
+    expect(bandeauPreliminaireCi(null)).toBeNull();
+  });
+  it('avec hypothèse visite servie : le texte servi', () => {
+    const servi = { fr: 'A', en: 'B', ar: 'C' };
+    const p = { mode_installation: 'commercial', synthese_ci: { hypotheses: [{ cle: 'visite', textes: servi, source: null }] } } as unknown as ProposalResponse;
+    expect(bandeauPreliminaireCi(syntheseCi(p))).toEqual(servi);
+  });
+  it('parité mot pour mot avec ci/mentions.py::TEXTES_VISITE', () => {
+    const py = readFileSync(fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/ci/mentions.py', import.meta.url)), 'utf-8');
+    const bloc = py.slice(py.indexOf('TEXTES_VISITE = {'), py.indexOf('}', py.indexOf('TEXTES_VISITE = {')));
+    const joint = (lg: string) => [...bloc.split(`"${lg}":`)[1]!.split(/\s"(?:fr|en|ar)":/)[0]!.matchAll(/"([^"]*)"/g)].map((m) => m[1]).join('');
+    expect(joint('fr')).toBe(CI_DEVIS_PRELIMINAIRE.fr);
+    expect(joint('en')).toBe(CI_DEVIS_PRELIMINAIRE.en);
+    expect(joint('ar')).toBe(CI_DEVIS_PRELIMINAIRE.ar);
   });
 });
 

@@ -411,6 +411,24 @@ export function batterySimEligibleForMode(mode: string | null | undefined): bool
   return mode === 'residentiel';
 }
 
+/**
+ * CPRW3 — bandeau « devis préliminaire » (décision fondateur 26/10/2026 : imprimé sur TOUT document
+ * C&I, `quote_engine/ci/couverture.py::bandeau_reserve`). Le serveur ne sert l'hypothèse `visite`
+ * que pour une étude sous réserve ; la page reprend alors MOT POUR MOT `ci/mentions.py::TEXTES_VISITE`
+ * (garde de parité : `propositionSyntheseCiCIW300.test.ts`).
+ */
+export const CI_DEVIS_PRELIMINAIRE: TextesCi = {
+  fr: 'Devis préliminaire — les prix pourront être ajustés après la visite technique.',
+  en: 'Preliminary quote — prices may be adjusted after the technical site visit.',
+  ar: 'عرض أولي — يمكن تعديل الأسعار بعد الزيارة التقنية.',
+};
+
+/** CPRW3 — texte du bandeau préliminaire : celui servi (hypothèse `visite`), sinon celui du PDF ; `null` hors C&I. */
+export function bandeauPreliminaireCi(ci: SyntheseCi | null): TextesCi | null {
+  if (!ci) return null;
+  return ci.hypotheses.find((h) => h.cle === 'visite')?.textes ?? CI_DEVIS_PRELIMINAIRE;
+}
+
 const NON_CHIFFREE: TextesCi = {
   fr: 'valeur non chiffrée',
   en: 'value not quantified',
