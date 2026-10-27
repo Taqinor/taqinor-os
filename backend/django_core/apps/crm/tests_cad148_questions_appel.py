@@ -109,12 +109,60 @@ class AucuneValeurParDefaut(SimpleTestCase):
         self.assertIn('ville', _champs(panneau.questions_a_poser(lead)))
 
 
+class CSV5LaVilleDuSite(SimpleTestCase):
+    """CSV5 — la ville est posée sans ville NI GPS, jamais en tête, tous
+    segments ; le devis refuse sans l'une des deux."""
+
+    SEGMENTS = (None, 'residentiel', 'commercial', 'industriel', 'agricole')
+
+    def test_ville_posee_si_ni_ville_ni_gps(self):
+        for segment in self.SEGMENTS:
+            with self.subTest(segment=segment):
+                questions = panneau.questions_a_poser(
+                    _lead(type_installation=segment))
+                champs = _champs(questions)
+                self.assertIn('ville', champs)
+                # Jamais en tête d'appel.
+                self.assertNotEqual(champs[0], 'ville')
+                texte = {q['champ']: q for q in questions}['ville']['question']
+                attendu = (panneau.QUESTION_VILLE_SITE
+                           if segment in ('commercial', 'industriel',
+                                          'agricole')
+                           else panneau.QUESTION_VILLE_MAISON)
+                self.assertEqual(texte, panneau.PREFIXE_QUESTION + attendu)
+
+    def test_ville_ou_gps_connu_la_ville_n_est_pas_posee(self):
+        for segment in self.SEGMENTS:
+            with self.subTest(segment=segment):
+                avec_ville = _lead(type_installation=segment, ville='Rabat')
+                self.assertNotIn('ville', _champs(
+                    panneau.questions_a_poser(avec_ville)))
+                self.assertEqual(
+                    panneau.prefill_du_panneau(avec_ville)['ville'], 'Rabat')
+                avec_gps = _lead(type_installation=segment,
+                                 gps_lat=Decimal('33.57'),
+                                 gps_lng=Decimal('-7.58'))
+                self.assertNotIn('ville', _champs(
+                    panneau.questions_a_poser(avec_gps)))
+                # Une moitié de coordonnées ne suffit pas.
+                moitie = _lead(type_installation=segment,
+                               gps_lat=Decimal('33.57'))
+                self.assertIn('ville', _champs(
+                    panneau.questions_a_poser(moitie)))
+
+
 class ChaqueQuestionVientDuChampLuiMeme(SimpleTestCase):
     def test_le_texte_de_la_question_est_le_help_text_du_champ(self):
         """« Chaque champ EST le script d'appel » : aucune variante ailleurs."""
         questions = {q['champ']: q for q in panneau.questions_a_poser(_lead())}
         for champ, question in questions.items():
-            attendu = str(Lead._meta.get_field(champ).help_text or '')
+            if champ == 'ville':
+                # CSV5 — la ville n'a pas de help_text : sa question est la
+                # constante du panneau (texte « maison » en résidentiel).
+                attendu = (panneau.PREFIXE_QUESTION
+                           + panneau.QUESTION_VILLE_MAISON)
+            else:
+                attendu = str(Lead._meta.get_field(champ).help_text or '')
             self.assertEqual(question['question'], attendu, champ)
 
     def test_un_champ_a_vocabulaire_ferme_sert_ses_choix_dans_l_ordre(self):

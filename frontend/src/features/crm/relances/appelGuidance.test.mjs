@@ -513,8 +513,9 @@ test('AGR418 — agricole vierge : énergie → eau → besoin → heures/distan
   assert.ok(g.questions.length <= BUDGET_APPEL_1)
   // Énergie actuelle inconnue : la suite dépend de la réponse — rien d'autre.
   assert.deepEqual(g.questions[0].complements, [])
+  // CSV5 — la ville (ni ville ni GPS sur la fiche) clôt l'étape de l'eau.
   assert.deepEqual(g.questions[1].complements.map((q) => q.champ),
-    ['niveau_statique_m', 'debit_forage_m3h'])
+    ['niveau_statique_m', 'debit_forage_m3h', 'ville'])
   assert.deepEqual(g.questions[2].complements.map((q) => q.champ),
     ['surface_irriguee_ha', 'culture'])
   assert.deepEqual(g.questions[4].complements.map((q) => q.champ),
@@ -746,6 +747,37 @@ test('CSV4 — la phase est posée à un site MT (un seul choix, triphasé) et �
   assert.equal(g.champ, 'raccordement')
   const bt = exemple('exemple_commercial').champs_a_poser.find((q) => q.champ === 'raccordement')
   assert.deepEqual(bt.choix.map((c) => c.valeur), ['monophase', 'triphase'])
+})
+
+test('CSV5 — la ville accompagne l’étape du site (toit / surface / eau), jamais en tête', () => {
+  const ville = (texte) => ({
+    champ: 'ville', section: null, libelle: 'ville', question: texte, choix: null, nature: 'texte',
+  })
+  for (const [nom, etape, attendu] of [
+    [undefined, 'toit_type_bien', '« Dans quelle ville se trouve votre maison ? »'],
+    ['exemple_commercial', 'surface', '« Dans quelle ville se trouve le site ? »'],
+    ['exemple_industriel', 'surface', '« Dans quelle ville se trouve le site ? »'],
+    ['exemple_agricole', 'eau', '« Dans quelle ville se trouve le site ? »'],
+  ]) {
+    const panneau = exemple(nom)
+    const servi = panneau.champs_a_poser.some((q) => q.champ === 'ville')
+    const avec = servi ? panneau : {
+      ...panneau, champs_a_poser: [...panneau.champs_a_poser, ville(`Question à l’appel : ${attendu}`)],
+    }
+    const questions = guidanceAppel(avec).questions
+    const entree = questions.find((q) => q.champ === 'ville' || q.complements.some((c) => c.champ === 'ville'))
+    assert.ok(entree, nom)
+    assert.equal(entree.etape, etape, nom)
+    assert.notEqual(questions[0].champ, 'ville', nom)
+  }
+  // Ville connue (non servie) : jamais posée.
+  const connue = exemple('exemple_commercial')
+  const sans = {
+    ...connue,
+    champs_a_poser: connue.champs_a_poser.filter((q) => q.champ !== 'ville'),
+    prefill: { ...connue.prefill, ville: 'Rabat' },
+  }
+  assert.ok(!JSON.stringify(guidanceAppel(sans).questions).includes('"ville"'))
 })
 
 test('CIQ420 — « avec le conjoint / la famille » est absent pour un pro', () => {

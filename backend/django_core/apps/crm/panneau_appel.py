@@ -210,6 +210,14 @@ PHASES_PRO = ('monophase', 'triphase')
 QUESTION_PHASE_MT = ('« Site en moyenne tension : alimentation triphasée, je '
                      'le note. »')
 
+#: CSV5 — la ville du site : posée seulement quand la fiche n'a NI ville NI
+#: coordonnées GPS (le devis refuse sans l'une des deux), jamais en tête
+#: d'appel — elle accompagne l'étape « type de bien / toit » (résidentiel),
+#: « surface » (pro) ou « eau » (agricole). Un lead résidentiel parle de sa
+#: maison, les autres du site.
+QUESTION_VILLE_MAISON = '« Dans quelle ville se trouve votre maison ? »'
+QUESTION_VILLE_SITE = '« Dans quelle ville se trouve le site ? »'
+
 #: CIQ410 — choix PRO de « qui décide » : vocabulaire inchangé, seule la
 #: présentation est filtrée (« avec le conjoint / la famille » n'a pas de
 #: sens pour une entreprise).
@@ -406,6 +414,10 @@ def _question(lead, champ, section):
     # la question pro du contrat CIQ1, jamais la consigne résidentielle.
     question = str(meta.help_text or '')
     segment = _segment_pro(lead)
+    if champ == 'ville':
+        site = segment or questionnaire.est_agricole(lead)
+        question = PREFIXE_QUESTION + (
+            QUESTION_VILLE_SITE if site else QUESTION_VILLE_MAISON)
     if segment and champ in QUESTIONS_PRO:
         question = _question_pro(lead, champ, segment)
         if champ == 'decideur' and choix:
@@ -600,7 +612,8 @@ def questions_a_poser(lead):
     for section in sections:
         a_obtenir = set(carte.get(section, ()))
         for champ in questionnaire.CHAMPS_PAR_SECTION.get(section, ()):
-            if champ in CHAMPS_JAMAIS_DEMANDES or champ in vus:
+            if (champ in CHAMPS_JAMAIS_DEMANDES or champ in vus
+                    or champ == 'ville'):
                 continue
             # Une colonne à défaut non nul n'apparaît jamais dans
             # `a_obtenir` (sa valeur n'est jamais « vide ») : elle reste une
@@ -617,6 +630,11 @@ def questions_a_poser(lead):
             continue
         vus.add(champ)
         questions.append(_question(lead, champ, None))
+    # CSV5 — la ville, pour tout segment, seulement sans ville NI GPS.
+    if (not _reponse_connue(lead, 'ville')
+            and not questionnaire._gps_connu(lead)):
+        questions.append(_question(
+            lead, 'ville', 'contact' if 'contact' in sections else None))
     return questions
 
 
@@ -629,6 +647,7 @@ def prefill_du_panneau(lead):
     for section in _sections_du_panneau(lead):
         candidats.extend(questionnaire.CHAMPS_PAR_SECTION.get(section, ()))
     candidats.extend(champs_oraux_du_segment(lead))
+    candidats.append('ville')
     if _segment_pro(lead):
         # CIQ410 — la facture se relit quelle que soit sa colonne.
         candidats.extend(CHAMPS_FACTURE_PRO)

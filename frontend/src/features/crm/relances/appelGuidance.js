@@ -126,7 +126,9 @@ export const ORDRE_APPEL_1 = Object.freeze([
   Object.freeze({ etape: 'facture', champs: Object.freeze(['facture_hiver']) }),
   Object.freeze({ etape: 'ete', champs: Object.freeze(['ete_differente', 'facture_ete']) }),
   Object.freeze({ etape: 'occupation', champs: Object.freeze(['occupation_jour']) }),
-  Object.freeze({ etape: 'toit_type_bien', champs: Object.freeze(['type_bien']) }),
+  // CSV5 — la ville du site, seulement quand la fiche n'a ni ville ni GPS (le
+  // serveur ne la sert alors pas) : en COMPLÉMENT de cette étape, jamais en tête.
+  Object.freeze({ etape: 'toit_type_bien', champs: Object.freeze(['type_bien', 'ville']) }),
   Object.freeze({ etape: 'objectif', champs: Object.freeze(['objectif_projet']) }),
 ])
 
@@ -204,7 +206,7 @@ export const ORDRE_AGRICOLE = Object.freeze([
   }),
   Object.freeze({
     etape: 'eau',
-    champs: Object.freeze(['source_eau', 'niveau_statique_m', 'debit_forage_m3h']),
+    champs: Object.freeze(['source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'ville']),
   }),
   Object.freeze({
     etape: 'besoin',
@@ -261,7 +263,7 @@ export const ORDRE_PRO = Object.freeze([
   }),
   Object.freeze({
     etape: 'surface',
-    champs: Object.freeze(['type_surface', 'type_toiture', 'surface_toiture_m2']),
+    champs: Object.freeze(['type_surface', 'type_toiture', 'surface_toiture_m2', 'ville']),
   }),
   // CIQ427 — « qui décide » porte, en COMPLÉMENT (même étape, même question,
   // aucune sixième étape), le mobile direct d'un décideur joint par un fixe
