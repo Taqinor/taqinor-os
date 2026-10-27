@@ -932,7 +932,7 @@
       {
         "cle": "variateur",
         "libelle": "Variateur",
-        "motif": "aucun article au catalogue"
+        "motif": "aucune pompe retenue : variateur non choisi"
       },
       {
         "cle": "panneaux",
