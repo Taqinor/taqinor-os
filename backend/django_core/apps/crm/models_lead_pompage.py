@@ -114,6 +114,16 @@ class LeadPompageMixin(models.Model):
                   "à l'électricité, combien payez-vous par mois pour le "
                   'pompage ? » (MAD/mois, facultatif, vide = pas encore '
                   "posée).")
+    # AGV8 (décision prise pour le fondateur, à revoir) — la part fixe de cette
+    # facture : sans elle l'économie réseau est omise, jamais supposée à 0.
+    depense_electricite_pompe_part_fixe_mad_mois = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Part fixe de la facture électricité du pompage '
+                     '(MAD/mois)',
+        help_text="Question à l'appel : « Sur cette facture, combien est "
+                  'fixe chaque mois (abonnement, redevance), même sans '
+                  'pomper ? » (MAD/mois, facultatif, vide = pas encore '
+                  'posée).')
 
     class Meta:
         abstract = True

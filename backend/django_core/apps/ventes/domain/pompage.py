@@ -1546,10 +1546,19 @@ def saisies_economie_pompage_du_lead(lead):
             cible['provenance'] = _provenance(
                 'lead', entree.get('provenance'), date)
         elif date:
-            cible['saisi_le'] = date
+            # La date la plus récente des entrées du bloc (facture + part fixe).
+            cible['saisi_le'] = max(cible.get('saisi_le') or '', date)
         for cle in ('unite', 'periode'):
             if entree.get(cle):
                 cible[cle] = entree[cle]
+    facture = saisies.get('facture_reseau')
+    if facture is not None:
+        # AGV8 — la colonne est par définition « MAD/mois » : périodicité
+        # mensuelle posée ici ; la part fixe n'est JAMAIS supposée 0.
+        if facture.get('montant_mad') is None:
+            del saisies['facture_reseau']
+        else:
+            facture['periodicite'] = 'mensuelle'
     return saisies or None
 
 

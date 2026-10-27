@@ -334,6 +334,7 @@ LEAD_PROVENANCE_EXCLUSIONS = dict(
         'pompe_actuelle_phases',
         # AGV1 — facture d'électricité du pompage (D-AGR-5).
         'depense_electricite_pompe_mad_mois',
+        'depense_electricite_pompe_part_fixe_mad_mois',
     )]
     # CIQ401 — colonnes du lead pro (contrat CIQ1 ``lead_pro.json``) qui
     # portent un marqueur énergie : nommées une à une, avec leur raison.
