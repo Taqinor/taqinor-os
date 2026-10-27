@@ -15,6 +15,13 @@ from __future__ import annotations
 # APDF8 — libellés FIXES du détail (fr : littéral d'origine, octet pour
 # octet ; en/ar : ``i18n_labels``), la même fonction que la couverture.
 from .cover import libelle_cat, libelle_fixe, nom_option
+from ..montants import decimale, format_anglais
+
+
+def _milliers_doc(v):
+    """RPDF30 — entier groupé : espace en fr/ar, virgule en anglais."""
+    return f"{int(v):,}".replace(",", "," if format_anglais() else " ")
+
 
 
 def _qty_par_designation(items):
@@ -477,7 +484,7 @@ def build_pages(ctx) -> list:
     _divergent = bool(deux_options and d.get("panneaux_divergents"))
 
     def _num(v):
-        return f'{v:g}'.replace(".", ",")
+        return decimale(f'{v:g}')
 
     # QJR17 (d) — VIGNETTES CONDITIONNELLES, comme partout ailleurs dans le
     # moteur. Ces deux vignettes formataient leur valeur SANS garde : depuis M2
@@ -715,7 +722,7 @@ def build_pages(ctx) -> list:
 
     # ── Payback takeaway figures (read straight off the quote data) ───────────
     def _yrs(v):
-        return f"{v:g}".replace(".", ",") if v else "—"
+        return decimale(f"{v:g}") if v else "—"
     roi_s, roi_a = d.get("roi_s"), d.get("roi_a")
     # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — une option dont le cumul 25 ans
     # ne croise jamais zéro n'imprime aucun nombre d'années.
@@ -791,7 +798,7 @@ def build_pages(ctx) -> list:
     # tangible ; calculé, jamais inventé (gain net / investissement).
     gain_mult = (round(gain25 / _tot_ref, 1) if _tot_ref and gain25 > 0
                  else None)
-    gain_mult_txt = (f"{gain_mult:g}".replace(".", ",")
+    gain_mult_txt = (decimale(f"{gain_mult:g}")
                      if gain_mult and gain_mult >= 1 else None)
     gain_mult_sub = (libelle_cat(d, "res_gain_mult", x=gain_mult_txt)
                      if gain_mult_txt else "")
@@ -903,11 +910,11 @@ def build_pages(ctx) -> list:
         # RPDF — deux options aux onduleurs de prix différents : deux courbes,
         # deux creux, deux montants (jamais celui d'une seule option).
         fin_sub += (libelle_cat(d, "rpdf_fin_remplacement_deux", an=_an,
-                                s=f"{int(_prov_s):,}".replace(",", " "),
-                                a=f"{int(_prov_a):,}".replace(",", " "))
+                                s=_milliers_doc(_prov_s),
+                                a=_milliers_doc(_prov_a))
                     if deux_options and _prov_s and _prov_a and int(_prov_s) != int(_prov_a)
                     else libelle_cat(d, "res_fin_remplacement", an=_an,
-                                     montant=f"{int(_prov):,}".replace(",", " ")))
+                                     montant=_milliers_doc(_prov)))
 
     # QRES57 — les garanties vivent en bande fine sur la page signature
     # (trust.py, source unique theme.WARRANTIES) : plus de cartes badges en
@@ -1606,7 +1613,7 @@ def build_pages(ctx) -> list:
         _co2_t = _prod * constants.CO2_T_PAR_MWH / 1000.0
 
         def _fr1(v):
-            return (f"{v:.1f}".replace(".", ",") if v < 10
+            return (decimale(f"{v:.1f}") if v < 10
                     else fmt(round(v)))
         impact_html = (
             '<div class="p2-lbl" style="margin-top:7mm">'

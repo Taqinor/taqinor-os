@@ -19,6 +19,7 @@ Every money number goes through `ctx["fmt"]`; currency is MAD; language FR.
 import logging
 
 from ..i18n_labels_residentiel import accord_annees_ar
+from ..montants import decimale
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,7 @@ def build(ctx):
     # précisément, cf. constants.CO2_T_PAR_MWH). La bande s'omet entièrement
     # sans production — jamais un « 0 tonne ».
     co2_t = prod_kwh * constants.CO2_T_PAR_MWH / 1000.0
-    co2_txt = (f"{co2_t:.1f}".replace(".", ",") if co2_t < 10
+    co2_txt = (decimale(f"{co2_t:.1f}") if co2_t < 10
                else fmt(co2_t))
     impact_html = (f"""
     <!-- IMPACT STRIP ───────────────────────────────────────────────────── -->
@@ -247,7 +248,7 @@ def build(ctx):
                 'injecté n\'est pas rémunéré.').format(cov=coverage_pct),
             cov=coverage_pct) + '</div>'
 
-    kwc_str = f"{kwc:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    kwc_str = decimale(f"{kwc:.2f}".rstrip("0").rstrip("."))
     # ── F1/L-2OPT (26/08/2026) — LE PRIX AU kWc D'UNE OPTION SE CALCULE SUR LE
     # kWc DE CETTE OPTION ────────────────────────────────────────────────────
     # ``kwc`` est le scalaire legacy : quand les deux options ne portent pas le
@@ -274,7 +275,7 @@ def build(ctx):
     # recalé le scalaire sur la variante rendue : rien à faire ici. Devis non
     # divergent (tout l'existant) ⇒ HTML byte-identique.
     def _num_kwc(v):
-        return f'{v:g}'.replace(".", ",")
+        return decimale(f'{v:g}')
 
     _nb_s, _nb_a = d.get("nb_panneaux_sans"), d.get("nb_panneaux_avec")
     kpi_kwc_v = kwc_str

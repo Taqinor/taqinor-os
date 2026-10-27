@@ -141,6 +141,15 @@ def page_calepinage(ctx) -> str:
 
 def build_html(data: dict, elastic: dict | None = None,
                compact_p3: bool = False, compact_level: int = 0) -> str:
+    """RPDF30 — en anglais, nombres au format anglais (``montants``) ; fr et
+    ar octet pour octet (le drapeau n'est posé que pendant ce rendu)."""
+    from .. import montants
+    with montants.format_langue(data):
+        return _build_html(data, elastic, compact_p3, compact_level)
+
+
+def _build_html(data: dict, elastic: dict | None = None,
+                compact_p3: bool = False, compact_level: int = 0) -> str:
     """``elastic`` (QRES62) : {numéro de page 1-based: mm de vide à répartir
     sur les joints de cette page}. None/absent → joints inertes (passe 1).
 

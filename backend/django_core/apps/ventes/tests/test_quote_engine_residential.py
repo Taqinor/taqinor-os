@@ -2103,3 +2103,52 @@ class TestRpdfLangueGarantiesEtDelais(SimpleTestCase):
         from apps.ventes.quote_engine.residential import cover
         self.assertEqual(cover._yrs(4.4), "4,4")
         self.assertEqual(cover._yrs(5.0), "5")
+
+
+class TestRpdf30FormatAnglaisResidentiel(SimpleTestCase):
+    """RPDF30 — un devis résidentiel EN écrit ses nombres à l'anglaise
+    (point décimal, virgule des milliers) ; FR et AR restent octet pour octet.
+    Non exécuté dans cette session (Django indisponible) — à lancer en CI."""
+
+    @staticmethod
+    def _html(langue=None):
+        from apps.ventes.quote_engine.residential import render, renderer
+        data = _residential_sample_data()
+        if langue:
+            data['langue_sortie'] = langue
+        return render.build_html(renderer._augment(data))
+
+    @staticmethod
+    def _visible(html):
+        html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+        return re.sub(r"<[^>]+>", " ", html)
+
+    def test_anglais_puissance_et_payback_a_l_anglaise(self):
+        txt = self._visible(self._html('en'))
+        self.assertIn("11.36", txt)
+        self.assertNotIn("11,36", txt)
+        self.assertRegex(txt, r"\b4\.[0-9]\b")
+
+    def test_francais_inchange_virgule_decimale(self):
+        from apps.ventes.quote_engine.montants import format_anglais
+        txt = self._visible(self._html())
+        self.assertIn("11,36", txt)
+        self.assertNotIn("11.36", txt)
+        self.assertFalse(format_anglais())
+
+    def test_anglais_ne_fuit_pas_vers_le_rendu_suivant(self):
+        avant = self._html()
+        self._html('en')
+        self.assertEqual(self._html(), avant)
+
+    def test_montants_anglais_virgule_milliers(self):
+        from apps.ventes.quote_engine import montants
+        with montants.format_langue({'langue_sortie': 'en',
+                                     'mode_installation': 'residentiel'}):
+            self.assertEqual(montants.fmt_centimes(65700), "65,700.00")
+        with montants.format_langue({'langue_sortie': 'ar',
+                                     'mode_installation': 'residentiel'}):
+            self.assertEqual(montants.fmt_centimes(65700), "65 700,00")
+        with montants.format_langue({'langue_sortie': 'en',
+                                     'mode_installation': 'agricole'}):
+            self.assertFalse(montants.format_anglais())
