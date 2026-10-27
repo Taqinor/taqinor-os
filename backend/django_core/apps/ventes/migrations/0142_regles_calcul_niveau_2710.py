@@ -9,7 +9,8 @@
 from django.db import migrations, models
 
 
-#: YOPSB4 — mise à jour par lots de clés primaires (jamais un UPDATE global).
+#: YOPSB4 — mise à jour par lots (batch) de clés primaires (jamais un UPDATE
+#: global qui verrouillerait longtemps la table des devis).
 TAILLE_LOT = 500
 
 
