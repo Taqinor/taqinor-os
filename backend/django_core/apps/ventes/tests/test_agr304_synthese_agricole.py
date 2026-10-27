@@ -222,6 +222,18 @@ class Agr304OmissionsTests(SimpleTestCase):
         # Sans production, le m³/jour n'est plus une mesure de courbe.
         self.assertTrue(s['eau']['estimation'])
 
+    def test_amot65_etiquettes_du_noyau_font_foi(self):
+        """AMOT65 (D-AMOT-6 = a) — une courbe sur PVGIS dont le noyau sert
+        l'étiquette de similitude est une ESTIMATION (le client lit
+        « estimation » sous le m³/jour) ; une liste servie vide ⇒ mesure.
+        Mutant : ignorer ``etiquettes`` ⇒ rouge (courbe + PVGIS ⇒ False)."""
+        data = _data_complete()
+        data['etude']['production']['etiquettes'] = [
+            'hypothèse P ∝ n³ (lois de similitude) — estimation']
+        self.assertTrue(synthese_agricole(data)['eau']['estimation'])
+        data['etude']['production']['etiquettes'] = []
+        self.assertFalse(synthese_agricole(data)['eau']['estimation'])
+
     def test_hmt_declaree_reste_a_confirmer_par_visite(self):
         data = _data_complete()
         etude = data['etude']
@@ -258,6 +270,29 @@ class Agr304OmissionsTests(SimpleTestCase):
         data = _data_complete()
         data['etude']['source']['volume_reservoir_m3'] = 60
         self.assertEqual(synthese_agricole(data)['schema']['bassin'], 60)
+
+    def test_agc9_devis_auto_pompe_existante_lue_sur_l_entree_resolue(self):
+        """AGC9 — rendu réel R1 (devis auto « pompe existante » 15 CV) : le
+        devis automatique ne persiste que ``entrees_pompage.plaque`` (aucun
+        ``mode_pompe``, aucune ligne pompe) ⇒ la synthèse dit « existante » et
+        sert la plaque (bloc « Votre pompe existante » page 2). Sans plaque
+        ni ligne pompe : rien deviné. Mutant : lire la seule saisie ⇒ rouge."""
+        data = _data_complete()
+        etude = data['etude']
+        etude['mode_pompe'] = None
+        etude['plaque'] = None
+        etude['entrees_pompage'] = {'plaque': {
+            'cv': 15, 'kw': 11, 'phases': 3, 'courant_a': None,
+            'tension_v': 380}}
+        for cle in ('all_items', 'sans_items'):
+            data[cle] = [it for it in data.get(cle) or []
+                         if it.get('role_pompage') != 'pompe'
+                         and not it.get('courbe_pompe')]
+        s = synthese_agricole(data)
+        self.assertEqual(s['mode_pompe'], 'existante')
+        self.assertEqual(s['pompe']['plaque']['kw'], 11)
+        etude['entrees_pompage'] = {}
+        self.assertNotIn('mode_pompe', synthese_agricole(data))
 
     def test_entree_vide_ne_leve_pas_et_n_invente_rien(self):
         s = synthese_agricole({})
@@ -495,6 +530,11 @@ class SyntheseAgricoleTests(SimpleTestCase):
              'message': 'Variateur VEICHI SI23 11KW écarté pour ce champ.'},
             {'code': 'kw_plaque_a_relever', 'champ': 'plaque',
              'message': 'ALERTE INTERNE : plaque à relever.'},
+            # AGC1 — le rendement non publié reste une alerte VENDEUR.
+            {'code': 'rendement_non_publie', 'champ': 'variateur.fiche',
+             'message': 'Rendement du variateur non publié.'},
+            {'code': 'rendement_non_publie', 'champ': 'pompe.fiche',
+             'message': 'Rendement de la pompe non publié.'},
         ]
         data = _data_complete()
         data['etude']['alertes_pompage'] = copy.deepcopy(alertes)
@@ -521,6 +561,8 @@ class SyntheseAgricoleTests(SimpleTestCase):
             with self.subTest(attendu=attendu):
                 self.assertIn(attendu, p2)
         self.assertNotIn('plaque à relever', p2)
+        self.assertNotIn('borne haute', p2)
+        self.assertNotIn('non publié', p2)
         # Sans alerte : aucune note, aucun titre.
         self.assertEqual(synthese_agricole(_data_complete())['notes'], [])
         p2 = pages.build_html(renderer._augment(data_complete())).split(

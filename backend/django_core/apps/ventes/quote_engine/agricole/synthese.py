@@ -252,6 +252,11 @@ def _estimation(etude):
     ``production.mode`` / ``source_irradiation``) ; toute autre origine
     (débit déclaré, repli plat, aucune production) est une estimation."""
     production = _dict(etude.get("production"))
+    # AMOT65 (D-AMOT-6 = a) — quand le noyau sert ses ``etiquettes`` (AGM8),
+    # elles FONT foi : une courbe calculée par similitude (P ∝ n³) ou sans
+    # rendement publié est une estimation, même sur PVGIS.
+    if "etiquettes" in production:
+        return bool(production.get("etiquettes"))
     return not (production.get("mode") == "courbe"
                 and production.get("source_irradiation") == "pvgis")
 
@@ -343,8 +348,11 @@ CODES_NOTES_CLIENT = {
     "pvgis_indisponible": "agr_note_irradiation_repli",
     "plafond_forage": "agr_note_plafond_forage",
 }
-_NOTES_RENDEMENT = {"pompe.fiche": "agr_note_rendement_pompe",
-                    "variateur.fiche": "agr_note_rendement_variateur"}
+# AGC1 (rien d'incertain imprimé, ci-decisions-2610) — « rendement non publié
+# … borne haute / rendement prudent » reste une alerte VENDEUR : le client lit
+# seulement « estimation » sous le m³/jour (AMOT65, étiquettes du noyau). Les
+# clés i18n restent au catalogue (anciens rendus, liste figée des libellés).
+_NOTES_RENDEMENT = {}
 
 
 def _fr_nombre(v, dec=2):
@@ -572,12 +580,20 @@ def _non_inclus(etude, items):
 
 
 def _mode_pompe(etude, items):
-    mode = etude.get("mode_pompe")
+    mode = _resolue(etude, etude.get("mode_pompe"), "mode_pompe")
     if mode in ("neuve", "existante"):
         return mode
     # Sans saisie explicite, une ligne pompe dans le devis veut dire « pompe
-    # neuve fournie » (D-AGR-7) ; sans ligne pompe, on ne devine rien.
-    return "neuve" if _item_pompe(items) is not None else None
+    # neuve fournie » (D-AGR-7).
+    if _item_pompe(items) is not None:
+        return "neuve"
+    # AGC9 (rendu réel R1, devis auto « pompe existante » 15 CV) — le devis
+    # automatique ne persiste que l'entrée RÉSOLUE ``entrees_pompage.plaque``
+    # (aucun ``mode_pompe``) : sans ligne pompe et avec une plaque relevée,
+    # c'est la pompe existante conservée (D-AGR-7) ; sinon on ne devine rien.
+    if _dict(_resolue(etude, etude.get("plaque"), "plaque")):
+        return "existante"
+    return None
 
 
 def _bloc_economies(bloc):
