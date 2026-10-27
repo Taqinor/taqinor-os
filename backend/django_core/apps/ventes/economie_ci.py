@@ -137,8 +137,8 @@ def _ligne(poste, kwh, ht, ttc):
 
 def _valoriser_mt(cellules, tarif):
     prix = {p['poste']: p for p in tarif['tarifs_par_poste']}
-    evites = dict.fromkeys(_POSTES_MT, 0.0)
-    avant = dict.fromkeys(_POSTES_MT, 0.0)
+    evites = dict.fromkeys(prix, 0.0)  # MT : 3 postes ; bi-horaire : HP/HN
+    avant = dict.fromkeys(prix, 0.0)
     charge_connue = all(c is not None for _m, _h, _a, c in cellules)
     for mois, h, a, c in cellules:
         entree = tarif_ci.tarif_du_poste(tarif, mois, h)
@@ -149,11 +149,11 @@ def _valoriser_mt(cellules, tarif):
             avant[entree['poste']] += c
     par_poste = [_ligne(p, evites[p], prix[p]['tarif_kwh_ht'],
                         prix[p]['tarif_kwh_ttc'])
-                 for p in _POSTES_MT if evites[p] > 0]
+                 for p in prix if evites[p] > 0]
     if not charge_connue:
         return par_poste, None, None
     fav, fap = [], []
-    for p in _POSTES_MT:
+    for p in prix:
         ht, ttc = prix[p]['tarif_kwh_ht'], prix[p]['tarif_kwh_ttc']
         apres = max(0.0, avant[p] - evites[p])
         fav.append({'poste': p, 'kwh': int(round(avant[p])),
@@ -234,14 +234,13 @@ def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
     if not isinstance(tarif, dict) or tarif.get('origine') == \
             tarif_ci.ORIGINE_OMIS or not tarif.get('tarifs_par_poste'):
         return _vide(MOTIF_TARIF_OMIS, tarif)
-    if any(p['poste'] in ('normales',) for p in tarif['tarifs_par_poste']):
-        return _vide(MOTIF_BI_HORAIRE, tarif)
     cellules = _cellules(apercu)
     if not cellules:
         return _vide(MOTIF_SANS_HORAIRE, tarif)
 
     tension = _tension(apercu, tarif)
-    if tarif.get('contrat') == 'mt_general':
+    if tarif.get('contrat') == 'mt_general' or any(  # CEC5 — bi-horaire HP/HN
+            p['poste'] == 'normales' for p in tarif['tarifs_par_poste']):
         res = _valoriser_mt(cellules, tarif)
     else:
         res = _valoriser_bt(cellules, tarif, apercu, tarif_declare)

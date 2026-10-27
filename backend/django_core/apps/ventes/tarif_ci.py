@@ -180,10 +180,12 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026):
     """
     td = tarif_declare if isinstance(tarif_declare, dict) else {}
     contrat = td.get('contrat')
-    if contrat not in CONTRATS:
-        contrat = 'mt_general' if (tension or '').lower() == 'mt' else None
-    if contrat is None:
-        return _omis()
+    if contrat not in CONTRATS:  # CEC4 — trois postes MT déclarés ⇒ MT
+        est_mt = (tension or '').lower() == 'mt' or \
+            _prix_mt_declares(td.get('mt')) is not None
+        contrat = 'mt_general' if est_mt else None
+    if contrat is None and not _tranches_bt_declarees(td.get('bt')):
+        return _omis()  # CEC4 — des tranches déclarées suffisent sans contrat
     taux, annee = tva_energie(millesime)
     if taux is None:
         return _omis()
@@ -300,8 +302,9 @@ def tarif_du_poste(tarif, mois, heure_gmt, *, kwh_mois=None,
     * BT à tranches : la tranche MARGINALE de ``kwh_mois`` (lecture
       PROGRESSIVE) ; une grille dont la règle n'est pas publiée porte
       ``etiquette`` = « règle de tranche à confirmer sur facture » ;
-    * bi-horaire : les plages HP/HN ne sont pas saisies ⇒ ``None`` (omis,
-      jamais deviné) ;
+    * bi-horaire (CEC5) : heures pleines = la plage de POINTE publiée
+      (``tarifs_officiels.POSTES_MT`` : page bi-horaire ONEE, hiver 17-22 h
+      GMT), heures normales ailleurs ;
     * ``omis`` ou données insuffisantes ⇒ ``None``.
     """
     if not isinstance(tarif, dict) or tarif.get('origine') == ORIGINE_OMIS:
@@ -309,14 +312,15 @@ def tarif_du_poste(tarif, mois, heure_gmt, *, kwh_mois=None,
     postes = tarif.get('tarifs_par_poste') or []
     if not postes:
         return None
-    if tarif.get('contrat') == 'mt_general':
+    bi_horaire = any(p['poste'] == 'normales' for p in postes)
+    if tarif.get('contrat') == 'mt_general' or bi_horaire:
         nom = officiels.poste_horaire(mois, heure_gmt)
+        if bi_horaire:  # CEC5 — HP = plage de pointe publiée, HN ailleurs
+            nom = 'pointe' if nom == 'pointe' else 'normales'
         for p in postes:
             if p['poste'] == nom:
                 return dict(p)
         return None
-    if any(p['poste'] in ('pointe', 'normales') for p in postes):
-        return None  # bi-horaire : plages HP/HN non saisies
     kwh = _num(kwh_mois)
     if kwh is None:
         return None

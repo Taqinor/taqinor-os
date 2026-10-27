@@ -84,12 +84,25 @@ class TarifApplicableTest(SimpleTestCase):
         self.assertEqual(p['tarif_kwh_ht'], 1.0)
         self.assertEqual(p['base_publiee'], 'ttc')
 
-    def test_bi_horaire_heure_omise(self):
+    def test_bi_horaire_hp_a_la_pointe_publiee_hn_ailleurs(self):
         tarif = tc.tarif_applicable({'contrat': 'bt_force_motrice',
                                      'option_bi_horaire': True})
         self.assertEqual([p['poste'] for p in tarif['tarifs_par_poste']],
                          ['pointe', 'normales'])
-        self.assertIsNone(tc.tarif_du_poste(tarif, 6, 12, kwh_mois=900))
+        # CEC5 — midi = heures normales ; 18 h GMT en hiver = pointe.
+        self.assertEqual(tc.tarif_du_poste(tarif, 6, 12)['poste'], 'normales')
+        self.assertEqual(tc.tarif_du_poste(tarif, 12, 18)['poste'], 'pointe')
+
+    def test_cec4_prix_declares_sans_contrat_valorises(self):
+        mt = tc.tarif_applicable({'base_tarifs': 'ht', 'mt': {
+            'tarif_pointe': 1.2, 'tarif_pleines': 0.9, 'tarif_creuses': 0.6}})
+        self.assertEqual((mt['contrat'], mt['origine']),
+                         ('mt_general', 'declare_facture'))
+        bt = tc.tarif_applicable({'base_tarifs': 'ttc', 'bt': {'tranches': [
+            {'tarif_kwh': 1.7}]}})
+        self.assertEqual(bt['origine'], 'declare_facture')
+        self.assertIsNone(bt['contrat'])
+        self.assertEqual(tc.tarif_applicable({})['origine'], 'omis')
 
 
 class SchemaTarifDeclareTest(SimpleTestCase):
