@@ -327,8 +327,11 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
 
     # api-fuzz-full 27/10 (ENF11) : aucun corps ; 201 (niveaux créés) publié
     # — le schéma n'annonçait que 200.
-    @extend_schema(request=None, responses={
-        201: FollowupLevelSerializer(many=True)})
+    # Liste en schéma brut : un sérialiseur ``many=True`` ferait publier la
+    # pagination et les filtres de la liste sur ce POST.
+    @extend_schema(request=None, responses={201: {
+        'type': 'array',
+        'items': {'$ref': '#/components/schemas/FollowupLevel'}}})
     @action(detail=False, methods=['post'], url_path='seed-defaults')
     def seed_defaults(self, request):
         """Crée les niveaux de relance par défaut (J+7 / J+15 / J+30) quand la
