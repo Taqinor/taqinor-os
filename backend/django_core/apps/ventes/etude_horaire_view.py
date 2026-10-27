@@ -568,6 +568,7 @@ def etude_horaire_preview(request):
                 'corps de la requête.')
 
     from .etude_horaire import _reglages_tarifaires, calculer_etude_horaire
+    from .horaire.ombrage import perte_ombrage_du_devis
 
     if devis is not None:
         company = getattr(devis, 'company', None) or company
@@ -628,7 +629,10 @@ def etude_horaire_preview(request):
                 lon=lon, occupation=occupation, equipements=equipements,
                 source_conso=source, detail_conso=detail,
                 tranches=tranches, charges_fixes_mad=charges_fixes,
-                jour_reference=jour_reference, **batterie)
+                jour_reference=jour_reference,
+                # D-RES-2710-1 — même ombrage du calepinage que le bloc du
+                # devis enregistré (``None`` sans devis : aucun ombrage).
+                perte_ombrage_pct=perte_ombrage_du_devis(devis), **batterie)
         if etude is None:
             avertissements.append(
                 'Étude non calculable pour cette taille : localisation du '

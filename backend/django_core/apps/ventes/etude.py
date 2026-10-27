@@ -932,6 +932,22 @@ def _subscribed_power_block(devis, load_curve, production_curve):
     return block, result['warnings']
 
 
+def _cout_investissement(devis, mode):
+    """C-RHOR-003 — l'investissement comparé aux économies de la projection.
+
+    Les économies sont valorisées au prix TTC du kWh (``effective_kwh_price``) :
+    un particulier ne récupère pas la TVA, son investissement est donc le
+    total TTC. Niveau de règles 3 seulement (avant : total HT, chiffre
+    d'origine) ; les autres segments gardent le HT (TVA récupérable).
+    """
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
+    champ = 'total_ht'
+    if mode == 'residentiel' and regles_au_moins(devis, REGLES_CORRIGEES_2710):
+        champ = 'total_ttc'
+    return _num(getattr(devis, champ, None), 0.0)
+
+
 def _annual_savings_year1(settings, self_consumed_kwh, classe):
     """Économie annuelle year-1 de l'énergie AUTOCONSOMMÉE, ancrée sur le prix
     marginal réellement payé (``apps.parametres.tariff.effective_kwh_price`` —
@@ -1171,7 +1187,7 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     annual_savings_year1 = (
         _annual_savings_year1(settings, self_consumption['self_consumed_kwh'] or 0.0, classe)
         + (net_metering['annual_savings_mad'] or 0.0))
-    upfront_cost = _num(getattr(devis, 'total_ht', None), 0.0)
+    upfront_cost = _cout_investissement(devis, mode)
     # CALX279 — l'indexation est celle SAISIE par la société (avec sa
     # source) ; sans elle la projection est à tarif constant (0 %, décision
     # fondateur QRES54) et le dit — plus jamais les 6 %/an implicites.
