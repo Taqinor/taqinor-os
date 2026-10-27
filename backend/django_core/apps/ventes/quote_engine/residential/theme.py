@@ -487,7 +487,7 @@ def warranties_for(d):
     _ond_opt = [_first_warranty([r for r in (d.get(c) or []) if isinstance(r, dict)],
                                 _est_onduleur, "garantie_mois")[1]
                 for c in ("sans_items", "avec_items")]
-    if None not in _ond_opt and _ond_opt[0] != _ond_opt[1]:
+    if d.get("deux_options", True) and None not in _ond_opt and _ond_opt[0] != _ond_opt[1]:
         out += [(str(_ond_opt[0]), "ans", "Onduleur (option 1)", "garantie fabricant"),
                 (str(_ond_opt[1]), "ans", "Onduleur (option 2)", "garantie fabricant")]
     elif ond_present and ond_ans is not None:
