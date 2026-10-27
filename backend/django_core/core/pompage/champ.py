@@ -45,8 +45,9 @@ from core.electrique.types import (
 )
 from core.pompage.hydraulique import _flottant
 from core.pompage.hypotheses import utilisees, valeur
-from core.pompage.selection import (
-    TENSION_MONO_V, TENSION_TRI_V, prix_connu, tension_produit,
+from core.pompage.selection import (  # noqa: F401 — AGM1 : ré-export
+    TENSION_MONO_V, TENSION_TRI_V, kw_normalise_depuis_cv, prix_connu,
+    tension_produit,
 )
 from core.pompage.volumes import production_mensuelle
 
@@ -129,37 +130,6 @@ def _tension_alim(alimentation):
 
 def _phases_alim(alimentation):
     return {"mono": 1, "tri": 3}.get(alimentation)
-
-
-def _decimales(texte):
-    """Nombre de décimales SIGNIFICATIVES d'une valeur saisie (« 3.00 » → 0,
-    « 5.50 » → 1) : la précision avec laquelle le CV a été écrit."""
-    texte = str(texte).strip().replace(",", ".")
-    if "." not in texte:
-        return 0
-    return len(texte.split(".", 1)[1].rstrip("0"))
-
-
-def kw_normalise_depuis_cv(cv):
-    """AGQ6 (C-AGQ-005) — ``(kW requis, normalisé)`` d'un moteur connu par
-    son seul CV.
-
-    kW = CV × ``cv_vers_kw`` ; la puissance assignée normalisée la plus
-    proche (``kw_moteur_normalises``, IEC 60034-1, table AGR110) est retenue
-    si elle reste dans la TOLÉRANCE D'ARRONDI du CV écrit — un demi-chiffre
-    de sa dernière décimale significative (« 3 » CV : ± 0,5 CV) : 3 CV =
-    2,21 kW ⇒ moteur 2,2 kW. Hors tolérance (un CV qui ne correspond à
-    aucune puissance normalisée), le kW calculé reste tel quel (jamais
-    arrondi vers le bas au-delà de la précision écrite)."""
-    cv_val = _flottant(cv)
-    if cv_val is None or cv_val <= 0:
-        return None, False
-    kw = cv_val * valeur("cv_vers_kw")
-    tolerance_kw = 0.5 * 10 ** (-_decimales(cv)) * valeur("cv_vers_kw")
-    proche = min(valeur("kw_moteur_normalises"), key=lambda p: abs(p - kw))
-    if abs(proche - kw) <= tolerance_kw + 1e-9:
-        return float(proche), True
-    return kw, False
 
 
 def choisir_variateur(variateurs, *, kw_plaque=None, cv=None, tension_v=None,

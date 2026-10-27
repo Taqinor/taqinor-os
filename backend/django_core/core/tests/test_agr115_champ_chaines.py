@@ -12,8 +12,9 @@ import unittest
 
 from core.pompage.champ import (
     MENTION_TEMPERATURES_REPLI, choisir_variateur, dimensionner_champ,
-    e_d_depuis_profils, kwc_depart,
+    e_d_depuis_profils, kw_normalise_depuis_cv, kwc_depart,
 )
+from core.pompage.hypotheses import valeur
 from core.pompage.volumes import _CLEARSKY_HOURLY_SHAPE
 
 PIC = max(_CLEARSKY_HOURLY_SHAPE)
@@ -124,6 +125,33 @@ class Variateur(unittest.TestCase):
         self.assertIn("kw_plaque_a_relever", codes)
         self.assertIn("kw_moteur_normalises",
                       [h["cle"] for h in res["hypotheses"]])
+
+    def test_agm1_5_5cv_est_le_moteur_normalise_4kw(self):
+        # AGM1 (D-AGM-1) — 5,5 CV = 4,045 kW (1,1 % de 4 kW) : moteur 4 kW,
+        # donc le variateur 4 kW et non le 5,5 kW de la valeur brute.
+        res = choisir_variateur(CATALOGUE, cv="5.5", alimentation="tri")
+        self.assertEqual(res["kw_requis"], 4.0)
+        self.assertEqual(res["variateur"]["id"], 4)
+
+    def test_agm1_cv_hors_2_pct_reste_brut(self):
+        # 12,5 CV = 9,19 kW et 63 CV = 46,34 kW : plus de 2 % d'une puissance
+        # normalisée ⇒ le kW calculé reste tel quel.
+        self.assertEqual(kw_normalise_depuis_cv("12.5"),
+                         (12.5 * 0.7355, False))
+        kw, normalise = kw_normalise_depuis_cv("63")
+        self.assertFalse(normalise)
+        self.assertAlmostEqual(kw, 63 * 0.7355)
+
+    def test_agm1_balayage_cv_vers_moteur_iec(self):
+        attendu = {1: 0.75, 1.5: 1.1, 2: 1.5, 3: 2.2, 4: 3, 5.5: 4, 7.5: 5.5,
+                   10: 7.5, 15: 11, 20: 15, 25: 18.5, 30: 22, 40: 30, 50: 37,
+                   60: 45, 75: 55, 100: 75}
+        normalises = set(valeur("kw_moteur_normalises"))
+        for cv, iec in attendu.items():
+            kw, normalise = kw_normalise_depuis_cv(str(cv))
+            self.assertTrue(normalise, cv)
+            self.assertEqual(kw, float(iec), cv)
+            self.assertIn(iec, normalises)
 
 
 class EnergieKwc(unittest.TestCase):
