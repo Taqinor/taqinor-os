@@ -8,6 +8,7 @@ import {
   typeOfProduit, familleAttendue, categorieIcone,
   ROLES_CI_PRESTATION, LIBELLES_TYPES_POSE, libelleTypePose, libellePrixCi, etatPrixCi, produitCiACompleter, raisonCiACompleter,
 } from './catalogue.js'
+import { champCibleMotif } from './libellesProduitCi.js'
 import {
   classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
 } from '../ventes/solar.js'
@@ -329,4 +330,31 @@ test('CCAT4 — libellés de pose = LIBELLES_TYPES_POSE du serveur', () => {
   const serveur = Object.fromEntries([...bloc.matchAll(/'([a-z_]+)':\s*'([^']+)'/g)].map((m) => [m[1], m[2]]))
   assert.ok(Object.keys(serveur).length >= 6)
   assert.deepEqual({ ...LIBELLES_TYPES_POSE }, serveur)
+})
+
+// CCAT12 — chaque motif d'exclusion servi par etat_ci.py / selectors.py mène à
+// l'id DOM du champ de ProduitForm à remplir (le premier cité s'il y en a
+// plusieurs).
+test('CCAT12 — champCibleMotif : motif serveur → champ à remplir', () => {
+  const attendu = {
+    'prix de vente non saisi': 'pf-vente',
+    'prix à renseigner': 'pf-vente',
+    'plage de tension batterie non publiée': 'pf-ft-bat-vmin',
+    'fiche incomplète : puissance AC': 'pf-ft-ackw',
+    'phase non publiée': 'pf-ft-phases',
+    'fiche incomplète : capacité utile': 'pf-ft-kwhutil',
+    'fiche incomplète : tension nominale': 'pf-ft-vnom',
+    'fiche incomplète : capacité utile, tension nominale': 'pf-ft-kwhutil',
+    'fiche incomplète : puissance (Pmax)': 'pf-ft-pmax',
+    'fiche onduleur absente': 'pf-ft-ackw',
+    'fiche incomplète : puissance AC (kW), monophasé / triphasé, courant maxi par MPPT (A)': 'pf-ft-ackw',
+    'fiche incomplète : monophasé / triphasé, garantie constructeur': 'pf-ft-phases',
+    'fiche incomplète : courant maxi par MPPT (A)': 'pf-ft-imax',
+  }
+  for (const [motif, id] of Object.entries(attendu)) {
+    assert.equal(champCibleMotif(motif), id, motif)
+  }
+  assert.equal(champCibleMotif(''), null)
+  assert.equal(champCibleMotif(null), null)
+  assert.equal(champCibleMotif('motif inconnu'), null)
 })

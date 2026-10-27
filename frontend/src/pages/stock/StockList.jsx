@@ -720,6 +720,7 @@ export default function StockList() {
   const [search, setSearch]           = useState('')
   const [showForm, setShowForm]       = useState(false)
   const [editProduit, setEditProduit] = useState(null)
+  const [champInitial, setChampInitial] = useState(null) // CCAT12
   // ZPUR10/ZSTK3 — fiche produit (quantité en commande + prévisionnel).
   const [detailProduit, setDetailProduit] = useState(null)
   const [filterLow, setFilterLow]     = useState(false)
@@ -1016,8 +1017,8 @@ export default function StockList() {
   )
 
   const openNew   = () => { setEditProduit(null); setShowForm(true) }
-  const openEdit  = p  => { setEditProduit(p);    setShowForm(true) }
-  const closeForm = () => { setShowForm(false);   setEditProduit(null) }
+  const openEdit  = (p, champ = null) => { setEditProduit(p); setChampInitial(typeof champ === 'string' ? champ : null); setShowForm(true) }
+  const closeForm = () => { setShowForm(false);   setEditProduit(null); setChampInitial(null) }
   const onSaved   = () => {
     dispatch(fetchProduits())
     if (showArchived) dispatch(fetchProduitsArchived())
@@ -1415,7 +1416,7 @@ export default function StockList() {
       )}
 
       {showForm && (
-        <ProduitForm produit={editProduit} onClose={closeForm} onSaved={onSaved} />
+        <ProduitForm produit={editProduit} champInitial={champInitial} onClose={closeForm} onSaved={onSaved} />
       )}
       {detailProduit && (
         /* PVFCH — « Modifier la fiche » depuis le visualiseur : on ferme le
@@ -1425,7 +1426,7 @@ export default function StockList() {
         <ProduitDetail
           produit={detailProduit}
           onClose={() => setDetailProduit(null)}
-          onEdit={canWrite ? ((prod) => { setDetailProduit(null); openEdit(prod) }) : null}
+          onEdit={canWrite ? ((prod, champ) => { setDetailProduit(null); openEdit(prod, champ) }) : null}
           onRebut={canWrite ? () => dispatch(fetchProduits()) : null}
         />
       )}

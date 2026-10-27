@@ -28,7 +28,7 @@ import CustomFieldsInput from '../../components/CustomFieldsInput'
 // PVOND (fondateur 18/08) — la classification produit reste UNE seule
 // source : la même que le générateur de devis, jamais réimplémentée ici.
 import { classifyProduct, isPompe } from '../../features/ventes/solar.js'
-import { libellesTarifForfaitaire, libelleRoleDevis, aideRoleDevis } from '../../features/stock/libellesProduitCi.js'
+import { libellesTarifForfaitaire, libelleRoleDevis, aideRoleDevis, useChampInitial } from '../../features/stock/libellesProduitCi.js'
 // STKCAT20 — la même source que le sélecteur de structures (STKCAT11) : la
 // famille RÉELLE d'un produit vient de sa catégorie TYPÉE, jamais du seul nom.
 import {
@@ -426,8 +426,8 @@ function champsMaitresModifies(fields, initiaux) {
   return out
 }
 
-export default function ProduitForm({ produit = null, onClose, onSaved }) {
-  const dispatch = useDispatch()
+export default function ProduitForm({ produit = null, onClose, onSaved, champInitial = null }) {
+  const dispatch = useDispatch(); useChampInitial(champInitial) // CCAT12
   const { categories, fournisseurs, produits } = useSelector(s => s.stock)
   const isAdmin = useIsAdmin()
   const isEdit = !!produit
@@ -1730,13 +1730,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                       {!plageBatterieActuelle?.aucune && (
                         <div className="flex flex-wrap gap-2">
                           <Input
-                            type="number" min="0" step="any" inputMode="decimal" className="w-32"
+                            id="pf-ft-bat-vmin" type="number" min="0" step="any" inputMode="decimal" className="w-32"
                             placeholder="mini (V)" aria-label="Plage batterie — tension mini (V)"
                             value={plageBatterieActuelle?.min ?? ''}
                             onChange={e => setFicheField('ond_bat_v_min', e.target.value)}
                           />
                           <Input
-                            type="number" min="0" step="any" inputMode="decimal" className="w-32"
+                            id="pf-ft-bat-vmax" type="number" min="0" step="any" inputMode="decimal" className="w-32"
                             placeholder="maxi (V)" aria-label="Plage batterie — tension maxi (V)"
                             value={plageBatterieActuelle?.max ?? ''}
                             onChange={e => setFicheField('ond_bat_v_max', e.target.value)}
