@@ -188,6 +188,44 @@ describe('CAD152 — une réponse écrit le champ, par le chemin de la fiche', (
       ETAPE_APPEL.lead, { facture_hiver: '1400', facture_periodicite: 'bimestrielle' }))
   })
 
+  it('CSV16 — « Non » à l’été écrit aussi la facture d’été égale à l’hiver ; sans facture d’hiver, seul « Non » part', async () => {
+    const ete = PANNEAU.champs_a_poser.find((q) => q.nature === 'choix')
+    const question = {
+      ...ete, champ: 'ete_differente', section: 'energie', libelle: 'L’été est différent de l’hiver ?',
+      question: 'Question à l’appel : « L’été, votre facture d’électricité change-t-elle beaucoup par rapport à l’hiver ? »',
+      choix: [{ valeur: true, libelle: 'Oui' }, { valeur: false, libelle: 'Non' }],
+    }
+    armer({ panneau: { ...PANNEAU, champs_a_poser: [question], prefill: { facture_hiver: 900 } } })
+    crmApi.updateLead.mockResolvedValue({ data: { id: ETAPE_APPEL.lead } })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    const bloc = await screen.findByTestId('question-appel-ete_differente')
+    expect(bloc).toHaveTextContent('change-t-elle beaucoup par rapport à l’hiver')
+    fireEvent.click(within(bloc).getByRole('button', { name: 'Non' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      ETAPE_APPEL.lead, { ete_differente: false, facture_ete: 900 }))
+    cleanup()
+    vi.clearAllMocks()
+    armer({ panneau: { ...PANNEAU, champs_a_poser: [question], prefill: {} } })
+    crmApi.updateLead.mockResolvedValue({ data: { id: ETAPE_APPEL.lead } })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    fireEvent.click(within(await screen.findByTestId('question-appel-ete_differente'))
+      .getByRole('button', { name: 'Non' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      ETAPE_APPEL.lead, { ete_differente: false }))
+    cleanup()
+    vi.clearAllMocks()
+    armer({ panneau: { ...PANNEAU, champs_a_poser: [question], prefill: { facture_hiver: 900 } } })
+    crmApi.updateLead.mockResolvedValue({ data: { id: ETAPE_APPEL.lead } })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    fireEvent.click(within(await screen.findByTestId('question-appel-ete_differente'))
+      .getByRole('button', { name: 'Oui' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      ETAPE_APPEL.lead, { ete_differente: true }))
+  })
+
   it('CSV15 — la facture d’été porte aussi sa période ; un lead pro n’a pas de sélecteur de période', async () => {
     const libre = PANNEAU.champs_a_poser.find((q) => q.nature === 'nombre')
     const ete = {

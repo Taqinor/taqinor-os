@@ -95,6 +95,39 @@ class AucuneValeurParDefaut(SimpleTestCase):
         self.assertNotIn('ete_differente', _champs(
             panneau.questions_a_poser(repondu)))
 
+    def test_ete_non_clot_la_question(self):
+        """CSV16 — « Non » écrit la facture d'été égale à l'hiver : la
+        question n'est plus servie (répondue = ``ete_differente`` vrai OU
+        ``facture_ete`` renseignée) ; « Oui » ferme la question et laisse
+        « Combien en été ? » ; les deux se lisent à voix haute."""
+        vierge = _lead(facture_hiver=Decimal('900'))
+        questions = {q['champ']: q for q in panneau.questions_a_poser(vierge)}
+        self.assertIn(
+            "change-t-elle beaucoup par rapport à l'hiver ?",
+            questions['ete_differente']['question'])
+        self.assertIn('Combien payez-vous en été',
+                      questions['facture_ete']['question'])
+        self.assertEqual([c['valeur'] for c in
+                          questions['ete_differente']['choix']],
+                         [True, False])
+        # « Non » : ete_differente reste False, mais la facture d'été est
+        # égale à l'hiver ⇒ plus jamais reposée.
+        non = _lead(facture_hiver=Decimal('900'), facture_ete=Decimal('900'),
+                    ete_differente=False)
+        self.assertNotIn('ete_differente',
+                         _champs(panneau.questions_a_poser(non)))
+        self.assertNotIn('facture_ete', _champs(panneau.questions_a_poser(non)))
+        self.assertEqual(panneau.prefill_du_panneau(non)['facture_ete'], 900.0)
+        # « Non » sans facture à copier : rien n'est inventé, la question
+        # reste posable.
+        self.assertIn('ete_differente', _champs(panneau.questions_a_poser(
+            _lead(ete_differente=False))))
+        # « Oui » : la question est close ; le montant d'été reste à poser.
+        oui = _lead(facture_hiver=Decimal('900'), ete_differente=True)
+        champs = _champs(panneau.questions_a_poser(oui))
+        self.assertNotIn('ete_differente', champs)
+        self.assertIn('facture_ete', champs)
+
     def test_le_prefill_ne_porte_que_des_valeurs_reelles(self):
         lead = _lead(facture_hiver=Decimal('1200.00'), ville='Bouskoura')
         prefill = panneau.prefill_du_panneau(lead)
@@ -161,6 +194,11 @@ class ChaqueQuestionVientDuChampLuiMeme(SimpleTestCase):
                 # constante du panneau (texte « maison » en résidentiel).
                 attendu = (panneau.PREFIXE_QUESTION
                            + panneau.QUESTION_VILLE_MAISON)
+            elif champ in panneau.QUESTIONS_ETE:
+                # CSV16 — l'été se dit à voix haute : texte parlé du panneau
+                # (aucun help_text modifié, donc aucune migration).
+                attendu = (panneau.PREFIXE_QUESTION
+                           + panneau.QUESTIONS_ETE[champ])
             else:
                 attendu = str(Lead._meta.get_field(champ).help_text or '')
             self.assertEqual(question['question'], attendu, champ)

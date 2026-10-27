@@ -216,6 +216,15 @@ PHASES_PRO = ('monophase', 'triphase')
 QUESTION_PHASE_MT = ('« Site en moyenne tension : alimentation triphasée, je '
                      'le note. »')
 
+#: CSV16 — l'été, dit à voix haute (la fiche affiche « L'été est différent de
+#: l'hiver ? », qui ne se lit pas au client). Résidentiel seulement : les
+#: segments pro et agricole ne posent pas cette question.
+QUESTIONS_ETE = {
+    'ete_differente': "« L'été, votre facture d'électricité change-t-elle "
+                      "beaucoup par rapport à l'hiver ? »",
+    'facture_ete': '« Combien payez-vous en été, à peu près ? »',
+}
+
 #: CSV5 — la ville du site : posée seulement quand la fiche n'a NI ville NI
 #: coordonnées GPS (le devis refuse sans l'une des deux), jamais en tête
 #: d'appel — elle accompagne l'étape « type de bien / toit » (résidentiel),
@@ -459,6 +468,8 @@ def _question(lead, champ, section):
     # la question pro du contrat CIQ1, jamais la consigne résidentielle.
     question = str(meta.help_text or '')
     segment = _segment_pro(lead)
+    if champ in QUESTIONS_ETE and not segment:
+        question = PREFIXE_QUESTION + QUESTIONS_ETE[champ]
     if champ == 'ville':
         site = segment or questionnaire.est_agricole(lead)
         question = PREFIXE_QUESTION + (
@@ -604,6 +615,12 @@ def _reponse_connue_panneau(lead, champ):
         # Une colonne déjà remplie n'est jamais reposée ; l'autre l'est tant
         # que la consommation ne compte pas.
         return _reponse_connue(lead, champ) or _facture_repondue(lead)
+    if champ == 'ete_differente':
+        # CSV16 — « Non » (False, le défaut de la colonne) n'est pas lisible
+        # seul : la question est close par un « Oui », ou par la facture d'été
+        # que « Non » écrit (égale à l'hiver : le client a dit « pareil »).
+        return (getattr(lead, 'ete_differente', None) is True
+                or _reponse_connue(lead, 'facture_ete'))
     if champ == 'reponses_categorie' and _segment_pro(lead):
         return not _cles_categorie_a_poser(lead)
     if champ == 'raccordement' and _segment_pro(lead):
@@ -668,7 +685,7 @@ def questions_a_poser(lead):
             # question tant que ce défaut n'a pas été remplacé par un oui.
             a_poser = champ in a_obtenir or (
                 champ in CHAMPS_A_DEFAUT_NON_NUL
-                and not _reponse_connue(lead, champ))
+                and not _reponse_connue_panneau(lead, champ))
             if not a_poser:
                 continue
             vus.add(champ)

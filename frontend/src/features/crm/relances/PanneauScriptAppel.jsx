@@ -537,6 +537,20 @@ export default function PanneauScriptAppel({
       .finally(() => setEnCours(''))
   }
 
+  // CSV16 — « Non » à « L'été, votre facture change-t-elle ? » : le client a dit
+  // « pareil », donc la facture d'été EST celle de l'hiver (déjà au mois) ; les
+  // deux champs partent ensemble, et la question n'est plus reposée. Sans
+  // facture d'hiver connue, rien n'est copié (aucun montant inventé).
+  const choisir = (entree, valeur) => {
+    const hiver = panneau?.prefill?.facture_hiver
+    if (entree.champ === 'ete_differente' && valeur === false
+        && hiver !== undefined && hiver !== null && hiver !== '') {
+      ecrire(entree, false, { facture_ete: hiver })
+      return
+    }
+    ecrire(entree, valeur)
+  }
+
   const avecPeriode = (entree) => g?.famille === 'residentiel'
     && CHAMPS_FACTURE_PERIODE.includes(entree.champ)
 
@@ -583,7 +597,7 @@ export default function PanneauScriptAppel({
       saisie={saisies[entree.champ] ?? ''}
       erreur={erreurs[entree.champ] || ''}
       occupe={Boolean(enCours)}
-      onChoix={(valeur) => ecrire(entree, valeur)}
+      onChoix={(valeur) => choisir(entree, valeur)}
       onSaisie={(valeur) => {
         setSaisies((s) => ({ ...s, [entree.champ]: valeur }))
         setErreurs((e) => ({ ...e, [entree.champ]: '' }))

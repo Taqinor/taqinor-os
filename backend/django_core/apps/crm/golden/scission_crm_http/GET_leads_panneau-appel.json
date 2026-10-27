@@ -298,7 +298,7 @@
     "choix": null,
     "libelle": "facture ete",
     "nature": "nombre",
-    "question": "",
+    "question": "Question à l'appel : « Combien payez-vous en été, à peu près ? »",
     "section": "energie"
    },
    {
@@ -315,7 +315,7 @@
     ],
     "libelle": "ete differente",
     "nature": "choix",
-    "question": "",
+    "question": "Question à l'appel : « L'été, votre facture d'électricité change-t-elle beaucoup par rapport à l'hiver ? »",
     "section": "energie"
    },
    {
