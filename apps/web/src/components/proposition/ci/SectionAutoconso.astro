@@ -90,9 +90,6 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
                   </div>
                 ) : null}
               </div>
-              {ciArgent?.motifBase ? (
-                <p class="mt-3 text-xs text-lune-faint" data-ci-motif-base>{ciArgent.motifBase}</p>
-              ) : null}
               {tarifServi ? (
                 <p class="mt-4 text-xs text-lune-faint" data-ci-tarif data-i18n
                   data-fr={tarifServi.fr} data-en={tarifServi.en} data-ar={tarifServi.ar}>{tarifServi.fr}</p>
