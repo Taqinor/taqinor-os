@@ -8,6 +8,7 @@ C5-02 ; le panneau 710 Wc a un Vmp de 40,4 V (6 panneaux ≈ 242 V, C5-02). Les
 profils horaires sont SYNTHÉTIQUES (forme ciel clair du noyau).
 """
 
+import math
 import unittest
 
 from core.pompage.champ import (
@@ -208,6 +209,39 @@ class Champ(unittest.TestCase):
         # Températures TMY absentes : replis du noyau électrique MENTIONNÉS.
         self.assertEqual(res["chaines"]["temperatures"]["mention"],
                          MENTION_TEMPERATURES_REPLI)
+
+    def _osp(self, besoin, hmt):
+        return dimensionner_champ(
+            besoin_m3_jour_mois=[float(besoin)] * 12, hmt_m=hmt,
+            panneau=PANNEAU, variateurs_candidats=[_var(30, 7.5, 380)],
+            pompe={"courbe_pompe": OSP_30_8}, p_plaque_kw=7.5,
+            profils_horaires=PROFILS)
+
+    def test_agm2_besoin_incouvrable_repli_borne_a_1_5_fois_la_plaque(self):
+        # OSP 30/8 7,5 kW, 800 m3/j a 70 m : jamais couvrable. Avant : repli
+        # = kWc de depart = 121 panneaux (ratio 11,45) ; borne = ⌈1,5 × 7,5 ×
+        # 1000 / 710⌉ = 16 panneaux.
+        res = self._osp(800, 70)
+        borne = math.ceil(1.5 * 7.5 * 1000 / 710)
+        self.assertEqual(borne, 16)
+        self.assertLess(borne, math.ceil(res["kwc_depart"] * 1000 / 710))
+        self.assertEqual(res["nb_panneaux"], borne)
+        alerte = [a for a in res["alertes"]
+                  if a["code"] == "besoin_non_couvert_champ"]
+        self.assertEqual(len(alerte), 1)
+        self.assertIn("borne de 1,5 × la plaque de 7,5 kW", alerte[0]["message"])
+        self.assertIn("16 panneaux", alerte[0]["message"])
+        # La couverture affichee est l'honnete (< besoin), jamais masquee.
+        self.assertLess(res["production"]["m3_jour_mois"][11], 800)
+
+    def test_agm2_cas_couvrable_inchange(self):
+        # 200 m3/j a 58,7 m : la recherche trouve un champ qui couvre (18
+        # panneaux, mesure d'avant AGM2) ; aucune alerte « non couvert ».
+        res = self._osp(200, 58.7)
+        self.assertEqual(res["nb_panneaux"], 18)
+        self.assertNotIn("besoin_non_couvert_champ",
+                         [a["code"] for a in res["alertes"]])
+        self.assertGreaterEqual(res["production"]["m3_jour_mois"][11], 200.0)
 
     def test_variateur_sans_fiche_alerte_nommee(self):
         cat = [_var(20, 7.5, 380)]

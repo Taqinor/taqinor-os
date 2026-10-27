@@ -578,13 +578,27 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                     couvert = True
                     break
             if not couvert:
+                # AGM2 (D-AGM-2) — repli BORNÉ à la borne haute de la bande
+                # champ/pompe × la plaque (la recherche, elle, n'est pas
+                # bornée) ; le minimum de fenêtre du variateur relève ensuite
+                # ce repli (``_chaines_pour``, ``champ_impose_fenetre``).
                 nb = int(math.ceil(kwc0 * 1000.0 / pmax)) if kwc0 else nb
+                borne = ""
+                if kwc0 and plaque and plaque > 0:
+                    bande_max = valeur("ratio_champ_pompe_bande_alerte").max
+                    nb_borne = int(math.ceil(bande_max * plaque * 1000.0
+                                             / pmax))
+                    if nb_borne < nb:
+                        nb = max(nb_borne, 1)
+                        borne = (" ; borne de %s × la plaque de %s kW "
+                                 "(%d panneaux)" % (_fr(bande_max), _fr(plaque),
+                                                    nb))
                 prod = _production(nb, pmax, **params)
                 alertes.append(_alerte(
                     "besoin_non_couvert_champ", "pompe",
                     "Même avec un champ très surdimensionné, la pompe ne "
-                    "couvre pas le besoin de chaque mois d'irrigation : champ ramené "
-                    "au kWc de départ (énergie hydraulique)."))
+                    "couvre pas le besoin de chaque mois d'irrigation : champ "
+                    "ramené au kWc de départ (énergie hydraulique)%s." % borne))
     elif nb is None:
         alertes.append(_alerte(
             "irradiation_inconnue", "production",
