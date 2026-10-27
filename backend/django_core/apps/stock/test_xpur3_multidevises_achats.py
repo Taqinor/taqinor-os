@@ -148,3 +148,27 @@ class TestFactureMultiDevise(Xpur3Base):
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(Decimal(resp.data['montant_ttc']), Decimal('1200.00'))
         self.assertEqual(resp.data['devise'], 'MAD')
+
+    def test_contre_valeur_hors_capacite_409_jamais_500(self):
+        # api-fuzz-full 27/10 : 397 270 561 019 CNY × 4045 dépassait la
+        # colonne ``montant_ttc`` (14, 2) → DataError 500. 409, rien d'écrit.
+        from apps.stock.models import FactureFournisseur
+        corps = {
+            'fournisseur': self.fournisseur.id,
+            'devise': DeviseAchat.USD,
+            'taux_change': '4045',
+            'montant_ttc_devise': '397270561019',
+            'montant_ht': '0', 'montant_tva': '0', 'montant_ttc': '0',
+        }
+        resp = self.api.post(
+            '/api/django/stock/factures-fournisseur/', corps, format='json')
+        self.assertEqual(resp.status_code, 409, resp.content)
+        self.assertFalse(FactureFournisseur.objects.exists())
+        corps['taux_change'] = '1'
+        ok = self.api.post(
+            '/api/django/stock/factures-fournisseur/', corps, format='json')
+        self.assertEqual(ok.status_code, 201, ok.content)
+        patch = self.api.patch(
+            f"/api/django/stock/factures-fournisseur/{ok.data['id']}/",
+            {'taux_change': '4045'}, format='json')
+        self.assertEqual(patch.status_code, 409, patch.content)

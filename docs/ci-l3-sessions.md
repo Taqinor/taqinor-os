@@ -3,8 +3,9 @@
 Chaque session lit d'abord le **bloc commun**, puis **sa** section, et l'exécute de bout en bout.
 Une session = une surface et des fichiers qui ne sont qu'à elle ; ses tâches vont dans le plan du
 **propriétaire de chaque fichier** et sont construites dans la même session.
-Version 2 — corrigée après la critique Fable du 27/10/2026 (claims, propriétaires, goldens, CODEMAP,
-pile locale, budget Fable, procédure de rendu).
+Version 3 (27/10/2026) — corrigée après deux critiques Fable. Les sessions résidentielles et agricoles sont décrites
+dans `docs/res-agr-l3-sessions.md` : elles ne font que ce qui est propre à leur segment ; **les sessions génériques
+ci-dessous (CVL, CGN, CPRS, CPRW, CQST, CCAT, CSV) couvrent les trois segments** (C&I, résidentiel, agricole).
 
 ---
 
@@ -14,6 +15,8 @@ pile locale, budget Fable, procédure de rendu).
 - **Précondition** : PR **#1070** (option « avec batterie ») et **#1074** (talon par activité, 23 activités) mergées sur `main`
   (`gh pr view 1070 --json state` / `1074`). La session coordinatrice (celle qui a écrit ce document) les fait passer et
   donne le feu vert. Si elles ne sont pas mergées : fais ton **R1 en lecture seule** et ne pousse rien.
+- **Capacité** : au plus 7 sessions vivantes sur la machine, tous segments confondus (ordre de lancement dans
+  `docs/res-agr-l3-sessions.md`) ; la coordinatrice lance la suivante.
 - **Cohortes** : cohorte A (moteur) **CLD, CMP, CEC, CORC, CCAT, CSV** d'abord ; cohorte B (client et vendeur)
   **CVL, CGN, CPDF, CPRS, CPRW, CQST** quand la cohorte A a fait son premier merge. **CE2E** après toutes les autres.
 - Branche depuis `origin/main` à jour : `claude/ci-<code>` (ex. `claude/ci-cld`).
@@ -84,8 +87,8 @@ Si la limite d'usage est atteinte : arrêter proprement le round, ne pas sauter 
   (`contract_samples/*.json`) est livré SEUL sur `main` par son propriétaire, et la tâche consommatrice porte `@after` sur
   la tâche productrice. Paires : CORC → CVL/CGN (`etude_ci_preview.json`) ; CPRS → CPRW (`proposal_*.json`) ;
   CQST backend → CQST page (`questionnaire_*.json`).
-- **Goldens partagés** (`tests/golden/split_sd_rendu_html.json`, `golden/moteur/build_quote_data/*`) : presque chaque session
-  les fait bouger. Avant CHAQUE push : merge `origin/main`, recapture (`SPLIT_GOLDEN_CAPTURE=1` / `UPDATE_GOLDEN=1`, harnais
+- **Goldens partagés** : un recapteur par famille de cas (table, point 6 de `docs/res-agr-l3-sessions.md`) — les sessions C&I ne
+  recapturent que les cas `commercial__*` / `industriel_etude__*` et les clés C&I. Avant CHAQUE push : merge `origin/main`, recapture (`SPLIT_GOLDEN_CAPTURE=1` / `UPDATE_GOLDEN=1`, harnais
   `-Parallel 1`), vérifie que seuls des hachages C&I bougent (résidentiel/agricole jamais), et liste-les dans la PR.
   Si la merge queue renvoie la PR pour un golden, re-synchronise et recapture.
 - **CODEMAP** : nouveau module / route / modèle ⇒ régénérer §4 de `docs/CODEMAP.md` + `python scripts/codemap_fingerprint.py --write`
@@ -139,6 +142,8 @@ appels Fable et ce qu'ils ont trouvé, ce qui n'a PAS été vérifié.
 
 ### CCAT — Catalogue et paramètres C&I
 - **Préfixe** `CCAT` · **Plans** `PLAN_AUDIT_STOCK.md` (stock, `core/product_roles.py`) et `PLAN_AUDIT_PARAMETRES.md`
+- **Trois segments** pour l'écran admin « ce qui manque pour chiffrer » (AGM fournit la fonction pompage) ; propriétaire de
+  `seed_catalogue.py` et `features/stock/catalogue.js` (RSIZ / AGM : modules neufs + ton appel d'une ligne).
 - **Fichiers** : `apps/stock/selectors.py::produits_ci` (3 668 lignes : aucune croissance), `core/product_roles.py`,
   articles C&I de `seed_catalogue.py`, `apps/parametres/serializers_company.py` (forfaits_ci, bande), `frontend/src/pages/parametres/DevisSection.jsx`, écrans stock des fiches C&I.
 - **Tests** : `test_ciq101-103/123`, `tests_ciq105/202/211`, `DevisSection.ciq225.test`.
@@ -157,6 +162,7 @@ appels Fable et ce qu'ils ont trouvé, ce qui n'a PAS été vérifié.
 
 ### CVL — Vendeur : fiche lead, devis automatique, envoi
 - **Préfixe** `CVL` · **Plan** `PLAN_AUDIT_LEAD.md` (et `PLAN_AUDIT_DEVIS.md` pour `EnvoiDevisDialog`/`useDevisEnvoi` si propriétaire devis — vérifier)
+- **Trois segments** : devis automatique, onglet devis et envoi pour le C&I, le résidentiel et l'agricole (un seul propriétaire).
 - **Fichiers** : `frontend/src/features/crm/workspace/sections/SectionPro.jsx`, `DevisTab.jsx`, `devisTabLogique.js`,
   partie devis auto de `LeadWorkspace.jsx`, `EnvoiDevisDialog.jsx`, `pages/ventes/devisList/useDevisEnvoi.js`, `apps/crm/devis_auto.py`.
 - **Tests** : `DevisTab*.test`, `devisAutoRequis.test.mjs`, `devisAutoKwc.ez5.test.mjs`, `SectionsRender.test.jsx`, `apps/crm/tests_devis_auto*`.
@@ -165,6 +171,8 @@ appels Fable et ce qu'ils ont trouvé, ce qui n'a PAS été vérifié.
 
 ### CGN — Vendeur : écran générateur C&I, liste des devis, options PDF
 - **Préfixe** `CGN` · **Plans** `PLAN_AUDIT_GENERATEUR.md` (`pages/ventes/generator/*`) et `PLAN_AUDIT_DEVIS.md` (le reste)
+- **Trois segments** pour la liste des devis et la boîte d'options PDF ; les panneaux résidentiel/agricole sont à RGEN/AGV.
+  `CarteFacturesElectriques.jsx` reste à CGN (RGEN : appel d'une ligne).
 - **Fichiers** : `frontend/src/pages/ventes/generator/{PanneauCommercial,PanneauIndustriel,CarteResultatCi,CarteEconomieCi,CarteEcheancier,CarteFacturesElectriques,BlocEtudeReseau,ApercuSimulation}.jsx`,
   `frontend/src/features/ventes/etudeCi*.js`, `features/ventes/quote/{profilCi,etudeMarcheBloc}.js`, `MargeIndicative.jsx`,
   `pages/ventes/devisList/{DevisPdfDialog,useDevisPdf,DevisRow}.*`. (`DevisGenerator.jsx`, `solar.js` : lecture seule — fichiers neufs seulement.)
@@ -174,8 +182,8 @@ appels Fable et ce qu'ils ont trouvé, ce qui n'a PAS été vérifié.
 
 ### CPDF — Client : PDF C&I
 - **Préfixe** `CPDF` · **Plan** `PLAN_AUDIT_MOTEUR.md`
-- **Fichiers** : `apps/ventes/quote_engine/{ci,commercial,industriel}/**`, parties C&I de `legacy_onepage.py`, module neuf
-  `quote_engine/i18n_labels_ci.py` (aucune croissance de `i18n_labels.py` / `generate_devis_premium.py`).
+- **Fichiers** : `apps/ventes/quote_engine/{ci,commercial,industriel}/**`, la une-page C&I dans un module neuf (RPDF, propriétaire de `legacy_onepage.py`,
+  pose l'appel d'une ligne), module neuf `quote_engine/i18n_labels_ci.py` (aucune croissance de `i18n_labels.py` / `generate_devis_premium.py`).
 - **Tests** : `test_ciq3xx*`, `test_qx43/45/46*`, `test_quote_engine_amot36*`, `test_ciq333/345`.
 - **Axes** : un PDF qu'un patron de boulangerie ou un directeur d'usine comprend en 30 secondes ; deux options côte à côte ;
   « Installation clé en main » ; graphiques justes et lisibles ; aucune incertitude ; vrai nom d'activité ; FR/EN/AR sans faute ;
@@ -184,17 +192,20 @@ appels Fable et ce qu'ils ont trouvé, ce qui n'a PAS été vérifié.
 
 ### CPRS — Client : devis web, serveur (`/proposition`)
 - **Préfixe** `CPRS` · **Plan** `PLAN_AUDIT_DEVIS.md`
-- **Fichiers** : `apps/ventes/public/{payload_*,noyau,lecture_views,signature_views}.py`, `apps/ventes/public_urls.py`,
+- **Fichiers** : `apps/ventes/public/{payload_economie,payload_variantes,payload_conditions,noyau,lecture_views,signature_views}.py`, `apps/ventes/public_urls.py`,
+  module neuf pour la batterie C&I côté page (`payload_horaire.py` / `payload_batterie.py` = RHOR, appel d'une ligne),
   `contract_samples/proposal_*.json` (`public_views.py` : lecture seule sauf un appel d'une ligne ; `paiement_views.py` = facturation, hors périmètre).
 - **Tests** : `test_amot67`, tests publics C&I (grep `proposal`), `scripts/check_api_shapes.py`.
-- **Axes** : la page sert exactement les chiffres du PDF (parité prouvée) ; deux options ; ligne Installation ; signature C&I ;
+- **Axes** : la page sert exactement les chiffres du PDF, **pour les trois segments** (parité prouvée par segment) ; deux options ; ligne Installation ; signature C&I ;
   niveau standard/confiance ; **notification « devis ouvert »** ; rien d'interne ne fuit. Contrat livré seul d'abord pour CPRW.
 
 ### CPRW — Client : devis web, page `apps/web` + entrée pro du site
 - **Préfixe** `CPRW` · **Plan** `docs/WEB_PLAN.md` (n'édite que `apps/web/**`)
-- **Fichiers** : `apps/web/src/lib/{proposition*,commercialCategories,propositionB2b}.ts`, `apps/web/src/components/proposition/**`,
-  `apps/web/src/pages/proposition/[...token].astro` (12 000 lignes : extraire vers des composants, aucune croissance),
-  `apps/web/src/pages/professionnel.astro`.
+- **Fichiers** : `apps/web/src/lib/{propositionB2b,propositionPage,propositionPdfSigne,propositionRecu,propositionSignaux,commercialCategories}.ts`,
+  `apps/web/src/components/proposition/{commun,ci}/**`, `apps/web/src/pages/professionnel.astro`.
+- **1re PR (la seule à toucher `[...token].astro` et `lib/proposition.ts`)** : déplacer les blocs C&I vers `components/proposition/ci/**`
+  et les blocs agricoles vers `components/proposition/agricole/**` (→ AGC). Ensuite ces deux fichiers sont à RWEB ; tu n'y gardes
+  qu'un appel de composant. `lib/propositionAgricole.ts` = AGC.
 - **Tests** : `apps/web/tests/proposition*CIW*`, `industrielV2WJ123`, `commercialCategoriesWJ122`.
 - **Axes** : page C&I mobile d'abord, aussi claire que la meilleure du marché ; comparaison sans/avec batterie ; signature fluide ;
   FR/EN/AR ; vitesse ; cohérence parfaite avec le PDF ; page « professionnel » qui amène au devis. `@after` sur le contrat CPRS.
@@ -202,6 +213,8 @@ appels Fable et ce qu'ils ont trouvé, ce qui n'a PAS été vérifié.
 
 ### CQST — Client : questionnaire envoyé au client C&I
 - **Préfixe** `CQST` · **Plans** `PLAN_AUDIT_LEAD.md` (backend crm) + `docs/WEB_PLAN.md` (page)
+- **Trois segments** : un seul questionnaire, un seul propriétaire (sections résidentielles et pompage comprises). Tu livres les
+  contrats ; RWEB et AGV te donnent par message la liste des champs dont leur devis a besoin.
 - **Fichiers** : `apps/crm/questionnaire.py`, `apps/crm/public_questionnaire_views.py`, `apps/web/src/lib/questionnaire.ts`,
   `apps/web/src/pages/questionnaire/[token].astro` (≥ 2 000 lignes : aucune croissance), `apps/web/src/pages/api/questionnaire-repondre.ts`, contrats `questionnaire_*.json`.
 - **Tests** : `apps/crm/tests_ciq412/413`, `tests_qx51`, `apps/web/tests/questionnaire*`.
@@ -212,6 +225,6 @@ appels Fable et ce qu'ils ont trouvé, ce qui n'a PAS été vérifié.
 
 ### CE2E — Recette de bout en bout (après les 12 autres)
 - **Préfixe** `CE2E` · **Plan** `PLAN_AUDIT_DEPLOY.md` (specs `frontend/e2e/acceptation/**` = propriétaire deploy) ; corrections routées au propriétaire du fichier.
-- **Axes** : parcours complet sur la pile locale à jour : lead → questionnaire client → script d'appel → devis auto (sans/avec batterie)
+- **Axes** : 10 profils C&I + 4 résidentiels + 2 pompage ; parcours complet sur la pile locale à jour : lead → questionnaire client → script d'appel → devis auto (sans/avec batterie)
   → PDF → page web → signature → visite → devis révisé ; 10 profils ; enregistrements `docs/audits/acceptation/…` ;
   relecture Fable de chaque sortie avec l'œil d'un client exigeant.
