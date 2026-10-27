@@ -333,3 +333,59 @@ describe('CPRW13 — postes hors total sous le bandeau préliminaire', () => {
     expect(SRC_AUTOCONSO).toMatch(/data-fr=\{postesHorsTotal\.fr\} data-en=\{postesHorsTotal\.en\} data-ar=\{postesHorsTotal\.ar\}/);
   });
 });
+
+// ── CPRW15 — garanties servies en C&I ───────────────────────────────────────────────────────
+import { garantiesCi, LBL_GARANTIES_CI, LEGENDE_GARANTIES_CI } from '../src/components/proposition/ci/blocsCi';
+import { garantiesCodeesEnDurAffichees } from '../src/lib/propositionPage';
+
+const PY_LABELS = readFileSync(fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/i18n_labels.py', import.meta.url)), 'utf-8');
+function labelPy(cle: string): { fr: string; en: string; ar: string } {
+  const i = PY_LABELS.indexOf(`'${cle}': {`);
+  const bloc = PY_LABELS.slice(i, PY_LABELS.indexOf('},', i));
+  const joint = (lg: string) => {
+    const tranche = bloc.split(`'${lg}':`)[1]!.split(/\s'(?:fr|en|ar)':/)[0]!;
+    return [...tranche.matchAll(/(["'])((?:(?!\1).)*)\1/g)].map((m) => m[2]).join('');
+  };
+  return { fr: joint('fr'), en: joint('en'), ar: joint('ar') };
+}
+const pCi = (services: unknown) =>
+  ({ mode_installation: 'commercial', synthese_ci: { services } }) as unknown as ProposalResponse;
+
+describe('CPRW15 — garanties C&I servies', () => {
+  it('le bloc en dur (onduleur 10 ans…) n\'est plus affiché en commercial ni en industriel', () => {
+    expect(garantiesCodeesEnDurAffichees('commercial')).toBe(false);
+    expect(garantiesCodeesEnDurAffichees('industriel')).toBe(false);
+    expect(garantiesCodeesEnDurAffichees('residentiel')).toBe(true);
+  });
+  it('« Onduleur : 10 ans » → 10 (jamais 30) ; ancien « Garantie constructeur 10 ans » accepté', () => {
+    const g = syntheseCi(pCi({ garanties: [
+      { composant: 'onduleur', texte: 'Onduleur : 10 ans', source: 'garantie du fabricant' },
+      { composant: 'panneaux', texte: 'Garantie constructeur 12 ans', source: 'x' },
+      { composant: 'panneaux_performance', texte: 'Performance : 30 ans', source: 'x' },
+    ] }))!.services!.garanties;
+    expect(g.map((x) => [x.composant, x.annees])).toEqual([['onduleur', 10], ['panneaux', 12], ['panneaux_performance', 30]]);
+    expect(garantiesCi(syntheseCi(pCi({ garanties: [{ composant: 'onduleur', texte: 'Onduleur : 10 ans' }] })))).toEqual([
+      { composant: 'onduleur', libelle: LBL_GARANTIES_CI.onduleur, annees: 10 },
+    ]);
+  });
+  it('garanties vides, texte sans durée ou composant inconnu → aucune ligne (jamais un défaut)', () => {
+    expect(garantiesCi(syntheseCi(pCi({ garanties: [] })))).toEqual([]);
+    expect(garantiesCi(syntheseCi(pCi({})))).toEqual([]);
+    expect(garantiesCi(syntheseCi(pCi({ garanties: [{ composant: 'onduleur', texte: 'Onduleur : n.c.' }, { composant: 'zzz', texte: 'Z : 5 ans' }] })))).toEqual([]);
+    expect(garantiesCi(null)).toEqual([]);
+  });
+  it('parité des libellés et de la légende avec i18n_labels.py (ci_garantie_*, ci_legende_garanties)', () => {
+    expect(LBL_GARANTIES_CI.onduleur).toEqual(labelPy('ci_garantie_onduleur'));
+    expect(LBL_GARANTIES_CI.panneaux).toEqual(labelPy('ci_garantie_panneaux'));
+    expect(LBL_GARANTIES_CI.panneaux_performance).toEqual(labelPy('ci_garantie_performance'));
+    expect(LBL_GARANTIES_CI.batterie).toEqual(labelPy('ci_garantie_batterie'));
+    expect(LBL_GARANTIES_CI.installation).toEqual(labelPy('ci_garantie_installation'));
+    expect(LEGENDE_GARANTIES_CI).toEqual(labelPy('ci_legende_garanties'));
+  });
+  it('la page appelle GarantiesCi après GarantiesAgricoles ; la pose vient de INSTALL_WARRANTY_YEARS', () => {
+    const page = lirePageProposition();
+    expect(page).toContain('data-ci-garanties');
+    expect(page.indexOf('data-agri-garanties')).toBeLessThan(page.indexOf('data-ci-garanties'));
+    expect(readFileSync(fileURLToPath(new URL('../src/components/proposition/ci/GarantiesCi.astro', import.meta.url)), 'utf-8')).toContain('INSTALL_WARRANTY_YEARS');
+  });
+});

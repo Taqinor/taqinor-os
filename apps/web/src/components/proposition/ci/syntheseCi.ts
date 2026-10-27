@@ -101,7 +101,12 @@ export interface SyntheseCi {
   /** CIW303 — la batterie d'un C&I est une OPTION : valeur chiffrée par le moteur, ou son motif. */
   optionBatterie: SyntheseCiOptionBatterie | null;
   /** CIW304 — services servis : l'option O&M nommée du devis et le délai de suivi (heures), si servis. */
-  services: { omLibelle: string | null; suiviDelaiHeures: number | null } | null;
+  services: {
+    omLibelle: string | null;
+    suiviDelaiHeures: number | null;
+    /** CPRW15 — garanties des fabricants SERVIES (`services.garanties[]`), durée extraite du texte ; jamais complétées. */
+    garanties: Array<{ composant: string; annees: number | null }>;
+  } | null;
   /** CIW306 — le bloc catégorie d'un devis commercial, tel que servi (`synthese_ci.categorie`). */
   categorie: SyntheseCiCategorie | null;
   /** CIW307 — décarbonation SERVIE (CIQ344) : `cbam` = drapeau serveur, `textes` = la phrase du PDF. */
@@ -248,6 +253,21 @@ function lireTauxActualisationCi(argent: Record<string, unknown>): number | null
   return null;
 }
 
+/** CPRW15 — durée d'une garantie servie : « Onduleur : 10 ans » ou l'ancien « Garantie constructeur 10 ans » → 10. */
+export function anneesGarantieCi(texte: string | null): number | null {
+  const m = texte ? /(\d+)\s*ans\b/i.exec(texte) : null;
+  return m ? Number(m[1]) : null;
+}
+
+function lireGarantiesCi(v: unknown): Array<{ composant: string; annees: number | null }> {
+  if (!Array.isArray(v)) return [];
+  return v.flatMap((g) => {
+    if (!estRecord(g)) return [];
+    const composant = texteServi(g.composant);
+    return composant ? [{ composant, annees: anneesGarantieCi(texteServi(g.texte)) }] : [];
+  });
+}
+
 /**
  * CIW300 — extracteur PUR de `synthese_ci`. `null` hors commercial/industriel,
  * quand la clé est absente ou vide. Aucune valeur n'est calculée, convertie ni
@@ -337,6 +357,7 @@ export function syntheseCi(
           suiviDelaiHeures: estRecord(brut.services.suivi_production)
             ? nombreServi(brut.services.suivi_production.delai_intervention)
             : null,
+          garanties: lireGarantiesCi(brut.services.garanties),
         }
       : null,
     categorie: lireCategorieCi(brut.categorie),

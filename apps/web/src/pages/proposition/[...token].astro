@@ -27,6 +27,7 @@ import SectionCategorieCi from '../../components/proposition/ci/SectionCategorie
 import SectionRentabiliteIndustrielle from '../../components/proposition/ci/SectionRentabiliteIndustrielle.astro';
 import SectionAgricole from '../../components/proposition/agricole/SectionAgricole.astro';
 import GarantiesAgricoles from '../../components/proposition/agricole/GarantiesAgricoles.astro';
+import GarantiesCi from '../../components/proposition/ci/GarantiesCi.astro';
 // (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
 // réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
 // et la décision fondateur du jour bannit tout avis/étoile de cette page.
@@ -2956,6 +2957,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         {isAgricole && argent && argent.garanties.length > 0 && (
           <GarantiesAgricoles {argent} />
         )}
+        {isAutoconso && ci && (<GarantiesCi {ci} />)}
 
 
           {/* ── PREVIEW v2 · LE DÉLAI ET LE RESPONSABLE ──────────────────────
