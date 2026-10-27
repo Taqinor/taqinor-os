@@ -396,6 +396,9 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertLessEqual(sum(x['quantite'] for x in e['onduleurs']['combinaison']), 10)
         self.assertLess(e['kwc'], 400.0)
         self.assertIn('HYBRIDES_PARALLELE_MAX', [a['code'] for a in r['alertes']])
+        # Le champ a RETRECI : jamais masque par un « ajoutes » a 0.
+        self.assertEqual(e['batterie']['panneaux_ajoutes'], 0)
+        self.assertGreater(e['batterie']['panneaux_retires'], 0)
 
     def test_regle_10_ans_au_dela_du_remplissage(self):
         from apps.ventes.moteur_ci.batterie import monter_regle_10_ans

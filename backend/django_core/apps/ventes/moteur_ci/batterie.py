@@ -360,6 +360,7 @@ def _champ_rempli(initiale, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kv
                                           bilan_de=bilan_de)
     onduleurs = combiner(_kwc(n, pmax_wc)) or {}
     if not _combinaison_tenue(onduleurs, ps_kva):
+        borne_cmp3 = False
         # La puissance souscrite (ou le vivier d'hybrides) borne le champ.
         if not _combinaison_tenue(combiner(_kwc(n_bas, pmax_wc)), ps_kva) and (
                 _borne_parallele_mord(combiner, n_bas, pmax_wc)
@@ -369,12 +370,14 @@ def _champ_rempli(initiale, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kv
             n_bas = _plus_grand(1, n_bas, lambda m: _combinaison_tenue(
                 combiner(_kwc(m, pmax_wc)), ps_kva))
             n_haut = n_bas
+            borne_cmp3 = True
         elif not _combinaison_tenue(combiner(_kwc(n_bas, pmax_wc)), ps_kva):
             return _sans_option(
                 "aucune combinaison d'onduleurs hybrides basse tension tarifés ne porte le champ",
                 prix=_onduleurs_sans_prix(onduleurs))
-        n_haut = _plus_grand(n_bas, max(n, n_bas), lambda m: _combinaison_tenue(
-            combiner(_kwc(m, pmax_wc)), ps_kva))
+        if not borne_cmp3:
+            n_haut = _plus_grand(n_bas, max(n, n_bas), lambda m: _combinaison_tenue(
+                combiner(_kwc(m, pmax_wc)), ps_kva))
         n, banque, reduite = _champ_et_banque(initiale, n_bas=n_bas, n_haut=n_haut,
                                               bilan_de=bilan_de)
     if banque is None:
@@ -468,8 +471,10 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
         'Champ « avec batterie » borné à %.1f kWc : le plus grand champ porté par au plus '
         '%d hybrides en parallèle (%s).' % (evaluation['kwc'], MAX_HYBRIDES_PARALLELE,
                                             SOURCE_PARALLELE)))] if mord else []
+    n_final = evaluation.pop('n')
     evaluation['batterie'].update(besoin_nocturne_kwh=round(besoin, 2), reduite=reduite,
-                                  panneaux_ajoutes=max(0, evaluation.pop('n') - n_bas))
+                                  panneaux_ajoutes=max(0, n_final - n_bas),
+                                  panneaux_retires=max(0, n_bas - n_final))
     return {'evaluation': evaluation, 'motif': None,
             'prix_a_renseigner': list(evaluation['composition'].get('prix_a_renseigner') or []),
             'alertes': borne_parallele + [_alerte('BATTERIE_REDUITE_AU_TOIT', (

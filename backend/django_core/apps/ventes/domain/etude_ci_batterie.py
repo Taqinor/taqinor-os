@@ -94,6 +94,7 @@ def _hybride(produit, specs, plage, triphase):
         'produit': produit.id, 'nom': produit.nom, 'kw_ac': specs.get('ac_kw'), 'prix': prix,
         'triphase': triphase, 'phases': specs.get('phases'), 'eligible_ci': True,
         'motif_exclusion': None, 'dc_max_kwc': specs.get('dc_max_kwc'),
+        'chaines_max_par_mppt': specs.get('chaines_max_par_mppt'),
         's_max_kva': specs.get('s_max_kva'), 'plage_batterie_v': list(plage),
         'bat_max_charge_kw': specs.get('bat_max_charge_kw'),
         'spec': specs_onduleur(specs, produit.nom)[0] if specs else None,
