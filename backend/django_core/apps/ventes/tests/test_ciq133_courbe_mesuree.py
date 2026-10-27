@@ -73,6 +73,26 @@ class CourbeMesureeTests(unittest.TestCase):
             c = jt['charge_kwh']
             self.assertEqual([h for h in range(24) if c[h] > 5], list(range(8, 18)))
 
+    def test_mois_partiel_niveau_moyenne_des_jours_mesures_fois_jours_du_mois(self):
+        valeurs = [5.0] * (24 * 10)    # 10 jours de janvier à 5 kWh/h = 120 kWh/jour
+        jours, _prov, alertes = courbe_mesuree_jours_types(
+            valeurs, '%d-01-01' % ANNEE, annee_reference=ANNEE)
+        self.assertAlmostEqual(_energie(jours, 1), 3720.0, delta=1e-6)
+        alerte = next(a for a in alertes if a['code'] == 'mesure_incomplete')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('10', alerte['message'])
+        self.assertIn('31', alerte['message'])
+
+    def test_jour_avec_valeur_absente_est_ecarte_pas_un_zero(self):
+        valeurs = [5.0] * (24 * 10)
+        valeurs[24 * 9 + 3] = None     # un trou dans le 10e jour
+        jours, _prov, alertes = courbe_mesuree_jours_types(
+            valeurs, '%d-01-01' % ANNEE, annee_reference=ANNEE)
+        moyenne = sum(jt['nb_jours'] * sum(jt['charge_kwh']) for jt in jours
+                      if jt['mois'] == 1) / 31
+        self.assertAlmostEqual(moyenne, 120.0, delta=1e-6)    # pas 108
+        self.assertIn('mesure_incomplete', {a['code'] for a in alertes})
+
     def test_fichier_illisible_400_nomme_la_colonne(self):
         from rest_framework.exceptions import ValidationError
         contenu = 'horodatage;conso\n2025-01-01 00:00;1,2\n2025-01-01 01:00;abc\n'

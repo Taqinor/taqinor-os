@@ -492,6 +492,15 @@ def _jours_types_gmt(calendrier, courbes):
             for (mois, type_jour) in sorted(groupes, key=lambda k: (k[0], ordre[k[1]]))]
 
 
+def _valeur_mesuree(v):
+    """kWh d'une heure mesurée, ou ``None`` (absent, illisible, NaN)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if x != x else max(0.0, x)
+
+
 def _mois_le_plus_proche(mois, mesures):
     return min(mesures, key=lambda m: (min(abs(m - mois), 12 - abs(m - mois)), m))
 
@@ -522,36 +531,74 @@ def courbe_mesuree_jours_types(valeurs_horaires, debut, *, annee_reference,
                                'Courbe mesurée sans date de début lisible : ignorée.',
                                niveau='bloquant'))
         return None, provenance, alertes
-    valeurs = [max(0.0, float(v or 0)) for v in valeurs_horaires or []]
+    valeurs = [_valeur_mesuree(v) for v in valeurs_horaires or []]
     nb_jours = len(valeurs) // HEURES
     if nb_jours == 0:
         alertes.append(_alerte('courbe_mesuree_vide', 'courbe_mesuree',
                                'Courbe mesurée vide : ignorée.', niveau='bloquant'))
         return None, provenance, alertes
     fixe = _resoudre_decalage(decalage_h)
+    compte = {}
+    for date in _jours_annee(annee_reference):
+        cle = (date.month, _type_calendaire(date))
+        compte[cle] = compte.get(cle, 0) + 1
+    # CLD4 — un jour manquant ou à valeur absente n'est PAS un zéro : écarté.
     groupes = {}
+    mesures_mois = {}
+    ecartes = {}
     for i in range(nb_jours):
         date = jour + datetime.timedelta(days=i)
         civile = valeurs[i * HEURES:(i + 1) * HEURES]
+        if any(v is None for v in civile):
+            ecartes[date.month] = ecartes.get(date.month, 0) + 1
+            continue
         gmt = _vers_gmt(civile, decalage_maroc_h(date) if fixe is None else fixe)
         cle = (date.month, _type_calendaire(date))
         cumul, n = groupes.get(cle, ([0.0] * HEURES, 0))
         groupes[cle] = ([c + g for c, g in zip(cumul, gmt)], n + 1)
+        mesures_mois[date.month] = mesures_mois.get(date.month, 0) + 1
     fin = jour + datetime.timedelta(days=nb_jours - 1)
     provenance['couverture'] = {'debut': jour.isoformat(), 'fin': fin.isoformat(),
                                 'jours': nb_jours}
+    if not groupes:
+        alertes.append(_alerte('courbe_mesuree_vide', 'courbe_mesuree',
+                               'Courbe mesurée sans aucun jour complet : ignorée.',
+                               niveau='bloquant'))
+        return None, provenance, alertes
     mesures = sorted({m for m, _t in groupes})
-    sortie = [{'mois': m, 'type_jour': t, 'nb_jours': n, 'charge_kwh': [c / n for c in cumul]}
-              for (m, t), (cumul, n) in groupes.items()]
+    sortie = []
+    for (m, t), (cumul, n) in groupes.items():
+        moyenne = [c / n for c in cumul]
+        sortie.append({'mois': m, 'type_jour': t,
+                       'nb_jours': compte.get((m, t), n), 'charge_kwh': moyenne})
+    # Mois partiel : un type de jour jamais mesuré ce mois-là emprunte la
+    # moyenne de TOUS les jours mesurés du mois (dit dans l'alerte).
+    partiels = []
+    for m in mesures:
+        du_mois = [jt for jt in sortie if jt['mois'] == m]
+        total_calendaire = sum(v for (mm, _t), v in compte.items() if mm == m)
+        if mesures_mois[m] >= total_calendaire and not ecartes.get(m):
+            continue
+        partiels.append('mois %d : %d jour(s) mesuré(s) sur %d%s' % (
+            m, mesures_mois[m], total_calendaire,
+            ', %d écarté(s) (valeur absente)' % ecartes[m] if ecartes.get(m) else ''))
+        n_mesures = sum(groupes[(m, jt['type_jour'])][1] for jt in du_mois)
+        moyenne_mois = [sum(groupes[(m, jt['type_jour'])][0][h] for jt in du_mois) / n_mesures
+                        for h in range(HEURES)]
+        for t in ('ouvre', 'samedi', 'dimanche'):
+            if (m, t) not in groupes and compte.get((m, t)):
+                sortie.append({'mois': m, 'type_jour': t, 'nb_jours': compte[(m, t)],
+                               'charge_kwh': list(moyenne_mois)})
+    if partiels:
+        alertes.append(_alerte(
+            'mesure_incomplete', 'courbe_mesuree',
+            'Courbe mesurée incomplète — niveau = moyenne des jours mesurés × jours du '
+            'mois : %s.' % ' ; '.join(partiels), niveau='info', interne=True))
 
     manquants = [m for m in range(1, 13) if m not in mesures]
     niveaux = None
     if isinstance(kwh_mensuels, (list, tuple)) and len(kwh_mensuels) == 12:
         niveaux = [None if v is None else float(v) for v in kwh_mensuels]
-    compte = {}
-    for date in _jours_annee(annee_reference):
-        cle = (date.month, _type_calendaire(date))
-        compte[cle] = compte.get(cle, 0) + 1
     for mois in manquants:
         if niveaux is None or niveaux[mois - 1] is None:
             alertes.append(_alerte('mois_non_mesure', 'courbe_mesuree',
