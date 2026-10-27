@@ -11,7 +11,7 @@ import { toast } from '../../../../ui/confirm'
 import {
   CHART_MONTHS, computeROI,
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
-  appartientAuPanierAvec,
+  appartientAuPanierAvec, isBattery, texteClassement,
   batteryKwhFromLines, batteryCapaciteInconnue,
   consoAnnuelleDepuisFactures,
   productibleForCity,
@@ -22,6 +22,7 @@ import {
   falaiseAffichable, glitchAnnuel,
   estimationConsoAffichable,
 } from '../../../../features/ventes/etudeHorairePreview'
+import { batteriesDesLignes } from '../../../../features/ventes/etudeHorairePreviewPur'
 import { toucheNbPanneauxPourComposition } from '../../../../features/ventes/quote/sizingReducer'
 import { useSizingMoteur } from '../../../../features/ventes/quote/hooks/useSizingMoteur'
 import { moteur, apercu } from '../../../../features/ventes/quote/valeur'
@@ -229,6 +230,9 @@ export function useApercuEtude(ctx) {
   // intact comme repli hors-ligne). `null` = rien à ancrer (aucune facture,
   // aucun devis) : aucun appel réseau (règle d'honnêteté — on omet, on
   // n'invente pas).
+  // RGEN7 — batteries des lignes « avec » liées à un produit : le serveur lit leur fiche (capacité utile, rendement).
+  const batteriesAvec = batteriesDesLignes(lines,
+    l => isBattery(texteClassement(l, produits)) && appartientAuPanierAvec(l, produits))
   const etudeHoraireCorps = modeInstallation === 'residentiel'
     ? construireCorpsPreview({
         modeInstallation,
@@ -242,6 +246,7 @@ export function useApercuEtude(ctx) {
         // QJR568 — le kWc FACTURÉ par les lignes, pas la seule cible.
         kwp: kwpLignes,
         batterieKwh: batteryKwhFromLines(lines, produits),
+        batteries: batteriesAvec,
       })
     : null
   // L-2OPT — l'étude horaire de la branche AVEC porte SON PROPRE kWc. Le corps
@@ -262,6 +267,7 @@ export function useApercuEtude(ctx) {
         raccordement: selectedLead?.raccordement || '',
         kwp: kwpAvec,
         batterieKwh: batteryKwhFromLines(lines, produits),
+        batteries: batteriesAvec,
       })
     : null
   // QJR99 — `useSizingMoteur` (QJR90) enrobe `useEtudeHorairePreview` : il rend
