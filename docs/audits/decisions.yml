@@ -2522,3 +2522,25 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — PVGIS 5.3 PVcalc relevé le 27/10/2026 ; session L3 CMP"
     taches: [CMP5]
+  - id: D-CMP-5
+    question: "Option « avec batterie » DOMINÉE (plus chère ET économie annuelle plus faible que l'option sans — rendu réel usine MT : 1 140 483 HT / 229 971 MAD contre 928 317 HT / 233 192 MAD) : la proposer ?"
+    options:
+      - cle: a
+        texte: "ne pas la proposer ; alerte interne nommant la cause (10 hybrides au plus, banque réduite) ; choix « avec » du lead ⇒ refus nommé"
+      - cle: b
+        texte: "la proposer quand même (règle « deux options par défaut »)"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 CMP, rendu réel du lead de démo 2231"
+    taches: [CMP9]
+  - id: D-CMP-6
+    question: "Compteur d'injection / logger d'une option dont les onduleurs sont d'une autre marque que l'article retenu (Smart Meter Huawei sur 10 hybrides Deye) ?"
+    options:
+      - cle: a
+        texte: "article compatible d'abord (fiche ond_compteurs_compatibles, sinon même marque) ; aucun ⇒ ligne gardée + alerte interne nommant la marque"
+      - cle: b
+        texte: "garder l'article actuel sans alerte"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 CMP, rendu réel des leads de démo 2228 / 2231"
+    taches: [CMP10]
