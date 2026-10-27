@@ -329,6 +329,12 @@ def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     # ligne garde un item octet-identique.
     if getattr(ligne, "quantite", None) is None:
         item["_sans_quantite"] = True
+    # Fondateur 26/10/2026 — le rôle C&I du produit (prestations regroupées
+    # en « Installation clé en main » au rendu client, ``ci/installation``).
+    # Posé SEULEMENT quand le produit en porte un : résidentiel et agricole
+    # gardent un item octet-identique.
+    if getattr(produit, "role_ci", None):
+        item["role_ci"] = produit.role_ci
     return item
 
 

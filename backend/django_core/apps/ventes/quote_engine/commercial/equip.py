@@ -17,6 +17,7 @@ from ..ci.mentions import texte_revente
 from ..ci.synthese import chiffres_cles, libelle_poste
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
 from ..ci.blocs import bloc_option_avec, langue as _langue, libelle as _libelle
+from ..ci.installation import lignes_client
 from ..sequence import sequence_affichage
 from ..montants import decimale
 from .. import premium_base
@@ -313,7 +314,9 @@ def build(ctx):
 
     f_display, f_serif, f_sans = premium_base.polices(fonts)
 
-    items = [it for it in (d.get("all_items") or []) if _num(it.get("quantite")) > 0]
+    # Fondateur 26/10/2026 — C&I : prestations en « Installation clé en main ».
+    items = [it for it in lignes_client(d.get("all_items") or [], d)
+             if _num(it.get("quantite")) > 0]
     # QJR619 — sections et notes intercalées à leur ``ordre`` par la MÊME
     # fonction pure que le une-page (QJR617). Sans structure ⇒ items tels quels.
     _structure = d.get("lignes_structure") or []

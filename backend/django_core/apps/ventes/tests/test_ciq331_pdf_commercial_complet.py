@@ -251,3 +251,95 @@ class Amot83Raccordement8221(SimpleTestCase):
         html = _html(_data())
         self.assertIn("en coordination avec votre activité", html)
         self.assertNotIn("sans interrompre", html)
+
+
+# ── Fondateur 26/10/2026 — UNE ligne « Installation clé en main » ──────────
+#: Les 8 prestations C&I (rôle produit ``role_ci``), Σ HT = 90 000 : le
+#: même montant que la ligne « Installation » de l'échantillon.
+PRESTATIONS = [
+    ("etudes_ingenierie", "Études et ingénierie C&I", 1, 10000.0),
+    ("pose_structure", "Pose de la structure C&I", 1, 15000.0),
+    ("pose_modules", "Pose des modules C&I", 1, 20000.0),
+    ("raccordement_ac", "Raccordement AC C&I", 1, 12000.0),
+    ("mise_en_service", "Mise en service C&I", 1, 8000.0),
+    ("dossier_raccordement", "Dossier de raccordement C&I", 1, 5000.0),
+    ("levage_acces", "Levage et accès C&I", 2, 5000.0),
+    ("transport_ci", "Transport C&I", 1, 10000.0),
+]
+
+
+def items_prestations(taux=20):
+    return [{"designation": nom, "marque": "", "quantite": q,
+             "prix_unit_ht": pu, "prix_unit_ttc": round(pu * 1.2, 2),
+             "taux_tva": taux, "role_ci": role}
+            for role, nom, q, pu in PRESTATIONS]
+
+
+def avec_prestations(data, cle="all_items"):
+    """``data`` dont la ligne « Installation » est remplacée par les 8
+    prestations détaillées (mêmes totaux)."""
+    data[cle] = [it for it in data[cle] if it["designation"] != "Installation"
+                 ] + items_prestations()
+    return data
+
+
+class InstallationCleEnMain(SimpleTestCase):
+
+    def test_le_pdf_commercial_regroupe_les_huit_prestations(self):
+        from html import unescape
+        html = unescape(_html(avec_prestations(_data())))
+        for _role, nom, _q, _pu in PRESTATIONS:
+            self.assertNotIn(nom, html)
+        self.assertEqual(html.count("Installation clé en main"), 1)
+        self.assertIn("90 000,00", html.replace("\u202f", " ")
+                      .replace("\xa0", " "))
+
+    def test_totaux_identiques_au_centime(self):
+        avant = extract_figures(_html(_data()))
+        apres = extract_figures(_html(avec_prestations(_data())))
+        self.assertTrue(avant)
+        self.assertEqual(
+            {k: [m.valeur for m in v] for k, v in avant.items()},
+            {k: [m.valeur for m in v] for k, v in apres.items()})
+
+    def test_une_ligne_par_taux_de_tva_et_ttc_juste(self):
+        from apps.ventes.quote_engine.ci.installation import (
+            regrouper_installation)
+        items = items_prestations()
+        items[0] = dict(items[0], taux_tva=10)
+        sortie = regrouper_installation(
+            [{"designation": "Panneau", "quantite": 2, "prix_unit_ht": 1.0,
+              "taux_tva": 10}] + items)
+        self.assertEqual(sortie[0]["designation"], "Panneau")
+        groupes = sortie[1:]
+        self.assertEqual([g["taux_tva"] for g in groupes], [10, 20])
+        self.assertEqual([g["prix_unit_ht"] for g in groupes],
+                         [10000.0, 80000.0])
+        self.assertEqual([g["prix_unit_ttc"] for g in groupes],
+                         [11000.0, 96000.0])
+        self.assertEqual({g["quantite"] for g in groupes}, {1.0})
+
+    def test_libelle_trilingue_et_hors_ci_inchange(self):
+        from apps.ventes.quote_engine.ci.installation import lignes_client
+        items = items_prestations()
+        for langue, libelle in (("fr", "Installation clé en main"),
+                                ("en", "Turnkey installation"),
+                                ("ar", "تركيب متكامل جاهز للتشغيل")):
+            sortie = lignes_client(items, {"mode_installation": "industriel",
+                                           "langue_sortie": langue})
+            self.assertEqual([it["designation"] for it in sortie], [libelle])
+        for mode in ("residentiel", "agricole", ""):
+            self.assertIs(lignes_client(items, {"mode_installation": mode}),
+                          items)
+
+    def test_deux_options_regroupees_chacune(self):
+        from apps.ventes.quote_engine.ci.installation import (
+            regrouper_paniers)
+        data = {"mode_installation": "commercial",
+                "sans_items": items_prestations(),
+                "avec_items": items_prestations()[:2]}
+        regrouper_paniers(data)
+        self.assertEqual([it["prix_unit_ht"] for it in data["sans_items"]],
+                         [90000.0])
+        self.assertEqual([it["prix_unit_ht"] for it in data["avec_items"]],
+                         [25000.0])
