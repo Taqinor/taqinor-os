@@ -600,12 +600,29 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                     "couvre pas le besoin de chaque mois d'irrigation : champ "
                     "ramené au kWc de départ (énergie hydraulique)%s." % borne))
     elif nb is None:
-        alertes.append(_alerte(
-            "irradiation_inconnue", "production",
-            "Irradiation du site inconnue (ni profil PVGIS, ni E_d) : champ "
-            "non dimensionné."))
+        # AGM3 — la VRAIE cause : sans E_d seulement, l'irradiation est
+        # inconnue ; sinon le besoin est nul ou la HMT inconnue.
+        besoin_mois = _flottant(besoin[mois - 1], 0.0) if mois else 0.0
+        irradiation = ("irradiation_inconnue", "production",
+                       "Irradiation du site inconnue (ni profil PVGIS, ni "
+                       "E_d)", "irradiation inconnue")
+        if not e_d:
+            cause = irradiation
+        elif (not any((_flottant(b, 0.0) or 0.0) > 0 for b in besoin)
+              or (mois and besoin_mois <= 0)):
+            cause = ("besoin_nul", "besoin",
+                     "Besoin en eau nul au mois critique (aucun mois à "
+                     "irriguer)", "besoin nul")
+        elif (_flottant(hmt_m) or 0.0) <= 0:
+            cause = ("hmt_inconnue", "hmt_m",
+                     "HMT inconnue ou nulle (énergie hydraulique "
+                     "incalculable)", "HMT inconnue")
+        else:
+            cause = irradiation
+        alertes.append(_alerte(cause[0], cause[1],
+                               "%s : champ non dimensionné." % cause[2]))
         sortie["production"] = prod if prod.get("m3_jour_mois") else None
-        return fin("irradiation inconnue")
+        return fin(cause[3])
     else:
         raison = (prod.get("motif") or prod.get("mode")
                   or "production indisponible")

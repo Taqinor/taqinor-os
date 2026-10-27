@@ -1499,7 +1499,8 @@ ROLES_KIT_MINIMUM = (
 #: ne sert aucune alerte, « voir les alertes » ne menait nulle part).
 CODES_CHAMP_NON_DIMENSIONNE = ('panneau_sans_fiche', 'besoin_inconnu',
                                'irradiation_inconnue', 'aucun_variateur',
-                               'chaine_non_verifiable')
+                               'chaine_non_verifiable', 'hmt_inconnue',
+                               'besoin_nul')
 
 
 def _cause_champ_vide(sortie):

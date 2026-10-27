@@ -243,6 +243,39 @@ class Champ(unittest.TestCase):
                          [a["code"] for a in res["alertes"]])
         self.assertGreaterEqual(res["production"]["m3_jour_mois"][11], 200.0)
 
+    def _codes_non_dimensionne(self, **kwargs):
+        params = dict(besoin_m3_jour_mois=[20.0] * 12, hmt_m=40,
+                      panneau=PANNEAU, variateurs_candidats=[_var(31, 7.5, 380)],
+                      p_plaque_kw=7.5, profils_horaires=PROFILS)
+        params.update(kwargs)
+        res = dimensionner_champ(**params)
+        self.assertIsNone(res["nb_panneaux"])
+        return res, [a["code"] for a in res["alertes"]]
+
+    def test_agm3_hmt_inconnue_nomme_la_vraie_cause(self):
+        for hmt in (None, 0, -5):
+            res, codes = self._codes_non_dimensionne(hmt_m=hmt)
+            self.assertIn("hmt_inconnue", codes, hmt)
+            self.assertNotIn("irradiation_inconnue", codes, hmt)
+            self.assertIn("HMT", res["chaines"]["motif"])
+
+    def test_agm3_besoin_nul_nomme_la_vraie_cause(self):
+        res, codes = self._codes_non_dimensionne(
+            besoin_m3_jour_mois=[0.0] * 12)
+        self.assertIn("besoin_nul", codes)
+        self.assertNotIn("irradiation_inconnue", codes)
+
+    def test_agm3_sans_profil_irradiation_inconnue_inchange(self):
+        res, codes = self._codes_non_dimensionne(profils_horaires=None)
+        self.assertIn("irradiation_inconnue", codes)
+        self.assertEqual(res["chaines"]["motif"], "irradiation inconnue")
+
+    def test_agm3_les_deux_codes_rejoignent_la_liste_du_domaine(self):
+        from apps.ventes.domain.pompage import CODES_CHAMP_NON_DIMENSIONNE
+        self.assertIn("hmt_inconnue", CODES_CHAMP_NON_DIMENSIONNE)
+        self.assertIn("besoin_nul", CODES_CHAMP_NON_DIMENSIONNE)
+        self.assertIn("irradiation_inconnue", CODES_CHAMP_NON_DIMENSIONNE)
+
     def test_variateur_sans_fiche_alerte_nommee(self):
         cat = [_var(20, 7.5, 380)]
         res = dimensionner_champ(
