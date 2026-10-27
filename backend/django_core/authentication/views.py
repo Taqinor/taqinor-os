@@ -1122,7 +1122,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return (
                 CustomUser.objects
                 .filter(company=user.company)
-                .select_related('role')
+                .select_related('role', 'fonction__departement')
                 .order_by('date_joined')
             )
         if user.is_superuser:

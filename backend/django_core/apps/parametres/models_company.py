@@ -241,8 +241,11 @@ class CompanyProfile(models.Model):
     onee_tarif_kwh = models.DecimalField(
         max_digits=6, decimal_places=3, default=Decimal('1.75'))
     # Productible annuel moyen (kWh par kWc installé) — repère ROI éditable.
+    # AMOT64 (D-AMOT-3 = a) — NULL/vide = productible PVGIS de la ville du
+    # client ; toute valeur saisie est respectée telle quelle, 1 600 compris
+    # (fin de la sentinelle « 1600 = non renseigné », migration 0130).
     productible_kwh_kwc = models.DecimalField(
-        max_digits=7, decimal_places=1, default=Decimal('1600.0'))
+        max_digits=7, decimal_places=1, null=True, blank=True, default=None)
     # ── Logique de devis éditable (D5) — défauts = constantes codées en dur du
     # simulateur (solar.js EFFICIENCY/estimerPanneaux). Tant qu'elles ne sont
     # pas éditées, le devis reste STRICTEMENT identique ; le simulateur garde
