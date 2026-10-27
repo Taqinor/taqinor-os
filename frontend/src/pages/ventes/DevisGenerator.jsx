@@ -179,6 +179,7 @@ import CarteParametresTechniques from './generator/CarteParametresTechniques'
 // la table de lignes, le rail d'argent, l'enregistrement — et TOUTE la logique
 // transverse (chaîne d'étude horaire, roi, études par marché, validate).
 import PanneauResidentiel from './generator/PanneauResidentiel'
+import BandeauGrandSysteme from './generator/residentiel/BandeauGrandSysteme'
 import PanneauIndustriel from './generator/PanneauIndustriel'
 import PanneauCommercial, { CATEGORIE_NON_PRECISEE } from './generator/PanneauCommercial'
 import PanneauAgricole from './generator/PanneauAgricole'
@@ -1810,13 +1811,7 @@ export default function DevisGenerator({
               value={modeInstallation}
               onChange={(v) => { marquerMarcheTouche(); onModeChangeUi(v) }}
             />
-            {modeInstallation === 'residentiel' && kwp > 36 && (
-              <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                Ce système fait {formatNumber(kwp, { decimals: 2 })} kWc — au-delà de l'échelle résidentielle.
-                Le mode Industriel ou Commercial produira un document plus adapté
-                (étude d'autoconsommation, option unique). Vous pouvez ignorer cette suggestion.
-              </div>
-            )}
+            <BandeauGrandSysteme modeInstallation={modeInstallation} nbPanneaux={nbPanneaux} kwp={kwp} />
             {showAvecWarning && (
               <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
                 Option « avec batterie » indisponible : {avecDispo.reason}. Tant que ce
