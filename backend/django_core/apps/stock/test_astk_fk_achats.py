@@ -421,3 +421,17 @@ class FkAchatsTests(TestCase):
         reponse = chemins[base + 'echeancier/']['post']['responses']['201']
         self.assertEqual(
             reponse['content']['application/json']['schema']['type'], 'array')
+
+    def test_schema_bcf_chantier_origine_nullable(self):
+        """api-fuzz-full 27/10 — ``chantier_origine`` (lecture seule) vaut
+        ``null`` hors besoin de chantier : publié nullable."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.stock import urls as stock_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/stock/', include(stock_urls)),
+        ]).get_schema(request=None, public=True)
+        champ = schema['components']['schemas']['BonCommandeFournisseur'][
+            'properties']['chantier_origine']
+        self.assertTrue(champ.get('nullable'), champ)

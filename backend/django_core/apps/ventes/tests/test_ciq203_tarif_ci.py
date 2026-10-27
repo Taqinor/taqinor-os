@@ -84,12 +84,25 @@ class TarifApplicableTest(SimpleTestCase):
         self.assertEqual(p['tarif_kwh_ht'], 1.0)
         self.assertEqual(p['base_publiee'], 'ttc')
 
-    def test_bi_horaire_heure_omise(self):
+    def test_bi_horaire_hp_a_la_pointe_publiee_hn_ailleurs(self):
         tarif = tc.tarif_applicable({'contrat': 'bt_force_motrice',
                                      'option_bi_horaire': True})
         self.assertEqual([p['poste'] for p in tarif['tarifs_par_poste']],
                          ['pointe', 'normales'])
-        self.assertIsNone(tc.tarif_du_poste(tarif, 6, 12, kwh_mois=900))
+        # CEC5 — midi = heures normales ; 18 h GMT en hiver = pointe.
+        self.assertEqual(tc.tarif_du_poste(tarif, 6, 12)['poste'], 'normales')
+        self.assertEqual(tc.tarif_du_poste(tarif, 12, 18)['poste'], 'pointe')
+
+    def test_cec4_prix_declares_sans_contrat_valorises(self):
+        mt = tc.tarif_applicable({'base_tarifs': 'ht', 'mt': {
+            'tarif_pointe': 1.2, 'tarif_pleines': 0.9, 'tarif_creuses': 0.6}})
+        self.assertEqual((mt['contrat'], mt['origine']),
+                         ('mt_general', 'declare_facture'))
+        bt = tc.tarif_applicable({'base_tarifs': 'ttc', 'bt': {'tranches': [
+            {'tarif_kwh': 1.7}]}})
+        self.assertEqual(bt['origine'], 'declare_facture')
+        self.assertIsNone(bt['contrat'])
+        self.assertEqual(tc.tarif_applicable({})['origine'], 'omis')
 
 
 class SchemaTarifDeclareTest(SimpleTestCase):
@@ -132,3 +145,49 @@ class SchemaTarifDeclareTest(SimpleTestCase):
                              tarif_declare=rouvert['tarif_declare'],
                              saisies_economie_ci=rouvert['saisies_economie_ci'])
         self.assertEqual(bloc2, bloc)
+
+    def test_cec2_tranches_sans_seuils_refusees_nommees(self):
+        reproches = es.valider({'tarif_declare': {
+            'contrat': 'bt_patente', 'bt': {'tranches': [
+                {'tarif_kwh': 1.5}, {'tarif_kwh': 1.7}]}}})
+        self.assertTrue(any('etude_params.tarif_declare.bt.tranches' in r
+                            for r in reproches))
+
+    def test_cec2_lecture_101_500_ramenee_au_plafond_precedent(self):
+        tranches = [{'tarif_kwh': 1.0, 'seuil_min_kwh': 0, 'seuil_max_kwh': 100},
+                    {'tarif_kwh': 1.2, 'seuil_min_kwh': 101,
+                     'seuil_max_kwh': 500},
+                    {'tarif_kwh': 1.4, 'seuil_min_kwh': 501}]
+        self.assertEqual(tc.seuils_contigus(tranches),
+                         [(0.0, 100.0), (100.0, 500.0), (500.0, None)])
+        self.assertEqual(es.valider({'tarif_declare': {
+            'contrat': 'bt_force_motrice', 'bt': {'tranches': tranches}}}), [])
+
+    def test_cec4_cec5_devis_envoye_garde_les_regles_d_origine(self):
+        mt = {'tarif_pointe': 1.2, 'tarif_pleines': 0.9, 'tarif_creuses': 0.6}
+        self.assertEqual(tc.tarif_applicable(
+            {'mt': mt}, regles_origine=True)['origine'], 'omis')
+        self.assertEqual(tc.tarif_applicable(
+            {'contrat': 'bt_force_motrice', 'option_bi_horaire': True},
+            regles_origine=True)['origine'], 'omis')
+
+    def test_cec2_derniere_tranche_plafonnee_refusee(self):
+        tranches = [{'tarif_kwh': 1.0, 'seuil_min_kwh': 0, 'seuil_max_kwh': 100},
+                    {'tarif_kwh': 1.2, 'seuil_min_kwh': 100,
+                     'seuil_max_kwh': 500}]
+        self.assertIsNone(tc.seuils_contigus(tranches))
+        self.assertTrue(any('bt.tranches' in r for r in es.valider(
+            {'tarif_declare': {'contrat': 'bt_patente',
+                               'bt': {'tranches': tranches}}})))
+
+    def test_cec8_facture_2025_ht_a_la_tva_de_son_annee(self):
+        declare = {'contrat': 'bt_patente', 'base_tarifs': 'ttc',
+                   'date_facture': '2025-12-15',
+                   'bt': {'tranches': [{'tarif_kwh': 1.18}]}}
+        poste = tc.tarif_applicable(declare)['tarifs_par_poste'][0]
+        # Facture de 2025 (TVA 18 %, bareme.TVA_PAR_MILLESIME) : HT 1,00.
+        self.assertEqual(poste['tarif_kwh_ht'], 1.0)
+        self.assertEqual(poste['tarif_kwh_ttc'], 1.2)
+        self.assertIn('2025', tc.tarif_applicable(declare)['mention'])
+        origine = tc.tarif_applicable(declare, regles_origine=True)
+        self.assertEqual(origine['tarifs_par_poste'][0]['tarif_kwh_ttc'], 1.18)

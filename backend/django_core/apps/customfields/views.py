@@ -341,6 +341,11 @@ class CustomObjectDefViewSet(AuditPlateformeMixin, TenantMixin,
     queryset = CustomObjectDef.objects.all()
     serializer_class = CustomObjectDefSerializer
     parser_classes = [JSONParser]
+    # api-fuzz-full 27/10 (ENF11) — clé NUMÉRIQUE seule (comme les clients,
+    # ACRM67) : ``objects/verrouiller/`` (id vide d'un lien du fuzz) était lu
+    # comme le DÉTAIL de l'objet « verrouiller » → 405 non documenté sur un
+    # POST ; désormais aucune route ne répond → 404.
+    lookup_value_regex = r'[0-9]+'
     audit_plateforme_cible = 'objet'
     audit_plateforme_nom = 'Objet personnalisé'
 

@@ -142,9 +142,13 @@ class TestPreparation(TestCase):
 
     def test_cannot_leave_a_preparer_without_confirmation(self):
         # Sans confirmation, passer à « Prête » est refusé (F5).
+        # api-fuzz-full 27/10 (ENF11) : refus d'ÉTAT (corps conforme) = 409,
+        # raisons toujours rangées sous `statut`.
         r = self.api.patch(f'{self.url}/', {'statut': 'prete'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertIn('statut', r.data)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('Tout est chargé', str(r.data['statut']))
+        self.interv.refresh_from_db()
+        self.assertEqual(self.interv.statut, 'a_preparer')
         # Confirmer puis réessayer → autorisé.
         prep = field_services.ensure_preparation(self.interv)
         for li in prep.materiel.all():
@@ -170,6 +174,16 @@ class TestPreparation(TestCase):
         prep.refresh_from_db()
         self.assertFalse(prep.tout_charge)
 
+    def test_ligne_inconnue_404_corps_invalide_400(self):
+        # api-fuzz-full 27/10 (ENF11) : un id entier qui ne désigne aucune
+        # ligne = ressource absente (404), plus un 400.
+        for route in ('cocher-materiel', 'cocher-outil'):
+            r = self.api.post(f'{self.url}/{route}/', {'ligne': 0},
+                              format='json')
+            self.assertEqual(r.status_code, 404, (route, r.data))
+            r = self.api.post(f'{self.url}/{route}/', {}, format='json')
+            self.assertEqual(r.status_code, 400, (route, r.data))
+
     def test_manquant_flag_and_draft_order(self):
         # Produit dont la nomenclature dépasse le stock disponible.
         rare = make_produit(self.company, 'Câble rare', stock=2)
@@ -191,6 +205,25 @@ class TestPreparation(TestCase):
                           {'fournisseur': f.id}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['nb_lignes'], 1)
+
+    def test_refus_etat_preparation_409_et_fournisseur_inconnu_404(self):
+        """api-fuzz-full 27/10 (ENF11) : `confirmer-charge` sans toutes les
+        lignes cochées et `commander-manques` sans fournisseur par défaut sont
+        des refus d'ÉTAT (corps conforme) → 409 ; un fournisseur CITÉ qui ne
+        désigne rien → 404 (il faisait 400)."""
+        r = self.api.post(f'{self.url}/confirmer-charge/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('cochées', r.data['detail'])
+        rare = make_produit(self.company, 'Câble sans fournisseur', stock=0)
+        inst = make_chantier(self.company, self.user, [(rare, 3)])
+        url = (f'/api/django/installations/interventions/'
+               f'{make_intervention(inst, self.company, self.user).id}')
+        r = self.api.post(f'{url}/commander-manques/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('fournisseur par défaut', r.data['detail'])
+        r = self.api.post(f'{url}/commander-manques/',
+                          {'fournisseur': 2147483000}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
 
 
 class TestKitTools(TestCase):
@@ -336,7 +369,8 @@ class TestPhotosAndRequiredEnforcement(TestCase):
             self.assertEqual(r.status_code, 200, (st, r.data))
         r = self.api.patch(f'{self.url}/', {'statut': 'terminee'},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # api-fuzz-full 27/10 (ENF11) : photos manquantes = refus d'ÉTAT, 409.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('statut', r.data)
         # La checklist des manquants liste les créneaux obligatoires.
         r = self.api.get(f'{self.url}/photos/')

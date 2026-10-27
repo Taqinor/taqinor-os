@@ -60,7 +60,8 @@ class OpTerrainIdempotenteTests(TestCase):
 
     def test_serial_en_ligne_puis_sync_un_objet(self):
         r = self.api.post(f'{self.url}/ajouter-serial/', {
-            'client_op_id': OP_SERIAL, 'numero_serie': 'SN-ADEP44'},
+            'client_op_id': OP_SERIAL, 'numero_serie': 'SN-ADEP44',
+            'designation': 'Onduleur'},
             format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertIs(r.data['replayed'], False)
@@ -80,7 +81,8 @@ class OpTerrainIdempotenteTests(TestCase):
         self.assertEqual(self.iv.reserves.count(), 1)
 
     def test_double_appel_en_ligne_meme_cle(self):
-        corps = {'client_op_id': OP_SERIAL, 'numero_serie': 'SN-ADEP44-2'}
+        corps = {'client_op_id': OP_SERIAL, 'numero_serie': 'SN-ADEP44-2',
+                 'designation': 'Onduleur'}
         r1 = self.api.post(f'{self.url}/ajouter-serial/', corps, format='json')
         r2 = self.api.post(f'{self.url}/ajouter-serial/', corps, format='json')
         self.assertEqual(r1.status_code, 201, r1.data)
@@ -119,8 +121,8 @@ class OpTerrainIdempotenteTests(TestCase):
     def test_contrat_op_terrain_en_ligne(self):
         contrat = json.loads(CONTRAT.read_text(encoding='utf-8'))
         r = self.api.post(f'{self.url}/ajouter-serial/', {
-            'client_op_id': OP_SERIAL, 'numero_serie': 'SN-CONTRAT'},
-            format='json')
+            'client_op_id': OP_SERIAL, 'numero_serie': 'SN-CONTRAT',
+            'designation': 'Onduleur'}, format='json')
         self.assertEqual(set(r.data), set(contrat['exemple']))
         rejeu = self.api.post(f'{self.url}/ajouter-serial/', {
             'client_op_id': OP_SERIAL, 'numero_serie': 'SN-CONTRAT'},
