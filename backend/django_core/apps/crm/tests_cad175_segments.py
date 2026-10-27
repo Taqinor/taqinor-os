@@ -241,20 +241,150 @@ class CIQ410PanneauPro(SimpleTestCase):
         self.assertEqual(data['equipements'], [])
 
     def test_facture_en_dirhams_commerce_bt_en_kwh_industriel_ou_mt(self):
-        self.assertIn('facture_hiver', _champs(Lead(
-            nom='P', type_installation='commercial')))
-        self.assertIn('conso_mensuelle_kwh', _champs(Lead(
-            nom='P', type_installation='industriel')))
+        """CSV2 — l'étape facture sert LES DEUX colonnes ; la principale est
+        celle que le client connaît (dirhams d'abord pour un commerce BT, kWh
+        d'abord pour un industriel ou un site MT)."""
+        commerce = _champs(Lead(nom='P', type_installation='commercial'))
+        self.assertEqual(commerce[:2], ['facture_hiver',
+                                        'conso_mensuelle_kwh'])
+        industriel = _champs(Lead(nom='P', type_installation='industriel'))
+        self.assertEqual(industriel[:2], ['conso_mensuelle_kwh',
+                                          'facture_hiver'])
         mt = _champs(Lead(nom='P', type_installation='commercial',
                           tension_raccordement='mt'))
-        self.assertIn('conso_mensuelle_kwh', mt)
-        self.assertNotIn('raccordement', mt)
+        self.assertEqual(mt[:2], ['conso_mensuelle_kwh', 'facture_hiver'])
+        self.assertIn('raccordement', mt)
 
-    def test_une_facture_connue_ferme_l_etape(self):
+    def test_une_facture_qui_ne_compte_pas_ne_ferme_pas_l_etape(self):
+        """CSV2 — une facture en dirhams ne ferme l'étape que si la tension ET
+        le contrat BT déclaré la laissent compter (règle de ``devis_auto``)."""
+        # Industriel sans basse tension déclarée : les dirhams ne comptent pas.
         champs = _champs(Lead(nom='P', type_installation='industriel',
                               facture_hiver=Decimal('9000')))
+        self.assertIn('conso_mensuelle_kwh', champs)
+        self.assertNotIn('facture_hiver', champs)  # déjà remplie
+        # Commerce BT, dirhams, contrat pas encore posé : étape ouverte.
+        champs = _champs(Lead(nom='P', type_installation='commercial',
+                              tension_raccordement='bt',
+                              facture_hiver=Decimal('5000')))
+        self.assertIn('conso_mensuelle_kwh', champs)
+        # Commerce BT, dirhams, contrat BT déclaré : l'étape est fermée.
+        champs = _champs(Lead(nom='P', type_installation='commercial',
+                              tension_raccordement='bt',
+                              contrat_electricite='bt_patente',
+                              facture_hiver=Decimal('5000')))
         self.assertNotIn('conso_mensuelle_kwh', champs)
         self.assertNotIn('facture_hiver', champs)
+        # Les kWh ferment toujours l'étape.
+        champs = _champs(Lead(nom='P', type_installation='industriel',
+                              conso_mensuelle_kwh=Decimal('42000')))
+        self.assertNotIn('conso_mensuelle_kwh', champs)
+        self.assertNotIn('facture_hiver', champs)
+
+    def test_site_mt_facture_dirhams_redemande_les_kwh(self):
+        """CSV2 — impasse du rejeu : facture en dirhams PUIS tension MT. Les
+        kWh sont redemandés (premier choix), les dirhams jamais reposés."""
+        lead = Lead(nom='P', type_installation='commercial',
+                    facture_hiver=Decimal('5000'), tension_raccordement='mt')
+        champs = _champs(lead)
+        self.assertEqual(champs[0], 'conso_mensuelle_kwh')
+        self.assertNotIn('facture_hiver', champs)
+        self.assertEqual(panneau.prefill_du_panneau(lead)['facture_hiver'],
+                         5000.0)
+        # Contrat « ne sait pas » en BT : les dirhams ne comptent pas non plus.
+        lead = Lead(nom='P', type_installation='commercial',
+                    tension_raccordement='bt',
+                    contrat_electricite='ne_sait_pas',
+                    facture_hiver=Decimal('5000'))
+        self.assertEqual(_champs(lead)[0], 'conso_mensuelle_kwh')
+
+    def test_contrat_pose_en_bt_jamais_en_mt_option_si_force_motrice(self):
+        """CSV3 — le contrat se lit sur la facture : posé juste après la
+        tension à tout site non déclaré en MT, l'option bi-horaire seulement
+        en force motrice, la question reprise mot pour mot du contrat CIQ1."""
+        for segment in ('commercial', 'industriel'):
+            champs = _champs(Lead(nom='P', type_installation=segment,
+                                  tension_raccordement='bt'))
+            self.assertIn('contrat_electricite', champs, segment)
+            self.assertNotIn('option_tarifaire_bt', champs, segment)
+            self.assertLess(champs.index('contrat_electricite'),
+                            champs.index('compteur_puissance_kva'))
+            # Tension inconnue : le contrat est posé aussi.
+            self.assertIn('contrat_electricite', _champs(
+                Lead(nom='P', type_installation=segment)))
+            # MT déclarée : jamais de contrat, jamais d'option.
+            mt = _champs(Lead(nom='P', type_installation=segment,
+                              tension_raccordement='mt',
+                              contrat_electricite='bt_force_motrice'))
+            self.assertNotIn('contrat_electricite', mt, segment)
+            self.assertNotIn('option_tarifaire_bt', mt, segment)
+        force = Lead(nom='P', type_installation='commercial',
+                     tension_raccordement='bt',
+                     contrat_electricite='bt_force_motrice')
+        self.assertIn('option_tarifaire_bt', _champs(force))
+        for autre in ('bt_patente', 'bt_domestique', 'ne_sait_pas'):
+            lead = Lead(nom='P', type_installation='commercial',
+                        tension_raccordement='bt', contrat_electricite=autre)
+            self.assertNotIn('option_tarifaire_bt', _champs(lead), autre)
+            # « Ne sait pas » (comme tout contrat posé) clôt la question.
+            self.assertNotIn('contrat_electricite', _champs(lead), autre)
+
+    def test_contrat_et_option_reprennent_le_contrat_ciq1_mot_pour_mot(self):
+        contrat_pro = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'lead_pro.json').read_text(encoding='utf-8'))
+        par_colonne = {c['nom']: c['question']
+                       for c in contrat_pro['colonnes_pro']}
+        for colonne in ('contrat_electricite', 'option_tarifaire_bt'):
+            self.assertIn(panneau.QUESTIONS_PRO[colonne],
+                          par_colonne[colonne], colonne)
+
+    def test_site_bt_ne_propose_pas_le_contrat_moyenne_tension(self):
+        def valeurs(lead):
+            questions = {q['champ']: q
+                         for q in panneau.questions_a_poser(lead)}
+            return [c['valeur']
+                    for c in questions['contrat_electricite']['choix']]
+
+        bt = valeurs(Lead(nom='P', type_installation='commercial',
+                          tension_raccordement='bt'))
+        self.assertNotIn('mt_general', bt)
+        self.assertEqual(bt, ['bt_domestique', 'bt_patente',
+                              'bt_force_motrice', 'ne_sait_pas'])
+        inconnue = valeurs(Lead(nom='P', type_installation='commercial'))
+        self.assertIn('mt_general', inconnue)
+
+    def test_phase_posee_a_tout_pro_deux_choix(self):
+        """CSV4 — la phase (mono/tri) se pose à tout pro, MT et industriel
+        compris, avec deux choix ; en MT un seul (triphasé, un clic)."""
+        def phase(lead):
+            return {q['champ']: q for q in panneau.questions_a_poser(lead)}[
+                'raccordement']
+
+        for segment in ('commercial', 'industriel'):
+            question = phase(Lead(nom='P', type_installation=segment,
+                                  tension_raccordement='bt'))
+            self.assertEqual([c['valeur'] for c in question['choix']],
+                             ['monophase', 'triphase'], segment)
+            self.assertIn('monophasé ou triphasé', question['question'])
+            mt = phase(Lead(nom='P', type_installation=segment,
+                            tension_raccordement='mt'))
+            self.assertEqual([c['valeur'] for c in mt['choix']],
+                             ['triphase'], segment)
+            self.assertIn('Site en moyenne tension : alimentation triphasée',
+                          mt['question'])
+
+    def test_phase_inconnue_ou_aucune_est_reposee(self):
+        for valeur in ('inconnu', 'aucun'):
+            lead = Lead(nom='P', type_installation='commercial',
+                        raccordement=valeur)
+            self.assertIn('raccordement', _champs(lead), valeur)
+            self.assertNotIn('raccordement', panneau.prefill_du_panneau(lead))
+        lead = Lead(nom='P', type_installation='industriel',
+                    raccordement='triphase')
+        self.assertNotIn('raccordement', _champs(lead))
+        self.assertEqual(panneau.prefill_du_panneau(lead)['raccordement'],
+                         'triphase')
 
     def test_decideur_seulement_les_choix_pro(self):
         questions = {q['champ']: q for q in panneau.questions_a_poser(
@@ -293,7 +423,8 @@ class CIQ410PanneauPro(SimpleTestCase):
                     self.assertNotIn(fragment, cle.lower(), cle)
 
     def test_les_exemples_pro_du_contrat_egalent_la_sortie_reelle(self):
-        for nom in ('exemple_commercial', 'exemple_industriel'):
+        for nom in ('exemple_commercial', 'exemple_industriel',
+                    'exemple_commercial_force_motrice'):
             exemple = CONTRAT[nom]
             lead = Lead(pk=exemple['lead_id'], nom='P',
                         type_installation=exemple['segment'],

@@ -407,7 +407,7 @@
         "inconnu"
       ],
       "reutilisee": true,
-      "segment": "commercial",
+      "segment": "commun",
       "etape_appel": 2,
       "question": "« Votre compteur est-il monophasé ou triphasé ? »"
     },

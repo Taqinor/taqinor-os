@@ -126,7 +126,9 @@ export const ORDRE_APPEL_1 = Object.freeze([
   Object.freeze({ etape: 'facture', champs: Object.freeze(['facture_hiver']) }),
   Object.freeze({ etape: 'ete', champs: Object.freeze(['ete_differente', 'facture_ete']) }),
   Object.freeze({ etape: 'occupation', champs: Object.freeze(['occupation_jour']) }),
-  Object.freeze({ etape: 'toit_type_bien', champs: Object.freeze(['type_bien']) }),
+  // CSV5 — la ville du site, seulement quand la fiche n'a ni ville ni GPS (le
+  // serveur ne la sert alors pas) : en COMPLÉMENT de cette étape, jamais en tête.
+  Object.freeze({ etape: 'toit_type_bien', champs: Object.freeze(['type_bien', 'ville']) }),
   Object.freeze({ etape: 'objectif', champs: Object.freeze(['objectif_projet']) }),
 ])
 
@@ -204,7 +206,7 @@ export const ORDRE_AGRICOLE = Object.freeze([
   }),
   Object.freeze({
     etape: 'eau',
-    champs: Object.freeze(['source_eau', 'niveau_statique_m', 'debit_forage_m3h']),
+    champs: Object.freeze(['source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'ville']),
   }),
   Object.freeze({
     etape: 'besoin',
@@ -223,9 +225,12 @@ export const ORDRE_AGRICOLE = Object.freeze([
 ])
 
 // CIQ420 (D-CIQ-7) — l'appel pro en CINQ étapes, dans l'ordre du serveur
-// (CIQ410, `ETAPES_PRO`) : (1) la facture, en MAD ou en kWh — le serveur ne
-// sert qu'UNE des deux colonnes, selon le segment et la tension ; (2) le
-// raccordement : tension, puissance souscrite, phase ; (3) l'activité et le
+// (CIQ410, `ETAPES_PRO`) : (1) la facture, en MAD ET en kWh (CSV2) — le serveur
+// sert les DEUX colonnes, la principale d'abord selon le segment et la tension
+// (`serveurOrdonne`), l'autre en saisie visible à côté (`complementsVisibles`) ;
+// l'étape ne se ferme que quand la consommation COMPTE pour le moteur ; (2) le
+// raccordement : tension, contrat (lu sur la facture), option bi-horaire (force
+// motrice seulement), puissance souscrite, phase ; (3) l'activité et le
 // rythme : catégorie et ses questions, ou secteur et équipes, jours (sept
 // boutons), heures, mois de fermeture (douze boutons, `choix_multiple`) ;
 // (4) la surface : type, toiture, m² ; (5) qui décide. `champs` liste TOUTES
@@ -238,24 +243,27 @@ export const ORDRE_PRO = Object.freeze([
   Object.freeze({
     etape: 'facture',
     champs: Object.freeze(['conso_mensuelle_kwh', 'facture_hiver']),
+    serveurOrdonne: true,
+    complementsVisibles: true,
   }),
   Object.freeze({
     etape: 'raccordement',
     champs: Object.freeze([
-      'tension_raccordement', 'compteur_puissance_kva', 'raccordement',
+      'tension_raccordement', 'contrat_electricite', 'option_tarifaire_bt',
+      'compteur_puissance_kva', 'raccordement',
     ]),
   }),
   Object.freeze({
     etape: 'activite_rythme',
     champs: Object.freeze([
-      'categorie_commerciale', 'reponses_categorie', 'secteur_industriel',
+      'categorie_commerciale', 'secteur_industriel',
       'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin',
-      'fermeture_mois',
+      'fermeture_mois', 'reponses_categorie',
     ]),
   }),
   Object.freeze({
     etape: 'surface',
-    champs: Object.freeze(['type_surface', 'type_toiture', 'surface_toiture_m2']),
+    champs: Object.freeze(['type_surface', 'type_toiture', 'surface_toiture_m2', 'ville']),
   }),
   // CIQ427 — « qui décide » porte, en COMPLÉMENT (même étape, même question,
   // aucune sixième étape), le mobile direct d'un décideur joint par un fixe
@@ -298,22 +306,34 @@ export function questionsDeLAppel(panneau) {
   const dejaRenseigne = panneau?.prefill || {}
   const aPoser = new Map()
   for (const entree of panneau?.champs_a_poser || []) {
-    if (entree?.champ && !(entree.champ in dejaRenseigne)) {
+    // CSV1 — une question à `sous_questions` (réponses propres à l'activité)
+    // reste posée tant qu'une clé est vide, même si l'objet est déjà en partie
+    // sur la fiche (`prefill`) : c'est le serveur qui dit quelles clés restent.
+    if (entree?.champ && (!(entree.champ in dejaRenseigne)
+        || entree.sous_questions?.length > 0)) {
       aPoser.set(entree.champ, entree)
     }
   }
   const etapes = etapesDuPanneau(panneau)
   const rappel = estToucheDeRappel(panneau?.touche)
+  // CSV2 — l'ordre servi (la colonne que le client connaît d'abord).
+  const ordreServi = new Map((panneau?.champs_a_poser || []).map((e, i) => [e?.champ, i]))
   const out = []
-  for (const { etape, champs, selon, rappelSeulement } of etapes) {
+  for (const { etape, champs, selon, rappelSeulement, serveurOrdonne, complementsVisibles } of etapes) {
     // CIQ427 — une étape du RAPPEL ne se pose jamais à l'appel 1.
     if (rappelSeulement && !rappel) continue
     // AGR418 — une étape conditionnelle ne pose que ses colonnes du cas.
     const liste = typeof selon === 'function' ? selon(dejaRenseigne) : champs
     const entrees = liste.map((champ) => aPoser.get(champ)).filter(Boolean)
     if (!entrees.length) continue
+    if (serveurOrdonne) entrees.sort((a, b) => ordreServi.get(a.champ) - ordreServi.get(b.champ))
     const [principale, ...complements] = entrees
-    out.push({ ...principale, etape, complements })
+    out.push({
+      ...principale,
+      etape,
+      complements,
+      ...(complementsVisibles && complements.length ? { complementsVisibles: true } : {}),
+    })
   }
   return out
 }
@@ -732,6 +752,14 @@ export const A_NOTER_MEILLEUR_MOMENT = 'À noter dans la note d’appel : le '
 export const A_NOTER_PROCESS = 'À noter dans la note d’appel : les process '
   + 'critiques, qui ne doivent jamais s’arrêter.'
 
+// CSV2 — consigne d'écran sous les heures de début et de fin (0 à 24) : un site
+// ouvert jour et nuit se note 0 et 24. Elle porte des chiffres : hors du jeu de
+// consignes re-dérivées de `messages_meryem.md` (qui n'en tolère aucun).
+export const CONSIGNE_CONTRAT_INCONNU = "Le client ne sait pas : proposez-lui d'envoyer "
+  + 'une photo de sa facture par WhatsApp.'
+
+export const CONSIGNE_OUVERT_24H = 'Ouvert 24 h/24 : notez 0 et 24.'
+
 // Décision fondateur du 24/09/2026 : la question CAD168 « Votre montant
 // inclut l'abonnement et l'entretien du compteur ? » est RETIRÉE. Toute
 // facture porte ces deux lignes fixes, toujours — aucun client ne les reçoit
@@ -756,16 +784,18 @@ export const A_NOTER_PAR_FAMILLE = Object.freeze({
 // moyenne tension sourcé) — AUCUN chiffre d'économie ne s'annonce sur ces
 // segments. Et l'économie de carburant ne se calcule que sur ce que le client
 // DÉCLARE (CAD173, Q17) : aucun prix de gasoil de référence n'existe.
-export const AUCUNE_ESTIMATION_SEGMENT = "Aucun chiffre d'économie au "
-  + 'téléphone pour ce segment : le calcul ne sait pas encore le traiter.'
+// CSV6 — pro et agricole ont leur moteur serveur et leur devis : la consigne ne dit
+// plus « le calcul ne sait pas encore », elle renvoie au devis.
+export const SANS_CHIFFRE_AU_TELEPHONE = "Aucun chiffre d'économie au téléphone : "
+  + 'le devis le donne.'
 export const CARBURANT_DECLARE_SEUL = "L'économie de carburant se calcule "
   + 'uniquement sur ce que le client déclare (litres ou dirhams par mois) — '
   + 'jamais sur un prix de gasoil supposé.'
 
 export const GARDE_FOUS_PAR_FAMILLE = Object.freeze({
   residentiel: Object.freeze([]),
-  agricole: Object.freeze([AUCUNE_ESTIMATION_SEGMENT, CARBURANT_DECLARE_SEUL]),
-  pro: Object.freeze([AUCUNE_ESTIMATION_SEGMENT]),
+  agricole: Object.freeze([SANS_CHIFFRE_AU_TELEPHONE, CARBURANT_DECLARE_SEUL]),
+  pro: Object.freeze([SANS_CHIFFRE_AU_TELEPHONE]),
 })
 
 /** Ce que le panneau affiche pour CE lead.

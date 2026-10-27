@@ -468,7 +468,7 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
     expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
     expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_FORCE_MOTRICE)
     const gardeFous = screen.getAllByTestId('garde-fou-segment').map((n) => n.textContent)
-    expect(gardeFous).toEqual([guidance.AUCUNE_ESTIMATION_SEGMENT, guidance.CARBURANT_DECLARE_SEUL])
+    expect(gardeFous).toEqual([guidance.SANS_CHIFFRE_AU_TELEPHONE, guidance.CARBURANT_DECLARE_SEUL])
     expect(screen.getByTestId('panneau-script-appel').textContent).not.toMatch(ESTIMATION)
   })
 
@@ -479,13 +479,15 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
     const liste = await screen.findByTestId('questions-appel')
     const posees = [...liste.querySelectorAll('[data-testid^="question-appel-"]')]
       .map((n) => n.getAttribute('data-testid').replace('question-appel-', ''))
+    // CSV2 — l'étape facture sert les DEUX saisies (kWh d'abord, dirhams à côté).
     expect(posees).toEqual([
-      'conso_mensuelle_kwh', 'compteur_puissance_kva', 'secteur_industriel', 'type_surface', 'decideur',
+      'conso_mensuelle_kwh', 'facture_hiver', 'compteur_puissance_kva', 'secteur_industriel',
+      'type_surface', 'decideur',
     ])
     expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
     expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_PROCESS)
     expect(screen.getAllByTestId('garde-fou-segment').map((n) => n.textContent))
-      .toEqual([guidance.AUCUNE_ESTIMATION_SEGMENT])
+      .toEqual([guidance.SANS_CHIFFRE_AU_TELEPHONE])
     expect(screen.getByTestId('panneau-script-appel').textContent).not.toMatch(ESTIMATION)
   })
 
@@ -706,10 +708,121 @@ describe('CIQ420 — script d’appel pro', () => {
   it('une étape déjà répondue est sautée (commercial : tension et catégorie pré-remplies)', async () => {
     armer({ panneau: COMMERCIAL })
     render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    // CSV1 — les jours ouvrent l'étape d'activité : les réponses propres à
+    // l'activité (clés vides) ne la bloquent plus.
     expect(await posees()).toEqual([
-      'facture_hiver', 'compteur_puissance_kva', 'reponses_categorie', 'type_surface', 'decideur',
+      'facture_hiver', 'conso_mensuelle_kwh', 'contrat_electricite', 'jours_ouverture',
+      'type_surface', 'decideur',
     ])
+    // CSV3 — « ne sait pas » : on propose la photo de la facture par WhatsApp.
+    expect(screen.getByTestId('consigne-contrat-inconnu'))
+      .toHaveTextContent(guidance.CONSIGNE_CONTRAT_INCONNU)
     expect(screen.queryByTestId('question-appel-tension_raccordement')).not.toBeInTheDocument()
+  })
+
+  // CSV1 — un panneau d'hôtel dont tout le reste de l'étape est répondu : la
+  // question « réponses propres à l'activité » devient la principale.
+  const sousQuestions = (cles) => cles.map((c) => ({
+    cle: c, libelle: COMMERCIAL_LIBELLES[c],
+  }))
+  const COMMERCIAL_LIBELLES = {
+    chambres: 'Nombre de chambres',
+    occupation_pct: '« Quel est votre taux d’occupation moyen sur l’année, à peu près ? »',
+    piscine: 'Piscine chauffée',
+  }
+  const hotel = (reponses, cles) => {
+    const objet = COMMERCIAL.champs_a_poser.find((q) => q.champ === 'reponses_categorie')
+    return {
+      ...COMMERCIAL,
+      champs_a_poser: [{ ...objet, sous_questions: sousQuestions(cles) }],
+      prefill: {
+        ...COMMERCIAL.prefill,
+        jours_ouverture: [1, 2, 3, 4, 5], heure_debut: 8, heure_fin: 18, fermeture_mois: [8],
+        ...(reponses ? { reponses_categorie: reponses } : {}),
+      },
+    }
+  }
+
+  it('CSV1 — réponses d’activité : une entrée par clé, objet fusionné (nombre numérique, booléen JSON)', async () => {
+    armer({ panneau: hotel(null, ['chambres', 'occupation_pct', 'piscine']) })
+    // Après la première écriture, le serveur rend la clé répondue dans `prefill`.
+    crmApi.getPanneauAppel
+      .mockResolvedValueOnce({ data: hotel(null, ['chambres', 'occupation_pct', 'piscine']) })
+      .mockResolvedValue({ data: hotel({ occupation_pct: 60 }, ['chambres', 'piscine']) })
+    crmApi.updateLead.mockResolvedValue({ data: { id: COMMERCIAL.lead_id, score: 40 } })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    // Pas de champ texte unique « objet » : une entrée par clé.
+    for (const cle of ['chambres', 'occupation_pct', 'piscine']) {
+      expect(await screen.findByTestId(`sous-question-${cle}`)).toBeInTheDocument()
+    }
+    const occupation = screen.getByTestId('sous-question-occupation_pct')
+    fireEvent.change(within(occupation).getByRole('textbox'), { target: { value: '60' } })
+    fireEvent.click(within(occupation).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(COMMERCIAL.lead_id, { reponses_categorie: { occupation_pct: 60 } }))
+    // Rouvert : la clé répondue est dans `prefill`, plus dans les sous-questions.
+    await waitFor(() => expect(screen.queryByTestId('sous-question-occupation_pct')).not.toBeInTheDocument())
+    fireEvent.click(within(screen.getByTestId('sous-question-piscine'))
+      .getByRole('button', { name: 'Oui' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenLastCalledWith(
+      COMMERCIAL.lead_id, { reponses_categorie: { occupation_pct: 60, piscine: true } }))
+  })
+
+  it('CSV1 — une clé « choix » (restaurant : horaires) s’écrit en chaîne, pas en booléen', async () => {
+    const panneau = hotel(null, ['horaires'])
+    panneau.prefill.categorie_commerciale = 'restaurant'
+    panneau.champs_a_poser[0].sous_questions = [{ cle: 'horaires', libelle: 'Horaires' }]
+    armer({ panneau })
+    crmApi.updateLead.mockResolvedValue({ data: { id: COMMERCIAL.lead_id } })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    const horaires = await screen.findByTestId('sous-question-horaires')
+    fireEvent.click(within(horaires).getByRole('button', { name: 'Soir' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      COMMERCIAL.lead_id, { reponses_categorie: { horaires: 'soir' } }))
+  })
+
+  it('CSV6 — lead pro ou agricole : ni mention D7 ni bloc « ce que le chiffre ne compte pas », la consigne renvoie au devis', async () => {
+    for (const panneau of [INDUSTRIEL, COMMERCIAL, exempleContrat('crm', 'panneau_appel', 'exemple_agricole')]) {
+      armer({ panneau })
+      render(<PanneauScriptAppel mode="fiche" leadId={panneau.lead_id} />)
+      await screen.findByTestId('questions-appel')
+      expect(screen.queryByTestId('mention-d7')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('non-compte')).not.toBeInTheDocument()
+      expect(screen.getAllByTestId('garde-fou-segment')[0])
+        .toHaveTextContent(guidance.SANS_CHIFFRE_AU_TELEPHONE)
+      expect(screen.getByTestId('panneau-script-appel').textContent).not.toContain('ne sait pas encore')
+      cleanup()
+    }
+  })
+
+  it('CSV2 — la facture : une seule question, DEUX saisies étiquetées de leur unité', async () => {
+    armer({ panneau: COMMERCIAL })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    const groupe = await screen.findByTestId('groupe-appel-visible')
+    // Dirhams d'abord pour un commerce BT, kWh à côté — jamais « Ensuite… ».
+    const saisies = within(groupe).getAllByRole('textbox')
+    expect(saisies).toHaveLength(2)
+    expect(within(groupe).getByText(fieldLabels.facture_hiver.label)).toBeInTheDocument()
+    expect(within(groupe).getByText(fieldLabels.conso_mensuelle_kwh.label)).toBeInTheDocument()
+    expect(groupe.textContent).not.toContain('Ensuite, selon la réponse')
+    crmApi.updateLead.mockResolvedValue({ data: { id: COMMERCIAL.lead_id } })
+    fireEvent.change(saisies[1], { target: { value: '6 000' } })
+    fireEvent.click(within(screen.getByTestId('question-appel-conso_mensuelle_kwh'))
+      .getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(COMMERCIAL.lead_id, { conso_mensuelle_kwh: '6000' }))
+  })
+
+  it('CSV2 — consigne sous les heures : ouvert jour et nuit se note 0 et 24', async () => {
+    const heures = {
+      ...COMMERCIAL,
+      champs_a_poser: COMMERCIAL.champs_a_poser.filter((q) => q.champ === 'heure_debut'),
+      prefill: { ...COMMERCIAL.prefill, jours_ouverture: [1, 2, 3, 4, 5] },
+    }
+    armer({ panneau: heures })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    expect(await screen.findByTestId('consigne-24h-heure_debut'))
+      .toHaveTextContent(guidance.CONSIGNE_OUVERT_24H)
   })
 
   it('« avec le conjoint / la famille » est absent pour un pro', async () => {
