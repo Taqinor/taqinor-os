@@ -122,6 +122,9 @@ def _batterie(produit, specs):
         'max_decharge_kw': _num(specs.get('max_decharge_kw')),
         'rendement': rendement / 100.0 if rendement and 0 < rendement <= 100
         else BATTERY_ROUNDTRIP,
+        # CMP6 — année de remplacement du flux 25 ans (fiche, sinon défaut étiqueté).
+        'garantie_mois': getattr(produit, 'garantie_mois', None),
+        'cycles_publies': _num(specs.get('cycles_publies')),
         'element': _element(produit, 'batterie', {}),
     }
 
@@ -171,23 +174,120 @@ def _nb_panneaux(composition):
                  if ligne.get('role') == 'panneau'), None)
 
 
-def _bloc(evaluation, valoriser=None):
+def _ligne_flux(designation, ht, ttc, *, onduleur=False, role_ci=''):
+    """Une ligne à la forme ``economie_ci.onduleur_et_om`` (totaux CLIENT)."""
+    return {'designation': designation, 'ht': ht, 'ttc': ttc,
+            'optionnelle': False, 'onduleur': onduleur, 'role_ci': role_ci}
+
+
+def _investissement_composition(evaluation, taux_tva_pct):
+    """CMP6 — ``{ht, ttc, lignes}`` de l'option « avec » composée : le HT est
+    ``evaluation['cout']`` (le coût de vente servi) ; le TTC, la somme des
+    lignes à la TVA de LEUR article (``tva_pct``), à défaut au taux standard
+    de la société. ``None`` quand la composition est incomplète (prix à
+    renseigner / à chiffrer après la visite : ADEV81 — jamais un retour sur un
+    total qui n'est pas celui de l'installation) ou sans coût. Jamais
+    ``prix_achat``."""
+    from apps.ventes.moteur_ci.composition import prix_palier_ht
+    composition, cout = evaluation.get('composition'), evaluation.get('cout')
+    if not composition or composition.get('incomplet') or not cout or cout <= 0:
+        return None
+    taux_defaut = _num(taux_tva_pct)
+    lignes, ttc_total, ttc_connu = [], 0.0, True
+
+    def ttc_de(ht, taux):
+        nonlocal ttc_total, ttc_connu
+        taux = _num(taux)
+        taux = taux_defaut if taux is None else taux
+        if taux is None:
+            ttc_connu = False
+            return None
+        ttc_total += ht * (1 + taux / 100.0)
+        return round(ht * (1 + taux / 100.0), 2)
+
+    onduleurs = evaluation.get('onduleurs') or {}
+    if _num(onduleurs.get('prix_vente_total_ht')):
+        ht = float(onduleurs['prix_vente_total_ht'])
+        lignes.append(_ligne_flux('Onduleur(s) hybride(s)', round(ht, 2),
+                                  ttc_de(ht, None), onduleur=True))
+    for ligne in composition.get('lignes') or []:
+        if ligne.get('role') == 'onduleur_string_tri' or ligne.get('a_chiffrer_visite') \
+                or not ligne.get('prix_connu'):
+            continue
+        quantite = _num(ligne.get('quantite'))
+        unitaire = prix_palier_ht(ligne, taux_tva_pct)
+        unitaire = _num(ligne.get('prix_unitaire_ht')) if unitaire is None else float(unitaire)
+        if not quantite or unitaire is None:
+            continue
+        ht = quantite * unitaire
+        nom = str(ligne.get('designation') or '')
+        if ligne.get('role') == 'batterie_ci' and 'batterie' not in nom.lower():
+            nom = 'Batterie ' + nom
+        lignes.append(_ligne_flux(
+            nom, round(ht, 2), ttc_de(ht, ligne.get('tva_pct')),
+            role_ci='om_ci' if ligne.get('role') == 'om_ci' else ''))
+    return {'ht': float(cout), 'ttc': round(ttc_total, 2) if ttc_connu else None,
+            'lignes': lignes}
+
+
+def _flux_option_avec(evaluation, economie, investissement, ctx):
+    """CMP6 — le flux 25 ans de l'option « avec » par ``flux_option_avec``
+    (CEC3) : MÊMES conventions que l'option « sans »
+    (``economie_ci.assembler_economie_ci``) — base HT / TTC / les deux selon
+    la TVA récupérable déclarée (D-CIQ-3 ; non fournie ⇒ « inconnu » ⇒ les
+    deux bases, la principale étant le HT), économie an 1 = le bloc complet du
+    valoriseur, production du bilan, kWh évités par poste. ``None`` dès qu'une
+    entrée manque (économie omise, investissement non chiffré) — jamais le
+    quotient coût ÷ économie."""
+    from apps.ventes import economie_ci as eco
+    from apps.ventes.economie_ci_options import (
+        annee_remplacement_batterie, flux_option_avec,
+    )
+    annee1 = economie.get('economie_annee1') if isinstance(economie, dict) else None
+    if not investissement or not isinstance(annee1, dict) \
+            or economie.get('statut') == eco.STATUT_OMIS \
+            or not _num(annee1.get('total_mad')):
+        return None
+    base = eco.base_economique(
+        ctx.get('tva_recuperable'),
+        investissement={'ht': investissement['ht'], 'ttc': investissement['ttc']},
+        economie_annee1=annee1)
+    fiche = ctx.get('batterie') or {}
+    kwh = sum(_num(p.get('kwh_evites')) or 0.0 for p in annee1.get('par_poste') or [])
+    return flux_option_avec(
+        base, lignes=investissement['lignes'],
+        batterie=annee_remplacement_batterie(fiche.get('garantie_mois'),
+                                             fiche.get('cycles_publies')),
+        production_annee1_kwh=_num((evaluation.get('bilan') or {}).get('production_kwh')),
+        kwh_evites_an=kwh, **(ctx.get('flux') or {}))
+
+
+def _bloc(evaluation, valoriser=None, ctx=None, investissement=None):
     """La forme servie ``etude['option_avec']`` (jamais ``prix_achat``) : le
     bilan SANS sa ventilation horaire (le PDF et l'écran lisent les totaux),
     l'``economie_ci`` complète quand le valoriseur la sert (document à option
-    « avec » seule), le coût de vente HT et le retour simple quand la
-    composition est connue (étude ; le rafraîchisseur lit les totaux des
-    lignes)."""
+    « avec » seule), le coût de vente HT quand la composition est connue
+    (étude ; le rafraîchisseur lit les totaux des lignes).
+
+    CMP6 — ``retour_simple_ans`` = le retour lu sur le flux 25 ans
+    (``economie_ci_options.flux_option_avec`` : dégradation, remplacement des
+    onduleurs et de la batterie, entretien), le MÊME moteur que l'option
+    « sans » ; ``economie_flux`` porte tout le flux. ``None`` quand une entrée
+    manque. ``ctx`` : ``{tva_recuperable, taux_tva_pct, batterie, flux}``.
+    ``investissement`` : ``{ht, ttc, lignes}`` imposé (option des lignes du
+    devis) ; sinon celui de la composition."""
     from .etude_ci import _forme_composition
-    from decimal import ROUND_HALF_UP, Decimal
 
     from core.money import quantize_mad
+    ctx = ctx or {}
     economie, cout = evaluation.get('economie'), evaluation.get('cout')
     complet = getattr(valoriser, 'complet', None)
-    retour = None
-    if cout and economie:
-        retour = float((Decimal(str(cout)) / Decimal(str(economie))).quantize(
-            Decimal('0.1'), rounding=ROUND_HALF_UP))
+    economie_ci = complet(evaluation['bilan']) if complet else None
+    flux = None
+    if complet:
+        if investissement is None:
+            investissement = _investissement_composition(evaluation, ctx.get('taux_tva_pct'))
+        flux = _flux_option_avec(evaluation, economie_ci, investissement, ctx)
     return {
         'kwc': evaluation['kwc'], 'nb_panneaux': _nb_panneaux(evaluation.get('composition')),
         'puissance_ac_kw': evaluation.get('puissance_ac'),
@@ -199,10 +299,11 @@ def _bloc(evaluation, valoriser=None):
             'ratio_dc_ac': (evaluation.get('onduleurs') or {}).get('ratio_dc_ac')},
         'composition': _forme_composition(evaluation.get('composition')),
         'bilan': {k: v for k, v in (evaluation.get('bilan') or {}).items() if k != 'horaire'},
-        'economie_ci': complet(evaluation['bilan']) if complet else None,
+        'economie_ci': economie_ci,
         'economie_annuelle_mad': None if economie is None else round(economie, 2),
         'cout_vente_ht': None if cout is None else float(quantize_mad(str(cout))),
-        'retour_simple_ans': retour,
+        'retour_simple_ans': ((flux or {}).get('indicateurs') or {}).get('retour_dixieme_ans'),
+        'economie_flux': flux,
     }
 
 
@@ -267,6 +368,43 @@ def lignes_des_options(etude, lead=None):
     return _fusion_variantee(sans, avec), SCENARIO_LES_DEUX
 
 
+def _investissement_des_lignes(lignes, hybrides, batteries):
+    """CMP6 — ``{ht, ttc, lignes}`` de l'option « avec » telle que les LIGNES
+    du devis la portent : par ligne, quantité × prix unitaire × (1 − remise %)
+    à la TVA de la ligne (``taux_tva``) — hors lignes « sans », optionnelles,
+    sections et notes ; la remise GLOBALE du devis n'y est pas déduite (le
+    retour est lu sur les prix de ligne). ``None`` dès qu'une ligne n'a ni
+    quantité ni prix ; une ligne sans taux de TVA laisse le TTC à ``None`` (le
+    HT seul suffit à la base HT)."""
+    sortie, ht_total, ttc_total, ttc_connu = [], 0.0, 0.0, True
+    for ligne in lignes or []:
+        if getattr(ligne, 'type_ligne', 'produit') != 'produit' \
+                or getattr(ligne, 'optionnelle', False) \
+                or (getattr(ligne, 'variante', '') or '') == 'sans':
+            continue
+        quantite, prix = _num(getattr(ligne, 'quantite', None)), _num(
+            getattr(ligne, 'prix_unitaire', None))
+        if not quantite or prix is None:
+            return None
+        ht = quantite * prix * (1 - (_num(getattr(ligne, 'remise', 0)) or 0.0) / 100.0)
+        taux = _num(getattr(ligne, 'taux_tva', None))
+        ttc = None if taux is None else ht * (1 + taux / 100.0)
+        ttc_connu = ttc_connu and ttc is not None
+        ht_total += ht
+        ttc_total += ttc or 0.0
+        nom = str(getattr(ligne, 'designation', '') or '')
+        pid = getattr(ligne, 'produit_id', None)
+        if pid in batteries and 'batterie' not in nom.lower():
+            nom = 'Batterie ' + nom
+        sortie.append(_ligne_flux(
+            nom, round(ht, 2), None if ttc is None else round(ttc, 2),
+            onduleur=pid in hybrides))
+    if not sortie or ht_total <= 0:
+        return None
+    return {'ht': round(ht_total, 2), 'ttc': round(ttc_total, 2) if ttc_connu else None,
+            'lignes': sortie}
+
+
 def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None):
     """CIQ119 — l'option « avec » telle que les LIGNES du devis la portent :
     ``{kwc, onduleurs, banque, hybrides, nb_panneaux, empreinte}`` — les
@@ -294,9 +432,20 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None):
     banque = dict(batteries[max(sorted(q_b), key=q_b.get)], quantite=total,
                   kwh_utile=capacite / total)
     return {'kwc': kwc, 'nb_panneaux': nb_panneaux, 'banque': banque,
+            'investissement': _investissement_des_lignes(lignes, set(hybrides), set(batteries)),
             'onduleurs': {'combinaison': [dict(hybrides[p], quantite=q) for p, q in sorted(q_h.items())]},
             'hybrides': list(hybrides.values()),
             'empreinte': [kwc, sorted(q_h.items()), sorted(q_b.items())]}
+
+
+def _ctx_flux(contexte, batterie):
+    """CMP6 — le contexte du flux 25 ans de l'option « avec » : TVA
+    récupérable résolue (D-CIQ-3), taux standard, fiche de la batterie
+    (garantie / cycles) et réglages de ``flux_ci`` (``degradation``,
+    ``entretien``, ``taux_actualisation_client``)."""
+    return {'tva_recuperable': contexte.get('tva_recuperable'),
+            'taux_tva_pct': contexte.get('taux_tva_pct'),
+            'flux': contexte.get('flux_options') or {}, 'batterie': batterie}
 
 
 def _option_imposee(imposee, contexte):
@@ -310,7 +459,8 @@ def _option_imposee(imposee, contexte):
         tension=contexte['tension'], revente_choisie=contexte['revente_choisie'],
         valoriser=contexte['valoriser'], simuler=simuler_batterie_jour,
         hybrides=imposee['hybrides'], taux_tva_pct=contexte.get('taux_tva_pct'))
-    bloc = _bloc(evaluation, contexte['valoriser'])
+    bloc = _bloc(evaluation, contexte['valoriser'], _ctx_flux(contexte, imposee['banque']),
+                 investissement=imposee.get('investissement'))
     bloc['nb_panneaux'] = imposee.get('nb_panneaux')
     return bloc
 
@@ -326,8 +476,11 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     (refus nommé) ; « les deux » non composable ⇒ alerte interne, l'option
     « sans » reste seule."""
     vide = {'bloc': None, 'prix_a_renseigner': [], 'alertes': [], 'hypotheses': []}
+    # CMP6 — entrées du flux 25 ans, hors noyau du dimensionnement.
+    flux = {cle: contexte.pop(cle, None) for cle in ('tva_recuperable', 'flux_options')}
+    flux['taux_tva_pct'] = contexte.get('taux_tva_pct')
     if imposee is not None:
-        return dict(vide, bloc=_option_imposee(imposee, contexte))
+        return dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux)))
     choix = choix_batterie(choix, lead)
     if evaluation is None or choix == 'sans':
         return vide
@@ -359,5 +512,7 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
             'OPTION_BATTERIE_NON_COMPOSEE', 'Option « avec batterie » non composée : %s.'
             % resultat['motif'], niveau='bloquant' if choix == 'avec' else 'alerte'))
         return sortie
-    sortie['bloc'] = _bloc(resultat['evaluation'], contexte.get('valoriser'))
+    evalue = resultat['evaluation']
+    fiche = next((b for b in bat['batteries'] if b['produit'] == evalue['batterie'].get('produit')), None)
+    sortie['bloc'] = _bloc(evalue, contexte.get('valoriser'), _ctx_flux(flux, fiche))
     return sortie
