@@ -416,7 +416,7 @@ class InterventionSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         prep = getattr(obj, 'preparation', None)
         return bool(prep and prep.tout_charge)
 
-    def _shotlist(self, company_id):
+    def _shotlist(self, company):
         """AUD324 — shot-list MÉMOÏSÉE pour toute la passe de sérialisation.
 
         `active_shotlist(company)` était ré-exécutée à l'identique pour CHAQUE
@@ -427,19 +427,17 @@ class InterventionSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         cache = self.context.get('_shotlist_cache')
         if cache is None:
             cache = self.context['_shotlist_cache'] = {}
-        cid = company_id
+        cid = getattr(company, 'id', None)
         if cid not in cache:
             from .field_services import active_shotlist
-            # APRF40 — filtre par id : ne charge pas la FK `company` (1 requête
-            # `authentication_company` par intervention auparavant).
-            cache[cid] = active_shotlist(cid)
+            cache[cid] = active_shotlist(company)
         return cache[cid]
 
     @extend_schema_field(serializers.IntegerField())
     def get_photos_obligatoires_manquantes(self, obj):
         from .field_services import missing_required_shots
         return len(missing_required_shots(
-            obj, slots=self._shotlist(obj.company_id)))
+            obj, slots=self._shotlist(obj.company)))
 
     @extend_schema_field(serializers.DictField())
     def get_crew_time(self, obj):
@@ -2450,21 +2448,15 @@ class OrdreAssemblageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         from .services import cout_prevu_assemblage
         return str(cout_prevu_assemblage(obj))
 
-    def _totaux_temps(self, obj):
-        # APRF39 — UN calcul par ordre et par sérialiseur (prévu puis réel).
-        cache = self.__dict__.setdefault('_totaux_temps_cache', {})
-        if obj.pk not in cache:
-            from .services import totaux_temps_ordre
-            cache[obj.pk] = totaux_temps_ordre(obj)
-        return cache[obj.pk]
-
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_temps_prevu_min(self, obj):
-        return self._totaux_temps(obj)['prevu']
+        from .services import totaux_temps_ordre
+        return totaux_temps_ordre(obj)['prevu']
 
     @extend_schema_field(serializers.IntegerField())
     def get_temps_reel_min(self, obj):
-        return self._totaux_temps(obj)['reel']
+        from .services import totaux_temps_ordre
+        return totaux_temps_ordre(obj)['reel']
 
 
 class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):

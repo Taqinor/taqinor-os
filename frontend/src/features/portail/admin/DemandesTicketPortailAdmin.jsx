@@ -36,7 +36,7 @@ export default function DemandesTicketPortailAdmin() {
 
   // ADOC32 — toutes les pages de l'enveloppe DRF, jamais la seule page 1.
   const fetchDemandesTicket = () => chargerToutesLesPages(
-    (page, pageSize) => portailApi.admin.demandesTicket.liste({ page, page_size: pageSize }),
+    (page) => portailApi.admin.demandesTicket.liste({ page }),
     { setRows, setLoadError, setLoading },
   )
 

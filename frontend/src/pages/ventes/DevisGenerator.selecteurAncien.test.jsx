@@ -42,7 +42,7 @@ const avecServeurPagine = ({ crmApi }) => {
 describe('ALEA40 — sélecteurs client et lead au-delà des 50 plus récents', () => {
   it('le lead le plus ancien (hors page 1) est proposé dans le sélecteur', async () => {
     const vue = await monter('/ventes/devis/nouveau', { avant: avecServeurPagine })
-    await waitFor(() => expect(vue.crmApi.getLeads).toHaveBeenCalledWith({ page: 2, page_size: 200 }))
+    await waitFor(() => expect(vue.crmApi.getLeads).toHaveBeenCalledWith({ page: 2 }))
     await attendreStable(vue.container, act)
     const natif = document.getElementById('gen-lead')?.parentElement?.querySelector('select')
     expect(natif, 'select natif du sélecteur de lead').toBeTruthy()
@@ -53,7 +53,7 @@ describe('ALEA40 — sélecteurs client et lead au-delà des 50 plus récents', 
 
   it('?client=<le plus ancien> est résolu (adresse affichée)', async () => {
     const vue = await monter('/ventes/devis/nouveau?client=1', { avant: avecServeurPagine })
-    await waitFor(() => expect(vue.crmApi.getClients).toHaveBeenCalledWith({ page: 2, page_size: 200 }))
+    await waitFor(() => expect(vue.crmApi.getClients).toHaveBeenCalledWith({ page: 2 }))
     await attendreStable(vue.container, act)
     expect(document.getElementById('gen-adresse')?.value).toBe('Adresse 1')
   }, 60000)

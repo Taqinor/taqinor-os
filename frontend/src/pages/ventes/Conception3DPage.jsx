@@ -32,7 +32,7 @@ export default function Conception3DPage() {
     let annule = false
     // Borne basse : la liste devis coûte cher par page côté serveur.
     fetchAllPages(
-      (page, { page_size: pageSize } = {}) => ventesApi.getDevis({ concevable: 1, page, page_size: pageSize }).then((r) => r.data),
+      (page) => ventesApi.getDevis({ concevable: 1, page }).then((r) => r.data),
       { concurrency: 3 },
     )
       .then((rows) => {

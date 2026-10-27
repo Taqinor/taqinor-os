@@ -257,24 +257,21 @@ gen-cond-acompte-financeur=
   "crmApi.getClients": [
     [
       {
-        "page": 1,
-        "page_size": 200
+        "page": 1
       }
     ]
   ],
   "crmApi.getLeads": [
     [
       {
-        "page": 1,
-        "page_size": 200
+        "page": 1
       }
     ]
   ],
   "stockApi.getProduits": [
     [
       {
-        "page": 1,
-        "page_size": 200
+        "page": 1
       }
     ]
   ],

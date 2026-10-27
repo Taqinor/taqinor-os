@@ -128,7 +128,7 @@ describe('ERR-QAH-PORTAIL-CLIENTS-TRONQUES-50 — tous les clients sont proposé
       params?.page === 2 ? page(2, [3]) : page(1, [1, 2]),
     ))
     renderPage(<ComptesPortailAdmin />)
-    await waitFor(() => expect(crmApi.getClients).toHaveBeenCalledWith({ page: 2, page_size: 200 }))
+    await waitFor(() => expect(crmApi.getClients).toHaveBeenCalledWith({ page: 2 }))
     const user = userEvent.setup()
     await user.click(screen.getByRole('combobox', { name: 'Client' }))
     expect(await screen.findByRole('option', { name: 'Client 3' })).toBeInTheDocument()
@@ -154,7 +154,7 @@ describe('ADOC32 — toutes les pages des comptes portail', () => {
     })
     renderPage(<ComptesPortailAdmin />)
     expect((await screen.findAllByText('1–25 sur 57')).length).toBeGreaterThan(0)
-    expect(portailApi.admin.comptes.liste).toHaveBeenCalledWith({ page: 2, page_size: 200 })
+    expect(portailApi.admin.comptes.liste).toHaveBeenCalledWith({ page: 2 })
     // Aller à la dernière page de l'écran : le plus ancien compte est là.
     fireEvent.click(screen.getAllByRole('button', { name: 'Page suivante' })[0])
     fireEvent.click(screen.getAllByRole('button', { name: 'Page suivante' })[0])

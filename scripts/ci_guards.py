@@ -58,13 +58,6 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # (nom affiche, commande shell, repertoire de travail relatif a la racine du depot)
 GARDES = {
     'stage-names': [
-        # APRF29 — tout appel fetchAllPages( transmet page_size à sa requête (ou exception datée).
-        ('Check fetchAllPages sans taille de page (page_size, APRF29)',
-         'python scripts/check_fetchallpages_taille_page.py',
-         '.'),
-        ('Test the fetchallpages-taille-page checker itself (APRF29)',
-         'python -m unittest scripts.tests.test_check_fetchallpages_taille_page -v',
-         '.'),
         ('Tests des crochets api-fuzz : le fuzzeur ne se verrouille jamais dehors (ENF1b)',
          'python -m unittest scripts.tests.test_fuzz_hooks -v',
          '.'),

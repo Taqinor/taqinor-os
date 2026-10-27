@@ -34,7 +34,7 @@ let catalogueEnVol = null
 function chargerCatalogueStructures() {
   if (!catalogueEnVol) {
     catalogueEnVol = fetchAllPages(
-      (page, { page_size: pageSize } = {}) => stockApi.getProduits({ page, page_size: pageSize }).then((r) => r.data),
+      (page) => stockApi.getProduits({ page }).then((r) => r.data),
     ).then((liste) => (Array.isArray(liste) ? liste : [])).catch(() => [])
   }
   return catalogueEnVol

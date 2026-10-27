@@ -34,7 +34,7 @@ const DEVIS_PAGE_CONCURRENCY = 5
 // montages simultanés de DevisList ne déclenchent qu'UNE seule pagination).
 export const fetchDevis = createCancellableThunk('ventes/fetchDevis', (_, { signal }) =>
   dedupeInFlight('ventes/fetchDevis', () =>
-    fetchAllPages((page, { page_size: pageSize } = {}) => ventesApi.getDevis({ page, page_size: pageSize }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
+    fetchAllPages((page) => ventesApi.getDevis({ page }, { signal }).then((r) => r.data), { concurrency: DEVIS_PAGE_CONCURRENCY })
       .then((results) => ({ results })),
   ),
 )
@@ -101,7 +101,7 @@ export const fetchBonsCommande = createAsyncThunk('ventes/fetchBonsCommande', as
     // `count 57, len(results) 50`). `fetchAllPages` renvoie telle quelle une
     // réponse non paginée (tableau brut) ; sinon la liste complète.
     const tout = await fetchAllPages(
-      (page, { page_size: pageSize } = {}) => ventesApi.getBonsCommande({ page, page_size: pageSize }).then((r) => r.data),
+      (page) => ventesApi.getBonsCommande({ page }).then((r) => r.data),
       { concurrency: 20 },
     )
     return { results: Array.isArray(tout) ? tout : (tout?.results ?? []) }
@@ -190,7 +190,7 @@ export const creerFactureFromBC = createAsyncThunk('ventes/creerFactureFromBC', 
 // VX163 — `{signal}` câblé + dé-duplication en vol (même patron que fetchDevis).
 export const fetchFactures = createCancellableThunk('ventes/fetchFactures', (_, { signal }) =>
   dedupeInFlight('ventes/fetchFactures', () =>
-    fetchAllPages((page, { page_size: pageSize } = {}) => ventesApi.getFactures({ page, page_size: pageSize }, { signal }).then((r) => r.data), { concurrency: 20 })
+    fetchAllPages((page) => ventesApi.getFactures({ page }, { signal }).then((r) => r.data), { concurrency: 20 })
       .then((results) => ({ results })),
   ),
 )

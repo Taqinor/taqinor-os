@@ -11,7 +11,7 @@ export const fetchEquipements = createAsyncThunk(
   async (params, { rejectWithValue }) => {
     try {
       const all = await fetchAllPages(
-        (page, { page_size: pageSize } = {}) => savApi.getEquipements({ ...(params ?? {}), page, page_size: pageSize }).then((r) => r.data),
+        (page) => savApi.getEquipements({ ...(params ?? {}), page }).then((r) => r.data),
         { concurrency: 20 },
       )
       return all

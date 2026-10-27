@@ -38,7 +38,7 @@ __all__ = [
     'peremption_layout_devis', 'puissance_kwc_projet', 'references_avoirs', 'references_factures',
     'releve_client_pdf_bytes', 'releve_client_portail', 'resume_dossier_8221',
     'resume_portail_client', 'schema_unifilaire_svg', 'signature_velocity_by_month_and_mode',
-    'signed_clients_cross_sell_segments', 'totaux_multi_proprietes', 'tranche_facturee', 'tranches_facturees',
+    'signed_clients_cross_sell_segments', 'totaux_multi_proprietes', 'tranche_facturee',
     'tva_buckets', 'verdict_batterie_onduleur', 'verdict_panneau_onduleur',
 ]
 
@@ -1723,7 +1723,7 @@ from .selectors_facturation import (  # noqa: E402 — ré-export (SPL143) (D-EN
     etat_recouvrement_client,
     analyse_facturation,
     devis_a_facturer,
-    tranche_facturee, tranches_facturees,
+    tranche_facturee,
     jours_impaye_facture,
     carnet_commande_par_mois,
     factures_via_bon_commande,

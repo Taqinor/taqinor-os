@@ -26,7 +26,7 @@ function isStaleResourceUpdate(seqMap, id, requestId) {
 // de StockList ne déclenchent qu'UNE seule pagination complète, partagée).
 export const fetchProduits = createCancellableThunk('stock/fetchProduits', (_, { signal }) =>
   dedupeInFlight('stock/fetchProduits', () =>
-    fetchAllPages((page, { page_size: pageSize } = {}) => stockApi.getProduits({ page, page_size: pageSize }, { signal }).then((r) => r.data), { concurrency: 20 })
+    fetchAllPages((page) => stockApi.getProduits({ page }, { signal }).then((r) => r.data), { concurrency: 20 })
       .then((results) => ({ results })),
   ),
 )

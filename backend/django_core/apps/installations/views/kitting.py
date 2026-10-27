@@ -463,13 +463,6 @@ class OrdreAssemblageViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         date_prevue = params.get('date_prevue')
         if date_prevue:
             qs = qs.filter(date_prevue=date_prevue)
-        if self.action == 'list':
-            # APRF39 — coût et temps de la LISTE lus sur des données
-            # préchargées (uniquement en liste : les actions d'écriture
-            # re-sérialisent un ordre dont les lignes viennent de changer).
-            qs = qs.select_related('responsable').prefetch_related(
-                'lignes__produit', 'etapes__etape_modele',
-                'kit__etapes_assemblage', 'kit__composants__produit')
         return qs
 
     def _check_tenant(self, serializer):
