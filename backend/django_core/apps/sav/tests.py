@@ -303,9 +303,12 @@ class TestSerieUnicite(TestCase):
         ]).get_schema(request=None, public=True)
         props = schema['components']['schemas']['PatchedEquipementRequest'][
             'properties']
-        # Champ vide-ou-texte : ``oneOf`` [motif sans NUL, chaîne vide].
-        motifs = [variante.get('pattern')
-                  for variante in props['numero_serie'].get('oneOf', [])]
+        # Motif porté par le champ lui-même ou par une variante ``oneOf`` /
+        # ``anyOf`` (champ vide-ou-texte) selon la version de drf-spectacular.
+        champ = props['numero_serie']
+        motifs = [champ.get('pattern')] + [
+            variante.get('pattern')
+            for variante in champ.get('oneOf', []) + champ.get('anyOf', [])]
         self.assertIn(MOTIF_SANS_NUL, motifs)
         eid = self._create('SN-NUL').data['id']
         r = self.api.patch(f'/api/django/sav/equipements/{eid}/',
