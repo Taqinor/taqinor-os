@@ -536,16 +536,20 @@ class CommanderBesoinRequete(serializers.Serializer):
         child=serializers.IntegerField(min_value=1, max_value=ID_MAX),
         required=False, max_length=500)
 
-    def validate_fournisseurs(self, value):
-        for cle in value:
+    def validate(self, attrs):
+        """api-fuzz-full 27/10 (ENF11) : la forme des CLÉS de ``fournisseurs``
+        (identifiant de produit) est inexprimable au schéma OpenAPI 3.0 (pas
+        de ``propertyNames``) — refus 409 (même corps), APRÈS les refus de
+        forme 400 des champs (``validate`` ne court que sur un corps valide)."""
+        for cle in attrs.get('fournisseurs') or {}:
             try:
                 ok = 1 <= int(str(cle)) <= ID_MAX
             except (TypeError, ValueError):
                 ok = False
             if not ok:
-                raise serializers.ValidationError(
-                    f"Clé « {cle} » : identifiant de produit attendu.")
-        return value
+                raise ConflitEtat({'fournisseurs': [
+                    f"Clé « {cle} » : identifiant de produit attendu."]})
+        return attrs
 
 
 def _origines_reserve():
@@ -606,6 +610,28 @@ class SignerChantierRequete(serializers.Serializer):
     cosignataire_nom = _texte_facultatif()
     cosignataire_fonction = _texte_facultatif()
     cosignataire_organisme = _texte_facultatif()
+
+
+def signature_publiee():
+    """api-fuzz-full 27/10 (ENF11) — ``signature_client`` d'une intervention
+    (FG69) : la data-URL que ``erreur_signature_client`` accepte, PUBLIÉE par
+    le même motif que le chantier (une chaîne libre était « conforme » puis
+    refusée 400). Le serveur ne décode pas l'image : motif = acceptation."""
+    return ChaineStricte(validators=[SignatureDataUrl()])
+
+
+def designation_ligne():
+    """api-fuzz-full 27/10 (ENF11) — ``designation`` d'une ligne de
+    consommation hors nomenclature (F11) : obligatoire, non blanche, sans NUL,
+    255 caractères au plus (la colonne). Un corps ``{}`` était « conforme »
+    (champ facultatif au schéma) puis refusé « Désignation requise » (400)."""
+    return ChaineStricte(max_length=255)
+
+
+class DesignationLigneRequete(serializers.Serializer):
+    """F11 — la validation de ``designation`` : le MÊME champ que la
+    déclaration du corps d'``ajouter-ligne-consommation``."""
+    designation = designation_ligne()
 
 
 #: Drapeau de requête publié booléen : ces valeurs, rien d'autre.
