@@ -127,6 +127,12 @@ class ManquantesTests(TestCase):
         lead = lead_complet(self.company, tranche_onee='')
         self.assertFalse(quest.manquantes(lead)['energie'])
 
+    def test_energie_manque_encore_quand_le_raccordement_est_inconnu(self):
+        # CQST4 — « inconnu » n'est pas une réponse (hors réseau sinon).
+        lead = lead_complet(self.company,
+                            raccordement=Lead.Raccordement.INCONNU)
+        self.assertTrue(quest.manquantes(lead)['energie'])
+
     def test_energie_manque_encore_quand_le_raccordement_est_vide(self):
         lead = lead_complet(self.company, raccordement='')
         self.assertTrue(quest.manquantes(lead)['energie'])

@@ -120,6 +120,56 @@ class SectionPompageTests(TestCase):
         # Une valeur existante non répondue n'est jamais vidée.
         self.assertEqual(lead.culture, 'olivier')
 
+    def test_post_pompage_debloque_le_devis_et_le_met_en_file(self):
+        # CQST3 + CQST5 — HMT et débit actuel avec ses heures : le devis
+        # automatique n'est plus bloqué, il part en file UNE fois ; la plaque
+        # d'une pompe neuve n'est jamais écrite.
+        from unittest import mock
+        lead = self._agricole(source_eau='forage', niveau_statique_m=20,
+                              surface_irriguee_ha=4, pompe_alim_actuelle='butane')
+        self.assertTrue(quest.manquantes(lead)['pompage'])
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead,
+            questions={s: s == 'pompage' for s in quest.sections_du_lead(lead)})
+        corps = {'section': 'pompage', 'reponses': {
+            'pompe_hmt_m': 45, 'pompe_actuelle_debit_m3h': 12,
+            'pompage_heures_jour': 6, 'mode_pompe': 'neuve',
+            'pompe_actuelle_kw': 5.5}}
+        with mock.patch('apps.ventes.services.'
+                        'planifier_devis_automatique_pour_lead') as file_:
+            with self.captureOnCommitCallbacks(execute=True):
+                res = self.client.post(PUBLIC.format(lien.token),
+                                       data=json.dumps(corps),
+                                       content_type='application/json')
+            self.assertEqual(res.status_code, 200, res.content)
+            self.assertIs(res.json()['devis_possible'], True)
+            file_.assert_called_once_with(lead.pk, self.company.pk)
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(PUBLIC.format(lien.token),
+                                 data=json.dumps(corps),
+                                 content_type='application/json')
+            file_.assert_called_once()
+        lead.refresh_from_db()
+        self.assertEqual(lead.pompe_hmt_m, Decimal('45'))
+        self.assertEqual(lead.pompage_heures_jour, Decimal('6'))
+        self.assertIsNone(lead.pompe_actuelle_kw)
+        self.assertFalse(quest.manquantes(lead)['pompage'])
+
+    def test_post_pompage_plaque_ecrite_si_pompe_conservee(self):
+        lead = self._agricole()
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead,
+            questions={s: s == 'pompage' for s in quest.sections_du_lead(lead)})
+        self.client.post(PUBLIC.format(lien.token), data=json.dumps({
+            'section': 'pompage', 'reponses': {
+                'mode_pompe': 'existante', 'pompe_actuelle_kw': 5.5,
+                'pompe_actuelle_tension_v': 380, 'pompe_actuelle_phases': 'tri',
+                'pompe_hmt_m': -3}}), content_type='application/json')
+        lead.refresh_from_db()
+        self.assertEqual(lead.pompe_actuelle_kw, Decimal('5.5'))
+        self.assertEqual(lead.pompe_actuelle_tension_v, 380)
+        self.assertIsNone(lead.pompe_hmt_m)
+
     def test_lien_residentiel_identique(self):
         lead = Lead.objects.create(company=self.company, nom='Maison')
         res = self._mint(lead)

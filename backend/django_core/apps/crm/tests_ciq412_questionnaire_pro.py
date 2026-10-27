@@ -187,11 +187,57 @@ class QuestionnairePro(TestCase):
         complet = dict(tension_raccordement='bt', tension_source='declare',
                        compteur_puissance_kva=60,
                        contrat_electricite='bt_patente',
-                       raccordement='triphase')
+                       raccordement='triphase', conso_mensuelle_kwh=6000)
         self.assertFalse(quest.manquantes(self._pro(**complet))['reseau'])
-        for vide in ('contrat_electricite', 'raccordement'):
+        for vide in ('contrat_electricite', 'raccordement',
+                     'conso_mensuelle_kwh'):
             lead = self._pro(**dict(complet, **{vide: None}))
             self.assertTrue(quest.manquantes(lead)['reseau'], vide)
+
+    def test_reseau_suit_la_regle_du_devis_automatique(self):
+        # CQST1 — « ne sait pas » / « inconnu » ne sont pas des réponses ; une
+        # facture en MAD ne compte qu'avec un contrat BT ; un site MT n'a pas
+        # de contrat à donner.
+        base = dict(tension_raccordement='bt', tension_source='declare',
+                    compteur_puissance_kva=60, contrat_electricite='bt_patente',
+                    raccordement='triphase', conso_mensuelle_kwh=6000)
+        for champ, valeur in (('contrat_electricite', 'ne_sait_pas'),
+                              ('raccordement', 'inconnu')):
+            lead = self._pro(**dict(base, **{champ: valeur}))
+            self.assertTrue(quest.manquantes(lead)['reseau'], champ)
+            self.assertFalse(quest.devis_possible(lead), champ)
+        mad_sans_contrat = self._pro(**dict(
+            base, conso_mensuelle_kwh=None, facture_hiver=5000,
+            contrat_electricite='ne_sait_pas'))
+        self.assertTrue(quest.manquantes(mad_sans_contrat)['reseau'])
+        mad_bt = self._pro(**dict(base, conso_mensuelle_kwh=None,
+                                  facture_hiver=5000))
+        self.assertFalse(quest.manquantes(mad_bt)['reseau'])
+        mt = self._pro(**dict(base, type_installation='industriel',
+                              tension_raccordement='mt',
+                              contrat_electricite=None))
+        self.assertFalse(quest.manquantes(mt)['reseau'])
+
+    def test_post_activite_heures_de_cuisson_gardees_cle_inconnue_ecartee(self):
+        # CQST2 — les heures lues par le moteur C&I sont acceptées ; une clé
+        # inconnue ne fait plus perdre tout l'objet.
+        lead = self._pro(categorie_commerciale='boulangerie')
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead,
+            questions={s: s == 'activite' for s in quest.sections_du_lead(lead)})
+        res = self.client.post(
+            PUBLIC.format(lien.token),
+            data=json.dumps({'section': 'activite', 'reponses': {
+                'reponses_categorie': {
+                    'four': 'electrique', 'cuisson_nocturne': True,
+                    'heures_cuisson': [[2, 6]], 'pirate': 1}}}),
+            content_type='application/json')
+        self.assertEqual(res.status_code, 200, res.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.reponses_categorie, {
+            'four': 'electrique', 'cuisson_nocturne': True,
+            'heures_cuisson': [[2, 6]]})
+        self.assertIn('devis_possible', res.json())
 
     def test_post_reseau_contrat_phase_option_force_motrice_seulement(self):
         lead = self._pro()

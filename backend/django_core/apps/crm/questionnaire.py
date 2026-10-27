@@ -76,7 +76,15 @@ CHAMPS_PAR_SECTION = {
                 'pompe_alim_actuelle', 'butane_bouteilles_jour',
                 'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
                 # AGQ34 (D-AGQ-6) — jours d'irrigation par semaine (AGQ10).
-                'mois_irrigation', 'jours_irrigation_semaine', 'compteur_eau'),
+                'mois_irrigation', 'jours_irrigation_semaine', 'compteur_eau',
+                # CQST3 — ce que le devis automatique agricole EXIGE
+                # (``devis_auto.champs_requis``) : la HMT, le débit actuel
+                # avec ses heures, le mode de pompe et, pompe conservée, sa
+                # plaque complète. Sans elles, un client qui répond à tout
+                # laissait son devis bloqué.
+                'pompe_hmt_m', 'pompe_actuelle_debit_m3h',
+                'pompage_heures_jour', 'mode_pompe', 'pompe_actuelle_kw',
+                'pompe_actuelle_tension_v', 'pompe_actuelle_phases'),
     # Sections PHOTO : aucune colonne — la réponse est une pièce jointe.
     'photo_facture': (),
     'photo_compteur': (),
@@ -330,6 +338,31 @@ _POMPAGE_ESSENTIELS = ('source_eau', 'niveau_statique_m', 'besoin_eau_m3j',
                        'surface_irriguee_ha', 'pompe_alim_actuelle')
 
 
+#: CQST3 — colonnes de pompage validées par le MODÈLE (``Field.clean``),
+#: comme les colonnes pro : le mapping du site ne les connaît pas.
+_POMPAGE_COLONNES_MODELE = ('pompe_hmt_m', 'pompe_actuelle_debit_m3h',
+                            'pompage_heures_jour', 'mode_pompe',
+                            'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
+                            'pompe_actuelle_phases')
+#: CQST3 — la plaque de la pompe actuelle n'est posée que si le client garde
+#: sa pompe (``mode_pompe`` = existante) : jamais à un client en pompe neuve.
+_POMPAGE_PLAQUE = ('pompe_actuelle_kw', 'pompe_actuelle_tension_v',
+                   'pompe_actuelle_phases')
+
+
+def _devis_bloque(lead) -> bool:
+    """CQST1 — la règle UNIQUE du devis automatique (``devis_auto``) : vrai
+    tant qu'un groupe requis manque. Jamais recopiée ici."""
+    from .devis_auto import champs_manquants_detail
+
+    return bool(champs_manquants_detail(lead))
+
+
+def devis_possible(lead) -> bool:
+    """CQST5 — les réponses connues suffisent-elles au devis automatique ?"""
+    return not _devis_bloque(lead)
+
+
 def manquantes(lead) -> dict:
     """Carte ``{section: bool}`` — l'information de la section est-elle
     (encore) inconnue ? C'est le DÉFAUT des questions posées au client.
@@ -348,8 +381,11 @@ def manquantes(lead) -> dict:
         # VE ni clim : le défaut ne coche que le pompage, ses deux photos, le
         # GPS et les coordonnées manquants.
         return {
-            'pompage': any(_vide(getattr(lead, cle, None))
-                           for cle in _POMPAGE_ESSENTIELS),
+            # CQST3 — manquante aussi tant que le devis automatique est
+            # bloqué (HMT, débit/besoin, plaque d'une pompe conservée).
+            'pompage': (any(_vide(getattr(lead, cle, None))
+                            for cle in _POMPAGE_ESSENTIELS)
+                        or _devis_bloque(lead)),
             'photo_pompe': not _photo_presente('photo_pompe', libelles),
             'photo_forage': not _photo_presente('photo_forage', libelles),
             'gps': not _gps_connu(lead),
@@ -371,7 +407,9 @@ def manquantes(lead) -> dict:
     # poser. Le champ reste : il n'est simplement plus un signal de manque.
     energie = bool(champs_manquants(lead))
     if not energie:
-        energie = _vide(lead.raccordement)
+        # CQST4 — « inconnu » n'est pas une réponse : le compositeur part
+        # alors en hors réseau (crm.Lead.raccordement).
+        energie = _vide(lead.raccordement) or lead.raccordement == 'inconnu'
 
     return {
         # `adresse` passe par `_encore_a_obtenir` : quand le GPS est déjà là,
@@ -425,10 +463,15 @@ def _manquantes_pro(lead, libelles) -> dict:
     else:
         activite_connue = not _vide(lead.categorie_commerciale)
     return {
+        # CQST1 — la section réseau porte la consommation, le contrat et la
+        # phase : elle reste MANQUANTE tant que le devis automatique est
+        # bloqué (« ne sait pas » / « inconnu » / facture en MAD sans contrat
+        # BT n'y comptent pas ; aucun contrat exigé d'un site MT — même
+        # règle que ``devis_auto.champs_requis``), plus la tension et la
+        # puissance souscrite (règle de visite D-CIQ-5).
         'reseau': (_tension_inconnue(lead)
                    or lead.compteur_puissance_kva is None
-                   or _vide(lead.contrat_electricite)
-                   or _vide(lead.raccordement)),
+                   or _reseau_bloque(lead)),
         # Fondateur 26/10/2026 — équipes et mois de fermeture aussi (une
         # liste VIDE = « jamais fermé », une réponse ; None = jamais posée).
         'activite': (not activite_connue or not lead.jours_ouverture
@@ -444,6 +487,18 @@ def _manquantes_pro(lead, libelles) -> dict:
         'contact': (_vide(lead.email) or _encore_a_obtenir(lead, 'adresse')
                     or _vide(lead.ville)),
     }
+
+
+#: CQST1 — premiers champs des groupes requis que porte la section réseau.
+_GROUPES_RESEAU = ('conso_mensuelle_kwh', 'bill_kwh', 'releve_conso',
+                   'facture_hiver', 'contrat_electricite', 'raccordement')
+
+
+def _reseau_bloque(lead) -> bool:
+    from .devis_auto import champs_manquants_detail
+
+    return any(entree['champ'] in _GROUPES_RESEAU
+               for entree in champs_manquants_detail(lead))
 
 
 #: CIQ412 — colonnes de la section activité propres à UN segment : un
@@ -743,6 +798,18 @@ _PROVENANCE_ECRITE = {
 #: colonne — une valeur invalide est ignorée, jamais une erreur.
 _SECTIONS_PRO_COLONNES = ('reseau', 'activite', 'site', 'societe')
 
+#: CQST2 — clés d'HEURES / de DATES que le moteur C&I lit dans
+#: ``reponses_categorie`` (``ventes.moteur_ci.categories.CLES_HEURES`` /
+#: ``CLES_DATES``) : sans elles, restaurant, boulangerie (cuisson de nuit),
+#: santé (garde) et école (fermeture) ne donnaient que des alertes « à
+#: préciser ». Heures = ``[[début, fin], …]`` ; dates = « JJ/MM ».
+_CLES_HEURES_CATEGORIE = {
+    'restaurant': ('heures',),
+    'boulangerie': ('heures_cuisson',),
+    'sante': ('heures_garde',),
+    'ecole': ('fermeture_du', 'fermeture_au'),
+}
+
 
 def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
     """Réponses d'une section PRO → champs ``Lead`` propres (CIQ412).
@@ -775,8 +842,14 @@ def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
         if cle == 'reponses_categorie':
             categorie = (reponses.get('categorie_commerciale')
                          or lead.categorie_commerciale)
-            permises = set(Lead.REPONSES_CATEGORIE_CLES.get(categorie, ()))
-            if not isinstance(valeur, dict) or set(valeur) - permises:
+            permises = (set(Lead.REPONSES_CATEGORIE_CLES.get(categorie, ()))
+                        | set(_CLES_HEURES_CATEGORIE.get(categorie, ())))
+            if not isinstance(valeur, dict):
+                continue
+            # CQST2 — une clé inconnue est écartée SEULE : elle ne fait plus
+            # perdre toutes les réponses de l'activité.
+            valeur = {k: v for k, v in valeur.items() if k in permises}
+            if not valeur:
                 continue
         out[cle] = valeur
     # Une pente de toit se dit en degrés, de 0 (plat) à moins de 90.
@@ -795,6 +868,44 @@ def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
             out.pop('heure_debut', None)
             out.pop('heure_fin', None)
     return out
+
+
+def _champs_pompage_modele(lead, reponses) -> dict:
+    """CQST3 — colonnes de pompage validées par le modèle ; la plaque de la
+    pompe actuelle n'est gardée que pour une pompe CONSERVÉE."""
+    from django.core.exceptions import ValidationError
+
+    if not isinstance(reponses, dict):
+        return {}
+    out = {}
+    for cle in _POMPAGE_COLONNES_MODELE:
+        brut = reponses.get(cle)
+        if brut is None or (isinstance(brut, str) and not brut.strip()):
+            continue
+        try:
+            valeur = Lead._meta.get_field(cle).clean(brut, lead)
+        except (ValidationError, TypeError, ValueError):
+            continue
+        if valeur is not None and not isinstance(valeur, str) and valeur <= 0:
+            continue
+        out[cle] = valeur
+    if out.get('mode_pompe', getattr(lead, 'mode_pompe', None)) != 'existante':
+        for cle in _POMPAGE_PLAQUE:
+            out.pop(cle, None)
+    return out
+
+
+def _mettre_en_file_devis(lead):
+    """CQST5 — le client vient de compléter ce qui manquait : le devis
+    automatique part en file APRÈS la validation de la transaction (même
+    chemin que le tunnel du site : réglage de société, idempotence, refus
+    visibles sur le lead — ``ventes.services``)."""
+    from django.db import transaction
+
+    from .webhooks import _mettre_en_file_devis_automatique
+
+    transaction.on_commit(
+        lambda: _mettre_en_file_devis_automatique(lead, lead.company))
 
 
 def appliquer_section(lien, section, reponses=None, photo=None,
@@ -830,6 +941,7 @@ def appliquer_section(lien, section, reponses=None, photo=None,
         raise SectionInconnue(
             f'Section non demandée sur ce lien : « {section} ».')
     enregistrees = []
+    bloque_avant = _devis_bloque(lead)
 
     if section in _SECTIONS_PHOTO:
         if _enregistrer_photo(lead, section, photo) is not None:
@@ -840,6 +952,8 @@ def appliquer_section(lien, section, reponses=None, photo=None,
         else:
             champs = champs_lead_depuis_reponses(
                 reponses, colonnes_ecrites(section))
+            if section == 'pompage':
+                champs.update(_champs_pompage_modele(lead, reponses))
         if champs and isinstance(prefill_vu, dict):
             champs = _sans_ecrasement_equipe(
                 lead, section, champs, prefill_vu, ignorees)
@@ -911,6 +1025,10 @@ def appliquer_section(lien, section, reponses=None, photo=None,
     # touche même si le client répond à neuf sections, jamais hors fenêtre,
     # jamais sur un lead qu'on ne relance plus). Best-effort par construction.
     poser_touche_signal(lead, SIGNAL_QUESTIONNAIRE)
+    # CQST5 — la réponse qui DÉBLOQUE le devis automatique le met en file
+    # (une seule fois : à la transition bloqué → prêt).
+    if bloque_avant and not _devis_bloque(lead):
+        _mettre_en_file_devis(lead)
     return enregistrees
 
 

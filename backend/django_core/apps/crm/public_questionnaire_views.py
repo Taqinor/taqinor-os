@@ -36,6 +36,7 @@ from .questionnaire import (
     SectionInconnue,
     appliquer_section,
     champs_a_poser,
+    devis_possible,
     prefill,
     resoudre,
     sections_a_servir,
@@ -178,8 +179,11 @@ def _repondre(request, lien, interne):
                         status=status.HTTP_400_BAD_REQUEST)
 
     _tracer_reponse(request, lien, section.strip())
+    # CQST5 — ``devis_possible`` : les réponses connues suffisent au devis
+    # automatique (la page le dit au client à la fin, sans chiffre).
     return Response({'ok': True, 'enregistrees': enregistrees,
-                     'ignorees': ignorees})
+                     'ignorees': ignorees,
+                     'devis_possible': devis_possible(lien.lead)})
 
 
 def _tracer_reponse(request, lien, section):
