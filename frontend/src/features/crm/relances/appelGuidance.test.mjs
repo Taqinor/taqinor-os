@@ -656,7 +656,8 @@ test('CIQ420 — industriel (exemple du contrat) : la facture en kWh ouvre, puis
   ])
   const rythme = g.questions[2]
   assert.deepEqual(rythme.complements.map((q) => q.champ), [
-    'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin', 'fermeture_mois',
+    'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin',
+    'equipements_hors_horaires', 'fermeture_mois',
   ])
   const jours = rythme.complements.find((q) => q.champ === 'jours_ouverture')
   assert.equal(jours.nature, 'choix_multiple')

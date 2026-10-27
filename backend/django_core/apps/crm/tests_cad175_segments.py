@@ -392,6 +392,30 @@ class CIQ410PanneauPro(SimpleTestCase):
         self.assertEqual(panneau.prefill_du_panneau(lead)['raccordement'],
                          'triphase')
 
+    def test_talon_pose_dans_l_etape_activite(self):
+        """CSV12 — le talon (équipements qui tournent hors horaires) se pose
+        au téléphone à tout lead pro, après les heures ; répondu, jamais
+        reposé ; la réponse se relit dans le pré-remplissage."""
+        for segment in ('commercial', 'industriel'):
+            lead = Lead(nom='P', type_installation=segment)
+            champs = _champs(lead)
+            self.assertIn('equipements_hors_horaires', champs, segment)
+            self.assertGreater(champs.index('equipements_hors_horaires'),
+                               champs.index('heure_fin'), segment)
+            question = {q['champ']: q for q in panneau.questions_a_poser(
+                lead)}['equipements_hors_horaires']
+            self.assertEqual(question['nature'], 'choix')
+            self.assertEqual([c['valeur'] for c in question['choix']],
+                             ['aucun', 'un_peu', 'beaucoup'])
+            self.assertIn('des appareils continuent-ils de tourner',
+                          question['question'])
+            repondu = Lead(nom='P', type_installation=segment,
+                           equipements_hors_horaires='un_peu')
+            self.assertNotIn('equipements_hors_horaires', _champs(repondu))
+            self.assertEqual(
+                panneau.prefill_du_panneau(repondu)[
+                    'equipements_hors_horaires'], 'un_peu')
+
     def test_decideur_seulement_les_choix_pro(self):
         questions = {q['champ']: q for q in panneau.questions_a_poser(
             Lead(nom='P', type_installation='industriel'))}

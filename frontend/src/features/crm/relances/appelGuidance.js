@@ -258,7 +258,7 @@ export const ORDRE_PRO = Object.freeze([
     champs: Object.freeze([
       'categorie_commerciale', 'secteur_industriel',
       'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin',
-      'fermeture_mois', 'reponses_categorie',
+      'equipements_hors_horaires', 'fermeture_mois', 'reponses_categorie',
     ]),
   }),
   Object.freeze({

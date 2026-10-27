@@ -818,6 +818,27 @@
         "nature": "nombre"
       },
       {
+        "champ": "equipements_hors_horaires",
+        "section": null,
+        "libelle": "Équipements hors horaires",
+        "question": "Question à l'appel : « La nuit ou quand vous êtes fermé, des appareils continuent-ils de tourner — frigos, chambre froide, serveurs : aucun, un peu ou beaucoup ? »",
+        "choix": [
+          {
+            "valeur": "aucun",
+            "libelle": "Aucun"
+          },
+          {
+            "valeur": "un_peu",
+            "libelle": "Un peu"
+          },
+          {
+            "valeur": "beaucoup",
+            "libelle": "Beaucoup"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
         "champ": "fermeture_mois",
         "section": null,
         "libelle": "Mois de fermeture",
@@ -1242,6 +1263,27 @@
         "nature": "nombre"
       },
       {
+        "champ": "equipements_hors_horaires",
+        "section": null,
+        "libelle": "Équipements hors horaires",
+        "question": "Question à l'appel : « La nuit ou quand vous êtes fermé, des appareils continuent-ils de tourner — frigos, chambre froide, serveurs : aucun, un peu ou beaucoup ? »",
+        "choix": [
+          {
+            "valeur": "aucun",
+            "libelle": "Aucun"
+          },
+          {
+            "valeur": "un_peu",
+            "libelle": "Un peu"
+          },
+          {
+            "valeur": "beaucoup",
+            "libelle": "Beaucoup"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
         "champ": "fermeture_mois",
         "section": null,
         "libelle": "Mois de fermeture",
@@ -1643,6 +1685,27 @@
         "nature": "nombre"
       },
       {
+        "champ": "equipements_hors_horaires",
+        "section": null,
+        "libelle": "Équipements hors horaires",
+        "question": "Question à l'appel : « La nuit ou quand vous êtes fermé, des appareils continuent-ils de tourner — frigos, chambre froide, serveurs : aucun, un peu ou beaucoup ? »",
+        "choix": [
+          {
+            "valeur": "aucun",
+            "libelle": "Aucun"
+          },
+          {
+            "valeur": "un_peu",
+            "libelle": "Un peu"
+          },
+          {
+            "valeur": "beaucoup",
+            "libelle": "Beaucoup"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
         "champ": "fermeture_mois",
         "section": null,
         "libelle": "Mois de fermeture",
@@ -2042,6 +2105,27 @@
         "question": "Question à l'appel : « Et à quelle heure se termine-t-elle ? »",
         "choix": null,
         "nature": "nombre"
+      },
+      {
+        "champ": "equipements_hors_horaires",
+        "section": null,
+        "libelle": "Équipements hors horaires",
+        "question": "Question à l'appel : « La nuit ou quand vous êtes fermé, des appareils continuent-ils de tourner — frigos, chambre froide, serveurs : aucun, un peu ou beaucoup ? »",
+        "choix": [
+          {
+            "valeur": "aucun",
+            "libelle": "Aucun"
+          },
+          {
+            "valeur": "un_peu",
+            "libelle": "Un peu"
+          },
+          {
+            "valeur": "beaucoup",
+            "libelle": "Beaucoup"
+          }
+        ],
+        "nature": "choix"
       },
       {
         "champ": "fermeture_mois",
@@ -2448,6 +2532,27 @@
         "nature": "nombre"
       },
       {
+        "champ": "equipements_hors_horaires",
+        "section": null,
+        "libelle": "Équipements hors horaires",
+        "question": "Question à l'appel : « La nuit ou quand vous êtes fermé, des appareils continuent-ils de tourner — frigos, chambre froide, serveurs : aucun, un peu ou beaucoup ? »",
+        "choix": [
+          {
+            "valeur": "aucun",
+            "libelle": "Aucun"
+          },
+          {
+            "valeur": "un_peu",
+            "libelle": "Un peu"
+          },
+          {
+            "valeur": "beaucoup",
+            "libelle": "Beaucoup"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
         "champ": "fermeture_mois",
         "section": null,
         "libelle": "Mois de fermeture",
@@ -2720,8 +2825,8 @@
     ],
     "prefill": {
       "tension_raccordement": "bt",
-      "categorie_commerciale": "hotel",
-      "contrat_electricite": "bt_force_motrice"
+      "contrat_electricite": "bt_force_motrice",
+      "categorie_commerciale": "hotel"
     },
     "equipements": [],
     "fenetre_du_jour": {

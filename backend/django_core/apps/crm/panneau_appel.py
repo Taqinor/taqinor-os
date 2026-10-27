@@ -103,8 +103,8 @@ ETAPES_PRO = (
                       'raccordement')),
     ('activite_rythme', ('categorie_commerciale', 'secteur_industriel',
                          'regime_equipes', 'jours_ouverture', 'heure_debut',
-                         'heure_fin', 'fermeture_mois',
-                         'reponses_categorie')),
+                         'heure_fin', 'equipements_hors_horaires',
+                         'fermeture_mois', 'reponses_categorie')),
     ('surface', ('type_surface', 'type_toiture', 'surface_toiture_m2')),
     ('decideur', ('decideur',)),
 )
@@ -159,6 +159,12 @@ QUESTIONS_PRO = {
                        'production ? »',
     'heure_debut': '« À quelle heure commence votre journée de travail ? »',
     'heure_fin': '« Et à quelle heure se termine-t-elle ? »',
+    # CSV12 — le talon : ce qui tourne quand le site est fermé. Réponse client
+    # aucun / un peu / beaucoup (talon déclaré du moteur C&I, 5 / 20 / 50 %).
+    'equipements_hors_horaires': '« La nuit ou quand vous êtes fermé, des '
+                                 'appareils continuent-ils de tourner — '
+                                 'frigos, chambre froide, serveurs : aucun, '
+                                 'un peu ou beaucoup ? »',
     'fermeture_mois': "« Fermez-vous certains mois de l'année, pour des "
                       'congés ou une saison creuse ? Lesquels ? »',
     'type_surface': '« Où pourrait-on poser les panneaux : sur la toiture, '
@@ -508,7 +514,7 @@ def _champs_pro_du_lead(lead, segment):
     else:
         champs += ['secteur_industriel', 'regime_equipes']
     champs += ['jours_ouverture', 'heure_debut', 'heure_fin',
-               'fermeture_mois']
+               'equipements_hors_horaires', 'fermeture_mois']
     # CSV1 — les réponses propres à l'activité ferment l'étape : une clé restée
     # vide ne bloque ni les jours ni les heures, qui deviennent la question
     # principale.
