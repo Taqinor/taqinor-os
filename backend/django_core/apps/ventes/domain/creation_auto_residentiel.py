@@ -135,7 +135,7 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
 
     roles = list(getattr(lignes, 'roles', ()) or ())
     # AMOT69 — un 0 % EXPLICITE reste 0 % ; seul un taux absent vaut 20.
-    taux_demande = Decimal(str(20 if taux_tva is None else taux_tva))
+    taux_demande = Decimal(str(taux_tva))
     # APAR49 — « 14.00 » (colonne société à 2 décimales) rendu « 14 », comme
     # le taux d'une fiche produit : la forme de la valeur ne change pas.
     if taux_demande == taux_demande.to_integral_value():
@@ -199,6 +199,22 @@ def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
             for m in (getattr(lignes, 'marques_manquantes', ()) or ())
         ],
     }
+
+
+def _fmt_kwc_fr(valeur):
+    """Un kWc à la française : virgule décimale, sans zéros inutiles."""
+    texte = ('%.2f' % float(valeur)).rstrip('0').rstrip('.')
+    return texte.replace('.', ',')
+
+
+def _ajouter_alerte(journal_auto, texte):
+    """Ajoute une phrase au vendeur dans ``journal_auto['alertes']`` (sans
+    doublon). Sans effet si le journal n'est pas un dict."""
+    if not isinstance(journal_auto, dict) or not texte:
+        return
+    alertes = journal_auto.setdefault('alertes', [])
+    if texte not in alertes:
+        alertes.append(texte)
 
 
 def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
@@ -267,6 +283,16 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
         panneaux = _residential_panel_count(taille_kwc=taille_demandee)
     if panneaux > 0:
         source_dimensionnement = 'taille_demandee'
+        if cible is not None:
+            _ajouter_alerte(journal_auto, (
+                'Taille imposée pour ce devis : %s kWc — la facture du lead '
+                "n'a pas servi au dimensionnement." % _fmt_kwc_fr(cible)))
+        else:
+            _ajouter_alerte(journal_auto, (
+                'Taille demandée sur la fiche du lead : %s kWc — la facture '
+                "n'a pas servi au dimensionnement. Videz « taille souhaitée » "
+                'sur la fiche pour revenir à la recommandation.'
+                % _fmt_kwc_fr(taille_demandee)))
     else:
         panneaux, watt_retenu, source_dimensionnement, optimum_avec = (
             _panneaux_dimensionnement_horaire(
@@ -316,6 +342,11 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     phase_client, hors_reseau = phase_et_isolement_du_lead(lead)
     deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
+        if choix_batterie == 'sans':
+            _ajouter_alerte(journal_auto, (
+                'Site sans réseau (raccordement « aucun ») : la batterie est '
+                "ajoutée d'office, le choix « sans batterie » ne s'applique "
+                'pas.'))
         wants_battery = True
 
     # ── L-2OPT — L'AXE « AVEC BATTERIE » A SON PROPRE OPTIMUM ───────────────
@@ -571,6 +602,7 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # sans commercial dans la boucle, le journal serveur est le seul lecteur.
     for avertissement in resultat['avertissements'] or []:
         logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
+        _ajouter_alerte(journal_auto, str(avertissement))
 
     # QJR63 — LE kWc a été posé par son propriétaire à l'étape 8 (``finaliser``),
     # sur les lignes RÉELLEMENT composées : ni ``target_kwc``, ni

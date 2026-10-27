@@ -155,6 +155,28 @@ class BuildDevisAutoServiceTest(TestCase):
                      if 'Panneau' in li.designation)
         self.assertEqual(int(panel.quantite), 9)
 
+    def test_taille_de_la_fiche_ecrit_une_alerte_au_vendeur(self):
+        """RGEN1 — Given un lead avec taille souhaitée 16 kWc ET une facture,
+        When on construit le devis auto, Then le journal dit au vendeur que la
+        facture n'a pas servi ; sans taille, aucune phrase de ce genre."""
+        journal = {}
+        build_devis_auto(
+            lead=self._lead(taille_souhaitee_kwc=Decimal('16'),
+                            facture_hiver=Decimal('1800')),
+            user=self.user, company=self.company, journal_auto=journal)
+        self.assertTrue(any(
+            'Taille demandée sur la fiche du lead : 16 kWc' in a
+            for a in journal.get('alertes', [])), journal)
+
+        journal2 = {}
+        build_devis_auto(
+            lead=self._lead(facture_hiver=Decimal('1800'),
+                            email='sans-taille@ex.com'),
+            user=self.user, company=self.company, journal_auto=journal2)
+        self.assertFalse(any(
+            'Taille demandée' in a or 'Taille imposée' in a
+            for a in journal2.get('alertes', [])), journal2)
+
     def test_le_compte_de_panneaux_couvre_toujours_la_taille_demandee(self):
         """U1 — invariant du PLAFOND, sur tout le domaine résidentiel utile.
 
