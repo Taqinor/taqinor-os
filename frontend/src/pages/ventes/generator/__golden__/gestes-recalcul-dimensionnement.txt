@@ -492,7 +492,13 @@ Ligne optionnelle (add-on hors total)=on [ ]
         "facture_hiver": 3000,
         "ville": "Mohammedia",
         "kwc": 5.68,
-        "batterie_kwh": 5
+        "batterie_kwh": 5,
+        "batteries": [
+          {
+            "produit": 61,
+            "quantite": 1
+          }
+        ]
       },
       {
         "signal": {}
