@@ -98,6 +98,8 @@ export interface SyntheseCi {
   argent: SyntheseCiArgent | null;
   /** L'offre que le document TITRE (`option_servie` : `sans_batterie` | `avec_batterie`), ou `null`. */
   optionServie: string | null;
+  /** CPRW16 — échéancier de paiement SERVI (`synthese_ci.echeancier`), tel quel ; `[]` sans échéancier. */
+  echeancier: Array<{ libelle: string | null; pct: number; montantTtc: number | null; jalon: string | null }>;
   /** CIW303 — la batterie d'un C&I est une OPTION : valeur chiffrée par le moteur, ou son motif. */
   optionBatterie: SyntheseCiOptionBatterie | null;
   /** CIW304 — services servis : l'option O&M nommée du devis et le délai de suivi (heures), si servis. */
@@ -348,6 +350,13 @@ export function syntheseCi(
         }
       : null,
     argent: lireArgentCi(brut.argent),
+    echeancier: Array.isArray(brut.echeancier)
+      ? brut.echeancier.flatMap((e) => {
+          if (!estRecord(e)) return [];
+          const pct = nombreServi(e.pct);
+          return pct === null ? [] : [{ libelle: texteServi(e.libelle), pct, montantTtc: nombreServi(e.montant_ttc), jalon: texteServi(e.jalon) }];
+        })
+      : [],
     optionServie: texteServi(brut.option_servie),
     optionBatterie: estRecord(brut.option_batterie)
       ? {

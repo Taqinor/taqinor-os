@@ -39,3 +39,33 @@ export function garantiesCi(
       : [];
   });
 }
+
+// ── CPRW16 — échéancier de paiement ────────────────────────────────────────────────────────
+
+export const TITRE_ECHEANCIER_CI: TextesCi = { fr: 'Échéancier de paiement', en: 'Payment schedule', ar: 'جدول الأداء' };
+
+/** `i18n_labels.py` `ci_jalon_*` (clé = `jalon` servi). */
+export const JALONS_CI: Record<string, TextesCi> = {
+  commande: { fr: 'À la commande', en: 'On order', ar: 'عند الطلب' },
+  livraison: { fr: 'À la livraison', en: 'On delivery', ar: 'عند التسليم' },
+  mise_en_service: { fr: 'À la mise en service', en: 'On commissioning', ar: 'عند التشغيل' },
+  reception_definitive: { fr: 'À la réception définitive', en: 'On final acceptance', ar: 'عند التسلم النهائي' },
+};
+
+/** `i18n_labels.py` `ci_ttc`. */
+export const TTC_CI: TextesCi = { fr: 'TTC', en: 'incl. VAT', ar: 'شامل الضريبة' };
+
+/**
+ * Les jalons SERVIS : % servi, montant TTC seulement s'il est servi et non nul ; jalon inconnu →
+ * le libellé servi (même texte dans les trois langues), jamais un libellé inventé.
+ */
+export function echeancierCi(
+  ci: SyntheseCi | null,
+): Array<{ jalon: string | null; libelle: TextesCi; pct: number; montantTtc: number | null }> {
+  return (ci?.echeancier ?? []).flatMap((e) => {
+    const connu = e.jalon ? JALONS_CI[e.jalon] : undefined;
+    const libelle = connu ?? (e.libelle ? { fr: e.libelle, en: e.libelle, ar: e.libelle } : null);
+    if (!libelle) return [];
+    return [{ jalon: e.jalon, libelle, pct: e.pct, montantTtc: e.montantTtc !== null && e.montantTtc > 0 ? e.montantTtc : null }];
+  });
+}

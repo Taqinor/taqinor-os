@@ -405,3 +405,37 @@ describe('CPRW23 — postes à chiffrer après visite : lecture du payload publi
     expect(syntheseCi(p({ a_confirmer: [{ cle: 'tension', libelle: 'T' }] }))!.postesHorsTotal).toEqual([]);
   });
 });
+
+// ── CPRW16 — échéancier de paiement servi ───────────────────────────────────────────────────
+import { echeancierCi, JALONS_CI, TITRE_ECHEANCIER_CI } from '../src/components/proposition/ci/blocsCi';
+
+describe('CPRW16 — échéancier C&I', () => {
+  const ech = (echeancier: unknown) => syntheseCi(({ mode_installation: 'industriel', synthese_ci: { echeancier } }) as unknown as ProposalResponse);
+  it('40/50/10 → 3 cartes, somme 100, jalons traduits, montants servis', () => {
+    const lignes = echeancierCi(ech([
+      { libelle: 'À la commande', pct: 40, montant_ttc: 40000, jalon: 'commande' },
+      { libelle: 'À la livraison', pct: 50, montant_ttc: 50000, jalon: 'livraison' },
+      { libelle: 'À la mise en service', pct: 10, montant_ttc: 10000, jalon: 'mise_en_service' },
+    ]));
+    expect(lignes).toHaveLength(3);
+    expect(lignes.reduce((s, l) => s + l.pct, 0)).toBe(100);
+    expect(lignes[0]!.libelle).toEqual(JALONS_CI.commande);
+    expect(lignes.map((l) => l.montantTtc)).toEqual([40000, 50000, 10000]);
+  });
+  it('montant_ttc null ou 0 → aucun montant ; jalon inconnu → libellé servi ; absent → rien', () => {
+    const l = echeancierCi(ech([{ libelle: 'Jalon X', pct: 100, montant_ttc: null, jalon: 'zzz' }, { libelle: 'Y', pct: 0, montant_ttc: 0, jalon: 'commande' }]));
+    expect(l[0]).toMatchObject({ montantTtc: null, libelle: { fr: 'Jalon X', en: 'Jalon X', ar: 'Jalon X' } });
+    expect(l[1]!.montantTtc).toBeNull();
+    expect(echeancierCi(ech([]))).toEqual([]);
+    expect(echeancierCi(null)).toEqual([]);
+  });
+  it('parité des libellés avec i18n_labels.py (ci_jalon_*, ci_echeancier)', () => {
+    for (const j of ['commande', 'livraison', 'mise_en_service', 'reception_definitive']) expect(JALONS_CI[j]).toEqual(labelPy(`ci_jalon_${j}`));
+    expect(TITRE_ECHEANCIER_CI).toEqual(labelPy('ci_echeancier'));
+  });
+  it('la page appelle EcheancierCi avant l\'ancre achats', () => {
+    const page = lirePageProposition();
+    expect(page.indexOf('data-ci-echeancier')).toBeGreaterThan(-1);
+    expect(page.indexOf('data-ci-echeancier')).toBeLessThan(page.indexOf('id="achats"'));
+  });
+});
