@@ -42,8 +42,8 @@ with no rate column at all — mono-MAD in practice.
 | adminops | FactureLicence | `apps/adminops/models.py:299` | montant_ht, montant_ttc, tva |
 | adsengine | CreativeAsset | `apps/adsengine/models.py:990` | cost_cents |
 | adsengine | InstagramPublishJob | `apps/adsengine/models.py:2331` | quota_total |
-| crm | Lead | `apps/crm/models.py:221` | montant_estime, tva_recuperable |
-| crm | PointContact | `apps/crm/models.py:2358` | cout |
+| crm | Lead | `apps/crm/models.py:223` | montant_estime, tva_recuperable |
+| crm | PointContact | `apps/crm/models.py:2344` | cout |
 | crm | GesteRelanceAppareil | `apps/crm/models_cadence.py:214` | total |
 | crm | CommissionPartenaire | `apps/crm/models_clients.py:277` | base_ht, montant |
 | crm | DealEnregistre | `apps/crm/models_clients.py:555` | montant_commission_du, montant_commission_estime |

@@ -180,7 +180,7 @@
     "rythme.equipes": "1x8 | 2x8 | 3x8 | continu, + `debut_equipe_h`",
     "rythme.fermetures": "[{du, au, motif}] — congés annuels, arrêts techniques",
     "rythme.ramadan": "{plages déclarées} ou null — jamais supposé",
-    "rythme.talon": "{kw | part_pct | inconnu}",
+    "rythme.talon": "{kw | part_pct | niveau_jour_pct | inconnu} — kw : talon en kW ; part_pct : part de l'énergie du mois ; niveau_jour_pct : % du niveau des heures ouvertes (réponse « équipements hors horaires », fondateur 27/10/2026) ; sans talon déclaré : talon par défaut du type de commerce (archétype sourcé, sinon défaut fondateur 20 %)",
     "rythme.categorie_commerciale": "les 9 catégories commerciales du lead (hors industriel) ; `reponses_categorie` = réponses propres à la catégorie",
     "courbe_mesuree": "{pas_minutes, points, source, date} OU un fichier lu par le parseur du serveur {contenu (texte CSV), source, colonne?, unite?, debut?} ; null sinon — passe devant tout profil déclaré",
     "toit": "{type_pose (vocabulaire CIQ7), surface_utile_m2, surface_type declaree|mesuree|calepinage, pente_deg, azimut_deg, couverture, charge_admissible_kg_m2 + charge_admissible_source}",

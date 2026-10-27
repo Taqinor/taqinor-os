@@ -75,6 +75,29 @@ class TestArchetypes(unittest.TestCase):
             self.assertIsNone(forme, categorie)
             self.assertIn(MOTIF_PROFIL_DECLARE, motif)
 
+    def test_archetype_le_plus_proche_dit_tel(self):
+        # Décision fondateur 26/10/2026 — définition BDEW du profil, jamais un
+        # archétype présenté comme le sien.
+        for categorie, jeu in (('cafe', 'BDEW G2'), ('garage', 'BDEW G1'),
+                               ('pharmacie', 'BDEW G4'), ('boucherie', 'BDEW G3')):
+            forme, source = forme_archetype(categorie, 'ouvre', 'hiver')
+            self.assertEqual(len(forme), 24)
+            self.assertTrue(source['jeu_de_donnees'].startswith(jeu), categorie)
+            self.assertIn('le plus proche', source['jeu_de_donnees'])
+            self.assertIn('standardlastprofile', source['definition'])
+        for categorie in ('entrepot', 'mosquee'):
+            self.assertIsNone(forme_archetype(categorie, 'ouvre', 'hiver')[0], categorie)
+
+    def test_chaque_categorie_du_lead_a_son_talon(self):
+        from apps.crm.categories_commerciales import CategorieCommerciale
+        from apps.ventes.moteur_ci.talons import CATEGORIES_COMMERCE, talon_par_defaut
+        self.assertEqual(set(CATEGORIES_COMMERCE), set(CategorieCommerciale.values))
+        for categorie, lien in CATEGORIES_COMMERCE.items():
+            forme, _src = forme_archetype(categorie, 'ouvre', 'hiver')
+            self.assertEqual(forme is not None, lien != 'defaut', categorie)
+            if lien == 'defaut':
+                self.assertEqual(talon_par_defaut(categorie)[0], 0.20)
+
     def test_chaque_forme_somme_a_un(self):
         for archetype in donnees_archetypes()['archetypes']:
             for type_jour in TYPES_JOUR:
