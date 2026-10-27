@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import logging
 
+from core.money import quantize_mad
+
 from .lignes_classement import _battery_kwh_from_items, _cout_onduleur
 
 logger = logging.getLogger(__name__)
@@ -199,7 +201,7 @@ def _cout_onduleur_paye(devis, items, blob):
     cout = _cout_onduleur(items, blob)
     remise = _nombre(getattr(devis, "remise_globale", None))
     if cout and remise > 0 and _regles_2710(devis):
-        return round(cout * (1 - remise / 100), 2)
+        return float(quantize_mad(cout * (1 - remise / 100)))
     return cout
 
 

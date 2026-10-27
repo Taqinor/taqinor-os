@@ -270,7 +270,7 @@ _CLES_HYPOTHESES = (
     "res_hyp_autoconso", "res_hyp_degradation", "res_hyp_tarif_constant",
     "res_hyp_tarif_hausse", "res_hyp_stockage_publie", "res_hyp_stockage_ref",
     "res_hyp_batt_omis", "res_hyp_provision", "res_hyp_sans_provision",
-    "res_hyp_estimations_nc")
+    "res_hyp_estimations_nc", "rpdf_hyp_provision_options")
 
 
 def _motif_hypothese(cle):
@@ -323,8 +323,8 @@ def build(ctx) -> str:
     validity_days = d.get("validity_days")
     # Q5 — délais commerciaux INDICATIFS, réglages société ; vides ⇒ omis.
     _delais = d.get("delais") or {}
-    _delai_visite = (_delais.get("visite_technique") or "").strip()
-    _delai_install = (_delais.get("installation") or "").strip()
+    _delai_visite = theme.delai_doc(d, (_delais.get("visite_technique") or "").strip())
+    _delai_install = theme.delai_doc(d, (_delais.get("installation") or "").strip())
     site_url = d.get("site_url", "taqinor.ma")
     links = d.get("links", {}) or {}
     # AMOT18 — société identifiée sans site : ``site_url`` vide ⇒ aucun lien

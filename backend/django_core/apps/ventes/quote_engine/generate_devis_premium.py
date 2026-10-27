@@ -3864,8 +3864,8 @@ def apply_quote_data(data: dict) -> None:
     VALID_UNTIL = (data.get("valid_until") or "").strip()
     global DELAI_VISITE, DELAI_INSTALLATION  # Q5 — délais indicatifs
     _dl = data.get("delais") or {}
-    DELAI_VISITE = (_dl.get("visite_technique") or "").strip()
-    DELAI_INSTALLATION = (_dl.get("installation") or "").strip()
+    from .residential.theme import delai_doc as _dd  # RPDF : délais dans la langue du document
+    DELAI_VISITE, DELAI_INSTALLATION = (_dd(data, (_dl.get(k) or "").strip()) for k in ("visite_technique", "installation"))
     global SAVINGS_ESTIMATED  # M10 — économies estimées ?
     SAVINGS_ESTIMATED = bool(data.get("savings_estimated"))
     # XSAL14/XSAL5 — structure (sections/notes) + options proposées (rendu seul,

@@ -1126,8 +1126,8 @@ def cashflow_assumptions(inverter_replace_cost=None,
             notes.append(
                 f"Stockage : rendement aller-retour batterie "
                 f"{round(_rt * 100)} % appliqué aux kWh qui transitent par la "
-                "batterie — hypothèse de référence, le constructeur de ce "
-                "produit ne publie pas cette valeur dans notre fiche."
+                "batterie — valeur de référence retenue pour cette "
+                "technologie."
                 + _batt_omis)
     # Q1 — le MONTANT de la provision est le prix RÉEL de l'onduleur du devis ;
     # sans ligne onduleur identifiable, la projection le dit au lieu de
