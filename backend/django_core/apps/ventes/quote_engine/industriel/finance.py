@@ -63,7 +63,8 @@ _num = nombre_ou_none
 #: CPDF5 — une source servie qui n'est que du jargon interne (formule,
 #: citation, « moteur », principe, méthode du devis) n'est jamais imprimée.
 _JARGON_SOURCE = re.compile(
-    r"moteur|IEA|NREL|Jordan|σ|P50|bancable|principe|m[ée]thode de calcul",
+    r"moteur|IEA|NREL|Jordan|σ|P50|bancable|principe|m[ée]thode de calcul"
+    r"|calculation method|engine|bankable|طريقة حساب|محرك",
     re.IGNORECASE)
 
 
@@ -690,12 +691,24 @@ def _pied_investissement(d, argent, fmt_mad, L):
             + f" : <b>{fmt_mad(ttc)} MAD</b>")
 
 
+def _argent_option_avec_omis(d):
+    from ..ci.synthese import MOTIF_ARGENT_OPTION_AVEC
+    return any(isinstance(o, dict) and o.get("bloc") == "argent"
+               and o.get("motif") == MOTIF_ARGENT_OPTION_AVEC
+               for o in (d.get("ind_synthese") or {}).get("omissions") or [])
+
+
 def _motif_non_chiffre(d, L):
     """``(texte, ligne de motif)`` quand la rentabilité n'est pas chiffrée.
     QJR119 / QXMT — jamais une table de zéros ; CIQ341 — un site MT demande
     ses 12 factures MT ; AMOT80 (D-ACI-8=a) — investissement non chiffré ⇒
     SON motif, jamais « économies pas encore calculées »."""
     motif = ci_couverture.ligne_non_chiffre(d, "ind", "i2")
+    if _argent_option_avec_omis(d):
+        # CPDF1 — option « avec batterie » servie sans son flux 25 ans : la
+        # page garde l'analyse énergétique, sans phrase « économies non
+        # calculées » (la couverture imprime l'économie de l'année 1).
+        return "", ""
     motif_inv = ci_couverture.motif_investissement(d, "ind")
     if motif_inv:
         return L("ci_ind_motif_invest_client",
@@ -724,9 +737,10 @@ def _corps_non_chiffre(d, L, pied, couleurs_gr, police, fmt, fmt_mad):
     énergétique (l'énergie mois par mois, le surplus) sous une petite ligne
     de motif ; sans bilan, l'encadré d'hier."""
     corps_txt, motif = _motif_non_chiffre(d, L)
-    chapeau = L("ci_ind_lead_non_chiffre",
-                "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
-                "calculée sur vos données.")
+    chapeau = "" if _argent_option_avec_omis(d) else L(
+        "ci_ind_lead_non_chiffre",
+        "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
+        "calculée sur vos données.")
     graphique = bloc_energie_mensuelle(
         d, d.get("ind_synthese"), couleurs_gr, police, fmt, "i2",
         hauteur=170, largeur_mm=182)
@@ -913,7 +927,8 @@ def build(ctx):
             + '</div></div>') if lignes_hyp and not cede(d, "hypotheses")             else ""
         om_txt = _ligne_om(argent, fmt_mad, L)
         revente_html = _ligne_revente(argent, fmt, L, ci_blocs.langue(d))
-        mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'
+        mt_source = (f'<br><span class="i2-mini">'
+                     f'{ci_couverture.mention_client(d["ind_mt_mention"])}</span>'
                      if d.get("ind_mt_mention") else "")
         corps = f"""
   {kpis}
@@ -929,9 +944,9 @@ def build(ctx):
     {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle).")}
     {mt_source}
   </div>"""
-        lead_txt = L("ci_ind_lead_client",
+        lead_txt = L("ci_cpdf_lead_finance",
                      "Projection sur {n} ans : flux annuels, délai de retour "
-                     "et TRI tirés de la même série ; hypothèses détaillées "
+                     "et TRI tirés de la même série ; bases du calcul "
                      "ci-dessous.", n=horizon_txt)
         titre = L("ci_ind_rentabilite_sur", "Rentabilité sur {n} ans",
                   n=horizon_txt)

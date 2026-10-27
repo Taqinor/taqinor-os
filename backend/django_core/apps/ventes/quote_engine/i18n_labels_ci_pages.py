@@ -30,6 +30,10 @@ LIBELLES_CI_PAGES = {
         'fr': 'Exploitation et maintenance (O&amp;M)',
         'en': 'Operation and maintenance (O&amp;M)',
         'ar': 'التشغيل والصيانة (O&amp;M)'},
+    # CPDF — « جدول الأداء » se lit « tableau de performance » : l'échéancier
+    # de PAIEMENT se dit « جدول الدفع ».
+    'ci_cpdf_echeancier': {'fr': 'Échéancier de paiement',
+                           'en': 'Payment schedule', 'ar': 'جدول الدفع'},
 }
 
 for _cle, _val in LIBELLES_CI_PAGES.items():

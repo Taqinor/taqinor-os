@@ -36,6 +36,13 @@ LIBELLES_CI = {
         'fr': 'Production : {kwh}&#160;kWh/an',
         'en': 'Production: {kwh}&#160;kWh/yr',
         'ar': 'الإنتاج: {kwh}&#160;kWh/سنة'},
+    'ci_cpdf_lead_finance': {
+        'fr': 'Projection sur {n} ans : flux annuels, délai de retour et TRI '
+              'tirés de la même série ; bases du calcul ci-dessous.',
+        'en': 'Projection over {n} years: annual cash flows, payback and IRR '
+              'drawn from the same series; calculation basis below.',
+        'ar': 'إسقاط على مدى {n} سنة: التدفقات السنوية ومدة الاسترداد ومعدل '
+              'العائد الداخلي مستخرجة من نفس السلسلة؛ أسس الحساب أدناه.'},
 }
 
 for _cle, _val in LIBELLES_CI.items():

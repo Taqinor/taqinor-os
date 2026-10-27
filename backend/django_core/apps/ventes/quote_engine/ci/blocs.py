@@ -9,6 +9,8 @@ une seconde fois.
 """
 from __future__ import annotations
 
+import re
+
 from ..montants import decimale
 from .. import i18n_labels_ci_pages  # noqa: F401 — libellés CPDF
 
@@ -353,7 +355,7 @@ def bloc_echeancier(synthese, prefixe, couleur_titre="#0F1E35",
             f'color:{couleur_titre};">{_pct(j.get("pct"))}&#160;%</div>'
             f'<div style="margin-top:1px;">{_libelle_jalon(doc, j)}</div>'
             f'{montant_html}</td>')
-    titre = libelle(doc, "ci_echeancier", TITRE_ECHEANCIER)
+    titre = libelle(doc, "ci_cpdf_echeancier", TITRE_ECHEANCIER)
     return (f'<div class="{prefixe}-ech" style="margin-top:12px;'
             f'font-size:7.5pt;color:{couleur_texte};line-height:1.3;">'
             f'<div style="font-size:9pt;font-weight:700;'
@@ -535,11 +537,26 @@ def puces_conditions(d):
     return puces
 
 
+_PUCE_ECHEANCIER = re.compile(
+    r"\s*(?:échéancier de paiement|payment schedule|جدول الأداء|جدول الدفع)",
+    re.IGNORECASE)
+
+
+def _echeancier_imprime(d):
+    synthese = d.get("com_synthese") or d.get("ind_synthese") or {}
+    return any(isinstance(j, dict) for j in synthese.get("echeancier") or [])
+
+
 def bloc_conditions(d, prefixe, couleur_titre, couleur_texte):
     """``<div>`` « Conditions » : puces CGV (gelées) et note de TVA
     multi-taux (``tva_note``, si les puces ne la portent pas déjà) — styles
     en ligne, compact, pour tenir dans la page EXISTANTE (D-QJR5-12)."""
     puces = puces_conditions(d)
+    if _echeancier_imprime(d):
+        # CPDF10 — l'échéancier est imprimé en cartes (montants au centime,
+        # dernier jalon = reliquat) : la puce CGV qui le répète (« Acompte :
+        # 50 % ; … ; Solde : 10 % ») n'est pas imprimée une seconde fois.
+        puces = [p for p in puces if not _PUCE_ECHEANCIER.match(p)]
     tva_note = _txt(d.get("tva_note"))
     if tva_note and not any(tva_note in p for p in puces):
         puces.append(tva_note)

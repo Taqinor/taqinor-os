@@ -140,16 +140,22 @@ def document_adaptatif(d, build_html, rendre):
     return None
 
 
-def _sans_phrase_pointe(block):
-    """CPDF6 — la phrase « Le soir et la nuit… » est imprimée page 1 : la
-    case catégorie de la page 2 ne la répète pas ; sans autre ligne, la case
-    entière est retirée."""
+def _sans_phrase_pointe(block, d=None):
+    """CPDF6 — la phrase « Le soir et la nuit… » (ou, batterie servie, « Batterie
+    de N kWh utiles… ») est imprimée page 1 : la case catégorie de la page 2
+    ne la répète pas ; sans autre ligne, la case entière est retirée."""
     import html as _html
     import re
     from ..ci import mentions
+    from ..ci.couverture import note_pointe
     phrases = {_html.unescape(t) for tab in (
         mentions.TEXTES_POINTE_SANS, mentions.TEXTES_POINTE_SANS_OPTION_AVEC,
         mentions.TEXTES_POINTE_AVEC_NON_CHIFFREE) for t in tab.values()}
+    if d is not None:
+        # La phrase EXACTE de la page 1 de ce document (variante « en couvre
+        # N % », phrase batterie chiffrée, langue du document).
+        cle = "com" if d.get("com_synthese") else "ind"
+        phrases.add(_html.unescape(str(note_pointe(d, cle) or "")).strip())
     motif = re.compile(r'<div class="c2b-li">(.*?)</div>', re.S)
     reste = [m for m in motif.findall(block or "")
              if _html.unescape(m).strip() not in phrases]
@@ -483,7 +489,7 @@ def build(ctx):
         langue=_langue(d),
         synthese=d.get("com_synthese") or d.get("ind_synthese"))
 
-    block = _sans_phrase_pointe(block)
+    block = _sans_phrase_pointe(block, d)
 
     css = f"""
 <style>

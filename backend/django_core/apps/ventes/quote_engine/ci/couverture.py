@@ -548,6 +548,8 @@ def ligne_surplus(d, cle, prefixe):
                    if not est_site_mt(d) else
                    libelle(d, "ci_surplus_sans_revente",
                            " — revente du surplus non retenue."))
+    # CPDF5 — un chiffre du bilan horaire, pas une approximation : sans « ≈ ».
+    phrase = phrase.replace("≈ ", "").replace("≈&#160;", "")
     return f'<div class="{prefixe}-mtsrc">{phrase}</div>'
 
 
