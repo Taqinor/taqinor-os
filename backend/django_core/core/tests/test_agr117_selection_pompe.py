@@ -84,8 +84,9 @@ class QuatreCas(unittest.TestCase):
         self.assertTrue(res["pompe"]["placeholder"])
         gamme = [a for a in res["alertes"] if a["code"] == "gamme_monophasee"]
         self.assertTrue(gamme)
-        # 3 CV × 0,7355 = 2,21 kW, le plus gros mono du catalogue.
-        self.assertIn("2,21 kW max", gamme[0]["message"])
+        # AGM1 — 3 CV = moteur normalisé 2,2 kW (le plus gros mono du
+        # catalogue), même kW que le variateur.
+        self.assertIn("2,2 kW max", gamme[0]["message"])
 
     def test_mono_hors_courbe_jamais_silencieux(self):
         res = choisir_pompe(GENERIQUES, hmt_m=40, debit_conception_m3h=3,
