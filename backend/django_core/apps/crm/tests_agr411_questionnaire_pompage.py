@@ -127,7 +127,8 @@ class SectionPompageTests(TestCase):
         # d'une pompe neuve n'est jamais écrite ; 45.1 en flottant est lu.
         from unittest import mock
         lead = self._agricole(source_eau='forage', niveau_statique_m=20,
-                              surface_irriguee_ha=4, pompe_alim_actuelle='butane')
+                              surface_irriguee_ha=4, pompe_alim_actuelle='butane',
+                              besoin_eau_m3j=60)
         self.assertTrue(quest.manquantes(lead)['pompage'])
         lien = QuestionnaireLien.objects.create(
             company=self.company, lead=lead,
@@ -169,6 +170,7 @@ class SectionPompageTests(TestCase):
                 'pompe_hmt_m': -3}}), content_type='application/json')
         lead.refresh_from_db()
         self.assertEqual(lead.pompe_actuelle_kw, Decimal('5.5'))
+        self.assertIsNone(lead.pompe_hmt_m)  # -3 : ignorée
         # CQST6 — forage déclaré, avec sa provenance.
         self.client.post(PUBLIC.format(lien.token), data=json.dumps({
             'section': 'pompage', 'reponses': {
@@ -179,7 +181,6 @@ class SectionPompageTests(TestCase):
         self.assertEqual(lead.debit_forage_source, 'client')
         self.assertEqual(lead.pompe_hmt_source, 'declaree')
         self.assertEqual(lead.pompe_actuelle_tension_v, 380)
-        self.assertIsNone(lead.pompe_hmt_m)
 
     def test_lien_residentiel_identique(self):
         lead = Lead.objects.create(company=self.company, nom='Maison')
