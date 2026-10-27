@@ -70,7 +70,7 @@ describe('garanties onduleur / batterie — une durée, celle du Maroc (décisio
     const re = /Dyness[^.;]{0,80}(10 ?ans|10[ -]years?|10 سنوات)|(10 ?ans|10[ -]years?|10 سنوات)[^.;]{0,80}Dyness/;
     const cibles = walkSrc(srcDir).filter((abs) => {
       const rel = abs.slice(srcDir.length + 1).replace(/\\/g, '/');
-      return rel.startsWith('pages/') || rel === 'lib/fiches.ts';
+      return rel.startsWith('pages/') || rel.startsWith('content/') || rel === 'lib/fiches.ts';
     });
     for (const abs of cibles) {
       readFileSync(abs, 'utf-8')
@@ -94,5 +94,18 @@ describe('garanties onduleur / batterie — une durée, celle du Maroc (décisio
       for (const re of interdits) if (re.test(txt)) offenders.push(`${abs} → ${re}`);
     }
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('RWEB2 — garanties /proposition par marque posée', () => {
+  it('Deye 5, Huawei 10, Dyness DL5.0C 7, Powerbox Pro 10, marque inconnue omise', async () => {
+    const { garantieOnduleurAns, garantieBatterieAns } = await import('../src/lib/proposition/garanties');
+    expect(garantieOnduleurAns([{ designation: 'Onduleur hybride Deye SUN-8K-SG05LP1' }])).toBe(5);
+    expect(garantieOnduleurAns([{ designation: 'Onduleur réseau', marque: 'Huawei' }])).toBe(10);
+    expect(garantieOnduleurAns([{ designation: 'Onduleur X' }])).toBeNull();
+    expect(garantieBatterieAns([{ designation: 'Batterie Dyness DL5.0C 5,12 kWh' }])).toBe(7);
+    expect(garantieBatterieAns([{ designation: 'Dyness Powerbox Pro 10.24' }])).toBe(10);
+    expect(garantieBatterieAns([{ designation: 'Dyness Powerbox Pro 10.24' }, { designation: 'Dyness DL5.0C' }])).toBe(7);
+    expect(garantieBatterieAns([{ designation: 'Panneau 710 Wc' }])).toBeNull();
   });
 });

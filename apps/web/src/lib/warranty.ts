@@ -70,6 +70,9 @@ export const INVERTER_WARRANTY_YEARS = HUAWEI_INVERTER_WARRANTY_YEARS;
 /** Garantie batterie (durée), en années. */
 export const BATTERY_WARRANTY_YEARS = 7;
 
+/** Garantie batterie Dyness Powerbox Pro (fondateur 27/10/2026), en années. */
+export const DYNESS_POWERBOX_PRO_WARRANTY_YEARS = 10;
+
 /** Seuil de capacité garanti de la batterie au terme, en %. */
 export const BATTERY_CAPACITY_FLOOR_PCT = 70;
 

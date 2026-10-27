@@ -4069,9 +4069,9 @@ function objectionFaqCi(ci: SyntheseCi | null): FaqItem[] {
       question: 'Comment la TVA est-elle traitée sur ce devis ?',
       questionAr: 'كيف تُعالَج الضريبة على القيمة المضافة في هذا العرض؟',
       questionEn: 'How is VAT handled on this quote?',
-      answer: 'Selon votre régime fiscal ; le devis indique la base retenue — à confirmer avec votre comptable.',
-      answerAr: 'حسب نظامكم الضريبي؛ يبيّن العرض الأساس المعتمد — يُؤكَّد مع محاسبكم.',
-      answerEn: 'It depends on your tax regime; the quote states the basis used — to be confirmed with your accountant.',
+      answer: 'Selon votre régime fiscal : le devis indique la base retenue (HT quand votre TVA est récupérable).',
+      answerAr: 'حسب نظامكم الضريبي: يبيّن العرض الأساس المعتمد (دون احتساب الضريبة حين تكون قابلة للاسترجاع).',
+      answerEn: 'It depends on your tax regime: the quote states the basis used (excl. VAT when your VAT is recoverable).',
     },
     {
       id: 'travaux',

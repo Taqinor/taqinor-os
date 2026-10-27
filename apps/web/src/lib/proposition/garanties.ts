@@ -9,6 +9,7 @@
 import {
   BATTERY_WARRANTY_YEARS,
   DEYE_INVERTER_WARRANTY_YEARS,
+  DYNESS_POWERBOX_PRO_WARRANTY_YEARS,
   HUAWEI_INVERTER_WARRANTY_YEARS,
 } from '../warranty';
 
@@ -29,7 +30,10 @@ export function garantieOnduleurAns(lignes: readonly LigneMarque[]): number | nu
   return null;
 }
 
-/** Garantie batterie en années (Dyness), ou null (pas de batterie Dyness dans le devis). */
+/** Garantie batterie en années (Dyness DL5.0C 7, Powerbox Pro 10), ou null (pas de batterie Dyness). */
 export function garantieBatterieAns(lignes: readonly LigneMarque[]): number | null {
-  return lignes.some((l) => texte(l).includes('dyness')) ? BATTERY_WARRANTY_YEARS : null;
+  const t = lignes.map(texte).filter((x) => x.includes('dyness'));
+  if (!t.length) return null;
+  // Deux gammes dans le même devis → la plus courte (jamais promettre plus que la garantie réelle).
+  return t.every((x) => x.includes('powerbox')) ? DYNESS_POWERBOX_PRO_WARRANTY_YEARS : BATTERY_WARRANTY_YEARS;
 }
