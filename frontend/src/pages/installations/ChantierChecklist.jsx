@@ -38,6 +38,9 @@ export default function ChantierChecklist({
   // NTMOB11 — clé de l'étape dont le panneau de capture photo est ouvert
   // (null = fermé). Un seul panneau à la fois, comme la saisie de série.
   const [photoCle, setPhotoCle] = useState(null)
+  // Revue chantier 26/10/2026 — refus serveur par étape (affiché sous
+  // l'étape ET en toast ; plus jamais avalé en silence).
+  const [erreurs, setErreurs] = useState({})
   // N15 / VX227 — n° de série déjà présents sur ce chantier (avertissement de
   // doublon). Le Set UNIT désormais les deux sources : les séries du parc
   // (`series`) ET les relevés saisis côté intervention (`interventionSeries`,
@@ -91,8 +94,16 @@ export default function ChantierChecklist({
         setCompletion(r.data.data?.completion)
       }
       setSerie((prev) => ({ ...prev, [item.cle]: undefined }))
+      setErreurs((prev) => ({ ...prev, [item.cle]: undefined }))
       onChanged?.()
-    } catch { /* erreur silencieuse */ }
+    } catch (err) {
+      const data = err?.response?.data
+      const message = (typeof data?.detail === 'string' && data.detail)
+        || (Array.isArray(data?.cle) ? data.cle[0] : null)
+        || "Impossible d'enregistrer cette étape. Réessayez."
+      setErreurs((prev) => ({ ...prev, [item.cle]: message }))
+      toast.error(message)
+    }
   }
 
   const setSerieField = (cle, k, v) =>
@@ -151,14 +162,27 @@ export default function ChantierChecklist({
         </p>
       ) : (
         <div className="flex flex-col">
-          {items.map((item) => (
+          {items.map((item) => {
+            // Revue chantier 26/10/2026 — étape à photo obligatoire sans
+            // photo : le serveur refuse la coche (409) ; l'écran le dit avant.
+            const photoRequise = item.photo_obligatoire && !item.fait
+              && !(item.photos_count > 0)
+            return (
             <div key={item.id} className="border-b border-border py-2.5 last:border-0">
               <div className="flex min-h-11 items-center gap-3">
                 {/* N12 — zones tactiles agrandies pour usage terrain/gants. */}
-                <label className="flex min-h-11 flex-1 cursor-pointer items-center gap-3">
+                <label
+                  className={cn('flex min-h-11 flex-1 items-center gap-3',
+                    photoRequise ? 'cursor-not-allowed' : 'cursor-pointer')}
+                  title={photoRequise
+                    ? 'Photo requise : ajoutez une photo de cette étape avant de la cocher.'
+                    : undefined}
+                >
                   <Checkbox
                     className="size-6"
                     checked={!!item.fait}
+                    disabled={photoRequise}
+                    aria-label={item.libelle}
                     onCheckedChange={(c) => toggle(item, c === true)}
                   />
                   <span className={cn(
@@ -167,6 +191,11 @@ export default function ChantierChecklist({
                   )}>
                     {item.libelle}
                   </span>
+                  {photoRequise && (
+                    <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+                      Photo requise
+                    </span>
+                  )}
                   {item.fait && (item.fait_par_nom || item.fait_le) && (
                     <span className="ml-auto text-right text-xs text-muted-foreground">
                       {item.fait_par_nom ? `par ${item.fait_par_nom}` : ''}
@@ -186,6 +215,11 @@ export default function ChantierChecklist({
                   {item.photos_count > 0 ? item.photos_count : ''}
                 </Button>
               </div>
+              {erreurs[item.cle] && (
+                <p role="alert" className="ml-9 text-xs text-destructive">
+                  {erreurs[item.cle]}
+                </p>
+              )}
               {/* N9 — saisie optionnelle de série sur les étapes concernées.
                   N12 — empilé pleine largeur sur mobile, deux colonnes en sm+. */}
               {item.capture_serie && !item.fait && (
@@ -215,7 +249,8 @@ export default function ChantierChecklist({
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

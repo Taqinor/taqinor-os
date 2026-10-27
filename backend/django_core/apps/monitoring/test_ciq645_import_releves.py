@@ -101,6 +101,15 @@ class ImportRelevesTest(TestCase):
         self.assertIn('Date illisible', lignes[4])
         self.assertEqual(self._releves().count(), 1)
 
+    def test_retour_chariot_isole_200_jamais_500(self):
+        # api-fuzz-full 27/10 : un \r isolé levait ``csv.Error`` (500) ; le
+        # contenu illisible est rapporté dans ``erreurs``, rien n'est créé.
+        for texte in ('Ú\res\x19CG#m', 'date;periode_jours;energie_kwh\r'
+                      '2026-09-01;1;420\r', 'a;"b\n'):
+            resp = self.api.post(self.url, {'csv': texte}, format='json')
+            self.assertEqual(resp.status_code, 200, (texte, resp.content))
+        self.assertEqual(self._releves().count(), 1)
+
     def test_csv_non_texte_ou_blanc_400_pas_500(self):
         # api-fuzz-full : ``{"csv": [null, null]}`` était accepté (200) et un
         # corps tableau levait AttributeError (500) ; le schéma publie

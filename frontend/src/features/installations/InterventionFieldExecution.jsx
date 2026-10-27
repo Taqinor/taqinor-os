@@ -49,6 +49,34 @@ function isNetworkFailure(err) {
   return (typeof navigator !== 'undefined' && navigator.onLine === false) || !err?.response
 }
 
+// Revue chantier 26/10/2026 — position BEST-EFFORT d'une photo : un seul
+// `getCurrentPosition` (3 s max, position récente acceptée). Ne rejette
+// JAMAIS : sans GPS (refus, délai, navigateur), seule l'heure de l'appareil
+// part — l'upload n'attend jamais plus de 3 s ni n'échoue pour ça.
+function positionPhoto(timeoutMs = 3000) {
+  const client_ts = new Date().toISOString()
+  const geo = typeof navigator !== 'undefined' ? navigator.geolocation : null
+  if (!geo?.getCurrentPosition) return Promise.resolve({ client_ts })
+  return new Promise((resolve) => {
+    let fini = false
+    const finir = (valeur) => { if (!fini) { fini = true; resolve(valeur) } }
+    const minuterie = setTimeout(() => finir({ client_ts }), timeoutMs)
+    try {
+      geo.getCurrentPosition(
+        (pos) => {
+          clearTimeout(minuterie)
+          finir({
+            lat: pos.coords.latitude, lng: pos.coords.longitude,
+            accuracy_m: pos.coords.accuracy, client_ts,
+          })
+        },
+        () => { clearTimeout(minuterie); finir({ client_ts }) },
+        { enableHighAccuracy: false, timeout: timeoutMs, maximumAge: 60000 },
+      )
+    } catch { clearTimeout(minuterie); finir({ client_ts }) }
+  })
+}
+
 // Met la photo en file, ou dit HONNÊTEMENT qu'elle n'a pas pu l'être.
 // `blob` est la photo DÉJÀ compressée (VX77) — jamais l'original de 4-8 Mo.
 async function filerPhoto(blob, { intervention, slot }) {
@@ -533,11 +561,13 @@ export function PhotosPanel({ intervention, onChanged }) {
     let filees = 0
     let perdues = 0
     try {
+      // Une seule position pour toute la rafale (même endroit, même moment).
+      const geo = await positionPhoto()
       for (const p of rafale) {
         const oriented = p.rotation === 0 ? p.file : await rotateImageBlob(p.file, p.rotation)
         const toSend = await compressPhotoForUpload(oriented)
         try {
-          await installationsApi.ajouterPhoto(id, toSend, slot.cle)
+          await installationsApi.ajouterPhoto(id, toSend, slot.cle, undefined, geo)
           envoyees += 1
         } catch (err) {
           if (!isNetworkFailure(err)) { photoUploadError(err); perdues += 1; continue }
@@ -566,9 +596,10 @@ export function PhotosPanel({ intervention, onChanged }) {
       // photo brute d'un appareil moderne (4-8 Mo) fait caler/timeout la 3G
       // rurale. Les PDF/SVG passent intouchés (compressImage() no-op).
       // NTMOB12 — respecte la préférence « Qualité photo » (Mes préférences).
-      const toSend = await compressPhotoForUpload(file)
+      const [toSend, geo] = await Promise.all([
+        compressPhotoForUpload(file), positionPhoto()])
       try {
-        await installationsApi.ajouterPhoto(id, toSend, slot)
+        await installationsApi.ajouterPhoto(id, toSend, slot, undefined, geo)
         toast.success('Photo ajoutée.')
       } catch (err) {
         if (!isNetworkFailure(err)) throw err
@@ -768,6 +799,9 @@ function PhotoThumb({ photo, onRemove, busy }) {
         <Trash2 className="size-3" aria-hidden="true" />
       </button>
       <div className="mt-0.5 max-w-20 truncate text-[10px] text-muted-foreground">
+        {photo.lat != null && photo.lng != null && (
+          <span title="Photo géolocalisée" aria-label="Photo géolocalisée">📍 </span>
+        )}
         {formatDateTime(photo.created_at)}
       </div>
     </div>

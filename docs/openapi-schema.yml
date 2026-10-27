@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4820, operations: 7572, components: 3553}
+counts: {paths: 4834, operations: 7586, components: 3558}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1659,6 +1659,7 @@ operations:
 - put /api/django/installations/chantiers/{id}/ -> django_installations_chantiers_update
 - post /api/django/installations/chantiers/{id}/ajouter-releve/ -> django_installations_chantiers_ajouter_releve_create
 - post /api/django/installations/chantiers/{id}/annuler/ -> django_installations_chantiers_annuler_create
+- get /api/django/installations/chantiers/{id}/approvisionnement/ -> django_installations_chantiers_approvisionnement_retrieve
 - post /api/django/installations/chantiers/{id}/avancer-etape/ -> django_installations_chantiers_avancer_etape_create
 - get /api/django/installations/chantiers/{id}/besoin-materiel/ -> django_installations_chantiers_besoin_materiel_retrieve
 - post /api/django/installations/chantiers/{id}/checklist-photo/ -> django_installations_chantiers_checklist_photo_create
@@ -1848,6 +1849,8 @@ operations:
 - post /api/django/installations/geofence-alertes/{id}/acquitter/ -> django_installations_geofence_alertes_acquitter_create
 - get /api/django/installations/gps-consentements/ -> django_installations_gps_consentements_list
 - post /api/django/installations/gps-consentements/ -> django_installations_gps_consentements_create
+- get /api/django/installations/gps-consentements/mon-consentement/ -> django_installations_gps_consentements_mon_consentement_retrieve
+- post /api/django/installations/gps-consentements/mon-consentement/accepter/ -> django_installations_gps_consentements_mon_consentement_accepter_create
 - delete /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_destroy
 - get /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_retrieve
 - patch /api/django/installations/gps-consentements/{id}/ -> django_installations_gps_consentements_partial_update
@@ -1908,12 +1911,14 @@ operations:
 - get /api/django/installations/interventions/{id}/photo-qa/ -> django_installations_interventions_photo_qa_retrieve
 - get /api/django/installations/interventions/{id}/photos/ -> django_installations_interventions_photos_retrieve
 - get /api/django/installations/interventions/{id}/preparation/ -> django_installations_interventions_preparation_retrieve
+- get /api/django/installations/interventions/{id}/presence/ -> django_installations_interventions_presence_retrieve
 - post /api/django/installations/interventions/{id}/renseigner-fiche/ -> django_installations_interventions_renseigner_fiche_create
 - get /api/django/installations/interventions/{id}/reserves/ -> django_installations_interventions_reserves_list
 - post /api/django/installations/interventions/{id}/resoudre-reserve/ -> django_installations_interventions_resoudre_reserve_create
 - post /api/django/installations/interventions/{id}/retour/ -> django_installations_interventions_retour_create
 - get /api/django/installations/interventions/{id}/reverifications/ -> django_installations_interventions_reverifications_list
 - get /api/django/installations/interventions/{id}/safety/ -> django_installations_interventions_safety_retrieve
+- get /api/django/installations/interventions/{id}/serials-attendus/ -> django_installations_interventions_serials_attendus_retrieve
 - get /api/django/installations/interventions/{id}/serials/ -> django_installations_interventions_serials_list
 - post /api/django/installations/interventions/{id}/signer-client/ -> django_installations_interventions_signer_client_create
 - post /api/django/installations/interventions/{id}/signer-safety/ -> django_installations_interventions_signer_safety_create
@@ -2040,6 +2045,8 @@ operations:
 - post /api/django/installations/pick-lists/{id}/terminer/ -> django_installations_pick_lists_terminer_create
 - get /api/django/installations/positions-techniciens/ -> django_installations_positions_techniciens_list
 - get /api/django/installations/positions-techniciens/carte-live/ -> django_installations_positions_techniciens_carte_live_list
+- get /api/django/installations/positions-techniciens/mes-positions/ -> django_installations_positions_techniciens_mes_positions_list
+- post /api/django/installations/positions-techniciens/ping-lot/ -> django_installations_positions_techniciens_ping_lot_create
 - post /api/django/installations/positions-techniciens/ping/ -> django_installations_positions_techniciens_ping_create
 - get /api/django/installations/positions-techniciens/{id}/ -> django_installations_positions_techniciens_retrieve
 - get /api/django/installations/preuves-livraison/ -> django_installations_preuves_livraison_list
@@ -5485,6 +5492,7 @@ operations:
 - put /api/v1/installations/chantiers/{id}/ -> v1_installations_chantiers_update
 - post /api/v1/installations/chantiers/{id}/ajouter-releve/ -> v1_installations_chantiers_ajouter_releve_create
 - post /api/v1/installations/chantiers/{id}/annuler/ -> v1_installations_chantiers_annuler_create
+- get /api/v1/installations/chantiers/{id}/approvisionnement/ -> v1_installations_chantiers_approvisionnement_retrieve
 - post /api/v1/installations/chantiers/{id}/avancer-etape/ -> v1_installations_chantiers_avancer_etape_create
 - get /api/v1/installations/chantiers/{id}/besoin-materiel/ -> v1_installations_chantiers_besoin_materiel_retrieve
 - post /api/v1/installations/chantiers/{id}/checklist-photo/ -> v1_installations_chantiers_checklist_photo_create
@@ -5674,6 +5682,8 @@ operations:
 - post /api/v1/installations/geofence-alertes/{id}/acquitter/ -> v1_installations_geofence_alertes_acquitter_create
 - get /api/v1/installations/gps-consentements/ -> v1_installations_gps_consentements_list
 - post /api/v1/installations/gps-consentements/ -> v1_installations_gps_consentements_create
+- get /api/v1/installations/gps-consentements/mon-consentement/ -> v1_installations_gps_consentements_mon_consentement_retrieve
+- post /api/v1/installations/gps-consentements/mon-consentement/accepter/ -> v1_installations_gps_consentements_mon_consentement_accepter_create
 - delete /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_destroy
 - get /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_retrieve
 - patch /api/v1/installations/gps-consentements/{id}/ -> v1_installations_gps_consentements_partial_update
@@ -5734,12 +5744,14 @@ operations:
 - get /api/v1/installations/interventions/{id}/photo-qa/ -> v1_installations_interventions_photo_qa_retrieve
 - get /api/v1/installations/interventions/{id}/photos/ -> v1_installations_interventions_photos_retrieve
 - get /api/v1/installations/interventions/{id}/preparation/ -> v1_installations_interventions_preparation_retrieve
+- get /api/v1/installations/interventions/{id}/presence/ -> v1_installations_interventions_presence_retrieve
 - post /api/v1/installations/interventions/{id}/renseigner-fiche/ -> v1_installations_interventions_renseigner_fiche_create
 - get /api/v1/installations/interventions/{id}/reserves/ -> v1_installations_interventions_reserves_list
 - post /api/v1/installations/interventions/{id}/resoudre-reserve/ -> v1_installations_interventions_resoudre_reserve_create
 - post /api/v1/installations/interventions/{id}/retour/ -> v1_installations_interventions_retour_create
 - get /api/v1/installations/interventions/{id}/reverifications/ -> v1_installations_interventions_reverifications_list
 - get /api/v1/installations/interventions/{id}/safety/ -> v1_installations_interventions_safety_retrieve
+- get /api/v1/installations/interventions/{id}/serials-attendus/ -> v1_installations_interventions_serials_attendus_retrieve
 - get /api/v1/installations/interventions/{id}/serials/ -> v1_installations_interventions_serials_list
 - post /api/v1/installations/interventions/{id}/signer-client/ -> v1_installations_interventions_signer_client_create
 - post /api/v1/installations/interventions/{id}/signer-safety/ -> v1_installations_interventions_signer_safety_create
@@ -5866,6 +5878,8 @@ operations:
 - post /api/v1/installations/pick-lists/{id}/terminer/ -> v1_installations_pick_lists_terminer_create
 - get /api/v1/installations/positions-techniciens/ -> v1_installations_positions_techniciens_list
 - get /api/v1/installations/positions-techniciens/carte-live/ -> v1_installations_positions_techniciens_carte_live_list
+- get /api/v1/installations/positions-techniciens/mes-positions/ -> v1_installations_positions_techniciens_mes_positions_list
+- post /api/v1/installations/positions-techniciens/ping-lot/ -> v1_installations_positions_techniciens_ping_lot_create
 - post /api/v1/installations/positions-techniciens/ping/ -> v1_installations_positions_techniciens_ping_create
 - get /api/v1/installations/positions-techniciens/{id}/ -> v1_installations_positions_techniciens_retrieve
 - get /api/v1/installations/preuves-livraison/ -> v1_installations_preuves_livraison_list
@@ -7990,8 +8004,9 @@ query_params:
   get /api/django/installations/ordres-demontage/: kit ordering page page_size search statut
   get /api/django/installations/pick-list-lignes/: ordering page page_size pick_list search
   get /api/django/installations/pick-lists/: installation ordering page page_size search statut
-  get /api/django/installations/positions-techniciens/: intervention ordering page page_size search technicien
-  get /api/django/installations/positions-techniciens/carte-live/: ordering search
+  get /api/django/installations/positions-techniciens/: date intervention ordering page page_size search technicien
+  get /api/django/installations/positions-techniciens/carte-live/: max_age_min ordering search
+  get /api/django/installations/positions-techniciens/mes-positions/: date ordering search
   get /api/django/installations/preuves-livraison/: livraison ordering page page_size search
   get /api/django/installations/programme-budgets/: ordering page page_size projet search
   get /api/django/installations/programme-chantiers/: ordering page page_size projet search
@@ -8774,8 +8789,9 @@ query_params:
   get /api/v1/installations/ordres-demontage/: kit ordering page page_size search statut
   get /api/v1/installations/pick-list-lignes/: ordering page page_size pick_list search
   get /api/v1/installations/pick-lists/: installation ordering page page_size search statut
-  get /api/v1/installations/positions-techniciens/: intervention ordering page page_size search technicien
-  get /api/v1/installations/positions-techniciens/carte-live/: ordering search
+  get /api/v1/installations/positions-techniciens/: date intervention ordering page page_size search technicien
+  get /api/v1/installations/positions-techniciens/carte-live/: max_age_min ordering search
+  get /api/v1/installations/positions-techniciens/mes-positions/: date ordering search
   get /api/v1/installations/preuves-livraison/: livraison ordering page page_size search
   get /api/v1/installations/programme-budgets/: ordering page page_size projet search
   get /api/v1/installations/programme-chantiers/: ordering page page_size projet search
@@ -9694,6 +9710,7 @@ components:
 - CandidatureFournisseurReponse
 - CandidatureFournisseurRequest
 - CapaciteEtatEnum
+- CaptureSourceEnum
 - CardsEnum
 - CashFlowBucketAuDela
 - CashFlowBucketCeMois
@@ -10099,6 +10116,7 @@ components:
 - DevisFacturerVenteErreur
 - DevisFacturerVenteFacture
 - DevisFacturerVenteMontants
+- DevisFacturerVentePaiementSaisiRequest
 - DevisFacturerVentePlanLigne
 - DevisFacturerVenteProchaine
 - DevisFacturerVenteRequestRequest
@@ -10532,6 +10550,7 @@ components:
 - GeofenceAlert
 - GpsConsentRecord
 - GpsConsentRecordRequest
+- GpsConsentementEnum
 - GrantTypeEnum
 - GraviteInfoWarningCritiqueEnum
 - GraviteMineureMajeureCritiqueEnum
@@ -10871,6 +10890,7 @@ components:
 - NoteDecisionRequest
 - NoterRequeteRequest
 - NotesVisiteRequest
+- NoticeVersionEnum
 - Notification
 - NotificationPreference
 - NotificationRoutingRule
@@ -11690,6 +11710,8 @@ components:
 - PilotageChantiersSegment
 - PilotageChantiersSegmentParEquipe
 - PilotageChantiersSegmentParType
+- PingGpsLotRequeteRequest
+- PingGpsPointRequest
 - PingGpsRequeteRequest
 - PipelineFunnelVelocityReponse
 - PipelinePipelineReponse
