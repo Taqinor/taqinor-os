@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { resolveOfferState, resolveValidity, type ProposalResponse } from '../src/lib/proposition';
+import { lireLibProposition } from './astroBlocsHelper';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -42,7 +43,7 @@ describe('ADEV52 — la page lit `offre_expiree`, elle ne calcule rien', () => {
   });
 
   it('aucun calcul local d’expiration ne survit dans `resolveValidity`', () => {
-    const lib = read('../src/lib/proposition.ts');
+    const lib = lireLibProposition();
     const corps = lib.slice(lib.indexOf('export function resolveValidity'), lib.indexOf('export interface AcompteResolu'));
     expect(corps).toContain('p.offre_expiree === true');
     expect(corps).not.toMatch(/getTime\(\)\s*<\s*now/);

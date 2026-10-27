@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { lireProposal, type Proposal } from '../src/lib/proposition';
+import { lireLibProposition } from './astroBlocsHelper';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
@@ -748,8 +749,8 @@ describe('QJW20 — chaque feuille de `proposal_data` est soit LUE, soit REFUSÉ
     // La garde dans l'autre sens : le lecteur typé est relu, et chaque clé
     // snake qu'il consomme doit apparaître dans la table de couverture. Sans
     // elle, on pourrait « refuser » par écrit une clé que le lecteur lit.
-    const LECTEUR = read('../src/lib/proposition.ts').slice(
-      read('../src/lib/proposition.ts').indexOf('export function lireProposal'),
+    const LECTEUR = lireLibProposition().slice(
+      lireLibProposition().indexOf('export function lireProposal'),
     );
     const corps = LECTEUR.slice(0, LECTEUR.indexOf('\n}'));
     const cles = [...corps.matchAll(/\bp\.([a-z0-9_]+)\b/g)].map((m) => m[1]!);

@@ -8,12 +8,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
 
 const MON_TOIT = read('../src/pages/devis/mon-toit.astro');
-const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+const PROPOSITION = lirePageProposition();
 
 describe('WJ34 — mon-toit.astro : squelettes de performance perçue', () => {
   it('la carte porte un squelette shimmer retiré à onReady / au repli sans carte', () => {
