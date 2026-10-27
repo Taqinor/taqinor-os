@@ -289,7 +289,7 @@ def _occupation(devis, data):
     return OCCUPATION_PRESENCE, SOURCE_DEFAUT_NON_RESIDENTIEL
 
 
-def production_par_saison(kwc, mensuel, ville, lat, lon):
+def production_par_saison(kwc, mensuel, ville, lat, lon, facteur=1.0):
     """Bloc production par saison, ou ``{}`` si rien n'est servable.
 
     Chaque saison porte ``forme`` (24 parts, HEURE CIVILE MAROCAINE — le
@@ -301,6 +301,8 @@ def production_par_saison(kwc, mensuel, ville, lat, lon):
     QJR611 — UNIQUE boucle « production par saison » du dépôt :
     ``etude_horaire.production_journaliere_par_saison`` (page client,
     production par option) y DÉLÈGUE au lieu d'en tenir une copie.
+    ``facteur`` : pertes appliquées au productible PVGIS (C-RHOR-004,
+    ``horaire.ombrage.facteur_production_saison``) ; 1,0 = chiffre d'origine.
     """
     if kwc is None or not mensuel:
         # Sans puissance kWc connue (M2) ou sans productible, on ne peut donner
@@ -320,7 +322,7 @@ def production_par_saison(kwc, mensuel, ville, lat, lon):
         kwh_kwc_jour = moyenne_journaliere_saison(valeurs, saison)
         if kwh_kwc_jour is None:
             continue
-        kwh_jour = kwh_kwc_jour * kwc
+        kwh_jour = kwh_kwc_jour * kwc * facteur
         out[saison] = {
             'forme': forme,
             'kwh_jour': round(kwh_jour, 1),
@@ -578,8 +580,13 @@ def _fenetre_recharge(fenetre, n, creneau):
     return fenetre[:n]
 
 
-def _equipements(lead_equip):
+def _equipements(lead_equip, *, ve_possede_dans_facture=True):
     """Couches d'équipement composables, ou ``{}`` si aucune n'est utilisable.
+
+    ``ve_possede_dans_facture`` — D-RES-2710-2 (niveau de règles 3) : une
+    voiture DÉJÀ possédée (``ve_statut = possede``) recharge déjà sur la
+    facture, sa couche n'est donc PAS ajoutée ; ``False`` = règle du 21/09
+    (devis aux règles d'avant).
 
     ``lead_equip`` = le dict de ``apps.crm.selectors.equipements_pour_devis``
     (lecture cross-app, jamais ``apps.crm.models`` importé ici). Une couche
@@ -705,6 +712,10 @@ def _equipements(lead_equip):
                 out['ve']['statut'] = statut
                 if statut == VE_STATUT_PREVU:
                     out['ve']['etiquette'] = ETIQUETTE_VE_PREVU
+            # D-RES-2710-2 — déjà possédée : ses kWh sont DANS la facture
+            # (ni courbe, ni estimation publique, ni plancher de stockage).
+            if statut == VE_STATUT_POSSEDE and ve_possede_dans_facture:
+                del out['ve']
 
     # chauffe_eau_electrique (booléen informatif) reste sans couche — voir le
     # commentaire d'en-tête. L-BACK ajoute une paire DISTINCTE
@@ -754,7 +765,10 @@ def equipements_du_devis(devis):
     dict du sélecteur CRM) : le moteur horaire CJ2a la consomme sans dupliquer
     une seule règle de provenance ni une seule fenêtre horaire.
     """
-    return _equipements(_equipements_lead(devis))
+    from .domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+    return _equipements(
+        _equipements_lead(devis),
+        ve_possede_dans_facture=regles_au_moins(devis, REGLES_CORRIGEES_2710))
 
 
 def occupation_du_devis(devis, data=None):
@@ -1325,8 +1339,11 @@ def construire_courbes_journalieres(devis, data, monthly_consumption=None):
         ville = data.get('client_city') or ville_lead
         mensuel = productible_mensuel(ville=ville, lat=lat, lon=lon)
 
-        production = production_par_saison(kwc, mensuel, ville, lat, lon)
-        equipements = _equipements(_equipements_lead(devis))
+        from .horaire.ombrage import facteur_production_saison
+        production = production_par_saison(
+            kwc, mensuel, ville, lat, lon,
+            facteur=facteur_production_saison(devis))
+        equipements = equipements_du_devis(devis)
         consommation = _consommation(monthly_consumption, equipements)
         if not production and not consommation:
             return None

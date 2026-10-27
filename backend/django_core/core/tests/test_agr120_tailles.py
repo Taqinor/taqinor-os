@@ -8,6 +8,7 @@ elles sont à prix 0, QXG3) ; « Pompe test 4 kW » = donnée de test. Profils
 horaires SYNTHÉTIQUES.
 """
 
+import math
 import unittest
 
 from core.pompage.agronomie import besoin_agronomique
@@ -159,6 +160,20 @@ class Existante(unittest.TestCase):
                                    taille["composition"]["inclus"]])
         self.assertEqual({o["cle"] for o in res["tailles_omises"]},
                          {"inferieure", "superieure"})
+
+
+class BesoinIncouvrable(unittest.TestCase):
+    """AGM2 (D-AGM-2) — un besoin que la pompe ne couvre jamais ne produit
+    pas un champ sans borne : couverture < 100 % affichee, champ <= 1,5 × la
+    plaque (a l'arrondi de panneau pres)."""
+
+    def test_champ_borne_et_couverture_honnete(self):
+        _choix, res = _neuve(besoin_m3_jour_mois=[800.0] * 12)
+        for taille in res["tailles"]:
+            kw = taille["puissance_kw"]
+            self.assertLessEqual(taille["champ"]["nb_panneaux"],
+                                 math.ceil(1.5 * kw * 1000 / 710))
+            self.assertLess(taille["couverture_mois_critique_pct"], 100)
 
 
 if __name__ == "__main__":

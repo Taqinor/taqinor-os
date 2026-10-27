@@ -37,12 +37,8 @@ ETIQUETTE_CONSO_ESTIMEE = (
 
 
 def _f(v):
-    try:
-        if v is None or isinstance(v, bool):
-            return 0.0
-        return max(0.0, float(v))
-    except (TypeError, ValueError):
-        return 0.0
+    x = None if v is None or isinstance(v, bool) else _options.fini(v)  # CEC14
+    return 0.0 if x is None else max(0.0, x)
 
 
 def _vide(motif, tarif):
@@ -170,9 +166,9 @@ def _kwh_par_tranche(conso, seuils):
     return out
 
 
-def _valoriser_bt(cellules, tarif, apercu, tarif_declare):
+def _valoriser_bt(cellules, tarif, apercu, tarif_declare, origine=False):
     postes = tarif['tarifs_par_poste']
-    seuils = tarif_ci._seuils_bt(tarif, tarif_declare)
+    seuils = tarif_ci._seuils_bt(tarif, tarif_declare, origine)
     if seuils is None or len(seuils) != len(postes):
         return None
     conso_mois = {}
@@ -214,7 +210,7 @@ def _valoriser_bt(cellules, tarif, apercu, tarif_declare):
 
 
 def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
-              facture_energie_declaree_ttc=None):
+              facture_energie_declaree_ttc=None, regles_origine=False):
     """La valorisation horaire d'une étude C&I (forme ``economie_ci``).
 
     ``tarif`` = sortie de ``tarif_ci.tarif_applicable`` (``omis`` ⇒ statut
@@ -235,11 +231,13 @@ def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
         return _vide(MOTIF_SANS_HORAIRE, tarif)
 
     tension = _tension(apercu, tarif)
-    if tarif.get('contrat') == 'mt_general' or any(  # CEC5 — bi-horaire HP/HN
-            p['poste'] == 'normales' for p in tarif['tarifs_par_poste']):
+    bi_horaire = any(p['poste'] == 'normales' for p in tarif['tarifs_par_poste'])
+    if bi_horaire and (regles_origine or tarif.get('regles_origine')):  # CEC16/17
+        return _vide(_options.MOTIF_BI_HORAIRE_ORIGINE, tarif)
+    if tarif.get('contrat') == 'mt_general' or bi_horaire:  # CEC5 — HP/HN
         res = _valoriser_mt(cellules, tarif)
     else:
-        res = _valoriser_bt(cellules, tarif, apercu, tarif_declare)
+        res = _valoriser_bt(cellules, tarif, apercu, tarif_declare, regles_origine)
         if res is None:
             return _vide(MOTIF_SANS_HORAIRE, tarif)
     par_poste, fav, fap = res
@@ -393,11 +391,8 @@ def _montant(v, *, strictement_positif=False):
     """Montant lu (arrondi au centime), ou None. ``strictement_positif``
     (ADEV81, l'investissement) : 0 est refusé — un investissement nul n'est
     jamais un investissement chiffré (« retour 0 an »)."""
-    try:
-        if v is None or isinstance(v, bool):
-            return None
-        x = float(v)
-    except (TypeError, ValueError):
+    x = None if v is None or isinstance(v, bool) else _options.fini(v)  # CEC14
+    if x is None:
         return None
     if strictement_positif:
         return round(x, 2) if x > 0 else None
@@ -528,11 +523,8 @@ def lire_taux_client(saisie):
     brut = saisie.get('valeur_pct')
     if brut is None or brut == '':
         return None
-    try:
-        valeur = float(brut)
-    except (TypeError, ValueError):
-        valeur = None
-    if valeur is None or valeur != valeur or valeur <= -100:
+    valeur = _options.fini(brut)  # CEC14 — ni NaN, ni infini, ni 1e300
+    if valeur is None or valeur <= -100 or valeur > _options.PLAFOND_SAISIE:
         raise SaisieEconomieCiInvalide(
             f"{champ}.valeur_pct : un taux en % (> −100) est attendu.",
             champ=f'{champ}.valeur_pct')
@@ -947,11 +939,8 @@ def _nombre_offre(offre, cle, *, entier=False, requis=False):
             raise SaisieEconomieCiInvalide(
                 f"{champ} : à saisir depuis l'offre écrite.", champ=champ)
         return None
-    try:
-        valeur = float(brut)
-    except (TypeError, ValueError):
-        valeur = None
-    if valeur is None or valeur != valeur or valeur < 0 or (
+    valeur = _options.fini(brut)  # CEC14 — ni NaN ni infini (400, jamais 500)
+    if valeur is None or valeur < 0 or valeur > _options.PLAFOND_SAISIE or (
             entier and (valeur != int(valeur) or valeur < 1)):
         raise SaisieEconomieCiInvalide(
             f"{champ} : valeur « {brut} » refusée.", champ=champ)
@@ -1011,7 +1000,7 @@ def financement_ci(offre, base_eco, *, mode_installation,
         except eco_mod.EconomieInvalide as refus:
             raise SaisieEconomieCiInvalide(
                 f"offre_financement.{refus}",
-                champ=f'offre_financement.{refus.champ}') from refus
+                champ=f'offre_financement.{_options.champ_contrat(refus.champ)}') from refus
         echeance = tableau['mensualite_mad']
     else:
         echeance = _nombre_offre(offre, 'echeance_mad', requis=True)
@@ -1044,7 +1033,7 @@ def financement_ci(offre, base_eco, *, mode_installation,
 #: Clés INTERNES jamais servies à un chemin client (PDF, /proposition, lien
 #: public, messages) — retirées RÉCURSIVEMENT par :func:`economie_ci_publique`.
 CLES_INTERNES = ('vue_interne', 'alertes_internes', 'comparaison_cse',
-                 'apres_impot', 'sr500')
+                 'apres_impot', 'sr500', 'regles_origine')
 MENTION_CSE_INDEXATION_ABSENTE = (
     "tarif de l'offre constant : aucune indexation écrite sur l'offre "
     "(hypothèse)")
@@ -1065,11 +1054,8 @@ def _nombre_cse(offre, cle, *, requis=False, entier=False, strict=False):
                 f"{champ} : à saisir depuis l'offre écrite du prospect.",
                 champ=champ)
         return None
-    try:
-        valeur = float(brut)
-    except (TypeError, ValueError):
-        valeur = None
-    invalide = (valeur is None or valeur != valeur
+    valeur = _options.fini(brut)  # CEC14
+    invalide = (valeur is None or abs(valeur) > _options.PLAFOND_SAISIE
                 or (strict and valeur <= -100)
                 or (not strict and valeur < 0)
                 or (entier and (valeur != int(valeur) or valeur < 1)))
@@ -1499,7 +1485,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
                  tarif_ci.ORIGINE_OMIS else MOTIF_ETUDE_CI_ABSENTE)
         return _bloc_omis(motif, tarif, alertes=alertes,
                           vue_interne=vue_interne)
-    valo = valoriser(apercu, tarif, tarif_declare=tarif_declare)
+    valo = valoriser(apercu, tarif, tarif_declare=tarif_declare, regles_origine=reglages.get('regles_origine'))
     if valo['statut'] == STATUT_OMIS:
         return _bloc_omis(valo['motifs_omission'][0], tarif, alertes=alertes,
                           vue_interne=vue_interne)
@@ -1785,11 +1771,11 @@ def _nombre_fiscal(fiscalite, cle, *, requis=True):
                 f"{champ} : à saisir (déclaré par le client ou son "
                 "comptable).", champ=champ)
         return None
-    try:
-        return float(str(brut).replace(',', '.'))
-    except (TypeError, ValueError):
+    valeur = _options.fini(str(brut).replace(',', '.'))  # CEC14
+    if valeur is None:
         raise SaisieEconomieCiInvalide(
-            f"{champ} : valeur « {brut} » refusée.", champ=champ) from None
+            f"{champ} : valeur « {brut} » refusée.", champ=champ)
+    return valeur
 
 
 def lire_fiscalite_client(fiscalite):
@@ -1854,8 +1840,7 @@ def apres_impot_ci(fiscalite, base_eco, collecteur):
         res = eco_mod.flux_apres_impot(
             taux_imposition_pct=saisie(lu['taux_is_pct']),
             amortissement_mode=saisie(lu['amortissement_mode']),
-            amortissement_duree_ans=saisie(
-                None if lu['duree_ans'] is None else int(lu['duree_ans'])),
+            amortissement_duree_ans=saisie(lu['duree_ans']),  # CEC14 : 7,5 refusé
             amortissement_coefficient=saisie(
                 lu['amortissement_coefficient']
                 if lu['amortissement_mode'] == 'degressif' else None),
@@ -1866,7 +1851,7 @@ def apres_impot_ci(fiscalite, base_eco, collecteur):
     except eco_mod.EconomieInvalide as refus:
         raise SaisieEconomieCiInvalide(
             f"fiscalite_client : {refus}",
-            champ=f'fiscalite_client.{refus.champ}') from refus
+            champ=f'fiscalite_client.{_options.champ_contrat(refus.champ)}') from refus
     bloc = res['apres_impot']
     bloc['base'] = cle_base
     return bloc, None
@@ -1979,15 +1964,15 @@ def economie_ci_pour_devis(devis, company):
     if not isinstance(tarif_declare, dict):
         tarif_declare = params.get('tarif') if isinstance(
             params.get('tarif'), dict) else None
-    from apps.ventes.domain.regles_calcul import calcul_corrige
+    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, calcul_corrige, regles_au_moins
     totaux = option_totaux(devis)
     reglages = reglages_economie_ci(company)
+    reglages['regles_origine'] = not regles_au_moins(devis, REGLES_CORRIGEES_2710)  # CEC (27/10)
     if not calcul_corrige(devis):
         # AMOT96/97 — un devis envoyé garde ce que le client a reçu : ni
         # entretien minimum, ni scénarios seedés, ni sensibilités commerciales.
         from apps.parametres.tariff import SENSIBILITES_CI_DEFAUT
         reglages.pop('entretien_minimum', None)
-        reglages['regles_origine'] = True  # CEC1/4/5 — calcul d'hier
         reglages['sensibilites_ci'] = [] if getattr(
             devis, 'mode_installation', None) == 'commercial' else [
             sc for sc in reglages.get('sensibilites_ci') or []
@@ -1995,8 +1980,8 @@ def economie_ci_pour_devis(devis, company):
     else:  # AMOT99 — la courbe de garantie de la fiche module du devis.
         from apps.ventes.domain.etude_ci import courbe_degradation_du_devis
         reglages['degradation_module'] = courbe_degradation_du_devis(devis)
-    return assembler_economie_ci(
-        apercu if isinstance(apercu, dict) else {},
+    return _options.sans_saisie_invalide(  # CEC14
+        assembler_economie_ci, apercu if isinstance(apercu, dict) else {},
         saisies=params.get('saisies_economie_ci'),
         tarif_declare=tarif_declare,
         investissement={'ht': totaux.get('ht'), 'ttc': totaux.get('ttc')},

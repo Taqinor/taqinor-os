@@ -183,6 +183,12 @@ class TestPreparation(TestCase):
             self.assertEqual(r.status_code, 404, (route, r.data))
             r = self.api.post(f'{self.url}/{route}/', {}, format='json')
             self.assertEqual(r.status_code, 400, (route, r.data))
+            # api-fuzz-full 27/10 : une liste / un objet en `ligne` faisait
+            # lever TypeError dans filter(id=…) → 500 ; hors int4 → DataError.
+            for brut in ([{}, []], {'a': 1}, True, 2 ** 40):
+                r = self.api.post(f'{self.url}/{route}/', {'ligne': brut},
+                                  format='json')
+                self.assertIn(r.status_code, (400, 404), (route, brut, r.content))
 
     def test_manquant_flag_and_draft_order(self):
         # Produit dont la nomenclature dépasse le stock disponible.
@@ -255,6 +261,21 @@ class TestKitTools(TestCase):
         self.assertEqual(r.data['kit'], self.kit.id)
         outils = {o['libelle'] for o in r.data['outils']}
         self.assertEqual(outils, {'Perceuse', 'Échelle'})
+
+    def test_choisir_kit_obligatoire_null_retire(self):
+        # api-fuzz-full 27/10 : `kit` est publié OBLIGATOIRE et nullable — un
+        # corps sans `kit` retirait le kit en silence (200).
+        r = self.api.post(f'{self.url}/choisir-kit/', {}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('kit', r.data)
+        r = self.api.post(f'{self.url}/choisir-kit/', {'kit': self.kit.id},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        # ``null`` retire le kit choisi (la préparation re-propose ensuite le
+        # kit par défaut du type d'intervention : comportement F5 inchangé).
+        r = self.api.post(f'{self.url}/choisir-kit/', {'kit': None},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.content)
 
     def test_check_tool_and_completion(self):
         prep = field_services.ensure_preparation(self.interv)
