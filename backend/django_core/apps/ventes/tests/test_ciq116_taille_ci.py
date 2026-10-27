@@ -110,6 +110,15 @@ class TailleCITests(unittest.TestCase):
         self.assertEqual(t['raison_arret'], 'toit')
         self.assertEqual(t['paliers'][-1]['borne'], 'toit')
 
+    def test_toit_non_multiple_garde_le_palier_en_panneaux_entiers(self):
+        # CLD9 (R4) — toit de 30,00 kWc : le palier 30 pose 42 panneaux (29,82)
+        # au lieu d'être refusé pour 0,53 kWc.
+        bornes = {'toit': {'kwc': 30.0, 'source': 'surface utile déclarée'}}
+        t = self._taille('hotel', 20000, bornes=bornes)['taille']
+        self.assertEqual(t['nb_panneaux'], 42)
+        self.assertAlmostEqual(t['retenue_kwc'], 29.82, places=2)
+        self.assertEqual(t['raison_arret'], 'toit')
+
     def test_puissance_souscrite_borne(self):
         r = self._taille('hotel', 100000, puissance_souscrite_kva=80)
         t = r['taille']

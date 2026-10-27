@@ -173,7 +173,7 @@ def _kwc_pose(nb, pmax_wc):
 
 
 def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
-             composer, valoriser, taux_tva_pct, pmax_wc=None):
+             composer, valoriser, taux_tva_pct, pmax_wc=None, kwc_max=None):
     """Évaluation d'un palier AU KWC POSÉ (CLD9, même règle que CAD177 pour la
     taille saisie) : la composition pose ``ceil(kWc / Pmax)`` panneaux, donc
     combinaison, composition et bilan sont calculés à ``nb × Pmax``. Pmax
@@ -182,7 +182,13 @@ def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
     tel quel. ``kwc`` = kWc posé, ``kwc_palier`` = le palier."""
     palier, pmax = kwc, _pos(pmax_wc)
     if pmax:
-        kwc = _kwc_pose(int(math.ceil(palier * 1000.0 / pmax - 1e-9)), pmax)
+        nb = int(math.ceil(palier * 1000.0 / pmax - 1e-9))
+        if kwc_max is not None and palier <= kwc_max + 1e-9:
+            # Palier dans le toit : jamais plus de panneaux entiers que le
+            # toit n'en porte (un toit de 30,00 kWc garde le palier 30, 42
+            # panneaux, au lieu de le refuser pour 0,53 kWc).
+            nb = min(nb, int(math.floor(kwc_max * 1000.0 / pmax + 1e-9)))
+        kwc = _kwc_pose(nb, pmax)
     onduleurs = combiner(kwc) or {}
     composition = composer(kwc, onduleurs) or {}
     ligne = _ligne_panneau(composition)
@@ -375,7 +381,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         return _evaluer(kwc, charge=charge_jours_types, production=production_jours_types,
                         tension=tension, revente_choisie=revente_choisie, combiner=combiner,
                         composer=composer, valoriser=valoriser, taux_tva_pct=taux_tva_pct,
-                        pmax_wc=pmax_wc)
+                        pmax_wc=pmax_wc, kwc_max=kwc_toit)
 
     explicite = _pos(taille_explicite_kwc)
     if explicite is not None:
