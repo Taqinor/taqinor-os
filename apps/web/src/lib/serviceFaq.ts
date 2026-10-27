@@ -194,7 +194,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'Trois temps, sans détour : d’abord un diagnostic de 60 secondes qui renvoie une première fourchette, puis un échange WhatsApp direct avec un technicien (photos de toiture à l’appui), enfin la visite technique, l’étude complète gratuite et le devis. Vous parlez à la personne qui dimensionne, pas à un standard qui rappellera.',
     garantiesQ: 'Quelles garanties couvrent une installation résidentielle ?',
     garantiesA:
-      'Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % de la puissance initiale à 30 ans). Onduleur Deye : 5 ans, onduleur Huawei et batterie : 10 ans. Structure acier galvanisé : 20 ans. Installation et main-d’œuvre Taqinor : 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
+      'Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % de la puissance initiale à 30 ans). Onduleur Deye : 5 ans, onduleur Huawei : 10 ans. Batterie Dyness : 7 ans. Structure acier galvanisé : 20 ans. Installation et main-d’œuvre Taqinor : 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
   },
   en: {
     entretienQ: 'Does a residential installation need regular maintenance?',
@@ -214,7 +214,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'Three steps, straightforward: first a 60-second assessment that returns a first range, then a direct WhatsApp exchange with a technician (roof photos included), finally the technical visit, the full free assessment and the quote. You speak to the person who sizes the system, not a call centre that will call back.',
     garantiesQ: 'What warranties cover a residential installation?',
     garantiesA:
-      'Panels: 12 years product and 30 years linear performance (≥ 87.4 % of initial power at 30 years). Deye inverter: 5 years, Huawei inverter and battery: 10 years. Galvanised steel structure: 20 years. Taqinor installation and labour: 2 years. The breakdown by component is below and on the Warranties page.',
+      'Panels: 12 years product and 30 years linear performance (≥ 87.4 % of initial power at 30 years). Deye inverter: 5 years, Huawei inverter: 10 years. Dyness battery: 7 years. Galvanised steel structure: 20 years. Taqinor installation and labour: 2 years. The breakdown by component is below and on the Warranties page.',
   },
   ar: {
     entretienQ: 'هل تحتاج التركيبة السكنية إلى صيانة منتظمة؟',
@@ -234,7 +234,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'ثلاث مراحل، دون التفاف: أولاً تشخيص لمدة 60 ثانية يُعيد مجالاً أولياً، ثم تواصل مباشر عبر واتساب مع تقني (بصور السطح)، وأخيراً الزيارة التقنية والدراسة الكاملة المجانية والثمن. تتحدّثون مع الشخص الذي يحدّد المقاس، لا مع مركز نداء سيتصل لاحقاً.',
     garantiesQ: 'ما الضمانات التي تُغطّي تركيبة سكنية؟',
     garantiesA:
-      'الألواح: 12 سنة على المنتج و30 سنة على الأداء الخطي (≥ 87.4 % من القدرة الأولية عند 30 سنة). عاكس Deye: 5 سنوات، عاكس Huawei والبطارية: 10 سنوات. الهيكل الفولاذي المجلفن: 20 سنة. التركيب واليد العاملة لتاكينور: سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
+      'الألواح: 12 سنة على المنتج و30 سنة على الأداء الخطي (≥ 87.4 % من القدرة الأولية عند 30 سنة). عاكس Deye: 5 سنوات، عاكس Huawei: 10 سنوات. بطارية Dyness: 7 سنوات. الهيكل الفولاذي المجلفن: 20 سنة. التركيب واليد العاملة لتاكينور: سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
   },
 };
 
@@ -370,7 +370,7 @@ const POMPAGE: Record<Locale, ServiceCopy> = {
 };
 
 // Batteries & stockage — reprend /batteries-stockage (Dyness LFP, 6000
-// cycles, 90% DoD, garantie 10 ans, CAN BMS/Deye) + /garanties + /faq.
+// cycles, 90% DoD, garantie 7 ans, CAN BMS/Deye) + /garanties + /faq.
 const BATTERIES: Record<Locale, ServiceCopy> = {
   fr: {
     entretienQ: 'Une batterie de stockage demande-t-elle un entretien ?',
@@ -384,13 +384,13 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
       'La batterie lithium-fer-phosphate (LFP) elle-même, son dialogue CAN BMS natif avec l’onduleur hybride Deye qui pilote charge et décharge, le raccordement, et l’accès au suivi de production en temps réel pour suivre son état.',
     exclusQ: 'Qu’est-ce qui n’est pas couvert par la garantie batterie ?',
     exclusA:
-      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure et l’usure normale au-delà des seuils garantis (≥ 70 % de capacité conservée à 10 ans). Liste indicative, à confirmer — voir la page Garanties.',
+      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure et l’usure normale au-delà des seuils garantis (≥ 70 % de capacité conservée à 7 ans). Liste indicative, à confirmer — voir la page Garanties.',
     delaisQ: 'Quel est le délai pour ajouter une batterie à une installation ?',
     delaisA:
       'Le même process qu’une nouvelle installation : d’abord la lecture de votre courbe de consommation heure par heure pour vérifier que le stockage se justifie, puis un échange direct avec un technicien, enfin la visite technique qui confirme la capacité (en modules de 5 kWh) et le devis.',
     garantiesQ: 'Quelle garantie couvre une batterie Dyness ?',
     garantiesA:
-      '10 ans, avec au moins 70 % de la capacité initiale conservée sur cette durée — plus de 6 000 cycles à 90 % de profondeur de décharge. Même règle de garantie activable sur place que le reste du matériel tier-1 Taqinor (sourcé via des distributeurs officiels au Maroc).',
+      '7 ans, avec au moins 70 % de la capacité initiale conservée sur cette durée — plus de 6 000 cycles à 90 % de profondeur de décharge. Même règle de garantie activable sur place que le reste du matériel tier-1 Taqinor (sourcé via des distributeurs officiels au Maroc).',
   },
   en: {
     entretienQ: 'Does a storage battery need maintenance?',
@@ -404,13 +404,13 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
       'The lithium-iron-phosphate (LFP) battery itself, its native CAN BMS dialogue with the Deye hybrid inverter that drives charge and discharge, the wiring, and real-time production monitoring access to track its state.',
     exclusQ: 'What is not covered by the battery warranty?',
     exclusA:
-      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event and normal wear beyond the guaranteed thresholds (≥ 70 % capacity retained at 10 years). Indicative list, to be confirmed — see the Warranties page.',
+      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event and normal wear beyond the guaranteed thresholds (≥ 70 % capacity retained at 7 years). Indicative list, to be confirmed — see the Warranties page.',
     delaisQ: 'What is the timeline to add a battery to an installation?',
     delaisA:
       'The same process as a new installation: first reading your hour-by-hour consumption curve to check storage is justified, then a direct exchange with a technician, finally the technical visit that confirms the capacity (in 5 kWh modules) and the quote.',
     garantiesQ: 'What warranty covers a Dyness battery?',
     garantiesA:
-      '10 years, with at least 70 % of initial capacity retained over that period — more than 6,000 cycles at 90 % depth of discharge. Same on-the-spot activatable warranty rule as the rest of Taqinor’s tier-1 equipment (sourced through official distributors in Morocco).',
+      '7 years, with at least 70 % of initial capacity retained over that period — more than 6,000 cycles at 90 % depth of discharge. Same on-the-spot activatable warranty rule as the rest of Taqinor’s tier-1 equipment (sourced through official distributors in Morocco).',
   },
   ar: {
     entretienQ: 'هل تحتاج بطارية التخزين إلى صيانة؟',
@@ -424,13 +424,13 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
       'البطارية نفسها من الليثيوم-حديد-فوسفات (LFP)، تواصلها الأصلي عبر CAN BMS مع العاكس الهجين Deye الذي يُدير الشحن والتفريغ، التوصيل، وولوج متابعة الإنتاج في الوقت الحقيقي لمتابعة حالتها.',
     exclusQ: 'ما الذي لا يُغطّيه ضمان البطارية؟',
     exclusA:
-      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة والتآكل العادي بما يتجاوز العتبات المضمونة (≥ 70 % من السعة محفوظة عند 10 سنوات). لائحة إرشادية، قيد التأكيد — انظر صفحة الضمانات.',
+      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة والتآكل العادي بما يتجاوز العتبات المضمونة (≥ 70 % من السعة محفوظة عند 7 سنوات). لائحة إرشادية، قيد التأكيد — انظر صفحة الضمانات.',
     delaisQ: 'ما الأجل لإضافة بطارية إلى تركيبة قائمة؟',
     delaisA:
       'نفس مسار التركيبة الجديدة: أولاً قراءة منحنى استهلاككم ساعة بساعة للتحقّق من وجاهة التخزين، ثم تواصل مباشر مع تقني، وأخيراً الزيارة التقنية التي تؤكّد السعة (بوحدات 5 kWh) والثمن.',
     garantiesQ: 'ما الضمان الذي يُغطّي بطارية Dyness؟',
     garantiesA:
-      '10 سنوات، مع الحفاظ على 70 % على الأقل من السعة الأولية خلال هذه المدة — أكثر من 6 000 دورة عند عمق تفريغ 90 %. نفس قاعدة الضمان القابل للتفعيل محلياً كباقي عتاد تاكينور من الفئة الأولى (مُورَّد عبر موزّعين رسميين بالمغرب).',
+      '7 سنوات، مع الحفاظ على 70 % على الأقل من السعة الأولية خلال هذه المدة — أكثر من 6 000 دورة عند عمق تفريغ 90 %. نفس قاعدة الضمان القابل للتفعيل محلياً كباقي عتاد تاكينور من الفئة الأولى (مُورَّد عبر موزّعين رسميين بالمغرب).',
   },
 };
 

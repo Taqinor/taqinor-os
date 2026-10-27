@@ -1,5 +1,5 @@
 ---
-import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS } from '../../lib/warranty';
+import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS, BATTERY_WARRANTY_YEARS } from '../../lib/warranty';
 /**
  * EN — Equipment (W67). Faithful translation of /équipement ; no new figure or
  * claim. Internal links use localizeNavHref so they point to the EN page when it
@@ -48,7 +48,7 @@ const categories = [
   { ref: 'PV-2', title: 'Panels — JA Solar DeepBlue', body: "The monocrystalline DeepBlue cell goes after yield rather than surface area — useful when roof space is tight. Same tier of manufacturer, same certification requirement. Installed in Nouaceur.", points: ['High-efficiency monocrystalline', '12-year product warranty', '25-year performance warranty'] },
   { ref: 'OND-1', title: 'Hybrid inverters — Deye', body: "We choose the Deye hybrid for one concrete reason: when the grid drops, it switches to battery within milliseconds — fast enough to keep a computer running. The rest of the time it decides, second by second, whether to draw from the panels, charge the battery or pull from the grid. The SUN-SG05LP1, SG05LP3 and SG01HP3 ranges cover 5 to 30 kW, single-phase as well as three-phase, and talk to the battery BMS over CAN. Compliant with IEC 61727 and VDE-AR-N-4105.", points: ['Single-phase and three-phase, 5 – 30 kW', 'Built-in CAN BMS battery management', '5-year warranty'] },
   { ref: 'OND-2', title: 'Grid-tied inverters — Huawei SUN2000', body: "When the study calls for no battery, we go with pure string. The Huawei SUN2000 optimises string by string: a shaded panel no longer drags the whole row down. From residential to commercial rooftops.", points: ['High European efficiency', 'Per-string optimisation', '10-year warranty'] },
-  { ref: 'BAT', title: 'Batteries — Dyness DL5.0C', body: "Lithium iron phosphate does not run away thermally the way some other lithium chemistries do: it's the safe choice for home storage. The DL5.0C / DL5.0C PRO modules stack in 5 kWh blocks and natively speak the CAN BMS of the Deye units. Certified CE, IEC 62619, UN38.3.", points: ['LFP chemistry — 6,000+ cycles at 90 % DoD', 'Modular: 5 to 15 kWh and beyond', '10-year warranty'] },
+  { ref: 'BAT', title: 'Batteries — Dyness DL5.0C', body: "Lithium iron phosphate does not run away thermally the way some other lithium chemistries do: it's the safe choice for home storage. The DL5.0C / DL5.0C PRO modules stack in 5 kWh blocks and natively speak the CAN BMS of the Deye units. Certified CE, IEC 62619, UN38.3.", points: ['LFP chemistry — 6,000+ cycles at 90 % DoD', 'Modular: 5 to 15 kWh and beyond', '7-year warranty'] },
   { ref: 'MON', title: 'Monitoring — real-time production monitoring', body: "Without measurement, a stated output is just an unverifiable promise. So every roof carries a WiFi/Ethernet dongle providing real-time production monitoring: minute-by-minute production, history, fault alerts. You keep your own personal access via an app; on our side, we watch the whole fleet and step in before the fault ever shows up at your home.", points: ['Production measured continuously', 'Automatic alerts — proactive after-sales', 'Client access via mobile app'] },
 ];
 
@@ -57,7 +57,7 @@ const warranties = [
   { item: 'Photovoltaic panels (performance)', years: '30 years', note: 'linear, ≥ 87.4 % of initial output at 30 years' },
   { item: 'Deye hybrid inverters', years: `${DEYE_INVERTER_WARRANTY_YEARS} years` },
   { item: 'Huawei grid-tied inverters', years: `${HUAWEI_INVERTER_WARRANTY_YEARS} years` },
-  { item: 'Dyness LFP batteries', years: '10 years', note: '≥ 70 % of capacity' },
+  { item: 'Dyness LFP batteries', years: `${BATTERY_WARRANTY_YEARS} years`, note: '≥ 70 % of capacity' },
   { item: 'Galvanised steel structure', years: '20 years' },
   { item: 'Taqinor installation and labour', years: '2 years' },
 ];

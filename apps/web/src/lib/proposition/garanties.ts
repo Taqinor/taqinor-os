@@ -3,7 +3,7 @@
  * /proposition, selon la MARQUE réellement posée (décision fondateur
  * 27/10/2026 : une seule durée, celle qui vaut au Maroc).
  *
- * Deye → 5 ans, Huawei → 10 ans, batterie Dyness → 10 ans (`lib/warranty.ts`).
+ * Deye → 5 ans, Huawei → 10 ans, batterie Dyness → 7 ans (`lib/warranty.ts`).
  * Marque non reconnue → `null` : la durée est OMISE plutôt que supposée.
  */
 import {

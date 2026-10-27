@@ -50,6 +50,7 @@ import {
   PANEL_PERFORMANCE_FLOOR_FR,
   INSTALL_WARRANTY_YEARS,
   STRUCTURE_WARRANTY_YEARS,
+  BATTERY_WARRANTY_YEARS,
 } from './warranty';
 
 export type FicheCategorie =
@@ -290,10 +291,10 @@ export const FICHES: Fiche[] = [
       'Plus de 6 000 cycles, empilable par tranches de 5 kWh',
       'Conforme IEC 62619 et UN38.3',
     ],
-    garantie: 'Garantie 10 ans',
+    garantie: `Garantie ${BATTERY_WARRANTY_YEARS} ans`,
     warranty: {
-      years: 10,
-      // Décision fondateur 27/10/2026 : 10 ans (version Afrique), seuil ≥ 70 %.
+      years: BATTERY_WARRANTY_YEARS,
+      // Décision fondateur 27/10/2026 : 7 ans (Dyness Afrique V2-202502), seuil ≥ 70 %.
       note: '≥ 70 % de capacité',
     },
     pairsWith: ['Onduleurs hybrides', 'Supervision & comptage'],

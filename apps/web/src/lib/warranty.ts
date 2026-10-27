@@ -29,8 +29,9 @@
  *   - Huawei SUN2000 : 10 ans — datasheet SUN2000-5/8/10KTL-M0/M1, garantie
  *     constructeur 120 mois (inchangé).
  *
- *  BATTERIE : 10 ans, ≥ 70 % de capacité (Dyness DL5.0C LFP, version Afrique,
- *   décision fondateur 27/10/2026). Seuil ≥ 70 % conservé.
+ *  BATTERIE (décision fondateur 27/10/2026) : 7 ans, ≥ 70 % de capacité — Dyness
+ *   DL5.0C LFP, garantie officielle Dyness Afrique V2-202502 : 7 ans de base ;
+ *   10 ans seulement avec une extension payante, NON achetée. Seuil ≥ 70 % à 7 ans.
  *
  *  STRUCTURE (acier galvanisé) : 20 ans.
  *  POSE / main-d'œuvre Taqinor : 2 ans.
@@ -67,7 +68,7 @@ export const HUAWEI_INVERTER_WARRANTY_YEARS = 10;
 export const INVERTER_WARRANTY_YEARS = HUAWEI_INVERTER_WARRANTY_YEARS;
 
 /** Garantie batterie (durée), en années. */
-export const BATTERY_WARRANTY_YEARS = 10;
+export const BATTERY_WARRANTY_YEARS = 7;
 
 /** Seuil de capacité garanti de la batterie au terme, en %. */
 export const BATTERY_CAPACITY_FLOOR_PCT = 70;

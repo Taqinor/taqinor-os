@@ -140,7 +140,7 @@ describe('CIW300 — chiffresEconomiePhare lit synthese_ci en C&I', () => {
     }
   });
 
-  it('RWEB4 — offre principale servie « avec batterie » : l'argent va sur la carte AVEC, jamais sur la carte SANS', () => {
+  it('RWEB4 — offre principale servie « avec batterie » : l’argent va sur la carte AVEC, jamais sur la carte SANS', () => {
     const r = chiffresEconomiePhare(payload('commercial', { synthese_ci: { ...SYNTHESE, option_servie: 'avec_batterie', argent: argent() } }), 'avec_batterie');
     expect(r.ecoAvec).not.toBeNull();
     expect(r.ecoSans).toBeNull();

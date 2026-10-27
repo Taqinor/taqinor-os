@@ -59,10 +59,27 @@ describe('warranty.ts — source unique de garantie (WB3)', () => {
 });
 
 describe('garanties onduleur / batterie — une durée, celle du Maroc (décision fondateur 27/10/2026)', () => {
-  it('Deye = 5 ans, Huawei = 10 ans, Dyness = 10 ans', () => {
+  it('Deye = 5 ans, Huawei = 10 ans, Dyness = 7 ans', () => {
     expect(DEYE_INVERTER_WARRANTY_YEARS).toBe(5);
     expect(HUAWEI_INVERTER_WARRANTY_YEARS).toBe(10);
-    expect(BATTERY_WARRANTY_YEARS).toBe(10);
+    expect(BATTERY_WARRANTY_YEARS).toBe(7);
+  });
+
+  it('aucune source (pages, fiches) n’associe Dyness à « 10 ans » / « 10 years » / « 10 سنوات » sur une même ligne', () => {
+    const offenders: string[] = [];
+    const re = /Dyness[^.;]{0,80}(10 ?ans|10[ -]years?|10 سنوات)|(10 ?ans|10[ -]years?|10 سنوات)[^.;]{0,80}Dyness/;
+    const cibles = walkSrc(srcDir).filter((abs) => {
+      const rel = abs.slice(srcDir.length + 1).replace(/\\/g, '/');
+      return rel.startsWith('pages/') || rel === 'lib/fiches.ts';
+    });
+    for (const abs of cibles) {
+      readFileSync(abs, 'utf-8')
+        .split('\n')
+        .forEach((ligne, i) => {
+          if (re.test(ligne)) offenders.push(`${abs}:${i + 1}`);
+        });
+    }
+    expect(offenders).toEqual([]);
   });
 
   it('aucune page ni fiche ne publie de fourchette ou de réserve sur ces durées', () => {

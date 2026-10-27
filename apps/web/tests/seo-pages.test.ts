@@ -247,8 +247,12 @@ describe('teaser garanties (W16)', () => {
   const body = teaser.split('---').slice(2).join('---');
 
   it('reprend les chiffres déjà publiés sur /garanties et y renvoie', () => {
-    for (const fig of ['12 ans', '30 ans', '10 ans', '20 ans', '2 ans']) {
+    for (const fig of ['12 ans', '30 ans', '20 ans', '2 ans']) {
       expect(teaser, fig).toContain(fig);
+    }
+    // 5 / 10 / 7 ans : dérivés de lib/warranty.ts (Deye, Huawei, batterie Dyness).
+    for (const c of ['DEYE_INVERTER_WARRANTY_YEARS', 'HUAWEI_INVERTER_WARRANTY_YEARS', 'BATTERY_WARRANTY_YEARS']) {
+      expect(teaser, c).toContain(c);
     }
     expect(teaser).toContain('87,4');
     expect(teaser).toMatch(/temps réel|real-time|الوقت الحقيقي/);

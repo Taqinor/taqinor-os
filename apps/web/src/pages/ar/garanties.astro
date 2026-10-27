@@ -1,5 +1,5 @@
 ---
-import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS } from '../../lib/warranty';
+import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS, BATTERY_WARRANTY_YEARS } from '../../lib/warranty';
 /**
  * AR — Our warranties (W67, RTL). Faithful Arabic translation of /garanties ;
  * EVERY figure (12/30/10/20/2 years, 87.4 %) kept EXACT in Latin digits. No
@@ -39,7 +39,7 @@ const warranties = [
   { item: 'الألواح الكهروضوئية (الأداء)', years: '30 سنة', note: 'خطي، ≥ 87.4 % من القدرة الأولية عند 30 سنة' },
   { item: 'عاكسات Deye الهجينة', years: `${DEYE_INVERTER_WARRANTY_YEARS} سنوات` },
   { item: 'عاكسات Huawei للشبكة', years: `${HUAWEI_INVERTER_WARRANTY_YEARS} سنوات` },
-  { item: 'بطاريات Dyness LFP', years: '10 سنوات', note: '≥ 70 % من السعة' },
+  { item: 'بطاريات Dyness LFP', years: `${BATTERY_WARRANTY_YEARS} سنوات`, note: '≥ 70 % من السعة' },
   { item: 'الهيكل من الفولاذ المجلفن', years: '20 سنة' },
   { item: 'التركيب واليد العاملة لتاكينور', years: 'سنتان' },
 ];
@@ -109,7 +109,7 @@ import WarrantyListBlock from '../../components/blocs/WarrantyListBlock.astro';
 
 <Layout
   title="ضماناتنا — ما الذي يُغطّى، ولكم من السنوات | Taqinor"
-  description="تركيبة تاكينور تلتزم على المدى الطويل: 30 سنة أداء خطي و12 سنة منتج على الألواح (≥ 87.4 % من القدرة عند 30 سنة)، 5 سنوات لعاكسات Deye و10 سنوات لعاكسات Huawei والبطاريات، 20 سنة للهيكل، سنتان للتركيب. ومتابعة إنتاج في الوقت الحقيقي ترصد الخلل قبلك."
+  description="تركيبة تاكينور تلتزم على المدى الطويل: 30 سنة أداء خطي و12 سنة منتج على الألواح (≥ 87.4 % من القدرة عند 30 سنة)، 5 سنوات لعاكسات Deye و10 سنوات لعاكسات Huawei و7 سنوات للبطاريات، 20 سنة للهيكل، سنتان للتركيب. ومتابعة إنتاج في الوقت الحقيقي ترصد الخلل قبلك."
   ogSlug="garanties"
 >
   <div class="v2">
