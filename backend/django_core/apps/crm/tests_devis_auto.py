@@ -244,6 +244,26 @@ class TestAgricoleSansCvAGR403(SimpleTestCase):
         self.assertEqual(visite_point_eau_avant_devis(lead),
                          {'requise': False, 'motifs': [], 'motifs_detail': []})
 
+    def test_agv5_visite_point_eau_validee_leve_la_garde(self):
+        from apps.visites.models import VisiteTerrain
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Fellah AGV5',
+            type_installation='agricole')
+        self.assertTrue(visite_point_eau_avant_devis(lead)['requise'])
+        VisiteTerrain.objects.create(
+            company=self.company, lead=lead, gabarit='point_eau',
+            statut=VisiteTerrain.Statut.TERMINEE, mesures={})
+        # Terminée mais pas validée : la garde tient.
+        self.assertTrue(visite_point_eau_avant_devis(lead)['requise'])
+        VisiteTerrain.objects.create(
+            company=self.company, lead=lead, gabarit='point_eau',
+            statut=VisiteTerrain.Statut.VALIDEE,
+            mesures={'point_eau': {'niveau_non_mesurable': True,
+                                   'debit_non_mesurable': True}})
+        self.assertEqual(visite_point_eau_avant_devis(lead),
+                         {'requise': False, 'motifs': [], 'motifs_detail': []})
+
     def test_visite_point_eau_vaut_none_hors_agricole(self):
         for mode in (None, '', 'residentiel', 'industriel', 'commercial'):
             lead = Lead(nom='x', type_installation=mode)
