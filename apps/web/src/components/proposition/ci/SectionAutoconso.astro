@@ -14,16 +14,15 @@ interface Props {
   ciArgent: any;
   ciCarteInd: ReturnType<typeof carteIndustrielleCi> | null;
   ciEco: any;
-  ciEstimation: any;
   ciInjection: any;
-  ciManque: string[];
-  ciSousReserve: any;
+  // CPRW3/4 : la page passe encore trois props que ce composant ne lit plus (estimation, motifs
+  // manquants, réserve) — à retirer côté page par la session RWEB.
   couverture: any;
   isCommercial: any;
 }
 // CPRW2 — la phrase « tarif » est le texte CLIENT servi (hypothèse `tarif`), jamais la note interne
 // de l'argent (ni sa mention, ni sa source) ; non servie → rien.
-const { ci, ciArgent, ciCarteInd, ciEco, ciEstimation, ciInjection, ciManque, ciSousReserve, couverture, isCommercial } = Astro.props;
+const { ci, ciArgent, ciCarteInd, ciEco, ciInjection, couverture, isCommercial } = Astro.props;
 // CPRW3 — bandeau « devis préliminaire » : le texte servi (hypothèse `visite`), à chaque fois qu'il l'est.
 const preliminaire = ci?.hypotheses.find((h) => h.cle === 'visite')?.textes ?? null;
 const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null;
@@ -79,9 +78,6 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
                     {ciArgent.base === 'deux' && ciArgent.economieAnnee1?.ttc != null ? (
                       <p class="mt-1 text-xs text-lune-faint" dir="ltr">{formatMAD(ciArgent.economieAnnee1.ttc)} TTC</p>
                     ) : null}
-                    {ciEstimation ? (
-                      <p class="mt-1 text-xs text-brass-300" data-i18n data-fr="estimation" data-en="estimate" data-ar="تقدير">estimation</p>
-                    ) : null}
                   </div>
                 ) : null}
                 {ciArgent && ciArgent.retourAns !== null ? (
@@ -94,14 +90,6 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
               {tarifServi ? (
                 <p class="mt-4 text-xs text-lune-faint" data-ci-tarif data-i18n
                   data-fr={tarifServi.fr} data-en={tarifServi.en} data-ar={tarifServi.ar}>{tarifServi.fr}</p>
-              ) : null}
-              {ciManque.length > 0 ? (
-                <div class="mt-4 rounded-xl border border-white/10 p-4 text-sm text-lune-soft" data-ci-manque>
-                  <p class="tech-label text-lune-faint" data-i18n data-fr="Ce qu'il nous manque" data-en="What we still need" data-ar="ما ينقصنا">Ce qu'il nous manque</p>
-                  <ul class="mt-2 list-disc ps-5 text-xs">
-                    {ciManque.map((m) => <li>{m}</li>)}
-                  </ul>
-                </div>
               ) : null}
             </div>
           ) : (

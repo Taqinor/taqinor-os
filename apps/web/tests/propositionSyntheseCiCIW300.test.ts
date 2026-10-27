@@ -229,3 +229,13 @@ describe('CPRW3 — bandeau devis préliminaire', () => {
     expect(SRC_AUTOCONSO).not.toContain('aConfirmer');
   });
 });
+
+// CPRW4 (27/10/2026) — plus de badge « estimation » ni de motifs d'omission bruts côté client.
+describe('CPRW4 — ni badge estimation ni « Ce qu\'il nous manque »', () => {
+  it('le composant ne rend plus ces deux blocs', () => {
+    expect(SRC_AUTOCONSO).not.toContain('data-ci-manque');
+    expect(SRC_AUTOCONSO).not.toContain("Ce qu'il nous manque");
+    expect(SRC_AUTOCONSO).not.toContain('ciEstimation');
+    expect(SRC_AUTOCONSO).not.toMatch(/data-fr="estimation"/);
+  });
+});
