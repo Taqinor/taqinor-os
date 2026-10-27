@@ -60,6 +60,7 @@
     "onduleur_string_mono": "Onduleur string monophasé",
     "cable_dc": "Câble DC"
   },
+  "libelles_types_pose": {"toiture_inclinee": "Toiture inclinée", "bac_acier": "Bac acier", "toit_plat_leste": "Toit plat — lesté", "toit_plat_fixe": "Toit plat — fixé", "ombriere": "Ombrière", "sol": "Au sol"},
   "fiches": {
     "onduleur": {
       "type_fiche": "onduleur",
