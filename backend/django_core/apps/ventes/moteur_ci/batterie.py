@@ -167,13 +167,39 @@ def puissance_charge_kw(banque, onduleurs, hybrides):
     return min(bornes) if bornes else None
 
 
-def _batterie_sur_jour(charge, bloc, capacite, rendement, borne_charge, simuler):
+def puissance_decharge_kw(banque, onduleurs, hybrides):
+    """CMP7 — goulot de DÉCHARGE (kW) : Σ des packs (``max_decharge_kw``) et Σ
+    des ports batterie des hybrides (``bat_max_decharge_kw``), le plus petit
+    des publiés, plafonné par Σ kW AC de la combinaison ; ``None`` si aucune
+    borne n'est publiée (comportement d'avant : aucune borne)."""
+    bornes = []
+    pack = _f((banque or {}).get('max_decharge_kw'))
+    if pack:
+        bornes.append(pack * int(banque.get('quantite') or 0))
+    fiches = {h.get('produit'): h for h in hybrides or []}
+    items = [(fiches.get(i.get('produit')) or {}, int(i.get('quantite') or 0))
+             for i in (onduleurs or {}).get('combinaison') or []]
+    ports = [_f(h.get('bat_max_decharge_kw')) for h, _q in items]
+    if items and all(ports):
+        bornes.append(sum(p * q for p, (_h, q) in zip(ports, items)))
+    if not bornes:
+        return None
+    ac = [_f(h.get('kw_ac')) for h, _q in items]
+    if items and all(ac):
+        bornes.append(sum(a * q for a, (_h, q) in zip(ac, items)))
+    return min(bornes)
+
+
+def _batterie_sur_jour(charge, bloc, capacite, rendement, borne_charge, simuler,
+                       borne_decharge=None):
     """``(autoconso[24], surplus[24], restitué, chargé)`` d'un jour type avec
     la batterie : déficit = charge non couverte, surplus = production
     non autoconsommée ; LE simulateur résidentiel (``simuler``) tranche."""
     auto = [_f(v) or 0.0 for v in bloc.get('autoconso_kwh') or []]
     surplus = [_f(v) or 0.0 for v in bloc.get('surplus_kwh') or []]
     deficit = [max(0.0, c - a) for c, a in zip(charge, auto)]
+    if borne_decharge is not None:       # CMP7 : kW = kWh sur un pas d'une heure
+        deficit = [min(d, borne_decharge) for d in deficit]
     sim = simuler(deficit, surplus, capacite, rendement=rendement,
                   puissance_charge_kw=borne_charge)
     auto2 = [a + r for a, r in zip(auto, sim['restitue_24h'])]
@@ -182,7 +208,8 @@ def _batterie_sur_jour(charge, bloc, capacite, rendement, borne_charge, simuler)
 
 
 def bilan_avec_batterie(bilan, charge_jours_types, capacite_kwh, *, rendement, simuler,
-                        puissance_charge_kw=None, tension=None, revente_choisie=False):
+                        puissance_charge_kw=None, puissance_decharge_kw=None, tension=None,
+                        revente_choisie=False):
     """Le bloc ``bilan`` (même forme que ``autoconso.bilan_horaire``) quand la
     batterie déplace le surplus du jour vers le soir et la nuit. La
     production ne change pas ; l'autoconsommation monte, le surplus baisse."""
@@ -193,7 +220,8 @@ def bilan_avec_batterie(bilan, charge_jours_types, capacite_kwh, *, rendement, s
     for bloc in (bilan or {}).get('horaire') or []:
         charge = charges.get((bloc.get('mois'), bloc.get('type_jour'))) or [0.0] * HEURES
         auto, surplus, rest, chg = _batterie_sur_jour(charge, bloc, capacite_kwh, rendement,
-                                                      puissance_charge_kw, simuler)
+                                                      puissance_charge_kw, simuler,
+                                                      puissance_decharge_kw)
         nb = _f(bloc.get('nb_jours')) or 0.0
         horaire.append(dict(bloc, autoconso_kwh=[round(v, 3) for v in auto],
                             surplus_kwh=[round(v, 3) for v in surplus]))
@@ -292,9 +320,11 @@ def evaluer_option_avec(kwc, onduleurs, composition, banque, *, charge, producti
     capacite = capacite_banque(banque)
     rendement = _f(banque.get('rendement')) or 1.0
     borne = puissance_charge_kw(banque, onduleurs, hybrides)
+    borne_dech = puissance_decharge_kw(banque, onduleurs, hybrides)
     surplus_min, mois_min = surplus_jour_min(bilan)
     bilan_b = bilan_avec_batterie(bilan, charge, capacite, rendement=rendement, simuler=simuler,
-                                  puissance_charge_kw=borne, tension=tension,
+                                  puissance_charge_kw=borne, puissance_decharge_kw=borne_dech,
+                                  tension=tension,
                                   revente_choisie=revente_choisie)
     economie = valoriser(bilan_b)
     return {
@@ -309,7 +339,7 @@ def evaluer_option_avec(kwc, onduleurs, composition, banque, *, charge, producti
             'quantite': int(banque.get('quantite') or 0),
             'kwh_utile_unitaire': _f(banque.get('kwh_utile')),
             'capacite_utile_kwh': round(capacite, 2), 'rendement': rendement,
-            'puissance_charge_kw': borne,
+            'puissance_charge_kw': borne, 'puissance_decharge_kw': borne_dech,
             'surplus_jour_min_kwh': round(surplus_min, 2), 'mois_surplus_min': mois_min,
             'se_remplit_tous_les_jours': round(capacite, 2) <= round(surplus_min, 2),
         },

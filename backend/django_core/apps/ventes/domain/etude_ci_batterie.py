@@ -97,6 +97,7 @@ def _hybride(produit, specs, plage, triphase):
         'chaines_max_par_mppt': specs.get('chaines_max_par_mppt'),
         's_max_kva': specs.get('s_max_kva'), 'plage_batterie_v': list(plage),
         'bat_max_charge_kw': specs.get('bat_max_charge_kw'),
+        'bat_max_decharge_kw': specs.get('bat_max_decharge_kw'),
         'spec': specs_onduleur(specs, produit.nom)[0] if specs else None,
     }
 
@@ -118,6 +119,7 @@ def _batterie(produit, specs):
         'prix': produit.prix_vente if produit.prix_vente and produit.prix_vente > 0 else None,
         'max_modules': specs.get('max_modules_par_banc'),
         'max_charge_kw': _num(specs.get('max_charge_kw')),
+        'max_decharge_kw': _num(specs.get('max_decharge_kw')),
         'rendement': rendement / 100.0 if rendement and 0 < rendement <= 100
         else BATTERY_ROUNDTRIP,
         'element': _element(produit, 'batterie', {}),
