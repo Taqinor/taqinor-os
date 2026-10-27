@@ -151,6 +151,7 @@ def _champ_hors_forme(corps):
                and non_blanc(v)),
               (('occupation',), lambda v: isinstance(v, str)),
               (('equipements',), lambda v: isinstance(v, dict)),
+              (('batteries',), lambda v: isinstance(v, list)),
               (('critere',), lambda v: v in CRITERES)]
     for noms, valide in regles:
         for nom in noms:
@@ -419,6 +420,11 @@ def _fini(valeur):
             required=False, min_value=-BORNE, max_value=BORNE),
         'batterie_kwh': serializers.FloatField(
             required=False, min_value=-BORNE, max_value=BORNE),
+        'batteries': serializers.ListField(
+            child=serializers.DictField(), required=False,
+            help_text='RHOR9 — lignes « avec » batterie de l’écran '
+                      '([{produit, quantite}]) lues sur leurs fiches quand '
+                      'aucun devis n’est enregistré (scopé société).'),
         'dimensionner': serializers.BooleanField(required=False),
         'critere': serializers.ChoiceField(choices=CRITERES, required=False),
     }),
@@ -621,6 +627,12 @@ def etude_horaire_preview(request):
     kwc = _num(corps.get('kwc'))
     if kwc and kwc > 0:
         batterie = _batterie_de_l_apercu(devis, _num(corps.get('batterie_kwh')))
+        if devis is None and corps.get('batteries'):
+            # RHOR9 — sans devis enregistré, les lignes « avec » de l'écran
+            # lues sur leurs fiches (capacité utile, puissances, rendement).
+            from .horaire.batterie_apercu import batterie_des_produits
+            batterie = batterie_des_produits(
+                corps.get('batteries'), company) or batterie
         etude = _bloc_enregistre_du_devis(devis, corps, kwc, occupation,
                                           batterie)
         if etude is None:
