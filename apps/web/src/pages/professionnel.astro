@@ -71,9 +71,9 @@ const segments = [
   },
   {
     n: '02', title: 'Hangar agro-industriel',
-    body: "Séchage, froid, transformation : un hangar agricole consomme en plein jour, exactement quand le soleil donne. La toiture, déjà là, ne coûte rien de plus à exploiter — elle porte les panneaux sans grignoter un mètre carré au sol.",
+    body: "Séchage, froid, transformation : un hangar agricole consomme en plein jour, exactement quand le soleil donne. La toiture porte les panneaux sans grignoter un mètre carré au sol.",
     proof: 'Garantie : structure acier galvanisé 20 ans, posée sur toiture existante',
-    financier: 'Zéro foncier supplémentaire immobilisé — la toiture existante finance la structure',
+    financier: 'Aucune surface au sol utilisée',
     technique: 'Structure acier galvanisé 20 ans · aucune surface au sol perdue',
   },
   {
@@ -85,10 +85,10 @@ const segments = [
   },
   {
     n: '04', title: 'Collectivités',
-    body: "Un bâtiment public ou une clinique ne tolère pas la coupure. Onduleurs hybrides (capables de basculer entre le réseau, le solaire et la batterie) plus batteries tiennent les équipements critiques pendant les creux du réseau, et en journée la facture baisse sur le reste du bâtiment.",
+    body: "Un bâtiment public ou une clinique consomme aussi le soir et la nuit. Avec des onduleurs hybrides (capables de basculer entre le réseau, le solaire et la batterie) et des batteries, la batterie couvre la consommation du soir et de la nuit, et en journée la facture baisse sur le reste du bâtiment.",
     proof: 'Garantie : onduleurs hybrides Deye/Huawei, 10 ans',
-    financier: 'Baisse la facture du bâtiment tout en sécurisant la continuité de service',
-    technique: 'Onduleurs hybrides + batteries · continuité sur les équipements critiques',
+    financier: 'Baisse la facture du bâtiment en journée ; la batterie couvre la consommation du soir et de la nuit',
+    technique: 'Onduleurs hybrides + batteries · la batterie couvre le soir et la nuit',
   },
 ];
 
@@ -160,7 +160,7 @@ const capexOpex = [
           {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
               W337 — reformulé en offre d'audit : même parcours, même webhook
               DiagnosticForm, seul le libellé change. */}
-          <a href="/devis/mon-toit" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+          <a href="/devis/mon-toit?mode=industriel" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Audit énergétique gratuit de mon site →
           </a>
           {/* Ghost WhatsApp — contour blanc, aucun laiton */}
@@ -176,8 +176,8 @@ const capexOpex = [
             <dt class="tech-label mt-2 text-lune">De production</dt>
           </div>
           <div>
-            <dd class="fig lum text-base sm:text-4xl" data-tally>5 MW</dd>
-            <dt class="tech-label mt-2 text-lune">Seuil d'autorisation</dt>
+            <dd class="fig lum text-base sm:text-2xl">Étude heure par heure</dd>
+            <dt class="tech-label mt-2 text-lune">De votre consommation</dt>
           </div>
         </dl>
       </div>

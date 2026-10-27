@@ -60,3 +60,28 @@ describe('W67 — segments résidentiel/professionnel/marocains-du-monde en EN +
     },
   );
 });
+
+// CPRW8 (27/10/2026) — /professionnel (FR) : promesses retirées, CTA du héros avec le mode, tuile sans chiffre.
+describe('CPRW8 — professionnel.astro : plus de promesse invérifiable', () => {
+  const SRC = read('../src/pages/professionnel.astro');
+  it('hangar agro-industriel : fait vérifiable (aucune surface au sol utilisée)', () => {
+    expect(SRC).not.toContain('la toiture existante finance la structure');
+    expect(SRC).not.toContain('ne coûte rien de plus à exploiter');
+    expect(SRC).toContain('Aucune surface au sol utilisée');
+  });
+  it('collectivités : plus de continuité de service, la batterie couvre le soir et la nuit', () => {
+    expect(SRC).not.toMatch(/continuité/i);
+    expect(SRC).not.toContain('ne tolère pas la coupure');
+    expect(SRC).toContain('la batterie couvre la consommation du soir et de la nuit');
+  });
+  it('tous les CTA vers le tunnel portent ?mode=', () => {
+    const liens = SRC.match(/href="\/devis\/mon-toit[^"]*"/g) ?? [];
+    expect(liens.length).toBeGreaterThanOrEqual(3);
+    for (const l of liens) expect(l).toMatch(/\?mode=(industriel|commercial)/);
+  });
+  it('héros : plus de tuile « 5 MW — Seuil d\'autorisation », un fait du parcours à la place', () => {
+    expect(SRC).not.toContain('data-tally>5 MW');
+    expect(SRC).not.toContain("Seuil d'autorisation");
+    expect(SRC).toContain('Étude heure par heure');
+  });
+});
