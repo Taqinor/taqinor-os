@@ -16,6 +16,7 @@ import {
   savingsHeadline,
   type ProposalResponse,
 } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const MENTION = {
   fr: 'Tarif de surplus ANRE : mention servie.',
@@ -193,10 +194,7 @@ describe('CIW300 — bloc injection (loi 82-21) : seulement si la revente est SE
 });
 
 describe('CIW300 — la page ne calcule plus, ne code plus de mention 82-21', () => {
-  const page = readFileSync(
-    fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-    'utf-8',
-  );
+  const page = lirePageProposition();
   it('aucun « plafond en révision » ni cashflow codé dans la page', () => {
     expect(page).not.toMatch(/plafond en révision/);
     expect(page).not.toMatch(/autoconsoCashflow|autoCashflow|cashBreakEven/);

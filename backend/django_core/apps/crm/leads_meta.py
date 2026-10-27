@@ -88,16 +88,31 @@ _META_MOTS_RESIDENTIEL = (r'villa', r'maison', r'appartement', r'domicile',
 _META_MOTS_INDUSTRIEL = (r'usine', r'industri\w*', r'atelier', r'hangar')
 _META_MOTS_AGRICOLE = (r'ferme', r'agricole', r'pompage', r'puits')
 #: Activité → ``Lead.categorie_commerciale`` (liste fermée du contrat CIQ1).
+#: Décision fondateur 26/10/2026 : la pâtisserie passe AVANT le café (une
+#: « café-pâtisserie » cuit : boulangerie-pâtisserie, jamais « autre ») ; les
+#: nouveaux commerces ont leurs mots (« atelier » reste industriel, « entrepôt »
+#: reste ambigu : aucune catégorie).
 _META_CATEGORIES = (
+    ((r'boulangerie', r'patisserie', r'viennoiserie'), 'boulangerie'),
     ((r'hotel', r'riad'), 'hotel'),
-    ((r'restaurant', r'cafe', r'snack'), 'restaurant'),
+    ((r'cafe', r'salon de the', r'glacier', r'coffee shop'), 'cafe'),
+    ((r'restaurant', r'snack', r'fast food', r'traiteur'), 'restaurant'),
+    ((r'boucherie', r'poissonnerie'), 'boucherie'),
+    ((r'supermarche', r'superette', r'epicerie', r'hanout'), 'supermarche'),
+    ((r'pharmacie', r'parapharmacie'), 'pharmacie'),
     ((r'entrepot frigorifique', r'chambre froide', r'froid'), 'froid'),
-    ((r'supermarche', r'magasin', r'commerce', r'boutique'), 'commerce'),
+    ((r'coiffure', r'coiffeur', r'barbier', r'esthetique', r'salon de beaute'), 'coiffure'),
+    ((r'pressing', r'laverie'), 'pressing'),
+    ((r'garage', r'mecanique', r'carrosserie'), 'garage'),
+    ((r'station.service', r'station essence'), 'station_service'),
+    ((r'imprimerie',), 'imprimerie'),
+    ((r'magasin', r'commerce', r'boutique'), 'commerce'),
     ((r'bureau', r'bureaux'), 'bureau'),
     ((r'clinique', r'cabinet', r'sante', r'centre medical'), 'sante'),
     ((r'ecole', r'creche', r'lycee'), 'ecole'),
-    ((r'hammam', r'spa', r'gym', r'salle de sport'), 'hammam'),
-    ((r'boulangerie', r'patisserie'), 'boulangerie'),
+    ((r'gym', r'salle de sport', r'fitness'), 'salle_sport'),
+    ((r'hammam', r'spa'), 'hammam'),
+    ((r'mosquee',), 'mosquee'),
 )
 _META_MOTS_COMMERCIAL = (r'entreprise', r'societe', r'local')
 _META_MOTS_TRANCHE_OUVERTE = ('plus de', 'au dela', 'superieur', '>',

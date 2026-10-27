@@ -46,8 +46,7 @@ CATEGORIES = {
             "مؤسستكم."),
     },
     "restaurant": {
-        "libelle": _t("Restaurant / Café", "Restaurant / Café",
-                      "مطعم / مقهى"),
+        "libelle": _t("Restaurant", "Restaurant", "مطعم"),
         "accroche": _t(
             "Froid, éclairage et climatisation de journée : le poste que le "
             "solaire peut alléger.",
@@ -97,8 +96,7 @@ CATEGORIES = {
             "ساعات الدراسة."),
     },
     "hammam": {
-        "libelle": _t("Hammam / Spa / Gym", "Hammam / Spa / Gym",
-                      "حمام / سبا / قاعة رياضة"),
+        "libelle": _t("Hammam / Spa", "Hammam / Spa", "حمام / سبا"),
         "accroche": _t(
             "Le solaire allège la part électrique de votre consommation de "
             "journée.",
@@ -106,7 +104,8 @@ CATEGORIES = {
             "تخفف الطاقة الشمسية الجزء الكهربائي من استهلاككم النهاري."),
     },
     "boulangerie": {
-        "libelle": _t("Boulangerie", "Bakery", "مخبزة"),
+        "libelle": _t("Boulangerie / Pâtisserie", "Bakery / Pastry shop",
+                      "مخبزة / محل حلويات"),
         "accroche": _t(
             "Froid, éclairage et climatisation de journée : ce que le "
             "solaire couvre, sans rien promettre sur la cuisson.",
@@ -125,6 +124,145 @@ CATEGORIES = {
             "daytime share.",
             "تعمل وحدات التبريد نهارا أيضا: تخفف الطاقة الشمسية حصتها "
             "النهارية."),
+    },
+    # Décision fondateur 26-27/10/2026 — les 13 activités ajoutées au lead
+    # (crm.Lead.CategorieCommerciale) : le PDF dit l'activité RÉELLE, jamais
+    # « Autre commerce ». Accroches qualitatives, sans chiffre ni promesse.
+    "cafe": {
+        "libelle": _t("Café / Salon de thé", "Café / Tea room",
+                      "مقهى / صالون شاي"),
+        "accroche": _t(
+            "Machines, vitrines réfrigérées et éclairage de journée : le "
+            "solaire produit pendant vos heures d'ouverture.",
+            "Machines, refrigerated displays and daytime lighting: solar "
+            "produces during your opening hours.",
+            "الآلات والواجهات المبردة والإنارة خلال النهار: تنتج الطاقة "
+            "الشمسية خلال ساعات عملكم."),
+    },
+    "supermarche": {
+        "libelle": _t("Supermarché / Épicerie", "Supermarket / Grocery",
+                      "سوق ممتاز / بقالة"),
+        "accroche": _t(
+            "Froid alimentaire, éclairage et climatisation pendant vos "
+            "heures d'ouverture de jour.",
+            "Food refrigeration, lighting and air conditioning during your "
+            "daytime opening hours.",
+            "التبريد الغذائي والإنارة والتكييف خلال ساعات فتحكم النهارية."),
+    },
+    "boucherie": {
+        "libelle": _t("Boucherie / Poissonnerie", "Butcher / Fishmonger",
+                      "جزارة / محل سمك"),
+        "accroche": _t(
+            "Chambres froides et vitrines tournent aussi de jour : le "
+            "solaire en allège la part diurne.",
+            "Cold rooms and displays also run by day: solar lightens their "
+            "daytime share.",
+            "تعمل غرف التبريد والواجهات نهارا أيضا: تخفف الطاقة الشمسية "
+            "حصتها النهارية."),
+    },
+    "pharmacie": {
+        "libelle": _t("Pharmacie", "Pharmacy", "صيدلية"),
+        "accroche": _t(
+            "Éclairage, climatisation et froid des médicaments pendant vos "
+            "heures d'ouverture de jour.",
+            "Lighting, air conditioning and medicine refrigeration during "
+            "your daytime opening hours.",
+            "الإنارة والتكييف وتبريد الأدوية خلال ساعات فتحكم النهارية."),
+    },
+    "coiffure": {
+        "libelle": _t("Coiffure / Esthétique", "Hairdresser / Beauty salon",
+                      "حلاقة / تجميل"),
+        "accroche": _t(
+            "Appareils, eau chaude et éclairage de journée : le solaire "
+            "produit pendant vos heures d'ouverture.",
+            "Appliances, hot water and daytime lighting: solar produces "
+            "during your opening hours.",
+            "الأجهزة والماء الساخن والإنارة خلال النهار: تنتج الطاقة "
+            "الشمسية خلال ساعات عملكم."),
+    },
+    "pressing": {
+        "libelle": _t("Pressing / Laverie", "Dry cleaner / Laundry",
+                      "مصبنة / غسيل"),
+        "accroche": _t(
+            "Machines et séchage tournent de jour : le solaire en couvre "
+            "une part pendant vos heures d'ouverture.",
+            "Machines and drying run by day: solar covers part of them "
+            "during your opening hours.",
+            "تعمل الآلات والتجفيف نهارا: تغطي الطاقة الشمسية جزءا منها خلال "
+            "ساعات عملكم."),
+    },
+    "salle_sport": {
+        "libelle": _t("Salle de sport", "Gym", "قاعة رياضة"),
+        "accroche": _t(
+            "Climatisation, éclairage et appareils de journée : le solaire "
+            "allège la part diurne de votre consommation.",
+            "Daytime air conditioning, lighting and equipment: solar "
+            "lightens the daytime share of your consumption.",
+            "التكييف والإنارة والأجهزة خلال النهار: تخفف الطاقة الشمسية "
+            "الحصة النهارية من استهلاككم."),
+    },
+    "garage": {
+        "libelle": _t("Garage / Atelier mécanique", "Garage / Car workshop",
+                      "كراج / ورشة ميكانيك"),
+        "accroche": _t(
+            "Compresseurs, outillage et éclairage de l'atelier tournent de "
+            "jour, quand le solaire produit.",
+            "Compressors, tools and workshop lighting run by day, when "
+            "solar produces.",
+            "تعمل الضواغط والأدوات وإنارة الورشة نهارا، حين تنتج الطاقة "
+            "الشمسية."),
+    },
+    "atelier": {
+        "libelle": _t("Atelier", "Workshop", "ورشة"),
+        "accroche": _t(
+            "Machines et outillage tournent pendant vos heures de travail, "
+            "quand le solaire produit.",
+            "Machines and tools run during your working hours, when solar "
+            "produces.",
+            "تعمل الآلات والأدوات خلال ساعات عملكم، حين تنتج الطاقة "
+            "الشمسية."),
+    },
+    "imprimerie": {
+        "libelle": _t("Imprimerie", "Print shop", "مطبعة"),
+        "accroche": _t(
+            "Presses, finition et climatisation tournent de jour, quand le "
+            "solaire produit.",
+            "Presses, finishing and air conditioning run by day, when solar "
+            "produces.",
+            "تعمل آلات الطباعة والتشطيب والتكييف نهارا، حين تنتج الطاقة "
+            "الشمسية."),
+    },
+    "station_service": {
+        "libelle": _t("Station-service", "Petrol station", "محطة وقود"),
+        "accroche": _t(
+            "Pompes, boutique et éclairage : le solaire allège la part "
+            "diurne de votre consommation.",
+            "Pumps, shop and lighting: solar lightens the daytime share of "
+            "your consumption.",
+            "المضخات والمتجر والإنارة: تخفف الطاقة الشمسية الحصة النهارية "
+            "من استهلاككم."),
+    },
+    "entrepot": {
+        "libelle": _t("Entrepôt / Logistique", "Warehouse / Logistics",
+                      "مستودع / لوجستيك"),
+        "accroche": _t(
+            "Éclairage, quais et engins de manutention de journée : le "
+            "solaire produit pendant vos heures d'activité.",
+            "Daytime lighting, docks and handling equipment: solar produces "
+            "during your working hours.",
+            "الإنارة والأرصفة ومعدات المناولة خلال النهار: تنتج الطاقة "
+            "الشمسية خلال ساعات نشاطكم."),
+    },
+    "mosquee": {
+        "libelle": _t("Mosquée / Association", "Mosque / Association",
+                      "مسجد / جمعية"),
+        "accroche": _t(
+            "Éclairage, climatisation et sonorisation de journée : le "
+            "solaire en couvre une part.",
+            "Daytime lighting, air conditioning and sound system: solar "
+            "covers part of them.",
+            "الإنارة والتكييف ونظام الصوت خلال النهار: تغطي الطاقة "
+            "الشمسية جزءا منها."),
     },
     "autre": {
         "libelle": _t("Autre commerce", "Other business", "نشاط تجاري آخر"),

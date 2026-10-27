@@ -240,6 +240,7 @@ def _jours_types_publique(devis):
     QJR406 — la date de référence du DEVIS est transmise (voir
     :func:`_jour_reference_publique`), jamais l'horloge du rendu."""
     try:
+        from ..horaire.ombrage import perte_ombrage_du_devis
         from ..horaire.public import jours_types_publics
         kwc, conso, ville, lat, lon, occupation, equipements = (
             _profil_horaire_pour_devis(devis))
@@ -248,7 +249,8 @@ def _jours_types_publique(devis):
         return jours_types_publics(
             kwc=kwc, conso_kwh_mensuelles=conso, ville=ville, lat=lat,
             lon=lon, occupation=occupation, equipements=equipements,
-            jour_reference=_jour_reference_publique(devis))
+            jour_reference=_jour_reference_publique(devis),
+            perte_ombrage_pct=perte_ombrage_du_devis(devis))
     except Exception:  # noqa: BLE001 — voir _economies_mensuelles_publiques (D-ENF22-BLE001)
         logger.warning('jours_types indisponible', exc_info=True)
         return None
@@ -343,6 +345,7 @@ def _dimensionnement_options_publique(devis, data):
     ``None``. ``None`` best-effort — un bloc d'affichage additif ne fait
     jamais tomber la page client."""
     try:
+        from ..horaire.ombrage import perte_ombrage_du_devis
         from ..horaire.public import production_annuelle_pour_kwc
         sans = _dimensionnement_option_depuis_items(data.get('sans_items'))
         out = {'sans': sans, 'divergent': False}
@@ -352,11 +355,14 @@ def _dimensionnement_options_publique(devis, data):
             out['avec'] = avec
             out['divergent'] = sans['nb_panneaux'] != avec['nb_panneaux']
         ville, lat, lon = _localisation_pour_moteur_horaire(devis, data)
+        perte = perte_ombrage_du_devis(devis)
         sans['production_annuelle_kwh'] = production_annuelle_pour_kwc(
-            sans['puissance_kwc'], ville=ville, lat=lat, lon=lon)
+            sans['puissance_kwc'], ville=ville, lat=lat, lon=lon,
+            perte_ombrage_pct=perte)
         if avec is not None:
             avec['production_annuelle_kwh'] = production_annuelle_pour_kwc(
-                avec['puissance_kwc'], ville=ville, lat=lat, lon=lon)
+                avec['puissance_kwc'], ville=ville, lat=lat, lon=lon,
+                perte_ombrage_pct=perte)
         return out
     except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('dimensionnement_options indisponible', exc_info=True)
@@ -379,17 +385,21 @@ def _production_par_option_publique(devis, data, dimensionnement_options):
     if not dimensionnement_options or not dimensionnement_options.get('divergent'):
         return resultat
     try:
+        from ..horaire.ombrage import facteur_production_saison
         from ..horaire.public import production_journaliere_par_saison
         ville, lat, lon = _localisation_pour_moteur_horaire(devis, data)
+        facteur = facteur_production_saison(devis)
         sans_kwc = (dimensionnement_options.get('sans') or {}).get('puissance_kwc')
         if sans_kwc:
             resultat['sans'] = production_journaliere_par_saison(
-                sans_kwc, ville=ville, lat=lat, lon=lon) or None
+                sans_kwc, ville=ville, lat=lat, lon=lon,
+                facteur=facteur) or None
         avec_bloc = dimensionnement_options.get('avec') or {}
         avec_kwc = avec_bloc.get('puissance_kwc')
         if avec_kwc:
             resultat['avec'] = production_journaliere_par_saison(
-                avec_kwc, ville=ville, lat=lat, lon=lon) or None
+                avec_kwc, ville=ville, lat=lat, lon=lon,
+                facteur=facteur) or None
         return resultat
     except Exception:  # noqa: BLE001 — journalisé, dégradation propre (D-ENF22-BLE001)
         logger.warning('production_par_option indisponible', exc_info=True)

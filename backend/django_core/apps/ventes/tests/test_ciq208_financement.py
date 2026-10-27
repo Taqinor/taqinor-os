@@ -83,6 +83,27 @@ class OffreEcriteTest(SimpleTestCase):
         self.assertNotIn('Prêteur Exemple', json.dumps(res, ensure_ascii=False))
 
 
+class SaisiesCec14Test(SimpleTestCase):
+    def test_cec14_infini_refuse_nomme_jamais_500(self):
+        for surcharge in ({'duree_mois': float('inf')},
+                          {'echeance_mad': float('inf')},
+                          {'montant_finance_mad': float('nan'),
+                           'taux_annuel_pct': 6.0},
+                          {'taux_annuel_pct': 1e300}):
+            with self.assertRaises(eco.SaisieEconomieCiInvalide,
+                                   msg=str(surcharge)):
+                eco.financement_ci(_offre(**surcharge), _base(),
+                                   mode_installation='industriel')
+
+    def test_cec14_montant_nul_nomme_le_champ_de_l_ecran(self):
+        with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
+            eco.financement_ci(_offre(montant_finance_mad=0,
+                                      taux_annuel_pct=6.0), _base(),
+                               mode_installation='industriel')
+        self.assertEqual(ctx.exception.champ,
+                         'offre_financement.montant_finance_mad')
+
+
 class CreditBailTest(SimpleTestCase):
     def test_reglage_faux_aucun_credit_bail(self):
         res = eco.financement_ci(_offre(nature='credit_bail'), _base(),

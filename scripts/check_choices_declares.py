@@ -303,19 +303,37 @@ def modules_de_modeles(app: str) -> list:
     return chemins
 
 
+def _textchoices_importee(noeud, arbre, chemin: Path):
+    """`choices=X.choices` ou `X` est une TextChoices IMPORTEE en relatif dans
+    le module du modele (`from .categories_commerciales import X`) : on suit
+    l'import, un seul niveau (meme regle que SPL303 de check_api_shapes)."""
+    parties = _dotted(noeud)
+    if not parties or parties[-1] != "choices" or len(parties) != 2:
+        return None
+    for item in arbre.body:
+        if not isinstance(item, ast.ImportFrom) or item.level != 1 or not item.module:
+            continue
+        if any((a.asname or a.name) == parties[0] for a in item.names):
+            cible = chemin.parent.joinpath(*item.module.split(".")).with_suffix(".py")
+            module = _module_tree(cible) if cible.is_file() else None
+            classe = _classes_de(module).get(parties[0]) if module else None
+            return _valeurs_de_textchoices(classe) if classe else None
+    return None
+
+
 def _par_modele(cible: str, parties: list):
     app, modele_nom, champ = parties
     chemins = modules_de_modeles(app)
     if not chemins:
         return None, f"application `{app}` sans models.py (cible `{cible}`)"
-    arbre = modele = None
+    arbre = modele = source = None
     for chemin in chemins:
         arbre_candidat = _module_tree(chemin)
         if arbre_candidat is None:
             continue
         trouve = _classes_de(arbre_candidat).get(modele_nom)
         if trouve is not None:
-            arbre, modele = arbre_candidat, trouve
+            arbre, modele, source = arbre_candidat, trouve, chemin
             break
     if modele is None:
         return None, (f"modele `{modele_nom}` absent des modeles de `{app}` "
@@ -343,6 +361,8 @@ def _par_modele(cible: str, parties: list):
                 continue
             valeurs = _resoudre_reference(kw.value, modele, arbre, constantes,
                                           etendu=True)
+            if valeurs is None:
+                valeurs = _textchoices_importee(kw.value, arbre, source)
             if valeurs is None:
                 return None, (f"`{cible}` : les `choices` ne sont pas resolubles "
                               "statiquement (source non figee)")
