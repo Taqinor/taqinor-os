@@ -4,7 +4,7 @@
 // simulator UI) and only converted to HT at save time. Pure functions, no I/O.
 // The premium PDF engine computes its own figures server-side — never fed here.
 
-import { formatMAD } from '../../lib/format.js'
+import { formatMAD, formatNumber } from '../../lib/format.js'
 // QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
@@ -2592,13 +2592,17 @@ export function avecBatterieAvailability(lines, produits, kwp) {
     .map(p => parseKw(p.nom) || 0))
   const unitsNeeded = maxKw > 0 ? Math.ceil((kwp || 0) / maxKw) : Infinity
   let reason
+  // RGEN8 — la raison dit au vendeur QUOI faire, en français simple.
   if (!hasHyb && maxKw > 0 && unitsNeeded > MAX_HYBRID_UNITS) {
-    reason = `puissance requise ${kwp} kWc — il faudrait ${unitsNeeded} onduleurs `
-      + `hybrides de ${maxKw} kW en parallèle (déraisonnable au-delà de ${MAX_HYBRID_UNITS})`
+    const kwc = formatNumber(Math.round((Number(kwp) || 0) * 100) / 100)
+    reason = `pour ${kwc} kWc il faudrait ${unitsNeeded} onduleurs hybrides de ${maxKw} kW `
+      + `(au plus ${MAX_HYBRID_UNITS} en parallèle) — réduisez la taille ou ajoutez au `
+      + 'catalogue un onduleur hybride plus puissant'
   } else if (!hasHyb) {
-    reason = 'aucun onduleur hybride dans la liste'
+    reason = 'aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » '
+      + 'ou ajoutez-en un'
   } else {
-    reason = 'aucune batterie dans la liste'
+    reason = 'aucune batterie dans les lignes du devis — ajoutez-en une'
   }
   return { available: false, reason }
 }

@@ -8,8 +8,9 @@
 // affichée plus bas, sans savoir pourquoi (rejeu lead 2141 : 16 kWc demandés,
 // moteur 12,07 kWc).
 import { tailleDemandeeParLead } from '../../../../features/ventes/quote/sizingReducer'
+import { formatNumber } from '../../../../lib/format'
 
-const fmtKwc = (kwc) => kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })
+const fmtKwc = (kwc) => formatNumber(Math.round(kwc * 100) / 100)
 
 export default function BandeauTailleLead({ sizing }) {
   const kwc = tailleDemandeeParLead(sizing)

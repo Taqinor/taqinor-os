@@ -1819,9 +1819,8 @@ export default function DevisGenerator({
             )}
             {showAvecWarning && (
               <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-                Option « avec batterie » indisponible pour ce système : {avecDispo.reason}.
-                Le PDF sera un document à option unique (sans batterie) — jamais une
-                option partielle silencieuse.
+                Option « avec batterie » indisponible : {avecDispo.reason}. Tant que ce
+                n'est pas réglé, le PDF ne présente que l'option sans batterie.
               </div>
             )}
             {showAvec && lines.length > 0 && avecDispo.batterieDifferee && (
