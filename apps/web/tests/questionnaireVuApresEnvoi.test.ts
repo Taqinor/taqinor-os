@@ -8,10 +8,13 @@ import { fileURLToPath } from 'node:url';
 import {
   buildQuestionnairePostBody,
   envoyerSectionQuestionnaire,
+  messageErreurQuestionnaire,
   parseQuestionnairePostResponse,
   prefillApresEnvoi,
   QUESTIONNAIRE_PROXY_PATH,
 } from '../src/lib/questionnaire';
+
+vi.mock('cloudflare:workers', () => ({ env: {}, waitUntil: undefined }));
 
 describe('prefill_vu après un envoi réussi (ALEA4)', () => {
   it('après un envoi réussi, le corps du POST suivant porte prefill_vu = valeurs envoyées', () => {
@@ -96,5 +99,39 @@ describe('CQSTW2 — écran de fin : devis_possible', () => {
     expect(bloc.replace(/class="[^"]*"/, '').replace('data-i18n', '')).not.toMatch(/\d/);
     expect(src).toContain("$('q-done-devis')?.classList.toggle('hidden', !devisPossible)");
     expect(src).toContain('On vous recontacte très vite');
+  });
+});
+
+describe('CQSTW5 — lien expiré', { timeout: 30_000 }, () => {
+  it('le proxy rend le marqueur expire sur un 404 amont', async () => {
+    const { POST } = await import('../src/pages/api/questionnaire-repondre');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ detail: 'Introuvable' }), { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const req = new Request('https://taqinor.ma/api/questionnaire-repondre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://taqinor.ma' },
+      body: JSON.stringify({ token: 'tok-expire', section: 'contact', reponses: { ville: 'Rabat' } }),
+    });
+    const res = await POST({ request: req } as never);
+    vi.unstubAllGlobals();
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('expire');
+    const r = parseQuestionnairePostResponse(200, body);
+    expect(r.code).toBe('expire');
+    expect(messageErreurQuestionnaire(r.code, 'fr')).toContain('demandez-en un nouveau à votre conseiller');
+    expect(messageErreurQuestionnaire(r.code, 'fr')).not.toContain('Réessayez');
+  });
+  it('une panne 500 amont reste un échec à réessayer', async () => {
+    const { POST } = await import('../src/pages/api/questionnaire-repondre');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })));
+    const req = new Request('https://taqinor.ma/api/questionnaire-repondre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://taqinor.ma' },
+      body: JSON.stringify({ token: 'tok-500', section: 'contact', reponses: {} }),
+    });
+    const body = await (await POST({ request: req } as never)).json();
+    vi.unstubAllGlobals();
+    expect(body.code).toBe('echec');
   });
 });
