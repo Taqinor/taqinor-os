@@ -332,3 +332,31 @@ class Amot84UnitesDuUnePageCi(SimpleTestCase):
                 self.assertIn("MAD/kWc", texte)
                 self.assertIn(" kWh/an", texte)
                 self.assertNotIn("kWp", texte)
+
+
+class InstallationCleEnMainCi(SimpleTestCase):
+    """Fondateur 26/10/2026 — une-page C&I et document industriel : les 8
+    prestations C&I en UNE ligne « Installation clé en main »."""
+
+    def test_une_page_et_industriel(self):
+        from .test_ciq331_pdf_commercial_complet import (
+            PRESTATIONS, items_prestations)
+        for mode, *_ in GABARITS:
+            with self.subTest(mode=mode, format="onepage"):
+                _d, html = _onepage(mode, all_items=items_prestations())
+                html = unescape(html)
+                self.assertEqual(html.count("Installation clé en main"), 1)
+                for _role, nom, _q, _pu in PRESTATIONS:
+                    self.assertNotIn(nom, html)
+        data = _ci(copy.deepcopy(i_sample.build()), "industriel")
+        data["all_items"] = data["all_items"] + items_prestations()
+        html = unescape(i_render.build_html(i_renderer._augment(data)))
+        self.assertEqual(html.count("Installation clé en main"), 1)
+        for _role, nom, _q, _pu in PRESTATIONS:
+            self.assertNotIn(nom, html)
+
+    def test_residentiel_inchange(self):
+        from .test_ciq331_pdf_commercial_complet import items_prestations
+        html = unescape(html_onepage(all_items=items_prestations()))
+        self.assertNotIn("Installation clé en main", html)
+        self.assertIn("Transport C&I", html)

@@ -9,6 +9,7 @@ from core.champs_stricts import (  # ENF11
     ChampsStrictsEntiersMixin,
     ChampsStrictsMixin,
     ChampsStrictsSansDecimalMixin,
+    ChampsTexteStrictsMixin,
     DecimalBornee,
     IdInconnu404Mixin,
     ListesStrictesMixin,
@@ -289,6 +290,7 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
 
 
 class InterventionSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+                             ChampsTexteStrictsMixin,  # api-fuzz-full 26/10 : NUL
                              serializers.ModelSerializer):
     # ASEC32 — un technicien / une équipe d'une autre société reçoit la
     # réponse d'un id absent (400), à la création comme au PATCH.

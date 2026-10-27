@@ -126,6 +126,42 @@ class SyntheseCiServieTest(_BaseDevis):
             with self.subTest(devis=devis.reference):
                 self.assertNotIn('synthese_ci', self._payload(devis))
 
+    def test_installation_cle_en_main_lignes_internes_intactes(self):
+        """Fondateur 26/10/2026 — /proposition C&I : les prestations C&I
+        (rôle produit) en UNE ligne « Installation clé en main » au sous-total
+        exact ; totaux inchangés ; le devis interne garde chaque ligne."""
+        from apps.stock.models import Produit
+        devis = self._devis('DEV-CIQ306-0050', mode='commercial',
+                            tension='bt')
+        for role, nom, prix, qte in (
+                ('pose_modules', 'Pose des modules C&I', '5000', '1'),
+                ('transport_ci', 'Transport C&I', '1500', '2')):
+            produit = Produit.objects.create(
+                company=self.co, nom=nom, prix_vente=Decimal(prix),
+                prix_achat=Decimal('1'), role_ci=role)
+            LigneDevis.objects.create(
+                devis=devis, produit=produit, designation=nom,
+                quantite=Decimal(qte), prix_unitaire=Decimal(prix),
+                remise=Decimal('0'))
+        Devis.objects.filter(pk=devis.pk).update(statut='envoye')
+        devis = Devis.objects.get(pk=devis.pk)
+        interne = self._data(devis)
+        quote = self._payload(devis)['quote']
+        designations = [it['designation']
+                        for cle in ('sans_items', 'avec_items', 'all_items')
+                        for it in quote.get(cle) or []]
+        self.assertNotIn('Pose des modules C&I', designations)
+        self.assertNotIn('Transport C&I', designations)
+        groupees = [it for it in quote['all_items']
+                    if it['designation'] == 'Installation clé en main']
+        self.assertEqual(len(groupees), 1)
+        self.assertEqual(groupees[0]['quantite'], 1.0)
+        self.assertAlmostEqual(groupees[0]['prix_unit_ht'], 8000.0)
+        self.assertEqual(quote['totaux_all'], _json(interne['totaux_all']))
+        self.assertEqual(devis.lignes.count(), 4)
+        self.assertIn('Transport C&I',
+                      [it['designation'] for it in interne['all_items']])
+
     def test_aucun_prix_achat(self):
         for devis in self._cas():
             with self.subTest(devis=devis.reference):
