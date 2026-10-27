@@ -171,7 +171,8 @@ def _prime(mt, prime_kva_an):
     return round(prime_kva_an * kva, 2)
 
 
-def tarif_applicable(tarif_declare, *, tension=None, millesime=2026):
+def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
+                     regles_origine=False):
     """La forme ``tarif`` du contrat ``tarifs_ci.json`` pour ce client.
 
     ``tension`` ('bt' | 'mt' | None) ne sert qu'à reconnaître un contrat MT non
@@ -180,12 +181,15 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026):
     """
     td = tarif_declare if isinstance(tarif_declare, dict) else {}
     contrat = td.get('contrat')
+    nouveau = not regles_origine  # devis envoyé : règles d'origine (CEC4/5)
     if contrat not in CONTRATS:  # CEC4 — trois postes MT déclarés ⇒ MT
-        est_mt = (tension or '').lower() == 'mt' or \
-            _prix_mt_declares(td.get('mt')) is not None
+        est_mt = (tension or '').lower() == 'mt' or (
+            nouveau and _prix_mt_declares(td.get('mt')) is not None)
         contrat = 'mt_general' if est_mt else None
-    if contrat is None and not _tranches_bt_declarees(td.get('bt')):
+    if contrat is None and not (nouveau and _tranches_bt_declarees(td.get('bt'))):
         return _omis()  # CEC4 — des tranches déclarées suffisent sans contrat
+    if regles_origine and td.get('option_bi_horaire'):
+        return _omis(contrat=contrat)  # bi-horaire non valorisé avant CEC5
     taux, annee = tva_energie(millesime)
     if taux is None:
         return _omis()

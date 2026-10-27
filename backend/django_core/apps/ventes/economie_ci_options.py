@@ -62,7 +62,7 @@ SOURCE_DEFAUT_BATTERIE = (
     "défaut fondateur (à revoir) : garantie usuelle de 10 ans, aucune "
     "garantie ni nombre de cycles saisis sur la fiche batterie")
 CYCLES_PAR_AN = 365  # une décharge par jour (pricing.BATTERY_CYCLES_PER_DAY)
-MOTS_BATTERIE = ('batterie', 'battery', 'lithium', 'lifepo')
+MOTS_ACCESSOIRE = ('câble', 'cable', 'connecteur', 'support', 'rack', 'coffret')
 
 
 def annee_remplacement_batterie(garantie_mois=None, cycles_publies=None):
@@ -90,10 +90,13 @@ def annee_remplacement_batterie(garantie_mois=None, cycles_publies=None):
 
 
 def _est_batterie(ligne):
-    if ligne.get('role_ci') == 'batterie_ci' or ligne.get('batterie'):
-        return True
+    """La batterie elle-même : le mot du découpage des options du document
+    (``solar_classification.is_battery``), jamais une ligne onduleur (un
+    hybride « compatible batterie ») ni un câble ou un accessoire."""
+    from apps.ventes.solar_classification import is_battery
     nom = str(ligne.get('designation') or '').lower()
-    return any(m in nom for m in MOTS_BATTERIE)
+    return (is_battery(nom) and not ligne.get('onduleur')
+            and not any(m in nom for m in MOTS_ACCESSOIRE))
 
 
 def retour_au_dixieme(bloc):
@@ -115,56 +118,39 @@ def retour_au_dixieme(bloc):
 
 
 def flux_option_avec(base_eco, *, lignes, batterie=None, **kw):
-    """Le flux de l'option « avec batterie » (forme de ``economie_ci.flux_ci``
-    + ``indicateurs.retour_dixieme_ans``).
+    """Le flux de l'option « avec batterie » : ``economie_ci.flux_ci`` (même
+    forme, mêmes post-traitements : coût du kWh, sources codées, jalons HT et
+    TTC) avec le remplacement de la batterie en plus, et
+    ``indicateurs.retour_dixieme_ans``.
 
     ``base_eco`` : ``economie_ci.base_economique`` de l'option avec (son
     investissement CLIENT, son économie an 1). ``lignes`` : ses lignes à la
-    forme ``economie_ci.onduleur_et_om`` (``batterie`` ou ``role_ci`` =
-    ``batterie_ci`` ou désignation batterie pour la batterie). ``batterie`` :
-    :func:`annee_remplacement_batterie` (None ⇒ son défaut étiqueté). ``kw`` :
-    les autres arguments de ``flux_ci`` (production, taux client, entretien,
-    dégradation). Aucune écriture.
+    forme ``economie_ci.onduleur_et_om``. ``batterie`` :
+    :func:`annee_remplacement_batterie` (None ⇒ son défaut étiqueté) ; une
+    année au-delà de l'horizon n'ajoute aucun remplacement. ``kw`` : les
+    autres arguments de ``flux_ci``. Aucune écriture.
     """
-    from apps.ventes import economie as eco_mod
     from apps.ventes import economie_ci as eco
     lignes = [li for li in (lignes or []) if isinstance(li, dict)]
     onduleur, om = eco.onduleur_et_om(lignes)
-    collecteur = {}
-    sortie = eco.flux_ci(base_eco, onduleur=onduleur, om=om,
-                         collecteur=collecteur, **kw)
     comptees = [li for li in lignes
                 if _est_batterie(li) and not li.get('optionnelle')]
     batterie = batterie or annee_remplacement_batterie()
+    autres = []
+    if comptees and batterie['annee'] <= eco.HORIZON_CI_ANS:
+        autres = [{'equipement': 'batterie', 'annee': batterie['annee'],
+                   'source': batterie['source'],
+                   'ht': round(sum(_montant(li.get('ht')) or 0.0
+                                   for li in comptees), 2),
+                   'ttc': round(sum(_montant(li.get('ttc')) or 0.0
+                                    for li in comptees), 2)}]
+    sortie = eco.flux_ci(base_eco, onduleur=onduleur, om=om,
+                         autres_remplacements=autres, **kw)
+    sortie['remplacements'] = list(sortie['remplacements']) + [
+        {'composant': 'batterie', 'annee': r['annee'],
+         'montant_ht_mad': r['ht'], 'montant_ttc_mad': r['ttc'],
+         'source': r['source']} for r in autres]
     principal = 'flux_ttc' if base_eco['base'] == eco.BASE_TTC else 'flux_ht'
-    if comptees:
-        for cle_base, entrees in collecteur.items():
-            montant = round(sum(_montant(li.get(cle_base)) or 0.0
-                                for li in comptees), 2)
-            entrees['remplacements'] = list(entrees.get('remplacements') or [])
-            entrees['remplacements'].append({
-                'equipement': 'batterie', 'annee': batterie['annee'],
-                'mode': 'remplacer', 'montant_mad': montant,
-                'source': batterie['source']})
-            bloc = eco_mod.flux_de_tresorerie(**entrees)
-            ancien = sortie['flux_' + cle_base] or {}
-            if 'production_par_annee' in ancien:
-                bloc['production_par_annee'] = ancien['production_par_annee']
-            sortie['flux_' + cle_base] = bloc
-        sortie['remplacements'] = list(sortie['remplacements']) + [{
-            'composant': 'batterie', 'annee': batterie['annee'],
-            'montant_ht_mad': round(sum(_montant(li.get('ht')) or 0.0
-                                        for li in comptees), 2),
-            'montant_ttc_mad': round(sum(_montant(li.get('ttc')) or 0.0
-                                         for li in comptees), 2),
-            'source': batterie['source']}]
-        bloc = sortie[principal]
-        sortie['jalons'] = eco._jalons(bloc)
-        sortie['indicateurs'].update(tri_pct=bloc['tri_pct'],
-                                     retour_ans=bloc['retour_ans'],
-                                     van_mad=bloc['van_mad'],
-                                     # Coût du kWh sans la batterie : faux.
-                                     lcoe_mad_kwh=bloc.get('lcoe_mad_kwh'))
     sortie['indicateurs']['retour_dixieme_ans'] = retour_au_dixieme(
         sortie[principal])
     return sortie

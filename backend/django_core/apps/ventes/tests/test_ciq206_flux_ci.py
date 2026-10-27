@@ -153,16 +153,19 @@ class OmTest(SimpleTestCase):
                    'optionnelle': False, 'onduleur': False,
                    'role_ci': 'om_ci'}]
 
-        def _an0(controle):
+        def _an0(controle, reglages=None):
             bloc = eco.assembler_economie_ci(
                 apercu, tarif_declare={'contrat': 'bt_patente'},
                 investissement={'ht': 905000.0, 'ttc': 1086000.0},
                 lignes=lignes, mode_installation='commercial',
-                controle_lignes=controle)
+                controle_lignes=controle, reglages=reglages)
             return bloc['flux_ht']['flux'][0]['flux_mad']
         self.assertAlmostEqual(_an0(True), -900000.0)
+        # L'aperçu du générateur (sans contrôle des lignes) : même chiffre.
+        self.assertAlmostEqual(_an0(False), -900000.0)
         # Règles d'origine (devis déjà envoyé) : le calcul d'hier.
-        self.assertAlmostEqual(_an0(False), -905000.0)
+        self.assertAlmostEqual(
+            _an0(True, {'regles_origine': True}), -905000.0)
 
     def test_activee_sans_prix_tarif_a_renseigner(self):
         res = eco.flux_ci(_base(), production_annee1_kwh=100000,
@@ -519,3 +522,39 @@ class OptionAvecBatterieTest(SimpleTestCase):
         defaut = opt.annee_remplacement_batterie()
         self.assertEqual(defaut['annee'], 11)
         self.assertIn('défaut fondateur', defaut['source'])
+
+    def test_base_deux_jalons_ttc_suivent_le_remplacement(self):
+        from apps.ventes import economie_ci_options as opt
+        base = _base(tva='inconnu')
+        sans = eco.flux_ci(base, production_annee1_kwh=100000,
+                           onduleur={'ht': 40000.0, 'ttc': 48000.0})
+        avec = opt.flux_option_avec(base, lignes=self.LIGNES,
+                                    production_annee1_kwh=100000)
+        j_sans = {j['annee']: j['cumul_mad'] for j in sans['jalons_ttc']}
+        j_avec = {j['annee']: j['cumul_mad'] for j in avec['jalons_ttc']}
+        self.assertAlmostEqual(j_sans[15] - j_avec[15], 72000.0, places=1)
+        self.assertEqual(j_sans[10], j_avec[10])
+        # Mêmes post-traitements que l'option « sans » (coût du kWh servi).
+        self.assertIsNotNone(avec['indicateurs']['lcoe_mad_kwh'])
+
+    def test_remplacement_au_dela_de_l_horizon_aucun_ajout(self):
+        from apps.ventes import economie_ci_options as opt
+        avec = opt.flux_option_avec(
+            _base(), lignes=self.LIGNES, production_annee1_kwh=100000,
+            batterie=opt.annee_remplacement_batterie(cycles_publies=10000))
+        self.assertEqual([r['composant'] for r in avec['remplacements']],
+                         ['onduleur'])
+
+    def test_seule_la_batterie_est_remplacee(self):
+        from apps.ventes import economie_ci_options as opt
+        lignes = self.LIGNES + [
+            {'designation': 'Câble batterie 35 mm²', 'ht': 1000.0,
+             'ttc': 1200.0, 'optionnelle': False, 'onduleur': False},
+            {'designation': 'Onduleur hybride compatible batterie',
+             'ht': 5000.0, 'ttc': 6000.0, 'optionnelle': False,
+             'onduleur': True}]
+        avec = opt.flux_option_avec(_base(), lignes=lignes,
+                                    production_annee1_kwh=100000)
+        batterie = [r for r in avec['remplacements']
+                    if r['composant'] == 'batterie']
+        self.assertEqual(batterie[0]['montant_ht_mad'], 60000.0)

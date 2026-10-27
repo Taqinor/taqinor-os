@@ -162,3 +162,11 @@ class SchemaTarifDeclareTest(SimpleTestCase):
                          [(0.0, 100.0), (100.0, 500.0), (500.0, None)])
         self.assertEqual(es.valider({'tarif_declare': {
             'contrat': 'bt_force_motrice', 'bt': {'tranches': tranches}}}), [])
+
+    def test_cec4_cec5_devis_envoye_garde_les_regles_d_origine(self):
+        mt = {'tarif_pointe': 1.2, 'tarif_pleines': 0.9, 'tarif_creuses': 0.6}
+        self.assertEqual(tc.tarif_applicable(
+            {'mt': mt}, regles_origine=True)['origine'], 'omis')
+        self.assertEqual(tc.tarif_applicable(
+            {'contrat': 'bt_force_motrice', 'option_bi_horaire': True},
+            regles_origine=True)['origine'], 'omis')

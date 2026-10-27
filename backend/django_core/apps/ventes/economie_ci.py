@@ -29,15 +29,11 @@ STATUT_OMIS = 'omis'
 MOTIF_TARIF_OMIS = (
     "contrat d'électricité non déclaré et aucune facture lue : aucun tarif — "
     "économies non chiffrées (aucun prix plat supposé)")
-MOTIF_BI_HORAIRE = (
-    "option bi-horaire : plages heures pleines / normales non saisies — "
-    "économies non chiffrées (aucune plage devinée)")
 MOTIF_SANS_HORAIRE = (
     "matrice horaire de l'étude C&I absente : économies non chiffrées")
 ETIQUETTE_CONSO_ESTIMEE = (
     "consommation estimée (barème national) — les kWh de votre facture "
     "affineront ce chiffre")
-_POSTES_MT = ('pointe', 'pleines', 'creuses')
 
 
 def _f(v):
@@ -613,7 +609,7 @@ def _codes_sources(hypotheses):
 
 
 def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
-             om_bloc, cle_base, collecteur=None, degradation=None):
+             om_bloc, cle_base, collecteur=None, degradation=None, autres=()):
     from apps.ventes import economie as eco_mod
     pricing = _pricing()
     deg = _deg.entrees_flux(degradation, DEGRADATION_CI_SOURCE)  # AMOT99
@@ -628,6 +624,8 @@ def _un_flux(investissement, economie, *, production, taux, onduleur, charge,
             'montant_mad': montant_onduleur,
             'source': str(onduleur.get('source') or '').strip()
             or 'ligne onduleur du devis'})
+    remplacements += [{'equipement': r['equipement'], 'annee': r['annee'], 'mode': 'remplacer',  # CEC3
+                       'montant_mad': r[cle_base], 'source': r['source']} for r in autres]
     taux_brut = None if taux is None else {
         'valeur': taux['valeur_pct'],
         'source': f"déclaré par le client — {taux['source']}",
@@ -711,7 +709,7 @@ def _jalons(bloc):
 
 def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
             onduleur=None, om=None, taux_actualisation_client=None,
-            collecteur=None, entretien=None, degradation=None):
+            collecteur=None, entretien=None, degradation=None, autres_remplacements=()):
     """Le flux 25 ans d'un devis C&I et ses indicateurs (forme
     ``economie_ci.json`` : ``flux_ht`` / ``flux_ttc``, ``jalons``,
     ``indicateurs``, ``remplacements``, ``om``).
@@ -744,7 +742,7 @@ def flux_ci(base_eco, *, production_annee1_kwh=None, kwh_evites_an=None,
             base_eco[f'economie_annee1_{cle_base}_mad'],
             production=production_annee1_kwh, taux=taux, onduleur=onduleur,
             charge=charge, om_bloc=source_charge, cle_base=cle_base,
-            collecteur=collecteur, degradation=degradation)
+            collecteur=collecteur, degradation=degradation, autres=autres_remplacements)
         sortie[cle] = bloc
         if cle == principal:
             sortie['om'] = om_bloc
@@ -1492,7 +1490,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
             tarif_declare = None
     tension = _resolue(apercu, 'tension')
     tension = tension.strip().lower() if isinstance(tension, str) else None
-    tarif = tarif_ci.tarif_applicable(tarif_declare, tension=tension)
+    tarif = tarif_ci.tarif_applicable(tarif_declare, tension=tension, regles_origine=reglages.get('regles_origine'))
     vue_interne = {'comparaison_cse': None, 'sr500': _sr500(saisies),
                    'apres_impot': None}
     alertes = _alertes_internes(apercu, tarif)
@@ -1511,7 +1509,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
     motif_investissement = investissement_non_chiffre(
         investissement, lignes, apercu, controle_lignes=controle_lignes)
     base = base_economique(tva, investissement=None if motif_investissement else (  # CEC1
-        _options.investissement_hors_om(investissement, lignes, controle_lignes)),
+        _options.investissement_hors_om(investissement, lignes, not reglages.get('regles_origine'))),
         economie_annee1=valo['economie_annee1'])
     production = _montant((apercu.get('bilan') or {}).get('production_kwh'))
     kwh_evites = sum(_f(p.get('kwh_evites'))
@@ -1988,6 +1986,7 @@ def economie_ci_pour_devis(devis, company):
         # entretien minimum, ni scénarios seedés, ni sensibilités commerciales.
         from apps.parametres.tariff import SENSIBILITES_CI_DEFAUT
         reglages.pop('entretien_minimum', None)
+        reglages['regles_origine'] = True  # CEC1/4/5 — calcul d'hier
         reglages['sensibilites_ci'] = [] if getattr(
             devis, 'mode_installation', None) == 'commercial' else [
             sc for sc in reglages.get('sensibilites_ci') or []
