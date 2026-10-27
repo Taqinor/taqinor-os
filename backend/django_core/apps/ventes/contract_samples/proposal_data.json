@@ -807,13 +807,13 @@
             {
               "cle": "horizon_ans",
               "valeur": 10,
-              "source": "décision fondateur D-AGR-5 du 02/10/2026",
+              "source": null,
               "saisie_le": null
             },
             {
               "cle": "indexation_pct",
               "valeur": 0.0,
-              "source": "décision fondateur D-AGR-5 du 02/10/2026 — prix du carburant constant : il peut monter ou baisser",
+              "source": null,
               "saisie_le": null
             },
             {
@@ -825,7 +825,7 @@
             {
               "cle": "charges_solaires_mad_an",
               "valeur": 600.0,
-              "source": "barème société — Paramètres › Tarification & ROI › Pompage agricole",
+              "source": null,
               "saisie_le": "2026-09-30"
             },
             {
@@ -841,7 +841,7 @@
           "omissions": [
             {
               "cle": "taux_actualisation_pct",
-              "motif": "taux d'actualisation : vue interne uniquement (D-AGR-5) — VAN, retour actualisé et flux actualisés non publiés"
+              "motif": null
             },
             {
               "cle": "lcoe_mad_kwh",
@@ -1053,7 +1053,7 @@
       "omissions": [
         {
           "bloc": "preuve_realisation",
-          "motif": "aucune réalisation de pompage saisie (D-AGR-10) : jamais un toit à la place"
+          "motif": "aucune réalisation de pompage saisie : jamais un toit à la place"
         },
         {
           "bloc": "co2",
@@ -1170,12 +1170,7 @@
       "version": 1,
       "segment": "commercial",
       "statut_etude": "offre_ferme",
-      "a_confirmer": [
-        {
-          "cle": "puissance_souscrite_kva",
-          "libelle": "Puissance souscrite, à relever sur la facture ou à la visite"
-        }
-      ],
+      "a_confirmer": [],
       "provenance": {
         "kwh_mensuels": {
           "origine": "lead",
@@ -1303,7 +1298,7 @@
         "statut": "calcule",
         "motifs_omission": [],
         "base": "deux",
-        "motif_base": "TVA récupérable non déclarée : économies affichées en HT et en TTC (D-CIQ-3)",
+        "motif_base": "TVA récupérable non déclarée : économies affichées en HT et en TTC",
         "tarif": {
           "origine": "grille_officielle",
           "contrat": "bt_patente",
@@ -1314,7 +1309,7 @@
               "tarif_kwh_ttc": 1.5146,
               "base_publiee": "ttc",
               "derive_ht_estimation": true,
-              "source": "grille ONEE BT patenté 0-150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)",
+              "source": null,
               "releve_le": "2025-02-16"
             },
             {
@@ -1323,14 +1318,14 @@
               "tarif_kwh_ttc": 1.709,
               "base_publiee": "ttc",
               "derive_ht_estimation": true,
-              "source": "grille ONEE BT patenté > 150 kWh — capture Wayback one.org.ma 20250216142859 (libellé de page « TVA 18 % »)",
+              "source": null,
               "releve_le": "2025-02-16"
             }
           ],
           "prime_fixe_annuelle_mad": null,
           "tva_energie_pct": 20,
           "tva_millesime": 2026,
-          "mention": "Grille ONEE, repli : prix TTC tels que publiés sur one.org.ma (la page indique TVA 18 %, taux légal 2026 : 20 %) ; HT dérivé = TTC ÷ 1,20, estimation jusqu'à lecture d'une facture du client."
+          "mention": "Tarif ONEE BT publié (grille du 16/02/2025)."
         },
         "economie_annee1": {
           "par_poste": [
@@ -1382,7 +1377,7 @@
               "cle": "surplus_non_valorise_kwh",
               "valeur": 25959,
               "statut": "source",
-              "source": "etude_ci.bilan"
+              "source": "étude de production de votre site, heure par heure"
             }
           ]
         },
@@ -1610,31 +1605,31 @@
             {
               "cle": "economie_annee1_mad",
               "valeur": 98933.48,
-              "source": "economie_ci.economie_annee1 (valorisation horaire au tarif du poste)",
+              "source": "valorisation heure par heure au tarif de chaque poste",
               "saisie_le": null
             },
             {
               "cle": "production_annee1_kwh",
               "valeur": 95425,
-              "source": "etude_ci.bilan (moteur C&I)",
+              "source": "étude de production de votre site, heure par heure",
               "saisie_le": null
             },
             {
               "cle": "horizon_ans",
               "valeur": 25,
-              "source": "D-CIQ-10 : 25 ans",
+              "source": "durée d'analyse : 25 ans",
               "saisie_le": null
             },
             {
               "cle": "indexation_pct",
               "valeur": 0.0,
-              "source": "réglage société — Paramètres › Tarification & ROI",
+              "source": "hypothèse retenue par l'installateur",
               "saisie_le": "2026-09-23"
             },
             {
               "cle": "degradation_pct",
               "valeur": 0.0,
-              "source": "réglage société — Paramètres › Tarification & ROI",
+              "source": "hypothèse retenue par l'installateur",
               "saisie_le": "2026-09-23"
             }
           ],
@@ -1869,31 +1864,31 @@
             {
               "cle": "economie_annee1_mad",
               "valeur": 118717.39,
-              "source": "economie_ci.economie_annee1 (valorisation horaire au tarif du poste)",
+              "source": "valorisation heure par heure au tarif de chaque poste",
               "saisie_le": null
             },
             {
               "cle": "production_annee1_kwh",
               "valeur": 95425,
-              "source": "etude_ci.bilan (moteur C&I)",
+              "source": "étude de production de votre site, heure par heure",
               "saisie_le": null
             },
             {
               "cle": "horizon_ans",
               "valeur": 25,
-              "source": "D-CIQ-10 : 25 ans",
+              "source": "durée d'analyse : 25 ans",
               "saisie_le": null
             },
             {
               "cle": "indexation_pct",
               "valeur": 0.0,
-              "source": "réglage société — Paramètres › Tarification & ROI",
+              "source": "hypothèse retenue par l'installateur",
               "saisie_le": "2026-09-23"
             },
             {
               "cle": "degradation_pct",
               "valeur": 0.0,
-              "source": "réglage société — Paramètres › Tarification & ROI",
+              "source": "hypothèse retenue par l'installateur",
               "saisie_le": "2026-09-23"
             }
           ],
@@ -1967,7 +1962,7 @@
         "om": {
           "statut": "tarif_a_renseigner",
           "montant_mad_an": null,
-          "source": "option O&M nommée (D-CIQ-12) — prix saisi par Reda, aucun défaut"
+          "source": "option O&M nommée — prix saisi par Reda, aucun défaut"
         },
         "hypotheses": [
           {
@@ -1975,19 +1970,19 @@
             "valeur": "tarif du poste horaire couvert, heure par heure",
             "valeur_code": "methode_horaire_poste",
             "statut": "source",
-            "source": "conventions Groupe CIQ"
+            "source": "méthode de calcul du devis"
           },
           {
             "cle": "tarif",
-            "valeur": "grille ONEE BT patenté, repli",
+            "valeur": "Tarif ONEE BT publié (grille du 16/02/2025).",
             "statut": "estimation",
-            "source": "tarifs_ci.json — HT dérivé ÷ 1,20"
+            "source": "HT dérivé ÷ 1,20"
           }
         ],
         "omissions": [
           {
             "cle": "financement",
-            "motif": "aucune offre écrite de prêteur saisie (D-CIQ-15)"
+            "motif": "aucune offre écrite de prêteur saisie"
           }
         ]
       },
@@ -1999,7 +1994,7 @@
             "en": "Self-consumption computed hour by hour: site production × your declared opening hours.",
             "ar": "الاستهلاك الذاتي محسوب ساعة بساعة: إنتاج الموقع × ساعات العمل المصرح بها."
           },
-          "source": "moteur C&I (D-CIQ-1)",
+          "source": null,
           "date": "2026-09-15"
         },
         {
@@ -2009,7 +2004,7 @@
             "en": "kWh prices: published official ONEE tariff, until your bill is read.",
             "ar": "أثمنة الكيلوواط ساعة: التعريفة الرسمية المنشورة للمكتب الوطني إلى حين قراءة فاتورتكم."
           },
-          "source": "tarifs_ci.json — grille officielle, repli",
+          "source": null,
           "date": "2026-10-03"
         }
       ],
@@ -2037,7 +2032,7 @@
         },
         "suivi_production": {
           "delai_intervention": null,
-          "motif": "délai d'intervention saisi par Reda, aucun défaut (D-CIQ-12)"
+          "motif": "délai d'intervention saisi par Reda, aucun défaut"
         },
         "garanties": [
           {
@@ -2076,16 +2071,7 @@
         "interlocuteur": "Karim Exemple",
         "fonction": "Directeur"
       },
-      "omissions": [
-        {
-          "bloc": "argent.indicateurs.van_mad",
-          "motif": "aucun taux d'actualisation déclaré"
-        },
-        {
-          "bloc": "decarbonation",
-          "motif": "aucune exportation UE déclarée (CBAM)"
-        }
-      ]
+      "omissions": [{"bloc": "argent.indicateurs.van_mad", "motif": "aucun taux d'actualisation déclaré"}]
     }
   },
   "exemple_industriel": {
@@ -2128,16 +2114,7 @@
       "version": 1,
       "segment": "industriel",
       "statut_etude": "estimation_sous_reserve_visite",
-      "a_confirmer": [
-        {
-          "cle": "registres_mt",
-          "libelle": "Vos 12 dernières factures MT"
-        },
-        {
-          "cle": "toit",
-          "libelle": "Type et charge admissible de la toiture, à la visite"
-        }
-      ],
+      "a_confirmer": [],
       "provenance": {
         "consommation": {
           "origine": "lead",
@@ -2438,5 +2415,6 @@
       "remplace": {"reference": "DEV-202610-0012"},
       "signe_le": "2026-10-12T09:30:00+00:00"
     }
-  }
+  },
+  "notes_cprs": "CPRS (27/10/2026) — la page sert les chiffres et les mots du PDF : en C&I, quote.puissance_kwc / nb_panneaux / prod_kwh et monthly_production / monthly_consumption = ceux de l'option servie (synthese_ci.systeme, synthese_ci.energie.par_mois) ; quote.libelles_document et quote.etude.etude_ci ne partent plus ; sources/motifs internes de synthese_ci et synthese_agricole traduits (mots du PDF) ou null ; synthese_ci.a_confirmer ne garde que 'a_chiffrer_visite', synthese_ci.omissions que les blocs 'argent*'."
 }

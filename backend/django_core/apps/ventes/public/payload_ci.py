@@ -35,7 +35,7 @@ _CHAMPS_TEXTE = frozenset({'source', 'motif', 'motif_base', 'van_motif'})
 #: retirée plutôt que montrée (jamais réécrite en un texte inventé).
 _RESIDU_INTERNE = re.compile(
     r"moteur|\bGroupe [A-Z]{2,}|\bCIQ\d|\bD-[A-Z]{2,}-?\d|Paramètres|repli"
-    r"|Wayback|fondateur|\bdécision\b|\b[a-z]+(?:_[a-z]+)+\b"
+    r"|Wayback|fondateur|\bdécision\b|\binterne\b|\b[a-z]+(?:_[a-z]+)+\b"
     r"|\b[a-z_]+\.[A-Za-z_]+", re.IGNORECASE)
 
 #: Seuls blocs d'omission que la page rend au client (motifs propres).
@@ -151,6 +151,9 @@ def charge_utile_client(payload):
         etude = quote.get('etude')
         if isinstance(etude, dict):
             etude.pop('etude_ci', None)
+    # CPRS8 — agricole : mêmes textes servis (sources, motifs) assainis.
+    if isinstance(payload.get('synthese_agricole'), dict):
+        _assainir_textes(payload['synthese_agricole'], libelles)
     synthese = payload.get('synthese_ci')
     if not isinstance(synthese, dict):
         return
