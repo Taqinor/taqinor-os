@@ -728,3 +728,51 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
         from apps.ventes.moteur_ci.batterie import puissance_decharge_kw
         self.assertIsNone(puissance_decharge_kw({'max_decharge_kw': 5.0, 'quantite': 0}, None, []))
         self.assertEqual(puissance_decharge_kw({'max_decharge_kw': 5.0, 'quantite': 3}, None, []), 15.0)
+
+
+class OptionAvecDomineeTests(SimpleTestCase):
+    """CMP9 (D-CMP-5) — une option « avec » plus chère ET moins économe que
+    l'option « sans » n'est pas proposée (alerte interne ; bloquante si le
+    lead a choisi « avec »)."""
+
+    SANS = {'kwc': 260, 'cout': 928317.0, 'economie': 233192.0}
+
+    def _avec(self, cout, economie):
+        return {'kwc': 199, 'cout': cout, 'economie': economie, 'batterie': {'produit': 1},
+                'bilan': {}, 'composition': {'lignes': []}, 'onduleurs': {'combinaison': []}}
+
+    def _lancer(self, avec, choix='les_deux', alertes=()):
+        from apps.ventes.domain import etude_ci_batterie as m
+        resultat = {'evaluation': avec, 'prix_a_renseigner': [], 'hypotheses': [],
+                    'alertes': list(alertes), 'motif': None}
+        catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
+        with mock.patch.object(m, 'batteries_compatibles', return_value=[1]),                 mock.patch.object(m, '_dimensionner', return_value=resultat),                 mock.patch.object(m, '_bloc', return_value={'kwc': 199}):
+            return m.option_avec_de_l_etude(catalogue, dict(self.SANS), choix=choix, lead=None,
+                                            tva_recuperable={'valeur': 'inconnu'})
+
+    def test_option_dominee_aucun_bloc_alerte_interne_nommant_la_cause(self):
+        borne = {'code': 'HYBRIDES_PARALLELE_MAX', 'message': 'x'}
+        sortie = self._lancer(self._avec(1140483.0, 229971.0), alertes=[borne])
+        self.assertIsNone(sortie['bloc'])
+        alerte = next(a for a in sortie['alertes'] if a['code'] == 'OPTION_BATTERIE_DOMINEE')
+        self.assertEqual(alerte['niveau'], 'alerte')
+        self.assertTrue(alerte['interne'])
+        for texte in ('1140483', '928317', '229971', '233192', 'parallèle'):
+            self.assertIn(texte, alerte['message'])
+
+    def test_choix_avec_du_lead_refus_bloquant(self):
+        sortie = self._lancer(self._avec(1140483.0, 229971.0), choix='avec')
+        self.assertIsNone(sortie['bloc'])
+        alerte = next(a for a in sortie['alertes'] if a['code'] == 'OPTION_BATTERIE_DOMINEE')
+        self.assertEqual(alerte['niveau'], 'bloquant')
+
+    def test_option_non_dominee_inchangee(self):
+        sortie = self._lancer(self._avec(1140483.0, 260000.0))
+        self.assertEqual(sortie['bloc'], {'kwc': 199})
+        self.assertFalse([a for a in sortie['alertes'] if a['code'] == 'OPTION_BATTERIE_DOMINEE'])
+
+    def test_cout_ou_economie_manquant_aucun_verdict(self):
+        for avec in (self._avec(None, 100.0), self._avec(2e6, None)):
+            self.assertIsNotNone(self._lancer(avec)['bloc'])
+        from apps.ventes.domain.etude_ci_batterie import _option_dominee
+        self.assertFalse(_option_dominee({'cout': None, 'economie': 1.0}, self._avec(2e6, 0.5)))
