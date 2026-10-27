@@ -175,17 +175,17 @@ import PompageSolaireDiv3A4E from '../components/blocs/PompageSolaireDiv3A4E.ast
     <section class="px-4 pb-4">
       <div class="mx-auto max-w-6xl">
         <dl class="cine-in grid max-w-3xl grid-cols-1 gap-3 border-t border-white/20 pt-6 sm:grid-cols-3 sm:gap-6">
-          <div>
-            <dd class="fig lum text-base sm:text-3xl">4</dd>
+          <div class="flex flex-col-reverse">
             <dt class="tech-label mt-2 text-lune">Mesures relevées sur site</dt>
+            <dd class="fig lum text-base sm:text-3xl">4</dd>
           </div>
-          <div>
+          <div class="flex flex-col-reverse">
+            <dt class="tech-label mt-2 text-lune">TVA sur la pompe solaire agricole</dt>
             <dd class="fig lum text-base sm:text-3xl">0 %</dd>
-            <dt class="tech-label mt-2 text-lune">TVA sur le pompage agricole</dt>
           </div>
-          <div>
+          <div class="flex flex-col-reverse">
+            <dt class="tech-label mt-2 text-lune">Champ et variateur : marques tier-1</dt>
             <dd class="fig lum text-base sm:text-3xl">Tier-1</dd>
-            <dt class="tech-label mt-2 text-lune">Champ et variateur, comme nos toitures</dt>
           </div>
         </dl>
       </div>
@@ -206,7 +206,7 @@ import PompageSolaireDiv3A4E from '../components/blocs/PompageSolaireDiv3A4E.ast
         <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
           Tout ordre de grandeur dépend de votre site : avant le relevé du forage, nous pouvons vous
           décrire la méthode, mais pas vous avancer un chiffre que nous tiendrions. Le champ et le
-          variateur, eux, s’appuient sur les mêmes marques tier-1 que nos toitures — <a href="/équipement" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">voir l’équipement →</a>
+          variateur, eux, s’appuient sur des marques tier-1 — <a href="/équipement" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">voir l’équipement →</a>
         </p>
       </div>
     </section>
@@ -232,7 +232,7 @@ import PompageSolaireDiv3A4E from '../components/blocs/PompageSolaireDiv3A4E.ast
         {/* W261 — Diagramme des 4 variables convergeant vers le système :
             même contenu que les quatre cartes ci-dessus, mis en scène. */}
         <div class="mx-auto mt-14 max-w-3xl">
-          <svg viewBox="0 0 600 260" role="img" aria-label="Débit, HMT, profondeur du forage et besoins en eau de la culture convergent vers le dimensionnement pompe + variateur + champ photovoltaïque" class="w-full">
+          <svg viewBox="0 0 600 272" role="img" aria-label="Débit, HMT, profondeur du forage et besoins en eau de la culture convergent vers le dimensionnement pompe + variateur + champ photovoltaïque" class="w-full">
             <g font-size="11" class="fill-azur-700">
               <g transform="translate(70,40)">
                 <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
@@ -355,8 +355,8 @@ import PompageSolaireDiv3A4E from '../components/blocs/PompageSolaireDiv3A4E.ast
           <div class="v2-rise cine-card p-7" style="--v2-i:1">
             <h3 class="display text-xl text-white">À ne pas confondre</h3>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">
-              L’exonération vise le <strong class="text-white">pompage agricole</strong> — la pompe
-              et son champ — et <strong class="text-white">elle ne s’étend pas au photovoltaïque
+              L’exonération vise la <strong class="text-white">pompe à eau solaire agricole</strong>
+              — pas les panneaux, au taux réduit — et <strong class="text-white">elle ne s’étend pas au photovoltaïque
               résidentiel en toiture</strong>. Le solaire sur le toit d’une maison reste soumis à la
               TVA : deux régimes séparés, et nous ne vous promettrons jamais de transposer l’un sur
               l’autre.
@@ -381,8 +381,8 @@ import PompageSolaireDiv3A4E from '../components/blocs/PompageSolaireDiv3A4E.ast
           Un agriculteur ne compare pas des kWc, il compare des pleins. Chaque heure de pompage au
           gasoil ou au butane a un coût qui varie avec le prix du jour — et le butane décompensé
           coûte, en réalité, bien plus cher que le prix de la bonbonne subventionnée ne le laisse
-          penser. Le solaire, lui, fixe ce coût à zéro une fois le système amorti : le soleil ne
-          se facture pas.
+          penser. Le solaire, lui, ne consomme aucun carburant : il reste l’entretien du système et,
+          un jour, le remplacement de la pompe — l’étude les compte.
         </p>
         <div class="mt-10 grid gap-6 md:grid-cols-2">
           <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6">
@@ -396,7 +396,8 @@ import PompageSolaireDiv3A4E from '../components/blocs/PompageSolaireDiv3A4E.ast
           <div class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
             <h3 class="display text-lg text-azur-700">Pompage solaire</h3>
             <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-              Investissement unique, puis un coût de fonctionnement proche de zéro :
+              Investissement unique, puis un coût de fonctionnement réduit (entretien et remplacement de
+              la pompe comptés dans l’étude) :
               le point de croisement avec le gasoil ou le butane dépend de votre consommation
               réelle — c’est justement ce que l’étude calcule, chiffre par chiffre, pour votre
               parcelle.

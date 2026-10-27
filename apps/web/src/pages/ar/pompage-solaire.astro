@@ -163,17 +163,17 @@ import PompageSolaireDiv3A4ESuite from '../../components/blocs/PompageSolaireDiv
     <section class="px-4 pb-4">
       <div class="mx-auto max-w-6xl">
         <dl class="cine-in grid max-w-3xl grid-cols-1 gap-3 border-t border-white/20 pt-6 sm:grid-cols-3 sm:gap-6" dir="ltr">
-          <div class="text-center">
-            <dd class="fig lum text-base sm:text-3xl">4</dd>
+          <div class="flex flex-col-reverse text-center">
             <dt class="tech-label mt-2 text-lune" dir="rtl">قياسات مأخوذة ميدانياً</dt>
+            <dd class="fig lum text-base sm:text-3xl">4</dd>
           </div>
-          <div class="text-center">
+          <div class="flex flex-col-reverse text-center">
+            <dt class="tech-label mt-2 text-lune" dir="rtl">ضريبة على المضخة الشمسية الفلاحية</dt>
             <dd class="fig lum text-base sm:text-3xl">0%</dd>
-            <dt class="tech-label mt-2 text-lune" dir="rtl">ضريبة على الضخ الفلاحي</dt>
           </div>
-          <div class="text-center">
+          <div class="flex flex-col-reverse text-center">
+            <dt class="tech-label mt-2 text-lune" dir="rtl">الحقل والمغيّر: علامات الصف الأول</dt>
             <dd class="fig lum text-base sm:text-3xl">Tier-1</dd>
-            <dt class="tech-label mt-2 text-lune" dir="rtl">الحقل والمغيّر، كأسطحنا</dt>
           </div>
         </dl>
       </div>
@@ -199,7 +199,7 @@ import PompageSolaireDiv3A4ESuite from '../../components/blocs/PompageSolaireDiv
         </div>
         <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
           أرتاب الحجم تتوقف كلياً على موقعك: ما لم يُقَس الثقب، يوجد منهج لا رقم. الحقل والمغيّر يستندان
-          إلى علامات الصف الأول نفسها التي على أسطحنا — <a href={L('/équipement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">انظر المعدات <span class="inline-block rtl:-scale-x-100">→</span></a>
+          إلى علامات الصف الأول — <a href={L('/équipement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">انظر المعدات <span class="inline-block rtl:-scale-x-100">→</span></a>
         </p>
       </div>
     </section>
@@ -223,7 +223,7 @@ import PompageSolaireDiv3A4ESuite from '../../components/blocs/PompageSolaireDiv
         {/* W261 — مخطط المتغيرات الأربعة يتقارب نحو النظام: نفس محتوى البطاقات
             الأربع أعلاه، مُصوَّراً. المخطط يبقى LTR (اصطلاح المخططات التقنية). */}
         <div class="mx-auto mt-14 max-w-3xl" dir="ltr">
-          <svg viewBox="0 0 600 260" role="img" aria-label="الصبيب والارتفاع المانومتري وعمق الثقب وحاجات المحصول من الماء تتقارب نحو تحديد مقاس المضخة والمغيّر والحقل الكهروضوئي" class="w-full">
+          <svg viewBox="0 0 600 272" role="img" aria-label="الصبيب والارتفاع المانومتري وعمق الثقب وحاجات المحصول من الماء تتقارب نحو تحديد مقاس المضخة والمغيّر والحقل الكهروضوئي" class="w-full">
             <g font-size="11" class="fill-azur-700">
               <g transform="translate(70,40)">
                 <circle r="26" fill="none" stroke="#0f1c54" stroke-width="2.5" />
@@ -342,7 +342,7 @@ import PompageSolaireDiv3A4ESuite from '../../components/blocs/PompageSolaireDiv
           <div class="v2-rise cine-card p-7" style="--v2-i:1">
             <h3 class="display text-xl text-white">لا للخلط</h3>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">
-              يستهدف الإعفاء <strong class="text-white">الضخ الفلاحي</strong> — المضخّة وحقلها —
+              يستهدف الإعفاء <strong class="text-white">المضخّة المائية الشمسية الفلاحية</strong> — لا الألواح، بالسعر المخفّض —
               <strong class="text-white">ولا يمتدّ إلى الكهروضوئي السكني على السطح</strong>. الطاقة
               الشمسية على سطح منزل تبقى خاضعة للضريبة: نظامان منفصلان، ولن نَعِدك أبداً بنقل أحدهما على
               الآخر.
@@ -365,8 +365,8 @@ import PompageSolaireDiv3A4ESuite from '../../components/blocs/PompageSolaireDiv
         <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
           الفلاح لا يقارن كيلوواط، بل يقارن ملء الخزان. كل ساعة ضخ بالڭازوال أو البوطان لها كلفة تتغيّر
           مع سعر اليوم — والبوطان غير المُعوَّض يكلّف، في الواقع، أكثر بكثير مما يوحي به سعر البوتة
-          المدعومة. الشمسي، من جهته، يُثبّت هذه الكلفة عند الصفر بمجرد استرداد النظام لكلفته: الشمس لا
-          تُرسل فاتورة.
+          المدعومة. الشمسي، من جهته، لا يستهلك أي وقود: تبقى صيانة النظام، ويوماً ما تعويض المضخّة —
+          والدراسة تحسبهما.
         </p>
         <div class="mt-10 grid gap-6 md:grid-cols-2">
           <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6">
@@ -379,7 +379,7 @@ import PompageSolaireDiv3A4ESuite from '../../components/blocs/PompageSolaireDiv
           <div class="v2-rise border-t-2 border-brass-400 bg-blanc p-6">
             <h3 class="display text-lg text-azur-700">الضخ الشمسي</h3>
             <p class="mt-3 text-sm leading-relaxed text-encre-soft">
-              استثمار واحد، ثم كلفة تشغيل قريبة من الصفر: نقطة التقاطع مع الڭازوال أو
+              استثمار واحد، ثم كلفة تشغيل مخفّضة (الصيانة وتعويض المضخّة محسوبان في الدراسة): نقطة التقاطع مع الڭازوال أو
               البوطان تتوقّف على استهلاكك الفعلي — وهذا بالضبط ما تحسبه الدراسة، رقماً برقم، لقطعتك.
             </p>
           </div>
