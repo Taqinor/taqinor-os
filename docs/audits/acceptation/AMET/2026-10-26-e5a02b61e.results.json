@@ -1,0 +1,79 @@
+{
+  "sha": "e5a02b61e23228d92e3f7ba6f6e71d021bb849eb",
+  "date": "2026-10-26",
+  "groupe": "AMET",
+  "verdict": "PASS",
+  "couvre": [
+    "AMET20",
+    "AMET21",
+    "AMET14"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA1.4",
+      "taches": [
+        "AMET20"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-26/AMET20-PA1.4.txt",
+      "notes": "date tenue par la garde ACRM20 ; marqueur fiche absent (voir PA1.1)"
+    },
+    {
+      "id": "PA1.2",
+      "taches": [
+        "AMET21"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-26/AMET21-PA1.2.txt",
+      "notes": "0 conservé ; ville vidée par la fiche remplie par la fusion faute de marqueur (voir PA1.1)"
+    },
+    {
+      "id": "PA5.2",
+      "taches": [
+        "AMET14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AMET/traces/2026-10-26/AMET14-PA5.2.txt"
+    }
+  ]
+}

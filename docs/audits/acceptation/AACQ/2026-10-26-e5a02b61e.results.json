@@ -1,0 +1,33 @@
+{
+  "sha": "e5a02b61e23228d92e3f7ba6f6e71d021bb849eb",
+  "date": "2026-10-26",
+  "groupe": "AACQ",
+  "verdict": "PASS",
+  "couvre": [
+    "AACQ104"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P3.5",
+      "taches": [
+        "AACQ104"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AACQ/traces/2026-10-26/AACQ104-P3.5.txt"
+    }
+  ]
+}

@@ -50,6 +50,10 @@ function erreursDuServeur(data, { tab, pct }) {
 }
 
 function ongletParDefaut(apercu) {
+  // Un acompte non émis (à faire ou brouillon VNT62) passe avant la « prochaine » tranche :
+  // le plan saute le brouillon, mais « Créer » doit reprendre CE brouillon (sinon 409).
+  const acompteNonEmis = (apercu?.plan || []).find((t) => t.cle === 'acompte' && t.statut !== 'emise')
+  if (acompteNonEmis) return 'acompte'
   const cle = apercu?.prochaine?.cle || ''
   if (cle.startsWith('intermediaire')) return 'intermediaire'
   if (cle === 'solde') return 'solde'

@@ -43,6 +43,28 @@ def _next_balanced_round_robin_commercial(company, plafond):
     return eligibles[0]
 
 
+def _equipe_recevant_leads(company):
+    """L'équipe commerciale ACTIVE de la société cochée « Reçoit les
+    nouveaux leads » (une seule — posé par le serializer), ou None."""
+    from .models import EquipeCommerciale
+    return EquipeCommerciale.objects.filter(
+        company=company, actif=True, recoit_leads=True).first()
+
+
+def _prochain_membre_equipe(equipe, plafond):
+    """Rotation ÉQUILIBRÉE entre les membres ACTIFS de ``equipe`` (même règle
+    que XSAL11 : le moins de leads ouverts d'abord, départage par id, en
+    sautant quiconque a atteint ``plafond``). None si personne d'éligible."""
+    candidats = list(
+        equipe.membres.filter(
+            is_active=True, company_id=equipe.company_id).order_by('id'))
+    eligibles = [c for c in candidats if _leads_ouverts_count(c) < plafond]
+    if not eligibles:
+        return None
+    eligibles.sort(key=lambda c: (_leads_ouverts_count(c), c.id))
+    return eligibles[0]
+
+
 def default_responsable_for(company, lead_attrs=None):
     """Responsable assigné par défaut aux nouveaux leads d'une société.
 
@@ -75,6 +97,17 @@ def default_responsable_for(company, lead_attrs=None):
     responsable_pro = responsable_leads_pro(profile, lead_attrs)
     if responsable_pro is not None:
         return responsable_pro
+
+    # Fondateur 26/10/2026 — une équipe cochée « Reçoit les nouveaux leads »
+    # les partage entre ses membres (plafond du profil, 20 par défaut), que
+    # l'interrupteur round-robin soit ON ou OFF ; tous saturés ou équipe
+    # vide → responsable par défaut. Aucune équipe cochée : inchangé.
+    equipe = _equipe_recevant_leads(company)
+    if equipe is not None:
+        plafond = (profile.round_robin_plafond_leads_ouverts
+                   if profile is not None else 20)
+        membre = _prochain_membre_equipe(equipe, plafond)
+        return membre if membre is not None else explicit
 
     if profile is not None and profile.round_robin_leads_actif:
         balanced = _next_balanced_round_robin_commercial(

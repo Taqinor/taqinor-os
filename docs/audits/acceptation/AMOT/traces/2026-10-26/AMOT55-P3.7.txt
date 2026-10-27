@@ -1,0 +1,27 @@
+Rejeu orchestrateur P3.7 (AMOT55, D-AMOT-5 = a) sur la pile locale à e5a02b61e (origin/main), 26/10/2026, demo_admin (société 1) — sonde API (manage.py shell, APIClient(HTTP_HOST='localhost') authentifié), PDF RÉEL de la route GET /api/django/ventes/factures/<id>/lettre-relance-premium/?niveau=1|2|3 (render_lettre_relance_pdf, WeasyPrint de l'image), texte extrait par PyMuPDF. Les réglages de relance sont modifiés DANS une transaction ANNULÉE (relus à 0 après).
+
+Setup : société 1, réglages de relance réels (FollowupLevel) : ordre 1 « Rappel courtois » J+7, ordre 2 « Relance » J+15, ordre 3 « Relance ferme » J+30 ; taux_interet_annuel 0.00 et frais_fixes 0.00 partout ; messages vides. Facture FAC-202610-0027 (id 331, émise, exigible 14 700,00 MAD).
+
+Sortie brute (hits = occurrences dans le texte du PDF ; LINE = lignes du PDF qui les portent) :
+LVL 1 Rappel courtois 7 0.00 0.00 ''
+LVL 2 Relance 15 0.00 0.00 ''
+LVL 3 Relance ferme 30 0.00 0.00 ''
+DEFAUT niveau 1 200 pages 1 {'huitaine': 0, 'QUINZE': 0, 'intérêts': 0, 'jours': 0, 'taux annuel': 0, 'frais': 0}
+DEFAUT niveau 2 200 pages 1 {'huitaine': 0, 'QUINZE': 0, 'intérêts': 0, 'jours': 1, 'taux annuel': 0, 'frais': 0}
+    LINE Délai accordé pour ce règlement : 15 jours à compter de la réception de la présente.
+DEFAUT niveau 3 200 pages 1 {'huitaine': 0, 'QUINZE': 0, 'intérêts': 0, 'jours': 0, 'taux annuel': 0, 'frais': 1}
+    LINE droit d'engager toute procédure de recouvrement contentieux, sans nouvel avis, à vos frais et risques.
+REGLE_TAUX10_FRAIS150 (niveau 3 : taux_interet_annuel=10, frais_fixes=150, dans la transaction annulée)
+REGLE_TAUX10_FRAIS150 niveau 1 200 pages 1 {'huitaine': 0, 'QUINZE': 0, 'intérêts': 0, 'jours': 0, 'taux annuel': 0, 'frais': 0}
+REGLE_TAUX10_FRAIS150 niveau 2 200 pages 1 {'huitaine': 0, 'QUINZE': 0, 'intérêts': 0, 'jours': 1, 'taux annuel': 0, 'frais': 0}
+    LINE Délai accordé pour ce règlement : 15 jours à compter de la réception de la présente.
+REGLE_TAUX10_FRAIS150 niveau 3 200 pages 1 {'huitaine': 0, 'QUINZE': 0, 'intérêts': 1, 'jours': 0, 'taux annuel': 1, 'frais': 2}
+    LINE droit d'engager toute procédure de recouvrement contentieux, sans nouvel avis, à vos frais et risques.
+    LINE Conformément à nos conditions de relance, des intérêts de retard au taux annuel de 10 % s'appliquent à la somme due.
+    LINE Conformément à nos conditions de relance, des frais de recouvrement de 150,00 MAD s'appliquent à la somme due.
+APRES [(1, Decimal('0.00'), Decimal('0.00')), (2, Decimal('0.00'), Decimal('0.00')), (3, Decimal('0.00'), Decimal('0.00'))]
+
+Texte de la mise en demeure (niveau 3, réglages d'origine) : « Mise en demeure de payer | En dépit de nos relances successives restées sans effet, la facture référencée ci-dessus demeure intégralement impayée. | Par la présente, nous vous mettons formellement en demeure de procéder à son règlement. | Nous vous demandons de vous acquitter de la somme due dès réception de la présente. À défaut, nous nous réservons le droit d'engager toute procédure de recouvrement contentieux, sans nouvel avis, à vos frais et risques. | La présente mise en demeure vaut interpellation au sens de la loi. ... | Montant restant dû 14 700,00 MAD ».
+
+Verdict : PASS — (a) avec la société 1 telle qu'elle est (taux 0, aucun frais, messages vides), la mise en demeure n'imprime ni « QUINZE (15) JOURS », ni « huitaine », ni « intérêts de retard », ni aucun nombre de jours ; le seul délai chiffré imprimé (niveau 2, « 15 jours ») est l'écart réglé entre le niveau 2 (J+15) et le niveau 3 (J+30) de la société — il vient des réglages, conformément à la clause ; la lettre courtoise (niveau 1) n'en porte aucun. Avec un taux de 10 % et 150 MAD de frais réglés au niveau 3, intérêts et frais s'impriment depuis le réglage. Réglages relus à 0 après rollback.
+Oracles : 1 PASS, 2 PASS (6/6 réponses 200), 6 NA (pas un /proposal — lettre de relance, 6/6 PDF rendus), 7 PASS (aucun prix d'achat dans la lettre), autres NA (rejeu API).

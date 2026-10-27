@@ -1,0 +1,32 @@
+Rejeu orchestrateur P3.6 (AMOT52, D-AMOT-1 = a) sur la pile locale à e5a02b61e (origin/main), 26/10/2026, demo_admin (société 1) — sonde API (manage.py shell, APIClient(HTTP_HOST='localhost') authentifié), PDF /proposal RÉEL rendu par le moteur (WeasyPrint de l'image), texte extrait par PyMuPDF, attribut /Lang lu dans le catalogue PDF. Lecture seule (aucune écriture).
+
+Clause : en `langue_sortie` en/ar, aucun mot-témoin français (Bon pour accord, Pourquoi, Conditions, Signez, Validité, Clauses particulières, Puissance crête, Production annuelle, Note :, Détail des équipements, Conditions générales) dans le texte, `lang` = langue résolue — résidentiel 3 pages ET legacy une-page.
+Devis démo : DEV-202609-0003 (id 76, envoyé, résidentiel), DEV-202610-0058 (id 885, brouillon, résidentiel 4 p.), DEV-DEMO-0001 (id 1, brouillon, résidentiel). Requête : GET /api/django/ventes/devis/<id>/proposal/?langue=<lg>[&pdf_mode=onepage].
+
+Sortie brute (statut HTTP, pages, /Lang du PDF, mots-témoins FR trouvés) :
+L52 76 ?langue=en 200 3 lang= en FR_HITS= {}
+L52 76 ?langue=ar 200 3 lang= ar FR_HITS= {}
+L52 76 ?pdf_mode=onepage&langue=en 200 1 lang= en FR_HITS= {}
+L52 76 ?pdf_mode=onepage&langue=ar 200 1 lang= ar FR_HITS= {}
+L52 76 ?langue=fr 200 3 lang= None FR_HITS= {'Bon pour accord': 2, 'Pourquoi': 2, 'Conditions': 1, 'Signez': 1}
+L52 76 ?pdf_mode=onepage&langue=fr 200 1 lang= fr FR_HITS= {'Conditions': 1, 'Validité': 1, 'Conditions générales': 1}
+L52 885 ?langue=en 200 4 lang= en FR_HITS= {}
+L52 885 ?langue=ar 200 4 lang= ar FR_HITS= {}
+L52 885 ?pdf_mode=onepage&langue=en 200 1 lang= en FR_HITS= {}
+L52 885 ?pdf_mode=onepage&langue=ar 200 1 lang= ar FR_HITS= {}
+L52 885 ?langue=fr 200 4 lang= None FR_HITS= {'Bon pour accord': 2, 'Pourquoi': 2, 'Conditions': 1, 'Validité': 1}
+L52 885 ?pdf_mode=onepage&langue=fr 200 1 lang= fr FR_HITS= {'Conditions': 1, 'Validité': 1, 'Conditions générales': 1}
+L52 1 ?langue=en 200 3 lang= en FR_HITS= {}
+L52 1 ?langue=ar 200 3 lang= ar FR_HITS= {}
+L52 1 ?pdf_mode=onepage&langue=en 200 1 lang= en FR_HITS= {}
+L52 1 ?pdf_mode=onepage&langue=ar 200 1 lang= ar FR_HITS= {}
+L52 1 ?langue=fr 200 3 lang= None FR_HITS= {'Bon pour accord': 2, 'Pourquoi': 1, 'Conditions': 1, 'Validité': 1}
+L52 1 ?pdf_mode=onepage&langue=fr 200 1 lang= fr FR_HITS= {'Conditions': 1, 'Validité': 1, 'Conditions générales': 1}
+
+Extrait anglais (76, plein format, page 3) : « Approved and agreed | Offer valid until 28/10/2026 | Tick your option: | Without battery — 61 300,00 MAD incl. VAT | ... | APPROVED AND AGREED - THE CLIENT | Name, date, the words "Approved and agreed" & signature | FOR TAQINOR DÉMO | Stamp and signature | ... | Page 3 / 3 · Ref. DEV-202609-0003 » ; page 1 : « Residential | 9,23 kWp | Power · 13 panels × 710 W | 14 176 kWh/yr | Estimated production | ... | Valid until 28/10/2026 ».
+Les désignations de lignes restent en français (« 13 panneaux 710 W », « Onduleur réseau Huawei 10kW ») : ce sont des DONNÉES catalogue, pas des libellés du gabarit (hors clause).
+
+Verdict : PASS — en et ar : 0 mot-témoin français sur 12 rendus (3 devis × plein format + une-page), /Lang = en / ar ; les mêmes rendus en fr portent bien les témoins (le contrôle n'est pas vide).
+Observation (hors clause, non bloquante) : le plein format résidentiel en fr ne pose pas d'attribut /Lang dans le catalogue PDF (None), alors que le une-page fr pose « fr ».
+Clause (b) (repli nommé du dialogue PDF) non rejouée ici : volet dialogue, propriétaire devis.
+Oracles : 1 PASS (aucune réponse ≥ 500), 2 PASS (aucun 4xx inattendu), 6 PASS (18/18 /proposal 200), 7 PASS (contrôle prix d'achat sur 76, 885 et 1, plein format + une-page : aucun mot « achat »/« marge » ; les seules égalités de valeur avec un `Produit.prix_achat` — « 1 000,00 », « 2 500,00 » — sont des PRIX DE VENTE d'autres lignes (Transport 1 000,00 ; Wifi Dongle 1 000,00 HT) ou des sous-chaînes de « 12 500,00 », vérifiées en contexte), autres NA (rejeu API).

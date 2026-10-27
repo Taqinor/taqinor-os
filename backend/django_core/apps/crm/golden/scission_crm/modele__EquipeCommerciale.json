@@ -52,6 +52,15 @@
   {
    "args": [],
    "kwargs": {
+    "default": false,
+    "verbose_name": "Reçoit les nouveaux leads"
+   },
+   "nom": "recoit_leads",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
     "auto_now_add": true
    },
    "nom": "date_creation",

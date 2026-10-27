@@ -1,0 +1,17 @@
+ACRM55 — P2.1 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient sur la VRAIE route, EMAIL_BACKEND locmem, transaction.atomic + rollback : rien ne reste). Société démo 1, demo_admin.
+
+0. Base : migration crm 0136 appliquée (showmigrations : 0 « [ ] »). pg_indexes porte
+   crm_relance_une_ouverte_par_barreau = CREATE UNIQUE INDEX … ON crm_relanceetape (lead_id, cadence, ordre, devis_id) NULLS NOT DISTINCT
+   WHERE cadence IN ('contact','apres_devis','reveil') AND cle = '' AND statut = 'a_faire'
+   (contrainte conditionnelle ⇒ index unique partiel, absent de pg_constraint comme attendu pour une UniqueConstraint à condition).
+   Pré-contrôle lecture : 0 groupe en doublon dans la base démo.
+1. Lead démo neuf. Double clic « Relancer la cadence » = POST /api/django/crm/leads/<id>/relance/initialiser/ {cadence: contact} ×2
+   → 200 (2 touches) puis 200 (les 2 mêmes touches) ; touches contact ouvertes : ordres [1, 2] — une seule série.
+2. Insertion directe d'une seconde touche (contact, ordre 1) À FAIRE → IntegrityError
+   « duplicate key value violates unique constraint "crm_relance_une_ouverte_par_barreau" ».
+3. Course simulée (prédicat d'idempotence applicative neutralisé le temps d'un appel) : initialiser_plan_relance(lead, admin, cadence='contact')
+   → aucune exception, renvoie les 2 barreaux existants relus [(1, a_faire), (2, a_faire)] ; ouvertes contact = 2 (rattrapage IntegrityError → _barreaux_ouverts).
+4. Touche ordre 1 passée « fait » puis nouvelle touche au même ordre → acceptée (2 lignes à l'ordre 1, une seule ouverte).
+5. Filet (cle='filet_acc') au même barreau + deux touches « generique » ordre 1 → acceptés (hors contrainte).
+Verdict : PASS.
