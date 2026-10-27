@@ -416,3 +416,199 @@ class PretDevisCiTests(TestCase):
         self.assertFalse(r.json()['pret'])
         self.assertNotIn('prix_achat', json.dumps(r.json()))
         self.assertEqual(APIClient().get(URL_PRET).status_code, 401)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CCAT13 — « Prêt pour le devis agricole » (stock.pret_devis_agricole + route)
+# ═══════════════════════════════════════════════════════════════════════════
+
+CONTRAT_PRET_AGR = json.loads(
+    (Path(__file__).parent / 'contract_samples' / 'pret_devis_agricole.json')
+    .read_text(encoding='utf-8'))
+URL_PRET_AGR = '/api/django/stock/produits/pret-devis-agricole/'
+COURBE = {'debits_m3h': [0, 12, 18], 'hmt_m': [91, 85, 60]}
+
+
+class PretDevisAgricoleTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        cls.company = Company.objects.get_or_create(
+            slug='ccat13-co', defaults={'nom': 'CCAT13 Co'})[0]
+        cls.autre = Company.objects.get_or_create(
+            slug='ccat13-autre', defaults={'nom': 'CCAT13 Autre'})[0]
+        roles = {nom: Role.objects.create(
+            company=cls.company, nom=nom, permissions=list(perms),
+            est_systeme=True) for nom, perms in CANONICAL_SYSTEM_ROLES}
+        cls.user = get_user_model().objects.create_user(
+            username='ccat13_dir', password='x', company=cls.company,
+            role=roles['Directeur'])
+        # Le cas du plan : pompe OSP à courbe SANS prix, aucune monophasée,
+        # structure au sol à prix vide, INST-PMP sans barème.
+        cls.pompe_tri = Produit.objects.create(
+            company=cls.company, nom='Pompe OSP 30-15 Triphasé',
+            role_pompage='pompe', alimentation='tri', courbe_pompe=COURBE,
+            pompe_kw=Decimal('2.2'), prix_vente=0)
+        cls.structure = Produit.objects.create(
+            company=cls.company, nom='STR-SOL-PMP structure au sol',
+            role_pompage='structure_sol', prix_vente=0)
+        cls.inst = Produit.objects.create(
+            company=cls.company, nom='INST-PMP installation pompage',
+            sku='INST-PMP', role_pompage='installation_pompage',
+            prix_vente=0)
+        cls.archive = Produit.objects.create(
+            company=cls.company, nom='Compteur eau archivé',
+            role_pompage='compteur_eau', prix_vente=Decimal('100'),
+            is_archived=True)
+        cls.etranger = Produit.objects.create(
+            company=cls.autre, nom='Pompe autre société Monophasé',
+            role_pompage='pompe', alimentation='mono', courbe_pompe=COURBE,
+            pompe_kw=Decimal('1.1'), prix_vente=Decimal('5000'))
+
+    def _postes(self, company=None):
+        from apps.stock.pret_devis_agricole import pret_devis_agricole
+        res = pret_devis_agricole(company or self.company)
+        return res, {p['cle']: p for p in res['postes']}
+
+    def test_cas_du_plan(self):
+        res, postes = self._postes()
+        self.assertFalse(res['pret'])
+        tri = postes['pompe:tri']
+        self.assertEqual(tri['statut'], 'a_completer')
+        self.assertEqual(tri['articles'], [{
+            'id': self.pompe_tri.id, 'nom': 'Pompe OSP 30-15 Triphasé',
+            'motif': 'prix de vente non saisi'}])
+        self.assertEqual(postes['pompe:mono']['statut'], 'absent')
+        self.assertEqual(postes['structure_sol']['statut'], 'a_completer')
+        self.assertEqual(postes['structure_sol']['articles'][0]['motif'],
+                         'prix de vente non saisi')
+        inst = postes['installation_pompage']
+        self.assertEqual(inst['statut'], 'a_completer')
+        self.assertEqual(inst['groupe'], 'prestation')
+        self.assertEqual(inst['articles'], [{
+            'id': self.inst.id, 'nom': 'INST-PMP installation pompage',
+            'motif': 'barème fixe / par panneau non saisi'}])
+        for cle in ('variateur_pompage', 'panneau'):
+            self.assertEqual(postes[cle]['statut'], 'absent')
+        manquants = {c for c, p in postes.items()
+                     if p['obligatoire'] and p['statut'] != 'ok'}
+        self.assertEqual(res['nb_obligatoires_manquants'], len(manquants))
+        self.assertEqual(
+            manquants, {'pompe:tri', 'pompe:mono', 'variateur_pompage',
+                        'panneau', 'structure_sol', 'installation_pompage'})
+
+    def test_pompe_sans_courbe_a_completer(self):
+        Produit.objects.create(
+            company=self.company, nom='Pompe sans courbe Monophasé',
+            role_pompage='pompe', alimentation='mono', pompe_kw=Decimal('1'),
+            prix_vente=Decimal('3000'))
+        _res, postes = self._postes()
+        mono = postes['pompe:mono']
+        self.assertEqual(mono['statut'], 'a_completer')
+        self.assertEqual(mono['articles'][0]['motif'],
+                         'courbe constructeur absente')
+
+    def test_catalogue_complet_est_pret(self):
+        co = self.autre  # a déjà la pompe monophasée de setUpTestData
+        Produit.objects.create(
+            company=co, nom='Pompe tri complète', role_pompage='pompe',
+            alimentation='tri', courbe_pompe=COURBE, pompe_kw=Decimal('2.2'),
+            prix_vente=Decimal('9000'))
+        Produit.objects.create(
+            company=co, nom='Variateur VEICHI 2,2 kW 380V',
+            role_pompage='variateur_pompage', pompe_kw=Decimal('2.2'),
+            prix_vente=Decimal('4000'))
+        panneau = Produit.objects.create(
+            company=co, nom='Panneau 550W', role_devis='panneau',
+            prix_vente=Decimal('900'))
+        FicheTechnique.objects.create(
+            company=co, produit=panneau, type_fiche='module', pmax_wc=550)
+        Produit.objects.create(
+            company=co, nom='Structure sol pompage',
+            role_pompage='structure_sol', prix_vente=Decimal('300'))
+        Produit.objects.create(
+            company=co, nom='INST-PMP', role_pompage='installation_pompage',
+            prix_fixe_ht=Decimal('2000'))
+        res, postes = self._postes(co)
+        self.assertEqual(
+            {c: p['statut'] for c, p in postes.items()
+             if p['obligatoire'] and p['statut'] != 'ok'}, {})
+        self.assertTrue(res['pret'])
+        self.assertEqual(res['nb_obligatoires_manquants'], 0)
+
+    def test_installation_avec_bareme_par_panneau_est_ok(self):
+        self.inst.prix_par_panneau_ht = Decimal('150')
+        self.inst.save()
+        _res, postes = self._postes()
+        self.assertEqual(postes['installation_pompage']['statut'], 'ok')
+
+    def test_options_et_transport_non_obligatoires(self):
+        from core.pompage.kit import OPTIONS
+        Produit.objects.create(
+            company=self.company, nom='Compteur eau',
+            role_pompage='compteur_eau', prix_vente=Decimal('400'))
+        Produit.objects.create(
+            company=self.company, nom='Clapet sans prix', role_pompage='clapet',
+            prix_vente=0)
+        _res, postes = self._postes()
+        for cle, _role, libelle in OPTIONS:
+            poste = postes['option:' + cle]
+            self.assertEqual(poste['groupe'], 'option')
+            self.assertFalse(poste['obligatoire'])
+            self.assertEqual(poste['libelle'], libelle)
+        self.assertEqual(postes['option:compteur_eau']['statut'], 'ok')
+        self.assertEqual(postes['option:clapet']['statut'], 'a_completer')
+        # l'article archivé ne compte pas
+        self.assertNotIn(self.archive.id, {
+            a['id'] for p in postes.values() for a in p['articles']})
+        self.assertFalse(postes['transport']['obligatoire'])
+        self.assertEqual(postes['transport']['statut'], 'absent')
+
+    def test_isolation_societe(self):
+        res, postes = self._postes()
+        ids = {a['id'] for p in res['postes'] for a in p['articles']}
+        self.assertNotIn(self.etranger.id, ids)
+        self.assertEqual(postes['pompe:mono']['statut'], 'absent')
+        _res, autre = self._postes(self.autre)
+        self.assertEqual(autre['pompe:mono']['statut'], 'ok')
+        self.assertEqual(autre['pompe:tri']['statut'], 'absent')
+        self.assertNotIn(self.pompe_tri.id, {
+            a['id'] for p in autre.values() for a in p['articles']})
+
+    def test_produit_global_visible(self):
+        Produit.objects.create(
+            company=None, nom='Structure sol globale',
+            role_pompage='structure_sol', prix_vente=Decimal('250'))
+        _res, postes = self._postes()
+        self.assertEqual(postes['structure_sol']['statut'], 'ok')
+
+    def test_forme_du_contrat_et_aucune_cle_de_prix(self):
+        res, _postes = self._postes()
+        exemple = CONTRAT_PRET_AGR['exemple']
+        self.assertEqual(set(res), set(exemple))
+        for poste in res['postes']:
+            self.assertEqual(set(poste), set(exemple['postes'][0]))
+            self.assertEqual(set(poste['action']), {'texte', 'lien'})
+            self.assertIn(poste['statut'], ('ok', 'a_completer', 'absent'))
+            self.assertIn(poste['groupe'], ('materiel', 'prestation', 'option'))
+            for article in poste['articles']:
+                self.assertEqual(set(article), {'id', 'nom', 'motif'})
+        cles = {c.lower() for c in _cles_recursives(res)}
+        self.assertFalse([c for c in cles if 'prix' in c or 'marge' in c])
+        self.assertNotIn('prix_achat', json.dumps(res, default=str))
+
+    def test_route_api(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        client = APIClient()
+        client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        r = client.get(URL_PRET_AGR)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(set(r.json()), set(CONTRAT_PRET_AGR['exemple']))
+        self.assertFalse(r.json()['pret'])
+        self.assertNotIn('prix_achat', json.dumps(r.json()))
+        self.assertEqual(APIClient().get(URL_PRET_AGR).status_code, 401)
