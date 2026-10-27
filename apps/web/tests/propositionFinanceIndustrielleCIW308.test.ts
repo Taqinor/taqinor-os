@@ -130,3 +130,33 @@ describe('CIW308 — la page : ancres par lecteur et figures data-figure', () =>
     expect(page).not.toMatch(/comités? d['’]achat/i);
   });
 });
+
+// CPRW6 (27/10/2026) — SectionRentabiliteIndustrielle : libellés clients, phrases complètes, nav conditionnelle.
+describe('CPRW6 — rentabilité industrielle : libellés clients FR/EN/AR', () => {
+  const SRC = readFileSync(
+    fileURLToPath(new URL('../src/components/proposition/ci/SectionRentabiliteIndustrielle.astro', import.meta.url)),
+    'utf-8',
+  ).replace(/\r\n/g, '\n');
+  it('sensibilités : table clé → libellé, clé inconnue omise, jamais {sn.cle} brut', () => {
+    expect(SRC).not.toContain('{sn.cle}');
+    for (const k of ['indexation_tarif', 'degradation', 'tarif_kwh', 'production']) expect(SRC).toContain(k);
+    expect(SRC).not.toContain('saisies par la société');
+    expect(SRC).not.toContain('entered by the company');
+  });
+  it('financement : phrases complètes, plus de fragments « / mois »', () => {
+    expect(SRC).not.toContain('/ mois');
+    expect(SRC).not.toContain("d'écart");
+    expect(SRC).toContain("différence entre l'échéance et l'économie moyenne");
+  });
+  it('LCOE : une seule ligne à 2 décimales, plus de « MAD/kWh » ni de 4 décimales', () => {
+    expect(SRC).toContain('Coût du kWh solaire');
+    expect(SRC).toContain('votre kWh évité');
+    expect(SRC).not.toContain('(LCOE)');
+    expect(SRC).not.toMatch(/ciRent\.lcoeMadKwh, 4/);
+    expect(SRC).not.toMatch(/tarifKwhEvite, 4/);
+  });
+  it('nav Direction/Exploitation/Achats seulement si ciRent, aria-label neutre trilingue', () => {
+    expect(SRC).not.toContain('Lire selon votre rôle');
+    expect(SRC).toMatch(/\{ciRent && \(\s*<>\s*<nav/);
+  });
+});
