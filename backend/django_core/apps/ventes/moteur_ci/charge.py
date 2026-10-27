@@ -27,7 +27,8 @@ from apps.ventes.moteur_ci.categories import elements_horaire
 from apps.ventes.moteur_ci.profils import (
     MOTIF_PROFIL_DECLARE, SAISONS, TYPES_JOUR, forme_archetype,
 )
-from apps.ventes.moteur_ci.talons import talon_par_defaut
+from apps.ventes.moteur_ci.talons import ARCHETYPE_LE_PLUS_PROCHE, talon_par_defaut
+from apps.ventes.ramadan import RAMADAN_PLAGES
 
 HEURES = 24
 DUREE_EQUIPES_H = {'1x8': 8, '2x8': 16, '3x8': 24, 'continu': 24}
@@ -109,6 +110,21 @@ def _jours_annee(annee):
         jour += datetime.timedelta(days=1)
 
 
+def _ramadan_table(ramadan, annee):
+    """CLD15 — périodes ``[(du, au), …]`` de la table sourcée
+    ``apps/ventes/ramadan.py`` qui tombent dans l'année de RÉFÉRENCE (bornées à
+    l'année : une année peut en porter deux, ou la fin d'un Ramadan commencé en
+    décembre) quand le Ramadan déclaré a des plages mais aucune date ; ``None``
+    sinon (dates saisies, ou table muette pour cette année)."""
+    if not (isinstance(ramadan, dict) and ramadan.get('plages')
+            and not ramadan.get('du') and not ramadan.get('au')):
+        return None
+    debut_an, fin_an = datetime.date(annee, 1, 1), datetime.date(annee, 12, 31)
+    periodes = [(max(p['debut'], debut_an), min(p['fin'], fin_an)) for p in RAMADAN_PLAGES
+                if p['debut'] <= fin_an and p['fin'] >= debut_an]
+    return periodes or None
+
+
 def _calendrier(rythme, annee, feries, alertes):
     """Pour chaque jour : (ouvert ?, type calendaire, plages civiles ou None)."""
     jours_ouverts = rythme.get('jours_ouverts')
@@ -149,13 +165,22 @@ def _calendrier(rythme, annee, feries, alertes):
                 continue
 
     ramadan = rythme.get('ramadan')
-    ramadan_bornes = None
+    ramadan_bornes = []
     if ramadan:
+        table = _ramadan_table(ramadan, annee)
         try:
-            ramadan_bornes = (_date(ramadan['du'], annee), _date(ramadan['au'], annee))
+            ramadan_bornes = [(_date(ramadan['du'], annee), _date(ramadan['au'], annee))]
         except (KeyError, TypeError, ValueError, IndexError):
-            alertes.append(_alerte('ramadan_sans_dates', 'rythme.ramadan',
-                                   'Plages Ramadan déclarées sans dates : ignorées.'))
+            if table is not None:
+                ramadan_bornes = table
+            else:
+                alertes.append(_alerte('ramadan_sans_dates', 'rythme.ramadan',
+                                       'Plages Ramadan déclarées sans dates : ignorées.'))
+        if ramadan and not plages_par_type:
+            alertes.append(_alerte(
+                'ramadan_sans_plages', 'rythme.ramadan',
+                "Ramadan déclaré mais aucune plage d'ouverture : le rythme du Ramadan "
+                'est ignoré (profil archétype).', niveau='info', interne=True))
 
     calendrier = []
     for jour in _jours_annee(annee):
@@ -166,7 +191,7 @@ def _calendrier(rythme, annee, feries, alertes):
         plages = None
         if plages_par_type:
             plages = plages_par_type.get(type_cal, plages_par_type.get('ouvre'))
-            if ramadan_bornes and _dans_intervalle(jour, *ramadan_bornes):
+            if any(_dans_intervalle(jour, du, au) for du, au in ramadan_bornes):
                 plages_ram = ramadan.get('plages') or {}
                 plages = plages_ram.get(type_cal, plages_ram.get('ouvre', plages))
         calendrier.append((jour, ouvert, type_cal, plages))
@@ -244,52 +269,93 @@ def _courbes_declarees(calendrier, niveaux, talon_mode, talon_valeur, rapport_ta
     return courbes, incoherent
 
 
-def _courbes_archetype(calendrier, niveaux, categorie, profil_societe, talon_kw):
-    """Méthode ``archetype`` : forme sourcée (CIQ107) par jour ouvert."""
+def _courbes_archetype(calendrier, niveaux, categorie, profil_societe, talon_kw,
+                       talon_part_pct=None, niveau_jour_pct=None):
+    """Méthode ``archetype`` : forme sourcée (CIQ107) par jour ouvert.
+
+    Talon DÉCLARÉ (CLD1), par priorité ``kw`` > ``part_pct`` > ``niveau_jour_pct`` :
+    ``kw`` = niveau des jours fermés ; ``part_pct`` = part de l'énergie du mois
+    étalée à plat sur 24 h × jours (même logique que le chemin déclaré) ;
+    ``niveau_jour_pct`` = PLANCHER : chaque heure vaut au moins ce rapport × le
+    pic de la forme « ouvre » de la même saison (jours fermés compris), puis la
+    courbe est renormalisée à l'énergie du mois.
+    """
     par_mois = {}
     for entree in calendrier:
         par_mois.setdefault(entree[0].month, []).append(entree)
+    rapport = None
+    if talon_kw is None and talon_part_pct is None and niveau_jour_pct is not None:
+        rapport = float(niveau_jour_pct) / 100.0
     courbes = {}
     source = None
+    pics = {}
     for mois, jours in par_mois.items():
         formes = {}
-        poids_ferme = []
+        plancher = {}
         for jour, ouvert, type_cal, _p in jours:
-            forme, src = forme_archetype(categorie, type_cal, saison_bdew(jour),
+            saison = saison_bdew(jour)
+            forme, src = forme_archetype(categorie, type_cal, saison,
                                          profil_societe=profil_societe)
             if forme is None:
                 return None, src
             source = src
+            if rapport is not None:
+                if saison not in pics:
+                    ouvre, _s = forme_archetype(categorie, 'ouvre', saison,
+                                                profil_societe=profil_societe)
+                    pics[saison] = max(ouvre if ouvre is not None else forme)
+                plancher[jour] = rapport * pics[saison]
+                forme = [max(f, plancher[jour]) for f in forme] if ouvert else forme
             formes[jour] = forme
-            if not ouvert:
-                poids_ferme.append(min(forme))
         energie = niveaux[mois - 1]
+        part_plat = 0.0
+        if talon_kw is None and talon_part_pct is not None:
+            part_plat = (energie * min(max(float(talon_part_pct), 0.0), 100.0) / 100.0
+                         / (HEURES * len(jours)))
+            energie -= part_plat * HEURES * len(jours)
         n_ouverts = sum(1 for _j, o, _t, _p in jours if o)
         n_fermes = len(jours) - n_ouverts
+        poids_ouvert = sum(sum(formes[j]) if rapport is not None else 1.0
+                           for j, o, _t, _p in jours if o)
+        poids_ferme = [max(min(formes[j]), plancher.get(j, 0.0))
+                       for j, o, _t, _p in jours if not o]
         if talon_kw is not None:
             reste = max(0.0, energie - float(talon_kw) * HEURES * n_fermes)
             energie_jour = reste / n_ouverts if n_ouverts else 0.0
             talon_ferme = float(talon_kw) if n_ouverts else energie / (HEURES * len(jours))
         else:
             # talon d'un jour fermé = creux de l'archétype ramené au niveau du jour ouvert
-            denominateur = n_ouverts + HEURES * sum(poids_ferme)
+            denominateur = poids_ouvert + HEURES * sum(poids_ferme)
             energie_jour = energie / denominateur if denominateur > 0 else 0.0
             talon_ferme = None
         for jour, ouvert, _t, _p in jours:
             if ouvert:
-                courbes[jour] = [energie_jour * w for w in formes[jour]]
+                courbes[jour] = [part_plat + energie_jour * w for w in formes[jour]]
             else:
-                niveau = talon_ferme if talon_ferme is not None else energie_jour * min(formes[jour])
-                courbes[jour] = [niveau] * HEURES
+                niveau = (talon_ferme if talon_ferme is not None else
+                          energie_jour * max(min(formes[jour]), plancher.get(jour, 0.0)))
+                courbes[jour] = [part_plat + niveau] * HEURES
     return courbes, source
 
 
-def _jours_types(calendrier, courbes, annee):
+def _resoudre_decalage(decalage_h):
+    """CLD3 — décalage civil→GMT : ``None`` ⇒ constant du régime en vigueur
+    (``decalage_maroc_h(None)``, un site garde ses horaires d'horloge) ; un
+    entier ⇒ ce décalage ; ``'historique'`` ⇒ ``None`` (date par date)."""
+    if decalage_h == 'historique':
+        return None
+    if decalage_h is None:
+        return decalage_maroc_h(None)
+    return int(decalage_h)
+
+
+def _jours_types(calendrier, courbes, annee, decalage_h=None):
+    fixe = _resoudre_decalage(decalage_h)
     groupes = {}
     for jour, ouvert, type_cal, _p in calendrier:
         type_jour = type_cal if ouvert else 'ferme'
         cle = (jour.month, type_jour)
-        gmt = _vers_gmt(courbes[jour], decalage_maroc_h(jour))
+        gmt = _vers_gmt(courbes[jour], decalage_maroc_h(jour) if fixe is None else fixe)
         cumul, n = groupes.get(cle, ([0.0] * HEURES, 0))
         groupes[cle] = ([c + g for c, g in zip(cumul, gmt)], n + 1)
     ordre = {'ouvre': 0, 'samedi': 1, 'dimanche': 2, 'ferme': 3}
@@ -355,7 +421,8 @@ def registres_lisibles(registres):
     return all(_registre(m, p) is not None for m in registres for p in POSTES_MT)
 
 
-def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None):
+def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None,
+                        decalage_h=None):
     """CIQ132 — jours types (GMT) depuis les registres pointe / pleines /
     creuses de la facture MT, provenance et alertes.
 
@@ -367,7 +434,8 @@ def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None):
     sans seuil inventé : 1x8 / plages de jour seules avec creuses > pleines, ou
     3x8 / continu avec creuses nulles ⇒ ``incoherence_equipes_registres``
     (jamais bloquant). Puissance atteinte et kvarh passent aux alertes sans
-    toucher la courbe.
+    toucher la courbe. ``decalage_h`` (CLD3) est accepté pour l'uniformité des
+    trois chemins mais SANS effet ici : les postes sont déjà en heures GMT.
     """
     from apps.parametres.tarifs_officiels import poste_horaire
 
@@ -394,7 +462,37 @@ def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None):
         energie = {p: _registre(registres[mois - 1], p) for p in POSTES_MT}
         h_creuses_mois = heures_poste['creuses'] * len(jours)
         talon = energie['creuses'] / h_creuses_mois if fermes and h_creuses_mois else 0.0
+        if fermes and ouverts:
+            # CLD14 — le talon plat des jours fermés ne dépasse jamais le plus
+            # petit registre rapporté à ses heures : sinon ``reste < 0 → 0``
+            # AJOUTE de l'énergie (Σ courbe > Σ registres).
+            plafonds = {p: energie[p] / (heures_poste[p] * len(fermes))
+                        for p in POSTES_MT if heures_poste[p]}
+            limite = min(plafonds, key=plafonds.get) if plafonds else None
+            if limite is not None and talon > plafonds[limite] + 1e-12:
+                talon = plafonds[limite]
+                alertes.append(_alerte(
+                    'talon_plafonne_au_registre', 'consommation.registres_mt',
+                    'Mois %d : talon des jours fermés plafonné par le registre « %s » '
+                    '(%.3f kW)%s.' % (mois, limite, talon,
+                                      ' : jours fermés à zéro' if talon <= 0 else ''),
+                    niveau='info', interne=True))
         talons.append(round(talon, 6))
+        if not ouverts and jours:
+            # CLD5 — aucun jour ouvert ce mois : pas de talon « 24 h plat » (il
+            # perdrait pointe / pleines) ; chaque registre est réparti sur les
+            # heures de SON poste, tous les jours du mois.
+            niveau = {p: energie[p] / (heures_poste[p] * len(jours)) if heures_poste[p] else 0.0
+                      for p in POSTES_MT}
+            talons[-1] = round(niveau['creuses'], 6)
+            alertes.append(_alerte(
+                'registre_hors_ouverture', 'consommation.registres_mt',
+                'Mois %d : aucun jour ouvert, mais des registres relevés : chaque poste '
+                'est réparti sur ses heures de tous les jours du mois.' % mois,
+                niveau='info', interne=True))
+            for jour, _o, _t, _p in jours:
+                courbes[jour] = [niveau[postes_h[mois][h]] for h in range(HEURES)]
+            continue
         niveau = {}
         for p in POSTES_MT:
             reste = energie[p] - talon * heures_poste[p] * len(fermes)
@@ -450,12 +548,53 @@ def _jours_types_gmt(calendrier, courbes):
             for (mois, type_jour) in sorted(groupes, key=lambda k: (k[0], ordre[k[1]]))]
 
 
+def _valeur_mesuree(v):
+    """kWh d'une heure mesurée, ou ``None`` (absent, illisible, NaN)."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return None
+    return None if x != x else max(0.0, x)
+
+
+def valeurs_horaires_depuis_points(points, *, pas_min, unite='kwh'):
+    """CLD6 — points JSON d'une courbe mesurée → kWh de chaque heure CIVILE.
+
+    ``pas_min`` : pas des points en minutes, tout diviseur de 60 (5, 10, 15,
+    20, 30, 60…). ``unite`` : ``kwh`` (énergie du pas, sommée) ou ``kw``
+    (puissance moyenne du pas : × pas/60 avant la somme). Une heure dont un
+    point est absent (``None``) vaut ``None`` (jour écarté, CLD4). Pas qui ne
+    divise pas 60, ou nombre de points non multiple de 60/pas ⇒
+    ``ValueError`` en français (le branchement la convertit en 400).
+    """
+    try:
+        pas = int(pas_min)
+    except (TypeError, ValueError):
+        pas = 0
+    if pas <= 0 or 60 % pas:
+        raise ValueError(
+            'Pas de la courbe mesurée de %s min non pris en charge : un pas qui '
+            'divise 60 min (5, 10, 15, 20, 30 ou 60) est attendu.' % pas_min)
+    par_heure = 60 // pas
+    points = list(points or [])
+    if len(points) % par_heure:
+        raise ValueError(
+            'La courbe mesurée au pas de %d min compte %d points : un multiple de %d '
+            '(une heure entière) est attendu.' % (pas, len(points), par_heure))
+    facteur = pas / 60.0 if unite == 'kw' else 1.0
+    sortie = []
+    for i in range(0, len(points), par_heure):
+        groupe = [_valeur_mesuree(v) for v in points[i:i + par_heure]]
+        sortie.append(None if any(v is None for v in groupe) else sum(groupe) * facteur)
+    return sortie
+
+
 def _mois_le_plus_proche(mois, mesures):
     return min(mesures, key=lambda m: (min(abs(m - mois), 12 - abs(m - mois)), m))
 
 
 def courbe_mesuree_jours_types(valeurs_horaires, debut, *, annee_reference,
-                               kwh_mensuels=None, source=None):
+                               kwh_mensuels=None, source=None, decalage_h=None):
     """CIQ133 — jours types (GMT) depuis une courbe de charge MESURÉE.
 
     ``valeurs_horaires`` : kWh de chaque heure CIVILE consécutive depuis le
@@ -480,35 +619,74 @@ def courbe_mesuree_jours_types(valeurs_horaires, debut, *, annee_reference,
                                'Courbe mesurée sans date de début lisible : ignorée.',
                                niveau='bloquant'))
         return None, provenance, alertes
-    valeurs = [max(0.0, float(v or 0)) for v in valeurs_horaires or []]
+    valeurs = [_valeur_mesuree(v) for v in valeurs_horaires or []]
     nb_jours = len(valeurs) // HEURES
     if nb_jours == 0:
         alertes.append(_alerte('courbe_mesuree_vide', 'courbe_mesuree',
                                'Courbe mesurée vide : ignorée.', niveau='bloquant'))
         return None, provenance, alertes
+    fixe = _resoudre_decalage(decalage_h)
+    compte = {}
+    for date in _jours_annee(annee_reference):
+        cle = (date.month, _type_calendaire(date))
+        compte[cle] = compte.get(cle, 0) + 1
+    # CLD4 — un jour manquant ou à valeur absente n'est PAS un zéro : écarté.
     groupes = {}
+    mesures_mois = {}
+    ecartes = {}
     for i in range(nb_jours):
         date = jour + datetime.timedelta(days=i)
         civile = valeurs[i * HEURES:(i + 1) * HEURES]
-        gmt = _vers_gmt(civile, decalage_maroc_h(date))
+        if any(v is None for v in civile):
+            ecartes[date.month] = ecartes.get(date.month, 0) + 1
+            continue
+        gmt = _vers_gmt(civile, decalage_maroc_h(date) if fixe is None else fixe)
         cle = (date.month, _type_calendaire(date))
         cumul, n = groupes.get(cle, ([0.0] * HEURES, 0))
         groupes[cle] = ([c + g for c, g in zip(cumul, gmt)], n + 1)
+        mesures_mois[date.month] = mesures_mois.get(date.month, 0) + 1
     fin = jour + datetime.timedelta(days=nb_jours - 1)
     provenance['couverture'] = {'debut': jour.isoformat(), 'fin': fin.isoformat(),
                                 'jours': nb_jours}
+    if not groupes:
+        alertes.append(_alerte('courbe_mesuree_vide', 'courbe_mesuree',
+                               'Courbe mesurée sans aucun jour complet : ignorée.',
+                               niveau='bloquant'))
+        return None, provenance, alertes
     mesures = sorted({m for m, _t in groupes})
-    sortie = [{'mois': m, 'type_jour': t, 'nb_jours': n, 'charge_kwh': [c / n for c in cumul]}
-              for (m, t), (cumul, n) in groupes.items()]
+    sortie = []
+    for (m, t), (cumul, n) in groupes.items():
+        moyenne = [c / n for c in cumul]
+        sortie.append({'mois': m, 'type_jour': t,
+                       'nb_jours': compte.get((m, t), n), 'charge_kwh': moyenne})
+    # Mois partiel : un type de jour jamais mesuré ce mois-là emprunte la
+    # moyenne de TOUS les jours mesurés du mois (dit dans l'alerte).
+    partiels = []
+    for m in mesures:
+        du_mois = [jt for jt in sortie if jt['mois'] == m]
+        total_calendaire = sum(v for (mm, _t), v in compte.items() if mm == m)
+        if mesures_mois[m] >= total_calendaire and not ecartes.get(m):
+            continue
+        partiels.append('mois %d : %d jour(s) mesuré(s) sur %d%s' % (
+            m, mesures_mois[m], total_calendaire,
+            ', %d écarté(s) (valeur absente)' % ecartes[m] if ecartes.get(m) else ''))
+        n_mesures = sum(groupes[(m, jt['type_jour'])][1] for jt in du_mois)
+        moyenne_mois = [sum(groupes[(m, jt['type_jour'])][0][h] for jt in du_mois) / n_mesures
+                        for h in range(HEURES)]
+        for t in ('ouvre', 'samedi', 'dimanche'):
+            if (m, t) not in groupes and compte.get((m, t)):
+                sortie.append({'mois': m, 'type_jour': t, 'nb_jours': compte[(m, t)],
+                               'charge_kwh': list(moyenne_mois)})
+    if partiels:
+        alertes.append(_alerte(
+            'mesure_incomplete', 'courbe_mesuree',
+            'Courbe mesurée incomplète — niveau = moyenne des jours mesurés × jours du '
+            'mois : %s.' % ' ; '.join(partiels), niveau='info', interne=True))
 
     manquants = [m for m in range(1, 13) if m not in mesures]
     niveaux = None
     if isinstance(kwh_mensuels, (list, tuple)) and len(kwh_mensuels) == 12:
         niveaux = [None if v is None else float(v) for v in kwh_mensuels]
-    compte = {}
-    for date in _jours_annee(annee_reference):
-        cle = (date.month, _type_calendaire(date))
-        compte[cle] = compte.get(cle, 0) + 1
     for mois in manquants:
         if niveaux is None or niveaux[mois - 1] is None:
             alertes.append(_alerte('mois_non_mesure', 'courbe_mesuree',
@@ -583,6 +761,12 @@ FEUILLE_JOURS = 'rythme.jours_ouverts'
 FEUILLE_PLAGES = 'rythme.plages'
 
 
+#: CLD18 — catégories « le plus proche » dont l'écart de taille à l'horaire
+#: réel est matériel (station-service 24/7 : 50,41 contre 30,53 kWc) : sans
+#: plage, le vendeur est invité à demander les horaires (alerte interne).
+CATEGORIES_HORAIRES_A_DEMANDER = frozenset({'station_service', 'cafe', 'salle_sport'})
+
+
 def _repli_source(categorie, profil_societe):
     """``(True, None)`` si le profil SAISI par la société ou l'archétype
     vendorisé couvre TOUS les (type de jour, saison) que lit
@@ -628,8 +812,30 @@ def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
     return ([] if jours_declares else [FEUILLE_JOURS]) + [FEUILLE_PLAGES]
 
 
+def _signaler_cellules_completees(cellules, archetype, profil_societe, provenance, alertes):
+    """CLD16 — un profil société PARTIEL (CAL149 : saisons ou types de jour
+    absents) retombe sur l'archétype pour les cellules manquantes : les liste
+    en provenance et en alerte interne (``cellules`` : paires lues)."""
+    if not profil_societe:
+        return
+    completees = []
+    for type_jour, saison in sorted(cellules, key=lambda c: (TYPES_JOUR.index(c[0]),
+                                                             SAISONS.index(c[1]))):
+        forme, src = forme_archetype(archetype, type_jour, saison, profil_societe=profil_societe)
+        if forme is not None and src.get('type') != 'profil_societe':
+            completees.append('%s/%s' % (type_jour, saison))
+    if not completees:
+        return
+    provenance['profil_societe_completee'] = {'cellules': completees, 'complete_par': archetype}
+    alertes.append(_alerte(
+        'profil_societe_complete', 'consommation.profil_societe',
+        "Profil société partiel : cellules (type de jour/saison) complétées par l'archétype "
+        '« %s » : %s.' % (archetype, ', '.join(completees)), niveau='info', interne=True))
+
+
 def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, feries=None,
-                    profil_societe=None, production_jours_types=None, segment=None):
+                    profil_societe=None, production_jours_types=None, segment=None,
+                    decalage_h=None):
     """Jours types de charge (heures GMT), provenance et alertes.
 
     ``rythme`` : bloc ``rythme`` du contrat (jours_ouverts, plages, equipes,
@@ -641,6 +847,9 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
     requis seulement pour départager les deux bornes d'un talon inconnu.
     ``segment`` : ``commercial`` ⇒ un commerce SANS catégorie reçoit aussi le
     talon défaut fondateur (fondateur 27/10/2026) ; sinon la borne décide.
+    ``decalage_h`` (CLD3, décision prise pour le fondateur, à revoir) : ``None``
+    ⇒ décalage CONSTANT du régime en vigueur (le Maroc est à UTC+0 depuis le
+    20/09/2026), un entier ⇒ ce décalage, ``'historique'`` ⇒ date par date.
     """
     rythme = rythme or {}
     rythme_saisi = rythme
@@ -663,7 +872,11 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
                                '12 kWh mensuels ou un total annuel requis.', niveau='bloquant'))
         return None, provenance, alertes
 
-    talon = rythme.get('talon') or {}
+    if plages_declarees and _ramadan_table(rythme.get('ramadan'), annee_reference) is not None:
+        provenance['ramadan'] = {
+            'source': 'dates Ramadan %d : apps/ventes/ramadan.py' % annee_reference,
+            'statut': 'table'}
+    talon = _talon_valide(rythme.get('talon'), alertes)
     talon_kw = talon.get('kw')
     talon_pct = talon.get('part_pct')
 
@@ -683,25 +896,41 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
         return None, provenance, alertes
 
     if not plages_declarees:
-        courbes, source = _courbes_archetype(calendrier, niveaux, archetype, profil_societe, talon_kw)
+        niveau_pct = talon.get('niveau_jour_pct')
+        courbes, source = _courbes_archetype(calendrier, niveaux, archetype, profil_societe, talon_kw,
+                                             talon_pct, niveau_pct)
+        _signaler_cellules_completees(
+            {(t, saison_bdew(j)) for j, _o, t, _p in calendrier}, archetype, profil_societe,
+            provenance, alertes)
+        declare = ({'kw': talon_kw} if talon_kw is not None
+                   else {'part_pct': float(talon_pct)} if talon_pct is not None
+                   else {'niveau_jour_pct': float(niveau_pct)} if niveau_pct is not None
+                   else None)
         provenance.update({
             'methode': 'archetype',
             'archetype': {'cle': source.get('cle'), 'source': source.get('jeu_de_donnees')
                           or source.get('provenance'), 'licence': source.get('licence')},
             'niveau_donnees': 'estimation',
-            'talon': {'valeur': {'kw': talon_kw} if talon_kw is not None else None,
-                      'statut': 'declare' if talon_kw is not None else 'estimation'},
+            'talon': {'valeur': declare, 'statut': 'declare' if declare else 'estimation'},
         })
+        if (archetype in CATEGORIES_HORAIRES_A_DEMANDER and archetype in ARCHETYPE_LE_PLUS_PROCHE
+                and source.get('type') != 'profil_societe'):
+            alertes.append(_alerte(
+                'horaires_a_demander', 'rythme.plages',
+                "Horaires d'ouverture à demander : « %s » prend la forme de l'archétype « %s » "
+                '(le plus proche) ; la taille change avec les horaires réels.'
+                % (archetype, ARCHETYPE_LE_PLUS_PROCHE[archetype][0]), niveau='info', interne=True))
         if not jours_declares:
             alertes.append(_alerte(
                 'jours_ouverts_non_declares', 'rythme.jours_ouverts',
-                "Jours ouverts non déclarés : la semaine de l'archétype sert (estimation).",
-                niveau='info'))
+                "Jours ouverts non déclarés : chaque jour reçoit la même énergie (seules les formes "
+                "de l'archétype servent) — déclarer les jours ouverts.",
+                niveau='info', interne=True))
         alertes.append(_alerte(
             'profil_estime', 'rythme',
             "Profil horaire estimé (archétype) : déclarer jours et heures d'ouverture "
             'pour un chiffre déclaré.', niveau='info'))
-        return _jours_types(calendrier, courbes, annee_reference), provenance, alertes
+        return _jours_types(calendrier, courbes, annee_reference, decalage_h), provenance, alertes
 
     if FEUILLE_JOURS in manquants:
         alertes.append(_alerte(
@@ -719,6 +948,10 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
         courbes, incoherent = _courbes_declarees(calendrier, niveaux, 'part', talon_pct, None)
         provenance['talon'] = {'valeur': {'part_pct': float(talon_pct)}, 'statut': 'declare'}
     else:
+        if talon.get('niveau_jour_pct') is None:
+            _signaler_cellules_completees(
+                {('ouvre', saison_bdew(j)) for j, o, _t, _p in calendrier if o}, archetype,
+                profil_societe, provenance, alertes)
         par_defaut = _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe,
                                                provenance, alertes, talon, segment)
         if par_defaut is not None:
@@ -729,8 +962,8 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
                 calendrier, niveaux, 'etale', None, None)
             incoherent = incoherent_nul or incoherent_etale
             bornes = {
-                'talon_nul': _jours_types(calendrier, courbes_nul, annee_reference),
-                'etale_24h': _jours_types(calendrier, courbes_etale, annee_reference),
+                'talon_nul': _jours_types(calendrier, courbes_nul, annee_reference, decalage_h),
+                'etale_24h': _jours_types(calendrier, courbes_etale, annee_reference, decalage_h),
             }
             alertes.append(_alerte(
                 'talon_non_declare', 'rythme.talon',
@@ -748,7 +981,40 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
             _alerte_talon_incoherent(incoherent, alertes)
             return bornes[retenue], provenance, alertes
     _alerte_talon_incoherent(incoherent, alertes)
-    return _jours_types(calendrier, courbes, annee_reference), provenance, alertes
+    return _jours_types(calendrier, courbes, annee_reference, decalage_h), provenance, alertes
+
+
+def _rapport_hors_plages(calendrier, archetype, profil_societe):
+    """CLD2 — ``(rapport, source, sans_objet)`` : moyenne de la forme (« ouvre »
+    de la saison, archétype ou profil société) HORS des plages déclarées ÷
+    moyenne DANS les plages, sur les jours ouverts du calendrier (heures
+    civiles) — les saisons pèsent leur nombre de jours ouverts. ``sans_objet`` :
+    les plages couvrent les 24 h (aucune heure hors plage). ``rapport`` ``None``
+    quand aucune forme ne se lit ou qu'aucune heure n'est déclarée."""
+    formes = {}
+    dedans = [0.0, 0.0]
+    dehors = [0.0, 0.0]
+    src = None
+    for jour, ouvert, _t, plages in calendrier:
+        if not ouvert:
+            continue
+        saison = saison_bdew(jour)
+        if saison not in formes:
+            formes[saison] = forme_archetype(archetype, 'ouvre', saison,
+                                             profil_societe=profil_societe)
+        forme, src = formes[saison]
+        if forme is None:
+            return None, None, False
+        for h, occ in enumerate(_occupation(plages)):
+            dedans[0] += occ * forme[h]
+            dedans[1] += occ
+            dehors[0] += (1.0 - occ) * forme[h]
+            dehors[1] += 1.0 - occ
+    if dedans[1] <= 1e-9 or dedans[0] <= 0:
+        return None, None, False
+    if dehors[1] <= 1e-9:
+        return None, src, True
+    return (dehors[0] / dehors[1]) / (dedans[0] / dedans[1]), src, False
 
 
 def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, provenance,
@@ -757,9 +1023,12 @@ def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, pr
     SUIVENT les horaires, ou ``None`` (aucune catégorie commerciale ni
     archétype : la borne conservatrice décide).
 
-    Décision fondateur 26/10/2026 : talon = rapport creux / pointe de
+    Décision fondateur 26/10/2026 : talon = niveau hors horaires de
     l'archétype (le sien, le plus proche, ou le profil saisi par la société),
     sinon le défaut fondateur de 20 % (``talons.talon_par_defaut``).
+    Décision prise pour le fondateur (à revoir) 27/10/2026 : % du niveau de
+    jour = moyenne hors plages ÷ moyenne dans les plages (CLD2 — et non plus le
+    rapport creux / pic de la forme). Plages sur 24 h ⇒ talon sans objet.
     Fondateur 27/10/2026 — UNE définition : ``talon.niveau_jour_pct`` DÉCLARÉ
     (réponse « équipements hors horaires ») est un % du niveau des heures
     ouvertes, appliqué par la MÊME règle que les défauts.
@@ -771,10 +1040,12 @@ def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, pr
         return _courbes_declarees(calendrier, niveaux, 'rapport', None, rapport)
     rapport, src = None, None
     if archetype or profil_societe:
-        forme, src = forme_archetype(archetype, 'ouvre', 'hiver', profil_societe=profil_societe)
-        if forme is not None and max(forme) > 0:
-            rapport = min(forme) / max(forme)
-    source = (src.get('jeu_de_donnees') or src.get('provenance')) if rapport else None
+        rapport, src, sans_objet = _rapport_hors_plages(calendrier, archetype, profil_societe)
+        if sans_objet:
+            provenance['talon'] = {'valeur': None, 'statut': 'sans_objet',
+                                   'source': 'plages sur 24 h : aucune heure hors horaires'}
+            return _courbes_declarees(calendrier, niveaux, 'nul', None, None)
+    source = (src.get('jeu_de_donnees') or src.get('provenance')) if rapport is not None else None
     rapport, talon = talon_par_defaut(archetype, rapport, source,
                                       commercial=segment == 'commercial')
     if rapport is None:
@@ -783,11 +1054,30 @@ def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, pr
                            'statut': talon['statut'], 'source': talon['source']}
     alertes.append(_alerte(
         'talon_estime', 'rythme.talon',
-        'Talon non déclaré : rapport nuit/jour de l’archétype sourcé (estimation).'
+        'Talon non déclaré : niveau hors horaires de l’archétype sourcé (estimation).'
         if talon['statut'] == 'estimation' else
         'Talon non déclaré : 20 % de la puissance des heures ouvertes (défaut fondateur), '
         'à confirmer avec le client.', niveau='info'))
     return _courbes_declarees(calendrier, niveaux, 'rapport', None, rapport)
+
+
+def _talon_valide(talon, alertes):
+    """CLD7 — le talon déclaré sans valeur négative : une valeur < 0 est
+    ignorée (alerte interne), le talon retombe sur l'estimé."""
+    propre = {}
+    for cle, valeur in (talon or {}).items():
+        try:
+            negatif = valeur is not None and float(valeur) < 0
+        except (TypeError, ValueError):
+            negatif = False
+        if negatif:
+            alertes.append(_alerte(
+                'talon_negatif', 'rythme.talon.%s' % cle,
+                'Talon négatif (%s = %s) ignoré : le talon estimé sert.' % (cle, valeur),
+                interne=True))
+        else:
+            propre[cle] = valeur
+    return propre
 
 
 def _alerte_talon_incoherent(incoherent, alertes):
