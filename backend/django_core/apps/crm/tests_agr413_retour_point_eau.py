@@ -16,7 +16,7 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
-from apps.crm import visites_retour_lead
+from apps.crm import activity, visites_retour_lead
 from apps.crm.models import Lead, LeadActivity
 from apps.visites import selectors as visites_selectors
 from apps.visites import services as visites_services
@@ -170,3 +170,22 @@ class RetourPointEauALaValidation(TestCase):
         self.assertEqual(
             visites_retour_lead.appliquer_mesures_point_eau(
                 self.lead, mesures, self.bureau), [])
+
+    def test_agv4_une_mesure_non_recopiable_est_nommee_au_chatter(self):
+        visite = self._visite(mesures={'point_eau': {
+            'profondeur_forage_m': 99999999}})
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.profondeur_forage_m)
+        notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith='Mesure de visite non recopiée')
+        self.assertEqual(notes.count(), 1)
+        self.assertIn('99999999', notes.get().body)
+        self.assertIn(
+            activity.TRACKED_FIELDS['profondeur_forage_m'], notes.get().body)
+        # Revalider ne double pas la note.
+        mesures = visites_selectors.mesures_point_eau_pour_lead(visite)
+        visites_retour_lead.appliquer_mesures_point_eau(
+            self.lead, mesures, self.bureau)
+        self.assertEqual(notes.count(), 1)

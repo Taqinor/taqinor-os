@@ -221,6 +221,17 @@ def _valeur_colonne_lead(colonne, brute):
     return texte[:champ.max_length] if champ.max_length else texte
 
 
+def _noter_mesure_non_recopiee(lead, user, colonne, brute):
+    """AGV4 — note de chatter « Mesure de visite non recopiée : <libellé> =
+    <valeur> » ; pas de doublon si la même note existe déjà (revalidation)."""
+    libelle = activity.TRACKED_FIELDS.get(colonne, colonne)
+    corps = f'Mesure de visite non recopiée : {libelle} = {brute}'
+    if LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE, body=corps).exists():
+        return None
+    return activity.log_note(lead, user, corps)
+
+
 def appliquer_mesures_point_eau(lead, mesures, user):
     """AGR413 — recopie sur le lead les mesures d'un relevé du point d'eau
     VALIDÉ (``visites.selectors.mesures_point_eau_pour_lead``).
@@ -241,6 +252,9 @@ def appliquer_mesures_point_eau(lead, mesures, user):
             continue
         valeur = _valeur_colonne_lead(colonne, brute)
         if valeur is None:
+            # AGV4 — jamais perdue en silence : la mesure non recopiable est
+            # nommée au chatter (une seule fois par texte identique).
+            _noter_mesure_non_recopiee(lead, user, colonne, brute)
             continue
         if getattr(lead, colonne) != valeur:
             setattr(lead, colonne, valeur)
