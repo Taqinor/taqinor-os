@@ -1,5 +1,5 @@
 import { createElement, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, History, Pencil, Trash2, PackageSearch, PackagePlus,
   TrendingDown, PackageX, Layers,
@@ -197,7 +197,11 @@ export function CatalogueTable({
   // CIQ104 — « C&I à compléter » : rôle C&I sans prix ou exclu (fiche
   // incomplète…), lu sur `etat_ci` servi par l'API. OFF par défaut ; absent
   // d'un catalogue sans aucun article C&I.
-  const [ciACompleterSeul, setCiACompleterSeul] = useState(false)
+  // CCAT9 — `/stock?ci=a_completer` (lien de l'encadré « Prêt pour le devis C&I »)
+  // ouvre directement ce filtre.
+  const [paramsUrl] = useSearchParams()
+  const [ciACompleterSeul, setCiACompleterSeul] = useState(
+    () => paramsUrl.get('ci') === 'a_completer')
   const aDuCi = useMemo(
     () => (produits ?? []).some((p) => !p?.is_archived && p?.etat_ci),
     [produits])

@@ -18,6 +18,7 @@ import {
 import ProduitForm from './ProduitForm'
 import ProduitDetail, { RebutModal } from './ProduitDetail'
 import { CatalogueTable } from './CatalogueTable'
+import PretDevisCi from './PretDevisCi'
 import PilotageStock from './PilotageStock'
 import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
@@ -1438,6 +1439,8 @@ export default function StockList() {
       {showPertes && (
         <PertesModal onClose={() => setShowPertes(false)} />
       )}
+
+      <PretDevisCi />
 
       <div className="flex flex-col gap-4 lg:flex-row">
         <aside className="flex shrink-0 flex-col gap-1 lg:w-60">
