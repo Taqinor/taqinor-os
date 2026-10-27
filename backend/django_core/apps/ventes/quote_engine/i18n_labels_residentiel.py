@@ -21,11 +21,15 @@ LIBELLES_RESIDENTIEL = {
     'rpdf_m3_jour': {'fr': '{n} m&#179;/jour', 'en': '{n} m&#179;/day', 'ar': '{n} م&#179;/يوم'},
     'rpdf_fin_remplacement_deux': {
         'fr': (' · remplacement onduleur provisionné en année {an} '
-               '({s} MAD sans batterie, {a} MAD avec batterie)'),
+               '({s} MAD option 1, {a} MAD option 2)'),
         'en': (' · inverter replacement provisioned in year {an} '
-               '({s} MAD without battery, {a} MAD with battery)'),
+               '({s} MAD option 1, {a} MAD option 2)'),
         'ar': (' · استبدال العاكس مرصود في السنة {an} '
-               '({s} درهم بدون بطارية، {a} درهم مع بطارية)')},
+               '({s} درهم الخيار 1، {a} درهم الخيار 2)')},
+    'rpdf_gar_onduleur_opt1': {'fr': 'Onduleur (option 1)', 'en': 'Inverter (option 1)',
+                               'ar': 'العاكس (الخيار 1)'},
+    'rpdf_gar_onduleur_opt2': {'fr': 'Onduleur (option 2)', 'en': 'Inverter (option 2)',
+                               'ar': 'العاكس (الخيار 2)'},
     # ── Graphiques et page calepinage (charts.py, render.py) ───────────────
     'rpdf_ch_mois': {
         'fr': 'Jan,Fév,Mar,Avr,Mai,Juin,Juil,Aoû,Sep,Oct,Nov,Déc',

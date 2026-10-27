@@ -18,6 +18,8 @@ Every money number goes through `ctx["fmt"]`; currency is MAD; language FR.
 
 import logging
 
+from ..i18n_labels_residentiel import accord_annees_ar
+
 logger = logging.getLogger(__name__)
 
 
@@ -628,7 +630,7 @@ def build(ctx):
 .c1-opt-kwc{{font-size:7pt;color:{muted};margin-top:2px;}}
 .c1-roi{{display:inline-flex;align-items:center;align-self:flex-start;gap:5px;
   background:{green_bg};color:{green};border-radius:20px;padding:3px 11px;
-  font-size:8pt;font-weight:700;margin-top:8px;}}
+  font-size:8pt;font-weight:700;margin-top:8px;white-space:nowrap;}}
 .c1-roi svg{{width:11px;height:11px;}}
 .c1-opt-eco{{font-size:7.8pt;color:{muted};margin-top:5px;}}
 .c1-opt-eco b{{color:{green};font-weight:700;}}
@@ -696,7 +698,7 @@ def build(ctx):
         else:
             roi_html = (
                 f'<div class="c1-roi">{_roi_svg(green)}'
-                + libelle_cat(d, "res_rentabilise_en", n=_yrs(roi_v))
+                + accord_annees_ar(libelle_cat(d, "res_rentabilise_en", n=_yrs(roi_v)), roi_v)
                 + '</div>' + ancre("payback_ans", _yrs(roi_v), opt))
         return (
             f'<div class="{cls}">'

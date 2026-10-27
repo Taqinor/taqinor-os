@@ -46,15 +46,16 @@ class ProvisionDeuxOptionsTests(SimpleTestCase):
     """RPDF — deux onduleurs de prix différents ⇒ les deux montants."""
 
     def test_deux_montants_quand_les_onduleurs_different(self):
-        html = _html({'inverter_replace_cost': 15000,
+        html = _html({'inverter_replace_cost': 8000,
                       'inverter_replace_cost_sans': 8000,
+                      'inverter_replace_cost_avec': 15000,
                       'inverter_replace_year': 12})
-        self.assertIn('8 000 MAD sans batterie', html)
-        self.assertIn('15 000 MAD avec batterie', html)
+        self.assertIn('(8 000 MAD option 1, 15 000 MAD option 2)', html)
 
     def test_un_seul_montant_quand_les_onduleurs_sont_egaux(self):
         html = _html({'inverter_replace_cost': 15000,
                       'inverter_replace_cost_sans': 15000,
+                      'inverter_replace_cost_avec': 15000,
                       'inverter_replace_year': 12})
-        self.assertNotIn('sans batterie, 15 000 MAD avec', html)
+        self.assertNotIn('option 1, 15 000 MAD option 2', html)
         self.assertIn('15 000 MAD', html)

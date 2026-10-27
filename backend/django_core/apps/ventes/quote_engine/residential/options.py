@@ -899,12 +899,13 @@ def build_pages(ctx) -> list:
     if _prov:
         _an = _cf_assum.get("inverter_replace_year") or 12
         _prov_s = _cf_assum.get("inverter_replace_cost_sans")
+        _prov_a = _cf_assum.get("inverter_replace_cost_avec")
         # RPDF — deux options aux onduleurs de prix différents : deux courbes,
-        # deux creux, deux montants (jamais celui de la seule option 2).
+        # deux creux, deux montants (jamais celui d'une seule option).
         fin_sub += (libelle_cat(d, "rpdf_fin_remplacement_deux", an=_an,
                                 s=f"{int(_prov_s):,}".replace(",", " "),
-                                a=f"{int(_prov):,}".replace(",", " "))
-                    if deux_options and _prov_s and int(_prov_s) != int(_prov)
+                                a=f"{int(_prov_a):,}".replace(",", " "))
+                    if deux_options and _prov_s and _prov_a and int(_prov_s) != int(_prov_a)
                     else libelle_cat(d, "res_fin_remplacement", an=_an,
                                      montant=f"{int(_prov):,}".replace(",", " ")))
 

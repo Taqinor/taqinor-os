@@ -1865,5 +1865,6 @@ def calculate_savings_roi(
             battery_roundtrip=_rt_prouve,
             battery_roundtrip_source=_rt_source,
             # QJR158 (c) — LES MÊMES valeurs que les deux cashflows ci-dessus.
-            **_cf_params) | {"inverter_replace_cost_sans": inverter_cost_sans},  # RPDF : creux « sans »
+            **_cf_params) | {"inverter_replace_cost_sans": inverter_cost_sans,  # RPDF : un creux
+                             "inverter_replace_cost_avec": inverter_cost_avec},  # par courbe
     }
