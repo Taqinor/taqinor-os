@@ -177,7 +177,7 @@ test('ADEV84 — aucun repère n’est enregistré (jamais envoyé au serveur)',
 test('ADEV84 — l’avertissement lie chaque poste : Paramètres (prestation) ou Stock, puis « à chiffrer après visite »', () => {
   const w = avertissementsCompositionCi(COMPOSITION_ADEV84)
   assert.deepEqual(w.aRenseigner, [
-    { nom: 'Pose des modules', lien: '/parametres' },
+    { nom: 'Pose des modules', lien: '/parametres?onglet=devis#prestations-ci' },
     { nom: 'Structure introuvable', lien: '/stock' },
   ])
   assert.deepEqual(w.aChiffrerVisite,

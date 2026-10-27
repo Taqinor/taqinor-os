@@ -659,8 +659,10 @@ export const LIBELLES_TYPES_POSE = Object.freeze({
 /** Libellé FR d'un type de pose ; code inconnu → le code lui-même, vide → ''. */
 export const libelleTypePose = (code) => LIBELLES_TYPES_POSE[code] ?? code ?? ''
 
-/** Écran qui porte les forfaits C&I (section Devis de la page Paramètres). */
-export const ROUTE_PARAMETRES_PRESTATIONS_CI = '/parametres'
+/** Écran qui porte les forfaits C&I (section Devis de la page Paramètres).
+ * CCAT6 : onglet Devis ouvert (`?onglet=devis`, CCAT101) et bloc « Prestations
+ * C&I » amené à l'écran (`#prestations-ci`). */
+export const ROUTE_PARAMETRES_PRESTATIONS_CI = '/parametres?onglet=devis#prestations-ci'
 
 /** Le rôle C&I d'un article : celui calculé par l'API (`etat_ci`), sinon celui
  * déclaré (`role_ci`), sinon `null`. */

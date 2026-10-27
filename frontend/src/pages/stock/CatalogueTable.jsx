@@ -1,4 +1,5 @@
 import { createElement, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   AlertTriangle, History, Pencil, Trash2, PackageSearch, PackagePlus,
   TrendingDown, PackageX, Layers,
@@ -334,11 +335,11 @@ export function CatalogueTable({
           if (!sansPrix(r)) return `${formatMAD(v, { withSymbol: false })} HT`
           if (etatPrixCi(r) === 'parametres') {
             return (
-              <a href={ROUTE_PARAMETRES_PRESTATIONS_CI}
+              <Link to={ROUTE_PARAMETRES_PRESTATIONS_CI}
                  data-testid="tarif-parametres-ci"
                  onClick={(e) => e.stopPropagation()}>
                 <Badge tone="info">{TEXTE_TARIF_PARAMETRES_CI}</Badge>
-              </a>
+              </Link>
             )
           }
           // CCAT3 — coffret C&I tarifé par barème (par onduleur / par panneau) :
