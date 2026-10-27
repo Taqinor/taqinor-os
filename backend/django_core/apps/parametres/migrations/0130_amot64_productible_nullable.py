@@ -22,17 +22,33 @@ SENTINELLE = Decimal('1600.0')
 BANDE_MIN, BANDE_MAX = Decimal('1599.5'), Decimal('1600.5')
 
 
+LOT = 500
+
+
+def _par_lots(qs, valeur):
+    """``update`` par lots de :data:`LOT` clés (jamais un update global)."""
+    lot = []
+    for pk in qs.values_list('pk', flat=True).iterator(chunk_size=LOT):
+        lot.append(pk)
+        if len(lot) >= LOT:
+            qs.model.objects.filter(pk__in=lot).update(
+                productible_kwh_kwc=valeur)
+            lot = []
+    if lot:
+        qs.model.objects.filter(pk__in=lot).update(productible_kwh_kwc=valeur)
+
+
 def sentinelle_vers_null(apps, schema_editor):
     CompanyProfile = apps.get_model('parametres', 'CompanyProfile')
-    CompanyProfile.objects.filter(
+    _par_lots(CompanyProfile.objects.filter(
         productible_kwh_kwc__gte=BANDE_MIN,
-        productible_kwh_kwc__lte=BANDE_MAX).update(productible_kwh_kwc=None)
+        productible_kwh_kwc__lte=BANDE_MAX), None)
 
 
 def null_vers_sentinelle(apps, schema_editor):
     CompanyProfile = apps.get_model('parametres', 'CompanyProfile')
-    CompanyProfile.objects.filter(productible_kwh_kwc__isnull=True).update(
-        productible_kwh_kwc=SENTINELLE)
+    _par_lots(CompanyProfile.objects.filter(productible_kwh_kwc__isnull=True),
+              SENTINELLE)
 
 
 class Migration(migrations.Migration):
