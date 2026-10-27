@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm', '0141_equipecommerciale_recoit_leads'),
+        ('crm', '0142_categories_commerce_talon'),
         ('roles', '0012_organigramme'),
     ]
 
