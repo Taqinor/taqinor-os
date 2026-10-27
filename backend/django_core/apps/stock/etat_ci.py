@@ -3,7 +3,8 @@
 Un seul endroit pour « le prix est-il connu ? » : le filtre « C&I à compléter »
 (``selectors.etat_ci_produit``) et le catalogue de l'étude
 (``selectors.produits_ci``) lisaient deux règles différentes. Lecture seule ;
-ne dépend d'aucune autre app (``stock`` n'importe jamais ``ventes``).
+seule lecture cross-app : le repli par mots du nom, via ``apps.ventes.selectors``
+(jamais ``ventes.domain`` ni ses modèles).
 """
 from core.product_roles import ROLES_CI_BAREME_COFFRET
 
@@ -111,6 +112,12 @@ def etat_option_batterie(produit):
                 motif = 'plage de tension batterie non publiée'
             elif not 0 < plage[1] <= TENSION_PORT_BT_MAX_V:
                 return None
+            elif not (_num(fiche.ond_ac_kw) or 0) > 0:
+                # Revue CCAT2 — ``moteur_ci.onduleurs.combiner_onduleurs``
+                # écarte aussi un hybride sans puissance AC ni phase publiée.
+                motif = 'fiche incomplète : puissance AC'
+            elif fiche.ond_phases is None:
+                motif = 'phase non publiée'
             elif not _prix_vente_saisi(produit):
                 motif = MOTIF_SANS_PRIX
         return _etat('onduleur_hybride', LIBELLE_HYBRIDE, source, produit,

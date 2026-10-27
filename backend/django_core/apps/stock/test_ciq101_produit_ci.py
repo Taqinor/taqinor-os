@@ -406,7 +406,8 @@ class TestCCAT2OptionBatterie(CIQ101Base):
         return etat_ci_complet(produit)
 
     def test_hybride_bt_sans_prix(self):
-        etat = self._etat(self._hybride(ond_bat_v_min=40, ond_bat_v_max=60))
+        etat = self._etat(self._hybride(ond_bat_v_min=40, ond_bat_v_max=60,
+                                        ond_ac_kw=12, ond_phases=3))
         self.assertEqual(etat['role_ci'], 'onduleur_hybride')
         self.assertEqual(etat['classement'], 'declare')
         self.assertFalse(etat['prix_connu'])
@@ -425,13 +426,24 @@ class TestCCAT2OptionBatterie(CIQ101Base):
 
     def test_hybride_bt_complet_eligible(self):
         etat = self._etat(self._hybride(
-            prix=9000, ond_bat_v_min=40, ond_bat_v_max=60))
+            prix=9000, ond_bat_v_min=40, ond_bat_v_max=60, ond_ac_kw=12,
+            ond_phases=3))
         self.assertTrue(etat['eligible_ci'])
         self.assertTrue(etat['prix_connu'])
         self.assertIsNone(etat['motif_exclusion'])
         self.assertEqual(
             set(etat), {'role_ci', 'libelle', 'classement', 'prix_connu',
                         'eligible_ci', 'motif_exclusion'})
+
+    def test_hybride_sans_puissance_ac_ni_phase(self):
+        # Revue CCAT2 — le moteur écarte ces hybrides (onduleurs.py) : Stock aussi.
+        sans_ac = self._etat(self._hybride(
+            prix=9000, ond_bat_v_min=40, ond_bat_v_max=60, ond_phases=3))
+        self.assertEqual(sans_ac['motif_exclusion'],
+                         'fiche incomplète : puissance AC')
+        sans_phase = self._etat(self._hybride(
+            prix=9000, ond_bat_v_min=40, ond_bat_v_max=60, ond_ac_kw=12))
+        self.assertEqual(sans_phase['motif_exclusion'], 'phase non publiée')
 
     def test_hybride_sans_fiche_onduleur(self):
         etat = self._etat(self._produit(
@@ -475,7 +487,9 @@ class TestCCAT2OptionBatterie(CIQ101Base):
         self.assertIsNone(self._etat(self._produit('Article', '', 10)))
 
     def test_etat_ci_servi_par_l_api_pour_un_hybride(self):
-        p = self._hybride(prix=9000, ond_bat_v_min=40, ond_bat_v_max=60)
+        p = self._hybride(
+            prix=9000, ond_bat_v_min=40, ond_bat_v_max=60,
+            ond_ac_kw=12, ond_phases=3)
         r = api_for(self.user).get(f'{URL_PRODUITS}{p.pk}/')
         self.assertEqual(r.data['etat_ci']['role_ci'], 'onduleur_hybride')
         self.assertTrue(r.data['etat_ci']['eligible_ci'])

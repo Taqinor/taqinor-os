@@ -2,10 +2,11 @@
 // Run with: node --test src/features/stock/
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   groupCatalogue, searchCatalogue, keySpec, sansPrix, MARQUE_GENERIQUE,
   typeOfProduit, familleAttendue, categorieIcone,
-  ROLES_CI_PRESTATION, libelleTypePose, libellePrixCi, etatPrixCi, produitCiACompleter, raisonCiACompleter,
+  ROLES_CI_PRESTATION, LIBELLES_TYPES_POSE, libelleTypePose, libellePrixCi, etatPrixCi, produitCiACompleter, raisonCiACompleter,
 } from './catalogue.js'
 import {
   classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
@@ -317,4 +318,15 @@ test('CCAT4 — libellePrixCi : prestation, barème, à renseigner, rien', () =>
   assert.equal(libellePrixCi(_ci('coffret_ac', {}, { prix_connu: true })), 'au barème (par onduleur / par panneau)')
   assert.equal(libellePrixCi(_ci('compteur_injection')), 'prix à renseigner')
   assert.equal(libellePrixCi(_ci('compteur_injection', { prix_vente: '10.00' }, { prix_connu: true })), '')
+})
+
+// CCAT4 (revue) — les libellés des types de pose sont un MIROIR de
+// core/product_roles.py::LIBELLES_TYPES_POSE (un dict : la garde des listes
+// ne le voit pas) — égalité exacte, lue dans le source Python.
+test('CCAT4 — libellés de pose = LIBELLES_TYPES_POSE du serveur', () => {
+  const py = readFileSync(new URL('../../../../backend/django_core/core/product_roles.py', import.meta.url), 'utf8')
+  const bloc = py.slice(py.indexOf('LIBELLES_TYPES_POSE = {'), py.indexOf('}', py.indexOf('LIBELLES_TYPES_POSE = {')))
+  const serveur = Object.fromEntries([...bloc.matchAll(/'([a-z_]+)':\s*'([^']+)'/g)].map((m) => [m[1], m[2]]))
+  assert.ok(Object.keys(serveur).length >= 6)
+  assert.deepEqual({ ...LIBELLES_TYPES_POSE }, serveur)
 })
