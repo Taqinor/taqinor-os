@@ -497,8 +497,9 @@ const ORAUX_AGRICOLE = [
   'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
   'source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m',
   'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
-  'pompage_heures_jour', 'distance_forage_champ_m',
+  'pompe_actuelle_debit_m3h', 'pompage_heures_jour', 'distance_forage_champ_m',
   'irrigation_methode', 'mois_irrigation', 'electricite_sur_place', 'raccordement',
+  'jours_irrigation_semaine',
 ]
 
 test('AGR418 — agricole vierge : énergie → eau → besoin → heures/distance → irrigation/électricité', () => {
@@ -506,7 +507,7 @@ test('AGR418 — agricole vierge : énergie → eau → besoin → heures/distan
   assert.deepEqual(guidance.ORDRE_AGRICOLE.map((e) => e.etape),
     ['energie_actuelle', 'eau', 'besoin', 'heures_distance', 'irrigation_electricite'])
   assert.deepEqual(g.questions.map((q) => q.champ), [
-    'pompe_alim_actuelle', 'source_eau', 'besoin_eau_m3j', 'pompage_heures_jour',
+    'pompe_alim_actuelle', 'source_eau', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h',
     'irrigation_methode',
   ])
   assert.equal(g.questions.length, 5)
@@ -575,7 +576,7 @@ test('AGR418 — chaque colonne des cinq étapes est servie par le contrat (exem
 
 test('AGR418 — énergie actuelle : la suite SELON la réponse (prix déclaré, Q17)', () => {
   const cas = {
-    butane: ['butane_bouteilles_jour', 'carburant_prix_unitaire_mad'],
+    butane: ['butane_bouteilles_jour', 'carburant_prix_unitaire_mad', 'jours_irrigation_semaine'],
     diesel: ['carburant_litres_mois', 'carburant_prix_unitaire_mad'],
     electrique: ['depense_carburant_mad_mois'],
   }
@@ -590,12 +591,29 @@ test('AGR418 — énergie actuelle : la suite SELON la réponse (prix déclaré,
   }
 })
 
+test('CSV18 — heures et débit de la pompe actuelle seulement avec une pompe ; jours d’irrigation au butane', () => {
+  const avec = (alim) => guidanceAppel({
+    ...leadVierge175('agricole', ORAUX_AGRICOLE),
+    prefill: { pompe_alim_actuelle: alim },
+  })
+  const champsHeures = (g) => {
+    const e = g.questions.find((q) => q.etape === 'heures_distance')
+    return [e.champ, ...e.complements.map((q) => q.champ)]
+  }
+  assert.deepEqual(champsHeures(avec('aucune')), ['distance_forage_champ_m'])
+  assert.deepEqual(champsHeures(avec('diesel')),
+    ['pompe_actuelle_debit_m3h', 'pompage_heures_jour', 'distance_forage_champ_m'])
+  const energie = (alim) => avec(alim).questions.find((q) => q.etape === 'energie_actuelle')
+  assert.ok(energie('butane').complements.some((q) => q.champ === 'jours_irrigation_semaine'))
+  assert.ok(!energie('diesel').complements.some((q) => q.champ === 'jours_irrigation_semaine'))
+})
+
 test('AGR418 — besoin connu : ni surface ni culture ne se reposent ; exemple_agricole saute ce qui est répondu', () => {
   const g = guidanceAppel(exemple('exemple_agricole'))
   const etapes = g.questions.map((q) => q.etape)
   assert.ok(!etapes.includes('besoin'))
   assert.deepEqual(g.questions[0].champ, 'butane_bouteilles_jour')
-  assert.deepEqual(g.questions[0].complements.map((q) => q.champ), ['carburant_prix_unitaire_mad'])
+  assert.deepEqual(g.questions[0].complements.map((q) => q.champ), ['carburant_prix_unitaire_mad', 'jours_irrigation_semaine'])
   assert.equal(g.questions[1].champ, 'debit_forage_m3h')
   const mois = g.questions.find((q) => q.etape === 'irrigation_electricite')
     .complements.find((q) => q.champ === 'mois_irrigation')

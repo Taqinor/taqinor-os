@@ -187,7 +187,10 @@ export function estToucheDeRappel(touche) {
 // visite. `champs` liste TOUTES les colonnes d'une étape ; `selon` (facultatif)
 // choisit, d'après ce que la fiche porte déjà, celles qui s'appliquent.
 const COMPLEMENTS_ENERGIE = Object.freeze({
-  butane: Object.freeze(['butane_bouteilles_jour', 'carburant_prix_unitaire_mad']),
+  // CSV18 — au butane, les jours d'irrigation par semaine (dépense par jour d'irrigation).
+  butane: Object.freeze([
+    'butane_bouteilles_jour', 'carburant_prix_unitaire_mad', 'jours_irrigation_semaine',
+  ]),
   diesel: Object.freeze(['carburant_litres_mois', 'carburant_prix_unitaire_mad']),
   electrique: Object.freeze(['depense_carburant_mad_mois']),
 })
@@ -198,6 +201,7 @@ export const ORDRE_AGRICOLE = Object.freeze([
     champs: Object.freeze([
       'pompe_alim_actuelle', 'butane_bouteilles_jour', 'carburant_litres_mois',
       'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
+      'jours_irrigation_semaine',
     ]),
     selon: (prefill) => [
       'pompe_alim_actuelle',
@@ -220,7 +224,13 @@ export const ORDRE_AGRICOLE = Object.freeze([
   }),
   Object.freeze({
     etape: 'heures_distance',
-    champs: Object.freeze(['pompage_heures_jour', 'distance_forage_champ_m']),
+    // CSV18 — le débit et les heures de la pompe ACTUELLE : sans pompe (`aucune`), seule la distance.
+    champs: Object.freeze([
+      'pompe_actuelle_debit_m3h', 'pompage_heures_jour', 'distance_forage_champ_m',
+    ]),
+    selon: (prefill) => (prefill?.pompe_alim_actuelle === 'aucune'
+      ? ['distance_forage_champ_m']
+      : ['pompe_actuelle_debit_m3h', 'pompage_heures_jour', 'distance_forage_champ_m']),
   }),
   // CSV17 — `raccordement` : l'alimentation de la POMPE (220 V monophasé ou 380 V
   // triphasé), que le devis automatique exige ; le serveur ne sert que deux choix.

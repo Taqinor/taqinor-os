@@ -125,6 +125,49 @@ class CSV17QuestionsAgricolesDuTelephone(SimpleTestCase):
         self.assertEqual(prefill['pompe_hmt_m'], 45.0)
 
 
+class CSV18HeuresDebitEtJoursDeLaPompeActuelle(SimpleTestCase):
+    """CSV18 — les heures et le débit de la pompe ACTUELLE ne se posent que
+    s'il y en a une ; les jours d'irrigation, au butane."""
+
+    @staticmethod
+    def _questions(**kwargs):
+        lead = Lead(nom='Ferme', type_installation='agricole', **kwargs)
+        return {q['champ']: q for q in panneau_appel.questions_a_poser(lead)}
+
+    def test_heures_seulement_avec_pompe_actuelle(self):
+        sans = self._questions(pompe_alim_actuelle='aucune')
+        self.assertNotIn('pompage_heures_jour', sans)
+        self.assertNotIn('pompe_actuelle_debit_m3h', sans)
+        self.assertIn('distance_forage_champ_m', sans)
+        for alim in ('diesel', 'butane', 'electrique', None):
+            with self.subTest(alim=alim):
+                avec = self._questions(pompe_alim_actuelle=alim)
+                ordre = list(avec)
+                self.assertEqual(
+                    avec['pompe_actuelle_debit_m3h']['nature'], 'nombre')
+                self.assertEqual(
+                    ordre.index('pompage_heures_jour'),
+                    ordre.index('pompe_actuelle_debit_m3h') + 1)
+        self.assertIn(
+            'Combien de m³ par heure sort votre pompe actuelle, à peu près ?',
+            avec['pompe_actuelle_debit_m3h']['question'])
+
+    def test_jours_d_irrigation_seulement_au_butane(self):
+        for alim in ('diesel', 'electrique', 'aucune', None):
+            with self.subTest(alim=alim):
+                self.assertNotIn('jours_irrigation_semaine',
+                                 self._questions(pompe_alim_actuelle=alim))
+        butane = self._questions(pompe_alim_actuelle='butane')
+        ordre = list(butane)
+        self.assertGreater(ordre.index('jours_irrigation_semaine'),
+                           ordre.index('butane_bouteilles_jour'))
+        self.assertLess(ordre.index('jours_irrigation_semaine'),
+                        ordre.index('source_eau'))
+        repondu = self._questions(pompe_alim_actuelle='butane',
+                                  jours_irrigation_semaine=Decimal('5.0'))
+        self.assertNotIn('jours_irrigation_semaine', repondu)
+
+
 class AliasDepreciePompeCv(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(

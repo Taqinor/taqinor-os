@@ -83,16 +83,33 @@ ETAPES_AGRICOLES = (
     ('energie_actuelle', ('pompe_alim_actuelle', 'butane_bouteilles_jour',
                           'carburant_litres_mois',
                           'carburant_prix_unitaire_mad',
-                          'depense_carburant_mad_mois')),
+                          'depense_carburant_mad_mois',
+                          'jours_irrigation_semaine')),
     ('eau', ('source_eau', 'niveau_statique_m', 'debit_forage_m3h',
              'pompe_hmt_m')),
     ('besoin', ('besoin_eau_m3j', 'surface_irriguee_ha', 'culture')),
-    ('heures_distance', ('pompage_heures_jour', 'distance_forage_champ_m')),
+    ('heures_distance', ('pompe_actuelle_debit_m3h', 'pompage_heures_jour',
+                         'distance_forage_champ_m')),
     ('irrigation_electricite', ('irrigation_methode', 'mois_irrigation',
                                 'electricite_sur_place', 'raccordement')),
 )
 CHAMPS_ORAUX_AGRICOLE = tuple(
     champ for _etape, champs in ETAPES_AGRICOLES for champ in champs)
+
+#: CSV18 — le débit et les heures décrivent la pompe ACTUELLE : sans pompe
+#: (``aucune``) on ne les demande pas ; les jours d'irrigation par semaine ne
+#: servent qu'à la dépense butane (AGQ10).
+CHAMPS_POMPE_ACTUELLE = ('pompe_actuelle_debit_m3h', 'pompage_heures_jour')
+CHAMPS_BUTANE = ('jours_irrigation_semaine',)
+
+
+def _champs_agricoles_du_lead(lead):
+    alim = getattr(lead, 'pompe_alim_actuelle', None)
+    return tuple(
+        c for c in CHAMPS_ORAUX_AGRICOLE
+        if not (c in CHAMPS_POMPE_ACTUELLE and alim == 'aucune')
+        and not (c in CHAMPS_BUTANE and alim != 'butane'))
+
 
 #: CIQ410 (D-CIQ-7) — les CINQ étapes du premier appel pro, dans l'ordre :
 #: (1) la facture, (2) le raccordement, (3) l'activité et le rythme, (4) la
@@ -215,6 +232,10 @@ PREFIXE_QUESTION = "Question à l'appel : "
 #: CSV17 — même vocabulaire pour l'alimentation de la pompe agricole.
 PHASES_SERVIES = ('monophase', 'triphase')
 PHASES_PRO = PHASES_SERVIES
+
+#: CSV18 — la question du débit de la pompe actuelle (m³/h), dite à l'oreille.
+QUESTION_DEBIT_POMPE_ACTUELLE = ('« Combien de m³ par heure sort votre pompe '
+                                 'actuelle, à peu près ? »')
 
 #: CSV17 — agricole : la phase est celle de la POMPE (220 V ou 380 V), pas du
 #: compteur de la maison.
@@ -485,6 +506,8 @@ def _question(lead, champ, section):
         site = segment or questionnaire.est_agricole(lead)
         question = PREFIXE_QUESTION + (
             QUESTION_VILLE_SITE if site else QUESTION_VILLE_MAISON)
+    if champ == 'pompe_actuelle_debit_m3h':
+        question = PREFIXE_QUESTION + QUESTION_DEBIT_POMPE_ACTUELLE
     if champ == 'raccordement' and questionnaire.est_agricole(lead):
         # CSV17 — l'alimentation de la pompe : deux choix, jamais « je ne sais
         # pas » (qui ne répond pas) ni « aucun ».
@@ -659,7 +682,7 @@ def champs_oraux_du_segment(lead):
     de D-CIQ-7 d'abord."""
     segment = getattr(lead, 'type_installation', None)
     if segment == Lead.TypeInstallation.AGRICOLE:
-        etapes = tuple(CHAMPS_ORAUX_AGRICOLE)
+        etapes = _champs_agricoles_du_lead(lead)
     elif _segment_pro(lead):
         etapes = _champs_pro_du_lead(lead, _segment_pro(lead))
     else:

@@ -602,7 +602,7 @@ describe('AGR418 — script d’appel agricole en cinq étapes', () => {
     armer({ panneau: EXEMPLE_AGRICOLE })
     render(<PanneauScriptAppel mode="fiche" leadId={EXEMPLE_AGRICOLE.lead_id} />)
     expect(await posees()).toEqual([
-      'butane_bouteilles_jour', 'debit_forage_m3h', 'pompage_heures_jour', 'irrigation_methode',
+      'butane_bouteilles_jour', 'debit_forage_m3h', 'pompe_actuelle_debit_m3h', 'irrigation_methode',
     ])
     expect(screen.queryByTestId('question-appel-besoin_eau_m3j')).not.toBeInTheDocument()
     expect(screen.queryByTestId('question-appel-source_eau')).not.toBeInTheDocument()
