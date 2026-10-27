@@ -11,7 +11,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm', '0140_acrm70_messagetemplate_unique_langue'),
+        ('crm', '0141_equipecommerciale_recoit_leads'),
     ]
 
     operations = [
