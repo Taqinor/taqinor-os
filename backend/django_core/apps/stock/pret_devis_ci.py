@@ -111,6 +111,15 @@ def _candidats_options(company):
     return sortie
 
 
+def _exiger(candidats, champ, motif):
+    """Revue R3 (CCAT8) — le moteur n'apparie un disjoncteur que par son
+    calibre (``prot_calibre_a``) et un câble AC que par sa section
+    (``cable_section_mm2``) : un article sans cette grandeur n'est JAMAIS
+    composé, il ne peut donc pas rendre le poste « ok »."""
+    return [c if c['fiche'].get(champ) not in (None, '')
+            else dict(c, eligible=False, motif=motif) for c in candidats]
+
+
 def _ok(c):
     return bool(c['eligible'] and c['prix_connu'])
 
@@ -205,11 +214,13 @@ def pret_devis_ci(company):
                roles('coffret_dc')),
         _poste('coffret_ac', libelle('coffret_ac'), 'materiel', True,
                roles('coffret_ac')),
-        _poste('protection_ac', 'Disjoncteur AC', 'materiel', True,
-               roles('protection_ac', filtre=lambda c: (
-                   c['fiche'].get('prot_type') == 'disjoncteur'))),
-        _poste('cable_ac', libelle('cable_ac'), 'materiel', True,
-               roles('cable_ac')),
+        _poste('protection_ac', 'Disjoncteur AC (un article par calibre)',
+               'materiel', True, _exiger(roles('protection_ac', filtre=lambda c: (
+                   c['fiche'].get('prot_type') == 'disjoncteur')),
+                   'prot_calibre_a', 'fiche incomplète : calibre (A)')),
+        _poste('cable_ac', 'Câble AC (un article par section)', 'materiel', True,
+               _exiger(roles('cable_ac'), 'cable_section_mm2',
+                       'fiche incomplète : section (mm²)')),
         _poste('cable_dc', libelle('cable_dc'), 'materiel', True,
                roles('cable_dc')),
         _poste('comptage', "Comptage ou contrôleur d'injection", 'materiel',

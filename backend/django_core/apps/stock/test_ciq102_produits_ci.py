@@ -363,9 +363,15 @@ class PretDevisCiTests(TestCase):
             prix_vente=Decimal('300'))
         FicheTechnique.objects.create(
             company=co, produit=disjoncteur, type_fiche='protection',
-            prot_type='disjoncteur', prot_cote='ac')
+            prot_type='disjoncteur', prot_cote='ac', prot_calibre_a=250)
+        cable_ac = Produit.objects.create(
+            company=co, nom='Câble AC 95 mm²', role_ci='cable_ac',
+            prix_vente=Decimal('50'))
+        FicheTechnique.objects.create(
+            company=co, produit=cable_ac, type_fiche='cable', cable_cote='ac',
+            cable_section_mm2=95)
         for role, nom in (('coffret_dc', 'Coffret DC'), ('coffret_ac', 'Coffret AC'),
-                          ('cable_ac', 'Câble AC'), ('cable_dc', 'Câble DC'),
+                          ('cable_dc', 'Câble DC'),
                           ('compteur_injection', 'Compteur')):
             Produit.objects.create(company=co, nom=nom, role_ci=role,
                                    prix_vente=Decimal('50'))
@@ -379,6 +385,24 @@ class PretDevisCiTests(TestCase):
             {c: s for c, s in obligatoires.items() if s != 'ok'}, {})
         self.assertTrue(res['pret'])
         self.assertEqual(res['nb_obligatoires_manquants'], 0)
+
+    def test_disjoncteur_sans_calibre_et_cable_sans_section_a_completer(self):
+        # Revue R3 — le moteur n'apparie que par calibre / section : sans
+        # cette grandeur l'article n'est jamais composé, le poste reste ouvert.
+        co = self.company
+        Produit.objects.create(company=co, nom='Câble AC sans fiche',
+                               role_ci='cable_ac', prix_vente=Decimal('50'))
+        d = Produit.objects.create(company=co, nom='Disjoncteur sans calibre',
+                                   role_ci='protection_ac', prix_vente=Decimal('300'))
+        FicheTechnique.objects.create(company=co, produit=d, type_fiche='protection',
+                                      prot_type='disjoncteur', prot_cote='ac')
+        _res, postes = self._postes(co)
+        self.assertEqual(postes['protection_ac']['statut'], 'a_completer')
+        self.assertEqual(postes['protection_ac']['articles'][0]['motif'],
+                         'fiche incomplète : calibre (A)')
+        self.assertEqual(postes['cable_ac']['statut'], 'a_completer')
+        self.assertEqual(postes['cable_ac']['articles'][0]['motif'],
+                         'fiche incomplète : section (mm²)')
 
     def test_route_api(self):
         from rest_framework.test import APIClient
