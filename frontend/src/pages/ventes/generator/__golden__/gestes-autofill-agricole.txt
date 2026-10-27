@@ -297,7 +297,7 @@ HT : 0 MAD
 — Produit —
 HT : 0 MAD
 0 MADHT : 0 MAD
-Total SANS batterie ⭐
+Total TTC ⭐
 0 MAD
 Réduction
 %

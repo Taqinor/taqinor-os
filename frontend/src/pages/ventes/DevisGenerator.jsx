@@ -2123,7 +2123,7 @@ export default function DevisGenerator({
           lignesRemiseesTtc={lignesRemiseesTtc}
           montrerRemise={montrerRemise}
         >
-          <RailArgent
+          <RailArgent agricole={modeInstallation === 'agricole'}
             remiseParPanier={remiseParPanier}
             erreursChamps={erreursChamps}
             notesNormalisation={notesNormalisation}

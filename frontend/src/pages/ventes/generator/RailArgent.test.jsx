@@ -65,3 +65,20 @@ describe('ATOT25 — arrondi commercial au rail', () => {
     expect(screen.queryByTestId('arrondi-commercial-sans')).toBeNull()
   })
 })
+
+describe('AGV10 — rail agricole sans mot batterie', () => {
+  it('prop agricole : Total TTC, aucun libellé batterie', () => {
+    const totals = optionTotalsTTC(KIT, 7)
+    const { container } = render(
+      <RailArgent
+        agricole showSans showAvec={false} sansRec={false} avecRec={false} totals={totals}
+        discountPct="7" setDiscountPct={() => {}} remiseMax=""
+        pkwc={null} prixCible="" setPrixCible={() => {}} applyPrixCible={() => {}} kwp={0}
+        marge={null} kpiTotal={totals.totalSans} remiseParPanier={lignesRemiseesParPanier(KIT, 7)}
+      />,
+    )
+    expect(container.textContent).toContain('Total TTC')
+    expect(container.textContent).toContain('Total final TTC')
+    expect(container.textContent).not.toMatch(/batterie/i)
+  })
+})
