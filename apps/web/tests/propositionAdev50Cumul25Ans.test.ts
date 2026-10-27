@@ -12,14 +12,15 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { savingsHeadline, type ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition, lireLibProposition } from './astroBlocsHelper';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
 const CONTRAT = JSON.parse(read('../src/contract_samples/proposal_data.json')) as Record<string, unknown>;
 const EXEMPLE = CONTRAT.exemple as unknown as ProposalResponse;
-const PAGE = read('../src/pages/proposition/[...token].astro');
-const LIB = read('../src/lib/proposition.ts');
+const PAGE = lirePageProposition();
+const LIB = lireLibProposition();
 
 describe('ADEV50 — cumul 25 ans servi, option par option', () => {
   it('le titre de chaque option = la valeur servie pour cette option', () => {

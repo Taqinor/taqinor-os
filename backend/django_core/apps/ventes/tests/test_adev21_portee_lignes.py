@@ -11,21 +11,24 @@ Test-du-test : retirer ``scope_queryset`` de ``LigneDevisViewSet.get_queryset``
 ⇒ ``test_patch_404_hors_portee`` échoue.
 """
 from decimal import Decimal
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from apps.crm.models import Client
+from apps.crm.models import Client, Lead
 from apps.roles.models import Role
 from apps.roles.permissions_registre import RESPONSABLE_PERMISSIONS
 from apps.stock.models import Produit
+from apps.ventes.domain import pompage
 from apps.ventes.models import Devis, LigneDevis
 from authentication.models import Company
 
 User = get_user_model()
 
 URL_LIGNES = '/api/django/ventes/devis-lignes/'
+URL_POMPAGE = '/api/django/ventes/etude-pompage/preview/'
 
 
 class PorteeLignesTests(TestCase):
@@ -108,3 +111,33 @@ class PorteeLignesTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.ligne_propre.refresh_from_db()
         self.assertEqual(self.ligne_propre.designation, 'Câblage DC')
+
+    # -- AGM11 : le lead de l'apercu pompage est borne a la portee equipe --
+
+    def _lead(self, owner):
+        return Lead.objects.create(
+            company=self.company, owner=owner, nom='Agri', prenom='Lead',
+            telephone='+212600000021', besoin_eau_m3j=Decimal('90'),
+            besoin_eau_source='client')
+
+    def _entrees_apercu_pompage(self, lead):
+        with mock.patch.object(pompage, 'profils_horaires_site',
+                               return_value=None), \
+                mock.patch.object(pompage, 'temperatures_du_site',
+                                  return_value=None):
+            resp = self.api.post(URL_POMPAGE, {'lead': lead.pk},
+                                 format='json')
+        self.assertEqual(resp.status_code, 200, resp.content[:300])
+        return resp.json()['entrees_resolues']
+
+    def test_apercu_pompage_lead_hors_portee_ignore(self):
+        # Le lead d'un autre proprietaire est ignore (comme un lead d'une
+        # autre societe) : ses donnees (volume d'eau) ne sont pas lues.
+        entrees = self._entrees_apercu_pompage(self._lead(self.auteur))
+        self.assertNotIn('volume_m3_jour', entrees)
+
+    def test_apercu_pompage_lead_propre_lu(self):
+        entrees = self._entrees_apercu_pompage(self._lead(self.commercial))
+        self.assertEqual(entrees['volume_m3_jour']['valeur'], 90)
+        self.assertEqual(entrees['volume_m3_jour']['provenance']['origine'],
+                         'lead')

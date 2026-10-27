@@ -234,6 +234,22 @@ class DevisAutoAgricoleTests(TestCase):
         self.assertEqual(rep.data['field'], 'kit.structure')
         self.assertFalse(Devis.objects.filter(lead=lead).exists())
 
+    def test_structure_absente_du_catalogue_refus_dit_aucun_article(self):
+        """AGM13 — aucun article de rôle ``structure_sol`` : le refus le dit
+        (« aucun article au catalogue »), pas « prix à renseigner » sur un
+        article qui n'existe pas (rendu réel R1 : 8 devis auto sur 10)."""
+        Produit.objects.filter(pk=self.structure.pk).delete()
+        self._pompe('15000')
+        lead = self._lead()
+        rep = self._post(lead)
+        self.assertEqual(rep.status_code, 409, rep.data)
+        self.assertEqual(
+            rep.data['detail'],
+            'Structure au sol : aucun article au catalogue '
+            '(rôle structure_sol)')
+        self.assertEqual(rep.data['field'], 'kit.structure')
+        self.assertFalse(Devis.objects.filter(lead=lead).exists())
+
     def test_panneau_sans_fiche_refus_dit_la_cause(self):
         """Rejeu live AGQ41 (24/10) — panneau sans valeurs STC : le 409 dit la
         CAUSE (« Panneau sans valeurs STC complètes… »), jamais « voir les

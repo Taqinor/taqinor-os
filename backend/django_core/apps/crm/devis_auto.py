@@ -24,6 +24,8 @@ POST /crm/leads/<id>/devis-auto/ (règle serveur) — jamais deux logiques.
 
 import logging
 
+from .categories_commerciales import TALON_NIVEAU_JOUR_PCT_PAR_REPONSE
+
 logger = logging.getLogger(__name__)
 
 # Modes regroupés (clés de Lead.TypeInstallation — scalaires, jamais une
@@ -176,6 +178,9 @@ def _rythme_ci(lead):
         rythme['debut_equipe_h'] = lead.heure_debut
     if lead.regime_equipes:
         rythme['equipes'] = lead.regime_equipes
+    pct = TALON_NIVEAU_JOUR_PCT_PAR_REPONSE.get(lead.equipements_hors_horaires)
+    if pct is not None:
+        rythme['talon'] = {'niveau_jour_pct': pct}
     if lead.type_installation == 'commercial':
         if lead.categorie_commerciale:
             rythme['categorie_commerciale'] = lead.categorie_commerciale

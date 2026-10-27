@@ -16,6 +16,13 @@ explicite, plage citée).
 Usages : ``calcul`` | ``controle_conception`` | ``alerte`` | ``indication`` —
 une entrée ``indication`` n'est JAMAIS la valeur par défaut d'un réglage.
 
+EXCEPTION ÉCRITE (AGM1, D-AGM-1) : la bande de 2 % qui ramène un CV de plaque à
+la puissance normalisée IEC la plus proche (``selection.kw_normalise_depuis_cv``,
+ré-exportée par ``champ``) est une RÈGLE DE CONVERSION (CV métrique → série
+normalisée, écart maximal mesuré 1,97 %), pas une hypothèse client : elle ne
+figure pas dans cette table, qui reste inchangée (``hypotheses_pompage.json``
+identique).
+
 NE PAS FAIRE (Groupe AGR) : AUCUN multiplicateur de bassin, AUCUN derate empilé
 sur PVGIS (ses 14 % de pertes sont déjà compris), AUCUN seuil non sourcé.
 """

@@ -230,15 +230,48 @@ def type_produit(produit):
     return None
 
 
+def _decimales(texte):
+    """Nombre de décimales SIGNIFICATIVES d'une valeur saisie (« 3.00 » → 0,
+    « 5.50 » → 1) : la précision avec laquelle le CV a été écrit."""
+    texte = str(texte).strip().replace(",", ".")
+    if "." not in texte:
+        return 0
+    return len(texte.split(".", 1)[1].rstrip("0"))
+
+
+def kw_normalise_depuis_cv(cv):
+    """AGQ6 (C-AGQ-005) / AGM1 (D-AGM-1) — ``(kW requis, normalisé)`` d'un
+    moteur connu par son seul CV.
+
+    kW = CV × ``cv_vers_kw`` ; la puissance assignée normalisée la plus
+    proche (``kw_moteur_normalises``, IEC 60034-1, table AGR110) est retenue
+    si l'écart reste dans la BANDE = max(tolérance d'arrondi du CV écrit — un
+    demi-chiffre de sa dernière décimale significative —, 2 % du kW calculé) :
+    3 CV = 2,21 kW ⇒ moteur 2,2 kW ; 5,5 CV = 4,05 kW ⇒ moteur 4 kW ; 40 CV =
+    29,42 kW ⇒ moteur 30 kW (CV métrique vs série normalisée : écart maximal
+    mesuré 1,97 %). Hors bande (12,5 CV, 63 CV…), le kW calculé reste tel
+    quel (jamais arrondi vers le bas au-delà de la bande)."""
+    cv_val = _flottant(cv)
+    if cv_val is None or cv_val <= 0:
+        return None, False
+    kw = cv_val * valeur("cv_vers_kw")
+    bande = max(0.5 * 10 ** (-_decimales(cv)) * valeur("cv_vers_kw"),
+                0.02 * kw)
+    proche = min(valeur("kw_moteur_normalises"), key=lambda p: abs(p - kw))
+    if abs(proche - kw) <= bande + 1e-9:
+        return float(proche), True
+    return kw, False
+
+
 def kw_pompe(produit):
-    """(kW, source) — ``pompe_kw`` (plaque), sinon ``pompe_cv`` × 0,7355
-    (table AGR110), sinon (None, None)."""
+    """(kW, source) — ``pompe_kw`` (plaque), sinon ``pompe_cv`` ramené au
+    moteur normalisé (AGM1 : même kW que le variateur), sinon (None, None)."""
     kw = _flottant(produit.get("pompe_kw"))
     if kw and kw > 0:
         return kw, "plaque"
     cv = _flottant(produit.get("pompe_cv"))
     if cv and cv > 0:
-        return cv * valeur("cv_vers_kw"), "cv"
+        return kw_normalise_depuis_cv(produit.get("pompe_cv"))[0], "cv"
     return None, None
 
 

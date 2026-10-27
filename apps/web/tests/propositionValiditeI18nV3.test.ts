@@ -19,9 +19,10 @@ import { fileURLToPath } from 'node:url';
 
 import { formatDateLang, parseBackendDate, resolveValidity } from '../src/lib/proposition';
 import { identiteEmetteur, LEGAL_IDENTITY } from '../src/lib/nap';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
-const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+const PROPOSITION = lirePageProposition();
 const LE_15_OCTOBRE = parseBackendDate('2026-10-15')!;
 
 describe('audit C4 — le mois suit la langue', () => {

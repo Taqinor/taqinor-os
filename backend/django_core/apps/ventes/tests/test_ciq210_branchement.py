@@ -196,6 +196,21 @@ ENTREES_ECRAN = {
 }
 
 
+class LignesEcranTest(SimpleTestCase):
+    def test_cec10_la_quantite_de_l_ecran_atteint_l_alerte_o_and_m(self):
+        """CEC10 — l'aperçu du générateur porte la quantité saisie : une
+        ligne O&M de quantité 5 y est signalée comme sur le devis."""
+        from apps.ventes import economie_ci_options as opt
+        from apps.ventes.economie_ci_view import lignes_ecran
+        _inv, lignes = lignes_ecran(None, [{
+            'designation': 'Contrat O&M', 'quantite': 5,
+            'totaux': {'ht': 30000, 'ttc': 36000}}])
+        self.assertEqual(lignes[0]['quantite'], 5.0)
+        lignes[0]['role_ci'] = 'om_ci'  # rôle lu sur le produit en vrai
+        self.assertEqual([a['code'] for a in opt.alertes_om(lignes)],
+                         ['om_quantite'])
+
+
 class _BaseDevis(TestCase):
     @classmethod
     def setUpTestData(cls):

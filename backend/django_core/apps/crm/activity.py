@@ -189,6 +189,7 @@ TRACKED_FIELDS = {
     'heure_debut': 'Heure de début de journée',
     'heure_fin': 'Heure de fin de journée',
     'fermeture_mois': 'Mois de fermeture',
+    'equipements_hors_horaires': 'Équipements hors horaires',
     'type_surface': 'Type de surface',
     'surface_source': 'Provenance de la surface',
     'groupe_electrogene': 'Groupe électrogène',
@@ -323,6 +324,7 @@ _CHOICE_FIELDS = {
     'tension_raccordement', 'tension_source', 'puissance_souscrite_source',
     'contrat_electricite', 'option_tarifaire_bt',
     'categorie_commerciale', 'export_ue_declare', 'regime_equipes',
+    'equipements_hors_horaires',
     'type_surface', 'surface_source', 'groupe_electrogene', 'cos_phi_source',
     'tva_recuperable',
     # ALEA19 — préférence de contact (vocabulaire fermé).
