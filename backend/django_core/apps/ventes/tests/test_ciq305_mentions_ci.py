@@ -95,6 +95,17 @@ class TestTableMentions(SimpleTestCase):
             _etude("bt"), option_servie="avec",
             avec_batterie_differee=True)))["pointe"]
         self.assertEqual(differee["textes"], TEXTES_POINTE_SANS)
+        # Fondateur 27/10/2026 — un fait, jamais « non promise » ; l'offre
+        # réseau d'un devis à deux options renvoie à l'option « avec ».
+        self.assertEqual(TEXTES_POINTE_SANS["fr"],
+                         "Le soir et la nuit, votre consommation reste fournie par le réseau.")
+        deux = _par_cle(mentions_ci(_data(
+            _etude("bt"), option_servie="sans",
+            option_batterie={"totaux": {}, "valeur_chiffree": None})))["pointe"]
+        self.assertEqual(deux["textes"]["fr"], "Le soir et la nuit, votre consommation reste "
+                                               "fournie par le réseau ; l'option avec batterie la couvre.")
+        for textes in (sans["textes"], deux["textes"]):
+            self.assertNotIn("non promise", textes["fr"])
 
     def test_tarif_utilise_et_sa_source(self):
         tarif = {"origine": "grille_officielle", "contrat": "bt_patente",

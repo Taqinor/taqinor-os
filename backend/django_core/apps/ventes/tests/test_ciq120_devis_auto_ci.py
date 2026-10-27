@@ -361,6 +361,136 @@ class DevisAutoCITests(_Base):
         self.assertEqual(ctx.exception.field, 'type_installation')
 
 
+def _hybride(co, nom, kw, prix, v_min, v_max, port):
+    produit = Produit.objects.create(company=co, nom=nom, prix_vente=Decimal(prix),
+                                     prix_achat=Decimal('1000'), role_devis='onduleur_hybride')
+    FicheTechnique.objects.create(
+        company=co, produit=produit, type_fiche='onduleur', ond_ac_kw=Decimal(kw), ond_phases=3,
+        ond_n_mppt=2, ond_mppt_v_min=Decimal('160'), ond_mppt_v_max=Decimal('650'),
+        ond_v_max_abs=Decimal('800'), ond_i_max_mppt_a=Decimal('20'),
+        ond_bat_v_min=Decimal(v_min), ond_bat_v_max=Decimal(v_max),
+        ond_bat_max_charge_kw=Decimal(port))
+    return produit
+
+
+def _batterie(co, nom, utile, prix, charge_kw):
+    produit = Produit.objects.create(company=co, nom=nom, prix_vente=Decimal(prix),
+                                     prix_achat=Decimal('1000'), role_devis='batterie')
+    FicheTechnique.objects.create(
+        company=co, produit=produit, type_fiche='batterie', bat_kwh_usable=Decimal(utile),
+        bat_v_nominal=Decimal('51.2'), bat_max_charge_kw=Decimal(charge_kw),
+        bat_rendement_ar_pct=Decimal('98'))
+    return produit
+
+
+class OptionBatterieCITests(_Base):
+    """Fondateur 26/10/2026 — un devis C&I automatique porte DEUX options
+    « sans » / « avec batterie » comme le résidentiel : hybrides Deye BASSE
+    tension triphasés à la place des string, banque Dyness homogène ; le
+    choix du lead restreint ; un hybride HAUTE tension n'entre jamais."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        # Prix SEEDÉS (seed_catalogue, TTC → HT 20 %) ; PowerBrick : prix de TEST.
+        cls.h10 = _hybride(cls.co, 'Onduleur hybride Deye SUN-10K-SG05LP3', '10', '23333.33',
+                           '40', '60', '10')
+        cls.h15 = _hybride(cls.co, 'Onduleur hybride Deye SUN-15K-SG05LP3', '15', '30000',
+                           '40', '60', '14.34')
+        cls.h20 = _hybride(cls.co, 'Onduleur hybride Deye SUN-20K-SG05LP3', '20', '40000',
+                           '40', '60', '17.92')
+        cls.hv = _hybride(cls.co, 'Onduleur hybride Deye SUN-30K-SG02HP3', '30', '20000',
+                          '160', '700', '30')
+        cls.b5 = _batterie(cls.co, 'Batterie Dyness 5 kWh', '4.60', '11666.67', '3.84')
+        cls.b10 = _batterie(cls.co, 'Batterie Dyness 10 kWh', '9.22', '25000', '5.12')
+        cls.b16 = _batterie(cls.co, 'Batterie Dyness PowerBrick SC 16 kWh', '15.27', '40000',
+                            '7.17')
+        # Disjoncteurs de sortie des hybrides (calibres 16 / 20 / 25 / 32 / 40 A 4P).
+        for calibre in (16, 20, 25, 32, 40):
+            disj = Produit.objects.create(
+                company=cls.co, nom='Disjoncteur AC %d A 4P' % calibre, prix_vente=Decimal('400'),
+                prix_achat=Decimal('100'), role_ci='protection_ac')
+            FicheTechnique.objects.create(
+                company=cls.co, produit=disj, type_fiche='protection', prot_type='disjoncteur',
+                prot_cote='ac', prot_calibre_a=calibre, prot_poles=4)
+
+    def _boulangerie(self, **kw):
+        kw.setdefault('conso_mensuelle_kwh', Decimal('6000'))
+        return self._lead(categorie_commerciale='boulangerie', jours_ouverture=list(range(1, 8)),
+                          heure_debut=7, heure_fin=21, surface_toiture_m2=Decimal('200'), **kw)
+
+    def _ids(self, devis, variante):
+        return set(devis.lignes.filter(variante=variante).values_list('produit_id', flat=True))
+
+    def test_boulangerie_deux_options_hybrides_bt_et_banque_dyness(self):
+        devis = self._auto(self._boulangerie())
+        self.assertEqual(devis.etude_params.get('scenario'), 'Les deux (Sans + Avec)')
+        sans, avec = self._ids(devis, 'sans'), self._ids(devis, 'avec')
+        self.assertIn(self.onduleur.id, sans)
+        hybrides = {self.h10.id, self.h15.id, self.h20.id}
+        self.assertTrue(avec & hybrides)
+        self.assertNotIn(self.hv.id, avec | sans)
+        batteries = avec & {self.b5.id, self.b10.id, self.b16.id}
+        self.assertEqual(len(batteries), 1)            # banque HOMOGÈNE
+        self.assertFalse((sans | self._ids(devis, '')) & (hybrides | batteries))
+        option = devis.etude_params['etude_ci']['option_avec']
+        self.assertGreater(option['economie_annuelle_mad'], 0)
+        self.assertGreater(option['bilan']['batterie']['restitue_kwh_an'], 0)
+        self.assertNotIn('prix_achat', str(option))
+        from apps.ventes.quote_engine.builder import build_quote_data
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            data = build_quote_data(devis)
+        self.assertTrue(data['deux_options'])
+        self.assertEqual(data['option_servie'], 'sans')
+        from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
+        valeur = valeur_option_avec(data)
+        self.assertGreater(valeur['retour_simple_ans'], 0)
+        self.assertIn('kWh utiles', valeur['textes']['fr'])
+
+    def test_choix_avec_du_lead_option_avec_seule(self):
+        devis = self._auto(self._boulangerie(batterie_souhaitee='avec'))
+        produits = set(devis.lignes.values_list('produit_id', flat=True))
+        self.assertNotIn(self.onduleur.id, produits)
+        self.assertTrue(produits & {self.b5.id, self.b10.id, self.b16.id})
+        self.assertFalse(devis.lignes.exclude(variante='').exists())
+        self.assertEqual(devis.etude_params.get('scenario'), 'Avec batterie')
+
+    def test_choix_sans_du_lead_aucune_batterie(self):
+        devis = self._auto(self._boulangerie(batterie_souhaitee='sans'))
+        produits = set(devis.lignes.values_list('produit_id', flat=True))
+        self.assertFalse(produits & {self.h10.id, self.h15.id, self.h20.id, self.b16.id,
+                                     self.b10.id, self.b5.id})
+        self.assertNotIn('option_avec', devis.etude_params['etude_ci'])
+
+    def test_les_deux_batteries_sans_prix_offre_reseau_seule_alerte_interne(self):
+        """Fondateur 27/10/2026 — « les deux » : aucune batterie tarifée ⇒ le
+        devis part avec l'offre réseau seule, les batteries nommées en alerte
+        interne ; jamais un refus."""
+        Produit.objects.filter(pk__in=[self.b5.pk, self.b10.pk, self.b16.pk]).update(
+            prix_vente=Decimal('0'))
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            devis = build_devis_auto(lead=self._boulangerie(), user=self.user, company=self.co,
+                                     journal_auto=journal)
+        produits = set(devis.lignes.values_list('produit_id', flat=True))
+        self.assertIn(self.onduleur.id, produits)
+        self.assertFalse(produits & {self.b5.id, self.b10.id, self.b16.id, self.h10.id,
+                                     self.h15.id, self.h20.id})
+        self.assertFalse(devis.lignes.exclude(variante='').exists())
+        self.assertNotIn('option_avec', devis.etude_params['etude_ci'])
+        alerte = next(a for a in journal['alertes']
+                      if a['code'] == 'OPTION_BATTERIE_PRIX_A_RENSEIGNER')
+        self.assertIn('Batterie Dyness 10 kWh', alerte['message'])
+        self.assertTrue(alerte['interne'])
+
+    def test_batteries_sans_prix_refus_prix_a_renseigner_nommant_la_batterie(self):
+        Produit.objects.filter(pk__in=[self.b5.pk, self.b10.pk, self.b16.pk]).update(
+            prix_vente=Decimal('0'))
+        with self.assertRaises(AutoDevisError) as ctx:
+            self._auto(self._boulangerie(batterie_souhaitee='avec'))
+        self.assertIn('Batterie Dyness 10 kWh', str(ctx.exception))
+
+
 class ReponseAutoALEA51Tests(_Base):
     """ALEA51 — ``POST /ventes/devis/auto/`` rend de quoi dire le SUCCÈS :
     ``total_ttc``, ``economie_an_1_ht``, ``retour_ans`` (null si
@@ -433,3 +563,17 @@ class PostesNonChiffresUniques(SimpleTestCase):
         self.assertEqual(classer_produit(_P.nom), 'cable_dc')
         self.assertIsNone(_role_ci_par_nom(_P()))
         self.assertEqual(classer_produit('Onduleur réseau Huawei 150kW Triphasé'), 'onduleur_reseau')
+
+
+class DesignationOptionAvecTests(SimpleTestCase):
+    """Le découpage des deux options du document lit les mots de la famille :
+    un hybride ou une batterie nommés par leur seule référence la reçoivent."""
+
+    def test_famille_ajoutee_au_nom_qui_ne_la_dit_pas(self):
+        from apps.ventes.domain.etude_ci_batterie import designation_option_avec
+        self.assertEqual(designation_option_avec('SUN-12K-SG05LP3', 'onduleur_hybride'),
+                         'Onduleur hybride SUN-12K-SG05LP3')
+        self.assertEqual(designation_option_avec('Onduleur hybride Deye 20kW', 'onduleur_hybride'),
+                         'Onduleur hybride Deye 20kW')
+        self.assertEqual(designation_option_avec('Dyness PowerBrick SC 16 kWh', 'batterie'),
+                         'Batterie Dyness PowerBrick SC 16 kWh')
