@@ -212,7 +212,9 @@ class CasReferenceTests(unittest.TestCase):
                      consommation={'kwh_mensuels': [90000] * 12},
                      rythme={'jours_ouverts': [True] * 6 + [False], 'equipes': '2x8',
                              'debut_equipe_h': 6})
-        self.assertEqual(e['taille']['retenue_kwc'], 405)
+        # CLD9 — publié au kWc POSÉ (panneaux entiers × 710 Wc), palier 400.
+        self.assertAlmostEqual(e['taille']['retenue_kwc'], e['taille']['nb_panneaux'] * 0.71, places=2)
+        self.assertGreater(e['taille']['retenue_kwc'], 395)
 
 
 if __name__ == '__main__':
