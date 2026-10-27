@@ -193,6 +193,11 @@ def _investissement_composition(evaluation, taux_tva_pct):
     if not composition or composition.get('incomplet') or not cout or cout <= 0:
         return None
     taux_defaut = _num(taux_tva_pct)
+    from core.money import quantize_mad
+
+    def _mad(x):
+        return float(quantize_mad(str(x)))
+
     lignes, ttc_total, ttc_connu = [], 0.0, True
 
     def ttc_de(ht, taux):
@@ -204,14 +209,14 @@ def _investissement_composition(evaluation, taux_tva_pct):
             # ``economie_ci._somme_lignes`` ne la retire pas (le remplacement de
             # l'onduleur disparaîtrait) ; le TTC de l'investissement reste None.
             ttc_connu = False
-            return round(ht, 2)
+            return _mad(ht)
         ttc_total += ht * (1 + taux / 100.0)
-        return round(ht * (1 + taux / 100.0), 2)
+        return _mad(ht * (1 + taux / 100.0))
 
     onduleurs = evaluation.get('onduleurs') or {}
     if _num(onduleurs.get('prix_vente_total_ht')):
         ht = float(onduleurs['prix_vente_total_ht'])
-        lignes.append(_ligne_flux('Onduleur(s) hybride(s)', round(ht, 2),
+        lignes.append(_ligne_flux('Onduleur(s) hybride(s)', _mad(ht),
                                   ttc_de(ht, None), onduleur=True))
     for ligne in composition.get('lignes') or []:
         if ligne.get('role') == 'onduleur_string_tri' or ligne.get('a_chiffrer_visite') \
@@ -227,11 +232,11 @@ def _investissement_composition(evaluation, taux_tva_pct):
         if ligne.get('role') == 'batterie_ci' and 'batterie' not in nom.lower():
             nom = 'Batterie ' + nom
         lignes.append(_ligne_flux(
-            nom, round(ht, 2), ttc_de(ht, ligne.get('tva_pct')),
+            nom, _mad(ht), ttc_de(ht, ligne.get('tva_pct')),
             role_ci='om_ci' if ligne.get('role') == 'om_ci' else ''))
     from apps.ventes.economie_ci_options import investissement_hors_om
     investissement = investissement_hors_om(
-        {'ht': float(cout), 'ttc': round(ttc_total, 2) if ttc_connu else None}, lignes)
+        {'ht': float(cout), 'ttc': _mad(ttc_total) if ttc_connu else None}, lignes)
     return dict(investissement, lignes=lignes)
 
 
