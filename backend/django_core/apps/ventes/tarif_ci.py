@@ -369,6 +369,8 @@ def seuils_contigus(tranches):
         return None
     bornes = [(_num(t.get('seuil_min_kwh')), _num(t.get('seuil_max_kwh')))
               for t in tranches]
+    if bornes[-1][1] is not None:
+        return None  # la dernière tranche sans plafond : aucun kWh hors grille
     if len(bornes) == 1:
         return bornes
     sortie, precedent = [], None
@@ -434,10 +436,11 @@ def reproches_tarif_declare(td):
         out.append(f'« {pre}bt » doit être un objet.')
     elif isinstance(bt, dict):
         lues = _tranches_bt_declarees(bt)
-        if len(lues) > 1 and seuils_contigus(lues) is None:
+        if lues and seuils_contigus(lues) is None:
             out.append(f'« {pre}bt.tranches » : plusieurs tranches exigent un '
                        f'plafond (seuil_max_kwh) sur chacune sauf la dernière '
-                       f'et un plancher égal au plafond précédent.')
+                       f'et un plancher égal au plafond précédent ; la '
+                       f'dernière sans plafond.')
         for i, t in enumerate(bt.get('tranches') or [], start=1):
             if not isinstance(t, dict):
                 out.append(f'« {pre}bt.tranches[{i}] » doit être un objet.')

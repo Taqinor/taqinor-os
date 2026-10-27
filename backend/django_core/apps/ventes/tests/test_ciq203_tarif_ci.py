@@ -170,3 +170,12 @@ class SchemaTarifDeclareTest(SimpleTestCase):
         self.assertEqual(tc.tarif_applicable(
             {'contrat': 'bt_force_motrice', 'option_bi_horaire': True},
             regles_origine=True)['origine'], 'omis')
+
+    def test_cec2_derniere_tranche_plafonnee_refusee(self):
+        tranches = [{'tarif_kwh': 1.0, 'seuil_min_kwh': 0, 'seuil_max_kwh': 100},
+                    {'tarif_kwh': 1.2, 'seuil_min_kwh': 100,
+                     'seuil_max_kwh': 500}]
+        self.assertIsNone(tc.seuils_contigus(tranches))
+        self.assertTrue(any('bt.tranches' in r for r in es.valider(
+            {'tarif_declare': {'contrat': 'bt_patente',
+                               'bt': {'tranches': tranches}}})))
