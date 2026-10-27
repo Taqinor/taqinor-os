@@ -692,6 +692,19 @@ _DESC_OSP = ('Pompe immergée 3 pouces pour forage, triphasée 380 V\n'
 # fiche…). Supprimer un nombre qui n'a pas d'autre domicile le PERDRAIT — ce
 # serait l'erreur symétrique. Le test ``test_pvfch_description_sans_specs``
 # vérifie les deux sens.
+#: CCAT15 (27/10) — première ligne de la fiche commerciale des hybrides Deye :
+#: « SUN-…SG » (points de suspension semés) s'imprimait sur chaque fiche Deye
+#: des PDF client. Modèle cité seulement s'il est CONFIRMÉ par le fondateur
+#: (MODELES_CONFIRMES_FONDATEUR) ; les monophasés (modèle supposé) disent la
+#: gamme sans inventer de référence. Migration stock 0175 pour les bases déjà seedées.
+_PREMIERE_LIGNE_DEYE = {
+    'OND-H-DEY-5M': 'Onduleur hybride Deye monophasé (gamme SG05LP1)',
+    'OND-H-DEY-10M': 'Onduleur hybride Deye monophasé',
+    'OND-H-DEY-10T': 'Onduleur hybride Deye SUN-10K-SG05LP3-EU-SM2',
+    'OND-H-DEY-15T': 'Onduleur hybride Deye SUN-15K-SG05LP3-EU-SM2',
+    'OND-H-DEY-20T': 'Onduleur hybride Deye SUN-20K-SG05LP3-EU-SM2',
+}
+
 FICHES = {
     # Onduleurs réseau Huawei (résidentiel ≤ 25 kW : 10 ans ; C&I : 5 ans ext.)
     **{sku: {
@@ -735,7 +748,7 @@ FICHES = {
         # tierces non vérifiées (forums) citent 4 ms ou 10 ms selon le modèle
         # — OMISSION plutôt qu'un chiffre non sourcé (aucun champ ne le
         # portait non plus : ce n'est pas un cas PVFCH, juste invérifiable).
-        'description': ('Onduleur hybride Deye SUN-…SG\n'
+        'description': (_PREMIERE_LIGNE_DEYE[sku] + '\n'
                         'Compatible batteries lithium 48 V (BMS CAN/RS485)\n'
                         'Bascule secours (EPS/UPS) en cas de coupure réseau\n'
                         'Monitoring Wi-Fi via Solarman Smart / Deye Cloud'),

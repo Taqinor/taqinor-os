@@ -185,3 +185,44 @@ class GarantiesMarocTests(TestCase):
         self.assertEqual(_p('OND-H-DEY-5M').garantie,
                          'Garantie 10 ans (extension achetée)')
         self.assertEqual(_p('OND-H-DEY-5M').garantie_mois, 99)
+
+
+class DescriptionHybridesDeyeTests(TestCase):
+    """CCAT15 (27/10/2026) — aucune fiche semée n'imprime « … » au client ;
+    la migration 0175 corrige l'ancienne description semée des hybrides Deye
+    sans toucher une saisie du fondateur."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Seed CCAT15', slug='seed-ccat15-deye')
+
+    def test_aucune_description_semee_avec_points_de_suspension(self):
+        for sku, fiche in FICHES.items():
+            texte = fiche.get('description', '')
+            self.assertNotIn('…', texte, sku)
+            self.assertNotIn('...', texte, sku)
+
+    def test_migration_0175_corrige_la_seule_valeur_semee(self):
+        from importlib import import_module
+
+        from django.apps import apps as registre
+        mig = import_module(
+            'apps.stock.migrations.0175_ccat15_description_hybrides_deye')
+        _seed(self.company)
+        self.assertEqual(
+            Produit.objects.get(company=self.company, sku='OND-H-DEY-15T')
+            .description, FICHES['OND-H-DEY-15T']['description'])
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-15T').update(
+            description=mig.ANCIENNE)
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-5M').update(
+            description='Saisie fondateur')
+
+        mig.corriger(registre, None)
+
+        def _p(sku):
+            return Produit.objects.get(company=self.company, sku=sku)
+        self.assertEqual(_p('OND-H-DEY-15T').description,
+                         FICHES['OND-H-DEY-15T']['description'])
+        self.assertTrue(_p('OND-H-DEY-15T').description.startswith(
+            'Onduleur hybride Deye SUN-15K-SG05LP3-EU-SM2'))
+        self.assertEqual(_p('OND-H-DEY-5M').description, 'Saisie fondateur')
