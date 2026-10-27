@@ -155,6 +155,8 @@ TRACKED_FIELDS = {
     'carburant_prix_unitaire_mad': 'Prix payé (bouteille ou litre, MAD)',
     'carburant_prix_declare_le': 'Prix du carburant déclaré le',
     'depense_carburant_mad_mois': 'Dépense carburant (MAD/mois)',
+    'depense_electricite_pompe_mad_mois':
+        'Facture électricité du pompage (MAD/mois)',
     'mois_irrigation': "Mois d'irrigation",
     # AGQ10 (D-AGQ-6) — jours d'irrigation par semaine (bloc économie).
     'jours_irrigation_semaine': "Jours d'irrigation par semaine",

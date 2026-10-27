@@ -209,6 +209,13 @@
       "note": "information et barème de score provisoire ; jamais convertie en consommation ni multipliée par 12"
     },
     {
+      "nom": "depense_electricite_pompe_mad_mois",
+      "type": "décimal",
+      "unite": "MAD/mois",
+      "question": "« Si votre pompe actuelle marche à l'électricité, combien payez-vous par mois pour le pompage ? »",
+      "note": "AGV1 — facultative, posée seulement si pompe_alim_actuelle = electrique ; base déclarée des économies (D-AGR-5), jamais pré-remplie"
+    },
+    {
       "nom": "mois_irrigation",
       "type": "liste d'entiers 1-12",
       "unite": "mois",
