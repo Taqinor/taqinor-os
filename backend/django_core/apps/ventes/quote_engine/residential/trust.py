@@ -238,6 +238,29 @@ _EXEMPLE_FR = re.compile(r"Facture actuelle ≈ (.+?) MAD/an → avec solaire �
                          r"(.+?) MAD/an → économie ≈ (.+?) MAD/an")
 
 
+def _exemple_aligne_couverture(d, exemple):
+    """RPDF16 — « Facture actuelle ≈ 35 999 → avec solaire ≈ 9 664 » sous une
+    couverture qui imprime « 36 000 → 9 665 » (somme des 12 factures
+    arrondies) : le MÊME chiffre arrondi deux fois. Quand l'écart est
+    d'arrondi (≤ 0,5 %), l'exemple reprend les montants de la couverture ;
+    l'économie, différence des deux, ne bouge pas."""
+    m = _EXEMPLE_FR.fullmatch(exemple or "")
+    av, ap = d.get("annual_before"), d.get("annual_after")
+    if not (m and av and ap is not None):
+        return exemple
+    sep = next((c for c in m[1] if not c.isdigit()), " ")
+    try:
+        x, y = (float("".join(c for c in m[i] if c.isdigit())) for i in (1, 2))
+    except ValueError:
+        return exemple
+    eco = "".join(c for c in m[3] if c.isdigit())
+    if not (x and abs(x - av) <= 0.005 * x and abs(y - ap) <= 0.005 * max(x, 1)
+            and eco and int(round(av)) - int(round(ap)) == int(eco)):
+        return exemple
+    return (f"Facture actuelle ≈ {int(round(av)):,} MAD/an → avec solaire ≈ "
+            f"{int(round(ap)):,} MAD/an → économie ≈ {m[3]} MAD/an").replace(",", sep)
+
+
 def _methode_traduite(d, sm):
     """(phrase de méthode, exemple) du bloc QF3 dans la langue du document.
 
@@ -248,7 +271,7 @@ def _methode_traduite(d, sm):
     from . import theme
     from .cover import libelle_cat
     ligne = (sm.get("ligne_methode") or "").strip()
-    exemple = (sm.get("exemple") or "").strip()
+    exemple = _exemple_aligne_couverture(d, (sm.get("exemple") or "").strip())
     if theme.langue_doc(d) == "fr" or not ligne:
         return ligne, exemple
     cle = _CLES_METHODE.get(sm.get("model"))
