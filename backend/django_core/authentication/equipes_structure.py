@@ -88,3 +88,24 @@ def synchroniser_superviseurs(company_id, chef_avant, membres_avant,
     if ids_apres:
         base.filter(pk__in=ids_apres).exclude(supervisor_id=chef.pk).update(
             supervisor=chef)
+
+
+def enregistrer_equipe(serializer, champ_chef, **save_kwargs):
+    """Contrôle « une seule équipe » + cycle sur l'état FINAL d'une équipe
+    validée par ``serializer``, l'enregistre, puis synchronise les
+    superviseurs. ``champ_chef`` : ``'chef'`` (terrain) ou ``'responsable'``.
+    Seuls les membres AJOUTÉS sont soumis à la règle « une seule équipe »."""
+    attrs = serializer.validated_data
+    inst = serializer.instance
+    actuels = list(inst.membres.all()) if inst else []
+    chef_avant = getattr(inst, champ_chef) if inst else None
+    if attrs.get('actif', inst.actif if inst else True):
+        membres = attrs.get('membres', actuels)
+        valider_membres_uniques(
+            inst, membres, attrs.get(champ_chef, chef_avant),
+            {u.pk for u in membres} - {u.pk for u in actuels})
+    equipe = serializer.save(**save_kwargs)
+    synchroniser_superviseurs(
+        equipe.company_id, chef_avant, actuels, getattr(equipe, champ_chef),
+        list(equipe.membres.all()), equipe.actif)
+    return equipe

@@ -1305,36 +1305,6 @@ class EquipeSerializer(
         return valider_unicite_societe(
             self, 'nom', value, 'Une équipe porte déjà ce nom.')
 
-    def validate(self, attrs):
-        # Fondateur 26/10/2026 — une personne n'appartient qu'à UNE équipe
-        # active, et le chef devient son superviseur (authentication.
-        # equipes_structure). Contrôlé sur l'état FINAL de l'équipe.
-        from authentication.equipes_structure import valider_membres_uniques
-        attrs = super().validate(attrs)
-        inst = self.instance
-        actif = attrs.get('actif', inst.actif if inst else True)
-        if actif:
-            actuels = list(inst.membres.all()) if inst else []
-            membres = attrs.get('membres', actuels)
-            nouveaux = {u.pk for u in membres} - {u.pk for u in actuels}
-            chef = attrs.get('chef', inst.chef if inst else None)
-            valider_membres_uniques(inst, membres, chef, nouveaux)
-        return attrs
-
-    def save(self, **kwargs):
-        from authentication.equipes_structure import synchroniser_superviseurs
-        inst = self.instance
-        chef_avant = inst.chef if inst else None
-        membres_avant = list(inst.membres.all()) if inst else []
-        equipe = super().save(**kwargs)
-        company_id = equipe.company_id or getattr(
-            getattr(self.context.get('request'), 'user', None),
-            'company_id', None)
-        synchroniser_superviseurs(
-            company_id, chef_avant, membres_avant,
-            equipe.chef, list(equipe.membres.all()), equipe.actif)
-        return equipe
-
     @staticmethod
     def _nom(user):
         if user is None:
