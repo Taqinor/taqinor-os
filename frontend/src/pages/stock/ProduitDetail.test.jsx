@@ -591,4 +591,32 @@ describe('CCAT4 — fiche C&I : type de pose et prix', () => {
     await ouvrir(ciProduit('compteur_injection'))
     expect(screen.getByText('prix à renseigner')).toBeInTheDocument()
   })
+
+  /* CCAT12 — « Compléter » rouvre l'édition sur le champ que corrige le motif. */
+  it('motif « puissance AC » : Compléter → onEdit(produit, champ puissance AC)', async () => {
+    const onEdit = vi.fn()
+    const p = ciProduit('onduleur_hybride', {
+      prix_connu: true, eligible_ci: false, motif_exclusion: 'fiche incomplète : puissance AC',
+    })
+    render(<ProduitDetail produit={p} onClose={() => {}} onEdit={onEdit} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    await screen.findByTestId('pdet-fiche-technique')
+    await userEvent.click(screen.getByTestId('pdet-completer-ci'))
+    expect(onEdit).toHaveBeenCalledWith(p, 'pf-ft-ackw')
+  })
+
+  it('« Prix C&I : prix à renseigner » : Compléter → champ prix de vente', async () => {
+    const onEdit = vi.fn()
+    const p = ciProduit('compteur_injection')
+    render(<ProduitDetail produit={p} onClose={() => {}} onEdit={onEdit} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    await screen.findByTestId('pdet-fiche-technique')
+    await userEvent.click(screen.getByTestId('pdet-completer-ci'))
+    expect(onEdit).toHaveBeenCalledWith(p, 'pf-vente')
+  })
+
+  it('sans droit d\'écriture (pas de onEdit) ou motif inconnu : aucun bouton', async () => {
+    await ouvrir(ciProduit('onduleur_hybride', { eligible_ci: false, motif_exclusion: 'fiche incomplète : puissance AC' }))
+    expect(screen.queryByTestId('pdet-completer-ci')).toBeNull()
+  })
 })
