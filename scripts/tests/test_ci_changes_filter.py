@@ -362,6 +362,49 @@ class AgregateursChangesTests(unittest.TestCase):
                 self.assertIn(_verdict(self.jobs, nom, results, out), ("success", "skipped"))
 
 
+class RunAllegeTests(unittest.TestCase):
+    """CI-UNE (fondateur, 27/10/2026 — « une seule CI par PR ») : sur un run
+    `pull_request` d'une branche `claude/*`, `changes` sort `allege=true` et les
+    lanes lourdes sont sautees ; les gardes rapides et les agregateurs REQUIS
+    restent, verts (lanes « skipped » = acceptables). Le run `merge_group`
+    (allege=false) reste le seul gate complet."""
+
+    LOURDES = ("backend-testdb", "backend-tests-shard", "api-fuzz-pr",
+               "frontend-vitest-shard", "e2e-shard")
+    RAPIDES = ("backend-lint-fast", "backend-openapi", "frontend-static",
+               "stage-names", "web-build-test", "fastapi-security", "ci-image-check")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.jobs = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+
+    def test_allege_sort_de_changes_et_ne_vaut_que_pull_request_claude(self):
+        self.assertIn("allege", self.jobs["changes"]["outputs"])
+        script = _detect_step_script()
+        self.assertIn('"$EVENT_NAME" = "pull_request"', script)
+        self.assertIn('${PR_HEAD_REF#claude/}', script)
+        self.assertIn("allege=true", script)
+
+    def test_lanes_lourdes_sautees_en_mode_allege_gardes_rapides_intactes(self):
+        for nom in self.LOURDES:
+            with self.subTest(lane=nom):
+                self.assertIn("needs.changes.outputs.allege != 'true'", str(self.jobs[nom]["if"]),
+                              f"ci.yml : la lane lourde `{nom}` tourne encore en mode allege.")
+        for nom in self.RAPIDES:
+            with self.subTest(garde=nom):
+                self.assertNotIn("allege", str(self.jobs[nom].get("if", "")),
+                                 f"ci.yml : la garde rapide `{nom}` ne doit pas dependre du mode allege.")
+
+    def test_agregateurs_requis_restent_verts_en_mode_allege(self):
+        results = {j: "skipped" for j in _ALL_JOBS}
+        results.update(changes="success", **{"ci-image-check": "success"})
+        out = {"changes": {"backend": "true", "frontend": "true", "code": "true",
+                           "fastapi": "false", "allege": "true"}}
+        for nom in ("backend-tests", "e2e", "frontend-lint"):
+            with self.subTest(requis=nom):
+                self.assertEqual(_verdict(self.jobs, nom, results, out), "success")
+
+
 class CouplagesInterSurfacesTest(unittest.TestCase):
     """ADEP11 - couplages inter-surfaces prouves : un test/une garde d'une surface lit un
     fichier d'une autre ; l'edition seule de ce fichier doit declencher la surface qui lit."""
@@ -491,6 +534,19 @@ class ReutilisationMergeQueueTests(unittest.TestCase):
 
     def test_aucun_run_vert_rejoue_tout(self):
         self.assertIsNone(self._chercher(self._faux_gh(runs="")))
+
+    def test_run_pr_allege_rejoue_tout(self):
+        # CI-UNE (fondateur, 27/10/2026) — un run `pull_request` d'une branche
+        # `claude/*` saute les lanes lourdes : son vert, meme arbre identique,
+        # ne vaut pas gate ; le groupe rejoue tout.
+        journal = self.JOURNAL + (
+            "2026-10-24T01:00:09.2Z Run allege (pull_request sur claude/x) : "
+            "lanes lourdes reportees au merge_group - allege=true\n")
+        self.assertTrue(self.m.est_allege(journal))
+        self.assertFalse(self.m.est_allege(self.JOURNAL))
+        # la copie du script en en-tete (ligne avec `$`) ne compte pas
+        self.assertFalse(self.m.est_allege('echo "… - allege=$allege"\n'))
+        self.assertIsNone(self._chercher(self._faux_gh(journal=journal)))
 
     def test_erreur_api_ne_fait_jamais_echouer(self):
         def gh(*args):
