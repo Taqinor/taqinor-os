@@ -1276,7 +1276,6 @@ export default function DevisGenerator({
       // du moteur pompage) : l'écran n'a plus de champ « heures » à pré-remplir.
       // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
       const kwh = parseFloat(data?.onee_tarif_kwh)
-      const rend = parseFloat(data?.rendement_global)
       const tvaStd = parseFloat(data?.tva_standard)
       const tvaPan = parseFloat(data?.tva_panneaux)
       // QJR39 — CompanyProfile.productible_kwh_kwc (QX38, exposé tel quel par
@@ -1291,7 +1290,8 @@ export default function DevisGenerator({
       const prod = parseFloat(data?.productible_kwh_kwc)
       setQuoteLogic({
         kwhPrice: (Number.isFinite(kwh) && kwh > 0) ? kwh : KWH_PRICE,
-        efficiency: (Number.isFinite(rend) && rend > 0) ? rend : EFFICIENCY,
+        // RGEN6 (AMOT64) — `rendement_global` ne pilote plus l'écran : la constante du simulateur, celle du serveur.
+        efficiency: EFFICIENCY,
         tvaStandard: (Number.isFinite(tvaStd) && tvaStd > 0) ? tvaStd : TVA_STANDARD_DEFAUT,
         tvaPanneaux: (Number.isFinite(tvaPan) && tvaPan > 0) ? tvaPan : TVA_PANNEAUX_DEFAUT,
         productible: (Number.isFinite(prod) && prod > 0) ? prod : null,
