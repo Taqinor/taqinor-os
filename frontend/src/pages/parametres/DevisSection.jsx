@@ -129,6 +129,13 @@ export default function DevisSection({
   const [variantePct, setVariantePct] = useState('')
   const [variantePctSaving, setVariantePctSaving] = useState(false)
 
+  // CCAT101 — lien profond `#prestations-ci` (depuis le catalogue stock) :
+  // amène le bloc « Prestations C&I » à l'écran au montage.
+  useEffect(() => {
+    if (window.location.hash !== '#prestations-ci') return
+    document.getElementById('prestations-ci')?.scrollIntoView?.()
+  }, [])
+
   useEffect(() => {
     let vivant = true
     ventesApi.getVarianteConfig()
@@ -329,7 +336,7 @@ export default function DevisSection({
           {/* CIQ106 — « Prestations C&I » : une ligne par prestation (fixe,
               par kWc, par panneau, source, date). Champ vide = « prix à
               renseigner », aucune valeur suggérée ; saisie libre step="any". */}
-          <div className="mb-1 mt-4 text-xs font-semibold text-foreground">
+          <div id="prestations-ci" className="mb-1 mt-4 text-xs font-semibold text-foreground">
             Prestations C&amp;I
           </div>
           <p className="mb-2 text-[11px] text-muted-foreground">

@@ -41,3 +41,23 @@ describe('APAR38 — droit parametres_modifier', () => {
     expect(screen.queryByTestId('parametres-lecture-seule')).toBeNull()
   })
 })
+
+describe("CCAT101 — ?onglet=<clé> ouvre l'onglet demandé", () => {
+  beforeEach(() => definirProfil(PROFIL))
+  afterEach(cleanup)
+
+  it('?onglet=devis : onglet Devis (bloc Prestations C&I)', async () => {
+    rendreParametresEntreprise({ role: 'admin', permissions: [] }, '/parametres?onglet=devis')
+    await waitFor(() => expect(screen.getByTestId('prestations-ci')).toBeInTheDocument())
+  })
+
+  it('onglet inconnu ou absent : retombe sur Société', async () => {
+    const { container, unmount } = rendreParametresEntreprise({ role: 'admin', permissions: [] }, '/parametres?onglet=nimporte')
+    await waitFor(() => expect(container.querySelector('input[name="nom"]')).not.toBeNull())
+    expect(screen.queryByTestId('prestations-ci')).toBeNull()
+    unmount()
+    const autre = rendreParametresEntreprise({ role: 'admin', permissions: [] })
+    await waitFor(() => expect(autre.container.querySelector('input[name="nom"]')).not.toBeNull())
+    expect(screen.queryByTestId('prestations-ci')).toBeNull()
+  })
+})

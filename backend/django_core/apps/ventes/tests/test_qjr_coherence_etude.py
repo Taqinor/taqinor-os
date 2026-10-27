@@ -44,6 +44,9 @@ LECTEURS_LEGITIMES = {
     'apps/ventes/offres_tailles.py',
     # Les paliers/combinaisons du balayage portent LEUR payback.
     'apps/ventes/dimensionnement.py',
+    # RSIZ (27/10/2026) — MÊME payback de palier, NOUVEAU fichier : le
+    # déplacement pur de ``balayer_tailles`` (aucune lecture d'etude_params).
+    'apps/ventes/dimensionnement_balayage.py',
     # QJR77 (30/08/2026) — MÊME payback de palier, NOUVEAU fichier. La
     # scission de `dimensionnement.py` a emporté la couche liée au devis,
     # dont `_echelle_paliers_batterie`, qui pose sa PROPRE clé
