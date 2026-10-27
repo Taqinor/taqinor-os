@@ -19,7 +19,8 @@ from core.product_roles import (
 )
 
 from .corps_achats import valider_lignes_modele_bcf
-from .erreurs_achats import CapaciteMontantsBcfMixin, ConflitEtat, IdInconnu404LignesMixin
+from .erreurs_achats import (
+    CapaciteMontantsBcfMixin, CapaciteMontantsFactureMixin, ConflitEtat, IdInconnu404LignesMixin)
 from .openapi_helpers import ChampsStrictsProduitMixin, ChampsStrictsSouplesMixin, DecimalLie
 from .models import (
     Produit, Categorie, Fournisseur, MouvementStock, Marque,
@@ -2044,7 +2045,7 @@ class EcheanceFactureFournisseurSerializer(CompanyScopedRelationsMixin,
 
 
 class FactureFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
-                                   CompanyScopedRelationsMixin,
+                                   CompanyScopedRelationsMixin, CapaciteMontantsFactureMixin,
                                    ChampsTexteBooleenStricts,
                                    serializers.ModelSerializer):
     # ASTK4 — toute FK écrite vers un objet d'une autre société est
