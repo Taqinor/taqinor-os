@@ -828,11 +828,10 @@ def _echelle_paliers_batterie(devis):
     # ── LES BORNES DU CHAMP ──────────────────────────────────────────────────
     panneaux_parite = max(1, int(math.ceil(
         (conso_annuelle / productible_annuel) * 1000.0 / panel_watt)))
-    # 23/10/2026 — borne INCHANGÉE à 120 (``SEUIL_PANNEAUX_RESIDENTIEL``, l'ex-
-    # ``MAX_PANNEAUX_BALAYAGE``) : ``champ_minimal`` tire le champ panneau par
-    # panneau, et le plafond dur du balayage des tailles (2 000) n'est pas une
-    # borne pour cette échelle — le comportement reste byte-identique.
-    max_champ = min(SEUIL_PANNEAUX_RESIDENTIEL,
+    # RSIZ8 — LA MÊME borne que le balayage des tailles (falaise × parité,
+    # plafond dur 2 000, fondateur 23/10) : le 120 est un SIGNAL, plus un
+    # plafond. Sous 120 la borne est inchangée.
+    max_champ = min(MAX_PANNEAUX_BALAYAGE,
                     int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
     # LA BORNE DE TOIT EST LA CONTENANCE, PAS LE DESSIN (fondateur, 26/08/2026).
     #
@@ -874,17 +873,9 @@ def _echelle_paliers_batterie(devis):
     if not cibles:
         return []
 
-    # AMOT30 — LE constructeur unique (``etude_horaire.kwargs_moteur_horaire``)
-    # depuis le MÊME ``EntreesMoteur`` que le tableau : jour de référence
-    # (QJR45) et barème société (QJR46) compris ; seule la consommation est
-    # celle résolue ci-dessus.
-    from apps.ventes.etude_horaire import kwargs_moteur_horaire
-    # RSIZ7 — ombrage du calepinage du devis (si le balayage l'accepte).
-    from apps.ventes.domain.entrees import kwargs_ombrage
-    etude_kwargs = dict(kwargs_moteur_horaire(entrees),
-                        conso_kwh_mensuelles=conso,
-                        **kwargs_ombrage(entrees.get('perte_ombrage_pct'),
-                                         balayer_stockage_horaire))
+    from apps.ventes.domain.entrees import kwargs_moteur_ombre
+    etude_kwargs = dict(kwargs_moteur_ombre(entrees),
+                        conso_kwh_mensuelles=conso)  # RSIZ7 : + ombrage
 
     sondes = {}
 
@@ -1096,6 +1087,7 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
 from apps.ventes.dimensionnement import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     FACTEUR_MAX_FALAISE,
     MAX_PALIERS_STOCKAGE,
+    MAX_PANNEAUX_BALAYAGE,
     _arrondi,
     _lire_composition,
     _num,
@@ -1103,4 +1095,3 @@ from apps.ventes.dimensionnement import (  # noqa: E402 — fin de module (anti-
     capacite_utile_batterie,
     paliers_stockage_candidats,
 )
-from apps.ventes.balayage_adaptatif import SEUIL_PANNEAUX_RESIDENTIEL  # noqa: E402 — fin de module (D-ENF22)

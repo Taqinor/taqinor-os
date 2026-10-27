@@ -13,7 +13,7 @@ PVGIS, aucun accès réseau)."""
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Client, Lead
 from apps.stock.models import Produit
@@ -219,3 +219,43 @@ class EmpreinteEntreesTests(_DimensionnementBase):
         with patch:
             rafraichir_dimensionnement_devis(devis, force=True)
         self.assertEqual(len(appels), 1)
+
+
+class BornesEtOmbrageRsizTests(SimpleTestCase):
+    """RSIZ7 / RSIZ8 — fonctions pures, sans base."""
+
+    def test_rsiz8_l_echelle_batterie_n_est_plus_bornee_a_120(self):
+        """La borne du champ de l'échelle est celle du balayage (plafond dur
+        2 000), plus le seuil « hors résidentiel » de 120 panneaux."""
+        import inspect
+
+        from apps.ventes.domain import dimensionnement_devis as D
+        source = inspect.getsource(D._echelle_paliers_batterie)
+        self.assertIn('min(MAX_PANNEAUX_BALAYAGE', source)
+        self.assertNotIn('min(SEUIL_PANNEAUX_RESIDENTIEL', source)
+        self.assertEqual(D.MAX_PANNEAUX_BALAYAGE, 2000)
+
+    def test_rsiz7_l_ombrage_entre_dans_l_empreinte_seulement_s_il_existe(self):
+        from apps.ventes.domain.entrees import EntreesMoteur, empreinte_entrees
+        base = dict(conso_kwh_mensuelles=[300.0] * 12, ville='Casablanca')
+        sans = empreinte_entrees(EntreesMoteur(**base))
+        self.assertEqual(
+            sans, empreinte_entrees(EntreesMoteur(perte_ombrage_pct=None, **base)))
+        avec = empreinte_entrees(EntreesMoteur(perte_ombrage_pct=7.5, **base))
+        self.assertNotEqual(sans, avec)
+        self.assertNotEqual(
+            avec, empreinte_entrees(EntreesMoteur(perte_ombrage_pct=9.0, **base)))
+
+    def test_rsiz7_kwargs_ombrage_exige_que_tous_les_moteurs_l_acceptent(self):
+        from apps.ventes.domain.entrees import kwargs_ombrage
+
+        def avec(*, perte_ombrage_pct=None):
+            return None
+
+        def sans():
+            return None
+
+        self.assertEqual(kwargs_ombrage(None, avec), {})
+        self.assertEqual(kwargs_ombrage(5.0, avec),
+                         {'perte_ombrage_pct': 5.0})
+        self.assertEqual(kwargs_ombrage(5.0, avec, sans), {})

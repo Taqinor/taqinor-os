@@ -390,6 +390,19 @@ def kwargs_ombrage(perte_pct, *moteurs):
     return {'perte_ombrage_pct': perte_pct}
 
 
+def kwargs_moteur_ombre(entrees):
+    """RSIZ7 — ``etude_horaire.kwargs_moteur_horaire(entrees)`` PLUS l'ombrage
+    du calepinage (``entrees['perte_ombrage_pct']``) quand l'étude ET le
+    balayage du stockage l'acceptent (:func:`kwargs_ombrage`). Le point
+    d'entrée unique des appelants : un seul `import` change, rien d'autre."""
+    from apps.ventes.etude_horaire import (
+        balayer_stockage_horaire, calculer_etude_horaire,
+        kwargs_moteur_horaire)
+    return dict(kwargs_moteur_horaire(entrees), **kwargs_ombrage(
+        entrees.get('perte_ombrage_pct'),
+        calculer_etude_horaire, balayer_stockage_horaire))
+
+
 def _phase_du_lead(lead):
     from apps.ventes.compatibilites import normaliser_phase
     return normaliser_phase(getattr(lead, 'raccordement', None))
