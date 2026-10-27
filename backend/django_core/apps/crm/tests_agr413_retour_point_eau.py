@@ -139,3 +139,34 @@ class RetourPointEauALaValidation(TestCase):
             LeadActivity.objects.filter(
                 lead=self.lead, kind=LeadActivity.Kind.MODIFICATION).count(),
             nb)
+
+    def test_agv3_la_plaque_de_la_pompe_remonte_au_lead(self):
+        visite = self._visite(mesures={'pompe_existante': {
+            'pompe_actuelle_kw': 5.5, 'tension_v': 380,
+            'alimentation': 'tri'}})
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.pompe_actuelle_kw, Decimal('5.50'))
+        self.assertEqual(self.lead.pompe_actuelle_tension_v, 380)
+        self.assertEqual(self.lead.pompe_actuelle_phases, 'tri')
+        self.assertEqual(self._lignes('pompe_actuelle_tension_v').count(), 1)
+
+    def test_agv3_une_tension_hors_220_380_n_est_pas_recopiee(self):
+        self.lead.pompe_actuelle_tension_v = 220
+        self.lead.save(update_fields=['pompe_actuelle_tension_v'])
+        visite = self._visite(mesures={'pompe_existante': {
+            'tension_v': 400}})
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.pompe_actuelle_tension_v, 220)
+
+    def test_agv3_revalider_la_plaque_ne_change_rien(self):
+        visite = self._visite(mesures={'pompe_existante': {
+            'pompe_actuelle_kw': 5.5, 'tension_v': 380,
+            'alimentation': 'mono'}})
+        visites_services.valider_visite(visite, self.bureau)
+        mesures = visites_selectors.mesures_point_eau_pour_lead(visite)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            visites_retour_lead.appliquer_mesures_point_eau(
+                self.lead, mesures, self.bureau), [])
