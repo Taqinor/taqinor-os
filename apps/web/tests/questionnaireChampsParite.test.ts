@@ -20,10 +20,7 @@ const collect = src.slice(debut, fin);
 // nommée RETIRE l'entrée : le test « encore en attente » ci-dessous rougit dès que
 // la page porte toutes les colonnes, pour que l'exemption ne survive pas au code.
 const SECTIONS_POSEES_AVANT_LA_PAGE: Readonly<Record<string, string>> = {
-  // pompage : retiré par AGW408 (la page dessine toutes ses colonnes).
-  // CQST3 a ajouté HMT, débit actuel + heures, mode de pompe et plaque : la
-  // page les dessine en CQSTW1, qui retire cette entrée.
-  pompage: 'CQSTW1',
+  // Vide : CQSTW1 a retiré l'exemption `pompage` (la page dessine toutes ses colonnes).
 };
 
 describe('questionnaire — parité colonnes_ecrites ↔ collectSectionRaw', () => {

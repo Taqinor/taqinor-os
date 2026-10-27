@@ -856,3 +856,32 @@ describe('CIW406 — contrat : exemple_pro et choix fermés', () => {
     }
   });
 });
+
+describe('CQSTW1 — pompage : colonnes CQST3/CQST6', () => {
+  it('envoie des nombres et des valeurs du contrat ; plaque seulement si « existante »', () => {
+    const r = buildSectionReponses('pompage', {
+      pompe_hmt_m: '55', pompe_actuelle_debit_m3h: '12.5', pompage_heures_jour: '6',
+      profondeur_forage_m: '80', debit_forage_m3h: '9', mode_pompe: 'existante',
+      pompe_actuelle_kw: '5.5', pompe_actuelle_tension_v: '380', pompe_actuelle_phases: 'tri',
+    });
+    expect(r).toMatchObject({
+      pompe_hmt_m: 55, pompe_actuelle_debit_m3h: 12.5, pompage_heures_jour: 6,
+      profondeur_forage_m: 80, debit_forage_m3h: 9, mode_pompe: 'existante',
+      pompe_actuelle_kw: 5.5, pompe_actuelle_tension_v: 380, pompe_actuelle_phases: 'tri',
+    });
+  });
+  it('pompe neuve : une plaque laissée dans un champ masqué ne part pas', () => {
+    const r = buildSectionReponses('pompage', {
+      mode_pompe: 'neuve', pompe_actuelle_kw: '5.5', pompe_actuelle_tension_v: '380', pompe_actuelle_phases: 'tri',
+    });
+    expect(r).toEqual({ mode_pompe: 'neuve' });
+  });
+  it('valeurs hors contrat ou ≤ 0 écartées', () => {
+    const r = buildSectionReponses('pompage', {
+      pompe_hmt_m: '-3', pompage_heures_jour: '30', mode_pompe: 'autre',
+    });
+    expect(r).toEqual({});
+    expect(buildSectionReponses('pompage', { mode_pompe: 'existante', pompe_actuelle_tension_v: '110', pompe_actuelle_phases: 'bi' }))
+      .toEqual({ mode_pompe: 'existante' });
+  });
+});

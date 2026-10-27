@@ -369,6 +369,10 @@ export const OCCUPATION_JOUR_VALUES = ['present', 'absent', 'partiel'] as const;
 export const SOURCE_EAU_VALUES = ['puits', 'forage', 'bassin', 'riviere'] as const;
 export const IRRIGATION_METHODE_VALUES = ['goutte', 'aspersion', 'gravitaire'] as const;
 export const POMPE_ALIM_VALUES = ['aucune', 'diesel', 'butane', 'electrique'] as const;
+// CQSTW1 — mode de pompe et plaque (contrat CQST3).
+export const MODE_POMPE_VALUES = ['neuve', 'existante'] as const;
+export const PLAQUE_TENSION_VALUES = [220, 380] as const;
+export const PLAQUE_PHASES_VALUES = ['mono', 'tri'] as const;
 export const MOIS_IRRIGATION_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 
 export type OccupationJourId = (typeof OCCUPATION_JOUR_VALUES)[number];
@@ -841,6 +845,27 @@ export function buildSectionReponses(
       if (jours != null) out.jours_irrigation_semaine = jours;
       const compteur = cleanOuiNon(raw.compteur_eau);
       if (compteur !== undefined) out.compteur_eau = compteur;
+      // CQSTW1 — colonnes CQST3/CQST6 : nombres > 0, valeurs fermées du contrat.
+      const mesures: Array<[string, number]> = [
+        ['profondeur_forage_m', 10_000], ['debit_forage_m3h', 100_000], ['pompe_hmt_m', 10_000],
+        ['pompe_actuelle_debit_m3h', 100_000], ['pompage_heures_jour', 24],
+      ];
+      for (const [cle, max] of mesures) {
+        const n = cleanPositiveNumber(raw[cle], max);
+        if (n != null) out[cle] = n;
+      }
+      const modePompe = cleanEnum(raw.mode_pompe, MODE_POMPE_VALUES);
+      if (modePompe) out.mode_pompe = modePompe;
+      // La plaque n'a de sens que pour « je garde ma pompe » : jamais envoyée sinon
+      // (une valeur laissée dans un champ masqué ne part pas).
+      if (modePompe === 'existante') {
+        const kw = cleanPositiveNumber(raw.pompe_actuelle_kw, 1_000);
+        if (kw != null) out.pompe_actuelle_kw = kw;
+        const tension = Number(raw.pompe_actuelle_tension_v);
+        if ((PLAQUE_TENSION_VALUES as readonly number[]).includes(tension)) out.pompe_actuelle_tension_v = tension;
+        const phases = cleanEnum(raw.pompe_actuelle_phases, PLAQUE_PHASES_VALUES);
+        if (phases) out.pompe_actuelle_phases = phases;
+      }
       break;
     }
     case 'occupation': {
@@ -910,7 +935,9 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
     'source_eau', 'niveau_statique_m', 'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
     'irrigation_methode', 'pompe_alim_actuelle', 'butane_bouteilles_jour',
     'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois', 'mois_irrigation',
-    'jours_irrigation_semaine', 'compteur_eau',
+    'jours_irrigation_semaine', 'compteur_eau', 'pompe_hmt_m', 'pompe_actuelle_debit_m3h',
+    'pompage_heures_jour', 'mode_pompe', 'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
+    'pompe_actuelle_phases', 'profondeur_forage_m', 'debit_forage_m3h',
   ],
   equipements: [
     'equip_piscine', 'equip_piscine_pompe_kw', 'equip_voiture_electrique', 'equip_ve_km_semaine',
