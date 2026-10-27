@@ -391,6 +391,21 @@ def template_for_installation(installation):
     return default
 
 
+def raison_refus_cocher_etape(item, fait):
+    """Revue chantier 26/10/2026 — LA garde du cochage d'une étape de
+    checklist chantier, partagée par l'action ``cocher-checklist`` ET la
+    synchro hors-ligne (``field_sync._h_cocher_checklist``) : une étape à
+    ``photo_obligatoire`` ne se coche pas tant qu'aucune photo n'est liée à
+    CETTE étape (``PhotoChecklistMeta``). Décocher reste toujours permis.
+    Message FR ou ``None``."""
+    if not fait or not getattr(item, 'photo_obligatoire', False):
+        return None
+    if item.photos.exists():
+        return None
+    return (f"Photo requise pour l'étape « {item.libelle} » : ajoutez une "
+            "photo de cette étape avant de la cocher.")
+
+
 def ensure_checklist_items(installation):
     """Matérialise les étapes de checklist d'un chantier depuis le template
     auto-sélectionné par son type d'installation (N74) — création paresseuse,
@@ -960,7 +975,16 @@ def create_installation_from_devis(devis, user, company):
     # l'acceptation d'un devis n'avait aucune ligne « Chantier créé » dans son
     # Historique. Ici, les trois chemins l'obtiennent.
     from . import activity
-    activity.log_creation(inst, user)
+    # P29 (revue chantier 26/10/2026) — l'acceptation en ligne du devis par
+    # le client n'a pas d'utilisateur : la ligne le dit au lieu de « par ? ».
+    reference_devis = getattr(devis, 'reference', None) or f'#{devis.pk}'
+    username = getattr(user, 'username', None)
+    activity.log_creation(
+        inst, user,
+        body=(f"Chantier créé à l'acceptation du devis {reference_devis} "
+              f"par {username}" if username else
+              f"Chantier créé à l'acceptation du devis {reference_devis} "
+              "(acceptation client en ligne)"))
     return inst, True
 
 
@@ -2080,8 +2104,12 @@ def sync_etape_from_statut(installation):
 # « prêt / non prêt » destiné à une bannière. Il ne bloque RIEN par lui-même —
 # l'appel reste autorisé ; le frontend peut proposer un override-à-confirmer.
 
-def compute_chantier_readiness(installation):
+def compute_chantier_readiness(installation, besoins=None):
     """FG77 — état de préparation avant pose d'un chantier (lecture seule).
+
+    ``besoins`` (optionnel) : le ``compute_besoin_materiel`` déjà calculé par
+    l'appelant (revue chantier 26/10/2026 — l'approvisionnement ne le
+    recalcule pas). Seul un BCF ENVOYÉ y sécurise un manque.
 
     Renvoie un dict :
       pret (bool) : aucun bloqueur ;
@@ -2098,7 +2126,8 @@ def compute_chantier_readiness(installation):
     checks = []
 
     # ── Matériel ────────────────────────────────────────────────────────────
-    besoins = compute_besoin_materiel(installation)
+    if besoins is None:
+        besoins = compute_besoin_materiel(installation)
     manques = [
         {'designation': b['designation'], 'manque': b['manque']}
         for b in besoins if b.get('manque', 0) > 0
@@ -2681,8 +2710,10 @@ def _gate_check_pack(installation, stage=None):
     pièce obligatoire manque. Dégrade proprement : les pièces facultatives
     absentes ne bloquent pas."""
     resume = assemble_handover_pieces(installation)
-    manquantes = [p['libelle'] for p in resume['pieces']
-                  if p.get('obligatoire') and not p.get('present')]
+    manquantes = [
+        p['libelle'] + (f" ({p['detail']})" if p.get('detail') else '')
+        for p in resume['pieces']
+        if p.get('obligatoire') and not p.get('present')]
     raisons = []
     if manquantes:
         raisons.append(
@@ -2980,6 +3011,90 @@ def est_directeur(user):
     if getattr(user, 'role_id', None):
         return 'journal_activite_voir' in (user.role.permissions or [])
     return bool(getattr(user, 'is_admin_role', False))
+
+
+#: Revue chantier 26/10/2026 (G14) — phrases FIXES des avertissements de
+#: clôture (consultatifs, jamais un blocage : le fondateur ferme parfois un
+#: chantier dont le solde n'est pas encaissé, en connaissance de cause).
+AVERT_CLOTURE_SOLDE_NON_FACTURE = 'Solde non facturé'
+AVERT_CLOTURE_SOLDE_NON_ENCAISSE = 'Solde non encaissé'
+AVERT_CLOTURE_RECEPTION_DEFINITIVE = 'Réception définitive non prononcée'
+AVERT_CLOTURE_PACK_INCOMPLET = 'Pack de remise incomplet'
+_SEUIL_SOLDE = Decimal('0.01')
+
+
+def _avertissements_cloture_financiers(installation):
+    """(non facturé, non encaissé) d'après l'état de la vente du devis
+    (``ventes.selectors.etat_vente`` — la source unique : jamais recalculé
+    ici). Sans devis lié, ou état illisible : ni l'un ni l'autre."""
+    devis = getattr(installation, 'devis', None)
+    if devis is None:
+        return False, False
+    try:
+        from apps.ventes.selectors import etat_vente
+        etat = etat_vente(devis)
+        prix = Decimal(str(etat['prix_convenu_ttc']))
+        emis = Decimal(str(etat['emis_ttc']))
+        a_payer = Decimal(str(etat['reste_a_payer_ttc']))
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        logger.warning(
+            'G14 — état de la vente illisible (chantier %s)',
+            installation.pk, exc_info=True)
+        return False, False
+    a_facturer = max(prix - emis, Decimal('0'))
+    non_facture = a_facturer > _SEUIL_SOLDE
+    # Le dû des factures ÉMISES = reste à payer moins ce qui n'est pas encore
+    # facturé (le reste à payer cumule les deux).
+    non_encaisse = (a_payer - a_facturer) > _SEUIL_SOLDE
+    return non_facture, non_encaisse
+
+
+def _series_manquantes_au_parc(installation):
+    """Nombre de n° de série attendus (produits porteurs de série de la
+    nomenclature gelée) qui ne sont pas encore sur une fiche du parc."""
+    from apps.sav.selectors import equipements_series_du_chantier
+    from .selectors import produits_porteurs_de_serie
+    porteurs = produits_porteurs_de_serie(installation)
+    if not porteurs:
+        return 0
+    releves = {}
+    for eq in equipements_series_du_chantier(
+            installation.company, installation.pk):
+        releves[eq['produit_id']] = releves.get(eq['produit_id'], 0) + 1
+    return sum(max(attendu - releves.get(produit.pk, 0), 0)
+               for produit, attendu in porteurs)
+
+
+def avertissements_cloture(installation):
+    """Revue chantier 26/10/2026 (G14) — phrases FR CONSULTATIVES à lire
+    avant de CLÔTURER un chantier réceptionné : solde non facturé / non
+    encaissé, réception définitive non prononcée (site pro seulement), n° de
+    série manquants au parc, pack de remise incomplet. Liste vide = rien à
+    signaler. N'empêche jamais la clôture (``cloture`` reste un changement de
+    statut ordinaire). Lecture pure, bornée au chantier."""
+    avertissements = []
+    non_facture, non_encaisse = _avertissements_cloture_financiers(
+        installation)
+    if non_facture:
+        avertissements.append(AVERT_CLOTURE_SOLDE_NON_FACTURE)
+    if non_encaisse:
+        avertissements.append(AVERT_CLOTURE_SOLDE_NON_ENCAISSE)
+    if (est_chantier_industriel(installation)
+            and installation.date_reception_definitive is None):
+        avertissements.append(AVERT_CLOTURE_RECEPTION_DEFINITIVE)
+    manquantes = _series_manquantes_au_parc(installation)
+    if manquantes:
+        avertissements.append(
+            f"{manquantes} série manquante au parc" if manquantes == 1
+            else f"{manquantes} séries manquantes au parc")
+    pieces = assemble_handover_pieces(installation)
+    if not pieces['complet']:
+        absentes = [p['libelle'] for p in pieces['pieces']
+                    if p.get('obligatoire') and not p.get('present')]
+        avertissements.append(
+            AVERT_CLOTURE_PACK_INCOMPLET
+            + (' : ' + ', '.join(absentes) if absentes else ''))
+    return avertissements
 
 
 def verifier_reouverture_cloture(installation, nouveau_statut, user, motif):
@@ -3427,6 +3542,41 @@ def enregistrer_reverification(
 # OBLIGATOIRES (as-built, certificat de recette, garanties, dossier 82-21 quand
 # requis) sont ce que le gate « Remise au client » exige (CH2).
 
+def garanties_prevues_nomenclature(installation):
+    """Revue chantier 26/10/2026 (G1) — le parc SAV ne naît qu'à la réception
+    (``sweep_bom_to_parc``, APRÈS le changement de statut) : la pièce
+    « garanties » du pack ne peut donc pas attendre un équipement garanti
+    pour passer. Lit la nomenclature gelée : pour chaque produit catalogue
+    qui entrera au parc (catégorie hors ``types_equipement_hors_parc``),
+    sa durée de garantie structurée. Renvoie ``(prevus, sans_garantie)`` :
+    nombre de produits qui entreront au parc, et désignations de ceux dont
+    ``garantie_mois`` n'est pas renseignée (leur équipement n'aurait aucune
+    date de fin de garantie)."""
+    from apps.sav.selectors import types_equipement_hors_parc
+    from apps.stock.selectors import get_produit_scoped
+    hors_parc = types_equipement_hors_parc()
+    vus = set()
+    prevus = 0
+    sans_garantie = []
+    for ligne in (installation.bom or []):
+        produit_id = (ligne or {}).get('produit_id')
+        if not produit_id or produit_id in vus:
+            continue
+        vus.add(produit_id)
+        produit = get_produit_scoped(installation.company, produit_id)
+        if produit is None:
+            continue
+        categorie = getattr(produit, 'categorie', None)
+        if getattr(categorie, 'type_equipement', None) in hors_parc:
+            continue
+        prevus += 1
+        if not (getattr(produit, 'garantie_mois', None) or 0) > 0:
+            sans_garantie.append(
+                (ligne or {}).get('designation')
+                or getattr(produit, 'nom', '') or f'Produit {produit_id}')
+    return prevus, sans_garantie
+
+
 def assemble_handover_pieces(installation):
     """Assemble (SANS persister) la liste des pièces du pack de remise d'un
     chantier depuis son état réel. Renvoie {pieces: [...], complet: bool} —
@@ -3475,13 +3625,25 @@ def assemble_handover_pieces(installation):
     # ── Garanties (issues du parc SAV — FG70) ──
     garanties = [eq for eq in equipements
                  if getattr(eq, 'date_fin_garantie', None) is not None]
+    # G1 — « présente » aussi quand le parc va produire les dates de garantie
+    # à la réception : tout produit qui entrera au parc a une durée de
+    # garantie structurée. Sinon le détail nomme les produits sans durée.
+    prevus, sans_garantie = (0, [])
+    if not garanties:
+        prevus, sans_garantie = garanties_prevues_nomenclature(installation)
+    garanties_prevues = bool(prevus) and not sans_garantie
     piece_garanties = {
         'type': 'garanties',
         'libelle': 'Garanties matériel & production',
         'reference': f'{len(garanties)} équipement(s) couvert(s)'
-        if garanties else None,
-        'present': bool(garanties),
+        if garanties else (
+            f'{prevus} produit(s) garanti(s) — dates posées à la réception'
+            if garanties_prevues else None),
+        'present': bool(garanties) or garanties_prevues,
         'obligatoire': True,
+        'detail': (
+            'Garantie non renseignée : ' + ', '.join(sans_garantie)
+            if (not garanties and sans_garantie) else None),
     }
     if est_chantier_industriel(installation):
         # CIQ634 — garanties de pose et d'étanchéité, listées à côté des
@@ -3489,7 +3651,8 @@ def assemble_handover_pieces(installation):
         installateur = garanties_installateur(installation)
         piece_garanties['installateur'] = installateur
         piece_garanties['reference'] = " ; ".join(
-            ([piece_garanties['reference']] if garanties else [])
+            ([piece_garanties['reference']]
+             if piece_garanties['reference'] else [])
             + [g['texte'] for g in installateur])
     pieces.append(piece_garanties)
 
@@ -5808,6 +5971,42 @@ def changer_statut_chantier(installation, nouveau_statut, user, *, etape=None,
             'effets': effets}
 
 
+def avancer_materiel_commande_si_couvert(installation, user=None, *,
+                                         exiger_couverture=True, note=None):
+    """Revue chantier (F2) — chantier « Signé » → « Matériel commandé » par
+    ``changer_statut_chantier`` (gardes + cascade), UNE implémentation pour
+    `commander-besoin` (tentative au brouillon, ``exiger_couverture=False`` :
+    passe pour une société sans étapes) et l'ENVOI d'un BCF du chantier
+    (``stock`` : « Matériel commandé » est atteint quand les commandes sont
+    ENVOYÉES — avec l'étape bloquante `approvisionnement`, un brouillon ne
+    sécurise rien). Avec ``exiger_couverture``, rien n'est tenté tant que
+    ``compute_besoin_materiel`` montre un manque. Ne lève jamais : renvoie
+    ``(avancé, raison)`` — raison None quand rien n'est à dire."""
+    from apps.stock.services import compute_besoin_materiel
+    from . import activity
+    if (installation is None
+            or Installation.canonical_statut(installation.statut)
+            != Installation.Statut.SIGNE):
+        return False, None
+    if exiger_couverture:
+        nb = sum(1 for b in compute_besoin_materiel(installation)
+                 if b.get('manque', 0) > 0)
+        if nb:
+            return False, (f'{nb} article{"s" if nb > 1 else ""} '
+                           'encore en manque.')
+    try:
+        changer_statut_chantier(
+            installation, Installation.Statut.MATERIEL_COMMANDE, user)
+    except TransitionRefusee as exc:
+        # Refus AVANT toute écriture (gardes) : l'instance est intacte.
+        return False, ' ; '.join(exc.raisons) or 'Transition refusée.'
+    activity.log_note(
+        installation, user,
+        note or ("Chantier passé à « Matériel commandé » (bons de commande "
+                 "fournisseur envoyés : le besoin matériel est couvert)."))
+    return True, None
+
+
 # ── YSERV6 — annulation de chantier : solder les interventions ouvertes ────
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -5896,14 +6095,23 @@ def changer_statut_intervention(intervention, nouveau_statut, user, *,
     ancien = intervention.statut
     if nouveau_statut == ancien:
         return {'ancien': ancien, 'nouveau': ancien, 'effets': {}}
+    # Revue chantier 26/10/2026 — séries manquantes : CONSULTATIF (jamais
+    # bloquant), rendu à côté des raisons de refus et dans le reçu.
+    avertissements = field_services.avertissements_terminee(
+        intervention, nouveau_statut)
     raison = field_services.transition_block_reason(
         intervention, nouveau_statut)
     if raison:
-        raise TransitionRefusee([raison] if isinstance(raison, str) else raison)
+        refus = TransitionRefusee(
+            [raison] if isinstance(raison, str) else raison)
+        refus.avertissements = avertissements
+        raise refus
     raison_securite = verifier_securite_avant_demarrage(
         intervention, nouveau_statut)
     if raison_securite:
-        raise TransitionRefusee([raison_securite])
+        refus = TransitionRefusee([raison_securite])
+        refus.avertissements = avertissements
+        raise refus
 
     old = etat_avant if etat_avant is not None else (
         _Intervention.objects.get(pk=intervention.pk))
@@ -5918,6 +6126,8 @@ def changer_statut_intervention(intervention, nouveau_statut, user, *,
     intervention.save(update_fields=champs_ecrits)
 
     effets = {}
+    if avertissements:
+        effets['avertissements'] = avertissements
     _stamp_date_realisee_intervention(intervention)
     effets['date_realisee'] = intervention.date_realisee
     intervention_activity.log_changes(old, intervention, user)
@@ -6184,12 +6394,21 @@ def _notifier_client_jalon_atteint(installation, jalon):
             return
         from django.conf import settings
         from django.core.mail import send_mail
-        send_mail(
-            f'Chantier {installation.reference} — {jalon.libelle} atteint',
+        corps = (
             'Bonjour,\n\n'
             f"Votre chantier {installation.reference} vient de franchir "
             f"l'étape « {jalon.libelle} ». Suivez son avancement depuis "
-            'votre espace client.',
+            'votre espace client.')
+        # Revue chantier 26/10/2026 (G5/G6) — à la réception, les documents
+        # de remise signés sont dans « Mes documents » du portail.
+        if jalon.phase == jalon.Phase.RECEPTION:
+            corps += (
+                "\n\nLe procès-verbal de réception et le bon de livraison "
+                "sont disponibles dans la rubrique « Mes documents » de "
+                "votre espace client dès leur signature.")
+        send_mail(
+            f'Chantier {installation.reference} — {jalon.libelle} atteint',
+            corps,
             getattr(settings, 'DEFAULT_FROM_EMAIL', None),
             [email_addr], fail_silently=True)
     except Exception:  # pragma: no cover - défensif, best-effort

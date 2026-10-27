@@ -15,6 +15,7 @@ Cet enum est une liste FERMÉE, en ordre d'entonnoir. « annulé » n'est PAS un
 étape : c'est un drapeau (avec motif), comme « Perdu » sur un lead.
 """
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 # NOTE: découpage de l'ancien models.py monolithe (un fichier par
@@ -128,6 +129,13 @@ class Installation(models.Model):
         max_digits=9, decimal_places=6, null=True, blank=True)
     gps_lng = models.DecimalField(
         max_digits=9, decimal_places=6, null=True, blank=True)
+    # Revue chantier 26/10/2026 — rayon de géofence PROPRE au chantier (grand
+    # site agricole, toiture industrielle…). Vide = défaut 500 m
+    # (``models_gps_tracking.DEFAULT_GEOFENCE_RADIUS_KM``).
+    geofence_rayon_m = models.PositiveIntegerField(
+        null=True, blank=True,
+        validators=[MinValueValidator(10), MaxValueValidator(50000)],
+        help_text="Rayon de géofence du chantier en mètres (vide = 500 m par défaut).")
 
     # ── XFSM8 — notes d'accès au site, réutilisées à chaque visite ───────────
     # Saisies une fois sur le chantier (jamais ressaisies), reprises en lecture

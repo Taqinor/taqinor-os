@@ -417,13 +417,26 @@
       "choix": [
         "hotel",
         "restaurant",
+        "cafe",
+        "boulangerie",
         "commerce",
+        "supermarche",
+        "boucherie",
+        "pharmacie",
+        "coiffure",
+        "pressing",
         "bureau",
         "sante",
         "ecole",
+        "salle_sport",
         "hammam",
-        "boulangerie",
+        "garage",
+        "atelier",
+        "imprimerie",
+        "station_service",
+        "entrepot",
         "froid",
+        "mosquee",
         "autre"
       ],
       "segment": "commercial",
@@ -501,6 +514,18 @@
       "segment": "commun",
       "etape_appel": 3,
       "question": "« Fermez-vous certains mois de l'année, pour des congés ou une saison creuse ? Lesquels ? »"
+    },
+    {
+      "nom": "equipements_hors_horaires",
+      "type": "choix",
+      "choix": [
+        "aucun",
+        "un_peu",
+        "beaucoup"
+      ],
+      "segment": "commun",
+      "etape_appel": 3,
+      "question": "« Avez-vous des équipements qui tournent la nuit ou hors de vos horaires (chambres froides, frigos, fours de nuit, pompes) ? »"
     },
     {
       "nom": "type_surface",
@@ -751,10 +776,20 @@
         "cuisson",
         "ouvert_journee_ramadan"
       ],
+      "cafe": [],
+      "boulangerie": [
+        "four",
+        "cuisson_nocturne"
+      ],
       "commerce": [
         "surface_vente_m2",
         "chambres_froides"
       ],
+      "supermarche": [],
+      "boucherie": [],
+      "pharmacie": [],
+      "coiffure": [],
+      "pressing": [],
       "bureau": [
         "effectif",
         "clim"
@@ -768,19 +803,22 @@
         "internat",
         "fermeture_estivale"
       ],
+      "salle_sport": [],
       "hammam": [
         "surface_m2",
         "chauffe"
       ],
-      "boulangerie": [
-        "four",
-        "cuisson_nocturne"
-      ],
+      "garage": [],
+      "atelier": [],
+      "imprimerie": [],
+      "station_service": [],
+      "entrepot": [],
       "froid": [
         "temperature_consigne",
         "volume_m3",
         "saisonnalite_recolte"
       ],
+      "mosquee": [],
       "autre": []
     },
     "source": "clés fermées reprises de COMMERCIAL_CATEGORY_QUESTIONS (frontend/src/features/ventes/solar.js) et des clés du tunnel (crm/webhooks.py) ; AJOUTS : `ouvert_journee_ramadan` (restaurant/café) et, pour l'hôtel, `heures_piscine`, `blanchisserie`, `reception_24h` (l'occupation déclarée = `occupation_pct`)",
@@ -812,7 +850,8 @@
       "categorie_commerciale / reponses_categorie": "rythme.categorie_commerciale / rythme.reponses_categorie",
       "type_surface / type_toiture / surface_toiture_m2": "toit (type_pose dérivé, surface_utile_m2)",
       "inclinaison_deg / orientation": "toit.pente_deg / toit.azimut_deg (fondateur 26/10/2026 ; orientation en azimut PVGIS : sud 0, sud_est -45, sud_ouest 45, est -90, ouest 90 ; autre : aucune entrée) — facultatives, jamais dans `manquants` ; le moteur ne les retient que si les panneaux suivent le toit (bac acier, toiture inclinée)",
-      "tva_recuperable": "tva_recuperable (forme posée par `economie_ci.json`, CIQ3)"
+      "tva_recuperable": "tva_recuperable (forme posée par `economie_ci.json`, CIQ3)",
+      "equipements_hors_horaires": "rythme.talon {niveau_jour_pct} (décisions fondateur 26-27/10/2026 : aucun → 5, un_peu → 20, beaucoup → 50 ; % du niveau des heures ouvertes, la même définition que le talon par défaut du type de commerce) — facultative, jamais dans `manquants` ; sans réponse, le moteur prend le talon par défaut du type de commerce"
     },
     "regle": "`activity_profile` (site web) n'est JAMAIS une entrée : information seulement. Une colonne vide n'émet aucune entrée et figure dans `manquants`."
   },

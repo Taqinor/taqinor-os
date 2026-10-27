@@ -24,7 +24,8 @@ from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
 from .domain.bornes import (
-    montant_saisi, pourcentage_saisi, total_ligne_hors_capacite,
+    MOTIF_MONTANT_POSITIF, montant_saisi, pourcentage_saisi,
+    total_ligne_hors_capacite,
 )
 from .domain.conditions_ci import MOTIF_ACOMPTE, MOTIF_REMISE, _decimal_borne
 
@@ -430,6 +431,20 @@ class PaiementAvecRetenueEntreeSerializer(serializers.Serializer):
     reference = ChaineStricte(
         required=False, allow_blank=True, default='', max_length=120)
     note = ChaineStricte(required=False, allow_blank=True, default='')
+
+    def get_fields(self):
+        # api-fuzz-full 27/10 (moteur, « Failed Health Check ») — le montant
+        # publiait le motif décimal générique (signe, 10 chiffres) ET la vue
+        # resserrait en ``allOf`` au motif STRICTEMENT positif : deux motifs
+        # différents sur le même champ, que le générateur ne sait pas fusionner
+        # (il filtre, puis abandonne). Le montant publie directement le motif
+        # positif (min 0,01, 12 chiffres dont 2 décimales = ce que le champ
+        # applique) ; la vue ne le resserre plus.
+        fields = super().get_fields()
+        set_override(fields['montant'], 'field', {
+            'type': 'string', 'format': 'decimal',
+            'pattern': MOTIF_MONTANT_POSITIF})
+        return fields
 
 
 class FactureSerializer(SameCompanyFKSerializerMixin,

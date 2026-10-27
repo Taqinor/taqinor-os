@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolveCiCurve, consumptionProfile } from '../src/lib/proposalCurve';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const FORME_PROD = [0, 0, 0, 0, 0, 0.001, 0.02, 0.05, 0.07, 0.09, 0.1, 0.11, 0.12, 0.11, 0.1, 0.09, 0.07, 0.05, 0.02, 0.001, 0, 0, 0, 0].map(
   (v, _i, a) => v / a.reduce((x, y) => x + y, 0),
@@ -83,7 +84,7 @@ describe('CIW302 — les formes génériques C&I sont supprimées', () => {
   });
 
   const lib = readFileSync(fileURLToPath(new URL('../src/lib/proposalCurve.ts', import.meta.url)), 'utf-8');
-  const page = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+  const page = lirePageProposition();
   it('plus de industrialShape / commercialShape / régime 1x8 dans la lib', () => {
     expect(lib).not.toMatch(/function industrialShape|function commercialShape|INDUSTRIAL_STANDBY|COMMERCIAL_OPEN_HOUR/);
     expect(lib).not.toMatch(/IndustrialShift|industrialShift/);

@@ -130,3 +130,18 @@ class VerrouObjetTests(TestCase):
         self.assertIn('Objet personnalisé verrouillé', labels)
         self.assertIn('Objet personnalisé déverrouillé', labels)
         self.assertIn('Objet personnalisé supprimé', labels)
+
+    def test_cle_non_numerique_404_pas_405(self):
+        """api-fuzz-full 27/10 (ENF11) — ``POST objects/verrouiller/`` (id
+        vide) était lu comme le détail d'un objet « verrouiller » : 405 non
+        documenté. Clé numérique seule : aucune route → 404, rien n'est
+        verrouillé ; la clé numérique sert toujours."""
+        res = self.api.post(f'{OBJETS}verrouiller/', format='json')
+        self.assertEqual(res.status_code, 404)
+        self.objet.refresh_from_db()
+        self.assertFalse(self.objet.verrouille)
+        res = self.api.post(f'{OBJETS}{self.objet.pk}/verrouiller/',
+                            format='json')
+        self.assertEqual(res.status_code, 200, res.data)
+        self.assertEqual(self.api.get(f'{OBJETS}{self.objet.pk}/').status_code,
+                         200)

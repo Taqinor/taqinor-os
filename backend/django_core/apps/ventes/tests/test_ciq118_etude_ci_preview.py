@@ -192,6 +192,23 @@ class ContratTests(_Base):
             self.assertEqual(set(entree['provenance']), {'origine', 'detail', 'date'})
         self.assertIsNotNone(data['taille']['retenue_kwc'])
 
+    # ── CORC1 — l'aperçu dit si le devis automatique passera ────────────────
+
+    def test_devis_auto_dit_le_refus_du_bouton_prix_a_renseigner(self):
+        # Le catalogue de test ne règle que 2 prestations sur 8 : le bouton
+        # refuserait (« Prix à renseigner ») — l'aperçu le dit AVANT le clic.
+        data = self.post(self.corps(phases='tri'))
+        self.assertFalse(data['devis_auto']['possible'])
+        self.assertEqual(data['devis_auto']['champ'], 'composition')
+        self.assertTrue(data['devis_auto']['message'].startswith('Prix à renseigner'))
+        self.assertIsNone(data['option_avec'])  # aucun hybride au catalogue de test
+
+    def test_devis_auto_refuse_nomme_le_champ_du_lead(self):
+        data = self.post(self.corps(tarif=None))
+        self.assertFalse(data['devis_auto']['possible'])
+        self.assertEqual(data['devis_auto']['champ'], 'contrat_electricite')
+        self.assertTrue(data['devis_auto']['message'].startswith('Demandez au client'))
+
     # ── ADEV82 — bande interne DH/kWc lue ───────────────────────────────────
 
     def test_bande_prix_kwc_posee_hors_bande_alerte_interne(self):
@@ -223,7 +240,7 @@ class ContratTests(_Base):
 
     def test_longueur_dc_declaree_fiches_completes_cable_dc_quantifie(self):
         # ADEV87 — module et onduleurs à fiches complètes : les chaînes se
-        # calculent, le câble DC = Σ chaînes × longueur DÉCLARÉE, au prix
+        # calculent, le câble DC = 2 × Σ chaînes × distance DÉCLARÉE (D-CMP-2), au prix
         # catalogue. Le câble DC du catalogue de base (_Base) est retiré : seul
         # celui-ci doit être retenu.
         Produit.objects.filter(company=self.co, role_ci='cable_dc').delete()
@@ -239,7 +256,7 @@ class ContratTests(_Base):
         self.assertEqual(ligne['produit'], cable.id)
         self.assertGreater(ligne['quantite'], 0)
         self.assertEqual(ligne['quantite'],
-                         sum(c['nb_chaines'] for c in chaines) * 30)
+                         2 * sum(c['nb_chaines'] for c in chaines) * 30)
         self.assertTrue(ligne['prix_connu'])
 
     def test_pvgis_indisponible_etude_null_et_avertissement(self):

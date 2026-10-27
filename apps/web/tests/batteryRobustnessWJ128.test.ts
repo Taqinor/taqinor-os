@@ -9,11 +9,12 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
 
-const PAGE = read('../src/pages/proposition/[...token].astro');
+const PAGE = lirePageProposition();
 
 describe('WJ128 (finding 3, LOW) — capacité/prix DISSOCIÉS : "sur étude" quand la capacité n’est pas sûre', () => {
   it('batteryCapacityKnown combine les TROIS sources réelles (couverture moteur / ligne du devis / batterieKwh servi ÷ unités)', () => {

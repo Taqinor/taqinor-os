@@ -30,6 +30,30 @@ class ChaineStricte(serializers.CharField):
         return super().to_internal_value(data)
 
 
+#: Une seule ligne : ni nul ni AUCUN séparateur de ligne (en-tête d'email —
+#: le pliage d'en-tête Python coupe sur tout ``str.splitlines`` : CR, LF, VT,
+#: FF, FS/GS/RS, NEL, LS, PS ; api-fuzz-full 27/10 : « \x85 » passait le motif
+#: CR/LF puis faisait échouer l'envoi). ``$`` ECMA = fin de chaîne.
+MOTIF_UNE_LIGNE = r'^[^\u0000\n\u000b\u000c\r\u001c-\u001e\u0085  ]*$'
+_INTERDITS_UNE_LIGNE = frozenset(
+    chr(c) for c in (0, 10, 11, 12, 13, 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029))
+
+
+class ChaineUneLigne(ChaineStricte):
+    """``ChaineStricte`` sur UNE ligne (api-fuzz-full 27/10 : un sujet d'email
+    avec un saut de ligne était publié conforme puis refusé à l'envoi, 400).
+    La valeur BRUTE est contrôlée (avant rognage) : exactement le motif publié."""
+
+    motif_publie = MOTIF_UNE_LIGNE
+    default_error_messages = {
+        'une_ligne': 'Une seule ligne attendue (sans retour à la ligne).'}
+
+    def to_internal_value(self, data):
+        if isinstance(data, str) and not _INTERDITS_UNE_LIGNE.isdisjoint(data):
+            self.fail('une_ligne')
+        return super().to_internal_value(data)
+
+
 #: Motif publié d'une chaîne SANS caractère nul : DRF refuse ``\u0000`` dans
 #: tout ``CharField`` (``ProhibitNullCharactersValidator``) alors que le schéma
 #: l'autorisait — le fuzz envoyait une chaîne « conforme » et recevait 400.
@@ -126,7 +150,7 @@ class _ChaineSansNul(OpenApiSerializerFieldExtension):
         # est rogné en vide puis refusé ; sans rognage, « " " » passe.
         non_blanc = champ.trim_whitespace and (
             not champ.allow_blank or schema.get('minLength', 0) >= 1)
-        schema['pattern'] = (
+        schema['pattern'] = getattr(champ, 'motif_publie', None) or (
             MOTIF_NON_BLANC_SANS_NUL if non_blanc else MOTIF_SANS_NUL)
         return schema
 

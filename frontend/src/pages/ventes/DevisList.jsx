@@ -637,8 +637,10 @@ export default function DevisList() {
       kwc: null,
     })
     setAcceptBusy(true)
+    let accepte = false
     try {
       await ventesApi.accepterDevis(d.id, { ...corps, ...overrides })
+      accepte = true
       setAcceptBlocage(null)
     } catch (err) {
       const data = err?.response?.data
@@ -660,7 +662,18 @@ export default function DevisList() {
       }
     } finally {
       setAcceptBusy(false)
-      dispatch(rafraichirDevis(d.id))
+      const maj = await dispatch(rafraichirDevis(d.id))
+      // Revue chantier 26/10/2026 — l'acceptation crée le chantier : on le dit
+      // et on y mène d'un clic (le devis relu porte `chantier`, comme la ligne).
+      const chantier = accepte ? maj?.payload?.chantier : null
+      if (chantier?.id) {
+        toast.success(`Devis accepté — chantier ${chantier.reference ?? ''} créé.`, {
+          action: {
+            label: `Voir le chantier ${chantier.reference ?? ''}`.trim(),
+            onClick: () => navigate(`/chantiers?id=${chantier.id}`),
+          },
+        })
+      }
     }
   }
 

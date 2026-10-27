@@ -10,6 +10,7 @@ import {
   offrePrincipaleCi,
   type ProposalResponse,
 } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 function payload(mode: string, synthese: Record<string, unknown>): ProposalResponse {
   return {
@@ -72,7 +73,7 @@ describe('CIW303 — extracteur de l\'option batterie C&I', () => {
 });
 
 describe('CIW303 — la page n\'a plus de second moteur batterie en C&I', () => {
-  const page = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+  const page = lirePageProposition();
   it('batterySimEligible passe par batterySimEligibleForMode (résidentiel seul)', () => {
     expect(page).toContain('const batterySimEligible = ok && batterySimEligibleForMode(curveMode);');
     expect(page).not.toMatch(/batterySimEligible = ok && \(curveMode === 'residentiel' \|\| curveMode === 'commercial'\)/);

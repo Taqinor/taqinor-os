@@ -17,9 +17,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { paliersBatterie, palierBatterieRetenu } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
-const PAGE = read('../src/pages/proposition/[...token].astro').replace(/\r\n/g, '\n');
+const PAGE = lirePageProposition().replace(/\r\n/g, '\n');
 const CODE = PAGE
   .replace(/<!--[\s\S]*?-->/g, ' ')
   .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')

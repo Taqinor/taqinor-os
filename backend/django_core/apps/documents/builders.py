@@ -1125,7 +1125,32 @@ def _servir_signe(chantier, *, source_type, nom, render, maintenant=None):
         chantier, source_type=source_type, nom=nom, pdf=pdf,
         meta={EMPREINTE_KEY: empreinte, 'fige_le': maintenant.isoformat(),
               'gel_tardif': tardif})
+    _partager_au_client_portail(chantier, source_type)
     return pdf
+
+
+def _partager_au_client_portail(chantier, source_type):
+    """Revue chantier 26/10/2026 (G5/G6) — le PV et le bon de livraison figés
+    sont ce que le client a signé : on lui en accorde la LECTURE dans « Mes
+    documents » du portail (``ged.services.partager_document_avec_client_
+    portail``, idempotent, jamais d'``AclGed`` écrit d'ici). Sans client sur le
+    chantier ou sans document déposé : rien. Best-effort — ne bloque jamais la
+    signature ni le téléchargement."""
+    client_id = getattr(chantier, 'client_id', None)
+    if not client_id:
+        return None
+    try:
+        document = _document_ged(chantier, source_type)
+        if document is None:
+            return None
+        from apps.ged import services as ged_services
+        return ged_services.partager_document_avec_client_portail(
+            document, client_id)
+    except Exception:
+        logger.exception(
+            'G5 — partage portail impossible (%s, chantier %s)',
+            source_type, chantier.pk)
+        return None
 
 
 def _servir_pv(chantier, maintenant=None):
@@ -1166,10 +1191,15 @@ def figer_documents_signes(chantier, maintenant=None):
     ({} si le chantier n'est pas signé)."""
     if not getattr(chantier, 'signature_client', None):
         return {}
-    return {
+    figes = {
         'pv_reception': _servir_pv(chantier, maintenant=maintenant),
         'bon_livraison': _servir_bl(chantier, maintenant=maintenant),
     }
+    # G5/G6 — même quand l'empreinte était déjà figée (rien de redéposé),
+    # le client du chantier reçoit l'accès « Mes documents » (idempotent).
+    _partager_au_client_portail(chantier, SOURCE_PV_RECEPTION)
+    _partager_au_client_portail(chantier, SOURCE_BON_LIVRAISON)
+    return figes
 
 
 def attestation_pour_client(chantier, attestation_type, regenerer=False):

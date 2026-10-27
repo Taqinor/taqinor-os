@@ -53,6 +53,16 @@ PASSIF_ECRITURES = {
     ('PositionTechnicienViewSet', 'ping', 'POST'):
         "chaque utilisateur interne pose SA PROPRE position (XFSM23, "
         "consentement GPS vérifié côté service), jamais celle d'un autre",
+    # Revue chantier 26/10/2026 — même nature que `ping` : le lot de
+    # rattrapage hors-ligne de SES positions, et l'accusé de réception de SA
+    # notice de géolocalisation (loi 09-08 art. 5) — chaque employé n'écrit
+    # que sa propre ligne, jamais celle d'un autre.
+    ('PositionTechnicienViewSet', 'ping_lot', 'POST'):
+        "lot hors-ligne de SES propres positions (mêmes gardes que ping : "
+        "consentement accepté, membre de l'intervention, en route/sur site)",
+    ('GpsConsentRecordViewSet', 'mon_consentement_accepter', 'POST'):
+        "accusé de réception par l'employé de SA notice GPS (loi 09-08), "
+        "404 sans consentement posé par un responsable",
 }
 
 #: Agrégats nominatifs NON balayés côté données (passif nommé, ACHT50 → suite) :

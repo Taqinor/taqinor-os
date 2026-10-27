@@ -413,7 +413,8 @@ class TestLeadActivity(TestCase):
         resp = self.api.post('/api/django/crm/leads/', {
             'nom': 'X', 'owner': foreign_user.id,
         }, format='json')
-        self.assertEqual(resp.status_code, 400)
+        # api-fuzz-full 27/10 (ENF11) : id inconnu ou d'une autre société → 404.
+        self.assertEqual(resp.status_code, 404)
 
 
 class TestStageChangeViaAPI(TestCase):
@@ -1117,7 +1118,8 @@ class TestLeadStructureProduitSTKCAT9(TestCase):
         r = self.api.patch(f'/api/django/crm/leads/{lead.id}/',
                            {'structure_produit': self.pergola_voisine.id},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # api-fuzz-full 27/10 (ENF11) : id inconnu ou d'une autre société → 404.
+        self.assertEqual(r.status_code, 404, r.data)
         self.assertIn('structure_produit', r.data)
         lead.refresh_from_db()
         self.assertIsNone(lead.structure_produit_id)
