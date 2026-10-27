@@ -2494,7 +2494,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     second calcul. Repli sur le payback quand il manque. */}
                 <div data-hero-eco-sub>
                   {ecoHero && headline?.monthly ? (
-                    <p class="mt-0.5 text-xs text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p>
+                    <p class="mt-0.5 text-xs text-lune-faint" dir="ltr" data-i18n data-fr={`≈ ${formatMAD(headline.monthly)}/mois`} data-en={`≈ ${formatMAD(headline.monthly)}/month`} data-ar={`≈ ${formatMAD(headline.monthly)}/شهر`}>≈ {formatMAD(headline.monthly)}/mois</p>
                   ) : ecoHero && retourPhrase ? (
                     <p class="mt-0.5 text-xs text-lune-faint" data-i18n data-fr={retourPhrase.fr} data-en={retourPhrase.en} data-ar={retourPhrase.ar}>{retourPhrase.fr}</p>
                   ) : null}
