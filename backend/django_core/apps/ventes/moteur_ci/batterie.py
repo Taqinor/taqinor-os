@@ -46,6 +46,11 @@ SOURCE_DECISION = 'décision fondateur du 26/10/2026 — devis C&I à deux optio
 SOURCE_REMPLISSAGE = 'règle QJR612 « batteries toujours pleines » (fondateur 30/09/2026)'
 SOURCE_HORIZON_AVEC = ('règle des 10 ans de la taille C&I (taille.grimper_avec_regard, '
                        'fondateur 26/10/2026)')
+#: CMP3 (D-CMP-3) — hybrides basse tension en parallèle : borne de fiche.
+MAX_HYBRIDES_PARALLELE = 10
+SOURCE_PARALLELE = (
+    'datasheet Deye SUN-14-20K-SG05LP3-EU-SM2 (2024-06-01) et '
+    'SUN-3-12K-SG05LP3-EU-SM2 (2024-09-27) : « Max. 10 pcs parallel »')
 #: Seuil (kWh) sous lequel une heure n'a « pas de production solaire ».
 EPSILON_KWH = 1e-6
 
@@ -256,6 +261,12 @@ def _combinaison_tenue(onduleurs, ps_kva):
     return ps_kva is None or _puissance_ac(onduleurs) <= ps_kva + 1e-9
 
 
+def _borne_parallele_mord(combiner, n_haut, pmax_wc):
+    """CMP3 — la limite d'appareils en parallèle empêche le champ maximal."""
+    res = combiner(_kwc(n_haut, pmax_wc)) or {}
+    return any(a.get('code') == 'OND_PARALLELE_MAX' for a in res.get('alertes') or [])
+
+
 def _sans_option(motif, *, prix=None, alertes=None):
     return {'evaluation': None, 'motif': motif, 'prix_a_renseigner': list(prix or []),
             'alertes': list(alertes or []), 'hypotheses': []}
@@ -349,13 +360,24 @@ def _champ_rempli(initiale, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kv
                                           bilan_de=bilan_de)
     onduleurs = combiner(_kwc(n, pmax_wc)) or {}
     if not _combinaison_tenue(onduleurs, ps_kva):
+        borne_cmp3 = False
         # La puissance souscrite (ou le vivier d'hybrides) borne le champ.
-        if not _combinaison_tenue(combiner(_kwc(n_bas, pmax_wc)), ps_kva):
+        if not _combinaison_tenue(combiner(_kwc(n_bas, pmax_wc)), ps_kva) and (
+                _borne_parallele_mord(combiner, n_bas, pmax_wc)
+                and _combinaison_tenue(combiner(_kwc(1, pmax_wc)), ps_kva)):
+            # CMP3 — le départ dépasse ce que 10 hybrides portent : le champ
+            # « avec » est le plus grand champ porté, pas une absence d'option.
+            n_bas = _plus_grand(1, n_bas, lambda m: _combinaison_tenue(
+                combiner(_kwc(m, pmax_wc)), ps_kva))
+            n_haut = n_bas
+            borne_cmp3 = True
+        elif not _combinaison_tenue(combiner(_kwc(n_bas, pmax_wc)), ps_kva):
             return _sans_option(
                 "aucune combinaison d'onduleurs hybrides basse tension tarifés ne porte le champ",
                 prix=_onduleurs_sans_prix(onduleurs))
-        n_haut = _plus_grand(n_bas, n, lambda m: _combinaison_tenue(
-            combiner(_kwc(m, pmax_wc)), ps_kva))
+        if not borne_cmp3:
+            n_haut = _plus_grand(n_bas, max(n, n_bas), lambda m: _combinaison_tenue(
+                combiner(_kwc(m, pmax_wc)), ps_kva))
         n, banque, reduite = _champ_et_banque(initiale, n_bas=n_bas, n_haut=n_haut,
                                               bilan_de=bilan_de)
     if banque is None:
@@ -444,14 +466,21 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     evaluation = monter_regle_10_ans(n, n_haut, pmax_wc, evaluer)
     if evaluation is None:
         return _sans_option("aucune combinaison d'onduleurs hybrides basse tension tarifés ne porte le champ")
+    mord = _borne_parallele_mord(combiner, evaluation['n'] + 1, pmax_wc)
+    borne_parallele = [_alerte('HYBRIDES_PARALLELE_MAX', (
+        'Champ « avec batterie » borné à %.1f kWc : le plus grand champ porté par au plus '
+        '%d hybrides en parallèle (%s).' % (evaluation['kwc'], MAX_HYBRIDES_PARALLELE,
+                                            SOURCE_PARALLELE)))] if mord else []
+    n_final = evaluation.pop('n')
     evaluation['batterie'].update(besoin_nocturne_kwh=round(besoin, 2), reduite=reduite,
-                                  panneaux_ajoutes=evaluation.pop('n') - n_bas)
+                                  panneaux_ajoutes=max(0, n_final - n_bas),
+                                  panneaux_retires=max(0, n_bas - n_final))
     return {'evaluation': evaluation, 'motif': None,
             'prix_a_renseigner': list(evaluation['composition'].get('prix_a_renseigner') or []),
-            'alertes': [_alerte('BATTERIE_REDUITE_AU_TOIT', (
+            'alertes': borne_parallele + [_alerte('BATTERIE_REDUITE_AU_TOIT', (
                 'Banque réduite à %d module(s) : le surplus solaire du champ maximal ne remplit '
                 'pas davantage chaque jour (%s).' % (banque['quantite'], SOURCE_REMPLISSAGE)))]
-            if reduite else [],
+            if reduite else borne_parallele,
             'hypotheses': [{'cle': 'option_avec_batterie', 'valeur': evaluation['kwc'],
                             'statut': 'source',
                             'source': '%s ; %s ; %s' % (SOURCE_DECISION, SOURCE_REMPLISSAGE,

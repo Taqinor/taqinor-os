@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useSearchParams } from 'react-router-dom'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import { useCanModifierParametres } from '../../features/parametres/useCanModifierParametres'
 import { useNavigationGuard } from '../../hooks/useNavigationGuard'
@@ -123,6 +124,9 @@ const TABS_ECRITURE_PARAMETRES = [
 // même les champs des onglets masqués (comportement inchangé). Chaque onglet est
 // rendu par son propre composant de section ; les briques de présentation et les
 // constantes sont partagées via ./peComponents et ./peConstants.
+// Liste complète des onglets (partagés + ajouts locaux) ; sert aussi à valider `?onglet=` (CCAT101).
+const TOUS_LES_ONGLETS = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, DEMO_ONBOARDING_TAB]
+
 export default function ParametresEntreprise() {
   // APAR41 — dialogue de confirmation MAISON (jamais window.confirm).
   const { confirm: confirmerAction, confirmDelete: confirmerSuppression } = useConfirmDialog()
@@ -138,14 +142,20 @@ export default function ParametresEntreprise() {
   // `parametres_modifier` (calcul dans useCanModifierParametres).
   const canModifier = useCanModifierParametres()
 
-  // Onglet actif (D1). Société & identité par défaut.
-  const [tab, setTab] = useState('societe')
+  // Onglet actif (D1). Société & identité par défaut ; CCAT101 — `?onglet=<clé>`
+  // ouvre directement l'onglet demandé (lien depuis le catalogue stock) s'il
+  // existe, sinon retombe sur « societe ».
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState(() => {
+    const demande = searchParams.get('onglet')
+    return demande && TOUS_LES_ONGLETS.some(t => t.key === demande) ? demande : 'societe'
+  })
   // L790 — recherche de réglage : saute à l'onglet contenant un libellé.
   const [search, setSearch] = useState('')
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, I18N_COUVERTURE_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, REFERENTIELS_TAB, REALISATIONS_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, DEMO_ONBOARDING_TAB]
+  const allTabs = TOUS_LES_ONGLETS
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)

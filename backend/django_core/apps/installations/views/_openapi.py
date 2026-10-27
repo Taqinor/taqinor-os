@@ -78,6 +78,42 @@ def statut_inconnu(valeur, attendu=int):
     return status.HTTP_400_BAD_REQUEST
 
 
+def statut_ligne_non_supprimable(ligne, valeur):
+    """api-fuzz-full 27/10 (ENF11) — ``supprimer-ligne-consommation`` : une
+    ligne INCONNUE suit ``statut_inconnu`` (404 pour un id entier) ; une ligne
+    de la NOMENCLATURE (elle existe, l'état stocké s'oppose) = 409."""
+    from rest_framework import status
+    if ligne is None:
+        return statut_inconnu(valeur)
+    return status.HTTP_409_CONFLICT
+
+
+def statut_refus_releve(refus):
+    """api-fuzz-full 27/10 (ENF11) — statut d'un refus de
+    ``field_capture.champs_releve_serie`` : « ni produit ni désignation » est
+    une règle d'ENSEMBLE (l'un OU l'autre de deux champs facultatifs, que le
+    schéma OpenAPI 3.0 du corps ne porte pas) → 409 ; des caractéristiques
+    illisibles restent un 400 (forme du champ)."""
+    from rest_framework import status
+    if 'designation' in refus:
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_400_BAD_REQUEST
+
+
+def texte_corps(request, nom, *autres):
+    """api-fuzz-full 27/10 (ENF11) — valeur TEXTE du champ de corps ``nom``
+    (``''`` si absent ou nul), sans espaces de bord. ``nom`` et ``autres``
+    (lus ensuite par la vue) sont publiés chaînes : un nombre JSON, ou une
+    PARTIE FICHIER multipart sous ce nom, faisait lever ``.strip()`` (500) →
+    400 nommant le champ."""
+    corps = corps_objet(request)
+    for cle in (nom, *autres):
+        valeur = corps.get(cle)
+        if valeur is not None and not isinstance(valeur, str):
+            raise ValidationError({cle: 'Texte attendu.'})
+    return (corps.get(nom) or '').strip()
+
+
 #: Plus grand pourcentage qu'une colonne ``DecimalField(5, 2)`` sait garder.
 PCT_MAX = 999.99
 
@@ -632,6 +668,33 @@ class DesignationLigneRequete(serializers.Serializer):
     """F11 — la validation de ``designation`` : le MÊME champ que la
     déclaration du corps d'``ajouter-ligne-consommation``."""
     designation = designation_ligne()
+
+
+class NombreStrict(serializers.FloatField):
+    """Nombre JSON réel : ``"33.5"`` et ``true`` sont refusés (400), comme le
+    type ``number`` publié."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+class PositionRequete(serializers.Serializer):
+    """F6/XFSM7 — ``{lat, lng}`` du départ dépôt et du check-in : la
+    déclaration OpenAPI ET la validation. api-fuzz-full 27/10 (ENF11) : bornes
+    géographiques PUBLIÉES (−90..90, −180..180) — ``lat = 1e142`` débordait la
+    colonne ``numeric(9, 6)`` (``DataError`` → 500)."""
+    lat = NombreStrict(required=False, allow_null=True,
+                       min_value=-90, max_value=90)
+    lng = NombreStrict(required=False, allow_null=True,
+                       min_value=-180, max_value=180)
+
+
+def position(request):
+    """``(lat, lng)`` validés par ``PositionRequete`` (400 nommant le champ)."""
+    corps = corps_valide(PositionRequete, request)
+    return corps.get('lat'), corps.get('lng')
 
 
 #: Drapeau de requête publié booléen : ces valeurs, rien d'autre.

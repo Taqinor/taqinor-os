@@ -94,13 +94,18 @@ class CoordonneesInvalides(ValueError):
 
 def _lire_gps(lat, lng):
     """(lat, lng) arrondis à 6 décimales, ou None si absents ; lève
-    `CoordonneesInvalides` si fournis mais illisibles."""
+    `CoordonneesInvalides` si fournis mais illisibles ou hors du globe
+    (api-fuzz-full 27/10 : ``lat = 1e142`` débordait ``numeric(9, 6)`` → 500,
+    vue ET synchro)."""
     if lat in (None, '') or lng in (None, ''):
         return None
     try:
-        return round(float(lat), 6), round(float(lng), 6)
+        gps = round(float(lat), 6), round(float(lng), 6)
     except (TypeError, ValueError):
         raise CoordonneesInvalides('Coordonnées invalides.')
+    if not (-90 <= gps[0] <= 90 and -180 <= gps[1] <= 180):  # NaN compris
+        raise CoordonneesInvalides('Coordonnées invalides.')
+    return gps
 
 
 def enregistrer_arrivee(interv, instant, lat, lng, user, *, suffixe=''):

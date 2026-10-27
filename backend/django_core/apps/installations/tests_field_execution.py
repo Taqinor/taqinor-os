@@ -296,9 +296,10 @@ class TestCheckinGPS(TestCase):
         r = self.api.post(f'{self.url}/depart-depot/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIsNotNone(r.data['depart_depot_le'])
-        # Check-in proche du site → distance faible.
+        # Check-in proche du site → distance faible. api-fuzz-full 27/10
+        # (ENF11) : nombres JSON, comme le schéma (une chaîne est un 400).
         r = self.api.post(f'{self.url}/checkin/',
-                          {'lat': '33.5735', 'lng': '-7.5900'}, format='json')
+                          {'lat': 33.5735, 'lng': -7.5900}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIsNotNone(r.data['arrivee_site_le'])
         self.assertIsNotNone(r.data['distance_site_km'])
@@ -306,6 +307,44 @@ class TestCheckinGPS(TestCase):
         r = self.api.post(f'{self.url}/retour/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIsNotNone(r.data['retour_depot_le'])
+
+    def test_position_hors_bornes_400_publiee(self):
+        """api-fuzz-full 27/10 (ENF11) : `lat = 1e142` débordait la colonne
+        `numeric(9, 6)` (DataError → 500) ; bornes du globe PUBLIÉES et
+        appliquées au départ dépôt comme au check-in (400 nommant le champ)."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        for action in ('depart-depot', 'checkin'):
+            for corps, champ in (({'lat': -1.0e142, 'lng': 3.0}, 'lat'),
+                                 ({'lat': 33.5, 'lng': 181}, 'lng'),
+                                 ({'lat': '33.5', 'lng': -7.6}, 'lat'),
+                                 ({'lat': True, 'lng': -7.6}, 'lat')):
+                with self.subTest(action=action, corps=corps):
+                    r = self.api.post(f'{self.url}/{action}/', corps,
+                                      format='json')
+                    self.assertEqual(r.status_code, 400, r.data)
+                    self.assertIn(champ, r.data)
+        self.interv.refresh_from_db()
+        self.assertIsNone(self.interv.depart_gps_lat)
+        self.assertIsNone(self.interv.arrivee_gps_lat)
+        r = self.api.post(f'{self.url}/depart-depot/',
+                          {'lat': 8030484459115369.0, 'lng': None},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        # La synchro hors-ligne ignore une position hors du globe (jamais 500).
+        with self.assertRaises(field_services.CoordonneesInvalides):
+            field_services._lire_gps(1e142, 0)
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        props = schema['components']['schemas']['PositionRequeteRequest'][
+            'properties']
+        self.assertEqual((props['lat']['minimum'], props['lat']['maximum']),
+                         (-90, 90))
+        self.assertEqual((props['lng']['minimum'], props['lng']['maximum']),
+                         (-180, 180))
 
     def test_distance_none_without_coords(self):
         self.assertIsNone(field_services.distance_to_site(self.interv))
