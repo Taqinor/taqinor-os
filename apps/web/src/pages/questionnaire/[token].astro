@@ -1340,6 +1340,11 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                 data-en="You can close this page. We'll be in touch shortly." data-ar="يمكنكم إغلاق هذه الصفحة. سنتواصل معكم قريباً.">
                 Vous pouvez fermer cette page. On vous recontacte très vite.
               </p>
+              <p id="q-done-devis" class="mt-3 hidden text-sm font-semibold text-encre" data-i18n
+                data-en="Your answers are enough for us to prepare your quote — your advisor will send it to you."
+                data-ar="إجاباتكم كافية لإعداد عرض الأسعار — سيرسله لكم مستشاركم.">
+                Vos réponses suffisent pour préparer votre devis — votre conseiller vous l'envoie.
+              </p>
             </div>
           </div>
         </div>
@@ -1428,6 +1433,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     const editing = new Set<QuestionnaireSectionId>();
     const photoDataUrls: Partial<Record<QuestionnaireSectionId, string>> = {};
     let currentIndex = init.startIndex;
+    let devisPossible = false; // CQSTW2 — dernière réponse serveur
 
     const $ = (id: string) => document.getElementById(id);
     const sectionEls = Array.from(document.querySelectorAll<HTMLFieldSetElement>('[data-section]'));
@@ -1954,6 +1960,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       if (!envoi.result.ok) {
         return { ok: false, envoye: false, detail: envoi.result.detail || 'Cette réponse n’a pas pu être enregistrée. Réessayez.' };
       }
+      devisPossible = envoi.result.devisPossible === true;
       return { ok: true, envoye: true };
     }
 
@@ -1962,6 +1969,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
         sectionsWrap?.classList.add('hidden');
         progressWrap?.setAttribute('hidden', '');
         doneEl?.classList.remove('hidden');
+        $('q-done-devis')?.classList.toggle('hidden', !devisPossible);
         return;
       }
       currentIndex += 1;

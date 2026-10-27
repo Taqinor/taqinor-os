@@ -1031,6 +1031,10 @@ export interface QuestionnairePostResult {
   ok: boolean;
   enregistrees: string[];
   detail?: string;
+  /** CQSTW2 — le serveur dit que ces réponses suffisent à préparer le devis. */
+  devisPossible?: boolean;
+  /** CQSTW5 — lien introuvable ou expiré (404 amont), pas une panne passagère. */
+  lienExpire?: boolean;
 }
 
 /** Normalise (statut HTTP, JSON upstream) → une forme unique lue par la page. */
@@ -1040,7 +1044,7 @@ export function parseQuestionnairePostResponse(status: number, body: unknown): Q
   const enregistreesRaw = Array.isArray(b.enregistrees) ? b.enregistrees : [];
   const enregistrees = enregistreesRaw.filter((v): v is string => typeof v === 'string');
   const detail = typeof b.detail === 'string' ? b.detail : undefined;
-  return { ok, enregistrees, detail };
+  return { ok, enregistrees, detail, ...(b.devis_possible === true ? { devisPossible: true } : {}) };
 }
 
 /** `true` tant que le jeton est un APERÇU INTERNE : aucun POST ne doit partir. */

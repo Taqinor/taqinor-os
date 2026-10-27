@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
   buildQuestionnairePostBody,
   envoyerSectionQuestionnaire,
+  parseQuestionnairePostResponse,
   prefillApresEnvoi,
   QUESTIONNAIRE_PROXY_PATH,
 } from '../src/lib/questionnaire';
@@ -78,5 +79,22 @@ describe('prefill_vu après un envoi réussi (ALEA4)', () => {
     );
     expect(src).toMatch(/const envoi = await envoyerSectionQuestionnaire\(fetch, init\.token, body, init\.prefill\);/);
     expect(src).toMatch(/init\.prefill = envoi\.prefill;/);
+  });
+});
+
+describe('CQSTW2 — écran de fin : devis_possible', () => {
+  it('le serveur dit devis_possible:true ⇒ devisPossible, sinon absent', () => {
+    expect(parseQuestionnairePostResponse(200, { ok: true, enregistrees: [], devis_possible: true }).devisPossible).toBe(true);
+    expect(parseQuestionnairePostResponse(200, { ok: true, enregistrees: [], devis_possible: false }).devisPossible).toBeUndefined();
+    expect(parseQuestionnairePostResponse(200, { ok: true, enregistrees: [] }).devisPossible).toBeUndefined();
+  });
+  it('la page montre le message devis (FR/EN/AR, sans chiffre) seulement quand devisPossible', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
+    const bloc = src.slice(src.indexOf('id="q-done-devis"'), src.indexOf('</p>', src.indexOf('id="q-done-devis"')));
+    expect(bloc).toContain('data-en=');
+    expect(bloc).toContain('data-ar=');
+    expect(bloc.replace(/class="[^"]*"/, '').replace('data-i18n', '')).not.toMatch(/\d/);
+    expect(src).toContain("$('q-done-devis')?.classList.toggle('hidden', !devisPossible)");
+    expect(src).toContain('On vous recontacte très vite');
   });
 });
