@@ -628,19 +628,41 @@ export function choixDepuisOptions(optionsData, champ) {
  * C&I : les forfaits de Paramètres › Devis › Prestations C&I (CIQ106). Le
  * moteur (`moteur_ci/composition.py::_prestation`) ne lit QUE ces forfaits, le
  * prix de vente Stock de ces articles est ignoré : la fiche Stock ne les invite
- * donc plus à « compléter » un prix qui ne servirait à rien. Liste figée —
- * même ordre que `core/product_roles.py::ROLES_CI` (les 9 prestations). */
+ * donc plus à « compléter » un prix qui ne servirait à rien. Liste figée — les
+ * 8 prestations de `FORFAITS_CI_PRESTATIONS` (parametres/serializers_company.py).
+ * CCAT3 : l'O&M C&I (`om_ci`) n'en fait PAS partie — il n'a aucun forfait dans
+ * Paramètres, le moteur le tarife sur son article Stock
+ * (`composition.py` l.613-618) : son prix de vente reste à renseigner. */
 export const ROLES_CI_PRESTATION = Object.freeze([
   'etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
   'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci',
-  'om_ci',
 ])
 
 export const TEXTE_TARIF_PARAMETRES_CI =
   'tarif réglé dans Paramètres › Devis › Prestations C&I'
 
-/** Écran qui porte les forfaits C&I (section Devis de la page Paramètres). */
-export const ROUTE_PARAMETRES_PRESTATIONS_CI = '/parametres'
+/** CCAT3/CCAT4 — texte d'un article C&I sans prix de vente mais tarifé au barème. */
+export const TEXTE_PRIX_BAREME_CI = 'au barème (par onduleur / par panneau)'
+
+/** CCAT4 — libellés FR des types de pose, miroir de
+ * `core.product_roles.LIBELLES_TYPES_POSE` (un dict : le marqueur opt-in
+ * `source-choix` de check_choices_declares.py n'accepte que des listes). */
+export const LIBELLES_TYPES_POSE = Object.freeze({
+  toiture_inclinee: 'Toiture inclinée',
+  bac_acier: 'Bac acier',
+  toit_plat_leste: 'Toit plat — lesté',
+  toit_plat_fixe: 'Toit plat — fixé',
+  ombriere: 'Ombrière',
+  sol: 'Au sol',
+})
+
+/** Libellé FR d'un type de pose ; code inconnu → le code lui-même, vide → ''. */
+export const libelleTypePose = (code) => LIBELLES_TYPES_POSE[code] ?? code ?? ''
+
+/** Écran qui porte les forfaits C&I (section Devis de la page Paramètres).
+ * CCAT6 : onglet Devis ouvert (`?onglet=devis`, CCAT101) et bloc « Prestations
+ * C&I » amené à l'écran (`#prestations-ci`). */
+export const ROUTE_PARAMETRES_PRESTATIONS_CI = '/parametres?onglet=devis#prestations-ci'
 
 /** Le rôle C&I d'un article : celui calculé par l'API (`etat_ci`), sinon celui
  * déclaré (`role_ci`), sinon `null`. */
@@ -649,10 +671,23 @@ export const roleCiDe = (p) => p?.etat_ci?.role_ci ?? p?.role_ci ?? null
 export const estPrestationCi = (p) => ROLES_CI_PRESTATION.includes(roleCiDe(p))
 
 /** État du prix d'un article : `'parametres'` (prestation C&I, tarif ailleurs),
- * `'a_renseigner'` (aucun prix de vente) ou `'ok'`. */
+ * `'bareme'` (CCAT3 : pas de prix de vente mais prix connu par barème — coffret
+ * C&I tarifé par onduleur / par panneau), `'a_renseigner'` (aucun prix de vente)
+ * ou `'ok'`. */
 export function etatPrixCi(p) {
   if (estPrestationCi(p)) return 'parametres'
+  if (sansPrix(p) && p?.etat_ci?.prix_connu === true) return 'bareme'
   return sansPrix(p) ? 'a_renseigner' : 'ok'
+}
+
+/** CCAT4 — texte de la ligne « Prix C&I » de la fiche : prestation → tarif
+ * réglé dans Paramètres, coffret → barème, sinon « prix à renseigner » tant que
+ * le prix n'est pas connu ; `''` (ligne masquée) quand rien n'est à dire. */
+export function libellePrixCi(p) {
+  const etat = etatPrixCi(p)
+  if (etat === 'parametres') return TEXTE_TARIF_PARAMETRES_CI
+  if (etat === 'bareme') return TEXTE_PRIX_BAREME_CI
+  return p?.etat_ci && !p.etat_ci.prix_connu ? 'prix à renseigner' : ''
 }
 
 /** « C&I à compléter » : un rôle C&I sans prix de vente, ou exclu (fiche

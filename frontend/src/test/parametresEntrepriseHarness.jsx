@@ -57,7 +57,8 @@ export function definirProfil(profil) {
 
 // `auth` : tranche auth du store (rôle, role_nom, permissions) ; par défaut un
 // admin hérité (palier admin, aucune permission fine servie).
-export function rendreParametresEntreprise(auth = { role: 'admin', permissions: [] }) {
+// `route` : URL initiale du MemoryRouter (CCAT101 — `?onglet=devis`).
+export function rendreParametresEntreprise(auth = { role: 'admin', permissions: [] }, route = '/') {
   const store = configureStore({
     reducer: {
       parametres: parametresReducer,
@@ -66,6 +67,6 @@ export function rendreParametresEntreprise(auth = { role: 'admin', permissions: 
     },
   })
   return render(
-    <Provider store={store}><MemoryRouter><ParametresEntreprise /></MemoryRouter></Provider>,
+    <Provider store={store}><MemoryRouter initialEntries={[route]}><ParametresEntreprise /></MemoryRouter></Provider>,
   )
 }

@@ -2,10 +2,11 @@
 // Run with: node --test src/features/stock/
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   groupCatalogue, searchCatalogue, keySpec, sansPrix, MARQUE_GENERIQUE,
   typeOfProduit, familleAttendue, categorieIcone,
-  ROLES_CI_PRESTATION, etatPrixCi, produitCiACompleter, raisonCiACompleter,
+  ROLES_CI_PRESTATION, LIBELLES_TYPES_POSE, libelleTypePose, libellePrixCi, etatPrixCi, produitCiACompleter, raisonCiACompleter,
 } from './catalogue.js'
 import {
   classifyProduct, isPanel, isBattery, isReseauInverter, isHybridInverter,
@@ -237,12 +238,32 @@ const _ci = (role, extra = {}, etat = {}) => ({
   ...extra,
 })
 
-test('ASTK254 — les 9 rôles de prestation C&I (liste figée)', () => {
+test('ASTK254/CCAT3 — les 8 rôles de prestation C&I (liste figée, sans om_ci)', () => {
   assert.deepEqual([...ROLES_CI_PRESTATION], [
     'etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
     'mise_en_service', 'dossier_raccordement', 'levage_acces',
-    'transport_ci', 'om_ci',
+    'transport_ci',
   ])
+})
+
+test('CCAT3 — om_ci sans prix : « a_renseigner » (tarifé sur son article Stock) et à compléter', () => {
+  const om = _ci('om_ci')
+  assert.equal(etatPrixCi(om), 'a_renseigner')
+  assert.equal(produitCiACompleter(om), true)
+  assert.equal(raisonCiACompleter(om), 'prix à renseigner')
+})
+
+test('CCAT3 — coffret sans prix de vente mais prix connu par barème : « bareme »', () => {
+  for (const role of ['coffret_dc', 'coffret_ac']) {
+    const coffret = _ci(role, {}, { prix_connu: true })
+    assert.equal(etatPrixCi(coffret), 'bareme', role)
+    assert.equal(produitCiACompleter(coffret), false, role)
+  }
+  // Prix de vente saisi : « ok » ; prix inconnu : « a_renseigner ».
+  assert.equal(etatPrixCi(_ci('coffret_dc', { prix_vente: '900.00' }, { prix_connu: true })), 'ok')
+  assert.equal(etatPrixCi(_ci('coffret_dc')), 'a_renseigner')
+  // Une prestation garde « parametres » en premier.
+  assert.equal(etatPrixCi(_ci('pose_modules', {}, { prix_connu: true })), 'parametres')
 })
 
 test('ASTK254 — prestation C&I sans prix : état « parametres », pas « a_renseigner »', () => {
@@ -279,4 +300,33 @@ test('ASTK254 — une prestation exclue pour un autre motif reste à compléter'
 
 test('ASTK254 — le rôle se lit aussi sur role_ci quand etat_ci manque', () => {
   assert.equal(etatPrixCi({ nom: 'Pose', prix_vente: '0', role_ci: 'pose_modules' }), 'parametres')
+})
+
+test('CCAT4 — libelleTypePose : libellé FR, repli sur le code, vide → vide', () => {
+  assert.equal(libelleTypePose('toiture_inclinee'), 'Toiture inclinée')
+  assert.equal(libelleTypePose('bac_acier'), 'Bac acier')
+  assert.equal(libelleTypePose('toit_plat_leste'), 'Toit plat — lesté')
+  assert.equal(libelleTypePose('toit_plat_fixe'), 'Toit plat — fixé')
+  assert.equal(libelleTypePose('ombriere'), 'Ombrière')
+  assert.equal(libelleTypePose('sol'), 'Au sol')
+  assert.equal(libelleTypePose('inconnu'), 'inconnu')
+  assert.equal(libelleTypePose(null), '')
+})
+
+test('CCAT4 — libellePrixCi : prestation, barème, à renseigner, rien', () => {
+  assert.match(libellePrixCi(_ci('pose_modules')), /Paramètres › Devis › Prestations C&I/)
+  assert.equal(libellePrixCi(_ci('coffret_ac', {}, { prix_connu: true })), 'au barème (par onduleur / par panneau)')
+  assert.equal(libellePrixCi(_ci('compteur_injection')), 'prix à renseigner')
+  assert.equal(libellePrixCi(_ci('compteur_injection', { prix_vente: '10.00' }, { prix_connu: true })), '')
+})
+
+// CCAT4 (revue) — les libellés des types de pose sont un MIROIR de
+// core/product_roles.py::LIBELLES_TYPES_POSE (un dict : la garde des listes
+// ne le voit pas) — égalité exacte, lue dans le source Python.
+test('CCAT4 — libellés de pose = LIBELLES_TYPES_POSE du serveur', () => {
+  const py = readFileSync(new URL('../../../../backend/django_core/core/product_roles.py', import.meta.url), 'utf8')
+  const bloc = py.slice(py.indexOf('LIBELLES_TYPES_POSE = {'), py.indexOf('}', py.indexOf('LIBELLES_TYPES_POSE = {')))
+  const serveur = Object.fromEntries([...bloc.matchAll(/'([a-z_]+)':\s*'([^']+)'/g)].map((m) => [m[1], m[2]]))
+  assert.ok(Object.keys(serveur).length >= 6)
+  assert.deepEqual({ ...LIBELLES_TYPES_POSE }, serveur)
 })

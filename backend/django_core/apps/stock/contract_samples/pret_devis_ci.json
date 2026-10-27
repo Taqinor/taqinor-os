@@ -1,0 +1,61 @@
+{
+  "endpoint": "GET /api/django/stock/produits/pret-devis-ci/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "GET stock/produits/pret-devis-ci/ : la route est servie par `ProduitViewSet.pret_devis_ci` (CCAT8), dont la forme est construite par `apps/stock/pret_devis_ci.py::pret_devis_ci` et n'est pas lisible statiquement ; l'écran (CCAT9) s'appuie sur CET exemple.",
+  "pourquoi": "CCAT7 (Groupe CCAT, session L3 du 27/10/2026) — UN tableau « Prêt pour le devis commercial / industriel » : tout ce que l'administrateur doit remplir (catalogue Stock et Paramètres › Devis) pour qu'un devis C&I soit entièrement chiffré, poste par poste, avec l'article en cause, la raison et le lien où le corriger. Aujourd'hui le manque est éparpillé : le filtre « C&I à compléter » ne voit que les articles EXISTANTS (jamais un rôle absent : aucune structure pour le toit plat lesté, aucun coffret), ignore panneaux, hybrides et batteries de l'option « avec batterie », et Paramètres n'a aucun total ; `apps/ventes/selectors.py::catalogue_ci_pret` (propriétaire devis, onglet Devis du lead) ne couvre que coffrets, disjoncteur, comptage et forfaits. Règles = celles du moteur (`apps/ventes/moteur_ci/composition.py`, `apps/ventes/domain/etude_ci_batterie.py`), lues côté Stock via `stock.selectors.produits_ci` / `stock.etat_ci` et `CompanyProfile.forfaits_ci`. `statut` : `ok` (au moins un article actif chiffré et éligible / forfait réglé avec sa source ET son article), `a_completer` (des articles existent mais aucun n'est chiffré ou éligible — `articles[].motif` dit pourquoi), `absent` (aucun article de ce rôle au catalogue). `obligatoire: false` = le devis se fait sans (option O&M, option « avec batterie », logger sous 2 onduleurs, parafoudres) mais l'offre sera moins complète. `pret` = tous les postes obligatoires à `ok`. Bornée à la société (+ produits globaux), produits archivés exclus, lecture seule. AUCUNE clé `prix_achat`, marge ni prix : seulement « chiffré ou non ». Valeurs ILLUSTRATIVES ; ce sont les clés, leurs natures et les valeurs de `statut`/`groupe` qui font le contrat.",
+  "exemple": {
+    "pret": false,
+    "nb_obligatoires_manquants": 2,
+    "postes": [
+      {
+        "cle": "panneau",
+        "libelle": "Panneau solaire (puissance Pmax et prix)",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {"texte": "Ouvrir le catalogue Stock", "lien": "/stock"}
+      },
+      {
+        "cle": "coffret_ac",
+        "libelle": "Coffret AC",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "a_completer",
+        "articles": [
+          {"id": 812, "nom": "Coffret AC C&I", "motif": "prix de vente non saisi"}
+        ],
+        "action": {"texte": "Compléter la fiche en Stock", "lien": "/stock?ci=a_completer"}
+      },
+      {
+        "cle": "structure_ci:toit_plat_leste",
+        "libelle": "Structure — Toit plat — lesté",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "absent",
+        "articles": [],
+        "action": {"texte": "Créer l'article en Stock", "lien": "/stock"}
+      },
+      {
+        "cle": "forfait:pose_modules",
+        "libelle": "Prestation « Pose des modules »",
+        "groupe": "prestation",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {"texte": "Régler le forfait", "lien": "/parametres?onglet=devis#prestations-ci"}
+      },
+      {
+        "cle": "option_batterie:batterie",
+        "libelle": "Batterie compatible (option « avec batterie »)",
+        "groupe": "option_batterie",
+        "obligatoire": false,
+        "statut": "a_completer",
+        "articles": [
+          {"id": 100, "nom": "Batterie Dyness 10 kWh", "motif": "fiche incomplète : capacité utile"}
+        ],
+        "action": {"texte": "Compléter la fiche en Stock", "lien": "/stock?ci=a_completer"}
+      }
+    ]
+  }
+}

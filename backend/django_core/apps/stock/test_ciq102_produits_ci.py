@@ -203,3 +203,192 @@ class ProduitsCiTests(TestCase):
     def test_requetes_bornees(self):
         with self.assertNumQueries(1):
             produits_ci(self.company)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CCAT8 — « Prêt pour le devis C&I » (stock.pret_devis_ci + route)
+# ═══════════════════════════════════════════════════════════════════════════
+
+CONTRAT_PRET = json.loads(
+    (Path(__file__).parent / 'contract_samples' / 'pret_devis_ci.json')
+    .read_text(encoding='utf-8'))
+POSTE_EXEMPLE = CONTRAT_PRET['exemple']['postes'][0]
+PRESTATIONS_CI = (
+    'etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
+    'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci')
+FORFAIT = {'fixe_ht': '1000', 'source': 'devis fournisseur 10/2026'}
+URL_PRET = '/api/django/stock/produits/pret-devis-ci/'
+
+
+class PretDevisCiTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+
+        from apps.parametres.models import CompanyProfile
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        cls.company = Company.objects.get_or_create(
+            slug='ccat8-co', defaults={'nom': 'CCAT8 Co'})[0]
+        cls.autre = Company.objects.get_or_create(
+            slug='ccat8-autre', defaults={'nom': 'CCAT8 Autre'})[0]
+        roles = {nom: Role.objects.create(
+            company=cls.company, nom=nom, permissions=list(perms),
+            est_systeme=True) for nom, perms in CANONICAL_SYSTEM_ROLES}
+        cls.user = get_user_model().objects.create_user(
+            username='ccat8_dir', password='x', company=cls.company,
+            role=roles['Directeur'])
+        CompanyProfile.objects.update_or_create(
+            company=cls.company,
+            defaults={'forfaits_ci': {c: dict(FORFAIT) for c in PRESTATIONS_CI}})
+        # Un catalogue VOLONTAIREMENT incomplet (cas du plan).
+        cls.coffret_ac = Produit.objects.create(
+            company=cls.company, nom='Coffret AC C&I', role_ci='coffret_ac',
+            prix_vente=0)
+        cls.structure_bac = Produit.objects.create(
+            company=cls.company, nom='Structure bac acier', role_ci='structure_ci',
+            type_pose='bac_acier', prix_vente=Decimal('100'))
+        cls.pose_archivee = Produit.objects.create(
+            company=cls.company, nom='Pose des modules', sku='CI-POSE-MOD',
+            role_ci='pose_modules', prix_vente=Decimal('100'),
+            is_archived=True)
+        for cle in PRESTATIONS_CI:
+            if cle != 'pose_modules':
+                Produit.objects.create(
+                    company=cls.company, nom='Article ' + cle, role_ci=cle,
+                    prix_vente=Decimal('100'))
+        cls.dyness = Produit.objects.create(
+            company=cls.company, nom='Batterie Dyness 10 kWh',
+            role_devis='batterie', prix_vente=Decimal('5000'))
+        # Une autre société : ses articles ne doivent jamais apparaître.
+        cls.etranger = Produit.objects.create(
+            company=cls.autre, nom='Coffret AC autre société',
+            role_ci='coffret_ac', prix_vente=Decimal('10'))
+
+    def _postes(self, company=None):
+        from apps.stock.pret_devis_ci import pret_devis_ci
+        res = pret_devis_ci(company or self.company)
+        return res, {p['cle']: p for p in res['postes']}
+
+    def test_cas_du_plan(self):
+        res, postes = self._postes()
+        self.assertFalse(res['pret'])
+        self.assertEqual(postes['structure_ci:toit_plat_leste']['statut'],
+                         'absent')
+        coffret = postes['coffret_ac']
+        self.assertEqual(coffret['statut'], 'a_completer')
+        self.assertEqual(coffret['articles'], [{
+            'id': self.coffret_ac.id, 'nom': 'Coffret AC C&I',
+            'motif': 'prix de vente non saisi'}])
+        self.assertEqual(coffret['action']['lien'], '/stock?ci=a_completer')
+        forfait = postes['forfait:pose_modules']
+        self.assertEqual(forfait['statut'], 'a_completer')
+        self.assertEqual(forfait['articles'], [])
+        self.assertIn("Créer l'article « Pose des modules »",
+                      forfait['action']['texte'])
+        self.assertEqual(postes['forfait:transport_ci']['statut'], 'ok')
+        batterie = postes['option_batterie:batterie']
+        self.assertEqual(batterie['statut'], 'a_completer')
+        self.assertEqual(batterie['articles'][0]['id'], self.dyness.id)
+        self.assertIn('fiche incomplète', batterie['articles'][0]['motif'])
+        # la structure d'un autre type de pose existe mais ne remplace pas le
+        # défaut obligatoire (toit plat lesté)
+        self.assertEqual(postes['structure_ci:bac_acier']['statut'], 'ok')
+        self.assertFalse(postes['structure_ci:bac_acier']['obligatoire'])
+
+    def test_forfait_non_regle_est_absent(self):
+        from apps.parametres.models import CompanyProfile
+        CompanyProfile.objects.filter(company=self.company).update(
+            forfaits_ci={'pose_structure': dict(FORFAIT)})
+        _res, postes = self._postes()
+        self.assertEqual(postes['forfait:transport_ci']['statut'], 'absent')
+        self.assertEqual(postes['forfait:transport_ci']['action']['lien'],
+                         '/parametres?onglet=devis#prestations-ci')
+        self.assertEqual(postes['forfait:pose_structure']['statut'], 'ok')
+
+    def test_decompte_des_obligatoires_manquants(self):
+        res, postes = self._postes()
+        manquants = [c for c, p in postes.items()
+                     if p['obligatoire'] and p['statut'] != 'ok']
+        self.assertEqual(res['nb_obligatoires_manquants'], len(manquants))
+        self.assertIn('panneau', manquants)
+        self.assertIn('forfait:pose_modules', manquants)
+
+    def test_isolation_societe(self):
+        res, postes = self._postes()
+        ids = {a['id'] for p in res['postes'] for a in p['articles']}
+        self.assertNotIn(self.etranger.id, ids)
+        _res, autre = self._postes(self.autre)
+        self.assertEqual(autre['coffret_ac']['statut'], 'ok')
+        self.assertNotIn(self.coffret_ac.id, {
+            a['id'] for p in autre.values() for a in p['articles']})
+        self.assertEqual(autre['forfait:pose_modules']['statut'], 'absent')
+
+    def test_forme_du_contrat_et_aucune_cle_de_prix(self):
+        res, _postes = self._postes()
+        self.assertEqual(set(res), set(CONTRAT_PRET['exemple']))
+        for poste in res['postes']:
+            self.assertEqual(set(poste), set(POSTE_EXEMPLE))
+            self.assertEqual(set(poste['action']), {'texte', 'lien'})
+            self.assertIn(poste['statut'], ('ok', 'a_completer', 'absent'))
+            self.assertIn(poste['groupe'], (
+                'materiel', 'prestation', 'option', 'option_batterie'))
+            for article in poste['articles']:
+                self.assertEqual(set(article), {'id', 'nom', 'motif'})
+        cles = {c.lower() for c in _cles_recursives(res)}
+        self.assertFalse([c for c in cles if 'prix' in c or 'marge' in c])
+        self.assertNotIn('prix_achat', json.dumps(res, default=str))
+
+    def test_catalogue_complet_est_pret(self):
+        from apps.parametres.models import CompanyProfile
+        co = self.autre
+        CompanyProfile.objects.update_or_create(
+            company=co,
+            defaults={'forfaits_ci': {c: dict(FORFAIT) for c in PRESTATIONS_CI}})
+        for cle in PRESTATIONS_CI:
+            Produit.objects.create(company=co, nom='Art ' + cle, role_ci=cle,
+                                   prix_vente=Decimal('100'))
+        panneau = Produit.objects.create(
+            company=co, nom='Panneau 550W', role_devis='panneau',
+            prix_vente=Decimal('900'))
+        FicheTechnique.objects.create(
+            company=co, produit=panneau, type_fiche='module', pmax_wc=550)
+        ond = Produit.objects.create(
+            company=co, nom='Onduleur réseau Huawei 150kW Triphasé',
+            role_devis='onduleur_reseau', prix_vente=Decimal('80000'),
+            garantie='10 ans')
+        _fiche_onduleur(co, ond)
+        disjoncteur = Produit.objects.create(
+            company=co, nom='Disjoncteur 250A', role_ci='protection_ac',
+            prix_vente=Decimal('300'))
+        FicheTechnique.objects.create(
+            company=co, produit=disjoncteur, type_fiche='protection',
+            prot_type='disjoncteur', prot_cote='ac')
+        for role, nom in (('coffret_dc', 'Coffret DC'), ('coffret_ac', 'Coffret AC'),
+                          ('cable_ac', 'Câble AC'), ('cable_dc', 'Câble DC'),
+                          ('compteur_injection', 'Compteur')):
+            Produit.objects.create(company=co, nom=nom, role_ci=role,
+                                   prix_vente=Decimal('50'))
+        Produit.objects.create(
+            company=co, nom='Structure toit plat lesté', role_ci='structure_ci',
+            type_pose='toit_plat_leste', prix_vente=Decimal('50'))
+        res, postes = self._postes(co)
+        obligatoires = {c: p['statut'] for c, p in postes.items()
+                        if p['obligatoire']}
+        self.assertEqual(
+            {c: s for c, s in obligatoires.items() if s != 'ok'}, {})
+        self.assertTrue(res['pret'])
+        self.assertEqual(res['nb_obligatoires_manquants'], 0)
+
+    def test_route_api(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+        client = APIClient()
+        client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        r = client.get(URL_PRET)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(set(r.json()), set(CONTRAT_PRET['exemple']))
+        self.assertFalse(r.json()['pret'])
+        self.assertNotIn('prix_achat', json.dumps(r.json()))
+        self.assertEqual(APIClient().get(URL_PRET).status_code, 401)
