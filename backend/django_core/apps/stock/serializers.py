@@ -1045,8 +1045,8 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
 
     @extend_schema_field(serializers.DictField(allow_null=True))
     def get_etat_ci(self, obj):
-        from .selectors import etat_ci_produit
-        return etat_ci_produit(obj)
+        from .etat_ci import etat_ci_complet
+        return etat_ci_complet(obj)
 
     # ── CIQ101 — vocabulaires C&I : 400 FR nommant le champ ───────────────
     def validate_role_ci(self, value):

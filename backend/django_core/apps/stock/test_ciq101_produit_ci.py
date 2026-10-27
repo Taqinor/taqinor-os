@@ -343,3 +343,145 @@ class TestSaisieEtLecture(CIQ101Base):
             self.assertEqual(avant_p[c], apres_p[c], c)
         for c in champs_f:
             self.assertEqual(avant_f[c], apres_f[c], c)
+
+
+class TestCCAT1PrixConnuCi(CIQ101Base):
+    """CCAT1 — UNE règle « prix connu C&I » pour la fiche produit
+    (``etat_ci_produit``) et le catalogue de l'étude (``produits_ci``)."""
+
+    def _etats(self, produit):
+        from apps.stock.selectors import etat_ci_produit, produits_ci
+        catalogue = {e['id']: e for e in produits_ci(self.company)}
+        return etat_ci_produit(produit), catalogue[produit.pk]
+
+    def test_coffret_au_bareme_sans_prix_de_vente_est_connu(self):
+        from decimal import Decimal
+        p = Produit.objects.create(
+            company=self.company, nom='Coffret AC bareme', prix_vente=0,
+            role_ci='coffret_ac', prix_fixe_ht=Decimal('1200'))
+        etat, entree = self._etats(p)
+        self.assertTrue(etat['prix_connu'])
+        self.assertTrue(entree['prix_connu'])
+        self.assertEqual(etat['eligible_ci'], entree['eligible_ci'])
+
+    def test_coffret_sans_bareme_ni_prix_est_inconnu(self):
+        p = Produit.objects.create(
+            company=self.company, nom='Coffret AC nu', prix_vente=0,
+            role_ci='coffret_ac')
+        etat, entree = self._etats(p)
+        self.assertFalse(etat['prix_connu'])
+        self.assertFalse(entree['prix_connu'])
+
+    def test_bareme_ne_vaut_que_pour_les_coffrets(self):
+        from decimal import Decimal
+        from apps.stock.etat_ci import prix_connu_ci
+        p = Produit(nom='Structure', prix_vente=0,
+                    prix_fixe_ht=Decimal('500'))
+        self.assertFalse(prix_connu_ci(p, 'structure_ci'))
+        self.assertTrue(prix_connu_ci(p, 'coffret_dc'))
+        p.prix_fixe_ht, p.prix_vente = None, Decimal('10')
+        self.assertTrue(prix_connu_ci(p, 'structure_ci'))
+
+
+class TestCCAT2OptionBatterie(CIQ101Base):
+    """CCAT2 — hybrides basse tension et batteries de l'option « avec
+    batterie » visibles dans ``etat_ci`` (mêmes règles que le moteur)."""
+
+    def _produit(self, nom, role_devis, prix=0, **fiche):
+        p = Produit.objects.create(
+            company=self.company, nom=nom, prix_vente=prix,
+            role_devis=role_devis)
+        if fiche:
+            FicheTechnique.objects.create(produit=p, **fiche)
+        return Produit.objects.select_related(
+            'categorie', 'fiche_technique').get(pk=p.pk)
+
+    def _hybride(self, prix=0, **plage):
+        return self._produit(
+            'Deye SUN-12K-SG05LP3 hybride', 'onduleur_hybride', prix,
+            type_fiche='onduleur', **plage)
+
+    def _etat(self, produit):
+        from apps.stock.etat_ci import etat_ci_complet
+        return etat_ci_complet(produit)
+
+    def test_hybride_bt_sans_prix(self):
+        etat = self._etat(self._hybride(ond_bat_v_min=40, ond_bat_v_max=60))
+        self.assertEqual(etat['role_ci'], 'onduleur_hybride')
+        self.assertEqual(etat['classement'], 'declare')
+        self.assertFalse(etat['prix_connu'])
+        self.assertFalse(etat['eligible_ci'])
+        self.assertEqual(etat['motif_exclusion'], 'prix de vente non saisi')
+
+    def test_hybride_sans_plage_batterie(self):
+        etat = self._etat(self._hybride(prix=9000))
+        self.assertFalse(etat['eligible_ci'])
+        self.assertEqual(
+            etat['motif_exclusion'], 'plage de tension batterie non publiée')
+
+    def test_hybride_haute_tension_hors_option(self):
+        self.assertIsNone(self._etat(
+            self._hybride(prix=9000, ond_bat_v_min=150, ond_bat_v_max=600)))
+
+    def test_hybride_bt_complet_eligible(self):
+        etat = self._etat(self._hybride(
+            prix=9000, ond_bat_v_min=40, ond_bat_v_max=60))
+        self.assertTrue(etat['eligible_ci'])
+        self.assertTrue(etat['prix_connu'])
+        self.assertIsNone(etat['motif_exclusion'])
+        self.assertEqual(
+            set(etat), {'role_ci', 'libelle', 'classement', 'prix_connu',
+                        'eligible_ci', 'motif_exclusion'})
+
+    def test_hybride_sans_fiche_onduleur(self):
+        etat = self._etat(self._produit(
+            'Onduleur hybride sans fiche', 'onduleur_hybride', 9000))
+        self.assertEqual(etat['motif_exclusion'], 'fiche onduleur absente')
+
+    def test_batterie_sans_capacite_utile(self):
+        etat = self._etat(self._produit(
+            'Batterie Dyness', 'batterie', 12000, type_fiche='batterie',
+            bat_v_nominal=51.2))
+        self.assertEqual(etat['role_ci'], 'batterie')
+        self.assertFalse(etat['eligible_ci'])
+        self.assertEqual(etat['motif_exclusion'],
+                         'fiche incomplète : capacité utile')
+
+    def test_batterie_capacite_nominale_x_dod_et_tension(self):
+        etat = self._etat(self._produit(
+            'Batterie Dyness', 'batterie', 12000, type_fiche='batterie',
+            bat_kwh_nominal=10, bat_dod_pct=90, bat_v_nominal=51.2))
+        self.assertTrue(etat['eligible_ci'])
+        self.assertIsNone(etat['motif_exclusion'])
+
+    def test_batterie_sans_fiche_ni_prix(self):
+        etat = self._etat(self._produit('Batterie sans fiche', 'batterie'))
+        self.assertEqual(
+            etat['motif_exclusion'],
+            'fiche incomplète : capacité utile, tension nominale')
+
+    def test_batterie_ci_declaree_controle_aussi_la_fiche(self):
+        p = Produit.objects.create(
+            company=self.company, nom='Batterie C&I', prix_vente=5000,
+            role_ci='batterie_ci')
+        etat = self._etat(p)
+        self.assertEqual(etat['role_ci'], 'batterie_ci')
+        self.assertFalse(etat['eligible_ci'])
+        self.assertEqual(
+            etat['motif_exclusion'],
+            'fiche incomplète : capacité utile, tension nominale')
+
+    def test_produit_quelconque_reste_sans_etat(self):
+        self.assertIsNone(self._etat(self._produit('Article', '', 10)))
+
+    def test_etat_ci_servi_par_l_api_pour_un_hybride(self):
+        p = self._hybride(prix=9000, ond_bat_v_min=40, ond_bat_v_max=60)
+        r = api_for(self.user).get(f'{URL_PRODUITS}{p.pk}/')
+        self.assertEqual(r.data['etat_ci']['role_ci'], 'onduleur_hybride')
+        self.assertTrue(r.data['etat_ci']['eligible_ci'])
+        self.assertNotIn('prix_achat', r.data['etat_ci'])
+
+    def test_tension_port_bt_alignee_sur_le_moteur(self):
+        from apps.ventes.moteur_ci import batterie
+        self.assertEqual(product_roles.TENSION_PORT_BT_MAX_V,
+                         batterie.TENSION_PORT_BT_MAX_V)
