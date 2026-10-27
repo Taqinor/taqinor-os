@@ -1468,6 +1468,9 @@ def calculate_savings_roi(
     #   ``forme_mensuelle_ghi`` — AMOT27 (répartition GHI au dirham).
     rendement_une_fois: bool = True,
     forme_mensuelle_ghi: bool = True,
+    # RHOR6 — niveau de règles 3 (``regles_au_moins(devis, 3)``) : vrai par
+    # défaut ; ``False`` garde l'économie « avec batterie » imprimée BRUTE.
+    regles_2710: bool = True,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1719,6 +1722,18 @@ def calculate_savings_roi(
     # cashflow — leur économie imprimée est BRUTE ; volet laissé à une tâche
     # dédiée, il re-chiffrerait des valeurs épinglées hors de cette lane.)
     if _h and rendement_une_fois:
+        _batt_part = 0.0
+    # RHOR6 (C-RHOR-006) — modèles « factures » / « estimation », niveau 3 :
+    # la perte aller-retour de la part stockée est déduite UNE fois, de
+    # l'économie IMPRIMÉE (carte, KPI, série mensuelle) ; le cashflow lit alors
+    # ce même chiffre net (part 0), comme sur le modèle horaire (AMOT58).
+    if (regles_2710 and _stockage and not _h and _batt_part > 0
+            and economie_opt2 > 0):
+        _brute = economie_opt2
+        economie_opt2 = int(round(
+            _brute * (1.0 - (1.0 - BATTERY_ROUNDTRIP) * _batt_part)))
+        if facture_avec_a is not None:
+            facture_avec_a = facture_avec_a + (_brute - economie_opt2)
         _batt_part = 0.0
     # QJR158 (c) — UNE SEULE définition des paramètres de projection, employée
     # par le CALCUL (les deux appels ci-dessous) et par le bloc d'hypothèses
