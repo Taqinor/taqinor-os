@@ -12,9 +12,9 @@ const TEXTES_PUISSANCE = {
   ar: 'تقلص المحطة الطاقة المشتراة؛ القدرة المكتتبة والإتاوة الثابتة لا تتغيران.',
 };
 const TEXTES_POINTE = {
-  fr: "La pointe (soir/nuit) n'est sécurisée qu'avec un stockage — non promise sans batterie.",
-  en: 'The evening/night peak is only secured with storage — not promised without a battery.',
-  ar: 'لا تُؤمَّن فترة الذروة (المساء/الليل) إلا بالتخزين — غير موعودة دون بطارية.',
+  fr: "Le soir et la nuit, votre consommation reste fournie par le réseau ; l'option avec batterie la couvre.",
+  en: 'In the evening and at night, your consumption is still supplied by the grid; the battery option covers it.',
+  ar: 'في المساء والليل، يظل استهلاككم مزودًا من الشبكة؛ ويغطيه خيار البطارية.',
 };
 const DECARB_GENERIQUE = {
   fr: 'Vos clients vous demandent de plus en plus le bilan carbone de votre électricité : une part produite par le soleil sur votre site est un élément de réponse.',

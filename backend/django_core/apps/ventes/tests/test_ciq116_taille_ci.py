@@ -276,6 +276,128 @@ class SautOnduleurTests(unittest.TestCase):
             (40, 30000, 500)]), 30)
 
 
+def _hybrides_bt():
+    """Deye SG05LP3 basse tension triphasés aux prix SEEDÉS (port batterie de
+    la fiche seedée ; 10 kW : borne non publiée ⇒ aucune)."""
+    sortie = []
+    for i, (kw, sku, port) in enumerate(((10, 'OND-H-DEY-10T', None), (15, 'OND-H-DEY-15T', 14.34),
+                                         (20, 'OND-H-DEY-20T', 17.92))):
+        sortie.append({'produit': 900 + i, 'nom': 'Onduleur hybride Deye %d kW triphasé' % kw,
+                       'kw_ac': kw, 'prix': _prix_seed(sku), 'triphase': True, 'eligible_ci': True,
+                       'motif_exclusion': None, 'plage_batterie_v': [40, 60],
+                       'bat_max_charge_kw': port})
+    return sortie
+
+
+def _batterie(pid, nom, utile, prix, charge_kw):
+    return {'produit': pid, 'nom': nom, 'kwh_utile': utile, 'v_nominal': 51.2, 'prix': prix,
+            'max_modules': None, 'max_charge_kw': charge_kw, 'rendement': 0.98,
+            'element': {'id': pid, 'nom': nom, 'prix_connu': prix is not None,
+                        'prix_vente_ht': prix}}
+
+
+#: Dyness 5 / 10 kWh : fiches et prix SEEDÉS ; PowerBrick SC 16 kWh : fiche
+#: fondateur (15,27 kWh utiles, 7,17 kW), prix de TEST (aucun prix publié).
+BATTERIES = [
+    _batterie(950, 'Batterie Dyness 5 kWh', 4.6, _prix_seed('BAT-DEY-5'), 3.84),
+    _batterie(951, 'Batterie Dyness 10 kWh', 9.22, _prix_seed('BAT-DEY-10'), 5.12),
+    _batterie(952, 'Batterie Dyness PowerBrick SC 16 kWh', 15.27, Decimal('40000'), 7.17),
+]
+
+
+class OptionAvecBatterieTests(unittest.TestCase):
+    """Fondateur 26/10/2026 — l'option « avec batterie » C&I : hybrides BT à la
+    place des string, banque homogène sur le soir/nuit d'un jour moyen, champ
+    porté au remplissage (QJR612) puis par la règle des 10 ans."""
+
+    @classmethod
+    def setUpClass(cls):
+        from apps.ventes.etude_horaire import simuler_batterie_jour
+        cls.simuler = staticmethod(simuler_batterie_jour)
+        cls.prod, _ = _production()
+        cls.charge = _charge('boulangerie', 6000)
+        cls.sans = dimensionner_ci(
+            charge_jours_types=cls.charge, production_jours_types=cls.prod, tension='bt',
+            combiner=partial(combiner_onduleurs, candidats=_catalogue_huawei(), phase='tri'),
+            composer=_composer, valoriser=_valoriser(cls.charge), taux_tva_pct=20)['evaluation']
+
+    def _avec(self, batteries=BATTERIES, **kw):
+        from apps.ventes.moteur_ci.batterie import dimensionner_option_avec
+        hybrides = _hybrides_bt()
+        params = dict(
+            kwc_depart=self.sans['kwc'], pmax_wc=PANNEAU_WC, charge=self.charge,
+            production=self.prod, tension='bt', revente_choisie=False,
+            combiner=partial(combiner_onduleurs, candidats=hybrides, phase='tri'),
+            composer=_composer, valoriser=_valoriser(self.charge), batteries=batteries,
+            simuler=self.simuler, hybrides=hybrides, taux_tva_pct=20)
+        params.update(kw)
+        return dimensionner_option_avec(**params)
+
+    def test_boulangerie_hybrides_bt_banque_homogene_toujours_pleine(self):
+        from apps.ventes.moteur_ci.batterie import besoin_nocturne_kwh
+        e = self._avec()['evaluation']
+        self.assertIsNotNone(e)
+        self.assertTrue({x['produit'] for x in e['onduleurs']['combinaison']} <= {900, 901, 902})
+        bat = e['batterie']
+        self.assertIn(bat['produit'], (950, 951, 952))
+        besoin = besoin_nocturne_kwh(self.charge, self.sans['bilan'])
+        self.assertAlmostEqual(bat['besoin_nocturne_kwh'], round(besoin, 2), places=2)
+        self.assertGreaterEqual(bat['capacite_utile_kwh'] * bat['rendement'], besoin - 1e-6)
+        self.assertTrue(bat['se_remplit_tous_les_jours'])
+        self.assertGreaterEqual(e['kwc'], self.sans['kwc'])
+        self.assertGreater(e['bilan']['batterie']['restitue_kwh_an'], 0)
+        self.assertGreater(e['bilan']['autoconso_kwh'], self.sans['bilan']['autoconso_kwh'])
+        # Batterie au prix de VENTE dans le coût de l'option, jamais un achat.
+        ligne = [li for li in e['composition']['lignes'] if li['role'] == 'batterie_ci'][0]
+        self.assertEqual(ligne['quantite'], bat['quantite'])
+        self.assertTrue(ligne['prix_connu'])
+
+    def test_banque_le_moins_de_modules_puis_la_moins_chere(self):
+        from apps.ventes.moteur_ci.batterie import choisir_banque
+        banque = choisir_banque(BATTERIES, 30.0)
+        self.assertEqual((banque['produit'], banque['quantite']), (952, 3))
+        # Même nombre de modules (un seul) : la banque la moins chère.
+        petites = [b for b in BATTERIES if b['produit'] in (950, 951)]
+        self.assertEqual(choisir_banque(petites, 4.0)['produit'], 950)
+        petites = [dict(b, prix=Decimal('1')) if b['produit'] == 951 else b for b in petites]
+        self.assertEqual(choisir_banque(petites, 4.0)['produit'], 951)
+
+    def test_aucune_batterie_tarifee_motif_et_prix_nommes(self):
+        sans_prix = [dict(b, prix=None) for b in BATTERIES]
+        r = self._avec(batteries=sans_prix)
+        self.assertIsNone(r['evaluation'])
+        self.assertIn('Batterie Dyness 10 kWh', r['prix_a_renseigner'])
+
+    def test_toit_borne_banque_reduite_nommee(self):
+        r = self._avec(kwc_max=self.sans['kwc'])
+        e = r['evaluation']
+        self.assertIsNotNone(e)
+        import math
+        n_sans = math.ceil(self.sans['kwc'] * 1000 / PANNEAU_WC - 1e-9)
+        self.assertAlmostEqual(e['kwc'], n_sans * PANNEAU_WC / 1000, places=6)
+        self.assertTrue(e['batterie']['reduite'])
+        self.assertTrue(e['batterie']['se_remplit_tous_les_jours'])
+        self.assertEqual([a['code'] for a in r['alertes']], ['BATTERIE_REDUITE_AU_TOIT'])
+
+    def test_puissance_souscrite_borne_les_hybrides(self):
+        e = self._avec(ps_kva=25)['evaluation']
+        self.assertIsNotNone(e)
+        self.assertLessEqual(e['puissance_ac'], 25 + 1e-9)
+
+    def test_regle_10_ans_au_dela_du_remplissage(self):
+        from apps.ventes.moteur_ci.batterie import monter_regle_10_ans
+        # n → kWc = n × 710 Wc ; coût 1 000 MAD/kWc ; économie 300 MAD/kWc
+        # jusqu'à 40 kWc, puis 50 MAD/kWc (20 ans par palier) : arrêt à 40.
+
+        def evaluer(n):
+            kwc = n * PANNEAU_WC / 1000.0
+            eco = 300 * min(kwc, 40) + 50 * max(0.0, kwc - 40)
+            return {'kwc': kwc, 'cout': 1000 * kwc, 'economie': eco}
+        retenu = monter_regle_10_ans(29, 200, PANNEAU_WC, evaluer)
+        self.assertLessEqual(abs(retenu['kwc'] - 40), PANNEAU_WC / 1000.0)
+        self.assertIsNone(monter_regle_10_ans(29, 200, PANNEAU_WC, lambda n: None))
+
+
 class GardeAstTests(unittest.TestCase):
     def test_aucune_regle_900_ni_taux_fixe(self):
         source = CHEMIN.read_text(encoding='utf-8')
