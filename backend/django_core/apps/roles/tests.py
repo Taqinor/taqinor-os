@@ -1077,3 +1077,240 @@ class CodesGrilleAppliquesTests(TestCase):
                          ['crm_voir'])
         self.assertEqual(Role.objects.get(pk=directeur.pk).permissions,
                          ['crm_voir', 'ventes_supprimer'])
+
+
+# ── Organigramme (fondateur, 27/10/2026) ────────────────────────────────────
+
+
+def _cles_conformes(test, attendu, recu, chemin='racine'):
+    """Compare récursivement les CLÉS de ``recu`` à l'échantillon de contrat :
+    mêmes clés à chaque objet ; listes comparées sur leur premier élément."""
+    if isinstance(attendu, dict) and isinstance(recu, dict):
+        test.assertEqual(set(recu), set(attendu), chemin)
+        for cle in attendu:
+            _cles_conformes(test, attendu[cle], recu[cle], f'{chemin}.{cle}')
+    elif isinstance(attendu, list) and isinstance(recu, list) \
+            and attendu and recu:
+        _cles_conformes(test, attendu[0], recu[0], f'{chemin}[0]')
+
+
+class OrganigrammeTest(TestCase):
+    """Départements, fonctions, équipes génériques ; rôle par fonction ;
+    fonction obligatoire ; hiérarchie déduite ; boucle refusée ; une seule
+    équipe active (3 types) ; isolation multi-tenant ; contrat organisation."""
+
+    MDP = 'Nouveau-mdp-456!'
+
+    def setUp(self):
+        from apps.roles.permissions_registre import COMMERCIAL_PERMISSIONS
+        self.company = Company.objects.create(nom='Org Co', slug='org-co')
+        self.autre = Company.objects.create(nom='Org Autre', slug='org-autre')
+        self.r_admin = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
+        self.r_com = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=list(COMMERCIAL_PERMISSIONS))
+        self.r_tech = Role.objects.create(
+            company=self.company, nom='Technicien', permissions=['crm_voir'])
+        self.admin = User.objects.create_user(
+            username='org_admin', password='x', role=self.r_admin,
+            role_legacy='admin', company=self.company)
+        self.api = APIClient()
+        self.api.force_authenticate(self.admin)
+
+    def _user(self, nom, **kw):
+        return User.objects.create_user(
+            username=nom, password='x', company=self.company, **kw)
+
+    def _dep(self, nom, responsable=None, **kw):
+        from apps.roles.models import Departement
+        return Departement.objects.create(
+            company=self.company, nom=nom, responsable=responsable, **kw)
+
+    def _sup(self, user):
+        user.refresh_from_db()
+        return user.supervisor_id
+
+    def test_organisation_conforme_au_contrat(self):
+        import pathlib
+        from django.apps import apps as django_apps
+        from apps.roles.models import Poste
+        chemin = (pathlib.Path(__file__).parent / 'contract_samples'
+                  / 'organisation.json')
+        exemple = json.loads(chemin.read_text(encoding='utf-8'))['exemple']
+        dg = self._user('org_dg')
+        resp = self._user('org_resp')
+        chef = self._user('org_chef', role=self.r_com)
+        membre = self._user('org_membre')
+        self._user('org_libre', role=self.r_tech)
+        self._dep('Direction', dg, est_direction=True)
+        com = self._dep('Commercial', resp, ordre=1)
+        poste = Poste.objects.create(
+            company=self.company, intitule='Chargée', departement=com,
+            role=self.r_com)
+        membre.fonction = poste
+        membre.role = self.r_com
+        membre.save()
+        EquipeCommerciale = django_apps.get_model('crm', 'EquipeCommerciale')
+        e = EquipeCommerciale.objects.create(
+            company=self.company, nom='Casa', responsable=chef,
+            departement=com, recoit_leads=True)
+        e.membres.set([membre])
+        Equipe = django_apps.get_model('installations', 'Equipe')
+        Equipe.objects.create(company=self.company, nom='Nord')
+        r = self.api.get('/api/django/roles/organisation/')
+        self.assertEqual(r.status_code, 200, r.content)
+        _cles_conformes(self, exemple, r.json())
+        data = r.json()
+        self.assertEqual(data['direction']['responsable']['id'], dg.pk)
+        equipe = data['departements'][0]['equipes'][0]
+        self.assertEqual((equipe['type'], equipe['recoit_leads']),
+                         ('commerciale', True))
+        self.assertEqual(equipe['membres'][0]['fonction'], 'Chargée')
+        self.assertEqual(data['equipes_sans_departement'][0]['type'],
+                         'terrain')
+        manques = {p['nom']: p['manque'] for p in data['a_completer']}
+        self.assertEqual(manques['org_libre'], ['fonction'])
+        self.assertEqual(manques['org_dg'], ['fonction', 'role'])
+        self.assertNotIn('org_membre', manques)
+
+    def test_lecture_tout_role_ecriture_admin_et_isolation(self):
+        from apps.roles.models import Departement
+        etranger = Departement.objects.create(company=self.autre, nom='X')
+        com = self._user('org_com', role=self.r_com)
+        api = APIClient()
+        api.force_authenticate(com)
+        self.assertEqual(
+            api.get('/api/django/roles/organisation/').status_code, 200)
+        self.assertEqual(
+            api.get('/api/django/roles/departements/').status_code, 200)
+        self.assertEqual(api.post('/api/django/roles/departements/',
+                                  {'nom': 'Pirate'}, format='json')
+                         .status_code, 403)
+        r = self.api.get(f'/api/django/roles/departements/{etranger.pk}/')
+        self.assertEqual(r.status_code, 404)
+        r = self.api.post('/api/django/roles/departements/',
+                          {'nom': 'Commercial', 'company': self.autre.pk},
+                          format='json')
+        self.assertIn(r.status_code, (201, 400), r.content)
+        self.assertFalse(Departement.objects.filter(
+            company=self.autre, nom='Commercial').exists())
+        r = self.api.post('/api/django/roles/postes/', {
+            'intitule': 'Espion', 'departement': etranger.pk},
+            format='json')
+        self.assertIn(r.status_code, (400, 404), r.content)
+        r = self.api.get('/api/django/roles/organisation/')
+        self.assertNotIn('X', [d['nom'] for d in r.json()['departements']])
+
+    def test_une_seule_direction(self):
+        self._dep('Direction', est_direction=True)
+        r = self.api.post('/api/django/roles/departements/', {
+            'nom': 'Direction bis', 'est_direction': True}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('est_direction', r.data)
+
+    def test_role_par_fonction_surcharge_et_propagation(self):
+        from apps.roles.models import Poste
+        poste = Poste.objects.create(
+            company=self.company, intitule='Commerciale', role=self.r_com)
+        r = self.api.post('/api/django/users/', {
+            'username': 'org_n1', 'password': self.MDP,
+            'fonction': poste.pk}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        n1 = User.objects.get(username='org_n1')
+        self.assertEqual((n1.role_id, n1.poste), (self.r_com.pk, 'Commerciale'))
+        self.assertEqual(r.data['fonction_intitule'], 'Commerciale')
+        r = self.api.post('/api/django/users/', {
+            'username': 'org_n2', 'password': self.MDP,
+            'fonction': poste.pk, 'role': self.r_tech.pk}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        n2 = User.objects.get(username='org_n2')
+        self.assertEqual(n2.role_id, self.r_tech.pk)  # le choix explicite gagne
+        nouveau = Role.objects.create(
+            company=self.company, nom='Vendeur', permissions=['crm_voir'])
+        r = self.api.patch(f'/api/django/roles/postes/{poste.pk}/',
+                           {'role': nouveau.pk}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        n1.refresh_from_db()
+        n2.refresh_from_db()
+        self.assertEqual(n1.role_id, nouveau.pk)  # portait l'ancien rôle
+        self.assertEqual(n2.role_id, self.r_tech.pk)  # rôle choisi : gardé
+
+    def test_fonction_obligatoire_seulement_si_postes(self):
+        from apps.roles.models import Poste
+        r = self.api.post('/api/django/users/', {
+            'username': 'org_sans', 'password': self.MDP}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        poste = Poste.objects.create(company=self.company, intitule='Aide')
+        r = self.api.post('/api/django/users/', {
+            'username': 'org_sans2', 'password': self.MDP}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('fonction', r.data)
+        r = self.api.post('/api/django/users/', {
+            'username': 'org_sans3', 'password': self.MDP,
+            'fonction': poste.pk}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('role', r.data)
+        self.assertFalse(User.objects.filter(
+            username__in=['org_sans2', 'org_sans3']).exists())
+
+    def test_hierarchie_regles_a_a_f(self):
+        from authentication.equipes_structure import recalculer_hierarchie
+        from apps.roles.models import EquipeOrg, Poste
+        dg, rc, chef, m, uf, ud, libre = (
+            self._user(f'org_h{i}') for i in range(7))
+        dg.supervisor = rc
+        dg.save()
+        libre.supervisor = rc
+        libre.save()
+        direction = self._dep('Direction', dg, est_direction=True)
+        com = self._dep('Commercial', rc)
+        equipe = EquipeOrg.objects.create(
+            company=self.company, nom='Casa', departement=com, chef=chef)
+        equipe.membres.set([m])
+        for user, dep, nom in ((uf, com, 'Vendeur'), (ud, direction, 'DAF')):
+            user.fonction = Poste.objects.create(
+                company=self.company, intitule=nom, departement=dep)
+            user.save()
+        recalculer_hierarchie(self.company.pk)
+        self.assertIsNone(self._sup(dg))                 # (a)
+        self.assertEqual(self._sup(m), chef.pk)          # (b)
+        self.assertEqual(self._sup(chef), rc.pk)         # (c)
+        self.assertEqual(self._sup(rc), dg.pk)           # (d)
+        self.assertEqual(self._sup(uf), rc.pk)           # (e)
+        self.assertEqual(self._sup(ud), dg.pk)           # (e) Direction
+        self.assertEqual(self._sup(libre), rc.pk)        # (f) inchangé
+
+    def test_boucle_refusee_et_annulee(self):
+        from apps.roles.models import EquipeOrg
+        x, y = self._user('org_x'), self._user('org_y')
+        a, b = self._dep('A', x), self._dep('B', y)
+        r = self.api.post('/api/django/roles/equipes/', {
+            'nom': 'T1', 'departement': a.pk, 'chef': y.pk}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(self._sup(y), x.pk)
+        r = self.api.post('/api/django/roles/equipes/', {
+            'nom': 'T2', 'departement': b.pk, 'chef': x.pk}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('hierarchie', r.data)
+        self.assertFalse(EquipeOrg.objects.filter(nom='T2').exists())
+        self.assertIsNone(self._sup(x))
+
+    def test_une_seule_equipe_active_trois_types(self):
+        from django.apps import apps as django_apps
+        m = self._user('org_m')
+        EquipeCommerciale = django_apps.get_model('crm', 'EquipeCommerciale')
+        e = EquipeCommerciale.objects.create(company=self.company, nom='Casa')
+        e.membres.set([m])
+        r = self.api.post('/api/django/roles/equipes/', {
+            'nom': 'Marketing', 'membres': [m.pk]}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('membres', r.data)
+        e.actif = False
+        e.save()
+        r = self.api.post('/api/django/roles/equipes/', {
+            'nom': 'Marketing', 'membres': [m.pk], 'chef': self.admin.pk},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertEqual(self._sup(m), self.admin.pk)

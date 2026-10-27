@@ -65,3 +65,49 @@ def remove_role_from_user(user, role_id) -> bool:
     user.role = None
     user.save(update_fields=['role'])
     return True
+
+
+# ── Organigramme (fondateur, 27/10/2026) — rôle par défaut d'une fonction ──
+
+
+def role_par_defaut_applicable(user, role):
+    """Le rôle par défaut d'une fonction peut-il remplacer celui de ``user`` ?
+
+    Jamais une rétrogradation silencieuse d'un compte protégé ou du DERNIER
+    propriétaire (même garde que la vue des comptes) : ces comptes gardent
+    leur rôle, seul un choix explicite le change."""
+    if role is None:
+        return False
+    if user is None or not getattr(user, 'pk', None):
+        return True
+    if user.role_id == role.pk:
+        return False
+    perd_admin = user.is_admin_role and 'roles_gerer' not in (
+        role.permissions or [])
+    if perd_admin and (user.is_protected or user.est_dernier_proprietaire()):
+        return False
+    return True
+
+
+def propager_poste(poste, ancien_role_id):
+    """Après modification d'une fonction : recopie son intitulé dans le
+    ``poste`` (texte) de ses titulaires, et donne le NOUVEAU rôle par défaut
+    aux titulaires qui portaient encore l'ANCIEN (un rôle choisi à la main
+    reste). Renvoie le nombre de rôles changés."""
+    from authentication.models import CustomUser
+
+    titulaires = CustomUser.objects.filter(
+        company_id=poste.company_id, fonction=poste)
+    titulaires.exclude(poste=poste.intitule[:120]).update(
+        poste=poste.intitule[:120])
+    if poste.role_id is None or poste.role_id == ancien_role_id \
+            or ancien_role_id is None:
+        return 0
+    palier = CustomUser.tier_for_role(poste.role) or CustomUser.ROLE_NORMAL
+    changes = 0
+    for user in titulaires.filter(role_id=ancien_role_id).select_related('role'):
+        if role_par_defaut_applicable(user, poste.role):
+            CustomUser.objects.filter(pk=user.pk).update(
+                role=poste.role, role_legacy=palier)
+            changes += 1
+    return changes

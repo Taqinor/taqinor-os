@@ -1421,6 +1421,11 @@ class EquipeCommerciale(models.Model):
         null=True, blank=True, related_name='equipes_dirigees')
     membres = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name='equipes_commerciales')
+    # Organigramme (27/10/2026) — département de rattachement (string-FK).
+    departement = models.ForeignKey(
+        # on_delete: l'équipe survit à la suppression du département
+        'roles.Departement', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='equipes_commerciales')
     actif = models.BooleanField(default=True)
     # Équipe qui reçoit les nouveaux leads : ils tournent entre ses membres
     # actifs (le moins de leads ouverts d'abord, plafond du profil société).
