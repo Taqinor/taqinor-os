@@ -71,12 +71,15 @@ def _devis_de_la_societe(company, devis_id, user=None):
         return None
 
 
-def _lead_de_la_societe(company, lead_id):
-    if not lead_id or company is None:
+def _lead_de_la_societe(company, lead_id, user=None):
+    """Le lead ``lead_id`` de la société, borné à la portée de ``user``
+    (AGM11 : ``leads_visibles`` = société + portée équipe + entités, comme le
+    devis voisin ADEV21) ; un lead hors société OU hors portée est ignoré."""
+    if not lead_id or company is None or user is None:
         return None
-    from apps.crm.selectors import get_company_lead
+    from apps.crm.selectors import leads_visibles
     try:
-        return get_company_lead(company, int(lead_id))
+        return leads_visibles(user, company).filter(pk=int(lead_id)).first()
     except (TypeError, ValueError):
         return None
 
@@ -110,7 +113,7 @@ def etude_pompage_preview(request):
         # (exception, pas un dict : la forme 200 du contrat reste seule.)
         from rest_framework.exceptions import NotFound
         raise NotFound('Devis introuvable.')
-    lead = _lead_de_la_societe(company, corps.get('lead'))
+    lead = _lead_de_la_societe(company, corps.get('lead'), request.user)
     entrees = {k: v for k, v in corps.items() if k not in CLES_CONTEXTE}
     etude = etudier_pompage(company, entrees, devis=devis, lead=lead)
     return Response({
