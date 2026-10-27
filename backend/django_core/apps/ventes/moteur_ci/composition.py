@@ -425,10 +425,12 @@ def _article_de_comptage(catalogue, onduleurs, alertes=None):
     marques = _marques_onduleurs(catalogue, onduleurs)
     tarifes = [c for c in controleurs + compteurs if c.get('prix_connu')]
     if marques and any(_marque_de(c) not in ('', *marques) for c in tarifes):
-        def dans_la_marque(p):
+        def par_fiche(p):
             texte = ('%s %s' % (p.get('nom') or '', p.get('marque') or '')).lower()
-            return _marque_de(p) in marques or any(t in texte for t in compatibles)
-        preferes = [c for c in tarifes if dans_la_marque(c)]
+            return any(t in texte for t in compatibles)
+        # La fiche d'abord, puis la même marque (ordre ADEV82 gardé dans chaque rang).
+        preferes = [c for c in tarifes if par_fiche(c)]
+        preferes += [c for c in tarifes if _marque_de(c) in marques and c not in preferes]
         if preferes:
             return preferes[0]
         if alertes is not None:

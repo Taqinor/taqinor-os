@@ -315,12 +315,13 @@ class CompositionTests(TestCase):
     def test_compteur_declare_compatible_par_la_fiche_prefere_a_la_marque(self):
         cat = self._cat_marque(
             'Deye',
-            self._accessoire(5100, 'Smart Meter DTSU666-H', 'compteur_injection', 'Huawei'),
-            self._accessoire(5101, 'Compteur Deye', 'compteur_injection', 'Deye'))
+            self._accessoire(5090, 'Compteur Deye', 'compteur_injection', 'Deye'),
+            self._accessoire(5100, 'Smart Meter DTSU666-H', 'compteur_injection', 'Huawei'))
         for p in cat:
             if p['role_ci'] == 'onduleur_string_tri':
                 p['fiche'] = {'ond_compteurs_compatibles': ['DTSU666-H']}
         _comp, comptage, _logger = self._comptage_et_logger(cat)
+        # La fiche passe devant la marque, même quand la marque a le plus petit id.
         self.assertEqual(comptage['produit'], 5100)
 
     def test_logger_de_la_marque_des_onduleurs_ou_alerte(self):
