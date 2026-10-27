@@ -21,6 +21,8 @@ import {
   parseQuestionnaireGet,
   parseQuestionnairePostResponse,
   progressLabel,
+  detectQuestionnaireLang,
+  messageErreurQuestionnaire,
   questionnaireEndpoint,
   type QuestionnaireGetResponse,
 } from '../src/lib/questionnaire';
@@ -883,5 +885,32 @@ describe('CQSTW1 — pompage : colonnes CQST3/CQST6', () => {
     expect(r).toEqual({});
     expect(buildSectionReponses('pompage', { mode_pompe: 'existante', pompe_actuelle_tension_v: '110', pompe_actuelle_phases: 'bi' }))
       .toEqual({ mode_pompe: 'existante' });
+  });
+});
+
+describe('CQSTW3 — langue du client', () => {
+  it('Étape X sur Y suit la langue', () => {
+    expect(progressLabel(1, 4, 'en')).toBe('Step 2 of 4');
+    expect(progressLabel(1, 4, 'ar')).toContain('2');
+    expect(progressLabel(1, 4)).toBe('Étape 2 sur 4');
+  });
+  it('langue gardée > navigateur > FR', () => {
+    expect(detectQuestionnaireLang('ar', 'fr-FR')).toBe('ar');
+    expect(detectQuestionnaireLang(null, 'en-GB')).toBe('en');
+    expect(detectQuestionnaireLang('xx', 'de')).toBe('fr');
+  });
+  it('messages d erreur FR/EN/AR, code inconnu = échec', () => {
+    for (const lang of ['fr', 'en', 'ar'] as const) {
+      expect(messageErreurQuestionnaire('reseau', lang).length).toBeGreaterThan(5);
+      expect(messageErreurQuestionnaire('inconnu', lang)).toBe(messageErreurQuestionnaire('echec', lang));
+    }
+    expect(messageErreurQuestionnaire('reseau', 'en')).toMatch(/network/i);
+  });
+  it('listes pompage traduites (data-fr/en/ar sur les options)', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
+    for (const lab of ['SOURCE_EAU_LABELS', 'IRRIGATION_LABELS', 'ALIM_LABELS']) {
+      expect(src).toContain(`data-en={${lab}[v].en}`);
+      expect(src).toContain(`data-ar={${lab}[v].ar}`);
+    }
   });
 });

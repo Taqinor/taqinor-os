@@ -217,8 +217,55 @@ export function initialSectionIndex(
   return idx === -1 ? sections.length - 1 : idx;
 }
 
-export function progressLabel(index: number, total: number): string {
+export type QuestionnaireLang = 'fr' | 'en' | 'ar';
+
+export function progressLabel(index: number, total: number, lang: QuestionnaireLang = 'fr'): string {
+  if (lang === 'en') return `Step ${index + 1} of ${total}`;
+  if (lang === 'ar') return `الخطوة ${index + 1} من ${total}`;
   return `Étape ${index + 1} sur ${total}`;
+}
+
+/** CQSTW3 — langue d'ouverture : celle gardée par le client, sinon celle du navigateur, sinon FR. */
+export function detectQuestionnaireLang(saved: unknown, navigatorLang: unknown): QuestionnaireLang {
+  for (const v of [saved, navigatorLang]) {
+    const c = typeof v === 'string' ? v.trim().toLowerCase().slice(0, 2) : '';
+    if (c === 'fr' || c === 'en' || c === 'ar') return c;
+  }
+  return 'fr';
+}
+
+/** Messages d'erreur vus par le client, dans sa langue (CQSTW3) ; `expire` = CQSTW5. */
+export type QuestionnaireErreurCode = 'echec' | 'reseau' | 'limite' | 'expire' | 'requete';
+const MESSAGES_ERREUR: Record<QuestionnaireErreurCode, Record<QuestionnaireLang, string>> = {
+  echec: {
+    fr: 'Cette réponse n’a pas pu être enregistrée. Réessayez dans un instant.',
+    en: 'This answer could not be saved. Please try again in a moment.',
+    ar: 'تعذر حفظ هذا الجواب. المرجو المحاولة بعد لحظات.',
+  },
+  reseau: {
+    fr: 'Connexion impossible. Vérifiez votre réseau et réessayez.',
+    en: 'Connection failed. Check your network and try again.',
+    ar: 'تعذر الاتصال. تحققوا من الشبكة وأعيدوا المحاولة.',
+  },
+  limite: {
+    fr: 'Trop de tentatives, réessayez dans un instant.',
+    en: 'Too many attempts, please try again in a moment.',
+    ar: 'محاولات كثيرة، أعيدوا المحاولة بعد لحظات.',
+  },
+  expire: {
+    fr: 'Ce lien a expiré — demandez-en un nouveau à votre conseiller.',
+    en: 'This link has expired — ask your advisor for a new one.',
+    ar: 'انتهت صلاحية هذا الرابط — اطلبوا رابطاً جديداً من مستشاركم.',
+  },
+  requete: {
+    fr: 'Une erreur est survenue. Réessayez.',
+    en: 'Something went wrong. Please try again.',
+    ar: 'حدث خطأ. المرجو المحاولة مرة أخرى.',
+  },
+};
+export function messageErreurQuestionnaire(code: unknown, lang: QuestionnaireLang): string {
+  const c = typeof code === 'string' && code in MESSAGES_ERREUR ? (code as QuestionnaireErreurCode) : 'echec';
+  return MESSAGES_ERREUR[c][lang];
 }
 
 // ── ÉCRANS : le regroupement des sections en pages ───────────────────────
@@ -1011,7 +1058,7 @@ export async function envoyerSectionQuestionnaire(
     const result = parseQuestionnairePostResponse(res.status, await res.json().catch(() => null));
     return { result, prefill: result.ok ? prefillApresEnvoi(prefill, body.reponses) : prefill };
   } catch {
-    return { result: { ok: false, enregistrees: [], detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' }, prefill };
+    return { result: { ok: false, enregistrees: [], detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.', code: 'reseau' }, prefill };
   }
 }
 
@@ -1031,10 +1078,10 @@ export interface QuestionnairePostResult {
   ok: boolean;
   enregistrees: string[];
   detail?: string;
+  /** CQSTW3/5 — nature de l'échec, traduite par la page (`messageErreurQuestionnaire`). */
+  code?: QuestionnaireErreurCode;
   /** CQSTW2 — le serveur dit que ces réponses suffisent à préparer le devis. */
   devisPossible?: boolean;
-  /** CQSTW5 — lien introuvable ou expiré (404 amont), pas une panne passagère. */
-  lienExpire?: boolean;
 }
 
 /** Normalise (statut HTTP, JSON upstream) → une forme unique lue par la page. */
@@ -1044,7 +1091,8 @@ export function parseQuestionnairePostResponse(status: number, body: unknown): Q
   const enregistreesRaw = Array.isArray(b.enregistrees) ? b.enregistrees : [];
   const enregistrees = enregistreesRaw.filter((v): v is string => typeof v === 'string');
   const detail = typeof b.detail === 'string' ? b.detail : undefined;
-  return { ok, enregistrees, detail, ...(b.devis_possible === true ? { devisPossible: true } : {}) };
+  const code = typeof b.code === 'string' && b.code in MESSAGES_ERREUR ? (b.code as QuestionnaireErreurCode) : undefined;
+  return { ok, enregistrees, detail, ...(code ? { code } : {}), ...(b.devis_possible === true ? { devisPossible: true } : {}) };
 }
 
 /** `true` tant que le jeton est un APERÇU INTERNE : aucun POST ne doit partir. */

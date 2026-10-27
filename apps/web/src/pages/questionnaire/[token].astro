@@ -1055,9 +1055,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 D'où vient l'eau : un puits, un forage, un bassin ou une rivière ?
                               </label>
                               <select id="q-source-eau" class={POMPAGE_INPUT_CLS}>
-                                <option value="" selected={prefillStr('source_eau') === ''}>— Choisir…</option>
+                                <option value="" data-fr="— Choisir…" data-en="— Choose…" data-ar="— اختاروا…" selected={prefillStr('source_eau') === ''}>— Choisir…</option>
                                 {SOURCE_EAU_VALUES.map((v) => (
-                                  <option value={v} selected={prefillStr('source_eau') === v}>{SOURCE_EAU_LABELS[v]}</option>
+                                  <option value={v} data-fr={SOURCE_EAU_LABELS[v].fr} data-en={SOURCE_EAU_LABELS[v].en} data-ar={SOURCE_EAU_LABELS[v].ar} selected={prefillStr('source_eau') === v}>{SOURCE_EAU_LABELS[v].fr}</option>
                                 ))}
                               </select>
                             </div>
@@ -1094,9 +1094,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 Vous irriguez au goutte-à-goutte, par aspersion ou à la raie (gravitaire) ?
                               </label>
                               <select id="q-irrigation-methode" class={POMPAGE_INPUT_CLS}>
-                                <option value="" selected={prefillStr('irrigation_methode') === ''}>— Choisir…</option>
+                                <option value="" data-fr="— Choisir…" data-en="— Choose…" data-ar="— اختاروا…" selected={prefillStr('irrigation_methode') === ''}>— Choisir…</option>
                                 {IRRIGATION_METHODE_VALUES.map((v) => (
-                                  <option value={v} selected={prefillStr('irrigation_methode') === v}>{IRRIGATION_LABELS[v]}</option>
+                                  <option value={v} data-fr={IRRIGATION_LABELS[v].fr} data-en={IRRIGATION_LABELS[v].en} data-ar={IRRIGATION_LABELS[v].ar} selected={prefillStr('irrigation_methode') === v}>{IRRIGATION_LABELS[v].fr}</option>
                                 ))}
                               </select>
                             </div>
@@ -1109,9 +1109,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 Votre pompe actuelle marche à quoi — diesel, butane, électricité, ou vous n'en avez pas ?
                               </label>
                               <select id="q-pompe-alim" class={POMPAGE_INPUT_CLS}>
-                                <option value="" selected={alimPrefill === ''}>— Choisir…</option>
+                                <option value="" data-fr="— Choisir…" data-en="— Choose…" data-ar="— اختاروا…" selected={alimPrefill === ''}>— Choisir…</option>
                                 {POMPE_ALIM_VALUES.map((v) => (
-                                  <option value={v} selected={alimPrefill === v}>{ALIM_LABELS[v]}</option>
+                                  <option value={v} data-fr={ALIM_LABELS[v].fr} data-en={ALIM_LABELS[v].en} data-ar={ALIM_LABELS[v].ar} selected={alimPrefill === v}>{ALIM_LABELS[v].fr}</option>
                                 ))}
                               </select>
                             </div>
@@ -1389,6 +1389,8 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     isEmptyPostBody,
     isValidPhotoDataUrl,
     isPhotoSection,
+    detectQuestionnaireLang,
+    messageErreurQuestionnaire,
     progressLabel,
     type QuestionnaireSectionId,
   } from '../../lib/questionnaire';
@@ -1476,6 +1478,8 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     }
     function applyLang(lang: 'fr' | 'en' | 'ar') {
       currentLang = lang;
+      try { localStorage.setItem('q-lang', lang); } catch { /* navigation privée : langue non gardée */ }
+      if (progressLabelEl) progressLabelEl.textContent = progressLabel(currentIndex, total, lang);
       const isAr = lang === 'ar';
       i18nTriples.forEach(({ fr, en, ar }) => {
         fr.hidden = lang !== 'fr';
@@ -1508,6 +1512,11 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     $('q-lang-fr')?.addEventListener('click', () => applyLang('fr'));
     $('q-lang-en')?.addEventListener('click', () => applyLang('en'));
     $('q-lang-ar')?.addEventListener('click', () => applyLang('ar'));
+    // CQSTW3 — langue d'ouverture : gardée par le client, sinon celle du navigateur.
+    let langGardee: string | null = null;
+    try { langGardee = localStorage.getItem('q-lang'); } catch { /* ignoré */ }
+    const langInitiale = detectQuestionnaireLang(langGardee, navigator.language);
+    if (langInitiale !== 'fr') applyLang(langInitiale);
 
     // ── Aperçu interne : champs visibles mais désactivés, jamais de POST ──
     if (init.interne) {
@@ -1540,7 +1549,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
         seg.classList.toggle('bg-azur-600', on);
         seg.classList.toggle('bg-azur-100', !on);
       });
-      if (progressLabelEl) progressLabelEl.textContent = progressLabel(currentIndex, total);
+      if (progressLabelEl) progressLabelEl.textContent = progressLabel(currentIndex, total, currentLang);
       if (prevBtn) prevBtn.classList.toggle('invisible', currentIndex === 0);
       if (nextLabelEl) {
         const isLast = currentIndex === total - 1;
@@ -1941,7 +1950,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     // alors que le client voulait justement y revenir avec sa photo.
     async function postSection(
       section: QuestionnaireSectionId,
-    ): Promise<{ ok: boolean; envoye: boolean; detail?: string }> {
+    ): Promise<{ ok: boolean; envoye: boolean; code?: string }> {
       if (init.interne) return { ok: true, envoye: false };
       if (repondu[section] === true && !touched.has(section)) {
         // Rien de neuf — on ne renvoie pas une réponse inchangée.
@@ -1958,7 +1967,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       const envoi = await envoyerSectionQuestionnaire(fetch, init.token, body, init.prefill);
       init.prefill = envoi.prefill;
       if (!envoi.result.ok) {
-        return { ok: false, envoye: false, detail: envoi.result.detail || 'Cette réponse n’a pas pu être enregistrée. Réessayez.' };
+        return { ok: false, envoye: false, code: envoi.result.code };
       }
       devisPossible = envoi.result.devisPossible === true;
       return { ok: true, envoye: true };
@@ -2006,7 +2015,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
           const result = await postSection(section);
           if (!result.ok) {
             if (sectionErrEl) {
-              sectionErrEl.textContent = result.detail || 'Une erreur est survenue. Réessayez.';
+              sectionErrEl.textContent = messageErreurQuestionnaire(result.code, currentLang);
               sectionErrEl.classList.remove('hidden');
             }
             return;

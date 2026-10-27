@@ -4,6 +4,8 @@
  * grossisse plus : libellés FR/EN/AR des listes fermées, champs numériques du
  * bloc pompage et, ci-dessous, les champs ajoutés par CQST3/CQST6.
  */
+export type L3 = { fr: string; en: string; ar: string };
+export const L = (fr: string, en: string, ar: string): L3 => ({ fr, en, ar });
 export const POMPAGE_NUM = {
   niveau_statique_m: { id: 'q-niveau-statique', fr: "À quelle profondeur se trouve l'eau quand la pompe est arrêtée ? (m)", en: 'How deep is the water when the pump is off? (m)', ar: 'على أي عمق يوجد الماء عندما تكون المضخة متوقفة؟ (م)' },
   besoin_eau_m3j: { id: 'q-besoin-eau', fr: "De combien de mètres cubes d'eau avez-vous besoin par jour au plus fort de la saison ? (m³/jour)", en: 'How many cubic metres of water do you need per day at the peak of the season? (m³/day)', ar: 'كم متراً مكعباً من الماء تحتاجون يومياً في ذروة الموسم؟ (م³/اليوم)' },
@@ -14,17 +16,19 @@ export const POMPAGE_NUM = {
   carburant_prix_unitaire_mad: { id: 'q-carburant-prix', fr: 'Vous la payez combien, la bouteille (ou le litre de gasoil) ? (MAD)', en: 'How much do you pay for a cylinder (or a litre of diesel)? (MAD)', ar: 'بكم تشترون القنينة (أو لتر الغازوال)؟ (درهم)' },
   depense_carburant_mad_mois: { id: 'q-depense-carburant', fr: 'Combien dépensez-vous en carburant par mois ? (MAD/mois)', en: 'How much do you spend on fuel per month? (MAD/month)', ar: 'كم تنفقون على الوقود شهرياً؟ (درهم/الشهر)' },
 } as const;
-export const SOURCE_EAU_LABELS: Record<string, string> = {
-  puits: 'Puits', forage: 'Forage', bassin: 'Bassin', riviere: 'Rivière',
+export const SOURCE_EAU_LABELS: Record<string, L3> = {
+  puits: L('Puits', 'Well', 'بئر'), forage: L('Forage', 'Borehole', 'ثقب (فوراج)'),
+  bassin: L('Bassin', 'Reservoir', 'حوض'), riviere: L('Rivière', 'River', 'واد'),
 };
-export const IRRIGATION_LABELS: Record<string, string> = {
-  goutte: 'Goutte-à-goutte', aspersion: 'Aspersion', gravitaire: 'Gravitaire (à la raie)',
+export const IRRIGATION_LABELS: Record<string, L3> = {
+  goutte: L('Goutte-à-goutte', 'Drip', 'التنقيط'), aspersion: L('Aspersion', 'Sprinkler', 'الرش'),
+  gravitaire: L('Gravitaire (à la raie)', 'Gravity (furrow)', 'الجاذبية (الأخاديد)'),
 };
-export const ALIM_LABELS: Record<string, string> = {
-  aucune: 'Pas de pompe actuellement', diesel: 'Diesel (gasoil)', butane: 'Butane', electrique: 'Électricité',
+export const ALIM_LABELS: Record<string, L3> = {
+  aucune: L('Pas de pompe actuellement', 'No pump at the moment', 'لا توجد مضخة حالياً'),
+  diesel: L('Diesel (gasoil)', 'Diesel', 'ديزل (غازوال)'), butane: L('Butane', 'Butane', 'بوتان'),
+  electrique: L('Électricité', 'Electricity', 'كهرباء'),
 };
-export type L3 = { fr: string; en: string; ar: string };
-export const L = (fr: string, en: string, ar: string): L3 => ({ fr, en, ar });
 export const TENSION_LABELS: Record<string, L3> = {
   bt: L('Basse tension (BT) — compteur ordinaire', 'Low voltage (LV) — standard meter', 'ضغط منخفض (BT) — عداد عادي'),
   mt: L('Moyenne tension (MT) — poste de transformation', 'Medium voltage (MV) — transformer substation', 'ضغط متوسط (MT) — محطة تحويل'),

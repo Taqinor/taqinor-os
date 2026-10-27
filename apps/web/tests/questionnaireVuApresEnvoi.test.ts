@@ -69,7 +69,7 @@ describe('prefill_vu après un envoi réussi (ALEA4)', () => {
       'jeton-1', buildQuestionnairePostBody('energie', { facture_hiver: '900' }, null, undefined, prefill), prefill,
     );
     expect(panne.prefill).toBe(prefill);
-    expect(panne.result).toEqual({ ok: false, enregistrees: [], detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' });
+    expect(panne.result).toEqual({ ok: false, enregistrees: [], detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.', code: 'reseau' });
   });
 
   it('la page envoie par envoyerSectionQuestionnaire et en reprend le prefill', () => {
