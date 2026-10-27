@@ -185,7 +185,7 @@ class EmailPdfFactureTests(TestCase):
         from core.champs_stricts import ChaineUneLigne
         from apps.ventes.views.openapi_docs import EnvoyerEmailFactureRequest
         self.assertIsInstance(
-            EnvoyerEmailFactureRequest().fields['sujet'], ChaineUneLigne)
+            EnvoyerEmailFactureRequest.fields['sujet'], ChaineUneLigne)
         for sujet in ('Facture\nBcc: x@y.z', 'Facture\r', 'Fac\x00ture'):
             resp = self.api.post(
                 f'/api/django/ventes/factures/{self.facture.id}/envoyer-email/',
