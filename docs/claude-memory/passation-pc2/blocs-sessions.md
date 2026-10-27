@@ -136,6 +136,8 @@ lignes : +0 ligne logique ; le devis auto agricole ne persiste pas `mode_pompe` 
 imprime 20 % de TVA sur la pompe alors que le site la dit exonérée : TVA du kit = manuel (D8), signalé, pas touché ;
 décisions D-AGC-1 à D-AGC-7 dans `PLAN_AUDIT_MOTEUR.md` et `WEB_PLAN.md` ; note : notes/AGC-r1-constats.md.
 
+**Complément AGC (23:50 UTC, vérification indépendante du round 3 rentrée après le push — 5 constats à corriger AVANT la PR, détail dans `notes/AGC-r3-validation-pour-PC2.md`) :** (1) le golden `legacy/onepage_agricole.json` bouge (tag pdf : sauté en CI de PR, rouge en release-verify) → le recapturer ; (2) `_depense_declaree` imprime « déclarée » sur des mois pré-cochés non confirmés (`MOTIF_MOIS_CALENDRIER`) → ne rien imprimer dans ce cas ; (3) la phrase « chiffrée après la visite » est fausse quand le motif est le barème des charges non saisi → la retirer ; (4) la formule web du coût du m³ omet les remplacements → ne l'afficher que pour un nouveau forage ; (5) AGC9 peut dire « pompe existante » sur un devis de pompe neuve saisi à la main → AGM doit persister `mode_pompe` dans `entrees_pompage`, sinon restreindre la règle. Aucun autre test cassé vu par le validateur.
+
 ### AGV
 SESSION: AGV
 BRANCHES: claude/agr-agv @ 7b545201b (poussée, vérifiée)
@@ -292,6 +294,8 @@ test frontend ne lit aucun fichier backend hors contract_samples (check_filtre_c
 prose (PACT159) ; clauses v3 + ancres `fichier::symbole` sinon stage-names rouge ; jamais `git checkout origin/main -- .` ;
 ProduitForm.jsx, selectors.py, serializers.py : aucune croissance nette.
 
+**Complément CCAT (23:55 UTC, critique Fable pré-merge r2+r3 rendue après la passation — 5 bloquants à corriger par le PC2 avant le push de claude/ci-ccat-r3, détail dans `notes/CCAT-fable-r2r3-bloquants.md`) :** (1) `check_api_shapes.py --write` (docs/api-contracts.md en retard → stage-names rouge) ; (2) `?ci=a_completer` lu seulement à l'init → bouton de l'encadré sans effet depuis /stock ; (3) postes agricoles renvoient au filtre C&I au lieu du filtre pompage ; (4) pompe sans type « immergée » dite ok alors que le moteur la refuse ; (5) migration 0175 ne couvre pas l'ancienne variante du texte Deye (12/06) → filtre sur le préfixe « Onduleur hybride Deye SUN-…SG ».
+
 ### CE2E
 SESSION: CE2E
 BRANCHES: claude/beautiful-shannon-68c69b @ 38ec7d962 (= main de PR #1070, AUCUN commit propre) → PC2 repart de
@@ -310,7 +314,7 @@ PC2 ; aucune écriture prod, aucun deploy.
 ## Lanes PC1 (restent sur PC1 jusqu'à son plafond ; si PC1 s'arrête avant, reprendre ici)
 
 ### RPDF
-- #1114 = claude/res-rpdf-r1 @ 089f6956e (éjectée 2× : goldens). Sauvegarde claude/res-rpdf-r2r3 @ 9ff5e03b9 (R1 + R2
+- #1114 = claude/res-rpdf-r1 : en LOCAL (non poussé) porte désormais R1+R2+R3 (fusion de claude/res-rpdf-r2r3 ; contrôles hôte verts : flake8, check_forme_code avec budgets C20 déclarés au plan, check_test_placement, check_money_rounding, codemap --check). Sur origin encore @ 089f6956e (éjectée 2× : goldens). Sauvegarde claude/res-rpdf-r2r3 @ 9ff5e03b9 (R1 + R2
   RPDF11-24 + R3 RPDF30 formats EN ; R2/R3 jamais joués en Docker).
 - Décision coordinatrice 23:35 : R2+R3 entrent DANS #1114 (une seule recapture, une seule CI) : après le merge de
   #1115, fusionner main, JETON DOCKER, recapturer les 125 goldens + rejouer les 8 modules, UN push, `gh pr merge 1114
@@ -322,9 +326,14 @@ PC2 ; aucune écriture prod, aucun deploy.
 - #1103 = claude/res-rgen @ 5387520cc, en file pos 4 UNMERGEABLE. Rien de local (sauf axios.js délai local, jamais
   poussé). Même consigne au merge des entrées devant (2 goldens SPL312 + gestes à revérifier).
 ### CQST
-- #1097 = claude/ci-cqst, correctif e72130416 poussé, stage-names rouge à nouveau → CQST lit la garde fautive.
+- #1097 = claude/ci-cqst @ e172855c0 (e72130416 + ancre CQST8), sur main 71abb6b7d ; auto-merge armé ; gardes locales passées (check_taches_cablage, ancres, duplicats, acceptation, ownership, build_order, stages, CODEMAP, api_shapes, forme_code, tsc/astro apps/web, vitest questionnaire 249/249). CI du run en cours ; la file la reconstruit.
 ### CPRW
-- #1116 = claude/cprw-r1, en file pos 3. Round 2 local → sauvegarde claude/cprw-r2 (push en cours).
+- #1116 = claude/cprw-r1, en file. Round 2 → sauvegarde claude/cprw-r2 @ b818e04a6 (CPRW15 garanties C&I servies, CPRW16 échéancier servi, CPRW17 services O&M/suivi/raccordement, CPRW18 comparaison sans/avec batterie servie, CPRW19 préremplissage ICE, CPRW23 postes « à chiffrer après visite » lus dans a_confirmer). Reste : CPRW20 (/professionnel « onduleurs 10 ans » non dérivé, CTA par segment), CPRW21 (définitions autoconso/couverture FR/EN/AR + parité), CPRW22 (tableau jalons mobile, ordre des pilules), fusion du round 1, relecture Fable, rendu réel, lignes WEB_PLAN ; non relu, pas de PR.
 ### CPDF
-- Fenêtre Docker 22:30 → 23:20 ; branche claude/cpdf (sauvegarde à pousser à la fin de la fenêtre) ; PR sous jeton après
-  #1114 ; recapture goldens C&I après #1115 + #1114.
+SESSION: CPDF — BRANCHES: claude/cpdf @ bd7e165ae (poussée, sans PR ; 28 fichiers, +1492/−225 vs main ; worktree sharp-cartwright-8e73c2).
+FAIT: CPDF1-10 codés et commités : l'option batterie imprime SES chiffres/échéancier/payback (valeur servie, jamais le quotient) ; deux cartes d'option en couverture (nouveau ci/options_cote.py) ; deux cases d'option sur le bon pour accord ; plus de jargon ni d'incertitude (scénario prudent, TVA non déclarée, (moteur C&I), IEA/NREL/P50/P90, ≈, TVA 18 %, « calculation method » EN/AR) ; payback à une décimale calculé UNE fois dans chiffres_cles (parité PDF = /proposition) ; nom du client une fois dans sa casse, kWh/an insécable ; phrase soir/nuit « la couvre » à ≥ 90 % sinon « en couvre N % » ; échéancier : dernier jalon = reste, puce CGV retirée quand les cartes sont imprimées ; phrase batterie une fois ; page finance « avec » sans texte de motif interne. Modules neufs : ci/options_cote.py, i18n_labels_ci.py, i18n_labels_ci_pages.py. Groupe CPDF ajouté à PLAN_AUDIT_MOTEUR.md (tâches encore [ ]).
+RESTE: (1) fenêtre de tests : les 7 modules PDF lourds (ciq331/333/341/342/344/345, qx46) — leurs rouges pas encore relevés (≈ 11 rouges au run 1 ; les runs dépassent 45 min) ; (2) recapture des goldens C&I (commercial__*/industriel_etude__*) APRÈS #1114 et #1115 ; (3) rendus r3 + lecture de chaque page, critique Fable pré-merge, cocher CPDF1-10 + DONE LOG (décisions prises pour le fondateur : scénario prudent retiré, seuil 90 %, « estimée » gardé sur les prévisions) ; (4) merge origin/main, CODEMAP §4 + codemap_fingerprint --write (3 modules neufs), check_stages ; (5) reliquat round 2 : une-page C&I (bon pour accord/deux options), bande garanties depuis les fiches, pluriels AR/axe miroir, colonne SOURCE vide, libellé O&M répété, « MAD . » parasite ligne « Investissement (TTC, clé en main) » p3.
+CONTRÔLES: 8 modules rapides (ciq302/305/307/320/330/343, amot36, amot41) = 85 tests, 2 rouges de libellé corrigés dans bd7e165ae — correctif non rejoué. Modules lourds NON vérifiés. flake8 propre.
+ATTENTES: #1094 (economie_flux de l'option avec — mergée) ; #1114/#1115 pour les goldens ; jeton CI.
+FICHIERS: quote_engine/ci/{blocs,couverture,synthese,mentions,onepage,categories,options_cote}.py, commercial/{cover,equip,trust}.py, industriel/{cover,finance,trust}.py, i18n_labels_ci.py, i18n_labels_ci_pages.py, tests ciq302/305/307/320/330/331/333/341/342/343/344/345, amot36, amot41, PLAN_AUDIT_MOTEUR.md.
+PIÈGES: recette §4 du guide = moteur LEGACY (rendre via builder.registre_renderers, notes/CPDF-recette-rendu.md) ; tests du propriétaire devis probablement touchés : test_ciq315:122, test_ciq210_onepage_ci, test_figures_parite (parité via chiffres_cles, à vérifier) ; les modules lourds C&I dépassent 45 min en local.
