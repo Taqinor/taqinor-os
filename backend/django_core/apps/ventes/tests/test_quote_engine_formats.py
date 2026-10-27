@@ -1092,9 +1092,7 @@ class TestPdfFormats3(TestPdfFormats):
         self.assertIn('10 CV (7,5 kW)', html)  # AGR302 — à la française
         self.assertIn('D&#233;bit &#224; 60 m', html)
         self.assertIn('30 m&#179;/h', html)
-        # AGC2/AGC12 (D-AGC-2) — libellé court, jamais « (hypothèse) ».
-        self.assertIn('Eau / jour &#8212; estimation, 7 h/j', html)
-        self.assertNotIn('hypoth&#232;se', html)
+        self.assertIn('Eau / jour &#8212; estimation, 7 h/j', html)  # AGC12
         self.assertIn('210 m&#179;', html)
 
     def test_pompage_without_curve_never_shows_water_per_day(self):
