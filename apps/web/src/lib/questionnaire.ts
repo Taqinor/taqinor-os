@@ -273,6 +273,53 @@ export function messageErreurQuestionnaire(code: unknown, lang: QuestionnaireLan
   return MESSAGES_ERREUR[c][lang];
 }
 
+/** CQSTW14 — messages GPS, placeholders et aria-labels dans la langue du client. */
+const GPS_MSG: Record<'indisponible' | 'refuse', Record<QuestionnaireLang, string>> = {
+  indisponible: {
+    fr: "La géolocalisation n'est pas disponible sur cet appareil — pas de souci, continuez sans.",
+    en: 'Geolocation is not available on this device — no problem, continue without it.',
+    ar: 'تحديد الموقع غير متاح على هذا الجهاز — لا مشكلة، تابعوا بدونه.',
+  },
+  refuse: {
+    fr: 'Position non partagée — pas de souci, vous pouvez continuer sans.',
+    en: 'Position not shared — no problem, you can continue without it.',
+    ar: 'لم يتم مشاركة الموقع — لا مشكلة، يمكنكم المتابعة بدونه.',
+  },
+};
+export function messageGps(code: 'indisponible' | 'refuse', lang: QuestionnaireLang): string {
+  return GPS_MSG[code][lang];
+}
+export function messagePositionEnregistree(lat: number, lng: number, lang: QuestionnaireLang): string {
+  const pos = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  return lang === 'en' ? `Position saved — ${pos}` : lang === 'ar' ? `تم تسجيل الموقع — ${pos}` : `Position enregistrée — ${pos}`;
+}
+const ATTRIBUTS: Record<string, Record<QuestionnaireLang, string>> = {
+  mois: { fr: 'AAAA-MM', en: 'YYYY-MM', ar: 'سنة-شهر' },
+  jourmois: { fr: 'JJ/MM', en: 'DD/MM', ar: 'يوم/شهر' },
+  de: { fr: 'De (h)', en: 'From (h)', ar: 'من (س)' },
+  a: { fr: 'À (h)', en: 'To (h)', ar: 'إلى (س)' },
+  langue: { fr: 'Langue', en: 'Language', ar: 'اللغة' },
+};
+/** Valeur d'un attribut (placeholder / aria-label) dans la langue ; clé inconnue → ''. */
+export function libelleAttribut(cle: string, lang: QuestionnaireLang): string {
+  return ATTRIBUTS[cle]?.[lang] ?? '';
+}
+/** CQSTW15 — libellé du bouton « Continuer / Terminer » dans la langue. */
+export function libelleSuivant(dernier: boolean, lang: QuestionnaireLang): string {
+  const t = dernier
+    ? { fr: 'Terminer', en: 'Finish', ar: 'إنهاء' }
+    : { fr: 'Continuer →', en: 'Continue →', ar: 'متابعة ←' };
+  return t[lang];
+}
+/** CQSTW19 — case « facture d'été différente » pré-cochée : « oui » si le serveur le dit
+ *  OU si la facture d'été est connue ; « non » seulement si le serveur dit false. */
+export function eteDifferentePrefill(prefill: Record<string, unknown>): 'oui' | 'non' | '' {
+  const f = prefill.facture_ete;
+  const connue = (typeof f === 'string' && f !== '') || typeof f === 'number';
+  if (prefill.ete_differente === true || connue) return 'oui';
+  return prefill.ete_differente === false ? 'non' : '';
+}
+
 // ── ÉCRANS : le regroupement des sections en pages ───────────────────────
 //
 // « finally the number of pages those questions should be in » (ordre

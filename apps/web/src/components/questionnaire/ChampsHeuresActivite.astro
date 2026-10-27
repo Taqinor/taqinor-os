@@ -28,12 +28,12 @@ const si = (q: { si?: Readonly<Record<string, string | boolean>> }) =>
       <label for={id} class="mb-1 block text-sm font-semibold" data-i18n data-en={lab.en} data-ar={lab.ar}>{lab.fr}</label>
       {q.type === 'plages' ? (
         <div class="flex items-center gap-3" data-cat-plage={q.key}>
-          <input id={id} type="number" min="0" max="24" step="any" inputmode="decimal" aria-label={PLAGE_DE_A.de.fr} value={plage(q.key, 0)} class={cls} />
+          <input id={id} type="number" min="0" max="24" step="any" inputmode="decimal" aria-label={PLAGE_DE_A.de.fr} data-attr="aria-label:de" value={plage(q.key, 0)} class={cls} />
           <span aria-hidden="true">→</span>
-          <input type="number" min="0" max="24" step="any" inputmode="decimal" aria-label={PLAGE_DE_A.a.fr} value={plage(q.key, 1)} class={cls} />
+          <input type="number" min="0" max="24" step="any" inputmode="decimal" aria-label={PLAGE_DE_A.a.fr} data-attr="aria-label:a" value={plage(q.key, 1)} class={cls} />
         </div>
       ) : (
-        <input id={id} data-cat-key={q.key} type="text" inputmode="numeric" maxlength="5" placeholder="JJ/MM" value={typeof prefill[q.key] === 'string' ? String(prefill[q.key]) : ''} class={cls} />
+        <input id={id} data-cat-key={q.key} type="text" inputmode="numeric" maxlength="5" placeholder="JJ/MM" data-attr="placeholder:jourmois" value={typeof prefill[q.key] === 'string' ? String(prefill[q.key]) : ''} class={cls} />
       )}
     </div>
   );

@@ -285,7 +285,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                 Questionnaire solaire
               </p>
               <h1 class="display mt-1 text-xl sm:text-2xl">
-                {prenom ? `Bonjour ${prenom} 👋` : 'Bonjour 👋'}
+                <span data-i18n data-en="Hello" data-ar="مرحباً">Bonjour</span>{prenom ? <> <span>{prenom}</span></> : null} 👋
               </h1>
               <p class="mt-1 text-sm text-encre-soft" data-i18n
                 data-en="Answer at your own pace — you can close this and come back later."
@@ -293,7 +293,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                 Répondez à votre rythme — vous pouvez fermer cette page et revenir plus tard.
               </p>
             </div>
-            <div class="flex flex-none gap-1 border border-azur-900/15 bg-blanc p-1" role="group" aria-label="Langue">
+            <div class="flex flex-none gap-1 border border-azur-900/15 bg-blanc p-1" role="group" aria-label="Langue" data-attr="aria-label:langue">
               <button type="button" id="q-lang-fr" class="q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors" aria-pressed="true">FR</button>
               <button type="button" id="q-lang-en" class="q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors" aria-pressed="false">EN</button>
               <button type="button" id="q-lang-ar" class="q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors" aria-pressed="false">AR</button>
@@ -492,7 +492,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                   <div class:list={['q-releve-row grid grid-cols-2 gap-2 border border-azur-900/10 p-3', i >= Math.max(1, relevePrefill.length) ? 'hidden' : '']}>
                                     <div>
                                       <label for={`q-releve-mois-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Month" data-ar="الشهر">Mois</label>
-                                      <input id={`q-releve-mois-${i}`} data-r="mois" type="month" placeholder="AAAA-MM" value={releveVal(i, 'mois')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
+                                      <input id={`q-releve-mois-${i}`} data-r="mois" type="month" placeholder="AAAA-MM" data-attr="placeholder:mois" value={releveVal(i, 'mois')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
                                     </div>
                                     <div>
                                       <label for={`q-releve-kwh-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="kWh" data-ar="كيلوواط ساعة">kWh</label>
@@ -1360,6 +1360,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     isPhotoSection,
     detectQuestionnaireLang,
     messageErreurQuestionnaire,
+    messageGps,
+    messagePositionEnregistree,
+    libelleAttribut,
     progressLabel,
     type QuestionnaireSectionId,
   } from '../../lib/questionnaire';
@@ -1458,6 +1461,10 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       // CIW406 — les <option> ne portent que du texte : libellé posé selon la langue.
       document.querySelectorAll<HTMLOptionElement>('option[data-fr]').forEach((o) => {
         o.textContent = (lang === 'en' ? o.dataset.en : lang === 'ar' ? o.dataset.ar : o.dataset.fr) || o.dataset.fr || '';
+      });
+      document.querySelectorAll<HTMLElement>('[data-attr]').forEach((el) => {
+        const [attr, cle] = (el.dataset.attr || '').split(':');
+        if (attr && cle) el.setAttribute(attr, libelleAttribut(cle, lang));
       });
       document.documentElement.lang = lang;
       document.documentElement.dir = isAr ? 'rtl' : 'ltr';
@@ -1711,7 +1718,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       errEl?.classList.add('hidden');
       if (!('geolocation' in navigator)) {
         if (errEl) {
-          errEl.textContent = "La géolocalisation n'est pas disponible sur cet appareil — pas de souci, continuez sans.";
+          errEl.textContent = messageGps('indisponible', currentLang);
           errEl.classList.remove('hidden');
         }
         return;
@@ -1725,7 +1732,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
           if (latEl) latEl.value = String(lat);
           if (lngEl) lngEl.value = String(lng);
           if (previewEl) {
-            previewEl.textContent = `Position enregistrée — ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            previewEl.textContent = messagePositionEnregistree(lat, lng, currentLang);
             previewEl.classList.remove('hidden');
           }
           touched.add('gps');
@@ -1734,7 +1741,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
         },
         () => {
           if (errEl) {
-            errEl.textContent = "Position non partagée — pas de souci, vous pouvez continuer sans.";
+            errEl.textContent = messageGps('refuse', currentLang);
             errEl.classList.remove('hidden');
           }
         },

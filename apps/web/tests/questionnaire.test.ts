@@ -25,6 +25,11 @@ import {
   cleanJourMois,
   detectQuestionnaireLang,
   messageErreurQuestionnaire,
+  messageGps,
+  messagePositionEnregistree,
+  libelleAttribut,
+  libelleSuivant,
+  eteDifferentePrefill,
   questionnaireEndpoint,
   type QuestionnaireGetResponse,
 } from '../src/lib/questionnaire';
@@ -990,5 +995,43 @@ describe('CQSTW6 — heures de l activité', () => {
     const src = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
     expect(src).toContain('<ChampsHeuresActivite');
     expect(src).toContain('[data-cat-plage]');
+  });
+});
+
+describe('CQSTW14/15/19 — textes selon la langue', () => {
+  it('messages GPS FR/EN/AR (jamais du français en EN/AR)', () => {
+    for (const code of ['indisponible', 'refuse'] as const) {
+      const [fr, en, ar] = (['fr', 'en', 'ar'] as const).map((l) => messageGps(code, l));
+      expect(new Set([fr, en, ar]).size).toBe(3);
+      expect(en).not.toMatch(/[éèàç]/);
+      expect(ar).toMatch(/[؀-ۿ]/);
+    }
+    expect(messagePositionEnregistree(33.5731, -7.5898, 'fr')).toBe('Position enregistrée — 33.57310, -7.58980');
+    expect(messagePositionEnregistree(33.5731, -7.5898, 'en')).toBe('Position saved — 33.57310, -7.58980');
+    expect(messagePositionEnregistree(33.5731, -7.5898, 'ar')).toMatch(/[؀-ۿ].*33\.57310, -7\.58980/);
+  });
+  it('placeholders et aria-labels suivent la langue', () => {
+    expect(libelleAttribut('mois', 'fr')).toBe('AAAA-MM');
+    expect(libelleAttribut('mois', 'en')).toBe('YYYY-MM');
+    expect(libelleAttribut('jourmois', 'en')).toBe('DD/MM');
+    expect(libelleAttribut('de', 'en')).toBe('From (h)');
+    expect(libelleAttribut('a', 'en')).toBe('To (h)');
+    expect(libelleAttribut('langue', 'en')).toBe('Language');
+    for (const k of ['mois', 'jourmois', 'de', 'a', 'langue']) expect(libelleAttribut(k, 'ar')).toMatch(/[؀-ۿ]/);
+    expect(libelleAttribut('inconnue', 'en')).toBe('');
+  });
+  it('CQSTW15 — libellé Continuer/Terminer dans la langue demandée', () => {
+    expect(libelleSuivant(false, 'fr')).toBe('Continuer →');
+    expect(libelleSuivant(false, 'en')).toBe('Continue →');
+    expect(libelleSuivant(true, 'en')).toBe('Finish');
+    expect(libelleSuivant(true, 'ar')).toBe('إنهاء');
+  });
+  it("CQSTW19 — facture d'été : « oui » survit à la réouverture", () => {
+    expect(eteDifferentePrefill({ ete_differente: true })).toBe('oui');
+    expect(eteDifferentePrefill({ ete_differente: false, facture_ete: '1200' })).toBe('oui');
+    expect(eteDifferentePrefill({ ete_differente: false, facture_ete: 800 })).toBe('oui');
+    expect(eteDifferentePrefill({ ete_differente: false })).toBe('non');
+    expect(eteDifferentePrefill({})).toBe('');
+    expect(eteDifferentePrefill({ ete_differente: null, facture_ete: '' })).toBe('');
   });
 });
