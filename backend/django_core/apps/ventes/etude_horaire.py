@@ -90,6 +90,8 @@ from apps.ventes.courbes_journalieres import (
 )
 from apps.ventes.domain.etude_schema import factures_hiver_ete_saisies
 from apps.ventes.horaire.base import _num, saison_du_mois
+from apps.ventes.horaire.ombrage import (bloc_ombrage, facteur_ombrage,
+                                         perte_ombrage_du_devis)
 from apps.ventes.horaire.batterie_lignes import (
     RENDEMENT_SOURCE_FICHE,
     RENDEMENT_SOURCE_HYPOTHESE,
@@ -862,7 +864,7 @@ def simuler_batterie_pas_fins(pas, capacite_kwh_utile, *,
 
 def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
                       lon=None, occupation=None, equipements=None,
-                      jour_reference=None):
+                      jour_reference=None, perte_ombrage_pct=None):
     """Les DOUZE JOURS TYPES d'une installation : consommation et production 24 h.
 
     SOURCE UNIQUE des courbes horaires du moteur. :func:`calculer_etude_horaire`
@@ -915,19 +917,15 @@ def jours_types_annee(*, kwc, conso_kwh_mensuelles, ville=None, lat=None,
         _jour_ref, lat=lat, lon=lon, ville=ville) or {}
 
     # ── Production du JOUR MOYEN de chaque mois ──
-    # CIQ109 — la partie « production » vit dans la fonction PARTAGÉE
-    # ``moteur_ci.production.production_jours_types`` : le moteur C&I lit la
-    # MÊME chaîne (mêmes productibles, mêmes formes, même dérate), jamais un
-    # « GHI × 0,8 » national. PERTES SYSTÈME — ordre fondateur (18/08) : 20 %
-    # AU TOTAL. Les productibles PVGIS sont demandés à ``loss=14``
-    # (``pvgis_profils.PVGIS_LOSS_PCT``), donc 14 % sont DÉJÀ dedans : on
-    # n'applique que le COMPLÉMENT, ``PRODUCTION_DERATE`` ≈ 0,9302 — la
-    # MÊME constante que ``pricing`` et ``builder``. Sans elle, ce moteur
-    # annoncerait ~7,5 % de production (et donc d'économies) de plus que
-    # tout le reste de la chaîne, sur la même installation.
+    # CIQ109 — production PARTAGÉE avec le C&I (``production_jours_types``).
+    # PERTES SYSTÈME 20 % AU TOTAL (fondateur, 18/08) : PVGIS est à
+    # ``loss=14``, on n'applique que le COMPLÉMENT ``PRODUCTION_DERATE``
+    # (≈ 0,9302, même constante que ``pricing``/``builder``). D-RES-2710-1 :
+    # puis la perte d'ombrage SERVIE par le calepinage (``horaire.ombrage``),
+    # ``None`` hors calepinage ⇒ facteur 1,0, chiffre d'avant à l'octet.
     production_mois = production_jours_types(
         puissance, productible_mensuel=productibles, formes_saison=formes,
-        derate=PRODUCTION_DERATE)
+        derate=PRODUCTION_DERATE * facteur_ombrage(perte_ombrage_pct))
 
     for index in range(12):
         numero = index + 1
@@ -1134,7 +1132,7 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
                            tranches, charges_fixes_mad,
                            tppan=True, millesime=bareme.MILLESIME_COURANT,
                            source_conso=None, detail_conso=None,
-                           jour_reference=None):
+                           jour_reference=None, perte_ombrage_pct=None):
     """LE calcul canonique. Renvoie le bloc ``etude_horaire``, ou ``None``.
 
     AMOT30 (C-AMOT-031) — ``tranches`` et ``charges_fixes_mad`` sont
@@ -1207,7 +1205,7 @@ def calculer_etude_horaire(*, kwc, conso_kwh_mensuelles,
         kwc=puissance, conso_kwh_mensuelles=conso_kwh_mensuelles,
         ville=ville, lat=lat, lon=lon,
         occupation=occupation, equipements=equipements,
-        jour_reference=jour_reference)
+        jour_reference=jour_reference, perte_ombrage_pct=perte_ombrage_pct)
     if jours_types is None:
         return None
     source_prod = sources.get('production')
@@ -2048,7 +2046,7 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
     # DÉCLARE (``rendement_batterie_source``), au lieu de faire passer un
     # forfait pour une caractéristique du produit vendu.
     rendement_bat = rendement_batterie_du_devis(devis)
-
+    perte_ombrage = perte_ombrage_du_devis(devis)
     resultat = calculer_etude_horaire(
         kwc=puissance, conso_kwh_mensuelles=conso,
         ville=ville, lat=lat, lon=lon,
@@ -2061,9 +2059,11 @@ def _etude_horaire_pour_devis(devis, *, kwc, batterie_kwh_utile, data,
         batterie_rendement_source=rendement_bat['source'],
         tranches=tranches, charges_fixes_mad=charges_fixes,
         source_conso=source_conso, detail_conso=detail_conso,
-        jour_reference=jour_reference)
+        jour_reference=jour_reference, perte_ombrage_pct=perte_ombrage)
     if resultat is not None:
         resultat['occupation_source'] = occupation_source
+        if perte_ombrage is not None:  # D-RES-2710-1 — perte dite au bloc
+            resultat['ombrage'] = bloc_ombrage(perte_ombrage)
         # CAD168 — l'économie présentée NOMME la part non solarisable (clé
         # posée ici, comme `occupation_source` : la forme historique de
         # `calculer_etude_horaire` ne bouge pas).

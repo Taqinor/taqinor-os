@@ -126,3 +126,56 @@ class OmbrageEtudeDevisTest(BaseApiCalepinage):
         self.assertEqual(
             [z['shading_annual_loss_pct'] for z in etude['zones']],
             [z['shading_annual_loss_pct'] for z in self._etude()['zones']])
+
+    # ── D-RES-2710-1 (fondateur, 27/10/2026) — le moteur horaire résidentiel
+    # retire la perte d'ombrage SERVIE par le calepinage, niveau de règles 3.
+
+    def _kwargs_horaire(self):
+        from apps.ventes.horaire.conso import profil_depuis_factures
+        conso, _source, _detail = profil_depuis_factures(
+            facture_hiver_mad=1200)
+        return {'kwc': 5.0, 'conso_kwh_mensuelles': conso,
+                'ville': 'Casablanca', 'tranches': None,
+                'charges_fixes_mad': None}
+
+    def test_d_res_2710_1_moteur_horaire_retire_l_ombrage_servi(self, *_m):
+        from apps.ventes.etude_horaire import calculer_etude_horaire
+        from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+        with patch_materiel():
+            servi = ombrage_servi(self.devis.pk, self.company)
+            perte = perte_ombrage_du_devis(self.devis)
+        self.assertGreater(perte, 0.0)
+        self.assertAlmostEqual(perte, float(servi['global']), places=6)
+        kwargs = self._kwargs_horaire()
+        brut = calculer_etude_horaire(**kwargs)['annuel']['production_kwh']
+        ombre = calculer_etude_horaire(
+            perte_ombrage_pct=perte, **kwargs)['annuel']['production_kwh']
+        self.assertAlmostEqual(ombre / brut, 1.0 - perte / 100.0, places=3)
+
+    def test_d_res_2710_1_devis_envoye_niveau_2_garde_sa_production(self, *_m):
+        from apps.ventes.horaire.ombrage import (
+            facteur_production_saison, perte_ombrage_du_devis)
+        Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=2)
+        self.devis.refresh_from_db()
+        with patch_materiel():
+            self.assertIsNone(perte_ombrage_du_devis(self.devis))
+            self.assertEqual(facteur_production_saison(self.devis), 1.0)
+
+    def test_d_res_2710_1_simulation_perimee_aucun_ombrage(self, *_m):
+        from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+        layout = copy.deepcopy(self.calepinage.roof_layout)
+        layout['zones'][0]['geometry']['count'] = 3
+        Calepinage.objects.filter(pk=self.calepinage.pk).update(
+            roof_layout=layout)
+        with patch_materiel():
+            self.assertIsNone(perte_ombrage_du_devis(self.devis))
+
+    def test_c_rhor_004_courbe_saison_au_derate_du_devis(self, *_m):
+        from apps.ventes.horaire.ombrage import (
+            facteur_production_saison, perte_ombrage_du_devis)
+        from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
+        with patch_materiel():
+            perte = perte_ombrage_du_devis(self.devis)
+            facteur = facteur_production_saison(self.devis)
+        self.assertAlmostEqual(
+            facteur, PRODUCTION_DERATE * (1.0 - perte / 100.0), places=9)

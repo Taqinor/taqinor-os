@@ -46,11 +46,18 @@ const PUISSANCE_SOURCE = {
 }
 // source-choix: crm.Lead.categorie_commerciale
 const CATEGORIE = {
-  hotel: 'Hôtel / riad', restaurant: 'Restaurant / café', commerce: 'Commerce / supermarché',
+  hotel: 'Hôtel / riad', restaurant: 'Restaurant', cafe: 'Café / salon de thé / glacier',
+  boulangerie: 'Boulangerie / pâtisserie', commerce: 'Commerce / boutique',
+  supermarche: 'Supermarché / épicerie (avec frigos)', boucherie: 'Boucherie / poissonnerie',
+  pharmacie: 'Pharmacie', coiffure: 'Coiffure / esthétique', pressing: 'Pressing / laverie',
   bureau: 'Bureaux', sante: 'Santé (clinique, cabinet)', ecole: 'École',
-  hammam: 'Hammam / spa / salle de sport', boulangerie: 'Boulangerie',
-  froid: 'Froid / entrepôt frigorifique', autre: 'Autre',
+  salle_sport: 'Salle de sport', hammam: 'Hammam / spa', garage: 'Garage / atelier mécanique',
+  atelier: 'Atelier (menuiserie, ferronnerie, couture)', imprimerie: 'Imprimerie',
+  station_service: 'Station-service', entrepot: 'Entrepôt / logistique (sans froid)',
+  froid: 'Froid / entrepôt frigorifique', mosquee: 'Mosquée / association', autre: 'Autre',
 }
+// source-choix: crm.Lead.equipements_hors_horaires
+const EQUIPEMENTS_HORS_HORAIRES = { aucun: 'Aucun', un_peu: 'Un peu', beaucoup: 'Beaucoup' }
 // source-choix: crm.Lead.regime_equipes
 const REGIME_EQUIPES = {
   '1x8': 'Une équipe (1×8)', '2x8': 'Deux équipes (2×8)', '3x8': 'Trois équipes (3×8)',
@@ -111,6 +118,7 @@ const QUESTIONS_PRO = {
   heure_debut: '« À quelle heure commence votre journée de travail ? »',
   heure_fin: '« Et à quelle heure se termine-t-elle ? »',
   fermeture_mois: "« Fermez-vous certains mois de l'année, pour des congés ou une saison creuse ? Lesquels ? »",
+  equipements_hors_horaires: '« Avez-vous des équipements qui tournent la nuit ou hors de vos horaires (chambres froides, frigos, fours de nuit, pompes) ? »',
   type_surface: '« Où pourrait-on poser les panneaux : sur la toiture, sur une ombrière de parking, ou sur un terrain ? »',
   surface_source: "(posée avec la surface) « C'est une mesure, ou une estimation ? »",
   groupe_electrogene: '« Avez-vous un groupe électrogène sur le site ? »',
@@ -571,6 +579,12 @@ function BlocActivite({ ctx, industriel }) {
         {' '}— remplit les jours et les heures ci-dessus (modifiables ensuite).
       </p>
       <Cases data-field-anchor="lf-fermeture-mois" cle="fermeture_mois" ctx={ctx} valeurs={MOIS} />
+      {/* Décision fondateur 26/10/2026 — talon déclaré (5 / 20 / 50 %), il passe
+          devant le talon par défaut du type de commerce. */}
+      <div className="form-row">
+        <Choix data-field-anchor="lf-equipements-hors-horaires" cle="equipements_hors_horaires" ctx={ctx}
+               choix={EQUIPEMENTS_HORS_HORAIRES} />
+      </div>
     </Bloc>
   )
 }

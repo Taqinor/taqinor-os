@@ -119,6 +119,8 @@ CHEMINS_LEAD = {
     'rythme.secteur_industriel': 'secteur_industriel',
     'rythme.categorie_commerciale': 'categorie_commerciale',
     'rythme.reponses_categorie': 'reponses_categorie',
+    # Décision fondateur 26/10/2026 — talon déclaré par le client (part du mois).
+    'rythme.talon': 'talon',
     'toit.surface_utile_m2': 'surface_utile_m2',
     'toit.type_toiture': 'couverture',
     # Feuille PRIVÉE : elle ne sert qu'à choisir la pose (ombrière / sol).
@@ -1092,7 +1094,7 @@ def _jours_types_de_charge(company, res, mode, categorie, rythme, mesuree, regis
             profil_societe=_profil_societe(
                 company, mode, categorie if mode == 'commercial'
                 else res.valeur('secteur_industriel')),
-            production_jours_types=production['jours_types'])
+            production_jours_types=production['jours_types'], segment=mode)
     return jours_types, prov_charge, al_charge
 
 

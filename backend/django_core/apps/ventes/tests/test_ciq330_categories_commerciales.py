@@ -136,6 +136,26 @@ class CategoriesCommerciales(SimpleTestCase):
         synthese, _html = _bloc(_data("autre", {}))
         self.assertEqual(synthese["categorie"]["libelle"], "Autre commerce")
 
+    def test_chaque_activite_du_lead_a_son_libelle_trilingue(self):
+        # Décision fondateur 27/10/2026 — le PDF dit l'activité RÉELLE.
+        from apps.crm.categories_commerciales import CategorieCommerciale
+        self.assertEqual(set(ci_categories.CATEGORIES),
+                         set(CategorieCommerciale.values))
+        for cle in ("cafe", "pharmacie", "station_service", "mosquee"):
+            for langue in ("fr", "en", "ar"):
+                with self.subTest(categorie=cle, langue=langue):
+                    data = _data(cle, {})
+                    if langue != "fr":
+                        data["langue_sortie"] = langue
+                    cat = ci_categories.categorie_ci(data, None)
+                    self.assertEqual(cat["cle"], cle)
+                    self.assertEqual(
+                        cat["libelle"],
+                        ci_categories.CATEGORIES[cle]["libelle"][langue])
+                    self.assertNotEqual(
+                        cat["libelle"],
+                        ci_categories.CATEGORIES["autre"]["libelle"][langue])
+
     def test_trilingue(self):
         data = _data("hotel", {"chambres": 12, "piscine": True})
         data["langue_sortie"] = "en"

@@ -8,12 +8,14 @@ C5-02 ; le panneau 710 Wc a un Vmp de 40,4 V (6 panneaux ≈ 242 V, C5-02). Les
 profils horaires sont SYNTHÉTIQUES (forme ciel clair du noyau).
 """
 
+import math
 import unittest
 
 from core.pompage.champ import (
     MENTION_TEMPERATURES_REPLI, choisir_variateur, dimensionner_champ,
-    e_d_depuis_profils, kwc_depart,
+    e_d_depuis_profils, kw_normalise_depuis_cv, kwc_depart,
 )
+from core.pompage.hypotheses import valeur
 from core.pompage.volumes import _CLEARSKY_HOURLY_SHAPE
 
 PIC = max(_CLEARSKY_HOURLY_SHAPE)
@@ -125,6 +127,33 @@ class Variateur(unittest.TestCase):
         self.assertIn("kw_moteur_normalises",
                       [h["cle"] for h in res["hypotheses"]])
 
+    def test_agm1_5_5cv_est_le_moteur_normalise_4kw(self):
+        # AGM1 (D-AGM-1) — 5,5 CV = 4,045 kW (1,1 % de 4 kW) : moteur 4 kW,
+        # donc le variateur 4 kW et non le 5,5 kW de la valeur brute.
+        res = choisir_variateur(CATALOGUE, cv="5.5", alimentation="tri")
+        self.assertEqual(res["kw_requis"], 4.0)
+        self.assertEqual(res["variateur"]["id"], 4)
+
+    def test_agm1_cv_hors_2_pct_reste_brut(self):
+        # 12,5 CV = 9,19 kW et 63 CV = 46,34 kW : plus de 2 % d'une puissance
+        # normalisée ⇒ le kW calculé reste tel quel.
+        self.assertEqual(kw_normalise_depuis_cv("12.5"),
+                         (12.5 * 0.7355, False))
+        kw, normalise = kw_normalise_depuis_cv("63")
+        self.assertFalse(normalise)
+        self.assertAlmostEqual(kw, 63 * 0.7355)
+
+    def test_agm1_balayage_cv_vers_moteur_iec(self):
+        attendu = {1: 0.75, 1.5: 1.1, 2: 1.5, 3: 2.2, 4: 3, 5.5: 4, 7.5: 5.5,
+                   10: 7.5, 15: 11, 20: 15, 25: 18.5, 30: 22, 40: 30, 50: 37,
+                   60: 45, 75: 55, 100: 75}
+        normalises = set(valeur("kw_moteur_normalises"))
+        for cv, iec in attendu.items():
+            kw, normalise = kw_normalise_depuis_cv(str(cv))
+            self.assertTrue(normalise, cv)
+            self.assertEqual(kw, float(iec), cv)
+            self.assertIn(iec, normalises)
+
 
 class EnergieKwc(unittest.TestCase):
 
@@ -180,6 +209,97 @@ class Champ(unittest.TestCase):
         # Températures TMY absentes : replis du noyau électrique MENTIONNÉS.
         self.assertEqual(res["chaines"]["temperatures"]["mention"],
                          MENTION_TEMPERATURES_REPLI)
+
+    def _osp(self, besoin, hmt):
+        return dimensionner_champ(
+            besoin_m3_jour_mois=[float(besoin)] * 12, hmt_m=hmt,
+            panneau=PANNEAU, variateurs_candidats=[_var(30, 7.5, 380)],
+            pompe={"courbe_pompe": OSP_30_8}, p_plaque_kw=7.5,
+            profils_horaires=PROFILS)
+
+    def test_agm2_besoin_incouvrable_repli_borne_a_1_5_fois_la_plaque(self):
+        # OSP 30/8 7,5 kW, 800 m3/j a 70 m : jamais couvrable. Avant : repli
+        # = kWc de depart = 121 panneaux (ratio 11,45) ; borne = ⌈1,5 × 7,5 ×
+        # 1000 / 710⌉ = 16 panneaux.
+        res = self._osp(800, 70)
+        borne = math.ceil(1.5 * 7.5 * 1000 / 710)
+        self.assertEqual(borne, 16)
+        self.assertLess(borne, math.ceil(res["kwc_depart"] * 1000 / 710))
+        self.assertEqual(res["nb_panneaux"], borne)
+        alerte = [a for a in res["alertes"]
+                  if a["code"] == "besoin_non_couvert_champ"]
+        self.assertEqual(len(alerte), 1)
+        self.assertIn("borne de 1,5 × la plaque de 7,5 kW", alerte[0]["message"])
+        self.assertIn("16 panneaux", alerte[0]["message"])
+        # La couverture affichee est l'honnete (< besoin), jamais masquee.
+        self.assertLess(res["production"]["m3_jour_mois"][11], 800)
+
+    def test_agm2_cas_couvrable_inchange(self):
+        # 200 m3/j a 58,7 m : la recherche trouve un champ qui couvre (18
+        # panneaux, mesure d'avant AGM2) ; aucune alerte « non couvert ».
+        res = self._osp(200, 58.7)
+        self.assertEqual(res["nb_panneaux"], 18)
+        self.assertNotIn("besoin_non_couvert_champ",
+                         [a["code"] for a in res["alertes"]])
+        self.assertGreaterEqual(res["production"]["m3_jour_mois"][11], 200.0)
+
+    def _codes_non_dimensionne(self, **kwargs):
+        params = dict(besoin_m3_jour_mois=[20.0] * 12, hmt_m=40,
+                      panneau=PANNEAU, variateurs_candidats=[_var(31, 7.5, 380)],
+                      p_plaque_kw=7.5, profils_horaires=PROFILS)
+        params.update(kwargs)
+        res = dimensionner_champ(**params)
+        self.assertIsNone(res["nb_panneaux"])
+        return res, [a["code"] for a in res["alertes"]]
+
+    def test_agm3_hmt_inconnue_nomme_la_vraie_cause(self):
+        for hmt in (None, 0, -5):
+            res, codes = self._codes_non_dimensionne(hmt_m=hmt)
+            self.assertIn("hmt_inconnue", codes, hmt)
+            self.assertNotIn("irradiation_inconnue", codes, hmt)
+            self.assertIn("HMT", res["chaines"]["motif"])
+
+    def test_agm3_besoin_nul_nomme_la_vraie_cause(self):
+        res, codes = self._codes_non_dimensionne(
+            besoin_m3_jour_mois=[0.0] * 12)
+        self.assertIn("besoin_nul", codes)
+        self.assertNotIn("irradiation_inconnue", codes)
+
+    def test_agm3_sans_profil_irradiation_inconnue_inchange(self):
+        res, codes = self._codes_non_dimensionne(profils_horaires=None)
+        self.assertIn("irradiation_inconnue", codes)
+        self.assertEqual(res["chaines"]["motif"], "irradiation inconnue")
+
+    def test_agm4_coefficients_absents_alerte_nommee(self):
+        sans = {k: v for k, v in PANNEAU.items()
+                if k != "temp_coeff_voc_pct_c"}
+        params = dict(besoin_m3_jour_mois=[20.0] * 12, hmt_m=40,
+                      variateurs_candidats=[_var(32, 4, 380,
+                                                 fiche=FICHE_250_780)],
+                      p_plaque_kw=3, profils_horaires=PROFILS)
+        res = dimensionner_champ(panneau=sans, **params)
+        alerte = [a for a in res["alertes"]
+                  if a["code"] == "coefficients_temperature_non_sources"]
+        self.assertEqual(len(alerte), 1)
+        self.assertIn("temp_coeff_voc_pct_c = -0,27", alerte[0]["message"])
+        self.assertNotIn("temp_coeff_pmax_pct_c", alerte[0]["message"])
+        self.assertTrue(res["chaines"]["verifiable"])
+        # Panneau complet : aucune alerte.
+        complet = dimensionner_champ(panneau=PANNEAU, **params)
+        self.assertNotIn("coefficients_temperature_non_sources",
+                         [a["code"] for a in complet["alertes"]])
+
+    def test_agm4_fiche_variateur_non_saisie_pas_d_alerte_coefficients(self):
+        # Chaîne non calculée : rien à marquer (l'alerte chaine_non_verifiable
+        # est déjà là).
+        sans = {k: v for k, v in PANNEAU.items()
+                if not k.startswith("temp_coeff")}
+        res = dimensionner_champ(
+            besoin_m3_jour_mois=[20.0] * 12, hmt_m=40, panneau=sans,
+            variateurs_candidats=[_var(33, 4, 380)], p_plaque_kw=3,
+            profils_horaires=PROFILS)
+        self.assertNotIn("coefficients_temperature_non_sources",
+                         [a["code"] for a in res["alertes"]])
 
     def test_variateur_sans_fiche_alerte_nommee(self):
         cat = [_var(20, 7.5, 380)]

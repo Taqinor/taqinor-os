@@ -2522,3 +2522,36 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — PVGIS 5.3 PVcalc relevé le 27/10/2026 ; session L3 CMP"
     taches: [CMP5]
+  - id: D-AGM-1
+    question: "Moteur de pompe donné en CV (5,5 CV = 4,05 kW) : quel kW pour la pompe et le variateur (constat R1 AGM : variateur 5,5 kW choisi pour un moteur normalisé de 4 kW) ?"
+    options:
+      - cle: a
+        texte: "CV ramené à la puissance normalisée IEC la plus proche quand l'écart relatif est ≤ 2 % (écart maximal mesuré 1,97 %, 40 CV → 30 kW) ; pompe et variateur affichent le même kW"
+      - cle: b
+        texte: "garder la conversion brute CV × 0,7355"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — règle fondateur du 27/10/2026 « ne jamais attendre le fondateur » ; session L3 AGM"
+    taches: [AGM1]
+  - id: D-AGM-2
+    question: "Besoin en eau qu'aucun champ ne couvre : jusqu'où grossit le champ de repli (constat R1 AGM : OSP 30/8 à 800 m³/j → 121 panneaux) ?"
+    options:
+      - cle: a
+        texte: "repli borné à 1,5 × la puissance de plaque (borne haute de `ratio_champ_pompe`, table AGR110), jamais sous le minimum du variateur ; la recherche et tout cas couvrable inchangés ; l'alerte le dit"
+      - cle: b
+        texte: "garder la croissance sans borne"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 AGM"
+    taches: [AGM2]
+  - id: D-AGM-3
+    question: "Pompe sans courbe (couverture du besoin non vérifiable) : le bloc « Votre argent » reste-t-il publiable au client ?"
+    options:
+      - cle: a
+        texte: "non publiable au client (motif existant repris) ; l'écran vendeur garde l'aperçu"
+      - cle: b
+        texte: "publiable avec couverture supposée à 100 %"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 AGM"
+    taches: [AGM9]

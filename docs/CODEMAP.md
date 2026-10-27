@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: ce52f405a1d0bee5a0448cfdceddbed886daf45f0536035457685622e59b7e6f
+Structure fingerprint: 7ce03826e063560a5efa90290a0ee778c029c23e7fcf3a158cc1ef04d4c26be6
 Plan fingerprint: 9ff85832041c83c75ab1d3b42ef0286640538faca6eb558523be2504365752e1
 
 
@@ -337,7 +337,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 
 ### ventes / crm / parametres / visites / core — Groupes CIQ (C&I) et AGR (agricole), vague 1 (05/10/2026)
 
-- **ventes — moteur C&I** : `apps/ventes/moteur_ci/` (`profils` profil de charge, `charge`, `production`, `onduleurs` choix/limitation export, `composition` composition auto du devis C&I) ; `tarif_ci.py` (tarifs officiels → prix/forfaits C&I) ; `economie_ci.py` (économies autoconso, `Devis.etude_params`). Champs ajoutés sur `Produit` (`ond_*`/`lim_*`/`log_*`/`prot_*`, `type_pose`, `paliers_prix_vente`), `Lead`/`Client` (profil PRO : ICE/RC/IF, tension, régime d'équipes, groupe électrogène, cos φ, `releve_conso`), `CompanyProfile.forfaits_ci`/`bande_prix_kwc_ci`/`responsable_leads_pro` — aucune classe de modèle nouvelle.
+- **ventes — moteur C&I** : `apps/ventes/moteur_ci/` (`profils` profil de charge, `charge`, `talons` talon par type de commerce — archétype sourcé ou défaut fondateur 20 %, `production`, `onduleurs` choix/limitation export, `composition` composition auto du devis C&I) ; `tarif_ci.py` (tarifs officiels → prix/forfaits C&I) ; `economie_ci.py` (économies autoconso, `Devis.etude_params`). Champs ajoutés sur `Produit` (`ond_*`/`lim_*`/`log_*`/`prot_*`, `type_pose`, `paliers_prix_vente`), `Lead`/`Client` (profil PRO : ICE/RC/IF, tension, régime d'équipes, groupe électrogène, cos φ, `releve_conso`), `CompanyProfile.forfaits_ci`/`bande_prix_kwc_ci`/`responsable_leads_pro` — aucune classe de modèle nouvelle. `apps/crm/categories_commerciales.py` : les 23 catégories commerciales du lead (`Lead.CategorieCommerciale`) + `equipements_hors_horaires` (talon déclaré, migration crm 0142, 26-27/10/2026).
 - **ventes — pompage agricole** : `domain/pompage.py` (`etudier_pompage`, calcul unique) ; `POST /ventes/etude-pompage/preview/` (`etude_pompage_view.py`, AGR121, sans écriture) ; `POST /ventes/economie-pompage/preview/` + `GET devis/<pk>/economie-pompage/` (`views/economie_pompage.py`, AGR206) ; `quote_engine/agricole/mentions.py` (mentions du document agricole 3 p.).
 - **crm** : `audit_energetique.py` ; `public_affiner_views.py` → `GET/POST /crm/public/lead-affiner/<idempotency_key>/` (CIQ413, questionnaire PRO du site public, 404 opaque) ; `@action` lead `references-proches` (GET) et `resume-associe` (POST, responsable/admin).
 - **parametres** : `tarifs_officiels.py` (CIQ202, tarifs réglementés lus par le moteur C&I).
