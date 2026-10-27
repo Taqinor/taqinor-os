@@ -860,7 +860,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const seriesAttendues = appro?.lignes
     ? new Set(appro.lignes.filter((l) => l.serie_attendue).map((l) => String(l.produit_id)))
     : null
-  const bomReconciliation = bom
+  // Tant que /approvisionnement/ charge, on ne sait pas encore quels articles
+  // portent une série : liste vide (jamais la nomenclature entière un instant).
+  const bomReconciliation = (approLoading && !seriesAttendues ? [] : bom)
     .filter((l) => !seriesAttendues || seriesAttendues.has(String(l.produit_id)))
     .map((l) => {
     const captured = equipements.filter(
