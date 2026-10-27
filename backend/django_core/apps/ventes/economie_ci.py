@@ -521,11 +521,8 @@ def lire_taux_client(saisie):
     brut = saisie.get('valeur_pct')
     if brut is None or brut == '':
         return None
-    try:
-        valeur = float(brut)
-    except (TypeError, ValueError):
-        valeur = None
-    if valeur is None or valeur != valeur or valeur <= -100:
+    valeur = _options.fini(brut)  # CEC14 — ni NaN, ni infini, ni 1e300
+    if valeur is None or valeur <= -100 or valeur > _options.PLAFOND_SAISIE:
         raise SaisieEconomieCiInvalide(
             f"{champ}.valeur_pct : un taux en % (> −100) est attendu.",
             champ=f'{champ}.valeur_pct')

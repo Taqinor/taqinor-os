@@ -107,6 +107,13 @@ class TauxClientTest(SimpleTestCase):
         self.assertIsNone(res['indicateurs']['van_motif'])
         self.assertTrue(res['indicateurs']['lcoe_actualise'])
 
+    def test_cec14_taux_non_fini_refuse_nomme(self):
+        for brut in (float('inf'), 1e300, float('nan')):
+            with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
+                eco.lire_taux_client({'valeur_pct': brut, 'source': 'client'})
+            self.assertEqual(ctx.exception.champ,
+                             'taux_actualisation_client.valeur_pct')
+
     def test_taux_sans_source_refuse(self):
         with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
             eco.flux_ci(_base(), taux_actualisation_client={
