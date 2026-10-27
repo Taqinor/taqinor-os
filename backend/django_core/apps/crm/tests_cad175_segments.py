@@ -253,7 +253,7 @@ class CIQ410PanneauPro(SimpleTestCase):
         mt = _champs(Lead(nom='P', type_installation='commercial',
                           tension_raccordement='mt'))
         self.assertEqual(mt[:2], ['conso_mensuelle_kwh', 'facture_hiver'])
-        self.assertNotIn('raccordement', mt)
+        self.assertIn('raccordement', mt)
 
     def test_une_facture_qui_ne_compte_pas_ne_ferme_pas_l_etape(self):
         """CSV2 — une facture en dirhams ne ferme l'étape que si la tension ET
@@ -341,7 +341,8 @@ class CIQ410PanneauPro(SimpleTestCase):
 
     def test_site_bt_ne_propose_pas_le_contrat_moyenne_tension(self):
         def valeurs(lead):
-            questions = {q['champ']: q for q in panneau.questions_a_poser(lead)}
+            questions = {q['champ']: q
+                         for q in panneau.questions_a_poser(lead)}
             return [c['valeur']
                     for c in questions['contrat_electricite']['choix']]
 
@@ -352,6 +353,38 @@ class CIQ410PanneauPro(SimpleTestCase):
                               'bt_force_motrice', 'ne_sait_pas'])
         inconnue = valeurs(Lead(nom='P', type_installation='commercial'))
         self.assertIn('mt_general', inconnue)
+
+    def test_phase_posee_a_tout_pro_deux_choix(self):
+        """CSV4 — la phase (mono/tri) se pose à tout pro, MT et industriel
+        compris, avec deux choix ; en MT un seul (triphasé, un clic)."""
+        def phase(lead):
+            return {q['champ']: q for q in panneau.questions_a_poser(lead)}[
+                'raccordement']
+
+        for segment in ('commercial', 'industriel'):
+            question = phase(Lead(nom='P', type_installation=segment,
+                                  tension_raccordement='bt'))
+            self.assertEqual([c['valeur'] for c in question['choix']],
+                             ['monophase', 'triphase'], segment)
+            self.assertIn('monophasé ou triphasé', question['question'])
+            mt = phase(Lead(nom='P', type_installation=segment,
+                            tension_raccordement='mt'))
+            self.assertEqual([c['valeur'] for c in mt['choix']],
+                             ['triphase'], segment)
+            self.assertIn('Site en moyenne tension : alimentation triphasée',
+                          mt['question'])
+
+    def test_phase_inconnue_ou_aucune_est_reposee(self):
+        for valeur in ('inconnu', 'aucun'):
+            lead = Lead(nom='P', type_installation='commercial',
+                        raccordement=valeur)
+            self.assertIn('raccordement', _champs(lead), valeur)
+            self.assertNotIn('raccordement', panneau.prefill_du_panneau(lead))
+        lead = Lead(nom='P', type_installation='industriel',
+                    raccordement='triphase')
+        self.assertNotIn('raccordement', _champs(lead))
+        self.assertEqual(panneau.prefill_du_panneau(lead)['raccordement'],
+                         'triphase')
 
     def test_decideur_seulement_les_choix_pro(self):
         questions = {q['champ']: q for q in panneau.questions_a_poser(

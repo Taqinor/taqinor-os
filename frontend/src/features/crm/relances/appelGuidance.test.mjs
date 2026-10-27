@@ -732,6 +732,22 @@ test('CSV3 — contrat posé après la tension, option bi-horaire seulement en f
   assert.match(guidance.CONSIGNE_CONTRAT_INCONNU, /photo de sa facture par WhatsApp/)
 })
 
+test('CSV4 — la phase est posée à un site MT (un seul choix, triphasé) et à un commercial BT (deux choix)', () => {
+  const panneau = exemple('exemple_industriel')
+  const phase = panneau.champs_a_poser.find((q) => q.champ === 'raccordement')
+  assert.deepEqual(phase.choix.map((c) => c.valeur), ['triphase'])
+  assert.match(phase.question, /Site en moyenne tension/)
+  const puissanceRepondue = {
+    ...panneau,
+    champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'compteur_puissance_kva'),
+    prefill: { ...panneau.prefill, compteur_puissance_kva: 400 },
+  }
+  const g = guidanceAppel(puissanceRepondue).questions.find((q) => q.etape === 'raccordement')
+  assert.equal(g.champ, 'raccordement')
+  const bt = exemple('exemple_commercial').champs_a_poser.find((q) => q.champ === 'raccordement')
+  assert.deepEqual(bt.choix.map((c) => c.valeur), ['monophase', 'triphase'])
+})
+
 test('CIQ420 — « avec le conjoint / la famille » est absent pour un pro', () => {
   for (const variante of ['exemple_commercial', 'exemple_industriel']) {
     const decideur = guidanceAppel(exemple(variante)).questions.find((q) => q.champ === 'decideur')

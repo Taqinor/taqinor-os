@@ -752,14 +752,6 @@
           {
             "valeur": "triphase",
             "libelle": "Triphasé"
-          },
-          {
-            "valeur": "inconnu",
-            "libelle": "Je ne sais pas"
-          },
-          {
-            "valeur": "aucun",
-            "libelle": "Non raccordé (site isolé)"
           }
         ],
         "nature": "choix"
@@ -1129,6 +1121,19 @@
         "question": "Question à l'appel : « Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »",
         "choix": null,
         "nature": "nombre"
+      },
+      {
+        "champ": "raccordement",
+        "section": null,
+        "libelle": "raccordement",
+        "question": "Question à l'appel : « Site en moyenne tension : alimentation triphasée, je le note. »",
+        "choix": [
+          {
+            "valeur": "triphase",
+            "libelle": "Triphasé"
+          }
+        ],
+        "nature": "choix"
       },
       {
         "champ": "secteur_industriel",
@@ -1509,6 +1514,19 @@
         "question": "Question à l'appel : « Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. »",
         "choix": null,
         "nature": "nombre"
+      },
+      {
+        "champ": "raccordement",
+        "section": null,
+        "libelle": "raccordement",
+        "question": "Question à l'appel : « Site en moyenne tension : alimentation triphasée, je le note. »",
+        "choix": [
+          {
+            "valeur": "triphase",
+            "libelle": "Triphasé"
+          }
+        ],
+        "nature": "choix"
       },
       {
         "champ": "secteur_industriel",
@@ -1936,14 +1954,6 @@
           {
             "valeur": "triphase",
             "libelle": "Triphasé"
-          },
-          {
-            "valeur": "inconnu",
-            "libelle": "Je ne sais pas"
-          },
-          {
-            "valeur": "aucun",
-            "libelle": "Non raccordé (site isolé)"
           }
         ],
         "nature": "choix"
@@ -2340,14 +2350,6 @@
           {
             "valeur": "triphase",
             "libelle": "Triphasé"
-          },
-          {
-            "valeur": "inconnu",
-            "libelle": "Je ne sais pas"
-          },
-          {
-            "valeur": "aucun",
-            "libelle": "Non raccordé (site isolé)"
           }
         ],
         "nature": "choix"
@@ -2704,6 +2706,7 @@
     "exemple_agricole": "AGR407 — un lead AGRICOLE dont le site a déjà donné l'énergie actuelle, la source, le niveau et le besoin : `champs_a_poser` ne contient QUE le reste des cinq étapes (énergie actuelle → eau → besoin → heures/distance → irrigation/électricité), dans cet ordre, puis les questions orales communes ; aucune section résidentielle (facture, toit, occupation, équipements). `pompe_actuelle_cv` n'est plus posée : elle se relève sur la plaque, en visite. `mois_irrigation` est servi en nature `choix_multiple` (12 mois). Aucune clé d'économie (garde CAD175). Les tests serveur comparent cet exemple à la sortie RÉELLE.",
     "ciq427": "CIQ427 (06/10/2026, D-CIQ-7) — étape 5 « qui décide » d'un lead PRO qui n'a qu'un FIXE (motif `fixe` de `cadence_temps.whatsapp_improbable`) : `whatsapp` est servi EN COMPLÉMENT de `decideur` (même étape, même question) quand le décideur est vide ou `seul` ; `contact_secondaire_nom` + `contact_secondaire_telephone` quand il décide avec la direction ou un tiers (`associe_direction`, `proprietaire_tiers`) — ce second contact n'est JAMAIS lu par la cadence (CAD144). Sur mobile, ces colonnes ne sont pas servies. `financing_intent` est servi en dernier, après les cinq étapes, avec les trois choix publics (`cash`, `credit`, `indecis`) — jamais `credit_bail` (D-CIQ-15) ; l'écran ne le pose qu'au RAPPEL, jamais à l'appel 1 (Q21). `exemple_industriel_fixe` et `exemple_commercial_associe` sont comparés à la sortie RÉELLE par `tests_ciq427_rappel_pro.py`.",
     "exemple_commercial_industriel": "CIQ410 (D-CIQ-7) — un lead PRO reçoit les cinq étapes du premier appel : (1) la facture, en DEUX colonnes servies côte à côte (`conso_mensuelle_kwh` d'abord pour un industriel, un site MT ou un contrat non BT, `facture_hiver` d'abord sinon ; CSV2 : l'étape n'est fermée que si la consommation COMPTE pour le moteur — règle `devis_auto.GROUPE_CONSO_PRO`, jamais une copie —, une colonne déjà remplie n'est jamais reposée), (2) tension, puissance souscrite et — commercial hors MT — mono/tri, (3) catégorie + au plus 3 questions propres à l'activité (`reponses_categorie`, nature `objet` : une `sous_questions` `{cle, libelle}` par clé encore vide — CSV1 ; servie APRÈS les jours, les heures et la fermeture, elle ne bloque pas l'étape) pour un commercial, secteur + équipes pour un industriel, puis jours (`choix_multiple`, 1 = lundi), heures et mois de fermeture (`choix_multiple`), (4) la surface, (5) qui décide, avec les seuls choix pro. Les questions viennent du contrat CIQ1 (`lead_pro.json`), jamais des `help_text` résidentiels. Aucune section résidentielle, aucun drapeau d'équipement (`equipements: []`), aucune clé d'économie. Les tests serveur comparent ces exemples à la sortie RÉELLE.",
-    "csv3": "CSV3 (27/10/2026) — le CONTRAT d'électricité est posé juste après la tension à tout site non déclaré en MT (`contrat_electricite`, question reprise mot pour mot de `lead_pro.json`, « moyenne tension » retiré des choix d'un site déclaré en BT) ; l'option bi-horaire (`option_tarifaire_bt`) n'est servie que si le contrat est « BT force motrice » (`exemple_commercial_force_motrice`) — le sérialiseur la refuse sinon — et jamais pour un site MT. « Ne sait pas » clôt la question (jamais reposée) et les dirhams ne comptent plus : l'étape facture redemande les kWh (CSV2)."
+    "csv3": "CSV3 (27/10/2026) — le CONTRAT d'électricité est posé juste après la tension à tout site non déclaré en MT (`contrat_electricite`, question reprise mot pour mot de `lead_pro.json`, « moyenne tension » retiré des choix d'un site déclaré en BT) ; l'option bi-horaire (`option_tarifaire_bt`) n'est servie que si le contrat est « BT force motrice » (`exemple_commercial_force_motrice`) — le sérialiseur la refuse sinon — et jamais pour un site MT. « Ne sait pas » clôt la question (jamais reposée) et les dirhams ne comptent plus : l'étape facture redemande les kWh (CSV2).",
+    "csv4": "CSV4 (27/10/2026) — la phase (`raccordement`) est posée à TOUT site pro, industriel et MT compris, avec deux choix (`monophase`, `triphase`) : « je ne sais pas » (`inconnu`) et « aucun » ne répondent pas et la question est reposée (absente de `prefill`). Pour un site déclaré en MT, un seul choix (`triphase`) et le texte « Site en moyenne tension : alimentation triphasée, je le note. » — un clic."
   }
 }

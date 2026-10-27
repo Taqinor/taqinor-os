@@ -137,7 +137,8 @@ QUESTIONS_PRO = {
         'industriel': "« Qui décide d'un tel investissement chez vous : la "
                       'direction, un comité, le groupe ? »'},
     # CSV3 — mot pour mot le contrat CIQ1 (``lead_pro.json``, CIQ666) : le
-    # contrat se lit sur la facture ; le bi-horaire n'existe qu'en force motrice.
+    # contrat se lit sur la facture ; le bi-horaire n'existe qu'en force
+    # motrice.
     'contrat_electricite': "« Quel est votre contrat d'électricité : basse "
                            'tension patenté, force motrice, domestique, ou '
                            'moyenne tension ? Il est écrit sur votre '
@@ -197,6 +198,17 @@ DECIDEUR_CONTACT_SECONDAIRE = ('associe_direction', 'proprietaire_tiers')
 #: CIQ410 — préfixe commun des questions orales (même forme que les
 #: ``help_text`` du modèle).
 PREFIXE_QUESTION = "Question à l'appel : "
+
+#: CSV4 — la phase se pose à tout site pro (industriel et MT compris) avec DEUX
+#: choix seulement : « je ne sais pas » (``inconnu``) et « aucun » (site isolé)
+#: ne sont pas des réponses pour le moteur, ils ne ferment jamais la question.
+PHASES_PRO = ('monophase', 'triphase')
+
+#: CSV4 — un site déclaré en moyenne tension est alimenté en triphasé : la
+#: question se réduit à un clic (un seul choix), sans demander ce que le client
+#: ne sait pas dire.
+QUESTION_PHASE_MT = ('« Site en moyenne tension : alimentation triphasée, je '
+                     'le note. »')
 
 #: CIQ410 — choix PRO de « qui décide » : vocabulaire inchangé, seule la
 #: présentation est filtrée (« avec le conjoint / la famille » n'a pas de
@@ -398,6 +410,12 @@ def _question(lead, champ, section):
         question = _question_pro(lead, champ, segment)
         if champ == 'decideur' and choix:
             choix = [c for c in choix if c['valeur'] in DECIDEUR_PRO]
+        if champ == 'raccordement' and choix:
+            from . import devis_auto
+            choix = [c for c in choix if c['valeur'] in PHASES_PRO]
+            if devis_auto._tension_declaree(lead) == 'mt':
+                question = PREFIXE_QUESTION + QUESTION_PHASE_MT
+                choix = [c for c in choix if c['valeur'] == 'triphase']
         if (champ == 'contrat_electricite' and choix
                 and getattr(lead, 'tension_raccordement', None) == 'bt'):
             choix = [c for c in choix if c['valeur'] != CONTRAT_MT]
@@ -454,23 +472,22 @@ def _champs_pro_du_lead(lead, segment):
     """CIQ410 — les colonnes des cinq étapes qui s'appliquent à CE lead.
 
     (1) la facture, en kWh ET en dirhams, la colonne principale d'abord (voir
-    :func:`_colonnes_facture`) ; (2) mono/tri seulement pour un commercial
-    hors MT ; (3) catégorie + ses questions (commercial) ou secteur + équipes
+    :func:`_colonnes_facture`) ; (2) tension, contrat (hors MT), option
+    bi-horaire (force motrice), puissance souscrite, phase (tout pro) ;
+    (3) catégorie + ses questions (commercial) ou secteur + équipes
     (industriel), puis le rythme ; (4) la surface ; (5) qui décide."""
-    mt = (getattr(lead, 'tension_raccordement', None) or '') == 'mt'
     champs = list(_colonnes_facture(lead, segment))
     champs.append('tension_raccordement')
     # CSV3 — le contrat se lit sur la facture : posé à tout site qui n'est pas
-    # déclaré en MT (règle de ``devis_auto.champs_requis``), l'option bi-horaire
-    # seulement en force motrice. « Ne sait pas » clôt la question.
+    # déclaré en MT (règle de ``devis_auto.champs_requis``), l'option
+    # bi-horaire seulement en force motrice. « Ne sait pas » clôt la question.
     from . import devis_auto
     if devis_auto._tension_declaree(lead) != 'mt':
         champs.append('contrat_electricite')
         if getattr(lead, 'contrat_electricite', None) == 'bt_force_motrice':
             champs.append('option_tarifaire_bt')
-    champs.append('compteur_puissance_kva')
-    if segment == 'commercial' and not mt:
-        champs.append('raccordement')
+    # CSV4 — la phase se pose à TOUT site pro (le moteur l'exige, ADEV89).
+    champs += ['compteur_puissance_kva', 'raccordement']
     if segment == 'commercial':
         champs.append('categorie_commerciale')
     else:
@@ -529,6 +546,10 @@ def _reponse_connue_panneau(lead, champ):
         return _reponse_connue(lead, champ) or _facture_repondue(lead)
     if champ == 'reponses_categorie' and _segment_pro(lead):
         return not _cles_categorie_a_poser(lead)
+    if champ == 'raccordement' and _segment_pro(lead):
+        # CSV4 — « inconnu » et « aucun » ne répondent pas : reposée (comme
+        # une colonne à défaut non nul, ``CHAMPS_A_DEFAUT_NON_NUL``).
+        return getattr(lead, 'raccordement', None) in PHASES_PRO
     if champ == 'whatsapp' and _segment_pro(lead):
         # CIQ427 — un WhatsApp simple COPIE du téléphone n'est pas une
         # réponse : seule une déclaration distincte (CIQ505) l'est.
@@ -617,7 +638,8 @@ def prefill_du_panneau(lead):
             continue
         if not _reponse_connue(lead, champ):
             continue
-        if champ == 'whatsapp' and not _reponse_connue_panneau(lead, champ):
+        if (champ in ('whatsapp', 'raccordement')
+                and not _reponse_connue_panneau(lead, champ)):
             continue
         out[champ] = _json(getattr(lead, champ, None))
     return out
