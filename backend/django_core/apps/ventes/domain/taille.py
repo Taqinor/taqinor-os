@@ -134,6 +134,24 @@ def _refus_dimensionnement(motif):
     return AutoDevisError(message, field=champ)
 
 
+class ResultatTaille(tuple):
+    """RSIZ10 — le 4-uplet ``(nb_panneaux, panel_watt, source, avec)`` de
+    :func:`_panneaux_dimensionnement_horaire`, plus ``hors_residentiel``.
+
+    Reste un ``tuple`` de 4 éléments (tous les appelants le déballent, tests
+    compris, et ``== (0, None, motif, None)`` tient) : le signal « au-delà du
+    dimensionnement résidentiel » du balayage (``balayage_adaptatif``), perdu
+    jusqu'ici, se lit en ``.hors_residentiel`` sans changer aucune signature.
+    """
+
+    hors_residentiel = False
+
+    def __new__(cls, elements, hors_residentiel=False):
+        self = super().__new__(cls, elements)
+        self.hors_residentiel = bool(hors_residentiel)
+        return self
+
+
 def _panneaux_dimensionnement_horaire(*, lead, company, phase):
     """``(nb_panneaux, panel_watt, source, avec)`` recommandés par le moteur.
 
@@ -191,7 +209,7 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
         entrees = entrees_depuis_lead(lead, company)
         conso = entrees.conso_kwh_mensuelles if entrees else None
         if not conso:
-            return 0, None, MOTIF_FACTURE_ABSENTE, None
+            return ResultatTaille((0, None, MOTIF_FACTURE_ABSENTE, None))
 
         resultat = recommander_taille(
             company=entrees.company, conso_kwh_mensuelles=conso,
@@ -217,15 +235,19 @@ def _panneaux_dimensionnement_horaire(*, lead, company, phase):
             from apps.parametres.pvgis_profils import productible_mensuel
             situe = productible_mensuel(
                 ville=entrees.ville, lat=entrees.lat, lon=entrees.lon)
-            return (0, None,
-                    MOTIF_CATALOGUE if situe else MOTIF_LOCALISATION, None)
-        return (int(recommandation['panneaux']),
-                recommandation.get('panel_watt'), 'moteur_horaire',
-                _recommandation_avec_rendue(resultat.get('recommandation_avec')))
+            return ResultatTaille((0, None, MOTIF_CATALOGUE if situe
+                                   else MOTIF_LOCALISATION, None))
+        avec_brute = resultat.get('recommandation_avec')
+        return ResultatTaille(
+            (int(recommandation['panneaux']), recommandation.get('panel_watt'),
+             'moteur_horaire', _recommandation_avec_rendue(avec_brute)),
+            hors_residentiel=any(
+                (ligne or {}).get('hors_residentiel')
+                for ligne in (recommandation, avec_brute)))
     except Exception:  # noqa: BLE001 — l'appelant REFUSE le devis (il n'y a (D-ENF22-BLE001)
         # plus de règle de repli) : on ne masque pas la panne, on la nomme.
         logger.warning('dimensionnement horaire indisponible', exc_info=True)
-        return 0, None, MOTIF_MOTEUR_INDISPONIBLE, None
+        return ResultatTaille((0, None, MOTIF_MOTEUR_INDISPONIBLE, None))
 
 
 def _recommandation_avec_rendue(recommandation_avec):

@@ -317,3 +317,48 @@ class BalayageReelDeclencheLePlafondTest(TestCase):
                 resultat['recommandation'].get('plafond_panneaux_atteint'),
                 'la recommandation ne doit jamais désigner une ligne issue '
                 'd\'un balayage plafonné')
+
+
+class SignalHorsResidentielRemonteTest(SimpleTestCase):
+    """RSIZ10 — le signal du balayage atteint le résultat de
+    ``taille._panneaux_dimensionnement_horaire`` (un 4-uplet qui se déballe
+    comme avant)."""
+
+    def _taille(self, recommandation, avec=None):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from apps.ventes.domain import taille
+
+        entrees = SimpleNamespace(
+            conso_kwh_mensuelles=[500.0] * 12, company=None, ville='Casablanca',
+            lat=None, lon=None, occupation=None, equipements=None,
+            source_conso=None, jour_reference=None, gamme_nom_devis=None,
+            tranches=None, charges_fixes_mad=None, hors_reseau=False)
+        resultat = {'recommandation': recommandation,
+                    'recommandation_avec': avec}
+        with mock.patch('apps.ventes.domain.entrees.entrees_depuis_lead',
+                        return_value=entrees),                 mock.patch('apps.ventes.dimensionnement.recommander_taille',
+                           return_value=resultat):
+            return taille._panneaux_dimensionnement_horaire(
+                lead=object(), company=None, phase=None)
+
+    def test_une_taille_hors_residentiel_est_signalee(self):
+        reco = {'panneaux': 140, 'panel_watt': 710, 'hors_residentiel': True}
+        resultat = self._taille(reco)
+        nb, watt, source, avec = resultat   # le déballage d'hier tient
+        self.assertEqual((nb, watt, source, avec),
+                         (140, 710, 'moteur_horaire', None))
+        self.assertTrue(resultat.hors_residentiel)
+
+    def test_la_variante_avec_batterie_hors_residentiel_signale_aussi(self):
+        resultat = self._taille(
+            {'panneaux': 100, 'panel_watt': 710},
+            {'panneaux': 130, 'hors_residentiel': True, 'batterie_kwh': 10})
+        self.assertTrue(resultat.hors_residentiel)
+
+    def test_une_taille_residentielle_n_est_pas_signalee(self):
+        resultat = self._taille({'panneaux': 12, 'panel_watt': 710})
+        self.assertFalse(resultat.hors_residentiel)
+        self.assertEqual(tuple(resultat),
+                         (12, 710, 'moteur_horaire', None))
