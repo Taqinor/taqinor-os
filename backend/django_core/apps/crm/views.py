@@ -596,12 +596,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                     and normalize_phone(vd['telephone'])
                     != normalize_phone(old.telephone)):
                 vd['whatsapp'] = vd['telephone']
-        ecrits = set(vd.keys())
-        # ERR-LEAD-SAISIES-HUMAINES-FORMULAIRE — le sérialiseur ajoute
-        # `saisies_humaines` APRÈS ce calcul : sans lui dans `ecrits`, l'écriture
-        # bornée jetait le marqueur. Même règle que `LeadSerializer.update`.
-        if serializer.champs_a_marquer(vd):
-            ecrits.add('saisies_humaines')
+        ecrits = set(vd.keys()) | serializer.colonnes_du_marqueur(vd)
         if self.request.user.company_id:
             ecrits.add('company')  # forcée côté serveur (TenantMixin)
         ecrits.add('updated_by')

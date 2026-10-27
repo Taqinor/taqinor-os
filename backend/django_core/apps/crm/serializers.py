@@ -1280,6 +1280,12 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
         return [c for c in validated_data
                 if c in corps and c != 'saisies_humaines']
 
+    def colonnes_du_marqueur(self, validated_data):
+        """ERR-LEAD-SAISIES-HUMAINES-FORMULAIRE — colonne(s) que l'écriture bornée
+        de ``LeadViewSet.perform_update`` doit inclure pour que le marqueur posé par
+        ``update`` soit persisté (vide si aucun champ n'est marqué)."""
+        return {'saisies_humaines'} if self.champs_a_marquer(validated_data) else set()
+
     def update(self, instance, validated_data):
         """AMET23 — un PATCH/PUT de la fiche est une saisie humaine : les clés du
         corps (champs réels du lead) rejoignent ``saisies_humaines``."""
