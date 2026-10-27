@@ -1,0 +1,61 @@
+{
+  "endpoint": "GET /api/django/stock/produits/pret-devis-agricole/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Contrat posé avant la vue (CCAT13) et l'écran (CCAT14). Même forme que `pret_devis_ci.json` : l'écran « Prêt pour le devis » lit les deux avec un seul composant.",
+  "pourquoi": "CCAT13 (Groupe CCAT, round 3 du 27/10/2026) — le volet AGRICOLE (pompage) du tableau « ce qui manque pour chiffrer » demandé par la coordination (res-agr §D4) : le rendu réel d'AGM a trouvé 0 devis agricole sur 10 chiffrable avec le catalogue actuel (aucun article `structure_sol`, barème INST-PMP non saisi, aucune pompe monophasée à courbe, pompes OSP sans prix). Règles = celles du noyau `core/pompage/kit.py::composer_kit` et de `core/pompage/selection.py` lues côté Stock via `stock.selectors.produits_pompage`. Mêmes clés, mêmes valeurs de `statut` (`ok`, `a_completer`, `absent`) que le contrat C&I ; `groupe` ∈ materiel | prestation | option. Données du fondateur (prix, courbes) : jamais inventées — le tableau dit seulement « chiffré ou non ». AUCUNE clé `prix_achat`, marge ni prix. Valeurs ILLUSTRATIVES.",
+  "exemple": {
+    "pret": false,
+    "nb_obligatoires_manquants": 3,
+    "postes": [
+      {
+        "cle": "pompe:tri",
+        "libelle": "Pompe à courbe constructeur, triphasée",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "a_completer",
+        "articles": [
+          {"id": 301, "nom": "Pompe immergée OSP 30-4 (4 kW)", "motif": "prix de vente non saisi"}
+        ],
+        "action": {"texte": "Compléter la fiche en Stock", "lien": "/stock?ci=a_completer"}
+      },
+      {
+        "cle": "pompe:mono",
+        "libelle": "Pompe à courbe constructeur, monophasée",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "absent",
+        "articles": [],
+        "action": {"texte": "Créer l'article en Stock", "lien": "/stock"}
+      },
+      {
+        "cle": "structure_sol",
+        "libelle": "Structure au sol",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "a_completer",
+        "articles": [
+          {"id": 412, "nom": "Structure au sol pompage (par panneau)", "motif": "prix de vente non saisi"}
+        ],
+        "action": {"texte": "Compléter la fiche en Stock", "lien": "/stock?ci=a_completer"}
+      },
+      {
+        "cle": "installation_pompage",
+        "libelle": "Installation pompage (barème fixe / par panneau)",
+        "groupe": "prestation",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {"texte": "Ouvrir le catalogue Stock", "lien": "/stock"}
+      },
+      {
+        "cle": "option:compteur_eau",
+        "libelle": "Compteur d'eau",
+        "groupe": "option",
+        "obligatoire": false,
+        "statut": "absent",
+        "articles": [],
+        "action": {"texte": "Créer l'article en Stock", "lien": "/stock"}
+      }
+    ]
+  }
+}
