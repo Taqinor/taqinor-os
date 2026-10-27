@@ -448,7 +448,8 @@ describe('isValidPhotoDataUrl', () => {
   });
 
   it("rejette un type non-image, une chaîne vide, une valeur non-string", () => {
-    expect(isValidPhotoDataUrl('data:application/pdf;base64,AAAA')).toBe(false);
+    expect(isValidPhotoDataUrl('data:application/pdf;base64,AAAA')).toBe(true); // CQSTW4
+    expect(isValidPhotoDataUrl('data:text/plain;base64,AAAA')).toBe(false);
     expect(isValidPhotoDataUrl('')).toBe(false);
     expect(isValidPhotoDataUrl(undefined)).toBe(false);
     expect(isValidPhotoDataUrl(null)).toBe(false);
@@ -912,5 +913,22 @@ describe('CQSTW3 — langue du client', () => {
       expect(src).toContain(`data-en={${lab}[v].en}`);
       expect(src).toContain(`data-ar={${lab}[v].ar}`);
     }
+  });
+});
+
+describe('CQSTW4 — photos : plusieurs fichiers et PDF', () => {
+  const src = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
+  it('le contrôle accepte images et PDF, plusieurs fichiers', () => {
+    expect(src).toContain('accept="image/*,application/pdf" multiple');
+    expect(src).not.toContain('capture="environment"');
+  });
+  it('un POST par fichier : la section photo boucle sur sa file', () => {
+    expect(src).toContain('for (const photo of photos)');
+    expect(src).toContain('(photoDataUrls[section] ??= []).push(url)');
+  });
+  it('un PDF passe dans le corps POST d une section photo, pas dans une autre', () => {
+    const pdf = 'data:application/pdf;base64,' + 'A'.repeat(100);
+    expect(buildQuestionnairePostBody('photo_factures', {}, pdf).photo).toBe(pdf);
+    expect(buildQuestionnairePostBody('contact', {}, pdf).photo).toBeUndefined();
   });
 });

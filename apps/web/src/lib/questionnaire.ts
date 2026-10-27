@@ -235,7 +235,7 @@ export function detectQuestionnaireLang(saved: unknown, navigatorLang: unknown):
 }
 
 /** Messages d'erreur vus par le client, dans sa langue (CQSTW3) ; `expire` = CQSTW5. */
-export type QuestionnaireErreurCode = 'echec' | 'reseau' | 'limite' | 'expire' | 'requete';
+export type QuestionnaireErreurCode = 'echec' | 'reseau' | 'limite' | 'expire' | 'requete' | 'photo';
 const MESSAGES_ERREUR: Record<QuestionnaireErreurCode, Record<QuestionnaireLang, string>> = {
   echec: {
     fr: 'Cette réponse n’a pas pu être enregistrée. Réessayez dans un instant.',
@@ -256,6 +256,11 @@ const MESSAGES_ERREUR: Record<QuestionnaireErreurCode, Record<QuestionnaireLang,
     fr: 'Ce lien a expiré — demandez-en un nouveau à votre conseiller.',
     en: 'This link has expired — ask your advisor for a new one.',
     ar: 'انتهت صلاحية هذا الرابط — اطلبوا رابطاً جديداً من مستشاركم.',
+  },
+  photo: {
+    fr: 'Fichier trop volumineux ou illisible — réessayez avec un autre fichier.',
+    en: 'File too large or unreadable — try another file.',
+    ar: 'الملف كبير جداً أو غير مقروء — جربوا ملفاً آخر.',
   },
   requete: {
     fr: 'Une erreur est survenue. Réessayez.',
@@ -674,9 +679,9 @@ export function cleanReponsesCategorie(
 /** Plafond d'upload par photo (contrat : ≤ 10 Mo). */
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
-/** `true` si `v` est un data URL image bien formé et sous le plafond de taille. */
+/** `true` si `v` est un data URL image ou PDF (CQSTW4) bien formé et sous le plafond de taille. */
 export function isValidPhotoDataUrl(v: unknown): v is string {
-  if (typeof v !== 'string' || !v.startsWith('data:image/')) return false;
+  if (typeof v !== 'string' || !(v.startsWith('data:image/') || v.startsWith('data:application/pdf;'))) return false;
   const commaIdx = v.indexOf(',');
   if (commaIdx < 0) return false;
   const b64 = v.slice(commaIdx + 1);

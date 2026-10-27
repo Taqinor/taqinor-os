@@ -1032,9 +1032,10 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                             Facultatif — continuez sans si vous ne l'avez pas sous la main.
                           </p>
                           <label class="flex min-h-[44px] cursor-pointer items-center justify-center gap-2 border border-azur-600 px-5 py-3 text-sm font-bold text-azur-700 transition-colors hover:bg-azur-600 hover:text-white">
-                            <span data-i18n data-en="Take / choose a photo" data-ar="التقاط / اختيار صورة">📷 Prendre / choisir une photo</span>
-                            <input type="file" accept="image/*" capture="environment" id={`q-${id}-input`} class="sr-only" />
+                            <span data-i18n data-en="Take / choose photos or a PDF" data-ar="التقاط / اختيار صور أو ملف PDF">📷 Prendre / choisir des photos ou un PDF</span>
+                            <input type="file" accept="image/*,application/pdf" multiple id={`q-${id}-input`} class="sr-only" />
                           </label>
+                          <ul id={`q-${id}-list`} class="text-xs text-encre-soft"></ul>
                           <img id={`q-${id}-preview`} alt="" class="hidden max-h-64 w-full border border-azur-900/15 object-contain" />
                           <p id={`q-${id}-err`} role="alert" class="hidden text-sm text-alert-600"></p>
                           {/* Le bouton « Passer cette étape » par photo a disparu avec le
@@ -1433,7 +1434,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     const repondu: Partial<Record<QuestionnaireSectionId, boolean>> = { ...init.repondu };
     const touched = new Set<QuestionnaireSectionId>();
     const editing = new Set<QuestionnaireSectionId>();
-    const photoDataUrls: Partial<Record<QuestionnaireSectionId, string>> = {};
+    const photoDataUrls: Partial<Record<QuestionnaireSectionId, string[]>> = {}; // CQSTW4 — plusieurs fichiers
     let currentIndex = init.startIndex;
     let devisPossible = false; // CQSTW2 — dernière réponse serveur
 
@@ -1791,24 +1792,36 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       const input = $(`q-${section}-input`) as HTMLInputElement | null;
       const preview = $(`q-${section}-preview`) as HTMLImageElement | null;
       const errEl = $(`q-${section}-err`);
+      const list = $(`q-${section}-list`);
       input?.addEventListener('change', async () => {
-        const file = input.files?.[0];
         errEl?.classList.add('hidden');
-        if (!file) return;
-        const resized = await resizeImage(file);
-        if (!isValidPhotoDataUrl(resized)) {
-          if (errEl) {
-            errEl.textContent = 'Photo trop volumineuse ou illisible — réessayez avec une autre photo.';
-            errEl.classList.remove('hidden');
+        // CQSTW4 — plusieurs fichiers (photos ou PDF) ; un POST par fichier à « Continuer ».
+        for (const file of Array.from(input.files ?? [])) {
+          const estPdf = file.type === 'application/pdf';
+          const url = estPdf
+            ? await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result));
+                reader.onerror = () => resolve('');
+                reader.readAsDataURL(file);
+              })
+            : await resizeImage(file);
+          if (!isValidPhotoDataUrl(url)) {
+            if (errEl) {
+              errEl.textContent = messageErreurQuestionnaire('photo', currentLang);
+              errEl.classList.remove('hidden');
+            }
+            continue;
           }
-          return;
+          (photoDataUrls[section] ??= []).push(url);
+          touched.add(section);
+          if (list) list.append(Object.assign(document.createElement('li'), { textContent: file.name }));
+          if (preview && !estPdf) {
+            preview.src = url;
+            preview.classList.remove('hidden');
+          }
         }
-        photoDataUrls[section] = resized;
-        touched.add(section);
-        if (preview) {
-          preview.src = resized;
-          preview.classList.remove('hidden');
-        }
+        input.value = '';
       });
     });
 
@@ -1957,20 +1970,25 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
         return { ok: true, envoye: false };
       }
       const raw = collectSectionRaw(section);
-      const photo = isPhotoSection(section) ? photoDataUrls[section] ?? null : null;
-      const body = buildQuestionnairePostBody(section, raw, photo, appareilId(), init.prefill);
-      if (isEmptyPostBody(body)) return { ok: true, envoye: false };
+      // CQSTW4 — une section photo part en UN POST par fichier ; les fichiers déjà
+      // partis sont retirés de la file (un échec ne les renvoie pas).
+      const photos: Array<string | null> = isPhotoSection(section) ? [...(photoDataUrls[section] ?? [])] : [null];
+      let envoye = false;
+      for (const photo of photos) {
+        const body = buildQuestionnairePostBody(section, raw, photo, appareilId(), init.prefill);
+        if (isEmptyPostBody(body)) continue;
 
-      // Recalage orchestrateur 25/08 — POST navigateur via le proxy SAME-ORIGIN (patron
-      // /api/proposition-*), jamais de cross-origin. ALEA4/ALEA46 — ce qui vient d'être
-      // envoyé ne devient le « vu » du client qu'après une réponse acceptée (lib/questionnaire.ts).
-      const envoi = await envoyerSectionQuestionnaire(fetch, init.token, body, init.prefill);
-      init.prefill = envoi.prefill;
-      if (!envoi.result.ok) {
-        return { ok: false, envoye: false, code: envoi.result.code };
+        // Recalage orchestrateur 25/08 — POST navigateur via le proxy SAME-ORIGIN (patron
+        // /api/proposition-*), jamais de cross-origin. ALEA4/ALEA46 — ce qui vient d'être
+        // envoyé ne devient le « vu » du client qu'après une réponse acceptée (lib/questionnaire.ts).
+        const envoi = await envoyerSectionQuestionnaire(fetch, init.token, body, init.prefill);
+        init.prefill = envoi.prefill;
+        if (!envoi.result.ok) return { ok: false, envoye, code: envoi.result.code };
+        if (photo) photoDataUrls[section] = (photoDataUrls[section] ?? []).filter((p) => p !== photo);
+        devisPossible = envoi.result.devisPossible === true;
+        envoye = true;
       }
-      devisPossible = envoi.result.devisPossible === true;
-      return { ok: true, envoye: true };
+      return { ok: true, envoye };
     }
 
     function advance() {
