@@ -784,15 +784,51 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
     return _jours_types(calendrier, courbes, annee_reference), provenance, alertes
 
 
+def _rapport_hors_plages(calendrier, archetype, profil_societe):
+    """CLD2 — ``(rapport, source, sans_objet)`` : moyenne de la forme (« ouvre »
+    de la saison, archétype ou profil société) HORS des plages déclarées ÷
+    moyenne DANS les plages, sur les jours ouverts du calendrier (heures
+    civiles) — les saisons pèsent leur nombre de jours ouverts. ``sans_objet`` :
+    les plages couvrent les 24 h (aucune heure hors plage). ``rapport`` ``None``
+    quand aucune forme ne se lit ou qu'aucune heure n'est déclarée."""
+    formes = {}
+    dedans = [0.0, 0.0]
+    dehors = [0.0, 0.0]
+    src = None
+    for jour, ouvert, _t, plages in calendrier:
+        if not ouvert:
+            continue
+        saison = saison_bdew(jour)
+        if saison not in formes:
+            formes[saison] = forme_archetype(archetype, 'ouvre', saison,
+                                             profil_societe=profil_societe)
+        forme, src = formes[saison]
+        if forme is None:
+            return None, None, False
+        for h, occ in enumerate(_occupation(plages)):
+            dedans[0] += occ * forme[h]
+            dedans[1] += occ
+            dehors[0] += (1.0 - occ) * forme[h]
+            dehors[1] += 1.0 - occ
+    if dedans[1] <= 1e-9 or dedans[0] <= 0:
+        return None, None, False
+    if dehors[1] <= 1e-9:
+        return None, src, True
+    return (dehors[0] / dehors[1]) / (dedans[0] / dedans[1]), src, False
+
+
 def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, provenance,
                               alertes, talon_saisi=None, segment=None):
     """Talon NON déclaré, horaires déclarés : ``(courbes, incoherent)`` qui
     SUIVENT les horaires, ou ``None`` (aucune catégorie commerciale ni
     archétype : la borne conservatrice décide).
 
-    Décision fondateur 26/10/2026 : talon = rapport creux / pointe de
+    Décision fondateur 26/10/2026 : talon = niveau hors horaires de
     l'archétype (le sien, le plus proche, ou le profil saisi par la société),
     sinon le défaut fondateur de 20 % (``talons.talon_par_defaut``).
+    Décision prise pour le fondateur (à revoir) 27/10/2026 : % du niveau de
+    jour = moyenne hors plages ÷ moyenne dans les plages (CLD2 — et non plus le
+    rapport creux / pic de la forme). Plages sur 24 h ⇒ talon sans objet.
     Fondateur 27/10/2026 — UNE définition : ``talon.niveau_jour_pct`` DÉCLARÉ
     (réponse « équipements hors horaires ») est un % du niveau des heures
     ouvertes, appliqué par la MÊME règle que les défauts.
@@ -804,10 +840,12 @@ def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, pr
         return _courbes_declarees(calendrier, niveaux, 'rapport', None, rapport)
     rapport, src = None, None
     if archetype or profil_societe:
-        forme, src = forme_archetype(archetype, 'ouvre', 'hiver', profil_societe=profil_societe)
-        if forme is not None and max(forme) > 0:
-            rapport = min(forme) / max(forme)
-    source = (src.get('jeu_de_donnees') or src.get('provenance')) if rapport else None
+        rapport, src, sans_objet = _rapport_hors_plages(calendrier, archetype, profil_societe)
+        if sans_objet:
+            provenance['talon'] = {'valeur': None, 'statut': 'sans_objet',
+                                   'source': 'plages sur 24 h : aucune heure hors horaires'}
+            return _courbes_declarees(calendrier, niveaux, 'nul', None, None)
+    source = (src.get('jeu_de_donnees') or src.get('provenance')) if rapport is not None else None
     rapport, talon = talon_par_defaut(archetype, rapport, source,
                                       commercial=segment == 'commercial')
     if rapport is None:
@@ -816,7 +854,7 @@ def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, pr
                            'statut': talon['statut'], 'source': talon['source']}
     alertes.append(_alerte(
         'talon_estime', 'rythme.talon',
-        'Talon non déclaré : rapport nuit/jour de l’archétype sourcé (estimation).'
+        'Talon non déclaré : niveau hors horaires de l’archétype sourcé (estimation).'
         if talon['statut'] == 'estimation' else
         'Talon non déclaré : 20 % de la puissance des heures ouvertes (défaut fondateur), '
         'à confirmer avec le client.', niveau='info'))

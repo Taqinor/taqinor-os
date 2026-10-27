@@ -296,6 +296,57 @@ class TestTalonMethodeArchetype(unittest.TestCase):
                                 10000 * 0.40 / (24 * 31) - 1e-9)
 
 
+class TestTalonParDefautArchetype(unittest.TestCase):
+    """CLD2 — talon par défaut d'un archétype = moyenne de la forme HORS des
+    plages déclarées ÷ moyenne DANS les plages (saisons pondérées par les jours
+    ouverts) : le niveau de jour sur ses heures, pas le creux sur le pic."""
+
+    def test_boulangerie_part_d_energie_dans_les_plages_celle_de_l_archetype(self):
+        from apps.ventes.moteur_ci.profils import forme_archetype
+        rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [[6, 22]]},
+                  'categorie_commerciale': 'boulangerie'}
+        jt, prov, alertes = courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE,
+                                            archetype='boulangerie', feries=[])
+        self.assertEqual(prov['talon']['statut'], 'estimation')
+        self.assertIn('talon_estime', {a['code'] for a in alertes})
+        total = sum(j['nb_jours'] * sum(j['charge_kwh']) for j in jt)
+        dedans = sum(j['nb_jours'] * sum(j['charge_kwh'][6:22]) for j in jt)
+        part_courbe = dedans / total
+        # part 6-22 h de la forme de l'archétype, pondérée par les jours
+        part_forme, jours = 0.0, 0
+        for jour in charge._jours_annee(ANNEE):
+            forme, _s = forme_archetype('boulangerie', 'ouvre', charge.saison_bdew(jour))
+            part_forme += sum(forme[6:22]) / sum(forme)
+            jours += 1
+        self.assertAlmostEqual(part_courbe, part_forme / jours, delta=0.01)
+
+    def test_plages_sur_24_heures_talon_sans_objet_aucune_exception(self):
+        rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [[0, 24]]},
+                  'categorie_commerciale': 'hotel'}
+        jt, prov, alertes = courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE,
+                                            archetype='hotel', feries=[])
+        self.assertIsNotNone(jt)
+        self.assertIsNone(prov['talon']['valeur'])
+        self.assertNotEqual(prov['talon']['statut'], 'defaut_fondateur')
+        self.assertNotIn('talon_estime', {a['code'] for a in alertes})
+        mars = _par(jt, 3, 'ouvre')['charge_kwh']
+        self.assertAlmostEqual(max(mars), min(mars), places=9)
+        for mois in range(1, 13):
+            self.assertAlmostEqual(_energie_mois(jt, mois), 6000, delta=1e-6)
+
+    def test_profil_societe_nuit_nulle_statut_estimation(self):
+        profil = {'cle': 'jour-seul', 'libelle': 'Jour seul',
+                  'courbe': {'annuel': [0] * 8 + [1] * 10 + [0] * 6},
+                  'provenance': 'relevé compteur 2025'}
+        rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}}
+        jt, prov, _al = courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE,
+                                        archetype='bureau', feries=[],
+                                        profil_societe=profil)
+        self.assertEqual(prov['talon']['statut'], 'estimation')
+        self.assertEqual(prov['talon']['valeur'], {'rapport_nuit_jour': 0.0})
+        self.assertEqual(min(_par(jt, 3, 'ouvre')['charge_kwh']), 0.0)
+
+
 class TestProfilChargePrerequis(unittest.TestCase):
     """ADEV76 — LA règle des prérequis : un cas par branche de ``courbe_declaree``."""
 
