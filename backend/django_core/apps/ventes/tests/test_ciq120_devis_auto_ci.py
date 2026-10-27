@@ -746,7 +746,9 @@ class OptionAvecDomineeTests(SimpleTestCase):
         resultat = {'evaluation': avec, 'prix_a_renseigner': [], 'hypotheses': [],
                     'alertes': list(alertes), 'motif': None}
         catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
-        with mock.patch.object(m, 'batteries_compatibles', return_value=[1]),                 mock.patch.object(m, '_dimensionner', return_value=resultat),                 mock.patch.object(m, '_bloc', return_value={'kwc': 199}):
+        with mock.patch.object(m, 'batteries_compatibles', return_value=[1]), \
+                mock.patch.object(m, '_dimensionner', return_value=resultat), \
+                mock.patch.object(m, '_bloc', return_value={'kwc': 199}):
             return m.option_avec_de_l_etude(catalogue, dict(self.SANS), choix=choix, lead=None,
                                             tva_recuperable={'valeur': 'inconnu'})
 
