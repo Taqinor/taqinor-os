@@ -595,6 +595,29 @@ function PosteDialog({ poste, departements, roles, onClose, onSaved }) {
   )
 }
 
+function PosteLigne({ p, dep, rol, canEdit, onEdit, onToggle }) {
+  return (
+    <tr className="border-b border-border/60" data-testid={`poste-${p.id}`}>
+      <td className="py-1.5 pr-3 font-medium text-foreground">{p.intitule}</td>
+      <td className="py-1.5 pr-3">{dep(p.departement)}</td>
+      <td className="py-1.5 pr-3">{rol(p.role)}</td>
+      <td className="py-1.5 pr-3">
+        <Badge tone={p.actif === false ? 'neutral' : 'success'}>{p.actif === false ? 'Archivée' : 'Active'}</Badge>
+      </td>
+      {canEdit && (
+        <td className="py-1.5">
+          <div className="flex gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => onEdit(p)} aria-label={`Modifier ${p.intitule}`}>Modifier</Button>
+            <Button variant="ghost" size="sm" onClick={() => onToggle(p)}>
+              {p.actif === false ? 'Réactiver' : 'Archiver'}
+            </Button>
+          </div>
+        </td>
+      )}
+    </tr>
+  )
+}
+
 // ── Onglets Fonctions / Départements ───────────────────────────────────────
 function FonctionsTab({ postes, departements, roles, canEdit, onEdit, onToggle }) {
   const dep = (id) => departements.find((d) => d.id === id)?.nom ?? '—'
@@ -620,24 +643,7 @@ function FonctionsTab({ postes, departements, roles, canEdit, onEdit, onToggle }
             </thead>
             <tbody>
               {postes.map((p) => (
-                <tr key={p.id} className="border-b border-border/60" data-testid={`poste-${p.id}`}>
-                  <td className="py-1.5 pr-3 font-medium text-foreground">{p.intitule}</td>
-                  <td className="py-1.5 pr-3">{dep(p.departement)}</td>
-                  <td className="py-1.5 pr-3">{rol(p.role)}</td>
-                  <td className="py-1.5 pr-3">
-                    <Badge tone={p.actif === false ? 'neutral' : 'success'}>{p.actif === false ? 'Archivée' : 'Active'}</Badge>
-                  </td>
-                  {canEdit && (
-                    <td className="py-1.5">
-                      <div className="flex gap-1.5">
-                        <Button variant="outline" size="sm" onClick={() => onEdit(p)} aria-label={`Modifier ${p.intitule}`}>Modifier</Button>
-                        <Button variant="ghost" size="sm" onClick={() => onToggle(p)}>
-                          {p.actif === false ? 'Réactiver' : 'Archiver'}
-                        </Button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
+                <PosteLigne key={p.id} p={p} dep={dep} rol={rol} canEdit={canEdit} onEdit={onEdit} onToggle={onToggle} />
               ))}
             </tbody>
           </table>

@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 # Registre des droits : permissions_registre.py (SPL301).
 from .permissions_registre import PERIMETRE_CHOICES
 
@@ -62,11 +64,7 @@ class Role(models.Model):
 # recalculée par ``authentication.equipes_structure.recalculer_hierarchie``.
 
 
-class Departement(models.Model):
-    company = models.ForeignKey(
-        # on_delete: donnée propre à la société — supprimée avec elle
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='departements')
+class Departement(TenantModel):
     nom = models.CharField(max_length=120)
     responsable = models.ForeignKey(
         # on_delete: le département survit au départ de son responsable
@@ -87,13 +85,9 @@ class Departement(models.Model):
         return self.nom
 
 
-class Poste(models.Model):
+class Poste(TenantModel):
     """Fonction (intitulé de poste) : porte le département et le rôle par
     défaut de ses titulaires (``CustomUser.fonction``)."""
-    company = models.ForeignKey(
-        # on_delete: donnée propre à la société — supprimée avec elle
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='postes')
     intitule = models.CharField(max_length=120)
     departement = models.ForeignKey(
         # on_delete: la fonction survit à la suppression du département
@@ -115,13 +109,9 @@ class Poste(models.Model):
         return self.intitule
 
 
-class EquipeOrg(models.Model):
+class EquipeOrg(TenantModel):
     """Équipe générique d'un département autre que les ventes
     (``crm.EquipeCommerciale``) et le terrain (``installations.Equipe``)."""
-    company = models.ForeignKey(
-        # on_delete: donnée propre à la société — supprimée avec elle
-        'authentication.Company', on_delete=models.CASCADE,
-        related_name='equipes_org')
     nom = models.CharField(max_length=120)
     departement = models.ForeignKey(
         # on_delete: l'équipe survit à la suppression du département
