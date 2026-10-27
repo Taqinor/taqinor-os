@@ -178,6 +178,26 @@ class BuildDevisAutoServiceTest(TestCase):
             a['code'] == 'taille_demandee'
             for a in journal2.get('alertes', [])), journal2)
 
+    def test_site_sans_reseau_dit_que_la_batterie_est_ajoutee(self):
+        """RGEN1 — Given un lead « sans batterie » au raccordement « aucun »,
+        When on construit le devis auto, Then le vendeur lit que la batterie
+        est ajoutée d'office — que le catalogue de test sache ou non composer
+        le kit autonome (l'alerte précède la composition)."""
+        journal = {}
+        try:
+            build_devis_auto(
+                lead=self._lead(taille_souhaitee_kwc=Decimal('5'),
+                                raccordement='aucun',
+                                batterie_souhaitee='sans',
+                                email='isole@ex.com'),
+                user=self.user, company=self.company, journal_auto=journal)
+        except AutoDevisError:
+            pass
+        self.assertTrue(any(
+            a['code'] == 'batterie_hors_reseau'
+            and 'ajoutée d\'office' in a['message']
+            for a in journal.get('alertes', [])), journal)
+
     def test_le_compte_de_panneaux_couvre_toujours_la_taille_demandee(self):
         """U1 — invariant du PLAFOND, sur tout le domaine résidentiel utile.
 
