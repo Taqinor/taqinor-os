@@ -95,8 +95,10 @@ MESURES_VISITE = (
     ('point_eau', 'diametre_conduite_mm',
      'hmt.conduite.diametre_interieur_mm'),
     ('point_eau', 'bassin_volume_m3', 'source.volume_reservoir_m3'),
-    ('pompe_existante', 'tension_v', 'plaque.tension_v'),
 )
+# AGV14 — la tension de plaque relevée arrive par la colonne Lead
+# ``pompe_actuelle_tension_v`` (AGV3, 220/380 seulement) : une seule source,
+# jamais la valeur brute de la visite.
 
 #: Clé d'étude v2 (``Devis.etude_params``) → préfixe de chemin du corps
 #: (contrat ``cles_etude_params_v2.correspondance_corps``).
