@@ -163,8 +163,51 @@ describe('CAD152 — une réponse écrit le champ, par le chemin de la fiche', (
     expect(crmApi.updateLead).not.toHaveBeenCalled()
     fireEvent.change(champ, { target: { value: '1 200,50' } })
     fireEvent.click(within(question).getByRole('button', { name: 'Enregistrer' }))
+    // CSV15 — le montant part AVEC sa période (« 1 mois » affiché par défaut).
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
-      ETAPE_APPEL.lead, { facture_hiver: '1200.50' }))
+      ETAPE_APPEL.lead, { facture_hiver: '1200.50', facture_periodicite: 'mensuelle' }))
+  })
+
+  it('CSV15 — résidentiel : « 2 mois » envoie la période avec le montant (la fiche lira la moitié)', async () => {
+    const libre = PANNEAU.champs_a_poser.find((q) => q.nature === 'nombre')
+    const facture = {
+      ...libre, champ: 'facture_hiver', section: 'energie', libelle: 'Facture mensuelle', question: '',
+    }
+    armer({ panneau: { ...PANNEAU, champs_a_poser: [facture], prefill: { occupation_jour: 'present' } } })
+    crmApi.updateLead.mockResolvedValue({ data: { id: ETAPE_APPEL.lead, score: 40 } })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    const question = await screen.findByTestId('question-appel-facture_hiver')
+    // Le bouton dit la période : « 1 mois » est visiblement choisi par défaut.
+    expect(within(question).getByRole('button', { name: '1 mois' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.change(within(question).getByRole('textbox'), { target: { value: '1 400' } })
+    fireEvent.click(within(question).getByRole('button', { name: '2 mois' }))
+    expect(within(question).getByRole('button', { name: '2 mois' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(within(question).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      ETAPE_APPEL.lead, { facture_hiver: '1400', facture_periodicite: 'bimestrielle' }))
+  })
+
+  it('CSV15 — la facture d’été porte aussi sa période ; un lead pro n’a pas de sélecteur de période', async () => {
+    const libre = PANNEAU.champs_a_poser.find((q) => q.nature === 'nombre')
+    const ete = {
+      ...libre, champ: 'facture_ete', section: 'energie', libelle: 'Facture d’été', question: '',
+    }
+    armer({ panneau: { ...PANNEAU, champs_a_poser: [ete], prefill: { occupation_jour: 'present' } } })
+    crmApi.updateLead.mockResolvedValue({ data: { id: ETAPE_APPEL.lead } })
+    ligne()
+    fireEvent.click(screen.getByRole('button', { name: /Script d’appel/ }))
+    const question = await screen.findByTestId('question-appel-facture_ete')
+    fireEvent.change(within(question).getByRole('textbox'), { target: { value: '900' } })
+    fireEvent.click(within(question).getByRole('button', { name: '2 mois' }))
+    fireEvent.click(within(question).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      ETAPE_APPEL.lead, { facture_ete: '900', facture_periodicite: 'bimestrielle' }))
+    cleanup()
+    armer({ panneau: exempleContrat('crm', 'panneau_appel', 'exemple_commercial') })
+    render(<PanneauScriptAppel mode="fiche" leadId={1} />)
+    await screen.findByTestId('questions-appel')
+    expect(screen.queryByTestId('periode-facture_hiver')).not.toBeInTheDocument()
   })
 })
 

@@ -66,6 +66,16 @@ const UNITES_SAISIE = Object.freeze({
   facture_hiver: 'MAD / mois',
 })
 
+/** CSV15 — la facture d'un lead résidentiel se dit « pour un mois » ou « pour
+ *  deux mois » : le serveur la ramène au mois (`facture_periodicite`, CAD158,
+ *  mêmes valeurs que la fiche). Sans la période, un montant de deux mois serait
+ *  enregistré deux fois trop grand. */
+const CHAMPS_FACTURE_PERIODE = Object.freeze(['facture_hiver', 'facture_ete'])
+const PERIODES_FACTURE = Object.freeze([
+  { valeur: 'mensuelle', libelle: '1 mois' },
+  { valeur: 'bimestrielle', libelle: '2 mois' },
+])
+
 function texteDeLaQuestion(entree) {
   return decouperQuestion(
     entree?.question || fieldLabels[entree?.champ]?.label || texteQuestion(entree))
@@ -217,7 +227,9 @@ function SousQuestions({
   )
 }
 
-function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregistrer }) {
+function Question({
+  entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregistrer, periode, onPeriode,
+}) {
   const id = `panneau-appel-${entree.champ}`
   const { question, consigne } = texteDeLaQuestion(entree)
   // AGR418 — `choix_multiple` (mois d'irrigation…) : des boutons À COCHER, puis
@@ -289,7 +301,26 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
             inputMode={entree.nature === 'nombre' ? 'decimal' : undefined}
             onChange={(e) => onSaisie(e.target.value)}
           />
-          {UNITES_SAISIE[entree.champ] && (
+          {onPeriode ? (
+            <>
+              <span className="text-sm text-muted-foreground">MAD pour</span>
+              <div
+                className="flex gap-1.5" role="group" aria-label="La facture couvre"
+                data-testid={`periode-${entree.champ}`}
+              >
+                {PERIODES_FACTURE.map((p) => (
+                  <Button
+                    key={p.valeur} type="button" size="sm"
+                    variant={periode === p.valeur ? 'default' : 'outline'}
+                    aria-pressed={periode === p.valeur}
+                    disabled={occupe} onClick={() => onPeriode(p.valeur)}
+                  >
+                    {p.libelle}
+                  </Button>
+                ))}
+              </div>
+            </>
+          ) : UNITES_SAISIE[entree.champ] && (
             <span className="text-sm text-muted-foreground" data-testid={`unite-${entree.champ}`}>
               {UNITES_SAISIE[entree.champ]}
             </span>
@@ -344,6 +375,7 @@ export default function PanneauScriptAppel({
   const [erreurs, setErreurs] = useState({})
   const [enCours, setEnCours] = useState('')
   const [objetsEcrits, setObjetsEcrits] = useState({})
+  const [periodes, setPeriodes] = useState({})
   const [score, setScore] = useState(null)
 
   const etapeId = etape?.id ?? null
@@ -457,12 +489,12 @@ export default function PanneauScriptAppel({
     }
   }
 
-  const ecrire = (entree, valeur) => {
+  const ecrire = (entree, valeur, supplement = {}) => {
     if (enCours || typeof crmApi.updateLead !== 'function') return
     setEnCours(entree.champ)
     setErreurs((e) => ({ ...e, [entree.champ]: '' }))
     Promise.resolve()
-      .then(() => crmApi.updateLead(leadId, { [entree.champ]: valeur }))
+      .then(() => crmApi.updateLead(leadId, { [entree.champ]: valeur, ...supplement }))
       .then((r) => {
         const data = r?.data
         // Le score est recalculé par le serveur à chaque écriture de fiche
@@ -484,6 +516,11 @@ export default function PanneauScriptAppel({
           delete suite[entree.champ]
           return suite
         })
+        setPeriodes((p) => {
+          const suite = { ...p }
+          delete suite[entree.champ]
+          return suite
+        })
         toastInfo(`« ${entree.libelle} » enregistré sur la fiche.`)
         setVersion((v) => v + 1)
         onLeadEcrit?.(data)
@@ -500,13 +537,18 @@ export default function PanneauScriptAppel({
       .finally(() => setEnCours(''))
   }
 
+  const avecPeriode = (entree) => g?.famille === 'residentiel'
+    && CHAMPS_FACTURE_PERIODE.includes(entree.champ)
+
   const enregistrerLibre = (entree) => {
     const { valeur, erreur } = normaliserSaisie(entree, saisies[entree.champ] ?? '')
     if (erreur) {
       setErreurs((e) => ({ ...e, [entree.champ]: erreur }))
       return
     }
-    ecrire(entree, valeur)
+    // CSV15 — la période de la facture part AVEC le montant (jamais seul).
+    ecrire(entree, valeur, avecPeriode(entree)
+      ? { facture_periodicite: periodes[entree.champ] || 'mensuelle' } : {})
   }
 
   const rendreQuestion = (entree) => (entree.complementsVisibles ? (
@@ -547,6 +589,9 @@ export default function PanneauScriptAppel({
         setErreurs((e) => ({ ...e, [entree.champ]: '' }))
       }}
       onEnregistrer={() => enregistrerLibre(entree)}
+      periode={periodes[entree.champ] || 'mensuelle'}
+      onPeriode={avecPeriode(entree)
+        ? (valeur) => setPeriodes((p) => ({ ...p, [entree.champ]: valeur })) : undefined}
     />
   ))
 
