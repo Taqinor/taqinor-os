@@ -7,9 +7,11 @@ moteur de devis via DC2). Tout lecteur passe par un accesseur UNIQUE,
 TariffSettings — pour ces repères. Ces tests verrouillent ce choix.
 """
 import itertools
+import re
 from decimal import Decimal
+from pathlib import Path
 
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
 from apps.parametres.models import CompanyProfile
@@ -49,10 +51,11 @@ class TestDC5TariffSelector(TestCase):
         self.assertAlmostEqual(t['rendement_global'], 0.85, places=3)
 
     def test_tariff_for_defaults_when_no_profile_fields(self):
-        # profil vierge (défauts du modèle : 1.75 / 1600 / 0.8)
+        # profil vierge (défauts du modèle : 1.75 / vide / 0.8) — AMOT64 :
+        # productible vide ⇒ None (le moteur lit le PVGIS de la ville).
         t = tariff_for(_company())
         self.assertAlmostEqual(t['onee_tarif_kwh'], 1.75, places=3)
-        self.assertAlmostEqual(t['productible_kwh_kwc'], 1600.0, places=1)
+        self.assertIsNone(t['productible_kwh_kwc'])
         self.assertAlmostEqual(t['rendement_global'], 0.8, places=3)
 
     def test_tariff_settings_edit_does_not_leak_into_tariff_for(self):
@@ -63,5 +66,59 @@ class TestDC5TariffSelector(TestCase):
         ts.productible_manuel_kwh_kwc = Decimal('1234.0')
         ts.save()
         t = tariff_for(company)
-        self.assertNotAlmostEqual(t['productible_kwh_kwc'], 1234.0, places=1)
-        self.assertAlmostEqual(t['productible_kwh_kwc'], 1600.0, places=1)
+        self.assertIsNone(t['productible_kwh_kwc'])
+
+
+RACINE = Path(__file__).resolve().parents[4]
+ECRAN_AVANCE = RACINE / 'frontend' / 'src' / 'pages' / 'parametres' / 'AvanceSection.jsx'
+
+
+def _textes_lecteurs():
+    """Code qui LIT un réglage hors ``parametres`` : backend (apps hors
+    parametres, authentication, core — sans migrations ni tests) + écrans
+    (frontend/src hors pages/parametres, sans tests)."""
+    textes = []
+    back = RACINE / 'backend' / 'django_core'
+    for dossier in ('apps', 'authentication', 'core'):
+        for f in (back / dossier).rglob('*.py'):
+            chemin = f.as_posix()
+            if ('/apps/parametres/' in chemin or '/migrations/' in chemin
+                    or '/tests/' in chemin or f.name.startswith('test')):
+                continue
+            textes.append(f.read_text(encoding='utf-8', errors='ignore'))
+    for f in (RACINE / 'frontend' / 'src').rglob('*'):
+        chemin = f.as_posix()
+        if ('/pages/parametres/' in chemin or '.test.' in f.name
+                or f.suffix not in ('.js', '.jsx', '.ts', '.tsx', '.mjs')):
+            continue
+        textes.append(f.read_text(encoding='utf-8', errors='ignore'))
+    return '\n'.join(textes)
+
+
+class TestAMOT64ReglagesEcranOntUnLecteur(SimpleTestCase):
+    """AMOT64 (D-AMOT-3 = a) — tout champ de ``CompanyProfile`` exposé à
+    l'écran Paramètres → Avancé a un lecteur hors ``parametres`` ou est
+    étiqueté « repli » ; ``rendement_global`` n'est plus à l'écran."""
+
+    def test_tout_champ_expose_a_un_lecteur_ou_est_un_repli(self):
+        ecran = ECRAN_AVANCE.read_text(encoding='utf-8')
+        champs = {f.name for f in CompanyProfile._meta.get_fields()}
+        exposes = [m for m in re.finditer(r'name="(\w+)"', ecran)
+                   if m.group(1) in champs]
+        self.assertTrue(exposes, 'aucun champ CompanyProfile trouvé')
+        lecteurs = _textes_lecteurs()
+        orphelins = []
+        for m in exposes:
+            nom = m.group(1)
+            labels = re.findall(r'label="([^"]*)"', ecran[:m.start()])
+            repli = bool(labels) and 'repli' in labels[-1].lower()
+            if not repli and not re.search(r'\b%s\b' % nom, lecteurs):
+                orphelins.append(nom)
+        self.assertEqual(orphelins, [], 'réglages affichés sans lecteur')
+
+    def test_rendement_global_retire_et_tarif_libelle_repli(self):
+        ecran = ECRAN_AVANCE.read_text(encoding='utf-8')
+        self.assertNotIn('name="rendement_global"', ecran)
+        self.assertRegex(
+            ecran, r'label="[^"]*repli sans distributeur[^"]*"'
+                   r' htmlFor="pe-onee"')

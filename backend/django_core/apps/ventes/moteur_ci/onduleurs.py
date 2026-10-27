@@ -396,8 +396,40 @@ def _combinaison_cablable(kwc, module, quantites, retenus, besoin, haute,
     return quantites, sorties, alertes
 
 
+#: CMP11 — manuel Deye SUN-3-12K-SG05LP3-EU-SM2 (2025-11-15, p. 51) : « Enable
+#: this function when several same model hybrid inverters are connecting in
+#: parallel » : des hybrides en parallèle sont d'UN SEUL modèle.
+SOURCE_PARALLELE_MEME_MODELE = ('manuel Deye SUN-3-12K-SG05LP3-EU-SM2 (2025-11-15, p. 51) : '
+                                'parallèle entre hybrides du même modèle')
+
+
+def _combiner_homogene(kwc, candidats, **kw):
+    """CMP11 — la meilleure combinaison d'UN SEUL modèle : chaque modèle est
+    combiné seul, puis le moins d'appareils, le moins cher, la moindre
+    puissance AC, l'identifiant (déterministe)."""
+    resultats = []
+    for c in candidats or []:
+        r = combiner_onduleurs(kwc, [c], **kw)
+        if r.get('combinaison'):
+            cle = (sum(int(x['quantite']) for x in r['combinaison']),
+                   Decimal(r['prix_vente_total_ht'] or '0'),
+                   sum(float(x['kw_ac']) * int(x['quantite']) for x in r['combinaison']),
+                   c.get('produit') or 0)
+            resultats.append((cle, r))
+    if resultats:
+        r = min(resultats, key=lambda x: x[0])[1]
+    else:
+        r = combiner_onduleurs(kwc, candidats, **kw)
+        r = dict(r, combinaison=None, motif=r.get('motif') or (
+            "aucun modèle d'hybride ne porte seul %.1f kWc" % float(kwc or 0)))
+    r['hypotheses'] = list(r.get('hypotheses') or []) + [{
+        'cle': 'parallele_meme_modele', 'valeur': True, 'statut': 'source',
+        'source': SOURCE_PARALLELE_MEME_MODELE}]
+    return r
+
+
 def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
-                       module=None, ac_max_kw=None, max_appareils=None):
+                       module=None, ac_max_kw=None, max_appareils=None, homogene=False):
     """La combinaison d'onduleurs au coût de vente minimal pour ``kwc``.
 
     ``candidats`` : ``[{produit, nom, kw_ac, prix (vente HT), triphase,
@@ -410,11 +442,16 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
     bornes par défaut publiées « convention atelier, non sourcée ».
     ``module`` : ``SpecModule`` du module retenu (chaînes), facultatif.
     ``max_appareils`` (CMP3) : nombre maxi d'appareils en parallèle (fiche) ;
-    au-delà, ``combinaison`` None + motif nommé.
+    au-delà, ``combinaison`` None + motif nommé. ``homogene`` (CMP11) : un
+    seul modèle dans la combinaison (hybrides en parallèle).
 
     Rend ``{combinaison, ratio_dc_ac, chaines, exclus, prix_vente_total_ht,
     motif, alertes, hypotheses}`` ; ``combinaison`` None ⇒ ``motif`` nommé.
     """
+    if homogene:
+        return _combiner_homogene(kwc, candidats, phase=phase, bornes_dc_ac=bornes_dc_ac,
+                                  module=module, ac_max_kw=ac_max_kw,
+                                  max_appareils=max_appareils)
     alertes, hypotheses = [], []
     bornes = bornes_dc_ac if bornes_dc_ac is not None else _bornes_par_defaut()
     haute = bornes.borne_usuelle
