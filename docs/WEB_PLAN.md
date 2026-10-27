@@ -388,7 +388,7 @@ Contrat : `backend/django_core/apps/crm/contract_samples/questionnaire_lead.json
 - [x] CQSTW4 — **Photos de factures : plusieurs fichiers par écran et les PDF acceptés (« les 12 dernières factures, PDF ou photos » du contrat), un envoi par fichier, plafond serveur inchangé** : Constat : `photoDataUrls[section]` = une image, `accept="image/*"`. Files: idem CQSTW1. (ROUTINE — S) (@lane: cqst/web) (@model: sonnet)
 - [x] CQSTW5 — **Lien expiré dit « lien expiré, demandez-en un nouveau à votre conseiller » au lieu de « réessayez »** : Constat : le relais `api/questionnaire-repondre.ts` rend 200 `ok:false` même sur un 404. Files: `apps/web/src/pages/api/questionnaire-repondre.ts`, idem CQSTW1. (ROUTINE — XS) (@lane: cqst/web) (@model: sonnet)
 - [x] CQSTW6 — **Heures de l'activité (cuisson de nuit, garde, ouverture du restaurant, dates de fermeture de l'école) posées quand la réponse d'activité les rend utiles, au format du contrat `reponses_categorie_heures_cqst2`** : Files: idem CQSTW1. (ROUTINE — S) (@after: CQST2) (@lane: cqst/web) (@model: sonnet)
-- [ ] CQSTW7 — **Zéro jargon sans aide : kVA, option tarifaire, cos φ, BT/MT reçoivent « où le lire sur votre facture » ; cos φ et option tarifaire marqués facultatifs** : Files: idem CQSTW1. (ROUTINE — S) (@lane: cqst/web) (@model: sonnet)
+- [x] CQSTW7 — **Zéro jargon sans aide : kVA, option tarifaire, cos φ, BT/MT reçoivent « où le lire sur votre facture » ; cos φ et option tarifaire marqués facultatifs** : Files: idem CQSTW1. (ROUTINE — S) (@lane: cqst/web) (@model: sonnet)
 
 ## NEEDS YOUR INPUT — ungated; each waits on something only you can give (with my recommendation)
 

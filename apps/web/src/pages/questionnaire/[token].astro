@@ -50,7 +50,7 @@ import {
   SOURCE_EAU_VALUES,
   TYPE_TOITURE_VALUES,
 } from '../../lib/questionnaire';
-import { type L3, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST } from '../../lib/questionnaireChamps';
+import { type L3, AIDES_FACTURE, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST } from '../../lib/questionnaireChamps';
 import ChampsDonnees from '../../components/questionnaire/ChampsDonnees.astro';
 import ChampsHeuresActivite from '../../components/questionnaire/ChampsHeuresActivite.astro';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
@@ -548,6 +548,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 data-ar="هل موقعكم مربوط بالضغط المنخفض (عداد عادي) أم بالضغط المتوسط (محطة تحويل)؟ إن لم تعرفوا فلا بأس.">
                                 Votre site est-il raccordé en basse tension, avec un compteur ordinaire, ou en moyenne tension, avec un poste de transformation ? Si vous ne savez pas, ce n'est pas grave.
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.tension.en} data-ar={AIDES_FACTURE.tension.ar}>{AIDES_FACTURE.tension.fr}</p>
                               <select id="q-tension" class={PRO_INPUT_CLS}>
                                 <option value="" selected={tensionPrefill === ''}>—</option>
                                 {TENSION_VALUES.map((v) => (
@@ -574,10 +575,11 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                           {demande('reseau', 'option_tarifaire_bt') && (
                             <div id="q-option-bt-wrap" class:list={[contratPrefill === 'bt_force_motrice' ? '' : 'hidden']}>
                               <label for="q-option-bt" class="mb-1 block text-sm font-semibold" data-i18n
-                                data-en="In motive power, are you on the standard option or the two-rate option? It is written on your bill."
-                                data-ar="في القوة المحركة، هل أنتم على الخيار العادي أم خيار التوقيتين؟ مكتوب في فاتورتكم.">
-                                En force motrice, êtes-vous en option normale ou en option bi-horaire ? C'est écrit sur votre facture.
+                                data-en="In motive power, are you on the standard option or the two-rate option? (optional)"
+                                data-ar="في القوة المحركة، هل أنتم على الخيار العادي أم خيار التوقيتين؟ (اختياري)">
+                                En force motrice, êtes-vous en option normale ou en option bi-horaire ? (facultatif)
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.option_bt.en} data-ar={AIDES_FACTURE.option_bt.ar}>{AIDES_FACTURE.option_bt.fr}</p>
                               <select id="q-option-bt" class={PRO_INPUT_CLS}>
                                 <option value="" selected={prefillStr('option_tarifaire_bt') === ''}>—</option>
                                 {OPTION_TARIFAIRE_BT_VALUES.map((v) => (
@@ -608,6 +610,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 data-ar="ما هي القدرة المشترك بها بالكيلوفولت أمبير (kVA)؟ مكتوبة في فاتورتكم أو عقدكم. إن لم تجدوها، تكفينا صورة لفاتورتكم.">
                                 Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. Si vous ne la trouvez pas, une photo de votre facture nous suffit.
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.kva.en} data-ar={AIDES_FACTURE.kva.ar}>{AIDES_FACTURE.kva.fr}</p>
                               <input id="q-kva" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('compteur_puissance_kva')} class={PRO_INPUT_CLS} />
                             </div>
                           )}
@@ -618,6 +621,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 data-ar="هل تُظهر فاتورتكم معامل القدرة (cos φ) أو غرامة الطاقة غير الفعالة؟ ما قيمته؟ (اختياري)">
                                 Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? (facultatif)
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.cos_phi.en} data-ar={AIDES_FACTURE.cos_phi.ar}>{AIDES_FACTURE.cos_phi.fr}</p>
                               <input id="q-cos-phi" type="number" min="0" max="1" step="any" inputmode="decimal" value={prefillStr('cos_phi')} class={PRO_INPUT_CLS} />
                             </div>
                           )}

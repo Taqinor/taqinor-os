@@ -218,3 +218,27 @@ export const PLAGE_DE_A: { de: L3; a: L3 } = {
   de: L('De (h)', 'From (h)', 'من (س)'),
   a: L('À (h)', 'To (h)', 'إلى (س)'),
 };
+
+// ── CQSTW7 — « où le lire sur votre facture » : mots simples, jamais de jargon sans aide ──
+export const AIDES_FACTURE: Record<'tension' | 'option_bt' | 'kva' | 'cos_phi', L3> = {
+  tension: L(
+    'Où le lire : cherchez « BT » (basse tension) ou « MT » (moyenne tension) sur votre facture ou votre contrat. Pas trouvé ? « Je ne sais pas » convient.',
+    'Where to read it: look for “BT” (low voltage) or “MT” (medium voltage) on your bill or contract. Not found? “I don’t know” is fine.',
+    'أين تجدونه: ابحثوا عن «BT» (ضغط منخفض) أو «MT» (ضغط متوسط) في فاتورتكم أو عقدكم. لم تجدوه؟ «لا أعرف» كافٍ.',
+  ),
+  option_bt: L(
+    'Où le lire : cherchez « option tarifaire », « bi-horaire » ou « heures pleines / heures creuses » sur votre facture. Facultatif : laissez vide si vous ne la voyez pas.',
+    'Where to read it: look for “tariff option”, “two-rate” or “peak / off-peak hours” on your bill. Optional: leave it empty if you can’t see it.',
+    'أين تجدونه: ابحثوا عن «الخيار التعريفي» أو «ثنائي التوقيت» أو «ساعات الذروة / الساعات الهادئة» في فاتورتكم. اختياري: اتركوه فارغاً إن لم تجدوه.',
+  ),
+  kva: L(
+    'Où le lire : cherchez « Puissance souscrite » sur votre facture ou votre contrat — c’est le nombre suivi de « kVA ».',
+    'Where to read it: look for “Subscribed power” on your bill or contract — it is the number followed by “kVA”.',
+    'أين تجدها: ابحثوا عن «القدرة المشترك بها» في فاتورتكم أو عقدكم — هي الرقم المتبوع بـ «kVA».',
+  ),
+  cos_phi: L(
+    'Où le lire : cherchez « cos φ » ou « énergie réactive » sur votre facture. Facultatif : si la ligne n’existe pas, laissez vide.',
+    'Where to read it: look for “cos φ” or “reactive energy” on your bill. Optional: if there is no such line, leave it empty.',
+    'أين تجدونه: ابحثوا عن «cos φ» أو «الطاقة غير الفعالة» في فاتورتكم. اختياري: إن لم يوجد هذا السطر اتركوه فارغاً.',
+  ),
+};

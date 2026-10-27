@@ -172,3 +172,29 @@ describe('questionnaire pro — parité exemple_pro ↔ collectSectionRaw', () =
     expect(bloc).toContain('data-en=');
   });
 });
+
+// CQSTW7 — zéro jargon sans aide : kVA, option tarifaire, cos φ, BT/MT disent où les lire.
+describe('questionnaire pro — aides « où le lire sur votre facture » (CQSTW7)', () => {
+  for (const cle of ['tension', 'option_bt', 'kva', 'cos_phi']) {
+    it(`${cle} : aide FR/EN/AR sous le libellé`, () => {
+      expect(src).toContain(`data-en={AIDES_FACTURE.${cle}.en} data-ar={AIDES_FACTURE.${cle}.ar}>{AIDES_FACTURE.${cle}.fr}`);
+    });
+  }
+  it('les aides disent « où le lire » dans les trois langues', async () => {
+    const { AIDES_FACTURE } = await import('../src/lib/questionnaireChamps');
+    for (const a of Object.values(AIDES_FACTURE)) {
+      expect(a.fr).toMatch(/Où le lire|Où le trouver/);
+      expect(a.en).toContain('Where to read');
+      expect(a.ar.length).toBeGreaterThan(20);
+    }
+    expect(AIDES_FACTURE.kva.fr).not.toContain('Facultatif');
+  });
+  it('cos φ et option tarifaire sont marqués facultatifs', () => {
+    const optionBt = src.indexOf('id="q-option-bt"');
+    const libOption = src.slice(src.lastIndexOf('<label', optionBt), optionBt);
+    expect(libOption).toContain('(facultatif)');
+    expect(libOption).toContain('(optional)');
+    const cos = src.indexOf('id="q-cos-phi"');
+    expect(src.slice(src.lastIndexOf('<label', cos), cos)).toContain('(facultatif)');
+  });
+});
