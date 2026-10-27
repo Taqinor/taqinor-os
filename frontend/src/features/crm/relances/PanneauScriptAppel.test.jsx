@@ -479,8 +479,10 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
     const liste = await screen.findByTestId('questions-appel')
     const posees = [...liste.querySelectorAll('[data-testid^="question-appel-"]')]
       .map((n) => n.getAttribute('data-testid').replace('question-appel-', ''))
+    // CSV2 — l'étape facture sert les DEUX saisies (kWh d'abord, dirhams à côté).
     expect(posees).toEqual([
-      'conso_mensuelle_kwh', 'compteur_puissance_kva', 'secteur_industriel', 'type_surface', 'decideur',
+      'conso_mensuelle_kwh', 'facture_hiver', 'compteur_puissance_kva', 'secteur_industriel',
+      'type_surface', 'decideur',
     ])
     expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
     expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_PROCESS)
@@ -709,7 +711,8 @@ describe('CIQ420 — script d’appel pro', () => {
     // CSV1 — les jours ouvrent l'étape d'activité : les réponses propres à
     // l'activité (clés vides) ne la bloquent plus.
     expect(await posees()).toEqual([
-      'facture_hiver', 'compteur_puissance_kva', 'jours_ouverture', 'type_surface', 'decideur',
+      'facture_hiver', 'conso_mensuelle_kwh', 'compteur_puissance_kva', 'jours_ouverture',
+      'type_surface', 'decideur',
     ])
     expect(screen.queryByTestId('question-appel-tension_raccordement')).not.toBeInTheDocument()
   })
@@ -773,6 +776,36 @@ describe('CIQ420 — script d’appel pro', () => {
     fireEvent.click(within(horaires).getByRole('button', { name: 'Soir' }))
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
       COMMERCIAL.lead_id, { reponses_categorie: { horaires: 'soir' } }))
+  })
+
+  it('CSV2 — la facture : une seule question, DEUX saisies étiquetées de leur unité', async () => {
+    armer({ panneau: COMMERCIAL })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    const groupe = await screen.findByTestId('groupe-appel-visible')
+    // Dirhams d'abord pour un commerce BT, kWh à côté — jamais « Ensuite… ».
+    const saisies = within(groupe).getAllByRole('textbox')
+    expect(saisies).toHaveLength(2)
+    expect(within(groupe).getByText(fieldLabels.facture_hiver.label)).toBeInTheDocument()
+    expect(within(groupe).getByText(fieldLabels.conso_mensuelle_kwh.label)).toBeInTheDocument()
+    expect(groupe.textContent).not.toContain('Ensuite, selon la réponse')
+    crmApi.updateLead.mockResolvedValue({ data: { id: COMMERCIAL.lead_id } })
+    fireEvent.change(saisies[1], { target: { value: '6 000' } })
+    fireEvent.click(within(screen.getByTestId('question-appel-conso_mensuelle_kwh'))
+      .getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(COMMERCIAL.lead_id, { conso_mensuelle_kwh: '6000' }))
+  })
+
+  it('CSV2 — consigne sous les heures : ouvert jour et nuit se note 0 et 24', async () => {
+    const heures = {
+      ...COMMERCIAL,
+      champs_a_poser: COMMERCIAL.champs_a_poser.filter((q) => q.champ === 'heure_debut'),
+      prefill: { ...COMMERCIAL.prefill, jours_ouverture: [1, 2, 3, 4, 5] },
+    }
+    armer({ panneau: heures })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    expect(await screen.findByTestId('consigne-24h-heure_debut'))
+      .toHaveTextContent(guidance.CONSIGNE_OUVERT_24H)
   })
 
   it('« avec le conjoint / la famille » est absent pour un pro', async () => {

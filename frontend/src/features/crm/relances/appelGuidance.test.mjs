@@ -695,6 +695,28 @@ test('CSV1 — des réponses d’activité partielles restent posées (sous-ques
   assert.ok(!JSON.stringify(guidanceAppel(complet).questions).includes('sous_questions'))
 })
 
+test('CSV2 — la facture sert deux colonnes : la principale selon le serveur, l’autre visible à côté', () => {
+  const industriel = guidanceAppel(exemple('exemple_industriel')).questions[0]
+  assert.equal(industriel.etape, 'facture')
+  assert.equal(industriel.champ, 'conso_mensuelle_kwh')
+  assert.deepEqual(industriel.complements.map((c) => c.champ), ['facture_hiver'])
+  assert.equal(industriel.complementsVisibles, true)
+  const commercial = guidanceAppel(exemple('exemple_commercial')).questions[0]
+  assert.equal(commercial.champ, 'facture_hiver')
+  assert.deepEqual(commercial.complements.map((c) => c.champ), ['conso_mensuelle_kwh'])
+  // Facture en dirhams déjà sur la fiche mais qui ne compte pas (MT découvert) :
+  // seuls les kWh restent à poser, et l’étape reste ouverte.
+  const panneau = exemple('exemple_industriel')
+  const mad = {
+    ...panneau,
+    champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'facture_hiver'),
+    prefill: { ...panneau.prefill, facture_hiver: 5000 },
+  }
+  const g = guidanceAppel(mad).questions[0]
+  assert.equal(g.champ, 'conso_mensuelle_kwh')
+  assert.equal(g.complementsVisibles, undefined)
+})
+
 test('CIQ420 — « avec le conjoint / la famille » est absent pour un pro', () => {
   for (const variante of ['exemple_commercial', 'exemple_industriel']) {
     const decideur = guidanceAppel(exemple(variante)).questions.find((q) => q.champ === 'decideur')
@@ -726,7 +748,8 @@ test('CIQ420 — pro : une réponse déjà sur la fiche ne se repose pas, l\'ord
   const panneau = exemple('exemple_industriel')
   const sans = {
     ...panneau,
-    champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'conso_mensuelle_kwh'),
+    champs_a_poser: panneau.champs_a_poser
+      .filter((q) => !['conso_mensuelle_kwh', 'facture_hiver'].includes(q.champ)),
     prefill: { ...panneau.prefill, conso_mensuelle_kwh: 42000 },
   }
   assert.deepEqual(guidanceAppel(sans).questions.map((q) => q.etape),

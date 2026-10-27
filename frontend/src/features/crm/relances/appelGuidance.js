@@ -223,8 +223,10 @@ export const ORDRE_AGRICOLE = Object.freeze([
 ])
 
 // CIQ420 (D-CIQ-7) — l'appel pro en CINQ étapes, dans l'ordre du serveur
-// (CIQ410, `ETAPES_PRO`) : (1) la facture, en MAD ou en kWh — le serveur ne
-// sert qu'UNE des deux colonnes, selon le segment et la tension ; (2) le
+// (CIQ410, `ETAPES_PRO`) : (1) la facture, en MAD ET en kWh (CSV2) — le serveur
+// sert les DEUX colonnes, la principale d'abord selon le segment et la tension
+// (`serveurOrdonne`), l'autre en saisie visible à côté (`complementsVisibles`) ;
+// l'étape ne se ferme que quand la consommation COMPTE pour le moteur ; (2) le
 // raccordement : tension, puissance souscrite, phase ; (3) l'activité et le
 // rythme : catégorie et ses questions, ou secteur et équipes, jours (sept
 // boutons), heures, mois de fermeture (douze boutons, `choix_multiple`) ;
@@ -238,6 +240,8 @@ export const ORDRE_PRO = Object.freeze([
   Object.freeze({
     etape: 'facture',
     champs: Object.freeze(['conso_mensuelle_kwh', 'facture_hiver']),
+    serveurOrdonne: true,
+    complementsVisibles: true,
   }),
   Object.freeze({
     etape: 'raccordement',
@@ -308,16 +312,24 @@ export function questionsDeLAppel(panneau) {
   }
   const etapes = etapesDuPanneau(panneau)
   const rappel = estToucheDeRappel(panneau?.touche)
+  // CSV2 — l'ordre servi (la colonne que le client connaît d'abord).
+  const ordreServi = new Map((panneau?.champs_a_poser || []).map((e, i) => [e?.champ, i]))
   const out = []
-  for (const { etape, champs, selon, rappelSeulement } of etapes) {
+  for (const { etape, champs, selon, rappelSeulement, serveurOrdonne, complementsVisibles } of etapes) {
     // CIQ427 — une étape du RAPPEL ne se pose jamais à l'appel 1.
     if (rappelSeulement && !rappel) continue
     // AGR418 — une étape conditionnelle ne pose que ses colonnes du cas.
     const liste = typeof selon === 'function' ? selon(dejaRenseigne) : champs
     const entrees = liste.map((champ) => aPoser.get(champ)).filter(Boolean)
     if (!entrees.length) continue
+    if (serveurOrdonne) entrees.sort((a, b) => ordreServi.get(a.champ) - ordreServi.get(b.champ))
     const [principale, ...complements] = entrees
-    out.push({ ...principale, etape, complements })
+    out.push({
+      ...principale,
+      etape,
+      complements,
+      ...(complementsVisibles && complements.length ? { complementsVisibles: true } : {}),
+    })
   }
   return out
 }
@@ -735,6 +747,11 @@ export const A_NOTER_MEILLEUR_MOMENT = 'À noter dans la note d’appel : le '
   + 'meilleur moment pour le joindre (jour de souk, heures au champ).'
 export const A_NOTER_PROCESS = 'À noter dans la note d’appel : les process '
   + 'critiques, qui ne doivent jamais s’arrêter.'
+
+// CSV2 — consigne d'écran sous les heures de début et de fin (0 à 24) : un site
+// ouvert jour et nuit se note 0 et 24. Elle porte des chiffres : hors du jeu de
+// consignes re-dérivées de `messages_meryem.md` (qui n'en tolère aucun).
+export const CONSIGNE_OUVERT_24H = 'Ouvert 24 h/24 : notez 0 et 24.'
 
 // Décision fondateur du 24/09/2026 : la question CAD168 « Votre montant
 // inclut l'abonnement et l'entretien du compteur ? » est RETIRÉE. Toute

@@ -593,6 +593,16 @@ financement restent des questions orales du rappel. En fin d'appel, si le serveu
 avant le devis (`devis_auto.visite_avant_devis`), le panneau la propose avec ses motifs. Aucun chiffre d'économie, la
 loi 82-21 n'est jamais abordée spontanément. ✎ Formulations à valider par le fondateur.
 
+CSV2 (27/10/2026) — l'étape « facture » du pro sert les DEUX saisies côte à côte, chacune étiquetée de son unité
+(dirhams par mois, kWh par mois) : la colonne principale est celle que le client connaît (kWh d'abord pour un
+industriel, un site en moyenne tension ou un contrat qui n'est pas en basse tension ; dirhams d'abord pour un commerce
+en basse tension), l'autre est visible à côté — « 6 000 kWh » ne se tape plus dans le champ des dirhams. L'étape ne se
+ferme que lorsque la consommation COMPTE pour le calcul (kWh ou relevé présents, ou dirhams + tension basse + contrat
+basse tension déclaré) : un site découvert en moyenne tension après une facture en dirhams se voit redemander les kWh.
+Sous les heures de début et de fin, la consigne « Ouvert 24 h/24 : notez 0 et 24 » (`CONSIGNE_OUVERT_24H`, hors de la
+liste ci-dessus : elle porte des chiffres). Décision prise pour le fondateur (à revoir) : l'ordre de D-CIQ-7 est
+conservé, seule la saisie de la facture change. ✎ Formulations à valider par le fondateur.
+
 CIQ427 (06/10/2026) — trois questions PRO ajoutées au serveur (`apps/crm/panneau_appel.py`, `QUESTIONS_PRO`), sans
 sixième étape. Étape 5 « qui décide », sur une fiche pro que la cadence ne joint que par un FIXE : si le décideur est
 vide ou seul, « Sur quel mobile ou WhatsApp puis-je vous joindre directement ? » (colonne `whatsapp`) ; s'il décide

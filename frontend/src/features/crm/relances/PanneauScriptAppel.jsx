@@ -42,7 +42,7 @@ import {
   AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR, JOUR_NON_APPELABLE,
   NON_COMPTE_TITRE, NON_COMPTE_FUTURES_CHARGES, NON_COMPTE_TRANCHE_ONEE,
   VISITE_POINT_EAU_TITRE, VISITE_POINT_EAU_CONSIGNE,
-  VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE,
+  VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE, CONSIGNE_OUVERT_24H,
 } from './appelGuidance'
 import BasculeReplie from './BasculeReplie'
 
@@ -179,6 +179,11 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
       {consigne && (
         <p className="text-xs text-muted-foreground" data-testid={`consigne-question-${entree.champ}`}>
           {consigne}
+        </p>
+      )}
+      {['heure_debut', 'heure_fin'].includes(entree.champ) && (
+        <p className="text-xs text-muted-foreground" data-testid={`consigne-24h-${entree.champ}`}>
+          {CONSIGNE_OUVERT_24H}
         </p>
       )}
       {multiple ? (
@@ -424,7 +429,16 @@ export default function PanneauScriptAppel({
     ecrire(entree, valeur)
   }
 
-  const rendreQuestion = (entree) => (entree.sous_questions?.length > 0 ? (
+  const rendreQuestion = (entree) => (entree.complementsVisibles ? (
+    // CSV2 — l'étape facture : la question une fois, puis les DEUX saisies
+    // (dirhams et kWh) côte à côte, chacune étiquetée de son unité.
+    <div key={entree.champ} className="flex flex-col gap-2" data-testid="groupe-appel-visible">
+      <p className="text-sm text-foreground">{texteDeLaQuestion(entree).question}</p>
+      {[entree, ...entree.complements].map((c) => rendreQuestion({
+        ...c, question: '', complements: [], complementsVisibles: false,
+      }))}
+    </div>
+  ) : entree.sous_questions?.length > 0 ? (
     <SousQuestions
       key={entree.champ}
       entree={entree}

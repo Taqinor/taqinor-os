@@ -241,20 +241,62 @@ class CIQ410PanneauPro(SimpleTestCase):
         self.assertEqual(data['equipements'], [])
 
     def test_facture_en_dirhams_commerce_bt_en_kwh_industriel_ou_mt(self):
-        self.assertIn('facture_hiver', _champs(Lead(
-            nom='P', type_installation='commercial')))
-        self.assertIn('conso_mensuelle_kwh', _champs(Lead(
-            nom='P', type_installation='industriel')))
+        """CSV2 — l'étape facture sert LES DEUX colonnes ; la principale est
+        celle que le client connaît (dirhams d'abord pour un commerce BT, kWh
+        d'abord pour un industriel ou un site MT)."""
+        commerce = _champs(Lead(nom='P', type_installation='commercial'))
+        self.assertEqual(commerce[:2], ['facture_hiver',
+                                        'conso_mensuelle_kwh'])
+        industriel = _champs(Lead(nom='P', type_installation='industriel'))
+        self.assertEqual(industriel[:2], ['conso_mensuelle_kwh',
+                                          'facture_hiver'])
         mt = _champs(Lead(nom='P', type_installation='commercial',
                           tension_raccordement='mt'))
-        self.assertIn('conso_mensuelle_kwh', mt)
+        self.assertEqual(mt[:2], ['conso_mensuelle_kwh', 'facture_hiver'])
         self.assertNotIn('raccordement', mt)
 
-    def test_une_facture_connue_ferme_l_etape(self):
+    def test_une_facture_qui_ne_compte_pas_ne_ferme_pas_l_etape(self):
+        """CSV2 — une facture en dirhams ne ferme l'étape que si la tension ET
+        le contrat BT déclaré la laissent compter (règle de ``devis_auto``)."""
+        # Industriel sans basse tension déclarée : les dirhams ne comptent pas.
         champs = _champs(Lead(nom='P', type_installation='industriel',
                               facture_hiver=Decimal('9000')))
+        self.assertIn('conso_mensuelle_kwh', champs)
+        self.assertNotIn('facture_hiver', champs)  # déjà remplie
+        # Commerce BT, dirhams, contrat pas encore posé : étape ouverte.
+        champs = _champs(Lead(nom='P', type_installation='commercial',
+                              tension_raccordement='bt',
+                              facture_hiver=Decimal('5000')))
+        self.assertIn('conso_mensuelle_kwh', champs)
+        # Commerce BT, dirhams, contrat BT déclaré : l'étape est fermée.
+        champs = _champs(Lead(nom='P', type_installation='commercial',
+                              tension_raccordement='bt',
+                              contrat_electricite='bt_patente',
+                              facture_hiver=Decimal('5000')))
         self.assertNotIn('conso_mensuelle_kwh', champs)
         self.assertNotIn('facture_hiver', champs)
+        # Les kWh ferment toujours l'étape.
+        champs = _champs(Lead(nom='P', type_installation='industriel',
+                              conso_mensuelle_kwh=Decimal('42000')))
+        self.assertNotIn('conso_mensuelle_kwh', champs)
+        self.assertNotIn('facture_hiver', champs)
+
+    def test_site_mt_facture_dirhams_redemande_les_kwh(self):
+        """CSV2 — impasse du rejeu : facture en dirhams PUIS tension MT. Les
+        kWh sont redemandés (premier choix), les dirhams jamais reposés."""
+        lead = Lead(nom='P', type_installation='commercial',
+                    facture_hiver=Decimal('5000'), tension_raccordement='mt')
+        champs = _champs(lead)
+        self.assertEqual(champs[0], 'conso_mensuelle_kwh')
+        self.assertNotIn('facture_hiver', champs)
+        self.assertEqual(panneau.prefill_du_panneau(lead)['facture_hiver'],
+                         5000.0)
+        # Contrat « ne sait pas » en BT : les dirhams ne comptent pas non plus.
+        lead = Lead(nom='P', type_installation='commercial',
+                    tension_raccordement='bt',
+                    contrat_electricite='ne_sait_pas',
+                    facture_hiver=Decimal('5000'))
+        self.assertEqual(_champs(lead)[0], 'conso_mensuelle_kwh')
 
     def test_decideur_seulement_les_choix_pro(self):
         questions = {q['champ']: q for q in panneau.questions_a_poser(

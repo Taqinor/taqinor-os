@@ -408,17 +408,40 @@ def _question(lead, champ, section):
     return servie
 
 
+def _colonnes_facture(lead, segment):
+    """CSV2 — les DEUX colonnes de l'étape facture, la principale d'abord.
+
+    La principale est celle que le client connaît : les kWh pour un
+    industriel, un site MT ou un contrat qui n'est pas BT (une facture en
+    dirhams n'y compte pas), les dirhams sinon. L'autre est servie à côté, pour
+    que « 6 000 kWh » ne soit jamais tapé dans le champ des dirhams."""
+    contrat = getattr(lead, 'contrat_electricite', None) or ''
+    tension = getattr(lead, 'tension_raccordement', None) or ''
+    kwh_d_abord = (segment == 'industriel' or tension == 'mt'
+                   or (bool(contrat) and not contrat.startswith('bt_')))
+    return (('conso_mensuelle_kwh', 'facture_hiver') if kwh_d_abord
+            else ('facture_hiver', 'conso_mensuelle_kwh'))
+
+
+def _facture_repondue(lead):
+    """CSV2 — l'étape facture est fermée quand la consommation COMPTE pour le
+    moteur : la règle de ``devis_auto`` elle-même (``GROUPE_CONSO_PRO`` : kWh,
+    relevé ou kWh du diagnostic présents, ou une facture en dirhams que la
+    tension ET le contrat BT déclaré laissent compter), jamais une copie."""
+    from . import devis_auto
+    return any(devis_auto._rempli(lead, colonne)
+               for colonne in devis_auto.GROUPE_CONSO_PRO)
+
+
 def _champs_pro_du_lead(lead, segment):
     """CIQ410 — les colonnes des cinq étapes qui s'appliquent à CE lead.
 
-    (1) UNE question de facture : en kWh d'abord pour un industriel ou un
-    site MT, en dirhams sinon ; (2) mono/tri seulement pour un commercial
+    (1) la facture, en kWh ET en dirhams, la colonne principale d'abord (voir
+    :func:`_colonnes_facture`) ; (2) mono/tri seulement pour un commercial
     hors MT ; (3) catégorie + ses questions (commercial) ou secteur + équipes
     (industriel), puis le rythme ; (4) la surface ; (5) qui décide."""
     mt = (getattr(lead, 'tension_raccordement', None) or '') == 'mt'
-    champs = []
-    kwh_d_abord = segment == 'industriel' or mt
-    champs.append('conso_mensuelle_kwh' if kwh_d_abord else 'facture_hiver')
+    champs = list(_colonnes_facture(lead, segment))
     champs += ['tension_raccordement', 'compteur_puissance_kva']
     if segment == 'commercial' and not mt:
         champs.append('raccordement')
@@ -465,8 +488,9 @@ def _complements_decideur_pro(lead):
     return ()
 
 
-#: CIQ410 — l'étape « facture » est répondue dès qu'UNE de ces colonnes
-#: porte une réponse (kWh, dirhams ou kWh du diagnostic).
+#: CIQ410 — les colonnes de facture qui se RELISENT dans ``prefill`` (kWh,
+#: dirhams, kWh du diagnostic). CSV2 — l'étape n'est fermée que si la
+#: consommation compte pour le moteur (:func:`_facture_repondue`).
 CHAMPS_FACTURE_PRO = ('conso_mensuelle_kwh', 'facture_hiver', 'bill_kwh')
 
 
@@ -474,7 +498,9 @@ def _reponse_connue_panneau(lead, champ):
     """``_reponse_connue`` + les deux règles de groupe du pro (CIQ410)."""
     if _segment_pro(lead) and champ in ('conso_mensuelle_kwh',
                                         'facture_hiver'):
-        return any(_reponse_connue(lead, c) for c in CHAMPS_FACTURE_PRO)
+        # Une colonne déjà remplie n'est jamais reposée ; l'autre l'est tant
+        # que la consommation ne compte pas.
+        return _reponse_connue(lead, champ) or _facture_repondue(lead)
     if champ == 'reponses_categorie' and _segment_pro(lead):
         return not _cles_categorie_a_poser(lead)
     if champ == 'whatsapp' and _segment_pro(lead):
