@@ -650,3 +650,29 @@ class RevisionApresVisiteCorc2Tests(_Base):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)  # règle #4
         self.assertEqual(list(devis.lignes.values_list('designation', 'quantite')), lignes_v1)
+
+
+class BrouillonsMultiplesCorc7Tests(_Base):
+    """CORC7 (27/10/2026) — un 2ᵉ devis automatique C&I sur le même lead
+    NOMME au vendeur le brouillon précédent ; rien n'est archivé (un devis
+    archivé ne se réactive plus)."""
+
+    def test_second_devis_auto_nomme_le_premier_sans_rien_archiver(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        premier = self._auto(lead)
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            second = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                      journal_auto=journal)
+        alerte = next(a for a in journal['alertes'] if a['code'] == 'brouillons_ci_multiples')
+        self.assertIn(premier.reference, alerte['message'])
+        self.assertNotIn(second.reference, alerte['message'])
+        premier.refresh_from_db()
+        self.assertTrue(premier.is_active)
+
+    def test_premier_devis_auto_aucune_alerte(self):
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
+                             user=self.user, company=self.co, journal_auto=journal)
+        self.assertNotIn('brouillons_ci_multiples', [a['code'] for a in journal['alertes']])
