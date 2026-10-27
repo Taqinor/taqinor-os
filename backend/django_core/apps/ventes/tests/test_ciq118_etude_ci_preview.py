@@ -428,11 +428,19 @@ class BornePoseParDefautAdev90(_Base):
         corps['toit'] = dict({'type_pose': None, 'surface_utile_m2': 200}, **toit)
         return self.post(corps)
 
-    def test_surface_sans_pose_bornee_en_surimposition(self):
+    def test_surface_sans_pose_bornee_en_pose_chiffree(self):
+        # CORC5 — ni couverture ni pente : la borne suit la pose que la
+        # composition CHIFFRE (toit plat lesté, fondateur 26/10/2026) ; la
+        # latitude vient de la ville (gazetier) faute de GPS déclaré.
         rep = self._bornes()
         toit = rep['taille']['bornes']['toit']
         self.assertIsNotNone(toit['kwc'])
-        self.assertIn('pose estimée « toiture_inclinee »', toit['source'])
+        self.assertIn('pose estimée « toit_plat_leste »', toit['source'])
+
+    def test_pente_declaree_sans_pose_panneaux_suivent_le_toit(self):
+        rep = self._bornes(pente_deg=15)
+        self.assertIn('pose estimée « toiture_inclinee »',
+                      rep['taille']['bornes']['toit']['source'])
         self.assertNotIn('contenance_toit_inconnue', [a['code'] for a in rep['alertes']])
 
     def test_pose_declaree_inchangee(self):
@@ -499,7 +507,8 @@ class Serie8760Amot99(_Base):
         self.assertEqual((production['inclinaison_deg'], production['azimut_deg']), (10, -90))
         toit = self.production.call_args.kwargs['toit']
         self.assertEqual((toit['pente_deg'], toit['azimut_deg']), (10, -90))
-        # Pose non déclarée : D-ACI-13 (surimposition) ⇒ montage PVGIS « building ».
+        # Pose non déclarée MAIS pente déclarée : CORC5 ⇒ les panneaux suivent
+        # le toit (surimposition) ⇒ montage PVGIS « building ».
         self.assertEqual(plan_de_production(toit)['montage'], 'building')
         serie = production['serie_horaire']['kwh_kwc']
         self.assertEqual(len(serie), 8760)

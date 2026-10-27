@@ -70,7 +70,23 @@ POSES_SUIVANT_LE_TOIT = ('bac_acier', 'toiture_inclinee')
 #: surimposition. La borne s'applique, dite « pose estimée, à confirmer au
 #: calepinage ».
 POSE_PAR_DEFAUT_COUVERTURE = {'terrasse_beton': 'toit_plat_leste'}
-POSE_PAR_DEFAUT = 'toiture_inclinee'
+#: CORC5 (27/10/2026, décision prise pour le fondateur, à revoir) — sans
+#: couverture connue : une PENTE de toit déclarée ⇒ les panneaux suivent le
+#: toit (surimposition) ; sinon la pose que la composition CHIFFRE
+#: (``moteur_ci.composition.TYPE_POSE_DEFAUT``, toit plat lesté, fondateur
+#: 26/10) — production, borne de toit et prix décrivent la même installation.
+POSE_TOIT_INCLINE = 'toiture_inclinee'
+
+
+def _pose_estimee(res):
+    """CORC5 — le mode de pose ESTIMÉ quand aucun n'est déclaré."""
+    from apps.ventes.moteur_ci.composition import TYPE_POSE_DEFAUT
+    par_couverture = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'))
+    if par_couverture:
+        return par_couverture
+    pente = _num(res.valeur('pente_deg'))
+    return POSE_TOIT_INCLINE if pente and pente > 0 else TYPE_POSE_DEFAUT
+
 
 #: (feuille, chemin dans le corps / dans ``Devis.etude_params``).
 FEUILLES = (
@@ -689,8 +705,7 @@ def _toit_declare(res):
     prend la pose déclarée, sinon la pose estimée D-ACI-13."""
     toit = {'type_pose': res.valeur('type_pose'), 'pente_deg': res.valeur('pente_deg'),
             'azimut_deg': res.valeur('azimut_deg')}
-    pose = toit['type_pose'] or POSE_PAR_DEFAUT_COUVERTURE.get(
-        res.valeur('couverture'), POSE_PAR_DEFAUT)
+    pose = toit['type_pose'] or _pose_estimee(res)
     return toit, dict(toit, type_pose=pose)
 
 
@@ -827,6 +842,19 @@ def _reglages_societe(company):
 
 # ── 4. TOIT ──────────────────────────────────────────────────────────────────
 
+def _latitude_du_site(site):
+    """La latitude déclarée du site, sinon celle de sa VILLE au gazetier
+    (``parametres.villes_maroc.coordonnees_ville`` — la ville que PVGIS lit
+    aussi) : l'espacement anti-ombrage d'un toit plat lesté en dépend.
+    Jamais une position devinée : ville inconnue ⇒ ``None``."""
+    lat = _num((site or {}).get('lat'))
+    if lat is not None:
+        return lat
+    from apps.parametres.villes_maroc import coordonnees_ville
+    coords = coordonnees_ville((site or {}).get('ville') or '')
+    return coords[0] if coords else None
+
+
 def _borne_toit(res, devis, module, alertes):
     pmax = (module or {}).get('pmax_wc')
     if devis is not None and pmax:
@@ -853,11 +881,11 @@ def _borne_toit(res, devis, module, alertes):
     mode_pose = res.valeur('type_pose')
     pose_estimee = not mode_pose
     if pose_estimee:
-        mode_pose = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'), POSE_PAR_DEFAUT)
+        mode_pose = _pose_estimee(res)
     resultat = calepinage_services.contenance_surface_declaree(
         surface, mode_pose=mode_pose, cotes_module_m=cotes,
         inclinaison_deg=pente if pente is not None else PVGIS_ANGLE_DEG,
-        latitude_deg=_num(site.get('lat')), puissance_module_wc=pmax)
+        latitude_deg=_latitude_du_site(site), puissance_module_wc=pmax)
     if resultat.get('kwc') is None:
         alertes.append(_alerte('contenance_toit_inconnue', 'toit',
                                'Contenance du toit non bornée : %s.' % resultat.get('motif')))
