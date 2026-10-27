@@ -191,6 +191,20 @@ def regles_du(devis):
 
 def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
                      regles_origine=False):
+    """La forme ``tarif`` (voir :func:`_tarif_applicable`). CEC17 — sous les
+    règles d'origine, le tarif PORTE ``regles_origine: True`` : chacun de ses
+    lecteurs (valorisation de l'étude, sensibilités, factures → kWh) applique
+    alors le calcul d'avant le 27/10 sans qu'on lui passe le drapeau ; la clé
+    est retirée de toute charge utile client (``economie_ci.CLES_INTERNES``)."""
+    tarif = _tarif_applicable(tarif_declare, tension=tension,
+                              millesime=millesime, regles_origine=regles_origine)
+    if regles_origine:
+        tarif['regles_origine'] = True
+    return tarif
+
+
+def _tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
+                      regles_origine=False):
     """La forme ``tarif`` du contrat ``tarifs_ci.json`` pour ce client.
 
     ``tension`` ('bt' | 'mt' | None) ne sert qu'à reconnaître un contrat MT non
@@ -374,7 +388,8 @@ def tarif_du_poste(tarif, mois, heure_gmt, *, kwh_mois=None,
 
 def _seuils_bt(tarif, tarif_declare, origine=False):
     """``origine`` (devis envoyé sous le niveau 3) : les seuils déclarés
-    lus tels quels, comme avant CEC2."""
+    lus tels quels, comme avant CEC2 (drapeau passé, ou porté par le tarif)."""
+    origine = origine or bool(tarif.get('regles_origine'))
     contrat = tarif.get('contrat')
     if tarif.get('origine') == ORIGINE_GRILLE:
         try:

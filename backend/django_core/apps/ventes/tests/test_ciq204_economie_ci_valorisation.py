@@ -143,6 +143,21 @@ class BtTest(SimpleTestCase):
         self.assertEqual(res['motifs_omission'],
                          [opt.MOTIF_BI_HORAIRE_ORIGINE])
 
+    def test_cec17_le_tarif_porte_les_regles_d_origine(self):
+        """CEC17 — un lecteur qui ne passe pas le drapeau (valorisation de
+        l'étude, sensibilités) suit quand même le calcul d'hier."""
+        tarif = tc.tarif_applicable({'contrat': 'bt_force_motrice',
+                                     'option_bi_horaire': True},
+                                    regles_origine=True)
+        res = eco.valoriser(_apercu(_soleil(5.0), _plat(10.0), 'bt'), tarif)
+        self.assertEqual(res['statut'], eco.STATUT_OMIS)
+        declare = {'contrat': 'bt_patente', 'bt': {'tranches': [
+            {'tarif_kwh': 1.4}, {'tarif_kwh': 1.5}]}}
+        brut = tc.tarif_applicable(declare, regles_origine=True)
+        self.assertEqual(tc._seuils_bt(brut, declare),
+                         [(None, None), (None, None)])
+        self.assertNotIn('regles_origine', eco._sans_internes({'tarif': brut})['tarif'])
+
     def test_conso_inversee_plafonnee_et_etiquetee(self):
         res = eco.valoriser(_apercu(_soleil(5.0), _plat(5.0), 'bt'),
                             TARIF_PATENTE, facture_energie_declaree_ttc=1000)

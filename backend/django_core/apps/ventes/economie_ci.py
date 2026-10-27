@@ -232,7 +232,7 @@ def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
 
     tension = _tension(apercu, tarif)
     bi_horaire = any(p['poste'] == 'normales' for p in tarif['tarifs_par_poste'])
-    if bi_horaire and regles_origine:  # devis envoyé : omis comme avant CEC5
+    if bi_horaire and (regles_origine or tarif.get('regles_origine')):  # CEC16/17
         return _vide(_options.MOTIF_BI_HORAIRE_ORIGINE, tarif)
     if tarif.get('contrat') == 'mt_general' or bi_horaire:  # CEC5 — HP/HN
         res = _valoriser_mt(cellules, tarif)
@@ -1033,7 +1033,7 @@ def financement_ci(offre, base_eco, *, mode_installation,
 #: Clés INTERNES jamais servies à un chemin client (PDF, /proposition, lien
 #: public, messages) — retirées RÉCURSIVEMENT par :func:`economie_ci_publique`.
 CLES_INTERNES = ('vue_interne', 'alertes_internes', 'comparaison_cse',
-                 'apres_impot', 'sr500')
+                 'apres_impot', 'sr500', 'regles_origine')
 MENTION_CSE_INDEXATION_ABSENTE = (
     "tarif de l'offre constant : aucune indexation écrite sur l'offre "
     "(hypothèse)")

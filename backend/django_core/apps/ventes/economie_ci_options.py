@@ -225,8 +225,9 @@ def sans_saisie_invalide(assembleur, apercu, *, saisies=None, **kw):
     remontent tels quels (l'aperçu de l'écran garde son 400 nommé)."""
     from apps.ventes.economie_ci import SaisieEconomieCiInvalide
     if (kw.get('reglages') or {}).get('regles_origine'):
-        # Devis envoyé sous le niveau 3 : le comportement d'hier (refus).
-        return assembleur(apercu, saisies=saisies, **kw)
+        # Devis envoyé sous le niveau 3 : le comportement d'hier (refus ; une
+        # durée d'amortissement non entière était tronquée, pas refusée).
+        return assembleur(apercu, saisies=_duree_tronquee(saisies), **kw)
     saisies = dict(saisies) if isinstance(saisies, dict) else {}
     ecartees = []
     while True:
@@ -251,3 +252,14 @@ def sans_saisie_invalide(assembleur, apercu, *, saisies=None, **kw):
 MOTIF_BI_HORAIRE_ORIGINE = (
     "option bi-horaire : plages heures pleines / normales non saisies — "
     "économies non chiffrées (aucune plage devinée)")
+
+
+def _duree_tronquee(saisies):
+    """CEC17 — règles d'origine : ``fiscalite_client.duree_ans`` 7,5 lu 7
+    (``int()`` d'avant CEC14), jamais refusé."""
+    fiscal = (saisies or {}).get('fiscalite_client') if isinstance(
+        saisies, dict) else None
+    duree = fini(fiscal.get('duree_ans')) if isinstance(fiscal, dict) else None
+    if duree is None or duree == int(duree):
+        return saisies
+    return dict(saisies, fiscalite_client=dict(fiscal, duree_ans=int(duree)))
