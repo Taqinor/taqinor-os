@@ -19,6 +19,10 @@ Creates:
   - QAH12 : 1 compte portail client (demo_portail / Portail@2026!, portée
              portail_client, rattaché au 1er client démo — identifiants en dur,
              jamais envoyés), 2 équipements et 3 tickets SAV
+  - Revue chantier : 2 techniciens (demo_tech / demo_tech2, Demo@2026!, rôle
+             « Technicien »), le chantier du devis accepté DEV-DEMO-0003
+             (technicien demo_tech, site Casablanca + GPS) et 1 intervention
+             « Pose » du jour assignée à demo_tech (écran « Ma journée »)
 """
 from datetime import timedelta
 from decimal import Decimal
@@ -78,6 +82,7 @@ class Command(BaseCommand):
             # QAH12 — les bases déjà semées reçoivent aussi le portail + SAV
             # (idempotent : rien n'est recréé s'ils existent).
             self._seed_portail_et_sav(company)
+            self._seed_chantier_terrain(company)
             self.stdout.write(self.style.WARNING(
                 'Demo company already seeded — nothing to do.'
             ))
@@ -344,6 +349,9 @@ class Command(BaseCommand):
 
         # QAH12 — la base NEUVE reçoit aussi le compte portail + SAV démo.
         self._seed_portail_et_sav(company)
+        # F4 — la base NEUVE reçoit aussi le chantier démo terrain (technicien,
+        # GPS, intervention « Pose » du jour) : idempotent.
+        self._seed_chantier_terrain(company)
 
         self.stdout.write(self.style.SUCCESS(
             '\nDemo data seeded for "TAQINOR Démo".\n'
@@ -425,3 +433,91 @@ class Command(BaseCommand):
                 defaults={'client': client, 'equipement': eq,
                           'statut': statut, 'priorite': prio,
                           'description': desc, 'date_ouverture': today})
+
+    # Revue chantier — comptes techniciens + chantier du devis accepté +
+    # intervention « Pose » du jour. Mot de passe EN DUR comme demo_admin
+    # (jamais envoyé). Idempotent : get_or_create partout.
+    TECH_PASSWORD = 'Demo@2026!'
+
+    def _seed_chantier_terrain(self, company):
+        from decimal import Decimal as D
+
+        from apps.installations.models import Installation, Intervention
+        from apps.installations.services import create_installation_from_devis
+        from apps.roles.models import Role
+        from apps.ventes.models import Devis
+        from authentication.models import CustomUser
+
+        role = Role.objects.filter(company=company, nom='Technicien').first()
+        if role is None:  # base déjà semée avant l'existence du rôle
+            call_command('init_roles')
+            role = Role.objects.filter(company=company, nom='Technicien').first()
+
+        techs = []
+        for username in ('demo_tech', 'demo_tech2'):
+            user, was_created = CustomUser.objects.get_or_create(
+                username=username,
+                defaults={
+                    'email': f'{username}@taqinor.local',
+                    'first_name': 'Youssef',
+                    'last_name': 'Technicien',
+                    'role_legacy': CustomUser.ROLE_NORMAL,
+                    'company': company,
+                    'role': role,
+                },
+            )
+            if was_created:
+                user.set_password(self.TECH_PASSWORD)
+                user.save()
+            techs.append(user)
+        tech = techs[0]
+
+        devis = Devis.objects.filter(
+            company=company, reference='DEV-DEMO-0003').first()
+        if devis is None:
+            return
+        chantier = Installation.objects.filter(
+            company=company, devis=devis).first()
+        if chantier is None:
+            # seed_demo pose statut='accepte' directement : l'événement
+            # ``devis_accepted`` n'a pas joué. Le service est idempotent.
+            admin = CustomUser.objects.filter(
+                username='demo_admin', company=company).first()
+            chantier, _ = create_installation_from_devis(
+                devis, admin, company)
+        if chantier is None:
+            return
+        champs = []
+        if chantier.technicien_responsable_id is None:
+            chantier.technicien_responsable = tech
+            champs.append('technicien_responsable')
+        if not chantier.site_ville:
+            chantier.site_ville = 'Casablanca'
+            champs.append('site_ville')
+        if not chantier.site_adresse:
+            chantier.site_adresse = '12 Boulevard Zerktouni, Casablanca'
+            champs.append('site_adresse')
+        if chantier.gps_lat is None and chantier.gps_lng is None:
+            chantier.gps_lat = D('33.573100')
+            chantier.gps_lng = D('-7.589800')
+            champs.extend(['gps_lat', 'gps_lng'])
+        if chantier.date_pose_prevue is None:
+            # Pose prévue à J+7 : « Prêt à poser » peut être vrai une fois le
+            # matériel couvert (la date de pose non fixée est une raison de blocage).
+            chantier.date_pose_prevue = timezone.now().date() + timedelta(days=7)
+            champs.append('date_pose_prevue')
+        if champs:
+            chantier.save(update_fields=champs)
+
+        pose = Intervention.objects.filter(
+            company=company, installation=chantier,
+            type_intervention='pose').first()
+        if pose is None:
+            pose = Intervention.objects.create(
+                company=company, installation=chantier,
+                type_intervention='pose', technicien=tech,
+                date_prevue=timezone.now().date())
+            pose.equipe.add(tech)
+        self.stdout.write(
+            'Chantier démo : %s — technicien %s, intervention Pose #%s'
+            % (chantier.pk, tech.username, pose.pk))

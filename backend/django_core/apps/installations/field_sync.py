@@ -115,8 +115,18 @@ def _chantier(company, payload, user=None):
 
 
 # ── Handlers — un par op_type. Chacun POSE un état (last-write-wins). ─────────
+def _garde_accord_geoloc(user):
+    """Fondateur 27/10/2026 — même règle que la vue : sans accord aux
+    conditions (géolocalisation), l'op reste en file (non mémorisée) avec
+    l'erreur serveur, comme la garde de la checklist."""
+    refus = field_services.refus_sans_accord_geoloc(user)
+    if refus:
+        raise FieldOpError(refus)
+
+
 def _h_depart_depot(company, user, payload):
     iv = _intervention(company, payload, user)
+    _garde_accord_geoloc(user)
     # ACHT43 — même geste que la vue (position de départ incluse).
     field_services.enregistrer_depart_depot(
         iv, _instant_saisie(payload), payload.get('lat'), payload.get('lng'),
@@ -126,6 +136,7 @@ def _h_depart_depot(company, user, payload):
 
 def _h_checkin(company, user, payload):
     iv = _intervention(company, payload, user)
+    _garde_accord_geoloc(user)
     # ACHT43 — même geste que la vue (ponctualité XFSM5 incluse).
     try:
         field_services.enregistrer_arrivee(
@@ -195,11 +206,20 @@ def _h_serial(company, user, payload):
         company, payload.get('numero_serie'))
     if raison:
         raise FieldOpError(raison)
+    # Revue chantier 26/10/2026 — mêmes champs que l'action en ligne
+    # (désignation par défaut = nom du produit, caractéristiques validées,
+    # source de capture) ; une op ancienne sans composant reste applicable.
+    champs, refus = field_capture.champs_releve_serie(
+        produit, payload, exiger_composant=False)
+    if refus:
+        raise FieldOpError(' ; '.join(str(m) for m in refus.values()))
     serial = ComponentSerial.objects.create(
         company=company, intervention=iv, produit=produit,
-        designation=(payload.get('designation') or '').strip(),
+        designation=champs['designation'],
         slot_cle=(payload.get('slot') or '').strip(),
         numero_serie=(payload.get('numero_serie') or '').strip(),
+        caracteristiques=champs['caracteristiques'],
+        capture_source=champs['capture_source'],
         created_by=user)
     field_capture.pousser_si_cloturee(iv, user)  # ACHT47
     return {'serial': serial.id, 'numero_serie': serial.numero_serie}
@@ -336,13 +356,21 @@ def _h_cocher_checklist(company, user, payload):
     service (`services.enregistrer_series_lot` → écrivain unique du parc) ;
     sans `equipements` (files déjà en attente) l'op coche seulement. Le rejeu
     ne recrée rien : une série déjà au parc ressort en `doublon`."""
-    from .services import ensure_checklist_items, enregistrer_series_lot
+    from .services import (
+        ensure_checklist_items, enregistrer_series_lot,
+        raison_refus_cocher_etape,
+    )
     inst = _chantier(company, payload, user)
     ensure_checklist_items(inst)
     item = inst.checklist.filter(cle=payload.get('cle')).first()
     if item is None:
         raise FieldOpError('Étape inconnue.')
     fait = bool(payload.get('fait', True))
+    # Revue chantier 26/10/2026 — même garde que `cocher-checklist` en
+    # ligne : l'op reste en file (non mémorisée) jusqu'à la photo.
+    refus = raison_refus_cocher_etape(item, fait)
+    if refus:
+        raise FieldOpError(refus)
     item.fait = fait
     item.fait_par = user if fait else None
     item.fait_le = _instant_saisie(payload) if fait else None

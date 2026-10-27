@@ -134,6 +134,52 @@ class OmTest(SimpleTestCase):
         an1 = res['flux_ht']['flux'][1]
         self.assertAlmostEqual(an1['economie_mad'] - an1['flux_mad'], 5000.0)
 
+    def test_cec1_om_souscrite_hors_investissement_de_l_annee_zero(self):
+        """CEC1 — une ligne O&M souscrite (charge annuelle) ne compte pas
+        aussi dans l'investissement : jamais deux fois la première année."""
+        import copy
+        import json
+        from pathlib import Path
+        contrats = Path(__file__).resolve().parents[1] / 'contract_samples'
+        apercu = copy.deepcopy(json.loads(
+            (contrats / 'etude_ci_preview.json').read_text(
+                encoding='utf-8'))['exemple'])
+        apercu['composition'] = {}  # tout le dimensionné est au devis
+        lignes = [{'designation': 'Panneau', 'ht': 850000.0, 'ttc': 1020000.0,
+                   'optionnelle': False, 'onduleur': False, 'panneau': True},
+                  {'designation': 'Onduleur', 'ht': 50000.0, 'ttc': 60000.0,
+                   'optionnelle': False, 'onduleur': True},
+                  {'designation': 'Contrat O&M', 'ht': 5000.0, 'ttc': 6000.0,
+                   'optionnelle': False, 'onduleur': False,
+                   'role_ci': 'om_ci'}]
+
+        def _an0(controle, reglages=None):
+            bloc = eco.assembler_economie_ci(
+                apercu, tarif_declare={'contrat': 'bt_patente'},
+                investissement={'ht': 905000.0, 'ttc': 1086000.0},
+                lignes=lignes, mode_installation='commercial',
+                controle_lignes=controle, reglages=reglages)
+            return bloc['flux_ht']['flux'][0]['flux_mad']
+        self.assertAlmostEqual(_an0(True), -900000.0)
+        # L'aperçu du générateur (sans contrôle des lignes) : même chiffre.
+        self.assertAlmostEqual(_an0(False), -900000.0)
+        # Règles d'origine (devis déjà envoyé) : le calcul d'hier.
+        self.assertAlmostEqual(
+            _an0(True, {'regles_origine': True}), -905000.0)
+
+    def test_om_quantite_differente_de_un_alerte_interne(self):
+        """CEC9 — quantité O&M ≠ 1 : dite au vendeur, jamais servie."""
+        from apps.ventes import economie_ci_options as opt
+        lignes = [{'designation': 'Contrat O&M', 'ht': 30000.0, 'ttc': 36000.0,
+                   'quantite': 5.0, 'optionnelle': False, 'role_ci': 'om_ci'},
+                  {'designation': 'Contrat O&M bis', 'ht': 6000.0,
+                   'ttc': 7200.0, 'quantite': 1.0, 'optionnelle': False,
+                   'role_ci': 'om_ci'}]
+        alertes = opt.alertes_om(lignes)
+        self.assertEqual([a['code'] for a in alertes], ['om_quantite'])
+        self.assertIn('Contrat O&M', alertes[0]['message'])
+        self.assertTrue(alertes[0]['interne'])
+
     def test_activee_sans_prix_tarif_a_renseigner(self):
         res = eco.flux_ci(_base(), production_annee1_kwh=100000,
                           om={'activee': True, 'ht': None, 'ttc': None})
@@ -442,3 +488,101 @@ class DegradationFicheModuleTest(SimpleTestCase):
             libelle = i18n_labels.LIBELLES[f'ci_code_{code}']
             self.assertEqual(libelle['fr'], source)
             self.assertTrue(libelle['en'] and libelle['ar'])
+
+
+class OptionAvecBatterieTest(SimpleTestCase):
+    """CEC3 — l'option « avec batterie » se chiffre par le MÊME flux que
+    l'option « sans » (jamais total ÷ économie an 1), batterie remplacée au
+    montant de sa ligne."""
+    LIGNES = [
+        {'designation': 'Onduleur hybride SUN-12K', 'ht': 40000.0,
+         'ttc': 48000.0, 'optionnelle': False, 'onduleur': True},
+        {'designation': 'Batterie Dyness 10 kWh', 'ht': 60000.0,
+         'ttc': 72000.0, 'optionnelle': False, 'onduleur': False},
+    ]
+
+    def test_meme_flux_plus_remplacement_batterie(self):
+        from apps.ventes import economie_ci_options as opt
+        sans = eco.flux_ci(_base(), production_annee1_kwh=100000,
+                           onduleur={'ht': 40000.0, 'ttc': 48000.0})
+        avec = opt.flux_option_avec(
+            _base(), lignes=self.LIGNES, production_annee1_kwh=100000,
+            batterie=opt.annee_remplacement_batterie(garantie_mois=120))
+        flux = {f['annee']: f for f in avec['flux_ht']['flux']}
+        ref = {f['annee']: f for f in sans['flux_ht']['flux']}
+        self.assertAlmostEqual(ref[11]['flux_mad'] - flux[11]['flux_mad'],
+                               60000.0, places=1)
+        self.assertEqual(flux[5]['flux_mad'], ref[5]['flux_mad'])
+        self.assertEqual([r['composant'] for r in avec['remplacements']],
+                         ['onduleur', 'batterie'])
+        self.assertLess(avec['indicateurs']['tri_pct'],
+                        sans['indicateurs']['tri_pct'])
+
+    def test_retour_au_dixieme_interpole(self):
+        from apps.ventes import economie_ci_options as opt
+        res = eco.flux_ci(_base(inv=400000.0, economie=90000.0),
+                          production_annee1_kwh=100000)
+        dixieme = opt.retour_au_dixieme(res['flux_ht'])
+        self.assertLessEqual(dixieme, res['indicateurs']['retour_ans'])
+        self.assertGreater(dixieme, res['indicateurs']['retour_ans'] - 1)
+
+    def test_annee_batterie_la_plus_prudente_sinon_defaut_etiquete(self):
+        from apps.ventes import economie_ci_options as opt
+        self.assertEqual(opt.annee_remplacement_batterie(120, 6000)['annee'],
+                         11)
+        self.assertEqual(opt.annee_remplacement_batterie(120, 3000)['annee'],
+                         9)
+        defaut = opt.annee_remplacement_batterie()
+        self.assertEqual(defaut['annee'], 11)
+        self.assertIn('défaut fondateur', defaut['source'])
+
+    def test_base_deux_jalons_ttc_suivent_le_remplacement(self):
+        from apps.ventes import economie_ci_options as opt
+        base = _base(tva='inconnu')
+        sans = eco.flux_ci(base, production_annee1_kwh=100000,
+                           onduleur={'ht': 40000.0, 'ttc': 48000.0})
+        avec = opt.flux_option_avec(base, lignes=self.LIGNES,
+                                    production_annee1_kwh=100000)
+        j_sans = {j['annee']: j['cumul_mad'] for j in sans['jalons_ttc']}
+        j_avec = {j['annee']: j['cumul_mad'] for j in avec['jalons_ttc']}
+        self.assertAlmostEqual(j_sans[15] - j_avec[15], 72000.0, places=1)
+        self.assertEqual(j_sans[10], j_avec[10])
+        # Mêmes post-traitements que l'option « sans » (coût du kWh servi).
+        self.assertIsNotNone(avec['indicateurs']['lcoe_mad_kwh'])
+
+    def test_remplacement_au_dela_de_l_horizon_aucun_ajout(self):
+        from apps.ventes import economie_ci_options as opt
+        avec = opt.flux_option_avec(
+            _base(), lignes=self.LIGNES, production_annee1_kwh=100000,
+            batterie=opt.annee_remplacement_batterie(cycles_publies=10000))
+        self.assertEqual([r['composant'] for r in avec['remplacements']],
+                         ['onduleur'])
+
+    def test_seule_la_batterie_est_remplacee(self):
+        from apps.ventes import economie_ci_options as opt
+        lignes = self.LIGNES + [
+            {'designation': 'Câble batterie 35 mm²', 'ht': 1000.0,
+             'ttc': 1200.0, 'optionnelle': False, 'onduleur': False},
+            {'designation': 'Onduleur hybride compatible batterie',
+             'ht': 5000.0, 'ttc': 6000.0, 'optionnelle': False,
+             'onduleur': True}]
+        avec = opt.flux_option_avec(_base(), lignes=lignes,
+                                    production_annee1_kwh=100000)
+        batterie = [r for r in avec['remplacements']
+                    if r['composant'] == 'batterie']
+        self.assertEqual(batterie[0]['montant_ht_mad'], 60000.0)
+
+
+class ReglagesSansTariffSettingsTest(SimpleTestCase):
+    def test_cec7_sans_reglage_les_scenarios_que_le_bareme_seede(self):
+        """CEC7 — une société sans réglage lit les scénarios seedés : le même
+        devis ne change plus d'économie selon que le PDF a déjà été rendu."""
+        from unittest import mock
+        from apps.parametres.tariff import SENSIBILITES_CI_DEFAUT
+        with mock.patch('apps.parametres.models_company.CompanyProfile.objects') as profil, \
+                mock.patch('apps.parametres.models_tariff.TariffSettings.objects') as reglage:
+            profil.filter.return_value.values_list.return_value.first.return_value = None
+            reglage.filter.return_value.first.return_value = None
+            lus = eco.reglages_economie_ci(object())
+        self.assertEqual(lus['sensibilites_ci'],
+                         [dict(s) for s in SENSIBILITES_CI_DEFAUT])

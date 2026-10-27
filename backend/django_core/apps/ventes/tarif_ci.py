@@ -109,9 +109,16 @@ def _omis(mention=MENTION_OMIS, contrat=None):
     }
 
 
-def _entree_declaree(poste, valeur, base, taux, source, releve_le):
+def _entree_declaree(poste, valeur, base, taux, source, releve_le,
+                     taux_facture=None):
+    """``taux_facture`` (CEC8) : TVA de l'année de la facture quand elle
+    diffère du millésime du devis — HT = TTC imprimé ÷ (1 + ce taux), TTC du
+    devis = HT × (1 + TVA du millésime)."""
     if base == 'ht':
         ht, ttc, derive = _r4(valeur), _r4(valeur * (1 + taux)), False
+    elif taux_facture is not None and taux_facture != taux:
+        ht = _r4(valeur / (1 + taux_facture))
+        ttc, derive = _r4(ht * (1 + taux)), True
     else:
         ttc, ht, derive = _r4(valeur), _r4(valeur / (1 + taux)), True
     return {'poste': poste, 'tarif_kwh_ht': ht, 'tarif_kwh_ttc': ttc,
@@ -171,7 +178,8 @@ def _prime(mt, prime_kva_an):
     return round(prime_kva_an * kva, 2)
 
 
-def tarif_applicable(tarif_declare, *, tension=None, millesime=2026):
+def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
+                     regles_origine=False):
     """La forme ``tarif`` du contrat ``tarifs_ci.json`` pour ce client.
 
     ``tension`` ('bt' | 'mt' | None) ne sert qu'à reconnaître un contrat MT non
@@ -180,10 +188,15 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026):
     """
     td = tarif_declare if isinstance(tarif_declare, dict) else {}
     contrat = td.get('contrat')
-    if contrat not in CONTRATS:
-        contrat = 'mt_general' if (tension or '').lower() == 'mt' else None
-    if contrat is None:
-        return _omis()
+    nouveau = not regles_origine  # devis envoyé : règles d'origine (CEC4/5)
+    if contrat not in CONTRATS:  # CEC4 — trois postes MT déclarés ⇒ MT
+        est_mt = (tension or '').lower() == 'mt' or (
+            nouveau and _prix_mt_declares(td.get('mt')) is not None)
+        contrat = 'mt_general' if est_mt else None
+    if contrat is None and not (nouveau and _tranches_bt_declarees(td.get('bt'))):
+        return _omis()  # CEC4 — des tranches déclarées suffisent sans contrat
+    if regles_origine and td.get('option_bi_horaire'):
+        return _omis(contrat=contrat)  # bi-horaire non valorisé avant CEC5
     taux, annee = tva_energie(millesime)
     if taux is None:
         return _omis()
@@ -198,6 +211,11 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026):
         source = f'facture du client du {_date_fr(date_facture)}' \
             if date_facture else 'facture du client'
     pct = _pourcent(taux)
+    taux_fac, annee_fac = taux, annee  # CEC8 — la TVA de l'année de la facture
+    if not regles_origine and base == 'ttc' and date_facture:
+        taux_fac, annee_fac = tva_energie(str(date_facture)[:4])
+        if taux_fac is None:
+            taux_fac, annee_fac = taux, annee
 
     def _mention_declaree():
         quoi = ('Tarifs déclarés oralement par le client (non relevés sur '
@@ -207,6 +225,10 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026):
         if base == 'ht':
             calc = (f"HT tels qu'imprimés ; TTC = HT × {_virgule(1 + taux)}, "
                     f"TVA électricité {annee}")
+        elif annee_fac != annee:
+            calc = (f"TTC imprimés à la TVA électricité {annee_fac} ; HT = TTC "
+                    f"÷ {_virgule(1 + taux_fac)} ; TTC {annee} = HT × "
+                    f"{_virgule(1 + taux)}")
         else:
             calc = (f"TTC tels qu'imprimés ; HT = TTC ÷ {_virgule(1 + taux)}, "
                     f"TVA électricité {annee}")
@@ -221,11 +243,12 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026):
         if prix is not None:
             prime_kva = _num(mt.get('prime_fixe_kva_an'))
             if prime_kva is not None and base == 'ttc':
-                prime_kva = prime_kva / (1 + taux)
+                prime_kva = prime_kva / (1 + taux_fac)
             sortie.update({
                 'origine': ORIGINE_FACTURE,
                 'tarifs_par_poste': [
-                    _entree_declaree(p, prix[p], base, taux, source, releve_le)
+                    _entree_declaree(p, prix[p], base, taux, source, releve_le,
+                                     taux_fac)
                     for p in _POSTES_MT],
                 'prime_fixe_annuelle_mad': _prime(mt, prime_kva),
                 'mention': _mention_declaree(),
@@ -257,7 +280,7 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026):
             'origine': ORIGINE_FACTURE,
             'tarifs_par_poste': [
                 _entree_declaree(f'tranche_{i}', _num(t['tarif_kwh']), base,
-                                 taux, source, releve_le)
+                                 taux, source, releve_le, taux_fac)
                 for i, t in enumerate(tranches, start=1)],
             'prime_fixe_annuelle_mad': None,
             'mention': _mention_declaree(),
@@ -300,8 +323,9 @@ def tarif_du_poste(tarif, mois, heure_gmt, *, kwh_mois=None,
     * BT à tranches : la tranche MARGINALE de ``kwh_mois`` (lecture
       PROGRESSIVE) ; une grille dont la règle n'est pas publiée porte
       ``etiquette`` = « règle de tranche à confirmer sur facture » ;
-    * bi-horaire : les plages HP/HN ne sont pas saisies ⇒ ``None`` (omis,
-      jamais deviné) ;
+    * bi-horaire (CEC5) : heures pleines = la plage de POINTE publiée
+      (``tarifs_officiels.POSTES_MT`` : page bi-horaire ONEE, hiver 17-22 h
+      GMT), heures normales ailleurs ;
     * ``omis`` ou données insuffisantes ⇒ ``None``.
     """
     if not isinstance(tarif, dict) or tarif.get('origine') == ORIGINE_OMIS:
@@ -309,14 +333,15 @@ def tarif_du_poste(tarif, mois, heure_gmt, *, kwh_mois=None,
     postes = tarif.get('tarifs_par_poste') or []
     if not postes:
         return None
-    if tarif.get('contrat') == 'mt_general':
+    bi_horaire = any(p['poste'] == 'normales' for p in postes)
+    if tarif.get('contrat') == 'mt_general' or bi_horaire:
         nom = officiels.poste_horaire(mois, heure_gmt)
+        if bi_horaire:  # CEC5 — HP = plage de pointe publiée, HN ailleurs
+            nom = 'pointe' if nom == 'pointe' else 'normales'
         for p in postes:
             if p['poste'] == nom:
                 return dict(p)
         return None
-    if any(p['poste'] in ('pointe', 'normales') for p in postes):
-        return None  # bi-horaire : plages HP/HN non saisies
     kwh = _num(kwh_mois)
     if kwh is None:
         return None
@@ -347,11 +372,35 @@ def _seuils_bt(tarif, tarif_declare):
             return None
         return [(x['seuil_min_kwh'], x['seuil_max_kwh']) for x in lignes]
     td = tarif_declare if isinstance(tarif_declare, dict) else {}
-    tranches = _tranches_bt_declarees(td.get('bt'))
+    return seuils_contigus(_tranches_bt_declarees(td.get('bt')))
+
+
+def seuils_contigus(tranches):
+    """CEC2 — ``[(min, max)]`` de tranches DÉCLARÉES, ou None si elles ne
+    se suivent pas : plusieurs tranches exigent un plafond sur chacune sauf
+    la dernière, croissant, et un plancher égal au plafond précédent (ou ce
+    plafond + 1, lecture « 101-500 » d'une facture, ramenée au plafond
+    précédent pour ne perdre aucun kWh). Sans cette règle, des tranches sans
+    seuils recevaient TOUTE la conso chacune (économie × N)."""
     if not tranches:
         return None
-    return [(_num(t.get('seuil_min_kwh')), _num(t.get('seuil_max_kwh')))
-            for t in tranches]
+    bornes = [(_num(t.get('seuil_min_kwh')), _num(t.get('seuil_max_kwh')))
+              for t in tranches]
+    if bornes[-1][1] is not None:
+        return None  # la dernière tranche sans plafond : aucun kWh hors grille
+    if len(bornes) == 1:
+        return bornes
+    sortie, precedent = [], None
+    for i, (lo, hi) in enumerate(bornes):
+        dernier = i == len(bornes) - 1
+        if (hi is None and not dernier) or (
+                hi is not None and precedent is not None and hi <= precedent):
+            return None
+        if precedent is not None and lo not in (None, precedent, precedent + 1):
+            return None
+        sortie.append((precedent if precedent is not None else lo, hi))
+        precedent = hi
+    return sortie
 
 
 # ── Validation de l'entrée ``tarif_declare`` (à l'écriture) ────────────────
@@ -403,6 +452,12 @@ def reproches_tarif_declare(td):
     if bt is not None and not isinstance(bt, dict):
         out.append(f'« {pre}bt » doit être un objet.')
     elif isinstance(bt, dict):
+        lues = _tranches_bt_declarees(bt)
+        if lues and seuils_contigus(lues) is None:
+            out.append(f'« {pre}bt.tranches » : plusieurs tranches exigent un '
+                       f'plafond (seuil_max_kwh) sur chacune sauf la dernière '
+                       f'et un plancher égal au plafond précédent ; la '
+                       f'dernière sans plafond.')
         for i, t in enumerate(bt.get('tranches') or [], start=1):
             if not isinstance(t, dict):
                 out.append(f'« {pre}bt.tranches[{i}] » doit être un objet.')

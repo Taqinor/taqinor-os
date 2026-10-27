@@ -26,12 +26,17 @@ vi.mock('../../api/installationsApi', async () => ({
     // VX88 — Ma journée consomme désormais « Ma tournée » (ordre géographique).
     getMaTournee: vi.fn(),
     getInterventions: vi.fn(),
+    // Fondateur 27/10/2026 — accord géolocalisation (undefined par défaut :
+    // rien ne bloque dans les autres tests).
+    getMonConsentementGps: vi.fn(),
+    accepterConsentementGps: vi.fn(),
     ...(await import('../../test/mocksMaJournee')).panneauxRejetes(),
   },
 }))
 
 import installationsApi from '../../api/installationsApi'
 import { polyfillResizeObserver } from '../../test/selectNatif'
+import { reponseContrat } from '../../test/fixtures/contractSamples'
 
 // getMaTournee est désormais partagé par les deux blocs (VX42 + VX226) : sans
 // reset, ses compteurs d'appels s'accumulent d'un test à l'autre et cassent les
@@ -212,5 +217,80 @@ describe('MaJourneePage (VX226)', () => {
     // qu'il n'y en a PAS eu (throttle < 2 min depuis le fetch initial).
     await new Promise((r) => setTimeout(r, 20))
     expect(installationsApi.getMaTournee).toHaveBeenCalledTimes(1)
+  })
+})
+
+/* Fondateur 27/10/2026 — techniciens = prestataires externes : l'accord aux
+   conditions d'utilisation (géolocalisation) est une condition BLOQUANTE de
+   « Ma journée » ; puce de suivi discrète ; silence du suivi signalé. La
+   réponse de `mon-consentement` vient du contrat committé (PACT10). */
+describe('MaJourneePage — accord géolocalisation bloquant (27/10/2026)', () => {
+  it("a_accepter : écran pleine page sans fermeture, puis « J'ai lu et j'accepte » rend la journée", async () => {
+    const user = userEvent.setup()
+    const contrat = reponseContrat('installations', 'gps_mon_consentement')
+    expect(contrat.data.statut).toBe('a_accepter')
+    installationsApi.getMonConsentementGps.mockResolvedValue(contrat)
+    installationsApi.accepterConsentementGps.mockResolvedValue({
+      data: { ...contrat.data, statut: 'actif', accepte_le: '2026-10-27T08:00:00+01:00' },
+    })
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
+    render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+
+    const ecran = await screen.findByTestId('gps-consentement-bloquant')
+    expect(ecran.textContent).toContain("Conditions d'utilisation — géolocalisation pendant vos missions")
+    expect(ecran.textContent).toContain("L'accès aux missions nécessite votre accord.")
+    expect(screen.getByTestId('gps-notice').textContent).toContain('non encore déclaré')
+    // Rien d'autre : ni la journée, ni un bouton de fermeture.
+    expect(screen.queryByRole('heading', { name: 'Ma journée' })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button')).toHaveLength(1)
+
+    await user.click(screen.getByRole('button', { name: /J'ai lu et j'accepte/ }))
+    expect(installationsApi.accepterConsentementGps).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('heading', { name: 'Ma journée' })).toBeInTheDocument()
+    expect(screen.queryByTestId('gps-consentement-bloquant')).not.toBeInTheDocument()
+    // La tournée est relue (les interventions portent l'accord).
+    await waitFor(() => expect(installationsApi.getMaTournee.mock.calls.length).toBeGreaterThanOrEqual(2))
+  })
+
+  it("accord retiré : écran bloquant SANS bouton d'acceptation", async () => {
+    const contrat = reponseContrat('installations', 'gps_mon_consentement')
+    installationsApi.getMonConsentementGps.mockResolvedValue({
+      data: { ...contrat.data, statut: 'revoque', actif: false },
+    })
+    installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
+    render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+    expect(await screen.findByTestId('gps-consentement-retire')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /J'ai lu et j'accepte/ })).not.toBeInTheDocument()
+  })
+
+  it('responsable (« absent ») ou accord déjà donné : jamais bloqué', async () => {
+    const contrat = reponseContrat('installations', 'gps_mon_consentement')
+    for (const statut of ['absent', 'actif']) {
+      installationsApi.getMonConsentementGps.mockResolvedValue({ data: { ...contrat.data, statut } })
+      installationsApi.getMaTournee.mockResolvedValue({ data: { stops: [] } })
+      const { unmount } = render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+      await waitFor(() => expect(installationsApi.getMonConsentementGps).toHaveBeenCalled())
+      expect(await screen.findByRole('heading', { name: 'Ma journée' })).toBeInTheDocument()
+      expect(screen.queryByTestId('gps-consentement-bloquant')).not.toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('en-tête de la fiche : « Suivi interrompu depuis N min » quand le serveur le signale', async () => {
+    const user = userEvent.setup()
+    installationsApi.getMaTournee.mockResolvedValue({
+      data: {
+        stops: [{
+          id: 9, date_prevue: todayISO(), client_nom: 'Client Neuf',
+          type_intervention: 'pose', statut: 'sur_site', gps_consentement: 'actif',
+          gps_suivi_interrompu_depuis_min: 18,
+        }],
+      },
+    })
+    render(<MemoryRouter><MaJourneePage /></MemoryRouter>)
+    await user.click(await screen.findByText('Client Neuf'))
+    const signal = await screen.findByTestId('mj-suivi-interrompu')
+    expect(signal.textContent).toBe('Suivi interrompu depuis 18 min')
+    expect(signal.className).toContain('text-warning')
   })
 })
