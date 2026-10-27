@@ -316,18 +316,17 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
         return qs
 
     def paginate_queryset(self, queryset):
-        # Le tracé d'une journée se dessine d'un bloc : jamais paginé.
+        # Le tracé d'une journée se dessine d'un bloc : jamais découpé — tout
+        # le tracé (déjà borné) forme UNE page de l'enveloppe publiée.
         if self._mode_trace():
-            return None
+            return list(queryset)
         return super().paginate_queryset(queryset)
 
-    def list(self, request, *args, **kwargs):
-        reponse = super().list(request, *args, **kwargs)
+    def get_paginated_response(self, data):
         if self._mode_trace():
-            # Tout le tracé en UNE page de l'enveloppe publiée.
-            reponse.data = {'count': len(reponse.data), 'next': None,
-                            'previous': None, 'results': reponse.data}
-        return reponse
+            return Response({'count': len(data), 'next': None,
+                             'previous': None, 'results': data})
+        return super().get_paginated_response(data)
 
     @oa.extend_schema(
         request=oa.body(
