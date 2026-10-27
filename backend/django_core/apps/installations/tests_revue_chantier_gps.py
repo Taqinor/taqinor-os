@@ -600,12 +600,16 @@ class LecturesTests(Base):
             self.api.get(f'{BASE}/positions-techniciens/').status_code, 403)
 
     def test_trace_du_jour_chronologique_non_pagine(self):
+        # Instants ancrés à MIDI LOCAL du jour courant : un run CI autour de
+        # minuit (Casablanca) ne doit pas faire glisser « now − 30 min » sur
+        # la veille (rouge CI du 27/10/2026 : 0 != 3).
+        midi = timezone.localtime().replace(hour=12, minute=0, second=0, microsecond=0)
         for m in (30, 20, 10):
             gps_tracking_service.enregistrer_position(
                 self.company, self.technicien, 33.5731, -7.5898,
                 intervention=self.interv,
-                captured_at=timezone.now() - timedelta(minutes=m))
-        jour = timezone.localdate().isoformat()
+                captured_at=midi - timedelta(minutes=m))
+        jour = timezone.localdate(midi).isoformat()
         resp = auth(self.responsable).get(
             f'{BASE}/positions-techniciens/?technicien={self.technicien.id}&date={jour}')
         self.assertEqual(resp.status_code, 200, resp.content)
