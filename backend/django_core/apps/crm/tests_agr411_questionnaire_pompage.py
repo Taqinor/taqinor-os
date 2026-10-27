@@ -194,7 +194,11 @@ class SectionPompageTests(TestCase):
         # CQST9 — alimentation « aucune » : rien de la pompe actuelle n'est
         # écrit, une « pompe conservée » antérieure passe en neuve, la plaque
         # n'est plus exigée ni servie (aucun cul-de-sac pour le client).
-        lead = self._agricole(mode_pompe='existante')
+        # Critique Fable round 3 : valeurs déjà sur le lead EFFACÉES (plus de
+        # « volume déclaré » d'une pompe inexistante), casse ignorée.
+        lead = self._agricole(
+            mode_pompe='existante', pompe_actuelle_debit_m3h=Decimal('10'),
+            pompage_heures_jour=Decimal('8'), pompe_actuelle_kw=Decimal('5.5'))
         lien = QuestionnaireLien.objects.create(
             company=self.company, lead=lead,
             questions={s: True for s in quest.sections_du_lead(lead)})
@@ -202,7 +206,7 @@ class SectionPompageTests(TestCase):
             lead, lien.sections_actives()))
         self.client.post(PUBLIC.format(lien.token), data=json.dumps({
             'section': 'pompage', 'reponses': {
-                'pompe_alim_actuelle': 'aucune', 'mode_pompe': 'existante',
+                'pompe_alim_actuelle': 'Aucune', 'mode_pompe': 'existante',
                 'pompe_actuelle_debit_m3h': 10, 'pompage_heures_jour': 8,
                 'pompe_actuelle_kw': 5.5, 'pompe_hmt_m': 40}}),
             content_type='application/json')
@@ -216,6 +220,27 @@ class SectionPompageTests(TestCase):
         self.assertFalse(quest.manquantes(lead)['photo_pompe'])
         self.assertNotIn('photo_pompe', quest.sections_a_servir(
             lead, lien.sections_actives()))
+
+    def test_sans_pompe_ne_defait_pas_une_correction_de_l_equipe(self):
+        # CQST9 / QJR597 — le client renvoie « aucune » tel qu'il l'a vu,
+        # l'équipe a entre-temps mis « électrique » + pompe conservée : la
+        # remise à zéro suit l'alimentation RETENUE (celle de l'équipe).
+        lead = self._agricole(pompe_alim_actuelle='electrique',
+                              mode_pompe='existante',
+                              pompe_actuelle_kw=Decimal('5.5'))
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead,
+            questions={s: s == 'pompage' for s in quest.sections_du_lead(lead)})
+        self.client.post(PUBLIC.format(lien.token), data=json.dumps({
+            'section': 'pompage',
+            'reponses': {'pompe_alim_actuelle': 'aucune', 'pompe_hmt_m': 30},
+            'prefill_vu': {'pompe_alim_actuelle': 'aucune'}}),
+            content_type='application/json')
+        lead.refresh_from_db()
+        self.assertEqual(lead.pompe_alim_actuelle, 'electrique')
+        self.assertEqual(lead.mode_pompe, 'existante')
+        self.assertEqual(lead.pompe_actuelle_kw, Decimal('5.5'))
+        self.assertEqual(lead.pompe_hmt_m, Decimal('30'))
 
     def test_lien_residentiel_identique(self):
         lead = Lead.objects.create(company=self.company, nom='Maison')

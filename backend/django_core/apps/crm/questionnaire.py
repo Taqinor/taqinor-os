@@ -362,7 +362,26 @@ _POMPE_ACTUELLE = ('pompe_actuelle_debit_m3h', 'pompage_heures_jour',
 def _sans_pompe_actuelle(lead, reponses=None) -> bool:
     alim = (reponses or {}).get('pompe_alim_actuelle') if isinstance(
         reponses, dict) else None
-    return (alim or getattr(lead, 'pompe_alim_actuelle', None)) == 'aucune'
+    alim = alim or getattr(lead, 'pompe_alim_actuelle', None)
+    return str(alim or '').strip().lower() == 'aucune'
+
+
+def _remise_a_zero_sans_pompe(lead, champs):
+    """CQST9 — appliqué APRÈS la garde d'écrasement (QJR597) : l'alimentation
+    retenue est celle qui survit (sinon celle du lead). « aucune » ⇒ rien de
+    la pompe actuelle n'est écrit, les valeurs déjà sur le lead sont EFFACÉES
+    (un débit × heures d'une pompe inexistante ne doit plus faire un
+    « volume déclaré »), une pompe « conservée » passe en neuve."""
+    if not _sans_pompe_actuelle(lead, {
+            'pompe_alim_actuelle': champs.get('pompe_alim_actuelle')}):
+        return champs
+    for cle in _POMPE_ACTUELLE:
+        champs.pop(cle, None)
+        if cle != 'mode_pompe' and getattr(lead, cle, None) not in (None, ''):
+            champs[cle] = None
+    if getattr(lead, 'mode_pompe', None) == 'existante':
+        champs['mode_pompe'] = 'neuve'
+    return champs
 
 
 def _devis_bloque(lead) -> bool:
@@ -938,13 +957,6 @@ def _champs_pompage_modele(lead, reponses) -> dict:
         if valeur is not None and not isinstance(valeur, str) and valeur <= 0:
             continue
         out[cle] = valeur
-    if _sans_pompe_actuelle(lead, reponses):
-        for cle in _POMPE_ACTUELLE:
-            out.pop(cle, None)
-        # Pas de pompe à garder : la pompe sera neuve (sinon la plaque d'une
-        # pompe inexistante resterait exigée et le client ne pourrait rien débloquer).
-        if getattr(lead, 'mode_pompe', None) == 'existante':
-            out['mode_pompe'] = 'neuve'
     if out.get('mode_pompe', getattr(lead, 'mode_pompe', None)) != 'existante':
         for cle in _POMPAGE_PLAQUE:
             out.pop(cle, None)
@@ -1028,6 +1040,8 @@ def appliquer_section(lien, section, reponses=None, photo=None,
         if champs and isinstance(prefill_vu, dict):
             champs = _sans_ecrasement_equipe(
                 lead, section, champs, prefill_vu, ignorees)
+        if section == 'pompage':
+            champs = _remise_a_zero_sans_pompe(lead, champs)
         if champs:
             # Instantané AVANT écriture : le chatter compare l'ancien au
             # nouveau via le mécanisme existant (activity.log_changes).
