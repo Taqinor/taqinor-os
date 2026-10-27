@@ -536,3 +536,23 @@ describe('CPRW18 — comparaison sans / avec batterie', () => {
     expect(comp).not.toContain('<table');
   });
 });
+
+// ── CPRW21 — définitions autoconsommation / couverture en FR/EN/AR ──────────────────────────
+import { DEFINITIONS_CI } from '../src/components/proposition/ci/syntheseCi';
+
+describe('CPRW21 — définitions trilingues', () => {
+  it('parité mot pour mot avec ci/synthese.py::DEFINITIONS', () => {
+    const py = readFileSync(fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/ci/synthese.py', import.meta.url)), 'utf-8');
+    const bloc = py.slice(py.indexOf('DEFINITIONS = {'), py.indexOf('\n}\n', py.indexOf('DEFINITIONS = {')));
+    for (const lg of ['fr', 'en', 'ar'] as const) {
+      const tranche = bloc.split(`"${lg}": {`)[1]!.split('}')[0]!;
+      const v = (cle: string) => new RegExp(`"${cle}":[ ]*"([^"]*)"`).exec(tranche)![1];
+      expect(DEFINITIONS_CI[lg].autoconso).toBe(v('autoconso'));
+      expect(DEFINITIONS_CI[lg].couverture).toBe(v('couverture'));
+    }
+  });
+  it('SectionAutoconso les affiche en data-i18n', () => {
+    expect(SRC_AUTOCONSO).toContain('data-fr={DEFINITIONS_CI.fr.autoconso} data-en={DEFINITIONS_CI.en.autoconso} data-ar={DEFINITIONS_CI.ar.autoconso}');
+    expect(SRC_AUTOCONSO).toContain('data-fr={DEFINITIONS_CI.fr.couverture} data-en={DEFINITIONS_CI.en.couverture} data-ar={DEFINITIONS_CI.ar.couverture}');
+  });
+});

@@ -150,6 +150,25 @@ export interface SyntheseCiOptionBatterie {
   } | null;
 }
 
+/**
+ * CPRW21 — définitions des deux taux dans les trois langues (`ci/synthese.py::DEFINITIONS`, garde de parité
+ * dans `propositionSyntheseCiCIW300.test.ts`) : le serveur n'en sert qu'une langue, la page affiche les trois.
+ */
+export const DEFINITIONS_CI: Record<'fr' | 'en' | 'ar', { autoconso: string; couverture: string }> = {
+  fr: {
+    autoconso: 'part de la production consommée sur place',
+    couverture: 'part de votre consommation couverte par le solaire',
+  },
+  en: {
+    autoconso: 'share of the solar production consumed on site',
+    couverture: 'share of your consumption covered by solar',
+  },
+  ar: {
+    autoconso: 'حصة الإنتاج المستهلكة في عين المكان',
+    couverture: 'حصة استهلاككم المغطاة بالطاقة الشمسية',
+  },
+};
+
 function lireTextesCi(v: unknown): TextesCi | null {
   if (!estRecord(v)) return null;
   const fr = texteServi(v.fr);
