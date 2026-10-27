@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chiffresEconomiePhare, type ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 function payload(mode: string, quote: Record<string, unknown> = {}): ProposalResponse {
   return {
@@ -71,10 +72,7 @@ describe('AGW300 — chiffresEconomiePhare', () => {
 });
 
 describe('AGW300 — la page n\'a qu\'UNE définition de ces chiffres et un CO₂ éteint en agricole', () => {
-  const page = readFileSync(
-    fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-    'utf-8',
-  );
+  const page = lirePageProposition();
   it('ecoHero / paybackHero ne viennent que de chiffresEconomiePhare', () => {
     expect(page).toMatch(/chiffresEconomiePhare\(ok \? data : null, reco\)/);
     expect(page).not.toMatch(/const ecoHero =/);

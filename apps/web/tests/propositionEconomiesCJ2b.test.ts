@@ -26,9 +26,10 @@ import { fileURLToPath } from 'node:url';
 import { OCCUPANCY_IDS, OCCUPANCY_SHAPES, parseDailyCurves } from '../src/lib/dayProfiles';
 import { consumptionKwhShape, renderYearCurve } from '../src/lib/proposalCurve';
 import { economiesMensuelles, type ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
-const PAGE = read('../src/pages/proposition/[...token].astro');
+const PAGE = lirePageProposition();
 const CSS = read('../src/styles/global.css');
 
 /** Même discipline que P18/PV80 : le code réel, comments retirés — un

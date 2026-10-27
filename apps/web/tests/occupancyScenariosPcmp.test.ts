@@ -19,9 +19,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { occupancyScenarios } from '../src/lib/proposition';
 import { OCCUPANCY_IDS } from '../src/lib/dayProfiles';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
-const PAGE = read('../src/pages/proposition/[...token].astro').replace(/\r\n/g, '\n');
+const PAGE = lirePageProposition().replace(/\r\n/g, '\n');
 const CODE = PAGE
   .replace(/<!--[\s\S]*?-->/g, ' ')
   .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')
