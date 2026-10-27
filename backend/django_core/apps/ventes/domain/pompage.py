@@ -843,7 +843,7 @@ def _lire_mode_pompe(brut):
     """AGM6 — ``(mode, alertes)`` : un mode vide vaut ``neuve`` (défaut
     AGQ39, aucune alerte) ; un mode inconnu bascule sur ``neuve`` en le DISANT
     (``mode_pompe_invalide``), jamais en silence."""
-    mode = brut or 'neuve'
+    mode = str(brut or '').strip().lower() or 'neuve'
     if mode in ('neuve', 'existante'):
         return mode, []
     return 'neuve', [_alerte(
