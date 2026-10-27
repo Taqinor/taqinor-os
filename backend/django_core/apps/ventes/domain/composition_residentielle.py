@@ -100,6 +100,27 @@ def _choisir_panneau(pool, watt):
     return tries, exacts, None
 
 
+def _hybrides_servis_par_une_batterie(vivier, batteries):
+    """RSIZ2 — le vivier d'hybrides réduit à ceux qu'une batterie TARIFÉE ET
+    EN STOCK peut servir (tension dans la plage batterie de l'onduleur).
+
+    Mesuré le 27/10/2026 sur un instantané de production : au-delà de
+    ~25 kWc la règle des 80 % retenait le Deye 30 kW (batterie HAUTE tension
+    160-800 V) alors que la seule batterie tarifée en stock est le Dyness 5 kWh
+    BASSE tension — l'option « avec batterie » partait SANS batterie. Réduit
+    à des hybrides servables, le choix retombe sur le plus gros hybride basse
+    tension, posé en N exemplaires (``quantite_onduleur``). Aucun hybride
+    servable ⇒ le vivier est rendu TEL QUEL : la composition prononce alors
+    l'avertissement batterie existant (vivier vide / rupture), jamais un
+    silence.
+    """
+    servies = [b for b in (batteries or ()) if _batterie_en_stock(b)]
+    retenus = [o for o in vivier if any(
+        _batterie_compatible(b, _plage_batterie_de_l_onduleur(o))
+        for b in servies)]
+    return retenus or list(vivier)
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               structure_produit_id=None,
@@ -279,6 +300,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
         avec_batterie = True
+    # U2 — en forme DEUX OPTIONS, le stockage fait partie du devis : les
+    # batteries sont composées même si ``avec_batterie`` est faux, puisque
+    # c'est l'option « avec » qui les porte. (RSIZ2 : lu dès le choix de
+    # l'hybride, d'où sa place ici.)
+    veut_batterie = bool(avec_batterie or deux_options)
 
     # Catalogue indexé par catégorie. Le filtre de prix passe ICI, une fois
     # pour toutes : aucune branche ne peut ensuite coter un produit non tarifé.
@@ -400,6 +426,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         complets = _filtrer_onduleurs_complets(
             par_marque(par_type.get(categorie), categorie))
         vivier, replie = _vivier_onduleurs_par_phase(complets, phase_client)
+        # RSIZ2 — un hybride qu'AUCUNE batterie tarifée en stock ne sert ne
+        # porte pas l'option « avec » (le 30 kW HV face au seul Dyness LV).
+        vivier = (_hybrides_servis_par_une_batterie(
+            vivier, par_type.get('batterie'))
+            if categorie == 'onduleur_hybride' and veut_batterie
+            else vivier)
         replis_phase[categorie] = replie
         refus_tri[categorie] = False
         for produit in vivier:
@@ -484,10 +516,6 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     if phase_client == PHASE_TRI and any(
             refus_tri.get(categorie) for categorie in _categories_vendues):
         _avertir(avertissement_aucun_onduleur_triphase())
-    # U2 — en forme DEUX OPTIONS, le stockage fait partie du devis : les
-    # batteries sont composées même si ``avec_batterie`` est faux, puisque
-    # c'est l'option « avec » qui les porte.
-    veut_batterie = bool(avec_batterie or deux_options)
 
     # ── Panneau : wattage demandé d'abord, à défaut le plus proche ──
     # PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de

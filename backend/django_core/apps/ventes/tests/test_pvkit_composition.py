@@ -556,3 +556,51 @@ class LesAvertissementsDeCompositionSontRendus(_Base):
             services.catalogue_de_la_societe(self.company),
             kwc=4.4, panel_watt=550, nb_panneaux=8)
         self.assertEqual(list(lignes.avertissements_composition), [])
+
+
+class LHybrideRetenuPorteUneBatterieDuStock(_Base):
+    """RSIZ2 — au-delà de ~25 kWc, l'hybride HAUTE tension (30 kW) n'est
+    plus retenu pour l'option « avec » quand seule une batterie BASSE
+    tension est tarifée en stock : plusieurs hybrides basse tension la
+    servent à sa place (mesuré le 27/10/2026, devis auto 80 000 MAD/mois
+    composé « avec batterie » sans aucune batterie)."""
+
+    slug = 'pvkit-rsiz2'
+
+    def setUp(self):
+        super().setUp()
+        self.ond_hv = Produit.objects.create(
+            company=self.company, nom='Onduleur hybride Deye 30kW Triphasé',
+            sku='ONDH30-%s' % self.slug, prix_vente=Decimal('60000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        FicheTechnique.objects.create(
+            company=self.company, produit=self.ond_hv, type_fiche='onduleur',
+            ond_ac_kw=Decimal('30.00'), ond_phases=3, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal('160.0'), ond_mppt_v_max=Decimal('800.0'),
+            ond_v_max_abs=Decimal('1000.0'), ond_i_max_mppt_a=Decimal('36.0'),
+            ond_rendement_euro_pct=Decimal('97.0'),
+            ond_bat_v_min=Decimal('160.0'), ond_bat_v_max=Decimal('800.0'))
+
+    def _composer(self):
+        return services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=30.25, panel_watt=550, nb_panneaux=55, avec_batterie=True)
+
+    def test_plusieurs_hybrides_basse_tension_plutot_que_le_30_kw(self):
+        lignes = self._composer()
+        noms = {li.designation: li.quantite for li in lignes}
+        self.assertNotIn(self.ond_hv.nom, noms)
+        # 30,25 kWc / 5 kW → 7 hybrides basse tension (blocs entiers).
+        self.assertEqual(noms['Onduleur hybride Deye 5kW Monophasé'], 7)
+        self.assertIn('batterie', list(lignes.roles))
+
+    def test_sans_batterie_en_stock_le_vivier_reste_entier_et_le_dit(self):
+        from apps.ventes.domain.composition import (
+            avertissement_batterie_rupture_stock)
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        lignes = self._composer()
+        self.assertNotIn('batterie', list(lignes.roles))
+        self.assertIn(avertissement_batterie_rupture_stock(),
+                      list(lignes.avertissements_composition))
