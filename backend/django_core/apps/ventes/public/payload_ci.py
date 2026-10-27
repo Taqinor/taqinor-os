@@ -35,8 +35,14 @@ _CHAMPS_TEXTE = frozenset({'source', 'motif', 'motif_base', 'van_motif'})
 #: retirée plutôt que montrée (jamais réécrite en un texte inventé).
 _RESIDU_INTERNE = re.compile(
     r"moteur|\bGroupe [A-Z]{2,}|\bCIQ\d|\bD-[A-Z]{2,}-?\d|Paramètres|repli"
-    r"|Wayback|fondateur|\bdécision\b|\binterne\b|\b[a-z]+(?:_[a-z]+)+\b"
-    r"|\b[a-z_]+\.[A-Za-z_]+", re.IGNORECASE)
+    r"|Wayback|fondateur|\binterne\b|\bReda\b|aucun défaut"
+    r"|\b[a-z]+(?:_[a-z]+)+\b|\b[a-z]+_[a-z_]*\.[A-Za-z_]+", re.IGNORECASE)
+
+#: Préfixe « décision fondateur D-XXX-n du jj/mm/aaaa — » d'une source
+#: dont la suite est une phrase client : seul le préfixe part.
+_PREFIXE_DECISION = re.compile(
+    r"^\s*décision fondateur D-[A-Z]+-\d+(?: du [\d/]+)?\s*(?:—\s*)?",
+    re.IGNORECASE)
 
 #: Seuls blocs d'omission que la page rend au client (motifs propres).
 _PREFIXE_OMISSION_CLIENT = 'argent'
@@ -44,7 +50,8 @@ _PREFIXE_OMISSION_CLIENT = 'argent'
 
 def _texte_client(libelles, texte):
     from ..quote_engine.ci import couverture
-    propre = couverture.sans_reserve(couverture.texte_client(libelles, texte))
+    propre = couverture.sans_reserve(couverture.texte_client(
+        libelles, _PREFIXE_DECISION.sub('', str(texte or ''))))
     return '' if _RESIDU_INTERNE.search(propre) else propre
 
 
@@ -148,6 +155,9 @@ def charge_utile_client(payload):
                 'langue_sortie': data.get('langue_sortie')}
     if isinstance(quote, dict):
         quote.pop('libelles_document', None)
+        # Note interne de la grille MT (« la page indique TVA 18 % … ») :
+        # la page lit la mention tarif de ``synthese_ci``, jamais celle-ci.
+        quote.pop('tarif_mt_mention', None)
         etude = quote.get('etude')
         if isinstance(etude, dict):
             etude.pop('etude_ci', None)

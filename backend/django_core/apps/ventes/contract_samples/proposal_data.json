@@ -813,7 +813,7 @@
             {
               "cle": "indexation_pct",
               "valeur": 0.0,
-              "source": null,
+              "source": "prix du carburant constant : il peut monter ou baisser",
               "saisie_le": null
             },
             {
@@ -1962,7 +1962,7 @@
         "om": {
           "statut": "tarif_a_renseigner",
           "montant_mad_an": null,
-          "source": "option O&M nommée — prix saisi par Reda, aucun défaut"
+          "source": null
         },
         "hypotheses": [
           {
@@ -2032,7 +2032,7 @@
         },
         "suivi_production": {
           "delai_intervention": null,
-          "motif": "délai d'intervention saisi par Reda, aucun défaut"
+          "motif": null
         },
         "garanties": [
           {
@@ -2169,7 +2169,7 @@
         },
         "suivi_production": {
           "delai_intervention": null,
-          "motif": "délai saisi par Reda, aucun défaut"
+          "motif": null
         },
         "garanties": []
       },

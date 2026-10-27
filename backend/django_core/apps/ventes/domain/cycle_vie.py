@@ -1359,13 +1359,18 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         deduite = (Devis.OptionAcceptee.AVEC_BATTERIE
                    if scenario == 'Avec batterie'
                    else Devis.OptionAcceptee.SANS_BATTERIE)
-        # CPRS6 — par le lien client, une offre à UNE option ne se signe que
-        # sur cette option (un corps forgé ne scelle jamais l'autre).
-        if lien is not None and detection_sure and nb_options == 1 \
-                and option and option != deduite:
+        # CPRS6 — on ne signe qu'une option que le document OFFRE : une offre
+        # à une option se signe sur elle seule, et une option non chiffrée
+        # (``sans_ok`` / ``avec_ok`` faux) ne se signe jamais — lien, portail
+        # ou ERP (un corps forgé ne scelle jamais l'autre).
+        if detection_sure and option and option not in (
+                {deduite} if nb_options == 1 else {
+                    o for o, ok in (
+                        (Devis.OptionAcceptee.SANS_BATTERIE, 'sans_ok'),
+                        (Devis.OptionAcceptee.AVEC_BATTERIE, 'avec_ok'))
+                    if qd.get(ok, True)}):
             raise AcceptError(
-                "Cette proposition ne comporte qu'une option : "
-                "l'option demandée n'en fait pas partie.")
+                "L'option demandée ne fait pas partie de cette proposition.")
         if not option:
             option = deduite
 
