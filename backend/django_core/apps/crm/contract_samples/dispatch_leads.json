@@ -1,0 +1,65 @@
+{
+  "endpoint": "GET /api/django/crm/dispatch/",
+  "forme_serveur": "partielle",
+  "pourquoi": "Attribution des leads par le responsable de l'équipe commerciale (fondateur, 27/10/2026). Quand l'équipe qui reçoit les nouveaux leads a « Le responsable confirme chaque lead » activé, un nouveau lead attend sa décision : il est provisoirement au nom du responsable, une PROPOSITION est calculée (règles de Paramètres → Leads dans l'ordre : ville/région, type de client, source, facture ; sinon rotation équilibrée), et passé `delai_minutes` minutes OUVRÉES sans décision il est attribué automatiquement à la proposition. Cette route sert la file au responsable de l'équipe (et à la Direction/Admin) ; l'écran montre le premier lead en entier et les membres en bas. `POST /api/django/crm/dispatch/<lead_id>/attribuer/` avec `{\"owner\": <id>}` confirme (Entrée = la proposition). Lecture pure ici.",
+  "exemple": {
+    "equipe": {
+      "id": 7,
+      "nom": "Casa",
+      "delai_minutes": 10
+    },
+    "en_attente": 1,
+    "leads": [
+      {
+        "id": 1712,
+        "nom": "Karim Tazi",
+        "telephone": "+212611112222",
+        "whatsapp": "+212611112222",
+        "email": "k.tazi@example.com",
+        "ville": "Casablanca",
+        "type_installation": "residentiel",
+        "type_installation_label": "Résidentiel",
+        "source": "site_web",
+        "source_label": "Site web",
+        "facture_mensuelle_dh": 1450.0,
+        "message": "Villa à Bouskoura, toit plat, facture élevée l'été.",
+        "cree_le": "2026-10-27T10:02:00+01:00",
+        "attente_minutes": 4,
+        "auto_le": "2026-10-27T10:12:00+01:00",
+        "propose": {
+          "id": 4,
+          "nom": "Sara",
+          "raison": "Règle : ville Casablanca"
+        }
+      }
+    ],
+    "membres": [
+      {
+        "id": 4,
+        "nom": "Sara",
+        "fonction": "Chargée de clientèle",
+        "leads_ouverts": 12,
+        "au_plafond": false
+      },
+      {
+        "id": 5,
+        "nom": "Amine",
+        "fonction": "Chargé de clientèle",
+        "leads_ouverts": 20,
+        "au_plafond": true
+      }
+    ]
+  },
+  "exemple_vide": {
+    "equipe": null,
+    "en_attente": 0,
+    "leads": [],
+    "membres": []
+  },
+  "notes": {
+    "equipe": "L'équipe qui reçoit les nouveaux leads avec confirmation activée et dont l'appelant est le responsable (ou toute équipe de ce type pour Direction/Admin) ; null si aucune.",
+    "leads": "Leads en attente de décision, du plus ancien au plus récent. Champs absents du lead = null (jamais inventés). `attente_minutes` et `auto_le` en temps ouvré (horaires de la société).",
+    "propose.raison": "Texte lisible de la règle appliquée, ou « Rotation équilibrée » quand aucune règle ne correspond.",
+    "membres": "Membres ACTIFS de l'équipe, dans l'ordre d'affichage ; `leads_ouverts` = leads non signés/froids/perdus ; `au_plafond` selon le plafond de leads ouverts du profil."
+  }
+}
