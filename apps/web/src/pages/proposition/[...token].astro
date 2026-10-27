@@ -30,6 +30,7 @@ import GarantiesAgricoles from '../../components/proposition/agricole/GarantiesA
 import GarantiesCi from '../../components/proposition/ci/GarantiesCi.astro';
 import EcheancierCi from '../../components/proposition/ci/EcheancierCi.astro';
 import ServicesCi from '../../components/proposition/ci/ServicesCi.astro';
+import ComparaisonBatterieCi from '../../components/proposition/ci/ComparaisonBatterieCi.astro';
 import { servicesCi } from '../../components/proposition/ci/blocsCi';
 // (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
 // réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
@@ -4930,6 +4931,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             );
           })}
         </div>
+        {isAutoconso && twoOptions && ci?.optionBatterie && (<ComparaisonBatterieCi {ci} sansTtc={optionTotaux(data!, 'sans_batterie')?.ttc ?? null} avecTtc={optionTotaux(data!, 'avec_batterie')?.ttc ?? null} />)}
         {/* COUTURE — le devis avait été ENVOYÉ, puis resynchronisé (prix
             catalogue corrigé côté Stock). Les montants ci-dessus sont rendus
             en direct depuis les lignes : ils peuvent donc différer du PDF déjà

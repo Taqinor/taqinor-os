@@ -3,7 +3,7 @@
  * (`quote_engine/i18n_labels.py`, `ci/blocs.py`). Aucun chiffre n'est calculé ici : tout est lu dans
  * `synthese_ci` (extracteur `syntheseCi.ts`) ; une valeur non servie est omise, jamais un « 0 ».
  */
-import { formatMAD } from '../../../lib/proposition';
+import { formatMAD, formatNumber } from '../../../lib/proposition';
 import type { SyntheseCi, TextesCi } from './syntheseCi';
 
 // ── CPRW15 — garanties ─────────────────────────────────────────────────────────────────────
@@ -140,4 +140,66 @@ export function servicesCi(ci: SyntheseCi | null): { titre: TextesCi; lignes: Te
     lignes.push(par((lg) => L.dossier_raccordement![lg].replace('{societe}', SOCIETE_CI)));
   }
   return lignes.length > 0 ? { titre: L.services!, lignes } : null;
+}
+
+// ── CPRW18 — comparaison sans / avec batterie ──────────────────────────────────────────────
+
+/** Mots du PDF : `ci/blocs.py::LIBELLES_OPTION_AVEC` (titre, economie, retour, ans) et `i18n_labels.py` `total_ttc`. */
+export const LBL_COMPARAISON_CI = {
+  titre: { fr: 'Option avec batterie', en: 'Battery option', ar: 'خيار مع بطارية' },
+  economie: { fr: 'Économie annuelle HT', en: 'Annual saving excl. VAT', ar: 'التوفير السنوي دون ضريبة' },
+  retour: { fr: 'Retour sur investissement', en: 'Payback', ar: 'مدة استرداد الاستثمار' },
+  ans: { fr: 'ans', en: 'years', ar: 'سنوات' },
+  total_ttc: { fr: 'Total TTC', en: 'Total incl. VAT', ar: 'المجموع شامل الضريبة' },
+} satisfies Record<string, TextesCi>;
+
+/** Titre de la colonne « sans » : celui de la carte de la page (offre réseau d'abord). */
+const TITRE_SANS_CI: TextesCi = {
+  fr: 'Offre réseau (autoconsommation)',
+  en: 'Grid-connected offer (self-consumption)',
+  ar: 'عرض الربط بالشبكة (استهلاك ذاتي)',
+};
+
+export interface LigneComparaisonCi {
+  cle: 'total_ttc' | 'valeur' | 'economie' | 'retour';
+  libelle: TextesCi | null;
+  /** Valeur déjà formatée (nombres) ; vide pour la phrase servie. */
+  valeur: string;
+  /** Phrase servie par le moteur (FR/EN/AR) — jamais composée ici. */
+  textes?: TextesCi;
+}
+
+/**
+ * Deux colonnes — offre réseau / option avec batterie — qui ne portent QUE des valeurs servies : Total TTC
+ * par option (payload, sinon `option_batterie.totaux`), puis pour « avec » la phrase servie du moteur
+ * (capacité utile, énergie restituée), l'économie annuelle HT et le retour (`valeur_chiffree`). Une valeur
+ * absente ou nulle est omise, jamais un « 0 » ; aucune autoconsommation/couverture par option (non servie).
+ * `null` sans `option_batterie` servie.
+ */
+export function comparaisonBatterieCi(
+  ci: SyntheseCi | null,
+  sansTtc: number | null | undefined,
+  avecTtc: number | null | undefined,
+): { titre: TextesCi; colonnes: Array<{ cle: 'sans' | 'avec'; titre: TextesCi; lignes: LigneComparaisonCi[] }> } | null {
+  const ob = ci?.optionBatterie ?? null;
+  if (!ob) return null;
+  const positif = (n: number | null | undefined): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0;
+  const ttcAvec = positif(avecTtc) ? avecTtc : (ob.totaux?.ttc ?? null);
+  const sans: LigneComparaisonCi[] = [];
+  if (positif(sansTtc)) sans.push({ cle: 'total_ttc', libelle: LBL_COMPARAISON_CI.total_ttc, valeur: formatMAD(sansTtc) });
+  const avec: LigneComparaisonCi[] = [];
+  if (positif(ttcAvec)) avec.push({ cle: 'total_ttc', libelle: LBL_COMPARAISON_CI.total_ttc, valeur: formatMAD(ttcAvec) });
+  const v = ob.chiffres;
+  if (ob.valeurChiffree && (positif(v?.capaciteUtileKwh) || positif(v?.restitueKwhAn) || positif(v?.economieAnnuelleMad))) {
+    avec.push({ cle: 'valeur', libelle: null, valeur: '', textes: ob.valeurChiffree });
+  }
+  if (positif(v?.economieAnnuelleMad)) avec.push({ cle: 'economie', libelle: LBL_COMPARAISON_CI.economie, valeur: formatMAD(v.economieAnnuelleMad) });
+  if (positif(v?.retourSimpleAns)) avec.push({ cle: 'retour', libelle: LBL_COMPARAISON_CI.retour, valeur: formatNumber(v.retourSimpleAns, 1) });
+  return {
+    titre: LBL_COMPARAISON_CI.titre,
+    colonnes: [
+      { cle: 'sans', titre: TITRE_SANS_CI, lignes: sans },
+      { cle: 'avec', titre: LBL_COMPARAISON_CI.titre, lignes: avec },
+    ],
+  };
 }

@@ -482,3 +482,57 @@ describe('CPRW17 — services C&I', () => {
     expect(page.indexOf('data-ci-services')).toBeLessThan(page.indexOf('id="exploitation"'));
   });
 });
+
+// ── CPRW18 — comparaison sans / avec batterie ───────────────────────────────────────────────
+import { comparaisonBatterieCi, LBL_COMPARAISON_CI } from '../src/components/proposition/ci/blocsCi';
+
+describe('CPRW18 — comparaison sans / avec batterie', () => {
+  const ob = (option_batterie: unknown) => syntheseCi(({ mode_installation: 'industriel', synthese_ci: { option_batterie } }) as unknown as ProposalResponse);
+  const PLEIN = {
+    totaux: { ht_net: 95000, tva: 19000, ttc: 114000 },
+    valeur_chiffree: {
+      economie_annuelle_mad: 20000, retour_simple_ans: 4.8, capacite_utile_kwh: 10, restitue_kwh_an: 3000,
+      textes: { fr: 'Batterie de 10 kWh utiles : …', en: 'EN', ar: 'AR' },
+    },
+  };
+  it('fixture complète : colonne sans = prix ; colonne avec = prix, phrase servie, économie HT, retour', () => {
+    const c = comparaisonBatterieCi(ob(PLEIN), 78000, 114000)!;
+    expect(c.colonnes.map((x) => x.cle)).toEqual(['sans', 'avec']);
+    const sans = c.colonnes[0]!.lignes;
+    expect(sans).toHaveLength(1);
+    expect(sans[0]!.valeur).toContain('78 000');
+    const avec = c.colonnes[1]!.lignes;
+    expect(avec.map((l) => l.cle)).toEqual(['total_ttc', 'valeur', 'economie', 'retour']);
+    expect(avec.find((l) => l.cle === 'economie')!.valeur).toContain('20 000');
+    expect(avec.find((l) => l.cle === 'retour')!.valeur).toContain('4,8');
+  });
+  it('valeur_chiffree null → seulement les prix, jamais « 0 »', () => {
+    const c = comparaisonBatterieCi(ob({ totaux: { ht_net: 95000, tva: 19000, ttc: 114000 }, valeur_chiffree: null }), 78000, null)!;
+    expect(c.colonnes[1]!.lignes.map((l) => l.cle)).toEqual(['total_ttc']);
+    expect(c.colonnes[1]!.lignes[0]!.valeur).toContain('114 000');
+    expect(JSON.stringify(c)).not.toMatch(/\b0 MAD/);
+  });
+  it('valeurs nulles ou 0 servies → omises ; sans option_batterie → null', () => {
+    const c = comparaisonBatterieCi(ob({ valeur_chiffree: { economie_annuelle_mad: 0, retour_simple_ans: null, textes: { fr: 'x' } } }), 78000, 0)!;
+    expect(c.colonnes[1]!.lignes).toEqual([]);
+    expect(comparaisonBatterieCi(ob(undefined), 78000, 114000)).toBeNull();
+    expect(comparaisonBatterieCi(null, 1, 1)).toBeNull();
+  });
+  it('libellés = ceux du PDF (blocs.py LIBELLES_OPTION_AVEC, i18n_labels total_ttc)', () => {
+    const py = readFileSync(fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/ci/blocs.py', import.meta.url)), 'utf-8');
+    const enc = (t: string) => t.replace(/É/g, '&Eacute;').replace(/à/g, '&agrave;');
+    for (const cle of ['titre', 'economie', 'retour', 'ans'] as const) {
+      for (const lg of ['fr', 'en', 'ar'] as const) expect(py).toContain(`"${enc(LBL_COMPARAISON_CI[cle][lg])}"`);
+    }
+    expect(LBL_COMPARAISON_CI.total_ttc).toEqual(labelPy('total_ttc'));
+  });
+  it('la page appelle ComparaisonBatterieCi sous la grille des deux cartes ; mobile d\'abord', () => {
+    const page = lirePageProposition();
+    expect(page).toContain('data-ci-comparaison-batterie');
+    expect(page.indexOf('data-ci-comparaison-batterie')).toBeGreaterThan(page.indexOf('<ChainePrix totaux={totaux}'));
+    const comp = readFileSync(fileURLToPath(new URL('../src/components/proposition/ci/ComparaisonBatterieCi.astro', import.meta.url)), 'utf-8');
+    expect(comp).toContain('grid-cols-1');
+    expect(comp).toContain('sm:grid-cols-2');
+    expect(comp).not.toContain('<table');
+  });
+});

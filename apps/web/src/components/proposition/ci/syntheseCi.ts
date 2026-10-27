@@ -139,6 +139,15 @@ export interface SyntheseCiOptionBatterie {
   valeurChiffree: TextesCi | null;
   /** Motif servi (« valeur non chiffrée »…), ou `null`. */
   motif: string | null;
+  /** CPRW18 — totaux servis de l'option (`option_batterie.totaux`), tels quels. */
+  totaux: { htNet: number | null; tva: number | null; ttc: number | null } | null;
+  /** CPRW18 — chiffres servis par le moteur C&I (`valeur_chiffree`) ; `null` = non chiffrée. L'économie est la TOTALE (HT) de l'option. */
+  chiffres: {
+    economieAnnuelleMad: number | null;
+    retourSimpleAns: number | null;
+    capaciteUtileKwh: number | null;
+    restitueKwhAn: number | null;
+  } | null;
 }
 
 function lireTextesCi(v: unknown): TextesCi | null {
@@ -380,6 +389,21 @@ export function syntheseCi(
             ? lireTextesCi(brut.option_batterie.valeur_chiffree.textes)
             : null,
           motif: texteServi(brut.option_batterie.motif),
+          totaux: estRecord(brut.option_batterie.totaux)
+            ? {
+                htNet: nombreServi(brut.option_batterie.totaux.ht_net),
+                tva: nombreServi(brut.option_batterie.totaux.tva),
+                ttc: nombreServi(brut.option_batterie.totaux.ttc),
+              }
+            : null,
+          chiffres: estRecord(brut.option_batterie.valeur_chiffree)
+            ? {
+                economieAnnuelleMad: nombreServi(brut.option_batterie.valeur_chiffree.economie_annuelle_mad),
+                retourSimpleAns: nombreServi(brut.option_batterie.valeur_chiffree.retour_simple_ans),
+                capaciteUtileKwh: nombreServi(brut.option_batterie.valeur_chiffree.capacite_utile_kwh),
+                restitueKwhAn: nombreServi(brut.option_batterie.valeur_chiffree.restitue_kwh_an),
+              }
+            : null,
         }
       : null,
     services: estRecord(brut.services)
