@@ -10,6 +10,7 @@ une seconde fois.
 from __future__ import annotations
 
 from ..montants import decimale
+from .. import i18n_labels_ci_pages  # noqa: F401 — libellés CPDF
 
 
 def _txt(valeur):
@@ -32,6 +33,24 @@ def langue(d):
     """La langue normalisée du document ('fr' par défaut)."""
     from ..residential import theme
     return theme.langue_doc(d if isinstance(d, dict) else {})
+
+
+def joindre(morceaux, separateur=" &middot; "):
+    """CPDF6 — les morceaux NON vides joints : jamais de séparateur orphelin
+    ni de puce vide."""
+    return separateur.join(m for m in (_txt(x) for x in morceaux) if m)
+
+
+def nettoyer_separateurs(html, separateur=" &middot; "):
+    """CPDF6 — une ligne déjà composée (bande légale) sans morceau vide."""
+    return joindre(str(html or "").split(separateur), separateur)
+
+
+def garanties_servies(d, garanties):
+    """CPDF6 — la garantie « Batterie » seulement quand une option SERVIE
+    porte une batterie (``avec_ok`` du rendu) ; sinon retirée."""
+    batterie = d.get("avec_ok", True) and not d.get("avec_batterie_differee")
+    return [g for g in garanties if batterie or str(g[2]) != "Batterie"]
 
 
 # ── CIQ309 — bloc client entreprise ─────────────────────────────────────────
@@ -141,6 +160,9 @@ def bloc_services(synthese, prefixe, couleur_titre, couleur_texte, doc=None):
         for li in om.get("lignes") or []:
             ht = li.get("total_ht") if isinstance(li, dict) else None
             nom = _txt(li.get("designation")) if isinstance(li, dict) else ""
+            # CPDF — la désignation standard suit la langue du document.
+            if nom.replace("&amp;", "&") == "Exploitation et maintenance (O&M)":
+                nom = libelle(doc, "ci_om_designation", nom)
             prix = (f"{_montant(ht)} MAD " + libelle(doc, "ci_ht", "HT")
                     if ht and ht > 0
                     else libelle(doc, "ci_tarif_sur_demande",
@@ -197,8 +219,30 @@ def _date_signature(valeur):
     return _date_jjmmaaaa(valeur) or _txt(valeur)
 
 
+def _options_accord(d, fmt_mad=None):
+    """CPDF4 — ``[(clé, total TTC formaté)]`` des deux options d'un devis à
+    DEUX options non encore accepté ; ``[]`` sinon (mono-option, accepté).
+    Totaux SERVIS (offre réseau : ``totaux_all.ttc`` ; option avec :
+    ``option_batterie.totaux.ttc``), aucun recalcul."""
+    if d.get("deux_options") is False:
+        return []
+    if (_txt(d.get("accepte_par_nom")) or _txt(d.get("date_acceptation"))
+            or (isinstance(d.get("signature_entreprise"), dict)
+                and d["signature_entreprise"])):
+        return []
+    ob = d.get("option_batterie")
+    tot_avec = (_num_bloc(((ob or {}).get("totaux") or {}).get("ttc"))
+                if isinstance(ob, dict) else 0.0)
+    tot_sans = (_num_bloc((d.get("totaux_all") or {}).get("ttc"))
+                or _num_bloc(d.get("_invest_ttc")))
+    if tot_avec <= 0 or tot_sans <= 0 or d.get("avec_batterie_differee"):
+        return []
+    fmt = fmt_mad or _montant
+    return [("sans", fmt(tot_sans)), ("avec", fmt(tot_avec))]
+
+
 def bloc_acceptation(d, prefixe, couleur_texte="#1F2937",
-                     couleur_ligne="#E5E7EB"):
+                     couleur_ligne="#E5E7EB", fmt_mad=None):
     """Contenu de la case client « Bon pour accord — pour la société »
     (D-CIQ-11) : titre et mention éditables (``doc_texts``, CIQ311).
 
@@ -238,6 +282,17 @@ def bloc_acceptation(d, prefixe, couleur_texte="#1F2937",
               f'<div style="{cadre}">'
               f'{libelle(d, "ci_cachet", "Cachet de la société")}'
               f'</div></div>')
+    # CPDF4 — l'option retenue : deux cases à cocher sur un devis à deux options.
+    cases = "".join(
+        f'<div style="margin-top:3px;"><span style="display:inline-block;'
+        f'width:3mm;height:3mm;border:1px solid {couleur_texte};'
+        f'vertical-align:middle;margin-right:2mm;">&#160;</span>'
+        + libelle(d, f"ci_bpa_option_{cle}",
+                  {"sans": "Sans batterie — {total} MAD TTC",
+                   "avec": "Avec batterie — {total} MAD TTC"}[cle],
+                  total=total)
+        + '</div>' for cle, total in _options_accord(d, fmt_mad))
+    lignes = cases + lignes
     pour = libelle(d, "ci_pour_la_societe", "pour la société")
     return (f'<div class="{prefixe}-sign-h">{titre} — {pour}</div>'
             f'<div class="{prefixe}-acc" style="font-size:7pt;'

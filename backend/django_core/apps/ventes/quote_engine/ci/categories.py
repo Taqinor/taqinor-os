@@ -108,12 +108,12 @@ CATEGORIES = {
     "boulangerie": {
         "libelle": _t("Boulangerie", "Bakery", "مخبزة"),
         "accroche": _t(
-            "Froid, éclairage et climatisation de journée : ce que le "
-            "solaire couvre, sans rien promettre sur la cuisson.",
-            "Daytime refrigeration, lighting and air conditioning: what "
-            "solar covers, with no promise on baking.",
-            "التبريد والإنارة والتكييف خلال النهار: ما تغطيه الطاقة "
-            "الشمسية، دون أي وعد بشأن الطهي."),
+            "Froid, éclairage et climatisation de journée : le solaire en "
+            "allège la part diurne.",
+            "Daytime refrigeration, lighting and air conditioning: solar "
+            "lightens their daytime share.",
+            "التبريد والإنارة والتكييف خلال النهار: تخفف الطاقة الشمسية "
+            "حصتها النهارية."),
     },
     "froid": {
         "libelle": _t("Entrepôt froid", "Cold storage warehouse",
@@ -127,7 +127,8 @@ CATEGORIES = {
             "النهارية."),
     },
     "autre": {
-        "libelle": _t("Autre commerce", "Other business", "نشاط تجاري آخر"),
+        # CPDF — repli générique : aucun libellé d'activité imprimé.
+        "libelle": _t("", "", ""),
         "accroche": _t(
             "Le solaire produit pendant la journée de votre établissement, "
             "en autoconsommation.",

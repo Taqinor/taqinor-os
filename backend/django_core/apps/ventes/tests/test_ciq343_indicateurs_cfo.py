@@ -60,8 +60,9 @@ class Ciq343Van(SimpleTestCase):
     def test_sans_taux_declare_aucune_van_motif(self):
         texte = _texte(_page(_data()))
         self.assertNotIn("VAN au taux", texte)
-        self.assertIn("VAN non calculée : aucun taux d'actualisation déclaré "
-                      "par le client", texte)
+        # CPDF5 — VAN non calculée ⇒ omise, sans ligne d'explication.
+        self.assertNotIn("VAN non calculée", texte)
+        self.assertNotIn("VAN omise", texte)
 
     def test_avec_taux_declare_van_egale_synthese(self):
         d = _data("exemple_industriel_mt")
@@ -78,14 +79,15 @@ class Ciq343Lcoe(SimpleTestCase):
         page = _page(d)
         texte = _texte(page)
         indicateurs = d["economie_ci"]["indicateurs"]
-        self.assertIn("Coût du kWh solaire (LCOE, HT) : 0,1221 MAD/kWh",
+        self.assertIn("Coût du kWh solaire (LCOE, HT) : 0,122 MAD/kWh",
                       texte)
-        self.assertIn("prix moyen de votre kWh évité : 0,8407 MAD/kWh", texte)
+        self.assertIn("prix moyen de votre kWh évité : 0,841 MAD/kWh", texte)
         figures = extract_figures(page)
         lcoe = [m.valeur for i, ms in figures.items()
                 if i.startswith("lcoe_mad_kwh") for m in ms]
-        self.assertEqual([float(v) for v in lcoe],
-                         [indicateurs["lcoe_mad_kwh"]])
+        self.assertEqual(len(lcoe), 1)
+        self.assertAlmostEqual(float(lcoe[0]), indicateurs["lcoe_mad_kwh"],
+                               places=3)
         self.assertIn("lcoe_mad_kwh", FIGURE_KEYS)
 
 

@@ -108,7 +108,8 @@ class Ciq344Decarbonation(SimpleTestCase):
     def test_iso_50001_sans_promesse_de_conformite(self):
         texte = _texte(_page4(_data()))
         self.assertIn("ISO 50001", texte)
-        self.assertIn("sans promesse de conformité", texte)
+        # CPDF5 — aucune réserve imprimée.
+        self.assertNotIn("sans promesse", texte)
 
 
 @tag("weasyprint")  # rendu PDF réel

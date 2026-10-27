@@ -134,7 +134,8 @@ class CategoriesCommerciales(SimpleTestCase):
 
     def test_autre_commerce_libelle(self):
         synthese, _html = _bloc(_data("autre", {}))
-        self.assertEqual(synthese["categorie"]["libelle"], "Autre commerce")
+        # CPDF — repli générique : aucun libellé d'activité imprimé.
+        self.assertEqual(synthese["categorie"]["libelle"], "")
 
     def test_trilingue(self):
         data = _data("hotel", {"chambres": 12, "piscine": True})

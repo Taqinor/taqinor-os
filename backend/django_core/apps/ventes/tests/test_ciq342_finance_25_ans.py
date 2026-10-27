@@ -210,7 +210,7 @@ class Amot90PageEnergie(SimpleTestCase):
     def test_chiffrable_graphique_apres_le_bloc_financier(self):
         p3 = _pages(_data_energie())[3]
         self.assertIn("Rentabilité sur 25 ans", _texte(p3))
-        self.assertLess(p3.index("Hypothèses de l"),
+        self.assertLess(p3.index("Bases du calcul"),
                         p3.index('data-graphique="energie_mensuelle"'))
         sans = _pages(dict(_data_energie(), _sans_graphiques=True))[3]
         self.assertNotIn("data-graphique", sans)
@@ -227,8 +227,9 @@ class Amot91Hypotheses(SimpleTestCase):
                       texte)
         # Décision fondateur 26/10/2026 — aucune réserve interne imprimée.
         self.assertNotIn("à confirmer au calepinage", texte)
-        self.assertIn("Règle de dimensionnement : chaque palier de 5 kWc "
-                      "retenu se rembourse en moins de 10 ans", texte)
+        # CPDF5 — la règle de dimensionnement est interne : non imprimée.
+        self.assertNotIn("Règle de dimensionnement", texte)
+        self.assertNotIn("IEA PVPS", texte)
         self.assertIn("Prix du kWh : Tarif ONEE BT publié", texte)
         self.assertNotIn("repli", texte)
 
@@ -242,9 +243,9 @@ class Amot91Hypotheses(SimpleTestCase):
                                            flux=[])
         texte = _texte(_pages(d)[3])
         self.assertIn("Ce que la centrale produit pour votre site", texte)
-        tableau = texte[texte.index("Hypothèses de l'estimation"):]
+        tableau = texte[texte.index("Bases du calcul"):]
         self.assertIn("Entretien (O&M) non déduit des économies", tableau)
-        self.assertIn("Règle de dimensionnement", tableau)
+        self.assertNotIn("Règle de dimensionnement", tableau)
         # Compact : jamais l'investissement (incomplet ici) dans le tableau.
         self.assertNotIn("Investissement 247 500", tableau)
 
@@ -261,8 +262,9 @@ class Amot91Hypotheses(SimpleTestCase):
         d["etude"]["etude_ci"]["production"]["methode_autoconso"] = \
             "journees_moyennes"
         texte = _texte(_pages(d)[3])
-        self.assertIn("autoconsommation : estimation sur journées moyennes",
-                      texte)
+        # CPDF5 — le repli sur journées moyennes n'est pas dit (il
+        # contredirait « calculé heure par heure ») : aucune méthode.
+        self.assertNotIn("journées moyennes", texte)
         self.assertNotIn("8 760 h", texte)
         # Décision fondateur 26/10/2026 — sans « (série horaire
         # indisponible) ».
@@ -338,11 +340,12 @@ class Amot84SourcesServiesParCode(SimpleTestCase):
 
     def test_anglais_libelles_du_code(self):
         texte = self._texte("en")
-        hyp = texte[texte.index("Estimate assumptions"):]
+        hyp = texte[texte.index("Calculation basis"):]
         hyp = hyp[:hyp.index("kWh price")]
-        for en in ("median from Jordan & Kurtz, NREL/JA-5200-51664, 2012",
-                   "tariff of the time-of-use period covered, hour by hour"):
-            self.assertIn(en, hyp)
+        # CPDF5 — plus de citation (NREL, Jordan & Kurtz) côté client.
+        self.assertIn("tariff of the time-of-use period covered, hour by "
+                      "hour", hyp)
+        self.assertNotIn("NREL", hyp)
         # Décision fondateur 26/10/2026 — l'indexation constante est une
         # réserve interne : la valeur seule, jamais « (assumption) ».
         self.assertNotIn("(assumption)", hyp)
@@ -444,8 +447,9 @@ class Amot94RemplacementSurLaBaseServie(SimpleTestCase):
         argent, ligne = self._ligne("exemple")
         self.assertEqual(argent["base"], "deux")
         ttc = argent["remplacements"][0]["montant_ttc_mad"]
-        self.assertIn(fmt_centimes(ttc).replace(" ", " ") + " MAD TTC",
-                      ligne)
+        # CPDF5 — le montant suit la base du tableau de flux (HT sauf TTC).
+        ht = argent["remplacements"][0]["montant_ht_mad"]
+        self.assertIn(fmt_centimes(ht).replace(" ", " ") + " MAD HT", ligne)
 
 
 class Amot97Sensibilites(SimpleTestCase):
