@@ -437,6 +437,15 @@ class BornePoseParDefautAdev90(_Base):
         self.assertIsNotNone(toit['kwc'])
         self.assertIn('pose estimée « toit_plat_leste »', toit['source'])
 
+    def test_pente_du_lead_sans_pose_panneaux_suivent_le_toit(self):
+        # Critique Fable : la pente du LEAD (feuille privée ``_pente_toit``)
+        # compte aussi — elle est recopiée quand la pose ESTIMÉE suit le toit.
+        res = etude_ci._Resolution()
+        res.poser('_pente_toit', 20, etude_ci._provenance('lead', 'client'))
+        self.assertEqual(etude_ci._pose_estimee(res), 'toiture_inclinee')
+        vide = etude_ci._Resolution()
+        self.assertEqual(etude_ci._pose_estimee(vide), 'toit_plat_leste')
+
     def test_pente_declaree_sans_pose_panneaux_suivent_le_toit(self):
         rep = self._bornes(pente_deg=15)
         self.assertIn('pose estimée « toiture_inclinee »',

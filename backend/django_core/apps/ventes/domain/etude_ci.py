@@ -84,7 +84,12 @@ def _pose_estimee(res):
     par_couverture = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'))
     if par_couverture:
         return par_couverture
+    # Critique Fable (vague 2) : la pente du LEAD vit dans la feuille privée
+    # ``_pente_toit`` (recopiée dans ``pente_deg`` seulement quand les
+    # panneaux suivent le toit) — elle compte aussi.
     pente = _num(res.valeur('pente_deg'))
+    if pente is None:
+        pente = _num(res.valeur('_pente_toit'))
     return POSE_TOIT_INCLINE if pente and pente > 0 else TYPE_POSE_DEFAUT
 
 
@@ -330,7 +335,7 @@ def _couche_lead(res, lead):
             res.poser('type_pose', POSE_DE_LA_SURFACE_LEAD.get(valeur), prov)
         if feuille == 'surface_utile_m2':
             res.poser('surface_type', 'declaree', prov)
-    if res.valeur('type_pose') in POSES_SUIVANT_LE_TOIT:
+    if (res.valeur('type_pose') or _pose_estimee(res)) in POSES_SUIVANT_LE_TOIT:
         for prive, feuille in (('_pente_toit', 'pente_deg'), ('_azimut_toit', 'azimut_deg')):
             res.poser(feuille, res.valeur(prive), res.provenance(prive))
     # CIQ134 — cos φ DÉCLARÉ (information du lead, avec sa provenance) :
@@ -685,16 +690,10 @@ def lire_production(site, toit=None):
     if not formes or not mensuel:
         return None
     productibles, source = mensuel
-    if lat is None or lon is None:
-        # CORC12 (27/10/2026, constat CMP) — sans GPS déclaré, la série
-        # horaire se calcule au point de la VILLE au gazetier (la ville que
-        # PVGIS lit déjà) : jamais une position devinée (ville inconnue ⇒
-        # repli dit sur les journées moyennes).
-        from apps.parametres.villes_maroc import coordonnees_ville
-        coords = coordonnees_ville(ville or '')
-        if coords:
-            lat, lon = coords[0], coords[1]
-    return productibles, formes, source, _serie_horaire(lat, lon, toit)
+    # CORC12 (27/10/2026, constat CMP) — sans GPS déclaré, la série horaire
+    # se calcule au point de la VILLE au gazetier (ville inconnue ⇒ repli dit
+    # sur les journées moyennes).
+    return productibles, formes, source, _serie_horaire(*_point_du_site(site), toit)
 
 
 def _serie_horaire(lat, lon, toit):
@@ -854,17 +853,19 @@ def _reglages_societe(company):
 
 # ── 4. TOIT ──────────────────────────────────────────────────────────────────
 
-def _latitude_du_site(site):
-    """La latitude déclarée du site, sinon celle de sa VILLE au gazetier
-    (``parametres.villes_maroc.coordonnees_ville`` — la ville que PVGIS lit
-    aussi) : l'espacement anti-ombrage d'un toit plat lesté en dépend.
-    Jamais une position devinée : ville inconnue ⇒ ``None``."""
-    lat = _num((site or {}).get('lat'))
-    if lat is not None:
-        return lat
+def _point_du_site(site):
+    """``(lat, lon)`` : le GPS déclaré du site, sinon (CORC12) le point de sa
+    VILLE au gazetier (``parametres.villes_maroc.coordonnees_ville`` — la
+    ville que PVGIS lit aussi). Jamais une position devinée : ville inconnue
+    ⇒ ``(None, None)``. Sert la série horaire, la borne lestée (espacement
+    anti-ombrage) et les coordonnées FIGÉES de l'étude."""
+    site = site or {}
+    lat, lon = _num(site.get('lat')), _num(site.get('lon'))
+    if lat is not None and lon is not None:
+        return lat, lon
     from apps.parametres.villes_maroc import coordonnees_ville
-    coords = coordonnees_ville((site or {}).get('ville') or '')
-    return coords[0] if coords else None
+    coords = coordonnees_ville(site.get('ville') or '')
+    return (coords[0], coords[1]) if coords else (None, None)
 
 
 def _borne_toit(res, devis, module, alertes):
@@ -897,7 +898,7 @@ def _borne_toit(res, devis, module, alertes):
     resultat = calepinage_services.contenance_surface_declaree(
         surface, mode_pose=mode_pose, cotes_module_m=cotes,
         inclinaison_deg=pente if pente is not None else PVGIS_ANGLE_DEG,
-        latitude_deg=_latitude_du_site(site), puissance_module_wc=pmax)
+        latitude_deg=_point_du_site(site)[0], puissance_module_wc=pmax)
     if resultat.get('kwc') is None:
         alertes.append(_alerte('contenance_toit_inconnue', 'toit',
                                'Contenance du toit non bornée : %s.' % resultat.get('motif')))
@@ -1292,7 +1293,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         production, hyp_prod, al_prod = bloc_production_ci(
             productible_mensuel=productibles, formes_saison=formes,
             derate=PRODUCTION_DERATE,
-            coordonnees_figees={'lat': _num(site.get('lat')), 'lon': _num(site.get('lon')),
+            # Critique Fable (vague 2) : le point RÉELLEMENT appelé (GPS ou
+            # ville au gazetier), pour une étude reproductible.
+            coordonnees_figees={'lat': _point_du_site(site)[0], 'lon': _point_du_site(site)[1],
                                 'date_appel': _aujourdhui().isoformat()},
             source=source, toit=toit_declare, serie=serie, plan=(serie or {}).get('plan'))
         alertes.extend(al_prod)
