@@ -40,3 +40,21 @@ class LegendeProvisionTests(SimpleTestCase):
                       'inverter_replace_year': 11})
         self.assertTrue(_a_la_phrase(html))
         self.assertIn('Le palier en année&nbsp;11', html)
+
+
+class ProvisionDeuxOptionsTests(SimpleTestCase):
+    """RPDF — deux onduleurs de prix différents ⇒ les deux montants."""
+
+    def test_deux_montants_quand_les_onduleurs_different(self):
+        html = _html({'inverter_replace_cost': 15000,
+                      'inverter_replace_cost_sans': 8000,
+                      'inverter_replace_year': 12})
+        self.assertIn('8 000 MAD sans batterie', html)
+        self.assertIn('15 000 MAD avec batterie', html)
+
+    def test_un_seul_montant_quand_les_onduleurs_sont_egaux(self):
+        html = _html({'inverter_replace_cost': 15000,
+                      'inverter_replace_cost_sans': 15000,
+                      'inverter_replace_year': 12})
+        self.assertNotIn('sans batterie, 15 000 MAD avec', html)
+        self.assertIn('15 000 MAD', html)

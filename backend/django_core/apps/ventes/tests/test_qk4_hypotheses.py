@@ -13,7 +13,7 @@ import itertools
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.crm.models import Client
 from apps.stock.models import Produit
@@ -218,3 +218,26 @@ class TestHypothesesRender(TestCase):
         self.assertIn('Estimations non contractuelles', html)
         self.assertIn('proposition en ligne', html)
         self.assertEqual(len(doc.pages), 3)
+
+
+class TestHypotheseBaremeHoraire(SimpleTestCase):
+    """RPDF — en modèle horaire avec distributeur connu, la ligne dit le
+    barème du distributeur, jamais « saisi pour ce devis »."""
+
+    def _items(self, savings_model, utility='onee'):
+        from apps.ventes.quote_engine.etude_restitution import restituer_etude
+        roi = {'facture_sans': 12000, 'facture_avec_s': 4000,
+               'facture_avec_a': 3000, 'eco_s_ann': 8000, 'eco_a_ann': 9000,
+               'tarif_kwh': 1.2, 'prod_kwh': 5000}
+        res = restituer_etude(
+            _client_city='Casablanca', _co_productible=None, _corrige=None,
+            _utility=utility, etude={}, puissance_kwc=3.0, roi=roi,
+            savings_model=savings_model, savings_model_avec=None,
+            savings_model_sans=None, scenario='Sans batterie')
+        return res[4]['items']  # 5e élément = bloc « Nos hypothèses »
+
+    def test_horaire_dit_le_bareme_du_distributeur(self):
+        items = self._items('horaire')
+        self.assertIn('Tarif électricité : barème ONEE par tranche '
+                      '(barème national)', items)
+        self.assertFalse([i for i in items if 'saisi pour ce devis' in i])
