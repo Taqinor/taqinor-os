@@ -107,6 +107,9 @@ class _Base(TestCase):
         CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
             cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ118 de test'}
             for cle in ('pose_structure', 'pose_modules')}})
+        # CORC6 — chaque prestation réglée a son article (rôle = clé du forfait).
+        for cle in ('pose_structure', 'pose_modules'):
+            cls._produit(cls.co, 'Prestation %s' % cle, role_ci=cle, prix_vente=Decimal('0'))
         # Un onduleur d'une AUTRE société, moins cher : jamais lu.
         cls.onduleur_etranger = cls._onduleur(
             cls.autre, 'Onduleur réseau étranger 50kW Triphasé', 50,

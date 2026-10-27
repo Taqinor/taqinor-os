@@ -1451,6 +1451,12 @@ MESSAGES_ARRET = {
 MESSAGE_PRIX_A_RENSEIGNER = (
     "Prix à renseigner avant un devis automatique C&I : %s. À régler par "
     "l'administrateur dans Paramètres › Devis › Prestations C&I, ou sur la fiche de l'article.")
+#: CORC6 (27/10/2026, constat CCAT) — une prestation chiffrée (forfait réglé)
+#: SANS article au catalogue comptait dans l'étude et disparaissait du devis.
+MESSAGE_PRESTATION_SANS_ARTICLE = (
+    "Article manquant au catalogue pour : %s. Le prix est réglé dans Paramètres "
+    "› Devis › Prestations C&I, mais aucun article du Stock ne porte ce rôle : "
+    "créez-le (ou désarchivez-le) avant un devis automatique.")
 MESSAGE_MAD_SANS_CONTRAT = (
     "Facture en MAD sans contrat d'électricité déclaré : précisez le contrat "
     '(BT patenté / force motrice) ou saisissez la conso en kWh.')
@@ -1515,6 +1521,12 @@ def refus_devis_auto_ci(etude):
     if taille.get('raison_arret') == 'prix_manquants' or manquants:
         return (MESSAGE_PRIX_A_RENSEIGNER % ', '.join(str(m) for m in manquants),
                 'composition')
+    # CORC6 — une ligne chiffrée sans article ne s'écrit pas au devis (et le
+    # regroupement « Installation clé en main » ne la reconnaîtrait pas) :
+    # refus nommé, jamais un total d'étude qui diverge du total du devis.
+    orphelines = lignes_chiffrees_sans_article(etude.get('composition'))
+    if orphelines:
+        return MESSAGE_PRESTATION_SANS_ARTICLE % ', '.join(orphelines), 'composition'
     # ADEV78 — TOUTE alerte bloquante refuse, même quand une taille existe
     # (taille saisie aux onduleurs infaisables comprise).
     if bloquants:
@@ -1524,6 +1536,23 @@ def refus_devis_auto_ci(etude):
     if not taille.get('retenue_kwc'):
         return MESSAGES_ARRET.get(taille.get('raison_arret'), MESSAGES_ARRET['horizon_marginal'])
     return None
+
+
+def lignes_chiffrees_sans_article(composition):
+    """CORC6 — désignations des lignes CHIFFRÉES (prix connu, quantité > 0)
+    sans article du catalogue : :func:`lignes_du_devis_ci` les saute, elles
+    n'entrent donc jamais au devis. Les postes « à chiffrer après visite »
+    (hors total) n'en sont pas."""
+    noms = []
+    for ligne in (composition or {}).get('lignes') or []:
+        if ligne.get('a_chiffrer_visite') or ligne.get('produit'):
+            continue
+        quantite = _num(ligne.get('quantite'))
+        if ligne.get('prix_connu') and quantite and quantite > 0:
+            nom = ligne.get('designation') or ligne.get('role') or '?'
+            if nom not in noms:
+                noms.append(nom)
+    return noms
 
 
 def devis_auto_possible(etude):

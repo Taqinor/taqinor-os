@@ -88,6 +88,11 @@ class _Base(TestCase):
         CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
             cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ120 de test'}
             for cle in FORFAITS_TEST}})
+        # CORC6 — chaque prestation réglée a son article (rôle = clé du forfait),
+        # comme le semis ``seed_catalogue`` (CI-ETUDES…CI-TRANSPORT).
+        for cle in FORFAITS_TEST:
+            Produit.objects.create(company=cls.co, nom='Prestation %s' % cle, role_ci=cle,
+                                   prix_vente=Decimal('0'), prix_achat=Decimal('0'))
 
     def setUp(self):
         patcher = mock.patch.object(etude_ci, 'lire_production',
@@ -676,3 +681,16 @@ class BrouillonsMultiplesCorc7Tests(_Base):
             build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
                              user=self.user, company=self.co, journal_auto=journal)
         self.assertNotIn('brouillons_ci_multiples', [a['code'] for a in journal['alertes']])
+
+
+class PrestationSansArticleCorc6Tests(_Base):
+    """CORC6 (27/10/2026, constat CCAT) — une prestation réglée SANS article
+    au catalogue fait refuser le devis automatique en la NOMMANT ; jamais un
+    total d'étude qui diverge du devis écrit."""
+
+    def test_prestation_sans_article_refus_nomme(self):
+        Produit.objects.filter(company=self.co, role_ci='transport_ci').delete()
+        erreur = self._refus(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertEqual(erreur.field, 'composition')
+        self.assertIn('Article manquant au catalogue', erreur.message)
+        self.assertIn('Transport', erreur.message)
