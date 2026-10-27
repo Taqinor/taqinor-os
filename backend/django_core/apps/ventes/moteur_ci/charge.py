@@ -28,6 +28,7 @@ from apps.ventes.moteur_ci.profils import (
     MOTIF_PROFIL_DECLARE, SAISONS, TYPES_JOUR, forme_archetype,
 )
 from apps.ventes.moteur_ci.talons import talon_par_defaut
+from apps.ventes.ramadan import plage_ramadan_pour
 
 HEURES = 24
 DUREE_EQUIPES_H = {'1x8': 8, '2x8': 16, '3x8': 24, 'continu': 24}
@@ -109,6 +110,19 @@ def _jours_annee(annee):
         jour += datetime.timedelta(days=1)
 
 
+def _ramadan_table(ramadan, annee):
+    """CLD15 — ``(du, au)`` de la table sourcée ``apps/ventes/ramadan.py`` pour
+    l'année de RÉFÉRENCE quand le Ramadan déclaré a des plages mais aucune
+    date ; ``None`` sinon (dates saisies, ou table muette pour cette année)."""
+    if not (isinstance(ramadan, dict) and ramadan.get('plages')
+            and not ramadan.get('du') and not ramadan.get('au')):
+        return None
+    trouve = plage_ramadan_pour(datetime.date(annee, 1, 1))
+    if trouve is None or trouve[0]['debut'].year != annee:
+        return None
+    return trouve[0]['debut'], trouve[0]['fin']
+
+
 def _calendrier(rythme, annee, feries, alertes):
     """Pour chaque jour : (ouvert ?, type calendaire, plages civiles ou None)."""
     jours_ouverts = rythme.get('jours_ouverts')
@@ -151,11 +165,20 @@ def _calendrier(rythme, annee, feries, alertes):
     ramadan = rythme.get('ramadan')
     ramadan_bornes = None
     if ramadan:
+        table = _ramadan_table(ramadan, annee)
         try:
             ramadan_bornes = (_date(ramadan['du'], annee), _date(ramadan['au'], annee))
         except (KeyError, TypeError, ValueError, IndexError):
-            alertes.append(_alerte('ramadan_sans_dates', 'rythme.ramadan',
-                                   'Plages Ramadan déclarées sans dates : ignorées.'))
+            if table is not None:
+                ramadan_bornes = (_date(table[0], annee), _date(table[1], annee))
+            else:
+                alertes.append(_alerte('ramadan_sans_dates', 'rythme.ramadan',
+                                       'Plages Ramadan déclarées sans dates : ignorées.'))
+        if ramadan and not plages_par_type:
+            alertes.append(_alerte(
+                'ramadan_sans_plages', 'rythme.ramadan',
+                "Ramadan déclaré mais aucune plage d'ouverture : le rythme du Ramadan "
+                'est ignoré (profil archétype).', niveau='info', interne=True))
 
     calendrier = []
     for jour in _jours_annee(annee):
@@ -820,6 +843,10 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
                                '12 kWh mensuels ou un total annuel requis.', niveau='bloquant'))
         return None, provenance, alertes
 
+    if _ramadan_table(rythme.get('ramadan'), annee_reference) is not None:
+        provenance['ramadan'] = {
+            'source': 'dates Ramadan %d : apps/ventes/ramadan.py' % annee_reference,
+            'statut': 'table'}
     talon = _talon_valide(rythme.get('talon'), alertes)
     talon_kw = talon.get('kw')
     talon_pct = talon.get('part_pct')

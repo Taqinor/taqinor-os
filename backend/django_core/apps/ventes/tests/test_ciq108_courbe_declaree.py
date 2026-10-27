@@ -116,6 +116,39 @@ class TestCourbeDeclaree(unittest.TestCase):
         self.assertIn('profil_estime', codes)
         self.assertIn('feries_non_saisis', codes)
 
+    def test_ramadan_sans_dates_prend_la_table_de_l_annee_reference(self):
+        # CLD15 — plages Ramadan sans dates : table sourcée de l'année de
+        # RÉFÉRENCE (2025 : 01/03-29/03), jamais l'année courante projetée.
+        base = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}, 'talon': {'kw': 1}}
+        plages = {'ouvre': [[9, 15]]}
+        sans = dict(base, ramadan={'plages': plages})
+        avec = dict(base, ramadan={'du': '2025-03-01', 'au': '2025-03-29', 'plages': plages})
+        jt_sans, prov, alertes = courbe_declaree(sans, [10000] * 12, annee_reference=2025,
+                                                 feries=[])
+        jt_avec, _p, _a = courbe_declaree(avec, [10000] * 12, annee_reference=2025, feries=[])
+        self.assertEqual(jt_sans, jt_avec)
+        self.assertNotIn('ramadan_sans_dates', {a['code'] for a in alertes})
+        self.assertIn('dates Ramadan 2025 : apps/ventes/ramadan.py', prov['ramadan']['source'])
+        # le Ramadan change réellement la courbe de mars
+        jt_nu, _p, _a = courbe_declaree(base, [10000] * 12, annee_reference=2025, feries=[])
+        self.assertNotEqual(jt_sans, jt_nu)
+
+    def test_ramadan_table_muette_garde_l_alerte(self):
+        rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}, 'talon': {'kw': 1},
+                  'ramadan': {'plages': {'ouvre': [[9, 15]]}}}
+        _jt, prov, alertes = courbe_declaree(rythme, [10000] * 12, annee_reference=2040,
+                                             feries=[])
+        self.assertIn('ramadan_sans_dates', {a['code'] for a in alertes})
+        self.assertNotIn('ramadan', prov)
+
+    def test_ramadan_sans_plage_d_ouverture_alerte_interne(self):
+        _jt, _p, alertes = courbe_declaree(
+            {'ramadan': {'du': '2025-03-01', 'au': '2025-03-29',
+                         'plages': {'ouvre': [[9, 15]]}}},
+            42000, annee_reference=2025, archetype='bureau', feries=[])
+        alerte = next(a for a in alertes if a['code'] == 'ramadan_sans_plages')
+        self.assertTrue(alerte['interne'])
+
     def test_sans_plage_ni_archetype_profil_exige(self):
         jt, _prov, alertes = courbe_declaree({'jours_ouverts': TOUS}, [1000] * 12,
                                              annee_reference=ANNEE, archetype='hammam', feries=[])
