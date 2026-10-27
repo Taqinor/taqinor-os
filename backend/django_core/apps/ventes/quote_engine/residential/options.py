@@ -962,8 +962,37 @@ def build_pages(ctx) -> list:
             return 0.0
         return 11.0 + len(_opts) * 4.5
 
+    def _totaux_mm():
+        """RPDF23 — ce que les cartes de totaux prennent EN PLUS des fixtures
+        qui ont calibré les 68 mm (Sous-total, TVA 10 %, TVA 20 %, sans remise
+        ni arrondi) : une ligne remise / arrondi / Total HT ou un 3ᵉ taux
+        (4,5 mm chacune, comme une rangée de tableau), et l'intitulé de
+        l'option recommandée qui passe à la ligne à côté de sa pastille
+        (≈ 4 mm). Devis 1315 du 27/10 (9 lignes communes, arrondi + Total HT,
+        « Hybride, batterie plus tard ») : 67,8 mm modélisés, bas de la
+        rentabilité rogné par le pied → 80,8 mm, page rentabilité dédiée.
+        Jamais négatif : un devis aux totaux calibrés garde sa décision."""
+        def _pos(v):
+            try:
+                return float(v or 0) > 0
+            except (TypeError, ValueError):
+                return False
+
+        def _lignes(tot):
+            tot = tot or {}
+            rem, arr = _pos(tot.get("remise")), _pos(tot.get("arrondi"))
+            return (1 + rem + arr + (rem or arr)
+                    + len(tot.get("tva_par_taux") or []))
+        cartes = ([d.get("totaux_sans"), d.get("totaux_avec")] if deux_options
+                  else [d.get("totaux_avec") if avec_ok else d.get("totaux_sans")])
+        extra = 4.5 * max([_lignes(t) - 3 for t in cartes] + [0])
+        _nom_reco = {"sans": nom_option(d, "sans"), "avec": libelle_avec}.get(_reco)
+        if deux_options and _nom_reco and len(_nom_reco) > 20:
+            extra += 4.0
+        return extra
+
     fits_one = (_table_mm(entries) + _deltas_mm() + _comparatif_mm()
-                + _options_mm()) <= 68.0
+                + _options_mm() + _totaux_mm()) <= 68.0
 
     # ── PRODMOIS + CALEPDF — UNE rangée de visuels sur la page détail ────────
     # Deux artefacts la peuplent, dans la MÊME hauteur (19 mm, fixée par le

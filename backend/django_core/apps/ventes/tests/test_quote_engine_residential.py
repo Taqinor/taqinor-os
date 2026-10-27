@@ -499,6 +499,35 @@ class TestResidentialQRESRound(TestCase):
         self.assertNotIn("2.0", joined)
 
 
+class TestRpdf23ModeleHauteurTotaux(TestCase):
+    """RPDF23 — devis 1315 (rendu réel du 27/10, deux options, 9 lignes
+    communes, arrondi + Total HT) : le modèle QRES17 l'estimait à 67,8 mm
+    (≤ 68 : une page) et le bas du bloc « Rentabilité sur 25 ans » passait
+    sous le pied. Les lignes de totaux au-delà des fixtures calibrées
+    (remise / arrondi / Total HT) entrent désormais dans le budget. Aucun
+    rendu WeasyPrint : la décision de pagination se lit sur la LISTE de pages
+    que ``options.build_pages`` rend."""
+
+    @staticmethod
+    def _pages(data):
+        from apps.ventes.quote_engine.residential import (
+            options, render, renderer)
+        return options.build_pages(render.build_ctx(renderer._augment(data)))
+
+    def test_rpdf23_arrondi_et_total_ht_entrent_dans_le_budget(self):
+        from apps.ventes.quote_engine.residential import sample_data
+        base = sample_data.build("plus5")
+        # Test-du-test : la fixture calibrée (9 lignes communes, totaux sans
+        # remise ni arrondi) garde sa page unique d'hier.
+        self.assertEqual(len(self._pages(base)), 1)
+        data = sample_data.build("plus5")
+        for cle in ("totaux_sans", "totaux_avec"):
+            tot = dict(data[cle], arrondi=56.0)
+            tot["ht_net"] = tot["ht_brut"] - 56.0
+            data[cle] = tot
+        self.assertGreater(len(self._pages(data)), 1)
+
+
 @tag('pdf')
 class TestResidentialWarmPathCache(TestCase):
     """QX8 — chemin chaud : polices/logo/graphiques + octets PDF sont mis en
