@@ -339,6 +339,7 @@ class MesDevisPortailLigneSerializer(serializers.Serializer):
     date_validite = serializers.CharField(allow_null=True)
     total_ttc = serializers.CharField()
     accepte = serializers.BooleanField()
+    acceptable = serializers.BooleanField()
     mis_a_jour_le = serializers.CharField(allow_null=True)
     deux_options = serializers.BooleanField()
     options = serializers.ListField(child=serializers.DictField())

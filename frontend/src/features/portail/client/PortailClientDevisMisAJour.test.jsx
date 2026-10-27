@@ -39,3 +39,16 @@ describe('PortailClientDevis — QJR565 « Document mis à jour le »', () => {
     expect(screen.queryByTestId(`devis-mis-a-jour-${intact.id}`)).toBeNull()
   })
 })
+
+describe('PortailClientDevis — ERR-PORTAIL-ACCEPTER-DEVIS-REFUSE', () => {
+  it('« Accepter » seulement quand le serveur sert acceptable (jamais sur un Refusé)', async () => {
+    portailApi.devis.liste.mockResolvedValue(reponseContrat('portail', 'mes_devis_liste'))
+    const lignes = exempleContrat('portail', 'mes_devis_liste').results
+    const refuse = lignes.find((l) => l.statut === 'refuse')
+    expect(refuse).toBeTruthy()
+    renderPage()
+    await screen.findByText(refuse.reference)
+    expect(screen.getAllByRole('button', { name: 'Accepter' }))
+      .toHaveLength(lignes.filter((l) => l.acceptable).length)
+  })
+})

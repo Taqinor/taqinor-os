@@ -1,0 +1,26 @@
+ACAL364 — PA2.3 — MOITIÉ SERVEUR — rejeu API + gardes (helper de l'orchestrateur), pile locale docker (projet erp-agentique, backend monté = origin/main e5a02b61e, hachés sha256 de services/layout.py, chaines.py, electrique.py, modules_pans.py, views/electrique.py, views/calepinages.py identiques worktree/conteneur), 2026-10-26.
+Sonde manage.py shell : APIClient(HTTP_HOST='localhost') force_authenticate demo_admin (société 1) sur les VRAIES routes ; transaction.atomic + rollback forcé : rien ne reste (compté après rollback). Les tracebacks d'auto-import du shell (STAGES, contrats, kb) en tête de sortie sont du bruit d'import, sans lien.
+Portée : POST layout/section/ alleeTechnique, conservation des autres clés, 409 sur jeton périmé ; garde des écrivains ; grep du front. L'écran (panneau Allées, message 409 affiché) est la moitié de l'orchestrateur : AUCUNE étape n'est ajoutée au registre pour cette trace.
+
+Sortie brute (bloc ACAL364) :
+=== ACAL364 (serveur) ===
+setup: Lead 1040 Calepinage 21 D0 (1 zone) enregistré ; GET -> 200 jeton t0= 0adeefa1dc04a7625c45c5dd542e8079eb8dd9e6e1ad8ec7a9cef597c7cd31dc
+1. POST section horizonProfile (autre onglet) base=t0 -> 200 jeton t1= 5638e3abfe2b55f9127b4b31d0aa32ccf3efbea54d340bcb399d9809d221495e
+2. POST section alleeTechnique {largeurM:0.9, source:saisie} base=t1 -> 200 jeton t2= 9d6c1ef5a12b1f8a5f15cefcdc2b692eec48f6961d2a2c75aebdc15eca1a1fae
+3. GET re-read: alleeTechnique = {'source': 'saisie', 'largeurM': 0.9} ; horizonProfile intact: True ; zones intactes: True ; autres clés octet-identiques: True ; clés: ['alleeTechnique', 'horizonProfile', 'panelWatt', 'version', 'zones']
+4. POST alleeTechnique 1.5 avec jeton périmé t0 -> 409 {"detail": "Le document a été modifié ailleurs depuis votre ouverture : rechargez avant d'enregistrer.", "code": "document_modifie", "empreinte_courante": "9d6c1ef5a12b1f8a5f15cefcdc2b692eec48f6961d2a2c75aebdc15eca1a1fae"}
+5. GET re-read after 409: alleeTechnique = {'source': 'saisie', 'largeurM': 0.9} (inchangée: True )
+VERDICT ACAL364 serveur: PASS
+rollback: rien ne reste ; Calepinage restant ACCEPT-ACAL36x = 0
+
+Garde : `python scripts/check_calepinage_ecrivains_layout.py` (worktree e5a02b61e) →
+  « check_calepinage_ecrivains_layout: OK — seul l'atelier réécrit le document entier (0 passif(s) gelé(s)). » exit=0 ; scripts/check_calepinage_ecrivains_layout.py:31 `ALLOWLIST: dict = {}`.
+Grep `enregistrerLayoutCalepinage(` dans frontend/src (hors tests ET tests) : 0 appel (seules restent des mentions en commentaire — sorties.js:35/77, calepinageApi.js:157/370, HorizonPanel.jsx:30 — et un mock `enregistrerLayoutCalepinage: vi.fn()` dans HorizonPanel.heures.test.jsx:17 ; la clé API sans appelant a été retirée, golden calepinageApi « -1 ACAL364 »).
+PanneauAllees.jsx : importe `ecrireSection` (l.3) et écrit `cle: 'alleeTechnique'` (l.375-376).
+
+Attendu (plan) vs observé :
+- section alleeTechnique {largeurM:0.9, source:'saisie'} avec le jeton courant → 200 : OBSERVÉ.
+- relecture : alleeTechnique présente ; horizonProfile (écrit par un « autre onglet » après l'ouverture) intact ; zones, panelWatt, version octet-identiques (json.dumps sort_keys) : OBSERVÉ.
+- jeton périmé → 409 {"detail": "Le document a été modifié ailleurs depuis votre ouverture : rechargez avant d'enregistrer.", "code": "document_modifie", "empreinte_courante": …} ; rien d'écrit (allée relue = 0,9) : OBSERVÉ.
+- ALLOWLIST vide, garde verte, 0 appel hors atelier : OBSERVÉ.
+Verdict serveur : PASS. Moitié écran : à jouer par l'orchestrateur.

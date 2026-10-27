@@ -1,0 +1,17 @@
+AMET20 — PA1.4 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient demo_admin, VRAIE fiche PATCH /api/django/crm/leads/<id>/, VRAIE route …/relance/initialiser/, service réel
+placer_anciens_leads(company, user, apply=True, leads_en_portee=…) — le cœur de la commande placer_anciens_leads ; transaction.atomic + rollback). Société démo 1.
+
+1. Deux anciens leads sans cadence (créés il y a 120 j, CONTACTED, 0 touche) : « ACC Ancien Saisi » (1090) et témoin (1091).
+   Fiche : PATCH lead 1090 {relance_date: 2026-11-02} → 200, relu 2026-11-02 ; saisies_humaines relu [] (voir note).
+2. Aperçu placement (apply=False) : ignores {rappel_manuel_a_venir: 1} ; apply=True : ignores {rappel_manuel_a_venir: 1}, erreurs 0.
+   Lead 1090 : relance_date 2026-11-02 INCHANGÉE, aucune touche, stage CONTACTED ; GET fiche relance_date 2026-11-02.
+   Témoin 1091 : placé (COLD, réveil 2026-10-27 / 2026-11-26) — le placement tourne bien.
+   Second placement : relance_date 2026-11-02, mêmes compteurs (idempotent).
+3. Moteur (_recaler_file via POST …/relance/initialiser/ {cadence: contact} → 200) sur un lead dont saisies_humaines=['relance_date'] est
+   posé en base et relance_date 2026-11-02 : touches 1 et 2 au 2026-10-26, relance_date GARDÉE 2026-11-02 (ecrire_si_libre).
+Note : l'observable de la preuve (date inchangée après placement) est vérifié ; il est tenu ici par la garde ACRM20 « rappel_manuel_a_venir »
+   du placement. Le marqueur saisies_humaines n'est PAS posé par la fiche (défaut constaté en AMET19-PA1.1 :
+   apps/crm/views.py:599/631 borne le save sans 'saisies_humaines') : la protection AMET20 du moteur (_recaler_file) n'est donc effective
+   en vrai que pour un marqueur posé autrement (rattrapage de migration).
+Verdict : PASS.

@@ -1,0 +1,17 @@
+ADEV75 — P6 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (service réel + VRAIE route /api/django/ventes/devis/<id>/proposal/ en demo_admin, transaction.atomic + rollback : rien ne reste).
+
+0. Base démo (société 1) : aucun devis C&I ne porte d'étude `etude_ci` (2 devis C&I démo, sans lead ⇒ rafraichir_etude_ci_devis(force=True) renvoie None : pas de profil de consommation).
+   Montage (dans la transaction) : devis démo RÉEL DEV-202610-0004 (pk 831, industriel, ENVOYÉ, 11 lignes, calcul_corrige True) reçoit l'aperçu C&I
+   de l'échantillon partagé contract_samples/etude_ci_preview.json (tension mt, TVA récupérable « non », prix_a_renseigner vidés) — même montage que le test ADEV75.
+   Lignes, remises et totaux du devis = ceux de la base démo (aucun montant injecté).
+1. option_totaux(devis) : ht 45 643,94 ; ttc 53 500,00 (= Devis.total_ttc 53 500,00).
+2. economie_ci_pour_devis(devis) → statut calcule, base ttc (« TVA non récupérable déclarée « non » : économies en TTC (D-CIQ-3) »).
+   flux_ttc an 0 = {economie_mad 0.0, flux_mad -53500.0, cumul_mad -53500.0} = −option_totaux.ttc ; indicateurs retour_ans 1, tri_pct 131.54 (même série).
+3. GET /api/django/ventes/devis/831/proposal/ → 200 application/pdf, 4 pages (industriel). Texte extrait (fitz) :
+   « Synthèse / Investissement 53 500,00 MAD TTC / … / Retour estimé 1 ans / TRI sur 25 ans 131,5 % »,
+   « Hypothèses de l'estimation : Investissement (TTC, clé en main) : 53 500,00 MAD. TRI et délai de retour calcul… »,
+   et le tableau des lignes « Total HT 45 643,94 MAD / TVA 7 856,06 MAD / Total TTC 53 500,00 MAD ».
+   ⇒ le coût et le délai de retour imprimés reposent sur le TTC canonique (même 53 500,00 que Total TTC et option_totaux).
+Note : l'étude est l'échantillon du contrat (production synthétique), d'où un retour de 1 an sans signification commerciale ; seule la chaîne investissement → flux an 0 → PDF est jugée.
+Verdict : PASS.

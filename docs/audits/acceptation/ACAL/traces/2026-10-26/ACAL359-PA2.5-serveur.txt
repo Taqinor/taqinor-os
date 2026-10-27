@@ -1,0 +1,30 @@
+ACAL359 — PA2.5 — MOITIÉ SERVEUR — rejeu API (helper de l'orchestrateur), pile locale docker (projet erp-agentique, backend monté = origin/main e5a02b61e, hachés sha256 de services/layout.py, chaines.py, electrique.py, modules_pans.py, views/electrique.py, views/calepinages.py identiques worktree/conteneur), 2026-10-26.
+Sonde manage.py shell : APIClient(HTTP_HOST='localhost') force_authenticate demo_admin (société 1) sur les VRAIES routes ; transaction.atomic + rollback forcé : rien ne reste (compté après rollback). Les tracebacks d'auto-import du shell (STAGES, contrats, kb) en tête de sortie sont du bruit d'import, sans lien.
+Portée : GET …/entree-electrique/ sert materiel.modules_par_pan. L'écran (onglet Matériel électrique, une ligne par pan) est la moitié de l'orchestrateur : AUCUNE étape n'est ajoutée au registre pour cette trace.
+
+Même montage que ACAL358-PA2.5.txt (rejoué dans la même sonde, rollback) — calepinage pk 22 (rollback : n'existe plus).
+Sortie brute (lignes « materiel.modules_par_pan ») :
+--- cas 1-B-fiche-resolue : B.produitId = 1559
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}, {"pan": "B", "module_id": "m400", "designation": "M400", "produit_id": 1559, "fiche_resolue": true, "fiche_complete": true}]
+--- cas 2-B-module-saisi : B.produitId = None
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}, {"pan": "B", "module_id": "m400", "designation": "M400 saisi", "produit_id": null, "fiche_resolue": false, "fiche_complete": false}]
+--- cas 3-B-produitId-introuvable : B.produitId = 99999999
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}, {"pan": "B", "module_id": "m400", "designation": "M400 fantome", "produit_id": 99999999, "fiche_resolue": false, "fiche_complete": false}]
+--- cas 4-B-produit-autre-societe : B.produitId = 1561
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}, {"pan": "B", "module_id": "m400", "designation": "M400 voisin", "produit_id": 1561, "fiche_resolue": false, "fiche_complete": false}]
+--- cas 5-mono-module : B.produitId = -
+  GET entree-electrique/ -> 200 materiel.module = {"produit_id": 1558, "designation": "M550", "fiche_complete": true}
+  materiel.modules_par_pan = [{"pan": "A", "module_id": "m550", "designation": "M550", "produit_id": 1558, "fiche_resolue": true, "fiche_complete": true}]
+
+Attendu (plan) vs observé :
+- forme [{pan, module_id, designation, produit_id, fiche_resolue, fiche_complete}], exactement ces 6 clés : OBSERVÉ sur les 5 cas.
+- ordre du document (A puis B) : OBSERVÉ.
+- A = M550 fiche résolue/complète ; B = M400 du stock résolue (produit_id 1559) : OBSERVÉ.
+- B saisi : designation « M400 saisi », produit_id null, fiche_resolue false, fiche_complete false : OBSERVÉ ; B introuvable / autre société : fiche_resolue false, produit_id rendu tel que déclaré : OBSERVÉ.
+- champ mono-module : une seule ligne (A) : OBSERVÉ. materiel.module (défaut) inchangé à côté.
+- Statuts : GET 200 sur les 5 cas.
+Verdict serveur : PASS. Moitié écran : à jouer par l'orchestrateur (aucun fixture persistant créé ici).

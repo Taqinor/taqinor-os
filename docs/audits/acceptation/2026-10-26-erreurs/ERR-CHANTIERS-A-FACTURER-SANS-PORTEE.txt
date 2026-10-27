@@ -1,0 +1,13 @@
+ERR-CHANTIERS-A-FACTURER-SANS-PORTEE — P7.4 (API) — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient force_authenticate sur les VRAIES routes GET /api/django/installations/chantiers/ et …/chantiers/a-facturer/ ;
+le cas positif dans transaction.atomic + rollback). Société démo 1.
+Compte Commercial : acc_commercial_test (company 1, rôle « Commercial », portée interne). Écran « Relances du jour » non rejoué (API seulement).
+
+0. Service sans portée : chantiers_a_facturer(société 1) → 1 entrée : CHT-202610-0001 (id 55, tranche « solde ») — celle que le Commercial voyait le 11/10.
+1. demo_admin : GET chantiers/ → 200, 57 chantiers ; GET a-facturer/ → 200, [CHT-202610-0001] ; aucune entrée hors de sa liste.
+2. acc_commercial_test : GET chantiers/ → 200, 0 chantier ; GET a-facturer/ → 200, [] (0 entrée) — plus de CHT-202610-0001 hors portée.
+3. Cas positif (transaction annulée) : chantier 55 rattaché au Commercial par un champ de portée (Installation.created_by = acc_commercial_test,
+   CHAMPS_PORTEE_CHANTIER = technicien_responsable / created_by) → GET chantiers/ → [55] ; GET a-facturer/ → [(55, CHT-202610-0001, solde)] : sa tranche apparaît.
+   (Passer seulement l'AUTEUR DU DEVIS au Commercial ne rend le chantier visible ni dans la liste ni dans a-facturer — même portée des deux côtés.)
+Attendu « même portée que la liste des chantiers » : tenu (a-facturer ⊆ liste dans les trois cas).
+Verdict : PASS.

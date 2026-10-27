@@ -1,0 +1,19 @@
+Rejeu orchestrateur P3.6 (AMOT53, D-AMOT-2 = a) sur la pile locale à e5a02b61e (origin/main), 26/10/2026, demo_admin (société 1) — sonde API (manage.py shell, APIClient(HTTP_HOST='localhost') authentifié), PDF /proposal RÉEL (WeasyPrint de l'image), texte extrait par PyMuPDF. Le drapeau `signe_au_domicile` est posé sur le VRAI bon de commande DANS une transaction ANNULÉE (relu à False après).
+
+Setup : BC-DEMO-0001 (id 1) ↔ devis DEV-DEMO-0003 (id 3, accepté, résidentiel), signe_au_domicile = False à l'origine.
+Requêtes : GET /api/django/ventes/devis/3/proposal/?pdf_mode=onepage, puis /proposal/ (plein format), puis ?pdf_mode=onepage&langue=en.
+
+Sortie brute :
+BC 1 BC-DEMO-0001 devis 3 DEV-DEMO-0003 accepte None domicile False
+AVANT ?pdf_mode=onepage 200 pages= 1 retractation_hits= 0 pieds= [[]]
+AVANT  200 pages= 3 retractation_hits= 0 pieds= [['1 / 3'], ['2 / 3'], ['3 / 3']]
+DOMICILE ?pdf_mode=onepage 200 pages= 2 retractation_hits= 4 pieds= [['1\xa0/\xa02'], ['2\xa0/\xa02']]
+  LAST Annexe — Droit de rétractation | Devis N° DEV-DEMO-0003 — Omar Tazi — 21/06/2026 | Cette commande a été signée à votre domicile. La loi n° 31-08 édictant des mesures de protection du consommateur vous ouvre un délai de | rétractation de 7 jours à compter de la commande. Pendant ce délai, aucun acompte ni aucun paiement ne peut être exigé ni encaissé (articles 49 | et 50).  | MENTIONS DE L'ARTICLE 48 | ...
+DOMICILE  200 pages= 4 retractation_hits= 3 pieds= [['1 / 4'], ['2 / 4'], ['3 / 4'], ['4 / 4']]
+  LAST A N N E X E | Droit de rétractation | Cette commande a été signée à votre domicile. La loi n° 31-08 ... délai | de rétractation de 7 jours à compter de la commande. ...
+DOMICILE ?pdf_mode=onepage&langue=en 200 pages= 2 retractation_hits= 0 pieds= [['1\xa0/\xa02'], ['2\xa0/\xa02']]
+  LAST Appendix — Right of withdrawal | Quote No. DEV-DEMO-0003 — Omar Tazi — 21/06/2026 | This order was signed at your home. Law No. 31-08 on consumer protection gives you a withdrawal period of 7 days ...
+APRES domicile False
+
+Verdict : PASS — (a) une-page signé au domicile = 2 pages, la 2ᵉ = formulaire de rétractation (loi 31-08, mentions de l'article 48), pieds « 1 / 2 » et « 2 / 2 » ; (b) plein format = 3 pages + annexe = 4 pages, pieds « n / 4 » ; sans le drapeau : une-page 1 page sans annexe, plein format 3 pages. L'annexe suit la langue (en : « Appendix — Right of withdrawal »). BC relu à False après rollback.
+Oracles : 1 PASS, 2 PASS, 6 PASS (5/5 /proposal 200), 7 PASS (aucun prix d'achat), autres NA (rejeu API).

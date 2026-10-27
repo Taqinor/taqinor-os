@@ -1,0 +1,15 @@
+ADEV53 — P5.1 (moitié serveur) — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient anonyme sur les VRAIES routes publiques /api/django/public/proposal/<jeton>/…, EMAIL_BACKEND locmem, transaction.atomic + rollback : rien ne reste ; clés de cache qx33-virement:<lien> effacées après).
+Devis démo résidentiel ENVOYÉ DEV-202610-0036 (pk 863, TTC 53 500,00, vendeur = user 1) ; lien ShareLink.for_devis.
+La moitié écran (page apps/web : affichage acompte/RIB + bouton « J'ai effectué le virement ») n'est PAS rejouée ici (pas de navigateur) — preuve serveur seulement.
+
+1. GET …/data/ → 200 ; empreinte_contenu servie 050bb7e5…804a.
+2. POST …/accept/ {nom, consent_esign, empreinte_contenu, accepte_conditions} → 200 « Proposition acceptée. Merci ! », statut accepte.
+   paiement = {acompte_ttc "16050.00" (30 % de 53 500), pourcentage "30.00", rib "" (aucun RIB au profil démo), message (acompte 16 050.00 MAD …), declare_url "/api/django/public/proposal/<jeton>/virement/"}.
+   Clé card_payment_url : absente de `paiement` ET de la réponse entière. resolve(…/pay-card/) → Resolver404 (route inexistante, aucun lien vers elle).
+3. POST …/virement/ {} → 200 « Merci ! Votre déclaration a été transmise à votre conseiller. »
+   Enregistré : Notification « Virement déclaré — devis DEV-202610-0036 » au vendeur 0 → 1 ; note chatter du devis contenant « virement » 0 → 1.
+   Statut devis inchangé (accepte), Paiement créé : 0 (règle #4 : la déclaration n'encaisse rien).
+4. Garde OTP de lecture : devis ACCEPTÉ DEV-202610-0065, lien otp_lecture=True NON déverrouillé :
+   GET …/data/ → 403 {detail: otp_required} ; POST …/virement/ → 403 {detail: otp_required} ; notification « Virement déclaré » 0 → 0 (rien déclaré).
+Verdict : PASS (moitié serveur).

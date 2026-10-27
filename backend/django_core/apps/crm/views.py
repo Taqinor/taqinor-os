@@ -596,7 +596,7 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                     and normalize_phone(vd['telephone'])
                     != normalize_phone(old.telephone)):
                 vd['whatsapp'] = vd['telephone']
-        ecrits = set(vd.keys())
+        ecrits = set(vd.keys()) | serializer.colonnes_du_marqueur(vd)
         if self.request.user.company_id:
             ecrits.add('company')  # forcée côté serveur (TenantMixin)
         ecrits.add('updated_by')
