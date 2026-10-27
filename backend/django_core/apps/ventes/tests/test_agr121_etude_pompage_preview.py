@@ -364,3 +364,49 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
         self.assertNotIn('pompe', roles)
         self.assertNotIn('variateur',
                          [ligne['cle'] for ligne in data['kit']['inclus']])
+
+
+class ModeEtTypePompeAlertesTests(SimpleTestCase):
+    """AGM6 — jamais de bascule silencieuse : un mode de pompe inconnu et un
+    type de pompe absent sont DITS au vendeur (SimpleTestCase : catalogue,
+    PVGIS et TMY simulés, aucune base)."""
+
+    def _etude(self, **extra):
+        corps = json.loads(json.dumps(CONTRAT['corps']))
+        corps.update(extra)
+        for cle in [c for c, v in extra.items() if v is None]:
+            del corps[cle]
+        with mock.patch.object(pompage, 'lire_catalogue',
+                               return_value=_catalogue_existante()), \
+                mock.patch.object(pompage, 'profils_horaires_site',
+                                  return_value=PROFILS_SAISONNIERS), \
+                mock.patch.object(pompage, 'temperatures_du_site',
+                                  return_value=None):
+            return pompage.etudier_pompage(None, corps)
+
+    @staticmethod
+    def _codes(data):
+        return [a['code'] for a in data['alertes']]
+
+    def test_mode_inconnu_alerte_et_pompe_neuve_etudiee(self):
+        data = self._etude(mode_pompe='nouvelle')
+        alerte = [a for a in data['alertes']
+                  if a['code'] == 'mode_pompe_invalide']
+        self.assertEqual(len(alerte), 1)
+        self.assertEqual(alerte[0]['champ'], 'mode_pompe')
+        self.assertIn('nouvelle', alerte[0]['message'])
+        self.assertEqual(data['pompe']['mode'], 'neuve')
+
+    def test_mode_valide_ou_vide_aucune_alerte_de_mode(self):
+        for corps in ({'mode_pompe': 'neuve'}, {'mode_pompe': None}):
+            self.assertNotIn('mode_pompe_invalide',
+                             self._codes(self._etude(**corps)), corps)
+
+    def test_neuve_sans_type_pompe_alerte_type_suppose(self):
+        data = self._etude(type_pompe=None)
+        alerte = [a for a in data['alertes']
+                  if a['code'] == 'type_pompe_supposee']
+        self.assertEqual(len(alerte), 1)
+        self.assertEqual(alerte[0]['champ'], 'type_pompe')
+        self.assertNotIn('type_pompe_supposee',
+                         self._codes(self._etude(type_pompe='immergee')))
