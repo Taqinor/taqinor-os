@@ -19,9 +19,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { renderYearCurve, DEFAULT_CURVE_BOX } from '../src/lib/proposalCurve';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
-const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+const PROPOSITION = lirePageProposition();
 
 const COMPACT_BOX = { width: 320, height: 128, padLeft: 6, padRight: 6, padTop: 6, padBottom: 18 };
 const COMPACT_OPTS = { annotate: false, sun: false };

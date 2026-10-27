@@ -23,9 +23,10 @@ import { fileURLToPath } from 'node:url';
 import { renderYearCurve } from '../src/lib/proposalCurve';
 import { storageSweepInfo } from '../src/lib/proposition';
 import { initialProductionState, productionLayers } from '../src/lib/propositionPage';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
-const PAGE = read('../src/pages/proposition/[...token].astro').replace(/\r\n/g, '\n');
+const PAGE = lirePageProposition().replace(/\r\n/g, '\n');
 const CODE = PAGE
   .replace(/<!--[\s\S]*?-->/g, ' ')
   .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')

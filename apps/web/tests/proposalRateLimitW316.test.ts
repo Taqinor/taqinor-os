@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resetRateLimit } from '../src/lib/rateLimit';
+import { lirePageProposition } from './astroBlocsHelper';
 
 // cloudflare:workers est un module virtuel (fourni par l'adaptateur au build) :
 // mocké au niveau module (même convention que captureLeadW112.test.ts) pour que
@@ -156,7 +157,7 @@ describe('W316 — buckets DISTINCTS par endpoint (une IP épuisant roof-yield n
 });
 
 describe('W316 — /proposition/[token] SSR : rate-limit câblé (lecture source)', () => {
-  const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+  const PROPOSITION = lirePageProposition();
 
   it('importe rateLimit/clientIpFromRequest et gate le SSR AVANT le fetch backend', () => {
     expect(PROPOSITION).toContain("import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit'");
