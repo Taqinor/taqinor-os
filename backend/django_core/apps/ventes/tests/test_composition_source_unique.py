@@ -398,17 +398,22 @@ class LeDryRunComposeLesDeuxOptimiseurs(_Base):
         self.assertEqual(len(transport), 1)
         self.assertEqual(transport[0]['variante'], '')
 
-    def test_sans_dimensionnement_avec_aucune_ligne_n_est_variantee(self):
-        """Repli historique : sans l'axe batterie, comportement inchangé —
-        `variante` vide partout, `variantes` à False (ce que U3 rendait déjà
-        avant U3COMPOSE, byte pour byte)."""
+    def test_sans_dimensionnement_avec_les_onduleurs_se_repartissent(self):
+        """RSIZ3 (27/10/2026) — sans l'axe batterie, les deux options se
+        composent sur le MÊME champ, mais jamais plus en forme commune :
+        l'onduleur réseau part dans « sans », l'hybride et la batterie dans
+        « avec » ; le champ (panneaux) reste commun."""
         reponse = self.api.post(COMPO_URL, {
             'kwc': 5, 'panel_watt': 710, 'scenario': 'les_deux',
         }, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertFalse(reponse.data['variantes'])
-        self.assertEqual(
-            {li['variante'] for li in reponse.data['lignes']}, {''})
+        par_role = {}
+        for li in reponse.data['lignes']:
+            par_role.setdefault(li['role'], set()).add(li['variante'])
+        self.assertEqual(par_role['onduleur_reseau'], {'sans'})
+        self.assertEqual(par_role['onduleur_hybride'], {'avec'})
+        self.assertEqual(par_role['batterie'], {'avec'})
+        self.assertEqual(par_role['panneau'], {''})
         self.assertEqual(
             reponse.data['nb_panneaux_avec'], reponse.data['nb_panneaux'])
 

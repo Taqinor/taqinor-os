@@ -204,15 +204,21 @@ def composer(intention):
     kwc = float(intention.kwc or 0)
     nb_panneaux = int(intention.nb_panneaux or 0)
 
-    # ── L-2OPT — DEUX OPTIMISEURS quand le moteur en désigne deux ────────────
-    if deux_options and avec:
+    # ── L-2OPT — DEUX OPTIMISEURS, TOUJOURS fusionnés (RSIZ3) ───────────────
+    # Sans optimum « avec », la fusion joue à champs ÉGAUX : jamais plus la
+    # forme commune réseau + hybride dans une même offre.
+    if deux_options:
+        avec = avec or {}
         lignes = composition_deux_optimiseurs(
             catalogue,
             kwc_sans=kwc,
             nb_panneaux_sans=nb_panneaux,
-            kwc_avec=avec.get('kwc'),
-            nb_panneaux_avec=avec.get('nb_panneaux'),
+            kwc_avec=avec.get('kwc') or (
+                None if avec.get('nb_panneaux') else kwc),
+            nb_panneaux_avec=avec.get('nb_panneaux') or nb_panneaux,
             batterie_cible_kwh=avec.get('batterie_kwh'),
+            modeles=getattr(intention, 'modeles', None),
+            batterie_module_kwh=getattr(intention, 'batterie_module_kwh', None),
             **commun)
     else:
         lignes = composition_residentielle(
@@ -220,7 +226,6 @@ def composer(intention):
             kwc=kwc,
             nb_panneaux=nb_panneaux,
             avec_batterie=avec_batterie,
-            deux_options=deux_options,
             # Un devis MONO « avec » retient la capacité du même optimum ;
             # absente ⇒ la règle historique kWc/5 décide seule.
             batterie_cible_kwh=(avec.get('batterie_kwh')
