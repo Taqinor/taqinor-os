@@ -126,8 +126,13 @@ class Ciq341Synthese(SimpleTestCase):
         self.assertIn("TRI sur 25 ans", p1)
         self.assertIn("39,8 %", p1)
         self.assertNotIn("VAN", p1)
-        self.assertIn("Économie de l'année 1", p1)
+        # CPDF — un chiffre, une fois : l'économie et le retour sont dits par
+        # leurs tuiles, l'investissement par son bloc ; l'encadré ne les
+        # répète plus (« Économie de l'année 1 » n'est plus en page 1).
+        self.assertNotIn("Économie de l'année 1", p1)
         self.assertIn("Retour estimé", p1)
+        self.assertEqual(p1.count("Retour estimé"), 1)
+        self.assertEqual(p1.count("1 750 000,00"), 1)
 
     def test_van_sur_taux_declare_et_financement(self):
         p1 = _texte(_page1(_data("exemple_industriel_mt",
@@ -224,3 +229,74 @@ class Amot89DefinitionsEtSurplus(SimpleTestCase):
             "exemple_industriel_mt", "exemple_industriel_mt"))))
         self.assertIn("— revente du surplus non retenue.", p1)
         self.assertNotIn("basse tension à ce jour", p1)
+
+
+def _deux_options(d):
+    """``d`` en devis « les deux » (offre réseau servie, option batterie
+    servie à côté avec la valeur chiffrée du moteur)."""
+    d["option_servie"] = "sans"
+    d["puissance_kwc_avec"] = 260.0
+    d["option_batterie"] = {
+        "totaux": {"ht_net": 1666666.67, "ttc": 2000000.0},
+        "valeur_chiffree": {"economie_annuelle_mad": 150000.0,
+                            "retour_simple_ans": 11.1,
+                            "textes": {"fr": "x", "en": "x", "ar": "x"}},
+        "motif": None}
+    return d
+
+
+class Cpdf3IndustrielDeuxOptions(SimpleTestCase):
+
+    def test_deux_cartes_et_un_seul_investissement(self):
+        p1 = _texte(_page1(_deux_options(_data())))
+        sans, avec = p1.split("Sans batterie")[1].split("Avec batterie")
+        for carte in (sans, avec):
+            for libelle in ("Puissance", "Investissement TTC",
+                            "Économie annuelle", "Retour sur investissement"):
+                self.assertIn(libelle, carte)
+        self.assertIn("2 000 000,00 MAD", avec)
+        self.assertIn("11,1 ans", avec)
+        self.assertNotIn("Investissement (TTC, clé en main)", p1)
+        self.assertNotIn("Économies estimées", p1)
+        self.assertEqual(p1.count("1 750 000,00"), 1)
+
+    def test_mono_option_sans_carte(self):
+        p1 = _texte(_page1(_data()))
+        self.assertNotIn("Sans batterie", p1)
+        self.assertIn("Investissement (TTC, clé en main)", p1)
+
+
+@tag("weasyprint")  # rendu PDF réel
+class Cpdf3IndustrielQuatrePages(SimpleTestCase):
+
+    def test_deux_options_quatre_pages(self):
+        from weasyprint import HTML
+        doc = HTML(string=_html(_deux_options(_data()))).render()
+        self.assertEqual(len(doc.pages), 4)
+
+
+class Cpdf5CouvertureSansReserve(SimpleTestCase):
+
+    def test_conso_et_production_sans_approximation(self):
+        p1 = _texte(_page1(etude_ci_au_kwc_servi(_data())))
+        self.assertIn("Consommation : ", p1)
+        self.assertIn("Production : 95 425 kWh/an", p1)
+        self.assertNotIn("Production estimée", p1)
+        self.assertNotIn("Consommation ≈", p1)
+        self.assertNotIn("· ≈", p1)
+
+    def test_mention_mt_sans_parenthese_de_releve(self):
+        from apps.ventes.quote_engine.constants_82_21 import MENTION_MT
+        d = _data()
+        d["tarif_mt_mention"] = MENTION_MT
+        p1 = _texte(_page1(d))
+        self.assertIn("Tarif Général (MT)", p1)
+        self.assertNotIn("TVA 18 %", p1)
+        self.assertNotIn("relevé le", p1)
+
+    def test_motif_option_avec_jamais_imprime(self):
+        from apps.ventes.quote_engine.ci.couverture import ligne_non_chiffre
+        d = {"ind_motif_argent": ("économies de l'option avec batterie non "
+                                  "chiffrées à ce stade"),
+             "ind_synthese": {}}
+        self.assertEqual(ligne_non_chiffre(d, "ind", "i1"), "")

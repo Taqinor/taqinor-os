@@ -18,6 +18,7 @@ import html
 import re
 
 from .blocs import langue, libelle
+from .. import i18n_labels_ci  # noqa: F401 — libellés CPDF des couvertures
 from ..montants import decimale
 from .mentions import TEXTES_POINTE_SANS, TEXTES_VISITE, texte
 
@@ -39,6 +40,10 @@ MOTIFS_ARGENT = {
     ("vos 12 dernières factures MT : prix des trois postes, prime fixe, "
      "puissance souscrite"): "ci_motif_argent_mt",
 }
+#: CPDF — motifs d'argent servis par ``synthese_ci`` qui ne demandent rien au
+#: client (``synthese.MOTIF_ARGENT_OPTION_AVEC``) : aucune phrase imprimée.
+MOTIFS_INTERNES_SANS_PHRASE = frozenset((
+    "économies de l'option avec batterie non chiffrées à ce stade",))
 
 
 #: AMOT80 — sources / motifs INTERNES servis par le moteur C&I → clé du
@@ -91,7 +96,9 @@ _CODES_INTERNES = re.compile(
     r"|\b(?:saisies_economie_ci|economie_ci|etude_ci)\.[\w.]+\s*"
     # AMOT91 — un nom de champ interne entre parenthèses
     # (« (taux_actualisation_client) »).
-    r"|\s*\([a-z]+(?:_[a-z]+)+\)")
+    r"|\s*\([a-z]+(?:_[a-z]+)+\)"
+    # CPDF5 — le nom interne du moteur, brut ou déjà échappé pour le HTML.
+    r"|\s*\(moteur C&(?:amp;)?I\)")
 
 
 def texte_client(d, texte):
@@ -99,9 +106,11 @@ def texte_client(d, texte):
     dans les mots du client : la table ``SOURCES_CLIENT`` (traduite), sinon
     le texte sans ses codes internes (« D-CIQ-10 », « economie_ci. »…)."""
     brut = str(texte or "").strip()
-    if brut in SOURCES_CLIENT:
+    # CPDF5 — la table se lit sur le texte NON échappé : ``builder.
+    # echapper_textes_client`` a déjà changé « & » en « &amp; ».
+    cle = SOURCES_CLIENT.get(html.unescape(brut))
+    if cle is not None:
         from .. import i18n_labels
-        cle = SOURCES_CLIENT[brut]
         return libelle(d, cle, i18n_labels.LIBELLES[cle]["fr"])
     return _CODES_INTERNES.sub("", brut).strip(" —")
 
@@ -211,6 +220,10 @@ def ligne_non_chiffre(d, cle, prefixe):
     if phrase:
         return f'<div class="{prefixe}-mtsrc">{phrase}</div>'
     motif = d.get(f"{cle}_motif_argent") or "vos 12 dernières factures"
+    if motif in MOTIFS_INTERNES_SANS_PHRASE:
+        # CPDF1/CPDF5 — un motif INTERNE (argent de l'option avec batterie
+        # non chiffré) n'est jamais une demande au client : rien d'imprimé.
+        return ""
     if motif in MOTIFS_ARGENT:
         motif = libelle(d, MOTIFS_ARGENT[motif], motif)
     if _argent_mt(d, cle):
@@ -234,10 +247,54 @@ def note_pointe(d, cle):
 
 
 def ans(valeur):
-    """« 3 » / « 3,4 » — le payback servi, sans arrondi propre."""
-    texte_ans = (f"{valeur:g}" if isinstance(valeur, (int, float))
-                 else str(valeur))
-    return decimale(texte_ans)
+    """CPDF7 — « 2,3 » / « 4,0 » (« 2.3 » en anglais) : un retour toujours
+    au dixième, au même format partout ; une valeur non numérique telle
+    quelle."""
+    try:
+        return decimale(f"{float(valeur):.1f}")
+    except (TypeError, ValueError):
+        return decimale(str(valeur))
+
+
+def retour_dixieme(argent, servi):
+    """CPDF7 — le retour imprimé : ``economie_ci_options.retour_au_dixieme``
+    sur le flux annuel SERVI de la base principale (``flux_ttc`` en base
+    TTC, ``flux_ht`` sinon — la règle de ``economie_ci``) ; sans flux (ou
+    sans passage à zéro), ``servi`` tel quel. Aucun autre calcul."""
+    if servi is None or not isinstance(argent, dict):
+        return servi
+    bloc = argent.get("flux_ttc" if argent.get("base") == "ttc"
+                      else "flux_ht")
+    if not isinstance(bloc, dict) or not bloc.get("flux"):
+        return servi
+    if not all(isinstance(f, dict) for f in bloc["flux"]):
+        return servi
+    try:
+        from apps.ventes.economie_ci_options import retour_au_dixieme
+    except ImportError:  # moteur exécuté seul depuis son dossier
+        return servi
+    valeur = retour_au_dixieme(bloc)
+    return servi if valeur is None else valeur
+
+
+def retour_affiche(d, cle):
+    """CPDF7 — le retour de la couverture ``cle`` (``com`` / ``ind``) au
+    dixième, ou None quand aucun retour n'est servi (tuile omise). À lire
+    aussi par les pages finance pour imprimer le MÊME nombre."""
+    argent = (d.get(f"{cle}_synthese") or {}).get("argent")
+    return retour_dixieme(argent, d.get(f"{cle}_payback"))
+
+
+#: CPDF5 — la parenthèse de relevé de la mention du barème ONEE (« relevé
+#: le 03/10/2026 ; la page indique TVA 18 %, taux légal 2026 : 20 % ») : une
+#: réserve interne, jamais imprimée au client (FR / EN / AR).
+_PARENTHESE_RELEVE = re.compile(
+    r"\s*\((?:relevé le|recorded on|بتاريخ)[^()]*\)")
+
+
+def mention_client(texte):
+    """CPDF5 — une mention de barème servie, sans sa parenthèse de relevé."""
+    return _PARENTHESE_RELEVE.sub("", str(texte or "")).strip()
 
 
 def note_tva(d, base):
@@ -246,7 +303,11 @@ def note_tva(d, base):
     from .. import i18n_labels
     from .mentions import cle_mention_tva
     cle = cle_mention_tva(d, base)
-    return libelle(d, cle, i18n_labels.LIBELLES[cle]["fr"]) if cle else ""
+    # CPDF5 — « TVA récupérable non déclarée : économies en HT et en TTC »
+    # n'informe pas le client (les deux montants sont déjà là) : non imprimée.
+    if not cle or cle == "ci_tva_non_declaree":
+        return ""
+    return libelle(d, cle, i18n_labels.LIBELLES[cle]["fr"])
 
 
 def economie_ttc(d, cle, fmt):
@@ -340,15 +401,21 @@ def bloc_investissement(d, synthese, prefixe, fmt_mad, ancre, invest=None):
                 prefixe, titre_investissement(d, synthese, "ht"), ht_txt,
                 l_ht, ancre("total_ht", ht_txt),
                 f'{l_soit} {ttc_txt}&nbsp;MAD&nbsp;{l_ttc}'
-                f'{ancre("total_affiche", ttc_txt)} · {note_tva(d, base)}')
+                f'{ancre("total_affiche", ttc_txt)}' + _avec_note(d, base))
         return _html_investissement(
             prefixe, titre_investissement(d, synthese, "deux"), ttc_txt,
             l_ttc, ancre("total_affiche", ttc_txt),
             f'{l_soit} {ht_txt}&nbsp;MAD&nbsp;{l_ht}'
-            f'{ancre("total_ht", ht_txt)} · {note_tva(d, base)}')
+            f'{ancre("total_ht", ht_txt)}' + _avec_note(d, base))
     return _html_investissement(
         prefixe, titre_investissement(d, synthese, "ttc"), ttc_txt, "",
         ancre("total_affiche", ttc_txt))
+
+
+def _avec_note(d, base):
+    """« · <mention TVA> » ou '' (CPDF5 : jamais un « · » orphelin)."""
+    note = note_tva(d, base)
+    return f" · {note}" if note else ""
 
 
 def _html_investissement(prefixe, titre, montant, base, ancre_html, note=""):
@@ -387,10 +454,12 @@ def css_investissement(prefixe, couleurs, police, taille_pt, marge_px,
         f"line-height:1.35;}}")
 
 
-def tuiles_taux(d, cle, kpi):
+def tuiles_taux(d, cle, kpi, couverture_tuile=True):
     """Tuiles « Autoconsommation » et « Couverture conso » (taux du moteur
     C&I lus sur ``synthese_ci``), ou [] — UNE définition pour les deux
-    couvertures (CIQ333 : libellés dans la langue du document)."""
+    couvertures (CIQ333 : libellés dans la langue du document).
+    ``couverture_tuile`` faux (CPDF3, devis à deux options) : la part
+    couverte est dite par chaque carte d'option, pas en tuile."""
     tuiles = []
     # AMOT89 — la définition SERVIE de chaque taux (``synthese_ci.energie.
     # definitions``, IEA PVPS T1-28) en légende sous la tuile.
@@ -402,7 +471,7 @@ def tuiles_taux(d, cle, kpi):
             d, libelle(d, "ci_autoconsommation", "Autoconsommation"),
             definitions.get("autoconso")), "autoconsommation_pct"))
     couverture = d.get(f"{cle}_couverture")
-    if couverture is not None:
+    if couverture is not None and couverture_tuile:
         tuiles.append(kpi(f"{round(couverture)}", "&nbsp;%", _avec_definition(
             d, libelle(d, "ci_part_conso_couverte",
                        "Part de votre consommation couverte"),
@@ -507,21 +576,21 @@ def tuiles_argent(d, cle, kpi, fmt):
                             + economie_ttc(d, cle, fmt) + "</div>")
         tuiles.append(kpi(fmt(economies), "&nbsp;MAD", libelle_eco,
                           "economie_annuelle"))
-    payback = d.get(f"{cle}_payback")
+    payback = retour_affiche(d, cle)
     if payback is not None:
         # AMOT80 — la tuile retour dit sa base (celle du flux servi).
+        # CPDF5 — le « scénario prudent » reste servi (``argent.
+        # sensibilites``), plus imprimé : aucune incertitude au client
+        # (décision fondateur 26/10/2026, plus récente que AMOT97).
         argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
         base = libelle(d, "ci_ttc", "TTC") if argent.get("base") == "ttc" \
             else libelle(d, "ci_ht", "HT")
-        prudent = scenario_prudent(d, cle) if cle == "com" else ""
         tuiles.append(kpi(ans(payback),
                           libelle(d, "ci_unite_ans", "&nbsp;ans"),
-                          (libelle(d, "ci_retour_estime_base",
-                                   "Retour estimé ({base})", base=base)
-                           if argent else
-                           libelle(d, "ci_retour_estime", "Retour estimé"))
-                          + (f'<div style="font-size:6.3pt;margin-top:1px;">'
-                             f'{prudent}</div>' if prudent else ""),
+                          libelle(d, "ci_retour_estime_base",
+                                  "Retour estimé ({base})", base=base)
+                          if argent else
+                          libelle(d, "ci_retour_estime", "Retour estimé"),
                           "payback_ans"))
     elif motif_investissement(d, cle):
         # AMOT80 (D-ACI-8=a) — investissement non chiffré : le MOTIF à la
@@ -531,20 +600,6 @@ def tuiles_argent(d, cle, kpi, fmt):
             f'{motif_investissement(d, cle)}</span>', "",
             libelle(d, "ci_retour_estime", "Retour estimé")))
     return tuiles
-
-
-def scenario_prudent(d, cle):
-    """AMOT97 (D-ACI-15=a) — « scénario prudent : retour ≈ N ans », le plus
-    long retour SERVI parmi les sensibilités (``argent.sensibilites``), ou ''
-    (aucun scénario chiffré)."""
-    argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
-    retours = [s["retour_ans"] for s in argent.get("sensibilites") or []
-               if isinstance(s, dict)
-               and isinstance(s.get("retour_ans"), (int, float))]
-    if not retours:
-        return ""
-    return libelle(d, "ci_sens_prudent", "scénario prudent : retour ≈ {n} ans",
-                   n=ans(max(retours)))
 
 
 # ── AMOT92 — la couverture est le PROJET du client ─────────────────────────
@@ -567,10 +622,11 @@ def format_telephone(brut):
 
 def identite_client(d):
     """``(nom, adresse · ville · téléphone)`` du client sous le bandeau des
-    deux couvertures — le téléphone mis en forme (AMOT92)."""
+    deux couvertures — le téléphone mis en forme (AMOT92). CPDF8 — le nom
+    dans la casse SAISIE (jamais « 6-22 H » pour « 6-22 h »)."""
     from ..residential import theme
-    nom = theme.titlecase_name(d.get("client_full") or d.get("client_name")
-                               or "Client")
+    nom = str(d.get("client_full") or d.get("client_name")
+              or "Client").strip() or "Client"
     meta = theme.join_meta(
         d.get("client_addr", ""),
         d.get("client_ville_libelle") or d.get("client_city", ""),
@@ -578,16 +634,37 @@ def identite_client(d):
     return nom, meta
 
 
+def client_titre(d, cle, nom_client):
+    """Le client que nomme le titre : la raison sociale servie
+    (``entreprise_client``), sinon le nom du client imprimé."""
+    entreprise = (d.get(f"{cle}_synthese") or {}).get("entreprise_client")
+    raison = str((entreprise or {}).get("raison_sociale") or "").strip() \
+        if isinstance(entreprise, dict) else ""
+    return raison or nom_client
+
+
+def ligne_client(d, cle, nom_client, meta, prefixe):
+    """CPDF8 — la ligne sous le bandeau : le nom du client seulement quand
+    le titre ne le porte pas déjà (un nom UNE fois par couverture), puis
+    adresse · ville · téléphone, puis l'identité légale et l'interlocuteur."""
+    from .blocs import bloc_client
+    titre = client_titre(d, cle, nom_client)
+    morceaux = [] if nom_client == titre else [f"<b>{nom_client}</b>"]
+    if meta:
+        morceaux.append(meta)
+    return ("&nbsp;·&nbsp;".join(morceaux)
+            + bloc_client((d.get(f"{cle}_synthese") or {}).get(
+                "entreprise_client"), prefixe, titre, doc=d)
+            + ligne_interlocuteur(d, prefixe))
+
+
 def titre_projet(d, cle, kwc_txt, nom_client):
     """« Centrale solaire 90 kWc — Hôtel Atlas Riad SARL, Marrakech » : la
     raison sociale servie (``entreprise_client``), sinon le nom du client
     imprimé ; la ville du devis quand elle est connue."""
-    entreprise = (d.get(f"{cle}_synthese") or {}).get("entreprise_client")
-    raison = str((entreprise or {}).get("raison_sociale") or "").strip() \
-        if isinstance(entreprise, dict) else ""
     ville = str(d.get("client_ville_libelle") or d.get("client_city")
                 or "").strip()
-    client = raison or nom_client
+    client = client_titre(d, cle, nom_client)
     if langue(d) == "ar":
         # AMOT92 — titre arabe : le nom du client et sa ville forment UN
         # segment isolé (U+2068 … U+2069, sens tiré de son premier
