@@ -1488,9 +1488,11 @@ def calculate_savings_roi(
     #   ``forme_mensuelle_ghi`` — AMOT27 (répartition GHI au dirham).
     rendement_une_fois: bool = True,
     forme_mensuelle_ghi: bool = True,
-    # RHOR6 — niveau de règles 3 (``regles_au_moins(devis, 3)``) : vrai par
-    # défaut ; ``False`` garde l'économie « avec batterie » imprimée BRUTE.
-    regles_2710: bool = True,
+    # RHOR6 — niveau de règles 3, passé par ``etude_chiffrage`` (chaîne du
+    # document) depuis ``regles_au_moins(devis, 3)``. Faux par défaut : les
+    # appelants directs (balayages, miroir JS figé ``solar_calculs``) gardent
+    # l'économie « avec » BRUTE jusqu'à l'alignement de l'écran (RGEN5).
+    regles_2710: bool = False,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
