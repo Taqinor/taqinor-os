@@ -16,7 +16,7 @@ import {
   signatureEntrepriseRequise,
   type SignFormState,
 } from '../src/lib/proposition';
-import { estIceDivergent } from '../src/lib/propositionB2b';
+import { entrepriseNettoyee, estIceDivergent, normaliserIce, validerEntreprise } from '../src/lib/propositionB2b';
 import { lirePageProposition } from './astroBlocsHelper';
 
 const ENT3 = { raison_sociale: 'Hôtel Exemple SARL', signataire_qualite: 'Directeur général', ice: '000000000000000' };
@@ -234,5 +234,41 @@ describe('ADEV99 — proxy /api/proposition-accept : la langue de la page est re
   it('`en` relayé, une valeur hors liste jamais', async () => {
     expect((await corpsRelaye({ token: 'tok', nom: 'Hassan', langue: 'en' })).langue).toBe('en');
     expect('langue' in (await corpsRelaye({ token: 'tok', nom: 'Hassan', langue: 'de' }))).toBe(false);
+  });
+});
+
+// CPRW7 (27/10/2026) — erreurs de signature entreprise en FR/EN/AR + ICE normalisé (15 chiffres).
+describe('CPRW7 — validerEntreprise trilingue et ICE à 15 chiffres', () => {
+  it('chaque erreur porte aussi errorEn / errorAr, `error` FR inchangé', () => {
+    const cas: Array<[Record<string, unknown>, string]> = [
+      [{ raison_sociale: '' }, 'entreprise.raison_sociale'],
+      [{ signataire_qualite: '' }, 'entreprise.signataire_qualite'],
+      [{ ice: '' }, 'entreprise.ice'],
+      [{ signataire_email: 'pas-un-email' }, 'entreprise.signataire_email'],
+      [{ pouvoir_engager: false }, 'entreprise.pouvoir_engager'],
+    ];
+    for (const [over, champ] of cas) {
+      const v = validerEntreprise({ nom: 'K', option: null, entreprise: { ...ENT, ...over } })!;
+      expect(v.champ).toBe(champ);
+      expect(v.error).toMatch(/^Veuillez /);
+      expect(v.errorEn.length).toBeGreaterThan(5);
+      expect(v.errorEn).not.toBe(v.error);
+      expect(v.errorAr).toMatch(/[؀-ۿ]/);
+    }
+  });
+  it('ICE : séparateurs retirés, exactement 15 chiffres, erreur qui nomme l\'ICE en FR/EN/AR', () => {
+    const f = (ice: string): SignFormState => ({ nom: 'K', option: null, entreprise: { ...ENT, ice } });
+    expect(validerEntreprise(f('0012 3456.7000-089'))).toBeNull();
+    for (const mauvais of ['00123456700008', '0012345670000890', 'ABC123456700008', '1234']) {
+      const v = validerEntreprise(f(mauvais))!;
+      expect(v.champ).toBe('entreprise.ice');
+      expect(v.error).toMatch(/ICE/);
+      expect(v.errorEn).toMatch(/ICE/);
+      expect(v.errorAr).toMatch(/ICE/);
+      expect(v.error).toMatch(/15/);
+    }
+    expect(normaliserIce(' 0012 3456.7000-089 ')).toBe('001234567000089');
+    const corps = entrepriseNettoyee({ ...ENT, ice: '0012 3456.7000-089' }, 'K');
+    expect(corps?.ice).toBe('001234567000089');
   });
 });
