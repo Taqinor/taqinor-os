@@ -185,12 +185,22 @@ describe('questionnaire pro — aides « où le lire sur votre facture » (CQSTW
   }
   it('les aides disent « où le lire » dans les trois langues', async () => {
     const { AIDES_FACTURE } = await import('../src/lib/questionnaireChamps');
-    for (const a of Object.values(AIDES_FACTURE)) {
+    for (const a of [AIDES_FACTURE.tension, AIDES_FACTURE.option_bt, AIDES_FACTURE.kva, AIDES_FACTURE.cos_phi]) {
       expect(a.fr).toMatch(/Où le lire|Où le trouver/);
       expect(a.en).toContain('Where to read');
       expect(a.ar.length).toBeGreaterThan(20);
     }
     expect(AIDES_FACTURE.kva.fr).not.toContain('Facultatif');
+  });
+  it('chaque AIDES_FACTURE.<clé> lue par la page existe en FR/EN/AR (sinon la page pro plante au rendu)', async () => {
+    const { AIDES_FACTURE } = await import('../src/lib/questionnaireChamps');
+    const cles = new Set([...src.matchAll(/AIDES_FACTURE\.(\w+)\./g)].map((m) => m[1]));
+    expect(cles.size).toBeGreaterThan(4);
+    for (const cle of cles) {
+      const aide = (AIDES_FACTURE as Record<string, { fr: string; en: string; ar: string } | undefined>)[cle];
+      expect(aide, cle).toBeDefined();
+      expect(aide!.fr && aide!.en && aide!.ar, cle).toBeTruthy();
+    }
   });
   it('cos φ et option tarifaire sont marqués facultatifs', () => {
     const optionBt = src.indexOf('id="q-option-bt"');

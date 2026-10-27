@@ -261,14 +261,6 @@ export const AIDES_FACTURE: Record<'tension' | 'option_bt' | 'kva' | 'cos_phi' |
     'Where to read it: look for “cos φ” or “reactive energy” on your bill. Optional: if there is no such line, leave it empty.',
     'أين تجدونه: ابحثوا عن «cos φ» أو «الطاقة غير الفعالة» في فاتورتكم. اختياري: إن لم يوجد هذا السطر اتركوه فارغاً.',
   ),
-};
-// CQSTW8 — titre du repli des questions facultatives (pro).
-export const POUR_AFFINER: L3 = L('Pour affiner (facultatif)', 'To refine (optional)', 'للتدقيق أكثر (اختياري)');
-// CQSTW9 — texte GPS : « terrain / forage » pour un agriculteur, « toit » ailleurs.
-export const GPS_AGRI: L3 = L("Partagez la position de votre terrain (ou de votre forage) pour qu'on le localise précisément.", 'Share the position of your land (or your borehole) so we can locate it precisely.', 'شاركوا موقع أرضكم (أو بئركم) لنتمكن من تحديده بدقة.');
-export const GPS_TOIT: L3 = L("Partagez votre position pour qu'on localise précisément votre toit.", 'Share your position so we can locate your roof precisely.', 'شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.');
-// CQSTW10 — options du parcours résidentiel (raccordement, type de toiture) en FR/EN/AR.
-export const RACCORDEMENT_RES_LABELS: Record<string, L3> = {
   // CQSTW11 — mots simples pour les contrats et l'ICE.
   contrat: L(
     "En mots simples : « patenté » = le compteur d'un commerce ; « force motrice » = le compteur des machines ; « domestique » = le compteur d'une maison.",
@@ -280,6 +272,14 @@ export const RACCORDEMENT_RES_LABELS: Record<string, L3> = {
     "ICE = the company's Common Identifier: 15 digits, at the bottom of your invoices.",
     'ICE = المُعرِّف الموحد للمقاولة: 15 رقماً، أسفل فواتيركم.',
   ),
+};
+// CQSTW8 — titre du repli des questions facultatives (pro).
+export const POUR_AFFINER: L3 = L('Pour affiner (facultatif)', 'To refine (optional)', 'للتدقيق أكثر (اختياري)');
+// CQSTW9 — texte GPS : « terrain / forage » pour un agriculteur, « toit » ailleurs.
+export const GPS_AGRI: L3 = L("Partagez la position de votre terrain (ou de votre forage) pour qu'on le localise précisément.", 'Share the position of your land (or your borehole) so we can locate it precisely.', 'شاركوا موقع أرضكم (أو بئركم) لنتمكن من تحديده بدقة.');
+export const GPS_TOIT: L3 = L("Partagez votre position pour qu'on localise précisément votre toit.", 'Share your position so we can locate your roof precisely.', 'شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.');
+// CQSTW10 — options du parcours résidentiel (raccordement, type de toiture) en FR/EN/AR.
+export const RACCORDEMENT_RES_LABELS: Record<string, L3> = {
   '': L('— Je ne sais pas', "— I don't know", '— لا أعرف'),
   mono: L('Monophasé', 'Single-phase', 'أحادي الطور'),
   tri: L('Triphasé', 'Three-phase', 'ثلاثي الأطوار'),
