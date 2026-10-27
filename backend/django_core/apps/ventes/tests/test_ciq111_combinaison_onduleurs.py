@@ -157,9 +157,14 @@ class CombinaisonTests(TestCase):
         self.assertGreaterEqual(ac * self.bornes.borne_usuelle.valeur, 830)
 
     def test_un_mwc_en_moins_d_une_seconde(self):
+        # Garde de complexite (la recherche ne doit pas exploser a 1 MWc), pas
+        # un chronometre : sur un runner GitHub partage le meme appel a mesure
+        # 1,19 s le 27/10/2026 (run 40585144160) et a ejecte #1105 de la merge
+        # queue. Budget 5 s : une explosion combinatoire reste detectee, le bruit
+        # de charge non.
         debut = time.perf_counter()
         r = combiner_onduleurs(1000, self.cat, phase='tri')
-        self.assertLess(time.perf_counter() - debut, 1.0)
+        self.assertLess(time.perf_counter() - debut, 5.0)
         self.assertIsNotNone(r['combinaison'])
 
     def test_chaines_a_verifier_sans_fiches(self):
