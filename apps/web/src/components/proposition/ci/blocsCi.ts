@@ -102,15 +102,25 @@ export const LBL_SERVICES_CI: Record<string, TextesCi> = {
   },
 };
 
-/** Le nom de la société émettrice dans la phrase de raccordement (repli fondateur du PDF). */
+/** Repli du nom de la société émettrice, le même que le PDF sans identité servie (`residential/theme.py::_DEFAULT_BRAND`). */
 const SOCIETE_CI = 'TAQINOR';
+
+/**
+ * Nom de la société ÉMETTRICE servi (`emetteur.nom`, même `company_identity` que le PDF —
+ * `ci/blocs.py::bloc_services` remplit `{societe}` avec `brand_name`) ; absent ou vide → repli du PDF.
+ */
+export function nomSocieteEmettrice(payload: unknown): string {
+  const e = payload && typeof payload === 'object' ? (payload as { emetteur?: unknown }).emetteur : undefined;
+  const nom = e && typeof e === 'object' ? (e as { nom?: unknown }).nom : undefined;
+  return typeof nom === 'string' && nom.trim() !== '' ? nom.trim() : SOCIETE_CI;
+}
 
 /**
  * Le bloc « Services » du PDF (`ci/blocs.py::bloc_services`) : O&M nommée (prix HT servi, sinon « tarif sur
  * demande » ; « proposé, non inclus » si `statut === 'propose'`), suivi de production (délai seulement
  * s'il est servi et > 0), phrase de raccordement quand un régime est servi. `null` sans aucun service.
  */
-export function servicesCi(ci: SyntheseCi | null): { titre: TextesCi; lignes: TextesCi[] } | null {
+export function servicesCi(ci: SyntheseCi | null, societe: string = SOCIETE_CI): { titre: TextesCi; lignes: TextesCi[] } | null {
   const s = ci?.services ?? null;
   if (!s) return null;
   const par = (f: (lg: keyof TextesCi) => string): TextesCi => ({ fr: f('fr'), en: f('en'), ar: f('ar') });
@@ -137,7 +147,7 @@ export function servicesCi(ci: SyntheseCi | null): { titre: TextesCi; lignes: Te
     );
   }
   if (s.raccordementRegime) {
-    lignes.push(par((lg) => L.dossier_raccordement![lg].replace('{societe}', SOCIETE_CI)));
+    lignes.push(par((lg) => L.dossier_raccordement![lg].replace('{societe}', societe)));
   }
   return lignes.length > 0 ? { titre: L.services!, lignes } : null;
 }
@@ -193,7 +203,8 @@ export function comparaisonBatterieCi(
   if (ob.valeurChiffree && (positif(v?.capaciteUtileKwh) || positif(v?.restitueKwhAn) || positif(v?.economieAnnuelleMad))) {
     avec.push({ cle: 'valeur', libelle: null, valeur: '', textes: ob.valeurChiffree });
   }
-  if (positif(v?.economieAnnuelleMad)) avec.push({ cle: 'economie', libelle: LBL_COMPARAISON_CI.economie, valeur: formatMAD(v.economieAnnuelleMad) });
+  // La phrase servie porte déjà l'économie annuelle : la ligne chiffrée ne sort que sans phrase (jamais deux fois le même chiffre).
+  if (positif(v?.economieAnnuelleMad) && !avec.some((l) => l.cle === 'valeur')) avec.push({ cle: 'economie', libelle: LBL_COMPARAISON_CI.economie, valeur: formatMAD(v.economieAnnuelleMad) });
   if (positif(v?.retourSimpleAns)) avec.push({ cle: 'retour', libelle: LBL_COMPARAISON_CI.retour, valeur: formatNumber(v.retourSimpleAns, 1) });
   return {
     titre: LBL_COMPARAISON_CI.titre,

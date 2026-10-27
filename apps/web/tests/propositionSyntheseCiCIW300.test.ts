@@ -441,7 +441,7 @@ describe('CPRW16 — échéancier C&I', () => {
 });
 
 // ── CPRW17 — services servis (O&M, suivi de production, raccordement) ──────────────────────
-import { servicesCi, LBL_SERVICES_CI } from '../src/components/proposition/ci/blocsCi';
+import { servicesCi, LBL_SERVICES_CI, nomSocieteEmettrice } from '../src/components/proposition/ci/blocsCi';
 
 describe('CPRW17 — services C&I', () => {
   const svc = (services: unknown) => syntheseCi(({ mode_installation: 'industriel', synthese_ci: { services } }) as unknown as ProposalResponse);
@@ -472,6 +472,11 @@ describe('CPRW17 — services C&I', () => {
   it('raccordement : la phrase du PDF si un régime est servi ; rien sinon', () => {
     const l = servicesCi(svc({ raccordement: { regime: 'autoproduction' } }))!;
     expect(l.lignes[0]!.fr).toBe('Raccordement et autorisations du site : dossier monté et suivi par TAQINOR');
+    expect(servicesCi(svc({ raccordement: { regime: 'autoproduction' } }), 'Société Émettrice')!.lignes[0]!.fr).toContain('suivi par Société Émettrice');
+    expect(nomSocieteEmettrice({ emetteur: { nom: ' Société Émettrice ' } })).toBe('Société Émettrice');
+    expect(nomSocieteEmettrice({ emetteur: { nom: '' } })).toBe('TAQINOR');
+    expect(nomSocieteEmettrice({})).toBe('TAQINOR');
+    expect(readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8')).toContain('societe={nomSocieteEmettrice(data)}');
     expect(servicesCi(svc({ raccordement: {} }))).toBeNull();
     expect(servicesCi(svc({}))).toBeNull();
     expect(servicesCi(null)).toBeNull();
@@ -495,16 +500,26 @@ describe('CPRW18 — comparaison sans / avec batterie', () => {
       textes: { fr: 'Batterie de 10 kWh utiles : …', en: 'EN', ar: 'AR' },
     },
   };
-  it('fixture complète : colonne sans = prix ; colonne avec = prix, phrase servie, économie HT, retour', () => {
+  it('fixture complète : colonne sans = prix ; colonne avec = prix, phrase servie (qui porte déjà l’économie), retour', () => {
     const c = comparaisonBatterieCi(ob(PLEIN), 78000, 114000)!;
     expect(c.colonnes.map((x) => x.cle)).toEqual(['sans', 'avec']);
     const sans = c.colonnes[0]!.lignes;
     expect(sans).toHaveLength(1);
     expect(sans[0]!.valeur).toContain('78 000');
     const avec = c.colonnes[1]!.lignes;
-    expect(avec.map((l) => l.cle)).toEqual(['total_ttc', 'valeur', 'economie', 'retour']);
-    expect(avec.find((l) => l.cle === 'economie')!.valeur).toContain('20 000');
+    expect(avec.map((l) => l.cle)).toEqual(['total_ttc', 'valeur', 'retour']);
     expect(avec.find((l) => l.cle === 'retour')!.valeur).toContain('4,8');
+  });
+  it('sans phrase servie : la ligne « Économie annuelle HT » porte le chiffre (jamais deux fois)', () => {
+    const c = comparaisonBatterieCi(ob({ ...PLEIN, valeur_chiffree: { ...PLEIN.valeur_chiffree, textes: undefined } }), 78000, 114000)!;
+    const avec = c.colonnes[1]!.lignes;
+    expect(avec.filter((l) => l.cle === 'valeur')).toHaveLength(0);
+    expect(avec.find((l) => l.cle === 'economie')!.valeur).toContain('20 000');
+  });
+  it('échéancier : 4 jalons sur une ligne (grille 4 colonnes), pourcentage à la virgule', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/components/proposition/ci/EcheancierCi.astro', import.meta.url)), 'utf-8');
+    expect(src).toContain("jalons.length === 4 ? 'sm:grid-cols-2 lg:grid-cols-4'");
+    expect(src).toContain("String(j.pct).replace('.', ',')");
   });
   it('valeur_chiffree null → seulement les prix, jamais « 0 »', () => {
     const c = comparaisonBatterieCi(ob({ totaux: { ht_net: 95000, tva: 19000, ttc: 114000 }, valeur_chiffree: null }), 78000, null)!;

@@ -10,9 +10,11 @@ import { servicesCi } from './blocsCi';
 
 interface Props {
   ci: SyntheseCi;
+  /** Nom de la société émettrice servi (`nomSocieteEmettrice`), repli du PDF sinon. */
+  societe?: string;
 }
-const { ci } = Astro.props;
-const services = servicesCi(ci);
+const { ci, societe } = Astro.props;
+const services = servicesCi(ci, societe);
 ---
 <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="services" data-ci-services>
   <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr={services?.titre.fr} data-en={services?.titre.en} data-ar={services?.titre.ar}>{services?.titre.fr}</h2>
