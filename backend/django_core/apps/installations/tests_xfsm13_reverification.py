@@ -139,6 +139,18 @@ class TestReverificationApi(TestCase):
         self.assertEqual(r.status_code, 201, r.content)
         self.assertTrue(r.data['depassement_detecte'])
 
+    def test_seuil_hors_colonne_400_jamais_500(self):
+        # api-fuzz-full 27/10 : seuil_alerte_pct > 999,99 débordait la
+        # colonne (5, 2) → 500 ; la borne est publiée et appliquée.
+        url = f'{BASE}/interventions/{self.interv.id}/enregistrer-reverification/'
+        for seuil in (1000, -1, 'abc'):
+            r = self.api.post(url, {'isolement_mohm': '2.00',
+                                    'seuil_alerte_pct': seuil}, format='json')
+            self.assertEqual(r.status_code, 400, (seuil, r.content))
+        r = self.api.post(url, {'isolement_mohm': '2.00',
+                                'seuil_alerte_pct': 999.99}, format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+
     def test_reverifications_history(self):
         self.api.post(
             f'{BASE}/interventions/{self.interv.id}/enregistrer-reverification/',

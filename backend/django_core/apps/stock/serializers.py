@@ -1632,7 +1632,7 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
     # Revue chantier 26/10/2026 — chantier D'ORIGINE du besoin (YPROC10),
     # LECTURE SEULE : posé par `draft_bcfs_for_shortfall`, jamais en écriture
     # libre (la liste BCF retrouve enfin le chantier qui l'a demandé).
-    chantier_origine = serializers.PrimaryKeyRelatedField(read_only=True)
+    chantier_origine = serializers.PrimaryKeyRelatedField(read_only=True, allow_null=True)  # api-fuzz : null servi
     chantier_origine_reference = serializers.CharField(
         source='chantier_origine.reference', read_only=True,
         allow_null=True)

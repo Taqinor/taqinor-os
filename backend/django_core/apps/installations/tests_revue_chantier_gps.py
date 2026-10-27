@@ -623,8 +623,10 @@ class LecturesTests(Base):
         resp = auth(self.responsable).get(
             f'{BASE}/positions-techniciens/?technicien={self.technicien.id}&date={jour}')
         self.assertEqual(resp.status_code, 200, resp.content)
-        self.assertIsInstance(resp.data, list)
-        instants = [p['captured_at'] for p in resp.data]
+        # api-fuzz-full 27/10 — l'enveloppe paginée publiée, en UNE page.
+        self.assertEqual(resp.data['count'], 3)
+        self.assertIsNone(resp.data['next'])
+        instants = [p['captured_at'] for p in resp.data['results']]
         self.assertEqual(len(instants), 3)
         self.assertEqual(instants, sorted(instants))
 
@@ -669,7 +671,7 @@ class IsolationSocieteTests(TestCase):
         trace = api.get(
             f'{BASE}/positions-techniciens/?technicien={self.tech_b.id}&date={jour}')
         self.assertEqual(trace.status_code, 200, trace.content)
-        self.assertEqual(trace.data, [])
+        self.assertEqual(trace.data['results'], [])
 
     def test_mes_positions_et_mon_consentement(self):
         api = auth(self.tech_a)

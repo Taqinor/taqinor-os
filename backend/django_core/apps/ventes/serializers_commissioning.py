@@ -149,7 +149,7 @@ class TestPerformanceReceptionSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         ]
 
 
-class AttestationRESerializer(ChampsStrictsMixin, SameCompanyFKSerializerMixin,
+class AttestationRESerializer(IdInconnu404Mixin, ChampsStrictsMixin, SameCompanyFKSerializerMixin,
                               serializers.ModelSerializer):
     """FG287 — attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
     same_company_fields = ('chantier',)
