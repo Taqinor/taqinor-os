@@ -150,3 +150,25 @@ describe('ProduitForm — tarification forfaitaire par composition (L-STOCKUI)',
     expect(payload.prix_par_panneau_ht).toBeNull()
   })
 })
+
+// CCAT5 — un coffret C&I (coffret_dc / coffret_ac) est tarifé par ONDULEUR
+// (prix_fixe_ht = prix par onduleur) et par panneau : les libellés le disent.
+describe('ProduitForm — tarification des coffrets C&I (CCAT5)', () => {
+  it.each(['coffret_dc', 'coffret_ac'])('%s : « Prix par onduleur » et aide dédiée', async (roleCi) => {
+    renderEdit({ role_ci: roleCi })
+    await screen.findByText(/Éditer/)
+    fireEvent.click(document.getElementById('pf-tarif-summary'))
+    expect(screen.getByLabelText('Prix par onduleur (DH HT)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Prix par panneau (DH HT)')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Partie fixe (DH HT)')).toBeNull()
+    expect(screen.getByText(/prix par onduleur × nombre d'onduleurs \+ prix par panneau × nombre de panneaux/)).toBeInTheDocument()
+  })
+
+  it('un autre rôle garde « Partie fixe » (formulation résidentielle)', async () => {
+    renderEdit({ role_ci: 'cable_ac' })
+    await screen.findByText(/Éditer/)
+    fireEvent.click(document.getElementById('pf-tarif-summary'))
+    expect(screen.getByLabelText('Partie fixe (DH HT)')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Prix par onduleur (DH HT)')).toBeNull()
+  })
+})

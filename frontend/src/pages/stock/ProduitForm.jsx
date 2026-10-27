@@ -28,6 +28,7 @@ import CustomFieldsInput from '../../components/CustomFieldsInput'
 // PVOND (fondateur 18/08) — la classification produit reste UNE seule
 // source : la même que le générateur de devis, jamais réimplémentée ici.
 import { classifyProduct, isPompe } from '../../features/ventes/solar.js'
+import { libellesTarifForfaitaire, libelleRoleDevis, aideRoleDevis } from '../../features/stock/libellesProduitCi.js'
 // STKCAT20 — la même source que le sélecteur de structures (STKCAT11) : la
 // famille RÉELLE d'un produit vient de sa catégorie TYPÉE, jamais du seul nom.
 import {
@@ -712,6 +713,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // CIQ104 — le bloc de fiche C&I : celui du rôle C&I DÉCLARÉ, sinon celui de
   // la fiche déjà typée C&I, sinon (onduleur réseau) les champs onduleur C&I.
   const typeFicheCiCourant = typeFicheCi(fields.role_ci)
+  const libTarif = libellesTarifForfaitaire(fields.role_ci)
     ?? (['limiteur', 'logger', 'protection', 'cable', 'structure'].includes(ficheTypeServeur)
       ? ficheTypeServeur : null)
     ?? (estOnduleurReseau ? 'onduleur' : null)
@@ -1369,16 +1371,13 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
                 )}
               </summary>
               <div className="grid gap-4 border-t border-border p-3 sm:grid-cols-2 sm:p-4">
-                <p className="text-xs text-muted-foreground sm:col-span-2">
-                  Si renseignés, la composition du devis cote cette ligne : fixe + par-panneau
-                  × nb panneaux (HT), à la place du prix de vente. Laisser vide = prix de vente classique.
-                </p>
-                <FormField label="Partie fixe (DH HT)" htmlFor="pf-tarif-fixe">
+                <p className="text-xs text-muted-foreground sm:col-span-2">{libTarif.aide}</p>
+                <FormField label={libTarif.fixe} htmlFor="pf-tarif-fixe">
                   <Input id="pf-tarif-fixe" type="number" min="0" step="any" inputMode="decimal"
                          value={fields.prix_fixe_ht}
                          onChange={e => setField('prix_fixe_ht', e.target.value)} />
                 </FormField>
-                <FormField label="Par panneau (DH HT)" htmlFor="pf-tarif-panneau">
+                <FormField label={libTarif.panneau} htmlFor="pf-tarif-panneau">
                   <Input id="pf-tarif-panneau" type="number" min="0" step="any" inputMode="decimal"
                          value={fields.prix_par_panneau_ht}
                          onChange={e => setField('prix_par_panneau_ht', e.target.value)} />
@@ -2147,19 +2146,17 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             description="Rôle de devis, logistique, ventes, achats, location et abonnement."
           >
             <FormField label="Rôle de devis" htmlFor="pf-role-devis" error={errors.role_devis}
-                       hint={isEdit && produit?.role_devis_effectif
-                         ? `Rôle effectif : ${produit.role_devis_effectif}${produit.role_devis_source ? ` (${produit.role_devis_source})` : ''}`
-                         : undefined}>
+                       hint={aideRoleDevis(isEdit ? produit : null, fields.role_devis)}>
               <Select value={fields.role_devis || '__none'}
                       onValueChange={v => setField('role_devis', v === '__none' ? '' : v)}>
                 <SelectTrigger id="pf-role-devis"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">Non déclaré (déduit)</SelectItem>
                   {fields.role_devis && !choixCi.rolesDevis.some(([v]) => v === fields.role_devis) && (
-                    <SelectItem value={fields.role_devis}>{fields.role_devis}</SelectItem>
+                    <SelectItem value={fields.role_devis}>{libelleRoleDevis(fields.role_devis)}</SelectItem>
                   )}
-                  {choixCi.rolesDevis.map(([valeur, libelle]) => (
-                    <SelectItem key={valeur} value={valeur}>{libelle}</SelectItem>
+                  {choixCi.rolesDevis.map(([valeur]) => (
+                    <SelectItem key={valeur} value={valeur}>{libelleRoleDevis(valeur)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
