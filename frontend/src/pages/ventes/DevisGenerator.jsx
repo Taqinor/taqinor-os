@@ -1001,7 +1001,8 @@ export default function DevisGenerator({
     monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits,
+    // RGEN5 — niveau de règles du devis édité (`Devis.regles_calcul`) ; un devis neuf naît au niveau 3.
+    sizing, dispatchSizing, produits, reglesCalcul: editDevis?.regles_calcul ?? 3,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──

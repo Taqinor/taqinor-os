@@ -12,6 +12,7 @@ import {
   ligneCompteDansTotaux, PAS_ARRONDI_DEVIS, totauxCanoniques, repartirRemiseParLigne,
 } from './remise.js'
 import { SCENARIOS_VALIDES } from './quote/scenarios.js'
+import { economieAvecNette } from './quote/economieAvecNette.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -427,7 +428,8 @@ export function computeROI({
   lines = [],
   // AGNR36 — catalogue de l'écran : chaque ligne se classe sur désignation +
   // nom du produit lié (`texteClassement`). Absent ⇒ désignation seule.
-  produits = [],
+  // RGEN5 — `reglesCalcul` (`Devis.regles_calcul`) ≥ 3 : économie « avec » nette (absent ⇒ brut, inchangé).
+  produits = [], reglesCalcul = 0,
 }) {
   // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
   // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
@@ -635,10 +637,9 @@ export function computeROI({
   // socle autoconsommé directement (autoconsoSansEff) n'entre jamais dans la
   // batterie ; seul le supplément apporté par la capacité batterie
   // (autoconsoAvecEff − autoconsoSansEff) est stocké puis restitué.
-  let battPart = 0
-  if (autoconsoAvecEff > 0) {
-    battPart = Math.max(0, autoconsoAvecEff - autoconsoSansEff) / autoconsoAvecEff
-  }
+  let battPart = autoconsoAvecEff > 0 ? Math.max(0, autoconsoAvecEff - autoconsoSansEff) / autoconsoAvecEff : 0
+  // RGEN5 — niveau 3 : miroir de `pricing._economie_avec_nette` (RHOR6) ; le cashflow lit le net (part 0).
+  ;({ economie: ecoAnnuelleAvec, factureAvec: factureAvecAvec, partStockee: battPart } = economieAvecNette(ecoAnnuelleAvec, factureAvecAvec, battPart, { nette: reglesCalcul >= 3 && stockagePresent, roundtrip: BATTERY_ROUNDTRIP, series: [{ valeurs: ecoAvecMonthly }, { valeurs: monthlyDetail, cle: 'eco_avec' }] }))
 
   // QX39 — payback par croisement du cumul du cashflow 25 ans (miroir backend),
   // pas un ratio année-1 : écran/PDF/proposition affichent le MÊME payback.

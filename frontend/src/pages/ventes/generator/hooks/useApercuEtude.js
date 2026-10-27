@@ -32,7 +32,7 @@ export function useApercuEtude(ctx) {
     monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits,
+    sizing, dispatchSizing, produits, reglesCalcul,
   } = ctx
 
   // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
@@ -167,6 +167,7 @@ export function useApercuEtude(ctx) {
       produits,
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
+      reglesCalcul,
       // QF5 — bascule sur le modèle « deux factures » par tranche (parité
       // PDF) dès qu'une consommation réelle + un distributeur sont connus.
       // AGNR24 — la conso ENREGISTRÉE (`consoEcran`), jamais la seule saisie.
@@ -179,7 +180,7 @@ export function useApercuEtude(ctx) {
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete, produits])
+    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul])
 
   // L-2OPT — miroir local de `roi` recalculé AU kWc DE LA BRANCHE AVEC. `null`
   // dès que rien ne diverge (`kwpAvec === kwp`) : l'écran retombe alors mot
@@ -202,6 +203,7 @@ export function useApercuEtude(ctx) {
       produits,
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
+      reglesCalcul,
       consoAnnuelleKwh: consoEcran,
       utility: distributeur,
       bareme: baremeSociete,
@@ -209,7 +211,7 @@ export function useApercuEtude(ctx) {
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete, produits])
+    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul])
 
   // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
   const villeCalculLead = villeEffectiveLead(selectedLead)

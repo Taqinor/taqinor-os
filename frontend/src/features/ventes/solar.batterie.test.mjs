@@ -286,3 +286,56 @@ test('INVARIANT : l\'option AVEC batterie n\'économise JAMAIS moins que l\'opti
     }
   }
 })
+
+// ── RGEN5 — économie « avec batterie » NETTE au niveau de règles 3 ───────────
+// Valeurs attendues = `pricing.calculate_savings_roi` de RHOR6 sur les MÊMES
+// entrées (10 kWc, productible 1651, conso 15 000 kWh/an, ONEE, batterie
+// 10 kWh, 100 000 / 140 000 TTC) : regles_2710=True → eco_a_ann 22 301,
+// facture_avec_a 3 721, net_gain_avec 385 321 ; False → 22 952 / 3 070.
+test('RGEN5 économie nette niveau 3', () => {
+  const entrees = {
+    kwp: 10, productible: 1651, factures: Array(12).fill(1500),
+    dayUsagePct: 60, totalSans: 100000, totalAvec: 140000,
+    batteryKwh: BATTERY, consoAnnuelleKwh: CONSO, utility: 'onee',
+  }
+  const n3 = computeROI({ ...entrees, reglesCalcul: 3 })
+  assert.equal(n3.savings_model, 'factures')
+  // À la main : part stockée = (0,83766 − 0,60) / 0,83766 = 0,28372 ;
+  // 22 952 × (1 − 0,10 × 0,28372) = 22 300,8 → 22 301 (= le PDF).
+  assert.equal(n3.eco_annuelle_avec, 22301)
+  assert.equal(n3.facture_avec_avec, 3721)
+  assert.equal(n3.net_gain_avec, 385321)
+  const somme = n3.eco_avec_monthly.reduce((s, v) => s + v, 0)
+  assert.equal(Math.abs(somme - 22301) < 1e-6, true)
+  assert.equal(Math.abs(n3.monthly_detail.reduce((s, d) => s + d.eco_avec, 0) - 22301) < 1e-6, true)
+  // L'option sans batterie ne bouge pas.
+  assert.equal(n3.eco_annuelle_sans, 16572)
+  // Niveau < 3 (ou absent : appelants d'hier) : économie BRUTE inchangée.
+  for (const r of [undefined, 1, 2]) {
+    const brut = computeROI({ ...entrees, reglesCalcul: r })
+    assert.equal(brut.eco_annuelle_avec, 22952)
+    assert.equal(brut.facture_avec_avec, 3070)
+  }
+  // Sans batterie : rien à déduire, même au niveau 3.
+  const sansBatt = computeROI({ ...entrees, batteryKwh: 0, reglesCalcul: 3 })
+  assert.deepEqual(sansBatt, computeROI({ ...entrees, batteryKwh: 0 }))
+})
+
+test('RGEN5 economieAvecNette : déduction unique, jamais hors niveau 3', async () => {
+  const { economieAvecNette } = await import('./quote/economieAvecNette.js')
+  const r = { roundtrip: 0.9 }
+  assert.deepEqual(economieAvecNette(10000, 500, 0.5, { ...r, nette: true }),
+    { economie: 9500, factureAvec: 1000, partStockee: 0 })
+  assert.deepEqual(economieAvecNette(10000, null, 0.5, { ...r, nette: true }),
+    { economie: 9500, factureAvec: null, partStockee: 0 })
+  // Hors niveau 3, part nulle ou économie nulle : tout passe tel quel.
+  assert.deepEqual(economieAvecNette(10000, 500, 0.5, r), { economie: 10000, factureAvec: 500, partStockee: 0.5 })
+  assert.deepEqual(economieAvecNette(10000, 500, 0, { ...r, nette: true }), { economie: 10000, factureAvec: 500, partStockee: 0 })
+  assert.deepEqual(economieAvecNette(0, 500, 0.5, { ...r, nette: true }), { economie: 0, factureAvec: 500, partStockee: 0.5 })
+  const serie = [6000, 4000]
+  const detail = [{ eco_avec: 6000 }, { eco_avec: 4000 }]
+  economieAvecNette(10000, 500, 0.5, { ...r, nette: true,
+    series: [{ valeurs: serie }, { valeurs: detail, cle: 'eco_avec' }] })
+  assert.deepEqual(serie, [5700, 3800])
+  assert.deepEqual(detail.map(d => d.eco_avec), [5700, 3800])
+})
