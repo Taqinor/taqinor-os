@@ -450,6 +450,16 @@ class TestCCAT2OptionBatterie(CIQ101Base):
             'Onduleur hybride sans fiche', 'onduleur_hybride', 9000))
         self.assertEqual(etat['motif_exclusion'], 'fiche onduleur absente')
 
+    def test_batterie_haute_tension_hors_option_bt(self):
+        # R4 Fable — le pack HV garde sa tension OMISE exprès (seed BAT-DYN-HV-16) :
+        # jamais « à compléter », hors option basse tension comme le moteur.
+        self.assertIsNone(self._etat(self._produit(
+            'Batterie Deye BOS-B Pro haute tension — 16 kWh', 'batterie', 48000,
+            type_fiche='batterie', bat_kwh_nominal=16)))
+        self.assertIsNone(self._etat(self._produit(
+            'Batterie HV', 'batterie', 48000, type_fiche='batterie',
+            bat_kwh_usable=14, bat_v_nominal=409.6)))
+
     def test_batterie_sans_capacite_utile(self):
         etat = self._etat(self._produit(
             'Batterie Dyness', 'batterie', 12000, type_fiche='batterie',

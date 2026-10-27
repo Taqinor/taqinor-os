@@ -79,6 +79,24 @@ def _prix_vente_saisi(produit):
     return bool(produit.prix_vente and produit.prix_vente > 0)
 
 
+def _batterie_haute_tension(produit):
+    """Pack HAUTE tension (tension nominale > port BT, ou « haute tension » dans
+    le nom quand la tension est volontairement omise — ``BAT-DYN-HV-16``,
+    ``seed_catalogue`` : la renseigner à 51,2 V ferait entrer le pack dans la
+    fenêtre des hybrides BT) : hors option basse tension, jamais « à
+    compléter » — même repli que ``ventes.domain.catalogue._is_battery_basse_tension``."""
+    from core.product_roles import TENSION_PORT_BT_MAX_V
+
+    from .selectors import _norme, specs_for_produit
+    fiche = getattr(produit, 'fiche_technique', None)
+    specs = (specs_for_produit(produit) or {}) if getattr(
+        fiche, 'type_fiche', None) == 'batterie' else {}
+    v_nominal = _num(specs.get('v_nominal'))
+    if v_nominal is not None:
+        return v_nominal > TENSION_PORT_BT_MAX_V
+    return 'haute tension' in _norme(getattr(produit, 'nom', ''))
+
+
 def _motif_batterie(produit):
     manque = _manque_fiche_batterie(produit)
     if manque:
@@ -123,6 +141,8 @@ def etat_option_batterie(produit):
         return _etat('onduleur_hybride', LIBELLE_HYBRIDE, source, produit,
                      motif)
     if role == 'batterie' or getattr(produit, 'role_ci', '') == 'batterie_ci':
+        if _batterie_haute_tension(produit):
+            return None
         return _etat('batterie', LIBELLE_BATTERIE,
                      source if role == 'batterie' else 'declare', produit,
                      _motif_batterie(produit))
@@ -137,7 +157,8 @@ def etat_ci_complet(produit):
     etat = etat_ci_produit(produit)
     if etat is None:
         return etat_option_batterie(produit)
-    if etat['role_ci'] == 'batterie_ci' and etat['eligible_ci']:
+    if (etat['role_ci'] == 'batterie_ci' and etat['eligible_ci']
+            and not _batterie_haute_tension(produit)):
         motif = _motif_batterie(produit)
         if motif:
             etat = dict(etat, eligible_ci=False, motif_exclusion=motif)
