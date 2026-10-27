@@ -428,9 +428,12 @@ def _question(lead, champ, section):
             if devis_auto._tension_declaree(lead) == 'mt':
                 question = PREFIXE_QUESTION + QUESTION_PHASE_MT
                 choix = [c for c in choix if c['valeur'] == 'triphase']
-        if (champ == 'contrat_electricite' and choix
-                and getattr(lead, 'tension_raccordement', None) == 'bt'):
-            choix = [c for c in choix if c['valeur'] != CONTRAT_MT]
+        if champ == 'contrat_electricite' and choix:
+            # Tension DÉCLARÉE (jamais la case pré-cochée du site) : un client
+            # venu du site avec « BT » par défaut peut être en MT.
+            from . import devis_auto
+            if devis_auto._tension_declaree(lead) == 'bt':
+                choix = [c for c in choix if c['valeur'] != CONTRAT_MT]
         if champ == 'financing_intent' and choix:
             choix = [c for c in choix
                      if c['valeur'] in FINANCEMENT_CHOIX_SERVIS]

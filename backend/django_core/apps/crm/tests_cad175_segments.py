@@ -353,6 +353,12 @@ class CIQ410PanneauPro(SimpleTestCase):
                               'bt_force_motrice', 'ne_sait_pas'])
         inconnue = valeurs(Lead(nom='P', type_installation='commercial'))
         self.assertIn('mt_general', inconnue)
+        # BT pré-cochée par le site (pas déclarée) : le client peut être en
+        # MT, le choix reste offert (critique Fable pré-merge, 27/10).
+        site = valeurs(Lead(nom='P', type_installation='commercial',
+                            tension_raccordement='bt',
+                            tension_source='site_defaut_visible'))
+        self.assertIn('mt_general', site)
 
     def test_phase_posee_a_tout_pro_deux_choix(self):
         """CSV4 — la phase (mono/tri) se pose à tout pro, MT et industriel

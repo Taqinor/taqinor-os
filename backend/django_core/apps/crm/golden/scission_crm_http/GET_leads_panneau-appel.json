@@ -516,14 +516,6 @@
     "section": "contact"
    },
    {
-    "champ": "ville",
-    "choix": null,
-    "libelle": "ville",
-    "nature": "texte",
-    "question": "",
-    "section": "contact"
-   },
-   {
     "champ": "decideur",
     "choix": [
      {
@@ -626,6 +618,14 @@
     "nature": "choix",
     "question": "Question à l'appel : « Qu'est-ce qui vous a donné envie de vous renseigner ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite. Question ORALE.",
     "section": null
+   },
+   {
+    "champ": "ville",
+    "choix": null,
+    "libelle": "ville",
+    "nature": "texte",
+    "question": "Question à l'appel : « Dans quelle ville se trouve votre maison ? »",
+    "section": "contact"
    }
   ],
   "equipements": [
