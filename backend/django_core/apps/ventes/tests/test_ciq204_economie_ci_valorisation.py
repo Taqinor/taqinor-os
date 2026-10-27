@@ -132,6 +132,17 @@ class BtTest(SimpleTestCase):
         self.assertEqual([p['poste'] for p in
                           res['economie_annee1']['par_poste']], ['normales'])
 
+    def test_bi_horaire_devis_envoye_omis_comme_avant(self):
+        from apps.ventes import economie_ci_options as opt
+        tarif = tc.tarif_applicable({'contrat': 'bt_force_motrice',
+                                     'option_bi_horaire': True},
+                                    regles_origine=True)
+        res = eco.valoriser(_apercu(_soleil(5.0), _plat(10.0), 'bt'), tarif,
+                            regles_origine=True)
+        self.assertEqual(res['statut'], eco.STATUT_OMIS)
+        self.assertEqual(res['motifs_omission'],
+                         [opt.MOTIF_BI_HORAIRE_ORIGINE])
+
     def test_conso_inversee_plafonnee_et_etiquetee(self):
         res = eco.valoriser(_apercu(_soleil(5.0), _plat(5.0), 'bt'),
                             TARIF_PATENTE, facture_energie_declaree_ttc=1000)

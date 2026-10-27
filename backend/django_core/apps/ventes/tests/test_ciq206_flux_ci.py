@@ -522,6 +522,11 @@ class SaisieFacultativeInvalideTest(SimpleTestCase):
         self.assertIn('saisie_ecartee',
                       [a['code'] for a in bloc['alertes_internes']])
         self.assertNotIn('alertes_internes', eco.economie_ci_publique(bloc))
+        # Devis envoyé sous le niveau 3 : le refus d'hier, inchangé.
+        with self.assertRaises(eco.SaisieEconomieCiInvalide):
+            opt.sans_saisie_invalide(eco.assembler_economie_ci, apercu,
+                                     saisies=saisies,
+                                     reglages={'regles_origine': True}, **kw)
 
 
 class OptionAvecBatterieTest(SimpleTestCase):

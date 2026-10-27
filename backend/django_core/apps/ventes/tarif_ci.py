@@ -206,8 +206,6 @@ def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
         contrat = 'mt_general' if est_mt else None
     if contrat is None and not (nouveau and _tranches_bt_declarees(td.get('bt'))):
         return _omis()  # CEC4 — des tranches déclarées suffisent sans contrat
-    if regles_origine and td.get('option_bi_horaire'):
-        return _omis(contrat=contrat)  # bi-horaire non valorisé avant CEC5
     taux, annee = tva_energie(millesime)
     if taux is None:
         return _omis()
@@ -374,7 +372,9 @@ def tarif_du_poste(tarif, mois, heure_gmt, *, kwh_mois=None,
     return out
 
 
-def _seuils_bt(tarif, tarif_declare):
+def _seuils_bt(tarif, tarif_declare, origine=False):
+    """``origine`` (devis envoyé sous le niveau 3) : les seuils déclarés
+    lus tels quels, comme avant CEC2."""
     contrat = tarif.get('contrat')
     if tarif.get('origine') == ORIGINE_GRILLE:
         try:
@@ -383,7 +383,11 @@ def _seuils_bt(tarif, tarif_declare):
             return None
         return [(x['seuil_min_kwh'], x['seuil_max_kwh']) for x in lignes]
     td = tarif_declare if isinstance(tarif_declare, dict) else {}
-    return seuils_contigus(_tranches_bt_declarees(td.get('bt')))
+    tranches = _tranches_bt_declarees(td.get('bt'))
+    if origine:
+        return [(_num(t.get('seuil_min_kwh')), _num(t.get('seuil_max_kwh')))
+                for t in tranches] or None
+    return seuils_contigus(tranches)
 
 
 def seuils_contigus(tranches):

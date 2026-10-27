@@ -166,9 +166,9 @@ def _kwh_par_tranche(conso, seuils):
     return out
 
 
-def _valoriser_bt(cellules, tarif, apercu, tarif_declare):
+def _valoriser_bt(cellules, tarif, apercu, tarif_declare, origine=False):
     postes = tarif['tarifs_par_poste']
-    seuils = tarif_ci._seuils_bt(tarif, tarif_declare)
+    seuils = tarif_ci._seuils_bt(tarif, tarif_declare, origine)
     if seuils is None or len(seuils) != len(postes):
         return None
     conso_mois = {}
@@ -210,7 +210,7 @@ def _valoriser_bt(cellules, tarif, apercu, tarif_declare):
 
 
 def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
-              facture_energie_declaree_ttc=None):
+              facture_energie_declaree_ttc=None, regles_origine=False):
     """La valorisation horaire d'une étude C&I (forme ``economie_ci``).
 
     ``tarif`` = sortie de ``tarif_ci.tarif_applicable`` (``omis`` ⇒ statut
@@ -231,11 +231,13 @@ def valoriser(apercu_ci, tarif, *, millesime=2026, tarif_declare=None,
         return _vide(MOTIF_SANS_HORAIRE, tarif)
 
     tension = _tension(apercu, tarif)
-    if tarif.get('contrat') == 'mt_general' or any(  # CEC5 — bi-horaire HP/HN
-            p['poste'] == 'normales' for p in tarif['tarifs_par_poste']):
+    bi_horaire = any(p['poste'] == 'normales' for p in tarif['tarifs_par_poste'])
+    if bi_horaire and regles_origine:  # devis envoyé : omis comme avant CEC5
+        return _vide(_options.MOTIF_BI_HORAIRE_ORIGINE, tarif)
+    if tarif.get('contrat') == 'mt_general' or bi_horaire:  # CEC5 — HP/HN
         res = _valoriser_mt(cellules, tarif)
     else:
-        res = _valoriser_bt(cellules, tarif, apercu, tarif_declare)
+        res = _valoriser_bt(cellules, tarif, apercu, tarif_declare, regles_origine)
         if res is None:
             return _vide(MOTIF_SANS_HORAIRE, tarif)
     par_poste, fav, fap = res
@@ -1483,7 +1485,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
                  tarif_ci.ORIGINE_OMIS else MOTIF_ETUDE_CI_ABSENTE)
         return _bloc_omis(motif, tarif, alertes=alertes,
                           vue_interne=vue_interne)
-    valo = valoriser(apercu, tarif, tarif_declare=tarif_declare)
+    valo = valoriser(apercu, tarif, tarif_declare=tarif_declare, regles_origine=reglages.get('regles_origine'))
     if valo['statut'] == STATUT_OMIS:
         return _bloc_omis(valo['motifs_omission'][0], tarif, alertes=alertes,
                           vue_interne=vue_interne)

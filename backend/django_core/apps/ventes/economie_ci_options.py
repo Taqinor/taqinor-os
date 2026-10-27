@@ -224,6 +224,9 @@ def sans_saisie_invalide(assembleur, apercu, *, saisies=None, **kw):
     (``alertes_internes``, jamais servie au client). Les autres refus
     remontent tels quels (l'aperçu de l'écran garde son 400 nommé)."""
     from apps.ventes.economie_ci import SaisieEconomieCiInvalide
+    if (kw.get('reglages') or {}).get('regles_origine'):
+        # Devis envoyé sous le niveau 3 : le comportement d'hier (refus).
+        return assembleur(apercu, saisies=saisies, **kw)
     saisies = dict(saisies) if isinstance(saisies, dict) else {}
     ecartees = []
     while True:
@@ -241,3 +244,10 @@ def sans_saisie_invalide(assembleur, apercu, *, saisies=None, **kw):
         bloc.setdefault('alertes_internes', []).append(
             {'code': 'saisie_ecartee', 'message': message, 'interne': True})
     return bloc
+
+
+#: Le motif d'un client bi-horaire sur un devis envoyé avant le 27/10/2026
+#: (règles d'origine) : texte d'avant CEC5, inchangé.
+MOTIF_BI_HORAIRE_ORIGINE = (
+    "option bi-horaire : plages heures pleines / normales non saisies — "
+    "économies non chiffrées (aucune plage devinée)")

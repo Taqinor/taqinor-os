@@ -167,9 +167,16 @@ class SchemaTarifDeclareTest(SimpleTestCase):
         mt = {'tarif_pointe': 1.2, 'tarif_pleines': 0.9, 'tarif_creuses': 0.6}
         self.assertEqual(tc.tarif_applicable(
             {'mt': mt}, regles_origine=True)['origine'], 'omis')
+        # Bi-horaire : la grille comme hier (aucune alerte nouvelle), c'est la
+        # valorisation qui omet (test_ciq204).
         self.assertEqual(tc.tarif_applicable(
             {'contrat': 'bt_force_motrice', 'option_bi_horaire': True},
-            regles_origine=True)['origine'], 'omis')
+            regles_origine=True)['origine'], 'grille_officielle')
+        # Tranches déclarées sans seuils : lues brutes, comme avant CEC2.
+        declare = {'bt': {'tranches': [{'tarif_kwh': 1.4}, {'tarif_kwh': 1.5}]}}
+        self.assertEqual(tc._seuils_bt({'origine': 'declare_facture'}, declare,
+                                       origine=True),
+                         [(None, None), (None, None)])
 
     def test_cec2_derniere_tranche_plafonnee_refusee(self):
         tranches = [{'tarif_kwh': 1.0, 'seuil_min_kwh': 0, 'seuil_max_kwh': 100},
