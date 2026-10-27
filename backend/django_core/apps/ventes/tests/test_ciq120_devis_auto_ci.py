@@ -119,6 +119,17 @@ class _Base(TestCase):
         with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
             return build_devis_auto(lead=lead, user=self.user, company=self.co)
 
+    # ADEV76 / CORC6 : un refus nommé, rien d'écrit (partagé par les classes).
+    def _refus(self, lead, *, reel=False):
+        avant = Devis.objects.filter(company=self.co).count()
+        with self.assertRaises(AutoDevisError) as ctx:
+            if reel:
+                build_devis_auto(lead=lead, user=self.user, company=self.co)
+            else:
+                self._auto(lead)
+        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+        return ctx.exception
+
 
 _TARIF_APPLICABLE = tarif_ci.tarif_applicable
 
@@ -198,16 +209,6 @@ class DevisAutoCITests(_Base):
         self.assertEqual(ctx.exception.field, 'type_installation')
 
     # ── ADEV76 : les refus nomment un CHAMP DU LEAD ─────────────────────────
-
-    def _refus(self, lead, *, reel=False):
-        avant = Devis.objects.filter(company=self.co).count()
-        with self.assertRaises(AutoDevisError) as ctx:
-            if reel:
-                build_devis_auto(lead=lead, user=self.user, company=self.co)
-            else:
-                self._auto(lead)
-        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
-        return ctx.exception
 
     def test_lead_1637_sans_rythme_ni_categorie_ni_contrat_nomme_le_contrat(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), facture_hiver=Decimal('18000'),
