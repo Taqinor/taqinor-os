@@ -316,3 +316,50 @@ class EtudeHoraireEquipementsTests(TestCase):
         response = self.api.post(
             URL, {'conso_kwh_mensuelles': ['400'] * 12}, format='multipart')
         self.assertEqual(response.status_code, 415, response.content)
+
+
+class PreviewBatteriesDuCorpsTests(_LeadPreviewBase):
+    """RHOR9 — sans devis enregistré, les lignes « avec » batterie envoyées
+    par l'écran (``batteries``) sont lues sur leurs fiches (capacité utile,
+    puissances, rendement), comme le bloc d'un devis ; un produit d'une autre
+    société est ignoré ; sans le champ, la capacité du corps (inchangé)."""
+
+    def _batterie(self, company, sku):
+        from apps.stock.models import Produit
+        return Produit.objects.create(
+            company=company, nom='Batterie Dyness 5 kWh', sku=sku,
+            prix_vente=Decimal('11666.67'), prix_achat=Decimal('8000'),
+            quantite_stock=10)
+
+    def _apercu(self, **extra):
+        corps = {'mode_installation': 'residentiel', 'facture_hiver': 1500,
+                 'occupation': 'presence_jour', 'ville': 'Casablanca',
+                 'kwc': 6.0, 'batterie_kwh': 12.0}
+        corps.update(extra)
+        resp = self.api.post('/api/django/ventes/etude-horaire/preview/',
+                             corps, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertIsNotNone(resp.data['etude'])
+        return resp.data['etude']
+
+    def test_rhor9_capacite_lue_sur_les_lignes_de_l_ecran(self):
+        produit = self._batterie(self.company, 'RHOR9-BAT')
+        etude = self._apercu(
+            batteries=[{'produit': produit.pk, 'quantite': 2}])
+        self.assertAlmostEqual(etude['batterie_kwh_utile'], 10.0, places=2)
+
+    def test_rhor9_produit_d_une_autre_societe_ignore(self):
+        etranger = self._batterie(self.other_company, 'RHOR9-BAT-X')
+        etude = self._apercu(
+            batteries=[{'produit': etranger.pk, 'quantite': 2}])
+        self.assertAlmostEqual(etude['batterie_kwh_utile'], 12.0, places=2)
+
+    def test_rhor9_sans_le_champ_comportement_d_avant(self):
+        self.assertAlmostEqual(
+            self._apercu()['batterie_kwh_utile'], 12.0, places=2)
+
+    def test_rhor9_batteries_hors_forme_400(self):
+        resp = self.api.post('/api/django/ventes/etude-horaire/preview/', {
+            'mode_installation': 'residentiel', 'facture_hiver': 1500,
+            'batteries': 'Dyness'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)

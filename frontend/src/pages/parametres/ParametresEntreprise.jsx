@@ -188,7 +188,7 @@ export default function ParametresEntreprise() {
     tva_standard: 20,
     tva_panneaux: 10,
     onee_tarif_kwh: 1.75,
-    productible_kwh_kwc: 1600,
+    productible_kwh_kwc: '',
     discount_approval_threshold: '',
     // CIQ639 — seuils 82-21 = SURCHARGES vides (seuils des textes servis par
     // `seuils_sources`) + réglages C&I de CIQ622, tous sans défaut.
@@ -815,7 +815,8 @@ export default function ParametresEntreprise() {
         tva_standard: keepNum(f.tva_standard),
         tva_panneaux: keepNum(f.tva_panneaux),
         onee_tarif_kwh: keepNum(f.onee_tarif_kwh),
-        productible_kwh_kwc: keepNum(f.productible_kwh_kwc),
+        // AMOT64 — vide = PVGIS de la ville (NULL), jamais une sentinelle.
+        productible_kwh_kwc: f.productible_kwh_kwc === '' || f.productible_kwh_kwc == null ? null : Number(f.productible_kwh_kwc),
         discount_approval_threshold: f.discount_approval_threshold === '' ? null : Number(f.discount_approval_threshold),
         // CIQ639 — vide = null (seuil des textes / non engagé), tapé = tel quel.
         ...payloadReglagesCi(f),
