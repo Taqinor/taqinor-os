@@ -602,8 +602,7 @@
    "adsengine_manage",
    "veille_ao_voir",
    "ux_vue_partager_equipe",
-   "ux_vue_definir_defaut_role",
-   "records_scope_equipe"
+   "ux_vue_definir_defaut_role"
   ],
   "COMMERCIAL_TERRAIN_PERMISSIONS": [
    "visites_voir",
@@ -1278,8 +1277,7 @@
      "adsengine_manage",
      "veille_ao_voir",
      "ux_vue_partager_equipe",
-     "ux_vue_definir_defaut_role",
-     "records_scope_equipe"
+     "ux_vue_definir_defaut_role"
     ]
    ],
    [
