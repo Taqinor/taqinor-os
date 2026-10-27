@@ -173,6 +173,15 @@ class ContratTests(_Base):
         self.assertEqual(data['besoin']['nature'], 'declare')
         self.assertEqual(data['production']['mode'], 'courbe')
         self.assertEqual(data['production']['source_irradiation'], 'pvgis')
+        # AGM8 — l'étiquette de similitude (« estimation ») est servie, comme
+        # celle du rendement non publié (fiche variateur sans MPPT).
+        from core.pompage.volumes import (
+            ESTIMATION_SIMILITUDE, ETIQUETTE_RENDEMENT_NON_PUBLIE,
+        )
+        self.assertIn(ESTIMATION_SIMILITUDE,
+                      data['production']['etiquettes'])
+        self.assertIn(ETIQUETTE_RENDEMENT_NON_PUBLIE,
+                      data['production']['etiquettes'])
         self.assertEqual(len(data['couverture_pct_mois']), 12)
         self.assertEqual(
             data['entrees_resolues']['volume_m3_jour']['provenance']

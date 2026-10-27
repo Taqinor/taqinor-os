@@ -279,7 +279,10 @@
         "lon": -8.88,
         "fige_le": "2026-10-02"
       },
-      "plafond_forage_m3h": 36
+      "plafond_forage_m3h": 36,
+      "etiquettes": [
+        "vitesse relative n = min(1, (P/P_plaque)^(1/3)) : hypothèse P ∝ n³ (lois de similitude) — estimation"
+      ]
     },
     "couverture_pct_mois": [
       104,
@@ -630,7 +633,10 @@
         "lon": -6.36,
         "fige_le": "2026-10-02"
       },
-      "plafond_forage_m3h": null
+      "plafond_forage_m3h": null,
+      "etiquettes": [
+        "estimation sur débit déclaré : débit × Σ min(1, P/P_plaque)"
+      ]
     },
     "couverture_pct_mois": [
       84,
@@ -1130,7 +1136,10 @@
       "source_irradiation": "repli",
       "mode": "repli_plat",
       "coordonnees_figees": null,
-      "plafond_forage_m3h": 36
+      "plafond_forage_m3h": 36,
+      "etiquettes": [
+        "repli : débit × heures de pompage du réglage société (agricole_pump_hours), sans profil PVGIS"
+      ]
     },
     "couverture_pct_mois": [
       158,
@@ -1261,7 +1270,7 @@
     "pompe.mode": "neuve | existante ; `placeholder` true = ligne « Pompe — prix à renseigner : <noms> », jamais un article gratuit",
     "puissance_retenue": "SORTIE du dimensionnement (le CV n'est plus une entrée) ; cv = kw / 0,7355 pour l'affichage",
     "champ.chaines.verifiable": "false ⇒ `motif` obligatoire (fiche variateur absente, températures absentes…), jamais un blocage muet",
-    "production": "null quand aucune pompe à courbe et aucun débit déclaré (« jamais de m³/jour sans courbe ») ; `mode` courbe | debit_declare | repli_plat ; `source_irradiation` pvgis | repli ; `coordonnees_figees` = coordonnées + date de l'appel PVGIS gardées dans l'étude (reproductibilité) ; `plafond_forage_m3h` = plafond horaire appliqué (débit d'exploitation du forage × part du réglage société, ou débit ABH — `conception.plafonds.plafond_retenu_m3h`), null sans plafond ; une heure écrêtée lève l'alerte `debit_limite_forage` (AGQ40/D-AGQ-9)",
+    "production": "null quand aucune pompe à courbe et aucun débit déclaré (« jamais de m³/jour sans courbe ») ; `mode` courbe | debit_declare | repli_plat ; `source_irradiation` pvgis | repli ; `coordonnees_figees` = coordonnées + date de l'appel PVGIS gardées dans l'étude (reproductibilité) ; `plafond_forage_m3h` = plafond horaire appliqué (débit d'exploitation du forage × part du réglage société, ou débit ABH — `conception.plafonds.plafond_retenu_m3h`), null sans plafond ; une heure écrêtée lève l'alerte `debit_limite_forage` (AGQ40/D-AGQ-9) ; `etiquettes` (AGM8, AMOT65) = les étiquettes d'honnêteté du noyau (« estimation » de similitude, « estimation sur débit déclaré », « repli », « rendement non publié ») recopiées telles quelles, liste jamais absente (vide si aucune) : INTERNES, le rendu ne lit que leur présence pour étiqueter un m³/jour estimé",
     "couverture_pct_mois": "production ÷ besoin par mois, en %, NON plafonnée ; null quand la production est null",
     "controle_conception.statut": "conforme | couverture_insuffisante (< 95 % au mois critique, ou un mois d'irrigation listé dans `mois_sous_tolerance` — AGQ2/D-AGQ-2 : le mois critique est le mois d'irrigation au ratio production ÷ besoin le plus bas) | surdimensionnement (> 120 %) | non_verifiable — bornes = la tolérance de la table d'hypothèses, aucun autre seuil ; jamais bloquant (QX48(f))",
     "ha_irrigables": "{valeur, base, motif} — seulement avec un besoin agronomique (« estimation » si l'ET0 est EST.)",

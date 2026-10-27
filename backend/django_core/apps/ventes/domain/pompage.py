@@ -577,6 +577,10 @@ def _forme_production(production):
         # AGQ40 (D-AGQ-9) — plafond horaire appliqué (forage × part du
         # réglage), ``None`` sans débit de forage.
         'plafond_forage_m3h': production.get('plafond_forage_m3h'),
+        # AGM8 (AMOT65, moitié domaine) — les étiquettes d'honnêteté du noyau
+        # (« estimation », « rendement non publié »…) : INTERNES, le rendu ne
+        # lit que leur présence.
+        'etiquettes': list(production.get('etiquettes') or []),
     }
 
 
