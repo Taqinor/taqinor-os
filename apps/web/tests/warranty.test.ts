@@ -109,10 +109,15 @@ describe('RWEB2 — garanties /proposition par marque posée', () => {
     expect(garantieBatterieAns([{ designation: 'Panneau 710 Wc' }])).toBeNull();
   });
 
-  it('RWEB19 — panneaux 12/30 ans seulement pour Canadian Solar / Jinko', async () => {
-    const { garantiesPanneauxAns } = await import('../src/lib/proposition/garanties');
+  it('RWEB19 — panneaux 12/30 ans seulement pour le Canadian Solar par défaut (comme theme.py)', async () => {
+    const { garantiesPanneauxAns, garantieOnduleurAns } = await import('../src/lib/proposition/garanties');
     expect(garantiesPanneauxAns([{ designation: 'Panneau Canadian Solar 710 Wc' }])).toEqual({ produit: 12, performance: 30 });
-    expect(garantiesPanneauxAns([{ designation: 'Panneau 710 Wc', marque: 'Jinko' }])).toEqual({ produit: 12, performance: 30 });
+    // Graphie RÉELLE du catalogue (seed_catalogue.py : « Panneau Canadien Solar 710W », marque « Canadien Solar »).
+    expect(garantiesPanneauxAns([{ designation: 'Panneau Canadien Solar 710W', marque: 'Canadien Solar' }])).toEqual({ produit: 12, performance: 30 });
+    // Jinko : le PDF n'imprime rien sans garantie_mois saisi → la page non plus.
+    expect(garantiesPanneauxAns([{ designation: 'Panneau 710 Wc', marque: 'Jinko' }])).toBeNull();
+    // Une batterie Deye n'impose pas 5 ans à un onduleur Huawei.
+    expect(garantieOnduleurAns([{ designation: 'Batterie Deye BOS-B Pro' }, { designation: 'Onduleur réseau Huawei SUN2000' }])).toBe(10);
     expect(garantiesPanneauxAns([{ designation: 'Panneau JA Solar 550 Wc' }])).toBeNull();
     expect(garantiesPanneauxAns([{ designation: 'Onduleur Deye' }])).toBeNull();
   });

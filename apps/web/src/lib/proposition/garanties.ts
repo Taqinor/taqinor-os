@@ -26,7 +26,8 @@ function texte(l: LigneMarque): string {
 
 /** Garantie onduleur en années, ou null (aucune marque connue). Deux marques → la plus courte. */
 export function garantieOnduleurAns(lignes: readonly LigneMarque[]): number | null {
-  const t = lignes.map(texte);
+  // Lignes onduleur seulement : une « Batterie Deye » à côté d'un onduleur Huawei ne donne pas 5 ans.
+  const t = lignes.map(texte).filter((x) => !x.includes('batter'));
   if (t.some((x) => x.includes('deye'))) return DEYE_INVERTER_WARRANTY_YEARS;
   if (t.some((x) => x.includes('huawei'))) return HUAWEI_INVERTER_WARRANTY_YEARS;
   return null;
@@ -42,10 +43,12 @@ export function garantieBatterieAns(lignes: readonly LigneMarque[]): number | nu
 
 /**
  * RWEB19 — garanties PANNEAUX (produit 12 ans / performance 30 ans) comme le PDF
- * (`residential/theme.py` : spec vérifiée seulement pour les TOPCon Canadian Solar / Jinko).
+ * (`residential/theme.py` : repli constante réservé au panneau Canadian Solar par défaut).
  * Autre marque (JA Solar…) ou aucun panneau → null : les deux durées sont OMISES.
  */
 export function garantiesPanneauxAns(lignes: readonly LigneMarque[]): { produit: number; performance: number } | null {
-  const ok = lignes.map(texte).some((x) => /canadian|jinko/.test(x) && /panneau|module|panel|wc/.test(x));
+  // Graphies du catalogue (« Canadien Solar ») comprises, comme theme.py::_PANNEAU_DEFAUT_MARQUEURS ; Jinko : le PDF
+  // n'a pas de repli constante (garantie_mois non saisi au catalogue) → omis ici aussi (même document).
+  const ok = lignes.map(texte).some((x) => /canadian|canadien/.test(x) && /panneau|module|panel|\bwc\b|\d\s*w\b/.test(x));
   return ok ? { produit: PANEL_PRODUCT_WARRANTY_YEARS, performance: PANEL_PERFORMANCE_WARRANTY_YEARS } : null;
 }

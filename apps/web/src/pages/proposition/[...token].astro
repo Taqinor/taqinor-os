@@ -4854,7 +4854,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                       </p>
                       <p id="batt-tier-payback-line" class="mt-1 flex flex-wrap items-baseline gap-x-1 text-lune-soft" hidden={!battTierInitialClient?.paybackI18n}>
                         <span data-i18n data-fr="Retour sur investissement :" data-en="Payback period:" data-ar="مدة استرداد الاستثمار:">Retour sur investissement :</span>
-                        <span id="batt-tier-payback" dir="ltr" data-i18n data-fr={battTierInitialClient?.paybackI18n?.fr} data-en={battTierInitialClient?.paybackI18n?.en} data-ar={battTierInitialClient?.paybackI18n?.ar}>{battTierInitialClient?.paybackI18n?.fr ?? ''}</span>
+                        <span id="batt-tier-payback" dir="ltr" data-fr={battTierInitialClient?.paybackI18n?.fr} data-en={battTierInitialClient?.paybackI18n?.en} data-ar={battTierInitialClient?.paybackI18n?.ar}>{battTierInitialClient?.paybackI18n?.fr ?? ''}</span>
                       </p>
                       <p id="batt-tier-disabled-note" class="mt-2 text-xs text-lune-faint" data-i18n
                         data-fr="Cette capacité ne se remplirait pas tous les jours avec votre toit."
@@ -9377,6 +9377,11 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     const ecoEl = document.getElementById('batt-tier-eco');
     const paybackLine = document.getElementById('batt-tier-payback-line');
     const paybackEl = document.getElementById('batt-tier-payback');
+    // RWEB22 — span hors du triplet data-i18n (render() réécrit son texte) : la langue suit via le pont des libellés.
+    type PbLang = 'fr' | 'en' | 'ar';
+    let pbCourant: Record<PbLang, string> | null = paybackEl?.dataset.fr ? { fr: paybackEl.dataset.fr, en: paybackEl.dataset.en ?? '', ar: paybackEl.dataset.ar ?? '' } : null;
+    const pbWin = window as unknown as { __propCurrentLang?: () => PbLang; __propRegisterBusyLabel?: (fn: (l: PbLang) => void) => void };
+    pbWin.__propRegisterBusyLabel?.((l) => { if (paybackEl) paybackEl.textContent = pbCourant ? pbCourant[l] : ''; });
     const disabledNote = document.getElementById('batt-tier-disabled-note');
     const interestEl = document.getElementById('batt-tier-interest');
     const requestBtn = document.getElementById('batt-tier-request') as HTMLButtonElement | null;
@@ -9402,8 +9407,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       }
       if (paybackLine && paybackEl) {
         const pb = tier.paybackI18n;
-        if (pb) { paybackEl.dataset.fr = pb.fr; paybackEl.dataset.en = pb.en; paybackEl.dataset.ar = pb.ar; }
-        paybackEl.textContent = pb ? pb[(window as unknown as { __propCurrentLang?: () => 'fr' | 'en' | 'ar' }).__propCurrentLang?.() ?? 'fr'] : '';
+        pbCourant = pb ?? null;
+        paybackEl.textContent = pb ? pb[pbWin.__propCurrentLang?.() ?? 'fr'] : '';
         paybackLine.hidden = !pb;
       }
       if (disabledNote) disabledNote.hidden = tier.ok;
