@@ -152,6 +152,10 @@ LIBELLE_VISITE = "Relevé du site à la visite technique"
 MOTIF_ARGENT_BT = "vos 12 dernières factures"
 MOTIF_ARGENT_MT = ("vos 12 dernières factures MT : prix des trois postes, "
                    "prime fixe, puissance souscrite")
+#: CPDF1 — option « avec batterie » servie sans son ``economie_ci`` complet
+#: (flux, indicateurs) : argent omis, jamais celui de l'offre sans batterie.
+MOTIF_ARGENT_OPTION_AVEC = (
+    "économies de l'option avec batterie non chiffrées à ce stade")
 #: VAN et LCOE : INDUSTRIEL seulement (D-CIQ-10). En commercial ces clés sont
 #: retirées du bloc recopié (jamais recalculées). Le payback actualisé suit la
 #: VAN (il n'existe que sur un taux déclaré) : un seul payback servi, celui du
@@ -417,6 +421,24 @@ def _option_servie(data):
     return "sans_batterie"
 
 
+def _etude_de_l_option(etude_ci, option):
+    """CPDF1 — ``(étude lue, option_avec)`` : l'option servie est « avec
+    batterie » et l'étude sert ``option_avec`` ⇒ une VUE de l'étude dont le
+    bilan est CELUI de l'option (production, taux, surplus, mois) et dont le
+    kWc retenu est celui de l'option ; sinon l'étude telle quelle et ``None``.
+    Jamais un chiffre de l'offre sans batterie sous l'option avec batterie."""
+    avec = etude_ci.get("option_avec")
+    if option != "avec_batterie" or not isinstance(avec, dict):
+        return etude_ci, None
+    taille = dict(_dict(etude_ci.get("taille")))
+    kwc = _num(avec.get("kwc"))
+    if kwc is None:
+        taille.pop("retenue_kwc", None)
+    else:
+        taille["retenue_kwc"] = kwc
+    return dict(etude_ci, bilan=_dict(avec.get("bilan")), taille=taille), avec
+
+
 def _etude_decrit_kwc(etude_ci, kwc):
     """AMOT62 — l'étude C&I décrit-elle ce kWc (à 2 % près) ? Vrai quand
     l'une des deux puissances est inconnue (rien à comparer)."""
@@ -562,6 +584,17 @@ def _option_batterie(data):
     # Fondateur 26/10/2026 — le moteur C&I chiffre l'option (``option_avec``).
     from .mentions import valeur_option_avec
     valeur = bloc.get("valeur_chiffree") or valeur_option_avec(data)
+    if isinstance(valeur, dict):
+        # CPDF1 — les deux taux SERVIS par le bilan de l'option « avec »
+        # (``option_avec.bilan``), exprimés en % : les cartes d'options les
+        # impriment ; absents ⇒ clés absentes.
+        bilan = _dict(_dict(_dict(_dict(data.get("etude")).get(
+            "etude_ci")).get("option_avec")).get("bilan"))
+        valeur = dict(valeur)
+        for cle in ("taux_couverture", "taux_autoconso"):
+            pct = _pct(bilan.get(cle))
+            if pct is not None:
+                valeur.setdefault(f"{cle}_pct", pct)
     return {"totaux": bloc.get("totaux"),
             "valeur_chiffree": valeur,
             "motif": None if valeur else bloc.get("motif")}
@@ -581,10 +614,24 @@ JALONS_N = {
 }
 
 
-def _echeancier_n(jalons):
+def _pcts_au_reliquat(pcts):
+    """CPDF10 — des pourcentages qui ne somment pas à 100 : le DERNIER est
+    imprimé au reliquat (100 − somme des autres), comme son montant
+    (``montants_tranches`` : le dernier reçoit le reliquat). Somme = 100 ⇒
+    inchangés."""
+    if len(pcts) < 2 or any(p is None for p in pcts) \
+            or abs(sum(pcts) - 100) < 1e-9:
+        return list(pcts)
+    return list(pcts[:-1]) + [_num(round(100 - sum(pcts[:-1]), 2))]
+
+
+def _echeancier_n(jalons, total=None):
     """CIQ331 — les N jalons servis par le builder (CIQ212,
     ``jalons_paiement_devis`` : montants au centime, le dernier reçoit le
-    reliquat) recopiés dans la forme du contrat — aucun recalcul."""
+    reliquat) recopiés dans la forme du contrat. CPDF1 — ``total`` (TTC de
+    l'option « avec batterie » servie) : montants recalculés sur CE total
+    avec les pourcentages des jalons (dernier = reliquat), jamais ceux du
+    builder calculés sur l'offre sans batterie."""
     sortie = []
     for j in jalons:
         if not isinstance(j, dict) or _num(j.get("pct")) is None:
@@ -594,13 +641,27 @@ def _echeancier_n(jalons):
         montant = _num(j.get("montant_ttc"))
         sortie.append({"libelle": libelle, "pct": _num(j.get("pct")),
                        "montant_ttc": montant, "jalon": jalon})
+    if total is not None and sortie:
+        from apps.ventes.utils.echeancier import montants_tranches
+        montants = montants_tranches(
+            total, [(i, j["pct"]) for i, j in enumerate(sortie)])
+        for i, j in enumerate(sortie):
+            j["montant_ttc"] = float(montants[i])
+    return _au_reliquat(sortie)
+
+
+def _au_reliquat(sortie):
+    for j, pct in zip(sortie, _pcts_au_reliquat([j["pct"] for j in sortie])):
+        j["pct"] = pct
     return sortie
 
 
 def _echeancier(data, option):
     jalons = data.get("jalons_paiement")
     if isinstance(jalons, list) and jalons:
-        sortie = _echeancier_n(jalons)
+        total_avec = (_num(data.get("total_avec"))
+                      if option == "avec_batterie" else None)
+        sortie = _echeancier_n(jalons, total_avec)
         if sortie:
             return sortie
     termes = _dict(data.get("payment_terms"))
@@ -623,7 +684,7 @@ def _echeancier(data, option):
             "montant_ttc": float(montant) if montant is not None else None,
             "jalon": jalon,
         })
-    return sortie
+    return _au_reliquat(sortie)
 
 
 def _sans_industriel(valeur):
@@ -662,11 +723,46 @@ def est_site_mt(data):
     return _est_mt(data, etude_ci, data.get("economie_ci"))
 
 
-def _bloc_argent(data, etude_ci, segment):
-    """``(argent, motif)`` — CIQ304 : le bloc ``economie_ci`` PUBLIC recopié
-    tel quel (valeurs au centime), ou ``None`` + ce qui manque."""
+def _flux_complet(bloc):
+    """Un bloc porte-t-il l'argent sur 25 ans (base, indicateurs, flux) ?"""
+    return isinstance(bloc, dict) and bool(bloc.get("base")) and \
+        isinstance(bloc.get("indicateurs"), dict) and \
+        bool(bloc.get("flux_ht") or bloc.get("flux_ttc"))
+
+
+def _argent_option_avec(option_avec, segment):
+    """CPDF1 — ``(argent, motif)`` de l'option « avec batterie » : SON
+    ``economie_ci`` (tarif, économie an 1…) complété de SON flux 25 ans
+    (``option_avec.economie_flux`` = ``economie_ci_options.
+    flux_option_avec`` : base, flux, jalons, indicateurs, remplacements dont
+    la batterie) quand il est servi, puis le filtre public ; ni ``economie_ci``
+    complet ni flux ⇒ argent OMIS, jamais l'argent de l'offre sans
+    batterie."""
     from apps.ventes.economie_ci import STATUT_CALCULE, economie_ci_publique
 
+    economie = option_avec.get("economie_ci")
+    if not isinstance(economie, dict) or \
+            economie.get("statut") != STATUT_CALCULE:
+        return None, MOTIF_ARGENT_OPTION_AVEC
+    flux = option_avec.get("economie_flux")
+    if _flux_complet(flux):
+        economie = dict(economie, **flux)
+    if _flux_complet(economie):
+        argent = economie_ci_publique(economie)
+        if segment != "industriel":
+            argent = _sans_industriel(argent)
+        return argent, None
+    return None, MOTIF_ARGENT_OPTION_AVEC
+
+
+def _bloc_argent(data, etude_ci, segment, option_avec=None):
+    """``(argent, motif)`` — CIQ304 : le bloc ``economie_ci`` PUBLIC recopié
+    tel quel (valeurs au centime), ou ``None`` + ce qui manque. CPDF1 —
+    ``option_avec`` (option « avec batterie » servie) : son argent seul."""
+    from apps.ventes.economie_ci import STATUT_CALCULE, economie_ci_publique
+
+    if option_avec is not None:
+        return _argent_option_avec(option_avec, segment)
     economie = data.get("economie_ci")
     if isinstance(economie, dict) and \
             economie.get("statut") == STATUT_CALCULE:
@@ -789,6 +885,9 @@ def synthese_ci(data):
     statut, a_confirmer = _statut_et_a_confirmer(
         etude_ci, data.get("_entrees_ci_lead"), data)
     option = _option_servie(data)
+    # CPDF1 — option « avec batterie » servie : ses chiffres, jamais ceux de
+    # l'offre sans batterie (production, énergie, argent, échéancier).
+    etude_option, option_avec = _etude_de_l_option(etude_ci, option)
 
     synthese = {
         "version": VERSION,
@@ -796,9 +895,10 @@ def synthese_ci(data):
         "statut_etude": statut,
         "a_confirmer": a_confirmer,
         "provenance": _bloc_provenance(entrees),
-        "systeme": _systeme(data, etude_ci, option),
+        "systeme": _systeme(data, etude_option, option),
     }
-    etude_coherente = _etude_decrit_kwc(etude_ci, synthese["systeme"]["kwc"])
+    etude_coherente = _etude_decrit_kwc(etude_option,
+                                        synthese["systeme"]["kwc"])
     if synthese["systeme"]["production_kwh_an"] is None:
         omissions.append({"bloc": "systeme.production_kwh_an",
                           "motif": (MOTIF_PRODUCTION_ABSENTE if etude_coherente
@@ -817,7 +917,7 @@ def synthese_ci(data):
         omissions.append({"bloc": "energie",
                           "motif": MOTIF_ETUDE_AUTRE_PUISSANCE})
     else:
-        energie, motif = _bloc_energie(etude_ci, langue)
+        energie, motif = _bloc_energie(etude_option, langue)
         if energie is not None:
             synthese["energie"] = energie
         else:
@@ -833,7 +933,7 @@ def synthese_ci(data):
     option_batterie = _option_batterie(data)
     if option_batterie is not None:
         synthese["option_batterie"] = option_batterie
-    argent, motif = _bloc_argent(data, etude_ci, segment)
+    argent, motif = _bloc_argent(data, etude_ci, segment, option_avec)
     if argent is not None:
         synthese["argent"] = argent
     else:
@@ -853,7 +953,9 @@ def synthese_ci(data):
     # AMOT100 (D-ACI-19=a) — CO₂ évité SEULEMENT sur le facteur réglé par la
     # société et le bilan de CETTE installation (AMOT62).
     from .mentions import co2_evite
-    co2 = co2_evite(data) if etude_coherente else None
+    data_co2 = data if option_avec is None else dict(
+        data, etude=dict(_dict(data.get("etude")), etude_ci=etude_option))
+    co2 = co2_evite(data_co2) if etude_coherente else None
     if co2 is not None:
         synthese.setdefault("decarbonation", {})["co2_evite"] = co2
     # CIQ314 — services : seulement ce que le devis porte (D-CIQ-12).
