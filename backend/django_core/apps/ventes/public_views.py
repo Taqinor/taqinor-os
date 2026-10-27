@@ -1246,8 +1246,8 @@ def proposal_data(request, token):
         # assaini (``_strip_confidential_deep``, aucun ``prix_achat``) : la
         # parité PDF ↔ /proposition est prouvée clé par clé par un test. Clé
         # ADDITIVE : ``None`` hors commercial / industriel ⇒ ABSENTE.
-        from .quote_engine.ci.synthese import synthese_ci
-        synthese_ci_pub = synthese_ci(data)
+        from .quote_engine.ci import installation as _installation_ci, synthese as _synthese_ci
+        synthese_ci_pub = _synthese_ci.synthese_ci(data)
         if synthese_ci_pub is not None and \
                 not _section_servie(link, 'economies'):
             # Case « économies » décochée : l'argent ne part pas.
@@ -1268,11 +1268,13 @@ def proposal_data(request, token):
         # ``totaux_sans``/``totaux_avec`` ci-dessus sont déjà figés PLUS HAUT
         # par le moteur (avant cette dégradation) : ils restent identiques
         # entre les deux niveaux, seule la granularité d'affichage change.
+        # Fondateur 26/10/2026 — C&I : prestations en « Installation clé en
+        # main » (une ligne par option et par taux de TVA), APRÈS la synthèse.
+        _installation_ci.regrouper_paniers(data)
         if est_standard:
-            if data.get('sans_items'):
-                data['sans_items'] = _agreger_lignes_kit(data['sans_items'])
-            if data.get('avec_items'):
-                data['avec_items'] = _agreger_lignes_kit(data['avec_items'])
+            for _cle in ('sans_items', 'avec_items'):
+                if data.get(_cle):
+                    data[_cle] = _agreger_lignes_kit(data[_cle])
         # ── Z2 (ORDRE FONDATEUR, 20/08/2026) — la proposition en ligne HÉRITE de
         # l'omission du PDF. La synthèse (−N %, avant/après, couverture) est déjà
         # None ci-dessus, mais la page lit AUSSI `quote.eco_s_ann`/`eco_a_ann`/
