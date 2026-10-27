@@ -40,6 +40,7 @@ def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
 
 
 def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
+                    _bareme_horaire=False,
                     etude, puissance_kwc, roi, savings_model,
                     savings_model_avec, savings_model_sans, scenario):
     # ── QF3 — bloc « Comment nous calculons vos économies » ──────────────────
@@ -201,7 +202,11 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         from .pricing import PRODUCTION_DERATE as _DERATE_REPLI
         _prod_net_kwc = float(_prod_factor) * _DERATE_REPLI
     hypotheses = []
-    if savings_model == "factures" and _util_name:
+    # RHOR7 (C-RHOR-007, niveau de règles 3) — le modèle HORAIRE valorise
+    # aussi chaque mois au barème par tranche : la ligne le dit, au lieu
+    # d'annoncer un tarif plat « saisi pour ce devis » qu'il n'a pas appliqué.
+    if (savings_model == "factures" or (
+            savings_model == "horaire" and _bareme_horaire)) and _util_name:
         hypotheses.append(
             f"Tarif électricité : barème {_util_name} par tranche"
             + " (barème national)")
