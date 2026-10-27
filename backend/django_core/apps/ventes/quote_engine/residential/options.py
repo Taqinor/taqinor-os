@@ -894,8 +894,15 @@ def build_pages(ctx) -> list:
     _prov = _cf_assum.get("inverter_replace_cost")
     if _prov:
         _an = _cf_assum.get("inverter_replace_year") or 12
-        fin_sub += libelle_cat(d, "res_fin_remplacement", an=_an,
-                               montant=f"{int(_prov):,}".replace(",", " "))
+        _prov_s = _cf_assum.get("inverter_replace_cost_sans")
+        # RPDF — deux options aux onduleurs de prix différents : deux courbes,
+        # deux creux, deux montants (jamais celui de la seule option 2).
+        fin_sub += (libelle_cat(d, "rpdf_fin_remplacement_deux", an=_an,
+                                s=f"{int(_prov_s):,}".replace(",", " "),
+                                a=f"{int(_prov):,}".replace(",", " "))
+                    if deux_options and _prov_s and int(_prov_s) != int(_prov)
+                    else libelle_cat(d, "res_fin_remplacement", an=_an,
+                                     montant=f"{int(_prov):,}".replace(",", " ")))
 
     # QRES57 — les garanties vivent en bande fine sur la page signature
     # (trust.py, source unique theme.WARRANTIES) : plus de cartes badges en

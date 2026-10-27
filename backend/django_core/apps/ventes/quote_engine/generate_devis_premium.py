@@ -1904,14 +1904,14 @@ def page1():
             'padding:4px 10px;font-size:13px;font-weight:600;'
             f'margin-bottom:7px;">{SVG_CHART}'
             + (_L("res_non_rentabilise_25") if ROI_S_JAMAIS
-               else _L("lg_retour_en").format(n=ROI_S)) + '</div>')
+               else _L("lg_retour_en").format(n=kwc_fr(ROI_S))) + '</div>') if (ROI_S_JAMAIS or ROI_S > 0) else ""
         _roi_pill_a = (
             '<div style="display:inline-block;align-self:flex-start;'
             'background:#1a1a2e;color:white;border-radius:12px;'
             'padding:4px 10px;font-size:13px;font-weight:600;'
             f'margin-bottom:7px;">{SVG_CHART2}'
             + (_L("res_non_rentabilise_25") if ROI_A_JAMAIS
-               else _L("lg_retour_en").format(n=ROI_A)) + '</div>')
+               else _L("lg_retour_en").format(n=kwc_fr(ROI_A))) + '</div>') if (ROI_A_JAMAIS or ROI_A > 0) else ""
         _mt_src = (
             f'<div style="font-size:6pt;color:{CG4};margin-top:3px;'
             f'line-height:1.3;">{TARIF_MT_MENTION}</div>'

@@ -201,7 +201,7 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         from .pricing import PRODUCTION_DERATE as _DERATE_REPLI
         _prod_net_kwc = float(_prod_factor) * _DERATE_REPLI
     hypotheses = []
-    if savings_model == "factures" and _util_name:
+    if savings_model in ("factures", "horaire") and _util_name:  # RPDF : horaire = barème
         hypotheses.append(
             f"Tarif électricité : barème {_util_name} par tranche"
             + " (barème national)")
