@@ -6,6 +6,7 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 
 - [Prod read access](prod-read-access.md) — standing approval to READ prod data (read-only shell queries) for investigations
 - [COUV-HOR donut incident](couv-hor-donut-incident.md) — 28 % vs 37 % donut, bills÷1.20; #738 merged, 128 quotes repaired, open items + handoff doc path
+- [Décisions devis C&I 26-27/10](ci-decisions-2610.md) — boulangerie lead 1637 : 1 onduleur d'abord, regard sur paliers suivants, devis préliminaire jamais vide, rien d'incertain ni « C&I » côté client, Installation clé en main, sans/avec batterie Deye BT + Dyness, talon par activité
 - [C&I sizing: conso only](ci-autoquote-conso-only.md) — founder decision: C&I sweep uses national-grid conso, keeps old savings model
 - [QA coherence auditor](qa-coherence-auditor.md) — the 4 QA checks on real data (nightly prod auditor, figure parity, property tests, anonymised prod snapshot) and how to run them
 - [Re-confirm client-visible repairs](reconfirm-client-visible-repairs.md) — dry-run diff before prod repairs; re-ask if sent quotes' figures change
