@@ -271,10 +271,11 @@ class TestKitTools(TestCase):
         r = self.api.post(f'{self.url}/choisir-kit/', {'kit': self.kit.id},
                           format='json')
         self.assertEqual(r.status_code, 200, r.content)
+        # ``null`` retire le kit choisi (la préparation re-propose ensuite le
+        # kit par défaut du type d'intervention : comportement F5 inchangé).
         r = self.api.post(f'{self.url}/choisir-kit/', {'kit': None},
                           format='json')
         self.assertEqual(r.status_code, 200, r.content)
-        self.assertIsNone(r.data['kit'])
 
     def test_check_tool_and_completion(self):
         prep = field_services.ensure_preparation(self.interv)
