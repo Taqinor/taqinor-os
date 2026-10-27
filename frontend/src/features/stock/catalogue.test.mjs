@@ -237,12 +237,32 @@ const _ci = (role, extra = {}, etat = {}) => ({
   ...extra,
 })
 
-test('ASTK254 — les 9 rôles de prestation C&I (liste figée)', () => {
+test('ASTK254/CCAT3 — les 8 rôles de prestation C&I (liste figée, sans om_ci)', () => {
   assert.deepEqual([...ROLES_CI_PRESTATION], [
     'etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
     'mise_en_service', 'dossier_raccordement', 'levage_acces',
-    'transport_ci', 'om_ci',
+    'transport_ci',
   ])
+})
+
+test('CCAT3 — om_ci sans prix : « a_renseigner » (tarifé sur son article Stock) et à compléter', () => {
+  const om = _ci('om_ci')
+  assert.equal(etatPrixCi(om), 'a_renseigner')
+  assert.equal(produitCiACompleter(om), true)
+  assert.equal(raisonCiACompleter(om), 'prix à renseigner')
+})
+
+test('CCAT3 — coffret sans prix de vente mais prix connu par barème : « bareme »', () => {
+  for (const role of ['coffret_dc', 'coffret_ac']) {
+    const coffret = _ci(role, {}, { prix_connu: true })
+    assert.equal(etatPrixCi(coffret), 'bareme', role)
+    assert.equal(produitCiACompleter(coffret), false, role)
+  }
+  // Prix de vente saisi : « ok » ; prix inconnu : « a_renseigner ».
+  assert.equal(etatPrixCi(_ci('coffret_dc', { prix_vente: '900.00' }, { prix_connu: true })), 'ok')
+  assert.equal(etatPrixCi(_ci('coffret_dc')), 'a_renseigner')
+  // Une prestation garde « parametres » en premier.
+  assert.equal(etatPrixCi(_ci('pose_modules', {}, { prix_connu: true })), 'parametres')
 })
 
 test('ASTK254 — prestation C&I sans prix : état « parametres », pas « a_renseigner »', () => {

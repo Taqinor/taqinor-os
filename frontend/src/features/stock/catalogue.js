@@ -628,12 +628,14 @@ export function choixDepuisOptions(optionsData, champ) {
  * C&I : les forfaits de Paramètres › Devis › Prestations C&I (CIQ106). Le
  * moteur (`moteur_ci/composition.py::_prestation`) ne lit QUE ces forfaits, le
  * prix de vente Stock de ces articles est ignoré : la fiche Stock ne les invite
- * donc plus à « compléter » un prix qui ne servirait à rien. Liste figée —
- * même ordre que `core/product_roles.py::ROLES_CI` (les 9 prestations). */
+ * donc plus à « compléter » un prix qui ne servirait à rien. Liste figée — les
+ * 8 prestations de `FORFAITS_CI_PRESTATIONS` (parametres/serializers_company.py).
+ * CCAT3 : l'O&M C&I (`om_ci`) n'en fait PAS partie — il n'a aucun forfait dans
+ * Paramètres, le moteur le tarife sur son article Stock
+ * (`composition.py` l.613-618) : son prix de vente reste à renseigner. */
 export const ROLES_CI_PRESTATION = Object.freeze([
   'etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
   'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci',
-  'om_ci',
 ])
 
 export const TEXTE_TARIF_PARAMETRES_CI =
@@ -649,9 +651,12 @@ export const roleCiDe = (p) => p?.etat_ci?.role_ci ?? p?.role_ci ?? null
 export const estPrestationCi = (p) => ROLES_CI_PRESTATION.includes(roleCiDe(p))
 
 /** État du prix d'un article : `'parametres'` (prestation C&I, tarif ailleurs),
- * `'a_renseigner'` (aucun prix de vente) ou `'ok'`. */
+ * `'bareme'` (CCAT3 : pas de prix de vente mais prix connu par barème — coffret
+ * C&I tarifé par onduleur / par panneau), `'a_renseigner'` (aucun prix de vente)
+ * ou `'ok'`. */
 export function etatPrixCi(p) {
   if (estPrestationCi(p)) return 'parametres'
+  if (sansPrix(p) && p?.etat_ci?.prix_connu === true) return 'bareme'
   return sansPrix(p) ? 'a_renseigner' : 'ok'
 }
 

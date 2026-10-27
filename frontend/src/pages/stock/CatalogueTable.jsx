@@ -341,6 +341,11 @@ export function CatalogueTable({
               </a>
             )
           }
+          // CCAT3 — coffret C&I tarifé par barème (par onduleur / par panneau) :
+          // le prix est connu, seul le prix de vente fixe est absent.
+          if (etatPrixCi(r) === 'bareme') {
+            return <Badge tone="info">au barème (par onduleur / par panneau)</Badge>
+          }
           return <Badge tone="warning">prix à renseigner</Badge>
         }
         if (!editable || !canEditPrix) return <span className="tabular-nums">{fmt(value, p)}</span>
