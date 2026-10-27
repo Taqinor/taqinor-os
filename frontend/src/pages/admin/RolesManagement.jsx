@@ -142,6 +142,7 @@ const PERMISSION_GROUPS = [
   {
     label: 'Visibilité des données',
     codes: [
+      { code: 'records_scope_soi', label: 'Limiter à mes enregistrements (pas ceux de mes coéquipiers)' },
       { code: 'records_scope_equipe', label: 'Limiter à mon équipe' },
       { code: 'records_scope_sous_arbre', label: 'Limiter à mon sous-arbre' },
     ],
