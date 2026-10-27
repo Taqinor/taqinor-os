@@ -6,6 +6,7 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 
 - [Prod read access](prod-read-access.md) — standing approval to READ prod data (read-only shell queries) for investigations
 - [COUV-HOR donut incident](couv-hor-donut-incident.md) — 28 % vs 37 % donut, bills÷1.20; #738 merged, 128 quotes repaired, open items + handoff doc path
+- [Décisions devis C&I 26-27/10](ci-decisions-2610.md) — boulangerie lead 1637 : 1 onduleur d'abord, regard sur paliers suivants, devis préliminaire jamais vide, rien d'incertain ni « C&I » côté client, Installation clé en main, sans/avec batterie Deye BT + Dyness, talon par activité
 - [C&I sizing: conso only](ci-autoquote-conso-only.md) — founder decision: C&I sweep uses national-grid conso, keeps old savings model
 - [QA coherence auditor](qa-coherence-auditor.md) — the 4 QA checks on real data (nightly prod auditor, figure parity, property tests, anonymised prod snapshot) and how to run them
 - [Re-confirm client-visible repairs](reconfirm-client-visible-repairs.md) — dry-run diff before prod repairs; re-ask if sent quotes' figures change
@@ -41,3 +42,4 @@ Ajouter/modifier ici via une PR, comme le reste du dépôt ; ne jamais y mettre 
 - [Pool partagé : claims minimales, tâches maximales, débloquantes d'abord](pool-claims-rule.md) — 10/10/2026 : règle fondateur pour « work on all plans » multi-postes ; claims tenues jusqu'au merge (D-CLAIMS-MERGE)
 - [Messagerie Microsoft 365 (14/10/2026)](messagerie-m365.md) — mail @taqinor.ma passé de l'hébergeur ADK (cPanel, mort) à Microsoft 365 (tenant AtlenciaX) : comptes, boîtes partagées contact@/stages@, DNS Cloudflare, Basic sans app Outlook Windows, migration IMAP ADK encore à faire, facturation via portail Azure
 - [Décisions dimensionnement résidentiel (23/10/2026)](dimensionnement-decisions-2310.md) — lead 1635 (5,68 kWc écran vs 17,04 devis) : présence en journée = défaut PARTOUT ; balayage adaptatif (dense ≤ 60 panneaux, grille ≈ 40 + raffinement) ; > 120 panneaux = recommander ET signaler, plafond dur 2 000 ; PR #1012/#1013/#1015
+- [Décisions résidentiel 27/10 (D-RES-2710)](residentiel-decisions-2710.md) — cahier des charges Nabil Amar (lead 1658, 150 m de la mer) : ombrage SERVI par le calepinage câblé dans le moteur horaire résidentiel (D-ACAL-6/QJR107 conservés) ; VE déjà possédé = aucune couche ajoutée ; réponse à un cahier des charges = 3 devis /proposal + mémoire technique sans prix (règle #4) ; code non planifié au 27/10
