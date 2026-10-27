@@ -75,7 +75,7 @@ class TailleCITests(unittest.TestCase):
             charge_jours_types=charge, production_jours_types=self.prod, tension='bt',
             combiner=partial(combiner_onduleurs, candidats=self.huawei, phase='tri'),
             composer=kw.pop('composer', _composer), valoriser=_valoriser(charge),
-            taux_tva_pct=20)
+            taux_tva_pct=20, pmax_wc=PANNEAU_WC)
         params.update(kw)
         return dimensionner_ci(**params)
 
@@ -100,9 +100,13 @@ class TailleCITests(unittest.TestCase):
         self.assertNotEqual(t['raison_arret'], 'onduleurs')
 
     def test_toit_declare_borne(self):
-        bornes = {'toit': {'kwc': 30, 'source': 'surface utile déclarée (300 m²)'}}
+        # CLD9 — toit exprimé en panneaux ENTIERS (43 × 710 Wc = 30,53 kWc) :
+        # le palier 30 pose 43 panneaux et tient ; le palier 35 (50 panneaux)
+        # le dépasse.
+        bornes = {'toit': {'kwc': 30.53, 'source': 'surface utile déclarée (300 m²)'}}
         t = self._taille('hotel', 20000, bornes=bornes)['taille']
-        self.assertEqual(t['retenue_kwc'], 30)
+        self.assertEqual(t['retenue_kwc'], 30.53)
+        self.assertEqual(t['nb_panneaux'], 43)
         self.assertEqual(t['raison_arret'], 'toit')
         self.assertEqual(t['paliers'][-1]['borne'], 'toit')
 
@@ -243,7 +247,46 @@ class TailleCITests(unittest.TestCase):
         self.assertLessEqual(e['cout'] / e['economie'], HORIZON_MARGINAL_PV)
         admis = [p for p in r['taille']['paliers'] if p['admis']]
         self.assertTrue(all(p['ratio_marginal_annees'] <= HORIZON_MARGINAL_PV for p in admis))
-        self.assertEqual(admis[-1]['kwc'], r['taille']['retenue_kwc'])
+        # CLD9 — le dernier palier admis (clé ``kwc`` = palier) est celui dont
+        # les panneaux entiers donnent la taille retenue (kWc POSÉ).
+        import math
+        t = r['taille']
+        self.assertEqual(math.ceil(admis[-1]['kwc'] * 1000 / PANNEAU_WC - 1e-9), t['nb_panneaux'])
+        self.assertAlmostEqual(t['retenue_kwc'], t['nb_panneaux'] * PANNEAU_WC / 1000, places=6)
+
+    def test_bilan_et_onduleurs_au_kwc_pose(self):
+        # CLD9 — le bilan, la combinaison et la borne sont calculés au kWc
+        # réellement posé (panneaux entiers), comme la taille saisie (CAD177).
+        from apps.ventes.moteur_ci.autoconso import bilan_horaire
+        charge = _charge('bureau', 6000)
+        vus = []
+
+        def combiner(kwc):
+            vus.append(kwc)
+            return combiner_onduleurs(kwc, self.huawei, phase='tri')
+        r = self._taille('bureau', 6000, combiner=combiner)
+        t, e = r['taille'], r['evaluation']
+        pose = t['nb_panneaux'] * PANNEAU_WC / 1000
+        self.assertNotEqual(pose % 5, 0)
+        self.assertAlmostEqual(t['retenue_kwc'], pose, places=6)
+        self.assertAlmostEqual(e['kwc'], pose, places=6)
+        attendu, _ = bilan_horaire(charge, self.prod, pose, tension='bt', revente_choisie=False)
+        self.assertAlmostEqual(e['bilan']['production_kwh'], attendu['production_kwh'], places=3)
+        self.assertTrue(all(abs(k * 1000 / PANNEAU_WC - round(k * 1000 / PANNEAU_WC)) < 1e-6
+                            for k in vus))
+        self.assertTrue(all(p['kwc'] % 5 == 0 for p in t['paliers']))
+
+    def test_pmax_lue_sur_la_ligne_panneau(self):
+        # CLD9 — sans ``pmax_wc`` injectée, la Pmax portée par la ligne
+        # panneau suffit : même taille posée.
+        def composer(kwc, onduleurs):
+            base = _composer(kwc, onduleurs)
+            base['lignes'][0]['pmax_wc'] = PANNEAU_WC
+            return base
+        avec = self._taille('bureau', 6000)['taille']
+        ligne = self._taille('bureau', 6000, composer=composer, pmax_wc=None)['taille']
+        self.assertEqual(ligne['retenue_kwc'], avec['retenue_kwc'])
+        self.assertEqual(ligne['nb_panneaux'], avec['nb_panneaux'])
 
 
 class SautOnduleurTests(unittest.TestCase):

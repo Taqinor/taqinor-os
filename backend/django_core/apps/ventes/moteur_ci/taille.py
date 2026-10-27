@@ -153,10 +153,35 @@ def _puissance_ac(onduleurs):
     return total
 
 
+def _ligne_panneau(composition):
+    return next((ligne for ligne in (composition or {}).get('lignes') or []
+                 if ligne.get('role') == 'panneau'), None)
+
+
+def _kwc_pose(nb, pmax_wc):
+    return round(nb * pmax_wc / 1000.0, 6)
+
+
 def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
-             composer, valoriser, taux_tva_pct):
+             composer, valoriser, taux_tva_pct, pmax_wc=None):
+    """Évaluation d'un palier AU KWC POSÉ (CLD9, même règle que CAD177 pour la
+    taille saisie) : la composition pose ``ceil(kWc / Pmax)`` panneaux, donc
+    combinaison, composition et bilan sont calculés à ``nb × Pmax``. Pmax
+    connue d'avance (``pmax_wc``) : un seul appel, au posé ; sinon lue sur la
+    ligne panneau (``pmax_wc``) et recomposée au posé ; introuvable : le palier,
+    tel quel. ``kwc`` = kWc posé, ``kwc_palier`` = le palier."""
+    palier, pmax = kwc, _pos(pmax_wc)
+    if pmax:
+        kwc = _kwc_pose(int(math.ceil(palier * 1000.0 / pmax - 1e-9)), pmax)
     onduleurs = combiner(kwc) or {}
     composition = composer(kwc, onduleurs) or {}
+    ligne = _ligne_panneau(composition)
+    if not pmax and ligne is not None and _pos(ligne.get('pmax_wc')) and _pos(ligne.get('quantite')):
+        pose = _kwc_pose(int(ligne['quantite']), _pos(ligne['pmax_wc']))
+        if abs(pose - kwc) > 1e-9:
+            kwc = pose
+            onduleurs = combiner(kwc) or {}
+            composition = composer(kwc, onduleurs) or {}
     bilan, alertes_bilan = bilan_horaire(charge, production, kwc, tension=tension,
                                          revente_choisie=revente_choisie)
     economie = valoriser(bilan)
@@ -166,6 +191,7 @@ def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
     return {
         'sans_panneau': sans_panneau,
         'kwc': kwc,
+        'kwc_palier': palier,
         'onduleurs': onduleurs,
         'composition': composition,
         'bilan': bilan,
@@ -286,7 +312,7 @@ def _palier(e, precedent, admis, borne):
     eco_avant = (precedent['economie'] or 0.0) if precedent else 0.0
     ratio = ratio_pas_marginal(cout_avant, eco_avant, e['cout'], e['economie'] or 0.0)
     return {
-        'kwc': e['kwc'],
+        'kwc': e.get('kwc_palier', e['kwc']),
         'cout_ht': round(e['cout'] - cout_avant, 2),
         'economie_annuelle': round((e['economie'] or 0.0) - eco_avant, 2),
         'ratio_marginal_annees': None if ratio is None else round(ratio, 2),
@@ -297,13 +323,18 @@ def _palier(e, precedent, admis, borne):
 
 def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, combiner,
                     composer, valoriser, bornes=None, puissance_souscrite_kva=None,
-                    revente_choisie=False, taille_explicite_kwc=None, taux_tva_pct=None):
+                    revente_choisie=False, taille_explicite_kwc=None, taux_tva_pct=None,
+                    pmax_wc=None):
     """Bloc ``taille`` du contrat + l'évaluation retenue, alertes, hypothèses.
 
     ``bornes`` : ``{toit: {kwc, source} | None, phase: {...}, regime_8221: {...}}``
     — l'orchestrateur résout le toit (contenance mesurée > contenance de la
-    surface déclarée CIQ113 > aucune). Rend un dict ``{taille, evaluation,
-    alertes, hypotheses}`` ; ``evaluation`` = ``{kwc, onduleurs, composition,
+    surface déclarée CIQ113 > aucune). ``pmax_wc`` (CLD9) : Pmax du module
+    retenu — chaque palier est évalué et borné au kWc POSÉ (panneaux entiers),
+    ``retenue_kwc`` publie ce kWc posé ; absente, la Pmax est lue sur la ligne
+    panneau de la composition si elle y figure, sinon le palier reste tel quel.
+    Rend un dict ``{taille, evaluation,
+    alertes, hypotheses}`` ; ``evaluation`` = ``{kwc (POSÉ), kwc_palier, onduleurs, composition,
     bilan, economie, cout, ...}`` de la taille retenue (ou ``None``).
     """
     alertes = []
@@ -332,7 +363,8 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     def evaluer(kwc):
         return _evaluer(kwc, charge=charge_jours_types, production=production_jours_types,
                         tension=tension, revente_choisie=revente_choisie, combiner=combiner,
-                        composer=composer, valoriser=valoriser, taux_tva_pct=taux_tva_pct)
+                        composer=composer, valoriser=valoriser, taux_tva_pct=taux_tva_pct,
+                        pmax_wc=pmax_wc)
 
     explicite = _pos(taille_explicite_kwc)
     if explicite is not None:
