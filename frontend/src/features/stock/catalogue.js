@@ -644,9 +644,9 @@ export const TEXTE_TARIF_PARAMETRES_CI =
 /** CCAT3/CCAT4 — texte d'un article C&I sans prix de vente mais tarifé au barème. */
 export const TEXTE_PRIX_BAREME_CI = 'au barème (par onduleur / par panneau)'
 
-/** CCAT4 — libellés FR des types de pose (miroir de
- * `core.product_roles.LIBELLES_TYPES_POSE`). */
-// source-choix: core.product_roles.LIBELLES_TYPES_POSE
+/** CCAT4 — libellés FR des types de pose, miroir de
+ * `core.product_roles.LIBELLES_TYPES_POSE` (un dict : le marqueur opt-in
+ * `source-choix` de check_choices_declares.py n'accepte que des listes). */
 export const LIBELLES_TYPES_POSE = Object.freeze({
   toiture_inclinee: 'Toiture inclinée',
   bac_acier: 'Bac acier',
