@@ -16,7 +16,7 @@ from ..figures import ancre
 from ..ci.mentions import texte_revente
 from ..ci.synthese import chiffres_cles, libelle_poste
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
-from ..ci.blocs import langue as _langue, libelle as _libelle
+from ..ci.blocs import bloc_option_avec, langue as _langue, libelle as _libelle
 from ..ci.installation import lignes_client
 from ..sequence import sequence_affichage
 from ..montants import decimale
@@ -530,6 +530,7 @@ def build(ctx):
   </div>
 
   {note_html}{clauses_html}
+  {bloc_option_avec(d, L, fmt_mad, (navy, muted, line_soft, wash))}
   {options_html}{injection_html}
   {block}
   {bloc_installation(d, L, fmt, (navy, muted, line_soft, wash))}

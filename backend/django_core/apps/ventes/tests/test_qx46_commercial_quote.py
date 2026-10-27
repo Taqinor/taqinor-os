@@ -76,9 +76,11 @@ class TestCommercialContent(SimpleTestCase):
         self.assertNotIn("marge", html.lower())
 
     def test_no_peak_promise_without_battery(self):
+        # Fondateur 27/10/2026 — sans batterie, le document DIT que le réseau
+        # fournit le soir et la nuit (un fait, jamais une promesse de pointe).
         html = self._html("hotel")
-        self.assertIn("stockage", html.lower())
-        self.assertIn("pointe", html.lower())
+        self.assertIn("le soir et la nuit, votre consommation reste fournie par le réseau",
+                      html.lower())
 
 
 class TestCommercialCategoryBlocks(SimpleTestCase):

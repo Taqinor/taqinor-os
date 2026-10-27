@@ -559,9 +559,12 @@ def _option_batterie(data):
         return None
     # Jamais les lignes recopiées en bloc ici (la page a déjà ses lignes) :
     # les totaux de l'option et la valeur chiffrée par le moteur, ou son motif.
+    # Fondateur 26/10/2026 — le moteur C&I chiffre l'option (``option_avec``).
+    from .mentions import valeur_option_avec
+    valeur = bloc.get("valeur_chiffree") or valeur_option_avec(data)
     return {"totaux": bloc.get("totaux"),
-            "valeur_chiffree": bloc.get("valeur_chiffree"),
-            "motif": bloc.get("motif")}
+            "valeur_chiffree": valeur,
+            "motif": None if valeur else bloc.get("motif")}
 
 
 #: CIQ331 — jalon CIQ212 (``data['jalons_paiement']``) → (jalon, libellé)
