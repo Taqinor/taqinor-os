@@ -7,7 +7,9 @@ calepinage, ``apps.calepinage.services.apercu_courbe_csv``).
 import datetime
 import unittest
 
-from apps.ventes.moteur_ci.charge import courbe_mesuree_jours_types
+from apps.ventes.moteur_ci.charge import (
+    courbe_mesuree_jours_types, valeurs_horaires_depuis_points,
+)
 from apps.ventes.tests.test_ciq122_cas_reference import _etudier
 
 ANNEE = 2025
@@ -92,6 +94,30 @@ class CourbeMesureeTests(unittest.TestCase):
                       if jt['mois'] == 1) / 31
         self.assertAlmostEqual(moyenne, 120.0, delta=1e-6)    # pas 108
         self.assertIn('mesure_incomplete', {a['code'] for a in alertes})
+
+    def test_points_json_meme_profil_aux_pas_60_30_15_meme_courbe_horaire(self):
+        horaire = [float(1 + h % 5) for h in range(48)]
+        pas30 = [v / 2 for v in horaire for _ in range(2)]
+        pas15 = [v / 4 for v in horaire for _ in range(4)]
+        pas5 = [v / 12 for v in horaire for _ in range(12)]
+        for pas, points in ((60, horaire), (30, pas30), (15, pas15), (5, pas5)):
+            sortie = valeurs_horaires_depuis_points(points, pas_min=pas, unite='kwh')
+            for a, b in zip(sortie, horaire):
+                self.assertAlmostEqual(a, b, places=9)
+            self.assertEqual(len(sortie), 48)
+        # en kW : moyenne de la puissance sur l'heure = kWh de l'heure
+        kw30 = [v for v in horaire for _ in range(2)]
+        sortie = valeurs_horaires_depuis_points(kw30, pas_min=30, unite='kw')
+        for a, b in zip(sortie, horaire):
+            self.assertAlmostEqual(a, b, places=9)
+
+    def test_points_json_pas_invalide_ou_longueur_tronquee_refus_nomme(self):
+        with self.assertRaises(ValueError) as ctx:
+            valeurs_horaires_depuis_points([1.0] * 40, pas_min=45, unite='kwh')
+        self.assertIn('45', str(ctx.exception))
+        with self.assertRaises(ValueError) as ctx:
+            valeurs_horaires_depuis_points([1.0] * 7, pas_min=15, unite='kwh')
+        self.assertIn('multiple', str(ctx.exception))
 
     def test_fichier_illisible_400_nomme_la_colonne(self):
         from rest_framework.exceptions import ValidationError

@@ -516,6 +516,38 @@ def _valeur_mesuree(v):
     return None if x != x else max(0.0, x)
 
 
+def valeurs_horaires_depuis_points(points, *, pas_min, unite='kwh'):
+    """CLD6 — points JSON d'une courbe mesurée → kWh de chaque heure CIVILE.
+
+    ``pas_min`` : pas des points en minutes, tout diviseur de 60 (5, 10, 15,
+    20, 30, 60…). ``unite`` : ``kwh`` (énergie du pas, sommée) ou ``kw``
+    (puissance moyenne du pas : × pas/60 avant la somme). Une heure dont un
+    point est absent (``None``) vaut ``None`` (jour écarté, CLD4). Pas qui ne
+    divise pas 60, ou nombre de points non multiple de 60/pas ⇒
+    ``ValueError`` en français (le branchement la convertit en 400).
+    """
+    try:
+        pas = int(pas_min)
+    except (TypeError, ValueError):
+        pas = 0
+    if pas <= 0 or 60 % pas:
+        raise ValueError(
+            'Pas de la courbe mesurée de %s min non pris en charge : un pas qui '
+            'divise 60 min (5, 10, 15, 20, 30 ou 60) est attendu.' % pas_min)
+    par_heure = 60 // pas
+    points = list(points or [])
+    if len(points) % par_heure:
+        raise ValueError(
+            'La courbe mesurée au pas de %d min compte %d points : un multiple de %d '
+            '(une heure entière) est attendu.' % (pas, len(points), par_heure))
+    facteur = pas / 60.0 if unite == 'kw' else 1.0
+    sortie = []
+    for i in range(0, len(points), par_heure):
+        groupe = [_valeur_mesuree(v) for v in points[i:i + par_heure]]
+        sortie.append(None if any(v is None for v in groupe) else sum(groupe) * facteur)
+    return sortie
+
+
 def _mois_le_plus_proche(mois, mesures):
     return min(mesures, key=lambda m: (min(abs(m - mois), 12 - abs(m - mois)), m))
 
