@@ -37,6 +37,8 @@ class TauxTvaZeroEcrivainsTests(qjr80._Base):
     def test_aucun_repli_or_20_dans_les_ecrivains(self):
         """Garde : aucun ``taux_tva or 20`` dans les deux écrivains."""
         for chemin in ('domain/creation_auto.py',
+                       'domain/creation_auto_residentiel.py',
+                       'domain/creation_auto_agricole.py',
                        'management/commands/acal_dryrun_ligne_par_modele.py'):
             arbre = ast.parse((VENTES / chemin).read_text(encoding='utf-8'))
             for noeud in ast.walk(arbre):

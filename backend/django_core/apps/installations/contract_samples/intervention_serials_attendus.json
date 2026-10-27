@@ -1,0 +1,46 @@
+{
+  "endpoint": "GET /api/django/installations/interventions/<int:pk>/serials-attendus/",
+  "pourquoi": "Revue chantier 26/10/2026 (fondateur : « ils doivent relever le numéro de série de chaque article et ses caractéristiques »). Sert au technicien, par produit de la nomenclature gelée du chantier qui PORTE un numéro de série (catégorie hors TYPES_HORS_PARC du SAV : panneaux, onduleurs, batteries, compteurs, coffrets de communication — jamais câbles, structures, prestations), le nombre attendu et le nombre déjà relevé (séries d'intervention `ComponentSerial` de TOUTES les interventions du chantier + équipements du parc déjà sériés), avec les séries relevées pour ce produit. L'écran « N° série » affiche la jauge « Panneaux 3/10 », propose le produit dans une liste fermée (plus jamais une désignation libre sans `produit`, cause des séries qui n'atteignaient jamais le parc) et le scanner code-barres/QR. `complet` = chaque produit attendu a autant de séries que la quantité. Aucun prix. Le frontend importe cet exemple au lieu d'inventer son PAYLOAD.",
+  "exemple": {
+    "intervention": 12,
+    "installation": 43,
+    "complet": false,
+    "nb_attendus": 11,
+    "nb_releves": 3,
+    "produits": [
+      {
+        "produit_id": 34,
+        "sku": "PAN-710",
+        "designation": "Panneau Canadian Solar 710W",
+        "marque": "Canadian Solar",
+        "attendu": 10,
+        "releve": 2,
+        "manquant": 8,
+        "series": [
+          {"id": 101, "numero_serie": "CS710-0001", "intervention": 12, "source": "intervention"},
+          {"id": 102, "numero_serie": "CS710-0002", "intervention": 12, "source": "intervention"}
+        ]
+      },
+      {
+        "produit_id": 40,
+        "sku": "OND-HUA-10",
+        "designation": "Onduleur Huawei 10 kW triphasé",
+        "marque": "Huawei",
+        "attendu": 1,
+        "releve": 1,
+        "manquant": 0,
+        "series": [
+          {"id": 9, "numero_serie": "HW10-77A", "intervention": null, "source": "parc"}
+        ]
+      }
+    ]
+  },
+  "exemple_vide": {
+    "intervention": 13,
+    "installation": 44,
+    "complet": true,
+    "nb_attendus": 0,
+    "nb_releves": 0,
+    "produits": []
+  }
+}

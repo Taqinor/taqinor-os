@@ -155,3 +155,42 @@ class XFAC4RetenueSubieTests(TestCase):
             'mode': 'virement', 'type_retenue': 'ras_tva', 'taux': '150',
         }, format='json')
         self.assertEqual(r.status_code, 400)
+
+    def test_montant_publie_au_seul_motif_positif(self):
+        """api-fuzz-full 27/10 (moteur, « Failed Health Check ») — le champ
+        publiait le motif décimal générique (signé) et la vue resserrait au
+        motif positif : deux motifs sur un champ, que le générateur ne sait
+        pas fusionner. Le champ publie LE motif positif, que le
+        ``DecimalField`` (min 0,01, 12 chiffres) applique à l'identique."""
+        import re
+        from drf_spectacular.drainage import get_override
+        from apps.ventes.domain.bornes import MOTIF_MONTANT_POSITIF
+        from apps.ventes.serializers_facturation import (
+            PaiementAvecRetenueEntreeSerializer)
+        champ = PaiementAvecRetenueEntreeSerializer().fields['montant']
+        self.assertEqual(get_override(champ, 'field')['pattern'],
+                         MOTIF_MONTANT_POSITIF)
+        motif = re.compile(MOTIF_MONTANT_POSITIF)
+        for brut in ('0.01', '.5', '1.', '9999999999.99', '00012'):
+            self.assertTrue(motif.fullmatch(brut), brut)
+            champ.run_validation(brut)
+        for brut in ('0', '0.00', '-1', '10000000000', '1.234'):
+            self.assertIsNone(motif.fullmatch(brut), brut)
+        # Plus de surcouche ``allOf`` qui répétait le motif sur l'opération.
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        from apps.ventes import urls as ventes_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include(ventes_urls)),
+        ]).get_schema(request=None, public=True)
+        corps = schema['paths'][
+            '/api/django/ventes/paiements/factures/{facture_id}/'
+            'paiement-avec-retenue/']['post']['requestBody']['content'][
+            'application/json']['schema']
+        self.assertEqual(corps, {
+            '$ref': '#/components/schemas/PaiementAvecRetenueEntreeRequest'})
+        props = schema['components']['schemas'][
+            'PaiementAvecRetenueEntreeRequest']
+        self.assertEqual(props['properties']['montant']['pattern'],
+                         MOTIF_MONTANT_POSITIF)
+        self.assertIn('montant', props['required'])

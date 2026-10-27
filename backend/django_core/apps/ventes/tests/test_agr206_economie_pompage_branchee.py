@@ -54,6 +54,18 @@ def _cles(obj):
 
 
 class SchemaTests(SimpleTestCase):
+    def test_409_documente(self):
+        # api-fuzz-full 27/10 : le refus d'état 409 (devis stocké invalide)
+        # était servi sans être publié (« Undocumented HTTP status code »).
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include('apps.ventes.urls')),
+        ]).get_schema(request=None, public=True)
+        operation = schema['paths'][
+            '/api/django/ventes/devis/{id}/economie-pompage/']['get']
+        self.assertIn('409', operation['responses'])
+
     def test_la_cle_passe_valider(self):
         self.assertEqual(es.valider({'saisies_economie_pompage': SAISIES}), [])
         self.assertEqual(

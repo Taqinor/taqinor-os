@@ -557,13 +557,14 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
         lignes[-1]['motif'] = lignes[-1]['motif'] or MOTIF_PRELIMINAIRE % (
             '2 × %d chaînes × %g m' % (nb_chaines, DISTANCE_DC_DEFAUT_M))
     else:
+        # D-CMP-2 (à revoir) — la distance déclarée est l'aller simple champ →
+        # onduleur : 2 conducteurs (+ / −) par chaîne, comme le défaut fondateur.
         nb_chaines = sum(int(c.get('nb_chaines') or 0) for c in chaines)
-        lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC',
-                             round(nb_chaines * longueur_dc, 2), 'm'))
+        metres = round(2 * nb_chaines * longueur_dc, 2)
+        lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', metres, 'm'))
         hypotheses.append({
-            'cle': 'cable_dc_m', 'valeur': round(nb_chaines * longueur_dc, 2),
-            'statut': 'declare',
-            'source': '%d chaînes × %g m (longueur déclarée par chaîne)' % (
+            'cle': 'cable_dc_m', 'valeur': metres, 'statut': 'declare',
+            'source': '2 × %d chaînes × %g m (distance déclarée champ → onduleur)' % (
                 nb_chaines, longueur_dc)})
 
     # ── Coffrets DC (un par onduleur), protections et câble AC par onduleur

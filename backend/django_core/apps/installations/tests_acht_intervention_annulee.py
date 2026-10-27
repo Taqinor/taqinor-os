@@ -79,7 +79,8 @@ class InterventionAnnuleeTests(TestCase):
         r = self.api.patch(
             f'/api/django/installations/interventions/{self.iv.id}/',
             {'statut': Intervention.Statut.TERMINEE}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # api-fuzz-full 27/10 (ENF11) : intervention annulée = refus d'ÉTAT.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn(MSG, str(r.data))
         self._assert_inchangee()
 

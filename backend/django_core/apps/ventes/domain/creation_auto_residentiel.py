@@ -1,0 +1,658 @@
+"""Le devis automatique RÉSIDENTIEL (déplacé tel quel de ``creation_auto.py``).
+
+``composer_devis_residentiel`` (le dry-run que le vendeur approuve) et le
+corps résidentiel de ``build_devis_auto`` (``_build_devis_auto_residentiel``).
+Le dispatcher ``build_devis_auto`` reste dans ``creation_auto.py``, qui
+ré-exporte ces noms. NOM DU LOGGER FIGÉ sur ``apps.ventes.services``.
+"""
+from decimal import Decimal, ROUND_HALF_UP
+import logging
+
+from apps.ventes.domain.taille import _AUTO_PANEL_WATT
+
+logger = logging.getLogger("apps.ventes.services")
+
+
+def composer_devis_residentiel(*, company, kwc=None, nb_panneaux=0,
+                               panel_watt=_AUTO_PANEL_WATT, scenario=None,
+                               structure_type='acier',
+                               structure_produit_id=None,
+                               taux_tva=None, mppt_paires=1,
+                               gamme_nom_devis=None, phase=None,
+                               dimensionnement_avec=None,
+                               hors_reseau=False, ville=''):
+    """U3 — LE DRY-RUN : compose sans RIEN créer, et rend le résultat en clair.
+
+    C'est la moitié « à blanc » de la source de vérité : le même catalogue, la
+    même fonction pure, les mêmes règles de gamme que ``build_devis_auto`` —
+    mais aucune écriture, aucun devis, aucun statut. L'écran générateur s'en
+    sert pour PRÉREMPLIR ses lignes éditables au lieu de recomposer de son
+    côté ; c'est ce qui fait qu'il n'existe plus « deux sortes de devis ».
+
+    ``kwc`` OU ``nb_panneaux`` suffit : l'un se déduit de l'autre à
+    ``panel_watt``. Company-scopé (le catalogue d'une autre société ne fuite
+    jamais). Rend un dict SÉRIALISABLE — la forme figée dans
+    ``contract_samples/composition_residentielle.json``.
+
+    ``dimensionnement_avec`` (L-2OPT, optionnel) — l'optimum de l'axe AVEC
+    BATTERIE (``{'nb_panneaux', 'kwc', 'batterie_kwh'}``), quand le moteur
+    calibré en désigne un DIFFÉRENT de l'optimum sans stockage : le dry-run
+    compose alors la même FUSION que la création (lignes variantées), sans quoi
+    l'aperçu et le devis ne parleraient pas du même kit. ``None`` (LE DÉFAUT)
+    ⇒ dry-run strictement inchangé, et chaque ligne rendue porte
+    ``variante: ''``.
+
+    ``ville`` (QJR604) — la ville de calcul du barème transport, résolue par
+    l'APPELANT depuis un lead de sa société (``transport.ville_du_lead``) —
+    jamais un texte libre du corps de requête. ``''`` ⇒ prix catalogue.
+
+    ``hors_reseau`` (QJR-OFFGRID, fondateur 01/09/2026) — le site est ISOLÉ :
+    la composition part sur l'onduleur AUTONOME + une batterie OBLIGATOIRE, en
+    mono-option. La FORME de la réponse ne change pas d'un champ. Deux
+    différences assumées avec le chemin raccordé : le scénario demandé est
+    ignoré (un site isolé n'a pas d'alternative à proposer), et un catalogue
+    incapable de servir l'autonome ou sa batterie fait REFUSER le dry-run par
+    une ``AutoDevisError`` française nommant la référence manquante — là où le
+    chemin raccordé se contente d'avertir. La raison : ici, « avertir » aurait
+    rendu une composition SANS onduleur, ou (pire) invité à lui substituer un
+    hybride que ce client ne peut pas raccorder.
+    """
+    # APAR49 — taux absent ⇒ taux STANDARD de la société (jamais 20 codé).
+    if taux_tva is None:
+        from apps.ventes.utils.company_settings import tva_standard
+        taux_tva = tva_standard(company)
+    kwp = float(kwc or 0)
+    nb_force = int(nb_panneaux or 0)
+    watt = float(panel_watt or 0) or float(_AUTO_PANEL_WATT)
+    if kwp <= 0 and nb_force > 0:
+        kwp = nb_force * watt / 1000.0
+
+    demande = (scenario or '').strip().lower()
+    if demande and demande not in SCENARIOS_DEMANDABLES:
+        raise AutoDevisError(
+            'Scénario inconnu « %s » — attendu : %s.'
+            % (scenario, ', '.join(SCENARIOS_DEMANDABLES)),
+            field='scenario')
+    # Même défaut que le devis auto (U2) : sans consigne, on propose LES DEUX.
+    avec_batterie = demande == 'avec'
+    deux_options = demande not in ('avec', 'sans')
+    # QJR-OFFGRID — un site ISOLÉ n'a qu'une composition : autonome + batterie.
+    # QJR400 — la règle « hors réseau ⇒ jamais deux options » vient du NOYAU
+    # (``utils.options.deux_options_composables``), elle n'est plus recopiée.
+    from apps.ventes.utils.options import deux_options_composables
+    hors_reseau = bool(hors_reseau)
+    deux_options = deux_options_composables(deux_options, hors_reseau)
+    if hors_reseau:
+        avec_batterie = True
+
+    # ── QJR82 — L'ÉTAPE `verifier` VUE PAR L'ÉCRAN GÉNÉRATEUR ──────────────
+    # L'écran PRÉREMPLIT ses lignes avec ce dry-run : il doit lire les MÊMES
+    # phrases françaises que le calepinage 3D oppose, sinon le commercial
+    # découvre le trou de catalogue à la génération du PDF. Ici c'est un
+    # AVERTISSEMENT et non un refus — le dry-run n'écrit rien, et le commercial
+    # reste libre de composer à la main ce que le catalogue ne sert pas.
+    avertissements = list(verifier(IntentionComposition(
+        company=company, nb_panneaux=nb_force, kwc=kwp,
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if avec_batterie
+                        else COMPOSITION_SANS)),
+        hors_reseau=hors_reseau,
+        gamme_nom_devis=gamme_nom_devis)) or ())
+    # QJR-OFFGRID — SEUL le hors réseau transforme cet avertissement en REFUS
+    # (voir la docstring) : sans onduleur autonome tarifé, il n'y a rien à
+    # composer et surtout rien à substituer.
+    if hors_reseau and avertissements:
+        raise AutoDevisError(avertissements[0], field='hors_reseau')
+    # ── QJR80 — LA MÊME ÉTAPE `composer` QUE LA CRÉATION ────────────────────
+    # « Miroir EXACT de ``build_devis_from_layout`` » n'est plus une intention
+    # écrite en commentaire : les deux chemins remplissent LE MÊME
+    # ``IntentionComposition`` et appellent LA MÊME fonction. Un paramètre ne
+    # peut plus être transmis d'un côté et oublié de l'autre.
+    lignes = composer(IntentionComposition(
+        company=company,
+        kwc=kwp,
+        nb_panneaux=nb_force,
+        panel_watt=watt,
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if avec_batterie
+                        else COMPOSITION_SANS)),
+        structure_type=structure_type,
+        # STKCAT7 — cf. ``build_devis_from_layout`` : MÊME intention des deux
+        # côtés, donc MÊME structure à l'aperçu et au devis.
+        structure_produit_id=structure_produit_id,
+        taux_tva=taux_tva,
+        mppt_paires=mppt_paires,
+        # PVCOMPAT — le DRY-RUN doit voir la MÊME contrainte de raccordement
+        # que la construction, sinon l'aperçu montrerait un onduleur que le
+        # devis ne composerait pas.
+        phase=phase,
+        gamme_nom_devis=gamme_nom_devis,
+        dimensionnement_avec=dimensionnement_avec,
+        avertissements=avertissements,
+        hors_reseau=hors_reseau,
+        ville=ville or '',
+    ))
+
+    roles = list(getattr(lignes, 'roles', ()) or ())
+    # AMOT69 — un 0 % EXPLICITE reste 0 % ; seul un taux absent vaut 20.
+    taux_demande = Decimal(str(20 if taux_tva is None else taux_tva))
+    # APAR49 — « 14.00 » (colonne société à 2 décimales) rendu « 14 », comme
+    # le taux d'une fiche produit : la forme de la valeur ne change pas.
+    if taux_demande == taux_demande.to_integral_value():
+        taux_demande = Decimal(int(taux_demande))
+    rendu = []
+    for index, ligne in enumerate(lignes):
+        # TVA-LIGNE (06/10/2026) — le taux PAR LIGNE : celui du produit quand
+        # sa fiche en porte un (DC7 — 10 % panneaux PV), sinon le taux
+        # demandé. Un taux unique (20) pour toute la composition faisait
+        # enregistrer les panneaux à 20 % par l'écran.
+        tva_produit = getattr(getattr(ligne, 'produit', None), 'tva', None)
+        taux_ligne = taux_demande
+        if tva_produit is not None:
+            taux_ligne = Decimal(str(tva_produit))
+            # « 10.00 » (colonne à 2 décimales) rendu « 10 », comme le taux
+            # demandé : la forme de la valeur ne change pas d'une ligne à
+            # l'autre ; un taux non entier (5.5) reste tel quel.
+            if taux_ligne == taux_ligne.to_integral_value():
+                taux_ligne = Decimal(int(taux_ligne))
+        facteur = Decimal('1') + taux_ligne / Decimal('100')
+        # Le TTC est DÉRIVÉ du HT stocké, jamais l'inverse : l'écran saisit en
+        # TTC mais la base fait foi en HT (même aller-retour qu'`htFromTtc`).
+        ttc = (Decimal(ligne.prix_unitaire) * facteur).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+        rendu.append({
+            'ordre': index,
+            'role': roles[index] if index < len(roles) else None,
+            'produit': getattr(ligne.produit, 'id', None),
+            'designation': ligne.designation,
+            'quantite': int(ligne.quantite),
+            'prix_unitaire_ht': str(Decimal(ligne.prix_unitaire)),
+            'prix_unitaire_ttc': str(ttc),
+            'taux_tva': str(taux_ligne),
+            # L-2OPT — '' sur toute composition mono-optimum (le cas de tous
+            # les aperçus d'hier) : la clé est ADDITIVE, jamais absente.
+            'variante': getattr(ligne, 'variante', '') or '',
+            # ERR-QJR570 (D-QJR5-4) — provenance : posée par le moteur.
+            'ligne_composee': True,
+        })
+
+    return {
+        'lignes': rendu,
+        'scenario': (SCENARIO_LES_DEUX if deux_options
+                     else (SCENARIO_AVEC_BATTERIE if avec_batterie
+                           else SCENARIO_SANS_BATTERIE)),
+        'nb_panneaux': getattr(lignes, 'nb_panneaux', 0),
+        'panel_watt': getattr(lignes, 'panel_watt_reel', watt),
+        'kwc_reel': getattr(lignes, 'kwc_reel', 0.0),
+        'blocs': getattr(lignes, 'blocs', 1),
+        # L-2OPT — l'option « avec » quand elle a son PROPRE champ PV. Sur une
+        # composition mono-optimum : ``variantes`` False et les deux valeurs
+        # recopient l'option unique — aucun appelant ne peut lire un trou.
+        'variantes': bool(getattr(lignes, 'variantes', False)),
+        'nb_panneaux_avec': (getattr(lignes, 'nb_panneaux_avec', 0)
+                             or getattr(lignes, 'nb_panneaux', 0)),
+        'kwc_reel_avec': (getattr(lignes, 'kwc_reel_avec', 0.0)
+                          or getattr(lignes, 'kwc_reel', 0.0)),
+        'avertissements': list(avertissements),
+        'marques_manquantes': [
+            {**m, 'libelle_role': _libelle_role(m.get('role'))}
+            for m in (getattr(lignes, 'marques_manquantes', ()) or ())
+        ],
+    }
+
+
+def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
+                                  remise_globale=Decimal('0'), target_kwc=None,
+                                  scenario=None, etude_extra=None, plafond_toit=None,
+                                  journal_auto=None, origine=None,
+                                  structure_produit_id=None, structure_type=None):
+    """Le corps RÉSIDENTIEL de :func:`creation_auto.build_devis_auto`
+    (déplacé tel quel ; voir la docstring du dispatcher)."""
+    # ERR-QAC-KWH-SAISI-INCOHERENT-FACTURES (décision fondateur 30/09/2026) —
+    # un kWh déclaré que les factures de la fiche contredisent n'est jamais
+    # chiffré en silence : aucun devis tant que la fiche n'est pas corrigée.
+    from apps.ventes.etude_horaire import controle_kwh_declare_du_lead
+    from apps.ventes.horaire.conso import MESSAGE_KWH_INCOHERENT
+    controle_kwh = controle_kwh_declare_du_lead(lead, company)
+    if controle_kwh is not None and not controle_kwh['coherent']:
+        raise AutoDevisError(MESSAGE_KWH_INCOHERENT,
+                             field='conso_mensuelle_kwh')
+
+    taille_kwc = getattr(lead, 'taille_souhaitee_kwc', None)
+    # U3/EZ5 — une cible demandée pour CE devis passe devant les deux données
+    # du lead, sans les réécrire.
+    cible = None
+    if target_kwc not in (None, ''):
+        from decimal import InvalidOperation
+        try:
+            cible = Decimal(str(target_kwc))
+        except (InvalidOperation, TypeError, ValueError):
+            raise AutoDevisError(
+                'Puissance cible invalide.', field='target_kwc')
+        if cible <= 0:
+            raise AutoDevisError(
+                'La puissance cible doit être supérieure à zéro.',
+                field='target_kwc')
+    # ── ORDRE FONDATEUR (29/08/2026) — TOUT PASSE PAR LE MOTEUR ─────────────
+    # « why do i bloody have the 900dh path — all sizing should go through the
+    # new sizing tool, and i said ALL sizing ».
+    #
+    # DEUX chemins, et deux seulement :
+    #
+    #   1. UNE PUISSANCE EST DEMANDÉE — ``target_kwc`` pour ce devis, sinon la
+    #      ``taille_souhaitee_kwc`` de la fiche : elle est SOUVERAINE (le
+    #      commercial sait ce qu'il vend). Simple conversion kWc → panneaux.
+    #   2. SINON — le MOTEUR HORAIRE dimensionne, dès qu'une donnée de
+    #      consommation existe (la facture d'hiver suffit : elle est inversée
+    #      au barème ONEE réel, la forme 24 h vient de la silhouette de repli
+    #      documentée). Il n'y a PLUS de troisième chemin : la règle des
+    #      900 DH/mois ne décide plus aucun devis. Si le moteur ne peut pas
+    #      dimensionner, on REFUSE en nommant la donnée manquante — jamais un
+    #      repli silencieux qui donnerait au client une taille issue d'une
+    #      autre règle que celle affichée sur sa proposition.
+    panneaux = 0
+    # Le wattage du panneau doit être CELUI SUR LEQUEL LE BALAYAGE A DÉCIDÉ :
+    # dimensionner sur un panneau de 550 Wc puis composer à 710 Wc livrerait
+    # une autre puissance que celle qui a été évaluée.
+    watt_dimensionnement = _AUTO_PANEL_WATT
+    # L-2OPT — ce que le moteur recommande POUR L'AXE AVEC BATTERIE. ``None``
+    # sur le chemin souverain : une puissance demandée par le commercial vaut
+    # pour les deux options.
+    optimum_avec = None
+    taille_demandee = cible if cible is not None else taille_kwc
+    # Une taille NULLE ou illisible sur la fiche ne « demande » rien : elle
+    # laisse la main au moteur plutôt que de refuser un lead parfaitement
+    # dimensionnable (``target_kwc``, lui, a déjà été validé plus haut).
+    if taille_demandee not in (None, ''):
+        panneaux = _residential_panel_count(taille_kwc=taille_demandee)
+    if panneaux > 0:
+        source_dimensionnement = 'taille_demandee'
+    else:
+        panneaux, watt_retenu, source_dimensionnement, optimum_avec = (
+            _panneaux_dimensionnement_horaire(
+                lead=lead, company=company,
+                phase=phase_client_pour_dimensionnement(lead)))
+        if panneaux <= 0:
+            raise _refus_dimensionnement(source_dimensionnement)
+        if watt_retenu:
+            watt_dimensionnement = watt_retenu
+
+    kwc = round(panneaux * watt_dimensionnement / 1000, 2)
+    # ── U2 (fondateur 20/08/2026) — LE DÉFAUT EST « LES DEUX OPTIONS » ──────
+    # « le devis auto sort SANS batterie alors que le calepinage 3D sort AVEC ;
+    # le DÉFAUT doit être le devis avec LES DEUX options ». Le devis auto ne
+    # choisissait à la place du client que parce que le lead ne disait rien :
+    # un lead SANS préférence de batterie repartait en « réseau », donc sans
+    # stockage ni onduleur hybride, et le client ne voyait jamais l'option.
+    # Désormais le silence du lead veut dire « propose les deux » — c'est la
+    # forme que la proposition résidentielle sait déjà rendre.
+    #
+    # Un choix EXPLICITE du lead reste souverain : « avec » compose l'hybride
+    # + batterie seuls, « sans » compose le réseau seul. On ne repropose pas
+    # une option que le client a déjà écartée.
+    # U3 — un scénario demandé POUR CE DEVIS passe devant la fiche du lead.
+    demande = (scenario or '').strip().lower()
+    if demande and demande not in SCENARIOS_DEMANDABLES:
+        raise AutoDevisError(
+            'Scénario inconnu « %s » — attendu : %s.'
+            % (scenario, ', '.join(SCENARIOS_DEMANDABLES)),
+            field='scenario')
+    choix_batterie = (
+        demande if demande
+        else (getattr(lead, 'batterie_souhaitee', '') or '').strip())
+    wants_battery = choix_batterie == 'avec'
+    deux_options = choix_batterie not in ('avec', 'sans')
+
+    # ── QJR-OFFGRID (fondateur 01/09/2026) — LE SITE ISOLÉ ──────────────────
+    # Le lead déclare « aucun » raccordement : il n'y a pas de réseau à
+    # injecter, donc rien à comparer. Le devis auto part sur l'onduleur
+    # AUTONOME + batterie, en option unique — et il REFUSE (étape 4 ci-dessous)
+    # plutôt que de coter un hybride que ce client ne pourra pas raccorder.
+    # ACAL32 — phase ET site isolé lus UNE fois (``taille``), comme le
+    # chemin 3D et le pré-vol.
+    # QJR400 — même propriétaire unique que ci-dessus pour « hors réseau ⇒
+    # jamais deux options ».
+    from apps.ventes.utils.options import deux_options_composables
+    phase_client, hors_reseau = phase_et_isolement_du_lead(lead)
+    deux_options = deux_options_composables(deux_options, hors_reseau)
+    if hors_reseau:
+        wants_battery = True
+
+    # ── L-2OPT — L'AXE « AVEC BATTERIE » A SON PROPRE OPTIMUM ───────────────
+    # Le moteur calibré désigne DEUX gagnants (DIM2) : ``recommandation`` au
+    # meilleur payback SANS stockage, et ``recommandation_avec`` au meilleur
+    # payback AVEC — issus d'un balayage CONJOINT champ × stockage. Le second
+    # n'alimentait aucune ligne de devis.
+    #
+    #   · scénario MONO « avec » — le devis ne propose QUE le stockage : il
+    #     doit donc être dimensionné sur l'optimum AVEC, pas sur celui d'un
+    #     champ sans batterie que personne n'achètera. C'est tout l'objet de ce
+    #     chantier ;
+    #   · scénario « les deux » — les deux champs partent au devis, fusionnés
+    #     en lignes variantées (cf. ``composition_deux_optimiseurs``) ;
+    #   · scénario MONO « sans » — RIEN ne change : l'optimum « avec » ne le
+    #     concerne pas.
+    if wants_battery and optimum_avec:
+        panneaux = int(optimum_avec['nb_panneaux'])
+        watt_avec = optimum_avec.get('panel_watt')
+        if watt_avec:
+            watt_dimensionnement = float(watt_avec)
+        kwc = round(panneaux * watt_dimensionnement / 1000, 2)
+        source_dimensionnement = 'moteur_horaire_avec'
+    elif not deux_options:
+        # Mono « sans » : l'optimum « avec » n'a rien à faire dans ce devis.
+        optimum_avec = None
+
+    # ── AUTO-PIPELINE — LE PLAFOND PHYSIQUE DU TOIT, S'IL EST CONNU ────────
+    # Il ne peut que RÉDUIRE, et il ne mord que sur une cible physiquement
+    # impossible (surface du contour ÷ surface d'un panneau — voir
+    # ``plafond_physique_du_contour`` pour pourquoi c'est le seul plafond
+    # honnête à prononcer ici). Le plafond de CALEPINAGE, lui, reste celui du
+    # moteur qui dessine, à l'écran.
+    if plafond_toit:
+        try:
+            plafond = int(plafond_toit)
+        except (TypeError, ValueError):
+            plafond = 0
+        if plafond > 0 and panneaux > plafond:
+            logger.warning(
+                'Auto-devis (lead %s): cible de %d panneaux ramenée à %d — '
+                'le tracé du client ne peut pas en porter davantage.',
+                getattr(lead, 'pk', '?'), panneaux, plafond)
+            if isinstance(journal_auto, dict):
+                journal_auto['panneaux_avant_plafond'] = panneaux
+                journal_auto['plafond_applique'] = plafond
+            panneaux = plafond
+            kwc = round(panneaux * watt_dimensionnement / 1000, 2)
+            if optimum_avec and int(optimum_avec.get('nb_panneaux') or 0) > plafond:
+                # L'axe « avec batterie » subit le MÊME toit : sans cela le
+                # devis proposerait une option qui ne rentre pas.
+                optimum_avec = dict(optimum_avec)
+                optimum_avec['nb_panneaux'] = plafond
+                watt_avec = optimum_avec.get('panel_watt') or watt_dimensionnement
+                optimum_avec['kwc'] = round(plafond * float(watt_avec) / 1000, 2)
+
+    layout = {
+        'result': {'panels': panneaux, 'kwc': kwc},
+        'panelWatt': watt_dimensionnement,
+        'scenario': 'avec_batterie' if wants_battery else 'reseau',
+    }
+    # ── AUTO-PIPELINE — LE TRACÉ DU CLIENT DEVIENT LA ZONE DU CALEPINAGE ───
+    # Sans ces clés, le layout d'un devis automatique ne décrit AUCUNE
+    # géométrie : l'écran 3D s'ouvrait sur une carte vierge et le commercial
+    # devait re-tracer le toit pour voir un seul panneau, alors que le client
+    # l'avait déjà dessiné. Avec elles, l'écran ouvre sur le contour du client
+    # et le pave immédiatement. Absent de tracé → dict vide → comportement
+    # STRICTEMENT inchangé.
+    zone_client = zone_toit_depuis_contour(lead, panneaux=panneaux, kwc=kwc)
+    if zone_client:
+        layout.update(zone_client)
+        if isinstance(journal_auto, dict):
+            journal_auto['contour_client'] = len(zone_client['outline'])
+    # ── U3 — GARDE MARQUE ÉPINGLÉE, portée côté SERVEUR ────────────────────
+    # Cette garde ne vivait que dans `createAutoQuote` : le chemin backend en
+    # était dépourvu. Une marque réglée dans Paramètres → Gammes mais absente
+    # du stock VIDE le vivier de son rôle — le devis serait parti sans
+    # panneaux, à un prix effondré.
+    #
+    # On le découvre par un DRY-RUN : exactement la composition qui sera
+    # créée, sans aucune écriture. Refuser AVANT de créer vaut mieux que créer
+    # puis effacer — un devis effacé rendrait sa référence au compteur, et le
+    # numéro suivant la reprendrait.
+    # ── PVCOMPAT — LE RACCORDEMENT DU CLIENT DESCEND JUSQU'À LA COMPOSITION ──
+    # ``crm.Lead.raccordement`` ('monophase'/'triphase'/'inconnu') existe depuis
+    # l'assistant du site et n'était lu NULLE PART côté composition : un client
+    # monophasé pouvait se voir composer un onduleur triphasé, impossible à
+    # raccorder chez lui. « inconnu » (ou vide) laisse la composition décider
+    # exactement comme avant. Le DRY-RUN le reçoit aussi, sinon l'aperçu et le
+    # devis ne parleraient pas du même onduleur.
+    # ACAL32 — ``phase_client`` est lu plus haut, avec ``hors_reseau``, par
+    # ``taille.phase_et_isolement_du_lead`` (une seule déduction).
+
+    # ── QJR82 — L'ÉTAPE `verifier`, LA MÊME QUE LE CHEMIN 3D ────────────────
+    # La pré-vérification n'était câblée que sur le calepinage 3D : le devis
+    # AUTOMATIQUE et le TUNNEL créaient des devis sans elle, et découvraient à
+    # la génération du PDF qu'une moitié de la composition n'existait pas au
+    # catalogue. C'est la MÊME étape et les MÊMES phrases françaises : un lead
+    # refusé et un devis refusé le sont désormais pour la même raison, dite de
+    # la même façon (c'est aussi ce que la note d'abstention du tunnel recopie,
+    # cf. ``corps_note_refus_auto_devis``).
+    #
+    # ELLE EST PRONONCÉE AVANT TOUTE ÉCRITURE : refuser vaut mieux que créer
+    # puis effacer — un devis effacé rendrait sa référence au compteur.
+    refus_composition = verifier(IntentionComposition(
+        company=company, nb_panneaux=panneaux, kwc=kwc,
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if wants_battery
+                        else COMPOSITION_SANS)),
+        hors_reseau=hors_reseau))
+    if refus_composition:
+        raise AutoDevisError(refus_composition[0], field='composition')
+
+    # STKCAT9 — LA STRUCTURE VIENT DU LEAD quand l'appelant n'en impose
+    # aucune : un lead aluminium (ou porteur d'une pergola) ne reçoit plus un
+    # devis acier. Résolue UNE fois, servie aux DEUX points de composition.
+    structure_produit_id, structure_type = _structure_demandee(
+        lead, structure_produit_id, structure_type)
+
+    apercu = composer_devis_residentiel(
+        company=company, nb_panneaux=panneaux,
+        panel_watt=watt_dimensionnement,
+        scenario=choix_batterie or 'les_deux', taux_tva=taux_tva,
+        phase=phase_client,
+        hors_reseau=hors_reseau,
+        # STKCAT8 — LA STRUCTURE DESCEND SUR LES DEUX POINTS DE COMPOSITION.
+        # Ce chemin en avait DEUX (ce dry-run, qui contrôle les marques, et
+        # l'``IntentionDevis`` finale qui écrit les lignes) et n'en informait
+        # AUCUN : le devis automatique composait toujours de l'acier. Les
+        # transmettre tous les deux est ce qui interdit à l'aperçu et au devis
+        # de diverger.
+        structure_produit_id=structure_produit_id,
+        structure_type=structure_type,
+        # L-2OPT — le DRY-RUN voit EXACTEMENT la composition qui sera créée,
+        # fusion comprise : sans cela il contrôlerait les marques d'un kit qui
+        # n'est pas celui du devis.
+        dimensionnement_avec=optimum_avec)
+    if apercu['marques_manquantes']:
+        detail = ', '.join(
+            '%s (%s)' % (m.get('marque'), m.get('libelle_role'))
+            for m in apercu['marques_manquantes'])
+        raise AutoDevisError(
+            'Marque épinglée introuvable au stock : %s. Ajoutez le produit ou '
+            'changez la marque dans Paramètres → Gammes.' % detail,
+            field='marques')
+
+    # ── QJR96 (M5, bascule 4/5) — LE PIPELINE, DANS SON ORDRE UNIQUE ────────
+    # Ce chemin RECONSTRUISAIT un layout pour le repasser à
+    # ``build_devis_from_layout``, qui le relisait aussitôt pour en ressortir le
+    # compte, le wattage et le scénario que cette fonction venait d'arrêter :
+    # un aller-retour par une sérialisation intermédiaire, sur le seul chemin où
+    # AUCUN commercial n'est dans la boucle pour rattraper un écart. Ce corps est
+    # SUPPRIMÉ. La cible est passée TELLE QUELLE au pipeline, qui compose par LE
+    # MÊME composeur que l'écran, écrit ses lignes par L'ÉCRIVAIN UNIQUE et
+    # rafraîchit les quatre études sur l'instance relue.
+    #
+    # LE LAYOUT RESTE, et il est lu par LE MÊME lecteur (``_calepinage_range``)
+    # que le calepinage 3D : c'est une donnée RÉELLE — le tracé du client — que
+    # l'écran 3D rouvre, pas un intermédiaire de calcul.
+    #
+    # LA RÈGLE SOUVERAINE EST CONSERVÉE TELLE QUELLE : une puissance DEMANDÉE
+    # (``target_kwc``, sinon ``lead.taille_souhaitee_kwc``) gagne sur le moteur,
+    # et elle ne réécrit JAMAIS la fiche du lead. Elle est désormais portée par
+    # la CIBLE de l'étape 2 — ``decider_taille`` rend une cible fournie telle
+    # quelle et n'interroge alors aucun moteur — et par rien d'autre. Elle n'est
+    # PAS posée dans ``Devis.overrides`` : les chemins ``taille.*`` du registre
+    # (D12) portent des déclarations HUMAINES que ``puissance_kwc_du_devis``
+    # fait gagner sur les lignes ; un chemin automatique qui en poserait une
+    # signerait d'une main humaine un chiffre que personne n'a tapé, et ferait
+    # publier la puissance DEMANDÉE là où QJR63 a établi que seules les LIGNES
+    # font foi.
+    from apps.ventes.models import Devis
+
+    toiture = extract_roof_config(layout)
+    panneaux, kwc = _arbitrage_du_calepinage(
+        layout, panneaux, kwc, company=company)
+    layout_range, etude_initiale = _calepinage_range(layout, toiture, kwc)
+
+    # U3/PACT10 — les clés d'étude apportées par l'appelant (factures
+    # mensuelles réelles, consommation annuelle, distributeur) COMPLÈTENT
+    # l'étude déjà écrite par la construction.
+    # ERR-E2E-AUTODEVIS-LENT (07/10/2026) — la fusion est confiée au pipeline
+    # (``completer_etude``), qui l'exécute APRÈS l'écriture des lignes et de
+    # l'étude (le scénario est donc déjà arrêté, comme avant) et AVANT ses
+    # quatre études. Elle tournait après le pipeline : les études étaient
+    # calculées une première fois SANS ces clés, jetées, puis recalculées —
+    # ~35 % de la requête (mesure sur l'image prod : 4,4 s → 2,8 s), assez pour
+    # faire dépasser 15 s au POST /devis/auto/ en CI (figures-parite.spec).
+    # Le refus du schéma reste rendu APRÈS le pipeline (même 422, même
+    # brouillon laissé qu'avant).
+    refus_extra = []
+
+    def _completer_etude(devis):
+        # QJR62 — ÉCRIVAIN UNIQUE : la fusion vit dans ``domain.etude_schema``.
+        # QJR64 / D12 — LE SCÉNARIO PASSE PAR LE REGISTRE, plus par un cas
+        # particulier codé en dur. Le scénario qui fait foi est
+        # ``scenario_effectif`` (surcharge déclarée, sinon celui que la
+        # construction vient d'arrêter) : un corps de requête ne peut plus
+        # l'écraser, et une déclaration humaine survit à tout recalcul aval.
+        from apps.ventes.domain.etude_schema import AUTO_DEVIS, ecrire
+        _scenario_arrete = scenario_effectif(
+            devis, (devis.etude_params or {}).get('scenario'))
+        _extra = {cle: valeur for cle, valeur in etude_extra.items()
+                  if not (_scenario_arrete and cle == 'scenario')}
+        if _scenario_arrete and _scenario_arrete != (
+                devis.etude_params or {}).get('scenario'):
+            _extra['scenario'] = _scenario_arrete
+        if _extra:
+            try:
+                ecrire(devis, proprietaire=AUTO_DEVIS, **_extra)
+            except ValueError as exc:
+                # ``etude_extra`` vient du CORPS DE REQUÊTE : un refus du
+                # schéma doit sortir en 422 NOMMÉ, jamais en 500.
+                refus_extra.append(str(exc))
+
+    resultat = appliquer(None, IntentionDevis(
+        origine=origine or ORIGINE_AUTO,
+        company=company,
+        user=user,
+        lead=lead,
+        mode_installation=Devis.ModeInstallation.RESIDENTIEL,
+        # QJR42 — LES ENTRÉES DU MOTEUR, LUES UNE FOIS. Sans elles l'étape 1 les
+        # relirait pour son compte : deux lectures de la même fiche, donc deux
+        # occasions de dimensionner un même lead différemment.
+        entrees=entrees_depuis_lead(lead, company),
+        cible=CibleDevis(
+            nb_panneaux=panneaux,
+            panel_watt=watt_dimensionnement,
+            kwc=kwc,
+            source=source_dimensionnement,
+            dimensionnement_avec=optimum_avec),
+        scenario=(COMPOSITION_LES_DEUX if deux_options
+                  else (COMPOSITION_AVEC if wants_battery
+                        else COMPOSITION_SANS)),
+        layout=layout_range,
+        etude_initiale=etude_initiale or None,
+        taux_tva=taux_tva,
+        remise_globale=remise_globale,
+        phase=phase_client,
+        hors_reseau=hors_reseau,
+        # STKCAT8 — le SECOND point de composition de ce chemin (cf. le
+        # dry-run ci-dessus) : la MÊME structure, sinon l'aperçu contrôlé et
+        # le devis écrit ne seraient plus le même kit.
+        structure_produit_id=structure_produit_id,
+        structure_type=structure_type,
+        completer_etude=(_completer_etude
+                         if isinstance(etude_extra, dict) and etude_extra
+                         else None),
+    ))
+    devis = resultat['devis']
+    # U3 — ce que la composition ET l'écrivain de lignes ont REFUSÉ de faire
+    # (vivier batterie vide, forfait au panneau non re-tarifé…). Sur un chemin
+    # sans commercial dans la boucle, le journal serveur est le seul lecteur.
+    for avertissement in resultat['avertissements'] or []:
+        logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
+
+    # QJR63 — LE kWc a été posé par son propriétaire à l'étape 8 (``finaliser``),
+    # sur les lignes RÉELLEMENT composées : ni ``target_kwc``, ni
+    # ``lead.taille_souhaitee_kwc``, qui sont des DEMANDES et non ce que le
+    # catalogue a su servir (l'arrondi au palier et le plafond de toit peuvent
+    # faire atterrir ailleurs). Le second appel que ce corps faisait ici est
+    # SUPPRIMÉ : il reposait la même valeur sur la même instance.
+
+    # U3/PACT10 — les clés d'étude de l'appelant sont déjà fusionnées (par
+    # ``_completer_etude``, dans le pipeline, avant ses études) ; un refus du
+    # schéma sort ici, après le pipeline, en 422 NOMMÉ comme avant.
+    if refus_extra:
+        raise AutoDevisError(refus_extra[0], field='etude_params')
+
+    # L-1V (incident test16, 27/08/2026) — LES QUATRE ÉTUDES EN UN SEUL GESTE,
+    # comme sur les chemins d'écriture du générateur (``atomic``,
+    # ``replace-lines``, ``sync-layout``). Ce chemin gardait l'appel CJ2a
+    # d'origine (bloc horaire SEUL) : un devis automatique naissait sans
+    # ``dimensionnement``, et la page client perdait d'un coup les trois
+    # tailles Éco/Recommandé/Max, la tranche tarifaire, le régime batterie,
+    # le balayage de stockage et les profils comparatifs — jusqu'à la première
+    # édition manuelle (DEV-202608-0033/0034). Posé APRÈS la fusion
+    # ``etude_extra`` ci-dessus (les factures réelles nourrissent le
+    # dimensionnement), toujours APRÈS la construction (la puissance et le
+    # stockage réellement composés), best-effort et non bloquant : un devis
+    # reste parfaitement valide sans ses études.
+    # QJR47 — ``force=True`` RETIRÉ : le devis vient de NAÎTRE, il ne porte
+    # aucun bloc estampillé, donc les quatre études se calculent de toute
+    # façon (et la fusion ``etude_extra`` ci-dessus est déjà entrée dans
+    # l'empreinte des entrées).
+    # BARÈME TRANSPORT — QJR604 : appliqué par l'étape ``composer`` du
+    # pipeline (ville du lead), avant le cliché de marge et le gel du prix/kWc.
+    rafraichir_etudes_du_devis(devis)
+
+    logger.info(
+        'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s, deux_options=%s, '
+        'dimensionnement=%s (company %s)',
+        devis.reference, panneaux, kwc, wants_battery, deux_options,
+        source_dimensionnement, getattr(company, 'id', '?'))
+    return devis
+
+
+# ── PONTS M3 : noms hébergés ailleurs ────────────────────────────────────────
+# Imports EN BAS DE FICHIER, visant le module qui PORTE chaque corps.
+from apps.ventes.domain.catalogue import _libelle_role  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.etudes import rafraichir_etudes_du_devis  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.geometrie import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    extract_roof_config,
+    zone_toit_depuis_contour,
+)
+from apps.ventes.domain.entrees import entrees_depuis_lead  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    ORIGINE_AUTO,
+    CibleDevis,
+    IntentionDevis,
+    appliquer,
+)
+from apps.ventes.domain.etape_composer import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    COMPOSITION_AVEC,
+    COMPOSITION_LES_DEUX,
+    COMPOSITION_SANS,
+    IntentionComposition,
+    composer,
+    verifier,
+)
+from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    SCENARIO_AVEC_BATTERIE,
+    SCENARIO_LES_DEUX,
+    SCENARIO_SANS_BATTERIE,
+    scenario_effectif,
+)
+from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    AutoDevisError,
+    _panneaux_dimensionnement_horaire,
+    _refus_dimensionnement,
+    _residential_panel_count,
+    phase_client_pour_dimensionnement,
+    phase_et_isolement_du_lead,
+)
+from apps.ventes.domain.creation import _structure_demandee  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.creation_calepinage import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    _arbitrage_du_calepinage,
+    _calepinage_range,
+)
+from apps.ventes.domain.creation_auto import SCENARIOS_DEMANDABLES  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
