@@ -154,3 +154,23 @@ def flux_option_avec(base_eco, *, lignes, batterie=None, **kw):
     sortie['indicateurs']['retour_dixieme_ans'] = retour_au_dixieme(
         sortie[principal])
     return sortie
+
+
+#: CEC9 — décision prise pour le fondateur (à revoir) : la charge annuelle
+#: d'O&M reste le total de la ligne ; une quantité ≠ 1 (« 5 ans × 6 000 » ?)
+#: est DITE au vendeur, jamais devinée.
+ALERTE_OM_QUANTITE = (
+    "Ligne O&M « {designation} » : quantité {quantite:g} — l'étude déduit "
+    "chaque année le total de la ligne ; un contrat pluriannuel se saisit en "
+    "quantité 1 au prix d'UNE année.")
+
+
+def alertes_om(lignes):
+    """Alertes INTERNES : lignes O&M souscrites de quantité ≠ 1."""
+    return [{'code': 'om_quantite', 'interne': True,
+             'message': ALERTE_OM_QUANTITE.format(
+                 designation=li.get('designation') or '',
+                 quantite=_montant(li.get('quantite')))}
+            for li in (lignes or []) if isinstance(li, dict)
+            and li.get('role_ci') == ROLE_OM and not li.get('optionnelle')
+            and _montant(li.get('quantite')) not in (None, 1.0)]

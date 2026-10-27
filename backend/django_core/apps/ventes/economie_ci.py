@@ -1493,7 +1493,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
     tarif = tarif_ci.tarif_applicable(tarif_declare, tension=tension, regles_origine=reglages.get('regles_origine'))
     vue_interne = {'comparaison_cse': None, 'sr500': _sr500(saisies),
                    'apres_impot': None}
-    alertes = _alertes_internes(apercu, tarif)
+    alertes = _alertes_internes(apercu, tarif) + _options.alertes_om(lignes)  # CEC9
     if not apercu.get('bilan'):
         motif = (MOTIF_TARIF_OMIS if tarif.get('origine') ==
                  tarif_ci.ORIGINE_OMIS else MOTIF_ETUDE_CI_ABSENTE)
@@ -1925,7 +1925,7 @@ def lignes_pour_economie_ci(devis):
         ht = (_f(ligne.quantite) * _f(ligne.prix_unitaire)
               * (1.0 - _f(ligne.remise) / 100.0)) * facteur
         sorties.append({
-            'designation': ligne.designation,
+            'designation': ligne.designation, 'quantite': _f(ligne.quantite),
             'ht': round(ht, 2),
             'ttc': round(ht * (1.0 + _f(tva) / 100.0), 2),
             'optionnelle': bool(getattr(ligne, 'optionnelle', False)),

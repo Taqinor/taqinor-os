@@ -167,6 +167,19 @@ class OmTest(SimpleTestCase):
         self.assertAlmostEqual(
             _an0(True, {'regles_origine': True}), -905000.0)
 
+    def test_om_quantite_differente_de_un_alerte_interne(self):
+        """CEC9 — quantité O&M ≠ 1 : dite au vendeur, jamais servie."""
+        from apps.ventes import economie_ci_options as opt
+        lignes = [{'designation': 'Contrat O&M', 'ht': 30000.0, 'ttc': 36000.0,
+                   'quantite': 5.0, 'optionnelle': False, 'role_ci': 'om_ci'},
+                  {'designation': 'Contrat O&M bis', 'ht': 6000.0,
+                   'ttc': 7200.0, 'quantite': 1.0, 'optionnelle': False,
+                   'role_ci': 'om_ci'}]
+        alertes = opt.alertes_om(lignes)
+        self.assertEqual([a['code'] for a in alertes], ['om_quantite'])
+        self.assertIn('Contrat O&M', alertes[0]['message'])
+        self.assertTrue(alertes[0]['interne'])
+
     def test_activee_sans_prix_tarif_a_renseigner(self):
         res = eco.flux_ci(_base(), production_annee1_kwh=100000,
                           om={'activee': True, 'ht': None, 'ttc': None})
