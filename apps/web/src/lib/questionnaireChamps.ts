@@ -274,6 +274,7 @@ export const AIDES_FACTURE: Record<'tension' | 'option_bt' | 'kva' | 'cos_phi' |
   ),
 };
 // CQSTW8 — titre du repli des questions facultatives (pro).
+export const DETAIL_MOIS: L3 = L('Détail mois par mois (facultatif)', 'Month-by-month detail (optional)', 'التفصيل شهراً بشهر (اختياري)');
 export const POUR_AFFINER: L3 = L('Pour affiner (facultatif)', 'To refine (optional)', 'للتدقيق أكثر (اختياري)');
 // CQSTW9 — texte GPS : « terrain / forage » pour un agriculteur, « toit » ailleurs.
 export const GPS_AGRI: L3 = L("Partagez la position de votre terrain (ou de votre forage) pour qu'on le localise précisément.", 'Share the position of your land (or your borehole) so we can locate it precisely.', 'شاركوا موقع أرضكم (أو بئركم) لنتمكن من تحديده بدقة.');

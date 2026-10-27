@@ -138,8 +138,8 @@ describe('questionnaire — CQSTW10 résidentiel', () => {
     expect(chmp).toContain("L('Villa', 'Villa', 'فيلا')");
     expect(src).not.toContain('— Je ne sais pas</option>');
   });
-  it('« facture d’été différente » n’est pré-cochée que si facture_ete est connue', () => {
-    expect(src).toContain("const eteRadio = prefillStr('facture_ete') !== '' ? prefillBoolRadio('ete_differente') : '';");
+  it('CQSTW19 — « facture d’été différente » pré-cochée par eteDifferentePrefill (comportement testé dans questionnaire.test.ts)', () => {
+    expect(src).toContain('const eteRadio = eteDifferentePrefill(prefill);');
     expect(src).not.toContain("prefillBoolRadio('ete_differente') ===");
   });
 });

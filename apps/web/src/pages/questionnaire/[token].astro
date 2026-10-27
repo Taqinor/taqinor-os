@@ -47,11 +47,12 @@ import {
   TYPE_SURFACE_VALUES,
   TYPE_TOITURE_PRO_VALUES,
   questionnaireEndpoint,
+  eteDifferentePrefill,
   SECTION_META,
   SOURCE_EAU_VALUES,
   TYPE_TOITURE_VALUES,
 } from '../../lib/questionnaire';
-import { type L3, AIDES_FACTURE, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, HORS_HORAIRES_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST, RACCORDEMENT_RES_LABELS, TOITURE_RES_LABELS, GPS_AGRI, GPS_TOIT } from '../../lib/questionnaireChamps';
+import { type L3, AIDES_FACTURE, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, HORS_HORAIRES_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST, RACCORDEMENT_RES_LABELS, TOITURE_RES_LABELS, GPS_AGRI, GPS_TOIT, DETAIL_MOIS } from '../../lib/questionnaireChamps';
 import ChampsDonnees from '../../components/questionnaire/ChampsDonnees.astro';
 import ChampsHeuresActivite from '../../components/questionnaire/ChampsHeuresActivite.astro';
 import Repli from '../../components/questionnaire/Repli.astro';
@@ -200,8 +201,7 @@ const carburantMasque = alimPrefill === 'aucune' || alimPrefill === 'electrique'
 const butaneMasque = carburantMasque || alimPrefill === 'diesel';
 /** Le lead porte-t-il déjà sa position ? (les DEUX coordonnées, jamais une
  *  seule) — sert à dire au client qu'on ne la lui redemande pas. */
-// CQSTW10 — le serveur sert false par défaut : pré-coché seulement si la facture d'été est connue.
-const eteRadio = prefillStr('facture_ete') !== '' ? prefillBoolRadio('ete_differente') : '';
+const eteRadio = eteDifferentePrefill(prefill); // CQSTW19
 const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '';
 
 // ── CIW406 — sections PRO (réseau, activité, site, société) ──────────────
@@ -360,14 +360,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
                             </div>
                           )}
-                          {/* ADRESSE — absente dès que le lead porte déjà son GPS : le
-                              serveur la retire de `champs` (crm/questionnaire.py
-                              `_COUVERT_PAR`) et cette question DISPARAÎT. Ordre
-                              fondateur : « the client already have given its GPS
-                              position ». Placée APRÈS la ville : c'est la plus
-                              longue à taper des trois. */}
+                          {/* ADRESSE — retirée par le serveur si le lead a déjà son GPS (`_COUVERT_PAR`) ; masquée ici dès qu'une position est captée (CQSTW17). */}
                           {demande('contact', 'adresse') && (
-                            <div>
+                            <div id="q-adresse-wrap" class:list={[gpsDejaConnu ? 'hidden' : '']}>
                               <label for="q-adresse" class="mb-1 block text-sm font-semibold" data-i18n data-en="Address" data-ar="العنوان">Adresse</label>
                               <input id="q-adresse" type="text" autocomplete="street-address" value={prefillStr('adresse')}
                                 class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
@@ -378,11 +373,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
 
                       {id === 'gps' && (
                         <>
-                          {/* Position DÉJÀ enregistrée : on le DIT, avec les
-                              coordonnées réelles du lead (jamais un chiffre
-                              inventé) — le client voit qu'on ne lui redemande
-                              pas ce qu'il a donné, il ne repartage que s'il
-                              veut corriger. */}
+                          {/* Position DÉJÀ enregistrée : on le dit, avec les vraies coordonnées du lead. */}
                           {gpsDejaConnu ? (
                             <p class="border-l-4 border-ok-600 bg-ok-50 py-2.5 pl-4 pr-3 text-sm text-ok-700" data-i18n
                               data-en={`Position already recorded (${prefillStr('gps_lat')}, ${prefillStr('gps_lng')}). Share it again only to correct it.`}
@@ -479,7 +470,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                       {id === 'reseau' && (
                         <>
                           {/* Fondateur 26/10/2026 — la question PRINCIPALE : les kWh mois par mois. */}
-                          <Repli ferme={prefillStr('conso_mensuelle_kwh') !== ''}>
+                          <Repli ferme={prefillStr('conso_mensuelle_kwh') !== ''} titre={DETAIL_MOIS}>
                           {demande('reseau', 'releve_conso') && (
                             <fieldset class="border-0 p-0">
                               <legend class="mb-1 text-sm font-semibold" data-i18n
@@ -1124,7 +1115,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                           {demande('pompage', 'jours_irrigation_semaine') && (
                             <div>
                               <label for={POMPAGE_NUM.jours_irrigation_semaine.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={POMPAGE_NUM.jours_irrigation_semaine.en} data-ar={POMPAGE_NUM.jours_irrigation_semaine.ar}>{POMPAGE_NUM.jours_irrigation_semaine.fr}</label>
-                              <input id={POMPAGE_NUM.jours_irrigation_semaine.id} type="number" min="0" max="7" step="any" inputmode="decimal" class={POMPAGE_INPUT_CLS} />
+                              <input id={POMPAGE_NUM.jours_irrigation_semaine.id} type="number" min="1" max="7" step="any" inputmode="decimal" class={POMPAGE_INPUT_CLS} />
                             </div>
                           )}
                           {demande('pompage', 'compteur_eau') && (
@@ -1292,7 +1283,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                 <button type="button" id="q-next"
                   class="flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
                   <span id="q-next-spinner" class="spinner hidden" aria-hidden="true"></span>
-                  <span id="q-next-label" data-i18n data-en="Continue →" data-ar="متابعة ←">Continuer →</span>
+                  <span id="q-next-label">Continuer →</span>
                 </button>
               </div>
             </div>
@@ -1363,6 +1354,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     messageGps,
     messagePositionEnregistree,
     libelleAttribut,
+    libelleSuivant,
     progressLabel,
     type QuestionnaireSectionId,
   } from '../../lib/questionnaire';
@@ -1395,9 +1387,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
 
   function boot(init: QInit) {
     const sections = init.sections;
-    // Repli défensif : un `ecrans` absent (page servie par une version plus
-    // ancienne) retombe sur « une section = un écran », le comportement
-    // d'avant le regroupement — jamais un questionnaire vide.
+    // Repli défensif : `ecrans` absent (ancienne version) → « une section = un écran ».
     const ecrans: QEcran[] = Array.isArray(init.ecrans) && init.ecrans.length > 0
       ? init.ecrans
       : sections.map((s) => ({ id: `section-${s}`, actives: [s] }));
@@ -1448,8 +1438,16 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
         i18nTriples.push({ fr: frSpan, en: enSpan, ar: arSpan });
       });
     }
+    // CQSTW15 — libellé suivant : refait à chaque écran ET à chaque changement de langue.
+    function majSuivant() {
+      if (nextLabelEl) nextLabelEl.textContent = libelleSuivant(currentIndex === total - 1, currentLang);
+    }
+    function majAdresse() {
+      $('q-adresse-wrap')?.classList.toggle('hidden', !!($('q-gps-lat') as HTMLInputElement | null)?.value);
+    }
     function applyLang(lang: 'fr' | 'en' | 'ar') {
       currentLang = lang;
+      majSuivant();
       try { localStorage.setItem('q-lang', lang); } catch { /* navigation privée : langue non gardée */ }
       if (progressLabelEl) progressLabelEl.textContent = progressLabel(currentIndex, total, lang);
       const isAr = lang === 'ar';
@@ -1527,15 +1525,8 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       });
       if (progressLabelEl) progressLabelEl.textContent = progressLabel(currentIndex, total, currentLang);
       if (prevBtn) prevBtn.classList.toggle('invisible', currentIndex === 0);
-      if (nextLabelEl) {
-        const isLast = currentIndex === total - 1;
-        const label = isLast ? 'Terminer' : 'Continuer →';
-        const en = isLast ? 'Finish' : 'Continue →';
-        const ar = isLast ? 'إنهاء' : 'متابعة ←';
-        nextLabelEl.textContent = currentLang === 'en' ? en : currentLang === 'ar' ? ar : label;
-        nextLabelEl.dataset.en = en;
-        nextLabelEl.dataset.ar = ar;
-      }
+      majSuivant();
+      majAdresse();
     }
 
     // « Modifier » sur une section déjà répondue
@@ -1736,6 +1727,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
             previewEl.classList.remove('hidden');
           }
           touched.add('gps');
+          majAdresse();
           const result = await postSection('gps');
           if (result.envoye) repondu.gps = true;
         },
