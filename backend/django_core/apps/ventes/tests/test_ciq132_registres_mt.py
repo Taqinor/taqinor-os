@@ -116,6 +116,43 @@ class RegistresMtTests(unittest.TestCase):
         self.assertAlmostEqual(total, 72000, delta=1e-5)
         self.assertEqual(sum(1 for a in alertes if a['code'] == 'registre_hors_ouverture'), 12)
 
+    def test_mois_mixte_nuit_forte_energie_conservee(self):
+        # CLD14 — creuses fortes, jours fermés sam-dim : le talon plat est
+        # plafonné par le plus petit registre rapporté à ses heures ; la courbe
+        # ne crée aucune énergie (avant : +17,1 %/an).
+        registres = [{'pointe_kwh': 2000, 'pleines_kwh': 10000, 'creuses_kwh': 40000}
+                     for _ in range(12)]
+        rythme = {'jours_ouverts': [True] * 5 + [False, False]}
+        jours, prov, alertes = courbe_registres_mt(rythme, registres, annee_reference=ANNEE,
+                                                   feries=[])
+        total = sum(jt['nb_jours'] * sum(jt['charge_kwh']) for jt in jours)
+        self.assertAlmostEqual(total, 624000, delta=1e-4)
+        for mois in range(1, 13):
+            totaux = _par_poste(jours, mois)
+            for p in POSTES:
+                self.assertAlmostEqual(totaux[p], registres[mois - 1]['%s_kwh' % p], delta=1e-6)
+        plafonnees = [a for a in alertes if a['code'] == 'talon_plafonne_au_registre']
+        self.assertEqual(len(plafonnees), 12)
+        self.assertTrue(all(a['interne'] for a in plafonnees))
+        self.assertFalse([a for a in alertes if a['code'] == 'talon_au_dela_du_registre'])
+        # talon plat gardé : un seul niveau sur 24 h des jours fermés
+        ferme = next(j for j in jours if j['mois'] == 1 and j['type_jour'] == 'ferme')
+        self.assertEqual(len(set(round(v, 9) for v in ferme['charge_kwh'])), 1)
+
+    def test_mois_mixte_pointe_nulle_talon_zero_dit(self):
+        registres = [{'pointe_kwh': 0, 'pleines_kwh': 30000, 'creuses_kwh': 9000}
+                     for _ in range(12)]
+        jours, prov, alertes = courbe_registres_mt(
+            {'jours_ouverts': [True] * 5 + [False, False]}, registres,
+            annee_reference=ANNEE, feries=[])
+        total = sum(jt['nb_jours'] * sum(jt['charge_kwh']) for jt in jours)
+        self.assertAlmostEqual(total, 12 * 39000, delta=1e-4)
+        ferme = next(j for j in jours if j['mois'] == 1 and j['type_jour'] == 'ferme')
+        self.assertEqual(max(ferme['charge_kwh']), 0.0)
+        alerte = next(a for a in alertes if a['code'] == 'talon_plafonne_au_registre')
+        self.assertIn('pointe', alerte['message'])
+        self.assertIn('0', alerte['message'])
+
     def test_aucun_utc_plus_un_code(self):
         # Le code (commentaires et chaînes exclus) ne porte aucun décalage codé.
         for chemin in (RACINE / 'moteur_ci' / 'charge.py', Path(etude_ci.__file__)):

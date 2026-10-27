@@ -437,6 +437,21 @@ def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None,
         energie = {p: _registre(registres[mois - 1], p) for p in POSTES_MT}
         h_creuses_mois = heures_poste['creuses'] * len(jours)
         talon = energie['creuses'] / h_creuses_mois if fermes and h_creuses_mois else 0.0
+        if fermes and ouverts:
+            # CLD14 — le talon plat des jours fermés ne dépasse jamais le plus
+            # petit registre rapporté à ses heures : sinon ``reste < 0 → 0``
+            # AJOUTE de l'énergie (Σ courbe > Σ registres).
+            plafonds = {p: energie[p] / (heures_poste[p] * len(fermes))
+                        for p in POSTES_MT if heures_poste[p]}
+            limite = min(plafonds, key=plafonds.get) if plafonds else None
+            if limite is not None and talon > plafonds[limite] + 1e-12:
+                talon = plafonds[limite]
+                alertes.append(_alerte(
+                    'talon_plafonne_au_registre', 'consommation.registres_mt',
+                    'Mois %d : talon des jours fermés plafonné par le registre « %s » '
+                    '(%.3f kW)%s.' % (mois, limite, talon,
+                                      ' : jours fermés à zéro' if talon <= 0 else ''),
+                    niveau='info', interne=True))
         talons.append(round(talon, 6))
         if not ouverts and jours:
             # CLD5 — aucun jour ouvert ce mois : pas de talon « 24 h plat » (il
