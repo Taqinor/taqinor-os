@@ -20,7 +20,6 @@ Marché / Mode d'installation
 🏭 Industriel
 🏪 Commercial
 🌾 Agricole (pompage)
-Option « avec batterie » indisponible pour ce système : aucun onduleur hybride dans la liste. Le PDF sera un document à option unique (sans batterie) — jamais une option partielle silencieuse.
 Informations du document
 N° de Devis
 Raccordement
@@ -30,7 +29,7 @@ Raccordé au réseau
 Hors réseau (site isolé)
 Scénario
 span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
-Les deux (Sans + Avec batterie)
+Sans batterie seulement
 Les deux (Sans + Avec batterie)
 Sans batterie seulement
 Avec batterie seulement
@@ -103,8 +102,8 @@ Rabattement en pompage (m) — optionnel
 Diamètre de tubage (mm)
 Profondeur de calage (m)
 Réservoir (m³)
-HMT saisie (m) — surcharge
-HMT retenue par le serveur : 58,7 m (calculée)
+Hauteur de pompage (HMT, m) — modifiée par vous
+Hauteur retenue pour le calcul : 58,7 m (calculée)
 Débit souhaité (m³/h)
 Profondeur forage (m) — optionnel
 Distance champ → coffret (m)
@@ -298,9 +297,7 @@ HT : 0 MAD
 — Produit —
 HT : 0 MAD
 0 MADHT : 0 MAD
-Total SANS batterie
-0 MAD
-Total AVEC batterie ⭐
+Total SANS batterie ⭐
 0 MAD
 Réduction
 %
@@ -320,10 +317,6 @@ Annuler
 Créer le devis
 Total sans batterie · TTC
 0 MAD
-Total avec batterie · TTC
-0 MAD
-Option recommandée
-Écart batterie : 0 MAD
 Système
 9,94 kWc · 14 panneaux
 Créer le devis
@@ -331,7 +324,7 @@ Annuler
 == CHAMPS ==
 gen-num=Généré automatiquement
 #1=reseau
-#2=Les deux (Sans + Avec)
+#2=Sans batterie
 #3=on [ ]
 #4=Auto
 gen-validite=

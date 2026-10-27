@@ -117,9 +117,11 @@ test('INVARIANT 2 (bis) : un scénario INTACT prend bien le défaut du marché',
   assert.equal(inact.scenario, SCENARIO_SANS)
   const retour = red(inact, { type: 'MARCHE_CHANGE', mode: 'residentiel' })
   assert.equal(retour.scenario, SCENARIO_LES_DEUX)
-  // Pompage : le scénario n'est PAS touché (ni batterie ni onduleur).
+  // Pompage (AGV6) : « Sans batterie » (ni batterie ni onduleur), puis le retour
+  // en résidentiel rend le défaut « Les deux ».
   const agri = red(ETAT_INITIAL, { type: 'MARCHE_CHANGE', mode: 'agricole' })
-  assert.equal(agri.scenario, SCENARIO_LES_DEUX)
+  assert.equal(agri.scenario, SCENARIO_SANS)
+  assert.equal(red(agri, { type: 'MARCHE_CHANGE', mode: 'residentiel' }).scenario, SCENARIO_LES_DEUX)
 })
 
 test('MARCHE_CHANGE : même marché = aucune transition ; mode inconnu ignoré', () => {
@@ -223,7 +225,7 @@ test('LEAD_APPLIQUE : jamais de scénario en POMPAGE (ni batterie ni onduleur)',
     lead: { type_installation: 'agricole', batterie_souhaitee: 'avec', raccordement: 'monophase' },
   })
   assert.equal(s.modeInstallation, 'agricole')
-  assert.equal(s.scenario, SCENARIO_LES_DEUX)   // le défaut initial, inchangé
+  assert.equal(s.scenario, SCENARIO_SANS)   // AGV6 : défaut pompage, pas le « avec » du lead
   assert.equal(s.pompeAlim, 'mono')
 })
 

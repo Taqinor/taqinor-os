@@ -1587,7 +1587,7 @@ export default function DevisGenerator({
   // l'étude locale jusqu'à sa suppression.
   // Disponibilité de l'option « avec batterie » (règle : jamais sans onduleur)
   const avecDispo = avecBatterieAvailability(lines, produits, kwp)
-  const showAvecWarning = showAvec && lines.length > 0 && !avecDispo.available
+  const showAvecWarning = showAvec && modeInstallation !== 'agricole' && lines.length > 0 && !avecDispo.available
 
   // (Dimensionnement pompage : déclaré plus haut, avant handleAutoFill —
   // eslint no-use-before-define, recalage L-2OPT 25/08.)
@@ -1824,7 +1824,7 @@ export default function DevisGenerator({
                 option partielle silencieuse.
               </div>
             )}
-            {showAvec && lines.length > 0 && avecDispo.batterieDifferee && (
+            {showAvec && modeInstallation !== 'agricole' && lines.length > 0 && avecDispo.batterieDifferee && (
               <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
                 Option « avec » sans batterie chiffrée : le document la présente comme
                 « Hybride, batterie plus tard » (onduleur hybride seul, économies
@@ -1847,7 +1847,7 @@ export default function DevisGenerator({
               <Label htmlFor="gen-num">N° de Devis</Label>
               <Input id="gen-num" value="Généré automatiquement" disabled />
             </div>
-            <div className="grid gap-1.5">
+            <div className={modeInstallation === 'agricole' ? 'hidden' : 'grid gap-1.5'}>
               {/* OFFGRID — « Raccordement » du devis : défaut « Raccordé au
                   réseau » (comportement historique byte-identique), dérivé du
                   lead (raccordement === 'aucun') tant que le vendeur ne
@@ -1867,7 +1867,7 @@ export default function DevisGenerator({
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-1.5">
+            <div className={modeInstallation === 'agricole' ? 'hidden' : 'grid gap-1.5'}>
               <Label htmlFor="gen-scenario">Scénario</Label>
               {/* OFFGRID — un système hors réseau porte TOUJOURS sa batterie :
                   option unique, le sélecteur Sans/Avec/Les deux est désactivé
