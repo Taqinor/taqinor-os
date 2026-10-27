@@ -1,0 +1,42 @@
+Rejeu orchestrateur P2.2 (APDF48 — parité « conditions générales », rejeu de la preuve d'APDF99) sur la pile locale à e5a02b61e (origin/main), 26/10/2026, demo_admin (société 1) — sonde API (manage.py shell, APIClient(HTTP_HOST='localhost') authentifié), PDF /proposal RÉEL (WeasyPrint de l'image), texte extrait par PyMuPDF ; côté page publique : `_conditions_titre_publique` / `_conditions_publiques(build_quote_data(d, _opts_quote_data_public(None)), d)` (lecture réelle, aucun mock).
+
+Setup — TOUT dans une transaction ANNULÉE (relu après : DocumentTemplates.cgv_bullets = None, cgv_par_mode = {}, 0 devis DEV-ACCEPT-APDF48*) :
+- DocumentTemplates société 1 : cgv_bullets = ["PARITE-APDF clause témoin", "Acompte à la commande&#160;: {acompte}&#37;"] ; cgv_par_mode = {commercial: {titre "TITRE CG COMMERCIAL", bullets ["PARITE-APDF clause commercial", "Echeancier {echeancier}"]}, industriel: {titre "TITRE CG INDUSTRIEL", bullets [... industriel ...]}}.
+- 4 devis BROUILLON (les devis démo déjà envoyés imprimeraient les textes gelés à l'envoi, APDF12/14) : clones de DEV-202610-0007 (résidentiel), DEV-202610-0003 (commercial), DEV-202610-0004 (industriel) + un devis agricole (variateur VEICHI 5.5 kW, 10 panneaux 550 W, afficheur ; pompe existante, débit déclaré).
+- 4 marchés × 3 formats (défaut, ?pdf_mode=onepage, ?include_etude=1) rendus en brouillon, puis `mark_devis_sent` (le vrai chemin d'envoi) et les 12 rendus refaits en envoyé.
+
+Sortie brute (marq_pub = marqueur dans les puces publiques sans {...} ; marq_pdf = marqueur dans le PDF ; manquants = puces/titre publics absents du PDF, compactés + casse repliée ; nonsubst = {...} non substitués dans le PDF) :
+CAS residentiel defaut brouillon http 200 pages 3 statut brouillon titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS residentiel onepage brouillon http 200 pages 1 statut brouillon titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS residentiel include_etude brouillon http 200 pages 4 statut brouillon titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS commercial defaut brouillon http 200 pages 3 statut brouillon titre= 'TITRE CG COMMERCIAL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS commercial onepage brouillon http 200 pages 1 statut brouillon titre= 'TITRE CG COMMERCIAL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS commercial include_etude brouillon http 200 pages 3 statut brouillon titre= 'TITRE CG COMMERCIAL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS industriel defaut brouillon http 200 pages 4 statut brouillon titre= 'TITRE CG INDUSTRIEL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS industriel onepage brouillon http 200 pages 1 statut brouillon titre= 'TITRE CG INDUSTRIEL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS industriel include_etude brouillon http 200 pages 4 statut brouillon titre= 'TITRE CG INDUSTRIEL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS agricole defaut brouillon http 200 pages 3 statut brouillon titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS agricole onepage brouillon http 200 pages 1 statut brouillon titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS agricole include_etude brouillon http 200 pages 3 statut brouillon titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+ENVOI DEV-ACCEPT-APDF48-RES envoye
+ENVOI DEV-ACCEPT-APDF48-COM envoye
+ENVOI DEV-ACCEPT-APDF48-IND envoye
+ENVOI DEV-ACCEPT-APDF48-AGR envoye
+CAS residentiel defaut envoye http 200 pages 3 statut envoye titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS residentiel onepage envoye http 200 pages 1 statut envoye titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS residentiel include_etude envoye http 200 pages 4 statut envoye titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS commercial defaut envoye http 200 pages 3 statut envoye titre= 'TITRE CG COMMERCIAL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS commercial onepage envoye http 200 pages 1 statut envoye titre= 'TITRE CG COMMERCIAL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS commercial include_etude envoye http 200 pages 3 statut envoye titre= 'TITRE CG COMMERCIAL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS industriel defaut envoye http 200 pages 4 statut envoye titre= 'TITRE CG INDUSTRIEL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS industriel onepage envoye http 200 pages 1 statut envoye titre= 'TITRE CG INDUSTRIEL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS industriel include_etude envoye http 200 pages 4 statut envoye titre= 'TITRE CG INDUSTRIEL' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS agricole defaut envoye http 200 pages 3 statut envoye titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS agricole onepage envoye http 200 pages 1 statut envoye titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+CAS agricole include_etude envoye http 200 pages 3 statut envoye titre= 'Conditions générales du devis' puces_pub= 2 marq_pub True marq_pdf True manquants= [] nonsubst= [] => OK
+TOTAL 24 KO []
+TEMPLATES_APRES None {}
+RESTE 0
+
+Verdict : PASS — 24/24 rendus (4 marchés × 3 formats × {brouillon, envoyé}) : le marqueur PARITE-APDF, le titre et TOUTES les puces servies par la page publique sont présents dans le PDF ; aucun {...} non substitué (ni côté page publique ni dans le PDF) ; titre C&I propre au mode (TITRE CG COMMERCIAL / INDUSTRIEL) des deux côtés ; le rendu ne change aucun statut (statut relu identique après chaque rendu — règle #4).
+Oracles : 1 PASS, 2 PASS (24/24 réponses 200), 6 PASS (24/24 /proposal rendus), 7 NA (non contrôlé sur ces clones — contrôlé PASS sur les devis sources DEV-202610-0003/0007 dans les traces AMOT du même jour), autres NA (rejeu API).

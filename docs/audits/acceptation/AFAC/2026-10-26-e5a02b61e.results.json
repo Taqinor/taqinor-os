@@ -1,0 +1,34 @@
+{
+  "sha": "e5a02b61e23228d92e3f7ba6f6e71d021bb849eb",
+  "date": "2026-10-26",
+  "groupe": "AFAC",
+  "verdict": "PASS",
+  "couvre": [
+    "AFAC100"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "PA4.9",
+      "taches": [
+        "AFAC100"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "PASS",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/AFAC/traces/2026-10-26/AFAC100-PA4.9.txt",
+      "notes": "moitié serveur (API portail) ; écran non rejoué"
+    }
+  ]
+}

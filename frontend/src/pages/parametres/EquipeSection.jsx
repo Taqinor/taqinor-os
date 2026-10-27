@@ -1,14 +1,23 @@
-// Onglet « Équipe & rôles » de la page Paramètres (Feature E).
-// Éditeur de hiérarchie : un Directeur/Admin assigne à chaque utilisateur son
-// superviseur direct. L'« équipe » d'un utilisateur = ceux partageant son
-// superviseur (ses pairs) ; pour un responsable, tout son sous-arbre. Cette
-// hiérarchie pilote la visibilité des enregistrements (qui voit quoi).
+// Onglet « Équipe & rôles » de la page Paramètres : vue « Organisation » de
+// TOUTE l'entreprise (Direction, équipes commerciales, équipes terrain, sans
+// équipe). Les équipes (Paramètres → Leads / Chantier) définissent le manager
+// de leurs membres ; le superviseur direct ne se règle à la main que pour les
+// personnes sans équipe et les responsables/chefs d'équipe (qui remontent à la
+// direction). Cette hiérarchie pilote la visibilité des enregistrements.
 import { useEffect, useState } from 'react'
 import api from '../../api/axios'
 import { fetchAllPages } from '../../utils/fetchAllPages'
-import { Skeleton, EmptyState, CarteContenu } from '../../ui'
+import { Skeleton, EmptyState, CarteContenu, Badge } from '../../ui'
+import crmApi from '../../api/crmApi'
+import installationsApi from '../../api/installationsApi'
+import toutesLesPages from './toutesLesPages'
 import { SectionTitle } from './peComponents'
-import { TableauLignes } from '../../ui/TableauDefilant'
+
+// Comptes « Direction » : rôle Directeur ou Administrateur (role_nom de
+// l'API utilisateurs) ou superutilisateur.
+const ROLES_DIRECTION = ['directeur', 'administrateur']
+const estDirection = (u) => u.is_superuser === true
+  || ROLES_DIRECTION.includes(String(u.role_nom || '').trim().toLowerCase())
 
 const selectCls =
   'h-[var(--control-h)] w-full max-w-[220px] rounded-md border border-input '
@@ -80,6 +89,71 @@ function descendantIds(users, rootId) {
   return seen
 }
 
+// Sélecteur de superviseur direct (hors cycles : VX235(b)).
+function SuperviseurSelect({ user, users, savingId, onChange }) {
+  const excluded = descendantIds(users, user.id)
+  return (
+    <select
+      className={selectCls}
+      aria-label={`Superviseur de ${user.username}`}
+      disabled={savingId === user.id}
+      value={user.supervisor ?? ''}
+      onChange={(e) => onChange(user.id, e.target.value)}
+    >
+      <option value="">— Aucun —</option>
+      {users
+        .filter((o) => o.id !== user.id && !excluded.has(o.id)
+          && (o.is_active !== false || o.id === user.supervisor))
+        .map((o) => (
+          <option key={o.id} value={o.id}>{o.username}</option>
+        ))}
+    </select>
+  )
+}
+
+// Bloc d'une équipe : responsable/chef (superviseur éditable) + membres
+// (manager en lecture seule, défini par l'équipe).
+function BlocEquipe({ equipe, chefId, chefLabel, byId, users, savingId, onSupervisor, badge }) {
+  const chef = chefId != null ? byId.get(chefId) : null
+  const membres = (equipe.membres ?? []).map((id) => byId.get(id)).filter(Boolean)
+  return (
+    <div className="rounded-lg border border-border p-3" data-testid={`org-equipe-${equipe.id}`}>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-foreground">{equipe.nom}</span>
+        <Badge tone="neutral">{membres.length} membre(s)</Badge>
+        {badge && <Badge tone="info">Reçoit les nouveaux leads</Badge>}
+      </div>
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-xs text-muted-foreground">{chefLabel} :</span>
+        {chef ? (
+          <>
+            <span className="font-medium text-foreground">{chef.username}</span>
+            <span className="text-xs text-muted-foreground">{chef.role_nom || '—'}</span>
+            <SuperviseurSelect user={chef} users={users} savingId={savingId} onChange={onSupervisor} />
+          </>
+        ) : (
+          <span className="text-xs text-muted-foreground">non défini</span>
+        )}
+      </div>
+      {membres.length === 0 ? (
+        <p className="text-xs text-muted-foreground">Aucun membre.</p>
+      ) : (
+        <ul className="divide-y divide-border/60 text-sm">
+          {membres.map((m) => (
+            <li key={m.id} className="flex flex-wrap items-center gap-x-2 py-1.5">
+              <span className="font-medium text-foreground">{m.username}</span>
+              <span className="text-xs text-muted-foreground">{m.role_nom || '—'}</span>
+              <span className="ml-auto text-[11px] text-muted-foreground">
+                manager : {chef ? chef.username : '—'} · défini par l'équipe {equipe.nom}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function OrgNode({ node, depth }) {
   return (
     <li>
@@ -116,7 +190,9 @@ export default function EquipeSection() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [savingId, setSavingId] = useState(null)
-  const [view, setView] = useState('table')
+  const [view, setView] = useState('org')
+  const [equipesCom, setEquipesCom] = useState([])
+  const [equipesTerrain, setEquipesTerrain] = useState([])
 
   const load = async () => {
     setLoading(true)
@@ -126,6 +202,13 @@ export default function EquipeSection() {
         (page) => api.get('/users/', { params: { page, page_size: 200 } })
           .then((r) => r?.data))
       setUsers(Array.isArray(res) ? res : (res?.results ?? []))
+      // Équipes : un échec n'empêche pas d'afficher les utilisateurs.
+      const [com, terrain] = await Promise.all([
+        toutesLesPages((params) => crmApi.getEquipes(params)).catch(() => []),
+        toutesLesPages((params) => installationsApi.getEquipesTerrain(params)).catch(() => []),
+      ])
+      setEquipesCom(com)
+      setEquipesTerrain(terrain)
       setError(null)
     } catch {
       setError('Impossible de charger l\'équipe.')
@@ -157,7 +240,22 @@ export default function EquipeSection() {
     }
   }
 
-  const th = 'px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground'
+  const actifs = users.filter((u) => u.is_active !== false)
+  const byId = new Map(users.map((u) => [u.id, u]))
+  const comActives = equipesCom.filter((e) => e.actif !== false)
+  const terrainActives = equipesTerrain.filter((e) => e.actif !== false)
+  const direction = actifs.filter(estDirection)
+  // Personnes rattachées à une équipe active (membre, responsable ou chef).
+  const enEquipe = new Set()
+  for (const e of comActives) {
+    (e.membres ?? []).forEach((id) => enEquipe.add(id))
+    if (e.responsable != null) enEquipe.add(e.responsable)
+  }
+  for (const e of terrainActives) {
+    (e.membres ?? []).forEach((id) => enEquipe.add(id))
+    if (e.chef != null) enEquipe.add(e.chef)
+  }
+  const sansEquipe = actifs.filter((u) => !estDirection(u) && !enEquipe.has(u.id))
 
   const orgTree = view === 'tree' ? buildOrgTree(users) : []
   const tabCls = (active) =>
@@ -170,18 +268,19 @@ export default function EquipeSection() {
     <div className="flex flex-col gap-4">
       <CarteContenu contenu="pt-4 sm:pt-5">
         <div className="flex items-center justify-between gap-2">
-          <SectionTitle label="Hiérarchie d'équipe" icon={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>}/>
-          <div className="flex shrink-0 gap-1" role="tablist" aria-label="Affichage de la hiérarchie">
-            <button type="button" role="tab" aria-selected={view === 'table'} className={tabCls(view === 'table')} onClick={() => setView('table')}>Tableau</button>
+          <SectionTitle label="Organisation" icon={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>}/>
+          <div className="flex shrink-0 gap-1" role="tablist" aria-label="Affichage de l'organisation">
+            <button type="button" role="tab" aria-selected={view === 'org'} className={tabCls(view === 'org')} onClick={() => setView('org')}>Organisation</button>
             <button type="button" role="tab" aria-selected={view === 'tree'} className={tabCls(view === 'tree')} onClick={() => setView('tree')}>Organigramme</button>
           </div>
         </div>
         <p className="mb-3.5 text-[12.5px] leading-relaxed text-muted-foreground">
-          Assignez à chaque personne son <strong>superviseur direct</strong>.
-          L'équipe d'un commercial/technicien = ceux qui partagent le même
-          superviseur ; un responsable voit en plus tout ce qui lui remonte.
-          Cette hiérarchie décide de ce que chacun peut voir (leads, devis,
-          chantiers…). Les comptes Directeur/Administrateur voient tout.
+          Vue d'ensemble de <strong>toute l'entreprise</strong> : Direction,
+          équipes commerciales, équipes terrain et personnes sans équipe. Le
+          manager d'un membre est défini par son équipe (Paramètres → Leads
+          pour les commerciaux, Chantier pour le terrain) ; il ne se règle à
+          la main que pour les personnes sans équipe et les responsables
+          d'équipe. Les comptes Directeur/Administrateur voient tout.
         </p>
 
         {error && (
@@ -203,7 +302,7 @@ export default function EquipeSection() {
             <p className="mb-2 text-[12px] text-muted-foreground">
               Vue lecture seule pour vérifier d'un coup d'œil la portée de
               visibilité (« voit N » = personnes du sous-arbre, lui inclus).
-              Modifiez les liens dans la vue Tableau.
+              Modifiez les liens dans la vue Organisation.
             </p>
             <ul>
               {orgTree.map((r) => (
@@ -212,44 +311,66 @@ export default function EquipeSection() {
             </ul>
           </div>
         ) : (
-          <TableauLignes enveloppe="overflow-x-auto" className="w-full min-w-[480px] border-collapse text-sm"
-            tete={(
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  <th className={th}>Utilisateur</th>
-                  <th className={th}>Rôle</th>
-                  <th className={th}>Superviseur direct</th>
-                </tr>
-              </thead>
-            )}>
-            {users.map((u) => {
-              // VX235(b) — exclut soi-même ET tout son sous-arbre (un
-              // descendant deviendrait sinon un cycle A→B→C→A).
-              const excluded = descendantIds(users, u.id)
-              return (
-                <tr key={u.id} className="border-b border-border/60 last:border-b-0">
-                  <td className="px-4 py-2.5 font-medium text-foreground">{u.username}</td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{u.role_nom || '—'}</td>
-                  <td className="px-4 py-2.5">
-                    <select
-                      className={selectCls}
-                      aria-label={`Superviseur de ${u.username}`}
-                      disabled={savingId === u.id}
-                      value={u.supervisor ?? ''}
-                      onChange={(e) => setSupervisor(u.id, e.target.value)}
-                    >
-                      <option value="">— Aucun —</option>
-                      {users
-                        .filter((o) => o.id !== u.id && !excluded.has(o.id))
-                        .map((o) => (
-                          <option key={o.id} value={o.id}>{o.username}</option>
-                        ))}
-                    </select>
-                  </td>
-                </tr>
-              )
-            })}
-          </TableauLignes>
+          <div className="flex flex-col gap-5 text-sm">
+            <section aria-label="Direction">
+              <h3 className="mb-1.5 text-[13px] font-semibold text-foreground">Direction</h3>
+              {direction.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Aucun compte Directeur/Administrateur actif.</p>
+              ) : (
+                <ul className="divide-y divide-border/60 rounded-lg border border-border px-3">
+                  {direction.map((u) => (
+                    <li key={u.id} className="flex flex-wrap items-center gap-x-2 py-1.5">
+                      <span className="font-medium text-foreground">{u.username}</span>
+                      <span className="text-xs text-muted-foreground">{u.role_nom || '—'}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section aria-label="Équipes commerciales" className="flex flex-col gap-2">
+              <h3 className="text-[13px] font-semibold text-foreground">Équipes commerciales</h3>
+              {comActives.length === 0 && (
+                <p className="text-xs text-muted-foreground">Aucune équipe commerciale active.</p>
+              )}
+              {comActives.map((e) => (
+                <BlocEquipe key={e.id} equipe={e} chefId={e.responsable} chefLabel="Responsable"
+                            byId={byId} users={users} savingId={savingId}
+                            onSupervisor={setSupervisor} badge={!!e.recoit_leads} />
+              ))}
+            </section>
+
+            <section aria-label="Équipes terrain" className="flex flex-col gap-2">
+              <h3 className="text-[13px] font-semibold text-foreground">Équipes terrain</h3>
+              {terrainActives.length === 0 && (
+                <p className="text-xs text-muted-foreground">Aucune équipe terrain active.</p>
+              )}
+              {terrainActives.map((e) => (
+                <BlocEquipe key={e.id} equipe={e} chefId={e.chef} chefLabel="Chef d'équipe"
+                            byId={byId} users={users} savingId={savingId}
+                            onSupervisor={setSupervisor} badge={false} />
+              ))}
+            </section>
+
+            <section aria-label="Sans équipe">
+              <h3 className="mb-1.5 text-[13px] font-semibold text-foreground">Sans équipe</h3>
+              {sansEquipe.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Tout le monde est rattaché à une équipe ou à la direction.</p>
+              ) : (
+                <ul className="divide-y divide-border/60 rounded-lg border border-border px-3">
+                  {sansEquipe.map((u) => (
+                    <li key={u.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1.5">
+                      <span className="font-medium text-foreground">{u.username}</span>
+                      <span className="text-xs text-muted-foreground">{u.role_nom || '—'}</span>
+                      <span className="ml-auto">
+                        <SuperviseurSelect user={u} users={users} savingId={savingId} onChange={setSupervisor} />
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
         )}
       </CarteContenu>
 

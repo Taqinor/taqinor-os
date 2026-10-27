@@ -71,10 +71,11 @@ class TestVisibilityScoping(TestCase):
         resp = auth(self.legacy).get('/api/django/crm/leads/')
         self.assertEqual(names(resp), {'LA', 'LB', 'LC', 'LU'})
 
-    def test_commercial_sees_only_team(self):
-        # alice : ses pairs = même superviseur (boss) → alice + bob.
+    def test_commercial_sees_only_own(self):
+        # Fondateur 26/10/2026 — `records_scope_soi` : alice ne voit plus les
+        # leads de bob, son coéquipier (même superviseur) ; boss les voit.
         resp = auth(self.alice).get('/api/django/crm/leads/')
-        self.assertEqual(names(resp), {'LA', 'LB'})
+        self.assertEqual(names(resp), {'LA'})
 
     def test_commercial_responsable_sees_subtree(self):
         # boss : son sous-arbre = alice + bob (qui lui remontent).

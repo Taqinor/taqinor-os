@@ -209,8 +209,11 @@ ALL_PERMISSIONS = [
     # `records_scope_equipe` : ses propres enregistrements + ceux de ses pairs
     # (même superviseur direct). `records_scope_sous_arbre` : les siens + tout
     # son sous-arbre (toute personne lui remontant, récursivement).
+    # `records_scope_soi` : les siens + son sous-arbre, JAMAIS ses pairs (un
+    # commercial ne voit pas les leads de ses coéquipiers — fondateur 26/10).
     'records_scope_equipe',
     'records_scope_sous_arbre',
+    'records_scope_soi',
     # ── YRBAC3 — Fine-grainage des apps gatées seulement par
     # ``IsResponsableOrAdmin`` : qhse/gestion_projet/contrats/litiges/kb.
     # Chaque app reçoit deux codes DISJOINTS : ``<app>_voir`` (lecture — GET/
@@ -739,6 +742,7 @@ PERMISSION_MODULE = {
 # l'une d'elles, le rôle voit tout (par société). Source unique de vérité.
 SCOPE_TEAM = 'records_scope_equipe'
 SCOPE_SUBTREE = 'records_scope_sous_arbre'
+SCOPE_SELF = 'records_scope_soi'
 
 # Permissions ÉLEVÉES (ERR5) : octroyer l'une d'elles donne le contrôle des
 # rôles eux-mêmes (``roles_gerer`` = clé admin/escalade) ou l'accès aux données
@@ -933,7 +937,7 @@ UTILISATEUR_PERMISSIONS = [
 # Aucun marqueur de portée → voit tous les enregistrements de la société.
 DIRECTEUR_PERMISSIONS = [
     p for p in ALL_PERMISSIONS
-    if p not in (SCOPE_TEAM, SCOPE_SUBTREE)
+    if p not in (SCOPE_TEAM, SCOPE_SUBTREE, SCOPE_SELF)
 ]
 
 # Administrateur (= « Admin ») : comme le Directeur, MAIS sans le Journal
@@ -1040,7 +1044,9 @@ COMMERCIAL_PERMISSIONS = [
     # au palier `IsAdminOrResponsableTier` (Responsable+), jamais ouvertes au
     # Commercial de base — comportement inchangé.
     'ux_vue_partager_equipe', 'ux_vue_definir_defaut_role',
-    SCOPE_TEAM,
+    # Fondateur 26/10/2026 : un commercial ne voit QUE ses enregistrements (et
+    # ceux des personnes qu'il encadre) — plus ceux de ses coéquipiers.
+    SCOPE_SELF,
     # ASEC9 / D-ASEC-1 — continuité d'``enregistrer_paiement`` « disponible à
     # la Commerciale » : coché par défaut, décochable dans la grille.
     'encaisser',

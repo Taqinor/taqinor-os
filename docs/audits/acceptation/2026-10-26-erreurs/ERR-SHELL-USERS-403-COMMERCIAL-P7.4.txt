@@ -1,0 +1,14 @@
+ERR-SHELL-USERS-403-COMMERCIAL — P7.4 — rejeu orchestrateur, pile locale (backend monté et front reconstruit à e5a02b61e), 2026-10-26, navigateur intégré.
+Compte : acc_commercial_test (société démo 1, rôle « Commercial », portée interne, sans users_gerer — vérifié par GET /api/django/auth/me/), réactivé pour le rejeu puis désactivé.
+
+1. Connexion par l'écran /login (POST /api/django/token/ 200) → /apps.
+2. Chargement complet (iframe hors écran, 9-10 s par page) de /apps, /ventes/devis, /crm/leads, /ventes/devis/action-requise ;
+   lecture des PerformanceResourceTiming (responseStatus) de chaque page :
+   /apps : 20 appels API, 0 appel à /api/django/users/, 0 réponse >= 400
+   /ventes/devis : 21 appels API, 0 appel à /users/, 0 >= 400
+   /crm/leads : 25 appels API (dont crm/leads/?page=1&page_size=200 200, crm/assignable-users/ 200), 0 appel à /users/, 0 >= 400
+   /ventes/devis/action-requise (« Relances du jour ») : 20 appels API, 0 appel à /users/, 0 >= 400
+3. Console : aucune erreur « Failed to load resource … 403 ». Seule erreur console observée hors requêtes de la page :
+   « An unknown error occurred when fetching the script » = enregistrement du service worker refusé par le panneau navigateur intégré
+   (navigator.serviceWorker.getRegistrations() = [], GET /sw.js 200 application/javascript) — environnemental, sans lien avec la tâche.
+Verdict : PASS (aucun 4xx sur une navigation légitime du Commercial ; /users/ n'est plus lu).

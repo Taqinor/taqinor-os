@@ -69,3 +69,42 @@ class PatchSansChangementTests(TestCase):
         self.assertGreater(date, self.t0)
         self.assertEqual(par, self.u2.pk)
         self.assertEqual(self.lead.ville, 'Rabat')
+
+
+class PatchMarqueSaisiesHumainesTests(TestCase):
+    """ERR-LEAD-SAISIES-HUMAINES-FORMULAIRE — l'écriture bornée (CRX25) garde le
+    marqueur `saisies_humaines` posé par le sérialiseur, sans élargir la borne."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Taqinor SH', slug='taqinor-sh')
+        self.user = User.objects.create_user(
+            username='sh-u1', password='x', company=self.company,
+            role_legacy='admin')
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Marque', prenom='Lead',
+            telephone='+212661290002', whatsapp='0661290002',
+            ville='Casablanca')
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+        self.url = f'/api/django/crm/leads/{self.lead.pk}/'
+
+    def test_patch_vide_whatsapp_persiste_le_marqueur(self):
+        r = self.api.patch(self.url, {'whatsapp': ''}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.lead.refresh_from_db()
+        self.assertIn('whatsapp', self.lead.saisies_humaines)
+        from apps.records.provenance import ecrire_si_libre
+        self.assertFalse(
+            ecrire_si_libre(self.lead, 'whatsapp', '212600019019',
+                            journal=False))
+
+    def test_borne_crx25_inchangee_champ_non_envoye_intact(self):
+        # La ville change en base entre-temps ; le PATCH {whatsapp} ne doit
+        # PAS la réécrire (borne CRX25 conservée).
+        Lead.objects.filter(pk=self.lead.pk).update(ville='Rabat')
+        r = self.api.patch(self.url, {'whatsapp': ''}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.ville, 'Rabat')
+        self.assertEqual(self.lead.saisies_humaines, ['whatsapp'])

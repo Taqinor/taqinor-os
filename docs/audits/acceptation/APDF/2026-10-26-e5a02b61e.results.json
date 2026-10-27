@@ -1,0 +1,78 @@
+{
+  "sha": "e5a02b61e23228d92e3f7ba6f6e71d021bb849eb",
+  "date": "2026-10-26",
+  "groupe": "APDF",
+  "verdict": "PASS",
+  "couvre": [
+    "APDF35",
+    "APDF48",
+    "APDF36"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P5",
+      "taches": [
+        "APDF35"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-26/APDF35-P5.txt",
+      "notes": "moitié serveur ; écran couvert par APDF36-P5.txt"
+    },
+    {
+      "id": "P2.2",
+      "taches": [
+        "APDF48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-26/APDF48-P2.2.txt"
+    },
+    {
+      "id": "P5",
+      "taches": [
+        "APDF36"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APDF/traces/2026-10-26/APDF36-P5.txt"
+    }
+  ]
+}

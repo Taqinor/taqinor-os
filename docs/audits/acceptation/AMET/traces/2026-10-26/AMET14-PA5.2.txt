@@ -1,0 +1,15 @@
+AMET14 — PA5.2 — rejeu orchestrateur, pile locale (backend monté à e5a02b61e), 2026-10-26.
+Sonde manage.py shell (APIClient demo_admin sur les VRAIES routes installations/demandes-achat + ventes/devis reviser/accepter, EMAIL_BACKEND locmem, transaction.atomic + rollback : rien ne reste). Société démo 1.
+Chantier démo CHT-202610-0029 (pk 214, « signé », responsable user 275), devis V1 DEV-202610-0034 accepté ; nomenclature : produit 145 × 10 (+ 10 autres SKU).
+
+1. POST /installations/demandes-achat/ {objet, chantier 214} → 201 DA-202610-0001 brouillon ; POST …-lignes/ {produit 145, quantite 10} → 201 ;
+   POST …/soumettre/ → 200 soumise (DA ÉMISE). Témoin : une seconde DA restée brouillon (produit 145 × 10).
+2. POST /ventes/devis/<V1>/reviser/ → 201 V2 DEV-202610-0076 ; ligne produit 145 passée 10 → 12 (ORM, 1 ligne) ; V2 mise « envoyé » ;
+   POST /ventes/devis/<V2>/accepter/ {nom} → 200 accepte. Chantier relu : devis → V2 (908), nomenclature 145 × 12.
+3. GET /installations/demandes-achat/<DA>/ → 200 : statut soumise, a_revoir_v2 True, diff_v2 {"145": {"ancien": 10, "nouveau": 12, "da": 10.0}} ;
+   ligne relue en base : (145, 10.00) — quantité INTACTE. DA brouillon témoin : a_revoir_v2 False, diff_v2 {}.
+   Chatter du chantier : 1 note citant DA-202610-0001 ; notification du responsable planifiée par transaction.on_commit
+   (callback « _avertir.<locals>._envoyer » en attente constaté — non exécuté puisque la sonde annule la transaction).
+4. Rejeu de la même V2 (devis_accepted ré-émis + _realigner_nomenclature_revision rejoué) : a_revoir_v2 True, diff_v2 identique, notes 1 (aucun doublon), quantité 10.00.
+Hors preuve : la commande fournisseur liée (aucun BCF généré dans ce montage) ; l'affichage du drapeau à l'écran (hors tâche).
+Verdict : PASS.

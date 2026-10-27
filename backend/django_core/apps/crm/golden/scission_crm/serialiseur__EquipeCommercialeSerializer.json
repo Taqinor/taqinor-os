@@ -49,6 +49,12 @@
    "required": false
   },
   {
+   "classe": "BooleenStrict",
+   "nom": "recoit_leads",
+   "read_only": false,
+   "required": false
+  },
+  {
    "classe": "DateTimeField",
    "nom": "date_creation",
    "read_only": true,
