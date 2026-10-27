@@ -1,6 +1,9 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { mockMatchMedia } from '../../test/matchMedia'
 
 /* WIR112 — Équipes terrain canoniques (DC40) : CRUD depuis Paramètres. */
 
@@ -13,16 +16,29 @@ const USERS = [
   { id: 11, username: 'sara' },
 ]
 
-const { getEquipes, saveEquipe, deleteEquipe, apiGet, getEquipesCom } = vi.hoisted(() => ({
+const {
+  getEquipes, saveEquipe, deleteEquipe, apiGet, apiPatch, saveEquipeCom, rolesMock,
+} = vi.hoisted(() => ({
   getEquipes: vi.fn(),
   saveEquipe: vi.fn(() => Promise.resolve({ data: {} })),
   deleteEquipe: vi.fn(() => Promise.resolve({ data: {} })),
   apiGet: vi.fn(),
-  getEquipesCom: vi.fn(),
+  apiPatch: vi.fn(() => Promise.resolve({ data: {} })),
+  saveEquipeCom: vi.fn(() => Promise.resolve({ data: {} })),
+  rolesMock: {
+    getOrganisation: vi.fn(),
+    getPostes: vi.fn(),
+    getDepartements: vi.fn(),
+    getRoles: vi.fn(),
+    savePoste: vi.fn(() => Promise.resolve({ data: {} })),
+    saveDepartement: vi.fn(() => Promise.resolve({ data: {} })),
+    saveEquipeOrg: vi.fn(() => Promise.resolve({ data: {} })),
+  },
 }))
 
-vi.mock('../../api/axios', () => ({ default: { get: apiGet, patch: vi.fn() } }))
-vi.mock('../../api/crmApi', () => ({ default: { getEquipes: getEquipesCom } }))
+vi.mock('../../api/axios', () => ({ default: { get: apiGet, patch: apiPatch } }))
+vi.mock('../../api/crmApi', () => ({ default: { saveEquipe: saveEquipeCom } }))
+vi.mock('../../api/rolesApi', () => ({ default: rolesMock }))
 
 vi.mock('../../api/installationsApi', () => ({
   default: {
@@ -69,42 +85,134 @@ describe('EquipeTerrainSection (WIR112)', () => {
   })
 })
 
-/* Vue « Organisation » (EquipeSection) : Direction, équipes commerciales/terrain, sans équipe. */
+/* Vue « Organisation » (EquipeSection) : organigramme Direction → départements →
+   équipes → personnes. Le payload est l'`exemple` du contrat committé côté
+   serveur (apps/roles/contract_samples/organisation.json), jamais une forme
+   recopiée à la main (PACT10). */
 
+const CONTRAT = JSON.parse(readFileSync(join(
+  // eslint-disable-next-line no-undef -- vitest tourne sous Node : cwd = frontend/
+  process.cwd(), '..', 'backend', 'django_core', 'apps', 'roles',
+  'contract_samples', 'organisation.json'), 'utf8'))
+const ORG = CONTRAT.exemple
+
+const ROLES = [
+  { id: 1, nom: 'Directeur' },
+  { id: 2, nom: 'Commercial responsable' },
+  { id: 3, nom: 'Commercial' },
+  { id: 4, nom: 'Technicien' },
+]
+const POSTES = [
+  { id: 20, intitule: 'Chargée de clientèle', departement: 2, role: 3, actif: true },
+  { id: 21, intitule: 'Technicien terrain', departement: null, role: 4, actif: true },
+]
+const DEPARTEMENTS = [
+  { id: 1, nom: 'Direction', responsable: 1, est_direction: true, ordre: 0, actif: true },
+  { id: 2, nom: 'Commercial', responsable: 2, est_direction: false, ordre: 1, actif: true },
+]
 const USERS_ORG = [
-  { id: 1, username: 'reda', role_nom: 'Directeur', is_active: true, supervisor: null },
-  { id: 2, username: 'meryem', role_nom: 'Commercial responsable', is_active: true, supervisor: 1 },
-  { id: 3, username: 'amine', role_nom: 'Commercial', is_active: true, supervisor: 2 },
-  { id: 4, username: 'yassine', role_nom: 'Technicien', is_active: true, supervisor: null },
-  { id: 5, username: 'khalid', role_nom: 'Technicien', is_active: true, supervisor: null },
-  { id: 6, username: 'ancien', role_nom: 'Commercial', is_active: false, supervisor: null },
+  { id: 1, username: 'reda', is_active: true },
+  { id: 2, username: 'meryem', is_active: true },
+  { id: 9, username: 'yassine', is_active: true },
 ]
 
+function monterOrg(props = { canManageSensitive: true }) {
+  rolesMock.getOrganisation.mockResolvedValue({ data: ORG })
+  rolesMock.getPostes.mockResolvedValue({ data: POSTES })
+  rolesMock.getDepartements.mockResolvedValue({ data: DEPARTEMENTS })
+  rolesMock.getRoles.mockResolvedValue({ data: ROLES })
+  apiGet.mockResolvedValue({ data: USERS_ORG })
+  return render(<EquipeSection {...props} />)
+}
+
 describe('EquipeSection — Organisation', () => {
-  it('regroupe Direction, équipes et personnes sans équipe', async () => {
-    apiGet.mockResolvedValue({ data: USERS_ORG })
-    getEquipesCom.mockResolvedValue({ data: [
-      { id: 7, nom: 'Casa', actif: true, responsable: 2, membres: [3], recoit_leads: true },
-    ] })
-    getEquipes.mockResolvedValue({ data: [
-      { id: 8, nom: 'Nord', actif: true, chef: 4, membres: [] },
-    ] })
-    render(<EquipeSection />)
+  beforeEach(() => mockMatchMedia(false))
 
-    const direction = await screen.findByRole('region', { name: 'Direction' })
-    expect(within(direction).getByText('reda')).toBeInTheDocument()
+  it('affiche Direction, départements, équipes et à compléter (arbre)', async () => {
+    monterOrg()
+    const direction = await screen.findByTestId('org-direction')
+    expect(within(direction).getByText('Reda Kasri')).toBeInTheDocument()
+    expect(screen.getByTestId('org-arbre')).toBeInTheDocument()
 
-    const com = await screen.findByTestId('org-equipe-7')
+    const dept = screen.getByTestId('org-dept-2')
+    expect(within(dept).getByText('Responsable commerciale')).toBeInTheDocument()
+    const com = screen.getByTestId('org-equipe-commerciale-7')
+    expect(within(com).getByText('Commerciale')).toBeInTheDocument()
     expect(within(com).getByText('Reçoit les nouveaux leads')).toBeInTheDocument()
-    expect(within(com).getByText(/défini par l'équipe Casa/)).toBeInTheDocument()
+    expect(within(com).getByText('Sara')).toBeInTheDocument()
 
-    expect(screen.getByTestId('org-equipe-8')).toBeInTheDocument()
+    const orph = screen.getByRole('region', { name: 'Équipes sans département' })
+    expect(within(orph).getByTestId('org-equipe-terrain-8')).toBeInTheDocument()
 
-    const sans = screen.getByRole('region', { name: 'Sans équipe' })
-    expect(within(sans).getByText('khalid')).toBeInTheDocument()
-    const noms = within(sans).getAllByRole('listitem').map((li) => li.querySelector('span').textContent)
-    // ni l'inactif (ancien), ni le membre d'équipe (amine), ni le chef (yassine)
-    expect(noms).toEqual(['khalid'])
-    expect(within(sans).getByLabelText('Superviseur de khalid')).toBeInTheDocument()
+    const manque = screen.getByTestId('org-a-completer')
+    expect(within(manque).getByText('Yassine')).toBeInTheDocument()
+    expect(within(manque).getByText('fonction manquante')).toBeInTheDocument()
+  })
+
+  it('complète une personne : PATCH /users/<id>/ avec fonction et rôle de la fonction', async () => {
+    const user = userEvent.setup()
+    monterOrg()
+    const manque = await screen.findByTestId('org-a-completer')
+    await user.click(within(manque).getByRole('button', { name: 'Compléter' }))
+    await user.selectOptions(await screen.findByLabelText('Fonction'), '21')
+    expect(screen.getByText('rôle de la fonction : Technicien')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(apiPatch).toHaveBeenCalledWith('/users/9/', { fonction: 21, role: 4 }))
+  })
+
+  it('édite une équipe commerciale via crmApi.saveEquipe (département, chef, membres)', async () => {
+    const user = userEvent.setup()
+    monterOrg()
+    await user.click(await screen.findByRole('button', { name: "Modifier l'équipe Casa" }))
+    expect(screen.getByLabelText("Type d'équipe")).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(saveEquipeCom).toHaveBeenCalledWith(7, {
+      nom: 'Casa', departement: 2, membres: [4], responsable: 3, recoit_leads: true,
+    }))
+  })
+
+  it("crée une équipe terrain via installationsApi et affiche l'erreur serveur", async () => {
+    const user = userEvent.setup()
+    saveEquipe.mockRejectedValueOnce({ response: { status: 400, data: { membres: ['Membre invalide.'] } } })
+    monterOrg()
+    await user.click(await screen.findByRole('button', { name: '+ Équipe' }))
+    await user.selectOptions(screen.getByLabelText("Type d'équipe"), 'terrain')
+    await user.type(screen.getByLabelText('Nom'), 'Sud')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(saveEquipe).toHaveBeenCalledWith(null, {
+      nom: 'Sud', departement: null, membres: [], chef: null,
+    }))
+    expect(await screen.findByText('Membre invalide.')).toBeInTheDocument()
+  })
+
+  it('crée un département et archive une fonction (onglets)', async () => {
+    const user = userEvent.setup()
+    monterOrg()
+    await user.click(await screen.findByRole('button', { name: '+ Département' }))
+    await user.type(screen.getByLabelText('Nom'), 'Marketing')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(rolesMock.saveDepartement).toHaveBeenCalledWith(
+      null, expect.objectContaining({ nom: 'Marketing' })))
+
+    await user.click(screen.getByRole('tab', { name: 'Fonctions' }))
+    expect(await screen.findByTestId('poste-20')).toBeInTheDocument()
+    await user.click(within(screen.getByTestId('poste-20')).getByRole('button', { name: 'Archiver' }))
+    await waitFor(() => expect(rolesMock.savePoste).toHaveBeenCalledWith(20, { actif: false }))
+  })
+
+  it("lecture seule pour un non-admin : aucune action d'édition", async () => {
+    monterOrg({ canManageSensitive: false })
+    await screen.findByTestId('org-direction')
+    expect(screen.queryByRole('button', { name: /Modifier/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: '+ Équipe' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Compléter' })).toBeNull()
+    expect(rolesMock.getRoles).not.toHaveBeenCalled()
+  })
+
+  it("sous 768 px : liste imbriquée repliable au lieu de l'arbre", async () => {
+    mockMatchMedia(true)
+    monterOrg()
+    expect(await screen.findByTestId('org-liste')).toBeInTheDocument()
+    expect(screen.queryByTestId('org-arbre')).toBeNull()
   })
 })

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4836, operations: 7588, components: 3564}
+counts: {paths: 4850, operations: 7626, components: 3577}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -2726,8 +2726,27 @@ operations:
 - get /api/django/reporting/vitals/p75/ -> django_reporting_vitals_p75_retrieve
 - get /api/django/roles/ -> django_roles_list
 - post /api/django/roles/ -> django_roles_create
+- get /api/django/roles/departements/ -> django_roles_departements_list
+- post /api/django/roles/departements/ -> django_roles_departements_create
+- delete /api/django/roles/departements/{id}/ -> django_roles_departements_destroy
+- get /api/django/roles/departements/{id}/ -> django_roles_departements_retrieve
+- patch /api/django/roles/departements/{id}/ -> django_roles_departements_partial_update
+- put /api/django/roles/departements/{id}/ -> django_roles_departements_update
+- get /api/django/roles/equipes/ -> django_roles_equipes_list
+- post /api/django/roles/equipes/ -> django_roles_equipes_create
+- delete /api/django/roles/equipes/{id}/ -> django_roles_equipes_destroy
+- get /api/django/roles/equipes/{id}/ -> django_roles_equipes_retrieve
+- patch /api/django/roles/equipes/{id}/ -> django_roles_equipes_partial_update
+- put /api/django/roles/equipes/{id}/ -> django_roles_equipes_update
+- get /api/django/roles/organisation/ -> django_roles_organisation_retrieve
 - get /api/django/roles/permission-catalog/ -> django_roles_permission_catalog_retrieve
 - get /api/django/roles/permissions-disponibles/ -> django_roles_permissions_disponibles_retrieve
+- get /api/django/roles/postes/ -> django_roles_postes_list
+- post /api/django/roles/postes/ -> django_roles_postes_create
+- delete /api/django/roles/postes/{id}/ -> django_roles_postes_destroy
+- get /api/django/roles/postes/{id}/ -> django_roles_postes_retrieve
+- patch /api/django/roles/postes/{id}/ -> django_roles_postes_partial_update
+- put /api/django/roles/postes/{id}/ -> django_roles_postes_update
 - get /api/django/roles/revue-acces/ -> django_roles_revue_acces_retrieve
 - delete /api/django/roles/{id}/ -> django_roles_destroy
 - get /api/django/roles/{id}/ -> django_roles_retrieve
@@ -6525,8 +6544,27 @@ operations:
 - get /api/v1/reporting/vitals/p75/ -> v1_reporting_vitals_p75_retrieve
 - get /api/v1/roles/ -> v1_roles_list
 - post /api/v1/roles/ -> v1_roles_create
+- get /api/v1/roles/departements/ -> v1_roles_departements_list
+- post /api/v1/roles/departements/ -> v1_roles_departements_create
+- delete /api/v1/roles/departements/{id}/ -> v1_roles_departements_destroy
+- get /api/v1/roles/departements/{id}/ -> v1_roles_departements_retrieve
+- patch /api/v1/roles/departements/{id}/ -> v1_roles_departements_partial_update
+- put /api/v1/roles/departements/{id}/ -> v1_roles_departements_update
+- get /api/v1/roles/equipes/ -> v1_roles_equipes_list
+- post /api/v1/roles/equipes/ -> v1_roles_equipes_create
+- delete /api/v1/roles/equipes/{id}/ -> v1_roles_equipes_destroy
+- get /api/v1/roles/equipes/{id}/ -> v1_roles_equipes_retrieve
+- patch /api/v1/roles/equipes/{id}/ -> v1_roles_equipes_partial_update
+- put /api/v1/roles/equipes/{id}/ -> v1_roles_equipes_update
+- get /api/v1/roles/organisation/ -> v1_roles_organisation_retrieve
 - get /api/v1/roles/permission-catalog/ -> v1_roles_permission_catalog_retrieve
 - get /api/v1/roles/permissions-disponibles/ -> v1_roles_permissions_disponibles_retrieve
+- get /api/v1/roles/postes/ -> v1_roles_postes_list
+- post /api/v1/roles/postes/ -> v1_roles_postes_create
+- delete /api/v1/roles/postes/{id}/ -> v1_roles_postes_destroy
+- get /api/v1/roles/postes/{id}/ -> v1_roles_postes_retrieve
+- patch /api/v1/roles/postes/{id}/ -> v1_roles_postes_partial_update
+- put /api/v1/roles/postes/{id}/ -> v1_roles_postes_update
 - get /api/v1/roles/revue-acces/ -> v1_roles_revue_acces_retrieve
 - delete /api/v1/roles/{id}/ -> v1_roles_destroy
 - get /api/v1/roles/{id}/ -> v1_roles_retrieve
@@ -8149,6 +8187,9 @@ query_params:
   get /api/django/reporting/search/: q
   get /api/django/reporting/vitals/p75/: route
   get /api/django/roles/: ordering page page_size search
+  get /api/django/roles/departements/: ordering page page_size search
+  get /api/django/roles/equipes/: ordering page page_size search
+  get /api/django/roles/postes/: ordering page page_size search
   get /api/django/roles/revue-acces/: dormant_days format
   get /api/django/sav/alarmes-onduleur/: equipement gravite ordering page page_size search statut
   get /api/django/sav/categories-equipement/: ordering page page_size search
@@ -8932,6 +8973,9 @@ query_params:
   get /api/v1/reporting/search/: q
   get /api/v1/reporting/vitals/p75/: route
   get /api/v1/roles/: ordering page page_size search
+  get /api/v1/roles/departements/: ordering page page_size search
+  get /api/v1/roles/equipes/: ordering page page_size search
+  get /api/v1/roles/postes/: ordering page page_size search
   get /api/v1/roles/revue-acces/: dormant_days format
   get /api/v1/sav/alarmes-onduleur/: equipement gravite ordering page page_size search statut
   get /api/v1/sav/categories-equipement/: ordering page page_size search
@@ -10060,6 +10104,8 @@ components:
 - DemoWizardCreateRequestRequest
 - DemoWizardStatut
 - DensiteEnum
+- Departement
+- DepartementRequest
 - DepotConsignation
 - DepotConsignationRequest
 - DepotPublic
@@ -10274,6 +10320,8 @@ components:
 - EquipeCommercialeRequest
 - EquipeMaintenance
 - EquipeMaintenanceRequest
+- EquipeOrg
+- EquipeOrgRequest
 - EquipeRequest
 - Equipement
 - EquipementDowntime
@@ -10944,6 +10992,7 @@ components:
 - OrdreDemontageStatutEnum
 - OrdreLigneOrigineEnum
 - OrdresDepuisDevisRequeteRequest
+- Organisation
 - OrientationEnum
 - OuiNonEnum
 - OutboxEvent
@@ -11071,6 +11120,7 @@ components:
 - PaginatedDemandeSignatureDocumentList
 - PaginatedDemandeTicketPortailList
 - PaginatedDemandeTransfertList
+- PaginatedDepartementList
 - PaginatedDepotConsignationList
 - PaginatedDepotPublicList
 - PaginatedDevisList
@@ -11098,6 +11148,7 @@ components:
 - PaginatedEquipeCommercialeList
 - PaginatedEquipeList
 - PaginatedEquipeMaintenanceList
+- PaginatedEquipeOrgList
 - PaginatedEquipementList
 - PaginatedEtapeAssemblageList
 - PaginatedExigenceDossierList
@@ -11207,6 +11258,7 @@ components:
 - PaginatedPolitiqueRetentionList
 - PaginatedPortailTiersTokenList
 - PaginatedPositionTechnicienList
+- PaginatedPosteList
 - PaginatedPreuveLivraisonList
 - PaginatedPrixFournisseurList
 - PaginatedProblemeList
@@ -11459,6 +11511,7 @@ components:
 - PatchedDemandeDocumentRequest
 - PatchedDemandeTicketPortailRequest
 - PatchedDemandeTransfertRequest
+- PatchedDepartementRequest
 - PatchedDepotConsignationRequest
 - PatchedDepotPublicRequest
 - PatchedDevisWriteRequest
@@ -11479,6 +11532,7 @@ components:
 - PatchedEntiteRequest
 - PatchedEquipeCommercialeRequest
 - PatchedEquipeMaintenanceRequest
+- PatchedEquipeOrgRequest
 - PatchedEquipeRequest
 - PatchedEquipementRequest
 - PatchedEtapeAssemblageRequest
@@ -11574,6 +11628,7 @@ components:
 - PatchedPointContactRequest
 - PatchedPolitiqueRetentionRequest
 - PatchedPortailTiersTokenRequest
+- PatchedPosteRequest
 - PatchedPreferenceEcritureRequest
 - PatchedPreuveLivraisonRequest
 - PatchedPrixFournisseurRequest
@@ -11773,9 +11828,11 @@ components:
 - PortailTiersTokenRequest
 - PositionRequeteRequest
 - PositionTechnicien
+- Poste
 - PosteDePerte
 - PosteDePerteRequest
 - PosteDuCatalogue
+- PosteRequest
 - PosteStatue
 - PostesDePertesRequest
 - PreferenceEcritureRequest

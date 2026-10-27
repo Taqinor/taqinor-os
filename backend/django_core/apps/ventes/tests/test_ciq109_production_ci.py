@@ -142,15 +142,21 @@ class TestPariteResidentiel(unittest.TestCase):
 
 
 class TestPlanToitPlat(unittest.TestCase):
-    """CMP5 (D-CMP-4) — un toit plat sans pente déclarée se pose à 10°."""
+    """CMP5 (D-CMP-4=c, fondateur 27/10/2026) — toit plat sans inclinaison
+    déclarée : 30° ; l'inclinaison saisie dans le générateur passe devant."""
 
-    def test_toit_plat_leste_sans_pente_dix_degres(self):
+    def test_toit_plat_sans_pente_trente_degres_source_dite(self):
         for pose in ('toit_plat_leste', 'toit_plat_fixe'):
             plan = plan_de_production({'type_pose': pose})
             self.assertEqual(plan['angle_deg'], ANGLE_TOIT_PLAT_DEG)
-            self.assertEqual(plan['angle_deg'], 10.0)
-            self.assertNotEqual(plan['angle_deg'], PVGIS_ANGLE_DEG)
-            self.assertIn('systèmes lestés', plan['source_angle'])
+            self.assertEqual(plan['angle_deg'], 30.0)
+            self.assertEqual(plan['angle_deg'], PVGIS_ANGLE_DEG)
+            self.assertIn('modifiable dans le générateur', plan['source_angle'])
+
+    def test_toit_plat_inclinaison_saisie_dix_degres(self):
+        plan = plan_de_production({'type_pose': 'toit_plat_leste', 'pente_deg': 10})
+        self.assertEqual(plan['angle_deg'], 10.0)
+        self.assertIsNone(plan['source_angle'])
 
     def test_pente_declaree_et_autres_poses_inchangees(self):
         self.assertEqual(plan_de_production({'type_pose': 'toit_plat_leste',
