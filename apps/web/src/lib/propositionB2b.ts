@@ -48,7 +48,10 @@ export interface SignValidationB2b extends SignValidation {
 
 /** ICE : séparateurs courants (espaces, points, tirets) retirés — la saisie reste libre, la valeur envoyée est nette. */
 export function normaliserIce(valeur: string | null | undefined): string {
-  return (valeur ?? '').replace(/[\s.\-‐-―]/g, '');
+  const chiffres = (valeur ?? '')
+    .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
+  return chiffres.trim().replace(/^\s*ICE\s*[:°n.\-]*\s*/i, '').replace(/[\s.\-_/\u00a0\u202f‐-―]/g, '');
 }
 
 const ICE_RE = /^\d{15}$/;

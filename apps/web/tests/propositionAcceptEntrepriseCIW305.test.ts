@@ -271,4 +271,14 @@ describe('CPRW7 — validerEntreprise trilingue et ICE à 15 chiffres', () => {
     const corps = entrepriseNettoyee({ ...ENT, ice: '0012 3456.7000-089' }, 'K');
     expect(corps?.ice).toBe('001234567000089');
   });
+  it('CPRW11 : préfixe « ICE » retiré (casse libre) et chiffres arabo-indiens / persans ASCII-isés, comme le serveur', () => {
+    const f = (ice: string): SignFormState => ({ nom: 'K', option: null, entreprise: { ...ENT, ice } });
+    expect(normaliserIce('ICE 001234567000089')).toBe('001234567000089');
+    expect(normaliserIce('ice: 0012 3456 7000 089')).toBe('001234567000089');
+    expect(normaliserIce('٠٠١٢٣٤٥٦٧٠٠٠٠٨٩')).toBe('001234567000089');
+    expect(normaliserIce('۰۰۱۲۳۴۵۶۷۰۰۰۰۸۹')).toBe('001234567000089');
+    expect(validerEntreprise(f('ICE 001234567000089'))).toBeNull();
+    expect(validerEntreprise(f('٠٠١٢٣٤٥٦٧٠٠٠٠٨٩'))).toBeNull();
+    expect(validerEntreprise(f('ABC001234567000089'))!.champ).toBe('entreprise.ice');
+  });
 });
