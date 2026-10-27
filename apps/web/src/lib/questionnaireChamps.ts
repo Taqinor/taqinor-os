@@ -240,7 +240,7 @@ export const PLAGE_DE_A: { de: L3; a: L3 } = {
 };
 
 // ── CQSTW7 — « où le lire sur votre facture » : mots simples, jamais de jargon sans aide ──
-export const AIDES_FACTURE: Record<'tension' | 'option_bt' | 'kva' | 'cos_phi', L3> = {
+export const AIDES_FACTURE: Record<'tension' | 'option_bt' | 'kva' | 'cos_phi' | 'contrat' | 'ice', L3> = {
   tension: L(
     'Où le lire : cherchez « BT » (basse tension) ou « MT » (moyenne tension) sur votre facture ou votre contrat. Pas trouvé ? « Je ne sais pas » convient.',
     'Where to read it: look for “BT” (low voltage) or “MT” (medium voltage) on your bill or contract. Not found? “I don’t know” is fine.',
@@ -269,6 +269,17 @@ export const GPS_AGRI: L3 = L("Partagez la position de votre terrain (ou de votr
 export const GPS_TOIT: L3 = L("Partagez votre position pour qu'on localise précisément votre toit.", 'Share your position so we can locate your roof precisely.', 'شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.');
 // CQSTW10 — options du parcours résidentiel (raccordement, type de toiture) en FR/EN/AR.
 export const RACCORDEMENT_RES_LABELS: Record<string, L3> = {
+  // CQSTW11 — mots simples pour les contrats et l'ICE.
+  contrat: L(
+    "En mots simples : « patenté » = le compteur d'un commerce ; « force motrice » = le compteur des machines ; « domestique » = le compteur d'une maison.",
+    'In plain words: “business” = a shop or business meter; “motive power” = the meter for machines; “domestic” = a home meter.',
+    'بكلمات بسيطة: «مهني» = عداد محل تجاري؛ «القوة المحركة» = عداد الآلات؛ «منزلي» = عداد بيت.',
+  ),
+  ice: L(
+    "ICE = Identifiant Commun de l'Entreprise : 15 chiffres, en bas de vos factures.",
+    "ICE = the company's Common Identifier: 15 digits, at the bottom of your invoices.",
+    'ICE = المُعرِّف الموحد للمقاولة: 15 رقماً، أسفل فواتيركم.',
+  ),
   '': L('— Je ne sais pas', "— I don't know", '— لا أعرف'),
   mono: L('Monophasé', 'Single-phase', 'أحادي الطور'),
   tri: L('Triphasé', 'Three-phase', 'ثلاثي الأطوار'),

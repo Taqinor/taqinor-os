@@ -567,6 +567,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 data-ar="ما هو نوع عقد الكهرباء لديكم؟ مكتوب في فاتورتكم.">
                                 Quel est votre contrat d'électricité ? Il est écrit sur votre facture.
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.contrat.en} data-ar={AIDES_FACTURE.contrat.ar}>{AIDES_FACTURE.contrat.fr}</p>
                               <select id="q-contrat" class={PRO_INPUT_CLS}>
                                 <option value="" selected={contratPrefill === ''}>—</option>
                                 {CONTRAT_ELECTRICITE_VALUES.map((v) => (
@@ -889,6 +890,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 data-en="Company ICE (it will appear on the quote and invoice)" data-ar="رقم ICE للشركة (سيظهر في عرض الثمن والفاتورة)">
                                 ICE de l'entreprise (il figurera sur le devis et la facture)
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.ice.en} data-ar={AIDES_FACTURE.ice.ar}>{AIDES_FACTURE.ice.fr}</p>
                               <input id="q-ice" type="text" maxlength="30" inputmode="numeric" value={prefillStr('ice')} class={PRO_INPUT_CLS} />
                             </div>
                           )}

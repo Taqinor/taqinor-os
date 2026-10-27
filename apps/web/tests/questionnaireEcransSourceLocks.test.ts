@@ -143,3 +143,20 @@ describe('questionnaire — CQSTW10 résidentiel', () => {
     expect(src).not.toContain("prefillBoolRadio('ete_differente') ===");
   });
 });
+
+// CQSTW11 — aides en mots simples (contrat, ICE) et titre photos pro.
+describe('questionnaire — CQSTW11 mots simples', () => {
+  const chmp = read('../src/lib/questionnaireChamps.ts');
+  const lib = read('../src/lib/questionnaire.ts');
+  it('contrat et ICE ont une aide FR/EN/AR sous le libellé', () => {
+    expect(src).toContain('{AIDES_FACTURE.contrat.fr}');
+    expect(src).toContain('{AIDES_FACTURE.ice.fr}');
+    expect(chmp).toContain('patenté » = le compteur d\'un commerce');
+    expect(chmp).toContain('force motrice » = le compteur des machines');
+    expect(chmp).toContain('15 chiffres, en bas de vos factures');
+  });
+  it('le titre des photos de factures ne dit plus « 12 dernières »', () => {
+    expect(lib).toContain("Vos factures d'électricité (une suffit, 12 c'est mieux)");
+    expect(lib).not.toContain('Les 12 dernières factures');
+  });
+});

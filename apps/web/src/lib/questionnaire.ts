@@ -98,7 +98,7 @@ export const SECTION_META: Record<QuestionnaireSectionId, SectionMeta> = {
   activite: { icon: '🏭', title: { fr: 'Votre activité et vos horaires', en: 'Your activity and opening hours', ar: 'نشاطكم وأوقات العمل' } },
   site: { icon: '📐', title: { fr: 'La surface disponible', en: 'The available surface', ar: 'المساحة المتاحة' } },
   societe: { icon: '🏢', title: { fr: 'Votre société', en: 'Your company', ar: 'شركتكم' } },
-  photo_factures: { icon: '🧾', title: { fr: 'Les 12 dernières factures', en: 'Your last 12 bills', ar: 'آخر 12 فاتورة' } },
+  photo_factures: { icon: '🧾', title: { fr: "Vos factures d'électricité (une suffit, 12 c'est mieux)", en: 'Your electricity bills (one is enough, 12 is better)', ar: 'فواتير الكهرباء (تكفي واحدة، و12 أفضل)' } },
   photo_poste: { icon: '🔢', title: { fr: 'Compteur / poste de livraison', en: 'Meter / delivery substation', ar: 'العداد / محطة التسليم' } },
   occupation: { icon: '🕒', title: { fr: 'Occupation du logement', en: 'Home occupancy', ar: 'شغل المنزل' } },
   equipements: { icon: '🧰', title: { fr: 'Équipements', en: 'Appliances', ar: 'التجهيزات' } },
