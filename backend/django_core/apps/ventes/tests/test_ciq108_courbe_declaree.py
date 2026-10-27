@@ -180,13 +180,14 @@ class TestTalonParTypeDeCommerce(unittest.TestCase):
     7/7, 07–21 h, 6 000 kWh/mois) : horaires déclarés, talon NON déclaré ⇒ la
     courbe SUIT les horaires, talon par type de commerce (défaut fondateur 20 %)."""
 
-    def _courbe(self, plages, categorie='autre', talon=None):
+    def _courbe(self, plages, categorie='autre', talon=None, segment='commercial'):
         rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [plages]},
                   'categorie_commerciale': categorie}
         if talon is not None:
             rythme['talon'] = talon
         return courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE, archetype=categorie,
-                               feries=[], production_jours_types=_production_cloche())
+                               feries=[], production_jours_types=_production_cloche(),
+                               segment=segment)
 
     def test_autre_suit_les_horaires_talon_defaut_fondateur(self):
         jt, prov, alertes = self._courbe([7, 21])
@@ -223,8 +224,27 @@ class TestTalonParTypeDeCommerce(unittest.TestCase):
         self.assertIn('BDEW G3', prov['talon']['source'])
         self.assertIn('le plus proche', prov['talon']['source'])
 
-    def test_sans_categorie_la_borne_reste(self):
+    def test_reponse_hors_horaires_meme_definition_que_le_defaut(self):
+        # Fondateur 27/10/2026 — « Un peu » = 20 % du niveau de jour : la MÊME
+        # courbe que le défaut fondateur de 20 %, seul le statut change.
+        jt_defaut, _p, _a = self._courbe([7, 21])
+        jt_declare, prov, _a = self._courbe([7, 21], talon={'niveau_jour_pct': 20})
+        self.assertEqual(prov['talon'], {'valeur': {'niveau_jour_pct': 20.0}, 'statut': 'declare'})
+        for a, b in zip(jt_defaut, jt_declare):
+            for x, y in zip(a['charge_kwh'], b['charge_kwh']):
+                self.assertAlmostEqual(x, y, places=9)
+        jt, _p, _a = self._courbe([7, 21], talon={'niveau_jour_pct': 50})
+        mars = _par(jt, 3, 'ouvre')['charge_kwh']
+        self.assertAlmostEqual(mars[3] / mars[12], 0.50, places=9)
+
+    def test_commerce_sans_categorie_defaut_fondateur_industriel_borne(self):
+        # Fondateur 27/10/2026 — commercial sans catégorie : 20 % ; l'industriel
+        # sans archétype garde la borne conservatrice.
         _jt, prov, _al = self._courbe([7, 21], categorie=None)
+        self.assertEqual(prov['talon']['statut'], 'defaut_fondateur')
+        _jt, prov, _al = self._courbe([7, 21], categorie='industriel', segment='industriel')
+        self.assertEqual(prov['talon']['statut'], 'borne_conservatrice')
+        _jt, prov, _al = self._courbe([7, 21], categorie=None, segment=None)
         self.assertEqual(prov['talon']['statut'], 'borne_conservatrice')
 
 

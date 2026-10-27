@@ -1072,7 +1072,7 @@ def _jours_types_de_charge(company, res, mode, categorie, rythme, mesuree, regis
             profil_societe=_profil_societe(
                 company, mode, categorie if mode == 'commercial'
                 else res.valeur('secteur_industriel')),
-            production_jours_types=production['jours_types'])
+            production_jours_types=production['jours_types'], segment=mode)
     return jours_types, prov_charge, al_charge
 
 

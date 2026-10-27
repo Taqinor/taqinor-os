@@ -10,8 +10,10 @@ fermés) vaut une part de la puissance des heures ouvertes :
 * sinon : ``TALON_DEFAUT_FONDATEUR`` = 20 % — DÉFAUT FONDATEUR, jamais
   présenté comme une donnée sourcée.
 
-Le talon n'est jamais figé : ``rythme.talon`` (kW ou ``part_pct``, dont la
-réponse du questionnaire « équipements la nuit ») passe toujours devant.
+Le talon n'est jamais figé : ``rythme.talon`` passe toujours devant — en kW,
+en ``part_pct`` (part du mois), ou en ``niveau_jour_pct`` (réponse du
+questionnaire « équipements hors horaires », MÊME définition que ces défauts :
+un % du niveau des heures ouvertes).
 
 Archétype « le plus proche » : la DÉFINITION officielle des profils BDEW
 (G1 bureaux, ateliers, imprimeries ; G2 cafés-restaurants du soir, salles de
@@ -59,17 +61,20 @@ CATEGORIES_COMMERCE = {
 }
 
 
-def talon_par_defaut(categorie, rapport_archetype=None, source_archetype=None):
+def talon_par_defaut(categorie, rapport_archetype=None, source_archetype=None, *,
+                     commercial=False):
     """``(rapport talon / puissance ouverte, provenance)`` d'une catégorie
     commerciale, ou ``(None, None)`` hors commerce (industriel, aucune
     catégorie : rien ne dit le talon, la borne conservatrice reste).
 
     ``rapport_archetype`` : creux / pointe de la forme de l'archétype (propre,
     le plus proche, ou profil SAISI par la société), déjà calculé.
+    ``commercial`` : lead commercial SANS catégorie ⇒ défaut fondateur aussi
+    (fondateur 27/10/2026) ; l'industriel garde la borne.
     """
     if rapport_archetype:
         return rapport_archetype, {'statut': 'estimation', 'source': source_archetype}
-    if not categorie or categorie == 'industriel':
+    if categorie == 'industriel' or not (categorie or commercial):
         return None, None
     return TALON_DEFAUT_FONDATEUR, {'statut': 'defaut_fondateur',
                                     'source': SOURCE_DEFAUT_FONDATEUR}

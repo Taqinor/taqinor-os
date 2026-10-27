@@ -127,7 +127,7 @@ class QuestionnairePro(TestCase):
 
     def test_post_activite_equipements_hors_horaires_devient_le_talon(self):
         # Décision fondateur 26/10/2026 — « Beaucoup » = talon déclaré 50 %
-        # (part du mois) lu par le moteur C&I.
+        # (% du niveau de jour, fondateur 27/10/2026) lu par le moteur C&I.
         from apps.crm.selectors import entrees_ci_du_lead
         lead = self._pro(categorie_commerciale='boulangerie')
         lien = QuestionnaireLien.objects.create(
@@ -143,7 +143,7 @@ class QuestionnairePro(TestCase):
         entree = next(e for e in entrees_ci_du_lead(lead)['entrees']
                       if e['colonne'] == 'equipements_hors_horaires')
         self.assertEqual((entree['chemin'], entree['valeur']),
-                         ('rythme.talon', {'part_pct': 50}))
+                         ('rythme.talon', {'niveau_jour_pct': 50}))
         self.assertNotIn('equipements_hors_horaires',
                          entrees_ci_du_lead(self._pro())['manquants'])
 

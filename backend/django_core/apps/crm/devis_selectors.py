@@ -8,7 +8,7 @@ inter-apps). N'importe jamais `.selectors` au niveau module.
 Note : les appels internes à `lead_du_devis` restent dans ce module ; il
 n'est jamais patché par les tests.
 """
-from .categories_commerciales import TALON_PART_PCT_PAR_REPONSE
+from .categories_commerciales import TALON_NIVEAU_JOUR_PCT_PAR_REPONSE
 from .clients_selectors import (
     get_latest_lead_for_client,
 )
@@ -573,11 +573,11 @@ def _entrees_rythme(lead, _entree, manquants, commercial):
         else:
             _entree('secteur_industriel', lead.secteur_industriel, 'rythme',
                     'rythme.secteur_industriel')
-    # Décision fondateur 26/10/2026 — « équipements hors horaires » = talon
-    # DÉCLARÉ (part du mois) ; facultatif : jamais dans ``manquants``.
-    pct = TALON_PART_PCT_PAR_REPONSE.get(lead.equipements_hors_horaires)
+    # Décisions fondateur 26-27/10/2026 — « équipements hors horaires » =
+    # talon DÉCLARÉ (% du niveau de jour) ; facultatif : jamais dans ``manquants``.
+    pct = TALON_NIVEAU_JOUR_PCT_PAR_REPONSE.get(lead.equipements_hors_horaires)
     if pct is not None:
-        _entree('equipements_hors_horaires', {'part_pct': pct}, 'rythme',
+        _entree('equipements_hors_horaires', {'niveau_jour_pct': pct}, 'rythme',
                 'rythme.talon')
 
 

@@ -629,7 +629,7 @@ def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
 
 
 def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, feries=None,
-                    profil_societe=None, production_jours_types=None):
+                    profil_societe=None, production_jours_types=None, segment=None):
     """Jours types de charge (heures GMT), provenance et alertes.
 
     ``rythme`` : bloc ``rythme`` du contrat (jours_ouverts, plages, equipes,
@@ -639,6 +639,8 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
     ``feries`` : dates SAISIES par la société (``None`` ⇒ ignorés, et dit).
     ``production_jours_types`` : ``[{mois, production_kwh_kwc[24]}]`` (CIQ109),
     requis seulement pour départager les deux bornes d'un talon inconnu.
+    ``segment`` : ``commercial`` ⇒ un commerce SANS catégorie reçoit aussi le
+    talon défaut fondateur (fondateur 27/10/2026) ; sinon la borne décide.
     """
     rythme = rythme or {}
     rythme_saisi = rythme
@@ -718,7 +720,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
         provenance['talon'] = {'valeur': {'part_pct': float(talon_pct)}, 'statut': 'declare'}
     else:
         par_defaut = _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe,
-                                               provenance, alertes)
+                                               provenance, alertes, talon, segment)
         if par_defaut is not None:
             courbes, incoherent = par_defaut
         else:
@@ -750,7 +752,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
 
 
 def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, provenance,
-                              alertes):
+                              alertes, talon_saisi=None, segment=None):
     """Talon NON déclaré, horaires déclarés : ``(courbes, incoherent)`` qui
     SUIVENT les horaires, ou ``None`` (aucune catégorie commerciale ni
     archétype : la borne conservatrice décide).
@@ -758,14 +760,23 @@ def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, pr
     Décision fondateur 26/10/2026 : talon = rapport creux / pointe de
     l'archétype (le sien, le plus proche, ou le profil saisi par la société),
     sinon le défaut fondateur de 20 % (``talons.talon_par_defaut``).
+    Fondateur 27/10/2026 — UNE définition : ``talon.niveau_jour_pct`` DÉCLARÉ
+    (réponse « équipements hors horaires ») est un % du niveau des heures
+    ouvertes, appliqué par la MÊME règle que les défauts.
     """
+    declare = (talon_saisi or {}).get('niveau_jour_pct')
+    if declare is not None:
+        rapport = float(declare) / 100.0
+        provenance['talon'] = {'valeur': {'niveau_jour_pct': float(declare)}, 'statut': 'declare'}
+        return _courbes_declarees(calendrier, niveaux, 'rapport', None, rapport)
     rapport, src = None, None
     if archetype or profil_societe:
         forme, src = forme_archetype(archetype, 'ouvre', 'hiver', profil_societe=profil_societe)
         if forme is not None and max(forme) > 0:
             rapport = min(forme) / max(forme)
     source = (src.get('jeu_de_donnees') or src.get('provenance')) if rapport else None
-    rapport, talon = talon_par_defaut(archetype, rapport, source)
+    rapport, talon = talon_par_defaut(archetype, rapport, source,
+                                      commercial=segment == 'commercial')
     if rapport is None:
         return None
     provenance['talon'] = {'valeur': {'rapport_nuit_jour': rapport},

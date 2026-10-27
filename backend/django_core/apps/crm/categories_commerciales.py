@@ -63,7 +63,7 @@ class EquipementsHorsHoraires(models.TextChoices):
     BEAUCOUP = 'beaucoup', 'Beaucoup'
 
 
-#: Décision fondateur 26/10/2026 — réponse → talon DÉCLARÉ du moteur C&I
-#: (``rythme.talon.part_pct`` : part de l'énergie du mois consommée par le
-#: talon). Il passe devant le talon par défaut du type de commerce.
-TALON_PART_PCT_PAR_REPONSE = {'aucun': 5, 'un_peu': 20, 'beaucoup': 50}
+#: Décisions fondateur 26-27/10/2026 — réponse → talon DÉCLARÉ du moteur C&I
+#: (``rythme.talon.niveau_jour_pct`` : % du niveau des heures ouvertes, la
+#: MÊME définition que le talon par défaut du type de commerce, qu'il remplace).
+TALON_NIVEAU_JOUR_PCT_PAR_REPONSE = {'aucun': 5, 'un_peu': 20, 'beaucoup': 50}
