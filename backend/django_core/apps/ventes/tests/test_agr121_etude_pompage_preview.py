@@ -375,6 +375,17 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
                          [ligne['cle'] for ligne in data['kit']['inclus']])
 
 
+class CodesChampNonDimensionneTests(SimpleTestCase):
+    """AGM3 — les deux vraies causes (HMT inconnue, besoin nul) rejoignent la
+    liste du domaine (déplacé de core/tests : core n'importe pas apps — M3)."""
+
+    def test_agm3_les_deux_codes_rejoignent_la_liste_du_domaine(self):
+        codes = pompage.CODES_CHAMP_NON_DIMENSIONNE
+        self.assertIn("hmt_inconnue", codes)
+        self.assertIn("besoin_nul", codes)
+        self.assertIn("irradiation_inconnue", codes)
+
+
 class ModeEtTypePompeAlertesTests(SimpleTestCase):
     """AGM6 — jamais de bascule silencieuse : un mode de pompe inconnu et un
     type de pompe absent sont DITS au vendeur (SimpleTestCase : catalogue,

@@ -270,12 +270,6 @@ class Champ(unittest.TestCase):
         self.assertIn("irradiation_inconnue", codes)
         self.assertEqual(res["chaines"]["motif"], "irradiation inconnue")
 
-    def test_agm3_les_deux_codes_rejoignent_la_liste_du_domaine(self):
-        from apps.ventes.domain.pompage import CODES_CHAMP_NON_DIMENSIONNE
-        self.assertIn("hmt_inconnue", CODES_CHAMP_NON_DIMENSIONNE)
-        self.assertIn("besoin_nul", CODES_CHAMP_NON_DIMENSIONNE)
-        self.assertIn("irradiation_inconnue", CODES_CHAMP_NON_DIMENSIONNE)
-
     def test_agm4_coefficients_absents_alerte_nommee(self):
         sans = {k: v for k, v in PANNEAU.items()
                 if k != "temp_coeff_voc_pct_c"}
