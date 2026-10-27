@@ -268,6 +268,20 @@ class Ntwms34ApiTests(Ntwms34Base):
                 reception=reception, user=self.admin,
                 resultat=ControleReception.Resultat.NON_CONFORME)
 
+    def test_reception_confirmee_controle_api_409(self):
+        """api-fuzz-full 27/10 (ENF11) — ``{"resultat": "conforme"}`` sur une
+        réception confirmée répondait 400 : corps conforme, c'est l'ÉTAT qui
+        s'oppose → 409, rien n'est écrit."""
+        reception = self._reception(quantite=2)
+        confirm_reception_fournisseur(reception, self.admin)
+        res = auth(self.admin).post(
+            f'/api/django/stock/receptions-fournisseur/{reception.id}/'
+            'controle-qualite/', {'resultat': 'conforme'}, format='json')
+        self.assertEqual(res.status_code, 409, res.content)
+        self.assertIn('déjà confirmée', res.data['detail'])
+        self.assertFalse(ControleReception.objects.filter(
+            reception=reception).exists())
+
 
 class TestControleQualiteCorpsTypes(Ntwms34Base):
     """api-fuzz 24/10 — corps libre du verdict : types publiés, jamais 500."""

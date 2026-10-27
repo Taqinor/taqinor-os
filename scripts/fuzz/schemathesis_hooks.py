@@ -577,6 +577,11 @@ _FICHIERS_VALIDES = (
      {'file': _xlsx_minimal()}),
     (re.compile(r'^/api/django/stock/fiches-techniques/importer-datasheet/$'), {'POST'},
      {'file': b'PVObject_=pvModule\n'}),
+    # api-fuzz-full 27/10 — PDF d'une fiche technique : le serveur lit les
+    # octets magiques (PDF, PNG, JPEG, WebP), inexprimable dans le schéma ;
+    # des octets quelconques sont « Format non supporté » (400).
+    (re.compile(r'^/api/django/stock/fiches-techniques/(\{[^}]+\}/)?$'),
+     {'POST', 'PUT', 'PATCH'}, {'pdf': _PDF_MINIMAL}),
     # Relevé de toiture / drone d'un chantier : ``store_attachment`` lit les
     # octets magiques (PDF, PNG, JPEG, WebP), inexprimables dans le schéma.
     (re.compile(r'^/api/django/installations/chantiers/\{[^}]+\}/ajouter-releve/$'), {'POST'},

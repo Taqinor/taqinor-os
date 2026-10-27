@@ -58,7 +58,6 @@ frontend/src/pages/crm/leads/PerduPopover.jsx::confirm  1
 frontend/src/pages/crm/leads/views/LeadCard.jsx::requestFocusSection  1
 frontend/src/pages/crm/leads/views/ListView.jsx::ecrireGroupesReplies  1
 frontend/src/pages/crm/leads/views/ListView.jsx::ecrireListGroup  1
-frontend/src/pages/installations/ChantierChecklist.jsx::toggle  1
 frontend/src/pages/installations/ChantierGateTimeline.jsx::genererPack  1
 frontend/src/pages/installations/ChantierPhotos.jsx::ChantierPhotos  1
 frontend/src/pages/installations/ChantierPhotos.jsx::remove  1

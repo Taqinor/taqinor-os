@@ -1435,7 +1435,7 @@
    "required": false
   },
   {
-   "classe": "PrimaryKeyRelatedField",
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
    "nom": "owner",
    "read_only": false,
    "required": false

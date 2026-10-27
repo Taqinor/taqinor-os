@@ -737,6 +737,34 @@ class FacturerVenteEndpointVNT31(_BaseVente):
             self.assertEqual(resp.status_code, 400, (brut, resp.data))
         self.assertFalse(Facture.objects.filter(devis=devis).exists())
 
+    def test_paiement_publie_avec_montant_requis(self):
+        """api-fuzz-full 27/10 (ENF11) — ``paiements: [{…sans montant…}]``
+        était publié « objet quelconque » puis refusé 400 « Paiement n°1 :
+        montant invalide. » : la forme lue par ``valider_paiements_saisis``
+        est publiée (montant requis, motif ; date ; mode) et appliquée par
+        le sérialiseur déclaré — 400 nommant le champ, aucune facture."""
+        from apps.ventes.views import openapi_docs as D
+        enfant = D.FacturerVenteRequest.fields['paiements'].child
+        self.assertTrue(enfant.fields['montant'].required)
+        self.assertEqual(set(enfant.fields), {
+            'montant', 'date_paiement', 'mode_paiement', 'reference'})
+        devis = self._388('DEV-VNT31-PAIEMENT')
+        resp = self.api.post(self._url(devis), {
+            'nature': 'acompte', 'montant_ttc': '15000.00', 'emettre': True,
+            'paiements': [{'mode_paiement': 'virement',
+                           'date_paiement': date.today().isoformat()}]},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('paiements', resp.data)
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+        resp = self.api.post(self._url(devis), {
+            'nature': 'acompte', 'montant_ttc': '15000.00', 'emettre': True,
+            'paiements': [{'montant': '15000.00', 'mode_paiement': 'virement',
+                           'date_paiement': date.today().isoformat()}]},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['facture']['statut'], 'payee')
+
     def test_emettre_exige_le_code_d_encaissement(self):
         from apps.roles.permissions_registre import (
             COMMERCIAL_PERMISSIONS, TECHNICIEN_PERMISSIONS)

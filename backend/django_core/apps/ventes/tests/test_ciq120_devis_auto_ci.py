@@ -118,9 +118,9 @@ class _Base(TestCase):
 _TARIF_APPLICABLE = tarif_ci.tarif_applicable
 
 
-def _tarif_grille(tarif_declare, *, tension=None, millesime=2026):
+def _tarif_grille(tarif_declare, *, tension=None, millesime=2026, **options):
     contrat = 'mt_general' if tension == 'mt' else 'bt_patente'
-    return _TARIF_APPLICABLE({'contrat': contrat}, tension=tension, millesime=millesime)
+    return _TARIF_APPLICABLE({'contrat': contrat}, tension=tension, millesime=millesime, **options)
 
 
 class DevisAutoCITests(_Base):
