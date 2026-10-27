@@ -685,7 +685,7 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
                                   serializers.ModelSerializer):
     # CRX13 — responsable ET membres (M2M) : le ``ManyRelatedField`` délègue à
     # son ``child_relation``, promu lui aussi.
-    scoped_relations = ('responsable', 'membres')
+    scoped_relations = ('responsable', 'membres', 'departement')
     serializer_field_mapping = MAPPING_TEXTE_STRICT  # ENF11
 
     responsable_nom = serializers.CharField(
@@ -698,6 +698,7 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
         fields = [
             'id', 'company', 'nom', 'responsable', 'responsable_nom',
             'membres', 'nb_membres', 'actif', 'recoit_leads', 'date_creation',
+            'departement',
         ]
         read_only_fields = ['company', 'date_creation']
 
@@ -719,14 +720,18 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
         return attrs
 
     def save(self, **kwargs):
-        from authentication.equipes_structure import synchroniser_superviseurs
+        from django.db import transaction
+        from authentication.equipes_structure import (
+            recalculer_hierarchie, synchroniser_superviseurs)
         inst = self.instance
         chef_avant = inst.responsable if inst else None
         membres_avant = list(inst.membres.all()) if inst else []
-        equipe = super().save(**kwargs)
-        synchroniser_superviseurs(
-            equipe.company_id, chef_avant, membres_avant,
-            equipe.responsable, list(equipe.membres.all()), equipe.actif)
+        with transaction.atomic():  # organigramme : boucle refusée = rollback
+            equipe = super().save(**kwargs)
+            synchroniser_superviseurs(
+                equipe.company_id, chef_avant, membres_avant,
+                equipe.responsable, list(equipe.membres.all()), equipe.actif)
+            recalculer_hierarchie(equipe.company_id)
         # Une seule équipe reçoit les nouveaux leads par société : cocher
         # celle-ci décoche les autres (même société uniquement).
         if equipe.recoit_leads:

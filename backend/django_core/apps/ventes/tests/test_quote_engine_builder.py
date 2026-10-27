@@ -605,7 +605,7 @@ class TestDossierMoyenneTension(TestCase):
 
 class TestCanonicalProductible(TestCase):
     """QX38 — un seul modèle de productible (PVGIS par ville), partagé par
-    l'écran, le PDF et la proposition web. CompanyProfile.productible (1600)
+    l'écran, le PDF et la proposition web. CompanyProfile.productible (vide)
     devient un override, pas un modèle concurrent ; le barème ONEE est aligné.
     """
 
@@ -627,11 +627,11 @@ class TestCanonicalProductible(TestCase):
         self.assertEqual(productible_for_city('Kenitra'),
                          PRODUCTIBLE_PAR_VILLE['rabat'])
 
-    def test_company_override_beats_pvgis_only_when_non_default(self):
+    def test_company_override_beats_pvgis_whenever_set(self):
         from apps.ventes.quote_engine.productible import productible_for_city
-        # override = défaut historique 1600 → on lit le PVGIS de la ville
-        self.assertEqual(productible_for_city('Agadir', override=1600), 1687)
-        # override société explicite (≠ 1600) → il prime
+        # AMOT64 — vide → PVGIS de la ville ; 1600 saisi est respecté
+        self.assertEqual(productible_for_city('Agadir', override=None), 1687)
+        self.assertEqual(productible_for_city('Agadir', override=1600), 1600)
         self.assertEqual(productible_for_city('Agadir', override=1750), 1750)
 
     def test_builder_uses_city_productible_for_production(self):

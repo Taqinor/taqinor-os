@@ -30,7 +30,7 @@ from .lignes_classement import (
 )
 # SPL163 — la phase D1 (chiffrage de l'étude) vit dans ``etude_chiffrage``
 # (move only) ; builder n'importe ici que ce qu'il utilise lui-même.
-from .etude_chiffrage import _nombre, chiffrer_etude
+from .etude_chiffrage import _nombre, _regles_2710, chiffrer_etude
 # SPL163 — ré-export (noqa: F401) pour d'autres propriétaires : public_views
 # (CLES_BLOCS_HORAIRES), tests devis test_options (_etude_horaire_sans_stockage)
 # et test_ciq129_cles_v1 (_etude_rendue).
@@ -1548,7 +1548,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     (_source_conso, factures_mensuelles, factures_mensuelles_estimation,
      factures_source, hypotheses_block, savings_method) = restituer_etude(
         _client_city=_client_city, _co_productible=_co_productible,
-        _corrige=_corrige, _utility=_utility, etude=etude,
+        _corrige=_corrige, _utility=_utility, etude=etude, _bareme_horaire=_regles_2710(devis),
         puissance_kwc=puissance_kwc, roi=roi, savings_model=savings_model,
         savings_model_avec=savings_model_avec,
         savings_model_sans=savings_model_sans, scenario=scenario)

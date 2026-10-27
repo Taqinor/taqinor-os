@@ -17,7 +17,7 @@ import userEvent from '@testing-library/user-event'
 // fabriques peuvent y accéder sans erreur d'initialisation.
 const { apiMock, rolesApiMock } = vi.hoisted(() => ({
   apiMock: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
-  rolesApiMock: { getRoles: vi.fn() },
+  rolesApiMock: { getRoles: vi.fn(), getPostes: vi.fn() },
 }))
 vi.mock('../../api/axios', () => ({ default: apiMock }))
 vi.mock('../../api/rolesApi', () => ({ default: rolesApiMock }))
@@ -87,6 +87,7 @@ beforeEach(() => {
   apiMock.patch.mockReset().mockResolvedValue({ data: {} })
   apiMock.delete.mockReset().mockResolvedValue({ data: {} })
   rolesApiMock.getRoles.mockReset().mockResolvedValue({ data: ROLES })
+  rolesApiMock.getPostes.mockReset().mockResolvedValue({ data: [] })
 })
 
 afterEach(() => {
@@ -163,6 +164,33 @@ describe('UsersManagement — DataTable (J145)', () => {
       username: 'nouveau',
       email: 'nouveau@taqinor.ma',
       password: 'Az9ployxQ!',
+    })))
+  })
+
+  // Organigramme (27/10/2026) : la fonction est obligatoire à la création quand
+  // la société en a défini, et pose le rôle par défaut.
+  it('fonction obligatoire à la création : bloque sans fonction, envoie fonction + rôle de la fonction', async () => {
+    rolesApiMock.getPostes.mockResolvedValue({ data: [
+      { id: 20, intitule: 'Chargée de clientèle', departement: 2, role: 1, actif: true },
+    ] })
+    const user = userEvent.setup()
+    renderPage()
+    await screen.findAllByText('sami')
+    await user.click(screen.getByRole('button', { name: '+ Nouvel utilisateur' }))
+    const createBtn = screen.getByRole('button', { name: 'Créer' })
+    const form = createBtn.closest('form')
+    fireEvent.change(form.querySelector('input:not([type])'), { target: { value: 'nouvelle' } })
+    fireEvent.change(form.querySelector('input[type="password"]'), { target: { value: 'Az9ployxQ!' } })
+
+    await user.click(createBtn)
+    expect(await screen.findByText('Choisissez une fonction.')).toBeInTheDocument()
+    expect(apiMock.post).not.toHaveBeenCalled()
+
+    await user.click(within(form).getByRole('combobox', { name: /Fonction/i }))
+    await user.click(await screen.findByRole('option', { name: 'Chargée de clientèle' }))
+    await user.click(createBtn)
+    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/users/', expect.objectContaining({
+      username: 'nouvelle', fonction: 20, role: 1,
     })))
   })
 

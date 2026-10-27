@@ -152,12 +152,13 @@ def texte_corps(request, nom, *autres):
     (``''`` si absent ou nul), sans espaces de bord. ``nom`` et ``autres``
     (lus ensuite par la vue) sont publiés chaînes : un nombre JSON, ou une
     PARTIE FICHIER multipart sous ce nom, faisait lever ``.strip()`` (500) →
-    400 nommant le champ."""
+    400 nommant le champ. Le caractère nul (refusé par PostgreSQL, motif publié
+    par ``ChaineStricte``) aussi : 400, plus un 500 à l'écriture."""
     corps = corps_objet(request)
     for cle in (nom, *autres):
         valeur = corps.get(cle)
-        if valeur is not None and not isinstance(valeur, str):
-            raise ValidationError({cle: 'Texte attendu.'})
+        if valeur is not None and (not isinstance(valeur, str) or chr(0) in valeur):
+            raise ValidationError({cle: 'Texte attendu (sans caractère nul).'})
     return (corps.get(nom) or '').strip()
 
 
