@@ -27,7 +27,7 @@ from apps.ventes.moteur_ci.categories import elements_horaire
 from apps.ventes.moteur_ci.profils import (
     MOTIF_PROFIL_DECLARE, SAISONS, TYPES_JOUR, forme_archetype,
 )
-from apps.ventes.moteur_ci.talons import talon_par_defaut
+from apps.ventes.moteur_ci.talons import ARCHETYPE_LE_PLUS_PROCHE, talon_par_defaut
 from apps.ventes.ramadan import plage_ramadan_pour
 
 HEURES = 24
@@ -759,6 +759,12 @@ FEUILLE_JOURS = 'rythme.jours_ouverts'
 FEUILLE_PLAGES = 'rythme.plages'
 
 
+#: CLD18 — catégories « le plus proche » dont l'écart de taille à l'horaire
+#: réel est matériel (station-service 24/7 : 50,41 contre 30,53 kWc) : sans
+#: plage, le vendeur est invité à demander les horaires (alerte interne).
+CATEGORIES_HORAIRES_A_DEMANDER = frozenset({'station_service', 'cafe', 'salle_sport'})
+
+
 def _repli_source(categorie, profil_societe):
     """``(True, None)`` si le profil SAISI par la société ou l'archétype
     vendorisé couvre TOUS les (type de jour, saison) que lit
@@ -905,6 +911,12 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
             'niveau_donnees': 'estimation',
             'talon': {'valeur': declare, 'statut': 'declare' if declare else 'estimation'},
         })
+        if archetype in CATEGORIES_HORAIRES_A_DEMANDER and archetype in ARCHETYPE_LE_PLUS_PROCHE:
+            alertes.append(_alerte(
+                'horaires_a_demander', 'rythme.plages',
+                "Horaires d'ouverture à demander : « %s » prend la forme de l'archétype « %s » "
+                '(le plus proche) ; la taille change avec les horaires réels.'
+                % (archetype, ARCHETYPE_LE_PLUS_PROCHE[archetype][0]), niveau='info', interne=True))
         if not jours_declares:
             alertes.append(_alerte(
                 'jours_ouverts_non_declares', 'rythme.jours_ouverts',
