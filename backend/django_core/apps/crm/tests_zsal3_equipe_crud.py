@@ -149,7 +149,8 @@ class TestEquipeStructurePersonnel(TestCase):
     def test_une_personne_une_seule_equipe(self):
         self.assertEqual(self._creer('Casa', [self.m1], self.chef).status_code, 201)
         r = self._creer('Rabat', [self.m1])
-        self.assertEqual(r.status_code, 400, r.content)
+        # api-fuzz-full 27/10 — refus d'ÉTAT (corps conforme) : 409, ENF11.
+        self.assertEqual(r.status_code, 409, r.content)
         self.assertIn('membres', r.data)
 
     def test_cycle_refuse(self):
@@ -157,7 +158,7 @@ class TestEquipeStructurePersonnel(TestCase):
         self.chef.supervisor = self.m1
         self.chef.save(update_fields=['supervisor'])
         r = self._creer('Casa', [self.m1], self.chef)
-        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(r.status_code, 409, r.content)
 
     def test_une_seule_equipe_recoit_les_leads(self):
         a = self._creer('Casa', [self.m1], self.chef, recoit_leads=True)
