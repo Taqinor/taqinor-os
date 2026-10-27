@@ -67,9 +67,9 @@ class Agr313MemesChiffresQueLaSyntheseTests(SimpleTestCase):
     def test_estimation_suit_la_synthese(self):
         # Production sur courbe + PVGIS : le volume n'est plus une estimation.
         html = _html(_data(etude={**ETUDE, **BESOIN}))
-        self.assertIn('Eau / jour &#8212; sur 4,4 h de pompage', html)
+        self.assertIn('Eau / jour &#8212; 4,4 h/j', html)
         html = _html(_data())
-        self.assertIn('Eau / jour &#8212; estimation, sur 4,4 h', html)
+        self.assertIn('Eau / jour &#8212; estimation, 4,4 h/j', html)
 
     def test_bon_pour_accord_compact(self):
         html = _html(_data())

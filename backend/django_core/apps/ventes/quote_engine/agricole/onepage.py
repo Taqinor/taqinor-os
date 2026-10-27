@@ -6,14 +6,20 @@ module ne rend QUE les cartes du résumé pompage, lues dans
 est OMISE). ``g`` est le module ``generate_devis_premium`` du rendu en cours
 (ses globales ``_L``, ``ETUDE``, ``KWC``… sont celles de CE devis).
 """
-from .synthese import debit_declare_sans_courbe, texte_heures_eau
+from .. import i18n_labels, i18n_labels_agricole
+from .synthese import debit_declare_sans_courbe
+
+
+def _lg(g):
+    """La langue du rendu en cours (repli français)."""
+    return g.LANGUE_SORTIE if g.LANGUE_SORTIE in ("fr", "en", "ar") else "fr"
 
 
 def _carte_eau(g, eau):
     """La carte « Eau / jour ». AMOT56 (D-AMOT-7 = a) — m³/jour sur débit
     DÉCLARÉ : la carte le dit. AMOT65 — « estimation » quand la synthèse le
-    sert (étiquettes du noyau). AGQ3 (D-AGQ-2) — mois de conception, plus
-    bas et heures équivalentes : LA phrase du héro du 3 pages. AGC2 — aucun
+    sert (étiquettes du noyau). AGQ3 (D-AGQ-2) — mois de conception nommé
+    (la phrase longue reste au héro du 3 pages, AGC12). AGC2 — aucun
     « (hypothèse) » : rien d'incertain imprimé au-delà de « estimation »."""
     m3j, hrs = eau.get("m3_jour"), eau.get("heures_pompage")
     if m3j is None or hrs is None:
@@ -26,9 +32,18 @@ def _carte_eau(g, eau):
         est = f"{g._L('estimation')}, "
     else:
         est = ""
-    heures = (texte_heures_eau(eau, g.LANGUE_SORTIE,
-                               lambda v: g._fdec_fr(v, 1))
-              or g._L("sur_heures_pompage").format(heures=g._fdec_fr(hrs, 1)))
+    # AGC12 — libellé COURT (le une-page n'a qu'une étiquette de carte) :
+    # « 4,4 h/j en novembre » (mois de conception servi) ; la phrase longue
+    # reste au héro du 3 pages.
+    lg = _lg(g)
+    h = g._fdec_fr(hrs, 1)
+    mois = eau.get("mois_conception")
+    if isinstance(mois, int) and 1 <= mois <= 12:
+        heures = i18n_labels_agricole.libelle("agr_op_heures_mois", lg).format(
+            heures=h, mois=i18n_labels.libelle(f"agr_mois_{mois}", lg))
+    else:
+        heures = i18n_labels_agricole.libelle("agr_op_heures", lg).format(
+            heures=h)
     return (f"{g._L('eau_jour')} &#8212; {est}{heures}",
             f"&#8776; {g.fnum(m3j)} m&#179;",
             g._ancre_figure("pompe_volume_m3_jour", g.fnum(m3j)))
@@ -65,7 +80,8 @@ def cartes_pompage(g, synthese):
             else f"{g._fdec_fr(pcv)} CV"))
     hmt = eau.get("hmt_m")
     if hmt is not None:
-        cellules.append(("HMT", f"{g._fdec_fr(hmt)} m",
+        cellules.append((i18n_labels_agricole.libelle("agr_op_hmt", _lg(g)),
+                         f"{g._fdec_fr(hmt)} m",
                          g._ancre_figure("pompe_hmt_m", hmt)))
     dq = eau.get("debit_hmt_m3h")
     if dq is not None and hmt is not None:

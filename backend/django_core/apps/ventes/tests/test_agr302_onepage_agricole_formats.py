@@ -61,8 +61,7 @@ class Agr302CarteEauEstimationTests(SimpleTestCase):
         (rien d'incertain au client au-delà de l'étiquette, ci-decisions-2610).
         Mutant : remettre le suffixe ⇒ rouge."""
         html = _html()
-        self.assertIn('Eau / jour &#8212; estimation, sur 7 h de pompage',
-                      html)
+        self.assertIn('Eau / jour &#8212; estimation, 7 h/j', html)
         self.assertNotIn('hypoth&#232;se', html)
 
     def test_sans_courbe_aucune_carte_eau(self):
@@ -112,7 +111,8 @@ class Agr302LibellesTraduitsTests(SimpleTestCase):
         html = _html(langue='en')
         self.assertIn('Pump power', html)
         self.assertIn('Flow at 62,5 m', html)
-        self.assertIn('over 7 h of pumping', html)
+        self.assertIn('7 h/day', html)  # AGC12 — libellé court
+        self.assertIn('Head', html)  # AGC13 — « HMT » traduit
         self.assertIn('PV array', html)
         for libelle in LIBELLES_FR_POMPAGE:
             with self.subTest(libelle=libelle):
@@ -175,14 +175,14 @@ class Amot56DebitDeclareTests(SimpleTestCase):
 
     def test_onepage_debit_declare_etiquete(self):
         html = _html(etude=ETUDE_DECLAREE)
-        self.assertIn('estimation &#183; débit déclaré par vous, sur 7 h',
+        self.assertIn('estimation &#183; débit déclaré par vous, 7 h/j',
                       html)
         self.assertIn('Eau / jour', html)
 
     def test_onepage_sans_production_declaree_inchange(self):
         html = _html()
         self.assertNotIn('débit déclaré par vous', html)
-        self.assertIn('Eau / jour &#8212; estimation, sur 7 h', html)
+        self.assertIn('Eau / jour &#8212; estimation, 7 h/j', html)
 
     def test_onepage_debit_declare_en_anglais(self):
         html = _html(langue='en', etude=ETUDE_DECLAREE)

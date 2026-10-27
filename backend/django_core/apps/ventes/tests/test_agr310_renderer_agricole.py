@@ -167,6 +167,29 @@ class Agr310HtmlTests(SimpleTestCase):
         self.assertIn("L'aide FDA éventuelle n'est pas comptée", html)
         self.assertIn('à volume pompé égal', html)
 
+    def test_agc11_depense_declaree_quand_l_argent_n_est_pas_publiable(self):
+        """AGC11 (D-AGC-6) — rendu réel R1 (15 CV existante, butane déclaré) :
+        bloc argent non publiable ⇒ page 1 VIDE d'argent. Désormais une ligne
+        neutre dit la seule dépense DÉCLARÉE (``depense_actuelle.annuelle_mad``)
+        et « chiffrée après la visite » — jamais une économie ni un retour.
+        Non calculée (saisie manquante) ⇒ rien. Mutant : ne plus lire
+        ``depense_actuelle`` ⇒ rouge."""
+        d = data_complete()
+        bloc = d['_economie_pompage']
+        bloc['publiable_client'] = False
+        bloc['motifs_non_publiable'] = ['barème des charges solaires non saisi']
+        bloc['depense_actuelle'] = dict(bloc.get('depense_actuelle') or {},
+                                        annuelle_mad=21000.0)
+        html = html_de(d)
+        self.assertIn('data-agc-depense-declaree', html)
+        self.assertIn('21', html.split('data-agc-depense-declaree')[1][:200])
+        self.assertIn("chiffrée après la visite du point d'eau", html)
+        self.assertNotIn('Économie nette', html)
+        bloc['statut'] = 'omis'
+        self.assertNotIn('data-agc-depense-declaree', html_de(d))
+        # Bloc publiable : le vrai bloc argent, jamais la ligne neutre.
+        self.assertNotIn('data-agc-depense-declaree', html_de(data_complete()))
+
     def test_fixture_minimale_sans_none_avec_motifs(self):
         html = html_de(data_minimale())
         self.assertNotIn('None', html)

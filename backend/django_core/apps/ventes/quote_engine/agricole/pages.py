@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from core.pompage import hypotheses as hypotheses_noyau
 
-from .. import i18n_labels
+from .. import i18n_labels, i18n_labels_agricole
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
 from ..montants import fmt_centimes, lignes_remisees, pct_fr
@@ -43,7 +43,11 @@ def _t(langue, cle, **valeurs):
     """AGR314 — libellé STRUCTUREL ``cle`` du catalogue unique
     (``quote_engine.i18n_labels``, repli français ; une clé absente lève
     ``KeyError`` au test), ses gabarits remplis de valeurs DÉJÀ formatées."""
-    texte = i18n_labels.libelle(cle, langue)
+    # AGC11 — les clés agricoles ajoutées après le 27/10 vivent dans
+    # ``i18n_labels_agricole`` (le catalogue commun ne grossit plus).
+    texte = (i18n_labels_agricole.libelle(cle, langue)
+             if i18n_labels_agricole.a_la_cle(cle)
+             else i18n_labels.libelle(cle, langue))
     return texte.format(**valeurs) if valeurs else texte
 
 
@@ -343,6 +347,25 @@ def _mois_declares(eco, lg):
     return " " + _t(lg, "agr_mois_irrigation_phrase", phrase=phrase)
 
 
+def _depense_declaree(d, synthese, lg):
+    """AGC11 (D-AGC-6) — bloc argent omis (non publiable) mais dépense
+    actuelle DÉCLARÉE et calculée (Σ quantité × prix payé déclarés + entretien
+    déclaré, ``economie_pompage.depense_actuelle``) : une ligne neutre qui ne
+    dit QUE la somme déclarée, jamais une économie ; rien sinon."""
+    if isinstance(synthese.get("economies"), dict):
+        return ""
+    eco = d.get("_economie_pompage")
+    eco = eco if isinstance(eco, dict) else {}
+    dep = eco.get("depense_actuelle")
+    mad = _mad((dep or {}).get("annuelle_mad")) if isinstance(dep, dict)         else None
+    if eco.get("statut") != "calcule" or mad is None             or not _num((dep or {}).get("annuelle_mad")):
+        return ""
+    return (f'<div class="ag-sec">{_t(lg, "agr_votre_argent")}</div>'
+            f'<div class="ag-box ag-box-gold" data-agc-depense-declaree>'
+            f'{_t(lg, "agr_depense_declaree_neutre", mad=f"{mad} MAD")}'
+            f'</div>')
+
+
 def _argent(synthese, lg):
     eco = synthese.get("economies")
     if not isinstance(eco, dict):
@@ -491,9 +514,11 @@ def page1(ctx):
     entete += "".join(f'<div class="ag-sub">{m}</div>'
                       for m in theme.marques_correction(d))
     declare = debit_declare_sans_courbe(d)
+    # AGC12 — un bloc argent absent n'empile plus deux respirations.
+    argent = _argent(synthese, lg) or _depense_declaree(d, synthese, lg)
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'
             f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
-            f'{_argent(synthese, lg)}{_qj(25)}'
+            f'{argent}{_qj(25) if argent else ""}'
             f'{_provenance(synthese, lg, ctx["nom_societe"])}{_qj(15)}'
             f'{_etapes_suivantes(synthese, lg)}'
             f'</div>')
