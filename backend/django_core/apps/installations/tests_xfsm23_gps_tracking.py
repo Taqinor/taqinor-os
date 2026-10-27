@@ -6,7 +6,8 @@ pendant une intervention active — pas un opt-in que le technicien débranche) 
 
   * le consentement est enregistré durablement (une trace, idempotent) ;
   * ``gps_tracking_required`` reste vrai tant que le statut F3 est dans la
-    plage active (Prête/En route/Sur site) et ne peut PAS être désactivé par
+    plage active (En route/Sur site — « Prête » retirée le 26/10/2026) et
+    ne peut PAS être désactivé par
     le technicien (aucun endpoint client ne le pose) ;
   * une alerte géofence se déclenche quand la position live sort du rayon
     attendu du chantier pendant une intervention active ;
@@ -155,11 +156,14 @@ class TestGpsTrackingRequired(TestCase):
             statut=Intervention.Statut.A_PREPARER)
         self.assertFalse(interv.gps_tracking_required)
 
-    def test_tracking_required_when_prete(self):
+    def test_tracking_not_required_when_prete(self):
+        # Revue chantier 26/10/2026 — « Prête » n'est plus dans la plage
+        # suivie : la CNDP borne le suivi au temps de travail terrain
+        # effectif (en route / sur site).
         interv = make_intervention(
             self.company, self.user, self.technicien,
             statut=Intervention.Statut.PRETE)
-        self.assertTrue(interv.gps_tracking_required)
+        self.assertFalse(interv.gps_tracking_required)
 
     def test_tracking_required_when_en_route(self):
         interv = make_intervention(
@@ -214,6 +218,9 @@ class TestPositionPingAndGeofence(TestCase):
         self.user = make_user(self.company)
         self.technicien = make_user(self.company, role='normal')
         gps_tracking_service.record_consent(self.company, self.technicien)
+        # Revue chantier 26/10/2026 — le ping exige l'accusé de réception de
+        # la notice par le technicien lui-même.
+        gps_tracking_service.accepter_consentement(self.company, self.technicien)
         self.interv = make_intervention(
             self.company, self.user, self.technicien,
             statut=Intervention.Statut.SUR_SITE)
@@ -251,14 +258,16 @@ class TestPositionPingAndGeofence(TestCase):
         self.assertEqual(alerte.technicien, self.technicien)
         self.assertGreater(alerte.distance_site_km, alerte.rayon_attendu_km)
 
-    def test_ping_without_intervention_records_position_only(self):
+    def test_ping_without_intervention_is_refused(self):
+        # Revue chantier 26/10/2026 — plus aucune position hors intervention
+        # (temps de travail terrain uniquement, CNDP 17-2014) : 400, rien
+        # n'est enregistré.
         resp = self.api.post(
             f'{BASE}/positions-techniciens/ping/',
             {'lat': '33.5', 'lng': '-7.6'}, format='json')
-        self.assertEqual(resp.status_code, 201, resp.content)
-        self.assertIsNone(resp.data['geofence_alert'])
-        pos = PositionTechnicien.objects.get(id=resp.data['id'])
-        self.assertIsNone(pos.intervention)
+        self.assertEqual(resp.status_code, 400, resp.content)
+        self.assertIn('intervention', resp.data)
+        self.assertFalse(PositionTechnicien.objects.exists())
 
     def test_ping_missing_coords_rejected(self):
         resp = self.api.post(
@@ -268,7 +277,8 @@ class TestPositionPingAndGeofence(TestCase):
     def test_carte_live_returns_latest_position(self):
         self.api.post(
             f'{BASE}/positions-techniciens/ping/',
-            {'lat': '33.573150', 'lng': '-7.589800'}, format='json')
+            {'lat': '33.573150', 'lng': '-7.589800',
+             'intervention': self.interv.id}, format='json')
         supervisor_api = auth(self.user)
         resp = supervisor_api.get(f'{BASE}/positions-techniciens/carte-live/')
         self.assertEqual(resp.status_code, 200, resp.content)

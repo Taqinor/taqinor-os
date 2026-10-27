@@ -60,11 +60,11 @@ def _display(inst: Installation, field: str, value):
     return str(value)
 
 
-def log_creation(inst: Installation, user):
+def log_creation(inst: Installation, user, body=None):
     InstallationActivity.objects.create(
         company=inst.company, installation=inst, user=user,
         kind=InstallationActivity.Kind.CREATION,
-        body=f"Chantier créé par {getattr(user, 'username', '?')}",
+        body=body or f"Chantier créé par {getattr(user, 'username', '?')}",
     )
 
 

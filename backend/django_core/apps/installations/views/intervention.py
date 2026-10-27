@@ -292,7 +292,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS + [
             'historique', 'preparation', 'photos',
             # Lectures du module de capture F9–F19 + F23.
-            'serials', 'consommation', 'memos', 'reserves', 'tool_return',
+            'serials', 'serials_attendus',
+            'consommation', 'memos', 'reserves', 'tool_return',
             'safety', 'crew_time', 'compte_rendu', 'overage_review', 'code',
             'photo_qa',
             # FG68 — vue calendrier dispatch techniciens.
@@ -532,7 +533,12 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                     interv, nouveau_statut, self.request.user,
                     etat_avant=old)
             except TransitionRefusee as exc:
-                raise ValidationError({'statut': exc.raisons})
+                corps = {'statut': exc.raisons}
+                # Revue chantier 26/10/2026 — séries manquantes (consultatif)
+                # à côté des raisons, sans changer le code HTTP.
+                if getattr(exc, 'avertissements', None):
+                    corps['avertissements'] = exc.avertissements
+                raise ValidationError(corps)
 
     def destroy_guard_message(self, interv):
         """AUD302 — message FR de blocage de la suppression, ou None.
@@ -772,6 +778,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         lien public « technicien en route » — aucune autre logique n'en
         dépend)."""
         interv = self.get_object()
+        # Fondateur 27/10/2026 — accord géolocalisation requis (terrain seul).
+        if refus := field_services.refus_sans_accord_geoloc(request.user):
+            return Response({'detail': refus}, status=status.HTTP_403_FORBIDDEN)
         # ACHT43 — geste unique partagé avec la synchro terrain.
         field_services.enregistrer_depart_depot(
             interv, timezone.now(), request.data.get('lat'),
@@ -816,6 +825,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         aucun service externe). On en dérive une distance-au-site indicative.
         Corps : {"lat": <num>, "lng": <num>}."""
         interv = self.get_object()
+        if refus := field_services.refus_sans_accord_geoloc(request.user):  # idem départ
+            return Response({'detail': refus}, status=status.HTTP_403_FORBIDDEN)
         # ACHT43 — geste unique partagé avec la synchro terrain (XFSM5 :
         # ponctualité dérivée de l'instant vs la fenêtre promise).
         try:
@@ -852,8 +863,11 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         field_services.seed_shotlist_slots(interv.company)
         slots = field_services.active_shotlist(interv.company)
         by_slot = field_services.photos_by_slot(interv)
+        metas = field_services.metas_photos_intervention(interv)
 
         def photo_payload(att):
+            # Revue chantier 26/10/2026 — géoloc + horodatages (additif).
+            geo = field_services.meta_photo_payload(metas.get(att.id))
             return {
                 'id': att.id,
                 'filename': field_services.display_filename(att),
@@ -861,6 +875,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 'mime': att.mime,
                 'created_at': att.created_at,
                 'uploaded_by_nom': getattr(att.uploaded_by, 'username', None),
+                'lat': geo['lat'], 'lng': geo['lng'],
+                'accuracy_m': geo['accuracy_m'],
+                'horodatage_serveur': geo['horodatage_serveur'],
+                'client_ts': geo['client_ts'],
             }
 
         groups = {'avant': [], 'pendant': [], 'apres': []}
@@ -893,7 +911,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         })
 
     @oa.extend_schema(
-        request=oa.body('AjouterPhotoRequete', file=oa.serializers.FileField(), slot=oa.s(), phase=oa.s()),
+        request=oa.body('AjouterPhotoRequete', file=oa.serializers.FileField(), slot=oa.s(), phase=oa.s(),
+                        lat=oa.f(null=True), lng=oa.f(null=True),
+                        accuracy_m=oa.f(null=True), client_ts=oa.s(null=True)),
         responses={201: oa.OBJ},
     )
     @action(parser_classes=oa.UPLOAD_PARSERS, detail=True, methods=['post'], url_path='ajouter-photo',
@@ -941,6 +961,11 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         att = Attachment.objects.create(
             company=interv.company, content_type=ct, object_id=interv.id,
             uploaded_by=request.user, phase=phase, **meta)
+        # Revue chantier 26/10/2026 — horodatage serveur + géoloc best-effort
+        # (jamais bloquant : une photo sans position reste acceptée).
+        geo = field_services.meta_photo_payload(
+            field_services.enregistrer_meta_photo_intervention(
+                interv, att, request.data))
         intervention_activity.log_note(
             interv, request.user,
             f"Photo ajoutée{(' — ' + slot_cle) if slot_cle else ''}.")
@@ -949,6 +974,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             'filename': field_services.display_filename(att),
             'url': f'/api/django/records/attachments/{att.id}/download/',
             'slot': slot_cle, 'phase': phase,
+            'lat': geo['lat'], 'lng': geo['lng'],
+            'accuracy_m': geo['accuracy_m'],
+            'horodatage_serveur': geo['horodatage_serveur'],
+            'client_ts': geo['client_ts'],
         }, status=status.HTTP_201_CREATED)
 
     def _motif_suppression(self, interv):
@@ -1015,6 +1044,18 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """F9 — liste des n° de série relevés sur l'intervention."""
         return self._serials_response(self.get_object())
 
+    @oa.extend_schema(responses=oa.OBJ)
+    @action(pagination_class=None, detail=True, methods=['get'],
+            url_path='serials-attendus', permission_classes=[IsAnyRole])
+    def serials_attendus(self, request, pk=None):
+        """Revue chantier 26/10/2026 — séries ATTENDUES (produits porteurs de
+        série de la nomenclature gelée du chantier) face aux séries relevées
+        (toutes interventions du chantier + parc déjà sérié). Contrat :
+        ``contract_samples/intervention_serials_attendus.json``. Aucun
+        prix."""
+        from ..selectors import serials_attendus_intervention
+        return Response(serials_attendus_intervention(self.get_object()))
+
     @oa.extend_schema(
         request=oa.body(
             'AjouterSerialRequete',
@@ -1023,6 +1064,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             numero_serie=oa.s(),
             designation=oa.s(),
             slot=oa.s(),
+            caracteristiques=oa.obj(null=True),
+            capture_source=oa.s(),
             file=oa.serializers.FileField(required=False),
         ),
         responses={200: ComponentSerialSerializer, 201: ComponentSerialSerializer},
@@ -1067,6 +1110,13 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             if produit is None:
                 return Response({'produit': 'Produit inconnu.'},
                                 status=status.HTTP_400_BAD_REQUEST)
+        # Revue chantier 26/10/2026 — un relevé nomme son composant (produit
+        # catalogue, ou à défaut une désignation) ; caractéristiques de
+        # plaque validées ; source de capture (scan | saisie | photo).
+        champs, refus = field_capture.champs_releve_serie(
+            produit, request.data)
+        if refus:
+            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
         numero = (request.data.get('numero_serie') or '').strip()
         # ACHT37 — doublon refusé dès la saisie (plus de 500 au push parc).
         raison = field_capture.raison_serie_en_double(company, numero)
@@ -1095,15 +1145,19 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 if extracted:
                     numero = extracted.strip()
                     serie_ocr = True
+                    champs['capture_source'] = 'photo'
         from django.db import IntegrityError, transaction
         try:
             with transaction.atomic():
                 serial = ComponentSerial.objects.create(
                     company=company, intervention=interv, produit=produit,
-                    designation=(request.data.get('designation') or '').strip(),
+                    designation=champs['designation'],
                     slot_cle=(request.data.get('slot') or '').strip(),
                     numero_serie=numero, plaque_attachment=plaque,
-                    serie_ocr=serie_ocr, created_by=request.user)
+                    serie_ocr=serie_ocr,
+                    caracteristiques=champs['caracteristiques'],
+                    capture_source=champs['capture_source'],
+                    created_by=request.user)
                 field_sync.memoriser_op_en_ligne(
                     company, request.user, op_id, 'intervention.serial',
                     interv.id, {'serial': serial.id,
@@ -1159,6 +1213,14 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if 'designation' in request.data:
             serial.designation = (request.data.get('designation') or '').strip()
             fields.append('designation')
+        if 'caracteristiques' in request.data:
+            propre, erreur = field_capture.valider_caracteristiques(
+                request.data.get('caracteristiques'))
+            if erreur:
+                return Response({'caracteristiques': erreur},
+                                status=status.HTTP_400_BAD_REQUEST)
+            serial.caracteristiques = propre
+            fields.append('caracteristiques')
         if fields:
             serial.save(update_fields=fields)
         return Response(ComponentSerialSerializer(

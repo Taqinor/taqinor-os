@@ -1629,11 +1629,19 @@ class BonCommandeFournisseurSerializer(IdInconnu404Mixin, CapaciteMontantsBcfMix
     # écriture libre sur le document interne) et ne bouge AUCUN stock — la
     # réception reste le seul acte qui fait entrer de la marchandise.
     livraisons_annoncees = serializers.SerializerMethodField()
+    # Revue chantier 26/10/2026 — chantier D'ORIGINE du besoin (YPROC10),
+    # LECTURE SEULE : posé par `draft_bcfs_for_shortfall`, jamais en écriture
+    # libre (la liste BCF retrouve enfin le chantier qui l'a demandé).
+    chantier_origine = serializers.PrimaryKeyRelatedField(read_only=True)
+    chantier_origine_reference = serializers.CharField(
+        source='chantier_origine.reference', read_only=True,
+        allow_null=True)
 
     class Meta:
         model = BonCommandeFournisseur
         fields = [
             'id', 'reference', 'fournisseur', 'fournisseur_nom', 'statut',
+            'chantier_origine', 'chantier_origine_reference',
             'statut_display', 'date_commande', 'note', 'devise',
             'taux_change', 'date_livraison_prevue',
             'date_confirmee_fournisseur', 'numero_confirmation_fournisseur',

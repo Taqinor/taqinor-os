@@ -10,15 +10,11 @@ const { installationsApiMock } = vi.hoisted(() => ({
   installationsApiMock: { getChecklist: vi.fn(), cocherChecklist: vi.fn() },
 }))
 vi.mock('../../api/installationsApi', () => ({ default: installationsApiMock }))
-vi.mock('../../api/recordsApi', () => ({ default: { uploadAttachment: vi.fn() } }))
-vi.mock('../preferences/prefs', () => ({
-  compressPhotoForUpload: vi.fn((f) => Promise.resolve(f)),
-}))
-vi.mock('../../features/installations/offline/fieldOutbox', () => ({
-  // Forme réelle : { queued:false, data:<réponse axios BRUTE> }.
-  withOfflineFallback: (fn) => fn().then((data) => ({ queued: false, data })),
-  FIELD_OPS: { COCHER_CHECKLIST: 'cocher_checklist' },
-}))
+vi.mock('../../api/recordsApi', () => import('./ChantierChecklist.testkit.js').then((m) => m.recordsApiMock()))
+vi.mock('../preferences/prefs', () => import('./ChantierChecklist.testkit.js').then((m) => m.prefsMock()))
+vi.mock('../../features/installations/offline/fieldOutbox', () => (
+  import('./ChantierChecklist.testkit.js').then((m) => m.fieldOutboxMock('cocher_checklist'))
+))
 vi.mock('../../features/pwa/CameraCapture', () => ({ default: () => null }))
 
 import ChantierChecklist from './ChantierChecklist'
