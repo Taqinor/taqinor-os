@@ -804,6 +804,27 @@ def profil_charge_prerequis(rythme, categorie=None, profil_societe=None):
     return ([] if jours_declares else [FEUILLE_JOURS]) + [FEUILLE_PLAGES]
 
 
+def _signaler_cellules_completees(cellules, archetype, profil_societe, provenance, alertes):
+    """CLD16 — un profil société PARTIEL (CAL149 : saisons ou types de jour
+    absents) retombe sur l'archétype pour les cellules manquantes : les liste
+    en provenance et en alerte interne (``cellules`` : paires lues)."""
+    if not profil_societe:
+        return
+    completees = []
+    for type_jour, saison in sorted(cellules, key=lambda c: (TYPES_JOUR.index(c[0]),
+                                                             SAISONS.index(c[1]))):
+        forme, src = forme_archetype(archetype, type_jour, saison, profil_societe=profil_societe)
+        if forme is not None and src.get('type') != 'profil_societe':
+            completees.append('%s/%s' % (type_jour, saison))
+    if not completees:
+        return
+    provenance['profil_societe_completee'] = {'cellules': completees, 'complete_par': archetype}
+    alertes.append(_alerte(
+        'profil_societe_complete', 'consommation.profil_societe',
+        "Profil société partiel : cellules (type de jour/saison) complétées par l'archétype "
+        '« %s » : %s.' % (archetype, ', '.join(completees)), niveau='info', interne=True))
+
+
 def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, feries=None,
                     profil_societe=None, production_jours_types=None, segment=None,
                     decalage_h=None):
@@ -870,6 +891,9 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
         niveau_pct = talon.get('niveau_jour_pct')
         courbes, source = _courbes_archetype(calendrier, niveaux, archetype, profil_societe, talon_kw,
                                              talon_pct, niveau_pct)
+        _signaler_cellules_completees(
+            {(t, saison_bdew(j)) for j, _o, t, _p in calendrier}, archetype, profil_societe,
+            provenance, alertes)
         declare = ({'kw': talon_kw} if talon_kw is not None
                    else {'part_pct': float(talon_pct)} if talon_pct is not None
                    else {'niveau_jour_pct': float(niveau_pct)} if niveau_pct is not None
@@ -908,6 +932,10 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
         courbes, incoherent = _courbes_declarees(calendrier, niveaux, 'part', talon_pct, None)
         provenance['talon'] = {'valeur': {'part_pct': float(talon_pct)}, 'statut': 'declare'}
     else:
+        if talon.get('niveau_jour_pct') is None:
+            _signaler_cellules_completees(
+                {('ouvre', saison_bdew(j)) for j, o, _t, _p in calendrier if o}, archetype,
+                profil_societe, provenance, alertes)
         par_defaut = _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe,
                                                provenance, alertes, talon, segment)
         if par_defaut is not None:

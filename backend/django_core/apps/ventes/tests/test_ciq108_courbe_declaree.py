@@ -149,6 +149,29 @@ class TestCourbeDeclaree(unittest.TestCase):
         alerte = next(a for a in alertes if a['code'] == 'ramadan_sans_plages')
         self.assertTrue(alerte['interne'])
 
+    def test_profil_societe_partiel_cellules_completees_dites(self):
+        # CLD16 — profil hiver + été, rien pour la transition ni les week-ends :
+        # ces cellules viennent de l'archétype, et la provenance le dit.
+        courbe = [0] * 8 + [1] * 10 + [0] * 6
+        partiel = {'cle': 'x', 'libelle': 'x', 'provenance': 'relevé 2025',
+                   'courbe': {'hiver': {'ouvre': courbe}, 'ete': {'ouvre': courbe}}}
+        _jt, prov, alertes = courbe_declaree({}, 42000, annee_reference=ANNEE,
+                                             archetype='bureau', feries=[],
+                                             profil_societe=partiel)
+        cellules = prov['profil_societe_completee']['cellules']
+        self.assertIn('ouvre/transition', cellules)
+        self.assertIn('samedi/hiver', cellules)
+        self.assertNotIn('ouvre/hiver', cellules)
+        alerte = next(a for a in alertes if a['code'] == 'profil_societe_complete')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('ouvre/transition', alerte['message'])
+        complet = dict(partiel, courbe={'annuel': courbe})
+        _jt, prov, alertes = courbe_declaree({}, 42000, annee_reference=ANNEE,
+                                             archetype='bureau', feries=[],
+                                             profil_societe=complet)
+        self.assertNotIn('profil_societe_completee', prov)
+        self.assertNotIn('profil_societe_complete', {a['code'] for a in alertes})
+
     def test_sans_plage_ni_archetype_profil_exige(self):
         jt, _prov, alertes = courbe_declaree({'jours_ouverts': TOUS}, [1000] * 12,
                                              annee_reference=ANNEE, archetype='hammam', feries=[])
