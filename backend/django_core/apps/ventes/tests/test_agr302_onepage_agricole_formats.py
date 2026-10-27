@@ -56,11 +56,14 @@ class Agr302ChiffresALaFrancaiseTests(SimpleTestCase):
 
 class Agr302CarteEauEstimationTests(SimpleTestCase):
 
-    def test_la_carte_eau_dit_estimation_et_hypothese_des_heures(self):
+    def test_la_carte_eau_dit_estimation_sans_hypothese(self):
+        """AGC2 — « estimation » reste ; « (hypothèse) » n'est plus imprimé
+        (rien d'incertain au client au-delà de l'étiquette, ci-decisions-2610).
+        Mutant : remettre le suffixe ⇒ rouge."""
         html = _html()
-        self.assertIn(
-            'Eau / jour &#8212; estimation, sur 7 h de pompage '
-            '(hypoth&#232;se)', html)
+        self.assertIn('Eau / jour &#8212; estimation, sur 7 h de pompage',
+                      html)
+        self.assertNotIn('hypoth&#232;se', html)
 
     def test_sans_courbe_aucune_carte_eau(self):
         html = _html(etude={**ETUDE_COURBE, 'debit_hmt_m3h': None,
