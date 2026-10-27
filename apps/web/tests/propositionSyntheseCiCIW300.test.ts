@@ -389,3 +389,19 @@ describe('CPRW15 — garanties C&I servies', () => {
     expect(readFileSync(fileURLToPath(new URL('../src/components/proposition/ci/GarantiesCi.astro', import.meta.url)), 'utf-8')).toContain('INSTALL_WARRANTY_YEARS');
   });
 });
+
+// ── CPRW23 — les postes à chiffrer sont lus dans a_confirmer[a_chiffrer_visite].postes ──────
+describe('CPRW23 — postes à chiffrer après visite : lecture du payload public', () => {
+  const poste = { role: 'cable_dc', designation: 'Câble solaire 6 mm²', quantite: 1, unite: null, catalogue: false };
+  const p = (synthese: Record<string, unknown>) => ({ mode_installation: 'industriel', synthese_ci: { hypotheses: [], ...synthese } }) as unknown as ProposalResponse;
+  it('lit a_confirmer[a_chiffrer_visite].postes ; les autres entrées ne sont jamais réaffichées', () => {
+    const ci = syntheseCi(p({ a_confirmer: [{ cle: 'tension', libelle: 'Tension à confirmer' }, { cle: 'a_chiffrer_visite', postes: [poste] }] }))!;
+    expect(ci.postesHorsTotal).toEqual([{ role: 'cable_dc', designation: 'Câble solaire 6 mm²', catalogue: false }]);
+    expect(lignePostesHorsTotalCi(ci)!.fr).toContain('câble DC');
+    expect(lignePostesHorsTotalCi(ci)!.fr).not.toContain('Tension');
+  });
+  it('repli sur postes_hors_total seulement s\'il est servi ; rien sinon', () => {
+    expect(syntheseCi(p({ postes_hors_total: [poste] }))!.postesHorsTotal).toHaveLength(1);
+    expect(syntheseCi(p({ a_confirmer: [{ cle: 'tension', libelle: 'T' }] }))!.postesHorsTotal).toEqual([]);
+  });
+});

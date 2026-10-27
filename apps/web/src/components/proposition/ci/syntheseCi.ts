@@ -294,8 +294,14 @@ export function syntheseCi(
     }
   }
   const postesHorsTotal: SyntheseCi['postesHorsTotal'] = [];
-  if (Array.isArray(brut.postes_hors_total)) {
-    for (const p of brut.postes_hors_total) {
+  // CPRW23 — le payload public sert ces postes dans `a_confirmer[cle='a_chiffrer_visite'].postes` ; la clé
+  // `postes_hors_total` n'est lue qu'en repli, si elle est servie. Les autres entrées de `a_confirmer` ne sont jamais réaffichées.
+  const aChiffrer = Array.isArray(brut.a_confirmer)
+    ? brut.a_confirmer.find((a) => estRecord(a) && a.cle === 'a_chiffrer_visite' && Array.isArray(a.postes))
+    : undefined;
+  const sourcePostes: unknown = aChiffrer ? (aChiffrer as Record<string, unknown>).postes : brut.postes_hors_total;
+  if (Array.isArray(sourcePostes)) {
+    for (const p of sourcePostes) {
       if (!estRecord(p)) continue;
       const designation = texteServi(p.designation);
       if (designation) postesHorsTotal.push({ role: texteServi(p.role), designation, catalogue: p.catalogue === true });
