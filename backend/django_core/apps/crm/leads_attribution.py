@@ -104,6 +104,11 @@ def default_responsable_for(company, lead_attrs=None):
     # vide → responsable par défaut. Aucune équipe cochée : inchangé.
     equipe = _equipe_recevant_leads(company)
     if equipe is not None:
+        # Fondateur 27/10/2026 — « le responsable confirme chaque lead » :
+        # le lead lui revient le temps de sa décision (``dispatch.py``).
+        from . import dispatch
+        if dispatch.confirmation_active(equipe):
+            return dispatch.marquer_en_attente(equipe)
         plafond = (profile.round_robin_plafond_leads_ouverts
                    if profile is not None else 20)
         membre = _prochain_membre_equipe(equipe, plafond)

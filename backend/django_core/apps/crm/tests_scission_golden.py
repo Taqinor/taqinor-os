@@ -548,7 +548,7 @@ class ScissionGoldenTests(_Base):
                          attendu['hors_fichiers'])
         self.assertEqual(_receivers_hors_fichiers(), [])
         total = sum(len(v) for v in attendu['par_signal'].values())
-        self.assertEqual(total, 26)             # 25 + crm_client_mirror_tiers
+        self.assertEqual(total, 27)             # 25 + crm_client_mirror_tiers + crm_dispatch_mise_en_attente
 
     def test_facades(self):
         for module in ('selectors', 'models'):

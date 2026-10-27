@@ -11,7 +11,7 @@ export default function EquipesAdminPanel({
   titre, description, vide, placeholder, chefLabel, chefField, chefIdPrefix,
   testIdPrefix = null, loading, error, equipes, busyId, assignables,
   onRename, onArchive, onDelete, onSetChef, onToggleMembre, onToggleRecoitLeads,
-  newNom, setNewNom, onAdd,
+  newNom, setNewNom, onAdd, renderExtra = null,
 }) {
   return (
     <Card>
@@ -87,6 +87,7 @@ export default function EquipesAdminPanel({
                 )
               })}
             </div>
+            {renderExtra && renderExtra(eq)}
           </div>
         ))}
 

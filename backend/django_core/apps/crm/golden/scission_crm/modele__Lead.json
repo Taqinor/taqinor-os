@@ -3729,6 +3729,7 @@
  "relations_inverses": [
   "activites",
   "appointments",
+  "attribution_en_attente",
   "bons_commande_directs",
   "booking_links",
   "chat_sessions_publiques",

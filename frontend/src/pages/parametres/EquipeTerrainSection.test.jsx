@@ -17,7 +17,7 @@ const USERS = [
 ]
 
 const {
-  getEquipes, saveEquipe, deleteEquipe, apiGet, apiPatch, saveEquipeCom, rolesMock,
+  getEquipes, saveEquipe, deleteEquipe, apiGet, apiPatch, saveEquipeCom, rolesMock, getDispatch, attribuerLead,
 } = vi.hoisted(() => ({
   getEquipes: vi.fn(),
   saveEquipe: vi.fn(() => Promise.resolve({ data: {} })),
@@ -25,6 +25,8 @@ const {
   apiGet: vi.fn(),
   apiPatch: vi.fn(() => Promise.resolve({ data: {} })),
   saveEquipeCom: vi.fn(() => Promise.resolve({ data: {} })),
+  getDispatch: vi.fn(),
+  attribuerLead: vi.fn(() => Promise.resolve({ data: {} })),
   rolesMock: {
     getOrganisation: vi.fn(),
     getPostes: vi.fn(),
@@ -37,7 +39,9 @@ const {
 }))
 
 vi.mock('../../api/axios', () => ({ default: { get: apiGet, patch: apiPatch } }))
-vi.mock('../../api/crmApi', () => ({ default: { saveEquipe: saveEquipeCom } }))
+vi.mock('../../api/crmApi', () => ({
+  default: { saveEquipe: saveEquipeCom, getDispatch, attribuerLead },
+}))
 vi.mock('../../api/rolesApi', () => ({ default: rolesMock }))
 
 vi.mock('../../api/installationsApi', () => ({
@@ -50,6 +54,7 @@ vi.mock('../../api/installationsApi', () => ({
 
 import EquipeTerrainSection from './EquipeTerrainSection'
 import EquipeSection from './EquipeSection'
+import AttributionLeadsPage from '../crm/AttributionLeadsPage'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -214,5 +219,54 @@ describe('EquipeSection — Organisation', () => {
     monterOrg()
     expect(await screen.findByTestId('org-liste')).toBeInTheDocument()
     expect(screen.queryByTestId('org-arbre')).toBeNull()
+  })
+})
+
+/* Attribution des leads (fondateur 27/10/2026) : écran du responsable. Les
+   payloads sont l'`exemple` / `exemple_vide` du contrat committé côté serveur
+   (apps/crm/contract_samples/dispatch_leads.json), jamais une forme retapée. */
+
+const DISPATCH = JSON.parse(readFileSync(join(
+  // eslint-disable-next-line no-undef -- vitest tourne sous Node : cwd = frontend/
+  process.cwd(), '..', 'backend', 'django_core', 'apps', 'crm',
+  'contract_samples', 'dispatch_leads.json'), 'utf8'))
+
+describe('AttributionLeadsPage (attribution des leads)', () => {
+  it('affiche le lead du contrat et ses membres, le proposé sélectionné', async () => {
+    getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
+    render(<AttributionLeadsPage />)
+    expect(await screen.findByText('Karim Tazi')).toBeInTheDocument()
+    expect(screen.getByText('1 en attente')).toBeInTheDocument()
+    expect(screen.getByText(/Règle : ville Casablanca/)).toBeInTheDocument()
+    expect(screen.getByText('au plafond')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /Sara/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('Entrée attribue au proposé ; → puis Entrée attribue au suivant', async () => {
+    getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
+    const user = userEvent.setup()
+    render(<AttributionLeadsPage />)
+    await screen.findByText('Karim Tazi')
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(attribuerLead).toHaveBeenCalledWith(1712, 4))
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('option', { name: /Amine/ })).toHaveAttribute('aria-selected', 'true')
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(attribuerLead).toHaveBeenLastCalledWith(1712, 5))
+  })
+
+  it('un clic sur un membre attribue à ce membre', async () => {
+    getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
+    const user = userEvent.setup()
+    render(<AttributionLeadsPage />)
+    await user.click(await screen.findByRole('option', { name: /Amine/ }))
+    await waitFor(() => expect(attribuerLead).toHaveBeenCalledWith(1712, 5))
+  })
+
+  it('état vide quand aucun lead n’attend', async () => {
+    getDispatch.mockResolvedValue({ data: DISPATCH.exemple_vide })
+    render(<AttributionLeadsPage />)
+    expect(await screen.findByText('Aucun lead en attente')).toBeInTheDocument()
+    expect(attribuerLead).not.toHaveBeenCalled()
   })
 })

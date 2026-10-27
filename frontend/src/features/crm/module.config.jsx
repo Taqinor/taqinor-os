@@ -57,6 +57,8 @@ const RelancesSuiviPage = lazy(() => import('../../pages/crm/RelancesSuiviPage')
 // revoir qui a ouvert quels devis/liens externes, et marquer un appareil
 // équipe pour l'exclure du comptage/des alertes anti-fraude.
 const VisiteursPage = lazy(() => import('../../pages/crm/VisiteursPage'))
+// Attribution des leads par le responsable d'équipe (fondateur 27/10/2026).
+const AttributionLeadsPage = lazy(() => import('../../pages/crm/AttributionLeadsPage'))
 // VTA8 — les 4 écrans de visite technique terrain ont QUITTÉ le CRM : ils
 // vivent dans l'app autonome « Visites » (`features/visites/module.config.jsx`,
 // routes `/visites/...`), parce que le commercial terrain qui les utilise n'a
@@ -109,6 +111,7 @@ const config = {
       // rôles responsable/admin à l'intérieur de l'écran (la garde réelle
       // reste serveur, sur l'écriture d'`appareils-equipe/`).
       { to: '/crm/visiteurs',        label: 'Visiteurs & alertes', k: 'nav.visiteurs', icon: navIcon(Radar), roles: ['normal','responsable','admin'] },
+      { to: '/crm/attribution',     label: 'Attribution des leads', icon: navIcon(UserPlus), roles: ['responsable','admin'] },
       // VTA8 — « Visites terrain » et « Revue technique » sont passées à l'app
       // Visites (nav `features/visites/module.config.jsx`).
     ],
@@ -138,6 +141,7 @@ const config = {
     { path: '/crm/relances', component: RelancesSuiviPage },
     // VIS1 — Visiteurs & alertes (anti-fraude anonyme/appareil équipe).
     { path: '/crm/visiteurs', component: VisiteursPage },
+    { path: '/crm/attribution', component: AttributionLeadsPage },
     // VTA8 — les 4 routes `/crm/visites*` sont parties dans l'app Visites
     // (`/visites`, `/visites/toutes`, `/visites/revue`, `/visites/:id[/calage]`).
   ],
