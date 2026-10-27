@@ -889,6 +889,15 @@
           "requis": false,
           "libelle": "Puissance souscrite constatée (plaque / contrat)",
           "unite": "kVA"
+        },
+        "phases": {
+          "type": "choix",
+          "requis": false,
+          "libelle": "Phases du compteur",
+          "choix": [
+            "monophase",
+            "triphase"
+          ]
         }
       }
     },
@@ -1327,6 +1336,9 @@
         "constate": "proprietaire",
         "ecart": false
       },
+      "raccordement": {
+        "constate": "triphase"
+      },
       "validee_le": null
     },
     "completude": {
@@ -1556,6 +1568,9 @@
         "constate": "proprietaire",
         "ecart": false
       },
+      "raccordement": {
+        "constate": "triphase"
+      },
       "validee_le": null
     },
     "completude": {
@@ -1723,6 +1738,9 @@
         "constate": "proprietaire",
         "ecart": false
       },
+      "raccordement": {
+        "constate": "triphase"
+      },
       "validee_le": null
     },
     "completude": {
@@ -1811,6 +1829,10 @@
         "colonne_lead": "surface_source",
         "valeur": "mesure_visite"
       }
+    },
+    {
+      "mesure": "comptage.phases",
+      "colonne_lead": "raccordement"
     },
     {
       "mesure": "factures_mt.cos_phi_constate",

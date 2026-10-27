@@ -506,6 +506,10 @@ export const MESURES_SCHEMA_CI = {
       ],
     },
     { key: 'puissance_souscrite_kva_constatee', label: 'Puissance souscrite constatée (plaque / contrat)', unite: 'kVA', type: 'number' },
+    {
+      key: 'phases', label: 'Phases du compteur', unite: '', type: 'select',
+      options: [{ value: 'monophase', label: 'Monophasé' }, { value: 'triphase', label: 'Triphasé' }],
+    },
   ],
   cheminement: [
     {

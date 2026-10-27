@@ -572,6 +572,11 @@ CATEGORIES_CI = [
             {'code': 'puissance_souscrite_kva_constatee',
              'libelle': 'Puissance souscrite constatée (plaque / contrat)',
              'unite': 'kVA', 'nature': NOMBRE, 'requis': False},
+            # CSV8 — mono/tri relevé à la visite (jamais « inconnu »), recopié
+            # sur ``Lead.raccordement`` à la validation ; mesure NON requise.
+            {'code': 'phases', 'libelle': 'Phases du compteur',
+             'nature': CHOIX, 'requis': False,
+             'choix': ['monophase', 'triphase']},
         ],
     },
     {

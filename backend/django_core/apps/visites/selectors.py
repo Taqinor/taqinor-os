@@ -503,6 +503,10 @@ def releve_ci_de_visite(visite, declare=None):
     }
     groupe, motif = _mesure_ci(visite, 'reactif_secours', 'groupe_kva')
     releve['groupe_kva'] = {'constate': None if motif else groupe}
+    # CSV8 — la phase du compteur (monophase / triphase) relevée : retour lead
+    # à la validation (``RETOUR_LEAD_CI``), « non relevé » ne remonte rien.
+    phase, motif = _mesure_ci(visite, 'comptage', 'phases')
+    releve['raccordement'] = {'constate': None if motif else phase}
     return releve
 
 

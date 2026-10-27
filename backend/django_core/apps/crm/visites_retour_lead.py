@@ -253,6 +253,7 @@ RETOUR_LEAD_CI = (
      'puissance_souscrite_source'),
     ('type_toiture', 'type_toiture', None),
     ('surface_utile', 'surface_toiture_m2', 'surface_source'),
+    ('raccordement', 'raccordement', None),
 )
 #: CIQ5 (lignes ``factures_mt.cos_phi_constate`` et ``reactif_secours.
 #: groupe_kva`` de ``retour_lead_ci``) — relevés HORS comparaison
