@@ -244,43 +244,71 @@ def _courbes_declarees(calendrier, niveaux, talon_mode, talon_valeur, rapport_ta
     return courbes, incoherent
 
 
-def _courbes_archetype(calendrier, niveaux, categorie, profil_societe, talon_kw):
-    """Méthode ``archetype`` : forme sourcée (CIQ107) par jour ouvert."""
+def _courbes_archetype(calendrier, niveaux, categorie, profil_societe, talon_kw,
+                       talon_part_pct=None, niveau_jour_pct=None):
+    """Méthode ``archetype`` : forme sourcée (CIQ107) par jour ouvert.
+
+    Talon DÉCLARÉ (CLD1), par priorité ``kw`` > ``part_pct`` > ``niveau_jour_pct`` :
+    ``kw`` = niveau des jours fermés ; ``part_pct`` = part de l'énergie du mois
+    étalée à plat sur 24 h × jours (même logique que le chemin déclaré) ;
+    ``niveau_jour_pct`` = PLANCHER : chaque heure vaut au moins ce rapport × le
+    pic de la forme « ouvre » de la même saison (jours fermés compris), puis la
+    courbe est renormalisée à l'énergie du mois.
+    """
     par_mois = {}
     for entree in calendrier:
         par_mois.setdefault(entree[0].month, []).append(entree)
+    rapport = None
+    if talon_kw is None and talon_part_pct is None and niveau_jour_pct is not None:
+        rapport = float(niveau_jour_pct) / 100.0
     courbes = {}
     source = None
+    pics = {}
     for mois, jours in par_mois.items():
         formes = {}
-        poids_ferme = []
+        plancher = {}
         for jour, ouvert, type_cal, _p in jours:
-            forme, src = forme_archetype(categorie, type_cal, saison_bdew(jour),
+            saison = saison_bdew(jour)
+            forme, src = forme_archetype(categorie, type_cal, saison,
                                          profil_societe=profil_societe)
             if forme is None:
                 return None, src
             source = src
+            if rapport is not None:
+                if saison not in pics:
+                    ouvre, _s = forme_archetype(categorie, 'ouvre', saison,
+                                                profil_societe=profil_societe)
+                    pics[saison] = max(ouvre if ouvre is not None else forme)
+                plancher[jour] = rapport * pics[saison]
+                forme = [max(f, plancher[jour]) for f in forme] if ouvert else forme
             formes[jour] = forme
-            if not ouvert:
-                poids_ferme.append(min(forme))
         energie = niveaux[mois - 1]
+        part_plat = 0.0
+        if talon_kw is None and talon_part_pct is not None:
+            part_plat = energie * min(max(float(talon_part_pct), 0.0), 100.0) / 100.0                 / (HEURES * len(jours))
+            energie -= part_plat * HEURES * len(jours)
         n_ouverts = sum(1 for _j, o, _t, _p in jours if o)
         n_fermes = len(jours) - n_ouverts
+        poids_ouvert = sum(sum(formes[j]) if rapport is not None else 1.0
+                           for j, o, _t, _p in jours if o)
+        poids_ferme = [max(min(formes[j]), plancher.get(j, 0.0))
+                       for j, o, _t, _p in jours if not o]
         if talon_kw is not None:
             reste = max(0.0, energie - float(talon_kw) * HEURES * n_fermes)
             energie_jour = reste / n_ouverts if n_ouverts else 0.0
             talon_ferme = float(talon_kw) if n_ouverts else energie / (HEURES * len(jours))
         else:
             # talon d'un jour fermé = creux de l'archétype ramené au niveau du jour ouvert
-            denominateur = n_ouverts + HEURES * sum(poids_ferme)
+            denominateur = poids_ouvert + HEURES * sum(poids_ferme)
             energie_jour = energie / denominateur if denominateur > 0 else 0.0
             talon_ferme = None
         for jour, ouvert, _t, _p in jours:
             if ouvert:
-                courbes[jour] = [energie_jour * w for w in formes[jour]]
+                courbes[jour] = [part_plat + energie_jour * w for w in formes[jour]]
             else:
-                niveau = talon_ferme if talon_ferme is not None else energie_jour * min(formes[jour])
-                courbes[jour] = [niveau] * HEURES
+                niveau = (talon_ferme if talon_ferme is not None else
+                          energie_jour * max(min(formes[jour]), plancher.get(jour, 0.0)))
+                courbes[jour] = [part_plat + niveau] * HEURES
     return courbes, source
 
 
@@ -683,14 +711,19 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
         return None, provenance, alertes
 
     if not plages_declarees:
-        courbes, source = _courbes_archetype(calendrier, niveaux, archetype, profil_societe, talon_kw)
+        niveau_pct = talon.get('niveau_jour_pct')
+        courbes, source = _courbes_archetype(calendrier, niveaux, archetype, profil_societe, talon_kw,
+                                             talon_pct, niveau_pct)
+        declare = ({'kw': talon_kw} if talon_kw is not None
+                   else {'part_pct': float(talon_pct)} if talon_pct is not None
+                   else {'niveau_jour_pct': float(niveau_pct)} if niveau_pct is not None
+                   else None)
         provenance.update({
             'methode': 'archetype',
             'archetype': {'cle': source.get('cle'), 'source': source.get('jeu_de_donnees')
                           or source.get('provenance'), 'licence': source.get('licence')},
             'niveau_donnees': 'estimation',
-            'talon': {'valeur': {'kw': talon_kw} if talon_kw is not None else None,
-                      'statut': 'declare' if talon_kw is not None else 'estimation'},
+            'talon': {'valeur': declare, 'statut': 'declare' if declare else 'estimation'},
         })
         if not jours_declares:
             alertes.append(_alerte(

@@ -248,6 +248,54 @@ class TestTalonParTypeDeCommerce(unittest.TestCase):
         self.assertEqual(prov['talon']['statut'], 'borne_conservatrice')
 
 
+class TestTalonMethodeArchetype(unittest.TestCase):
+    """CLD1 — méthode archétype (aucune plage déclarée) : le talon DÉCLARÉ
+    (``niveau_jour_pct`` / ``part_pct``) sert de PLANCHER, il n'est plus ignoré."""
+
+    def _bureau(self, talon=None):
+        rythme = {'jours_ouverts': LUN_VEN}
+        if talon is not None:
+            rythme['talon'] = talon
+        return courbe_declaree(rythme, [10000] * 12, annee_reference=ANNEE,
+                               archetype='bureau', feries=[])
+
+    def _autoconso_ref(self, jt):
+        production = _production_cloche()
+        prod_kwc = sum(j['nb_jours'] * sum(production[j['mois'] - 1]['production_kwh_kwc'])
+                       for j in jt)
+        return charge._autoconso(jt, production, 10000 * 12 / prod_kwc)
+
+    def test_niveau_jour_declare_change_la_courbe_et_conserve_l_energie(self):
+        jt_rien, prov_rien, _a = self._bureau()
+        jt_5, _p, _a = self._bureau({'niveau_jour_pct': 5})
+        jt_50, prov_50, _a = self._bureau({'niveau_jour_pct': 50})
+        self.assertEqual(prov_rien['talon']['statut'], 'estimation')
+        self.assertEqual(prov_50['talon'],
+                         {'valeur': {'niveau_jour_pct': 50.0}, 'statut': 'declare'})
+        auto = [self._autoconso_ref(jt) for jt in (jt_rien, jt_5, jt_50)]
+        self.assertNotAlmostEqual(auto[2], auto[0], places=3)
+        self.assertNotAlmostEqual(auto[2], auto[1], places=3)
+        # plancher : la nuit d'un jour ouvré vaut au moins 50 % du pic de jour
+        mars = _par(jt_50, 3, 'ouvre')['charge_kwh']
+        self.assertGreaterEqual(min(mars), 0.5 * max(mars) - 1e-9)
+        mars_rien = _par(jt_rien, 3, 'ouvre')['charge_kwh']
+        self.assertLess(min(mars_rien), 0.5 * max(mars_rien))
+        for mois in range(1, 13):
+            self.assertAlmostEqual(_energie_mois(jt_50, mois), 10000, delta=1e-6)
+
+    def test_part_pct_declare_conserve_l_energie_et_releve_la_nuit(self):
+        jt_rien, _p, _a = self._bureau()
+        jt_40, prov, _a = self._bureau({'part_pct': 40})
+        self.assertEqual(prov['talon'], {'valeur': {'part_pct': 40.0}, 'statut': 'declare'})
+        for mois in range(1, 13):
+            self.assertAlmostEqual(_energie_mois(jt_40, mois), 10000, delta=1e-6)
+        self.assertGreater(min(_par(jt_40, 3, 'ouvre')['charge_kwh']),
+                           min(_par(jt_rien, 3, 'ouvre')['charge_kwh']))
+        # le talon vaut 40 % de l'énergie du mois, réparti à plat sur 24 h × jours
+        self.assertGreaterEqual(min(_par(jt_40, 3, 'ouvre')['charge_kwh']),
+                                10000 * 0.40 / (24 * 31) - 1e-9)
+
+
 class TestProfilChargePrerequis(unittest.TestCase):
     """ADEV76 — LA règle des prérequis : un cas par branche de ``courbe_declaree``."""
 
