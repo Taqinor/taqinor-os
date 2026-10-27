@@ -29,6 +29,7 @@ import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { jsonResponse as json } from '../../lib/apiJson';
 import { resolveApiBase } from './_apiBase';
 
+const DETAIL_EXPIRE = 'Ce lien a expiré — demandez-en un nouveau à votre conseiller.';
 const DETAIL_ECHEC = 'Cette réponse n’a pas pu être enregistrée. Réessayez dans un instant.';
 
 export const POST: APIRoute = async ({ request }) => {
@@ -38,7 +39,7 @@ export const POST: APIRoute = async ({ request }) => {
     limit: 30, windowMs: 60_000,
   });
   if (!rl.allowed) {
-    return json({ ok: false, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
+    return json({ ok: false, code: 'limite', detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
       'retry-after': String(rl.retryAfterSec),
     });
   }
@@ -73,8 +74,11 @@ export const POST: APIRoute = async ({ request }) => {
       // Relais fidèle du { ok, enregistrees } backend — la page s'appuie dessus.
       return json(upstream, 200);
     }
-    return json({ ok: false, detail: DETAIL_ECHEC }, 200);
+    // CQSTW5 — 404 amont = lien introuvable ou expiré : marqueur distinct, la page
+    // dit « demandez-en un nouveau » au lieu d'un « réessayez » qui ne servirait à rien.
+    if (res.status === 404) return json({ ok: false, code: 'expire', detail: DETAIL_EXPIRE }, 200);
+    return json({ ok: false, code: 'echec', detail: DETAIL_ECHEC }, 200);
   } catch {
-    return json({ ok: false, detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' }, 200);
+    return json({ ok: false, code: 'reseau', detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' }, 200);
   }
 };

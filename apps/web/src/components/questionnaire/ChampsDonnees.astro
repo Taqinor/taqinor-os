@@ -1,0 +1,41 @@
+---
+// CQSTW1 — contrôles pilotés par un registre (lib/questionnaireChamps.ts) :
+// un champ = une donnée, libellés FR/EN/AR (mêmes data-i18n que la page).
+// Les champs `plaque` sont groupés dans #q-plaque-wrap, masqué tant que
+// « je garde ma pompe actuelle » n'est pas choisi.
+import type { ChampDonnee } from '../../lib/questionnaireChamps';
+interface Props {
+  champs: readonly ChampDonnee[];
+  demande: (cle: string) => boolean;
+  valeur: (cle: string) => string;
+  cls: string;
+}
+const { champs, demande, valeur, cls } = Astro.props;
+const visibles = champs.filter((c) => demande(c.cle));
+const normaux = visibles.filter((c) => !c.plaque);
+const plaques = visibles.filter((c) => c.plaque);
+const plaqueMasquee = valeur('mode_pompe') !== 'existante';
+const groupes = [
+  { id: undefined, liste: normaux },
+  { id: 'q-plaque-wrap', liste: plaques },
+].filter((g) => g.liste.length > 0);
+---
+{groupes.map((g) => (
+  <div id={g.id} class:list={['flex flex-col gap-4', g.id && plaqueMasquee ? 'hidden' : '']}>
+    {g.liste.map((c) => (
+      <div>
+        <label for={c.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={c.libelle.en} data-ar={c.libelle.ar}>{c.libelle.fr}</label>
+        {c.type === 'number' ? (
+          <input id={c.id} type="number" min={c.min} max={c.max} step="any" inputmode="decimal" value={valeur(c.cle)} class={cls} />
+        ) : (
+          <select id={c.id} class={cls}>
+            <option value="" data-fr="— Choisir…" data-en="— Choose…" data-ar="— اختاروا…" selected={valeur(c.cle) === ''}>— Choisir…</option>
+            {c.options?.map((o) => (
+              <option value={o.value} data-fr={o.libelle.fr} data-en={o.libelle.en} data-ar={o.libelle.ar} selected={valeur(c.cle) === o.value}>{o.libelle.fr}</option>
+            ))}
+          </select>
+        )}
+      </div>
+    ))}
+  </div>
+))}

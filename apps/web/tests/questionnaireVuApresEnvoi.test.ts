@@ -8,9 +8,13 @@ import { fileURLToPath } from 'node:url';
 import {
   buildQuestionnairePostBody,
   envoyerSectionQuestionnaire,
+  messageErreurQuestionnaire,
+  parseQuestionnairePostResponse,
   prefillApresEnvoi,
   QUESTIONNAIRE_PROXY_PATH,
 } from '../src/lib/questionnaire';
+
+vi.mock('cloudflare:workers', () => ({ env: {}, waitUntil: undefined }));
 
 describe('prefill_vu après un envoi réussi (ALEA4)', () => {
   it('après un envoi réussi, le corps du POST suivant porte prefill_vu = valeurs envoyées', () => {
@@ -68,7 +72,7 @@ describe('prefill_vu après un envoi réussi (ALEA4)', () => {
       'jeton-1', buildQuestionnairePostBody('energie', { facture_hiver: '900' }, null, undefined, prefill), prefill,
     );
     expect(panne.prefill).toBe(prefill);
-    expect(panne.result).toEqual({ ok: false, enregistrees: [], detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' });
+    expect(panne.result).toEqual({ ok: false, enregistrees: [], detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.', code: 'reseau' });
   });
 
   it('la page envoie par envoyerSectionQuestionnaire et en reprend le prefill', () => {
@@ -78,5 +82,56 @@ describe('prefill_vu après un envoi réussi (ALEA4)', () => {
     );
     expect(src).toMatch(/const envoi = await envoyerSectionQuestionnaire\(fetch, init\.token, body, init\.prefill\);/);
     expect(src).toMatch(/init\.prefill = envoi\.prefill;/);
+  });
+});
+
+describe('CQSTW2 — écran de fin : devis_possible', () => {
+  it('le serveur dit devis_possible:true ⇒ devisPossible, sinon absent', () => {
+    expect(parseQuestionnairePostResponse(200, { ok: true, enregistrees: [], devis_possible: true }).devisPossible).toBe(true);
+    expect(parseQuestionnairePostResponse(200, { ok: true, enregistrees: [], devis_possible: false }).devisPossible).toBeUndefined();
+    expect(parseQuestionnairePostResponse(200, { ok: true, enregistrees: [] }).devisPossible).toBeUndefined();
+  });
+  it('la page montre le message devis (FR/EN/AR, sans chiffre) seulement quand devisPossible', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
+    const bloc = src.slice(src.indexOf('id="q-done-devis"'), src.indexOf('</p>', src.indexOf('id="q-done-devis"')));
+    expect(bloc).toContain('data-en=');
+    expect(bloc).toContain('data-ar=');
+    expect(bloc.replace(/class="[^"]*"/, '').replace('data-i18n', '')).not.toMatch(/\d/);
+    expect(src).toContain("$('q-done-devis')?.classList.toggle('hidden', !devisPossible)");
+    expect(src).toContain('On vous recontacte très vite');
+  });
+});
+
+describe('CQSTW5 — lien expiré', { timeout: 30_000 }, () => {
+  it('le proxy rend le marqueur expire sur un 404 amont', async () => {
+    const { POST } = await import('../src/pages/api/questionnaire-repondre');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ detail: 'Introuvable' }), { status: 404 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const req = new Request('https://taqinor.ma/api/questionnaire-repondre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://taqinor.ma' },
+      body: JSON.stringify({ token: 'tok-expire', section: 'contact', reponses: { ville: 'Rabat' } }),
+    });
+    const res = await POST({ request: req } as never);
+    vi.unstubAllGlobals();
+    const body = await res.json();
+    expect(body.ok).toBe(false);
+    expect(body.code).toBe('expire');
+    const r = parseQuestionnairePostResponse(200, body);
+    expect(r.code).toBe('expire');
+    expect(messageErreurQuestionnaire(r.code, 'fr')).toContain('demandez-en un nouveau à votre conseiller');
+    expect(messageErreurQuestionnaire(r.code, 'fr')).not.toContain('Réessayez');
+  });
+  it('une panne 500 amont reste un échec à réessayer', async () => {
+    const { POST } = await import('../src/pages/api/questionnaire-repondre');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })));
+    const req = new Request('https://taqinor.ma/api/questionnaire-repondre', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: 'https://taqinor.ma' },
+      body: JSON.stringify({ token: 'tok-500', section: 'contact', reponses: {} }),
+    });
+    const body = await (await POST({ request: req } as never)).json();
+    vi.unstubAllGlobals();
+    expect(body.code).toBe('echec');
   });
 });
