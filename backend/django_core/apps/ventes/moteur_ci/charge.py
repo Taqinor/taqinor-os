@@ -437,6 +437,21 @@ def courbe_registres_mt(rythme, registres, *, annee_reference, feries=None,
         h_creuses_mois = heures_poste['creuses'] * len(jours)
         talon = energie['creuses'] / h_creuses_mois if fermes and h_creuses_mois else 0.0
         talons.append(round(talon, 6))
+        if not ouverts and jours:
+            # CLD5 — aucun jour ouvert ce mois : pas de talon « 24 h plat » (il
+            # perdrait pointe / pleines) ; chaque registre est réparti sur les
+            # heures de SON poste, tous les jours du mois.
+            niveau = {p: energie[p] / (heures_poste[p] * len(jours)) if heures_poste[p] else 0.0
+                      for p in POSTES_MT}
+            talons[-1] = round(niveau['creuses'], 6)
+            alertes.append(_alerte(
+                'registre_hors_ouverture', 'consommation.registres_mt',
+                'Mois %d : aucun jour ouvert, mais des registres relevés : chaque poste '
+                'est réparti sur ses heures de tous les jours du mois.' % mois,
+                niveau='info', interne=True))
+            for jour, _o, _t, _p in jours:
+                courbes[jour] = [niveau[postes_h[mois][h]] for h in range(HEURES)]
+            continue
         niveau = {}
         for p in POSTES_MT:
             reste = energie[p] - talon * heures_poste[p] * len(fermes)

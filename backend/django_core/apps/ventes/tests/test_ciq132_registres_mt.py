@@ -91,6 +91,31 @@ class RegistresMtTests(unittest.TestCase):
         attendu = sum(sum(r['%s_kwh' % p] for p in POSTES) for r in _registres())
         self.assertAlmostEqual(conso, attendu, delta=12)
 
+    def test_mois_sans_jour_ouvert_les_registres_ne_se_perdent_pas(self):
+        # CLD5 — juillet fermé en entier : creuses 1 000 / pointe 2 000 /
+        # pleines 3 000 se répartissent sur les heures de CHAQUE poste.
+        registres = [{'pointe_kwh': 2000, 'pleines_kwh': 3000, 'creuses_kwh': 1000}
+                     for _ in range(12)]
+        rythme = {'jours_ouverts': [True] * 5 + [False, False],
+                  'fermetures': [{'du': '%d-07-01' % ANNEE, 'au': '%d-07-31' % ANNEE}]}
+        jours, _p, alertes = courbe_registres_mt(rythme, registres, annee_reference=ANNEE,
+                                                 feries=[])
+        totaux = _par_poste(jours, 7)
+        self.assertAlmostEqual(sum(totaux.values()), 6000, delta=1e-6)
+        for poste, attendu in (('pointe', 2000), ('pleines', 3000), ('creuses', 1000)):
+            self.assertAlmostEqual(totaux[poste], attendu, delta=1e-6)
+        alerte = next(a for a in alertes if a['code'] == 'registre_hors_ouverture')
+        self.assertTrue(alerte['interne'])
+
+    def test_aucun_jour_ouvert_toute_l_annee_somme_des_registres(self):
+        registres = [{'pointe_kwh': 2000, 'pleines_kwh': 3000, 'creuses_kwh': 1000}
+                     for _ in range(12)]
+        jours, _p, alertes = courbe_registres_mt({'jours_ouverts': [False] * 7}, registres,
+                                                 annee_reference=ANNEE, feries=[])
+        total = sum(jt['nb_jours'] * sum(jt['charge_kwh']) for jt in jours)
+        self.assertAlmostEqual(total, 72000, delta=1e-5)
+        self.assertEqual(sum(1 for a in alertes if a['code'] == 'registre_hors_ouverture'), 12)
+
     def test_aucun_utc_plus_un_code(self):
         # Le code (commentaires et chaînes exclus) ne porte aucun décalage codé.
         for chemin in (RACINE / 'moteur_ci' / 'charge.py', Path(etude_ci.__file__)):
