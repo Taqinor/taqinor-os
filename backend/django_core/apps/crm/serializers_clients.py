@@ -737,6 +737,9 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
                 equipe.company_id, chef_avant, membres_avant,
                 equipe.responsable, list(equipe.membres.all()), equipe.actif)
             recalculer_hierarchie(equipe.company_id)
+            if chef_avant is not None and chef_avant.pk != equipe.responsable_id:
+                from .dispatch import responsable_change
+                responsable_change(equipe, chef_avant.pk)
         # Une seule équipe reçoit les nouveaux leads par société : cocher
         # celle-ci décoche les autres (même société uniquement).
         if equipe.recoit_leads:

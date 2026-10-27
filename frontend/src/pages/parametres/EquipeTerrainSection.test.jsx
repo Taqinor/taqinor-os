@@ -173,7 +173,8 @@ describe('EquipeSection — Organisation', () => {
     expect(screen.getByLabelText("Type d'équipe")).toBeDisabled()
     await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(saveEquipeCom).toHaveBeenCalledWith(7, {
-      nom: 'Casa', departement: 2, membres: [4], responsable: 3, recoit_leads: true,
+      // Membres non touchés : non renvoyés (jamais retirer un membre caché).
+      nom: 'Casa', departement: 2, responsable: 3, recoit_leads: true,
     }))
   })
 

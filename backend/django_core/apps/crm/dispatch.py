@@ -194,8 +194,33 @@ def _peut_tout_voir(user):
 
 def _deja_decide(attente):
     """Le lead a changé de main hors de cet écran (fiche du lead, admin) :
-    la décision humaine prime, l'attente n'a plus d'objet."""
-    return attente.lead.owner_id != attente.equipe.responsable_id
+    la décision humaine prime, l'attente n'a plus d'objet. Équipe sans
+    responsable : jamais « décidé » — la tâche attribue la proposition."""
+    responsable_id = attente.equipe.responsable_id
+    return (responsable_id is not None
+            and attente.lead.owner_id != responsable_id)
+
+
+def responsable_change(equipe, ancien_id):
+    """Le responsable de l'équipe change (revue Fable 27/10) : les leads en
+    attente chez l'ANCIEN passent au nouveau ; sans nouveau responsable, ils
+    partent à leur proposition à la prochaine minute (échéance = maintenant).
+    Sans cela, ils restaient orphelins chez l'ancien responsable."""
+    from . import activity
+    attentes = list(AttributionEnAttente.objects.filter(
+        equipe=equipe).select_related('lead'))
+    for attente in attentes:
+        lead = attente.lead
+        if lead.owner_id != ancien_id:
+            continue  # déjà décidé à la main : on n'y touche pas
+        if equipe.responsable_id is None:
+            attente.echeance = timezone.now()
+            attente.save(update_fields=['echeance'])
+            continue
+        Lead.objects.filter(pk=lead.pk).update(owner_id=equipe.responsable_id)
+        activity.log_note(
+            lead, None, "En attente d'attribution chez le nouveau "
+            f'responsable : {nom_affiche(equipe.responsable)}')
 
 
 def _finaliser(attente, owner, acteur, corps):
