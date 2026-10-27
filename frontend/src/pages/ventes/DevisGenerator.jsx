@@ -1951,7 +1951,7 @@ export default function DevisGenerator({
             Quatre panneaux, un par marché : chacun porte SES champs et se
             retire lui-même hors de sa clé de marché, donc exactement un rend,
             à la place qu'occupaient les deux cartes conditionnelles. */}
-        <PanneauResidentiel {...socleFactures} />
+        <PanneauResidentiel {...socleFactures} sizing={sizing} />
         <PanneauIndustriel {...socleFactures} {...socleEtudeReseau} />
         <PanneauCommercial
           {...socleFactures}

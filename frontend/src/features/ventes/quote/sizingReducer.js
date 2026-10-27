@@ -107,6 +107,11 @@ export const ETAT_INITIAL = Object.freeze({
   compositionSeq: 0,
   // Fenêtre d'UNE transition ouverte par RECALCUL_DEMANDE (voir invariant 3).
   recalcul: null,
+  // RGEN3 — taille (kWc) DEMANDÉE sur la fiche du lead et posée au champ
+  // panneaux : comme pour le devis automatique, elle vaut pour les DEUX
+  // options (sans / avec batterie) tant que le vendeur ne la remplace pas.
+  // `null` = la taille ne vient pas de la fiche.
+  tailleLead: null,
 })
 
 const nombre = (v) => {
@@ -179,6 +184,7 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
             nbPanneaux: valeur,
             kwcCible: kwcDepuisPanneaux(valeur, base.panelW),
             sizingInfo: null,
+            tailleLead: null,
           }
         case 'kwcCible': {
           // `onKwcCibleChange` : bidirectionnel, mais la conversion ne
@@ -190,6 +196,7 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
             ...avecTouche(suivant, 'nbPanneaux'),
             nbPanneaux: String(n),
             sizingInfo: null,
+            tailleLead: null,
           }
         }
         case 'panelW':
@@ -290,7 +297,8 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
       const tailleKwc = nombre(lead.taille_souhaitee_kwc)
       const fromTaille = (!s.touche.nbPanneaux && tailleKwc > 0)
         ? panneauxPourKwc(tailleKwc, s.panelW) : 0
-      if (fromTaille > 0) s = poserPanneaux(s, fromTaille)
+      if (fromTaille > 0) s = { ...poserPanneaux(s, fromTaille), tailleLead: tailleKwc }
+      else if (!s.touche.nbPanneaux) s = { ...s, tailleLead: null }
       // 8. Facture : le résidentiel ATTEND le moteur serveur (U3-900, plus de
       //    repli « panneaux/900 MAD ») ; les autres marchés n'ont que le
       //    balayage local, résolu par l'appelant (`action.sizingLocal`).
@@ -371,6 +379,7 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
         kwcCible: ligne.kwc != null ? String(ligne.kwc) : '',
         nbPanneaux: String(ligne.panneaux),
         attenteMoteur: false,
+        tailleLead: null,
       }
       if (ligne.panel_watt) s = { ...s, panelW: String(ligne.panel_watt) }
       // Relance la composition par le chemin EXACT de l'Auto-remplir.
@@ -385,7 +394,9 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
     // `:2604-2607`).
     case 'REOUVERTURE': {
       const d = action.devis || {}
-      let s = base
+      // RGEN3 — un devis rouvert porte SES lignes : la taille de la fiche ne
+      // décide plus rien.
+      let s = { ...base, tailleLead: null }
       if (d.mode_installation) {
         s = appliquerMarche(s, d.mode_installation, { marquerTouche: true })
       }
@@ -427,6 +438,8 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
         nbPanneaux: String(retenu.nbPanneaux),
         attenteMoteur: false,
         motifMoteur: null,
+        // RGEN3 — « Recalculer » revient à la recommandation du moteur.
+        tailleLead: null,
         // touche.nbPanneaux : INCHANGÉ (= restauré) — voir invariant 3.
         compositionSeq: base.compositionSeq + 1,
         recalcul: Object.freeze({
@@ -458,7 +471,18 @@ function appliquerSizingLocal(etat, sizing) {
  * fondateur, borné à cette unique transition.
  */
 export const toucheNbPanneauxPourComposition = (etat) =>
-  (etat.recalcul?.ignorerToucheNbPanneaux ? false : etat.touche.nbPanneaux)
+  (etat.recalcul?.ignorerToucheNbPanneaux
+    ? false
+    : (etat.touche.nbPanneaux || tailleDemandeeParLead(etat) != null))
+
+/**
+ * RGEN3 — la taille (kWc) demandée sur la fiche du lead qui décide ENCORE du
+ * compte de panneaux, sinon `null`. Comme le devis automatique
+ * (`creation_auto_residentiel`, source « taille_demandee ») : elle vaut pour
+ * les deux options, et l'écran le DIT au vendeur.
+ */
+export const tailleDemandeeParLead = (etat) =>
+  (Number(etat?.tailleLead) > 0 ? Number(etat.tailleLead) : null)
 
 /** Liste ÉNUMÉRABLE des drapeaux posés — la lecture que six refs interdisaient. */
 export const drapeauxPoses = (etat) =>

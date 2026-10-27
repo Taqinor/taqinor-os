@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   sizingReducer, ETAT_INITIAL, DRAPEAUX_TOUCHE, drapeauxPoses,
-  toucheNbPanneauxPourComposition,
+  toucheNbPanneauxPourComposition, tailleDemandeeParLead,
   SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC,
 } from './sizingReducer.js'
 import { exempleContrat } from '../../../test/fixtures/contractSamples.js'
@@ -235,6 +235,33 @@ test('LEAD_APPLIQUE : la taille souhaitée est PRIORITAIRE sur la facture', () =
   assert.equal(s.nbPanneaux, '12')            // ceil(8000/710)
   assert.equal(s.attenteMoteur, false)        // aucune attente : la taille suffit
   assert.equal(s.touche.nbPanneaux, false)
+})
+
+test('RGEN3 : la taille du lead vaut pour les DEUX options, comme le devis automatique', () => {
+  // Rejeu lead 2141 (16 kWc demandés, facture 4 000 MAD, « avec batterie ») :
+  // l'écran posait 23 panneaux, puis Auto-remplir composait l'optimum AVEC du
+  // moteur (17 panneaux) — trois chiffres pour un lead.
+  const s = sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE',
+    lead: { type_installation: 'residentiel', taille_souhaitee_kwc: '16', facture_hiver: '4000' },
+  })
+  assert.equal(s.nbPanneaux, '23')
+  assert.equal(tailleDemandeeParLead(s), 16)
+  assert.equal(s.touche.nbPanneaux, false)          // un pré-remplissage reste un pré-remplissage
+  assert.equal(toucheNbPanneauxPourComposition(s), true)
+  // Le vendeur tape : sa saisie remplace la taille de la fiche.
+  const tape = red(s, { type: 'SAISI', champ: 'nbPanneaux', valeur: '20' })
+  assert.equal(tailleDemandeeParLead(tape), null)
+  // « Recalculer le dimensionnement » revient au moteur.
+  const recalcule = red(s, { type: 'RECALCUL_DEMANDE', retenu: { nbPanneaux: 17, kwcOptimal: 12.07 } })
+  assert.equal(tailleDemandeeParLead(recalcule), null)
+  assert.equal(toucheNbPanneauxPourComposition(recalcule), false)
+  // Un lead SANS taille efface celle du lead précédent.
+  const autre = sizingReducer(s, {
+    type: 'LEAD_APPLIQUE', lead: { type_installation: 'residentiel', facture_hiver: '1500' },
+  })
+  assert.equal(tailleDemandeeParLead(autre), null)
+  assert.equal(toucheNbPanneauxPourComposition(autre), false)
 })
 
 test('LEAD_APPLIQUE résidentiel avec facture : ATTEND le moteur serveur (U3-900)', () => {
