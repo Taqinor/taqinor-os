@@ -392,6 +392,17 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
             alertes.append(_alerte_module())
             return {'taille': _vide('module', bornes_pub), 'evaluation': None,
                     'alertes': alertes, 'hypotheses': hypotheses}
+        if e['prix_manquants'] and evals:
+            # CLD12 — prix manquants apparus à un palier TARDIF : les paliers
+            # chiffrés d'en dessous restent, le balayage s'arrête au dernier
+            # palier chiffrable (alerte interne, jamais bloquante).
+            alertes.append(_alerte(
+                'prix_manquants_au_dela', 'taille',
+                'À partir du palier %g kWc, tranche non chiffrable : prix de vente manquants (%s) — '
+                'taille calculée sur les paliers chiffrés.' % (
+                    e.get('kwc_palier', e['kwc']),
+                    ', '.join(str(p) for p in e['prix_manquants']))))
+            break
         if e['prix_manquants']:
             alertes.append(_alerte(
                 'prix_manquants', 'taille',

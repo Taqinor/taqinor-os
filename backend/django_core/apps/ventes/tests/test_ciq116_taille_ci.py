@@ -186,6 +186,26 @@ class TailleCITests(unittest.TestCase):
             return base
         return composer
 
+    def test_prix_manquants_au_dela_garde_les_paliers_chiffres(self):
+        # CLD12 — la structure n'a de prix que jusqu'à 16 kWc : le palier 20
+        # n'est plus chiffrable, les paliers 5-15 restent, la taille se
+        # calcule dessus ; alerte INTERNE nommée (palier + articles).
+        def composer(kwc, onduleurs):
+            return _composer(kwc, onduleurs,
+                             prix_structure=PRIX_STRUCTURE if kwc <= 16 else None)
+        r = self._taille('bureau', 6000, composer=composer)
+        t = r['taille']
+        self.assertIsNotNone(t['retenue_kwc'])
+        self.assertLessEqual(t['retenue_kwc'], 16)
+        self.assertEqual([p['kwc'] for p in t['paliers']], [5, 10, 15])
+        self.assertNotIn('prix_manquants', [a['code'] for a in r['alertes']])
+        alerte = next(a for a in r['alertes'] if a['code'] == 'prix_manquants_au_dela')
+        self.assertTrue(alerte['interne'])
+        self.assertNotEqual(alerte['niveau'], 'bloquant')
+        self.assertIn('20 kWc', alerte['message'])
+        self.assertIn('Structure C&I', alerte['message'])
+        self.assertNotIn('prix_manquants', r)
+
     def test_structure_a_confirmer_sans_prix_prix_manquants(self):
         def composer(kwc, onduleurs):
             base = _composer(kwc, onduleurs, prix_structure=None)
