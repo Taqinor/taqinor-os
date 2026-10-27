@@ -1770,6 +1770,12 @@ def _struct_row_legacy(s, colspan):
             f'{txt}</td></tr>')
 
 
+def _rangs_totaux(t):
+    """RPDF21 — nombre de rangées que ``_totals_block_rows`` imprime pour ``t``."""
+    rem, arr = DISCOUNT_PCT > 0, (t.get("arrondi") or 0) > 0
+    return 3 + rem + arr + (rem or arr) + max(0, len(t.get("tva_par_taux") or []) - 1)
+
+
 def equip_rows(items, totaux, hi_bat=False, ancres=None):
     rows = ""
     # QJR619 — sections / notes intercalées à leur ``ordre`` (QJR617) ; sans
@@ -2336,21 +2342,23 @@ def page2(sans_items, img_roi, img_mon):
     _p2_s1 = 'display:none;' if SCENARIO == 'Avec batterie' else ''
     _p2_s2 = 'display:none;' if SCENARIO == 'Sans batterie' else ''
 
-    # ── Dynamic table row scaling ─────────────────────────────────────────────
-    # When one side has many rows the table section grows and squeezes the charts.
-    # Scale row height/font proportionally so everything still fits on one page.
+    # ── Dynamic table row scaling: many rows would squeeze the charts off the page ──
     if SCENARIO == 'Avec batterie':
         max_rows = len(AVEC_ITEMS)
     elif SCENARIO == 'Sans batterie':
         max_rows = len(sans_items)
     else:
         max_rows = max(len(sans_items), len(AVEC_ITEMS))
-    # QJR619 — les lignes de structure et le bloc d'options occupent aussi
-    # des rangées : elles entrent dans la mise à l'échelle (0 sans elles).
+    # QJR619 — lignes de structure et bloc d'options entrent dans la mise à l'échelle.
     max_rows += len(LIGNES_STRUCTURE or [])
     if OPTIONS_PROPOSEES:
         max_rows += 1 + len(OPTIONS_PROPOSEES)
+    # RPDF21 — remise / arrondi / Total HT : ½ rangée chacun au-delà des 4 totaux (devis 1344).
+    _tots = [t for t, cache in ((TOTAUX_SANS, _p2_s1), (TOTAUX_AVEC, _p2_s2)) if not cache]
+    max_rows += 0.5 * max([_rangs_totaux(t) - 4 for t in _tots] + [0])
     scale = 1.0 if max_rows <= 11 else max(0.62, 11.0 / max_rows)
+    _gk = 1.0 if scale >= 1.0 else max(scale, 0.8)  # RPDF21 — graphes (hors flex) à l'échelle
+    _gdim = f"width:{int(680 * _gk)}px;height:{int(170 * _gk)}px;"
     if scale < 1.0:
         tbl_font = f"{6.5 * scale:.2f}pt"
         th_font  = f"{5.5 * scale:.2f}pt"
@@ -2381,7 +2389,7 @@ def page2(sans_items, img_roi, img_mon):
         f'<svg width="12" height="12" viewBox="0 0 12 12" style="vertical-align:middle;margin-right:3px;"><polyline points="1,10 4,6 7,8 11,2" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><polyline points="8,2 11,2 11,5" fill="none" stroke="{CN}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
         f' {_L("lg_gain_cumule_titre")}'
         f'</div>'
-        f'<img src="{img_roi}" style="width:680px;height:170px;display:block;">'
+        f'<img src="{img_roi}" style="{_gdim}display:block;">'
         f'</div>'
     ) if img_roi else ""
 
@@ -2398,19 +2406,15 @@ def page2(sans_items, img_roi, img_mon):
         f'</svg> {_L("lg_eco_mensuelles")}</div>'
         f'<div style="font-size:6pt;color:{CG4};font-style:italic;margin-bottom:4px;flex-shrink:0;">'
         f'{_L("lg_facture_vs_eco") if FACTURES_M else _L("lg_eco_solaires_mois")}</div>'
-        f'<img src="{img_mon}" style="width:680px;height:170px;display:block;">'
+        f'<img src="{img_mon}" style="{_gdim}display:block;">'
         f'</div>'
     ) if img_mon else ""
 
-    # QJRREM - LA phrase qui dit ce que les deux tableaux montrent. Elle
-    # rejoint la note de TVA deja presente sous les tableaux : aucune ligne de
-    # tableau, aucun bloc, aucune hauteur en plus.
+    # QJRREM - LA phrase des deux tableaux, jointe à la note de TVA (aucune hauteur en plus).
     _nr = _note_remise_par_ligne()
     _note_remise_p2 = f" &#183; {_nr}" if _nr else ""
 
-    # QJR619 — « Options proposées (non incluses dans le total) » : le SEUL
-    # ``total_ttc`` du builder (supplément canonique, QJR616). Sans option ⇒
-    # '' collé au bloc suivant (octet-identique).
+    # QJR619 — « Options proposées » : le SEUL ``total_ttc`` du builder (QJR616) ; sans option ⇒ ''.
     _options_p2 = ""
     if OPTIONS_PROPOSEES:
         _orows = ""
@@ -2558,9 +2562,7 @@ def page3():
       </div>
 """
 
-    # QJR121 — l'« Application de monitoring 24/7 » n'est promise que si une
-    # LIGNE du devis la porte (passerelle, dongle, compteur communicant…).
-    # Aucune : la carte disparaît plutôt que de vendre un composant absent.
+    # QJR121 — le monitoring n'est promis que si une LIGNE du devis le porte ; sinon pas de carte.
     _monitoring_card = ""
     if _monitoring_vendu():
         _monitoring_card = f"""
@@ -2578,11 +2580,8 @@ def page3():
       </div>
 """
 
-    # Q5 — sous-titres des « prochaines étapes » : délais des réglages
-    # société, toujours suivis de « (indicatif) ». Réglage vidé ⇒
-    # sous-titre VIDE : le document ne promet alors aucun délai. Ces
-    # délais ne figurent plus dans la boîte « Conditions », où ils se
-    # lisaient comme des engagements contractuels.
+    # Q5 — délais des « prochaines étapes » (réglages société, « (indicatif) ») ; réglage vidé
+    # ⇒ sous-titre VIDE. Hors de la boîte « Conditions » (lus comme des engagements).
     _etape_visite = (_L("lg_delai_sous").format(delai=DELAI_VISITE)
                      if DELAI_VISITE else "")
     _etape_install = (_L("res_delai_indicatif").format(delai=DELAI_INSTALLATION)

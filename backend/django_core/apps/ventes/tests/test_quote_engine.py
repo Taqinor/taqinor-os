@@ -174,3 +174,33 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
                                     'production_annuelle': 25415})
         self.assertEqual(G.PAGES_TOTAL, 4)
         self.assertIn(G._L('lg_etude_pied').format(ref=G.REF), html)
+
+    @staticmethod
+    def _page2(html):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        debut = html.index(G._L('lg_p2_titre'))
+        return html[debut:html.index('<div class="page"', debut)]
+
+    def test_rpdf21_totaux_longs_mettent_tableau_et_graphes_a_l_echelle(self):
+        """Devis 1344 : 11 lignes, remise + arrondi + Total HT + TVA 10/20
+        (7 rangées de totaux) — le graphe mensuel passait sous le pied de
+        page. Les rangées de totaux au-delà de 4 comptent une demi-rangée ;
+        sous l'échelle, les deux graphes (taille fixe, hors flex) la suivent,
+        au ratio 4:1 de leur image."""
+        from apps.ventes.tests import _moteur_fixtures as F
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        base = F.donnees_legacy('plus5', pdf_mode='full',
+                                scenario='Avec batterie')
+        self.assertEqual(len(base['avec_items']), 11)
+        p2 = self._page2(G.render_html_for(base))
+        # Test-du-test : 11 lignes et 4 totaux ⇒ page 2 d'hier, octet pour octet.
+        self.assertNotIn('<style>.eq{font-size:', p2)
+        self.assertIn('width:680px;height:170px;display:block;', p2)
+        d = dict(base, discount_pct=5,
+                 totaux_avec=dict(base['totaux_avec'], arrondi=6.5))
+        p2 = self._page2(G.render_html_for(d))
+        k = 11.0 / (11 + 0.5 * 3)
+        self.assertIn('<style>.eq{font-size:', p2)
+        self.assertNotIn('width:680px;height:170px;', p2)
+        self.assertIn(f'width:{int(680 * k)}px;height:{int(170 * k)}px;'
+                      'display:block;', p2)
