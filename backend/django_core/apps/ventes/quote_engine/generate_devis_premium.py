@@ -3121,7 +3121,7 @@ def page_calepinage():
 
 
 def build_html():
-    from .legacy_etude import page_etude  # SPL169 — import local (cycle)
+    from .legacy_etude import page_etude, etude_rendue  # SPL169 — import local (cycle)
     print("  Generating charts...")
     # M5 — la GARDE MOYENNE TENSION s'étend à la page 2. Un dossier MT n'a
     # aucun chiffre d'économies légitime (ceux disponibles sortent du barème
@@ -3139,7 +3139,7 @@ def build_html():
     img_roi = ("" if (_sans_economies or not _courbes_roi_tracables())
                else make_chart_roi())
     img_mon = "" if (_sans_economies or not SHOW_MONTHLY) else make_chart_monthly()
-    etude_html = page_etude() if (INCLUDE_ETUDE and ETUDE) else ""
+    etude_html = page_etude() if etude_rendue() else ""
     annexe_html = (page_annexe_technique()
                    if (INCLUDE_ANNEXE and ELECTRICAL_DESIGN) else "")
     # CAL182 — la planche s'intercale APRÈS l'annexe, avant la signature :
@@ -3905,11 +3905,11 @@ def apply_quote_data(data: dict) -> None:
     CLAUSES_CGV, CGV_IMPRIMEES = _conditions_echappees(data)
     DATE_ACCEPTATION = (data.get("date_acceptation") or "")
 
-    # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues
-    # (l'étude insérée entre les pages 2 et 3 porte le total à 4).
+    # Numérotation = nombre RÉEL de pages rendues (l'étude entre les pages 2 et 3 → 4).
     global PAGES_TOTAL, PAGE3_NUM
+    from .legacy_etude import etude_rendue  # RPDF20 — étude sans contenu ⇒ ni rendue ni comptée
     _full = data.get("pdf_mode", "full") == "full"
-    _with_etude = bool(INCLUDE_ETUDE and ETUDE) and _full
+    _with_etude = etude_rendue() and _full
     # PV46 — l'annexe technique s'intercale APRÈS l'étude, avant la signature.
     # Sans conception électrique, elle DISPARAÎT (même dégradation gracieuse
     # que l'étude : la page n'est ni rendue ni comptée).

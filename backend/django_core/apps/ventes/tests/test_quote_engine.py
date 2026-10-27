@@ -144,3 +144,33 @@ class QrMasqueVectoriseTest(SimpleTestCase):
                     theme.qr_data_uri.__wrapped__(self.LIENS[2], **forme)
                     meilleur = min(meilleur, time.perf_counter() - t0)
                 self.assertLess(meilleur, 1.0)
+
+
+class RpdfLegacyMiseEnPageTest(SimpleTestCase):
+    """RPDF20-22 — rendus réels du 27/10 (devis 1344, résidentiel + étude,
+    moteur legacy) : HTML exact remis à WeasyPrint (``render_html_for``),
+    aucune base. Mise en page seulement : aucun chiffre ne change."""
+
+    #: Le ``dimensionnement`` d'un devis horaire sans étude saisie : seule la
+    #: tranche actuelle est publiable (aucun optimum ne décrit le devis).
+    _DIM = {'falaise': {'tranche_actuelle': {'rang': 6,
+                                             'libelle': '> 510 kWh/mois'}}}
+
+    @staticmethod
+    def _html(**surcharges):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        from apps.ventes.tests import _moteur_fixtures as F
+        return G, G.render_html_for(F.donnees_legacy(pdf_mode='full',
+                                                     **surcharges))
+
+    def test_rpdf20_etude_sans_contenu_ni_rendue_ni_comptee(self):
+        G, html = self._html(include_etude=True,
+                             etude={'dimensionnement': self._DIM})
+        self.assertEqual(G.PAGES_TOTAL, 3)
+        self.assertNotIn(G._L('lg_etude_pied').format(ref=G.REF), html)
+        # Test-du-test : une étude qui porte un chiffre réel garde sa page.
+        G, html = self._html(include_etude=True,
+                             etude={'dimensionnement': self._DIM,
+                                    'production_annuelle': 25415})
+        self.assertEqual(G.PAGES_TOTAL, 4)
+        self.assertIn(G._L('lg_etude_pied').format(ref=G.REF), html)
