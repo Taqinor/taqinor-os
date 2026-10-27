@@ -20,8 +20,10 @@ from apps.parametres.pvgis_profils import (
 )
 from apps.ventes.moteur_ci import production as module_production
 from apps.ventes.moteur_ci.production import (
+    ANGLE_TOIT_PLAT_DEG,
     MESSAGE_ORIENTATION,
     bloc_production_ci,
+    plan_de_production,
     production_jours_types,
 )
 from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
@@ -137,6 +139,24 @@ class TestPariteResidentiel(unittest.TestCase):
         attendu = production_jours_types(10.0, productible_mensuel=mensuel, formes_saison=formes,
                                          derate=PRODUCTION_DERATE)
         self.assertEqual([j['prod_24h'] for j in jours], [m['prod_24h'] for m in attendu])
+
+
+class TestPlanToitPlat(unittest.TestCase):
+    """CMP5 (D-CMP-4) — un toit plat sans pente déclarée se pose à 10°."""
+
+    def test_toit_plat_leste_sans_pente_dix_degres(self):
+        for pose in ('toit_plat_leste', 'toit_plat_fixe'):
+            plan = plan_de_production({'type_pose': pose})
+            self.assertEqual(plan['angle_deg'], ANGLE_TOIT_PLAT_DEG)
+            self.assertEqual(plan['angle_deg'], 10.0)
+            self.assertNotEqual(plan['angle_deg'], PVGIS_ANGLE_DEG)
+
+    def test_pente_declaree_et_autres_poses_inchangees(self):
+        self.assertEqual(plan_de_production({'type_pose': 'toit_plat_leste',
+                                             'pente_deg': 15})['angle_deg'], 15.0)
+        self.assertEqual(plan_de_production({'type_pose': 'toiture_inclinee'})['angle_deg'],
+                         PVGIS_ANGLE_DEG)
+        self.assertEqual(plan_de_production(None)['angle_deg'], PVGIS_ANGLE_DEG)
 
 
 class TestPurete(unittest.TestCase):

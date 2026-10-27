@@ -53,6 +53,15 @@ MESSAGE_A_CONFIRMER = 'production à confirmer au calepinage'
 #: aucune ventilation). Surimposition = « entre les deux » (manuel PVGIS) : le
 #: cas le MOINS favorable est retenu.
 MONTAGE_PVGIS_DE_LA_POSE = {'toiture_inclinee': 'building', 'bac_acier': 'building'}
+#: CMP5 (D-CMP-4, décision prise pour le fondateur, à revoir) — un toit plat
+#: (lesté ou fixé) sans pente déclarée se pose à 10° plein sud : inclinaison
+#: des systèmes lestés du marché (K2 Dome 6.10, Renusol FS Pro 10-S, Van der
+#: Valk ValkPro+ P10). PVGIS 5.3 Casablanca : 1 621 kWh/kWc à 10° contre 1 719
+#: à 30° (−5,7 %) — 30° surestimait la production d'une terrasse.
+POSES_TOIT_PLAT = frozenset({'toit_plat_leste', 'toit_plat_fixe'})
+ANGLE_TOIT_PLAT_DEG = 10.0
+SOURCE_ANGLE_TOIT_PLAT = ('toit plat sans pente déclarée : 10° (systèmes lestés K2 Dome 6.10, '
+                          'Renusol FS Pro 10-S, ValkPro+ P10)')
 HEURES_AN = 8760
 METHODE_8760 = 'horaire_8760'
 METHODE_JOURNEES_MOYENNES = 'journees_moyennes'
@@ -124,7 +133,9 @@ def traces_production(production, *, source=None, toit=None):
     serie = production.get('serie_horaire') or None
     angle = production.get('inclinaison_deg', PVGIS_ANGLE_DEG)
     aspect = production.get('azimut_deg', PVGIS_ASPECT_DEG)
-    for cle, valeur, declare, defaut in (('inclinaison_deg', angle, pente, 'pvgis_profils.PVGIS_ANGLE_DEG'),
+    defaut_angle = (SOURCE_ANGLE_TOIT_PLAT if serie is not None and pente is None
+                    and _num(angle) == ANGLE_TOIT_PLAT_DEG else 'pvgis_profils.PVGIS_ANGLE_DEG')
+    for cle, valeur, declare, defaut in (('inclinaison_deg', angle, pente, defaut_angle),
                                          ('azimut_deg', aspect, azimut, 'pvgis_profils.PVGIS_ASPECT_DEG')):
         lu = serie is not None and declare is not None
         hypotheses.append({'cle': cle, 'valeur': valeur, 'source': 'toit déclaré' if lu else defaut,
@@ -160,6 +171,8 @@ def plan_de_production(toit):
     déclarée ou estimée (D-ACI-13, résolue par l'appelant)."""
     toit = toit or {}
     pente, azimut = toit.get('pente_deg'), toit.get('azimut_deg')
+    if pente is None and toit.get('type_pose') in POSES_TOIT_PLAT:
+        pente = ANGLE_TOIT_PLAT_DEG
     return {'angle_deg': PVGIS_ANGLE_DEG if pente is None else _num(pente),
             'aspect_deg': PVGIS_ASPECT_DEG if azimut is None else _num(azimut),
             'montage': MONTAGE_PVGIS_DE_LA_POSE.get(toit.get('type_pose'), 'free')}
