@@ -51,7 +51,7 @@ django-anymail[sendgrid]==10.3
 
 # XMKT33 — vérification DNS (SPF/DKIM/DMARC) du domaine d'envoi marketing.
 # Dépendance libre (MIT), aucun coût.
-dnspython==2.7.0
+dnspython==2.9.0
 
 # File storage MinIO/S3
 django-storages[s3]==1.14.4
