@@ -1979,15 +1979,15 @@ def economie_ci_pour_devis(devis, company):
     if not isinstance(tarif_declare, dict):
         tarif_declare = params.get('tarif') if isinstance(
             params.get('tarif'), dict) else None
-    from apps.ventes.domain.regles_calcul import calcul_corrige
+    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, calcul_corrige, regles_au_moins
     totaux = option_totaux(devis)
     reglages = reglages_economie_ci(company)
+    reglages['regles_origine'] = not regles_au_moins(devis, REGLES_CORRIGEES_2710)  # CEC (27/10)
     if not calcul_corrige(devis):
         # AMOT96/97 — un devis envoyé garde ce que le client a reçu : ni
         # entretien minimum, ni scénarios seedés, ni sensibilités commerciales.
         from apps.parametres.tariff import SENSIBILITES_CI_DEFAUT
         reglages.pop('entretien_minimum', None)
-        reglages['regles_origine'] = True  # CEC1/4/5 — calcul d'hier
         reglages['sensibilites_ci'] = [] if getattr(
             devis, 'mode_installation', None) == 'commercial' else [
             sc for sc in reglages.get('sensibilites_ci') or []
