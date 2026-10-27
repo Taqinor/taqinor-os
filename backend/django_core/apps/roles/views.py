@@ -10,7 +10,8 @@ from rest_framework.renderers import JSONRenderer
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
+from authentication.permissions import (
+    IsAdminOrResponsableTier, IsAdminRole, IsAnyRole)
 from apps.parametres.models import SettingsAuditLog
 from .models import Role
 from .permissions_registre import ALL_PERMISSIONS
@@ -85,6 +86,9 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
         # Responsable.
         if getattr(self, 'action', None) in ('permission_catalog', 'revue_acces'):
             return [IsAdminRole()]
+        # Organigramme (27/10/2026) — lecture pure, ouverte à tout rôle.
+        if getattr(self, 'action', None) == 'organisation':
+            return [IsAnyRole()]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -434,3 +438,20 @@ class RoleViewSet(TenantMixin, viewsets.ModelViewSet):
             'dormants': sum(1 for r in rows if r['dormant']),
             'utilisateurs': rows,
         })
+
+    @extend_schema(responses=inline_serializer('Organisation', {
+        'direction': drf_serializers.DictField(allow_null=True),
+        'departements': drf_serializers.ListField(
+            child=drf_serializers.DictField()),
+        'equipes_sans_departement': drf_serializers.ListField(
+            child=drf_serializers.DictField()),
+        'a_completer': drf_serializers.ListField(
+            child=drf_serializers.DictField())}))
+    @action(detail=False, methods=['get'], url_path='organisation')
+    def organisation(self, request):
+        """Organigramme de la société de l'appelant (fondateur, 27/10/2026) :
+        Direction → départements → équipes → personnes, plus les comptes à
+        compléter (fonction ou rôle manquant). Lecture pure, tout rôle ;
+        contrat ``contract_samples/organisation.json``."""
+        from .selectors import organisation_societe
+        return Response(organisation_societe(request.user.company))

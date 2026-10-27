@@ -1,9 +1,11 @@
+from django.db import transaction
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from core.champs_stricts import ChaineStricte, ChampsStrictsMixin
 from core.unicite import UniciteEn409Mixin
+from .equipes_structure import recalculer_hierarchie
 from .models import CustomUser, Company, UserSession
 
 
@@ -311,6 +313,14 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
     # compte mono-société renvoie une liste à un élément (pas de sélecteur).
     societes_operables = serializers.SerializerMethodField()
     active_company_id = serializers.SerializerMethodField()
+    # Organigramme (27/10/2026) — fonction (écrivable, bornée à la société) ;
+    # son intitulé et son département en lecture seule.
+    fonction_intitule = serializers.CharField(
+        source='fonction.intitule', read_only=True, allow_null=True)
+    departement_id = serializers.IntegerField(
+        source='fonction.departement_id', read_only=True, allow_null=True)
+    departement_nom = serializers.CharField(
+        source='fonction.departement.nom', read_only=True, allow_null=True)
 
     class Meta:
         model = CustomUser
@@ -319,6 +329,7 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
             'role', 'role_nom', 'role_legacy', 'menu_tier', 'permissions',
             'modules_desactives',
             'poste',
+            'fonction', 'fonction_intitule', 'departement_id', 'departement_nom',
             'avatar_key', 'avatar_url',
             'supervisor', 'supervisor_nom',
             # NTMOB6 — lecture seule ici : l'écriture passe UNIQUEMENT par
@@ -364,6 +375,7 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
             'password_changed_at',
             'role_nom', 'role_legacy', 'menu_tier', 'permissions',
             'modules_desactives',
+            'fonction_intitule', 'departement_id', 'departement_nom',
             # NTPRT8 — la portée portail et le rattachement d'entité sont posés
             # UNIQUEMENT par le provisionnement côté serveur (NTPRT2/3/4) :
             # jamais lus du corps d'une requête (ce serait une escalade de
@@ -467,6 +479,66 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
                 f"{hors}.")
         return value
 
+    def validate_fonction(self, value):
+        """Organigramme — la fonction est une fonction ACTIVE de la société
+        de l'acteur. Un id d'ailleurs ou archivé reçoit la réponse d'un id
+        absent (aucun oracle d'existence inter-sociétés)."""
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        garde = self.instance is not None \
+            and self.instance.fonction_id == value.pk
+        if (company is not None and value.company_id != company.id) \
+                or not (value.actif or garde):
+            gabarit = self.fields['fonction'].error_messages['does_not_exist']
+            raise serializers.ValidationError(
+                str(gabarit).format(pk_value=value.pk), code='does_not_exist')
+        return value
+
+    def _appliquer_fonction(self, attrs):
+        """Fonction posée ou changée : son intitulé est recopié dans ``poste``
+        et, sans rôle EXPLICITE dans la requête, son rôle par défaut devient
+        celui du compte (mêmes gardes qu'un rôle choisi ; jamais la
+        rétrogradation d'un compte protégé ou du dernier propriétaire)."""
+        fonction = attrs.get('fonction')
+        inst = self.instance
+        if fonction is None or (inst is not None
+                                and inst.fonction_id == fonction.pk):
+            return
+        attrs['poste'] = fonction.intitule[:120]
+        if 'role' in attrs or fonction.role_id is None:
+            return
+        from apps.roles.services import role_par_defaut_applicable
+        if role_par_defaut_applicable(inst, fonction.role):
+            attrs['role'] = self.validate_role(fonction.role)
+
+    def _exiger_fonction(self, attrs):
+        """CRÉATION : dès que la société a au moins une fonction active, la
+        fonction est obligatoire et le rôle obtenu ne peut pas être vide.
+        Société sans fonction : inchangé. Comptes portail : exemptés."""
+        from apps.roles.models import Poste
+        from apps.roles.selectors import ROLES_PORTAIL
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        role = attrs.get('role')
+        if company is None or (role is not None
+                               and role.nom in ROLES_PORTAIL):
+            return
+        if not Poste.objects.filter(company=company, actif=True).exists():
+            return
+        # ENF11 — exigence qui dépend de l'ÉTAT de la société (ses fonctions)
+        # : refus d'état, 409, rangé sous le champ.
+        from core.conflit_etat import ConflitEtat
+        if attrs.get('fonction') is None:
+            raise ConflitEtat({'fonction': [
+                'La fonction est obligatoire : choisissez le poste de la '
+                'personne.']})
+        if role is None:
+            raise ConflitEtat({'role': [
+                "Aucun rôle : cette fonction n'a pas de rôle par défaut, "
+                'choisissez-en un.']})
+
     def validate_supervisor(self, value):
         """Le superviseur doit être dans la même entreprise, jamais soi-même,
         et ne jamais engendrer de cycle dans la chaîne de supervision."""
@@ -513,6 +585,7 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
         modification passe par l'action dédiée ``reinitialiser-mot-de-passe``
         (jamais par l'update générique)."""
         attrs = super().validate(attrs)
+        self._appliquer_fonction(attrs)
         if self.instance is not None:
             if 'password' in attrs:
                 raise serializers.ValidationError({
@@ -524,6 +597,7 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
         if not password:
             raise serializers.ValidationError(
                 {'password': ['Le mot de passe est requis.']})
+        self._exiger_fonction(attrs)
         from .password_policy import validate_new_password
         request = self.context.get('request')
         company = getattr(getattr(request, 'user', None), 'company', None)
@@ -552,13 +626,17 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
                 or CustomUser.ROLE_NORMAL
             )
         user.set_password(password)
-        user.save()
+        with transaction.atomic():  # organigramme : boucle refusée = rollback
+            user.save()
+            if user.fonction_id:
+                recalculer_hierarchie(user.company_id)
         return user
 
     def update(self, instance, validated_data):
         # ASEC3 — jamais d'écriture du hash par l'update générique (``validate``
         # refuse déjà le champ ; ceinture ici).
         validated_data.pop('password', None)
+        fonction_avant = instance.fonction_id
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         # Quand le rôle change, role_legacy doit se réaligner sur son palier —
@@ -568,7 +646,10 @@ class UserSerializer(UniciteEn409Mixin, ChampsStrictsMixin,
                 CustomUser.tier_for_role(validated_data.get('role'))
                 or CustomUser.ROLE_NORMAL
             )
-        instance.save()
+        with transaction.atomic():  # organigramme : boucle refusée = rollback
+            instance.save()
+            if instance.fonction_id != fonction_avant:
+                recalculer_hierarchie(instance.company_id)
         return instance
 
 
