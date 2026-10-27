@@ -468,7 +468,7 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
     expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
     expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_FORCE_MOTRICE)
     const gardeFous = screen.getAllByTestId('garde-fou-segment').map((n) => n.textContent)
-    expect(gardeFous).toEqual([guidance.AUCUNE_ESTIMATION_SEGMENT, guidance.CARBURANT_DECLARE_SEUL])
+    expect(gardeFous).toEqual([guidance.SANS_CHIFFRE_AU_TELEPHONE, guidance.CARBURANT_DECLARE_SEUL])
     expect(screen.getByTestId('panneau-script-appel').textContent).not.toMatch(ESTIMATION)
   })
 
@@ -487,7 +487,7 @@ describe('CAD175 — le bon jeu de questions, et aucune estimation chiffrée', (
     expect(screen.queryByTestId('bandeau-profil-suppose')).not.toBeInTheDocument()
     expect(screen.getByTestId('a-noter')).toHaveTextContent(guidance.A_NOTER_PROCESS)
     expect(screen.getAllByTestId('garde-fou-segment').map((n) => n.textContent))
-      .toEqual([guidance.AUCUNE_ESTIMATION_SEGMENT])
+      .toEqual([guidance.SANS_CHIFFRE_AU_TELEPHONE])
     expect(screen.getByTestId('panneau-script-appel').textContent).not.toMatch(ESTIMATION)
   })
 
@@ -779,6 +779,20 @@ describe('CIQ420 — script d’appel pro', () => {
     fireEvent.click(within(horaires).getByRole('button', { name: 'Soir' }))
     await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
       COMMERCIAL.lead_id, { reponses_categorie: { horaires: 'soir' } }))
+  })
+
+  it('CSV6 — lead pro ou agricole : ni mention D7 ni bloc « ce que le chiffre ne compte pas », la consigne renvoie au devis', async () => {
+    for (const panneau of [INDUSTRIEL, COMMERCIAL, exempleContrat('crm', 'panneau_appel', 'exemple_agricole')]) {
+      armer({ panneau })
+      render(<PanneauScriptAppel mode="fiche" leadId={panneau.lead_id} />)
+      await screen.findByTestId('questions-appel')
+      expect(screen.queryByTestId('mention-d7')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('non-compte')).not.toBeInTheDocument()
+      expect(screen.getAllByTestId('garde-fou-segment')[0])
+        .toHaveTextContent(guidance.SANS_CHIFFRE_AU_TELEPHONE)
+      expect(screen.getByTestId('panneau-script-appel').textContent).not.toContain('ne sait pas encore')
+      cleanup()
+    }
   })
 
   it('CSV2 — la facture : une seule question, DEUX saisies étiquetées de leur unité', async () => {

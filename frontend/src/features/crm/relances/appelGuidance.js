@@ -784,16 +784,18 @@ export const A_NOTER_PAR_FAMILLE = Object.freeze({
 // moyenne tension sourcé) — AUCUN chiffre d'économie ne s'annonce sur ces
 // segments. Et l'économie de carburant ne se calcule que sur ce que le client
 // DÉCLARE (CAD173, Q17) : aucun prix de gasoil de référence n'existe.
-export const AUCUNE_ESTIMATION_SEGMENT = "Aucun chiffre d'économie au "
-  + 'téléphone pour ce segment : le calcul ne sait pas encore le traiter.'
+// CSV6 — pro et agricole ont leur moteur serveur et leur devis : la consigne ne dit
+// plus « le calcul ne sait pas encore », elle renvoie au devis.
+export const SANS_CHIFFRE_AU_TELEPHONE = "Aucun chiffre d'économie au téléphone : "
+  + 'le devis le donne.'
 export const CARBURANT_DECLARE_SEUL = "L'économie de carburant se calcule "
   + 'uniquement sur ce que le client déclare (litres ou dirhams par mois) — '
   + 'jamais sur un prix de gasoil supposé.'
 
 export const GARDE_FOUS_PAR_FAMILLE = Object.freeze({
   residentiel: Object.freeze([]),
-  agricole: Object.freeze([AUCUNE_ESTIMATION_SEGMENT, CARBURANT_DECLARE_SEUL]),
-  pro: Object.freeze([AUCUNE_ESTIMATION_SEGMENT]),
+  agricole: Object.freeze([SANS_CHIFFRE_AU_TELEPHONE, CARBURANT_DECLARE_SEUL]),
+  pro: Object.freeze([SANS_CHIFFRE_AU_TELEPHONE]),
 })
 
 /** Ce que le panneau affiche pour CE lead.

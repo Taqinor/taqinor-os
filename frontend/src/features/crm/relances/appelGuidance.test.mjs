@@ -50,7 +50,7 @@ test('CAD175 — un lead agricole reçoit le panneau AGRICOLE (jamais un script 
   assert.equal(g.famille, 'agricole')
   assert.deepEqual(g.questions.map((q) => q.champ), ['pompage_heures_jour'])
   assert.equal(g.enTete, null, 'la présence à la maison n\'est pas une question de pompage')
-  assert.ok(g.gardeFous.includes(guidance.AUCUNE_ESTIMATION_SEGMENT))
+  assert.ok(g.gardeFous.includes(guidance.SANS_CHIFFRE_AU_TELEPHONE))
   assert.ok(g.gardeFous.includes(guidance.CARBURANT_DECLARE_SEUL))
 })
 
@@ -59,7 +59,7 @@ test('CAD175 — industriel et commercial partagent le jeu PRO', () => {
     const g = guidanceAppel({ ...exemple(), segment, segment_libelle: segment })
     assert.equal(g.livre, true, segment)
     assert.equal(g.famille, 'pro', segment)
-    assert.deepEqual(g.gardeFous, [guidance.AUCUNE_ESTIMATION_SEGMENT], segment)
+    assert.deepEqual(g.gardeFous, [guidance.SANS_CHIFFRE_AU_TELEPHONE], segment)
   }
 })
 
@@ -794,7 +794,7 @@ test('CIQ420 — aucune clé d\'économie dans la guidance pro', () => {
   for (const variante of ['exemple_commercial', 'exemple_industriel']) {
     const g = guidanceAppel(exemple(variante))
     assert.doesNotMatch(JSON.stringify(Object.keys(g)), /econom|payback|gain/i)
-    assert.deepEqual(g.gardeFous, [guidance.AUCUNE_ESTIMATION_SEGMENT])
+    assert.deepEqual(g.gardeFous, [guidance.SANS_CHIFFRE_AU_TELEPHONE])
   }
 })
 
@@ -829,7 +829,7 @@ test('CIQ420 — textes de la visite pro : sans chiffre ni crochet', () => {
 test('CAD175 — consignes à noter et garde-fous : ni chiffre ni crochet', () => {
   const textes = [
     ...guidance.A_NOTER_PAR_FAMILLE.agricole, ...guidance.A_NOTER_PAR_FAMILLE.pro,
-    guidance.AUCUNE_ESTIMATION_SEGMENT, guidance.CARBURANT_DECLARE_SEUL,
+    guidance.SANS_CHIFFRE_AU_TELEPHONE, guidance.CARBURANT_DECLARE_SEUL,
   ]
   for (const texte of textes) {
     assert.doesNotMatch(texte, /[0-9٠-٩۰-۹]/, texte)

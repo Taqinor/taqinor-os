@@ -555,7 +555,7 @@ la commerciale dans le panneau d'appel guidé, PENDANT l'appel. Elles vivent dan
 `frontend/src/features/crm/relances/appelGuidance.js` (constantes du même nom) ; le test
 `PanneauScriptAppel.test.jsx` les re-dérive de ce fichier : une modification se fait ICI et dans le module, dans le
 même commit. Aucune ne porte un chiffre. `MENTION_D7` reprend la tâche CAD152, complétée de l'inclinaison par CAD157
-(décision D7 tranchée : orientation, inclinaison et ombrage ne sont pas câblés au calcul) ; `BANDEAU_PROFIL_SUPPOSE`
+(décision D7 tranchée : orientation, inclinaison et ombrage ne sont pas câblés au calcul) — CSV6 : cette mention et le bloc « Ce que le chiffre ne compte pas » sont RÉSIDENTIELS, un lead pro ou agricole ne les voit pas ;  `BANDEAU_PROFIL_SUPPOSE`
 reprend mot pour mot la décision fondateur du 21/09/2026 (Q5). ✎ Les autres formulations sont à valider par le
 fondateur. Darija : aucune version (consignes d'écran, jamais dites au client).
 MENTION_D7 : Orientation, inclinaison et ombrage servent au dossier et à la visite, pas au chiffre.
@@ -574,7 +574,7 @@ NON_COMPTE_PLAQUE : Pas compté dans le chiffre tant que la puissance manque : p
 A_NOTER_FORCE_MOTRICE : À noter dans la note d’appel : le compteur de la pompe est-il en abonnement force motrice ?
 A_NOTER_MEILLEUR_MOMENT : À noter dans la note d’appel : le meilleur moment pour le joindre (jour de souk, heures au champ).
 A_NOTER_PROCESS : À noter dans la note d’appel : les process critiques, qui ne doivent jamais s’arrêter.
-AUCUNE_ESTIMATION_SEGMENT : Aucun chiffre d'économie au téléphone pour ce segment : le calcul ne sait pas encore le traiter.
+SANS_CHIFFRE_AU_TELEPHONE : Aucun chiffre d'économie au téléphone : le devis le donne.
 CONSIGNE_CONTRAT_INCONNU : Le client ne sait pas : proposez-lui d'envoyer une photo de sa facture par WhatsApp.
 CARBURANT_DECLARE_SEUL : L'économie de carburant se calcule uniquement sur ce que le client déclare (litres ou dirhams par mois) — jamais sur un prix de gasoil supposé.
 SEGMENT_PROBABLE_CONSIGNE : confirmez avec le client.
@@ -641,7 +641,7 @@ carburant ; pro : consommation en kWh, puissance souscrite, surface, décideur) 
 champ, ou à défaut le libellé de la fiche. Les réponses attendues qui n'ont AUCUNE colonne (force motrice, surface et
 culture, tension bt/mt, rythme d'activité et week-end, groupe électrogène, process critiques) sont les consignes
 `A_NOTER_*` ci-dessus : elles se notent dans la note de l'appel, jamais dans un champ inventé. Sur ces deux segments,
-`AUCUNE_ESTIMATION_SEGMENT` rappelle qu'aucun chiffre d'économie ne s'annonce (le moteur horaire ne les traite pas) ;
+`SANS_CHIFFRE_AU_TELEPHONE` rappelle qu'aucun chiffre d'économie ne s'annonce au téléphone, le devis le donnant (CSV6 : les deux moteurs serveur existent, l'ancienne consigne « le calcul ne sait pas encore le traiter » est retirée) ;
 `CARBURANT_DECLARE_SEUL` reprend la règle CAD173 (Q17). ✎ Formulations à valider par le fondateur. Darija : aucune
 version (consignes d'écran).
 

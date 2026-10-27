@@ -597,7 +597,10 @@ export default function PanneauScriptAppel({
       )}
       {/* CAD157 — ce que le chiffre ne compte PAS, dit à côté des réponses :
           aucune de ces mentions n'ouvre un champ au calcul (D7 tranchée). */}
-      {g?.livre && (
+      {/* CSV6 — ce bloc est RÉSIDENTIEL (orientation et ombrage, clim/VE/pompe,
+          tranche ONEE, montant de la facture) : un lead pro ou agricole n'a ni
+          D7 ni ces mentions, il ne les voit pas. */}
+      {g?.livre && g.famille === 'residentiel' && (
         <div className="flex flex-col gap-1 rounded-md border border-border p-2" data-testid="non-compte">
           <p className="font-medium text-foreground">{NON_COMPTE_TITRE}</p>
           <p data-testid="mention-d7">{MENTION_D7}</p>
