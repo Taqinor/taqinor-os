@@ -191,3 +191,11 @@ class SchemaTarifDeclareTest(SimpleTestCase):
         self.assertIn('2025', tc.tarif_applicable(declare)['mention'])
         origine = tc.tarif_applicable(declare, regles_origine=True)
         self.assertEqual(origine['tarifs_par_poste'][0]['tarif_kwh_ttc'], 1.18)
+
+    def test_cec13_regles_du_devis(self):
+        from types import SimpleNamespace
+        self.assertEqual(tc.regles_du(None), {'regles_origine': False})
+        self.assertEqual(tc.regles_du(SimpleNamespace(regles_calcul=2)),
+                         {'regles_origine': True})
+        self.assertEqual(tc.regles_du(SimpleNamespace(regles_calcul=3)),
+                         {'regles_origine': False})

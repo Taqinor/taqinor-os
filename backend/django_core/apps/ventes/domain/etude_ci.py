@@ -1201,7 +1201,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             'longueurs_non_relevees', 'contraintes',
             'Longueurs de câble non relevées — à confirmer à la visite.'))
     tension = res.valeur('tension')
-    tarif = tarif_ci.tarif_applicable(res.valeur('tarif_declare'), tension=tension)
+    tarif = tarif_ci.tarif_applicable(res.valeur('tarif_declare'), tension=tension, **tarif_ci.regles_du(devis))
     # ADEV76 — dit dès la résolution : un refus nomme le contrat du lead même
     # quand le profil de charge arrête l'étude plus loin.
     if tarif.get('origine') == tarif_ci.ORIGINE_OMIS:

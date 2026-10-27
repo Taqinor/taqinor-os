@@ -178,6 +178,17 @@ def _prime(mt, prime_kva_an):
     return round(prime_kva_an * kva, 2)
 
 
+def regles_du(devis):
+    """CEC13 — ``{regles_origine}`` pour :func:`tarif_applicable` : vrai pour
+    un devis sous le niveau 3 (envoyé avant les corrections du 27/10/2026),
+    faux sans devis (nouveau dimensionnement)."""
+    if devis is None:
+        return {'regles_origine': False}
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
+    return {'regles_origine': not regles_au_moins(devis, REGLES_CORRIGEES_2710)}
+
+
 def tarif_applicable(tarif_declare, *, tension=None, millesime=2026,
                      regles_origine=False):
     """La forme ``tarif`` du contrat ``tarifs_ci.json`` pour ce client.

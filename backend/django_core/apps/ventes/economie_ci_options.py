@@ -62,7 +62,8 @@ SOURCE_DEFAUT_BATTERIE = (
     "défaut fondateur (à revoir) : garantie usuelle de 10 ans, aucune "
     "garantie ni nombre de cycles saisis sur la fiche batterie")
 CYCLES_PAR_AN = 365  # une décharge par jour (pricing.BATTERY_CYCLES_PER_DAY)
-MOTS_ACCESSOIRE = ('câble', 'cable', 'connecteur', 'fusible', 'support')
+MOTS_ACCESSOIRE = ('câble', 'cable', 'connecteur', 'fusible', 'support',
+                   'rack', 'coffret')
 
 
 def annee_remplacement_batterie(garantie_mois=None, cycles_publies=None):
