@@ -207,6 +207,14 @@ class AGM9CouvertureNonVerifiableTests(SimpleTestCase):
         self.assertEqual(bloc['statut'], 'calcule')
         self.assertEqual(bloc['economie']['retour_ans'], 5)
 
+    def test_devis_envoye_regles_2_garde_la_publication(self):
+        """« Nouveaux rendus seulement » : un devis aux règles < 3 garde le
+        bloc publiable qu'il avait (ce que le client a reçu)."""
+        bloc = E.economie_pompage(
+            saisies_12000(), sortie_etude={'pompe': {'mode': 'neuve'}},
+            lignes=lignes_reference(), reglages=CHARGES, regles_2710=False)
+        self.assertTrue(bloc['publiable_client'])
+
     def test_etude_couverte_inchangee(self):
         bloc = self.bloc(ETUDE_COUVERTE)
         self.assertTrue(bloc['publiable_client'])
@@ -341,3 +349,16 @@ class AGM12SystemeFactureTests(_Base):
         etude.assert_called_once()
         self.assertIs(etude.call_args.kwargs['facture'], facture)
         self.assertEqual(etude.call_args.kwargs['devis'].pk, self.devis.pk)
+
+    def test_devis_envoye_regles_2_garde_l_etude_d_hier(self):
+        """« Nouveaux rendus seulement » : un devis aux règles < 3 (envoyé
+        avant le 27/10) garde l'étude du catalogue — aucune facture lue."""
+        from apps.ventes.models import Devis
+        Devis.objects.filter(pk=self.devis.pk).update(regles_calcul=2)
+        with mock.patch.object(pompage, 'facture_du_devis') as lecture, \
+                mock.patch.object(pompage, 'etudier_pompage',
+                                  return_value={'pompe': {'mode': 'neuve'}}
+                                  ) as etude:
+            E.economie_pompage_pour_devis(self.devis.pk, self.co)
+        lecture.assert_not_called()
+        self.assertIsNone(etude.call_args.kwargs['facture'])

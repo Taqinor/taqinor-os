@@ -1163,8 +1163,13 @@ def _bloc_vide():
 
 def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
                      reglages=None, reperes=None, surface_irriguee_ha=None,
-                     conditions_fda=None, investissement_ttc_canonique=None):
+                     conditions_fda=None, investissement_ttc_canonique=None,
+                     regles_2710=True):
     """Le bloc ``economie_pompage`` (contrat ``economie_pompage.json``).
+
+    ``regles_2710`` (AGM9) : faux pour un devis déjà envoyé aux règles < 3
+    (« nouveaux rendus seulement ») — sa couverture supposée garde le bloc
+    publiable comme le client l'a reçu.
 
     Args:
         saisies: ``etude_params.saisies_economie_pompage`` (propriétaire
@@ -1282,7 +1287,7 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     motifs.extend(motifs_charges)
     couverture = _couverture(sortie_etude, dep['_mois'])
     bloc['couverture'] = couverture
-    if not couverture['verifiee']:
+    if not couverture['verifiee'] and regles_2710:
         # AGM9 (D-AGM-3) — une couverture supposée (100 % du carburant
         # évité) ne fonde jamais un chiffre client ; l'aperçu vendeur reste.
         motifs.append(couverture['motif'])
@@ -1438,13 +1443,15 @@ def _surface_irriguee(sortie_etude):
 
 
 def economie_pompage_depuis(company, saisies, *, sortie_etude, lignes,
-                            investissement_ttc_canonique=None):
+                            investissement_ttc_canonique=None,
+                            regles_2710=True):
     """Le calcul commun de la lecture d'un devis ET de l'aperçu (D-AGR-1)."""
     return economie_pompage(
         saisies or {}, sortie_etude=sortie_etude, lignes=lignes,
         reglages=reglages_pompage(company), reperes=reperes_pompage(company),
         surface_irriguee_ha=_surface_irriguee(sortie_etude),
-        investissement_ttc_canonique=investissement_ttc_canonique)
+        investissement_ttc_canonique=investissement_ttc_canonique,
+        regles_2710=regles_2710)
 
 
 def investissement_canonique_du_devis(devis):
@@ -1484,10 +1491,16 @@ def economie_pompage_pour_devis(devis_id, company):
     # AGM12 — l'étude porte sur le système FACTURÉ (les lignes du devis), pas
     # sur la proposition du catalogue : la couverture qui fixe les économies
     # est celle de la pompe réellement vendue (comme le rafraîchisseur).
-    facture = facture_du_devis(devis, lire_catalogue(company))
+    # « Nouveaux rendus seulement » : un devis envoyé aux règles < 3 garde
+    # l'étude du catalogue et la publication d'hier (ce que le client a reçu).
+    from .domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+    regles_2710 = regles_au_moins(devis, REGLES_CORRIGEES_2710)
+    facture = (facture_du_devis(devis, lire_catalogue(company))
+               if regles_2710 else None)
     sortie_etude = etudier_pompage(company, {}, devis=devis, facture=facture)
     return economie_pompage_depuis(company, saisies,
                                    sortie_etude=sortie_etude,
                                    lignes=lignes_pour_economie(devis),
                                    investissement_ttc_canonique=(
-                                       investissement_canonique_du_devis(devis)))
+                                       investissement_canonique_du_devis(devis)),
+                                   regles_2710=regles_2710)
