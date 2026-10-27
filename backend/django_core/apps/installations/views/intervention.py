@@ -639,7 +639,8 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         puis renvoyée avec le pourcentage de complétion."""
         return self._prep_response(self.get_object())
 
-    @oa.extend_schema(request=oa.body('ChoisirKitRequete', kit=oa.i(True)), responses=InterventionPreparationSerializer)
+    @oa.extend_schema(request=oa.body('ChoisirKitRequete', kit=oa.i(True, null=True)),
+                      responses=InterventionPreparationSerializer)
     @action(detail=True, methods=['post'], url_path='choisir-kit',
             permission_classes=[IsResponsableOrAdmin])
     def choisir_kit(self, request, pk=None):
@@ -648,8 +649,10 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         from apps.outillage.models import KitOutillage
         interv = self.get_object()
         prep = field_services.ensure_preparation(interv)
-        kit_id = request.data.get('kit')
-        if kit_id in (None, '', 'null'):
+        # api-fuzz-full 27/10 : `kit` OBLIGATOIRE et nullable (null = retirer le
+        # kit), comme publié — absent était accepté (retrait muet du kit).
+        kit_id = oa.champ_requis(request, 'kit')
+        if kit_id is None:
             prep.kit = None
         else:
             kit = KitOutillage.objects.filter(

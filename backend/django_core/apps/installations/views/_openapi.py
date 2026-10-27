@@ -95,6 +95,16 @@ def id_ou_none(valeur):
     return None
 
 
+def champ_requis(request, nom):
+    """api-fuzz-full 27/10 (ENF11) — valeur du champ de corps OBLIGATOIRE
+    ``nom`` (``null`` compris, s'il est publié nullable) ; absent → 400 nommant
+    le champ (le schéma le publie ``required``)."""
+    corps = corps_objet(request)
+    if nom not in corps:
+        raise ValidationError({nom: 'Ce champ est obligatoire.'})
+    return corps[nom]
+
+
 def choix_corps(request, nom, choix, defaut):
     """api-fuzz-full 27/10 (ENF11) — valeur du champ de corps ``nom`` parmi
     ``choix`` (``defaut`` si absent) ; toute autre valeur → 400 nommant le

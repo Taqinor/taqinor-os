@@ -262,6 +262,20 @@ class TestKitTools(TestCase):
         outils = {o['libelle'] for o in r.data['outils']}
         self.assertEqual(outils, {'Perceuse', 'Échelle'})
 
+    def test_choisir_kit_obligatoire_null_retire(self):
+        # api-fuzz-full 27/10 : `kit` est publié OBLIGATOIRE et nullable — un
+        # corps sans `kit` retirait le kit en silence (200).
+        r = self.api.post(f'{self.url}/choisir-kit/', {}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('kit', r.data)
+        r = self.api.post(f'{self.url}/choisir-kit/', {'kit': self.kit.id},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        r = self.api.post(f'{self.url}/choisir-kit/', {'kit': None},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIsNone(r.data['kit'])
+
     def test_check_tool_and_completion(self):
         prep = field_services.ensure_preparation(self.interv)
         outil_ligne = prep.outils.first()
