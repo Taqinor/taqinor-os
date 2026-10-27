@@ -12,16 +12,20 @@ interface Props {
 }
 const { champs, demande, valeur, cls } = Astro.props;
 const visibles = champs.filter((c) => demande(c.cle));
-const normaux = visibles.filter((c) => !c.plaque);
+// CQSTW9 — pas de pompe actuelle (« aucune ») : ses questions et sa plaque sont masquées.
+const sansPompe = valeur('pompe_alim_actuelle') === 'aucune';
+const normaux = visibles.filter((c) => !c.plaque && !c.actuelle);
+const actuelles = visibles.filter((c) => c.actuelle && !c.plaque);
 const plaques = visibles.filter((c) => c.plaque);
-const plaqueMasquee = valeur('mode_pompe') !== 'existante';
+const plaqueMasquee = valeur('mode_pompe') !== 'existante' || sansPompe;
 const groupes = [
   { id: undefined, liste: normaux },
+  { id: 'q-pompe-actuelle-wrap', liste: actuelles },
   { id: 'q-plaque-wrap', liste: plaques },
 ].filter((g) => g.liste.length > 0);
 ---
 {groupes.map((g) => (
-  <div id={g.id} class:list={['flex flex-col gap-4', g.id && plaqueMasquee ? 'hidden' : '']}>
+  <div id={g.id} class:list={['flex flex-col gap-4', g.id === 'q-plaque-wrap' && plaqueMasquee || g.id === 'q-pompe-actuelle-wrap' && sansPompe ? 'hidden' : '']}>
     {g.liste.map((c) => (
       <div>
         <label for={c.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={c.libelle.en} data-ar={c.libelle.ar}>{c.libelle.fr}</label>

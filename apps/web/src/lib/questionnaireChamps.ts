@@ -170,6 +170,8 @@ export interface ChampDonnee {
   options?: ReadonlyArray<{ value: string; libelle: L3 }>;
   /** Plaque de la pompe actuelle : dessinée seulement si mode_pompe = existante. */
   plaque?: boolean;
+  /** Question sur la pompe actuelle : masquée quand l'alimentation actuelle vaut « aucune » (CQSTW9). */
+  actuelle?: boolean;
 }
 
 
@@ -187,15 +189,15 @@ export const CHAMPS_POMPAGE_CQST: readonly ChampDonnee[] = [
     libelle: L("Hauteur totale de pompage : profondeur de l'eau + hauteur jusqu'au bassin, en mètres — si vous la connaissez", 'Total pumping height: depth of the water + height up to the reservoir, in metres — if you know it', 'الارتفاع الكلي للضخ: عمق الماء + الارتفاع إلى الحوض بالأمتار — إن كنتم تعرفونه'),
   },
   {
-    cle: 'pompe_actuelle_debit_m3h', id: 'q-pompe-debit', type: 'number', min: 0,
+    cle: 'pompe_actuelle_debit_m3h', id: 'q-pompe-debit', type: 'number', actuelle: true, min: 0,
     libelle: L("Combien d'eau votre pompe actuelle sort-elle par heure ? (m³/h)", 'How much water does your current pump deliver per hour? (m³/h)', 'كم من الماء تعطي مضختكم الحالية في الساعة؟ (م³/س)'),
   },
   {
-    cle: 'pompage_heures_jour', id: 'q-pompage-heures', type: 'number', min: 0, max: 24,
+    cle: 'pompage_heures_jour', id: 'q-pompage-heures', type: 'number', actuelle: true, min: 0, max: 24,
     libelle: L("Combien d'heures par jour votre pompe actuelle tourne-t-elle ? (h)", 'How many hours a day does your current pump run? (h)', 'كم ساعة في اليوم تشتغل مضختكم الحالية؟ (س)'),
   },
   {
-    cle: 'mode_pompe', id: 'q-mode-pompe', type: 'select',
+    cle: 'mode_pompe', id: 'q-mode-pompe', type: 'select', actuelle: true,
     libelle: L('On installe une pompe neuve, ou on garde votre pompe actuelle ?', 'Do we fit a new pump, or keep your current pump?', 'هل نركب مضخة جديدة أم نحتفظ بمضختكم الحالية؟'),
     options: [
       { value: 'neuve', libelle: L('Une pompe neuve', 'A new pump', 'مضخة جديدة') },
@@ -262,3 +264,6 @@ export const AIDES_FACTURE: Record<'tension' | 'option_bt' | 'kva' | 'cos_phi', 
 };
 // CQSTW8 — titre du repli des questions facultatives (pro).
 export const POUR_AFFINER: L3 = L('Pour affiner (facultatif)', 'To refine (optional)', 'للتدقيق أكثر (اختياري)');
+// CQSTW9 — texte GPS : « terrain / forage » pour un agriculteur, « toit » ailleurs.
+export const GPS_AGRI: L3 = L("Partagez la position de votre terrain (ou de votre forage) pour qu'on le localise précisément.", 'Share the position of your land (or your borehole) so we can locate it precisely.', 'شاركوا موقع أرضكم (أو بئركم) لنتمكن من تحديده بدقة.');
+export const GPS_TOIT: L3 = L("Partagez votre position pour qu'on localise précisément votre toit.", 'Share your position so we can locate your roof precisely.', 'شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.');

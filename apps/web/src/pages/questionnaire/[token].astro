@@ -51,7 +51,7 @@ import {
   SOURCE_EAU_VALUES,
   TYPE_TOITURE_VALUES,
 } from '../../lib/questionnaire';
-import { type L3, AIDES_FACTURE, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, HORS_HORAIRES_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST } from '../../lib/questionnaireChamps';
+import { type L3, AIDES_FACTURE, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, HORS_HORAIRES_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST, GPS_AGRI, GPS_TOIT } from '../../lib/questionnaireChamps';
 import ChampsDonnees from '../../components/questionnaire/ChampsDonnees.astro';
 import ChampsHeuresActivite from '../../components/questionnaire/ChampsHeuresActivite.astro';
 import Repli from '../../components/questionnaire/Repli.astro';
@@ -238,6 +238,7 @@ const releveVal = (i: number, key: string): string => {
 const releveRows = Array.from({ length: RELEVE_CONSO_MAX_MOIS }, (_, i) => i);
 // Fondateur 26/10/2026 — un lead pro (une section pro servie) : le GPS sert au
 // calcul heure par heure de la production, la page le lui dit.
+const gpsTexte = sections.includes('pompage') ? GPS_AGRI : GPS_TOIT;
 const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'photo_factures', 'photo_poste'].includes(s));
 ---
 
@@ -393,11 +394,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                               Partagez la position de votre site : votre position permet un calcul heure par heure de la production.
                             </p>
                           ) : (
-                            <p class="text-sm text-encre-soft" data-i18n
-                              data-en="Share your position so we can locate your roof precisely."
-                              data-ar="شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.">
-                              Partagez votre position pour qu'on localise précisément votre toit.
-                            </p>
+                            <p class="text-sm text-encre-soft" data-i18n data-en={gpsTexte.en} data-ar={gpsTexte.ar}>{gpsTexte.fr}</p>
                           )}
                           <button type="button" id="q-gps-btn"
                             class="inline-flex w-full items-center justify-center gap-2 border border-azur-600 px-5 py-3 text-sm font-bold text-azur-700 transition-colors hover:bg-azur-600 hover:text-white sm:w-auto"
@@ -1546,9 +1543,12 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     });
 
     // CQSTW1 — la plaque de la pompe n'apparaît qu'après « je garde ma pompe ».
-    $('q-mode-pompe')?.addEventListener('change', (e) => {
-      $('q-plaque-wrap')?.classList.toggle('hidden', (e.target as HTMLSelectElement).value !== 'existante');
-    });
+    const syncPompeActuelle = () => {
+      const aucune = fieldVal('q-pompe-alim') === 'aucune';
+      $('q-pompe-actuelle-wrap')?.classList.toggle('hidden', aucune);
+      $('q-plaque-wrap')?.classList.toggle('hidden', aucune || fieldVal('q-mode-pompe') !== 'existante');
+    };
+    $('q-mode-pompe')?.addEventListener('change', syncPompeActuelle);
 
     // ── Sous-champs équipements : n'apparaissent que si la case = OUI ──
     document.querySelectorAll<HTMLInputElement>('.q-equip-radio').forEach((radio) => {
@@ -1612,6 +1612,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       const sansCarburant = alim === 'aucune' || alim === 'electrique';
       document.querySelectorAll<HTMLElement>('.q-carburant-wrap').forEach((el) => el.classList.toggle('hidden', sansCarburant));
       $('q-butane-wrap')?.classList.toggle('hidden', sansCarburant || alim === 'diesel');
+      syncPompeActuelle();
     });
 
     // ── CIW406 (sections pro) : MT → registres, boutons jours/mois, groupe, catégorie ──
