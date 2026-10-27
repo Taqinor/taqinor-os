@@ -71,10 +71,9 @@ POSES_SUIVANT_LE_TOIT = ('bac_acier', 'toiture_inclinee')
 #: terrasse → lestée. La borne s'applique, dite « pose estimée, à confirmer au
 #: calepinage ». CORC5 (27/10/2026, décision prise pour le fondateur, à
 #: revoir) : couverture inconnue → la MÊME pose que celle que la composition
-#: CHIFFRE (fondateur 26/10 : toit inconnu = toit plat lesté) — production,
-#: borne de toit et prix décrivent la même installation.
+#: CHIFFRE (``composition.TYPE_POSE_DEFAUT`` ; fondateur 26/10 : toit
+#: inconnu = toit plat lesté) — production, borne et prix : la même pose.
 POSE_PAR_DEFAUT_COUVERTURE = {'terrasse_beton': 'toit_plat_leste'}
-POSE_PAR_DEFAUT = TYPE_POSE_DEFAUT
 
 #: (feuille, chemin dans le corps / dans ``Devis.etude_params``).
 FEUILLES = (
@@ -694,7 +693,7 @@ def _toit_declare(res):
     toit = {'type_pose': res.valeur('type_pose'), 'pente_deg': res.valeur('pente_deg'),
             'azimut_deg': res.valeur('azimut_deg')}
     pose = toit['type_pose'] or POSE_PAR_DEFAUT_COUVERTURE.get(
-        res.valeur('couverture'), POSE_PAR_DEFAUT)
+        res.valeur('couverture'), TYPE_POSE_DEFAUT)
     return toit, dict(toit, type_pose=pose)
 
 
@@ -854,7 +853,7 @@ def _borne_toit(res, devis, module, alertes):
     mode_pose = res.valeur('type_pose')
     pose_estimee = not mode_pose
     if pose_estimee:
-        mode_pose = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'), POSE_PAR_DEFAUT)
+        mode_pose = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'), TYPE_POSE_DEFAUT)
     resultat = calepinage_services.contenance_surface_declaree(
         surface, mode_pose=mode_pose, cotes_module_m=cotes,
         inclinaison_deg=pente if pente is not None else PVGIS_ANGLE_DEG,
