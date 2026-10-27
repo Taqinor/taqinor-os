@@ -94,6 +94,7 @@ def _hybride(produit, specs, plage, triphase):
         'produit': produit.id, 'nom': produit.nom, 'kw_ac': specs.get('ac_kw'), 'prix': prix,
         'triphase': triphase, 'phases': specs.get('phases'), 'eligible_ci': True,
         'motif_exclusion': None, 'dc_max_kwc': specs.get('dc_max_kwc'),
+        'chaines_max_par_mppt': specs.get('chaines_max_par_mppt'),
         's_max_kva': specs.get('s_max_kva'), 'plage_batterie_v': list(plage),
         'bat_max_charge_kw': specs.get('bat_max_charge_kw'),
         'spec': specs_onduleur(specs, produit.nom)[0] if specs else None,
@@ -211,14 +212,16 @@ def _alerte(code, message, niveau='alerte'):
 def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, composer,
                   borne_toit, **noyau):
     from apps.ventes.etude_horaire import simuler_batterie_jour
-    from apps.ventes.moteur_ci.batterie import dimensionner_option_avec
+    from apps.ventes.moteur_ci.batterie import (
+        MAX_HYBRIDES_PARALLELE, dimensionner_option_avec,
+    )
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     return dimensionner_option_avec(
         simuler=simuler_batterie_jour,
         kwc_depart=evaluation['kwc'], pmax_wc=(catalogue.get('module') or {}).get('pmax_wc'),
         combiner=lambda kwc: combiner_onduleurs(
             kwc, bat['hybrides'], phase=phase, module=catalogue.get('module_spec'),
-            ac_max_kw=ps_kva),
+            ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE),
         composer=lambda kwc, onduleurs: composer(kwc, onduleurs, bat.get('elements')),
         batteries=batteries, hybrides=bat['hybrides'], kwc_max=(borne_toit or {}).get('kwc'),
         ps_kva=ps_kva, **noyau)

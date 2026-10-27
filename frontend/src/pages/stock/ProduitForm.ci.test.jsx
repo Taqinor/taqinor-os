@@ -140,6 +140,15 @@ describe('CIQ104 — rôle C&I et fiche limiteur', () => {
     expect(await screen.findByLabelText("Nombre d'onduleurs pilotés")).toHaveValue(null)
     expect(screen.getByLabelText('Courant maxi en direct (A)')).toHaveValue(null)
   })
+
+  // CCAT5 (revue) — sans rôle C&I déclaré, le bloc vient de la fiche DÉJÀ typée
+  // (repli `??` de typeFicheCiCourant) : une ligne insérée au milieu de la
+  // chaîne l'avait coupé, tests verts.
+  it('sans rôle C&I déclaré, la fiche limiteur servie garde son bloc', async () => {
+    renderEdit({ role_ci: '' })
+    await screen.findByText(/Éditer/)
+    expect(await screen.findByLabelText("Nombre d'onduleurs pilotés")).toBeInTheDocument()
+  })
 })
 
 describe('CIQ104 — onduleur exclu et filtre « C&I à compléter »', () => {

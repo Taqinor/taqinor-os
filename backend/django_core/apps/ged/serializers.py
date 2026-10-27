@@ -7,7 +7,7 @@ from core.champs_stricts import (
     MOTIF_SANS_NUL, ChaineStricte, ChampsStrictsSansDecimalMixin,
     DecimalStricte, IdInconnu404Mixin, MotifUrlPublie)
 from core.mixins import SameCompanyFKSerializerMixin
-from core.unicite import ConflitUnicite
+from core.unicite import ConflitUnicite, UniciteEn409Mixin
 
 from .models import (
     AclGed, AnnotationDocument, ArchivageLegal, Cabinet, CertificatDestruction,
@@ -131,10 +131,14 @@ class DocumentTagSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
         return slug
 
 
-class DocumentTagAssignmentSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
+class DocumentTagAssignmentSerializer(UniciteEn409Mixin, IdInconnu404Mixin, ChampsStrictsSansDecimalMixin,
                                       SameCompanyFKSerializerMixin, serializers.ModelSerializer):
     """GED9 — Application d'un tag à un document. `document` et `tag` doivent
-    appartenir à la société courante ; `company`/`created_by` posés serveur."""
+    appartenir à la société courante ; `company`/`created_by` posés serveur.
+
+    api-fuzz-full 27/10 (ENF11) : le tag déjà posé sur ce document
+    (``unique_together``) est un refus d'ÉTAT → 409 ``unique_conflict``
+    (``UniciteEn409Mixin``), le corps était conforme (il faisait 400)."""
     tag_nom = serializers.CharField(source='tag.nom', read_only=True, allow_null=True)
     document_nom = serializers.CharField(
         source='document.nom', read_only=True, allow_null=True)

@@ -48,6 +48,13 @@ function rendre(formInitial = baseForm) {
 }
 
 describe('CIQ106 — prestations C&I et bande prix/kWc', () => {
+  it("CCAT101 — le titre « Prestations C&I » porte l'ancre #prestations-ci", () => {
+    rendre()
+    const ancre = document.getElementById('prestations-ci')
+    expect(ancre).not.toBeNull()
+    expect(ancre).toHaveTextContent('Prestations C&I')
+  })
+
   it('aucune valeur pré-remplie : chaque prestation est « prix à renseigner »', () => {
     rendre()
     const montant = screen.getByLabelText('Pose des modules — Fixe HT')

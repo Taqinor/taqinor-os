@@ -84,7 +84,7 @@ backend/django_core/apps/ventes/offres_tailles.py::_carte_du_devis::9352ee4da552
 # --- backend/django_core/apps/ventes/domain/bornes.py
 
 # --- backend/django_core/apps/ventes/domain/composition.py
-backend/django_core/apps/ventes/domain/composition.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.
+backend/django_core/apps/ventes/domain/composition_residentielle.py::composition_residentielle._candidat::cd82504b8a45 | BATHOMO (26/08/2026) : cle de COMPARAISON des candidates de banc batterie (la moins chere gagne) ; la valeur arrondie n'est ni servie ni stockee, le prix de ligne reel passe par la chaine de pricing.
 
 # --- backend/django_core/apps/ventes/domain/dimensionnement_devis.py
 backend/django_core/apps/ventes/domain/dimensionnement_devis.py::capacite_batterie_des_lignes::5a537e209151 | pas un montant : capacite batterie totale en kWh lue des lignes (le scan matche 'total') — arrondi d'affichage pre-existant, deplace tel quel par QJR77

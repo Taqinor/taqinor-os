@@ -575,3 +575,31 @@ describe('CatalogueTable — AGR106 pompage à compléter', () => {
     expect(screen.queryByTestId('bandeau-kit-pompage')).toBeNull()
   })
 })
+
+// CCAT3/CCAT6 — cellule prix d'un article C&I sans prix de vente : prestation →
+// lien routeur vers Paramètres (onglet Devis, ancre Prestations C&I) ; coffret
+// au barème → badge « au barème », jamais « prix à renseigner ».
+describe('CatalogueTable — prix des articles C&I (CCAT3, CCAT6)', () => {
+  const ciProduit = (id, role, prixConnu) => baseProduit({
+    id, nom: `Article ${role}`, sku: `CI-${id}`, prix_vente: '0.00', role_ci: role,
+    etat_ci: {
+      role_ci: role, libelle: role, prix_connu: prixConnu, eligible_ci: true,
+      motif_exclusion: null,
+    },
+  })
+
+  it('prestation : lien vers /parametres?onglet=devis#prestations-ci', () => {
+    renderTable({ produits: [ciProduit(31, 'pose_modules', false)] })
+    const liens = screen.getAllByTestId('tarif-parametres-ci')
+    expect(liens.length).toBeGreaterThan(0)
+    for (const lien of liens) {
+      expect(lien.getAttribute('href')).toBe('/parametres?onglet=devis#prestations-ci')
+    }
+  })
+
+  it('coffret sans prix de vente mais au barème : badge « au barème »', () => {
+    renderTable({ produits: [ciProduit(32, 'coffret_dc', true)] })
+    expect(screen.getAllByText('au barème (par onduleur / par panneau)').length).toBeGreaterThan(0)
+    expect(screen.queryByText('prix à renseigner')).toBeNull()
+  })
+})
