@@ -84,7 +84,10 @@ CHAMPS_PAR_SECTION = {
                 # laissait son devis bloqué.
                 'pompe_hmt_m', 'pompe_actuelle_debit_m3h',
                 'pompage_heures_jour', 'mode_pompe', 'pompe_actuelle_kw',
-                'pompe_actuelle_tension_v', 'pompe_actuelle_phases'),
+                'pompe_actuelle_tension_v', 'pompe_actuelle_phases',
+                # CQST6 (AGV, D-AGR-4) — le forage connu du client évite la
+                # visite du point d'eau avant devis.
+                'profondeur_forage_m', 'debit_forage_m3h'),
     # Sections PHOTO : aucune colonne — la réponse est une pièce jointe.
     'photo_facture': (),
     'photo_compteur': (),
@@ -343,7 +346,8 @@ _POMPAGE_ESSENTIELS = ('source_eau', 'niveau_statique_m', 'besoin_eau_m3j',
 _POMPAGE_COLONNES_MODELE = ('pompe_hmt_m', 'pompe_actuelle_debit_m3h',
                             'pompage_heures_jour', 'mode_pompe',
                             'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
-                            'pompe_actuelle_phases')
+                            'pompe_actuelle_phases', 'profondeur_forage_m',
+                            'debit_forage_m3h')
 #: CQST3 — la plaque de la pompe actuelle n'est posée que si le client garde
 #: sa pompe (``mode_pompe`` = existante) : jamais à un client en pompe neuve.
 _POMPAGE_PLAQUE = ('pompe_actuelle_kw', 'pompe_actuelle_tension_v',
@@ -791,6 +795,10 @@ _PROVENANCE_ECRITE = {
     'compteur_puissance_kva': ('puissance_souscrite_source', 'declare'),
     'surface_toiture_m2': ('surface_source', 'declare'),
     'cos_phi': ('cos_phi_source', 'facture'),
+    # CQST3/CQST6 — HMT et débit du forage DÉCLARÉS par le client (la carte
+    # m³/jour dit « débit déclaré par vous », D-AMOT-7).
+    'pompe_hmt_m': ('pompe_hmt_source', 'declaree'),
+    'debit_forage_m3h': ('debit_forage_source', 'client'),
 }
 
 #: CIQ412 — sections pro dont les réponses sont validées par le MODÈLE

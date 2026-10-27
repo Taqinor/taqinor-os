@@ -66,7 +66,9 @@
         "mode_pompe",
         "pompe_actuelle_kw",
         "pompe_actuelle_tension_v",
-        "pompe_actuelle_phases"
+        "pompe_actuelle_phases",
+        "profondeur_forage_m",
+        "debit_forage_m3h"
       ],
       "gps": [
         "gps_lat",
@@ -97,7 +99,9 @@
       "mode_pompe": null,
       "pompe_actuelle_kw": null,
       "pompe_actuelle_tension_v": null,
-      "pompe_actuelle_phases": null
+      "pompe_actuelle_phases": null,
+      "profondeur_forage_m": null,
+      "debit_forage_m3h": null
     },
     "repondu": {},
     "interne": false
@@ -237,7 +241,9 @@
       "mode_pompe",
       "pompe_actuelle_kw",
       "pompe_actuelle_tension_v",
-      "pompe_actuelle_phases"
+      "pompe_actuelle_phases",
+      "profondeur_forage_m",
+      "debit_forage_m3h"
     ]
   },
   "colonnes_ecrites_note": "QJR512 — `colonnes_ecrites` {section: [colonnes]} : les colonnes que chaque section écrit réellement ; liste fixée par QJR596. `energie` porte conso_mensuelle_kwh et n’écrit plus tranche_onee.",
@@ -305,7 +311,9 @@
       "mode_pompe",
       "pompe_actuelle_kw",
       "pompe_actuelle_tension_v",
-      "pompe_actuelle_phases"
+      "pompe_actuelle_phases",
+      "profondeur_forage_m",
+      "debit_forage_m3h"
     ],
     "photo_facture": [],
     "photo_compteur": [],
@@ -490,11 +498,14 @@
       "mode_pompe",
       "pompe_actuelle_kw",
       "pompe_actuelle_tension_v",
-      "pompe_actuelle_phases"
+      "pompe_actuelle_phases",
+      "profondeur_forage_m",
+      "debit_forage_m3h"
     ],
     "plaque": "pompe_actuelle_kw / pompe_actuelle_tension_v / pompe_actuelle_phases ne sont écrites que si mode_pompe vaut « existante » (réponse du même envoi ou valeur du lead) ; la page ne les dessine que dans ce cas.",
     "validation": "Field.clean du modèle ; une valeur ≤ 0 ou invalide est ignorée, jamais une erreur.",
-    "formulation_client": "pompe_hmt_m se pose en mots simples (« profondeur de l'eau + hauteur jusqu'au bassin, en mètres — si vous la connaissez ») ; pompage_heures_jour = heures par jour de la pompe ACTUELLE."
+    "formulation_client": "pompe_hmt_m se pose en mots simples (« profondeur de l'eau + hauteur jusqu'au bassin, en mètres — si vous la connaissez ») ; pompage_heures_jour = heures par jour de la pompe ACTUELLE.",
+    "provenance": "CQST6 — pompe_hmt_m écrite par le client pose pompe_hmt_source = « declaree » ; debit_forage_m3h pose debit_forage_source = « client » (la carte m³/jour dit « débit déclaré par vous », D-AMOT-7). profondeur_forage_m + debit_forage_m3h connus évitent la visite du point d'eau avant devis (D-AGR-4, devis_auto.visite_point_eau_avant_devis)."
   },
   "reponses_categorie_heures_cqst2": {
     "cles": {

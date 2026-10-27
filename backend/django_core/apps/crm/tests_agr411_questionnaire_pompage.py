@@ -167,6 +167,15 @@ class SectionPompageTests(TestCase):
                 'pompe_hmt_m': -3}}), content_type='application/json')
         lead.refresh_from_db()
         self.assertEqual(lead.pompe_actuelle_kw, Decimal('5.5'))
+        # CQST6 — forage déclaré, avec sa provenance.
+        self.client.post(PUBLIC.format(lien.token), data=json.dumps({
+            'section': 'pompage', 'reponses': {
+                'profondeur_forage_m': 80, 'debit_forage_m3h': 9,
+                'pompe_hmt_m': 60}}), content_type='application/json')
+        lead.refresh_from_db()
+        self.assertEqual(lead.profondeur_forage_m, Decimal('80'))
+        self.assertEqual(lead.debit_forage_source, 'client')
+        self.assertEqual(lead.pompe_hmt_source, 'declaree')
         self.assertEqual(lead.pompe_actuelle_tension_v, 380)
         self.assertIsNone(lead.pompe_hmt_m)
 
