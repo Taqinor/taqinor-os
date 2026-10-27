@@ -189,3 +189,36 @@ class RetourPointEauALaValidation(TestCase):
         visites_retour_lead.appliquer_mesures_point_eau(
             self.lead, mesures, self.bureau)
         self.assertEqual(notes.count(), 1)
+
+    def test_agv9_pompe_presente_sans_mode_pose_une_note_sans_changer_le_mode(self):
+        visite = self._visite(mesures={'pompe_existante': {
+            'pompe_presente': True}})
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.mode_pompe)
+        notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body=visites_retour_lead.NOTE_POMPE_EXISTANTE)
+        self.assertEqual(notes.count(), 1)
+        # Revalider ne double pas la note.
+        mesures = visites_selectors.mesures_point_eau_pour_lead(visite)
+        visites_retour_lead.appliquer_mesures_point_eau(
+            self.lead, mesures, self.bureau)
+        self.assertEqual(notes.count(), 1)
+
+    def test_agv9_pas_de_note_si_le_mode_est_deja_choisi_ou_pompe_absente(self):
+        self.lead.mode_pompe = 'neuve'
+        self.lead.save(update_fields=['mode_pompe'])
+        visites_services.valider_visite(
+            self._visite(mesures={'pompe_existante': {
+                'pompe_presente': True}}), self.bureau)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.mode_pompe, 'neuve')
+        self.lead.mode_pompe = None
+        self.lead.save(update_fields=['mode_pompe'])
+        mesures = {'pompe_existante': {'pompe_presente': False}}
+        visites_retour_lead.appliquer_mesures_point_eau(
+            self.lead, mesures, self.bureau)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body=visites_retour_lead.NOTE_POMPE_EXISTANTE).exists())

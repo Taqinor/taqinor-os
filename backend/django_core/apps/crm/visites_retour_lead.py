@@ -232,6 +232,27 @@ def _noter_mesure_non_recopiee(lead, user, colonne, brute):
     return activity.log_note(lead, user, corps)
 
 
+NOTE_POMPE_EXISTANTE = (
+    'Pompe existante trouvée à la visite : demander au client pompe neuve '
+    'ou pompe conservée (mode de pompe)')
+
+
+def _noter_pompe_existante_trouvee(lead, user, mesures):
+    """AGV9 (D-AGR-9, décision à revoir) — une pompe présente à la visite
+    n'écrit JAMAIS ``mode_pompe`` (le client choisit) : si le mode est vide,
+    une note de chatter (sans doublon) demande de poser la question."""
+    bloc = mesures.get('pompe_existante')
+    if not isinstance(bloc, dict) or bloc.get('pompe_presente') is not True:
+        return None
+    if lead.mode_pompe:
+        return None
+    if LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body=NOTE_POMPE_EXISTANTE).exists():
+        return None
+    return activity.log_note(lead, user, NOTE_POMPE_EXISTANTE)
+
+
 def appliquer_mesures_point_eau(lead, mesures, user):
     """AGR413 — recopie sur le lead les mesures d'un relevé du point d'eau
     VALIDÉ (``visites.selectors.mesures_point_eau_pour_lead``).
@@ -267,6 +288,7 @@ def appliquer_mesures_point_eau(lead, mesures, user):
     if ecrites:
         lead.save(update_fields=ecrites + ['date_modification'])
         activity.log_changes(avant, lead, user)
+    _noter_pompe_existante_trouvee(lead, user, mesures)
     return ecrites
 
 
