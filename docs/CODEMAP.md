@@ -1,7 +1,7 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: 168e370c62365c95f292047c90038e473edbac652d6f3fd4ad1b2d3e90075ef3
+Structure fingerprint: 7ce03826e063560a5efa90290a0ee778c029c23e7fcf3a158cc1ef04d4c26be6
 Plan fingerprint: 9ff85832041c83c75ab1d3b42ef0286640538faca6eb558523be2504365752e1
 
 
@@ -373,7 +373,7 @@ Model counts are the real class count across `models*.py`/`models/`.
 
 - **Doctrine** : schéma OpenAPI = serveur (ENF11) ; le fuzz tourne sur la population ENTIÈRE, hebdomadaire (`.github/workflows/api-fuzz-full.yml`, 16 tranches, dispatch `paquets` pour une passe ciblée) ; le job quotidien `api-fuzz` de `release-verify.yml` a disparu.
 - **core** : `core/parametres_requete.py` (valeurs de paramètres vérifiées contre le schéma en mode strict, NUL = 400 partout), `core/views_periode.py` (période `AAAA-MM` ou vide), `core/pagination.py` (`page`/`page_size` entiers ≥ 1 publiés et appliqués), `authentication/cookie_auth.py` (en-tête Authorization présent mais mal formé = 401).
-- **stock / achats** : `apps/stock/corps_achats.py` (corps publiés des actions BCF, contrôle qualité, retours), `erreurs_achats.py` (capacité des montants numeric(14,2) → 409), `openapi_helpers.py` (`choix_ou_vide`, `ID_ENTIER`, dates RFC 3339).
+- **stock / achats** : `apps/stock/corps_achats.py` (corps publiés des actions BCF, contrôle qualité, retours), `erreurs_achats.py` (capacité des montants numeric(14,2) → 409), `openapi_helpers.py` (`choix_ou_vide`, `ID_ENTIER`, dates RFC 3339) ; `etat_ci.py` (CCAT1-2 : `prix_connu_ci` partagé par `selectors.produits_ci`/`etat_ci_produit`, `etat_ci_complet` = état C&I servi par la fiche produit, hybrides BT et batteries de l'option « avec batterie » compris).
 - **installations** : `serializers_bornes.py` (bornes publiées en mixins, hors du fichier-mur `serializers.py`), `services_bornes.py`, `views/_openapi.py` (corps `NoterRequete`, `AnnulerChantierRequete`…, filtres texte sans NUL).
 - **sav** : `champs_corps.py` (`TexteSansSubstitut`, `QuantitePositive`), `query_params.py` (« valeur ou vide »).
 - **ged** : `pdf_etat.py` (`PdfInexploitable`), `corps_requete.py` (arbres de conditions typés, `nom_fichier_sur`).
@@ -459,7 +459,7 @@ Core routes are declared in `router/index.jsx`; every module's routes come from 
 - **calepinage** — the roof-design studio (module.config-registered): library, sources, variantes, plan/pente/terrain/ombrière/schéma/production tabs, `repere.js` roof-marker helper (repatriated from `ao` by SOLMVP15).
 - **visites** — field technical visits (module.config-registered).
 - **installations** — chantiers; `installationsSlice.js`, `statuses.js`, offline field capture.
-- **stock** — catalogue/inventory/procurement; `stockSlice.js`, `catalogue.js`, `emplacements.js`, `procurement.js`.
+- **stock** — catalogue/inventory/procurement; `stockSlice.js`, `catalogue.js`, `emplacements.js`, `procurement.js`, `libellesProduitCi.js` (CCAT5 : libellés C&I de la fiche produit).
 - **sav** — equipment + tickets; `equipementsSlice.js`, `ticketsSlice.js`, `ticketStatuses.js`.
 - **ged** — document management console (module.config-registered).
 - **reporting** — dashboards/insights; `reportingSlice.js`.

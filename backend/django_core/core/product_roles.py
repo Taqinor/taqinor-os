@@ -137,6 +137,12 @@ ROLES_ONDULEUR_CI = tuple(PHASES_ONDULEUR_CI)
 #: saisi vaut prix connu (stock) ; la composition C&I en fait le prix.
 ROLES_CI_BAREME_COFFRET = ('coffret_dc', 'coffret_ac')
 
+#: Tension maximale (V) du port batterie d'un onduleur hybride de l'option
+#: « avec batterie » C&I (basse tension) : au-delà, hybride haute tension, hors
+#: option. MIROIR de ``apps.ventes.moteur_ci.batterie.TENSION_PORT_BT_MAX_V``
+#: (``core`` n'importe aucune app) — un test garde l'égalité des deux.
+TENSION_PORT_BT_MAX_V = 60.0
+
 #: Libellés FR des rôles C&I (voyagent par l'API : aucun miroir JS).
 LIBELLES_ROLES_CI = {
     'onduleur_string_tri': 'Onduleur string triphasé',

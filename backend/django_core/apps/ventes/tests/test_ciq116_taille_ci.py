@@ -602,6 +602,22 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertIsNotNone(e)
         self.assertLessEqual(e['puissance_ac'], 25 + 1e-9)
 
+    def test_au_plus_10_hybrides_en_parallele_champ_borne_et_alerte(self):
+        # CMP3 : départ 400 kWc ⇒ plus de 10 hybrides ; le champ « avec » est le
+        # plus grand champ porté par 10 appareils (Deye « Max. 10 pcs parallel »).
+        from apps.ventes.moteur_ci.batterie import MAX_HYBRIDES_PARALLELE
+        r = self._avec(kwc_depart=400.0, combiner=partial(
+            combiner_onduleurs, candidats=_hybrides_bt(), phase='tri',
+            max_appareils=MAX_HYBRIDES_PARALLELE))
+        e = r['evaluation']
+        self.assertIsNotNone(e)
+        self.assertLessEqual(sum(x['quantite'] for x in e['onduleurs']['combinaison']), 10)
+        self.assertLess(e['kwc'], 400.0)
+        self.assertIn('HYBRIDES_PARALLELE_MAX', [a['code'] for a in r['alertes']])
+        # Le champ a RETRECI : jamais masque par un « ajoutes » a 0.
+        self.assertEqual(e['batterie']['panneaux_ajoutes'], 0)
+        self.assertGreater(e['batterie']['panneaux_retires'], 0)
+
     def test_regle_10_ans_au_dela_du_remplissage(self):
         from apps.ventes.moteur_ci.batterie import monter_regle_10_ans
         # n → kWc = n × 710 Wc ; coût 1 000 MAD/kWc ; économie 300 MAD/kWc
