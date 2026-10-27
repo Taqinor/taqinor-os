@@ -16,12 +16,17 @@ from decimal import Decimal
 from django.db import migrations, models
 
 SENTINELLE = Decimal('1600.0')
+#: L'ancienne sentinelle était une BANDE (``abs(v − 1600) ≤ 0,5`` ⇒ PVGIS de
+#: la ville, ``productible._HISTORICAL_DEFAULT``) : toute la bande passe à NULL,
+#: sinon une société à 1600,3 basculerait de PVGIS à 1600,3 sans rien saisir.
+BANDE_MIN, BANDE_MAX = Decimal('1599.5'), Decimal('1600.5')
 
 
 def sentinelle_vers_null(apps, schema_editor):
     CompanyProfile = apps.get_model('parametres', 'CompanyProfile')
-    CompanyProfile.objects.filter(productible_kwh_kwc=SENTINELLE).update(
-        productible_kwh_kwc=None)
+    CompanyProfile.objects.filter(
+        productible_kwh_kwc__gte=BANDE_MIN,
+        productible_kwh_kwc__lte=BANDE_MAX).update(productible_kwh_kwc=None)
 
 
 def null_vers_sentinelle(apps, schema_editor):

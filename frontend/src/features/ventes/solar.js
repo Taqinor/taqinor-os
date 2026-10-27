@@ -71,7 +71,7 @@ const _CITY_ALIASES = {
 // Productible canonique pour une ville. `override` = productible société
 // (CompanyProfile) : renseigné (> 0, 1600 compris — AMOT64, D-AMOT-3 = a), il
 // prime ; vide (null) on lit le productible PVGIS de la ville (repli DEFAULT).
-// Miroir de productible.py::productible_for_city (plus de sentinelle 1600).
+// Même règle que productible.py::productible_for_city (aucune sentinelle 1600).
 export function productibleForCity(city, override = null) {
   const ov = parseFloat(override)
   if (Number.isFinite(ov) && ov > 0) {
