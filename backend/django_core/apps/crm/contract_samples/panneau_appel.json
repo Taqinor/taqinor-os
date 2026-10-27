@@ -394,6 +394,14 @@
         "nature": "nombre"
       },
       {
+        "champ": "pompe_hmt_m",
+        "section": null,
+        "libelle": "pompe hmt m",
+        "question": "Question à l'appel : « Connaissez-vous la hauteur totale de pompage, en mètres ? » (HMT, vide = pas encore posée).",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
         "champ": "surface_irriguee_ha",
         "section": null,
         "libelle": "Surface irriguée (ha)",
@@ -524,6 +532,23 @@
           {
             "valeur": "ne_sait_pas",
             "libelle": "Ne sait pas"
+          }
+        ],
+        "nature": "choix"
+      },
+      {
+        "champ": "raccordement",
+        "section": null,
+        "libelle": "raccordement",
+        "question": "Question à l'appel : « Votre pompe est-elle en 220 V (monophasé) ou en 380 V (triphasé) ? »",
+        "choix": [
+          {
+            "valeur": "monophase",
+            "libelle": "Monophasé"
+          },
+          {
+            "valeur": "triphase",
+            "libelle": "Triphasé"
           }
         ],
         "nature": "choix"
@@ -2862,6 +2887,7 @@
     "csv3": "CSV3 (27/10/2026) — le CONTRAT d'électricité est posé juste après la tension à tout site non déclaré en MT (`contrat_electricite`, question reprise mot pour mot de `lead_pro.json`, « moyenne tension » retiré des choix d'un site déclaré en BT) ; l'option bi-horaire (`option_tarifaire_bt`) n'est servie que si le contrat est « BT force motrice » (`exemple_commercial_force_motrice`) — le sérialiseur la refuse sinon — et jamais pour un site MT. « Ne sait pas » clôt la question (jamais reposée) et les dirhams ne comptent plus : l'étape facture redemande les kWh (CSV2).",
     "csv4": "CSV4 (27/10/2026) — la phase (`raccordement`) est posée à TOUT site pro, industriel et MT compris, avec deux choix (`monophase`, `triphase`) : « je ne sais pas » (`inconnu`) et « aucun » ne répondent pas et la question est reposée (absente de `prefill`). Pour un site déclaré en MT, un seul choix (`triphase`) et le texte « Site en moyenne tension : alimentation triphasée, je le note. » — un clic.",
     "csv5": "CSV5 (27/10/2026) — `ville` est servie, pour TOUT segment, seulement quand la fiche n'a NI ville NI coordonnées GPS (`gps_lat` et `gps_lng`) : le devis automatique refuse sans l'une des deux. Jamais en tête : l'écran la pose en complément de l'étape type de bien (résidentiel), surface (pro) ou eau (agricole). Texte : « Dans quelle ville se trouve votre maison ? » en résidentiel, « … le site ? » ailleurs ; une ville connue revient dans `prefill`.",
-    "csv16": "CSV16 (27/10/2026) — l'été se dit à voix haute (résidentiel) : « L'été, votre facture d'électricité change-t-elle beaucoup par rapport à l'hiver ? » (`ete_differente`, Oui/Non) puis « Combien payez-vous en été, à peu près ? » (`facture_ete`) ; textes du panneau, aucun help_text modifié. `ete_differente` vaut False dès la création : la question est close par un « Oui », ou par une facture d'été renseignée — « Non » écrit `ete_differente: false` ET `facture_ete` = la facture d'hiver (le client a dit « pareil »)."
+    "csv16": "CSV16 (27/10/2026) — l'été se dit à voix haute (résidentiel) : « L'été, votre facture d'électricité change-t-elle beaucoup par rapport à l'hiver ? » (`ete_differente`, Oui/Non) puis « Combien payez-vous en été, à peu près ? » (`facture_ete`) ; textes du panneau, aucun help_text modifié. `ete_differente` vaut False dès la création : la question est close par un « Oui », ou par une facture d'été renseignée — « Non » écrit `ete_differente: false` ET `facture_ete` = la facture d'hiver (le client a dit « pareil »).",
+    "csv17": "CSV17 (27/10/2026) — agricole : l'étape de l'eau pose aussi `pompe_hmt_m` (la HMT, exigée par le devis automatique ; consigne d'écran quand le client ne la connaît pas) et l'étape irrigation / électricité `raccordement` (« Votre pompe est-elle en 220 V (monophasé) ou en 380 V (triphasé) ? », deux choix seulement : « je ne sais pas » et « aucun » ne répondent pas ; l'alimentation de la pompe, pas la phase du compteur de la maison)."
   }
 }

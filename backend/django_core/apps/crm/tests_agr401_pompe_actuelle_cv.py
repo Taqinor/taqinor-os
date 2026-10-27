@@ -84,6 +84,47 @@ class LeCvDuSiteEstLaPompeActuelle(SimpleTestCase):
                          .get_internal_type(), 'DecimalField')
 
 
+class CSV17QuestionsAgricolesDuTelephone(SimpleTestCase):
+    """CSV17 — ce que le devis automatique exige (la HMT et l'alimentation de
+    la pompe) est posé au téléphone."""
+
+    @staticmethod
+    def _questions(**kwargs):
+        lead = Lead(nom='Ferme', type_installation='agricole', **kwargs)
+        return {q['champ']: q for q in panneau_appel.questions_a_poser(lead)}
+
+    def test_hmt_et_alimentation_posees_au_telephone(self):
+        questions = self._questions()
+        self.assertIn('pompe_hmt_m', questions)
+        self.assertEqual(questions['pompe_hmt_m']['nature'], 'nombre')
+        ordre = list(questions)
+        # La HMT clôt l'étape de l'eau ; la phase, celle de l'irrigation.
+        self.assertGreater(ordre.index('pompe_hmt_m'),
+                           ordre.index('debit_forage_m3h'))
+        self.assertGreater(ordre.index('raccordement'),
+                           ordre.index('electricite_sur_place'))
+        phase = questions['raccordement']
+        self.assertEqual([c['valeur'] for c in phase['choix']],
+                         ['monophase', 'triphase'])
+        self.assertIn('220 V (monophasé)', phase['question'])
+        self.assertIn('380 V (triphasé)', phase['question'])
+        # « je ne sais pas » / « aucun » ne répondent pas ; mono / tri oui,
+        # et la réponse se relit dans le pré-remplissage.
+        for valeur in ('inconnu', 'aucun'):
+            lead = Lead(nom='F', type_installation='agricole',
+                        raccordement=valeur)
+            self.assertIn('raccordement', [
+                q['champ'] for q in panneau_appel.questions_a_poser(lead)])
+        repondu = Lead(nom='F', type_installation='agricole',
+                       raccordement='triphase', pompe_hmt_m=Decimal('45.00'))
+        champs = [q['champ'] for q in panneau_appel.questions_a_poser(repondu)]
+        self.assertNotIn('raccordement', champs)
+        self.assertNotIn('pompe_hmt_m', champs)
+        prefill = panneau_appel.prefill_du_panneau(repondu)
+        self.assertEqual(prefill['raccordement'], 'triphase')
+        self.assertEqual(prefill['pompe_hmt_m'], 45.0)
+
+
 class AliasDepreciePompeCv(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(

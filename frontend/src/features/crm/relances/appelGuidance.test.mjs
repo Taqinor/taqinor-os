@@ -495,10 +495,10 @@ function leadVierge175(segment, orauxSegment) {
 const ORAUX_AGRICOLE = [
   'pompe_alim_actuelle', 'butane_bouteilles_jour', 'carburant_litres_mois',
   'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
-  'source_eau', 'niveau_statique_m', 'debit_forage_m3h',
+  'source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m',
   'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
   'pompage_heures_jour', 'distance_forage_champ_m',
-  'irrigation_methode', 'mois_irrigation', 'electricite_sur_place',
+  'irrigation_methode', 'mois_irrigation', 'electricite_sur_place', 'raccordement',
 ]
 
 test('AGR418 — agricole vierge : énergie → eau → besoin → heures/distance → irrigation/électricité', () => {
@@ -515,13 +515,13 @@ test('AGR418 — agricole vierge : énergie → eau → besoin → heures/distan
   assert.deepEqual(g.questions[0].complements, [])
   // CSV5 — la ville (ni ville ni GPS sur la fiche) clôt l'étape de l'eau.
   assert.deepEqual(g.questions[1].complements.map((q) => q.champ),
-    ['niveau_statique_m', 'debit_forage_m3h', 'ville'])
+    ['niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m', 'ville'])
   assert.deepEqual(g.questions[2].complements.map((q) => q.champ),
     ['surface_irriguee_ha', 'culture'])
   assert.deepEqual(g.questions[4].complements.map((q) => q.champ),
-    ['mois_irrigation', 'electricite_sur_place'])
+    ['mois_irrigation', 'electricite_sur_place', 'raccordement'])
   // Plus jamais la CV de la pompe : elle se relève sur la plaque, en visite.
-  assert.ok(!g.questions.some((q) => /^pompe_(cv|hmt_m|debit_m3h)$/.test(q.champ)))
+  assert.ok(!g.questions.some((q) => /^pompe_(cv|debit_m3h)$/.test(q.champ)))
   // Aucune question résidentielle ne se glisse (facture, présence, toit).
   assert.ok(!g.questions.some((q) => CINQ.includes(q.champ)))
   // Surface et culture ont leur colonne : il ne reste à noter que la force
@@ -601,6 +601,17 @@ test('AGR418 — besoin connu : ni surface ni culture ne se reposent ; exemple_a
     .complements.find((q) => q.champ === 'mois_irrigation')
   assert.equal(mois.nature, 'choix_multiple')
   assert.equal(mois.choix.length, 12)
+})
+
+test('CSV17 — la HMT clôt l’étape de l’eau, la phase de la pompe clôt l’irrigation ; consigne sans chiffre', () => {
+  const g = guidanceAppel(leadVierge175('agricole', ORAUX_AGRICOLE))
+  const eau = g.questions.find((q) => q.etape === 'eau')
+  assert.deepEqual(eau.complements.map((q) => q.champ),
+    ['niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m', 'ville'])
+  const irrigation = g.questions.find((q) => q.etape === 'irrigation_electricite')
+  assert.equal(irrigation.complements.at(-1).champ, 'raccordement')
+  assert.ok(guidance.CONSIGNE_HMT_INCONNUE.includes('le technicien la calcule à la visite'))
+  assert.doesNotMatch(guidance.CONSIGNE_HMT_INCONNUE, /[0-9٠-٩۰-۹%[\]]/)
 })
 
 test('AGR418 — segment vide + segment_suggere : « Segment probable : … — confirmez avec le client. »', () => {

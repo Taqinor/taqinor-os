@@ -206,7 +206,11 @@ export const ORDRE_AGRICOLE = Object.freeze([
   }),
   Object.freeze({
     etape: 'eau',
-    champs: Object.freeze(['source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'ville']),
+    // CSV17 — la HMT : ce que le devis automatique exige (D-AGQ-5) ; le client
+    // ne la connaît pas toujours (`CONSIGNE_HMT_INCONNUE`).
+    champs: Object.freeze([
+      'source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m', 'ville',
+    ]),
   }),
   Object.freeze({
     etape: 'besoin',
@@ -218,9 +222,13 @@ export const ORDRE_AGRICOLE = Object.freeze([
     etape: 'heures_distance',
     champs: Object.freeze(['pompage_heures_jour', 'distance_forage_champ_m']),
   }),
+  // CSV17 — `raccordement` : l'alimentation de la POMPE (220 V monophasé ou 380 V
+  // triphasé), que le devis automatique exige ; le serveur ne sert que deux choix.
   Object.freeze({
     etape: 'irrigation_electricite',
-    champs: Object.freeze(['irrigation_methode', 'mois_irrigation', 'electricite_sur_place']),
+    champs: Object.freeze([
+      'irrigation_methode', 'mois_irrigation', 'electricite_sur_place', 'raccordement',
+    ]),
   }),
 ])
 
@@ -759,6 +767,11 @@ export const CONSIGNE_CONTRAT_INCONNU = "Le client ne sait pas : proposez-lui d'
   + 'une photo de sa facture par WhatsApp.'
 
 export const CONSIGNE_OUVERT_24H = 'Ouvert 24 h/24 : notez 0 et 24.'
+
+// CSV17 — consigne d'écran sous la HMT (agricole), texte du fichier source
+// `messages_meryem.md` (re-dérivé par la garde CAD153, aucun chiffre).
+export const CONSIGNE_HMT_INCONNUE = "Le client ne la connaît pas : notez la profondeur de l'eau "
+  + "et la hauteur jusqu'au bassin dans la note, le technicien la calcule à la visite."
 
 // Décision fondateur du 24/09/2026 : la question CAD168 « Votre montant
 // inclut l'abonnement et l'entretien du compteur ? » est RETIRÉE. Toute

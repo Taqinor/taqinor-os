@@ -576,6 +576,7 @@ A_NOTER_MEILLEUR_MOMENT : À noter dans la note d’appel : le meilleur moment p
 A_NOTER_PROCESS : À noter dans la note d’appel : les process critiques, qui ne doivent jamais s’arrêter.
 SANS_CHIFFRE_AU_TELEPHONE : Aucun chiffre d'économie au téléphone : le devis le donne.
 CONSIGNE_CONTRAT_INCONNU : Le client ne sait pas : proposez-lui d'envoyer une photo de sa facture par WhatsApp.
+CONSIGNE_HMT_INCONNUE : Le client ne la connaît pas : notez la profondeur de l'eau et la hauteur jusqu'au bassin dans la note, le technicien la calcule à la visite.
 CARBURANT_DECLARE_SEUL : L'économie de carburant se calcule uniquement sur ce que le client déclare (litres ou dirhams par mois) — jamais sur un prix de gasoil supposé.
 SEGMENT_PROBABLE_CONSIGNE : confirmez avec le client.
 VISITE_POINT_EAU_TITRE : Planifier la visite — relevé du point d’eau
@@ -622,6 +623,11 @@ qui porte un `segment_suggere` affiche « Segment probable : … (raison) — co
 si le niveau ou le débit du forage reste inconnu (`devis_auto.visite_point_eau_avant_devis`), le panneau propose la
 visite de relevé du point d'eau et son message `visite_releve_point_eau`. Aucun chiffre d'économie. ✎ Formulations à
 valider par le fondateur.
+
+CSV17 (27/10/2026) — l'appel AGRICOLE pose aussi ce que le devis automatique exige : la hauteur manométrique
+(étape de l'eau, avec la consigne `CONSIGNE_HMT_INCONNUE` quand le client ne la connaît pas) et l'alimentation de la
+pompe (étape irrigation et électricité : « Votre pompe est-elle en 220 V (monophasé) ou en 380 V (triphasé) ? », deux
+choix, « je ne sais pas » ne ferme pas la question). ✎ Formulations à valider par le fondateur.
 
 CAD155 (24/09/2026) — `CONSIGNE_CRENEAU`, `RAMADAN_PAS_DE_SOIR` et `JOUR_NON_APPELABLE` n'écrivent AUCUNE heure : la
 fenêtre et ses créneaux sont LUS du moteur (`apps/crm/horaires.py::fenetre_du_jour`, servi par le panneau), Ramadan

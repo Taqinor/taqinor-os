@@ -76,16 +76,20 @@ CHAMPS_A_DEFAUT_NON_NUL = ('ete_differente',)
 #: (1) énergie actuelle, (2) eau, (3) besoin, (4) heures actuelles +
 #: distance, (5) irrigation + électricité. ``pompe_actuelle_cv`` sort de
 #: l'appel : elle se relève sur la PLAQUE, en visite. Aucune clé d'économie.
+#: CSV17 — ce que le devis automatique EXIGE est posé au téléphone : la HMT
+#: (étape « eau », D-AGQ-5) et l'alimentation de la pompe, 220 V / 380 V
+#: (étape « irrigation / électricité », colonne ``raccordement``).
 ETAPES_AGRICOLES = (
     ('energie_actuelle', ('pompe_alim_actuelle', 'butane_bouteilles_jour',
                           'carburant_litres_mois',
                           'carburant_prix_unitaire_mad',
                           'depense_carburant_mad_mois')),
-    ('eau', ('source_eau', 'niveau_statique_m', 'debit_forage_m3h')),
+    ('eau', ('source_eau', 'niveau_statique_m', 'debit_forage_m3h',
+             'pompe_hmt_m')),
     ('besoin', ('besoin_eau_m3j', 'surface_irriguee_ha', 'culture')),
     ('heures_distance', ('pompage_heures_jour', 'distance_forage_champ_m')),
     ('irrigation_electricite', ('irrigation_methode', 'mois_irrigation',
-                                'electricite_sur_place')),
+                                'electricite_sur_place', 'raccordement')),
 )
 CHAMPS_ORAUX_AGRICOLE = tuple(
     champ for _etape, champs in ETAPES_AGRICOLES for champ in champs)
@@ -208,7 +212,14 @@ PREFIXE_QUESTION = "Question à l'appel : "
 #: CSV4 — la phase se pose à tout site pro (industriel et MT compris) avec DEUX
 #: choix seulement : « je ne sais pas » (``inconnu``) et « aucun » (site isolé)
 #: ne sont pas des réponses pour le moteur, ils ne ferment jamais la question.
-PHASES_PRO = ('monophase', 'triphase')
+#: CSV17 — même vocabulaire pour l'alimentation de la pompe agricole.
+PHASES_SERVIES = ('monophase', 'triphase')
+PHASES_PRO = PHASES_SERVIES
+
+#: CSV17 — agricole : la phase est celle de la POMPE (220 V ou 380 V), pas du
+#: compteur de la maison.
+QUESTION_ALIMENTATION_POMPE = ('« Votre pompe est-elle en 220 V (monophasé) '
+                               'ou en 380 V (triphasé) ? »')
 
 #: CSV4 — un site déclaré en moyenne tension est alimenté en triphasé : la
 #: question se réduit à un clic (un seul choix), sans demander ce que le client
@@ -474,13 +485,18 @@ def _question(lead, champ, section):
         site = segment or questionnaire.est_agricole(lead)
         question = PREFIXE_QUESTION + (
             QUESTION_VILLE_SITE if site else QUESTION_VILLE_MAISON)
+    if champ == 'raccordement' and questionnaire.est_agricole(lead):
+        # CSV17 — l'alimentation de la pompe : deux choix, jamais « je ne sais
+        # pas » (qui ne répond pas) ni « aucun ».
+        question = PREFIXE_QUESTION + QUESTION_ALIMENTATION_POMPE
+        choix = [c for c in choix if c['valeur'] in PHASES_SERVIES]
     if segment and champ in QUESTIONS_PRO:
         question = _question_pro(lead, champ, segment)
         if champ == 'decideur' and choix:
             choix = [c for c in choix if c['valeur'] in DECIDEUR_PRO]
         if champ == 'raccordement' and choix:
             from . import devis_auto
-            choix = [c for c in choix if c['valeur'] in PHASES_PRO]
+            choix = [c for c in choix if c['valeur'] in PHASES_SERVIES]
             if devis_auto._tension_declaree(lead) == 'mt':
                 question = PREFIXE_QUESTION + QUESTION_PHASE_MT
                 choix = [c for c in choix if c['valeur'] == 'triphase']
@@ -623,10 +639,11 @@ def _reponse_connue_panneau(lead, champ):
                 or _reponse_connue(lead, 'facture_ete'))
     if champ == 'reponses_categorie' and _segment_pro(lead):
         return not _cles_categorie_a_poser(lead)
-    if champ == 'raccordement' and _segment_pro(lead):
+    if champ == 'raccordement' and (_segment_pro(lead)
+                                    or questionnaire.est_agricole(lead)):
         # CSV4 — « inconnu » et « aucun » ne répondent pas : reposée (comme
         # une colonne à défaut non nul, ``CHAMPS_A_DEFAUT_NON_NUL``).
-        return getattr(lead, 'raccordement', None) in PHASES_PRO
+        return getattr(lead, 'raccordement', None) in PHASES_SERVIES
     if champ == 'whatsapp' and _segment_pro(lead):
         # CIQ427 — un WhatsApp simple COPIE du téléphone n'est pas une
         # réponse : seule une déclaration distincte (CIQ505) l'est.

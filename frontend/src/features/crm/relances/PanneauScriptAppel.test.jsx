@@ -608,6 +608,17 @@ describe('AGR418 — script d’appel agricole en cinq étapes', () => {
     expect(screen.queryByTestId('question-appel-source_eau')).not.toBeInTheDocument()
   })
 
+  it('CSV17 — la HMT porte sa consigne quand le client ne la connaît pas ; la phase de la pompe a deux choix', async () => {
+    const hmt = EXEMPLE_AGRICOLE.champs_a_poser.find((q) => q.champ === 'pompe_hmt_m')
+    const phase = EXEMPLE_AGRICOLE.champs_a_poser.find((q) => q.champ === 'raccordement')
+    expect(hmt).toBeTruthy()
+    expect(phase.choix.map((c) => c.valeur)).toEqual(['monophase', 'triphase'])
+    armer({ panneau: { ...EXEMPLE_AGRICOLE, champs_a_poser: [hmt] } })
+    render(<PanneauScriptAppel mode="fiche" leadId={EXEMPLE_AGRICOLE.lead_id} />)
+    expect(await screen.findByTestId('consigne-hmt-inconnue'))
+      .toHaveTextContent(guidance.CONSIGNE_HMT_INCONNUE)
+  })
+
   it('aucune clé d’économie n’est rendue, aucun chiffre d’économie', async () => {
     armer({ panneau: EXEMPLE_AGRICOLE })
     render(<PanneauScriptAppel mode="fiche" leadId={EXEMPLE_AGRICOLE.lead_id} />)

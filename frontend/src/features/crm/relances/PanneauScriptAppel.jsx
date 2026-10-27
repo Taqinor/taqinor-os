@@ -43,6 +43,7 @@ import {
   NON_COMPTE_TITRE, NON_COMPTE_FUTURES_CHARGES, NON_COMPTE_TRANCHE_ONEE,
   VISITE_POINT_EAU_TITRE, VISITE_POINT_EAU_CONSIGNE,
   VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE, CONSIGNE_OUVERT_24H, CONSIGNE_CONTRAT_INCONNU,
+  CONSIGNE_HMT_INCONNUE,
 } from './appelGuidance'
 import BasculeReplie from './BasculeReplie'
 
@@ -254,6 +255,11 @@ function Question({
       {entree.champ === 'contrat_electricite' && (
         <p className="text-xs text-muted-foreground" data-testid="consigne-contrat-inconnu">
           {CONSIGNE_CONTRAT_INCONNU}
+        </p>
+      )}
+      {entree.champ === 'pompe_hmt_m' && (
+        <p className="text-xs text-muted-foreground" data-testid="consigne-hmt-inconnue">
+          {CONSIGNE_HMT_INCONNUE}
         </p>
       )}
       {['heure_debut', 'heure_fin'].includes(entree.champ) && (

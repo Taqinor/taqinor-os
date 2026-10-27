@@ -32,10 +32,11 @@ CONTRAT = json.loads(
 COLONNES_AGRICOLES = (
     'pompe_alim_actuelle', 'butane_bouteilles_jour', 'carburant_litres_mois',
     'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
-    'source_eau', 'niveau_statique_m', 'debit_forage_m3h',
+    'source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m',
     'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
     'pompage_heures_jour', 'distance_forage_champ_m',
     'irrigation_methode', 'mois_irrigation', 'electricite_sur_place',
+    'raccordement',
 )
 #: CIQ410 — colonnes posées à TOUT lead pro (la facture se pose en kWh OU en
 #: dirhams selon le lead : voir les tests dédiés).
