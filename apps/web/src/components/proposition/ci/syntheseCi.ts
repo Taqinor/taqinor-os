@@ -85,6 +85,8 @@ export interface SyntheseCi {
   /** `estimation_sous_reserve_visite` | `offre_ferme`. */
   statutEtude: string | null;
   aConfirmer: Array<{ cle: string; libelle: string }>;
+  /** CPRW13 — postes « à chiffrer après la visite » restés hors total (`synthese_ci.postes_hors_total`), jamais un prix. */
+  postesHorsTotal: Array<{ role: string | null; designation: string; catalogue: boolean }>;
   systeme: { kwc: number | null; nbPanneaux: number | null; productionKwhAn: number | null } | null;
   energie: {
     autoconsoPct: number | null;
@@ -271,6 +273,14 @@ export function syntheseCi(
       }
     }
   }
+  const postesHorsTotal: SyntheseCi['postesHorsTotal'] = [];
+  if (Array.isArray(brut.postes_hors_total)) {
+    for (const p of brut.postes_hors_total) {
+      if (!estRecord(p)) continue;
+      const designation = texteServi(p.designation);
+      if (designation) postesHorsTotal.push({ role: texteServi(p.role), designation, catalogue: p.catalogue === true });
+    }
+  }
   const hypotheses: SyntheseCiHypothese[] = [];
   if (Array.isArray(brut.hypotheses)) {
     for (const h of brut.hypotheses) {
@@ -295,6 +305,7 @@ export function syntheseCi(
     segment: texteServi(brut.segment),
     statutEtude: texteServi(brut.statut_etude),
     aConfirmer,
+    postesHorsTotal,
     systeme: sys
       ? {
           kwc: nombreServi(sys.kwc),
@@ -427,6 +438,46 @@ export const CI_DEVIS_PRELIMINAIRE: TextesCi = {
 export function bandeauPreliminaireCi(ci: SyntheseCi | null): TextesCi | null {
   if (!ci) return null;
   return ci.hypotheses.find((h) => h.cle === 'visite')?.textes ?? CI_DEVIS_PRELIMINAIRE;
+}
+
+// CPRW13 — mots du client pour le rôle d'un poste hors total : ceux du PDF (`i18n_labels.py` `ci_role_*`).
+const ROLES_POSTES_CI: Record<string, TextesCi> = {
+  cable_dc: { fr: 'câble DC', en: 'DC cable', ar: 'كابل التيار المستمر' },
+  cable_ac: { fr: 'câble AC', en: 'AC cable', ar: 'كابل التيار المتردد' },
+  structure_ci: { fr: 'structure de fixation', en: 'mounting structure', ar: 'هيكل التثبيت' },
+  coffret_dc: { fr: 'coffret DC', en: 'DC box', ar: 'علبة التيار المستمر' },
+  coffret_ac: { fr: 'coffret AC', en: 'AC box', ar: 'علبة التيار المتردد' },
+  protection_ac: { fr: 'protection AC', en: 'AC protection', ar: 'حماية التيار المتردد' },
+  onduleur_string_tri: { fr: 'onduleur', en: 'inverter', ar: 'العاكس' },
+  onduleur_string_mono: { fr: 'onduleur', en: 'inverter', ar: 'العاكس' },
+};
+
+// CPRW13 — `i18n_labels.py` `ci_a_chiffrer_hors_total` (le PDF).
+const A_CHIFFRER_HORS_TOTAL: TextesCi = {
+  fr: 'À chiffrer après la visite technique (hors total) : ',
+  en: 'To be priced after the site visit (not in the total): ',
+  ar: 'يُسعَّر بعد الزيارة التقنية (خارج المجموع): ',
+};
+
+/**
+ * CPRW13 — la ligne du PDF sous le bandeau préliminaire (`couverture.py::ligne_postes_hors_total`) :
+ * « À chiffrer après la visite technique (hors total) : câble DC — <article>, structure de fixation ».
+ * Rôle en mots simples, article du catalogue après « — » (non traduit, comme le PDF), un rôle inconnu
+ * garde la désignation, doublons retirés, JAMAIS un montant. `null` sans poste servi.
+ */
+export function lignePostesHorsTotalCi(ci: SyntheseCi | null): TextesCi | null {
+  const postes = ci?.postesHorsTotal ?? [];
+  if (postes.length === 0) return null;
+  const construire = (lg: keyof TextesCi): string => {
+    const vus: string[] = [];
+    for (const p of postes) {
+      const role = p.role ? ROLES_POSTES_CI[p.role]?.[lg] : undefined;
+      const texte = role === undefined ? p.designation : p.catalogue ? `${role} — ${p.designation}` : role;
+      if (texte && !vus.includes(texte)) vus.push(texte);
+    }
+    return vus.join(', ');
+  };
+  return { fr: A_CHIFFRER_HORS_TOTAL.fr + construire('fr'), en: A_CHIFFRER_HORS_TOTAL.en + construire('en'), ar: A_CHIFFRER_HORS_TOTAL.ar + construire('ar') };
 }
 
 const NON_CHIFFREE: TextesCi = {

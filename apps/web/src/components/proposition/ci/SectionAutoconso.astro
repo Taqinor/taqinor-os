@@ -5,7 +5,7 @@
  * qu'un appel de composant. Les valeurs arrivent par props sous LEURS noms de la page.
  */
 import { formatMAD, formatNumber } from '../../../lib/proposition';
-import { bandeauPreliminaireCi } from './syntheseCi';
+import { bandeauPreliminaireCi, lignePostesHorsTotalCi } from './syntheseCi';
 import type { SyntheseCi, carteIndustrielleCi } from '../../../lib/proposition';
 
 // Déplacement pur : les props gardent leurs noms de la page ; celles que le balisage parcourt
@@ -26,6 +26,8 @@ interface Props {
 const { ci, ciArgent, ciCarteInd, ciEco, ciInjection, couverture, isCommercial } = Astro.props;
 // CPRW3 — bandeau « devis préliminaire » sur TOUT devis C&I (comme le PDF) : texte servi, sinon celui du PDF.
 const preliminaire = bandeauPreliminaireCi(ci);
+// CPRW13 — la ligne « À chiffrer après la visite technique (hors total) : … » du PDF, jamais un montant.
+const postesHorsTotal = lignePostesHorsTotalCi(ci);
 const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null;
 ---
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-autoconso">
@@ -43,6 +45,10 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
                 <div class="mt-4 rounded-xl border border-brass-400/40 bg-brass-400/10 p-4 text-sm text-lune-soft" data-ci-preliminaire>
                   <p class="font-semibold text-lune" data-i18n
                     data-fr={preliminaire.fr} data-en={preliminaire.en} data-ar={preliminaire.ar}>{preliminaire.fr}</p>
+                  {postesHorsTotal ? (
+                    <p class="mt-1 text-xs text-lune-faint" data-ci-postes-hors-total data-i18n
+                      data-fr={postesHorsTotal.fr} data-en={postesHorsTotal.en} data-ar={postesHorsTotal.ar}>{postesHorsTotal.fr}</p>
+                  ) : null}
                 </div>
               ) : null}
               <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

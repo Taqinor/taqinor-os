@@ -13,6 +13,7 @@ import {
   ciEstUneEstimation,
   ciSousReserveVisite,
   bandeauPreliminaireCi,
+  lignePostesHorsTotalCi,
   CI_DEVIS_PRELIMINAIRE,
   chiffresEconomiePhare,
   savingsHeadline,
@@ -266,7 +267,7 @@ describe('CPRW4 — ni badge estimation ni « Ce qu\'il nous manque »', () => {
 
 // CPRW5 (27/10/2026) — suffixes TTC/HT trilingues, motif de la base servi sous la carte.
 describe('CPRW5 — TTC/HT trilingues, motif de base interne non affiché', () => {
-  it('plus de suffixe FR en dur ; libellés FR/EN/AR ; motifBase servi affiché', () => {
+  it('plus de suffixe FR en dur ; libellés FR/EN/AR ; motif de base interne jamais affiché', () => {
     expect(SRC_AUTOCONSO).not.toContain("' TTC'");
     expect(SRC_AUTOCONSO).not.toContain("' HT'");
     expect(SRC_AUTOCONSO).toContain('incl. VAT');
@@ -275,5 +276,60 @@ describe('CPRW5 — TTC/HT trilingues, motif de base interne non affiché', () =
     expect(SRC_AUTOCONSO).toContain('دون احتساب الضريبة');
     // `argent.motif_base` est une note interne FR (« … (D-CIQ-3) ») : JAMAIS affichée au client.
     expect(SRC_AUTOCONSO).not.toContain('motifBase');
+  });
+});
+
+// CPRW13 (27/10/2026) — « À chiffrer après la visite technique (hors total) : <postes> » sous le bandeau, comme le PDF.
+describe('CPRW13 — postes hors total sous le bandeau préliminaire', () => {
+  const avec = (postes: unknown) =>
+    ({ mode_installation: 'industriel', synthese_ci: { hypotheses: [], postes_hors_total: postes } }) as unknown as ProposalResponse;
+  const py = readFileSync(
+    fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/i18n_labels.py', import.meta.url)),
+    'utf-8',
+  );
+  it('absent ou vide : aucune ligne (lecture défensive)', () => {
+    expect(lignePostesHorsTotalCi(syntheseCi(avec(undefined)))).toBeNull();
+    expect(lignePostesHorsTotalCi(syntheseCi(avec([])))).toBeNull();
+    expect(lignePostesHorsTotalCi(syntheseCi(avec('x')))).toBeNull();
+    expect(lignePostesHorsTotalCi(null)).toBeNull();
+  });
+  it('rôle en mots simples FR/EN/AR, article du catalogue après « — », sans doublon, jamais un montant', () => {
+    const ligne = lignePostesHorsTotalCi(
+      syntheseCi(
+        avec([
+          { role: 'cable_dc', designation: 'Câble solaire Nexans', quantite: 120, unite: 'm', catalogue: true },
+          { role: 'structure_ci', designation: 'Structure C&I', quantite: 1, unite: 'ens', catalogue: false },
+          { role: 'cable_ac', designation: 'Câble AC générique', quantite: 10, unite: 'm', catalogue: false },
+          { role: 'cable_ac', designation: 'Câble AC générique 2', quantite: 5, unite: 'm', catalogue: false },
+          { role: 'role_inconnu', designation: 'Poste libre', quantite: 1, unite: null, catalogue: false },
+        ]),
+      ),
+    )!;
+    expect(ligne.fr).toBe(
+      'À chiffrer après la visite technique (hors total) : câble DC — Câble solaire Nexans, structure de fixation, câble AC, Poste libre',
+    );
+    expect(ligne.en).toBe(
+      'To be priced after the site visit (not in the total): DC cable — Câble solaire Nexans, mounting structure, AC cable, Poste libre',
+    );
+    expect(ligne.ar).toContain('يُسعَّر بعد الزيارة التقنية (خارج المجموع): ');
+    expect(ligne.ar).toContain('كابل التيار المستمر — Câble solaire Nexans');
+    expect(ligne.fr).not.toMatch(/MAD|DH|\d/);
+  });
+  it('parité des mots avec i18n_labels.py (ci_a_chiffrer_hors_total, ci_role_*)', () => {
+    const ligne = lignePostesHorsTotalCi(
+      syntheseCi(avec([{ role: 'coffret_dc', designation: 'X', quantite: 1, unite: null, catalogue: false }])),
+    )!;
+    for (const lg of ['fr', 'en', 'ar'] as const) {
+      const ligneTxt = ligne[lg].split(':')[0]!;
+      expect(py).toContain(ligneTxt);
+    }
+    for (const mot of ['câble DC', 'DC cable', 'كابل التيار المستمر', 'structure de fixation', 'mounting structure', 'هيكل التثبيت', 'coffret DC', 'DC box', 'علبة التيار المستمر', 'protection AC', 'AC protection', 'حماية التيار المتردد', 'onduleur', 'inverter', 'العاكس']) {
+      expect(py).toContain(mot);
+    }
+  });
+  it('SectionAutoconso affiche la ligne sous le bandeau, en FR/EN/AR', () => {
+    expect(SRC_AUTOCONSO).toContain('lignePostesHorsTotalCi(ci)');
+    expect(SRC_AUTOCONSO).toContain('data-ci-postes-hors-total');
+    expect(SRC_AUTOCONSO).toMatch(/data-fr=\{postesHorsTotal\.fr\} data-en=\{postesHorsTotal\.en\} data-ar=\{postesHorsTotal\.ar\}/);
   });
 });
