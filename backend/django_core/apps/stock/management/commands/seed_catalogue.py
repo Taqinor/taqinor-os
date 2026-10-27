@@ -786,19 +786,19 @@ FICHES = {
                   'OND-R-HUA-15T', 'OND-R-HUA-20T', 'OND-R-HUA-25T', 'OND-R-HUA-50T',
                   'OND-R-HUA-100T', 'OND-R-HUA-150T')},
     # Onduleurs hybrides Deye
-    # O1 (2026-08-20) — HARMONISATION : ce groupe affichait « Garantie
-    # constructeur 10 ans » flat alors que les SKU LV 15K/20K plus bas (même
-    # gamme SUN Series Hybrid, même constructeur) affichent la version nuancée
-    # « 5 à 10 ans (selon site d'installation) ». Source : Deye, « SUN Series
-    # Hybrid inverter 10-Year Limited Warranty for Installation in Europe »
-    # (deyeinverter.com — couvre explicitement TOUTE la gamme SUN Series
-    # Hybrid) + la datasheet technique SG05LP3/SG05LP1 elle-même : ligne
-    # « Warranty : 5 Years/10 Years — the Warranty Period Depends the Final
-    # Installation Site of Inverter ». Les deux groupes de SKU sont désormais
-    # sur LA MÊME phrase, la plus honnête des deux.
+    # RPDF (fondateur 27/10/2026, « on travaille au Maroc… c'est stupide de
+    # montrer qu'on ne sait pas ») — UNE durée, celle qui s'applique au Maroc :
+    # 5 ans. Source : Deye, « Deye Inverter Warranty Terms and Conditions »
+    # v1.7 (deyeinverter.com, 2023) — couverture « all country and regions »
+    # hors Chine continentale, « The warranty period is 5 Years (10 Years
+    # Optional) » ; les 10 ans « Installation in Europe » ne visent que
+    # l'Europe et l'option payante n'est pas achetée. Remplace l'ancienne
+    # phrase « 5 à 10 ans (selon site d'installation) » (O1, 20/08/2026) ;
+    # migration 0174 pour les bases déjà seedées.
     **{sku: {
         'marque': 'Deye',
-        'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
+        'garantie': 'Garantie constructeur 5 ans',
+        'garantie_mois': 60,
         # Rendement → ``ond_rendement_euro_pct`` (PVFCH). La tension NOMINALE
         # « 48 V » de la famille de batteries reste : ce n'est pas la PLAGE
         # (``ond_bat_v_min``/``ond_bat_v_max``), aucun champ ne la porte.
@@ -857,7 +857,11 @@ FICHES = {
     # cycles.
     **{sku: {
         'marque': 'Dyness',
-        'garantie': 'Garantie 10 ans (variante régionale : 7 ans) · ≥ 6 000 cycles',
+        # RPDF (27/10/2026) — Maroc = Afrique : document officiel Dyness
+        # « Warranty Terms DL5.0C Pro » version Afrique (dyness.com, 2025)
+        # = 10 ans ; la réserve « variante régionale : 7 ans » (version
+        # Amériques) ne concerne pas le Maroc et ne s'imprime plus.
+        'garantie': 'Garantie constructeur 10 ans · ≥ 6 000 cycles',
         # Trou comblé (20/08/2026, revue de la lane moteur) : la migration 0012
         # backfillait 120 mois sur les batteries EXISTANTES, mais le seeder ne
         # posait AUCUN garantie_mois — toute base neuve sortait à NULL et le
