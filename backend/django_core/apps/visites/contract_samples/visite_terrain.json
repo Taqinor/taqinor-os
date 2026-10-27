@@ -343,6 +343,12 @@
           "libelle": "Puissance de la pompe actuelle",
           "unite": "CV"
         },
+        "pompe_actuelle_kw": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Puissance plaque de la pompe actuelle",
+          "unite": "kW"
+        },
         "tension_v": {
           "type": "entier",
           "requis": false,
@@ -639,6 +645,7 @@
         "pompe_presente": true,
         "pompe_actuelle_type": "immergee",
         "pompe_actuelle_cv": 7.5,
+        "pompe_actuelle_kw": 5.5,
         "tension_v": 380,
         "alimentation": "tri"
       },

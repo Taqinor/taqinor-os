@@ -57,6 +57,21 @@ class ChecklistPointEauDuContrat(SimpleTestCase):
                      'calibre_disjoncteur_a', 'largeur_mur_cm'):
             self.assertNotIn(toit, codes)
 
+    def test_agv2_constante_deplacee_et_reexportee(self):
+        from apps.visites import visite_checklist_pompage
+        self.assertIs(checklist.CATEGORIES_POINT_EAU,
+                      visite_checklist_pompage.CATEGORIES_POINT_EAU)
+        self.assertIs(checklist.categories('point_eau'),
+                      visite_checklist_pompage.CATEGORIES_POINT_EAU)
+
+    def test_agv2_plaque_kw_facultative_de_la_pompe_existante(self):
+        kw = checklist.mesure('pompe_existante', 'pompe_actuelle_kw',
+                              'point_eau')
+        self.assertEqual(kw['unite'], 'kW')
+        self.assertEqual(kw['nature'], checklist.NOMBRE)
+        self.assertFalse(kw['requis'])
+        self.assertFalse(checklist.mesure_requise(kw, {}))
+
     def test_le_toiture_reste_la_checklist_historique(self):
         self.assertIs(checklist.categories(), checklist.CATEGORIES)
         self.assertIs(checklist.categories('toiture'), checklist.CATEGORIES)
