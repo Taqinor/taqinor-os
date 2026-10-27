@@ -6,7 +6,7 @@
     "equipe": {
       "id": 7,
       "nom": "Casa",
-      "delai_minutes": 10
+      "delai_minutes": 5
     },
     "en_attente": 1,
     "leads": [
@@ -56,10 +56,36 @@
     "leads": [],
     "membres": []
   },
+  "exemple_file_vide": {
+    "equipe": {
+      "id": 7,
+      "nom": "Casa",
+      "delai_minutes": 5
+    },
+    "en_attente": 0,
+    "leads": [],
+    "membres": [
+      {
+        "id": 4,
+        "nom": "Sara",
+        "fonction": "Chargée de clientèle",
+        "leads_ouverts": 12,
+        "au_plafond": false
+      },
+      {
+        "id": 5,
+        "nom": "Amine",
+        "fonction": "Chargé de clientèle",
+        "leads_ouverts": 20,
+        "au_plafond": true
+      }
+    ]
+  },
   "notes": {
     "equipe": "L'équipe qui reçoit les nouveaux leads avec confirmation activée et dont l'appelant est le responsable (ou toute équipe de ce type pour Direction/Admin) ; null si aucune.",
     "leads": "Leads en attente de décision, du plus ancien au plus récent. Champs absents du lead = null (jamais inventés). `attente_minutes` et `auto_le` en temps ouvré (horaires de la société).",
     "propose.raison": "Texte lisible de la règle appliquée, ou « Rotation équilibrée » quand aucune règle ne correspond.",
-    "membres": "Membres ACTIFS de l'équipe, dans l'ordre d'affichage ; `leads_ouverts` = leads non signés/froids/perdus ; `au_plafond` selon le plafond de leads ouverts du profil."
+    "membres": "Membres ACTIFS de l'équipe, dans l'ordre d'affichage ; `leads_ouverts` = leads non signés/froids/perdus ; `au_plafond` selon le plafond de leads ouverts du profil.",
+    "exemple_file_vide": "Équipe dirigée, rien en attente (l'écran dit « Aucun lead en attente ») ; `exemple_vide` = l'appelant ne dirige aucune équipe qui confirme."
   }
 }
