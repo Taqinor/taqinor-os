@@ -322,6 +322,29 @@ def _alerte(code, message, niveau='alerte'):
             'niveau': niveau, 'interne': True}
 
 
+def _option_dominee(sans, avec):
+    """CMP9 (D-CMP-5) — l'option « avec » coûte AU MOINS autant ET économise AU
+    PLUS autant que « sans » : dominée. Un coût ou une économie manquant d'un
+    côté ⇒ aucun verdict."""
+    valeurs = [(e or {}).get(cle) for e in (sans, avec) for cle in ('cout', 'economie')]
+    if any(v is None for v in valeurs):
+        return False
+    return avec['cout'] >= sans['cout'] and avec['economie'] <= sans['economie']
+
+
+def _alerte_dominee(sans, avec, alertes, choix):
+    codes = {a.get('code') for a in alertes}
+    cause = ' ; '.join(texte for code, texte in (
+        ('HYBRIDES_PARALLELE_MAX', 'borne de hybrides en parallèle'),
+        ('BATTERIE_REDUITE_AU_TOIT', 'banque réduite au toit')) if code in codes)
+    return _alerte('OPTION_BATTERIE_DOMINEE', (
+        'Option « avec batterie » non proposée : plus chère (%.0f contre %.0f HT) et '
+        'économie annuelle plus faible (%.0f contre %.0f MAD)%s.'
+        % (avec['cout'], sans['cout'], avec['economie'], sans['economie'],
+           ' — cause : %s' % cause if cause else '')),
+        niveau='bloquant' if choix == 'avec' else 'alerte')
+
+
 def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, composer,
                   borne_toit, **noyau):
     from apps.ventes.etude_horaire import simuler_batterie_jour
@@ -517,6 +540,9 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
             % resultat['motif'], niveau='bloquant' if choix == 'avec' else 'alerte'))
         return sortie
     evalue = resultat['evaluation']
+    if _option_dominee(evaluation, evalue):
+        sortie['alertes'].append(_alerte_dominee(evaluation, evalue, sortie['alertes'], choix))
+        return sortie
     fiche = next((b for b in bat['batteries'] if b['produit'] == evalue['batterie'].get('produit')), None)
     sortie['bloc'] = _bloc(evalue, contexte.get('valoriser'), _ctx_flux(flux, fiche))
     return sortie
