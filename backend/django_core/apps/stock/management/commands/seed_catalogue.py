@@ -794,19 +794,19 @@ FICHES = {
                   'OND-R-HUA-15T', 'OND-R-HUA-20T', 'OND-R-HUA-25T', 'OND-R-HUA-50T',
                   'OND-R-HUA-100T', 'OND-R-HUA-150T')},
     # Onduleurs hybrides Deye
-    # O1 (2026-08-20) — HARMONISATION : ce groupe affichait « Garantie
-    # constructeur 10 ans » flat alors que les SKU LV 15K/20K plus bas (même
-    # gamme SUN Series Hybrid, même constructeur) affichent la version nuancée
-    # « 5 à 10 ans (selon site d'installation) ». Source : Deye, « SUN Series
-    # Hybrid inverter 10-Year Limited Warranty for Installation in Europe »
-    # (deyeinverter.com — couvre explicitement TOUTE la gamme SUN Series
-    # Hybrid) + la datasheet technique SG05LP3/SG05LP1 elle-même : ligne
-    # « Warranty : 5 Years/10 Years — the Warranty Period Depends the Final
-    # Installation Site of Inverter ». Les deux groupes de SKU sont désormais
-    # sur LA MÊME phrase, la plus honnête des deux.
+    # RPDF (fondateur 27/10/2026, « on travaille au Maroc… c'est stupide de
+    # montrer qu'on ne sait pas ») — UNE durée, celle qui s'applique au Maroc :
+    # 5 ans. Source : Deye, « Deye Inverter Warranty Terms and Conditions »
+    # v1.7 (deyeinverter.com, 2023) — couverture « all country and regions »
+    # hors Chine continentale, « The warranty period is 5 Years (10 Years
+    # Optional) » ; les 10 ans « Installation in Europe » ne visent que
+    # l'Europe et l'option payante n'est pas achetée. Remplace l'ancienne
+    # phrase « 5 à 10 ans (selon site d'installation) » (O1, 20/08/2026) ;
+    # migration 0174 pour les bases déjà seedées.
     **{sku: {
         'marque': 'Deye',
-        'garantie': 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
+        'garantie': 'Garantie constructeur 5 ans',
+        'garantie_mois': 60,
         # Rendement → ``ond_rendement_euro_pct`` (PVFCH). La tension NOMINALE
         # « 48 V » de la famille de batteries reste : ce n'est pas la PLAGE
         # (``ond_bat_v_min``/``ond_bat_v_max``), aucun champ ne la porte.
@@ -878,9 +878,13 @@ FICHES = {
     # (la migration 0012 ne backfillait que les batteries EXISTANTES).
     'BAT-DEY-5': {
         'marque': 'Dyness',
-        'garantie': ('Garantie 10 ans (version V2 : 7 ans, extensible à 10) · '
+        # RPDF (fondateur 27/10/2026 : une garantie client = UNE durée, celle
+        # du Maroc, sans réserve) — garantie Afrique DL5.0C V2-202502 :
+        # 7 ans de base, 10 ans seulement par extension ACHETÉE (même règle
+        # que Deye 5 ans : l'option non achetée ne s'imprime pas).
+        'garantie': ('Garantie constructeur 7 ans · '
                      '6 000 cycles (0,2C, 25 °C, DoD 90 %)'),
-        'garantie_mois': 120,
+        'garantie_mois': 84,
         # PVFCH : tension, énergie, DoD et mise en parallèle vivent dans la
         # FicheTechnique — la prose ne garde que ce qu'aucun champ ne porte.
         'description': ('Batterie lithium LiFePO4 basse tension 100 Ah\n'

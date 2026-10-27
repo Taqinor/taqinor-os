@@ -558,7 +558,14 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertTrue({x['produit'] for x in e['onduleurs']['combinaison']} <= {900, 901, 902})
         bat = e['batterie']
         self.assertIn(bat['produit'], (950, 951, 952))
-        besoin = besoin_nocturne_kwh(self.charge, self.sans['bilan'])
+        # CMP8 : le besoin dépend de la fenêtre de surplus, donc du champ de
+        # DÉPART arrondi aux panneaux (plus seulement des heures sans production).
+        import math
+        from apps.ventes.moteur_ci.autoconso import bilan_horaire
+        n_bas = math.ceil(self.sans['kwc'] * 1000.0 / PANNEAU_WC - 1e-9)
+        bilan_depart = bilan_horaire(self.charge, self.prod, n_bas * PANNEAU_WC / 1000.0,
+                                     tension='bt', revente_choisie=False)[0]
+        besoin = besoin_nocturne_kwh(self.charge, bilan_depart)
         self.assertAlmostEqual(bat['besoin_nocturne_kwh'], round(besoin, 2), places=2)
         self.assertGreaterEqual(bat['capacite_utile_kwh'] * bat['rendement'], besoin - 1e-6)
         self.assertTrue(bat['se_remplit_tous_les_jours'])
@@ -617,6 +624,68 @@ class OptionAvecBatterieTests(unittest.TestCase):
         # Le champ a RETRECI : jamais masque par un « ajoutes » a 0.
         self.assertEqual(e['batterie']['panneaux_ajoutes'], 0)
         self.assertGreater(e['batterie']['panneaux_retires'], 0)
+
+    def test_cmp7_decharge_bornee_par_les_ports_hybrides(self):
+        # 2 SUN-15K (port 14,34 kW, AC 15 kW), charge de nuit de 40 kW : la
+        # restitution de chaque heure ≤ 28,68 kWh ; borne non publiée ⇒ inchangé.
+        from apps.ventes.moteur_ci.batterie import (
+            _batterie_sur_jour, puissance_decharge_kw)
+        onduleurs = {'combinaison': [{'produit': 901, 'quantite': 2}]}
+        hyb = [dict(h, bat_max_decharge_kw=14.34) if h['produit'] == 901 else h
+               for h in _hybrides_bt()]
+        banque = dict(BATTERIES[2], quantite=4)
+        self.assertAlmostEqual(puissance_decharge_kw(banque, onduleurs, hyb), 28.68, places=6)
+        # Port plus grand que l'AC : plafonné par Σ kW AC (2 × 15).
+        hyb_large = [dict(h, bat_max_decharge_kw=20.0) if h['produit'] == 901 else h
+                     for h in _hybrides_bt()]
+        self.assertEqual(puissance_decharge_kw(banque, onduleurs, hyb_large), 30.0)
+        # Pack seul publié : Σ packs ; rien de publié : None.
+        self.assertEqual(puissance_decharge_kw(dict(banque, max_decharge_kw=5.0), {}, []), 20.0)
+        self.assertIsNone(puissance_decharge_kw(banque, onduleurs, _hybrides_bt()))
+        bloc = {'autoconso_kwh': [0.0] * 24, 'surplus_kwh': [30.0] * 6 + [0.0] * 18}
+        nuit = [0.0] * 6 + [40.0] * 18
+        aucune = _batterie_sur_jour(nuit, bloc, 60.0, 1.0, None, self.simuler)
+        self.assertAlmostEqual(aucune[2], 60.0)        # la banque pleine se vide
+        large = _batterie_sur_jour(nuit, bloc, 60.0, 1.0, None, self.simuler, 28.68)
+        self.assertAlmostEqual(large[2], 60.0)         # 60 kWh tiennent en 3 h
+        serree = _batterie_sur_jour(nuit, bloc, 60.0, 1.0, None, self.simuler, 2.0)
+        self.assertAlmostEqual(serree[2], 36.0)        # 18 h × 2 kWh/h, le reste au réseau
+        self.assertLessEqual(max(serree[0][6:]), 2.0 + 1e-9)
+        # Borne None ⇒ strictement identique au comportement d'avant.
+        self.assertEqual(aucune, _batterie_sur_jour(nuit, bloc, 60.0, 1.0, None, self.simuler, None))
+
+    def test_cmp8_besoin_hors_fenetre_solaire(self):
+        # Surplus de 10 h à 16 h ; charge 20 kWh/h à 17-18 h pour 5 kWh/h de
+        # production : ces 2 × 15 = 30 kWh de déficit du soir comptent.
+        from apps.ventes.moteur_ci.batterie import besoin_nocturne_kwh
+        charge, auto, surplus = [0.0] * 24, [0.0] * 24, [0.0] * 24
+        for h in range(10, 17):
+            auto[h], surplus[h] = 5.0, 10.0
+        for h in (17, 18):
+            charge[h], auto[h] = 20.0, 5.0
+        charge[3] = 4.0                  # nuit : 4 kWh, production nulle
+        bloc = {'mois': 6, 'type_jour': 'semaine', 'nb_jours': 20,
+                'autoconso_kwh': auto, 'surplus_kwh': surplus}
+        jt = [{'mois': 6, 'type_jour': 'semaine', 'charge_kwh': charge}]
+        self.assertAlmostEqual(besoin_nocturne_kwh(jt, {'horaire': [bloc]}), 34.0)
+        # Jour sans surplus ⇒ 0 ; pondération par nb_jours conservée.
+        sans = dict(bloc, surplus_kwh=[0.0] * 24)
+        autre = dict(sans, type_jour='dimanche')
+        jt2 = jt + [{'mois': 6, 'type_jour': 'dimanche', 'charge_kwh': charge}]
+        self.assertAlmostEqual(besoin_nocturne_kwh(jt2, {'horaire': [bloc, autre]}), 17.0)
+        self.assertEqual(besoin_nocturne_kwh(jt, {'horaire': [sans]}), 0.0)
+
+    def test_cmp7_option_servie_borne_publiee_baisse_economie(self):
+        hyb_libres = _hybrides_bt()
+        r0 = self._avec(hybrides=hyb_libres)['evaluation']
+        self.assertIsNone(r0['batterie']['puissance_decharge_kw'])
+        serres = [dict(h, bat_max_decharge_kw=0.5) for h in hyb_libres]
+        r1 = self._avec(hybrides=serres, combiner=partial(
+            combiner_onduleurs, candidats=serres, phase='tri'))['evaluation']
+        self.assertEqual(r1['batterie']['puissance_decharge_kw'], 0.5 * sum(
+            x['quantite'] for x in r1['onduleurs']['combinaison']))
+        self.assertLess(r1['bilan']['batterie']['restitue_kwh_an'],
+                        r0['bilan']['batterie']['restitue_kwh_an'])
 
     def test_regle_10_ans_au_dela_du_remplissage(self):
         from apps.ventes.moteur_ci.batterie import monter_regle_10_ans

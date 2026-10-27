@@ -157,9 +157,14 @@ class CombinaisonTests(TestCase):
         self.assertGreaterEqual(ac * self.bornes.borne_usuelle.valeur, 830)
 
     def test_un_mwc_en_moins_d_une_seconde(self):
+        # Garde de complexite (la recherche ne doit pas exploser a 1 MWc), pas
+        # un chronometre : sur un runner GitHub partage le meme appel a mesure
+        # 1,19 s le 27/10/2026 (run 40585144160) et a ejecte #1105 de la merge
+        # queue. Budget 5 s : une explosion combinatoire reste detectee, le bruit
+        # de charge non.
         debut = time.perf_counter()
         r = combiner_onduleurs(1000, self.cat, phase='tri')
-        self.assertLess(time.perf_counter() - debut, 1.0)
+        self.assertLess(time.perf_counter() - debut, 5.0)
         self.assertIsNotNone(r['combinaison'])
 
     def test_chaines_a_verifier_sans_fiches(self):
@@ -316,6 +321,29 @@ class ParalleleMaxTests(TestCase):
     def test_sans_max_appareils_inchange(self):
         r = combiner_onduleurs(500, _vivier_deye(), phase='tri', module=_module_cs7n())
         self.assertGreater(sum(x['quantite'] for x in r['combinaison']), 10)
+
+
+class ParalleleMemeModeleTests(TestCase):
+    """CMP11 — hybrides en parallèle d'un seul modèle (manuel Deye SG05LP3)."""
+
+    def test_combinaison_homogene_un_seul_modele(self):
+        for kwc in (35, 50, 64, 120, 150):
+            r = combiner_onduleurs(kwc, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                                   max_appareils=10, homogene=True)
+            self.assertEqual(len(r['combinaison']), 1, (kwc, r['combinaison']))
+            self.assertTrue(any(h['cle'] == 'parallele_meme_modele' for h in r['hypotheses']))
+
+    def test_sans_homogene_inchange(self):
+        a = combiner_onduleurs(64, _vivier_deye(), phase='tri', module=_module_cs7n())
+        b = combiner_onduleurs(64, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                               homogene=False)
+        self.assertEqual(a['combinaison'], b['combinaison'])
+
+    def test_aucun_modele_seul_ne_porte_le_champ(self):
+        r = combiner_onduleurs(500, _vivier_deye(), phase='tri', module=_module_cs7n(),
+                               max_appareils=10, homogene=True)
+        self.assertIsNone(r['combinaison'])
+        self.assertTrue(r['motif'])
 
 
 class GardeAstTests(TestCase):
