@@ -888,7 +888,9 @@ class ConsommationLigneSerializer(SameCompanyFKSerializerMixin, serializers.Mode
                   'date_modification']
         read_only_fields = ['stock_applique', 'ordre', 'date_modification']
 
-    @extend_schema_field(serializers.CharField())
+    # api-fuzz-full 27/10 (ENF11) : l'écart (Decimal) est SERVI en nombre JSON
+    # (encodeur DRF) — publié ``number`` (il était annoncé chaîne).
+    @extend_schema_field(serializers.FloatField())
     def get_variance(self, obj):
         return obj.variance
 

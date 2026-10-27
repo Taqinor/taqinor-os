@@ -522,6 +522,7 @@ owners:
       - backend/django_core/apps/ventes/coherence/**
       - backend/django_core/apps/ventes/contract_samples/ventes_economie.json
       - backend/django_core/apps/ventes/dimensionnement.py
+      - backend/django_core/apps/ventes/dimensionnement_balayage.py
       - backend/django_core/apps/ventes/domain/dimensionnement_devis.py
       - backend/django_core/apps/ventes/economie.py
       - backend/django_core/apps/ventes/etude_horaire.py

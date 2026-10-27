@@ -658,6 +658,25 @@ class Enf11FuzzGedTour2Tests(TestCase):
                                format='json')
         self.assertEqual(second.status_code, 409, second.content)
 
+    def test_tag_deja_pose_409(self):
+        # api-fuzz-full 27/10 (ENF11) : le tag déjà posé sur ce document
+        # (``unique_together``) = refus d'ÉTAT, 409 ``unique_conflict`` (400).
+        from apps.ged.models import DocumentTag, DocumentTagAssignment
+        doc = Document.objects.create(company=self.co, folder=self.folder,
+                                      nom='t.pdf')
+        tag = DocumentTag.objects.create(company=self.co, nom='Doublon',
+                                         slug='doublon')
+        corps = {'document': doc.pk, 'tag': tag.pk}
+        premier = self.api.post(f'{BASE}tag-assignments/', corps,
+                                format='json')
+        self.assertEqual(premier.status_code, 201, premier.content)
+        second = self.api.post(f'{BASE}tag-assignments/', corps,
+                               format='json')
+        self.assertEqual(second.status_code, 409, second.content)
+        self.assertEqual(second.data['error']['code'], 'unique_conflict')
+        self.assertEqual(DocumentTagAssignment.objects.filter(
+            document=doc, tag=tag).count(), 1)
+
     def test_regles_publiees_au_schema(self):
         from drf_spectacular.generators import SchemaGenerator
         from django.urls import include, path

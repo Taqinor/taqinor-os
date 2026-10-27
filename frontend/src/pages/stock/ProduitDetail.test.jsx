@@ -551,3 +551,44 @@ describe('STKCAT25 — onglet « Utilisé dans »', () => {
     expect(compteur.closest('a')).toBeNull()
   })
 })
+
+/* CCAT4 — usage C&I de la fiche : type de pose en français, ligne « Prix C&I »
+   jamais « prix à renseigner » pour une prestation ni pour un coffret au barème. */
+describe('CCAT4 — fiche C&I : type de pose et prix', () => {
+  const ciProduit = (role, etat = {}, over = {}) => ({
+    ...produit, prix_vente: '0.00', role_ci: role,
+    etat_ci: {
+      role_ci: role, libelle: role, prix_connu: false, eligible_ci: true,
+      motif_exclusion: null, ...etat,
+    },
+    ...over,
+  })
+  const ouvrir = async (p) => {
+    render(<ProduitDetail produit={p} onClose={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    await screen.findByTestId('pdet-fiche-technique')
+  }
+
+  it('type de pose : libellé français, jamais le code brut', async () => {
+    await ouvrir(ciProduit('structure_ci', {}, { type_pose: 'toit_plat_leste' }))
+    expect(screen.getByText('Toit plat — lesté')).toBeInTheDocument()
+    expect(screen.queryByText('toit_plat_leste')).toBeNull()
+  })
+
+  it('prestation : « tarif réglé dans Paramètres », pas « prix à renseigner »', async () => {
+    await ouvrir(ciProduit('pose_modules'))
+    expect(screen.getByText(/tarif réglé dans Paramètres › Devis › Prestations C&I/)).toBeInTheDocument()
+    expect(screen.queryByText('prix à renseigner')).toBeNull()
+  })
+
+  it('coffret au barème : « au barème (par onduleur / par panneau) »', async () => {
+    await ouvrir(ciProduit('coffret_dc', { prix_connu: true }))
+    expect(screen.getByText('au barème (par onduleur / par panneau)')).toBeInTheDocument()
+    expect(screen.queryByText('prix à renseigner')).toBeNull()
+  })
+
+  it('matériel sans prix : « prix à renseigner » conservé', async () => {
+    await ouvrir(ciProduit('compteur_injection'))
+    expect(screen.getByText('prix à renseigner')).toBeInTheDocument()
+  })
+})

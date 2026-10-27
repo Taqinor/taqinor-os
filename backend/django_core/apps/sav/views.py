@@ -794,20 +794,12 @@ class EquipementViewSet(JsonSeulementMixin, CompanyScopedModelViewSet):
 
         ``?debut=AAAA-MM-JJ&fin=AAAA-MM-JJ`` (défaut : les 30 derniers jours).
         """
-        from datetime import datetime as _dt, timedelta as _td
+        from .query_params import periode_param
         from .services import disponibilite_equipement
 
         equipement = self.get_object()
-
-        def _parse_date(name, default):
-            d = date_param(request, name)
-            if d is None:
-                return default
-            return timezone.make_aware(_dt(d.year, d.month, d.day))
-
-        fin_periode = _parse_date('fin', timezone.now())
-        debut_periode = _parse_date(
-            'debut', fin_periode - _td(days=30))
+        # api-fuzz-full 27/10 (ENF11) : `fin=0001-01-01` débordait (500).
+        debut_periode, fin_periode = periode_param(request)
 
         data = disponibilite_equipement(
             equipement, debut_periode=debut_periode, fin_periode=fin_periode)
