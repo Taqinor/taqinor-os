@@ -285,7 +285,8 @@ def _courbes_archetype(calendrier, niveaux, categorie, profil_societe, talon_kw,
         energie = niveaux[mois - 1]
         part_plat = 0.0
         if talon_kw is None and talon_part_pct is not None:
-            part_plat = energie * min(max(float(talon_part_pct), 0.0), 100.0) / 100.0                 / (HEURES * len(jours))
+            part_plat = (energie * min(max(float(talon_part_pct), 0.0), 100.0) / 100.0
+                         / (HEURES * len(jours)))
             energie -= part_plat * HEURES * len(jours)
         n_ouverts = sum(1 for _j, o, _t, _p in jours if o)
         n_fermes = len(jours) - n_ouverts
