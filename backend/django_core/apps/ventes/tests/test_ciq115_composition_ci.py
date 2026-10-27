@@ -91,8 +91,12 @@ class CompositionTests(TestCase):
         comp = composer_ci(100, self.cat, onduleurs=ond,
                            entrees=_entrees(longueur_dc_m=40), forfaits={})
         dc = self._lignes(comp, 'cable_dc')[0]
-        self.assertEqual(dc['quantite'], 10 * 40)
-        self.assertNotEqual(dc['quantite'], 60)
+        # D-CMP-2 — 2 conducteurs (+ / −) × 10 chaînes × 40 m aller simple.
+        self.assertEqual(dc['quantite'], 2 * 10 * 40)
+        self.assertNotEqual(dc['quantite'], 10 * 40)
+        hyp = next(h for h in comp['hypotheses'] if h['cle'] == 'cable_dc_m')
+        self.assertEqual(hyp['valeur'], 800)
+        self.assertIn('2 × 10 chaînes × 40 m', hyp['source'])
 
     def test_onduleur_150_a_30m_cable_ac_bareme_etendu(self):
         ond = {'combinaison': [{'produit': 1, 'nom': 'Ond 150',
