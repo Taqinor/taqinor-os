@@ -2390,7 +2390,7 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
             signature_client=oa.signature_publiee(),
             signataire_nom=oa.ChaineStricte(required=False, allow_blank=True),
             motif_override_signature=oa.ChaineStricte(required=False, allow_blank=True),
-            motif_override=oa.s(),
+            motif_override=oa.ChaineStricte(required=False, allow_blank=True),
         ),
         responses=InterventionSerializer,
     )
