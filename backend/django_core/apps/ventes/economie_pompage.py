@@ -1251,6 +1251,10 @@ def economie_pompage(saisies, *, sortie_etude=None, lignes=None,
     motifs.extend(motifs_charges)
     couverture = _couverture(sortie_etude, dep['_mois'])
     bloc['couverture'] = couverture
+    if not couverture['verifiee']:
+        # AGM9 (D-AGM-3) — une couverture supposée (100 % du carburant
+        # évité) ne fonde jamais un chiffre client ; l'aperçu vendeur reste.
+        motifs.append(couverture['motif'])
     economie1 = _economie_annee1(dep['_par_mois'],
                                  couverture['part_evitee_par_mois'],
                                  dep['_entretien'])

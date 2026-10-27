@@ -21,10 +21,13 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client
 from apps.stock.models import Produit
+from apps.ventes import economie_pompage as E
 from apps.ventes import selectors
 from apps.ventes.domain import etude_schema as es
 from apps.ventes.domain import pompage
 from apps.ventes.models import Devis, LigneDevis
+from apps.ventes.tests.test_agr_economie_pompage import (
+    CHARGES, ETUDE_COUVERTE, lignes_reference, saisies_12000)
 from authentication.models import Company
 
 User = get_user_model()
@@ -180,3 +183,42 @@ class LectureTests(_Base):
         self.assertIsInstance(
             selectors.economie_pompage_publiable(self.devis.pk, self.co),
             bool)
+
+
+MOTIF_COUVERTURE = 'couverture non vérifiable : pompe sans courbe'
+
+
+class AGM9CouvertureNonVerifiableTests(SimpleTestCase):
+    """AGM9 (D-AGM-3) — une couverture supposée ne fonde aucun chiffre
+    client ; l'aperçu vendeur garde ses chiffres."""
+
+    def bloc(self, sortie_etude, saisies=None):
+        return E.economie_pompage(
+            saisies or saisies_12000(), sortie_etude=sortie_etude,
+            lignes=lignes_reference(), reglages=CHARGES)
+
+    def test_pompe_sans_courbe_non_publiable_avec_motif(self):
+        bloc = self.bloc({'pompe': {'mode': 'neuve'}})
+        self.assertFalse(bloc['couverture']['verifiee'])
+        self.assertFalse(bloc['publiable_client'])
+        self.assertIn(MOTIF_COUVERTURE, bloc['motifs_non_publiable'])
+        # L'écran vendeur garde l'aperçu chiffré.
+        self.assertEqual(bloc['statut'], 'calcule')
+        self.assertEqual(bloc['economie']['retour_ans'], 5)
+
+    def test_etude_couverte_inchangee(self):
+        bloc = self.bloc(ETUDE_COUVERTE)
+        self.assertTrue(bloc['publiable_client'])
+        self.assertNotIn(MOTIF_COUVERTURE, bloc['motifs_non_publiable'])
+
+    def test_nouveau_forage_reste_publiable(self):
+        saisies = {'energie_actuelle': {
+            'valeur': 'aucune', 'provenance': {
+                'origine': 'saisie', 'detail': None, 'date': '2026-09-12'}},
+            'consommation': {'jours_irrigation_par_semaine': 7},
+            'mois_irrigation': {'mois': list(range(1, 13)), 'provenance': {
+                'origine': 'saisie', 'detail': None, 'date': '2026-09-12'}}}
+        bloc = self.bloc({'pompe': {'mode': 'neuve'}}, saisies=saisies)
+        self.assertEqual(bloc['cas'], 'nouveau_forage')
+        self.assertNotIn(MOTIF_COUVERTURE, bloc['motifs_non_publiable'])
+        self.assertTrue(bloc['publiable_client'])
