@@ -22,6 +22,8 @@ import json
 import os
 from functools import lru_cache
 
+from apps.ventes.moteur_ci.talons import ARCHETYPE_LE_PLUS_PROCHE, SOURCE_DEFINITIONS_BDEW
+
 FICHIER_DONNEES = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'donnees', 'archetypes_charge.json')
 
@@ -121,13 +123,25 @@ def forme_archetype(categorie, type_jour, saison, *, profil_societe=None):
     if not categorie or categorie in CATEGORIES_SANS_ARCHETYPE:
         return None, f'{MOTIF_PROFIL_DECLARE} : aucun archétype sourcé pour « {categorie} »'
 
-    archetype = _archetype_pour(categorie)
+    proche_de, motif_proche = ARCHETYPE_LE_PLUS_PROCHE.get(categorie, (None, None))
+    archetype = _archetype_pour(proche_de or categorie)
     if archetype is None:
         # Licence non confirmée ou catégorie inconnue : l'archétype n'est pas vendorisé.
         return None, f'{MOTIF_PROFIL_DECLARE} : aucun archétype sourcé pour « {categorie} »'
 
     forme = list(archetype['forme'][type_jour][saison])
     source = dict(archetype['source'])
+    if proche_de:
+        # Décision fondateur 26/10/2026 — archétype le plus PROCHE, dit tel.
+        return forme, {
+            'type': 'archetype', 'cle': archetype['cle'],
+            'jeu_de_donnees': '%s — archétype le plus proche de « %s » (%s)' % (
+                source['jeu_de_donnees'], categorie, motif_proche),
+            'url': source['url'], 'fichier': source['fichier'],
+            'date_releve': source['date_releve'], 'licence': source['licence'],
+            'statut': archetype['statut'], 'proche_de': archetype['cle'],
+            'definition': SOURCE_DEFINITIONS_BDEW,
+        }
     return forme, {
         'type': 'archetype',
         'cle': archetype['cle'],
