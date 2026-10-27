@@ -223,7 +223,7 @@ class ContratTests(_Base):
 
     def test_longueur_dc_declaree_fiches_completes_cable_dc_quantifie(self):
         # ADEV87 — module et onduleurs à fiches complètes : les chaînes se
-        # calculent, le câble DC = Σ chaînes × longueur DÉCLARÉE, au prix
+        # calculent, le câble DC = 2 × Σ chaînes × distance DÉCLARÉE (D-CMP-2), au prix
         # catalogue. Le câble DC du catalogue de base (_Base) est retiré : seul
         # celui-ci doit être retenu.
         Produit.objects.filter(company=self.co, role_ci='cable_dc').delete()
@@ -239,7 +239,7 @@ class ContratTests(_Base):
         self.assertEqual(ligne['produit'], cable.id)
         self.assertGreater(ligne['quantite'], 0)
         self.assertEqual(ligne['quantite'],
-                         sum(c['nb_chaines'] for c in chaines) * 30)
+                         2 * sum(c['nb_chaines'] for c in chaines) * 30)
         self.assertTrue(ligne['prix_connu'])
 
     def test_pvgis_indisponible_etude_null_et_avertissement(self):
