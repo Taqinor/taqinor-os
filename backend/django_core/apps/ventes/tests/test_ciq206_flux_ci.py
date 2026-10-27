@@ -558,6 +558,14 @@ class OptionAvecBatterieTest(SimpleTestCase):
         self.assertEqual([r['composant'] for r in avec['remplacements']],
                          ['onduleur'])
 
+    def test_cec11_batterie_rack_ou_support_inclus_reste_une_batterie(self):
+        from apps.ventes import economie_ci_options as opt
+        for nom in ('Batterie lithium rack 30 kWh',
+                    'Batterie Dyness 10 kWh (support mural inclus)'):
+            self.assertTrue(opt._est_batterie({'designation': nom}), nom)
+        self.assertFalse(opt._est_batterie(
+            {'designation': 'Support mural pour batterie'}))
+
     def test_seule_la_batterie_est_remplacee(self):
         from apps.ventes import economie_ci_options as opt
         lignes = self.LIGNES + [

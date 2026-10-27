@@ -62,7 +62,7 @@ SOURCE_DEFAUT_BATTERIE = (
     "défaut fondateur (à revoir) : garantie usuelle de 10 ans, aucune "
     "garantie ni nombre de cycles saisis sur la fiche batterie")
 CYCLES_PAR_AN = 365  # une décharge par jour (pricing.BATTERY_CYCLES_PER_DAY)
-MOTS_ACCESSOIRE = ('câble', 'cable', 'connecteur', 'support', 'rack', 'coffret')
+MOTS_ACCESSOIRE = ('câble', 'cable', 'connecteur', 'fusible', 'support')
 
 
 def annee_remplacement_batterie(garantie_mois=None, cycles_publies=None):
@@ -92,11 +92,16 @@ def annee_remplacement_batterie(garantie_mois=None, cycles_publies=None):
 def _est_batterie(ligne):
     """La batterie elle-même : le mot du découpage des options du document
     (``solar_classification.is_battery``), jamais une ligne onduleur (un
-    hybride « compatible batterie ») ni un câble ou un accessoire."""
+    hybride « compatible batterie ») ni un câble ou un accessoire. Une ligne
+    qui COMMENCE par « Batterie » (désignation de l'option avec,
+    ``etude_ci_batterie.designation_option_avec``) l'est toujours, même si
+    elle dit « rack » ou « support inclus » (CEC11)."""
     from apps.ventes.solar_classification import is_battery
-    nom = str(ligne.get('designation') or '').lower()
-    return (is_battery(nom) and not ligne.get('onduleur')
-            and not any(m in nom for m in MOTS_ACCESSOIRE))
+    nom = str(ligne.get('designation') or '').strip().lower()
+    if ligne.get('onduleur') or not is_battery(nom):
+        return False
+    return nom.startswith('batterie') or not any(
+        m in nom for m in MOTS_ACCESSOIRE)
 
 
 def retour_au_dixieme(bloc):
