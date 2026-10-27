@@ -606,3 +606,57 @@ class LHybrideRetenuPorteUneBatterieDuStock(_Base):
         self.assertTrue(any(
             'SANS batterie' in message
             for message in lignes.avertissements_composition))
+
+
+class PostesPretDevisResidentielTests(_Base):
+    """RSIZ11 — ``postes_pret_devis_residentiel`` : le catalogue de ce montage
+    (``CATALOGUE``) chiffre le kit ; chaque trou se lit poste par poste.
+    (NON EXÉCUTÉ à l'écriture : pas de base de test locale.)"""
+
+    slug = 'pvkit-pret'
+
+    def _postes(self):
+        from apps.ventes.selectors import postes_pret_devis_residentiel
+        return {p['cle']: p for p in
+                postes_pret_devis_residentiel(self.company)['postes']}
+
+    def test_forme_et_aucun_prix_achat(self):
+        from apps.ventes.selectors import postes_pret_devis_residentiel
+        brut = postes_pret_devis_residentiel(self.company)
+        self.assertEqual(set(brut), {
+            'pret', 'nb_obligatoires_manquants', 'postes'})
+        self.assertNotIn('prix_achat', str(brut))
+
+    def test_absent_quand_aucun_article_du_role(self):
+        Produit.objects.filter(
+            company=self.company, sku__startswith='TRANS').delete()
+        postes = self._postes()
+        self.assertEqual(postes['transport']['statut'], 'absent')
+        self.assertEqual(postes['transport']['articles'], [])
+
+    def test_a_completer_sans_prix_avec_le_motif(self):
+        Produit.objects.filter(
+            company=self.company, sku__startswith='SOC').update(
+                prix_vente=Decimal('0'))
+        poste = self._postes()['socle']
+        self.assertEqual(poste['statut'], 'a_completer')
+        self.assertEqual(poste['articles'][0]['motif'],
+                         'prix de vente non saisi')
+
+    def test_batterie_hors_stock_bloque_le_pret(self):
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        poste = self._postes()['batterie']
+        self.assertEqual(poste['statut'], 'a_completer')
+        self.assertTrue(all(a['motif'] == 'hors stock (quantité 0)'
+                            for a in poste['articles']))
+        from apps.ventes.selectors import postes_pret_devis_residentiel
+        brut = postes_pret_devis_residentiel(self.company)
+        self.assertFalse(brut['pret'])
+        self.assertGreaterEqual(brut['nb_obligatoires_manquants'], 1)
+
+    def test_triphase_facultatif_donc_absent_sans_bloquer(self):
+        poste = self._postes()['onduleur_hybride:tri']
+        self.assertEqual(poste['statut'], 'absent')
+        self.assertFalse(poste['obligatoire'])
