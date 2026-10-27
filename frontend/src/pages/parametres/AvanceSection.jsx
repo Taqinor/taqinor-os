@@ -6,6 +6,7 @@ import {
   Plus, Trash2, Pencil, Check, X, ChevronUp, ChevronDown, BarChart3, Download,
 } from 'lucide-react'
 import { formatMAD } from '../../lib/format'
+import { PRODUCTIBLE_NET_FACTOR } from '../../features/ventes/solar'
 import {
   Input, Button, IconButton, Badge,
   Checkbox, Switch, EmptyState,
@@ -177,12 +178,15 @@ export default function AvanceSection({
   toggleCfActif, moveCf,
 }) {
   // L787 — impact inline de l'économie : production annuelle d'1 kWc valorisée
-  // au tarif ONEE × rendement, recalculée en direct à l'édition (repère
-  // pédagogique ; autoconsommation/payback restent sur l'écran devis).
-  const ecoParKwc = Math.round(
-    (Number(form.productible_kwh_kwc) || 0)
-    * (Number(form.rendement_global) || 0)
-    * (Number(form.onee_tarif_kwh) || 0))
+  // au tarif ONEE, recalculée en direct à l'édition (repère pédagogique ;
+  // autoconsommation/payback restent sur l'écran devis). AMOT64 (D-AMOT-3 = a)
+  // — production NETTE comme le moteur (productible × pertes système) ; le
+  // « rendement global » n'est plus à l'écran. Productible vide = PVGIS de la
+  // ville du client : pas de chiffre société à valoriser ici.
+  const productibleSaisi = String(form.productible_kwh_kwc ?? '').trim() !== ''
+  const prodParKwc = Math.round(
+    (Number(form.productible_kwh_kwc) || 0) * PRODUCTIBLE_NET_FACTOR)
+  const ecoParKwc = Math.round(prodParKwc * (Number(form.onee_tarif_kwh) || 0))
   const fmtMad = (n) => formatMAD(n, { decimals: 0, withSymbol: false })
 
   // WIR101 — répartition d'un champ personnalisé listable (group-by FG94) :
@@ -222,21 +226,35 @@ export default function AvanceSection({
           ne change tant que vous ne les modifiez pas.
         </p>
         <div className="pe-grid-2">
-          <Field label="Tarif ONEE moyen (MAD/kWh)" htmlFor="pe-onee">
+          <Field label="Tarif ONEE moyen (MAD/kWh) — repli sans distributeur" htmlFor="pe-onee">
             <Input id="pe-onee" type="number" step="any"
                    name="onee_tarif_kwh" value={form.onee_tarif_kwh} onChange={set} />
           </Field>
           <Field label="Productible (kWh/kWc/an)" htmlFor="pe-productible">
             <Input id="pe-productible" type="number" step="any"
-                   name="productible_kwh_kwc" value={form.productible_kwh_kwc} onChange={set} />
+                   name="productible_kwh_kwc" placeholder="vide = PVGIS de la ville du client"
+                   value={form.productible_kwh_kwc} onChange={set} />
           </Field>
           {/* L787 — impact recalculé en direct sous tarif ONEE / productible. */}
           <div className="sm:col-span-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-[12px] text-primary">
-            ≈ <strong>{fmtMad(ecoParKwc)} MAD/an</strong> économisés pour
-            {' '}<strong>1 kWc</strong> installé (production
-            {' '}{fmtMad(Math.round((Number(form.productible_kwh_kwc) || 0) * (Number(form.rendement_global) || 0)))} kWh ×
-            {' '}{Number(form.onee_tarif_kwh) || 0} MAD/kWh).
+            {productibleSaisi ? (
+              <>
+                ≈ <strong>{fmtMad(ecoParKwc)} MAD/an</strong> économisés pour
+                {' '}<strong>1 kWc</strong> installé (production nette
+                {' '}{fmtMad(prodParKwc)} kWh ×
+                {' '}{Number(form.onee_tarif_kwh) || 0} MAD/kWh).
+              </>
+            ) : (
+              <>
+                Productible vide : chaque devis lit le productible PVGIS de la
+                ville du client. Toute valeur saisie est appliquée telle quelle.
+              </>
+            )}
           </div>
+          <p className="sm:col-span-2 text-[11px] text-muted-foreground">
+            Le tarif ONEE ne sert que de repli quand le client n'a pas de
+            distributeur connu (sinon la grille du distributeur s'applique).
+          </p>
           <Field label="Seuil d'approbation de remise (%)" htmlFor="pe-discount-thr">
             <Input id="pe-discount-thr" type="number" step="any"
                    name="discount_approval_threshold" placeholder="vide = désactivé"
@@ -315,10 +333,6 @@ export default function AvanceSection({
             modifiez pas. Chaque changement est tracé (journal d'audit).
           </p>
           <div className="pe-grid-2">
-            <Field label="Rendement global (0–1)" htmlFor="pe-rendement">
-              <Input id="pe-rendement" type="number" step="any"
-                     name="rendement_global" value={form.rendement_global} onChange={set} />
-            </Field>
             <Field label="Prix cible /kWc par défaut (MAD)" htmlFor="pe-prix-cible">
               <Input id="pe-prix-cible" type="number" step="any"
                      name="prix_cible_kwc_defaut" placeholder="vide = aucun"
@@ -331,7 +345,7 @@ export default function AvanceSection({
             </Field>
           </div>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Le rendement et le tarif ONEE (ci-dessus) pilotent les économies
+            Le productible et le tarif ONEE (ci-dessus) pilotent les économies
             estimées ; le prix cible pré-remplit le générateur ; la limite de
             remise affiche un repère (sans bloquer la saisie).
             {' '}
