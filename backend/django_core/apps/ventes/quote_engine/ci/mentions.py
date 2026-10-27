@@ -423,15 +423,30 @@ def part_soir_option_avec(data):
     (``option_avec.bilan.batterie.restitue_kwh_an``) ÷ consommation hors
     production solaire (``option_avec.batterie.besoin_nocturne_kwh``, jour
     moyen, × 365), plafonnée à 1 ; ``None`` quand l'une manque."""
-    avec = _dict(_dict(_dict(_dict(data).get("etude")).get("etude_ci")).get(
-        "option_avec"))
+    etude_ci = _dict(_dict(_dict(data).get("etude")).get("etude_ci"))
+    avec = _dict(etude_ci.get("option_avec"))
     rest = nombre_normalise(_dict(_dict(avec.get("bilan")).get(
         "batterie")).get("restitue_kwh_an"))
     besoin = nombre_normalise(_dict(avec.get("batterie")).get(
         "besoin_nocturne_kwh"))
-    if rest is None or rest <= 0 or not besoin or besoin <= 0:
+    if rest is not None and rest > 0 and besoin and besoin > 0:
+        return min(1.0, rest / (besoin * JOURS_AN))
+    return _part_par_couvertures(etude_ci, avec)
+
+
+def _part_par_couvertures(etude_ci, avec):
+    """CPDF9 — repli quand le besoin nocturne n'est pas servi (devis
+    rafraîchi depuis ses lignes) : la part de la consommation que l'offre
+    sans batterie laisse au réseau et que l'option avec couvre, lue sur les
+    deux taux de couverture SERVIS — (c_avec − c_sans) ÷ (1 − c_sans)."""
+    c_sans = nombre_normalise(_dict(etude_ci.get("bilan")).get(
+        "taux_couverture"))
+    c_avec = nombre_normalise(_dict(avec.get("bilan")).get("taux_couverture"))
+    if c_sans is None or c_avec is None or not 0 <= c_sans < 1:
         return None
-    return min(1.0, rest / (besoin * JOURS_AN))
+    if c_avec <= c_sans:
+        return None
+    return min(1.0, (c_avec - c_sans) / (1 - c_sans))
 
 
 def _textes_pointe_option_avec(data):
