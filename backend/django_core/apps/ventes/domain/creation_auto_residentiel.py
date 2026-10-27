@@ -218,6 +218,43 @@ def _ajouter_alerte(journal_auto, texte):
         alertes.append(texte)
 
 
+def _alerter_taille_demandee(journal_auto, cible, taille_demandee):
+    """RGEN1 — la taille vient d'une DEMANDE (ce devis, sinon la fiche) :
+    la facture n'a pas dimensionné, le vendeur doit le savoir."""
+    if cible is not None:
+        _ajouter_alerte(journal_auto, (
+            'Taille imposée pour ce devis : %s kWc — la facture du lead '
+            "n'a pas servi au dimensionnement." % _fmt_kwc_fr(cible)))
+        return
+    _ajouter_alerte(journal_auto, (
+        'Taille demandée sur la fiche du lead : %s kWc — la facture '
+        "n'a pas servi au dimensionnement. Videz « taille souhaitée » "
+        'sur la fiche pour revenir à la recommandation.'
+        % _fmt_kwc_fr(taille_demandee)))
+
+
+def _batterie_hors_reseau(journal_auto, hors_reseau, choix_batterie,
+                          wants_battery):
+    """QJR-OFFGRID — un site isolé prend toujours la batterie ; RGEN1 : un
+    « sans » explicite écarté ainsi est DIT au vendeur."""
+    if not hors_reseau:
+        return wants_battery
+    if choix_batterie == 'sans':
+        _ajouter_alerte(journal_auto, (
+            'Site sans réseau (raccordement « aucun ») : la batterie est '
+            "ajoutée d'office, le choix « sans batterie » ne s'applique "
+            'pas.'))
+    return True
+
+
+def _journaliser_avertissements(devis, resultat, journal_auto):
+    """U3 — ce que la composition et l'écrivain de lignes ont refusé de
+    faire : au journal serveur ET (RGEN1) au vendeur, dans les alertes."""
+    for avertissement in resultat['avertissements'] or []:
+        logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
+        _ajouter_alerte(journal_auto, str(avertissement))
+
+
 def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
                                   remise_globale=Decimal('0'), target_kwc=None,
                                   scenario=None, etude_extra=None, plafond_toit=None,
@@ -284,16 +321,7 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
         panneaux = _residential_panel_count(taille_kwc=taille_demandee)
     if panneaux > 0:
         source_dimensionnement = 'taille_demandee'
-        if cible is not None:
-            _ajouter_alerte(journal_auto, (
-                'Taille imposée pour ce devis : %s kWc — la facture du lead '
-                "n'a pas servi au dimensionnement." % _fmt_kwc_fr(cible)))
-        else:
-            _ajouter_alerte(journal_auto, (
-                'Taille demandée sur la fiche du lead : %s kWc — la facture '
-                "n'a pas servi au dimensionnement. Videz « taille souhaitée » "
-                'sur la fiche pour revenir à la recommandation.'
-                % _fmt_kwc_fr(taille_demandee)))
+        _alerter_taille_demandee(journal_auto, cible, taille_demandee)
     else:
         panneaux, watt_retenu, source_dimensionnement, optimum_avec = (
             _panneaux_dimensionnement_horaire(
@@ -342,13 +370,8 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     from apps.ventes.utils.options import deux_options_composables
     phase_client, hors_reseau = phase_et_isolement_du_lead(lead)
     deux_options = deux_options_composables(deux_options, hors_reseau)
-    if hors_reseau:
-        if choix_batterie == 'sans':
-            _ajouter_alerte(journal_auto, (
-                'Site sans réseau (raccordement « aucun ») : la batterie est '
-                "ajoutée d'office, le choix « sans batterie » ne s'applique "
-                'pas.'))
-        wants_battery = True
+    wants_battery = _batterie_hors_reseau(
+        journal_auto, hors_reseau, choix_batterie, wants_battery)
 
     # ── L-2OPT — L'AXE « AVEC BATTERIE » A SON PROPRE OPTIMUM ───────────────
     # Le moteur calibré désigne DEUX gagnants (DIM2) : ``recommandation`` au
@@ -601,9 +624,7 @@ def _build_devis_auto_residentiel(*, lead, user, company, taux_tva=None,
     # U3 — ce que la composition ET l'écrivain de lignes ont REFUSÉ de faire
     # (vivier batterie vide, forfait au panneau non re-tarifé…). Sur un chemin
     # sans commercial dans la boucle, le journal serveur est le seul lecteur.
-    for avertissement in resultat['avertissements'] or []:
-        logger.warning('Auto-devis %s: %s', devis.reference, avertissement)
-        _ajouter_alerte(journal_auto, str(avertissement))
+    _journaliser_avertissements(devis, resultat, journal_auto)
 
     # QJR63 — LE kWc a été posé par son propriétaire à l'étape 8 (``finaliser``),
     # sur les lignes RÉELLEMENT composées : ni ``target_kwc``, ni
