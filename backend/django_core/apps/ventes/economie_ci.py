@@ -20,7 +20,7 @@ Module PUR : aucune base, aucun import de modèle, aucune clé interdite
 """
 from __future__ import annotations
 
-from apps.ventes import tarif_ci
+from apps.ventes import economie_ci_options as _options, tarif_ci
 from apps.ventes.moteur_ci import degradation as _deg
 from apps.ventes.quote_engine.constants_82_21 import MENTION_ART13, MENTION_BT
 
@@ -1511,8 +1511,8 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
                                    saisies.get('tva_recuperable'))
     motif_investissement = investissement_non_chiffre(
         investissement, lignes, apercu, controle_lignes=controle_lignes)
-    base = base_economique(
-        tva, investissement=None if motif_investissement else investissement,
+    base = base_economique(tva, investissement=None if motif_investissement else (  # CEC1
+        _options.investissement_hors_om(investissement, lignes, controle_lignes)),
         economie_annee1=valo['economie_annee1'])
     production = _montant((apercu.get('bilan') or {}).get('production_kwh'))
     kwh_evites = sum(_f(p.get('kwh_evites'))
