@@ -671,11 +671,28 @@ test('CIQ420 — commercial (exemple du contrat) : une étape déjà répondue e
   const g = guidanceAppel(exemple('exemple_commercial'))
   // `tension_raccordement` et `categorie_commerciale` sont déjà sur la fiche.
   assert.deepEqual(g.questions.map((q) => q.champ), [
-    'facture_hiver', 'compteur_puissance_kva', 'reponses_categorie',
+    'facture_hiver', 'compteur_puissance_kva', 'jours_ouverture',
     'type_surface', 'decideur',
   ])
   assert.equal(g.questions.length, 5)
   assert.ok(!g.questions.some((q) => q.champ === 'tension_raccordement'))
+})
+
+test('CSV1 — des réponses d’activité partielles restent posées (sous-questions), en dernier dans l’étape', () => {
+  const panneau = exemple('exemple_commercial')
+  const objet = panneau.champs_a_poser.find((q) => q.champ === 'reponses_categorie')
+  assert.ok(objet.sous_questions.length > 0)
+  const partiel = { ...panneau, prefill: { ...panneau.prefill, reponses_categorie: { chambres: 40 } } }
+  const g = guidanceAppel(partiel)
+  const activite = g.questions.find((q) => q.etape === 'activite_rythme')
+  assert.equal(activite.champ, 'jours_ouverture')
+  assert.ok(activite.complements.some((c) => c.champ === 'reponses_categorie'))
+  // Sans sous-question restante, l'objet présent sur la fiche n'est pas reposé.
+  const complet = {
+    ...partiel,
+    champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'reponses_categorie'),
+  }
+  assert.ok(!JSON.stringify(guidanceAppel(complet).questions).includes('sous_questions'))
 })
 
 test('CIQ420 — « avec le conjoint / la famille » est absent pour un pro', () => {

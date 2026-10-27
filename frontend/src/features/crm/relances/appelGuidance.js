@@ -248,9 +248,9 @@ export const ORDRE_PRO = Object.freeze([
   Object.freeze({
     etape: 'activite_rythme',
     champs: Object.freeze([
-      'categorie_commerciale', 'reponses_categorie', 'secteur_industriel',
+      'categorie_commerciale', 'secteur_industriel',
       'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin',
-      'fermeture_mois',
+      'fermeture_mois', 'reponses_categorie',
     ]),
   }),
   Object.freeze({
@@ -298,7 +298,11 @@ export function questionsDeLAppel(panneau) {
   const dejaRenseigne = panneau?.prefill || {}
   const aPoser = new Map()
   for (const entree of panneau?.champs_a_poser || []) {
-    if (entree?.champ && !(entree.champ in dejaRenseigne)) {
+    // CSV1 — une question à `sous_questions` (réponses propres à l'activité)
+    // reste posée tant qu'une clé est vide, même si l'objet est déjà en partie
+    // sur la fiche (`prefill`) : c'est le serveur qui dit quelles clés restent.
+    if (entree?.champ && (!(entree.champ in dejaRenseigne)
+        || entree.sous_questions?.length > 0)) {
       aPoser.set(entree.champ, entree)
     }
   }

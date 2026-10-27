@@ -100,10 +100,10 @@ ETAPES_PRO = (
     ('facture', ('conso_mensuelle_kwh', 'facture_hiver')),
     ('raccordement', ('tension_raccordement', 'compteur_puissance_kva',
                       'raccordement')),
-    ('activite_rythme', ('categorie_commerciale', 'reponses_categorie',
-                         'secteur_industriel', 'regime_equipes',
-                         'jours_ouverture', 'heure_debut', 'heure_fin',
-                         'fermeture_mois')),
+    ('activite_rythme', ('categorie_commerciale', 'secteur_industriel',
+                         'regime_equipes', 'jours_ouverture', 'heure_debut',
+                         'heure_fin', 'fermeture_mois',
+                         'reponses_categorie')),
     ('surface', ('type_surface', 'type_toiture', 'surface_toiture_m2')),
     ('decideur', ('decideur',)),
 )
@@ -140,8 +140,7 @@ QUESTIONS_PRO = {
                              'restaurant ou café, commerce, bureaux, santé, '
                              'école, hammam, boulangerie, froid, ou autre '
                              'chose ? »',
-    'reponses_categorie': "Les questions propres à l'activité, posées "
-                          "juste après elle (une réponse par ligne).",
+    'reponses_categorie': '« Quelques questions propres à votre activité. »',
     'secteur_industriel': '« Que fabriquez-vous ou que transformez-vous sur '
                           'ce site ? »',
     'regime_equipes': '« Travaillez-vous en une équipe de jour, en deux '
@@ -368,10 +367,6 @@ def _question_pro(lead, champ, segment):
     texte = QUESTIONS_PRO[champ]
     if isinstance(texte, dict):
         texte = texte[segment]
-    if champ == 'reponses_categorie':
-        texte = '%s %s' % (texte, ' ; '.join(
-            LIBELLES_REPONSES_CATEGORIE.get(c, c)
-            for c in _cles_categorie_a_poser(lead)))
     return PREFIXE_QUESTION + texte
 
 
@@ -394,7 +389,7 @@ def _question(lead, champ, section):
                      if c['valeur'] in FINANCEMENT_CHOIX_SERVIS]
         if champ == 'reponses_categorie':
             nature = 'objet'
-    return {
+    servie = {
         'champ': champ,
         'section': section,
         'libelle': str(meta.verbose_name),
@@ -402,6 +397,15 @@ def _question(lead, champ, section):
         'choix': choix,
         'nature': nature,
     }
+    if nature == 'objet':
+        # CSV1 — un objet JSON ne se tape pas dans un champ : l'écran rend UNE
+        # entrée par clé encore sans réponse et réécrit l'objet fusionné.
+        # Seules les clés fermées de la catégorie (``REPONSES_CATEGORIE_CLES``,
+        # les seules que le sérialiseur accepte) sont servies.
+        servie['sous_questions'] = [
+            {'cle': cle, 'libelle': LIBELLES_REPONSES_CATEGORIE.get(cle, cle)}
+            for cle in _cles_categorie_a_poser(lead)]
+    return servie
 
 
 def _champs_pro_du_lead(lead, segment):
@@ -420,13 +424,17 @@ def _champs_pro_du_lead(lead, segment):
         champs.append('raccordement')
     if segment == 'commercial':
         champs.append('categorie_commerciale')
-        if _cles_categorie_a_poser(lead):
-            champs.append('reponses_categorie')
     else:
         champs += ['secteur_industriel', 'regime_equipes']
     champs += ['jours_ouverture', 'heure_debut', 'heure_fin',
-               'fermeture_mois', 'type_surface', 'type_toiture',
-               'surface_toiture_m2', 'decideur']
+               'fermeture_mois']
+    # CSV1 — les réponses propres à l'activité ferment l'étape : une clé restée
+    # vide ne bloque ni les jours ni les heures, qui deviennent la question
+    # principale.
+    if segment == 'commercial' and _cles_categorie_a_poser(lead):
+        champs.append('reponses_categorie')
+    champs += ['type_surface', 'type_toiture', 'surface_toiture_m2',
+               'decideur']
     # CIQ427 — en COMPLÉMENT de « qui décide » (même étape), puis le mode de
     # financement (servi toujours, l'écran ne le pose qu'au rappel).
     champs += _complements_decideur_pro(lead)

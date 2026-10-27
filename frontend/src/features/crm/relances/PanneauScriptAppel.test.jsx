@@ -706,10 +706,73 @@ describe('CIQ420 — script d’appel pro', () => {
   it('une étape déjà répondue est sautée (commercial : tension et catégorie pré-remplies)', async () => {
     armer({ panneau: COMMERCIAL })
     render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    // CSV1 — les jours ouvrent l'étape d'activité : les réponses propres à
+    // l'activité (clés vides) ne la bloquent plus.
     expect(await posees()).toEqual([
-      'facture_hiver', 'compteur_puissance_kva', 'reponses_categorie', 'type_surface', 'decideur',
+      'facture_hiver', 'compteur_puissance_kva', 'jours_ouverture', 'type_surface', 'decideur',
     ])
     expect(screen.queryByTestId('question-appel-tension_raccordement')).not.toBeInTheDocument()
+  })
+
+  // CSV1 — un panneau d'hôtel dont tout le reste de l'étape est répondu : la
+  // question « réponses propres à l'activité » devient la principale.
+  const sousQuestions = (cles) => cles.map((c) => ({
+    cle: c, libelle: COMMERCIAL_LIBELLES[c],
+  }))
+  const COMMERCIAL_LIBELLES = {
+    chambres: 'Nombre de chambres',
+    occupation_pct: '« Quel est votre taux d’occupation moyen sur l’année, à peu près ? »',
+    piscine: 'Piscine chauffée',
+  }
+  const hotel = (reponses, cles) => {
+    const objet = COMMERCIAL.champs_a_poser.find((q) => q.champ === 'reponses_categorie')
+    return {
+      ...COMMERCIAL,
+      champs_a_poser: [{ ...objet, sous_questions: sousQuestions(cles) }],
+      prefill: {
+        ...COMMERCIAL.prefill,
+        jours_ouverture: [1, 2, 3, 4, 5], heure_debut: 8, heure_fin: 18, fermeture_mois: [8],
+        ...(reponses ? { reponses_categorie: reponses } : {}),
+      },
+    }
+  }
+
+  it('CSV1 — réponses d’activité : une entrée par clé, objet fusionné (nombre numérique, booléen JSON)', async () => {
+    armer({ panneau: hotel(null, ['chambres', 'occupation_pct', 'piscine']) })
+    // Après la première écriture, le serveur rend la clé répondue dans `prefill`.
+    crmApi.getPanneauAppel
+      .mockResolvedValueOnce({ data: hotel(null, ['chambres', 'occupation_pct', 'piscine']) })
+      .mockResolvedValue({ data: hotel({ occupation_pct: 60 }, ['chambres', 'piscine']) })
+    crmApi.updateLead.mockResolvedValue({ data: { id: COMMERCIAL.lead_id, score: 40 } })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    // Pas de champ texte unique « objet » : une entrée par clé.
+    for (const cle of ['chambres', 'occupation_pct', 'piscine']) {
+      expect(await screen.findByTestId(`sous-question-${cle}`)).toBeInTheDocument()
+    }
+    const occupation = screen.getByTestId('sous-question-occupation_pct')
+    fireEvent.change(within(occupation).getByRole('textbox'), { target: { value: '60' } })
+    fireEvent.click(within(occupation).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(COMMERCIAL.lead_id, { reponses_categorie: { occupation_pct: 60 } }))
+    // Rouvert : la clé répondue est dans `prefill`, plus dans les sous-questions.
+    await waitFor(() => expect(screen.queryByTestId('sous-question-occupation_pct')).not.toBeInTheDocument())
+    fireEvent.click(within(screen.getByTestId('sous-question-piscine'))
+      .getByRole('button', { name: 'Oui' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenLastCalledWith(
+      COMMERCIAL.lead_id, { reponses_categorie: { occupation_pct: 60, piscine: true } }))
+  })
+
+  it('CSV1 — une clé « choix » (restaurant : horaires) s’écrit en chaîne, pas en booléen', async () => {
+    const panneau = hotel(null, ['horaires'])
+    panneau.prefill.categorie_commerciale = 'restaurant'
+    panneau.champs_a_poser[0].sous_questions = [{ cle: 'horaires', libelle: 'Horaires' }]
+    armer({ panneau })
+    crmApi.updateLead.mockResolvedValue({ data: { id: COMMERCIAL.lead_id } })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    const horaires = await screen.findByTestId('sous-question-horaires')
+    fireEvent.click(within(horaires).getByRole('button', { name: 'Soir' }))
+    await waitFor(() => expect(crmApi.updateLead).toHaveBeenCalledWith(
+      COMMERCIAL.lead_id, { reponses_categorie: { horaires: 'soir' } }))
   })
 
   it('« avec le conjoint / la famille » est absent pour un pro', async () => {

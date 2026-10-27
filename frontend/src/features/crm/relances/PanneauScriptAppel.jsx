@@ -32,6 +32,7 @@ import { Badge, Button, Input } from '../../../ui'
 import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
 import fieldLabels from '../workspace/fieldLabels'
+import { COMMERCIAL_CATEGORY_QUESTIONS } from '../../ventes/solar'
 import MessageVisiteDialog from './MessageVisiteDialog'
 import {
   guidanceAppel, texteQuestion, decouperQuestion, scriptTouche,
@@ -60,6 +61,102 @@ const LANGUES_RTL = ['darija', 'ar']
 function texteDeLaQuestion(entree) {
   return decouperQuestion(
     entree?.question || fieldLabels[entree?.champ]?.label || texteQuestion(entree))
+}
+
+/** CSV1 — la définition (type, options) d'une sous-question d'activité, lue
+ *  dans la table du générateur (`COMMERCIAL_CATEGORY_QUESTIONS`, lecture seule :
+ *  aucune seconde table de types). Catégorie connue d'abord, sinon la première
+ *  catégorie qui porte cette clé. */
+function definitionSousQuestion(categorie, cle) {
+  const dans = (liste) => (liste || []).find((q) => q.key === cle)
+  const trouve = dans(COMMERCIAL_CATEGORY_QUESTIONS[categorie])
+    || Object.values(COMMERCIAL_CATEGORY_QUESTIONS).map(dans).find(Boolean)
+  return trouve || { key: cle, type: 'text' }
+}
+
+/** CSV1 — « réponses propres à l'activité » : UNE entrée par clé encore vide,
+ *  chaque réponse réécrit l'objet FUSIONNÉ `{...existant, cle: valeur}` (le PATCH
+ *  remplace tout le JSON). Booléens en vrai/faux JSON, nombres numériques,
+ *  choix en chaîne. */
+function SousQuestions({
+  entree, existant, categorie, saisies, occupe, onSaisie, onEcrire, erreur, onErreur,
+}) {
+  const ecrire = (cle, valeur) => onEcrire({ ...existant, [cle]: valeur })
+  const enregistrerLibre = (sous, def) => {
+    const brut = saisies[`${entree.champ}.${sous.cle}`] ?? ''
+    if (def.type === 'number') {
+      const { valeur, erreur: e } = normaliserSaisie({ ...sous, libelle: sous.libelle, nature: 'nombre' }, brut)
+      if (e) { onErreur(e); return }
+      ecrire(sous.cle, Number(valeur))
+      return
+    }
+    const texte = String(brut).trim()
+    if (!texte) { onErreur(`« ${sous.libelle} » : saisissez la réponse avant d’enregistrer.`); return }
+    ecrire(sous.cle, texte)
+  }
+  return (
+    <div className="flex flex-col gap-2" data-testid={`question-appel-${entree.champ}`}>
+      <p className="text-sm text-foreground">{texteDeLaQuestion(entree).question}</p>
+      {entree.sous_questions.map((sous) => {
+        const def = definitionSousQuestion(categorie, sous.cle)
+        const id = `panneau-appel-${entree.champ}-${sous.cle}`
+        const { question: libelle } = decouperQuestion(sous.libelle)
+        return (
+          <div key={sous.cle} className="flex flex-col gap-1" data-testid={`sous-question-${sous.cle}`}>
+            {def.type === 'bool' || def.type === 'select' ? (
+              <p className="text-sm text-foreground">{libelle}</p>
+            ) : (
+              <label className="text-sm text-foreground" htmlFor={id}>{libelle}</label>
+            )}
+            {def.type === 'bool' ? (
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={libelle}>
+                {[{ v: true, l: 'Oui' }, { v: false, l: 'Non' }].map((c) => (
+                  <Button
+                    key={String(c.v)} type="button" size="sm" variant="outline"
+                    disabled={occupe} onClick={() => ecrire(sous.cle, c.v)}
+                  >
+                    {c.l}
+                  </Button>
+                ))}
+              </div>
+            ) : def.type === 'select' ? (
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={libelle}>
+                {(def.options || []).map((c) => (
+                  <Button
+                    key={c.value} type="button" size="sm" variant="outline"
+                    disabled={occupe} onClick={() => ecrire(sous.cle, c.value)}
+                  >
+                    {c.label}
+                  </Button>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Input
+                  id={id} className="w-44"
+                  value={typeof saisies[`${entree.champ}.${sous.cle}`] === 'string'
+                    ? saisies[`${entree.champ}.${sous.cle}`] : ''}
+                  inputMode={def.type === 'number' ? 'decimal' : undefined}
+                  onChange={(e) => onSaisie(`${entree.champ}.${sous.cle}`, e.target.value)}
+                />
+                <Button
+                  type="button" size="sm" disabled={occupe}
+                  onClick={() => enregistrerLibre(sous, def)}
+                >
+                  Enregistrer
+                </Button>
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {erreur && (
+        <p className="text-xs text-danger" role="alert" data-testid={`erreur-question-${entree.champ}`}>
+          {erreur}
+        </p>
+      )}
+    </div>
+  )
 }
 
 function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregistrer }) {
@@ -327,7 +424,23 @@ export default function PanneauScriptAppel({
     ecrire(entree, valeur)
   }
 
-  const rendreQuestion = (entree) => (
+  const rendreQuestion = (entree) => (entree.sous_questions?.length > 0 ? (
+    <SousQuestions
+      key={entree.champ}
+      entree={entree}
+      existant={panneau?.prefill?.[entree.champ] || {}}
+      categorie={panneau?.prefill?.categorie_commerciale}
+      saisies={saisies}
+      occupe={Boolean(enCours)}
+      erreur={erreurs[entree.champ] || ''}
+      onSaisie={(cle, valeur) => {
+        setSaisies((s) => ({ ...s, [cle]: valeur }))
+        setErreurs((e) => ({ ...e, [entree.champ]: '' }))
+      }}
+      onErreur={(message) => setErreurs((e) => ({ ...e, [entree.champ]: message }))}
+      onEcrire={(objet) => ecrire(entree, objet)}
+    />
+  ) : (
     <Question
       key={entree.champ}
       entree={entree}
@@ -341,7 +454,7 @@ export default function PanneauScriptAppel({
       }}
       onEnregistrer={() => enregistrerLibre(entree)}
     />
-  )
+  ))
 
   // Q5 — la présence en journée remonte EN TÊTE : la liste ordonnée ne la
   // répète pas (l'ordre des autres étapes reste celui de CAD162).
