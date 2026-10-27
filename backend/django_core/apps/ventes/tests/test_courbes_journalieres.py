@@ -19,6 +19,7 @@ from django.test import SimpleTestCase
 from apps.parametres import pvgis_profils as pp
 from apps.ventes import courbes_journalieres as cj
 from apps.ventes.horaire import public as HP
+from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
 from apps.ventes.domain import taille as domaine_taille
 
 CASA_CONSO = [900, 880, 860, 840, 900, 1100,
@@ -67,9 +68,12 @@ class ProductionTests(_CourbesBase):
         hiver = bloc['production']['hiver']
         attendu = pp.moyenne_journaliere_saison(
             pp.PRODUCTIBLE_MENSUEL_VILLE['casablanca']['e_m'], 'hiver') * 10.0
+        # C-RHOR-004 (niveau de règles 3) : même derate que le devis.
+        attendu *= PRODUCTION_DERATE
         self.assertAlmostEqual(hiver['kwh_jour'], round(attendu, 1), places=6)
-        # Épingle : 10 kWc à Casablanca en hiver ≈ 40,7 kWh/jour (PVcalc).
-        self.assertAlmostEqual(hiver['kwh_jour'], 40.7, delta=0.2)
+        # Épingle : 10 kWc à Casablanca en hiver ≈ 40,7 kWh/jour (PVcalc),
+        # × PRODUCTION_DERATE ≈ 37,9 kWh/jour.
+        self.assertAlmostEqual(hiver['kwh_jour'], 37.9, delta=0.2)
         # L'été produit plus que l'hiver — sinon la saisonnalité est inversée.
         self.assertGreater(bloc['production']['ete']['kwh_jour'],
                            hiver['kwh_jour'])
@@ -136,8 +140,9 @@ class ProductionTests(_CourbesBase):
         hiver = bloc['production']['hiver']
         self.assertEqual(hiver['source'], 'pvgis_live')
         self.assertEqual(hiver['source_productible'], 'pvgis_live')
-        # 150 kWh/mois sur 31/31/28 jours × 10 kWc ≈ 50,1 kWh/jour.
-        self.assertAlmostEqual(hiver['kwh_jour'], 50.1, delta=0.2)
+        # 150 kWh/mois sur 31/31/28 jours × 10 kWc ≈ 50,1 kWh/jour,
+        # × PRODUCTION_DERATE (C-RHOR-004) ≈ 46,6 kWh/jour.
+        self.assertAlmostEqual(hiver['kwh_jour'], 46.6, delta=0.2)
         # Pic à 11 h UTC → 11 h + le décalage LÉGAL du jour, DÉRIVÉ de la base
         # de fuseaux (0 depuis le 20/09/2026, décret n° 2.26.530) — jamais un
         # « + 1 » figé : ce test affirmait « 12 h » et serait devenu faux seul.

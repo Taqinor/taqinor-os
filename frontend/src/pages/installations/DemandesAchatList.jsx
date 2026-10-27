@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { usePermissionAchats } from '../../features/stock/useVoitPrixAchat'
 import { Plus, Trash2, Send, Check, X } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
@@ -68,6 +69,8 @@ const emptyForm = () => ({
 
 export default function DemandesAchatList() {
   const isManager = useIsAdminOrResponsable()
+  // F3 — « Générer le BCF » crée un bon de commande : réservé à `achats_commander`.
+  const peutCommander = usePermissionAchats('achats_commander')
   // VX227 — pré-remplissage depuis une intervention : un tap dans la
   // préparation ouvre la DA avec le chantier (et l'intervention) déjà
   // renseignés dans l'objet, pour ne pas ressaisir le contexte terrain.
@@ -96,6 +99,9 @@ export default function DemandesAchatList() {
   const [acting, setActing] = useState(false)
   const [refusing, setRefusing] = useState(false)
   const [motifRefus, setMotifRefus] = useState('')
+  // Plan d'approbation par étapes (affiché quand le serveur répond 409) et BCF généré.
+  const [etapes, setEtapes] = useState(null)
+  const [bcfCree, setBcfCree] = useState(null) // { id, reference }
 
   const load = async () => {
     setLoading(true)
@@ -163,6 +169,24 @@ export default function DemandesAchatList() {
     // remontage (retour arrière, refresh) — le pré-remplissage est ponctuel.
     setSearchParams({}, { replace: true })
   }, [searchParams, setSearchParams])
+
+  // F1 — `?da=<id>` (lien d'une référence DA depuis l'onglet « Matériel & BC » du
+  // chantier) ouvre le DÉTAIL de cette demande, jamais le formulaire de création.
+  // Attend la fin du chargement de la liste, puis retire le param de l'URL.
+  useEffect(() => {
+    const daParam = searchParams.get('da')
+    if (!daParam || loading) return
+    const d = items.find((x) => String(x.id) === daParam)
+    if (d) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture du détail depuis l'URL (comme le pré-remplissage ci-dessus)
+      setDetail(d)
+      setRefusing(false)
+      setMotifRefus('')
+      setEtapes(null)
+      setBcfCree(null)
+    }
+    setSearchParams({}, { replace: true })
+  }, [searchParams, setSearchParams, items, loading])
 
   const openCreate = () => {
     reprise.current = { id: null, faites: 0 }
@@ -312,8 +336,60 @@ export default function DemandesAchatList() {
 
   const soumettre = () =>
     runAction(() => installationsApi.soumettreDemandeAchat(detail.id), 'Demande soumise.')
-  const approuver = () =>
-    runAction(() => installationsApi.approuverDemandeAchat(detail.id), 'Demande approuvée.')
+  const chargerEtapes = async (id) => {
+    const r = await installationsApi.getEtapesApprobationDA(id)
+    setEtapes(r.data ?? [])
+  }
+  const approuver = async () => {
+    setActing(true)
+    try {
+      const res = await installationsApi.approuverDemandeAchat(detail.id)
+      setDetail(res.data)
+      toastSuccess('Demande approuvée.')
+      await load()
+    } catch (err) {
+      // Plan d'approbation en cours : on montre les étapes à valider une à une.
+      if (err?.response?.status === 409 && /approuver-etape/.test(String(err.response?.data?.detail ?? ''))) {
+        try { await chargerEtapes(detail.id) } catch (e) { toastError(frError(e, "Impossible de charger les étapes.")) }
+      } else {
+        toastError(frError(err, "L'action a échoué."))
+      }
+    } finally { setActing(false) }
+  }
+  const decideEtape = async (etape, approuve) => {
+    setActing(true)
+    try {
+      const fn = approuve ? installationsApi.approuverEtapeDA : installationsApi.rejeterEtapeDA
+      const res = await fn(detail.id, { etape: etape.id })
+      setDetail(res.data)
+      toastSuccess(approuve ? 'Étape approuvée.' : 'Étape rejetée.')
+      await chargerEtapes(detail.id)
+      await load()
+    } catch (err) {
+      toastError(frError(err, "L'action a échoué."))
+    } finally { setActing(false) }
+  }
+  const genererBcf = async () => {
+    setActing(true)
+    try {
+      const res = await installationsApi.genererBcfDemandeAchat(detail.id)
+      setDetail(res.data)
+      let reference = null
+      if (res.data?.bon_commande) {
+        try {
+          const b = await stockApi.getBonCommandeFournisseur(res.data.bon_commande)
+          reference = b.data?.reference ?? null
+        } catch {
+          reference = null // le lien reste utilisable sans la référence
+        }
+      }
+      setBcfCree({ id: res.data?.bon_commande ?? null, reference })
+      toastSuccess('Bon de commande généré.')
+      await load()
+    } catch (err) {
+      toastError(frError(err, 'Impossible de générer le bon de commande.'))
+    } finally { setActing(false) }
+  }
   const confirmRefus = () =>
     runAction(
       () => installationsApi.refuserDemandeAchat(detail.id, motifRefus.trim()),
@@ -368,7 +444,7 @@ export default function DemandesAchatList() {
         getRowId={(d) => d.id}
         searchPlaceholder="Rechercher (référence, objet)…"
         globalColumns={['reference', 'objet']}
-        onRowClick={(d) => { setDetail(d); setRefusing(false); setMotifRefus('') }}
+        onRowClick={(d) => { setDetail(d); setRefusing(false); setMotifRefus(''); setEtapes(null); setBcfCree(null) }}
         emptyTitle="Aucune demande d'achat"
         emptyDescription="Créez une réquisition avec « Nouvelle demande »."
         emptyAction={<Button size="sm" onClick={openCreate}><Plus className="size-4" /> Nouvelle demande</Button>}
@@ -575,7 +651,11 @@ export default function DemandesAchatList() {
                 <div className="grid grid-cols-2 gap-2 text-muted-foreground">
                   <div>Priorité : <span className="text-foreground">{PRIORITE_LABEL[detail.priorite] || detail.priorite}</span></div>
                   <div>Besoin le : <span className="text-foreground">{detail.date_besoin ? formatDate(detail.date_besoin) : '—'}</span></div>
-                  <div>Chantier : <span className="text-foreground">{libelleChantier(chantiers.find((c) => c.id === detail.chantier))}</span></div>
+                  <div>Chantier : <span className="text-foreground">
+                    {detail.chantier
+                      ? <Link className="underline" to={`/chantiers?id=${detail.chantier}`}>{libelleChantier(chantiers.find((c) => c.id === detail.chantier))}</Link>
+                      : '—'}
+                  </span></div>
                   <div>Montant estimé : <span className="text-foreground">{detail.montant_estime == null ? '—' : formatMAD(detail.montant_estime)}</span></div>
                 </div>
 
@@ -609,6 +689,38 @@ export default function DemandesAchatList() {
                 {detail.statut === 'refusee' && detail.motif_refus && (
                   <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-destructive">
                     Motif du refus : {detail.motif_refus}
+                  </div>
+                )}
+
+                {etapes && etapes.length > 0 && (
+                  <div className="space-y-1.5" aria-label="Plan d'approbation">
+                    <p className="font-medium">Plan d&apos;approbation</p>
+                    {etapes.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between gap-2 rounded-lg border p-2">
+                        <span>
+                          Niveau {e.niveau} — {e.statut_display || e.statut}
+                          {e.approbateur_nom ? ` (${e.approbateur_nom})` : ''}
+                        </span>
+                        {e.statut === 'en_attente' && isManager && (
+                          <span className="flex gap-1">
+                            <Button size="sm" variant="outline" disabled={acting}
+                                    onClick={() => decideEtape(e, false)}>Rejeter</Button>
+                            <Button size="sm" disabled={acting}
+                                    onClick={() => decideEtape(e, true)}>Approuver l&apos;étape</Button>
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(bcfCree || detail.bon_commande) && (
+                  <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-2">
+                    Bon de commande :{' '}
+                    <Link className="font-medium underline"
+                          to="/stock/bons-commande-fournisseur"
+                          state={{ ouvrirBcfId: bcfCree?.id ?? detail.bon_commande }}>
+                      {bcfCree?.reference ?? `BCF #${detail.bon_commande}`}
+                    </Link>
                   </div>
                 )}
 
@@ -649,6 +761,9 @@ export default function DemandesAchatList() {
                       Confirmer le refus
                     </Button>
                   </>
+                )}
+                {detail.statut === 'approuvee' && isManager && peutCommander && !detail.bon_commande && (
+                  <Button onClick={genererBcf} loading={acting}>Générer le BCF</Button>
                 )}
                 {!(detail.statut === 'brouillon' || (detail.statut === 'soumise' && isManager)) && (
                   <Button variant="ghost" onClick={() => setDetail(null)}>Fermer</Button>

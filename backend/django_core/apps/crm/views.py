@@ -153,7 +153,9 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
     L'utilisateur acteur et la société viennent toujours de la requête côté
     serveur — jamais du corps envoyé par le navigateur.
     """
-    parser_classes = [JSONParser]  # ENF6 (D2) — aucun upload sur cette vue
+    # ENF6 (D2) — aucun upload sur cette vue ; api-fuzz-full 27/10 (ENF17) — l'entité
+    # inconnue/étrangère répond 404 comme les autres FK (``IdInconnu404Mixin``).
+    parser_classes, entite_inconnue_404 = [JSONParser], True
     # YOPSB13 — LeadSerializer expose owner_nom/owner_poste/owner_avatar
     # (SerializerMethodField sur obj.owner), client_nom (obj.client) et devis
     # (obj.devis, reverse FK) : sans select_related/prefetch_related, la

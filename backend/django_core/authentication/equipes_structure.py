@@ -13,7 +13,7 @@ Fondation : aucun import de modèle métier — les équipes sont lues par les
 relations inverses de l'utilisateur (``equipes_commerciales``,
 ``installations_equipes``).
 """
-from rest_framework import serializers
+from core.conflit_etat import ConflitEtat
 
 #: (relation inverse sur l'utilisateur, libellé du type d'équipe)
 _RELATIONS_EQUIPES = (
@@ -29,7 +29,8 @@ def _nom(user):
 
 
 def valider_membres_uniques(equipe, membres, chef, nouveaux=None):
-    """Lève une ``ValidationError`` sous ``membres`` si l'un des ``membres``
+    """Lève ``ConflitEtat`` (409, ENF11 : refus d'ÉTAT, le corps était
+    conforme) sous ``membres`` si l'un des ``membres``
     appartient déjà à une AUTRE équipe active (commerciale ou terrain), ou si
     un membre encadre déjà — directement ou non — le ``chef`` (cycle).
 
@@ -62,7 +63,7 @@ def valider_membres_uniques(equipe, membres, chef, nouveaux=None):
                 f"{_nom(membre)} encadre déjà {_nom(chef)} : il ne peut pas "
                 "être membre de son équipe.")
     if erreurs:
-        raise serializers.ValidationError({'membres': erreurs})
+        raise ConflitEtat({'membres': erreurs})
 
 
 def synchroniser_superviseurs(company_id, chef_avant, membres_avant,

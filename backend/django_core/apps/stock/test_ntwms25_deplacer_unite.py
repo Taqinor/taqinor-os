@@ -179,4 +179,21 @@ class TestEndpointDeplacer(Ntwms25Base):
         reponse = self.api.post(
             f'/api/django/stock/unites-logistiques/{palette.id}/deplacer/',
             {'bin_destination': casier_autre.id}, format='json')
-        self.assertEqual(reponse.status_code, 400)
+        # api-fuzz-full 27/10 (ENF11) : casier d'une autre société = même
+        # réponse qu'un id inconnu → 404 (était 400).
+        self.assertEqual(reponse.status_code, 404)
+
+    def test_casier_inconnu_404_et_forme_invalide_400(self):
+        """api-fuzz-full 27/10 (ENF11) — ``{"bin_destination": 1}`` sans casier
+        n°1 répondait 400 : un entier bien formé qui ne désigne rien → 404 ;
+        une autre forme (texte, booléen) reste un corps invalide → 400."""
+        palette = self._palette(nb_lignes=1)
+        url = f'/api/django/stock/unites-logistiques/{palette.id}/deplacer/'
+        reponse = self.api.post(url, {'bin_destination': 999999}, format='json')
+        self.assertEqual(reponse.status_code, 404)
+        for valeur in ('abc', True):
+            reponse = self.api.post(url, {'bin_destination': valeur},
+                                    format='json')
+            self.assertEqual(reponse.status_code, 400, valeur)
+        palette.refresh_from_db()
+        self.assertEqual(palette.bin_actuel_id, self.casier_a.id)

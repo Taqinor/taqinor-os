@@ -152,12 +152,27 @@ def _photos_payload_embarquees(intervention):
     return groupes, non_reproduites
 
 
+def _details_serie(caracteristiques):
+    """Revue chantier 26/10/2026 — « Modèle X · 710 Wc · Fabricant Y » depuis
+    les caractéristiques relevées (vide quand rien n'est renseigné)."""
+    c = caracteristiques if isinstance(caracteristiques, dict) else {}
+    parts = []
+    if c.get('modele'):
+        parts.append(f"Modèle {c['modele']}")
+    if c.get('puissance_wc') not in (None, ''):
+        parts.append(f"{c['puissance_wc']} Wc")
+    if c.get('fabricant'):
+        parts.append(str(c['fabricant']))
+    return ' · '.join(str(p) for p in parts)
+
+
 def _serials_payload(intervention):
     return [
         {
             'designation': (s.designation
                             or (s.produit.nom if s.produit_id else '—')),
             'numero_serie': s.numero_serie or '—',
+            'details': _details_serie(s.caracteristiques),
         }
         for s in intervention.serials.all()
     ]

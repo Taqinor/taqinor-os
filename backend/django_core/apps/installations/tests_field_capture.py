@@ -232,6 +232,31 @@ class TestConsommation(_Base):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertTrue(r.data['hors_nomenclature'])
 
+    def test_designation_requise_publiee_et_validee(self):
+        """api-fuzz-full 27/10 (ENF11) : `designation` est OBLIGATOIRE au
+        schéma (non blanche, sans NUL) — `{}` y était « conforme » puis
+        refusé ; absente, blanche, nulle ou non textuelle = 400, jamais 500."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        from core.champs_stricts import MOTIF_NON_BLANC_SANS_NUL
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        corps = schema['components']['schemas'][
+            'AjouterLigneConsommationRequeteRequest']
+        self.assertIn('designation', corps['required'])
+        self.assertEqual(corps['properties']['designation']['pattern'],
+                         MOTIF_NON_BLANC_SANS_NUL)
+        for mauvais in ({}, {'designation': '   '}, {'designation': 'a\x00b'},
+                        {'designation': 5}, {'designation': 'x' * 256}):
+            with self.subTest(corps=mauvais):
+                r = self.api.post(f'{self.url}/ajouter-ligne-consommation/',
+                                  mauvais, format='json')
+                self.assertEqual(r.status_code, 400, r.content)
+                self.assertIn('designation', r.data)
+
     def test_fractional_consumption_not_lost(self):
         # ERR41 — une consommation fractionnaire (0,5) n'est jamais tronquée à 0
         # et perdue EN SILENCE. ASTK45 (le stock se compte en unités entières,
@@ -368,6 +393,17 @@ class TestVoiceMemo(_Base):
         self.assertTrue(r.data['transcrit'])
         self.assertEqual(r.data['transcript'], 'Onduleur OK')
 
+    def test_memo_inconnu_404_absent_400(self):
+        """api-fuzz-full 27/10 (ENF11) : un id de mémo ENTIER qui ne désigne
+        rien → 404 (il faisait 400) ; `memo` absent → 400 (corps invalide)."""
+        for action in ('modifier-memo', 'supprimer-memo'):
+            with self.subTest(action=action):
+                r = self.api.post(f'{self.url}/{action}/', {'memo': 0},
+                                  format='json')
+                self.assertEqual(r.status_code, 404, r.data)
+                r = self.api.post(f'{self.url}/{action}/', {}, format='json')
+                self.assertEqual(r.status_code, 400, r.data)
+
     def test_audio_format_rejected_for_image_endpoint(self):
         # Un fichier image n'est pas un audio valide → refusé en mémo.
         with mock.patch('apps.records.storage.get_minio_client'):
@@ -417,6 +453,15 @@ class TestReserves(_Base):
         r = self.api.post(f'{self.url}/resoudre-reserve/', {
             'reserve': rid, 'resolution': 'Câble posé'}, format='json')
         self.assertEqual(r.data['statut'], 'resolue')
+
+    def test_reserve_ou_photo_inconnue_404(self):
+        # api-fuzz-full 27/10 (ENF11) : id entier absent = 404, plus un 400.
+        for route, corps in (('resoudre-reserve', {'reserve': 0}),
+                             ('modifier-reserve', {'reserve': 0}),
+                             ('annoter-photo', {'photo': 0}),
+                             ('cocher-safety', {'cle': 'inconnue'})):
+            r = self.api.post(f'{self.url}/{route}/', corps, format='json')
+            self.assertEqual(r.status_code, 404, (route, r.content))
 
     def test_corps_vide_ou_mal_type_400(self):
         # La description est exigée par le schéma publié : plus de 201 muet.

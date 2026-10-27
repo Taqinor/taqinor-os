@@ -42,6 +42,9 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import OwnerChain from '../../components/OwnerChain'
 import ChantierChecklist from './ChantierChecklist'
+// Revue chantier 26/10/2026 — onglet « Matériel & BC » : besoin, commandes,
+// réceptions et verdict « prêt à poser » d'UNE seule réponse serveur.
+import ChantierApprovisionnement, { ResumeApprovisionnement } from './ChantierApprovisionnement'
 // CAL213 — encart « Calepinage retenu » (lecture seule), alimenté par le
 // bloc `calepinage` du détail chantier (CAL245).
 import CalepinageRetenuCard from '../../features/installations/CalepinageRetenuCard'
@@ -79,6 +82,7 @@ import {
   Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
 import TableauDefilant from '../../ui/TableauDefilant'
+import { carteTitree, TABLEAU_ENVELOPPE, TABLEAU_CLASSE, enTeteTableau } from './approvisionnementShared'
 import SelectStatutEquipement from '../../features/sav/SelectStatutEquipement'
 import { EQUIP_STATUTS } from '../../features/sav/equipement'
 import RaisonsBlocageGate from '../../ui/RaisonsBlocageGate'
@@ -102,33 +106,14 @@ function timeAgo(iso) {
 // Sous-titre de section (mêmes intitulés/émojis qu'avant, mais en composant
 // du système de design — surface Card + titre cohérent).
 function Section({ icon: Icon, title, action, children }) {
-  return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
-        <CardTitle className="flex items-center gap-2 text-sm">
-          {Icon && <Icon className="size-4 text-muted-foreground" aria-hidden="true" />}
-          {title}
-        </CardTitle>
-        {action}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">{children}</CardContent>
-    </Card>
-  )
+  return carteTitree({ icon: Icon, title, action, children })
 }
 
 // Petite table tokenisée réutilisée par les sous-listes (interventions, etc.).
 function MiniTable({ head, children }) {
   return (
-    <TableauDefilant enveloppe="overflow-x-auto rounded-lg border border-border" className="w-full border-collapse text-sm">
-      <thead className="bg-muted/60">
-        <tr>
-          {head.map((h) => (
-            <th key={h} className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {h}
-            </th>
-          ))}
-        </tr>
-      </thead>
+    <TableauDefilant enveloppe={TABLEAU_ENVELOPPE} className={TABLEAU_CLASSE}>
+      {enTeteTableau(head)}
       <tbody>{children}</tbody>
     </TableauDefilant>
   )
@@ -292,7 +277,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   const [noteBody, setNoteBody] = useState('')
 
   // Intervention en cours d'ajout
-  const [interv, setInterv] = useState({ type_intervention: '', date_prevue: '', compte_rendu: '' })
+  const [interv, setInterv] = useState({ type_intervention: '', date_prevue: '', compte_rendu: '', technicien: '' })
   const [intervBusy, setIntervBusy] = useState(false)
   // N5 — édition en place d'une intervention existante (ligne du tableau).
   const [editInterv, setEditInterv] = useState(null) // { id, date_realisee, compte_rendu, technicien }
@@ -382,6 +367,22 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // N7 — confirmation supplémentaire si le système est actif au parc.
   const [annulerParcConfirm, setAnnulerParcConfirm] = useState(false)
 
+  // Revue chantier 26/10/2026 — UN fetch « approvisionnement » partagé entre
+  // l'onglet Matériel & BC, la carte « Prêt à poser ? » de l'Aperçu et la
+  // bannière « Prochaine action ». L'état n'est posé que dans les callbacks
+  // asynchrones (le premier chargement part de loading=true).
+  const [appro, setAppro] = useState(null)
+  const [approLoading, setApproLoading] = useState(true)
+  const [approError, setApproError] = useState(null)
+  const chargerAppro = () => {
+    Promise.resolve().then(() => installationsApi.getApprovisionnement(id))
+      .then((r) => { setAppro(r.data); setApproError(null) })
+      .catch((err) => setApproError(
+        err?.response?.data?.detail || 'Matériel indisponible pour le moment.'))
+      .finally(() => setApproLoading(false))
+  }
+  const rechargerAppro = () => { setApproLoading(true); chargerAppro() }
+
   const loadHistorique = () => {
     installationsApi.getHistorique(id)
       .then(r => setHistorique(r.data)).catch(() => {})
@@ -412,6 +413,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     loadEquipements()
     loadTickets()
     loadContrats()
+    chargerAppro()
     if (produits.length === 0) dispatch(fetchProduits())
     lireToutesLesPages((p) => installationsApi.getTypesIntervention(p))
       .then((rows) => setTypesInterv(rows.filter((t) => !t.archived))).catch(() => {})
@@ -580,14 +582,33 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
         type_intervention: interv.type_intervention,
         date_prevue: nullable(interv.date_prevue),
         compte_rendu: nullable(interv.compte_rendu),
+        technicien: nullable(interv.technicien),
       })
-      setInterv({ type_intervention: '', date_prevue: '', compte_rendu: '' })
+      setInterv({ type_intervention: '', date_prevue: '', compte_rendu: '', technicien: '' })
       setActionError(null)
       await refreshInstallation()
       loadHistorique()
     } catch (err) {
       setActionError(actionMsg(err, "Ajout de l'intervention impossible."))
     } finally { setIntervBusy(false) }
+  }
+
+  // Revue chantier 26/10/2026 — la chaîne d'interventions standard (idempotente)
+  // se crée d'ici, plus seulement depuis la Planification.
+  const [standardBusy, setStandardBusy] = useState(false)
+  const creerInterventionsStandard = async () => {
+    setStandardBusy(true)
+    try {
+      const r = await installationsApi.creerInterventionsStandard(id)
+      const nb = r.data?.created?.length ?? 0
+      if (nb > 0) toast.success(`${nb} intervention(s) standard créée(s).`)
+      else toast.message('Aucune nouvelle intervention (déjà présentes ou plan absent).')
+      setActionError(null)
+      await refreshInstallation()
+      loadHistorique()
+    } catch (err) {
+      setActionError(actionMsg(err, 'Génération des interventions standard impossible.'))
+    } finally { setStandardBusy(false) }
   }
 
   const saveMes = async () => {
@@ -800,28 +821,6 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       () => ventesApi.getFicheRemisePremiumPdf(current.id),
     )
 
-  const [besoin, setBesoin] = useState(null)
-  const [besoinLoading, setBesoinLoading] = useState(false)
-  const chargerBesoin = async () => {
-    setBesoinLoading(true)
-    try {
-      const r = await installationsApi.besoinMateriel(current.id)
-      setBesoin(r.data)
-    } catch {
-      setBesoin({ items: [], nb_manques: 0, error: true })
-    }
-    setBesoinLoading(false)
-  }
-  const commanderBesoin = async () => {
-    try {
-      const r = await installationsApi.commanderBesoin(current.id)
-      toast.success(`Bon de commande fournisseur créé : ${r.data.reference} (${r.data.nb_lignes} ligne(s)).`)
-      chargerBesoin()
-    } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Création impossible.')
-    }
-  }
-
   const interventions = current.interventions ?? []
 
   // N1/N2 — produits du picker scopés à la nomenclature gelée du devis (BOM) ;
@@ -855,7 +854,17 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
     : bomProduits
 
   // N8 — réconciliation : pour chaque ligne BOM, nb de séries capturées.
-  const bomReconciliation = bom.map((l) => {
+  // Revue chantier 26/10/2026 — seuls les articles qui PORTENT un n° de série
+  // (`serie_attendue` servi par /approvisionnement/ : jamais câble, prestation,
+  // socle) sont attendus ici ; sans réponse serveur, toute la nomenclature.
+  const seriesAttendues = appro?.lignes
+    ? new Set(appro.lignes.filter((l) => l.serie_attendue).map((l) => String(l.produit_id)))
+    : null
+  // Tant que /approvisionnement/ charge, on ne sait pas encore quels articles
+  // portent une série : liste vide (jamais la nomenclature entière un instant).
+  const bomReconciliation = (approLoading && !seriesAttendues ? [] : bom)
+    .filter((l) => !seriesAttendues || seriesAttendues.has(String(l.produit_id)))
+    .map((l) => {
     const captured = equipements.filter(
       (eq) => String(eq.produit) === String(l.produit_id)).length
     return {
@@ -896,6 +905,16 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
   // APX25 — les 5 bannières empilées deviennent UNE liste triée par gravité
   // (danger → warning → info) : la première est rendue, les suivantes sont
   // comptées dans un popover. Aucun message ni action n'est perdu.
+  // Revue chantier 26/10/2026 — « Commander le matériel » seulement quand le
+  // serveur compte de vrais manques ; sans manque, le statut « Signé » ne
+  // réclame plus une commande déjà couverte (stock ou BCF envoyés).
+  const resumeAppro = appro?.resume
+  const actionSuivante = resumeAppro?.nb_manques > 0
+    ? 'Commander le matériel'
+    : (resumeAppro && nextBestAction(current) === 'Commander le matériel'
+      ? 'Matériel couvert : planifier la pose'
+      : nextBestAction(current))
+
   const alerts = [
     current.annule && {
       key: 'annule',
@@ -931,11 +950,11 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
       body: "ce chantier n'a pas de nomenclature gelée (créé sans devis).",
     },
     // N1 — prochaine action recommandée (le message le moins grave).
-    !current.annule && nextBestAction(current) && {
+    !current.annule && actionSuivante && {
       key: 'next-action',
       tone: 'info',
       title: 'Prochaine action :',
-      body: nextBestAction(current),
+      body: actionSuivante,
     },
   ].filter(Boolean)
 
@@ -996,6 +1015,20 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             </TabsList>
 
             <TabsContent value="apercu" className="flex flex-col gap-4">
+            {/* ── Prêt à poser ? (verdict serveur, revue chantier 26/10/2026) ── */}
+            {!current.annule && appro?.resume && (
+              <Section
+                icon={Package}
+                title="Prêt à poser ?"
+                action={(
+                  <Button size="sm" variant="outline" onClick={() => setTab('materiel')}>
+                    Voir le matériel
+                  </Button>
+                )}
+              >
+                <ResumeApprovisionnement resume={appro.resume} />
+              </Section>
+            )}
             {/* ── Liens ── */}
             <Section icon={Link2} title="Liens">
               {/* VX216(c) — chaîne de responsabilité cliquable : personne ne
@@ -1413,44 +1446,15 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
             </TabsContent>
 
             <TabsContent value="materiel" className="flex flex-col gap-4">
-            {/* ── Besoin matériel vs stock (N13) ── */}
-            <Section
-              icon={Package}
-              title="Besoin matériel"
-              action={(
-                <Button size="sm" variant="outline" onClick={chargerBesoin} loading={besoinLoading}>
-                  {besoinLoading ? 'Calcul…' : 'Calculer le besoin'}
-                </Button>
-              )}
-            >
-              {besoin && (
-                besoin.error ? (
-                  <Hint>Besoin indisponible (ce chantier a-t-il un devis ?).</Hint>
-                ) : besoin.items.length === 0 ? (
-                  <Hint>Aucune ligne produit sur le devis source.</Hint>
-                ) : (
-                  <>
-                    <MiniTable head={['Article', 'Requis', 'Réservé', 'Dispo', 'Manque', 'Fournisseur']}>
-                      {besoin.items.map((it) => (
-                        <tr key={it.produit_id} className={`border-t border-border ${it.manque > 0 ? 'bg-destructive/5' : ''}`}>
-                          <td className="px-3 py-2">{it.designation}</td>
-                          <td className="px-3 py-2">{it.requis}</td>
-                          <td className="px-3 py-2">{it.reserve > 0 ? it.reserve : '—'}</td>
-                          <td className="px-3 py-2">{it.disponible}</td>
-                          <td className="px-3 py-2">{it.manque > 0 ? <strong className="text-destructive">{it.manque}</strong> : '—'}</td>
-                          <td className="px-3 py-2">{it.fournisseur_nom || '—'}</td>
-                        </tr>
-                      ))}
-                    </MiniTable>
-                    {besoin.nb_manques > 0 && (
-                      <Button size="sm" onClick={commanderBesoin} className="self-start">
-                        Créer un bon de commande fournisseur ({besoin.nb_manques})
-                      </Button>
-                    )}
-                  </>
-                )
-              )}
-            </Section>
+            {/* ── Approvisionnement : besoin, commandes, réceptions (revue 26/10/2026) ── */}
+            <ChantierApprovisionnement
+              chantierId={current.id}
+              data={appro}
+              loading={approLoading}
+              error={approError}
+              onReload={rechargerAppro}
+              onChantierChange={refreshInstallation}
+            />
             {/* ── Équipements (parc) ── */}
             <Section icon={Package} title="Équipements">
               {/* N8 — réconciliation nomenclature gelée vs séries capturées. */}
@@ -1461,16 +1465,21 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   </p>
                   <MiniTable head={['Composant', 'Attendu', 'Capturés']}>
                     {bomReconciliation.map((b) => {
+                      // 0 capturé = rouge, partiel (3/10) = ambre, complet = vert.
                       const manque = b.captured === 0
+                      const partiel = !manque && b.attendu != null && b.captured < b.attendu
+                      const tonCompte = manque
+                        ? 'text-destructive'
+                        : partiel ? 'text-warning-foreground' : 'text-success-text'
                       return (
                         <tr key={b.produit_id ?? b.designation}
-                            className={`border-t border-border ${manque ? 'bg-warning/10' : ''}`}>
+                            className={`border-t border-border ${manque ? 'bg-destructive/5' : partiel ? 'bg-warning/10' : ''}`}>
                           <td className="px-3 py-2">{b.designation}</td>
                           <td className="px-3 py-2">{b.attendu ?? '—'}</td>
                           <td className="px-3 py-2">
-                            {manque
-                              ? <strong className="text-warning-foreground">0</strong>
-                              : b.captured}
+                            <strong className={tonCompte}>
+                              {b.attendu != null ? `${b.captured}/${b.attendu}` : b.captured}
+                            </strong>
                           </td>
                         </tr>
                       )
@@ -1596,7 +1605,29 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
             <TabsContent value="interventions" className="flex flex-col gap-4">
             {/* ── Interventions ── */}
-            <Section icon={Wrench} title="Interventions">
+            <Section
+              icon={Wrench}
+              title="Interventions"
+              action={(
+                <span className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    loading={standardBusy}
+                    disabled={interventions.length > 0 || !!current.annule}
+                    title={interventions.length > 0
+                      ? 'Ce chantier a déjà des interventions : la chaîne standard n’est créée que sur un chantier vierge.'
+                      : undefined}
+                    onClick={creerInterventionsStandard}
+                  >
+                    Créer les interventions standard
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => navigate('/planification')}>
+                    Ouvrir la planification
+                  </Button>
+                </span>
+              )}
+            >
               {interventions.length === 0 ? (
                 <Hint>Aucune intervention.</Hint>
               ) : (
@@ -1656,7 +1687,7 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                   })}
                 </MiniTable>
               )}
-              <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_2fr_auto]">
+              <div className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_1fr_2fr_auto]">
                 <FormField label="Type" htmlFor="iv-type">
                   <Select value={interv.type_intervention || ALL_NONE}
                           onValueChange={(v) => onChangeIntervType(v === ALL_NONE ? '' : v)}>
@@ -1672,6 +1703,20 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
                 <FormField label="Date prévue" htmlFor="iv-date">
                   <Input id="iv-date" type="date" value={interv.date_prevue}
                          onChange={(e) => setInterv(s => ({ ...s, date_prevue: e.target.value }))} />
+                </FormField>
+                <FormField label="Technicien" htmlFor="iv-tech">
+                  <Select value={interv.technicien || ALL_NONE}
+                          onValueChange={(v) => setInterv(s => ({ ...s, technicien: v === ALL_NONE ? '' : v }))}>
+                    <SelectTrigger id="iv-tech"><SelectValue placeholder="—" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_NONE}>—</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.id} value={String(u.id)}>
+                          {u.username ?? u.nom ?? `#${u.id}`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </FormField>
                 <FormField label="Compte rendu" htmlFor="iv-cr">
                   <Input id="iv-cr" value={interv.compte_rendu}
