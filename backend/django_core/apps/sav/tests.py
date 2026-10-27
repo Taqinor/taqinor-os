@@ -290,6 +290,29 @@ class TestSerieUnicite(TestCase):
         self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('numero_serie', r.data)
 
+    def test_numero_serie_nul_publie(self):
+        """api-fuzz-full 27/10 (ENF11) — PATCH ``numero_serie: "4\\u0000"``
+        était « conforme » (aucun motif publié) puis refusé 400 : le motif
+        « sans NUL » est désormais PUBLIÉ ; le refus reste un 400 nommé."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+        from core.champs_stricts import MOTIF_SANS_NUL
+        from apps.sav import urls as sav_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/sav/', include(sav_urls)),
+        ]).get_schema(request=None, public=True)
+        props = schema['components']['schemas']['PatchedEquipementRequest'][
+            'properties']
+        # Champ vide-ou-texte : ``oneOf`` [motif sans NUL, chaîne vide].
+        motifs = [variante.get('pattern')
+                  for variante in props['numero_serie'].get('oneOf', [])]
+        self.assertIn(MOTIF_SANS_NUL, motifs)
+        eid = self._create('SN-NUL').data['id']
+        r = self.api.patch(f'/api/django/sav/equipements/{eid}/',
+                           {'numero_serie': '4\x00'}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('numero_serie', r.data)
+
 
 class TestEquipementDetailFields(TestCase):
     """L624/L629/L632 — champs de détail exposés par le serializer :
@@ -706,6 +729,21 @@ class EnfOnzeCorpsStrictsSavTests(SimpleTestCase):
         for champ, valeur in (('protege', 0), ('actif', 'False'), ('nom', 0)):
             with self.assertRaises(ValidationError, msg=champ):
                 champs[champ].run_validation(valeur)
+
+    def test_textes_equipement_stricts_motif_sans_nul_publie(self):
+        """api-fuzz-full 27/10 (ENF11) — ``numero_serie`` d'un équipement :
+        le caractère nul que DRF refuse est exclu du motif PUBLIÉ (le PATCH
+        « conforme » recevait 400) ; un non-texte reste un 400."""
+        from rest_framework.exceptions import ValidationError
+        from core.champs_stricts import ChaineStricte
+        from apps.sav.serializers import EquipementSerializer
+        champ = EquipementSerializer().fields['numero_serie']
+        self.assertIsInstance(champ, ChaineStricte)
+        self.assertEqual(champ.run_validation('SN-1'), 'SN-1')
+        for valeur in ('4\x00', 12):
+            with self.assertRaises(ValidationError, msg=repr(valeur)):
+                champ.run_validation(valeur)
+        # Motif publié : voir ``TestSerieUnicite.test_numero_serie_nul_publie``.
 
     def test_champs_probleme_reponse_type_sla_stricts(self):
         # CI #985 (api-fuzz) : cause_racine=0, archived=0, csat_detaille_actif=0

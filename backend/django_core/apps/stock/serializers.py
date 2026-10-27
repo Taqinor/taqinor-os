@@ -1096,9 +1096,11 @@ class ProduitSerializer(CompanyScopedRelationsMixin,
                 raise serializers.ValidationError(
                     f'Palier {rang + 1} : `prix_vente_ttc` doit être > 0.')
             if seuil_max is not None and seuil_max <= seuil_min:
-                raise serializers.ValidationError(
+                # api-fuzz-full 27/10 (ENF11) : règle à DEUX champs, que
+                # OpenAPI 3.0 ne publie pas → 409 (comme le recouvrement).
+                raise ConflitEtat({'paliers_prix_vente': [
                     f'Palier {rang + 1} : `seuil_max` doit dépasser '
-                    '`seuil_min`.')
+                    '`seuil_min`.']})
             propres.append((seuil_min, seuil_max, prix))
         propres.sort(key=lambda p: p[0])
         for (_mi, ma, _p), (mi_suivant, _ma2, _p2) in zip(propres,
