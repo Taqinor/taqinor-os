@@ -215,6 +215,20 @@ class SyntheseCiServieTest(_BaseDevis):
                 for entree in payload['synthese_ci']['a_confirmer']:
                     self.assertEqual(entree['cle'], 'a_chiffrer_visite')
 
+    def test_cprs11_libelle_om_en_texte(self):
+        """CPRS11 — le libellé O&M échappé pour le HTML du PDF part en
+        texte (la page n'affiche jamais « &amp; »)."""
+        synthese = {'services': {'om_option': {
+            'statut': 'tarif_a_renseigner',
+            'libelle': 'Exploitation et maintenance (O&amp;M)',
+            'lignes': [{'designation': 'Exploitation et maintenance (O&amp;M)',
+                        'total_ht': None, 'total_ttc': None}]}}}
+        om = synthese_ci_client(synthese, {})['services']['om_option']
+        self.assertEqual(om['libelle'], 'Exploitation et maintenance (O&M)')
+        self.assertEqual(om['lignes'][0]['designation'],
+                         'Exploitation et maintenance (O&M)')
+        self.assertIn('&amp;', synthese['services']['om_option']['libelle'])
+
     def test_aucun_prix_achat(self):
         for devis in self._cas():
             with self.subTest(devis=devis.reference):

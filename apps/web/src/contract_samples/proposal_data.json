@@ -2037,7 +2037,7 @@
         "garanties": [
           {
             "composant": "onduleur",
-            "texte": "Garantie constructeur 10 ans",
+            "texte": "Onduleur : 10 ans",
             "source": "fiche produit"
           }
         ]
@@ -2414,6 +2414,1210 @@
       "a_signer": false,
       "remplace": {"reference": "DEV-202610-0012"},
       "signe_le": "2026-10-12T09:30:00+00:00"
+    }
+  },
+  "notes_cprs_deux_options": "CPRS (27/10/2026) — exemple RÉEL (rendu local d'un lead de démonstration, identité remplacée) d'une offre C&I à DEUX options : option_totals.sans_batterie/avec_batterie, synthese_ci.option_servie = 'sans_batterie', synthese_ci.option_batterie{totaux, valeur_chiffree, motif}. valeur_chiffree.economie_annuelle_mad = économie annuelle HT TOTALE de l'option avec batterie (pas l'incrément) ; retour_simple_ans = option_batterie.totaux.ht_net ÷ cette économie. services.garanties[].texte = « <Composant> : <n> <unité> » (phrase du PDF). services.om_option.libelle en texte (CPRS11 : plus de « &amp; »). Les postes « à chiffrer après la visite » ne sont pas une clé de la page : ils vivent dans synthese_ci.a_confirmer[cle='a_chiffrer_visite'].postes (absent ici : offre sans poste hors total).",
+  "exemple_ci_deux_options": {
+    "mode_installation": "commercial",
+    "categorie_commerciale": null,
+    "mode_kpis": {
+      "taux_autoconso": 77.7,
+      "taux_couverture": 51.8,
+      "economies_annuelles": 53123,
+      "payback": 3,
+      "injection_kwh_an": null,
+      "injection_dh_an": null
+    },
+    "option_totals": {
+      "sans_batterie": {
+        "ht_brut": 135656.27,
+        "remise": 0.0,
+        "arrondi": 39.6,
+        "ht_net": 135616.67,
+        "tva": 22083.33,
+        "tva_par_taux": [
+          {
+            "taux": 10.0,
+            "montant": 5040.0,
+            "ht_net": 50400.0
+          },
+          {
+            "taux": 20.0,
+            "montant": 17043.33,
+            "ht_net": 85216.67
+          }
+        ],
+        "ttc": 157700.0,
+        "ttc_exact": 157700.0,
+        "ttc_avant": 157700.0
+      },
+      "avec_batterie": {
+        "ht_brut": 401572.6,
+        "remise": 0.0,
+        "arrondi": 22.6,
+        "ht_net": 401550.0,
+        "tva": 71550.0,
+        "tva_par_taux": [
+          {
+            "taux": 10.0,
+            "montant": 8760.0,
+            "ht_net": 87600.0
+          },
+          {
+            "taux": 20.0,
+            "montant": 62790.0,
+            "ht_net": 313950.0
+          }
+        ],
+        "ttc": 473100.0,
+        "ttc_exact": 473100.0,
+        "ttc_avant": 473100.0
+      },
+      "display_total": 157700.0,
+      "nb_options": 2
+    },
+    "quote": {
+      "puissance_kwc": 30.03,
+      "nb_panneaux": 42,
+      "prod_kwh": 48025
+    },
+    "monthly_production": [
+      3456,
+      3403,
+      4108,
+      4301,
+      4439,
+      4331,
+      4627,
+      4601,
+      4183,
+      3918,
+      3307,
+      3351
+    ],
+    "monthly_consumption": [
+      6000,
+      6000,
+      6000,
+      6000,
+      6000,
+      6000,
+      6000,
+      6000,
+      6000,
+      6000,
+      6000,
+      6000
+    ],
+    "synthese_ci": {
+      "version": 1,
+      "segment": "commercial",
+      "statut_etude": "offre_ferme",
+      "a_confirmer": [],
+      "provenance": {
+        "mode": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "site": {
+          "origine": "devis",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "phases": {
+          "origine": "devis",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "plages": {
+          "origine": "devis",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "tension": {
+          "origine": "devis",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "type_pose": {
+          "origine": "devis",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "couverture": {
+          "origine": "devis",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "jours_ouverts": {
+          "origine": "devis",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "tarif_declare": {
+          "origine": "devis",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "kwh_mensuel_declare": {
+          "origine": "lead",
+          "detail": "client",
+          "date": "2026-10-27"
+        },
+        "taille_explicite_kwc": {
+          "origine": "saisie",
+          "detail": null,
+          "date": "2026-10-27"
+        },
+        "categorie_commerciale": {
+          "origine": "devis",
+          "detail": null,
+          "date": "2026-10-27"
+        }
+      },
+      "systeme": {
+        "kwc": 30.03,
+        "nb_panneaux": 42,
+        "production_kwh_an": 48025
+      },
+      "baseline": {
+        "source": null,
+        "estimation": true,
+        "kwh_an": 72000
+      },
+      "energie": {
+        "taux_autoconso_pct": 77.7,
+        "taux_couverture_pct": 51.8,
+        "methode": "horaire_declare",
+        "definitions": {
+          "autoconso": "part de la production consommée sur place",
+          "couverture": "part de votre consommation couverte par le solaire"
+        },
+        "surplus": {
+          "kwh_an": 10725,
+          "valorise_kwh_an": 0,
+          "non_valorise_kwh_an": 10725,
+          "non_valorise_pct_production": 22
+        },
+        "par_mois": [
+          {
+            "production_kwh": 3456,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 2761,
+            "surplus_kwh": 695,
+            "mois": 1
+          },
+          {
+            "production_kwh": 3403,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 2750,
+            "surplus_kwh": 652,
+            "mois": 2
+          },
+          {
+            "production_kwh": 4108,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 3182,
+            "surplus_kwh": 927,
+            "mois": 3
+          },
+          {
+            "production_kwh": 4301,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 3234,
+            "surplus_kwh": 1066,
+            "mois": 4
+          },
+          {
+            "production_kwh": 4439,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 3272,
+            "surplus_kwh": 1167,
+            "mois": 5
+          },
+          {
+            "production_kwh": 4331,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 3305,
+            "surplus_kwh": 1026,
+            "mois": 6
+          },
+          {
+            "production_kwh": 4627,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 3383,
+            "surplus_kwh": 1244,
+            "mois": 7
+          },
+          {
+            "production_kwh": 4601,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 3380,
+            "surplus_kwh": 1221,
+            "mois": 8
+          },
+          {
+            "production_kwh": 4183,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 3202,
+            "surplus_kwh": 981,
+            "mois": 9
+          },
+          {
+            "production_kwh": 3918,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 3130,
+            "surplus_kwh": 788,
+            "mois": 10
+          },
+          {
+            "production_kwh": 3307,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 2961,
+            "surplus_kwh": 347,
+            "mois": 11
+          },
+          {
+            "production_kwh": 3351,
+            "consommation_kwh": 6000,
+            "autoconso_kwh": 2740,
+            "surplus_kwh": 611,
+            "mois": 12
+          }
+        ]
+      },
+      "estimation": {
+        "production": {
+          "source": "pvgis",
+          "inclinaison_deg": 30,
+          "azimut_deg": 0
+        },
+        "methode_autoconso": "journees_moyennes",
+        "dimensionnement": {
+          "pas_kwc": 5,
+          "horizon_annees": 10
+        }
+      },
+      "installation": {
+        "onduleurs": [
+          {
+            "kw_ac": 25,
+            "quantite": 1
+          }
+        ],
+        "kw_ac_total": 25,
+        "type_pose": "bac_acier"
+      },
+      "option_servie": "sans_batterie",
+      "option_batterie": {
+        "totaux": {
+          "ht_brut": 401572.6,
+          "remise": 0.0,
+          "arrondi": 22.6,
+          "ht_net": 401550.0,
+          "tva": 71550.0,
+          "tva_par_taux": [
+            {
+              "taux": 10.0,
+              "montant": 8760.0,
+              "ht_net": 87600.0
+            },
+            {
+              "taux": 20.0,
+              "montant": 62790.0,
+              "ht_net": 313950.0
+            }
+          ],
+          "ttc": 473100.0,
+          "ttc_exact": 473100.0,
+          "ttc_avant": 473100.0
+        },
+        "valeur_chiffree": {
+          "economie_annuelle_mad": 95767.15,
+          "retour_simple_ans": 4.2,
+          "capacite_utile_kwh": 76.35,
+          "restitue_kwh_an": 25081,
+          "textes": {
+            "fr": "Batterie de 76,3 kWh utiles : 25 081 kWh/an restitués le soir et la nuit, 95 767 MAD HT d'économie par an avec l'option batterie.",
+            "en": "76.3 kWh usable battery: 25,081 kWh/year delivered in the evening and at night, 95,767 MAD excl. VAT saved per year with the battery option.",
+            "ar": "بطارية بسعة مفيدة 76,3 كيلوواط ساعة: 25 081 كيلوواط ساعة سنويًا تُستعاد في المساء والليل، و95 767 درهم دون احتساب الضريبة من التوفير سنويًا مع خيار البطارية."
+          }
+        },
+        "motif": null
+      },
+      "argent": {
+        "statut": "calcule",
+        "motifs_omission": [],
+        "base": "deux",
+        "motif_base": null,
+        "tarif": {
+          "origine": "grille_officielle",
+          "contrat": "bt_patente",
+          "tarifs_par_poste": [
+            {
+              "poste": "tranche_1",
+              "tarif_kwh_ht": 1.2622,
+              "tarif_kwh_ttc": 1.5146,
+              "base_publiee": "ttc",
+              "derive_ht_estimation": true,
+              "source": null,
+              "releve_le": "2025-02-16"
+            },
+            {
+              "poste": "tranche_2",
+              "tarif_kwh_ht": 1.4242,
+              "tarif_kwh_ttc": 1.709,
+              "base_publiee": "ttc",
+              "derive_ht_estimation": true,
+              "source": null,
+              "releve_le": "2025-02-16"
+            }
+          ],
+          "prime_fixe_annuelle_mad": null,
+          "tva_energie_pct": 20,
+          "tva_millesime": 2026,
+          "mention": "Tarif ONEE BT publié (grille du 16/02/2025)."
+        },
+        "economie_annee1": {
+          "par_poste": [
+            {
+              "poste": "tranche_2",
+              "kwh_evites": 37300,
+              "tarif_kwh": 1.4242,
+              "mad": 53123.0,
+              "tarif_kwh_ttc": 1.709,
+              "mad_ttc": 63746.11
+            }
+          ],
+          "total_mad": 53123.0,
+          "total_mad_ttc": 63746.11,
+          "part_facture_energie_pct": 52.0
+        },
+        "facture_avant": {
+          "energie_par_poste": [
+            {
+              "poste": "tranche_1+tranche_2",
+              "mad_ht": 102250.8,
+              "mad_ttc": 122698.08
+            }
+          ],
+          "prime_fixe_mad": null
+        },
+        "facture_apres": {
+          "energie_par_poste": [
+            {
+              "poste": "tranche_1+tranche_2",
+              "mad_ht": 49127.8,
+              "mad_ttc": 58951.97
+            }
+          ],
+          "prime_fixe_mad": null
+        },
+        "revente": {
+          "statut": "absente_bt",
+          "kwh_an": null,
+          "plafond_kwh": null,
+          "tarifs": [],
+          "valeur_mad_an": null,
+          "mentions": [
+            "Revente du surplus non ouverte en basse tension à ce jour — ANRE décision 04/26 ; installation dimensionnée pour l'autoconsommation",
+            "Contribution aux services système et de distribution prévue par l'art. 13 de la loi 82-21 : non encore fixée par l'ANRE, non incluse"
+          ],
+          "hypotheses": [
+            {
+              "cle": "surplus_non_valorise_kwh",
+              "valeur": 10725,
+              "statut": "source",
+              "source": "étude de production de votre site, heure par heure"
+            }
+          ]
+        },
+        "flux_ht": {
+          "horizon_ans": 25,
+          "flux": [
+            {
+              "annee": 0,
+              "economie_mad": 0.0,
+              "flux_mad": -135616.67,
+              "cumul_mad": -135616.67,
+              "flux_actualise_mad": null,
+              "production_kwh": null
+            },
+            {
+              "annee": 1,
+              "economie_mad": 53123.0,
+              "flux_mad": 53123.0,
+              "cumul_mad": -82493.67,
+              "flux_actualise_mad": null,
+              "production_kwh": 48025
+            },
+            {
+              "annee": 2,
+              "economie_mad": 52857.39,
+              "flux_mad": 52857.39,
+              "cumul_mad": -29636.29,
+              "flux_actualise_mad": null,
+              "production_kwh": 47785
+            },
+            {
+              "annee": 3,
+              "economie_mad": 52593.1,
+              "flux_mad": 52593.1,
+              "cumul_mad": 22956.81,
+              "flux_actualise_mad": null,
+              "production_kwh": 47546
+            },
+            {
+              "annee": 4,
+              "economie_mad": 52330.13,
+              "flux_mad": 52330.13,
+              "cumul_mad": 75286.95,
+              "flux_actualise_mad": null,
+              "production_kwh": 47308
+            },
+            {
+              "annee": 5,
+              "economie_mad": 52068.48,
+              "flux_mad": 52068.48,
+              "cumul_mad": 127355.43,
+              "flux_actualise_mad": null,
+              "production_kwh": 47072
+            },
+            {
+              "annee": 6,
+              "economie_mad": 51808.14,
+              "flux_mad": 51808.14,
+              "cumul_mad": 179163.57,
+              "flux_actualise_mad": null,
+              "production_kwh": 46836
+            },
+            {
+              "annee": 7,
+              "economie_mad": 51549.1,
+              "flux_mad": 51549.1,
+              "cumul_mad": 230712.67,
+              "flux_actualise_mad": null,
+              "production_kwh": 46602
+            },
+            {
+              "annee": 8,
+              "economie_mad": 51291.35,
+              "flux_mad": 51291.35,
+              "cumul_mad": 282004.02,
+              "flux_actualise_mad": null,
+              "production_kwh": 46369
+            },
+            {
+              "annee": 9,
+              "economie_mad": 51034.9,
+              "flux_mad": 51034.9,
+              "cumul_mad": 333038.92,
+              "flux_actualise_mad": null,
+              "production_kwh": 46137
+            },
+            {
+              "annee": 10,
+              "economie_mad": 50779.72,
+              "flux_mad": 50779.72,
+              "cumul_mad": 383818.64,
+              "flux_actualise_mad": null,
+              "production_kwh": 45907
+            },
+            {
+              "annee": 11,
+              "economie_mad": 50525.82,
+              "flux_mad": 50525.82,
+              "cumul_mad": 434344.46,
+              "flux_actualise_mad": null,
+              "production_kwh": 45677
+            },
+            {
+              "annee": 12,
+              "economie_mad": 50273.19,
+              "flux_mad": 21106.52,
+              "cumul_mad": 455450.99,
+              "flux_actualise_mad": null,
+              "production_kwh": 45449
+            },
+            {
+              "annee": 13,
+              "economie_mad": 50021.83,
+              "flux_mad": 50021.83,
+              "cumul_mad": 505472.81,
+              "flux_actualise_mad": null,
+              "production_kwh": 45221
+            },
+            {
+              "annee": 14,
+              "economie_mad": 49771.72,
+              "flux_mad": 49771.72,
+              "cumul_mad": 555244.53,
+              "flux_actualise_mad": null,
+              "production_kwh": 44995
+            },
+            {
+              "annee": 15,
+              "economie_mad": 49522.86,
+              "flux_mad": 49522.86,
+              "cumul_mad": 604767.39,
+              "flux_actualise_mad": null,
+              "production_kwh": 44770
+            },
+            {
+              "annee": 16,
+              "economie_mad": 49275.25,
+              "flux_mad": 49275.25,
+              "cumul_mad": 654042.64,
+              "flux_actualise_mad": null,
+              "production_kwh": 44546
+            },
+            {
+              "annee": 17,
+              "economie_mad": 49028.87,
+              "flux_mad": 49028.87,
+              "cumul_mad": 703071.51,
+              "flux_actualise_mad": null,
+              "production_kwh": 44324
+            },
+            {
+              "annee": 18,
+              "economie_mad": 48783.73,
+              "flux_mad": 48783.73,
+              "cumul_mad": 751855.24,
+              "flux_actualise_mad": null,
+              "production_kwh": 44102
+            },
+            {
+              "annee": 19,
+              "economie_mad": 48539.81,
+              "flux_mad": 48539.81,
+              "cumul_mad": 800395.04,
+              "flux_actualise_mad": null,
+              "production_kwh": 43882
+            },
+            {
+              "annee": 20,
+              "economie_mad": 48297.11,
+              "flux_mad": 48297.11,
+              "cumul_mad": 848692.15,
+              "flux_actualise_mad": null,
+              "production_kwh": 43662
+            },
+            {
+              "annee": 21,
+              "economie_mad": 48055.62,
+              "flux_mad": 48055.62,
+              "cumul_mad": 896747.77,
+              "flux_actualise_mad": null,
+              "production_kwh": 43444
+            },
+            {
+              "annee": 22,
+              "economie_mad": 47815.34,
+              "flux_mad": 47815.34,
+              "cumul_mad": 944563.12,
+              "flux_actualise_mad": null,
+              "production_kwh": 43227
+            },
+            {
+              "annee": 23,
+              "economie_mad": 47576.27,
+              "flux_mad": 47576.27,
+              "cumul_mad": 992139.39,
+              "flux_actualise_mad": null,
+              "production_kwh": 43011
+            },
+            {
+              "annee": 24,
+              "economie_mad": 47338.39,
+              "flux_mad": 47338.39,
+              "cumul_mad": 1039477.77,
+              "flux_actualise_mad": null,
+              "production_kwh": 42796
+            },
+            {
+              "annee": 25,
+              "economie_mad": 47101.69,
+              "flux_mad": 47101.69,
+              "cumul_mad": 1086579.47,
+              "flux_actualise_mad": null,
+              "production_kwh": 42582
+            }
+          ],
+          "tri_pct": 38.4929,
+          "retour_ans": 3,
+          "hypotheses": [
+            {
+              "cle": "investissement_mad",
+              "valeur": 135616.67,
+              "source": "devis — total HT de l'option retenue",
+              "saisie_le": null
+            },
+            {
+              "cle": "economie_annee1_mad",
+              "valeur": 53123.0,
+              "source": "valorisation heure par heure au tarif de chaque poste",
+              "saisie_le": null
+            },
+            {
+              "cle": "production_annee1_kwh",
+              "valeur": 48025.0,
+              "source": "étude de production de votre site, heure par heure",
+              "saisie_le": null
+            },
+            {
+              "cle": "horizon_ans",
+              "valeur": 25,
+              "source": "durée d'analyse : 25 ans",
+              "saisie_le": null
+            },
+            {
+              "cle": "indexation_pct",
+              "valeur": 0.0,
+              "source": null,
+              "saisie_le": null,
+              "source_code": "indexation_constante"
+            },
+            {
+              "cle": "degradation_pct",
+              "valeur": 0.5,
+              "source": null,
+              "saisie_le": null,
+              "source_code": "degradation_defaut_fiche_muette"
+            },
+            {
+              "cle": "remplacements[0]",
+              "valeur": 29166.67,
+              "source": "ligne onduleur du devis (Onduleur réseau Huawei 25kW Triphasé) — onduleur : remplacer en année 12",
+              "saisie_le": null
+            }
+          ],
+          "omissions": [
+            {
+              "cle": "charges_annuelles_mad",
+              "motif": "aucune option O&M sur le devis — aucune charge annuelle"
+            },
+            {
+              "cle": "lcoe_actualise",
+              "motif": "coût moyen NON actualisé : coût total ÷ production totale sur 25 ans (aucun taux d'actualisation déclaré par le client)"
+            }
+          ]
+        },
+        "flux_ttc": {
+          "horizon_ans": 25,
+          "flux": [
+            {
+              "annee": 0,
+              "economie_mad": 0.0,
+              "flux_mad": -157700.0,
+              "cumul_mad": -157700.0,
+              "flux_actualise_mad": null,
+              "production_kwh": null
+            },
+            {
+              "annee": 1,
+              "economie_mad": 63746.11,
+              "flux_mad": 63746.11,
+              "cumul_mad": -93953.89,
+              "flux_actualise_mad": null,
+              "production_kwh": 48025
+            },
+            {
+              "annee": 2,
+              "economie_mad": 63427.38,
+              "flux_mad": 63427.38,
+              "cumul_mad": -30526.51,
+              "flux_actualise_mad": null,
+              "production_kwh": 47785
+            },
+            {
+              "annee": 3,
+              "economie_mad": 63110.24,
+              "flux_mad": 63110.24,
+              "cumul_mad": 32583.73,
+              "flux_actualise_mad": null,
+              "production_kwh": 47546
+            },
+            {
+              "annee": 4,
+              "economie_mad": 62794.69,
+              "flux_mad": 62794.69,
+              "cumul_mad": 95378.42,
+              "flux_actualise_mad": null,
+              "production_kwh": 47308
+            },
+            {
+              "annee": 5,
+              "economie_mad": 62480.72,
+              "flux_mad": 62480.72,
+              "cumul_mad": 157859.14,
+              "flux_actualise_mad": null,
+              "production_kwh": 47072
+            },
+            {
+              "annee": 6,
+              "economie_mad": 62168.31,
+              "flux_mad": 62168.31,
+              "cumul_mad": 220027.46,
+              "flux_actualise_mad": null,
+              "production_kwh": 46836
+            },
+            {
+              "annee": 7,
+              "economie_mad": 61857.47,
+              "flux_mad": 61857.47,
+              "cumul_mad": 281884.93,
+              "flux_actualise_mad": null,
+              "production_kwh": 46602
+            },
+            {
+              "annee": 8,
+              "economie_mad": 61548.19,
+              "flux_mad": 61548.19,
+              "cumul_mad": 343433.11,
+              "flux_actualise_mad": null,
+              "production_kwh": 46369
+            },
+            {
+              "annee": 9,
+              "economie_mad": 61240.44,
+              "flux_mad": 61240.44,
+              "cumul_mad": 404673.56,
+              "flux_actualise_mad": null,
+              "production_kwh": 46137
+            },
+            {
+              "annee": 10,
+              "economie_mad": 60934.24,
+              "flux_mad": 60934.24,
+              "cumul_mad": 465607.8,
+              "flux_actualise_mad": null,
+              "production_kwh": 45907
+            },
+            {
+              "annee": 11,
+              "economie_mad": 60629.57,
+              "flux_mad": 60629.57,
+              "cumul_mad": 526237.37,
+              "flux_actualise_mad": null,
+              "production_kwh": 45677
+            },
+            {
+              "annee": 12,
+              "economie_mad": 60326.42,
+              "flux_mad": 25326.42,
+              "cumul_mad": 551563.79,
+              "flux_actualise_mad": null,
+              "production_kwh": 45449
+            },
+            {
+              "annee": 13,
+              "economie_mad": 60024.79,
+              "flux_mad": 60024.79,
+              "cumul_mad": 611588.59,
+              "flux_actualise_mad": null,
+              "production_kwh": 45221
+            },
+            {
+              "annee": 14,
+              "economie_mad": 59724.67,
+              "flux_mad": 59724.67,
+              "cumul_mad": 671313.25,
+              "flux_actualise_mad": null,
+              "production_kwh": 44995
+            },
+            {
+              "annee": 15,
+              "economie_mad": 59426.04,
+              "flux_mad": 59426.04,
+              "cumul_mad": 730739.3,
+              "flux_actualise_mad": null,
+              "production_kwh": 44770
+            },
+            {
+              "annee": 16,
+              "economie_mad": 59128.91,
+              "flux_mad": 59128.91,
+              "cumul_mad": 789868.21,
+              "flux_actualise_mad": null,
+              "production_kwh": 44546
+            },
+            {
+              "annee": 17,
+              "economie_mad": 58833.27,
+              "flux_mad": 58833.27,
+              "cumul_mad": 848701.48,
+              "flux_actualise_mad": null,
+              "production_kwh": 44324
+            },
+            {
+              "annee": 18,
+              "economie_mad": 58539.1,
+              "flux_mad": 58539.1,
+              "cumul_mad": 907240.58,
+              "flux_actualise_mad": null,
+              "production_kwh": 44102
+            },
+            {
+              "annee": 19,
+              "economie_mad": 58246.41,
+              "flux_mad": 58246.41,
+              "cumul_mad": 965486.99,
+              "flux_actualise_mad": null,
+              "production_kwh": 43882
+            },
+            {
+              "annee": 20,
+              "economie_mad": 57955.18,
+              "flux_mad": 57955.18,
+              "cumul_mad": 1023442.16,
+              "flux_actualise_mad": null,
+              "production_kwh": 43662
+            },
+            {
+              "annee": 21,
+              "economie_mad": 57665.4,
+              "flux_mad": 57665.4,
+              "cumul_mad": 1081107.56,
+              "flux_actualise_mad": null,
+              "production_kwh": 43444
+            },
+            {
+              "annee": 22,
+              "economie_mad": 57377.07,
+              "flux_mad": 57377.07,
+              "cumul_mad": 1138484.63,
+              "flux_actualise_mad": null,
+              "production_kwh": 43227
+            },
+            {
+              "annee": 23,
+              "economie_mad": 57090.19,
+              "flux_mad": 57090.19,
+              "cumul_mad": 1195574.82,
+              "flux_actualise_mad": null,
+              "production_kwh": 43011
+            },
+            {
+              "annee": 24,
+              "economie_mad": 56804.74,
+              "flux_mad": 56804.74,
+              "cumul_mad": 1252379.56,
+              "flux_actualise_mad": null,
+              "production_kwh": 42796
+            },
+            {
+              "annee": 25,
+              "economie_mad": 56520.71,
+              "flux_mad": 56520.71,
+              "cumul_mad": 1308900.27,
+              "flux_actualise_mad": null,
+              "production_kwh": 42582
+            }
+          ],
+          "tri_pct": 39.7532,
+          "retour_ans": 3,
+          "hypotheses": [
+            {
+              "cle": "investissement_mad",
+              "valeur": 157700.0,
+              "source": "devis — total TTC de l'option retenue",
+              "saisie_le": null
+            },
+            {
+              "cle": "economie_annee1_mad",
+              "valeur": 63746.11,
+              "source": "valorisation heure par heure au tarif de chaque poste",
+              "saisie_le": null
+            },
+            {
+              "cle": "production_annee1_kwh",
+              "valeur": 48025.0,
+              "source": "étude de production de votre site, heure par heure",
+              "saisie_le": null
+            },
+            {
+              "cle": "horizon_ans",
+              "valeur": 25,
+              "source": "durée d'analyse : 25 ans",
+              "saisie_le": null
+            },
+            {
+              "cle": "indexation_pct",
+              "valeur": 0.0,
+              "source": null,
+              "saisie_le": null,
+              "source_code": "indexation_constante"
+            },
+            {
+              "cle": "degradation_pct",
+              "valeur": 0.5,
+              "source": null,
+              "saisie_le": null,
+              "source_code": "degradation_defaut_fiche_muette"
+            },
+            {
+              "cle": "remplacements[0]",
+              "valeur": 35000.0,
+              "source": "ligne onduleur du devis (Onduleur réseau Huawei 25kW Triphasé) — onduleur : remplacer en année 12",
+              "saisie_le": null
+            }
+          ],
+          "omissions": [
+            {
+              "cle": "charges_annuelles_mad",
+              "motif": "aucune option O&M sur le devis — aucune charge annuelle"
+            },
+            {
+              "cle": "lcoe_actualise",
+              "motif": "coût moyen NON actualisé : coût total ÷ production totale sur 25 ans (aucun taux d'actualisation déclaré par le client)"
+            }
+          ]
+        },
+        "jalons": [
+          {
+            "annee": 5,
+            "cumul_mad": 127355.43
+          },
+          {
+            "annee": 10,
+            "cumul_mad": 383818.64
+          },
+          {
+            "annee": 15,
+            "cumul_mad": 604767.39
+          },
+          {
+            "annee": 20,
+            "cumul_mad": 848692.15
+          },
+          {
+            "annee": 25,
+            "cumul_mad": 1086579.47
+          }
+        ],
+        "jalons_ttc": [
+          {
+            "annee": 5,
+            "cumul_mad": 157859.14
+          },
+          {
+            "annee": 10,
+            "cumul_mad": 465607.8
+          },
+          {
+            "annee": 15,
+            "cumul_mad": 730739.3
+          },
+          {
+            "annee": 20,
+            "cumul_mad": 1023442.16
+          },
+          {
+            "annee": 25,
+            "cumul_mad": 1308900.27
+          }
+        ],
+        "indicateurs": {
+          "tri_pct": 38.4929,
+          "tri_horizon_ans": 25,
+          "retour_ans": 3,
+          "tarif_kwh_evite_moyen": 1.4242
+        },
+        "remplacements": [
+          {
+            "composant": "onduleur",
+            "annee": 12,
+            "montant_ttc_mad": 35000.0,
+            "montant_ht_mad": 29166.67,
+            "source": "ligne onduleur du devis (Onduleur réseau Huawei 25kW Triphasé)",
+            "motif": "remplacement à mi-vie (principe IEA PVPS), au montant réel de la ligne onduleur du devis"
+          }
+        ],
+        "om": {
+          "statut": "absent",
+          "montant_mad_an": null,
+          "source": "aucune option O&M sur le devis — aucune charge annuelle"
+        },
+        "entretien": {
+          "statut": "non_chiffre",
+          "montant_mad_an": null,
+          "source": "entretien non chiffré"
+        },
+        "sensibilites": [
+          {
+            "cle": "production",
+            "variation_pct": -7.7,
+            "source": null,
+            "economie_annee1_mad": 51681.7,
+            "retour_ans": 3,
+            "tri_pct": 37.4169,
+            "cumul_25_ans_mad": 1052628.27,
+            "ecart_retour_ans": 0,
+            "ecart_tri_pct": -1.076
+          },
+          {
+            "cle": "degradation",
+            "variation_pct": 0.75,
+            "source": "dégradation prudente 0,75 %/an — médiane publiée 0,5 %/an (Jordan & Kurtz, NREL/JA-5200-51664, 2012)",
+            "economie_annee1_mad": 53123.0,
+            "retour_ans": 3,
+            "tri_pct": 38.2394,
+            "cumul_25_ans_mad": 1050362.91,
+            "ecart_retour_ans": 0,
+            "ecart_tri_pct": -0.2535
+          }
+        ],
+        "hypotheses": [
+          {
+            "cle": "valorisation",
+            "valeur": "tarif du poste horaire couvert, heure par heure",
+            "valeur_code": "methode_horaire_poste",
+            "statut": "source",
+            "source": "méthode de calcul du devis"
+          },
+          {
+            "cle": "tarif",
+            "valeur": "Tarif ONEE BT publié (grille du 16/02/2025).",
+            "statut": "estimation",
+            "source": null
+          }
+        ],
+        "omissions": [
+          {
+            "cle": "financement",
+            "motif": "aucune offre écrite de prêteur saisie"
+          }
+        ]
+      },
+      "hypotheses": [
+        {
+          "cle": "tarif",
+          "textes": {
+            "fr": "Prix du kWh : tarif officiel ONEE publié, en attendant la lecture de votre facture.",
+            "en": "kWh prices: published official ONEE tariff, until your bill is read.",
+            "ar": "أثمنة الكيلوواط ساعة: التعريفة الرسمية المنشورة للمكتب الوطني إلى حين قراءة فاتورتكم."
+          },
+          "source": null,
+          "date": "2025-02-16"
+        },
+        {
+          "cle": "revente_bt",
+          "textes": {
+            "fr": "Revente du surplus non ouverte en basse tension à ce jour — ANRE décision 04/26 ; installation dimensionnée pour l'autoconsommation",
+            "en": "Surplus resale not open on low voltage to date — ANRE decision 04/26; installation sized for self-consumption",
+            "ar": "بيع الفائض غير مفتوح في الجهد المنخفض إلى حدود اليوم — قرار الهيئة الوطنية لضبط الكهرباء 04/26؛ المنشأة مصممة للاستهلاك الذاتي"
+          },
+          "source": null,
+          "date": "2026-03-01"
+        },
+        {
+          "cle": "contribution_art13",
+          "textes": {
+            "fr": "Contribution aux services système et de distribution prévue par l'art. 13 de la loi 82-21 : non encore fixée par l'ANRE, non incluse",
+            "en": "System and distribution services charge provided for by art. 13 of law 82-21: not yet set by ANRE, not included",
+            "ar": "مساهمة خدمات النظام والتوزيع المنصوص عليها في المادة 13 من القانون 82-21: لم تحددها الهيئة بعد، غير مدرجة"
+          },
+          "source": "loi 82-21, art. 13",
+          "date": null
+        },
+        {
+          "cle": "pointe",
+          "textes": {
+            "fr": "Le soir et la nuit, votre consommation reste fournie par le réseau ; l'option avec batterie la couvre.",
+            "en": "In the evening and at night, your consumption is still supplied by the grid; the battery option covers it.",
+            "ar": "في المساء والليل، يظل استهلاككم مزودًا من الشبكة؛ ويغطيه خيار البطارية."
+          },
+          "source": null,
+          "date": null
+        }
+      ],
+      "categorie": {
+        "cle": "boulangerie",
+        "libelle": "Boulangerie",
+        "accroche": "Froid, éclairage et climatisation de journée : ce que le solaire couvre, sans rien promettre sur la cuisson.",
+        "bloc": {
+          "titre": "Votre boulangerie",
+          "lignes": [
+            {
+              "textes": {
+                "fr": "Le soir et la nuit, votre consommation reste fournie par le réseau ; l'option avec batterie la couvre.",
+                "en": "In the evening and at night, your consumption is still supplied by the grid; the battery option covers it.",
+                "ar": "في المساء والليل، يظل استهلاككم مزودًا من الشبكة؛ ويغطيه خيار البطارية."
+              }
+            }
+          ]
+        }
+      },
+      "services": {
+        "om_option": {
+          "statut": "tarif_a_renseigner",
+          "libelle": "Exploitation et maintenance (O&M)",
+          "lignes": [
+            {
+              "designation": "Exploitation et maintenance (O&M)",
+              "total_ht": null,
+              "total_ttc": null
+            }
+          ]
+        },
+        "suivi_production": {
+          "delai_intervention": null
+        },
+        "garanties": [
+          {
+            "composant": "onduleur",
+            "texte": "Onduleur : 10 ans",
+            "source": "garantie du fabricant"
+          },
+          {
+            "composant": "panneaux",
+            "texte": "Panneaux : 12 ans",
+            "source": "garantie du fabricant"
+          },
+          {
+            "composant": "panneaux_performance",
+            "texte": "Performance : 30 ans",
+            "source": "garantie du fabricant"
+          },
+          {
+            "composant": "batterie",
+            "texte": "Batterie : 10 ans",
+            "source": "garantie du fabricant"
+          }
+        ]
+      },
+      "echeancier": [
+        {
+          "libelle": "À la commande",
+          "pct": 40,
+          "montant_ttc": 63080,
+          "jalon": "commande"
+        },
+        {
+          "libelle": "À la livraison",
+          "pct": 50,
+          "montant_ttc": 78850,
+          "jalon": "livraison"
+        },
+        {
+          "libelle": "À la mise en service",
+          "pct": 10,
+          "montant_ttc": 15770,
+          "jalon": "mise_en_service"
+        }
+      ],
+      "entreprise_client": {
+        "raison_sociale": "Boulangerie Exemple SARL",
+        "ice": "",
+        "rc": "",
+        "if_fiscal": "",
+        "siege": "",
+        "interlocuteur": "Responsable achats",
+        "fonction": ""
+      },
+      "omissions": []
     }
   },
   "notes_cprs": "CPRS (27/10/2026) — la page sert les chiffres et les mots du PDF : en C&I, quote.puissance_kwc / nb_panneaux / prod_kwh et monthly_production / monthly_consumption = ceux de l'option servie (synthese_ci.systeme, synthese_ci.energie.par_mois) ; quote.libelles_document et quote.etude.etude_ci ne partent plus ; sources/motifs internes de synthese_ci et synthese_agricole traduits (mots du PDF) ou null ; synthese_ci.a_confirmer ne garde que 'a_chiffrer_visite', synthese_ci.omissions que les blocs 'argent*'."

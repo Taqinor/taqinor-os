@@ -25,6 +25,7 @@ Les valeurs numériques ne sont jamais modifiées par CPRS3 ; l'empreinte de
 signature est calculée AVANT cette passe sur la synthèse brute.
 """
 import copy
+import html
 import re
 
 #: Champs texte libres servis par le moteur C&I qui peuvent porter un code
@@ -86,6 +87,16 @@ def _assainir_synthese_ci(synthese, libelles, langue):
             if isinstance(hyp, dict) and isinstance(hyp.get('valeur'), str) \
                     and _RESIDU_INTERNE.search(hyp['valeur']):
                 hyp['valeur'] = mention
+    # CPRS11 — le libellé O&M est échappé pour le HTML du PDF
+    # (« O&amp;M ») ; la page l'affiche en texte : même mot, déséchappé.
+    om = (synthese.get('services') or {}).get('om_option') \
+        if isinstance(synthese.get('services'), dict) else None
+    if isinstance(om, dict):
+        for noeud in [om] + [li for li in om.get('lignes') or []
+                             if isinstance(li, dict)]:
+            for cle in ('libelle', 'designation'):
+                if isinstance(noeud.get(cle), str):
+                    noeud[cle] = html.unescape(noeud[cle])
     _assainir_textes(synthese, libelles)
 
 
