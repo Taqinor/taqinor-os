@@ -129,15 +129,11 @@ def page_calepinage(ctx) -> str:
 .pc-emp {{ margin-top:6px; font-size:6.6pt; color:{C['muted_2']}; }}
 </style>
 <div class="pc-wrap">
-  <div class="pc-kicker">Pièce technique</div>
-  <div class="pc-title">Calepinage</div>
-  <div class="pc-intro">Implantation des modules relevée sur la toiture, à
-    l'échelle portée par la planche. Les cotes sont mesurées sur la géométrie
-    de la conception.</div>
+  <div class="pc-kicker">{cover.libelle_cat(d, "rpdf_cal_kicker")}</div>
+  <div class="pc-title">{cover.libelle_cat(d, "rpdf_cal_titre")}</div>
+  <div class="pc-intro">{cover.libelle_cat(d, "rpdf_cal_intro")}</div>
   <div class="pc-planche">{d.get("calepinage_svg") or ""}</div>
-  <div class="pc-note">Pièce technique jointe à la proposition. L'implantation
-    définitive est confirmée à la visite technique ; seule la liste
-    d'équipements du devis fait foi commercialement.</div>
+  <div class="pc-note">{cover.libelle_cat(d, "rpdf_cal_note")}</div>
   {empreinte_html}
 </div>
 """

@@ -3077,7 +3077,7 @@ LIBELLES = {
         'ar': 'المرجع',
     },
 }
-
+from .i18n_labels_residentiel import LIBELLES_RESIDENTIEL as _LR; LIBELLES.update(_LR)  # noqa: E402,E702,I001
 
 #: ERR-APDF-LIBELLES-FR-RESTANTS-EN-AR — noms d'option que le GABARIT
 #: (« Sans batterie ») ou le builder (``libelle_avec``, BAT-DIFF) impriment →

@@ -207,14 +207,14 @@ def page_onepage(items, tronquees=0):
                  _g._ancre_figure("pompe_debit_m3h", _g._fdec_fr(_dq, 1))))
         elif _g.ETUDE.get("debit_m3j"):  # anciens devis (saisie manuelle)
             _sum_cells.append(
-                ("D&#233;bit estim&#233;", f"{_g.ETUDE.get('debit_m3j')} m&#179;/jour"))
+                (_g._L("rpdf_debit_estime"),
+                 _g._L("rpdf_m3_jour").format(n=_g._fdec_fr(_g.ETUDE.get('debit_m3j')))))
         _m3j = _g.ETUDE.get("m3_jour")
         _hrs = _g.ETUDE.get("heures_pompage")
         if _m3j and _hrs:
             _sum_cells.append(
                 (f"{_g._L('eau_jour')} &#8212; {_g._L('estimation')}, "
-                 f"{_g._L('sur_heures_pompage').format(heures=_g._fdec_fr(_hrs, 1))}"
-                 f" ({_g._L('hypothese')})",
+                 f"{_g._L('sur_heures_pompage').format(heures=_g._fdec_fr(_hrs, 1))}",
                  f"&#8776; {_g.fnum(_m3j)} m&#179;",
                  _g._ancre_figure("pompe_volume_m3_jour", _g.fnum(_m3j))))
         if _g.KWC > 0:
@@ -232,7 +232,7 @@ def page_onepage(items, tronquees=0):
             _sum_cells += _g._cartes_ci_onepage(_g.CHIFFRES_CI)
         else:
             _sum_cells.append(
-                (_g._L("op_production_annuelle"), f"{_g.fnum(_g.PROD_KWH)} kWh/an",
+                (_g._L("op_production_annuelle"), _g._L("rpdf_kwh_an").format(n=_g.fnum(_g.PROD_KWH)),
                  _g._ancre_figure("production_annuelle_kwh", _g.fnum(_g.PROD_KWH))))
             # QXMT — dossier raccordé en MOYENNE TENSION sans économies d'étude :
             # la vignette « Économie annuelle » est OMISE. La valeur disponible
@@ -250,7 +250,7 @@ def page_onepage(items, tronquees=0):
             if not _g.MASQUER_ECONOMIES and _eco_branche:
                 _sum_cells.append(
                     (_g._L("op_economie_annuelle"),
-                     f"{_g.fnum(_eco_branche)} MAD/an"
+                     _g._L("rpdf_mad_an").format(n=_g.fnum(_eco_branche))
                      + (_g._L("op_estimation") if _g.SAVINGS_ESTIMATED else ""),
                      _g._ancre_figure("economie_annuelle", _g.fnum(_eco_branche),
                                    _g.ONEPAGE_BRANCHE)))
@@ -258,7 +258,8 @@ def page_onepage(items, tronquees=0):
         # AMOT86 (D-ACI-2=a) — postes « à chiffrer après la visite » hors
         # total : aucun « Prix par kWc » sur un prix incomplet.
         _sum_cells += [] if (_g.CHIFFRES_CI or {}).get("postes_hors_total") else [
-            (_g._L("op_prix_par_kwc"), f"{_pkwc_txt} MAD/{_g.ci_onepage.unite_kwc(_g._L, _g.CHIFFRES_CI)}",
+            (_g._L("op_prix_par_kwc"), _g._L("rpdf_mad_par").format(
+                n=_pkwc_txt, u=_g.ci_onepage.unite_kwc(_g._L, _g.CHIFFRES_CI)),
              _g._ancre_figure("prix_kwc", _pkwc_txt, _op_opt))]
         # CJ2b-bis — mention falaise/tranche en UNE cellule, seulement si le
         # contrat DIM2 est posé (voir _falaise_context) : le budget densité
@@ -268,7 +269,7 @@ def page_onepage(items, tronquees=0):
         from .legacy_etude import _falaise_context  # SPL169 — import local
         _fctx_onepage = _falaise_context()
         if _fctx_onepage and _fctx_onepage.get("residuel_kwh_mois") is not None:
-            _rtxt = f"{_g.fnum(_fctx_onepage['residuel_kwh_mois'])} kWh/mois"
+            _rtxt = _g._L("lg_kwh_mois").format(n=_g.fnum(_fctx_onepage['residuel_kwh_mois']))
             if _fctx_onepage.get("tranche_apres"):
                 # QJR163 (b) — ÉCHAPPÉ comme sur la page étude : ce libellé
                 # vient du contrat de dimensionnement, pas d'une constante.
@@ -604,7 +605,7 @@ def build_html_onepage(items, tronquees=0):
     page DÉCLARÉE ; jamais une copie de son HTML."""
     return f"""<!DOCTYPE html>
 <html {_g._attributs_langue_html()} style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
-<title>Devis {_g.ENT_NOM_MARQUE} N\u00b0 {_g.REF}</title>
+<title>{_g._L("rpdf_titre_doc").format(marque=_g.ENT_NOM_MARQUE, ref=_g.REF)}</title>
 <style>{_g.CSS}{_g._css_arabe() if _g.i18n_labels.est_rtl(_g.LANGUE_SORTIE) else ""}</style></head>
 <body style="background:#FFFFFF !important;">
 {page_onepage(items, tronquees)}{_g.page_annexe_domicile(pied=f"{_g._L('lg_ret_pied').format(ref=_g.REF)} &#183; {_g._L('res_page')} 2&nbsp;/&nbsp;2") if _g.SIGNE_AU_DOMICILE else ""}
