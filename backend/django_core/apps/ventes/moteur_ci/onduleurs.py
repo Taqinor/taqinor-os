@@ -485,7 +485,7 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
         quantites = _chercher_sous_ac(retenus, besoin, haute.valeur,
                                       float(ac_max_kw), module,
                                       max_appareils) or quantites
-    if quantites and max_appareils and             sum(quantites.values()) > max_appareils:
+    if quantites and max_appareils and sum(quantites.values()) > max_appareils:
         motif = ('%.1f kWc demandent %d appareils, au-delà des %d appareils '
                  'en parallèle admis par la fiche' % (
                      kwc, sum(quantites.values()), max_appareils))
