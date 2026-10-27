@@ -14,7 +14,13 @@ est le geste qui manquait : il RECOMPOSE les lignes C&I avec les mesures.
   V+1 (brouillon), puis elle est recomposée : la V1 garde ce que le client a
   reçu ;
 * la TAILLE vendue (kWc de l'offre réseau) est gardée — la visite ajuste
-  quantités, longueurs, pose et prix, jamais la puissance proposée ;
+  quantités, longueurs, pose et prix, jamais la puissance proposée ; un
+  devis « avec batterie » SEULE est refusé (limite CORC10) ;
+* tout le geste tient dans UNE transaction : un refus n'écrit rien (pas de
+  V+1 orpheline) ;
+* les réglages de LIGNES de la version d'avant (prix négociés, lignes
+  ajoutées ou retirées à la main) sont REMPLACÉS par la recomposition —
+  ``lignes_changees`` les montre au vendeur ;
 * aucun statut n'est écrit (règle #4) ; la remise globale et l'en-tête sont
   intouchés.
 
@@ -31,6 +37,12 @@ MESSAGE_PAS_CI = ("Seul un devis commercial ou industriel se révise après la "
 MESSAGE_SANS_VISITE = ("Aucune visite technique C&I validée sur ce lead : "
                        "validez la visite (bureau d'études) avant de préparer "
                        "le devis révisé.")
+MESSAGE_INACTIF = ("Ce devis a été remplacé ou archivé : révisez sa version "
+                   "en vigueur.")
+MESSAGE_AVEC_SEULE = ("Un devis « avec batterie » seule ne se recompose pas encore "
+                      "automatiquement après la visite : ajustez ses lignes à la main.")
+MESSAGE_SANS_TAILLE = ("Puissance du devis illisible (panneaux sans puissance) : "
+                       "recomposition impossible sans redimensionner.")
 MESSAGE_SANS_LEAD = ("Ce devis n'est rattaché à aucun lead : la visite "
                      "technique ne peut pas être lue.")
 
@@ -103,7 +115,8 @@ def reviser_devis_apres_visite(devis, *, user=None):
     from .pipeline import (MODE_ECRIRE, MODE_RAFRAICHIR, ORIGINE_AUTO,
                            IntentionDevis, appliquer)
     from .revision import reviser_devis
-    from .scenario import SCENARIO_LES_DEUX, SCENARIO_SANS_BATTERIE
+    from .scenario import (SCENARIO_AVEC_BATTERIE, SCENARIO_LES_DEUX,
+                           SCENARIO_SANS_BATTERIE)
 
     mode = (getattr(devis, 'mode_installation', '') or '').lower()
     if mode not in MODES_CI:
@@ -114,33 +127,46 @@ def reviser_devis_apres_visite(devis, *, user=None):
     if not releve_ci_pour_lead(lead):
         raise RevisionVisiteError(MESSAGE_SANS_VISITE, 'visite')
 
-    cree = devis.statut != 'brouillon'
-    cible = reviser_devis(devis, user=user) if cree else devis
-    kwc_avec, kwc_sans = puissances_etude_horaire(cible)
+    if not getattr(devis, 'is_active', True):
+        raise RevisionVisiteError(MESSAGE_INACTIF, 'devis')
+    kwc_avec, kwc_sans = puissances_etude_horaire(devis)
+    if (getattr(devis, 'etude_params', None) or {}).get('scenario') == SCENARIO_AVEC_BATTERIE:
+        # Fable pré-merge (27/10) : le kWc des lignes d'un devis « avec » seule
+        # inclut les panneaux ajoutés pour la batterie — le recomposer comme
+        # offre réseau grossirait la vente. Limite dite (CORC10).
+        raise RevisionVisiteError(MESSAGE_AVEC_SEULE, 'scenario')
     taille = kwc_sans or kwc_avec
-    company = cible.company
-    etude = etudier_ci(company, {'mode': mode, 'taille_explicite_kwc': taille},
-                       devis=cible, lead=lead)
-    refus = refus_devis_auto_ci(etude)
-    if refus:
-        raise RevisionVisiteError(*refus)
-    lignes, scenario = lignes_des_options(etude, lead)
-    if not any(ligne['produit_id'] for ligne in lignes):
-        raise RevisionVisiteError('Aucun article C&I chiffré à composer.', 'composition')
+    if not taille:
+        raise RevisionVisiteError(MESSAGE_SANS_TAILLE, 'taille')
 
-    avant = _photo_lignes(cible)
-    composition = [
-        {'produit': ligne['produit_id'], 'designation': ligne['designation'],
-         'quantite': str(ligne['quantite']), 'prix_unitaire': str(ligne['prix_unitaire']),
-         'ordre': ordre,
-         **({'variante': ligne['variante']} if ligne.get('variante') else {})}
-        for ordre, ligne in enumerate(lignes)]
-    entrees = entrees_pour_etude_params(etude.get('entrees_resolues'))
-    if scenario:
-        entrees['scenario'] = scenario
-        if scenario == SCENARIO_LES_DEUX:
-            entrees['recommended_option'] = SCENARIO_SANS_BATTERIE
+    cree = devis.statut != 'brouillon'
+    company = devis.company
+    # Fable pré-merge (27/10) : UNE transaction pour tout le geste — un refus
+    # (prix à renseigner, PVGIS indisponible…) après ``reviser_devis`` ne
+    # laisse jamais une V1 remplacée par une V2 non recomposée.
     with transaction.atomic():
+        cible = reviser_devis(devis, user=user) if cree else devis
+        etude = etudier_ci(company, {'mode': mode, 'taille_explicite_kwc': taille},
+                           devis=cible, lead=lead)
+        refus = refus_devis_auto_ci(etude)
+        if refus:
+            raise RevisionVisiteError(*refus)
+        lignes, scenario = lignes_des_options(etude, lead)
+        if not any(ligne['produit_id'] for ligne in lignes):
+            raise RevisionVisiteError('Aucun article C&I chiffré à composer.', 'composition')
+
+        avant = _photo_lignes(cible)
+        composition = [
+            {'produit': ligne['produit_id'], 'designation': ligne['designation'],
+             'quantite': str(ligne['quantite']), 'prix_unitaire': str(ligne['prix_unitaire']),
+             'ordre': ordre,
+             **({'variante': ligne['variante']} if ligne.get('variante') else {})}
+            for ordre, ligne in enumerate(lignes)]
+        entrees = entrees_pour_etude_params(etude.get('entrees_resolues'))
+        if scenario:
+            entrees['scenario'] = scenario
+            if scenario == SCENARIO_LES_DEUX:
+                entrees['recommended_option'] = SCENARIO_SANS_BATTERIE
         ecrire(cible, proprietaire=ECRAN, **entrees)
         appliquer(cible, IntentionDevis(
             origine=ORIGINE_AUTO, mode=MODE_ECRIRE, company=company, user=user,
