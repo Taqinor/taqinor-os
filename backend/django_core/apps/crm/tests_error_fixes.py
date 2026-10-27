@@ -484,6 +484,21 @@ class TestFuzzCrmTour2(TestCase):
             'nom': 'Equipe X', 'membres': [999999999]}, format='json')
         self.assertEqual(resp.status_code, 404, resp.content)
 
+    def test_lead_owner_inconnu_404_owner_valide_200(self):
+        # api-fuzz-full 27/10 (ENF11) : id inconnu ou d'une autre société → 404.
+        lead = Lead.objects.create(company=self.company, nom='Owner fuzz')
+        url = f'/api/django/crm/leads/{lead.pk}/'
+        avant = lead.owner_id
+        resp = self.api.patch(url, {'owner': 999999999}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+        self.assertIn('owner', resp.data)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, avant)
+        resp = self.api.patch(url, {'owner': self.user.pk}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner_id, self.user.pk)
+
     def test_reservation_publique_minute_impossible_400_pas_500(self):
         resp = self.api.post(
             '/api/django/crm/public/booking/jeton-inconnu/reserve/',

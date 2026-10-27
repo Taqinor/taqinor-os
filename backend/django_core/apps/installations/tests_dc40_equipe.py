@@ -147,6 +147,19 @@ class TestEquipeCrud(TestCase):
         self.assertEqual(eq.nom, 'V2')
         self.assertFalse(eq.actif)
 
+    def test_membre_deja_dans_une_autre_equipe_409(self):
+        """api-fuzz-full 27/10 — « une seule équipe par personne » est un
+        refus d'ÉTAT (corps conforme) : 409, jamais un 400 (ENF11)."""
+        m1 = make_user(self.company)
+        r = self.api.post(f'{BASE}/equipes/', {
+            'nom': 'Équipe A', 'membres': [m1.id]}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        r = self.api.post(f'{BASE}/equipes/', {
+            'nom': 'Équipe B', 'membres': [m1.id]}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('membres', r.data)
+        self.assertFalse(Equipe.objects.filter(nom='Équipe B').exists())
+
     def test_filter_actif(self):
         """DC40 — filtre `?actif=`."""
         Equipe.objects.create(company=self.company, nom='ON', actif=True)

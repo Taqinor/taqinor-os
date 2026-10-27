@@ -458,3 +458,47 @@ def purger_demandes_achat_brouillon_task():
             continue
         result[company.id] = nb
     return result
+
+
+# ── Revue chantier 26/10/2026 — rétention des positions GPS (loi 09-08) ────
+# ``purge_positions_expirees`` existait depuis XFSM23 mais RIEN ne l'appelait :
+# les positions des techniciens s'accumulaient sans limite. Les alertes de
+# franchissement survivent (``GeofenceAlert.position`` passe à NULL) : seul le
+# détail point par point disparaît, l'historique de présence reste.
+
+@shared_task(name='installations.purger_positions_gps')
+def purger_positions_gps_task():
+    """Supprime chaque nuit les positions GPS de plus de
+    ``POSITION_RETENTION_JOURS`` (30 j), toutes sociétés. Idempotente.
+    Renvoie le nombre de positions supprimées."""
+    from .gps_tracking_service import purge_positions_expirees
+    try:
+        return purge_positions_expirees()
+    except Exception:  # best-effort : relancée la nuit suivante
+        logger.warning('installations.purger_positions_gps: échec', exc_info=True)
+        return 0
+
+
+# ── Fondateur 27/10/2026 — interruptions du suivi GPS (prestataires) ───────
+# Toutes les 10 minutes : une intervention en route / sur site dont le
+# technicien a donné son accord mais qui n'a envoyé aucune position depuis
+# plus de 15 min lève UNE alerte « interruption » notifiée au responsable.
+
+@shared_task(name='installations.signaler_interruptions_gps')
+def signaler_interruptions_gps_task():
+    """Balaye les sociétés ACTIVES (jamais les suspendues) et lève les
+    alertes d'interruption du suivi (``gps_tracking_service.
+    signaler_interruptions``, dédoublonnées par épisode de silence). Une
+    exception sur une société n'empêche jamais les suivantes. Renvoie le
+    nombre d'alertes créées."""
+    from authentication.selectors import active_companies
+    from .gps_tracking_service import signaler_interruptions
+    total = 0
+    for company in active_companies():  # AUD415/SCA19 — pas les suspendus
+        try:
+            total += len(signaler_interruptions(company))
+        except Exception:  # société suivante
+            logger.warning(
+                'installations.signaler_interruptions_gps: échec société %s',
+                company.id, exc_info=True)
+    return total

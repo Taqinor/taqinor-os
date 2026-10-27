@@ -54,6 +54,32 @@ class ReplanifierTests(TestCase):
         self.assertTrue(self.iv.rdv_confirme)
         self.assertEqual(self.iv.rdv_reschedule_count, 0)
 
+    def test_date_prevue_publiee_en_date(self):
+        """api-fuzz-full 27/10 (ENF11) : `date_prevue` est publiée au format
+        DATE (une chaîne libre y était « conforme » puis refusée 400) ; une
+        chaîne vide n'est pas une date → 400 aussi (elle passait en simple
+        confirmation) ; `null` = simple confirmation."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        champ = schema['components']['schemas']['ConfirmerRdvRequeteRequest'][
+            'properties']['date_prevue']
+        self.assertEqual(champ['format'], 'date')
+        self.assertTrue(champ['nullable'])
+        r = self.api.post(f'{BASE}/{self.iv.id}/confirmer-rdv/',
+                          {'date_prevue': ''}, format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self.api.post(f'{BASE}/{self.iv.id}/confirmer-rdv/',
+                          {'date_prevue': None, 'confirme': True},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.iv.refresh_from_db()
+        self.assertEqual(self.iv.rdv_reschedule_count, 0)
+
     def test_patch_date_reinitialise_confirmation(self):
         r = self.api.patch(f'{BASE}/{self.iv.id}/',
                            {'date_prevue': '2026-11-09'}, format='json')

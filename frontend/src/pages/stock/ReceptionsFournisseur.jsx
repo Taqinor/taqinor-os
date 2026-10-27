@@ -26,6 +26,7 @@ import { frErrForm } from '../../lib/frErr'
 import CellulesProduitQuantite from './CellulesProduitQuantite'
 import { AlerteErreur } from '../../ui/AlertesServeur'
 import { TableauLignes } from '../../ui/TableauDefilant'
+import { parseSeries } from './numerosSerie.js'
 
 const frError = (err, fallback = 'Une erreur est survenue. Réessayez.') => frErrForm(err, fallback)
 
@@ -52,7 +53,7 @@ const fmtDateFR = (iso) => {
 const resteLigne = (l) => Math.max((Number(l.quantite) || 0) - (Number(l.quantite_recue) || 0), 0)
 
 // ── Modal : nouvelle réception depuis un BCF non entièrement reçu ────────────
-function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
+export function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   const [bonId, setBonId] = useState('')
   const [bon, setBon] = useState(null)
   // EZ10 — la date valait '' : il fallait la saisir alors que la reception
@@ -61,6 +62,10 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   const [dateReception, setDateReception] = useState(() => todayLocalIso())
   const [note, setNote] = useState('')
   const [saisies, setSaisies] = useState({})   // { ligneCmdId: quantité }
+  // N° de série / lot par ligne (optionnels, repliés par défaut).
+  const [series, setSeries] = useState({})      // { ligneCmdId: texte }
+  const [lots, setLots] = useState({})          // { ligneCmdId: texte }
+  const [ouvertes, setOuvertes] = useState({})  // { ligneCmdId: bool }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -68,7 +73,7 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
   useEffect(() => {
     // Réinitialise l'aperçu quand aucun BCF n'est choisi (reset volontaire).
     // eslint-disable-next-line react-hooks/set-state-in-effect -- remise à zéro volontaire quand aucun BCF n'est choisi (D-ENF22)
-    if (!bonId) { setBon(null); setSaisies({}); return }
+    if (!bonId) { setBon(null); setSaisies({}); setSeries({}); setLots({}); setOuvertes({}); return }
     let active = true
     stockApi.getBonCommandeFournisseur(bonId)
       .then((r) => {
@@ -101,15 +106,35 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
     setSaisies(next)
   }
 
+  // Erreur de comptage des séries d'une ligne (jamais d'ajustement silencieux).
+  const erreurSeries = (l) => {
+    const qte = Math.min(Math.floor(Number(saisies[l.id])), resteLigne(l))
+    const nb = parseSeries(series[l.id]).length
+    if (nb > 0 && nb > (Number.isFinite(qte) && qte > 0 ? qte : 0)) {
+      return `${nb} n° de série saisis pour ${Number.isFinite(qte) && qte > 0 ? qte : 0} reçu(s) : retirez-en ${nb - (Number.isFinite(qte) && qte > 0 ? qte : 0)}.`
+    }
+    return null
+  }
+
   const submit = async (confirmer) => {
     setError(null)
+    const lignesEnErreur = lignes.filter((l) => erreurSeries(l))
+    if (lignesEnErreur.length > 0) {
+      setOuvertes((o) => ({ ...o, ...Object.fromEntries(lignesEnErreur.map((l) => [l.id, true])) }))
+      setError('Corrigez le nombre de n° de série (plus de séries que de quantités reçues).')
+      return
+    }
     const payloadLignes = lignes
       .map((l) => {
         const reste = resteLigne(l)
         const qte = Math.min(Math.floor(Number(saisies[l.id])), reste)
-        return Number.isFinite(qte) && qte > 0
-          ? { ligne_commande: l.id, quantite: qte }
-          : null
+        if (!(Number.isFinite(qte) && qte > 0)) return null
+        const ligne = { ligne_commande: l.id, quantite: qte }
+        const nums = parseSeries(series[l.id])
+        if (nums.length > 0) ligne.numeros_serie = nums
+        const lot = (lots[l.id] ?? '').trim()
+        if (lot) ligne.numero_lot = lot
+        return ligne
       })
       .filter(Boolean)
     if (!bonId) { setError('Choisissez un bon de commande.'); return }
@@ -211,6 +236,39 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
                 )
               })}
             </TableauLignes>
+            {lignes.filter((l) => resteLigne(l) > 0).map((l) => {
+              const qte = Math.min(Math.floor(Number(saisies[l.id])), resteLigne(l))
+              const attendus = Number.isFinite(qte) && qte > 0 ? qte : 0
+              const err = erreurSeries(l)
+              return (
+                <div key={`ser-${l.id}`} className="text-sm">
+                  <button type="button" className="text-xs text-primary underline"
+                          aria-expanded={!!ouvertes[l.id]}
+                          onClick={() => setOuvertes((o) => ({ ...o, [l.id]: !o[l.id] }))}>
+                    N° de série / lot — {l.produit_nom ?? l.designation ?? 'ligne'}
+                  </button>
+                  {ouvertes[l.id] && (
+                    <div className="mt-1 grid gap-2 sm:grid-cols-[2fr_1fr]">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium" htmlFor={`rec-series-${l.id}`}>
+                          {`N° de série (un par ligne, ${attendus} attendus)`}
+                        </label>
+                        <Textarea id={`rec-series-${l.id}`} rows={3}
+                                  aria-invalid={err ? 'true' : undefined}
+                                  value={series[l.id] ?? ''}
+                                  onChange={(e) => setSeries((x) => ({ ...x, [l.id]: e.target.value }))} />
+                        {err && <p role="alert" className="text-xs text-destructive">{err}</p>}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-medium" htmlFor={`rec-lot-${l.id}`}>N° de lot (optionnel)</label>
+                        <Input id={`rec-lot-${l.id}`} className="h-9" value={lots[l.id] ?? ''}
+                               onChange={(e) => setLots((x) => ({ ...x, [l.id]: e.target.value }))} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
         )}
 

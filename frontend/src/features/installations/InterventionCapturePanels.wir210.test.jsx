@@ -36,11 +36,9 @@ const outbox = vi.hoisted(() => {
   }
 })
 
-vi.mock('./offline/fieldOutbox', () => ({
-  withOfflineFallback: outbox.withOfflineFallback,
-  queuePhoto: outbox.queuePhoto,
-  FIELD_OPS: outbox.FIELD_OPS,
-}))
+vi.mock('./offline/fieldOutbox', () => (
+  import('./InterventionCapturePanels.testkit.js').then((m) => m.fieldOutboxMock(outbox))
+))
 
 const api = vi.hoisted(() => ({
   getSerials: vi.fn(),
@@ -53,9 +51,9 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('../../api/installationsApi', () => ({ default: api }))
 
-vi.mock('../../pages/preferences/prefs', () => ({
-  compressPhotoForUpload: vi.fn((f) => Promise.resolve(f)),
-}))
+vi.mock('../../pages/preferences/prefs', () => (
+  import('./InterventionCapturePanels.testkit.js').then((m) => m.prefsMock())
+))
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('../../ui', async (importOriginal) => {
@@ -137,7 +135,9 @@ describe('SerialsPanel — WIR210 hors-ligne (F9)', () => {
 
     await waitFor(() => expect(outbox.enqueue).toHaveBeenCalledWith(
       'intervention.serial',
-      { intervention: 42, designation: 'Onduleur', numero_serie: 'SN-1234' },
+      // Revue chantier 26/10/2026 — la source de capture voyage aussi.
+      { intervention: 42, designation: 'Onduleur', numero_serie: 'SN-1234',
+        capture_source: 'saisie' },
     ))
     expect(toasts.success).toHaveBeenCalledWith(
       'Hors ligne — enregistré, synchro au retour du réseau.')

@@ -7,6 +7,15 @@ transitivement par ``ventes.services``). ``views/devis_gardes`` la
 re-exporte sous ses noms historiques (``_pourcentage_saisi``).
 """
 
+#: ENF11 (api-fuzz « rejected schema-compliant request ») — un montant
+#: d'encaissement est STRICTEMENT positif (``"0"`` refusé « Le montant doit
+#: être positif. ») : la règle est publiée dans le motif du décimal-chaîne
+#: (drf-spectacular n'émet ni minimum ni maximum pour une chaîne), 12 chiffres
+#: dont 2 décimales. Ici (domaine) pour que le schéma des vues
+#: (``views/openapi_docs``) ET les sérialiseurs le partagent.
+MOTIF_MONTANT_POSITIF = (r'^0*(?:[1-9]\d{0,9}(?:\.\d{0,2})?'
+                         r'|\.(?:[1-9]\d?|0[1-9]))$')
+
 
 def pourcentage_saisi(donnees, champ, defaut):
     """ACAL278 (C-ACAL-142) — lit un pourcentage du corps (``taux_tva``,

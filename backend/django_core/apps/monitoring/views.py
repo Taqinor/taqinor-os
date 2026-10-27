@@ -110,11 +110,17 @@ def _lire_csv_releves(texte):
 
     premiere = texte.splitlines()[0] if texte.splitlines() else ''
     separateur = ';' if ';' in premiere else ','
-    lecteur = csv.reader(io.StringIO(texte), delimiter=separateur)
+    # api-fuzz-full 27/10 : ``newline=''`` (le module csv l'exige — un retour
+    # chariot isolé levait ``csv.Error``, 500) ; un CSV encore illisible est
+    # RAPPORTÉ dans ``erreurs`` comme toute ligne fautive, jamais un 500.
+    lecteur = csv.reader(io.StringIO(texte, newline=''), delimiter=separateur)
     try:
-        entete = [c.strip().lower() for c in next(lecteur)]
-    except StopIteration:
+        rangs = list(lecteur)
+    except csv.Error as exc:
+        return [], [{'ligne': lecteur.line_num, 'motif': f'CSV illisible ({exc}).'}]
+    if not rangs:
         return [], [{'ligne': 1, 'motif': 'En-tête absent.'}]
+    entete = [c.strip().lower() for c in rangs[0]]
     position = {}
     for cle, noms in _COLONNES_RELEVES.items():
         position[cle] = next(
@@ -132,7 +138,7 @@ def _lire_csv_releves(texte):
         return ligne[i].strip()
 
     lignes, erreurs = [], []
-    for numero, ligne in enumerate(lecteur, start=2):
+    for numero, ligne in enumerate(rangs[1:], start=2):
         if not any(c.strip() for c in ligne):
             continue
         brut_date = cellule(ligne, 'date')

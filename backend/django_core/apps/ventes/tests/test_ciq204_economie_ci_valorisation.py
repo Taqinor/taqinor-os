@@ -114,6 +114,24 @@ class BtTest(SimpleTestCase):
         self.assertEqual([p['poste'] for p in par_poste], ['tranche_2'])
         self.assertEqual(par_poste[0]['kwh_evites'], 270 * 12)
 
+    def test_cec2_tranches_declarees_sans_seuils_jamais_comptees_n_fois(self):
+        declare = {'contrat': 'bt_patente', 'base_tarifs': 'ht', 'bt': {
+            'tranches': [{'tarif_kwh': 1.4}, {'tarif_kwh': 1.5}]}}
+        res = eco.valoriser(
+            _apercu(_soleil(5.0), _plat(10.0), 'bt'),
+            tc.tarif_applicable(declare), tarif_declare=declare)
+        # Seuils inconnus : économie omise, jamais toute la conso par tranche.
+        self.assertEqual(res['statut'], eco.STATUT_OMIS)
+
+    def test_cec5_bi_horaire_valorise_en_heures_normales_le_jour(self):
+        tarif = tc.tarif_applicable({'contrat': 'bt_force_motrice',
+                                     'option_bi_horaire': True})
+        res = eco.valoriser(_apercu(_soleil(5.0), _plat(10.0), 'bt'), tarif)
+        self.assertEqual(res['statut'], eco.STATUT_CALCULE)
+        # Soleil 8-17 h GMT : jamais en pointe (17-22 h hiver, 18-23 h été).
+        self.assertEqual([p['poste'] for p in
+                          res['economie_annee1']['par_poste']], ['normales'])
+
     def test_conso_inversee_plafonnee_et_etiquetee(self):
         res = eco.valoriser(_apercu(_soleil(5.0), _plat(5.0), 'bt'),
                             TARIF_PATENTE, facture_energie_declaree_ttc=1000)

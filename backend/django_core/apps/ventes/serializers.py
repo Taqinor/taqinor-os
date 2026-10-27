@@ -157,7 +157,7 @@ class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
     propres colonnes.
     """
 
-    total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    total_ht = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True)  # (10,2)x(10,2)
     # TVA-LIGNE (06/10/2026) — le taux de la FICHE produit (DC7, 10 %
     # panneaux PV), en lecture seule, ou null. L'écran le lit pour une ligne
     # historique sans taux au lieu de lui poser le taux du devis (20 %).
@@ -466,9 +466,9 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
     # absent (400 « objet inexistant »).
     same_company_fields = ('client', 'lead', 'entite', 'remise_approuvee_par')
     lignes = LigneDevisSerializer(many=True, read_only=True)
-    total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    total_tva = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    total_ttc = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    total_ht = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True)  # (10,2)x(10,2)
+    total_tva = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True)  # (10,2)x(10,2)
+    total_ttc = serializers.DecimalField(max_digits=22, decimal_places=2, read_only=True)  # (10,2)x(10,2)
     # Total d'AFFICHAGE canonique : pour un devis à deux options, le total de
     # l'option 1 (remise incluse) — jamais la somme des deux options.
     #

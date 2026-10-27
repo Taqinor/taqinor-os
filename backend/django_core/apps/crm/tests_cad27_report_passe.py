@@ -142,6 +142,26 @@ class InstantHorsPlageTests(_Base):
         resp = self._reporter(due_at='9999-12-31T23:59:59-17:25')
         self.assertEqual(resp.status_code, 400)
 
+    def test_ricochet_hors_calendrier_409_rien_ecrit(self):
+        """api-fuzz-full 27/10 (ENF11) — date conforme (an 5298) mais une
+        touche SUIVANTE déjà en l'an 8000 glisserait au-delà de l'an 9999 :
+        ``OverflowError`` → 500 « geste annulé » ; désormais 409 nommé, et
+        RIEN n'est écrit (ni la touche, ni la suivante)."""
+        loin = datetime.datetime(8000, 1, 5, 10, 0, tzinfo=horaires.CASABLANCA)
+        suivante = RelanceEtape.objects.create(
+            company=self.company, lead=self.lead, cadence='contact', ordre=7,
+            canal=RelanceEtape.Canal.APPEL, libelle='Appel 5', due_at=loin,
+            due_date=loin.date(), due_initial_at=loin,
+            cadence_depart=MERCREDI - datetime.timedelta(days=2))
+        avant = self.etape.due_at
+        resp = self._reporter(due_at='5298-05-29T10:15:47-02:40')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertIn('due_at', resp.data['erreurs'])
+        self.etape.refresh_from_db()
+        suivante.refresh_from_db()
+        self.assertEqual(self.etape.due_at, avant)
+        self.assertEqual(suivante.due_at, loin)
+
     def test_motif_publie_du_jour_suit_le_calendrier(self):
         import re
         from apps.crm.schema_docs import MOTIF_JOUR_PUBLIE

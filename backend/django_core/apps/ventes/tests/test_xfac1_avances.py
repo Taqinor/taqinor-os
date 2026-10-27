@@ -98,9 +98,19 @@ class XFAC1AvancesTests(TestCase):
                 dict(base, date_paiement='pas-une-date'),
                 dict(base, mode='0'),
                 dict(base, montant='1e20'),
-                dict(base, reference='x' * 121)):
+                dict(base, reference='x' * 121),
+                # api-fuzz-full 27/10 (ENF11) : un NUL dans ``note`` faisait un
+                # 500 à l'INSERT ; textes stricts (motif sans NUL publié).
+                dict(base, note='a\x00b'), dict(base, reference='\x00'),
+                dict(base, note={}), dict(base, reference=None)):
             r = self.api.post(url, corps, format='json')
             self.assertEqual(r.status_code, 400, (corps, r.data))
+        self.assertFalse(Paiement.objects.exists())
+        from core.champs_stricts import ChaineStricte
+        from apps.ventes.views import openapi_docs as D
+        for nom in ('note', 'reference'):
+            self.assertIsInstance(D.EnregistrerAvanceRequest.fields[nom],
+                                  ChaineStricte, nom)
 
     def test_enregistrer_avance_corps_tableau_400(self):
         # CI #997 — ``[null, null]`` levait AttributeError (500).
