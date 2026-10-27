@@ -183,7 +183,7 @@
       "jeton_interne": "403 — un aperçu ne doit rien écrire.",
       "prefill_vu": "QJR512 — `prefill_vu` (corps, facultatif) : sous-ensemble du prefill servi par le GET, mêmes clés (ce que le client a VU à l’ouverture).",
       "ignorees": "QJR512 — `ignorees` (réponse) : clés reçues mais non écrites (vide par défaut).",
-      "devis_possible": "CQST5 (27/10/2026) — vrai quand les réponses connues suffisent au devis automatique (devis_auto.champs_manquants_detail vide). La réponse qui fait passer le lead de « bloqué » à « prêt » met le devis automatique EN FILE (ventes.services.planifier_devis_automatique_pour_lead, après commit ; réglage de société et idempotence inchangés). La page le dit au client, sans aucun chiffre."
+      "devis_possible": "CQST5 (27/10/2026) — vrai quand les réponses connues suffisent au devis automatique (devis_auto.champs_manquants_detail vide). À la transition « bloqué → prêt » : lead RÉSIDENTIEL → le devis automatique part en file (ventes.services.planifier_devis_automatique_pour_lead, après commit ; réglage de société et idempotence du tunnel) ; lead C&I ou agricole → ce chemin les refuse exprès (CIQ120, AGR124), le responsable reçoit une note « à lancer depuis la fiche ». La page le dit au client, sans aucun chiffre. Les nombres JSON décimaux (45.1) sont lus par leur forme écrite."
     }
   },
   "colonnes_ecrites": {

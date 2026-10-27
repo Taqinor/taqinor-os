@@ -20,7 +20,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.crm import questionnaire as quest
-from apps.crm.models import Lead, QuestionnaireLien
+from apps.crm.models import Lead, LeadActivity, QuestionnaireLien
 
 User = get_user_model()
 
@@ -120,10 +120,11 @@ class SectionPompageTests(TestCase):
         # Une valeur existante non répondue n'est jamais vidée.
         self.assertEqual(lead.culture, 'olivier')
 
-    def test_post_pompage_debloque_le_devis_et_le_met_en_file(self):
+    def test_post_pompage_debloque_le_devis_note_au_responsable(self):
         # CQST3 + CQST5 — HMT et débit actuel avec ses heures : le devis
-        # automatique n'est plus bloqué, il part en file UNE fois ; la plaque
-        # d'une pompe neuve n'est jamais écrite.
+        # automatique n'est plus bloqué ; l'agricole ne part PAS par le chemin
+        # du tunnel (refus voulu, AGR124) : une note UNE fois ; la plaque
+        # d'une pompe neuve n'est jamais écrite ; 45.1 en flottant est lu.
         from unittest import mock
         lead = self._agricole(source_eau='forage', niveau_statique_m=20,
                               surface_irriguee_ha=4, pompe_alim_actuelle='butane')
@@ -132,8 +133,8 @@ class SectionPompageTests(TestCase):
             company=self.company, lead=lead,
             questions={s: s == 'pompage' for s in quest.sections_du_lead(lead)})
         corps = {'section': 'pompage', 'reponses': {
-            'pompe_hmt_m': 45, 'pompe_actuelle_debit_m3h': 12,
-            'pompage_heures_jour': 6, 'mode_pompe': 'neuve',
+            'pompe_hmt_m': 45.1, 'pompe_actuelle_debit_m3h': 12,
+            'pompage_heures_jour': 6.3, 'mode_pompe': 'neuve',
             'pompe_actuelle_kw': 5.5}}
         with mock.patch('apps.ventes.services.'
                         'planifier_devis_automatique_pour_lead') as file_:
@@ -143,15 +144,16 @@ class SectionPompageTests(TestCase):
                                        content_type='application/json')
             self.assertEqual(res.status_code, 200, res.content)
             self.assertIs(res.json()['devis_possible'], True)
-            file_.assert_called_once_with(lead.pk, self.company.pk)
             with self.captureOnCommitCallbacks(execute=True):
                 self.client.post(PUBLIC.format(lien.token),
                                  data=json.dumps(corps),
                                  content_type='application/json')
-            file_.assert_called_once()
+            file_.assert_not_called()
+        self.assertEqual(LeadActivity.objects.filter(
+            lead=lead, body__contains='suffisent au devis').count(), 1)
         lead.refresh_from_db()
-        self.assertEqual(lead.pompe_hmt_m, Decimal('45'))
-        self.assertEqual(lead.pompage_heures_jour, Decimal('6'))
+        self.assertEqual(lead.pompe_hmt_m, Decimal('45.1'))
+        self.assertEqual(lead.pompage_heures_jour, Decimal('6.3'))
         self.assertIsNone(lead.pompe_actuelle_kw)
         self.assertFalse(quest.manquantes(lead)['pompage'])
 

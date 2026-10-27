@@ -411,8 +411,8 @@ def manquantes(lead) -> dict:
     # poser. Le champ reste : il n'est simplement plus un signal de manque.
     energie = bool(champs_manquants(lead))
     if not energie:
-        # CQST4 — « inconnu » n'est pas une réponse : le compositeur part
-        # alors en hors réseau (crm.Lead.raccordement).
+        # CQST4 — « inconnu » n'est pas une réponse : la composition décide
+        # seule de la phase (creation_auto_residentiel) ; on la redemande.
         energie = _vide(lead.raccordement) or lead.raccordement == 'inconnu'
 
     return {
@@ -841,6 +841,7 @@ def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
             continue
         if cle == 'releve_conso' and isinstance(brut, dict):
             brut = dict(brut, source='declare')
+        brut = _decimal_lisible(brut)
         try:
             valeur = Lead._meta.get_field(cle).clean(brut, lead)
         except (ValidationError, TypeError, ValueError):
@@ -878,6 +879,15 @@ def _champs_pro_depuis_reponses(lead, section, reponses) -> dict:
     return out
 
 
+def _decimal_lisible(brut):
+    """CQST — un nombre JSON passe par sa forme décimale écrite : 45.1 en
+    flottant échouait au validateur de ``DecimalField`` (« no more than 2
+    decimal places ») et la réponse disparaissait en silence."""
+    if isinstance(brut, float):
+        return repr(brut)
+    return brut
+
+
 def _champs_pompage_modele(lead, reponses) -> dict:
     """CQST3 — colonnes de pompage validées par le modèle ; la plaque de la
     pompe actuelle n'est gardée que pour une pompe CONSERVÉE."""
@@ -887,7 +897,7 @@ def _champs_pompage_modele(lead, reponses) -> dict:
         return {}
     out = {}
     for cle in _POMPAGE_COLONNES_MODELE:
-        brut = reponses.get(cle)
+        brut = _decimal_lisible(reponses.get(cle))
         if brut is None or (isinstance(brut, str) and not brut.strip()):
             continue
         try:
@@ -914,6 +924,21 @@ def _mettre_en_file_devis(lead):
 
     transaction.on_commit(
         lambda: _mettre_en_file_devis_automatique(lead, lead.company))
+
+
+def _devis_debloque(lead):
+    """CQST5 — résidentiel : le devis automatique part en file (chemin du
+    tunnel). C&I et agricole : ce chemin les REFUSE exprès (CIQ120, AGR124 —
+    le devis se lance depuis la fiche) ; le responsable reçoit une note qui
+    dit que les données sont complètes, jamais un refus."""
+    if not (est_pro(lead) or est_agricole(lead)):
+        _mettre_en_file_devis(lead)
+        return
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=('Questionnaire — les réponses du client suffisent au devis '
+              'automatique : à lancer depuis la fiche.'))
 
 
 def appliquer_section(lien, section, reponses=None, photo=None,
@@ -1036,7 +1061,7 @@ def appliquer_section(lien, section, reponses=None, photo=None,
     # CQST5 — la réponse qui DÉBLOQUE le devis automatique le met en file
     # (une seule fois : à la transition bloqué → prêt).
     if bloque_avant and not _devis_bloque(lead):
-        _mettre_en_file_devis(lead)
+        _devis_debloque(lead)
     return enregistrees
 
 
