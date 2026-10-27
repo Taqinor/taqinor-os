@@ -176,20 +176,30 @@ def _bloc(evaluation, valoriser=None):
     composition est connue (étude ; le rafraîchisseur lit les totaux des
     lignes)."""
     from .etude_ci import _forme_composition
+    from decimal import ROUND_HALF_UP, Decimal
+
+    from core.money import quantize_mad
     economie, cout = evaluation.get('economie'), evaluation.get('cout')
     complet = getattr(valoriser, 'complet', None)
+    retour = None
+    if cout and economie:
+        retour = float((Decimal(str(cout)) / Decimal(str(economie))).quantize(
+            Decimal('0.1'), rounding=ROUND_HALF_UP))
     return {
         'kwc': evaluation['kwc'], 'nb_panneaux': _nb_panneaux(evaluation.get('composition')),
         'puissance_ac_kw': evaluation.get('puissance_ac'),
         'batterie': evaluation['batterie'],
-        'onduleurs': {k: (evaluation.get('onduleurs') or {}).get(k)
-                      for k in ('combinaison', 'ratio_dc_ac')},
+        # Les seules clés servables d'un appareil (jamais sa fiche SpecOnduleur).
+        'onduleurs': {'combinaison': [
+            {k: item.get(k) for k in ('produit', 'nom', 'kw_ac', 's_max_kva', 'quantite')}
+            for item in (evaluation.get('onduleurs') or {}).get('combinaison') or []],
+            'ratio_dc_ac': (evaluation.get('onduleurs') or {}).get('ratio_dc_ac')},
         'composition': _forme_composition(evaluation.get('composition')),
         'bilan': {k: v for k, v in (evaluation.get('bilan') or {}).items() if k != 'horaire'},
         'economie_ci': complet(evaluation['bilan']) if complet else None,
         'economie_annuelle_mad': None if economie is None else round(economie, 2),
-        'cout_vente_ht': None if cout is None else round(cout, 2),
-        'payback_annees': round(cout / economie, 1) if cout and economie else None,
+        'cout_vente_ht': None if cout is None else float(quantize_mad(str(cout))),
+        'retour_simple_ans': retour,
     }
 
 

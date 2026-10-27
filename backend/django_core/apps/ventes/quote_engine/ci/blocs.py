@@ -407,12 +407,15 @@ def bloc_option_avec(d, L, fmt_mad, couleurs):
     def t(cle):
         return LIBELLES_OPTION_AVEC[cle].get(lg) or LIBELLES_OPTION_AVEC[cle]["fr"]
 
+    from .installation import lignes_client
+    # « Installation clé en main » regroupée PAR option (même règle que le
+    # tableau de l'offre réseau).
     reseau = {(it.get("designation"), _num_bloc(it.get("quantite")))
-              for it in d.get("all_items") or [] if isinstance(it, dict)}
+              for it in lignes_client(d.get("all_items") or [], d) if isinstance(it, dict)}
     rows = "".join(
         f'<tr><td class="c2-d">{it.get("designation") or ""}</td>'
         f'<td class="c2-q">{_num_bloc(it.get("quantite")):g}</td></tr>'
-        for it in bloc.get("lignes") or [] if isinstance(it, dict)
+        for it in lignes_client(bloc.get("lignes") or [], d) if isinstance(it, dict)
         and _num_bloc(it.get("quantite")) > 0
         and (it.get("designation"), _num_bloc(it.get("quantite"))) not in reseau)
     valeur = valeur_option_avec(d) or {}
@@ -420,9 +423,9 @@ def bloc_option_avec(d, L, fmt_mad, couleurs):
     if valeur.get("economie_annuelle_mad"):
         lignes_valeur += (f'<tr><td>{t("economie")}</td>'
                           f'<td>{fmt_mad(valeur["economie_annuelle_mad"])} MAD</td></tr>')
-    if valeur.get("payback_annees"):
+    if valeur.get("retour_simple_ans"):
         lignes_valeur += (f'<tr><td>{t("retour")}</td><td>'
-                          f'{decimale(str(valeur["payback_annees"]))} {t("ans")}</td></tr>')
+                          f'{decimale(str(valeur["retour_simple_ans"]))} {t("ans")}</td></tr>')
     return (
         f'<div style="margin-top:12px;border:1px solid {line_soft};border-radius:12px;'
         f'background:{wash};padding:9px 12px;"><div class="c2-kicker">{t("titre")}</div>'

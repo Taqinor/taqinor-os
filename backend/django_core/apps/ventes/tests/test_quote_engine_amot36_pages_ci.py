@@ -53,7 +53,7 @@ class OptionAvecValeurTests(SimpleTestCase):
         from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
         from apps.ventes.quote_engine.commercial import sample_data
         valeur = valeur_option_avec(_avec_option_batterie(sample_data.build()))
-        self.assertEqual(valeur["payback_annees"], round(803333 / 120000, 1))
+        self.assertEqual(valeur["retour_simple_ans"], round(803333 / 120000, 1))
         self.assertIn("92,2 kWh utiles", valeur["textes"]["fr"])
         self.assertIn("92.2 kWh usable", valeur["textes"]["en"])
 

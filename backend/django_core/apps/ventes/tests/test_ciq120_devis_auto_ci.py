@@ -405,6 +405,14 @@ class OptionBatterieCITests(_Base):
         cls.b10 = _batterie(cls.co, 'Batterie Dyness 10 kWh', '9.22', '25000', '5.12')
         cls.b16 = _batterie(cls.co, 'Batterie Dyness PowerBrick SC 16 kWh', '15.27', '40000',
                             '7.17')
+        # Disjoncteurs de sortie des hybrides (calibres 16 / 20 / 25 / 32 / 40 A 4P).
+        for calibre in (16, 20, 25, 32, 40):
+            disj = Produit.objects.create(
+                company=cls.co, nom='Disjoncteur AC %d A 4P' % calibre, prix_vente=Decimal('400'),
+                prix_achat=Decimal('100'), role_ci='protection_ac')
+            FicheTechnique.objects.create(
+                company=cls.co, produit=disj, type_fiche='protection', prot_type='disjoncteur',
+                prot_cote='ac', prot_calibre_a=calibre, prot_poles=4)
 
     def _boulangerie(self, **kw):
         kw.setdefault('conso_mensuelle_kwh', Decimal('6000'))
@@ -436,7 +444,7 @@ class OptionBatterieCITests(_Base):
         self.assertEqual(data['option_servie'], 'sans')
         from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
         valeur = valeur_option_avec(data)
-        self.assertGreater(valeur['payback_annees'], 0)
+        self.assertGreater(valeur['retour_simple_ans'], 0)
         self.assertIn('kWh utiles', valeur['textes']['fr'])
 
     def test_choix_avec_du_lead_option_avec_seule(self):

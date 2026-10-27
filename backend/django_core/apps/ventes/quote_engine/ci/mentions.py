@@ -376,7 +376,7 @@ def _nombre_langue(valeur, langue, decimales=0):
 
 
 def valeur_option_avec(data):
-    """``{economie_annuelle_mad, payback_annees, capacite_utile_kwh,
+    """``{economie_annuelle_mad, retour_simple_ans, capacite_utile_kwh,
     restitue_kwh_an, textes{fr,en,ar}}`` de l'option « avec batterie » C&I
     (``etude_ci.option_avec`` posé par le rafraîchisseur depuis les LIGNES),
     ou ``None`` quand le moteur ne la chiffre pas. Retour simple = total HT
@@ -398,7 +398,7 @@ def valeur_option_avec(data):
                                  eco=_nombre_langue(eco, lg))
               for lg, gabarit in TEXTES_OPTION_AVEC.items()}
     return {"economie_annuelle_mad": round(eco, 2),
-            "payback_annees": round(ht / eco, 1) if ht else None,
+            "retour_simple_ans": round(ht / eco, 1) if ht else None,
             "capacite_utile_kwh": cap, "restitue_kwh_an": rest,
             "textes": textes}
 
