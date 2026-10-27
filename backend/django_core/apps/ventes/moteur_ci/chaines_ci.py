@@ -32,7 +32,7 @@ def _chaines_par_entree(module, spec, chaines_max_par_mppt=None):
         spm = max(1, int(math.floor(i_max / imp + 1e-9)))
     else:
         return None
-    isc_max = getattr(spec, 'courant_isc_max_a', None)
+    isc_max = getattr(spec, 'isc_max_mppt_a', None)   # publiée seulement
     try:
         isc = float(module.isc_a)
         if isc_max and isc > 0:
@@ -87,6 +87,12 @@ def _decouper(n, spm, n_mppt, lmin, lmax):
     return None
 
 
+def longueur_max_appareil(module, spec):
+    """Longueur maxi d'une chaîne (fenêtre de tension) ou ``None``."""
+    fen = _fenetre(module, spec)
+    return fen[1] if fen and not fen[2] else None
+
+
 def concevoir_chaines_ci(module, spec, nb_modules, *, produit=None, nom='',
                          chaines_max_par_mppt=None):
     """Chaînes d'UN onduleur pour ``nb_modules`` modules : ``{produit,
@@ -96,7 +102,7 @@ def concevoir_chaines_ci(module, spec, nb_modules, *, produit=None, nom='',
     spm = _chaines_par_entree(module, spec, chaines_max_par_mppt)
     fen = _fenetre(module, spec)
     sortie = {'produit': produit, 'nb_modules': nb_modules, 'nb_chaines': 0,
-              'bloquants': [], 'entrees': []}
+              'bloquants': [], 'entrees': [], 'coupe_impossible': False}
     if spm is None or fen is None:
         return None
     lmin, lmax, motif = fen
@@ -108,6 +114,7 @@ def concevoir_chaines_ci(module, spec, nb_modules, *, produit=None, nom='',
         return sortie
     lots = _decouper(nb_modules, spm, int(spec.n_mppt), lmin, lmax)
     if lots is None:
+        sortie['coupe_impossible'] = True
         sortie['bloquants'].append(
             'aucune découpe ne raccorde les %d modules sur %s (%d entrées × '
             '%d chaîne(s), chaînes de %d à %d modules)'

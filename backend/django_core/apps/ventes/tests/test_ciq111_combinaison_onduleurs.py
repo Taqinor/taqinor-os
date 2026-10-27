@@ -330,3 +330,51 @@ class GardeAstTests(TestCase):
                 continue
             self.assertFalse(mod.startswith(('django', 'apps', 'rest_framework')),
                              mod)
+
+
+def _vivier_huawei_10_a_150():
+    """Pool 10/15/20/25/50/100/150 kW, prix de vente HT (CMP1 : balayage)."""
+    h = lambda n, i, kw: _spec_ond(n, 200, 1000, 1100, i, kw)  # noqa: E731
+    return [_cand(1, 'Huawei 10KTL', 10, '20000', h(2, 20, 10)),
+            _cand(2, 'Huawei 15KTL-M5', 15, '23000', h(2, 20, 15)),
+            _cand(3, 'Huawei 20KTL-M5', 20, '28000', h(2, 20, 20)),
+            _cand(4, 'Huawei 25KTL', 25, '35000', h(3, 30, 25)),
+            _cand(5, 'Huawei 50KTL-M3', 50, '55000', h(4, 30, 50)),
+            _cand(6, 'Huawei 100KTL', 100, '78000', h(10, 30, 100)),
+            _cand(7, 'Huawei 150K-MG0', 150, '123000', h(7, 48, 150))]
+
+
+class BalayageCablageTests(TestCase):
+    """CMP1 — aucun kWc de 190 a 232 ne reste bloque par la decoupe."""
+
+    def _verifier(self, kwc, vivier, module):
+        r = combiner_onduleurs(kwc, vivier, phase='tri', module=module)
+        attendu = int(-(-round(kwc * 1000.0, 6) // 710))
+        self.assertIsNotNone(r['combinaison'], kwc)
+        self.assertEqual([a['code'] for a in r['alertes']
+                          if a['code'] == 'OND_CHAINES_NON_FAISABLES'], [], kwc)
+        self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), attendu, kwc)
+        return r
+
+    def test_balayage_190_a_232_kwc_aucun_bloquant_tous_modules_cables(self):
+        vivier, module = _vivier_huawei_10_a_150(), _module_cs7n()
+        t0 = time.perf_counter()
+        for pas in range(1900, 2321):
+            self._verifier(pas / 10.0, vivier, module)
+        self.assertLess(time.perf_counter() - t0, 120)
+
+    def test_302_modules_repartis_275_27_recables_276_26(self):
+        vivier = [c for c in _vivier_huawei_10_a_150() if c['kw_ac'] in (15, 150)]
+        r = self._verifier(213.8, vivier, _module_cs7n())
+        self.assertEqual(sum(c['nb_modules'] for c in r['chaines']), 302)
+        self.assertNotEqual(sorted(c['nb_modules'] for c in r['chaines']), [27, 275])
+
+    def test_champ_vraiment_infaisable_reste_bloquant(self):
+        # 150K seul : 275 modules (impair) = 14 chaines -> 8 entrees > 7,
+        # aucune autre combinaison possible dans ce vivier.
+        cat = [c for c in _vivier_huawei_10_a_150() if c['kw_ac'] == 150]
+        r = combiner_onduleurs(195.25, cat, phase='tri', module=_module_cs7n(),
+                               max_appareils=1)
+        self.assertIsNotNone(r['combinaison'])
+        self.assertTrue(any(a['code'] == 'OND_CHAINES_NON_FAISABLES'
+                            and a['niveau'] == 'bloquant' for a in r['alertes']))

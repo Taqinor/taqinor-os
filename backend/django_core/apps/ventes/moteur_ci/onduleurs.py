@@ -42,7 +42,9 @@ from decimal import Decimal, InvalidOperation
 
 from core.electrique.onduleurs import bornes_dc_ac as _bornes_par_defaut
 
-from .chaines_ci import capacite_modules, concevoir_chaines_ci
+from .chaines_ci import (
+    capacite_modules, concevoir_chaines_ci, longueur_max_appareil,
+)
 
 #: Pas de calcul de la couverture DC (kWc). 0,1 kWc : 1 MWc = 10 000 états.
 PAS_KWC = 0.1
@@ -203,32 +205,43 @@ def _chercher(retenus, besoin_unites, borne_haute, module=None):
 MAX_APPAREILS_BORNES = 10
 
 
-def _chercher_sous_ac(retenus, besoin_unites, borne_haute, ac_max_kw,
-                      module=None, max_appareils=None):
-    """Le moins d'onduleurs, puis le moins cher, dont la puissance AC totale
-    reste ≤ ``ac_max_kw`` (puissance souscrite) ; ``None`` si aucune."""
+def _enumerer_combinaisons(retenus, besoin_unites, borne_haute, ac_max_kw,
+                           module=None, max_appareils=None):
+    """Les multi-ensembles d'appareils qui couvrent ``besoin_unites`` (et dont
+    la puissance AC reste <= ``ac_max_kw`` si fourni), rendus dans l'ordre :
+    nombre d'appareils, prix de vente total, kW AC, identifiants. Générateur
+    de ``{index: quantité}`` (jamais plus de ``MAX_APPAREILS_BORNES``)."""
     items = []
     for i, c in enumerate(retenus):
         unites = int(math.floor(_capacite_kwc(c, borne_haute, module)[0]
                                 / PAS_KWC + 1e-9))
-        if unites > 0 and c['kw_ac'] <= ac_max_kw + 1e-9:
+        if unites > 0 and (ac_max_kw is None
+                           or c['kw_ac'] <= ac_max_kw + 1e-9):
             items.append((i, unites, c['prix'], c['kw_ac']))
-    for nb in range(1, min(MAX_APPAREILS_BORNES, max_appareils or MAX_APPAREILS_BORNES) + 1):
-        best = None
+    borne = min(MAX_APPAREILS_BORNES, max_appareils or MAX_APPAREILS_BORNES)
+    for nb in range(1, borne + 1):
+        valides = []
         for combo in itertools.combinations_with_replacement(items, nb):
-            if sum(x[1] for x in combo) < besoin_unites \
-                    or sum(x[3] for x in combo) > ac_max_kw + 1e-9:
+            if sum(x[1] for x in combo) < besoin_unites:
                 continue
-            cle = (sum(x[2] for x in combo), sum(x[3] for x in combo),
-                   tuple(x[0] for x in combo))
-            if best is None or cle < best:
-                best = cle
-        if best is not None:
+            if ac_max_kw is not None \
+                    and sum(x[3] for x in combo) > ac_max_kw + 1e-9:
+                continue
+            valides.append((sum(x[2] for x in combo), sum(x[3] for x in combo),
+                            tuple(x[0] for x in combo)))
+        for cle in sorted(valides):
             quantites = {}
-            for i in best[2]:
+            for i in cle[2]:
                 quantites[i] = quantites.get(i, 0) + 1
-            return quantites
-    return None
+            yield quantites
+
+
+def _chercher_sous_ac(retenus, besoin_unites, borne_haute, ac_max_kw,
+                      module=None, max_appareils=None):
+    """Le moins d'onduleurs, puis le moins cher, dont la puissance AC totale
+    reste <= ``ac_max_kw`` (puissance souscrite) ; ``None`` si aucune."""
+    return next(_enumerer_combinaisons(retenus, besoin_unites, borne_haute,
+                                       ac_max_kw, module, max_appareils), None)
 
 
 def _repartir(nb_total, appareils, capacites):
@@ -258,50 +271,129 @@ def _repartir(nb_total, appareils, capacites):
     return parts
 
 
-def _chaines(kwc, module, combinaison, retenus, alertes):
-    """Faisabilité des chaînes (CMP1), appareil par appareil, quand les
-    fiches le permettent ; sinon alerte « chaînes à vérifier »."""
+def _concevoir(module, c, nb):
+    return concevoir_chaines_ci(
+        module, c['spec'], nb, produit=c.get('produit'), nom=c.get('nom'),
+        chaines_max_par_mppt=c.get('chaines_max_par_mppt'))
+
+
+def _rendre_cablable(parts, appareils, retenus, module):
+    """Après le prorata : si la découpe d'un appareil échoue, transferts
+    déterministes de 1..k modules vers / depuis un autre appareil dont la
+    découpe réussit encore (k <= 2 x longueur maxi de chaîne)."""
+    memo = {}
+
+    def ok(r, nb):
+        if nb < 0:
+            return False
+        cle = (r, nb)
+        if cle not in memo:
+            res = _concevoir(module, retenus[appareils[r]], nb)
+            memo[cle] = res is not None and not res['bloquants']
+        return memo[cle]
+
+    longueurs = [longueur_max_appareil(module, retenus[i]['spec'])
+                 for i in appareils]
+    parts = list(parts)
+    for _ in range(4 * len(parts)):
+        ko = [r for r in range(len(parts)) if not ok(r, parts[r])]
+        if not ko:
+            break
+        d = ko[0]
+        k_max = 2 * (longueurs[d] or 20)
+        trouve = False
+        for k in range(1, k_max + 1):
+            for delta in (-k, k):           # delta < 0 : d cède k modules
+                for o in range(len(parts)):
+                    if o == d or not ok(d, parts[d] + delta):
+                        continue
+                    if ok(o, parts[o] - delta) or not ok(o, parts[o]):
+                        parts[d] += delta
+                        parts[o] -= delta
+                        trouve = True
+                        break
+                if trouve:
+                    break
+            if trouve:
+                break
+        if not trouve:
+            break
+    return parts
+
+
+def _essayer_chaines(kwc, module, combinaison, retenus):
+    """Conception des chaînes d'une combinaison : ``(sorties, alertes,
+    coupe_ko)``. ``sorties`` None => fiche insuffisante (alerte « à vérifier »).
+    ``coupe_ko`` : un bloquant de DÉCOUPE (non de fenêtre de tension)."""
+    alertes = []
     specs = [retenus[i].get('spec') for i in combinaison]
     if module is None or any(s is None for s in specs):
         alertes.append(_alerte(
             'OND_CHAINES_A_VERIFIER',
             'chaînes à vérifier : fiche module ou onduleur insuffisante pour '
             'concevoir les chaînes'))
-        return None
+        return None, alertes, False
     try:
         pmax = float(module.pmax_wc)
         nb_total = int(math.ceil(kwc * 1000.0 / pmax)) if pmax > 0 else 0
     except (AttributeError, TypeError, ValueError):
         alertes.append(_alerte('OND_CHAINES_A_VERIFIER',
                                'chaînes à vérifier : fiche module illisible'))
-        return None
+        return None, alertes, False
     appareils = [i for i, q in sorted(combinaison.items()) for _ in range(q)]
     capacites = [capacite_modules(module, retenus[i]['spec'],
                                   retenus[i].get('chaines_max_par_mppt'))
                  for i in appareils]
     parts = _repartir(nb_total, [retenus[i]['kw_ac'] for i in appareils],
                       capacites)
-    sorties = []
+    parts = _rendre_cablable(parts, appareils, retenus, module)
+    sorties, coupe_ko = [], False
     for i, nb in zip(appareils, parts):
         c = retenus[i]
-        res = concevoir_chaines_ci(
-            module, c['spec'], nb, produit=c.get('produit'),
-            nom=c.get('nom'),
-            chaines_max_par_mppt=c.get('chaines_max_par_mppt'))
+        res = _concevoir(module, c, nb)
         if res is None:
             alertes.append(_alerte(
                 'OND_CHAINES_A_VERIFIER',
                 'chaînes à vérifier : fenêtre de tension ou courant d\'entrée '
                 'non vérifiable sur %s' % (c.get('nom') or c.get('produit'))))
-            return None
+            return None, alertes, False
         sorties.append(res)
         if res['bloquants']:
+            coupe_ko = coupe_ko or res.get('coupe_impossible', False)
             alertes.append(_alerte(
                 'OND_CHAINES_NON_FAISABLES',
                 'chaînes non faisables sur %s : %s' % (
                     c.get('nom') or c.get('produit'),
                     ' ; '.join(res['bloquants'])), niveau='bloquant'))
-    return sorties
+    return sorties, alertes, coupe_ko
+
+
+#: Combinaisons de remplacement essayées au plus quand la découpe échoue.
+MAX_ALTERNATIVES_CHAINES = 300
+
+
+def _combinaison_cablable(kwc, module, quantites, retenus, besoin, haute,
+                          ac_max_kw, max_appareils):
+    """``(quantites, sorties, alertes)`` : la combinaison choisie si ses
+    chaînes passent ; sinon la meilleure suivante (mêmes bornes d'AC et
+    d'appareils) qui couvre le kWc ET raccorde tous les modules ; sinon la
+    combinaison d'origine avec son bloquant."""
+    sorties, alertes, coupe_ko = _essayer_chaines(kwc, module, quantites,
+                                                  retenus)
+    if not coupe_ko:
+        return quantites, sorties, alertes
+    ac = float(ac_max_kw) if ac_max_kw else None
+    for n, autre in enumerate(_enumerer_combinaisons(
+            retenus, besoin, haute, ac, module, max_appareils)):
+        if n >= MAX_ALTERNATIVES_CHAINES:
+            break
+        if autre == quantites:
+            continue
+        s2, a2, _ko2 = _essayer_chaines(kwc, module, autre, retenus)
+        if s2 is not None and not any(
+                al['niveau'] == 'bloquant' for al in a2):
+            return autre, s2, a2
+    return quantites, sorties, alertes
 
 
 def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
@@ -407,6 +499,10 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
         vide['motif'] = motif
         return vide
 
+    quantites, sorties, alertes_chaines = _combinaison_cablable(
+        kwc, module, quantites, retenus, besoin, haute.valeur, ac_max_kw,
+        max_appareils)
+    alertes.extend(alertes_chaines)
     ac_total = sum(retenus[i]['kw_ac'] * q for i, q in quantites.items())
     ratio = kwc / ac_total if ac_total else None
     if basse.valeur is not None and ratio is not None and \
@@ -426,7 +522,7 @@ def combiner_onduleurs(kwc, candidats, *, phase, bornes_dc_ac=None,
         'combinaison': combinaison,
         'ratio_dc_ac': {'valeur': round(ratio, 3) if ratio else None,
                         'bornes': bornes_publiees, 'source': SOURCE_RATIO},
-        'chaines': _chaines(kwc, module, quantites, retenus, alertes),
+        'chaines': sorties,
         'exclus': exclus,
         'prix_vente_total_ht': str(total.quantize(Decimal('0.01'))),
         'motif': None,
