@@ -120,7 +120,7 @@ export interface SyntheseCi {
   /** CIW307 — décarbonation SERVIE (CIQ344) : `cbam` = drapeau serveur, `textes` = la phrase du PDF. */
   decarbonation: { cbam: boolean; textes: TextesCi } | null;
   /** CIW305 — la raison sociale du client entreprise si le devis la porte (pré-remplit le formulaire). */
-  entrepriseClient: { raisonSociale: string | null } | null;
+  entrepriseClient: { raisonSociale: string | null; ice: string | null; interlocuteur: string | null; fonction: string | null } | null;
   hypotheses: SyntheseCiHypothese[];
   omissions: Array<{ bloc: string; motif: string }>;
 }
@@ -425,7 +425,12 @@ export function syntheseCi(
       ? { cbam: brut.decarbonation.cbam === true, textes: lireTextesCi(brut.decarbonation.textes)! }
       : null,
     entrepriseClient: estRecord(brut.entreprise_client)
-      ? { raisonSociale: texteServi(brut.entreprise_client.raison_sociale) }
+      ? {
+          raisonSociale: texteServi(brut.entreprise_client.raison_sociale),
+          ice: texteServi(brut.entreprise_client.ice),
+          interlocuteur: texteServi(brut.entreprise_client.interlocuteur),
+          fonction: texteServi(brut.entreprise_client.fonction),
+        }
       : null,
     hypotheses,
     omissions,

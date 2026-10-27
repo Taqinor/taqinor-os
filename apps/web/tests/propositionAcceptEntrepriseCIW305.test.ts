@@ -282,3 +282,40 @@ describe('CPRW7 — validerEntreprise trilingue et ICE à 15 chiffres', () => {
     expect(validerEntreprise(f('ABC001234567000089'))!.champ).toBe('entreprise.ice');
   });
 });
+
+// ── CPRW19 — préremplissage de la signature entreprise ──────────────────────────────────────
+import { installerPrefillEntreprise, valeursInitialesEntreprise } from '../src/lib/propositionB2b';
+import { syntheseCi as syntheseCiCprw19, type ProposalResponse as ProposalCprw19 } from '../src/lib/proposition';
+
+describe('CPRW19 — valeursInitialesEntreprise / installerPrefillEntreprise', () => {
+  const ent = { raisonSociale: 'Boulangerie Atlas SARL', ice: 'ICE 0012 3456.7000-089', fonction: 'Directeur financier' };
+  it('ICE normalisée en valeur ; la fonction n\'est JAMAIS une valeur, seulement une suggestion', () => {
+    const r = valeursInitialesEntreprise(ent);
+    expect(r.valeurs).toEqual({ raison_sociale: 'Boulangerie Atlas SARL', ice: '001234567000089' });
+    expect(Object.keys(r.valeurs)).not.toContain('fonction');
+    expect(r.suggestion).toEqual({ fonction: 'Directeur financier' });
+    expect(valeursInitialesEntreprise(null)).toEqual({ valeurs: { raison_sociale: '', ice: '' }, suggestion: { fonction: '' } });
+  });
+  it('syntheseCi lit ice, interlocuteur, fonction de entreprise_client', () => {
+    const p = { mode_installation: 'industriel', synthese_ci: { entreprise_client: { raison_sociale: 'X', ice: '001234567000089', interlocuteur: 'A. B.', fonction: 'DG' } } } as unknown as ProposalCprw19;
+    expect(syntheseCiCprw19(p)!.entrepriseClient).toEqual({ raisonSociale: 'X', ice: '001234567000089', interlocuteur: 'A. B.', fonction: 'DG' });
+  });
+  it('installerPrefillEntreprise : ICE en value, fonction en placeholder, seulement si vides', () => {
+    const champs: Record<string, { value: string; placeholder: string }> = {
+      '#sign-ice': { value: '', placeholder: '' },
+      '#sign-qualite': { value: '', placeholder: '' },
+    };
+    const racine = { querySelector: (s: string) => champs[s] ?? null } as unknown as ParentNode;
+    installerPrefillEntreprise(racine, valeursInitialesEntreprise(ent));
+    expect(champs['#sign-ice']!.value).toBe('001234567000089');
+    expect(champs['#sign-qualite']!.value).toBe('');
+    expect(champs['#sign-qualite']!.placeholder).toBe('Directeur financier');
+    champs['#sign-ice']!.value = '999';
+    champs['#sign-qualite']!.value = 'Gérant';
+    champs['#sign-qualite']!.placeholder = '';
+    installerPrefillEntreprise(racine, valeursInitialesEntreprise(ent));
+    expect(champs['#sign-ice']!.value).toBe('999');
+    expect(champs['#sign-qualite']!.placeholder).toBe('');
+    installerPrefillEntreprise({ querySelector: () => null } as unknown as ParentNode, valeursInitialesEntreprise(ent));
+  });
+});
