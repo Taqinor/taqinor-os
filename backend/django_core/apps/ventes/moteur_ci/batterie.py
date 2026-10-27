@@ -84,9 +84,11 @@ def _charges(charge_jours_types):
 
 
 def besoin_nocturne_kwh(charge_jours_types, bilan):
-    """kWh consommés HORS des heures de production solaire, sur une journée
-    MOYENNE de l'année (jours types pondérés par leur nombre de jours) : la
-    charge des heures où le bilan horaire ne produit rien."""
+    """kWh de déficit (charge − production) HORS de la fenêtre solaire d'une
+    journée MOYENNE (jours types pondérés par leur nombre de jours) : tout ce
+    qui se situe avant la première heure de surplus et après la dernière (le
+    soir à faible production compris). Jour type sans surplus ⇒ 0 (rien ne
+    charge la banque)."""
     charges = _charges(charge_jours_types)
     total = jours = 0.0
     for bloc in (bilan or {}).get('horaire') or []:
@@ -94,9 +96,13 @@ def besoin_nocturne_kwh(charge_jours_types, bilan):
         if not charge or len(charge) != HEURES:
             continue
         nb = _f(bloc.get('nb_jours')) or 0.0
-        production = [(_f(a) or 0.0) + (_f(s) or 0.0) for a, s in
-                      zip(bloc.get('autoconso_kwh') or [], bloc.get('surplus_kwh') or [])]
-        nuit = sum(c for c, p in zip(charge, production) if p <= EPSILON_KWH)
+        auto = [_f(a) or 0.0 for a in bloc.get('autoconso_kwh') or []]
+        surplus = [_f(s) or 0.0 for s in bloc.get('surplus_kwh') or []]
+        heures = [h for h, s in enumerate(surplus) if s > EPSILON_KWH]
+        nuit = 0.0
+        if heures:
+            nuit = sum(max(0.0, c - a) for h, (c, a) in enumerate(zip(charge, auto))
+                       if h < heures[0] or h > heures[-1])
         total += nuit * nb
         jours += nb
     return total / jours if jours else 0.0
