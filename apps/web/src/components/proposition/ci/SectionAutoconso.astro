@@ -24,6 +24,8 @@ interface Props {
 // CPRW2 — la phrase « tarif » est le texte CLIENT servi (hypothèse `tarif`), jamais la note interne
 // de l'argent (ni sa mention, ni sa source) ; non servie → rien.
 const { ci, ciArgent, ciCarteInd, ciEco, ciEstimation, ciInjection, ciManque, ciSousReserve, couverture, isCommercial } = Astro.props;
+// CPRW3 — bandeau « devis préliminaire » : le texte servi (hypothèse `visite`), à chaque fois qu'il l'est.
+const preliminaire = ci?.hypotheses.find((h) => h.cle === 'visite')?.textes ?? null;
 const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null;
 ---
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-autoconso">
@@ -37,17 +39,10 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
               Une clé non servie n'imprime rien (jamais un 0 fabriqué). */}
           {ci ? (
             <div data-ci-synthese>
-              {ciSousReserve ? (
-                <div class="mt-4 rounded-xl border border-brass-400/40 bg-brass-400/10 p-4 text-sm text-lune-soft" data-ci-sous-reserve>
+              {preliminaire ? (
+                <div class="mt-4 rounded-xl border border-brass-400/40 bg-brass-400/10 p-4 text-sm text-lune-soft" data-ci-preliminaire>
                   <p class="font-semibold text-lune" data-i18n
-                    data-fr="Estimation sous réserve de la visite technique"
-                    data-en="Estimate subject to the technical site visit"
-                    data-ar="تقدير رهين بالزيارة التقنية">Estimation sous réserve de la visite technique</p>
-                  {ci.aConfirmer.length > 0 ? (
-                    <ul class="mt-2 list-disc ps-5 text-xs text-lune-faint">
-                      {ci.aConfirmer.map((c) => <li>{c.libelle}</li>)}
-                    </ul>
-                  ) : null}
+                    data-fr={preliminaire.fr} data-en={preliminaire.en} data-ar={preliminaire.ar}>{preliminaire.fr}</p>
                 </div>
               ) : null}
               <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

@@ -219,3 +219,13 @@ describe('CPRW2 — tarif utilisé = hypothèse servie', () => {
     expect(SRC_AUTOCONSO).not.toMatch(/tarif\.source/);
   });
 });
+
+// CPRW3 (27/10/2026) — bandeau « devis préliminaire » = l'hypothèse `visite` servie (FR/EN/AR).
+describe('CPRW3 — bandeau devis préliminaire', () => {
+  it('rendu dès que le serveur sert l\'hypothèse visite ; plus de liste interne « à confirmer »', () => {
+    expect(SRC_AUTOCONSO).toContain("h.cle === 'visite'");
+    expect(SRC_AUTOCONSO).toContain('data-ci-preliminaire');
+    expect(SRC_AUTOCONSO).not.toContain('Estimation sous réserve de la visite technique');
+    expect(SRC_AUTOCONSO).not.toContain('aConfirmer');
+  });
+});
