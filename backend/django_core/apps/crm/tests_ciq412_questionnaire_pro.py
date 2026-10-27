@@ -216,6 +216,16 @@ class QuestionnairePro(TestCase):
             lead = self._pro(**dict(complet, **{vide: None}))
             self.assertTrue(quest.manquantes(lead)['reseau'], vide)
 
+    def test_societe_ne_pose_avant_le_devis_que_nom_ice_tva(self):
+        # CQST7 (D-CIQ-11) — RC, IF, siège, fonction et contact secondaire se
+        # donnent à l'acceptation ; déjà connus, ils reviennent pré-remplis.
+        lead = self._pro()
+        champs = quest.champs_a_poser(lead, ['societe'])['societe']
+        self.assertEqual(sorted(champs),
+                         ['ice', 'societe', 'tva_recuperable'])
+        connu = self._pro(rc='12345')
+        self.assertIn('rc', quest.champs_a_poser(connu, ['societe'])['societe'])
+
     def test_reseau_suit_la_regle_du_devis_automatique(self):
         # CQST1 — « ne sait pas » / « inconnu » ne sont pas des réponses ; une
         # facture en MAD ne compte qu'avec un contrat BT ; un site MT n'a pas

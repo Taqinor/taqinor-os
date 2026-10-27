@@ -391,7 +391,10 @@ def manquantes(lead) -> dict:
             'pompage': (any(_vide(getattr(lead, cle, None))
                             for cle in _POMPAGE_ESSENTIELS)
                         or _devis_bloque(lead)),
-            'photo_pompe': not _photo_presente('photo_pompe', libelles),
+            # CQST7 — la plaque ne sert que si le client GARDE sa pompe
+            # (D-AGQ-10) : jamais demandée d'office pour une pompe neuve.
+            'photo_pompe': (getattr(lead, 'mode_pompe', None) == 'existante'
+                            and not _photo_presente('photo_pompe', libelles)),
             'photo_forage': not _photo_presente('photo_forage', libelles),
             'gps': not _gps_connu(lead),
             'contact': (_vide(lead.email)
@@ -550,9 +553,20 @@ def champs_a_poser(lead, sections) -> dict:
     return {
         section: [cle for cle in _colonnes_du_lead(lead, section)
                   if not (_vide(getattr(lead, cle, None))
-                          and _couverte_ailleurs(lead, cle))]
+                          and (_couverte_ailleurs(lead, cle)
+                               or cle in _SOCIETE_A_L_ACCEPTATION))]
         for section in sections
     }
+
+
+#: CQST7 (D-CIQ-11) — l'identité complète de l'entreprise se donne À
+#: L'ACCEPTATION (signataire, siège…) : avant le devis, le questionnaire ne
+#: demande que la raison sociale, l'ICE (jamais bloquant) et la TVA
+#: récupérable (HT ou TTC). Une valeur déjà connue revient pré-remplie.
+_SOCIETE_A_L_ACCEPTATION = frozenset({
+    'rc', 'if_fiscal', 'adresse_siege', 'fonction_contact',
+    'contact_secondaire_nom', 'contact_secondaire_telephone',
+    'contact_secondaire_email', 'contact_secondaire_fonction'})
 
 
 def sections_a_servir(lead, sections):

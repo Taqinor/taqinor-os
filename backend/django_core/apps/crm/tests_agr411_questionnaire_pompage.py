@@ -66,7 +66,9 @@ class SectionPompageTests(TestCase):
         res = self._mint(lead)
         self.assertEqual(res.status_code, 200, res.data)
         coches = sorted(c for c, oui in res.data['questions'].items() if oui)
-        self.assertEqual(coches, sorted(quest.SECTIONS_DEFAUT_AGRICOLE))
+        # CQST7 — pompe neuve par défaut : la plaque n'est pas cochée.
+        self.assertEqual(coches, sorted(
+            set(quest.SECTIONS_DEFAUT_AGRICOLE) - {'photo_pompe'}))
         attendu = CONTRAT_MINT['exemple_agricole']
         self.assertEqual(sorted(res.data['questions']),
                          sorted(attendu['questions']))
@@ -181,6 +183,12 @@ class SectionPompageTests(TestCase):
         self.assertEqual(lead.debit_forage_source, 'client')
         self.assertEqual(lead.pompe_hmt_source, 'declaree')
         self.assertEqual(lead.pompe_actuelle_tension_v, 380)
+
+    def test_photo_de_la_plaque_seulement_pompe_conservee(self):
+        # CQST7 — pompe neuve (ou mode inconnu) : la plaque n'est pas demandée.
+        self.assertFalse(quest.manquantes(self._agricole())['photo_pompe'])
+        self.assertTrue(quest.manquantes(
+            self._agricole(mode_pompe='existante'))['photo_pompe'])
 
     def test_lien_residentiel_identique(self):
         lead = Lead.objects.create(company=self.company, nom='Maison')
