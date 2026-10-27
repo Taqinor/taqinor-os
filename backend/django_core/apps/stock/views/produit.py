@@ -466,7 +466,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         if len(categories) == 1 and ',' in categories[0]:
             categories = categories[0].split(',')
         categories = [c for c in (str(x).strip() for x in categories)
-                      if c.isdigit()]
+                      if c.isascii() and c.isdigit()]
         if categories:
             qs = qs.filter(categorie_id__in=categories)
         if choix_ou_400(self.request.query_params.get('show_archived'),
@@ -1011,7 +1011,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         ids = request.query_params.getlist('ids')
         if len(ids) == 1 and ',' in ids[0]:
             ids = ids[0].split(',')
-        ids = [i for i in (str(x).strip() for x in ids) if i.isdigit()]
+        ids = [i for i in (str(x).strip() for x in ids) if i.isascii() and i.isdigit()]
         categorie = id_requete_ou_400(request, 'categorie')
         sortie = choix_ou_400(valeur_unique_ou_400(request, 'sortie'), 'sortie', ('html', 'pdf'))
         zone = (request.query_params.get('zone') or '').strip()
@@ -1412,7 +1412,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 code[len(regle.motif):] if not regle.est_regex else code)
             remainder = remainder.strip(':').strip()
             if encode == RegleCodeBarres.Encode.EMPLACEMENT and \
-                    remainder.isdigit():
+                    remainder.isascii() and remainder.isdigit():
                 emplacement = (EmplacementStock.objects
                                .filter(company=request.user.company,
                                        id=int(remainder))
@@ -1425,7 +1425,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                         'route': '/stock',
                     })
             elif encode == RegleCodeBarres.Encode.PRODUIT and \
-                    remainder.isdigit():
+                    remainder.isascii() and remainder.isdigit():
                 produit = (Produit.objects
                            .filter(company=request.user.company,
                                    id=int(remainder))
@@ -1455,7 +1455,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             # direct du code brut (EAN/UPC simple, comportement XSTK3).
             gtin = None
             gs1_extra = {}
-            if code[:2] == '01' and len(code) > 16 and code[2:16].isdigit():
+            if code[:2] == '01' and len(code) > 16 and code[2:16].isascii() and code[2:16].isdigit():
                 from ..gs1 import parse_gs1
                 parsed = parse_gs1(code)
                 gtin = parsed.get('gtin')
@@ -1494,7 +1494,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         first_prefix = code.split(':', 1)[0].strip().upper()
         if first_prefix in (labels.LOT_PREFIX, labels.SERIE_PREFIX):
             parts = code.split(':', 2)
-            if len(parts) != 3 or not parts[1].strip().isdigit():
+            if len(parts) != 3 or not (parts[1].strip().isascii() and parts[1].strip().isdigit()):
                 return Response(
                     {'detail': 'Code illisible.'},
                     status=status.HTTP_404_NOT_FOUND)
@@ -1548,8 +1548,8 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         # principal ; jamais d'import du modèle installations (services).
         if first_prefix == labels.KANBAN_PREFIX:
             parts = code.split(':', 2)
-            if len(parts) != 3 or not parts[1].strip().isdigit() \
-                    or not parts[2].strip().isdigit():
+            if len(parts) != 3 or not (parts[1].strip().isascii() and parts[1].strip().isdigit()) \
+                    or not (parts[2].strip().isascii() and parts[2].strip().isdigit()):
                 return Response(
                     {'detail': 'Code illisible.'},
                     status=status.HTTP_404_NOT_FOUND)
@@ -1580,7 +1580,7 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         prefix, _, raw_id = code.partition(':')
         prefix = prefix.strip().upper()
         raw_id = raw_id.strip()
-        if not raw_id.isdigit():
+        if not (raw_id.isascii() and raw_id.isdigit()):  # '²'.isdigit() : int() levait (500)
             return Response(
                 {'detail': 'Code illisible.'},
                 status=status.HTTP_404_NOT_FOUND)

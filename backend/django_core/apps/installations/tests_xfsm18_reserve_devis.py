@@ -99,11 +99,12 @@ class TestGenererDevisReserve(TestCase):
         self.assertEqual(
             Devis.objects.filter(client_id=self.inst.client_id).count(), 1)
 
-    def test_unknown_reserve_400(self):
+    def test_unknown_reserve_404(self):
+        # api-fuzz-full 27/10 (ENF11) : réserve absente = 404.
         r = self.api.post(
             f'{BASE}/interventions/{self.interv.id}/generer-devis-reserve/',
             {'reserve': 999999}, format='json')
-        self.assertEqual(r.status_code, 400)
+        self.assertEqual(r.status_code, 404)
 
     def test_reserve_serializer_exposes_devis_repare_id(self):
         r = self.api.post(

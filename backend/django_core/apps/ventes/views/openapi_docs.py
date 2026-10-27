@@ -15,7 +15,7 @@ from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers as s
 
 from core.champs_stricts import (
-    BooleenStrict, ChaineStricte, DateStricte, DecimalSouple, DecimalStricte,
+    BooleenStrict, ChaineStricte, ChaineUneLigne, DateStricte, DecimalSouple, DecimalStricte,
     EntierStrict, MOTIF_NON_BLANC_SANS_NUL, MOTIF_SANS_NUL,
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
@@ -79,7 +79,7 @@ EnvoyerEmailRequest = _ser('DevisEnvoyerEmailRequest', {
     # api-fuzz : une adresse mal formée atteignait le SMTP (« Invalid address »
     # → 502) ; elle est refusée 400 et publiée ``format: email``.
     'to_email': s.EmailField(required=False, allow_blank=True),
-    'sujet': ChaineStricte(required=False, allow_blank=True),
+    'sujet': ChaineUneLigne(required=False, allow_blank=True),  # en-tête d'email : sans CR/LF
     'corps': ChaineStricte(required=False, allow_blank=True),
     'pdf_mode': ChaineStricte(required=False, allow_blank=True),
     'gamme_envoi': GAMME_ENVOI,
@@ -1319,7 +1319,7 @@ EnvoyerEmailFactureRequest = _ser('FactureEnvoyerEmailRequest', {
     # CI #997 fuzz (24/10) : une adresse (ou vide = celle du client) — publiée
     # `format: email` ; ``"û"`` était « conforme » puis refusé à l'envoi (400).
     'to_email': s.EmailField(required=False, allow_blank=True),
-    'sujet': ChaineStricte(required=False, allow_blank=True),
+    'sujet': ChaineUneLigne(required=False, allow_blank=True),  # en-tête d'email : sans CR/LF
     'corps': ChaineStricte(required=False, allow_blank=True),
     'attach_pdf': BooleenStrict(required=False),
 })

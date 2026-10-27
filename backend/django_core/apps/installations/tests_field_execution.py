@@ -174,6 +174,16 @@ class TestPreparation(TestCase):
         prep.refresh_from_db()
         self.assertFalse(prep.tout_charge)
 
+    def test_ligne_inconnue_404_corps_invalide_400(self):
+        # api-fuzz-full 27/10 (ENF11) : un id entier qui ne désigne aucune
+        # ligne = ressource absente (404), plus un 400.
+        for route in ('cocher-materiel', 'cocher-outil'):
+            r = self.api.post(f'{self.url}/{route}/', {'ligne': 0},
+                              format='json')
+            self.assertEqual(r.status_code, 404, (route, r.data))
+            r = self.api.post(f'{self.url}/{route}/', {}, format='json')
+            self.assertEqual(r.status_code, 400, (route, r.data))
+
     def test_manquant_flag_and_draft_order(self):
         # Produit dont la nomenclature dépasse le stock disponible.
         rare = make_produit(self.company, 'Câble rare', stock=2)

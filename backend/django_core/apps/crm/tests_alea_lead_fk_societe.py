@@ -51,7 +51,8 @@ class LeadFkSocieteTests(TestCase):
         self.url = f'/api/django/crm/leads/{self.lead.id}/'
 
     def _message(self, resp, champ, pk):
-        self.assertEqual(resp.status_code, 400, resp.data)
+        # api-fuzz-full 27/10 (ENF11) : id inconnu ou d'une autre société → 404.
+        self.assertEqual(resp.status_code, 404, resp.data)
         return [str(m).replace(str(pk), '<id>') for m in resp.data[champ]]
 
     def test_entite_etrangere_refusee_comme_absente(self):
