@@ -1326,7 +1326,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses),
         # ADEV79 — TTC des paliers → HT : TVA de l'article, à défaut le taux
         # standard SAISI de la société (lecture seule), jamais un 20 codé.
-        taux_tva_pct=getattr(reglages, 'tva_standard', None))
+        taux_tva_pct=getattr(reglages, 'tva_standard', None), pmax_wc=(catalogue['module'] or {}).get('pmax_wc'))
     alertes.extend(_alertes_phase_du_site(resultat['alertes'], phase))
     hypotheses.extend(resultat['hypotheses'])
     evaluation = resultat['evaluation']
