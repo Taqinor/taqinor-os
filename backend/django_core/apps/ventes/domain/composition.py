@@ -498,7 +498,8 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                                  taux_tva=Decimal('20'), avertissements=None,
                                  marques=None, ordre_lignes=None,
                                  mppt_paires=1, phase=None, modeles=None,
-                                 batterie_module_kwh=None):
+                                 batterie_module_kwh=None,
+                                 paires_mppt_derivees=False):
     """L-2OPT — LE devis « Les deux » quand les deux optimums DIVERGENT.
 
     Compose DEUX kits complets par ``composition_residentielle`` (la source de
@@ -550,7 +551,9 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
         # pendant que l'option « sans » porterait la pergola choisie.
         structure_produit_id=structure_produit_id,
         taux_tva=taux_tva, avertissements=avertissements, marques=marques,
-        ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase)
+        ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase,
+        # RSIZ5 — les deux kits dérivent (ou non) leurs paires MPPT ensemble.
+        paires_mppt_derivees=paires_mppt_derivees)
 
     modeles_kits = modeles if nb_avec == nb_sans else None
     kit_sans = composition_residentielle(
@@ -921,6 +924,8 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     # ACAL90 (D-ACAL-22) — les classes RETIRÉES À LA MAIN ne sont jamais
     # recréées ; la réponse le DIT (une fois par classe).
     from apps.ventes.domain.lignes import classes_kit_retirees
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
     retirees = set(classes_kit_retirees(devis))
 
     for vue in _options_a_reparer(devis, lignes, kwc=kwc, watt=watt,
@@ -961,6 +966,9 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
             # amputé.
             avertissements=avertissements,
             variante=vue['variante'],
+            # RSIZ5 — un devis aux règles d'origine (< 3) garde ses paires.
+            paires_mppt_derivees=regles_au_moins(
+                devis, REGLES_CORRIGEES_2710),
         ))
         roles_attendu = list(getattr(attendu, 'roles', ()) or ())
         par_classe = {}

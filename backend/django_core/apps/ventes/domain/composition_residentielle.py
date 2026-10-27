@@ -37,6 +37,7 @@ from apps.ventes.domain.catalogue import (
     classer_produit,
     metre_cable_dc_par_paires,
     metre_cable_terre,
+    paires_mppt_du_champ,
     plafond_panneaux,
     prix_forfait_ht,
 )
@@ -121,6 +122,18 @@ def _hybrides_servis_par_une_batterie(vivier, batteries):
     return retenus or list(vivier)
 
 
+def _paires_mppt(mppt_paires, derivees, nb, kwp, panneau, vendus):
+    """RSIZ5 — les paires de câble DC chiffrées : ``mppt_paires`` tel quel
+    (règles d'origine), ou le plus grand de lui et du compte DÉRIVÉ."""
+    if not derivees:
+        return mppt_paires
+    try:
+        plancher = max(1, int(mppt_paires or 1))
+    except (TypeError, ValueError):
+        plancher = 1
+    return max(plancher, paires_mppt_du_champ(nb, kwp, panneau, vendus))
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               structure_produit_id=None,
@@ -129,7 +142,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               ordre_lignes=None, mppt_paires=1, phase=None,
                               batterie_cible_kwh=None,
                               batterie_module_kwh=None,
-                              hors_reseau=False, modeles=None):
+                              hors_reseau=False, modeles=None,
+                              paires_mppt_derivees=False):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     ``modeles`` (ACAL63, C-ACAL-042) — les modèles POSÉS par le calepinage,
@@ -156,6 +170,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         canonique du simulateur est rendu tel quel.
       · ``mppt_paires`` — C4/PVCBL, nombre de paires de câble DC descendantes
         (60 m par paire) ; repli fondateur explicite à 1 paire.
+      · ``paires_mppt_derivees`` — RSIZ5 : vrai (règles de calcul ≥ 3, cf.
+        ``regles_calcul.regles_au_moins``), les paires sont DÉRIVÉES du champ
+        et des onduleurs vendus (:func:`catalogue.paires_mppt_du_champ`),
+        ``mppt_paires`` n'étant plus qu'un PLANCHER. ``False`` (LE DÉFAUT)
+        ⇒ ``mppt_paires`` tel quel, byte-identique à l'historique.
       · ``phase`` — PVCOMPAT, le RACCORDEMENT déclaré par le client
         (``'monophase'`` / ``'triphase'``, cf.
         ``compatibilites.normaliser_phase``). Monophasé : les onduleurs
@@ -981,7 +1000,13 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     ajouter('socle', premier('socle'), _derivees['socle'])
     # C4/PVCBL — métrage AU MÈTRE : le DC suit les paires de MPPT, la terre
     # suit les paliers de 5 kWc (25 m de base + 15 m par palier).
-    ajouter('cable_dc', cable_dc, metre_cable_dc_par_paires(mppt_paires))
+    # RSIZ5 — paires DÉRIVÉES du champ et des onduleurs vendus (niveau 3).
+    ajouter('cable_dc', cable_dc, metre_cable_dc_par_paires(_paires_mppt(
+        mppt_paires, paires_mppt_derivees, nb, kwp, panneau,
+        [(o, quantite_onduleur(k)) for o, k in (
+            ((onduleur_reseau, kw_reseau), (onduleur_hybride, kw_hybride))
+            if deux_options else ((onduleur, kw_onduleur),))
+         if o is not None])))
     ajouter('cable_terre', cable_terre, metre_cable_terre(blocs))
     # L-FORFAIT — une SEULE ligne par forfait, quantité 1, dont le prix
     # unitaire EST le total du barème (désignations inchangées). Barème absent

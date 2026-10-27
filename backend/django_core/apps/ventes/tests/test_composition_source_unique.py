@@ -586,3 +586,57 @@ class STKCAT7LeVivierTypeNeDivergePasSansId(_Base):
                       if role.startswith('structure')]
         self.assertEqual(structures,
                          [('structure_acier', 'Pergola acier 4x3')])
+
+
+class LesPairesMpptSuiventLeChamp(_Base):
+    """RSIZ5 (27/10/2026) — le câble DC suit le champ : ``mppt_paires`` valait
+    1 partout, donc 60 m pour 3 panneaux comme pour 390. Catalogue SANS fiche
+    technique ici : le repli est l'approximation du dépôt (une paire par
+    palier de 5 kWc, ``metre_cable_dc``)."""
+
+    slug = 'u3-rsiz5'
+
+    def _cable_dc(self, **extra):
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            panel_watt=710, **extra)
+        par_role = dict(zip(lignes.roles, lignes))
+        return int(par_role['cable_dc'].quantite)
+
+    def test_un_grand_champ_derive_plusieurs_paires(self):
+        # 15 kWc → 3 paliers de 5 kWc → 3 paires → 180 m.
+        self.assertEqual(self._cable_dc(
+            kwc=15, nb_panneaux=22, paires_mppt_derivees=True), 180)
+
+    def test_un_petit_champ_garde_une_paire(self):
+        self.assertEqual(self._cable_dc(
+            kwc=2.13, nb_panneaux=3, paires_mppt_derivees=True), 60)
+
+    def test_le_compte_saisi_reste_un_plancher(self):
+        self.assertEqual(self._cable_dc(
+            kwc=5, nb_panneaux=8, mppt_paires=3,
+            paires_mppt_derivees=True), 180)
+
+    def test_regles_d_origine_le_compte_saisi_tel_quel(self):
+        """Défaut de la fonction pure = règles d'origine : 60 m à 15 kWc."""
+        self.assertEqual(self._cable_dc(kwc=15, nb_panneaux=22), 60)
+
+    def test_un_devis_aux_regles_d_origine_ne_derive_pas(self):
+        """Un devis déjà envoyé (règles < 3) recomposé par les sondes garde
+        ses paires ; un devis aux règles courantes les dérive."""
+        from apps.ventes.domain.etape_composer import contexte_sonde_du_devis
+        from apps.ventes.domain.regles_calcul import (
+            REGLES_CORRIGEES, REGLES_CORRIGEES_2710)
+        from apps.ventes.models import Devis
+        cree = self.api.post(
+            AUTO_URL, {'lead': self.lead(
+                taille_souhaitee_kwc=Decimal('5')).id}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        devis = Devis.objects.get(pk=cree.data['id'])
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=REGLES_CORRIGEES)
+        devis.refresh_from_db()
+        self.assertFalse(contexte_sonde_du_devis(devis).paires_mppt_derivees)
+        Devis.objects.filter(pk=devis.pk).update(
+            regles_calcul=REGLES_CORRIGEES_2710)
+        devis.refresh_from_db()
+        self.assertTrue(contexte_sonde_du_devis(devis).paires_mppt_derivees)

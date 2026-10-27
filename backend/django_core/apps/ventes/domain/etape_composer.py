@@ -128,6 +128,11 @@ class IntentionComposition:
     #: ACAL63 — les modèles DÉSIGNÉS par le calepinage (``[{produit_id, watt,
     #: count}]``). ``None`` (LE DÉFAUT) ⇒ un seul panneau, choisi au wattage.
     modeles: object = None
+    #: RSIZ5 — paires MPPT DÉRIVÉES du champ (``mppt_paires`` devient un
+    #: plancher). ``True`` (LE DÉFAUT) = règles courantes, celles d'un devis
+    #: neuf ; un appelant qui recompose un devis EXISTANT passe
+    #: ``regles_au_moins(devis, REGLES_CORRIGEES_2710)``.
+    paires_mppt_derivees: bool = True
 
 
 @dataclass(frozen=True)
@@ -199,6 +204,7 @@ def composer(intention):
         ordre_lignes=reglages.ordre_lignes,
         mppt_paires=intention.mppt_paires,
         phase=intention.phase,
+        paires_mppt_derivees=getattr(intention, 'paires_mppt_derivees', True),
     )
     catalogue = reglages.catalogue
     kwc = float(intention.kwc or 0)
@@ -308,6 +314,8 @@ class ContexteSonde:
     taux_tva: Decimal = Decimal('20')
     hors_reseau: bool = False
     ville: str = ''
+    #: RSIZ5 — cf. ``IntentionComposition.paires_mppt_derivees``.
+    paires_mppt_derivees: bool = True
 
 
 def _mppt_paires_du_devis(devis):
@@ -332,6 +340,8 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
     from apps.crm.selectors import lead_du_devis
     from apps.ventes.domain.composition import structure_produit_id_du_devis
     from apps.ventes.domain.gammes import gamme_nom
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
     from apps.ventes.domain.taille import phase_et_isolement_du_lead
     lead = lead_du_devis(devis)
     # ACAL32 — phase et site isolé du lead lus par LE survivant
@@ -353,7 +363,9 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
         mppt_paires=_mppt_paires_du_devis(devis),
         taux_tva=Decimal(str(taux)) if taux is not None else Decimal('20'),
         hors_reseau=bool(hors_reseau),
-        ville=ville_du_lead(lead))
+        ville=ville_du_lead(lead),
+        # RSIZ5 — un devis aux règles d'origine (< 3) garde ses paires MPPT.
+        paires_mppt_derivees=regles_au_moins(devis, REGLES_CORRIGEES_2710))
 
 
 def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
@@ -381,7 +393,8 @@ def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
         hors_reseau=contexte.hors_reseau,
         ville=contexte.ville,
         batterie_module_kwh=module_kwh,
-        reglages=contexte.reglages))
+        reglages=contexte.reglages,
+        paires_mppt_derivees=getattr(contexte, 'paires_mppt_derivees', True)))
 
 
 def sonder_wattage(contexte):
