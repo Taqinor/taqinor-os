@@ -6,7 +6,8 @@ pas son talon, la courbe SUIT les horaires et le talon (la nuit, les jours
 fermés) vaut une part de la puissance des heures ouvertes :
 
 * catégorie avec un archétype SOURCÉ (CIQ107, le sien ou le plus proche) :
-  rapport creux / pointe de cet archétype (méthode existante, inchangée) ;
+  niveau hors horaires de cet archétype (CLD2 : moyenne de la forme hors des
+  plages déclarées ÷ moyenne dans les plages, calculée par ``charge.py``) ;
 * sinon : ``TALON_DEFAUT_FONDATEUR`` = 20 % — DÉFAUT FONDATEUR, jamais
   présenté comme une donnée sourcée.
 
@@ -67,12 +68,12 @@ def talon_par_defaut(categorie, rapport_archetype=None, source_archetype=None, *
     commerciale, ou ``(None, None)`` hors commerce (industriel, aucune
     catégorie : rien ne dit le talon, la borne conservatrice reste).
 
-    ``rapport_archetype`` : creux / pointe de la forme de l'archétype (propre,
+    ``rapport_archetype`` : niveau hors plages / dans les plages de l'archétype (propre,
     le plus proche, ou profil SAISI par la société), déjà calculé.
     ``commercial`` : lead commercial SANS catégorie ⇒ défaut fondateur aussi
     (fondateur 27/10/2026) ; l'industriel garde la borne.
     """
-    if rapport_archetype:
+    if rapport_archetype is not None:
         return rapport_archetype, {'statut': 'estimation', 'source': source_archetype}
     if categorie == 'industriel' or not (categorie or commercial):
         return None, None
