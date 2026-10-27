@@ -804,7 +804,7 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
                                '12 kWh mensuels ou un total annuel requis.', niveau='bloquant'))
         return None, provenance, alertes
 
-    talon = rythme.get('talon') or {}
+    talon = _talon_valide(rythme.get('talon'), alertes)
     talon_kw = talon.get('kw')
     talon_pct = talon.get('part_pct')
 
@@ -972,6 +972,25 @@ def _courbes_talon_par_defaut(calendrier, niveaux, archetype, profil_societe, pr
         'Talon non déclaré : 20 % de la puissance des heures ouvertes (défaut fondateur), '
         'à confirmer avec le client.', niveau='info'))
     return _courbes_declarees(calendrier, niveaux, 'rapport', None, rapport)
+
+
+def _talon_valide(talon, alertes):
+    """CLD7 — le talon déclaré sans valeur négative : une valeur < 0 est
+    ignorée (alerte interne), le talon retombe sur l'estimé."""
+    propre = {}
+    for cle, valeur in (talon or {}).items():
+        try:
+            negatif = valeur is not None and float(valeur) < 0
+        except (TypeError, ValueError):
+            negatif = False
+        if negatif:
+            alertes.append(_alerte(
+                'talon_negatif', 'rythme.talon.%s' % cle,
+                'Talon négatif (%s = %s) ignoré : le talon estimé sert.' % (cle, valeur),
+                interne=True))
+        else:
+            propre[cle] = valeur
+    return propre
 
 
 def _alerte_talon_incoherent(incoherent, alertes):

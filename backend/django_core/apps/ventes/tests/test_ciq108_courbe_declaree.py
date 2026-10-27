@@ -374,6 +374,37 @@ class TestDecalageConstant(unittest.TestCase):
         self.assertNotEqual(self._bureau(decalage_h=d + 1), jt_fixe)
 
 
+class TestTalonNegatif(unittest.TestCase):
+    """CLD7 — un talon négatif est ignoré (alerte interne), jamais de kWh < 0."""
+
+    def _alertes_negatif(self, alertes):
+        return [a for a in alertes if a['code'] == 'talon_negatif']
+
+    def test_part_pct_negatif_ignore_et_repli_sur_le_talon_estime(self):
+        rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [[8, 18]]},
+                  'talon': {'part_pct': -10}}
+        jt, prov, alertes = courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE,
+                                            archetype='bureau', feries=[])
+        self.assertTrue(all(v >= 0 for j in jt for v in j['charge_kwh']))
+        (alerte,) = self._alertes_negatif(alertes)
+        self.assertTrue(alerte['interne'])
+        self.assertEqual(prov['talon']['statut'], 'estimation')
+        for mois in range(1, 13):
+            self.assertAlmostEqual(_energie_mois(jt, mois), 6000, delta=1e-6)
+
+    def test_kw_et_niveau_jour_negatifs_ignores_chemins_declare_et_archetype(self):
+        for talon in ({'kw': -5}, {'niveau_jour_pct': -5}):
+            for rythme in ({'jours_ouverts': TOUS, 'plages': {'ouvre': [[8, 18]]}},
+                           {'jours_ouverts': TOUS}):
+                rythme = dict(rythme, talon=talon)
+                jt, prov, alertes = courbe_declaree(rythme, [6000] * 12,
+                                                     annee_reference=ANNEE,
+                                                     archetype='bureau', feries=[])
+                self.assertTrue(all(v >= 0 for j in jt for v in j['charge_kwh']), talon)
+                self.assertEqual(len(self._alertes_negatif(alertes)), 1, talon)
+                self.assertNotEqual(prov['talon']['statut'], 'declare', talon)
+
+
 class TestProfilChargePrerequis(unittest.TestCase):
     """ADEV76 — LA règle des prérequis : un cas par branche de ``courbe_declaree``."""
 
