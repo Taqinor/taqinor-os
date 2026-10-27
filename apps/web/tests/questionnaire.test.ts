@@ -884,6 +884,16 @@ describe('CQSTW1 — pompage : colonnes CQST3/CQST6', () => {
       pompe_actuelle_kw: 5.5, pompe_actuelle_tension_v: 380, pompe_actuelle_phases: 'tri',
     });
   });
+  it("CQSTW13 — alimentation « aucune » : rien sur la pompe actuelle ne part", () => {
+    const r = buildSectionReponses('pompage', {
+      pompe_alim_actuelle: 'aucune', pompe_actuelle_debit_m3h: '12', pompage_heures_jour: '6', pompe_hmt_m: '55',
+      mode_pompe: 'existante', pompe_actuelle_kw: '5.5', pompe_actuelle_tension_v: '380', pompe_actuelle_phases: 'tri',
+      carburant_prix_unitaire_mad: '10',
+    });
+    expect(r).toEqual({ pompe_alim_actuelle: 'aucune', pompe_hmt_m: 55 });
+    const diesel = buildSectionReponses('pompage', { pompe_alim_actuelle: 'diesel', pompe_actuelle_debit_m3h: '12', mode_pompe: 'neuve' });
+    expect(diesel).toMatchObject({ pompe_actuelle_debit_m3h: 12, mode_pompe: 'neuve' });
+  });
   it('pompe neuve : une plaque laissée dans un champ masqué ne part pas', () => {
     const r = buildSectionReponses('pompage', {
       mode_pompe: 'neuve', pompe_actuelle_kw: '5.5', pompe_actuelle_tension_v: '380', pompe_actuelle_phases: 'tri',

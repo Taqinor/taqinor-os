@@ -971,11 +971,16 @@ export function buildSectionReponses(
         ['profondeur_forage_m', 10_000], ['debit_forage_m3h', 100_000], ['pompe_hmt_m', 10_000],
         ['pompe_actuelle_debit_m3h', 100_000], ['pompage_heures_jour', 24],
       ];
+      // CQSTW13 — « pas de pompe actuellement » : les questions sur la pompe
+      // actuelle (débit, heures, mode, plaque) ne valent pas ; une valeur laissée
+      // dans un champ masqué ne part pas (le serveur les écarte aussi — CQST9).
+      const pasDePompe = alim === 'aucune';
       for (const [cle, max] of mesures) {
+        if (pasDePompe && (cle === 'pompe_actuelle_debit_m3h' || cle === 'pompage_heures_jour')) continue;
         const n = cleanPositiveNumber(raw[cle], max);
         if (n != null) out[cle] = n;
       }
-      const modePompe = cleanEnum(raw.mode_pompe, MODE_POMPE_VALUES);
+      const modePompe = pasDePompe ? undefined : cleanEnum(raw.mode_pompe, MODE_POMPE_VALUES);
       if (modePompe) out.mode_pompe = modePompe;
       // La plaque n'a de sens que pour « je garde ma pompe » : jamais envoyée sinon
       // (une valeur laissée dans un champ masqué ne part pas).
