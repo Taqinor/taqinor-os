@@ -2592,15 +2592,11 @@ export function avecBatterieAvailability(lines, produits, kwp) {
     .map(p => parseKw(p.nom) || 0))
   const unitsNeeded = maxKw > 0 ? Math.ceil((kwp || 0) / maxKw) : Infinity
   let reason
-  // RGEN8 — la raison dit au vendeur QUOI faire, en français simple.
   if (!hasHyb && maxKw > 0 && unitsNeeded > MAX_HYBRID_UNITS) {
-    const kwc = formatNumber(Math.round((Number(kwp) || 0) * 100) / 100)
-    reason = `pour ${kwc} kWc il faudrait ${unitsNeeded} onduleurs hybrides de ${maxKw} kW `
-      + `(au plus ${MAX_HYBRID_UNITS} en parallèle) — réduisez la taille ou ajoutez au `
-      + 'catalogue un onduleur hybride plus puissant'
+    reason = `pour ${formatNumber(Math.round((Number(kwp) || 0) * 100) / 100)} kWc il faudrait ${unitsNeeded} onduleurs hybrides de ${maxKw} kW `
+      + `(au plus ${MAX_HYBRID_UNITS} en parallèle) — réduisez la taille ou ajoutez au catalogue un onduleur hybride plus puissant`
   } else if (!hasHyb) {
-    reason = 'aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » '
-      + 'ou ajoutez-en un'
+    reason = 'aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un'
   } else {
     reason = 'aucune batterie dans les lignes du devis — ajoutez-en une'
   }
