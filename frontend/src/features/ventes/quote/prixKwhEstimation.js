@@ -1,5 +1,5 @@
 // RGEN10 — prix du kWh du modèle « estimation » (devis sans consommation),
-// miroir de la cascade que le PDF applique : `pricing.py::calculate_savings_roi`
+// même cascade que le PDF (calcul des économies de pricing.py, fonction calculate_savings_roi)
 // appelé par `etude_chiffrage.py` (build_quote_data) — le serveur fait foi
 // (décision RHOR 27/10, règle #4). Fonction pure (aucun import) : la grille
 // nationale et la facture mensuelle sont INJECTÉES par `solar.js::computeROI`.

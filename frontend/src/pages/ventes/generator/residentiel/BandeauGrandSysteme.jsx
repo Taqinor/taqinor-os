@@ -8,7 +8,7 @@
 // produira un document plus adapté », poussant une villa vers le C&I.
 import { formatNumber } from '../../../../lib/format'
 
-// Miroir de `apps/ventes/balayage_adaptatif.py::SEUIL_PANNEAUX_RESIDENTIEL`.
+// Même seuil que le dimensionnement serveur (SEUIL_PANNEAUX_RESIDENTIEL, balayage_adaptatif).
 export const SEUIL_PANNEAUX_RESIDENTIEL = 120
 
 export default function BandeauGrandSysteme({ modeInstallation, nbPanneaux, kwp }) {

@@ -638,7 +638,7 @@ export function computeROI({
   // batterie ; seul le supplément apporté par la capacité batterie
   // (autoconsoAvecEff − autoconsoSansEff) est stocké puis restitué.
   let battPart = autoconsoAvecEff > 0 ? Math.max(0, autoconsoAvecEff - autoconsoSansEff) / autoconsoAvecEff : 0
-  // RGEN5 — niveau 3 : miroir de `pricing._economie_avec_nette` (RHOR6) ; le cashflow lit le net (part 0).
+  // RGEN5 — niveau 3 : même règle que le PDF (RHOR6, économie nette) ; le cashflow lit le net (part 0).
   ;({ economie: ecoAnnuelleAvec, factureAvec: factureAvecAvec, partStockee: battPart } = economieAvecNette(ecoAnnuelleAvec, factureAvecAvec, battPart, { nette: reglesCalcul >= 3 && stockagePresent, roundtrip: BATTERY_ROUNDTRIP, series: [{ valeurs: ecoAvecMonthly }, { valeurs: monthlyDetail, cle: 'eco_avec' }] }))
 
   // QX39 — payback par croisement du cumul du cashflow 25 ans (miroir backend),
