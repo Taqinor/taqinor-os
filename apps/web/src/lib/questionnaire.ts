@@ -316,8 +316,9 @@ export function libelleSuivant(dernier: boolean, lang: QuestionnaireLang): strin
 export function eteDifferentePrefill(prefill: Record<string, unknown>): 'oui' | 'non' | '' {
   const f = prefill.facture_ete;
   const connue = (typeof f === 'string' && f !== '') || typeof f === 'number';
-  if (prefill.ete_differente === true || connue) return 'oui';
-  return prefill.ete_differente === false ? 'non' : '';
+  // `false` est le défaut serveur : seul, il ne prouve aucune réponse du client.
+  if (prefill.ete_differente === true) return 'oui';
+  return prefill.ete_differente === false && connue ? 'non' : '';
 }
 
 // ── ÉCRANS : le regroupement des sections en pages ───────────────────────

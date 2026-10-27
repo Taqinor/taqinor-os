@@ -1028,9 +1028,9 @@ describe('CQSTW14/15/19 — textes selon la langue', () => {
   });
   it("CQSTW19 — facture d'été : « oui » survit à la réouverture", () => {
     expect(eteDifferentePrefill({ ete_differente: true })).toBe('oui');
-    expect(eteDifferentePrefill({ ete_differente: false, facture_ete: '1200' })).toBe('oui');
-    expect(eteDifferentePrefill({ ete_differente: false, facture_ete: 800 })).toBe('oui');
-    expect(eteDifferentePrefill({ ete_differente: false })).toBe('non');
+    expect(eteDifferentePrefill({ ete_differente: false, facture_ete: '1200' })).toBe('non');
+    expect(eteDifferentePrefill({ ete_differente: false, facture_ete: 800 })).toBe('non');
+    expect(eteDifferentePrefill({ ete_differente: false })).toBe(''); // défaut serveur, pas une réponse
     expect(eteDifferentePrefill({})).toBe('');
     expect(eteDifferentePrefill({ ete_differente: null, facture_ete: '' })).toBe('');
   });
