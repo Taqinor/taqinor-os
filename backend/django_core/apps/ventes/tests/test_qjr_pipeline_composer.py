@@ -39,7 +39,9 @@ from django.test import SimpleTestCase, TestCase
 
 from apps.crm.models import Lead
 from apps.stock.models import Produit
-from apps.ventes.domain import creation_auto as _creation_auto
+# SPL312 — le dry-run résidentiel vit dans ``creation_auto_residentiel`` :
+# l'espion ``composer`` vise le PORTEUR.
+from apps.ventes.domain import creation_auto_residentiel as _creation_auto
 from apps.ventes.domain import creation_calepinage as _creation_calepinage
 from apps.ventes.domain import etape_composer, pipeline
 

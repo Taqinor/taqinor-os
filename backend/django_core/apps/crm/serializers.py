@@ -497,7 +497,7 @@ def incoherence_segment(type_lead, devis):
 _MSG_JOURS_IRRIGATION = "Jours d'irrigation par semaine : entre 0 et 7 (0 exclu)."
 
 
-class LeadSerializer(SameCompanyFKSerializerMixin,
+class LeadSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                      _CompanyScopedRelationsMixin,
                      serializers.ModelSerializer):
     # api-fuzz #1022 — ``custom_data`` publié comme OBJET nullable (un tableau
@@ -524,7 +524,9 @@ class LeadSerializer(SameCompanyFKSerializerMixin,
     # acceptait l'id d'une entité d'une AUTRE société (sonde V3 LFICHE-2 /
     # V4 LCOUT-5 : 200, stocké). Bornée ici comme ``structure_produit`` : un
     # id étranger reçoit la même réponse qu'un id absent.
-    scoped_relations = ('deleted_by', 'structure_produit', 'entite')
+    # api-fuzz-full 27/10 (ENF11) — ``owner`` borné de même : id inconnu ou
+    # d'une autre société → le même 404 (``IdInconnu404Mixin``), aucun oracle.
+    scoped_relations = ('deleted_by', 'structure_produit', 'entite', 'owner')
 
     # STKCAT9 — LA MÊME GARDE, DÉCLARÉE : ``same_company_fields`` est le patron
     # que la garde CI ``scripts/check_fk_scoping.py`` sait reconnaître sur une

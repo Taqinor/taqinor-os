@@ -23,6 +23,10 @@ vi.mock('../../api/installationsApi', () => ({
     soumettreDemandeAchat: vi.fn(),
     approuverDemandeAchat: vi.fn(),
     refuserDemandeAchat: vi.fn(),
+    genererBcfDemandeAchat: vi.fn(),
+    getEtapesApprobationDA: vi.fn(),
+    approuverEtapeDA: vi.fn(),
+    rejeterEtapeDA: vi.fn(),
   },
 }))
 
@@ -35,6 +39,7 @@ vi.mock('../../api/stockApi', () => ({
     getFavorisCatalogueAchat: vi.fn(),
     // NTP2P23 — simulateur d'impact budgétaire (lecture seule).
     simulerBudgetDisponible: vi.fn(),
+    getBonCommandeFournisseur: vi.fn(),
   },
 }))
 
@@ -43,12 +48,12 @@ import stockApi from '../../api/stockApi'
 import DemandesAchatList from './DemandesAchatList.jsx'
 import { erreurLigne } from './demandeAchatLigne'
 
-function makeWrapper({ role = 'responsable', initialEntries = ['/chantiers/demandes-achat'] } = {}) {
+function makeWrapper({ role = 'responsable', permissions = [], initialEntries = ['/chantiers/demandes-achat'] } = {}) {
   const store = configureStore({
     reducer: { auth: authReducer },
     preloadedState: {
       auth: {
-        user: { id: 1 }, role, role_nom: 'Directeur', permissions: [],
+        user: { id: 1 }, role, role_nom: 'Directeur', permissions,
         isAuthenticated: true, loading: false,
       },
     },
@@ -287,5 +292,73 @@ describe('DemandesAchatList — ACHT63 (référence chantier, validation, repris
     expect(erreurLigne({ quantite: '2', prix_estime: '12.5' }, 0)).toBe('')
     expect(erreurLigne({ quantite: '1.234', prix_estime: '' }, 1)).toMatch(/Ligne 2/)
     expect(erreurLigne({ quantite: '-1', prix_estime: '' }, 0)).toMatch(/invalide/)
+  })
+})
+
+describe('DemandesAchatList — générer le BCF / étapes', () => {
+  const approuvee = {
+    id: 8, reference: 'DA-202607-0008', objet: 'Câbles', statut: 'approuvee',
+    priorite: 'normale', montant_estime: '100.00', chantier: null, bon_commande: null,
+    lignes: [], note: '',
+  }
+
+  it('« Générer le BCF » appelle l’API et affiche la référence du BCF', async () => {
+    installationsApi.getDemandesAchat.mockResolvedValue({ data: [approuvee] })
+    installationsApi.genererBcfDemandeAchat.mockResolvedValue({
+      data: { ...approuvee, statut: 'commandee', bon_commande: 55 },
+    })
+    stockApi.getBonCommandeFournisseur.mockResolvedValue({ data: { id: 55, reference: 'BCF-2026-10-0055' } })
+    render(<DemandesAchatList />, { wrapper: makeWrapper() })
+    fireEvent.click((await screen.findAllByText('DA-202607-0008'))[0])
+    fireEvent.click(await screen.findByRole('button', { name: /Générer le BCF/ }))
+    await waitFor(() => expect(installationsApi.genererBcfDemandeAchat).toHaveBeenCalledWith(8))
+    const lien = await screen.findByRole('link', { name: 'BCF-2026-10-0055' })
+    // F2 — le lien porte l'id du BCF dans le state de navigation (jamais un ?ref= vide).
+    expect(lien.getAttribute('href')).toBe('/stock/bons-commande-fournisseur')
+  })
+
+  it('F3 : « Générer le BCF » est masqué sans la permission achats_commander', async () => {
+    installationsApi.getDemandesAchat.mockResolvedValue({ data: [approuvee] })
+    render(<DemandesAchatList />, {
+      wrapper: makeWrapper({ permissions: ['stock_voir'] }),
+    })
+    fireEvent.click((await screen.findAllByText('DA-202607-0008'))[0])
+    await screen.findByRole('dialog')
+    expect(screen.queryByRole('button', { name: /Générer le BCF/ })).toBeNull()
+  })
+
+  it('F3 : « Générer le BCF » reste visible avec achats_commander', async () => {
+    installationsApi.getDemandesAchat.mockResolvedValue({ data: [approuvee] })
+    render(<DemandesAchatList />, {
+      wrapper: makeWrapper({ permissions: ['stock_voir', 'achats_commander'] }),
+    })
+    fireEvent.click((await screen.findAllByText('DA-202607-0008'))[0])
+    expect(await screen.findByRole('button', { name: /Générer le BCF/ })).toBeInTheDocument()
+  })
+
+  it('F1 : ?da=<id> ouvre le détail de cette demande, sans ouvrir le formulaire de création', async () => {
+    installationsApi.getDemandesAchat.mockResolvedValue({ data: [approuvee] })
+    render(<DemandesAchatList />, {
+      wrapper: makeWrapper({ initialEntries: ['/chantiers/demandes-achat?da=8'] }),
+    })
+    // Le détail (bouton d'action propre au détail) s'ouvre ; le formulaire non.
+    expect(await screen.findByRole('button', { name: /Générer le BCF/ })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Objet')).toBeNull()
+    expect(screen.queryByText("Nouvelle demande d'achat")).toBeNull()
+  })
+
+  it('sur 409 « approuver-etape », liste les étapes avec Approuver / Rejeter', async () => {
+    installationsApi.approuverDemandeAchat.mockRejectedValue({
+      response: { status: 409, data: { detail: 'validez les étapes via « approuver-etape ».' } },
+    })
+    installationsApi.getEtapesApprobationDA.mockResolvedValue({
+      data: [{ id: 3, niveau: 1, statut: 'en_attente', statut_display: 'En attente', approbateur_nom: null }],
+    })
+    render(<DemandesAchatList />, { wrapper: makeWrapper() })
+    fireEvent.click((await screen.findAllByText('DA-202607-0007'))[0])
+    fireEvent.click(await screen.findByRole('button', { name: /^Approuver$/ }))
+    await waitFor(() => expect(installationsApi.getEtapesApprobationDA).toHaveBeenCalledWith(7))
+    expect(await screen.findByRole('button', { name: /Rejeter/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Approuver l.étape/ })).toBeInTheDocument()
   })
 })

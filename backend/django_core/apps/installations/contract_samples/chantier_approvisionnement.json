@@ -1,0 +1,141 @@
+{
+  "endpoint": "GET /api/django/installations/chantiers/<int:pk>/approvisionnement/",
+  "pourquoi": "Revue chantier 26/10/2026 (fondateur : « après l'acceptation, je dois savoir ce qui manque, l'acheter, voir ce qui arrive »). UNE seule réponse par chantier qui remplace le trio « Calculer le besoin » / toast BCF / BCF introuvable : `lignes` = la nomenclature gelée confrontée au stock (requis, déjà sorti, réservé pour CE chantier, disponible pour ce chantier, en commande brouillon / envoyé, reçu, manque net), `bons_commande` = les BCF dont `chantier_origine` est ce chantier avec l'avancement de réception par ligne, `demandes_achat` = les DA du chantier, `reservations` = les réservations actives, `resume` = compteurs + verdict « prêt à poser » (readiness FG77 enfin lu par un écran). `manque` ne retranche que les BCF ENVOYÉS (un brouillon jamais envoyé ne sécurise rien) ; `en_commande_brouillon` est servi à part pour que l'écran le montre. `serie_attendue` = le produit est de nature à porter un numéro de série (catégorie hors TYPES_HORS_PARC du SAV : jamais un câble, une prestation, un socle). Aucun prix (règle prix d'achat masqués, D-ASTK-2). Le frontend (onglet « Matériel & BC » de InstallationDetail) importe cet exemple au lieu d'inventer son PAYLOAD.",
+  "exemple": {
+    "installation": 43,
+    "reference": "CHT-202610-0043",
+    "statut": "signe",
+    "resume": {
+      "nb_lignes": 4,
+      "nb_manques": 1,
+      "nb_en_commande": 1,
+      "nb_recues": 0,
+      "pret_a_poser": false,
+      "raisons": ["1 article en manque", "Date de pose non fixée"]
+    },
+    "lignes": [
+      {
+        "produit_id": 34,
+        "sku": "PAN-710",
+        "designation": "Panneau Canadian Solar 710W",
+        "serie_attendue": true,
+        "requis": 10,
+        "deja_sorti": 0,
+        "reserve_chantier": 10,
+        "stock_total": 930,
+        "reserve_autres": 40,
+        "disponible": 890,
+        "en_commande_brouillon": 0,
+        "en_commande_envoye": 0,
+        "recu": 0,
+        "manque": 0,
+        "fournisseur_id": 2,
+        "fournisseur_nom": "SunPro Maroc"
+      },
+      {
+        "produit_id": 51,
+        "sku": "BAT-DYN-5",
+        "designation": "Batterie Dyness 5 kWh",
+        "serie_attendue": true,
+        "requis": 2,
+        "deja_sorti": 0,
+        "reserve_chantier": 0,
+        "stock_total": 0,
+        "reserve_autres": 0,
+        "disponible": 0,
+        "en_commande_brouillon": 0,
+        "en_commande_envoye": 2,
+        "recu": 0,
+        "manque": 0,
+        "fournisseur_id": 3,
+        "fournisseur_nom": "Electra Distribution"
+      },
+      {
+        "produit_id": 60,
+        "sku": "COF-ACDC",
+        "designation": "Tableau de protection AC/DC",
+        "serie_attendue": false,
+        "requis": 1,
+        "deja_sorti": 0,
+        "reserve_chantier": 0,
+        "stock_total": 0,
+        "reserve_autres": 0,
+        "disponible": 0,
+        "en_commande_brouillon": 0,
+        "en_commande_envoye": 0,
+        "recu": 0,
+        "manque": 1,
+        "fournisseur_id": null,
+        "fournisseur_nom": null
+      },
+      {
+        "produit_id": 12,
+        "sku": "CAB-6",
+        "designation": "Câble solaire 6 mm² (au mètre)",
+        "serie_attendue": false,
+        "requis": 60,
+        "deja_sorti": 0,
+        "reserve_chantier": 60,
+        "stock_total": 4580,
+        "reserve_autres": 240,
+        "disponible": 4340,
+        "en_commande_brouillon": 0,
+        "en_commande_envoye": 0,
+        "recu": 0,
+        "manque": 0,
+        "fournisseur_id": null,
+        "fournisseur_nom": null
+      }
+    ],
+    "bons_commande": [
+      {
+        "id": 7,
+        "reference": "BCF-202610-0003",
+        "statut": "envoye",
+        "statut_display": "Envoyé",
+        "fournisseur_id": 3,
+        "fournisseur_nom": "Electra Distribution",
+        "date_commande": "2026-10-26",
+        "date_livraison_prevue": null,
+        "nb_lignes": 1,
+        "quantite_commandee": 2,
+        "quantite_recue": 0,
+        "lignes": [
+          {"produit_id": 51, "designation": "Batterie Dyness 5 kWh", "quantite": 2, "quantite_recue": 0}
+        ]
+      }
+    ],
+    "demandes_achat": [
+      {
+        "id": 3,
+        "reference": "DA-202610-0001",
+        "objet": "Coffret AC/DC chantier",
+        "statut": "approuvee",
+        "statut_display": "Approuvée",
+        "bon_commande_id": null,
+        "nb_lignes": 1
+      }
+    ],
+    "reservations": [
+      {"produit_id": 34, "designation": "Panneau Canadian Solar 710W", "quantite": 10, "statut": "active"},
+      {"produit_id": 12, "designation": "Câble solaire 6 mm² (au mètre)", "quantite": 60, "statut": "active"}
+    ]
+  },
+  "exemple_vide": {
+    "installation": 44,
+    "reference": "CHT-202610-0044",
+    "statut": "signe",
+    "resume": {
+      "nb_lignes": 0,
+      "nb_manques": 0,
+      "nb_en_commande": 0,
+      "nb_recues": 0,
+      "pret_a_poser": false,
+      "raisons": ["Nomenclature vide"]
+    },
+    "lignes": [],
+    "bons_commande": [],
+    "demandes_achat": [],
+    "reservations": []
+  }
+}
