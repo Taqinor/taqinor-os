@@ -171,10 +171,17 @@ def _structure(company_id):
 
 
 def _superviseur_calcule(uid, actuel, structure, fonction_dep):
-    """Règles (a)→(f) ; renvoie ``actuel`` quand aucune règle ne s'applique."""
+    """Règles (a), (d), (b), (c), (e), (f) — (d) passe avant (b) ; renvoie
+    ``actuel`` quand aucune règle ne s'applique."""
     tete, deps, equipes = structure
     if tete is not None and uid == tete:
         return None  # (a) tête de la Direction
+    for resp, direction in deps.values():  # (d) tête de département
+        if resp == uid and not direction:
+            # Avant (b) : une appartenance d'équipe ne doit JAMAIS placer une
+            # tête de département sous un chef d'équipe (ce chef verrait tout
+            # le département par son sous-arbre — revue Fable 27/10).
+            return tete if tete is not None else actuel
     chefs = [c for c, _d, m in equipes if c is not None and uid in m
              and c != uid]
     if chefs:  # (b) membre d'une équipe : son chef (l'actuel s'il en est un)
@@ -183,9 +190,6 @@ def _superviseur_calcule(uid, actuel, structure, fonction_dep):
         resp = deps.get(dep, (None, False))[0]
         if chef == uid and resp is not None and resp != uid:
             return resp
-    for resp, direction in deps.values():  # (d) tête de département
-        if resp == uid and not direction and tete is not None:
-            return tete
     resp, direction = deps.get(fonction_dep, (None, False))  # (e) fonction
     cible = tete if direction else resp
     if cible is not None and cible != uid:

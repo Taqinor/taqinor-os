@@ -13,7 +13,7 @@ from authentication.equipes_structure import (
 from authentication.permissions import IsAdminRole, IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import Departement, EquipeOrg, Poste
+from .models import Departement, EquipeOrg, Poste, Role
 from .serializers_organisation import (
     DepartementSerializer, EquipeOrgSerializer, PosteSerializer)
 
@@ -67,8 +67,19 @@ class PosteViewSet(_StructureViewSet):
         company = self.request.user.company
         with transaction.atomic():
             poste = serializer.save(company=company)
-            propager_poste(poste, ancien_role_id)
+            changes = propager_poste(poste, ancien_role_id)
             recalculer_hierarchie(company.pk)
+        # FG18 — un rôle changé par la fonction laisse une trace au journal
+        # d'audit, comme un changement fait depuis la fiche du compte.
+        from apps.parametres.models import SettingsAuditLog
+        ancien = Role.objects.filter(pk=ancien_role_id).first()
+        for user in changes:
+            SettingsAuditLog.log_change(
+                company=company, user=self.request.user,
+                section='utilisateurs', field=f'user:{user.username}:role',
+                field_label=f'Rôle de {user.username} (fonction '
+                            f'« {poste.intitule} »)',
+                old=ancien.nom if ancien else '—', new=poste.role.nom)
 
 
 class EquipeOrgViewSet(_StructureViewSet):

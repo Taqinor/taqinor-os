@@ -1314,3 +1314,30 @@ class OrganigrammeTest(TestCase):
             format='json')
         self.assertEqual(r.status_code, 201, r.content)
         self.assertEqual(self._sup(m), self.admin.pk)
+
+    def test_tete_de_departement_jamais_sous_un_chef_d_equipe(self):
+        # Revue Fable 27/10 : membre d'une équipe, une tête de département
+        # reste sous la Direction — le chef ne voit pas tout le département.
+        from authentication.equipes_structure import recalculer_hierarchie
+        from apps.roles.models import EquipeOrg
+        dg, rc, chef = (self._user(f'org_t{i}') for i in range(3))
+        self._dep('Direction', dg, est_direction=True)
+        com = self._dep('Commercial', rc)
+        equipe = EquipeOrg.objects.create(
+            company=self.company, nom='Terrain', departement=com, chef=chef)
+        equipe.membres.set([rc])
+        recalculer_hierarchie(self.company.pk)
+        self.assertEqual(self._sup(rc), dg.pk)
+
+    def test_fonction_sans_role_puis_role_propage_et_journalise(self):
+        from apps.parametres.models import SettingsAuditLog
+        from apps.roles.models import Poste
+        poste = Poste.objects.create(company=self.company, intitule='Stagiaire')
+        u = self._user('org_sans_role', fonction=poste)
+        r = self.api.patch(f'/api/django/roles/postes/{poste.pk}/',
+                           {'role': self.r_com.pk}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        u.refresh_from_db()
+        self.assertEqual(u.role_id, self.r_com.pk)
+        self.assertTrue(SettingsAuditLog.objects.filter(
+            company=self.company, field='user:org_sans_role:role').exists())

@@ -93,21 +93,22 @@ def propager_poste(poste, ancien_role_id):
     """Après modification d'une fonction : recopie son intitulé dans le
     ``poste`` (texte) de ses titulaires, et donne le NOUVEAU rôle par défaut
     aux titulaires qui portaient encore l'ANCIEN (un rôle choisi à la main
-    reste). Renvoie le nombre de rôles changés."""
+    reste). Renvoie les comptes dont le rôle a changé (pour le journal)."""
     from authentication.models import CustomUser
 
     titulaires = CustomUser.objects.filter(
         company_id=poste.company_id, fonction=poste)
     titulaires.exclude(poste=poste.intitule[:120]).update(
         poste=poste.intitule[:120])
-    if poste.role_id is None or poste.role_id == ancien_role_id \
-            or ancien_role_id is None:
-        return 0
+    # Ancien rôle vide inclus : les titulaires sans rôle (« à compléter »)
+    # reçoivent le rôle quand la fonction en obtient un.
+    if poste.role_id is None or poste.role_id == ancien_role_id:
+        return []
     palier = CustomUser.tier_for_role(poste.role) or CustomUser.ROLE_NORMAL
-    changes = 0
+    changes = []
     for user in titulaires.filter(role_id=ancien_role_id).select_related('role'):
         if role_par_defaut_applicable(user, poste.role):
             CustomUser.objects.filter(pk=user.pk).update(
                 role=poste.role, role_legacy=palier)
-            changes += 1
+            changes.append(user)
     return changes
