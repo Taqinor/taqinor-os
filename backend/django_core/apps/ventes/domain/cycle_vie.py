@@ -1356,10 +1356,18 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             raise AcceptError(
                 'Ce devis comporte deux options — précisez celle choisie par '
                 'le client (« sans_batterie » ou « avec_batterie »).')
+        deduite = (Devis.OptionAcceptee.AVEC_BATTERIE
+                   if scenario == 'Avec batterie'
+                   else Devis.OptionAcceptee.SANS_BATTERIE)
+        # CPRS6 — par le lien client, une offre à UNE option ne se signe que
+        # sur cette option (un corps forgé ne scelle jamais l'autre).
+        if lien is not None and detection_sure and nb_options == 1 \
+                and option and option != deduite:
+            raise AcceptError(
+                "Cette proposition ne comporte qu'une option : "
+                "l'option demandée n'en fait pas partie.")
         if not option:
-            option = (Devis.OptionAcceptee.AVEC_BATTERIE
-                      if scenario == 'Avec batterie'
-                      else Devis.OptionAcceptee.SANS_BATTERIE)
+            option = deduite
 
         # VNT54 vente unique par lead + VNT57 gel d'un brouillon (T17, ADEV12).
         preparer_acceptation(devis, user=user)
