@@ -711,9 +711,12 @@ describe('CIQ420 — script d’appel pro', () => {
     // CSV1 — les jours ouvrent l'étape d'activité : les réponses propres à
     // l'activité (clés vides) ne la bloquent plus.
     expect(await posees()).toEqual([
-      'facture_hiver', 'conso_mensuelle_kwh', 'compteur_puissance_kva', 'jours_ouverture',
+      'facture_hiver', 'conso_mensuelle_kwh', 'contrat_electricite', 'jours_ouverture',
       'type_surface', 'decideur',
     ])
+    // CSV3 — « ne sait pas » : on propose la photo de la facture par WhatsApp.
+    expect(screen.getByTestId('consigne-contrat-inconnu'))
+      .toHaveTextContent(guidance.CONSIGNE_CONTRAT_INCONNU)
     expect(screen.queryByTestId('question-appel-tension_raccordement')).not.toBeInTheDocument()
   })
 

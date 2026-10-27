@@ -634,7 +634,7 @@ test('CIQ420 — chaque colonne des cinq étapes pro est servie par le contrat (
   const servies = new Set()
   for (const variante of [
     'exemple_commercial', 'exemple_industriel', 'exemple_industriel_fixe',
-    'exemple_commercial_associe',
+    'exemple_commercial_associe', 'exemple_commercial_force_motrice',
   ]) {
     for (const q of exemple(variante).champs_a_poser) servies.add(q.champ)
     for (const champ of Object.keys(exemple(variante).prefill)) servies.add(champ)
@@ -671,7 +671,7 @@ test('CIQ420 — commercial (exemple du contrat) : une étape déjà répondue e
   const g = guidanceAppel(exemple('exemple_commercial'))
   // `tension_raccordement` et `categorie_commerciale` sont déjà sur la fiche.
   assert.deepEqual(g.questions.map((q) => q.champ), [
-    'facture_hiver', 'compteur_puissance_kva', 'jours_ouverture',
+    'facture_hiver', 'contrat_electricite', 'jours_ouverture',
     'type_surface', 'decideur',
   ])
   assert.equal(g.questions.length, 5)
@@ -715,6 +715,21 @@ test('CSV2 — la facture sert deux colonnes : la principale selon le serveur, l
   const g = guidanceAppel(mad).questions[0]
   assert.equal(g.champ, 'conso_mensuelle_kwh')
   assert.equal(g.complementsVisibles, undefined)
+})
+
+test('CSV3 — contrat posé après la tension, option bi-horaire seulement en force motrice', () => {
+  const commercial = guidanceAppel(exemple('exemple_commercial'))
+  const raccordement = commercial.questions.find((q) => q.etape === 'raccordement')
+  assert.equal(raccordement.champ, 'contrat_electricite')
+  assert.ok(raccordement.complements.some((c) => c.champ === 'compteur_puissance_kva'))
+  assert.ok(!raccordement.choix.some((c) => c.valeur === 'mt_general'))
+  const force = guidanceAppel(exemple('exemple_commercial_force_motrice'))
+    .questions.find((q) => q.etape === 'raccordement')
+  assert.equal(force.champ, 'option_tarifaire_bt')
+  // Un site MT n'a ni contrat ni option.
+  const mt = guidanceAppel(exemple('exemple_industriel')).questions.find((q) => q.etape === 'raccordement')
+  assert.equal(mt.champ, 'compteur_puissance_kva')
+  assert.match(guidance.CONSIGNE_CONTRAT_INCONNU, /photo de sa facture par WhatsApp/)
 })
 
 test('CIQ420 — « avec le conjoint / la famille » est absent pour un pro', () => {

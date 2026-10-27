@@ -227,7 +227,8 @@ export const ORDRE_AGRICOLE = Object.freeze([
 // sert les DEUX colonnes, la principale d'abord selon le segment et la tension
 // (`serveurOrdonne`), l'autre en saisie visible à côté (`complementsVisibles`) ;
 // l'étape ne se ferme que quand la consommation COMPTE pour le moteur ; (2) le
-// raccordement : tension, puissance souscrite, phase ; (3) l'activité et le
+// raccordement : tension, contrat (lu sur la facture), option bi-horaire (force
+// motrice seulement), puissance souscrite, phase ; (3) l'activité et le
 // rythme : catégorie et ses questions, ou secteur et équipes, jours (sept
 // boutons), heures, mois de fermeture (douze boutons, `choix_multiple`) ;
 // (4) la surface : type, toiture, m² ; (5) qui décide. `champs` liste TOUTES
@@ -246,7 +247,8 @@ export const ORDRE_PRO = Object.freeze([
   Object.freeze({
     etape: 'raccordement',
     champs: Object.freeze([
-      'tension_raccordement', 'compteur_puissance_kva', 'raccordement',
+      'tension_raccordement', 'contrat_electricite', 'option_tarifaire_bt',
+      'compteur_puissance_kva', 'raccordement',
     ]),
   }),
   Object.freeze({
@@ -751,6 +753,9 @@ export const A_NOTER_PROCESS = 'À noter dans la note d’appel : les process '
 // CSV2 — consigne d'écran sous les heures de début et de fin (0 à 24) : un site
 // ouvert jour et nuit se note 0 et 24. Elle porte des chiffres : hors du jeu de
 // consignes re-dérivées de `messages_meryem.md` (qui n'en tolère aucun).
+export const CONSIGNE_CONTRAT_INCONNU = "Le client ne sait pas : proposez-lui d'envoyer "
+  + 'une photo de sa facture par WhatsApp.'
+
 export const CONSIGNE_OUVERT_24H = 'Ouvert 24 h/24 : notez 0 et 24.'
 
 // Décision fondateur du 24/09/2026 : la question CAD168 « Votre montant

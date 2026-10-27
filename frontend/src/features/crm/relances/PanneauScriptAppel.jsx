@@ -42,7 +42,7 @@ import {
   AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR, JOUR_NON_APPELABLE,
   NON_COMPTE_TITRE, NON_COMPTE_FUTURES_CHARGES, NON_COMPTE_TRANCHE_ONEE,
   VISITE_POINT_EAU_TITRE, VISITE_POINT_EAU_CONSIGNE,
-  VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE, CONSIGNE_OUVERT_24H,
+  VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE, CONSIGNE_OUVERT_24H, CONSIGNE_CONTRAT_INCONNU,
 } from './appelGuidance'
 import BasculeReplie from './BasculeReplie'
 
@@ -179,6 +179,11 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
       {consigne && (
         <p className="text-xs text-muted-foreground" data-testid={`consigne-question-${entree.champ}`}>
           {consigne}
+        </p>
+      )}
+      {entree.champ === 'contrat_electricite' && (
+        <p className="text-xs text-muted-foreground" data-testid="consigne-contrat-inconnu">
+          {CONSIGNE_CONTRAT_INCONNU}
         </p>
       )}
       {['heure_debut', 'heure_fin'].includes(entree.champ) && (

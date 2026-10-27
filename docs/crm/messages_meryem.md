@@ -575,6 +575,7 @@ A_NOTER_FORCE_MOTRICE : À noter dans la note d’appel : le compteur de la pomp
 A_NOTER_MEILLEUR_MOMENT : À noter dans la note d’appel : le meilleur moment pour le joindre (jour de souk, heures au champ).
 A_NOTER_PROCESS : À noter dans la note d’appel : les process critiques, qui ne doivent jamais s’arrêter.
 AUCUNE_ESTIMATION_SEGMENT : Aucun chiffre d'économie au téléphone pour ce segment : le calcul ne sait pas encore le traiter.
+CONSIGNE_CONTRAT_INCONNU : Le client ne sait pas : proposez-lui d'envoyer une photo de sa facture par WhatsApp.
 CARBURANT_DECLARE_SEUL : L'économie de carburant se calcule uniquement sur ce que le client déclare (litres ou dirhams par mois) — jamais sur un prix de gasoil supposé.
 SEGMENT_PROBABLE_CONSIGNE : confirmez avec le client.
 VISITE_POINT_EAU_TITRE : Planifier la visite — relevé du point d’eau

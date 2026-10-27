@@ -298,6 +298,61 @@ class CIQ410PanneauPro(SimpleTestCase):
                     facture_hiver=Decimal('5000'))
         self.assertEqual(_champs(lead)[0], 'conso_mensuelle_kwh')
 
+    def test_contrat_pose_en_bt_jamais_en_mt_option_si_force_motrice(self):
+        """CSV3 — le contrat se lit sur la facture : posé juste après la
+        tension à tout site non déclaré en MT, l'option bi-horaire seulement
+        en force motrice, la question reprise mot pour mot du contrat CIQ1."""
+        for segment in ('commercial', 'industriel'):
+            champs = _champs(Lead(nom='P', type_installation=segment,
+                                  tension_raccordement='bt'))
+            self.assertIn('contrat_electricite', champs, segment)
+            self.assertNotIn('option_tarifaire_bt', champs, segment)
+            self.assertLess(champs.index('contrat_electricite'),
+                            champs.index('compteur_puissance_kva'))
+            # Tension inconnue : le contrat est posé aussi.
+            self.assertIn('contrat_electricite', _champs(
+                Lead(nom='P', type_installation=segment)))
+            # MT déclarée : jamais de contrat, jamais d'option.
+            mt = _champs(Lead(nom='P', type_installation=segment,
+                              tension_raccordement='mt',
+                              contrat_electricite='bt_force_motrice'))
+            self.assertNotIn('contrat_electricite', mt, segment)
+            self.assertNotIn('option_tarifaire_bt', mt, segment)
+        force = Lead(nom='P', type_installation='commercial',
+                     tension_raccordement='bt',
+                     contrat_electricite='bt_force_motrice')
+        self.assertIn('option_tarifaire_bt', _champs(force))
+        for autre in ('bt_patente', 'bt_domestique', 'ne_sait_pas'):
+            lead = Lead(nom='P', type_installation='commercial',
+                        tension_raccordement='bt', contrat_electricite=autre)
+            self.assertNotIn('option_tarifaire_bt', _champs(lead), autre)
+            # « Ne sait pas » (comme tout contrat posé) clôt la question.
+            self.assertNotIn('contrat_electricite', _champs(lead), autre)
+
+    def test_contrat_et_option_reprennent_le_contrat_ciq1_mot_pour_mot(self):
+        contrat_pro = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'lead_pro.json').read_text(encoding='utf-8'))
+        par_colonne = {c['nom']: c['question']
+                       for c in contrat_pro['colonnes_pro']}
+        for colonne in ('contrat_electricite', 'option_tarifaire_bt'):
+            self.assertIn(panneau.QUESTIONS_PRO[colonne],
+                          par_colonne[colonne], colonne)
+
+    def test_site_bt_ne_propose_pas_le_contrat_moyenne_tension(self):
+        def valeurs(lead):
+            questions = {q['champ']: q for q in panneau.questions_a_poser(lead)}
+            return [c['valeur']
+                    for c in questions['contrat_electricite']['choix']]
+
+        bt = valeurs(Lead(nom='P', type_installation='commercial',
+                          tension_raccordement='bt'))
+        self.assertNotIn('mt_general', bt)
+        self.assertEqual(bt, ['bt_domestique', 'bt_patente',
+                              'bt_force_motrice', 'ne_sait_pas'])
+        inconnue = valeurs(Lead(nom='P', type_installation='commercial'))
+        self.assertIn('mt_general', inconnue)
+
     def test_decideur_seulement_les_choix_pro(self):
         questions = {q['champ']: q for q in panneau.questions_a_poser(
             Lead(nom='P', type_installation='industriel'))}
@@ -335,7 +390,8 @@ class CIQ410PanneauPro(SimpleTestCase):
                     self.assertNotIn(fragment, cle.lower(), cle)
 
     def test_les_exemples_pro_du_contrat_egalent_la_sortie_reelle(self):
-        for nom in ('exemple_commercial', 'exemple_industriel'):
+        for nom in ('exemple_commercial', 'exemple_industriel',
+                    'exemple_commercial_force_motrice'):
             exemple = CONTRAT[nom]
             lead = Lead(pk=exemple['lead_id'], nom='P',
                         type_installation=exemple['segment'],
