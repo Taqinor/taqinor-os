@@ -127,3 +127,26 @@ class PaliersApiTests(TestCase):
                              format='json')
         self.assertEqual(r.status_code, 409)  # ENF11 : règle croisée entre paliers
         self.assertIn('paliers_prix_vente', r.data)
+
+    def test_seuil_negatif_400_seuil_max_inferieur_409(self):
+        """api-fuzz-full 27/10 (ENF11) — ``seuil_min: -5e-90`` était publié
+        conforme puis refusé 400 : la borne ``minimum: 0`` est désormais
+        publiée (le 400 reste, corps hors schéma) ; ``seuil_max`` ≤
+        ``seuil_min`` est une règle à deux champs → 409."""
+        from apps.stock.schema_contraintes import CHAMPS_JSON_PRODUIT
+        seuil = (CHAMPS_JSON_PRODUIT['paliers_prix_vente']['items']
+                 ['properties']['seuil_min'])
+        self.assertIn({'type': 'number', 'minimum': 0}, seuil['anyOf'])
+        r = self._api().post(URL, {'nom': 'X', 'prix_vente': '1',
+                                   'paliers_prix_vente': [
+                                       {'seuil_min': -5.1e-90,
+                                        'prix_vente_ttc': '10'}]},
+                             format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        r = self._api().post(URL, {'nom': 'X', 'prix_vente': '1',
+                                   'paliers_prix_vente': [
+                                       {'seuil_min': 10, 'seuil_max': 5,
+                                        'prix_vente_ttc': '10'}]},
+                             format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('paliers_prix_vente', r.data)

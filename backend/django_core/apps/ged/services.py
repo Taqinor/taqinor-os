@@ -1085,6 +1085,28 @@ def find_document_by_source(company, *, source_type, source_id):
             .first())
 
 
+def partager_document_avec_client_portail(document, client_id,
+                                          created_by=None):
+    """Revue chantier 26/10/2026 (G5/G6) — partage EN LECTURE un document GED
+    avec un client du portail (``AclGed.client``, NTPRT13) : c'est ce qui le
+    fait apparaître dans « Mes documents ». IDEMPOTENT (une seule entrée par
+    (document, client)), société prise sur le document (jamais d'une requête),
+    ``herite=False`` (override pur, jamais propagé à un dossier). Point
+    d'entrée cross-app : une autre app n'écrit jamais d'``AclGed`` elle-même.
+    Renvoie l'entrée ACL, ou ``None`` sans document / client."""
+    from .models import ACL_LECTURE, AclGed
+    if document is None or not client_id:
+        return None
+    acl = AclGed.objects.filter(
+        company=document.company, document=document,
+        client_id=client_id).first()
+    if acl is not None:
+        return acl
+    return AclGed.objects.create(
+        company=document.company, document=document, client_id=client_id,
+        niveau=ACL_LECTURE, herite=False, created_by=created_by)
+
+
 def _store_bytes(data, *, mime='application/pdf'):
     """Téléverse des octets bruts dans le stockage objet et renvoie (clé, méta).
 

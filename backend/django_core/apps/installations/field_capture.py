@@ -62,6 +62,81 @@ def raison_serie_en_double(company, numero, *, exclude_id=None):
     return None
 
 
+#: Revue chantier 26/10/2026 — bornes des caractéristiques de plaque.
+CARACTERISTIQUES_MAX_CLES = 10
+MESSAGE_SERIE_SANS_COMPOSANT = (
+    "Choisissez le composant (produit) ou saisissez sa désignation.")
+CAPTURE_SOURCES = ('scan', 'saisie', 'photo')
+
+
+def _refuse_constante(nom):
+    raise ValueError(f'constante JSON refusée : {nom}')
+
+
+def valider_caracteristiques(valeur):
+    """Revue chantier 26/10/2026 — ``(dict, None)`` ou ``(None, message)``.
+    Dict PLAT d'au plus 10 clés texte, valeurs texte ou nombre (jamais une
+    liste/un objet imbriqué) ; ``None``/vide → ``{}``. Une chaîne JSON
+    (corps multipart) est décodée."""
+    import json
+    import math
+    if valeur in (None, ''):
+        return {}, None
+    if isinstance(valeur, str):
+        try:
+            # NaN / Infinity / -Infinity refusés (jsonb ne les accepte pas).
+            valeur = json.loads(valeur, parse_constant=_refuse_constante)
+        except ValueError:
+            return None, "Caractéristiques illisibles (objet attendu)."
+    if not isinstance(valeur, dict):
+        return None, "Caractéristiques : objet clé → valeur attendu."
+    if len(valeur) > CARACTERISTIQUES_MAX_CLES:
+        return None, (f"Caractéristiques : {CARACTERISTIQUES_MAX_CLES} "
+                      "champs au plus.")
+    propre = {}
+    for cle, val in valeur.items():
+        if not isinstance(cle, str) or not cle.strip() or len(cle) > 40:
+            return None, "Caractéristiques : nom de champ invalide."
+        if isinstance(val, bool) or not isinstance(val, (str, int, float)):
+            return None, (f"Caractéristiques : « {cle} » doit être un texte "
+                          "ou un nombre.")
+        if isinstance(val, float) and not math.isfinite(val):
+            return None, (f"Caractéristiques : « {cle} » doit être un nombre "
+                          "fini.")
+        if isinstance(val, str):
+            val = val.strip()[:255]
+            if not val:
+                continue
+        propre[cle.strip()] = val
+    return propre, None
+
+
+def champs_releve_serie(produit, data, *, exiger_composant=True):
+    """Revue chantier 26/10/2026 — champs communs d'un relevé de série (vue
+    ``ajouter-serial`` ET synchro hors-ligne ``intervention.serial``) :
+    ``(champs, None)`` ou ``(None, {champ: message})``. Refuse un relevé
+    sans ``produit`` ni ``designation`` ; avec un produit, la désignation
+    vaut par défaut son nom. ``capture_source`` inconnue → « saisie ».
+    ``exiger_composant=False`` (synchro) : une op déjà en file sur un
+    terminal d'avant la règle reste applicable — le relevé sans composant
+    est alors signalé à la clôture (``push_serials_to_parc``)."""
+    designation = (data.get('designation') or '').strip()
+    if produit is not None and not designation:
+        designation = (getattr(produit, 'nom', '') or '')[:255]
+    if produit is None and not designation and exiger_composant:
+        return None, {'designation': MESSAGE_SERIE_SANS_COMPOSANT}
+    caracteristiques, erreur = valider_caracteristiques(
+        data.get('caracteristiques'))
+    if erreur:
+        return None, {'caracteristiques': erreur}
+    source = (data.get('capture_source') or '').strip().lower()
+    if source not in CAPTURE_SOURCES:
+        source = 'saisie'
+    return {'designation': designation,
+            'caracteristiques': caracteristiques,
+            'capture_source': source}, None
+
+
 def numero_serie_en_double(company, numero, *, exclude_id=None):
     """ACHT37 — vrai si ce n° de série (non vide) existe déjà (voir
     ``raison_serie_en_double``)."""
@@ -114,8 +189,14 @@ def push_serials_to_parc(intervention, user):
     création. Un n° déjà au parc (donnée héritée) n'est JAMAIS une exception :
     le relevé reste ``pousse_parc=False`` et est signalé dans ``.conflits``.
     ACHT37 — appelé UNE fois à la clôture (jamais depuis un GET).
+    Revue chantier 26/10/2026 — un relevé SANS produit dont la désignation
+    désigne exactement UN produit porteur de série de la nomenclature (casse
+    ignorée) reçoit ce produit puis est poussé ; les autres restent en place,
+    comptés dans ``.non_rattaches`` et signalés au chatter (jamais perdus
+    en silence).
     Renvoie le nombre d'équipements créés (``ResultatPoussee``)."""
     from apps.sav.services import assurer_equipement_chantier
+    from .selectors import produit_par_designation, produits_porteurs_de_serie
     inst = intervention.installation
     quantites = _quantites_bom_par_produit(inst)
     date_pose = (getattr(inst, 'date_reception', None)
@@ -123,6 +204,30 @@ def push_serials_to_parc(intervention, user):
                  or timezone.localdate())
     created = 0
     conflits = []
+    non_rattaches = 0
+    sans_produit = list(intervention.serials.filter(
+        pousse_parc=False, produit__isnull=True))
+    if sans_produit:
+        porteurs = produits_porteurs_de_serie(inst)
+        for serial in sans_produit:
+            produit = produit_par_designation(porteurs, serial.designation)
+            if produit is None:
+                non_rattaches += 1
+                continue
+            serial.produit = produit
+            serial.save(update_fields=['produit'])
+    if non_rattaches:
+        from . import intervention_activity
+        from .models import InterventionActivity
+        note = (
+            f"{non_rattaches} n° de série sans composant catalogue : non "
+            "poussé(s) au parc SAV — choisissez le produit sur le relevé.")
+        # Pas de répétition : la poussée tourne à chaque ajout sur une
+        # intervention close ; une note identique déjà au chatter suffit.
+        if not InterventionActivity.objects.filter(
+                intervention=intervention,
+                kind=InterventionActivity.Kind.NOTE, body=note).exists():
+            intervention_activity.log_note(intervention, user, note)
     for serial in intervention.serials.filter(
             pousse_parc=False, produit__isnull=False):
         numero = (serial.numero_serie or '').strip() or None
@@ -140,6 +245,7 @@ def push_serials_to_parc(intervention, user):
             created += 1
     resultat = ResultatPoussee(created)
     resultat.conflits = conflits
+    resultat.non_rattaches = non_rattaches
     return resultat
 
 

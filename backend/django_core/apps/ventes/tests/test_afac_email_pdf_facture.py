@@ -178,6 +178,21 @@ class EmailPdfFactureTests(TestCase):
         self.assertEqual(resp.status_code, 409, resp.data)
         self.assertIn('destinataire', resp.data['detail'])
 
+    def test_sujet_sur_plusieurs_lignes_400_publie(self):
+        # api-fuzz-full 27/10 : un saut de ligne dans le sujet (en-tête
+        # d'email) était publié conforme puis refusé par l'envoi ; le schéma
+        # publie désormais « une seule ligne » et la validation l'applique.
+        from core.champs_stricts import ChaineUneLigne
+        from apps.ventes.views.openapi_docs import EnvoyerEmailFactureRequest
+        self.assertIsInstance(
+            EnvoyerEmailFactureRequest.fields['sujet'], ChaineUneLigne)
+        for sujet in ('Facture\nBcc: x@y.z', 'Facture\r', 'Fac\x00ture'):
+            resp = self.api.post(
+                f'/api/django/ventes/factures/{self.facture.id}/envoyer-email/',
+                {'sujet': sujet}, format='json')
+            self.assertEqual(resp.status_code, 400, (sujet, resp.data))
+            self.assertIn('sujet', resp.data)
+
     def test_pdf_impossible_refuse_envoi(self):
         from apps.ventes.email_service import send_relance_email
         self.minio.panne = True

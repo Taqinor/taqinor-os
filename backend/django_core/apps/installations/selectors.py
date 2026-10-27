@@ -3407,6 +3407,314 @@ def _quantites_bom(bom, plafond=False):
     return besoins
 
 
+# ── Revue chantier 26/10/2026 — approvisionnement par chantier ─────────────
+
+def quantites_deja_sorties_chantier(installation, produit_ids):
+    """``{produit_id: quantité entière déjà SORTIE}`` pour ce chantier — la
+    source unique ``services.quantite_deja_sortie_chantier`` (vente soldée +
+    consommation terrain F11), lisible par ``stock`` (besoin matériel) sans
+    importer les services installations. Lecture seule.
+
+    Revue chantier (F1) — s'y ajoute la sortie N14 de ``consume_reservations``
+    au passage « Installé » (réservation ``consomme=True``), au montant
+    RÉELLEMENT sorti (``_quantite_sortie_chantier`` : le manque CHT5 d'une
+    consommation partielle reste un manque) : sans elle, un chantier installé
+    réaffichait toute sa nomenclature en manque. ``quantite_deja_sortie_
+    chantier`` reste inchangé (les écrivains de réservation en dépendent)."""
+    from decimal import ROUND_HALF_UP, Decimal
+    from .services import _quantite_sortie_chantier
+    return {
+        pid: int(Decimal(str(_quantite_sortie_chantier(installation, pid)))
+                 .quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+        for pid in produit_ids if pid}
+
+
+def _raisons_pret_a_poser(installation, lignes, nb_manques, besoins):
+    """Raisons (phrases FR courtes) qui empêchent la pose ; vide = prêt.
+
+    Matériel : un manque NET (seul un BCF envoyé le sécurise) ; planning :
+    date de pose et technicien responsable ; dossier loi 82-21 : le verdict
+    de ``compute_chantier_readiness`` (FG77/CIQ617 — non concerné = ok)."""
+    from .services import compute_chantier_readiness
+    raisons = []
+    if not lignes:
+        raisons.append('Nomenclature vide')
+    if nb_manques:
+        raisons.append(f'{nb_manques} article{"s" if nb_manques > 1 else ""} '
+                       'en manque')
+    if installation.date_pose_prevue is None:
+        raisons.append('Date de pose non fixée')
+    if getattr(installation, 'technicien_responsable_id', None) is None:
+        raisons.append('Aucun technicien responsable')
+    readiness = compute_chantier_readiness(installation, besoins=besoins)
+    for check in readiness.get('checks', []):
+        if check.get('cle') == 'dossier' and check.get('statut') == 'bloquant':
+            raisons.append(f"Loi 82-21 : {check.get('detail', '')}".rstrip())
+    return raisons
+
+
+def approvisionnement_chantier(installation):
+    """Revue chantier 26/10/2026 — UNE réponse par chantier : ce qui manque,
+    ce qui est commandé, ce qui est arrivé (contrat
+    ``contract_samples/chantier_approvisionnement.json``, clé par clé).
+
+    * ``lignes`` : la nomenclature gelée (plafond ERR54) confrontée au stock
+      par ``stock.services.compute_besoin_materiel`` — `manque` = max(requis
+      − déjà sorti − disponible, 0) − en commande ENVOYÉE (un brouillon ne
+      sécurise rien, il est servi dans `en_commande_brouillon`) ; `recu` =
+      Σ ``quantite_recue`` des lignes BCF du chantier ; `serie_attendue` =
+      catégorie hors ``TYPES_HORS_PARC`` du SAV ;
+    * ``bons_commande`` : les BCF ``chantier_origine`` (achats.selectors) ;
+    * ``demandes_achat`` / ``reservations`` : DA et réservations actives ;
+    * ``resume`` : compteurs + verdict « prêt à poser » et ses raisons.
+    AUCUN prix (D-ASTK-2). Lecture seule."""
+    from apps.achats.selectors import bcf_du_chantier
+    from apps.sav.selectors import types_equipement_hors_parc
+    from apps.stock.services import compute_besoin_materiel
+    from .models import DemandeAchat, StockReservation
+
+    besoins = compute_besoin_materiel(installation)
+    bons_commande = bcf_du_chantier(installation)
+    recu = {}
+    for bon in bons_commande:
+        for ligne in bon['lignes']:
+            pid = ligne['produit_id']
+            if pid:
+                recu[pid] = recu.get(pid, 0) + (ligne['quantite_recue'] or 0)
+    hors_parc = types_equipement_hors_parc()
+
+    lignes = []
+    for b in besoins:
+        produit = b['produit']
+        categorie = getattr(produit, 'categorie', None)
+        type_equipement = getattr(categorie, 'type_equipement', None)
+        # Fournisseur proposé = celui que « Commander » retiendra (le moins
+        # cher N17, sinon le fournisseur catalogue) — jamais son prix.
+        if b.get('fournisseur_min_id'):
+            fournisseur_id = b['fournisseur_min_id']
+            fournisseur_nom = b.get('fournisseur_min_nom')
+        else:
+            fournisseur_id = b.get('fournisseur_id')
+            fournisseur_nom = b.get('fournisseur_nom')
+        lignes.append({
+            'produit_id': b['produit_id'],
+            'sku': b['sku'],
+            'designation': b['designation'],
+            'serie_attendue': type_equipement not in hors_parc,
+            'requis': b['requis'],
+            'deja_sorti': b.get('deja_sorti', 0),
+            'reserve_chantier': b.get('reserve_chantier', 0),
+            'stock_total': b.get('stock_total', 0),
+            'reserve_autres': b.get('reserve_autres', 0),
+            'disponible': b['disponible'],
+            'en_commande_brouillon': b.get('en_commande_brouillon', 0),
+            'en_commande_envoye': b.get('en_commande', 0),
+            'recu': recu.get(b['produit_id'], 0),
+            'manque': b['manque'],
+            'fournisseur_id': fournisseur_id,
+            'fournisseur_nom': fournisseur_nom,
+        })
+
+    statuts_da = dict(DemandeAchat.Statut.choices)
+    demandes_achat = []
+    for da in (DemandeAchat.objects
+               .filter(company_id=installation.company_id,
+                       chantier_id=installation.pk)
+               .prefetch_related('lignes').order_by('pk')):
+        demandes_achat.append({
+            'id': da.pk,
+            'reference': da.reference,
+            'objet': da.objet,
+            'statut': da.statut,
+            'statut_display': statuts_da.get(da.statut, da.statut),
+            'bon_commande_id': da.bon_commande_id,
+            'nb_lignes': len(da.lignes.all()),
+        })
+
+    reservations = [
+        {'produit_id': r.produit_id,
+         'designation': r.produit.nom if r.produit_id else '',
+         'quantite': r.quantite,
+         'statut': 'active'}
+        for r in (StockReservation.objects
+                  .filter(company_id=installation.company_id,
+                          installation_id=installation.pk,
+                          active=True, consomme=False)
+                  .select_related('produit').order_by('pk'))
+    ]
+
+    nb_manques = sum(1 for li in lignes if li['manque'] > 0)
+    raisons = _raisons_pret_a_poser(installation, lignes, nb_manques, besoins)
+    return {
+        'installation': installation.pk,
+        'reference': installation.reference,
+        'statut': installation.statut,
+        'resume': {
+            'nb_lignes': len(lignes),
+            'nb_manques': nb_manques,
+            'nb_en_commande': sum(
+                1 for li in lignes if li['en_commande_envoye'] > 0),
+            'nb_recues': sum(1 for li in lignes if li['recu'] > 0),
+            'pret_a_poser': not raisons,
+            'raisons': raisons,
+        },
+        'lignes': lignes,
+        'bons_commande': bons_commande,
+        'demandes_achat': demandes_achat,
+        'reservations': reservations,
+    }
+
+
+# ── Revue chantier 26/10/2026 — séries attendues vs relevées (terrain) ──────
+#: Libellés courts (singulier, pluriel) par type de catégorie, pour
+#: l'avertissement « Séries manquantes : 8 panneaux, 1 onduleur ».
+_LIBELLES_TYPE_SERIE = {
+    'panneau': ('panneau', 'panneaux'),
+    'onduleur': ('onduleur', 'onduleurs'),
+    'batterie': ('batterie', 'batteries'),
+    'pompe': ('pompe', 'pompes'),
+    'variateur': ('variateur', 'variateurs'),
+    'compteur': ('compteur', 'compteurs'),
+}
+
+
+def produits_porteurs_de_serie(installation):
+    """``[(produit, quantité attendue)]`` — produits de la nomenclature gelée
+    (``quantites_nomenclature_chantier``) qui entreront au parc SAV, donc
+    PORTENT un n° de série (catégorie hors
+    ``sav.selectors.types_equipement_hors_parc`` ; une catégorie non typée
+    entre, comme au balayage du parc). Ordre de la nomenclature."""
+    from apps.sav.selectors import types_equipement_hors_parc
+    from apps.stock.selectors import get_produit_scoped
+    if installation is None:
+        return []
+    hors_parc = types_equipement_hors_parc()
+    out = []
+    for produit_id, qte in quantites_nomenclature_chantier(
+            installation).items():
+        produit = get_produit_scoped(installation.company, produit_id)
+        if produit is None or qte <= 0:
+            continue
+        categorie = getattr(produit, 'categorie', None)
+        if getattr(categorie, 'type_equipement', None) in hors_parc:
+            continue
+        out.append((produit, int(qte)))
+    return out
+
+
+def produit_par_designation(porteurs, designation):
+    """Le produit porteur de série dont le NOM égale ``designation`` (casse
+    ignorée), seulement s'il est UNIQUE ; sinon ``None`` (jamais deviné)."""
+    cible = (designation or '').strip().lower()
+    if not cible:
+        return None
+    trouves = [p for p, _q in porteurs
+               if (getattr(p, 'nom', '') or '').strip().lower() == cible]
+    return trouves[0] if len(trouves) == 1 else None
+
+
+def serials_attendus_intervention(intervention):
+    """Contrat ``contract_samples/intervention_serials_attendus.json`` —
+    par produit porteur de série de la nomenclature gelée du chantier :
+    attendu (quantité), relevé (séries d'intervention ``ComponentSerial`` non
+    vides de TOUTES les interventions du chantier + équipements du parc déjà
+    sériés, dédoublonnés par n° casse ignorée), manquant, séries. Un relevé
+    sans ``produit`` dont la désignation désigne un seul produit porteur
+    compte pour ce produit (même règle que la poussée au parc). Aucun prix.
+    Lecture pure, bornée à la société de l'intervention."""
+    from apps.sav.selectors import equipements_series_du_chantier
+    from .models import ComponentSerial
+    inst = getattr(intervention, 'installation', None)
+    vide = {'intervention': intervention.pk,
+            'installation': getattr(inst, 'pk', None),
+            'complet': True, 'nb_attendus': 0, 'nb_releves': 0,
+            'produits': []}
+    if inst is None:
+        return vide
+    company = intervention.company
+    porteurs = produits_porteurs_de_serie(inst)
+    if not porteurs:
+        return vide
+    vus = set()
+    par_produit = {}
+    releves = (ComponentSerial.objects
+               .filter(company=company, intervention__installation=inst)
+               .exclude(numero_serie='').order_by('id'))
+    for s in releves:
+        numero = (s.numero_serie or '').strip()
+        cle = numero.upper()
+        if not numero or cle in vus:
+            continue
+        produit_id = s.produit_id
+        if produit_id is None:
+            match = produit_par_designation(porteurs, s.designation)
+            produit_id = getattr(match, 'pk', None)
+        if produit_id is None:
+            continue
+        vus.add(cle)
+        par_produit.setdefault(produit_id, []).append({
+            'id': s.pk, 'numero_serie': numero,
+            'intervention': s.intervention_id, 'source': 'intervention'})
+    for eq in equipements_series_du_chantier(company, inst.pk):
+        numero = (eq['numero_serie'] or '').strip()
+        cle = numero.upper()
+        if not numero or cle in vus:
+            continue
+        vus.add(cle)
+        par_produit.setdefault(eq['produit_id'], []).append({
+            'id': eq['id'], 'numero_serie': numero,
+            'intervention': None, 'source': 'parc'})
+    produits = []
+    nb_attendus = nb_releves = 0
+    for produit, attendu in porteurs:
+        series = par_produit.get(produit.pk, [])
+        releve = len(series)
+        nb_attendus += attendu
+        nb_releves += min(releve, attendu)
+        produits.append({
+            'produit_id': produit.pk,
+            'sku': produit.sku or '',
+            'designation': produit.nom or '',
+            'marque': produit.marque or '',
+            'attendu': attendu,
+            'releve': releve,
+            'manquant': max(attendu - releve, 0),
+            'series': series,
+        })
+    return {
+        'intervention': intervention.pk,
+        'installation': inst.pk,
+        'complet': all(p['manquant'] == 0 for p in produits),
+        'nb_attendus': nb_attendus,
+        'nb_releves': nb_releves,
+        'produits': produits,
+    }
+
+
+def avertissement_series_manquantes(intervention):
+    """Phrase CONSULTATIVE « Séries manquantes : 8 panneaux, 1 onduleur »
+    (jamais bloquante), ou ``None`` quand tout est relevé. Regroupe par type
+    de catégorie ; un produit non typé est nommé par sa désignation."""
+    from apps.stock.selectors import get_produit_scoped
+    attendus = serials_attendus_intervention(intervention)
+    morceaux = {}
+    for p in attendus['produits']:
+        if not p['manquant']:
+            continue
+        produit = get_produit_scoped(intervention.company, p['produit_id'])
+        categorie = getattr(produit, 'categorie', None)
+        type_eq = getattr(categorie, 'type_equipement', None)
+        cle = type_eq if type_eq in _LIBELLES_TYPE_SERIE else p['designation']
+        morceaux[cle] = morceaux.get(cle, 0) + p['manquant']
+    if not morceaux:
+        return None
+    parts = []
+    for cle, nombre in morceaux.items():
+        sing, plur = _LIBELLES_TYPE_SERIE.get(cle, (cle, cle))
+        parts.append(f"{nombre} {sing if nombre == 1 else plur}")
+    return "Séries manquantes : " + ", ".join(parts)
+
+
 # ── ACHT27 (C-ACHT-025) — portée de visibilité (Feature F), source unique ──
 #: Champs propriétaires/assignés qui bornent la portée d'un rôle restreint.
 CHAMPS_PORTEE_INTERVENTION = ['technicien', 'created_by']

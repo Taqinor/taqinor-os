@@ -63,7 +63,9 @@ from apps.ventes.utils.options import (
 from authentication.models import Company
 from apps.ventes.domain import taille as domaine_taille
 
-domain_creation = module_de('build_devis_auto')
+# SPL312 — le corps résidentiel (et sa lecture ``_panneaux_dimensionnement_horaire``)
+# vit dans ``creation_auto_residentiel`` : le patch vise ce PORTEUR.
+domain_creation = module_de('_build_devis_auto_residentiel')
 User = get_user_model()
 
 #: Même catalogue que celui semé par ``seed_catalogue`` — les DÉSIGNATIONS

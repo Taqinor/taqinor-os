@@ -103,6 +103,9 @@ class FranchissementEntreeTests(TestCase):
         self.responsable = make_user(self.company)
         self.technicien = make_user(self.company, role='normal')
         gps_tracking_service.record_consent(self.company, self.technicien)
+        # Revue chantier 26/10/2026 — accusé de réception de la notice par le
+        # technicien, préalable à tout ping.
+        gps_tracking_service.accepter_consentement(self.company, self.technicien)
         self.interv = make_intervention(
             self.company, self.responsable, self.technicien)
         self.api = auth(self.technicien)

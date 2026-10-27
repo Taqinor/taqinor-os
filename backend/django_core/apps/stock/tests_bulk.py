@@ -80,6 +80,23 @@ class TestBulkWarrantyCategoryBrand(ProductBulkBase):
         p.refresh_from_db()
         self.assertIsNone(p.categorie_id)
 
+    def test_marque_publiee_sans_nul(self):
+        # api-fuzz-full 27/10 : « K\x00… » était publié conforme puis refusé
+        # (400 du pilote) — le corps publie le motif sans NUL (ChaineStricte).
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.stock import urls as stock_urls
+        from core.champs_stricts import MOTIF_SANS_NUL
+        schema = SchemaGenerator(patterns=[
+            path('api/django/stock/', include(stock_urls)),
+        ]).get_schema(request=None, public=True)
+        operation = schema['paths']['/api/django/stock/produits/bulk/']['post']
+        ref = operation['requestBody']['content']['application/json'][
+            'schema']['$ref'].rsplit('/', 1)[-1]
+        marque = schema['components']['schemas'][ref]['properties']['marque']
+        self.assertEqual(marque['pattern'], MOTIF_SANS_NUL)
+
 
 class TestBulkExportAndScope(ProductBulkBase):
     def test_export_xlsx(self):

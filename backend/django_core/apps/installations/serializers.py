@@ -20,9 +20,11 @@ from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
 
 from .serializers_blocs import (
-    bloc_calepinage, bloc_dossier_8221_resume, bloc_regime_suggere)
+    bloc_avertissements_cloture, bloc_calepinage, bloc_dossier_8221_resume,
+    bloc_regime_suggere)
 from .serializers_stage import (
     CautionTotaleMixin, refus_protege, valider_unicite_societe)
+from .serializers_gps import GeofenceAlertGpsChampsMixin, InterventionGpsChampsMixin
 
 from .models import (
     Equipe,
@@ -289,7 +291,7 @@ class InstallationActivitySerializer(serializers.ModelSerializer):
         return getattr(obj.user, 'username', None)
 
 
-class InterventionSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class InterventionSerializer(InterventionGpsChampsMixin, IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                              ChampsTexteStrictsMixin,  # api-fuzz-full 26/10 : NUL
                              serializers.ModelSerializer):
     # ASEC32 — un technicien / une équipe d'une autre société reçoit la
@@ -346,6 +348,9 @@ class InterventionSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
     crew_time = serializers.SerializerMethodField()
     # F16 — nombre de réserves ouvertes.
     reserves_ouvertes = serializers.SerializerMethodField()
+    # Revue chantier 26/10/2026 — séries de composants encore à relever
+    # (consultatif). Calculé sur la fiche seule ; `null` dans une liste.
+    series_manquantes = serializers.SerializerMethodField()
 
     class Meta:
         model = Intervention
@@ -454,6 +459,19 @@ class InterventionSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
         if prefetch is not None:
             return len(prefetch)
         return obj.reserves.filter(statut=Reserve.Statut.OUVERTE).count()
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_series_manquantes(self, obj):
+        # Lecture de nomenclature + parc : seulement sur la FICHE (GET détail,
+        # PATCH de statut) — jamais N fois dans une liste ou une tournée.
+        view = self.context.get('view')
+        if (isinstance(self.parent, serializers.ListSerializer)
+                or getattr(view, 'action', None) not in (
+                    'retrieve', 'update', 'partial_update')):
+            return None
+        from .selectors import serials_attendus_intervention
+        attendus = serials_attendus_intervention(obj)
+        return sum(p['manquant'] for p in attendus['produits'])
 
 
 class ShotListSlotSerializer(ChampsStrictsSansDecimalMixin, serializers.ModelSerializer):
@@ -601,6 +619,12 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
     # ``installation_divergence_devis.json``), calculé par le serveur ; clé du
     # DÉTAIL seulement (la liste ne la calcule pas : aucune requête par ligne).
     divergence_devis = serializers.SerializerMethodField()
+    # G14 (revue chantier 26/10/2026) — phrases CONSULTATIVES à lire avant de
+    # clôturer (solde non facturé / non encaissé, réception définitive, séries
+    # manquantes au parc, pack incomplet). Liste de textes, ``null`` en liste
+    # et pour tout statut autre que « Réceptionné » (contrat
+    # ``contract_samples/chantier_avertissements_cloture.json``).
+    avertissements_cloture = serializers.SerializerMethodField()
 
     class Meta:
         model = Installation
@@ -694,6 +718,11 @@ class InstallationSerializer(ChampsStrictsEntiersMixin,
     def get_divergence_devis(self, obj):
         from .services import divergence_devis_chantier
         return divergence_devis_chantier(obj)
+
+    @extend_schema_field(serializers.ListField(
+        child=serializers.CharField(), allow_null=True))  # null hors « Réceptionné »
+    def get_avertissements_cloture(self, obj):
+        return bloc_avertissements_cloture(self, obj)
 
     @extend_schema_field(serializers.DictField(allow_null=True))  # APRF37 : null en liste
     def get_dossier_8221_resume(self, obj):
@@ -804,14 +833,25 @@ class ComponentSerialSerializer(SameCompanyFKSerializerMixin,
     produit_nom = TexteLie(
         source='produit.nom', read_only=True, default=None, allow_null=True)
     plaque_url = serializers.SerializerMethodField()
+    # Revue chantier 26/10/2026 — caractéristiques de plaque (dict plat
+    # ≤ 10 clés, valeurs texte/nombre) et source de la capture.
+    caracteristiques = serializers.JSONField(required=False)
 
     class Meta:
         model = ComponentSerial
         fields = ['id', 'intervention', 'produit', 'produit_nom', 'designation',
                   'slot_cle', 'numero_serie', 'plaque_attachment', 'plaque_url',
-                  'serie_ocr', 'pousse_parc', 'date_creation']
+                  'serie_ocr', 'caracteristiques', 'capture_source',
+                  'pousse_parc', 'date_creation']
         read_only_fields = ['intervention', 'serie_ocr', 'pousse_parc',
                             'date_creation']
+
+    def validate_caracteristiques(self, value):
+        from .field_capture import valider_caracteristiques
+        propre, erreur = valider_caracteristiques(value)
+        if erreur:
+            raise serializers.ValidationError(erreur)
+        return propre
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_plaque_url(self, obj):
@@ -2567,7 +2607,8 @@ class ControleQualiteOrdreSerializer(SameCompanyFKSerializerMixin, serializers.M
         read_only_fields = ['controle_par', 'date_controle']
 
 
-class OrdreDemontageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class OrdreDemontageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+                               ChampsTexteStrictsMixin, serializers.ModelSerializer):
     """XMFG12 - ordre de démontage (unbuild) : composite → composants.
     Référence/société/`created_by` posés COTE SERVEUR."""
     # ACHT53/ENF17 — FK inscriptibles bornées à la société.
@@ -2965,6 +3006,12 @@ class GpsConsentRecordSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixi
     technicien_nom = TexteLie(
         source='technicien.username', read_only=True, default=None, allow_null=True)
     is_active = serializers.BooleanField(read_only=True)
+    # Revue chantier 26/10/2026 — accusé de réception du technicien (posé par
+    # lui seul, `mon-consentement/accepter`) : lecture seule ici.
+    is_acknowledged = serializers.BooleanField(read_only=True)
+    statut = serializers.CharField(read_only=True)
+    # Une seule notice EN VIGUEUR (v2 depuis le 27/10/2026) : liste fermée.
+    notice_version = serializers.ChoiceField(choices=['v2'], required=False)
 
     class Meta:
         model = GpsConsentRecord
@@ -2972,10 +3019,12 @@ class GpsConsentRecordSerializer(IdInconnu404Mixin, ChampsStrictsSansDecimalMixi
             'id', 'technicien', 'technicien_nom', 'consent_ref',
             'consent_recorded_at', 'recorded_by', 'revoked_at',
             'revoked_reason', 'is_active',
+            'notice_version', 'recepisse_cndp', 'accepte_le',
+            'is_acknowledged', 'statut',
         ]
         read_only_fields = [
             'consent_recorded_at', 'recorded_by', 'revoked_at',
-            'revoked_reason',
+            'revoked_reason', 'accepte_le',
         ]
 
 
@@ -3001,7 +3050,8 @@ class PositionTechnicienSerializer(SameCompanyFKSerializerMixin, serializers.Mod
         ]
 
 
-class GeofenceAlertSerializer(SameCompanyFKSerializerMixin, serializers.ModelSerializer):
+class GeofenceAlertSerializer(GeofenceAlertGpsChampsMixin, SameCompanyFKSerializerMixin,
+                              serializers.ModelSerializer):
     """XFSM23/NTMOB9 — franchissement du rayon attendu du chantier pendant une
     intervention active : ``sortie`` (position hors rayon) ou ``entree``
     (arrivée sur site, NTMOB9). Lecture seule côté API — généré uniquement par
@@ -3017,11 +3067,11 @@ class GeofenceAlertSerializer(SameCompanyFKSerializerMixin, serializers.ModelSer
         model = GeofenceAlert
         fields = [
             'id', 'intervention', 'technicien', 'technicien_nom', 'position',
-            'distance_site_km', 'rayon_attendu_km', 'created_at',
+            'distance_site_km', 'rayon_attendu_km', 'created_at', 'captured_at',
             'type_franchissement', 'type_franchissement_display',
-            'acquittee', 'acquittee_par', 'acquittee_le',
+            'acquittee', 'acquittee_par', 'acquittee_le', 'suivi_interrompu_depuis_min',
         ]
         read_only_fields = [
             'intervention', 'technicien', 'position', 'distance_site_km',
-            'rayon_attendu_km', 'created_at', 'type_franchissement',
+            'rayon_attendu_km', 'created_at', 'captured_at', 'type_franchissement',
         ]
