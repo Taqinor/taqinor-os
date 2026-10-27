@@ -60,3 +60,48 @@ describe('W67 — segments résidentiel/professionnel/marocains-du-monde en EN +
     },
   );
 });
+
+// CPRW8 (27/10/2026) — /professionnel (FR) : promesses retirées, CTA du héros avec le mode, tuile sans chiffre.
+describe('CPRW8 — professionnel.astro : plus de promesse invérifiable', () => {
+  const SRC = read('../src/pages/professionnel.astro');
+  it('hangar agro-industriel : fait vérifiable (aucune surface au sol utilisée)', () => {
+    expect(SRC).not.toContain('la toiture existante finance la structure');
+    expect(SRC).not.toContain('ne coûte rien de plus à exploiter');
+    expect(SRC).toContain('Aucune surface au sol utilisée');
+  });
+  it('collectivités : plus de continuité de service, aucune promesse de couverture totale', () => {
+    expect(SRC).not.toMatch(/continuité/i);
+    expect(SRC).not.toContain('ne tolère pas la coupure');
+    expect(SRC).toContain('qui prennent le relais le soir et la nuit');
+    expect(SRC).not.toContain('la batterie couvre');
+  });
+  it('tous les CTA vers le tunnel portent ?mode=', () => {
+    const liens = SRC.match(/href="\/devis\/mon-toit[^"]*"/g) ?? [];
+    expect(liens.length).toBeGreaterThanOrEqual(3);
+    for (const l of liens) expect(l).toMatch(/\?mode=(industriel|commercial)/);
+  });
+  it('héros : plus de tuile « 5 MW — Seuil d\'autorisation », un fait du parcours à la place', () => {
+    expect(SRC).not.toContain('data-tally>5 MW');
+    expect(SRC).not.toContain("Seuil d'autorisation");
+    expect(SRC).toContain('Étude heure par heure');
+  });
+});
+
+// CPRW12 (27/10/2026) — variantes EN/AR de /professionnel alignées sur le FR (CPRW8).
+describe('CPRW12 — professionnel EN/AR : mêmes retraits que le FR', () => {
+  for (const [lang, file] of [['en', '../src/pages/en/professionnel.astro'], ['ar', '../src/pages/ar/professionnel.astro']] as const) {
+    const SRC = read(file);
+    it(`${lang} : plus de continuité de service, de toiture qui finance ni de tuile « 5 MW » en héros`, () => {
+      expect(SRC).not.toMatch(/continuity|استمرارية|tolerates no outage|لا يتحمّل الانقطاع/);
+      expect(SRC).not.toMatch(/funds the structure|يموّل الهيكل|costs nothing extra|لا يكلّف شيئاً إضافياً/);
+      expect(SRC).not.toMatch(/data-tally>5 MW/);
+    });
+    it(`${lang} : CTA du héros avec ?mode=industriel et tuile « étude heure par heure »`, () => {
+      const liens = SRC.match(/\/devis\/mon-toit'\)\}[^"]*"/g) ?? [];
+      expect(liens.length).toBeGreaterThanOrEqual(3);
+      for (const l of liens) expect(l).toMatch(/\?mode=(industriel|commercial)/);
+      expect(SRC).toContain(lang === 'en' ? 'Hour-by-hour study' : 'دراسة ساعة بساعة');
+      expect(SRC).toContain(lang === 'en' ? 'From your consumption' : 'انطلاقاً من استهلاككم');
+    });
+  }
+});

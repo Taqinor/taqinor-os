@@ -5,6 +5,7 @@
  * qu'un appel de composant. Les valeurs arrivent par props sous LEURS noms de la page.
  */
 import { formatMAD, formatNumber } from '../../../lib/proposition';
+import { bandeauPreliminaireCi, lignePostesHorsTotalCi } from './syntheseCi';
 import type { SyntheseCi, carteIndustrielleCi } from '../../../lib/proposition';
 
 // Déplacement pur : les props gardent leurs noms de la page ; celles que le balisage parcourt
@@ -14,14 +15,20 @@ interface Props {
   ciArgent: any;
   ciCarteInd: ReturnType<typeof carteIndustrielleCi> | null;
   ciEco: any;
-  ciEstimation: any;
   ciInjection: any;
-  ciManque: string[];
-  ciSousReserve: any;
+  // CPRW3/4 : la page passe encore trois props que ce composant ne lit plus (estimation, motifs
+  // manquants, réserve) — à retirer côté page par la session RWEB.
   couverture: any;
   isCommercial: any;
 }
-const { ci, ciArgent, ciCarteInd, ciEco, ciEstimation, ciInjection, ciManque, ciSousReserve, couverture, isCommercial } = Astro.props;
+// CPRW2 — la phrase « tarif » est le texte CLIENT servi (hypothèse `tarif`), jamais la note interne
+// de l'argent (ni sa mention, ni sa source) ; non servie → rien.
+const { ci, ciArgent, ciCarteInd, ciEco, ciInjection, couverture, isCommercial } = Astro.props;
+// CPRW3 — bandeau « devis préliminaire » sur TOUT devis C&I (comme le PDF) : texte servi, sinon celui du PDF.
+const preliminaire = bandeauPreliminaireCi(ci);
+// CPRW13 — la ligne « À chiffrer après la visite technique (hors total) : … » du PDF, jamais un montant.
+const postesHorsTotal = lignePostesHorsTotalCi(ci);
+const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null;
 ---
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-autoconso">
           <h2 class="tech-label rule-brass text-brass-300" data-i18n
@@ -34,16 +41,13 @@ const { ci, ciArgent, ciCarteInd, ciEco, ciEstimation, ciInjection, ciManque, ci
               Une clé non servie n'imprime rien (jamais un 0 fabriqué). */}
           {ci ? (
             <div data-ci-synthese>
-              {ciSousReserve ? (
-                <div class="mt-4 rounded-xl border border-brass-400/40 bg-brass-400/10 p-4 text-sm text-lune-soft" data-ci-sous-reserve>
+              {preliminaire ? (
+                <div class="mt-4 rounded-xl border border-brass-400/40 bg-brass-400/10 p-4 text-sm text-lune-soft" data-ci-preliminaire>
                   <p class="font-semibold text-lune" data-i18n
-                    data-fr="Estimation sous réserve de la visite technique"
-                    data-en="Estimate subject to the technical site visit"
-                    data-ar="تقدير رهين بالزيارة التقنية">Estimation sous réserve de la visite technique</p>
-                  {ci.aConfirmer.length > 0 ? (
-                    <ul class="mt-2 list-disc ps-5 text-xs text-lune-faint">
-                      {ci.aConfirmer.map((c) => <li>{c.libelle}</li>)}
-                    </ul>
+                    data-fr={preliminaire.fr} data-en={preliminaire.en} data-ar={preliminaire.ar}>{preliminaire.fr}</p>
+                  {postesHorsTotal ? (
+                    <p class="mt-1 text-xs text-lune-faint" data-ci-postes-hors-total data-i18n
+                      data-fr={postesHorsTotal.fr} data-en={postesHorsTotal.en} data-ar={postesHorsTotal.ar}>{postesHorsTotal.fr}</p>
                   ) : null}
                 </div>
               ) : null}
@@ -77,12 +81,12 @@ const { ci, ciArgent, ciCarteInd, ciEco, ciEstimation, ciInjection, ciManque, ci
                 {ciArgent && ciEco !== null ? (
                   <div class="cine-card rounded-xl p-5" data-ci-economie>
                     <p class="tech-label text-lune-faint" data-i18n data-fr="Économie de l'année 1" data-en="Year-1 savings" data-ar="توفير السنة الأولى">Économie de l'année 1</p>
-                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="economie_annuelle">{formatMAD(ciEco)}{ciArgent.base === 'ttc' ? ' TTC' : ' HT'}</p>
+                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="economie_annuelle">{formatMAD(ciEco)}{' '}<span class="text-base text-lune-soft" data-i18n
+                      data-fr={ciArgent.base === 'ttc' ? 'TTC' : 'HT'}
+                      data-en={ciArgent.base === 'ttc' ? 'incl. VAT' : 'excl. VAT'}
+                      data-ar={ciArgent.base === 'ttc' ? 'شامل الضريبة' : 'دون احتساب الضريبة'}>{ciArgent.base === 'ttc' ? 'TTC' : 'HT'}</span></p>
                     {ciArgent.base === 'deux' && ciArgent.economieAnnee1?.ttc != null ? (
-                      <p class="mt-1 text-xs text-lune-faint" dir="ltr">{formatMAD(ciArgent.economieAnnee1.ttc)} TTC</p>
-                    ) : null}
-                    {ciEstimation ? (
-                      <p class="mt-1 text-xs text-brass-300" data-i18n data-fr="estimation" data-en="estimate" data-ar="تقدير">estimation</p>
+                      <p class="mt-1 text-xs text-lune-faint" dir="ltr">{formatMAD(ciArgent.economieAnnee1.ttc)}{' '}<span data-i18n data-fr="TTC" data-en="incl. VAT" data-ar="شامل الضريبة">TTC</span></p>
                     ) : null}
                   </div>
                 ) : null}
@@ -93,19 +97,9 @@ const { ci, ciArgent, ciCarteInd, ciEco, ciEstimation, ciInjection, ciManque, ci
                   </div>
                 ) : null}
               </div>
-              {ciArgent?.tarif && (ciArgent.tarif.mention || ciArgent.tarif.source) ? (
-                <p class="mt-4 text-xs text-lune-faint" data-ci-tarif>
-                  <span data-i18n data-fr="Tarif utilisé :" data-en="Tariff used:" data-ar="التعريفة المعتمدة:">Tarif utilisé :</span>
-                  {' '}{ciArgent.tarif.mention ?? ciArgent.tarif.source}
-                </p>
-              ) : null}
-              {ciManque.length > 0 ? (
-                <div class="mt-4 rounded-xl border border-white/10 p-4 text-sm text-lune-soft" data-ci-manque>
-                  <p class="tech-label text-lune-faint" data-i18n data-fr="Ce qu'il nous manque" data-en="What we still need" data-ar="ما ينقصنا">Ce qu'il nous manque</p>
-                  <ul class="mt-2 list-disc ps-5 text-xs">
-                    {ciManque.map((m) => <li>{m}</li>)}
-                  </ul>
-                </div>
+              {tarifServi ? (
+                <p class="mt-4 text-xs text-lune-faint" data-ci-tarif data-i18n
+                  data-fr={tarifServi.fr} data-en={tarifServi.en} data-ar={tarifServi.ar}>{tarifServi.fr}</p>
               ) : null}
             </div>
           ) : (
