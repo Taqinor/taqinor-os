@@ -36,6 +36,7 @@ import {
   equipmentLineCount,
   equipmentDelta,
 } from '../src/lib/propositionPage';
+import { lirePageProposition } from './astroBlocsHelper';
 
 /** Devis résidentiel complet : les deux vues, les 3 profils, le calque batterie. */
 const FULL: ProductionAvailability = {
@@ -641,10 +642,7 @@ describe('détail électrique — libellés affichés', () => {
 });
 
 describe('détail électrique — rendu dans le tableau d’équipement', () => {
-  const PAGE = readFileSync(
-    fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-    'utf-8',
-  );
+  const PAGE = lirePageProposition();
 
   it('la page lit le bloc backend par la fonction pure, une seule fois', () => {
     expect(PAGE).toContain('parseConceptionElectrique(data!)');
@@ -726,10 +724,7 @@ describe('resync après envoi — une ligne discrète, jamais une date inventée
 });
 
 describe('resync après envoi — rendu de la page', () => {
-  const PAGE = readFileSync(
-    fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-    'utf-8',
-  );
+  const PAGE = lirePageProposition();
 
   it('la page lit la clé par la fonction pure et n’affiche la ligne que si elle existe', () => {
     expect(PAGE).toContain('resyncApresEnvoi(data!)');
@@ -756,10 +751,7 @@ describe('resync après envoi — rendu de la page', () => {
 // l'écart en MAD, et chaque carte ouvre le lien de SA gamme (un PDF = une
 // gamme). En mode « seule », le backend n'envoie pas la clé → rien ne rend.
 describe('GAMMES — choix de gamme sur la page proposition', () => {
-  const PAGE = readFileSync(
-    fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-    'utf-8',
-  );
+  const PAGE = lirePageProposition();
 
   it('la page lit le bloc par les fonctions PURES, une seule fois', () => {
     expect(PAGE).toContain('proposalGammes(data!)');

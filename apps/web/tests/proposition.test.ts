@@ -32,6 +32,7 @@ import {
   buildAcceptBodyRich,
   type ProposalResponse,
 } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 function makeProposal(over: Partial<ProposalResponse> = {}): ProposalResponse {
   const base: ProposalResponse = {
@@ -354,7 +355,7 @@ describe('APDF107 — identiteEmetteur : « Qui est … ? » nomme la société 
   });
 
   it('la page lit `emetteur` par identiteEmetteur, plus LEGAL_IDENTITY en direct', () => {
-    const PAGE = lire('../src/pages/proposition/[...token].astro');
+    const PAGE = lirePageProposition();
     expect(PAGE).toContain("identiteEmetteur(data && 'emetteur' in data ? data.emetteur : undefined)");
     expect(PAGE).not.toMatch(/LEGAL_IDENTITY\./);
   });

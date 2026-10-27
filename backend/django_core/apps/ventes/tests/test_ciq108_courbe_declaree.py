@@ -1,5 +1,6 @@
 """CIQ108 — courbe de charge DÉCLARÉE en jours types (unittest pur, sans base)."""
 
+import datetime
 import ast
 import json
 import os
@@ -116,6 +117,92 @@ class TestCourbeDeclaree(unittest.TestCase):
         self.assertIn('profil_estime', codes)
         self.assertIn('feries_non_saisis', codes)
 
+    def test_ramadan_sans_dates_prend_la_table_de_l_annee_reference(self):
+        # CLD15 — plages Ramadan sans dates : table sourcée de l'année de
+        # RÉFÉRENCE (2025 : 01/03-29/03), jamais l'année courante projetée.
+        base = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}, 'talon': {'kw': 1}}
+        plages = {'ouvre': [[9, 15]]}
+        sans = dict(base, ramadan={'plages': plages})
+        avec = dict(base, ramadan={'du': '2025-03-01', 'au': '2025-03-29', 'plages': plages})
+        jt_sans, prov, alertes = courbe_declaree(sans, [10000] * 12, annee_reference=2025,
+                                                 feries=[])
+        jt_avec, _p, _a = courbe_declaree(avec, [10000] * 12, annee_reference=2025, feries=[])
+        self.assertEqual(jt_sans, jt_avec)
+        self.assertNotIn('ramadan_sans_dates', {a['code'] for a in alertes})
+        self.assertIn('dates Ramadan 2025 : apps/ventes/ramadan.py', prov['ramadan']['source'])
+        # le Ramadan change réellement la courbe de mars
+        jt_nu, _p, _a = courbe_declaree(base, [10000] * 12, annee_reference=2025, feries=[])
+        self.assertNotEqual(jt_sans, jt_nu)
+
+    def test_ramadan_table_annee_a_cheval_et_double(self):
+        # 2031 porte la fin du Ramadan 1452 (01/01-23/01) ET le début du 1453
+        # (15/12-31/12) : les deux servent, jamais « table muette ».
+        self.assertEqual(charge._ramadan_table({'plages': {'ouvre': [[9, 15]]}}, 2031),
+                         [(datetime.date(2031, 1, 1), datetime.date(2031, 1, 23)),
+                          (datetime.date(2031, 12, 15), datetime.date(2031, 12, 31))])
+        rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}, 'talon': {'kw': 1},
+                  'ramadan': {'plages': {'ouvre': [[9, 15]]}}}
+        jt, prov, alertes = courbe_declaree(rythme, [10000] * 12, annee_reference=2033,
+                                            feries=[])
+        self.assertNotIn('ramadan_sans_dates', {a['code'] for a in alertes})
+        self.assertEqual(prov['ramadan']['statut'], 'table')
+
+    def test_ramadan_archetype_sans_plages_aucune_provenance_de_dates(self):
+        _jt, prov, alertes = courbe_declaree({'ramadan': {'plages': {'ouvre': [[9, 15]]}}},
+                                             42000, annee_reference=2025, archetype='bureau',
+                                             feries=[])
+        self.assertNotIn('ramadan', prov)
+        self.assertIn('ramadan_sans_plages', {a['code'] for a in alertes})
+
+    def test_ramadan_table_muette_garde_l_alerte(self):
+        rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}, 'talon': {'kw': 1},
+                  'ramadan': {'plages': {'ouvre': [[9, 15]]}}}
+        _jt, prov, alertes = courbe_declaree(rythme, [10000] * 12, annee_reference=2040,
+                                             feries=[])
+        self.assertIn('ramadan_sans_dates', {a['code'] for a in alertes})
+        self.assertNotIn('ramadan', prov)
+
+    def test_ramadan_sans_plage_d_ouverture_alerte_interne(self):
+        _jt, _p, alertes = courbe_declaree(
+            {'ramadan': {'du': '2025-03-01', 'au': '2025-03-29',
+                         'plages': {'ouvre': [[9, 15]]}}},
+            42000, annee_reference=2025, archetype='bureau', feries=[])
+        alerte = next(a for a in alertes if a['code'] == 'ramadan_sans_plages')
+        self.assertTrue(alerte['interne'])
+
+    def test_profil_societe_partiel_cellules_completees_dites(self):
+        # CLD16 — profil hiver + été, rien pour la transition ni les week-ends :
+        # ces cellules viennent de l'archétype, et la provenance le dit.
+        courbe = [0] * 8 + [1] * 10 + [0] * 6
+        partiel = {'cle': 'x', 'libelle': 'x', 'provenance': 'relevé 2025',
+                   'courbe': {'hiver': {'ouvre': courbe}, 'ete': {'ouvre': courbe}}}
+        _jt, prov, alertes = courbe_declaree({}, 42000, annee_reference=ANNEE,
+                                             archetype='bureau', feries=[],
+                                             profil_societe=partiel)
+        cellules = prov['profil_societe_completee']['cellules']
+        self.assertIn('ouvre/transition', cellules)
+        self.assertIn('samedi/hiver', cellules)
+        self.assertNotIn('ouvre/hiver', cellules)
+        alerte = next(a for a in alertes if a['code'] == 'profil_societe_complete')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('ouvre/transition', alerte['message'])
+        complet = dict(partiel, courbe={'annuel': courbe})
+        _jt, prov, alertes = courbe_declaree({}, 42000, annee_reference=ANNEE,
+                                             archetype='bureau', feries=[],
+                                             profil_societe=complet)
+        self.assertNotIn('profil_societe_completee', prov)
+        self.assertNotIn('profil_societe_complete', {a['code'] for a in alertes})
+
+    def test_jours_ouverts_non_declares_archetype_libelle_vrai_et_interne(self):
+        # CLD17 — chaque type de jour est normalisé Σ = 1 : seules les FORMES
+        # servent, pas la semaine ; le libellé le dit et reste interne.
+        _jt, _p, alertes = courbe_declaree({}, 42000, annee_reference=ANNEE,
+                                           archetype='bureau', feries=[])
+        alerte = next(a for a in alertes if a['code'] == 'jours_ouverts_non_declares')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('chaque jour reçoit la même énergie', alerte['message'])
+        self.assertNotIn('la semaine', alerte['message'])
+
     def test_sans_plage_ni_archetype_profil_exige(self):
         jt, _prov, alertes = courbe_declaree({'jours_ouverts': TOUS}, [1000] * 12,
                                              annee_reference=ANNEE, archetype='hammam', feries=[])
@@ -125,7 +212,8 @@ class TestCourbeDeclaree(unittest.TestCase):
     def test_heure_civile_vers_gmt_par_decalage_maroc(self):
         # janvier 2026 : UTC+1 (avant le décret) ⇒ 8 h civile = 7 h GMT
         rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [[8, 9]]}, 'talon': {'kw': 0}}
-        jt, prov, _al = courbe_declaree(rythme, [31] * 12, annee_reference=2026, feries=[])
+        jt, prov, _al = courbe_declaree(rythme, [31] * 12, annee_reference=2026, feries=[],
+                                        decalage_h='historique')
         self.assertEqual(prov['heures'], 'GMT')
         janvier = _par(jt, 1, 'ouvre')
         self.assertAlmostEqual(janvier['charge_kwh'][7], 1.0)
@@ -246,6 +334,162 @@ class TestTalonParTypeDeCommerce(unittest.TestCase):
         self.assertEqual(prov['talon']['statut'], 'borne_conservatrice')
         _jt, prov, _al = self._courbe([7, 21], categorie=None, segment=None)
         self.assertEqual(prov['talon']['statut'], 'borne_conservatrice')
+
+
+class TestTalonMethodeArchetype(unittest.TestCase):
+    """CLD1 — méthode archétype (aucune plage déclarée) : le talon DÉCLARÉ
+    (``niveau_jour_pct`` / ``part_pct``) sert de PLANCHER, il n'est plus ignoré."""
+
+    def _bureau(self, talon=None):
+        rythme = {'jours_ouverts': LUN_VEN}
+        if talon is not None:
+            rythme['talon'] = talon
+        return courbe_declaree(rythme, [10000] * 12, annee_reference=ANNEE,
+                               archetype='bureau', feries=[])
+
+    def _autoconso_ref(self, jt):
+        production = _production_cloche()
+        prod_kwc = sum(j['nb_jours'] * sum(production[j['mois'] - 1]['production_kwh_kwc'])
+                       for j in jt)
+        return charge._autoconso(jt, production, 10000 * 12 / prod_kwc)
+
+    def test_niveau_jour_declare_change_la_courbe_et_conserve_l_energie(self):
+        jt_rien, prov_rien, _a = self._bureau()
+        jt_5, _p, _a = self._bureau({'niveau_jour_pct': 5})
+        jt_50, prov_50, _a = self._bureau({'niveau_jour_pct': 50})
+        self.assertEqual(prov_rien['talon']['statut'], 'estimation')
+        self.assertEqual(prov_50['talon'],
+                         {'valeur': {'niveau_jour_pct': 50.0}, 'statut': 'declare'})
+        auto = [self._autoconso_ref(jt) for jt in (jt_rien, jt_5, jt_50)]
+        self.assertNotAlmostEqual(auto[2], auto[0], places=3)
+        self.assertNotAlmostEqual(auto[2], auto[1], places=3)
+        # plancher : la nuit d'un jour ouvré vaut au moins 50 % du pic de jour
+        mars = _par(jt_50, 3, 'ouvre')['charge_kwh']
+        self.assertGreaterEqual(min(mars), 0.5 * max(mars) - 1e-9)
+        mars_rien = _par(jt_rien, 3, 'ouvre')['charge_kwh']
+        self.assertLess(min(mars_rien), 0.5 * max(mars_rien))
+        for mois in range(1, 13):
+            self.assertAlmostEqual(_energie_mois(jt_50, mois), 10000, delta=1e-6)
+
+    def test_part_pct_declare_conserve_l_energie_et_releve_la_nuit(self):
+        jt_rien, _p, _a = self._bureau()
+        jt_40, prov, _a = self._bureau({'part_pct': 40})
+        self.assertEqual(prov['talon'], {'valeur': {'part_pct': 40.0}, 'statut': 'declare'})
+        for mois in range(1, 13):
+            self.assertAlmostEqual(_energie_mois(jt_40, mois), 10000, delta=1e-6)
+        self.assertGreater(min(_par(jt_40, 3, 'ouvre')['charge_kwh']),
+                           min(_par(jt_rien, 3, 'ouvre')['charge_kwh']))
+        # le talon vaut 40 % de l'énergie du mois, réparti à plat sur 24 h × jours
+        self.assertGreaterEqual(min(_par(jt_40, 3, 'ouvre')['charge_kwh']),
+                                10000 * 0.40 / (24 * 31) - 1e-9)
+
+
+class TestTalonParDefautArchetype(unittest.TestCase):
+    """CLD2 — talon par défaut d'un archétype = moyenne de la forme HORS des
+    plages déclarées ÷ moyenne DANS les plages (saisons pondérées par les jours
+    ouverts) : le niveau de jour sur ses heures, pas le creux sur le pic."""
+
+    def test_boulangerie_part_d_energie_dans_les_plages_celle_de_l_archetype(self):
+        from apps.ventes.moteur_ci.profils import forme_archetype
+        rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [[6, 22]]},
+                  'categorie_commerciale': 'boulangerie'}
+        jt, prov, alertes = courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE,
+                                            archetype='boulangerie', feries=[])
+        self.assertEqual(prov['talon']['statut'], 'estimation')
+        self.assertIn('talon_estime', {a['code'] for a in alertes})
+        total = sum(j['nb_jours'] * sum(j['charge_kwh']) for j in jt)
+        dedans = sum(j['nb_jours'] * sum(j['charge_kwh'][6:22]) for j in jt)
+        part_courbe = dedans / total
+        # part 6-22 h de la forme de l'archétype, pondérée par les jours
+        part_forme, jours = 0.0, 0
+        for jour in charge._jours_annee(ANNEE):
+            forme, _s = forme_archetype('boulangerie', 'ouvre', charge.saison_bdew(jour))
+            part_forme += sum(forme[6:22]) / sum(forme)
+            jours += 1
+        self.assertAlmostEqual(part_courbe, part_forme / jours, delta=0.01)
+
+    def test_plages_sur_24_heures_talon_sans_objet_aucune_exception(self):
+        rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [[0, 24]]},
+                  'categorie_commerciale': 'hotel'}
+        jt, prov, alertes = courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE,
+                                            archetype='hotel', feries=[])
+        self.assertIsNotNone(jt)
+        self.assertIsNone(prov['talon']['valeur'])
+        self.assertNotEqual(prov['talon']['statut'], 'defaut_fondateur')
+        self.assertNotIn('talon_estime', {a['code'] for a in alertes})
+        mars = _par(jt, 3, 'ouvre')['charge_kwh']
+        self.assertAlmostEqual(max(mars), min(mars), places=9)
+        for mois in range(1, 13):
+            self.assertAlmostEqual(_energie_mois(jt, mois), 6000, delta=1e-6)
+
+    def test_profil_societe_nuit_nulle_statut_estimation(self):
+        profil = {'cle': 'jour-seul', 'libelle': 'Jour seul',
+                  'courbe': {'annuel': [0] * 8 + [1] * 10 + [0] * 6},
+                  'provenance': 'relevé compteur 2025'}
+        rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]}}
+        jt, prov, _al = courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE,
+                                        archetype='bureau', feries=[],
+                                        profil_societe=profil)
+        self.assertEqual(prov['talon']['statut'], 'estimation')
+        self.assertEqual(prov['talon']['valeur'], {'rapport_nuit_jour': 0.0})
+        self.assertEqual(min(_par(jt, 3, 'ouvre')['charge_kwh']), 0.0)
+
+
+class TestDecalageConstant(unittest.TestCase):
+    """CLD3 — un site garde ses horaires d'horloge : décalage CONSTANT du régime
+    en vigueur (Maroc UTC+0 depuis le 20/09/2026), plus la date homologue."""
+
+    def _bureau(self, **kw):
+        rythme = {'jours_ouverts': LUN_VEN, 'plages': {'ouvre': [[8, 18]]},
+                  'talon': {'kw': 1.0}}
+        return courbe_declaree(rythme, [10000] * 12, annee_reference=2025,
+                               feries=[], **kw)[0]
+
+    def test_decalage_zero_plateau_gmt_8_18_toute_l_annee(self):
+        jt = self._bureau(decalage_h=0)
+        for mois in (1, 6, 11):
+            c = _par(jt, mois, 'ouvre')['charge_kwh']
+            self.assertGreater(min(c[8:18]), max(c[:8] + c[18:]))
+
+    def test_defaut_est_le_regime_en_vigueur_constant(self):
+        from apps.parametres.pvgis_profils import decalage_maroc_h
+        d = decalage_maroc_h(None)
+        jt_defaut = self._bureau()
+        jt_fixe = self._bureau(decalage_h=d)
+        self.assertEqual(jt_defaut, jt_fixe)
+        # un décalage différent change la courbe (le paramètre agit)
+        self.assertNotEqual(self._bureau(decalage_h=d + 1), jt_fixe)
+
+
+class TestTalonNegatif(unittest.TestCase):
+    """CLD7 — un talon négatif est ignoré (alerte interne), jamais de kWh < 0."""
+
+    def _alertes_negatif(self, alertes):
+        return [a for a in alertes if a['code'] == 'talon_negatif']
+
+    def test_part_pct_negatif_ignore_et_repli_sur_le_talon_estime(self):
+        rythme = {'jours_ouverts': TOUS, 'plages': {'ouvre': [[8, 18]]},
+                  'talon': {'part_pct': -10}}
+        jt, prov, alertes = courbe_declaree(rythme, [6000] * 12, annee_reference=ANNEE,
+                                            archetype='bureau', feries=[])
+        self.assertTrue(all(v >= 0 for j in jt for v in j['charge_kwh']))
+        (alerte,) = self._alertes_negatif(alertes)
+        self.assertTrue(alerte['interne'])
+        self.assertEqual(prov['talon']['statut'], 'estimation')
+        for mois in range(1, 13):
+            self.assertAlmostEqual(_energie_mois(jt, mois), 6000, delta=1e-6)
+
+    def test_kw_et_niveau_jour_negatifs_ignores_chemins_declare_et_archetype(self):
+        for talon in ({'kw': -5}, {'niveau_jour_pct': -5}):
+            for rythme in ({'jours_ouverts': TOUS, 'plages': {'ouvre': [[8, 18]]}},
+                           {'jours_ouverts': TOUS}):
+                rythme = dict(rythme, talon=talon)
+                jt, prov, alertes = courbe_declaree(rythme, [6000] * 12,
+                                                    annee_reference=ANNEE,
+                                                    archetype='bureau', feries=[])
+                self.assertTrue(all(v >= 0 for j in jt for v in j['charge_kwh']), talon)
+                self.assertEqual(len(self._alertes_negatif(alertes)), 1, talon)
+                self.assertNotEqual(prov['talon']['statut'], 'declare', talon)
 
 
 class TestProfilChargePrerequis(unittest.TestCase):

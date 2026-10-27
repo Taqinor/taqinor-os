@@ -577,6 +577,10 @@ def _forme_production(production):
         # AGQ40 (D-AGQ-9) — plafond horaire appliqué (forage × part du
         # réglage), ``None`` sans débit de forage.
         'plafond_forage_m3h': production.get('plafond_forage_m3h'),
+        # AGM8 (AMOT65, moitié domaine) — les étiquettes d'honnêteté du noyau
+        # (« estimation », « rendement non publié »…) : INTERNES, le rendu ne
+        # lit que leur présence.
+        'etiquettes': list(production.get('etiquettes') or []),
     }
 
 
@@ -683,7 +687,9 @@ def _besoin(res, *, profils=None, heures_repli=None):
     (D-AGQ-1) : sans volume ni pompe actuelle, le débit souhaité × heures-pic
     du mois fait le besoin."""
     from core.pompage.agronomie import besoin_agronomique
-    from core.pompage.conception import besoin_retenu
+    from core.pompage.conception import (
+        alerte_heures_superieures_24, besoin_retenu,
+    )
 
     mode = res.valeur('besoin.mode')
     cultures = res.valeur('besoin.cultures') or []
@@ -704,6 +710,10 @@ def _besoin(res, *, profils=None, heures_repli=None):
         if mode in (None, 'pompe_actuelle') else None
     souhaite = (_num(res.valeur('besoin.debit_souhaite_m3h'))
                 if mode in (None, 'debit_souhaite') else None)
+    # AGM5 — plus de 24 h/jour : alerte qui nomme le champ, besoin inchangé.
+    alerte_24 = alerte_heures_superieures_24(heures)
+    if alerte_24:
+        alertes.append(alerte_24)
     heures_pic, source_heures = _heures_pic_mois(profils, heures_repli)
     if volume is not None:
         prov = res.provenance('besoin.volume_m3_jour')
@@ -829,6 +839,30 @@ def _site_du_calcul(res, reglages, sans_tmy):
     return profils, alertes_pvgis, coordonnees, temperatures, heures_repli
 
 
+def _lire_mode_pompe(brut):
+    """AGM6 — ``(mode, alertes)`` : un mode vide vaut ``neuve`` (défaut
+    AGQ39, aucune alerte) ; un mode inconnu bascule sur ``neuve`` en le DISANT
+    (``mode_pompe_invalide``), jamais en silence."""
+    mode = str(brut or '').strip().lower() or 'neuve'
+    if mode in ('neuve', 'existante'):
+        return mode, []
+    return 'neuve', [_alerte(
+        'mode_pompe_invalide', 'mode_pompe',
+        "Mode de pompe « %s » inconnu (attendu : neuve ou existante) : "
+        "pompe neuve étudiée." % mode)]
+
+
+def _alerte_type_suppose(mode_pompe, type_pompe):
+    """AGM6 — ``[alerte]`` d'une pompe neuve sans type déclaré (immergée
+    supposée), sinon ``[]``."""
+    if mode_pompe != 'neuve' or type_pompe:
+        return []
+    return [_alerte(
+        'type_pompe_supposee', 'type_pompe',
+        "Type de pompe non renseigné (immergée ou de surface) : pompe "
+        "immergée supposée.")]
+
+
 def etudier_pompage(company, entrees, *, devis=None, lead=None,
                     facture=None, sans_tmy=False):
     """AGR121 — l'étude de pompage complète, forme EXACTE du contrat
@@ -852,15 +886,12 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
         lead = getattr(devis, 'lead', None)
     res, reglages = resoudre_entrees(company, entrees or {}, devis=devis,
                                      lead=lead)
-    alertes_entree = []
-
-    mode_pompe = res.valeur('mode_pompe') or 'neuve'
-    if mode_pompe not in ('neuve', 'existante'):
-        mode_pompe = 'neuve'
+    mode_pompe, alertes_entree = _lire_mode_pompe(res.valeur('mode_pompe'))
     alim = res.valeur('alim')
     type_pompe = res.valeur('type_pompe')
     if mode_pompe == 'existante' and not type_pompe:
         type_pompe = res.valeur('_type_pompe_actuelle')
+    alertes_entree.extend(_alerte_type_suppose(mode_pompe, type_pompe))
     taille_voulue = res.valeur('taille')
     if taille_voulue not in TAILLES_VALIDES:
         taille_voulue = 'recommandee'
@@ -979,7 +1010,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             champ_complet = choisie.get('champ')
             variateur = _forme_variateur(
                 (champ_complet or {}).get('variateur'),
-                'aucun variateur compatible au catalogue')
+                MOTIF_VARIATEUR_CATALOGUE)
             cv = _cv_plaque_ou_derive(produit, kw)
             puissance = {'kw': round(kw, 2) if kw else None,
                          'cv': round(cv, 1) if cv else None}
@@ -1135,6 +1166,19 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
     if mode_pompe == 'existante':
         pompe, puissance, p_kw = pompe_actuelle, puissance_actuelle, plaque_kw
         declare = debit_declare
+    elif facture.get('nb_pompes', 0) > 1:
+        # AGM7 — plusieurs pompes facturées : aucune ne représente le système
+        # (jamais la première × la quantité totale) ⇒ pompe et production
+        # OMISES, dites.
+        alertes.append(_alerte(
+            'pompes_multiples', 'pompe',
+            "%d pompes au devis (lignes ou quantité) : puissance, débit et "
+            "production de la pompe omis (l'étude décrit UNE pompe)."
+            % facture['nb_pompes']))
+        return (_sortie_pompe(None, kw=None, debit_hmt=None, hmt=hmt_m),
+                {'kw': None, 'cv': None},
+                _forme_variateur(None, 'plusieurs pompes facturées'), None,
+                alertes)
     elif produit_pompe:
         p_kw, _src = kw_pompe(produit_pompe)
         brute = produit_pompe.get('courbe_pompe') or {}
@@ -1158,12 +1202,31 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
                 alertes)
 
     produit_variateur = facture.get('variateur')
+    motif_variateur = 'aucun variateur facturé'
+    if facture.get('nb_variateurs', 0) > 1:
+        # AGM7 — plusieurs variateurs : aucun ne décrit le champ.
+        alertes.append(_alerte(
+            'variateurs_multiples', 'variateur',
+            "%d variateurs au devis (lignes ou quantité) : variateur et "
+            "chaînes non évalués." % facture['nb_variateurs']))
+        produit_variateur = None
+        motif_variateur = 'plusieurs variateurs facturés'
     if produit_variateur:
         variateur = _forme_variateur(produit_variateur, None)
     elif mode_pompe == 'existante':
         variateur = variateur_actuel
     else:
-        variateur = _forme_variateur(None, 'aucun variateur facturé')
+        variateur = _forme_variateur(None, motif_variateur)
+
+    if facture.get('modeles_panneaux', 0) > 1:
+        # AGM7 — plusieurs modèles de panneaux : « premier modèle × quantité
+        # totale » serait faux (kWc, m³/jour) ⇒ champ non évalué, dit.
+        alertes.append(_alerte(
+            'panneaux_modeles_multiples', 'champ',
+            "%d modèles de panneaux au devis : champ et production omis "
+            "(l'étude décrit UN modèle de panneau)."
+            % facture['modeles_panneaux']))
+        return pompe, puissance, variateur, None, alertes
 
     module = spec_module(facture.get('panneau'))
     nb = facture.get('nb_panneaux') or 0
@@ -1185,7 +1248,7 @@ def _systeme_facture(facture, *, mode_pompe, hmt_m, serie, plaque_kw,
         agricole_pump_hours=commun.get('agricole_pump_hours'),
         besoin_m3_jour_mois=serie, coordonnees=commun.get('coordonnees'),
         plafond_m3h=commun.get('plafond_m3h'))
-    chaines = _chaines_vides('aucun variateur facturé')
+    chaines = _chaines_vides(motif_variateur)
     if produit_variateur:
         nb_cable, chaines, alertes_chaines, _suivant = _chaines_pour(
             produit_variateur, module, nb, commun.get('temperatures'))
@@ -1228,6 +1291,10 @@ def facture_du_devis(devis, catalogue):
     par_id = {p.get('id'): p for p in catalogue.get('pompage') or ()}
     pompe = variateur = panneau = None
     nb, lignes = 0, []
+    # AGM7 — combien de pompes / variateurs (quantités additionnées) et de
+    # MODÈLES de panneaux (produits distincts) : l'étude n'en mélange aucun.
+    nb_pompes = nb_variateurs = 0
+    modeles_panneaux = set()
     lignes_devis = devis.lignes.select_related('produit').order_by('ordre',
                                                                    'id')
     for ligne in lignes_devis:
@@ -1239,15 +1306,20 @@ def facture_du_devis(devis, catalogue):
         role = (element or {}).get('role_pompage')
         if role == 'pompe':
             pompe = pompe or element
+            nb_pompes += int(_num(ligne.quantite) or 0)
         elif role == 'variateur_pompage':
             variateur = variateur or element
+            nb_variateurs += int(_num(ligne.quantite) or 0)
         elif (getattr(produit, 'role_devis', None)
               or classer_produit(produit.nom)) == 'panneau':
             nb += int(_num(ligne.quantite) or 0)
+            modeles_panneaux.add(produit.id)
             if panneau is None:
                 panneau = _dict_catalogue(produit, **_specs_module(produit))
     return {'pompe': pompe, 'variateur': variateur, 'panneau': panneau,
-            'nb_panneaux': nb, 'lignes': lignes}
+            'nb_panneaux': nb, 'lignes': lignes, 'nb_pompes': nb_pompes,
+            'nb_variateurs': nb_variateurs,
+            'modeles_panneaux': len(modeles_panneaux)}
 
 
 def _empreinte(etude, facture, lead_id):
@@ -1499,7 +1571,8 @@ ROLES_KIT_MINIMUM = (
 #: ne sert aucune alerte, « voir les alertes » ne menait nulle part).
 CODES_CHAMP_NON_DIMENSIONNE = ('panneau_sans_fiche', 'besoin_inconnu',
                                'irradiation_inconnue', 'aucun_variateur',
-                               'chaine_non_verifiable')
+                               'chaine_non_verifiable', 'hmt_inconnue',
+                               'besoin_nul')
 
 
 def _cause_champ_vide(sortie):
@@ -1512,6 +1585,18 @@ def _cause_champ_vide(sortie):
     motif = (((sortie or {}).get('champ') or {}).get('chaines') or {}).get(
         'motif')
     return motif or 'cause non servie par le moteur'
+
+
+#: Le motif du noyau quand AUCUN variateur compatible n'existe au catalogue
+#: (le refus du devis auto le reformule — AGQ6) : ce n'est pas une autre cause.
+MOTIF_VARIATEUR_CATALOGUE = 'aucun variateur compatible au catalogue'
+
+
+def _motif_variateur(sortie):
+    """AGM15 — la cause servie d'un variateur non choisi quand ce n'est PAS
+    l'absence au catalogue, sinon ``None``."""
+    motif = ((sortie or {}).get('variateur') or {}).get('motif')
+    return motif if motif and motif != MOTIF_VARIATEUR_CATALOGUE else None
 
 
 def roles_minimum_manquants(sortie):
@@ -1531,8 +1616,20 @@ def roles_minimum_manquants(sortie):
             if cle in ('panneaux', 'structure') and champ_vide:
                 motif = 'champ solaire non dimensionné — %s' % (
                     _cause_champ_vide(sortie))
+            elif cle == 'variateur' and _motif_variateur(sortie):
+                # AGM15 — variateur non choisi pour une AUTRE cause que le
+                # catalogue (aucune pompe retenue, kW de plaque à relever) :
+                # cette cause, jamais « aucun article au catalogue ».
+                motif = _motif_variateur(sortie)
             else:
                 motif = 'aucun article au catalogue'
+        elif not ligne.get('produit') and cle != 'pompe':
+            # AGM13 — la ligne PLACEHOLDER du noyau (produit None) : aucun
+            # article de ce rôle n'existe (un article sans prix est une ligne
+            # AVEC produit). La pompe placeholder reste « prix à renseigner »
+            # (ses candidats existent, sans prix).
+            motif = 'aucun article au catalogue (rôle %s)' % (
+                ligne.get('role_pompage') or cle)
         elif not ligne.get('prix_connu') or not ligne.get('produit'):
             motif = 'prix à renseigner au catalogue'
         else:

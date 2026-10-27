@@ -17,6 +17,7 @@ import {
   type SignFormState,
 } from '../src/lib/proposition';
 import { estIceDivergent } from '../src/lib/propositionB2b';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const ENT3 = { raison_sociale: 'Hôtel Exemple SARL', signataire_qualite: 'Directeur général', ice: '000000000000000' };
 // ADEV95 — lien public : e-mail du signataire + attestation de pouvoir ; le nom = celui tapé.
@@ -187,7 +188,7 @@ describe('CIW305 — proxy /api/proposition-accept : `entreprise` relayé, champ
 });
 
 describe('CIW305 — la page C&I ne propose plus « mes parents, mon foyer »', () => {
-  const page = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+  const page = lirePageProposition();
   it('le bloc « pour quelqu\'un d\'autre » n\'est rendu que hors C&I', () => {
     const i = page.indexOf('id="sign-on-behalf-of"');
     expect(i).toBeGreaterThan(0);

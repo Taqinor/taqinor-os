@@ -17,12 +17,13 @@ import {
   estEmpreintePerimee,
   normalizeAcceptResponse,
 } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 const DATA = JSON.parse(read('../src/contract_samples/proposal_data.json')) as Record<string, Record<string, unknown>>;
 const ACCEPT = JSON.parse(read('../src/contract_samples/proposal_accept.json')) as Record<string, Record<string, unknown>>;
-const PAGE = read('../src/pages/proposition/[...token].astro');
+const PAGE = lirePageProposition();
 const EMPREINTE = String(DATA.exemple.empreinte_contenu);
 const REFUS = (ACCEPT.reponses_409 as Record<string, unknown>).empreinte_perimee as { detail: string; code: string };
 

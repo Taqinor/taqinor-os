@@ -98,6 +98,14 @@ CATALOGUE = [
     # force plus jamais son statut.)
     ('Batterie Dyness 5 kWh',  'BAT-DEY-5',  'Batteries', 14000, 13000, 500, 5),
     ('Batterie Dyness 10 kWh', 'BAT-DEY-10', 'Batteries', 30000, 22000, 500, 5),
+    # D-BAT-2710 (27/10/2026) — le PowerBrick SC 16 kWh existait en prod SANS
+    # SKU (créé à la main, prix de vente fondateur 29 166,67 HT = 35 000 TTC,
+    # prix d'achat non renseigné → 0, jamais inventé). Le seeder le porte
+    # désormais avec sa fiche officielle (datasheet Dyness PowerBrick SC
+    # 20260520) ; sur une base qui l'a déjà par son NOM, la ligne est sautée
+    # (anti-doublon ``nom__iexact``) et sa fiche n'est rattachée qu'une fois
+    # le SKU posé à la main sur le produit existant.
+    ('Batterie Dyness PowerBrick SC 16 kWh', 'BAT-DYN-PB-SC-16', 'Batteries', 35000, 0, 500, 5),
     ('Batterie Lithium 5 kWh',  'BAT-LIT-5',  'Batteries', 15500, 13200, 500, 5),
     ('Batterie Gel 2.2 kWh',    'BAT-GEL-22', 'Batteries', 5000, 3100, 500, 5),
     # ── Structure & divers ──
@@ -855,21 +863,44 @@ FICHES = {
     # ≥6000 Cycles », note [1] « 0.2C Charging/Discharging, @25°C, 90% DOD ».
     # « ≥ 6 000 cycles » reste en prose : aucun champ ne porte le nombre de
     # cycles.
-    **{sku: {
+    # D-BAT-2710 (fondateur 27/10/2026 — « search on the net and correct ERP
+    # data if it is wrong ») : fiches RELUES sur les documents officiels
+    # dyness.com — datasheet DL5.0C V1.0-20241011, manuel DL5.0C V2-EN
+    # 20241114, garantie Afrique DL5.0C V2-202502 ; datasheet MEA Powerbox Pro
+    # 20241023 + manuel Powerbox Pro V2-EN 20230724. Les deux SKU ne partagent
+    # PLUS un texte unique : « 7 ans » est une clause du seul DL5.0C V2 (7 ans
+    # de base, 10 ans par extension) ; aucune lettre de garantie Powerbox Pro
+    # n'est publiée (10 ans = harmonisation fondateur O1/O3 avec la fiche web,
+    # inchangée, à faire confirmer par écrit par Dyness). Les deux manuels
+    # imposent « Installation location should be away from the sea to avoid
+    # brine and high humidity environment » — dit en prose, aucun champ.
+    # Trou comblé (20/08/2026) : ``garantie_mois`` 120 posé par le seeder
+    # (la migration 0012 ne backfillait que les batteries EXISTANTES).
+    'BAT-DEY-5': {
         'marque': 'Dyness',
-        'garantie': 'Garantie 10 ans (variante régionale : 7 ans) · ≥ 6 000 cycles',
-        # Trou comblé (20/08/2026, revue de la lane moteur) : la migration 0012
-        # backfillait 120 mois sur les batteries EXISTANTES, mais le seeder ne
-        # posait AUCUN garantie_mois — toute base neuve sortait à NULL et le
-        # PDF omettait une garantie POURTANT réelle (dyness.com, DL5.0C ESS
-        # 10-Year Limited Warranty — même source que le texte ci-dessus).
+        'garantie': ('Garantie 10 ans (version V2 : 7 ans, extensible à 10) · '
+                     '6 000 cycles (0,2C, 25 °C, DoD 90 %)'),
         'garantie_mois': 120,
-        # « 51,2 V » → ``bat_v_nominal`` (les deux paliers ont leur fiche).
-        'description': ('Batterie lithium LiFePO4 basse tension\n'
-                        'Chimie fer-phosphate sûre et durable\n'
+        # PVFCH : tension, énergie, DoD et mise en parallèle vivent dans la
+        # FicheTechnique — la prose ne garde que ce qu'aucun champ ne porte.
+        'description': ('Batterie lithium LiFePO4 basse tension 100 Ah\n'
+                        'Charge 75 A / décharge 100 A en continu, pic 110 A pendant 15 s\n'
                         'BMS intégré CAN/RS485, compatible onduleurs hybrides Deye\n'
-                        'Extensible en parallèle'),
-    } for sku in ('BAT-DEY-5', 'BAT-DEY-10')},
+                        'Extensible en parallèle · 54 kg\n'
+                        'IP20 : pose en intérieur, hors atmosphère saline (manuel Dyness)'),
+    },
+    'BAT-DEY-10': {
+        'marque': 'Dyness',
+        'garantie': 'Garantie 10 ans · 6 000 cycles (0,2C, 25 °C, DoD 90 %)',
+        'garantie_mois': 120,
+        # PVFCH : tension, énergie, puissance continue et mise en parallèle
+        # vivent dans la FicheTechnique — la prose garde le reste.
+        'description': ('Batterie lithium LiFePO4 basse tension 200 Ah\n'
+                        'Courant recommandé 100 A, pic de puissance 10,24 kW\n'
+                        'BMS intégré CAN/RS485, compatible onduleurs hybrides Deye\n'
+                        'Extensible en parallèle · IP65 · 103 kg\n'
+                        'Installation hors atmosphère saline (manuel Dyness)'),
+    },
     # PVFCH — « 51,2 V » et « 5 kWh » RESTENT en prose : cette référence n'a
     # PAS de ``FicheTechnique`` (absente de FICHES_TECHNIQUES, contrairement aux
     # Dyness). Les retirer perdrait la seule trace de ces deux valeurs. Le jour
@@ -908,10 +939,37 @@ FICHES = {
     'BAT-DYN-HV-16': {
         'marque': 'Deye',
         'garantie': 'Garantie constructeur 10 ans (≥ 6000 cycles, EOL 70 %)',
+        # D-BAT-2710 (27/10/2026) — manuel officiel BOS-B Pro-A3 V08
+        # (20260810) : « This product, with Anti-Corrosion Level C3, is only
+        # suitable for installation beyond 5 km from the coastline » — dit au
+        # client, il exclut d'office les sites littoraux.
         'description': ('Batterie Deye BOS-B Pro haute tension, vendue par tranche de 16 kWh\n'
                         'Module BOS-B-Pack16-A3 : LiFePO4, 51,2 V, 314 Ah — empilage série '
                         'de 5 à 15 modules derrière control box BOS-B-PDU-2-A\n'
-                        'Rack et control box inclus dans le prix de la tranche'),
+                        'Rack et control box inclus dans le prix de la tranche\n'
+                        'Niveau anticorrosion C3 : installation à plus de 5 km du littoral (manuel Deye)'),
+    },
+    # D-BAT-2710 (27/10/2026) — datasheet officielle Dyness PowerBrick SC
+    # (20260520) : 16,08 kWh / 51,2 V / 314 Ah, « Usable Battery Energy
+    # 15.28 kWh », DoD 95 %, courant recommandé 0,45C (140 A), max charge et
+    # décharge 0,64C (200 A), pic 300 A pendant 2 min, ≥ 8 000 cycles (0,2C,
+    # 25 °C, 95 % DoD, 70 % EOL), « Warranty Period 10 Years », IP20, 116 kg,
+    # 50 en parallèle, Deye listé parmi les onduleurs compatibles. Clause mer :
+    # annexe 1 de la garantie PowerBrick (MEA 202404). Disponibilité en
+    # Afrique NON confirmée (la page SC dit « Central Asia » ; les mêmes
+    # chiffres se vendent en Afrique du Sud sous le nom « PowerBrick Max »).
+    'BAT-DYN-PB-SC-16': {
+        'marque': 'Dyness',
+        'garantie': 'Garantie 10 ans · 8 000 cycles (0,2C, 25 °C, DoD 95 %, fin de vie 70 %)',
+        'garantie_mois': 120,
+        # PVFCH : tension, énergies, DoD, puissances max, cycles, rétention,
+        # garantie, C-rate, poids et parallèle vivent dans la FicheTechnique.
+        'description': ('Batterie lithium LiFePO4 basse tension 314 Ah\n'
+                        'Courant recommandé 140 A ; maximum 200 A en charge et en décharge ; '
+                        'pic 300 A pendant 2 min\n'
+                        'BMS intégré CAN/RS485, compatible onduleurs hybrides Deye basse tension\n'
+                        'Extensible en parallèle\n'
+                        'IP20 : pose en intérieur, hors atmosphère saline (garantie Dyness)'),
     },
     'STR-ACIER': {
         'garantie': 'Garantie 20 ans (structure)',
@@ -1646,11 +1704,14 @@ FICHES_TECHNIQUES = {
         # un pic de quinze secondes ne borne pas une rafale de trente minutes,
         # c'est le CONTINU qui fait foi ici.
         'bat_max_decharge_kw': Decimal('5.12'),
-        # BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now
-        # keep it very high for 5kwh — maybe 200 » : valeur EXPLICITEMENT
-        # fondateur, pas une limite fabricant sourcée. Migration stock 0132
-        # recale les bases existantes (comble seulement si vide).
-        'bat_max_modules_par_banc': 200,
+        # BATHOMO (fondateur 26/08/2026) posait 200 (« keep it very high for
+        # 5kwh — maybe 200 »), valeur fondateur faute de source. D-BAT-2710
+        # (27/10/2026, « correct ERP data if it is wrong ») : la datasheet
+        # officielle DL5.0C (V1.0-20241011) publie « Up to 50 units in
+        # parallel » — la limite constructeur remplace la valeur de confort.
+        # Migration stock 0132 comble seulement si vide ; une base déjà à 200
+        # ne passe à 50 que par ``--reappliquer-fiches``.
+        'bat_max_modules_par_banc': 50,
         # Rendement aller-retour (fondateur 05/10/2026) — « Considere 98%
         # efficiency for deyness round trip » : valeur EXPLICITEMENT
         # FONDATEUR, pas une valeur constructeur. Recherche du 05/10/2026 :
@@ -1686,7 +1747,15 @@ FICHES_TECHNIQUES = {
         # versions officielles EU et AU/NZ ; les 150 A annoncés par certains
         # REVENDEURS n'apparaissent dans AUCUN document Dyness et ne sont donc
         # PAS retenus. À recaler si Dyness publie un jour la ligne « max ».
+        # D-BAT-2710 (27/10/2026) : le manuel Powerbox Pro (V2-EN 20230724)
+        # confirme « Max Charging Current 100 A / Max Discharge Current
+        # 100 A » ; la datasheet MEA ajoute une « Peak Power 10,24 kW » sans
+        # durée (aucun champ de pic : dit en prose dans la fiche commerciale).
         'bat_max_decharge_kw': Decimal('5.12'),
+        # D-BAT-2710 (27/10/2026) — mise en parallèle PUBLIÉE : 5 unités sur
+        # les datasheets MEA (20241023) et AU/NZ et dans le manuel ; 10 sur la
+        # datasheet UE/UA (20241231). On retient la plus petite valeur publiée.
+        'bat_max_modules_par_banc': 5,
         # Rendement aller-retour (fondateur 05/10/2026) — « Considere 98%
         # efficiency for deyness round trip » : valeur EXPLICITEMENT
         # FONDATEUR, pas une valeur constructeur. Recherche du 05/10/2026 :
@@ -1694,6 +1763,28 @@ FICHES_TECHNIQUES = {
         # (20241231-EN), ni leurs manuels, ne publient de « round-trip
         # efficiency ». Comblé seulement si vide (une saisie n'est jamais
         # écrasée). Sert ACAL173 (rendement de la FICHE sur la proposition).
+        'bat_rendement_ar_pct': Decimal('98.0'),
+    },
+    # D-BAT-2710 (27/10/2026) — Dyness PowerBrick SC 16 kWh, datasheet
+    # officielle 20260520 (voir le bloc commercial du même SKU). Le CONTINU
+    # fait foi (règle L-DECH) : max charge/décharge 0,64C = 200 A × 51,2 V =
+    # 10,24 kW ; le recommandé 140 A (7,17 kW) et le pic 300 A / 2 min restent
+    # en prose. Rendement aller-retour : valeur FONDATEUR (05/10/2026, « 98 %
+    # for deyness round trip »), Dyness ne publie rien.
+    'BAT-DYN-PB-SC-16': {
+        'type_fiche': 'batterie',
+        'bat_chimie': 'lfp',
+        'bat_kwh_nominal': Decimal('16.08'), 'bat_kwh_usable': Decimal('15.28'),
+        'bat_dod_pct': Decimal('95.0'), 'bat_v_nominal': Decimal('51.2'),
+        'bat_max_charge_kw': Decimal('10.24'),
+        'bat_max_decharge_kw': Decimal('10.24'),
+        'bat_max_modules_par_banc': 50,
+        'bat_temp_min_c': Decimal('-20.0'), 'bat_temp_max_c': Decimal('55.0'),
+        # C-rate MAX publié 0,64C (200 A / 314 Ah) dans les deux sens ;
+        # « ≥ 8000 Cycles » à 70 % EOL ; « Warranty Period 10 Years » ; 116 kg.
+        'bat_c_rate_charge': Decimal('0.64'), 'bat_c_rate_decharge': Decimal('0.64'),
+        'bat_cycles_publies': 8000, 'bat_retention_fin_de_vie_pct': Decimal('70.0'),
+        'bat_garantie_annees': 10, 'poids_kg': Decimal('116.0'),
         'bat_rendement_ar_pct': Decimal('98.0'),
     },
     # PVLV (21/08/2026) — Deye BOS-B-Pack16-A3 (système BOS-B Pro-A3),
