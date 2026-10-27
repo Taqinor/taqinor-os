@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm', '0142_categories_commerce_talon'),
+        ('crm', '0143_equipecommerciale_departement'),
     ]
 
     operations = [
