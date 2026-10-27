@@ -183,8 +183,10 @@ class AucunAppelDirect(TestCase):
     """Les trois modules ne composent plus en direct : ils passent par
     ``pipeline.composer_sonde``."""
 
+    # RSIZ (27/10/2026) — ``balayer_tailles`` (le site qui appelle
+    # ``composer_sonde``) vit désormais dans ``dimensionnement_balayage.py``.
     MODULES = ('offres_tailles.py', 'domain/dimensionnement_devis.py',
-               'dimensionnement.py')
+               'dimensionnement_balayage.py')
 
     def test_garde_ast(self):
         racine = Path(__file__).resolve().parent.parent

@@ -61,6 +61,9 @@ from apps.ventes.domain import dimensionnement_devis
 #: qu'il rend sont ré-exportés par ``dimensionnement.py`` : la surface du
 #: module d'origine est donc « ce qu'il définit ∪ ce qu'il ré-exporte d'ici ».
 MODULE_DEVIS = "apps.ventes.domain.dimensionnement_devis"
+#: RSIZ (27/10/2026) — ``balayer_tailles`` déplacé (pur) dans ce module et
+#: ré-exporté par ``dimensionnement.py`` : il reste dans la surface.
+MODULE_BALAYAGE = "apps.ventes.dimensionnement_balayage"
 
 # METTRE À JOUR CETTE LISTE dans le MÊME commit que le changement de surface.
 # Elle se re-dérive mécaniquement (ne jamais la retaper de mémoire) : c'est
@@ -225,7 +228,8 @@ def _reexports_niveau_module(chemin, module):
 def _surface_niveau_module(chemin):
     """Ce que le fichier offre : ce qu'il définit ∪ ce qu'il ré-exporte."""
     return (_definitions_niveau_module(chemin)
-            | _reexports_niveau_module(chemin, MODULE_DEVIS))
+            | _reexports_niveau_module(chemin, MODULE_DEVIS)
+            | _reexports_niveau_module(chemin, MODULE_BALAYAGE))
 
 
 class SurfaceDimensionnementTests(SimpleTestCase):

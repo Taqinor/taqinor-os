@@ -75,7 +75,8 @@ describe('ASTK230 — champs maîtres saisissables', () => {
   it('saisir rôle de devis et unité', async () => {
     await ouvrir()
     // Les choix du rôle viennent de la réponse OPTIONS du serveur.
-    expect(await screen.findByRole('option', { name: 'panneau' })).toBeInTheDocument()
+    // CCAT5 — libellés français (roleLabel), la valeur envoyée reste le code.
+    expect(await screen.findByRole('option', { name: 'Panneaux' })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Rôle de devis'), { target: { value: 'panneau' } })
     fireEvent.change(screen.getByLabelText('Unité de stock'), { target: { value: 'm' } })
     enregistrer()
@@ -128,5 +129,23 @@ describe('ASTK230 — champs maîtres saisissables', () => {
     fireEvent.change(screen.getByLabelText('Tarif location / jour'), { target: { value: '-1' } })
     enregistrer()
     expect(await screen.findByText('Le tarif de location ne peut pas être négatif.')).toBeInTheDocument()
+  })
+})
+
+describe('CCAT5 — rôle de devis : libellés français et aide batterie C&I', () => {
+  it('les options sont en français, le « Rôle effectif » aussi', async () => {
+    await ouvrir({ ...BATTERIE, role_devis_effectif: 'onduleur_hybride', role_devis_source: 'déclaré' })
+    expect(await screen.findByRole('option', { name: 'Onduleur Hybride' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'onduleur_hybride' })).toBeNull()
+    expect(screen.getByText(/Rôle effectif : Onduleur Hybride \(déclaré\)/)).toBeInTheDocument()
+  })
+
+  it("onduleur hybride et batterie : l'aide « avec batterie » des devis C&I s'affiche", async () => {
+    await ouvrir({ ...BATTERIE, role_devis: 'batterie' })
+    expect(screen.getByText(/option « avec batterie » des devis C&I/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Rôle de devis'), { target: { value: 'onduleur_hybride' } })
+    expect(screen.getByText(/option « avec batterie » des devis C&I/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Rôle de devis'), { target: { value: 'panneau' } })
+    expect(screen.queryByText(/option « avec batterie » des devis C&I/)).toBeNull()
   })
 })
