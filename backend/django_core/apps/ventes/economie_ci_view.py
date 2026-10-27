@@ -86,6 +86,7 @@ def lignes_ecran(company, lignes, produits=None):
             'designation': ligne.get('designation')
             or (getattr(produit, 'nom', '') if produit else ''),
             'ht': ht, 'ttc': ttc, 'optionnelle': optionnelle,
+            'quantite': _nombre(ligne.get('quantite')),  # CEC10 (alerte O&M)
             'onduleur': _est_onduleur(produit),
             'role_ci': (getattr(produit, 'role_ci', '') or None)
             if produit is not None else None,
