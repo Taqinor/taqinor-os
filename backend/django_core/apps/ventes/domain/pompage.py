@@ -1010,7 +1010,7 @@ def etudier_pompage(company, entrees, *, devis=None, lead=None,
             champ_complet = choisie.get('champ')
             variateur = _forme_variateur(
                 (champ_complet or {}).get('variateur'),
-                'aucun variateur compatible au catalogue')
+                MOTIF_VARIATEUR_CATALOGUE)
             cv = _cv_plaque_ou_derive(produit, kw)
             puissance = {'kw': round(kw, 2) if kw else None,
                          'cv': round(cv, 1) if cv else None}
@@ -1587,6 +1587,18 @@ def _cause_champ_vide(sortie):
     return motif or 'cause non servie par le moteur'
 
 
+#: Le motif du noyau quand AUCUN variateur compatible n'existe au catalogue
+#: (le refus du devis auto le reformule — AGQ6) : ce n'est pas une autre cause.
+MOTIF_VARIATEUR_CATALOGUE = 'aucun variateur compatible au catalogue'
+
+
+def _motif_variateur(sortie):
+    """AGM15 — la cause servie d'un variateur non choisi quand ce n'est PAS
+    l'absence au catalogue, sinon ``None``."""
+    motif = ((sortie or {}).get('variateur') or {}).get('motif')
+    return motif if motif and motif != MOTIF_VARIATEUR_CATALOGUE else None
+
+
 def roles_minimum_manquants(sortie):
     """AGQ4 — ``[{cle, libelle, motif}]`` des rôles du kit minimum absents
     de ``kit.inclus`` ou sans prix connu (barème compris, AGQ5) ; un champ
@@ -1604,6 +1616,11 @@ def roles_minimum_manquants(sortie):
             if cle in ('panneaux', 'structure') and champ_vide:
                 motif = 'champ solaire non dimensionné — %s' % (
                     _cause_champ_vide(sortie))
+            elif cle == 'variateur' and _motif_variateur(sortie):
+                # AGM15 — variateur non choisi pour une AUTRE cause que le
+                # catalogue (aucune pompe retenue, kW de plaque à relever) :
+                # cette cause, jamais « aucun article au catalogue ».
+                motif = _motif_variateur(sortie)
             else:
                 motif = 'aucun article au catalogue'
         elif not ligne.get('produit') and cle != 'pompe':

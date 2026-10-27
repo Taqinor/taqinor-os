@@ -48,11 +48,9 @@ import {
   setSeason,
   type ProductionAvailability,
 } from '../src/lib/propositionPage';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const PAGE = readFileSync(
-  fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-  'utf-8',
-);
+const PAGE = lirePageProposition();
 
 // ── Charge utile de référence : la FORME est une cloche normalisée à somme 1
 // (exactement la convention serveur `production[saison].forme`), les NIVEAUX

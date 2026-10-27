@@ -870,6 +870,39 @@ class IdsFkParCheminTests(unittest.TestCase):
         # Clé non substituée (règle absente) : forme fil intacte.
         self.assertEqual(cas.query['ids'], ['7'])
 
+    def test_query_publiee_texte_recoit_un_entier_du_lien(self):
+        """api-fuzz-full 27/10 (ENF11) — tranche 13, DELETE …/etiquettes/ :
+        ``tag_id`` est publié ``type: string`` mais le lien stateful inféré y
+        pose l'ENTIER ``id`` de ``GET /records/tags/`` ; substitué, il doit
+        partir en texte (revalidé ``1`` contre ``string``, le cas positif
+        basculait négatif : « accepted schema-violating request » sur 200)."""
+        class Lieu(str, enum.Enum):
+            QUERY = 'query'
+
+        def parametre(nom, type_):
+            return types.SimpleNamespace(name=nom, definition={
+                'in': 'query', 'name': nom, 'schema': {'type': type_}})
+
+        cas = _cas(self.hooks, 'DELETE', '/api/django/stock/x/{id}/tags/')
+        cas.operation.query = [parametre('lot', 'string'),
+                               parametre('q', 'string')]
+        cas.query = {'lot': 7, 'q': 'abc'}
+        cas.meta.raw_containers = {Lieu.QUERY: {'lot': 7, 'q': 'abc'}}
+        self.hooks.before_call(None, cas, {})
+        self.assertEqual(cas.query, {'lot': '40', 'q': 'abc'})
+        # Publié ``integer`` : l'entier substitué reste un entier.
+        cas = _cas(self.hooks, 'GET', '/api/django/stock/x/')
+        cas.operation.query = [parametre('lot', 'integer')]
+        cas.query = {'lot': 7}
+        self.hooks.before_call(None, cas, {})
+        self.assertEqual(cas.query, {'lot': 40})
+        # Id déjà réel (non réécrit) : la valeur du lien reste intacte.
+        cas = _cas(self.hooks, 'DELETE', '/api/django/stock/x/{id}/tags/')
+        cas.operation.query = [parametre('lot', 'string')]
+        cas.query = {'lot': 40}
+        self.hooks.before_call(None, cas, {})
+        self.assertEqual(cas.query, {'lot': 40})
+
     def test_liste_bornee_et_objet_imbrique(self):
         cas = self._appel('/api/django/x/comparer/', {'ids': [7, 8, 9]})
         self.assertEqual(len(cas.body['ids']), 2)

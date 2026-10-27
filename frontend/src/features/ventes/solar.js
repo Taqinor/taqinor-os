@@ -62,7 +62,6 @@ export const DEFAULT_PRODUCTIBLE = 1651 // Casablanca (centre zone de service)
 export const SYSTEM_LOSS_TOTAL = 0.20   // pertes système TOTALES (fondateur 18/08)
 export const PVGIS_BUILTIN_LOSS = 0.14  // pertes déjà incluses dans le productible
 export const PRODUCTIBLE_NET_FACTOR = (1 - SYSTEM_LOSS_TOTAL) / (1 - PVGIS_BUILTIN_LOSS)
-const _PRODUCTIBLE_HISTORICAL_DEFAULT = 1600
 const _CITY_ALIASES = {
   casa: 'casablanca', kenitra: 'rabat', sale: 'rabat', salé: 'rabat',
   mohammedia: 'casablanca', 'el jadida': 'casablanca', essaouira: 'agadir',
@@ -72,11 +71,12 @@ const _CITY_ALIASES = {
 }
 
 // Productible canonique pour une ville. `override` = productible société
-// (CompanyProfile) : quand il diffère RÉELLEMENT du défaut historique 1600, il
-// prime ; sinon on lit le productible PVGIS de la ville (repli DEFAULT).
+// (CompanyProfile) : renseigné (> 0, 1600 compris — AMOT64, D-AMOT-3 = a), il
+// prime ; vide (null) on lit le productible PVGIS de la ville (repli DEFAULT).
+// Même règle que productible.py::productible_for_city (aucune sentinelle 1600).
 export function productibleForCity(city, override = null) {
   const ov = parseFloat(override)
-  if (Number.isFinite(ov) && ov > 0 && Math.abs(ov - _PRODUCTIBLE_HISTORICAL_DEFAULT) > 0.5) {
+  if (Number.isFinite(ov) && ov > 0) {
     return ov
   }
   const key = String(city || '').trim().toLowerCase()

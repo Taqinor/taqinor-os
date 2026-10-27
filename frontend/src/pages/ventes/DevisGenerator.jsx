@@ -662,8 +662,8 @@ export default function DevisGenerator({
     // repli de taux et l'avertissement de divergence, jamais un recalage forcé.
     tvaStandard: TVA_STANDARD_DEFAUT, tvaPanneaux: TVA_PANNEAUX_DEFAUT,
     // QX38 — override productible société (CompanyProfile.productible_kwh_kwc).
-    // Défaut historique 1600 → productibleForCity lit alors le PVGIS par ville
-    // (source unique alignée écran/PDF/web) ; une valeur société ≠ 1600 prime.
+    // Vide (null) → productibleForCity lit alors le PVGIS par ville (source
+    // unique alignée écran/PDF/web) ; toute valeur société saisie prime (AMOT64).
     productible: null,
   })
   const [remiseMax, setRemiseMax] = useState('')
