@@ -38,6 +38,9 @@ from .public.payload_batterie import (
     _fiche_batterie_publique, _remplissage_batterie_publiable,
     _residuel_falaise_publiable,
 )
+from .public.payload_ci import (
+    charge_utile_client as _charge_utile_client,
+)
 from .public.payload_conditions import (
     PAIEMENT_MOYENS_PUBLICS, _acompte_publique, _conditions_publiques,
     _conditions_titre_publique, _confirmation_email_publique,
@@ -1272,7 +1275,7 @@ def proposal_data(request, token):
         # main » (une ligne par option et par taux de TVA), APRÈS la synthèse.
         _installation_ci.regrouper_paniers(data)
         if est_standard:
-            for _cle in ('sans_items', 'avec_items'):
+            for _cle in ('sans_items', 'avec_items', 'all_items'):  # CPRS4
                 if data.get(_cle):
                     data[_cle] = _agreger_lignes_kit(data[_cle])
         # ── Z2 (ORDRE FONDATEUR, 20/08/2026) — la proposition en ligne HÉRITE de
@@ -1872,6 +1875,7 @@ def proposal_data(request, token):
         # ``synthese_ci`` (``CLES_INDUSTRIEL_SEUL``), jamais une seconde.
         if _mode_public(data) == 'commercial':
             _retirer_industriel_seul(payload)
+        _charge_utile_client(payload, data)  # CPRS1-3 : chiffres/mots du PDF
         # L-NIV-VU (24/08/2026) — la page peut enfin DIRE au client qu'elle est
         # simplifiée, mais SEULEMENT quand c'est vrai sur SON devis (liste
         # vide ⇒ rien d'affiché). Calculé en dernier : la charge utile est

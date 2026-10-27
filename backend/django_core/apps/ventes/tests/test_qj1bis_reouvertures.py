@@ -104,3 +104,24 @@ class ReouvertureTests(TestCase):
         self._reculer_derniere_vue(30)
         self._get()
         self.assertEqual(self._notes_reouverture().count(), 2)
+
+    def test_cprs5_devis_signe_relu_ne_renotifie_pas(self):
+        """CPRS5 — un devis déjà accepté reste consultable : le relire n'est
+        plus une « réouverture » signalée au commercial."""
+        Devis.objects.filter(pk=self.devis.pk).update(statut='accepte')
+        url = f'/api/django/public/proposal/{self.link.token}/data/'
+        APIClient().get(url)
+        self.assertIsNotNone(
+            ShareLink.objects.get(pk=self.link.pk).first_viewed_at)
+        self._reculer_derniere_vue(20)
+        APIClient().get(url)
+        self.assertEqual(self._notes_reouverture().count(), 0)
+
+    def test_cprs5_premiere_ouverture_une_seule_fois(self):
+        """CPRS5 — deux requêtes qui lisent le même lien encore jamais
+        ouvert : seule celle qui pose ``first_viewed_at`` est la première."""
+        from apps.ventes.public.lecture_views import _stamp_view
+        a = ShareLink.objects.get(pk=self.link.pk)
+        b = ShareLink.objects.get(pk=self.link.pk)
+        self.assertTrue(_stamp_view(a))
+        self.assertFalse(_stamp_view(b))

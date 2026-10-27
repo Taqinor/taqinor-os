@@ -315,10 +315,12 @@ def _stamp_view(link):
         ShareLink.objects.filter(pk=link.pk).update(**champs_maj)
         # Set first_viewed_at only once (conditioned on still being null so
         # concurrent requests from the same client don't overwrite each other).
+        # CPRS5 — « première » = la requête qui a réellement posé la date :
+        # deux onglets ouverts ensemble ne notifient plus deux fois.
         if is_first:
-            ShareLink.objects.filter(
+            is_first = ShareLink.objects.filter(
                 pk=link.pk, first_viewed_at__isnull=True,
-            ).update(first_viewed_at=now)
+            ).update(first_viewed_at=now) == 1
         link.refresh_from_db(fields=['view_count', 'last_viewed_at', 'first_viewed_at'])
         return is_first
     except Exception:  # noqa: BLE001 — best-effort, never break the public GET (D-ENF22-BLE001)
@@ -470,6 +472,10 @@ def _notify_open(link, request=None, *, is_first):
         return
     if link.devis_id and _noter_si_version_remplacee(link):
         return  # ACRM11 — version remplacée : la note seule.
+    # CPRS5 — un devis déjà signé reste consultable (ADOC131) : relire sa
+    # proposition n'est plus un signal commercial « le client hésite ».
+    if link.devis_id and getattr(link.devis, 'statut', '') == 'accepte':
+        return
     try:
         if not link.devis_id:
             return
