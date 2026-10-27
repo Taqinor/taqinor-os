@@ -325,6 +325,10 @@ class FollowupLevelViewSet(viewsets.ModelViewSet):
         company = self.request.user.company if self.request.user.company_id else None
         serializer.save(company=company)
 
+    # api-fuzz-full 27/10 (ENF11) : aucun corps ; 201 (niveaux créés) publié
+    # — le schéma n'annonçait que 200.
+    @extend_schema(request=None, responses={
+        201: FollowupLevelSerializer(many=True)})
     @action(detail=False, methods=['post'], url_path='seed-defaults')
     def seed_defaults(self, request):
         """Crée les niveaux de relance par défaut (J+7 / J+15 / J+30) quand la

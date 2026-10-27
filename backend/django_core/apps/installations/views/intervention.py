@@ -1081,7 +1081,7 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
             numero_serie=oa.s(),
             designation=oa.s(),
             slot=oa.s(),
-            caracteristiques=oa.obj(null=True),
+            caracteristiques=oa.Caracteristiques(required=False, allow_null=True),
             capture_source=oa.s(),
             file=oa.serializers.FileField(required=False),
         ),

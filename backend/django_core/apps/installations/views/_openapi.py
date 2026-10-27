@@ -273,6 +273,21 @@ def quantite_bornee(request, nom, defaut='0'):
     return quantite
 
 
+#: api-fuzz-full 27/10 (ENF11) — ``caracteristiques`` publiées comme
+#: ``field_capture.valider_caracteristiques`` les accepte : objet plat d'au
+#: plus 10 clés, valeurs texte (sans NUL) ou nombre — le DictField libre
+#: annonçait toute valeur (une liste « conforme » était refusée 400).
+CARACTERISTIQUES = {
+    'type': 'object', 'nullable': True, 'maxProperties': 10,
+    'additionalProperties': {'oneOf': [
+        {'type': 'string', 'pattern': MOTIF_SANS_NUL}, {'type': 'number'}]}}
+
+
+@extend_schema_field(CARACTERISTIQUES)
+class Caracteristiques(serializers.DictField):
+    """Champ de DÉCLARATION : caractéristiques de plaque."""
+
+
 def obj(required=False, null=False, **kw):
     return serializers.DictField(required=required, allow_null=null, **kw)
 
