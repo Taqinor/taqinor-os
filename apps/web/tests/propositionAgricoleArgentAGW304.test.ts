@@ -348,13 +348,16 @@ describe('Rejeu AGQ du 24/10 — jumeaux page des phrases PDF (AGQ3, AGQ18)', ()
   it('la carte eau nomme le mois de conception et le plus bas, comme le héro du PDF', () => {
     const p = { synthese_agricole: { eau: { mois_conception: 10, m3_jour_min: 112.3, mois_m3_jour_min: 11 } } };
     expect(heuresEauAgricole(p, 5.1, fmt)!.fr).toBe(
-      'estimation, sur 5,1 h de pompage équivalentes à plein débit en octobre, mois de conception · au plus bas : 112,3 m³/j en novembre (hypothèse)',
+      'estimation, sur 5,1 h de pompage équivalentes à plein débit en octobre, mois de conception · au plus bas : 112,3 m³/j en novembre',
     );
     expect(heuresEauAgricole(p, 5.1, fmt)!.ar).toContain('أكتوبر');
     // le plus bas tombe sur le mois de conception : rien de plus ; sans mois servi : la phrase d'hier.
     expect(heuresEauAgricole({ synthese_agricole: { eau: { mois_conception: 10, m3_jour_min: 9, mois_m3_jour_min: 10 } } }, 5.1, fmt)!.fr)
       .not.toContain('au plus bas');
-    expect(heuresEauAgricole({ synthese_agricole: { eau: {} } }, 5.1, fmt)!.fr).toBe('estimation, sur 5,1 h de pompage (hypothèse)');
+    expect(heuresEauAgricole({ synthese_agricole: { eau: {} } }, 5.1, fmt)!.fr).toBe('estimation, sur 5,1 h de pompage');
+    // AGC3 — « estimation » suit `eau.estimation` du serveur (AMOT65) ; aucun « (hypothèse) ».
+    expect(heuresEauAgricole({ synthese_agricole: { eau: { estimation: false } } }, 5.1, fmt)!.fr).toBe('sur 5,1 h de pompage');
+    expect(heuresEauAgricole(p, 5.1, fmt)!.en).not.toContain('assumption');
     expect(heuresEauAgricole(p, null, fmt)).toBeNull();
   });
   it('« Mois d’irrigation : déclarés par vous le … » lu sur l’entrée servie ; sans entrée, rien', () => {
