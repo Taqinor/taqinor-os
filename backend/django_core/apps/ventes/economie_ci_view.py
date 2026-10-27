@@ -44,12 +44,8 @@ def refus_saisie(refus):
 
 
 def _nombre(valeur):
-    try:
-        if valeur is None or isinstance(valeur, bool):
-            return None
-        return float(valeur)
-    except (TypeError, ValueError):
-        return None
+    from .economie_ci_options import fini
+    return None if valeur is None or isinstance(valeur, bool) else fini(valeur)
 
 
 def lignes_ecran(company, lignes, produits=None):
@@ -86,6 +82,7 @@ def lignes_ecran(company, lignes, produits=None):
             'designation': ligne.get('designation')
             or (getattr(produit, 'nom', '') if produit else ''),
             'ht': ht, 'ttc': ttc, 'optionnelle': optionnelle,
+            'quantite': _nombre(ligne.get('quantite')),  # CEC10 (alerte O&M)
             'onduleur': _est_onduleur(produit),
             'role_ci': (getattr(produit, 'role_ci', '') or None)
             if produit is not None else None,
@@ -107,6 +104,7 @@ def lignes_ecran(company, lignes, produits=None):
 @permission_classes([IsAnyRole])
 def economie_ci_preview(request):
     """POST /ventes/economie-ci/preview/ — calcule, n'écrit rien."""
+    from .economie import EconomieInvalide
     from .economie_ci import (
         SaisieEconomieCiInvalide, assembler_economie_ci, reglages_economie_ci)
 
@@ -134,7 +132,7 @@ def economie_ci_preview(request):
             sortie, saisies=saisies if isinstance(saisies, dict) else {},
             investissement=investissement, lignes=lignes,
             mode_installation=mode, reglages=reglages)
-    except SaisieEconomieCiInvalide as refus:
+    except (SaisieEconomieCiInvalide, EconomieInvalide) as refus:  # CEC14
         return refus_saisie(refus)
     return Response(bloc)
 

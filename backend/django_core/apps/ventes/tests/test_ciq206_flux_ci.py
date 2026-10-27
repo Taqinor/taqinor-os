@@ -107,6 +107,13 @@ class TauxClientTest(SimpleTestCase):
         self.assertIsNone(res['indicateurs']['van_motif'])
         self.assertTrue(res['indicateurs']['lcoe_actualise'])
 
+    def test_cec14_taux_non_fini_refuse_nomme(self):
+        for brut in (float('inf'), 1e300, float('nan')):
+            with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
+                eco.lire_taux_client({'valeur_pct': brut, 'source': 'client'})
+            self.assertEqual(ctx.exception.champ,
+                             'taux_actualisation_client.valeur_pct')
+
     def test_taux_sans_source_refuse(self):
         with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
             eco.flux_ci(_base(), taux_actualisation_client={
@@ -490,6 +497,38 @@ class DegradationFicheModuleTest(SimpleTestCase):
             self.assertTrue(libelle['en'] and libelle['ar'])
 
 
+class SaisieFacultativeInvalideTest(SimpleTestCase):
+    def test_cec14_offre_invalide_ecartee_economie_gardee(self):
+        """CEC14 — à la lecture d'un devis, une offre de prêteur sans source
+        n'efface plus l'économie : elle est écartée et dite au vendeur."""
+        import copy
+        import json
+        from pathlib import Path
+
+        from apps.ventes import economie_ci_options as opt
+        contrats = Path(__file__).resolve().parents[1] / 'contract_samples'
+        apercu = copy.deepcopy(json.loads(
+            (contrats / 'etude_ci_preview.json').read_text(
+                encoding='utf-8'))['exemple'])
+        saisies = {'offre_financement': {'nature': 'credit'}}
+        kw = dict(tarif_declare={'contrat': 'bt_patente'},
+                  investissement={'ht': 900000.0, 'ttc': 1080000.0},
+                  mode_installation='commercial')
+        with self.assertRaises(eco.SaisieEconomieCiInvalide):
+            eco.assembler_economie_ci(apercu, saisies=saisies, **kw)
+        bloc = opt.sans_saisie_invalide(eco.assembler_economie_ci, apercu,
+                                        saisies=saisies, **kw)
+        self.assertEqual(bloc['statut'], eco.STATUT_CALCULE)
+        self.assertIn('saisie_ecartee',
+                      [a['code'] for a in bloc['alertes_internes']])
+        self.assertNotIn('alertes_internes', eco.economie_ci_publique(bloc))
+        # Devis envoyé sous le niveau 3 : le refus d'hier, inchangé.
+        with self.assertRaises(eco.SaisieEconomieCiInvalide):
+            opt.sans_saisie_invalide(eco.assembler_economie_ci, apercu,
+                                     saisies=saisies,
+                                     reglages={'regles_origine': True}, **kw)
+
+
 class OptionAvecBatterieTest(SimpleTestCase):
     """CEC3 — l'option « avec batterie » se chiffre par le MÊME flux que
     l'option « sans » (jamais total ÷ économie an 1), batterie remplacée au
@@ -557,6 +596,14 @@ class OptionAvecBatterieTest(SimpleTestCase):
             batterie=opt.annee_remplacement_batterie(cycles_publies=10000))
         self.assertEqual([r['composant'] for r in avec['remplacements']],
                          ['onduleur'])
+
+    def test_cec11_batterie_rack_ou_support_inclus_reste_une_batterie(self):
+        from apps.ventes import economie_ci_options as opt
+        for nom in ('Batterie lithium rack 30 kWh',
+                    'Batterie Dyness 10 kWh (support mural inclus)'):
+            self.assertTrue(opt._est_batterie({'designation': nom}), nom)
+        self.assertFalse(opt._est_batterie(
+            {'designation': 'Support mural pour batterie'}))
 
     def test_seule_la_batterie_est_remplacee(self):
         from apps.ventes import economie_ci_options as opt
