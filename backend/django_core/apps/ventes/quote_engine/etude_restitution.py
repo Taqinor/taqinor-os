@@ -273,8 +273,9 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         # fonction interdit lui-même.
         from .productible import (est_ville_de_reference as _est_ref,
                                   ville_reference as _ville_ref)
-        _force_societe = bool(
-            _co_productible and abs(float(_co_productible) - 1600) > 0.5)
+        # AMOT64 — toute valeur société renseignée (1 600 compris) force le
+        # productible : ce n'est plus une donnée PVGIS ⇒ la phrase s'omet.
+        _force_societe = bool(_co_productible and float(_co_productible) > 0)
         _ref = _ville_ref(_client_city)
         if _ref and not _force_societe:
             # QJR18 — MÊME valeur nette que la ligne d'hypothèse ci-dessus :

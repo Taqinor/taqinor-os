@@ -774,8 +774,9 @@ test('QX38 — productibleForCity : PVGIS par ville, repli central, override soc
   assert.equal(productibleForCity('Oujda'), DEFAULT_PRODUCTIBLE)
   // alias secondaire → ville de référence
   assert.equal(productibleForCity('Kenitra'), PRODUCTIBLE_PAR_VILLE.rabat)
-  // override = défaut historique 1600 → on lit le PVGIS de la ville
-  assert.equal(productibleForCity('Agadir', 1600), 1687)
+  // AMOT64 — override vide → PVGIS de la ville ; 1600 saisi est respecté
+  assert.equal(productibleForCity('Agadir', null), 1687)
+  assert.equal(productibleForCity('Agadir', 1600), 1600)
   // override société explicite (≠ 1600) → il prime
   assert.equal(productibleForCity('Agadir', 1750), 1750)
 })

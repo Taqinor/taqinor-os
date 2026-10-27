@@ -300,9 +300,9 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         _tariff = {}
     # ── QX38 — productible CANONIQUE (source unique PVGIS par ville) ──────────
     # CompanyProfile.productible_kwh_kwc devient un OVERRIDE éditable, pas un
-    # modèle physique concurrent : quand il vaut le défaut historique 1600, on
-    # lit le productible PVGIS de la ville du lead/devis (aligné écran/PDF/web).
-    # Une valeur société ≠ 1600 (réglage explicite) prime. Repli sûr : sur toute
+    # modèle physique concurrent : vide (NULL), on lit le productible PVGIS de
+    # la ville du lead/devis (aligné écran/PDF/web) ; renseigné (1 600 compris
+    # — AMOT64), il prime. Repli sûr : sur toute
     # erreur, on garde l'ancien productible du tarif (comportement inchangé).
     _co_productible = _tariff.get("productible_kwh_kwc") or None
     try:
