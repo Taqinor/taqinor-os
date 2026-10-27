@@ -39,7 +39,7 @@ export const POST: APIRoute = async ({ request }) => {
     limit: 30, windowMs: 60_000,
   });
   if (!rl.allowed) {
-    return json({ ok: false, code: 'limite', detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
+    return json({ ok: false, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
       'retry-after': String(rl.retryAfterSec),
     });
   }

@@ -536,6 +536,8 @@ describe('parseQuestionnairePostResponse', () => {
 
   it('corps upstream illisible/non-objet ⇒ jamais un throw', () => {
     expect(parseQuestionnairePostResponse(502, null)).toEqual({ ok: false, enregistrees: [] });
+    // CQSTW5 — 429 du relais (corps commun aux proxies, sans `code`) = « limite ».
+    expect(parseQuestionnairePostResponse(429, { ok: false, detail: 'Trop de tentatives' }).code).toBe('limite');
     expect(parseQuestionnairePostResponse(502, 'erreur brute')).toEqual({ ok: false, enregistrees: [] });
   });
 

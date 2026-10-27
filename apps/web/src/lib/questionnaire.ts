@@ -1218,7 +1218,9 @@ export function parseQuestionnairePostResponse(status: number, body: unknown): Q
   const enregistreesRaw = Array.isArray(b.enregistrees) ? b.enregistrees : [];
   const enregistrees = enregistreesRaw.filter((v): v is string => typeof v === 'string');
   const detail = typeof b.detail === 'string' ? b.detail : undefined;
-  const code = typeof b.code === 'string' && b.code in MESSAGES_ERREUR ? (b.code as QuestionnaireErreurCode) : undefined;
+  // 429 du relais = trop de tentatives (le relais garde le corps commun aux proxies, sans `code`).
+  const code = typeof b.code === 'string' && b.code in MESSAGES_ERREUR ? (b.code as QuestionnaireErreurCode)
+    : status === 429 ? 'limite' : undefined;
   return { ok, enregistrees, detail, ...(code ? { code } : {}), ...(b.devis_possible === true ? { devisPossible: true } : {}) };
 }
 
