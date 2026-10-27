@@ -150,6 +150,7 @@ class TestPlanToitPlat(unittest.TestCase):
             self.assertEqual(plan['angle_deg'], ANGLE_TOIT_PLAT_DEG)
             self.assertEqual(plan['angle_deg'], 10.0)
             self.assertNotEqual(plan['angle_deg'], PVGIS_ANGLE_DEG)
+            self.assertIn('systèmes lestés', plan['source_angle'])
 
     def test_pente_declaree_et_autres_poses_inchangees(self):
         self.assertEqual(plan_de_production({'type_pose': 'toit_plat_leste',
@@ -157,6 +158,7 @@ class TestPlanToitPlat(unittest.TestCase):
         self.assertEqual(plan_de_production({'type_pose': 'toiture_inclinee'})['angle_deg'],
                          PVGIS_ANGLE_DEG)
         self.assertEqual(plan_de_production(None)['angle_deg'], PVGIS_ANGLE_DEG)
+        self.assertIsNone(plan_de_production({'type_pose': 'bac_acier'})['source_angle'])
 
 
 class TestPurete(unittest.TestCase):
