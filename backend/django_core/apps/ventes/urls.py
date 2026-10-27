@@ -67,7 +67,7 @@ from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 from .diagram_views import schema_unifilaire, schema_unifilaire_devis  # FG252
 from .etude_horaire_view import etude_horaire_preview  # CJ2a
 from .etude_pompage_view import etude_pompage_preview  # AGR121
-from .etude_ci_view import etude_ci_preview  # CIQ118
+from .etude_ci_view import devis_reviser_apres_visite, etude_ci_preview  # CIQ118, CORC2
 from .views.economie_pompage import economie_pompage_preview  # AGR206
 from .economie_ci_view import economie_ci_preview  # CIQ210
 from .roof_load_view import roof_load_check  # FG253
@@ -251,6 +251,9 @@ urlpatterns = [
     # CIQ118 — aperçu serveur C&I (D-CIQ-0) : un seul calcul
     # (``domain/etude_ci.etudier_ci``), aucune écriture.
     path('etude-ci/preview/', etude_ci_preview, name='etude-ci-preview'),
+    # CORC2 — devis C&I révisé après la visite technique validée.
+    path('etude-ci/reviser-apres-visite/', devis_reviser_apres_visite,
+         name='etude-ci-reviser-apres-visite'),
     # AGR121 — aperçu serveur du pompage agricole (D-AGR-1) : un seul calcul
     # (``domain/pompage.etudier_pompage``), aucune écriture.
     path('etude-pompage/preview/', etude_pompage_preview,

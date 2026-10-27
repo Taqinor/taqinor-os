@@ -18,7 +18,7 @@ from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 #: Identifiants de contexte retirés du corps avant le calcul.
 CLES_CONTEXTE = ('devis', 'lead')
@@ -43,9 +43,9 @@ EtudeCiPreviewResponse = inline_serializer('EtudeCiPreviewResponse', {
     # CORC1 (27/10/2026) — l'écran vendeur sait AVANT le clic si le devis
     # automatique passera, et pourquoi (même refus que le bouton).
     'devis_auto': serializers.JSONField(),
-    # Fondateur 26/10/2026 — ABSENTE quand l'option « avec batterie » n'est
+    # Fondateur 26/10/2026 — ``null`` quand l'option « avec batterie » n'est
     # pas composée (forme ``option_avec`` du contrat).
-    'option_avec': serializers.JSONField(required=False),
+    'option_avec': serializers.JSONField(allow_null=True),
 })
 
 
@@ -106,7 +106,7 @@ def etude_ci_preview(request):
     lead = _lead_de_la_societe(company, corps.get('lead'))
     entrees = {k: v for k, v in corps.items() if k not in CLES_CONTEXTE}
     etude = etudier_ci(company, entrees, devis=devis, lead=lead)
-    reponse = {
+    return Response({
         'entrees_resolues': etude['entrees_resolues'],
         'niveau_donnees': etude['niveau_donnees'],
         'sous_reserve_visite': etude['sous_reserve_visite'],
@@ -122,7 +122,62 @@ def etude_ci_preview(request):
         'methode': etude['methode'],
         'version_moteur': etude['version_moteur'],
         'devis_auto': devis_auto_possible(etude),
-    }
-    if etude.get(CLE_OPTION_AVEC):
-        reponse[CLE_OPTION_AVEC] = etude[CLE_OPTION_AVEC]
-    return Response(reponse)
+        'option_avec': etude.get(CLE_OPTION_AVEC) or None,
+    })
+
+
+#: CORC2 — réponse de ``etude-ci/reviser-apres-visite/`` (contrat
+#: ``contract_samples/devis_revise_visite.json``).
+DevisReviseVisiteResponse = inline_serializer('DevisReviseVisiteResponse', {
+    'devis_id': serializers.IntegerField(),
+    'reference': serializers.CharField(),
+    'version': serializers.IntegerField(),
+    'cree': serializers.BooleanField(),
+    'lignes_changees': serializers.ListField(child=serializers.JSONField()),
+    'mesures_utilisees': serializers.ListField(child=serializers.JSONField()),
+    'alertes': serializers.ListField(child=serializers.JSONField()),
+})
+
+
+@extend_schema(
+    summary="Devis C&I révisé après la visite technique (CORC2)",
+    description=("Recompose les lignes du devis C&I avec les mesures de la visite "
+                 "C&I validée : brouillon recomposé sur place, sinon V+1 (révision) "
+                 "recomposée. Aucun statut écrit. Contrat devis_revise_visite.json."),
+    request=inline_serializer('DevisReviseVisiteRequest', {
+        'devis': serializers.IntegerField()}),
+    responses={200: DevisReviseVisiteResponse,
+               404: OpenApiTypes.OBJECT, 409: OpenApiTypes.OBJECT},
+)
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def devis_reviser_apres_visite(request):
+    """POST /ventes/etude-ci/reviser-apres-visite/ — {devis} → devis révisé."""
+    from rest_framework.exceptions import NotFound, ParseError
+
+    from core.conflit_etat import ConflitEtat
+
+    from .domain.revision import RevisionError
+    from .domain.revision_visite_ci import (RevisionVisiteError,
+                                            reviser_devis_apres_visite)
+
+    if not isinstance(request.data, dict):
+        raise ParseError('Corps JSON objet attendu.')
+    company = getattr(request.user, 'company', None)
+    devis = _devis_de_la_societe(company, request.data.get('devis'), request.user)
+    if devis is None:
+        raise NotFound('Devis introuvable.')
+    try:
+        resultat = reviser_devis_apres_visite(devis, user=request.user)
+    except RevisionVisiteError as exc:
+        raise ConflitEtat({'detail': exc.message, 'field': exc.champ})
+    except RevisionError as exc:
+        raise ConflitEtat({'detail': exc.message, 'field': 'devis'})
+    cible = resultat['devis']
+    return Response({
+        'devis_id': cible.id, 'reference': cible.reference,
+        'version': cible.version, 'cree': resultat['cree'],
+        'lignes_changees': resultat['lignes_changees'],
+        'mesures_utilisees': resultat['mesures_utilisees'],
+        'alertes': resultat['alertes'],
+    })

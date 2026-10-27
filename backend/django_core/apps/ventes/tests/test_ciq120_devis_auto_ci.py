@@ -593,3 +593,60 @@ class DesignationOptionAvecTests(SimpleTestCase):
                          'Onduleur hybride Deye 20kW')
         self.assertEqual(designation_option_avec('Dyness PowerBrick SC 16 kWh', 'batterie'),
                          'Batterie Dyness PowerBrick SC 16 kWh')
+
+
+class RevisionApresVisiteCorc2Tests(_Base):
+    """CORC2 (27/10/2026) — le devis C&I préliminaire est RECOMPOSÉ avec les
+    mesures de la visite C&I validée : brouillon sur place, sinon V+1 ;
+    aucun statut écrit ; contrat ``devis_revise_visite.json``."""
+
+    def _visite(self, lead, dc=10, ac=45):
+        from apps.visites.models import VisiteTerrain
+        return VisiteTerrain.objects.create(
+            company=self.co, lead=lead, gabarit='ci', statut=VisiteTerrain.Statut.VALIDEE,
+            mesures={'cheminement': {'trajets': [
+                {'libelle': 'a', 'longueur_dc_m': dc, 'longueur_ac_m': ac}]}})
+
+    def _reviser(self, devis):
+        from apps.ventes.domain.revision_visite_ci import reviser_devis_apres_visite
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            return reviser_devis_apres_visite(devis, user=self.user)
+
+    def _quantite(self, devis, role_nom):
+        return sum(ligne.quantite for ligne in devis.lignes.all()
+                   if role_nom in ligne.designation)
+
+    def test_sans_visite_validee_refus_nomme(self):
+        from apps.ventes.domain.revision_visite_ci import RevisionVisiteError
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        with self.assertRaises(RevisionVisiteError) as ctx:
+            self._reviser(devis)
+        self.assertEqual(ctx.exception.champ, 'visite')
+
+    def test_brouillon_recompose_sur_place_avec_les_mesures(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        devis = self._auto(lead)
+        ac_avant = self._quantite(devis, 'Câble AC')
+        self._visite(lead)
+        resultat = self._reviser(devis)
+        self.assertFalse(resultat['cree'])
+        self.assertEqual(resultat['devis'].pk, devis.pk)
+        self.assertEqual(resultat['devis'].statut, Devis.Statut.BROUILLON)
+        self.assertNotEqual(self._quantite(resultat['devis'], 'Câble AC'), ac_avant)
+        self.assertIn('longueur_ac_m', [m['cle'] for m in resultat['mesures_utilisees']])
+        self.assertTrue(resultat['lignes_changees'])
+
+    def test_devis_envoye_v2_creee_v1_intacte(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        devis = self._auto(lead)
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        devis.refresh_from_db()
+        lignes_v1 = list(devis.lignes.values_list('designation', 'quantite'))
+        self._visite(lead)
+        resultat = self._reviser(devis)
+        self.assertTrue(resultat['cree'])
+        self.assertNotEqual(resultat['devis'].pk, devis.pk)
+        self.assertEqual(resultat['devis'].version, devis.version + 1)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)  # règle #4
+        self.assertEqual(list(devis.lignes.values_list('designation', 'quantite')), lignes_v1)

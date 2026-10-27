@@ -197,7 +197,7 @@ class ContratTests(_Base):
     def test_devis_auto_possible_sur_etude_complete(self):
         data = self.post(self.corps(phases='tri'))
         self.assertEqual(data['devis_auto'], {'possible': True, 'message': None, 'champ': None})
-        self.assertNotIn('option_avec', data)  # aucun hybride au catalogue de test
+        self.assertIsNone(data['option_avec'])  # aucun hybride au catalogue de test
 
     def test_devis_auto_refuse_nomme_le_champ_du_lead(self):
         data = self.post(self.corps(tarif=None))
