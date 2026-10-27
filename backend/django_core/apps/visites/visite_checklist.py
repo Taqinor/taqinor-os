@@ -404,6 +404,13 @@ CATEGORIES_POINT_EAU = [
 #: commun + BT. Elle REMPLACE le gabarit résidentiel (toit_plat, local
 #: onduleur…). Les zones de toiture (CIQ602) et le supplément MT (CIQ660)
 #: s'y ajoutent. Mêmes règles dures : AUCUN seuil, AUCUN verdict.
+#: CSV10 / D-CMP-2 — la règle de composition des câbles, dite au technicien.
+AIDE_TRAJETS = (
+    'Mesurez chaque distance UN SEUL SENS, à la longueur réelle du trajet : '
+    'le câble DC aller-retour (2 × le nombre de chaînes) est calculé pour '
+    'vous, ne doublez pas. « Distance onduleur → TGBT » se mesure pour chaque '
+    'onduleur. Plusieurs trajets : le plus long est retenu, pas la somme.')
+
 CATEGORIES_CI = [
     {
         # CIQ602 — LISTE de zones (un pan ou un bâtiment chacune), avec sa
@@ -595,13 +602,16 @@ CATEGORIES_CI = [
             # Longueurs DC et AC REQUISES : au moins un trajet porte chacune.
             {'code': 'trajets', 'libelle': 'Trajets de câbles',
              'nature': LISTE, 'requis': True,
+             'aide': AIDE_TRAJETS,
              'au_moins_un': ['longueur_dc_m', 'longueur_ac_m'],
              'forme': [
                  {'code': 'libelle', 'libelle': 'Trajet', 'nature': TEXTE,
                   'requis': False},
-                 {'code': 'longueur_dc_m', 'libelle': 'Longueur DC (m)',
+                 {'code': 'longueur_dc_m',
+                  'libelle': 'Distance champ → onduleur (m, un sens)',
                   'nature': NOMBRE, 'requis': False},
-                 {'code': 'longueur_ac_m', 'libelle': 'Longueur AC (m)',
+                 {'code': 'longueur_ac_m',
+                  'libelle': 'Distance onduleur → TGBT (m)',
                   'nature': NOMBRE, 'requis': False},
              ]},
         ],

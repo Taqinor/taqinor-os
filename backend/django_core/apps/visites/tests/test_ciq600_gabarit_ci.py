@@ -106,6 +106,23 @@ class ChecklistCiDuContrat(SimpleTestCase):
         releve = selectors.releve_ci_de_visite(visite, declare={})
         self.assertIsNone(releve['raccordement']['constate'])
 
+    def test_libelles_trajets_disent_la_mesure(self):
+        # CSV10 / D-CMP-2 — DC = distance champ -> onduleur, UN SENS (le câble
+        # aller-retour est calculé) ; AC = distance onduleur -> TGBT.
+        trajets = {m['code']: m for m in checklist.mesures(
+            'cheminement', 'ci')}['trajets']
+        libelles = {c['code']: c['libelle'] for c in trajets['forme']}
+        attendus = GABARIT_CONTRAT['cheminement']['mesures']['trajets']
+        self.assertEqual(libelles['longueur_dc_m'],
+                         'Distance champ → onduleur (m, un sens)')
+        self.assertEqual(libelles['longueur_ac_m'],
+                         'Distance onduleur → TGBT (m)')
+        self.assertEqual(libelles, {**attendus['forme_libelles'],
+                                    'libelle': libelles['libelle']})
+        self.assertEqual(trajets['aide'], attendus['aide'])
+        for mot in ('un seul sens', 'ne doublez pas', 'le plus long'):
+            self.assertIn(mot, trajets['aide'].lower())
+
     def test_aucune_mesure_residentielle_dans_le_ci(self):
         codes = {m['code'] for c in checklist.categories('ci')
                  for m in c['mesures']}

@@ -262,6 +262,7 @@ export default function VisiteMesuresForm({
     return (
       <fieldset key={champ.key} className="space-y-2 sm:col-span-2" data-testid={`visite-liste-${champ.key}`}>
         <legend className="text-sm font-medium">{champ.label}</legend>
+        {champ.aide && <p className="text-xs text-muted-foreground">{champ.aide}</p>}
         {lignes.length === 0 && (
           <p className="text-xs text-muted-foreground">Aucun élément saisi.</p>
         )}

@@ -914,7 +914,12 @@
             "libelle": "texte",
             "longueur_dc_m": "décimal",
             "longueur_ac_m": "décimal"
-          }
+          },
+          "forme_libelles": {
+            "longueur_dc_m": "Distance champ → onduleur (m, un sens)",
+            "longueur_ac_m": "Distance onduleur → TGBT (m)"
+          },
+          "aide": "Mesurez chaque distance UN SEUL SENS, à la longueur réelle du trajet : le câble DC aller-retour (2 × le nombre de chaînes) est calculé pour vous, ne doublez pas. « Distance onduleur → TGBT » se mesure pour chaque onduleur. Plusieurs trajets : le plus long est retenu, pas la somme."
         }
       }
     },
