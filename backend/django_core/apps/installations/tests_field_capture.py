@@ -418,6 +418,15 @@ class TestReserves(_Base):
             'reserve': rid, 'resolution': 'Câble posé'}, format='json')
         self.assertEqual(r.data['statut'], 'resolue')
 
+    def test_reserve_ou_photo_inconnue_404(self):
+        # api-fuzz-full 27/10 (ENF11) : id entier absent = 404, plus un 400.
+        for route, corps in (('resoudre-reserve', {'reserve': 0}),
+                             ('modifier-reserve', {'reserve': 0}),
+                             ('annoter-photo', {'photo': 0}),
+                             ('cocher-safety', {'cle': 'inconnue'})):
+            r = self.api.post(f'{self.url}/{route}/', corps, format='json')
+            self.assertEqual(r.status_code, 404, (route, r.content))
+
     def test_corps_vide_ou_mal_type_400(self):
         # La description est exigée par le schéma publié : plus de 201 muet.
         r = self.api.post(f'{self.url}/ajouter-reserve/', {}, format='json')

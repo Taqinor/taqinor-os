@@ -652,7 +652,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 id=kit_id, company=interv.company).first()
             if kit is None:
                 return Response({'kit': 'Kit inconnu.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=oa.statut_inconnu(kit_id))
             prep.kit = kit
         # Changer de kit invalide la confirmation « Tout est chargé ».
         prep.tout_charge = False
@@ -677,7 +677,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         ligne = prep.materiel.filter(id=request.data.get('ligne')).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('ligne')))
         charge = bool(request.data.get('charge', True))
         ligne.charge = charge
         ligne.save(update_fields=['charge'])
@@ -701,7 +701,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         ligne = prep.outils.filter(id=request.data.get('ligne')).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('ligne')))
         coche = bool(request.data.get('coche', True))
         # ACHT72 — cocher = sortir l'outil du parc (409 si perdu / en
         # réparation / déjà sorti).
@@ -1020,7 +1020,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             object_id=interv.id, company=interv.company).first()
         if att is None:
             return Response({'detail': 'Photo inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('photo')))
         motif, refus = self._motif_suppression(interv)  # ACHT41
         if refus is not None:
             return refus
@@ -1276,7 +1276,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             object_id=interv.id, company=interv.company).first()
         if att is None:
             return Response({'detail': 'Photo inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('photo')))
         drawing = request.data.get('drawing')
         ann, _ = PhotoAnnotation.objects.get_or_create(
             attachment=att, defaults={'company': interv.company,
@@ -1377,7 +1377,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         ligne = cons.lignes.filter(id=request.data.get('ligne')).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('ligne')))
         fields = []
         if 'quantite_utilisee' in request.data:
             try:
@@ -1660,12 +1660,12 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         releve = field_services.ensure_fiche_releve(interv)
         if releve is None:
             return Response({'detail': "Aucun gabarit pour ce type d'intervention."},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         valeur_obj = releve.valeurs.filter(
             id=request.data.get('valeur_id')).first()
         if valeur_obj is None:
             return Response({'detail': 'Champ de fiche inconnu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('valeur_id')))
         valeur_obj.valeur = str(request.data.get('valeur', '') or '').strip()
         valeur_obj.renseigne_le = timezone.now()
         valeur_obj.save(update_fields=['valeur', 'renseigne_le'])
@@ -1776,7 +1776,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── XFSM13 — re-vérification IEC 62446-2 vs baseline de recette ─────────
     @oa.extend_schema(
-        request=oa.body('EnregistrerReverificationRequete', seuil_alerte_pct=oa.f()),
+        request=oa.body('EnregistrerReverificationRequete', seuil_alerte_pct=oa.f(min_value=0, max_value=oa.PCT_MAX)),
         responses={201: ReverificationMesureSerializer},
     )
     @action(detail=True, methods=['post'], url_path='enregistrer-reverification',
@@ -1788,11 +1788,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         "voc_par_string": {"A": 620.5, ...}, "observations": ...,
         ["seuil_alerte_pct"]}. Un dépassement du seuil crée une Reserve."""
         interv = self.get_object()
-        seuil = request.data.get('seuil_alerte_pct', 20)
-        try:
-            seuil = float(seuil)
-        except (TypeError, ValueError):
-            seuil = 20
+        seuil = oa.seuil_pct(request.data.get('seuil_alerte_pct'), 'seuil_alerte_pct')
         reverif = enregistrer_reverification(
             interv, request.data, user=request.user, seuil_alerte_pct=seuil)
         return Response(
@@ -1822,7 +1818,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('reserve')))
         fields = []
         if 'description' in request.data:
             reserve.description = (request.data.get('description') or '').strip()
@@ -1850,7 +1846,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('reserve')))
         statut = request.data.get('statut', Reserve.Statut.RESOLUE)
         reserve.statut = statut
         reserve.resolution = (request.data.get('resolution') or '').strip()
@@ -1877,7 +1873,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('reserve')))
         if reserve.devis_repare_id:
             return Response({
                 'reserve': reserve.id, 'devis_id': reserve.devis_repare_id,
@@ -2083,7 +2079,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         item = signoff.items.filter(cle=request.data.get('cle')).first()
         if item is None:
             return Response({'detail': 'Consigne inconnue.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('cle'), str))
         coche = bool(request.data.get('coche', True))
         item.coche = coche
         item.coche_par = request.user if coche else None

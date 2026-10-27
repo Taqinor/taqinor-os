@@ -269,7 +269,8 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
     technicien ne lit plus les positions de ses collègues ; il lit les
     siennes via ``mes-positions`` (droit d'accès, loi 09-08 art. 7).
     ``?technicien=&date=`` rend le tracé de la journée, chronologique et
-    non paginé (≤ 2 000 lignes)."""
+    non paginé (≤ 2 000 lignes) — dans l'enveloppe paginée PUBLIÉE, en une
+    seule page (api-fuzz-full 27/10 : un tableau nu violait le schéma)."""
     queryset = PositionTechnicien.objects.select_related(
         'technicien', 'intervention').all()
     serializer_class = PositionTechnicienSerializer
@@ -319,6 +320,14 @@ class PositionTechnicienViewSet(oa.JsonOnlyMixin, TenantMixin, viewsets.ReadOnly
         if self._mode_trace():
             return None
         return super().paginate_queryset(queryset)
+
+    def list(self, request, *args, **kwargs):
+        reponse = super().list(request, *args, **kwargs)
+        if self._mode_trace():
+            # Tout le tracé en UNE page de l'enveloppe publiée.
+            reponse.data = {'count': len(reponse.data), 'next': None,
+                            'previous': None, 'results': reponse.data}
+        return reponse
 
     @oa.extend_schema(
         request=oa.body(

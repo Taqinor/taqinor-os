@@ -68,6 +68,31 @@ def id_entier(valeur, nom):
     return int(valeur)
 
 
+def statut_inconnu(valeur, attendu=int):
+    """ENF11 — statut d'un identifiant de corps qui ne désigne rien : 404 pour
+    une valeur du type publié (``attendu`` : entier JSON, ou chaîne pour une
+    clé), bien formée mais absente ; 400 sinon (corps invalide)."""
+    from rest_framework import status
+    if isinstance(valeur, attendu) and not isinstance(valeur, bool):
+        return status.HTTP_404_NOT_FOUND
+    return status.HTTP_400_BAD_REQUEST
+
+
+#: Plus grand pourcentage qu'une colonne ``DecimalField(5, 2)`` sait garder.
+PCT_MAX = 999.99
+
+
+def seuil_pct(valeur, nom, defaut=20):
+    """Pourcentage 0..``PCT_MAX`` (nombre JSON), ``defaut`` si absent ; sinon
+    400 nommant le champ — au-delà, la colonne (5, 2) débordait (500)."""
+    if valeur is None:
+        return defaut
+    if (isinstance(valeur, bool) or not isinstance(valeur, (int, float))
+            or not 0 <= valeur <= PCT_MAX):
+        raise ValidationError({nom: f'Pourcentage entre 0 et {PCT_MAX} attendu.'})
+    return float(valeur)
+
+
 def ids_entiers(valeur, nom, maxi=500):
     """Liste NON vide d'identifiants entiers valides, sinon 400."""
     if not isinstance(valeur, list) or not 1 <= len(valeur) <= maxi:
