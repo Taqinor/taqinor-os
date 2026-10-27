@@ -13,6 +13,7 @@ import {
 } from './remise.js'
 import { SCENARIOS_VALIDES } from './quote/scenarios.js'
 import { economieAvecNette } from './quote/economieAvecNette.js'
+import { prixKwhEstimation } from './quote/prixKwhEstimation.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -431,9 +432,8 @@ export function computeROI({
   // RGEN5 — `reglesCalcul` (`Devis.regles_calcul`) ≥ 3 : économie « avec » nette (absent ⇒ brut, inchangé).
   produits = [], reglesCalcul = 0,
 }) {
-  // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
-  // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
-  const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
+  // RGEN10 — prix du kWh « estimation » = cascade du PDF (barème société → grille du distributeur reçu → tarif société → 1,20).
+  const PRICE = prixKwhEstimation({ utility, tranches: bareme?.tranches, consoAnnuelleKwh, kwhPrice }, { grilleNationale: ONEE_TRANCHES, factureMensuelle: monthlyBillFromKwh, defaut: KWH_PRICE, repli: FALLBACK_KWH_PRICE })
   const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
   // QX38 — productible CANONIQUE (kWh/kWc/an) : quand il est fourni (PVGIS par
   // ville, source unique partagée avec le PDF/web), la production annuelle vaut

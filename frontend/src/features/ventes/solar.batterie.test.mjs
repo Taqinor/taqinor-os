@@ -339,3 +339,35 @@ test('RGEN5 economieAvecNette : déduction unique, jamais hors niveau 3', async 
   assert.deepEqual(serie, [5700, 3800])
   assert.deepEqual(detail.map(d => d.eco_avec), [5700, 3800])
 })
+
+// RGEN10 — modèle « estimation » (aucune conso) : l'écran valorise le kWh
+// comme le PDF. Valeurs SERVEUR épinglées : `calculate_savings_roi` (main),
+// appelé avec les kwargs de `build_quote_data` (utility REÇU, barème société,
+// fallback_tarif_kwh = onee_tarif_kwh), 5 kWc, productible 1651, part 60 %.
+test('RGEN10 prix kWh estimation = serveur', async () => {
+  const { prixKwhEstimation } = await import('./quote/prixKwhEstimation.js')
+  const { ONEE_TRANCHES, monthlyBillFromKwh, KWH_PRICE, FALLBACK_KWH_PRICE } = await import('./solar.js')
+  const SOC = [[100, 1.0], [150, 1.2], [200, 1.2], [300, 1.3], [500, 1.5], [null, 1.7]]
+  Object.defineProperty(SOC, 'selectif', { value: { seuil: 150, tolerance: 10 } })
+  const cas = [
+    // [écran, prix serveur, éco sans (sans batterie), éco avec (10 kWh)]
+    [{ utility: 'onee', kwhPrice: 1.75 }, 1.75, 8063, 13438],        // « onee » sans conso : non enregistré
+    [{ utility: undefined, kwhPrice: 2.10 }, 2.10, 9676, 16126],     // tarif société
+    [{ utility: 'lydec', kwhPrice: 1.75 }, 0.916272, 4222, 7036],    // distributeur nommé : 1re tranche (QJR156)
+    [{ utility: 'onee', kwhPrice: 1.75, bareme: { tranches: SOC } }, 1.0, 4607, 7679], // barème société
+    [{ utility: undefined, kwhPrice: 0 }, 1.2, 5529, 9215],          // réglage nul : _FALLBACK_KWH_PRICE
+  ]
+  const outils = { grilleNationale: ONEE_TRANCHES, factureMensuelle: monthlyBillFromKwh, defaut: KWH_PRICE, repli: FALLBACK_KWH_PRICE }
+  for (const [ecran, prix, ecoS, ecoA] of cas) {
+    assert.equal(prixKwhEstimation({ ...ecran, tranches: ecran.bareme?.tranches }, outils), prix)
+    const base = { kwp: 5, productible: 1651, dayUsagePct: 60, totalSans: 50000, totalAvec: 80000, ...ecran }
+    const sans = computeROI({ ...base, batteryKwh: 0 })
+    const avec = computeROI({ ...base, batteryKwh: 10 })
+    assert.equal(sans.savings_model, 'estimation')
+    assert.ok(Math.abs(sans.eco_annuelle_sans - ecoS) <= 1, `${JSON.stringify(ecran)} : ${sans.eco_annuelle_sans} ≠ ${ecoS}`)
+    assert.ok(Math.abs(avec.eco_annuelle_avec - ecoA) <= 1, `${JSON.stringify(ecran)} : ${avec.eco_annuelle_avec} ≠ ${ecoA}`)
+  }
+  // Avec conso (grille pondérée à conso/12) et sans kwhPrice (défaut 1,75 de tariff_for).
+  assert.equal(prixKwhEstimation({ utility: 'onee', consoAnnuelleKwh: 4800 }, outils), ONEE_TRANCHES[4][1])
+  assert.equal(prixKwhEstimation({}, outils), KWH_PRICE)
+})
