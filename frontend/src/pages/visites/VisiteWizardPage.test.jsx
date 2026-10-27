@@ -5,7 +5,7 @@
 // ci-dessous copie la forme du contrat committé
 // `apps/crm/contract_samples/visite_terrain.json` (PACT10).
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
@@ -473,6 +473,37 @@ describe('VisiteWizardPage — CIQ609 (gabarit ci)', () => {
       puissance_souscrite_kva_constatee: 'a_faire_par_electricien',
       type_compteur: 'site_ferme',
     })
+  })
+
+  it('« Sur la fiche : … » + Confirmer enregistre la valeur déclarée, une seule touche', async () => {
+    getVisite.mockResolvedValue({
+      data: {
+        ...CI,
+        mesures: { ...CI.mesures, comptage: { ...CI.mesures.comptage, puissance_souscrite_kva_constatee: null } },
+        _non_releves: {},
+      },
+    })
+    const user = userEvent.setup()
+    withProviders()
+    await user.click(await screen.findByRole('tab', { name: 'comptage' }))
+    const form = await screen.findByTestId('visite-mesures-comptage')
+    const { libelle, valeur } = contrat.exemple_ci.declare.comptage.puissance_souscrite_kva_constatee
+    expect(form).toHaveTextContent(`Sur la fiche : ${libelle}`)
+    expect(form).not.toHaveTextContent(/déclaré au téléphone/i)
+    await user.click(within(form).getByRole('button', { name: 'Confirmer' }))
+    const [visiteId, categorie, valeurs] = patchVisiteMesures.mock.calls[0]
+    expect([String(visiteId), categorie]).toEqual(['7', 'comptage'])
+    expect(valeurs.puissance_souscrite_kva_constatee).toBe(valeur)
+  })
+
+  it('aucun « Sur la fiche » quand la mesure est déjà saisie ou que le lead ne porte rien', async () => {
+    getVisite.mockResolvedValue({ data: { ...CI, declare: {} } })
+    withProviders()
+    const user = userEvent.setup()
+    await user.click(await screen.findByRole('tab', { name: 'comptage' }))
+    const form = await screen.findByTestId('visite-mesures-comptage')
+    expect(form).not.toHaveTextContent('Sur la fiche')
+    expect(within(form).queryByRole('button', { name: 'Confirmer' })).not.toBeInTheDocument()
   })
 
   it('l’erreur du serveur s’affiche sous le champ fautif (motif manquant)', async () => {

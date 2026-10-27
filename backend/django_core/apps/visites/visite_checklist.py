@@ -428,14 +428,14 @@ CATEGORIES_CI = [
             },
             {
                 'code': 'toiture_etancheite',
-                'libelle': "Étanchéité (optionnel)",
+                'libelle': "Étanchéité",
                 'guide': "Relevés d'étanchéité, joints, points d'eau.",
                 'requis': False,
                 'min_photos': 1,
             },
             {
                 'code': 'toiture_lanterneaux',
-                'libelle': 'Lanterneaux et exutoires (optionnel)',
+                'libelle': 'Lanterneaux et exutoires',
                 'guide': 'Les ouvertures en toiture et leur état.',
                 'requis': False,
                 'min_photos': 1,
@@ -556,7 +556,7 @@ CATEGORIES_CI = [
             },
             {
                 'code': 'comptage_contrat',
-                'libelle': 'Contrat ou facture (optionnel)',
+                'libelle': 'Contrat ou facture',
                 'guide': 'La page du contrat qui porte la puissance souscrite.',
                 'requis': False,
                 'min_photos': 1,
@@ -683,8 +683,7 @@ def _categorie_site_commerce(requise, locataire):
     ``crm.selectors``, jamais ressaisi). Que des faits déclarés ou observés."""
     slots = [{
         'code': 'secours_existant',
-        'libelle': ('Secours existant (groupe, onduleur UPS, inverseur) '
-                    '(optionnel)'),
+        'libelle': 'Secours existant (groupe, onduleur UPS, inverseur)',
         'guide': ("Plaque ou vue du groupe, de l'onduleur UPS ou de "
                   "l'inverseur de source."),
         'requis': False,
@@ -693,7 +692,7 @@ def _categorie_site_commerce(requise, locataire):
     if locataire:
         slots.append({
             'code': SLOT_ACCORD_PROPRIETAIRE,
-            'libelle': 'Accord du propriétaire (optionnel)',
+            'libelle': 'Accord du propriétaire',
             'guide': 'Pièce signée du propriétaire : le lead est locataire.',
             'requis': False,
             'min_photos': 1,
@@ -736,6 +735,78 @@ def _categorie_site_commerce(requise, locataire):
              'nature': BOOLEEN, 'requis': requise},
         ],
     }
+
+
+_JOURS_COURTS = ('Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim')
+_TENSIONS_DECLAREES = {'bt': 'Basse tension (BT)', 'mt': 'Moyenne tension (MT)'}
+
+
+def _jours_ouverts(ouverts):
+    """« Lun–Ven », « Lun–Sam, Dim »… depuis 7 booléens (lundi → dimanche)."""
+    if len(ouverts) != 7 or not any(ouverts):
+        return ''
+    if all(ouverts):
+        return '7j/7'
+    plages, debut = [], None
+    for i, ouvert in enumerate(list(ouverts) + [False]):
+        if ouvert and debut is None:
+            debut = i
+        elif not ouvert and debut is not None:
+            fin = i - 1
+            plages.append(_JOURS_COURTS[debut] if fin == debut else
+                          f'{_JOURS_COURTS[debut]}–{_JOURS_COURTS[fin]}')
+            debut = None
+    return ', '.join(plages)
+
+
+def declare_depuis_lead(entrees_ci):
+    """CSV9 — ce que la FICHE du lead porte déjà d'une visite ``ci`` :
+    ``{categorie: {code_mesure: {valeur, libelle}}}``, lu dans le rendu de
+    ``crm.selectors.entrees_ci_du_lead`` (``None`` ou vide ⇒ ``{}``). Aucune
+    valeur inventée : un champ vide du lead n'a pas de ``declare`` ; la
+    provenance n'est jamais nommée (téléphone, site web ou facture). L'écran
+    montre « Sur la fiche : … » et l'enregistre au bouton « Confirmer »."""
+    if not isinstance(entrees_ci, dict):
+        return {}
+    from apps.crm.categories_commerciales import CategorieCommerciale
+
+    lignes = {e['colonne']: e['valeur']
+              for e in (entrees_ci.get('entrees') or [])}
+    lignes.update({i['colonne']: i['valeur']
+                   for i in (entrees_ci.get('informations') or [])})
+    declare = {}
+
+    def _poser(categorie, code, valeur, libelle):
+        declare.setdefault(categorie, {})[code] = {
+            'valeur': valeur, 'libelle': libelle}
+
+    categorie = lignes.get('categorie_commerciale')
+    if categorie in CategorieCommerciale.values:
+        _poser(CATEGORIE_SITE_COMMERCE, 'categorie', categorie,
+               CategorieCommerciale(categorie).label)
+    jours = lignes.get('jours_ouverture')
+    plages = (lignes.get('heure_debut') or {}).get('ouvre') if isinstance(
+        lignes.get('heure_debut'), dict) else None
+    morceaux = [_jours_ouverts(jours) if isinstance(jours, list) else '']
+    if plages:
+        morceaux.append(f'{plages[0][0]} h–{plages[0][1]} h')
+    horaires = ', '.join(m for m in morceaux if m)
+    if horaires:
+        _poser(CATEGORIE_SITE_COMMERCE, 'horaires_constates', horaires,
+               horaires)
+    if lignes.get('groupe_electrogene') in ('oui', 'non'):
+        present = lignes['groupe_electrogene'] == 'oui'
+        _poser(CATEGORIE_SITE_COMMERCE, 'secours_groupe', present,
+               'Oui' if present else 'Non')
+    if lignes.get('tension_raccordement') in _TENSIONS_DECLAREES:
+        tension = lignes['tension_raccordement']
+        _poser('comptage', 'niveau_tension_constate', tension,
+               _TENSIONS_DECLAREES[tension])
+    puissance = lignes.get('compteur_puissance_kva')
+    if puissance is not None:
+        _poser('comptage', 'puissance_souscrite_kva_constatee', puissance,
+               f'{puissance:g} kVA')
+    return declare
 
 
 #: CIQ660 (contrat CIQ5 ``gabarit_ci_supplement_mt``) — le SUPPLÉMENT d'un site

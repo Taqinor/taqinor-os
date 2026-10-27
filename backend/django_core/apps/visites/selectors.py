@@ -358,6 +358,14 @@ def contexte_visite_terrain(visite):
         # CIQ606 — le relevé déclaré / constaté / écart (écran de revue) ;
         # la même fonction sert ``releve_ci_pour_lead`` (visite validée).
         agregat['releve_ci'] = releve_ci_de_visite(visite)
+        # CSV9 — ce que la fiche du lead porte déjà (« Sur la fiche : … »),
+        # lu par ``crm.selectors`` ; vide = rien de déclaré, rien d'inventé.
+        from apps.crm import selectors as crm_selectors
+
+        from . import visite_checklist as checklist
+
+        agregat['declare'] = checklist.declare_depuis_lead(
+            crm_selectors.entrees_ci_du_lead(visite.lead))
     return agregat
 
 
