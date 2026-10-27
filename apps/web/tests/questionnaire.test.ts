@@ -852,6 +852,15 @@ describe('CIW406 — contrat : exemple_pro et choix fermés', () => {
     expect([...lib.REGIME_EQUIPES_VALUES]).toEqual(choix('regime_equipes'));
     expect([...lib.TVA_RECUPERABLE_VALUES]).toEqual(choix('tva_recuperable'));
     expect([...lib.CATEGORIE_COMMERCIALE_VALUES]).toEqual(choix('categorie_commerciale'));
+    expect([...lib.EQUIPEMENTS_HORS_HORAIRES_VALUES]).toEqual(choix('equipements_hors_horaires'));
+  });
+
+  it('équipements hors horaires (décision fondateur 26/10/2026) : valeur fermée, sinon rien', () => {
+    expect(buildSectionReponses('activite', { equipements_hors_horaires: 'beaucoup' }).equipements_hors_horaires)
+      .toBe('beaucoup');
+    expect(buildSectionReponses('activite', { equipements_hors_horaires: 'tout' }).equipements_hors_horaires)
+      .toBeUndefined();
+    expect(buildSectionReponses('activite', { categorie_commerciale: 'cafe' }).categorie_commerciale).toBe('cafe');
   });
 
   it('questions de catégorie = clés fermées du contrat (par catégorie)', async () => {

@@ -108,7 +108,8 @@ CHAMPS_PAR_SECTION = {
     'activite': ('categorie_commerciale', 'reponses_categorie',
                  'secteur_industriel', 'export_ue_declare', 'regime_equipes',
                  'jours_ouverture', 'heure_debut', 'heure_fin',
-                 'fermeture_mois', 'groupe_electrogene', 'groupe_kva',
+                 'fermeture_mois', 'equipements_hors_horaires',
+                 'groupe_electrogene', 'groupe_kva',
                  'groupe_litres_mois', 'groupe_depense_mad_mois',
                  'pv_existant_kwc'),
     # Fondateur 26/10/2026 — pente et orientation du toit (facultatives :

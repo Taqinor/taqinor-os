@@ -86,15 +86,33 @@ export const TVA_LABELS: Record<string, L3> = {
 };
 export const CATEGORIE_LABELS: Record<string, L3> = {
   hotel: L('Hôtel / riad', 'Hotel / riad', 'فندق / رياض'),
-  restaurant: L('Restaurant / café', 'Restaurant / café', 'مطعم / مقهى'),
-  commerce: L('Commerce / supermarché', 'Shop / supermarket', 'متجر / سوق ممتاز'),
+  restaurant: L('Restaurant', 'Restaurant', 'مطعم'),
+  cafe: L('Café / salon de thé / glacier', 'Café / tea room / ice-cream shop', 'مقهى / صالون شاي / محل مثلجات'),
+  boulangerie: L('Boulangerie / pâtisserie', 'Bakery / pastry shop', 'مخبزة / محل حلويات'),
+  commerce: L('Commerce / boutique', 'Shop / store', 'متجر / محل تجاري'),
+  supermarche: L('Supermarché / épicerie (avec frigos)', 'Supermarket / grocery (with fridges)', 'سوق ممتاز / بقالة (بثلاجات)'),
+  boucherie: L('Boucherie / poissonnerie', 'Butcher / fishmonger', 'جزارة / محل سمك'),
+  pharmacie: L('Pharmacie', 'Pharmacy', 'صيدلية'),
+  coiffure: L('Coiffure / esthétique', 'Hairdresser / beauty salon', 'حلاقة / تجميل'),
+  pressing: L('Pressing / laverie', 'Dry cleaner / laundry', 'مصبنة / غسيل'),
   bureau: L('Bureaux / siège', 'Offices / head office', 'مكاتب / مقر'),
   sante: L('Santé (clinique, cabinet)', 'Health (clinic, practice)', 'صحة (مصحة، عيادة)'),
   ecole: L('École', 'School', 'مدرسة'),
-  hammam: L('Hammam / spa / salle de sport', 'Hammam / spa / gym', 'حمام / سبا / قاعة رياضة'),
-  boulangerie: L('Boulangerie', 'Bakery', 'مخبزة'),
+  salle_sport: L('Salle de sport', 'Gym', 'قاعة رياضة'),
+  hammam: L('Hammam / spa', 'Hammam / spa', 'حمام / سبا'),
+  garage: L('Garage / atelier mécanique', 'Garage / car workshop', 'كراج / ورشة ميكانيك'),
+  atelier: L('Atelier (menuiserie, ferronnerie, couture)', 'Workshop (carpentry, metalwork, sewing)', 'ورشة (نجارة، حدادة، خياطة)'),
+  imprimerie: L('Imprimerie', 'Print shop', 'مطبعة'),
+  station_service: L('Station-service', 'Petrol station', 'محطة وقود'),
+  entrepot: L('Entrepôt / logistique (sans froid)', 'Warehouse / logistics (no cold storage)', 'مستودع / لوجستيك (بدون تبريد)'),
   froid: L('Froid / entrepôt frigorifique', 'Cold storage', 'تبريد / مستودع مبرد'),
+  mosquee: L('Mosquée / association', 'Mosque / association', 'مسجد / جمعية'),
   autre: L('Autre activité', 'Other activity', 'نشاط آخر'),
+};
+export const HORS_HORAIRES_LABELS: Record<string, L3> = {
+  aucun: L('Aucun', 'None', 'لا شيء'),
+  un_peu: L('Un peu', 'A few', 'قليلاً'),
+  beaucoup: L('Beaucoup', 'A lot', 'كثيراً'),
 };
 export const JOUR_LABELS: Record<number, L3> = {
   1: L('Lun', 'Mon', 'الاثنين'), 2: L('Mar', 'Tue', 'الثلاثاء'), 3: L('Mer', 'Wed', 'الأربعاء'),

@@ -125,6 +125,28 @@ class QuestionnairePro(TestCase):
         lead.refresh_from_db()
         self.assertEqual(lead.fermeture_mois, [])
 
+    def test_post_activite_equipements_hors_horaires_devient_le_talon(self):
+        # Décision fondateur 26/10/2026 — « Beaucoup » = talon déclaré 50 %
+        # (% du niveau de jour, fondateur 27/10/2026) lu par le moteur C&I.
+        from apps.crm.selectors import entrees_ci_du_lead
+        lead = self._pro(categorie_commerciale='boulangerie')
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead, questions={'activite': True})
+        res = self.client.post(
+            PUBLIC.format(lien.token),
+            data=json.dumps({'section': 'activite',
+                             'reponses': {'equipements_hors_horaires': 'beaucoup'}}),
+            content_type='application/json')
+        self.assertEqual(res.status_code, 200, res.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.equipements_hors_horaires, 'beaucoup')
+        entree = next(e for e in entrees_ci_du_lead(lead)['entrees']
+                      if e['colonne'] == 'equipements_hors_horaires')
+        self.assertEqual((entree['chemin'], entree['valeur']),
+                         ('rythme.talon', {'niveau_jour_pct': 50}))
+        self.assertNotIn('equipements_hors_horaires',
+                         entrees_ci_du_lead(self._pro())['manquants'])
+
     def test_post_reseau_n_ecrit_que_ses_colonnes_jamais_de_vide(self):
         lead = self._pro(email='h@example.ma', compteur_puissance_kva=60,
                          facture_hiver=Decimal('5000'))
