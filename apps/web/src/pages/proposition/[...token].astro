@@ -116,7 +116,6 @@ import {
   couvertureSolaire,
   economiesMensuelles,
   economiesInterdisentBatterie,
-  environmentalImpact,
   chiffresEconomiePhare,
   whatsappLink,
   whatsappLinkForIntent,
@@ -285,9 +284,10 @@ const REALISATIONS_WITH_KWC = REALISATIONS.filter((r) => r.kwc);
 import {
   PANEL_PRODUCT_WARRANTY_YEARS,
   PANEL_PERFORMANCE_WARRANTY_YEARS,
-  INVERTER_WARRANTY_YEARS,
   INSTALL_WARRANTY_YEARS,
 } from '../../lib/warranty';
+import { NON_RENTABILISE_25 } from '../../lib/proposition/retour';
+import { garantieBatterieAns, garantieOnduleurAns } from '../../lib/proposition/garanties';
 // (fondateur 2026-08-17) le badge IEC ne s'affiche que s'il peut pointer vers la
 // fiche du panneau RÉELLEMENT devisé (catégorie « Panneaux photovoltaïques »).
 import { ficheBySlug } from '../../lib/fiches';
@@ -704,8 +704,11 @@ const prodKwh = q?.prod_kwh ?? null;
 // `null` en mode agricole, si bien que les quatre endroits qui les lisent
 // (héros, repli méthode, bandeau « Économie estimée / an », carte « Rentabilisé
 // en ») s'éteignent d'un coup, sans garde `isAgricole` à chacun.
-const { ecoSans, ecoAvec, paybackSans, paybackAvec, ecoHero, paybackHero } =
+const { ecoSans, ecoAvec, paybackSans, paybackAvec, ecoHero, paybackHero, paybackHeroI18n, paybackHeroJamais } =
   chiffresEconomiePhare(ok ? data : null, reco);
+// RWEB1 — « Rentabilisé en … » traduit, ou le libellé PDF « Non rentabilisé sur 25 ans ».
+const retourPhrase = paybackHeroJamais ? NON_RENTABILISE_25 : paybackHeroI18n
+  ? { fr: `Rentabilisé en ${paybackHeroI18n.fr}`, en: `Paid back in ${paybackHeroI18n.en}`, ar: `يُسترد خلال ${paybackHeroI18n.ar}` } : null;
 
 // ── L-DEUXOPT (lane « deux optimiseurs », 25/08/2026) — DEUX DIMENSIONNEMENTS
 // DIFFÉRENTS (ex. 22 panneaux sans batterie / 26 avec), quand le backend
@@ -1707,7 +1710,8 @@ const ecoRetourAns = (variante: 'sans' | 'avec') =>
 // pas à une pompe qui remplace du butane ou du gasoil.
 // CIW307 — `null` en C&I tant que le facteur d'émission du réseau n'est pas sourcé (AGRM27) : aucune
 // tonne de CO₂ calculée au facteur 0,81 « source à préciser » sur un devis commercial / industriel.
-const enviro = ok && !isAgricole && !isAutoconso ? environmentalImpact(prodKwh) : null;
+// RWEB6 — plus de tonne CO₂ en résidentiel non plus : son facteur 0,81 n'est pas sourcé (« source à préciser »
+// imprimée = incertitude côté client, règle 26/10). Elle revient le jour où AGRM27 fournit la référence datée.
 
 // ── PV80 — AUCUN CRÉDIT, AUCUNE MENSUALITÉ, AUCUNE BANQUE SUR CETTE PAGE ────
 // Trois blocs « argent emprunté » y vivaient (comparatif éco-prêt WJ10, bloc
@@ -1952,9 +1956,8 @@ const panelFicheSlug = equipmentGroups
 // LIGNES RÉELLES des deux options (`equipmentPresence`, qui réutilise le
 // classement déjà line-driven de `groupEquipment`) : pas de ligne ⇒ pas de
 // promesse, ni dans la phrase, ni en badge.
-const equipPresence = equipmentPresence(
-  ok ? [...optionItems(data!, 'sans_batterie'), ...optionItems(data!, 'avec_batterie')] : [],
-);
+const garantieLignes = ok ? [...optionItems(data!, 'sans_batterie'), ...optionItems(data!, 'avec_batterie')] : [];
+const equipPresence = equipmentPresence(garantieLignes);
 const certKeys = [
   ...(panelFicheSlug ? ['iec' as const] : []),
   // AGQ42 — « Autoconsommation BT » ne décrit pas un pompage hors réseau.
@@ -2492,11 +2495,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 <div data-hero-eco-sub>
                   {ecoHero && headline?.monthly ? (
                     <p class="mt-0.5 text-xs text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p>
-                  ) : ecoHero && paybackHero ? (
-                    <p class="mt-0.5 text-xs text-lune-faint" data-i18n
-                      data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
-                      Rentabilisé en {paybackHero}
-                    </p>
+                  ) : ecoHero && retourPhrase ? (
+                    <p class="mt-0.5 text-xs text-lune-faint" data-i18n data-fr={retourPhrase.fr} data-en={retourPhrase.en} data-ar={retourPhrase.ar}>{retourPhrase.fr}</p>
                   ) : null}
                 </div>
               </div>
@@ -2515,7 +2515,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               réelle. C'est le récapitulatif mono-option de la version
               précédente, remonté DANS le pli au lieu d'occuper un écran
               entier juste en dessous. */}
-          {(heroKwc || prodKwh || (showCouvertureDonut && couverture) || (paybackHero && !ecoHero)) && (
+          {(heroKwc || prodKwh || (showCouvertureDonut && couverture) || (retourPhrase && !ecoHero)) && (
             <ul id="prop-fold-specs" class="cine-in cine-in-3 mt-3 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-lune-soft">
               {heroKwc ? (
                 <li class="fig" dir="ltr">
@@ -2537,11 +2537,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   {formatPercent(couverture.pct, 0)} <span class="text-lune-faint" data-i18n data-fr="de vos besoins" data-en="of your needs" data-ar="من احتياجاتكم">de vos besoins</span>
                 </li>
               ) : null}
-              {paybackHero && !ecoHero ? (
-                <li class="text-lune-faint" data-i18n
-                  data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
-                  Rentabilisé en {paybackHero}
-                </li>
+              {retourPhrase && !ecoHero ? (
+                <li class="text-lune-faint" data-i18n data-fr={retourPhrase.fr} data-en={retourPhrase.en} data-ar={retourPhrase.ar}>{retourPhrase.fr}</li>
               ) : null}
             </ul>
           )}
@@ -2886,17 +2883,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                      fabrication) ;
                    · la garantie RENDEMENT couvre la puissance encore délivrée
                      au bout de N années.
-                 Les TROIS durées viennent de `lib/warranty.ts`, source unique
-                 partagée avec le PDF — aucune n'est écrite en dur ici.
-
-                 LA POSE RESTE AFFICHÉE, AVEC SES 2 ANS. Un premier passage de
-                 cette lane l'avait retirée en croyant sa durée « non arrêtée » :
-                 c'était FAUX. L'en-tête de `lib/warranty.ts` la tranche
-                 explicitement (« ADJUDICATION DES CHIFFRES, 2026-07-04 :
-                 POSE / main-d'œuvre Taqinor : 2 ans »), et `fiches.ts` la
-                 publie déjà. Retirer un engagement commercial adjugé est un
-                 recul, pas une prudence — la discipline « omettre plutôt que
-                 supposer » ne s'applique QU'À un chiffre réellement absent. */}
+                 Les durées viennent de `lib/warranty.ts` (source unique) ; la
+                 pose (2 ans) est un engagement adjugé, toujours affiché. */}
           <p class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
             {equipPresence.panneaux && (
               <>
@@ -2914,16 +2902,15 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                 {equipPresence.onduleur && <span class="text-lune-faint" aria-hidden="true">·</span>}
               </>
             )}
-            {equipPresence.onduleur && (
+            {/* RWEB2 — durée par MARQUE posée (Deye 5, Huawei 10, Dyness 10 — fondateur 27/10) ; inconnue → omise. */}
+            {[[equipPresence.onduleur ? garantieOnduleurAns(garantieLignes) : null, 'onduleur', 'inverter', 'العاكس'] as const,
+              [garantieBatterieAns(garantieLignes), 'batterie', 'battery', 'البطارية'] as const].map(([ans, fr, en, ar]) => ans ? (
               <>
-                <span class="fig text-lune" dir="ltr" data-i18n
-                  data-fr={`${INVERTER_WARRANTY_YEARS} ans`}
-                  data-en={`${INVERTER_WARRANTY_YEARS} years`}
-                  data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}>{INVERTER_WARRANTY_YEARS} ans</span>
-                <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
+                <span class="fig text-lune" dir="ltr" data-i18n data-fr={`${ans} ans`} data-en={`${ans} years`} data-ar={anneesAr(ans)}>{ans} ans</span>
+                <span data-i18n data-fr={fr} data-en={en} data-ar={ar}>{fr}</span>
                 <span class="text-lune-faint" aria-hidden="true">·</span>
               </>
-            )}
+            ) : null)}
             {/* La pose porte SA durée, exactement comme le PDF
                 (theme.WARRANTIES : « 2 ans — Installation »). C'est
                 l'ENGAGEMENT de Taqinor, pas une garantie constructeur : elle
@@ -4503,9 +4490,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               <p class="tech-label text-lune-faint" data-i18n data-fr="Profils d’occupation du logement" data-en="Home occupancy profiles" data-ar="أنماط شغل المسكن">Profils d’occupation du logement</p>
               {occScenarios && (
                 <p class="mt-1 text-sm text-lune-soft" data-i18n
-                  data-fr="Et si votre foyer vivait autrement ? Choisissez un comportement : les chiffres ci-dessous sont recalculés par notre moteur sur VOS factures."
-                  data-en="What if your household lived differently? Pick a behaviour: the figures below are computed by our engine on YOUR bills."
-                  data-ar="ماذا لو عاش منزلك بطريقة أخرى؟ اختر سلوكاً: الأرقام أدناه محسوبة بمحركنا على فواتيرك.">Et si votre foyer vivait autrement ? Choisissez un comportement : les chiffres ci-dessous sont recalculés par notre moteur sur VOS factures.</p>
+                  data-fr="Et si votre foyer vivait autrement ? Choisissez un comportement : les chiffres ci-dessous sont recalculés sur VOS factures."
+                  data-en="What if your household lived differently? Pick a behaviour: the figures below are recalculated on YOUR bills."
+                  data-ar="ماذا لو عاش منزلك بطريقة أخرى؟ اختر سلوكاً: الأرقام أدناه محسوبة على فواتيرك.">Et si votre foyer vivait autrement ? Choisissez un comportement : les chiffres ci-dessous sont recalculés sur VOS factures.</p>
               )}
               <svg viewBox="0 0 320 140" width="100%" height="140" role="img"
                 aria-label="Poids de forme (sans unité) des trois profils d’occupation, sur 24 h">
@@ -4629,16 +4616,17 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   const consoLine = lineOf(d.consoKw);
                   return (
                     <div class="border border-white/10 bg-white/5 p-2">
-                      <p class="text-xs font-semibold text-lune">{PROPOSAL_JOUR_TYPE_MONTH_LABELS[m].fr}</p>
+                      <p class="text-xs font-semibold text-lune" data-i18n data-fr={PROPOSAL_JOUR_TYPE_MONTH_LABELS[m].fr} data-en={PROPOSAL_JOUR_TYPE_MONTH_LABELS[m].en} data-ar={PROPOSAL_JOUR_TYPE_MONTH_LABELS[m].ar}>{PROPOSAL_JOUR_TYPE_MONTH_LABELS[m].fr}</p>
                       <svg viewBox={`0 0 ${w} ${h}`} width="100%" height="120" preserveAspectRatio="none" role="img"
                         aria-label="Production (doré) et consommation (bleu pointillé) sur 24 h, en kW">
                         <path d={prodArea} fill="rgba(237,161,0,0.18)" stroke="none"></path>
                         <path d={prodLine} fill="none" stroke="#eda100" stroke-width="2"><title>Production (kW)</title></path>
                         <path d={consoLine} fill="none" stroke="#2a78d6" stroke-width="2" stroke-dasharray="6,3"><title>Consommation (kW)</title></path>
                       </svg>
-                      <p class="mt-1 text-[11px] text-lune-faint" dir="ltr">
-                        Conso {d.consoJourKwh.toFixed(2)}&nbsp;kWh · Prod {d.prodJourKwh.toFixed(2)}&nbsp;kWh · Autoconso {d.autoconsommeKwh.toFixed(2)}&nbsp;kWh · Surplus {d.surplusKwh.toFixed(2)}&nbsp;kWh
-                      </p>
+                      {/* RWEB11 — virgule décimale FR/AR, point EN ; libellés traduits. */}
+                      {(() => { const v = (x: number, en = false) => en ? x.toFixed(2) : formatNumber(x, 2); const l = (c: string, p: string, a: string, sp: string, en = false) => `${c} ${v(d.consoJourKwh, en)} kWh · ${p} ${v(d.prodJourKwh, en)} kWh · ${a} ${v(d.autoconsommeKwh, en)} kWh · ${sp} ${v(d.surplusKwh, en)} kWh`; return (
+                        <p class="mt-1 text-[11px] text-lune-faint" dir="ltr" data-i18n data-fr={l('Conso', 'Prod', 'Autoconso', 'Surplus')} data-en={l('Use', 'Prod', 'Self-use', 'Surplus', true)} data-ar={l('استهلاك', 'إنتاج', 'استهلاك ذاتي', 'فائض')}>{l('Conso', 'Prod', 'Autoconso', 'Surplus')}</p>
+                      ); })()}
                     </div>
                   );
                 })}
@@ -4653,12 +4641,14 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                  déjà « Rentabilisé en … » au-dessus du pli (même variable
                  `paybackHero`), donc ce qui restait ouvert ici était une
                  troisième publication du même chiffre. */}
-          {paybackHero ? (
+          {paybackHeroI18n ? (
             <div class="cine-card mt-4 rounded-xl p-5" data-detail-payback-card>
               <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
-              <p class="fig fig-md mt-2 text-lune" dir="ltr" data-detail-payback-value>{paybackHero}</p>
+              <p class="fig fig-md mt-2 text-lune" dir="ltr" data-detail-payback-value data-i18n data-fr={paybackHeroI18n.fr} data-en={paybackHeroI18n.en} data-ar={paybackHeroI18n.ar}>{paybackHeroI18n.fr}</p>
               <p class="mt-1 text-sm text-lune-faint" data-i18n data-fr="puis l’énergie est gratuite" data-en="then energy is free" data-ar="ثم تصبح الطاقة مجانية">puis l’énergie est gratuite</p>
             </div>
+          ) : paybackHeroJamais ? (
+            <div class="cine-card mt-4 rounded-xl p-5" data-detail-payback-card data-i18n data-fr={NON_RENTABILISE_25.fr} data-en={NON_RENTABILISE_25.en} data-ar={NON_RENTABILISE_25.ar}>{NON_RENTABILISE_25.fr}</div>
           ) : null}
             </details>
           )}
@@ -6533,10 +6523,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                       {hasRealPrice(data!, opt) ? (
                         <span class="text-xs text-lune-faint" dir="ltr">{formatMAD(optionTtc(data!, opt))}</span>
                       ) : (
-                        <span class="text-xs text-lune-faint" data-i18n
-                          data-fr="prix à confirmer"
-                          data-en="price to be confirmed"
-                          data-ar="السعر سيُؤكَّد">prix à confirmer</span>
+                        <span class="text-xs text-lune-faint" data-i18n data-fr="prix communiqué par votre conseiller" data-en="price provided by your advisor" data-ar="السعر يُبلَّغ من طرف مستشاركم">prix communiqué par votre conseiller</span>
                       )}
                     </label>
                   ))}
@@ -7229,7 +7216,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
 
       <!-- ── WJ32 · « NOS HYPOTHÈSES » — disclosure sourcée ──────────────────
            <details> natif : accessible sans JS, zéro CLS (rien ne bouge autour). -->
-      {(assumptions.length > 0 || enviro || paramSite) && (
+      {(assumptions.length > 0 || paramSite) && (
         <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
           <details class="cine-card rounded-2xl p-6 sm:p-7">
             <summary class="tech-label cursor-pointer text-brass-300" data-i18n data-fr="Nos hypothèses" data-en="Our assumptions" data-ar="فرضياتنا">Nos hypothèses</summary>
@@ -7248,17 +7235,6 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                   elle ne prétend plus que le facteur d'émission est établi :
                   elle dit qu'il attend sa source. Une méthode qui s'annonce
                   vérifiable doit l'être. */}
-              {enviro && (
-                <div>
-                  <dt class="text-lune-faint" data-i18n data-fr="Impact CO₂" data-en="CO₂ impact" data-ar="أثر ثاني أكسيد الكربون">Impact CO₂</dt>
-                  <dd class="mt-0.5 text-lune-soft" data-i18n
-                    data-fr={`${formatNumber(enviro.co2TonnesPerYear, 1)} t CO₂/an évitées — production estimée × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh, facteur d’émission du réseau marocain, source à préciser.`}
-                    data-en={`${formatNumber(enviro.co2TonnesPerYear, 1)} t CO₂/year avoided — estimated production × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh, Moroccan grid emission factor, source to be specified.`}
-                    data-ar={`${formatNumber(enviro.co2TonnesPerYear, 1)} طن CO₂/سنة يُتجنّب — الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh، معامل انبعاث الشبكة المغربية، المصدر يبقى للتحديد.`}>
-                    {formatNumber(enviro.co2TonnesPerYear, 1)} t CO₂/an évitées — production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh, facteur d’émission du réseau marocain, source à préciser.
-                  </dd>
-                </div>
-              )}
               {/* ── AUDIT #23 · ANNEXE « PARAMÈTRES DU SITE » ─────────────────
                   Ce que l'étude a RÉELLEMENT retenu pour CE toit-là. Sa place
                   est ici, avec les autres hypothèses : c'est de la méthode, pas
@@ -7487,6 +7463,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
 </Layout>
 
 <script>
+  import { ERREUR_ACCORD, messageEnLangue } from '../../lib/proposition/messagesSignature';
   import {
     validateSign,
     buildAcceptBodyRich,
@@ -8692,11 +8669,12 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
 
       const v = validateSign(state, cfg.twoOptions, !!cfg.entrepriseRequise);
       if (!v.valid) {
-        if (!showFieldError(v.champ, v.error ?? 'Formulaire incomplet.')) showError(v.error ?? 'Formulaire incomplet.');
+        const msg = messageEnLangue(v, currentLang);
+        if (!showFieldError(v.champ, msg)) showError(msg);
         return;
       }
       if (!accord) {
-        showError('Veuillez accepter la proposition et les conditions générales pour signer.');
+        showError(messageEnLangue(ERREUR_ACCORD, currentLang));
         return;
       }
 
@@ -9138,6 +9116,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   // longueur d'arc de l'anneau vivent maintenant dans les `peindre` de
   // `lib/proposition/liaisons.ts`, qui appelle les MÊMES fonctions que le
   // rendu serveur — jamais un second formatage maison.
+  import { ERREUR_TYPE_MODIFICATION, messageEnLangue } from '../../lib/proposition/messagesSignature';
   import {
     buildContactBody,
     formatMAD,
@@ -9291,7 +9270,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       const kind = selectedKind;
       if (!kind) {
         if (errorEl) {
-          errorEl.textContent = 'Veuillez choisir le type de modification souhaitée.';
+          const lg = document.documentElement.lang;
+          errorEl.textContent = messageEnLangue(ERREUR_TYPE_MODIFICATION, lg === 'en' || lg === 'ar' ? lg : 'fr');
           errorEl.hidden = false;
         }
         return;

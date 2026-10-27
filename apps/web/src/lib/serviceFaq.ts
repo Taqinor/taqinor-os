@@ -69,21 +69,21 @@ const PANNEAUX_NOTE: Record<Locale, string> = {
 const LABELS: Record<Locale, { panneaux: string; onduleur: string; batterie: string; structure: string; poseMainOeuvre: string }> = {
   fr: {
     panneaux: 'Panneaux photovoltaïques',
-    onduleur: 'Onduleur',
+    onduleur: 'Onduleur (Deye)',
     batterie: 'Batterie',
     structure: 'Structure acier galvanisé',
     poseMainOeuvre: 'Installation et main-d’œuvre Taqinor',
   },
   en: {
     panneaux: 'Photovoltaic panels',
-    onduleur: 'Inverter',
+    onduleur: 'Inverter (Deye)',
     batterie: 'Battery',
     structure: 'Galvanised steel structure',
     poseMainOeuvre: 'Installation and Taqinor labour',
   },
   ar: {
     panneaux: 'الألواح الكهروضوئية',
-    onduleur: 'العاكس',
+    onduleur: 'العاكس (Deye)',
     batterie: 'البطارية',
     structure: 'الهيكل من الفولاذ المجلفن',
     poseMainOeuvre: 'التركيب واليد العاملة لتاكينور',
@@ -194,7 +194,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'Trois temps, sans détour : d’abord un diagnostic de 60 secondes qui renvoie une première fourchette, puis un échange WhatsApp direct avec un technicien (photos de toiture à l’appui), enfin la visite technique, l’étude complète gratuite et le devis. Vous parlez à la personne qui dimensionne, pas à un standard qui rappellera.',
     garantiesQ: 'Quelles garanties couvrent une installation résidentielle ?',
     garantiesA:
-      'Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % de la puissance initiale à 30 ans). Onduleur et batterie : 10 ans. Structure acier galvanisé : 20 ans. Installation et main-d’œuvre Taqinor : 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
+      'Panneaux : 12 ans produit et 30 ans de performance linéaire (≥ 87,4 % de la puissance initiale à 30 ans). Onduleur Deye : 5 ans, onduleur Huawei et batterie : 10 ans. Structure acier galvanisé : 20 ans. Installation et main-d’œuvre Taqinor : 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
   },
   en: {
     entretienQ: 'Does a residential installation need regular maintenance?',
@@ -214,7 +214,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'Three steps, straightforward: first a 60-second assessment that returns a first range, then a direct WhatsApp exchange with a technician (roof photos included), finally the technical visit, the full free assessment and the quote. You speak to the person who sizes the system, not a call centre that will call back.',
     garantiesQ: 'What warranties cover a residential installation?',
     garantiesA:
-      'Panels: 12 years product and 30 years linear performance (≥ 87.4 % of initial power at 30 years). Inverter and battery: 10 years. Galvanised steel structure: 20 years. Taqinor installation and labour: 2 years. The breakdown by component is below and on the Warranties page.',
+      'Panels: 12 years product and 30 years linear performance (≥ 87.4 % of initial power at 30 years). Deye inverter: 5 years, Huawei inverter and battery: 10 years. Galvanised steel structure: 20 years. Taqinor installation and labour: 2 years. The breakdown by component is below and on the Warranties page.',
   },
   ar: {
     entretienQ: 'هل تحتاج التركيبة السكنية إلى صيانة منتظمة؟',
@@ -234,7 +234,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'ثلاث مراحل، دون التفاف: أولاً تشخيص لمدة 60 ثانية يُعيد مجالاً أولياً، ثم تواصل مباشر عبر واتساب مع تقني (بصور السطح)، وأخيراً الزيارة التقنية والدراسة الكاملة المجانية والثمن. تتحدّثون مع الشخص الذي يحدّد المقاس، لا مع مركز نداء سيتصل لاحقاً.',
     garantiesQ: 'ما الضمانات التي تُغطّي تركيبة سكنية؟',
     garantiesA:
-      'الألواح: 12 سنة على المنتج و30 سنة على الأداء الخطي (≥ 87.4 % من القدرة الأولية عند 30 سنة). العاكس والبطارية: 10 سنوات. الهيكل الفولاذي المجلفن: 20 سنة. التركيب واليد العاملة لتاكينور: سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
+      'الألواح: 12 سنة على المنتج و30 سنة على الأداء الخطي (≥ 87.4 % من القدرة الأولية عند 30 سنة). عاكس Deye: 5 سنوات، عاكس Huawei والبطارية: 10 سنوات. الهيكل الفولاذي المجلفن: 20 سنة. التركيب واليد العاملة لتاكينور: سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
   },
 };
 
@@ -259,7 +259,7 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
       'Le même process en trois temps que pour un site résidentiel : diagnostic initial, échange direct avec un technicien, puis visite technique et étude complète. Sur un site professionnel, l’étude intègre en plus vos factures et votre rythme d’activité et, selon la puissance, le montage du dossier loi 82-21 — ce qui peut allonger le délai selon le régime applicable (accord de raccordement ou autorisation).',
     garantiesQ: 'Quelles garanties couvrent une installation professionnelle ?',
     garantiesA:
-      'Mêmes garanties tier-1 que le résidentiel : panneaux 12 ans produit / 30 ans performance linéaire (≥ 87,4 %), onduleur 10 ans, structure acier galvanisé 20 ans, installation et main-d’œuvre Taqinor 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
+      'Mêmes garanties tier-1 que le résidentiel : panneaux 12 ans produit / 30 ans performance linéaire (≥ 87,4 %), onduleur Deye 5 ans, onduleur Huawei 10 ans, structure acier galvanisé 20 ans, installation et main-d’œuvre Taqinor 2 ans. Le détail par composant est ci-dessous et sur la page Garanties.',
   },
   en: {
     entretienQ: 'Does a business site need particular maintenance?',
@@ -279,7 +279,7 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
       'The same three-step process as a residential site: initial assessment, direct exchange with a technician, then the technical visit and full assessment. On a business site, the assessment also factors in your bills and your activity rhythm and, depending on power, building the law 82-21 file — which can extend the timeline depending on the applicable regime (grid-connection agreement or authorisation).',
     garantiesQ: 'What warranties cover a business installation?',
     garantiesA:
-      'The same tier-1 warranties as residential: panels 12 years product / 30 years linear performance (≥ 87.4 %), inverter 10 years, galvanised steel structure 20 years, Taqinor installation and labour 2 years. The breakdown by component is below and on the Warranties page.',
+      'The same tier-1 warranties as residential: panels 12 years product / 30 years linear performance (≥ 87.4 %), Deye inverter 5 years, Huawei inverter 10 years, galvanised steel structure 20 years, Taqinor installation and labour 2 years. The breakdown by component is below and on the Warranties page.',
   },
   ar: {
     entretienQ: 'هل يحتاج الموقع المهني إلى صيانة خاصة؟',
@@ -299,7 +299,7 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
       'نفس المسار من ثلاث مراحل كما في الموقع السكني: تشخيص أولي، تواصل مباشر مع تقني، ثم الزيارة التقنية والدراسة الكاملة. في الموقع المهني، تُدمج الدراسة كذلك فواتيركم وإيقاع نشاطكم، وحسب القدرة، إعداد ملف القانون 82-21 — ما قد يُطيل الأجل حسب النظام المطبَّق (اتفاقية ربط أو ترخيص).',
     garantiesQ: 'ما الضمانات التي تُغطّي تركيبة مهنية؟',
     garantiesA:
-      'نفس ضمانات الفئة الأولى كما في السكني: الألواح 12 سنة على المنتج / 30 سنة على الأداء الخطي (≥ 87.4 %)، العاكس 10 سنوات، الهيكل الفولاذي المجلفن 20 سنة، التركيب واليد العاملة لتاكينور سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
+      'نفس ضمانات الفئة الأولى كما في السكني: الألواح 12 سنة على المنتج / 30 سنة على الأداء الخطي (≥ 87.4 %)، عاكس Deye 5 سنوات، عاكس Huawei 10 سنوات، الهيكل الفولاذي المجلفن 20 سنة، التركيب واليد العاملة لتاكينور سنتان. التفصيل حسب المكوّن أسفله وعلى صفحة الضمانات.',
   },
 };
 

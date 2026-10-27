@@ -38,6 +38,7 @@ describe('AGW300 — chiffresEconomiePhare', () => {
     for (const reco of [null, 'sans_batterie', 'avec_batterie'] as const) {
       expect(chiffresEconomiePhare(payload('agricole'), reco)).toEqual({
         ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null,
+        paybackHeroI18n: null, paybackHeroJamais: false,
       });
     }
   });
@@ -56,6 +57,23 @@ describe('AGW300 — chiffresEconomiePhare', () => {
     const avec = chiffresEconomiePhare(payload('residentiel'), 'avec_batterie');
     expect(avec.ecoHero).toBe(31000);
     expect(avec.paybackHero).toBe(avec.paybackAvec);
+  });
+
+  it('RWEB1 — `roi_*_jamais` : aucune année (pas la sentinelle 25), libellé PDF ; unité traduite sinon', () => {
+    const j = chiffresEconomiePhare(payload('residentiel', { roi_s: 25, roi_s_jamais: true }), 'sans_batterie');
+    expect(j.paybackSans).toBeNull();
+    expect(j.paybackHero).toBeNull();
+    expect(j.paybackHeroI18n).toBeNull();
+    expect(j.paybackHeroJamais).toBe(true);
+    const ok = chiffresEconomiePhare(payload('residentiel'), 'avec_batterie');
+    expect(ok.paybackHeroI18n).toEqual({ fr: '6,1 ans', en: '6.1 years', ar: '6,1 سنوات' });
+    expect(ok.paybackHeroJamais).toBe(false);
+    // RWEB14 — économie AVEC présente mais retour AVEC « jamais » : pas de repli sur le retour SANS.
+    const mix = chiffresEconomiePhare(payload('residentiel', { roi_a: 25, roi_a_jamais: true }), 'avec_batterie');
+    expect(mix.ecoHero).toBe(31000);
+    expect(mix.paybackHero).toBeNull();
+    expect(mix.paybackHeroJamais).toBe(true);
+    expect(lirePageProposition()).toContain('NON_RENTABILISE_25');
   });
 
   it('mode absent garde ses chiffres ; industriel / commercial ne lisent plus eco_s_ann (CIW300 : synthese_ci)', () => {
@@ -79,7 +97,8 @@ describe('AGW300 — la page n\'a qu\'UNE définition de ces chiffres et un CO�
     expect(page).not.toMatch(/const paybackHero =/);
     expect(page).not.toMatch(/const ecoSans = q\?\.eco_s_ann/);
   });
-  it('enviro (CO₂) vaut null en agricole (et en C&I : CIW307)', () => {
-    expect(page).toContain('const enviro = ok && !isAgricole && !isAutoconso ? environmentalImpact(prodKwh) : null;');
+  it('aucune tonne CO₂ calculée sur la page (facteur non sourcé — RWEB6, tous segments)', () => {
+    expect(page).not.toContain('environmentalImpact(prodKwh)');
+    expect(page).not.toContain('source à préciser.');
   });
 });

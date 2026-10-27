@@ -1,4 +1,5 @@
 ---
+import { DEYE_INVERTER_WARRANTY_YEARS, HUAWEI_INVERTER_WARRANTY_YEARS } from '../lib/warranty';
 /**
  * Page publique — élévation « élégance retenue » : typographie éditoriale,
  * révélations au défilement, chiffres count-up, parallaxe d'en-tête (desktop)
@@ -52,7 +53,8 @@ const categories = [
 const warranties = [
   { item: 'Panneaux photovoltaïques (produit)', years: '12 ans' },
   { item: 'Panneaux photovoltaïques (performance)', years: '30 ans', note: 'linéaire, ≥ 87,4 % de la puissance initiale à 30 ans' },
-  { item: 'Onduleurs (Deye, Huawei)', years: '10 ans' },
+  { item: 'Onduleurs hybrides Deye', years: `${DEYE_INVERTER_WARRANTY_YEARS} ans` },
+  { item: 'Onduleurs réseau Huawei', years: `${HUAWEI_INVERTER_WARRANTY_YEARS} ans` },
   { item: 'Batteries Dyness LFP', years: '10 ans', note: '≥ 70 % de capacité' },
   { item: 'Structure acier galvanisé', years: '20 ans' },
   { item: 'Installation et main-d’œuvre Taqinor', years: '2 ans' },

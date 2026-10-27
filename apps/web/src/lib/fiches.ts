@@ -44,6 +44,8 @@
 
 import {
   PANEL_PRODUCT_WARRANTY_YEARS,
+  DEYE_INVERTER_WARRANTY_YEARS,
+  HUAWEI_INVERTER_WARRANTY_YEARS,
   PANEL_PERFORMANCE_WARRANTY_YEARS,
   PANEL_PERFORMANCE_FLOOR_FR,
   INSTALL_WARRANTY_YEARS,
@@ -228,8 +230,8 @@ export const FICHES: Fiche[] = [
       'Rendement européen élevé',
       'Du résidentiel à la toiture tertiaire',
     ],
-    garantie: 'Garantie 10 ans',
-    warranty: { years: 10 },
+    garantie: `Garantie ${HUAWEI_INVERTER_WARRANTY_YEARS} ans`,
+    warranty: { years: HUAWEI_INVERTER_WARRANTY_YEARS },
     pairsWith: ['Panneaux photovoltaïques', 'Supervision & comptage'],
     datasheet:
       'https://solar.huawei.com/-/media/Solar/attachment/pdf/apac/datasheet/SUN2000-5-10KTL-M0-M1.pdf',
@@ -253,17 +255,12 @@ export const FICHES: Fiche[] = [
     // SUN-3/4/5/6/8/10/12K (3-12 kW), le monophasé SG05LP1 couvre
     // SUN-3.6/5/6/7.6/8K (3,6-8 kW) — la plage réelle combinée est 3-12 kW,
     // jamais 30 kW sur AUCUNE des deux fiches liées.
-    garantie: 'Garantie constructeur 5 à 10 ans (selon site d\'installation)',
+    garantie: `Garantie constructeur ${DEYE_INVERTER_WARRANTY_YEARS} ans`,
     warranty: {
-      years: 10,
-      // WA13-bis (2026-08-20) — même nuance que la batterie Dyness ci-dessous :
-      // la fiche warranty officielle Deye (« SUN Series Hybrid inverter 10-Year
-      // Limited Warranty for Installation in Europe ») conditionne les 10 ans à
-      // un site d'installation EN EUROPE ; la datasheet technique du SG05LP3
-      // liste elle-même « 5 Years/10 Years — the Warranty Period Depends the
-      // Final Installation Site of Inverter ». Aucun certificat distributeur
-      // marocain n'a encore confirmé laquelle des deux bornes s'applique ici.
-      note: 'Garantie constructeur 5 à 10 ans selon le site d\'installation (10 ans pour une installation en Europe, source Deye) — terme exact au Maroc à confirmer contre le certificat du distributeur.',
+      years: DEYE_INVERTER_WARRANTY_YEARS,
+      // Décision fondateur 27/10/2026 : 5 ans = terme mondial Deye (datasheet
+      // v1.7) ; l'option 10 ans n'est pas achetée.
+      note: `Garantie constructeur ${DEYE_INVERTER_WARRANTY_YEARS} ans.`,
     },
     pairsWith: ['Panneaux photovoltaïques', 'Batteries', 'Supervision & comptage'],
     // Fondateur 2026-08-15 : génération réellement en pose = SG05 (10 kW =
@@ -296,9 +293,8 @@ export const FICHES: Fiche[] = [
     garantie: 'Garantie 10 ans',
     warranty: {
       years: 10,
-      // WA13 : terme selon le document de garantie émis par le distributeur
-      // marocain ; certaines variantes régionales de la DL5.0C affichent 7 ans.
-      note: '≥ 70 % de capacité — selon le document de garantie du distributeur (certaines variantes régionales affichent 7 ans)',
+      // Décision fondateur 27/10/2026 : 10 ans (version Afrique), seuil ≥ 70 %.
+      note: '≥ 70 % de capacité',
     },
     pairsWith: ['Onduleurs hybrides', 'Supervision & comptage'],
     datasheet:

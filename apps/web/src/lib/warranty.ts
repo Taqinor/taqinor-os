@@ -23,33 +23,14 @@
  *   L'ancien « ≥ 84,8 % / 25 ans » est le barème PERC : il n'apparaît sur
  *   AUCUNE des fiches liées et ne doit plus être affiché.
  *
- *  ONDULEURS : 10 ans (Deye SUN-…-SG05LP, Huawei SUN2000).
- *   O1 (2026-08-20) — sourcé contre les documents officiels constructeur :
- *   - Huawei : datasheet SUN2000-5/8/10KTL-M0/M1 (le lien `datasheet` de la
- *     fiche `onduleur-huawei-reseau`) — garantie constructeur 120 mois.
- *   - Deye : « SUN Series Hybrid inverter 10-Year Limited Warranty for
- *     Installation in Europe » (deyeinverter.com) — couvre TOUTE la gamme
- *     SUN Series Hybrid, 10 ans SI le site d'installation est en Europe ; la
- *     datasheet technique SG05LP3/SG05LP1 elle-même écrit « 5 Years/10 Years
- *     — the Warranty Period Depends the Final Installation Site ». Le Maroc
- *     n'étant pas couvert nommément, 10 ans reste la valeur affichée (celle
- *     du document constructeur le plus favorable et déjà utilisée partout),
- *     mais le terme exact pour une installation marocaine reste À CONFIRMER
- *     contre le certificat du distributeur (cf. la note structurée de la
- *     fiche `onduleur-deye-hybride` dans fiches.ts, qui porte cette réserve).
+ *  ONDULEURS (décision fondateur 27/10/2026 : UNE durée, celle qui vaut au Maroc) :
+ *   - Deye hybride SG05LP1/LP3 : 5 ans — terme mondial de la datasheet Deye
+ *     v1.7 (« 5 Years (10 Years Optional) »); l'option 10 ans n'est pas achetée.
+ *   - Huawei SUN2000 : 10 ans — datasheet SUN2000-5/8/10KTL-M0/M1, garantie
+ *     constructeur 120 mois (inchangé).
  *
- *  BATTERIE : 10 ans, ≥ 70 % de capacité (Dyness DL5.0C LFP).
- *   NB (WA13, sourcé O1 2026-08-20) : la garantie Dyness DL5.0C est VERSIONNÉE
- *   par région — documents officiels dyness.com trouvés : version Europe
- *   « DL5.0C ESS System » = 10 ans ; version Amériques « DL5.0C Pro ESS
- *   System » (WarrantyTermsDL5.0CPro…pdf, V2-202502) = 7 ans avec rétention
- *   ≥ 70 % de l'énergie utilisable à 7 ans ; version Asie-Pacifique propose
- *   les DEUX (7 ans ou 10 ans selon le palier acheté). Aucun document n'est
- *   spécifique au Maroc : 10 ans reste la valeur affichée (comme l'onduleur
- *   ci-dessus), 7 ans documenté comme variante régionale possible. Le seuil
- *   ≥ 70 % vient du document Amériques (70 % de l'Usable Energy à 7 ans) —
- *   c'est la seule valeur de seuil trouvée dans un document officiel Dyness,
- *   appliquée ici par défaut faute d'un seuil publié pour la version 10 ans.
+ *  BATTERIE : 10 ans, ≥ 70 % de capacité (Dyness DL5.0C LFP, version Afrique,
+ *   décision fondateur 27/10/2026). Seuil ≥ 70 % conservé.
  *
  *  STRUCTURE (acier galvanisé) : 20 ans.
  *  POSE / main-d'œuvre Taqinor : 2 ans.
@@ -76,8 +57,14 @@ export const PANEL_ANNUAL_DEGRADATION_PCT = 0.4;
  */
 export const PANEL_PERFORMANCE_FLOOR_25Y_PCT = 89.4;
 
-/** Garantie onduleur, en années — Deye/Huawei, source en tête de fichier (O1). */
-export const INVERTER_WARRANTY_YEARS = 10;
+/** Garantie onduleur Deye (hybride SG05LP1/LP3), en années — terme mondial v1.7. */
+export const DEYE_INVERTER_WARRANTY_YEARS = 5;
+
+/** Garantie onduleur Huawei SUN2000, en années — datasheet 120 mois. */
+export const HUAWEI_INVERTER_WARRANTY_YEARS = 10;
+
+/** @deprecated Ambigu (Deye 5 ans ≠ Huawei 10 ans) : utiliser les constantes par marque. = Huawei. */
+export const INVERTER_WARRANTY_YEARS = HUAWEI_INVERTER_WARRANTY_YEARS;
 
 /** Garantie batterie (durée), en années. */
 export const BATTERY_WARRANTY_YEARS = 10;

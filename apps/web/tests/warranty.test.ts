@@ -14,6 +14,9 @@ import {
   PANEL_PERFORMANCE_FLOOR_PCT,
   PANEL_PRODUCT_WARRANTY_YEARS,
   BATTERY_CAPACITY_FLOOR_PCT,
+  BATTERY_WARRANTY_YEARS,
+  DEYE_INVERTER_WARRANTY_YEARS,
+  HUAWEI_INVERTER_WARRANTY_YEARS,
 } from '../src/lib/warranty';
 
 const srcDir = fileURLToPath(new URL('../src', import.meta.url));
@@ -52,5 +55,27 @@ describe('warranty.ts — source unique de garantie (WB3)', () => {
       offenders,
       `ancien barème PERC « 84,8 » détecté :\n${offenders.join('\n')}`,
     ).toEqual([]);
+  });
+});
+
+describe('garanties onduleur / batterie — une durée, celle du Maroc (décision fondateur 27/10/2026)', () => {
+  it('Deye = 5 ans, Huawei = 10 ans, Dyness = 10 ans', () => {
+    expect(DEYE_INVERTER_WARRANTY_YEARS).toBe(5);
+    expect(HUAWEI_INVERTER_WARRANTY_YEARS).toBe(10);
+    expect(BATTERY_WARRANTY_YEARS).toBe(10);
+  });
+
+  it('aucune page ni fiche ne publie de fourchette ou de réserve sur ces durées', () => {
+    const offenders: string[] = [];
+    const interdits = [/5 à 10 ans/, /variantes? régionales?/i, /à confirmer contre le certificat/i];
+    const cibles = walkSrc(srcDir).filter((abs) => {
+      const rel = abs.slice(srcDir.length + 1).replace(/\\/g, '/');
+      return (rel.startsWith('pages/') && !rel.startsWith('pages/proposition/')) || rel === 'lib/fiches.ts';
+    });
+    for (const abs of cibles) {
+      const txt = readFileSync(abs, 'utf-8');
+      for (const re of interdits) if (re.test(txt)) offenders.push(`${abs} → ${re}`);
+    }
+    expect(offenders).toEqual([]);
   });
 });

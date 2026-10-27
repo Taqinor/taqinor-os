@@ -2,7 +2,7 @@
 /**
  * Teaser de réassurance « garanties » (W16) — bloc compact repris UNIQUEMENT
  * des chiffres déjà publiés sur /garanties : 12 ans produit, 30 ans de
- * performance linéaire (≥ 87,4 %), 10 ans onduleur & batterie, 20 ans structure, 2 ans
+ * performance linéaire (≥ 87,4 %), 5 ans onduleur Deye, 10 ans onduleur Huawei & batterie, 20 ans structure, 2 ans
  * main-d'œuvre, + monitoring Deye Cloud avec accès client. AUCUN délai de
  * réponse (SLA) ni politique de sous-performance inventés. Renvoie vers
  * /garanties. Pensé pour les sections sombres (accueil, résidentiel,
@@ -55,7 +55,8 @@ const STR: Record<
     labels: [
       'Produit panneaux',
       'Performance ≥ 87,4 %',
-      'Onduleur & batterie',
+      'Onduleur Deye',
+      'Onduleur Huawei & batterie',
       'Structure acier',
       'Main-d’œuvre Taqinor',
     ],
@@ -69,7 +70,8 @@ const STR: Record<
     labels: [
       'Panel product',
       'Performance ≥ 87.4 %',
-      'Inverter & battery',
+      'Deye inverter',
+      'Huawei inverter & battery',
       'Steel structure',
       'Taqinor labour',
     ],
@@ -83,7 +85,8 @@ const STR: Record<
     labels: [
       'منتج الألواح',
       'الأداء ≥ 87.4 %',
-      'العاكس والبطارية',
+      'عاكس Deye',
+      'عاكس Huawei والبطارية',
       'الهيكل الفولاذي',
       'يد عاملة Taqinor',
     ],
@@ -94,9 +97,9 @@ const s = STR[locale] ?? STR.fr;
 // Les NOMBRES sont identiques dans toutes les locales : seul le mot d'unité
 // localise (même règle que /garanties : « ans » → « years » / AR).
 const YEARS_BY_LOCALE: Record<Locale, string[]> = {
-  fr: ['12 ans', '30 ans', '10 ans', '20 ans', '2 ans'],
-  en: ['12 years', '30 years', '10 years', '20 years', '2 years'],
-  ar: ['12 سنة', '30 سنة', '10 سنوات', '20 سنة', 'سنتان'],
+  fr: ['12 ans', '30 ans', '5 ans', '10 ans', '20 ans', '2 ans'],
+  en: ['12 years', '30 years', '5 years', '10 years', '20 years', '2 years'],
+  ar: ['12 سنة', '30 سنة', '5 سنوات', '10 سنوات', '20 سنة', 'سنتان'],
 };
 const years = YEARS_BY_LOCALE[locale] ?? YEARS_BY_LOCALE.fr;
 const items = years.map((yrs, i) => ({ years: yrs, label: s.labels[i] }));
@@ -114,7 +117,7 @@ const items = years.map((yrs, i) => ({ years: yrs, label: s.labels[i] }));
         <a href={L('/garanties')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">{s.cta}</a>
       </p>
     </div>
-    <dl class="mt-10 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-5" data-stagger>
+    <dl class="mt-10 grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3 lg:grid-cols-6" data-stagger>
       {items.map((it, i) => (
         <div class="v2-rise" style={`--v2-i:${i}`}>
           <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>{it.years}</dd>
