@@ -172,6 +172,16 @@ class TestCourbeDeclaree(unittest.TestCase):
         self.assertNotIn('profil_societe_completee', prov)
         self.assertNotIn('profil_societe_complete', {a['code'] for a in alertes})
 
+    def test_jours_ouverts_non_declares_archetype_libelle_vrai_et_interne(self):
+        # CLD17 — chaque type de jour est normalisé Σ = 1 : seules les FORMES
+        # servent, pas la semaine ; le libellé le dit et reste interne.
+        _jt, _p, alertes = courbe_declaree({}, 42000, annee_reference=ANNEE,
+                                           archetype='bureau', feries=[])
+        alerte = next(a for a in alertes if a['code'] == 'jours_ouverts_non_declares')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('chaque jour reçoit la même énergie', alerte['message'])
+        self.assertNotIn('la semaine', alerte['message'])
+
     def test_sans_plage_ni_archetype_profil_exige(self):
         jt, _prov, alertes = courbe_declaree({'jours_ouverts': TOUS}, [1000] * 12,
                                              annee_reference=ANNEE, archetype='hammam', feries=[])

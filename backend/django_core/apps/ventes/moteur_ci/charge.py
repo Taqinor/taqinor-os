@@ -908,8 +908,9 @@ def courbe_declaree(rythme, kwh_mensuels, *, annee_reference, archetype=None, fe
         if not jours_declares:
             alertes.append(_alerte(
                 'jours_ouverts_non_declares', 'rythme.jours_ouverts',
-                "Jours ouverts non déclarés : la semaine de l'archétype sert (estimation).",
-                niveau='info'))
+                "Jours ouverts non déclarés : chaque jour reçoit la même énergie (seules les formes "
+                "de l'archétype servent) — déclarer les jours ouverts.",
+                niveau='info', interne=True))
         alertes.append(_alerte(
             'profil_estime', 'rythme',
             "Profil horaire estimé (archétype) : déclarer jours et heures d'ouverture "
