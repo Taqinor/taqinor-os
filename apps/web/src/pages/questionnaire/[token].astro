@@ -52,6 +52,7 @@ import {
 } from '../../lib/questionnaire';
 import { type L3, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST } from '../../lib/questionnaireChamps';
 import ChampsDonnees from '../../components/questionnaire/ChampsDonnees.astro';
+import ChampsHeuresActivite from '../../components/questionnaire/ChampsHeuresActivite.astro';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { entetesIpVisiteur } from '../api/_apiBase';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
@@ -687,6 +688,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                     </div>
                                   );
                                 })}
+                                <ChampsHeuresActivite cat={cat} prefill={categoriePrefill === cat ? reponsesCategoriePrefill : {}} cls={PRO_INPUT_CLS} />
                               </div>
                             )
                           ))}
@@ -1688,6 +1690,17 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       const cat = fieldVal('q-categorie');
       document.querySelectorAll<HTMLElement>('.q-cat-block').forEach((el) => el.classList.toggle('hidden', el.dataset.cat !== cat));
     });
+    // CQSTW6 — les heures de l'activité n'apparaissent que si la réponse qui les justifie est donnée.
+    const reponseCat = (bloc: Element, cle: string): string => {
+      const el = bloc.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-cat-key="${cle}"]:not([type="radio"]), [data-cat-key="${cle}"][type="radio"]:checked`);
+      return el ? el.value : '';
+    };
+    const majHeuresActivite = () => document.querySelectorAll<HTMLElement>('.q-cat-block [data-si]').forEach((el) => {
+      const bloc = el.closest('.q-cat-block');
+      el.classList.toggle('hidden', !bloc || !(el.dataset.si ?? '').split(';').every((c) => reponseCat(bloc, c.split('=')[0]) === c.split('=')[1]));
+    });
+    document.querySelectorAll('.q-cat-block').forEach((b) => b.addEventListener('change', majHeuresActivite));
+    majHeuresActivite();
     document.querySelectorAll<HTMLInputElement>('input[name="q-groupe-electrogene"]').forEach((radio) => {
       radio.addEventListener('change', () => {
         $('q-groupe-detail')?.classList.toggle('hidden', radio.value !== 'oui');
@@ -1713,6 +1726,10 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
           if (el instanceof HTMLInputElement && el.type === 'radio' && !el.checked) return;
           if (el.value !== '') out[el.dataset.catKey as string] = el.value;
         });
+      document.querySelectorAll<HTMLElement>(`.q-cat-block[data-cat="${categorie}"] [data-cat-plage]`).forEach((row) => {
+        const [a, b] = Array.from(row.querySelectorAll<HTMLInputElement>('input'));
+        if (a && b && a.value !== '' && b.value !== '') out[row.dataset.catPlage as string] = [[a.value, b.value]];
+      });
       return out;
     };
 

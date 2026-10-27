@@ -21,6 +21,8 @@ import {
   parseQuestionnaireGet,
   parseQuestionnairePostResponse,
   progressLabel,
+  REPONSES_CATEGORIE_HEURES,
+  cleanJourMois,
   detectQuestionnaireLang,
   messageErreurQuestionnaire,
   questionnaireEndpoint,
@@ -930,5 +932,44 @@ describe('CQSTW4 — photos : plusieurs fichiers et PDF', () => {
     const pdf = 'data:application/pdf;base64,' + 'A'.repeat(100);
     expect(buildQuestionnairePostBody('photo_factures', {}, pdf).photo).toBe(pdf);
     expect(buildQuestionnairePostBody('contact', {}, pdf).photo).toBeUndefined();
+  });
+});
+
+describe('CQSTW6 — heures de l activité', () => {
+  const contrat = JSON.parse(readFileSync(fileURLToPath(new URL(
+    '../../../backend/django_core/apps/crm/contract_samples/questionnaire_lead.json', import.meta.url)), 'utf-8')) as
+    { reponses_categorie_heures_cqst2: { cles: Record<string, string[]> } };
+  const act = (categorie: string, rc: Record<string, unknown>) =>
+    buildSectionReponses('activite', { categorie_commerciale: categorie, reponses_categorie: rc }).reponses_categorie as Record<string, unknown>;
+
+  it('les clés par catégorie = le contrat', () => {
+    const cles = Object.fromEntries(Object.entries(REPONSES_CATEGORIE_HEURES).map(([c, qs]) => [c, qs.map((q) => q.key)]));
+    expect(cles).toEqual(contrat.reponses_categorie_heures_cqst2.cles);
+  });
+  it('restaurant : heures [[début, fin]]', () => {
+    expect(act('restaurant', { heures: [['11', '23']] })).toEqual({ heures: [[11, 23]] });
+    expect(act('restaurant', { heures: [['11', '11']] })).toBeUndefined();
+  });
+  it('boulangerie : cuisson de nuit seulement si four électrique ET cuisson la nuit', () => {
+    const oui = act('boulangerie', { four: 'electrique', cuisson_nocturne: 'oui', heures_cuisson: [['1', '5']] });
+    expect(oui.heures_cuisson).toEqual([[1, 5]]);
+    expect(act('boulangerie', { four: 'gaz', cuisson_nocturne: 'oui', heures_cuisson: [['1', '5']] }).heures_cuisson).toBeUndefined();
+    expect(act('boulangerie', { four: 'electrique', cuisson_nocturne: 'non', heures_cuisson: [['1', '5']] }).heures_cuisson).toBeUndefined();
+  });
+  it('santé : garde de nuit 22→6 permise, seulement si garde_nuit = oui', () => {
+    expect(act('sante', { garde_nuit: 'oui', heures_garde: [['22', '6']] }).heures_garde).toEqual([[22, 6]]);
+    expect(act('sante', { garde_nuit: 'non', heures_garde: [['22', '6']] }).heures_garde).toBeUndefined();
+  });
+  it('école : fermeture JJ/MM seulement si fermeture estivale', () => {
+    const r = act('ecole', { fermeture_estivale: 'oui', fermeture_du: '5/7', fermeture_au: '31-08' });
+    expect(r).toMatchObject({ fermeture_du: '05/07', fermeture_au: '31/08' });
+    expect(act('ecole', { fermeture_estivale: 'non', fermeture_du: '05/07' })).toEqual({ fermeture_estivale: false });
+    expect(cleanJourMois('31/02')).toBeNull();
+    expect(cleanJourMois('juillet')).toBeNull();
+  });
+  it('la page lit les plages et pose les champs par composant', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
+    expect(src).toContain('<ChampsHeuresActivite');
+    expect(src).toContain('[data-cat-plage]');
   });
 });

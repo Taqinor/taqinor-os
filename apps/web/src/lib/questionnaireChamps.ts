@@ -205,3 +205,16 @@ export const CHAMPS_POMPAGE_CQST: readonly ChampDonnee[] = [
     ],
   },
 ];
+
+// ── CQSTW6 — libellés des heures de l'activité (clés : lib/questionnaire.ts REPONSES_CATEGORIE_HEURES) ──
+export const HEURES_ACTIVITE_LABELS: Record<string, L3> = {
+  heures: L("À quelles heures êtes-vous ouverts ? (de … h à … h)", 'What hours are you open? (from … h to … h)', 'في أي ساعات أنتم مفتوحون؟ (من … س إلى … س)'),
+  heures_cuisson: L('Entre quelles heures cuisez-vous la nuit ? (de … h à … h)', 'Between which hours do you bake at night? (from … h to … h)', 'بين أي ساعات تخبزون ليلاً؟ (من … س إلى … س)'),
+  heures_garde: L('Quelles sont les heures de votre garde de nuit ? (de … h à … h)', 'What are the hours of your night shift? (from … h to … h)', 'ما هي ساعات حراستكم الليلية؟ (من … س إلى … س)'),
+  fermeture_du: L("Début de la fermeture d'été (jour/mois, par ex. 15/07)", 'Start of the summer closure (day/month, e.g. 15/07)', 'بداية إغلاق الصيف (يوم/شهر، مثال 15/07)'),
+  fermeture_au: L("Fin de la fermeture d'été (jour/mois, par ex. 31/08)", 'End of the summer closure (day/month, e.g. 31/08)', 'نهاية إغلاق الصيف (يوم/شهر، مثال 31/08)'),
+};
+export const PLAGE_DE_A: { de: L3; a: L3 } = {
+  de: L('De (h)', 'From (h)', 'من (س)'),
+  a: L('À (h)', 'To (h)', 'إلى (س)'),
+};

@@ -515,6 +515,52 @@ export const REPONSES_CATEGORIE_QUESTIONS: Record<string, readonly CategorieQues
   autre: [],
 };
 
+/**
+ * CQSTW6 — heures de l'activité (contrat `reponses_categorie_heures_cqst2`) :
+ * `plages` = [[début_h, fin_h], …] (0-24), `jour_mois` = « JJ/MM ». Chaque clé
+ * n'est posée (et envoyée) que si la réponse d'activité la rend utile (`si`,
+ * évalué sur les réponses déjà nettoyées de la catégorie).
+ */
+export interface CategorieHeures {
+  key: string;
+  type: 'plages' | 'jour_mois';
+  si?: Readonly<Record<string, string | boolean>>;
+}
+export const REPONSES_CATEGORIE_HEURES: Record<string, readonly CategorieHeures[]> = {
+  restaurant: [{ key: 'heures', type: 'plages' }],
+  boulangerie: [{ key: 'heures_cuisson', type: 'plages', si: { four: 'electrique', cuisson_nocturne: true } }],
+  sante: [{ key: 'heures_garde', type: 'plages', si: { garde_nuit: true } }],
+  ecole: [
+    { key: 'fermeture_du', type: 'jour_mois', si: { fermeture_estivale: true } },
+    { key: 'fermeture_au', type: 'jour_mois', si: { fermeture_estivale: true } },
+  ],
+};
+
+/** « 5/7 », « 05-07 », « 5.7 » → « 05/07 » ; date impossible (31/02) ou illisible ⇒ `null`. */
+export function cleanJourMois(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const m = /^\s*(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*$/.exec(v);
+  if (!m) return null;
+  const jour = Number(m[1]);
+  const mois = Number(m[2]);
+  const joursDuMois = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (mois < 1 || mois > 12 || jour < 1 || jour > joursDuMois[mois - 1]) return null;
+  return `${String(jour).padStart(2, '0')}/${String(mois).padStart(2, '0')}`;
+}
+
+/** [[début, fin], …] : heures 0-24, début ≠ fin (une garde de nuit 22→6 est permise) ; vide ⇒ `null`. */
+export function cleanPlagesHeures(v: unknown): number[][] | null {
+  if (!Array.isArray(v)) return null;
+  const out: number[][] = [];
+  for (const plage of v.slice(0, 4)) {
+    if (!Array.isArray(plage) || plage.length !== 2) continue;
+    const a = cleanBoundedNumber(plage[0], 0, 24);
+    const b = cleanBoundedNumber(plage[1], 0, 24);
+    if (a != null && b != null && a !== b) out.push([a, b]);
+  }
+  return out.length > 0 ? out : null;
+}
+
 export type EquipementKey =
   | 'equip_piscine'
   | 'equip_voiture_electrique'
@@ -653,11 +699,11 @@ export function cleanReleveConso(
 export function cleanReponsesCategorie(
   categorie: string | null,
   v: unknown,
-): Record<string, number | boolean | string> | null {
+): Record<string, number | boolean | string | number[][]> | null {
   if (!categorie || !v || typeof v !== 'object' || Array.isArray(v)) return null;
   const questions = REPONSES_CATEGORIE_QUESTIONS[categorie] ?? [];
   const src = v as Record<string, unknown>;
-  const out: Record<string, number | boolean | string> = {};
+  const out: Record<string, number | boolean | string | number[][]> = {};
   for (const q of questions) {
     const brut = src[q.key];
     if (q.type === 'number') {
@@ -669,6 +715,18 @@ export function cleanReponsesCategorie(
     } else {
       const e = cleanEnum(brut, (q.options ?? []) as readonly string[]);
       if (e) out[q.key] = e;
+    }
+  }
+  // CQSTW6 — heures de l'activité, seulement quand la réponse qui les justifie est donnée.
+  for (const q of REPONSES_CATEGORIE_HEURES[categorie] ?? []) {
+    if (q.si && !Object.entries(q.si).every(([k, val]) => out[k] === val)) continue;
+    const brut = src[q.key];
+    if (q.type === 'plages') {
+      const plages = cleanPlagesHeures(brut);
+      if (plages) out[q.key] = plages;
+    } else {
+      const jm = cleanJourMois(brut);
+      if (jm) out[q.key] = jm;
     }
   }
   return Object.keys(out).length > 0 ? out : null;
