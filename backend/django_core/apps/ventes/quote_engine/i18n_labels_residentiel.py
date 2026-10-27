@@ -76,6 +76,9 @@ LIBELLES_RESIDENTIEL = {
               'the quote is commercially binding.',
         'ar': 'وثيقة تقنية مرفقة بالعرض. يتم تأكيد التوزيع النهائي خلال الزيارة '
               'التقنية؛ وقائمة التجهيزات في عرض السعر وحدها هي الملزمة تجاريًا.'},
+    'rpdf_jours_ouvres': {'fr': 'jours ouvrés', 'en': 'working days',
+                          'ar': 'أيام عمل'},
+    'rpdf_heures_abr': {'fr': 'h', 'en': 'h', 'ar': 'ساعة'},
 }
 
 

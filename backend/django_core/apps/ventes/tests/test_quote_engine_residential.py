@@ -2034,3 +2034,43 @@ class TestQjr209DossierMtDansLePaquetResidentiel(TestCase):
         d, html = self._html(data)
         self.assertFalse(d['masquer_synthese'])
         self.assertIn('<div class="c1-bigcut">', html)
+
+
+class TestRpdfLangueGarantiesEtDelais(SimpleTestCase):
+    """RPDF (rendu réel du 27/10) — garanties arabes accordées, délais société
+    par défaut traduits, ``_yrs`` via le formateur central."""
+
+    def test_garantie_arabe_accord_annees(self):
+        from apps.ventes.quote_engine.residential import theme
+        d = {"langue_sortie": "ar"}
+        for n, attendu in (("25", "سنة"), ("12", "سنة"), ("10", "سنوات"),
+                           ("5", "سنوات")):
+            u = theme.garantie_doc(d, (n, "ans", "Panneaux", ""))[1]
+            self.assertIn(attendu, u, n)
+            if attendu == "سنة":
+                self.assertNotIn("سنوات", u, n)
+
+    def test_garantie_fr_et_en_inchangees(self):
+        from apps.ventes.quote_engine.residential import theme
+        g = ("12", "ans", "Panneaux", "")
+        self.assertEqual(theme.garantie_doc({}, g), g)
+        self.assertIn("years", theme.garantie_doc({"langue_sortie": "en"}, g)[1])
+
+    def test_delai_defaut_traduit_selon_la_langue(self):
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme.delai_doc({}, "7-14 jours ouvrés"),
+                         "7-14 jours ouvrés")
+        self.assertEqual(
+            theme.delai_doc({"langue_sortie": "en"}, "7-14 jours ouvrés"),
+            "7-14 working days")
+        self.assertNotIn("jours", theme.delai_doc(
+            {"langue_sortie": "ar"}, "7-14 jours ouvrés"))
+        # texte personnalisé par la société : donnée, jamais touchée
+        self.assertEqual(
+            theme.delai_doc({"langue_sortie": "en"}, "environ trois semaines"),
+            "environ trois semaines")
+
+    def test_yrs_decimale_francaise_par_defaut(self):
+        from apps.ventes.quote_engine.residential import cover
+        self.assertEqual(cover._yrs(4.4), "4,4")
+        self.assertEqual(cover._yrs(5.0), "5")

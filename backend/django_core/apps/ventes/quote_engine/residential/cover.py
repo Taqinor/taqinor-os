@@ -966,7 +966,8 @@ def _yrs(v):
         return str(v)
     if f == int(f):
         return str(int(f))
-    return f"{f:.1f}".replace(".", ",")
+    from ..montants import decimale  # RPDF — suit la langue du rendu
+    return decimale(f"{f:.1f}")
 
 
 def _roi_svg(color):

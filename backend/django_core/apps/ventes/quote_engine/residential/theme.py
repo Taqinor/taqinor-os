@@ -554,7 +554,13 @@ def garantie_doc(data, garantie):
             pct=sub[:-len(" garanti")])
     elif sub == "performance linéaire":
         sub = libelle_doc(data, "res_gar_lineaire", sub)
-    return (n, libelle_doc(data, "ci_ans", u) if u == "ans" else u,
+    if u == "ans":
+        from ..i18n_labels_residentiel import accord_annees_ar
+        u = libelle_doc(data, "ci_ans", u)
+        if langue_doc(data) == "ar":
+            # RPDF — « 12 سنوات » est fautif : « سنة » hors 3..10 ans entiers.
+            u = accord_annees_ar(u, str(n).replace(",", "."))
+    return (n, u,
             libelle_doc(data, _CLES_GARANTIE[label], label)
             if label in _CLES_GARANTIE else label, sub)
 
@@ -968,6 +974,21 @@ def libelle_doc(data, cle: str, fr: str) -> str:
     if i18n_labels.est_rtl(langue):
         return f'<span class="i18n-rtl" dir="rtl">{valeur}</span>'
     return valeur
+
+
+def delai_doc(data, texte):
+    """RPDF — délai commercial société (« 7-14 jours ouvrés », « 48-72 h »)
+    dans la langue du document. Seul le gabarit PAR DÉFAUT « N-M jours
+    ouvrés » / « N-M h » est traduit ; un texte personnalisé par la société
+    (autre forme) est une donnée et reste tel quel. Français : inchangé."""
+    import re
+    if langue_doc(data) == "fr" or not texte:
+        return texte
+    m = re.fullmatch(r"\s*(\d+(?:\s*-\s*\d+)?)\s*(jours ouvrés|h)\s*", texte)
+    if not m:
+        return texte
+    cle = "rpdf_jours_ouvres" if m.group(2) != "h" else "rpdf_heures_abr"
+    return f"{m.group(1)} {libelle_doc(data, cle, m.group(2))}"
 
 
 def css_langue(data) -> str:
