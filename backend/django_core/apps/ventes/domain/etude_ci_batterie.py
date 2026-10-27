@@ -357,7 +357,7 @@ def _dimensionner(catalogue, bat, batteries, evaluation, *, phase, ps_kva, compo
         kwc_depart=evaluation['kwc'], pmax_wc=(catalogue.get('module') or {}).get('pmax_wc'),
         combiner=lambda kwc: combiner_onduleurs(
             kwc, bat['hybrides'], phase=phase, module=catalogue.get('module_spec'),
-            ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE),
+            ac_max_kw=ps_kva, max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True),
         composer=lambda kwc, onduleurs: composer(kwc, onduleurs, bat.get('elements')),
         batteries=batteries, hybrides=bat['hybrides'], kwc_max=(borne_toit or {}).get('kwc'),
         ps_kva=ps_kva, **noyau)
