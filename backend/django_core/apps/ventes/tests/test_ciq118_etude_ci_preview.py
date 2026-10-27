@@ -192,6 +192,23 @@ class ContratTests(_Base):
             self.assertEqual(set(entree['provenance']), {'origine', 'detail', 'date'})
         self.assertIsNotNone(data['taille']['retenue_kwc'])
 
+    # ── CORC1 — l'aperçu dit si le devis automatique passera ────────────────
+
+    def test_devis_auto_dit_le_refus_du_bouton_prix_a_renseigner(self):
+        # Le catalogue de test ne règle que 2 prestations sur 8 : le bouton
+        # refuserait (« Prix à renseigner ») — l'aperçu le dit AVANT le clic.
+        data = self.post(self.corps(phases='tri'))
+        self.assertFalse(data['devis_auto']['possible'])
+        self.assertEqual(data['devis_auto']['champ'], 'composition')
+        self.assertTrue(data['devis_auto']['message'].startswith('Prix à renseigner'))
+        self.assertIsNone(data['option_avec'])  # aucun hybride au catalogue de test
+
+    def test_devis_auto_refuse_nomme_le_champ_du_lead(self):
+        data = self.post(self.corps(tarif=None))
+        self.assertFalse(data['devis_auto']['possible'])
+        self.assertEqual(data['devis_auto']['champ'], 'contrat_electricite')
+        self.assertTrue(data['devis_auto']['message'].startswith('Demandez au client'))
+
     # ── ADEV82 — bande interne DH/kWc lue ───────────────────────────────────
 
     def test_bande_prix_kwc_posee_hors_bande_alerte_interne(self):

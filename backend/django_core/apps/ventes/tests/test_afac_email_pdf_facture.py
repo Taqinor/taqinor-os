@@ -186,7 +186,10 @@ class EmailPdfFactureTests(TestCase):
         from apps.ventes.views.openapi_docs import EnvoyerEmailFactureRequest
         self.assertIsInstance(
             EnvoyerEmailFactureRequest.fields['sujet'], ChaineUneLigne)
-        for sujet in ('Facture\nBcc: x@y.z', 'Facture\r', 'Fac\x00ture'):
+        # « \x85 » / «   » : séparateurs que le pliage d'en-tête Python
+        # coupe aussi (api-fuzz-full 27/10 : échec d'envoi derrière un 400).
+        for sujet in ('Facture\nBcc: x@y.z', 'Facture\r', 'Fac\x00ture',
+                      'Fac\x85ture', 'Fac ture', 'Fac\x0bture'):
             resp = self.api.post(
                 f'/api/django/ventes/factures/{self.facture.id}/envoyer-email/',
                 {'sujet': sujet}, format='json')

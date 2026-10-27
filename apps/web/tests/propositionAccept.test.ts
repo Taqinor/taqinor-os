@@ -26,6 +26,7 @@ import {
 } from '../src/lib/paiementAcceptation';
 // ADEV104 — reçu de signature : le défi lu et le sceau stocké, deux empreintes nommées.
 import { lireRecuSignature } from '../src/lib/propositionRecu';
+import { lirePageProposition } from './astroBlocsHelper';
 
 function makeRequest(body: unknown): Request {
   return new Request('http://localhost/api/proposition-accept', {
@@ -204,7 +205,7 @@ const lire = (rel: string): string => readFileSync(fileURLToPath(new URL(rel, im
 const CONTRAT = JSON.parse(lire('../src/contract_samples/proposal_accept.json')) as {
   reponse_200: Record<string, unknown> & { paiement: Record<string, unknown> };
 };
-const PAGE = lire('../src/pages/proposition/[...token].astro');
+const PAGE = lirePageProposition();
 
 async function callVirement(body: unknown) {
   const req = new Request('http://localhost/api/proposition-virement', {

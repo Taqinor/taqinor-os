@@ -1,0 +1,29 @@
+---
+/**
+ * CPRW (27/10/2026) — déplacement PUR depuis pages/proposition/[...token].astro : le bloc « Votre secteur » d'un devis commercial (CIW306), sa condition d'affichage reste dans la page.
+ * Le balisage est recopié à l'identique (mêmes attributs, mêmes textes FR/EN/AR) ; la page ne garde
+ * qu'un appel de composant. Les valeurs arrivent par props sous LEURS noms de la page.
+ */
+import type { SyntheseCiCategorie } from '../../../lib/proposition';
+
+// Déplacement pur : les props gardent leurs noms de la page ; celles que le balisage parcourt
+// (listes) sont typées comme dans la page, les autres restent ouvertes (`any`).
+interface Props {
+  ciCategorie: SyntheseCiCategorie;
+}
+const { ciCategorie } = Astro.props;
+---
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-commercial-cat" data-ci-categorie={ciCategorie.cle}>
+          <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre secteur" data-en="Your sector" data-ar="قطاعكم">Votre secteur</h2>
+          <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
+            {ciCategorie.titre ? <p class="fig text-xl text-lune">{ciCategorie.titre}</p> : ciCategorie.libelle ? <p class="fig text-xl text-lune">{ciCategorie.libelle}</p> : null}
+            {ciCategorie.accroche ? <p class="mt-2 text-sm text-lune-soft">{ciCategorie.accroche}</p> : null}
+            {ciCategorie.lignes.length > 0 ? (
+              <ul class="mt-3 list-disc space-y-1 ps-5 text-sm text-lune-soft">
+                {ciCategorie.lignes.map((l) => (
+                  <li data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </section>

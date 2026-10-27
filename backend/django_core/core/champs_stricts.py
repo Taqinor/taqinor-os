@@ -30,10 +30,13 @@ class ChaineStricte(serializers.CharField):
         return super().to_internal_value(data)
 
 
-#: Une seule ligne : ni nul ni retour chariot / saut de ligne (en-tête d'email
-#: — Django refuse CR/LF dans un ``Subject``). ``$`` ECMA = fin de chaîne.
-MOTIF_UNE_LIGNE = r'^[^\u0000\r\n]*$'
-_INTERDITS_UNE_LIGNE = frozenset((chr(0), chr(13), chr(10)))
+#: Une seule ligne : ni nul ni AUCUN séparateur de ligne (en-tête d'email —
+#: le pliage d'en-tête Python coupe sur tout ``str.splitlines`` : CR, LF, VT,
+#: FF, FS/GS/RS, NEL, LS, PS ; api-fuzz-full 27/10 : « \x85 » passait le motif
+#: CR/LF puis faisait échouer l'envoi). ``$`` ECMA = fin de chaîne.
+MOTIF_UNE_LIGNE = r'^[^\u0000\n\u000b\u000c\r\u001c-\u001e\u0085  ]*$'
+_INTERDITS_UNE_LIGNE = frozenset(
+    chr(c) for c in (0, 10, 11, 12, 13, 0x1c, 0x1d, 0x1e, 0x85, 0x2028, 0x2029))
 
 
 class ChaineUneLigne(ChaineStricte):

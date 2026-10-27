@@ -46,7 +46,8 @@ from core.electrique.types import (
 from core.pompage.hydraulique import _flottant
 from core.pompage.hypotheses import utilisees, valeur
 from core.pompage.selection import (
-    TENSION_MONO_V, TENSION_TRI_V, prix_connu, tension_produit,
+    TENSION_MONO_V, TENSION_TRI_V, kw_normalise_depuis_cv, prix_connu,
+    tension_produit,
 )
 from core.pompage.volumes import production_mensuelle
 
@@ -129,37 +130,6 @@ def _tension_alim(alimentation):
 
 def _phases_alim(alimentation):
     return {"mono": 1, "tri": 3}.get(alimentation)
-
-
-def _decimales(texte):
-    """Nombre de décimales SIGNIFICATIVES d'une valeur saisie (« 3.00 » → 0,
-    « 5.50 » → 1) : la précision avec laquelle le CV a été écrit."""
-    texte = str(texte).strip().replace(",", ".")
-    if "." not in texte:
-        return 0
-    return len(texte.split(".", 1)[1].rstrip("0"))
-
-
-def kw_normalise_depuis_cv(cv):
-    """AGQ6 (C-AGQ-005) — ``(kW requis, normalisé)`` d'un moteur connu par
-    son seul CV.
-
-    kW = CV × ``cv_vers_kw`` ; la puissance assignée normalisée la plus
-    proche (``kw_moteur_normalises``, IEC 60034-1, table AGR110) est retenue
-    si elle reste dans la TOLÉRANCE D'ARRONDI du CV écrit — un demi-chiffre
-    de sa dernière décimale significative (« 3 » CV : ± 0,5 CV) : 3 CV =
-    2,21 kW ⇒ moteur 2,2 kW. Hors tolérance (un CV qui ne correspond à
-    aucune puissance normalisée), le kW calculé reste tel quel (jamais
-    arrondi vers le bas au-delà de la précision écrite)."""
-    cv_val = _flottant(cv)
-    if cv_val is None or cv_val <= 0:
-        return None, False
-    kw = cv_val * valeur("cv_vers_kw")
-    tolerance_kw = 0.5 * 10 ** (-_decimales(cv)) * valeur("cv_vers_kw")
-    proche = min(valeur("kw_moteur_normalises"), key=lambda p: abs(p - kw))
-    if abs(proche - kw) <= tolerance_kw + 1e-9:
-        return float(proche), True
-    return kw, False
 
 
 def choisir_variateur(variateurs, *, kw_plaque=None, cv=None, tension_v=None,
@@ -484,6 +454,9 @@ def _chaines_pour(variateur, module, nb, temperatures):
             "bornes_non_verifiables", "variateur.fiche",
             "Bornes non vérifiables sur la fiche de %s : %s."
             % (nom, ", ".join(fenetre.bornes_non_verifiables))))
+    alerte_coeff = _alerte_coefficients(module)  # AGM4 : chaîne calculée
+    if alerte_coeff:
+        alertes.append(alerte_coeff)
     chaines = {
         "serie": serie, "paralleles": paralleles,
         "voc_froid_v": round(voc_froid), "vmp_chaud_v": round(vmp_chaud),
@@ -492,6 +465,59 @@ def _chaines_pour(variateur, module, nb, temperatures):
                          "source": source, "mention": mention or None},
     }
     return nb, chaines, alertes, False
+
+
+def _repli_borne(nb, kwc0, pmax, plaque):
+    """AGM2 (D-AGM-2) — ``(nb, mention)`` du repli « besoin non couvert » :
+    le kWc de départ, BORNÉ à la borne haute de la bande champ/pompe × la
+    plaque (la recherche, elle, n'est pas bornée) ; le minimum de fenêtre du
+    variateur relève ensuite ce repli (``_chaines_pour``,
+    ``champ_impose_fenetre``). ``mention`` nomme la borne quand elle joue."""
+    nb = int(math.ceil(kwc0 * 1000.0 / pmax)) if kwc0 else nb
+    if not (kwc0 and plaque and plaque > 0):
+        return nb, ""
+    bande_max = valeur("ratio_champ_pompe_bande_alerte").max
+    # AGM16 — par défaut (jamais au-delà de la bande : un arrondi au-dessus
+    # imprimait « champ 1,56× hors bande » sur un champ borné à 1,5×).
+    nb_borne = int(math.floor(bande_max * plaque * 1000.0 / pmax + 1e-9))
+    if nb_borne >= nb:
+        return nb, ""
+    nb = max(nb_borne, 1)
+    return nb, (" ; borne de %s × la plaque de %s kW (%d panneaux)"
+                % (_fr(bande_max), _fr(plaque), nb))
+
+
+def _cause_champ_non_dimensionne(e_d, besoin, mois, hmt_m):
+    """AGM3 — ``(code, champ, motif, motif_chaines)`` de la VRAIE cause d'un
+    champ non dimensionné : sans E_d seulement, l'irradiation est inconnue ;
+    sinon le besoin est nul ou la HMT inconnue."""
+    besoin_mois = _flottant(besoin[mois - 1], 0.0) if mois else 0.0
+    nul = (not any((_flottant(b, 0.0) or 0.0) > 0 for b in besoin)
+           or (mois and besoin_mois <= 0))
+    if e_d and nul:
+        return ("besoin_nul", "besoin",
+                "Besoin en eau nul au mois critique (aucun mois à irriguer)",
+                "besoin nul")
+    if e_d and (_flottant(hmt_m) or 0.0) <= 0:
+        return ("hmt_inconnue", "hmt_m",
+                "HMT inconnue ou nulle (énergie hydraulique incalculable)",
+                "HMT inconnue")
+    return ("irradiation_inconnue", "production",
+            "Irradiation du site inconnue (ni profil PVGIS, ni E_d)",
+            "irradiation inconnue")
+
+
+def _alerte_coefficients(module):
+    """AGM4 — jumeau de CALX53 (calepinage) : l'alerte (ou ``None``) des
+    coefficients de température tombés sur le défaut du noyau."""
+    if not module.coefficients_non_sources:
+        return None
+    return _alerte(
+        "coefficients_temperature_non_sources", "panneau.fiche",
+        "Coefficients de température non sourcés sur la fiche du panneau"
+        " (%s) : défauts du noyau appliqués, tensions de chaîne à confirmer."
+        % ", ".join("%s = %s %%/°C" % (nom, _fr(getattr(module, nom), 2))
+                    for nom in module.coefficients_non_sources))
 
 
 def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
@@ -608,27 +634,30 @@ def dimensionner_champ(*, besoin_m3_jour_mois, hmt_m, panneau,
                     couvert = True
                     break
             if not couvert:
-                nb = int(math.ceil(kwc0 * 1000.0 / pmax)) if kwc0 else nb
+                nb, borne = _repli_borne(nb, kwc0, pmax, plaque)
                 prod = _production(nb, pmax, **params)
                 alertes.append(_alerte(
                     "besoin_non_couvert_champ", "pompe",
                     "Même avec un champ très surdimensionné, la pompe ne "
-                    "couvre pas le besoin de chaque mois d'irrigation : champ ramené "
-                    "au kWc de départ (énergie hydraulique)."))
+                    "couvre pas le besoin de chaque mois d'irrigation : champ "
+                    "ramené au kWc de départ (énergie hydraulique)%s." % borne))
     elif nb is None:
-        alertes.append(_alerte(
-            "irradiation_inconnue", "production",
-            "Irradiation du site inconnue (ni profil PVGIS, ni E_d) : champ "
-            "non dimensionné."))
+        cause = _cause_champ_non_dimensionne(e_d, besoin, mois, hmt_m)
+        alertes.append(_alerte(cause[0], cause[1],
+                               "%s : champ non dimensionné." % cause[2]))
         sortie["production"] = prod if prod.get("m3_jour_mois") else None
-        return fin("irradiation inconnue")
+        return fin(cause[3])
     else:
         raison = (prod.get("motif") or prod.get("mode")
                   or "production indisponible")
+        # AGM14 (D-AGM-2 étendue) — sans production heure par heure, le kWc
+        # de départ est borné à la plaque comme le repli « non couvert » : une
+        # pompe de 22 kW ne consomme jamais 61 kWc.
+        nb, borne = _repli_borne(nb, kwc0, pmax, plaque)
         alertes.append(_alerte(
             "champ_kwc_depart", "champ.nb_panneaux",
             "Production heure par heure non calculable (%s) : champ au kWc de "
-            "départ E / (η × E_d)." % raison))
+            "départ E / (η × E_d)%s." % (raison, borne)))
 
     # Chaînes : variateur retenu, sinon le suivant (courant / fenêtre).
     chaines = _chaines_vides("aucun variateur retenu")

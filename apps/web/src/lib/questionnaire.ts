@@ -392,9 +392,14 @@ export const TYPE_TOITURE_PRO_VALUES = [
 export const REGIME_EQUIPES_VALUES = ['1x8', '2x8', '3x8', 'continu', 'ne_sait_pas'] as const;
 export const OUI_NON_VALUES = ['oui', 'non'] as const;
 export const TVA_RECUPERABLE_VALUES = ['oui', 'non', 'ne_sait_pas'] as const;
+/** crm.Lead.categorie_commerciale (décision fondateur 26/10/2026 : 23 commerces). */
 export const CATEGORIE_COMMERCIALE_VALUES = [
-  'hotel', 'restaurant', 'commerce', 'bureau', 'sante', 'ecole', 'hammam', 'boulangerie', 'froid', 'autre',
+  'hotel', 'restaurant', 'cafe', 'boulangerie', 'commerce', 'supermarche', 'boucherie',
+  'pharmacie', 'coiffure', 'pressing', 'bureau', 'sante', 'ecole', 'salle_sport', 'hammam',
+  'garage', 'atelier', 'imprimerie', 'station_service', 'entrepot', 'froid', 'mosquee', 'autre',
 ] as const;
+/** crm.Lead.equipements_hors_horaires — talon déclaré du moteur C&I. */
+export const EQUIPEMENTS_HORS_HORAIRES_VALUES = ['aucun', 'un_peu', 'beaucoup'] as const;
 /** Jours d'ouverture : 1 (lundi) à 7 (dimanche). */
 export const JOURS_OUVERTURE_VALUES = [1, 2, 3, 4, 5, 6, 7] as const;
 /** Au plus 12 mois de relevé (contrat `releve_conso.max_elements`). */
@@ -456,6 +461,10 @@ export const REPONSES_CATEGORIE_QUESTIONS: Record<string, readonly CategorieQues
     { key: 'volume_m3', type: 'number' },
     { key: 'saisonnalite_recolte', type: 'bool' },
   ],
+  // Décision fondateur 26/10/2026 — commerces sans question propre.
+  cafe: [], supermarche: [], boucherie: [], pharmacie: [], coiffure: [], pressing: [],
+  salle_sport: [], garage: [], atelier: [], imprimerie: [], station_service: [],
+  entrepot: [], mosquee: [],
   autre: [],
 };
 
@@ -733,6 +742,8 @@ export function buildSectionReponses(
       if (fermeture) out.fermeture_mois = fermeture;
       // « Nous ne fermons jamais » : une RÉPONSE (liste vide), jamais un défaut.
       else if (raw.fermeture_aucune === true) out.fermeture_mois = [];
+      const horsHoraires = cleanEnum(raw.equipements_hors_horaires, EQUIPEMENTS_HORS_HORAIRES_VALUES);
+      if (horsHoraires) out.equipements_hors_horaires = horsHoraires;
       const groupe = cleanEnum(raw.groupe_electrogene, OUI_NON_VALUES);
       if (groupe) out.groupe_electrogene = groupe;
       // Les détails du groupe ne valent que s'il y en a un (jamais une valeur
@@ -898,7 +909,7 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
   activite: [
     'categorie_commerciale', 'reponses_categorie', 'secteur_industriel', 'export_ue_declare',
     'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin', 'fermeture_mois',
-    'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois', 'pv_existant_kwc',
+    'equipements_hors_horaires', 'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois', 'pv_existant_kwc',
   ],
   site: ['type_surface', 'type_toiture', 'surface_toiture_m2', 'inclinaison_deg', 'orientation'],
   societe: [

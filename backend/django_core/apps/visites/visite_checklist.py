@@ -659,8 +659,10 @@ CATEGORIES_CI = [
 #: CIQ651 — les catégories commerciales du moteur (``Lead.CategorieCommerciale``,
 #: gardé identique par ``test_ciq651_site_commerce``).
 CATEGORIES_COMMERCIALES = [
-    'hotel', 'restaurant', 'commerce', 'bureau', 'sante', 'ecole', 'hammam',
-    'boulangerie', 'froid', 'autre']
+    'hotel', 'restaurant', 'cafe', 'boulangerie', 'commerce', 'supermarche',
+    'boucherie', 'pharmacie', 'coiffure', 'pressing', 'bureau', 'sante', 'ecole',
+    'salle_sport', 'hammam', 'garage', 'atelier', 'imprimerie', 'station_service',
+    'entrepot', 'froid', 'mosquee', 'autre']
 
 #: CIQ651 — types de circuit critique déclarés (choix du contrat CIQ5).
 CIRCUITS_CRITIQUES = ['froid', 'medical', 'informatique', 'cuisine', 'autre']

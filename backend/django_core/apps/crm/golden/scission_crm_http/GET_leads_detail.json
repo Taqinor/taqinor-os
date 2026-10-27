@@ -147,6 +147,7 @@
   "equip_ve_km_semaine": null,
   "equip_ve_statut": null,
   "equip_voiture_electrique": null,
+  "equipements_hors_horaires": null,
   "ete_differente": false,
   "export_ue_declare": null,
   "external_id": null,

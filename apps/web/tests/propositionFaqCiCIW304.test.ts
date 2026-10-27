@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { objectionFaq, syntheseCi, type ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const texteDe = (faq: ReturnType<typeof objectionFaq>) =>
   faq.map((f) => [f.id, f.question, f.questionEn, f.questionAr, f.answer, f.answerEn, f.answerAr].join(' ')).join(' | ');
@@ -75,7 +76,7 @@ describe('CIW304 — le résidentiel est inchangé', () => {
     }
   });
   it('la page passe le mode et la synthèse C&I', () => {
-    const page = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+    const page = lirePageProposition();
     expect(page).toContain('const faq = objectionFaq(installMode, ci);');
   });
 });
