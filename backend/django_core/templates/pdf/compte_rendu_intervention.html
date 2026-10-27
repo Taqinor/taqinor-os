@@ -137,7 +137,7 @@
       <thead><tr><th>Composant</th><th>N° de série</th></tr></thead>
       <tbody>
         {% for s in serials %}
-        <tr><td>{{ s.designation }}</td><td>{{ s.numero_serie }}</td></tr>
+        <tr><td>{{ s.designation }}{% if s.details %}<br><span class="muted">{{ s.details }}</span>{% endif %}</td><td>{{ s.numero_serie }}</td></tr>
         {% endfor %}
       </tbody>
     </table>

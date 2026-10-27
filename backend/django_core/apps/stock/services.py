@@ -2407,11 +2407,19 @@ def compute_besoin_materiel(installation):
     N villas), lue par ``installations.selectors.quantites_nomenclature_
     chantier`` (arrondi au plafond, ERR54) — jamais les lignes courantes du
     devis : une option non retenue n'est ni commandée ni bloquante, un devis
-    ×3 villas requiert 3 fois la quantité. `manque` retranche la quantité
-    déjà EN COMMANDE pour CE chantier (BCF brouillon/envoyé non reçu,
-    ``chantier_origine``) ; `manque_brut` conserve le manque avant retrait.
+    ×3 villas requiert 3 fois la quantité.
+
+    Revue chantier 26/10/2026 — `manque_brut` = max(requis − déjà sorti
+    (``quantite_deja_sortie_chantier`` : vente soldée + F11) − disponible,
+    0) ; `manque` ne retranche que la quantité EN COMMANDE sur un BCF
+    ENVOYÉ non reçu de CE chantier (``chantier_origine``) — un BROUILLON
+    jamais envoyé ne sécurise rien : il est servi à part dans
+    `en_commande_brouillon`. Champs additifs : `stock_total`,
+    `reserve_autres`, `reserve_chantier`, `deja_sorti`.
     """
-    from apps.installations.selectors import quantites_nomenclature_chantier
+    from apps.installations.selectors import (
+        quantites_deja_sorties_chantier, quantites_nomenclature_chantier,
+    )
     from .models import Produit
 
     quantites = quantites_nomenclature_chantier(installation, plafond=True)
@@ -2421,11 +2429,14 @@ def compute_besoin_materiel(installation):
     # chantier (pour ne pas la décompter deux fois de son propre disponible).
     reserved_all = reserved_quantities(installation.company)
     own_reserved = _own_reservation_map(installation)
-    en_commande = _en_commande_chantier(installation)
+    en_commande, en_commande_brouillon = en_commande_chantier_par_statut(
+        installation)
+    deja_sorti = quantites_deja_sorties_chantier(
+        installation, list(quantites))
     produits = {
         p.id: p for p in Produit.objects.filter(
             company=installation.company, id__in=list(quantites)
-        ).select_related('fournisseur')}
+        ).select_related('fournisseur', 'categorie')}
     besoins = {}
     for produit_id, requis in quantites.items():
         produit = produits.get(produit_id)
@@ -2445,6 +2456,9 @@ def compute_besoin_materiel(installation):
                 'sku': produit.sku or '',
                 'designation': produit.nom,
                 'requis': requis,
+                'stock_total': produit.quantite_stock,
+                'reserve_autres': reserve_autres,
+                'reserve_chantier': own_reserved.get(produit.id, 0),
                 'disponible': produit.quantite_stock - reserve_autres,
                 'reserve': reserved_all.get(produit.id, 0),
                 'fournisseur_id': produit.fournisseur_id,
@@ -2455,8 +2469,12 @@ def compute_besoin_materiel(installation):
             entry['requis'] += requis
     out = []
     for entry in besoins.values():
-        entry['manque_brut'] = max(entry['requis'] - entry['disponible'], 0)
-        entry['en_commande'] = en_commande.get(entry['produit_id'], 0)
+        pid = entry['produit_id']
+        entry['deja_sorti'] = deja_sorti.get(pid, 0)
+        entry['manque_brut'] = max(
+            entry['requis'] - entry['deja_sorti'] - entry['disponible'], 0)
+        entry['en_commande'] = en_commande.get(pid, 0)
+        entry['en_commande_brouillon'] = en_commande_brouillon.get(pid, 0)
         entry['manque'] = max(entry['manque_brut'] - entry['en_commande'], 0)
         # N17 — fournisseur le moins cher (si une liste de prix existe).
         cheapest = cheapest_prix_fournisseur(entry['produit'])
@@ -2484,11 +2502,15 @@ def _bcf_ouverts_chantier(installation):
     ).prefetch_related('lignes'))
 
 
-def _en_commande_chantier(installation):
+def _en_commande_chantier(installation, statuts=None):
     """ACHT9 — ``{produit_id: quantité restante à recevoir}`` des BCF ouverts
-    de ce chantier (déjà commandée, pas encore reçue)."""
+    de ce chantier (déjà commandée, pas encore reçue). ``statuts`` (revue
+    chantier 26/10/2026) restreint aux statuts donnés (défaut : brouillon +
+    envoyé, comportement historique)."""
     out = {}
     for bon in _bcf_ouverts_chantier(installation):
+        if statuts is not None and bon.statut not in statuts:
+            continue
         for ligne in bon.lignes.all():
             if ligne.produit_id:
                 out[ligne.produit_id] = out.get(ligne.produit_id, 0) + max(
@@ -2496,26 +2518,80 @@ def _en_commande_chantier(installation):
     return out
 
 
-def draft_bcf_for_shortfall(installation, fournisseur, user, company):
-    """Crée un BonCommandeFournisseur BROUILLON pour les manques du chantier.
+def en_commande_chantier_par_statut(installation):
+    """Revue chantier 26/10/2026 — ``(envoye, brouillon)`` : deux maps
+    ``{produit_id: quantité restante à recevoir}`` lues en UNE requête. Seul
+    l'ENVOYÉ sécurise un manque (gate matériel, readiness, besoin, liste de
+    préparation F5) ; le brouillon est servi à part pour que l'écran le
+    montre. Point d'entrée cross-app (installations.field_services)."""
+    from .models import BonCommandeFournisseur
+    envoye, brouillon = {}, {}
+    for bon in _bcf_ouverts_chantier(installation):
+        cible = (envoye if bon.statut == BonCommandeFournisseur.Statut.ENVOYE
+                 else brouillon)
+        for ligne in bon.lignes.all():
+            if ligne.produit_id:
+                cible[ligne.produit_id] = cible.get(ligne.produit_id, 0) + max(
+                    ligne.quantite - ligne.quantite_recue, 0)
+    return envoye, brouillon
 
-    Une ligne BCF par produit en pénurie (quantité = le manque), au prix
-    d'achat catalogue (interne). Renvoie (bon, lignes_count). Lève ValueError
-    s'il n'y a aucun manque à commander.
+
+def draft_bcf_for_shortfall(installation, fournisseur, user, company):
+    """Crée UN BonCommandeFournisseur BROUILLON pour les manques du chantier,
+    tous chez ``fournisseur`` (comportement historique N13/F5).
+
+    Fine enveloppe de ``draft_bcfs_for_shortfall`` (fournisseur imposé à
+    toutes les lignes → un seul BCF). Renvoie (bon, lignes_count). Lève
+    ValueError s'il n'y a aucun manque à commander (ou si un BCF ouvert les
+    couvre déjà).
 
     YPROC10 — pose `chantier_origine` (string-FK, distinct de la destination
     de livraison XPUR23) : la note texte ne suffisait pas à relier
     structurellement le BCF au chantier — à la réception, la marchandise
     entrait en stock libre et pouvait être consommée par n'importe qui.
     """
-    from apps.ventes.utils.references import create_with_reference
-    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+    crees, _sans = draft_bcfs_for_shortfall(
+        installation, user, company, fournisseur=fournisseur)
+    if not crees:
+        raise ValueError(
+            'Aucun fournisseur pour les produits manquants.')
+    return crees[0]
+
+
+def draft_bcfs_for_shortfall(installation, user, company, overrides=None,
+                             produits=None, fournisseur=None):
+    """Revue chantier 26/10/2026 — BCF BROUILLONS pour les manques du
+    chantier, UN PAR FOURNISSEUR.
+
+    Quantité commandée par produit = ``manque`` (net des BCF ENVOYÉS) −
+    ``en_commande_brouillon`` (un brouillon déjà posé n'est jamais doublé).
+    Fournisseur d'une ligne, dans l'ordre : ``overrides[produit_id]``
+    (``{produit_id: fournisseur_id}``, clés int ou str), ``fournisseur``
+    (imposé à toutes les autres lignes — enveloppe historique), le moins
+    cher (N17), le fournisseur catalogue du produit. ``produits`` (ids)
+    restreint aux produits cités. Prix d'achat catalogue (INTERNE).
+
+    Renvoie ``(crees, sans_fournisseur)`` : ``crees`` = liste de
+    ``(bon, nb_lignes)`` ; ``sans_fournisseur`` = ``[{produit_id,
+    designation}]`` des manques qu'aucun fournisseur ne résout (rien n'est
+    créé pour eux). Lève ValueError si rien n'est à commander (« Aucun
+    manque… » ou « Un BCF ouvert couvre déjà ces manques : … »)."""
+    from django.db import transaction
+    from .models import Fournisseur
 
     besoins = compute_besoin_materiel(installation)
-    manquants = [b for b in besoins if b['manque'] > 0]
-    if not manquants:
+    if produits is not None:
+        voulus = {int(p) for p in produits}
+        besoins = [b for b in besoins if b['produit_id'] in voulus]
+    a_commander = []
+    for b in besoins:
+        qte = max(b['manque'] - b.get('en_commande_brouillon', 0), 0)
+        if qte > 0:
+            a_commander.append((b, qte))
+    if not a_commander:
         # ACHT9 — idempotent : si le manque brut existe mais qu'un BCF ouvert
-        # le couvre déjà, on le DIT (et on n'en crée pas un second).
+        # (envoyé ou brouillon) le couvre déjà, on le DIT (et on n'en crée
+        # pas un second).
         if any(b['manque_brut'] > 0 for b in besoins):
             refs = ', '.join(
                 b.reference for b in _bcf_ouverts_chantier(installation))
@@ -2523,28 +2599,74 @@ def draft_bcf_for_shortfall(installation, fournisseur, user, company):
                 f'Un BCF ouvert couvre déjà ces manques : {refs}.')
         raise ValueError('Aucun manque à commander pour ce chantier.')
 
-    def _save(ref):
-        bon = BonCommandeFournisseur.objects.create(
-            company=company,
-            reference=ref,
-            fournisseur=fournisseur,
-            statut=BonCommandeFournisseur.Statut.BROUILLON,
-            note=(f'Besoin matériel — chantier {installation.reference}'),
-            chantier_origine=installation,
-            created_by=user,
-        )
-        for b in manquants:
-            produit = b['produit']
-            LigneBonCommandeFournisseur.objects.create(
-                bon_commande=bon,
-                produit=produit,
-                quantite=b['manque'],
-                prix_achat_unitaire=produit.prix_achat,
-            )
-        return bon
+    overrides = {int(k): int(v) for k, v in (overrides or {}).items()
+                 if v not in (None, '')}
+    groupes = {}
+    sans_fournisseur = []
+    for b, qte in a_commander:
+        pid = b['produit_id']
+        if pid in overrides:
+            cible = overrides[pid]
+        elif fournisseur is not None:
+            cible = fournisseur.pk
+        else:
+            cible = b.get('fournisseur_min_id') or b.get('fournisseur_id')
+        if not cible:
+            sans_fournisseur.append(
+                {'produit_id': pid, 'designation': b['designation']})
+            continue
+        groupes.setdefault(cible, []).append((b, qte))
+    fournisseurs = {
+        f.pk: f for f in Fournisseur.objects.filter(
+            company=company, pk__in=list(groupes))}
+    for fid in list(groupes):
+        if fid not in fournisseurs:
+            # Fournisseur hors société / inconnu : jamais un BCF chez lui.
+            for b, _qte in groupes.pop(fid):
+                sans_fournisseur.append(
+                    {'produit_id': b['produit_id'],
+                     'designation': b['designation']})
 
-    bon = create_with_reference(BonCommandeFournisseur, 'BCF', company, _save)
-    return bon, len(manquants)
+    with transaction.atomic():
+        crees = _creer_bcfs_groupes(
+            installation, user, company, groupes, fournisseurs)
+    if not crees and fournisseur is not None:
+        # Enveloppe historique : le fournisseur imposé était hors société.
+        raise ValueError('Fournisseur inconnu.')
+    return crees, sans_fournisseur
+
+
+def _creer_bcfs_groupes(installation, user, company, groupes, fournisseurs):
+    """Un BCF brouillon par ``{fournisseur_id: [(besoin, qte)]}`` (référence
+    anti-collision, jamais count()+1). Renvoie ``[(bon, nb_lignes)]``."""
+    from apps.ventes.utils.references import create_with_reference
+    from .models import BonCommandeFournisseur, LigneBonCommandeFournisseur
+    crees = []
+    for fid, lignes in groupes.items():
+        def _save(ref, fid=fid, lignes=lignes):
+            bon = BonCommandeFournisseur.objects.create(
+                company=company,
+                reference=ref,
+                fournisseur=fournisseurs[fid],
+                statut=BonCommandeFournisseur.Statut.BROUILLON,
+                note=(f'Besoin matériel — chantier {installation.reference}'),
+                chantier_origine=installation,
+                created_by=user,
+            )
+            for b, qte in lignes:
+                produit = b['produit']
+                LigneBonCommandeFournisseur.objects.create(
+                    bon_commande=bon,
+                    produit=produit,
+                    quantite=qte,
+                    prix_achat_unitaire=produit.prix_achat,
+                )
+            return bon
+
+        bon = create_with_reference(
+            BonCommandeFournisseur, 'BCF', company, _save)
+        crees.append((bon, len(lignes)))
+    return crees
 
 
 # ── YPROC5/YPROC6 — conversion générique lignes → BCF brouillon ─────────────

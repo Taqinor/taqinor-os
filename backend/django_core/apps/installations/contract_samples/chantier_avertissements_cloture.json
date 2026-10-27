@@ -1,0 +1,20 @@
+{
+  "endpoint": "GET /api/django/installations/chantiers/<int:pk>/",
+  "cle": "avertissements_cloture (cle additive du detail d'un chantier)",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "SERVIE par InstallationSerializer.avertissements_cloture (detail d'un chantier) — mais le detail est servi par un ModelViewSet dont la forme n'est pas lisible statiquement : `forme_serveur: complete` serait refuse par check_api_shapes.py.",
+  "pourquoi": "Revue chantier 26/10/2026 (fondateur : « la cloture est permissive, rien ne dit ce qui reste a faire »). La cle `avertissements_cloture` est CALCULEE PAR LE SERVEUR (`services.avertissements_cloture`) : une LISTE de phrases francaises CONSULTATIVES a afficher dans la confirmation « Cloturer » — jamais un blocage, la cloture reste un changement de statut ordinaire. Phrases possibles, dans cet ordre : « Solde non facture », « Solde non encaisse » (etat de la vente du devis), « Reception definitive non prononcee » (site professionnel seulement), « N serie(s) manquante(s) au parc » (produits porteurs de serie de la nomenclature gelee vs equipements du parc deja serialises), « Pack de remise incomplet : <pieces obligatoires manquantes> ». La cle vaut `null` en LISTE et pour tout statut autre que `receptionne` (la liste ne paie jamais ce calcul) ; une liste VIDE = rien a signaler. Aucun montant n'est imprime. Valeurs illustratives.",
+  "exemple": {
+    "avertissements_cloture": [
+      "Solde non encaissé",
+      "3 séries manquantes au parc",
+      "Pack de remise incomplet : Garanties matériel & production"
+    ]
+  },
+  "exemple_vide": {
+    "avertissements_cloture": []
+  },
+  "exemple_hors_receptionne": {
+    "avertissements_cloture": null
+  }
+}

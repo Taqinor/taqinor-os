@@ -137,10 +137,21 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
 
         Seul un BROUILLON avance vers ENVOYE ; un BCF déjà ENVOYE reste tel quel
         (idempotent) ; RECU et ANNULE ne sont JAMAIS régressés. Renvoie True si
-        une transition a eu lieu."""
+        une transition a eu lieu.
+
+        Revue chantier (F2) — un BCF d'un chantier (``chantier_origine``)
+        envoyé fait passer ce chantier « Signé » → « Matériel commandé » dès
+        que les commandes ENVOYÉES couvrent tout son manque (service de
+        l'app installations, import paresseux ; ne lève jamais)."""
         if bc.statut == BonCommandeFournisseur.Statut.BROUILLON:
             bc.statut = BonCommandeFournisseur.Statut.ENVOYE
             bc.save(update_fields=['statut'])
+            if bc.chantier_origine_id:
+                from apps.installations.services import (
+                    avancer_materiel_commande_si_couvert,
+                )
+                avancer_materiel_commande_si_couvert(
+                    bc.chantier_origine, getattr(self.request, 'user', None))
             return True
         return False
 
@@ -485,8 +496,7 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
         refus = self._refus_approbation(bc)
         if refus is not None:
             return refus
-        bc.statut = BonCommandeFournisseur.Statut.ENVOYE
-        bc.save(update_fields=['statut'])
+        self._mark_bcf_envoye(bc)
         return Response(self.get_serializer(bc).data)
 
     @extend_schema(request=corps('BcfAnnulerCorps', motif_annulation=serializers.CharField(

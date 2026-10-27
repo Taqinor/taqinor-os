@@ -32,10 +32,19 @@ import {
 } from '../../ui'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
 import { usePullToRefresh } from '../../ui/usePullToRefresh'
-// NTMOB9 — suivi de position watchPosition derrière un consentement
-// explicite, limité à la session d'intervention ouverte (coexiste avec le
-// check-in manuel F6 ci-dessous, jamais remplacé).
-import GpsTrackingToggle from '../../features/installations/GpsTrackingToggle'
+// Revue chantier 26/10/2026 — suivi de position AUTOMATIQUE pendant la
+// session d'intervention ouverte (en route / sur site), bandeau visible, après
+// un accusé de réception unique de la notice (loi 09-08). Monté au niveau de
+// la PAGE (plus dans la fiche) : il tourne sans que le technicien ouvre quoi
+// que ce soit. Coexiste avec le check-in manuel F6, jamais remplacé.
+import GpsTrackingToggle, {
+  MesPositionsDuJour, viderTamponsGpsEnAttente,
+} from '../../features/installations/GpsTrackingToggle'
+// Fondateur 27/10/2026 — l'accord aux conditions d'utilisation
+// (géolocalisation) est une condition BLOQUANTE de l'écran terrain.
+import ConsentementGpsBloquant, {
+  consentementBloquant,
+} from '../../features/installations/ConsentementGpsBloquant'
 import {
   PreparationPanel, TrajetPanel, PhotosPanel,
 } from '../../features/installations/InterventionFieldExecution'
@@ -314,6 +323,16 @@ export default function MaJourneePage() {
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [load])
 
+  // Revue 26/10/2026 (F3) — positions GPS restées en attente d'une session
+  // fermée hors ligne (le suivi s'est démonté à « terminée ») : envoyées à
+  // l'ouverture de la page et au retour du réseau.
+  useEffect(() => {
+    viderTamponsGpsEnAttente()
+    const enLigne = () => { viderTamponsGpsEnAttente() }
+    window.addEventListener('online', enLigne)
+    return () => window.removeEventListener('online', enLigne)
+  }, [])
+
   // VX226(b) — bouton « Actualiser » discret (cohérent OfflineSyncIndicator :
   // RefreshCw + rotation pendant le fetch).
   const [manualRefreshing, setManualRefreshing] = useState(false)
@@ -331,6 +350,33 @@ export default function MaJourneePage() {
   // rubber-band natif sans rien remettre à sa place. Relance le fetch existant
   // (`load`), sans changer son contrat.
   const { containerProps, pullDistance, refreshing } = usePullToRefresh(load)
+
+  // Revue chantier 26/10/2026 — l'intervention dont la session est OUVERTE
+  // (en route / sur site) porte le suivi de position automatique.
+  const sessionGps = rows.find(
+    (r) => ['en_route', 'sur_site'].includes(r.statut) && !r.annulee) ?? null
+
+  // Fondateur 27/10/2026 — `mon-consentement` (le serveur crée l'accord en
+  // attente d'un utilisateur terrain ; un responsable/admin reste « absent »).
+  // Réseau indisponible : rien ne bloque (le serveur, lui, refuse le départ).
+  const [consentementGps, setConsentementGps] = useState(null)
+  useEffect(() => {
+    let vivant = true
+    installationsApi.getMonConsentementGps?.()
+      ?.then((r) => { if (vivant) setConsentementGps(r?.data ?? null) })
+      .catch(() => {})
+    return () => { vivant = false }
+  }, [])
+
+  if (consentementBloquant(consentementGps)) {
+    return (
+      <ConsentementGpsBloquant consentement={consentementGps}
+        onAccepte={(data) => {
+          setConsentementGps(data ?? { ...consentementGps, statut: 'actif' })
+          load() // les interventions relisent `gps_consentement: 'actif'`
+        }} />
+    )
+  }
 
   return (
     <div
@@ -358,6 +404,12 @@ export default function MaJourneePage() {
       {/* NTMOB27 — la tournée affichée vient du cache hors-ligne : on datte
           la donnée plutôt que de la faire passer pour fraîche. */}
       <DonneesHorsLigneBanner cachedAt={cachedAt} />
+
+      {/* Revue chantier 26/10/2026 — suivi de position de l'intervention EN
+          COURS (en route / sur site) : démarre seul ; fondateur 27/10/2026 —
+          puce discrète « ● Suivi actif » (l'accord est demandé en pleine page
+          ci-dessus). Rien hors session. */}
+      {sessionGps && <GpsTrackingToggle key={sessionGps.id} intervention={sessionGps} />}
 
       {/* NTMOB21 — alerte météo du jour au point du premier chantier
           (Open-Meteo, informatif : ne bloque et ne masque jamais rien). */}
@@ -484,6 +536,11 @@ export default function MaJourneePage() {
         /* EZ6 — chaque action terrain repasse par le dérivateur de statut. */
         onChanged={onFieldChanged} />
 
+      {/* Revue chantier 26/10/2026 — droit d'accès (loi 09-08 art. 7) : le
+          technicien consulte ses propres positions du jour (chargées à
+          l'ouverture du volet seulement). */}
+      <MesPositionsDuJour />
+
       {/* VX42 — FAB « Photo rapide » : ouvre directement la première
           intervention du jour sur l'onglet Photos (le pouce vit dans le
           tiers bas de l'écran). Masqué s'il n'y a aucune intervention. */}
@@ -605,6 +662,13 @@ function InterventionFlowSheet({
             <Badge>{typeLabel(interv.type_intervention)}</Badge>
             <StatusPill status={interv.statut} label={interventionStatusLabel(interv.statut)} dot={false} />
             {interv.site_ville && <span>{interv.site_ville}</span>}
+            {/* Fondateur 27/10/2026 — silence du suivi pendant la session
+                (calculé serveur, `null` hors session). */}
+            {interv.gps_suivi_interrompu_depuis_min != null && (
+              <span className="text-warning" data-testid="mj-suivi-interrompu">
+                Suivi interrompu depuis {interv.gps_suivi_interrompu_depuis_min} min
+              </span>
+            )}
           </div>
           {/* VX105 — changer le statut depuis « Ma journée » : un technicien
               qui finit peut marquer « Terminée » sans passer par l'écran
@@ -633,8 +697,8 @@ function InterventionFlowSheet({
               </p>
             )}
           </div>
-          {/* NTMOB9 — suivi de position, coexiste avec le check-in manuel F6. */}
-          <GpsTrackingToggle intervention={interv} />
+          {/* Revue chantier 26/10/2026 — le suivi de position vit au niveau de
+              la page (bandeau en tête de « Ma journée »), plus ici. */}
           <div className="pt-1"><CompteRenduButton intervention={interv} /></div>
         </SheetHeader>
 

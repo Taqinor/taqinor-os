@@ -200,20 +200,26 @@
     default_format:inconnu, formats:liste, objects:inconnu
 - frontend/src/api/importApi.js :: saveMapping -> /api/django/imports/mapping
     detail:texte, id:inconnu, mapping:inconnu, nom:inconnu, target:inconnu
+- frontend/src/api/installationsApi.js :: accepterConsentementGps -> /api/django/installations/gps-consentements/mon-consentement/accepter
+    accepte_le:inconnu, actif:booleen, existe:booleen, notice:inconnu, statut:inconnu
 - frontend/src/api/installationsApi.js :: ajouterPhoto -> /api/django/installations/interventions/<>/ajouter-photo
-    detail:inconnu, filename:inconnu, id:inconnu, phase:inconnu, slot:inconnu, url:texte
+    accuracy_m:inconnu, client_ts:inconnu, detail:inconnu, filename:inconnu, horodatage_serveur:inconnu, id:inconnu, lat:inconnu, lng:inconnu, phase:inconnu, slot:inconnu, url:texte
 - frontend/src/api/installationsApi.js :: appliquerCoutStockDossier -> /api/django/installations/dossiers-import/<>/appliquer-cout-stock
     bon_commande_id:inconnu, detail:texte, lignes:inconnu, lignes_maj:inconnu
 - frontend/src/api/installationsApi.js :: besoinMateriel -> /api/django/installations/chantiers/<>/besoin-materiel
     installation:inconnu, items:inconnu, nb_manques:nombre, reference:inconnu
 - frontend/src/api/installationsApi.js :: cocherChecklist -> /api/django/installations/chantiers/<>/cocher-checklist
-    completion:inconnu, detail:texte, equipements_crees:inconnu, items:inconnu, resultats_series:inconnu
+    cle:inconnu, completion:inconnu, detail:inconnu, equipements_crees:inconnu, items:inconnu, resultats_series:inconnu
+- frontend/src/api/installationsApi.js :: commanderBesoin -> /api/django/installations/chantiers/<>/commander-besoin
+    bons_commande:inconnu, detail:texte, fournisseur:texte, fournisseurs:objet, sans_fournisseur:inconnu, statut_chantier:inconnu, statut_raison:inconnu
 - frontend/src/api/installationsApi.js :: confirmerToolReturn -> /api/django/installations/interventions/<>/confirmer-tool-return
     detail:texte, non_rendus:inconnu, tool_returns:inconnu
 - frontend/src/api/installationsApi.js :: creerInterventionsStandard -> /api/django/installations/chantiers/<>/creer-interventions-standard
     created:inconnu, detail:texte, existants:inconnu
 - frontend/src/api/installationsApi.js :: declarerRebutAssemblage -> /api/django/installations/ordres-assemblage/<>/declarer-rebut
     id:inconnu, motif_rebut:inconnu, produit:inconnu, quantite:inconnu, reference:inconnu
+- frontend/src/api/installationsApi.js :: getApprovisionnement -> /api/django/installations/chantiers/<>/approvisionnement
+    bons_commande:inconnu, demandes_achat:inconnu, installation:inconnu, lignes:inconnu, reference:inconnu, reservations:inconnu, resume:objet, statut:inconnu
 - frontend/src/api/installationsApi.js :: getChantierCout -> /api/django/installations/chantiers/<>/cout
     devis_total_ht:inconnu, devis_total_ttc:inconnu, installation:inconnu, labour:objet, marge:inconnu, marge_taux:inconnu, materiel:objet, reference:inconnu
 - frontend/src/api/installationsApi.js :: getChecklist -> /api/django/installations/chantiers/<>/checklist
@@ -236,14 +242,20 @@
     path:inconnu, token:inconnu, url:inconnu
 - frontend/src/api/installationsApi.js :: getMaTournee -> /api/django/installations/interventions/ma-tournee
     date:inconnu, stops:inconnu
+- frontend/src/api/installationsApi.js :: getMonConsentementGps -> /api/django/installations/gps-consentements/mon-consentement
+    accepte_le:inconnu, actif:booleen, existe:booleen, notice:inconnu, statut:inconnu
 - frontend/src/api/installationsApi.js :: getPhotoQa -> /api/django/installations/interventions/<>/photo-qa
     actif:inconnu, signalements:inconnu
 - frontend/src/api/installationsApi.js :: getPhotos -> /api/django/installations/interventions/<>/photos
-    autres:inconnu, created_at:inconnu, filename:inconnu, groupes:inconnu, id:inconnu, intervention:inconnu, mime:inconnu, obligatoires_manquants:liste, sans_creneau:inconnu, uploaded_by_nom:inconnu, url:texte
+    accuracy_m:inconnu, autres:inconnu, client_ts:inconnu, created_at:inconnu, filename:inconnu, groupes:inconnu, horodatage_serveur:inconnu, id:inconnu, intervention:inconnu, lat:inconnu, lng:inconnu, mime:inconnu, obligatoires_manquants:liste, sans_creneau:inconnu, uploaded_by_nom:inconnu, url:texte
+- frontend/src/api/installationsApi.js :: getPresenceIntervention -> /api/django/installations/interventions/<>/presence
+    derniere_position:inconnu, derniere_sortie:inconnu, duree_sur_site_min:inconnu, intervention:inconnu, nb_positions:inconnu, premiere_entree:inconnu, source_debut:inconnu
 - frontend/src/api/installationsApi.js :: getRecettePompage -> /api/django/installations/chantiers/<>/recette-pompage
     detail:texte, installation:inconnu, record:inconnu
 - frontend/src/api/installationsApi.js :: getRegimeSuggestion -> /api/django/installations/chantiers/regime-suggestion
     code:inconnu, label:inconnu, seuil_anre_kwc:inconnu, seuil_declaration_kwc:inconnu
+- frontend/src/api/installationsApi.js :: getSerialsAttendus -> /api/django/installations/interventions/<>/serials-attendus
+    complet:inconnu, installation:inconnu, intervention:inconnu, nb_attendus:inconnu, nb_releves:inconnu, produits:inconnu
 - frontend/src/api/installationsApi.js :: getSousTraitants -> /api/django/installations/sous-traitants
     count:nombre, next:inconnu, previous:inconnu, results:inconnu
 - frontend/src/api/installationsApi.js :: getTourneeLivraison -> /api/django/installations/tournee-livraison
@@ -254,6 +266,8 @@
     detail:texte, installation:inconnu, record:inconnu
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
     interventions:inconnu, seuil_pct:inconnu
+- frontend/src/api/installationsApi.js :: pingPositionsBatch -> /api/django/installations/positions-techniciens/ping-lot
+    doublons:inconnu, enregistrees:nombre, geofence_alerts:inconnu, positions:inconnu
 - frontend/src/api/installationsApi.js :: syncField -> /api/django/installations/sync
     applied:inconnu, detail:texte, errors:inconnu, replayed:inconnu, results:inconnu
 - frontend/src/api/monitoringApi.js :: emailOmReport -> /api/django/monitoring/configs/<>/email-om-report
@@ -406,6 +420,8 @@
     delie:booleen, nb_tickets:nombre, probleme:inconnu, ticket:inconnu
 - frontend/src/api/savApi.js :: genererVisitesDues -> /api/django/sav/contrats-maintenance/generer-dus
     ok:booleen, tickets_generes:inconnu
+- frontend/src/api/savApi.js :: getEquipementDisponibilite -> /api/django/sav/equipements/<>/disponibilite
+    disponibilite_pct:inconnu, duree_downtime_heures:nombre, duree_periode_heures:nombre
 - frontend/src/api/savApi.js :: getEquipementPartageQr -> /api/django/sav/equipements/<>/partage-qr
     qr:inconnu, url:inconnu
 - frontend/src/api/savApi.js :: getPiecesCompatibles -> /api/django/sav/tickets/<>/pieces-compatibles
@@ -970,7 +986,7 @@
     champs: categorie, categorie_display, created_by, date_creation, date_frais, dossier, id, libelle, montant
     categorie ∈ {assurance, autre, douane, fret, manutention, transit, tva_import}
 - frontend/src/api/installationsApi.js :: createGpsConsentement -> /api/django/installations/gps-consentements  [GpsConsentRecordSerializer]
-    champs: consent_recorded_at, consent_ref, id, is_active, recorded_by, revoked_at, revoked_reason, technicien, technicien_nom
+    champs: accepte_le, consent_recorded_at, consent_ref, id, is_acknowledged, is_active, notice_version, recepisse_cndp, recorded_by, revoked_at, revoked_reason, statut, technicien, technicien_nom
 - frontend/src/api/installationsApi.js :: createKit -> /api/django/installations/kits  [KitSerializer]
     champs: active, composants, created_by, date_creation, date_modification, id, nom, note, produit_compose, produit_compose_nom, reference_interne
 - frontend/src/api/installationsApi.js :: createKitComposant -> /api/django/installations/kit-composants  [KitComposantSerializer]
@@ -1115,10 +1131,10 @@
     champs: categorie, categorie_display, created_by, date_creation, date_frais, dossier, id, libelle, montant
     categorie ∈ {assurance, autre, douane, fret, manutention, transit, tva_import}
 - frontend/src/api/installationsApi.js :: getGeofenceAlertes -> /api/django/installations/geofence-alertes  [GeofenceAlertSerializer]
-    champs: acquittee, acquittee_le, acquittee_par, created_at, distance_site_km, id, intervention, position, rayon_attendu_km, technicien, technicien_nom, type_franchissement, type_franchissement_display
-    type_franchissement ∈ {entree, sortie}
+    champs: acquittee, acquittee_le, acquittee_par, captured_at, created_at, distance_site_km, id, intervention, position, rayon_attendu_km, suivi_interrompu_depuis_min, technicien, technicien_nom, type_franchissement, type_franchissement_display
+    type_franchissement ∈ {entree, interruption, sortie}
 - frontend/src/api/installationsApi.js :: getGpsConsentements -> /api/django/installations/gps-consentements  [GpsConsentRecordSerializer]
-    champs: consent_recorded_at, consent_ref, id, is_active, recorded_by, revoked_at, revoked_reason, technicien, technicien_nom
+    champs: accepte_le, consent_recorded_at, consent_ref, id, is_acknowledged, is_active, notice_version, recepisse_cndp, recorded_by, revoked_at, revoked_reason, statut, technicien, technicien_nom
 - frontend/src/api/installationsApi.js :: getKitComposants -> /api/django/installations/kit-composants  [KitComposantSerializer]
     champs: designation, id, kit, produit, produit_nom, quantite, taux_perte_pct
 - frontend/src/api/installationsApi.js :: getKitsAssemblage -> /api/django/installations/kits  [KitSerializer]

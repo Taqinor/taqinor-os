@@ -14,6 +14,7 @@ import fetchAllPages from '../../utils/fetchAllPages'
 import { formatDate } from '../../lib/format'
 import { compressPhotoForUpload } from '../preferences/prefs'
 import DataSaverThumb from '../../features/pwa/DataSaverThumb'
+import { apparierAvantApres } from './apparierPhotos'
 import {
   Button,
   IconButton,
@@ -61,10 +62,13 @@ const ACCEPTED = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp']
    contrainte reduced-motion est donc satisfaite par construction, sans bloc
    dédié — rien à réduire.
    ========================================================================== */
-function BeforeAfterCompare({ before, after, index }) {
+function BeforeAfterCompare({ before, after, index, label }) {
   const [pos, setPos] = useState(50)
   return (
     <figure className="apx27-compare-card">
+      {label && (
+        <figcaption className="mb-1 text-xs font-medium text-muted-foreground">{label}</figcaption>
+      )}
       <div className="apx27-compare" style={{ '--apx27-pos': `${pos}%` }}>
         <img
           src={after.url}
@@ -167,6 +171,10 @@ export default function ChantierPhotos({ installationId }) {
                   origin: 'intervention',
                   interventionId: interv.id,
                   originLabel,
+                  // Revue chantier 26/10/2026 — créneau de shot list, pour
+                  // apparier « Comparer » par sujet (toiture, tableau…).
+                  slotCle: slot.cle,
+                  slotLibelle: slot.libelle,
                 })
               })
             })
@@ -270,14 +278,13 @@ export default function ChantierPhotos({ installationId }) {
   // galerie), sur la galerie UNIFIÉE (chantier + interventions). Les photos
   // en surplus d'un côté (comptes différents) restent visibles à part —
   // jamais une paire inventée avec une image manquante.
-  const compareAvant = phaseImages('avant')
-  const compareApres = phaseImages('apres')
-  const comparePairs = Array.from(
-    { length: Math.min(compareAvant.length, compareApres.length) },
-    (_, i) => ({ before: compareAvant[i], after: compareApres[i] }),
-  )
-  const compareSurplusAvant = compareAvant.slice(comparePairs.length)
-  const compareSurplusApres = compareApres.slice(comparePairs.length)
+  // Revue chantier 26/10/2026 — d'abord par CRÉNEAU : « Toiture avant
+  // pose » ↔ « Toiture après pose » (même sujet de shot list), libellé du
+  // créneau sur la paire ; le repli par ordre ne joue plus que pour les
+  // photos restantes (sans créneau ou sans jumeau).
+  const { pairs: comparePairs, surplusAvant: compareSurplusAvant,
+    surplusApres: compareSurplusApres } = apparierAvantApres(
+    phaseImages('avant'), phaseImages('apres'))
 
   return (
     <div className="flex flex-col gap-3">
@@ -444,7 +451,7 @@ export default function ChantierPhotos({ installationId }) {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {comparePairs.map((pair, i) => (
-                <BeforeAfterCompare key={`${pair.before.id}-${pair.after.id}`} before={pair.before} after={pair.after} index={i} />
+                <BeforeAfterCompare key={`${pair.before.id}-${pair.after.id}`} before={pair.before} after={pair.after} index={i} label={pair.label} />
               ))}
             </div>
           )}
