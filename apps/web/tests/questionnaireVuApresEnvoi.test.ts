@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { POST } from '../src/pages/api/questionnaire-repondre';
 import {
   buildQuestionnairePostBody,
   envoyerSectionQuestionnaire,
@@ -102,9 +103,8 @@ describe('CQSTW2 — écran de fin : devis_possible', () => {
   });
 });
 
-describe('CQSTW5 — lien expiré', { timeout: 30_000 }, () => {
+describe('CQSTW5 — lien expiré', () => {
   it('le proxy rend le marqueur expire sur un 404 amont', async () => {
-    const { POST } = await import('../src/pages/api/questionnaire-repondre');
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ detail: 'Introuvable' }), { status: 404 }));
     vi.stubGlobal('fetch', fetchMock);
     const req = new Request('https://taqinor.ma/api/questionnaire-repondre', {
@@ -123,7 +123,6 @@ describe('CQSTW5 — lien expiré', { timeout: 30_000 }, () => {
     expect(messageErreurQuestionnaire(r.code, 'fr')).not.toContain('Réessayez');
   });
   it('une panne 500 amont reste un échec à réessayer', async () => {
-    const { POST } = await import('../src/pages/api/questionnaire-repondre');
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })));
     const req = new Request('https://taqinor.ma/api/questionnaire-repondre', {
       method: 'POST',
