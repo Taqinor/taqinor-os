@@ -68,6 +68,8 @@ describe('AGW300 — chiffresEconomiePhare', () => {
     const ok = chiffresEconomiePhare(payload('residentiel'), 'avec_batterie');
     expect(ok.paybackHeroI18n).toEqual({ fr: '6,1 ans', en: '6.1 years', ar: '6,1 سنوات' });
     expect(ok.paybackHeroJamais).toBe(false);
+    const long = chiffresEconomiePhare(payload('residentiel', { roi_a: 12.5 }), 'avec_batterie');
+    expect(long.paybackHeroI18n?.ar).toBe('12,5 سنة');
     // RWEB14 — économie AVEC présente mais retour AVEC « jamais » : pas de repli sur le retour SANS.
     const mix = chiffresEconomiePhare(payload('residentiel', { roi_a: 25, roi_a_jamais: true }), 'avec_batterie');
     expect(mix.ecoHero).toBe(31000);

@@ -41,7 +41,8 @@ export function libellesRetour(
     return {
       fr: `${nombre(roi, 'fr')} ans`,
       en: `${nombre(roi, 'en')} years`,
-      ar: `${nombre(roi, 'ar')} سنوات`,
+      // Accord arabe : 3-10 → سنوات, au-delà → سنة (même règle que `anneesAr` de la page).
+      ar: `${nombre(roi, 'ar')} ${roi > 10 ? 'سنة' : 'سنوات'}`,
     };
   }
   const t = String(roi).trim();
