@@ -132,3 +132,20 @@ class SchemaTarifDeclareTest(SimpleTestCase):
                              tarif_declare=rouvert['tarif_declare'],
                              saisies_economie_ci=rouvert['saisies_economie_ci'])
         self.assertEqual(bloc2, bloc)
+
+    def test_cec2_tranches_sans_seuils_refusees_nommees(self):
+        reproches = es.valider({'tarif_declare': {
+            'contrat': 'bt_patente', 'bt': {'tranches': [
+                {'tarif_kwh': 1.5}, {'tarif_kwh': 1.7}]}}})
+        self.assertTrue(any('etude_params.tarif_declare.bt.tranches' in r
+                            for r in reproches))
+
+    def test_cec2_lecture_101_500_ramenee_au_plafond_precedent(self):
+        tranches = [{'tarif_kwh': 1.0, 'seuil_min_kwh': 0, 'seuil_max_kwh': 100},
+                    {'tarif_kwh': 1.2, 'seuil_min_kwh': 101,
+                     'seuil_max_kwh': 500},
+                    {'tarif_kwh': 1.4, 'seuil_min_kwh': 501}]
+        self.assertEqual(tc.seuils_contigus(tranches),
+                         [(0.0, 100.0), (100.0, 500.0), (500.0, None)])
+        self.assertEqual(es.valider({'tarif_declare': {
+            'contrat': 'bt_force_motrice', 'bt': {'tranches': tranches}}}), [])

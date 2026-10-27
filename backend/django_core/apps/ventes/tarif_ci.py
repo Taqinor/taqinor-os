@@ -347,11 +347,33 @@ def _seuils_bt(tarif, tarif_declare):
             return None
         return [(x['seuil_min_kwh'], x['seuil_max_kwh']) for x in lignes]
     td = tarif_declare if isinstance(tarif_declare, dict) else {}
-    tranches = _tranches_bt_declarees(td.get('bt'))
+    return seuils_contigus(_tranches_bt_declarees(td.get('bt')))
+
+
+def seuils_contigus(tranches):
+    """CEC2 — ``[(min, max)]`` de tranches DÉCLARÉES, ou None si elles ne
+    se suivent pas : plusieurs tranches exigent un plafond sur chacune sauf
+    la dernière, croissant, et un plancher égal au plafond précédent (ou ce
+    plafond + 1, lecture « 101-500 » d'une facture, ramenée au plafond
+    précédent pour ne perdre aucun kWh). Sans cette règle, des tranches sans
+    seuils recevaient TOUTE la conso chacune (économie × N)."""
     if not tranches:
         return None
-    return [(_num(t.get('seuil_min_kwh')), _num(t.get('seuil_max_kwh')))
-            for t in tranches]
+    bornes = [(_num(t.get('seuil_min_kwh')), _num(t.get('seuil_max_kwh')))
+              for t in tranches]
+    if len(bornes) == 1:
+        return bornes
+    sortie, precedent = [], None
+    for i, (lo, hi) in enumerate(bornes):
+        dernier = i == len(bornes) - 1
+        if (hi is None and not dernier) or (
+                hi is not None and precedent is not None and hi <= precedent):
+            return None
+        if precedent is not None and lo not in (None, precedent, precedent + 1):
+            return None
+        sortie.append((precedent if precedent is not None else lo, hi))
+        precedent = hi
+    return sortie
 
 
 # ── Validation de l'entrée ``tarif_declare`` (à l'écriture) ────────────────
@@ -403,6 +425,11 @@ def reproches_tarif_declare(td):
     if bt is not None and not isinstance(bt, dict):
         out.append(f'« {pre}bt » doit être un objet.')
     elif isinstance(bt, dict):
+        lues = _tranches_bt_declarees(bt)
+        if len(lues) > 1 and seuils_contigus(lues) is None:
+            out.append(f'« {pre}bt.tranches » : plusieurs tranches exigent un '
+                       f'plafond (seuil_max_kwh) sur chacune sauf la dernière '
+                       f'et un plancher égal au plafond précédent.')
         for i, t in enumerate(bt.get('tranches') or [], start=1):
             if not isinstance(t, dict):
                 out.append(f'« {pre}bt.tranches[{i}] » doit être un objet.')
