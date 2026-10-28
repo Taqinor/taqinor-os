@@ -1355,10 +1355,13 @@ def _au_mois_critique(serie, mois):
 #: lui, un débit du forage venu du LEAD s'imprimait « déclaré par vous le … »
 #: SANS sa valeur (« D'où viennent ces chiffres », AGQ28). Même cause, même
 #: remède pour ``volume_m3_jour`` (rejeu du 24/10, phase 3).
+#: Validation R3 d'AGC9 — ``mode_pompe`` : le mode EFFECTIVEMENT étudié (un
+#: mode vide vaut ``neuve``, AGM6) ; sans lui, le rendu devinait « pompe
+#: existante » d'une plaque relevée sur un devis de pompe neuve.
 CLES_ENTREES_POMPAGE = (
     'cultures', 'region', 'niveau_statique_m', 'niveau_dynamique_m',
     'debit_exploitation_m3h', 'profondeur_forage_m', 'volume_reservoir_m3',
-    'distance_champ_m', 'plaque', 'volume_m3_jour',
+    'distance_champ_m', 'plaque', 'volume_m3_jour', 'mode_pompe',
 )
 
 
@@ -1384,6 +1387,8 @@ def derivees_de_l_etude(sortie, *, pvgis_fige=None):
     resolues = sortie.get('entrees_resolues') or {}
     entrees_pompage = {cle: (resolues[cle] or {}).get('valeur')
                        for cle in CLES_ENTREES_POMPAGE if cle in resolues}
+    if pompe.get('mode') in ('neuve', 'existante'):
+        entrees_pompage['mode_pompe'] = pompe['mode']
     return {
         'besoin_mensuel': sortie.get('besoin'),
         'production': production,

@@ -65,7 +65,9 @@ def _augment(data: dict) -> dict:
 PIED_MM, MARGE_MM, GARDE_MM = 13.0, 6.0, 4.0
 #: Vide maximal redistribué sur une page (mm) : au-delà, la page reste aérée
 #: en bas plutôt que d'écarteler ses blocs.
-VIDE_MAX_MM = 95.0
+# AGC12 (D-AGC-7, rendu réel R1 : un quart de page vide entre les cartes et
+# « D'où viennent ces chiffres ») — 95 → 45 mm ; le reste reste en bas.
+VIDE_MAX_MM = 45.0
 
 
 def mesurer_talon(pdf_bytes: bytes) -> dict:

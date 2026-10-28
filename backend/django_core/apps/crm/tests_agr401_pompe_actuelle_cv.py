@@ -84,6 +84,90 @@ class LeCvDuSiteEstLaPompeActuelle(SimpleTestCase):
                          .get_internal_type(), 'DecimalField')
 
 
+class CSV17QuestionsAgricolesDuTelephone(SimpleTestCase):
+    """CSV17 — ce que le devis automatique exige (la HMT et l'alimentation de
+    la pompe) est posé au téléphone."""
+
+    @staticmethod
+    def _questions(**kwargs):
+        lead = Lead(nom='Ferme', type_installation='agricole', **kwargs)
+        return {q['champ']: q for q in panneau_appel.questions_a_poser(lead)}
+
+    def test_hmt_et_alimentation_posees_au_telephone(self):
+        questions = self._questions()
+        self.assertIn('pompe_hmt_m', questions)
+        self.assertEqual(questions['pompe_hmt_m']['nature'], 'nombre')
+        ordre = list(questions)
+        # La HMT clôt l'étape de l'eau ; la phase, celle de l'irrigation.
+        self.assertGreater(ordre.index('pompe_hmt_m'),
+                           ordre.index('debit_forage_m3h'))
+        self.assertGreater(ordre.index('raccordement'),
+                           ordre.index('electricite_sur_place'))
+        phase = questions['raccordement']
+        self.assertEqual([c['valeur'] for c in phase['choix']],
+                         ['monophase', 'triphase'])
+        self.assertIn('220 V (monophasé)', phase['question'])
+        self.assertIn('380 V (triphasé)', phase['question'])
+        # « je ne sais pas » / « aucun » ne répondent pas ; mono / tri oui,
+        # et la réponse se relit dans le pré-remplissage.
+        for valeur in ('inconnu', 'aucun'):
+            lead = Lead(nom='F', type_installation='agricole',
+                        raccordement=valeur)
+            self.assertIn('raccordement', [
+                q['champ'] for q in panneau_appel.questions_a_poser(lead)])
+        repondu = Lead(nom='F', type_installation='agricole',
+                       raccordement='triphase', pompe_hmt_m=Decimal('45.00'))
+        champs = [q['champ'] for q in panneau_appel.questions_a_poser(repondu)]
+        self.assertNotIn('raccordement', champs)
+        self.assertNotIn('pompe_hmt_m', champs)
+        prefill = panneau_appel.prefill_du_panneau(repondu)
+        self.assertEqual(prefill['raccordement'], 'triphase')
+        self.assertEqual(prefill['pompe_hmt_m'], 45.0)
+
+
+class CSV18HeuresDebitEtJoursDeLaPompeActuelle(SimpleTestCase):
+    """CSV18 — les heures et le débit de la pompe ACTUELLE ne se posent que
+    s'il y en a une ; les jours d'irrigation, au butane."""
+
+    @staticmethod
+    def _questions(**kwargs):
+        lead = Lead(nom='Ferme', type_installation='agricole', **kwargs)
+        return {q['champ']: q for q in panneau_appel.questions_a_poser(lead)}
+
+    def test_heures_seulement_avec_pompe_actuelle(self):
+        sans = self._questions(pompe_alim_actuelle='aucune')
+        self.assertNotIn('pompage_heures_jour', sans)
+        self.assertNotIn('pompe_actuelle_debit_m3h', sans)
+        self.assertIn('distance_forage_champ_m', sans)
+        for alim in ('diesel', 'butane', 'electrique', None):
+            with self.subTest(alim=alim):
+                avec = self._questions(pompe_alim_actuelle=alim)
+                ordre = list(avec)
+                self.assertEqual(
+                    avec['pompe_actuelle_debit_m3h']['nature'], 'nombre')
+                self.assertEqual(
+                    ordre.index('pompage_heures_jour'),
+                    ordre.index('pompe_actuelle_debit_m3h') + 1)
+        self.assertIn(
+            'Combien de m³ par heure sort votre pompe actuelle, à peu près ?',
+            avec['pompe_actuelle_debit_m3h']['question'])
+
+    def test_jours_d_irrigation_seulement_au_butane(self):
+        for alim in ('diesel', 'electrique', 'aucune', None):
+            with self.subTest(alim=alim):
+                self.assertNotIn('jours_irrigation_semaine',
+                                 self._questions(pompe_alim_actuelle=alim))
+        butane = self._questions(pompe_alim_actuelle='butane')
+        ordre = list(butane)
+        self.assertGreater(ordre.index('jours_irrigation_semaine'),
+                           ordre.index('butane_bouteilles_jour'))
+        self.assertLess(ordre.index('jours_irrigation_semaine'),
+                        ordre.index('source_eau'))
+        repondu = self._questions(pompe_alim_actuelle='butane',
+                                  jours_irrigation_semaine=Decimal('5.0'))
+        self.assertNotIn('jours_irrigation_semaine', repondu)
+
+
 class AliasDepreciePompeCv(TestCase):
     def setUp(self):
         self.company, _ = Company.objects.get_or_create(

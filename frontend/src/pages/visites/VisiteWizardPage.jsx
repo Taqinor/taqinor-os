@@ -243,6 +243,7 @@ export default function VisiteWizardPage() {
               valeurs={visite.mesures?.[c.categorie]}
               gabarit={visite.gabarit}
               nonReleves={visite._non_releves}
+              declare={visite.declare?.[c.categorie]}
               lectureSeule={lectureSeule}
               onSaved={recharger}
             />
@@ -279,7 +280,13 @@ export default function VisiteWizardPage() {
       />
 
       {!lectureSeule && (
-        <div className="fixed inset-x-0 bottom-0 border-t border-border bg-background p-3">
+        // Rejeu CSV11 (390 px) : la barre d'onglets de l'app (`--z-sticky`) peinte
+        // par-dessus avalait « Terminer la visite » — l'action prime (même cran
+        // que `.gen-actions-sticky`, MB6).
+        <div
+          className="fixed inset-x-0 bottom-0 z-[var(--z-sticky-raised)] border-t border-border bg-background p-3"
+          data-testid="visite-barre-terminer"
+        >
           <Button
             type="button" className="w-full"
             disabled={!visite.completude?.complet || terminant}

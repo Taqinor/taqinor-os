@@ -56,11 +56,13 @@ class Agr302ChiffresALaFrancaiseTests(SimpleTestCase):
 
 class Agr302CarteEauEstimationTests(SimpleTestCase):
 
-    def test_la_carte_eau_dit_estimation_et_hypothese_des_heures(self):
+    def test_la_carte_eau_dit_estimation_sans_hypothese(self):
+        """AGC2 — « estimation » reste ; « (hypothèse) » n'est plus imprimé
+        (rien d'incertain au client au-delà de l'étiquette, ci-decisions-2610).
+        Mutant : remettre le suffixe ⇒ rouge."""
         html = _html()
-        self.assertIn(
-            'Eau / jour &#8212; estimation, sur 7 h de pompage '
-            '(hypoth&#232;se)', html)
+        self.assertIn('Eau / jour &#8212; estimation, 7 h/j', html)
+        self.assertNotIn('hypoth&#232;se', html)
 
     def test_sans_courbe_aucune_carte_eau(self):
         html = _html(etude={**ETUDE_COURBE, 'debit_hmt_m3h': None,
@@ -104,12 +106,17 @@ class Agr302LibellesTraduitsTests(SimpleTestCase):
         from apps.ventes.quote_engine import i18n_labels as L
         self.assertIn(L.libelle('puissance_pompe', 'ar'), html)
         self.assertIn(L.libelle('estimation', 'ar'), html)
+        self.assertIn('5,5 حصان', html)  # AGC18 — unité CV traduite
+        self.assertNotIn(' CV', html)
 
     def test_en_anglais_les_libelles_sont_anglais(self):
         html = _html(langue='en')
         self.assertIn('Pump power', html)
         self.assertIn('Flow at 62,5 m', html)
-        self.assertIn('over 7 h of pumping', html)
+        self.assertIn('7 h/day', html)  # AGC12 — libellé court
+        self.assertIn('Head', html)  # AGC13 — « HMT » traduit
+        self.assertIn('5,5 HP (3,7 kW)', html)  # AGC18 — « CV » traduit
+        self.assertNotIn(' CV', html)
         self.assertIn('PV array', html)
         for libelle in LIBELLES_FR_POMPAGE:
             with self.subTest(libelle=libelle):
@@ -172,14 +179,14 @@ class Amot56DebitDeclareTests(SimpleTestCase):
 
     def test_onepage_debit_declare_etiquete(self):
         html = _html(etude=ETUDE_DECLAREE)
-        self.assertIn('estimation &#183; débit déclaré par vous, sur 7 h',
+        self.assertIn('estimation &#183; débit déclaré par vous, 7 h/j',
                       html)
         self.assertIn('Eau / jour', html)
 
     def test_onepage_sans_production_declaree_inchange(self):
         html = _html()
         self.assertNotIn('débit déclaré par vous', html)
-        self.assertIn('Eau / jour &#8212; estimation, sur 7 h', html)
+        self.assertIn('Eau / jour &#8212; estimation, 7 h/j', html)
 
     def test_onepage_debit_declare_en_anglais(self):
         html = _html(langue='en', etude=ETUDE_DECLAREE)
