@@ -35,8 +35,9 @@ export default function PrestationsCiTable({ forfaits, onChange }) {
       try {
         const res = await stockApi.getPretDevisCi()
         if (actif && Array.isArray(res?.data?.postes)) setPostes(res.data.postes)
-      } catch {
-        /* silence : le formulaire fonctionne comme avant */
+      } catch (e) {
+        // une aide, pas un verrou : le formulaire fonctionne comme avant
+        console.warn('Tableau « Prêt pour le devis » indisponible', e)
       }
     })()
     return () => { actif = false }

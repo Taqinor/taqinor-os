@@ -24,10 +24,14 @@ CHANGEMENTS = (
 
 
 def _changer(apps, sens):
+    """Quelques lignes au plus (SKU semés × sociétés) : sauvegarde ciblée."""
     Produit = apps.get_model('stock', 'Produit')
     for champ, skus, ancien, nouveau in CHANGEMENTS:
         de, vers = (ancien, nouveau) if sens else (nouveau, ancien)
-        Produit.objects.filter(sku__in=skus, **{champ: de}).update(**{champ: vers})
+        qs = Produit.objects.filter(sku__in=skus, **{champ: de})
+        for p in qs.iterator():
+            setattr(p, champ, vers)
+            p.save(update_fields=[champ])
 
 
 def corriger(apps, schema_editor):

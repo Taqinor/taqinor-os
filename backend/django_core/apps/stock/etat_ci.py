@@ -6,7 +6,11 @@ Un seul endroit pour « le prix est-il connu ? » : le filtre « C&I à complét
 seule lecture cross-app : le repli par mots du nom, via ``apps.ventes.selectors``
 (jamais ``ventes.domain`` ni ses modèles).
 """
+import logging
+
 from core.product_roles import ROLES_CI_BAREME_COFFRET
+
+logger = logging.getLogger(__name__)
 
 
 def prix_connu_ci(produit, role):
@@ -165,6 +169,8 @@ def etat_panneau(produit):
     try:
         specs = specs_for_produit(produit) or {}
     except Exception:  # fiche illisible : même repli que le moteur
+        logger.warning('Fiche illisible pour le produit %s', produit.pk,
+                       exc_info=True)
         specs = {}
     pmax = _num(specs.get('pmax_wc'))
     if not pmax or pmax <= 0:

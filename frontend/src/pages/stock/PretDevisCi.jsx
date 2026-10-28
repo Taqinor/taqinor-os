@@ -115,8 +115,9 @@ export default function PretDevisCi() {
           if (actif && res?.data && Array.isArray(res.data.postes)) {
             setDonnees((d) => ({ ...d, [cle]: res.data }))
           }
-        } catch {
-          /* aide, pas un verrou : segment masqué, silence */
+        } catch (e) {
+          // aide, pas un verrou : segment masqué
+          console.warn(`Segment « ${cle} » du tableau « Prêt pour les devis » indisponible`, e)
         }
       })()
     })
