@@ -644,3 +644,9 @@ unmapped_ok:
   # balayage tenant, fuzz API, mutation, Sentry, brief humain) ; aucun prérequis de
   # vague plateforme, lanes file-disjointes.
   - QAH
+  # AIC — Assistant IA des commerciaux (stratégie L3 du 27/10/2026) : skills Claude Code
+  # sur l'abonnement + gestes de Reda dans PLAN.md ; plateforme/lead/devis dans les
+  # docs/plans/PLAN_AUDIT_*.md ; auto-ordonné par ses @after, aucun prérequis de vague.
+  - AIC
+  # AICM — gestes MANUELS de Reda du Groupe AIC (crédits, confidentialité, juriste) : pass-through.
+  - AICM

@@ -91,6 +91,9 @@ class SignatureInterventionTests(TestCase):
         # chatter (PostgreSQL) → 500 ; 400 nommant le champ, rien d'écrit.
         for extra in ({'signataire_nom': 'Cli\x00ent'},
                       {'motif_override_signature': 'mo\x00tif'},
+                      # api-fuzz-full 27/10 : l'alias `motif_override` est
+                      # publié strict lui aussi (motif sans NUL).
+                      {'motif_override': 'mo\x00tif'},
                       {'signataire_nom': 5}):
             r = self._signer(self.non_signee, **extra)
             self.assertEqual(r.status_code, 400, (extra, r.content))
