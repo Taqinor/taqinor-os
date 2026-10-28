@@ -128,6 +128,12 @@ class IntentionComposition:
     #: ACAL63 — les modèles DÉSIGNÉS par le calepinage (``[{produit_id, watt,
     #: count}]``). ``None`` (LE DÉFAUT) ⇒ un seul panneau, choisi au wattage.
     modeles: object = None
+    #: Corrections résidentielles du 27/10 (RSIZ2 hybride servi par une
+    #: batterie du stock, RSIZ3 jamais la forme commune, RSIZ5 paires MPPT
+    #: DÉRIVÉES du champ). ``True`` (LE DÉFAUT) = règles courantes, celles
+    #: d'un devis neuf ; un appelant qui recompose un devis EXISTANT passe
+    #: ``regles_au_moins(devis, REGLES_CORRIGEES_2710)``.
+    regles_2710: bool = True
 
 
 @dataclass(frozen=True)
@@ -199,20 +205,28 @@ def composer(intention):
         ordre_lignes=reglages.ordre_lignes,
         mppt_paires=intention.mppt_paires,
         phase=intention.phase,
+        regles_2710=getattr(intention, 'regles_2710', True),
     )
     catalogue = reglages.catalogue
     kwc = float(intention.kwc or 0)
     nb_panneaux = int(intention.nb_panneaux or 0)
 
-    # ── L-2OPT — DEUX OPTIMISEURS quand le moteur en désigne deux ────────────
-    if deux_options and avec:
+    # ── L-2OPT — DEUX OPTIMISEURS, TOUJOURS fusionnés (RSIZ3) ───────────────
+    # Sans optimum « avec », la fusion joue à champs ÉGAUX : jamais plus la
+    # forme commune réseau + hybride dans une même offre — sauf pour un devis
+    # existant aux règles < 3, qui garde sa forme servie.
+    if deux_options and (avec or commun['regles_2710']):
+        avec = avec or {}
         lignes = composition_deux_optimiseurs(
             catalogue,
             kwc_sans=kwc,
             nb_panneaux_sans=nb_panneaux,
-            kwc_avec=avec.get('kwc'),
-            nb_panneaux_avec=avec.get('nb_panneaux'),
+            kwc_avec=avec.get('kwc') or (
+                None if avec.get('nb_panneaux') else kwc),
+            nb_panneaux_avec=avec.get('nb_panneaux') or nb_panneaux,
             batterie_cible_kwh=avec.get('batterie_kwh'),
+            modeles=getattr(intention, 'modeles', None),
+            batterie_module_kwh=getattr(intention, 'batterie_module_kwh', None),
             **commun)
     else:
         lignes = composition_residentielle(
@@ -303,14 +317,25 @@ class ContexteSonde:
     taux_tva: Decimal = Decimal('20')
     hors_reseau: bool = False
     ville: str = ''
+    #: RSIZ2/3/5 — cf. ``IntentionComposition.regles_2710``.
+    regles_2710: bool = True
 
 
 def _mppt_paires_du_devis(devis):
     """Les paires MPPT que le devis chiffre : son câble DC AU MÈTRE ÷ 60 m
     (``metre_cable_dc_par_paires``, la règle de la composition). Sans ligne
-    lisible : le repli fondateur d'une paire."""
+    lisible : le repli fondateur d'une paire.
+
+    RSIZ5 — aux règles ≥ 3 le câble est DÉRIVÉ du champ par la composition :
+    le relire comme plancher ferait monter les paires sans jamais les faire
+    redescendre (carte « Éco » chiffrée au câble du grand champ, deux lignes
+    variantées sommées) — le plancher est alors une paire."""
     from apps.ventes.domain.catalogue import (
         CABLE_DC_M_PAR_PALIER, _est_au_metre, _is_cable_dc)
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
+    if regles_au_moins(devis, REGLES_CORRIGEES_2710):
+        return 1
     metres = 0.0
     for ligne in devis.lignes.all():
         nom = ligne.designation or ''
@@ -327,6 +352,8 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
     from apps.crm.selectors import lead_du_devis
     from apps.ventes.domain.composition import structure_produit_id_du_devis
     from apps.ventes.domain.gammes import gamme_nom
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
     from apps.ventes.domain.taille import phase_et_isolement_du_lead
     lead = lead_du_devis(devis)
     # ACAL32 — phase et site isolé du lead lus par LE survivant
@@ -348,7 +375,9 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
         mppt_paires=_mppt_paires_du_devis(devis),
         taux_tva=Decimal(str(taux)) if taux is not None else Decimal('20'),
         hors_reseau=bool(hors_reseau),
-        ville=ville_du_lead(lead))
+        ville=ville_du_lead(lead),
+        # RSIZ2/3/5 — un devis aux règles d'origine (< 3) garde ses règles.
+        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
 
 
 def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
@@ -376,7 +405,8 @@ def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
         hors_reseau=contexte.hors_reseau,
         ville=contexte.ville,
         batterie_module_kwh=module_kwh,
-        reglages=contexte.reglages))
+        reglages=contexte.reglages,
+        regles_2710=getattr(contexte, 'regles_2710', True)))
 
 
 def sonder_wattage(contexte):

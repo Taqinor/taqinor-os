@@ -398,17 +398,22 @@ class LeDryRunComposeLesDeuxOptimiseurs(_Base):
         self.assertEqual(len(transport), 1)
         self.assertEqual(transport[0]['variante'], '')
 
-    def test_sans_dimensionnement_avec_aucune_ligne_n_est_variantee(self):
-        """Repli historique : sans l'axe batterie, comportement inchangé —
-        `variante` vide partout, `variantes` à False (ce que U3 rendait déjà
-        avant U3COMPOSE, byte pour byte)."""
+    def test_sans_dimensionnement_avec_les_onduleurs_se_repartissent(self):
+        """RSIZ3 (27/10/2026) — sans l'axe batterie, les deux options se
+        composent sur le MÊME champ, mais jamais plus en forme commune :
+        l'onduleur réseau part dans « sans », l'hybride et la batterie dans
+        « avec » ; le champ (panneaux) reste commun."""
         reponse = self.api.post(COMPO_URL, {
             'kwc': 5, 'panel_watt': 710, 'scenario': 'les_deux',
         }, format='json')
         self.assertEqual(reponse.status_code, 200, reponse.data)
-        self.assertFalse(reponse.data['variantes'])
-        self.assertEqual(
-            {li['variante'] for li in reponse.data['lignes']}, {''})
+        par_role = {}
+        for li in reponse.data['lignes']:
+            par_role.setdefault(li['role'], set()).add(li['variante'])
+        self.assertEqual(par_role['onduleur_reseau'], {'sans'})
+        self.assertEqual(par_role['onduleur_hybride'], {'avec'})
+        self.assertEqual(par_role['batterie'], {'avec'})
+        self.assertEqual(par_role['panneau'], {''})
         self.assertEqual(
             reponse.data['nb_panneaux_avec'], reponse.data['nb_panneaux'])
 
@@ -581,3 +586,78 @@ class STKCAT7LeVivierTypeNeDivergePasSansId(_Base):
                       if role.startswith('structure')]
         self.assertEqual(structures,
                          [('structure_acier', 'Pergola acier 4x3')])
+
+
+class LesPairesMpptSuiventLeChamp(_Base):
+    """RSIZ5 (27/10/2026) — le câble DC suit le champ : ``mppt_paires`` valait
+    1 partout, donc 60 m pour 3 panneaux comme pour 390. Catalogue SANS fiche
+    technique ici : le repli est l'approximation du dépôt (une paire par
+    palier de 5 kWc, ``metre_cable_dc``)."""
+
+    slug = 'u3-rsiz5'
+
+    def _cable_dc(self, **extra):
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            panel_watt=710, **extra)
+        par_role = dict(zip(lignes.roles, lignes))
+        return int(par_role['cable_dc'].quantite)
+
+    def test_un_grand_champ_derive_plusieurs_paires(self):
+        # 15 kWc → 3 paliers de 5 kWc → 3 paires → 180 m.
+        self.assertEqual(self._cable_dc(
+            kwc=15, nb_panneaux=22, regles_2710=True), 180)
+
+    def test_un_petit_champ_garde_une_paire(self):
+        self.assertEqual(self._cable_dc(
+            kwc=2.13, nb_panneaux=3, regles_2710=True), 60)
+
+    def test_le_compte_saisi_reste_un_plancher(self):
+        self.assertEqual(self._cable_dc(
+            kwc=5, nb_panneaux=8, mppt_paires=3,
+            regles_2710=True), 180)
+
+    def test_regles_d_origine_le_compte_saisi_tel_quel(self):
+        """Règles d'origine (``regles_2710=False``) : 60 m à 15 kWc ; le
+        défaut de la fonction pure est la règle courante (180 m)."""
+        self.assertEqual(self._cable_dc(
+            kwc=15, nb_panneaux=22, regles_2710=False), 60)
+        self.assertEqual(self._cable_dc(kwc=15, nb_panneaux=22), 180)
+
+    def test_le_cable_relu_n_est_plancher_qu_aux_regles_d_origine(self):
+        """Fable B1 — aux règles ≥ 3 le câble DC du devis n'est plus relu
+        comme plancher des paires (il redescendrait jamais) ; aux règles
+        d'origine il l'est toujours (240 m → 4 paires)."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.etape_composer import _mppt_paires_du_devis
+        ligne = SimpleNamespace(
+            designation='Câble solaire Nexans 6 mm² (au mètre)', quantite=240)
+
+        class _Lignes:
+            def all(self):
+                return [ligne]
+        self.assertEqual(_mppt_paires_du_devis(
+            SimpleNamespace(regles_calcul=2, lignes=_Lignes())), 4)
+        self.assertEqual(_mppt_paires_du_devis(
+            SimpleNamespace(regles_calcul=3, lignes=_Lignes())), 1)
+
+    def test_un_devis_aux_regles_d_origine_ne_derive_pas(self):
+        """Un devis déjà envoyé (règles < 3) recomposé par les sondes garde
+        ses paires ; un devis aux règles courantes les dérive."""
+        from apps.ventes.domain.etape_composer import contexte_sonde_du_devis
+        from apps.ventes.domain.regles_calcul import (
+            REGLES_CORRIGEES, REGLES_CORRIGEES_2710)
+        from apps.ventes.models import Devis
+        cree = self.api.post(
+            AUTO_URL, {'lead': self.lead(
+                taille_souhaitee_kwc=Decimal('5')).id}, format='json')
+        self.assertEqual(cree.status_code, 201, cree.data)
+        devis = Devis.objects.get(pk=cree.data['id'])
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=REGLES_CORRIGEES)
+        devis.refresh_from_db()
+        self.assertFalse(contexte_sonde_du_devis(devis).regles_2710)
+        Devis.objects.filter(pk=devis.pk).update(
+            regles_calcul=REGLES_CORRIGEES_2710)
+        devis.refresh_from_db()
+        self.assertTrue(contexte_sonde_du_devis(devis).regles_2710)

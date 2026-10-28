@@ -1990,3 +1990,9 @@ def _calculer_catalogue_ci_pret(company_id):
             manquants.append('%s C&I (fiche produit)' % ' ou '.join(
                 [noms[0]] + [n[0].lower() + n[1:] for n in noms[1:]]))
     return {'pret': not manquants, 'manquants': manquants}
+
+
+def postes_pret_devis_residentiel(company):
+    """RSIZ11 — tableau « prêt pour le devis résidentiel » (lecture seule)."""
+    from .domain.pret_devis_residentiel import postes_pret_devis_residentiel as f
+    return f(company)

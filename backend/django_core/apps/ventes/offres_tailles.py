@@ -648,7 +648,7 @@ class _Contexte:
         # AMOT30 — LE constructeur unique : barème société, charges fixes et
         # jour de référence compris (la carte Éco était chiffrée au barème
         # NATIONAL pendant que le devis l'était à celui de la société).
-        from apps.ventes.etude_horaire import kwargs_moteur_horaire
+        from apps.ventes.domain.entrees import kwargs_moteur_ombre
         if not getattr(self, 'corrige', True):
             # Règles d'origine : les arguments d'hier (grille nationale, sans
             # charges fixes ni jour de référence).
@@ -662,7 +662,7 @@ class _Contexte:
                 'tranches': None,
                 'charges_fixes_mad': None,
             }
-        return kwargs_moteur_horaire(self.entrees)
+        return kwargs_moteur_ombre(self.entrees)  # RSIZ7 : + ombrage
 
     def composer(self, nb_panneaux, *, avec_batterie, cible_kwh=None):
         """Une composition catalogue RÉELLE, ou ``None`` — jamais une levée.

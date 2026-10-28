@@ -469,7 +469,12 @@ class OptionBatterieCITests(_Base):
         self.assertEqual(data['option_servie'], 'sans')
         from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
         valeur = valeur_option_avec(data)
-        self.assertGreater(valeur['retour_simple_ans'], 0)
+        # CPDF2 — le retour imprimé est CELUI servi par l'étude (flux 25 ans,
+        # ``option_avec.retour_simple_ans``), jamais un quotient recalculé ;
+        # non servi (flux sans passage à zéro) ⇒ omis.
+        servi = option.get('retour_simple_ans')
+        self.assertEqual(valeur['retour_simple_ans'],
+                         servi if servi and servi > 0 else None)
         self.assertIn('kWh utiles', valeur['textes']['fr'])
 
     def test_choix_avec_du_lead_option_avec_seule(self):

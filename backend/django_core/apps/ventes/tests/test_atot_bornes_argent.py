@@ -160,6 +160,36 @@ class TotalLigneFactureHorsCapaciteTests(TestCase):
         self.assertEqual(r.status_code, 409, r.content)
         self.assertEqual(LigneFacture.objects.count(), avant)
 
+    def test_un_seul_motif_par_champ_publie_et_applique(self):
+        """api-fuzz-full 28/10 — motif signé de drf-spectacular + motif ≥ 0
+        en ``allOf`` : corps du PUT ingénérable (Failed Health Check). Le
+        champ publie seul le motif appliqué ; ``-0`` vaut zéro (accepté),
+        ``-1`` et une remise de 101 sont refusés 400."""
+        import re
+
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ventes import urls as ventes_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include(ventes_urls)),
+        ]).get_schema(request=None, public=True)
+        corps = schema['paths']['/api/django/ventes/factures-lignes/{id}/'][
+            'put']['requestBody']['content']['application/json']['schema']
+        self.assertIn('$ref', corps)
+        props = schema['components']['schemas'][
+            corps['$ref'].split('/')[-1]]['properties']
+        for champ, valeur, accepte in (('quantite', '-0', True),
+                                       ('quantite', '-1', False),
+                                       ('prix_unitaire', '0.5', True),
+                                       ('remise', '101', False)):
+            with self.subTest(champ=champ, valeur=valeur):
+                motif = props[champ]['pattern']
+                self.assertEqual(bool(re.search(motif, valeur)), accepte)
+                r = self.api.patch(self.url, {champ: valeur}, format='json')
+                self.assertEqual(r.status_code, 200 if accepte else 400,
+                                 r.content)
+
     def test_patch_vide_et_temoin_dans_la_capacite(self):
         self.assertEqual(
             self.api.patch(self.url, {}, format='json').status_code, 200)

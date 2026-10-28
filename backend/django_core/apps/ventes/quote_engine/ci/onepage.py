@@ -56,6 +56,13 @@ def unite_kwh_an(langue, L):
     return " kWh/an" if langue == "fr" else L("ci_unite_kwh_an")
 
 
+def annees(texte_unite, langue, valeur):
+    """CPDF — « ans » du une-page C&I accordé au nombre (arabe « سنة » hors
+    3..10 ans entiers), la règle des couvertures C&I."""
+    from .couverture import annees_accordees
+    return annees_accordees(texte_unite, langue, valeur)
+
+
 def legende_retour(chiffres, L):
     """AMOT86 (D-ACI-2=a) — postes hors total : sous l'économie, la légende
     de la couverture (sur quel prix le retour sera calculé), sinon ''."""

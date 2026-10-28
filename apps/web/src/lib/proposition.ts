@@ -105,6 +105,12 @@ export interface ProposalQuote {
   eco_a_cumul?: number;
   roi_s?: number | string;
   roi_a?: number | string;
+  /** RWEB1 — jamais remboursé sur 25 ans (roi_* = sentinelle 25, non imprimée). */
+  roi_s_jamais?: boolean;
+  roi_a_jamais?: boolean;
+  /** RWEB20 — modèle d'économie EFFECTIF de chaque option (`horaire` = calculée, sinon estimée). */
+  savings_model_sans?: string | null;
+  savings_model_avec?: string | null;
   /** Date limite de validité (peut aussi voyager au niveau racine du contrat). */
   date_validite?: string | null;
   scenario?: string;
@@ -901,6 +907,10 @@ export function hasTwoOptions(p: ProposalResponse): boolean {
 
 /** L'option recommandée, normalisée. Défaut : `avec_batterie` si présente, sinon `sans_batterie`. */
 export function recommendedOption(p: ProposalResponse): OptionKey {
+  // RWEB3 — C&I : l'option phare (héros, barre collante, case pré-cochée) = l'offre principale SERVIE
+  // (`synthese_ci.option_servie`), la même que le badge « Offre principale » ; jamais `recommended`.
+  const ci = resolveInstallMode(p) === 'commercial' || resolveInstallMode(p) === 'industriel' ? syntheseCi(p) : null;
+  if (ci?.optionServie) return offrePrincipaleCi(ci);
   const r = p.quote?.recommended;
   if (r === 'sans_batterie' || r === 'avec_batterie') return r;
   return p.quote?.totaux_avec ? 'avec_batterie' : 'sans_batterie';
@@ -1132,6 +1142,9 @@ export interface SignValidation {
   valid: boolean;
   /** Message FR à afficher quand invalide (null si valide). */
   error: string | null;
+  /** RWEB9 — mêmes messages en EN / AR quand ils sont fournis (repli FR : `messagesSignature.ts`). */
+  errorEn?: string | null;
+  errorAr?: string | null;
   /** CIW305 — le champ fautif (l'erreur s'affiche SOUS lui), ou absent. */
   champ?: SignChamp;
 }
@@ -1147,14 +1160,16 @@ export function validateSign(
   entrepriseRequise = false,
 ): SignValidation {
   const nom = (form.nom ?? '').trim();
-  if (!nom) return { valid: false, error: 'Veuillez saisir votre nom complet.', champ: 'nom' };
+  if (!nom) {
+    return { valid: false, error: 'Veuillez saisir votre nom complet.', errorEn: 'Please enter your full name.', errorAr: 'يُرجى إدخال اسمكم الكامل.', champ: 'nom' };
+  }
   // CIW305 / ADEV95 — commercial / industriel : raison sociale, qualité, ICE, e-mail du signataire
   // et attestation de pouvoir OBLIGATOIRES ; l'erreur nomme le champ fautif (`propositionB2b`).
   // Aucune règle de format de l'ICE ici (validé par le serveur, une seule règle).
   const erreurEntreprise = entrepriseRequise ? validerEntreprise(form) : null;
   if (erreurEntreprise) return erreurEntreprise;
   if (twoOptions && form.option !== 'sans_batterie' && form.option !== 'avec_batterie') {
-    return { valid: false, error: 'Veuillez choisir une option avant de signer.', champ: 'option' };
+    return { valid: false, error: 'Veuillez choisir une option avant de signer.', errorEn: 'Please choose an option before signing.', errorAr: 'يُرجى اختيار خيار قبل التوقيع.', champ: 'option' };
   }
   return { valid: true, error: null };
 }
@@ -2268,12 +2283,9 @@ export interface SavingsHeadline {
  * WJ9 — Construit le bandeau « money over time » d'une option.
  *
  *  - `annual` : économie annuelle backend (`eco_*_ann`).
- *  - `cumulative` : ADEV50 (C-ADEV-017) — le cumul 25 ans de CETTE option,
- *    SERVI par `economies_cumul_25_ans[opt]` (même flux annuel que le PDF
- *    `/proposal` : dégradation, escalade, batterie, onduleur). La page ne le
- *    recalcule plus : l'ancien « `eco_a_cumul` × 25 » affichait 400 350 MAD pour
- *    les DEUX options (sonde VA p7) là où le PDF disait 342 314 / 346 653. Clé
- *    absente ⇒ `null` ⇒ aucun cumul affiché (jamais un chiffre inventé).
+ *  - `cumulative` : ADEV50 — le cumul 25 ans de CETTE option, SERVI par
+ *    `economies_cumul_25_ans[opt]` (même flux annuel que le PDF), jamais
+ *    recalculé. Clé absente ⇒ `null` ⇒ aucun cumul affiché.
  *  - `monthly` : annuel / 12 (simple cadrage de lecture, pas un nouveau chiffre).
  */
 export function savingsHeadline(
@@ -2281,8 +2293,7 @@ export function savingsHeadline(
   opt: OptionKey,
   years: number = SAVINGS_HORIZON_YEARS,
 ): SavingsHeadline {
-  // CIW300 — le cumul ne sert plus le C&I (commercial / industriel) :
-  // son argent est `synthese_ci.argent`, servi par le moteur. Tout à `null`.
+  // CIW300 — C&I : l'argent est `synthese_ci.argent` ; tout à `null` ici.
   const modeCi = resolveInstallMode(p);
   if (modeCi === 'commercial' || modeCi === 'industriel') {
     return { annual: null, cumulative: null, years, monthly: null, payback: null, cumulativeFromBackend: false };
@@ -2290,7 +2301,9 @@ export function savingsHeadline(
   const annualRaw = opt === 'avec_batterie' ? p.quote?.eco_a_ann : p.quote?.eco_s_ann;
   const annual = typeof annualRaw === 'number' && Number.isFinite(annualRaw) && annualRaw > 0
     ? annualRaw : null;
-  const paybackRaw = opt === 'avec_batterie' ? p.quote?.roi_a : p.quote?.roi_s;
+  // RWEB25 — roi_*_jamais : aucun retour, jamais la sentinelle « 25 ans ».
+  const jamais = (opt === 'avec_batterie' ? p.quote?.roi_a_jamais : p.quote?.roi_s_jamais) === true;
+  const paybackRaw = jamais ? null : opt === 'avec_batterie' ? p.quote?.roi_a : p.quote?.roi_s;
 
   const servi = p.economies_cumul_25_ans?.[opt];
   const cumulative = typeof servi === 'number' && Number.isFinite(servi) && servi > 0 ? servi : null;
@@ -3197,9 +3210,11 @@ import {
 import {
   argentCiCalcule,
   economieCiHero,
+  offrePrincipaleCi,
   syntheseCi,
   type SyntheseCi,
 } from '../components/proposition/ci/syntheseCi';
+import { libellesRetour, type Libelles } from './proposition/retour';
 
 /** Point-dans-polygone (ray casting) en coordonnées planes. */
 export function viewerPointInRing(pt: [number, number], ring: Array<[number, number]>): boolean {
@@ -3688,73 +3703,6 @@ export function zoneAnnotations(
   });
 }
 
-/** Texte de repli honnête quand un chiffre ne peut pas être calculé. */
-export const FIGURE_UNAVAILABLE = 'estimation indisponible';
-
-/** Une étape de la visite guidée (FR + gloss arabe court). */
-export interface WalkStep {
-  id: string;
-  title: string;
-  titleAr: string;
-  /** Phrase FR en langage simple — chiffres serveur ou repli libellé. */
-  body: string;
-}
-
-/**
- * WJ26 — Visite guidée en 4 étapes : « voici votre toit → voici vos panneaux →
- * voici ce qu'ils produisent → voici votre économie ». Chaque chiffre est lu du
- * payload backend (nb_panneaux / puissance_kwc / prod_kwh / eco_*_ann) ; toute
- * valeur absente devient « estimation indisponible » — jamais un nombre
- * fabriqué. Pure (testable sans DOM).
- */
-export function walkthroughSteps(p: ProposalResponse): WalkStep[] {
-  const q = p.quote;
-  const nb = isFiniteNum(q?.nb_panneaux) && q!.nb_panneaux! > 0 ? q!.nb_panneaux! : null;
-  const kwc = isFiniteNum(q?.puissance_kwc) && q!.puissance_kwc! > 0 ? q!.puissance_kwc! : null;
-  const prod = isFiniteNum(q?.prod_kwh) && q!.prod_kwh! > 0 ? q!.prod_kwh! : null;
-  const head = savingsHeadline(p, recommendedOption(p));
-
-  const panneauxBody =
-    nb !== null
-      ? `${formatNumber(nb)} panneaux${kwc !== null ? `, soit ${formatNumber(kwc, 2)} kWc` : ''}, positionnés selon l’étude de votre toiture.`
-      : `Vos panneaux sont positionnés selon l’étude de votre toiture (nombre : ${FIGURE_UNAVAILABLE}).`;
-  const prodBody =
-    prod !== null
-      ? `Environ ${formatNumber(prod)} kWh produits par an — de l’électricité que vous n’achetez plus au réseau.`
-      : `Production annuelle : ${FIGURE_UNAVAILABLE}.`;
-  const ecoBody =
-    head.annual !== null
-      ? `Environ ${formatMAD(head.annual)} d’économies par an${head.monthly !== null ? ` (≈ ${formatMAD(head.monthly)}/mois)` : ''}, en autoconsommation (loi 82-21).`
-      : `Économie annuelle : ${FIGURE_UNAVAILABLE}.`;
-
-  return [
-    {
-      id: 'toit',
-      title: 'Voici votre toit',
-      titleAr: 'هذا سطح منزلكم',
-      body: 'Le contour et les pans que vous voyez sont ceux de VOTRE toiture, telle que tracée lors de l’étude. Faites glisser pour tourner autour.',
-    },
-    {
-      id: 'panneaux',
-      title: 'Voici vos panneaux',
-      titleAr: 'هذه ألواحكم الشمسية',
-      body: panneauxBody,
-    },
-    {
-      id: 'production',
-      title: 'Voici ce qu’ils produisent',
-      titleAr: 'هذا ما تنتجه',
-      body: prodBody,
-    },
-    {
-      id: 'economie',
-      title: 'Voici votre économie',
-      titleAr: 'هذا ما توفرونه',
-      body: ecoBody,
-    },
-  ];
-}
-
 // ════════════════════════════════════════════════════════════════════════════
 // WJ32 — Complétude du contenu de la proposition : contenu enrichi,
 // fiche produit enrichie (marque/garantie/fiche technique), « Et après ? »,
@@ -4122,9 +4070,9 @@ function objectionFaqCi(ci: SyntheseCi | null): FaqItem[] {
       question: 'Comment la TVA est-elle traitée sur ce devis ?',
       questionAr: 'كيف تُعالَج الضريبة على القيمة المضافة في هذا العرض؟',
       questionEn: 'How is VAT handled on this quote?',
-      answer: 'Selon votre régime fiscal ; le devis indique la base retenue — à confirmer avec votre comptable.',
-      answerAr: 'حسب نظامكم الضريبي؛ يبيّن العرض الأساس المعتمد — يُؤكَّد مع محاسبكم.',
-      answerEn: 'It depends on your tax regime; the quote states the basis used — to be confirmed with your accountant.',
+      answer: 'Selon votre régime fiscal : le devis indique la base retenue (HT quand votre TVA est récupérable).',
+      answerAr: 'حسب نظامكم الضريبي: يبيّن العرض الأساس المعتمد (دون احتساب الضريبة حين تكون قابلة للاسترجاع).',
+      answerEn: 'It depends on your tax regime: the quote states the basis used (excl. VAT when your VAT is recoverable).',
     },
     {
       id: 'travaux',
@@ -4405,11 +4353,8 @@ export function resolveInstallMode(
  * AGW300 — chiffres « phares » d'économie et de retour (sans / avec batterie /
  * héros), lus sur les clés RÉSIDENTIELLES `quote.eco_s_ann|eco_a_ann|roi_s|roi_a`.
  * Fonction PURE, SEULE source de ces chiffres pour la page : en mode agricole
- * (`resolveInstallMode(p) === 'agricole'`) TOUT est `null` — une pompe n'a ni
- * « Économie / an » ni « Rentabilisé en » résidentiels, même si un payload
- * ancien porte encore ces clés (le serveur ne les sert plus, AGR300 : cette garde
- * la double). L'argent agricole reviendra par `synthese_agricole.economies`
- * (AGW304), jamais par ces clés. `reco` = l'option recommandée (héros).
+ * TOUT est `null` (l'argent agricole vient de `synthese_agricole.economies`, AGW304).
+ * `reco` = l'option recommandée (héros).
  */
 export interface ChiffresEconomiePhare {
   ecoSans: number | null;
@@ -4418,6 +4363,12 @@ export interface ChiffresEconomiePhare {
   paybackAvec: string | null;
   ecoHero: number | null;
   paybackHero: string | null;
+  /** RWEB1 — retour du héros FR/EN/AR ; null si non réel. */
+  paybackHeroI18n: Libelles | null;
+  /** RWEB1 — `roi_*_jamais` levé pour l'option du héros. */
+  paybackHeroJamais: boolean;
+  /** RWEB20 — modèle d'économie de l'option du héros. */
+  modeleHero: string | null;
 }
 
 export function chiffresEconomiePhare(
@@ -4426,6 +4377,7 @@ export function chiffresEconomiePhare(
 ): ChiffresEconomiePhare {
   const vide: ChiffresEconomiePhare = {
     ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null,
+    paybackHeroI18n: null, paybackHeroJamais: false, modeleHero: null,
   };
   if (!p) return vide;
   const mode = resolveInstallMode(p);
@@ -4434,25 +4386,37 @@ export function chiffresEconomiePhare(
     // CIW300 — en C&I, l'argent vient UNIQUEMENT de `synthese_ci.argent` (servi, calculé) ;
     // `quote.eco_s_ann` / `roi_s` (clés résidentielles) ne sont jamais lus. Argent absent
     // ou omis → tout à `null` (aucun chiffre d'argent), jamais un repli résidentiel.
-    const a = argentCiCalcule(syntheseCi(p));
+    // RWEB4 — l'argent C&I va sur la carte de l'offre PRINCIPALE servie (`option_servie`) :
+    // « avec batterie » servie → ecoAvec/paybackAvec, jamais sur la carte « sans ».
+    const ci = syntheseCi(p);
+    const a = argentCiCalcule(ci);
     const eco = economieCiHero(a);
     const retour = a ? formatPayback(a.retourAns) : null;
-    return { ...vide, ecoSans: eco, ecoHero: eco, paybackSans: retour, paybackHero: retour };
+    const i18n = a ? libellesRetour(a.retourAns) : null;
+    const hero = { ...vide, ecoHero: eco, paybackHero: retour, paybackHeroI18n: i18n };
+    return offrePrincipaleCi(ci) === 'avec_batterie'
+      ? { ...hero, ecoAvec: eco, paybackAvec: retour }
+      : { ...hero, ecoSans: eco, paybackSans: retour };
   }
-  const q = p.quote as
-    | { eco_s_ann?: number | null; eco_a_ann?: number | null; roi_s?: number | string | null; roi_a?: number | string | null }
-    | undefined;
+  const q = p.quote;
   const ecoSans = q?.eco_s_ann ?? null;
   const ecoAvec = q?.eco_a_ann ?? null;
-  const paybackSans = formatPayback(q?.roi_s);
-  const paybackAvec = formatPayback(q?.roi_a);
+  const jamaisS = q?.roi_s_jamais === true;
+  const jamaisA = q?.roi_a_jamais === true;
+  const paybackSans = jamaisS ? null : formatPayback(q?.roi_s);
+  const paybackAvec = jamaisA ? null : formatPayback(q?.roi_a);
+  // RWEB14 — pas de repli sur le retour de l'AUTRE option quand l'économie du héros est la sienne.
+  const heroAvec = reco === 'avec_batterie' ? ecoAvec != null || ecoSans == null : ecoSans == null && ecoAvec != null;
   return {
     ecoSans,
     ecoAvec,
     paybackSans,
     paybackAvec,
-    ecoHero: reco === 'avec_batterie' ? (ecoAvec ?? ecoSans) : (ecoSans ?? ecoAvec),
-    paybackHero: reco === 'avec_batterie' ? (paybackAvec ?? paybackSans) : (paybackSans ?? paybackAvec),
+    ecoHero: heroAvec ? ecoAvec : ecoSans,
+    paybackHero: heroAvec ? paybackAvec : paybackSans,
+    paybackHeroI18n: heroAvec ? libellesRetour(q?.roi_a, jamaisA) : libellesRetour(q?.roi_s, jamaisS),
+    paybackHeroJamais: heroAvec ? jamaisA : jamaisS,
+    modeleHero: (heroAvec ? q?.savings_model_avec : q?.savings_model_sans) || null,
   };
 }
 

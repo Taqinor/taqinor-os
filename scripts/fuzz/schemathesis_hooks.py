@@ -374,15 +374,18 @@ def _retyper_query(query, avant, typee, publies=None):
     stateful inféré (``tag_id`` <- ``GET /records/tags/`` ``results/*/id``) ;
     substitué (2 -> 1) il restait entier, revalidé ``1`` contre ``string`` ->
     cas « Positive test case » basculé NÉGATIF, 200 légitime signalé. Le type
-    PUBLIÉ prime donc sur le cliché typé : ``string`` -> la forme fil."""
+    PUBLIÉ prime donc sur le cliché typé : ``string`` -> la forme fil.
+
+    api-fuzz-full 28/10 (run 40621439470, tranche 11) — même règle pour un
+    entier que le lien inféré pose SANS substitution du crochet
+    (``object_id`` <- ``POST records/tagged-items/`` ``id`` sur ``GET
+    audit/security/``) : toute query publiée ``string`` part en chaîne."""
     publies = publies or {}
     for nom, valeur in list(query.items()):
-        if valeur == avant.get(nom):
-            continue
         if (publies.get(nom) == 'string' and isinstance(valeur, int)
                 and not isinstance(valeur, bool)):
             query[nom] = str(valeur)
-        elif nom in typee:
+        elif valeur != avant.get(nom) and nom in typee:
             query[nom] = _au_type(valeur, typee[nom])
 
 

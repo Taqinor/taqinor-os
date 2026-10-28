@@ -230,16 +230,50 @@ class Amot84TextesDynamiquesIndustriel(SimpleTestCase):
     def test_une_page_ans_et_ht_traduits(self):
         from apps.ventes.tests.test_ciq210_onepage_ci import _onepage
         _d, fr = _onepage("industriel")
-        self.assertIn(">3 ans<", fr)
+        # CPDF7 — le retour au dixième sur le flux servi (« 2,5 ans »).
+        self.assertIn(">2,5 ans<", fr)
+        self.assertNotIn(">3 ans<", fr)
         self.assertIn("/ an (HT)<", fr)
+        # CPDF — arabe : « سنة » pour un retour décimal (RPDF7).
         for langue, ans, ht in (("en", " years", "(excl. VAT)"),
-                                ("ar", " سنوات", "(دون احتساب الضريبة)")):
+                                ("ar", " سنة", "(دون احتساب الضريبة)")):
             with self.subTest(langue=langue):
                 _d, html = _onepage("industriel", langue_sortie=langue)
                 self.assertIn(ans, html)
                 self.assertIn(ht, html)
-                self.assertNotIn(">3 ans<", html)
+                self.assertNotIn(">2,5 ans<", html)
                 self.assertNotIn("MAD/an<", html)
+
+
+class CpdfAccordsGarantiesUnePage(SimpleTestCase):
+    """CPDF — « ans » accordé en arabe (« سنة » hors 3..10 ans entiers),
+    garantie par option dite « sans / avec batterie », une-page C&I signé."""
+
+    def test_ans_accordes_en_arabe(self):
+        from apps.ventes.quote_engine.ci import couverture
+        ar = {"langue_sortie": "ar"}
+        self.assertIn("سنة", couverture.unite_ans(ar, "2,5"))
+        self.assertNotIn("سنوات", couverture.unite_ans(ar, "12"))
+        self.assertIn("سنوات", couverture.unite_ans(ar, "4"))
+        self.assertEqual(couverture.unite_ans({}, "2,5"), "&nbsp;ans")
+
+    def test_garantie_par_option_nommee(self):
+        self.assertEqual(
+            ci_blocs.textes_garantie({}, "ans", "Onduleur (option 1)", "10"),
+            ("ans", "Onduleur (sans batterie)"))
+        en = ci_blocs.textes_garantie({"langue_sortie": "en"}, "ans",
+                                      "Onduleur (option 2)", "5")
+        self.assertEqual(en, ("years", "Inverter (with battery)"))
+        ar = ci_blocs.textes_garantie({"langue_sortie": "ar"}, "ans",
+                                      "Onduleur", "12")
+        self.assertIn("سنة", ar[0])
+        self.assertNotIn("سنوات", ar[0])
+
+    def test_une_page_porte_le_bon_pour_accord(self):
+        from apps.ventes.tests.test_ciq210_onepage_ci import _onepage
+        _d, fr = _onepage("industriel")
+        self.assertIn("Bon pour accord", fr)
+        self.assertIn("signature du client", fr)
 
 
 class Amot101FormatAnglaisIndustriel(SimpleTestCase):
@@ -261,6 +295,15 @@ class Amot101FormatAnglaisIndustriel(SimpleTestCase):
         for html in (fr, ar):
             self.assertIn(fmt_centimes(ttc), html)
             self.assertIn(f"{tri:.1f}".replace(".", ","), html)
+
+    def test_retour_au_dixieme_point_en_anglais(self):
+        """CPDF7 — flux MT servi : cumul nul vers 3,7 ans (retour servi :
+        4) ⇒ « 3.7 years » en anglais, « 3,7 » en français et en arabe."""
+        en = _html(_data("en")).split('class="page"')[1]
+        self.assertIn(">3.7<", en)
+        for langue in (None, "ar"):
+            self.assertIn(">3,7<", _html(_data(langue)).split(
+                'class="page"')[1])
 
     def test_une_page_anglaise(self):
         from apps.ventes.tests.test_ciq210_onepage_ci import _onepage

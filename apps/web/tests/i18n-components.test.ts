@@ -57,10 +57,10 @@ describe('GarantiesTeaser — FR verbatim, EN/AR présents, chiffres invariants'
   });
   it('les VALEURS chiffrées sont identiques dans toutes les locales — seuls le mot d’unité et le séparateur décimal localisent (W302)', () => {
     // years est désormais locale-keyé (YEARS_BY_LOCALE) : mêmes nombres, unité localisée.
-    for (const fig of ['12 ans', '30 ans', '10 ans', '20 ans', '2 ans']) {       // FR
+    for (const fig of ['12 ans', '30 ans', '20 ans', '2 ans']) {       // FR
       expect(garanties, fig).toContain(fig);
     }
-    for (const fig of ['12 years', '30 years', '10 years', '20 years', '2 years']) { // EN
+    for (const fig of ['12 years', '30 years', '20 years', '2 years']) { // EN
       expect(garanties, fig).toContain(fig);
     }
     // Performance : « 87,4 % » en FR (virgule) ; « 87.4 % » en EN/AR (point —

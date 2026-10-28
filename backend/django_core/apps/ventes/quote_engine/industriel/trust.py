@@ -23,6 +23,7 @@ from ..premium_base import bande_legale
 # CIQ311 — blocs C&I communs (conditions, Bon pour accord, échéancier).
 from ..ci import blocs as ci_blocs
 from .. import premium_base
+from .. import i18n_labels_ci_pages  # noqa: F401
 from ..ci.mentions import TEXTES_DECARBONATION, texte
 
 
@@ -67,13 +68,14 @@ def build(ctx):
     # QJR118 — les DURÉES de garantie se dérivent de la composition réelle du
     # devis (source unique ``residential.theme.warranties_for``) ; aucune
     # durée traçable ⇒ la bande entière s'OMET.
-    _warranties = [w for w in (theme.warranties_for(d) or [])
-                   if w and str(w[0]).strip()]
+    _warranties = ci_blocs.garanties_servies(
+        d, [w for w in (theme.warranties_for(d) or [])
+            if w and str(w[0]).strip()])
     if _warranties:
         _cells = "".join(
             f'<div class="i3-warr-c">'
-            f'<div class="i3-warr-v">{theme._esc(str(n))} {ci_blocs.textes_garantie(d, u, label)[0]}</div>'
-            f'<div class="i3-warr-l">{ci_blocs.textes_garantie(d, u, label)[1]}</div></div>'
+            f'<div class="i3-warr-v">{theme._esc(str(n))} {ci_blocs.textes_garantie(d, u, label, n)[0]}</div>'
+            f'<div class="i3-warr-l">{ci_blocs.textes_garantie(d, u, label, n)[1]}</div></div>'
             for n, u, label, _sub in _warranties)
         warranties_html = f"""
   <div class="i3-warr">
@@ -92,7 +94,8 @@ def build(ctx):
     bpa_titre, bpa_mention = ci_blocs.textes_bpa(d)
     conditions_html = ci_blocs.bloc_conditions(d, "i3", navy, ink)
     # CIQ320 — « Bon pour accord — pour la société ».
-    acceptation_html = ci_blocs.bloc_acceptation(d, "i3", ink, line)
+    acceptation_html = ci_blocs.bloc_acceptation(
+        d, "i3", ink, line, ctx.get("fmt_mad") or fmt)
     # CIQ314 — seulement les services que le devis porte (jamais une
     # « supervision temps réel » sans ligne derrière).
     services_html = ci_blocs.bloc_services(synthese, "i3", navy, ink, doc=d)
@@ -153,6 +156,7 @@ def build(ctx):
     # UNE fois, sur la page équipements (``commercial/equip``, partagée par
     # l'industriel) ; plus de second bloc ici.
 
+    vendeur_html = ci_blocs.ligne_vendeur(brand, ident)
     html = f"""{css}
 <div class="i3-root">
   <div class="i3-kicker">{L("ci_ind_deploiement", "Déploiement &amp; conditions")}</div>
@@ -162,7 +166,7 @@ def build(ctx):
   <table class="i3-two"><tr>
     <td class="i3-col"><div class="i3-blk">
       <div class="i3-blk-t">{L("ci_ind_iso_titre", "ISO 50001 — management de l'énergie")}</div>
-      <div class="i3-li">{L("ci_ind_iso_texte", "Les données de production et de consommation peuvent alimenter votre <b>revue énergétique</b> — sans promesse de conformité à la norme.")}</div>
+      <div class="i3-li">{L("ci_ind_iso_texte_cpdf", "Les données de production et de consommation peuvent alimenter votre <b>revue énergétique</b>.")}</div>
     </div></td>
     <td class="i3-cgap"></td>
     <td class="i3-col"><div class="i3-blk">
@@ -183,10 +187,10 @@ def build(ctx):
     <div class="i3-sign-c">
       <div class="i3-sign-h">{L("ci_pour", "Pour {marque}", marque=brand)}</div>
       <div class="i3-sign-box"></div>
-      <div class="i3-sign-co"><b>{brand}</b> &nbsp;·&nbsp; {ident.get('email','')} &nbsp;·&nbsp; {ident.get('phone','')}</div>
+      <div class="i3-sign-co">{vendeur_html}</div>
     </div>
   </div>
-  <div class="i3-legal" style="margin-top:10px;font-size:6.8pt;color:{muted};line-height:1.4;">{bande_legale(d, ident)}</div>
+  <div class="i3-legal" style="margin-top:10px;font-size:6.8pt;color:{muted};line-height:1.4;">{ci_blocs.nettoyer_separateurs(bande_legale(d, ident))}</div>
 </div>
 """
     return html

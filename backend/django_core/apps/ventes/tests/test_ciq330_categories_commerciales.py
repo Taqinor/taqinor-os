@@ -134,7 +134,8 @@ class CategoriesCommerciales(SimpleTestCase):
 
     def test_autre_commerce_libelle(self):
         synthese, _html = _bloc(_data("autre", {}))
-        self.assertEqual(synthese["categorie"]["libelle"], "Autre commerce")
+        # CPDF — repli générique : aucun libellé d'activité imprimé.
+        self.assertEqual(synthese["categorie"]["libelle"], "")
 
     def test_chaque_activite_du_lead_a_son_libelle_trilingue(self):
         # Décision fondateur 27/10/2026 — le PDF dit l'activité RÉELLE.

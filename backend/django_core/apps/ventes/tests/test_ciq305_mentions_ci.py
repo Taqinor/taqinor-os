@@ -13,6 +13,7 @@ from apps.ventes.quote_engine.ci.mentions import (
     TEXTES_POINTE_AVEC_NON_CHIFFREE,
     TEXTES_POINTE_SANS,
     mentions_ci,
+    valeur_option_avec,
 )
 from apps.ventes.quote_engine.ci.synthese import synthese_ci
 from apps.ventes.quote_engine.commercial import render as com_render
@@ -99,13 +100,62 @@ class TestTableMentions(SimpleTestCase):
         # réseau d'un devis à deux options renvoie à l'option « avec ».
         self.assertEqual(TEXTES_POINTE_SANS["fr"],
                          "Le soir et la nuit, votre consommation reste fournie par le réseau.")
+        # CPDF9 — sans part du soir servie par l'étude (aucun
+        # ``option_avec``), la phrase perd sa seconde moitié.
         deux = _par_cle(mentions_ci(_data(
             _etude("bt"), option_servie="sans",
             option_batterie={"totaux": {}, "valeur_chiffree": None})))["pointe"]
-        self.assertEqual(deux["textes"]["fr"], "Le soir et la nuit, votre consommation reste "
-                                               "fournie par le réseau ; l'option avec batterie la couvre.")
+        self.assertEqual(deux["textes"], TEXTES_POINTE_SANS)
         for textes in (sans["textes"], deux["textes"]):
             self.assertNotIn("non promise", textes["fr"])
+
+    @staticmethod
+    def _deux_options(restitue_kwh_an, besoin_nocturne_kwh=100):
+        etude = _etude("bt")
+        etude["option_avec"] = {
+            "economie_annuelle_mad": 95767.0,
+            "batterie": {"capacite_utile_kwh": 92.2,
+                         "besoin_nocturne_kwh": besoin_nocturne_kwh},
+            "bilan": {"batterie": {"capacite_utile_kwh": 92.2,
+                                   "restitue_kwh_an": restitue_kwh_an}}}
+        return _data(etude, option_servie="sans", option_batterie={
+            "totaux": {"ht_net": 394250}, "valeur_chiffree": None})
+
+    def test_cpdf9_phrase_soir_selon_la_part_couverte(self):
+        # 100 kWh/jour hors production × 365 = 36 500 kWh/an.
+        couvre = _par_cle(mentions_ci(self._deux_options(33000)))["pointe"]
+        self.assertEqual(couvre["textes"]["fr"], (
+            "Le soir et la nuit, votre consommation reste fournie par le "
+            "réseau ; l'option avec batterie la couvre."))
+        partie = _par_cle(mentions_ci(self._deux_options(13505)))["pointe"]
+        self.assertEqual(partie["textes"]["fr"], (
+            "Le soir et la nuit, votre consommation reste fournie par le "
+            "réseau ; l'option avec batterie en couvre 37\u00a0%."))
+        self.assertIn("covers 37% of it", partie["textes"]["en"])
+        self.assertIn("37", partie["textes"]["ar"])
+        self.assertNotIn("la couvre", partie["textes"]["fr"])
+        # Besoin du soir non servi : la phrase sans sa seconde moitié.
+        absent = _par_cle(mentions_ci(self._deux_options(
+            31000, besoin_nocturne_kwh=None)))["pointe"]
+        self.assertEqual(absent["textes"], TEXTES_POINTE_SANS)
+        # Besoin du soir non servi (devis rafraîchi) : aucun repli sur les
+        # taux de couverture globaux (critique Fable 28/10) — la phrase seule.
+        data = self._deux_options(31000, besoin_nocturne_kwh=None)
+        data["etude"]["etude_ci"].setdefault("bilan", {})[
+            "taux_couverture"] = 0.52
+        data["etude"]["etude_ci"]["option_avec"].setdefault("bilan", {})[
+            "taux_couverture"] = 0.93
+        repli = _par_cle(mentions_ci(data))["pointe"]
+        self.assertEqual(repli["textes"], TEXTES_POINTE_SANS)
+
+    def test_cpdf2_retour_option_avec_servi_jamais_recalcule(self):
+        data = self._deux_options(31000)
+        data["etude"]["etude_ci"]["option_avec"]["retour_simple_ans"] = 22.1
+        valeur = valeur_option_avec(data)
+        # Quotient HT ÷ économie = 4,1 ans : jamais imprimé.
+        self.assertEqual(valeur["retour_simple_ans"], 22.1)
+        del data["etude"]["etude_ci"]["option_avec"]["retour_simple_ans"]
+        self.assertIsNone(valeur_option_avec(data)["retour_simple_ans"])
 
     def test_tarif_utilise_et_sa_source(self):
         tarif = {"origine": "grille_officielle", "contrat": "bt_patente",

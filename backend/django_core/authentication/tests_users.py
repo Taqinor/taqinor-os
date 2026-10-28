@@ -94,6 +94,20 @@ class TestEmployeeAdmin(TestCase):
         self.assertEqual(
             User.objects.filter(company=self.company).count(), avant)
 
+    def test_creation_fonction_inconnue_404_meme_avec_doublon(self):
+        # api-fuzz-full 28/10 (ENF11) : ``fonction`` bien formée mais absente
+        # (+ nom déjà pris) répondait 400 ; l'id inconnu l'emporte → 404.
+        avant = User.objects.filter(company=self.company).count()
+        for corps in ({'username': 'emp_one', 'fonction': 999999},
+                      {'username': 'nouveau_28', 'fonction': 999999}):
+            resp = self.api.post('/api/django/users/', corps, format='json')
+            self.assertEqual(resp.status_code, 404, (corps, resp.content))
+        self.assertEqual(
+            User.objects.filter(company=self.company).count(), avant)
+        resp = self.api.patch(f'/api/django/users/{self.employee.id}/',
+                              {'fonction': 999999}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.content)
+
     def test_liste_refuse_page_size_non_entier_et_repete(self):
         # La liste est paginée (``core.pagination``) : ``page_size`` non entier
         # ou répété est refusé, comme le schéma le déclare (un seul entier).

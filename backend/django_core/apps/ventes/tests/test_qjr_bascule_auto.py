@@ -226,9 +226,10 @@ class GoldenLeadLesDeuxOptions(_BaseAuto):
         Onduleur hybride Deye 5kW Monophasé     × 2 à 17 000,00
         Batterie Dyness 5 kWh                   × 1 à 17 000,00
 
-    Toutes COMMUNES (``variante=''``) : sans ``dimensionnement_avec``, les deux
-    options partagent le MÊME champ PV et la composition reste mono-optimum —
-    c'est le repli documenté de la fusion L-2OPT.
+    RSIZ3 (27/10/2026) — plus de forme commune réseau + hybride : sans
+    ``dimensionnement_avec``, la fusion L-2OPT joue à champs ÉGAUX. Le champ
+    PV reste COMMUN (``variante=''``) ; l'onduleur réseau part dans « sans »,
+    l'hybride et la batterie dans « avec ».
     """
 
     def _construire(self):
@@ -242,14 +243,14 @@ class GoldenLeadLesDeuxOptions(_BaseAuto):
                 Decimal(PANNEAUX_ATTENDUS), PRIX['panneau'], '', Decimal('0')),
             # ×2 : 5 kW < seuil (0,8 × 7,10 = 5,68) ⇒ plafond(7,10/5) = 2.
             'Onduleur réseau Huawei 5kW Monophasé': (
-                Decimal(ONDULEURS_ATTENDUS), PRIX['onduleur_reseau'], '',
+                Decimal(ONDULEURS_ATTENDUS), PRIX['onduleur_reseau'], 'sans',
                 Decimal('0')),
             'Onduleur hybride Deye 5kW Monophasé': (
-                Decimal(ONDULEURS_ATTENDUS), PRIX['onduleur_hybride'], '',
+                Decimal(ONDULEURS_ATTENDUS), PRIX['onduleur_hybride'], 'avec',
                 Decimal('0')),
             # ×1 : cible 5 kWh (arrondi(7,10/5) × 5) servie par un module 5 kWh.
             'Batterie Dyness 5 kWh': (
-                Decimal(BATTERIES_ATTENDUES), PRIX['batterie'], '',
+                Decimal(BATTERIES_ATTENDUES), PRIX['batterie'], 'avec',
                 Decimal('0')),
         })
         self._assert_ordre_explicite(devis)

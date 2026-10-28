@@ -15,6 +15,7 @@ import {
   libelleRolePompage, libelleTypePompe, libelleAlimentation,
   libelleTypePose, libellePrixCi,
 } from '../../features/stock/catalogue'
+import { champCibleMotif } from '../../features/stock/libellesProduitCi.js'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import {
   Spinner, Badge, RelationCounters,
@@ -85,7 +86,20 @@ function EnTetePhoto({ produit }) {
    produit qui en porte : pas de ligne vide pour un panneau. */
 const CHAMP_VIDE = 'Non renseigné'
 
-function Ligne({ label, valeur }) {
+/* CCAT12 — bouton « Compléter » d'une ligne C&I : rouvre l'édition du produit
+   sur le champ que corrige `motif` (rien sans droit d'écriture ni champ connu). */
+function boutonCompleter(onEdit, produit, motif) {
+  const champ = champCibleMotif(motif)
+  if (!onEdit || !champ) return null
+  return (
+    <Button type="button" variant="outline" size="sm" className="sm:ml-auto"
+            data-testid="pdet-completer-ci" onClick={() => onEdit(produit, champ)}>
+      Compléter
+    </Button>
+  )
+}
+
+function Ligne({ label, valeur, action = null }) {
   const rempli = valeur !== null && valeur !== undefined && String(valeur).trim() !== ''
   return (
     <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
@@ -95,6 +109,7 @@ function Ligne({ label, valeur }) {
       <span className={rempli ? 'text-sm text-foreground' : 'text-sm italic text-muted-foreground'}>
         {rempli ? String(valeur) : CHAMP_VIDE}
       </span>
+      {action}
     </div>
   )
 }
@@ -317,12 +332,17 @@ function OngletFicheTechnique({ produit, onEdit }) {
               <Ligne label="Rôle C&I" valeur={produit.etat_ci.libelle} />
               {produit.type_pose ? <Ligne label="Type de pose" valeur={libelleTypePose(produit.type_pose)} /> : null}
               <Ligne label="Délai d'approvisionnement (jours)" valeur={produit.delai_appro_jours} />
+              {/* CCAT12 — « Compléter » ouvre le formulaire d'édition sur le champ à remplir. */}
               {!produit.etat_ci.eligible_ci && (
-                <Ligne label="Exclu du C&I" valeur={produit.etat_ci.motif_exclusion} />
+                <Ligne label="Exclu du C&I" valeur={produit.etat_ci.motif_exclusion}
+                       action={boutonCompleter(onEdit, produit, produit.etat_ci.motif_exclusion)} />
               )}
               {/* CCAT4 — une prestation est tarifée dans Paramètres, un coffret au
                   barème : jamais « prix à renseigner » pour eux. */}
-              {libellePrixCi(produit) && <Ligne label="Prix C&I" valeur={libellePrixCi(produit)} />}
+              {libellePrixCi(produit) && (
+                <Ligne label="Prix C&I" valeur={libellePrixCi(produit)}
+                       action={boutonCompleter(onEdit, produit, libellePrixCi(produit))} />
+              )}
             </>
           )}
         </div>
