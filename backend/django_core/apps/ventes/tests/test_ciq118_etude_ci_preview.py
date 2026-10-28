@@ -38,7 +38,12 @@ from apps.parametres.pvgis_profils import (
 )
 from apps.stock.models import FicheTechnique, Produit
 from apps.ventes.domain import etude_ci
-from apps.ventes.moteur_ci.production import plan_de_production
+from apps.ventes.moteur_ci.production import (
+    CLE_POSE_RASANTE,
+    SOURCE_ANGLE_POSE_RASANTE,
+    SOURCE_ANGLE_TOIT_PLAT,
+    plan_de_production,
+)
 from authentication.models import Company
 from core.electrique.cables import SECTIONS_MM2_CI
 
@@ -638,3 +643,109 @@ class SerieAuPointDeLaVilleCorc12(TestCase):
         lecture, serie = self._lire('Zorglubville')
         self.assertIsNone(lecture[3])
         serie.assert_not_called()
+
+
+class PoseRasanteR1(_Base):
+    """R1 (fondateur 28/10/2026) — l'orchestrateur sert les DEUX contenances
+    d'un toit plat sans pente déclarée (même service de calepinage : 30°,
+    puis pose rasante 10° jointive), lit la série PVGIS rasante au premier
+    palier qui ne tient pas à 30° et sert le bloc production de l'inclinaison
+    retenue ; une pente déclarée ou une production figée ne bascule jamais."""
+
+    SITE_GPS = {'ville': 'Casablanca', 'lat': 33.57, 'lon': -7.59}
+
+    def setUp(self):
+        super().setUp()
+        FicheTechnique.objects.filter(pmax_wc=Decimal('710')).update(
+            longueur_mm=2384, largeur_mm=1303)
+        self.production.side_effect = _lecture_avec_serie
+
+    def _corps(self, **toit):
+        corps = self.corps(site=dict(self.SITE_GPS))
+        corps['toit'] = dict({'type_pose': 'toit_plat_leste', 'surface_utile_m2': 200}, **toit)
+        return corps
+
+    @staticmethod
+    def _hyp(data, cle):
+        return next((h for h in data['hypotheses'] if h['cle'] == cle), None)
+
+    def test_a_boulangerie_lead_1637_pose_rasante_jamais_20(self):
+        # 200 m² déclarés, toit plat lesté sans pente, 120 MWh/an, 6 h-22 h,
+        # BT patenté. Avant R1 : 20,02 kWc par la seule borne 30° (21,3 kWc).
+        corps = self._corps()
+        corps['categorie_commerciale'] = 'boulangerie'
+        corps['consommation'] = {'kwh_mensuels': [10000] * 12, 'kwh_annuel': None,
+                                 'factures_mad': []}
+        corps['rythme'] = dict(corps['rythme'], plages={'ouvre': [[6, 22]]},
+                               jours_ouverts=[True] * 7, categorie_commerciale='boulangerie',
+                               reponses_categorie={},
+                               talon={'kw': None, 'part_pct': None, 'inconnu': True})
+        data = self.post(corps)
+        toit = data['taille']['bornes']['toit']
+        self.assertAlmostEqual(toit['kwc_30'], 21.3, places=2)
+        self.assertAlmostEqual(toit['kwc_10'], 35.5, places=2)
+        self.assertEqual((toit['kwc'], toit['surface_m2']), (toit['kwc_10'], 200))
+        self.assertIn('28/10/2026', toit['source_10'])
+        self.assertGreater(data['taille']['retenue_kwc'], toit['kwc_30'])
+        self.assertEqual(self._hyp(data, 'inclinaison_retenue_deg')['valeur'], 10)
+        # Le bloc production servi est celui de la rasante (série au plan 10°).
+        self.assertEqual(data['production']['inclinaison_deg'], 10)
+        self.assertEqual(data['production']['inclinaison_source'], SOURCE_ANGLE_POSE_RASANTE)
+        self.assertEqual(self._hyp(data, 'inclinaison_deg')['valeur'], 10)
+        self.assertEqual(self._hyp(data, 'inclinaison_deg')['source'], SOURCE_ANGLE_POSE_RASANTE)
+        # Deux lectures PVGIS : la série 30°, puis la rasante (marqueur, même pose).
+        self.assertEqual(self.production.call_count, 2)
+        toit_r = self.production.call_args.kwargs['toit']
+        self.assertTrue(toit_r[CLE_POSE_RASANTE])
+        self.assertEqual((toit_r['type_pose'], toit_r['pente_deg']), ('toit_plat_leste', None))
+        # Même la rasante ne loge pas la taille économique : le devis le dit.
+        self.assertEqual(data['taille']['raison_arret'], 'toit')
+        self.assertEqual(self._hyp(data, 'taille_limitee_toit')['source'],
+                         'taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante')
+        # P3 — les deux clés vivent dans ``taille`` (contrat), lues par le générateur.
+        self.assertEqual(data['taille']['inclinaison_retenue_deg'], 10)
+        self.assertEqual(data['taille']['taille_limitee_toit'], self._hyp(data, 'taille_limitee_toit')['source'])
+
+    def test_b_taille_qui_tient_a_30_garde_30_et_sa_production(self):
+        # Petite consommation : la taille économique tient à 30° → 30° gardé,
+        # bloc production servi = la série 30° (le balayage a pu REGARDER des
+        # paliers au-delà de 21,3 kWc — lus en rasante — sans les retenir).
+        corps = self._corps()
+        corps['consommation'] = {'kwh_mensuels': [1500] * 12, 'kwh_annuel': None,
+                                 'factures_mad': []}
+        data = self.post(corps)
+        toit = data['taille']['bornes']['toit']
+        self.assertLessEqual(data['taille']['retenue_kwc'], toit['kwc_30'])
+        self.assertEqual(self._hyp(data, 'inclinaison_retenue_deg')['valeur'], 30)
+        self.assertEqual(data['production']['inclinaison_deg'], 30)
+        self.assertEqual(data['production']['inclinaison_source'], SOURCE_ANGLE_TOIT_PLAT)
+        self.assertEqual(self._hyp(data, 'inclinaison_deg')['source'], SOURCE_ANGLE_TOIT_PLAT)
+        self.assertEqual(self.production.call_args_list[0].kwargs['toit'].get(CLE_POSE_RASANTE), None)
+        self.assertIsNone(self._hyp(data, 'taille_limitee_toit'))
+        self.assertEqual((data['taille']['inclinaison_retenue_deg'], data['taille']['taille_limitee_toit']),
+                         (30, None))
+
+    def test_d_pente_declaree_aucune_bascule(self):
+        data = self.post(self._corps(pente_deg=15))
+        toit = data['taille']['bornes']['toit']
+        self.assertNotIn('kwc_10', toit)
+        self.assertIsNone(self._hyp(data, 'inclinaison_retenue_deg'))
+        self.assertEqual((data['taille']['inclinaison_retenue_deg'], data['taille']['taille_limitee_toit']),
+                         (None, None))
+        self.assertEqual(self.production.call_count, 1)
+        self.assertEqual(data['production']['inclinaison_deg'], 15)
+
+    def test_production_figee_jamais_rebasculee(self):
+        # CIQ119 — le rafraîchisseur relit la production FIGÉE du devis en
+        # « taille donnée » : aucune lecture PVGIS, aucune bascule, jamais
+        # redimensionné.
+        corps = self._corps()
+        data = self.post(corps)
+        self.production.reset_mock()
+        etude = etude_ci.etudier_ci(
+            self.co, dict(corps, taille_explicite_kwc=20),
+            production_figee=data['production'], source_production_figee='PVGIS test')
+        self.production.assert_not_called()
+        self.assertEqual(etude['taille']['raison_arret'], 'taille_explicite')
+        self.assertEqual(etude['production']['inclinaison_deg'], data['production']['inclinaison_deg'])
+        self.assertEqual(etude['production']['kwh_kwc_mensuel'], data['production']['kwh_kwc_mensuel'])

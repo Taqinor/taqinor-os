@@ -702,6 +702,7 @@
     },
     "production": {
       "source": "pvgis",
+      "inclinaison_source": null,
       "coordonnees_figees": {
         "lat": 31.63,
         "lon": -8.01,
@@ -1127,6 +1128,8 @@
       "horizon_marginal_annees": 10,
       "raison_arret": "horizon_marginal",
       "statut": "calculee",
+      "inclinaison_retenue_deg": null,
+      "taille_limitee_toit": null,
       "paliers": [
         {
           "kwc": 5,
@@ -2311,6 +2314,7 @@
     },
     "production": {
       "source": "pvgis",
+      "inclinaison_source": null,
       "coordonnees_figees": {
         "lat": 31.63,
         "lon": -8.01,
@@ -2374,6 +2378,8 @@
       "horizon_marginal_annees": 10,
       "raison_arret": "horizon_marginal",
       "statut": "calculee",
+      "inclinaison_retenue_deg": null,
+      "taille_limitee_toit": null,
       "paliers": [
         {
           "kwc": 5,
@@ -2938,12 +2944,14 @@
   },
   "exemple_toit_plafonnant": {
     "taille": {
-      "retenue_kwc": 30,
+      "retenue_kwc": 30.25,
       "nb_panneaux": 55,
       "pas_kwc": 5,
       "horizon_marginal_annees": 10,
       "raison_arret": "toit",
       "statut": "calculee",
+      "inclinaison_retenue_deg": 10,
+      "taille_limitee_toit": "taille limitée par le toit : 180 m² déclarés → 30.25 kWc en pose rasante",
       "paliers": [
         {
           "kwc": 5,
@@ -3004,8 +3012,13 @@
       ],
       "bornes": {
         "toit": {
-          "kwc": 30,
-          "source": "surface utile déclarée (180 m²) — densité de pose du type `toit_plat_leste`"
+          "kwc": 30.25,
+          "source": "surface utile déclarée (180 m²), pose estimée « toit_plat_leste » — estimation, à confirmer au calepinage/visite",
+          "kwc_30": 18.15,
+          "source_30": "tables à 30° sur la surface déclarée (défaut toit plat, décision fondateur du 27/10/2026)",
+          "kwc_10": 30.25,
+          "source_10": "tables jointives en pose rasante 10° sur la surface déclarée (décision fondateur du 28/10/2026)",
+          "surface_m2": 180
         },
         "phase": {
           "kwc": null,
@@ -3042,7 +3055,7 @@
     "hypotheses": "[{cle, valeur, statut source|declare|estimation, source}]",
     "version_moteur": "texte — change à chaque évolution de formule",
     "devis_auto": "CORC1 (27/10/2026) — {possible, message, champ} : le devis automatique C&I passerait-il sur cette étude ? MÊME refus que le bouton (`etude_ci.refus_devis_auto_ci`) — `message` s'adresse au vendeur (une consigne, jamais le jargon du moteur), `champ` nomme le champ du LEAD à compléter (bouton « Compléter »), ou `composition` (catalogue / prix à régler par l'administrateur) ou `taille` (cause du moteur) ; possible=true ⇒ message et champ null. Toujours présent.",
-    "option_avec": "Clé ADDITIVE (fondateur 26/10/2026) ; dans `etude_params.etude_ci` elle est ABSENTE, et l'aperçu la sert à null (CORC1), quand l'option « avec batterie » n'est pas composée (choix « sans », aucun hybride basse tension ni batterie à fiche complète au catalogue) : {kwc, nb_panneaux, puissance_ac_kw, batterie{produit, nom, quantite, kwh_utile_unitaire, capacite_utile_kwh, rendement, puissance_charge_kw, surplus_jour_min_kwh, mois_surplus_min, se_remplit_tous_les_jours, besoin_nocturne_kwh?, reduite?, panneaux_ajoutes?}, onduleurs{combinaison, ratio_dc_ac}, composition (forme `composition`, hybrides à la place des onduleurs string + banque homogène), bilan (forme `bilan` sans `horaire`, + batterie{capacite_utile_kwh, restitue_kwh_an, charge_kwh_an, rendement}), economie_ci (forme `economie_ci` de ce bilan), economie_annuelle_mad, cout_vente_ht, retour_simple_ans} — jamais prix_achat ni marge"
+    "option_avec": "Clé ADDITIVE (fondateur 26/10/2026) ; dans `etude_params.etude_ci` elle est ABSENTE, et l'aperçu la sert à null (CORC1), quand l'option « avec batterie » n'est pas composée (choix « sans », aucun hybride basse tension ni batterie à fiche complète au catalogue) : {kwc, nb_panneaux, puissance_ac_kw, batterie{produit, nom, quantite, kwh_utile_unitaire, capacite_utile_kwh, rendement, puissance_charge_kw, surplus_jour_min_kwh, mois_surplus_min, se_remplit_tous_les_jours, besoin_nocturne_kwh?, reduite?, panneaux_ajoutes?}, onduleurs{combinaison, ratio_dc_ac}, composition (forme `composition`, hybrides à la place des onduleurs string + banque homogène), bilan (forme `bilan` sans `horaire`, + batterie{capacite_utile_kwh, restitue_kwh_an, charge_kwh_an, rendement}), economie_ci (forme `economie_ci` de ce bilan), economie_annuelle_mad, cout_vente_ht, retour_simple_ans, inclinaison_retenue_deg? (R1, ADDITIVE : la pose qui loge CE champ — 30 ou 10, toit plat sans pente déclarée)} — jamais prix_achat ni marge"
   },
   "interdit": [
     "prix_achat",
@@ -3119,6 +3132,16 @@
       {
         "cle": "production_figee",
         "proprietaire": "moteur_ci"
+      },
+      {
+        "cle": "production_figee_rasante",
+        "proprietaire": "moteur_ci",
+        "pourquoi": "R1 (28/10/2026) — la série PVGIS rasante 10° figée quand la taille est restée à 30° (option « avec » logée au-delà) ; clé INTERNE du rafraîchisseur (`etudier_ci` la rend sous `production_rasante`, la vue d'aperçu ne la sert pas)"
+      },
+      {
+        "cle": "taille_creation_ci",
+        "proprietaire": "moteur_ci",
+        "pourquoi": "R1 (28/10/2026) — le verdict de taille CALCULÉ à la création du devis automatique {retenue_kwc, nb_panneaux, raison_arret, inclinaison_retenue_deg, taille_limitee_toit, toit{kwc, kwc_30, kwc_10, surface_m2}}, relu par le rafraîchisseur tant que les lignes et le toit n'ont pas changé ; copié avec les lignes"
       }
     ],
     "renvois": {

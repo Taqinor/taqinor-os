@@ -203,6 +203,28 @@ const LIBELLES_DETAIL_LEAD = {
 
 export const libelleProvenance = creerLibelleProvenance(LIBELLES_ORIGINE, LIBELLES_DETAIL_LEAD)
 
+// R1 (fondateur 28/10/2026) — pose rasante du moteur C&I
+// (`moteur_ci/production.py` : ANGLE_POSE_RASANTE_DEG) ; 30° reste le défaut.
+const ANGLE_POSE_RASANTE_DEG = 10
+
+/**
+ * R1 — l'inclinaison RETENUE par le moteur pour un toit plat sans pente
+ * déclarée (`taille.inclinaison_retenue_deg` du contrat) : `{ deg, rasante }`,
+ * ou `null` quand le moteur n'en dit rien (pente déclarée, autre pose). Lue
+ * telle quelle, jamais recalculée.
+ */
+export function inclinaisonRetenue(reponse) {
+  const deg = nombreOuNull(reponse?.taille?.inclinaison_retenue_deg)
+  if (deg === null) return null
+  return { deg, rasante: deg === ANGLE_POSE_RASANTE_DEG }
+}
+
+/**
+ * R1 — la phrase client servie quand même la pose rasante ne loge pas la
+ * taille (`taille.taille_limitee_toit`, même texte que le PDF), ou `null`.
+ */
+export const tailleLimiteeToit = (reponse) => texteOuNull(reponse?.taille?.taille_limitee_toit)
+
 /**
  * TOUTES les alertes du serveur, dans l'ordre, aucune filtrée. Les alertes
  * `interne: true` sont MARQUÉES (affichage vendeur seulement), jamais

@@ -1,0 +1,22 @@
+{
+  "adresse": "Casablanca, Maarif",
+  "billRange": "gt10000",
+  "categorieCommerciale": "hotel",
+  "city": "Casablanca, Maarif",
+  "clientRef": "<clientRef>",
+  "consent": true,
+  "contactPreference": "whatsapp_only",
+  "email": "karim@example.com",
+  "eventId": "<eventId>",
+  "factureHiver": null,
+  "fullName": "Karim Benali",
+  "idempotencyKey": "<idempotencyKey>",
+  "langue_preferee": "ar",
+  "mode": "commercial",
+  "phone": "0612345678",
+  "proMonthlyKwh": 9000,
+  "raisonSociale": "Hôtel Les Palmiers",
+  "roofType": "autre",
+  "website_url": "",
+  "whatsappOptIn": true
+}

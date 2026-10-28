@@ -30,16 +30,21 @@ const ROW = read('DevisLineRow.jsx')
 // reste dans l'ecran. Les epingles suivent chaque moitie chez elle.
 const LT = read('generator/LigneTable.jsx')
 
-test('DevisGenerator : moveLine mute l\'ordre du tableau lines (splice, jamais un id backend)', () => {
-  assert.match(DG, /const moveLine = useCallback\(\(key, delta\) => setLines\(ls => \{/)
-  assert.match(DG, /copy\.splice\(idx, 1\)/)
-  assert.match(DG, /copy\.splice\(target, 0, item\)/)
+// R2 (28/10/2026) — le geste suit la SÉQUENCE AFFICHÉE (blocs de groupe
+// client) : `moveLine` délègue au module pur `deplacerDansSequence`, qui mute
+// l'ORDRE du tableau `lines` (jamais un id backend) ; `canMoveUp/Down` viennent
+// de `bornesDeplacement` (position affichée), plus de l'index du state.
+test('DevisGenerator : moveLine mute l\'ordre du tableau lines via deplacerDansSequence (jamais un id backend)', () => {
+  assert.match(DG, /const moveLine = useCallback\(\(key, delta\) => setLines\(ls => deplacerDansSequence\(ls, key, delta\)\)/)
+  assert.doesNotMatch(DG, /copy\.splice\(idx, 1\)/)
 })
 
-test('LigneTable : lines.map reçoit l\'index de rendu pour canMoveUp/canMoveDown', () => {
-  assert.match(LT, /lines\.map\(\(l, i\) => \(/)
-  assert.match(LT, /canMoveUp=\{i > 0\}/)
-  assert.match(LT, /canMoveDown=\{i < lines\.length - 1\}/)
+test('LigneTable : chaque ligne rendue reçoit ses bornes de déplacement AFFICHÉES', () => {
+  assert.match(LT, /const sequence = sequenceGroupesClient\(lines, lignesRemiseesTtc\)/)
+  assert.match(LT, /const bornes = bornesDeplacement\(lines\)/)
+  assert.match(LT, /const borne = bornes\[i\]/)
+  assert.match(LT, /canMoveUp=\{borne\.haut\}/)
+  assert.match(LT, /canMoveDown=\{borne\.bas\}/)
   assert.match(DG, /lines=\{lines\}/, "l'écran doit passer les lignes à LigneTable")
 })
 

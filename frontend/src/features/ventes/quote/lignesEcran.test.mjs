@@ -8,7 +8,8 @@ import { dirname, join } from 'node:path'
 
 import {
   lignesServeurVersEcran, lignesEcranVersPayload,
-  baseLegaleManquante, erreursBaseLegaleServeur,
+  baseLegaleManquante, erreursBaseLegaleServeur, sequenceGroupesClient,
+  deplacerDansSequence, bornesDeplacement,
 } from './lignesEcran.js'
 import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples.js'
 import { lireSourceGenerateur } from '../../../pages/ventes/DevisGeneratorSource.js'
@@ -233,4 +234,85 @@ test('AGR218 — le 400 serveur (champ lignes[i].tva_base_legale) revient sur SA
   assert.deepEqual(erreursBaseLegaleServeur(refus, ecran), { k0: refus.detail })
   assert.deepEqual(erreursBaseLegaleServeur({ detail: 'autre' }, ecran), {})
   assert.deepEqual(erreursBaseLegaleServeur(null, ecran), {})
+})
+
+// ── R2 (fondateur 28/10/2026) — `groupe_client` relu + séquence par groupe ──
+test('R2 — groupe_client servi est relu en groupeClient, jamais renvoyé au serveur', () => {
+  const serveur = lignesServeur().map((l, i) => ({ ...l, groupe_client: i === 0 ? 'tableau_ci' : null }))
+  const ecran = lignesServeurVersEcran(serveur, '20.00')
+  assert.deepEqual(ecran.map((l) => l.groupeClient), ['tableau_ci', null, null])
+  const payload = lignesEcranVersPayload(ecran, { multiMode: 'none' })
+  for (const p of payload) assert.equal('groupe_client' in p, false)
+  // Une ligne sans la clé (serveur d'hier) ⇒ null, jamais undefined.
+  assert.equal(lignesServeurVersEcran([{ ...serveur[0], groupe_client: undefined }])[0].groupeClient, null)
+})
+
+test('R2 — sequenceGroupesClient : sans groupe, une ligne par index dans l’ordre (DOM d’hier)', () => {
+  const lines = [{ quantite: '1', prix_unit_ttc: '120', taux_tva: '20' }, { quantite: '2', prix_unit_ttc: '60', taux_tva: '20' }]
+  assert.deepEqual(sequenceGroupesClient(lines), [{ kind: 'ligne', index: 0 }, { kind: 'ligne', index: 1 }])
+  assert.deepEqual(sequenceGroupesClient(undefined), [])
+})
+
+test('R2 — sequenceGroupesClient : en-tête « Tableau de protection AC/DC — total HT » devant les composants, rapprochés à la place du premier', () => {
+  const lines = [
+    { designation: 'Panneau', quantite: '10', prix_unit_ttc: '1200', taux_tva: '20', groupeClient: null },
+    { designation: 'Coffret DC', quantite: '2', prix_unit_ttc: '1800', taux_tva: '20', groupeClient: 'tableau_ci' },
+    { designation: 'Câble AC', quantite: '30', prix_unit_ttc: '60', taux_tva: '20', groupeClient: null },
+    { designation: 'Smart Meter', quantite: '1', prix_unit_ttc: '2160', taux_tva: '20', groupeClient: 'tableau_ci' },
+    { designation: 'Pose des modules', quantite: '1', prix_unit_ttc: '24000', taux_tva: '20', groupeClient: 'installation_ci' },
+    { designation: 'Groupe inconnu', quantite: '1', prix_unit_ttc: '12', taux_tva: '20', groupeClient: 'autre' },
+  ]
+  const seq = sequenceGroupesClient(lines)
+  assert.deepEqual(seq.map((p) => (p.kind === 'entete' ? `${p.groupe}:${p.nb}:${p.totalHt}` : p.index)),
+    [0, 'tableau_ci:2:4800', 1, 3, 2, 'installation_ci:1:20000', 4, 5])
+  assert.equal(seq[1].libelle, 'Tableau de protection AC/DC')
+  assert.equal(seq[5].libelle, 'Installation clé en main')
+  // Chaque ligne reste rendue une seule fois, l’ordre persisté (index) est intact.
+  const indexes = seq.filter((p) => p.kind === 'ligne').map((p) => p.index)
+  assert.deepEqual([...indexes].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5])
+})
+
+test('R2 — en-tête : total HT APRÈS remise globale quand le miroir la donne (comme le PDF)', () => {
+  const lines = [
+    { quantite: '2', prix_unit_ttc: '1800', taux_tva: '20', groupeClient: 'tableau_ci' },
+    { quantite: '1', prix_unit_ttc: '2160', taux_tva: '20', groupeClient: 'tableau_ci' },
+  ]
+  // Catalogue : 3 000 + 1 800 = 4 800 HT ; remise 10 % : TTC 3 240 + 1 944 ⇒ 2 700 + 1 620 = 4 320 HT.
+  assert.equal(sequenceGroupesClient(lines)[0].totalHt, 4800)
+  assert.equal(sequenceGroupesClient(lines, [3240, 1944])[0].totalHt, 4320)
+  assert.equal(sequenceGroupesClient(lines, [null, null])[0].totalHt, 4800)
+})
+
+test('R2 — Monter/Descendre sur la séquence affichée : [Coffret DC, Panneau, Parafoudre AC]', () => {
+  const coffret = { _key: 'c', designation: 'Coffret DC', quantite: '1', prix_unit_ttc: '1', taux_tva: '20', groupeClient: 'tableau_ci' }
+  const panneau = { _key: 'p', designation: 'Panneau', quantite: '1', prix_unit_ttc: '1', taux_tva: '20', groupeClient: null }
+  const paraf = { _key: 'f', designation: 'Parafoudre AC', quantite: '1', prix_unit_ttc: '1', taux_tva: '20', groupeClient: 'tableau_ci' }
+  const lines = [coffret, panneau, paraf]
+  const cles = (ls) => ls.map((l) => l._key)
+  // Affiché : [bloc tableau : c, f] puis p.
+  assert.deepEqual(bornesDeplacement(lines), [
+    { haut: false, bas: true }, { haut: true, bas: false }, { haut: true, bas: true }])
+  // « Monter » Panneau : saute le bloc entier et l'ordre persisté devient l'ordre affiché.
+  assert.deepEqual(cles(deplacerDansSequence(lines, 'p', -1)), ['p', 'c', 'f'])
+  // « Monter » Parafoudre : dans son bloc, passe devant le coffret.
+  assert.deepEqual(cles(deplacerDansSequence(lines, 'f', -1)), ['f', 'c', 'p'])
+  // « Descendre » Parafoudre (bord bas du bloc) : le bloc entier passe sous le panneau.
+  assert.deepEqual(cles(deplacerDansSequence(lines, 'f', 1)), ['p', 'c', 'f'])
+  // « Descendre » Coffret : dans son bloc, derrière le parafoudre — rien ne saute le panneau.
+  assert.deepEqual(cles(deplacerDansSequence(lines, 'c', 1)), ['f', 'c', 'p'])
+  // Hors bornes affichées : la même liste (identité), clé inconnue aussi.
+  assert.equal(deplacerDansSequence(lines, 'c', -1), lines)
+  assert.equal(deplacerDansSequence(lines, 'p', 1), lines)
+  assert.equal(deplacerDansSequence(lines, 'zz', 1), lines)
+  // L'ordre PERSISTÉ est l'ordre affiché : après « Monter » Panneau, le corps
+  // replace-lines porte ordre 0/1/2 dans la séquence affichée [p, c, f].
+  const corps = lignesEcranVersPayload(deplacerDansSequence(
+    lines.map((l) => ({ ...l, produit: '7', typeLigne: 'produit' })), 'p', -1))
+  assert.deepEqual(corps.map((o) => [o.designation, o.ordre]),
+    [['Panneau', 0], ['Coffret DC', 1], ['Parafoudre AC', 2]])
+  // Sans groupe : l'échange de voisins d'hier.
+  const libres = lines.map((l) => ({ ...l, groupeClient: null }))
+  assert.deepEqual(cles(deplacerDansSequence(libres, 'f', -1)), ['c', 'f', 'p'])
+  assert.deepEqual(bornesDeplacement(libres), [
+    { haut: false, bas: true }, { haut: true, bas: true }, { haut: true, bas: false }])
 })

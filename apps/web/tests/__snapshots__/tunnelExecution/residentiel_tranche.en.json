@@ -1,0 +1,25 @@
+{
+  "adresse": "Casablanca, Maarif",
+  "billRange": "1500-3000",
+  "city": "Casablanca, Maarif",
+  "clientRef": "<clientRef>",
+  "consent": true,
+  "contactPreference": "whatsapp_only",
+  "email": "karim@example.com",
+  "estimateShown": {
+    "kwc": 12,
+    "prodKwh": 18430,
+    "ecoMadMonthLow": 1800,
+    "ecoMadMonthHigh": 2200,
+    "paybackLabel": "4 à 6 ans"
+  },
+  "eventId": "<eventId>",
+  "factureHiver": null,
+  "fullName": "Karim Benali",
+  "idempotencyKey": "<idempotencyKey>",
+  "mode": "residentiel",
+  "phone": "0612345678",
+  "roofType": "autre",
+  "website_url": "",
+  "whatsappOptIn": true
+}
