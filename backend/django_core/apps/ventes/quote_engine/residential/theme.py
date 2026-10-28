@@ -461,7 +461,7 @@ def _annees_onduleur(lignes, est_onduleur):
 def _lignes_onduleur(d, rows, est_onduleur):
     """CE2E4 — la garantie onduleur de CHAQUE option (une ligne par option
     quand elles diffèrent, l'option inconnue omise) ; document à une option :
-    ses lignes servies (``all_items``)."""
+    la composition de la bande (``_composition_rows``), jamais une autre source."""
     if d.get("deux_options", True):
         options = [d.get(c) or [] for c in ("sans_items", "avec_items")]
         if all(any(isinstance(r, dict) and est_onduleur(r) for r in o) for o in options):
@@ -470,7 +470,7 @@ def _lignes_onduleur(d, rows, est_onduleur):
                 return [(str(ans[0]), "ans", "Onduleur", "garantie fabricant")]
             return [(str(n), "ans", "Onduleur (option %d)" % (i + 1), "garantie fabricant")
                     for i, n in enumerate(ans) if n is not None]
-    n = _annees_onduleur(d.get("all_items") or rows, est_onduleur)
+    n = _annees_onduleur(rows, est_onduleur)
     return [] if n is None else [(str(n), "ans", "Onduleur", "garantie fabricant")]
 
 
