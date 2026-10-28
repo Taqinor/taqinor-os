@@ -68,9 +68,8 @@ class FactureEncaissementActionsMixin:
             'pas': str(prop['pas'] or Decimal('0')),
         })
 
-    @extend_schema(request=PaiementSerializer,
-                   responses={201: FactureListeSerializer},
-                   extensions=D.CORPS_MONTANT_POSITIF)
+    @extend_schema(request=D.PaiementEncaissementSerializer,
+                   responses={201: FactureListeSerializer})
     @action(detail=True, methods=['post'], url_path='enregistrer-paiement',
             permission_classes=[PeutEncaisser])
     def enregistrer_paiement(self, request, pk=None):
@@ -81,7 +80,7 @@ class FactureEncaissementActionsMixin:
         Disponible à la Commerciale (création) ; l'annulation reste admin.
         """
         facture = self.get_object()
-        serializer = PaiementSerializer(data=request.data)
+        serializer = D.PaiementEncaissementSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         # ENF11 — le montant (publié strictement positif) est une règle
         # d'ENTRÉE : 400 ; les refus qui suivent tiennent à l'ÉTAT de la

@@ -11398,6 +11398,7 @@ components:
 - PaiementAttestationRecueRequestRequest
 - PaiementAvecRetenueEntreeRequest
 - PaiementAvecRetenueResponse
+- PaiementEncaissementRequest
 - PaiementEnregistrerAvanceRequestRequest
 - PaiementEnvoyerRecuRequestRequest
 - PaiementEnvoyerRecuResponse
@@ -11410,7 +11411,6 @@ components:
 - PaiementReaffecterRequestRequest
 - PaiementReaffecterResponse
 - PaiementRejeterRequestRequest
-- PaiementRequest
 - PaiementStatutEnum
 - PaiementVentilerRequestRequest
 - PalierApprobateurEnum
