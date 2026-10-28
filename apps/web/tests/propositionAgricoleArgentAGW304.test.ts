@@ -174,7 +174,7 @@ describe('AGW304 — garanties par composant : jamais complétées par une const
   it('en agricole, le bloc de garanties codé en dur (30/10/2 ans) n’est PAS affiché', () => {
     expect(garantiesCodeesEnDurAffichees('agricole')).toBe(false);
     expect(garantiesCodeesEnDurAffichees('residentiel')).toBe(true);
-    expect(garantiesCodeesEnDurAffichees('industriel')).toBe(true);
+    expect(garantiesCodeesEnDurAffichees('industriel')).toBe(false); // CPRW15
     expect(garantiesCodeesEnDurAffichees(undefined)).toBe(true);
   });
 });

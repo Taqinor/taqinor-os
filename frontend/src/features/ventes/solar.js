@@ -4,7 +4,7 @@
 // simulator UI) and only converted to HT at save time. Pure functions, no I/O.
 // The premium PDF engine computes its own figures server-side — never fed here.
 
-import { formatMAD } from '../../lib/format.js'
+import { formatMAD, formatNumber } from '../../lib/format.js'
 // QJR567 — la population des totaux (ligne PRODUIT non optionnelle) vient de
 // `ligneCompteDansTotaux` (remise.js, même règle que le noyau des totaux ;
 // remise.js n'importe rien : aucun cycle).
@@ -12,6 +12,8 @@ import {
   ligneCompteDansTotaux, PAS_ARRONDI_DEVIS, totauxCanoniques, repartirRemiseParLigne,
 } from './remise.js'
 import { SCENARIOS_VALIDES } from './quote/scenarios.js'
+import { economieAvecNette } from './quote/economieAvecNette.js'
+import { prixKwhEstimation } from './quote/prixKwhEstimation.js'
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
 // DC9 — MIROIR de la source Python unique
@@ -427,11 +429,11 @@ export function computeROI({
   lines = [],
   // AGNR36 — catalogue de l'écran : chaque ligne se classe sur désignation +
   // nom du produit lié (`texteClassement`). Absent ⇒ désignation seule.
-  produits = [],
+  // RGEN5 — `reglesCalcul` (`Devis.regles_calcul`) ≥ 3 : économie « avec » nette (absent ⇒ brut, inchangé).
+  produits = [], reglesCalcul = 0,
 }) {
-  // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
-  // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
-  const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
+  // RGEN10 — prix du kWh « estimation » = cascade du PDF (barème société → grille du distributeur reçu → tarif société → 1,20).
+  const PRICE = prixKwhEstimation({ utility, tranches: bareme?.tranches, consoAnnuelleKwh, kwhPrice }, { grilleNationale: ONEE_TRANCHES, factureMensuelle: monthlyBillFromKwh, defaut: KWH_PRICE, repli: FALLBACK_KWH_PRICE })
   const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
   // QX38 — productible CANONIQUE (kWh/kWc/an) : quand il est fourni (PVGIS par
   // ville, source unique partagée avec le PDF/web), la production annuelle vaut
@@ -635,10 +637,9 @@ export function computeROI({
   // socle autoconsommé directement (autoconsoSansEff) n'entre jamais dans la
   // batterie ; seul le supplément apporté par la capacité batterie
   // (autoconsoAvecEff − autoconsoSansEff) est stocké puis restitué.
-  let battPart = 0
-  if (autoconsoAvecEff > 0) {
-    battPart = Math.max(0, autoconsoAvecEff - autoconsoSansEff) / autoconsoAvecEff
-  }
+  let battPart = autoconsoAvecEff > 0 ? Math.max(0, autoconsoAvecEff - autoconsoSansEff) / autoconsoAvecEff : 0
+  // RGEN5 — niveau 3 : même règle que le PDF (RHOR6, économie nette) ; le cashflow lit le net (part 0).
+  ;({ economie: ecoAnnuelleAvec, factureAvec: factureAvecAvec, partStockee: battPart } = economieAvecNette(ecoAnnuelleAvec, factureAvecAvec, battPart, { nette: reglesCalcul >= 3 && stockagePresent, roundtrip: BATTERY_ROUNDTRIP, series: [{ valeurs: ecoAvecMonthly }, { valeurs: monthlyDetail, cle: 'eco_avec' }] }))
 
   // QX39 — payback par croisement du cumul du cashflow 25 ans (miroir backend),
   // pas un ratio année-1 : écran/PDF/proposition affichent le MÊME payback.
@@ -2593,12 +2594,12 @@ export function avecBatterieAvailability(lines, produits, kwp) {
   const unitsNeeded = maxKw > 0 ? Math.ceil((kwp || 0) / maxKw) : Infinity
   let reason
   if (!hasHyb && maxKw > 0 && unitsNeeded > MAX_HYBRID_UNITS) {
-    reason = `puissance requise ${kwp} kWc — il faudrait ${unitsNeeded} onduleurs `
-      + `hybrides de ${maxKw} kW en parallèle (déraisonnable au-delà de ${MAX_HYBRID_UNITS})`
+    reason = `pour ${formatNumber(Math.round((Number(kwp) || 0) * 100) / 100)} kWc il faudrait ${unitsNeeded} onduleurs hybrides de ${formatNumber(maxKw)} kW `
+      + `(au plus ${MAX_HYBRID_UNITS} en parallèle) — réduisez la taille ou ajoutez au catalogue un onduleur hybride plus puissant`
   } else if (!hasHyb) {
-    reason = 'aucun onduleur hybride dans la liste'
+    reason = 'aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un'
   } else {
-    reason = 'aucune batterie dans la liste'
+    reason = 'aucune batterie dans les lignes du devis — ajoutez-en une'
   }
   return { available: false, reason }
 }

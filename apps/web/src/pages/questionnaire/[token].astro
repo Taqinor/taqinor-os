@@ -47,10 +47,16 @@ import {
   TYPE_SURFACE_VALUES,
   TYPE_TOITURE_PRO_VALUES,
   questionnaireEndpoint,
+  eteDifferentePrefill,
   SECTION_META,
   SOURCE_EAU_VALUES,
   TYPE_TOITURE_VALUES,
 } from '../../lib/questionnaire';
+import { type L3, AIDES_FACTURE, POMPAGE_NUM, SOURCE_EAU_LABELS, IRRIGATION_LABELS, ALIM_LABELS, L, TENSION_LABELS, CONTRAT_LABELS, OPTION_BT_LABELS, PHASE_LABELS, ORIENTATION_LABELS, SURFACE_LABELS, TOITURE_PRO_LABELS, EQUIPES_LABELS, TVA_LABELS, CATEGORIE_LABELS, HORS_HORAIRES_LABELS, JOUR_LABELS, CAT_Q_LABELS, CAT_OPTION_LABELS, catLabel, CHAMPS_POMPAGE_CQST, RACCORDEMENT_RES_LABELS, TOITURE_RES_LABELS, GPS_AGRI, GPS_TOIT, DETAIL_MOIS } from '../../lib/questionnaireChamps';
+import ChampsDonnees from '../../components/questionnaire/ChampsDonnees.astro';
+import ChampsHeuresActivite from '../../components/questionnaire/ChampsHeuresActivite.astro';
+import Repli from '../../components/questionnaire/Repli.astro';
+import ChampsAffiner from '../../components/questionnaire/ChampsAffiner.astro';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { entetesIpVisiteur } from '../api/_apiBase';
 import { NAP, WHATSAPP_LEADS } from '../../lib/nap';
@@ -179,25 +185,6 @@ function prefillBoolRadio(key: string): 'oui' | 'non' | '' {
 // contrat `lead_pompage.json` / help_text de la colonne ; EN/AR traduits.
 const POMPAGE_INPUT_CLS =
   'w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50';
-const POMPAGE_NUM = {
-  niveau_statique_m: { id: 'q-niveau-statique', fr: "À quelle profondeur se trouve l'eau quand la pompe est arrêtée ? (m)", en: 'How deep is the water when the pump is off? (m)', ar: 'على أي عمق يوجد الماء عندما تكون المضخة متوقفة؟ (م)' },
-  besoin_eau_m3j: { id: 'q-besoin-eau', fr: "De combien de mètres cubes d'eau avez-vous besoin par jour au plus fort de la saison ? (m³/jour)", en: 'How many cubic metres of water do you need per day at the peak of the season? (m³/day)', ar: 'كم متراً مكعباً من الماء تحتاجون يومياً في ذروة الموسم؟ (م³/اليوم)' },
-  surface_irriguee_ha: { id: 'q-surface-irriguee', fr: "Combien d'hectares irriguez-vous ? (ha)", en: 'How many hectares do you irrigate? (ha)', ar: 'كم هكتاراً تسقون؟ (هكتار)' },
-  // AGQ34 (D-AGQ-6) — jamais pré-remplie (aucun défaut).
-  jours_irrigation_semaine: { id: 'q-jours-irrigation', fr: 'Combien de jours par semaine irriguez-vous en saison ? (1 à 7)', en: 'How many days a week do you irrigate in season? (1 to 7)', ar: 'كم يوماً في الأسبوع تسقون خلال الموسم؟ (من 1 إلى 7)' },
-  butane_bouteilles_jour: { id: 'q-butane-bouteilles', fr: 'Combien de bouteilles de butane par jour en saison ? (bouteilles de 12 kg)', en: 'How many butane cylinders per day in season? (12 kg cylinders)', ar: 'كم قنينة بوتان في اليوم خلال الموسم؟ (قنينات 12 كلغ)' },
-  carburant_prix_unitaire_mad: { id: 'q-carburant-prix', fr: 'Vous la payez combien, la bouteille (ou le litre de gasoil) ? (MAD)', en: 'How much do you pay for a cylinder (or a litre of diesel)? (MAD)', ar: 'بكم تشترون القنينة (أو لتر الغازوال)؟ (درهم)' },
-  depense_carburant_mad_mois: { id: 'q-depense-carburant', fr: 'Combien dépensez-vous en carburant par mois ? (MAD/mois)', en: 'How much do you spend on fuel per month? (MAD/month)', ar: 'كم تنفقون على الوقود شهرياً؟ (درهم/الشهر)' },
-} as const;
-const SOURCE_EAU_LABELS: Record<string, string> = {
-  puits: 'Puits', forage: 'Forage', bassin: 'Bassin', riviere: 'Rivière',
-};
-const IRRIGATION_LABELS: Record<string, string> = {
-  goutte: 'Goutte-à-goutte', aspersion: 'Aspersion', gravitaire: 'Gravitaire (à la raie)',
-};
-const ALIM_LABELS: Record<string, string> = {
-  aucune: 'Pas de pompe actuellement', diesel: 'Diesel (gasoil)', butane: 'Butane', electrique: 'Électricité',
-};
 const MOIS_LABELS: Record<number, { fr: string; en: string; ar: string }> = {
   1: { fr: 'Janv.', en: 'Jan', ar: 'يناير' }, 2: { fr: 'Févr.', en: 'Feb', ar: 'فبراير' },
   3: { fr: 'Mars', en: 'Mar', ar: 'مارس' }, 4: { fr: 'Avr.', en: 'Apr', ar: 'أبريل' },
@@ -214,6 +201,7 @@ const carburantMasque = alimPrefill === 'aucune' || alimPrefill === 'electrique'
 const butaneMasque = carburantMasque || alimPrefill === 'diesel';
 /** Le lead porte-t-il déjà sa position ? (les DEUX coordonnées, jamais une
  *  seule) — sert à dire au client qu'on ne la lui redemande pas. */
+const eteRadio = eteDifferentePrefill(prefill); // CQSTW19
 const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '';
 
 // ── CIW406 — sections PRO (réseau, activité, site, société) ──────────────
@@ -221,137 +209,8 @@ const gpsDejaConnu = prefillStr('gps_lat') !== '' && prefillStr('gps_lng') !== '
 // darija sera relue par Reda ensuite (modèle D-AGR-11). AUCUNE question
 // résidentielle ici (ni maison, ni foyer, ni équipements domestiques) et rien
 // de Q21 (budget, délai, décideur, concurrents) : jamais demandés par écrit.
-type L3 = { fr: string; en: string; ar: string };
-const L = (fr: string, en: string, ar: string): L3 => ({ fr, en, ar });
 const PRO_INPUT_CLS = POMPAGE_INPUT_CLS;
 const PRO_TOGGLE_CLS = 'min-h-[44px] border p-3 text-center text-sm font-semibold text-encre transition-colors';
-const TENSION_LABELS: Record<string, L3> = {
-  bt: L('Basse tension (BT) — compteur ordinaire', 'Low voltage (LV) — standard meter', 'ضغط منخفض (BT) — عداد عادي'),
-  mt: L('Moyenne tension (MT) — poste de transformation', 'Medium voltage (MV) — transformer substation', 'ضغط متوسط (MT) — محطة تحويل'),
-  ne_sait_pas: L('Je ne sais pas', "I don't know", 'لا أعرف'),
-};
-// Fondateur 26/10/2026 — contrat, option de la force motrice et phase : lus sur la facture.
-const CONTRAT_LABELS: Record<string, L3> = {
-  bt_domestique: L('Basse tension — domestique', 'Low voltage — domestic', 'ضغط منخفض — منزلي'),
-  bt_patente: L('Basse tension — patenté (commerce)', 'Low voltage — business', 'ضغط منخفض — مهني (تجاري)'),
-  bt_force_motrice: L('Basse tension — force motrice', 'Low voltage — motive power', 'ضغط منخفض — القوة المحركة'),
-  mt_general: L('Moyenne tension', 'Medium voltage', 'ضغط متوسط'),
-  ne_sait_pas: L('Je ne sais pas', "I don't know", 'لا أعرف'),
-};
-const OPTION_BT_LABELS: Record<string, L3> = {
-  normale: L('Option normale', 'Standard option', 'الخيار العادي'),
-  bi_horaire: L('Option bi-horaire (heures pleines / heures creuses)', 'Two-rate option (peak / off-peak hours)', 'خيار التوقيتين (ساعات الذروة / الساعات العادية)'),
-};
-const PHASE_LABELS: Record<string, L3> = {
-  monophase: L('Monophasé', 'Single-phase', 'أحادي الطور'),
-  triphase: L('Triphasé', 'Three-phase', 'ثلاثي الأطوار'),
-  inconnu: L('Je ne sais pas', "I don't know", 'لا أعرف'),
-};
-const ORIENTATION_LABELS: Record<string, L3> = {
-  sud: L('Sud', 'South', 'الجنوب'),
-  sud_est: L('Sud-Est', 'South-East', 'الجنوب الشرقي'),
-  sud_ouest: L('Sud-Ouest', 'South-West', 'الجنوب الغربي'),
-  est: L('Est', 'East', 'الشرق'),
-  ouest: L('Ouest', 'West', 'الغرب'),
-  autre: L('Nord ou autre', 'North or other', 'الشمال أو غيره'),
-};
-const SURFACE_LABELS: Record<string, L3> = {
-  toiture: L('Sur la toiture', 'On the roof', 'فوق السطح'),
-  ombriere: L('Sur une ombrière de parking', 'On a parking canopy', 'فوق مظلة موقف السيارات'),
-  terrain: L('Sur un terrain', 'On open ground', 'على أرض مفتوحة'),
-};
-const TOITURE_PRO_LABELS: Record<string, L3> = {
-  terrasse_beton: L('Terrasse béton', 'Concrete flat roof', 'سطح إسمنتي مسطح'),
-  tole_metal: L('Tôle métallique', 'Metal sheet', 'صفائح معدنية'),
-  tuiles: L('Tuiles', 'Tiles', 'قرميد'),
-  bac_acier: L('Bac acier', 'Steel decking', 'ألواح فولاذية'),
-  fibrociment: L('Fibrociment', 'Fibre cement', 'الألياف الإسمنتية'),
-  autre: L('Autre', 'Other', 'أخرى'),
-};
-const EQUIPES_LABELS: Record<string, L3> = {
-  '1x8': L('Une équipe de jour', 'One day shift', 'فريق واحد نهاراً'),
-  '2x8': L('Deux équipes', 'Two shifts', 'فريقان'),
-  '3x8': L('Trois équipes', 'Three shifts', 'ثلاثة فرق'),
-  continu: L('En continu', 'Continuous', 'بشكل متواصل'),
-  ne_sait_pas: L('Je ne sais pas', "I don't know", 'لا أعرف'),
-};
-const TVA_LABELS: Record<string, L3> = {
-  oui: L('Oui', 'Yes', 'نعم'),
-  non: L('Non', 'No', 'لا'),
-  ne_sait_pas: L('Je ne sais pas', "I don't know", 'لا أعرف'),
-};
-const CATEGORIE_LABELS: Record<string, L3> = {
-  hotel: L('Hôtel / riad', 'Hotel / riad', 'فندق / رياض'),
-  restaurant: L('Restaurant', 'Restaurant', 'مطعم'),
-  cafe: L('Café / salon de thé / glacier', 'Café / tea room / ice-cream shop', 'مقهى / صالون شاي / محل مثلجات'),
-  boulangerie: L('Boulangerie / pâtisserie', 'Bakery / pastry shop', 'مخبزة / محل حلويات'),
-  commerce: L('Commerce / boutique', 'Shop / store', 'متجر / محل تجاري'),
-  supermarche: L('Supermarché / épicerie (avec frigos)', 'Supermarket / grocery (with fridges)', 'سوق ممتاز / بقالة (بثلاجات)'),
-  boucherie: L('Boucherie / poissonnerie', 'Butcher / fishmonger', 'جزارة / محل سمك'),
-  pharmacie: L('Pharmacie', 'Pharmacy', 'صيدلية'),
-  coiffure: L('Coiffure / esthétique', 'Hairdresser / beauty salon', 'حلاقة / تجميل'),
-  pressing: L('Pressing / laverie', 'Dry cleaner / laundry', 'مصبنة / غسيل'),
-  bureau: L('Bureaux / siège', 'Offices / head office', 'مكاتب / مقر'),
-  sante: L('Santé (clinique, cabinet)', 'Health (clinic, practice)', 'صحة (مصحة، عيادة)'),
-  ecole: L('École', 'School', 'مدرسة'),
-  salle_sport: L('Salle de sport', 'Gym', 'قاعة رياضة'),
-  hammam: L('Hammam / spa', 'Hammam / spa', 'حمام / سبا'),
-  garage: L('Garage / atelier mécanique', 'Garage / car workshop', 'كراج / ورشة ميكانيك'),
-  atelier: L('Atelier (menuiserie, ferronnerie, couture)', 'Workshop (carpentry, metalwork, sewing)', 'ورشة (نجارة، حدادة، خياطة)'),
-  imprimerie: L('Imprimerie', 'Print shop', 'مطبعة'),
-  station_service: L('Station-service', 'Petrol station', 'محطة وقود'),
-  entrepot: L('Entrepôt / logistique (sans froid)', 'Warehouse / logistics (no cold storage)', 'مستودع / لوجستيك (بدون تبريد)'),
-  froid: L('Froid / entrepôt frigorifique', 'Cold storage', 'تبريد / مستودع مبرد'),
-  mosquee: L('Mosquée / association', 'Mosque / association', 'مسجد / جمعية'),
-  autre: L('Autre activité', 'Other activity', 'نشاط آخر'),
-};
-const HORS_HORAIRES_LABELS: Record<string, L3> = {
-  aucun: L('Aucun', 'None', 'لا شيء'),
-  un_peu: L('Un peu', 'A few', 'قليلاً'),
-  beaucoup: L('Beaucoup', 'A lot', 'كثيراً'),
-};
-const JOUR_LABELS: Record<number, L3> = {
-  1: L('Lun', 'Mon', 'الاثنين'), 2: L('Mar', 'Tue', 'الثلاثاء'), 3: L('Mer', 'Wed', 'الأربعاء'),
-  4: L('Jeu', 'Thu', 'الخميس'), 5: L('Ven', 'Fri', 'الجمعة'), 6: L('Sam', 'Sat', 'السبت'),
-  7: L('Dim', 'Sun', 'الأحد'),
-};
-// Questions propres à la catégorie : libellé par `categorie.cle` puis par `cle`.
-const CAT_Q_LABELS: Record<string, L3> = {
-  chambres: L("Combien de chambres avez-vous ?", 'How many rooms do you have?', 'كم عدد الغرف لديكم؟'),
-  occupation_pct: L("Quel est votre taux d'occupation moyen sur l'année, à peu près ? (%)", 'What is your average yearly occupancy rate, roughly? (%)', 'ما هي نسبة الإشغال المتوسطة خلال السنة تقريباً؟ (%)'),
-  piscine: L("Votre établissement a-t-il une piscine ?", 'Does your establishment have a swimming pool?', 'هل يتوفر مؤسستكم على مسبح؟'),
-  heures_piscine: L("La piscine fonctionne combien d'heures par jour ? (h)", 'How many hours a day does the pool run? (h)', 'كم ساعة في اليوم يشتغل المسبح؟ (س)'),
-  blanchisserie: L('Lavez-vous le linge sur place ?', 'Do you wash the linen on site?', 'هل تغسلون الأغطية في عين المكان؟'),
-  reception_24h: L('La réception est-elle ouverte 24 heures sur 24 ?', 'Is the reception open 24 hours a day?', 'هل الاستقبال مفتوح 24 ساعة على 24؟'),
-  chambres_froides: L('Combien de chambres froides avez-vous ?', 'How many cold rooms do you have?', 'كم عدد الغرف الباردة لديكم؟'),
-  'commerce.chambres_froides': L('Combien de meubles ou chambres froids avez-vous ?', 'How many refrigerated units or cold rooms do you have?', 'كم عدد واجهات أو غرف التبريد لديكم؟'),
-  horaires: L('Quels sont vos horaires de service ?', 'What are your service hours?', 'ما هي ساعات الخدمة لديكم؟'),
-  cuisson: L('Cuisinez-vous à l’électricité ou au gaz ?', 'Do you cook with electricity or gas?', 'هل تطبخون بالكهرباء أم بالغاز؟'),
-  ouvert_journee_ramadan: L('Pendant le Ramadan, êtes-vous ouverts en journée ?', 'During Ramadan, are you open during the day?', 'خلال رمضان، هل أنتم مفتوحون نهاراً؟'),
-  surface_vente_m2: L('Quelle est votre surface de vente ? (m²)', 'What is your sales floor area? (m²)', 'ما هي مساحة البيع لديكم؟ (م²)'),
-  effectif: L("Combien de personnes travaillent sur le site ?", 'How many people work on the site?', 'كم عدد الأشخاص الذين يشتغلون في الموقع؟'),
-  'ecole.effectif': L("Combien d'élèves accueillez-vous ?", 'How many pupils do you host?', 'كم عدد التلاميذ لديكم؟'),
-  clim: L('Avez-vous une climatisation centralisée ?', 'Do you have central air conditioning?', 'هل لديكم تكييف مركزي؟'),
-  lits: L('Combien de lits avez-vous ?', 'How many beds do you have?', 'كم عدد الأسرّة لديكم؟'),
-  garde_nuit: L('Assurez-vous une garde de nuit ?', 'Do you run a night shift?', 'هل تؤمنون حراسة ليلية؟'),
-  internat: L('Avez-vous un internat ?', 'Do you have a boarding house?', 'هل لديكم داخلية؟'),
-  fermeture_estivale: L("Fermez-vous l'été ?", 'Do you close in summer?', 'هل تغلقون خلال الصيف؟'),
-  surface_m2: L('Quelle est la surface de votre établissement ? (m²)', 'What is the area of your premises? (m²)', 'ما هي مساحة مؤسستكم؟ (م²)'),
-  chauffe: L("L'eau est chauffée à l'électricité ou au gaz ?", 'Is the water heated by electricity or gas?', 'هل يُسخَّن الماء بالكهرباء أم بالغاز؟'),
-  four: L('Votre four est électrique ou à gaz ?', 'Is your oven electric or gas?', 'هل فرنكم كهربائي أم يشتغل بالغاز؟'),
-  cuisson_nocturne: L('Cuisez-vous la nuit ?', 'Do you bake at night?', 'هل تخبزون ليلاً؟'),
-  temperature_consigne: L('Quelle est votre température de consigne ? (°C)', 'What is your set-point temperature? (°C)', 'ما هي درجة الحرارة المضبوطة؟ (°م)'),
-  volume_m3: L('Quel volume réfrigéré avez-vous ? (m³)', 'What refrigerated volume do you have? (m³)', 'ما هو حجم التبريد لديكم؟ (م³)'),
-  saisonnalite_recolte: L('Avez-vous un pic saisonnier lié à la récolte ?', 'Do you have a seasonal peak tied to harvest?', 'هل لديكم ذروة موسمية مرتبطة بالحصاد؟'),
-};
-const CAT_OPTION_LABELS: Record<string, L3> = {
-  midi: L('Midi', 'Lunch', 'الغداء'),
-  soir: L('Soir', 'Evening', 'المساء'),
-  continu: L('Continu', 'Continuous', 'متواصل'),
-  electrique: L('Électrique', 'Electric', 'كهربائي'),
-  gaz: L('Gaz', 'Gas', 'غاز'),
-};
-const catLabel = (cat: string, key: string): L3 => CAT_Q_LABELS[`${cat}.${key}`] ?? CAT_Q_LABELS[key];
 // Les réponses déjà connues reviennent pré-remplies (on ne redemande jamais).
 const categoriePrefill = prefillStr('categorie_commerciale');
 const reponsesCategoriePrefill: Record<string, unknown> =
@@ -366,7 +225,6 @@ const joursPrefill = entiersPrefill('jours_ouverture');
 const fermeturePrefill = entiersPrefill('fermeture_mois');
 const fermetureAucunePrefill = Array.isArray(prefill.fermeture_mois) && prefill.fermeture_mois.length === 0;
 const tensionPrefill = prefillStr('tension_raccordement');
-const groupePrefill = prefillStr('groupe_electrogene');
 const contratPrefill = prefillStr('contrat_electricite');
 /** Ombrière ou terrain : ni couverture, ni pente, ni orientation de toit. */
 const sansToitPrefill = ['ombriere', 'terrain'].includes(prefillStr('type_surface'));
@@ -382,6 +240,7 @@ const releveVal = (i: number, key: string): string => {
 const releveRows = Array.from({ length: RELEVE_CONSO_MAX_MOIS }, (_, i) => i);
 // Fondateur 26/10/2026 — un lead pro (une section pro servie) : le GPS sert au
 // calcul heure par heure de la production, la page le lui dit.
+const gpsTexte = sections.includes('pompage') ? GPS_AGRI : GPS_TOIT;
 const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'photo_factures', 'photo_poste'].includes(s));
 ---
 
@@ -426,7 +285,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                 Questionnaire solaire
               </p>
               <h1 class="display mt-1 text-xl sm:text-2xl">
-                {prenom ? `Bonjour ${prenom} 👋` : 'Bonjour 👋'}
+                <span data-i18n data-en="Hello" data-ar="مرحباً">Bonjour</span>{prenom ? <> <span>{prenom}</span></> : null} 👋
               </h1>
               <p class="mt-1 text-sm text-encre-soft" data-i18n
                 data-en="Answer at your own pace — you can close this and come back later."
@@ -434,7 +293,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                 Répondez à votre rythme — vous pouvez fermer cette page et revenir plus tard.
               </p>
             </div>
-            <div class="flex flex-none gap-1 border border-azur-900/15 bg-blanc p-1" role="group" aria-label="Langue">
+            <div class="flex flex-none gap-1 border border-azur-900/15 bg-blanc p-1" role="group" aria-label="Langue" data-attr="aria-label:langue">
               <button type="button" id="q-lang-fr" class="q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors" aria-pressed="true">FR</button>
               <button type="button" id="q-lang-en" class="q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors" aria-pressed="false">EN</button>
               <button type="button" id="q-lang-ar" class="q-lang-btn px-2.5 py-1 text-xs font-semibold text-encre-soft transition-colors" aria-pressed="false">AR</button>
@@ -501,14 +360,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
                             </div>
                           )}
-                          {/* ADRESSE — absente dès que le lead porte déjà son GPS : le
-                              serveur la retire de `champs` (crm/questionnaire.py
-                              `_COUVERT_PAR`) et cette question DISPARAÎT. Ordre
-                              fondateur : « the client already have given its GPS
-                              position ». Placée APRÈS la ville : c'est la plus
-                              longue à taper des trois. */}
+                          {/* ADRESSE — retirée par le serveur si le lead a déjà son GPS (`_COUVERT_PAR`) ; masquée ici dès qu'une position est captée (CQSTW17). */}
                           {demande('contact', 'adresse') && (
-                            <div>
+                            <div id="q-adresse-wrap" class:list={[gpsDejaConnu ? 'hidden' : '']}>
                               <label for="q-adresse" class="mb-1 block text-sm font-semibold" data-i18n data-en="Address" data-ar="العنوان">Adresse</label>
                               <input id="q-adresse" type="text" autocomplete="street-address" value={prefillStr('adresse')}
                                 class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50" />
@@ -519,11 +373,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
 
                       {id === 'gps' && (
                         <>
-                          {/* Position DÉJÀ enregistrée : on le DIT, avec les
-                              coordonnées réelles du lead (jamais un chiffre
-                              inventé) — le client voit qu'on ne lui redemande
-                              pas ce qu'il a donné, il ne repartage que s'il
-                              veut corriger. */}
+                          {/* Position DÉJÀ enregistrée : on le dit, avec les vraies coordonnées du lead. */}
                           {gpsDejaConnu ? (
                             <p class="border-l-4 border-ok-600 bg-ok-50 py-2.5 pl-4 pr-3 text-sm text-ok-700" data-i18n
                               data-en={`Position already recorded (${prefillStr('gps_lat')}, ${prefillStr('gps_lng')}). Share it again only to correct it.`}
@@ -537,11 +387,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                               Partagez la position de votre site : votre position permet un calcul heure par heure de la production.
                             </p>
                           ) : (
-                            <p class="text-sm text-encre-soft" data-i18n
-                              data-en="Share your position so we can locate your roof precisely."
-                              data-ar="شاركوا موقعكم لنتمكن من تحديد سطحكم بدقة.">
-                              Partagez votre position pour qu'on localise précisément votre toit.
-                            </p>
+                            <p class="text-sm text-encre-soft" data-i18n data-en={gpsTexte.en} data-ar={gpsTexte.ar}>{gpsTexte.fr}</p>
                           )}
                           <button type="button" id="q-gps-btn"
                             class="inline-flex w-full items-center justify-center gap-2 border border-azur-600 px-5 py-3 text-sm font-bold text-azur-700 transition-colors hover:bg-azur-600 hover:text-white sm:w-auto"
@@ -587,16 +433,16 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 </legend>
                                 <div class="flex gap-4">
                                   <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                                    <input type="radio" name="q-ete-differente" id="q-ete-oui" value="oui" checked={prefillBoolRadio('ete_differente') === 'oui'} class="h-5 w-5 accent-azur-600" />
+                                    <input type="radio" name="q-ete-differente" id="q-ete-oui" value="oui" checked={eteRadio === 'oui'} class="h-5 w-5 accent-azur-600" />
                                     <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
                                   </label>
                                   <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                                    <input type="radio" name="q-ete-differente" id="q-ete-non" value="non" checked={prefillBoolRadio('ete_differente') === 'non'} class="h-5 w-5 accent-azur-600" />
+                                    <input type="radio" name="q-ete-differente" id="q-ete-non" value="non" checked={eteRadio === 'non'} class="h-5 w-5 accent-azur-600" />
                                     <span data-i18n data-en="No" data-ar="لا">Non</span>
                                   </label>
                                 </div>
                               </fieldset>
-                              <div id="q-facture-ete-wrap" class:list={['', prefillBoolRadio('ete_differente') === 'oui' ? '' : 'hidden']}>
+                              <div id="q-facture-ete-wrap" class:list={['', eteRadio === 'oui' ? '' : 'hidden']}>
                                 <label for="q-facture-ete" class="mb-1 block text-sm font-semibold" data-i18n data-en="Summer monthly bill (MAD)" data-ar="فاتورة الصيف الشهرية (درهم)">
                                   Facture d'été mensuelle (MAD)
                                 </label>
@@ -612,9 +458,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 Raccordement (si connu)
                               </label>
                               <select id="q-raccordement" class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50">
-                                <option value="" selected={prefillStr('raccordement') === ''}>— Je ne sais pas</option>
-                                <option value="mono" selected={prefillStr('raccordement') === 'mono'}>Monophasé</option>
-                                <option value="tri" selected={prefillStr('raccordement') === 'tri'}>Triphasé</option>
+                                {Object.entries(RACCORDEMENT_RES_LABELS).map(([v, l]) => (
+                                  <option value={v} data-fr={l.fr} data-en={l.en} data-ar={l.ar} selected={prefillStr('raccordement') === v}>{l.fr}</option>
+                                ))}
                               </select>
                             </div>
                           )}
@@ -624,6 +470,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                       {id === 'reseau' && (
                         <>
                           {/* Fondateur 26/10/2026 — la question PRINCIPALE : les kWh mois par mois. */}
+                          <Repli ferme={prefillStr('conso_mensuelle_kwh') !== ''} titre={DETAIL_MOIS}>
                           {demande('reseau', 'releve_conso') && (
                             <fieldset class="border-0 p-0">
                               <legend class="mb-1 text-sm font-semibold" data-i18n
@@ -636,7 +483,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                   <div class:list={['q-releve-row grid grid-cols-2 gap-2 border border-azur-900/10 p-3', i >= Math.max(1, relevePrefill.length) ? 'hidden' : '']}>
                                     <div>
                                       <label for={`q-releve-mois-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="Month" data-ar="الشهر">Mois</label>
-                                      <input id={`q-releve-mois-${i}`} data-r="mois" type="month" placeholder="AAAA-MM" value={releveVal(i, 'mois')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
+                                      <input id={`q-releve-mois-${i}`} data-r="mois" type="month" placeholder="AAAA-MM" data-attr="placeholder:mois" value={releveVal(i, 'mois')} class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-2 text-base outline-none focus:border-azur-600" />
                                     </div>
                                     <div>
                                       <label for={`q-releve-kwh-${i}`} class="mb-1 block text-xs text-encre-faint" data-i18n data-en="kWh" data-ar="كيلوواط ساعة">kWh</label>
@@ -666,6 +513,17 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                               </button>
                             </fieldset>
                           )}
+                          {demande('reseau', 'facture_hiver') && (
+                            <div>
+                              <label for="q-facture-reseau" class="mb-1 block text-sm font-semibold" data-i18n
+                                data-en="Amount of your latest bill (MAD), for one month"
+                                data-ar="مبلغ آخر فاتورة لكم (درهم)، عن شهر واحد">
+                                Montant de votre dernière facture (MAD), pour un mois
+                              </label>
+                              <input id="q-facture-reseau" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_hiver')} class={PRO_INPUT_CLS} />
+                            </div>
+                          )}
+                          </Repli>
                           {/* Fondateur 26/10/2026 — repli : UN seul mois quand le client n'a
                               pas ses kWh mois par mois. Jamais de chiffre inventé. */}
                           {demande('reseau', 'conso_mensuelle_kwh') && (
@@ -677,16 +535,6 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                               <input id="q-conso-kwh-reseau" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('conso_mensuelle_kwh')} class={PRO_INPUT_CLS} />
                             </div>
                           )}
-                          {demande('reseau', 'facture_hiver') && (
-                            <div>
-                              <label for="q-facture-reseau" class="mb-1 block text-sm font-semibold" data-i18n
-                                data-en="Amount of your latest bill (MAD), for one month"
-                                data-ar="مبلغ آخر فاتورة لكم (درهم)، عن شهر واحد">
-                                Montant de votre dernière facture (MAD), pour un mois
-                              </label>
-                              <input id="q-facture-reseau" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('facture_hiver')} class={PRO_INPUT_CLS} />
-                            </div>
-                          )}
                           {demande('reseau', 'tension_raccordement') && (
                             <div>
                               <label for="q-tension" class="mb-1 block text-sm font-semibold" data-i18n
@@ -694,6 +542,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 data-ar="هل موقعكم مربوط بالضغط المنخفض (عداد عادي) أم بالضغط المتوسط (محطة تحويل)؟ إن لم تعرفوا فلا بأس.">
                                 Votre site est-il raccordé en basse tension, avec un compteur ordinaire, ou en moyenne tension, avec un poste de transformation ? Si vous ne savez pas, ce n'est pas grave.
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.tension.en} data-ar={AIDES_FACTURE.tension.ar}>{AIDES_FACTURE.tension.fr}</p>
                               <select id="q-tension" class={PRO_INPUT_CLS}>
                                 <option value="" selected={tensionPrefill === ''}>—</option>
                                 {TENSION_VALUES.map((v) => (
@@ -709,6 +558,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 data-ar="ما هو نوع عقد الكهرباء لديكم؟ مكتوب في فاتورتكم.">
                                 Quel est votre contrat d'électricité ? Il est écrit sur votre facture.
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.contrat.en} data-ar={AIDES_FACTURE.contrat.ar}>{AIDES_FACTURE.contrat.fr}</p>
                               <select id="q-contrat" class={PRO_INPUT_CLS}>
                                 <option value="" selected={contratPrefill === ''}>—</option>
                                 {CONTRAT_ELECTRICITE_VALUES.map((v) => (
@@ -720,10 +570,11 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                           {demande('reseau', 'option_tarifaire_bt') && (
                             <div id="q-option-bt-wrap" class:list={[contratPrefill === 'bt_force_motrice' ? '' : 'hidden']}>
                               <label for="q-option-bt" class="mb-1 block text-sm font-semibold" data-i18n
-                                data-en="In motive power, are you on the standard option or the two-rate option? It is written on your bill."
-                                data-ar="في القوة المحركة، هل أنتم على الخيار العادي أم خيار التوقيتين؟ مكتوب في فاتورتكم.">
-                                En force motrice, êtes-vous en option normale ou en option bi-horaire ? C'est écrit sur votre facture.
+                                data-en="In motive power, are you on the standard option or the two-rate option? (optional)"
+                                data-ar="في القوة المحركة، هل أنتم على الخيار العادي أم خيار التوقيتين؟ (اختياري)">
+                                En force motrice, êtes-vous en option normale ou en option bi-horaire ? (facultatif)
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.option_bt.en} data-ar={AIDES_FACTURE.option_bt.ar}>{AIDES_FACTURE.option_bt.fr}</p>
                               <select id="q-option-bt" class={PRO_INPUT_CLS}>
                                 <option value="" selected={prefillStr('option_tarifaire_bt') === ''}>—</option>
                                 {OPTION_TARIFAIRE_BT_VALUES.map((v) => (
@@ -754,19 +605,11 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 data-ar="ما هي القدرة المشترك بها بالكيلوفولت أمبير (kVA)؟ مكتوبة في فاتورتكم أو عقدكم. إن لم تجدوها، تكفينا صورة لفاتورتكم.">
                                 Quelle est votre puissance souscrite, en kVA ? Elle est écrite sur votre facture ou votre contrat. Si vous ne la trouvez pas, une photo de votre facture nous suffit.
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.kva.en} data-ar={AIDES_FACTURE.kva.ar}>{AIDES_FACTURE.kva.fr}</p>
                               <input id="q-kva" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('compteur_puissance_kva')} class={PRO_INPUT_CLS} />
                             </div>
                           )}
-                          {demande('reseau', 'cos_phi') && (
-                            <div>
-                              <label for="q-cos-phi" class="mb-1 block text-sm font-semibold" data-i18n
-                                data-en="Does your bill show a power factor (cos φ) or a reactive-energy penalty? What value? (optional)"
-                                data-ar="هل تُظهر فاتورتكم معامل القدرة (cos φ) أو غرامة الطاقة غير الفعالة؟ ما قيمته؟ (اختياري)">
-                                Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? (facultatif)
-                              </label>
-                              <input id="q-cos-phi" type="number" min="0" max="1" step="any" inputmode="decimal" value={prefillStr('cos_phi')} class={PRO_INPUT_CLS} />
-                            </div>
-                          )}
+                          <ChampsAffiner ecran="reseau" demande={demande} prefill={prefill} cls={PRO_INPUT_CLS} />
                         </>
                       )}
 
@@ -834,6 +677,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                     </div>
                                   );
                                 })}
+                                <ChampsHeuresActivite cat={cat} prefill={categoriePrefill === cat ? reponsesCategoriePrefill : {}} cls={PRO_INPUT_CLS} />
                               </div>
                             )
                           ))}
@@ -951,53 +795,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                               </select>
                             </div>
                           )}
-                          {demande('activite', 'groupe_electrogene') && (
-                            <fieldset class="border-0 p-0">
-                              <legend class="mb-1 text-sm font-semibold" data-i18n data-en="Do you have a generator on site?" data-ar="هل لديكم مولد كهربائي في الموقع؟">
-                                Avez-vous un groupe électrogène sur le site ?
-                              </legend>
-                              <div class="flex gap-4">
-                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                                  <input type="radio" name="q-groupe-electrogene" id="q-groupe-oui" value="oui" checked={groupePrefill === 'oui'} class="h-5 w-5 accent-azur-600" />
-                                  <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
-                                </label>
-                                <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                                  <input type="radio" name="q-groupe-electrogene" id="q-groupe-non" value="non" checked={groupePrefill === 'non'} class="h-5 w-5 accent-azur-600" />
-                                  <span data-i18n data-en="No" data-ar="لا">Non</span>
-                                </label>
-                              </div>
-                            </fieldset>
-                          )}
-                          <div id="q-groupe-detail" class:list={['flex flex-col gap-4', groupePrefill === 'oui' ? '' : 'hidden']}>
-                            {demande('activite', 'groupe_kva') && (
-                              <div>
-                                <label for="q-groupe-kva" class="mb-1 block text-sm font-semibold" data-i18n data-en="What is its power, in kVA?" data-ar="ما هي قدرته بالكيلوفولت أمبير (kVA)؟">Quelle est sa puissance, en kVA ?</label>
-                                <input id="q-groupe-kva" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('groupe_kva')} class={PRO_INPUT_CLS} />
-                              </div>
-                            )}
-                            {demande('activite', 'groupe_litres_mois') && (
-                              <div>
-                                <label for="q-groupe-litres" class="mb-1 block text-sm font-semibold" data-i18n data-en="How many litres of diesel does it use per month? (optional)" data-ar="كم لتراً من الغازوال يستهلك شهرياً؟ (اختياري)">Combien de litres de gasoil consomme-t-il par mois ? (facultatif)</label>
-                                <input id="q-groupe-litres" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('groupe_litres_mois')} class={PRO_INPUT_CLS} />
-                              </div>
-                            )}
-                            {demande('activite', 'groupe_depense_mad_mois') && (
-                              <div>
-                                <label for="q-groupe-depense" class="mb-1 block text-sm font-semibold" data-i18n data-en="How much do you spend on diesel for it each month? (MAD, optional)" data-ar="كم تنفقون على الغازوال للمولد شهرياً؟ (درهم، اختياري)">Combien dépensez-vous en gasoil pour le groupe chaque mois ? (MAD, facultatif)</label>
-                                <input id="q-groupe-depense" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('groupe_depense_mad_mois')} class={PRO_INPUT_CLS} />
-                              </div>
-                            )}
-                          </div>
-                          {demande('activite', 'pv_existant_kwc') && (
-                            <div>
-                              <label for="q-pv-existant" class="mb-1 block text-sm font-semibold" data-i18n
-                                data-en="Do you already have solar panels installed? What power (kWp)? (optional)"
-                                data-ar="هل لديكم ألواح شمسية مركّبة؟ بأي قدرة (كيلوواط ذروة)؟ (اختياري)">
-                                Avez-vous déjà des panneaux solaires installés ? De quelle puissance (kWc) ? (facultatif)
-                              </label>
-                              <input id="q-pv-existant" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('pv_existant_kwc')} class={PRO_INPUT_CLS} />
-                            </div>
-                          )}
+                          <ChampsAffiner ecran="activite" demande={demande} prefill={prefill} cls={PRO_INPUT_CLS} />
                         </>
                       )}
 
@@ -1083,6 +881,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 data-en="Company ICE (it will appear on the quote and invoice)" data-ar="رقم ICE للشركة (سيظهر في عرض الثمن والفاتورة)">
                                 ICE de l'entreprise (il figurera sur le devis et la facture)
                               </label>
+                              <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.ice.en} data-ar={AIDES_FACTURE.ice.ar}>{AIDES_FACTURE.ice.fr}</p>
                               <input id="q-ice" type="text" maxlength="30" inputmode="numeric" value={prefillStr('ice')} class={PRO_INPUT_CLS} />
                             </div>
                           )}
@@ -1195,9 +994,10 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                             Facultatif — continuez sans si vous ne l'avez pas sous la main.
                           </p>
                           <label class="flex min-h-[44px] cursor-pointer items-center justify-center gap-2 border border-azur-600 px-5 py-3 text-sm font-bold text-azur-700 transition-colors hover:bg-azur-600 hover:text-white">
-                            <span data-i18n data-en="Take / choose a photo" data-ar="التقاط / اختيار صورة">📷 Prendre / choisir une photo</span>
-                            <input type="file" accept="image/*" capture="environment" id={`q-${id}-input`} class="sr-only" />
+                            <span data-i18n data-en="Take / choose photos or a PDF" data-ar="التقاط / اختيار صور أو ملف PDF">📷 Prendre / choisir des photos ou un PDF</span>
+                            <input type="file" accept="image/*,application/pdf" multiple id={`q-${id}-input`} class="sr-only" />
                           </label>
+                          <ul id={`q-${id}-list`} class="text-xs text-encre-soft"></ul>
                           <img id={`q-${id}-preview`} alt="" class="hidden max-h-64 w-full border border-azur-900/15 object-contain" />
                           <p id={`q-${id}-err`} role="alert" class="hidden text-sm text-alert-600"></p>
                           {/* Le bouton « Passer cette étape » par photo a disparu avec le
@@ -1218,9 +1018,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 D'où vient l'eau : un puits, un forage, un bassin ou une rivière ?
                               </label>
                               <select id="q-source-eau" class={POMPAGE_INPUT_CLS}>
-                                <option value="" selected={prefillStr('source_eau') === ''}>— Choisir…</option>
+                                <option value="" data-fr="— Choisir…" data-en="— Choose…" data-ar="— اختاروا…" selected={prefillStr('source_eau') === ''}>— Choisir…</option>
                                 {SOURCE_EAU_VALUES.map((v) => (
-                                  <option value={v} selected={prefillStr('source_eau') === v}>{SOURCE_EAU_LABELS[v]}</option>
+                                  <option value={v} data-fr={SOURCE_EAU_LABELS[v].fr} data-en={SOURCE_EAU_LABELS[v].en} data-ar={SOURCE_EAU_LABELS[v].ar} selected={prefillStr('source_eau') === v}>{SOURCE_EAU_LABELS[v].fr}</option>
                                 ))}
                               </select>
                             </div>
@@ -1257,9 +1057,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 Vous irriguez au goutte-à-goutte, par aspersion ou à la raie (gravitaire) ?
                               </label>
                               <select id="q-irrigation-methode" class={POMPAGE_INPUT_CLS}>
-                                <option value="" selected={prefillStr('irrigation_methode') === ''}>— Choisir…</option>
+                                <option value="" data-fr="— Choisir…" data-en="— Choose…" data-ar="— اختاروا…" selected={prefillStr('irrigation_methode') === ''}>— Choisir…</option>
                                 {IRRIGATION_METHODE_VALUES.map((v) => (
-                                  <option value={v} selected={prefillStr('irrigation_methode') === v}>{IRRIGATION_LABELS[v]}</option>
+                                  <option value={v} data-fr={IRRIGATION_LABELS[v].fr} data-en={IRRIGATION_LABELS[v].en} data-ar={IRRIGATION_LABELS[v].ar} selected={prefillStr('irrigation_methode') === v}>{IRRIGATION_LABELS[v].fr}</option>
                                 ))}
                               </select>
                             </div>
@@ -1272,9 +1072,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                                 Votre pompe actuelle marche à quoi — diesel, butane, électricité, ou vous n'en avez pas ?
                               </label>
                               <select id="q-pompe-alim" class={POMPAGE_INPUT_CLS}>
-                                <option value="" selected={alimPrefill === ''}>— Choisir…</option>
+                                <option value="" data-fr="— Choisir…" data-en="— Choose…" data-ar="— اختاروا…" selected={alimPrefill === ''}>— Choisir…</option>
                                 {POMPE_ALIM_VALUES.map((v) => (
-                                  <option value={v} selected={alimPrefill === v}>{ALIM_LABELS[v]}</option>
+                                  <option value={v} data-fr={ALIM_LABELS[v].fr} data-en={ALIM_LABELS[v].en} data-ar={ALIM_LABELS[v].ar} selected={alimPrefill === v}>{ALIM_LABELS[v].fr}</option>
                                 ))}
                               </select>
                             </div>
@@ -1315,7 +1115,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                           {demande('pompage', 'jours_irrigation_semaine') && (
                             <div>
                               <label for={POMPAGE_NUM.jours_irrigation_semaine.id} class="mb-1 block text-sm font-semibold" data-i18n data-en={POMPAGE_NUM.jours_irrigation_semaine.en} data-ar={POMPAGE_NUM.jours_irrigation_semaine.ar}>{POMPAGE_NUM.jours_irrigation_semaine.fr}</label>
-                              <input id={POMPAGE_NUM.jours_irrigation_semaine.id} type="number" min="0" max="7" step="any" inputmode="decimal" class={POMPAGE_INPUT_CLS} />
+                              <input id={POMPAGE_NUM.jours_irrigation_semaine.id} type="number" min="1" max="7" step="any" inputmode="decimal" class={POMPAGE_INPUT_CLS} />
                             </div>
                           )}
                           {demande('pompage', 'compteur_eau') && (
@@ -1335,6 +1135,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                               </div>
                             </fieldset>
                           )}
+                          <ChampsDonnees champs={CHAMPS_POMPAGE_CQST} demande={(c) => demande('pompage', c)} valeur={prefillStr} cls={POMPAGE_INPUT_CLS} />
                         </>
                       )}
 
@@ -1344,11 +1145,8 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                           <div>
                             <label for="q-type-toiture" class="mb-1 block text-sm font-semibold" data-i18n data-en="Roof type" data-ar="نوع السطح">Type de toiture</label>
                             <select id="q-type-toiture" class="w-full min-h-[44px] border border-azur-900/20 bg-blanc px-3 py-3 text-base outline-none transition-colors focus:border-azur-600 focus:ring-2 focus:ring-azur-600/50">
-                              <option value="" selected={prefillStr('type_toiture') === ''}>— Choisir…</option>
-                              {TYPE_TOITURE_VALUES.map((t) => (
-                                <option value={t} selected={prefillStr('type_toiture') === t}>
-                                  {t === 'villa' ? 'Villa' : t === 'hangar' ? 'Hangar industriel' : t === 'toit_plat' ? 'Toit plat' : 'Autre'}
-                                </option>
+                              {['', ...TYPE_TOITURE_VALUES].map((v) => (
+                                <option value={v} data-fr={TOITURE_RES_LABELS[v].fr} data-en={TOITURE_RES_LABELS[v].en} data-ar={TOITURE_RES_LABELS[v].ar} selected={prefillStr('type_toiture') === v}>{TOITURE_RES_LABELS[v].fr}</option>
                               ))}
                             </select>
                           </div>
@@ -1485,7 +1283,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
                 <button type="button" id="q-next"
                   class="flex items-center gap-2 bg-brass-400 px-6 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
                   <span id="q-next-spinner" class="spinner hidden" aria-hidden="true"></span>
-                  <span id="q-next-label" data-i18n data-en="Continue →" data-ar="متابعة ←">Continuer →</span>
+                  <span id="q-next-label">Continuer →</span>
                 </button>
               </div>
             </div>
@@ -1501,6 +1299,11 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
               <p class="mt-3 text-sm text-encre-soft" data-i18n
                 data-en="You can close this page. We'll be in touch shortly." data-ar="يمكنكم إغلاق هذه الصفحة. سنتواصل معكم قريباً.">
                 Vous pouvez fermer cette page. On vous recontacte très vite.
+              </p>
+              <p id="q-done-devis" class="mt-3 hidden text-sm font-semibold text-encre" data-i18n
+                data-en="Your answers are enough for us to prepare your quote — your advisor will send it to you."
+                data-ar="إجاباتكم كافية لإعداد عرض الأسعار — سيرسله لكم مستشاركم.">
+                Vos réponses suffisent pour préparer votre devis — votre conseiller vous l'envoie.
               </p>
             </div>
           </div>
@@ -1546,6 +1349,12 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     isEmptyPostBody,
     isValidPhotoDataUrl,
     isPhotoSection,
+    detectQuestionnaireLang,
+    messageErreurQuestionnaire,
+    messageGps,
+    messagePositionEnregistree,
+    libelleAttribut,
+    libelleSuivant,
     progressLabel,
     type QuestionnaireSectionId,
   } from '../../lib/questionnaire';
@@ -1578,9 +1387,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
 
   function boot(init: QInit) {
     const sections = init.sections;
-    // Repli défensif : un `ecrans` absent (page servie par une version plus
-    // ancienne) retombe sur « une section = un écran », le comportement
-    // d'avant le regroupement — jamais un questionnaire vide.
+    // Repli défensif : `ecrans` absent (ancienne version) → « une section = un écran ».
     const ecrans: QEcran[] = Array.isArray(init.ecrans) && init.ecrans.length > 0
       ? init.ecrans
       : sections.map((s) => ({ id: `section-${s}`, actives: [s] }));
@@ -1588,8 +1395,9 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     const repondu: Partial<Record<QuestionnaireSectionId, boolean>> = { ...init.repondu };
     const touched = new Set<QuestionnaireSectionId>();
     const editing = new Set<QuestionnaireSectionId>();
-    const photoDataUrls: Partial<Record<QuestionnaireSectionId, string>> = {};
+    const photoDataUrls: Partial<Record<QuestionnaireSectionId, string[]>> = {}; // CQSTW4 — plusieurs fichiers
     let currentIndex = init.startIndex;
+    let devisPossible = false; // CQSTW2 — dernière réponse serveur
 
     const $ = (id: string) => document.getElementById(id);
     const sectionEls = Array.from(document.querySelectorAll<HTMLFieldSetElement>('[data-section]'));
@@ -1630,8 +1438,18 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
         i18nTriples.push({ fr: frSpan, en: enSpan, ar: arSpan });
       });
     }
+    // CQSTW15 — libellé suivant : refait à chaque écran ET à chaque changement de langue.
+    function majSuivant() {
+      if (nextLabelEl) nextLabelEl.textContent = libelleSuivant(currentIndex === total - 1, currentLang);
+    }
+    function majAdresse() {
+      $('q-adresse-wrap')?.classList.toggle('hidden', !!($('q-gps-lat') as HTMLInputElement | null)?.value);
+    }
     function applyLang(lang: 'fr' | 'en' | 'ar') {
       currentLang = lang;
+      majSuivant();
+      try { localStorage.setItem('q-lang', lang); } catch { /* navigation privée : langue non gardée */ }
+      if (progressLabelEl) progressLabelEl.textContent = progressLabel(currentIndex, total, lang);
       const isAr = lang === 'ar';
       i18nTriples.forEach(({ fr, en, ar }) => {
         fr.hidden = lang !== 'fr';
@@ -1641,6 +1459,10 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       // CIW406 — les <option> ne portent que du texte : libellé posé selon la langue.
       document.querySelectorAll<HTMLOptionElement>('option[data-fr]').forEach((o) => {
         o.textContent = (lang === 'en' ? o.dataset.en : lang === 'ar' ? o.dataset.ar : o.dataset.fr) || o.dataset.fr || '';
+      });
+      document.querySelectorAll<HTMLElement>('[data-attr]').forEach((el) => {
+        const [attr, cle] = (el.dataset.attr || '').split(':');
+        if (attr && cle) el.setAttribute(attr, libelleAttribut(cle, lang));
       });
       document.documentElement.lang = lang;
       document.documentElement.dir = isAr ? 'rtl' : 'ltr';
@@ -1664,6 +1486,11 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     $('q-lang-fr')?.addEventListener('click', () => applyLang('fr'));
     $('q-lang-en')?.addEventListener('click', () => applyLang('en'));
     $('q-lang-ar')?.addEventListener('click', () => applyLang('ar'));
+    // CQSTW3 — langue d'ouverture : gardée par le client, sinon celle du navigateur.
+    let langGardee: string | null = null;
+    try { langGardee = localStorage.getItem('q-lang'); } catch { /* ignoré */ }
+    const langInitiale = detectQuestionnaireLang(langGardee, navigator.language);
+    if (langInitiale !== 'fr') applyLang(langInitiale);
 
     // ── Aperçu interne : champs visibles mais désactivés, jamais de POST ──
     if (init.interne) {
@@ -1696,17 +1523,10 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
         seg.classList.toggle('bg-azur-600', on);
         seg.classList.toggle('bg-azur-100', !on);
       });
-      if (progressLabelEl) progressLabelEl.textContent = progressLabel(currentIndex, total);
+      if (progressLabelEl) progressLabelEl.textContent = progressLabel(currentIndex, total, currentLang);
       if (prevBtn) prevBtn.classList.toggle('invisible', currentIndex === 0);
-      if (nextLabelEl) {
-        const isLast = currentIndex === total - 1;
-        const label = isLast ? 'Terminer' : 'Continuer →';
-        const en = isLast ? 'Finish' : 'Continue →';
-        const ar = isLast ? 'إنهاء' : 'متابعة ←';
-        nextLabelEl.textContent = currentLang === 'en' ? en : currentLang === 'ar' ? ar : label;
-        nextLabelEl.dataset.en = en;
-        nextLabelEl.dataset.ar = ar;
-      }
+      majSuivant();
+      majAdresse();
     }
 
     // « Modifier » sur une section déjà répondue
@@ -1720,6 +1540,14 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       fs.addEventListener('input', () => touched.add(id));
       fs.addEventListener('change', () => touched.add(id));
     });
+
+    // CQSTW1 — la plaque de la pompe n'apparaît qu'après « je garde ma pompe ».
+    const syncPompeActuelle = () => {
+      const aucune = fieldVal('q-pompe-alim') === 'aucune';
+      $('q-pompe-actuelle-wrap')?.classList.toggle('hidden', aucune);
+      $('q-plaque-wrap')?.classList.toggle('hidden', aucune || fieldVal('q-mode-pompe') !== 'existante');
+    };
+    $('q-mode-pompe')?.addEventListener('change', syncPompeActuelle);
 
     // ── Sous-champs équipements : n'apparaissent que si la case = OUI ──
     document.querySelectorAll<HTMLInputElement>('.q-equip-radio').forEach((radio) => {
@@ -1783,6 +1611,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       const sansCarburant = alim === 'aucune' || alim === 'electrique';
       document.querySelectorAll<HTMLElement>('.q-carburant-wrap').forEach((el) => el.classList.toggle('hidden', sansCarburant));
       $('q-butane-wrap')?.classList.toggle('hidden', sansCarburant || alim === 'diesel');
+      syncPompeActuelle();
     });
 
     // ── CIW406 (sections pro) : MT → registres, boutons jours/mois, groupe, catégorie ──
@@ -1829,6 +1658,17 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       const cat = fieldVal('q-categorie');
       document.querySelectorAll<HTMLElement>('.q-cat-block').forEach((el) => el.classList.toggle('hidden', el.dataset.cat !== cat));
     });
+    // CQSTW6 — les heures de l'activité n'apparaissent que si la réponse qui les justifie est donnée.
+    const reponseCat = (bloc: Element, cle: string): string => {
+      const el = bloc.querySelector<HTMLInputElement | HTMLSelectElement>(`[data-cat-key="${cle}"]:not([type="radio"]), [data-cat-key="${cle}"][type="radio"]:checked`);
+      return el ? el.value : '';
+    };
+    const majHeuresActivite = () => document.querySelectorAll<HTMLElement>('.q-cat-block [data-si]').forEach((el) => {
+      const bloc = el.closest('.q-cat-block');
+      el.classList.toggle('hidden', !bloc || !(el.dataset.si ?? '').split(';').every((c) => reponseCat(bloc, c.split('=')[0]) === c.split('=')[1]));
+    });
+    document.querySelectorAll('.q-cat-block').forEach((b) => b.addEventListener('change', majHeuresActivite));
+    majHeuresActivite();
     document.querySelectorAll<HTMLInputElement>('input[name="q-groupe-electrogene"]').forEach((radio) => {
       radio.addEventListener('change', () => {
         $('q-groupe-detail')?.classList.toggle('hidden', radio.value !== 'oui');
@@ -1854,6 +1694,10 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
           if (el instanceof HTMLInputElement && el.type === 'radio' && !el.checked) return;
           if (el.value !== '') out[el.dataset.catKey as string] = el.value;
         });
+      document.querySelectorAll<HTMLElement>(`.q-cat-block[data-cat="${categorie}"] [data-cat-plage]`).forEach((row) => {
+        const [a, b] = Array.from(row.querySelectorAll<HTMLInputElement>('input'));
+        if (a && b && a.value !== '' && b.value !== '') out[row.dataset.catPlage as string] = [[a.value, b.value]];
+      });
       return out;
     };
 
@@ -1865,7 +1709,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       errEl?.classList.add('hidden');
       if (!('geolocation' in navigator)) {
         if (errEl) {
-          errEl.textContent = "La géolocalisation n'est pas disponible sur cet appareil — pas de souci, continuez sans.";
+          errEl.textContent = messageGps('indisponible', currentLang);
           errEl.classList.remove('hidden');
         }
         return;
@@ -1879,16 +1723,17 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
           if (latEl) latEl.value = String(lat);
           if (lngEl) lngEl.value = String(lng);
           if (previewEl) {
-            previewEl.textContent = `Position enregistrée — ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            previewEl.textContent = messagePositionEnregistree(lat, lng, currentLang);
             previewEl.classList.remove('hidden');
           }
           touched.add('gps');
+          majAdresse();
           const result = await postSection('gps');
           if (result.envoye) repondu.gps = true;
         },
         () => {
           if (errEl) {
-            errEl.textContent = "Position non partagée — pas de souci, vous pouvez continuer sans.";
+            errEl.textContent = messageGps('refuse', currentLang);
             errEl.classList.remove('hidden');
           }
         },
@@ -1933,24 +1778,36 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       const input = $(`q-${section}-input`) as HTMLInputElement | null;
       const preview = $(`q-${section}-preview`) as HTMLImageElement | null;
       const errEl = $(`q-${section}-err`);
+      const list = $(`q-${section}-list`);
       input?.addEventListener('change', async () => {
-        const file = input.files?.[0];
         errEl?.classList.add('hidden');
-        if (!file) return;
-        const resized = await resizeImage(file);
-        if (!isValidPhotoDataUrl(resized)) {
-          if (errEl) {
-            errEl.textContent = 'Photo trop volumineuse ou illisible — réessayez avec une autre photo.';
-            errEl.classList.remove('hidden');
+        // CQSTW4 — plusieurs fichiers (photos ou PDF) ; un POST par fichier à « Continuer ».
+        for (const file of Array.from(input.files ?? [])) {
+          const estPdf = file.type === 'application/pdf';
+          const url = estPdf
+            ? await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result));
+                reader.onerror = () => resolve('');
+                reader.readAsDataURL(file);
+              })
+            : await resizeImage(file);
+          if (!isValidPhotoDataUrl(url)) {
+            if (errEl) {
+              errEl.textContent = messageErreurQuestionnaire('photo', currentLang);
+              errEl.classList.remove('hidden');
+            }
+            continue;
           }
-          return;
+          (photoDataUrls[section] ??= []).push(url);
+          touched.add(section);
+          if (list) list.append(Object.assign(document.createElement('li'), { textContent: file.name }));
+          if (preview && !estPdf) {
+            preview.src = url;
+            preview.classList.remove('hidden');
+          }
         }
-        photoDataUrls[section] = resized;
-        touched.add(section);
-        if (preview) {
-          preview.src = resized;
-          preview.classList.remove('hidden');
-        }
+        input.value = '';
       });
     });
 
@@ -2000,6 +1857,15 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
               .map((b) => Number(b.dataset.mois)),
             jours_irrigation_semaine: numOrUndef('q-jours-irrigation'),
             compteur_eau: radioValue('q-compteur-eau'),
+            profondeur_forage_m: numOrUndef('q-profondeur-forage'),
+            debit_forage_m3h: numOrUndef('q-debit-forage'),
+            pompe_hmt_m: numOrUndef('q-pompe-hmt'),
+            pompe_actuelle_debit_m3h: numOrUndef('q-pompe-debit'),
+            pompage_heures_jour: numOrUndef('q-pompage-heures'),
+            mode_pompe: fieldVal('q-mode-pompe') || undefined,
+            pompe_actuelle_kw: numOrUndef('q-pompe-kw'),
+            pompe_actuelle_tension_v: numOrUndef('q-pompe-tension'),
+            pompe_actuelle_phases: fieldVal('q-pompe-phases') || undefined,
           };
         case 'reseau':
           return {
@@ -2084,26 +1950,32 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
     // alors que le client voulait justement y revenir avec sa photo.
     async function postSection(
       section: QuestionnaireSectionId,
-    ): Promise<{ ok: boolean; envoye: boolean; detail?: string }> {
+    ): Promise<{ ok: boolean; envoye: boolean; code?: string }> {
       if (init.interne) return { ok: true, envoye: false };
       if (repondu[section] === true && !touched.has(section)) {
         // Rien de neuf — on ne renvoie pas une réponse inchangée.
         return { ok: true, envoye: false };
       }
       const raw = collectSectionRaw(section);
-      const photo = isPhotoSection(section) ? photoDataUrls[section] ?? null : null;
-      const body = buildQuestionnairePostBody(section, raw, photo, appareilId(), init.prefill);
-      if (isEmptyPostBody(body)) return { ok: true, envoye: false };
+      // CQSTW4 — une section photo part en UN POST par fichier ; les fichiers déjà
+      // partis sont retirés de la file (un échec ne les renvoie pas).
+      const photos: Array<string | null> = isPhotoSection(section) ? [...(photoDataUrls[section] ?? [])] : [null];
+      let envoye = false;
+      for (const photo of photos) {
+        const body = buildQuestionnairePostBody(section, raw, photo, appareilId(), init.prefill);
+        if (isEmptyPostBody(body)) continue;
 
-      // Recalage orchestrateur 25/08 — POST navigateur via le proxy SAME-ORIGIN (patron
-      // /api/proposition-*), jamais de cross-origin. ALEA4/ALEA46 — ce qui vient d'être
-      // envoyé ne devient le « vu » du client qu'après une réponse acceptée (lib/questionnaire.ts).
-      const envoi = await envoyerSectionQuestionnaire(fetch, init.token, body, init.prefill);
-      init.prefill = envoi.prefill;
-      if (!envoi.result.ok) {
-        return { ok: false, envoye: false, detail: envoi.result.detail || 'Cette réponse n’a pas pu être enregistrée. Réessayez.' };
+        // Recalage orchestrateur 25/08 — POST navigateur via le proxy SAME-ORIGIN (patron
+        // /api/proposition-*), jamais de cross-origin. ALEA4/ALEA46 — ce qui vient d'être
+        // envoyé ne devient le « vu » du client qu'après une réponse acceptée (lib/questionnaire.ts).
+        const envoi = await envoyerSectionQuestionnaire(fetch, init.token, body, init.prefill);
+        init.prefill = envoi.prefill;
+        if (!envoi.result.ok) return { ok: false, envoye, code: envoi.result.code };
+        if (photo) photoDataUrls[section] = (photoDataUrls[section] ?? []).filter((p) => p !== photo);
+        devisPossible = envoi.result.devisPossible === true;
+        envoye = true;
       }
-      return { ok: true, envoye: true };
+      return { ok: true, envoye };
     }
 
     function advance() {
@@ -2111,6 +1983,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
         sectionsWrap?.classList.add('hidden');
         progressWrap?.setAttribute('hidden', '');
         doneEl?.classList.remove('hidden');
+        $('q-done-devis')?.classList.toggle('hidden', !devisPossible);
         return;
       }
       currentIndex += 1;
@@ -2147,7 +2020,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
           const result = await postSection(section);
           if (!result.ok) {
             if (sectionErrEl) {
-              sectionErrEl.textContent = result.detail || 'Une erreur est survenue. Réessayez.';
+              sectionErrEl.textContent = messageErreurQuestionnaire(result.code, currentLang);
               sectionErrEl.classList.remove('hidden');
             }
             return;

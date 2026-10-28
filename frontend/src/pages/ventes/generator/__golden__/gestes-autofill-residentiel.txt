@@ -112,7 +112,7 @@ Auto-remplir depuis le stock
 Aperçu de la Simulation
 Replier
 Calcul du moteur horaire en cours…
-Facture réelle ONEE ≈ 36 001 MAD/an sans solaire → avec solaire ≈ 24 546 MAD/an — économie calculée par tranche (barème ONEE), pas une estimation.
+Facture réelle ONEE ≈ 36 001 MAD/an sans solaire → avec solaire ≈ 24 842 MAD/an — économie calculée par tranche (barème ONEE), pas une estimation.
 Production annuelle
 8 723
 kWh / an
@@ -128,7 +128,7 @@ Coût
 MAD TTC
 Avec batterie★ Recommandé
 Économies
-11 455
+11 159
 MAD / an
 ROI
 6.4 ans
@@ -490,7 +490,13 @@ Ligne optionnelle (add-on hors total)=on [ ]
         "facture_hiver": 3000,
         "ville": "Mohammedia",
         "kwc": 5.68,
-        "batterie_kwh": 5
+        "batterie_kwh": 5,
+        "batteries": [
+          {
+            "produit": 61,
+            "quantite": 1
+          }
+        ]
       },
       {
         "signal": {}
