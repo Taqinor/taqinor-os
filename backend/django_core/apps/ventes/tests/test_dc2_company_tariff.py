@@ -115,3 +115,63 @@ class TestDC2CompanyTariff(TestCase):
         self.assertEqual(
             CompanyProfile.objects.get(pk=p.pk).productible_kwh_kwc,
             Decimal('1600.0'))
+
+    # ── CE2E6 (AMOT64 a) — le productible saisi atteint le moteur HORAIRE ────
+    # Emplacement : la série PVGIS est mise à l'échelle DANS le moteur horaire
+    # (``horaire.productible_societe``), pas dans ``chiffrer_etude`` : la
+    # production ET les économies qui en dérivent bougent ensemble.
+    def _bloc_horaire(self, devis):
+        from apps.ventes.etude_horaire import etude_horaire_pour_devis
+        return etude_horaire_pour_devis(devis, kwc=6.0, data={
+            'client_city': 'Casablanca', 'mode_installation': 'residentiel'})
+
+    def _devis_horaire(self, reference, regles=None):
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau mono 450W', '10', '1500')], reference=reference,
+            etude_params={'conso_kwh_mensuelles': [500] * 12})
+        if regles is not None:
+            devis.regles_calcul = regles
+            devis.save(update_fields=['regles_calcul'])
+        return devis
+
+    def test_ce2e6_productible_saisi_respecte_par_le_chemin_horaire(self):
+        from apps.parametres.pvgis_profils import productible_mensuel
+        from apps.ventes.quote_engine.pricing import (
+            PRODUCTION_DERATE, calculate_savings_roi)
+        pvgis = sum(productible_mensuel(ville='Casablanca')[0])
+        self._set_profile(productible_kwh_kwc=None)
+        vide = self._bloc_horaire(self._devis_horaire('DEV-CE2E6-VIDE'))
+        self.assertAlmostEqual(vide['annuel']['production_kwh'],
+                               6.0 * pvgis * PRODUCTION_DERATE, delta=1)
+        self._set_profile(productible_kwh_kwc=Decimal('1650.0'))
+        saisi = self._bloc_horaire(self._devis_horaire('DEV-CE2E6-1650'))
+        # Même règle que le chemin non horaire : kWc × 1 650 × pertes.
+        non_horaire = calculate_savings_roi(6.0, 100000, 120000,
+                                            productible=1650)
+        self.assertAlmostEqual(saisi['annuel']['production_kwh'],
+                               non_horaire['prod_kwh'], delta=1)
+        roi = calculate_savings_roi(6.0, 100000, 120000, productible=1650,
+                                    etude_horaire=saisi)
+        self.assertEqual(roi['savings_model'], 'horaire')
+        self.assertEqual(roi['prod_kwh'], non_horaire['prod_kwh'])
+        # Les économies suivent la production (aucun chiffre sur l'ancienne).
+        self.assertEqual(roi['eco_s_ann'],
+                         round(saisi['annuel']['economie_sans_mad']))
+        self.assertNotEqual(saisi['annuel']['economie_sans_mad'],
+                            vide['annuel']['economie_sans_mad'])
+        # Chemin horaire : productible rendu NET (QJR18), = 1 650 × pertes.
+        self.assertAlmostEqual(roi['productible'], 1650 * PRODUCTION_DERATE,
+                               delta=0.5)
+
+    def test_ce2e6_devis_aux_regles_2_garde_pvgis(self):
+        from apps.ventes.horaire.productible_societe import productible_du_devis
+        self._set_profile(productible_kwh_kwc=Decimal('1650.0'))
+        neuf = self._devis_horaire('DEV-CE2E6-N3')
+        ancien = self._devis_horaire('DEV-CE2E6-N2', regles=2)
+        self.assertEqual(productible_du_devis(neuf), 1650.0)
+        self.assertIsNone(productible_du_devis(ancien))
+        self._set_profile(productible_kwh_kwc=None)
+        reference = self._bloc_horaire(self._devis_horaire('DEV-CE2E6-REF'))
+        self._set_profile(productible_kwh_kwc=Decimal('1650.0'))
+        self.assertEqual(self._bloc_horaire(ancien)['annuel'],
+                         reference['annuel'])

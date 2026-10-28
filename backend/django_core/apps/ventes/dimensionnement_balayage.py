@@ -28,6 +28,15 @@ def _tranche_du_residuel(residuel_kwh_mois, tranches):
     return bareme.tranche_du_kwh_mensuel(residuel_kwh_mois, tranches=tranches)
 
 
+def _productible_balayage(company, regles_2710):
+    """CE2E6 — productible société (niveau 3) pour les études du tableau,
+    la MÊME base de production que le bloc du devis ; ``None`` sinon."""
+    if not regles_2710:
+        return None
+    from apps.ventes.horaire.productible_societe import productible_societe
+    return productible_societe(company)
+
+
 def _remplissage_rendu(palier_energie):
     """Le bloc ``remplissage`` d'un palier — chargé/capacité, et le PIRE mois.
 
@@ -180,6 +189,7 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         'charges_fixes_mad': charges_fixes_mad,
         'jour_reference': jour_reference,
         'perte_ombrage_pct': perte_ombrage_pct,
+        'productible_kwh_kwc': _productible_balayage(company, regles_2710),
     })
 
     # QJR612 — CAD170 RÉELLEMENT APPLIQUÉ (décision fondateur 30/09/2026 :
