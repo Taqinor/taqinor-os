@@ -790,6 +790,27 @@ def releve_declare_ci(lead):
     }
 
 
+def site_du_client(client):
+    """AGRI-SITE (fondateur, 28/10/2026) — le SITE de calcul d'un client :
+    ``{'ville', 'lat', 'lon', 'date'}``.
+
+    ``crm.Client`` ne porte ni ville ni GPS : ils vivent sur sa fiche du
+    répertoire unifié (``client.tiers`` — même source que la ville du jeu BI
+    ``crm_clients``). Valeurs LUES, jamais devinées depuis l'adresse libre :
+    ville ``''`` et GPS ``None`` quand la fiche ne les a pas (ou pas de
+    tiers). LECTURE SEULE, pour que ``ventes`` n'importe pas les modèles."""
+    vide = {'ville': '', 'lat': None, 'lon': None, 'date': None}
+    tiers = getattr(client, 'tiers', None) if client is not None else None
+    if tiers is None:
+        return vide
+    lat, lon = getattr(tiers, 'gps_lat', None), getattr(tiers, 'gps_lng', None)
+    if lat is None or lon is None:
+        lat = lon = None
+    return {'ville': (getattr(tiers, 'ville', '') or '').strip(),
+            'lat': lat, 'lon': lon,
+            'date': getattr(client, 'date_creation', None)}
+
+
 def site_location_for_devis(devis):
     """DC13 — localisation du chantier à créer depuis un devis.
 
