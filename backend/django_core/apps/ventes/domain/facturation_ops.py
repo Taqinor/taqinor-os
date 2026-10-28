@@ -579,11 +579,13 @@ def ventiler_document_depuis_facture(document, facture, *, partiel=False,
 
 
 class FacturationRefusee(Exception):
-    """Refus métier de « Facturer » un devis (message FR, prêt pour un 400)."""
+    """Refus métier de « Facturer » un devis (message FR, prêt pour un 400 ;
+    ``status`` 409 pour un refus d'état)."""
 
-    def __init__(self, motif):
+    def __init__(self, motif, status=400):
         super().__init__(motif)
         self.motif = motif
+        self.status = status
 
 
 #: Nombre maximal de paiements déjà reçus saisis en une fois (« Facturer »).
@@ -644,9 +646,11 @@ def valider_paiements_saisis(paiements, *, aujourdhui=None):
                 f'Paiement n°{numero} : date de paiement invalide '
                 '(format attendu AAAA-MM-JJ).')
         if date_paiement > aujourdhui:
+            # api-fuzz-full 28/10 (ENF11) : « pas dans le futur » dépend du
+            # jour courant, inexprimable au schéma — refus d'état 409.
             raise FacturationRefusee(
                 f'Paiement n°{numero} : la date de paiement ne peut pas être '
-                'dans le futur.')
+                'dans le futur.', status=409)
         mode = str(brut.get('mode_paiement') or '').strip()
         if mode not in modes:
             raise FacturationRefusee(

@@ -500,7 +500,8 @@ def _paiements_saisis(paiements):
     try:
         return valider_paiements_saisis(paiements or [])
     except FacturationRefusee as exc:
-        raise FacturationVenteRefusee(exc.motif, code='paiements_invalides')
+        raise FacturationVenteRefusee(exc.motif, code='paiements_invalides',
+                                      status=exc.status)
 
 
 def _emettre(facture, user, override_credit=False):

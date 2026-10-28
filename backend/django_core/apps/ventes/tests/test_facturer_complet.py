@@ -651,6 +651,19 @@ class FacturerVenteEncaissementVNT30(_BaseVente):
         self.assertFalse(Facture.objects.filter(devis=devis).exists())
         self.assertEqual(Paiement.objects.count(), 0)
 
+    def test_paiement_date_future_409(self):
+        # api-fuzz-full 28/10 (ENF11) : la date future est conforme au schéma
+        # (format date) ; le refus dépend du jour courant → 409, rien écrit.
+        devis = self._388('DEV-VNT30-FUTUR')
+        paiement = self._paiement('100.00')
+        paiement['date_paiement'] = (
+            date.today() + timedelta(days=3)).isoformat()
+        refus = self._refus(devis, nature='acompte', montant_ttc='15000.00',
+                            emettre=True, paiements=[paiement])
+        self.assertEqual(refus.status, 409)
+        self.assertEqual(refus.corps['code'], 'paiements_invalides')
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+
     def test_avance_14700_puis_paiement_300(self):
         from apps.ventes.domain.encaissements import enregistrer_avance
         devis = self._388('DEV-VNT30-AVANCE')

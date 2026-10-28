@@ -167,6 +167,26 @@ class TestApprobationsDecision(ApprobationsBase):
                     self._decide_url(), corps, format='json')
                 self.assertEqual(resp.status_code, 400)
 
+    def test_ged_demandeur_decideur_403(self):
+        """api-fuzz-full 28/10 : la GED refuse au demandeur de décider sa
+        propre demande (``PermissionError``) — séparation des tâches = 403
+        (APAR46), plus la garde générique 400 ; rien n'est décidé."""
+        from apps.ged.models import APPROBATION_EN_ATTENTE, DemandeApprobation
+        cab = Cabinet.objects.create(company=self.company, nom='Docs SoD')
+        folder = Folder.objects.create(
+            company=self.company, cabinet=cab, nom='Entrants SoD')
+        doc = Document.objects.create(
+            company=self.company, folder=folder, nom='SoD.pdf')
+        demande = DemandeApprobation.objects.create(
+            company=self.company, document=doc, statut=APPROBATION_EN_ATTENTE,
+            demandeur=self.resp_user)
+        resp = self.resp_api.post(self._decide_url(), {
+            'source': 'ged', 'id': demande.id, 'decision': 'refuser',
+            'motif': 'Retour'}, format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+        demande.refresh_from_db()
+        self.assertEqual(demande.statut, APPROBATION_EN_ATTENTE)
+
     def test_reject_with_motif_installations(self):
         # VX101 — décider une source `installations` exige le tier
         # Responsable/Admin : utilise `resp_api` (rôle normal → voir
