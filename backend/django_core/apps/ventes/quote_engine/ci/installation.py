@@ -54,6 +54,32 @@ def sous_ligne(it):
             "unite": it.get("unite") or ""}
 
 
+def _remise_groupee(groupe, taux):
+    """R2 (revue) — la remise GLOBALE répartie par le builder (QJRREM :
+    ``pu_ht_remise`` / ``total_ht_remise`` / ``pu_ttc_remise`` /
+    ``total_ttc_remise`` sur chaque item, ``conditions_commerciales
+    ._annoter_remise``) SURVIT au regroupement : Σ des totaux remisés des
+    composants ; un composant sans la clé compte au catalogue (le même repli
+    que ``montants.total_ht_remise``). Quantité 1 ⇒ P.U. remisé = total
+    remisé. Aucun item annoté ⇒ ``{}`` (les gabarits retombent sur le
+    catalogue, comme pour toute ligne bâtie à la main)."""
+    if not any(it.get("total_ht_remise") is not None for it in groupe):
+        return {}
+    coef = 1 + taux / 100
+    ht = ttc = Decimal(0)
+    for it in groupe:
+        qte = _dec(it.get("quantite"))
+        ht_it = (_dec(it["total_ht_remise"])
+                 if it.get("total_ht_remise") is not None
+                 else qte * _dec(it.get("prix_unit_ht")))
+        ttc_it = (_dec(it["total_ttc_remise"])
+                  if it.get("total_ttc_remise") is not None
+                  else (ht_it * coef).quantize(Decimal("0.01")))
+        ht, ttc = ht + ht_it, ttc + ttc_it
+    return {"pu_ht_remise": float(ht), "total_ht_remise": float(ht),
+            "pu_ttc_remise": float(ttc), "total_ttc_remise": float(ttc)}
+
+
 def _ligne_groupee(groupe, langue, libelles, role_groupe, avec_sous_lignes):
     """La ligne unique d'un groupe de lignes au même taux de TVA."""
     total_ht = sum(_dec(it.get("quantite")) * _dec(it.get("prix_unit_ht"))
@@ -73,6 +99,7 @@ def _ligne_groupee(groupe, langue, libelles, role_groupe, avec_sous_lignes):
         "role_ci": role_groupe,
         "_produit_nom": "",
     }
+    ligne.update(_remise_groupee(groupe, taux))
     if avec_sous_lignes:
         ligne["sous_lignes"] = [sous_ligne(it) for it in groupe]
     return ligne

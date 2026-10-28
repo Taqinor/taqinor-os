@@ -186,6 +186,13 @@ class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         choices=['tableau_ci', 'installation_ci'], allow_null=True))
     def get_groupe_client(self, obj):
         from .moteur_ci.composition import groupe_client_du_role
+        from .quote_engine.ci.installation import MODES_CI
+        # Hors commercial / industriel le PDF ne regroupe rien : l'écran non
+        # plus (un produit à ``role_ci`` sur un devis résidentiel reste nu).
+        devis = getattr(obj, 'devis', None)
+        mode = str(getattr(devis, 'mode_installation', '') or '').strip().lower()
+        if mode not in MODES_CI:
+            return None
         produit = getattr(obj, 'produit', None)
         return groupe_client_du_role(getattr(produit, 'role_ci', None))
 

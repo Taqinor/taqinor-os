@@ -619,8 +619,86 @@ class TableauProtectionAcDc(SimpleTestCase):
         self.assertNotIn("C&amp;I", html)
 
 
+def avec_remise_globale(items, pct):
+    """Les items annotés comme le builder les sert sous une remise globale
+    (QJRREM, ``_annoter_remise``) : totaux remisés au prorata, au centime."""
+    coef = 1 - pct / 100.0
+    sortie = []
+    for it in items:
+        qte = float(it["quantite"])
+        total_ht = round(qte * float(it["prix_unit_ht"]) * coef, 2)
+        taux = float(it.get("taux_tva") or 0)
+        sortie.append(dict(
+            it, pu_ht_remise=round(total_ht / qte, 2), total_ht_remise=total_ht,
+            pu_ttc_remise=round(total_ht / qte * (1 + taux / 100), 2),
+            total_ttc_remise=round(total_ht * (1 + taux / 100), 2)))
+    return sortie
+
+
+class TableauProtectionRemiseGlobale(SimpleTestCase):
+    """R2 (revue) — la remise globale répartie par le builder survit au
+    regroupement : « Tableau de protection AC/DC » ET « Installation clé en
+    main » impriment leur total REMISÉ, jamais le catalogue."""
+
+    def test_regroupement_porte_la_remise(self):
+        from apps.ventes.quote_engine.ci.installation import lignes_client
+        # 10 % sur 7 800 (organes) et 90 000 (prestations), à la main.
+        items = avec_remise_globale(items_organes() + items_prestations(), 10)
+        tableau, installation = lignes_client(
+            items, {"mode_installation": "commercial"})
+        self.assertEqual(tableau["prix_unit_ht"], 7800.0)
+        self.assertEqual(tableau["pu_ht_remise"], 7020.0)
+        self.assertEqual(tableau["total_ht_remise"], 7020.0)
+        self.assertEqual(tableau["total_ttc_remise"], 8424.0)
+        self.assertEqual(installation["prix_unit_ht"], 90000.0)
+        self.assertEqual(installation["pu_ht_remise"], 81000.0)
+        self.assertEqual(installation["total_ttc_remise"], 97200.0)
+        # Sans annotation du builder : aucune clé remise (repli catalogue).
+        nu = lignes_client(items_organes(), {"mode_installation": "commercial"})
+        self.assertNotIn("pu_ht_remise", nu[0])
+
+    def test_pdf_commercial_imprime_le_remise_et_barre_le_catalogue(self):
+        from html import unescape
+        data = _data()
+        data["all_items"] = avec_remise_globale(
+            list(data["all_items"]) + items_organes() + items_prestations(), 10)
+        data["totaux_all"] = dict(data["totaux_all"], remise=1.0)
+        import re
+        u = unescape(_html(data)).replace("\u202f", " ").replace("\xa0", " ")
+        u = re.sub(r'<div class="ci-sl".*?</div>', "", u)  # la rangée sans son détail
+        ligne = u[u.find("Tableau de protection AC/DC"):][:600]
+        self.assertIn("7 800,00", ligne)   # catalogue, barré
+        self.assertIn("7 020,00", ligne)   # remisé, imprimé
+        ligne = u[u.find("Installation clé en main"):][:600]
+        self.assertIn("81 000,00", ligne)
+
+    def test_une_page_legacy_imprime_le_remise(self):
+        from ._moteur_fixtures import html_onepage
+        items = avec_remise_globale(list(_data()["all_items"]) + items_organes(), 10)
+        html = html_onepage(mode_installation="commercial", all_items=items,
+                            discount_pct=10.0)
+        import re
+        u = html.replace("\u202f", " ").replace("\xa0", " ").replace("&#160;", " ")
+        u = re.sub(r'<div class="ci-sl".*?</div>', "", u)
+        ligne = u[u.find("Tableau de protection AC/DC"):][:900]
+        self.assertIn("7 020", ligne)
+
+
 @tag("weasyprint")  # rendu PDF réel
 class TableauProtectionTroisPages(SimpleTestCase):
+
+    def test_une_page_ci_avec_les_huit_sous_lignes_ne_deborde_pas(self):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine import generate_devis_premium as legacy
+        from ._moteur_fixtures import html_onepage
+        html = html_onepage(mode_installation="commercial",
+                            all_items=list(_data()["all_items"])
+                            + items_organes() + items_prestations())
+        self.assertEqual(html.count('class="ci-sl"'), len(ORGANES))
+        self.assertEqual(len(HTML(string=html).render().pages), 1)
+        mesure = legacy._mesure_onepage(html)
+        self.assertIsNotNone(mesure)
+        self.assertEqual(mesure[0], 0.0)
 
     def test_trois_pages_avec_tableau_et_installation(self):
         data = avec_organes(avec_prestations(_data()))

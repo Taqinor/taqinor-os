@@ -20,6 +20,8 @@ Module PUR (même patron que ``ci/installation.py``).
 """
 from __future__ import annotations
 
+from html import escape
+
 from apps.ventes.moteur_ci.composition import ROLES_TABLEAU_CI
 
 from .installation import regrouper_roles
@@ -54,7 +56,8 @@ def sous_lignes_html(it, font_pt, couleur, retrait_px=6):
     """Le détail indenté d'une ligne regroupée pour les gabarits PDF (un
     ``<div>`` par composant : « 2 × Coffret DC »), ou '' sans sous-lignes.
     Les désignations arrivent DÉJÀ échappées par le gabarit (un seul
-    échappement, jamais deux)."""
+    échappement, jamais deux) ; l'unité, qui ne passe par aucun gabarit, est
+    échappée ici."""
     sous_lignes = it.get("sous_lignes") if isinstance(it, dict) else None
     if not sous_lignes:
         return ""
@@ -63,6 +66,7 @@ def sous_lignes_html(it, font_pt, couleur, retrait_px=6):
         f'font-weight:400;padding-left:{retrait_px}px;line-height:1.25;">'
         f'{_quantite(sl.get("quantite"))}&#160;×&#160;'
         f'{sl.get("designation") or ""}'
-        + (f' {sl["unite"]}' if sl.get("unite") not in (None, "", "u") else "")
+        + (f' {escape(str(sl["unite"]))}'
+           if sl.get("unite") not in (None, "", "u") else "")
         + '</div>'
         for sl in sous_lignes if isinstance(sl, dict))

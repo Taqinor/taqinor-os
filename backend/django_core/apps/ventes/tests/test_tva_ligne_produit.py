@@ -197,9 +197,29 @@ class SerialiseurExposeGroupeClient(_Base):
     source : ``moteur_ci.composition``), en lecture seule ; la ligne reste une
     par composant en base."""
 
+    def setUp(self):
+        super().setUp()
+        # Le regroupement n'existe que sur un devis commercial / industriel.
+        self.devis.mode_installation = 'commercial'
+        self.devis.save(update_fields=['mode_installation'])
+
     def _produit_ci(self, nom, role_ci):
         return ProduitFactory(company=self.company, nom=nom, role_ci=role_ci,
                               tva=Decimal('20.00'))
+
+    def test_null_hors_commercial_industriel(self):
+        ligne = self._ligne(self._produit_ci('Coffret DC C&I', 'coffret_dc'))
+        for mode in ('residentiel', 'agricole', ''):
+            self.devis.mode_installation = mode
+            self.devis.save(update_fields=['mode_installation'])
+            ligne.refresh_from_db()
+            self.assertIsNone(
+                LigneDevisSerializer(ligne).data['groupe_client'], mode)
+        self.devis.mode_installation = 'industriel'
+        self.devis.save(update_fields=['mode_installation'])
+        ligne.refresh_from_db()
+        self.assertEqual(LigneDevisSerializer(ligne).data['groupe_client'],
+                         'tableau_ci')
 
     def test_organe_du_tableau(self):
         for role in ('coffret_dc', 'coffret_ac', 'protection_ac',

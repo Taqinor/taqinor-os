@@ -69,6 +69,9 @@ PRESTATIONS_CI = (
 #: (``protection_dc``), mise à la terre, comptage / limitation d'injection.
 #: Reconnus par le RÔLE de ligne, jamais par la désignation ; UNE source pour
 #: le rendu (``quote_engine/ci/tableau``) et le sérialiseur des lignes.
+#: EXCLUS par décision (R2, à revoir par le fondateur) : ``cable_ac`` (câble,
+#: pas un organe du tableau), ``logger_supervision`` (supervision) et
+#: ``cellule_mt`` (poste de livraison) restent des lignes à part.
 ROLES_TABLEAU_CI = frozenset((
     'coffret_dc', 'coffret_ac', 'protection_ac', 'protection_dc',
     'mise_a_la_terre', 'compteur_injection', 'controleur_injection',
