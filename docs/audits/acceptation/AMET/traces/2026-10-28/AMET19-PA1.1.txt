@@ -1,0 +1,10 @@
+AMET19 — PA1.1 — rejeu orchestrateur, pile locale : backend monté depuis le code fusionné 1771f7457 (conteneur à part accept-replay-django, base démo partagée), front construit au même code et servi par vite preview :5180, site apps/web en astro dev :4321 → backend :8010, 2026-10-28.
+Sonde manage.py shell (APIClient demo_admin, transaction annulée) — même sonde que la trace FAIL du 26/10.
+1. POST lead « ACC Meta Rejeu » (whatsapp 212600019019, priorité haute) → 201 ; marqué Meta (external_id ACC-AMET19-1).
+2. PATCH fiche {whatsapp:'', priorite:'basse'} → 200 ; réponse saisies_humaines ['priorite','whatsapp'] ; relu en base : ['priorite','whatsapp']
+   (le 26/10 : [] — ERR-LEAD-SAISIES-HUMAINES-FORMULAIRE corrigé).
+3. Rejeu Meta create_lead_from_meta_lead_ads sur le même leadgen → même lead ; whatsapp '' et priorité basse CONSERVÉS ; lignes d'activité système priorite/whatsapp 0 → 0.
+4. GET fiche relue : whatsapp '', priorité basse.
+5. Témoin jamais touché à la main : le rejeu remplit whatsapp (+212600019020) et priorité haute.
+6. Cas B (marqueur posé en base) : rien réécrit, 0 ligne système.
+Verdict : PASS.
