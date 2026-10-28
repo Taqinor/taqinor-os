@@ -1,11 +1,13 @@
 """AIC6 — admin Django en LECTURE SEULE du journal de l'assistant."""
 from django.contrib import admin
 
+from core.admin_scoping import CompanyScopedAdminMixin
+
 from .models import AssistantEvent
 
 
 @admin.register(AssistantEvent)
-class AssistantEventAdmin(admin.ModelAdmin):
+class AssistantEventAdmin(CompanyScopedAdminMixin, admin.ModelAdmin):
     list_display = ('created_at', 'company', 'user', 'intention', 'modele',
                     'repli', 'note')
     list_filter = ('intention', 'repli', 'note', 'company')
