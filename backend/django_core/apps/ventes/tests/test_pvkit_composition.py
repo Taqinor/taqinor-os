@@ -552,6 +552,11 @@ class LesAvertissementsDeCompositionSontRendus(_Base):
         self.assertEqual(len(canal), len(set(canal)))
 
     def test_une_composition_sans_souci_rend_une_liste_vide(self):
+        # Fiche du montage : Isc panneau 14,02 A > 13,5 A admissible — le
+        # couple serait (à raison) signalé ; ici l'entrée l'admet.
+        FicheTechnique.objects.filter(
+            company=self.company, type_fiche='onduleur').update(
+                ond_i_max_mppt_a=Decimal('20.0'))
         lignes = services.composition_residentielle(
             services.catalogue_de_la_societe(self.company),
             kwc=4.4, panel_watt=550, nb_panneaux=8)
