@@ -77,6 +77,11 @@ export interface SyntheseCiArgent {
     ecartMensuelMad: number | null;
     dureeMois: number | null;
     source: string | null;
+    /** CEC15 — apport et frais SAISIS sur l'offre (0 si absents ; imprimés seulement > 0). */
+    apportMad: number | null;
+    fraisMad: number | null;
+    /** CEC15 — retour sur l'offre servi (au dixième), `null` quand la clé est absente : jamais recalculé. */
+    retourOffreAns: number | null;
   } | null;
 }
 
@@ -267,6 +272,9 @@ function lireArgentCi(v: unknown, paybackPdf: number | null = null): SyntheseCiA
           ecartMensuelMad: nombreServi(v.financement.ecart_mensuel_mad),
           dureeMois: nombreServi(v.financement.duree_mois),
           source: texteServi(v.financement.source),
+          apportMad: nombreServi(v.financement.apport_mad),
+          fraisMad: nombreServi(v.financement.frais_mad),
+          retourOffreAns: nombreServi(v.financement.retour_offre_ans),
         }
       : null,
   };

@@ -55,7 +55,7 @@ class OffreEcriteTest(SimpleTestCase):
         self.assertEqual(set(res), {
             'libelle_client', 'echeance_mad', 'economie_mensuelle_moyenne_mad',
             'ecart_mensuel_mad', 'duree_mois', 'source', 'flux_offre',
-            'retour_offre_ans'})
+            'retour_offre_ans', 'apport_mad', 'frais_mad'})
 
     def test_offre_sans_source_refusee(self):
         with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
@@ -89,6 +89,12 @@ class OffreEcriteTest(SimpleTestCase):
                          avec['flux_offre'][-1]['flux_mad'] - 20000.0)
         self.assertEqual(len(avec['flux_offre']), 8)  # an 0 + 7 ans (84 mois)
         self.assertGreater(avec['retour_offre_ans'], 0)
+        # CEC15 (affichage) : apport et frais servis tels que saisis.
+        self.assertEqual((avec['apport_mad'], avec['frais_mad']),
+                         (180000.0, 0.0))
+        self.assertEqual((plein['apport_mad'], plein['frais_mad']),
+                         (180000.0, 5000.0))
+        self.assertEqual(sans['apport_mad'], 0.0)
 
     def test_base_deux_prend_la_base_de_l_echeance(self):
         res = eco.financement_ci(_offre(base_echeance='ttc'),
