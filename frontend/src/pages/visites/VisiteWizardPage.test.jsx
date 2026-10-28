@@ -157,6 +157,10 @@ describe('VisiteWizardPage — VT10', () => {
     withProviders()
     const bouton = await screen.findByRole('button', { name: /terminer la visite/i })
     expect(bouton).not.toBeDisabled()
+    // Rejeu CSV11 (390 px) : la barre passe AU-DESSUS de la barre d'onglets
+    // de l'app (`--z-sticky`), sinon le pouce touche la navigation.
+    expect(screen.getByTestId('visite-barre-terminer').className)
+      .toContain('z-[var(--z-sticky-raised)]')
   })
 
   it('le panneau devis n’affiche jamais prix_achat (le serveur ne l’envoie pas, l’écran n’en ajoute pas)', async () => {
