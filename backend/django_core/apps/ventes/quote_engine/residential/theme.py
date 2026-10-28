@@ -482,7 +482,15 @@ def warranties_for(d):
     # ``_WARRANTY_FALLBACK`` : « 10 ans » n'est LE produit par défaut d'aucune
     # marque unique du catalogue). Sans ``garantie_mois`` saisie : OMISSION.
     ond_present, ond_ans = _first_warranty(rows, _est_onduleur, "garantie_mois")
-    if ond_present and ond_ans is not None:
+    # RPDF — deux options aux onduleurs de garanties différentes (Huawei
+    # 10 ans / Deye 5 ans) : une ligne par option, jamais la seule première.
+    _ond_opt = [_first_warranty([r for r in (d.get(c) or []) if isinstance(r, dict)],
+                                _est_onduleur, "garantie_mois")[1]
+                for c in ("sans_items", "avec_items")]
+    if d.get("deux_options", True) and None not in _ond_opt and _ond_opt[0] != _ond_opt[1]:
+        out += [(str(_ond_opt[0]), "ans", "Onduleur (option 1)", "garantie fabricant"),
+                (str(_ond_opt[1]), "ans", "Onduleur (option 2)", "garantie fabricant")]
+    elif ond_present and ond_ans is not None:
         out.append((str(ond_ans), "ans", "Onduleur", "garantie fabricant"))
 
     pan_present, pan_ans = _first_warranty(rows, _est_panneau, "garantie_mois")
@@ -529,7 +537,9 @@ _CLES_GARANTIE = {"Installation": "ci_garantie_installation",
                   "Onduleur": "ci_garantie_onduleur",
                   "Panneaux": "ci_garantie_panneaux",
                   "Performance": "ci_garantie_performance",
-                  "Batterie": "ci_garantie_batterie"}
+                  "Batterie": "ci_garantie_batterie",
+                  "Onduleur (option 1)": "rpdf_gar_onduleur_opt1",
+                  "Onduleur (option 2)": "rpdf_gar_onduleur_opt2"}
 
 
 def garantie_doc(data, garantie):
@@ -544,7 +554,13 @@ def garantie_doc(data, garantie):
             pct=sub[:-len(" garanti")])
     elif sub == "performance linéaire":
         sub = libelle_doc(data, "res_gar_lineaire", sub)
-    return (n, libelle_doc(data, "ci_ans", u) if u == "ans" else u,
+    if u == "ans":
+        from ..i18n_labels_residentiel import accord_annees_ar
+        u = libelle_doc(data, "ci_ans", u)
+        if langue_doc(data) == "ar":
+            # RPDF — « 12 سنوات » est fautif : « سنة » hors 3..10 ans entiers.
+            u = accord_annees_ar(u, str(n).replace(",", "."))
+    return (n, u,
             libelle_doc(data, _CLES_GARANTIE[label], label)
             if label in _CLES_GARANTIE else label, sub)
 
@@ -958,6 +974,21 @@ def libelle_doc(data, cle: str, fr: str) -> str:
     if i18n_labels.est_rtl(langue):
         return f'<span class="i18n-rtl" dir="rtl">{valeur}</span>'
     return valeur
+
+
+def delai_doc(data, texte):
+    """RPDF — délai commercial société (« 7-14 jours ouvrés », « 48-72 h »)
+    dans la langue du document. Seul le gabarit PAR DÉFAUT « N-M jours
+    ouvrés » / « N-M h » est traduit ; un texte personnalisé par la société
+    (autre forme) est une donnée et reste tel quel. Français : inchangé."""
+    import re
+    if langue_doc(data) == "fr" or not texte:
+        return texte
+    m = re.fullmatch(r"\s*(\d+(?:\s*-\s*\d+)?)\s*(jours ouvrés|h)\s*", texte)
+    if not m:
+        return texte
+    cle = "rpdf_jours_ouvres" if m.group(2) != "h" else "rpdf_heures_abr"
+    return f"{m.group(1)} {libelle_doc(data, cle, m.group(2))}"
 
 
 def css_langue(data) -> str:

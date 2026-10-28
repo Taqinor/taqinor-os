@@ -395,14 +395,13 @@ MOTIF_MONTANT_NOTE_DEBIT = (r'^0*(?:[1-9][0-9]{0,7}(?:\.[0-9]{0,2})?'
 MOTIF_TAUX_NOTE_DEBIT = (r'^(?:|100(?:\.0{0,2})?'
                          r'|[0-9]{1,2}(?:\.[0-9]{0,2})?'
                          r'|\.[0-9]{1,2})$')
+# api-fuzz-full 27/10 — les motifs vivent sur les champs (un seul ``pattern``
+# par champ) : doublés ici du « sans NUL » de ``ChaineStricte``, l'``allOf``
+# était ingénérable (« Failed Health Check », filter_too_much).
 CORPS_NOTE_DEBIT_LIGNES_OU_MONTANT = corps_resserre({'anyOf': [
     {'required': ['lignes'],
      'properties': {'lignes': {'type': 'array', 'minItems': 1}}},
-    {'required': ['montant'],
-     'properties': {'montant': {'type': 'string',
-                                'pattern': MOTIF_MONTANT_NOTE_DEBIT},
-                    'taux_tva': {'type': 'string',
-                                 'pattern': MOTIF_TAUX_NOTE_DEBIT}}},
+    {'required': ['montant']},
 ]})
 
 EnregistrerAvanceRequest = _ser('PaiementEnregistrerAvanceRequest', {
@@ -1447,8 +1446,12 @@ CreerNoteDebitRequest = _ser('FactureCreerNoteDebitRequest', {
                           required=False),
     # AFAC32 — sans ``lignes`` : un montant HT + un taux (défaut : celui de
     # la facture). Publiés pour que la règle « lignes OU montant » le soit.
-    'montant': ChaineStricte(required=False),
-    'taux_tva': ChaineStricte(required=False, allow_blank=True),
+    # Motifs appliqués dès qu'ils sont présents (avec ou sans lignes).
+    'montant': ChaineStricte(required=False, trim_whitespace=False,
+                             validators=[_MotifEntier(MOTIF_MONTANT_NOTE_DEBIT)]),
+    'taux_tva': ChaineStricte(required=False, allow_blank=True,
+                              trim_whitespace=False,
+                              validators=[_MotifEntier(MOTIF_TAUX_NOTE_DEBIT)]),
 })
 LigneRetour = _ser('FactureLigneRetour', {
     # CI #997 fuzz — un id de produit (≥ 1, entier JSON) : ``0`` était

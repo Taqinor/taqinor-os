@@ -56,7 +56,8 @@ class DevisAutoContratDuLead(_Base):
         with self.assertRaises(AutoDevisError) as ctx:
             self._auto_reel(lead)
         self.assertEqual(ctx.exception.field, 'contrat_electricite')
-        self.assertIn("contrat d'électricité inconnu", ctx.exception.message)
+        # CORC3 (27/10/2026) — une consigne au vendeur, plus le jargon du moteur.
+        self.assertIn("Demandez au client son contrat d'électricité", ctx.exception.message)
         self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
 
     def test_ne_sait_pas_refuse_aussi(self):

@@ -2502,13 +2502,13 @@ decisions:
     question: "Option « avec batterie » C&I : combien d'onduleurs hybrides basse tension en parallèle au plus (constat R1 CMP : 19 Deye à 500 kWc) ?"
     options:
       - cle: a
-        texte: "au plus 10 (datasheet Deye SUN-14-20K-SG05LP3-EU-SM2 et SUN-3-12K-SG05LP3-EU-SM2 : « Max. 10 pcs parallel ») ; au-delà, le champ « avec » est borné et une alerte interne le dit"
+        texte: "au plus 10 (datasheet Deye SUN-14-20K-SG05LP3-EU-SM2 et SUN-3-12K-SG05LP3-EU-SM2 : « Max. 10 pcs parallel »), d'un seul modèle (manuel SUN-3-12K-SG05LP3-EU-SM2 p. 51, « same model ») ; au-delà, le champ « avec » est borné et une alerte interne le dit"
       - cle: b
         texte: "aucune borne"
     reponse: a
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — datasheets Deye ; session L3 CMP"
-    taches: [CMP3]
+    taches: [CMP3, CMP11]
   - id: D-CMP-4
     question: "Production d'un toit plat (lesté ou fixé) sans pente déclarée : quelle inclinaison (aujourd'hui 30° de la table PVGIS) ?"
     options:
@@ -2517,8 +2517,65 @@ decisions:
       - cle: b
         texte: "15° (Renusol ConSole+, K2 Dome 6.15) — −3,4 %"
       - cle: c
-        texte: "garder 30°"
+        texte: "garder 30° par défaut ; inclinaison modifiable dans le générateur (toit.pente_deg)"
+    reponse: c
+    date: "2026-10-27"
+    source: "décision fondateur 27/10/2026 (Reda) : 30° par défaut, inclinaison modifiable dans le générateur — remplace la réponse a prise pour lui le même jour"
+    taches: [CMP5]
+  - id: D-CMP-5
+    question: "Option « avec batterie » DOMINÉE (plus chère ET économie annuelle plus faible que l'option sans — rendu réel usine MT : 1 140 483 HT / 229 971 MAD contre 928 317 HT / 233 192 MAD) : la proposer ?"
+    options:
+      - cle: a
+        texte: "ne pas la proposer ; alerte interne nommant la cause (10 hybrides au plus, banque réduite) ; choix « avec » du lead ⇒ refus nommé"
+      - cle: b
+        texte: "la proposer quand même (règle « deux options par défaut »)"
     reponse: a
     date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 CMP, rendu réel du lead de démo 2231"
+    taches: [CMP9]
+  - id: D-CMP-6
+    question: "Compteur d'injection / logger d'une option dont les onduleurs sont d'une autre marque que l'article retenu (Smart Meter Huawei sur 10 hybrides Deye) ?"
+    options:
+      - cle: a
+        texte: "article compatible d'abord (fiche ond_compteurs_compatibles, sinon même marque) ; aucun ⇒ ligne gardée + alerte interne nommant la marque"
+      - cle: b
+        texte: "garder l'article actuel sans alerte"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 CMP, rendu réel des leads de démo 2228 / 2231"
+    taches: [CMP10]
     source: "décision prise pour le fondateur (à revoir) — PVGIS 5.3 PVcalc relevé le 27/10/2026 ; session L3 CMP"
     taches: [CMP5]
+  - id: D-AGM-1
+    question: "Moteur de pompe donné en CV (5,5 CV = 4,05 kW) : quel kW pour la pompe et le variateur (constat R1 AGM : variateur 5,5 kW choisi pour un moteur normalisé de 4 kW) ?"
+    options:
+      - cle: a
+        texte: "CV ramené à la puissance normalisée IEC la plus proche quand l'écart relatif est ≤ 2 % (écart maximal mesuré 1,97 %, 40 CV → 30 kW) ; pompe et variateur affichent le même kW"
+      - cle: b
+        texte: "garder la conversion brute CV × 0,7355"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — règle fondateur du 27/10/2026 « ne jamais attendre le fondateur » ; session L3 AGM"
+    taches: [AGM1]
+  - id: D-AGM-2
+    question: "Besoin en eau qu'aucun champ ne couvre : jusqu'où grossit le champ de repli (constat R1 AGM : OSP 30/8 à 800 m³/j → 121 panneaux) ?"
+    options:
+      - cle: a
+        texte: "repli borné à 1,5 × la puissance de plaque (borne haute de `ratio_champ_pompe`, table AGR110), jamais sous le minimum du variateur ; la recherche et tout cas couvrable inchangés ; l'alerte le dit"
+      - cle: b
+        texte: "garder la croissance sans borne"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 AGM"
+    taches: [AGM2, AGM14]
+  - id: D-AGM-3
+    question: "Pompe sans courbe (couverture du besoin non vérifiable) : le bloc « Votre argent » reste-t-il publiable au client ?"
+    options:
+      - cle: a
+        texte: "non publiable au client (motif existant repris) ; l'écran vendeur garde l'aperçu"
+      - cle: b
+        texte: "publiable avec couverture supposée à 100 %"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 AGM"
+    taches: [AGM9]

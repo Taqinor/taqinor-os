@@ -1327,7 +1327,7 @@ class EquipeSerializer(
     le `chef` doivent appartenir à la société de l'utilisateur (validé côté
     viewset). Expose les noms des membres en lecture pour l'affichage."""
     # ACHT53 — FK inscriptibles bornées à la société.
-    same_company_fields = ('chef', 'membres')
+    same_company_fields = ('chef', 'membres', 'departement')
     membres_noms = serializers.SerializerMethodField()
     chef_nom = serializers.SerializerMethodField()
     nb_membres = serializers.SerializerMethodField()
@@ -1336,7 +1336,7 @@ class EquipeSerializer(
         model = Equipe
         fields = [
             'id', 'nom', 'membres', 'membres_noms', 'nb_membres',
-            'chef', 'chef_nom', 'actif', 'description',
+            'chef', 'chef_nom', 'actif', 'description', 'departement',
             'created_by', 'date_creation', 'date_modification',
         ]
         read_only_fields = [

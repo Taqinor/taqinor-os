@@ -9,6 +9,7 @@ import os
 import unittest
 
 from apps.ventes.moteur_ci import profils
+from apps.ventes.moteur_ci.charge import courbe_declaree
 from apps.ventes.moteur_ci.profils import (
     MOTIF_PROFIL_DECLARE, SAISONS, TYPES_JOUR, donnees_archetypes, forme_archetype,
 )
@@ -75,6 +76,29 @@ class TestArchetypes(unittest.TestCase):
             self.assertIsNone(forme, categorie)
             self.assertIn(MOTIF_PROFIL_DECLARE, motif)
 
+    def test_archetype_le_plus_proche_dit_tel(self):
+        # Décision fondateur 26/10/2026 — définition BDEW du profil, jamais un
+        # archétype présenté comme le sien.
+        for categorie, jeu in (('cafe', 'BDEW G2'), ('garage', 'BDEW G1'),
+                               ('pharmacie', 'BDEW G4'), ('boucherie', 'BDEW G3')):
+            forme, source = forme_archetype(categorie, 'ouvre', 'hiver')
+            self.assertEqual(len(forme), 24)
+            self.assertTrue(source['jeu_de_donnees'].startswith(jeu), categorie)
+            self.assertIn('le plus proche', source['jeu_de_donnees'])
+            self.assertIn('standardlastprofile', source['definition'])
+        for categorie in ('entrepot', 'mosquee'):
+            self.assertIsNone(forme_archetype(categorie, 'ouvre', 'hiver')[0], categorie)
+
+    def test_chaque_categorie_du_lead_a_son_talon(self):
+        from apps.crm.categories_commerciales import CategorieCommerciale
+        from apps.ventes.moteur_ci.talons import CATEGORIES_COMMERCE, talon_par_defaut
+        self.assertEqual(set(CATEGORIES_COMMERCE), set(CategorieCommerciale.values))
+        for categorie, lien in CATEGORIES_COMMERCE.items():
+            forme, _src = forme_archetype(categorie, 'ouvre', 'hiver')
+            self.assertEqual(forme is not None, lien != 'defaut', categorie)
+            if lien == 'defaut':
+                self.assertEqual(talon_par_defaut(categorie)[0], 0.20)
+
     def test_chaque_forme_somme_a_un(self):
         for archetype in donnees_archetypes()['archetypes']:
             for type_jour in TYPES_JOUR:
@@ -114,6 +138,33 @@ class TestArchetypes(unittest.TestCase):
         self.assertNotIn('day_share', texte)
         _forme, source = forme_archetype('bureau', 'ouvre', 'hiver')
         self.assertFalse(any('diurne' in cle for cle in source))
+
+    def test_categorie_proche_sans_plage_demande_les_horaires(self):
+        # CLD18 — station-service, café, salle de sport : forme « restaurant du
+        # soir » sans plage ⇒ alerte INTERNE nommant l'archétype, jamais un refus.
+        for categorie in ('station_service', 'cafe', 'salle_sport'):
+            jt, prov, alertes = courbe_declaree({}, 96000, annee_reference=2027,
+                                                archetype=categorie, feries=[])
+            self.assertIsNotNone(jt, categorie)
+            alerte = next(a for a in alertes if a['code'] == 'horaires_a_demander')
+            self.assertTrue(alerte['interne'])
+            self.assertIn('restaurant', alerte['message'])
+            self.assertIn(categorie, alerte['message'])
+        # plages déclarées, ou catégorie dont l'écart est faible : aucune alerte
+        _jt, _p, alertes = courbe_declaree(
+            {'jours_ouverts': [True] * 7, 'plages': {'ouvre': [[0, 24]]}}, 96000,
+            annee_reference=2027, archetype='station_service', feries=[])
+        self.assertNotIn('horaires_a_demander', {a['code'] for a in alertes})
+        _jt, _p, alertes = courbe_declaree({}, 96000, annee_reference=2027,
+                                           archetype='garage', feries=[])
+        self.assertNotIn('horaires_a_demander', {a['code'] for a in alertes})
+        # profil de la société complet : c'est SA forme qui sert, pas l'archétype
+        profil = {'cle': 'x', 'libelle': 'x', 'provenance': 'relevé 2025',
+                  'courbe': {'annuel': [0] * 8 + [1] * 10 + [0] * 6}}
+        _jt, _p, alertes = courbe_declaree({}, 96000, annee_reference=2027,
+                                           archetype='station_service', feries=[],
+                                           profil_societe=profil)
+        self.assertNotIn('horaires_a_demander', {a['code'] for a in alertes})
 
 
 class TestFormeContrat(unittest.TestCase):

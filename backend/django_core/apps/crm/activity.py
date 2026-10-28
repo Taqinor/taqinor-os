@@ -155,6 +155,10 @@ TRACKED_FIELDS = {
     'carburant_prix_unitaire_mad': 'Prix payé (bouteille ou litre, MAD)',
     'carburant_prix_declare_le': 'Prix du carburant déclaré le',
     'depense_carburant_mad_mois': 'Dépense carburant (MAD/mois)',
+    'depense_electricite_pompe_mad_mois':
+        'Facture électricité du pompage (MAD/mois)',
+    'depense_electricite_pompe_part_fixe_mad_mois':
+        'Part fixe de la facture électricité du pompage (MAD/mois)',
     'mois_irrigation': "Mois d'irrigation",
     # AGQ10 (D-AGQ-6) — jours d'irrigation par semaine (bloc économie).
     'jours_irrigation_semaine': "Jours d'irrigation par semaine",
@@ -189,6 +193,7 @@ TRACKED_FIELDS = {
     'heure_debut': 'Heure de début de journée',
     'heure_fin': 'Heure de fin de journée',
     'fermeture_mois': 'Mois de fermeture',
+    'equipements_hors_horaires': 'Équipements hors horaires',
     'type_surface': 'Type de surface',
     'surface_source': 'Provenance de la surface',
     'groupe_electrogene': 'Groupe électrogène',
@@ -323,6 +328,7 @@ _CHOICE_FIELDS = {
     'tension_raccordement', 'tension_source', 'puissance_souscrite_source',
     'contrat_electricite', 'option_tarifaire_bt',
     'categorie_commerciale', 'export_ue_declare', 'regime_equipes',
+    'equipements_hors_horaires',
     'type_surface', 'surface_source', 'groupe_electrogene', 'cos_phi_source',
     'tva_recuperable',
     # ALEA19 — préférence de contact (vocabulaire fermé).

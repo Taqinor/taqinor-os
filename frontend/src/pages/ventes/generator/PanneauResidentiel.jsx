@@ -25,6 +25,7 @@
 // garde `step="any"` (règle fondateur : aucun champ ne snappe jamais) et le
 // `noValidate` est resté sur le formulaire porteur.
 import CarteFacturesElectriques from './CarteFacturesElectriques'
+import BandeauTailleLead from './residentiel/BandeauTailleLead'
 
 // QJR241 — clé de marché de ce panneau (ex-`cle` de quote/marches/
 // residentiel.js, module supprimé faute de consommateur de production).
@@ -39,9 +40,13 @@ export default function PanneauResidentiel({
   distributeur, setDistributeur, realBillMode, setRealBillMode,
   realBillMad, setRealBillMad, realBillKwh, setRealBillKwh,
   onRealBillPaste, consoAnnuelleReelle, moisNonSaisis, avisFactures, provenanceMois,
+  // RGEN3 — l'état du dimensionnement, pour dire d'où vient la taille.
+  sizing,
 }) {
   if (marche !== CLE) return null
   return (
+    <>
+    <BandeauTailleLead sizing={sizing} />
     <CarteFacturesElectriques
       fHiver={fHiver} setFHiver={setFHiver} fEte={fEte} setFEte={setFEte}
       syncBillEstimator={syncBillEstimator}
@@ -55,5 +60,6 @@ export default function PanneauResidentiel({
       realBillKwh={realBillKwh} setRealBillKwh={setRealBillKwh}
       onRealBillPaste={onRealBillPaste} consoAnnuelleReelle={consoAnnuelleReelle}
     />
+    </>
   )
 }

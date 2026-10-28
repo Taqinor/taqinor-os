@@ -167,9 +167,16 @@ class SchemaTarifDeclareTest(SimpleTestCase):
         mt = {'tarif_pointe': 1.2, 'tarif_pleines': 0.9, 'tarif_creuses': 0.6}
         self.assertEqual(tc.tarif_applicable(
             {'mt': mt}, regles_origine=True)['origine'], 'omis')
+        # Bi-horaire : la grille comme hier (aucune alerte nouvelle), c'est la
+        # valorisation qui omet (test_ciq204).
         self.assertEqual(tc.tarif_applicable(
             {'contrat': 'bt_force_motrice', 'option_bi_horaire': True},
-            regles_origine=True)['origine'], 'omis')
+            regles_origine=True)['origine'], 'grille_officielle')
+        # Tranches déclarées sans seuils : lues brutes, comme avant CEC2.
+        declare = {'bt': {'tranches': [{'tarif_kwh': 1.4}, {'tarif_kwh': 1.5}]}}
+        self.assertEqual(tc._seuils_bt({'origine': 'declare_facture'}, declare,
+                                       origine=True),
+                         [(None, None), (None, None)])
 
     def test_cec2_derniere_tranche_plafonnee_refusee(self):
         tranches = [{'tarif_kwh': 1.0, 'seuil_min_kwh': 0, 'seuil_max_kwh': 100},
@@ -191,3 +198,23 @@ class SchemaTarifDeclareTest(SimpleTestCase):
         self.assertIn('2025', tc.tarif_applicable(declare)['mention'])
         origine = tc.tarif_applicable(declare, regles_origine=True)
         self.assertEqual(origine['tarifs_par_poste'][0]['tarif_kwh_ttc'], 1.18)
+
+    def test_cec13_regles_du_devis(self):
+        from types import SimpleNamespace
+        self.assertEqual(tc.regles_du(None), {'regles_origine': False})
+        self.assertEqual(tc.regles_du(SimpleNamespace(regles_calcul=2)),
+                         {'regles_origine': True})
+        self.assertEqual(tc.regles_du(SimpleNamespace(regles_calcul=3)),
+                         {'regles_origine': False})
+
+    def test_cec18_prix_declare_non_fini_refuse(self):
+        reproches = es.valider({'tarif_declare': {
+            'contrat': 'mt_general',
+            'mt': {'tarif_pointe': 'nan', 'tarif_pleines': 'inf',
+                   'tarif_creuses': '1e400', 'puissance_souscrite_kva': 'inf'}}})
+        for champ in ('tarif_pointe', 'tarif_pleines', 'tarif_creuses',
+                      'puissance_souscrite_kva'):
+            self.assertTrue(any(f'mt.{champ}' in r for r in reproches), champ)
+        self.assertEqual(tc.tarif_applicable({'contrat': 'bt_patente', 'bt': {
+            'tranches': [{'tarif_kwh': 'nan'}]}})['origine'],
+            'grille_officielle')

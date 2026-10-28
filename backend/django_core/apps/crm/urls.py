@@ -34,6 +34,7 @@ from .clients_views import (
 )
 # SPL77 — intake des leads (rapport d'attribution, points de contact).
 from .leads_views import PointContactViewSet, rapport_attribution
+from .dispatch_views import RegleAttributionViewSet, dispatch_attribuer, dispatch_file
 # SPL79 — rendez-vous (visites).
 from .visites_views import AppointmentViewSet
 # SPL76 — sous-parcours clients : salle de vente, partenaires, apporteurs,
@@ -102,6 +103,9 @@ router.register(r'visites-externes', VisiteExterneViewSet,
                 basename='crm-visite-externe')
 router.register(r'appareils-equipe', AppareilEquipeViewSet,
                 basename='crm-appareil-equipe')
+# Attribution par le responsable (27/10/2026) — règles de Paramètres → Leads.
+router.register(r'regles-attribution', RegleAttributionViewSet,
+                basename='crm-regle-attribution')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
@@ -132,6 +136,10 @@ urlpatterns = [
     path('equipes/statistiques/', equipes_statistiques, name='equipes-statistiques'),
     # ZSAL6 — Rapport d'attribution des leads (par commercial + par source).
     path('rapports/attribution/', rapport_attribution, name='rapport-attribution'),
+    # Attribution des leads par le responsable d'équipe (27/10/2026).
+    path('dispatch/', dispatch_file, name='dispatch-leads'),
+    path('dispatch/<int:lead_id>/attribuer/', dispatch_attribuer,
+         name='dispatch-attribuer'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
     path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
     # VT12 — texture du toit CALÉE du lead (dernière visite validée), lue par

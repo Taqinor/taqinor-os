@@ -173,6 +173,15 @@ class ContratTests(_Base):
         self.assertEqual(data['besoin']['nature'], 'declare')
         self.assertEqual(data['production']['mode'], 'courbe')
         self.assertEqual(data['production']['source_irradiation'], 'pvgis')
+        # AGM8 — l'étiquette de similitude (« estimation ») est servie, comme
+        # celle du rendement non publié (fiche variateur sans MPPT).
+        from core.pompage.volumes import (
+            ESTIMATION_SIMILITUDE, ETIQUETTE_RENDEMENT_NON_PUBLIE,
+        )
+        self.assertIn(ESTIMATION_SIMILITUDE,
+                      data['production']['etiquettes'])
+        self.assertIn(ETIQUETTE_RENDEMENT_NON_PUBLIE,
+                      data['production']['etiquettes'])
         self.assertEqual(len(data['couverture_pct_mois']), 12)
         self.assertEqual(
             data['entrees_resolues']['volume_m3_jour']['provenance']
@@ -305,7 +314,7 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
     """Sans DB : catalogue, PVGIS et TMY simulés (``etudier_pompage(None, …)``
     ne lit aucune société)."""
 
-    def _etude(self):
+    def _etude(self, heures=7):
         corps = json.loads(json.dumps(CONTRAT['corps']))
         corps.update(
             mode_pompe='existante',
@@ -313,7 +322,7 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
                     'courant_a': None},
             besoin=dict(corps['besoin'], mode='pompe_actuelle',
                         volume_m3_jour=None, debit_actuel_m3h=12,
-                        heures_actuelles_jour=7))
+                        heures_actuelles_jour=heures))
         with mock.patch.object(pompage, 'lire_catalogue',
                                return_value=_catalogue_existante()), \
                 mock.patch.object(pompage, 'profils_horaires_site',
@@ -339,6 +348,19 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
                         if ligne['cle'] == 'panneaux')
         self.assertEqual(panneaux['quantite'], data['champ']['nb_panneaux'])
 
+    def test_agm5_heures_superieures_a_24_alerte_besoin_tel_que_saisi(self):
+        """AGM5 — 30 h/jour : alerte qui nomme le champ, jamais un refus ni
+        un rognage (le besoin reste débit × heures saisies)."""
+        data = self._etude(heures=30)
+        alerte = [a for a in data['alertes']
+                  if a['code'] == 'heures_superieures_24']
+        self.assertEqual(len(alerte), 1)
+        self.assertEqual(alerte[0]['champ'], 'besoin.heures_actuelles_jour')
+        self.assertEqual(max(data['besoin']['m3_jour_mois']), 12 * 30)
+        self.assertNotIn(
+            'heures_superieures_24',
+            [a['code'] for a in self._etude(heures=7)['alertes']])
+
     def test_variateur_non_choisi_est_un_role_minimum_manquant(self):
         data = self._etude()
         # La clé servie est dans le contrat (exemples synchronisés).
@@ -351,3 +373,98 @@ class PompeExistanteSansKwPlaqueTests(SimpleTestCase):
         self.assertNotIn('pompe', roles)
         self.assertNotIn('variateur',
                          [ligne['cle'] for ligne in data['kit']['inclus']])
+
+
+class CodesChampNonDimensionneTests(SimpleTestCase):
+    """AGM3 — les deux vraies causes (HMT inconnue, besoin nul) rejoignent la
+    liste du domaine (déplacé de core/tests : core n'importe pas apps — M3)."""
+
+    def test_agm3_les_deux_codes_rejoignent_la_liste_du_domaine(self):
+        codes = pompage.CODES_CHAMP_NON_DIMENSIONNE
+        self.assertIn("hmt_inconnue", codes)
+        self.assertIn("besoin_nul", codes)
+        self.assertIn("irradiation_inconnue", codes)
+
+
+class MotifVariateurAbsentTests(SimpleTestCase):
+    """AGM15 — rendu R2 : « Variateur : aucun article au catalogue » alors
+    que le catalogue porte 16 VEICHI (pompe existante au CV seul, ou aucune
+    pompe retenue). La cause servie par ``variateur.motif`` est reprise."""
+
+    def _manquants(self, motif):
+        sortie = {'pompe': {'mode': 'existante'},
+                  'variateur': {'nom': None, 'motif': motif},
+                  'champ': {'nb_panneaux': 6}, 'kit': {'inclus': []}}
+        return {m['cle']: m['motif']
+                for m in pompage.roles_minimum_manquants(sortie)}
+
+    def test_kw_de_plaque_a_relever_nomme(self):
+        motif = ("kW de plaque à relever (visite « relevé du point d'eau », "
+                 "D-AGR-4) : variateur non choisi")
+        self.assertEqual(self._manquants(motif)['variateur'], motif)
+
+    def test_aucune_pompe_retenue_nomme(self):
+        motif = 'aucune pompe retenue : variateur non choisi'
+        self.assertEqual(self._manquants(motif)['variateur'], motif)
+
+    def test_absence_au_catalogue_inchangee(self):
+        # Le refus AGQ6 du devis auto reformule CE motif : il reste tel quel.
+        for motif in (pompage.MOTIF_VARIATEUR_CATALOGUE, None):
+            self.assertEqual(self._manquants(motif)['variateur'],
+                             'aucun article au catalogue')
+
+
+class ModeEtTypePompeAlertesTests(SimpleTestCase):
+    """AGM6 — jamais de bascule silencieuse : un mode de pompe inconnu et un
+    type de pompe absent sont DITS au vendeur (SimpleTestCase : catalogue,
+    PVGIS et TMY simulés, aucune base)."""
+
+    def _etude(self, **extra):
+        corps = json.loads(json.dumps(CONTRAT['corps']))
+        corps.update(extra)
+        for cle in [c for c, v in extra.items() if v is None]:
+            del corps[cle]
+        with mock.patch.object(pompage, 'lire_catalogue',
+                               return_value=_catalogue_existante()), \
+                mock.patch.object(pompage, 'profils_horaires_site',
+                                  return_value=PROFILS_SAISONNIERS), \
+                mock.patch.object(pompage, 'temperatures_du_site',
+                                  return_value=None):
+            return pompage.etudier_pompage(None, corps)
+
+    @staticmethod
+    def _codes(data):
+        return [a['code'] for a in data['alertes']]
+
+    def test_mode_inconnu_alerte_et_pompe_neuve_etudiee(self):
+        data = self._etude(mode_pompe='nouvelle')
+        alerte = [a for a in data['alertes']
+                  if a['code'] == 'mode_pompe_invalide']
+        self.assertEqual(len(alerte), 1)
+        self.assertEqual(alerte[0]['champ'], 'mode_pompe')
+        self.assertIn('nouvelle', alerte[0]['message'])
+        self.assertEqual(data['pompe']['mode'], 'neuve')
+
+    def test_mode_valide_ou_vide_aucune_alerte_de_mode(self):
+        for corps in ({'mode_pompe': 'neuve'}, {'mode_pompe': None}):
+            self.assertNotIn('mode_pompe_invalide',
+                             self._codes(self._etude(**corps)), corps)
+
+    def test_neuve_sans_type_pompe_alerte_type_suppose(self):
+        data = self._etude(type_pompe=None)
+        alerte = [a for a in data['alertes']
+                  if a['code'] == 'type_pompe_supposee']
+        self.assertEqual(len(alerte), 1)
+        self.assertEqual(alerte[0]['champ'], 'type_pompe')
+        self.assertNotIn('type_pompe_supposee',
+                         self._codes(self._etude(type_pompe='immergee')))
+
+
+class TensionPlaqueUneSourceAGV14(SimpleTestCase):
+    """AGV14 — la tension de plaque relevée n'entre plus brute par la couche
+    visite : elle passe par la colonne Lead (AGV3, 220/380 seulement)."""
+
+    def test_la_couche_visite_ne_pose_plus_la_tension(self):
+        from apps.ventes.domain.pompage import MESURES_VISITE
+        chemins = {chemin for _cat, _code, chemin in MESURES_VISITE}
+        self.assertNotIn('plaque.tension_v', chemins)

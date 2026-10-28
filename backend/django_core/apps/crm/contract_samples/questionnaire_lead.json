@@ -59,7 +59,16 @@
         "depense_carburant_mad_mois",
         "mois_irrigation",
         "jours_irrigation_semaine",
-        "compteur_eau"
+        "compteur_eau",
+        "pompe_hmt_m",
+        "pompe_actuelle_debit_m3h",
+        "pompage_heures_jour",
+        "mode_pompe",
+        "pompe_actuelle_kw",
+        "pompe_actuelle_tension_v",
+        "pompe_actuelle_phases",
+        "profondeur_forage_m",
+        "debit_forage_m3h"
       ],
       "gps": [
         "gps_lat",
@@ -83,7 +92,16 @@
       "jours_irrigation_semaine": null,
       "compteur_eau": null,
       "gps_lat": null,
-      "gps_lng": null
+      "gps_lng": null,
+      "pompe_hmt_m": null,
+      "pompe_actuelle_debit_m3h": null,
+      "pompage_heures_jour": null,
+      "mode_pompe": null,
+      "pompe_actuelle_kw": null,
+      "pompe_actuelle_tension_v": null,
+      "pompe_actuelle_phases": null,
+      "profondeur_forage_m": null,
+      "debit_forage_m3h": null
     },
     "repondu": {},
     "interne": false
@@ -154,7 +172,8 @@
         "ete_differente",
         "facture_ete"
       ],
-      "ignorees": []
+      "ignorees": [],
+      "devis_possible": true
     },
     "notes": {
       "progressif": "Une section à la fois. Le client peut fermer la page et revenir : les sections déjà envoyées reviennent dans `repondu`.",
@@ -163,7 +182,8 @@
       "section_inconnue_ou_inactive": "400.",
       "jeton_interne": "403 — un aperçu ne doit rien écrire.",
       "prefill_vu": "QJR512 — `prefill_vu` (corps, facultatif) : sous-ensemble du prefill servi par le GET, mêmes clés (ce que le client a VU à l’ouverture).",
-      "ignorees": "QJR512 — `ignorees` (réponse) : clés reçues mais non écrites (vide par défaut)."
+      "ignorees": "QJR512 — `ignorees` (réponse) : clés reçues mais non écrites (vide par défaut).",
+      "devis_possible": "CQST5 (27/10/2026) — vrai quand les réponses connues suffisent au devis automatique (devis_auto.champs_manquants_detail vide). À la transition « bloqué → prêt » : lead RÉSIDENTIEL → le devis automatique part en file (ventes.services.planifier_devis_automatique_pour_lead, après commit ; réglage de société et idempotence du tunnel) ; lead C&I ou agricole → ce chemin les refuse exprès (CIQ120, AGR124), le responsable reçoit une note « à lancer depuis la fiche ». La page le dit au client, sans aucun chiffre. Les nombres JSON décimaux (45.1) sont lus par leur forme écrite."
     }
   },
   "colonnes_ecrites": {
@@ -214,7 +234,16 @@
       "depense_carburant_mad_mois",
       "mois_irrigation",
       "jours_irrigation_semaine",
-      "compteur_eau"
+      "compteur_eau",
+      "pompe_hmt_m",
+      "pompe_actuelle_debit_m3h",
+      "pompage_heures_jour",
+      "mode_pompe",
+      "pompe_actuelle_kw",
+      "pompe_actuelle_tension_v",
+      "pompe_actuelle_phases",
+      "profondeur_forage_m",
+      "debit_forage_m3h"
     ]
   },
   "colonnes_ecrites_note": "QJR512 — `colonnes_ecrites` {section: [colonnes]} : les colonnes que chaque section écrit réellement ; liste fixée par QJR596. `energie` porte conso_mensuelle_kwh et n’écrit plus tranche_onee.",
@@ -275,7 +304,16 @@
       "depense_carburant_mad_mois",
       "mois_irrigation",
       "jours_irrigation_semaine",
-      "compteur_eau"
+      "compteur_eau",
+      "pompe_hmt_m",
+      "pompe_actuelle_debit_m3h",
+      "pompage_heures_jour",
+      "mode_pompe",
+      "pompe_actuelle_kw",
+      "pompe_actuelle_tension_v",
+      "pompe_actuelle_phases",
+      "profondeur_forage_m",
+      "debit_forage_m3h"
     ],
     "photo_facture": [],
     "photo_compteur": [],
@@ -288,17 +326,17 @@
     "regles": {
       "contact": "email ou ville vide, OU adresse vide ALORS QUE le GPS n'est pas connu. Dès que gps_lat+gps_lng sont posés, `adresse` ne compte plus comme une information manquante (sinon le défaut rouvrait un écran « Coordonnées » dont la seule question restante était justement celle qu'on s'interdit de poser).",
       "gps": "gps_lat ou gps_lng nul.",
-      "energie": "les champs requis du mode (devis_auto.champs_manquants) manquent, OU tranche_onee/raccordement vides. NB : `ete_differente` n'est PAS un signal de « jamais posée » — sa colonne est NOT NULL default False (crm.Lead), donc elle vaut toujours true/false ; le trois-états « None = jamais posée » ne s'applique qu'aux colonnes réellement nullables (les equip_*).",
+      "energie": "les champs requis du mode (devis_auto.champs_manquants) manquent, OU tranche_onee/raccordement vides. NB : `ete_differente` n'est PAS un signal de « jamais posée » — sa colonne est NOT NULL default False (crm.Lead), donc elle vaut toujours true/false ; le trois-états « None = jamais posée » ne s'applique qu'aux colonnes réellement nullables (les equip_*). CQST4 (27/10/2026) — raccordement « inconnu » compte comme vide (le compositeur partirait en hors réseau).",
       "toiture": "type_toiture, surface_toiture_m2, roof_age ou ownership vide.",
       "occupation": "occupation_jour vide.",
       "equipements": "AU MOINS UN booléen equip_* à None — None = « jamais posée », ce qui est DIFFÉRENT de False (« le client a dit non »).",
       "photo_facture / photo_compteur / photo_tableau": "aucune pièce jointe du type sur le lead. APPROXIMATION assumée : on reconnaît le type au LIBELLÉ du fichier (mots-clés facture/bill, compteur/meter, tableau/disjoncteur) — le magasin `records.Attachment` ne porte pas de type métier. En cas de doute → MANQUANTE (on repose la question plutôt que de supposer).",
-      "pompage (agricole)": "AGR411 — lead AGRICOLE seulement : source_eau, niveau_statique_m, besoin_eau_m3j, surface_irriguee_ha ou pompe_alim_actuelle vide.",
-      "photo_pompe / photo_forage (agricole)": "AGR411 — aucune pièce jointe dont le libellé porte pompe/plaque (plaque de la pompe) ou forage/puits (tête de forage).",
-      "reseau (pro)": "Fondateur 26/10/2026 — tension inconnue (vide, « ne sait pas » ou défaut visible du site), puissance souscrite nulle, contrat_electricite vide OU raccordement vide.",
+      "pompage (agricole)": "AGR411 — lead AGRICOLE seulement : source_eau, niveau_statique_m, besoin_eau_m3j, surface_irriguee_ha ou pompe_alim_actuelle vide. CQST3 (27/10/2026) — OU le devis automatique est bloqué (devis_auto.champs_requis : HMT, débit souhaité / besoin / débit actuel AVEC ses heures, plaque complète si mode_pompe = existante).",
+      "photo_pompe / photo_forage (agricole)": "AGR411 — aucune pièce jointe dont le libellé porte pompe/plaque (plaque de la pompe) ou forage/puits (tête de forage). CQST7 (27/10/2026) — photo_pompe n'est MANQUANTE que si mode_pompe vaut « existante » (la plaque ne sert qu'à une pompe conservée, D-AGQ-10). CQST9 — jamais quand pompe_alim_actuelle vaut « aucune » ; la section n'est alors plus servie, même sur un lien émis avant.",
+      "reseau (pro)": "CQST1 (27/10/2026, remplace la règle du 26/10) — tension inconnue (vide, « ne sait pas » ou défaut visible du site), puissance souscrite nulle, OU un groupe requis du devis automatique porté par cette section manque (devis_auto.champs_manquants_detail : consommation — une facture en MAD ne compte qu'avec un contrat BT déclaré —, contrat d'électricité sauf site MT, phase). « ne_sait_pas » (contrat) et « inconnu » (phase) comptent comme VIDES, comme pour le devis.",
       "site (pro)": "Fondateur 26/10/2026 — surface_toiture_m2 nulle, type_surface vide, OU type_toiture vide quand la surface est une toiture (une ombrière ou un terrain n’a pas de couverture).",
       "activite (pro)": "Fondateur 26/10/2026 — catégorie (commerce) ou secteur (industrie) vide, jours d’ouverture vides, heure de début ou de fin nulle, regime_equipes vide, OU fermeture_mois nul (une liste VIDE = « nous ne fermons jamais », une réponse).",
-      "societe (pro)": "Fondateur 26/10/2026 — societe, ice OU tva_recuperable vide."
+      "societe (pro)": "Fondateur 26/10/2026 — societe, ice OU tva_recuperable vide. CQST7 (D-CIQ-11) — avant l'acceptation, la page ne POSE que societe, ice et tva_recuperable : rc, if_fiscal, adresse_siege, fonction_contact et le contact secondaire ne sont servis (champs) que s'ils sont déjà connus."
     }
   },
   "segment_agricole": "AGR411 — filtre de SEGMENT (`crm.questionnaire.sections_du_lead`). Lead AGRICOLE : sections pompage, photo_pompe, photo_forage, gps, contact, photo_compteur ; l'envoi sans corps ne coche que pompage, photo_pompe, photo_forage, gps et contact MANQUANTS ; occupation, equipements, energie, toiture, photo_facture et photo_tableau sont REFUSÉES en 400 avec un message qui nomme la section. Les colonnes orales (autorisation de prélèvement, aide FDA reçue, décideur) ne sont jamais posées par écrit. Lead NON agricole : périmètre historique, identique à l'octet (les sections de pompage y restent inconnues).",
@@ -337,6 +375,7 @@
         "heure_debut",
         "heure_fin",
         "fermeture_mois",
+        "equipements_hors_horaires",
         "groupe_electrogene",
         "groupe_kva",
         "groupe_litres_mois",
@@ -395,6 +434,7 @@
       "heure_debut": null,
       "heure_fin": null,
       "fermeture_mois": null,
+      "equipements_hors_horaires": null,
       "groupe_electrogene": null,
       "groupe_kva": null,
       "groupe_litres_mois": null,
@@ -451,5 +491,41 @@
     "colonnes": "Les champs de section sont les colonnes du contrat `lead_pro.json` (CIQ1) ; `contact_secondaire_nom` / `contact_secondaire_telephone` = colonnes existantes du contact secondaire (`lead_contact_secondaire.json`).",
     "note": "Valeurs ILLUSTRATIVES ; aucune question résidentielle dans `exemple_pro`.",
     "gps": "Fondateur 26/10/2026 — le GPS fait partie des sections pro par défaut (cochée tant que gps_lat/gps_lng manquent) : la page dit au client « votre position permet un calcul heure par heure de la production »."
+  },
+  "segment_pompage_cqst3": {
+    "colonnes_ajoutees": [
+      "pompe_hmt_m",
+      "pompe_actuelle_debit_m3h",
+      "pompage_heures_jour",
+      "mode_pompe",
+      "pompe_actuelle_kw",
+      "pompe_actuelle_tension_v",
+      "pompe_actuelle_phases",
+      "profondeur_forage_m",
+      "debit_forage_m3h"
+    ],
+    "plaque": "pompe_actuelle_kw / pompe_actuelle_tension_v / pompe_actuelle_phases ne sont écrites que si mode_pompe vaut « existante » (réponse du même envoi ou valeur du lead) ; la page ne les dessine que dans ce cas. CQST9 — pompe_alim_actuelle « aucune » (réponse du même envoi ou valeur du lead) : pompe_actuelle_debit_m3h, pompage_heures_jour et la plaque ne sont PAS écrits et ceux déjà sur le lead sont EFFACÉS (null) ; un mode_pompe « existante » passe à « neuve ». L'alimentation retenue est celle qui survit à la garde d'écrasement (QJR597) — une correction de l'équipe n'est jamais défaite ; la casse est ignorée.",
+    "validation": "Field.clean du modèle ; une valeur ≤ 0 ou invalide est ignorée, jamais une erreur.",
+    "formulation_client": "pompe_hmt_m se pose en mots simples (« profondeur de l'eau + hauteur jusqu'au bassin, en mètres — si vous la connaissez ») ; pompage_heures_jour = heures par jour de la pompe ACTUELLE.",
+    "provenance": "CQST6 — pompe_hmt_m écrite par le client pose pompe_hmt_source = « declaree » ; debit_forage_m3h pose debit_forage_source = « client » (la carte m³/jour dit « débit déclaré par vous », D-AMOT-7). profondeur_forage_m + debit_forage_m3h connus évitent la visite du point d'eau avant devis (D-AGR-4, devis_auto.visite_point_eau_avant_devis)."
+  },
+  "reponses_categorie_heures_cqst2": {
+    "cles": {
+      "restaurant": [
+        "heures"
+      ],
+      "boulangerie": [
+        "heures_cuisson"
+      ],
+      "sante": [
+        "heures_garde"
+      ],
+      "ecole": [
+        "fermeture_du",
+        "fermeture_au"
+      ]
+    },
+    "format": "heures = [[début_h, fin_h], …] (0-24) ; fermeture_du / fermeture_au = « JJ/MM ».",
+    "regle": "Ces clés s'ajoutent aux clés fermées de Lead.REPONSES_CATEGORIE_CLES pour leur catégorie ; une clé inconnue est écartée SEULE (avant : tout l'objet était perdu)."
   }
 }

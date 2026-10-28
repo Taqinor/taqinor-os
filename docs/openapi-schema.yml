@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4834, operations: 7586, components: 3558}
+counts: {paths: 4858, operations: 7642, components: 3582}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -946,6 +946,8 @@ operations:
 - patch /api/django/crm/defis/{id}/ -> django_crm_defis_partial_update
 - put /api/django/crm/defis/{id}/ -> django_crm_defis_update
 - get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_list
+- get /api/django/crm/dispatch/ -> django_crm_dispatch_retrieve
+- post /api/django/crm/dispatch/{lead_id}/attribuer/ -> django_crm_dispatch_attribuer_create
 - get /api/django/crm/equipes/ -> django_crm_equipes_list
 - post /api/django/crm/equipes/ -> django_crm_equipes_create
 - get /api/django/crm/equipes/statistiques/ -> django_crm_equipes_statistiques_retrieve
@@ -1101,6 +1103,12 @@ operations:
 - post /api/django/crm/public/questionnaire/{token}/ -> django_crm_public_questionnaire_create
 - post /api/django/crm/public/visite/ -> django_crm_public_visite_create
 - get /api/django/crm/rapports/attribution/ -> django_crm_rapports_attribution_retrieve
+- get /api/django/crm/regles-attribution/ -> django_crm_regles_attribution_list
+- post /api/django/crm/regles-attribution/ -> django_crm_regles_attribution_create
+- delete /api/django/crm/regles-attribution/{id}/ -> django_crm_regles_attribution_destroy
+- get /api/django/crm/regles-attribution/{id}/ -> django_crm_regles_attribution_retrieve
+- patch /api/django/crm/regles-attribution/{id}/ -> django_crm_regles_attribution_partial_update
+- put /api/django/crm/regles-attribution/{id}/ -> django_crm_regles_attribution_update
 - get /api/django/crm/relance-etapes/ -> django_crm_relance_etapes_retrieve
 - get /api/django/crm/relance-etapes/cadences-echues/ -> django_crm_relance_etapes_cadences_echues_retrieve
 - get /api/django/crm/relance-etapes/chaine-commerciale/ -> django_crm_relance_etapes_chaine_commerciale_retrieve
@@ -2726,8 +2734,27 @@ operations:
 - get /api/django/reporting/vitals/p75/ -> django_reporting_vitals_p75_retrieve
 - get /api/django/roles/ -> django_roles_list
 - post /api/django/roles/ -> django_roles_create
+- get /api/django/roles/departements/ -> django_roles_departements_list
+- post /api/django/roles/departements/ -> django_roles_departements_create
+- delete /api/django/roles/departements/{id}/ -> django_roles_departements_destroy
+- get /api/django/roles/departements/{id}/ -> django_roles_departements_retrieve
+- patch /api/django/roles/departements/{id}/ -> django_roles_departements_partial_update
+- put /api/django/roles/departements/{id}/ -> django_roles_departements_update
+- get /api/django/roles/equipes/ -> django_roles_equipes_list
+- post /api/django/roles/equipes/ -> django_roles_equipes_create
+- delete /api/django/roles/equipes/{id}/ -> django_roles_equipes_destroy
+- get /api/django/roles/equipes/{id}/ -> django_roles_equipes_retrieve
+- patch /api/django/roles/equipes/{id}/ -> django_roles_equipes_partial_update
+- put /api/django/roles/equipes/{id}/ -> django_roles_equipes_update
+- get /api/django/roles/organisation/ -> django_roles_organisation_retrieve
 - get /api/django/roles/permission-catalog/ -> django_roles_permission_catalog_retrieve
 - get /api/django/roles/permissions-disponibles/ -> django_roles_permissions_disponibles_retrieve
+- get /api/django/roles/postes/ -> django_roles_postes_list
+- post /api/django/roles/postes/ -> django_roles_postes_create
+- delete /api/django/roles/postes/{id}/ -> django_roles_postes_destroy
+- get /api/django/roles/postes/{id}/ -> django_roles_postes_retrieve
+- patch /api/django/roles/postes/{id}/ -> django_roles_postes_partial_update
+- put /api/django/roles/postes/{id}/ -> django_roles_postes_update
 - get /api/django/roles/revue-acces/ -> django_roles_revue_acces_retrieve
 - delete /api/django/roles/{id}/ -> django_roles_destroy
 - get /api/django/roles/{id}/ -> django_roles_retrieve
@@ -3620,6 +3647,7 @@ operations:
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
 - get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_list
 - post /api/django/ventes/etude-ci/preview/ -> django_ventes_etude_ci_preview_create
+- post /api/django/ventes/etude-ci/reviser-apres-visite/ -> django_ventes_etude_ci_reviser_apres_visite_create
 - post /api/django/ventes/etude-horaire/preview/ -> django_ventes_etude_horaire_preview_create
 - post /api/django/ventes/etude-pompage/preview/ -> django_ventes_etude_pompage_preview_create
 - get /api/django/ventes/export-comptable/ -> django_ventes_export_comptable_retrieve
@@ -4779,6 +4807,8 @@ operations:
 - patch /api/v1/crm/defis/{id}/ -> v1_crm_defis_partial_update
 - put /api/v1/crm/defis/{id}/ -> v1_crm_defis_update
 - get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_list
+- get /api/v1/crm/dispatch/ -> v1_crm_dispatch_retrieve
+- post /api/v1/crm/dispatch/{lead_id}/attribuer/ -> v1_crm_dispatch_attribuer_create
 - get /api/v1/crm/equipes/ -> v1_crm_equipes_list
 - post /api/v1/crm/equipes/ -> v1_crm_equipes_create
 - get /api/v1/crm/equipes/statistiques/ -> v1_crm_equipes_statistiques_retrieve
@@ -4934,6 +4964,12 @@ operations:
 - post /api/v1/crm/public/questionnaire/{token}/ -> v1_crm_public_questionnaire_create
 - post /api/v1/crm/public/visite/ -> v1_crm_public_visite_create
 - get /api/v1/crm/rapports/attribution/ -> v1_crm_rapports_attribution_retrieve
+- get /api/v1/crm/regles-attribution/ -> v1_crm_regles_attribution_list
+- post /api/v1/crm/regles-attribution/ -> v1_crm_regles_attribution_create
+- delete /api/v1/crm/regles-attribution/{id}/ -> v1_crm_regles_attribution_destroy
+- get /api/v1/crm/regles-attribution/{id}/ -> v1_crm_regles_attribution_retrieve
+- patch /api/v1/crm/regles-attribution/{id}/ -> v1_crm_regles_attribution_partial_update
+- put /api/v1/crm/regles-attribution/{id}/ -> v1_crm_regles_attribution_update
 - get /api/v1/crm/relance-etapes/ -> v1_crm_relance_etapes_retrieve
 - get /api/v1/crm/relance-etapes/cadences-echues/ -> v1_crm_relance_etapes_cadences_echues_retrieve
 - get /api/v1/crm/relance-etapes/chaine-commerciale/ -> v1_crm_relance_etapes_chaine_commerciale_retrieve
@@ -6524,8 +6560,27 @@ operations:
 - get /api/v1/reporting/vitals/p75/ -> v1_reporting_vitals_p75_retrieve
 - get /api/v1/roles/ -> v1_roles_list
 - post /api/v1/roles/ -> v1_roles_create
+- get /api/v1/roles/departements/ -> v1_roles_departements_list
+- post /api/v1/roles/departements/ -> v1_roles_departements_create
+- delete /api/v1/roles/departements/{id}/ -> v1_roles_departements_destroy
+- get /api/v1/roles/departements/{id}/ -> v1_roles_departements_retrieve
+- patch /api/v1/roles/departements/{id}/ -> v1_roles_departements_partial_update
+- put /api/v1/roles/departements/{id}/ -> v1_roles_departements_update
+- get /api/v1/roles/equipes/ -> v1_roles_equipes_list
+- post /api/v1/roles/equipes/ -> v1_roles_equipes_create
+- delete /api/v1/roles/equipes/{id}/ -> v1_roles_equipes_destroy
+- get /api/v1/roles/equipes/{id}/ -> v1_roles_equipes_retrieve
+- patch /api/v1/roles/equipes/{id}/ -> v1_roles_equipes_partial_update
+- put /api/v1/roles/equipes/{id}/ -> v1_roles_equipes_update
+- get /api/v1/roles/organisation/ -> v1_roles_organisation_retrieve
 - get /api/v1/roles/permission-catalog/ -> v1_roles_permission_catalog_retrieve
 - get /api/v1/roles/permissions-disponibles/ -> v1_roles_permissions_disponibles_retrieve
+- get /api/v1/roles/postes/ -> v1_roles_postes_list
+- post /api/v1/roles/postes/ -> v1_roles_postes_create
+- delete /api/v1/roles/postes/{id}/ -> v1_roles_postes_destroy
+- get /api/v1/roles/postes/{id}/ -> v1_roles_postes_retrieve
+- patch /api/v1/roles/postes/{id}/ -> v1_roles_postes_partial_update
+- put /api/v1/roles/postes/{id}/ -> v1_roles_postes_update
 - get /api/v1/roles/revue-acces/ -> v1_roles_revue_acces_retrieve
 - delete /api/v1/roles/{id}/ -> v1_roles_destroy
 - get /api/v1/roles/{id}/ -> v1_roles_retrieve
@@ -7415,6 +7470,7 @@ operations:
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
 - get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_list
 - post /api/v1/ventes/etude-ci/preview/ -> v1_ventes_etude_ci_preview_create
+- post /api/v1/ventes/etude-ci/reviser-apres-visite/ -> v1_ventes_etude_ci_reviser_apres_visite_create
 - post /api/v1/ventes/etude-horaire/preview/ -> v1_ventes_etude_horaire_preview_create
 - post /api/v1/ventes/etude-pompage/preview/ -> v1_ventes_etude_pompage_preview_create
 - get /api/v1/ventes/export-comptable/ -> v1_ventes_export_comptable_retrieve
@@ -7814,6 +7870,7 @@ query_params:
   get /api/django/crm/playbooks/: ordering page page_size search
   get /api/django/crm/points-contact/: lead ordering page page_size search
   get /api/django/crm/rapports/attribution/: debut fin
+  get /api/django/crm/regles-attribution/: equipe ordering page page_size search
   get /api/django/crm/relance-etapes/: lead owner scope
   get /api/django/crm/relance-etapes/cadences-echues/: jours
   get /api/django/crm/relance-etapes/controle/: jours owner segment
@@ -8147,6 +8204,9 @@ query_params:
   get /api/django/reporting/search/: q
   get /api/django/reporting/vitals/p75/: route
   get /api/django/roles/: ordering page page_size search
+  get /api/django/roles/departements/: ordering page page_size search
+  get /api/django/roles/equipes/: ordering page page_size search
+  get /api/django/roles/postes/: ordering page page_size search
   get /api/django/roles/revue-acces/: dormant_days format
   get /api/django/sav/alarmes-onduleur/: equipement gravite ordering page page_size search statut
   get /api/django/sav/categories-equipement/: ordering page page_size search
@@ -8599,6 +8659,7 @@ query_params:
   get /api/v1/crm/playbooks/: ordering page page_size search
   get /api/v1/crm/points-contact/: lead ordering page page_size search
   get /api/v1/crm/rapports/attribution/: debut fin
+  get /api/v1/crm/regles-attribution/: equipe ordering page page_size search
   get /api/v1/crm/relance-etapes/: lead owner scope
   get /api/v1/crm/relance-etapes/cadences-echues/: jours
   get /api/v1/crm/relance-etapes/controle/: jours owner segment
@@ -8930,6 +8991,9 @@ query_params:
   get /api/v1/reporting/search/: q
   get /api/v1/reporting/vitals/p75/: route
   get /api/v1/roles/: ordering page page_size search
+  get /api/v1/roles/departements/: ordering page page_size search
+  get /api/v1/roles/equipes/: ordering page page_size search
+  get /api/v1/roles/postes/: ordering page page_size search
   get /api/v1/roles/revue-acces/: dormant_days format
   get /api/v1/sav/alarmes-onduleur/: equipement gravite ordering page page_size search statut
   get /api/v1/sav/categories-equipement/: ordering page page_size search
@@ -9923,6 +9987,7 @@ components:
 - CrmControleSuivi
 - CrmConvertirClientRequestModeEnum
 - CrmConvertirClientRequestRequest
+- CrmDispatchAttribuerRequestRequest
 - CrmEquipeStatistiques
 - CrmEquipesStatistiques
 - CrmInitialiserRelanceRequestCadenceEnum
@@ -10058,6 +10123,8 @@ components:
 - DemoWizardCreateRequestRequest
 - DemoWizardStatut
 - DensiteEnum
+- Departement
+- DepartementRequest
 - DepotConsignation
 - DepotConsignationRequest
 - DepotPublic
@@ -10143,6 +10210,10 @@ components:
 - DevisPrixNegocieReponse
 - DevisRefuserRequestRequest
 - DevisReplaceLinesRequestRequest
+- DevisReviseVisiteIntrouvable
+- DevisReviseVisiteRefus
+- DevisReviseVisiteRequestRequest
+- DevisReviseVisiteResponse
 - DevisRevoquerLienPublicResponse
 - DevisRoofImageResponse
 - DevisSavePresetRequestRequest
@@ -10268,11 +10339,14 @@ components:
 - EquipeCommercialeRequest
 - EquipeMaintenance
 - EquipeMaintenanceRequest
+- EquipeOrg
+- EquipeOrgRequest
 - EquipeRequest
 - Equipement
 - EquipementDowntime
 - EquipementRequest
 - EquipementStatutEnum
+- EquipementsHorsHorairesEnum
 - ErreurApi
 - ErreurAuthentification
 - ErreurCalendrierIcs
@@ -10937,6 +11011,7 @@ components:
 - OrdreDemontageStatutEnum
 - OrdreLigneOrigineEnum
 - OrdresDepuisDevisRequeteRequest
+- Organisation
 - OrientationEnum
 - OuiNonEnum
 - OutboxEvent
@@ -11064,6 +11139,7 @@ components:
 - PaginatedDemandeSignatureDocumentList
 - PaginatedDemandeTicketPortailList
 - PaginatedDemandeTransfertList
+- PaginatedDepartementList
 - PaginatedDepotConsignationList
 - PaginatedDepotPublicList
 - PaginatedDevisList
@@ -11091,6 +11167,7 @@ components:
 - PaginatedEquipeCommercialeList
 - PaginatedEquipeList
 - PaginatedEquipeMaintenanceList
+- PaginatedEquipeOrgList
 - PaginatedEquipementList
 - PaginatedEtapeAssemblageList
 - PaginatedExigenceDossierList
@@ -11200,6 +11277,7 @@ components:
 - PaginatedPolitiqueRetentionList
 - PaginatedPortailTiersTokenList
 - PaginatedPositionTechnicienList
+- PaginatedPosteList
 - PaginatedPreuveLivraisonList
 - PaginatedPrixFournisseurList
 - PaginatedProblemeList
@@ -11236,6 +11314,7 @@ components:
 - PaginatedRegleAclMetadonneeList
 - PaginatedRegleApprobationAchatList
 - PaginatedRegleApprobationGedList
+- PaginatedRegleAttributionList
 - PaginatedRegleCodeBarresList
 - PaginatedRegleDossierList
 - PaginatedRegleRangementList
@@ -11452,6 +11531,7 @@ components:
 - PatchedDemandeDocumentRequest
 - PatchedDemandeTicketPortailRequest
 - PatchedDemandeTransfertRequest
+- PatchedDepartementRequest
 - PatchedDepotConsignationRequest
 - PatchedDepotPublicRequest
 - PatchedDevisWriteRequest
@@ -11472,6 +11552,7 @@ components:
 - PatchedEntiteRequest
 - PatchedEquipeCommercialeRequest
 - PatchedEquipeMaintenanceRequest
+- PatchedEquipeOrgRequest
 - PatchedEquipeRequest
 - PatchedEquipementRequest
 - PatchedEtapeAssemblageRequest
@@ -11567,6 +11648,7 @@ components:
 - PatchedPointContactRequest
 - PatchedPolitiqueRetentionRequest
 - PatchedPortailTiersTokenRequest
+- PatchedPosteRequest
 - PatchedPreferenceEcritureRequest
 - PatchedPreuveLivraisonRequest
 - PatchedPrixFournisseurRequest
@@ -11595,6 +11677,7 @@ components:
 - PatchedRegleAclMetadonneeRequest
 - PatchedRegleApprobationAchatRequest
 - PatchedRegleApprobationGedRequest
+- PatchedRegleAttributionRequest
 - PatchedRegleCodeBarresRequest
 - PatchedRegleDossierRequest
 - PatchedRegleRangementRequest
@@ -11766,9 +11849,11 @@ components:
 - PortailTiersTokenRequest
 - PositionRequeteRequest
 - PositionTechnicien
+- Poste
 - PosteDePerte
 - PosteDePerteRequest
 - PosteDuCatalogue
+- PosteRequest
 - PosteStatue
 - PostesDePertesRequest
 - PreferenceEcritureRequest
@@ -12023,6 +12108,8 @@ components:
 - RegleApprobationAchatRequest
 - RegleApprobationGed
 - RegleApprobationGedRequest
+- RegleAttribution
+- RegleAttributionRequest
 - RegleCodeBarres
 - RegleCodeBarresRequest
 - RegleDossier
@@ -12101,6 +12188,7 @@ components:
 - ResolutionConflitReponse
 - ResolutionConflitRequest
 - ResoudreReserveRequeteRequest
+- ResoudreReserveRequeteStatutEnum
 - ResoumettreRequest
 - ResourceEnum
 - ResultatCommissioningEnum

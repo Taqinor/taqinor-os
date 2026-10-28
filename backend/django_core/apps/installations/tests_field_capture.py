@@ -292,6 +292,21 @@ class TestConsommation(_Base):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertTrue(r.data['hors_nomenclature'])
 
+    def test_quantite_bornee_colonne_12_2_jamais_500(self):
+        # api-fuzz-full 27/10 : une quantité de 1e15 débordait la colonne
+        # (12, 2) → DataError 500 ; la borne est publiée et appliquée.
+        url = f'{self.url}/ajouter-ligne-consommation/'
+        for brut in (1e15, '10000000000', '1.234', 'abc', True):
+            r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': brut},
+                              format='json')
+            self.assertEqual(r.status_code, 400, (brut, r.content))
+        r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': '9999999999.99'},
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = self.api.post(f'{self.url}/modifier-ligne-consommation/', {
+            'ligne': r.data['id'], 'quantite_utilisee': 1e15}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_designation_requise_publiee_et_validee(self):
         """api-fuzz-full 27/10 (ENF11) : `designation` est OBLIGATOIRE au
         schéma (non blanche, sans NUL) — `{}` y était « conforme » puis
@@ -560,6 +575,30 @@ class TestReserves(_Base):
                              ('cocher-safety', {'cle': 'inconnue'})):
             r = self.api.post(f'{self.url}/{route}/', corps, format='json')
             self.assertEqual(r.status_code, 404, (route, r.content))
+        # api-fuzz-full 27/10 : un objet en `reserve` faisait lever TypeError
+        # (500) ; un `statut` hors choix était écrit tel quel.
+        r = self.api.post(f'{self.url}/resoudre-reserve/', {'reserve': {'x': []}},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        rid = self.api.post(f'{self.url}/ajouter-reserve/', {
+            'description': 'Câble'}, format='json').data['id']
+        r = self.api.post(f'{self.url}/resoudre-reserve/', {
+            'reserve': rid, 'statut': 'n/importe'}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('statut', r.data)
+        r = self.api.post(f'{self.url}/resoudre-reserve/', {
+            'reserve': rid, 'statut': 'resolue'}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+
+    def test_corps_non_objet_400_jamais_500(self):
+        # api-fuzz-full 27/10 : un nombre / null en corps faisait lever
+        # AttributeError (``request.data.get``) → 500 (``CorpsObjetMixin``).
+        for route in ('annoter-photo', 'enregistrer-reverification',
+                      'cocher-materiel'):
+            for brut in ('-1.16e+78', 'null', '[1, 2]'):
+                r = self.api.post(f'{self.url}/{route}/', data=brut,
+                                  content_type='application/json')
+                self.assertEqual(r.status_code, 400, (route, brut, r.content))
 
     def test_corps_vide_ou_mal_type_400(self):
         # La description est exigée par le schéma publié : plus de 201 muet.

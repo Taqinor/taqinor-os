@@ -1,0 +1,42 @@
+---
+/**
+ * CPRW20 (28/10/2026) — carte d'un type de site de /professionnel, partagée par les variantes FR/EN/AR
+ * (ENF19 : un bloc identique entre langues vit dans components/blocs ; garde `check_duplicats_litteraux`).
+ * Chaque page passe SES mots (titres, lignes financière/technique, appel) ; le balisage est le même.
+ */
+interface Props {
+  i: number;
+  n: string;
+  title: string;
+  body: string;
+  financier: string;
+  technique: string;
+  libFinancier: string;
+  libTechnique: string;
+  proof?: string | null;
+  mode: string;
+  href: string;
+  cta: string;
+  /** Arabe : bords logiques (start) et flèche retournée en RTL. */
+  rtl?: boolean;
+}
+const { i, n, title, body, financier, technique, libFinancier, libTechnique, proof, mode, href, cta, rtl = false } = Astro.props;
+---
+<div class:list={['v2-rise border-brass-400/60', rtl ? 'border-s-2 ps-6' : 'border-l-2 pl-6']} style={`--v2-i:${i}`}>
+  <p class="fig lum text-2xl">{n}</p>
+  <h3 class="display mt-2 text-xl text-white">{title}</h3>
+  <p class="mt-3 text-sm leading-relaxed text-lune-soft">{body}</p>
+  {/* W335 — deux lignes de lecture : financière (CFO) puis technique/opérationnelle */}
+  <dl class="mt-4 space-y-2 border-t border-white/10 pt-3">
+    <div>
+      <dt class="tech-label text-brass-300">{libFinancier}</dt>
+      <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{financier}</dd>
+    </div>
+    <div>
+      <dt class="tech-label text-lune">{libTechnique}</dt>
+      <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{technique}</dd>
+    </div>
+  </dl>
+  {proof && <p class="tech-label mt-3 text-lune-faint">{proof}</p>}
+  <a href={href} class="mt-4 inline-block border-b border-white/40 pb-0.5 text-sm font-semibold text-lune" data-segment-cta={mode}>{cta}{rtl ? ' ' : ' →'}{rtl && <span class="inline-block rtl:-scale-x-100" aria-hidden="true">→</span>}</a>
+</div>

@@ -196,6 +196,21 @@ ENTREES_ECRAN = {
 }
 
 
+class LignesEcranTest(SimpleTestCase):
+    def test_cec10_la_quantite_de_l_ecran_atteint_l_alerte_o_and_m(self):
+        """CEC10 — l'aperçu du générateur porte la quantité saisie : une
+        ligne O&M de quantité 5 y est signalée comme sur le devis."""
+        from apps.ventes import economie_ci_options as opt
+        from apps.ventes.economie_ci_view import lignes_ecran
+        _inv, lignes = lignes_ecran(None, [{
+            'designation': 'Contrat O&M', 'quantite': 5,
+            'totaux': {'ht': 30000, 'ttc': 36000}}])
+        self.assertEqual(lignes[0]['quantite'], 5.0)
+        lignes[0]['role_ci'] = 'om_ci'  # rôle lu sur le produit en vrai
+        self.assertEqual([a['code'] for a in opt.alertes_om(lignes)],
+                         ['om_quantite'])
+
+
 class _BaseDevis(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -370,6 +385,16 @@ class VuesEconomieCiTest(_BaseDevis):
         # (calcul « omis ») : 400.
         rep = self.api.post('/api/django/ventes/economie-ci/preview/', [None, None], format='json')
         self.assertEqual(rep.status_code, 400, rep.content)
+        # CEC18 — ``sortie_etude_ci`` hors contrat (autoconsommation en
+        # nombre, mois 13 en MT) : 400 nommé, jamais un 500.
+        mt = {'tension': {'valeur': 'mt'}}
+        for horaire in ({'mois': 1, 'type_jour': 'ouvre', 'nb_jours': 1, 'autoconso_kwh': 5},
+                        {'mois': 13, 'type_jour': 'ouvre', 'nb_jours': 1, 'autoconso_kwh': [1] * 24}):
+            sortie = {'entrees_resolues': mt, 'bilan': {'horaire': [horaire]}}
+            rep = self.api.post('/api/django/ventes/economie-ci/preview/',
+                                {'sortie_etude_ci': sortie}, format='json')
+            self.assertEqual(rep.status_code, 400, rep.content)
+            self.assertEqual(rep.json()['champ'], 'sortie_etude_ci')
 
     def test_preview_n_ecrit_rien(self):
         from apps.ventes.models import Devis

@@ -107,6 +107,9 @@ class _Base(TestCase):
         CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
             cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ118 de test'}
             for cle in ('pose_structure', 'pose_modules')}})
+        # CORC6 — chaque prestation réglée a son article (rôle = clé du forfait).
+        for cle in ('pose_structure', 'pose_modules'):
+            cls._produit(cls.co, 'Prestation %s' % cle, role_ci=cle, prix_vente=Decimal('0'))
         # Un onduleur d'une AUTRE société, moins cher : jamais lu.
         cls.onduleur_etranger = cls._onduleur(
             cls.autre, 'Onduleur réseau étranger 50kW Triphasé', 50,
@@ -191,6 +194,23 @@ class ContratTests(_Base):
             self.assertEqual(set(entree), {'valeur', 'provenance'})
             self.assertEqual(set(entree['provenance']), {'origine', 'detail', 'date'})
         self.assertIsNotNone(data['taille']['retenue_kwc'])
+
+    # ── CORC1 — l'aperçu dit si le devis automatique passera ────────────────
+
+    def test_devis_auto_dit_le_refus_du_bouton_prix_a_renseigner(self):
+        # Le catalogue de test ne règle que 2 prestations sur 8 : le bouton
+        # refuserait (« Prix à renseigner ») — l'aperçu le dit AVANT le clic.
+        data = self.post(self.corps(phases='tri'))
+        self.assertFalse(data['devis_auto']['possible'])
+        self.assertEqual(data['devis_auto']['champ'], 'composition')
+        self.assertTrue(data['devis_auto']['message'].startswith('Prix à renseigner'))
+        self.assertIsNone(data['option_avec'])  # aucun hybride au catalogue de test
+
+    def test_devis_auto_refuse_nomme_le_champ_du_lead(self):
+        data = self.post(self.corps(tarif=None))
+        self.assertFalse(data['devis_auto']['possible'])
+        self.assertEqual(data['devis_auto']['champ'], 'contrat_electricite')
+        self.assertTrue(data['devis_auto']['message'].startswith('Demandez au client'))
 
     # ── ADEV82 — bande interne DH/kWc lue ───────────────────────────────────
 
@@ -408,11 +428,28 @@ class BornePoseParDefautAdev90(_Base):
         corps['toit'] = dict({'type_pose': None, 'surface_utile_m2': 200}, **toit)
         return self.post(corps)
 
-    def test_surface_sans_pose_bornee_en_surimposition(self):
+    def test_surface_sans_pose_bornee_en_pose_chiffree(self):
+        # CORC5 — ni couverture ni pente : la borne suit la pose que la
+        # composition CHIFFRE (toit plat lesté, fondateur 26/10/2026) ; la
+        # latitude vient de la ville (gazetier) faute de GPS déclaré.
         rep = self._bornes()
         toit = rep['taille']['bornes']['toit']
         self.assertIsNotNone(toit['kwc'])
-        self.assertIn('pose estimée « toiture_inclinee »', toit['source'])
+        self.assertIn('pose estimée « toit_plat_leste »', toit['source'])
+
+    def test_pente_du_lead_sans_pose_panneaux_suivent_le_toit(self):
+        # Critique Fable : la pente du LEAD (feuille privée ``_pente_toit``)
+        # compte aussi — elle est recopiée quand la pose ESTIMÉE suit le toit.
+        res = etude_ci._Resolution()
+        res.poser('_pente_toit', 20, etude_ci._provenance('lead', 'client'))
+        self.assertEqual(etude_ci._pose_estimee(res), 'toiture_inclinee')
+        vide = etude_ci._Resolution()
+        self.assertEqual(etude_ci._pose_estimee(vide), 'toit_plat_leste')
+
+    def test_pente_declaree_sans_pose_panneaux_suivent_le_toit(self):
+        rep = self._bornes(pente_deg=15)
+        self.assertIn('pose estimée « toiture_inclinee »',
+                      rep['taille']['bornes']['toit']['source'])
         self.assertNotIn('contenance_toit_inconnue', [a['code'] for a in rep['alertes']])
 
     def test_pose_declaree_inchangee(self):
@@ -479,7 +516,8 @@ class Serie8760Amot99(_Base):
         self.assertEqual((production['inclinaison_deg'], production['azimut_deg']), (10, -90))
         toit = self.production.call_args.kwargs['toit']
         self.assertEqual((toit['pente_deg'], toit['azimut_deg']), (10, -90))
-        # Pose non déclarée : D-ACI-13 (surimposition) ⇒ montage PVGIS « building ».
+        # Pose non déclarée MAIS pente déclarée : CORC5 ⇒ les panneaux suivent
+        # le toit (surimposition) ⇒ montage PVGIS « building ».
         self.assertEqual(plan_de_production(toit)['montage'], 'building')
         serie = production['serie_horaire']['kwh_kwc']
         self.assertEqual(len(serie), 8760)
@@ -569,3 +607,34 @@ class AnneeTypePvgisAmot99(TestCase):
                 33.57, -7.59, angle_deg=30, aspect_deg=0, montage='free'))
         self.assertIsNone(pp.serie_horaire_annee_type(
             None, None, angle_deg=30, aspect_deg=0, montage='free'))
+
+
+class SerieAuPointDeLaVilleCorc12(TestCase):
+    """CORC12 (27/10/2026, constat CMP) — un lead sans GPS (ville seule) :
+    la série horaire 8 760 h se calcule au point de sa ville au gazetier,
+    jamais un repli silencieux sur les journées moyennes ; ville inconnue ⇒
+    aucune position devinée."""
+
+    def _lire(self, ville):
+        from apps.parametres import pvgis_profils
+        from apps.ventes import etude_horaire
+        with mock.patch.object(etude_horaire, '_formes_production_par_saison',
+                               return_value=({'ete': [1]}, 'test')), \
+                mock.patch.object(pvgis_profils, 'productible_mensuel',
+                                  return_value=([100] * 12, 'PVGIS test')), \
+                mock.patch.object(pvgis_profils, 'serie_horaire_annee_type',
+                                  return_value={'kwh_kwc': [0.1] * 8760}) as serie:
+            lecture = etude_ci.lire_production({'ville': ville, 'lat': None, 'lon': None})
+        return lecture, serie
+
+    def test_ville_connue_serie_au_point_de_la_ville(self):
+        from apps.parametres.villes_maroc import coordonnees_ville
+        lecture, serie = self._lire('Casablanca')
+        self.assertIsNotNone(lecture[3])
+        lat, lon = serie.call_args.args[:2]
+        self.assertEqual((lat, lon), tuple(coordonnees_ville('Casablanca'))[:2])
+
+    def test_ville_inconnue_aucune_serie(self):
+        lecture, serie = self._lire('Zorglubville')
+        self.assertIsNone(lecture[3])
+        serie.assert_not_called()

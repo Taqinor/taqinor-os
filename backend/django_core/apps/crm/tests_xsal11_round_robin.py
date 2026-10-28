@@ -235,3 +235,178 @@ class EquipeRecevantLeadsTests(TestCase):
         self.equipe.actif = False
         self.equipe.save(update_fields=['actif'])
         self.assertEqual(default_responsable_for(self.company), self.defaut)
+
+
+class AttributionParResponsableTests(TestCase):
+    """Fondateur 27/10/2026 — « le responsable confirme chaque lead » : le
+    nouveau lead reste au responsable, ATTEND sa décision avec une
+    proposition (règles dans l'ordre, sinon rotation) et une échéance."""
+
+    def setUp(self):
+        from apps.crm.models import EquipeCommerciale
+        self.company = Company.objects.create(
+            nom='Taqinor Dispatch', slug='taqinor-dispatch')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_creer', 'crm_voir'])
+        self.chef = make_commercial(self.company, 'disp_chef', self.role)
+        self.a = make_commercial(self.company, 'disp_a', self.role)
+        self.b = make_commercial(self.company, 'disp_b', self.role)
+        CompanyProfile.objects.create(
+            company=self.company, round_robin_plafond_leads_ouverts=5)
+        self.equipe = EquipeCommerciale.objects.create(
+            company=self.company, nom='Casa', recoit_leads=True,
+            responsable=self.chef, confirmation_responsable=True)
+        self.equipe.membres.set([self.a, self.b])
+
+    def _nouveau(self, **champs):
+        owner = default_responsable_for(self.company, lead_attrs=champs)
+        return Lead.objects.create(
+            company=self.company, nom='Prospect', owner=owner, **champs)
+
+    def _regle(self, membre, ordre=0, **criteres):
+        from apps.crm.models_clients import RegleAttribution
+        return RegleAttribution.objects.create(
+            company=self.company, equipe=self.equipe, membre=membre,
+            ordre=ordre, **criteres)
+
+    def test_off_comportement_inchange_aucune_attente(self):
+        from apps.crm.models_clients import AttributionEnAttente
+        self.equipe.confirmation_responsable = False
+        self.equipe.save(update_fields=['confirmation_responsable'])
+        lead = self._nouveau()
+        self.assertIn(lead.owner, (self.a, self.b))
+        self.assertFalse(AttributionEnAttente.objects.filter(lead=lead).exists())
+
+    def test_on_lead_au_responsable_en_attente_avec_proposition(self):
+        lead = self._nouveau()
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.chef)
+        attente = lead.attribution_en_attente
+        self.assertIn(attente.proposee, (self.a, self.b))
+        self.assertEqual(attente.raison, 'Rotation équilibrée')
+        self.assertIsNotNone(attente.echeance)
+        self.assertGreater(attente.echeance, attente.created_at)
+
+    def test_propositions_en_attente_comptent_dans_la_rotation(self):
+        premier = self._nouveau().attribution_en_attente.proposee
+        second = self._nouveau().attribution_en_attente.proposee
+        self.assertEqual({premier, second}, {self.a, self.b})
+
+    def test_on_sans_responsable_actif_rotation_directe(self):
+        self.chef.is_active = False
+        self.chef.save(update_fields=['is_active'])
+        lead = self._nouveau()
+        self.assertIn(lead.owner, (self.a, self.b))
+
+    def test_regle_ville_sans_casse_ni_accents(self):
+        self._regle(self.b, villes='Fès, Meknès')
+        lead = self._nouveau(ville='FES')
+        self.assertEqual(lead.attribution_en_attente.proposee, self.b)
+        self.assertEqual(lead.attribution_en_attente.raison,
+                         'Règle : ville Fès, Meknès')
+
+    def test_regle_type_source_et_facture(self):
+        from decimal import Decimal
+        self._regle(self.a, type_installation='agricole')
+        self._regle(self.b, ordre=1, source='meta_ads')
+        self._regle(self.a, ordre=2, facture_min=Decimal('2000'))
+        self.assertEqual(self._nouveau(
+            type_installation='agricole').attribution_en_attente.proposee, self.a)
+        self.assertEqual(self._nouveau(
+            canal='meta_ads').attribution_en_attente.proposee, self.b)
+        lead = self._nouveau(facture_hiver=Decimal('2500'))
+        self.assertEqual(lead.attribution_en_attente.proposee, self.a)
+        self.assertEqual(lead.attribution_en_attente.raison,
+                         'Règle : facture 2000–∞ DH')
+
+    def test_premiere_regle_dans_l_ordre_gagne(self):
+        self._regle(self.b, ordre=5, villes='Rabat')
+        self._regle(self.a, ordre=1, villes='Rabat')
+        self.assertEqual(self._nouveau(
+            ville='rabat').attribution_en_attente.proposee, self.a)
+
+    def test_aucune_regle_ou_membre_hors_equipe_retombe_sur_rotation(self):
+        hors = make_commercial(self.company, 'disp_hors', self.role)
+        self._regle(hors, villes='Tanger')
+        self._regle(self.a, villes='Agadir')
+        attente = self._nouveau(ville='Tanger').attribution_en_attente
+        self.assertIn(attente.proposee, (self.a, self.b))
+        self.assertEqual(attente.raison, 'Rotation équilibrée')
+
+    def test_echeance_depassee_attribution_automatique(self):
+        from django.utils import timezone
+        from apps.crm.dispatch import attribuer_echeances
+        from apps.crm.models import LeadActivity
+        from apps.crm.models_clients import AttributionEnAttente
+        lead = self._nouveau()
+        attente = lead.attribution_en_attente
+        propose = attente.proposee
+        AttributionEnAttente.objects.filter(pk=attente.pk).update(
+            echeance=timezone.now() - timezone.timedelta(minutes=1))
+        self.assertEqual(attribuer_echeances(), 1)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, propose)
+        self.assertFalse(AttributionEnAttente.objects.filter(lead=lead).exists())
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=lead, body__startswith='Attribué automatiquement à').exists())
+        self.assertEqual(attribuer_echeances(), 0)
+
+    def test_echeance_non_atteinte_rien_ne_bouge(self):
+        from apps.crm.dispatch import attribuer_echeances
+        from apps.crm.models_clients import AttributionEnAttente
+        lead = self._nouveau()
+        AttributionEnAttente.objects.filter(lead=lead).update(echeance=None)
+        self.assertEqual(attribuer_echeances(), 0)
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.chef)
+
+    def test_proposition_devenue_inactive_rotation_recalculee(self):
+        from django.utils import timezone
+        from apps.crm.dispatch import attribuer_echeances
+        from apps.crm.models_clients import AttributionEnAttente
+        self._regle(self.a)
+        lead = self._nouveau()
+        self.a.is_active = False
+        self.a.save(update_fields=['is_active'])
+        AttributionEnAttente.objects.filter(lead=lead).update(
+            echeance=timezone.now() - timezone.timedelta(minutes=1))
+        attribuer_echeances()
+        lead.refresh_from_db()
+        self.assertEqual(lead.owner, self.b)
+
+    def test_isolation_societe_regles_d_une_autre_societe_ignorees(self):
+        from apps.crm.models_clients import RegleAttribution
+        autre = Company.objects.create(nom='Autre dispatch', slug='autre-dispatch')
+        RegleAttribution.objects.create(
+            company=autre, equipe=self.equipe, membre=self.b, villes='Oujda')
+        attente = self._nouveau(ville='Oujda').attribution_en_attente
+        self.assertEqual(attente.raison, 'Rotation équilibrée')
+        self.assertEqual(attente.company_id, self.company.pk)
+
+
+@override_settings(WEBSITE_LEAD_WEBHOOK_SECRET=SECRET)
+class AttributionParResponsableWebhookTests(TestCase):
+    """Le lead du site passe par la même attente (point central)."""
+
+    def test_lead_du_site_attend_le_responsable(self):
+        from apps.crm.models import EquipeCommerciale
+        company = Company.objects.create(
+            nom='Taqinor Dispatch Web', slug='taqinor-dispatch-web')
+        role = Role.objects.create(
+            company=company, nom='Commercial', permissions=['crm_voir'])
+        chef = make_commercial(company, 'dispw_chef', role)
+        membre = make_commercial(company, 'dispw_a', role)
+        CompanyProfile.objects.create(company=company)
+        equipe = EquipeCommerciale.objects.create(
+            company=company, nom='Web', recoit_leads=True, responsable=chef,
+            confirmation_responsable=True)
+        equipe.membres.set([membre])
+        r = self.client.post(
+            reverse('website-lead-webhook'),
+            data=json.dumps(payload_site(phoneE164='+212611119999')),
+            content_type='application/json', HTTP_X_WEBHOOK_SECRET=SECRET)
+        self.assertEqual(r.status_code, 201, r.content)
+        lead = Lead.objects.get(pk=r.json()['lead_id'])
+        self.assertEqual(lead.owner, chef)
+        self.assertEqual(lead.attribution_en_attente.proposee, membre)

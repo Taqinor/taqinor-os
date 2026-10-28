@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
   sizingReducer, ETAT_INITIAL, DRAPEAUX_TOUCHE, drapeauxPoses,
-  toucheNbPanneauxPourComposition,
+  toucheNbPanneauxPourComposition, tailleDemandeeParLead,
   SCENARIO_LES_DEUX, SCENARIO_SANS, SCENARIO_AVEC,
 } from './sizingReducer.js'
 import { exempleContrat } from '../../../test/fixtures/contractSamples.js'
@@ -117,9 +117,11 @@ test('INVARIANT 2 (bis) : un scénario INTACT prend bien le défaut du marché',
   assert.equal(inact.scenario, SCENARIO_SANS)
   const retour = red(inact, { type: 'MARCHE_CHANGE', mode: 'residentiel' })
   assert.equal(retour.scenario, SCENARIO_LES_DEUX)
-  // Pompage : le scénario n'est PAS touché (ni batterie ni onduleur).
+  // Pompage (AGV6) : « Sans batterie » (ni batterie ni onduleur), puis le retour
+  // en résidentiel rend le défaut « Les deux ».
   const agri = red(ETAT_INITIAL, { type: 'MARCHE_CHANGE', mode: 'agricole' })
-  assert.equal(agri.scenario, SCENARIO_LES_DEUX)
+  assert.equal(agri.scenario, SCENARIO_SANS)
+  assert.equal(red(agri, { type: 'MARCHE_CHANGE', mode: 'residentiel' }).scenario, SCENARIO_LES_DEUX)
 })
 
 test('MARCHE_CHANGE : même marché = aucune transition ; mode inconnu ignoré', () => {
@@ -223,7 +225,7 @@ test('LEAD_APPLIQUE : jamais de scénario en POMPAGE (ni batterie ni onduleur)',
     lead: { type_installation: 'agricole', batterie_souhaitee: 'avec', raccordement: 'monophase' },
   })
   assert.equal(s.modeInstallation, 'agricole')
-  assert.equal(s.scenario, SCENARIO_LES_DEUX)   // le défaut initial, inchangé
+  assert.equal(s.scenario, SCENARIO_SANS)   // AGV6 : défaut pompage, pas le « avec » du lead
   assert.equal(s.pompeAlim, 'mono')
 })
 
@@ -235,6 +237,57 @@ test('LEAD_APPLIQUE : la taille souhaitée est PRIORITAIRE sur la facture', () =
   assert.equal(s.nbPanneaux, '12')            // ceil(8000/710)
   assert.equal(s.attenteMoteur, false)        // aucune attente : la taille suffit
   assert.equal(s.touche.nbPanneaux, false)
+})
+
+test('RGEN3 : la taille du lead vaut pour les DEUX options, comme le devis automatique', () => {
+  // Rejeu lead 2141 (16 kWc demandés, facture 4 000 MAD, « avec batterie ») :
+  // l'écran posait 23 panneaux, puis Auto-remplir composait l'optimum AVEC du
+  // moteur (17 panneaux) — trois chiffres pour un lead.
+  const s = sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE',
+    lead: { type_installation: 'residentiel', taille_souhaitee_kwc: '16', facture_hiver: '4000' },
+  })
+  assert.equal(s.nbPanneaux, '23')
+  assert.equal(tailleDemandeeParLead(s), 16)
+  assert.equal(s.touche.nbPanneaux, false)          // un pré-remplissage reste un pré-remplissage
+  assert.equal(toucheNbPanneauxPourComposition(s), true)
+  // Le vendeur tape : sa saisie remplace la taille de la fiche.
+  const tape = red(s, { type: 'SAISI', champ: 'nbPanneaux', valeur: '20' })
+  assert.equal(tailleDemandeeParLead(tape), null)
+  // « Recalculer le dimensionnement » revient au moteur.
+  const recalcule = red(s, { type: 'RECALCUL_DEMANDE', retenu: { nbPanneaux: 17, kwcOptimal: 12.07 } })
+  assert.equal(tailleDemandeeParLead(recalcule), null)
+  assert.equal(toucheNbPanneauxPourComposition(recalcule), false)
+  // Un lead SANS taille efface celle du lead précédent.
+  const autre = sizingReducer(s, {
+    type: 'LEAD_APPLIQUE', lead: { type_installation: 'residentiel', facture_hiver: '1500' },
+  })
+  assert.equal(tailleDemandeeParLead(autre), null)
+  assert.equal(toucheNbPanneauxPourComposition(autre), false)
+})
+
+test('RGEN3 (critique Fable) : l’attente moteur se referme, le marché et le wattage gardent l’invariant', () => {
+  const s = sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE',
+    lead: { type_installation: 'residentiel', taille_souhaitee_kwc: '16', facture_hiver: '4000' },
+  })
+  // Une facture retapée arme l’attente : la réponse du moteur la referme
+  // sans toucher au compte tenu par la fiche.
+  const attente = { ...s, attenteMoteur: true }
+  const repondu = sizingReducer(attente, { type: 'MOTEUR_A_REPONDU', recommandation: { panneaux: 17, kwc: 12.07 } })
+  assert.equal(repondu.attenteMoteur, false)
+  assert.equal(repondu.nbPanneaux, '23')
+  assert.equal(sizingReducer(attente, { type: 'MOTEUR_A_REFUSE', motif: 'x' }).motifMoteur, null)
+  // Hors résidentiel, la taille de la fiche ne pilote rien.
+  const indus = red(s, { type: 'MARCHE_CHANGE', mode: 'industriel' })
+  assert.equal(tailleDemandeeParLead(indus), null)
+  assert.equal(tailleDemandeeParLead(sizingReducer(ETAT_INITIAL, {
+    type: 'LEAD_APPLIQUE', lead: { type_installation: 'agricole', taille_souhaitee_kwc: '16' },
+  })), null)
+  // Un autre wattage recompte les panneaux pour TENIR les 16 kWc.
+  const w550 = red(s, { type: 'SAISI', champ: 'panelW', valeur: '550' })
+  assert.equal(w550.nbPanneaux, '30')
+  assert.equal(tailleDemandeeParLead(w550), 16)
 })
 
 test('LEAD_APPLIQUE résidentiel avec facture : ATTEND le moteur serveur (U3-900)', () => {
@@ -353,6 +406,20 @@ test('REOUVERTURE : mode et scénario du devis ferment leurs drapeaux', () => {
   assert.deepEqual(drapeauxPoses(s).sort(), ['mode', 'scenario'])
   assert.equal(s.nbPanneaux, '24')
   assert.equal(s.touche.nbPanneaux, false)     // relire les lignes n’est pas une saisie
+})
+
+test('AGV13 — REOUVERTURE agricole : « Les deux » enregistré revient en Sans ; résidentiel inchangé', () => {
+  const agri = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE',
+    devis: { mode_installation: 'agricole', scenario: SCENARIO_LES_DEUX, panneaux: 12 },
+  })
+  assert.equal(agri.modeInstallation, 'agricole')
+  assert.equal(agri.scenario, SCENARIO_SANS)
+  const res = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE',
+    devis: { mode_installation: 'residentiel', scenario: SCENARIO_LES_DEUX, panneaux: 12 },
+  })
+  assert.equal(res.scenario, SCENARIO_LES_DEUX)
 })
 
 test('QJR526 — REOUVERTURE : le wattage du devis est posé AVANT le compte (5,5 kWc, pas 7,1)', () => {

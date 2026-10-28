@@ -1,18 +1,31 @@
 {
   "rendu": {
+    "commercial_qx46_atelier": "7ec1410ce150c45891abf9bc9b3fcb05fbee04487eb2c8db565577b812a09fad",
     "commercial_qx46_autre": "260be6d887f62a1dfcd42c5f4260177803a879406af73f4af5ac8756cf739e8e",
-    "commercial_qx46_boulangerie": "10aead142367a1040d1b97a87d0077cc9dbe023bf750e2ce7f59301ad2d853cf",
+    "commercial_qx46_boucherie": "ebffafaa37a31a8dab62bc78fcee94cf62463b4059c76619558596725412f6dc",
+    "commercial_qx46_boulangerie": "0a576c52d6f2904eddc9e216efc1bca6256651e61fc9581a2e4539784e9f0729",
     "commercial_qx46_bureau": "0ee75498dd23b5e7647affd37297aa201d0231ac538c55734272e3d6beaee1cf",
+    "commercial_qx46_cafe": "5ad841d029e01ae59600aa824600f8b1da21aa9fa6d9672c70b600f87bef6329",
+    "commercial_qx46_coiffure": "ccbaea5148cf4fd5e68c8655dcdccf08d2dccd327c5f5019397ff7cbd632d91f",
     "commercial_qx46_commerce": "b689f089a55cef88f3220df9b9081de8fda74214b4732d19471f4cfa85b2a498",
     "commercial_qx46_ecole": "03a0f1afcf6ae3d1b53f138aed107e3ec8bde8b5b79f1826b4799a50beffff92",
+    "commercial_qx46_entrepot": "fae54657a64a9f605aab17f8e344727b9eda58d3727d0439a5b75febe800ca33",
     "commercial_qx46_froid": "9070609e6edd91bc2a5be32cdedd975ede3210005e4c45399bbed4d58e461cd4",
-    "commercial_qx46_hammam": "4377c2c26c80a7ff23bc8012a109223e40f4b12a17aad852a4a843b50cd946fe",
+    "commercial_qx46_garage": "33489a0c1f806199a52e7c6dcae1b08d9bb2a089e27d7efd7cd65c97debdef8c",
+    "commercial_qx46_hammam": "2c7c2a73fb53ddbdeeeea28169e287540dfa61907d0a71a5d77fe4c853bffd96",
     "commercial_qx46_hotel": "2dba9301f3a71d81624f0701a255882a66475b5925c54f8aa24195ea557cb3aa",
-    "commercial_qx46_restaurant": "f5e9e9d79480afad0515a9c538e3eeb5b5b88a2c091a6742dbed48815d347920",
+    "commercial_qx46_imprimerie": "7061c6fd67cfa217bece6732c4c69df892db890cfdac2b3ea264a9cd35d1904b",
+    "commercial_qx46_mosquee": "9926e60af3b8391bb39caa28f027c28cb41b8f34f88da91b7c662306d10176b5",
+    "commercial_qx46_pharmacie": "0887e678ca9b7b7140c0c74d668000b33852b502432949f1b4c21fae034554fb",
+    "commercial_qx46_pressing": "df5015cb5a16886908b6427075461de0214d6fa9400ec540aeade3a27c60f733",
+    "commercial_qx46_restaurant": "b2dfe08fe3da386ee8e5e7a1dbcac971a6dfce4cfd53c13aeafdc8c6319e28b1",
+    "commercial_qx46_salle_sport": "df849e14d3e80795c1bf1fa63b6904f14b3ae315b0667fd2b7125809379de2d9",
     "commercial_qx46_sante": "30a05d933b959b1bac32efb48c55d386e36443a7b0d35ca4769d51d107c6b441",
+    "commercial_qx46_station_service": "9628717bf2e07a44b5f3f84593df5516a5b3faf7bd3297ce7597bc28d20bd444",
+    "commercial_qx46_supermarche": "a852417e5d6cba4aa80d1163be5be87c4d9043735c45324957c432d188d479b9",
     "industriel_qx45": "1495cd8bce7c1afa125b7a4eecc03b5b83bd1697d884f1a0d54563734a0adc8c",
-    "residentiel_deux": "bf49baf9ae5684aaeaedb460eba1e4542f183bd880b8c9cbd3c70dd5fd6a9679",
-    "residentiel_long": "5b25bb9f54d0844015d718a05f8e3f408f8e2e62a5fcd7ed9eba22e29dfa314d",
-    "residentiel_sans": "76790a4e5c887a2984b9a0433cd2fc4dd3edf3837541e74b6babe0e8e59cbd7e"
+    "residentiel_deux": "7681013fb2b2187457efe67adfd28f327dd1f3c659aea8eb0e0478078478da40",
+    "residentiel_long": "0e7036b7b6b56a1816bbb3b67513d5191beeb54d6647b3edeec767c7e1d68274",
+    "residentiel_sans": "55e557f5ed4a0ab6ec2edae313cac961e9cc70e0cfeba33cc2b2b5fc8a77d655"
   }
 }

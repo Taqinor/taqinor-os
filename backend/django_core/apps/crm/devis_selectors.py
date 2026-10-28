@@ -8,6 +8,7 @@ inter-apps). N'importe jamais `.selectors` au niveau module.
 Note : les appels internes à `lead_du_devis` restent dans ce module ; il
 n'est jamais patché par les tests.
 """
+from .categories_commerciales import TALON_NIVEAU_JOUR_PCT_PAR_REPONSE
 from .clients_selectors import (
     get_latest_lead_for_client,
 )
@@ -199,6 +200,13 @@ ENTREES_POMPAGE_CIBLES = (
     # laisse le bloc « Votre argent » omis.
     ('jours_irrigation_semaine', 'saisies_economie_pompage',
      'saisies_economie_pompage.consommation.jours_irrigation_par_semaine'),
+    # AGV8 — la facture d'électricité du pompage et sa part fixe : base
+    # déclarée du cas « pompe actuelle sur le réseau » (jamais une grille).
+    ('depense_electricite_pompe_mad_mois', 'saisies_economie_pompage',
+     'saisies_economie_pompage.facture_reseau.montant_mad'),
+    ('depense_electricite_pompe_part_fixe_mad_mois',
+     'saisies_economie_pompage',
+     'saisies_economie_pompage.facture_reseau.part_fixe_mad_mois'),
     # AGQ39 (D-AGQ-10) — le mode de pompe du lead et la plaque de la pompe
     # ACTUELLE : « existante » ⇒ aucune ligne pompe, variateur sur la plaque.
     ('mode_pompe', 'mode_pompe', 'mode_pompe'),
@@ -226,6 +234,10 @@ _ENTREES_POMPAGE_SOURCES = {
         'declaree': 'client', 'site_web': 'site_web'}),
 }
 
+
+#: AGV8 — colonnes de la facture d'électricité du pompage (cas réseau).
+_ENTREES_POMPAGE_RESEAU = ('depense_electricite_pompe_mad_mois',
+                           'depense_electricite_pompe_part_fixe_mad_mois')
 
 #: La pompe ACTUELLE : lue par le moteur seulement en mode « pompe existante
 #: conservée » (D-AGR-7) — servie marquée « information ».
@@ -352,6 +364,13 @@ def entrees_pompage_du_lead(lead):
             attendue = unite_par_energie().get(lead.pompe_alim_actuelle)
             if attendue and entree['unite'] != attendue:
                 entree['ignoree'] = f'énergie {lead.pompe_alim_actuelle}'
+        if colonne in _ENTREES_POMPAGE_RESEAU \
+                and lead.pompe_alim_actuelle != 'electrique':
+            # AGV8 — facture du réseau : lue seulement pour une pompe
+            # actuelle électrique, sinon servie MARQUÉE ``ignoree``.
+            entree['ignoree'] = (f'énergie {lead.pompe_alim_actuelle}'
+                                 if lead.pompe_alim_actuelle
+                                 else 'énergie non déclarée')
         entrees.append(entree)
 
     # D-AGR-3 — volume déclaré : besoin_eau_m3j, sinon débit ACTUEL × heures
@@ -529,6 +548,57 @@ def _entrees_toit(lead, _entree, manquants):
                 'toit.azimut_deg')
 
 
+def _entrees_rythme(lead, _entree, manquants, commercial):
+    """§4 d'`entrees_ci_du_lead` (extraction C20) : le rythme déclaré."""
+    if not lead.jours_ouverture:
+        manquants.append('jours_ouverture')
+    else:
+        jours = set(lead.jours_ouverture or [])
+        _entree('jours_ouverture', [j in jours for j in range(1, 8)],
+                'rythme', 'rythme.jours_ouverts')
+    if lead.heure_debut is None or lead.heure_fin is None:
+        manquants.extend(c for c in ('heure_debut', 'heure_fin')
+                         if getattr(lead, c) is None)
+        # ADEV76 — un régime 1x8 / 2x8 se place sur l'heure de début seule.
+        if lead.heure_debut is not None and not _entree_vide(lead.regime_equipes):
+            _entree('heure_debut', lead.heure_debut, 'rythme',
+                    'rythme.debut_equipe_h')
+    else:
+        _entree('heure_debut', {'ouvre': [[lead.heure_debut, lead.heure_fin]]},
+                'rythme', 'rythme.plages')
+    if _entree_vide(lead.regime_equipes):
+        manquants.append('regime_equipes')
+    else:
+        _entree('regime_equipes', lead.regime_equipes, 'rythme',
+                'rythme.equipes')
+    if lead.fermeture_mois is None:
+        manquants.append('fermeture_mois')
+    else:
+        _entree('fermeture_mois', list(lead.fermeture_mois), 'rythme',
+                'rythme.fermetures')
+    if commercial:
+        if _entree_vide(lead.categorie_commerciale):
+            manquants.append('categorie_commerciale')
+        else:
+            _entree('categorie_commerciale', lead.categorie_commerciale,
+                    'rythme', 'rythme.categorie_commerciale')
+        if lead.reponses_categorie:
+            _entree('reponses_categorie', dict(lead.reponses_categorie),
+                    'rythme', 'rythme.reponses_categorie')
+    else:
+        if _entree_vide(lead.secteur_industriel):
+            manquants.append('secteur_industriel')
+        else:
+            _entree('secteur_industriel', lead.secteur_industriel, 'rythme',
+                    'rythme.secteur_industriel')
+    # Décisions fondateur 26-27/10/2026 — « équipements hors horaires » =
+    # talon DÉCLARÉ (% du niveau de jour) ; facultatif : jamais dans ``manquants``.
+    pct = TALON_NIVEAU_JOUR_PCT_PAR_REPONSE.get(lead.equipements_hors_horaires)
+    if pct is not None:
+        _entree('equipements_hors_horaires', {'niveau_jour_pct': pct}, 'rythme',
+                'rythme.talon')
+
+
 def entrees_ci_du_lead(lead):
     """CIQ405 — ``{entrees, manquants, informations}`` d'un lead commercial
     ou industriel (``None`` ailleurs). Lecture SEULE ; UNE requête au plus
@@ -550,6 +620,7 @@ def entrees_ci_du_lead(lead):
         'raccordement', 'compteur_puissance_kva',
         'jours_ouverture', 'heure_debut', 'heure_fin', 'regime_equipes',
         'fermeture_mois', 'categorie_commerciale', 'reponses_categorie',
+        'equipements_hors_horaires',
         'secteur_industriel', 'type_surface', 'type_toiture',
         'surface_toiture_m2', 'inclinaison_deg', 'orientation',
         'tva_recuperable') + _CI_INFORMATIONS
@@ -637,48 +708,8 @@ def entrees_ci_du_lead(lead):
                 _entree_valeur(lead.compteur_puissance_kva),
                 'puissance_souscrite_kva', 'puissance_souscrite_kva')
 
-    # 4. Rythme DÉCLARÉ, passé tel quel.
-    if not lead.jours_ouverture:
-        manquants.append('jours_ouverture')
-    else:
-        jours = set(lead.jours_ouverture or [])
-        _entree('jours_ouverture', [j in jours for j in range(1, 8)],
-                'rythme', 'rythme.jours_ouverts')
-    if lead.heure_debut is None or lead.heure_fin is None:
-        manquants.extend(c for c in ('heure_debut', 'heure_fin')
-                         if getattr(lead, c) is None)
-        # ADEV76 — un régime 1x8 / 2x8 se place sur l'heure de début seule.
-        if lead.heure_debut is not None and not _entree_vide(lead.regime_equipes):
-            _entree('heure_debut', lead.heure_debut, 'rythme',
-                    'rythme.debut_equipe_h')
-    else:
-        _entree('heure_debut', {'ouvre': [[lead.heure_debut, lead.heure_fin]]},
-                'rythme', 'rythme.plages')
-    if _entree_vide(lead.regime_equipes):
-        manquants.append('regime_equipes')
-    else:
-        _entree('regime_equipes', lead.regime_equipes, 'rythme',
-                'rythme.equipes')
-    if lead.fermeture_mois is None:
-        manquants.append('fermeture_mois')
-    else:
-        _entree('fermeture_mois', list(lead.fermeture_mois), 'rythme',
-                'rythme.fermetures')
-    if commercial:
-        if _entree_vide(lead.categorie_commerciale):
-            manquants.append('categorie_commerciale')
-        else:
-            _entree('categorie_commerciale', lead.categorie_commerciale,
-                    'rythme', 'rythme.categorie_commerciale')
-        if lead.reponses_categorie:
-            _entree('reponses_categorie', dict(lead.reponses_categorie),
-                    'rythme', 'rythme.reponses_categorie')
-    else:
-        if _entree_vide(lead.secteur_industriel):
-            manquants.append('secteur_industriel')
-        else:
-            _entree('secteur_industriel', lead.secteur_industriel, 'rythme',
-                    'rythme.secteur_industriel')
+    # 4. Rythme DÉCLARÉ, passé tel quel (extraction : ``_entrees_rythme``).
+    _entrees_rythme(lead, _entree, manquants, commercial)
 
     # 5. Toit / surface (extraction : voir ``_entrees_toit``).
     _entrees_toit(lead, _entree, manquants)

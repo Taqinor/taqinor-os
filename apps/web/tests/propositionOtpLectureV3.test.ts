@@ -17,9 +17,10 @@ import { fileURLToPath } from 'node:url';
 
 import { mapAcceptResponseToUiState, OTP_LECTURE_DETAIL } from '../src/lib/proposition';
 import { lireReponseAccesPdf } from '../src/lib/propositionPdfSigne';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
-const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+const PROPOSITION = lirePageProposition();
 const PROXY = read('../src/pages/api/proposition-otp.ts');
 // Formulaire et logique client PARTAGÉS avec /suivi (garde ACAL345).
 const OTP_FORM = read('../src/components/OtpLectureForm.astro');
@@ -84,5 +85,14 @@ describe('ADEV97 — l’exemplaire SIGNÉ se télécharge avec le code de lectu
     expect(PROPOSITION).toContain('installerGardePdfSigne({');
     expect(PROPOSITION).toContain('id="pdf-otp-block"');
     expect(PROPOSITION).toContain('estAccepte: () => cfg.accepted || propositionAcceptee');
+  });
+});
+
+// CPRW27 (28/10/2026) — le texte FR du serveur n'est montré qu'en français.
+describe('CPRW27 — propositionPdfSigne : `detail` serveur seulement en FR', () => {
+  it('le gestionnaire ne montre r.detail que si la langue courante est fr', () => {
+    const src = read('../src/lib/propositionPdfSigne.ts');
+    expect(src).toContain("(g.langue() === 'fr' && r.detail) || MSG.erreur[g.langue()]");
+    expect(src).not.toMatch(/: r\.detail \|\| MSG\.erreur/);
   });
 });

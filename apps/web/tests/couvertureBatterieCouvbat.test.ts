@@ -17,11 +17,12 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { batteryCoverageInfo, type ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 
-const PAGE = read('../src/pages/proposition/[...token].astro');
+const PAGE = lirePageProposition();
 // Les commentaires ne prouvent rien : on ne cherche que dans le CODE.
 const CODE = PAGE
   .replace(/<!--[\s\S]*?-->/g, ' ')

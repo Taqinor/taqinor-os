@@ -180,7 +180,7 @@
     "rythme.equipes": "1x8 | 2x8 | 3x8 | continu, + `debut_equipe_h`",
     "rythme.fermetures": "[{du, au, motif}] — congés annuels, arrêts techniques",
     "rythme.ramadan": "{plages déclarées} ou null — jamais supposé",
-    "rythme.talon": "{kw | part_pct | inconnu}",
+    "rythme.talon": "{kw | part_pct | niveau_jour_pct | inconnu} — kw : talon en kW ; part_pct : part de l'énergie du mois ; niveau_jour_pct : % du niveau des heures ouvertes (réponse « équipements hors horaires », fondateur 27/10/2026) ; sans talon déclaré : talon par défaut du type de commerce (archétype sourcé, sinon défaut fondateur 20 %)",
     "rythme.categorie_commerciale": "les 9 catégories commerciales du lead (hors industriel) ; `reponses_categorie` = réponses propres à la catégorie",
     "courbe_mesuree": "{pas_minutes, points, source, date} OU un fichier lu par le parseur du serveur {contenu (texte CSV), source, colonne?, unite?, debut?} ; null sinon — passe devant tout profil déclaré",
     "toit": "{type_pose (vocabulaire CIQ7), surface_utile_m2, surface_type declaree|mesuree|calepinage, pente_deg, azimut_deg, couverture, charge_admissible_kg_m2 + charge_admissible_source}",
@@ -2167,7 +2167,13 @@
       }
     ],
     "methode": "autoconsommation horaire : production PVGIS de l'année type du site (8 760 h, pente/azimut/pose déclarés) × profil déclaré, heure par heure ; taille par tranches de 5 kWc jusqu'à l'horizon marginal de 10 ans (D-CIQ-1, D-CIQ-2, D-ACI-18)",
-    "version_moteur": "ci-1"
+    "version_moteur": "ci-1",
+    "devis_auto": {
+      "possible": true,
+      "message": null,
+      "champ": null
+    },
+    "option_avec": null
   },
   "exemple_industriel_mt": {
     "entrees_resolues": {
@@ -2868,6 +2874,11 @@
     ]
   },
   "exemple_prix_manquants": {
+    "devis_auto": {
+      "possible": false,
+      "message": "Prix à renseigner avant un devis automatique C&I : Coffret DC, Pose de la structure. À régler par l'administrateur dans Paramètres › Devis › Prestations C&I, ou sur la fiche de l'article.",
+      "champ": "composition"
+    },
     "taille": {
       "retenue_kwc": null,
       "nb_panneaux": null,
@@ -3030,7 +3041,8 @@
     "alertes": "[{code, champ, message, niveau info|alerte|bloquant, interne}] — `interne: true` n'entre jamais dans une charge utile client ; CIQ134 (MT seulement, moteur_ci/reactif.py, seule formule) : `cos_phi_apres_pv` (niveau alerte, interne : cos φ après PV sous le seuil ONEE 0,8 calculé depuis kWh + kvarh des registres MT ou un cos φ déclaré avec sa provenance ; seuil, source, date, « à confirmer auprès du distributeur », « estimation interne » et la question de visite « batterie de condensateurs existante, puissance, état » sont dans `message` ; aucun montant) ou `cos_phi_non_evalue` (niveau info : « facteur de puissance non déclaré / non évalué », jamais 1,0 supposé) ; relayée par economie_ci.alertes_internes, jamais servie par economie_ci_publique ni synthese_ci",
     "hypotheses": "[{cle, valeur, statut source|declare|estimation, source}]",
     "version_moteur": "texte — change à chaque évolution de formule",
-    "option_avec": "Clé ADDITIVE (fondateur 26/10/2026), ABSENTE quand l'option « avec batterie » n'est pas composée (choix « sans », aucun hybride basse tension ni batterie à fiche complète au catalogue) : {kwc, nb_panneaux, puissance_ac_kw, batterie{produit, nom, quantite, kwh_utile_unitaire, capacite_utile_kwh, rendement, puissance_charge_kw, surplus_jour_min_kwh, mois_surplus_min, se_remplit_tous_les_jours, besoin_nocturne_kwh?, reduite?, panneaux_ajoutes?}, onduleurs{combinaison, ratio_dc_ac}, composition (forme `composition`, hybrides à la place des onduleurs string + banque homogène), bilan (forme `bilan` sans `horaire`, + batterie{capacite_utile_kwh, restitue_kwh_an, charge_kwh_an, rendement}), economie_ci (forme `economie_ci` de ce bilan), economie_annuelle_mad, cout_vente_ht, retour_simple_ans} — jamais prix_achat ni marge"
+    "devis_auto": "CORC1 (27/10/2026) — {possible, message, champ} : le devis automatique C&I passerait-il sur cette étude ? MÊME refus que le bouton (`etude_ci.refus_devis_auto_ci`) — `message` s'adresse au vendeur (une consigne, jamais le jargon du moteur), `champ` nomme le champ du LEAD à compléter (bouton « Compléter »), ou `composition` (catalogue / prix à régler par l'administrateur) ou `taille` (cause du moteur) ; possible=true ⇒ message et champ null. Toujours présent.",
+    "option_avec": "Clé ADDITIVE (fondateur 26/10/2026) ; dans `etude_params.etude_ci` elle est ABSENTE, et l'aperçu la sert à null (CORC1), quand l'option « avec batterie » n'est pas composée (choix « sans », aucun hybride basse tension ni batterie à fiche complète au catalogue) : {kwc, nb_panneaux, puissance_ac_kw, batterie{produit, nom, quantite, kwh_utile_unitaire, capacite_utile_kwh, rendement, puissance_charge_kw, surplus_jour_min_kwh, mois_surplus_min, se_remplit_tous_les_jours, besoin_nocturne_kwh?, reduite?, panneaux_ajoutes?}, onduleurs{combinaison, ratio_dc_ac}, composition (forme `composition`, hybrides à la place des onduleurs string + banque homogène), bilan (forme `bilan` sans `horaire`, + batterie{capacite_utile_kwh, restitue_kwh_an, charge_kwh_an, rendement}), economie_ci (forme `economie_ci` de ce bilan), economie_annuelle_mad, cout_vente_ht, retour_simple_ans} — jamais prix_achat ni marge"
   },
   "interdit": [
     "prix_achat",

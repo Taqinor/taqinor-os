@@ -197,3 +197,22 @@ class InversionFactureTotaleTests(SimpleTestCase):
         for vide in (0, None, -5):
             sortie = P.kwh_from_bill(vide, utility='onee', facture_totale=True)
             self.assertTrue(sortie['estimation'], msg=repr(vide))
+
+
+class ExempleAligneCouvertureTests(SimpleTestCase):
+    """RPDF16 — l'exemple de la page 3 reprend les montants de la couverture
+    quand l'écart n'est qu'un arrondi (devis 1344 : 35 999 / 36 000)."""
+
+    def test_arrondi_aligne_sur_la_couverture_economie_inchangee(self):
+        from apps.ventes.quote_engine.residential.trust import _exemple_aligne_couverture
+        ex = ('Facture actuelle ≈ 35 999 MAD/an → avec solaire ≈ 9 664 MAD/an'
+              ' → économie ≈ 26 335 MAD/an')
+        d = {'annual_before': 36000, 'annual_after': 9665}
+        self.assertEqual(
+            _exemple_aligne_couverture(d, ex),
+            'Facture actuelle ≈ 36 000 MAD/an → avec solaire ≈ 9 665 MAD/an'
+            ' → économie ≈ 26 335 MAD/an')
+        # Écart réel (pas un arrondi) ou couverture absente : texte intact.
+        self.assertEqual(_exemple_aligne_couverture(
+            {'annual_before': 40000, 'annual_after': 9665}, ex), ex)
+        self.assertEqual(_exemple_aligne_couverture({}, ex), ex)

@@ -124,6 +124,18 @@ class TestConfiguration(Ntwms12Base):
             'configurer-liberation/', {'mode': 'auto_seuil'}, format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_endpoint_seuil_hors_int4_400_jamais_500(self):
+        # api-fuzz-full 27/10 : `seuil_lignes` = 2**65 débordait la colonne
+        # (500) ; la borne int4 est publiée et appliquée.
+        vague = self._vague()
+        url = f'/api/django/stock/vagues-picking/{vague.id}/configurer-liberation/'
+        resp = self.api.post(url, {'mode': 'auto_seuil', 'seuil_lignes': 2 ** 65},
+                             format='json')
+        self.assertEqual(resp.status_code, 400, resp.content)
+        resp = self.api.post(url, {'mode': 'auto_seuil', 'seuil_lignes': 2147483647},
+                             format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
 
 class TestLiberationAutoHeure(Ntwms12Base):
     def setUp(self):

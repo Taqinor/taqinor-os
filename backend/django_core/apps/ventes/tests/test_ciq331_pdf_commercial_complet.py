@@ -144,9 +144,11 @@ class Ciq331SansArgent(SimpleTestCase):
 @tag("weasyprint")  # rendu PDF réel
 class Ciq331TroisPages(SimpleTestCase):
 
-    def test_dix_categories(self):
+    def test_vingt_trois_categories(self):
+        # Décision fondateur 26-27/10/2026 : les 23 activités du lead, chacune
+        # rend son PDF commercial en 3 pages.
         from weasyprint import HTML
-        self.assertEqual(len(CATEGORIES), 10)
+        self.assertEqual(len(CATEGORIES), 23)
         for categorie in CATEGORIES:
             with self.subTest(categorie=categorie):
                 doc = HTML(string=_html(_data(categorie))).render()

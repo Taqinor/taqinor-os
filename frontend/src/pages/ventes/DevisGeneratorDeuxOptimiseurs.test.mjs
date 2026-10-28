@@ -135,10 +135,10 @@ test('industriel / commercial retombent sur « Sans batterie » : le double opti
   }
 })
 
-test('agricole ne TOUCHE PAS le scénario (ni batterie ni onduleur en pompage)', () => {
+test('agricole retombe sur « Sans batterie » (AGV6 : ni batterie ni onduleur en pompage)', () => {
   const etat = sizingReducer(ETAT_INITIAL, { type: 'MARCHE_CHANGE', mode: 'agricole' })
   assert.equal(etat.modeInstallation, 'agricole')
-  assert.equal(etat.scenario, SCENARIO_LES_DEUX, 'le scénario reste celui d’avant, non redéfini')
+  assert.equal(etat.scenario, SCENARIO_SANS, 'pas de double optimum « Les deux » en pompage')
 })
 
 test('un scénario CHOISI par le commercial survit à un changement de marché', () => {

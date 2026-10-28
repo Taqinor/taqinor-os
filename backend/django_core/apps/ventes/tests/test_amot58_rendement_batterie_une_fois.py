@@ -43,3 +43,31 @@ class RendementBatterieTests(SimpleTestCase):
         une_fois = compute_cashflow_payback(total_avec, roi['eco_a_ann'])
         self.assertAlmostEqual(roi['roi_a'], une_fois['payback_years'],
                                delta=0.05)
+
+
+class RendementImprimeHorsHoraireTests(SimpleTestCase):
+    """RHOR6 (C-RHOR-006) — modèles « factures » / « estimation », niveau de
+    règles 3 : l'économie « avec batterie » IMPRIMÉE est nette de la perte
+    aller-retour de sa part stockée ; le flux de l'année 1 de la courbe = ce
+    chiffre imprimé (déduction unique). Niveau 2 : imprimé brut, perte au
+    seul cashflow (rendu d'origine)."""
+
+    def _roi(self, regles_2710):
+        return calculate_savings_roi(
+            6.0, 60000.0, 90000.0, battery_kwh=10.0,
+            regles_2710=regles_2710)
+
+    def test_niveau_3_imprime_net_et_courbe_alignee(self):
+        brut = self._roi(False)
+        net = self._roi(True)
+        self.assertNotEqual(net['savings_model'], 'horaire')
+        self.assertLess(net['eco_a_ann'], brut['eco_a_ann'])
+        self.assertEqual(net['eco_s_ann'], brut['eco_s_ann'])
+        self.assertAlmostEqual(
+            net['cashflow_avec'][0] + 90000.0, net['eco_a_ann'], delta=1)
+        self.assertEqual(sum(net['eco_a_monthly']), net['eco_a_ann'])
+
+    def test_niveau_2_garde_l_imprime_brut(self):
+        brut = self._roi(False)
+        self.assertGreater(
+            brut['eco_a_ann'], brut['cashflow_avec'][0] + 90000.0 + 1)

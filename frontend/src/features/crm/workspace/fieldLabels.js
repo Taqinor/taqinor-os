@@ -167,6 +167,8 @@ const fieldLabels = {
   butane_bouteilles_jour: { label: 'Butane — bouteilles par jour d’irrigation', section: 'pompage', inputId: 'lf-butane-bouteilles-jour' },
   carburant_prix_unitaire_mad: { label: 'Prix payé (MAD par bouteille ou par litre)', section: 'pompage', inputId: 'lf-carburant-prix' },
   depense_carburant_mad_mois: { label: 'Dépense carburant (MAD/mois)', section: 'pompage', inputId: 'lf-depense-carburant' },
+  depense_electricite_pompe_mad_mois: { label: 'Dépense électricité pompage (MAD/mois)', section: 'pompage', inputId: 'lf-depense-electricite-pompe' },
+  depense_electricite_pompe_part_fixe_mad_mois: { label: 'Part fixe facture électricité pompage (MAD/mois)', section: 'pompage', inputId: 'lf-depense-electricite-pompe-part-fixe' },
   mois_irrigation: { label: 'Mois d’irrigation', section: 'pompage', inputId: 'lf-mois-irrigation' },
   jours_irrigation_semaine: { label: 'Jours d’irrigation par semaine', section: 'pompage', inputId: 'lf-jours-irrigation-semaine' },
   distance_forage_champ_m: { label: 'Distance forage → champ (m)', section: 'pompage', inputId: 'lf-distance-forage-champ' },
@@ -221,6 +223,7 @@ const fieldLabels = {
   heure_debut: { label: 'Heure de début de journée', section: 'pro', inputId: 'lf-heure-debut' },
   heure_fin: { label: 'Heure de fin de journée', section: 'pro', inputId: 'lf-heure-fin' },
   fermeture_mois: { label: 'Mois de fermeture', section: 'pro', inputId: 'lf-fermeture-mois' },
+  equipements_hors_horaires: { label: 'Équipements hors horaires', section: 'pro', inputId: 'lf-equipements-hors-horaires' },
   type_surface: { label: 'Type de surface', section: 'pro', inputId: 'lf-type-surface' },
   surface_source: { label: 'Provenance de la surface', section: 'pro', inputId: 'lf-surface-source' },
   groupe_electrogene: { label: 'Groupe électrogène', section: 'pro', inputId: 'lf-groupe-electrogene' },
@@ -296,7 +299,7 @@ const fieldLabels = {
   },
   equip_ve_statut: {
     label: 'Véhicule électrique — déjà là ou prévu ?', section: 'equipements',
-    inputId: 'lf-equip-ve-statut', pending: 'PanneauScriptAppel (CAD152/153)',
+    inputId: 'lf-equip-ve-statut',
   },
   pompage_heures_jour: {
     label: 'Pompage — heures par jour', section: 'pompage',

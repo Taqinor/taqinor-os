@@ -15,6 +15,13 @@ from __future__ import annotations
 # APDF8 — libellés FIXES du détail (fr : littéral d'origine, octet pour
 # octet ; en/ar : ``i18n_labels``), la même fonction que la couverture.
 from .cover import libelle_cat, libelle_fixe, nom_option
+from ..montants import decimale, format_anglais
+
+
+def _milliers_doc(v):
+    """RPDF30 — entier groupé : espace en fr/ar, virgule en anglais."""
+    return f"{int(v):,}".replace(",", "," if format_anglais() else " ")
+
 
 
 def _qty_par_designation(items):
@@ -477,7 +484,7 @@ def build_pages(ctx) -> list:
     _divergent = bool(deux_options and d.get("panneaux_divergents"))
 
     def _num(v):
-        return f'{v:g}'.replace(".", ",")
+        return decimale(f'{v:g}')
 
     # QJR17 (d) — VIGNETTES CONDITIONNELLES, comme partout ailleurs dans le
     # moteur. Ces deux vignettes formataient leur valeur SANS garde : depuis M2
@@ -715,7 +722,7 @@ def build_pages(ctx) -> list:
 
     # ── Payback takeaway figures (read straight off the quote data) ───────────
     def _yrs(v):
-        return f"{v:g}".replace(".", ",") if v else "—"
+        return decimale(f"{v:g}") if v else "—"
     roi_s, roi_a = d.get("roi_s"), d.get("roi_a")
     # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — une option dont le cumul 25 ans
     # ne croise jamais zéro n'imprime aucun nombre d'années.
@@ -723,9 +730,13 @@ def build_pages(ctx) -> list:
     _jamais_a = bool(d.get("roi_a_jamais"))
     _NON_RENTABLE = libelle_cat(d, "res_non_rentabilise_25")
 
+    def _n_ans(v, cle="res_n_ans", **valeurs):
+        from ..i18n_labels_residentiel import accord_annees_ar
+        return accord_annees_ar(libelle_cat(d, cle, **(valeurs or {"n": _yrs(v)})), v)
+
     def _roi_txt(v, jamais):
         return (libelle_cat(d, "res_non_rentabilise") if jamais
-                else libelle_cat(d, "res_n_ans", n=_yrs(v)))
+                else _n_ans(v))
     # QX5 — deux options → fourchette de ROI ; mono-option → le ROI de l'option
     # réelle seul (jamais une fourchette entre une option et un fantôme).
     _roi_jamais_affiche = False
@@ -738,7 +749,7 @@ def build_pages(ctx) -> list:
                          f"{_roi_txt(roi_a, _jamais_a)}")
     elif deux_options and roi_s and roi_a:
         lo, hi = sorted((roi_s, roi_a))
-        roi_range = libelle_cat(d, "res_n_m_ans", a=_yrs(lo), b=_yrs(hi))
+        roi_range = _n_ans(hi, "res_n_m_ans", a=_yrs(lo), b=_yrs(hi))
     else:
         _roi_one = (roi_a if avec_ok else roi_s)
         _jamais_one = _jamais_a if avec_ok else _jamais_s
@@ -746,7 +757,7 @@ def build_pages(ctx) -> list:
             roi_range = _NON_RENTABLE
             _roi_jamais_affiche = True
         else:
-            roi_range = (libelle_cat(d, "res_n_ans", n=_yrs(_roi_one))
+            roi_range = (_n_ans(_roi_one)
                          if _roi_one else "—")
     _roi_sous_titre = libelle_cat(d, "res_au_tarif_actuel"
                                   if _roi_jamais_affiche
@@ -787,7 +798,7 @@ def build_pages(ctx) -> list:
     # tangible ; calculé, jamais inventé (gain net / investissement).
     gain_mult = (round(gain25 / _tot_ref, 1) if _tot_ref and gain25 > 0
                  else None)
-    gain_mult_txt = (f"{gain_mult:g}".replace(".", ",")
+    gain_mult_txt = (decimale(f"{gain_mult:g}")
                      if gain_mult and gain_mult >= 1 else None)
     gain_mult_sub = (libelle_cat(d, "res_gain_mult", x=gain_mult_txt)
                      if gain_mult_txt else "")
@@ -894,8 +905,16 @@ def build_pages(ctx) -> list:
     _prov = _cf_assum.get("inverter_replace_cost")
     if _prov:
         _an = _cf_assum.get("inverter_replace_year") or 12
-        fin_sub += libelle_cat(d, "res_fin_remplacement", an=_an,
-                               montant=f"{int(_prov):,}".replace(",", " "))
+        _prov_s = _cf_assum.get("inverter_replace_cost_sans")
+        _prov_a = _cf_assum.get("inverter_replace_cost_avec")
+        # RPDF — deux options aux onduleurs de prix différents : deux courbes,
+        # deux creux, deux montants (jamais celui d'une seule option).
+        fin_sub += (libelle_cat(d, "rpdf_fin_remplacement_deux", an=_an,
+                                s=_milliers_doc(_prov_s),
+                                a=_milliers_doc(_prov_a))
+                    if deux_options and _prov_s and _prov_a and int(_prov_s) != int(_prov_a)
+                    else libelle_cat(d, "res_fin_remplacement", an=_an,
+                                     montant=_milliers_doc(_prov)))
 
     # QRES57 — les garanties vivent en bande fine sur la page signature
     # (trust.py, source unique theme.WARRANTIES) : plus de cartes badges en
@@ -950,8 +969,42 @@ def build_pages(ctx) -> list:
             return 0.0
         return 11.0 + len(_opts) * 4.5
 
+    def _totaux_mm():
+        """RPDF23 — ce que les cartes de totaux prennent EN PLUS des fixtures
+        qui ont calibré les 68 mm (Sous-total, TVA 10 %, TVA 20 %, sans remise
+        ni arrondi) : une ligne remise / arrondi / Total HT ou un 3ᵉ taux
+        (4,5 mm chacune, comme une rangée de tableau), et l'intitulé de
+        l'option recommandée qui passe à la ligne à côté de sa pastille
+        (≈ 4 mm). Devis 1315 du 27/10 (9 lignes communes, arrondi + Total HT,
+        « Hybride, batterie plus tard ») : 67,8 mm modélisés, bas de la
+        rentabilité rogné par le pied → 80,8 mm, page rentabilité dédiée.
+        Jamais négatif : un devis aux totaux calibrés garde sa décision.
+        Deux options seulement : un devis mono-option avec remise + arrondi
+        tenait sur 3 pages (rendus 1342/1344 du 28/10, passés à tort à 4)."""
+        if not deux_options:
+            return 0.0
+
+        def _pos(v):
+            try:
+                return float(v or 0) > 0
+            except (TypeError, ValueError):
+                return False
+
+        def _lignes(tot):
+            tot = tot or {}
+            rem, arr = _pos(tot.get("remise")), _pos(tot.get("arrondi"))
+            return (1 + rem + arr + (rem or arr)
+                    + len(tot.get("tva_par_taux") or []))
+        cartes = ([d.get("totaux_sans"), d.get("totaux_avec")] if deux_options
+                  else [d.get("totaux_avec") if avec_ok else d.get("totaux_sans")])
+        extra = 4.5 * max([_lignes(t) - 3 for t in cartes] + [0])
+        _nom_reco = {"sans": nom_option(d, "sans"), "avec": libelle_avec}.get(_reco)
+        if deux_options and _nom_reco and len(_nom_reco) > 20:
+            extra += 4.0
+        return extra
+
     fits_one = (_table_mm(entries) + _deltas_mm() + _comparatif_mm()
-                + _options_mm()) <= 68.0
+                + _options_mm() + _totaux_mm()) <= 68.0
 
     # ── PRODMOIS + CALEPDF — UNE rangée de visuels sur la page détail ────────
     # Deux artefacts la peuplent, dans la MÊME hauteur (19 mm, fixée par le
@@ -1565,7 +1618,7 @@ def build_pages(ctx) -> list:
         _co2_t = _prod * constants.CO2_T_PAR_MWH / 1000.0
 
         def _fr1(v):
-            return (f"{v:.1f}".replace(".", ",") if v < 10
+            return (decimale(f"{v:.1f}") if v < 10
                     else fmt(round(v)))
         impact_html = (
             '<div class="p2-lbl" style="margin-top:7mm">'

@@ -1421,6 +1421,11 @@ class EquipeCommerciale(models.Model):
         null=True, blank=True, related_name='equipes_dirigees')
     membres = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name='equipes_commerciales')
+    # Organigramme (27/10/2026) — département de rattachement (string-FK).
+    departement = models.ForeignKey(
+        # on_delete: l'équipe survit à la suppression du département
+        'roles.Departement', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='equipes_commerciales')
     actif = models.BooleanField(default=True)
     # Équipe qui reçoit les nouveaux leads : ils tournent entre ses membres
     # actifs (le moins de leads ouverts d'abord, plafond du profil société).
@@ -1428,6 +1433,16 @@ class EquipeCommerciale(models.Model):
     # inchangée (XSAL11 / responsable par défaut).
     recoit_leads = models.BooleanField(
         default=False, verbose_name='Reçoit les nouveaux leads')
+    # Attribution par le responsable (fondateur, 27/10/2026) — coché, chaque
+    # nouveau lead de l'équipe qui reçoit les leads ATTEND la décision du
+    # responsable (``apps/crm/dispatch.py``). Décoché (défaut) = rotation
+    # directe, comportement identique à l'octet.
+    confirmation_responsable = models.BooleanField(
+        default=False, verbose_name='Le responsable confirme chaque lead')
+    # Passé ce délai en minutes OUVRÉES (horaires de la société) sans
+    # décision, le lead part automatiquement au membre proposé.
+    delai_attribution_minutes = models.PositiveIntegerField(
+        default=5, verbose_name="Délai avant attribution automatique (minutes ouvrées)")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -1437,6 +1452,71 @@ class EquipeCommerciale(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+class RegleAttribution(TenantModel):
+    """Règle qui choisit le membre PROPOSÉ pour un nouveau lead (fondateur,
+    27/10/2026 — Paramètres → Leads). Les règles actives d'une équipe sont
+    lues par ``ordre`` croissant ; la PREMIÈRE dont tous les critères
+    renseignés correspondent gagne. Un critère vide = « tous ». Aucune règle
+    ne correspond → rotation équilibrée existante."""
+    equipe = models.ForeignKey(
+        # on_delete: la règle n'existe que pour son équipe — supprimée avec elle
+        EquipeCommerciale, on_delete=models.CASCADE,
+        related_name='regles_attribution')
+    ordre = models.PositiveIntegerField(default=0)
+    # Villes séparées par des virgules ; comparaison sans casse ni accents
+    # avec ``Lead.ville`` (et la ville ERP de rattachement).
+    villes = models.TextField(blank=True, default='')
+    type_installation = models.CharField(max_length=20, blank=True, default='')
+    # Canal marketing du lead (``Lead.Canal``) — vide = toutes sources.
+    source = models.CharField(max_length=20, blank=True, default='')
+    # Facture mensuelle (DH) — bornes incluses ; vide = pas de borne.
+    facture_min = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    facture_max = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    membre = models.ForeignKey(
+        # on_delete: le départ du membre désactive la règle de fait (ignorée), jamais la supprime
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='regles_attribution')
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Règle d'attribution"
+        verbose_name_plural = "Règles d'attribution"
+        ordering = ['ordre', 'id']
+
+    def __str__(self):
+        return f'{self.equipe_id} #{self.ordre}'
+
+
+class AttributionEnAttente(TenantModel):
+    """Un nouveau lead qui ATTEND la décision du responsable d'équipe
+    (fondateur, 27/10/2026). Table à part plutôt que des colonnes sur
+    ``Lead`` : ``models.py`` est un fichier-mur (C20) et ``LeadSerializer``
+    sert ``__all__`` — l'état d'attente ne doit jamais devenir écrivable par
+    un PATCH du lead. La ligne existe = le lead attend ; elle est supprimée
+    à l'attribution (manuelle ou automatique)."""
+    lead = models.OneToOneField(
+        # on_delete: l'attente n'a plus d'objet sans son lead
+        'crm.Lead', on_delete=models.CASCADE,
+        related_name='attribution_en_attente')
+    equipe = models.ForeignKey(
+        # on_delete: l'équipe supprimée emporte ses attentes (le lead reste au responsable)
+        EquipeCommerciale, on_delete=models.CASCADE,
+        related_name='attributions_en_attente')
+    proposee = models.ForeignKey(
+        # on_delete: proposition informative — recalculée si le membre disparaît
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='attributions_proposees')
+    raison = models.CharField(max_length=255, blank=True, default='')
+    echeance = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Attribution en attente'
+        verbose_name_plural = 'Attributions en attente'
+        ordering = ['created_at', 'id']
 
 
 # ── NTCRM4 — Catégories de forecast (commit/best-case/pipeline/omis) ─────────

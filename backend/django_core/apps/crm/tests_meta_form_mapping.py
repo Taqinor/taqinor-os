@@ -289,6 +289,21 @@ class MetaFormEntrepriseCIQ407Tests(TestCase):
         self.assertEqual(lead.type_installation, 'commercial')
         self.assertEqual(lead.categorie_commerciale, 'sante')
 
+    def test_patisserie_jamais_autre_commerce(self):
+        # Décision fondateur 26/10/2026 (lead 1637) — la pâtisserie passe
+        # avant le café ; les nouveaux commerces ont leur catégorie.
+        from apps.crm.leads_meta import _meta_categorie
+        for texte, attendu in (('patisserie', 'boulangerie'),
+                               ('cafe patisserie', 'boulangerie'),
+                               ('cafe', 'cafe'), ('pharmacie', 'pharmacie'),
+                               ('epicerie', 'supermarche'),
+                               ('station service', 'station_service'),
+                               ('salle de sport', 'salle_sport')):
+            self.assertEqual(_meta_categorie(texte), attendu, texte)
+        lead = self._create(install='patisserie')
+        lead.refresh_from_db()
+        self.assertEqual(lead.categorie_commerciale, 'boulangerie')
+
     def test_ambigu_aucun_type(self):
         lead = self._create(install='maison_ou_entreprise')
         self.assertFalse(lead.type_installation)

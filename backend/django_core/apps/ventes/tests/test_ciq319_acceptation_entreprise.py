@@ -205,6 +205,21 @@ class AcceptationEntreprise(TestCase):
         resp = self._post(devis, dict(ENTREPRISE, ice='111111111111111'))
         self.assertEqual(resp.status_code, 200, resp.data)
 
+    def test_cprs7_ice_compare_et_stocke_normalise(self):
+        """CPRS7 — « 001-234… » et « 001234… » sont le même ICE : aucun
+        faux 409, et la signature garde la forme canonique."""
+        from apps.ventes.domain.cycle_vie import divergence_ice
+        canon = ENTREPRISE['ice']
+        tirets = '-'.join((canon[:3], canon[3:9], canon[9:]))
+        self.client_obj.ice = tirets
+        self.client_obj.save(update_fields=['ice'])
+        devis = self._devis()
+        self.assertFalse(divergence_ice(devis, canon))
+        resp = self._post(devis, dict(ENTREPRISE, ice=f'ICE {tirets}'))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        sig = DevisSignature.objects.get(devis=devis)
+        self.assertEqual(sig.ice_declare, canon)
+
     def test_signataire_b2b_exige_email_pouvoir_et_nom(self):
         """ADEV95 — lien public C&I : e-mail valide, attestation de pouvoir
         (booléen vrai) et nom = celui tapé pour signer ; 400 qui nomme le

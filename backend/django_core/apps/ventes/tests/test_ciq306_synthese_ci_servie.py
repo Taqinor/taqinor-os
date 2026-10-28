@@ -11,6 +11,7 @@ Run :
         -Modules "apps.ventes.tests.test_ciq306_synthese_ci_servie"
 """
 import json
+import re
 import uuid
 from decimal import Decimal
 
@@ -18,6 +19,7 @@ from django.test import Client as DjangoClient
 from rest_framework.utils.encoders import JSONEncoder
 
 from apps.ventes.models import Devis, LigneDevis, ShareLink
+from apps.ventes.public.payload_ci import synthese_ci_client
 from apps.ventes.quote_engine.ci.synthese import synthese_ci
 from apps.ventes.tests.test_ciq210_branchement import _BaseDevis
 from apps.ventes.tests.test_proposal_data_shape import make_devis_agricole
@@ -26,6 +28,17 @@ from apps.ventes.tests.test_proposal_data_shape import make_devis_agricole
 def _json(valeur):
     """La valeur telle que la page la reçoit (encodeur DRF)."""
     return json.loads(json.dumps(valeur, cls=JSONEncoder))
+
+
+def _textes(valeur):
+    if isinstance(valeur, dict):
+        for sous in valeur.values():
+            yield from _textes(sous)
+    elif isinstance(valeur, list):
+        for sous in valeur:
+            yield from _textes(sous)
+    elif isinstance(valeur, str):
+        yield valeur
 
 
 def _cles(valeur):
@@ -66,7 +79,9 @@ class SyntheseCiServieTest(_BaseDevis):
         for devis in self._cas():
             with self.subTest(devis=devis.reference):
                 servie = self._payload(devis)['synthese_ci']
-                attendue = _json(synthese_ci(self._data(devis)))
+                # CPRS3 — mêmes nombres que le PDF, textes dans ses mots.
+                data = self._data(devis)
+                attendue = _json(synthese_ci_client(synthese_ci(data), data))
                 self.assertEqual(sorted(servie), sorted(attendue))
                 for cle in attendue:
                     self.assertEqual(servie[cle], attendue[cle], cle)
@@ -161,6 +176,58 @@ class SyntheseCiServieTest(_BaseDevis):
         self.assertEqual(devis.lignes.count(), 4)
         self.assertIn('Transport C&I',
                       [it['designation'] for it in interne['all_items']])
+
+    def test_cprs1_titre_et_courbe_de_l_option_servie(self):
+        """CPRS1 — puissance, panneaux, production et courbe mensuelle de la
+        page = ceux que le PDF imprime (``synthese_ci``), jamais l'option
+        avec batterie ni le modèle « ville » (prod × poids GHI)."""
+        for devis in self._cas():
+            with self.subTest(devis=devis.reference):
+                payload = self._payload(devis)
+                systeme = payload['synthese_ci']['systeme']
+                quote = payload['quote']
+                self.assertEqual(quote['puissance_kwc'], systeme['kwc'])
+                self.assertEqual(quote['prod_kwh'],
+                                 systeme['production_kwh_an'])
+                par_mois = sorted(
+                    payload['synthese_ci']['energie'].get('par_mois') or [],
+                    key=lambda m: m['mois'])
+                if len(par_mois) == 12:
+                    self.assertEqual(
+                        payload['monthly_production'],
+                        [round(m['production_kwh']) for m in par_mois])
+
+    def test_cprs2_cprs3_rien_d_interne(self):
+        """CPRS2/3 — ni libellés du PDF, ni étude brute, ni code interne
+        (décisions, modules, « repli », « moteur ») dans la charge utile."""
+        motif = re.compile(
+            r"D-CIQ|Groupe CIQ|moteur C&I|etude_ci\.|Paramètres|repli"
+            r"|décision Q\d")
+        for devis in self._cas():
+            with self.subTest(devis=devis.reference):
+                payload = self._payload(devis)
+                self.assertNotIn('libelles_document', payload['quote'])
+                self.assertNotIn('etude_ci',
+                                 payload['quote'].get('etude') or {})
+                self.assertNotIn('etude_ci', set(_cles(payload)))
+                fuites = [t for t in _textes(payload) if motif.search(t)]
+                self.assertEqual(fuites, [])
+                for entree in payload['synthese_ci']['a_confirmer']:
+                    self.assertEqual(entree['cle'], 'a_chiffrer_visite')
+
+    def test_cprs11_libelle_om_en_texte(self):
+        """CPRS11 — le libellé O&M échappé pour le HTML du PDF part en
+        texte (la page n'affiche jamais « &amp; »)."""
+        synthese = {'services': {'om_option': {
+            'statut': 'tarif_a_renseigner',
+            'libelle': 'Exploitation et maintenance (O&amp;M)',
+            'lignes': [{'designation': 'Exploitation et maintenance (O&amp;M)',
+                        'total_ht': None, 'total_ttc': None}]}}}
+        om = synthese_ci_client(synthese, {})['services']['om_option']
+        self.assertEqual(om['libelle'], 'Exploitation et maintenance (O&M)')
+        self.assertEqual(om['lignes'][0]['designation'],
+                         'Exploitation et maintenance (O&M)')
+        self.assertIn('&amp;', synthese['services']['om_option']['libelle'])
 
     def test_aucun_prix_achat(self):
         for devis in self._cas():

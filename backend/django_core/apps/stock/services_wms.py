@@ -1143,7 +1143,7 @@ def configurer_liberation_vague(*, vague, mode, seuil_lignes=None):
         except (TypeError, ValueError):
             raise ValueError(
                 'Le mode AUTO_SEUIL exige un seuil de lignes positif.')
-        if seuil_lignes <= 0:
+        if not 0 < seuil_lignes <= 2147483647:  # int4 : 2**65 débordait (500)
             raise ValueError(
                 'Le mode AUTO_SEUIL exige un seuil de lignes positif.')
     else:

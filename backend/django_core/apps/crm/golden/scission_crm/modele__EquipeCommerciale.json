@@ -44,6 +44,18 @@
   {
    "args": [],
    "kwargs": {
+    "blank": true,
+    "null": true,
+    "on_delete": "callable:SET_NULL",
+    "related_name": "equipes_commerciales",
+    "to": "roles.departement"
+   },
+   "nom": "departement",
+   "type": "ForeignKey"
+  },
+  {
+   "args": [],
+   "kwargs": {
     "default": true
    },
    "nom": "actif",
@@ -57,6 +69,24 @@
    },
    "nom": "recoit_leads",
    "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": false,
+    "verbose_name": "Le responsable confirme chaque lead"
+   },
+   "nom": "confirmation_responsable",
+   "type": "BooleanField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "default": 5,
+    "verbose_name": "Délai avant attribution automatique (minutes ouvrées)"
+   },
+   "nom": "delai_attribution_minutes",
+   "type": "PositiveIntegerField"
   },
   {
    "args": [],
@@ -79,5 +109,8 @@
  ],
  "db_table": "crm_equipecommerciale",
  "label": "crm.EquipeCommerciale",
- "relations_inverses": []
+ "relations_inverses": [
+  "attributions_en_attente",
+  "regles_attribution"
+ ]
 }

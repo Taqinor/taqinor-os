@@ -59,6 +59,24 @@
    "nom": "date_creation",
    "read_only": true,
    "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "departement",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "BooleenStrict",
+   "nom": "confirmation_responsable",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "EntierStrict",
+   "nom": "delai_attribution_minutes",
+   "read_only": false,
+   "required": false
   }
  ]
 }

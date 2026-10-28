@@ -178,6 +178,32 @@
    "args": [],
    "kwargs": {
     "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Si votre pompe actuelle marche à l'électricité, combien payez-vous par mois pour le pompage ? » (MAD/mois, facultatif, vide = pas encore posée).",
+    "max_digits": 10,
+    "null": true,
+    "verbose_name": "Facture électricité du pompage (MAD/mois)"
+   },
+   "nom": "depense_electricite_pompe_mad_mois",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Sur cette facture, combien est fixe chaque mois (abonnement, redevance), même sans pomper ? » (MAD/mois, facultatif, vide = pas encore posée).",
+    "max_digits": 10,
+    "null": true,
+    "verbose_name": "Part fixe de la facture électricité du pompage (MAD/mois)"
+   },
+   "nom": "depense_electricite_pompe_part_fixe_mad_mois",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
     "null": true,
     "on_delete": "callable:CASCADE",
     "related_name": "leads",
@@ -3148,11 +3174,39 @@
      ],
      [
       "restaurant",
-      "Restaurant / café"
+      "Restaurant"
+     ],
+     [
+      "cafe",
+      "Café / salon de thé / glacier"
+     ],
+     [
+      "boulangerie",
+      "Boulangerie / pâtisserie"
      ],
      [
       "commerce",
-      "Commerce / supermarché"
+      "Commerce / boutique"
+     ],
+     [
+      "supermarche",
+      "Supermarché / épicerie (avec frigos)"
+     ],
+     [
+      "boucherie",
+      "Boucherie / poissonnerie"
+     ],
+     [
+      "pharmacie",
+      "Pharmacie"
+     ],
+     [
+      "coiffure",
+      "Coiffure / esthétique"
+     ],
+     [
+      "pressing",
+      "Pressing / laverie"
      ],
      [
       "bureau",
@@ -3167,16 +3221,40 @@
       "École"
      ],
      [
-      "hammam",
-      "Hammam / spa / salle de sport"
+      "salle_sport",
+      "Salle de sport"
      ],
      [
-      "boulangerie",
-      "Boulangerie"
+      "hammam",
+      "Hammam / spa"
+     ],
+     [
+      "garage",
+      "Garage / atelier mécanique"
+     ],
+     [
+      "atelier",
+      "Atelier (menuiserie, ferronnerie, couture)"
+     ],
+     [
+      "imprimerie",
+      "Imprimerie"
+     ],
+     [
+      "station_service",
+      "Station-service"
+     ],
+     [
+      "entrepot",
+      "Entrepôt / logistique (sans froid)"
      ],
      [
       "froid",
       "Froid / entrepôt frigorifique"
+     ],
+     [
+      "mosquee",
+      "Mosquée / association"
      ],
      [
       "autre",
@@ -3184,7 +3262,7 @@
      ]
     ],
     "help_text": "Question à l'appel : « Quelle est votre activité : hôtel, restaurant ou café, commerce, bureaux, santé, école, hammam, boulangerie, froid, ou autre chose ? » (vide = pas encore posée).",
-    "max_length": 12,
+    "max_length": 20,
     "null": true,
     "verbose_name": "Activité (catégorie commerciale)"
    },
@@ -3323,6 +3401,32 @@
    },
    "nom": "heure_fin",
    "type": "PositiveSmallIntegerField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "choices": [
+     [
+      "aucun",
+      "Aucun"
+     ],
+     [
+      "un_peu",
+      "Un peu"
+     ],
+     [
+      "beaucoup",
+      "Beaucoup"
+     ]
+    ],
+    "help_text": "Question à l'appel : « Avez-vous des équipements qui tournent la nuit ou hors de vos horaires (chambres froides, frigos, fours de nuit, pompes) ? » — talon déclaré du moteur C&I (vide = pas encore posée).",
+    "max_length": 8,
+    "null": true,
+    "verbose_name": "Équipements hors horaires"
+   },
+   "nom": "equipements_hors_horaires",
+   "type": "CharField"
   },
   {
    "args": [],
@@ -3651,6 +3755,7 @@
  "relations_inverses": [
   "activites",
   "appointments",
+  "attribution_en_attente",
   "bons_commande_directs",
   "booking_links",
   "chat_sessions_publiques",

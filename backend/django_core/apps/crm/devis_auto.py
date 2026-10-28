@@ -24,6 +24,8 @@ POST /crm/leads/<id>/devis-auto/ (règle serveur) — jamais deux logiques.
 
 import logging
 
+from .categories_commerciales import TALON_NIVEAU_JOUR_PCT_PAR_REPONSE
+
 logger = logging.getLogger(__name__)
 
 # Modes regroupés (clés de Lead.TypeInstallation — scalaires, jamais une
@@ -176,6 +178,9 @@ def _rythme_ci(lead):
         rythme['debut_equipe_h'] = lead.heure_debut
     if lead.regime_equipes:
         rythme['equipes'] = lead.regime_equipes
+    pct = TALON_NIVEAU_JOUR_PCT_PAR_REPONSE.get(lead.equipements_hors_horaires)
+    if pct is not None:
+        rythme['talon'] = {'niveau_jour_pct': pct}
     if lead.type_installation == 'commercial':
         if lead.categorie_commerciale:
             rythme['categorie_commerciale'] = lead.categorie_commerciale
@@ -323,6 +328,14 @@ def message_manquants(manquants):
     return 'Manque : ' + ', '.join(manquants)
 
 
+def _visite_point_eau_validee(lead):
+    """AGV5 — le lead a-t-il un relevé du point d'eau validé ? (lecture par la
+    porte ``visites.selectors``, import local contre les cycles.)"""
+    from apps.visites import selectors as visites_selectors
+
+    return visites_selectors.visite_point_eau_validee_du_lead(lead) is not None
+
+
 def visite_point_eau_avant_devis(lead):
     """AGR403 (D-AGR-4) — ``{requise, motifs}`` pour un lead AGRICOLE, None
     ailleurs.
@@ -332,9 +345,16 @@ def visite_point_eau_avant_devis(lead):
     complétude des données, les boutons manuels avertissent sans bloquer
     (patron CAD123) et la retenue du devis automatique serveur revient au
     moteur agricole (D1).
+
+    AGV5 — un relevé du point d'eau VALIDÉ lève la garde : le niveau ou le
+    débit peut y être « non mesurable » (lead resté vide) et la visite ne
+    serait sinon redemandée sans fin ; le devis part avec les entrées
+    déclarées. Sans visite validée, rien ne change.
     """
     if (lead.type_installation or '') != _MODE_AGRICOLE:
         return None
+    if _visite_point_eau_validee(lead):
+        return {'requise': False, 'motifs': [], 'motifs_detail': []}
     # AGQ22 (C-AGQ-021) — chaque motif porte le CHAMP du lead qu'il vise
     # (``motifs_detail``) : la puce et le 409 du devis automatique nomment le
     # bon champ (débit du forage ≠ niveau). ``motifs`` (textes) inchangé.
