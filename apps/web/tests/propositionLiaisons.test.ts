@@ -233,10 +233,21 @@ describe('QJW10 — les tables restent celles que la page attend', () => {
     expect((bloc.match(/siKind: '/g) || [])).toHaveLength(2);
   });
 
-  it('PROFONDS déclare six chapitres, chacun avec son enveloppe', () => {
+  it('PROFONDS déclare sept chapitres (RWEB24 : + la carte « Gain net »), chacun avec son enveloppe', () => {
     const bloc = LIAISONS.slice(LIAISONS.indexOf('export const PROFONDS'));
-    expect((bloc.match(/profond</g) || [])).toHaveLength(6);
-    expect((bloc.match(/^\s{4}enveloppe: '/gm) || [])).toHaveLength(6);
+    expect((bloc.match(/profond</g) || [])).toHaveLength(7);
+    expect((bloc.match(/^\s{4}enveloppe: '/gm) || [])).toHaveLength(7);
+  });
+
+  it('RWEB24 — une autre taille MASQUE la carte « Gain net » (le détail de taille ne sert aucun net), le retour la restaure', () => {
+    document.body.innerHTML = '<div data-detail-gain-net-card><p data-detail-gain-net-value>≈ 264 000 MAD</p></div>';
+    const carte = document.querySelector<HTMLElement>('[data-detail-gain-net-card]')!;
+    const originaux = capturerOriginaux(PROFONDS);
+    appliquer(PROFONDS, tailleDetail(ECHANTILLON.exemple));
+    expect(carte.hidden).toBe(true);
+    expect(document.querySelector('[data-detail-gain-net-value]')!.textContent).toBe('≈ 264 000 MAD');
+    restaurer(PROFONDS, originaux);
+    expect(carte.hidden).toBe(false);
   });
 });
 

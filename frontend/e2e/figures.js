@@ -37,6 +37,7 @@ export const FIGURE_KEYS = {
   production_annuelle_kwh: { tolerance: KWH },
   economie_annuelle: { tolerance: ARGENT },
   payback_ans: { tolerance: ANS },
+  gain_net_25_ans: { tolerance: ARGENT },
   facture_annuelle_avant: { tolerance: ARGENT },
   facture_annuelle_apres: { tolerance: ARGENT },
   facture_mensuelle_avant: { tolerance: ARGENT },
@@ -225,6 +226,7 @@ export function figuresDepuisProposition(payload) {
     const s = opt === 'sans' ? 's' : 'a'
     mettre(figs, 'economie_annuelle', q[`eco_${s}_ann`], opt)
     mettre(figs, 'payback_ans', q[`roi_${s}`], opt)
+    mettre(figs, 'gain_net_25_ans', (p.gain_net_25_ans || {})[`${opt}_batterie`], opt)
     const ttc = num((ot[`${opt}_batterie`] || q[`totaux_${opt}`] || {}).ttc)
     const kwc = (kwcDiv ? num(q[`puissance_kwc_${opt}`]) : null) || num(q.puissance_kwc)
     if (ttc && kwc) mettre(figs, 'prix_kwc', ttc / kwc, opt)
