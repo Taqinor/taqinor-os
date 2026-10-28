@@ -760,14 +760,14 @@ test('CSV3 — contrat posé après la tension, option bi-horaire seulement en f
   // Un site MT n'a ni contrat ni option.
   const mt = guidanceAppel(exemple('exemple_industriel')).questions.find((q) => q.etape === 'raccordement')
   assert.equal(mt.champ, 'compteur_puissance_kva')
-  assert.match(guidance.CONSIGNE_CONTRAT_INCONNU, /photo de sa facture par WhatsApp/)
+  assert.ok(guidance.CONSIGNE_CONTRAT_INCONNU.includes('photo de sa facture par WhatsApp'))
 })
 
 test('CSV4 — la phase est posée à un site MT (un seul choix, triphasé) et à un commercial BT (deux choix)', () => {
   const panneau = exemple('exemple_industriel')
   const phase = panneau.champs_a_poser.find((q) => q.champ === 'raccordement')
   assert.deepEqual(phase.choix.map((c) => c.valeur), ['triphase'])
-  assert.match(phase.question, /Site en moyenne tension/)
+  assert.ok(phase.question.includes('Site en moyenne tension'))
   const puissanceRepondue = {
     ...panneau,
     champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'compteur_puissance_kva'),
