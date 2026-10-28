@@ -338,7 +338,8 @@ class SignalHorsResidentielRemonteTest(SimpleTestCase):
         resultat = {'recommandation': recommandation,
                     'recommandation_avec': avec}
         with mock.patch('apps.ventes.domain.entrees.entrees_depuis_lead',
-                        return_value=entrees),                 mock.patch('apps.ventes.dimensionnement.recommander_taille',
+                        return_value=entrees), \
+                mock.patch('apps.ventes.dimensionnement.recommander_taille',
                            return_value=resultat):
             return taille._panneaux_dimensionnement_horaire(
                 lead=object(), company=None, phase=None)

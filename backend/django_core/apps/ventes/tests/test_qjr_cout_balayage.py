@@ -322,7 +322,7 @@ class BalayageAdaptatifTests(SimpleTestCase):
             return ligne
 
         def choisir(tableau):
-            return min(tableau, key=lambda l: l['payback_annees']), ''
+            return min(tableau, key=lambda ligne: ligne['payback_annees']), ''
 
         appels = []
 
