@@ -90,6 +90,22 @@ class TestDefinitions(CFBase):
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertEqual(resp.json()['options'], ['A', 'B'])
 
+    def test_patch_type_sans_champ_exige_409(self):
+        # api-fuzz-full 28/10 (ENF11) : en PATCH, l'option (ou le module
+        # cible) manquante peut venir de la définition STOCKÉE — règle
+        # inexprimable au schéma : 409, même corps ; rien n'est écrit.
+        defn = CustomFieldDef.objects.create(
+            company=self.company, module='lead', code='p_txt', libelle='T',
+            type='text')
+        url = f'/api/django/custom-fields/definitions/{defn.pk}/'
+        for corps, champ in (({'type': 'choice'}, 'options'),
+                             ({'type': 'relation'}, 'relation_module')):
+            resp = self.api.patch(url, corps, format='json')
+            self.assertEqual(resp.status_code, 409, (corps, resp.content))
+            self.assertIn(champ, resp.json())
+        defn.refresh_from_db()
+        self.assertEqual(defn.type, 'text')
+
     def test_module_et_regle_de_type_publies_sans_empilement(self):
         # api-fuzz-full 24/10 (« Too many generated examples are filtered
         # out ») : ``module`` = UN motif borné (plus anyOf + énumération +

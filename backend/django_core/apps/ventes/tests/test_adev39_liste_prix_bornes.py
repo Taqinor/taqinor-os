@@ -98,6 +98,8 @@ class ListePrixBornesTests(TestCase):
             request=None, public=True)
         base = '/api/django/ventes/devis/{id}/'
         for route, methode in (('overrides/', 'patch'),
+                               # api-fuzz-full 28/10 : PATCH sans corps.
+                               ('offres-tailles/config/', 'patch'),
                                ('etude-params/', 'patch'),
                                ('sync-layout/', 'post'),
                                ('layout/', 'post')):

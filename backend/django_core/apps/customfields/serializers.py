@@ -275,6 +275,16 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
                 'Une option de choix ne peut pas être vide.')
         return propres
 
+    def _refus_selon_type(self, erreur):
+        """api-fuzz-full 28/10 (ENF11) — règle « tel type exige tel champ ».
+        Création / remplacement : publiée (``corps_definition_resserre``) →
+        400. PATCH : le type ou le champ peut venir de la définition STOCKÉE,
+        inexprimable au schéma → refus d'état 409, même corps."""
+        if self.partial:
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat(erreur)
+        raise serializers.ValidationError(erreur)
+
     def _type_vise(self):
         """Type de la définition en cours d'écriture (corps, sinon instance)."""
         brut = getattr(self, 'initial_data', None)
@@ -293,7 +303,7 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         else:
             options = getattr(instance, 'options', None)
         if type_ == 'choice' and not options:
-            raise serializers.ValidationError(
+            self._refus_selon_type(
                 {'options': 'Un champ « Choix » exige au moins une option.'})
 
         # XPLT14 — un champ de type « relation » exige un module cible connu
@@ -305,11 +315,11 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
             relation_module = getattr(instance, 'relation_module', None)
         if type_ == 'relation':
             if not relation_module:
-                raise serializers.ValidationError(
+                self._refus_selon_type(
                     {'relation_module': 'Un champ « Relation » exige un '
                                         'module cible.'})
             if _module_model(relation_module) is None:
-                raise serializers.ValidationError(
+                self._refus_selon_type(
                     {'relation_module': 'Module cible inconnu.'})
 
         # XPLT17 — un champ IA ne peut RÉFÉRENCER aucun placeholder interne
