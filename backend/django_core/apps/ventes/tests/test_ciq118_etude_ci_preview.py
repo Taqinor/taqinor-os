@@ -702,9 +702,10 @@ class PoseRasanteR1(_Base):
         self.assertEqual(self._hyp(data, 'taille_limitee_toit')['source'],
                          'taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante')
 
-    def test_b_taille_qui_tient_a_30_une_seule_serie(self):
+    def test_b_taille_qui_tient_a_30_garde_30_et_sa_production(self):
         # Petite consommation : la taille économique tient à 30° → 30° gardé,
-        # série rasante jamais lue, bloc production à 30°.
+        # bloc production servi = la série 30° (le balayage a pu REGARDER des
+        # paliers au-delà de 21,3 kWc — lus en rasante — sans les retenir).
         corps = self._corps()
         corps['consommation'] = {'kwh_mensuels': [1500] * 12, 'kwh_annuel': None,
                                  'factures_mad': []}
@@ -713,7 +714,8 @@ class PoseRasanteR1(_Base):
         self.assertLessEqual(data['taille']['retenue_kwc'], toit['kwc_30'])
         self.assertEqual(self._hyp(data, 'inclinaison_retenue_deg')['valeur'], 30)
         self.assertEqual(data['production']['inclinaison_deg'], 30)
-        self.assertEqual(self.production.call_count, 1)
+        self.assertNotIn('inclinaison_source', data['production'])
+        self.assertEqual(self.production.call_args_list[0].kwargs['toit'].get(CLE_POSE_RASANTE), None)
         self.assertIsNone(self._hyp(data, 'taille_limitee_toit'))
 
     def test_d_pente_declaree_aucune_bascule(self):

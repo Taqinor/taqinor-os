@@ -203,6 +203,33 @@ const LIBELLES_DETAIL_LEAD = {
 
 export const libelleProvenance = creerLibelleProvenance(LIBELLES_ORIGINE, LIBELLES_DETAIL_LEAD)
 
+/** L'hypothèse `cle` servie par le moteur (contrat `hypotheses[]`), ou `null`. */
+const hypothese = (reponse, cle) => (Array.isArray(reponse?.hypotheses)
+  ? reponse.hypotheses.find((h) => h && h.cle === cle) || null : null)
+
+// R1 (fondateur 28/10/2026) — pose rasante du moteur C&I
+// (`moteur_ci/production.py` : ANGLE_POSE_RASANTE_DEG) ; 30° reste le défaut.
+const ANGLE_POSE_RASANTE_DEG = 10
+
+/**
+ * R1 — l'inclinaison RETENUE par le moteur pour un toit plat sans pente
+ * déclarée (hypothèse `inclinaison_retenue_deg`) : `{ deg, rasante }`, ou
+ * `null` quand le moteur n'en dit rien (pente déclarée, autre pose). Lue
+ * telle quelle, jamais recalculée.
+ */
+export function inclinaisonRetenue(reponse) {
+  const deg = nombreOuNull(hypothese(reponse, 'inclinaison_retenue_deg')?.valeur)
+  if (deg === null) return null
+  return { deg, rasante: deg === ANGLE_POSE_RASANTE_DEG }
+}
+
+/**
+ * R1 — la phrase client servie quand même la pose rasante ne loge pas la
+ * taille économique (hypothèse `taille_limitee_toit`, même texte que le PDF),
+ * ou `null`.
+ */
+export const tailleLimiteeToit = (reponse) => texteOuNull(hypothese(reponse, 'taille_limitee_toit')?.source)
+
 /**
  * TOUTES les alertes du serveur, dans l'ordre, aucune filtrée. Les alertes
  * `interne: true` sont MARQUÉES (affichage vendeur seulement), jamais

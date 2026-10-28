@@ -17,6 +17,7 @@ import { Card, CardContent, Input, Label, Button } from '../../../ui'
 import { formatNumber } from '../../../lib/format'
 import { MONTHS_FR } from '../../../features/ventes/solar'
 import { libelleProvenance } from '../../../features/ventes/etudeCiPreview'
+import { inclinaisonRetenue, tailleLimiteeToit } from '../../../features/ventes/etudeCiPreviewPur'
 import {
   JOURS_SEMAINE, TYPES_JOUR, LIBELLE_REPRIS_LEAD,
 } from '../../../features/ventes/quote/profilCi'
@@ -52,6 +53,8 @@ export function CarteProfilCi({
           resolues={resolues}
           repris={reprisLead}
           erreurConso={errors?.conso}
+          inclinaisonRetenue={inclinaisonRetenue(apercuCi?.donnees)}
+          tailleLimiteeToit={tailleLimiteeToit(apercuCi?.donnees)}
           mentionReventeServeur={apercuCi?.donnees?.economie_ci?.revente?.statut === 'absente_bt'
             ? apercuCi.donnees.economie_ci.revente.mentions?.[0] : null}
           contrat={tarif('contrat')} affiner={tarif('affiner')} activite={children}
@@ -273,6 +276,7 @@ export function AideAppel({ id, children }) {
  * repliés sous « Affiner l'étude (facultatif) ».
  */
 export default function BlocEtudeReseau({
+  inclinaisonRetenue = null, tailleLimiteeToit = null,
   profil, setChamp, resolues = null, erreurConso, mentionReventeServeur = null, repris = [],
   contrat = null, activite = null, affiner = null, affinerOuvert = false,
 }) {
@@ -443,6 +447,22 @@ export default function BlocEtudeReseau({
           <Nombre id="gen-ci-surface" label="Surface utile (m²)" value={p.surfaceUtile}
                   onChange={(v) => setChamp('surfaceUtile', v)} />
           <Retenu resolues={resolues} cle="surface_utile_m2" champ="surfaceUtile" repris={repris} />
+        </div>
+        {/* CMP5 / R1 — une pente SAISIE l'emporte ; sinon le moteur dit la
+            pose retenue (30° par défaut, rasante 10° pour loger la taille). */}
+        <div className="grid gap-1.5">
+          <Nombre id="gen-ci-pente" label="Inclinaison des panneaux (°)" value={p.penteDeg}
+                  onChange={(v) => setChamp('penteDeg', v)} />
+          <Retenu resolues={resolues} cle="pente_deg" champ="penteDeg" repris={repris} />
+          {inclinaisonRetenue && (
+            <p className="text-xs text-muted-foreground" data-testid="ci-inclinaison-retenue">
+              Inclinaison retenue par le moteur : {formatNumber(inclinaisonRetenue.deg, { decimals: 0 })}°
+              {inclinaisonRetenue.rasante ? ' (pose rasante)' : ''} — une pente saisie l&apos;emporte.
+            </p>
+          )}
+          {tailleLimiteeToit && (
+            <p className="text-xs text-warning" data-testid="ci-taille-toit">{tailleLimiteeToit}</p>
+          )}
         </div>
       </fieldset>
 

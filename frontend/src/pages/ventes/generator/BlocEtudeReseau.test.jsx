@@ -275,6 +275,47 @@ describe('ADEV101 — carte résultat : 4 chiffres en tête, détails du calcul 
   })
 })
 
+describe('R1 — inclinaison retenue par le moteur et taille limitée par le toit (fondateur 28/10/2026)', () => {
+  const HYP_RASANTE = [
+    { cle: 'inclinaison_retenue_deg', valeur: 10, statut: 'estimation',
+      source: 'toit plat sans pente déclarée : 35.5 kWc ne tiennent pas à 30° (21.3 kWc), logés en pose rasante' },
+    { cle: 'taille_limitee_toit', valeur: 35.5, statut: 'estimation',
+      source: 'taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante' },
+  ]
+  const carte = (hypotheses) => (
+    <CarteProfilCi profilCi={profilCiVide()} setChampCi={() => {}} errors={{}}
+                   apercuCi={{ donnees: { ...EXEMPLE, hypotheses } }} />
+  )
+
+  it('10° (pose rasante) et la phrase client, lues telles quelles sur l’aperçu, à côté du champ pente', () => {
+    const { container } = render(carte(HYP_RASANTE))
+    expect(container.querySelector('#gen-ci-pente')).not.toBeNull()
+    expect(screen.getByTestId('ci-inclinaison-retenue'))
+      .toHaveTextContent('Inclinaison retenue par le moteur : 10° (pose rasante)')
+    expect(screen.getByTestId('ci-taille-toit'))
+      .toHaveTextContent('taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante')
+  })
+
+  it('30° gardé : dit sans « pose rasante » ; rien d’affiché sans hypothèse du moteur', () => {
+    const { rerender } = render(carte([{ cle: 'inclinaison_retenue_deg', valeur: 30, statut: 'estimation', source: 's' }]))
+    expect(screen.getByTestId('ci-inclinaison-retenue')).toHaveTextContent('30°')
+    expect(screen.getByTestId('ci-inclinaison-retenue')).not.toHaveTextContent('rasante')
+    expect(screen.queryByTestId('ci-taille-toit')).toBeNull()
+    rerender(carte(EXEMPLE.hypotheses))
+    expect(screen.queryByTestId('ci-inclinaison-retenue')).toBeNull()
+    expect(screen.queryByTestId('ci-taille-toit')).toBeNull()
+  })
+
+  it('la pente saisie part telle quelle dans toit.pente_deg (elle l’emporte sur le moteur) ; vide ⇒ null', () => {
+    let profil = null
+    const { container } = render(<Harnais onProfil={(p) => { profil = p }} />)
+    const corps = (pr) => corpsCiDepuisProfil(poserProfilCi(pr, 'tailleExplicite', '20'), { mode: 'commercial' })
+    expect(corps(profil).toit.pente_deg).toBeNull()
+    fireEvent.change(container.querySelector('#gen-ci-pente'), { target: { value: '12.5' } })
+    expect(corps(profil).toit.pente_deg).toBe(12.5)
+  })
+})
+
 describe('ADEV102 — les 5 questions de l’appel d’abord, l’analyse sous « Affiner l’étude »', () => {
   const rendre = (extra = {}) => render(
     <CarteProfilCi profilCi={profilCiVide()} setChampCi={() => {}} apercuCi={{}} errors={{}}
