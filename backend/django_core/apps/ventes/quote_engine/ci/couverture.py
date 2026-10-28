@@ -278,6 +278,21 @@ def retour_dixieme(argent, servi):
     return servi if valeur is None else valeur
 
 
+def annees_accordees(texte_unite, langue_doc, valeur):
+    """CPDF — l'unité « ans » accordée au nombre : en arabe « سنة » hors 3..10
+    ans entiers (« 2,3 سنة », « 12 سنة »), la règle RPDF de
+    ``i18n_labels_residentiel.accord_annees_ar`` ; FR / EN tels quels."""
+    if langue_doc != "ar":
+        return texte_unite
+    from ..i18n_labels_residentiel import accord_annees_ar
+    return accord_annees_ar(texte_unite, str(valeur).replace(",", "."))
+
+
+def unite_ans(d, valeur, cle="ci_unite_ans", defaut="&nbsp;ans"):
+    """CPDF — « &nbsp;ans » du catalogue, accordé à ``valeur`` (arabe)."""
+    return annees_accordees(libelle(d, cle, defaut), langue(d), valeur)
+
+
 def retour_affiche(d, cle):
     """CPDF7 — le retour de la couverture ``cle`` (``com`` / ``ind``) au
     dixième, ou None quand aucun retour n'est servi (tuile omise). À lire
@@ -589,8 +604,7 @@ def tuiles_argent(d, cle, kpi, fmt):
         argent = (d.get(f"{cle}_synthese") or {}).get("argent") or {}
         base = libelle(d, "ci_ttc", "TTC") if argent.get("base") == "ttc" \
             else libelle(d, "ci_ht", "HT")
-        tuiles.append(kpi(ans(payback),
-                          libelle(d, "ci_unite_ans", "&nbsp;ans"),
+        tuiles.append(kpi(ans(payback), unite_ans(d, ans(payback)),
                           libelle(d, "ci_retour_estime_base",
                                   "Retour estimé ({base})", base=base)
                           if argent else

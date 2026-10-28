@@ -234,14 +234,46 @@ class Amot84TextesDynamiquesIndustriel(SimpleTestCase):
         self.assertIn(">2,5 ans<", fr)
         self.assertNotIn(">3 ans<", fr)
         self.assertIn("/ an (HT)<", fr)
+        # CPDF — arabe : « سنة » pour un retour décimal (RPDF7).
         for langue, ans, ht in (("en", " years", "(excl. VAT)"),
-                                ("ar", " سنوات", "(دون احتساب الضريبة)")):
+                                ("ar", " سنة", "(دون احتساب الضريبة)")):
             with self.subTest(langue=langue):
                 _d, html = _onepage("industriel", langue_sortie=langue)
                 self.assertIn(ans, html)
                 self.assertIn(ht, html)
                 self.assertNotIn(">2,5 ans<", html)
                 self.assertNotIn("MAD/an<", html)
+
+
+class CpdfAccordsGarantiesUnePage(SimpleTestCase):
+    """CPDF — « ans » accordé en arabe (« سنة » hors 3..10 ans entiers),
+    garantie par option dite « sans / avec batterie », une-page C&I signé."""
+
+    def test_ans_accordes_en_arabe(self):
+        from apps.ventes.quote_engine.ci import couverture
+        ar = {"langue_sortie": "ar"}
+        self.assertIn("سنة", couverture.unite_ans(ar, "2,5"))
+        self.assertNotIn("سنوات", couverture.unite_ans(ar, "12"))
+        self.assertIn("سنوات", couverture.unite_ans(ar, "4"))
+        self.assertEqual(couverture.unite_ans({}, "2,5"), "&nbsp;ans")
+
+    def test_garantie_par_option_nommee(self):
+        self.assertEqual(
+            ci_blocs.textes_garantie({}, "ans", "Onduleur (option 1)", "10"),
+            ("ans", "Onduleur (sans batterie)"))
+        en = ci_blocs.textes_garantie({"langue_sortie": "en"}, "ans",
+                                      "Onduleur (option 2)", "5")
+        self.assertEqual(en, ("years", "Inverter (with battery)"))
+        ar = ci_blocs.textes_garantie({"langue_sortie": "ar"}, "ans",
+                                      "Onduleur", "12")
+        self.assertIn("سنة", ar[0])
+        self.assertNotIn("سنوات", ar[0])
+
+    def test_une_page_porte_le_bon_pour_accord(self):
+        from apps.ventes.tests.test_ciq210_onepage_ci import _onepage
+        _d, fr = _onepage("industriel")
+        self.assertIn("Bon pour accord", fr)
+        self.assertIn("signature du client", fr)
 
 
 class Amot101FormatAnglaisIndustriel(SimpleTestCase):

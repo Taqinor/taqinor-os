@@ -64,8 +64,8 @@ def build(ctx):
     if _warranties:
         _cells = "".join(
             f'<div class="c3-warr-c">'
-            f'<div class="c3-warr-v">{theme._esc(str(n))} {ci_blocs.textes_garantie(d, u, label)[0]}</div>'
-            f'<div class="c3-warr-l">{ci_blocs.textes_garantie(d, u, label)[1]}</div></div>'
+            f'<div class="c3-warr-v">{theme._esc(str(n))} {ci_blocs.textes_garantie(d, u, label, n)[0]}</div>'
+            f'<div class="c3-warr-l">{ci_blocs.textes_garantie(d, u, label, n)[1]}</div></div>'
             for n, u, label, _sub in _warranties)
         warranties_html = f"""
   <div class="c3-h2">{L("ci_garanties", "Garanties")}</div>

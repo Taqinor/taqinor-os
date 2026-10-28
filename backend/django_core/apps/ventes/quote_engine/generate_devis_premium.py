@@ -3272,7 +3272,7 @@ def _cartes_ci_onepage(chiffres):
     payback = chiffres.get("payback_ans")
     if payback is not None:
         cellules.append((_L("op_retour_estime"),
-                         f"{ans(payback)}{_L('op_unite_ans')}",
+                         f"{ans(payback)}{ci_onepage.annees(_L('op_unite_ans'), LANGUE_SORTIE, payback)}",
                          _ancre_figure("payback_ans", ans(payback))))
     return cellules
 
@@ -3345,7 +3345,7 @@ def _formes_total_ttc():
     # AGR313 — en agricole, le bloc « Bon pour accord » compact vient APRÈS
     # les totaux : son libellé (dernière ligne du bloc) borne aussi la zone
     # visible, sinon la signature pourrait être rognée sans qu'on le mesure.
-    if SYNTHESE_AGRICOLE is not None:
+    if SYNTHESE_AGRICOLE is not None or CHIFFRES_CI is not None:  # CPDF : une-page C&I aussi
         bruts += [_L("bon_pour_accord"),
                   i18n_labels.libelle("bon_pour_accord", "fr")]
     for brut in bruts:

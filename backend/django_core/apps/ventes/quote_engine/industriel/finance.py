@@ -671,8 +671,8 @@ def _tableau_sensibilites(d, argent, fmt_mad, L):
                              "retour_ans") is None else s.get("source"))))
                 for s in scenarios]
 
-    unite_ans = L("ci_unite_ans", "&nbsp;ans")
-    formats = (lambda v: ci_couverture.ans(v) + unite_ans,
+    formats = (lambda v: ci_couverture.ans(v) + ci_couverture.unite_ans(
+        d, ci_couverture.ans(v)),
                lambda v: decimale(f"{v:.1f}") + "&#160;%",
                lambda v: fmt_mad(v) + "&#160;MAD")
     # CPDF — aucune source imprimable (toutes internes) ⇒ pas de colonne vide.
@@ -923,7 +923,8 @@ def build(ctx):
                 "economie_annuelle", fmt(economie)))
         if payback is not None:
             cellules.append(kpi(
-                ci_couverture.ans(payback), L("ci_unite_ans", "&nbsp;ans"),
+                ci_couverture.ans(payback),
+                ci_couverture.unite_ans(d, ci_couverture.ans(payback)),
                 L("ci_ind_delai_retour", "Délai de retour"),
                 "payback_ans", ci_couverture.ans(payback)))
         if tri_txt is not None:

@@ -503,8 +503,11 @@ def page_onepage(items, tronquees=0):
     header_html = _onepage_header_html()
     # AGR313 — « Bon pour accord » compact du une-page agricole (nom, date,
     # signature) ; les options à cocher et le schéma restent au 3 pages.
+    # CPDF — même bloc sur le une-page commercial / industriel (D-CIQ-11 : le
+    # client signe aussi le document court) ; l'autre option y est déjà dite.
     bpa_html = (_g._bon_pour_accord_compact_html()
-                if _g.SYNTHESE_AGRICOLE is not None else "")
+                if _g.SYNTHESE_AGRICOLE is not None
+                or _g.CHIFFRES_CI is not None else "")
 
     return f"""
 <div class="page" style="position:relative;display:block;">

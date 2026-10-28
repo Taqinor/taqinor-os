@@ -121,22 +121,37 @@ def legende_garanties(d):
     return libelle(d, "ci_legende_garanties", LEGENDE_GARANTIES)
 
 
-def textes_garantie(d, unite, etiquette):
+#: CPDF — « Onduleur (option 1) / (option 2) » de ``theme.warranties_for``
+#: (deux onduleurs aux garanties différentes) : en C&I l'option 1 est l'offre
+#: sans batterie, l'option 2 l'option avec batterie.
+_OPTION_GARANTIE = {" (option 1)": ("ci_opt_sans_batterie", "Sans batterie"),
+                    " (option 2)": ("ci_opt_avec_batterie", "Avec batterie")}
+
+
+def textes_garantie(d, unite, etiquette, n=None):
     """CIQ333 — ``(unité, libellé)`` ÉCHAPPÉS d'une cellule de garantie
     (``theme.warranties_for``) : « ans » et les composants connus suivent la
-    langue du document ; tout autre texte reste tel quel."""
+    langue du document ; tout autre texte reste tel quel. CPDF — « ans »
+    accordé à ``n`` en arabe ; « (option 1/2) » dit « sans / avec batterie »."""
     from .. import i18n_labels
     from ..residential import theme
-    unite_txt, etiquette_txt = theme._esc(str(unite)), theme._esc(
-        str(etiquette))
+    etiquette, option = str(etiquette), ""
+    for suffixe, (cle_option, fr_option) in _OPTION_GARANTIE.items():
+        if etiquette.endswith(suffixe):
+            etiquette = etiquette[:-len(suffixe)]
+            option = libelle(d, cle_option, fr_option)
+            option = f" ({option if langue(d) == 'ar' else option.lower()})"
+    unite_txt, etiquette_txt = theme._esc(str(unite)), theme._esc(etiquette)
     if langue(d) == "fr":
-        return unite_txt, etiquette_txt
+        return unite_txt, etiquette_txt + option
     if str(unite) == "ans":
-        unite_txt = libelle(d, "ci_ans", unite_txt)
-    cle = f"ci_garantie_{str(etiquette).strip().lower()}"
+        from .couverture import annees_accordees
+        unite_txt = annees_accordees(libelle(d, "ci_ans", unite_txt),
+                                     langue(d), n)
+    cle = f"ci_garantie_{etiquette.strip().lower()}"
     if cle in i18n_labels.LIBELLES:
         etiquette_txt = libelle(d, cle, etiquette_txt)
-    return unite_txt, etiquette_txt
+    return unite_txt, etiquette_txt + option
 
 
 def _montant(valeur):

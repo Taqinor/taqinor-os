@@ -72,7 +72,7 @@ def _ligne_economie(d, valeur, base, fmt, ancrer):
 def _ligne_retour(d, ans_valeur, ancrer):
     texte = couverture.ans(ans_valeur)
     return (libelle(d, "ci_opt_retour", "Retour sur investissement"),
-            texte + libelle(d, "ci_unite_ans", "&nbsp;ans")
+            texte + couverture.unite_ans(d, texte)
             + (ancre("payback_ans", texte) if ancrer else ""))
 
 
