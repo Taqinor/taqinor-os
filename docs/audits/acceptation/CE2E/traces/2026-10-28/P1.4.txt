@@ -1,0 +1,1 @@
+/ventes/devis : « 0 devis · Aucun devis » (127 devis en base), aucune requête de liste au réseau (StrictMode + dedupeInFlight, cause probable). /crm/leads/2663 : « 🛰️ 59,64 kWc vendus · MONTANT ESTIMÉ 394 000 MAD · DEV-202610-0097 » (PDF : 25,56 kWc). Console : 2 × « Failed to load resource: 404 » sur la fiche lead (ressource côté vite, absente du journal Django, non identifiée).

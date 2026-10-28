@@ -1,0 +1,86 @@
+{
+  "sha": "666fbd833feb5c57ed85769fc9c403bc4d062a6d",
+  "date": "2026-10-28",
+  "groupe": "CE2E",
+  "verdict": "FAIL",
+  "couvre": [
+    "CE2E1",
+    "CE2E3",
+    "CE2E4",
+    "CE2E5",
+    "CE2E7",
+    "CE2E8",
+    "CE2E9"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "CE2E1",
+        "CE2E3"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/CE2E/traces/2026-10-28/P1.1.txt"
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "CE2E4",
+        "CE2E5",
+        "CE2E7",
+        "CE2E9"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/CE2E/traces/2026-10-28/P1.2.txt"
+    },
+    {
+      "id": "P1.4",
+      "taches": [
+        "CE2E1",
+        "CE2E8"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "FAIL",
+        "3": "FAIL",
+        "4": "PASS",
+        "5": "FAIL",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "PASS",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/CE2E/traces/2026-10-28/P1.4.txt"
+    }
+  ]
+}

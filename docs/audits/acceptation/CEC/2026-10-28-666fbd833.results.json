@@ -1,0 +1,33 @@
+{
+  "sha": "666fbd833feb5c57ed85769fc9c403bc4d062a6d",
+  "date": "2026-10-28",
+  "groupe": "CEC",
+  "verdict": "FAIL",
+  "couvre": [
+    "CEC6"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "CEC6"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "PASS",
+        "8": "NA",
+        "9": "PASS",
+        "10": "FAIL"
+      },
+      "trace": "docs/audits/acceptation/CEC/traces/2026-10-28/P1.1.txt"
+    }
+  ]
+}
