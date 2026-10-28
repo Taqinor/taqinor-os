@@ -881,6 +881,16 @@ describe('CIQ420 — script d’appel pro', () => {
       COMMERCIAL.lead_id, { reponses_categorie: { occupation_pct: 65, piscine: true } }))
   })
 
+  it('Rejeu CSV11 — « Aucun mois » de fermeture écrit une liste vide (réponse), sans rien cocher', async () => {
+    const fermeture = COMMERCIAL.champs_a_poser.find((q) => q.champ === 'fermeture_mois')
+    armer({ panneau: { ...COMMERCIAL, champs_a_poser: [fermeture] } })
+    crmApi.updateLead.mockResolvedValue({ data: { id: COMMERCIAL.lead_id } })
+    render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)
+    fireEvent.click(await screen.findByTestId('fermeture-aucun-mois'))
+    await waitFor(() => expect(crmApi.updateLead)
+      .toHaveBeenCalledWith(COMMERCIAL.lead_id, { fermeture_mois: [] }))
+  })
+
   it('CSV2 — la case de facture affiche son unité (kWh / mois ou MAD / mois)', async () => {
     armer({ panneau: COMMERCIAL })
     render(<PanneauScriptAppel mode="fiche" leadId={COMMERCIAL.lead_id} />)

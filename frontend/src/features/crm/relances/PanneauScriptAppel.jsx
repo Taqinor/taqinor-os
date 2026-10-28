@@ -287,6 +287,17 @@ function Question({
           >
             Enregistrer
           </Button>
+          {/* Rejeu CSV11 — « aucun mois de fermeture » est une réponse (`[]`) :
+              sans ce bouton l'étape restait ouverte et cachait les questions
+              d'activité qui la suivent. */}
+          {entree.champ === 'fermeture_mois' && (
+            <Button
+              type="button" size="sm" variant="outline" disabled={occupe}
+              data-testid="fermeture-aucun-mois" onClick={() => onChoix([])}
+            >
+              Aucun mois
+            </Button>
+          )}
         </div>
       ) : Array.isArray(entree.choix) ? (
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={entree.libelle}>
