@@ -20,7 +20,8 @@ from core.champs_stricts import (
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import ChoixDocumente
-from ..domain.bornes import MOTIF_MONTANT_POSITIF
+from ..domain.bornes import (
+    MOTIF_MONTANT_DEMANDE, MOTIF_MONTANT_POSITIF, MOTIF_POURCENTAGE_DEMANDE)
 from ..models import Devis, Paiement, ROLES_AUTO_COMPOSITION
 from ..payments.providers import providers_lien_actifs
 from ..serializers import (
@@ -1153,10 +1154,14 @@ FacturerVenteRequest = _ser('DevisFacturerVenteRequest', {
     # un test) : une nature hors liste est un refus de forme, pas du service.
     'nature': ChoixDocumente(choices=[
         'acompte', 'intermediaire', 'solde', 'complete']),
+    # api-fuzz-full 28/10 (ENF11) — publiés tels que ``_montant_demande`` les
+    # lit (un texte libre était « conforme » puis refusé « Montant invalide »).
     'montant_ttc': ChaineStricte(required=False, allow_null=True,
-                                 allow_blank=True),
+                                 allow_blank=True, trim_whitespace=False,
+                                 validators=[_MotifEntier(MOTIF_MONTANT_DEMANDE)]),
     'pourcentage': ChaineStricte(required=False, allow_null=True,
-                                 allow_blank=True),
+                                 allow_blank=True, trim_whitespace=False,
+                                 validators=[_MotifEntier(MOTIF_POURCENTAGE_DEMANDE)]),
     'cle_attendue': ChaineStricte(required=False, allow_null=True,
                                   allow_blank=True),
     'libelle': ChaineStricte(required=False, allow_null=True,

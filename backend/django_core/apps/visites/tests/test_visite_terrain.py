@@ -696,6 +696,15 @@ class ModificationSansLeadTests(VisiteTerrainBase):
         self.assertIn('lead', resp.data)
         self.assertNotEqual(VisiteTerrain.objects.get(pk=visite_id).lead_id, autre.id)
 
+    def test_put_corps_non_objet_400_jamais_500(self):
+        # api-fuzz-full 28/10 (ENF11) : ``PUT … -9183`` levait ``TypeError``
+        # (``'notes' in request.data``) — 500 ; un corps non objet → 400.
+        visite_id = self.creer_visite()
+        for corps in (-9183, [1, 2], 'texte'):
+            resp = self.api.put(f'/api/django/visites/visites/{visite_id}/',
+                                corps, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.content))
+
 
 class SchemaVisitesPublieTests(SimpleTestCase):
     """ERR-ENF11-FUZZ-VISITES — le schéma publié dit ce que la vue sert

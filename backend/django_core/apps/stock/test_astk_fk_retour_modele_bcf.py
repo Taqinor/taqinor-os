@@ -91,9 +91,11 @@ class FkRetourModeleBcfTests(TestCase):
             bon_commande=self.bc_b, produit=self.pb, quantite=20,
             prix_achat_unitaire=Decimal('77'), quantite_recue=20)
 
-    def _assert_comme_absent(self, r, r_absent, pk):
-        self.assertEqual(r.status_code, 400, r.content)
-        self.assertEqual(r_absent.status_code, 400, r_absent.content)
+    def _assert_comme_absent(self, r, r_absent, pk, statut=400):
+        # api-fuzz-full 28/10 (ENF11) : le retour fournisseur répond 404 à un
+        # id inconnu (lignes comprises) — même réponse étranger / absent.
+        self.assertEqual(r.status_code, statut, r.content)
+        self.assertEqual(r_absent.status_code, statut, r_absent.content)
         self.assertIn('<INEXISTANT>', str(_sans_id(r.json(), pk)))
         self.assertEqual(_sans_id(r.json(), pk),
                          _sans_id(r_absent.json(), ID_ABSENT))
@@ -122,10 +124,10 @@ class FkRetourModeleBcfTests(TestCase):
         for prefix in PREFIXES:
             self._assert_comme_absent(
                 _post(prefix, self.bc_b.pk, self.pa.pk),
-                _post(prefix, ID_ABSENT, self.pa.pk), self.bc_b.pk)
+                _post(prefix, ID_ABSENT, self.pa.pk), self.bc_b.pk, 404)
             self._assert_comme_absent(
                 _post(prefix, None, self.pb.pk),
-                _post(prefix, None, ID_ABSENT), self.pb.pk)
+                _post(prefix, None, ID_ABSENT), self.pb.pk, 404)
         self.assertFalse(RetourFournisseur.objects.exists())
         self._invariants_b()
 
@@ -140,7 +142,7 @@ class FkRetourModeleBcfTests(TestCase):
                                format='json'),
                 self.api.patch(url, {'fournisseur': ID_ABSENT},
                                format='json'),
-                self.fb.pk)
+                self.fb.pk, 404)
         retour.refresh_from_db()
         self.assertEqual(retour.fournisseur_id, self.fa.pk)
         # Un fournisseur de la même société reste accepté en brouillon.

@@ -260,6 +260,21 @@ class SaisieParLApi(TestCase):
             self.assertEqual(resp.status_code, 400, (mauvais, resp.data))
             self.assertIn('releve_conso', resp.data)
 
+    def test_releve_au_plafond_servi_conforme_au_motif(self):
+        # api-fuzz-full 28/10 : ``kwh: 1e9`` (le plafond publié) est servi
+        # ``"1000000000.00"`` — dix chiffres que le motif refusait (« Response
+        # violates schema »). Le motif publié l'admet ; la réponse s'y plie.
+        import re
+
+        from apps.crm.champs_lead import MOTIF_NOMBRE
+        resp = self._patch({'releve_conso': {'mois': [
+            {'mois': '2026-08', 'kwh': 1000000000},
+            {'mois': '2026-09', 'kwh': 999999999.996}]}})
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for ligne in resp.data['releve_conso']['mois']:
+            self.assertEqual(ligne['kwh'], '1000000000.00')
+            self.assertTrue(re.search(MOTIF_NOMBRE, ligne['kwh']))
+
     def test_motif_de_perte_manquant_est_un_refus_d_etat(self):
         resp = self._patch({'perdu': True})
         self.assertEqual(resp.status_code, 409, resp.data)

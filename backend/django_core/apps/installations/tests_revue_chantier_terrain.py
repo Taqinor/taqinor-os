@@ -239,6 +239,17 @@ class AjouterSerialTests(_Base):
         self.assertEqual({t['type'] for t in
                           champ['additionalProperties']['oneOf']},
                          {'string', 'number'})
+        # api-fuzz-full 28/10 : les textes du corps (refusés avec un NUL par
+        # ``texte_corps``) publient le motif « sans NUL » ; NUL → 400.
+        props = schema['components']['schemas'][
+            'AjouterSerialRequeteRequest']['properties']
+        for nom in ('client_op_id', 'numero_serie', 'designation', 'slot',
+                    'capture_source'):
+            self.assertIn('\\u0000', props[nom].get('pattern', ''), nom)
+        r = self.api.post(f'{self.url}/ajouter-serial/', {
+            'produit': self.panneau.id, 'capture_source': 'sc\x00an'},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.data)
         ok, err = field_capture.valider_caracteristiques(
             {'  ': 'x', 'k' * 50: 'v', 'mo\x00dele': 'A'})
         self.assertEqual(ok, {'k' * 40: 'v', 'modele': 'A'})

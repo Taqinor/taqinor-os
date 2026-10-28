@@ -1075,14 +1075,14 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
 
     @oa.extend_schema(
         request=oa.body(
-            'AjouterSerialRequete',
-            client_op_id=oa.s(),
+            'AjouterSerialRequete',  # textes sans NUL : `texte_corps` les refuse (ENF11)
+            client_op_id=oa.ChaineStricte(required=False, allow_blank=True),
             produit=oa.i(null=True),
-            numero_serie=oa.s(),
-            designation=oa.s(),
-            slot=oa.s(),
+            numero_serie=oa.ChaineStricte(required=False, allow_blank=True),
+            designation=oa.ChaineStricte(required=False, allow_blank=True),
+            slot=oa.ChaineStricte(required=False, allow_blank=True),
             caracteristiques=oa.Caracteristiques(required=False, allow_null=True),
-            capture_source=oa.s(),
+            capture_source=oa.ChaineStricte(required=False, allow_blank=True),
             file=oa.serializers.FileField(required=False),
         ),
         responses={200: ComponentSerialSerializer, 201: ComponentSerialSerializer},

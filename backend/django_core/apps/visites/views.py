@@ -385,6 +385,10 @@ class VisiteTerrainViewSet(CompanyScopedModelViewSet):
     @extend_schema(request=NotesVisiteSerializer,
                    responses=VisiteTerrainSerializer)
     def update(self, request, *args, **kwargs):
+        # api-fuzz-full 28/10 (ENF11) : un corps non objet (``-9183``) levait
+        # ``TypeError`` sur ``'notes' in request.data`` (500) → 400 FR.
+        if not isinstance(request.data, dict):
+            raise ValidationError({'detail': 'Corps JSON de type objet attendu.'})
         visite = self.get_object()
         refus = self._refus_si_gelee(visite)
         if refus is not None:
