@@ -1,0 +1,1 @@
+vide : productible 1 599 (Casablanca) / 1 627 (Marrakech) = PVGIS — PASS. 1 650 : productible imprimé 1 599 / 1 627, production 7 948 / 9 084 et 101 658 / 97 037 kWh inchangées (modèle `horaire`) — FAIL (CE2E6). Valeur remise à vide (relue : None).
