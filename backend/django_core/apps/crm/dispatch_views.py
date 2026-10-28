@@ -92,6 +92,10 @@ class RegleAttributionViewSet(CompanyScopedModelViewSet):
     queryset = RegleAttribution.objects.select_related('membre').all()
     serializer_class = RegleAttributionSerializer
     permission_classes = [IsAnyRole]
+    # YAPIC2/YAPIC11 — tri et recherche explicites (jamais un champ libre).
+    ordering_fields = ['ordre', 'id']
+    ordering = ['equipe_id', 'ordre', 'id']
+    search_fields = ['villes']
 
     def get_queryset(self):
         qs = super().get_queryset()
