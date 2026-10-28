@@ -2080,7 +2080,7 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         return Response(SafetySignoffSerializer(signoff).data)
 
     @oa.extend_schema(
-        request=oa.body('CocherSafetyRequete', cle=oa.s(True), coche=oa.b()),
+        request=oa.body('CocherSafetyRequete', cle=oa.ChaineStricte(), coche=oa.b()),  # sans NUL (ENF11)
         responses=SafetySignoffSerializer,
     )
     @action(detail=True, methods=['post'], url_path='cocher-safety',
@@ -2090,7 +2090,7 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         {"cle": <str>, "coche": bool}."""
         interv = self.get_object()
         signoff = field_capture.ensure_safety_signoff(interv)
-        item = signoff.items.filter(cle=request.data.get('cle')).first()
+        item = signoff.items.filter(cle=oa.texte_corps(request, 'cle')).first()  # NUL → 400, plus 500
         if item is None:
             return Response({'detail': 'Consigne inconnue.'},
                             status=oa.statut_inconnu(request.data.get('cle'), str))
