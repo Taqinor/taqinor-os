@@ -120,11 +120,17 @@ class ReouvertureTests(TestCase):
     def test_cprs5_premiere_ouverture_une_seule_fois(self):
         """CPRS5 — deux requêtes qui lisent le même lien encore jamais
         ouvert : seule celle qui pose ``first_viewed_at`` est la première."""
-        from apps.ventes.public.lecture_views import _stamp_view
+        from apps.ventes.public.lecture_views import _notify_open, _stamp_view
         a = ShareLink.objects.get(pk=self.link.pk)
         b = ShareLink.objects.get(pk=self.link.pk)
         self.assertTrue(_stamp_view(a))
         self.assertFalse(_stamp_view(b))
+        # Fable R2 — l'onglet perdant n'est pas une « réouverture ».
+        avant = Notification.objects.filter(recipient=self.owner).count()
+        _notify_open(b, is_first=False)
+        self.assertEqual(self._notes_reouverture().count(), 0)
+        self.assertEqual(
+            Notification.objects.filter(recipient=self.owner).count(), avant)
 
     def test_cprs9_sans_lead_auteur_notifie(self):
         """CPRS9 — un devis sans lead prévient son auteur à l'ouverture."""

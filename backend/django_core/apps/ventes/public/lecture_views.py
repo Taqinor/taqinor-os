@@ -321,6 +321,8 @@ def _stamp_view(link):
             is_first = ShareLink.objects.filter(
                 pk=link.pk, first_viewed_at__isnull=True,
             ).update(first_viewed_at=now) == 1
+            if not is_first:  # l'autre onglet vient d'ouvrir : un rechargement
+                link._vue_precedente = now  # (jamais « rouvert », Fable R2)
         link.refresh_from_db(fields=['view_count', 'last_viewed_at', 'first_viewed_at'])
         return is_first
     except Exception:  # noqa: BLE001 — best-effort, never break the public GET (D-ENF22-BLE001)
