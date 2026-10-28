@@ -34,6 +34,19 @@ def poser_regles_origine(valeur, avant_2710=False):
     _REGLES_AVANT_2710.set(bool(avant_2710 or valeur))
 
 
+def reinitialiser_regles(*_args, task=None, **_kwargs):
+    """Retire les deux drapeaux au DÉBUT d'une requête ou d'une tâche Celery
+    (``ventes/receivers.py``). ``poser_regles_origine`` pose sans retirer — le
+    builder les laisse posés pour les lecteurs de SON ``data`` (synthèse C&I
+    de /proposition…) — : sans ce geste, un lecteur de la requête suivante du
+    même thread (worker, runserver) héritait du devis précédent. Une tâche
+    exécutée en ligne (``is_eager``) tourne DANS la requête : rien n'est retiré."""
+    if getattr(getattr(task, 'request', None), 'is_eager', False):
+        return
+    _REGLES_ORIGINE.set(False)
+    _REGLES_AVANT_2710.set(False)
+
+
 def regles_origine():
     """Vrai pendant le rendu d'un devis aux règles d'origine."""
     return _REGLES_ORIGINE.get()

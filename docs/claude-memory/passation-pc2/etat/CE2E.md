@@ -1,0 +1,7 @@
+ETAT: PR-OUVERTE #1133
+BRANCHE: pc2-ce2e @ 18ed0a130  PR: #1133 (sans auto-merge, docs seulement)
+FAIT: pile = conteneur sans montage ce2e-django (code origin/main 666fbd833) sur erp_db migrée (crm 0145) + seed_catalogue (demo, anon) ; vite du worktree + navigateur intégré. 16 devis joués : 10 C&I (201, 3 p./4 p. usine + une-page, /proposition data), 4 résidentiels (201, 4 p. + une-page + étude), 2 pompage (409 « Structure au sol : prix à renseigner ») + 2 documents agricoles existants rendus (3 p. + 1 p.). Enregistrements FAIL (traces) CE2E, CEC6, AMOT64, CLD13, RHOR8 (2026-10-28-666fbd833). Défauts v3 : CE2E1/3/8 (PLAN_AUDIT_DEVIS), CE2E4/5/6/7/9 (PLAN_AUDIT_MOTEUR), CE2E2 (WEB_PLAN). 0 P0, 6 P1, 3 P2. Contrôles hôte verts (acceptation, ownership, ancres, câblage, décisions, stages, codemap, forme).
+RESTE: armement de #1133 par la coordinatrice (JETON CI) ; non joués : rendu /proposition au navigateur (Astro), générateur/modale (liste vide sous vite), signature/visite/devis révisé, EN/AR, mobile, AMOT65 (aucun devis agricole neuf rendable).
+ATTEND: JETON CI
+DECISIONS: (à revoir) société démo 2 faute de 156 ; seed_catalogue joué sur taqinor-anon (additif) ; pompage 50 m/8 m³/h → pompe 5.5 CV sans courbe (AGR117 étape 2) jugée conforme au code, pas de tâche ; checkout principal non mis à jour (harnais refuse git hors worktree) — pile principale toujours sur a73b08a4a, frontend/nginx toujours arrêtés.
+JETON DOCKER: rendu (LIBRE), conteneur ce2e-django supprimé, vite arrêté, navigateur fermé.
