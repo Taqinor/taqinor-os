@@ -6452,7 +6452,7 @@ def chantiers_a_facturer(company, user=None):
     tranches sont dues). Lecture seule ; import ventes via selectors seulement.
     ``user`` (optionnel) borne aux chantiers de SA portée, comme la liste des
     chantiers (``selectors.scoper_chantiers``)."""
-    from apps.ventes.selectors import tranche_facturee
+    from apps.ventes.selectors import tranches_facturees
     from .models import Installation, JalonProjet
     out = []
     jalons = (
@@ -6468,12 +6468,14 @@ def chantiers_a_facturer(company, user=None):
         visibles = scoper_chantiers(
             Installation.objects.filter(company=company), user)
         jalons = jalons.filter(installation__in=visibles)
+    # APRF24 — factures de TOUS les devis des jalons lues en lot (une
+    # résolution pour N jalons ; le queryset évalué ici est réutilisé par la
+    # boucle), même verdict que ``tranche_facturee`` unitaire.
+    facturees = tranches_facturees([getattr(j.installation, 'devis', None) for j in jalons])
     for jalon in jalons:
         installation = jalon.installation
         devis = getattr(installation, 'devis', None)
-        if devis is None:
-            continue
-        if tranche_facturee(devis, jalon.tranche_echeancier):
+        if devis is None or jalon.tranche_echeancier in facturees.get(devis.pk, ()):
             continue
         out.append({
             'installation_id': installation.id,
