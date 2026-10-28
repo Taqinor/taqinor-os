@@ -10,10 +10,10 @@ sont figées ici comme DONNÉE committée, jamais une dépendance ni un appel r�
 Avant QX38, trois productibles divergents cohabitaient (solar.js ~1247 GHI×η,
 moteur 1600/1240) → jusqu'à ~28 % d'écart écran↔PDF. Désormais :
 
-  • ``CompanyProfile.productible_kwh_kwc`` (défaut 1600) devient un OVERRIDE
-    ÉDITABLE (« je force cette valeur »), PAS un modèle physique concurrent :
-    quand la société le renseigne à une valeur ≠ du défaut historique 1600, il
-    prime ; sinon on lit le productible PVGIS de la ville.
+  • ``CompanyProfile.productible_kwh_kwc`` est un OVERRIDE ÉDITABLE (« je
+    force cette valeur »), PAS un modèle physique concurrent : renseigné, il
+    prime TEL QUEL (1 600 compris — AMOT64, D-AMOT-3 = a) ; vide (NULL), on
+    lit le productible PVGIS de la ville.
   • un devis sans ville connue retombe sur ``DEFAULT_PRODUCTIBLE`` (Casablanca,
     centre de la zone de service) — jamais un chiffre inventé.
 
@@ -37,10 +37,10 @@ PRODUCTIBLE_PAR_VILLE = {
 # Ville de repli (centre de la zone de service) quand la ville est inconnue.
 DEFAULT_PRODUCTIBLE = 1651  # Casablanca
 
-# Valeur historique codée en dur (CompanyProfile.productible_kwh_kwc défaut) :
-# tant que la société garde CETTE valeur, l'override n'est PAS considéré comme
-# renseigné et on lit le productible PVGIS par ville.
-_HISTORICAL_DEFAULT = 1600.0
+# AMOT64 (D-AMOT-3 = a) — plus de SENTINELLE : l'ancien défaut 1600 du modèle
+# valait « non renseigné », si bien qu'une société qui SAISISSAIT 1 600 était
+# ignorée. Le champ est désormais nullable (migration parametres 0130 : les
+# lignes à 1600 passent à NULL, aucun chiffre de devis ne bouge) : vide ⇒ PVGIS.
 
 # Alias/villes secondaires → ville de référence la plus proche (interpolation
 # grossière par latitude ; le web fait une vraie interpolation, ici un mapping
@@ -139,15 +139,15 @@ def productible_for_city(city, override=None) -> float:
     """Productible canonique (kWh/kWc/an) pour une ville.
 
     ``override`` = ``CompanyProfile.productible_kwh_kwc`` : quand la société l'a
-    fixé à une valeur RÉELLEMENT différente du défaut historique 1600, il prime
-    (l'opérateur force sa propre valeur). Sinon on lit le productible PVGIS de la
-    ville (repli DEFAULT_PRODUCTIBLE quand la ville est inconnue).
+    renseigné (valeur > 0, 1 600 compris — AMOT64), il prime (l'opérateur force
+    sa propre valeur). Vide (``None``) : on lit le productible PVGIS de la ville
+    (repli DEFAULT_PRODUCTIBLE quand la ville est inconnue).
     """
-    # Override société explicite (≠ défaut historique) → il prime.
+    # Override société renseigné → il prime, quelle que soit sa valeur.
     try:
         if override is not None:
             ov = float(override)
-            if ov > 0 and abs(ov - _HISTORICAL_DEFAULT) > 0.5:
+            if ov > 0:
                 return ov
     except (TypeError, ValueError):
         pass

@@ -7,7 +7,9 @@ calepinage, ``apps.calepinage.services.apercu_courbe_csv``).
 import datetime
 import unittest
 
-from apps.ventes.moteur_ci.charge import courbe_mesuree_jours_types
+from apps.ventes.moteur_ci.charge import (
+    courbe_mesuree_jours_types, valeurs_horaires_depuis_points,
+)
 from apps.ventes.tests.test_ciq122_cas_reference import _etudier
 
 ANNEE = 2025
@@ -62,6 +64,60 @@ class CourbeMesureeTests(unittest.TestCase):
                      consommation={}, taille_explicite_kwc=40)
         self.assertEqual(e['profil_charge']['methode'], 'courbe_mesuree')
         self.assertEqual(e['niveau_donnees'], 'mesure')
+
+    def test_decalage_constant_serie_2025_plateau_civil_8_18_devient_gmt_8_18(self):
+        valeurs = []
+        for _ in range(365):
+            valeurs.extend([10.0 if 8 <= h < 18 else 1.0 for h in range(24)])
+        jours, _prov, _al = courbe_mesuree_jours_types(
+            valeurs, '%d-01-01' % ANNEE, annee_reference=ANNEE, decalage_h=0)
+        for jt in jours:
+            c = jt['charge_kwh']
+            self.assertEqual([h for h in range(24) if c[h] > 5], list(range(8, 18)))
+
+    def test_mois_partiel_niveau_moyenne_des_jours_mesures_fois_jours_du_mois(self):
+        valeurs = [5.0] * (24 * 10)    # 10 jours de janvier à 5 kWh/h = 120 kWh/jour
+        jours, _prov, alertes = courbe_mesuree_jours_types(
+            valeurs, '%d-01-01' % ANNEE, annee_reference=ANNEE)
+        self.assertAlmostEqual(_energie(jours, 1), 3720.0, delta=1e-6)
+        alerte = next(a for a in alertes if a['code'] == 'mesure_incomplete')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('10', alerte['message'])
+        self.assertIn('31', alerte['message'])
+
+    def test_jour_avec_valeur_absente_est_ecarte_pas_un_zero(self):
+        valeurs = [5.0] * (24 * 10)
+        valeurs[24 * 9 + 3] = None     # un trou dans le 10e jour
+        jours, _prov, alertes = courbe_mesuree_jours_types(
+            valeurs, '%d-01-01' % ANNEE, annee_reference=ANNEE)
+        moyenne = sum(jt['nb_jours'] * sum(jt['charge_kwh']) for jt in jours
+                      if jt['mois'] == 1) / 31
+        self.assertAlmostEqual(moyenne, 120.0, delta=1e-6)    # pas 108
+        self.assertIn('mesure_incomplete', {a['code'] for a in alertes})
+
+    def test_points_json_meme_profil_aux_pas_60_30_15_meme_courbe_horaire(self):
+        horaire = [float(1 + h % 5) for h in range(48)]
+        pas30 = [v / 2 for v in horaire for _ in range(2)]
+        pas15 = [v / 4 for v in horaire for _ in range(4)]
+        pas5 = [v / 12 for v in horaire for _ in range(12)]
+        for pas, points in ((60, horaire), (30, pas30), (15, pas15), (5, pas5)):
+            sortie = valeurs_horaires_depuis_points(points, pas_min=pas, unite='kwh')
+            for a, b in zip(sortie, horaire):
+                self.assertAlmostEqual(a, b, places=9)
+            self.assertEqual(len(sortie), 48)
+        # en kW : moyenne de la puissance sur l'heure = kWh de l'heure
+        kw30 = [v for v in horaire for _ in range(2)]
+        sortie = valeurs_horaires_depuis_points(kw30, pas_min=30, unite='kw')
+        for a, b in zip(sortie, horaire):
+            self.assertAlmostEqual(a, b, places=9)
+
+    def test_points_json_pas_invalide_ou_longueur_tronquee_refus_nomme(self):
+        with self.assertRaises(ValueError) as ctx:
+            valeurs_horaires_depuis_points([1.0] * 40, pas_min=45, unite='kwh')
+        self.assertIn('45', str(ctx.exception))
+        with self.assertRaises(ValueError) as ctx:
+            valeurs_horaires_depuis_points([1.0] * 7, pas_min=15, unite='kwh')
+        self.assertIn('multiple', str(ctx.exception))
 
     def test_fichier_illisible_400_nomme_la_colonne(self):
         from rest_framework.exceptions import ValidationError

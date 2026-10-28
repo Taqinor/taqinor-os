@@ -86,6 +86,20 @@ class SignatureInterventionTests(TestCase):
         self.assertFalse(self.non_signee.signature_client)
         self.assertIsNone(self.non_signee.signe_le)
 
+    def test_nom_ou_motif_avec_nul_400_rien_ecrit(self):
+        # api-fuzz-full 27/10 : un NUL dans `signataire_nom` atteignait le
+        # chatter (PostgreSQL) → 500 ; 400 nommant le champ, rien d'écrit.
+        for extra in ({'signataire_nom': 'Cli\x00ent'},
+                      {'motif_override_signature': 'mo\x00tif'},
+                      # api-fuzz-full 27/10 : l'alias `motif_override` est
+                      # publié strict lui aussi (motif sans NUL).
+                      {'motif_override': 'mo\x00tif'},
+                      {'signataire_nom': 5}):
+            r = self._signer(self.non_signee, **extra)
+            self.assertEqual(r.status_code, 400, (extra, r.content))
+            self.non_signee.refresh_from_db()
+            self.assertIsNone(self.non_signee.signe_le)
+
     def test_motif_publie_egal_acceptation(self):
         """api-fuzz-full 27/10 (ENF11) : `signature_client` est publiée par le
         motif de data-URL que le serveur applique (chaîne libre « conforme »

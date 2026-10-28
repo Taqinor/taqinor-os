@@ -27,6 +27,12 @@ import SectionCategorieCi from '../../components/proposition/ci/SectionCategorie
 import SectionRentabiliteIndustrielle from '../../components/proposition/ci/SectionRentabiliteIndustrielle.astro';
 import SectionAgricole from '../../components/proposition/agricole/SectionAgricole.astro';
 import GarantiesAgricoles from '../../components/proposition/agricole/GarantiesAgricoles.astro';
+import GarantiesCi from '../../components/proposition/ci/GarantiesCi.astro';
+import EcheancierCi from '../../components/proposition/ci/EcheancierCi.astro';
+import FinancementCi from '../../components/proposition/ci/FinancementCi.astro';
+import ServicesCi from '../../components/proposition/ci/ServicesCi.astro';
+import ComparaisonBatterieCi from '../../components/proposition/ci/ComparaisonBatterieCi.astro';
+import { financementCi, nomSocieteEmettrice, servicesCi } from '../../components/proposition/ci/blocsCi';
 // (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
 // réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
 // et la décision fondateur du jour bannit tout avis/étoile de cette page.
@@ -2938,6 +2944,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
         {isAgricole && argent && argent.garanties.length > 0 && (
           <GarantiesAgricoles {argent} />
         )}
+        {isAutoconso && ci && (<GarantiesCi {ci} />)}
 
 
           {/* ── PREVIEW v2 · LE DÉLAI ET LE RESPONSABLE ──────────────────────
@@ -3196,7 +3203,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           #direction (synthèse et rentabilité), #exploitation (schéma, services, suivi), #achats
           (conditions, échéancier, acceptation). Aucune statistique sur les acheteurs.
           ════════════════════════════════════════════════════════════════════ */}
-      {installMode === 'industriel' && (
+      {installMode === 'industriel' && ciRent && (
         <SectionRentabiliteIndustrielle {ciRent} {ciRentBaseTexte} />
       )}
 
@@ -4912,6 +4919,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
             );
           })}
         </div>
+        {isAutoconso && twoOptions && ci?.optionBatterie && (<ComparaisonBatterieCi {ci} sansTtc={optionTotaux(data!, 'sans_batterie')?.ttc ?? null} avecTtc={optionTotaux(data!, 'avec_batterie')?.ttc ?? null} />)}
         {/* COUTURE — le devis avait été ENVOYÉ, puis resynchronisé (prix
             catalogue corrigé côté Stock). Les montants ci-dessus sont rendus
             en direct depuis les lignes : ils peuvent donc différer du PDF déjà
@@ -6085,6 +6093,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       )}
 
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
+      {isAutoconso && ci && ci.echeancier.length > 0 && (<EcheancierCi {ci} />)}
+      {isAutoconso && ci && financementCi(ci) && (<FinancementCi {ci} />)}
       {installMode === 'industriel' && <span id="achats" aria-hidden="true"></span>}
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8" data-track-section="signature">
         <div class="cine-card rounded-2xl p-6 sm:p-8">
@@ -7116,6 +7126,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ───────────
            WJ78 — ancre ciblée par le lien « Voir « Et après ? » » du bloc de
            succès (au-dessus, plus haut sur la page). -->
+      {isAutoconso && ci && servicesCi(ci) && (<ServicesCi {ci} societe={nomSocieteEmettrice(data)} />)}
       {installMode === 'industriel' && <span id="exploitation" aria-hidden="true"></span>}
       <section id="etapes-suivantes" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-en="What happens next?" data-ar="ماذا بعد؟">Et après ?</h2>

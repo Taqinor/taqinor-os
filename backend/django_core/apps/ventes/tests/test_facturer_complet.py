@@ -321,6 +321,29 @@ class FacturerVenteTrancheVNT26(_BaseVente):
     jamais émise, 0 sortie de stock ; 409 ``version_remplacee`` /
     ``cle_inattendue`` / ``tranche_en_brouillon``."""
 
+    def test_montant_tranche_refus_d_etat_409(self):
+        # api-fuzz-full 27/10 (ENF11) : « pas une tranche » et un montant au
+        # moins égal au prix convenu sont des refus d'ÉTAT (409) ; un montant
+        # illisible reste un 400.
+        from apps.ventes.domain.facturation_vente import (
+            FacturationVenteRefusee, modifier_montant_tranche)
+        devis = self._388('DEV-VNT67-ETAT')
+        complete = self._tranche(devis, '', 'solde', '100.00', '83.33',
+                                 '16.67', statut='brouillon',
+                                 type_facture='complete')
+        with self.assertRaises(FacturationVenteRefusee) as ctx:
+            modifier_montant_tranche(complete, '50', user=self.user)
+        self.assertEqual((ctx.exception.status, ctx.exception.corps['code']),
+                         (409, 'pas_une_tranche'))
+        tranche = self._acompte_14700(devis, statut='brouillon', reference='')
+        with self.assertRaises(FacturationVenteRefusee) as ctx:
+            modifier_montant_tranche(tranche, '9999999999', user=self.user)
+        self.assertEqual((ctx.exception.status, ctx.exception.corps['code']),
+                         (409, 'montant_invalide'))
+        with self.assertRaises(FacturationVenteRefusee) as ctx:
+            modifier_montant_tranche(tranche, 'abc', user=self.user)
+        self.assertEqual(ctx.exception.status, 400)
+
     def test_acompte_en_brouillon_bloque_la_tranche_materiel(self):
         devis = self._388('DEV-VNT26-BR')
         acompte = self._acompte_14700(devis, statut='brouillon', reference='')

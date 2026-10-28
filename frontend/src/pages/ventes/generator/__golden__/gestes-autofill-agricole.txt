@@ -20,7 +20,7 @@ Marché / Mode d'installation
 🏭 Industriel
 🏪 Commercial
 🌾 Agricole (pompage)
-Option « avec batterie » indisponible pour ce système : aucun onduleur hybride dans la liste. Le PDF sera un document à option unique (sans batterie) — jamais une option partielle silencieuse.
+Option « avec batterie » indisponible : aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un. Tant que ce n'est pas réglé, le PDF ne présente que l'option sans batterie.
 Informations du document
 N° de Devis
 Raccordement

@@ -95,7 +95,7 @@ def valider_caracteristiques(valeur):
                       "champs au plus.")
     propre = {}
     for cle, val in valeur.items():
-        if not isinstance(cle, str) or not cle.strip() or len(cle) > 40:
+        if not isinstance(cle, str):
             return None, "Caractéristiques : nom de champ invalide."
         if isinstance(val, bool) or not isinstance(val, (str, int, float)):
             return None, (f"Caractéristiques : « {cle} » doit être un texte "
@@ -103,11 +103,20 @@ def valider_caracteristiques(valeur):
         if isinstance(val, float) and not math.isfinite(val):
             return None, (f"Caractéristiques : « {cle} » doit être un nombre "
                           "fini.")
+        if isinstance(val, str) and '\x00' in val:
+            return None, (f"Caractéristiques : « {cle} » ne doit pas contenir "
+                          "de caractère nul.")
+        # api-fuzz-full 27/10 (ENF11) : la forme des CLÉS est inexprimable au
+        # schéma OpenAPI 3.0 (pas de ``propertyNames``) — nettoyée comme les
+        # valeurs (sans NUL, rognée à 40, vide ignorée), jamais refusée.
+        cle = cle.replace('\x00', '').strip()[:40]
         if isinstance(val, str):
             val = val.strip()[:255]
             if not val:
                 continue
-        propre[cle.strip()] = val
+        if not cle:
+            continue
+        propre[cle] = val
     return propre, None
 
 

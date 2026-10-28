@@ -233,6 +233,20 @@ class TestSeedDefaultsNiveaux(TestCase):
             .values_list('delai_jours', flat=True))
         self.assertEqual(delais, [7, 15, 30])
 
+    def test_seed_publie_201_sans_corps(self):
+        # api-fuzz-full 27/10 (ENF11) : le 201 renvoyé est publié, aucun corps.
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ventes import urls as ventes_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include(ventes_urls)),
+        ]).get_schema(request=None, public=True)
+        op = schema['paths'][
+            '/api/django/ventes/niveaux-relance/seed-defaults/']['post']
+        self.assertIn('201', op['responses'])
+        self.assertNotIn('requestBody', op)
+
     def test_niveau_decimaux_strictement_en_chaine(self):
         # ENF11 — taux/frais sont déclarés en chaîne : un nombre JSON est
         # refusé en 400 (plus converti en silence), la chaîne reste acceptée.

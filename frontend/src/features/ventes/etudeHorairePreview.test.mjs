@@ -6,11 +6,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  construireCorpsPreview, etiquetteSource, lignesAffichables,
+  construireCorpsPreview, etiquetteSource, lignesAffichables, batteriesDesLignes,
   verdictBatteriePourTaille,
   libelleTranche, falaiseAffichable, glitchAnnuel, balayageStockageAffichable,
   estimationConsoAffichable,
 } from './etudeHorairePreviewPur.js'
+import { isBattery, texteClassement, appartientAuPanierAvec } from './solar.js'
 
 test('construireCorpsPreview : null hors résidentiel, même avec facture', () => {
   assert.equal(construireCorpsPreview({
@@ -337,4 +338,26 @@ test('estimationConsoAffichable : ne garde que les clés d\'ajout réellement pr
   assert.equal(r.ajouts[0].cle, 'clim')
   assert.equal(r.ajouts[0].libelle, 'Climatisation')
   assert.equal(r.ajouts[0].valeurs.length, 12)
+})
+
+test('RGEN7 batteries dans le corps', () => {
+  // Lead 2141 : lignes « avec » = 3 × Dyness 5 kWh (produit lié).
+  const produits = [{ id: 55, nom: 'Batterie Dyness 5 kWh' }]
+  const lignes = [
+    { designation: 'Batterie lithium Dyness 5 kWh', produit: 55, quantite: '3' },
+    { designation: 'Panneau 710 Wc', produit: 12, quantite: '20' },
+    { designation: 'Batterie 5 kWh', produit: null, quantite: '1' }, // aucun produit lié
+    { designation: 'Batterie Dyness 5 kWh', produit: 55, quantite: '2', variante: 'sans' }, // hors « avec »
+    { designation: 'Onduleur réseau 5 kW', produit: 7, quantite: '1' },
+  ]
+  const estBatterieAvec = l => isBattery(texteClassement(l, produits)) && appartientAuPanierAvec(l, produits)
+  const batteries = batteriesDesLignes(lignes, estBatterieAvec)
+  assert.deepEqual(batteries, [{ produit: 55, quantite: 3 }])
+  const base = { modeInstallation: 'residentiel', leadId: 2141, fHiver: '900', kwp: 9.23, batterieKwh: 15 }
+  assert.deepEqual(construireCorpsPreview({ ...base, batteries }).batteries, [{ produit: 55, quantite: 3 }])
+  // Aucune ligne batterie liée ⇒ clé ABSENTE : corps identique à celui d'hier.
+  const hier = construireCorpsPreview(base)
+  assert.equal('batteries' in hier, false)
+  assert.deepEqual(construireCorpsPreview({ ...base, batteries: [] }), hier)
+  assert.deepEqual(construireCorpsPreview({ ...base, batteries: batteriesDesLignes(lignes.slice(1, 3), estBatterieAvec) }), hier)
 })

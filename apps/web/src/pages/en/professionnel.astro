@@ -1,8 +1,8 @@
 ---
 /**
  * EN — Business & industrial solar (W67). Faithful translation of /professionnel ;
- * EVERY figure kept EXACT in Latin digits (3–5 years, +20 years, 5 MW, 17,04 kWc,
- * 3,72 kWc, ref. 468, Canadian Solar 710 Wc, Deye 15 kW, law
+ * EVERY figure kept EXACT in Latin digits (+20 years, 5 MW,
+ * Canadian Solar 710 Wc, Deye 15 kW, law
  * 82-21) — UK spelling (authorisation). WB — fabricated annual kWh production
  * figures removed (no real Deye reading backed them); production is monitored
  * via real-time production monitoring, never promised. Price-bracket data + solar math (localEstimateBand / formatMAD) reused
@@ -24,6 +24,8 @@
  *  5. Single motion language .cine-in / .v2-rise.
  */
 import Layout from '../../layouts/Layout.astro';
+// CPRW20 — carte d'un type de site partagée FR/EN/AR (garde check_duplicats_litteraux).
+import CarteSegmentPro from '../../components/blocs/CarteSegmentPro.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
@@ -66,32 +68,32 @@ const RC_PRO_ASSURANCE: string | null = null;
 // figure, just the same already-published proof split into two reading angles.
 const segments = [
   {
-    n: '01', title: 'Warehouse / plant',
+    n: '01', mode: 'industriel', title: 'Warehouse / plant',
     body: "Every kWh enters the cost price of a manufactured part. A wide, flat roof produces exactly when the machines are running — production lands when demand is there.",
     proof: '',
     financial: 'An operating cost that becomes a depreciated asset',
     technical: 'Wide, flat roof · install with no production stoppage',
   },
   {
-    n: '02', title: 'Agro-industrial shed',
-    body: "Drying, cold storage, processing: an agricultural shed consumes in broad daylight, exactly when the sun gives. The roof, already there, costs nothing extra to use — it carries the panels without eating a square metre of ground.",
+    n: '02', mode: 'industriel', title: 'Agro-industrial shed',
+    body: "Drying, cold storage, processing: an agricultural shed consumes in broad daylight, exactly when the sun gives. The roof carries the panels without eating a square metre of ground.",
     proof: 'Warranty: galvanised steel structure, 20 years, mounted on the existing roof',
-    financial: 'Zero extra land tied up — the existing roof funds the structure',
+    financial: 'No ground surface used',
     technical: 'Galvanised steel structure, 20-year warranty · no ground surface lost',
   },
   {
-    n: '03', title: 'Retail / hospitality',
+    n: '03', mode: 'commercial', title: 'Retail / hospitality',
     body: "Air conditioning in the afternoon, laundry in the morning, pool pumps running non-stop: a shop or hotel's curve hugs the sun's, hour for hour. Solar comes to cap a cost item that climbs every season.",
     proof: '',
     financial: 'Caps a cost line that climbs every tourist season',
     technical: 'Consumption curve tracks sunshine, hour for hour',
   },
   {
-    n: '04', title: 'Public sites',
-    body: "A public building or clinic tolerates no outage. Hybrid inverters plus batteries hold the critical equipment through grid dips, and by day the bill drops on the rest of the building.",
+    n: '04', mode: 'commercial', title: 'Public sites',
+    body: "A public building or clinic also consumes in the evening and at night. With hybrid inverters (able to switch between the grid, solar and the battery) and batteries that take over in the evening and at night, the bill drops by day on the rest of the building.",
     proof: 'Warranty: inverters Deye 5 years, Huawei 10 years',
-    financial: 'Lowers the building bill while securing continuity of service',
-    technical: 'Hybrid inverters + batteries · continuity on critical equipment',
+    financial: 'Lowers the building bill by day; batteries take over in the evening and at night',
+    technical: 'Hybrid inverters + batteries · batteries take over in the evening and at night',
   },
 ];
 
@@ -163,7 +165,7 @@ const capexOpex = [
           {/* ONE brass CTA (brass discipline) — gold is authorised here.
               W337 — reframed as an audit offer: same journey, same
               DiagnosticForm webhook, only the label changes. */}
-          <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+          <a href={`${L('/devis/mon-toit')}?mode=industriel`} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Free energy audit of my site →
           </a>
           {/* Ghost WhatsApp — white border, no brass */}
@@ -179,8 +181,8 @@ const capexOpex = [
             <dt class="tech-label mt-2 text-lune">Of production</dt>
           </div>
           <div>
-            <dd class="fig lum text-base sm:text-4xl" data-tally>5 MW</dd>
-            <dt class="tech-label mt-2 text-lune">Authorisation threshold</dt>
+            <dd class="fig lum text-base sm:text-2xl">Hour-by-hour study</dd>
+            <dt class="tech-label mt-2 text-lune">From your consumption</dt>
           </div>
         </dl>
       </div>
@@ -197,23 +199,7 @@ const capexOpex = [
       <h2 class="display v2-section-title mt-5 text-white">Four site types, one load logic</h2>
       <div class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
         {segments.map((s, i) => (
-          <div class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
-            <p class="fig lum text-2xl">{s.n}</p>
-            <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
-            <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-            {/* W335 — two reading lines: financial (CFO) then technical/operational */}
-            <dl class="mt-4 space-y-2 border-t border-white/10 pt-3">
-              <div>
-                <dt class="tech-label text-brass-300">Financial line</dt>
-                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.financial}</dd>
-              </div>
-              <div>
-                <dt class="tech-label text-lune">Technical line</dt>
-                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.technical}</dd>
-              </div>
-            </dl>
-            {s.proof && <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>}
-          </div>
+          <CarteSegmentPro i={i} n={s.n} title={s.title} body={s.body} financier={s.financial} technique={s.technical} libFinancier="Financial line" libTechnique="Technical line" proof={s.proof} mode={s.mode} href={s.mode === 'commercial' ? `${L('/devis/mon-toit')}?mode=commercial` : `${L('/devis/mon-toit')}?mode=industriel`} cta="Start the study" />
         ))}
       </div>
     </section>

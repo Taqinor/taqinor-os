@@ -321,7 +321,20 @@ def _ids_fk_connus(case):
             entree = _entree(nom, table)
             if entree is not None:
                 query[nom] = _remplacer_valeur(valeur, entree, texte=True)
-        _retyper_query(query, avant, _query_typee(meta))
+        _retyper_query(query, avant, _query_typee(meta),
+                       _types_query_publies(case.operation))
+
+
+def _types_query_publies(operation):
+    """{nom: type} des paramètres de query PUBLIÉS (``schema.type``)."""
+    publies = {}
+    for parametre in getattr(operation, 'query', None) or ():
+        definition = getattr(parametre, 'definition', None) or {}
+        schema = definition.get('schema') if isinstance(
+            definition, dict) else None
+        if isinstance(schema, dict) and isinstance(schema.get('type'), str):
+            publies[getattr(parametre, 'name', None)] = schema['type']
+    return publies
 
 
 def _query_typee(meta):
@@ -347,16 +360,29 @@ def _au_type(valeur, typee):
     return valeur
 
 
-def _retyper_query(query, avant, typee):
+def _retyper_query(query, avant, typee, publies=None):
     """CI #993 — une FK de query SUBSTITUÉE garde le type de la valeur
     générée. Schemathesis revalide une clé réécrite par un crochet sur sa
     valeur VIVANTE : ``'1'`` (chaîne) contre ``type: integer`` -> invalide ->
     le cas positif basculait NÉGATIF, et la réponse 200 (légitime : id réel)
     devenait « API accepted schema-violating request » sans aucune donnée
     invalide envoyée (17 constats du job PR, run 38505583284 :
-    ``?fournisseur=1``, ``?produit=1``, ``?lead=1``…)."""
+    ``?fournisseur=1``, ``?produit=1``, ``?lead=1``…).
+
+    api-fuzz-full 27/10 (ENF11, runs 40462160410 et 40491532345, tranche 13) —
+    l'inverse : un paramètre PUBLIÉ ``type: string`` reçoit un ENTIER du lien
+    stateful inféré (``tag_id`` <- ``GET /records/tags/`` ``results/*/id``) ;
+    substitué (2 -> 1) il restait entier, revalidé ``1`` contre ``string`` ->
+    cas « Positive test case » basculé NÉGATIF, 200 légitime signalé. Le type
+    PUBLIÉ prime donc sur le cliché typé : ``string`` -> la forme fil."""
+    publies = publies or {}
     for nom, valeur in list(query.items()):
-        if nom in typee and valeur != avant.get(nom):
+        if valeur == avant.get(nom):
+            continue
+        if (publies.get(nom) == 'string' and isinstance(valeur, int)
+                and not isinstance(valeur, bool)):
+            query[nom] = str(valeur)
+        elif nom in typee:
             query[nom] = _au_type(valeur, typee[nom])
 
 

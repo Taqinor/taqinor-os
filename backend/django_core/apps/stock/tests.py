@@ -42,7 +42,8 @@ class TestSeedCatalogue(TestCase):
         # (PVLV2 21/08/2026 : les 2 doublons « Deye basse tension 15/20 kW »
         # du 18/08 ne sont PLUS seedés — les SKU historiques SONT les LV)
         # + 70 articles C&I génériques « prix à renseigner » (CIQ103)
-        self.assertEqual(qs.count(), 174)  # AGQ36 : + STR-SOL-PMP
+        # + 1 batterie Dyness PowerBrick SC 16 kWh, BAT-DYN-PB-SC-16 (D-BAT-2710, 27/10/2026)
+        self.assertEqual(qs.count(), 175)  # AGQ36 : + STR-SOL-PMP ; D-BAT-2710 : + BAT-DYN-PB-SC-16
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -60,7 +61,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 174,  # AGQ36
+                company=self.company, reference='SEED-CATALOGUE').count(), 175,  # AGQ36 + D-BAT-2710
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -497,10 +498,10 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(f5.bat_dod_pct, Decimal('90.0'))
         self.assertEqual(f5.bat_v_nominal, Decimal('51.2'))
         self.assertEqual(f5.bat_max_charge_kw, Decimal('3.84'))
-        # BATHOMO (fondateur 26/08/2026) — « add it as parameter... for now
-        # keep it very high for 5kwh — maybe 200 » : la valeur EXPLICITEMENT
-        # fondateur ship sur le 5 kWh, jamais sur le 10 kWh (non déclaré).
-        self.assertEqual(f5.bat_max_modules_par_banc, 200)
+        # BATHOMO (26/08/2026) posait 200 faute de source ; D-BAT-2710
+        # (27/10/2026) : la datasheet DL5.0C publie « Up to 50 units in
+        # parallel » — la limite constructeur fait foi.
+        self.assertEqual(f5.bat_max_modules_par_banc, 50)
         self.assertIn('Modèle supposé : Dyness DL5.0C', b5.description)
         # L-DECH — décharge SOURCÉE datasheet DL5.0C (20250228-EN) :
         # « Charge 75 A / Discharge 100 A » ⇒ 100 A × 51,2 V = 5,12 kW. La
@@ -518,9 +519,10 @@ class TestSeedCatalogue(TestCase):
         # dans les deux sens, et la règle générale du fondateur (100 A × ~52 V)
         # est confirmée à l'ampère près.
         self.assertEqual(f10.bat_max_decharge_kw, Decimal('5.12'))
-        # Aucune valeur fondateur déclarée pour le 10 kWh — jamais un défaut
-        # inventé, le champ reste vide (illimité).
-        self.assertIsNone(f10.bat_max_modules_par_banc)
+        # D-BAT-2710 (27/10/2026) — Powerbox Pro : 5 unités en parallèle sur
+        # les datasheets MEA / AU-NZ et dans le manuel (10 sur la fiche UE) :
+        # la plus petite valeur PUBLIÉE est retenue, jamais un défaut inventé.
+        self.assertEqual(f10.bat_max_modules_par_banc, 5)
 
     def test_bathomo_max_modules_par_banc_comble_jamais_ecrase(self):
         """Migration stock 0132 — comble UNIQUEMENT le champ VIDE, depuis le
@@ -531,7 +533,7 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
         fiche = FicheTechnique.objects.get(produit=b5)
-        self.assertEqual(fiche.bat_max_modules_par_banc, 200)
+        self.assertEqual(fiche.bat_max_modules_par_banc, 50)
 
         fiche.bat_max_modules_par_banc = 5
         fiche.save(update_fields=['bat_max_modules_par_banc'])
@@ -872,7 +874,7 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
         # PVLV2 — les deux doublons « Basse Tension » ne sont plus créés.
-        self.assertIn('0 created, 174 already present', out)
+        self.assertIn('0 created, 175 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price
