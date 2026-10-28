@@ -123,7 +123,7 @@ def _logo_block(ctx):
         # illisible garde la balise d'origine.
         b64 = _logo.societe_b64(uri, "sombre")
         if b64:
-            return _logo.img_html(b64, "entete", alt="logo")
+            return _logo.img_html(_logo.pour_role(b64, "entete"), "entete", alt="logo")
         return (f'<img src="{escape(uri, quote=True)}" alt="logo" '
                 f'style="height:42px;width:auto;object-fit:contain;'
                 f'display:block;">')

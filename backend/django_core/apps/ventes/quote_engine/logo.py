@@ -48,11 +48,14 @@ from __future__ import annotations
 import base64
 import functools
 import io
+import logging
 from html import escape
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 CHEMIN_TAQINOR = ASSETS / "logo.png"
@@ -77,6 +80,7 @@ _FOND_CLAIR_MIN = 180.0     # luminance minimale d'un fond uni détourable
 _BORD_UNI_MAX = 12.0        # écart (canal) toléré entre un pixel du bord et le fond
 _BORD_UNI_PART = 0.5        # part minimale du bord qui doit être du fond (majorité : un logo rogné touche ses bords)
 _COTE_MAX = 1024            # grand côté maximal d'un logo téléversé (la boîte max = 54 mm ≈ 640 px à 300 dpi)
+_TRANSPARENCE_UTILE = 0.01  # part de pixels non opaques au-delà de laquelle l'image est déjà détourée
 _VIF_MIN, _VIF_MAX = 100.0, 150.0   # rampe « encre sombre → blanc » (valeur max canal)
 _ALPHA_VISIBLE = 0.02
 _CACHE_SOCIETE = 16
@@ -140,6 +144,11 @@ def _fond(a: np.ndarray):
     chemin /proposal et facture) a de l'encre sur ses quatre bords : le fond
     est la couleur MAJORITAIRE du bord (≥ ``_BORD_UNI_PART`` des pixels à
     ``_BORD_UNI_MAX`` près de la médiane), jamais l'écart moyen."""
+    # Une image qui porte DÉJÀ une transparence utile (PNG détouré, rogné à
+    # sa boîte alpha : une encre blanche touche alors ses bords) n'est jamais
+    # re-détourée — son fond est sa transparence.
+    if (a[..., 3] < 250).mean() > _TRANSPARENCE_UTILE:
+        return None
     bord = np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]])
     bord = bord[bord[:, 3] > 250][:, :3]
     if len(bord) < 4:
@@ -310,14 +319,15 @@ def societe_png(uri: str, variante: str = "sombre") -> bytes:
         raise ValueError(f"logo société : variante {variante!r}")
     try:
         img = _decoder_uri(uri)
-    except Exception:  # noqa: BLE001 — SVG / corrompu : traité comme absent (D-ENF22-BLE001)
+        if img is None:
+            return b""
+        a = detourer(img)
+        if variante == "sombre":
+            a = variante_sombre(a)
+        return _png(a)
+    except Exception:  # noqa: BLE001 — SVG / corrompu / mode exotique : traité comme absent (D-ENF22-BLE001)
+        logger.warning("logo.societe_png : erreur ignorée (mode dégradé)", exc_info=True)
         return b""
-    if img is None:
-        return b""
-    a = detourer(img)
-    if variante == "sombre":
-        a = variante_sombre(a)
-    return _png(a)
 
 
 def societe_b64(uri: str, variante: str = "sombre") -> str:
@@ -388,11 +398,31 @@ def img_html(b64: str, role: str, alt: str = "TAQINOR", style: str = "") -> str:
             f'style="{css_boite(role)}{style}">')
 
 
-def mot_si_lockup(b64: str, lockup_b64: str) -> str:
-    """Héros bas (résidentiel, 53 mm sous un bloc titre absolu) : le lockup
-    TAQINOR (avec tagline) devient le mot-marque seul ; tout autre logo
-    (société, bandeau neutre) est rendu tel quel."""
-    return taqinor_b64("sombre", "mot") if b64 and b64 == lockup_b64 else b64
+def est_taqinor(b64: str):
+    """Variante (« clair » | « sombre ») si ``b64`` EST le lockup TAQINOR —
+    l'asset embarqué, ou le même carré 1024 TÉLÉVERSÉ par le profil (cas de la
+    prod) : égalité des octets en sortie du même pipeline, jamais un nom."""
+    if not b64:
+        return None
+    for variante in _VARIANTES:
+        if b64 == taqinor_b64(variante, "lockup"):
+            return variante
+    return None
+
+
+def pour_role(b64: str, role: str) -> str:
+    """Le logo à imprimer pour un rôle : le lockup TAQINOR (embarqué ou
+    téléversé) devient le bloc du rôle (mot-marque seul en « entete » /
+    « hero », lockup ailleurs) ; tout autre logo (société, bandeau neutre)
+    est rendu tel quel."""
+    variante = est_taqinor(b64)
+    return taqinor_b64(variante, bloc_taqinor(role)) if variante else b64
+
+
+def image_qr(b64: str):
+    """Centre des QR pour un logo base64 (clair) : l'emblème si c'est le lockup
+    TAQINOR (embarqué ou téléversé), sinon le logo dans un carré blanc."""
+    return taqinor_image_qr() if est_taqinor(b64) else image_qr_societe(b64)
 
 
 def bloc_taqinor(role: str) -> str:

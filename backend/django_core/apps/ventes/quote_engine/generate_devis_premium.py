@@ -1197,7 +1197,7 @@ def logo_html(role="entete"):
         logger.warning("generate_devis_premium.logo_html : erreur ignorée (mode dégradé)", exc_info=True)
         b64_data = None
     if b64_data:
-        return _logo.img_html(b64_data, role)
+        return _logo.img_html(_logo.pour_role(b64_data, role), role)
     return (f'<span style="font-size:15pt;font-weight:900;letter-spacing:1px;color:white;">'
             f'TAQIN<span style="color:{CA};">&#9728;</span>R</span>')
 

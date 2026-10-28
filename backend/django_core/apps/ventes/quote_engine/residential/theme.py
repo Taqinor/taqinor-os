@@ -116,7 +116,9 @@ def logo_qr(data):
     celui de la société (``logo_societe_b64``, couleur : il se pose sur le
     blanc du code), sinon l'asset TAQINOR (True)."""
     societe = logo_societe_b64(data, sombre=False)
-    return True if societe is None else societe
+    # R3 — le carré 1024 TAQINOR téléversé par le profil (prod) = l'asset :
+    # emblème, jamais le lockup entier écrasé au centre du code.
+    return True if societe is None or _logo.est_taqinor(societe) else societe
 
 
 # This renderer's own bundled assets (the page-1 hero photo).
@@ -265,12 +267,13 @@ def qr_data_uri(url: str, *, logo=True, correction: str = "H",
         # telle quelle : l'emblème TAQINOR (soleil, rayons, éclair) ou le logo
         # société posé dans un carré blanc (``quote_engine.logo``), jamais un
         # canevas à marges ni un logo large écrasé.
+        centre = None
         if logo is True:
-            if _logo.taqinor_image_qr() is not None:
-                kw["embeded_image"] = _logo.taqinor_image_qr()
+            centre = _logo.taqinor_image_qr()
         elif logo and logo != _PIXEL_TRANSPARENT_B64:
-            if _logo.image_qr_societe(logo) is not None:
-                kw["embeded_image"] = _logo.image_qr_societe(logo)
+            centre = _logo.image_qr(logo)
+        if centre is not None:
+            kw["embeded_image"] = centre
         img = qr.make_image(**kw)
         buf = io.BytesIO()
         img.save(buf, "PNG")

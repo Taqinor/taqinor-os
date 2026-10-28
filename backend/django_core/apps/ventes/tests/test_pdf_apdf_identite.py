@@ -468,6 +468,25 @@ class LogoRegleTests(SimpleTestCase):
         prod = {'entreprise': {'nom': 'TAQINOR Solutions', 'logo_uri': uri_asset}}
         self.assertEqual(theme.logo_imprime_b64(prod), theme.logo_dark_b64())
         self.assertEqual(theme.logo_imprime_b64(prod, sombre=False), theme.logo_color_b64())
+        # Bloquant B2 — le carré téléversé est reconnu comme l'asset : en-têtes
+        # legacy (pages 2-3, étude) et documents annexes impriment le MOT-MARQUE
+        # dans la boîte « entete », le centre des QR reçoit l'emblème (= asset).
+        from apps.ventes.quote_engine.extra_docs import _logo_block
+        mot = logo.taqinor_b64('sombre', 'mot')
+        G._apply_entreprise(prod['entreprise'])
+        self.assertIn(mot, G.logo_html('entete'))
+        self.assertIn(logo.css_boite('entete'), G.logo_html('entete'))
+        self.assertIn(theme.logo_dark_b64(), G.logo_html('onepage'))      # lockup : tagline permise
+        self.assertIn(theme.logo_dark_b64(), G.logo_p1_dark())
+        self.assertIn(mot, _logo_block({'logo_uri': uri_asset}))
+        self.assertIs(theme.logo_qr(prod), True)
+        url = 'https://taqinor.ma/proposition/r3-prod'
+        self.assertEqual(theme.qr_data_uri(url, logo=theme.logo_qr(prod)), theme.qr_data_uri(url))
+        # Un autre logo téléversé (rouge) n'est jamais substitué.
+        rouge = {'entreprise': {'nom': 'X', 'logo_uri': uri}}
+        G._apply_entreprise(rouge['entreprise'])
+        self.assertIn(theme.logo_imprime_b64(rouge), G.logo_html('entete'))
+        self.assertNotIn(mot, G.logo_html('entete'))
 
     def test_logo_hd_dans_le_html_de_chaque_famille(self):
         """R3 — le logo détouré de ``quote_engine.logo`` est dans le HTML de

@@ -269,3 +269,45 @@ class LogoDetourageTests(SimpleTestCase):
         img = logo._decoder_uri(_uri(grand))
         self.assertEqual(max(img.size), 1024)
         self.assertAlmostEqual(img.width / img.height, 2.0, places=2)
+
+    def test_logo_deja_transparent_a_encre_claire_jamais_detoure(self):
+        """Bloquant B1 (coordinatrice) — un PNG déjà DÉTOURÉ à encre blanche,
+        rogné à sa boîte alpha (l'encre touche les bords), n'est pas re-détouré :
+        l'encre reste opaque, la variante sombre le laisse intact."""
+        import io
+        from PIL import Image
+        from apps.ventes.quote_engine import logo
+        img = Image.new('RGBA', (300, 100), (0, 0, 0, 0))
+        for x in (0, 120, 240):                       # trois lettres blanches, aux bords
+            img.paste(Image.new('RGBA', (60, 100), (255, 255, 255, 255)), (x, 0))
+        rogne, ext = _trim_image_whitespace(_png_bytes(img))
+        self.assertIsNone(ext)                        # déjà à sa boîte alpha
+        uri = _uri(img)
+        for variante in ('sombre', 'clair'):
+            s = Image.open(io.BytesIO(logo.societe_png(uri, variante))).convert('RGBA')
+            self.assertEqual(s.size, (300, 100), variante)
+            self.assertEqual(s.getpixel((30, 50)), (255, 255, 255, 255), variante)
+            self.assertEqual(s.getpixel((90, 50))[3], 0, variante)
+
+    def test_lockup_televerse_reconnu_par_les_octets(self):
+        """Bloquant B2 (coordinatrice) — le carré 1024 TAQINOR téléversé (cas
+        prod) est reconnu comme l'asset par ses octets en sortie du pipeline :
+        ``pour_role`` rend le bloc du rôle, ``image_qr`` l'emblème ; un autre
+        logo reste tel quel."""
+        import base64
+        from PIL import Image
+        from apps.ventes.quote_engine import logo
+        uri = 'data:image/png;base64,' + base64.b64encode(logo.CHEMIN_TAQINOR.read_bytes()).decode()
+        sombre, clair = logo.societe_b64(uri, 'sombre'), logo.societe_b64(uri, 'clair')
+        self.assertEqual(logo.est_taqinor(sombre), 'sombre')
+        self.assertEqual(logo.est_taqinor(clair), 'clair')
+        self.assertEqual(logo.pour_role(sombre, 'entete'), logo.taqinor_b64('sombre', 'mot'))
+        self.assertEqual(logo.pour_role(sombre, 'hero'), logo.taqinor_b64('sombre', 'mot'))
+        self.assertEqual(logo.pour_role(sombre, 'couverture'), sombre)
+        self.assertEqual(logo.pour_role(clair, 'onepage'), clair)
+        self.assertIs(logo.image_qr(clair), logo.taqinor_image_qr())
+        rouge = logo.societe_b64(_uri(Image.new('RGB', (120, 60), (220, 20, 20))), 'sombre')
+        self.assertIsNone(logo.est_taqinor(rouge))
+        self.assertEqual(logo.pour_role(rouge, 'entete'), rouge)
+        self.assertEqual(logo.image_qr(rouge).size, logo.image_qr_societe(rouge).size)
+        self.assertIsNone(logo.est_taqinor(''))

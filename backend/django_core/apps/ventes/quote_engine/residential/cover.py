@@ -102,9 +102,9 @@ def build(ctx):
     # QJR614 — le prix TTC des cartes d'option s'imprime au centime.
     fmt_mad = ctx.get("fmt_mad") or fmt
     fonts = ctx["fonts"]
-    # R3 — héros photo de 53 mm (boîte « hero ») : le lockup TAQINOR devient le
-    # mot-marque seul ; un logo société (ou le bandeau neutre) reste tel quel.
-    logo_dark = _logo.mot_si_lockup(ctx["logo_dark"], ctx["theme"].logo_dark_b64())
+    # R3 — héros photo de 53 mm (boîte « hero ») : le lockup TAQINOR (embarqué
+    # ou téléversé) devient le mot-marque seul ; un logo société reste tel quel.
+    logo_dark = _logo.pour_role(ctx["logo_dark"], "hero")
     charts = ctx["charts"]
     hero_img = ctx.get("hero_img", "")
     # QX4 — identité société (multi-tenant) : marque affichée sur la cover

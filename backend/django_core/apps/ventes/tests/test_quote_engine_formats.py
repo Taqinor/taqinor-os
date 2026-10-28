@@ -1862,6 +1862,9 @@ class TestQjr307PreuveOctetsOnepageAgricole(TestCase):
         # octet-identique. Toujours 1 page (garde ci-dessus, verte dans le
         # même run). Valeur recopiée du message d'échec du gate image de la
         # lane (gate_moteur2) — jamais calculée à la main.
+        # R3 (28/10/2026) — CHANGEMENT VOULU : le logo de l'en-tête passe par
+        # ``quote_engine.logo`` (boîte « onepage » par capitale, plus de
+        # ``height:80px``) ; valeur recopiée du harnais docker de la lane.
         EMPREINTE_EPINGLEE = (
             '832db67c0fb27a60cf6d56dc6ed7747944e8ee544a56ae15f1196bbf41e46303')
 
