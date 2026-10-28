@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { renderLeadWorkspace } from '../../../test/leadWorkspaceHarness'
+import { renderLeadWorkspace, echecReseauAutosaveVille } from '../../../test/leadWorkspaceHarness'
 import { LEAD_A, installerHooksLeadWorkspace } from '../../../test/leadWorkspaceMocks'
 import { screen, fireEvent, waitFor } from '@testing-library/react'
 import crmApi from '../../../api/crmApi'
@@ -102,14 +102,7 @@ describe('RÈGLE FONDATEUR 08/09/2026 — le chip d’échec d’autosauvegarde 
   })
 
   it('un échec SANS champ exploitable (réseau) garde le chip générique historique « Non enregistré — Réessayer »', async () => {
-    crmApi.updateLead.mockRejectedValueOnce({ response: { status: 503 } })
-    renderEdit()
-    await settled()
-    fireEvent.change(document.querySelector('#lf-ville'), { target: { value: 'Rabat' } })
-    await waitFor(
-      () => expect(screen.getByRole('button', { name: /Réessayer/ })).toBeInTheDocument(),
-      { timeout: 3000 },
-    )
+    await echecReseauAutosaveVille(LEAD_A)
     // Un seul bouton (pas de second « Réessayer » séparé) — comportement
     // historique inchangé pour ce cas, zéro régression.
     expect(screen.getAllByRole('button', { name: /Réessayer/ })).toHaveLength(1)
