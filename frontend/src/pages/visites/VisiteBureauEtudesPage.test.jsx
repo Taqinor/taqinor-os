@@ -358,8 +358,12 @@ describe('VisiteBureauEtudesPage — CSV14 (devis révisé après visite C&I)', 
       expect(rendu).toHaveTextContent(`${avant} → ${apres}`)
     }
     for (const mesure of revise.exemple.mesures_utilisees) {
-      expect(bloc).toHaveTextContent(`${mesure.cle} : ${mesure.valeur}`)
+      expect(bloc).toHaveTextContent(` : ${mesure.valeur}`)
     }
+    // Rejeu CSV11 — les clés sont dites comme au relevé (D-CMP-2), jamais en code.
+    const dc = revise.exemple.mesures_utilisees.find((m) => m.cle === 'longueur_dc_m')
+    expect(bloc).toHaveTextContent(`Distance champ → onduleur (un sens, m) : ${dc.valeur}`)
+    expect(bloc).not.toHaveTextContent('longueur_dc_m')
     const lien = within(bloc).getByRole('link', { name: new RegExp(revise.exemple.reference) })
     expect(lien).toHaveAttribute('href', `/ventes/devis?devis=${revise.exemple.devis_id}`)
     expect(lien).toHaveTextContent(`V${revise.exemple.version}`)

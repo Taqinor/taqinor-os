@@ -253,6 +253,21 @@ function RenvoyerDialog({ open, onOpenChange, visite, onRenvoye }) {
   )
 }
 
+// Rejeu CSV11 — les clés des mesures servies par le contrat, dites comme sur
+// le relevé de visite (D-CMP-2) ; une clé inconnue reste affichée telle quelle.
+const LIBELLES_MESURES = {
+  longueur_dc_m: 'Distance champ → onduleur (un sens, m)',
+  longueur_ac_m: 'Distance onduleur → TGBT (m)',
+  couverture: 'Type de couverture',
+  type_pose: 'Type de pose',
+  surface_utile_m2: 'Surface utile (m²)',
+  surface_type: 'Surface',
+  pente_deg: 'Pente (°)',
+  charge_admissible_kg_m2: 'Charge admissible (kg/m²)',
+  niveau_tension: 'Niveau de tension',
+  puissance_souscrite_kva: 'Puissance souscrite (kVA)',
+}
+
 // CSV14 — la quantité d'une ligne avant / après (ligne ajoutée ou retirée = null).
 const quantiteLigne = (etat, absent) => (etat ? String(Number(etat.quantite)) : absent)
 
@@ -284,7 +299,7 @@ function DevisReviseRecap({ resultat }) {
           <p className="text-xs text-muted-foreground">Mesures utilisées</p>
           <ul className="text-xs">
             {resultat.mesures_utilisees.map((m) => (
-              <li key={m.cle}>{m.cle} : {String(m.valeur)}</li>
+              <li key={m.cle}>{LIBELLES_MESURES[m.cle] || m.cle} : {String(m.valeur)}</li>
             ))}
           </ul>
         </div>
