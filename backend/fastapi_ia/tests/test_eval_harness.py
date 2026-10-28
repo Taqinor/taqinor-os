@@ -76,6 +76,81 @@ class EvalHarnessTests(unittest.TestCase):
         result = runner.score_case(case, sql_producer=bad_producer)
         self.assertFalse(result["passed"])
 
+    def test_rejeu_reel_commerciaux(self):
+        """Rejeu PAYANT, desarme par defaut : sans ASSISTANT_EVAL=1 + cle +
+        SQL_AGENT_JUGE_MODEL il ne fait rien (pas de nouveau site de saut :
+        la baseline ENF23 ne grossit pas, C20)."""
+        if not (os.environ.get("ASSISTANT_EVAL") == "1"
+                and os.environ.get("CLAUDE_API_KEY")
+                and os.environ.get("SQL_AGENT_JUGE_MODEL")):
+            return
+        modele = runner.svc._modele_effectif(runner.svc.SQL_AGENT_PROVIDER.lower())
+        juge = os.environ["SQL_AGENT_JUGE_MODEL"]
+        rapport = runner.run_eval_commerciaux(
+            runner.repondeur_reel(int(os.environ.get("ASSISTANT_EVAL_COMPANY_ID", "1")),
+                                  int(os.environ.get("ASSISTANT_EVAL_USER_ID", "1"))),
+            runner.juge_reel(juge), modele, juge)
+        self.assertTrue(os.path.exists(runner.ecrire_rapport(rapport)))
+
+
+class EvalCommerciauxTests(unittest.TestCase):
+    """AIC10 — jeu de 50 questions de commerciaux, fournisseur SIMULE (aucun
+    appel payant) ; le rejeu reel exige ASSISTANT_EVAL=1 + une cle."""
+
+    @staticmethod
+    def _repondre(case):
+        return {"answer": "ok", "outils_appeles": [case["outil"]] if case["outil"] else [],
+                "sql_query": "SELECT 1" if case["outil"] == "sql_db_query" else "",
+                "tokens": {"cache_read": 1000, "input": 200, "output": 100}}
+
+    @staticmethod
+    def _juger(case, _reponse):
+        return {c: True for c in runner.CRITERES_JUGE}
+
+    def test_jeu_de_50_cas_cinq_par_intention(self):
+        from tests.eval.cases_commerciaux import CASES_COMMERCIAUX, INTENTIONS_ATTENDUES
+        self.assertEqual(len(CASES_COMMERCIAUX), 50)
+        self.assertEqual(len({c["id"] for c in CASES_COMMERCIAUX}), 50)
+        base = [c for c in CASES_COMMERCIAUX if c["source"] == "base"]
+        for intention in INTENTIONS_ATTENDUES:
+            self.assertEqual(sum(c["intention"] == intention for c in base), 5, intention)
+        self.assertEqual(sum(c["source"] == "guide" for c in CASES_COMMERCIAUX), 20)
+
+    def test_juge_different_du_modele_evalue(self):
+        with self.assertRaises(ValueError):
+            runner.run_eval_commerciaux(self._repondre, self._juger,
+                                        "claude-sonnet-5-5", "claude-sonnet-5-5")
+        with self.assertRaises(ValueError):
+            runner.verifier_juge_different("claude-sonnet-5-5", "")
+
+    def test_rapport_porte_cout_par_question(self):
+        import json
+        import tempfile
+        rapport = runner.run_eval_commerciaux(
+            self._repondre, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5")
+        self.assertEqual(rapport["total"], 50)
+        self.assertEqual(rapport["taux"], 1.0)
+        # 1000*0.10 + 200*2 + 100*10 = 1500 USD/MTok-tokens -> 0.0015 USD
+        self.assertAlmostEqual(rapport["questions"][0]["cout_usd"], 0.0015)
+        self.assertAlmostEqual(rapport["cout_usd_par_question"], 0.0015)
+        self.assertEqual(set(rapport["par_intention"]), {
+            "question_manuel", "donnee", "action", "bug", "manque", "hors_champ"})
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = runner.ecrire_rapport(rapport, dossier=dossier)
+            with open(chemin, encoding="utf-8") as f:
+                self.assertEqual(json.load(f)["total"], 50)
+
+    def test_mauvais_outil_ou_juge_negatif_fait_echouer(self):
+        def sans_outil(case):
+            return {"answer": "", "tokens": {}}
+
+        rapport = runner.run_eval_commerciaux(
+            sans_outil, self._juger, "claude-sonnet-5-5", "claude-haiku-5-5")
+        echecs = {q["id"] for q in rapport["questions"] if not q["passed"]}
+        from tests.eval.cases_commerciaux import CASES_COMMERCIAUX
+        attendus = {c["id"] for c in CASES_COMMERCIAUX if c["outil"]}
+        self.assertEqual(echecs, attendus)
+
 
 if __name__ == "__main__":
     unittest.main()
