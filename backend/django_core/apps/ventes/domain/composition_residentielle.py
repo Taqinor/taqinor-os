@@ -37,6 +37,7 @@ from apps.ventes.domain.catalogue import (
     classer_produit,
     metre_cable_dc_par_paires,
     metre_cable_terre,
+    paires_mppt_du_champ,
     plafond_panneaux,
     prix_forfait_ht,
 )
@@ -77,6 +78,62 @@ def _statut_couple_panneau(panneau, onduleurs):
     return pire[1], pire[2]
 
 
+def _choisir_panneau(pool, watt):
+    """Panneau : wattage demandé d'abord, à défaut le plus proche.
+
+    RSIZ4 — corps EXTRAIT tel quel de :func:`composition_residentielle`.
+    ``pool`` est le vivier DÉJÀ restreint à la marque épinglée (PVMRQ). Rend
+    ``(tries, exacts, panneau)`` : les deux listes servent au repli PVCOMPAT.
+    """
+    tries = []
+    for produit in pool:
+        w = _parse_watt(getattr(produit, 'nom', ''))
+        if w is not None:
+            tries.append((w, produit))
+    exacts = [c for c in tries if c[0] == int(watt)]
+    if exacts:
+        # Même départage qu'à l'écran : un Canadien Solar passe devant.
+        exacts.sort(key=lambda c: 0 if 'canadien' in _sans_accents(
+            getattr(c[1], 'nom', '')) else 1)
+        return tries, exacts, exacts[0][1]
+    if tries:
+        return tries, exacts, min(tries, key=lambda c: abs(c[0] - watt))[1]
+    return tries, exacts, None
+
+
+def _hybrides_servis_par_une_batterie(vivier, batteries):
+    """RSIZ2 — le vivier d'hybrides réduit à ceux qu'une batterie TARIFÉE ET
+    EN STOCK peut servir (tension dans la plage batterie de l'onduleur).
+
+    Mesuré le 27/10/2026 sur un instantané de production : au-delà de
+    ~25 kWc la règle des 80 % retenait le Deye 30 kW (batterie HAUTE tension
+    160-800 V) alors que la seule batterie tarifée en stock est le Dyness 5 kWh
+    BASSE tension — l'option « avec batterie » partait SANS batterie. Réduit
+    à des hybrides servables, le choix retombe sur le plus gros hybride basse
+    tension, posé en N exemplaires (``quantite_onduleur``). Aucun hybride
+    servable ⇒ le vivier est rendu TEL QUEL : la composition prononce alors
+    l'avertissement batterie existant (vivier vide / rupture), jamais un
+    silence.
+    """
+    servies = [b for b in (batteries or ()) if _batterie_en_stock(b)]
+    retenus = [o for o in vivier if any(
+        _batterie_compatible(b, _plage_batterie_de_l_onduleur(o))
+        for b in servies)]
+    return retenus or list(vivier)
+
+
+def _paires_mppt(mppt_paires, derivees, nb, kwp, panneau, vendus):
+    """RSIZ5 — les paires de câble DC chiffrées : ``mppt_paires`` tel quel
+    (règles d'origine), ou le plus grand de lui et du compte DÉRIVÉ."""
+    if not derivees:
+        return mppt_paires
+    try:
+        plancher = max(1, int(mppt_paires or 1))
+    except (TypeError, ValueError):
+        plancher = 1
+    return max(plancher, paires_mppt_du_champ(nb, kwp, panneau, vendus))
+
+
 def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               avec_batterie=False, structure_type='acier',
                               structure_produit_id=None,
@@ -85,7 +142,8 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               ordre_lignes=None, mppt_paires=1, phase=None,
                               batterie_cible_kwh=None,
                               batterie_module_kwh=None,
-                              hors_reseau=False, modeles=None):
+                              hors_reseau=False, modeles=None,
+                              regles_2710=True):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     ``modeles`` (ACAL63, C-ACAL-042) — les modèles POSÉS par le calepinage,
@@ -112,6 +170,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         canonique du simulateur est rendu tel quel.
       · ``mppt_paires`` — C4/PVCBL, nombre de paires de câble DC descendantes
         (60 m par paire) ; repli fondateur explicite à 1 paire.
+      · ``regles_2710`` — corrections résidentielles du 27/10/2026, vrai
+        (LE DÉFAUT, règles courantes) sauf pour un devis EXISTANT aux règles
+        < 3 (``regles_au_moins(devis, REGLES_CORRIGEES_2710)``) : RSIZ5, les
+        paires sont DÉRIVÉES du champ et des onduleurs vendus
+        (:func:`catalogue.paires_mppt_du_champ`), ``mppt_paires`` n'étant
+        plus qu'un PLANCHER ; RSIZ2, l'hybride de l'option « avec » doit être
+        servi par une batterie du stock. ``False`` ⇒ les deux règles
+        d'avant, byte-identiques à l'historique.
       · ``phase`` — PVCOMPAT, le RACCORDEMENT déclaré par le client
         (``'monophase'`` / ``'triphase'``, cf.
         ``compatibilites.normaliser_phase``). Monophasé : les onduleurs
@@ -231,6 +297,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         _type_equipement,
         _vivier_onduleurs_par_phase,
         avertissement_aucun_onduleur_triphase,
+        avertissement_phase_supposee_triphasee,
         avertissement_batterie_pin_sans_correspondance,
         avertissement_batterie_plafond_banc,
         avertissement_batterie_rupture_stock,
@@ -256,6 +323,11 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     deux_options = deux_options_composables(deux_options, hors_reseau)
     if hors_reseau:
         avec_batterie = True
+    # U2 — en forme DEUX OPTIONS, le stockage fait partie du devis : les
+    # batteries sont composées même si ``avec_batterie`` est faux, puisque
+    # c'est l'option « avec » qui les porte. (RSIZ2 : lu dès le choix de
+    # l'hybride, d'où sa place ici.)
+    veut_batterie = bool(avec_batterie or deux_options)
 
     # Catalogue indexé par catégorie. Le filtre de prix passe ICI, une fois
     # pour toutes : aucune branche ne peut ensuite coter un produit non tarifé.
@@ -339,8 +411,15 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         PHASE_MONO, PHASE_TRI, avertissement_raccordement, normaliser_phase)
     phase_client = normaliser_phase(phase)
 
+    # RSIZ4 — TOUT avertissement de cette composition est AUSSI recueilli
+    # ici et rendu sur le résultat (``.avertissements_composition``), que
+    # l'appelant ait fourni un canal ou non.
+    recueil = []
+
     def _avertir(message):
         """Consigne un avertissement UNE fois (deux onduleurs, un message)."""
+        if message not in recueil:
+            recueil.append(message)
         if avertissements is None:
             logger.warning('PVCOMPAT: %s', message)
             return
@@ -370,6 +449,12 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         complets = _filtrer_onduleurs_complets(
             par_marque(par_type.get(categorie), categorie))
         vivier, replie = _vivier_onduleurs_par_phase(complets, phase_client)
+        # RSIZ2 — un hybride qu'AUCUNE batterie tarifée en stock ne sert ne
+        # porte pas l'option « avec » (le 30 kW HV face au seul Dyness LV).
+        vivier = (_hybrides_servis_par_une_batterie(
+            vivier, par_type.get('batterie'))
+            if categorie == 'onduleur_hybride' and veut_batterie
+            and regles_2710 else vivier)
         replis_phase[categorie] = replie
         refus_tri[categorie] = False
         for produit in vivier:
@@ -454,30 +539,22 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     if phase_client == PHASE_TRI and any(
             refus_tri.get(categorie) for categorie in _categories_vendues):
         _avertir(avertissement_aucun_onduleur_triphase())
-    # U2 — en forme DEUX OPTIONS, le stockage fait partie du devis : les
-    # batteries sont composées même si ``avec_batterie`` est faux, puisque
-    # c'est l'option « avec » qui les porte.
-    veut_batterie = bool(avec_batterie or deux_options)
+    # RSIZ6 — raccordement INCONNU : l'onduleur triphasé VENDU vient de
+    # l'heuristique « ≥ 10 kW » seule ; le commercial doit le vérifier.
+    if not phase_client and any(
+            _est_triphase(getattr(
+                _onduleurs_par_categorie.get(categorie), 'nom', '') or '')
+            for categorie in _categories_vendues
+            if _onduleurs_par_categorie.get(categorie) is not None):
+        _avertir(avertissement_phase_supposee_triphasee())
 
     # ── Panneau : wattage demandé d'abord, à défaut le plus proche ──
     # PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de
     # wattage : la substitution « wattage le plus proche » ne joue plus que
     # DANS la marque retenue, jamais hors d'elle (miroir de l'écran).
-    tries = []
-    for produit in par_marque(par_type.get('panneau'), 'panneau'):
-        w = _parse_watt(getattr(produit, 'nom', ''))
-        if w is not None:
-            tries.append((w, produit))
-    exacts = [c for c in tries if c[0] == int(watt)]
-    if exacts:
-        # Même départage qu'à l'écran : un Canadien Solar passe devant.
-        exacts.sort(key=lambda c: 0 if 'canadien' in _sans_accents(
-            getattr(c[1], 'nom', '')) else 1)
-        panneau = exacts[0][1]
-    elif tries:
-        panneau = min(tries, key=lambda c: abs(c[0] - watt))[1]
-    else:
-        panneau = None
+    # RSIZ4 — corps extrait tel quel dans :func:`_choisir_panneau`.
+    tries, exacts, panneau = _choisir_panneau(
+        par_marque(par_type.get('panneau'), 'panneau'), watt)
 
     # ── PVCOMPAT — LE COUPLE PANNEAU / ONDULEUR EST VÉRIFIÉ ────────────────
     # Les deux choix ci-dessus sont INDÉPENDANTS : rien ne garantissait qu'ils
@@ -781,14 +858,9 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             message = avertissement_batterie_rupture_stock()
         else:
             message = avertissement_batterie_plafond_banc()
-        if avertissements is not None:
-            avertissements.append(message)
-        else:
-            logger.warning(
-                'PVOND: aucune banque batterie composable (%s) alors que le '
-                'devis est demandé AVEC batterie — composition SANS '
-                'batterie ; cet appelant ne porte aucun canal '
-                'd\'avertissement.', message)
+        # RSIZ4 — même canal que les autres avertissements (recueil + liste
+        # de l'appelant, ou journal quand il n'en porte aucune).
+        _avertir(message)
 
     bat5 = bat10 = None
     nb5, nb10 = 0, 0
@@ -940,7 +1012,13 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     ajouter('socle', premier('socle'), _derivees['socle'])
     # C4/PVCBL — métrage AU MÈTRE : le DC suit les paires de MPPT, la terre
     # suit les paliers de 5 kWc (25 m de base + 15 m par palier).
-    ajouter('cable_dc', cable_dc, metre_cable_dc_par_paires(mppt_paires))
+    # RSIZ5 — paires DÉRIVÉES du champ et des onduleurs vendus (niveau 3).
+    ajouter('cable_dc', cable_dc, metre_cable_dc_par_paires(_paires_mppt(
+        mppt_paires, regles_2710, nb, kwp, panneau,
+        [(o, quantite_onduleur(k)) for o, k in (
+            ((onduleur_reseau, kw_reseau), (onduleur_hybride, kw_hybride))
+            if deux_options else ((onduleur, kw_onduleur),))
+         if o is not None])))
     ajouter('cable_terre', cable_terre, metre_cable_terre(blocs))
     # L-FORFAIT — une SEULE ligne par forfait, quantité 1, dont le prix
     # unitaire EST le total du barème (désignations inchangées). Barème absent
@@ -973,6 +1051,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
             for p_m, n_m in panneaux_designes) / 1000.0, 3)
     lignes.blocs = blocs
     lignes.marques_manquantes = marques_manquantes
+    lignes.avertissements_composition = list(recueil)
     # DIM2 — LES CAPACITÉS RÉELLEMENT DISPONIBLES, en kWh nominaux, telles que
     # le vivier batterie les a retenues (compatibilité de tension avec
     # l'onduleur hybride comprise). Le balayage du stockage lit CETTE liste

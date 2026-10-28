@@ -38,19 +38,25 @@ class CategorieCommerciale(models.TextChoices):
 
 #: Clés FERMÉES de ``reponses_categorie`` par catégorie (contrat CIQ1,
 #: ``reponses_categorie_par_categorie.cles``) ; une catégorie sans question
-#: propre a un tuple vide.
+#: propre a un tuple vide. CSV13 — les clés d'HEURES et de DATES que le moteur
+#: C&I lit pour la courbe (``moteur_ci/categories.py`` : ``heures``,
+#: ``heures_cuisson``, ``heures_garde``, ``fermeture_du``/``fermeture_au``)
+#: suivent la réponse qui les rend utiles ; sans elles, une cuisson de nuit
+#: tombait en journée. Valeurs : ``[[début_h, fin_h]]`` (heures civiles) et
+#: dates ``AAAA-MM-JJ`` ou ``MM-JJ``.
 REPONSES_CATEGORIE_CLES = {
     **{cle: () for cle in CategorieCommerciale.values},
     'hotel': ('chambres', 'occupation_pct', 'piscine', 'heures_piscine',
               'blanchisserie', 'reception_24h'),
-    'restaurant': ('chambres_froides', 'horaires', 'cuisson',
+    'restaurant': ('chambres_froides', 'horaires', 'heures', 'cuisson',
                    'ouvert_journee_ramadan'),
     'commerce': ('surface_vente_m2', 'chambres_froides'),
     'bureau': ('effectif', 'clim'),
-    'sante': ('lits', 'garde_nuit'),
-    'ecole': ('effectif', 'internat', 'fermeture_estivale'),
+    'sante': ('lits', 'garde_nuit', 'heures_garde'),
+    'ecole': ('effectif', 'internat', 'fermeture_estivale', 'fermeture_du',
+              'fermeture_au'),
     'hammam': ('surface_m2', 'chauffe'),
-    'boulangerie': ('four', 'cuisson_nocturne'),
+    'boulangerie': ('four', 'cuisson_nocturne', 'heures_cuisson'),
     'froid': ('temperature_consigne', 'volume_m3', 'saisonnalite_recolte'),
 }
 

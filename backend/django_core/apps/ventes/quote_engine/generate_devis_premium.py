@@ -3184,59 +3184,10 @@ BOM_MAX_LIGNES = 22
 
 
 def _cartes_pompage_synthese(synthese):
-    """AGR313 — les cartes du résumé pompage, lues dans ``synthese_agricole``
-    (mêmes formats qu'AGR302 ; une carte sans valeur est OMISE). La carte
-    « besoin / livré » n'existe que si la synthèse la sert."""
-    eau = synthese.get("eau") or {}
-    pompe = synthese.get("pompe") or {}
-    cellules = []
-    _pcv, _pkw = pompe.get("cv"), pompe.get("kw")
-    if _pcv is not None:
-        cellules.append((
-            _L("puissance_pompe"),
-            f"{_fdec_fr(_pcv)} CV ({_fdec_fr(_pkw)} kW)" if _pkw is not None
-            else f"{_fdec_fr(_pcv)} CV"))
-    _hmt = eau.get("hmt_m")
-    if _hmt is not None:
-        cellules.append(("HMT", f"{_fdec_fr(_hmt)} m",
-                         _ancre_figure("pompe_hmt_m", _hmt)))
-    _dq = eau.get("debit_hmt_m3h")
-    if _dq is not None and _hmt is not None:
-        cellules.append(
-            (_L("debit_a_hmt").format(hmt=_fdec_fr(_hmt)),
-             f"{_fdec_fr(_dq, 1)} m&#179;/h",
-             _ancre_figure("pompe_debit_m3h", _fdec_fr(_dq, 1))))
-    _m3j, _hrs = eau.get("m3_jour"), eau.get("heures_pompage")
-    # AMOT56 (D-AMOT-7 = a) — m³/jour sur débit DÉCLARÉ : la carte le dit.
-    # AGQ3 (D-AGQ-2) — mois de conception, plus bas et heures équivalentes :
-    # LA phrase du héro du 3 pages ; devis v1 (aucun mois) : texte d'hier.
-    from .agricole.synthese import debit_declare_sans_courbe, texte_heures_eau
-    if _m3j is not None and _hrs is not None:
-        _est = (f"{_L('estimation')} &#183; {_L('lg_debit_declare_par_vous')}, "
-                if debit_declare_sans_courbe({"etude": ETUDE, "all_items": SANS_ITEMS + AVEC_ITEMS})
-                else f"{_L('estimation')}, " if eau.get("estimation") else "")
-        cellules.append(
-            (f"{_L('eau_jour')} &#8212; {_est}"
-             f"{texte_heures_eau(eau, LANGUE_SORTIE, lambda v: _fdec_fr(v, 1)) or _L('sur_heures_pompage').format(heures=_fdec_fr(_hrs, 1))}"
-             f" ({_L('hypothese')})",
-             f"&#8776; {fnum(_m3j)} m&#179;",
-             _ancre_figure("pompe_volume_m3_jour", fnum(_m3j))))
-    bvl = synthese.get("besoin_vs_livre")
-    if isinstance(bvl, dict):
-        try:
-            _m = (bvl.get("mois") or [])[int(bvl.get("mois_le_plus_serre")) - 1]
-        except (TypeError, ValueError, IndexError):
-            _m = None
-        if isinstance(_m, dict) and _m.get("besoin_m3_jour") is not None \
-                and _m.get("livre_m3_jour") is not None:
-            cellules.append((
-                _L("besoin_livre_mois_serre"),
-                f"{fnum(_m['besoin_m3_jour'])} / "
-                f"{fnum(_m['livre_m3_jour'])} m&#179;"))
-    if KWC > 0:
-        cellules.append((_L("champ_pv"), f"{kwc_fr(KWC)} kWc",
-                         _ancre_figure("puissance_kwc", kwc_fr(KWC))))
-    return cellules
+    """AGR313 — les cartes du résumé pompage du une-page : module de la
+    surface agricole (AGC2, ``agricole/onepage.py``)."""
+    from .agricole.onepage import cartes_pompage
+    return cartes_pompage(sys.modules[__name__], synthese)
 
 
 def _cartes_ci_onepage(chiffres):
@@ -3272,7 +3223,7 @@ def _cartes_ci_onepage(chiffres):
     payback = chiffres.get("payback_ans")
     if payback is not None:
         cellules.append((_L("op_retour_estime"),
-                         f"{ans(payback)}{_L('op_unite_ans')}",
+                         f"{ans(payback)}{ci_onepage.annees(_L('op_unite_ans'), LANGUE_SORTIE, payback)}",
                          _ancre_figure("payback_ans", ans(payback))))
     return cellules
 
@@ -3345,7 +3296,7 @@ def _formes_total_ttc():
     # AGR313 — en agricole, le bloc « Bon pour accord » compact vient APRÈS
     # les totaux : son libellé (dernière ligne du bloc) borne aussi la zone
     # visible, sinon la signature pourrait être rognée sans qu'on le mesure.
-    if SYNTHESE_AGRICOLE is not None:
+    if SYNTHESE_AGRICOLE is not None or CHIFFRES_CI is not None:  # CPDF : une-page C&I aussi
         bruts += [_L("bon_pour_accord"),
                   i18n_labels.libelle("bon_pour_accord", "fr")]
     for brut in bruts:
@@ -3559,7 +3510,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"))
+    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"))
     # ERR17 — serialize the whole render: the body writes module globals and
     # reads them back while building the HTML, so concurrent renders must not
     # interleave (one client's data leaking into another's PDF).
@@ -3971,7 +3922,7 @@ def render_html_for(data: dict) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"))
+    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"))
     # AGR312 — le moteur legacy ne sert JAMAIS un devis agricole en format à
     # options (pas d'onduleur) : le document complet est le renderer agricole
     # de 3 pages (``agricole/renderer``) ; s'il refuse un devis (repli NOMMÉ

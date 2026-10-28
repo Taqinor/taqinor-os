@@ -1,0 +1,55 @@
+{
+  "sha": "ea2dd9f9d4f110f4e47c12b3b5575f7da9c2ef90",
+  "date": "2026-10-28",
+  "groupe": "CSV",
+  "verdict": "PASS",
+  "couvre": [
+    "CSV13",
+    "CSV18"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P4.1",
+      "taches": [
+        "CSV13"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CSV/traces/2026-10-28/P4.1-boulangerie.txt"
+    },
+    {
+      "id": "P4.2",
+      "taches": [
+        "CSV18"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CSV/traces/2026-10-28/P4.2-agricole-pompe.txt"
+    }
+  ]
+}

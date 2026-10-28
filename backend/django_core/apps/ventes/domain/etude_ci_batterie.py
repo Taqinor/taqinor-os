@@ -180,14 +180,15 @@ def _ligne_flux(designation, ht, ttc, *, onduleur=False, role_ci=''):
             'optionnelle': False, 'onduleur': onduleur, 'role_ci': role_ci}
 
 
-def _investissement_composition(evaluation, taux_tva_pct):
+def _investissement_composition(evaluation, taux_tva_pct, regles_2710=True):
     """CMP6 — ``{ht, ttc, lignes}`` de l'option « avec » composée : le HT est
     ``evaluation['cout']`` (le coût de vente servi) ; le TTC, la somme des
     lignes à la TVA de LEUR article (``tva_pct``), à défaut au taux standard
     de la société. ``None`` quand la composition est incomplète (prix à
     renseigner / à chiffrer après la visite : ADEV81 — jamais un retour sur un
     total qui n'est pas celui de l'installation) ou sans coût. Jamais
-    ``prix_achat``."""
+    ``prix_achat``. ``regles_2710`` faux (devis envoyé au niveau ≤ 2) : l'O&M
+    reste dans l'année 0, comme avant CEC1."""
     from apps.ventes.moteur_ci.composition import prix_palier_ht
     composition, cout = evaluation.get('composition'), evaluation.get('cout')
     if not composition or composition.get('incomplet') or not cout or cout <= 0:
@@ -236,7 +237,7 @@ def _investissement_composition(evaluation, taux_tva_pct):
             role_ci='om_ci' if ligne.get('role') == 'om_ci' else ''))
     from apps.ventes.economie_ci_options import investissement_hors_om
     investissement = investissement_hors_om(
-        {'ht': float(cout), 'ttc': _mad(ttc_total) if ttc_connu else None}, lignes)
+        {'ht': float(cout), 'ttc': _mad(ttc_total) if ttc_connu else None}, lignes, regles_2710)
     return dict(investissement, lignes=lignes)
 
 
@@ -283,7 +284,8 @@ def _bloc(evaluation, valoriser=None, ctx=None, investissement=None):
     (``economie_ci_options.flux_option_avec`` : dégradation, remplacement des
     onduleurs et de la batterie, entretien), le MÊME moteur que l'option
     « sans » ; ``economie_flux`` porte tout le flux. ``None`` quand une entrée
-    manque. ``ctx`` : ``{tva_recuperable, taux_tva_pct, batterie, flux}``.
+    manque. ``ctx`` : ``{tva_recuperable, taux_tva_pct, batterie, flux,
+    regles_2710}``.
     ``investissement`` : ``{ht, ttc, lignes}`` imposé (option des lignes du
     devis) ; sinon celui de la composition."""
     from .etude_ci import _forme_composition
@@ -296,7 +298,8 @@ def _bloc(evaluation, valoriser=None, ctx=None, investissement=None):
     flux = None
     if complet:
         if investissement is None:
-            investissement = _investissement_composition(evaluation, ctx.get('taux_tva_pct'))
+            investissement = _investissement_composition(
+                evaluation, ctx.get('taux_tva_pct'), ctx.get('regles_2710', True))
         flux = _flux_option_avec(evaluation, economie_ci, investissement, ctx)
     return {
         'kwc': evaluation['kwc'], 'nb_panneaux': _nb_panneaux(evaluation.get('composition')),
@@ -410,7 +413,7 @@ def _investissement_des_lignes(lignes, devis=None):
     des lignes. ``None`` quand l'option que suit l'argent du devis n'est pas
     l'option « avec » (devis accepté « sans »), sans devis, ou sans total."""
     from apps.ventes import economie_ci as eco
-    from apps.ventes.domain.regles_calcul import calcul_corrige
+    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
     from apps.ventes.economie_ci_options import investissement_hors_om
     from apps.ventes.utils.options import AVEC_BATTERIE, option_effective, option_totaux
     devis = devis or next((d for d in (getattr(li, 'devis', None) for li in lignes or [])
@@ -422,7 +425,9 @@ def _investissement_des_lignes(lignes, devis=None):
     detail = eco.lignes_pour_economie_ci(devis)
     if not ht or ht <= 0 or not detail:
         return None
-    investissement = investissement_hors_om({'ht': ht, 'ttc': ttc}, detail, calcul_corrige(devis))
+    # CEC1 est une règle du 27/10 : un devis envoyé avant (niveau ≤ 2) garde son O&M en an 0.
+    investissement = investissement_hors_om(
+        {'ht': ht, 'ttc': ttc}, detail, regles_au_moins(devis, REGLES_CORRIGEES_2710))
     return {'ht': investissement['ht'], 'ttc': investissement['ttc'], 'lignes': detail}
 
 
@@ -462,10 +467,12 @@ def option_imposee_des_lignes(lignes, catalogue, kwc, nb_panneaux=None, devis=No
 def _ctx_flux(contexte, batterie):
     """CMP6 — le contexte du flux 25 ans de l'option « avec » : TVA
     récupérable résolue (D-CIQ-3), taux standard, fiche de la batterie
-    (garantie / cycles) et réglages de ``flux_ci`` (``degradation``,
-    ``entretien``, ``taux_actualisation_client``)."""
+    (garantie / cycles), réglages de ``flux_ci`` (``degradation``,
+    ``entretien``, ``taux_actualisation_client``) et niveau de règles du devis
+    (``regles_2710`` : CEC1, O&M hors de l'année 0, seulement au niveau 3)."""
     return {'tva_recuperable': contexte.get('tva_recuperable'),
             'taux_tva_pct': contexte.get('taux_tva_pct'),
+            'regles_2710': contexte.get('regles_2710', True),
             'flux': contexte.get('flux_options') or {}, 'batterie': batterie}
 
 
@@ -490,7 +497,9 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     """``{bloc, prix_a_renseigner, alertes, hypotheses}`` de l'option « avec
     batterie » d'une étude C&I dont l'option « sans » est ``evaluation``.
     ``contexte`` : ``charge, production, tension, revente_choisie, valoriser,
-    taux_tva_pct`` (noyau) + ``phase, ps_kva, composer, borne_toit``.
+    taux_tva_pct`` (noyau) + ``phase, ps_kva, composer, borne_toit`` +
+    ``regles_2710`` (``regles_au_moins(devis, REGLES_CORRIGEES_2710)`` ; absent
+    ⇒ règles courantes).
     ``imposee`` (rafraîchisseur CIQ119) : l'option des LIGNES
     (:func:`option_imposee_des_lignes`), évaluée telle quelle.
     Choix « sans » ⇒ rien ; choix « avec » non composable ⇒ alerte BLOQUANTE
@@ -500,6 +509,7 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
     # CMP6 — entrées du flux 25 ans, hors noyau du dimensionnement.
     flux = {cle: contexte.pop(cle, None) for cle in ('tva_recuperable', 'flux_options')}
     flux['taux_tva_pct'] = contexte.get('taux_tva_pct')
+    flux['regles_2710'] = contexte.pop('regles_2710', True)
     if flux['tva_recuperable'] is None:
         # D-CIQ-3 : la MÊME résolution que l'économie de l'option « sans »
         # (le lead d'abord ; rien de déclaré ⇒ « inconnu », les deux bases).

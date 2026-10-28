@@ -110,6 +110,14 @@ describe('ATOT34 — chaîne de prix rendue (ChainePrix.astro)', () => {
     expect(JSON.stringify(contrat.exemple)).not.toMatch(/prix_achat|"marge"|revendeur/i);
   });
 
+  it('RWEB23 — libellés EN/AR du PDF (i18n_labels.py), FR inchangé', async () => {
+    const html = await rendre({ ht_brut: 1000, remise: 50, arrondi: 10, ht_net: 940, tva: 188, ttc: 1128 });
+    for (const m of ['data-en="Subtotal excl. VAT"', 'data-ar="المجموع الفرعي (خ.ض)"', 'data-ar="الخصم"', 'data-en="Rounding adjustment"',
+      'data-en="Total excl. VAT"', 'data-ar="المجموع (خ.ض)"', 'data-ar="ض.ق.م"', 'data-en="Total incl. VAT"', 'data-fr="Sous-total HT"', 'data-fr="Arrondi commercial"']) {
+      expect(html).toContain(m);
+    }
+  });
+
   it('la page n’imprime plus la chaîne en ligne : seul ChainePrix la rend', () => {
     const page = lirePageProposition();
     expect(page).toContain('<ChainePrix');

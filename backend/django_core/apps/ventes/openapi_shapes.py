@@ -478,6 +478,7 @@ ProposalDataResponse = _ser('PublicProposalData', {
     'niveau_masque': s.ListField(child=s.CharField(), **_souple()),
     'bankable': s.DictField(**_souple()),
     'economies_cumul_25_ans': s.DictField(**_souple()),
+    'gain_net_25_ans': s.DictField(**_souple()),
     'empreinte_contenu': s.CharField(required=False),
     'offre_expiree': s.BooleanField(required=False),
     'date_expiration': s.CharField(required=False),

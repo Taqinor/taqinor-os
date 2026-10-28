@@ -19,6 +19,7 @@ aucun statut touché (règle #4). Résidentiel et agricole : liste inchangée.
 """
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 
 from apps.ventes.moteur_ci.composition import PRESTATIONS_CI
@@ -91,13 +92,30 @@ def est_ci(data):
         in MODES_CI
 
 
+#: CPDF (constat CCAT 28/10) — « C&I » des noms d'articles semés (« Coffret DC
+#: C&I », « Disjoncteur … (C&I) ») : jargon interne, jamais lu par le client.
+#: Brut ou déjà échappé pour le HTML (« C&amp;I »).
+_JARGON_CI = re.compile(r"\s*\(C&(?:amp;)?I\)|\s+C&(?:amp;)?I\b")
+
+
+def designation_client(texte):
+    """CPDF — la désignation d'une ligne sans le mot interne « C&I »."""
+    propre = _JARGON_CI.sub("", str(texte or "")).strip()
+    return propre or texte
+
+
 def lignes_client(items, data):
     """Les lignes que le CLIENT lit : regroupées sur un devis C&I
-    (``data['mode_installation']``), ``items`` inchangé sinon."""
+    (``data['mode_installation']``), désignations sans « C&I » (CPDF),
+    ``items`` inchangé sinon."""
     if not est_ci(data):
         return items
-    return regrouper_installation(items, (data or {}).get("langue_sortie")
-                                  or "fr")
+    lignes = regrouper_installation(items, (data or {}).get("langue_sortie")
+                                    or "fr")
+    return [dict(it, designation=designation_client(it.get("designation")))
+            if isinstance(it, dict) and _JARGON_CI.search(
+                str(it.get("designation") or "")) else it
+            for it in lignes]
 
 
 def regrouper_paniers(data, cles=("sans_items", "avec_items", "all_items")):

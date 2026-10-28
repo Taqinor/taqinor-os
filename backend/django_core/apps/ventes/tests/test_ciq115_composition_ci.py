@@ -390,8 +390,12 @@ class CompositionTests(TestCase):
         self.assertNotIn('POSTE_ABSENT_CATALOGUE', [a['code'] for a in comp['alertes']])
 
     def test_roles_absents_alerte_interne_composition_inchangee(self):
+        # Un catalogue SANS ces rôles (le semis CCAT10 les crée désormais :
+        # voir le test suivant) — l'alerte interne reste le filet.
+        roles_retires = {'protection_dc', 'protection_ac', 'mise_a_la_terre'}
+        cat = [p for p in self.cat if p['role_ci'] not in roles_retires]
         ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50, 'quantite': 2}]}
-        comp = composer_ci(110, self.cat, onduleurs=ond, entrees=_entrees(), forfaits={})
+        comp = composer_ci(110, cat, onduleurs=ond, entrees=_entrees(), forfaits={})
         absents = [a for a in comp['alertes'] if a['code'] == 'POSTE_ABSENT_CATALOGUE']
         self.assertEqual({a['champ'] for a in absents},
                          {'composition.protection_dc', 'composition.parafoudre_dc',
@@ -402,6 +406,19 @@ class CompositionTests(TestCase):
         self.assertNotIn('mise_a_la_terre', roles)
         for nom in ('Parafoudre', 'Mise à la terre', 'Protection DC'):
             self.assertFalse(any(nom in d for d in comp['prix_a_renseigner']), nom)
+
+    def test_postes_semes_a_prix_vide_composes_a_completer(self):
+        # CCAT10 — le semis crée protection DC, parafoudres et mise à la terre
+        # à prix vide : le poste n'est plus « absent », il est composé et dit
+        # « prix à renseigner ».
+        ond = {'combinaison': [{'produit': 1, 'nom': 'X', 'kw_ac': 50, 'quantite': 2}]}
+        comp = composer_ci(110, self.cat, onduleurs=ond, entrees=_entrees(), forfaits={})
+        self.assertFalse([a for a in comp['alertes']
+                          if a['code'] == 'POSTE_ABSENT_CATALOGUE'])
+        roles = {ligne['role'] for ligne in comp['lignes']}
+        self.assertTrue({'protection_dc', 'protection_ac', 'mise_a_la_terre'} <= roles)
+        for nom in ('Parafoudre DC', 'Parafoudre AC', 'Mise à la terre', 'Protection DC'):
+            self.assertTrue(any(nom in d for d in comp['prix_a_renseigner']), nom)
 
     def test_coffrets_au_bareme_par_onduleur_et_par_panneau(self):
         # Fondateur 26/10/2026 — coffrets C&I tarifés comme le tableau

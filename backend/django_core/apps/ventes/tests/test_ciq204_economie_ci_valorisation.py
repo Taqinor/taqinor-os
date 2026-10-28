@@ -167,6 +167,11 @@ class BtTest(SimpleTestCase):
 
 
 class OmisTest(SimpleTestCase):
+    def test_cec18_domestique_sans_tranches_dit_sa_vraie_raison(self):
+        tarif = tc.tarif_applicable({'contrat': 'bt_domestique'})
+        res = eco.valoriser(_apercu(_soleil(5.0), _plat(1.0), 'bt'), tarif)
+        self.assertEqual(res['motifs_omission'], [tc.MENTION_DOMESTIQUE])
+
     def test_tarif_omis_statut_omis(self):
         res = eco.valoriser(_apercu(_soleil(5.0), _plat(5.0)),
                             tc.tarif_applicable(None))

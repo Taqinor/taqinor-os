@@ -24,6 +24,8 @@ from ..ci import couverture as ci_couverture
 from ..ci import blocs as ci_blocs
 from ..ci.mentions import texte
 from ..ci.graphiques import cede
+# CPDF3 — les deux options côte à côte (devis « sans / avec batterie »).
+from ..ci import options_cote
 from ..lecture_pure import nombre_ou_none
 from ..montants import decimale
 # QJR651 — kwc_str et la cellule KPI : harnais premium commun.
@@ -73,45 +75,18 @@ def _pct_txt(valeur):
 
 
 def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
-    """CIQ341 — l'encadré « Synthèse » : investissement sur la base dite
-    (CIQ315), économie de l'année 1, retour, TRI avec son horizon, VAN
+    """CIQ341 — l'encadré « Synthèse » : TRI avec son horizon, VAN
     seulement sur un taux DÉCLARÉ, financement s'il est servi, statut
     d'étude et points à confirmer (``bandeau``). Tout est LU dans
-    ``synthese_ci`` — aucun calcul ici."""
+    ``synthese_ci`` — aucun calcul ici.
+
+    CPDF — un chiffre, une fois par page : l'investissement est dit par son
+    bloc (CIQ315), l'économie et le retour par leurs tuiles (ou par les
+    cartes d'options) ; l'encadré ne les répète plus."""
     synthese = d.get("ind_synthese") or {}
     argent = synthese.get("argent") if isinstance(synthese, dict) else None
-    base = _base_argent(argent)
-    l_ht, l_ttc = L("ci_ht", "HT"), L("ci_ttc", "TTC")
-    ht = (d.get("totaux_all") or {}).get("ht_net")
-    invest = d.get("_invest_ttc") or 0
-    if base == "ht" and ht is not None:
-        inv = f"{fmt_mad(ht)}&nbsp;MAD {l_ht}"
-    elif base == "deux" and ht is not None:
-        inv = (f"{fmt_mad(invest)}&nbsp;MAD {l_ttc} ({L('ci_soit', 'soit')} "
-               f"{fmt_mad(ht)}&nbsp;MAD {l_ht})")
-    else:
-        inv = f"{fmt_mad(invest)}&nbsp;MAD {l_ttc}"
-    # AMOT86 — postes hors total : « Investissement hors postes à chiffrer
-    # après la visite » (base dite dans le montant).
-    lignes = [(ci_couverture.titre_investissement(d, synthese, "deux")
-               if ci_couverture.postes_hors_total(synthese)
-               else L("ci_ind_investissement", "Investissement"), inv)]
+    lignes = []
     if isinstance(argent, dict) and not d.get("ind_masquer_economies"):
-        eco = d.get("ind_economies")
-        if eco is not None:
-            base_eco = d.get("ind_economie_base")
-            if base_eco in ("HT", "TTC"):
-                base_eco = L(f"ci_{base_eco.lower()}", base_eco)
-            ttc = ci_couverture.economie_ttc(d, "ind", fmt)
-            lignes.append((L("ci_ind_economie_an1", "Économie de l'année 1"),
-                           f"{fmt(eco)}&nbsp;MAD"
-                           + (f" {base_eco}" if base_eco else "")
-                           + (f" ({ttc})" if ttc else "")))
-        payback = d.get("ind_payback")
-        if payback is not None:
-            lignes.append((L("ci_retour_estime", "Retour estimé"),
-                           ci_couverture.ans(payback)
-                           + L("ci_unite_ans", "&nbsp;ans")))
         indicateurs = argent.get("indicateurs") or {}
         tri = nombre_ou_none(indicateurs.get("tri_pct"))
         horizon = nombre_ou_none(indicateurs.get("tri_horizon_ans"))
@@ -132,8 +107,9 @@ def bloc_synthese(d, L, fmt, fmt_mad, bandeau, prefixe="i1"):
                                 "Offre de financement")))
     else:
         motif_html = ci_couverture.ligne_non_chiffre(d, "ind", prefixe)
-        lignes.append((L("ci_ind_rentabilite", "Rentabilité"),
-                       motif_html))
+        if motif_html:
+            lignes.append((L("ci_ind_rentabilite", "Rentabilité"),
+                           motif_html))
     # Décision fondateur 26/10/2026 — le devis C&I entier est préliminaire :
     # plus jamais de rangée « Statut de l'étude : prix ferme » (ex-AMOT80).
     rangees = "".join(
@@ -176,7 +152,7 @@ def _factures(d, L, fmt, source):
             f'<div class="i1-big">{fmt(annual_bill)}<span>&nbsp;'
             f'{L("ci_mad_an", "MAD/an")}</span></div>'
             + ancre("facture_annuelle_avant", fmt(annual_bill)) +
-            f'<div class="i1-basel">{libelle_facture} · ≈ '
+            f'<div class="i1-basel">{libelle_facture} · '
             f'{fmt(avg_bill)} {L("ci_mad_mois", "MAD/mois")}</div>'
             + ancre("facture_mensuelle_avant", fmt(avg_bill)))
 
@@ -260,13 +236,18 @@ def build(ctx):
 
     # AMOT84 — l'unité dans la langue du document (« kWp » en anglais,
     # comme le titre) ; « &nbsp;kWc » en français, octet pour octet.
-    cellules = [kpi(kwc, L("res_unite_kwc", "&nbsp;kWc"),
-                    L("ci_puissance_crete", "Puissance crête"),
-                    "puissance_kwc")]
-    cellules.extend(ci_couverture.tuiles_taux(d, "ind", kpi))
+    # CPDF3 — devis à deux options : la puissance, l'argent et la part
+    # couverte de CHAQUE option sont dits par sa carte (un chiffre, une fois).
+    deux_options = options_cote.deux_options(d, "ind")
+    cellules = [] if deux_options else [
+        kpi(kwc, L("res_unite_kwc", "&nbsp;kWc"),
+            L("ci_puissance_crete", "Puissance crête"), "puissance_kwc")]
+    cellules.extend(ci_couverture.tuiles_taux(
+        d, "ind", kpi, couverture_tuile=not deux_options))
     # CIQ307 — tuiles d'argent lues sur ``synthese_ci.argent`` ; absentes ⇒
     # omises (jamais un « 0 », QJR119).
-    cellules.extend(ci_couverture.tuiles_argent(d, "ind", kpi, fmt))
+    if not deux_options:
+        cellules.extend(ci_couverture.tuiles_argent(d, "ind", kpi, fmt))
     kpis = '<td class="i1-kgap"></td>'.join(cellules)
     bandeau = ci_couverture.bandeau_reserve(d, "ind", "i1")
     # AMOT80 — le sous-titre « cashflow et payback » seulement sur un flux.
@@ -286,7 +267,8 @@ def build(ctx):
     if d.get("ind_masquer_economies") or d.get("ind_economies") is None:
         mt_line = ""
     elif d.get("ind_mt_mention"):
-        mt_line = f'<div class="i1-mtsrc">{d["ind_mt_mention"]}</div>'
+        mt_line = (f'<div class="i1-mtsrc">'
+                   f'{ci_couverture.mention_client(d["ind_mt_mention"])}</div>')
     else:
         mt_line = ""
     # CIQ341 — site MT (ou puissance souscrite déclarée) : la centrale réduit
@@ -303,10 +285,10 @@ def build(ctx):
 
     # AMOT41 — ``ind_conso`` = la consommation du MOTEUR (Σ 12 mois) ; sans
     # baseline moteur, la ligne est OMISE (une seule consommation par page).
-    conso_line = (L("ci_ind_conso", "Consommation ≈ {kwh} kWh/an",
+    # CPDF5 — sans « ≈ » ni « estimée » : les kWh servis par le moteur.
+    conso_line = (L("ci_cpdf_conso", "Consommation : {kwh}&#160;kWh/an",
                     kwh=fmt(round(conso))) if conso else "")
-    prod_line = (L("ci_ind_production_estimee",
-                   "Production estimée ≈ {kwh} kWh/an",
+    prod_line = (L("ci_cpdf_production", "Production : {kwh}&#160;kWh/an",
                    kwh=fmt(round(prod)))
                  + ancre("production_annuelle_kwh", fmt(round(prod)))
                  if prod else "")
@@ -368,7 +350,7 @@ def build(ctx):
   border-left:4px solid {gold};border-radius:12px;padding:9px 12px;background:#fff;}}
 .i1-kgap{{width:9px;}}
 .i1-kv{{font-family:{f_display};font-size:15pt;color:{navy};line-height:1;}}
-.i1-ku{{font-size:8.5pt;color:{muted};}}
+.i1-ku{{font-size:8.5pt;color:{muted};white-space:nowrap;}}
 .i1-kl{{font-size:7pt;color:{muted};margin-top:3px;letter-spacing:.3px;}}
 /* QXMT — ligne SOURCE sous le bloc économies (petite, jamais un chiffre nu). */
 .i1-mtsrc{{margin-top:5px;font-size:6.8pt;color:{muted};line-height:1.35;}}
@@ -378,12 +360,18 @@ def build(ctx):
   padding:8px 14px;font-size:8pt;color:{ink};line-height:1.4;}}
 .i1-note b{{color:{navy};}}
 {ci_couverture.css_investissement("i1", (line, wash, muted, navy, ink), f_display, 17, 8, "9px 16px")}
+{options_cote.css_options("i1", (line, wash, muted, navy, ink, gold), 8)}
 </style>
 """
 
     # CIQ315 — investissement sur la base de ``synthese_ci.argent.base``.
-    inv_html = ci_couverture.bloc_investissement(
-        d, d.get("ind_synthese") or {}, "i1", fmt_mad, ancre, invest=invest_centimes)
+    # CPDF3 — deux options : les deux cartes REMPLACENT le bloc
+    # investissement (jamais ajoutées par-dessus).
+    inv_html = (options_cote.cartes_options(d, "ind", "i1", fmt, fmt_mad,
+                                            invest_centimes)
+                if deux_options else ci_couverture.bloc_investissement(
+                    d, d.get("ind_synthese") or {}, "i1", fmt_mad, ancre,
+                    invest=invest_centimes))
     synthese_html = bloc_synthese(d, L, fmt, fmt_mad, bandeau)
     note_autoconso = L(
         "ci_ind_note_autoconso",
@@ -414,9 +402,7 @@ def build(ctx):
   </div>
 
   <div class="i1-client">
-    <b>{client_full}</b>
-    {f'&nbsp;·&nbsp;{client_meta}' if client_meta else ''}
-    {ci_blocs.bloc_client((d.get('ind_synthese') or {}).get('entreprise_client'), 'i1', d.get('client_full') or d.get('client_name'), doc=d)}{ci_couverture.ligne_interlocuteur(d, 'i1')}
+    {ci_couverture.ligne_client(d, "ind", client_full, client_meta, "i1")}
   </div>
 
   <div class="i1-wrap">

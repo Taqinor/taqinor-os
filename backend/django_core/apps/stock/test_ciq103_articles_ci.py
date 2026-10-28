@@ -21,7 +21,7 @@ migration = importlib.import_module(
 ROLES_ATTENDUS = {
     'compteur_injection', 'controleur_injection', 'logger_supervision',
     'cable_ac', 'protection_ac', 'coffret_ac', 'coffret_dc', 'structure_ci',
-    'cellule_mt', 'etudes_ingenierie', 'pose_structure', 'pose_modules',
+    'cellule_mt', 'protection_dc', 'mise_a_la_terre', 'etudes_ingenierie', 'pose_structure', 'pose_modules',
     'raccordement_ac', 'mise_en_service', 'dossier_raccordement',
     'levage_acces', 'transport_ci', 'om_ci',
 }
@@ -70,6 +70,66 @@ class TestListe(SimpleTestCase):
     def test_skus_semes(self):
         for _n, sku, *_x in seed_mod.ARTICLES_CI_PRIX_A_RENSEIGNER:
             self.assertIn(sku, seed_mod.SKUS_SEMES)
+
+
+NOUVEAUX_SKUS_CCAT10 = (
+    'CI-PROT-DC', 'CI-PARAF-DC', 'CI-PARAF-AC', 'CI-TERRE',
+    'CI-STRUCT-INCL', 'CI-STRUCT-PLAT-FIXE', 'CI-STRUCT-SOL')
+
+
+class PariteCompositionTests(SimpleTestCase):
+    """CCAT10 — chaque poste que ``composer_ci`` cherche par rôle ET fiche a
+    un article semé : parité calculée par la composition elle-même."""
+
+    @staticmethod
+    def _catalogue():
+        return [{
+            'id': 1000 + j, 'nom': nom, 'sku': sku, 'marque': '',
+            'role_devis': '', 'role_ci': role, 'classement': 'declare',
+            'type_pose': pose, 'fiche': dict(fiche) if fiche else None,
+            'prix_connu': False, 'eligible_ci': True,
+            'motif_exclusion': None}
+            for j, (nom, sku, role, pose, _q, _s, fiche) in enumerate(
+                seed_mod.ARTICLES_CI_PRIX_A_RENSEIGNER)]
+
+    def test_chaque_poste_demande_par_la_composition_a_un_article_seme(self):
+        from apps.ventes.moteur_ci.composition import composer_ci
+        cat = self._catalogue()
+        par_id = {p['id']: p['sku'] for p in cat}
+        ond = {'combinaison': [{'produit': 1, 'nom': 'Ond', 'kw_ac': 50,
+                                'quantite': 1}]}
+        for pose in TYPES_POSE:
+            comp = composer_ci(
+                60, cat, onduleurs=ond, forfaits={}, entrees={
+                    'module': {'produit': 999, 'designation': 'Module',
+                               'pmax_wc': 710, 'prix_connu': True},
+                    'phase': 'tri', 'tension': 'BT', 'type_pose': pose,
+                    'longueur_dc_m': 40, 'longueur_ac_m': 30,
+                    'nb_points_raccordement': 1, 'revente_choisie': False})
+            codes = [a.get('code') for a in comp['alertes']]
+            self.assertNotIn('POSTE_ABSENT_CATALOGUE', codes, pose)
+            skus = {par_id.get(ligne['produit']) for ligne in comp['lignes']}
+            for sku in ('CI-PROT-DC', 'CI-PARAF-DC', 'CI-PARAF-AC',
+                        'CI-TERRE'):
+                self.assertIn(sku, skus, (pose, sku))
+            structure = next(ligne for ligne in comp['lignes']
+                             if ligne['role'] == 'structure_ci')
+            self.assertIsNotNone(structure['produit'], pose)
+            self.assertTrue(
+                [p for p in cat if p['id'] == structure['produit']
+                 and p['type_pose'] == pose], pose)
+
+    def test_nouveaux_skus_a_prix_vide_et_sans_marque_inventee(self):
+        lignes = {row[1]: row for row
+                  in seed_mod.ARTICLES_CI_PRIX_A_RENSEIGNER}
+        for sku in NOUVEAUX_SKUS_CCAT10:
+            self.assertIn(sku, lignes)
+        for sku in ('CI-PROT-DC', 'CI-PARAF-DC', 'CI-PARAF-AC'):
+            fiche = lignes[sku][6]
+            self.assertEqual(fiche['type_fiche'], 'protection')
+        self.assertEqual(lignes['CI-PROT-DC'][6]['prot_cote'], 'dc')
+        self.assertEqual(lignes['CI-PARAF-DC'][6]['prot_type'], 'parafoudre')
+        self.assertEqual(lignes['CI-PARAF-AC'][6]['prot_cote'], 'ac')
 
 
 class ArticlesCiTests(TestCase):
@@ -144,6 +204,31 @@ class ArticlesCiTests(TestCase):
         _seed(self.co)
         self.assertEqual(
             Produit.objects.get(company=self.co, sku='CI-OM').prix_vente, 5000)
+
+    def test_ccat10_nouveaux_articles_prix_zero_et_idempotents(self):
+        _seed(self.co)
+        for sku in NOUVEAUX_SKUS_CCAT10:
+            qs = Produit.objects.filter(company=self.co, sku=sku)
+            self.assertEqual(qs.count(), 1, sku)
+            self.assertEqual(qs.get().prix_vente, 0, sku)
+            self.assertEqual(qs.get().prix_achat, 0, sku)
+        _seed(self.co)
+        for sku in NOUVEAUX_SKUS_CCAT10:
+            self.assertEqual(Produit.objects.filter(
+                company=self.co, sku=sku).count(), 1, sku)
+
+    def test_ccat10_cables_ac_marque_nexans_seulement_si_vide(self):
+        _seed(self.co)
+        cables = Produit.objects.filter(
+            company=self.co, sku__startswith='CI-CAB-AC-')
+        self.assertTrue(cables.exists())
+        for p in cables:
+            self.assertEqual(p.marque, 'Nexans', p.sku)
+        un = cables.first()
+        Produit.objects.filter(pk=un.pk).update(marque='Autre')
+        _seed(self.co)
+        un.refresh_from_db()
+        self.assertEqual(un.marque, 'Autre')
 
     def test_smart_meter_recoit_son_role_ci_au_seed(self):
         _seed(self.co)

@@ -10,7 +10,8 @@ l'inverse).
 import logging
 
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_field, extend_schema_view, inline_serializer)
 from rest_framework import serializers as drf_serializers
 from rest_framework import filters, mixins, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -128,6 +129,37 @@ def _parse_rappel(date_str, heure_str=''):
         except (TypeError, ValueError):
             return None
     return _dt.datetime.combine(jour, heure, tzinfo=_horaires.CASABLANCA)
+
+
+#: api-fuzz-full 28/10 (ENF11) — formes PUBLIÉES du rappel d'une interaction
+#: (``log-interaction``) : date AAAA-MM-JJ, heure HH:MM[:SS], vides permis.
+MOTIF_HEURE_RAPPEL = r'^(?:|(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)$'
+SCHEMA_DATE_RAPPEL = {'anyOf': [{'type': 'string', 'format': 'date'},
+                                {'type': 'string', 'maxLength': 0}]}
+
+
+@extend_schema_field(SCHEMA_DATE_RAPPEL)
+class DateRappelPubliee(serializers.CharField):
+    """Champ de DÉCLARATION : date de rappel AAAA-MM-JJ ou vide."""
+
+
+def rappel_saisi(date_str, heure_str):
+    """``(quand, None)`` ou ``(None, {champ: message})`` — la date et
+    l'heure d'un rappel validées dès qu'elles sont saisies, EXACTEMENT comme
+    publiées (``SCHEMA_DATE_RAPPEL`` / ``MOTIF_HEURE_RAPPEL``) : un texte
+    libre était « conforme » puis refusé 400, une heure illisible sans date
+    passait en silence."""
+    import re
+    if heure_str and not re.fullmatch(MOTIF_HEURE_RAPPEL, heure_str):
+        return None, {'rappel_heure': 'Heure invalide (HH:MM attendu).'}
+    if not date_str:
+        return None, None
+    quand = (_parse_rappel(date_str, heure_str)
+             if re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_str) else None)
+    if quand is None:
+        return None, {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
+                                   'heure HH:MM optionnelle).'}
+    return quand, None
 
 
 def _refus_date_passee(quand, libelle_champ):

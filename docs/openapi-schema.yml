@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4858, operations: 7642, components: 3582}
+counts: {paths: 4864, operations: 7648, components: 3582}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -3297,6 +3297,9 @@ operations:
 - post /api/django/stock/produits/export-xlsx/ -> django_stock_produits_export_xlsx_create
 - post /api/django/stock/produits/generer-bcf-reappro/ -> django_stock_produits_generer_bcf_reappro_create
 - post /api/django/stock/produits/inventaire/ -> django_stock_produits_inventaire_create
+- get /api/django/stock/produits/pret-devis-agricole/ -> django_stock_produits_pret_devis_agricole_retrieve
+- get /api/django/stock/produits/pret-devis-ci/ -> django_stock_produits_pret_devis_ci_retrieve
+- get /api/django/stock/produits/pret-devis-residentiel/ -> django_stock_produits_pret_devis_residentiel_retrieve
 - get /api/django/stock/produits/previsions-reappro/ -> django_stock_produits_previsions_reappro_retrieve
 - get /api/django/stock/produits/rapport-pertes/ -> django_stock_produits_rapport_pertes_retrieve
 - get /api/django/stock/produits/resolve/ -> django_stock_produits_resolve_retrieve
@@ -7123,6 +7126,9 @@ operations:
 - post /api/v1/stock/produits/export-xlsx/ -> v1_stock_produits_export_xlsx_create
 - post /api/v1/stock/produits/generer-bcf-reappro/ -> v1_stock_produits_generer_bcf_reappro_create
 - post /api/v1/stock/produits/inventaire/ -> v1_stock_produits_inventaire_create
+- get /api/v1/stock/produits/pret-devis-agricole/ -> v1_stock_produits_pret_devis_agricole_retrieve
+- get /api/v1/stock/produits/pret-devis-ci/ -> v1_stock_produits_pret_devis_ci_retrieve
+- get /api/v1/stock/produits/pret-devis-residentiel/ -> v1_stock_produits_pret_devis_residentiel_retrieve
 - get /api/v1/stock/produits/previsions-reappro/ -> v1_stock_produits_previsions_reappro_retrieve
 - get /api/v1/stock/produits/rapport-pertes/ -> v1_stock_produits_rapport_pertes_retrieve
 - get /api/v1/stock/produits/resolve/ -> v1_stock_produits_resolve_retrieve

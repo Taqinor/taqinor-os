@@ -699,9 +699,9 @@ def echelle_paliers_batterie(devis):
     quand le devis porte un calepinage (:func:`contenance_toit_du_devis` — on ne
     propose pas des panneaux qui ne tiennent pas), ET :data:`FACTEUR_MAX_FALAISE`
     × la taille de parité de CE client, plafonnée par
-    :data:`SEUIL_PANNEAUX_RESIDENTIEL` (l'ancien plafond de 120 panneaux —
-    23/10/2026 : le balayage des TAILLES monte désormais au-delà, pas cette
-    échelle de stockage, qui tire le champ panneau par panneau).
+    :data:`MAX_PANNEAUX_BALAYAGE` (2 000, RSIZ8 — règles ≥ 3 ; un devis aux
+    règles d'origine garde l'ancien plafond de 120 panneaux,
+    :data:`SEUIL_PANNEAUX_RESIDENTIEL`).
 
     LA BORNE DE TOIT SE MESURE, ELLE NE SE DÉCLARE PAS (26/08/2026). Elle lisait
     :func:`plafond_toit_du_devis`, qui rend le nombre de panneaux DESSINÉS par
@@ -753,6 +753,18 @@ def _cibles_au_dessus_du_plancher_ve(cibles, equipements):
     if not taille:
         return list(cibles)
     return [c for c in cibles if c >= taille - 0.05]
+
+
+def _borne_champ_echelle(devis, panneaux_parite):
+    """RSIZ8 — le champ maximal de l'échelle de paliers batterie : falaise ×
+    parité, plafonné à 2 000 (règles ≥ 3) ; un devis aux règles d'origine
+    garde ses paliers servis (plafond 120)."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
+    plafond = (MAX_PANNEAUX_BALAYAGE
+               if regles_au_moins(devis, REGLES_CORRIGEES_2710)
+               else SEUIL_PANNEAUX_RESIDENTIEL)
+    return min(plafond, int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
 
 
 def _echelle_paliers_batterie(devis):
@@ -828,12 +840,10 @@ def _echelle_paliers_batterie(devis):
     # ── LES BORNES DU CHAMP ──────────────────────────────────────────────────
     panneaux_parite = max(1, int(math.ceil(
         (conso_annuelle / productible_annuel) * 1000.0 / panel_watt)))
-    # 23/10/2026 — borne INCHANGÉE à 120 (``SEUIL_PANNEAUX_RESIDENTIEL``, l'ex-
-    # ``MAX_PANNEAUX_BALAYAGE``) : ``champ_minimal`` tire le champ panneau par
-    # panneau, et le plafond dur du balayage des tailles (2 000) n'est pas une
-    # borne pour cette échelle — le comportement reste byte-identique.
-    max_champ = min(SEUIL_PANNEAUX_RESIDENTIEL,
-                    int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
+    # RSIZ8 — LA MÊME borne que le balayage des tailles (falaise × parité,
+    # plafond dur 2 000, fondateur 23/10) : le 120 est un SIGNAL, plus un
+    # plafond. Sous 120 la borne est inchangée.
+    max_champ = _borne_champ_echelle(devis, panneaux_parite)
     # LA BORNE DE TOIT EST LA CONTENANCE, PAS LE DESSIN (fondateur, 26/08/2026).
     #
     # Elle valait ``plafond_toit_du_devis``, c'est-à-dire le nombre de panneaux
@@ -874,13 +884,9 @@ def _echelle_paliers_batterie(devis):
     if not cibles:
         return []
 
-    # AMOT30 — LE constructeur unique (``etude_horaire.kwargs_moteur_horaire``)
-    # depuis le MÊME ``EntreesMoteur`` que le tableau : jour de référence
-    # (QJR45) et barème société (QJR46) compris ; seule la consommation est
-    # celle résolue ci-dessus.
-    from apps.ventes.etude_horaire import kwargs_moteur_horaire
-    etude_kwargs = dict(kwargs_moteur_horaire(entrees),
-                        conso_kwh_mensuelles=conso)
+    from apps.ventes.domain.entrees import kwargs_moteur_ombre
+    etude_kwargs = dict(kwargs_moteur_ombre(entrees),
+                        conso_kwh_mensuelles=conso)  # RSIZ7 : + ombrage
 
     sondes = {}
 
@@ -1092,6 +1098,7 @@ def _payback_publie_palier(cout, economie, lignes, facteur_remise):
 from apps.ventes.dimensionnement import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     FACTEUR_MAX_FALAISE,
     MAX_PALIERS_STOCKAGE,
+    MAX_PANNEAUX_BALAYAGE,
     _arrondi,
     _lire_composition,
     _num,

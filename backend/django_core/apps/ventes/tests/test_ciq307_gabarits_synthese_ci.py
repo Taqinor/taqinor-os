@@ -18,7 +18,8 @@ from pathlib import Path
 from django.test import SimpleTestCase
 
 from apps.ventes.economie_ci import economie_ci_publique
-from apps.ventes.quote_engine.ci.couverture import BANDEAU_RESERVE
+from apps.ventes.quote_engine.ci.couverture import (
+    BANDEAU_RESERVE, ans, retour_dixieme)
 from apps.ventes.quote_engine.ci.synthese import chiffres_cles, synthese_ci
 from apps.ventes.quote_engine.commercial import render as c_render
 from apps.ventes.quote_engine.commercial import renderer as c_renderer
@@ -66,14 +67,32 @@ def _valeur(figures, cle):
     return mesures[0].valeur if mesures else None
 
 
-class GabaritsLisentSyntheseCi(SimpleTestCase):
+class _ReglesCourantes(SimpleTestCase):
+    """Le drapeau « règles d'avant le niveau 3 » est une ``ContextVar`` que
+    ``poser_regles_origine`` pose sans la retirer : un test antérieur du même
+    processus qui rend un devis ancien la laissait vraie (« 4 » au lieu de
+    « 4,0 », file de merge #1132). Chaque test part des règles courantes."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False)
+
+
+class GabaritsLisentSyntheseCi(_ReglesCourantes):
 
     def test_tuiles_ancrees_sur_la_synthese(self):
         for nom, sample, renderer, render, _pages in GABARITS:
             with self.subTest(gabarit=nom):
                 data = _data(sample)
                 html = render.build_html(renderer._augment(data))
-                attendus = chiffres_cles(synthese_ci(data))
+                synthese = synthese_ci(data)
+                attendus = dict(chiffres_cles(synthese))
+                # CPDF7 — le retour imprimé est celui du flux servi, au
+                # dixième (« 2,5 »), plus l'année entière servie (« 3 »).
+                attendus["payback_ans"] = retour_dixieme(
+                    synthese.get("argent"), attendus["payback_ans"])
+                self.assertNotEqual(attendus["payback_ans"], 3)
                 figures = extract_figures(html)
                 for cle, source, tolerance in (
                         ("autoconsommation_pct", "taux_autoconso_pct", 1),
@@ -147,3 +166,47 @@ class GabaritsLisentSyntheseCi(SimpleTestCase):
                     html = render.build_html(renderer._augment(
                         _data(sample, **kwargs)))
                     self.assertEqual(html.count('class="page"'), pages)
+
+
+class Cpdf7RetourAuDixieme(_ReglesCourantes):
+    """CPDF7 — un retour au dixième, au même format partout : interpolé
+    dans l'année où le cumul SERVI passe à zéro ; virgule en FR / AR, point
+    en EN ; sans flux, la valeur servie telle quelle."""
+
+    #: Cumul −221 656 fin d'année 3, +6 557 fin d'année 4 (flux 228 213) :
+    #: 3 + 221 656 / 228 213 = 3,97 ⇒ « 4,0 ».
+    ARGENT = {"base": "deux", "flux_ht": {"flux": [
+        {"annee": 0, "flux_mad": -906295.0, "cumul_mad": -906295.0},
+        {"annee": 1, "flux_mad": 228213.0, "cumul_mad": -678082.0},
+        {"annee": 2, "flux_mad": 228213.0, "cumul_mad": -449869.0},
+        {"annee": 3, "flux_mad": 228213.0, "cumul_mad": -221656.0},
+        {"annee": 4, "flux_mad": 228213.0, "cumul_mad": 6557.0}]}}
+
+    def test_interpolation_epinglee(self):
+        retour = retour_dixieme(self.ARGENT, 4)
+        self.assertEqual(retour, 4.0)
+        self.assertEqual(ans(retour), "4,0")
+        self.assertEqual(ans(2.3), "2,3")
+
+    def test_format_anglais(self):
+        from apps.ventes.quote_engine.montants import format_langue
+        with format_langue({"mode_installation": "commercial",
+                            "langue_sortie": "en"}):
+            self.assertEqual(ans(2.3), "2.3")
+
+    def test_sans_flux_valeur_servie(self):
+        self.assertEqual(retour_dixieme({"base": "ht"}, 3), 3)
+        self.assertEqual(retour_dixieme(None, 3), 3)
+        self.assertIsNone(retour_dixieme(self.ARGENT, None))
+        base_ttc = dict(self.ARGENT, base="ttc")
+        self.assertEqual(retour_dixieme(base_ttc, 4), 4)
+
+    def test_couverture_et_une_page_meme_retour(self):
+        from apps.ventes.quote_engine.ci.onepage import lire_synthese
+        for nom, sample, renderer, render, _pages in GABARITS:
+            with self.subTest(gabarit=nom):
+                data = _data(sample)
+                html = render.build_html(renderer._augment(data))
+                _synthese, chiffres = lire_synthese(data, nom)
+                self.assertEqual(chiffres["payback_ans"], 2.5)
+                self.assertIn("2,5", html.split('class="page"')[1])

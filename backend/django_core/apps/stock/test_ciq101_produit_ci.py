@@ -511,3 +511,52 @@ class TestCCAT2OptionBatterie(CIQ101Base):
         from apps.ventes.moteur_ci import batterie
         self.assertEqual(product_roles.TENSION_PORT_BT_MAX_V,
                          batterie.TENSION_PORT_BT_MAX_V)
+
+
+class TestCCAT11Panneau(CIQ101Base):
+    """CCAT11 — un panneau sans Pmax ou sans prix bloque tout devis C&I : il
+    apparaît dans ``etat_ci`` (le moteur l'ignore sinon, sans le dire)."""
+
+    def _panneau(self, prix=0, **fiche):
+        p = Produit.objects.create(
+            company=self.company, nom='Panneau 550 W', prix_vente=prix,
+            role_devis='panneau')
+        if fiche:
+            FicheTechnique.objects.create(produit=p, type_fiche='module', **fiche)
+        return Produit.objects.select_related(
+            'categorie', 'fiche_technique').get(pk=p.pk)
+
+    def _etat(self, produit):
+        from apps.stock.etat_ci import etat_ci_complet
+        return etat_ci_complet(produit)
+
+    def test_sans_pmax(self):
+        etat = self._etat(self._panneau(prix=900))
+        self.assertEqual(etat['role_ci'], 'panneau')
+        self.assertEqual(etat['libelle'], 'Panneau (devis C&I)')
+        self.assertFalse(etat['eligible_ci'])
+        self.assertEqual(etat['motif_exclusion'],
+                         'fiche incomplète : puissance (Pmax)')
+
+    def test_sans_prix(self):
+        etat = self._etat(self._panneau(prix=0, pmax_wc=550))
+        self.assertFalse(etat['eligible_ci'])
+        self.assertFalse(etat['prix_connu'])
+        self.assertEqual(etat['motif_exclusion'], 'prix de vente non saisi')
+
+    def test_complet(self):
+        etat = self._etat(self._panneau(prix=900, pmax_wc=550))
+        self.assertTrue(etat['eligible_ci'])
+        self.assertTrue(etat['prix_connu'])
+        self.assertIsNone(etat['motif_exclusion'])
+
+    def test_servi_par_l_api_sans_prix_d_achat(self):
+        p = self._panneau(prix=0)
+        r = api_for(self.user).get(f'{URL_PRODUITS}{p.pk}/')
+        self.assertEqual(r.data['etat_ci']['role_ci'], 'panneau')
+        self.assertNotIn('prix_achat', r.data['etat_ci'])
+
+    def test_autre_produit_reste_sans_etat(self):
+        p = Produit.objects.create(company=self.company, nom='Article',
+                                   prix_vente=10)
+        self.assertIsNone(self._etat(p))

@@ -19,6 +19,7 @@ from django.test import Client as DjangoClient, TestCase
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis, ShareLink
+from apps.ventes.public.payload_ci import synthese_agricole_client
 from apps.ventes.quote_engine.agricole.synthese import synthese_agricole
 from apps.ventes.quote_engine.builder import build_quote_data
 
@@ -112,8 +113,11 @@ class Agr308SyntheseAgricoleServieTests(TestCase):
                             ETUDE_POMPAGE)
         with mock.patch(_PATCH_ECO, return_value=_bloc_agr3_public()):
             payload = self._payload(devis)
-            attendu = synthese_agricole(
-                build_quote_data(devis, {'pdf_mode': 'full'}))
+            data = build_quote_data(devis, {'pdf_mode': 'full'})
+            # CPRS8 — textes internes assainis, nombres du PDF inchangés.
+            attendu = synthese_agricole_client(synthese_agricole(data), {
+                'libelles_document': data.get('libelles_document') or {},
+                'langue_sortie': data.get('langue_sortie')})
         servie = payload['synthese_agricole']
         # Le passage JSON de la réponse : on compare sur la même forme.
         attendu = json.loads(json.dumps(attendu))
@@ -152,6 +156,23 @@ class Agr308SyntheseAgricoleServieTests(TestCase):
         servie = payload['synthese_agricole']
         self.assertNotIn('economies', servie)
         self.assertIn('eau', servie)
+
+    def test_agc16_depense_declaree_suit_la_case_economies(self):
+        """AGC16 (contrat AGC14) — bloc non publiable : la dépense DÉCLARÉE
+        part avec la case cochée, jamais avec la case décochée. Mutant :
+        filtrer seulement ``economies`` ⇒ rouge."""
+        devis = self._devis('DEV-AGC16', 'agricole', LIGNES_POMPAGE,
+                            ETUDE_POMPAGE)
+        bloc = dict(_bloc_agr3_public(), publiable_client=False,
+                    motifs_non_publiable=['barème non saisi'])
+        with mock.patch(_PATCH_ECO, return_value=bloc):
+            cochee = self._payload(devis)['synthese_agricole']
+            decochee = self._payload(
+                devis, sections={'economies': False})['synthese_agricole']
+        self.assertEqual(cochee['depense_declaree'],
+                         {'annuelle_mad': 32871.45})
+        self.assertNotIn('economies', cochee)
+        self.assertNotIn('depense_declaree', decochee)
 
     def test_forme_conforme_au_fragment_exemple_agricole(self):
         contrat = json.loads((_CONTRATS / 'proposal_data.json').read_text(

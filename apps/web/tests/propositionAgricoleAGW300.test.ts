@@ -38,6 +38,7 @@ describe('AGW300 — chiffresEconomiePhare', () => {
     for (const reco of [null, 'sans_batterie', 'avec_batterie'] as const) {
       expect(chiffresEconomiePhare(payload('agricole'), reco)).toEqual({
         ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null,
+        paybackHeroI18n: null, paybackHeroJamais: false, modeleHero: null,
       });
     }
   });
@@ -56,6 +57,49 @@ describe('AGW300 — chiffresEconomiePhare', () => {
     const avec = chiffresEconomiePhare(payload('residentiel'), 'avec_batterie');
     expect(avec.ecoHero).toBe(31000);
     expect(avec.paybackHero).toBe(avec.paybackAvec);
+  });
+
+  it('RWEB1 — `roi_*_jamais` : aucune année (pas la sentinelle 25), libellé PDF ; unité traduite sinon', () => {
+    const j = chiffresEconomiePhare(payload('residentiel', { roi_s: 25, roi_s_jamais: true }), 'sans_batterie');
+    expect(j.paybackSans).toBeNull();
+    expect(j.paybackHero).toBeNull();
+    expect(j.paybackHeroI18n).toBeNull();
+    expect(j.paybackHeroJamais).toBe(true);
+    const ok = chiffresEconomiePhare(payload('residentiel'), 'avec_batterie');
+    expect(ok.paybackHeroI18n).toEqual({ fr: '6,1 ans', en: '6.1 years', ar: '6,1 سنوات' });
+    expect(ok.paybackHeroJamais).toBe(false);
+    const long = chiffresEconomiePhare(payload('residentiel', { roi_a: 12.5 }), 'avec_batterie');
+    expect(long.paybackHeroI18n?.ar).toBe('12,5 سنة');
+    // RWEB14 — économie AVEC présente mais retour AVEC « jamais » : pas de repli sur le retour SANS.
+    const mix = chiffresEconomiePhare(payload('residentiel', { roi_a: 25, roi_a_jamais: true }), 'avec_batterie');
+    expect(mix.ecoHero).toBe(31000);
+    expect(mix.paybackHero).toBeNull();
+    expect(mix.paybackHeroJamais).toBe(true);
+    expect(lirePageProposition()).toContain('NON_RENTABILISE_25');
+  });
+
+  it('RWEB20/21/22/25 — libellés économie « calculée/estimée », phrase « Rentabilisé en », RWEB25 sans « 25 ans »', async () => {
+    const { libellesEconomie, phraseRentabilise, libellesRetour, NON_RENTABILISE_25 } = await import('../src/lib/proposition/retour');
+    expect(libellesEconomie('horaire', '12 000 MAD')).toEqual({
+      fr: 'Économie calculée ≈ 12 000 MAD/an', en: 'Calculated savings ≈ 12 000 MAD/yr', ar: 'الوفورات المحسوبة ≈ 12 000 MAD/سنة' });
+    expect(libellesEconomie('factures')?.fr).toBe('Économie estimée / an');
+    expect(libellesEconomie(null)).toBeNull();
+    expect(chiffresEconomiePhare(payload('residentiel', { savings_model_sans: 'horaire' }), 'sans_batterie').modeleHero).toBe('horaire');
+    expect(chiffresEconomiePhare(payload('residentiel'), 'sans_batterie').modeleHero).toBeNull();
+    expect(phraseRentabilise(libellesRetour(7.5))).toEqual({ fr: 'Rentabilisé en 7,5 ans', en: 'Paid back in 7.5 years', ar: 'يُسترد خلال 7,5 سنوات' });
+    expect(phraseRentabilise(libellesRetour(25), true)).toBe(NON_RENTABILISE_25);
+    expect(phraseRentabilise(libellesRetour(null))).toBeNull();
+    const page = lirePageProposition();
+    expect(page).toContain('data-card-payback={opt}');
+    expect(page).toContain("q?.[opt === 'avec_batterie' ? 'savings_model_avec' : 'savings_model_sans']");
+    expect(page).not.toContain('Remboursé en');
+    expect(page).not.toMatch(/formatPayback\(/);
+  });
+
+  it('RWEB25 — savingsHeadline ne lit pas la sentinelle quand roi_*_jamais est levé', async () => {
+    const { savingsHeadline } = await import('../src/lib/proposition');
+    expect(savingsHeadline(payload('residentiel', { roi_s: 25, roi_s_jamais: true }), 'sans_batterie').payback).toBeNull();
+    expect(savingsHeadline(payload('residentiel'), 'avec_batterie').payback).toBe('6,1 ans');
   });
 
   it('mode absent garde ses chiffres ; industriel / commercial ne lisent plus eco_s_ann (CIW300 : synthese_ci)', () => {
@@ -79,7 +123,8 @@ describe('AGW300 — la page n\'a qu\'UNE définition de ces chiffres et un CO�
     expect(page).not.toMatch(/const paybackHero =/);
     expect(page).not.toMatch(/const ecoSans = q\?\.eco_s_ann/);
   });
-  it('enviro (CO₂) vaut null en agricole (et en C&I : CIW307)', () => {
-    expect(page).toContain('const enviro = ok && !isAgricole && !isAutoconso ? environmentalImpact(prodKwh) : null;');
+  it('aucune tonne CO₂ calculée sur la page (facteur non sourcé — RWEB6, tous segments)', () => {
+    expect(page).not.toContain('environmentalImpact(prodKwh)');
+    expect(page).not.toContain('source à préciser.');
   });
 });

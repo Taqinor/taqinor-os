@@ -385,6 +385,16 @@ class VuesEconomieCiTest(_BaseDevis):
         # (calcul « omis ») : 400.
         rep = self.api.post('/api/django/ventes/economie-ci/preview/', [None, None], format='json')
         self.assertEqual(rep.status_code, 400, rep.content)
+        # CEC18 — ``sortie_etude_ci`` hors contrat (autoconsommation en
+        # nombre, mois 13 en MT) : 400 nommé, jamais un 500.
+        mt = {'tension': {'valeur': 'mt'}}
+        for horaire in ({'mois': 1, 'type_jour': 'ouvre', 'nb_jours': 1, 'autoconso_kwh': 5},
+                        {'mois': 13, 'type_jour': 'ouvre', 'nb_jours': 1, 'autoconso_kwh': [1] * 24}):
+            sortie = {'entrees_resolues': mt, 'bilan': {'horaire': [horaire]}}
+            rep = self.api.post('/api/django/ventes/economie-ci/preview/',
+                                {'sortie_etude_ci': sortie}, format='json')
+            self.assertEqual(rep.status_code, 400, rep.content)
+            self.assertEqual(rep.json()['champ'], 'sortie_etude_ci')
 
     def test_preview_n_ecrit_rien(self):
         from apps.ventes.models import Devis

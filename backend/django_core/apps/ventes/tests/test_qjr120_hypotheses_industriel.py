@@ -67,7 +67,9 @@ class TestFluxServi(SimpleTestCase):
                          len(self.d["economie_ci"]["flux_ht"]["flux"]))
 
     def test_les_hypotheses_du_moteur_avec_leur_source(self):
-        self.assertIn("Hypothèses de l'estimation", self.txt)
+        # CPDF5 — le titre client « Bases du calcul ».
+        self.assertIn("Bases du calcul", self.txt)
+        self.assertNotIn("Hypothèses de l'estimation", self.txt)
         self.assertNotIn("moteur", self.txt)
         # AMOT80 — la source en mots du client, jamais « D-CIQ-10 ».
         # « Horizon : 25 ans » — une seule mention, la source servie le
@@ -81,7 +83,7 @@ class TestFluxServi(SimpleTestCase):
     def test_aucune_hypothese_sans_sa_donnee(self):
         """Sans argent servi : ni table, ni hypothèses, ni KPI."""
         txt = _visible(_page_finance(sample_data.build()))
-        self.assertNotIn("Hypothèses de l'estimation", txt)
+        self.assertNotIn("Bases du calcul", txt)
         self.assertNotIn("Cumul net", txt)
         self.assertNotIn("TRI sur", txt)
 
@@ -138,8 +140,12 @@ class TestPaybackMemeFlux(SimpleTestCase):
                    if i.startswith("payback_ans") for m in ms]
         tri = [m.valeur for i, ms in figures.items()
                if i.startswith("tri_pct") for m in ms]
+        # CPDF7 — le retour imprimé est celui du flux servi au dixième, le
+        # MÊME nombre que la couverture et /proposition (``chiffres_cles``).
+        from apps.ventes.quote_engine.ci.synthese import (
+            chiffres_cles, synthese_ci)
         self.assertEqual([float(v) for v in payback],
-                         [d["economie_ci"]["indicateurs"]["retour_ans"]])
+                         [chiffres_cles(synthese_ci(dict(d)))["payback_ans"]])
         self.assertAlmostEqual(float(tri[0]),
                                d["economie_ci"]["indicateurs"]["tri_pct"],
                                delta=0.05)

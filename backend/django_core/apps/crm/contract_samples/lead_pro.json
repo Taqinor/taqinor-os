@@ -407,7 +407,7 @@
         "inconnu"
       ],
       "reutilisee": true,
-      "segment": "commercial",
+      "segment": "commun",
       "etape_appel": 2,
       "question": "« Votre compteur est-il monophasé ou triphasé ? »"
     },
@@ -773,13 +773,15 @@
       "restaurant": [
         "chambres_froides",
         "horaires",
+        "heures",
         "cuisson",
         "ouvert_journee_ramadan"
       ],
       "cafe": [],
       "boulangerie": [
         "four",
-        "cuisson_nocturne"
+        "cuisson_nocturne",
+        "heures_cuisson"
       ],
       "commerce": [
         "surface_vente_m2",
@@ -796,12 +798,15 @@
       ],
       "sante": [
         "lits",
-        "garde_nuit"
+        "garde_nuit",
+        "heures_garde"
       ],
       "ecole": [
         "effectif",
         "internat",
-        "fermeture_estivale"
+        "fermeture_estivale",
+        "fermeture_du",
+        "fermeture_au"
       ],
       "salle_sport": [],
       "hammam": [
@@ -821,13 +826,18 @@
       "mosquee": [],
       "autre": []
     },
-    "source": "clés fermées reprises de COMMERCIAL_CATEGORY_QUESTIONS (frontend/src/features/ventes/solar.js) et des clés du tunnel (crm/webhooks.py) ; AJOUTS : `ouvert_journee_ramadan` (restaurant/café) et, pour l'hôtel, `heures_piscine`, `blanchisserie`, `reception_24h` (l'occupation déclarée = `occupation_pct`)",
+    "source": "clés fermées reprises de COMMERCIAL_CATEGORY_QUESTIONS (frontend/src/features/ventes/solar.js) et des clés du tunnel (crm/webhooks.py) ; AJOUTS : `ouvert_journee_ramadan` (restaurant/café) et, pour l'hôtel, `heures_piscine`, `blanchisserie`, `reception_24h` (l'occupation déclarée = `occupation_pct`) ; CSV13 : clés d'heures et de dates que le moteur C&I lit pour la courbe (`heures`, `heures_cuisson`, `heures_garde`, `fermeture_du`, `fermeture_au`), posées seulement quand la réponse qui les rend utiles est donnée",
     "questions_ajoutees": {
       "ouvert_journee_ramadan": "« Pendant le Ramadan, êtes-vous ouverts en journée ? »",
       "heures_piscine": "« La piscine fonctionne combien d'heures par jour ? »",
       "blanchisserie": "« Lavez-vous le linge sur place ? »",
       "reception_24h": "« La réception est-elle ouverte 24 heures sur 24 ? »",
-      "occupation_pct": "« Quel est votre taux d'occupation moyen sur l'année, à peu près ? »"
+      "occupation_pct": "« Quel est votre taux d'occupation moyen sur l'année, à peu près ? »",
+      "heures": "« De quelle heure à quelle heure êtes-vous ouverts, à peu près ? »",
+      "heures_cuisson": "« De quelle heure à quelle heure le four électrique tourne-t-il la nuit ? »",
+      "heures_garde": "« De quelle heure à quelle heure dure la garde de nuit ? »",
+      "fermeture_du": "« À quelle date commence la fermeture d'été ? »",
+      "fermeture_au": "« Et à quelle date se termine-t-elle ? »"
     }
   },
   "entrees_ci": {

@@ -297,7 +297,11 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
     // et que le client a droit aux deux.
     expect(bloc).toContain('PANEL_PRODUCT_WARRANTY_YEARS');
     expect(bloc).toContain('PANEL_PERFORMANCE_WARRANTY_YEARS');
-    expect(bloc).toContain('INVERTER_WARRANTY_YEARS');
+    // RWEB2 (fondateur 27/10) — onduleur/batterie par MARQUE posée (Deye 5, Huawei 10, Dyness DL5.0C 7).
+    expect(bloc).toContain('garantieOnduleurAns(garantieLignes)');
+    // RWEB19 — 12/30 ans panneaux seulement pour Canadian Solar / Jinko (PDF theme.py).
+    expect(bloc).toContain('equipPresence.panneaux && garantiesPanneauxAns(garantieLignes)');
+    expect(bloc).toContain('garantieBatterieAns(garantieLignes)');
     expect(bloc).toContain('data-fr="de garantie produit panneaux"');
     expect(bloc).toContain('data-fr="de garantie rendement panneaux"');
     // LA POSE EST AFFICHÉE AVEC SA DURÉE (2 ans), comme sur le PDF — l'ancien
@@ -314,7 +318,7 @@ describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
     expect(bloc).toContain('data-ar={anneesAr(INSTALL_WARRANTY_YEARS)}');
     expect(bloc).toContain('data-ar={anneesAr(PANEL_PRODUCT_WARRANTY_YEARS)}');
     expect(bloc).toContain('data-ar={anneesAr(PANEL_PERFORMANCE_WARRANTY_YEARS)}');
-    expect(bloc).toContain('data-ar={anneesAr(INVERTER_WARRANTY_YEARS)}');
+    expect(bloc).toContain('data-ar={anneesAr(ans)}');
     expect(bloc).not.toContain('data-ar="سنتان"');
     // La fonction couvre bien les quatre cas (une seule définition, en tête).
     expect(PROPOSITION).toContain('function anneesAr(n: number): string');

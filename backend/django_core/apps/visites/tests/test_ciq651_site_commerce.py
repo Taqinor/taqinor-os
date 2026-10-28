@@ -63,6 +63,66 @@ class ContratSiteCommerce(SimpleTestCase):
         self.assertIsNotNone(checklist.slot('accord_proprietaire'))
 
 
+#: CSV9 — ce que ``crm.selectors.entrees_ci_du_lead`` rend d'un lead qui porte
+#: déjà catégorie, horaires, tension, puissance et groupe électrogène.
+ENTREES_LEAD = {
+    'entrees': [
+        {'colonne': 'categorie_commerciale', 'valeur': 'bureau'},
+        {'colonne': 'jours_ouverture', 'valeur': [True] * 5 + [False] * 2},
+        {'colonne': 'heure_debut', 'valeur': {'ouvre': [[8, 18]]}},
+        {'colonne': 'tension_raccordement', 'valeur': 'bt'},
+        {'colonne': 'compteur_puissance_kva', 'valeur': 80.0},
+    ],
+    'informations': [{'colonne': 'groupe_electrogene', 'valeur': 'oui'}],
+}
+
+
+class DeclareDuLead(SimpleTestCase):
+    def test_categorie_declaree_servie(self):
+        declare = checklist.declare_depuis_lead(ENTREES_LEAD)
+        self.assertEqual(declare['site_commerce']['categorie'],
+                         {'valeur': 'bureau', 'libelle': 'Bureaux'})
+        self.assertEqual(
+            declare['site_commerce']['horaires_constates'],
+            {'valeur': 'Lun–Ven, 8 h–18 h',
+             'libelle': 'Lun–Ven, 8 h–18 h'})
+        self.assertEqual(declare['site_commerce']['secours_groupe'],
+                         {'valeur': True, 'libelle': 'Oui'})
+        self.assertEqual(declare['comptage']['niveau_tension_constate'],
+                         {'valeur': 'bt', 'libelle': 'Basse tension (BT)'})
+        self.assertEqual(
+            declare['comptage']['puissance_souscrite_kva_constatee'],
+            {'valeur': 80.0, 'libelle': '80 kVA'})
+
+    def test_aucune_valeur_inventee(self):
+        self.assertEqual(checklist.declare_depuis_lead(None), {})
+        self.assertEqual(checklist.declare_depuis_lead(
+            {'entrees': [], 'informations': []}), {})
+        # Tension « inconnue » ou seulement supposée : jamais proposée.
+        declare = checklist.declare_depuis_lead({'entrees': [
+            {'colonne': 'tension_raccordement', 'valeur': 'inconnue'}],
+            'informations': []})
+        self.assertEqual(declare, {})
+
+    def test_chaque_cle_declaree_est_une_mesure_du_gabarit(self):
+        declare = checklist.declare_depuis_lead(ENTREES_LEAD)
+        for categorie, codes in declare.items():
+            servies = {m['code'] for m in checklist.mesures(
+                categorie, 'ci', type_lead='commercial')}
+            self.assertLessEqual(set(codes), servies, categorie)
+
+    def test_le_libelle_optionnel_n_apparait_qu_une_fois(self):
+        # L'écran ajoute déjà « (optionnel) » aux photos facultatives.
+        for gabarit in (checklist.categories('ci'),
+                        [checklist.categorie('site_commerce', 'ci',
+                                             type_lead='commercial',
+                                             locataire=True)]):
+            for cat in gabarit:
+                for slot in cat['slots']:
+                    self.assertNotIn('(optionnel)', slot['libelle'],
+                                     slot['code'])
+
+
 class VisiteSiteCommerce(VisiteTerrainBase):
     def _lead(self, type_installation='commercial', ownership=None):
         self.lead.type_installation = type_installation
@@ -183,3 +243,20 @@ class VisiteSiteCommerce(VisiteTerrainBase):
         visite_id = self.creer_visite()
         self.assertNotIn('site_commerce',
                          self._detail(visite_id)['mesures'])
+
+    def test_categorie_declaree_servie(self):
+        # CSV9 — le lead porte la catégorie : la visite la sert en « declare ».
+        self._lead()
+        Lead.objects.filter(pk=self.lead.pk).update(
+            categorie_commerciale='bureau')
+        visite_id = self.creer_visite()
+        declare = self._detail(visite_id)['declare']
+        self.assertEqual(declare['site_commerce']['categorie'],
+                         {'valeur': 'bureau', 'libelle': 'Bureaux'})
+
+    def test_lead_vide_ne_sert_aucun_declare(self):
+        self._lead()
+        visite_id = self.creer_visite()
+        self.assertNotIn('categorie',
+                         self._detail(visite_id)['declare'].get(
+                             'site_commerce', {}))

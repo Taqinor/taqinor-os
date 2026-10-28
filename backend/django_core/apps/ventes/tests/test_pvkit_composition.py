@@ -518,3 +518,201 @@ class LEtudeElectriqueSuitToutSeule(_Base):
         self.assertFalse(resultat['inchange'])
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+
+
+class LesAvertissementsDeCompositionSontRendus(_Base):
+    """RSIZ4 — les avertissements de la composition sont RENDUS sur son
+    résultat (``avertissements_composition``), même sans canal fourni."""
+
+    slug = 'pvkit-rsiz4'
+
+    def test_la_cle_stable_porte_la_phrase_meme_sans_canal(self):
+        from apps.ventes.domain.composition import (
+            avertissement_batterie_rupture_stock)
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=4.4, panel_watt=550, nb_panneaux=8, avec_batterie=True)
+        self.assertIn(avertissement_batterie_rupture_stock(),
+                      list(lignes.avertissements_composition))
+        self.assertNotIn('batterie', list(lignes.roles))
+
+    def test_le_canal_de_l_appelant_recoit_la_meme_phrase_une_fois(self):
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        canal = []
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=4.4, panel_watt=550, nb_panneaux=8, avec_batterie=True,
+            avertissements=canal)
+        self.assertEqual(list(lignes.avertissements_composition), canal)
+        self.assertEqual(len(canal), len(set(canal)))
+
+    def test_une_composition_sans_souci_rend_une_liste_vide(self):
+        # Fiche du montage : Isc panneau 14,02 A > 13,5 A admissible — le
+        # couple serait (à raison) signalé ; ici l'entrée l'admet.
+        FicheTechnique.objects.filter(
+            company=self.company, type_fiche='onduleur').update(
+                ond_i_max_mppt_a=Decimal('20.0'))
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=4.4, panel_watt=550, nb_panneaux=8)
+        self.assertEqual(list(lignes.avertissements_composition), [])
+
+
+class LHybrideRetenuPorteUneBatterieDuStock(_Base):
+    """RSIZ2 — au-delà de ~25 kWc, l'hybride HAUTE tension (30 kW) n'est
+    plus retenu pour l'option « avec » quand seule une batterie BASSE
+    tension est tarifée en stock : plusieurs hybrides basse tension la
+    servent à sa place (mesuré le 27/10/2026, devis auto 80 000 MAD/mois
+    composé « avec batterie » sans aucune batterie)."""
+
+    slug = 'pvkit-rsiz2'
+
+    def setUp(self):
+        super().setUp()
+        self.ond_hv = Produit.objects.create(
+            company=self.company, nom='Onduleur hybride Deye 30kW Triphasé',
+            sku='ONDH30-%s' % self.slug, prix_vente=Decimal('60000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        FicheTechnique.objects.create(
+            company=self.company, produit=self.ond_hv, type_fiche='onduleur',
+            ond_ac_kw=Decimal('30.00'), ond_phases=3, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal('160.0'), ond_mppt_v_max=Decimal('800.0'),
+            ond_v_max_abs=Decimal('1000.0'), ond_i_max_mppt_a=Decimal('36.0'),
+            ond_rendement_euro_pct=Decimal('97.0'),
+            ond_bat_v_min=Decimal('160.0'), ond_bat_v_max=Decimal('800.0'))
+
+    def _composer(self, **extra):
+        return services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=30.25, panel_watt=550, nb_panneaux=55, avec_batterie=True,
+            **extra)
+
+    def test_regles_d_origine_gardent_l_hybride_d_hier(self):
+        """Un devis EXISTANT aux règles < 3 garde l'hybride qu'il a servi."""
+        noms = [li.designation for li in self._composer(regles_2710=False)]
+        self.assertIn(self.ond_hv.nom, noms)
+
+    def test_plusieurs_hybrides_basse_tension_plutot_que_le_30_kw(self):
+        lignes = self._composer()
+        noms = {li.designation: li.quantite for li in lignes}
+        self.assertNotIn(self.ond_hv.nom, noms)
+        # 30,25 kWc / 5 kW → 7 hybrides basse tension (blocs entiers).
+        self.assertEqual(noms['Onduleur hybride Deye 5kW Monophasé'], 7)
+        self.assertIn('batterie', list(lignes.roles))
+
+    def test_sans_batterie_en_stock_le_vivier_reste_entier_et_le_dit(self):
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        lignes = self._composer()
+        # Aucun hybride servable : le vivier n'est pas réduit (règle des
+        # 80 % d'hier), et l'absence de batterie est DITE.
+        self.assertIn(self.ond_hv.nom, [li.designation for li in lignes])
+        self.assertNotIn('batterie', list(lignes.roles))
+        self.assertTrue(any(
+            'SANS batterie' in message
+            for message in lignes.avertissements_composition))
+
+
+class LaPhaseSupposeeTriphaseeEstDite(_Base):
+    """RSIZ6 — raccordement non renseigné : un onduleur triphasé VENDU
+    (heuristique « ≥ 10 kW ») est signalé au commercial, sur le même canal
+    ``avertissements_composition`` ; une phase déclarée reste muette."""
+
+    slug = 'pvkit-rsiz6'
+
+    def setUp(self):
+        super().setUp()
+        self.ond_tri = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 15kW Triphasé',
+            sku='ONDR15-%s' % self.slug, prix_vente=Decimal('20000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        FicheTechnique.objects.create(
+            company=self.company, produit=self.ond_tri, type_fiche='onduleur',
+            ond_ac_kw=Decimal('15.00'), ond_phases=3, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal('160.0'), ond_mppt_v_max=Decimal('950.0'),
+            ond_v_max_abs=Decimal('1100.0'), ond_i_max_mppt_a=Decimal('26.0'),
+            ond_rendement_euro_pct=Decimal('97.5'), ond_bat_aucune=True)
+
+    def _composer(self, phase=None):
+        return services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=15.4, panel_watt=550, nb_panneaux=28, phase=phase)
+
+    def _dit_la_phase(self, lignes):
+        return any('Raccordement non renseigné' in message
+                   for message in lignes.avertissements_composition)
+
+    def test_phase_inconnue_triphase_vendu_le_dit(self):
+        lignes = self._composer()
+        self.assertIn(self.ond_tri.nom, [li.designation for li in lignes])
+        self.assertTrue(self._dit_la_phase(lignes))
+
+    def test_phase_declaree_reste_muette(self):
+        self.assertFalse(self._dit_la_phase(self._composer('triphase')))
+        self.assertFalse(self._dit_la_phase(self._composer('monophase')))
+
+    def test_petit_kit_monophase_reste_muet(self):
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=4.4, panel_watt=550, nb_panneaux=8)
+        self.assertFalse(self._dit_la_phase(lignes))
+
+
+class PostesPretDevisResidentielTests(_Base):
+    """RSIZ11 — ``postes_pret_devis_residentiel`` : le catalogue de ce montage
+    (``CATALOGUE``) chiffre le kit ; chaque trou se lit poste par poste.
+    (NON EXÉCUTÉ à l'écriture : pas de base de test locale.)"""
+
+    slug = 'pvkit-pret'
+
+    def _postes(self):
+        from apps.ventes.selectors import postes_pret_devis_residentiel
+        return {p['cle']: p for p in
+                postes_pret_devis_residentiel(self.company)['postes']}
+
+    def test_forme_et_aucun_prix_achat(self):
+        from apps.ventes.selectors import postes_pret_devis_residentiel
+        brut = postes_pret_devis_residentiel(self.company)
+        self.assertEqual(set(brut), {
+            'pret', 'nb_obligatoires_manquants', 'postes'})
+        self.assertNotIn('prix_achat', str(brut))
+
+    def test_absent_quand_aucun_article_du_role(self):
+        Produit.objects.filter(
+            company=self.company, sku__startswith='TRANS').delete()
+        postes = self._postes()
+        self.assertEqual(postes['transport']['statut'], 'absent')
+        self.assertEqual(postes['transport']['articles'], [])
+
+    def test_a_completer_sans_prix_avec_le_motif(self):
+        Produit.objects.filter(
+            company=self.company, sku__startswith='SOC').update(
+                prix_vente=Decimal('0'))
+        poste = self._postes()['socle']
+        self.assertEqual(poste['statut'], 'a_completer')
+        self.assertEqual(poste['articles'][0]['motif'],
+                         'prix de vente non saisi')
+
+    def test_batterie_hors_stock_bloque_le_pret(self):
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        poste = self._postes()['batterie']
+        self.assertEqual(poste['statut'], 'a_completer')
+        self.assertTrue(all(a['motif'] == 'hors stock (quantité 0)'
+                            for a in poste['articles']))
+        from apps.ventes.selectors import postes_pret_devis_residentiel
+        brut = postes_pret_devis_residentiel(self.company)
+        self.assertFalse(brut['pret'])
+        self.assertGreaterEqual(brut['nb_obligatoires_manquants'], 1)
+
+    def test_triphase_facultatif_donc_absent_sans_bloquer(self):
+        poste = self._postes()['onduleur_hybride:tri']
+        self.assertEqual(poste['statut'], 'absent')
+        self.assertFalse(poste['obligatoire'])

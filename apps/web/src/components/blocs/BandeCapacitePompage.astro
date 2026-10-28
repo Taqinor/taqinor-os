@@ -1,0 +1,17 @@
+---
+// AGC10 : bande de capacité de /pompage-solaire (fr/en/ar) — libellé (dt)
+// avant le chiffre (dd) dans le DOM, chiffre affiché au-dessus (flex-col-reverse).
+// `rtl` : grille gauche→droite, libellés en arabe centrés et rtl ; `grille` :
+// classes de la grille quand la page en garde d'autres (en : 3 colonnes).
+const { items, rtl = false, grille = 'grid-cols-1 sm:grid-cols-3' } = Astro.props as {
+  items: { label: string; fig: string }[]; rtl?: boolean; grille?: string;
+};
+---
+        <dl class={`cine-in grid max-w-3xl ${grille} gap-3 border-t border-white/20 pt-6 sm:gap-6`} dir={rtl ? 'ltr' : undefined}>
+          {items.map((it) => (
+            <div class={rtl ? 'flex flex-col-reverse text-center' : 'flex flex-col-reverse'}>
+              <dt class="tech-label mt-2 text-lune" dir={rtl ? 'rtl' : undefined}>{it.label}</dt>
+              <dd class="fig lum text-base sm:text-3xl">{it.fig}</dd>
+            </div>
+          ))}
+        </dl>

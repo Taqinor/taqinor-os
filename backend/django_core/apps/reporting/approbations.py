@@ -442,9 +442,11 @@ def _decider_approbation_core(company, user, source, obj_id, decision, motif):
                 return 404, {'detail': 'Introuvable.'}
             core_workflow.decide_step(
                 step, approve=approve, user=user, commentaire=motif)
-    except PermissionDenied as exc:
+    except (PermissionDenied, PermissionError) as exc:
         # APAR46 — « qui peut décider » est porté par le SERVICE source
         # (palier approbateur + séparation des tâches) : 403, jamais 400.
+        # api-fuzz-full 28/10 : la GED lève ``PermissionError`` (demandeur =
+        # décideur), qui tombait dans la garde générique → 400.
         return 403, {'detail': str(exc) or 'Accès refusé.'}
     except Exception as exc:  # garde générique : jamais de 500 opaque
         logger.warning("decider approbation core : échec ignoré, comportement dégradé", exc_info=True)

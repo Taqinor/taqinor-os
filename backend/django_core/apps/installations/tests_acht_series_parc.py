@@ -62,11 +62,11 @@ class SeriesParcTests(TestCase):
         self.serial.refresh_from_db()
         self.assertFalse(self.serial.pousse_parc)
 
-    def test_doublon_refuse_400(self):
+    def test_doublon_refuse_409(self):
         r = self.api.post(f'{BASE}/{self.iv.id}/ajouter-serial/', {
             'produit': self.produit.id, 'numero_serie': 'SN-1'},
             format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('numero_serie', r.data)
         self.assertEqual(ComponentSerial.objects.filter(
             numero_serie='SN-1').count(), 1)

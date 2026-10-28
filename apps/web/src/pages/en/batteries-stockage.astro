@@ -1,7 +1,7 @@
 ---
 /**
  * EN — Batteries & storage (W67). Faithful translation of /batteries-stockage ;
- * EVERY spec/figure (6,000 cycles at 90% DoD, 10-year warranty with ≥70%
+ * EVERY spec/figure (6,000 cycles at 90% DoD, 7-year warranty with ≥70%
  * capacity retained, 5 kWh modules, 5–15 kWh, CE/IEC 62619/UN38.3, 15/10/5 kWh
  * installs, refs 468/400/236) kept EXACT. DoD and end-of-life capacity are
  * distinct axes — never conflated. Visual FAQ (schema={false} so /faq stays the
@@ -38,7 +38,7 @@ const specs = [
   { item: 'Modular capacity', detail: 'Expandable 5 kWh modules: 5 to 15 kWh and more' },
   { item: 'Communication', detail: 'Native CAN BMS with Deye hybrid inverters' },
   { item: 'Certifications', detail: 'CE · IEC 62619 · UN38.3' },
-  { item: 'Warranty', detail: '10-year warranty with ≥ 70% capacity retained' },
+  { item: 'Warranty', detail: '7-year warranty with ≥ 70% capacity retained' },
 ];
 
 const cas = [
@@ -107,7 +107,7 @@ const faqItems = [
   {
     cluster: usageCluster,
     q: 'How long does an LFP battery last?',
-    a: "On paper, a Dyness LFP battery takes 6,000 cycles at 90% depth of discharge, with a 10-year warranty and at least 70% of its capacity retained. Count one cycle a day and those 6,000 cycles alone span more than sixteen years. But a battery also ages while it sits — roughly 1 to 2% of capacity lost per year, even unused. It is this calendar ageing that usually decides matters in the end, bringing the real working life down to 12–15 years in the Moroccan climate. The way to claw back some of those years: keep the battery in the shade, ventilated, between 15 and 35 °C.",
+    a: "On paper, a Dyness LFP battery takes 6,000 cycles at 90% depth of discharge, with a 7-year warranty and at least 70% of its capacity retained. Count one cycle a day and those 6,000 cycles alone span more than sixteen years. But a battery also ages while it sits — roughly 1 to 2% of capacity lost per year, even unused. It is this calendar ageing that usually decides matters in the end, bringing the real working life down to 12–15 years in the Moroccan climate. The way to claw back some of those years: keep the battery in the shade, ventilated, between 15 and 35 °C.",
   },
   {
     cluster: usageCluster,
@@ -142,7 +142,7 @@ import BatteriesStockageDivE1BC from '../../components/blocs/BatteriesStockageDi
 
 <Layout
   title="Dyness LFP solar batteries in Morocco: 6,000 cycles, 90% DoD | Taqinor"
-  description="Solar storage in Morocco: Dyness lithium-iron-phosphate batteries, 6,000 cycles at 90% depth of discharge, expandable 5 kWh modules, native CAN BMS dialogue with Deye hybrid inverters, 10-year warranty with ≥70% capacity retained. The real question is your consumption profile: if you use most of your power by day, the battery often has to wait its turn."
+  description="Solar storage in Morocco: Dyness lithium-iron-phosphate batteries, 6,000 cycles at 90% depth of discharge, expandable 5 kWh modules, native CAN BMS dialogue with Deye hybrid inverters, 7-year warranty with ≥70% capacity retained. The real question is your consumption profile: if you use most of your power by day, the battery often has to wait its turn."
   ogSlug="batteries-stockage"
 >
   <div class="v2">

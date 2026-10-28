@@ -73,12 +73,9 @@ def _r4(x):
 
 
 def _num(v):
-    if v is None or isinstance(v, bool):
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
+    """Nombre FINI ou None (CEC18 : « nan », « inf », « 1e400 » refusés)."""
+    from apps.ventes.economie_ci_options import fini
+    return None if v is None or isinstance(v, bool) else fini(v)
 
 
 def _date_fr(iso):

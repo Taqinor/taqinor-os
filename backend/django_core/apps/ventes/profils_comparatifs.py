@@ -192,6 +192,8 @@ def _dimensionnement_variante(devis, occupation):
     dimensionnement du devis (ce serait écraser le profil réel du client)."""
     from apps.ventes.dimensionnement import recommander_taille
     from apps.ventes.domain.entrees import entrees_depuis_devis
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
 
     entrees = entrees_depuis_devis(devis)
     if entrees is None or not entrees.conso_kwh_mensuelles:
@@ -206,7 +208,10 @@ def _dimensionnement_variante(devis, occupation):
         tranches=entrees.tranches, charges_fixes_mad=entrees.charges_fixes_mad,
         phase=entrees.phase, gamme_nom_devis=entrees.gamme_nom_devis,
         # ERR-QJR605 — site isolé et paires MPPT du devis.
-        hors_reseau=entrees.hors_reseau, mppt_paires=entrees.mppt_paires)
+        hors_reseau=entrees.hors_reseau, mppt_paires=entrees.mppt_paires,
+        # RSIZ2/3/5 — un devis existant aux règles < 3 garde ses règles,
+        # comme le profil réel (``etudes.rafraichir_dimensionnement_devis``).
+        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
 
 
 def calculer_profils_comparatifs(devis):

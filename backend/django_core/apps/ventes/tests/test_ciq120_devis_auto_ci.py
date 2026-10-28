@@ -469,7 +469,12 @@ class OptionBatterieCITests(_Base):
         self.assertEqual(data['option_servie'], 'sans')
         from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
         valeur = valeur_option_avec(data)
-        self.assertGreater(valeur['retour_simple_ans'], 0)
+        # CPDF2 — le retour imprimé est CELUI servi par l'étude (flux 25 ans,
+        # ``option_avec.retour_simple_ans``), jamais un quotient recalculé ;
+        # non servi (flux sans passage à zéro) ⇒ omis.
+        servi = option.get('retour_simple_ans')
+        self.assertEqual(valeur['retour_simple_ans'],
+                         servi if servi and servi > 0 else None)
         self.assertIn('kWh utiles', valeur['textes']['fr'])
 
     def test_choix_avec_du_lead_option_avec_seule(self):
@@ -714,6 +719,7 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
 
     def test_option_des_lignes_lue_comme_l_option_sans(self):
         import contextlib
+        from types import SimpleNamespace
 
         from apps.ventes.domain.etude_ci_batterie import _bloc, _investissement_des_lignes
         devis = object()
@@ -730,14 +736,16 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
         cibles = {'apps.ventes.utils.options.option_effective': {'return_value': ''},
                   'apps.ventes.utils.options.option_totaux':
                   {'return_value': {'ht': 488000.0, 'ttc': 564000.0}},
-                  'apps.ventes.economie_ci.lignes_pour_economie_ci': {'return_value': detail},
-                  'apps.ventes.domain.regles_calcul.calcul_corrige': {'return_value': True}}
+                  'apps.ventes.economie_ci.lignes_pour_economie_ci': {'return_value': detail}}
         with contextlib.ExitStack() as pile:
             for cible, options in cibles.items():
                 pile.enter_context(mock.patch(cible, **options))
             invest = _investissement_des_lignes([], devis)
+            # #1094 — devis envoyé aux règles du 08/10 (niveau 2) : O&M gardée en an 0
+            envoye = _investissement_des_lignes([], SimpleNamespace(regles_calcul=2))
         self.assertEqual(invest['ht'], 486000.0)       # O&M sortie de l'année 0 (CEC1)
         self.assertEqual(invest['ttc'], 561600.0)
+        self.assertEqual((envoye['ht'], envoye['ttc']), (488000.0, 564000.0))
         self.assertIs(invest['lignes'], detail)
         evaluation = dict(self._evaluation(), cout=None, composition=None,
                           onduleurs={'combinaison': []})
@@ -748,6 +756,43 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
             self.assertIsNone(_investissement_des_lignes([], devis))
         # sans devis (ni ``ligne.devis``) : rien
         self.assertIsNone(_investissement_des_lignes([], None))
+
+    def test_composition_garde_l_om_en_an0_sur_un_devis_envoye_niveau_2(self):
+        """Audit Fable L3 — le chemin « composition » de l'option « avec »
+        (devis « sans » / « les deux » : aucune ligne d'option « avec »)
+        suit le niveau de règles : CEC1 (O&M hors de l'année 0) au niveau 3
+        seulement ; un devis envoyé ≤ 2 recalculé garde l'ancien investissement."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        evaluation = self._evaluation()
+        evaluation['composition']['lignes'].append(
+            {'role': 'om_ci', 'designation': 'O&M', 'quantite': 1,
+             'prix_connu': True, 'prix_unitaire_ht': '1000'})
+        courant = m._investissement_composition(evaluation, 20)
+        envoye = m._investissement_composition(evaluation, 20, regles_2710=False)
+        self.assertEqual((envoye['ht'], envoye['ttc']), (540000.0, 649200.0))
+        self.assertEqual((courant['ht'], courant['ttc']), (539000.0, 648000.0))
+        retours = {}
+        for niveau in (True, False):
+            bloc = m._bloc(evaluation, self._Valoriseur(), dict(self._ctx(), regles_2710=niveau))
+            retours[niveau] = bloc['retour_simple_ans']
+        self.assertGreater(retours[False], retours[True])
+        # le niveau passé à ``option_avec_de_l_etude`` atteint le ctx des DEUX chemins
+        vus = []
+        resultat = {'evaluation': evaluation, 'prix_a_renseigner': [], 'hypotheses': [],
+                    'alertes': [], 'motif': None}
+        catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
+        with mock.patch.object(m, 'batteries_compatibles', return_value=[1]), \
+                mock.patch.object(m, '_dimensionner', return_value=resultat), \
+                mock.patch.object(m, '_option_dominee', return_value=False), \
+                mock.patch.object(m, '_bloc', lambda ev, val, ctx, **k: vus.append(ctx) or {}), \
+                mock.patch.object(m, '_option_imposee', lambda imp, ctx: vus.append(ctx) or {}):
+            for imposee in (None, {'x': 1}):
+                m.option_avec_de_l_etude(catalogue, {'kwc': 1}, choix='avec', lead=None,
+                                         imposee=imposee, regles_2710=False,
+                                         tva_recuperable={'valeur': 'inconnu'})
+            m.option_avec_de_l_etude(catalogue, {'kwc': 1}, choix='avec', lead=None,
+                                     tva_recuperable={'valeur': 'inconnu'})
+        self.assertEqual([c['regles_2710'] for c in vus], [False, False, True])
 
     def test_pack_publie_sans_quantite_ne_borne_pas_a_zero(self):
         from apps.ventes.moteur_ci.batterie import puissance_decharge_kw

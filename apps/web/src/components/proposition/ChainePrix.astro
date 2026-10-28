@@ -14,6 +14,7 @@
  * peut lire le HTML RENDU et vérifier :
  *   Sous-total − Remise − Arrondi = Total HT   et   Total HT + TVA = Total TTC.
  * Les lignes `prix_achat` / marge n'existent pas dans cette charge utile.
+ * RWEB23 — libellés EN/AR recopiés de `quote_engine/i18n_labels.py` (sous_total_ht, remise, arrondi, total_ht, tva, total_ttc).
  */
 import { formatMADCentimes } from '../../lib/proposition';
 import type { ProposalTotaux } from '../../lib/proposition';
@@ -31,31 +32,31 @@ const arrondi = totaux.arrondi ?? 0;
 
 <dl class="mt-3 space-y-1.5 text-sm" data-chaine-prix>
   <div class="flex justify-between">
-    <dt class="text-lune-faint" data-i18n data-fr="Sous-total HT" data-en="Subtotal excl. tax" data-ar="المجموع الفرعي (بدون ضريبة)">Sous-total HT</dt>
+    <dt class="text-lune-faint" data-i18n data-fr="Sous-total HT" data-en="Subtotal excl. VAT" data-ar="المجموع الفرعي (خ.ض)">Sous-total HT</dt>
     <dd class="fig text-lune-soft" dir="ltr" data-figure="sous_total_ht" data-figure-option={option}>{formatMADCentimes(totaux.ht_brut)}</dd>
   </div>
   {remise > 0 && (
     <div class="flex justify-between">
-      <dt class="text-lune-faint" data-i18n data-fr="Remise" data-en="Discount" data-ar="التخفيض">Remise</dt>
+      <dt class="text-lune-faint" data-i18n data-fr="Remise" data-en="Discount" data-ar="الخصم">Remise</dt>
       <dd class="fig text-brass-300" dir="ltr" data-figure="remise" data-figure-option={option}>−{formatMADCentimes(remise)}</dd>
     </div>
   )}
   {arrondi > 0 && (
     <div class="flex justify-between">
-      <dt class="text-lune-faint" data-i18n data-fr="Arrondi commercial" data-en="Commercial rounding" data-ar="تقريب تجاري">Arrondi commercial</dt>
+      <dt class="text-lune-faint" data-i18n data-fr="Arrondi commercial" data-en="Rounding adjustment" data-ar="تقريب تجاري">Arrondi commercial</dt>
       <dd class="fig text-brass-300" dir="ltr" data-figure="arrondi" data-figure-option={option}>−{formatMADCentimes(arrondi)}</dd>
     </div>
   )}
   <div class="flex justify-between">
-    <dt class="text-lune-faint" data-i18n data-fr="Total HT" data-en="Total excl. tax" data-ar="المجموع (بدون ضريبة)">Total HT</dt>
+    <dt class="text-lune-faint" data-i18n data-fr="Total HT" data-en="Total excl. VAT" data-ar="المجموع (خ.ض)">Total HT</dt>
     <dd class="fig text-lune-soft" dir="ltr" data-figure="total_ht" data-figure-option={option}>{formatMADCentimes(totaux.ht_net)}</dd>
   </div>
   <div class="flex justify-between">
-    <dt class="text-lune-faint" data-i18n data-fr="TVA" data-en="VAT" data-ar="الضريبة على القيمة المضافة">TVA</dt>
+    <dt class="text-lune-faint" data-i18n data-fr="TVA" data-en="VAT" data-ar="ض.ق.م">TVA</dt>
     <dd class="fig text-lune-soft" dir="ltr" data-figure="tva" data-figure-option={option}>{formatMADCentimes(totaux.tva)}</dd>
   </div>
   <div class="flex justify-between border-t border-white/10 pt-2">
-    <dt class="text-lune" data-i18n data-fr="Total TTC" data-en="Total incl. tax" data-ar="المجموع شامل الضريبة">Total TTC</dt>
+    <dt class="text-lune" data-i18n data-fr="Total TTC" data-en="Total incl. VAT" data-ar="المجموع شامل الضريبة">Total TTC</dt>
     <dd class="fig text-lg text-lune" dir="ltr" data-figure="total_ttc" data-figure-option={option}>{formatMADCentimes(totaux.ttc)}</dd>
   </div>
 </dl>

@@ -43,7 +43,7 @@ def _avec_option_batterie(data):
         "valeur_chiffree": None, "motif": "valeur non chiffrée"}
     etude = data.setdefault("etude", {})
     etude["etude_ci"] = dict(etude.get("etude_ci") or {}, option_avec={
-        "economie_annuelle_mad": 120000.0,
+        "economie_annuelle_mad": 120000.0, "retour_simple_ans": 8.4,
         "bilan": {"batterie": {"capacite_utile_kwh": 92.2, "restitue_kwh_an": 31000}}})
     return data
 
@@ -53,7 +53,9 @@ class OptionAvecValeurTests(SimpleTestCase):
         from apps.ventes.quote_engine.ci.mentions import valeur_option_avec
         from apps.ventes.quote_engine.commercial import sample_data
         valeur = valeur_option_avec(_avec_option_batterie(sample_data.build()))
-        self.assertEqual(valeur["retour_simple_ans"], round(803333 / 120000, 1))
+        # CPDF2 — le retour SERVI par l'étude (flux 25 ans), jamais le
+        # quotient HT ÷ économie (6,7 ans ici) recalculé par le PDF.
+        self.assertEqual(valeur["retour_simple_ans"], 8.4)
         self.assertIn("92,2 kWh utiles", valeur["textes"]["fr"])
         self.assertIn("92.2 kWh usable", valeur["textes"]["en"])
 
