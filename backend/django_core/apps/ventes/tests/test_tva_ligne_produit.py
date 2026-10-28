@@ -189,3 +189,71 @@ class SerialiseurExposeProduitTva(_Base):
     def test_produit_tva_read_only(self):
         self.assertTrue(
             LigneDevisSerializer().fields['produit_tva'].read_only)
+
+
+class SerialiseurExposeGroupeClient(_Base):
+    """R2 (fondateur 28/10/2026) — ``groupe_client`` ('tableau_ci' |
+    'installation_ci' | null), calculé du ``role_ci`` du PRODUIT (une seule
+    source : ``moteur_ci.composition``), en lecture seule ; la ligne reste une
+    par composant en base."""
+
+    def setUp(self):
+        super().setUp()
+        # Le regroupement n'existe que sur un devis commercial / industriel.
+        self.devis.mode_installation = 'commercial'
+        self.devis.save(update_fields=['mode_installation'])
+
+    def _produit_ci(self, nom, role_ci):
+        return ProduitFactory(company=self.company, nom=nom, role_ci=role_ci,
+                              tva=Decimal('20.00'))
+
+    def test_null_hors_commercial_industriel(self):
+        ligne = self._ligne(self._produit_ci('Coffret DC C&I', 'coffret_dc'))
+        for mode in ('residentiel', 'agricole', ''):
+            self.devis.mode_installation = mode
+            self.devis.save(update_fields=['mode_installation'])
+            ligne.refresh_from_db()
+            self.assertIsNone(
+                LigneDevisSerializer(ligne).data['groupe_client'], mode)
+        self.devis.mode_installation = 'industriel'
+        self.devis.save(update_fields=['mode_installation'])
+        ligne.refresh_from_db()
+        self.assertEqual(LigneDevisSerializer(ligne).data['groupe_client'],
+                         'tableau_ci')
+
+    def test_organe_du_tableau(self):
+        for role in ('coffret_dc', 'coffret_ac', 'protection_ac',
+                     'protection_dc', 'mise_a_la_terre',
+                     'compteur_injection', 'controleur_injection'):
+            ligne = self._ligne(self._produit_ci('Organe %s' % role, role))
+            self.assertEqual(LigneDevisSerializer(ligne).data['groupe_client'],
+                             'tableau_ci', role)
+
+    def test_prestation_et_autres(self):
+        pose = self._ligne(self._produit_ci('Pose des modules C&I',
+                                            'pose_modules'))
+        self.assertEqual(LigneDevisSerializer(pose).data['groupe_client'],
+                         'installation_ci')
+        cable = self._ligne(self._produit_ci('Câble AC', 'cable_ac'))
+        self.assertIsNone(LigneDevisSerializer(cable).data['groupe_client'])
+        self.assertIsNone(
+            LigneDevisSerializer(self._ligne(self.panneau)).data['groupe_client'])
+        section = creer_ligne(
+            self.devis, produit=None, designation='Protection',
+            quantite=None, prix_unitaire=None, type_ligne='section')
+        self.assertIsNone(LigneDevisSerializer(section).data['groupe_client'])
+
+    def test_lecture_seule_et_servi_par_l_api(self):
+        self.assertTrue(
+            LigneDevisSerializer().fields['groupe_client'].read_only)
+        ligne = self._ligne(self._produit_ci('Coffret DC C&I', 'coffret_dc'))
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        reponse = api.get(f'/api/django/ventes/devis-lignes/{ligne.pk}/')
+        self.assertEqual(reponse.status_code, 200, reponse.content)
+        self.assertEqual(reponse.json()['groupe_client'], 'tableau_ci')
+        self.assertNotIn('prix_achat', reponse.json())
+        devis = api.get(f'/api/django/ventes/devis/{self.devis.pk}/').json()
+        self.assertEqual([li['groupe_client'] for li in devis['lignes']],
+                         ['tableau_ci'])

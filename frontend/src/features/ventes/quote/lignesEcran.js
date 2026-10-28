@@ -90,8 +90,140 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         // AGR218 (contrat AGR200) — base légale d'un taux à 0 %, telle que
         // saisie (vide = aucune).
         tvaBaseLegale: l.tva_base_legale ?? '',
+        // R2 (fondateur 28/10/2026) — groupe CLIENT servi par le serveur
+        // (`groupe_client` : 'tableau_ci' | 'installation_ci' | null), calculé
+        // du rôle C&I du produit. Marqueur d'écran seulement : l'écran regroupe
+        // à l'AFFICHAGE (`sequenceGroupesClient`), jamais envoyé.
+        groupeClient: l.groupe_client ?? null,
       }
     })
+}
+
+// ── R2 — en-têtes de groupe client du tableau des lignes ─────────────────────
+// Les composants d'un même `groupe_client` (Tableau de protection AC/DC,
+// Installation clé en main) s'affichent SOUS un en-tête de section qui dit le
+// total HT du groupe, chaque composant restant éditable ligne à ligne. Tant
+// qu'aucun geste n'est fait, l'ordre PERSISTÉ (`ordre` = index du state) ne
+// bouge pas : seule la séquence d'affichage rapproche les composants à la
+// place du premier ; après un Monter/Descendre (`deplacerDansSequence`),
+// l'ordre persisté devient l'ordre affiché.
+export const LIBELLES_GROUPE_CLIENT = Object.freeze({
+  tableau_ci: 'Tableau de protection AC/DC',
+  installation_ci: 'Installation clé en main',
+})
+
+// Total HT d'une ligne pour l'en-tête de groupe : APRÈS remise globale quand
+// le miroir de répartition (`lignesRemiseesTtc[i]`, TTC de ligne remisé,
+// aligné sur `lines`) en donne une, comme le PDF ; sinon le catalogue.
+function htLigne(l, ttcRemise) {
+  const taux = l.taux_tva ?? 20
+  if (Number.isFinite(ttcRemise)) return parseFloat(htFromTtc(ttcRemise, taux)) || 0
+  const qte = parseFloat(l.quantite) || 0
+  return qte * (parseFloat(htFromTtc(l.prix_unit_ttc, taux)) || 0)
+}
+
+/**
+ * Séquence d'affichage des lignes d'écran : `{ kind: 'entete', groupe,
+ * libelle, totalHt, nb }` avant la PREMIÈRE ligne d'un groupe, suivi de ses
+ * `{ kind: 'ligne', index }` (index dans `lines`, pour les gestes et la remise
+ * répartie), puis les lignes hors groupe à leur place. Sans aucun
+ * `groupeClient` : une ligne par index, dans l'ordre — DOM inchangé.
+ * @param {Array<object>} lines  lignes d'écran
+ * @param {Array<number|null>} [lignesRemiseesTtc]  TTC de ligne après remise
+ *   globale, aligné sur `lines` (null = ligne hors totaux) ; absent = catalogue
+ */
+export function sequenceGroupesClient(lines, lignesRemiseesTtc) {
+  const liste = Array.isArray(lines) ? lines : []
+  const remises = Array.isArray(lignesRemiseesTtc) ? lignesRemiseesTtc : []
+  const groupes = new Map()
+  liste.forEach((l, index) => {
+    const g = l && l.groupeClient && LIBELLES_GROUPE_CLIENT[l.groupeClient] ? l.groupeClient : null
+    if (!g) return
+    if (!groupes.has(g)) groupes.set(g, { indexes: [], totalHt: 0 })
+    const entree = groupes.get(g)
+    entree.indexes.push(index)
+    entree.totalHt += estStructure(l) ? 0 : htLigne(l, remises[index])
+  })
+  if (groupes.size === 0) return liste.map((_l, index) => ({ kind: 'ligne', index }))
+  const sequence = []
+  const places = new Set()
+  liste.forEach((l, index) => {
+    if (places.has(index)) return
+    const g = l && l.groupeClient && groupes.has(l.groupeClient) ? l.groupeClient : null
+    if (!g) {
+      sequence.push({ kind: 'ligne', index })
+      return
+    }
+    const entree = groupes.get(g)
+    sequence.push({ kind: 'entete', groupe: g, libelle: LIBELLES_GROUPE_CLIENT[g],
+      totalHt: Math.round(entree.totalHt * 100) / 100, nb: entree.indexes.length })
+    entree.indexes.forEach((i) => { places.add(i); sequence.push({ kind: 'ligne', index: i }) })
+  })
+  return sequence
+}
+
+// ── R2 (revue coordinatrice) — Monter/Descendre sur la SÉQUENCE AFFICHÉE ──
+// Les composants d'un groupe forment un BLOC à l'écran. Un geste travaille sur
+// ce que l'utilisateur voit : un composant monte/descend DANS son bloc ; au
+// bord du bloc, c'est le bloc entier qui passe par-dessus la ligne voisine ;
+// une ligne hors groupe saute un bloc entier. Après le geste, l'ordre PERSISTÉ
+// devient l'ordre affiché (ce qui se voit est ce qui s'enregistre). Sans
+// groupe : l'échange de voisins d'hier, à l'identique.
+
+/** Unités affichées : `[{ groupe, indexes }]` — un bloc par groupe, un singleton par ligne libre. */
+function unitesAffichees(lines) {
+  const unites = []
+  for (const pas of sequenceGroupesClient(lines)) {
+    if (pas.kind === 'entete') { unites.push({ groupe: pas.groupe, indexes: [] }); continue }
+    const derniere = unites[unites.length - 1]
+    const g = lines[pas.index]?.groupeClient
+    if (derniere && derniere.groupe && derniere.groupe === g) derniere.indexes.push(pas.index)
+    else unites.push({ groupe: null, indexes: [pas.index] })
+  }
+  return unites
+}
+
+/**
+ * Nouvelle liste de lignes (ordre persisté = ordre affiché) après « monter »
+ * (`delta` = -1) ou « descendre » (+1) la ligne `key` ; la même liste si le
+ * geste est hors bornes ou la clé inconnue.
+ */
+export function deplacerDansSequence(lines, key, delta) {
+  const liste = Array.isArray(lines) ? lines : []
+  const idx = liste.findIndex((l) => l._key === key)
+  if (idx < 0 || !delta) return liste
+  const unites = unitesAffichees(liste)
+  const u = unites.findIndex((un) => un.indexes.includes(idx))
+  if (u < 0) return liste
+  const unite = unites[u]
+  const pos = unite.indexes.indexOf(idx)
+  const cible = pos + delta
+  if (unite.groupe && cible >= 0 && cible < unite.indexes.length) {
+    const indexes = unite.indexes.slice()
+    ;[indexes[pos], indexes[cible]] = [indexes[cible], indexes[pos]]
+    unites[u] = { ...unite, indexes }
+  } else {
+    const cu = u + delta
+    if (cu < 0 || cu >= unites.length) return liste
+    ;[unites[u], unites[cu]] = [unites[cu], unites[u]]
+  }
+  return unites.flatMap((un) => un.indexes).map((i) => liste[i])
+}
+
+/**
+ * Bornes des gestes par index de `lines` : `{ haut, bas }` — vrai quand
+ * « monter » / « descendre » déplace réellement quelque chose à l'écran.
+ */
+export function bornesDeplacement(lines) {
+  const liste = Array.isArray(lines) ? lines : []
+  const unites = unitesAffichees(liste)
+  const bornes = liste.map(() => ({ haut: false, bas: false }))
+  unites.forEach((un, u) => {
+    un.indexes.forEach((i, pos) => {
+      bornes[i] = { haut: pos > 0 || u > 0, bas: pos < un.indexes.length - 1 || u < unites.length - 1 }
+    })
+  })
+  return bornes
 }
 
 const estStructure = (l) => TYPES_STRUCTURE.has(l.typeLigne)

@@ -18,6 +18,7 @@ from ..ci.synthese import chiffres_cles, libelle_poste
 # CIQ333 — libellés STRUCTURELS dans la langue du document.
 from ..ci.blocs import bloc_option_avec, langue as _langue, libelle as _libelle
 from ..ci.installation import lignes_client
+from ..ci.tableau import sous_lignes_html  # R2 — détail du tableau AC/DC
 from ..sequence import sequence_affichage
 from ..montants import decimale
 from .. import premium_base
@@ -392,7 +393,7 @@ def build(ctx):
         desig = it.get("designation") or ""
         m = f'<span class="c2-mq">{marque}</span>' if marque else ""
         rows += (
-            f'<tr><td class="c2-d">{desig}{m}</td>'
+            f'<tr><td class="c2-d">{desig}{m}{sous_lignes_html(it, 6.5, muted)}</td>'
             f'<td class="c2-q">{qte:g}</td>'
             f'<td class="c2-p">'
             + (f'<span style="text-decoration:line-through;opacity:.6;">'

@@ -24,6 +24,11 @@ import { ShoppingCart, Plus, Trash2 } from 'lucide-react'
 import DevisLineRow from '../DevisLineRow'
 import { GenCardHeader } from './CarteMetrique'
 import { formatMoney } from '../../../features/ventes/solar'
+// R2 (fondateur 28/10/2026) — en-têtes « Tableau de protection AC/DC — total
+// HT » / « Installation clé en main — total HT » au-dessus des composants d'un
+// même `groupe_client` (servi par le serializer). Calcul dans le module PUR
+// `lignesEcran` (aucune règle métier ici), rendu seul dans ce composant.
+import { sequenceGroupesClient, bornesDeplacement } from '../../../features/ventes/quote/lignesEcran'
 
 export default function LigneTable({
   // ── Lignes ──
@@ -48,6 +53,9 @@ export default function LigneTable({
   // Il est passé en `children` pour que le DOM rendu soit inchangé à l'octet.
   children,
 }) {
+  // R2 — séquence affichée et bornes de déplacement calculées UNE fois par rendu.
+  const sequence = sequenceGroupesClient(lines, lignesRemiseesTtc)
+  const bornes = bornesDeplacement(lines)
   return (
     <Card>
       <GenCardHeader icon={ShoppingCart} title="Lignes de Produits">
@@ -220,7 +228,19 @@ export default function LigneTable({
                   dans Note/farmSurfaceHa/n'importe lequel des autres
                   useState ne re-rend plus les lignes inchangées (callbacks
                   stabilisés ci-dessus, clé en argument). */}
-              {lines.map((l, i) => (
+              {sequence.map((pas) => pas.kind === 'entete' ? (
+                <tr key={`groupe-${pas.groupe}`} className="lines-groupe-client"
+                    data-groupe-client={pas.groupe}
+                    title={`${pas.nb} composant(s) regroupés en une ligne sur le PDF et la proposition — chaque composant reste éditable ci-dessous`}>
+                  <td colSpan={multiMode === 'villas' ? 10 : 9}
+                      className="bg-muted/40 px-3 py-1.5 text-xs font-semibold text-foreground">
+                    {pas.libelle}
+                    <span className="font-normal text-muted-foreground"> — total HT </span>
+                    <span className="tabular-nums" data-groupe-total-ht>{formatMoney(pas.totalHt)}</span>
+                    <span className="font-normal text-muted-foreground"> · {pas.nb} composant{pas.nb > 1 ? 's' : ''}</span>
+                  </td>
+                </tr>
+              ) : (() => { const i = pas.index; const l = lines[i]; const borne = bornes[i]; return (
                 <DevisLineRow
                   key={l._key}
                   line={l}
@@ -243,12 +263,12 @@ export default function LigneTable({
                   onQuantiteChange={onQuantiteChange}
                   onSetGroupe={onSetGroupe}
                   onRemove={onRemove}
-                  canMoveUp={i > 0}
-                  canMoveDown={i < lines.length - 1}
+                  canMoveUp={borne.haut}
+                  canMoveDown={borne.bas}
                   onMoveUp={onMoveUp}
                   onMoveDown={onMoveDown}
                 />
-              ))}
+              ) })())}
             </tbody>
           </table>
         </BarreDefilementCollante>

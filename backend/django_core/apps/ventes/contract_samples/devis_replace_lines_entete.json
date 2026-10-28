@@ -70,7 +70,84 @@
     "modifiable": true,
     "raison_non_modifiable": "",
     "revision_possible": true,
-    "updated_at": "2026-09-30T08:55:03.120000+00:00"
+    "updated_at": "2026-09-30T08:55:03.120000+00:00",
+    "lignes": [
+      {
+        "id": 9001,
+        "devis": 413,
+        "produit": 88,
+        "designation": "Coffret DC C&I",
+        "quantite": "2.00",
+        "prix_unitaire": "1500.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "tva_base_legale": "",
+        "type_ligne": "produit",
+        "ordre": 4,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "groupe_index": null,
+        "groupe_label": "",
+        "lot": null,
+        "ligne_composee": true,
+        "role_devis": "",
+        "total_ht": "3000.00",
+        "produit_tva": "20.00",
+        "groupe_client": "tableau_ci"
+      },
+      {
+        "id": 9002,
+        "devis": 413,
+        "produit": 95,
+        "designation": "Pose des modules C&I",
+        "quantite": "1.00",
+        "prix_unitaire": "20000.00",
+        "remise": "0.00",
+        "taux_tva": "20.00",
+        "tva_base_legale": "",
+        "type_ligne": "produit",
+        "ordre": 9,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "groupe_index": null,
+        "groupe_label": "",
+        "lot": null,
+        "ligne_composee": true,
+        "role_devis": "",
+        "total_ht": "20000.00",
+        "produit_tva": "20.00",
+        "groupe_client": "installation_ci"
+      },
+      {
+        "id": 9003,
+        "devis": 413,
+        "produit": 12,
+        "designation": "Panneau Canadien Solar 710W",
+        "quantite": "8.00",
+        "prix_unitaire": "1450.00",
+        "remise": "0.00",
+        "taux_tva": "10.00",
+        "tva_base_legale": "",
+        "type_ligne": "produit",
+        "ordre": 0,
+        "variante": "",
+        "optionnelle": false,
+        "prix_manuel": false,
+        "quantite_manuelle": false,
+        "groupe_index": null,
+        "groupe_label": "",
+        "lot": null,
+        "ligne_composee": true,
+        "role_devis": "panneau",
+        "total_ht": "11600.00",
+        "produit_tva": "10.00",
+        "groupe_client": null
+      }
+    ]
   },
   "exemple_400": {
     "detail": "Échéancier invalide : la somme des tranches doit faire 100 %."
@@ -416,5 +493,6 @@
   "exemple_400_penalite_sans_plafond": {
     "detail": "Pénalités de retard : le plafond (plafond_pct) est obligatoire avec le taux par semaine.",
     "champ": "entete.penalites_retard_livraison.plafond_pct"
-  }
+  },
+  "regles_r2_groupe_client": "R2 (fondateur 28/10/2026, contrat d'abord — PACT10) — chaque ligne LUE (LigneDevisSerializer : réponse de replace-lines, GET devis/<id>/ `lignes`, GET devis-lignes/<id>/) porte `groupe_client` en LECTURE SEULE : 'tableau_ci' (organe du « Tableau de protection AC/DC » : coffret DC/AC, disjoncteur AC, protection DC par MPPT, parafoudres DC/AC, mise à la terre, comptage / limitation d'injection) | 'installation_ci' (prestation « Installation clé en main ») | null. Calculé côté serveur du `role_ci` du PRODUIT (une seule source : moteur_ci.composition.ROLES_TABLEAU_CI / PRESTATIONS_CI), jamais de la désignation. Le générateur et l'édition affichent les lignes d'un même groupe sous un en-tête de section « <libellé> — total HT » et gardent chaque composant éditable ligne à ligne : rien n'est fusionné en base, le PDF / /proposition regroupent au rendu (quote_engine/ci/tableau.py, ci/installation.py). Ignoré en écriture."
 }

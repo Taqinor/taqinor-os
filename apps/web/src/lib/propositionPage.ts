@@ -345,6 +345,17 @@ export interface EquipmentLine {
   marque?: string | null;
   description?: string | null;
   garantie?: string | null;
+  /**
+   * R2 (fondateur 28/10/2026) — détail d'une ligne REGROUPÉE au rendu d'un
+   * devis C&I (« Tableau de protection AC/DC », `quote_engine/ci/tableau.py`
+   * via `regrouper_paniers`, contrat `proposal_data.json` › notes.sous_lignes_r2) :
+   * ses composants, sans prix. Clé ADDITIVE de `quote.sans_items` /
+   * `avec_items` : absente sur toute autre ligne ; `groupEquipment` la porte
+   * telle quelle (spread) et la page l'affiche en petit sous la ligne.
+   * Typée ICI et non sur `ProposalItem` (proposition.ts est un fichier-mur
+   * C20 : aucune croissance nette) — structurellement, c'est la même ligne.
+   */
+  sous_lignes?: readonly { designation: string; quantite: number; unite?: string }[] | null;
 }
 
 /** Familles d'équipement, dans leur ordre de lecture. */
