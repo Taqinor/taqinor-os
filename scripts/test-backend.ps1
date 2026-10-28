@@ -143,6 +143,8 @@ try {
     # Idem pour les goldens de scission (`SPLIT_GOLDEN_CAPTURE=1`, split_golden.py) — sans ce relais la
     # capture tournait sur le poste sans jamais écrire dans le conteneur (23/10/2026).
     if ($env:SPLIT_GOLDEN_CAPTURE) { $testArgs += @('-e', "SPLIT_GOLDEN_CAPTURE=$($env:SPLIT_GOLDEN_CAPTURE)") }
+    # Idem pour les PNG golden du devis (`UPDATE_PDF_SNAPSHOTS=1`, test_quote_engine_snapshot / YTEST10).
+    if ($env:UPDATE_PDF_SNAPSHOTS) { $testArgs += @('-e', "UPDATE_PDF_SNAPSHOTS=$($env:UPDATE_PDF_SNAPSHOTS)") }
     $testArgs += @(
         'django_core', 'sh', '-c', "pip install -q -r requirements-dev.txt && $DjangoCmd"
     )
