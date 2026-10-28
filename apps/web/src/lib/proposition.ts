@@ -48,6 +48,21 @@ export interface ProposalItem {
   /** FIX-WEB A — garantie constructeur en MOIS (`Produit.garantie_mois`, `_line_to_item`) : celle que le PDF imprime. */
   garantie_mois?: number | null;
   taux_tva: number;
+  /**
+   * R2 (fondateur 28/10/2026) — détail d'une ligne REGROUPÉE au rendu d'un
+   * devis C&I (« Tableau de protection AC/DC », `quote_engine/ci/tableau.py`,
+   * via `regrouper_paniers`) : ses composants, sans prix. Clé ADDITIVE :
+   * absente sur toute autre ligne ; la page l'affiche en petit sous la ligne
+   * et fonctionne sans elle.
+   */
+  sous_lignes?: ProposalSousLigne[];
+}
+
+/** R2 — un composant d'une ligne regroupée (désignation · quantité · unité). */
+export interface ProposalSousLigne {
+  designation: string;
+  quantite: number;
+  unite?: string;
 }
 
 /** Un palier de TVA agrégé (taux → montant). */

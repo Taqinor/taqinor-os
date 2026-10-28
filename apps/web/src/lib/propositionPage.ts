@@ -345,6 +345,8 @@ export interface EquipmentLine {
   marque?: string | null;
   description?: string | null;
   garantie?: string | null;
+  /** R2 — composants d'une ligne regroupée (C&I), portés tels quels par `groupEquipment`. */
+  sous_lignes?: readonly { designation: string; quantite: number; unite?: string }[] | null;
 }
 
 /** Familles d'équipement, dans leur ordre de lecture. */
