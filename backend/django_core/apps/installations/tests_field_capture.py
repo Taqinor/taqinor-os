@@ -307,6 +307,21 @@ class TestConsommation(_Base):
             'ligne': r.data['id'], 'quantite_utilisee': 1e15}, format='json')
         self.assertEqual(r.status_code, 400, r.content)
 
+    def test_produit_et_justification_mal_types_400_jamais_500(self):
+        # api-fuzz-full 28/10 : `produit` en liste atteignait `filter(id=…)`
+        # (TypeError, 500) ; une `justification` non textuelle `.strip()`.
+        url = f'{self.url}/ajouter-ligne-consommation/'
+        for extra in ({'produit': [True, []]}, {'produit': {'a': 1}},
+                      {'produit': True}, {'justification': {'a': 1}},
+                      {'justification': 'a\x00b'}):
+            r = self.api.post(url, {'designation': 'Câble', **extra},
+                              format='json')
+            self.assertEqual(r.status_code, 400, (extra, r.content))
+        r = self.api.post(url, {'designation': 'Câble', 'produit': 2 ** 70},
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        self.assertIsNone(r.data['produit'])
+
     def test_designation_requise_publiee_et_validee(self):
         """api-fuzz-full 27/10 (ENF11) : `designation` est OBLIGATOIRE au
         schéma (non blanche, sans NUL) — `{}` y était « conforme » puis

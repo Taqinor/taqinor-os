@@ -1354,17 +1354,15 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         # l'enveloppe commune ; un NUL ou une valeur non textuelle faisait 500.
         designation = oa.corps_valide(
             oa.DesignationLigneRequete, request)['designation']
-        produit = None
-        if request.data.get('produit'):
-            produit = get_produit_scoped(
-                interv.company, request.data.get('produit'))
+        produit_id = oa.id_corps(request, 'produit')  # liste/objet → 400, plus 500
+        produit = get_produit_scoped(interv.company, produit_id) if produit_id else None
         from decimal import Decimal
         qte = oa.quantite_bornee(request, 'quantite_utilisee')  # (12, 2) : 1e15 → 500
         ligne = ConsommationLigne.objects.create(
             company=interv.company, consommation=cons, produit=produit,
             designation=designation, quantite_prevue=Decimal('0'),
             quantite_utilisee=qte, hors_nomenclature=True,
-            justification=(request.data.get('justification') or '').strip(),
+            justification=oa.texte_corps(request, 'justification'),
             ordre=cons.lignes.count())
         return Response(ConsommationLigneSerializer(ligne).data,
                         status=status.HTTP_201_CREATED)
