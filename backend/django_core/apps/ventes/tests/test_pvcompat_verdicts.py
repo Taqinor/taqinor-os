@@ -634,7 +634,8 @@ class CompositionCoupleElectriqueTest(SimpleTestCase):
         """ÉPINGLE de non-régression : 7,1 kWc, catalogue sain, aucun
         raccordement déclaré ⇒ l'onduleur ≥ 80 % de la puissance (10 kW,
         triphasé au-delà de 10 kW) et le panneau au wattage exact — exactement
-        les règles d'avant PVCOMPAT — et AUCUN avertissement."""
+        les règles d'avant PVCOMPAT. RSIZ6 : le seul avertissement est celui
+        du raccordement non renseigné (triphasé vendu sans phase déclarée)."""
         avertissements = []
         lignes = sv.composition_residentielle(
             _catalogue(), kwc=7.1, panel_watt=710, nb_panneaux=10,
@@ -643,7 +644,10 @@ class CompositionCoupleElectriqueTest(SimpleTestCase):
         self.assertIn('Onduleur hybride Deye 10kW Triphasé', designations)
         self.assertIn('Panneau Canadien Solar 710W', designations)
         self.assertNotIn('Onduleur hybride Deye 5kW Monophasé', designations)
-        self.assertEqual(avertissements, [])
+        from apps.ventes.domain.composition import (
+            avertissement_phase_supposee_triphasee)
+        self.assertEqual(avertissements,
+                         [avertissement_phase_supposee_triphasee()])
 
     def test_couple_hors_borne_est_annonce_sans_tuer_la_composition(self):
         """Catalogue dont le SEUL hybride publie une borne d'Isc qu'une chaîne
