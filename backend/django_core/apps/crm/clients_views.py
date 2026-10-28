@@ -787,7 +787,7 @@ class ClientViewSet(CompanyScopedModelViewSet):
     @extend_schema(parameters=[sd.P_Q],
                    responses=sd.corps('CrmClientSearch', results=serializers.ListField(child=serializers.DictField())))
     @action(detail=False, methods=['get'], url_path='search',
-            permission_classes=[IsAnyRole])
+            permission_classes=[IsAnyRole], pagination_class=None)
     def search(self, request):
         """QC1 — Autocomplete entreprise sur les DONNÉES PROPRES de la société
         (clients + fournisseurs + leads), recherche floue sur nom/ICE, scopée
