@@ -57,17 +57,19 @@ class SerieParcTests(TestCase):
             'produit': self.produit.id, 'numero_serie': serie},
             format='json')
 
-    def test_doublon_saisie_400(self):
+    def test_doublon_saisie_409(self):
+        # api-fuzz-full 28/10 (ENF11) : le doublon (relevé ou parc SAV) est un
+        # refus d'ÉTAT — corps conforme, donnée en conflit : 409, plus 400.
         Equipement.objects.create(
             company=self.company, produit=self.produit,
             installation=self.inst, numero_serie='SN-DUP',
             date_pose=RECEPTION)
         self.assertEqual(self._ajouter('SN-NEW').status_code, 201)
         r = self._ajouter('SN-NEW')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('déjà relevé', str(r.data['numero_serie']))
         r = self._ajouter('SN-DUP')
-        self.assertEqual(r.status_code, 400, r.data)
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('déjà au parc', str(r.data['numero_serie']))
         self.assertEqual(ComponentSerial.objects.filter(
             numero_serie='SN-NEW').count(), 1)
