@@ -141,6 +141,13 @@ def synthese_ci_client(synthese, data):
     return synthese
 
 
+def synthese_agricole_client(synthese, libelles):
+    """CPRS8 — la synthèse agricole du PDF, ses textes (sources, motifs)
+    servis assainis, nombres inchangés ; en place, et rendue."""
+    _assainir_textes(synthese, libelles)
+    return synthese
+
+
 def _retirer_partout(noeud, cle):
     if isinstance(noeud, dict):
         noeud.pop(cle, None)
@@ -172,9 +179,8 @@ def charge_utile_client(payload):
         etude = quote.get('etude')
         if isinstance(etude, dict):
             etude.pop('etude_ci', None)
-    # CPRS8 — agricole : mêmes textes servis (sources, motifs) assainis.
     if isinstance(payload.get('synthese_agricole'), dict):
-        _assainir_textes(payload['synthese_agricole'], libelles)
+        synthese_agricole_client(payload['synthese_agricole'], libelles)
     synthese = payload.get('synthese_ci')
     if not isinstance(synthese, dict):
         return

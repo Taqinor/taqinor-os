@@ -19,6 +19,7 @@ from django.test import Client as DjangoClient, TestCase
 from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, LigneDevis, ShareLink
+from apps.ventes.public.payload_ci import synthese_agricole_client
 from apps.ventes.quote_engine.agricole.synthese import synthese_agricole
 from apps.ventes.quote_engine.builder import build_quote_data
 
@@ -112,8 +113,11 @@ class Agr308SyntheseAgricoleServieTests(TestCase):
                             ETUDE_POMPAGE)
         with mock.patch(_PATCH_ECO, return_value=_bloc_agr3_public()):
             payload = self._payload(devis)
-            attendu = synthese_agricole(
-                build_quote_data(devis, {'pdf_mode': 'full'}))
+            data = build_quote_data(devis, {'pdf_mode': 'full'})
+            # CPRS8 — textes internes assainis, nombres du PDF inchangés.
+            attendu = synthese_agricole_client(synthese_agricole(data), {
+                'libelles_document': data.get('libelles_document') or {},
+                'langue_sortie': data.get('langue_sortie')})
         servie = payload['synthese_agricole']
         # Le passage JSON de la réponse : on compare sur la même forme.
         attendu = json.loads(json.dumps(attendu))
