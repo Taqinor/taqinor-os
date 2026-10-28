@@ -16,7 +16,7 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
-from apps.crm import visites_retour_lead
+from apps.crm import activity, visites_retour_lead
 from apps.crm.models import Lead, LeadActivity
 from apps.visites import selectors as visites_selectors
 from apps.visites import services as visites_services
@@ -139,3 +139,86 @@ class RetourPointEauALaValidation(TestCase):
             LeadActivity.objects.filter(
                 lead=self.lead, kind=LeadActivity.Kind.MODIFICATION).count(),
             nb)
+
+    def test_agv3_la_plaque_de_la_pompe_remonte_au_lead(self):
+        visite = self._visite(mesures={'pompe_existante': {
+            'pompe_actuelle_kw': 5.5, 'tension_v': 380,
+            'alimentation': 'tri'}})
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.pompe_actuelle_kw, Decimal('5.50'))
+        self.assertEqual(self.lead.pompe_actuelle_tension_v, 380)
+        self.assertEqual(self.lead.pompe_actuelle_phases, 'tri')
+        self.assertEqual(self._lignes('pompe_actuelle_tension_v').count(), 1)
+
+    def test_agv3_une_tension_hors_220_380_n_est_pas_recopiee(self):
+        self.lead.pompe_actuelle_tension_v = 220
+        self.lead.save(update_fields=['pompe_actuelle_tension_v'])
+        visite = self._visite(mesures={'pompe_existante': {
+            'tension_v': 400}})
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.pompe_actuelle_tension_v, 220)
+
+    def test_agv3_revalider_la_plaque_ne_change_rien(self):
+        visite = self._visite(mesures={'pompe_existante': {
+            'pompe_actuelle_kw': 5.5, 'tension_v': 380,
+            'alimentation': 'mono'}})
+        visites_services.valider_visite(visite, self.bureau)
+        mesures = visites_selectors.mesures_point_eau_pour_lead(visite)
+        self.lead.refresh_from_db()
+        self.assertEqual(
+            visites_retour_lead.appliquer_mesures_point_eau(
+                self.lead, mesures, self.bureau), [])
+
+    def test_agv4_une_mesure_non_recopiable_est_nommee_au_chatter(self):
+        visite = self._visite(mesures={'point_eau': {
+            'profondeur_forage_m': 99999999}})
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.profondeur_forage_m)
+        notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith='Mesure de visite non recopiée')
+        self.assertEqual(notes.count(), 1)
+        self.assertIn('99999999', notes.get().body)
+        self.assertIn(
+            activity.TRACKED_FIELDS['profondeur_forage_m'], notes.get().body)
+        # Revalider ne double pas la note.
+        mesures = visites_selectors.mesures_point_eau_pour_lead(visite)
+        visites_retour_lead.appliquer_mesures_point_eau(
+            self.lead, mesures, self.bureau)
+        self.assertEqual(notes.count(), 1)
+
+    def test_agv9_pompe_presente_sans_mode_pose_une_note_sans_changer_le_mode(self):
+        visite = self._visite(mesures={'pompe_existante': {
+            'pompe_presente': True}})
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+        self.assertIsNone(self.lead.mode_pompe)
+        notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body=visites_retour_lead.NOTE_POMPE_EXISTANTE)
+        self.assertEqual(notes.count(), 1)
+        # Revalider ne double pas la note.
+        mesures = visites_selectors.mesures_point_eau_pour_lead(visite)
+        visites_retour_lead.appliquer_mesures_point_eau(
+            self.lead, mesures, self.bureau)
+        self.assertEqual(notes.count(), 1)
+
+    def test_agv9_pas_de_note_si_le_mode_est_deja_choisi_ou_pompe_absente(self):
+        self.lead.mode_pompe = 'neuve'
+        self.lead.save(update_fields=['mode_pompe'])
+        visites_services.valider_visite(
+            self._visite(mesures={'pompe_existante': {
+                'pompe_presente': True}}), self.bureau)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.mode_pompe, 'neuve')
+        self.lead.mode_pompe = None
+        self.lead.save(update_fields=['mode_pompe'])
+        mesures = {'pompe_existante': {'pompe_presente': False}}
+        visites_retour_lead.appliquer_mesures_point_eau(
+            self.lead, mesures, self.bureau)
+        self.assertFalse(LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE,
+            body=visites_retour_lead.NOTE_POMPE_EXISTANTE).exists())
