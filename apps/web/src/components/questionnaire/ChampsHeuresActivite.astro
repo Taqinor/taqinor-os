@@ -1,0 +1,40 @@
+---
+// CQSTW6 — heures de l'activité (restaurant, boulangerie, santé, école) :
+// deux champs d'heure (plage) ou une date « JJ/MM », visibles seulement quand la
+// réponse d'activité qui les justifie est donnée (`data-si`, lu par la page).
+import { REPONSES_CATEGORIE_HEURES } from '../../lib/questionnaire';
+import { HEURES_ACTIVITE_LABELS, PLAGE_DE_A } from '../../lib/questionnaireChamps';
+interface Props {
+  cat: string;
+  /** reponses_categorie déjà connues du lead (pré-remplissage). */
+  prefill: Record<string, unknown>;
+  cls: string;
+}
+const { cat, prefill, cls } = Astro.props;
+const questions = REPONSES_CATEGORIE_HEURES[cat] ?? [];
+const plage = (cle: string, i: number): string => {
+  const p = prefill[cle];
+  const v = Array.isArray(p) && Array.isArray(p[0]) ? (p[0] as unknown[])[i] : undefined;
+  return typeof v === 'number' || typeof v === 'string' ? String(v) : '';
+};
+const si = (q: { si?: Readonly<Record<string, string | boolean>> }) =>
+  q.si ? Object.entries(q.si).map(([k, v]) => `${k}=${v === true ? 'oui' : v}`).join(';') : undefined;
+---
+{questions.map((q) => {
+  const lab = HEURES_ACTIVITE_LABELS[q.key];
+  const id = `q-cat-${cat}-${q.key}`;
+  return (
+    <div class:list={[q.si ? 'hidden' : '']} data-si={si(q)} data-cat-heures={q.key}>
+      <label for={id} class="mb-1 block text-sm font-semibold" data-i18n data-en={lab.en} data-ar={lab.ar}>{lab.fr}</label>
+      {q.type === 'plages' ? (
+        <div class="flex items-center gap-3" data-cat-plage={q.key}>
+          <input id={id} type="number" min="0" max="24" step="any" inputmode="decimal" aria-label={PLAGE_DE_A.de.fr} data-attr="aria-label:de" value={plage(q.key, 0)} class={cls} />
+          <span aria-hidden="true">→</span>
+          <input type="number" min="0" max="24" step="any" inputmode="decimal" aria-label={PLAGE_DE_A.a.fr} data-attr="aria-label:a" value={plage(q.key, 1)} class={cls} />
+        </div>
+      ) : (
+        <input id={id} data-cat-key={q.key} type="text" inputmode="numeric" maxlength="5" placeholder="JJ/MM" data-attr="placeholder:jourmois" value={typeof prefill[q.key] === 'string' ? String(prefill[q.key]) : ''} class={cls} />
+      )}
+    </div>
+  );
+})}

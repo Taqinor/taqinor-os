@@ -64,6 +64,11 @@ class Equipe(models.Model):
     chef = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='installations_equipes_chef')
+    # Organigramme (27/10/2026) — département de rattachement (string-FK).
+    departement = models.ForeignKey(
+        # on_delete: l'équipe survit à la suppression du département
+        'roles.Departement', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='equipes_terrain')
     actif = models.BooleanField(default=True)
     description = models.TextField(blank=True, null=True)
     created_by = models.ForeignKey(

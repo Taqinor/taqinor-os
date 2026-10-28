@@ -1042,6 +1042,8 @@ append_only:
     rule: "une tâche n'ajoute ou ne retire QUE les globs de SON propriétaire (dans son bloc) ; jamais réordonner ni toucher le bloc d'un autre (hors racines : vérifié par la garde elle-même)"
   - path: backend/django_core/apps/crm/selectors.py
     rule: "façade pure : une ligne de ré-export par nouveau nom, dans le bloc de son module ; jamais un corps (SPL89)"
+  - path: docs/openapi-schema.yml
+    rule: "instantané OpenAPI (PACT6) : jamais édité à la main ; régénéré par `python scripts/check_openapi_schema.py --write` dans toute tâche qui ajoute ou change une route Django ; conflit au fold ou à la fusion de main = régénérer depuis le code fusionné, jamais fusionner les deux textes (décision fondateur 28/10/2026, PR #1111)"
 
 # Plan → propriétaire(s). Chaque owners.<x>.plan lie déjà son plan ; ici les fichiers plan
 # historiques. Les propriétaires `platform` / `transverse` / `parked` sont exemptés de la règle

@@ -87,3 +87,12 @@ describe('ADEV97 — l’exemplaire SIGNÉ se télécharge avec le code de lectu
     expect(PROPOSITION).toContain('estAccepte: () => cfg.accepted || propositionAcceptee');
   });
 });
+
+// CPRW27 (28/10/2026) — le texte FR du serveur n'est montré qu'en français.
+describe('CPRW27 — propositionPdfSigne : `detail` serveur seulement en FR', () => {
+  it('le gestionnaire ne montre r.detail que si la langue courante est fr', () => {
+    const src = read('../src/lib/propositionPdfSigne.ts');
+    expect(src).toContain("(g.langue() === 'fr' && r.detail) || MSG.erreur[g.langue()]");
+    expect(src).not.toMatch(/: r\.detail \|\| MSG\.erreur/);
+  });
+});

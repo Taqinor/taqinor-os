@@ -74,3 +74,44 @@ class TestDC2CompanyTariff(TestCase):
         # Un productible plus élevé produit plus de kWh et donc plus d'économies.
         self.assertGreater(data_high['prod_kwh'], data_low['prod_kwh'])
         self.assertGreater(data_high['eco_s_ann'], data_low['eco_s_ann'])
+
+    # ── AMOT64 (D-AMOT-3 = a) — plus de sentinelle 1600 ──────────────────────
+    def _prod_attendue(self, data, productible):
+        from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
+        return round(data['puissance_kwc'] * productible * PRODUCTION_DERATE)
+
+    def test_amot64_1600_saisi_respecte_et_vide_lit_pvgis(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.productible import productible_for_city
+        self._set_profile(productible_kwh_kwc=None)
+        vide = build_quote_data(self._devis(reference='DEV-AMOT64-VIDE'))
+        pvgis = productible_for_city(vide['client_city'])
+        self.assertNotEqual(pvgis, 1600.0)
+        self.assertEqual(vide['prod_kwh'], self._prod_attendue(vide, pvgis))
+        self._set_profile(productible_kwh_kwc=Decimal('1600.0'))
+        saisi = build_quote_data(self._devis(reference='DEV-AMOT64-1600'))
+        self.assertEqual(saisi['prod_kwh'], self._prod_attendue(saisi, 1600))
+
+    def test_amot64_migration_ne_bouge_aucun_chiffre_et_se_revert(self):
+        import importlib
+
+        from django.apps import apps as registre
+
+        from apps.parametres.models import CompanyProfile
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.productible import productible_for_city
+        mig = importlib.import_module(
+            'apps.parametres.migrations.0130_amot64_productible_nullable')
+        p = self._set_profile(productible_kwh_kwc=Decimal('1600.0'))
+        # Avant la migration, 1600 était la sentinelle ⇒ PVGIS de la ville :
+        # c'est ce chiffre-là que le devis doit garder APRÈS la migration.
+        mig.sentinelle_vers_null(registre, None)
+        p.refresh_from_db()
+        self.assertIsNone(p.productible_kwh_kwc)
+        data = build_quote_data(self._devis(reference='DEV-AMOT64-MIG'))
+        self.assertEqual(data['prod_kwh'], self._prod_attendue(
+            data, productible_for_city(data['client_city'])))
+        mig.null_vers_sentinelle(registre, None)
+        self.assertEqual(
+            CompanyProfile.objects.get(pk=p.pk).productible_kwh_kwc,
+            Decimal('1600.0'))

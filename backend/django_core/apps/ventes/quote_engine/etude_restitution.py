@@ -40,6 +40,7 @@ def ligne_tarif_hypothese(tarif_txt, util_name, savings_estimated) -> str:
 
 
 def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
+                    _bareme_horaire=False,
                     etude, puissance_kwc, roi, savings_model,
                     savings_model_avec, savings_model_sans, scenario):
     # ── QF3 — bloc « Comment nous calculons vos économies » ──────────────────
@@ -201,7 +202,11 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         from .pricing import PRODUCTION_DERATE as _DERATE_REPLI
         _prod_net_kwc = float(_prod_factor) * _DERATE_REPLI
     hypotheses = []
-    if savings_model == "factures" and _util_name:
+    # RHOR7 (C-RHOR-007, niveau de règles 3) — le modèle HORAIRE valorise
+    # aussi chaque mois au barème par tranche : la ligne le dit, au lieu
+    # d'annoncer un tarif plat « saisi pour ce devis » qu'il n'a pas appliqué.
+    if (savings_model == "factures" or (
+            savings_model == "horaire" and _bareme_horaire)) and _util_name:
         hypotheses.append(
             f"Tarif électricité : barème {_util_name} par tranche"
             + " (barème national)")
@@ -273,8 +278,9 @@ def restituer_etude(*, _client_city, _co_productible, _corrige, _utility,
         # fonction interdit lui-même.
         from .productible import (est_ville_de_reference as _est_ref,
                                   ville_reference as _ville_ref)
-        _force_societe = bool(
-            _co_productible and abs(float(_co_productible) - 1600) > 0.5)
+        # AMOT64 — toute valeur société renseignée (1 600 compris) force le
+        # productible : ce n'est plus une donnée PVGIS ⇒ la phrase s'omet.
+        _force_societe = bool(_co_productible and float(_co_productible) > 0)
         _ref = _ville_ref(_client_city)
         if _ref and not _force_societe:
             # QJR18 — MÊME valeur nette que la ligne d'hypothèse ci-dessus :

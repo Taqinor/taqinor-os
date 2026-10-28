@@ -292,6 +292,21 @@ class TestConsommation(_Base):
         self.assertEqual(r.status_code, 201, r.data)
         self.assertTrue(r.data['hors_nomenclature'])
 
+    def test_quantite_bornee_colonne_12_2_jamais_500(self):
+        # api-fuzz-full 27/10 : une quantité de 1e15 débordait la colonne
+        # (12, 2) → DataError 500 ; la borne est publiée et appliquée.
+        url = f'{self.url}/ajouter-ligne-consommation/'
+        for brut in (1e15, '10000000000', '1.234', 'abc', True):
+            r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': brut},
+                              format='json')
+            self.assertEqual(r.status_code, 400, (brut, r.content))
+        r = self.api.post(url, {'designation': 'Câble', 'quantite_utilisee': '9999999999.99'},
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        r = self.api.post(f'{self.url}/modifier-ligne-consommation/', {
+            'ligne': r.data['id'], 'quantite_utilisee': 1e15}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+
     def test_designation_requise_publiee_et_validee(self):
         """api-fuzz-full 27/10 (ENF11) : `designation` est OBLIGATOIRE au
         schéma (non blanche, sans NUL) — `{}` y était « conforme » puis

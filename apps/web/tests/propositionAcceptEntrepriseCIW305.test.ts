@@ -16,7 +16,7 @@ import {
   signatureEntrepriseRequise,
   type SignFormState,
 } from '../src/lib/proposition';
-import { estIceDivergent } from '../src/lib/propositionB2b';
+import { entrepriseNettoyee, estIceDivergent, messageEntreprise, normaliserIce, validerEntreprise } from '../src/lib/propositionB2b';
 import { lirePageProposition } from './astroBlocsHelper';
 
 const ENT3 = { raison_sociale: 'Hôtel Exemple SARL', signataire_qualite: 'Directeur général', ice: '000000000000000' };
@@ -234,5 +234,102 @@ describe('ADEV99 — proxy /api/proposition-accept : la langue de la page est re
   it('`en` relayé, une valeur hors liste jamais', async () => {
     expect((await corpsRelaye({ token: 'tok', nom: 'Hassan', langue: 'en' })).langue).toBe('en');
     expect('langue' in (await corpsRelaye({ token: 'tok', nom: 'Hassan', langue: 'de' }))).toBe(false);
+  });
+});
+
+// CPRW7 (27/10/2026) — erreurs de signature entreprise en FR/EN/AR + ICE normalisé (15 chiffres).
+describe('CPRW7 — validerEntreprise trilingue et ICE à 15 chiffres', () => {
+  it('chaque erreur porte aussi errorEn / errorAr, `error` FR inchangé', () => {
+    const cas: Array<[Record<string, unknown>, string]> = [
+      [{ raison_sociale: '' }, 'entreprise.raison_sociale'],
+      [{ signataire_qualite: '' }, 'entreprise.signataire_qualite'],
+      [{ ice: '' }, 'entreprise.ice'],
+      [{ signataire_email: 'pas-un-email' }, 'entreprise.signataire_email'],
+      [{ pouvoir_engager: false }, 'entreprise.pouvoir_engager'],
+    ];
+    for (const [over, champ] of cas) {
+      const v = validerEntreprise({ nom: 'K', option: null, entreprise: { ...ENT, ...over } })!;
+      expect(v.champ).toBe(champ);
+      expect(v.error).toMatch(/^Veuillez /);
+      expect(v.errorEn.length).toBeGreaterThan(5);
+      expect(v.errorEn).not.toBe(v.error);
+      expect(v.errorAr).toMatch(/[؀-ۿ]/);
+    }
+  });
+  it('ICE : séparateurs retirés, exactement 15 chiffres, erreur qui nomme l\'ICE en FR/EN/AR', () => {
+    const f = (ice: string): SignFormState => ({ nom: 'K', option: null, entreprise: { ...ENT, ice } });
+    expect(validerEntreprise(f('0012 3456.7000-089'))).toBeNull();
+    for (const mauvais of ['00123456700008', '0012345670000890', 'ABC123456700008', '1234']) {
+      const v = validerEntreprise(f(mauvais))!;
+      expect(v.champ).toBe('entreprise.ice');
+      expect(v.error).toMatch(/ICE/);
+      expect(v.errorEn).toMatch(/ICE/);
+      expect(v.errorAr).toMatch(/ICE/);
+      expect(v.error).toMatch(/15/);
+    }
+    expect(normaliserIce(' 0012 3456.7000-089 ')).toBe('001234567000089');
+    const corps = entrepriseNettoyee({ ...ENT, ice: '0012 3456.7000-089' }, 'K');
+    expect(corps?.ice).toBe('001234567000089');
+  });
+  it('CPRW11 : préfixe « ICE » retiré (casse libre) et chiffres arabo-indiens / persans ASCII-isés, comme le serveur', () => {
+    const f = (ice: string): SignFormState => ({ nom: 'K', option: null, entreprise: { ...ENT, ice } });
+    expect(normaliserIce('ICE 001234567000089')).toBe('001234567000089');
+    expect(normaliserIce('ice: 0012 3456 7000 089')).toBe('001234567000089');
+    expect(normaliserIce('٠٠١٢٣٤٥٦٧٠٠٠٠٨٩')).toBe('001234567000089');
+    expect(normaliserIce('۰۰۱۲۳۴۵۶۷۰۰۰۰۸۹')).toBe('001234567000089');
+    expect(validerEntreprise(f('ICE 001234567000089'))).toBeNull();
+    expect(validerEntreprise(f('٠٠١٢٣٤٥٦٧٠٠٠٠٨٩'))).toBeNull();
+    expect(validerEntreprise(f('ABC001234567000089'))!.champ).toBe('entreprise.ice');
+  });
+});
+
+// ── CPRW19 — préremplissage de la signature entreprise ──────────────────────────────────────
+import { installerPrefillEntreprise, valeursInitialesEntreprise } from '../src/lib/propositionB2b';
+import { syntheseCi as syntheseCiCprw19, type ProposalResponse as ProposalCprw19 } from '../src/lib/proposition';
+
+describe('CPRW19 — valeursInitialesEntreprise / installerPrefillEntreprise', () => {
+  const ent = { raisonSociale: 'Boulangerie Atlas SARL', ice: 'ICE 0012 3456.7000-089', fonction: 'Directeur financier' };
+  it('ICE normalisée en valeur ; la fonction n\'est JAMAIS une valeur, seulement une suggestion', () => {
+    const r = valeursInitialesEntreprise(ent);
+    expect(r.valeurs).toEqual({ raison_sociale: 'Boulangerie Atlas SARL', ice: '001234567000089' });
+    expect(Object.keys(r.valeurs)).not.toContain('fonction');
+    expect(r.suggestion).toEqual({ fonction: 'Directeur financier' });
+    expect(valeursInitialesEntreprise(null)).toEqual({ valeurs: { raison_sociale: '', ice: '' }, suggestion: { fonction: '' } });
+  });
+  it('syntheseCi lit ice, interlocuteur, fonction de entreprise_client', () => {
+    const p = { mode_installation: 'industriel', synthese_ci: { entreprise_client: { raison_sociale: 'X', ice: '001234567000089', interlocuteur: 'A. B.', fonction: 'DG' } } } as unknown as ProposalCprw19;
+    expect(syntheseCiCprw19(p)!.entrepriseClient).toEqual({ raisonSociale: 'X', ice: '001234567000089', interlocuteur: 'A. B.', fonction: 'DG' });
+  });
+  it('installerPrefillEntreprise : ICE en value, fonction en placeholder, seulement si vides', () => {
+    const champs: Record<string, { value: string; placeholder: string }> = {
+      '#sign-ice': { value: '', placeholder: '' },
+      '#sign-qualite': { value: '', placeholder: '' },
+    };
+    const racine = { querySelector: (s: string) => champs[s] ?? null } as unknown as ParentNode;
+    installerPrefillEntreprise(racine, valeursInitialesEntreprise(ent));
+    expect(champs['#sign-ice']!.value).toBe('001234567000089');
+    expect(champs['#sign-qualite']!.value).toBe('');
+    expect(champs['#sign-qualite']!.placeholder).toBe('Directeur financier');
+    champs['#sign-ice']!.value = '999';
+    champs['#sign-qualite']!.value = 'Gérant';
+    champs['#sign-qualite']!.placeholder = '';
+    installerPrefillEntreprise(racine, valeursInitialesEntreprise(ent));
+    expect(champs['#sign-ice']!.value).toBe('999');
+    expect(champs['#sign-qualite']!.placeholder).toBe('');
+    installerPrefillEntreprise({ querySelector: () => null } as unknown as ParentNode, valeursInitialesEntreprise(ent));
+  });
+});
+
+// CPRW26 (28/10/2026) — messageEntreprise : le message dans la langue courante.
+describe('CPRW26 — messageEntreprise', () => {
+  const v = { error: 'ICE invalide', errorEn: 'Invalid ICE', errorAr: 'ICE غير صالح' };
+  it('renvoie errorEn / errorAr / error selon la langue', () => {
+    expect(messageEntreprise(v, 'fr')).toBe('ICE invalide');
+    expect(messageEntreprise(v, 'en')).toBe('Invalid ICE');
+    expect(messageEntreprise(v, 'ar')).toBe('ICE غير صالح');
+  });
+  it('repli FR quand la traduction manque', () => {
+    expect(messageEntreprise({ error: 'ICE invalide', errorEn: '', errorAr: '' }, 'en')).toBe('ICE invalide');
+    expect(messageEntreprise({ error: 'ICE invalide' }, 'ar')).toBe('ICE invalide');
   });
 });

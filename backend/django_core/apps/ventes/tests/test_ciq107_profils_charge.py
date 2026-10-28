@@ -9,6 +9,7 @@ import os
 import unittest
 
 from apps.ventes.moteur_ci import profils
+from apps.ventes.moteur_ci.charge import courbe_declaree
 from apps.ventes.moteur_ci.profils import (
     MOTIF_PROFIL_DECLARE, SAISONS, TYPES_JOUR, donnees_archetypes, forme_archetype,
 )
@@ -137,6 +138,33 @@ class TestArchetypes(unittest.TestCase):
         self.assertNotIn('day_share', texte)
         _forme, source = forme_archetype('bureau', 'ouvre', 'hiver')
         self.assertFalse(any('diurne' in cle for cle in source))
+
+    def test_categorie_proche_sans_plage_demande_les_horaires(self):
+        # CLD18 — station-service, café, salle de sport : forme « restaurant du
+        # soir » sans plage ⇒ alerte INTERNE nommant l'archétype, jamais un refus.
+        for categorie in ('station_service', 'cafe', 'salle_sport'):
+            jt, prov, alertes = courbe_declaree({}, 96000, annee_reference=2027,
+                                                archetype=categorie, feries=[])
+            self.assertIsNotNone(jt, categorie)
+            alerte = next(a for a in alertes if a['code'] == 'horaires_a_demander')
+            self.assertTrue(alerte['interne'])
+            self.assertIn('restaurant', alerte['message'])
+            self.assertIn(categorie, alerte['message'])
+        # plages déclarées, ou catégorie dont l'écart est faible : aucune alerte
+        _jt, _p, alertes = courbe_declaree(
+            {'jours_ouverts': [True] * 7, 'plages': {'ouvre': [[0, 24]]}}, 96000,
+            annee_reference=2027, archetype='station_service', feries=[])
+        self.assertNotIn('horaires_a_demander', {a['code'] for a in alertes})
+        _jt, _p, alertes = courbe_declaree({}, 96000, annee_reference=2027,
+                                           archetype='garage', feries=[])
+        self.assertNotIn('horaires_a_demander', {a['code'] for a in alertes})
+        # profil de la société complet : c'est SA forme qui sert, pas l'archétype
+        profil = {'cle': 'x', 'libelle': 'x', 'provenance': 'relevé 2025',
+                  'courbe': {'annuel': [0] * 8 + [1] * 10 + [0] * 6}}
+        _jt, _p, alertes = courbe_declaree({}, 96000, annee_reference=2027,
+                                           archetype='station_service', feries=[],
+                                           profil_societe=profil)
+        self.assertNotIn('horaires_a_demander', {a['code'] for a in alertes})
 
 
 class TestFormeContrat(unittest.TestCase):

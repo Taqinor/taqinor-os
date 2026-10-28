@@ -1081,7 +1081,7 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
             numero_serie=oa.s(),
             designation=oa.s(),
             slot=oa.s(),
-            caracteristiques=oa.obj(null=True),
+            caracteristiques=oa.Caracteristiques(required=False, allow_null=True),
             capture_source=oa.s(),
             file=oa.serializers.FileField(required=False),
         ),
@@ -1330,7 +1330,7 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
             'AjouterLigneConsommationRequete',
             designation=oa.designation_ligne(),
             produit=oa.i(null=True),
-            quantite_utilisee=oa.dec(),
+            quantite_utilisee=oa.qte(),
             justification=oa.s(),
         ),
         responses={201: ConsommationLigneSerializer},
@@ -1358,11 +1358,8 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         if request.data.get('produit'):
             produit = get_produit_scoped(
                 interv.company, request.data.get('produit'))
-        from decimal import Decimal, InvalidOperation
-        try:
-            qte = Decimal(str(request.data.get('quantite_utilisee') or 0))
-        except (InvalidOperation, TypeError, ValueError):
-            qte = Decimal('0')
+        from decimal import Decimal
+        qte = oa.quantite_bornee(request, 'quantite_utilisee')  # (12, 2) : 1e15 → 500
         ligne = ConsommationLigne.objects.create(
             company=interv.company, consommation=cons, produit=produit,
             designation=designation, quantite_prevue=Decimal('0'),
@@ -1376,7 +1373,7 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         request=oa.body(
             'ModifierLigneConsommationRequete',
             ligne=oa.i(True),
-            quantite_utilisee=oa.dec(),
+            quantite_utilisee=oa.qte(),
             justification=oa.s(),
             justification_memo=oa.i(null=True),
         ),
@@ -1388,7 +1385,6 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
     def modifier_ligne_consommation(self, request, pk=None):
         """F11 — édite une ligne : quantite_utilisee, justification,
         justification_memo. Corps : {"ligne": <id>, ...}."""
-        from decimal import Decimal, InvalidOperation
         interv = self.get_object()
         cons = field_capture.ensure_consommation(interv)
         if not field_capture.consommation_modifiable(cons):  # ACHT30
@@ -1401,12 +1397,7 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
                             status=oa.statut_inconnu(request.data.get('ligne')))
         fields = []
         if 'quantite_utilisee' in request.data:
-            try:
-                ligne.quantite_utilisee = Decimal(
-                    str(request.data.get('quantite_utilisee') or 0))
-            except (InvalidOperation, TypeError, ValueError):
-                return Response({'quantite_utilisee': 'Quantité invalide.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+            ligne.quantite_utilisee = oa.quantite_bornee(request, 'quantite_utilisee')
             fields.append('quantite_utilisee')
         if 'justification' in request.data:
             ligne.justification = (request.data.get('justification') or '').strip()
@@ -2390,7 +2381,7 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
             signature_client=oa.signature_publiee(),
             signataire_nom=oa.ChaineStricte(required=False, allow_blank=True),
             motif_override_signature=oa.ChaineStricte(required=False, allow_blank=True),
-            motif_override=oa.s(),
+            motif_override=oa.ChaineStricte(required=False, allow_blank=True),
         ),
         responses=InterventionSerializer,
     )
