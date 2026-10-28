@@ -113,8 +113,8 @@ export const LIBELLES_GROUPE_CLIENT = Object.freeze({
 })
 
 // Total HT d'une ligne pour l'en-tête de groupe : APRÈS remise globale quand
-// le miroir de répartition (`lignesRemiseesTtc[i]`, TTC de ligne remisé,
-// aligné sur `lines`) en donne une, comme le PDF ; sinon le catalogue.
+// la répartition par ligne (`lignesRemiseesTtc[i]`, TTC de ligne remisé,
+// au même index que `lines`) en donne une, comme le PDF ; sinon le catalogue.
 function htLigne(l, ttcRemise) {
   const taux = l.taux_tva ?? 20
   if (Number.isFinite(ttcRemise)) return parseFloat(htFromTtc(ttcRemise, taux)) || 0
