@@ -108,7 +108,7 @@ describe('CIW307 — la page n\'écrit plus ces phrases et ne calcule plus de CO
     expect(page).toContain('const ciCarteInd = ok && installMode === \'industriel\' ? carteIndustrielleCi(ci) : null;');
     expect(page).toContain('data-ci-decarbonation');
   });
-  it('enviro (CO₂ au facteur « source à préciser ») vaut null en C&I', () => {
-    expect(page).toContain('const enviro = ok && !isAgricole && !isAutoconso ? environmentalImpact(prodKwh) : null;');
+  it('aucune tonne CO₂ au facteur « source à préciser » (C&I, et tous segments depuis RWEB6)', () => {
+    expect(page).not.toContain('environmentalImpact(prodKwh)');
   });
 });

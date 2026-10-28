@@ -44,13 +44,8 @@ export const HOURS_PER_DAY = 24;
 // simulation de repli n'est pas exécutée (omission nommée, voir
 // `batterySimParamsFromFiche`).
 
-/**
- * Profondeur de décharge (DoD) LFP retenue = 0,90. Le lithium LFP tolère 90-95 % de
- * DoD sans dégradation notable (contre ~50 % au plomb) ; on retient 0,90 (borne
- * BASSE de la fourchette 90-95 %) — choix PRUDENT : la capacité utile affichée est
- * plutôt sous-estimée que sur-promise. Réglable ici.
- */
-export const BATTERY_DEPTH_OF_DISCHARGE = 0.9;
+import { BATTERY_DEPTH_OF_DISCHARGE } from './estimatorConstants';
+export { BATTERY_DEPTH_OF_DISCHARGE } from './estimatorConstants';
 
 /**
  * Capacité catalogue par UNITÉ (kWh) — RÉFÉRENCES RÉELLES du catalogue Dyness :

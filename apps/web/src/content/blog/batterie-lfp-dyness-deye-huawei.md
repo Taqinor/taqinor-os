@@ -1,6 +1,6 @@
 ---
 title: "Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le secours"
-description: "Gamme Dyness LFP, ≥6 000 cycles, 10 ans de garantie — et le vrai différenciateur secours entre Deye SG (≈4–10 ms) et Huawei SUN2000 (< 3 s)."
+description: "Gamme Dyness LFP, ≥6 000 cycles, 7 ans de garantie — et le vrai différenciateur secours entre Deye SG (≈4–10 ms) et Huawei SUN2000 (< 3 s)."
 pubDate: 2026-04-27
 tags: ["batterie", "LFP", "Dyness", "Deye", "Huawei"]
 author: "Reda Kasri"
@@ -15,7 +15,7 @@ Sur le terrain, le choix d'une batterie se joue rarement sur la capacité affich
 
 Toute la gamme Dyness est en chimie **LiFePO4 (LFP)**, devenue la référence du stockage résidentiel au Maroc : elle encaisse bien la chaleur, reste sûre (aucun dégagement d'oxygène en cas d'emballement) et dure nettement plus longtemps que le gel ou l'AGM.
 
-Tous les modèles partagent le même socle : **≥ 6 000 cycles** et une **garantie 10 ans à 70 % de rétention de capacité**.
+Tous les modèles partagent le même socle : **≥ 6 000 cycles** et une **garantie 7 ans à 70 % de rétention de capacité** (DL5.0C ; 10 ans pour la Powerbox Pro).
 
 | Modèle | Capacité nominale | Particularité |
 |---|---|---|
@@ -69,7 +69,7 @@ Une coupure de ≈ 4–10 ms est imperceptible pour la quasi-totalité des équi
 ### Combien de temps dure une batterie LFP ?
 
 - Durée de vie **calendaire : ≈ 10–15 ans** dans des conditions normales
-- Les garanties fabricant ciblent typiquement 10 ans à 70 % de rétention
+- La garantie Dyness DL5.0C au Maroc est de 7 ans à 70 % de rétention
 - À raison d'un cycle par jour, le budget cycles (4 000–6 000) représente ≈ 11–16 ans — c'est souvent le **vieillissement calendaire** qui limite en premier, pas le compteur de cycles
 
 ### L'ennemi numéro 1 : la chaleur

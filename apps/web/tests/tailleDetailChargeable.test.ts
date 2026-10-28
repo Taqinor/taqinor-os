@@ -429,7 +429,7 @@ describe('page — le récapitulatif « Recommandé » quand une seule option es
     const debut = CODE.indexOf('id="prop-fold-figures"');
     const bloc = CODE.slice(debut, CODE.indexOf('id="prop-fold-cta"', debut));
     for (const valeur of [
-      'formatMAD(heroTtc)', 'formatMAD(ecoHero)', '{paybackHero}',
+      'formatMAD(heroTtc)', 'formatMAD(ecoHero)', '{retourPhrase.fr}',
       'formatNumber(heroKwc, 2)', 'formatNumber(prodKwh)',
       'formatPercent(couverture.pct, 0)',
     ]) {

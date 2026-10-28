@@ -27,7 +27,8 @@
  */
 import {
   PANEL_PERFORMANCE_WARRANTY_YEARS,
-  INVERTER_WARRANTY_YEARS,
+  DEYE_INVERTER_WARRANTY_YEARS,
+  HUAWEI_INVERTER_WARRANTY_YEARS,
 } from '../lib/warranty';
 
 /** Identifiant stable d'un badge (une page hôte choisit lesquels elle rend). */
@@ -51,7 +52,7 @@ const CERTS: CertItem[] = [
   { key: 'iec', label: 'IEC 61215 / 61730', labelAr: 'IEC 61215 / 61730', detail: 'Modules certifiés', detailEn: 'Certified modules', detailAr: 'ألواح معتمدة' },
   { key: 'loi8221', label: 'Loi 82-21', labelAr: 'القانون 82-21', detail: 'Autoconsommation BT', detailEn: 'Low-voltage self-consumption', detailAr: 'الاستهلاك الذاتي' },
   { key: 'panneaux', label: `${PANEL_PERFORMANCE_WARRANTY_YEARS} ans`, labelAr: `${PANEL_PERFORMANCE_WARRANTY_YEARS} سنة`, detail: 'Garantie performance panneaux', detailEn: 'Panel performance warranty', detailAr: 'ضمان أداء الألواح' },
-  { key: 'onduleur', label: `${INVERTER_WARRANTY_YEARS} ans`, labelAr: `${INVERTER_WARRANTY_YEARS} سنوات`, detail: 'Garantie onduleur', detailEn: 'Inverter warranty', detailAr: 'ضمان العاكس' },
+  { key: 'onduleur', label: `${DEYE_INVERTER_WARRANTY_YEARS} / ${HUAWEI_INVERTER_WARRANTY_YEARS} ans`, labelAr: `${DEYE_INVERTER_WARRANTY_YEARS} / ${HUAWEI_INVERTER_WARRANTY_YEARS} سنوات`, detail: 'Garantie onduleur (Deye / Huawei)', detailEn: 'Inverter warranty (Deye / Huawei)', detailAr: 'ضمان العاكس (Deye / Huawei)' },
 ];
 
 interface Props {
