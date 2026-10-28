@@ -19,6 +19,7 @@ from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
 
+from .listes_prechargees import totaux_temps_memo
 from .serializers_blocs import (
     bloc_avertissements_cloture, bloc_calepinage, bloc_dossier_8221_resume,
     bloc_regime_suggere)
@@ -2492,13 +2493,11 @@ class OrdreAssemblageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_temps_prevu_min(self, obj):
-        from .services import totaux_temps_ordre
-        return totaux_temps_ordre(obj)['prevu']
+        return totaux_temps_memo(self, obj)['prevu']  # APRF39 : un calcul par ordre
 
     @extend_schema_field(serializers.IntegerField())
     def get_temps_reel_min(self, obj):
-        from .services import totaux_temps_ordre
-        return totaux_temps_ordre(obj)['reel']
+        return totaux_temps_memo(self, obj)['reel']
 
 
 class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):

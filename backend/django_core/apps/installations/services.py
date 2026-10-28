@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from apps.ventes.utils.references import create_with_reference
 from core.verrous import sous_verrou
+from .listes_prechargees import relation
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
@@ -4067,7 +4068,7 @@ def cout_prevu_assemblage(ordre):
             prix = getattr(ligne.produit, 'prix_achat', None) or Decimal('0')
             total += Decimal(str(ligne.quantite or 0)) * Decimal(str(prix))
         return total
-    for c in ordre.kit.composants.select_related('produit').all():
+    for c in relation(ordre.kit, 'composants', 'produit'):  # APRF39 : cache préchargé de la liste
         if c.produit_id is None:
             continue
         prix = getattr(c.produit, 'prix_achat', None) or Decimal('0')
@@ -4358,15 +4359,13 @@ def instancier_etapes_ordre(ordre):
     etapes_modele = ordre.kit.etapes_assemblage.all()
     if not etapes_modele:
         return []
-    existants = set(
-        ordre.etapes.values_list('etape_modele_id', flat=True))
+    existants = {e.etape_modele_id for e in ordre.etapes.all()}  # APRF39 : cache préchargé de la liste
     a_creer = [
         EtapeOrdre(ordre=ordre, etape_modele=etape)
         for etape in etapes_modele if etape.id not in existants
     ]
-    if a_creer:
-        EtapeOrdre.objects.bulk_create(a_creer)
-    return list(ordre.etapes.select_related('etape_modele').all())
+    EtapeOrdre.objects.bulk_create(a_creer)  # liste vide : aucune requête
+    return list(relation(ordre, 'etapes', 'etape_modele', frais=bool(a_creer)))
 
 
 def cocher_etape_ordre(ordre, etape_modele_id, *, fait, duree_reelle_min, user):
