@@ -18,6 +18,9 @@ Every money number goes through `ctx["fmt"]`; currency is MAD; language FR.
 
 import logging
 
+from ..i18n_labels_residentiel import accord_annees_ar
+from ..montants import decimale
+
 logger = logging.getLogger(__name__)
 
 
@@ -167,7 +170,7 @@ def build(ctx):
     # précisément, cf. constants.CO2_T_PAR_MWH). La bande s'omet entièrement
     # sans production — jamais un « 0 tonne ».
     co2_t = prod_kwh * constants.CO2_T_PAR_MWH / 1000.0
-    co2_txt = (f"{co2_t:.1f}".replace(".", ",") if co2_t < 10
+    co2_txt = (decimale(f"{co2_t:.1f}") if co2_t < 10
                else fmt(co2_t))
     impact_html = (f"""
     <!-- IMPACT STRIP ───────────────────────────────────────────────────── -->
@@ -245,7 +248,7 @@ def build(ctx):
                 'injecté n\'est pas rémunéré.').format(cov=coverage_pct),
             cov=coverage_pct) + '</div>'
 
-    kwc_str = f"{kwc:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    kwc_str = decimale(f"{kwc:.2f}".rstrip("0").rstrip("."))
     # ── F1/L-2OPT (26/08/2026) — LE PRIX AU kWc D'UNE OPTION SE CALCULE SUR LE
     # kWc DE CETTE OPTION ────────────────────────────────────────────────────
     # ``kwc`` est le scalaire legacy : quand les deux options ne portent pas le
@@ -272,7 +275,7 @@ def build(ctx):
     # recalé le scalaire sur la variante rendue : rien à faire ici. Devis non
     # divergent (tout l'existant) ⇒ HTML byte-identique.
     def _num_kwc(v):
-        return f'{v:g}'.replace(".", ",")
+        return decimale(f'{v:g}')
 
     _nb_s, _nb_a = d.get("nb_panneaux_sans"), d.get("nb_panneaux_avec")
     kpi_kwc_v = kwc_str
@@ -628,7 +631,7 @@ def build(ctx):
 .c1-opt-kwc{{font-size:7pt;color:{muted};margin-top:2px;}}
 .c1-roi{{display:inline-flex;align-items:center;align-self:flex-start;gap:5px;
   background:{green_bg};color:{green};border-radius:20px;padding:3px 11px;
-  font-size:8pt;font-weight:700;margin-top:8px;}}
+  font-size:8pt;font-weight:700;margin-top:8px;white-space:nowrap;}}
 .c1-roi svg{{width:11px;height:11px;}}
 .c1-opt-eco{{font-size:7.8pt;color:{muted};margin-top:5px;}}
 .c1-opt-eco b{{color:{green};font-weight:700;}}
@@ -696,7 +699,7 @@ def build(ctx):
         else:
             roi_html = (
                 f'<div class="c1-roi">{_roi_svg(green)}'
-                + libelle_cat(d, "res_rentabilise_en", n=_yrs(roi_v))
+                + accord_annees_ar(libelle_cat(d, "res_rentabilise_en", n=_yrs(roi_v)), roi_v)
                 + '</div>' + ancre("payback_ans", _yrs(roi_v), opt))
         return (
             f'<div class="{cls}">'
@@ -964,7 +967,8 @@ def _yrs(v):
         return str(v)
     if f == int(f):
         return str(int(f))
-    return f"{f:.1f}".replace(".", ",")
+    from ..montants import decimale  # RPDF — suit la langue du rendu
+    return decimale(f"{f:.1f}")
 
 
 def _roi_svg(color):
