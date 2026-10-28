@@ -1,0 +1,33 @@
+{
+  "sha": "cc44b796ccd14a17381315722b04f9521a0ea2ea",
+  "date": "2026-10-28",
+  "groupe": "APRF",
+  "verdict": "PASS",
+  "couvre": [
+    "APRF37"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.3",
+      "taches": [
+        "APRF37"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/APRF/traces/2026-10-28/APRF37-P1.3.txt"
+    }
+  ]
+}

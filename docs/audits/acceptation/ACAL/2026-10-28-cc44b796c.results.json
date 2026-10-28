@@ -1,0 +1,55 @@
+{
+  "sha": "cc44b796ccd14a17381315722b04f9521a0ea2ea",
+  "date": "2026-10-28",
+  "groupe": "ACAL",
+  "verdict": "PASS",
+  "couvre": [
+    "ACAL273",
+    "ACAL274"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1+P8.1",
+      "taches": [
+        "ACAL273"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-28/ACAL273-P1.1-P8.1.txt"
+    },
+    {
+      "id": "P9.1",
+      "taches": [
+        "ACAL274"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/ACAL/traces/2026-10-28/ACAL274-P9.1.txt"
+    }
+  ]
+}

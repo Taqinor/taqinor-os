@@ -1,0 +1,33 @@
+{
+  "sha": "cc44b796ccd14a17381315722b04f9521a0ea2ea",
+  "date": "2026-10-28",
+  "groupe": "VNT",
+  "verdict": "PASS",
+  "couvre": [
+    "VNT48"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P0-reparation",
+      "taches": [
+        "VNT48"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "NA",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/VNT/traces/2026-10-28/VNT48-reparation.txt"
+    }
+  ]
+}
