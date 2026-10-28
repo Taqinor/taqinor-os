@@ -11,7 +11,7 @@ from core.mixins import SameCompanyFKSerializerMixin
 from core.serializers import CompanyScopedRelationsMixin, ChampsTexteBooleenStricts
 from core.champs_stricts import (
     ChaineStricte, ChampsStrictsMixin, DecimalStricte, IdInconnu404Mixin,
-    TexteLie)
+    IdInconnu404ImbriquesMixin, TexteLie)
 from core.unicite import ConflitUnicite
 from .champs_lignes import ChampsLigneFactureFournisseur
 from core.product_roles import (
@@ -1394,12 +1394,12 @@ class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
         return value
 
 
-class RetourFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
+class RetourFournisseurSerializer(IdInconnu404ImbriquesMixin, SameCompanyFKSerializerMixin,
                                   ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK2 — fournisseur et BCF d'origine bornés à la société, en création
     # ET en modification (remplace l'ancien `_validate_company`, création
     # seule et message propre = oracle d'existence). api-fuzz-full 28/10 : un id inconnu, lignes comprises → 404.
-    same_company_fields, ids_inconnus_imbriques = ('fournisseur', 'bon_commande'), True
+    same_company_fields = ('fournisseur', 'bon_commande')
     lignes = LigneRetourFournisseurSerializer(many=True)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)

@@ -681,6 +681,13 @@ class IdInconnu404Mixin:
         return valide
 
 
+class IdInconnu404ImbriquesMixin(IdInconnu404Mixin):
+    """``IdInconnu404Mixin`` étendu aux lignes imbriquées (``lignes[].produit``
+    inconnu → 404) : le drapeau ``ids_inconnus_imbriques`` sans ligne de plus
+    dans les sérialiseurs des fichiers-dieux (api-fuzz-full 28/10)."""
+    ids_inconnus_imbriques = True
+
+
 #: Profondeur de l'arbre ``core.rules`` publié au schéma (groupes imbriqués) ;
 #: la feuille est le niveau 0. Un arbre plus profond est HORS schéma ET refusé.
 PROFONDEUR_ARBRE_CONDITIONS = 3
