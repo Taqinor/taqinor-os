@@ -1,5 +1,5 @@
 import { createElement, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, History, Pencil, Trash2, PackageSearch, PackagePlus,
   TrendingDown, PackageX, Layers,
@@ -184,7 +184,13 @@ export function CatalogueTable({
   // AGR106 — « Pompage à compléter » : filtre OFF par défaut (rendu identique
   // tant qu'on ne l'active pas) + bandeau « kit pompage chiffrable ». Lecture
   // seule ; rien n'apparaît sur un catalogue sans aucun article pompage.
-  const [pompageACompleterSeul, setPompageACompleterSeul] = useState(false)
+  // CCAT9 — `/stock?ci=a_completer` / `/stock?pompage=a_completer` (liens de
+  // l'encadré « Prêt pour les devis ») ouvrent ces filtres, au montage ET à
+  // chaque navigation (l'encadré vit sur /stock : le clic ne remonte rien).
+  const [paramsUrl] = useSearchParams()
+  const { key: cleNavigation } = useLocation()
+  const filtreUrl = (nom) => paramsUrl.get(nom) === 'a_completer'
+  const [pompageACompleterSeul, setPompageACompleterSeul] = useState(() => filtreUrl('pompage'))
   const aDuPompage = useMemo(
     () => (produits ?? []).some((p) => !p?.is_archived && roleDuProduitPompage(p)),
     [produits])
@@ -197,11 +203,14 @@ export function CatalogueTable({
   // CIQ104 — « C&I à compléter » : rôle C&I sans prix ou exclu (fiche
   // incomplète…), lu sur `etat_ci` servi par l'API. OFF par défaut ; absent
   // d'un catalogue sans aucun article C&I.
-  // CCAT9 — `/stock?ci=a_completer` (lien de l'encadré « Prêt pour le devis C&I »)
-  // ouvre directement ce filtre.
-  const [paramsUrl] = useSearchParams()
-  const [ciACompleterSeul, setCiACompleterSeul] = useState(
-    () => paramsUrl.get('ci') === 'a_completer')
+  const [ciACompleterSeul, setCiACompleterSeul] = useState(() => filtreUrl('ci'))
+  // Ajustement pendant le rendu (pas d'effet) : une fois par navigation.
+  const [navigationVue, setNavigationVue] = useState(cleNavigation)
+  if (navigationVue !== cleNavigation) {
+    setNavigationVue(cleNavigation)
+    if (filtreUrl('ci')) setCiACompleterSeul(true)
+    if (filtreUrl('pompage')) setPompageACompleterSeul(true)
+  }
   const aDuCi = useMemo(
     () => (produits ?? []).some((p) => !p?.is_archived && p?.etat_ci),
     [produits])

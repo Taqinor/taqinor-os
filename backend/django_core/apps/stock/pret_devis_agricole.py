@@ -6,8 +6,9 @@ mêmes helpers que le jumeau C&I (``pret_devis_ci``). Les règles sont celles du
 noyau ``core.pompage`` (``selection.choisir_pompe``, ``champ.choisir_variateur``,
 ``kit.composer_kit``) lues côté Stock via ``selectors.produits_pompage`` :
 
-* pompe : l'ALIMENTATION se lit comme le moteur (``alimentation_produit``) et il
-  faut une courbe constructeur, une puissance (kW ou CV) et un prix de vente ;
+* pompe : l'ALIMENTATION et le TYPE se lisent comme le moteur
+  (``alimentation_produit``, ``type_produit``) et il faut une courbe
+  constructeur, une puissance (kW ou CV) et un prix de vente ;
 * variateur : kW de la fiche (``pompe_kw`` > 0) et prix ;
 * structure au sol : prix de vente (le barème n'est pas lu pour ce rôle) ;
 * installation : le produit RETENU par le moteur (``kit._par_role``) doit porter
@@ -21,16 +22,29 @@ Lecture seule, bornée à la société (+ produits globaux), produits archivés
 exclus ; AUCUN prix, prix d'achat ni marge dans la réponse.
 """
 from core.pompage.kit import OPTIONS, _par_role, bareme_saisi
-from core.pompage.selection import _a_courbe, alimentation_produit, kw_pompe
+from core.pompage.selection import (
+    _a_courbe, alimentation_produit, kw_pompe, type_produit)
 from core.product_roles import LIBELLES_ROLES_POMPAGE
 
-from .pret_devis_ci import MOTIF_SANS_PRIX, _candidat, _poste
+from .pret_devis_ci import MOTIF_SANS_PRIX, _candidat
+from .pret_devis_ci import _poste as _poste_ci
+
+#: Le filtre « Pompage à compléter » du catalogue Stock (le filtre C&I ne
+#: contient aucun article agricole).
+LIEN_A_COMPLETER = '/stock?pompage=a_completer'
 
 MOTIF_SANS_COURBE = 'courbe constructeur absente'
 MOTIF_SANS_KW = 'puissance (kW ou CV) non saisie'
 MOTIF_SANS_KW_VARIATEUR = 'puissance (kW) non saisie'
-MOTIF_SANS_BAREME = 'barème fixe / par panneau non saisi'
-MOTIF_NON_RETENU = "un autre article du rôle est retenu en premier par le moteur"
+MOTIF_SANS_TYPE = 'type de pompe (immergée / surface) non renseigné'
+MOTIF_SANS_BAREME = 'prix fixe et prix par panneau non saisis sur la fiche'
+MOTIF_NON_RETENU = ("le devis retient d'abord un autre article « Installation pompage » "
+                    "(le premier chiffré)")
+
+
+def _poste(cle, libelle, groupe, obligatoire, candidats):
+    return _poste_ci(cle, libelle, groupe, obligatoire, candidats,
+                     LIEN_A_COMPLETER)
 
 
 def _positif(valeur):
@@ -70,13 +84,16 @@ def _lecture_catalogue(company):
 
 def _pompes(produits, alimentation):
     """Les pompes de l'alimentation voulue, avec la raison pour laquelle le
-    moteur ne peut pas les choisir (courbe, puissance, prix)."""
+    moteur ne peut pas les choisir (type, courbe, puissance, prix) : sans type
+    lisible (champ ou nom), ``selection.choisir_pompe`` ne la retient jamais."""
     candidats = []
     for e in produits:
         if e.get('role_pompage') != 'pompe' or (
                 alimentation_produit(e) != alimentation):
             continue
         raisons = []
+        if type_produit(e) is None:
+            raisons.append(MOTIF_SANS_TYPE)
         if not _a_courbe(e):
             raisons.append(MOTIF_SANS_COURBE)
         if not kw_pompe(e)[0]:
@@ -144,7 +161,8 @@ def pret_devis_agricole(company):
         _poste('structure_sol', libelle['structure_sol'], 'materiel', True,
                _du_role(produits, 'structure_sol')),
         _poste('installation_pompage',
-               'Installation pompage (barème fixe / par panneau)',
+               'Installation pompage (prix fixe + prix par panneau, sur la '
+               "fiche Stock de l'article)",
                'prestation', True, _installations(produits, baremes)),
         _poste('transport', 'Transport', 'prestation', False, transports),
     ]

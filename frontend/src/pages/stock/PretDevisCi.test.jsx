@@ -85,10 +85,10 @@ describe('PretDevisCi (CCAT9, CCAT14)', () => {
     const lien = within(ligne).getByRole('link', { name: poste.action.texte })
     fireEvent.click(lien)
     expect(screen.getByTestId('lieu').textContent).toBe(poste.action.lien)
-    // statut absent -> « Absent du catalogue » ; facultatif -> « recommandé »
+    // statut absent -> « Absent du catalogue » ; facultatif -> « facultatif »
     expect(screen.getByText('Absent du catalogue')).toBeTruthy()
     const opt = contrat.postes.find((p) => !p.obligatoire)
-    expect(within(screen.getByTestId(`poste-ci-${opt.cle}`)).getByText('recommandé')).toBeTruthy()
+    expect(within(screen.getByTestId(`poste-ci-${opt.cle}`)).getByText('facultatif')).toBeTruthy()
     // jamais de prix
     expect(document.body.textContent).not.toMatch(/prix_achat|MAD|DH/)
   })
@@ -97,8 +97,8 @@ describe('PretDevisCi (CCAT9, CCAT14)', () => {
     reponsesContrat()
     monter(<PretDevisCi />)
     const ongletCi = await screen.findByRole('tab', {
-      name: `Commercial & industriel (${nbManquants})` })
-    const ongletAgri = screen.getByRole('tab', { name: `Agricole (${nbManquantsAgri})` })
+      name: `Commercial & industriel — ${nbManquants} à compléter` })
+    const ongletAgri = screen.getByRole('tab', { name: `Agricole — ${nbManquantsAgri} à compléter` })
     expect(ongletCi.getAttribute('aria-selected')).toBe('true')
     expect(ongletAgri.getAttribute('aria-selected')).toBe('false')
     expect(screen.queryByTestId('poste-ci-pompe:mono')).toBeNull()
@@ -116,8 +116,8 @@ describe('PretDevisCi (CCAT9, CCAT14)', () => {
     getPretDevisCi.mockResolvedValue(toutOk(contrat))
     getPretDevisAgricole.mockResolvedValue(reponseContrat('stock', 'pret_devis_agricole'))
     monter(<PretDevisCi />)
-    expect(await screen.findByRole('tab', { name: 'Commercial & industriel (prêt)' })).toBeTruthy()
-    expect(screen.getByRole('tab', { name: `Agricole (${nbManquantsAgri})` })
+    expect(await screen.findByRole('tab', { name: 'Commercial & industriel — prêt' })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: `Agricole — ${nbManquantsAgri} à compléter` })
       .getAttribute('aria-selected')).toBe('true')
     expect(screen.getByTestId('poste-ci-pompe:mono')).toBeTruthy()
     expect(screen.getByText(
@@ -145,14 +145,14 @@ describe('PretDevisCi (CCAT9, CCAT14)', () => {
     const { unmount } = monter(<PretDevisCi />)
     expect(await screen.findByText(
       `Prêt pour les devis : ${nbManquants} éléments obligatoires à compléter`)).toBeTruthy()
-    expect(screen.getByRole('tab', { name: `Commercial & industriel (${nbManquants})` })).toBeTruthy()
+    expect(screen.getByRole('tab', { name: `Commercial & industriel — ${nbManquants} à compléter` })).toBeTruthy()
     expect(screen.queryByRole('tab', { name: /Agricole/ })).toBeNull()
     unmount()
 
     getPretDevisCi.mockRejectedValue(new Error('500'))
     getPretDevisAgricole.mockResolvedValue(reponseContrat('stock', 'pret_devis_agricole'))
     monter(<PretDevisCi />)
-    expect(await screen.findByRole('tab', { name: `Agricole (${nbManquantsAgri})` })).toBeTruthy()
+    expect(await screen.findByRole('tab', { name: `Agricole — ${nbManquantsAgri} à compléter` })).toBeTruthy()
     expect(screen.queryByRole('tab', { name: /Commercial/ })).toBeNull()
     expect(screen.getByTestId('poste-ci-pompe:mono')).toBeTruthy()
   })
@@ -167,7 +167,7 @@ describe('PretDevisCi (CCAT9, CCAT14)', () => {
   })
 })
 
-describe('CatalogueTable — ?ci=a_completer (CCAT9)', () => {
+describe('CatalogueTable — ?ci= / ?pompage=a_completer (CCAT9)', () => {
   const produit = {
     ...produitStockBase,
     categorie: { id: 3, nom: 'Panneaux', ordre: 1 },
@@ -202,5 +202,50 @@ describe('CatalogueTable — ?ci=a_completer (CCAT9)', () => {
   it('sans paramètre le filtre est éteint', () => {
     rendre('/stock')
     expect(screen.getByTestId('filtre-ci-a-completer').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('?pompage=a_completer ouvre le filtre pompage', () => {
+    const pompe = {
+      ...produitStockBase, id: 3, nom: 'Pompe OSP sans prix', sku: 'PMP-1',
+      role_pompage: 'pompe', prix_vente: 0,
+      categorie: { id: 3, nom: 'Panneaux', ordre: 1 },
+    }
+    render(
+      <MemoryRouter initialEntries={['/stock?pompage=a_completer']}>
+        <ThemeProvider>
+          <CatalogueTable produits={[produit, pompe]} categories={[{ id: 3, nom: 'Panneaux' }]}
+                          {...propsCatalogueBase} onInlineSave={vi.fn().mockResolvedValue({})}
+                          selected={new Set()} onToggleSelect={() => {}} />
+        </ThemeProvider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('filtre-pompage-a-completer').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByTestId('filtre-ci-a-completer').getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('clic dans l’encadré monté sur /stock ⇒ filtre actif (sans remontage)', async () => {
+    reponsesContrat()
+    render(
+      <MemoryRouter initialEntries={['/stock']}>
+        <ThemeProvider>
+          <Routes>
+            <Route path="*" element={<>
+              <PretDevisCi />
+              <CatalogueTable produits={[produit, aCompleter]} categories={[{ id: 3, nom: 'Panneaux' }]}
+                              {...propsCatalogueBase} onInlineSave={vi.fn().mockResolvedValue({})}
+                              selected={new Set()} onToggleSelect={() => {}} />
+              <Lieu />
+            </>} />
+          </Routes>
+        </ThemeProvider>
+      </MemoryRouter>,
+    )
+    const filtre = screen.getByTestId('filtre-ci-a-completer')
+    expect(filtre.getAttribute('aria-pressed')).toBe('false')
+    const poste = contrat.postes.find((p) => p.statut === 'a_completer' && p.obligatoire)
+    const ligne = await screen.findByTestId(`poste-ci-${poste.cle}`)
+    fireEvent.click(within(ligne).getByRole('link', { name: poste.action.texte }))
+    expect(screen.getByTestId('lieu').textContent).toBe('/stock?ci=a_completer')
+    expect(screen.getByTestId('filtre-ci-a-completer').getAttribute('aria-pressed')).toBe('true')
   })
 })

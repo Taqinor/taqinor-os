@@ -11,16 +11,11 @@ non ».
 """
 from decimal import Decimal, InvalidOperation
 
+from apps.parametres.serializers_company import (
+    FORFAITS_CI_PRESTATIONS as PRESTATIONS)
 from core.product_roles import (
     LIBELLES_ROLES_CI, LIBELLES_TYPES_POSE, TYPES_POSE)
 
-#: Les 8 prestations C&I réglables (miroir de
-#: ``parametres.serializers_company.FORFAITS_CI_PRESTATIONS`` — ordre du
-#: moteur ``composition.PRESTATIONS_CI``).
-PRESTATIONS = (
-    'etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
-    'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci',
-)
 #: Défaut du moteur quand le type de pose n'est pas déclaré (décision
 #: fondateur du 26/10/2026) : le seul type de structure OBLIGATOIRE.
 TYPE_POSE_DEFAUT = 'toit_plat_leste'
@@ -128,16 +123,17 @@ def _motif(c):
     return c['motif'] or ('' if _ok(c) else MOTIF_SANS_PRIX)
 
 
-def _poste(cle, libelle, groupe, obligatoire, candidats):
+def _poste(cle, libelle, groupe, obligatoire, candidats,
+           lien_a_completer=LIEN_A_COMPLETER):
     """Un poste matière : ok si un candidat est chiffré ET éligible,
     a_completer si des candidats existent sans qu'aucun ne le soit, sinon
-    absent."""
+    absent. ``lien_a_completer`` : le filtre Stock du segment."""
     if any(_ok(c) for c in candidats):
         statut, action = 'ok', ('Ouvrir le catalogue Stock', LIEN_STOCK)
         articles = []
     elif candidats:
         statut, action = 'a_completer', (
-            'Compléter la fiche en Stock', LIEN_A_COMPLETER)
+            'Compléter la fiche en Stock', lien_a_completer)
         articles = [{'id': c['id'], 'nom': c['nom'], 'motif': _motif(c)}
                     for c in candidats]
     else:

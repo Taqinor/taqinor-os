@@ -20,7 +20,7 @@ const SEGMENTS = [
 
 const GROUPES = [
   ['materiel', 'Matériel'],
-  ['prestation', 'Prestations (Paramètres)'],
+  ['prestation', 'Prestations'],
   ['option', 'Options'],
   ['option_batterie', 'Option avec batterie'],
 ]
@@ -39,7 +39,7 @@ function LignePoste({ poste }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-foreground">{poste.libelle}</span>
           <Badge tone={tone}>{texte}</Badge>
-          {!poste.obligatoire && <Badge tone="outline">recommandé</Badge>}
+          {!poste.obligatoire && <Badge tone="outline">facultatif</Badge>}
         </div>
         {(poste.articles ?? []).length > 0 && (
           <ul className="list-disc pl-5 text-xs text-muted-foreground">
@@ -150,7 +150,7 @@ export default function PretDevisCi() {
                         variant={choisi ? 'secondary' : 'outline'}
                         aria-selected={choisi} data-testid={`onglet-pret-${s.cle}`}
                         onClick={() => setOnglet(s.cle)}>
-                  {s.label} ({d.pret ? 'prêt' : d.nb_obligatoires_manquants})
+                  {s.label} — {d.pret ? 'prêt' : `${d.nb_obligatoires_manquants} à compléter`}
                 </Button>
               )
             })}

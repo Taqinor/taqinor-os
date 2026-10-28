@@ -226,3 +226,37 @@ class DescriptionHybridesDeyeTests(TestCase):
         self.assertTrue(_p('OND-H-DEY-15T').description.startswith(
             'Onduleur hybride Deye SUN-15K-SG05LP3-EU-SM2'))
         self.assertEqual(_p('OND-H-DEY-5M').description, 'Saisie fondateur')
+
+    def test_migration_0175_couvre_les_deux_variantes_semees(self):
+        from importlib import import_module
+
+        from django.apps import apps as registre
+        mig = import_module(
+            'apps.stock.migrations.0175_ccat15_description_hybrides_deye')
+        _seed(self.company)
+        variante_1206 = (
+            'Onduleur hybride Deye SUN-…SG, rendement max ≈ 97,6 %\n'
+            'Compatible batteries lithium 48 V (BMS CAN/RS485)\n'
+            'Bascule secours (EPS/UPS) < 4 ms en cas de coupure réseau\n'
+            'Monitoring Wi-Fi via Solarman Smart / Deye Cloud')
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-10T').update(
+            description=variante_1206)
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-20T').update(
+            description=mig.ANCIENNE)
+
+        def _p(sku):
+            return Produit.objects.get(company=self.company, sku=sku).description
+
+        mig.corriger(registre, None)
+        # Seule la première ligne change ; la suite semée reste telle quelle.
+        self.assertEqual(_p('OND-H-DEY-10T'), variante_1206.replace(
+            'Onduleur hybride Deye SUN-…SG, rendement max ≈ 97,6 %',
+            'Onduleur hybride Deye SUN-10K-SG05LP3-EU-SM2'))
+        self.assertEqual(_p('OND-H-DEY-20T'),
+                         FICHES['OND-H-DEY-20T']['description'])
+        self.assertNotIn('…', _p('OND-H-DEY-10T'))
+
+        # Retour arrière exact pour les deux variantes.
+        mig.retablir(registre, None)
+        self.assertEqual(_p('OND-H-DEY-10T'), variante_1206)
+        self.assertEqual(_p('OND-H-DEY-20T'), mig.ANCIENNE)

@@ -16,7 +16,7 @@
         "articles": [
           {"id": 301, "nom": "Pompe immergée OSP 30-4 (4 kW)", "motif": "prix de vente non saisi"}
         ],
-        "action": {"texte": "Compléter la fiche en Stock", "lien": "/stock?ci=a_completer"}
+        "action": {"texte": "Compléter la fiche en Stock", "lien": "/stock?pompage=a_completer"}
       },
       {
         "cle": "pompe:mono",
@@ -36,11 +36,11 @@
         "articles": [
           {"id": 412, "nom": "Structure au sol pompage (par panneau)", "motif": "prix de vente non saisi"}
         ],
-        "action": {"texte": "Compléter la fiche en Stock", "lien": "/stock?ci=a_completer"}
+        "action": {"texte": "Compléter la fiche en Stock", "lien": "/stock?pompage=a_completer"}
       },
       {
         "cle": "installation_pompage",
-        "libelle": "Installation pompage (barème fixe / par panneau)",
+        "libelle": "Installation pompage (prix fixe + prix par panneau, sur la fiche Stock de l'article)",
         "groupe": "prestation",
         "obligatoire": true,
         "statut": "ok",

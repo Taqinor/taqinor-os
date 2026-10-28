@@ -450,7 +450,8 @@ class PretDevisAgricoleTests(TestCase):
         # structure au sol à prix vide, INST-PMP sans barème.
         cls.pompe_tri = Produit.objects.create(
             company=cls.company, nom='Pompe OSP 30-15 Triphasé',
-            role_pompage='pompe', alimentation='tri', courbe_pompe=COURBE,
+            role_pompage='pompe', type_pompe='immergee', alimentation='tri',
+            courbe_pompe=COURBE,
             pompe_kw=Decimal('2.2'), prix_vente=0)
         cls.structure = Produit.objects.create(
             company=cls.company, nom='STR-SOL-PMP structure au sol',
@@ -465,7 +466,8 @@ class PretDevisAgricoleTests(TestCase):
             is_archived=True)
         cls.etranger = Produit.objects.create(
             company=cls.autre, nom='Pompe autre société Monophasé',
-            role_pompage='pompe', alimentation='mono', courbe_pompe=COURBE,
+            role_pompage='pompe', type_pompe='immergee', alimentation='mono',
+            courbe_pompe=COURBE,
             pompe_kw=Decimal('1.1'), prix_vente=Decimal('5000'))
 
     def _postes(self, company=None):
@@ -490,7 +492,7 @@ class PretDevisAgricoleTests(TestCase):
         self.assertEqual(inst['groupe'], 'prestation')
         self.assertEqual(inst['articles'], [{
             'id': self.inst.id, 'nom': 'INST-PMP installation pompage',
-            'motif': 'barème fixe / par panneau non saisi'}])
+            'motif': 'prix fixe et prix par panneau non saisis sur la fiche'}])
         for cle in ('variateur_pompage', 'panneau'):
             self.assertEqual(postes[cle]['statut'], 'absent')
         manquants = {c for c, p in postes.items()
@@ -502,7 +504,7 @@ class PretDevisAgricoleTests(TestCase):
 
     def test_pompe_sans_courbe_a_completer(self):
         Produit.objects.create(
-            company=self.company, nom='Pompe sans courbe Monophasé',
+            company=self.company, nom='Pompe immergée sans courbe Monophasé',
             role_pompage='pompe', alimentation='mono', pompe_kw=Decimal('1'),
             prix_vente=Decimal('3000'))
         _res, postes = self._postes()
@@ -511,11 +513,26 @@ class PretDevisAgricoleTests(TestCase):
         self.assertEqual(mono['articles'][0]['motif'],
                          'courbe constructeur absente')
 
+    def test_pompe_sans_type_a_completer(self):
+        # ``selection.choisir_pompe`` ne retient qu'une pompe dont le type
+        # (champ ``type_pompe`` ou nom) est lisible : sans type, jamais « ok ».
+        Produit.objects.create(
+            company=self.company, nom='Pompe OSP 4 kW Monophasé',
+            role_pompage='pompe', alimentation='mono', courbe_pompe=COURBE,
+            pompe_kw=Decimal('4'), prix_vente=Decimal('7000'))
+        _res, postes = self._postes()
+        mono = postes['pompe:mono']
+        self.assertEqual(mono['statut'], 'a_completer')
+        self.assertEqual(mono['articles'][0]['motif'],
+                         'type de pompe (immergée / surface) non renseigné')
+        self.assertEqual(mono['action']['lien'], '/stock?pompage=a_completer')
+
     def test_catalogue_complet_est_pret(self):
         co = self.autre  # a déjà la pompe monophasée de setUpTestData
         Produit.objects.create(
             company=co, nom='Pompe tri complète', role_pompage='pompe',
-            alimentation='tri', courbe_pompe=COURBE, pompe_kw=Decimal('2.2'),
+            type_pompe='immergee', alimentation='tri', courbe_pompe=COURBE,
+            pompe_kw=Decimal('2.2'),
             prix_vente=Decimal('9000'))
         Produit.objects.create(
             company=co, nom='Variateur VEICHI 2,2 kW 380V',
