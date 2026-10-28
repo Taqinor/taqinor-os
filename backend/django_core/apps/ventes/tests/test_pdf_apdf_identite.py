@@ -503,7 +503,10 @@ class LogoRegleTests(SimpleTestCase):
         onepage = F.html_onepage(entreprise={})
         dedans(sombre, onepage, 'une-page')
         self.assertIn(logo.css_boite('onepage'), onepage)
-        dedans(sombre, F.html_residentiel(entreprise={}), 'résidentiel premium')
+        # Héros photo résidentiel (53 mm, bloc titre absolu) : mot-marque seul.
+        residentiel = F.html_residentiel(entreprise={})
+        dedans(mot, residentiel, 'résidentiel premium (héros)')
+        self.assertIn(logo.css_boite('hero'), residentiel)
         for marche in ('commercial', 'industriel'):
             paquet = f'apps.ventes.quote_engine.{marche}'
             render, renderer, sample = (import_module(f'{paquet}.{m}') for m in (

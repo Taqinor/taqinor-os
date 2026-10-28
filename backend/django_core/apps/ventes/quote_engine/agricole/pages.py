@@ -117,9 +117,7 @@ def _css(C, fonts, compact):
 .ag-title {{ font-family:{serif}; font-weight:700; font-size:23pt;
   color:{C['navy']}; line-height:1.05; margin:2px 0 6px; }}
 .ag-sub {{ font-size:9pt; color:{C['muted']}; }}
-.ag-entete {{ width:100%; border-collapse:collapse; }}
-.ag-entete td {{ vertical-align:top; padding:0; }}
-.ag-logo {{ width:58mm; text-align:right; }}
+.ag-logo {{ margin:0 0 5mm 0; }}
 .ag-sec {{ font-family:{serif}; font-weight:700; font-size:13pt;
   color:{C['navy']}; margin:9px 0 5px; }}
 .ag-hero {{ margin-top:8px; background:{C['navy']}; color:#fff;
@@ -514,14 +512,13 @@ def page1(ctx):
     entete += "".join(f'<div class="ag-sub">{m}</div>'
                       for m in theme.marques_correction(d))
     declare = debit_declare_sans_courbe(d)
-    # R3 — le logo (société ou TAQINOR) à droite de l'en-tête, dans une cellule
-    # de table : l'en-tête est plus haut que lui, la page ne grandit pas.
+    # R3 — le logo (société ou TAQINOR) en rangée au-dessus du kicker, comme
+    # les autres couvertures (jamais à côté du titre, qu'il ferait replier) ;
+    # la page 1 garde une large réserve, les joints ``_qj`` absorbent.
     logo = _logo.img_html(ctx.get("logo_clair") or "", "couverture",
-                          alt=ctx["ident"].get("brand_name") or "TAQINOR",
-                          style="margin-left:auto;")
+                          alt=ctx["ident"].get("brand_name") or "TAQINOR")
     if logo:
-        entete = (f'<table class="ag-entete"><tr><td>{entete}</td>'
-                  f'<td class="ag-logo">{logo}</td></tr></table>')
+        entete = f'<div class="ag-logo">{logo}</div>{entete}'
     # AGC12 — un bloc argent absent n'empile plus deux respirations.
     argent = _argent(synthese, lg) or _depense_declaree(synthese, lg)
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'

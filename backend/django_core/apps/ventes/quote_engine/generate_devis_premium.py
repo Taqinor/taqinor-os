@@ -1214,7 +1214,7 @@ def logo_p1_dark():
         logger.warning("generate_devis_premium.logo_p1_dark : erreur ignorée (mode dégradé)", exc_info=True)
         b64_data = None
     if b64_data:
-        return _logo.img_html(b64_data, "couverture")
+        return _logo.img_html(b64_data, "couverture", style="margin-bottom:10px;")
     # Fallback: text on dark background
     return (f'<div style="display:inline-block;">'
             f'<div style="font-size:17px;font-weight:900;color:white;letter-spacing:1px;line-height:1.1;">'

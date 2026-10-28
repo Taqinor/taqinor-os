@@ -199,7 +199,9 @@ class LogoDetourageTests(SimpleTestCase):
         self.assertIn('height:auto', logo.img_html('AAAA', 'entete'))
         self.assertEqual(logo.img_html('', 'entete'), '')
         self.assertEqual(logo.bloc_taqinor('entete'), 'mot')
+        self.assertEqual(logo.bloc_taqinor('hero'), 'mot')
         self.assertEqual(logo.bloc_taqinor('couverture'), 'lockup')
+        self.assertLess(logo.boite_mm('hero')[0], 11.0)       # tient sous le bloc titre du héros
 
     def test_centre_qr_carre_blanc_jamais_deforme(self):
         from PIL import Image

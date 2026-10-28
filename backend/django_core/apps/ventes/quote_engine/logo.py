@@ -60,10 +60,13 @@ CHEMIN_TAQINOR = ASSETS / "logo.png"
 BLEU_NUIT = "#022F53"
 DORE = "#FEC811"
 
-#: Hauteur de CAPITALE du mot-marque imprimé, par rôle, en millimètres.
-CAPITALE_MM = {"couverture": 6.0, "onepage": 5.0, "entete": 4.5}
+#: Hauteur de CAPITALE du mot-marque imprimé, par rôle, en millimètres :
+#: ``couverture`` (héros navy commercial/industriel, page 1 legacy, page 1
+#: agricole), ``hero`` (héros photo résidentiel de 53 mm : le bloc titre absolu
+#: ne laisse que ~11 mm au logo), ``onepage`` (bande de 21 mm), ``entete``.
+CAPITALE_MM = {"couverture": 6.0, "hero": 5.5, "onepage": 5.0, "entete": 4.5}
 #: La tagline accompagne le mot-marque seulement là où la hauteur le permet.
-AVEC_TAGLINE = {"couverture": True, "onepage": True, "entete": False}
+AVEC_TAGLINE = {"couverture": True, "hero": False, "onepage": True, "entete": False}
 #: Largeur maximale d'un logo (téléversé) dans la boîte, en capitales.
 _LARGEUR_MAX_EN_CAPITALES = 9.0
 
