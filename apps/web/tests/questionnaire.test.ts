@@ -872,8 +872,16 @@ describe('CIW406 — contrat : exemple_pro et choix fermés', () => {
 
   it('questions de catégorie = clés fermées du contrat (par catégorie)', async () => {
     const lib = await import('../src/lib/questionnaire');
+    // CSV13 — les clés d'heures (CQSTW6, `REPONSES_CATEGORIE_HEURES`) font
+    // partie des clés fermées du contrat ; chaque liste web = sa part, dans
+    // l'ordre du contrat.
     for (const [cat, cles] of Object.entries(lp.reponses_categorie_par_categorie.cles)) {
-      expect(lib.REPONSES_CATEGORIE_QUESTIONS[cat].map((q) => q.key), cat).toEqual(cles);
+      const heures = (lib.REPONSES_CATEGORIE_HEURES[cat] ?? []).map((h) => h.key);
+      expect(lib.REPONSES_CATEGORIE_QUESTIONS[cat].map((q) => q.key), cat)
+        .toEqual(cles.filter((c) => !heures.includes(c)));
+      expect(heures, `${cat} (heures)`).toEqual(cles.filter((c) => heures.includes(c)));
+      expect([...lib.REPONSES_CATEGORIE_QUESTIONS[cat].map((q) => q.key), ...heures].sort(), cat)
+        .toEqual([...cles].sort());
     }
   });
 });

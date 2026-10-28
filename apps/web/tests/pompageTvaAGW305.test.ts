@@ -17,6 +17,26 @@ const INTERDITS = [
   'Verified tax advantage',
   'المضخّة كما الألواح',
   'امتياز ضريبي مؤكَّد',
+  // AGC4 — la tuile « 0 % » et « À ne pas confondre » ne visent que la POMPE
+  // (art. 91-I-C-6°), jamais « la pompe et son champ » (panneaux à 10 %).
+  'TVA sur le pompage agricole',
+  'et son champ',
+  'VAT on agricultural pumping',
+  'and its array',
+  'المضخّة وحقلها',
+  // AGC5 (D-AGR-5) — l'entretien et le remplacement de la pompe sont comptés :
+  // jamais « coût à zéro ».
+  'fixe ce coût à zéro',
+  'proche de zéro',
+  'cost at zero',
+  'close to zero',
+  'عند الصفر',
+  'قريبة من الصفر',
+  // AGC6 (D-AGR-10) — aucun toit comme argument du pompage.
+  'nos toitures',
+  'our roofs',
+  'our rooftops',
+  'أسطحنا',
 ];
 
 describe('AGW305 — exonération TVA pompage : périmètre exact', () => {
