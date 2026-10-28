@@ -163,6 +163,10 @@ def types_corps_ou_400(donnees, textes=(), entiers=(), ids=(), nuls=None, longue
             continue
         if nom in textes and not isinstance(valeur, str):
             erreurs[nom] = ['Texte attendu.']
+        elif nom in textes and '\x00' in valeur:
+            # api-fuzz-full 28/10 (ENF11) : le motif publié « sans NUL » —
+            # PostgreSQL refusait l'écriture (« string literal … NUL »).
+            erreurs[nom] = ['Texte sans caractère nul attendu.']
         elif nom in entiers and (isinstance(valeur, bool) or not isinstance(valeur, int)):
             erreurs[nom] = ['Entier attendu.']
         elif nom in entiers and not ENTIER_MIN <= valeur <= ID_MAX:
