@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import useEquipesAdmin from './useEquipesAdmin'
 import { Plus, Trash2, Archive, ArchiveRestore } from 'lucide-react'
 import EquipesAdminPanel from './EquipesAdminPanel'
+import ReglesAttributionEditor from './ReglesAttributionEditor'
 import crmApi from '../../api/crmApi'
 import { useConfirmDialog } from '../../ui/confirm'
 import toutesLesPages from './toutesLesPages'
@@ -89,6 +90,20 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
     }
   }
 
+  // Attribution des leads : confirmation du responsable + délai automatique.
+  const saveReglage = async (equipe, patch) => {
+    setBusyId(equipe.id)
+    try {
+      await crmApi.saveEquipe(equipe.id, patch)
+      setError(null)
+      load()
+    } catch (e) {
+      setError(apiErrorMessage(e, 'Le réglage d’attribution des leads a échoué.'))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   const archiveEquipe = async (equipe) => {
     await crmApi.saveEquipe(equipe.id, { actif: !equipe.actif }).catch(() => {})
     load()
@@ -117,6 +132,10 @@ export default function EquipesCommercialesSection({ assignables = [] }) {
       onRename={renameEquipe} onArchive={archiveEquipe} onDelete={delEquipe}
       onSetChef={toggleResponsable} onToggleMembre={toggleMembre}
       onToggleRecoitLeads={toggleRecoitLeads}
+      renderExtra={(eq) => (
+        <ReglesAttributionEditor equipe={eq} assignables={assignables}
+                                 busy={busyId === eq.id} onSaveEquipe={saveReglage} />
+      )}
       newNom={newNom} setNewNom={setNewNom} onAdd={addEquipe} />
   )
 }

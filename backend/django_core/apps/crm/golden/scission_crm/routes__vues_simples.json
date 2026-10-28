@@ -25,6 +25,18 @@
  },
  {
   "actions_map": null,
+  "motif": "dispatch/",
+  "nom": "dispatch-leads",
+  "vue": "dispatch_file"
+ },
+ {
+  "actions_map": null,
+  "motif": "dispatch/<int:lead_id>/attribuer/",
+  "nom": "dispatch-attribuer",
+  "vue": "dispatch_attribuer"
+ },
+ {
+  "actions_map": null,
   "motif": "equipes/statistiques/",
   "nom": "equipes-statistiques",
   "vue": "equipes_statistiques"

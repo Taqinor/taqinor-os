@@ -292,6 +292,13 @@ app.conf.beat_schedule = {
         'task': 'crm.escalader_premier_contact',
         'schedule': crontab(minute='*/5'),
     },
+    # Fondateur 27/10/2026 — attribution des leads par le responsable
+    # d'équipe : passé le délai (minutes ouvrées) sans décision, le lead part
+    # au membre proposé. Chaque minute ; ``skip_locked`` contre le double clic.
+    'crm-attribuer-leads-echus': {
+        'task': 'crm.attribuer_leads_echus',
+        'schedule': crontab(minute='*'),
+    },
     # MRY21 — bilan hebdomadaire du moteur de relances, lundi 07:00, à la
     # direction. Sept chiffres : la seule vue de HAUT du moteur.
     'crm-bilan-hebdo-relances': {
