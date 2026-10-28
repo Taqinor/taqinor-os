@@ -326,3 +326,72 @@ def lead_brouillon_suivi(request, lead_id):
         'modele_source': modele.nom if modele else None,
         'langue_servie': langue_servie,
     })
+
+
+#: Lignes servies par bloc du digest du matin.
+LIMITE_DIGEST = 10
+#: « Sans réponse » : devis envoyé depuis plus de 7 jours (règle de la tâche).
+SEUIL_SANS_REPONSE_JOURS = 7
+
+
+def _bloc_devis_sans_reponse(user, maintenant):
+    """Devis ENVOYÉS (statut ``envoye``, jamais un accepté/refusé/expiré)
+    depuis plus de ``SEUIL_SANS_REPONSE_JOURS`` jours, sur les leads visibles
+    de ``user`` — lus par ``ventes.selectors.devis_envoyes_en_attente``."""
+    from apps.ventes import selectors as ventes
+
+    from .models import Lead
+    from .portee_selectors import leads_visibles
+
+    limite = maintenant - datetime.timedelta(days=SEUIL_SANS_REPONSE_JOURS)
+    visibles = set(leads_visibles(user, user.company).values_list(
+        'id', flat=True))
+    devis = [d for d in ventes.devis_envoyes_en_attente(user.company)
+             if d.lead_id in visibles and d.date_envoi <= limite]
+    noms = dict(Lead.objects.filter(
+        pk__in={d.lead_id for d in devis}).values_list('id', 'nom'))
+    return {
+        'total': len(devis),
+        'lignes': [{
+            'reference': d.reference, 'lead_id': d.lead_id,
+            'nom': noms.get(d.lead_id, ''),
+            'envoye_le': d.date_envoi.isoformat(),
+            'jours_sans_reponse': (maintenant - d.date_envoi).days,
+        } for d in devis[:LIMITE_DIGEST]],
+    }
+
+
+def _bloc_visites_du_jour(user, today):
+    from apps.visites import selectors as visites
+
+    journee = visites.ma_journee_du_commercial(
+        user.company, user, aujourdhui=today)
+    return {
+        'total': len(journee['visites']),
+        'en_retard': journee['en_retard_count'],
+        'lignes': journee['visites'][:LIMITE_DIGEST],
+    }
+
+
+@extend_schema(responses=sd.OBJ)
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('visites_voir')])
+def digest_matin(request):
+    """AIC35 — ``GET /api/django/crm/assistant/digest-matin/`` : « mon matin »
+    en blocs bornés (10 lignes + total), au MÊME compte que les écrans source
+    — la file du cockpit (``lignes_a_relancer``, AIC30), l'agenda des visites
+    (``visites.selectors``) et les devis envoyés (``ventes.selectors``). Un
+    rôle sans CRM (commercial terrain) ne reçoit que ses visites."""
+    from django.utils import timezone
+
+    from core.dates import aujourd_hui_local
+    from core.permissions import _user_has_or_legacy
+
+    user = request.user
+    reponse = {'visites': _bloc_visites_du_jour(user, aujourd_hui_local())}
+    if _user_has_or_legacy(user, 'crm_voir'):
+        total, lignes = lignes_a_relancer(user, 'all', LIMITE_DIGEST)
+        reponse['relances'] = {'total': total, 'lignes': lignes}
+        reponse['devis_sans_reponse'] = _bloc_devis_sans_reponse(
+            user, timezone.now())
+    return Response(reponse)

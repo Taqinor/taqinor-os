@@ -25,8 +25,9 @@ from apps.roles.models import Role
 from apps.crm.models import Lead, LeadActivity
 from apps.crm import stages
 from apps.crm.agent_actions import (
-    BROUILLON_SUIVI, CREER_LEAD, LEADS_A_RELANCER, METTRE_A_JOUR_LEAD,
-    NOTER_LEAD, PREPARER_ENVOI_WHATSAPP, RESUME_LEAD, _ACTIONS,
+    BROUILLON_SUIVI, CREER_LEAD, DIGEST_MATIN, LEADS_A_RELANCER,
+    METTRE_A_JOUR_LEAD, NOTER_LEAD, PREPARER_ENVOI_WHATSAPP, RESUME_LEAD,
+    _ACTIONS,
     register_crm_actions,
 )
 from apps.agent.registry import all_actions, for_user
@@ -396,16 +397,17 @@ class CrmAgentCatalogueParRoleTest(TestCase):
     # Golden LITTÉRAL des clés ``crm.*`` visibles par rôle système (via
     # ``for_user``) : retirer une permission d'une action le fait diverger.
     CRM_COMMERCIAL = {
-        'crm.client.create', 'crm.lead.brouillon_suivi', 'crm.lead.create',
-        'crm.lead.list', 'crm.lead.note', 'crm.lead.resume',
+        'crm.client.create', 'crm.digest_matin', 'crm.lead.brouillon_suivi',
+        'crm.lead.create', 'crm.lead.list', 'crm.lead.note', 'crm.lead.resume',
         'crm.lead.update', 'crm.lead.whatsapp_prepare',
         'crm.leads.a_relancer',
     }
     GOLDEN = {
         'Commercial': CRM_COMMERCIAL,
         'Commercial responsable': CRM_COMMERCIAL,
-        # Terrain = visites seulement : aucune action du pipeline CRM.
-        'Commercial terrain': set(),
+        # Terrain = visites seulement : le digest (ses visites), aucune
+        # action du pipeline CRM.
+        'Commercial terrain': {'crm.digest_matin'},
     }
 
     def test_descriptions_quatre_sections(self):
@@ -435,3 +437,80 @@ class CrmAgentCatalogueParRoleTest(TestCase):
                 vus = {a.key for a in for_user(user)
                        if a.key.startswith('crm.')}
                 self.assertEqual(vus, attendu)
+
+
+class CrmAgentDigestMatinTest(TestCase):
+    """AIC35 — ``crm.digest_matin`` : même compte que les écrans source."""
+
+    def setUp(self):
+        register_crm_actions()
+        self.company = Company.objects.create(nom='AIC35 Co', slug='aic35-co')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'visites_voir', 'ventes_voir'])
+        self.user = User.objects.create_user(
+            username='aic35_com', password='x', role=self.role,
+            company=self.company)
+        self.terrain_role = Role.objects.create(
+            company=self.company, nom='Terrain', permissions=['visites_voir'])
+        self.terrain = User.objects.create_user(
+            username='aic35_ter', password='x', role=self.terrain_role,
+            company=self.company)
+
+    def _donnees(self):
+        import datetime
+        from django.utils import timezone
+        from apps.crm.models import Client, RelanceEtape
+        from apps.ventes.models import Devis
+        from apps.visites.models import VisiteTerrain
+        from core.dates import aujourd_hui_local
+        today = aujourd_hui_local()
+        lead = Lead.objects.create(
+            company=self.company, nom='Alami', owner=self.user)
+        RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=1,
+            canal='appel', libelle='Appel', due_date=today)
+        VisiteTerrain.objects.create(
+            company=self.company, lead=lead, commercial=self.user,
+            date_prevue=today)
+        client = Client.objects.create(company=self.company, nom='C35')
+        ancien = timezone.now() - datetime.timedelta(days=10)
+        recent = timezone.now() - datetime.timedelta(days=2)
+        for ref, statut, quand in (
+                ('DEV-35-ANCIEN', 'envoye', ancien),
+                ('DEV-35-RECENT', 'envoye', recent),
+                ('DEV-35-ACCEPTE', 'accepte', ancien)):
+            Devis.objects.create(
+                company=self.company, lead=lead, client=client,
+                statut=statut, reference=ref, date_envoi=quand)
+        return lead
+
+    def test_digest_matin_egale_les_ecrans_source(self):
+        from apps.crm.selectors import relance_etapes_dues
+        from apps.visites import selectors as visites
+        from apps.visites.models import VisiteTerrain
+        from core.dates import aujourd_hui_local
+        self._donnees()
+        resp = auth(self.user).get(DIGEST_MATIN.endpoint)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            resp.data['relances']['total'],
+            relance_etapes_dues(self.company, self.user, scope='all').count())
+        journee = visites.ma_journee(
+            VisiteTerrain.objects.filter(
+                company=self.company, commercial=self.user),
+            aujourdhui=aujourd_hui_local())
+        self.assertEqual(
+            resp.data['visites']['total'], len(journee['visites']))
+        # Sans réponse > 7 jours : l'ancien envoyé seulement (ni le récent
+        # ni l'accepté).
+        refs = [d['reference']
+                for d in resp.data['devis_sans_reponse']['lignes']]
+        self.assertEqual(refs, ['DEV-35-ANCIEN'])
+        self.assertEqual(resp.data['devis_sans_reponse']['total'], 1)
+
+    def test_terrain_visites_seules(self):
+        self._donnees()
+        resp = auth(self.terrain).get(DIGEST_MATIN.endpoint)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'visites'})

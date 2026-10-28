@@ -275,6 +275,31 @@ BROUILLON_SUIVI = AgentAction(
 )
 
 
+# AIC35 — digest du matin (« Mon matin ») : relances du jour (AIC30), visites du
+# jour, devis envoyés sans réponse depuis plus de 7 jours. LECTURE. Permission
+# visites_voir : le commercial terrain n'a QUE ses visites (pas de pipeline).
+# Endpoint : GET /api/django/crm/assistant/digest-matin/.
+DIGEST_MATIN = AgentAction(
+    key='crm.digest_matin',
+    label='Mon matin',
+    description=(
+        "Sert à : commencer la journée — relances du jour, visites du jour, "
+        "devis envoyés sans réponse depuis plus de 7 jours (10 lignes max par "
+        "bloc, avec les totaux). "
+        "Ne pas utiliser pour : envoyer quoi que ce soit ni détailler un lead "
+        "(crm.lead.resume). "
+        "Exemple : « Qu'est-ce que j'ai ce matin ? ». "
+        "Résultat : {visites, relances, devis_sans_reponse} ; un terrain ne "
+        "reçoit que ses visites."
+    ),
+    endpoint='/api/django/crm/assistant/digest-matin/',
+    method='GET',
+    inputs={'type': 'object', 'properties': {}},
+    required_permission='visites_voir',
+    risk=RISK_INTERNAL,
+)
+
+
 _ACTIONS = (
     CREER_LEAD,
     METTRE_A_JOUR_LEAD,
@@ -283,6 +308,7 @@ _ACTIONS = (
     LEADS_A_RELANCER,
     RESUME_LEAD,
     BROUILLON_SUIVI,
+    DIGEST_MATIN,
 )
 
 
