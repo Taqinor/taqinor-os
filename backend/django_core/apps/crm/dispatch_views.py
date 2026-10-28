@@ -64,7 +64,9 @@ class RegleAttributionSerializer(_CompanyScopedRelationsMixin,
         bas = attrs.get('facture_min', inst.facture_min if inst else None)
         haut = attrs.get('facture_max', inst.facture_max if inst else None)
         if bas is not None and haut is not None and bas > haut:
-            raise serializers.ValidationError(
+            # api-fuzz-full 28/10 (ENF11) : règle entre deux champs,
+            # inexprimable au schéma OpenAPI 3.0 — refus d'état 409.
+            raise ConflitEtat(
                 {'facture_max': 'La facture maximale doit dépasser la minimale.'})
         equipe = attrs.get('equipe', inst.equipe if inst else None)
         membre = attrs.get('membre', inst.membre if inst else None)
