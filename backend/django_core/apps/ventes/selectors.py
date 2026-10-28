@@ -1939,17 +1939,18 @@ def profil_charge_prerequis_ci(rythme, categorie=None, *, company=None, mode=Non
 _POSTES_FIXES_CI = (('coffret_dc',), ('coffret_ac',), ('protection_ac',),
                     ('compteur_injection', 'controleur_injection'))
 _TTL_CATALOGUE_CI_S = 300
+CLE_CATALOGUE_CI = 'ventes:catalogue_ci_pret:%s'  # vidée par receivers.py
 
 
 def catalogue_ci_pret(company_id):
     """ALEA50 — ``{pret, manquants}`` : les postes fixes C&I SANS prix (forfaits
     de ``CompanyProfile.forfaits_ci`` non réglés, rôles d'article sans aucun
-    article actif à prix de vente > 0). Mis en cache 5 min par société (le TTL
-    suffit, rien ne l'invalide) ; prend l'ID (une liste de leads ne charge pas
+    article actif à prix de vente > 0). Mis en cache 5 min par société, vidé à
+    l'écriture d'un article ou du profil (receivers.py) ; prend l'ID (une liste de leads ne charge pas
     N sociétés). Lecture seule, jamais ``prix_achat``."""
     from django.core.cache import cache
 
-    cle = 'ventes:catalogue_ci_pret:%s' % company_id
+    cle = CLE_CATALOGUE_CI % company_id
     resultat = cache.get(cle)
     if resultat is None:
         resultat = _calculer_catalogue_ci_pret(company_id)
