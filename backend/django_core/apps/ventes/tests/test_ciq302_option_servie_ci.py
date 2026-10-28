@@ -366,3 +366,58 @@ class TestCpdf10EcheancierAuReliquat(SimpleTestCase):
         ech = self._s(data)["echeancier"]
         self.assertEqual([j["pct"] for j in ech], [50, 39, 11])
         self.assertAlmostEqual(ech[-1]["montant_ttc"] / 157700.0 * 100, 11, 6)
+
+
+class TestCpdfNiveauRegles3(SimpleTestCase):
+    """CPDF — les corrections de CHIFFRE du PDF C&I ne touchent que les
+    nouveaux rendus (``regles_au_moins(devis, REGLES_CORRIGEES_2710)``) : un
+    devis envoyé avant (``data['regles_avant_2710']``, posé par le builder et
+    relu par chaque renderer) imprime ce que le client a reçu."""
+
+    def setUp(self):
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False, avant_2710=True)
+        self.addCleanup(poser_regles_origine, False)
+
+    def _s(self, data):
+        from apps.ventes.quote_engine.ci.synthese import synthese_ci
+        return synthese_ci(data)
+
+    def test_option_avec_servie_garde_les_chiffres_imprimes(self):
+        s = self._s(_data_ci())
+        # Avant CPDF1 : l'étude décrit 55 kWc, l'option servie 80 — production
+        # omise (AMOT62), argent et échéancier de l'offre servie au builder.
+        self.assertIsNone(s["systeme"]["production_kwh_an"])
+        self.assertEqual(s["argent"]["economie_annee1"]["total_mad"], 53123.0)
+        self.assertEqual([j["montant_ttc"] for j in s["echeancier"]],
+                         [63080.0, 78850.0, 15770.0])
+
+    def test_echeancier_garde_ses_pourcentages(self):
+        data = _data_ci(option_servie="sans", jalons_paiement=[
+            {"jalon": "commande", "pct": 50, "montant_ttc": 78850.0},
+            {"jalon": "livraison_materiel", "pct": 39,
+             "montant_ttc": 61503.0},
+            {"jalon": "mise_en_service", "pct": 10, "montant_ttc": 17347.0}])
+        self.assertEqual([j["pct"] for j in self._s(data)["echeancier"]],
+                         [50, 39, 10])
+
+    def test_retour_servi_et_quotient_de_l_option_avec(self):
+        from apps.ventes.quote_engine.ci import couverture, mentions
+        argent = {"base": "ht", "flux_ht": {"flux": [
+            {"annee": 0, "flux_net_mad": -100.0, "cumul_mad": -100.0},
+            {"annee": 1, "flux_net_mad": 40.0, "cumul_mad": -60.0},
+            {"annee": 2, "flux_net_mad": 40.0, "cumul_mad": -20.0},
+            {"annee": 3, "flux_net_mad": 40.0, "cumul_mad": 20.0}]}}
+        self.assertEqual(couverture.retour_dixieme(argent, 3), 3)
+        data = _data_ci(option_servie="sans", option_batterie={
+            "totaux": {"ht_net": 383000.0}})
+        valeur = mentions.valeur_option_avec(data)
+        self.assertEqual(valeur["retour_simple_ans"],
+                         round(383000.0 / 95767.0, 1))
+
+    def test_phrase_soir_nuit_d_origine(self):
+        from apps.ventes.quote_engine.ci import mentions
+        data = _data_ci(option_servie="sans", option_batterie={
+            "totaux": {"ttc": 473100.0}})
+        self.assertIs(mentions._textes_pointe_option_avec(data),
+                      mentions.TEXTES_POINTE_SANS_OPTION_AVEC)

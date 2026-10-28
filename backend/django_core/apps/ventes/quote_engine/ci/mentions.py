@@ -35,6 +35,7 @@ from ..constants_82_21 import (
     mention_mt,
 )
 from ..lecture_pure import nombre_normalise
+from ..montants import regles_avant_2710
 
 LANGUES = ("fr", "en", "ar")
 
@@ -407,6 +408,13 @@ def valeur_option_avec(data):
     if not eco or eco <= 0 or not cap or rest is None:
         return None
     retour = nombre_normalise(avec.get("retour_simple_ans"))
+    if regles_avant_2710():
+        # Niveau de règles 3 — un devis envoyé garde le retour qu'il
+        # imprimait : total HT net de l'option ÷ économie annuelle HT.
+        totaux = (_dict(_dict(data.get("option_batterie")).get("totaux"))
+                  or _dict(data.get("totaux_avec")))
+        ht = nombre_normalise(totaux.get("ht_net"))
+        retour = round(ht / eco, 1) if ht else None
     textes = {lg: gabarit.format(cap=_nombre_langue(cap, lg, 1),
                                  rest=_nombre_langue(rest, lg),
                                  eco=_nombre_langue(eco, lg))
@@ -452,6 +460,8 @@ def _part_par_couvertures(etude_ci, avec):
 def _textes_pointe_option_avec(data):
     """CPDF9 — « … la couvre. » seulement à ≥ 90 % ; sinon « … en couvre
     N %. » ; part non servie ⇒ la phrase sans sa seconde moitié."""
+    if regles_avant_2710():  # niveau 3 : la phrase d'un devis envoyé
+        return TEXTES_POINTE_SANS_OPTION_AVEC
     part = part_soir_option_avec(data)
     if part is None or round(part * 100) <= 0:
         return TEXTES_POINTE_SANS

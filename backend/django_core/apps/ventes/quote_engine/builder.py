@@ -519,7 +519,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (AMOT24/26) le lisent par ``montants.regles_origine``.
     _corrige = calcul_corrige(devis)
     from .montants import poser_regles_origine
-    poser_regles_origine(not _corrige)
+    poser_regles_origine(not _corrige, avant_2710=not _regles_2710(devis))
     client = devis.client
     # AMOT11 (C-AMOT-006) — un taux de devis à 0 % est un VRAI taux : même
     # règle que ``LigneDevis.taux_tva_effectif`` (``is not None``) ; seul
@@ -2165,10 +2165,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # la charge utile publique.
     if avertissements_internes:
         data["avertissements_internes"] = list(avertissements_internes)
-    # Décision fondateur 08/10/2026 — les GABARITS lisent ce drapeau (posé
-    # SEULEMENT pour un devis envoyé avant les corrections) pour garder leurs
-    # formats d'origine (AMOT24/26/33/35/45, AMOT19) : le client relit ce qu'il
-    # a reçu. Un devis aux règles corrigées ne porte pas la clé (dict inchangé).
+    # Décision fondateur 08/10/2026 — drapeau des GABARITS (devis envoyé avant les corrections : formats
+    # d'origine, AMOT24/26/33/35/45, AMOT19) ; un devis aux règles corrigées ne porte pas la clé.
     if not _corrige:
         data["regles_calcul_origine"] = True
 
@@ -2191,6 +2189,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # devis reste octet-identique. Le rendu des pages relève de D3 (CIQ4).
     if _mode_ci:
         data["economie_ci"] = _economie_ci
+        if not _regles_2710(devis):  # CPDF — corrections de chiffre du PDF C&I au niveau 3 seulement
+            data["regles_avant_2710"] = True
         # CIQ212 — les N jalons de paiement (D-CIQ-13), source unique que D3
         # imprimera ; ``payment_terms`` reste le rabattu à trois créneaux des
         # marqueurs CGV {acompte}/{materiel}/{solde}.

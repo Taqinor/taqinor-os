@@ -19,7 +19,7 @@ import re
 
 from .blocs import langue, libelle
 from .. import i18n_labels_ci  # noqa: F401 — libellés CPDF des couvertures
-from ..montants import decimale
+from ..montants import decimale, regles_avant_2710
 from .mentions import TEXTES_POINTE_SANS, TEXTES_VISITE, texte
 
 #: Bandeau (sans le point final de la phrase de la table des mentions).
@@ -261,7 +261,8 @@ def retour_dixieme(argent, servi):
     sur le flux annuel SERVI de la base principale (``flux_ttc`` en base
     TTC, ``flux_ht`` sinon — la règle de ``economie_ci``) ; sans flux (ou
     sans passage à zéro), ``servi`` tel quel. Aucun autre calcul."""
-    if servi is None or not isinstance(argent, dict):
+    # Niveau de règles 3 — un devis envoyé garde le retour servi.
+    if servi is None or not isinstance(argent, dict) or regles_avant_2710():
         return servi
     bloc = argent.get("flux_ttc" if argent.get("base") == "ttc"
                       else "flux_ht")

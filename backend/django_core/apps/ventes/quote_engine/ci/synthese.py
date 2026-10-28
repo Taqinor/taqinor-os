@@ -41,6 +41,7 @@ from __future__ import annotations
 import html
 
 from ..lecture_pure import nombre_normalise
+from ..montants import regles_avant_2710
 from .mentions import mentions_ci
 import logging
 
@@ -428,7 +429,9 @@ def _etude_de_l_option(etude_ci, option):
     kWc retenu est celui de l'option ; sinon l'étude telle quelle et ``None``.
     Jamais un chiffre de l'offre sans batterie sous l'option avec batterie."""
     avec = etude_ci.get("option_avec")
-    if option != "avec_batterie" or not isinstance(avec, dict):
+    # Niveau de règles 3 — un devis envoyé avant garde ce qu'il imprimait.
+    if (option != "avec_batterie" or not isinstance(avec, dict)
+            or regles_avant_2710()):
         return etude_ci, None
     taille = dict(_dict(etude_ci.get("taille")))
     kwc = _num(avec.get("kwc"))
@@ -651,6 +654,8 @@ def _echeancier_n(jalons, total=None):
 
 
 def _au_reliquat(sortie):
+    if regles_avant_2710():  # niveau 3 : les % servis d'un devis envoyé
+        return sortie
     for j, pct in zip(sortie, _pcts_au_reliquat([j["pct"] for j in sortie])):
         j["pct"] = pct
     return sortie
@@ -660,7 +665,8 @@ def _echeancier(data, option):
     jalons = data.get("jalons_paiement")
     if isinstance(jalons, list) and jalons:
         total_avec = (_num(data.get("total_avec"))
-                      if option == "avec_batterie" else None)
+                      if option == "avec_batterie"
+                      and not regles_avant_2710() else None)
         sortie = _echeancier_n(jalons, total_avec)
         if sortie:
             return sortie
