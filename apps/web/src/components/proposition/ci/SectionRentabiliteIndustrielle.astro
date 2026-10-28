@@ -27,10 +27,10 @@ const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIB
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="direction" data-ci-lecteurs>
           {ciRent && (
             <>
-          <nav class="flex flex-wrap gap-2 text-xs" aria-label="Sections">
+          <nav class="flex flex-wrap gap-2 text-xs" aria-label="Sections" data-aria-label-fr="Sections" data-aria-label-en="Sections" data-aria-label-ar="الأقسام">
             <a href="#direction" class="btn-pill px-3 py-1" data-i18n data-fr="Direction" data-en="Management" data-ar="الإدارة">Direction</a>
-            <a href="#exploitation" class="btn-pill px-3 py-1" data-i18n data-fr="Exploitation" data-en="Operations" data-ar="الاستغلال">Exploitation</a>
             <a href="#achats" class="btn-pill px-3 py-1" data-i18n data-fr="Achats" data-en="Procurement" data-ar="المشتريات">Achats</a>
+            <a href="#exploitation" class="btn-pill px-3 py-1" data-i18n data-fr="Exploitation" data-en="Operations" data-ar="الاستغلال">Exploitation</a>
           </nav>
             <div class="mt-5" id="rentabilite" data-ci-rentabilite>
               <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Rentabilité de votre projet" data-en="Your project's profitability" data-ar="مردودية مشروعكم">Rentabilité de votre projet</h2>
@@ -72,11 +72,24 @@ const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIB
                 <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-ci-jalons>
                   <p class="tech-label text-lune-faint" data-i18n
                     data-fr={`Cumul net (${ciRentBaseTexte}) aux jalons`} data-en={`Net cumulative (${ciRentBaseTexte}) at milestones`} data-ar={`الصافي التراكمي (${ciRentBaseTexte}) عند المحطات`}>{`Cumul net (${ciRentBaseTexte}) aux jalons`}</p>
+                  <div class="overflow-x-auto">
                   <table class="mt-3 w-full text-sm" dir="ltr">
+                    <caption class="sr-only" data-i18n
+                      data-fr={`Cumul net (${ciRentBaseTexte}) aux jalons`} data-en={`Net cumulative (${ciRentBaseTexte}) at milestones`} data-ar={`الصافي التراكمي (${ciRentBaseTexte}) عند المحطات`}>{`Cumul net (${ciRentBaseTexte}) aux jalons`}</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col" class="sr-only" data-i18n data-fr="Année" data-en="Year" data-ar="السنة">Année</th>
+                        <th scope="col" class="sr-only" data-i18n
+                          data-fr={`Cumul net (${ciRent.base === 'ttc' ? 'TTC' : 'HT'})`} data-en={`Net cumulative (${ciRent.base === 'ttc' ? 'incl. VAT' : 'excl. VAT'})`} data-ar={`الرصيد الصافي (${ciRent.base === 'ttc' ? 'شامل الضريبة' : 'دون احتساب الضريبة'})`}>{`Cumul net (${ciRent.base === 'ttc' ? 'TTC' : 'HT'})`}</th>
+                        {ciRent.jalonsTtc.length > 0 ? (
+                          <th scope="col" class="sr-only" data-i18n data-fr="Cumul net (TTC)" data-en="Net cumulative (incl. VAT)" data-ar="الرصيد الصافي (شامل الضريبة)">Cumul net (TTC)</th>
+                        ) : null}
+                      </tr>
+                    </thead>
                     <tbody>
                       {ciRent.jalons.map((j) => (
                         <tr>
-                          <td class="py-1 text-lune-soft">{j.annee}<span data-i18n data-fr=" ans" data-en=" years" data-ar=" سنة"> ans</span></td>
+                          <th scope="row" class="py-1 text-left font-normal text-lune-soft">{j.annee}<span data-i18n data-fr=" ans" data-en=" years" data-ar=" سنة"> ans</span></th>
                           <td class="py-1 text-right text-lune" data-figure={j.annee === 25 ? 'cumul_net_25_ans_mad' : undefined}>{formatMAD(j.cumul)}</td>
                           {ciRent.jalonsTtc.length > 0 ? (
                             <td class="py-1 text-right text-lune-faint">{ciRent.jalonsTtc.find((x) => x.annee === j.annee) ? `${formatMAD(ciRent.jalonsTtc.find((x) => x.annee === j.annee)!.cumul)} TTC` : ''}</td>
@@ -85,6 +98,7 @@ const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIB
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               ) : null}
               {sensibilites.length > 0 ? (
@@ -94,32 +108,6 @@ const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIB
                     {sensibilites.map((sn) => (
                       <li><span data-i18n data-fr={LIBELLES_SENSIBILITE[sn.cle].fr} data-en={LIBELLES_SENSIBILITE[sn.cle].en} data-ar={LIBELLES_SENSIBILITE[sn.cle].ar}>{LIBELLES_SENSIBILITE[sn.cle].fr}</span><span dir="ltr">{sn.variationPct !== null ? ` ${sn.variationPct > 0 ? '+' : ''}${formatNumber(sn.variationPct, 1)} %` : ''}{sn.retourAns !== null ? ` — ${formatNumber(sn.retourAns, 1)} ` : ''}</span>{sn.retourAns !== null ? <span data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span> : null}{sn.triPct !== null ? <><span>, </span><span data-i18n data-fr="TRI" data-en="IRR" data-ar="معدل العائد">TRI</span><span dir="ltr">{` ${formatNumber(sn.triPct, 1)} %`}</span></> : null}</li>
                     ))}
-                  </ul>
-                </div>
-              ) : null}
-              {ciRent.financement ? (
-                <div class="cine-card mt-5 rounded-xl p-5" data-ci-financement>
-                  <p class="tech-label text-lune-faint" data-i18n data-fr="Financement (offre écrite)" data-en="Financing (written offer)" data-ar="التمويل (عرض مكتوب)">Financement (offre écrite)</p>
-                  {ciRent.financement.libelleClient ? <p class="mt-2 text-sm text-lune-soft">{ciRent.financement.libelleClient}</p> : null}
-                  <ul class="mt-2 space-y-1 text-sm text-lune-soft">
-                    {ciRent.financement.echeanceMad !== null ? (
-                      <li data-i18n
-                        data-fr={`${formatMAD(ciRent.financement.echeanceMad)} par mois${ciRent.financement.dureeMois !== null ? `, pendant ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}`}
-                        data-en={`${formatMAD(ciRent.financement.echeanceMad)} per month${ciRent.financement.dureeMois !== null ? `, for ${formatNumber(ciRent.financement.dureeMois, 0)} months` : ''}`}
-                        data-ar={`${formatMAD(ciRent.financement.echeanceMad)} شهريًا${ciRent.financement.dureeMois !== null ? `، لمدة ${formatNumber(ciRent.financement.dureeMois, 0)} شهرًا` : ''}`}>{`${formatMAD(ciRent.financement.echeanceMad)} par mois${ciRent.financement.dureeMois !== null ? `, pendant ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}`}</li>
-                    ) : null}
-                    {ciRent.financement.economieMensuelleMoyenneMad !== null ? (
-                      <li data-i18n
-                        data-fr={`Économie moyenne : ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} par mois`}
-                        data-en={`Average savings: ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} per month`}
-                        data-ar={`متوسط التوفير: ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} شهريًا`}>{`Économie moyenne : ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} par mois`}</li>
-                    ) : null}
-                    {ciRent.financement.ecartMensuelMad !== null ? (
-                      <li data-i18n
-                        data-fr={`${formatMAD(ciRent.financement.ecartMensuelMad)} par mois : différence entre l'échéance et l'économie moyenne`}
-                        data-en={`${formatMAD(ciRent.financement.ecartMensuelMad)} per month: difference between the instalment and the average savings`}
-                        data-ar={`${formatMAD(ciRent.financement.ecartMensuelMad)} شهريًا: الفرق بين القسط ومتوسط التوفير`}>{`${formatMAD(ciRent.financement.ecartMensuelMad)} par mois : différence entre l'échéance et l'économie moyenne`}</li>
-                    ) : null}
                   </ul>
                 </div>
               ) : null}
