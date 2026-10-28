@@ -59,6 +59,10 @@ def _equipes_actives(company_id, comptes):
                 'recoit_leads': (e.recoit_leads if type_ == 'commerciale'
                                  else None),
                 'membres': [personne(comptes[pk]) for pk in membres],
+                # Liste COMPLÈTE (chef et comptes inactifs compris) : l'écran
+                # d'édition repart d'elle pour ne jamais retirer un membre
+                # caché de l'arbre (revue Fable 27/10).
+                'membres_ids': sorted(u.pk for u in e.membres.all()),
             }, set(membres) | {chef_id}))
     return sortie
 

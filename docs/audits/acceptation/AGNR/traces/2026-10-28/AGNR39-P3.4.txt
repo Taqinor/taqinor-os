@@ -1,0 +1,9 @@
+AGNR39 — P3.4 — rejeu orchestrateur, pile locale : backend monté depuis le code fusionné 1771f7457 (conteneur à part accept-replay-django, base démo partagée), front construit au même code et servi par vite preview :5180, site apps/web en astro dev :4321 → backend :8010, 2026-10-28, navigateur intégré + sonde API.
+1. API (transaction annulée) : lead agricole « ACC Agricole AGNR39 » ; POST /ventes/devis/auto/ {lead, target_kwc: 99} → 400
+   {"target_kwc": "La puissance cible ne s'applique pas au pompage : le champ solaire découle de la pompe retenue (HMT et débit du lead)."} ;
+   sans cible → 409 nommant le champ manquant (pompe_hmt_m) : le refus de la cible passe AVANT, et seulement pour elle.
+2. Écran : lead agricole de test 2327 complété (HMT 60 m, besoin 40 m³/j, forage connu) → devis_auto.pret = True ; onglet Devis :
+   « Devis automatique » + « Devis modifiable », AUCUN champ #lw-devis-kwc.
+   Témoin résidentiel prêt 2328 (facture hiver 900) : champ « Puissance cible (kWc) » présent.
+3. Clic « Devis automatique » sur 2327 : corps envoyé {"lead":2327,"remise_globale":"0"} — sans target_kwc (409 raccordement manquant, aucun devis créé).
+Verdict : PASS.

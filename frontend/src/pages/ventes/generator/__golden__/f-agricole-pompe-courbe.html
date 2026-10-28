@@ -141,7 +141,7 @@
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-num">N° de Devis</label>
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-num" disabled="" type="text" value="Généré automatiquement">
 </div>
-<div class="grid gap-1.5">
+<div class="hidden">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-raccordement">Raccordement</label>
 <button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-raccordement">
 <span style="pointer-events: none;">Raccordé au réseau</span>
@@ -155,7 +155,7 @@
 <option value="hors_reseau">Hors réseau (site isolé)</option>
 </select>
 </div>
-<div class="grid gap-1.5">
+<div class="hidden">
 <label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-scenario">Scénario</label>
 <button type="button" role="combobox" aria-expanded="false" aria-autocomplete="none" dir="ltr" data-state="closed" class="flex w-full items-center justify-between gap-2 rounded-md border border-input bg-card text-foreground shadow-ui-xs h-[var(--control-h)] px-[var(--control-px)] text-base sm:text-sm transition-colors placeholder:text-muted-foreground data-[placeholder]:text-muted-foreground focus:outline-none focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 [&amp;>span]:line-clamp-1 [&amp;>span]:text-left" id="gen-scenario">
 <span style="pointer-events: none;">Sans batterie seulement</span>
@@ -337,7 +337,7 @@
 </div>
 <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 <div class="grid gap-1.5">
-<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-hmt">HMT saisie (m)</label>
+<label class="text-sm font-medium leading-none text-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70" for="gen-hmt">Hauteur de pompage (HMT, m)</label>
 <input class="flex w-full rounded-md border border-input bg-card text-foreground shadow-ui-xs transition-colors placeholder:text-muted-foreground caret-primary focus-ring focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:bg-muted/40 read-only:opacity-100 aria-[invalid=true]:border-destructive aria-[invalid=true]:ring-destructive/30 text-base sm:text-sm h-[var(--control-h)] px-[var(--control-px)] py-0" id="gen-hmt" min="0" step="any" placeholder="ex: 120" type="number" value="">
 </div>
 <div class="grid gap-1.5">
@@ -863,7 +863,7 @@
 </div>
 <div class="gen-totals-row gen-tier-1">
 <div class="gen-total-item">
-<span class="gen-total-label">Total SANS batterie ⭐</span>
+<span class="gen-total-label">Total TTC ⭐</span>
 <span class="gen-total-value">40 500 MAD</span>
 </div>
 </div>
@@ -1146,7 +1146,7 @@
 <aside class="gen-summary-rail">
 <div class="rounded-xl border text-card-foreground shadow-card p-4 sm:p-5 border-primary/40 bg-primary/[0.06]" data-testid="gen-rail-total">
 <div class="flex items-start justify-between gap-3">
-<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total sans batterie · TTC</span>
+<span class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total TTC</span>
 </div>
 <div class="num mt-2 text-2xl font-semibold leading-none stat-value-solidify">40 500 MAD</div>
 </div>

@@ -1011,6 +1011,46 @@ def _fr_pct(v) -> str:
     return s.replace(".", ",")
 
 
+_AVEU_ORIGINE = ("batterie — hypothèse de référence, le constructeur de ce "
+                 "produit ne publie pas cette valeur dans notre fiche.")
+_REFERENCE_DITE = "batterie — valeur de référence retenue pour cette technologie."
+
+
+def _notes_origine(cfa) -> dict:
+    """RPDF15 — un devis aux règles d'origine (< 3) garde la phrase qu'il a
+    imprimée (décision « nouveaux rendus seulement ») ; seul un nouveau rendu
+    dit la valeur de référence sans aveu."""
+    notes = [str(n).replace(_REFERENCE_DITE, _AVEU_ORIGINE) for n in cfa.get("notes") or []]
+    return {**cfa, "notes": notes}
+
+
+def _hypotheses_rendues(cfa, cout_sans, cout_avec, *, deux_options, regles_2710):
+    """RPDF12/RPDF15 — nouveaux rendus (niveau 3) : provision à deux montants
+    quand le document a deux options aux onduleurs différents, valeur de
+    référence dite sans aveu ; règles d'origine : l'hypothèse d'hier."""
+    if not regles_2710:
+        return _notes_origine(cfa)
+    return _provision_par_option(cfa, cout_sans if deux_options else None, cout_avec)
+
+
+def _provision_par_option(cfa, cout_sans, cout_avec) -> dict:
+    """RPDF8 — deux onduleurs de prix différents : un creux par courbe, donc
+    les DEUX montants (clés lues par la légende du PDF) et la phrase
+    d'hypothèse qui les nomme ; sinon ``cfa`` tel quel (option unique ou
+    onduleurs identiques : rendu inchangé)."""
+    if not (cout_sans and cout_avec and cout_sans != cout_avec):
+        return cfa
+    an = cfa.get("inverter_replace_year") or INVERTER_REPLACE_YEAR
+    phrase = (f"Provision de remplacement de l'onduleur en année {an} : "
+              f"{_fr_mad(cout_sans)} MAD (option 1) et {_fr_mad(cout_avec)} MAD "
+              "(option 2) — le prix de l'onduleur de chaque option, c'est le "
+              "palier visible sur chaque courbe de rentabilité.")
+    notes = [phrase if str(n).startswith("Provision de remplacement de l'onduleur")
+             else n for n in cfa.get("notes") or []]
+    return {**cfa, "notes": notes, "inverter_replace_cost_sans": cout_sans,
+            "inverter_replace_cost_avec": cout_avec}
+
+
 def _fr_mad(v) -> str:
     """12345 -> '12 345' (espace fine insécable, format des documents).
 
@@ -1108,8 +1148,8 @@ def cashflow_assumptions(inverter_replace_cost=None,
             notes.append(
                 f"Stockage : rendement aller-retour batterie "
                 f"{round(_rt * 100)} % appliqué aux kWh qui transitent par la "
-                "batterie — hypothèse de référence, le constructeur de ce "
-                "produit ne publie pas cette valeur dans notre fiche."
+                "batterie — valeur de référence retenue pour cette "
+                "technologie."
                 + _batt_omis)
     # Q1 — le MONTANT de la provision est le prix RÉEL de l'onduleur du devis ;
     # sans ligne onduleur identifiable, la projection le dit au lieu de
@@ -1493,6 +1533,7 @@ def calculate_savings_roi(
     # appelants directs (balayages, miroir JS figé ``solar_calculs``) gardent
     # l'économie « avec » BRUTE jusqu'à l'alignement de l'écran (RGEN5).
     regles_2710: bool = False,
+    deux_options: bool = True,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -1858,12 +1899,13 @@ def calculate_savings_roi(
         # (ou son absence explicite) et abattement batterie seulement s'il
         # s'applique. L'option affichée en priorité est l'option 2 quand elle
         # existe, sinon l'option 1 — même choix que la courbe 25 ans.
-        "cashflow_assumptions": cashflow_assumptions(
+        "cashflow_assumptions": _hypotheses_rendues(cashflow_assumptions(
             inverter_replace_cost=(inverter_cost_avec if _stockage
                                    else inverter_cost_sans),
             stockage=_stockage,
             battery_roundtrip=_rt_prouve,
             battery_roundtrip_source=_rt_source,
             # QJR158 (c) — LES MÊMES valeurs que les deux cashflows ci-dessus.
-            **_cf_params),
+            **_cf_params), inverter_cost_sans, inverter_cost_avec,
+            deux_options=deux_options, regles_2710=regles_2710),
     }

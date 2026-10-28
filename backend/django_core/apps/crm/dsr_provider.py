@@ -58,6 +58,8 @@ MODELES_LEAD_EXEMPTES = {
     'crm.Appointment': 'rendez-vous : date, statut et notes métier ; '
                        "l'identité est portée par le lead anonymisé",
     'crm.BookingLink': 'jeton de réservation sans PII',
+    'crm.AttributionEnAttente': "attente d'attribution : équipe, membre "
+                                'proposé, raison et échéance, sans PII',
     'crm.QuestionnaireLien': 'jeton de questionnaire sans PII',
     'crm.ConcurrentPerte': 'intelligence concurrentielle sans PII',
     'crm.DealEnregistre': "réservation d'antériorité d'un apporteur, sans PII",

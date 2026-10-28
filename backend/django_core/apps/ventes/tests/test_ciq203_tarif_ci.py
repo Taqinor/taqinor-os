@@ -206,3 +206,15 @@ class SchemaTarifDeclareTest(SimpleTestCase):
                          {'regles_origine': True})
         self.assertEqual(tc.regles_du(SimpleNamespace(regles_calcul=3)),
                          {'regles_origine': False})
+
+    def test_cec18_prix_declare_non_fini_refuse(self):
+        reproches = es.valider({'tarif_declare': {
+            'contrat': 'mt_general',
+            'mt': {'tarif_pointe': 'nan', 'tarif_pleines': 'inf',
+                   'tarif_creuses': '1e400', 'puissance_souscrite_kva': 'inf'}}})
+        for champ in ('tarif_pointe', 'tarif_pleines', 'tarif_creuses',
+                      'puissance_souscrite_kva'):
+            self.assertTrue(any(f'mt.{champ}' in r for r in reproches), champ)
+        self.assertEqual(tc.tarif_applicable({'contrat': 'bt_patente', 'bt': {
+            'tranches': [{'tarif_kwh': 'nan'}]}})['origine'],
+            'grille_officielle')

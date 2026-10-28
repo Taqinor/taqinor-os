@@ -189,6 +189,20 @@ class LeCheminNominalEstInchange(_BaseOptions):
         devis.refresh_from_db()
         self.assertEqual(devis.option_acceptee, 'avec_batterie')
 
+    def test_cprs6_lien_client_mono_option_refuse_l_autre_option(self):
+        """CPRS6 — par le lien client, une offre à une seule option (sans
+        batterie) ne se signe jamais « avec batterie » (corps forgé)."""
+        devis = self._mono_option('DEV-QJR133-B5')
+        lien = ShareLink.objects.create(company=devis.company, devis=devis)
+        with self.assertRaises(AcceptError):
+            accept_devis(devis=devis, user=None, nom='M. Client',
+                         option='avec_batterie', lien=lien)
+        self._assert_pas_accepte(devis)
+        accept_devis(devis=devis, user=None, nom='M. Client',
+                     option='sans_batterie', lien=lien)
+        devis.refresh_from_db()
+        self.assertEqual(devis.option_acceptee, 'sans_batterie')
+
     def test_deux_options_exige_toujours_un_choix_explicite(self):
         devis = self._deux_options('DEV-QJR133-B3')
         with self.assertRaises(AcceptError) as leve:

@@ -714,6 +714,7 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
 
     def test_option_des_lignes_lue_comme_l_option_sans(self):
         import contextlib
+        from types import SimpleNamespace
 
         from apps.ventes.domain.etude_ci_batterie import _bloc, _investissement_des_lignes
         devis = object()
@@ -730,14 +731,16 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
         cibles = {'apps.ventes.utils.options.option_effective': {'return_value': ''},
                   'apps.ventes.utils.options.option_totaux':
                   {'return_value': {'ht': 488000.0, 'ttc': 564000.0}},
-                  'apps.ventes.economie_ci.lignes_pour_economie_ci': {'return_value': detail},
-                  'apps.ventes.domain.regles_calcul.calcul_corrige': {'return_value': True}}
+                  'apps.ventes.economie_ci.lignes_pour_economie_ci': {'return_value': detail}}
         with contextlib.ExitStack() as pile:
             for cible, options in cibles.items():
                 pile.enter_context(mock.patch(cible, **options))
             invest = _investissement_des_lignes([], devis)
+            # #1094 — devis envoyé aux règles du 08/10 (niveau 2) : O&M gardée en an 0
+            envoye = _investissement_des_lignes([], SimpleNamespace(regles_calcul=2))
         self.assertEqual(invest['ht'], 486000.0)       # O&M sortie de l'année 0 (CEC1)
         self.assertEqual(invest['ttc'], 561600.0)
+        self.assertEqual((envoye['ht'], envoye['ttc']), (488000.0, 564000.0))
         self.assertIs(invest['lignes'], detail)
         evaluation = dict(self._evaluation(), cout=None, composition=None,
                           onduleurs={'combinaison': []})

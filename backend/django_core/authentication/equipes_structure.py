@@ -180,8 +180,12 @@ def _superviseur_calcule(uid, actuel, structure, fonction_dep):
         if resp == uid and not direction:
             # Avant (b) : une appartenance d'équipe ne doit JAMAIS placer une
             # tête de département sous un chef d'équipe (ce chef verrait tout
-            # le département par son sous-arbre — revue Fable 27/10).
-            return tete if tete is not None else actuel
+            # le département par son sous-arbre — revue Fable 27/10). Sans
+            # Direction : aucun superviseur plutôt qu'un chef d'équipe.
+            if tete is not None:
+                return tete
+            chefs_de_uid = {c for c, _d, m in equipes if uid in m}
+            return None if actuel in chefs_de_uid else actuel
     chefs = [c for c, _d, m in equipes if c is not None and uid in m
              and c != uid]
     if chefs:  # (b) membre d'une équipe : son chef (l'actuel s'il en est un)

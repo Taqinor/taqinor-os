@@ -442,17 +442,24 @@ function EquipeDialog({ equipe, departements, users, onClose, onSaved }) {
   const [nom, setNom] = useState(equipe.nom ?? '')
   const [departement, setDepartement] = useState(equipe.departementId != null ? String(equipe.departementId) : '')
   const [chef, setChef] = useState(equipe.chef ? String(equipe.chef.id) : '')
-  const [membres, setMembres] = useState(new Set((equipe.membres ?? []).map((m) => m.id)))
+  const [membres, setMembres] = useState(new Set(equipe.membres_ids ?? (equipe.membres ?? []).map((m) => m.id)))
   const [recoitLeads, setRecoitLeads] = useState(!!equipe.recoit_leads)
   const [erreur, setErreur] = useState(null)
   const [saving, setSaving] = useState(false)
+  // L'organigramme omet le chef et les comptes inactifs de `membres` : ne les
+  // renvoyer que si l'utilisateur a modifié la liste, sinon le serveur les
+  // retirerait de l'équipe (revue Fable 27/10).
+  const [membresTouches, setMembresTouches] = useState(!equipe.id)
 
-  const basculer = (id) => setMembres((s) => {
-    const n = new Set(s)
-    if (n.has(id)) n.delete(id)
-    else n.add(id)
-    return n
-  })
+  const basculer = (id) => {
+    setMembresTouches(true)
+    setMembres((s) => {
+      const n = new Set(s)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -461,7 +468,7 @@ function EquipeDialog({ equipe, departements, users, onClose, onSaved }) {
     const base = {
       nom,
       departement: departement ? Number(departement) : null,
-      membres: [...membres],
+      ...(membresTouches ? { membres: [...membres] } : {}),
     }
     const chefId = chef ? Number(chef) : null
     try {

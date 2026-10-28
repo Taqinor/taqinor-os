@@ -304,6 +304,26 @@ class TestChampsManquants(TestCase):
             kwargs.setdefault('raccordement', 'triphase')
         return Lead(company=self.company, nom='Gate', **kwargs)
 
+    def test_agv5_visite_point_eau_validee_leve_la_garde(self):
+        from apps.visites.models import VisiteTerrain
+
+        lead = Lead.objects.create(
+            company=self.company, nom='Fellah AGV5',
+            type_installation='agricole')
+        self.assertTrue(visite_point_eau_avant_devis(lead)['requise'])
+        VisiteTerrain.objects.create(
+            company=self.company, lead=lead, gabarit='point_eau',
+            statut=VisiteTerrain.Statut.TERMINEE, mesures={})
+        # Terminée mais pas validée (sans mesure) : la garde tient.
+        self.assertTrue(visite_point_eau_avant_devis(lead)['requise'])
+        VisiteTerrain.objects.create(
+            company=self.company, lead=lead, gabarit='point_eau',
+            statut=VisiteTerrain.Statut.VALIDEE,
+            mesures={'point_eau': {'niveau_non_mesurable': True,
+                                   'debit_non_mesurable': True}})
+        self.assertEqual(visite_point_eau_avant_devis(lead),
+                         {'requise': False, 'motifs': [], 'motifs_detail': []})
+
     def test_type_none_defaults_to_residentiel(self):
         self.assertEqual(champs_manquants(self._lead()), ['facture hiver'])
         self.assertEqual(champs_manquants(self._lead(type_installation='')),

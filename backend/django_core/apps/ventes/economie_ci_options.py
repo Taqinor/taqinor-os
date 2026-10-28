@@ -264,3 +264,13 @@ def _duree_tronquee(saisies):
     if duree is None or duree == int(duree):
         return saisies
     return dict(saisies, fiscalite_client=dict(fiscal, duree_ans=int(duree)))
+
+
+def motif_tarif_omis(tarif, defaut):
+    """CEC18 — le motif d'une économie omise faute de tarif : un contrat
+    DOMESTIQUE déclaré sans tranches dit sa vraie raison (aucune grille
+    professionnelle), jamais « contrat non déclaré »."""
+    if isinstance(tarif, dict) and tarif.get('contrat') == 'bt_domestique':
+        from apps.ventes.tarif_ci import MENTION_DOMESTIQUE
+        return MENTION_DOMESTIQUE
+    return defaut
