@@ -909,6 +909,17 @@ describe('CQSTW1 — pompage : colonnes CQST3/CQST6', () => {
     const diesel = buildSectionReponses('pompage', { pompe_alim_actuelle: 'diesel', pompe_actuelle_debit_m3h: '12', mode_pompe: 'neuve' });
     expect(diesel).toMatchObject({ pompe_actuelle_debit_m3h: 12, mode_pompe: 'neuve' });
   });
+  it("CQSTW — dépense d'électricité de la pompe : seulement si alimentation « électrique » ; contrôle masqué sinon", () => {
+    expect(buildSectionReponses('pompage', { pompe_alim_actuelle: 'electrique', depense_electricite_pompe_mad_mois: '450' }))
+      .toEqual({ pompe_alim_actuelle: 'electrique', depense_electricite_pompe_mad_mois: 450 });
+    expect(buildSectionReponses('pompage', { pompe_alim_actuelle: 'diesel', depense_electricite_pompe_mad_mois: '450' }))
+      .toEqual({ pompe_alim_actuelle: 'diesel' });
+    expect(buildSectionReponses('pompage', { pompe_alim_actuelle: 'electrique', depense_electricite_pompe_mad_mois: '0' }))
+      .toEqual({ pompe_alim_actuelle: 'electrique' });
+    const page = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
+    expect(page).toContain("depense_electricite_pompe_mad_mois: numOrUndef('q-depense-electricite-pompe')");
+    expect(page).toContain("$('q-electrique-wrap')?.classList.toggle('hidden', fieldVal('q-pompe-alim') !== 'electrique')");
+  });
   it('pompe neuve : une plaque laissée dans un champ masqué ne part pas', () => {
     const r = buildSectionReponses('pompage', {
       mode_pompe: 'neuve', pompe_actuelle_kw: '5.5', pompe_actuelle_tension_v: '380', pompe_actuelle_phases: 'tri',
