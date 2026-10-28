@@ -226,8 +226,13 @@ describe('SUIVI-REFUS — « Sauter » refusé par le serveur', () => {
     ouvrirSauter()
     confirmer()
     expect(await screen.findByTestId('erreur-outcome')).toHaveTextContent(DEJA_TRAITEE)
-    confirmer()
-    await waitFor(() => expect(onSauter).toHaveBeenCalledTimes(2))
+    // Même garde que « Reporter » : un clic lancé pendant le rendu du refus
+    // s'est perdu en CI (shard vitest 2, 27/10/2026) — on rejoue le clic tant
+    // que le 2e envoi n'est pas parti.
+    await waitFor(() => {
+      confirmer()
+      expect(onSauter).toHaveBeenCalledTimes(2)
+    })
     await waitFor(() => expect(screen.queryByTestId('suite-sauter')).not.toBeInTheDocument())
     expect(screen.queryByTestId('erreur-outcome')).not.toBeInTheDocument()
   })

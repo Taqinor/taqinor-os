@@ -298,7 +298,7 @@
     "choix": null,
     "libelle": "facture ete",
     "nature": "nombre",
-    "question": "",
+    "question": "Question à l'appel : « Combien payez-vous en été, à peu près ? »",
     "section": "energie"
    },
    {
@@ -315,7 +315,7 @@
     ],
     "libelle": "ete differente",
     "nature": "choix",
-    "question": "",
+    "question": "Question à l'appel : « L'été, votre facture d'électricité change-t-elle beaucoup par rapport à l'hiver ? »",
     "section": "energie"
    },
    {
@@ -516,14 +516,6 @@
     "section": "contact"
    },
    {
-    "champ": "ville",
-    "choix": null,
-    "libelle": "ville",
-    "nature": "texte",
-    "question": "",
-    "section": "contact"
-   },
-   {
     "champ": "decideur",
     "choix": [
      {
@@ -626,6 +618,14 @@
     "nature": "choix",
     "question": "Question à l'appel : « Qu'est-ce qui vous a donné envie de vous renseigner ? » (vide = pas encore posée). Même vocabulaire que la qualification de visite. Question ORALE.",
     "section": null
+   },
+   {
+    "champ": "ville",
+    "choix": null,
+    "libelle": "ville",
+    "nature": "texte",
+    "question": "Question à l'appel : « Dans quelle ville se trouve votre maison ? »",
+    "section": "contact"
    }
   ],
   "equipements": [

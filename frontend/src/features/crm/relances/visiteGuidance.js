@@ -123,9 +123,13 @@ export const PHASE_GUIDANCE_PRO = {
   1: PHASE_GUIDANCE[1],
   2: {
     ...PHASE_GUIDANCE[2],
-    script: 'Le chiffrage est basé sur vos factures ; quand le technicien passe, '
-      + "il relève la structure du bâtiment, l'accès à la toiture et le tableau "
-      + 'électrique général, pour verrouiller le prix, pas pour le changer.',
+    // CSV7 — même discours que le bandeau du PDF « Devis préliminaire — les prix pourront
+    // être ajustés après la visite technique » : jamais « pas pour le changer ».
+    script: 'Le devis que vous avez reçu est préliminaire, établi à partir de ce '
+      + "que vous m'avez dit de votre facture. Quand le technicien passe, il "
+      + "relève la structure du bâtiment, l'accès à la toiture et le tableau "
+      + "électrique général, et c'est avec ça qu'on confirme le prix définitif "
+      + '— il peut être ajusté.',
   },
   3: PHASE_GUIDANCE[3],
 }

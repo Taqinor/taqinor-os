@@ -2,15 +2,16 @@
 // la liste, jamais une invention de paramètre), et le renvoi exige un motif
 // (garde UI, en plus de la garde serveur).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Toaster } from 'sonner'
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom'
 
-const { getVisites, getVisite, renvoyerVisite } = vi.hoisted(() => ({
+const { getVisites, getVisite, renvoyerVisite, reviserDevisApresVisite } = vi.hoisted(() => ({
   getVisites: vi.fn(),
   getVisite: vi.fn(),
   renvoyerVisite: vi.fn(),
+  reviserDevisApresVisite: vi.fn(),
 }))
 
 vi.mock('../../api/visitesApi', () => ({
@@ -19,6 +20,7 @@ vi.mock('../../api/visitesApi', () => ({
     getVisite: (...a) => getVisite(...a),
     validerVisite: vi.fn(),
     renvoyerVisite: (...a) => renvoyerVisite(...a),
+    reviserDevisApresVisite: (...a) => reviserDevisApresVisite(...a),
   },
 }))
 
@@ -315,5 +317,81 @@ describe('VisiteBureauEtudesPage — ACAL209', () => {
     await user.click(await screen.findByRole('button', { name: /atelier 3d/i }))
     expect(await screen.findByText(/Module Calepinage : Lead introuvable\./)).toBeInTheDocument()
     expect(screen.queryByTestId('sonde-calepinage')).toBeNull()
+  })
+})
+
+/* CSV14 — après le feu vert d'une visite C&I, « Préparer le devis révisé ».
+   Les DEUX côtés sont les exemples des contrats partagés : `visite_terrain.json`
+   (la visite) et `ventes/devis_revise_visite.json` (la réponse du service CORC2).
+   Aucune réponse écrite à la main. */
+describe('VisiteBureauEtudesPage — CSV14 (devis révisé après visite C&I)', () => {
+  const contrat = documentContrat('visites', 'visite_terrain')
+  const revise = documentContrat('ventes', 'devis_revise_visite')
+  const DEVIS = [{ id: revise.corps.devis, numero: 'DEV-202610-0111', statut: 'envoye', date: '2026-10-26', total_ttc: '0.00', lignes: [] }]
+  const CI_VALIDEE = {
+    ...contrat.exemple_ci,
+    statut: 'validee',
+    checklist: Object.keys(contrat.gabarit_ci).map((categorie) => ({ categorie, libelle: categorie, slots: [] })),
+    devis: DEVIS,
+  }
+
+  const ouvrir = async (visite) => {
+    getVisite.mockResolvedValue({ data: visite })
+    const user = userEvent.setup()
+    render(<MemoryRouter><VisiteBureauEtudesPage /></MemoryRouter>)
+    await user.click(await screen.findByText('Lead A'))
+    return user
+  }
+
+  it('visite C&I validée : Préparer le devis révisé affiche les lignes changées du contrat', async () => {
+    reviserDevisApresVisite.mockResolvedValue({ data: revise.exemple })
+    const user = await ouvrir(CI_VALIDEE)
+    await user.click(await screen.findByRole('button', { name: 'Préparer le devis révisé' }))
+    expect(reviserDevisApresVisite).toHaveBeenCalledTimes(1)
+    expect(reviserDevisApresVisite).toHaveBeenCalledWith(revise.corps.devis)
+    const bloc = await screen.findByTestId('devis-revise')
+    for (const ligne of revise.exemple.lignes_changees) {
+      const rendu = within(bloc).getAllByRole('listitem').find((li) => li.textContent.includes(ligne.designation))
+      const avant = ligne.avant ? `${Number(ligne.avant.quantite)}` : 'ajoutée'
+      const apres = ligne.apres ? `${Number(ligne.apres.quantite)}` : 'retirée'
+      expect(rendu).toBeTruthy()
+      expect(rendu).toHaveTextContent(`${avant} → ${apres}`)
+    }
+    for (const mesure of revise.exemple.mesures_utilisees) {
+      expect(bloc).toHaveTextContent(` : ${mesure.valeur}`)
+    }
+    // Rejeu CSV11 — les clés sont dites comme au relevé (D-CMP-2), jamais en code.
+    const dc = revise.exemple.mesures_utilisees.find((m) => m.cle === 'longueur_dc_m')
+    expect(bloc).toHaveTextContent(`Distance champ → onduleur (un sens, m) : ${dc.valeur}`)
+    expect(bloc).not.toHaveTextContent('longueur_dc_m')
+    const lien = within(bloc).getByRole('link', { name: new RegExp(revise.exemple.reference) })
+    expect(lien).toHaveAttribute('href', `/ventes/devis?devis=${revise.exemple.devis_id}`)
+    expect(lien).toHaveTextContent(`V${revise.exemple.version}`)
+  })
+
+  it('refus 409 : le détail du serveur sous le bouton, avec le champ nommé', async () => {
+    reviserDevisApresVisite.mockRejectedValue({
+      response: { status: 409, data: { detail: 'Aucune visite C&I validée sur ce lead.', field: 'visite' } },
+    })
+    const user = await ouvrir(CI_VALIDEE)
+    await user.click(await screen.findByRole('button', { name: 'Préparer le devis révisé' }))
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent('Aucune visite C&I validée sur ce lead.')
+    expect(alerte).toHaveTextContent('visite')
+    expect(screen.queryByTestId('devis-revise')).not.toBeInTheDocument()
+  })
+
+  it('bouton absent : visite non C&I, visite pas encore validée, ou lead sans devis', async () => {
+    const cas = [
+      { ...CI_VALIDEE, gabarit: 'toiture', checklist: [{ categorie: 'toiture', libelle: 'Toiture', slots: [] }] },
+      { ...CI_VALIDEE, statut: 'terminee' },
+      { ...CI_VALIDEE, devis: [] },
+    ]
+    for (const visite of cas) {
+      cleanup()
+      await ouvrir(visite)
+      await screen.findByTestId('visite-qualification-resume')
+      expect(screen.queryByRole('button', { name: 'Préparer le devis révisé' })).not.toBeInTheDocument()
+    }
   })
 })
