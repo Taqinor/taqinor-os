@@ -367,11 +367,17 @@ def digest_matin(request):
     from core.dates import aujourd_hui_local
     from core.permissions import _user_has_or_legacy
 
+    from apps.agent import selectors as agent
+
     user = request.user
-    reponse = {'visites': _bloc_visites_du_jour(user, aujourd_hui_local())}
+    aujourdhui = aujourd_hui_local()
+    reponse = {'visites': _bloc_visites_du_jour(user, aujourdhui)}
     if _user_has_or_legacy(user, 'crm_voir'):
         total, lignes = lignes_a_relancer(user, 'all', LIMITE_DIGEST)
         reponse['relances'] = {'total': total, 'lignes': lignes}
         reponse['devis_sans_reponse'] = _bloc_devis_sans_reponse(
             user, timezone.now())
+        reponse['manques_signales_hier'] = {
+            'total': agent.manques_signales_hier(
+                user.company, user, aujourdhui)}
     return Response(reponse)
