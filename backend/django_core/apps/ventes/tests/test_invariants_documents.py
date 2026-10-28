@@ -224,7 +224,8 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
             self.bc.refresh_from_db()
             assert self.bc.statut == BonCommande.Statut.CONFIRME
         else:
-            assert resp.status_code == 400, (resp.status_code, resp.data)
+            # ENF11 (886f6cfd2, 15/10/2026) — refus d'ÉTAT du BC = 409.
+            assert resp.status_code == 409, (resp.status_code, resp.data)
             self.bc.refresh_from_db()
             assert self.bc.statut == avant
 
@@ -242,7 +243,8 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
             self.bc.refresh_from_db()
             assert self.bc.statut == BonCommande.Statut.LIVRE
         else:
-            assert resp.status_code == 400, (resp.status_code, resp.data)
+            # ENF11 (886f6cfd2, 15/10/2026) — refus d'ÉTAT du BC = 409.
+            assert resp.status_code == 409, (resp.status_code, resp.data)
             self.bc.refresh_from_db()
             assert self.bc.statut == avant
 
