@@ -192,7 +192,8 @@ const COMPLEMENTS_ENERGIE = Object.freeze({
     'butane_bouteilles_jour', 'carburant_prix_unitaire_mad', 'jours_irrigation_semaine',
   ]),
   diesel: Object.freeze(['carburant_litres_mois', 'carburant_prix_unitaire_mad']),
-  electrique: Object.freeze(['depense_carburant_mad_mois']),
+  // AGV1 — pompe électrique : sa facture de pompage, jamais une dépense « carburant ».
+  electrique: Object.freeze(['depense_electricite_pompe_mad_mois']),
 })
 
 export const ORDRE_AGRICOLE = Object.freeze([
@@ -201,7 +202,7 @@ export const ORDRE_AGRICOLE = Object.freeze([
     champs: Object.freeze([
       'pompe_alim_actuelle', 'butane_bouteilles_jour', 'carburant_litres_mois',
       'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
-      'jours_irrigation_semaine',
+      'depense_electricite_pompe_mad_mois', 'jours_irrigation_semaine',
     ]),
     selon: (prefill) => [
       'pompe_alim_actuelle',

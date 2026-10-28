@@ -84,6 +84,7 @@ ETAPES_AGRICOLES = (
                           'carburant_litres_mois',
                           'carburant_prix_unitaire_mad',
                           'depense_carburant_mad_mois',
+                          'depense_electricite_pompe_mad_mois',
                           'jours_irrigation_semaine')),
     ('eau', ('source_eau', 'niveau_statique_m', 'debit_forage_m3h',
              'pompe_hmt_m')),

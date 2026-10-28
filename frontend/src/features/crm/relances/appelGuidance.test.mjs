@@ -495,7 +495,7 @@ function leadVierge175(segment, orauxSegment) {
 const ORAUX_AGRICOLE = [
   'pompe_alim_actuelle', 'butane_bouteilles_jour', 'carburant_litres_mois',
   'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
-  'source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m',
+  'depense_electricite_pompe_mad_mois', 'source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m',
   'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
   'pompe_actuelle_debit_m3h', 'pompage_heures_jour', 'distance_forage_champ_m',
   'irrigation_methode', 'mois_irrigation', 'electricite_sur_place', 'raccordement',
@@ -578,7 +578,7 @@ test('AGR418 — énergie actuelle : la suite SELON la réponse (prix déclaré,
   const cas = {
     butane: ['butane_bouteilles_jour', 'carburant_prix_unitaire_mad', 'jours_irrigation_semaine'],
     diesel: ['carburant_litres_mois', 'carburant_prix_unitaire_mad'],
-    electrique: ['depense_carburant_mad_mois'],
+    electrique: ['depense_electricite_pompe_mad_mois'],
   }
   for (const [alim, attendus] of Object.entries(cas)) {
     const panneau = leadVierge175('agricole', ORAUX_AGRICOLE)

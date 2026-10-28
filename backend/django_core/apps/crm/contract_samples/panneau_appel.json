@@ -386,6 +386,14 @@
         "nature": "nombre"
       },
       {
+        "champ": "depense_electricite_pompe_mad_mois",
+        "section": null,
+        "libelle": "Facture électricité du pompage (MAD/mois)",
+        "question": "Question à l'appel : « Si votre pompe actuelle marche à l'électricité, combien payez-vous par mois pour le pompage ? » (MAD/mois, facultatif, vide = pas encore posée).",
+        "choix": null,
+        "nature": "nombre"
+      },
+      {
         "champ": "jours_irrigation_semaine",
         "section": null,
         "libelle": "Jours d'irrigation par semaine",
