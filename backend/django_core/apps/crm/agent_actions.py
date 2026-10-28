@@ -196,12 +196,41 @@ LEADS_A_RELANCER = AgentAction(
 )
 
 
+# AIC31 — « Résume-moi ce lead avant mon appel » : LECTURE assemblée chez chaque
+# propriétaire (chatter, devis, visites, cadence). Endpoint :
+# GET /api/django/crm/leads/<id>/resume/ (views_assistant.lead_resume).
+RESUME_LEAD = AgentAction(
+    key='crm.lead.resume',
+    label='Résumer un lead',
+    description=(
+        "Sert à : préparer un appel — identité, étape, contact préféré, "
+        "5 dernières entrées du chatter, devis, visites, prochaine touche, "
+        "alertes. "
+        "Ne pas utiliser pour : écrire une note (crm.lead.note) ni modifier "
+        "le lead. "
+        "Exemple : « Résume-moi le lead 12 avant mon appel ». "
+        "Résultat : {identite, etape, chatter[], devis[], visites[], "
+        "prochaine_touche, alertes[]} sans prix d'achat."
+    ),
+    endpoint='/api/django/crm/leads/{id}/resume/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {'id': {'type': 'integer'}},
+        'required': ['id'],
+    },
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
+)
+
+
 _ACTIONS = (
     CREER_LEAD,
     METTRE_A_JOUR_LEAD,
     NOTER_LEAD,
     PREPARER_ENVOI_WHATSAPP,
     LEADS_A_RELANCER,
+    RESUME_LEAD,
 )
 
 

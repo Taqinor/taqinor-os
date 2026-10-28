@@ -117,3 +117,111 @@ def leads_a_relancer(request):
         'portee': portee, 'total': total, 'limite': LIMITE_LIGNES,
         'lignes': lignes,
     })
+
+
+def _lead_en_portee_ou_404(user, lead_id):
+    """Le lead de ``user`` (société + portée) ou 404 — un lead d'une autre
+    société (ou hors portée) est traité comme ABSENT."""
+    from django.http import Http404
+
+    from .portee_selectors import leads_en_portee
+
+    lead = leads_en_portee(user).filter(pk=lead_id).first()
+    if lead is None:
+        raise Http404
+    return lead
+
+
+def _bloc_chatter(lead, n=5):
+    from .models import LeadActivity
+
+    return [{
+        'type': a.kind,
+        'champ': a.field_label or a.field or '',
+        'texte': (a.body or '')[:300],
+        'le': a.created_at.isoformat(),
+    } for a in LeadActivity.objects.filter(
+        lead=lead, company=lead.company).order_by('-created_at', '-id')[:n]]
+
+
+def _bloc_devis(lead):
+    """Devis du lead lus chez ``ventes`` (``devis_lecture_seule_pour_lead`` :
+    jamais de ``prix_achat`` ni de marge), sans les lignes."""
+    from apps.ventes import selectors as ventes
+
+    envoye = ventes.dernier_devis_envoye_par_lead(
+        lead.company, [lead.pk]).get(lead.pk)
+    return [{
+        'reference': d['numero'], 'statut': d['statut'],
+        'total_ttc': d['total_ttc'],
+        'envoye_le': (envoye.date_envoi.isoformat()
+                      if envoye and envoye.reference == d['numero']
+                      else None),
+    } for d in ventes.devis_lecture_seule_pour_lead(lead)]
+
+
+def _bloc_visites(lead, n=3):
+    from apps.visites import selectors as visites
+
+    return [{
+        'date': v['date_realisee'] or v['date_prevue'],
+        'resultat': v['statut_libelle'],
+    } for v in visites.visites_pour_lead(lead)[:n]]
+
+
+def _bloc_prochaine_touche(lead):
+    from .selectors import prochaine_touche_par_lead
+
+    touche = prochaine_touche_par_lead(lead.company, [lead.pk]).get(lead.pk)
+    if touche is None:
+        return None
+    due_at, due_date, cadence, canal = touche
+    return {
+        'due_at': due_at.isoformat() if due_at else None,
+        'due_date': due_date.isoformat() if due_date else None,
+        'cadence': cadence, 'canal': canal,
+    }
+
+
+def _alertes_lead(lead, devis, touche, today):
+    alertes = []
+    if any(d['statut'] == 'expire' for d in devis):
+        alertes.append('devis_expire')
+    due = touche and touche['due_date']
+    if (due and due < today.isoformat()) or (
+            lead.relance_date and lead.relance_date < today):
+        alertes.append('relance_en_retard')
+    return alertes
+
+
+@extend_schema(responses=sd.OBJ)
+@api_view(['GET'])
+@permission_classes([HasPermissionOrLegacy('crm_voir')])
+def lead_resume(request, lead_id):
+    """AIC31 — ``GET /api/django/crm/leads/<id>/resume/`` : le lead en un
+    objet pour préparer un appel. Chaque bloc est lu chez son propriétaire
+    (chatter ici ; devis via ``ventes.selectors`` ; visites via
+    ``visites.selectors`` ; touche via ``cadence_selectors``). Aucun
+    ``prix_achat``, aucune marge ; lead d'une autre société : 404."""
+    from core.dates import aujourd_hui_local
+
+    from .serializers import pii_masquee_pour
+
+    lead = _lead_en_portee_ou_404(request.user, lead_id)
+    devis = _bloc_devis(lead)
+    touche = _bloc_prochaine_touche(lead)
+    return Response({
+        'identite': {
+            'id': lead.pk, 'nom': lead.nom, 'prenom': lead.prenom or '',
+            'societe': lead.societe or '', 'ville': lead.ville or '',
+            'telephone': ('' if pii_masquee_pour(request.user)
+                          else lead.telephone or ''),
+        },
+        'etape': lead.stage,
+        'contact_prefere': lead.contact_preference or '',
+        'chatter': _bloc_chatter(lead),
+        'devis': devis,
+        'visites': _bloc_visites(lead),
+        'prochaine_touche': touche,
+        'alertes': _alertes_lead(lead, devis, touche, aujourd_hui_local()),
+    })

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4866, operations: 7650, components: 3582}
+counts: {paths: 4868, operations: 7652, components: 3582}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1018,6 +1018,7 @@ operations:
 - get /api/django/crm/leads/{lead_id}/photo-toit/ -> django_crm_leads_photo_toit_retrieve
 - get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_list
 - post /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_create
+- get /api/django/crm/leads/{lead_id}/resume/ -> django_crm_leads_resume_retrieve
 - get /api/django/crm/leads/{lead_id}/roof-footprint/ -> django_crm_leads_roof_footprint_retrieve
 - get /api/django/crm/message-templates/ -> django_crm_message_templates_list
 - post /api/django/crm/message-templates/ -> django_crm_message_templates_create
@@ -4883,6 +4884,7 @@ operations:
 - get /api/v1/crm/leads/{lead_id}/photo-toit/ -> v1_crm_leads_photo_toit_retrieve
 - get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_list
 - post /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_create
+- get /api/v1/crm/leads/{lead_id}/resume/ -> v1_crm_leads_resume_retrieve
 - get /api/v1/crm/leads/{lead_id}/roof-footprint/ -> v1_crm_leads_roof_footprint_retrieve
 - get /api/v1/crm/message-templates/ -> v1_crm_message_templates_list
 - post /api/v1/crm/message-templates/ -> v1_crm_message_templates_create

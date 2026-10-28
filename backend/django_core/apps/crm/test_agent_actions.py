@@ -26,7 +26,7 @@ from apps.crm.models import Lead, LeadActivity
 from apps.crm import stages
 from apps.crm.agent_actions import (
     CREER_LEAD, LEADS_A_RELANCER, METTRE_A_JOUR_LEAD, NOTER_LEAD,
-    PREPARER_ENVOI_WHATSAPP, register_crm_actions,
+    PREPARER_ENVOI_WHATSAPP, RESUME_LEAD, register_crm_actions,
 )
 from apps.agent.registry import all_actions, for_user
 
@@ -38,7 +38,7 @@ _ALL_CRM_KEYS = {
     NOTER_LEAD.key, PREPARER_ENVOI_WHATSAPP.key,
 }
 # Actions de LECTURE (crm_voir) de l'assistant (AIC30+).
-_READ_CRM_KEYS = {LEADS_A_RELANCER.key}
+_READ_CRM_KEYS = {LEADS_A_RELANCER.key, RESUME_LEAD.key}
 
 
 def auth(user):
@@ -88,10 +88,12 @@ class CrmAgentActionsCatalogueTest(TestCase):
         self.assertEqual(
             PREPARER_ENVOI_WHATSAPP.required_permission, 'crm_modifier')
         self.assertEqual(LEADS_A_RELANCER.required_permission, 'crm_voir')
+        self.assertEqual(RESUME_LEAD.required_permission, 'crm_voir')
 
     def test_inputs_never_include_company(self):
         for action in (CREER_LEAD, METTRE_A_JOUR_LEAD, NOTER_LEAD,
-                       PREPARER_ENVOI_WHATSAPP, LEADS_A_RELANCER):
+                       PREPARER_ENVOI_WHATSAPP, LEADS_A_RELANCER,
+                       RESUME_LEAD):
             props = action.inputs.get('properties', {})
             self.assertNotIn('company', props, action.key)
 
@@ -261,3 +263,58 @@ class CrmAgentARelancerTest(TestCase):
             LEADS_A_RELANCER.key, {a.key for a in for_user(self.terrain)})
         resp = auth(self.terrain).get(LEADS_A_RELANCER.endpoint)
         self.assertEqual(resp.status_code, 403)
+
+
+class CrmAgentResumeLeadTest(TestCase):
+    """AIC31 — ``crm.lead.resume`` : blocs lus chez leur propriétaire."""
+
+    def setUp(self):
+        register_crm_actions()
+        self.company = Company.objects.create(nom='AIC31 Co', slug='aic31-co')
+        self.other = Company.objects.create(nom='AIC31 Autre', slug='aic31-x')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_modifier', 'client_pii_voir'])
+        self.user = User.objects.create_user(
+            username='aic31_com', password='x', role=self.role,
+            company=self.company)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Alami', prenom='Karim',
+            ville='Casablanca', telephone='0600112233', owner=self.user)
+        for i in range(7):
+            LeadActivity.objects.create(
+                company=self.company, lead=self.lead, kind='note',
+                body=f'Note {i}', user=self.user)
+
+    def _devis(self):
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        client = Client.objects.create(company=self.company, nom='Client 31')
+        return Devis.objects.create(
+            company=self.company, lead=self.lead, client=client,
+            statut='envoye', reference='DEV-AIC31-0001')
+
+    def test_resume_lead_blocs_et_societe(self):
+        self._devis()
+        resp = auth(self.user).get(
+            RESUME_LEAD.endpoint.format(id=self.lead.pk))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for cle in ('identite', 'etape', 'chatter', 'devis', 'visites',
+                    'prochaine_touche', 'alertes'):
+            self.assertIn(cle, resp.data)
+        self.assertEqual(len(resp.data['chatter']), 5)
+        self.assertEqual(resp.data['devis'][0]['reference'], 'DEV-AIC31-0001')
+        self.assertEqual(resp.data['identite']['nom'], 'Alami')
+        # Lead d'une autre société : 404, aucune fuite.
+        autre = Lead.objects.create(company=self.other, nom='Autre')
+        resp = auth(self.user).get(RESUME_LEAD.endpoint.format(id=autre.pk))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_resume_sans_prix_achat(self):
+        import json
+        self._devis()
+        resp = auth(self.user).get(
+            RESUME_LEAD.endpoint.format(id=self.lead.pk))
+        brut = json.dumps(resp.data, default=str).lower()
+        self.assertNotIn('prix_achat', brut)
+        self.assertNotIn('marge', brut)
