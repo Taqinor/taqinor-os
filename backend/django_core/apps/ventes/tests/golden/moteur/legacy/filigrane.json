@@ -2,15 +2,15 @@
   "cas": "filigrane",
   "graphes_etude": [],
   "graphes_roi_mensuel_masques": 2,
-  "octets": 56813,
+  "octets": 56798,
   "ordre": 16,
   "pages": 3,
   "polices_masquees": 6,
-  "sha256": "11a39b264cb2f7a0f3ddd4ff2ef2b114a0fe6fd6dcc6c0912b5fe3f6d347384f",
+  "sha256": "e5811632b08f345e0ca59d9e61413e808068e79cdad5e7b5d2825e30a90fb057",
   "sha256_par_segment": [
     "2357db846b0271a83f293d9deb831e98d4e0f9d51c12e6dc70dd16cf50ac4286",
-    "d05882cb19bfe54165ca672ba16c2c4ea34042c56588f518359b0c19f5b4884d",
-    "4ccc2571a3d5ff948197f8c5889594212997833eff20aff737b6dc9cd51b4fbc",
-    "dab615ab494e99295da97083b33eb6a22392b03eab96dc769b68ec8a2e7e589f"
+    "39015d02d4e4cd25612ab49f203fc89f462631d7b966c84c6482adbe4547e5a4",
+    "8ab0fc249132300a1e17fbb82f429af8d7383349bdfc7e602e954faeba92860a",
+    "09bcc217cdfe7a43848110960edb0cb0167ed3ea8677410bac3585c835efe321"
   ]
 }

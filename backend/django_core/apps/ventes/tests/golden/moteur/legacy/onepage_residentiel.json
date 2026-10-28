@@ -2,13 +2,13 @@
   "cas": "onepage_residentiel",
   "graphes_etude": [],
   "graphes_roi_mensuel_masques": 0,
-  "octets": 23384,
+  "octets": 23434,
   "ordre": 3,
   "pages": 1,
   "polices_masquees": 6,
-  "sha256": "230615f646cf8c57aff8e1895bac1bc8fb84326da4a5f63734a2ccca2edaa519",
+  "sha256": "010209170b7088bdf852978f61664f6d7f90a95c22f5834171f13bcfbc96b4db",
   "sha256_par_segment": [
     "2357db846b0271a83f293d9deb831e98d4e0f9d51c12e6dc70dd16cf50ac4286",
-    "61ad8d135ef776a63dbdf79192284a5276296e888f2fb413fcd4cf6aea010f98"
+    "46d8b51366aea9771ea57c5967db03a5fcb0a17b6d50e579ce678e7391beeaad"
   ]
 }
