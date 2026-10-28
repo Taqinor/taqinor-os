@@ -224,6 +224,44 @@ RESUME_LEAD = AgentAction(
 )
 
 
+# AIC32 — brouillon de message de suivi (relance après devis, après visite, réveil
+# Froid). Endpoint : POST /api/django/crm/leads/<id>/brouillon-suivi/
+# (views_assistant.lead_brouillon_suivi). N'ENVOIE RIEN et n'écrit RIEN : le
+# commercial relit le texte puis le copie ou ouvre le lien wa.me lui-même.
+BROUILLON_SUIVI = AgentAction(
+    key='crm.lead.brouillon_suivi',
+    label='Brouillon de message de suivi',
+    description=(
+        "Sert à : rédiger un TEXTE de suivi (relance devis, après visite, "
+        "réveil) à relire puis copier ou ouvrir via wa.me. "
+        "Ne pas utiliser pour : envoyer (jamais d'envoi) ni préparer l'envoi "
+        "d'un devis (crm.lead.whatsapp_prepare). "
+        "Exemple : « Prépare une relance WhatsApp pour le lead 12 ». "
+        "Résultat : {texte, lien_wa_me, modele_source, langue_servie}, "
+        "500 caractères max sur WhatsApp, expéditeur = responsable du lead."
+    ),
+    endpoint='/api/django/crm/leads/{id}/brouillon-suivi/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'canal': {'type': 'string',
+                      'enum': ['whatsapp', 'sms', 'email']},
+            'langue': {'type': 'string', 'enum': ['fr', 'ar'],
+                       'description': 'Défaut fr ; ar seulement si un '
+                                      'modèle arabe existe.'},
+            'objectif': {'type': 'string',
+                         'enum': ['relance_devis', 'apres_visite',
+                                  'reveil_froid']},
+        },
+        'required': ['id', 'canal', 'objectif'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_INTERNAL,
+)
+
+
 _ACTIONS = (
     CREER_LEAD,
     METTRE_A_JOUR_LEAD,
@@ -231,6 +269,7 @@ _ACTIONS = (
     PREPARER_ENVOI_WHATSAPP,
     LEADS_A_RELANCER,
     RESUME_LEAD,
+    BROUILLON_SUIVI,
 )
 
 

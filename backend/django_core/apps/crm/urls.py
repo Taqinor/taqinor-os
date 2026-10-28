@@ -25,7 +25,8 @@ from .public_affiner_views import lead_affiner_pro
 # VT12 — la SEULE surface visite restée côté CRM : la texture de toit du lead.
 from .views_visite import lead_photo_toit
 # AIC — lectures servies à l'assistant (relais FastAPI, aucun écran en face).
-from .views_assistant import lead_resume, leads_a_relancer
+from .views_assistant import (
+    lead_brouillon_suivi, lead_resume, leads_a_relancer)
 # NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks (SPL80 : clients_views).
 from .clients_views import (
     ConcurrentPerteViewSet, EquipeCommercialeViewSet, ObjectifCommercialViewSet,
@@ -193,5 +194,8 @@ urlpatterns = [
          name='assistant-a-relancer'),
     # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
     path('leads/<int:lead_id>/resume/', lead_resume, name='lead-resume'),
+    # headless: brouillon (jamais d'envoi) servi à l'assistant, aucun écran ERP
+    path('leads/<int:lead_id>/brouillon-suivi/', lead_brouillon_suivi,
+         name='lead-brouillon-suivi'),
     path('', include(router.urls)),
 ]

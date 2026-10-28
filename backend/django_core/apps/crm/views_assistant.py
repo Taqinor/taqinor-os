@@ -11,11 +11,13 @@ Fichier à part car ``apps/crm/views.py`` appartient au propriétaire crm
 import datetime
 
 from drf_spectacular.utils import extend_schema
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, parser_classes, permission_classes)
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import HasPermissionOrLegacy
+from core.parseurs import PARSEURS_JSON, ChoixDocumente, corps_valide
 
 from . import schema_docs as sd
 
@@ -224,4 +226,103 @@ def lead_resume(request, lead_id):
         'visites': _bloc_visites(lead),
         'prochaine_touche': touche,
         'alertes': _alertes_lead(lead, devis, touche, aujourd_hui_local()),
+    })
+
+
+#: Objectifs du brouillon de suivi -> mot-clé du modèle société à reprendre
+#: (recherché dans le NOM du modèle) et phrase libre de repli.
+_OBJECTIFS_BROUILLON = {
+    'relance_devis': (
+        'devis', "je reviens vers vous au sujet de votre devis : avez-vous "
+        "pu le consulter ? Je reste disponible pour toute question."),
+    'apres_visite': (
+        'visite', "suite à notre visite, avez-vous des questions sur la "
+        "suite de votre projet solaire ? Je reste disponible."),
+    'reveil_froid': (
+        'réveil', "je reprends contact pour savoir où en est votre projet "
+        "solaire. Il est toujours d'actualité ?"),
+}
+_CANAUX_BROUILLON = ('whatsapp', 'sms', 'email')
+#: Longueur maximale d'un brouillon WhatsApp.
+LONGUEUR_WHATSAPP = 500
+
+_CORPS_BROUILLON = sd.corps(
+    'CrmAssistantBrouillonSuiviRequest',
+    canal=ChoixDocumente(_CANAUX_BROUILLON),
+    langue=ChoixDocumente(['fr', 'ar'], required=False),
+    objectif=ChoixDocumente(sorted(_OBJECTIFS_BROUILLON)),
+)
+
+
+def _modele_societe(company, objectif, langue):
+    """Le modèle société (non archivé) de l'objectif, dans la langue demandée
+    (``ar`` = darija) ; ``(modèle, langue servie)``. Sans modèle dans la
+    langue, repli français ; sans modèle du tout, ``(None, 'fr')``."""
+    from .models_cadence import MessageTemplate
+
+    mot = _OBJECTIFS_BROUILLON[objectif][0]
+    base = MessageTemplate.objects.filter(
+        company=company, archived=False, nom__icontains=mot)
+    if langue == 'ar':
+        modele = base.filter(langue=MessageTemplate.Langue.DARIJA).first()
+        if modele is not None:
+            return modele, 'ar'
+    return base.filter(langue=MessageTemplate.Langue.FR).first(), 'fr'
+
+
+def _tronquer(texte, limite):
+    """Coupe à ``limite`` caractères sur une frontière de mot."""
+    if len(texte) <= limite:
+        return texte
+    return texte[:limite].rsplit(' ', 1)[0].rstrip(' ,;:') + '…'
+
+
+@extend_schema(request=_CORPS_BROUILLON, responses=sd.OBJ)
+@api_view(['POST'])
+@parser_classes(PARSEURS_JSON)
+@permission_classes([HasPermissionOrLegacy('crm_modifier')])
+def lead_brouillon_suivi(request, lead_id):
+    """AIC32 — ``POST /api/django/crm/leads/<id>/brouillon-suivi/`` : un TEXTE
+    de suivi à relire puis copier ou ouvrir par ``wa.me`` — l'assistant
+    n'envoie JAMAIS. Le modèle société prime (rendu par
+    ``cadence_views.rendre_modele_message``) ; l'expéditeur est le
+    responsable du lead (aucun prénom codé en dur) ; rien n'est écrit."""
+    from apps.ventes import selectors as ventes
+    from apps.ventes.utils.whatsapp import build_wa_url
+
+    from . import cadence_messages as cm
+    from .cadence_views import rendre_modele_message
+    from .serializers import pii_masquee_pour
+
+    donnees = corps_valide(request, _CORPS_BROUILLON)
+    lead = _lead_en_portee_ou_404(request.user, lead_id)
+    objectif, canal = donnees['objectif'], donnees['canal']
+    modele, langue_servie = _modele_societe(
+        lead.company, objectif, donnees.get('langue') or 'fr')
+    civilite, prenom = cm._civilite_et_prenom(lead, 'fr')
+    salut = f'{civilite} {prenom}'.strip()
+    conseiller = cm._nom_affiche_conseiller(lead, request.user)
+    marque = cm._nom_affiche_marque(lead)
+    devis = ventes.dernier_devis_envoye_par_lead(
+        lead.company, [lead.pk]).get(lead.pk)
+    if modele is not None:
+        texte = rendre_modele_message(
+            modele, request=request, prenom=salut, ville=lead.ville or '')
+        for cle, valeur in (('conseiller', conseiller), ('marque', marque),
+                            ('civilite', civilite),
+                            ('reference', devis.reference if devis else '')):
+            texte = texte.replace('{' + cle + '}', valeur)
+    else:
+        texte = (f"Bonjour {salut}, c'est {conseiller} de {marque} : "
+                 f'{_OBJECTIFS_BROUILLON[objectif][1]}')
+    if canal == 'whatsapp':
+        texte = _tronquer(texte, LONGUEUR_WHATSAPP)
+    telephone = '' if pii_masquee_pour(request.user) else (
+        lead.whatsapp or lead.telephone or '')
+    lien = (build_wa_url(telephone, texte)
+            if canal == 'whatsapp' and telephone else None)
+    return Response({
+        'texte': texte, 'lien_wa_me': lien,
+        'modele_source': modele.nom if modele else None,
+        'langue_servie': langue_servie,
     })

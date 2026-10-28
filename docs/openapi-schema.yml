@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4868, operations: 7652, components: 3582}
+counts: {paths: 4870, operations: 7654, components: 3583}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -1015,6 +1015,7 @@ operations:
 - post /api/django/crm/leads/{id}/visites/planifier/ -> django_crm_leads_visites_planifier_create
 - post /api/django/crm/leads/{id}/whatsapp-devis-apercu/ -> django_crm_leads_whatsapp_devis_apercu_create
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
+- post /api/django/crm/leads/{lead_id}/brouillon-suivi/ -> django_crm_leads_brouillon_suivi_create
 - get /api/django/crm/leads/{lead_id}/photo-toit/ -> django_crm_leads_photo_toit_retrieve
 - get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_list
 - post /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_create
@@ -4881,6 +4882,7 @@ operations:
 - post /api/v1/crm/leads/{id}/visites/planifier/ -> v1_crm_leads_visites_planifier_create
 - post /api/v1/crm/leads/{id}/whatsapp-devis-apercu/ -> v1_crm_leads_whatsapp_devis_apercu_create
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
+- post /api/v1/crm/leads/{lead_id}/brouillon-suivi/ -> v1_crm_leads_brouillon_suivi_create
 - get /api/v1/crm/leads/{lead_id}/photo-toit/ -> v1_crm_leads_photo_toit_retrieve
 - get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_list
 - post /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_create
@@ -9988,6 +9990,7 @@ components:
 - CritereEnum
 - CrmAppliquerPlanRequestRequest
 - CrmArreterRelanceRequestRequest
+- CrmAssistantBrouillonSuiviRequestRequest
 - CrmBulkLeadsRequestActionEnum
 - CrmBulkLeadsRequestRequest
 - CrmCadencesEchues

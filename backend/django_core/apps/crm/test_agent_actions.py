@@ -25,8 +25,8 @@ from apps.roles.models import Role
 from apps.crm.models import Lead, LeadActivity
 from apps.crm import stages
 from apps.crm.agent_actions import (
-    CREER_LEAD, LEADS_A_RELANCER, METTRE_A_JOUR_LEAD, NOTER_LEAD,
-    PREPARER_ENVOI_WHATSAPP, RESUME_LEAD, register_crm_actions,
+    BROUILLON_SUIVI, CREER_LEAD, LEADS_A_RELANCER, METTRE_A_JOUR_LEAD,
+    NOTER_LEAD, PREPARER_ENVOI_WHATSAPP, RESUME_LEAD, register_crm_actions,
 )
 from apps.agent.registry import all_actions, for_user
 
@@ -35,7 +35,7 @@ User = get_user_model()
 # Actions d'ÉCRITURE (crm_creer / crm_modifier) : un rôle lecture seule n'en voit aucune.
 _ALL_CRM_KEYS = {
     CREER_LEAD.key, METTRE_A_JOUR_LEAD.key,
-    NOTER_LEAD.key, PREPARER_ENVOI_WHATSAPP.key,
+    NOTER_LEAD.key, PREPARER_ENVOI_WHATSAPP.key, BROUILLON_SUIVI.key,
 }
 # Actions de LECTURE (crm_voir) de l'assistant (AIC30+).
 _READ_CRM_KEYS = {LEADS_A_RELANCER.key, RESUME_LEAD.key}
@@ -89,11 +89,12 @@ class CrmAgentActionsCatalogueTest(TestCase):
             PREPARER_ENVOI_WHATSAPP.required_permission, 'crm_modifier')
         self.assertEqual(LEADS_A_RELANCER.required_permission, 'crm_voir')
         self.assertEqual(RESUME_LEAD.required_permission, 'crm_voir')
+        self.assertEqual(BROUILLON_SUIVI.required_permission, 'crm_modifier')
 
     def test_inputs_never_include_company(self):
         for action in (CREER_LEAD, METTRE_A_JOUR_LEAD, NOTER_LEAD,
                        PREPARER_ENVOI_WHATSAPP, LEADS_A_RELANCER,
-                       RESUME_LEAD):
+                       RESUME_LEAD, BROUILLON_SUIVI):
             props = action.inputs.get('properties', {})
             self.assertNotIn('company', props, action.key)
 
@@ -318,3 +319,69 @@ class CrmAgentResumeLeadTest(TestCase):
         brut = json.dumps(resp.data, default=str).lower()
         self.assertNotIn('prix_achat', brut)
         self.assertNotIn('marge', brut)
+
+
+class CrmAgentBrouillonSuiviTest(TestCase):
+    """AIC32 — ``crm.lead.brouillon_suivi`` : un texte, jamais un envoi."""
+
+    def setUp(self):
+        register_crm_actions()
+        self.company = Company.objects.create(nom='AIC32 Co', slug='aic32-co')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_modifier', 'client_pii_voir'])
+        self.user = User.objects.create_user(
+            username='aic32_com', password='x', role=self.role,
+            company=self.company, first_name='Reda')
+
+    def _lead(self, owner_prenom, **kw):
+        owner = User.objects.create_user(
+            username=f'aic32_{owner_prenom}', password='x', role=self.role,
+            company=self.company, first_name=owner_prenom)
+        return Lead.objects.create(
+            company=self.company, nom='Alami', prenom='Karim',
+            telephone='0600112233', owner=owner, **kw)
+
+    def _appel(self, lead, **corps):
+        corps = {'canal': 'whatsapp', 'objectif': 'relance_devis', **corps}
+        return auth(self.user).post(
+            BROUILLON_SUIVI.endpoint.format(id=lead.pk), corps, format='json')
+
+    def test_brouillon_suivi_modele_societe_et_expediteur_variable(self):
+        from apps.crm.models_cadence import MessageTemplate
+        MessageTemplate.objects.create(
+            company=self.company, nom='Relance après devis', langue='fr',
+            corps='Bonjour {prenom}, ici {conseiller} : votre devis ?')
+        for prenom_owner in ('Salma', 'Youssef'):
+            lead = self._lead(prenom_owner)
+            resp = self._appel(lead)
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertEqual(resp.data['modele_source'], 'Relance après devis')
+            self.assertIn(f'ici {prenom_owner}', resp.data['texte'])
+            self.assertTrue(
+                resp.data['lien_wa_me'].startswith('https://wa.me/'))
+            self.assertEqual(resp.data['langue_servie'], 'fr')
+            self.assertLessEqual(len(resp.data['texte']), 500)
+
+    def test_sans_modele_brouillon_libre_et_arabe_replie_en_francais(self):
+        lead = self._lead('Salma')
+        resp = self._appel(lead, langue='ar', objectif='reveil_froid')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['modele_source'])
+        self.assertEqual(resp.data['langue_servie'], 'fr')
+        self.assertIn('Salma', resp.data['texte'])
+
+    def test_objectif_inconnu_est_refuse(self):
+        resp = self._appel(self._lead('Salma'), objectif='vendre')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_brouillon_ne_rend_jamais_un_envoi(self):
+        from unittest import mock
+        lead = self._lead('Salma')
+        avant = LeadActivity.objects.count()
+        with mock.patch('socket.socket.connect',
+                        side_effect=AssertionError('appel réseau')):
+            resp = self._appel(lead, canal='sms')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['lien_wa_me'])
+        self.assertEqual(LeadActivity.objects.count(), avant)
