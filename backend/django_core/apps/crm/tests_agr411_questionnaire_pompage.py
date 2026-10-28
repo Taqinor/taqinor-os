@@ -184,6 +184,32 @@ class SectionPompageTests(TestCase):
         self.assertEqual(lead.pompe_hmt_source, 'declaree')
         self.assertEqual(lead.pompe_actuelle_tension_v, 380)
 
+    def _envoyer_pompage(self, lead, *envois):
+        lien = QuestionnaireLien.objects.create(
+            company=self.company, lead=lead,
+            questions={s: s == 'pompage' for s in quest.sections_du_lead(lead)})
+        for reponses in envois:
+            res = self.client.post(PUBLIC.format(lien.token), data=json.dumps({
+                'section': 'pompage', 'reponses': reponses}), content_type='application/json')
+            self.assertEqual(res.status_code, 200, res.content)
+        lead.refresh_from_db()
+
+    def test_depense_electricite_ecrite_seulement_pompe_electrique(self):
+        # CQST8 — facultative : écrite pour une pompe « électrique » (≤ 0
+        # ignorée), ignorée pour toute autre alimentation, hors `manquantes`.
+        lead = self._agricole(pompe_alim_actuelle='electrique', pompe_hmt_m=Decimal('30'))
+        manquantes_avant = quest.manquantes(lead)['pompage']
+        self._envoyer_pompage(lead, {'depense_electricite_pompe_mad_mois': 0})
+        self.assertIsNone(lead.depense_electricite_pompe_mad_mois)
+        lead = self._agricole(pompe_alim_actuelle='electrique', pompe_hmt_m=Decimal('30'))
+        self._envoyer_pompage(lead, {'depense_electricite_pompe_mad_mois': 850})
+        self.assertEqual(lead.depense_electricite_pompe_mad_mois, Decimal('850'))
+        self.assertEqual(quest.manquantes(lead)['pompage'], manquantes_avant)
+        autre = self._agricole(pompe_alim_actuelle='butane')
+        self._envoyer_pompage(autre, {'depense_electricite_pompe_mad_mois': 850, 'pompe_hmt_m': 30})
+        self.assertIsNone(autre.depense_electricite_pompe_mad_mois)
+        self.assertEqual(autre.pompe_hmt_m, Decimal('30'))
+
     def test_photo_de_la_plaque_seulement_pompe_conservee(self):
         # CQST7 — pompe neuve (ou mode inconnu) : la plaque n'est pas demandée.
         self.assertFalse(quest.manquantes(self._agricole())['photo_pompe'])
