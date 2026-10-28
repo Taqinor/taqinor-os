@@ -25,6 +25,8 @@ import hashlib
 import hmac
 import json
 import os
+import re
+import unicodedata
 from typing import Any, Callable, Dict, Optional
 
 from django.conf import settings
@@ -176,3 +178,68 @@ def annuler_action(log: AgentActionLog, *, user=None) -> AgentActionLog:
     log.undo_detail = detail
     log.save(update_fields=['undone_at', 'undo_detail'])
     return log
+
+
+# ── AIC11 — anonymisation de l'export des événements (contrat AIC2) ──────────
+# Règles écrites UNE fois dans ``contract_samples/assistant_export.json`` (clé
+# ``anonymisation``) ; ce nettoyeur PUR les applique dans l'ordre déclaré :
+# téléphones, puis e-mails, puis noms, puis suites de ≥ 6 chiffres.
+_TELEPHONE = re.compile(r'(?<![\w+])\+?\d(?:[ .\-]?\d){8,}(?!\w)')
+_EMAIL = re.compile(r'[\w.+\-]+@[\w\-]+(?:\.[\w\-]+)+')
+_SUITE_CHIFFRES = re.compile(r'\d{6,}')
+
+
+def _replier(caractere: str) -> str:
+    """Un caractère -> sa forme sans accent, minuscule (longueur 1 conservée)."""
+    base = ''.join(c for c in unicodedata.normalize('NFD', caractere)
+                   if not unicodedata.combining(c))
+    return (base[:1] or caractere).lower()
+
+
+def anonymiser_texte(texte, noms=()) -> str:
+    """Nettoie ``texte`` : téléphones -> [tel], e-mails -> [email], ``noms``
+    (nom/prénom du lead ou du client, insensible à la casse et aux accents)
+    -> [client], suites de ≥ 6 chiffres -> [num]. Fonction pure."""
+    if not texte:
+        return texte
+    texte = _TELEPHONE.sub('[tel]', str(texte))
+    texte = _EMAIL.sub('[email]', texte)
+    for nom in sorted({n.strip() for n in noms if n and len(n.strip()) >= 2},
+                      key=len, reverse=True):
+        replie = ''.join(_replier(c) for c in texte)
+        cible = ''.join(_replier(c) for c in nom)
+        morceaux, debut = [], 0
+        for m in re.finditer(r'(?<!\w)' + re.escape(cible) + r'(?!\w)', replie):
+            morceaux.append(texte[debut:m.start()] + '[client]')
+            debut = m.end()
+        texte = ''.join(morceaux) + texte[debut:]
+    # « Ahmed Benali » -> un seul [client], pas deux.
+    texte = re.sub(r'\[client\](?:\s+\[client\])+', '[client]', texte)
+    return _SUITE_CHIFFRES.sub('[num]', texte)
+
+
+def hacher_identifiant(valeur, secret: str) -> str:
+    """HMAC-SHA256 hex minuscule de ``str(valeur)`` (clé AGENT_HMAC_SECRET,
+    UTF-8) — même secret et même encodage que ``logs_confirmer.json``."""
+    return hmac.new(secret.encode('utf-8'), str(valeur).encode('utf-8'),
+                    hashlib.sha256).hexdigest()
+
+
+# ── AIC12 — coût estimé de l'assistant (contrat assistant_stats.json) ────────
+# Prix par million de tokens relevés le 27/10/2026 (USD) — constantes NOMMÉES,
+# jamais lues du corps. `cache_read` a son propre prix (0,1 × l'entrée).
+# Un modèle absent (repli Groq gratuit) coûte 0.
+PRIX_MTOK_RELEVE_LE = '2026-10-27'
+PRIX_MTOK_USD = {
+    'claude-sonnet-5-5': {'input': 2.0, 'output': 10.0, 'cache_read': 0.10},
+    'claude-haiku-5-5': {'input': 0.10, 'output': 0.50, 'cache_read': 0.01},
+}
+
+
+def cout_estime_usd(modele: str, tokens: dict) -> float:
+    """Σ tokens × prix ÷ 1 000 000 pour UN modèle (0 si modèle non tarifé)."""
+    prix = PRIX_MTOK_USD.get(modele or '')
+    if not prix or not isinstance(tokens, dict):
+        return 0.0
+    return sum(int(tokens.get(cle) or 0) * prix[cle]
+               for cle in ('input', 'output', 'cache_read')) / 1_000_000

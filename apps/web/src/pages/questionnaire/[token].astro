@@ -1546,6 +1546,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
       const aucune = fieldVal('q-pompe-alim') === 'aucune';
       $('q-pompe-actuelle-wrap')?.classList.toggle('hidden', aucune);
       $('q-plaque-wrap')?.classList.toggle('hidden', aucune || fieldVal('q-mode-pompe') !== 'existante');
+      $('q-electrique-wrap')?.classList.toggle('hidden', fieldVal('q-pompe-alim') !== 'electrique');
     };
     $('q-mode-pompe')?.addEventListener('change', syncPompeActuelle);
 
@@ -1866,6 +1867,7 @@ const estPro = sections.some((s) => ['reseau', 'activite', 'site', 'societe', 'p
             pompe_actuelle_kw: numOrUndef('q-pompe-kw'),
             pompe_actuelle_tension_v: numOrUndef('q-pompe-tension'),
             pompe_actuelle_phases: fieldVal('q-pompe-phases') || undefined,
+            depense_electricite_pompe_mad_mois: numOrUndef('q-depense-electricite-pompe'),
           };
         case 'reseau':
           return {

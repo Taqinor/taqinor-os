@@ -74,13 +74,14 @@ CREER_AUTO = AgentAction(
     key='ventes.devis.creer_auto',
     label='Créer un devis (automatique)',
     description=(
-        "Crée un devis RÉSIDENTIEL automatiquement dimensionné à partir de la "
-        "fiche du lead (facture d'électricité ou taille souhaitée). C'EST LE "
-        "SEUL moyen de créer un devis : il choisit panneaux, onduleur et "
-        "batterie depuis le catalogue. Fournir le 'lead' (ou le 'client', dont "
-        "on remonte au lead). Si une donnée de dimensionnement manque, le serveur "
-        "l'indique (409) pour que tu la demandes — il ne crée jamais de devis "
-        "vide. Pour l'industriel/agricole, le serveur oriente vers le générateur."
+        "Sert à : créer un devis résidentiel dimensionné depuis la fiche lead "
+        "(facture d'électricité ou taille souhaitée) ; seul moyen de créer un "
+        "devis. Ne pas utiliser pour : modifier un devis existant ni chiffrer "
+        "l'industriel ou l'agricole (le serveur oriente vers le générateur). "
+        "Exemple : « fais un devis pour le lead 42 » → lead=42 (ou client, on "
+        "remonte au lead). Résultat : devis brouillon numéroté avec panneaux, "
+        "onduleur (+ batterie si souhaitée) ; 409 avec le champ manquant à "
+        "demander — jamais de devis vide."
     ),
     endpoint='/api/django/ventes/devis/auto/',
     method='POST',
@@ -114,9 +115,12 @@ LIGNE_AJOUTER = AgentAction(
     key='ventes.devis.ligne_ajouter',
     label='Ajouter une ligne au devis',
     description=(
-        "Ajoute une ligne de produit à un devis brouillon. Fournir 'devis' (id), "
-        "'produit' (id du catalogue), 'quantite' et le 'prix_unitaire' (HT, même "
-        "base que le devis) ; 'designation' et 'remise' (%) optionnels."
+        "Sert à : ajouter un produit du catalogue à un devis brouillon. Ne pas "
+        "utiliser pour : changer une ligne existante (ligne_modifier) ni créer "
+        "un devis. Exemple : « ajoute 2 batteries au devis 12 » → devis=12, "
+        "produit=<id>, quantite=2, prix_unitaire en HT (même base que le "
+        "devis) ; designation et remise (%) optionnelles. Résultat : la ligne "
+        "est créée et les totaux du devis sont recalculés."
     ),
     endpoint='/api/django/ventes/devis-lignes/',
     method='POST',
@@ -144,10 +148,12 @@ LIGNE_MODIFIER = AgentAction(
     key='ventes.devis.ligne_modifier',
     label='Modifier une ligne de devis',
     description=(
-        "Modifie une ligne d'un devis brouillon (prix unitaire, quantité, remise "
-        "ou désignation). Fournir l'id de la LIGNE et les champs à changer. "
-        "'prix_unitaire' est en HT (même base que le devis). Pour retrouver la "
-        "ligne visée (ex. « la batterie »), liste d'abord les lignes du devis."
+        "Sert à : changer le prix unitaire HT, la quantité, la remise ou la "
+        "désignation d'une ligne de devis brouillon. Ne pas utiliser pour : "
+        "retirer une ligne (ligne_supprimer) ni la remise globale (remise). "
+        "Exemple : « passe la batterie à 1 unité » → liste d'abord les lignes "
+        "du devis, puis id=<ligne>, quantite=1. Résultat : la ligne est mise à "
+        "jour et les totaux du devis recalculés."
     ),
     endpoint='/api/django/ventes/devis-lignes/{id}/',
     method='PATCH',
@@ -174,8 +180,10 @@ LIGNE_SUPPRIMER = AgentAction(
     key='ventes.devis.ligne_supprimer',
     label='Retirer une ligne de devis',
     description=(
-        "Retire une ligne d'un devis brouillon (par id de ligne). À confirmer "
-        "avant exécution."
+        "Sert à : retirer une ligne d'un devis brouillon, par id de ligne. Ne "
+        "pas utiliser pour : réduire une quantité (ligne_modifier). Exemple : "
+        "« enlève la ligne 87 » → id=87. Résultat : la ligne disparaît du "
+        "devis — proposition puis confirmation obligatoire."
     ),
     endpoint='/api/django/ventes/devis-lignes/{id}/',
     method='DELETE',
@@ -197,8 +205,11 @@ REMISE_DEVIS = AgentAction(
     key='ventes.devis.remise',
     label='Appliquer une remise au devis',
     description=(
-        "Définit la remise globale (en %) d'un devis brouillon. Fournir l'id du "
-        "DEVIS et 'remise_globale'."
+        "Sert à : fixer la remise globale (en %) d'un devis brouillon. Ne pas "
+        "utiliser pour : la remise d'une seule ligne (ligne_modifier). "
+        "Exemple : « remise de 5 % sur le devis 12 » → id=12, "
+        "remise_globale=5. Résultat : la remise est appliquée et les totaux "
+        "HT, TVA et TTC du devis recalculés."
     ),
     endpoint='/api/django/ventes/devis/{id}/',
     method='PATCH',
@@ -225,10 +236,13 @@ GENERER_PDF_DEVIS = AgentAction(
     key='ventes.devis.generer_pdf',
     label='Générer le PDF de proposition (devis)',
     description=(
-        "Génère le PDF client (premium) d'un devis via /proposal — l'unique "
-        "chemin de PDF de devis destiné au client. Les options de format "
-        "(pdf_mode, include_etude…) sont filtrées par une liste blanche "
-        "serveur. Ne change aucun statut."
+        "Sert à : produire le PDF client d'un devis. PDF client = `/proposal` "
+        "uniquement (règle #4) : options pdf_mode (full/onepage), "
+        "include_etude… filtrées par une liste blanche serveur. Ne pas "
+        "utiliser pour : une facture ni un autre format de devis — il n'en "
+        "existe pas. Exemple : « sors le PDF du devis 12 en une page » → "
+        "id=12, pdf_mode=onepage. Résultat : le PDF est rendu ; aucun statut "
+        "ne change."
     ),
     endpoint='/api/django/ventes/devis/{id}/proposal/',
     method='GET',
@@ -271,9 +285,13 @@ ACCEPTER_DEVIS = AgentAction(
     key='ventes.devis.accepter',
     label='Accepter un devis',
     description=(
-        "Marque un devis « accepté » (date + nom de la personne qui accepte) "
-        "et déclenche la suite du flux (création de chantier). À confirmer "
-        "avant exécution."
+        "Sert à : marquer un devis accepté par le client (nom, date, option si "
+        "le devis en a deux) ; change un statut : proposition puis "
+        "confirmation obligatoire. Ne pas utiliser pour : un accord oral non "
+        "confirmé ni un devis brouillon à modifier. Exemple : « M. Alaoui a "
+        "signé le devis 12, avec batterie » → id=12, nom, "
+        "option=avec_batterie. Résultat : devis accepté, lead passé à Signé, "
+        "chantier déclenché."
     ),
     endpoint='/api/django/ventes/devis/{id}/accepter/',
     method='POST',
@@ -318,8 +336,12 @@ CONVERTIR_EN_BON_COMMANDE = AgentAction(
     key='ventes.devis.convertir_bc',
     label='Convertir le devis en bon de commande',
     description=(
-        "Convertit un devis accepté en bon de commande (référence numérotée, "
-        "société forcée côté serveur). À confirmer avant exécution."
+        "Sert à : créer le bon de commande d'un devis déjà accepté ; change "
+        "un statut : proposition puis confirmation obligatoire. Ne pas "
+        "utiliser pour : un devis non accepté (accepter d'abord) ni pour "
+        "facturer. Exemple : « lance la commande du devis 12 » → id=12. "
+        "Résultat : bon de commande numéroté lié au devis, société forcée "
+        "côté serveur."
     ),
     endpoint='/api/django/ventes/devis/{id}/convertir-bc/',
     method='POST',
@@ -348,9 +370,12 @@ GENERER_FACTURE = AgentAction(
     key='ventes.devis.generer_facture',
     label='Générer la facture (tranche suivante)',
     description=(
-        "Génère et émet la prochaine facture de tranche de l'échéancier du "
-        "devis (acompte → matériel → solde). Référence numérotée et société "
-        "forcées côté serveur. À confirmer avant exécution."
+        "Sert à : émettre la prochaine facture de tranche de l'échéancier du "
+        "devis (acompte → matériel → solde) ; change un statut : proposition "
+        "puis confirmation obligatoire. Ne pas utiliser pour : encaisser un "
+        "paiement (enregistrer_paiement) ni un devis non accepté. Exemple : "
+        "« facture l'acompte du devis 12 » → id=12. Résultat : facture "
+        "numérotée émise, société forcée côté serveur."
     ),
     endpoint='/api/django/ventes/devis/{id}/generer-facture/',
     method='POST',
@@ -380,11 +405,13 @@ ENREGISTRER_PAIEMENT = AgentAction(
     key='ventes.facture.enregistrer_paiement',
     label='Enregistrer un paiement',
     description=(
-        "Enregistre un encaissement sur une facture (montant + date + mode). "
-        "Le serveur force la société (celle de la facture) et l'auteur, valide "
-        "le montant (> 0, sans dépasser le reste à payer) et solde la facture "
-        "quand elle est entièrement réglée. Geste comptable non réversible — à "
-        "confirmer avant exécution."
+        "Sert à : enregistrer un encaissement sur une facture (montant, date, "
+        "mode) ; change un statut : proposition puis confirmation obligatoire "
+        "— geste comptable non réversible. Ne pas utiliser pour : une "
+        "promesse de paiement ni un montant supérieur au reste à payer. "
+        "Exemple : « 15 000 DH reçus par virement sur la facture 30 » → id=30, "
+        "montant=15000, date_paiement, mode=virement. Résultat : paiement "
+        "enregistré ; facture soldée quand tout est réglé."
     ),
     endpoint='/api/django/ventes/factures/{id}/enregistrer-paiement/',
     method='POST',

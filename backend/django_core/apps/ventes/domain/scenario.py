@@ -209,11 +209,19 @@ def puissance_kwc_du_devis(devis, *, avertissements=None):
     # aucun impact client ne lui est inventé.)
     lignes_kwc = lignes
     try:
+        from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
         from apps.ventes.utils.options import (
-            AVEC_BATTERIE, deux_options_declarees, filter_lines_for_option,
+            AVEC_BATTERIE, deux_options_declarees, est_mode_ci, filter_lines_for_option,
+            option_effective,
         )
         if deux_options_declarees(devis):
-            lignes_kwc = filter_lines_for_option(lignes, AVEC_BATTERIE)
+            # CE2E1 — un C&I porte son total sur l'offre RÉSEAU (CIQ302) : le
+            # kWc est celui de l'option du total (``option_effective``), plus
+            # celui de l'option « avec ». Nouveaux rendus seulement (niveau 3).
+            option = AVEC_BATTERIE
+            if est_mode_ci(devis) and regles_au_moins(devis, REGLES_CORRIGEES_2710):
+                option = option_effective(devis) or AVEC_BATTERIE
+            lignes_kwc = filter_lines_for_option(lignes, option)
     except Exception:  # noqa: BLE001 — une lecture de kWc ne casse jamais (D-ENF22-BLE001)
         logger.warning("scenario.puissance_kwc_du_devis : erreur ignorée (mode dégradé)", exc_info=True)
         lignes_kwc = lignes

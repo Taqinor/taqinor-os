@@ -62,7 +62,8 @@ beforeEach(() => {
 
 function makeStore(messages = []) {
   return configureStore({
-    reducer: { ia: iaReducer },
+    // AIC12 — AgentChat lit `auth.role` (useIsAdmin) : la tranche auth est requise.
+    reducer: { ia: iaReducer, auth: (state = { role: 'normal' }) => state },
     preloadedState: { ia: { ...iaReducer(undefined, { type: '@@INIT' }), messages } },
   })
 }

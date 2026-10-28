@@ -54,7 +54,8 @@ class OffreEcriteTest(SimpleTestCase):
             '(réf. OFF-EXEMPLE-01)')
         self.assertEqual(set(res), {
             'libelle_client', 'echeance_mad', 'economie_mensuelle_moyenne_mad',
-            'ecart_mensuel_mad', 'duree_mois', 'source'})
+            'ecart_mensuel_mad', 'duree_mois', 'source', 'flux_offre',
+            'retour_offre_ans', 'apport_mad', 'frais_mad'})
 
     def test_offre_sans_source_refusee(self):
         with self.assertRaises(eco.SaisieEconomieCiInvalide) as ctx:
@@ -68,6 +69,32 @@ class OffreEcriteTest(SimpleTestCase):
                                mode_installation='industriel')
         self.assertEqual(ctx.exception.champ,
                          'offre_financement.base_echeance')
+
+    def test_apport_porte_ou_omission_nommee(self):
+        # CEC15 : apport, frais et valeur résiduelle saisis entrent dans le flux.
+        avec = eco.financement_ci(_offre(), _base(),
+                                  mode_installation='industriel')
+        sans = eco.financement_ci(_offre(apport_mad=None), _base(),
+                                  mode_installation='industriel')
+        self.assertEqual(avec['flux_offre'][0]['flux_mad'], -180000.0)
+        self.assertEqual(sans['flux_offre'][0]['flux_mad'], 0.0)
+        self.assertEqual(
+            round(sans['flux_offre'][0]['flux_mad']
+                  - avec['flux_offre'][0]['flux_mad'], 2), 180000.0)
+        plein = eco.financement_ci(
+            _offre(frais_mad=5000.0, valeur_residuelle_mad=20000.0), _base(),
+            mode_installation='industriel')
+        self.assertEqual(plein['flux_offre'][0]['flux_mad'], -185000.0)
+        self.assertEqual(plein['flux_offre'][-1]['flux_mad'],
+                         avec['flux_offre'][-1]['flux_mad'] - 20000.0)
+        self.assertEqual(len(avec['flux_offre']), 8)  # an 0 + 7 ans (84 mois)
+        self.assertGreater(avec['retour_offre_ans'], 0)
+        # CEC15 (affichage) : apport et frais servis tels que saisis.
+        self.assertEqual((avec['apport_mad'], avec['frais_mad']),
+                         (180000.0, 0.0))
+        self.assertEqual((plein['apport_mad'], plein['frais_mad']),
+                         (180000.0, 5000.0))
+        self.assertEqual(sans['apport_mad'], 0.0)
 
     def test_base_deux_prend_la_base_de_l_echeance(self):
         res = eco.financement_ci(_offre(base_echeance='ttc'),

@@ -443,6 +443,37 @@ def _panneau_du_defaut(rows, est_panneau) -> bool:
     return False
 
 
+def _annees_onduleur(lignes, est_onduleur):
+    """CE2E4 — la garantie (années) des onduleurs de ``lignes`` :
+    ``garantie_mois``, sinon la SEULE durée écrite sur la fiche (« Garantie
+    constructeur 10 ans ») ; deux onduleurs en désaccord ou un inconnu ⇒
+    None (omission), jamais la durée d'un autre produit."""
+    import re
+    valeurs = set()
+    for it in lignes:
+        if isinstance(it, dict) and est_onduleur(it):
+            texte = set(re.findall(r"(\d{1,2})\s*ans\b", str(it.get("garantie") or "")))
+            valeurs.add(_annees(it.get("garantie_mois"))
+                        or (int(texte.pop()) if len(texte) == 1 else None))
+    return valeurs.pop() if len(valeurs) == 1 else None
+
+
+def _lignes_onduleur(d, rows, est_onduleur):
+    """CE2E4 — la garantie onduleur de CHAQUE option (une ligne par option
+    quand elles diffèrent, l'option inconnue omise) ; document à une option :
+    la composition de la bande (``_composition_rows``), jamais une autre source."""
+    if d.get("deux_options", True):
+        options = [d.get(c) or [] for c in ("sans_items", "avec_items")]
+        if all(any(isinstance(r, dict) and est_onduleur(r) for r in o) for o in options):
+            ans = [_annees_onduleur(o, est_onduleur) for o in options]
+            if ans[0] is not None and ans[0] == ans[1]:
+                return [(str(ans[0]), "ans", "Onduleur", "garantie fabricant")]
+            return [(str(n), "ans", "Onduleur (option %d)" % (i + 1), "garantie fabricant")
+                    for i, n in enumerate(ans) if n is not None]
+    n = _annees_onduleur(rows, est_onduleur)
+    return [] if n is None else [(str(n), "ans", "Onduleur", "garantie fabricant")]
+
+
 def warranties_for(d):
     """Bande « Nos garanties » dérivée de la composition réelle du devis.
 
@@ -487,7 +518,9 @@ def warranties_for(d):
     _ond_opt = [_first_warranty([r for r in (d.get(c) or []) if isinstance(r, dict)],
                                 _est_onduleur, "garantie_mois")[1]
                 for c in ("sans_items", "avec_items")]
-    if d.get("deux_options", True) and None not in _ond_opt and _ond_opt[0] != _ond_opt[1]:
+    if not (d.get("regles_avant_2710") or d.get("regles_calcul_origine")):
+        out += _lignes_onduleur(d, rows, _est_onduleur)  # CE2E4 (niveau 3)
+    elif d.get("deux_options", True) and None not in _ond_opt and _ond_opt[0] != _ond_opt[1]:
         out += [(str(_ond_opt[0]), "ans", "Onduleur (option 1)", "garantie fabricant"),
                 (str(_ond_opt[1]), "ans", "Onduleur (option 2)", "garantie fabricant")]
     elif ond_present and ond_ans is not None:

@@ -802,5 +802,121 @@ class PreuveConfirmationTests(unittest.TestCase):
                 "")
 
 
+class JournalEvenementAic6Tests(unittest.TestCase):
+    """AIC6 — chaque reponse est journalisee chez Django par le relais (corps
+    conforme a assistant_evenement.json, preuve HMAC du relais)."""
+
+    CONTRAT = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", "django_core",
+        "apps", "agent", "contract_samples", "assistant_evenement.json")
+
+    def _ctx_jwt(self):
+        import jwt
+        jeton = jwt.encode({"user_id": 301, "company_id": 7}, "x",
+                           algorithm="HS256")
+        return _ctx(token=jeton)
+
+    def test_journal_evenement_apres_reponse(self):
+        from app.services.sql_agent_service import SQLAgentService
+        with open(self.CONTRAT, encoding="utf-8") as f:
+            contrat = json.load(f)
+        appels = []
+
+        def fake_call(ctx, path, method="POST", payload=None):
+            appels.append((path, method, payload))
+            return {"ok": True, "status": 201, "data": {"id": 9001}}
+
+        out = {"answer": "Deux devis.", "intention": "donnee",
+               "outils_appeles": ["crm.lead.note"], "repli": False,
+               "modele": "claude-sonnet-5-5", "manuel_present": True,
+               "tokens": {"cache_read": 1800, "input": 420, "output": 96}}
+        with mock.patch.dict(os.environ, {"AGENT_HMAC_SECRET": "s3cret"}), \
+                mock.patch.object(at, "_django_call", fake_call):
+            ev_id = SQLAgentService._journaliser(
+                "Combien de devis ?", out, self._ctx_jwt())
+        self.assertEqual(ev_id, 9001)
+        self.assertEqual(len(appels), 1)
+        path, method, corps = appels[0]
+        self.assertEqual((path, method), ("/api/django/agent/evenements/", "POST"))
+        self.assertEqual(set(corps) - {"preuve"}, set(contrat["exemple_corps"]))
+        sans_preuve = {k: v for k, v in corps.items() if k != "preuve"}
+        self.assertEqual(corps["preuve"], at.calculer_preuve_confirmation(
+            secret="s3cret", action_key="assistant.evenement", company_id=7,
+            user_id=301, inputs=sans_preuve, object_id=None))
+        self.assertEqual(corps["tokens"], contrat["exemple_corps"]["tokens"])
+
+    def test_sans_contexte_aucun_journal(self):
+        with mock.patch.object(at, "_django_call",
+                               lambda *a, **k: self.fail("aucun appel")):
+            self.assertIsNone(at.journaliser_evenement_assistant(None, {}))
+
+    def test_intention_finale_retiree_du_texte(self):
+        from app.services import sql_agent_service as svc
+        texte, intention = svc._extraire_intention(
+            'Cette fonction n\'existe pas.\n<intention>{"intention": "manque"}</intention>')
+        self.assertEqual((texte, intention), ("Cette fonction n'existe pas.", "manque"))
+        self.assertEqual(svc._extraire_intention("Bonjour")[1], "donnee")
+        self.assertEqual(svc._extraire_intention(
+            '<intention>{"intention": "pirate"}</intention>')[1], "donnee")
+
+
+class CapteurErreursAic7Tests(unittest.TestCase):
+    """AIC7 — un echec inattendu d'une action devient un evenement `bug` sans
+    que le modele le decide ; 403/400 restent une reponse normale ;
+    `report_gap` signale sans confirmation."""
+
+    def _lancer(self, status):
+        collector: list = []
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                "ok": False, "status": status, "error": "boom"}):
+            texte = at.run_catalogue_action(
+                _ctx(role="admin"), _CAT_LEAD_LIST, {}, collector)
+        return texte, collector
+
+    def _intention(self, collector):
+        from app.services import sql_agent_service as svc
+        return svc._intention_et_erreur(collector, "donnee")
+
+    def test_5xx_devient_evenement_bug(self):
+        for status in (500, 404, 409, 422, 0):
+            with self.subTest(status=status):
+                texte, collector = self._lancer(status)
+                self.assertIn("a echoue", texte)  # reponse au commercial inchangee
+                self.assertEqual(at.intention_pour_statut(status), "bug")
+                intention, erreur = self._intention(collector)
+                self.assertEqual(intention, "bug")
+                self.assertEqual(erreur, {"status": status,
+                                          "outil": "crm.lead.list",
+                                          "message": "boom"})
+
+    def test_403_et_400_ne_sont_pas_des_bugs(self):
+        self.assertEqual(at.STATUTS_REPONSE_NORMALE, frozenset({400, 403}))
+        for status in sorted(at.STATUTS_REPONSE_NORMALE):
+            with self.subTest(status=status):
+                _texte, collector = self._lancer(status)
+                self.assertEqual(collector, [])
+                self.assertEqual(self._intention(collector), ("donnee", None))
+
+    def test_report_gap_sans_confirmation(self):
+        collector: list = []
+        outil = at.outil_report_gap(collector)
+        with mock.patch.object(at, "_django_call",
+                               lambda *a, **k: self.fail("aucun appel Django")), \
+                mock.patch.object(at, "_stash_proposal",
+                                  lambda *a, **k: self.fail("aucune proposition")):
+            out = outil.invoke({"intention": "hors_champ",
+                                "resume": "Envoyer un e-mail au client",
+                                "ecran": "/crm/leads/12"})
+        self.assertEqual(out, "signale")
+        self.assertEqual(collector, [{
+            "type": "signalement", "intention": "hors_champ",
+            "resume": "Envoyer un e-mail au client", "ecran": "/crm/leads/12"}])
+        self.assertEqual(self._intention(collector), ("hors_champ", None))
+        # report_gap n'est jamais une action du catalogue.
+        with _patch_catalogue([_CAT_LEAD_LIST]):
+            noms = {t.name for t in at.build_action_tools(_ctx(role="admin"))}
+        self.assertNotIn("report_gap", noms)
+
+
 if __name__ == "__main__":
     unittest.main()

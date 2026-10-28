@@ -34,6 +34,25 @@ post_save.connect(
     dispatch_uid='ventes_revoquer_lien_on_lead_perdu')
 
 
+def _vider_catalogue_ci_pret(sender, instance, **kwargs):
+    """CAD177 (nocturne e2e CIQ127) — « catalogue C&I prêt » (ALEA50, cache
+    5 min par société) : un article ou des forfaits C&I enregistrés le rendent
+    périmé TOUT DE SUITE. Sans cela l'administrateur tarifait ses postes et le
+    bouton « Devis automatique » restait désactivé jusqu'à 5 min (« 11 postes
+    sans prix »). Références paresseuses : aucun import des modèles."""
+    from django.core.cache import cache
+
+    from .selectors import CLE_CATALOGUE_CI
+    if getattr(instance, 'company_id', None):
+        cache.delete(CLE_CATALOGUE_CI % instance.company_id)
+
+
+post_save.connect(_vider_catalogue_ci_pret, sender='stock.Produit',
+                  dispatch_uid='ventes_catalogue_ci_pret_produit')
+post_save.connect(_vider_catalogue_ci_pret, sender='parametres.CompanyProfile',
+                  dispatch_uid='ventes_catalogue_ci_pret_profil')
+
+
 # QJR48 (29/08/2026) — LES DEUX RÉCEPTEURS QX24 ONT ÉTÉ SUPPRIMÉS.
 # Ils appelaient ``services.refresh_etude_consistency`` à chaque save/delete de
 # ``LigneDevis`` et à chaque changement de remise globale, pour dériver

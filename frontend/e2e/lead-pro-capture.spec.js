@@ -79,10 +79,15 @@ test.describe('CIQ424 — lead pro, du site au générateur', () => {
     const pro = page.locator('section.lw-section[data-nav-id="pro"]')
     await expect(pro).toBeVisible({ timeout: 30_000 })
     await expect(pro.locator('.lw-section-head')).toHaveAttribute('aria-expanded', 'true')
-    for (const id of ['energie', 'equipements', 'toiture']) {
+    for (const id of ['energie', 'toiture']) {
       await expect(page.locator(`section.lw-section[data-nav-id="${id}"] .lw-section-head`),
         `section résidentielle « ${id} » repliée`).toHaveAttribute('aria-expanded', 'false')
     }
+    // ALEA53 (61015b690, 24/10/2026) — le questionnaire d'appel RÉSIDENTIEL
+    // n'est plus monté pour un lead commercial/industriel (son rythme se pose
+    // dans « Professionnel ») : absent, plus seulement replié.
+    await expect(page.locator('section.lw-section[data-nav-id="equipements"]'),
+      'questionnaire résidentiel non monté pour un pro').toHaveCount(0)
     await expect(pro.locator('#lf-tension-source')).toHaveValue('site_defaut_visible')
     await expect(pro.locator('[data-visite-avant-devis]')).toBeVisible()
     await testInfo.attach('ciq424-fiche-pro', {

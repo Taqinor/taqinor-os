@@ -614,11 +614,10 @@ def _courbe_mesuree_resolue(courbe, annee_reference):
     Fichier illisible ⇒ 400 FR nommant la colonne (message du parseur)."""
     if not isinstance(courbe, dict):
         return None
+    from rest_framework.exceptions import ValidationError
     source = courbe.get('source')
     debut = courbe.get('debut') or courbe.get('date_debut')
     if isinstance(courbe.get('contenu'), str) and courbe['contenu'].strip():
-        from rest_framework.exceptions import ValidationError
-
         from apps.calepinage import services as calepinage_services
         try:
             apercu = calepinage_services.apercu_courbe_csv(
@@ -631,11 +630,13 @@ def _courbe_mesuree_resolue(courbe, annee_reference):
     points = courbe.get('points')
     if not isinstance(points, list) or not points:
         return None
-    valeurs = [_num(p) or 0.0 for p in points]
-    if int(courbe.get('pas_minutes') or 60) == 15:
-        groupes = [valeurs[i:i + 4] for i in range(0, len(valeurs) - len(valeurs) % 4, 4)]
-        moyenne = (courbe.get('unite') or 'kwh') == 'kw'
-        valeurs = [sum(g) / 4.0 if moyenne else sum(g) for g in groupes]
+    from apps.ventes.moteur_ci.charge import valeurs_horaires_depuis_points
+    try:  # CLD6 — tout pas diviseur de 60 min agrégé à l'heure, refus nommé sinon
+        valeurs = valeurs_horaires_depuis_points(
+            [_num(p) or 0.0 for p in points], pas_min=courbe.get('pas_minutes') or 60,
+            unite=courbe.get('unite') or 'kwh')
+    except ValueError as erreur:
+        raise ValidationError({'courbe_mesuree': [str(erreur)]})
     return valeurs, debut, source
 
 
