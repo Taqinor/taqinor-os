@@ -422,7 +422,7 @@ class InterventionSerializer(InterventionGpsChampsMixin, IdInconnu404Mixin, Same
         prep = getattr(obj, 'preparation', None)
         return bool(prep and prep.tout_charge)
 
-    def _shotlist(self, company):
+    def _shotlist(self, cid):
         """AUD324 — shot-list MÉMOÏSÉE pour toute la passe de sérialisation.
 
         `active_shotlist(company)` était ré-exécutée à l'identique pour CHAQUE
@@ -433,17 +433,16 @@ class InterventionSerializer(InterventionGpsChampsMixin, IdInconnu404Mixin, Same
         cache = self.context.get('_shotlist_cache')
         if cache is None:
             cache = self.context['_shotlist_cache'] = {}
-        cid = getattr(company, 'id', None)
-        if cid not in cache:
+        if cid not in cache:  # APRF40 : par company_id, sans charger la FK `company`
             from .field_services import active_shotlist
-            cache[cid] = active_shotlist(company)
+            cache[cid] = active_shotlist(cid)
         return cache[cid]
 
     @extend_schema_field(serializers.IntegerField())
     def get_photos_obligatoires_manquantes(self, obj):
         from .field_services import missing_required_shots
         return len(missing_required_shots(
-            obj, slots=self._shotlist(obj.company)))
+            obj, slots=self._shotlist(obj.company_id)))
 
     @extend_schema_field(serializers.DictField())
     def get_crew_time(self, obj):
