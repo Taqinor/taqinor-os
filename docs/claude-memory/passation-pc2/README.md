@@ -174,3 +174,5 @@ touché par PC2).
 
 **Jeton CI : rendu** (`plan_claims.py release app:jeton-ci`) à 28/10/2026 00:27 UTC — PC2 peut le prendre (`claim app:jeton-ci --owner <hostname>/coord-pc2 --branch main`).
 Les sessions PC1 restantes (RPDF, CORC, RGEN, CQST, CPRW, CPDF) sont arrêtées ; leur dernier état est dans blocs-sessions.md (section « Lanes PC1 ») et dans les PR elles-mêmes.
+
+**00:55 UTC (addendum) :** #1103 RGEN, #1119 CPRW round 2 et #1097 CQST sont MERGÉES (~00:51) → 26 PR mergées sur le run. Reste en vol côté PC1 : #1114 RPDF (seule en file) et le round 3 de CPRW (claude/cprw-r3, PR à venir, jeton pré-accordé). Les sessions RGEN et CQST écrivent leur note finale et s'arrêtent.
