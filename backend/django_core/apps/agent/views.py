@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 from authentication.permissions import IsAdminRole, IsAnyRole
 from apps.records.champs_stricts import RegexStricte
 
-from .models import AgentActionLog
+from .models import AgentActionLog, AssistantEvent
 from .registry import for_user
 from .services import (
     ActionNotUndoableError, annuler_action, log_confirmed_action,
@@ -277,6 +277,210 @@ class AgentActionConfirmerView(APIView):
             resulted_object=resulted_object,
         )
         return Response(_serialize_log(log), status=status.HTTP_201_CREATED)
+
+
+# ── AIC6 — journal de l'assistant des commerciaux (contrat AIC1) ─────────────
+# Action « virtuelle » signee par le relais FastAPI : la preuve HMAC
+# (`preuve_confirmation_valide`, meme secret que logs/confirmer/) couvre le
+# corps de l'evenement pour CET utilisateur et CETTE societe.
+ACTION_PREUVE_EVENEMENT = 'assistant.evenement'
+_CHAMPS_TOKENS = ('cache_read', 'input', 'output')
+
+_EvenementAssistant = inline_serializer('AssistantEvenement', {
+    'id': drf_serializers.IntegerField(),
+    'intention': drf_serializers.ChoiceField(
+        choices=AssistantEvent.Intention.values),
+    'question': drf_serializers.CharField(),
+    'resume_reponse': drf_serializers.CharField(),
+    'ecran': drf_serializers.CharField(),
+    'lead_id': drf_serializers.IntegerField(allow_null=True),
+    'outils_appeles': drf_serializers.ListField(
+        child=drf_serializers.CharField()),
+    'erreur': drf_serializers.DictField(allow_null=True),
+    'note': drf_serializers.IntegerField(),
+    'commentaire': drf_serializers.CharField(allow_null=True),
+    'modele': drf_serializers.CharField(),
+    'repli': drf_serializers.BooleanField(),
+    'manuel_present': drf_serializers.BooleanField(),
+    'tokens': drf_serializers.DictField(child=drf_serializers.IntegerField()),
+    'cree_le': drf_serializers.DateTimeField(),
+})
+
+
+class EvenementAssistantEntreeSerializer(drf_serializers.Serializer):
+    intention = drf_serializers.ChoiceField(
+        choices=AssistantEvent.Intention.values)
+    question = drf_serializers.CharField(max_length=2000)
+    resume_reponse = drf_serializers.CharField(required=False, allow_blank=True)
+    ecran = drf_serializers.CharField(required=False, allow_blank=True)
+    lead_id = drf_serializers.IntegerField(required=False, allow_null=True)
+    outils_appeles = drf_serializers.ListField(
+        child=drf_serializers.CharField(), required=False)
+    erreur = drf_serializers.DictField(required=False, allow_null=True)
+    modele = drf_serializers.CharField(required=False, allow_blank=True)
+    repli = drf_serializers.BooleanField(required=False)
+    manuel_present = drf_serializers.BooleanField(required=False)
+    tokens = drf_serializers.DictField(
+        child=drf_serializers.IntegerField(), required=False)
+    preuve = drf_serializers.CharField()
+
+
+class NoteEvenementSerializer(drf_serializers.Serializer):
+    note = drf_serializers.ChoiceField(choices=[-1, 0, 1])
+    commentaire = drf_serializers.CharField(
+        max_length=200, required=False, allow_null=True, allow_blank=True)
+
+
+def _serialiser_evenement(ev: AssistantEvent) -> dict:
+    return {
+        'id': ev.pk,
+        'intention': ev.intention,
+        'question': ev.question,
+        'resume_reponse': ev.resume_reponse,
+        'ecran': ev.ecran,
+        'lead_id': ev.lead_id,
+        'outils_appeles': ev.outils_appeles,
+        'erreur': ev.erreur,
+        'note': ev.note,
+        'commentaire': ev.commentaire,
+        'modele': ev.modele,
+        'repli': ev.repli,
+        'manuel_present': ev.manuel_present,
+        'tokens': ev.tokens,
+        'cree_le': ev.created_at,
+    }
+
+
+def _types_evenement_valides(data: dict) -> bool:
+    """Types JSON publies, verifies AVANT tout usage (jamais de coercition :
+    `0` n'est pas une chaine, `"1"` n'est pas un booleen)."""
+    textes = ('intention', 'question', 'resume_reponse', 'ecran', 'modele',
+              'preuve')
+    if any(k in data and not isinstance(data[k], str) for k in textes):
+        return False
+    if any(k in data and not isinstance(data[k], bool)
+           for k in ('repli', 'manuel_present')):
+        return False
+    lead = data.get('lead_id')
+    if lead is not None and (isinstance(lead, bool) or not isinstance(lead, int)):
+        return False
+    outils = data.get('outils_appeles', [])
+    if not isinstance(outils, list) or not all(isinstance(o, str) for o in outils):
+        return False
+    if data.get('erreur') is not None and not isinstance(data['erreur'], dict):
+        return False
+    tokens = data.get('tokens', {})
+    return isinstance(tokens, dict) and all(
+        isinstance(v, int) and not isinstance(v, bool) for v in tokens.values())
+
+
+def _evenements_de_la_societe(user):
+    qs = AssistantEvent.objects.all()
+    if user.company_id:
+        return qs.filter(company_id=user.company_id)
+    return qs if user.is_superuser else qs.none()
+
+
+class AssistantEventView(APIView):
+    """AIC6 — ``POST /api/django/agent/evenements/`` : création par le RELAIS
+    FastAPI (preuve HMAC, 403 sinon) ; ``GET`` : liste paginée de la société,
+    admin/Directeur seulement."""
+
+    parser_classes = [JSONParser]
+
+    def get_permissions(self):
+        if self.request.method == 'GET':
+            return [IsAnyRole(), IsAdminRole()]
+        return [IsAnyRole()]
+
+    @extend_schema(responses=inline_serializer('AssistantEvenementsPage', {
+        'count': drf_serializers.IntegerField(),
+        'next': drf_serializers.CharField(allow_null=True),
+        'previous': drf_serializers.CharField(allow_null=True),
+        'results': drf_serializers.ListField(child=_EvenementAssistant)}))
+    def get(self, request):
+        from core.pagination import StandardPagination
+
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(
+            _evenements_de_la_societe(request.user).order_by('-created_at'),
+            request, view=self)
+        return paginator.get_paginated_response(
+            [_serialiser_evenement(ev) for ev in page])
+
+    @extend_schema(request=EvenementAssistantEntreeSerializer,
+                   responses={201: _EvenementAssistant})
+    def post(self, request):
+        data = request.data
+        if not isinstance(data, dict) or not _types_evenement_valides(data):
+            raise ParseError("Corps d'événement invalide (types publiés).")
+        entree = EvenementAssistantEntreeSerializer(data=sans_nul(data))
+        entree.is_valid(raise_exception=True)
+        company = request.user.company
+        if company is None:
+            raise ParseError("Aucune société associée à l'utilisateur.")
+        corps = {k: v for k, v in data.items() if k != 'preuve'}
+        if not preuve_confirmation_valide(
+                data.get('preuve'), action_key=ACTION_PREUVE_EVENEMENT,
+                company_id=company.pk, user_id=request.user.pk,
+                inputs=corps, object_id=None):
+            raise PermissionDenied("Preuve du relais absente ou invalide.")
+        v = entree.validated_data
+        lead_id = v.get('lead_id')
+        if lead_id is not None:
+            from apps.crm.selectors import get_company_lead
+            lead_id = lead_id if get_company_lead(company, lead_id) else None
+        erreur = v.get('erreur')
+        ev = AssistantEvent.objects.create(
+            company=company, user=request.user,
+            intention=v['intention'], question=v['question'],
+            resume_reponse=(v.get('resume_reponse') or '')[:500],
+            ecran=(v.get('ecran') or '')[:255], lead_id=lead_id,
+            outils_appeles=v.get('outils_appeles') or [],
+            erreur=erreur or None,
+            modele=(v.get('modele') or '')[:64],
+            repli=v.get('repli', False),
+            manuel_present=v.get('manuel_present', False),
+            tokens={k: int((v.get('tokens') or {}).get(k, 0))
+                    for k in _CHAMPS_TOKENS},
+        )
+        return Response(_serialiser_evenement(ev),
+                        status=status.HTTP_201_CREATED)
+
+
+class AssistantEventNoteView(APIView):
+    """AIC6 — ``PATCH /api/django/agent/evenements/<id>/note/`` : le commercial
+    note SA réponse (note −1/0/1, commentaire ≤ 200). Seuls ces deux champs
+    sont lus ; l'événement d'un autre utilisateur répond 404."""
+
+    permission_classes = [IsAnyRole]
+    parser_classes = [JSONParser]
+
+    @extend_schema(request=NoteEvenementSerializer, responses=inline_serializer(
+        'AssistantEvenementNote', {
+            'id': drf_serializers.IntegerField(),
+            'note': drf_serializers.IntegerField(),
+            'commentaire': drf_serializers.CharField(allow_null=True)}))
+    def patch(self, request, pk):
+        data = request.data
+        if not isinstance(data, dict) or isinstance(data.get('note'), bool) \
+                or not isinstance(data.get('note'), int) or (
+                    data.get('commentaire') is not None
+                    and not isinstance(data.get('commentaire'), str)):
+            raise ParseError('note est un entier (−1, 0, 1), commentaire un texte.')
+        entree = NoteEvenementSerializer(data={
+            'note': data.get('note'), 'commentaire': data.get('commentaire')})
+        entree.is_valid(raise_exception=True)
+        ev = AssistantEvent.objects.filter(
+            pk=pk, user=request.user, company_id=request.user.company_id,
+        ).first()
+        if ev is None:
+            return Response({'detail': 'Introuvable.'}, status=404)
+        ev.note = entree.validated_data['note']
+        ev.commentaire = sans_nul(entree.validated_data.get('commentaire')) or None
+        ev.save(update_fields=['note', 'commentaire'])
+        return Response({'id': ev.pk, 'note': ev.note,
+                         'commentaire': ev.commentaire})
 
 
 class AutomationDraftView(APIView):

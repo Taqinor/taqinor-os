@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (AgentActionConfirmerView, AgentActionLogView,
                     AgentActionsView, AgentActionUndoView,
+                    AssistantEventNoteView, AssistantEventView,
                     AutomationDraftView)
 
 urlpatterns = [
@@ -17,4 +18,8 @@ urlpatterns = [
          name='agent-action-confirmer'),
     path('logs/<int:pk>/annuler/', AgentActionUndoView.as_view(),
          name='agent-action-undo'),
+    # AIC6 — journal de l'assistant des commerciaux (contrat AIC1).
+    path('evenements/', AssistantEventView.as_view(), name='agent-assistant-evenements'),
+    path('evenements/<int:pk>/note/', AssistantEventNoteView.as_view(),
+         name='agent-assistant-evenement-note'),
 ]

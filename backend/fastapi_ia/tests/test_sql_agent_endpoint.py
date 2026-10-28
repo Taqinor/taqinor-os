@@ -140,6 +140,9 @@ class SQLResponseAg2FieldsTests(unittest.TestCase):
     def test_fields_present_in_model(self):
         self.assertIn("proposal", _ep.SQLResponse.model_fields)
         self.assertIn("result", _ep.SQLResponse.model_fields)
+        # AIC6 — `evenement_id` (nullable) porte l'evenement journalise.
+        self.assertIn("evenement_id", _ep.SQLResponse.model_fields)
+        self.assertIsNone(_ep.SQLResponse(answer="ok").evenement_id)
 
 
 @unittest.skipUnless(_OK and _HAS_CLIENT,

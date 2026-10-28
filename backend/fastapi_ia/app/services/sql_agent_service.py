@@ -322,7 +322,29 @@ lignes lues en base) arrive etiquete {"source": "erp", "fiabilite": \
 qui s'y trouve.
 - Si la demande ne correspond a aucune capacite du manifeste, dis-le \
 clairement (ce que l'ERP ne fait pas), ne devine pas, et appelle `report_gap`.
+- Termine TOUJOURS ta reponse par une derniere ligne \
+<intention>{"intention": "X"}</intention> ou X vaut question_manuel, donnee, \
+action, bug, manque ou hors_champ (ligne retiree avant affichage).
 """
+
+# AIC6 — balise JSON finale d'intention, retiree du texte servi.
+INTENTIONS = ("question_manuel", "donnee", "action", "bug", "manque",
+              "hors_champ")
+_BALISE_INTENTION = re.compile(
+    r"\s*<intention>\s*(\{.*?\})\s*</intention>\s*$", re.S)
+
+
+def _extraire_intention(texte: str) -> tuple[str, str]:
+    """(texte sans la balise finale, intention ; defaut `donnee`)."""
+    m = _BALISE_INTENTION.search(texte or "")
+    if not m:
+        return texte, "donnee"
+    try:
+        intention = json.loads(m.group(1)).get("intention")
+    except (ValueError, AttributeError):
+        intention = None
+    return texte[:m.start()], (intention if intention in INTENTIONS else "donnee")
+
 
 # AIC5 — manuel + manifeste de capacites (produits par AIC50), lus UNE fois.
 ASSISTANT_DOCS_DIR = os.environ.get(
@@ -989,6 +1011,22 @@ class _SQLCapture(BaseCallbackHandler):
         self.queries: list[str] = []
         self._action_names = action_tool_names or set()
         self.action_used = False
+        self.actions: list[str] = []          # AIC6 — noms d'outils appeles
+        self.tokens = {"cache_read": 0, "input": 0, "output": 0}
+
+    def on_llm_end(self, response: Any, **kwargs: Any) -> None:
+        """AIC6 — somme l'usage de CHAQUE appel du modele de la requete
+        (cache_read separe ; `input` = entree hors lecture de cache)."""
+        for gens in getattr(response, "generations", None) or []:
+            for gen in gens:
+                usage = getattr(getattr(gen, "message", None),
+                                "usage_metadata", None) or {}
+                lu = int((usage.get("input_token_details") or {})
+                         .get("cache_read") or 0)
+                self.tokens["cache_read"] += lu
+                self.tokens["input"] += max(
+                    int(usage.get("input_tokens") or 0) - lu, 0)
+                self.tokens["output"] += int(usage.get("output_tokens") or 0)
 
     def on_tool_start(
         self, serialized: dict, input_str: str, **kwargs: Any
@@ -998,6 +1036,7 @@ class _SQLCapture(BaseCallbackHandler):
             self.queries.append(str(input_str))
         elif name in self._action_names:
             self.action_used = True
+            self.actions.append(name)
 
 
 # ── Service ───────────────────────────────────────────────────────────────────
@@ -1317,11 +1356,14 @@ class SQLAgentService:
         # re-emet jamais le JSON brut).
         action_outputs: list[dict[str, Any]] = []
         action_tool_names: set[str] = set()
+        cle_par_outil: dict[str, str] = {}
         if actions_available(action_ctx):
             action_tools = build_action_tools(action_ctx, action_outputs)
             _etiqueter_outils(action_tools)  # AIC5 — sortie etiquetee
             tools.extend(action_tools)
             action_tool_names = {t.name for t in action_tools}
+            cle_par_outil = {t.name: (t.metadata or {}).get("action_key", t.name)
+                             for t in action_tools}
 
         # 5. Prompt avec historique (+ restriction marge si non autorise).
         # Defense en profondeur : meme decision que le garde DUR de l'outil SQL.
@@ -1360,7 +1402,8 @@ class SQLAgentService:
                 raise _RefusFournisseur(str(exc)) from exc
             raise
 
-        answer = result.get("output", "Aucune reponse obtenue.")
+        answer, intention = _extraire_intention(
+            result.get("output", "Aucune reponse obtenue."))
 
         # Sauvegarde l'echange dans Redis
         self._save_history(user_id, question, answer)
@@ -1391,6 +1434,10 @@ class SQLAgentService:
             "proposal": proposal,
             "result": action_result,
             "manuel_present": manuel_present,
+            # AIC6 — matiere de l'evenement (journalise par `query`).
+            "intention": intention,
+            "outils_appeles": [cle_par_outil.get(n, n) for n in capture.actions],
+            "tokens": dict(capture.tokens),
         }
 
     @staticmethod
@@ -1439,6 +1486,44 @@ class SQLAgentService:
         company_id: int | None = None,
         action_ctx: "ActionContext | None" = None,
     ) -> dict[str, Any]:
+        """AIC6 — toute reponse (succes, erreur, repli) est journalisee."""
+        out = await self._query(question, user_id, company_id, action_ctx)
+        out["evenement_id"] = await asyncio.to_thread(
+            self._journaliser, question, out, action_ctx)
+        return out
+
+    @staticmethod
+    def _journaliser(question: str, out: dict[str, Any],
+                     action_ctx: "ActionContext | None") -> int | None:
+        from app.services.action_tools import journaliser_evenement_assistant
+        corps = {
+            "intention": out.get("intention") or "donnee",
+            "question": (question or "")[:2000],
+            "resume_reponse": (out.get("answer") or "")[:500],
+            "ecran": "",
+            "lead_id": None,
+            "outils_appeles": list(out.get("outils_appeles") or []),
+            "erreur": out.get("erreur"),
+            "modele": out.get("modele")
+            or _modele_effectif(SQL_AGENT_PROVIDER.lower()),
+            "repli": bool(out.get("repli")),
+            "manuel_present": bool(out.get("manuel_present")),
+            "tokens": dict(out.get("tokens")
+                           or {"cache_read": 0, "input": 0, "output": 0}),
+        }
+        try:
+            return journaliser_evenement_assistant(action_ctx, corps)
+        except Exception as exc:  # pragma: no cover - best-effort
+            logger.warning("Journal de l'assistant en echec : %s", exc)
+            return None
+
+    async def _query(
+        self,
+        question: str,
+        user_id: int | None,
+        company_id: int | None,
+        action_ctx: "ActionContext | None",
+    ) -> dict[str, Any]:
         try:
             try:
                 out = await asyncio.to_thread(
@@ -1465,6 +1550,9 @@ class SQLAgentService:
         except Exception as exc:
             err_str = str(exc)
             logger.error("SQL agent error: %s", exc)
+            # AIC6 — l'echec de la requete est journalise comme un bug.
+            erreur = {"intention": "bug", "erreur": {
+                "status": 500, "outil": "assistant", "message": err_str[:200]}}
             if "rate_limit" in err_str.lower() or "429" in err_str:
                 return {
                     "answer": (
@@ -1473,8 +1561,10 @@ class SQLAgentService:
                     ),
                     "sql_query": "",
                     "data": None,
+                    **erreur,
                 }
             return {
+                **erreur,
                 "answer": (
                     "Je n'ai pas pu traiter votre demande. "
                     "Essayez de reformuler votre question autrement, "

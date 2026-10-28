@@ -713,6 +713,31 @@ def _log_confirmed_action(
             action_key, log_res.get("error"))
 
 
+# ── AIC6 — journal de l'assistant (contrat assistant_evenement.json) ─────────
+ACTION_PREUVE_EVENEMENT = "assistant.evenement"
+
+
+def journaliser_evenement_assistant(
+    ctx: Optional[ActionContext], corps: dict[str, Any],
+) -> Optional[int]:
+    """Ecrit l'evenement de la requete chez Django (preuve HMAC du relais,
+    meme secret que logs/confirmer/). Renvoie son id, ou None (best-effort :
+    jamais une exception, la reponse du commercial part quand meme)."""
+    if ctx is None or not getattr(ctx, "token", ""):
+        return None
+    preuve = calculer_preuve_confirmation(
+        action_key=ACTION_PREUVE_EVENEMENT, company_id=ctx.company_id,
+        user_id=_caller_user_id(ctx), inputs=corps, object_id=None)
+    res = _django_call(ctx, "/api/django/agent/evenements/", method="POST",
+                       payload={**corps, "preuve": preuve})
+    data = res.get("data") if res.get("ok") else None
+    if not isinstance(data, dict):
+        logger.warning("Journal de l'assistant non ecrit (%s): %s",
+                       res.get("status"), res.get("error"))
+        return None
+    return data.get("id")
+
+
 # ── Fabrique d'outils LangChain ───────────────────────────────────────────────
 
 
@@ -806,6 +831,8 @@ def build_action_tools(
             description=description,
             args_schema=args_model,
             func=_make_func(action),
+            # AIC6 — cle du registre, journalisee dans `outils_appeles`.
+            metadata={"action_key": action["key"]},
         ))
 
     return tools

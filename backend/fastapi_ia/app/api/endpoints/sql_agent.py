@@ -57,6 +57,9 @@ class SQLResponse(BaseModel):
     # AG2 — resultat d'une action INTERNE deja executee ce tour :
     # {action_key, reference?, wa_url?, devis_id?, detail?, ...}. None sinon.
     result: dict | None = None
+    # AIC6 — id de l'evenement journalise (note du commercial, AIC8) ; None
+    # si le journal n'a pas pu etre ecrit (best-effort).
+    evenement_id: int | None = None
 
 
 class HistoryMessage(BaseModel):
@@ -113,6 +116,7 @@ async def query_database(
         # resultat d'action interne produit ce tour ; None quand absent.
         proposal=result.get("proposal"),
         result=result.get("result"),
+        evenement_id=result.get("evenement_id"),
     )
 
 

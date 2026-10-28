@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4864, operations: 7648, components: 3582}
+counts: {paths: 4868, operations: 7654, components: 3589}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -439,6 +439,9 @@ operations:
 - get /api/django/adsengine/wiring-health/ -> django_adsengine_wiring_health_retrieve
 - get /api/django/agent/actions/ -> django_agent_actions_retrieve
 - post /api/django/agent/actions/automation-draft/ -> django_agent_actions_automation_draft_create
+- get /api/django/agent/evenements/ -> django_agent_evenements_retrieve
+- post /api/django/agent/evenements/ -> django_agent_evenements_create
+- patch /api/django/agent/evenements/{id}/note/ -> django_agent_evenements_note_partial_update
 - get /api/django/agent/logs/ -> django_agent_logs_retrieve
 - post /api/django/agent/logs/confirmer/ -> django_agent_logs_confirmer_create
 - post /api/django/agent/logs/{id}/annuler/ -> django_agent_logs_annuler_create
@@ -4303,6 +4306,9 @@ operations:
 - get /api/v1/adsengine/wiring-health/ -> v1_adsengine_wiring_health_retrieve
 - get /api/v1/agent/actions/ -> v1_agent_actions_retrieve
 - post /api/v1/agent/actions/automation-draft/ -> v1_agent_actions_automation_draft_create
+- get /api/v1/agent/evenements/ -> v1_agent_evenements_retrieve
+- post /api/v1/agent/evenements/ -> v1_agent_evenements_create
+- patch /api/v1/agent/evenements/{id}/note/ -> v1_agent_evenements_note_partial_update
 - get /api/v1/agent/logs/ -> v1_agent_logs_retrieve
 - post /api/v1/agent/logs/confirmer/ -> v1_agent_logs_confirmer_create
 - post /api/v1/agent/logs/{id}/annuler/ -> v1_agent_logs_annuler_create
@@ -9502,6 +9508,9 @@ components:
 - AsBuiltPack
 - AsBuiltPackRequest
 - AssetTypeEnum
+- AssistantEvenement
+- AssistantEvenementNote
+- AssistantEvenementsPage
 - AssumptionNode
 - AssumptionNodeRequest
 - AssumptionNodeStatutEnum
@@ -10374,6 +10383,7 @@ components:
 - EtudeHorairePreviewResponse
 - EtudeHoraireProfil
 - EtudePompagePreviewResponse
+- EvenementAssistantEntreeRequest
 - EvenementRoutableEnum
 - EventTypeEnum
 - ExecutionRegleDossier
@@ -10688,6 +10698,7 @@ components:
 - InstallationStatutEnum
 - InstallerModeleReponse
 - IntegrityViewsIntegriteInsightReponse
+- IntentionEnum
 - Intervention
 - InterventionActivity
 - InterventionPreparation
@@ -10967,6 +10978,7 @@ components:
 - NoteDebit
 - NoteDebitAnnulationResponse
 - NoteDecisionRequest
+- NoteEnum
 - NoterRequeteRequest
 - NotesVisiteRequest
 - NoticeVersionEnum
@@ -11626,6 +11638,7 @@ components:
 - PatchedMotifPerteRequest
 - PatchedNetworkPolicyRequest
 - PatchedNomenclatureCodeBarresRequest
+- PatchedNoteEvenementRequest
 - PatchedObjectifCommercialRequest
 - PatchedOrdreAssemblageLigneRequest
 - PatchedOrdreAssemblageRequest
