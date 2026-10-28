@@ -121,6 +121,8 @@ FIGURE_KEYS: dict[str, Cle] = {
     # ── Économie client ─────────────────────────────────────────────────────
     "economie_annuelle": Cle("Économie annuelle", "MAD/an", _ARGENT),
     "payback_ans": Cle("Retour sur investissement", "ans", _ANS),
+    # RWEB24 — « Gain net sur 25 ans » (``residential/options.gain_net_25_ans``).
+    "gain_net_25_ans": Cle("Gain net sur 25 ans", "MAD", _ARGENT),
     "facture_annuelle_avant": Cle("Facture d'électricité annuelle actuelle",
                                   "MAD/an", _ARGENT),
     "facture_annuelle_apres": Cle("Facture annuelle avec le solaire",
@@ -708,6 +710,8 @@ def figures_depuis_proposition(payload: dict) -> dict[str, list[Mesure]]:
         suffixe = "s" if opt == "sans" else "a"
         c.mettre("economie_annuelle", quote.get(f"eco_{suffixe}_ann"), opt)
         c.mettre("payback_ans", quote.get(f"roi_{suffixe}"), opt)
+        c.mettre("gain_net_25_ans", (payload.get("gain_net_25_ans") or {}).get(
+            f"{opt}_batterie"), opt)
         ttc = _num((ot.get(f"{opt}_batterie") or {}).get("ttc")
                    if isinstance(ot.get(f"{opt}_batterie"), dict)
                    else (quote.get(f"totaux_{opt}") or {}).get("ttc"))

@@ -95,6 +95,24 @@ describe('garanties onduleur / batterie — une durée, celle du Maroc (décisio
     }
     expect(offenders).toEqual([]);
   });
+
+  it('FIX-WEB B — plus aucune fourchette « 10 à 30 ans » (Deye = 5 ans) : FR, EN, AR, corps et méta', () => {
+    const offenders: string[] = [];
+    // « 10 à 30 », « 10 to 30 », « 10 إلى 30 » — chiffres nus ou dans un <span dir="ltr">.
+    const re = /(?:\b|>)10(?:<\/span>)? ?(?:à|to|إلى) ?(?:<span[^>]*>)?30\b/;
+    for (const abs of walkSrc(srcDir).filter((a) => /[\\/]pages[\\/]/.test(a))) {
+      readFileSync(abs, 'utf-8')
+        .split('\n')
+        .forEach((ligne, i) => {
+          if (re.test(ligne) && /ans|years|سنة|سنوات|garanti|warrant|ضمان|مضمون/.test(ligne)) offenders.push(`${abs}:${i + 1}`);
+        });
+    }
+    expect(offenders).toEqual([]);
+    for (const page of ['pourquoi-taqinor.astro', 'en/pourquoi-taqinor.astro', 'ar/pourquoi-taqinor.astro']) {
+      const txt = readFileSync(join(srcDir, 'pages', page), 'utf-8');
+      expect(txt, page).toMatch(/5 (?:à|to) 30|<span dir="ltr">5<\/span> إلى|من 5 إلى 30/);
+    }
+  });
 });
 
 describe('RWEB2 — garanties /proposition par marque posée', () => {
@@ -107,6 +125,20 @@ describe('RWEB2 — garanties /proposition par marque posée', () => {
     expect(garantieBatterieAns([{ designation: 'Dyness Powerbox Pro 10.24' }])).toBe(10);
     expect(garantieBatterieAns([{ designation: 'Dyness Powerbox Pro 10.24' }, { designation: 'Dyness DL5.0C' }])).toBe(7);
     expect(garantieBatterieAns([{ designation: 'Panneau 710 Wc' }])).toBeNull();
+  });
+
+  it('FIX-WEB A — garantie_mois servi d’abord, comme le PDF (theme.py) : « Batterie Dyness 10 kWh » à 120 mois = 10 ans', async () => {
+    const { garantieBatterieAns } = await import('../src/lib/proposition/garanties');
+    // Désignation RÉELLE du catalogue (seed_catalogue.py, SKU BAT-DEY-10) : sans « powerbox », la table disait 7.
+    expect(garantieBatterieAns([{ designation: 'Batterie Dyness 10 kWh', garantie_mois: 120 }])).toBe(10);
+    expect(garantieBatterieAns([{ designation: 'Batterie Dyness PowerBrick SC 16 kWh', garantie_mois: 120 }])).toBe(10);
+    // Première ligne batterie qui la porte ; mois ÷ 12 arrondi vers le bas ; < 12 mois ou null ⇒ repli table.
+    expect(garantieBatterieAns([{ designation: 'Batterie A', garantie_mois: null }, { designation: 'Batterie Dyness DL5.0C', garantie_mois: 90 }])).toBe(7);
+    expect(garantieBatterieAns([{ designation: 'Batterie Dyness DL5.0C', garantie_mois: 6 }])).toBe(7);
+    expect(garantieBatterieAns([{ designation: 'Kit de fixation', garantie_mois: 240 }])).toBeNull();
+    // Le contrat partagé (proposal_data.json) sert la clé sur la ligne : la page lit 10 ans, comme le PDF.
+    const contrat = JSON.parse(readFileSync(fileURLToPath(new URL('../src/contract_samples/proposal_data.json', import.meta.url)), 'utf-8'));
+    expect(garantieBatterieAns(contrat.exemple_standard.quote.avec_items)).toBe(10);
   });
 
   it('RWEB19 — panneaux 12/30 ans seulement pour le Canadian Solar par défaut (comme theme.py)', async () => {

@@ -3,7 +3,7 @@
  * /proposition, selon la MARQUE réellement posée (décision fondateur
  * 27/10/2026 : une seule durée, celle qui vaut au Maroc).
  *
- * Deye → 5 ans, Huawei → 10 ans, batterie Dyness → 7 ans (`lib/warranty.ts`).
+ * Deye → 5 ans, Huawei → 10 ans, batterie : `garantie_mois` servi (comme le PDF), sinon Dyness → 7 ans (`lib/warranty.ts`).
  * Marque non reconnue → `null` : la durée est OMISE plutôt que supposée.
  */
 import {
@@ -18,6 +18,14 @@ import {
 interface LigneMarque {
   designation?: string | null;
   marque?: string | null;
+  /** Garantie constructeur du produit en MOIS (`Produit.garantie_mois`, servie sur chaque ligne). */
+  garantie_mois?: number | null;
+}
+
+/** Mois → années entières, ou null sous 12 mois / absent (même règle que `residential/theme.py::_annees`). */
+function anneesDeMois(mois: unknown): number | null {
+  const m = Math.trunc(Number(mois));
+  return Number.isFinite(m) && m >= 12 ? Math.floor(m / 12) : null;
 }
 
 function texte(l: LigneMarque): string {
@@ -33,8 +41,17 @@ export function garantieOnduleurAns(lignes: readonly LigneMarque[]): number | nu
   return null;
 }
 
-/** Garantie batterie en années (Dyness DL5.0C 7, Powerbox Pro 10), ou null (pas de batterie Dyness). */
+/**
+ * Garantie batterie en années, ou null. FIX-WEB A : d'abord `garantie_mois` de la PREMIÈRE ligne « batterie »
+ * qui la porte — la lecture du PDF (`theme.py::warranties_for`, `_first_warranty`) : « Batterie Dyness 10 kWh »
+ * à 120 mois = 10 ans des deux côtés. Repli (aucune ligne ne la porte) : Dyness DL5.0C 7, Powerbox Pro 10.
+ */
 export function garantieBatterieAns(lignes: readonly LigneMarque[]): number | null {
+  for (const l of lignes) {
+    if (!(l.designation ?? '').toLowerCase().includes('batterie')) continue;
+    const ans = anneesDeMois(l.garantie_mois);
+    if (ans !== null) return ans;
+  }
   const t = lignes.map(texte).filter((x) => x.includes('dyness'));
   if (!t.length) return null;
   // Deux gammes dans le même devis → la plus courte (jamais promettre plus que la garantie réelle).

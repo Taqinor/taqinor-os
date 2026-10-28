@@ -427,8 +427,7 @@ export function computeROI({
   // pourcentage de repli) — comportement inchangé pour un appelant qui ne les
   // fournit pas (encore).
   lines = [],
-  // AGNR36 — catalogue de l'écran : chaque ligne se classe sur désignation +
-  // nom du produit lié (`texteClassement`). Absent ⇒ désignation seule.
+  // AGNR36 — catalogue de l'écran : chaque ligne se classe sur désignation + nom du produit lié (`texteClassement`). Absent ⇒ désignation seule.
   // RGEN5 — `reglesCalcul` (`Devis.regles_calcul`) ≥ 3 : économie « avec » nette (absent ⇒ brut, inchangé).
   produits = [], reglesCalcul = 0,
 }) {

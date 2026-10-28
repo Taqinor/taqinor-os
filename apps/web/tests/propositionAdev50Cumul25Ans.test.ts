@@ -47,6 +47,41 @@ describe('ADEV50 — cumul 25 ans servi, option par option', () => {
   it('aucun second calcul de cumul côté web ; le nombre porte data-figure', () => {
     expect(LIB).not.toMatch(/rate\s*\*\s*years/);
     expect(LIB).not.toMatch(/const\s+BILL_INFLATION_RATE/);
-    expect(PAGE).toContain('data-figure="economies_cumul_25_ans"');
+    expect(PAGE).toContain("data-figure={headline.gainNet !== null ? 'gain_net_25_ans' : 'economies_cumul_25_ans'}");
+  });
+});
+
+describe('RWEB24 (FIX-WEB C) — gain NET 25 ans servi : la carte affiche le chiffre du PDF, sous son libellé', () => {
+  it('gainNet = l’entrée UNIQUE servie (option de la carte du PDF), quelle que soit l’option phare de la page', () => {
+    expect(EXEMPLE.gain_net_25_ans).toEqual({ avec_batterie: 233000 });
+    for (const opt of ['sans_batterie', 'avec_batterie'] as const) {
+      expect(savingsHeadline(EXEMPLE, opt).gainNet).toBe(233000);
+      expect(savingsHeadline(EXEMPLE, opt).gainNetOption).toBe('avec_batterie');
+    }
+    // « ≈ 0 MAD » au PDF (plancher, pas « Non rentabilisé ») : la page l’affiche aussi, jamais le brut à la place.
+    const zero = { ...EXEMPLE, gain_net_25_ans: { sans_batterie: 0 } } as ProposalResponse;
+    expect(savingsHeadline(zero, 'avec_batterie')).toMatchObject({ gainNet: 0, gainNetOption: 'sans_batterie' });
+    // Le brut reste servi (devis au niveau ≤ 2) : jamais confondu avec le net.
+    expect(savingsHeadline(EXEMPLE, 'sans_batterie').cumulative).toBe(342314);
+  });
+
+  it('clé absente (devis envoyé au niveau ≤ 2, option jamais rentabilisée) → aucun net, la carte garde le cumul brut', () => {
+    const sans = { ...EXEMPLE } as ProposalResponse;
+    delete (sans as { gain_net_25_ans?: unknown }).gain_net_25_ans;
+    expect(savingsHeadline(sans, 'sans_batterie').gainNet).toBeNull();
+    expect(savingsHeadline(sans, 'sans_batterie').gainNetOption).toBeNull();
+    expect(savingsHeadline(sans, 'sans_batterie').cumulative).toBe(342314);
+  });
+
+  it('la page : libellé du PDF « Gain net sur 25 ans » (FR/EN/AR), le net d’abord, plus aucune promesse « même calcul » sur le brut', () => {
+    expect(PAGE).toContain('`Gain net sur ${headline.years} ans${gainNetSuffixe.fr}`');
+    expect(PAGE).toContain('`Net gain over ${headline.years} years${gainNetSuffixe.en}`');
+    expect(PAGE).toContain('`صافي الربح على ${headline.years} سنة${gainNetSuffixe.ar}`');
+    expect(PAGE).toContain('{headline.gainNet !== null || headline.cumulative ? (');
+    expect(PAGE).toContain("{...(headline.gainNet !== null ? { 'data-detail-gain-net-card': '' } : { 'data-detail-cumul-card': '' })}");
+    // L'option du chiffre est celle du PDF (servie), pas l'option phare de la page.
+    expect(PAGE).toContain("data-figure-option={(headline.gainNetOption ?? reco) === 'avec_batterie' ? 'avec' : 'sans'}");
+    expect(PAGE).not.toContain('Même calcul que votre devis PDF');
+    expect(PAGE).not.toContain('Same calculation as your PDF quote');
   });
 });

@@ -182,7 +182,8 @@ CAS = {
         lignes=FULL_LINES, etude_params={**DEUX_OPTIONS, **ANCRAGE},
         formats=('full', 'onepage'),
         requis=('total_ttc@sans', 'total_ttc@avec', 'puissance_kwc',
-                'production_annuelle_kwh', 'total_affiche')),
+                'production_annuelle_kwh', 'total_affiche',
+                'gain_net_25_ans@*')),  # RWEB24 — « Gain net sur 25 ans »
     'residentiel_deux_options_etude': dict(
         lignes=FULL_LINES, etude_params={**DEUX_OPTIONS, **ANCRAGE, **ETUDE},
         formats=('full', 'onepage', 'etude'),
@@ -525,6 +526,36 @@ class FiguresPariteSurfacesTests(_DevisReelMixin, TestCase):
                 cles = [k.split('@')[0] for k in surfaces['proposition']]
                 self.assertNotIn('economie_annuelle', cles)
                 self.assertNotIn('payback_ans', cles)
+
+
+class FiguresGarantieBatterieTests(_DevisReelMixin, TestCase):
+    """FIX-WEB A — la garantie batterie de /proposition se lit sur
+    ``garantie_mois`` des lignes SERVIES : la même clé, la même durée que la
+    bande « Nos garanties » du PDF (``residential/theme.warranties_for``).
+    Avant : la page déduisait 7 ans de la désignation « Batterie Dyness
+    10 kWh » (pas de « powerbox ») pendant que le PDF imprimait 10 ans."""
+
+    def test_garantie_mois_servie_egale_celle_du_pdf(self):
+        from apps.stock.models import Produit
+        from apps.ventes.models import ShareLink
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential.theme import warranties_for
+        devis = self._devis('garantie_batterie', CAS['residentiel_deux_options'])
+        Produit.objects.filter(company=self.company,
+                               nom='Batterie Dyness 10 kWh').update(garantie_mois=120)
+        pdf = {libelle: n for n, _u, libelle, _s in warranties_for(
+            build_quote_data(devis, {'pdf_mode': 'full'}))}
+        self.assertEqual(pdf.get('Batterie'), '10')
+        link = ShareLink.objects.create(company=self.company, devis=devis)
+        resp = APIClient().get(f'/api/django/public/proposal/{link.token}/data/')
+        self.assertEqual(resp.status_code, 200, resp.content[:300])
+        quote = resp.json()['quote']
+        lignes = [it for cle in ('sans_items', 'avec_items')
+                  for it in quote.get(cle) or []
+                  if 'batterie' in (it.get('designation') or '').lower()]
+        self.assertTrue(lignes, quote.get('avec_items'))
+        self.assertEqual({it.get('garantie_mois') for it in lignes}, {120})
+        self.assertEqual(str(lignes[0]['garantie_mois'] // 12), pdf['Batterie'])
 
 
 class FiguresChaineInterneTests(_DevisReelMixin, TestCase):

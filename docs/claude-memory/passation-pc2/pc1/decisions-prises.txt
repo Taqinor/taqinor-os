@@ -1,0 +1,14 @@
+D(founder 27/10 15:10): toit plat = 30° par défaut, inclinaison modifiable dans le générateur (annule D-CMP-4=a)
+D-AGM-1/2/3 (#1086) + D-AGM-2 étendu (#1101) : plafond 1,5× plaque aussi pour pompe sans courbe ; arrondi à l'entier de panneaux (AGM16).
+CATALOGUE (données fondateur, jamais inventées) : aucun article structure_sol ; taux INST-PMP absent ; pas de pompe à courbe monophasée ; pompes OSP sans prix → 0/10 devis agricoles auto chiffrables aujourd'hui.
+D(founder 27/10 via RPDF): une garantie montrée au client = UNE durée, celle qui vaut au Maroc, sans « à confirmer » / « selon site » / « variante régionale » : onduleur Deye 5 ans, batterie Dyness 10 ans (PR #1105 ; RWEB applique au site).
+D-CMP-11 (CMP, manuel Deye): mise en parallèle d'hybrides uniquement entre appareils du MÊME modèle (usine : 15 kW + 12 kW refusé) — à revoir.
+      D(#1104): ## Décision prise pour le fondateur (à revoir)
+D-AGM-1 (bande 2 % CV→kW IEC), D-AGM-2 (1,5 × plaque = ratio_champ_pompe_bande_alerte.max, table AGR110), D-AGM-3 — prises pour le fondateur (#1086/#1101), à revoir.
+PROPOSITION CI (audit Fable 17:50) : merge queue GitHub « Build concurrency = 1 » (réglage admin) + ci.yml : sauter les jobs lourds du run pull_request pour les branches claude/* mises en file (le run merge_group reste la seule garde) → 1 CI par PR au lieu de 2.
+D(coordinatrice 18:40, à revoir) : RHOR recapture elle-même les 32 goldens résidentiels « avec batterie » que RHOR6 fait bouger (économie « avec » nette au niveau 3) au lieu d'attendre RPDF (recapteur désigné) — jetons sériels, pas de ping-pong ; RPDF prévenue.
+D(founder via #1106 + RPDF 20:00) : garanties client = Deye onduleur 5 ans ; Dyness DL5.0C 7 ans (datasheet V2, extensible 10) ; Dyness Powerbox 10 ans — sans « selon site » ; RWEB applique 7 ans sur tout le site.
+D-CMP (merged #1094, à revoir) : CMP6 option batterie branchée via flux_option_avec ; CMP11 parallèle hybrides = même modèle seulement ; toit plat 30° par défaut modifiable (décision fondateur appliquée).
+D-AGV (à revoir) : garde D-AGR-4 — après un relevé de point d'eau VALIDÉ, le devis auto agricole ne redemande plus la visite.
+      D(#1105): **Décision prise pour le fondateur (à revoir) :**
+D(coordinatrice 22:20, à revoir) : RHOR archivée → quote_engine/pricing.py passe à RPDF pour la fin du run ; provision de remplacement onduleur = prix payé après remise (niveau 3) ; CCAT corrige la description Deye « SUN-…SG » semée avec points de suspension.
