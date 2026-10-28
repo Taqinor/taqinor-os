@@ -3214,7 +3214,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           #direction (synthèse et rentabilité), #exploitation (schéma, services, suivi), #achats
           (conditions, échéancier, acceptation). Aucune statistique sur les acheteurs.
           ════════════════════════════════════════════════════════════════════ */}
-      {installMode === 'industriel' && (
+      {installMode === 'industriel' && ciRent && (
         <SectionRentabiliteIndustrielle {ciRent} {ciRentBaseTexte} />
       )}
 

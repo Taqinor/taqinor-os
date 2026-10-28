@@ -53,15 +53,14 @@ MESSAGE_A_CONFIRMER = 'production à confirmer au calepinage'
 #: aucune ventilation). Surimposition = « entre les deux » (manuel PVGIS) : le
 #: cas le MOINS favorable est retenu.
 MONTAGE_PVGIS_DE_LA_POSE = {'toiture_inclinee': 'building', 'bac_acier': 'building'}
-#: CMP5 (D-CMP-4, décision prise pour le fondateur, à revoir) — un toit plat
-#: (lesté ou fixé) sans pente déclarée se pose à 10° plein sud : inclinaison
-#: des systèmes lestés du marché (K2 Dome 6.10, Renusol FS Pro 10-S, Van der
-#: Valk ValkPro+ P10). PVGIS 5.3 Casablanca : 1 621 kWh/kWc à 10° contre 1 719
-#: à 30° (−5,7 %) — 30° surestimait la production d'une terrasse.
+#: CMP5 — décision fondateur du 27/10/2026 (Reda, D-CMP-4=c) : un toit plat
+#: (lesté ou fixé) sans inclinaison déclarée garde 30° plein sud ;
+#: l'inclinaison réelle des panneaux se saisit dans le générateur (étude C&I,
+#: ``toit.pente_deg``) et passe alors devant ce défaut.
 POSES_TOIT_PLAT = frozenset({'toit_plat_leste', 'toit_plat_fixe'})
-ANGLE_TOIT_PLAT_DEG = 10.0
-SOURCE_ANGLE_TOIT_PLAT = ('toit plat sans pente déclarée : 10° (systèmes lestés K2 Dome 6.10, '
-                          'Renusol FS Pro 10-S, ValkPro+ P10)')
+ANGLE_TOIT_PLAT_DEG = float(PVGIS_ANGLE_DEG)
+SOURCE_ANGLE_TOIT_PLAT = ('toit plat sans inclinaison déclarée : 30° (décision fondateur du '
+                          '27/10/2026), modifiable dans le générateur')
 HEURES_AN = 8760
 METHODE_8760 = 'horaire_8760'
 METHODE_JOURNEES_MOYENNES = 'journees_moyennes'

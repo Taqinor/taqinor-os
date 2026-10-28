@@ -59,6 +59,17 @@ def _mad(valeur):
     return round(valeur)
 
 
+def _ans_rembourse(data, cle):
+    """RHOR5 (C-RHOR-005) — retour de l'option ``cle``, ``None`` quand le
+    moteur la dit « jamais remboursée » (``<cle>_jamais``) : la sentinelle
+    25,0 ne part jamais comme « remboursé en 25 ans » (le PDF imprime « non
+    rentabilisé » depuis ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS)."""
+    data = data or {}
+    if data.get('%s_jamais' % cle):
+        return None
+    return _ans(data.get(cle))
+
+
 def _ans(valeur):
     """Durée en années (1 décimale), ou ``None``. Zéro/négatif ⇒ ``None`` : le
     moteur rend ``0.0`` quand il n'a PAS pu calculer un retour (économie nulle),
@@ -229,11 +240,11 @@ def _construire(data, economies_mensuelles, etude_params):
         'modele': economies_mensuelles.get('modele'),
         'estimation': bool(economies_mensuelles.get('estimation')),
         'sans': _bloc_variante(serie_sans, saison_du_mois,
-                               _ans((data or {}).get('roi_s'))),
+                               _ans_rembourse(data, 'roi_s')),
     }
     if serie_avec is not None:
         bloc['avec'] = _bloc_variante(serie_avec, saison_du_mois,
-                                      _ans((data or {}).get('roi_a')))
+                                      _ans_rembourse(data, 'roi_a'))
 
     profils = _profils_par_periode(
         (etude_params or {}).get('profils_comparatifs'), saison_du_mois,

@@ -93,6 +93,17 @@ class TestJournalExport(TestCase):
         ws = wb['Journal des ventes']
         return [list(r) for r in ws.iter_rows(values_only=True)]
 
+    def test_caracteres_de_controle_retires_jamais_500(self):
+        # api-fuzz-full 27/10 : un nom de client saisi avec des caractères de
+        # contrôle faisait lever IllegalCharacterError (openpyxl) → 500.
+        Client.objects.filter(company=self.company).update(nom='C\x0b\x1fl\x07ient')
+        resp = self.api.get('/api/django/ventes/journal-ventes/?month=%s'
+                            % date.today().strftime('%Y-%m'))
+        self.assertEqual(resp.status_code, 200)
+        import re
+        cellules = [c for r in self._load_journal_rows() for c in r if isinstance(c, str)]
+        self.assertFalse([c for c in cellules if re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', c)])
+
     def test_type_column_present(self):
         rows = self._load_journal_rows()
         self.assertEqual(rows[0][2], 'Type')

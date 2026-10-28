@@ -12,7 +12,7 @@
  * Le serveur revalide tout ; un ICE différent de celui que le client porte déjà
  * répond 409 `ice_divergent` (jamais accepté en silence).
  */
-import type { SignEntreprise, SignFormState, SignValidation } from './proposition';
+import type { SignChamp, SignEntreprise, SignFormState, SignValidation } from './proposition';
 
 /** Forme d'e-mail minimale (le serveur applique la règle Django complète). */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -26,7 +26,7 @@ export function entrepriseNettoyee(e: SignEntreprise | null | undefined, nom: st
   const entreprise: SignEntreprise = {
     raison_sociale: (e.raison_sociale ?? '').trim(),
     signataire_qualite: (e.signataire_qualite ?? '').trim(),
-    ice: (e.ice ?? '').trim(),
+    ice: normaliserIce(e.ice),
   };
   if (!entreprise.raison_sociale && !entreprise.signataire_qualite && !entreprise.ice) return null;
   if (e.signataire_email !== undefined || e.pouvoir_engager !== undefined) {
@@ -38,29 +38,87 @@ export function entrepriseNettoyee(e: SignEntreprise | null | undefined, nom: st
 }
 
 /**
- * Validation côté client du bloc `entreprise` d'un devis C&I (le serveur revalide) :
- * `null` quand tout est rempli, sinon l'erreur qui NOMME le champ fautif.
+ * CPRW7 — une validation avec ses messages dans les trois langues. `error` (FR) reste le champ lu
+ * par `SignValidation` ; `errorEn` / `errorAr` s'y AJOUTENT (la page les adoptera : tâche RWEB).
  */
-export function validerEntreprise(form: SignFormState): SignValidation | null {
+export interface SignValidationB2b extends SignValidation {
+  errorEn: string;
+  errorAr: string;
+}
+
+/** ICE : séparateurs courants (espaces, points, tirets) retirés — la saisie reste libre, la valeur envoyée est nette. */
+export function normaliserIce(valeur: string | null | undefined): string {
+  const chiffres = (valeur ?? '')
+    .replace(/[٠-٩]/g, (c) => String(c.charCodeAt(0) - 0x0660))
+    .replace(/[۰-۹]/g, (c) => String(c.charCodeAt(0) - 0x06f0));
+  return chiffres.trim().replace(/^\s*ICE\s*[:°n.\-]*\s*/i, '').replace(/[\s.\-_/\u00a0\u202f‐-―]/g, '');
+}
+
+const ICE_RE = /^\d{15}$/;
+
+function erreurChamp(
+  champ: SignChamp,
+  error: string,
+  errorEn: string,
+  errorAr: string,
+): SignValidationB2b {
+  return { valid: false, error, errorEn, errorAr, champ };
+}
+
+/**
+ * Validation côté client du bloc `entreprise` d'un devis C&I (le serveur revalide) :
+ * `null` quand tout est rempli, sinon l'erreur qui NOMME le champ fautif (FR / EN / AR).
+ */
+export function validerEntreprise(form: SignFormState): SignValidationB2b | null {
   const e = form.entreprise ?? { raison_sociale: '', signataire_qualite: '', ice: '' };
   if (!(e.raison_sociale ?? '').trim()) {
-    return { valid: false, error: 'Veuillez saisir la raison sociale de l’entreprise.', champ: 'entreprise.raison_sociale' };
+    return erreurChamp(
+      'entreprise.raison_sociale',
+      'Veuillez saisir la raison sociale de l’entreprise.',
+      'Please enter the company name.',
+      'يرجى إدخال اسم الشركة (الاسم التجاري).',
+    );
   }
   if (!(e.signataire_qualite ?? '').trim()) {
-    return { valid: false, error: 'Veuillez indiquer votre qualité (gérant, DAF, DG…).', champ: 'entreprise.signataire_qualite' };
+    return erreurChamp(
+      'entreprise.signataire_qualite',
+      'Veuillez indiquer votre qualité (gérant, DAF, DG…).',
+      'Please state your position (manager, finance director, CEO…).',
+      'يرجى ذكر صفتكم (مسير، مدير مالي، مدير عام…).',
+    );
   }
-  if (!(e.ice ?? '').trim()) {
-    return { valid: false, error: 'Veuillez saisir l’ICE de l’entreprise.', champ: 'entreprise.ice' };
+  const ice = normaliserIce(e.ice);
+  if (!ice) {
+    return erreurChamp(
+      'entreprise.ice',
+      'Veuillez saisir l’ICE de l’entreprise.',
+      'Please enter the company’s ICE number.',
+      'يرجى إدخال رقم ICE الخاص بالشركة.',
+    );
+  }
+  if (!ICE_RE.test(ice)) {
+    return erreurChamp(
+      'entreprise.ice',
+      'L’ICE doit comporter exactement 15 chiffres.',
+      'The ICE number must have exactly 15 digits.',
+      'يجب أن يتكون رقم ICE من 15 رقمًا بالضبط.',
+    );
   }
   if (!EMAIL_RE.test((e.signataire_email ?? '').trim())) {
-    return { valid: false, error: 'Veuillez saisir votre e-mail professionnel.', champ: 'entreprise.signataire_email' };
+    return erreurChamp(
+      'entreprise.signataire_email',
+      'Veuillez saisir votre e-mail professionnel.',
+      'Please enter your business email.',
+      'يرجى إدخال بريدكم الإلكتروني المهني.',
+    );
   }
   if (e.pouvoir_engager !== true) {
-    return {
-      valid: false,
-      error: 'Veuillez attester que vous avez le pouvoir d’engager la société.',
-      champ: 'entreprise.pouvoir_engager',
-    };
+    return erreurChamp(
+      'entreprise.pouvoir_engager',
+      'Veuillez attester que vous avez le pouvoir d’engager la société.',
+      'Please confirm that you have the authority to bind the company.',
+      'يرجى التأكيد على أن لديكم صلاحية إلزام الشركة.',
+    );
   }
   return null;
 }

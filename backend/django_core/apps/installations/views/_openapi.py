@@ -230,6 +230,64 @@ def dec(required=False, null=False, **kw):
         required=required, allow_null=null, allow_blank=False, **kw)
 
 
+#: api-fuzz-full 27/10 (ENF11) — quantité d'une colonne ``DecimalField(12, 2)``
+#: (lignes de consommation) : au plus 10 chiffres entiers et 2 décimales. La
+#: borne est PUBLIÉE et APPLIQUÉE à l'identique (``quantite_bornee``) — une
+#: quantité de 1e15 débordait la colonne (``DataError`` → 500).
+QTE_MAX_TEXTE = '9999999999.99'
+MOTIF_QUANTITE = r'^-?\d{1,10}(\.\d{1,2})?$'
+QUANTITE_BORNEE = {'oneOf': [
+    {'type': 'number', 'minimum': -float(QTE_MAX_TEXTE), 'maximum': float(QTE_MAX_TEXTE)},
+    {'type': 'string', 'pattern': MOTIF_QUANTITE}]}
+
+
+@extend_schema_field(QUANTITE_BORNEE)
+class QuantiteBornee(serializers.CharField):
+    """Champ de DÉCLARATION : quantité bornée (nombre ou chaîne décimale)."""
+
+
+def qte(required=False, null=False, **kw):
+    return QuantiteBornee(
+        required=required, allow_null=null, allow_blank=False, **kw)
+
+
+def quantite_bornee(request, nom, defaut='0'):
+    """``Decimal`` du champ de corps ``nom`` (``defaut`` si absent ou nul),
+    accepté EXACTEMENT comme ``QUANTITE_BORNEE`` le publie ; sinon 400 nommant
+    le champ."""
+    from decimal import Decimal, InvalidOperation
+    valeur = corps_objet(request).get(nom)
+    if valeur is None:
+        return Decimal(defaut)
+    quantite = None
+    if isinstance(valeur, (int, float)) and not isinstance(valeur, bool):
+        try:
+            quantite = Decimal(str(valeur))
+        except InvalidOperation:
+            quantite = None
+    elif isinstance(valeur, str) and re.fullmatch(MOTIF_QUANTITE, valeur):
+        quantite = Decimal(valeur)
+    if (quantite is None or not quantite.is_finite()
+            or abs(quantite) > Decimal(QTE_MAX_TEXTE)):
+        raise ValidationError({nom: f'Quantité décimale attendue (au plus {QTE_MAX_TEXTE}).'})
+    return quantite
+
+
+#: api-fuzz-full 27/10 (ENF11) — ``caracteristiques`` publiées comme
+#: ``field_capture.valider_caracteristiques`` les accepte : objet plat d'au
+#: plus 10 clés, valeurs texte (sans NUL) ou nombre — le DictField libre
+#: annonçait toute valeur (une liste « conforme » était refusée 400).
+CARACTERISTIQUES = {
+    'type': 'object', 'nullable': True, 'maxProperties': 10,
+    'additionalProperties': {'oneOf': [
+        {'type': 'string', 'pattern': MOTIF_SANS_NUL}, {'type': 'number'}]}}
+
+
+@extend_schema_field(CARACTERISTIQUES)
+class Caracteristiques(serializers.DictField):
+    """Champ de DÉCLARATION : caractéristiques de plaque."""
+
+
 def obj(required=False, null=False, **kw):
     return serializers.DictField(required=required, allow_null=null, **kw)
 
