@@ -25,17 +25,22 @@ from apps.roles.models import Role
 from apps.crm.models import Lead, LeadActivity
 from apps.crm import stages
 from apps.crm.agent_actions import (
-    CREER_LEAD, METTRE_A_JOUR_LEAD, NOTER_LEAD, PREPARER_ENVOI_WHATSAPP,
+    BROUILLON_SUIVI, CREER_LEAD, DIGEST_MATIN, LEADS_A_RELANCER,
+    METTRE_A_JOUR_LEAD, NOTER_LEAD, PREPARER_ENVOI_WHATSAPP, RESUME_LEAD,
+    _ACTIONS,
     register_crm_actions,
 )
 from apps.agent.registry import all_actions, for_user
 
 User = get_user_model()
 
+# Actions d'ÉCRITURE (crm_creer / crm_modifier) : un rôle lecture seule n'en voit aucune.
 _ALL_CRM_KEYS = {
     CREER_LEAD.key, METTRE_A_JOUR_LEAD.key,
-    NOTER_LEAD.key, PREPARER_ENVOI_WHATSAPP.key,
+    NOTER_LEAD.key, PREPARER_ENVOI_WHATSAPP.key, BROUILLON_SUIVI.key,
 }
+# Actions de LECTURE (crm_voir) de l'assistant (AIC30+).
+_READ_CRM_KEYS = {LEADS_A_RELANCER.key, RESUME_LEAD.key}
 
 
 def auth(user):
@@ -67,7 +72,7 @@ class CrmAgentActionsCatalogueTest(TestCase):
 
     def test_all_actions_registered_in_catalogue(self):
         keys = {a.key for a in all_actions()}
-        self.assertTrue(_ALL_CRM_KEYS.issubset(keys))
+        self.assertTrue((_ALL_CRM_KEYS | _READ_CRM_KEYS).issubset(keys))
 
     def test_permitted_user_sees_all_actions(self):
         keys = {a.key for a in for_user(self.commercial)}
@@ -76,6 +81,7 @@ class CrmAgentActionsCatalogueTest(TestCase):
     def test_readonly_user_sees_no_write_actions(self):
         keys = {a.key for a in for_user(self.readonly)}
         self.assertFalse(keys & _ALL_CRM_KEYS)
+        self.assertEqual(keys & _READ_CRM_KEYS, _READ_CRM_KEYS)
 
     def test_actions_required_permissions(self):
         self.assertEqual(CREER_LEAD.required_permission, 'crm_creer')
@@ -83,10 +89,14 @@ class CrmAgentActionsCatalogueTest(TestCase):
         self.assertEqual(NOTER_LEAD.required_permission, 'crm_modifier')
         self.assertEqual(
             PREPARER_ENVOI_WHATSAPP.required_permission, 'crm_modifier')
+        self.assertEqual(LEADS_A_RELANCER.required_permission, 'crm_voir')
+        self.assertEqual(RESUME_LEAD.required_permission, 'crm_voir')
+        self.assertEqual(BROUILLON_SUIVI.required_permission, 'crm_modifier')
 
     def test_inputs_never_include_company(self):
         for action in (CREER_LEAD, METTRE_A_JOUR_LEAD, NOTER_LEAD,
-                       PREPARER_ENVOI_WHATSAPP):
+                       PREPARER_ENVOI_WHATSAPP, LEADS_A_RELANCER,
+                       RESUME_LEAD, BROUILLON_SUIVI):
             props = action.inputs.get('properties', {})
             self.assertNotIn('company', props, action.key)
 
@@ -186,3 +196,321 @@ class CrmAgentWhatsappPrepareTest(TestCase):
         self.assertIn('message', resp.data)
         self.assertIn('links', resp.data)
         self.assertTrue(resp.data['wa_url'])
+
+
+class CrmAgentARelancerTest(TestCase):
+    """AIC30 — ``crm.leads.a_relancer`` sert la file du cockpit, pas une copie."""
+
+    def setUp(self):
+        register_crm_actions()
+        self.company = Company.objects.create(nom='AIC30 Co', slug='aic30-co')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_modifier'])
+        self.user = User.objects.create_user(
+            username='aic30_com', password='x', role=self.role,
+            company=self.company)
+        # Commercial terrain : visites seulement, aucun accès CRM.
+        self.terrain_role = Role.objects.create(
+            company=self.company, nom='Terrain', permissions=['visites_voir'])
+        self.terrain = User.objects.create_user(
+            username='aic30_ter', password='x', role=self.terrain_role,
+            company=self.company)
+
+    def _touche(self, nom, jours, canal='appel'):
+        import datetime
+        from core.dates import aujourd_hui_local
+        from apps.crm.models import RelanceEtape
+        lead = Lead.objects.create(
+            company=self.company, nom=nom, owner=self.user)
+        due = aujourd_hui_local() + datetime.timedelta(days=jours)
+        return RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=1,
+            canal=canal, libelle=f'Touche {nom}', due_date=due)
+
+    def test_a_relancer_egale_la_file_du_cockpit(self):
+        from apps.crm.selectors import relance_etapes_dues
+        for jours in (-9, -2, 0, 0):
+            self._touche(f'L{jours}', jours)
+        for portee, scope in (('aujourd_hui', 'today'), ('retard', 'overdue'),
+                              ('semaine', 'week')):
+            resp = auth(self.user).get(
+                LEADS_A_RELANCER.endpoint, {'portee': portee})
+            self.assertEqual(resp.status_code, 200, resp.data)
+            attendu = list(relance_etapes_dues(
+                self.company, self.user, scope=scope))
+            self.assertEqual(resp.data['total'], len(attendu), portee)
+            self.assertEqual(
+                [ligne['lead_id'] for ligne in resp.data['lignes']],
+                [e.lead_id for e in attendu], portee)
+
+    def test_retard_en_jours_ouvres_et_champs_servis(self):
+        self._touche('Retard', -9, canal='whatsapp')
+        resp = auth(self.user).get(
+            LEADS_A_RELANCER.endpoint, {'portee': 'retard'})
+        ligne = resp.data['lignes'][0]
+        self.assertEqual(ligne['canal'], 'whatsapp')
+        self.assertGreaterEqual(ligne['retard_jours_ouvres'], 1)
+        for cle in ('nom', 'etape', 'touche_prevue', 'dernier_contact'):
+            self.assertIn(cle, ligne)
+
+    def test_portee_inconnue_nomme_le_champ(self):
+        resp = auth(self.user).get(
+            LEADS_A_RELANCER.endpoint, {'portee': 'hier'})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('portee', resp.data)
+
+    def test_terrain_sans_pipeline(self):
+        # Le catalogue ne la montre pas au terrain ET la route la refuse.
+        self.assertNotIn(
+            LEADS_A_RELANCER.key, {a.key for a in for_user(self.terrain)})
+        resp = auth(self.terrain).get(LEADS_A_RELANCER.endpoint)
+        self.assertEqual(resp.status_code, 403)
+
+
+class CrmAgentResumeLeadTest(TestCase):
+    """AIC31 — ``crm.lead.resume`` : blocs lus chez leur propriétaire."""
+
+    def setUp(self):
+        register_crm_actions()
+        self.company = Company.objects.create(nom='AIC31 Co', slug='aic31-co')
+        self.other = Company.objects.create(nom='AIC31 Autre', slug='aic31-x')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_modifier', 'client_pii_voir'])
+        self.user = User.objects.create_user(
+            username='aic31_com', password='x', role=self.role,
+            company=self.company)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Alami', prenom='Karim',
+            ville='Casablanca', telephone='0600112233', owner=self.user)
+        for i in range(7):
+            LeadActivity.objects.create(
+                company=self.company, lead=self.lead, kind='note',
+                body=f'Note {i}', user=self.user)
+
+    def _devis(self):
+        from apps.crm.models import Client
+        from apps.ventes.models import Devis
+        client = Client.objects.create(company=self.company, nom='Client 31')
+        return Devis.objects.create(
+            company=self.company, lead=self.lead, client=client,
+            statut='envoye', reference='DEV-AIC31-0001')
+
+    def test_resume_lead_blocs_et_societe(self):
+        self._devis()
+        resp = auth(self.user).get(
+            RESUME_LEAD.endpoint.format(id=self.lead.pk))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        for cle in ('identite', 'etape', 'chatter', 'devis', 'visites',
+                    'prochaine_touche', 'alertes'):
+            self.assertIn(cle, resp.data)
+        self.assertEqual(len(resp.data['chatter']), 5)
+        self.assertEqual(resp.data['devis'][0]['reference'], 'DEV-AIC31-0001')
+        self.assertEqual(resp.data['identite']['nom'], 'Alami')
+        # Lead d'une autre société : 404, aucune fuite.
+        autre = Lead.objects.create(company=self.other, nom='Autre')
+        resp = auth(self.user).get(RESUME_LEAD.endpoint.format(id=autre.pk))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_resume_sans_prix_achat(self):
+        import json
+        self._devis()
+        resp = auth(self.user).get(
+            RESUME_LEAD.endpoint.format(id=self.lead.pk))
+        brut = json.dumps(resp.data, default=str).lower()
+        self.assertNotIn('prix_achat', brut)
+        self.assertNotIn('marge', brut)
+
+
+class CrmAgentBrouillonSuiviTest(TestCase):
+    """AIC32 — ``crm.lead.brouillon_suivi`` : un texte, jamais un envoi."""
+
+    def setUp(self):
+        register_crm_actions()
+        self.company = Company.objects.create(nom='AIC32 Co', slug='aic32-co')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_modifier', 'client_pii_voir'])
+        self.user = User.objects.create_user(
+            username='aic32_com', password='x', role=self.role,
+            company=self.company, first_name='Reda')
+
+    def _lead(self, owner_prenom, **kw):
+        owner = User.objects.create_user(
+            username=f'aic32_{owner_prenom}', password='x', role=self.role,
+            company=self.company, first_name=owner_prenom)
+        return Lead.objects.create(
+            company=self.company, nom='Alami', prenom='Karim',
+            telephone='0600112233', owner=owner, **kw)
+
+    def _appel(self, lead, **corps):
+        corps = {'canal': 'whatsapp', 'objectif': 'relance_devis', **corps}
+        return auth(self.user).post(
+            BROUILLON_SUIVI.endpoint.format(id=lead.pk), corps, format='json')
+
+    def test_brouillon_suivi_modele_societe_et_expediteur_variable(self):
+        from apps.crm.models_cadence import MessageTemplate
+        MessageTemplate.objects.create(
+            company=self.company, nom='Relance après devis', langue='fr',
+            corps='Bonjour {prenom}, ici {conseiller} : votre devis ?')
+        for prenom_owner in ('Salma', 'Youssef'):
+            lead = self._lead(prenom_owner)
+            resp = self._appel(lead)
+            self.assertEqual(resp.status_code, 200, resp.data)
+            self.assertEqual(resp.data['modele_source'], 'Relance après devis')
+            self.assertIn(f'ici {prenom_owner}', resp.data['texte'])
+            self.assertTrue(
+                resp.data['lien_wa_me'].startswith('https://wa.me/'))
+            self.assertEqual(resp.data['langue_servie'], 'fr')
+            self.assertLessEqual(len(resp.data['texte']), 500)
+
+    def test_sans_modele_brouillon_libre_et_arabe_replie_en_francais(self):
+        lead = self._lead('Salma')
+        resp = self._appel(lead, langue='ar', objectif='reveil_froid')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['modele_source'])
+        self.assertEqual(resp.data['langue_servie'], 'fr')
+        self.assertIn('Salma', resp.data['texte'])
+
+    def test_objectif_inconnu_est_refuse(self):
+        resp = self._appel(self._lead('Salma'), objectif='vendre')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_brouillon_ne_rend_jamais_un_envoi(self):
+        from unittest import mock
+        lead = self._lead('Salma')
+        avant = LeadActivity.objects.count()
+        with mock.patch('socket.socket.connect',
+                        side_effect=AssertionError('appel réseau')):
+            resp = self._appel(lead, canal='sms')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertIsNone(resp.data['lien_wa_me'])
+        self.assertEqual(LeadActivity.objects.count(), avant)
+
+
+class CrmAgentCatalogueParRoleTest(TestCase):
+    """AIC33 — descriptions relues pour le modèle + catalogue vu par rôle."""
+
+    SECTIONS = ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',
+                'Résultat :')
+    # Golden LITTÉRAL des clés ``crm.*`` visibles par rôle système (via
+    # ``for_user``) : retirer une permission d'une action le fait diverger.
+    CRM_COMMERCIAL = {
+        'crm.client.create', 'crm.digest_matin', 'crm.lead.brouillon_suivi',
+        'crm.lead.create', 'crm.lead.list', 'crm.lead.note', 'crm.lead.resume',
+        'crm.lead.update', 'crm.lead.whatsapp_prepare',
+        'crm.leads.a_relancer',
+    }
+    GOLDEN = {
+        'Commercial': CRM_COMMERCIAL,
+        'Commercial responsable': CRM_COMMERCIAL,
+        # Terrain = visites seulement : le digest (ses visites), aucune
+        # action du pipeline CRM.
+        'Commercial terrain': {'crm.digest_matin'},
+    }
+
+    def test_descriptions_quatre_sections(self):
+        for action in _ACTIONS:
+            with self.subTest(action=action.key):
+                position = -1
+                for section in self.SECTIONS:
+                    suivante = action.description.find(section)
+                    self.assertGreater(suivante, position, section)
+                    position = suivante
+                self.assertLessEqual(len(action.description), 600)
+        self.assertIn(
+            "n'envoie jamais", PREPARER_ENVOI_WHATSAPP.description)
+        self.assertIn('wa.me', PREPARER_ENVOI_WHATSAPP.description)
+
+    def test_catalogue_par_role_commercial(self):
+        from django.core.management import call_command
+        register_crm_actions()
+        company = Company.objects.create(nom='AIC33 Co', slug='aic33-co')
+        call_command('init_roles', verbosity=0)
+        for nom, attendu in self.GOLDEN.items():
+            with self.subTest(role=nom):
+                user = User.objects.create_user(
+                    username='aic33_' + nom.replace(' ', '_').lower(),
+                    password='x', company=company,
+                    role=Role.objects.get(company=company, nom=nom))
+                vus = {a.key for a in for_user(user)
+                       if a.key.startswith('crm.')}
+                self.assertEqual(vus, attendu)
+
+
+class CrmAgentDigestMatinTest(TestCase):
+    """AIC35 — ``crm.digest_matin`` : même compte que les écrans source."""
+
+    def setUp(self):
+        register_crm_actions()
+        self.company = Company.objects.create(nom='AIC35 Co', slug='aic35-co')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'visites_voir', 'ventes_voir'])
+        self.user = User.objects.create_user(
+            username='aic35_com', password='x', role=self.role,
+            company=self.company)
+        self.terrain_role = Role.objects.create(
+            company=self.company, nom='Terrain', permissions=['visites_voir'])
+        self.terrain = User.objects.create_user(
+            username='aic35_ter', password='x', role=self.terrain_role,
+            company=self.company)
+
+    def _donnees(self):
+        import datetime
+        from django.utils import timezone
+        from apps.crm.models import Client, RelanceEtape
+        from apps.ventes.models import Devis
+        from apps.visites.models import VisiteTerrain
+        from core.dates import aujourd_hui_local
+        today = aujourd_hui_local()
+        lead = Lead.objects.create(
+            company=self.company, nom='Alami', owner=self.user)
+        RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=1,
+            canal='appel', libelle='Appel', due_date=today)
+        VisiteTerrain.objects.create(
+            company=self.company, lead=lead, commercial=self.user,
+            date_prevue=today)
+        client = Client.objects.create(company=self.company, nom='C35')
+        ancien = timezone.now() - datetime.timedelta(days=10)
+        recent = timezone.now() - datetime.timedelta(days=2)
+        for ref, statut, quand in (
+                ('DEV-35-ANCIEN', 'envoye', ancien),
+                ('DEV-35-RECENT', 'envoye', recent),
+                ('DEV-35-ACCEPTE', 'accepte', ancien)):
+            Devis.objects.create(
+                company=self.company, lead=lead, client=client,
+                statut=statut, reference=ref, date_envoi=quand)
+        return lead
+
+    def test_digest_matin_egale_les_ecrans_source(self):
+        from apps.crm.selectors import relance_etapes_dues
+        from apps.visites import selectors as visites
+        from apps.visites.models import VisiteTerrain
+        from core.dates import aujourd_hui_local
+        self._donnees()
+        resp = auth(self.user).get(DIGEST_MATIN.endpoint)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(
+            resp.data['relances']['total'],
+            relance_etapes_dues(self.company, self.user, scope='all').count())
+        journee = visites.ma_journee(
+            VisiteTerrain.objects.filter(
+                company=self.company, commercial=self.user),
+            aujourdhui=aujourd_hui_local())
+        self.assertEqual(
+            resp.data['visites']['total'], len(journee['visites']))
+        # Sans réponse > 7 jours : l'ancien envoyé seulement (ni le récent
+        # ni l'accepté).
+        refs = [d['reference']
+                for d in resp.data['devis_sans_reponse']['lignes']]
+        self.assertEqual(refs, ['DEV-35-ANCIEN'])
+        self.assertEqual(resp.data['devis_sans_reponse']['total'], 1)
+
+    def test_terrain_visites_seules(self):
+        self._donnees()
+        resp = auth(self.terrain).get(DIGEST_MATIN.endpoint)
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(set(resp.data), {'visites'})

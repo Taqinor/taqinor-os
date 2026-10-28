@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4864, operations: 7648, components: 3582}
+counts: {paths: 4872, operations: 7656, components: 3583}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -901,6 +901,8 @@ operations:
 - patch /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_partial_update
 - put /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_update
 - get /api/django/crm/assignable-users/ -> django_crm_assignable_users_list
+- get /api/django/crm/assistant/a-relancer/ -> django_crm_assistant_a_relancer_retrieve
+- get /api/django/crm/assistant/digest-matin/ -> django_crm_assistant_digest_matin_retrieve
 - get /api/django/crm/canaux/ -> django_crm_canaux_list
 - post /api/django/crm/canaux/ -> django_crm_canaux_create
 - delete /api/django/crm/canaux/{id}/ -> django_crm_canaux_destroy
@@ -1014,9 +1016,11 @@ operations:
 - post /api/django/crm/leads/{id}/visites/planifier/ -> django_crm_leads_visites_planifier_create
 - post /api/django/crm/leads/{id}/whatsapp-devis-apercu/ -> django_crm_leads_whatsapp_devis_apercu_create
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
+- post /api/django/crm/leads/{lead_id}/brouillon-suivi/ -> django_crm_leads_brouillon_suivi_create
 - get /api/django/crm/leads/{lead_id}/photo-toit/ -> django_crm_leads_photo_toit_retrieve
 - get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_list
 - post /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_create
+- get /api/django/crm/leads/{lead_id}/resume/ -> django_crm_leads_resume_retrieve
 - get /api/django/crm/leads/{lead_id}/roof-footprint/ -> django_crm_leads_roof_footprint_retrieve
 - get /api/django/crm/message-templates/ -> django_crm_message_templates_list
 - post /api/django/crm/message-templates/ -> django_crm_message_templates_create
@@ -4765,6 +4769,8 @@ operations:
 - patch /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_partial_update
 - put /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_update
 - get /api/v1/crm/assignable-users/ -> v1_crm_assignable_users_list
+- get /api/v1/crm/assistant/a-relancer/ -> v1_crm_assistant_a_relancer_retrieve
+- get /api/v1/crm/assistant/digest-matin/ -> v1_crm_assistant_digest_matin_retrieve
 - get /api/v1/crm/canaux/ -> v1_crm_canaux_list
 - post /api/v1/crm/canaux/ -> v1_crm_canaux_create
 - delete /api/v1/crm/canaux/{id}/ -> v1_crm_canaux_destroy
@@ -4878,9 +4884,11 @@ operations:
 - post /api/v1/crm/leads/{id}/visites/planifier/ -> v1_crm_leads_visites_planifier_create
 - post /api/v1/crm/leads/{id}/whatsapp-devis-apercu/ -> v1_crm_leads_whatsapp_devis_apercu_create
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
+- post /api/v1/crm/leads/{lead_id}/brouillon-suivi/ -> v1_crm_leads_brouillon_suivi_create
 - get /api/v1/crm/leads/{lead_id}/photo-toit/ -> v1_crm_leads_photo_toit_retrieve
 - get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_list
 - post /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_create
+- get /api/v1/crm/leads/{lead_id}/resume/ -> v1_crm_leads_resume_retrieve
 - get /api/v1/crm/leads/{lead_id}/roof-footprint/ -> v1_crm_leads_roof_footprint_retrieve
 - get /api/v1/crm/message-templates/ -> v1_crm_message_templates_list
 - post /api/v1/crm/message-templates/ -> v1_crm_message_templates_create
@@ -9984,6 +9992,7 @@ components:
 - CritereEnum
 - CrmAppliquerPlanRequestRequest
 - CrmArreterRelanceRequestRequest
+- CrmAssistantBrouillonSuiviRequestRequest
 - CrmBulkLeadsRequestActionEnum
 - CrmBulkLeadsRequestRequest
 - CrmCadencesEchues
