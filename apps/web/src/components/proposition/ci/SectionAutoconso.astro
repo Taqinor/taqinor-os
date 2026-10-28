@@ -5,7 +5,7 @@
  * qu'un appel de composant. Les valeurs arrivent par props sous LEURS noms de la page.
  */
 import { formatMAD, formatNumber } from '../../../lib/proposition';
-import { bandeauPreliminaireCi, lignePostesHorsTotalCi } from './syntheseCi';
+import { DEFINITIONS_CI, bandeauPreliminaireCi, lignePostesHorsTotalCi } from './syntheseCi';
 import type { SyntheseCi, carteIndustrielleCi } from '../../../lib/proposition';
 
 // Déplacement pur : les props gardent leurs noms de la page ; celles que le balisage parcourt
@@ -68,14 +68,14 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
                   <div class="cine-card rounded-xl p-5">
                     <p class="tech-label text-lune-faint" data-i18n data-fr="Taux d'autoconsommation" data-en="Self-consumption rate" data-ar="نسبة الاستهلاك الذاتي">Taux d'autoconsommation</p>
                     <p class="fig fig-md lum mt-2" dir="ltr" data-figure="autoconsommation_pct">{formatNumber(ci.energie.autoconsoPct, 1)} %</p>
-                    {ci.energie.definitions.autoconso ? <p class="mt-1 text-xs text-lune-faint">{ci.energie.definitions.autoconso}</p> : null}
+                    {ci.energie.definitions.autoconso ? <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr={DEFINITIONS_CI.fr.autoconso} data-en={DEFINITIONS_CI.en.autoconso} data-ar={DEFINITIONS_CI.ar.autoconso}>{DEFINITIONS_CI.fr.autoconso}</p> : null}
                   </div>
                 ) : null}
                 {ci.energie?.couverturePct != null ? (
                   <div class="cine-card rounded-xl p-5">
                     <p class="tech-label text-lune-faint" data-i18n data-fr="Taux de couverture" data-en="Coverage rate" data-ar="نسبة التغطية">Taux de couverture</p>
                     <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="couverture_pct">{formatNumber(ci.energie.couverturePct, 1)} %</p>
-                    {ci.energie.definitions.couverture ? <p class="mt-1 text-xs text-lune-faint">{ci.energie.definitions.couverture}</p> : null}
+                    {ci.energie.definitions.couverture ? <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr={DEFINITIONS_CI.fr.couverture} data-en={DEFINITIONS_CI.en.couverture} data-ar={DEFINITIONS_CI.ar.couverture}>{DEFINITIONS_CI.fr.couverture}</p> : null}
                   </div>
                 ) : null}
                 {ciArgent && ciEco !== null ? (
