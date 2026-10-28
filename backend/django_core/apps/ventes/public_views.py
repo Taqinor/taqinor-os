@@ -38,6 +38,9 @@ from .public.payload_batterie import (
     _fiche_batterie_publique, _remplissage_batterie_publiable,
     _residuel_falaise_publiable,
 )
+from .public.payload_ci import (
+    charge_utile_client as _charge_utile_client,
+)
 from .public.payload_conditions import (
     PAIEMENT_MOYENS_PUBLICS, _acompte_publique, _conditions_publiques,
     _conditions_titre_publique, _confirmation_email_publique,
@@ -918,7 +921,7 @@ def _parametres_site_publics(devis, layout_public, hypotheses,
 #: AGR300 — clés ÉCONOMIQUES RÉSIDENTIELLES de ``data`` (forme publique
 #: ``quote``, contrat partagé ``proposal_data.json`` › ``exemple_agricole``).
 CLES_ECONOMIES_RESIDENTIELLES = (
-    'eco_s_ann', 'eco_a_ann', 'eco_a_cumul', 'roi_s', 'roi_a',
+    'eco_s_ann', 'eco_a_ann', 'eco_a_cumul', 'roi_s', 'roi_a', 'roi_s_jamais', 'roi_a_jamais',
     'cashflow_sans', 'cashflow_avec', 'cashflow_assumptions',
     'net_gain_sans', 'net_gain_avec', 'eco_s_monthly', 'eco_a_monthly',
     'savings_method', 'hypotheses',
@@ -1092,18 +1095,6 @@ _OPTIONS_CUMUL_25_ANS = (
 )
 
 
-def _retirer_economie_ci_partout(payload):
-    """AMOT67 (C-AMOT-050) — retire ``economie_ci`` à TOUTE profondeur de la
-    charge publique, en place ; chaque bloc est copié en profondeur d'abord
-    (jamais ``devis.etude_params`` muté)."""
-    import copy
-    payload.pop('economie_ci', None)
-    for cle in list(payload):
-        bloc = copy.deepcopy(payload[cle])
-        _retirer_cles(bloc, frozenset({'economie_ci'}))
-        payload[cle] = bloc
-
-
 def _economies_cumul_25_ans_publique(data):
     """ADEV50 (C-ADEV-017) — le cumul BRUT des économies sur 25 ans de CHAQUE
     option, lu sur LE flux annuel que le PDF ``/proposal`` trace (``cashflow_*``
@@ -1272,7 +1263,7 @@ def proposal_data(request, token):
         # main » (une ligne par option et par taux de TVA), APRÈS la synthèse.
         _installation_ci.regrouper_paniers(data)
         if est_standard:
-            for _cle in ('sans_items', 'avec_items'):
+            for _cle in ('sans_items', 'avec_items', 'all_items'):  # CPRS4
                 if data.get(_cle):
                     data[_cle] = _agreger_lignes_kit(data[_cle])
         # ── Z2 (ORDRE FONDATEUR, 20/08/2026) — la proposition en ligne HÉRITE de
@@ -1576,14 +1567,14 @@ def proposal_data(request, token):
                      if _section_servie(link, 'economies') else None)
         if _cumul_25 is not None:
             payload['economies_cumul_25_ans'] = _cumul_25
-        # AGR308 — synthèse agricole (additive). Son bloc ``economies`` obéit à
-        # la case « Synthèse d'économies » du lien, comme la synthèse
-        # résidentielle (L-SECT) : décochée, l'argent ne part pas.
+        # AGR308 — synthèse agricole (additive). Son argent (``economies``, et
+        # ``depense_declaree`` AGC16) obéit à la case « Synthèse d'économies »
+        # du lien, comme la synthèse résidentielle : décochée, il ne part pas.
         if synthese_agricole_pub is not None:
             if not _section_servie(link, 'economies'):
                 synthese_agricole_pub = {
                     cle: val for cle, val in synthese_agricole_pub.items()
-                    if cle != 'economies'}
+                    if cle not in ('economies', 'depense_declaree')}
             payload['synthese_agricole'] = synthese_agricole_pub
         # CIQ306 — synthèse C&I (additive, absente hors C&I, jamais `null`).
         if synthese_ci_pub is not None:
@@ -1866,7 +1857,7 @@ def proposal_data(request, token):
         # niveau : l'étude C&I stockée (``etude_params.etude_ci``) le porte
         # aussi en IMBRIQUÉ — retiré partout (blocs copiés d'abord : jamais
         # ``devis.etude_params`` muté). La page lit ``synthese_ci``.
-        _retirer_economie_ci_partout(payload)
+        _charge_utile_client(payload)  # AMOT67 + CPRS1-3
         # AMOT67 (D-CIQ-10) — un devis COMMERCIAL ne publie ni VAN, ni LCOE,
         # ni sensibilités, à AUCUN niveau : la liste est celle de
         # ``synthese_ci`` (``CLES_INDUSTRIEL_SEUL``), jamais une seconde.

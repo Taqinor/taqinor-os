@@ -95,6 +95,39 @@ class AucuneValeurParDefaut(SimpleTestCase):
         self.assertNotIn('ete_differente', _champs(
             panneau.questions_a_poser(repondu)))
 
+    def test_ete_non_clot_la_question(self):
+        """CSV16 — « Non » écrit la facture d'été égale à l'hiver : la
+        question n'est plus servie (répondue = ``ete_differente`` vrai OU
+        ``facture_ete`` renseignée) ; « Oui » ferme la question et laisse
+        « Combien en été ? » ; les deux se lisent à voix haute."""
+        vierge = _lead(facture_hiver=Decimal('900'))
+        questions = {q['champ']: q for q in panneau.questions_a_poser(vierge)}
+        self.assertIn(
+            "change-t-elle beaucoup par rapport à l'hiver ?",
+            questions['ete_differente']['question'])
+        self.assertIn('Combien payez-vous en été',
+                      questions['facture_ete']['question'])
+        self.assertEqual([c['valeur'] for c in
+                          questions['ete_differente']['choix']],
+                         [True, False])
+        # « Non » : ete_differente reste False, mais la facture d'été est
+        # égale à l'hiver ⇒ plus jamais reposée.
+        non = _lead(facture_hiver=Decimal('900'), facture_ete=Decimal('900'),
+                    ete_differente=False)
+        self.assertNotIn('ete_differente',
+                         _champs(panneau.questions_a_poser(non)))
+        self.assertNotIn('facture_ete', _champs(panneau.questions_a_poser(non)))
+        self.assertEqual(panneau.prefill_du_panneau(non)['facture_ete'], 900.0)
+        # « Non » sans facture à copier : rien n'est inventé, la question
+        # reste posable.
+        self.assertIn('ete_differente', _champs(panneau.questions_a_poser(
+            _lead(ete_differente=False))))
+        # « Oui » : la question est close ; le montant d'été reste à poser.
+        oui = _lead(facture_hiver=Decimal('900'), ete_differente=True)
+        champs = _champs(panneau.questions_a_poser(oui))
+        self.assertNotIn('ete_differente', champs)
+        self.assertIn('facture_ete', champs)
+
     def test_le_prefill_ne_porte_que_des_valeurs_reelles(self):
         lead = _lead(facture_hiver=Decimal('1200.00'), ville='Bouskoura')
         prefill = panneau.prefill_du_panneau(lead)
@@ -109,12 +142,65 @@ class AucuneValeurParDefaut(SimpleTestCase):
         self.assertIn('ville', _champs(panneau.questions_a_poser(lead)))
 
 
+class CSV5LaVilleDuSite(SimpleTestCase):
+    """CSV5 — la ville est posée sans ville NI GPS, jamais en tête, tous
+    segments ; le devis refuse sans l'une des deux."""
+
+    SEGMENTS = (None, 'residentiel', 'commercial', 'industriel', 'agricole')
+
+    def test_ville_posee_si_ni_ville_ni_gps(self):
+        for segment in self.SEGMENTS:
+            with self.subTest(segment=segment):
+                questions = panneau.questions_a_poser(
+                    _lead(type_installation=segment))
+                champs = _champs(questions)
+                self.assertIn('ville', champs)
+                # Jamais en tête d'appel.
+                self.assertNotEqual(champs[0], 'ville')
+                texte = {q['champ']: q for q in questions}['ville']['question']
+                attendu = (panneau.QUESTION_VILLE_SITE
+                           if segment in ('commercial', 'industriel',
+                                          'agricole')
+                           else panneau.QUESTION_VILLE_MAISON)
+                self.assertEqual(texte, panneau.PREFIXE_QUESTION + attendu)
+
+    def test_ville_ou_gps_connu_la_ville_n_est_pas_posee(self):
+        for segment in self.SEGMENTS:
+            with self.subTest(segment=segment):
+                avec_ville = _lead(type_installation=segment, ville='Rabat')
+                self.assertNotIn('ville', _champs(
+                    panneau.questions_a_poser(avec_ville)))
+                self.assertEqual(
+                    panneau.prefill_du_panneau(avec_ville)['ville'], 'Rabat')
+                avec_gps = _lead(type_installation=segment,
+                                 gps_lat=Decimal('33.57'),
+                                 gps_lng=Decimal('-7.58'))
+                self.assertNotIn('ville', _champs(
+                    panneau.questions_a_poser(avec_gps)))
+                # Une moitié de coordonnées ne suffit pas.
+                moitie = _lead(type_installation=segment,
+                               gps_lat=Decimal('33.57'))
+                self.assertIn('ville', _champs(
+                    panneau.questions_a_poser(moitie)))
+
+
 class ChaqueQuestionVientDuChampLuiMeme(SimpleTestCase):
     def test_le_texte_de_la_question_est_le_help_text_du_champ(self):
         """« Chaque champ EST le script d'appel » : aucune variante ailleurs."""
         questions = {q['champ']: q for q in panneau.questions_a_poser(_lead())}
         for champ, question in questions.items():
-            attendu = str(Lead._meta.get_field(champ).help_text or '')
+            if champ == 'ville':
+                # CSV5 — la ville n'a pas de help_text : sa question est la
+                # constante du panneau (texte « maison » en résidentiel).
+                attendu = (panneau.PREFIXE_QUESTION
+                           + panneau.QUESTION_VILLE_MAISON)
+            elif champ in panneau.QUESTIONS_ETE:
+                # CSV16 — l'été se dit à voix haute : texte parlé du panneau
+                # (aucun help_text modifié, donc aucune migration).
+                attendu = (panneau.PREFIXE_QUESTION
+                           + panneau.QUESTIONS_ETE[champ])
+            else:
+                attendu = str(Lead._meta.get_field(champ).help_text or '')
             self.assertEqual(question['question'], attendu, champ)
 
     def test_un_champ_a_vocabulaire_ferme_sert_ses_choix_dans_l_ordre(self):

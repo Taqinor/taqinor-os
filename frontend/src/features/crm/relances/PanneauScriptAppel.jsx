@@ -32,6 +32,7 @@ import { Badge, Button, Input } from '../../../ui'
 import { toastInfo } from '../../../lib/toast'
 import crmApi from '../../../api/crmApi'
 import fieldLabels from '../workspace/fieldLabels'
+import { COMMERCIAL_CATEGORY_QUESTIONS } from '../../ventes/solar'
 import MessageVisiteDialog from './MessageVisiteDialog'
 import {
   guidanceAppel, texteQuestion, decouperQuestion, scriptTouche,
@@ -41,7 +42,8 @@ import {
   AUCUNE_QUESTION, CONSIGNE_CRENEAU, RAMADAN_PAS_DE_SOIR, JOUR_NON_APPELABLE,
   NON_COMPTE_TITRE, NON_COMPTE_FUTURES_CHARGES, NON_COMPTE_TRANCHE_ONEE,
   VISITE_POINT_EAU_TITRE, VISITE_POINT_EAU_CONSIGNE,
-  VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE,
+  VISITE_PRO_TITRE, VISITE_PRO_CONSIGNE, CONSIGNE_OUVERT_24H, CONSIGNE_CONTRAT_INCONNU,
+  CONSIGNE_HMT_INCONNUE,
 } from './appelGuidance'
 import BasculeReplie from './BasculeReplie'
 
@@ -57,12 +59,178 @@ const LANGUES_RTL = ['darija', 'ar']
  *  champ (`fieldLabels`) plutôt que le `verbose_name` technique. Découpé en
  *  `{ question, consigne }` : la question seule se lit au client, la
  *  consigne (remarques internes du `help_text`) s'affiche en retrait. */
+/** CSV2 — l'unité affichée à côté des saisies de facture : la question parle
+ *  de dirhams ET de kWh, la case ne prend qu'une unité (jamais « 12 000 » MAD
+ *  tapé dans la case des kWh). */
+const UNITES_SAISIE = Object.freeze({
+  conso_mensuelle_kwh: 'kWh / mois',
+  facture_hiver: 'MAD / mois',
+})
+
+/** CSV15 — la facture d'un lead résidentiel se dit « pour un mois » ou « pour
+ *  deux mois » : le serveur la ramène au mois (`facture_periodicite`, CAD158,
+ *  mêmes valeurs que la fiche). Sans la période, un montant de deux mois serait
+ *  enregistré deux fois trop grand. */
+const CHAMPS_FACTURE_PERIODE = Object.freeze(['facture_hiver', 'facture_ete'])
+const PERIODES_FACTURE = Object.freeze([
+  { valeur: 'mensuelle', libelle: '1 mois' },
+  { valeur: 'bimestrielle', libelle: '2 mois' },
+])
+
 function texteDeLaQuestion(entree) {
   return decouperQuestion(
     entree?.question || fieldLabels[entree?.champ]?.label || texteQuestion(entree))
 }
 
-function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregistrer }) {
+/** CSV1 — la définition (type, options) d'une sous-question d'activité, lue
+ *  dans la table du générateur (`COMMERCIAL_CATEGORY_QUESTIONS`, lecture seule :
+ *  aucune seconde table de types). Catégorie connue d'abord, sinon la première
+ *  catégorie qui porte cette clé. */
+function definitionSousQuestion(categorie, cle) {
+  const dans = (liste) => (liste || []).find((q) => q.key === cle)
+  const trouve = dans(COMMERCIAL_CATEGORY_QUESTIONS[categorie])
+    || Object.values(COMMERCIAL_CATEGORY_QUESTIONS).map(dans).find(Boolean)
+  return trouve || { key: cle, type: 'text' }
+}
+
+/** CSV13 — les clés que le moteur C&I lit pour la courbe : des HEURES
+ *  (`[[début, fin]]`, heures civiles, deux cases) et des DATES (`AAAA-MM-JJ`,
+ *  le moteur y lit le mois et le jour). Aucune n'a de type dans la table du
+ *  générateur : le type vient de la clé servie. */
+const CLES_PLAGE_HEURES = Object.freeze(['heures', 'heures_cuisson', 'heures_garde'])
+const CLES_DATE = Object.freeze(['fermeture_du', 'fermeture_au'])
+
+/** CSV1 — « réponses propres à l'activité » : UNE entrée par clé encore vide,
+ *  chaque réponse réécrit l'objet FUSIONNÉ `{...existant, cle: valeur}` (le PATCH
+ *  remplace tout le JSON). Booléens en vrai/faux JSON, nombres numériques,
+ *  choix en chaîne. */
+function SousQuestions({
+  entree, existant, categorie, saisies, occupe, onSaisie, onEcrire, erreur, onErreur,
+}) {
+  const ecrire = (cle, valeur) => onEcrire({ ...existant, [cle]: valeur })
+  const enregistrerPlage = (sous) => {
+    const cle = `${entree.champ}.${sous.cle}`
+    const [debut, fin] = ['de', 'a'].map((bout) => String(saisies[`${cle}.${bout}`] ?? '').trim())
+    const bornes = [debut, fin].map((v) => (v === '' ? NaN : Number(v.replace(',', '.'))))
+    if (bornes.some((h) => !Number.isFinite(h) || h < 0 || h > 24) || bornes[0] === bornes[1]) {
+      onErreur(`${decouperQuestion(sous.libelle).question} : indiquez deux heures différentes, de 0 à 24.`)
+      return
+    }
+    ecrire(sous.cle, [bornes])
+  }
+  const enregistrerLibre = (sous, def) => {
+    const brut = saisies[`${entree.champ}.${sous.cle}`] ?? ''
+    if (def.type === 'number') {
+      const { valeur, erreur: e } = normaliserSaisie({ ...sous, libelle: sous.libelle, nature: 'nombre' }, brut)
+      if (e) { onErreur(e); return }
+      ecrire(sous.cle, Number(valeur))
+      return
+    }
+    const texte = String(brut).trim()
+    if (!texte) { onErreur(`« ${sous.libelle} » : saisissez la réponse avant d’enregistrer.`); return }
+    ecrire(sous.cle, texte)
+  }
+  return (
+    <div className="flex flex-col gap-2" data-testid={`question-appel-${entree.champ}`}>
+      <p className="text-sm text-foreground">{texteDeLaQuestion(entree).question}</p>
+      {entree.sous_questions.map((sous) => {
+        const def = definitionSousQuestion(categorie, sous.cle)
+        const id = `panneau-appel-${entree.champ}-${sous.cle}`
+        const { question: libelle } = decouperQuestion(sous.libelle)
+        return (
+          <div key={sous.cle} className="flex flex-col gap-1" data-testid={`sous-question-${sous.cle}`}>
+            {def.type === 'bool' || def.type === 'select' ? (
+              <p className="text-sm text-foreground">{libelle}</p>
+            ) : (
+              <label className="text-sm text-foreground" htmlFor={id}>{libelle}</label>
+            )}
+            {def.type === 'bool' ? (
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={libelle}>
+                {[{ v: true, l: 'Oui' }, { v: false, l: 'Non' }].map((c) => (
+                  <Button
+                    key={String(c.v)} type="button" size="sm" variant="outline"
+                    disabled={occupe} onClick={() => ecrire(sous.cle, c.v)}
+                  >
+                    {c.l}
+                  </Button>
+                ))}
+              </div>
+            ) : def.type === 'select' ? (
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label={libelle}>
+                {(def.options || []).map((c) => (
+                  <Button
+                    key={c.value} type="button" size="sm" variant="outline"
+                    disabled={occupe} onClick={() => ecrire(sous.cle, c.value)}
+                  >
+                    {c.label}
+                  </Button>
+                ))}
+              </div>
+            ) : CLES_PLAGE_HEURES.includes(sous.cle) ? (
+              <div className="flex flex-wrap items-center gap-1.5" data-testid={`plage-${sous.cle}`}>
+                {[['de', 'De', 'début'], ['a', 'à', 'fin']].map(([bout, mot, nom]) => (
+                  <label key={bout} className="flex items-center gap-1 text-sm text-muted-foreground">
+                    {mot}
+                    <Input
+                      className="w-20" inputMode="decimal" aria-label={`${libelle} — ${nom}`}
+                      value={typeof saisies[`${entree.champ}.${sous.cle}.${bout}`] === 'string'
+                        ? saisies[`${entree.champ}.${sous.cle}.${bout}`] : ''}
+                      onChange={(e) => onSaisie(`${entree.champ}.${sous.cle}.${bout}`, e.target.value)}
+                    />
+                    h
+                  </label>
+                ))}
+                <Button type="button" size="sm" disabled={occupe} onClick={() => enregistrerPlage(sous)}>
+                  Enregistrer
+                </Button>
+              </div>
+            ) : CLES_DATE.includes(sous.cle) ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Input
+                  id={id} type="date" className="w-44"
+                  value={typeof saisies[`${entree.champ}.${sous.cle}`] === 'string'
+                    ? saisies[`${entree.champ}.${sous.cle}`] : ''}
+                  onChange={(e) => onSaisie(`${entree.champ}.${sous.cle}`, e.target.value)}
+                />
+                <Button
+                  type="button" size="sm" disabled={occupe}
+                  onClick={() => enregistrerLibre(sous, { type: 'date' })}
+                >
+                  Enregistrer
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Input
+                  id={id} className="w-44"
+                  value={typeof saisies[`${entree.champ}.${sous.cle}`] === 'string'
+                    ? saisies[`${entree.champ}.${sous.cle}`] : ''}
+                  inputMode={def.type === 'number' ? 'decimal' : undefined}
+                  onChange={(e) => onSaisie(`${entree.champ}.${sous.cle}`, e.target.value)}
+                />
+                <Button
+                  type="button" size="sm" disabled={occupe}
+                  onClick={() => enregistrerLibre(sous, def)}
+                >
+                  Enregistrer
+                </Button>
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {erreur && (
+        <p className="text-xs text-danger" role="alert" data-testid={`erreur-question-${entree.champ}`}>
+          {erreur}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function Question({
+  entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregistrer, periode, onPeriode,
+}) {
   const id = `panneau-appel-${entree.champ}`
   const { question, consigne } = texteDeLaQuestion(entree)
   // AGR418 — `choix_multiple` (mois d'irrigation…) : des boutons À COCHER, puis
@@ -82,6 +250,21 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
       {consigne && (
         <p className="text-xs text-muted-foreground" data-testid={`consigne-question-${entree.champ}`}>
           {consigne}
+        </p>
+      )}
+      {entree.champ === 'contrat_electricite' && (
+        <p className="text-xs text-muted-foreground" data-testid="consigne-contrat-inconnu">
+          {CONSIGNE_CONTRAT_INCONNU}
+        </p>
+      )}
+      {entree.champ === 'pompe_hmt_m' && (
+        <p className="text-xs text-muted-foreground" data-testid="consigne-hmt-inconnue">
+          {CONSIGNE_HMT_INCONNUE}
+        </p>
+      )}
+      {['heure_debut', 'heure_fin'].includes(entree.champ) && (
+        <p className="text-xs text-muted-foreground" data-testid={`consigne-24h-${entree.champ}`}>
+          {CONSIGNE_OUVERT_24H}
         </p>
       )}
       {multiple ? (
@@ -104,6 +287,17 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
           >
             Enregistrer
           </Button>
+          {/* Rejeu CSV11 — « aucun mois de fermeture » est une réponse (`[]`) :
+              sans ce bouton l'étape restait ouverte et cachait les questions
+              d'activité qui la suivent. */}
+          {entree.champ === 'fermeture_mois' && (
+            <Button
+              type="button" size="sm" variant="outline" disabled={occupe}
+              data-testid="fermeture-aucun-mois" onClick={() => onChoix([])}
+            >
+              Aucun mois
+            </Button>
+          )}
         </div>
       ) : Array.isArray(entree.choix) ? (
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={entree.libelle}>
@@ -124,6 +318,30 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
             inputMode={entree.nature === 'nombre' ? 'decimal' : undefined}
             onChange={(e) => onSaisie(e.target.value)}
           />
+          {onPeriode ? (
+            <>
+              <span className="text-sm text-muted-foreground">MAD pour</span>
+              <div
+                className="flex gap-1.5" role="group" aria-label="La facture couvre"
+                data-testid={`periode-${entree.champ}`}
+              >
+                {PERIODES_FACTURE.map((p) => (
+                  <Button
+                    key={p.valeur} type="button" size="sm"
+                    variant={periode === p.valeur ? 'default' : 'outline'}
+                    aria-pressed={periode === p.valeur}
+                    disabled={occupe} onClick={() => onPeriode(p.valeur)}
+                  >
+                    {p.libelle}
+                  </Button>
+                ))}
+              </div>
+            </>
+          ) : UNITES_SAISIE[entree.champ] && (
+            <span className="text-sm text-muted-foreground" data-testid={`unite-${entree.champ}`}>
+              {UNITES_SAISIE[entree.champ]}
+            </span>
+          )}
           <Button type="button" size="sm" disabled={occupe} onClick={onEnregistrer}>
             Enregistrer
           </Button>
@@ -131,7 +349,8 @@ function Question({ entree, saisie, erreur, occupe, onChoix, onSaisie, onEnregis
       )}
       {entree.complements?.length > 0 && (
         <p className="text-xs text-muted-foreground">
-          Ensuite, selon la réponse : {entree.complements.map((c) => c.libelle).join(', ')}.
+          Ensuite, selon la réponse : {entree.complements
+            .map((c) => fieldLabels[c.champ]?.label || c.libelle).join(', ')}.
         </p>
       )}
       {erreur && (
@@ -172,6 +391,8 @@ export default function PanneauScriptAppel({
   const [saisies, setSaisies] = useState({})
   const [erreurs, setErreurs] = useState({})
   const [enCours, setEnCours] = useState('')
+  const [objetsEcrits, setObjetsEcrits] = useState({})
+  const [periodes, setPeriodes] = useState({})
   const [score, setScore] = useState(null)
 
   const etapeId = etape?.id ?? null
@@ -285,20 +506,35 @@ export default function PanneauScriptAppel({
     }
   }
 
-  const ecrire = (entree, valeur) => {
+  const ecrire = (entree, valeur, supplement = {}) => {
     if (enCours || typeof crmApi.updateLead !== 'function') return
     setEnCours(entree.champ)
     setErreurs((e) => ({ ...e, [entree.champ]: '' }))
     Promise.resolve()
-      .then(() => crmApi.updateLead(leadId, { [entree.champ]: valeur }))
+      .then(() => crmApi.updateLead(leadId, { [entree.champ]: valeur, ...supplement }))
       .then((r) => {
         const data = r?.data
         // Le score est recalculé par le serveur à chaque écriture de fiche
         // (`LeadViewSet.perform_update`) : on AFFICHE le sien, jamais un
         // calcul d'écran.
         if (data && data.score !== undefined && data.score !== null) setScore(data.score)
+        // CSV1 — un objet écrit (réponses d'activité) devient la base de la
+        // prochaine fusion tout de suite, sans attendre le rechargement du
+        // panneau : deux réponses données coup sur coup ne s'effacent pas.
+        if (valeur && typeof valeur === 'object' && !Array.isArray(valeur)) {
+          const ecrit = data?.[entree.champ]
+          setObjetsEcrits((o) => ({
+            ...o,
+            [`${leadId}.${entree.champ}`]: ecrit && typeof ecrit === 'object' ? ecrit : valeur,
+          }))
+        }
         setSaisies((s) => {
           const suite = { ...s }
+          delete suite[entree.champ]
+          return suite
+        })
+        setPeriodes((p) => {
+          const suite = { ...p }
           delete suite[entree.champ]
           return suite
         })
@@ -318,30 +554,77 @@ export default function PanneauScriptAppel({
       .finally(() => setEnCours(''))
   }
 
+  // CSV16 — « Non » à « L'été, votre facture change-t-elle ? » : le client a dit
+  // « pareil », donc la facture d'été EST celle de l'hiver (déjà au mois) ; les
+  // deux champs partent ensemble, et la question n'est plus reposée. Sans
+  // facture d'hiver connue, rien n'est copié (aucun montant inventé).
+  const choisir = (entree, valeur) => {
+    const hiver = panneau?.prefill?.facture_hiver
+    if (entree.champ === 'ete_differente' && valeur === false
+        && hiver !== undefined && hiver !== null && hiver !== '') {
+      ecrire(entree, false, { facture_ete: hiver })
+      return
+    }
+    ecrire(entree, valeur)
+  }
+
+  const avecPeriode = (entree) => g?.famille === 'residentiel'
+    && CHAMPS_FACTURE_PERIODE.includes(entree.champ)
+
   const enregistrerLibre = (entree) => {
     const { valeur, erreur } = normaliserSaisie(entree, saisies[entree.champ] ?? '')
     if (erreur) {
       setErreurs((e) => ({ ...e, [entree.champ]: erreur }))
       return
     }
-    ecrire(entree, valeur)
+    // CSV15 — la période de la facture part AVEC le montant (jamais seul).
+    ecrire(entree, valeur, avecPeriode(entree)
+      ? { facture_periodicite: periodes[entree.champ] || 'mensuelle' } : {})
   }
 
-  const rendreQuestion = (entree) => (
+  const rendreQuestion = (entree) => (entree.complementsVisibles ? (
+    // CSV2 — l'étape facture : la question une fois, puis les DEUX saisies
+    // (dirhams et kWh) côte à côte, chacune étiquetée de son unité.
+    <div key={entree.champ} className="flex flex-col gap-2" data-testid="groupe-appel-visible">
+      <p className="text-sm text-foreground">{texteDeLaQuestion(entree).question}</p>
+      {[entree, ...entree.complements].map((c) => rendreQuestion({
+        ...c, question: '', complements: [], complementsVisibles: false,
+      }))}
+    </div>
+  ) : entree.sous_questions?.length > 0 ? (
+    <SousQuestions
+      key={entree.champ}
+      entree={entree}
+      existant={objetsEcrits[`${leadId}.${entree.champ}`] || panneau?.prefill?.[entree.champ] || {}}
+      categorie={panneau?.prefill?.categorie_commerciale}
+      saisies={saisies}
+      occupe={Boolean(enCours)}
+      erreur={erreurs[entree.champ] || ''}
+      onSaisie={(cle, valeur) => {
+        setSaisies((s) => ({ ...s, [cle]: valeur }))
+        setErreurs((e) => ({ ...e, [entree.champ]: '' }))
+      }}
+      onErreur={(message) => setErreurs((e) => ({ ...e, [entree.champ]: message }))}
+      onEcrire={(objet) => ecrire(entree, objet)}
+    />
+  ) : (
     <Question
       key={entree.champ}
       entree={entree}
       saisie={saisies[entree.champ] ?? ''}
       erreur={erreurs[entree.champ] || ''}
       occupe={Boolean(enCours)}
-      onChoix={(valeur) => ecrire(entree, valeur)}
+      onChoix={(valeur) => choisir(entree, valeur)}
       onSaisie={(valeur) => {
         setSaisies((s) => ({ ...s, [entree.champ]: valeur }))
         setErreurs((e) => ({ ...e, [entree.champ]: '' }))
       }}
       onEnregistrer={() => enregistrerLibre(entree)}
+      periode={periodes[entree.champ] || 'mensuelle'}
+      onPeriode={avecPeriode(entree)
+        ? (valeur) => setPeriodes((p) => ({ ...p, [entree.champ]: valeur })) : undefined}
     />
-  )
+  ))
 
   // Q5 — la présence en journée remonte EN TÊTE : la liste ordonnée ne la
   // répète pas (l'ordre des autres étapes reste celui de CAD162).
@@ -465,7 +748,10 @@ export default function PanneauScriptAppel({
       )}
       {/* CAD157 — ce que le chiffre ne compte PAS, dit à côté des réponses :
           aucune de ces mentions n'ouvre un champ au calcul (D7 tranchée). */}
-      {g?.livre && (
+      {/* CSV6 — ce bloc est RÉSIDENTIEL (orientation et ombrage, clim/VE/pompe,
+          tranche ONEE, montant de la facture) : un lead pro ou agricole n'a ni
+          D7 ni ces mentions, il ne les voit pas. */}
+      {g?.livre && g.famille === 'residentiel' && (
         <div className="flex flex-col gap-1 rounded-md border border-border p-2" data-testid="non-compte">
           <p className="font-medium text-foreground">{NON_COMPTE_TITRE}</p>
           <p data-testid="mention-d7">{MENTION_D7}</p>

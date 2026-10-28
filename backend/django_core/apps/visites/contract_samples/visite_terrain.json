@@ -805,7 +805,7 @@
       "colonne_lead": "compteur_eau"
     }
   ],
-  "gabarit_ci_regle": "CIQ5 (Groupe CIQ, 03/10/2026 ; D-CIQ-5) — CONTRAT D'ABORD (PACT10), ce MÊME fichier étendu (jamais un second). Valeur de gabarit `ci` : posée à la PLANIFICATION quand le lead est `commercial` ou `industriel`, sinon inchangée (toiture / point_eau) ; le type du lead n'est JAMAIS changé par une visite. Le gabarit `ci` remplace les catégories résidentielles par `gabarit_ci` ; le SUPPLÉMENT MT (`gabarit_ci_supplement_mt`) s'affiche quand la mesure `comptage.niveau_tension_constate` vaut `mt` (`bt` / `inconnu` = socle commun + BT). `_non_releves` = {code_mesure: motif}, motifs FERMÉS : acces_refuse | dangereux | site_ferme | a_faire_par_electricien | non_applicable — une mesure requise non relevée avec son motif ne bloque pas « terminer ». `releve_ci` = {declare, constate, ecart} pour niveau_tension, puissance_souscrite_kva, type_toiture, surface_utile, statut_occupation (déclaré = colonnes du contrat crm `lead_pro.json`, CIQ1 ; `statut_occupation` = colonne Lead existante `ownership`) + `validee_le`. `retour_lead_ci` = table mesure → colonne Lead de `lead_pro.json`, appliquée à la VALIDATION (jamais avant), provenance `{origine: 'mesure_visite', detail, date}`. AUCUN seuil, aucun verdict (règle VT1), aucun chiffre de dimensionnement. `exemple`, `exemple_point_eau` et leurs clés restent identiques à l'octet. Valeurs ILLUSTRATIVES ; `site_commerce` est la catégorie de CIQ651. CIQ651 : la catégorie `site_commerce` (`gabarit_ci_site_commerce`) est servie en tête du gabarit `ci`, REQUISE pour un lead `commercial` (`requis` ci-dessous), FACULTATIVE pour tout autre type (aucun `requis`) ; la pièce `accord_proprietaire` n'est servie que si le lead est locataire (`releve_ci.statut_occupation.declare`). CIQ660 : le cos φ constaté exige `source_cos_phi` (400 sinon).",
+  "gabarit_ci_regle": "CIQ5 (Groupe CIQ, 03/10/2026 ; D-CIQ-5) — CONTRAT D'ABORD (PACT10), ce MÊME fichier étendu (jamais un second). Valeur de gabarit `ci` : posée à la PLANIFICATION quand le lead est `commercial` ou `industriel`, sinon inchangée (toiture / point_eau) ; le type du lead n'est JAMAIS changé par une visite. Le gabarit `ci` remplace les catégories résidentielles par `gabarit_ci` ; le SUPPLÉMENT MT (`gabarit_ci_supplement_mt`) s'affiche quand la mesure `comptage.niveau_tension_constate` vaut `mt` (`bt` / `inconnu` = socle commun + BT). `_non_releves` = {code_mesure: motif}, motifs FERMÉS : acces_refuse | dangereux | site_ferme | a_faire_par_electricien | non_applicable — une mesure requise non relevée avec son motif ne bloque pas « terminer ». `releve_ci` = {declare, constate, ecart} pour niveau_tension, puissance_souscrite_kva, type_toiture, surface_utile, statut_occupation (déclaré = colonnes du contrat crm `lead_pro.json`, CIQ1 ; `statut_occupation` = colonne Lead existante `ownership`) + `validee_le`. `retour_lead_ci` = table mesure → colonne Lead de `lead_pro.json`, appliquée à la VALIDATION (jamais avant), provenance `{origine: 'mesure_visite', detail, date}`. AUCUN seuil, aucun verdict (règle VT1), aucun chiffre de dimensionnement. `exemple`, `exemple_point_eau` et leurs clés restent identiques à l'octet. Valeurs ILLUSTRATIVES ; `site_commerce` est la catégorie de CIQ651. CIQ651 : la catégorie `site_commerce` (`gabarit_ci_site_commerce`) est servie en tête du gabarit `ci`, REQUISE pour un lead `commercial` (`requis` ci-dessous), FACULTATIVE pour tout autre type (aucun `requis`) ; la pièce `accord_proprietaire` n'est servie que si le lead est locataire (`releve_ci.statut_occupation.declare`). CIQ660 : le cos φ constaté exige `source_cos_phi` (400 sinon). CSV9 : l'agrégat `ci` porte `declare` = {categorie: {code_mesure: {valeur, libelle}}}, ce que la FICHE du lead porte déjà (catégorie, horaires, groupe électrogène, tension, puissance), lu par `crm.selectors` ; clé optionnelle par mesure : champ vide du lead ⇒ pas de `declare`, jamais de valeur inventée ; l'écran dit « Sur la fiche : … » (jamais « déclaré au téléphone ») et enregistre la valeur au bouton « Confirmer ».",
   "gabarit_ci": {
     "toiture_ci": {
       "photos": {
@@ -908,6 +908,15 @@
           "requis": false,
           "libelle": "Puissance souscrite constatée (plaque / contrat)",
           "unite": "kVA"
+        },
+        "phases": {
+          "type": "choix",
+          "requis": false,
+          "libelle": "Phases du compteur",
+          "choix": [
+            "monophase",
+            "triphase"
+          ]
         }
       }
     },
@@ -924,7 +933,12 @@
             "libelle": "texte",
             "longueur_dc_m": "décimal",
             "longueur_ac_m": "décimal"
-          }
+          },
+          "forme_libelles": {
+            "longueur_dc_m": "Distance champ → onduleur (m, un sens)",
+            "longueur_ac_m": "Distance onduleur → TGBT (m)"
+          },
+          "aide": "Mesurez chaque distance UN SEUL SENS, à la longueur réelle du trajet : le câble DC aller-retour (2 × le nombre de chaînes) est calculé pour vous, ne doublez pas. « Distance onduleur → TGBT » se mesure pour chaque onduleur. Plusieurs trajets : le plus long est retenu, pas la somme."
         }
       }
     },
@@ -1287,7 +1301,8 @@
       "comptage": {
         "type_compteur": "électronique triphasé",
         "niveau_tension_constate": "bt",
-        "puissance_souscrite_kva_constatee": null
+        "puissance_souscrite_kva_constatee": null,
+        "phases": null
       },
       "cheminement": {
         "trajets": [
@@ -1315,6 +1330,14 @@
         "texte": "à confirmer avec le client"
       },
       "general": {}
+    },
+    "declare": {
+      "comptage": {
+        "puissance_souscrite_kva_constatee": {
+          "valeur": 80.0,
+          "libelle": "80 kVA"
+        }
+      }
     },
     "_non_releves": {
       "comptage.puissance_souscrite_kva_constatee": "a_faire_par_electricien",
@@ -1345,6 +1368,9 @@
         "declare": "proprietaire",
         "constate": "proprietaire",
         "ecart": false
+      },
+      "raccordement": {
+        "constate": "triphase"
       },
       "validee_le": null
     },
@@ -1470,7 +1496,8 @@
       "comptage": {
         "type_compteur": "comptage MT",
         "niveau_tension_constate": "mt",
-        "puissance_souscrite_kva_constatee": 250.0
+        "puissance_souscrite_kva_constatee": 250.0,
+        "phases": "triphase"
       },
       "cheminement": {
         "trajets": [
@@ -1545,6 +1572,14 @@
         "profil_charge_mesure_fichier": null
       }
     },
+    "declare": {
+      "comptage": {
+        "niveau_tension_constate": {
+          "valeur": "mt",
+          "libelle": "Moyenne tension (MT)"
+        }
+      }
+    },
     "_non_releves": {
       "reactif_secours.condensateurs_kvar": "acces_refuse",
       "reseau_assurance.capacite_poste_source": "a_faire_par_electricien"
@@ -1574,6 +1609,9 @@
         "declare": "proprietaire",
         "constate": "proprietaire",
         "ecart": false
+      },
+      "raccordement": {
+        "constate": "triphase"
       },
       "validee_le": null
     },
@@ -1709,7 +1747,30 @@
       "comptage": {
         "type_compteur": "électronique triphasé",
         "niveau_tension_constate": "bt",
-        "puissance_souscrite_kva_constatee": 36.0
+        "puissance_souscrite_kva_constatee": 36.0,
+        "phases": "triphase"
+      }
+    },
+    "declare": {
+      "site_commerce": {
+        "categorie": {
+          "valeur": "bureau",
+          "libelle": "Bureaux"
+        },
+        "horaires_constates": {
+          "valeur": "Lun–Ven, 8 h–18 h",
+          "libelle": "Lun–Ven, 8 h–18 h"
+        }
+      },
+      "comptage": {
+        "niveau_tension_constate": {
+          "valeur": "bt",
+          "libelle": "Basse tension (BT)"
+        },
+        "puissance_souscrite_kva_constatee": {
+          "valeur": 80.0,
+          "libelle": "80 kVA"
+        }
       }
     },
     "_non_releves": {
@@ -1741,6 +1802,9 @@
         "declare": "proprietaire",
         "constate": "proprietaire",
         "ecart": false
+      },
+      "raccordement": {
+        "constate": "triphase"
       },
       "validee_le": null
     },
@@ -1830,6 +1894,10 @@
         "colonne_lead": "surface_source",
         "valeur": "mesure_visite"
       }
+    },
+    {
+      "mesure": "comptage.phases",
+      "colonne_lead": "raccordement"
     },
     {
       "mesure": "factures_mt.cos_phi_constate",

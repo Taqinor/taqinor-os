@@ -1,0 +1,7 @@
+Rejeu CSV13 — 2026-10-28 03:33 UTC — 2e fenêtre JETON DOCKER CSV, conteneur csv-django sans montage, code ea2dd9f9d (la base de dev n'a
+pas la colonne AGV `depense_electricite_pompe_mad_mois` : le code de main y rend 500 à la création d'un lead ; le code CSV d'avant la fusion AGV est rejoué).
+Lead 2659 « CSV PC2 Boulangerie » (commercial, catégorie boulangerie). Facture/raccordement/horaires/surface/décideur posés par l'API (déjà rejoués au 1er passage).
+Panneau d'appel : « Quelques questions propres à votre activité. » — Four [Électrique / Gaz], Cuisson nocturne [Oui / Non].
+Électrique, puis Oui ⇒ nouvelle sous-question « De quelle heure à quelle heure le four électrique tourne-t-il la nuit ? » (De … h à … h) → 2 et 6, Enregistrer.
+GET /crm/leads/2659/ : reponses_categorie {four: electrique, cuisson_nocturne: true, heures_cuisson: [[2, 6]]} ; devis_auto.pret true ; POST devis-auto 200.
+Console : 0 error.

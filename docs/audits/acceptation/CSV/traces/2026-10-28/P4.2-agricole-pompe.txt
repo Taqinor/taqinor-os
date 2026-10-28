@@ -1,0 +1,10 @@
+Rejeu CSV18 — 2026-10-28 03:35 UTC — même pile.
+Lead 2660 « CSV PC2 Ferme sans pompe » : pompe actuelle → « Aucune pompe ». Questions restantes : source d'eau, m³/jour, « À quelle distance du forage
+peut-on poser les panneaux ? », méthode d'irrigation — NI « Combien de m³ par heure sort votre pompe actuelle » NI les heures de la pompe actuelle.
+GET panneau-appel : champs servis sans pompe_actuelle_debit_m3h ni pompage_heures_jour.
+Lead 2661 « CSV PC2 Ferme butane » : pompe actuelle → Butane ⇒ « Combien de bouteilles de butane par jour en saison ? » (3), « Vous la payez combien,
+la bouteille (ou le litre de gasoil) ? » (50), « Vous irriguez combien de jours par semaine en saison ? » (5) ; débit de la pompe actuelle posé ensuite.
+GET lead 2661 : butane_bouteilles_jour 3.0, carburant_prix_unitaire_mad 50.00, jours_irrigation_semaine 5.0. Console : 0 error.
+CSV7 (non couvert ici) : touche « Planifier la visite technique convenue » créée (issue visite_acceptee), panneau « Proposer la visite » rendu en
+PHASE 1 (« Proposez activement, en choix alternatif »), aucune trace de « pas pour le changer » ; la phase 2 (texte CSV7) n'apparaît que sur une touche
+J2-J6 de la cadence « après devis » (devis envoyé) — non jouée.

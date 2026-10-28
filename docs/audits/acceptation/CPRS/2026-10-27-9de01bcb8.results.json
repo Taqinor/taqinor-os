@@ -1,0 +1,84 @@
+{
+ "sha": "9de01bcb81420eaa63e684b7fd847dfc0a8dfae5",
+ "date": "2026-10-27",
+ "groupe": "CPRS",
+ "verdict": "PASS",
+ "couvre": [
+  "CPRS1",
+  "CPRS10",
+  "CPRS11",
+  "CPRS2",
+  "CPRS3",
+  "CPRS8"
+ ],
+ "couvre_avec_ecart": [],
+ "etapes": [
+  {
+   "id": "C&I",
+   "taches": [
+    "CPRS1",
+    "CPRS2",
+    "CPRS3",
+    "CPRS11"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/CPRS/2026-10-27-9de01bcb8.md",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "PASS",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "residentiel",
+   "taches": [
+    "CPRS10"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/CPRS/2026-10-27-9de01bcb8.md",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  },
+  {
+   "id": "agricole",
+   "taches": [
+    "CPRS8",
+    "CPRS10"
+   ],
+   "verdict": "PASS",
+   "base_verdict": null,
+   "trace": "docs/audits/acceptation/CPRS/2026-10-27-9de01bcb8.md",
+   "oracles": {
+    "1": "PASS",
+    "2": "PASS",
+    "3": "NA",
+    "4": "NA",
+    "5": "NA",
+    "6": "NA",
+    "7": "NA",
+    "8": "NA",
+    "9": "NA",
+    "10": "NA"
+   }
+  }
+ ]
+}
