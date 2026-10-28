@@ -47,6 +47,33 @@ describe('ADEV50 — cumul 25 ans servi, option par option', () => {
   it('aucun second calcul de cumul côté web ; le nombre porte data-figure', () => {
     expect(LIB).not.toMatch(/rate\s*\*\s*years/);
     expect(LIB).not.toMatch(/const\s+BILL_INFLATION_RATE/);
-    expect(PAGE).toContain('data-figure="economies_cumul_25_ans"');
+    expect(PAGE).toContain("data-figure={headline.gainNet ? 'gain_net_25_ans' : 'economies_cumul_25_ans'}");
+  });
+});
+
+describe('RWEB24 (FIX-WEB C) — gain NET 25 ans servi : la carte affiche le chiffre du PDF, sous son libellé', () => {
+  it('gainNet = `gain_net_25_ans[option]` servi, tel quel (net = brut − prix, arrondi au millier par le serveur)', () => {
+    expect(EXEMPLE.gain_net_25_ans).toEqual({ sans_batterie: 264000, avec_batterie: 233000 });
+    expect(savingsHeadline(EXEMPLE, 'sans_batterie').gainNet).toBe(264000);
+    expect(savingsHeadline(EXEMPLE, 'avec_batterie').gainNet).toBe(233000);
+    // Le brut reste servi (devis au niveau ≤ 2) : jamais confondu avec le net.
+    expect(savingsHeadline(EXEMPLE, 'sans_batterie').cumulative).toBe(342314);
+  });
+
+  it('clé absente (devis envoyé au niveau ≤ 2, option jamais rentabilisée) → aucun net, la carte garde le cumul brut', () => {
+    const sans = { ...EXEMPLE } as ProposalResponse;
+    delete (sans as { gain_net_25_ans?: unknown }).gain_net_25_ans;
+    expect(savingsHeadline(sans, 'sans_batterie').gainNet).toBeNull();
+    expect(savingsHeadline(sans, 'sans_batterie').cumulative).toBe(342314);
+  });
+
+  it('la page : libellé du PDF « Gain net sur 25 ans » (FR/EN/AR), le net d’abord, plus aucune promesse « même calcul » sur le brut', () => {
+    expect(PAGE).toContain('`Gain net sur ${headline.years} ans`');
+    expect(PAGE).toContain('`Net gain over ${headline.years} years`');
+    expect(PAGE).toContain('`صافي الربح على ${headline.years} سنة`');
+    expect(PAGE).toContain('{headline.gainNet || headline.cumulative ? (');
+    expect(PAGE).toContain("{...(headline.gainNet ? { 'data-detail-gain-net-card': '' } : { 'data-detail-cumul-card': '' })}");
+    expect(PAGE).not.toContain('Même calcul que votre devis PDF');
+    expect(PAGE).not.toContain('Same calculation as your PDF quote');
   });
 });

@@ -257,12 +257,12 @@ export interface ProposalResponse {
    */
   date_validite?: string | null;
   /**
-   * ADEV50 (C-ADEV-017) — cumul BRUT des économies sur 25 ans de CHAQUE option
-   * (MAD), servi par le serveur depuis le MÊME flux annuel que le PDF
-   * `/proposal`. Clé ADDITIVE : absente sans flux d'économies (agricole, C&I,
-   * case « économies » décochée) — la page n'affiche alors aucun cumul.
+   * ADEV50 — cumul BRUT des économies sur 25 ans de CHAQUE option (MAD), même flux annuel que le PDF.
+   * Clé ADDITIVE : absente sans flux d'économies (agricole, C&I, case « économies » décochée).
    */
   economies_cumul_25_ans?: Partial<Record<OptionKey, number>>;
+  /** RWEB24 — gain NET 25 ans (MAD) de la carte « Gain net sur 25 ans » du PDF ; niveau de règles 3 seulement. */
+  gain_net_25_ans?: Partial<Record<OptionKey, number>>;
   /**
    * ADEV51 (C-ADEV-018) — empreinte du CONTENU signable au moment de la
    * lecture. La page la renvoie telle quelle à `/accept/` ; si le devis a été
@@ -2266,8 +2266,10 @@ export function signStampLabel(reference: string, d: Date, lang: PropLang): stri
 export interface SavingsHeadline {
   /** Économie annuelle (MAD/an) — backend `eco_*_ann`. */
   annual: number | null;
-  /** Économies cumulées sur 25 ans (MAD) — `economies_cumul_25_ans[opt]` SERVI, tel quel. */
+  /** Économies cumulées sur 25 ans (MAD) — `economies_cumul_25_ans[opt]` SERVI, tel quel (cumul BRUT). */
   cumulative: number | null;
+  /** RWEB24 — gain NET 25 ans (MAD) — `gain_net_25_ans[opt]` SERVI : la valeur du PDF, prioritaire sur le brut. */
+  gainNet: number | null;
   /** Horizon retenu (ans). */
   years: number;
   /** Économie mensuelle équivalente (MAD/mois) ≈ annuel / 12. */
@@ -2279,13 +2281,8 @@ export interface SavingsHeadline {
 }
 
 /**
- * WJ9 — Construit le bandeau « money over time » d'une option.
- *
- *  - `annual` : économie annuelle backend (`eco_*_ann`).
- *  - `cumulative` : ADEV50 — le cumul 25 ans de CETTE option, SERVI par
- *    `economies_cumul_25_ans[opt]` (même flux annuel que le PDF), jamais
- *    recalculé. Clé absente ⇒ `null` ⇒ aucun cumul affiché.
- *  - `monthly` : annuel / 12 (simple cadrage de lecture, pas un nouveau chiffre).
+ * WJ9 — bandeau « money over time » d'une option : `annual` = `eco_*_ann` ; `cumulative` (ADEV50) et `gainNet`
+ * (RWEB24) SERVIS par option, jamais recalculés (clé absente ⇒ `null` ⇒ rien d'affiché) ; `monthly` = annuel / 12.
  */
 export function savingsHeadline(
   p: ProposalResponse,
@@ -2295,7 +2292,7 @@ export function savingsHeadline(
   // CIW300 — C&I : l'argent est `synthese_ci.argent` ; tout à `null` ici.
   const modeCi = resolveInstallMode(p);
   if (modeCi === 'commercial' || modeCi === 'industriel') {
-    return { annual: null, cumulative: null, years, monthly: null, payback: null, cumulativeFromBackend: false };
+    return { annual: null, cumulative: null, gainNet: null, years, monthly: null, payback: null, cumulativeFromBackend: false };
   }
   const annualRaw = opt === 'avec_batterie' ? p.quote?.eco_a_ann : p.quote?.eco_s_ann;
   const annual = typeof annualRaw === 'number' && Number.isFinite(annualRaw) && annualRaw > 0
@@ -2306,10 +2303,12 @@ export function savingsHeadline(
 
   const servi = p.economies_cumul_25_ans?.[opt];
   const cumulative = typeof servi === 'number' && Number.isFinite(servi) && servi > 0 ? servi : null;
+  const net = p.gain_net_25_ans?.[opt];
+  const gainNet = typeof net === 'number' && Number.isFinite(net) && net > 0 ? net : null;
 
   return {
     annual,
-    cumulative,
+    cumulative, gainNet,
     years,
     monthly: annual !== null ? Math.round(annual / 12) : null,
     payback: formatPayback(paybackRaw),

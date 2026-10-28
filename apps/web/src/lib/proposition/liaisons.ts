@@ -388,6 +388,20 @@ export const PROFONDS: readonly Liaison<TailleDetail | null>[] = [
     },
   }),
 
+  profond<number>({
+    // RWEB24 — LA CARTE « GAIN NET SUR 25 ANS » (valeur du PDF, `gain_net_25_ans` du DEVIS). Le détail
+    // d'une taille ne sert que le cumul BRUT (`carte.economies_cumulees_25_ans_mad`) : aucun net de taille
+    // n'existe encore (moitié serveur offres_tailles). Une autre taille MASQUE donc la carte — jamais le net
+    // du devis sous une autre offre, jamais un brut sous le libellé « net » ; le retour la restaure.
+    cle: 'gain_net_25_ans',
+    enveloppe: '[data-detail-gain-net-card]',
+    noeuds: { valeur: { sel: '[data-detail-gain-net-value]' } },
+    lire() {
+      return null;
+    },
+    peindre() {},
+  }),
+
   profond<string>({
     cle: 'payback',
     enveloppe: '[data-detail-payback-card]',

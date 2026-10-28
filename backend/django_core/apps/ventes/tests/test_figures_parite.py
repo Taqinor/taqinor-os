@@ -182,7 +182,8 @@ CAS = {
         lignes=FULL_LINES, etude_params={**DEUX_OPTIONS, **ANCRAGE},
         formats=('full', 'onepage'),
         requis=('total_ttc@sans', 'total_ttc@avec', 'puissance_kwc',
-                'production_annuelle_kwh', 'total_affiche')),
+                'production_annuelle_kwh', 'total_affiche',
+                'gain_net_25_ans@*')),  # RWEB24 — « Gain net sur 25 ans »
     'residentiel_deux_options_etude': dict(
         lignes=FULL_LINES, etude_params={**DEUX_OPTIONS, **ANCRAGE, **ETUDE},
         formats=('full', 'onepage', 'etude'),

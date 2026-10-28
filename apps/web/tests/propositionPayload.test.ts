@@ -590,6 +590,8 @@ const NON_LU: Readonly<Record<string, string>> = {
   // ADEV50 (08/10/2026) — le cumul 25 ans par option, servi par le serveur.
   'economies_cumul_25_ans.sans_batterie': 'Cumul 25 ans de l’option sans batterie, servi (ADEV50) : lu par `savingsHeadline` sur le payload brut pour le titre « Économies cumulées », pas par le lecteur typé.',
   'economies_cumul_25_ans.avec_batterie': 'Cumul 25 ans de l’option avec batterie, servi (ADEV50) : lu par `savingsHeadline` sur le payload brut pour le titre « Économies cumulées », pas par le lecteur typé.',
+  'gain_net_25_ans.sans_batterie': 'RWEB24 — gain net 25 ans de l’option sans batterie, la valeur du PDF : lu par `savingsHeadline` (`gainNet`) pour la carte « Gain net sur 25 ans », pas par le lecteur typé.',
+  'gain_net_25_ans.avec_batterie': 'RWEB24 — gain net 25 ans de l’option avec batterie, la valeur du PDF : lu par `savingsHeadline` (`gainNet`) pour la carte « Gain net sur 25 ans », pas par le lecteur typé.',
   // ADEV51 (08/10/2026) — l'empreinte du contenu signable.
   'empreinte_contenu': 'Empreinte du contenu signable (ADEV51) : passée telle quelle au script de signature (`signConfig.empreinte`) puis renvoyée à `/accept/`, jamais affichée — pas une donnée du lecteur typé.',
   // ADEV52 (08/10/2026) — la règle d'expiration servie.

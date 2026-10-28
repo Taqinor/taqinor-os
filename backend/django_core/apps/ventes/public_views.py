@@ -1087,36 +1087,33 @@ def _retirer_industriel_seul(payload):
     return payload
 
 
-#: ADEV50 — par option publique : (clé de la série cumulée du moteur, clé de
-#: l'économie annuelle, clé de l'investissement de cette série).
+#: ADEV50 — par option publique : (série cumulée du moteur, économie annuelle,
+#: investissement de cette série, drapeau « jamais rentabilisé » — RWEB24).
 _OPTIONS_CUMUL_25_ANS = (
-    ('sans_batterie', 'cashflow_sans', 'eco_s_ann', 'total_sans'),
-    ('avec_batterie', 'cashflow_avec', 'eco_a_ann', 'total_avec'),
+    ('sans_batterie', 'cashflow_sans', 'eco_s_ann', 'total_sans', 'roi_s_jamais'),
+    ('avec_batterie', 'cashflow_avec', 'eco_a_ann', 'total_avec', 'roi_a_jamais'),
 )
 
 
-def _economies_cumul_25_ans_publique(data):
-    """ADEV50 (C-ADEV-017) — le cumul BRUT des économies sur 25 ans de CHAQUE
-    option, lu sur LE flux annuel que le PDF ``/proposal`` trace (``cashflow_*``
-    du moteur, ``pricing.compute_cashflow_payback`` : dégradation, escalade,
-    rendement batterie, provision onduleur) : cumul final + investissement de
-    cette série = somme des 25 flux annuels. Aucun calcul de flux ici — une
-    LECTURE de ``data`` (règle #4 : le moteur rend, la vue publie).
-
+def _economies_cumul_25_ans_publique(data, devis=None):
+    """ADEV50 (C-ADEV-017) / RWEB24 — ``(cumul BRUT, gain NET)`` 25 ans par
+    option, chacun ``None`` quand aucune option n'en porte (clés ADDITIVES).
+    Brut : LE flux annuel que le PDF ``/proposal`` trace (``cashflow_*``,
+    ``pricing.compute_cashflow_payback``), cumul final + investissement. Net :
+    LA valeur de la carte « Gain net sur 25 ans » du PDF
+    (``residential/options.gain_net_25_ans``, même arrondi au millier), au
+    niveau de règles 3 seulement (un devis envoyé avant garde sa page), omise
+    pour une option « Non rentabilisé ». Aucun calcul de flux ici (règle #4).
     Appelée APRÈS les retraits de la vue (ancrage Z2, agricole/C&I, option
-    non vendable, mono-option) : une option dont l'économie annuelle ou les
-    totaux ne sont plus publiés ne porte pas de cumul. Rend ``None`` quand
-    aucune option n'a de flux (clé ADDITIVE absente, jamais ``null``)."""
-    out = {}
-    for option, cle_flux, cle_eco, cle_total in _OPTIONS_CUMUL_25_ANS:
+    non vendable, mono-option)."""
+    from .domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+    from .quote_engine.residential.options import gain_net_25_ans
+    out, net = {}, {}
+    for option, cle_flux, cle_eco, cle_total, cle_jamais in _OPTIONS_CUMUL_25_ANS:
         flux = data.get(cle_flux)
-        if not isinstance(flux, list) or not flux:
+        if not isinstance(flux, list) or not flux or data.get(cle_eco) is None:
             continue
-        if data.get(cle_eco) is None:
-            continue
-        totaux = data.get('totaux_sans' if option == 'sans_batterie'
-                          else 'totaux_avec')
-        if not totaux:
+        if not data.get('totaux_sans' if option == 'sans_batterie' else 'totaux_avec'):
             continue
         try:
             dernier = float(flux[-1])
@@ -1126,7 +1123,10 @@ def _economies_cumul_25_ans_publique(data):
         if investissement <= 0:
             continue
         out[option] = round(dernier + investissement)
-    return out or None
+        if regles_au_moins(devis, REGLES_CORRIGEES_2710) and not data.get(cle_jamais):
+            net[option] = gain_net_25_ans(data, option == 'avec_batterie')
+    net = {option: n for option, n in net.items() if n}
+    return out or None, net or None
 
 
 def _emetteur_public(company):
@@ -1560,13 +1560,13 @@ def proposal_data(request, token):
         # exactement comme sur un devis sans simulation.
         if bankable is not None and _section_servie(link, 'bankable'):
             payload['bankable'] = bankable
-        # ADEV50 (C-ADEV-017) — le cumul 25 ans de CHAQUE option, servi : la
-        # page l'affiche tel quel (plus de « économie × 25 » en JS). Même
-        # section que les économies ; additive (absente sans flux).
-        _cumul_25 = (_economies_cumul_25_ans_publique(data)
-                     if _section_servie(link, 'economies') else None)
+        # ADEV50 — cumul 25 ans BRUT ; RWEB24 — gain NET du PDF (case « économies »).
+        _cumul_25, _net_25 = (_economies_cumul_25_ans_publique(data, devis)
+                              if _section_servie(link, 'economies') else (None, None))
         if _cumul_25 is not None:
             payload['economies_cumul_25_ans'] = _cumul_25
+        if _net_25 is not None:
+            payload['gain_net_25_ans'] = _net_25
         # AGR308 — synthèse agricole (additive). Son argent (``economies``, et
         # ``depense_declaree`` AGC16) obéit à la case « Synthèse d'économies »
         # du lien, comme la synthèse résidentielle : décochée, il ne part pas.

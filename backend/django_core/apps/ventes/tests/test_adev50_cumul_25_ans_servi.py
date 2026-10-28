@@ -103,6 +103,49 @@ class Cumul25AnsServiTests(TestCase):
         self.assertEqual(lire(link.token).json()['economies_cumul_25_ans'],
                          cumul)
 
+
+class GainNet25AnsServiTests(TestCase):
+    """RWEB24 (FIX-WEB C) — la page affichait le cumul BRUT sous « Même calcul
+    que votre devis PDF » alors que le PDF imprime le gain NET (« Gain net sur
+    25 ans », ``residential/options.py``). ``gain_net_25_ans`` sert LA valeur
+    du PDF — sa fonction, son arrondi au millier —, au niveau de règles 3 ; un
+    devis au niveau ≤ 2 (envoyé avant) garde sa page : clé absente."""
+
+    def test_net_par_option_egal_pdf(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.residential.options import (
+            gain_net_25_ans,
+        )
+        devis = devis_deux_options('rweb24a')
+        link = ShareLink.objects.create(company=devis.company, devis=devis)
+        corps = lire(link.token).json()
+        net, brut = corps.get('gain_net_25_ans'), corps['economies_cumul_25_ans']
+        data = build_quote_data(devis, {'pdf_mode': 'full',
+                                        'share_token': link.token})
+        attendu = {}
+        for option, jamais in (('sans_batterie', 'roi_s_jamais'),
+                               ('avec_batterie', 'roi_a_jamais')):
+            valeur = gain_net_25_ans(data, option == 'avec_batterie')
+            if valeur and not data.get(jamais):
+                attendu[option] = valeur
+        self.assertTrue(attendu, data.get('cashflow_sans'))
+        self.assertEqual(net, attendu)
+        for option, valeur in net.items():
+            self.assertEqual(valeur % 1000, 0)
+            # Net = brut − investissement (à l'arrondi au millier près).
+            self.assertLess(valeur, brut[option])
+            self.assertAlmostEqual(valeur, brut[option] - float(
+                data['total_sans' if option == 'sans_batterie'
+                     else 'total_avec']), delta=501)
+
+    def test_niveau_2_garde_le_cumul_brut(self):
+        devis = devis_deux_options('rweb24b')
+        Devis.objects.filter(pk=devis.pk).update(regles_calcul=2)
+        link = ShareLink.objects.create(company=devis.company, devis=devis)
+        corps = lire(link.token).json()
+        self.assertNotIn('gain_net_25_ans', corps)
+        self.assertIn('economies_cumul_25_ans', corps)
+
     def test_absente_sans_etude(self):
         # Aucun ancrage réel (ni factures, ni distributeur) : Z2 retire les
         # économies, le cumul part avec elles — clé ABSENTE, jamais null.
@@ -111,6 +154,7 @@ class Cumul25AnsServiTests(TestCase):
         resp = lire(link.token)
         self.assertEqual(resp.status_code, 200, resp.content[:300])
         self.assertNotIn('economies_cumul_25_ans', resp.json())
+        self.assertNotIn('gain_net_25_ans', resp.json())  # RWEB24
 
     def test_absente_case_economies_decochee(self):
         devis = devis_deux_options('adev50c')
@@ -120,3 +164,4 @@ class Cumul25AnsServiTests(TestCase):
         resp = lire(link.token)
         self.assertEqual(resp.status_code, 200, resp.content[:300])
         self.assertNotIn('economies_cumul_25_ans', resp.json())
+        self.assertNotIn('gain_net_25_ans', resp.json())  # RWEB24

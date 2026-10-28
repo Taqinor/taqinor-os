@@ -2223,7 +2223,7 @@ const equipmentResume = (() => {
    pour mot (même fourchette indicative, une seule source). */
 const delaiPose = steps.find((st) => st.id === 'installation') ?? null;
 const showEconomiesChapitre =
-  !isAgricole && !!headline && !!(headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut);
+  !isAgricole && !!headline && !!(headline.gainNet || headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut);
 const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
   ...(showInstallationChapitre ? [{ href: '#installation', fr: 'Matériel', en: 'Equipment', ar: 'المعدات' }] : []),
   ...(showEconomiesChapitre ? [{ href: '#economies', fr: 'Économies', en: 'Savings', ar: 'التوفير' }] : []),
@@ -3332,32 +3332,32 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       <!-- WJ126 — jamais en pompage (agricole) : la valeur d'un pompage solaire est
            l'eau livrée + le carburant évité, pas un cumul de facture réseau ; le
            cadrage « économies cumulées 25 ans » est résidentiel/autoconso. -->
-      {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut) && (
+      {!isAgricole && headline && (headline.gainNet || headline.cumulative || headline.annual || paybackHero || prodKwh || synthese || showCouvertureDonut) && (
         <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16" data-track-section="economies">
           <span id="economies" aria-hidden="true"></span>
           <h2 class="tech-label rule-brass mb-5 text-brass-300" data-i18n
             data-fr="Vos économies" data-en="Your savings" data-ar="توفيراتكم">Vos économies</h2>
           {/* Accroche « coût de ne rien faire » : le cumul phare. */}
-          {headline.cumulative ? (
-            <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)" data-detail-cumul-card>
+          {headline.gainNet || headline.cumulative ? (
+            <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)" {...(headline.gainNet ? { 'data-detail-gain-net-card': '' } : { 'data-detail-cumul-card': '' })}>
               <p class="tech-label text-lune-faint" data-i18n
-                data-fr={`Sans le solaire, votre facture continue de courir. Avec, vous économisez sur ${headline.years} ans`}
-                data-en={`Without solar, your bill keeps climbing. With it, you save over ${headline.years} years`}
-                data-ar={`بدون الطاقة الشمسية، تستمر فاتورتكم في الارتفاع. معها، توفرون على مدى ${headline.years} سنة`}>
-                Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
+                data-fr={headline.gainNet ? `Gain net sur ${headline.years} ans` : `Sans le solaire, votre facture continue de courir. Avec, vous économisez sur ${headline.years} ans`}
+                data-en={headline.gainNet ? `Net gain over ${headline.years} years` : `Without solar, your bill keeps climbing. With it, you save over ${headline.years} years`}
+                data-ar={headline.gainNet ? `صافي الربح على ${headline.years} سنة` : `بدون الطاقة الشمسية، تستمر فاتورتكم في الارتفاع. معها، توفرون على مدى ${headline.years} سنة`}>
+                {headline.gainNet ? `Gain net sur ${headline.years} ans` : `Sans le solaire, votre facture continue de courir. Avec, vous économisez sur ${headline.years} ans`}
               </p>
-              <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr" data-detail-cumul-value data-figure="economies_cumul_25_ans" data-figure-option={reco === 'avec_batterie' ? 'avec' : 'sans'}>{formatMAD(headline.cumulative)}</p>
-              <!-- ADEV50 — le chiffre est `economies_cumul_25_ans[option]`, servi
-                   par le serveur depuis le MÊME flux annuel que le PDF
-                   (`cashflow_*` du moteur) : la phrase « même calcul que votre
-                   devis PDF » est vraie, option par option. -->
+              <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr" {...(headline.gainNet ? { 'data-detail-gain-net-value': '' } : { 'data-detail-cumul-value': '' })} data-figure={headline.gainNet ? 'gain_net_25_ans' : 'economies_cumul_25_ans'} data-figure-option={reco === 'avec_batterie' ? 'avec' : 'sans'}>{headline.gainNet ? `≈ ${formatMAD(headline.gainNet)}` : formatMAD(headline.cumulative)}</p>
+              <!-- RWEB24 — `gain_net_25_ans[option]` (niveau de règles 3) : LA valeur que le PDF imprime sous
+                   « Gain net sur 25 ans » (`residential/options.gain_net_25_ans`), arrondie au millier comme lui.
+                   Sinon (devis envoyé au niveau ≤ 2) le cumul BRUT ADEV50 `economies_cumul_25_ans[option]`,
+                   libellé « économies cumulées » — jamais présenté comme le chiffre du PDF. -->
               <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}. Même calcul que votre devis PDF (loi 82-21, autoconsommation).`}
-                data-en={`Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''}. Same calculation as your PDF quote (law 82-21, self-consumption).`}
-                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}. نفس الحساب المعتمد في عرض PDF الخاص بكم (القانون 82-21، الاستهلاك الذاتي).`}>
-                Économies cumulées estimées sur {headline.years} ans
-                {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}.
-                <span class="text-lune-faint"> Même calcul que votre devis PDF (loi 82-21, autoconsommation).</span>
+                data-fr={headline.gainNet ? `Vos économies cumulées sur ${headline.years} ans, moins le prix de votre installation (loi 82-21, autoconsommation).` : `Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''} (loi 82-21, autoconsommation).`}
+                data-en={headline.gainNet ? `Your cumulative savings over ${headline.years} years, minus the price of your installation (law 82-21, self-consumption).` : `Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''} (law 82-21, self-consumption).`}
+                data-ar={headline.gainNet ? `توفيراتكم التراكمية على مدى ${headline.years} سنة، بعد خصم ثمن تركيبكم (القانون 82-21، الاستهلاك الذاتي).` : `توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''} (القانون 82-21، الاستهلاك الذاتي).`}>
+                {headline.gainNet ? <>Vos économies cumulées sur {headline.years} ans, moins le prix de votre installation</> : <>Économies cumulées estimées sur {headline.years} ans
+                {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}</>}
+                <span class="text-lune-faint"> (loi 82-21, autoconsommation).</span>
               </p>
             </div>
           ) : null}

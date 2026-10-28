@@ -24,6 +24,21 @@ def _milliers_doc(v):
 
 
 
+def gain_net_25_ans(d, avec):
+    """QRES58 / RWEB24 — LE gain net 25 ans de la carte « Gain net sur 25 ans »
+    de l'option ``avec`` (batterie) ou sans : dernier point du VRAI cashflow
+    (dégradation 0,5 %/an intégrée), repli Σ(0,995^t) ≈ 23,56 si le cumul
+    manque, plancher 0, arrondi au millier. SEULE définition : le PDF
+    l'imprime, la page publique la sert (``public_views.proposal_data``)."""
+    if avec:
+        eco, tot, cf = d.get("eco_a_ann", 0), d.get("total_avec", 0), d.get("cashflow_avec")
+    else:
+        eco, tot, cf = d.get("eco_s_ann", 0), d.get("total_sans", 0), d.get("cashflow_sans")
+    cf = cf or []
+    gain = max(0, round(cf[-1])) if cf else max(0, round(eco * 23.56 - tot))
+    return round(gain / 1000) * 1000
+
+
 def _qty_par_designation(items):
     """{désignation: quantité TOTALE} — somme des lignes de même désignation."""
     out = {}
@@ -768,32 +783,29 @@ def build_pages(ctx) -> list:
     # serveur (« sans » quand c'est elle) ; sinon l'option présente.
     _ref_avec = ((_reco != "sans") if deux_options else bool(avec_ok))
     if _ref_avec:
-        _eco_ref, _tot_ref = d.get("eco_a_ann", 0), d.get("total_avec", 0)
+        _tot_ref = d.get("total_avec", 0)
         # AMOT21 — libellé SERVEUR de l'option 2 (BAT-DIFF).
         _lib_avec = nom_option(d, "avec", minuscule=True)
         gain25_label = (libelle_cat(d, "res_option_nom", option=_lib_avec)
                         if deux_options else _lib_avec)
     else:
-        _eco_ref, _tot_ref = d.get("eco_s_ann", 0), d.get("total_sans", 0)
+        _tot_ref = d.get("total_sans", 0)
         gain25_label = (libelle_cat(d, "res_option_nom", option=nom_option(
             d, "sans", minuscule=True)) if deux_options
             else nom_option(d, "sans", minuscule=True))
-    # QRES58 — le gain net 25 ans sort du VRAI cashflow (dégradation 0,5 %/an
-    # intégrée — ce que les hypothèses promettent) : plus jamais un eco×25 plat
-    # qui surévaluait ~7 % ; repli Σ(0,995^t) ≈ 23,56 si le cumul manque.
-    _cf_ref = (d.get("cashflow_avec") if _ref_avec
-               else d.get("cashflow_sans")) or []
-    if _cf_ref:
-        gain25 = max(0, round(_cf_ref[-1]))
-    else:
-        gain25 = max(0, round(_eco_ref * 23.56 - _tot_ref))
-    gain25 = round(gain25 / 1000) * 1000
+    # QRES58 — le gain net 25 ans sort du VRAI cashflow (plus jamais un eco×25
+    # plat qui surévaluait ~7 %) ; RWEB24 : la page publique sert le même.
+    gain25 = gain_net_25_ans(d, _ref_avec)
     # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — l'option de référence ne se
     # rembourse jamais : son « gain net » n'est pas « ≈ 0 MAD » (plancher),
     # c'est une perte — la carte le dit au lieu d'imprimer un zéro.
     _gain_jamais = bool(_jamais_a if _ref_avec else _jamais_s)
     _gain_v_html = (libelle_cat(d, "res_non_rentabilise_maj") if _gain_jamais
                     else f"≈ {fmt(gain25)} <small>MAD</small>")
+    # RWEB24 — ancre QA-FIGURES : le même nombre que sert /proposition.
+    from ..figures import ancre
+    _gain_ancre = ("" if _gain_jamais else ancre(
+        "gain_net_25_ans", fmt(gain25), "avec" if _ref_avec else "sans"))
     # QRES28 — le multiple (« ≈ 5,6× votre investissement ») rend le gain net
     # tangible ; calculé, jamais inventé (gain net / investissement).
     gain_mult = (round(gain25 / _tot_ref, 1) if _tot_ref and gain25 > 0
@@ -1470,7 +1482,7 @@ def build_pages(ctx) -> list:
         </div>
         <div class="p2-side-stat p2-side-gain">
           <span class="p2-stat-k">{libelle_cat(d, 'res_gain_net_25')}</span>
-          <span class="p2-stat-v">{_gain_v_html}</span>
+          <span class="p2-stat-v">{_gain_v_html}</span>{_gain_ancre}
           <span class="p2-stat-s">{gain25_label}{gain_mult_sub}</span>
         </div>{_perf_stat_html()}"""
     # QRES59 — libellé NEUTRE (beaucoup de clients sont chez une régie, pas
@@ -1590,7 +1602,8 @@ def build_pages(ctx) -> list:
     _callout = ""
     if gain_mult_txt and not masquer_eco:
         _callout = ('<div class="p2-callout">' + libelle_cat(
-            d, "res_callout", gain=fmt(gain25), x=gain_mult_txt) + '</div>')
+            d, "res_callout", gain=fmt(gain25), x=gain_mult_txt) + '</div>'
+            + _gain_ancre)
 
     # QRES66 (fondateur, 18/08/2026) — la bande « Financement possible —
     # et si vous financiez ? » (économies − crédit = dans votre poche) est
