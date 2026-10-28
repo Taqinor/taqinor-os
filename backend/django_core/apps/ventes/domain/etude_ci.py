@@ -912,6 +912,11 @@ def _borne_toit(res, devis, module, alertes):
     borne = {'kwc': round(float(resultat['kwc']), 2), 'source': source}
     if not bascule_rasante_admissible({'type_pose': mode_pose, 'pente_deg': pente}):
         return borne
+    if devis is not None and not regles_au_moins(devis, REGLES_CORRIGEES_2710):
+        # R1 (P5) — devis aux règles ≤ 2 : ni bascule rasante, ni borne
+        # maximale, ni disparition de « taille au-delà du toit » (devis envoyés
+        # intouchés) ; sans devis (aperçu) la règle s'applique.
+        return borne
     # R1 (fondateur 28/10/2026) — toit plat SANS pente déclarée : la borne est
     # la configuration qui pose le PLUS de panneaux ; les deux contenances
     # (30° par défaut, pose rasante 10° jointive) viennent du MÊME service.
@@ -932,16 +937,6 @@ def _borne_toit(res, devis, module, alertes):
     return borne
 
 
-def _borne_toit_de_la_pose(borne_toit, inclinaison_retenue_deg):
-    """R1 — l'option « avec batterie » se loge dans la pose RETENUE pour la
-    taille (sa production) : contenance à 30° si 30° est gardé, rasante sinon."""
-    from apps.ventes.moteur_ci.production import ANGLE_TOIT_PLAT_DEG
-    borne = borne_toit or {}
-    if inclinaison_retenue_deg == ANGLE_TOIT_PLAT_DEG and borne.get('kwc_30') is not None:
-        return dict(borne, kwc=borne['kwc_30'])
-    return borne_toit
-
-
 def _serie_rasante(site, toit_serie, toit_declare, production, *, figee):
     """R1 — la production en pose rasante 10° (même chaîne PVGIS, série au
     plan rasant), lue PARESSEUSEMENT au premier palier qui ne tient pas à
@@ -949,7 +944,7 @@ def _serie_rasante(site, toit_serie, toit_declare, production, *, figee):
     ``hypotheses``, ``alertes``. Une production figée (CIQ119) ne bascule
     jamais ; ni une pente déclarée, ni une autre pose (``toit_rasant``)."""
     from apps.ventes.moteur_ci.production import (
-        bloc_production_ci, production_pour_bilan, toit_rasant,
+        bloc_production_ci, plan_de_production, production_pour_bilan, toit_rasant,
     )
     from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
     rasant = None if figee else toit_rasant(toit_serie)
@@ -967,7 +962,7 @@ def _serie_rasante(site, toit_serie, toit_declare, production, *, figee):
                     productible_mensuel=prod_r, formes_saison=formes_r, derate=PRODUCTION_DERATE,
                     coordonnees_figees=dict(production.get('coordonnees_figees') or {}),
                     source=source_r, toit=toit_declare, serie=serie_r,
-                    plan=(serie_r or {}).get('plan'))
+                    plan=(serie_r or {}).get('plan') or plan_de_production(rasant))
                 if bloc is not None:
                     etat.update(bloc=bloc, hypotheses=hyp, alertes=al)
         return production_pour_bilan(etat['bloc']) if etat.get('bloc') else None
@@ -1332,7 +1327,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     from apps.ventes.moteur_ci.production import (
-        bloc_production_ci, production_pour_bilan, traces_production,
+        bloc_production_ci, plan_de_production, production_pour_bilan, traces_production,
     )
     from apps.ventes.moteur_ci.taille import dimensionner_ci
     from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
@@ -1391,7 +1386,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             # ville au gazetier), pour une étude reproductible.
             coordonnees_figees={'lat': _point_du_site(site)[0], 'lon': _point_du_site(site)[1],
                                 'date_appel': _aujourdhui().isoformat()},
-            source=source, toit=toit_declare, serie=serie, plan=(serie or {}).get('plan'))
+            # R1 (P4) — le plan du toit, série OU repli (pose estimée comprise).
+            source=source, toit=toit_declare, serie=serie,
+            plan=(serie or {}).get('plan') or plan_de_production(toit_serie))
         alertes.extend(al_prod)
         hypotheses.extend(hyp_prod)
     if production is None:
@@ -1489,8 +1486,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         lead=lead, charge=jours_types, production=production_pour_bilan(production), tension=tension,
         revente_choisie=revente, valoriser=valoriser, taux_tva_pct=getattr(reglages, 'tva_standard', None),
         phase=phase, ps_kva=_num(res.valeur('puissance_souscrite_kva')), composer=composer,
-        borne_toit=_borne_toit_de_la_pose(borne_toit, resultat.get('inclinaison_retenue_deg')),
-        imposee=option_avec_imposee,
+        borne_toit=borne_toit, production_rasante=rasante['lire'], imposee=option_avec_imposee,
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])

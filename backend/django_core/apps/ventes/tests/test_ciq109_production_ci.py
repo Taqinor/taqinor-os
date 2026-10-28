@@ -25,6 +25,7 @@ from apps.ventes.moteur_ci.production import (
     CLE_POSE_RASANTE,
     MESSAGE_ORIENTATION,
     SOURCE_ANGLE_POSE_RASANTE,
+    SOURCE_ANGLE_TOIT_PLAT,
     bascule_rasante_admissible,
     bloc_production_ci,
     plan_de_production,
@@ -107,6 +108,30 @@ class TestProductionCI(unittest.TestCase):
         orientation = [a for a in alertes if a['code'] == 'orientation_non_prise_en_compte']
         self.assertEqual(len(orientation), 1)
         self.assertEqual(orientation[0]['message'], MESSAGE_ORIENTATION)
+
+    def test_r1_p4_repli_sert_le_plan_declare_ou_rasant_et_l_alerte(self):
+        # R1 (P4, arbitrage coordinatrice 28/10/2026) — sans série horaire, le
+        # bloc sert le plan du toit (pente déclarée, défaut 30° toit plat, pose
+        # rasante), la production reste la table 30° plein sud : UNE règle,
+        # l'alerte « orientation non prise en compte » pour tout plan hors table.
+        reference, _h, _a = _bloc('Casablanca')
+        declare, _h, alertes = _bloc('Casablanca', toit={'type_pose': 'toit_plat_leste', 'pente_deg': 10})
+        self.assertEqual((declare['inclinaison_deg'], declare['azimut_deg']), (10.0, PVGIS_ASPECT_DEG))
+        self.assertEqual(declare['kwh_kwc_mensuel'], reference['kwh_kwc_mensuel'])
+        self.assertIn('orientation_non_prise_en_compte', {a['code'] for a in alertes})
+        self.assertNotIn('inclinaison_source', declare)
+        toit = {'type_pose': 'toit_plat_leste'}
+        rasant, hyp, alertes = _bloc('Casablanca', toit=toit, plan=plan_de_production(toit_rasant(toit)))
+        self.assertEqual(rasant['inclinaison_deg'], ANGLE_POSE_RASANTE_DEG)
+        self.assertEqual(rasant['inclinaison_source'], SOURCE_ANGLE_POSE_RASANTE)
+        self.assertEqual(rasant['kwh_kwc_mensuel'], reference['kwh_kwc_mensuel'])
+        self.assertIn('orientation_non_prise_en_compte', {a['code'] for a in alertes})
+        self.assertEqual(next(h for h in hyp if h['cle'] == 'inclinaison_deg')['source'],
+                         SOURCE_ANGLE_POSE_RASANTE)
+        defaut, _h, alertes = _bloc('Casablanca', toit=toit)
+        self.assertEqual((defaut['inclinaison_deg'], defaut['inclinaison_source']),
+                         (ANGLE_TOIT_PLAT_DEG, SOURCE_ANGLE_TOIT_PLAT))
+        self.assertNotIn('orientation_non_prise_en_compte', {a['code'] for a in alertes})
 
     def test_bac_acier_sans_calepinage_a_confirmer(self):
         _p, _h, alertes = _bloc('Casablanca', toit={'type_pose': 'bac_acier'})

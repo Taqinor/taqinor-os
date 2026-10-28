@@ -363,10 +363,12 @@ def _bloc_estimation(etude_ci, coherente):
     # R1 (fondateur 28/10/2026) — même la pose rasante ne loge pas la taille
     # économique : le devis dit « taille limitée par le toit : X m² déclarés
     # → Y kWc en pose rasante » (seulement quand l'étude décrit le kWc servi).
+    # ``taille.taille_limitee_toit`` n'est servie par le moteur que lorsque la
+    # pose RETENUE est la rasante et que le toit borne (balayage ou taille des
+    # lignes au niveau de la contenance rasante) — jamais pour 30° gardé.
     toit = _dict(_dict(taille.get("bornes")).get("toit"))
     surface, kwc = _num(toit.get("surface_m2")), _num(taille.get("retenue_kwc"))
-    if (coherente and taille.get("raison_arret") == "toit"
-            and _num(toit.get("kwc_10")) is not None
+    if (coherente and taille.get("taille_limitee_toit")
             and surface is not None and kwc is not None):
         sortie["toit"] = {"surface_m2": surface, "kwc": kwc}
     return sortie or None

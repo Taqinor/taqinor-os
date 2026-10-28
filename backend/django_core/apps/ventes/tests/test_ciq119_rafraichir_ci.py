@@ -171,6 +171,31 @@ class RafraichisseurTests(_Base):
         self.assertEqual(apres['hypotheses'], avant['hypotheses'])
         self.assertEqual(apres['alertes'], avant['alertes'])
 
+    def test_r1_p5_devis_aux_regles_anterieures_jamais_de_bascule_rasante(self):
+        # R1 (P5, coordinatrice 28/10/2026) — un devis à ``regles_calcul`` ≤ 2
+        # garde la borne 30° seule et son alerte « taille au-delà du toit » ;
+        # sans devis (aperçu) ou au niveau courant, la règle rasante s'applique.
+        FicheTechnique.objects.filter(pmax_wc=Decimal('710')).update(
+            longueur_mm=2384, largeur_mm=1303)
+        entrees = dict(ENTREES, toit={'type_pose': 'toit_plat_leste', 'surface_utile_m2': 200},
+                       taille_explicite_kwc=30)
+        courant = etude_ci.etudier_ci(self.co, entrees)
+        self.assertEqual(courant['taille']['bornes']['toit']['kwc_10'], 35.5)
+        self.assertEqual(courant['taille']['inclinaison_retenue_deg'], 10)
+        self.assertNotIn('taille_au_dela_du_toit', {a['code'] for a in courant['alertes']})
+        devis = self._devis()
+        devis.regles_calcul = 2
+        ancien = etude_ci.etudier_ci(self.co, entrees, devis=devis)
+        toit = ancien['taille']['bornes']['toit']
+        self.assertNotIn('kwc_10', toit)
+        self.assertAlmostEqual(toit['kwc'], 21.3, places=2)
+        self.assertEqual((ancien['taille']['inclinaison_retenue_deg'],
+                          ancien['taille']['taille_limitee_toit']), (None, None))
+        self.assertIn('taille_au_dela_du_toit', {a['code'] for a in ancien['alertes']})
+        devis.regles_calcul = 3          # création = toujours le niveau courant
+        self.assertEqual(etude_ci.etudier_ci(self.co, entrees, devis=devis)
+                         ['taille']['bornes']['toit']['kwc_10'], 35.5)
+
     def test_cad177_apercu_taille_saisie_meme_bilan_que_l_etude_du_devis(self):
         # CAD177 (CIQ334, nocturne 37871928670) — 49 kWc saisis se posent en
         # 70 panneaux de 710 Wc (49,7 kWc) : l'aperçu calculait son bilan à

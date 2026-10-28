@@ -1127,6 +1127,8 @@
       "horizon_marginal_annees": 10,
       "raison_arret": "horizon_marginal",
       "statut": "calculee",
+      "inclinaison_retenue_deg": null,
+      "taille_limitee_toit": null,
       "paliers": [
         {
           "kwc": 5,
@@ -2374,6 +2376,8 @@
       "horizon_marginal_annees": 10,
       "raison_arret": "horizon_marginal",
       "statut": "calculee",
+      "inclinaison_retenue_deg": null,
+      "taille_limitee_toit": null,
       "paliers": [
         {
           "kwc": 5,
@@ -2938,12 +2942,14 @@
   },
   "exemple_toit_plafonnant": {
     "taille": {
-      "retenue_kwc": 30,
+      "retenue_kwc": 30.25,
       "nb_panneaux": 55,
       "pas_kwc": 5,
       "horizon_marginal_annees": 10,
       "raison_arret": "toit",
       "statut": "calculee",
+      "inclinaison_retenue_deg": 10,
+      "taille_limitee_toit": "taille limitée par le toit : 180 m² déclarés → 30.25 kWc en pose rasante",
       "paliers": [
         {
           "kwc": 5,
@@ -3004,11 +3010,11 @@
       ],
       "bornes": {
         "toit": {
-          "kwc": 30,
+          "kwc": 30.25,
           "source": "surface utile déclarée (180 m²), pose estimée « toit_plat_leste » — estimation, à confirmer au calepinage/visite",
-          "kwc_30": 19.17,
+          "kwc_30": 18.15,
           "source_30": "tables à 30° sur la surface déclarée (défaut toit plat, décision fondateur du 27/10/2026)",
-          "kwc_10": 30,
+          "kwc_10": 30.25,
           "source_10": "tables jointives en pose rasante 10° sur la surface déclarée (décision fondateur du 28/10/2026)",
           "surface_m2": 180
         },

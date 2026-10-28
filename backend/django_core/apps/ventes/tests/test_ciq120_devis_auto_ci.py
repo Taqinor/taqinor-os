@@ -162,6 +162,37 @@ class DevisAutoCITests(_Base):
             self.assertIn(cle, etude)
         self.assertIn('production_figee', devis.etude_params)
 
+    def test_r1_p1_lead_200_m2_terrasse_taille_limitee_par_le_toit_jusqu_au_pdf_commercial(self):
+        # R1 (P1, coordinatrice 28/10/2026) — devis créé par ``creation_auto``
+        # sur un lead 200 m² de terrasse béton (toit plat lesté), taille
+        # souhaitée 35 kWc → 50 panneaux = 35,5 kWc = la contenance rasante :
+        # l'étude STOCKÉE (rafraîchie depuis les lignes, taille explicite) porte
+        # la phrase client, le builder la sert, le gabarit COMMERCIAL l'imprime.
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.commercial import render as c_render
+        from apps.ventes.quote_engine.commercial import renderer as c_renderer
+        Produit.objects.create(company=self.co, nom='Structure toit plat lestée C&I',
+                               prix_vente=Decimal('450'), prix_achat=Decimal('200'),
+                               role_ci='structure_ci', type_pose='toit_plat_leste')
+        FicheTechnique.objects.filter(produit=self.panneau).update(longueur_mm=2384, largeur_mm=1303)
+        lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), type_toiture='terrasse_beton',
+                          surface_toiture_m2=Decimal('200'), taille_souhaitee_kwc=Decimal('35'))
+        devis = self._auto(lead)
+        taille = devis.etude_params['etude_ci']['taille']
+        self.assertEqual(taille['raison_arret'], 'taille_explicite')
+        self.assertEqual((taille['retenue_kwc'], taille['nb_panneaux']), (35.5, 50))
+        self.assertEqual(taille['bornes']['toit']['kwc_10'], 35.5)
+        self.assertEqual(taille['inclinaison_retenue_deg'], 10)
+        phrase = 'taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante'
+        self.assertEqual(taille['taille_limitee_toit'], phrase)
+        self.assertEqual(devis.etude_params['etude_ci']['production']['inclinaison_deg'], 10)
+        data = build_quote_data(devis, {})
+        self.assertEqual(data['etude']['etude_ci']['taille']['taille_limitee_toit'], phrase)
+        html = c_render.build_html(c_renderer._augment(data))
+        self.assertIn('Taille limitée par le toit', html)
+        self.assertIn('200&#160;m² déclarés → 35,5&#160;kWc en pose rasante', html)
+        self.assertNotIn('prix_achat', html)
+
     def test_lead_mt_tension_stockee(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('20000'), type_installation='industriel',
                           tension_raccordement='mt', categorie_commerciale=None,

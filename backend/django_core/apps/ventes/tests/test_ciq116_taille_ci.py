@@ -552,6 +552,19 @@ class OptionAvecBatterieTests(unittest.TestCase):
         params.update(kw)
         return dimensionner_option_avec(**params)
 
+    def test_p2_production_de_par_champ(self):
+        # R1 (P2) — chaque champ « avec » est évalué avec la production de la
+        # pose qui le loge : ``production_de(kwc)`` est appelée au kWc du champ.
+        vus = []
+
+        def production_de(kwc):
+            vus.append(kwc)
+            return self.prod
+        e = self._avec(production_de=production_de)['evaluation']
+        self.assertEqual(e['kwc'], self._avec()['evaluation']['kwc'])
+        self.assertTrue(vus and all(isinstance(k, float) for k in vus))
+        self.assertIn(e['kwc'], vus)
+
     def test_boulangerie_hybrides_bt_banque_homogene_toujours_pleine(self):
         from apps.ventes.moteur_ci.batterie import besoin_nocturne_kwh
         e = self._avec()['evaluation']
@@ -761,6 +774,10 @@ class PoseRasanteR1Tests(unittest.TestCase):
         self.assertEqual((t['retenue_kwc'], t['nb_panneaux'], t['raison_arret']),
                          (35.5, 50, 'toit'))
         self.assertGreater(self._taille(charge)['taille']['retenue_kwc'], t['retenue_kwc'])
+        # P3 — servi dans ``taille`` (ce que le générateur lit), pas seulement en hypothèse.
+        self.assertEqual(t['inclinaison_retenue_deg'], 10.0)
+        self.assertEqual(t['taille_limitee_toit'],
+                         'taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante')
 
     def test_b_taille_qui_tient_a_30_garde_30_et_la_meme_taille(self):
         charge = _charge('bureau', 6000)
@@ -771,8 +788,12 @@ class PoseRasanteR1Tests(unittest.TestCase):
         self.assertEqual(r['inclinaison_retenue_deg'], 30.0)
         self.assertEqual(self._hyp(r, 'inclinaison_retenue_deg')['valeur'], 30.0)
         self.assertIsNone(self._hyp(r, 'taille_limitee_toit'))
+        self.assertEqual((r['taille']['inclinaison_retenue_deg'], r['taille']['taille_limitee_toit']),
+                         (30.0, None))
         self.assertEqual(r['appels_rasante'], 0)             # série 10° jamais lue
         self.assertIsNone(avant['inclinaison_retenue_deg'])  # sans toit : rien à dire
+        self.assertEqual((avant['taille']['inclinaison_retenue_deg'],
+                          avant['taille']['taille_limitee_toit']), (None, None))
 
     def test_c_meme_la_rasante_ne_suffit_pas_raison_toit_texte_client(self):
         r = self._taille(_charge('hotel', 20000), bornes=self._bornes())
@@ -801,6 +822,7 @@ class PoseRasanteR1Tests(unittest.TestCase):
         self.assertIsNone(r['inclinaison_retenue_deg'])
         self.assertIsNone(self._hyp(r, 'inclinaison_retenue_deg'))
         self.assertIsNone(self._hyp(r, 'taille_limitee_toit'))
+        self.assertEqual((t['inclinaison_retenue_deg'], t['taille_limitee_toit']), (None, None))
         self.assertEqual(r['appels_rasante'], 0)
 
     def test_taille_explicite_au_dela_de_30_logee_en_rasante(self):
@@ -808,10 +830,48 @@ class PoseRasanteR1Tests(unittest.TestCase):
         r = self._taille(charge, bornes=self._bornes(), taille_explicite_kwc=30)
         self.assertEqual(r['taille']['raison_arret'], 'taille_explicite')
         self.assertEqual(r['inclinaison_retenue_deg'], 10.0)
+        self.assertEqual(r['taille']['inclinaison_retenue_deg'], 10.0)
         self.assertNotIn('taille_au_dela_du_toit', [a['code'] for a in r['alertes']])
+        self.assertIsNone(r['taille']['taille_limitee_toit'])    # 30 < 35,5 − un panneau
         r2 = self._taille(charge, bornes=self._bornes(), taille_explicite_kwc=40)
         alerte = next(a for a in r2['alertes'] if a['code'] == 'taille_au_dela_du_toit')
         self.assertIn('35.5', alerte['message'])           # la borne effective, la rasante
+        self.assertIsNone(r2['taille']['taille_limitee_toit'])   # au-delà : pas « limitée »
+
+    def test_p1_taille_explicite_des_lignes_au_niveau_de_la_rasante_dit_le_toit(self):
+        # P1 (coordinatrice) — l'étude STOCKÉE vient du rafraîchisseur (taille
+        # explicite = kWc des lignes) : 50 panneaux (35,5 kWc), au niveau de la
+        # contenance rasante à un panneau près, portent la phrase client.
+        r = self._taille(_charge('hotel', 20000), bornes=self._bornes(), taille_explicite_kwc=35.5)
+        t = r['taille']
+        self.assertEqual((t['raison_arret'], t['nb_panneaux'], t['inclinaison_retenue_deg']),
+                         ('taille_explicite', 50, 10.0))
+        self.assertEqual(t['taille_limitee_toit'],
+                         'taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante')
+        self.assertEqual(self._hyp(r, 'taille_limitee_toit')['source'], t['taille_limitee_toit'])
+        # 49 panneaux (34,79 kWc) : encore « au niveau » ; 48 : non.
+        self.assertIsNotNone(self._taille(_charge('hotel', 20000), bornes=self._bornes(),
+                                          taille_explicite_kwc=34.79)['taille']['taille_limitee_toit'])
+        self.assertIsNone(self._taille(_charge('hotel', 20000), bornes=self._bornes(),
+                                       taille_explicite_kwc=34.08)['taille']['taille_limitee_toit'])
+
+    def test_production_rasante_differente_pese_sur_l_economie(self):
+        # La série 10° (≈ −6 % à Casablanca) ne sert qu'aux paliers logés en
+        # rasante : mêmes paliers ≤ 21,3 kWc, économie moindre au-delà.
+        charge = _charge('hotel', 20000)
+        meme = self._taille(charge, bornes=self._bornes())
+        moindre = [dict(jt, production_kwh_kwc=[v * 0.9 for v in jt['production_kwh_kwc']])
+                   for jt in self.prod]
+        r = dimensionner_ci(
+            charge_jours_types=charge, production_jours_types=self.prod, tension='bt',
+            combiner=partial(combiner_onduleurs, candidats=self.huawei, phase='tri'),
+            composer=_composer, valoriser=_valoriser(charge), taux_tva_pct=20,
+            pmax_wc=PANNEAU_WC, production_rasante=lambda: moindre, bornes=self._bornes())
+        self.assertEqual(r['taille']['retenue_kwc'], meme['taille']['retenue_kwc'])
+        self.assertLess(r['evaluation']['economie'], meme['evaluation']['economie'])
+        bas = [p['economie_annuelle'] for p in r['taille']['paliers'] if p['kwc'] <= self.KWC_30]
+        self.assertEqual(bas, [p['economie_annuelle'] for p in meme['taille']['paliers']
+                               if p['kwc'] <= self.KWC_30])
 
 
 class GardeAstTests(unittest.TestCase):

@@ -148,7 +148,8 @@ def traces_production(production, *, source=None, toit=None):
     defaut_angle = production.get('inclinaison_source') or 'pvgis_profils.PVGIS_ANGLE_DEG'
     for cle, valeur, declare, defaut in (('inclinaison_deg', angle, pente, defaut_angle),
                                          ('azimut_deg', aspect, azimut, 'pvgis_profils.PVGIS_ASPECT_DEG')):
-        lu = serie is not None and declare is not None
+        # R1 (P4) — une valeur DÉCLARÉE est celle servie, série ou repli.
+        lu = declare is not None
         hypotheses.append({'cle': cle, 'valeur': valeur, 'source': 'toit déclaré' if lu else defaut,
                            'statut': 'estimation' if serie is not None and not lu else 'source'})
     hypotheses.append({'cle': 'source_production', 'valeur': source,
@@ -164,7 +165,12 @@ def traces_production(production, *, source=None, toit=None):
                        'source': 'série horaire PVGIS indisponible (coordonnées GPS absentes, PVGIS '
                                  'injoignable ou production figée sans série) : repli sur 12 journées '
                                  'moyennes PVGIS (30° plein sud) × types de jour'})
-    orientation_differente = (
+    # R1 (P4) — UNE règle : sur le repli (journées moyennes à 30° plein sud),
+    # tout plan servi hors de la table (pente déclarée, pose rasante) est dit
+    # « non pris en compte » ; une production figée d'avant garde son alerte.
+    repli_hors_table = serie is None and (
+        _num(angle) != _num(PVGIS_ANGLE_DEG) or _num(aspect) != _num(PVGIS_ASPECT_DEG))
+    orientation_differente = repli_hors_table or (
         (pente is not None and _num(pente) != _num(angle))
         or (azimut is not None and _num(azimut) != _num(aspect)))
     if orientation_differente:
@@ -294,12 +300,16 @@ def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnee
     else:
         origine = 'pvgis'
 
+    # R1 (P4) — le plan servi est celui du toit (pente déclarée, défaut toit
+    # plat, pose rasante), série OU repli : la pose rasante sur le repli se
+    # comporte exactement comme une pente déclarée de 10° (AMOT99).
+    plan = plan or plan_de_production(toit)
     depuis_serie = _depuis_serie(serie, plan, derate) if origine == 'pvgis' else None
     production = {
         'source': origine,
         'coordonnees_figees': dict(coordonnees_figees) if coordonnees_figees else None,
-        'inclinaison_deg': plan['angle_deg'] if depuis_serie else PVGIS_ANGLE_DEG,
-        'azimut_deg': plan['aspect_deg'] if depuis_serie else PVGIS_ASPECT_DEG,
+        'inclinaison_deg': plan['angle_deg'],
+        'azimut_deg': plan['aspect_deg'],
         'pertes_pct': PVGIS_LOSS_PCT,
         'kwh_kwc_mensuel': [m['prod_mois_kwh'] for m in par_mois],
         'jours_types': [{'mois': m['mois'], 'production_kwh_kwc': m['prod_24h']}
@@ -307,7 +317,7 @@ def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnee
         'methode_autoconso': METHODE_8760 if depuis_serie else METHODE_JOURNEES_MOYENNES,
         'serie_horaire': None,
     }
-    if depuis_serie and plan.get('source_angle'):
+    if plan.get('source_angle'):
         production['inclinaison_source'] = plan['source_angle']
     if depuis_serie:
         (production['serie_horaire'], production['kwh_kwc_mensuel'],

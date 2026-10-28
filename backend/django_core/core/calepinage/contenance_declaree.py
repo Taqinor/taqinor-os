@@ -139,7 +139,9 @@ def contenance_surface_declaree(surface_m2, *, mode_pose, cotes_module_m,
         politique = AntiOmbrage(latitude_deg=latitude)
         source_politique = "mode de pose déclaré « %s »" % mode
     hypotheses.append({"cle": "politique", "valeur": politique.code,
-                       "statut": "declare", "source": source_politique})
+                       "statut": "estimation" if pose_rasante and mode not in MODES_AFFLEURANTS
+                       else "declare",
+                       "source": source_politique})
     champs = {"kits": (kit,), "rives": rives}
     if allee is not None:
         champs["allee_m"] = allee

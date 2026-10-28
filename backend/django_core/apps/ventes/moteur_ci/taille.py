@@ -236,26 +236,43 @@ def _evaluer(kwc, *, charge, production, tension, revente_choisie, combiner,
     }
 
 
-def _contenances(bornes_pub):
+def contenances_toit(bornes_pub):
     """R1 — ``(contenance à 30°, contenance en pose rasante 10°)`` du toit,
     ``None`` chacune quand l'orchestrateur ne la sert pas (pente déclarée,
-    autre pose, calepinage mesuré : jamais de basculement)."""
+    autre pose, calepinage mesuré, devis aux règles ≤ 2 : jamais de
+    basculement)."""
     toit = (bornes_pub or {}).get('toit') or {}
     return _pos(toit.get('kwc_30')), _pos(toit.get('kwc_10'))
 
 
-def _pose_rasante(kwc, kwc_30, kwc_10):
-    """R1 — le palier ``kwc`` se loge en pose rasante : les deux contenances
-    sont connues et il ne tient pas à 30°."""
+def pose_rasante(kwc, kwc_30, kwc_10):
+    """R1 — ``kwc`` se loge en pose rasante : les deux contenances sont
+    connues et il ne tient pas à 30°."""
     return kwc_30 is not None and kwc_10 is not None and kwc > kwc_30 + 1e-9
 
 
-def _hypotheses_toit(e, bornes_pub, raison, hypotheses):
+def inclinaison_pose(kwc, bornes_pub):
+    """R1 — l'inclinaison de la pose qui loge ``kwc`` (30° ou rasante 10°),
+    ``None`` sans les deux contenances. Même règle pour CHAQUE option (sans,
+    avec batterie) : chacune est une installation à part."""
+    kwc_30, kwc_10 = contenances_toit(bornes_pub)
+    if kwc_30 is None or kwc_10 is None:
+        return None
+    return ANGLE_POSE_RASANTE_DEG if pose_rasante(kwc, kwc_30, kwc_10) else ANGLE_TOIT_PLAT_DEG
+
+
+_contenances, _pose_rasante = contenances_toit, pose_rasante
+
+
+def _hypotheses_toit(e, bornes_pub, raison, hypotheses, limite=None):
     """R1 — l'inclinaison retenue (30° gardé, ou pose rasante 10°) et, quand
-    même la rasante ne suffit pas, la limite du toit dite au client."""
+    même la rasante ne suffit pas, la limite du toit dite au client. Rend
+    ``(inclinaison_retenue_deg, taille_limitee_toit)`` servis dans ``taille``
+    (P3) ; ``limite`` : verdict « le toit borne » d'une taille explicite (P1),
+    sinon ``raison == 'toit'``."""
     angle = (e or {}).get('inclinaison_retenue_deg')
     if angle is None:
-        return
+        return None, None
     toit = (bornes_pub or {}).get('toit') or {}
     kwc_30, kwc_10 = _contenances(bornes_pub)
     if angle == ANGLE_POSE_RASANTE_DEG:
@@ -268,12 +285,27 @@ def _hypotheses_toit(e, bornes_pub, raison, hypotheses):
                   % (e['kwc'], angle, kwc_30, ANGLE_POSE_RASANTE_DEG, kwc_10, SOURCE_RASANTE))
     hypotheses.append({'cle': 'inclinaison_retenue_deg', 'valeur': angle,
                        'statut': 'estimation', 'source': source})
-    if raison == 'toit' and angle == ANGLE_POSE_RASANTE_DEG:
-        surface = _pos(toit.get('surface_m2'))
-        texte = (TEXTE_TAILLE_LIMITEE_TOIT % (surface, e['kwc']) if surface is not None
-                 else TEXTE_TAILLE_LIMITEE_TOIT_SANS_SURFACE % e['kwc'])
-        hypotheses.append({'cle': 'taille_limitee_toit', 'valeur': e['kwc'],
-                           'statut': 'estimation', 'source': texte})
+    toit_borne = (raison == 'toit') if limite is None else limite
+    if not (toit_borne and angle == ANGLE_POSE_RASANTE_DEG):
+        return angle, None
+    surface = _pos(toit.get('surface_m2'))
+    texte = (TEXTE_TAILLE_LIMITEE_TOIT % (surface, e['kwc']) if surface is not None
+             else TEXTE_TAILLE_LIMITEE_TOIT_SANS_SURFACE % e['kwc'])
+    hypotheses.append({'cle': 'taille_limitee_toit', 'valeur': e['kwc'],
+                       'statut': 'estimation', 'source': texte})
+    return angle, texte
+
+
+def _toit_borne_taille_explicite(e, bornes_pub, pmax_wc):
+    """R1 (P1) — une taille EXPLICITE (lignes du devis, rafraîchisseur CIQ119)
+    posée au niveau de la contenance rasante — à un panneau près, sans la
+    dépasser — est « limitée par le toit » : la phrase client atteint ainsi
+    le PDF d'un vrai devis créé à cette taille."""
+    _kwc_30, kwc_10 = _contenances(bornes_pub)
+    if kwc_10 is None or e.get('inclinaison_retenue_deg') != ANGLE_POSE_RASANTE_DEG:
+        return False
+    panneau = (_pos(pmax_wc) or 0.0) / 1000.0
+    return kwc_10 - panneau - 1e-9 <= e['kwc'] <= kwc_10 + 1e-9
 
 
 def _evaluateur(bornes_pub, kwc_toit, production_jours_types, production_rasante, **noyau):
@@ -291,8 +323,7 @@ def _evaluateur(bornes_pub, kwc_toit, production_jours_types, production_rasante
             production = production_rasante() or production_jours_types
         kwc_max = (kwc_10 if rasante else kwc_30) if deux_poses else kwc_toit
         e = _evaluer(kwc, production=production, kwc_max=kwc_max, **noyau)
-        e['inclinaison_retenue_deg'] = (
-            (ANGLE_POSE_RASANTE_DEG if rasante else ANGLE_TOIT_PLAT_DEG) if deux_poses else None)
+        e['inclinaison_retenue_deg'] = inclinaison_pose(kwc, bornes_pub)
         return e
     return evaluer
 
@@ -330,6 +361,7 @@ def _vide(raison, bornes_pub, paliers=None):
         'retenue_kwc': None, 'nb_panneaux': None, 'pas_kwc': PAS_KWC,
         'horizon_marginal_annees': HORIZON_MARGINAL_PV, 'raison_arret': raison,
         'paliers': paliers or [], 'bornes': bornes_pub, 'statut': None,
+        'inclinaison_retenue_deg': None, 'taille_limitee_toit': None,
     }
 
 
@@ -469,7 +501,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     explicite = _pos(taille_explicite_kwc)
     if explicite is not None:
         return _taille_explicite(explicite, evaluer(explicite), bornes_pub, kwc_toit, ps_kva,
-                                 alertes, hypotheses)
+                                 alertes, hypotheses, pmax_wc=pmax_wc)
 
     evals, paliers = [], []
     meilleur, refus, base_refus = None, 0, None
@@ -590,12 +622,13 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
             'Garde de départ calculée sans : %s (prix à renseigner) — devis incomplet.'
             % ', '.join(str(p) for p in retenu['postes_fixes_sans_prix'])))
     alertes.extend(_alertes_injection(retenu, ps_kva, revente_choisie))
-    _hypotheses_toit(retenu, bornes_pub, raison, hypotheses)
+    inclinaison, limite_toit = _hypotheses_toit(retenu, bornes_pub, raison, hypotheses)
     taille = {
         'retenue_kwc': retenu['kwc'], 'nb_panneaux': _nb_panneaux(retenu),
         'pas_kwc': PAS_KWC, 'horizon_marginal_annees': HORIZON_MARGINAL_PV,
         'raison_arret': raison, 'paliers': paliers, 'bornes': bornes_pub,
         'statut': statut_taille(retenu['composition']),
+        'inclinaison_retenue_deg': inclinaison, 'taille_limitee_toit': limite_toit,
     }
     return {'taille': taille, 'evaluation': retenu, 'alertes': alertes, 'hypotheses': hypotheses,
             'inclinaison_retenue_deg': retenu.get('inclinaison_retenue_deg')}
@@ -638,7 +671,7 @@ def _alerte_onduleurs(onduleurs):
                    'Aucun onduleur C&I éligible : %s.' % detail, niveau='bloquant')
 
 
-def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses):
+def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses, pmax_wc=None):
     """D-QJR5-13 : une taille saisie est SOUVERAINE — calculée telle quelle."""
     if e['sans_panneau']:
         alertes.append(_alerte_module())
@@ -663,12 +696,15 @@ def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses)
             alertes.append(_alerte_onduleurs(e['onduleurs']))
     hypotheses.append({'cle': 'taille_explicite_kwc', 'valeur': kwc, 'statut': 'declare',
                        'source': 'D-QJR5-13 — taille saisie souveraine'})
-    _hypotheses_toit(e, bornes_pub, 'taille_explicite', hypotheses)
+    inclinaison, limite_toit = _hypotheses_toit(
+        e, bornes_pub, 'taille_explicite', hypotheses,
+        limite=_toit_borne_taille_explicite(e, bornes_pub, pmax_wc))
     taille = {
         'retenue_kwc': kwc, 'nb_panneaux': _nb_panneaux(e), 'pas_kwc': PAS_KWC,
         'horizon_marginal_annees': HORIZON_MARGINAL_PV, 'raison_arret': 'taille_explicite',
         'paliers': [_palier(e, None, True, None)], 'bornes': bornes_pub,
         'statut': statut_taille(e['composition']),
+        'inclinaison_retenue_deg': inclinaison, 'taille_limitee_toit': limite_toit,
     }
     return {'taille': taille, 'evaluation': e, 'alertes': alertes, 'hypotheses': hypotheses,
             'inclinaison_retenue_deg': e.get('inclinaison_retenue_deg')}

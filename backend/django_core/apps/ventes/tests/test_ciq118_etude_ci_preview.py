@@ -702,6 +702,9 @@ class PoseRasanteR1(_Base):
         self.assertEqual(data['taille']['raison_arret'], 'toit')
         self.assertEqual(self._hyp(data, 'taille_limitee_toit')['source'],
                          'taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante')
+        # P3 — les deux clés vivent dans ``taille`` (contrat), lues par le générateur.
+        self.assertEqual(data['taille']['inclinaison_retenue_deg'], 10)
+        self.assertEqual(data['taille']['taille_limitee_toit'], self._hyp(data, 'taille_limitee_toit')['source'])
 
     def test_b_taille_qui_tient_a_30_garde_30_et_sa_production(self):
         # Petite consommation : la taille économique tient à 30° → 30° gardé,
@@ -718,12 +721,16 @@ class PoseRasanteR1(_Base):
         self.assertEqual(data['production']['inclinaison_source'], SOURCE_ANGLE_TOIT_PLAT)
         self.assertEqual(self.production.call_args_list[0].kwargs['toit'].get(CLE_POSE_RASANTE), None)
         self.assertIsNone(self._hyp(data, 'taille_limitee_toit'))
+        self.assertEqual((data['taille']['inclinaison_retenue_deg'], data['taille']['taille_limitee_toit']),
+                         (30, None))
 
     def test_d_pente_declaree_aucune_bascule(self):
         data = self.post(self._corps(pente_deg=15))
         toit = data['taille']['bornes']['toit']
         self.assertNotIn('kwc_10', toit)
         self.assertIsNone(self._hyp(data, 'inclinaison_retenue_deg'))
+        self.assertEqual((data['taille']['inclinaison_retenue_deg'], data['taille']['taille_limitee_toit']),
+                         (None, None))
         self.assertEqual(self.production.call_count, 1)
         self.assertEqual(data['production']['inclinaison_deg'], 15)
 

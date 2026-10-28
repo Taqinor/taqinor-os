@@ -188,9 +188,11 @@ class TestSyntheseCiCoeur(SimpleTestCase):
         # décrit le kWc servi ; rien d'imprimé sinon.
         from apps.ventes.quote_engine.ci.blocs import libelle_cpdf
         from apps.ventes.quote_engine.industriel.finance import _rangees_estimation
+        phrase = "taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante"
         taille = {"retenue_kwc": 35.5, "nb_panneaux": 50, "pas_kwc": 5,
                   "horizon_marginal_annees": 10, "raison_arret": "toit",
-                  "statut": "calculee",
+                  "statut": "calculee", "inclinaison_retenue_deg": 10,
+                  "taille_limitee_toit": phrase,
                   "bornes": {"toit": {"kwc": 35.5, "kwc_30": 21.3, "kwc_10": 35.5,
                                       "surface_m2": 200, "source": "s"}}}
         production = {"source": "pvgis", "inclinaison_deg": 10, "azimut_deg": 0,
@@ -205,8 +207,13 @@ class TestSyntheseCiCoeur(SimpleTestCase):
         for langue in ("fr", "en", "ar"):
             self.assertIn("{m2}", libelle_cpdf("ci_h_taille_toit_rasante", langue))
             self.assertTrue(libelle_cpdf("ci_h_taille_toit", langue))
-        for t in (dict(taille, raison_arret="horizon_marginal"),
-                  dict(taille, bornes={"toit": {"kwc": 21.3, "source": "s"}})):
+        # 30° gardé (petit toit : 5 kWc gardés à 30°, le palier 10 bute) ou
+        # pente déclarée : le moteur ne sert pas ``taille_limitee_toit`` → rien.
+        for t in (dict(taille, raison_arret="toit", inclinaison_retenue_deg=30,
+                       taille_limitee_toit=None),
+                  dict(taille, raison_arret="taille_explicite", taille_limitee_toit=None),
+                  dict(taille, inclinaison_retenue_deg=None, taille_limitee_toit=None,
+                       bornes={"toit": {"kwc": 21.3, "source": "s"}})):
             s2 = synthese_ci(_data(_etude_ci(taille=t, production=production),
                                    puissance_kwc=35.5, nb_panneaux=50))
             self.assertNotIn("toit", s2.get("estimation") or {})
