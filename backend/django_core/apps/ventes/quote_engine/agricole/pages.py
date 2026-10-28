@@ -351,18 +351,23 @@ def _depense_declaree(d, synthese, lg):
     """AGC11 (D-AGC-6) — bloc argent omis (non publiable) mais dépense
     actuelle DÉCLARÉE et calculée (Σ quantité × prix payé déclarés + entretien
     déclaré, ``economie_pompage.depense_actuelle``) : une ligne neutre qui ne
-    dit QUE la somme déclarée, jamais une économie ; rien sinon."""
+    dit QUE la somme déclarée, jamais une économie ; rien sinon — ni quand les
+    mois d'irrigation sont ceux du calendrier, non confirmés (AGQ18 : pas une
+    déclaration)."""
+    from apps.ventes.economie_pompage import MOTIF_MOIS_CALENDRIER
     if isinstance(synthese.get("economies"), dict):
         return ""
     eco = d.get("_economie_pompage")
     eco = eco if isinstance(eco, dict) else {}
     dep = eco.get("depense_actuelle")
-    mad = _mad((dep or {}).get("annuelle_mad")) if isinstance(dep, dict)         else None
-    if eco.get("statut") != "calcule" or mad is None             or not _num((dep or {}).get("annuelle_mad")):
+    annuelle = dep.get("annuelle_mad") if isinstance(dep, dict) else None
+    if (eco.get("statut") != "calcule" or not _num(annuelle)
+            or MOTIF_MOIS_CALENDRIER in (eco.get("motifs_non_publiable")
+                                         or [])):
         return ""
     return (f'<div class="ag-sec">{_t(lg, "agr_votre_argent")}</div>'
             f'<div class="ag-box ag-box-gold" data-agc-depense-declaree>'
-            f'{_t(lg, "agr_depense_declaree_neutre", mad=f"{mad} MAD")}'
+            f'{_t(lg, "agr_depense_declaree_neutre", mad=f"{_mad(annuelle)} MAD")}'
             f'</div>')
 
 

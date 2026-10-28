@@ -171,9 +171,11 @@ class Agr310HtmlTests(SimpleTestCase):
         """AGC11 (D-AGC-6) — rendu réel R1 (15 CV existante, butane déclaré) :
         bloc argent non publiable ⇒ page 1 VIDE d'argent. Désormais une ligne
         neutre dit la seule dépense DÉCLARÉE (``depense_actuelle.annuelle_mad``)
-        et « chiffrée après la visite » — jamais une économie ni un retour.
-        Non calculée (saisie manquante) ⇒ rien. Mutant : ne plus lire
-        ``depense_actuelle`` ⇒ rouge."""
+        — jamais une économie, un retour, ni « chiffrée après la visite » (le
+        motif ici est un réglage société). Non calculée (saisie manquante) ou
+        mois du calendrier non confirmés (AGQ18) ⇒ rien. Mutants : ne plus
+        lire ``depense_actuelle`` / ignorer le motif calendrier ⇒ rouge."""
+        from apps.ventes.economie_pompage import MOTIF_MOIS_CALENDRIER
         d = data_complete()
         bloc = d['_economie_pompage']
         bloc['publiable_client'] = False
@@ -183,8 +185,11 @@ class Agr310HtmlTests(SimpleTestCase):
         html = html_de(d)
         self.assertIn('data-agc-depense-declaree', html)
         self.assertIn('21', html.split('data-agc-depense-declaree')[1][:200])
-        self.assertIn("chiffrée après la visite du point d'eau", html)
+        self.assertNotIn('chiffrée après la visite', html)
         self.assertNotIn('Économie nette', html)
+        bloc['motifs_non_publiable'].append(MOTIF_MOIS_CALENDRIER)
+        self.assertNotIn('data-agc-depense-declaree', html_de(d))
+        bloc['motifs_non_publiable'].remove(MOTIF_MOIS_CALENDRIER)
         bloc['statut'] = 'omis'
         self.assertNotIn('data-agc-depense-declaree', html_de(d))
         # Bloc publiable : le vrai bloc argent, jamais la ligne neutre.

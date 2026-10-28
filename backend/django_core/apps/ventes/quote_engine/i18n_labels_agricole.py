@@ -8,14 +8,13 @@ consultent ce catalogue d'abord, puis le catalogue commun.
 
 LIBELLES_AGRICOLE = {
     # AGC11 (D-AGC-6) — bloc argent non publiable mais dépense DÉCLARÉE : la
-    # seule somme déclarée par le client, jamais une économie calculée.
+    # seule somme déclarée par le client, jamais une économie calculée, ni
+    # une promesse sur le moment du chiffrage (le motif peut être un réglage
+    # société, pas la visite — validation R3).
     "agr_depense_declaree_neutre": {
-        "fr": "Votre dépense actuelle déclarée : {mad} par an. L'économie "
-              "sera chiffrée après la visite du point d'eau.",
-        "en": "Your declared current spending: {mad} per year. The savings "
-              "will be calculated after the water-point visit.",
-        "ar": "نفقتكم الحالية المصرّح بها: {mad} في السنة. سيُحتسب التوفير "
-              "بعد زيارة نقطة الماء.",
+        "fr": "Votre dépense actuelle déclarée : {mad} par an.",
+        "en": "Your declared current spending: {mad} per year.",
+        "ar": "نفقتكم الحالية المصرّح بها: {mad} في السنة.",
     },
     # AGC12 — carte eau courte du une-page : « estimation » + heures + mois.
     "agr_op_eau_jour": {
