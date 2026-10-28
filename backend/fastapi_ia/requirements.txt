@@ -35,7 +35,9 @@ langchain==0.3.30
 langchain-community==0.3.27
 langchain-groq==0.2.3
 langchain-openai==0.2.14
-langchain-anthropic==0.3.3
+# AIC3 — derniere 0.3.x (compatible langchain 0.3.30 / langchain-core 0.3) :
+# cache_control + model_kwargs (output_config.effort transmis tel quel).
+langchain-anthropic==0.3.22
 openai==1.59.6
 sentence-transformers>=2.0,<4.0
 

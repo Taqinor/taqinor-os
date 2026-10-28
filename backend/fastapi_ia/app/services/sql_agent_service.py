@@ -13,7 +13,7 @@ Architecture :
 Changer de LLM : modifier SQL_AGENT_PROVIDER dans .env
   groq   -> llama-3.3-70b-versatile (defaut, gratuit)
   openai -> gpt-4o
-  claude -> claude-sonnet-4-6
+  claude -> claude-sonnet-5-5 (effort SQL_AGENT_EFFORT, sans temperature)
   ollama -> modele local
 """
 from __future__ import annotations
@@ -46,6 +46,7 @@ from app.core.config import (
     GROQ_API_KEY,
     OPENAI_API_KEY,
     REDIS_CHAT_URL,
+    SQL_AGENT_EFFORT,
     SQL_AGENT_MODEL,
     SQL_AGENT_PROVIDER,
 )
@@ -911,6 +912,19 @@ class _SQLCapture(BaseCallbackHandler):
 # ── Service ───────────────────────────────────────────────────────────────────
 
 
+# AIC3 — modele Claude par defaut et borne de sortie de l'agent.
+CLAUDE_MODELE_DEFAUT = "claude-sonnet-5-5"
+CLAUDE_MAX_TOKENS = 4096
+
+
+def _modele_effectif(provider: str) -> str:
+    """Modele reellement servi : sous `claude`, un SQL_AGENT_MODEL vide ou
+    non-Claude (ex. le defaut Groq) => CLAUDE_MODELE_DEFAUT."""
+    if provider == "claude" and not (SQL_AGENT_MODEL or "").startswith("claude"):
+        return CLAUDE_MODELE_DEFAUT
+    return SQL_AGENT_MODEL
+
+
 class SQLAgentService:
 
     def __init__(self) -> None:
@@ -994,7 +1008,7 @@ class SQLAgentService:
     @staticmethod
     def _build_llm():
         provider = SQL_AGENT_PROVIDER.lower()
-        model = SQL_AGENT_MODEL
+        model = _modele_effectif(provider)
 
         if provider == "groq":
             if not GROQ_API_KEY:
@@ -1012,7 +1026,14 @@ class SQLAgentService:
             if not CLAUDE_API_KEY:
                 raise RuntimeError("CLAUDE_API_KEY manquante dans .env")
             from langchain_anthropic import ChatAnthropic
-            return ChatAnthropic(model=model, api_key=CLAUDE_API_KEY, temperature=0)
+            # AIC3 — modeles 5.5 : AUCUNE `temperature` (valeur non par defaut
+            # = 400) ; effort explicite dans output_config ; sortie bornee.
+            return ChatAnthropic(
+                model=model, api_key=CLAUDE_API_KEY,
+                max_tokens=CLAUDE_MAX_TOKENS,
+                model_kwargs={"output_config": {
+                    "effort": (SQL_AGENT_EFFORT or "low").lower()}},
+            )
 
         if provider == "ollama":
             from langchain_ollama import ChatOllama
@@ -1333,7 +1354,7 @@ class SQLAgentService:
                 for t in _ALLOWED_TABLES
             ],
             "provider": SQL_AGENT_PROVIDER,
-            "model": SQL_AGENT_MODEL,
+            "model": _modele_effectif(SQL_AGENT_PROVIDER.lower()),
             "status": "ok",
         }
 
