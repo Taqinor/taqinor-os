@@ -1342,6 +1342,7 @@ ECHANTILLONS_POSES_AVANT_LEUR_VUE = {
         "GET crm/leads/<id>/ — cles ADDITIVES `solde` et `vente` de chaque "
         "element de `devis[]` : servie par un ModelViewSet (forme non lisible "
         "statiquement) ; DevisTab s'appuie sur CET exemple (VNT7)",
+    "agent/assistant_evenement.json": "POST agent/evenements/ — vue produite par AIC6 (AIC1)",
 }
 
 

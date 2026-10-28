@@ -1,0 +1,62 @@
+{
+  "endpoint": "POST /api/django/agent/evenements/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "La forme visée est `complete` (l'exemple porte toute la réponse). Tant que la vue n'existe pas, une déclaration `complete` fait échouer `check_api_shapes.py` (route introuvable = constat, QJR228) : le contrat reste donc déclaré `partielle` jusqu'à AIC6, qui livre la vue et bascule cette clé sur `complete` dans le même commit.",
+  "pourquoi": "AIC1 — contrat d'abord (PACT10) du journal de l'assistant des commerciaux : une requête de l'assistant = UN événement, écrit par le RELAIS SERVEUR (FastAPI), jamais par le navigateur. Le seul journal durable existant, `AgentActionLog` (`logs_confirmer.json`), ne retient que les actions CONFIRMÉES et reste un journal séparé, jamais fusionné. `company` et `user` sont TOUJOURS posés côté serveur (société active et utilisateur de la requête), jamais lus du corps. Le navigateur ne peut écrire que `note` et `commentaire`, sur SON événement, via la seconde écriture (`ecriture_commercial`). Appelants : AIC6 (modèle + vues), AIC8 (note depuis le panneau), AIC9 (`lead_id`, `ecran`), AIC11 (export).",
+  "champs": {
+    "intention": "une valeur parmi question_manuel, donnee, action, bug, manque, hors_champ",
+    "question": "texte brut de la question, 2 000 caractères au plus",
+    "resume_reponse": "résumé de la réponse servie, 500 caractères au plus",
+    "ecran": "chemin de route de l'écran d'où part la question (ex. /crm/leads/12)",
+    "lead_id": "entier, lead de la société de l'utilisateur (scopé société), ou null",
+    "outils_appeles": "liste de clés du registre d'actions (ex. crm.lead.note)",
+    "erreur": "{status, outil, message} ou null",
+    "note": "-1 | 0 | 1 (0 = pas encore noté)",
+    "commentaire": "200 caractères au plus, ou null",
+    "modele": "identifiant du modèle qui a servi la réponse (ex. claude-sonnet-5-5)",
+    "repli": "booléen : réponse servie par le repli Groq",
+    "manuel_present": "booléen : le manuel était présent dans le contexte",
+    "tokens": "{cache_read, input, output}, entiers"
+  },
+  "exemple_corps": {
+    "intention": "donnee",
+    "question": "Combien de devis envoyés cette semaine pour ce lead ?",
+    "resume_reponse": "Deux devis envoyés cette semaine pour ce lead.",
+    "ecran": "/crm/leads/12",
+    "lead_id": 12,
+    "outils_appeles": ["crm.lead.note"],
+    "erreur": null,
+    "modele": "claude-sonnet-5-5",
+    "repli": false,
+    "manuel_present": true,
+    "tokens": {"cache_read": 1800, "input": 420, "output": 96}
+  },
+  "exemple": {
+    "id": 9001,
+    "intention": "donnee",
+    "question": "Combien de devis envoyés cette semaine pour ce lead ?",
+    "resume_reponse": "Deux devis envoyés cette semaine pour ce lead.",
+    "ecran": "/crm/leads/12",
+    "lead_id": 12,
+    "outils_appeles": ["crm.lead.note"],
+    "erreur": null,
+    "note": 0,
+    "commentaire": null,
+    "modele": "claude-sonnet-5-5",
+    "repli": false,
+    "manuel_present": true,
+    "tokens": {"cache_read": 1800, "input": 420, "output": 96},
+    "cree_le": "2026-10-28T09:30:00Z"
+  },
+  "exemple_erreur_outil": {
+    "status": 403,
+    "outil": "crm.lead.note",
+    "message": "Action non autorisée pour ce compte."
+  },
+  "ecriture_commercial": {
+    "endpoint": "PATCH /api/django/agent/evenements/<int:pk>/note/",
+    "regle": "seuls `note` et `commentaire` sont modifiables par le navigateur, et seulement sur un événement dont `user` est l'utilisateur de la requête (même société) ; tout autre champ du corps est ignoré ; l'événement d'un autre utilisateur répond 404",
+    "exemple_corps": {"note": -1, "commentaire": "Il n'a pas trouvé le devis signé."},
+    "exemple": {"id": 9001, "note": -1, "commentaire": "Il n'a pas trouvé le devis signé."}
+  }
+}
