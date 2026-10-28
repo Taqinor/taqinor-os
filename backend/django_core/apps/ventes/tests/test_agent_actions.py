@@ -130,6 +130,29 @@ class VentesAgentCatalogueTest(TestCase):
         for action in VENTES_ACTIONS:
             self.assertIn(action.key, keys, action.key)
 
+    def test_descriptions_quatre_sections_regle_4_et_sans_prix_achat(self):
+        # AIC40 — le modèle choisit ses outils sur ces textes.
+        ventes = {a.key: a for a in for_user(self.resp)
+                  if a.key in {v.key for v in VENTES_ACTIONS}}
+        self.assertEqual(len(ventes), 10)
+        sections = ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :', 'Résultat :')
+        for key, action in ventes.items():
+            desc = action.description
+            self.assertLessEqual(len(desc), 600, key)
+            for section in sections:
+                self.assertIn(section, desc, f'{key} : {section}')
+            self.assertNotIn('prix_achat', desc, key)
+            self.assertNotIn('marge', desc.lower(), key)
+        pdf = ventes[GENERER_PDF_DEVIS.key].description
+        self.assertIn('/proposal', pdf)
+        self.assertIn('règle #4', pdf)
+        for action in (ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE,
+                       GENERER_FACTURE, ENREGISTRER_PAIEMENT):
+            self.assertIn(
+                'change un statut : proposition puis confirmation obligatoire',
+                ventes[action.key].description, action.key)
+            self.assertTrue(ventes[action.key].confirm_summary, action.key)
+
     def test_register_is_idempotent(self):
         before = len(all_actions())
         register_ventes_actions()
