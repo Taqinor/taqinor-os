@@ -409,6 +409,7 @@ class TestCpdfNiveauRegles3(SimpleTestCase):
             {"annee": 2, "flux_net_mad": 40.0, "cumul_mad": -20.0},
             {"annee": 3, "flux_net_mad": 40.0, "cumul_mad": 20.0}]}}
         self.assertEqual(couverture.retour_dixieme(argent, 3), 3)
+        self.assertEqual(couverture.ans(3), "3")  # format servi, pas « 3,0 »
         data = _data_ci(option_servie="sans", option_batterie={
             "totaux": {"ht_net": 383000.0}})
         valeur = mentions.valeur_option_avec(data)

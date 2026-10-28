@@ -249,7 +249,10 @@ def note_pointe(d, cle):
 def ans(valeur):
     """CPDF7 — « 2,3 » / « 4,0 » (« 2.3 » en anglais) : un retour toujours
     au dixième, au même format partout ; une valeur non numérique telle
-    quelle."""
+    quelle. Niveau de règles 3 : un devis envoyé avant garde le format servi
+    (« 3 », « 3,4 »)."""
+    if regles_avant_2710() and isinstance(valeur, (int, float)):
+        return decimale(f"{valeur:g}")
     try:
         return decimale(f"{float(valeur):.1f}")
     except (TypeError, ValueError):

@@ -439,22 +439,10 @@ def part_soir_option_avec(data):
         "besoin_nocturne_kwh"))
     if rest is not None and rest > 0 and besoin and besoin > 0:
         return min(1.0, rest / (besoin * JOURS_AN))
-    return _part_par_couvertures(etude_ci, avec)
-
-
-def _part_par_couvertures(etude_ci, avec):
-    """CPDF9 — repli quand le besoin nocturne n'est pas servi (devis
-    rafraîchi depuis ses lignes) : la part de la consommation que l'offre
-    sans batterie laisse au réseau et que l'option avec couvre, lue sur les
-    deux taux de couverture SERVIS — (c_avec − c_sans) ÷ (1 − c_sans)."""
-    c_sans = nombre_normalise(_dict(etude_ci.get("bilan")).get(
-        "taux_couverture"))
-    c_avec = nombre_normalise(_dict(avec.get("bilan")).get("taux_couverture"))
-    if c_sans is None or c_avec is None or not 0 <= c_sans < 1:
-        return None
-    if c_avec <= c_sans:
-        return None
-    return min(1.0, (c_avec - c_sans) / (1 - c_sans))
+    # Critique Fable 28/10 — besoin nocturne non servi : aucun repli sur les
+    # taux de couverture globaux (l'option avec ajoute aussi des panneaux de
+    # jour) ; la phrase est dite sans sa seconde moitié.
+    return None
 
 
 def _textes_pointe_option_avec(data):

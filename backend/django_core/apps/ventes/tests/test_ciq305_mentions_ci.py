@@ -138,17 +138,15 @@ class TestTableMentions(SimpleTestCase):
         absent = _par_cle(mentions_ci(self._deux_options(
             31000, besoin_nocturne_kwh=None)))["pointe"]
         self.assertEqual(absent["textes"], TEXTES_POINTE_SANS)
-        # Repli (devis rafraîchi, besoin du soir non servi) : les deux taux
-        # de couverture servis — (0,93 − 0,52) ÷ (1 − 0,52) = 85 %.
+        # Besoin du soir non servi (devis rafraîchi) : aucun repli sur les
+        # taux de couverture globaux (critique Fable 28/10) — la phrase seule.
         data = self._deux_options(31000, besoin_nocturne_kwh=None)
         data["etude"]["etude_ci"].setdefault("bilan", {})[
             "taux_couverture"] = 0.52
         data["etude"]["etude_ci"]["option_avec"].setdefault("bilan", {})[
             "taux_couverture"] = 0.93
         repli = _par_cle(mentions_ci(data))["pointe"]
-        self.assertEqual(repli["textes"]["fr"], (
-            "Le soir et la nuit, votre consommation reste fournie par le "
-            "réseau ; l'option avec batterie en couvre 85 %."))
+        self.assertEqual(repli["textes"], TEXTES_POINTE_SANS)
 
     def test_cpdf2_retour_option_avec_servi_jamais_recalcule(self):
         data = self._deux_options(31000)
