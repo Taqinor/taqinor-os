@@ -509,6 +509,21 @@ class CrmAgentDigestMatinTest(TestCase):
         self.assertEqual(refs, ['DEV-35-ANCIEN'])
         self.assertEqual(resp.data['devis_sans_reponse']['total'], 1)
 
+    def test_manques_signales_hier_compte_seulement(self):
+        import datetime
+        from apps.agent.models import AssistantEvent
+        from django.utils import timezone
+        hier = timezone.now() - datetime.timedelta(days=1)
+        for intention, autre in (('manque', False), ('manque', False),
+                                 ('donnee', False), ('manque', True)):
+            ev = AssistantEvent.objects.create(
+                company=self.company,
+                user=self.terrain if autre else self.user,
+                intention=intention, question='q')
+            AssistantEvent.objects.filter(pk=ev.pk).update(created_at=hier)
+        resp = auth(self.user).get(DIGEST_MATIN.endpoint)
+        self.assertEqual(resp.data['manques_signales_hier'], {'total': 2})
+
     def test_terrain_visites_seules(self):
         self._donnees()
         resp = auth(self.terrain).get(DIGEST_MATIN.endpoint)
