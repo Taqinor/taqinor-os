@@ -145,4 +145,32 @@ PC1 a aussi : le checkout principal `C:\dev\taqinor-os` à remettre sur `origin/
 touché par PC2).
 
 ## 7. ÉTAT FINAL PC1
-(sera écrit par PC1 à son arrêt : PR mergées depuis 23:10, PR encore en vol et leur état, « jeton rendu » + heure.)
+
+**00:30 UTC — la coordinatrice PC1 s'arrête (plafond Fable 92 %, ordre du fondateur « give to the other session »).** Les sessions PC1 encore vivantes (RPDF #1114, RGEN #1103, CQST #1097, CPRW #1119 puis round 3 sur claude/cprw-r3) ont reçu l'ordre d'être AUTONOMES jusqu'au merge de leur PR (éjection → merge main, correctif, UN push, re-armer) puis de laisser 3 lignes dans le dossier partagé et de s'arrêter ; CPDF est cédée au PC2 (claude/cpdf). Le PC2 prend le jeton CI dès maintenant (claim rendue ci-dessous) : la file de merge sérialise de toute façon ; il surveille aussi ces 4 PR PC1 et les re-arme si leur session PC1 est tombée au plafond (quota all-models 89 % à 00:25).
+
+Écrit le 28/10/2026 00:27 UTC par la coordinatrice PC1 (arrêt : plafond hebdomadaire).
+
+**PR mergées depuis 23:10 UTC :**
+  - #1118 00:03 UTC — Propriété : docs/openapi-schema.yml déclaré surface append-only (instantané régé
+  - #1116 23:37 UTC — CPRW2-14 — devis web C&I : rien d'interne ni d'incertain côté client, bandeau « 
+  - #1115 00:09 UTC — CORC vague 2 : pose estimée = pose chiffrée, prestation sans article, brouillons
+  - #1113 00:03 UTC — api-fuzz-full 19e passe — tous les constats du run 40556418249 (hors beacon rése
+  - #1111 00:03 UTC — plan(AIC) : assistant IA des commerciaux sur les crédits API du plan Max — 25 tâ
+
+**PR PC1 encore ouvertes (à reprendre par PC2 — chacune : si éjectée, fusionner main UNE fois, corriger, UN push, `gh pr merge <n> --auto --merge`) :**
+  - #1114 OPEN CLEAN auto-merge=false claude/res-rpdf-r1 @ 089f6956e
+  - #1097 OPEN CLEAN auto-merge=false claude/ci-cqst @ 410477a29
+  - #1103 OPEN CLEAN auto-merge=false claude/res-rgen @ 4d80f2003
+  - #1115 MERGED UNKNOWN auto-merge=false claude/ci-corc-v2 @ 7a02b1912
+  - #1116 MERGED UNKNOWN auto-merge=false claude/cprw-r1 @ c27b73d2a
+  - #1113 MERGED UNKNOWN auto-merge=false claude/api-fuzz-drain-22 @ f3a9a1f95
+  - CPDF : branche claude/cpdf @ bd7e165ae (PR à créer après #1114 ; recapture goldens C&I après #1115 + #1114 ; recette notes/CPDF-recette-rendu.md).
+
+**File de merge à l'arrêt :**
+  - pos 1 #1103 AWAITING_CHECKS — RGEN — vendeur résidentiel : écran = devis auto = PDF (taille demandée
+  - pos 2 #1119 AWAITING_CHECKS — CPRW15-24 — devis web C&I : garanties et échéancier servis, services, 
+  - pos 3 #1097 AWAITING_CHECKS — CQST vague 1 : questionnaire client — ce qui manque = règle du devis a
+  - pos 4 #1117 UNMERGEABLE — Attribution des leads par le responsable d'équipe (écran Entrée / flèc
+
+**Jeton CI : rendu** (`plan_claims.py release app:jeton-ci`) à 28/10/2026 00:27 UTC — PC2 peut le prendre (`claim app:jeton-ci --owner <hostname>/coord-pc2 --branch main`).
+Les sessions PC1 restantes (RPDF, CORC, RGEN, CQST, CPRW, CPDF) sont arrêtées ; leur dernier état est dans blocs-sessions.md (section « Lanes PC1 ») et dans les PR elles-mêmes.
