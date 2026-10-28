@@ -113,7 +113,8 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         taux_tva = tva_standard(company)
     from apps.crm.services import resolve_client_for_lead
     from apps.ventes.domain.etude_ci import (
-        entrees_pour_etude_params, etudier_ci, refus_devis_auto_ci)
+        CLE_TAILLE_CREATION, entrees_pour_etude_params, etudier_ci, refus_devis_auto_ci,
+        verdict_taille_creation)
     from apps.ventes.domain.etude_ci_batterie import lignes_des_options
     from apps.ventes.models import Devis
 
@@ -143,6 +144,12 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     client = resolve_client_for_lead(lead)
     entrees = entrees_pour_etude_params(etude.get('entrees_resolues'))
     entrees['mode'] = lead.type_installation
+    # R1 (B1) — le verdict de taille CALCULÉ (raison d'arrêt, pose retenue,
+    # « limitée par le toit ») part avec le devis : le rafraîchisseur, qui
+    # retrouve la taille depuis les LIGNES, le relit tant qu'elles ne changent pas.
+    verdict = verdict_taille_creation(etude)
+    if verdict:
+        entrees[CLE_TAILLE_CREATION] = verdict
     if scenario:
         entrees['scenario'] = scenario
         if scenario == SCENARIO_LES_DEUX:

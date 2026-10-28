@@ -61,6 +61,18 @@ POSES_TOIT_PLAT = frozenset({'toit_plat_leste', 'toit_plat_fixe'})
 ANGLE_TOIT_PLAT_DEG = float(PVGIS_ANGLE_DEG)
 SOURCE_ANGLE_TOIT_PLAT = ('toit plat sans inclinaison déclarée : 30° (décision fondateur du '
                           '27/10/2026), modifiable dans le générateur')
+#: R1 — décision fondateur du 28/10/2026 : 30° reste le défaut ; quand la
+#: taille retenue par l'économie ne tient pas sur le toit à 30°, les tables
+#: passent en pose RASANTE 10° (densité maximale) pour la loger. Le
+#: basculement ne vaut que pour un toit plat SANS pente déclarée (une pente
+#: saisie dans le générateur l'emporte toujours, décision du 27/10).
+ANGLE_POSE_RASANTE_DEG = 10.0
+SOURCE_ANGLE_POSE_RASANTE = ('toit plat sans inclinaison déclarée : pose rasante 10° pour loger '
+                             'la taille retenue (décision fondateur du 28/10/2026), modifiable '
+                             'dans le générateur')
+#: Marqueur du ``toit`` de la série rasante (``toit_rasant``), lu par
+#: :func:`plan_de_production` — jamais une pente DÉCLARÉE.
+CLE_POSE_RASANTE = 'pose_rasante'
 HEURES_AN = 8760
 METHODE_8760 = 'horaire_8760'
 METHODE_JOURNEES_MOYENNES = 'journees_moyennes'
@@ -136,7 +148,8 @@ def traces_production(production, *, source=None, toit=None):
     defaut_angle = production.get('inclinaison_source') or 'pvgis_profils.PVGIS_ANGLE_DEG'
     for cle, valeur, declare, defaut in (('inclinaison_deg', angle, pente, defaut_angle),
                                          ('azimut_deg', aspect, azimut, 'pvgis_profils.PVGIS_ASPECT_DEG')):
-        lu = serie is not None and declare is not None
+        # R1 (P4) — une valeur DÉCLARÉE est celle servie, série ou repli.
+        lu = declare is not None
         hypotheses.append({'cle': cle, 'valeur': valeur, 'source': 'toit déclaré' if lu else defaut,
                            'statut': 'estimation' if serie is not None and not lu else 'source'})
     hypotheses.append({'cle': 'source_production', 'valeur': source,
@@ -152,7 +165,12 @@ def traces_production(production, *, source=None, toit=None):
                        'source': 'série horaire PVGIS indisponible (coordonnées GPS absentes, PVGIS '
                                  'injoignable ou production figée sans série) : repli sur 12 journées '
                                  'moyennes PVGIS (30° plein sud) × types de jour'})
-    orientation_differente = (
+    # R1 (P4) — UNE règle : sur le repli (journées moyennes à 30° plein sud),
+    # tout plan servi hors de la table (pente déclarée, pose rasante) est dit
+    # « non pris en compte » ; une production figée d'avant garde son alerte.
+    repli_hors_table = serie is None and (
+        _num(angle) != _num(PVGIS_ANGLE_DEG) or _num(aspect) != _num(PVGIS_ASPECT_DEG))
+    orientation_differente = repli_hors_table or (
         (pente is not None and _num(pente) != _num(angle))
         or (azimut is not None and _num(azimut) != _num(aspect)))
     if orientation_differente:
@@ -164,6 +182,23 @@ def traces_production(production, *, source=None, toit=None):
     return hypotheses, alertes
 
 
+def bascule_rasante_admissible(toit):
+    """R1 — le basculement 30° → pose rasante 10° ne vaut que pour un toit
+    plat (``POSES_TOIT_PLAT``) SANS pente déclarée (une pente saisie l'emporte,
+    décision du 27/10/2026)."""
+    toit = toit or {}
+    return toit.get('pente_deg') is None and toit.get('type_pose') in POSES_TOIT_PLAT
+
+
+def toit_rasant(toit):
+    """R1 — le ``toit`` de la série horaire en pose rasante (même pose, même
+    azimut, marqueur ``pose_rasante``) quand le basculement est admissible,
+    sinon ``None`` (pente déclarée, autre pose : jamais de seconde série)."""
+    if not bascule_rasante_admissible(toit):
+        return None
+    return dict(toit or {}, **{CLE_POSE_RASANTE: True})
+
+
 def plan_de_production(toit):
     """AMOT99 — plan PVGIS de la série : pente / azimut (PVGIS : 0 = Sud, −90 = Est)
     DÉCLARÉS, sinon ceux de la table (dits en estimation) ; montage selon la pose
@@ -171,8 +206,11 @@ def plan_de_production(toit):
     toit = toit or {}
     pente, azimut = toit.get('pente_deg'), toit.get('azimut_deg')
     source_angle = None
-    if pente is None and toit.get('type_pose') in POSES_TOIT_PLAT:
-        pente, source_angle = ANGLE_TOIT_PLAT_DEG, SOURCE_ANGLE_TOIT_PLAT
+    if bascule_rasante_admissible(toit):
+        if toit.get(CLE_POSE_RASANTE):
+            pente, source_angle = ANGLE_POSE_RASANTE_DEG, SOURCE_ANGLE_POSE_RASANTE
+        else:
+            pente, source_angle = ANGLE_TOIT_PLAT_DEG, SOURCE_ANGLE_TOIT_PLAT
     return {'angle_deg': PVGIS_ANGLE_DEG if pente is None else _num(pente),
             'source_angle': source_angle,
             'aspect_deg': PVGIS_ASPECT_DEG if azimut is None else _num(azimut),
@@ -262,12 +300,16 @@ def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnee
     else:
         origine = 'pvgis'
 
+    # R1 (P4) — le plan servi est celui du toit (pente déclarée, défaut toit
+    # plat, pose rasante), série OU repli : la pose rasante sur le repli se
+    # comporte exactement comme une pente déclarée de 10° (AMOT99).
+    plan = plan or plan_de_production(toit)
     depuis_serie = _depuis_serie(serie, plan, derate) if origine == 'pvgis' else None
     production = {
         'source': origine,
         'coordonnees_figees': dict(coordonnees_figees) if coordonnees_figees else None,
-        'inclinaison_deg': plan['angle_deg'] if depuis_serie else PVGIS_ANGLE_DEG,
-        'azimut_deg': plan['aspect_deg'] if depuis_serie else PVGIS_ASPECT_DEG,
+        'inclinaison_deg': plan['angle_deg'],
+        'azimut_deg': plan['aspect_deg'],
         'pertes_pct': PVGIS_LOSS_PCT,
         'kwh_kwc_mensuel': [m['prod_mois_kwh'] for m in par_mois],
         'jours_types': [{'mois': m['mois'], 'production_kwh_kwc': m['prod_24h']}
@@ -275,8 +317,9 @@ def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnee
         'methode_autoconso': METHODE_8760 if depuis_serie else METHODE_JOURNEES_MOYENNES,
         'serie_horaire': None,
     }
-    if depuis_serie and plan.get('source_angle'):
-        production['inclinaison_source'] = plan['source_angle']
+    # R1 — la source de l'angle (défaut toit plat, pose rasante) voyage avec
+    # le bloc, série ou repli ; ``None`` pour la table ou une pente déclarée.
+    production['inclinaison_source'] = plan.get('source_angle')
     if depuis_serie:
         (production['serie_horaire'], production['kwh_kwc_mensuel'],
          production['jours_types']) = depuis_serie

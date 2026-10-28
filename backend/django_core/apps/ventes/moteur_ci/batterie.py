@@ -457,7 +457,8 @@ def monter_regle_10_ans(n_depart, n_haut, pmax_wc, evaluer):
 
 def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension,
                              revente_choisie, combiner, composer, valoriser, batteries, simuler,
-                             hybrides=(), kwc_max=None, ps_kva=None, taux_tva_pct=None):
+                             hybrides=(), kwc_max=None, ps_kva=None, taux_tva_pct=None,
+                             production_de=None):
     """L'option « avec batterie » : banque sur la consommation hors production
     d'un jour moyen, champ porté jusqu'au remplissage (QJR612) puis par la
     règle des 10 ans (:func:`monter_regle_10_ans`) dans les bornes, hybrides
@@ -466,9 +467,12 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     ``motif`` nommé (aucune option « avec »)."""
     if not pmax_wc or not kwc_depart:
         return _sans_option('module sans puissance publiée : option batterie non calculée')
+    # R1 (P2) — ``production_de(kwc)`` : la production de la pose qui loge
+    # ce champ (30° tant qu'il tient, rasante au-delà) ; absent : ``production``.
+    prod = production_de if production_de is not None else (lambda _kwc: production)
 
     def bilan_de(n):
-        return bilan_horaire(charge, production, _kwc(n, pmax_wc), tension=tension,
+        return bilan_horaire(charge, prod(_kwc(n, pmax_wc)), _kwc(n, pmax_wc), tension=tension,
                              revente_choisie=revente_choisie)[0]
 
     n_bas = int(math.ceil(kwc_depart * 1000.0 / pmax_wc - 1e-9))
@@ -495,7 +499,7 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
             return None
         return dict(evaluer_option_avec(
             kwc, onduleurs, _composer_avec(composer, kwc, onduleurs, banque), banque,
-            charge=charge, production=production, tension=tension,
+            charge=charge, production=prod(kwc), tension=tension,
             revente_choisie=revente_choisie, valoriser=valoriser, simuler=simuler,
             hybrides=hybrides, taux_tva_pct=taux_tva_pct), n=m)
 

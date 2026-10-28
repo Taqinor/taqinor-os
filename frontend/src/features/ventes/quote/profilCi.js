@@ -61,6 +61,9 @@ export const PROFIL_CI_VIDE = Object.freeze({
   talonInconnu: false,
   typePose: '',
   surfaceUtile: '',
+  // CMP5 / R1 — l'inclinaison réelle des panneaux (toit plat) : saisie, elle
+  // l'emporte sur le défaut 30° et sur le basculement rasante du moteur.
+  penteDeg: '',
   couverture: '',
   tension: '',
   phases: '',
@@ -205,7 +208,7 @@ export function etatCorpsDepuisProfil(profil, ctx = {}) {
       surface_type: vide(p.surfaceUtile) ? null
         : (memeNombre(sToit.surface_utile_m2, p.surfaceUtile) && sToit.surface_type
           ? sToit.surface_type : 'declaree'),
-      pente_deg: sToit.pente_deg ?? null,
+      pente_deg: vide(p.penteDeg) ? null : p.penteDeg,
       azimut_deg: sToit.azimut_deg ?? null,
       couverture: p.couverture || null,
       charge_admissible_kg_m2: sToit.charge_admissible_kg_m2 ?? null,
@@ -301,6 +304,7 @@ export function profilDepuisEtude(e) {
   const t = etude.toit || {}
   p.typePose = texte(t.type_pose)
   p.surfaceUtile = texte(t.surface_utile_m2)
+  p.penteDeg = texte(t.pente_deg)
   p.couverture = texte(t.couverture)
   p.tension = texte(etude.tension)
   p.phases = texte(etude.phases)

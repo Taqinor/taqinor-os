@@ -162,6 +162,70 @@ class DevisAutoCITests(_Base):
             self.assertIn(cle, etude)
         self.assertIn('production_figee', devis.etude_params)
 
+    def _toit_plat(self):
+        Produit.objects.create(company=self.co, nom='Structure toit plat lestée C&I',
+                               prix_vente=Decimal('450'), prix_achat=Decimal('200'),
+                               role_ci='structure_ci', type_pose='toit_plat_leste')
+        FicheTechnique.objects.filter(produit=self.panneau).update(longueur_mm=2384, largeur_mm=1303)
+
+    def test_r1_b1_verdict_toit_calcule_a_la_creation_relu_puis_pdf_commercial(self):
+        # R1 (B1, arbitrage coordinatrice 28/10/2026) — cas NON aligné : 220 m²
+        # de terrasse béton → contenance rasante 60 panneaux = 42,6 kWc, entre
+        # les paliers 40 (57 panneaux = 40,47) et 45 : le balayage retient
+        # 40,47 kWc, raison « toit », à 2,13 kWc de la contenance — qu'aucune
+        # heuristique « à un panneau près » ne retrouverait. Le verdict CALCULÉ
+        # part avec le devis (`taille_creation_ci`), le rafraîchisseur (taille
+        # des LIGNES) le relit, le builder le sert, le gabarit COMMERCIAL l'imprime.
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine.commercial import render as c_render
+        from apps.ventes.quote_engine.commercial import renderer as c_renderer
+        self._toit_plat()
+        lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), type_toiture='terrasse_beton',
+                          surface_toiture_m2=Decimal('220'))
+        devis = self._auto(lead)
+        verdict = devis.etude_params[etude_ci.CLE_TAILLE_CREATION]
+        self.assertEqual((verdict['raison_arret'], verdict['inclinaison_retenue_deg']), ('toit', 10))
+        self.assertEqual((verdict['retenue_kwc'], verdict['nb_panneaux']), (40.47, 57))
+        self.assertEqual((verdict['toit']['kwc_30'], verdict['toit']['kwc_10']), (21.3, 42.6))
+        phrase = 'taille limitée par le toit : 220 m² déclarés → 40.47 kWc en pose rasante'
+        self.assertEqual(verdict['taille_limitee_toit'], phrase)
+        taille = devis.etude_params['etude_ci']['taille']
+        self.assertEqual((taille['raison_arret'], taille['retenue_kwc'], taille['nb_panneaux']),
+                         ('taille_explicite', 40.47, 57))
+        self.assertEqual((taille['inclinaison_retenue_deg'], taille['taille_limitee_toit']), (10, phrase))
+        self.assertEqual(devis.etude_params['etude_ci']['production']['inclinaison_deg'], 10)
+        data = build_quote_data(devis, {})
+        self.assertEqual(data['etude']['etude_ci']['taille']['taille_limitee_toit'], phrase)
+        html = c_render.build_html(c_renderer._augment(data))
+        self.assertIn('Taille limitée par le toit', html)
+        self.assertIn('220&#160;m² déclarés → 40,47&#160;kWc en pose rasante', html)
+        self.assertNotIn('prix_achat', html)
+        # Les lignes changent (50 panneaux) : le verdict ne décrit plus les
+        # lignes → la phrase disparaît, la taille suit les lignes.
+        ligne = devis.lignes.get(produit=self.panneau)
+        ligne.quantite = Decimal('50')
+        ligne.save()
+        etude_ci.rafraichir_etude_ci_devis(devis, force=True)
+        devis.refresh_from_db()
+        taille = devis.etude_params['etude_ci']['taille']
+        self.assertEqual((taille['retenue_kwc'], taille['taille_limitee_toit']), (35.5, None))
+        self.assertIn(etude_ci.CLE_TAILLE_CREATION, devis.etude_params)   # jamais effacé, juste inerte
+
+    def test_r1_b1_taille_souhaitee_egale_a_la_contenance_jamais_limitee_par_le_toit(self):
+        # B1 — une taille SAISIE (lead : 35 kWc → 50 panneaux = 35,5 kWc, pile
+        # la contenance rasante de 200 m²) : l'économie n'a pas été balayée →
+        # aucun verdict stocké, jamais « limitée par le toit ».
+        self._toit_plat()
+        lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), type_toiture='terrasse_beton',
+                          surface_toiture_m2=Decimal('200'), taille_souhaitee_kwc=Decimal('35'))
+        devis = self._auto(lead)
+        self.assertNotIn(etude_ci.CLE_TAILLE_CREATION, devis.etude_params)
+        taille = devis.etude_params['etude_ci']['taille']
+        self.assertEqual((taille['retenue_kwc'], taille['nb_panneaux'], taille['inclinaison_retenue_deg']),
+                         (35.5, 50, 10))
+        self.assertIsNone(taille['taille_limitee_toit'])
+        self.assertEqual(taille['bornes']['toit']['kwc_10'], 35.5)
+
     def test_lead_mt_tension_stockee(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('20000'), type_installation='industriel',
                           tension_raccordement='mt', categorie_commerciale=None,
@@ -483,6 +547,40 @@ class OptionBatterieCITests(_Base):
         self.assertEqual(valeur['retour_simple_ans'],
                          servi if servi and servi > 0 else None)
         self.assertIn('kWh utiles', valeur['textes']['fr'])
+
+    def test_r1_b2_option_avec_des_lignes_dans_sa_pose_serie_rasante_figee(self):
+        # R1 (B2, arbitrage coordinatrice) — l'option « avec » STOCKÉE (lignes,
+        # rafraîchisseur) porte la pose qui LA loge ; quand « sans » reste à 30°
+        # et « avec » passe en rasante, la série rasante est FIGÉE avec le devis
+        # (`production_figee_rasante`) et un rafraîchissement forcé ne rappelle
+        # pas PVGIS ; chaque option est une installation à part.
+        Produit.objects.create(company=self.co, nom='Structure toit plat lestée C&I',
+                               prix_vente=Decimal('450'), prix_achat=Decimal('200'),
+                               role_ci='structure_ci', type_pose='toit_plat_leste')
+        FicheTechnique.objects.filter(produit=self.panneau).update(longueur_mm=2384, largeur_mm=1303)
+        devis = self._auto(self._lead(
+            categorie_commerciale='boulangerie', jours_ouverture=list(range(1, 8)), heure_debut=7,
+            heure_fin=21, conso_mensuelle_kwh=Decimal('6000'), type_toiture='terrasse_beton',
+            surface_toiture_m2=Decimal('220')))
+        params = devis.etude_params
+        sans, avec = params['etude_ci']['taille'], params['etude_ci']['option_avec']
+        toit = sans['bornes']['toit']
+        self.assertEqual((toit['kwc_30'], toit['kwc_10']), (21.3, 42.6))
+        self.assertIn(sans['inclinaison_retenue_deg'], (30, 10))
+        attendu = 10 if avec['kwc'] > toit['kwc_30'] else 30
+        self.assertEqual(avec['inclinaison_retenue_deg'], attendu)
+        rasante_figee = sans['inclinaison_retenue_deg'] == 30 and attendu == 10
+        self.assertEqual('production_figee_rasante' in params, rasante_figee)
+        if rasante_figee:
+            self.assertEqual(params['production_figee_rasante']['inclinaison_deg'], 10)
+        with mock.patch.object(etude_ci, 'lire_production',
+                               side_effect=_production_casablanca) as pvgis:
+            etude_ci.rafraichir_etude_ci_devis(devis, force=True)
+        pvgis.assert_not_called()
+        devis.refresh_from_db()
+        apres = devis.etude_params['etude_ci']['option_avec']
+        self.assertEqual(apres['inclinaison_retenue_deg'], attendu)
+        self.assertEqual(apres['bilan']['production_kwh'], avec['bilan']['production_kwh'])
 
     def test_choix_avec_du_lead_option_avec_seule(self):
         devis = self._auto(self._boulangerie(batterie_souhaitee='avec'))
