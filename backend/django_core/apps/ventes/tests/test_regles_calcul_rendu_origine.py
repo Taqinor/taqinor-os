@@ -193,6 +193,11 @@ _CLES_AGQ = frozenset((
 _LIBELLES_AGQ = tuple(('libelles_document', cle) for cle in i18n_labels.LIBELLES
                       if cle in _CLES_AGQ)
 CLES_HORS_RENDU_ORIGINE = (
+    # RPDF (27-28/10/2026) — libellés du PDF résidentiel (module
+    # ``i18n_labels_residentiel``, préfixe ``rpdf_``) : des TEXTES du
+    # catalogue servis à chaque devis, jamais un chiffre.
+    *(('libelles_document', cle) for cle in i18n_labels.LIBELLES
+      if cle.startswith('rpdf_')),
     ('entreprise', 'capital_social'), ('entreprise', 'forme_juridique'),
     ('regles_calcul_origine',),
     ('libelles_document', 'agr_base_besoin_agronomique'),

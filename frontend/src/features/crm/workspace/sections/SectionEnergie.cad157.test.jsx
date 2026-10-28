@@ -53,4 +53,19 @@ describe('CAD157 — la fiche dit ce qui n’est pas compté', () => {
       />)
     expect(screen.getByText(NON_COMPTE_PLAQUE)).toBeInTheDocument()
   })
+
+  it('RGEN4 — le statut du véhicule électrique a son select, et la clim son pas libre', () => {
+    const setField = vi.fn()
+    const { unmount } = render(
+      <SectionEquipements state={etat({ equip_voiture_electrique: true, equip_ve_statut: 'possede' })}
+        setField={setField} errors={{}} />)
+    const select = document.getElementById('lf-equip-ve-statut')
+    expect(select).not.toBeNull()
+    expect(select.value).toBe('possede')
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(['', 'possede', 'prevu'])
+    expect(select.options[0]).toHaveTextContent('— (pas encore demandé)')
+    unmount()
+    render(<SectionEquipements state={etat({ equip_clim: true })} setField={vi.fn()} errors={{}} />)
+    expect(document.getElementById('lf-equip-clim-pieces')).toHaveAttribute('step', 'any')
+  })
 })

@@ -222,6 +222,31 @@ class AjouterSerialTests(_Base):
         ok, err = field_capture.valider_caracteristiques('{"puissance_wc": 710.5}')
         self.assertEqual(ok, {'puissance_wc': 710.5})
 
+    def test_caracteristiques_publiees_egal_acceptation(self):
+        """api-fuzz-full 27/10 (ENF11) : le schéma publie un objet plat de
+        valeurs texte/nombre ; une liste est refusée par le schéma ET le
+        serveur, une clé blanche/longue (inexprimable) est nettoyée."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        champ = schema['components']['schemas']['AjouterSerialRequeteRequest'][
+            'properties']['caracteristiques']
+        self.assertEqual(champ['maxProperties'], 10)
+        self.assertEqual({t['type'] for t in
+                          champ['additionalProperties']['oneOf']},
+                         {'string', 'number'})
+        ok, err = field_capture.valider_caracteristiques(
+            {'  ': 'x', 'k' * 50: 'v', 'mo\x00dele': 'A'})
+        self.assertEqual(ok, {'k' * 40: 'v', 'modele': 'A'})
+        for brut in ({'a': []}, {'a': 'b\x00c'}):
+            ok, err = field_capture.valider_caracteristiques(brut)
+            self.assertIsNone(ok, brut)
+            self.assertTrue(err, brut)
+
     def test_caracteristiques_multipart_nan_400(self):
         r = self.api.post(f'{self.url}/ajouter-serial/', {
             'produit': self.panneau.id, 'numero_serie': 'X-NAN',

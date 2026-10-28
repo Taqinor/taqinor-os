@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import logging
 
+from core.money import quantize_mad
+
 from .lignes_classement import _battery_kwh_from_items, _cout_onduleur
 
 logger = logging.getLogger(__name__)
@@ -191,6 +193,25 @@ def _nombre(valeur) -> float:
         return 0.0
 
 
+def _cout_onduleur_paye(devis, items, blob):
+    """RPDF12 — provision de remplacement = le prix que le client PAIE pour
+    l'onduleur : la remise globale du devis s'applique aussi à cette ligne
+    (devis 1344 : 36 000 imprimés, 34 200 payés). Niveau de règles 3
+    seulement : un devis déjà envoyé garde la provision qu'il a imprimée."""
+    cout = _cout_onduleur(items, blob)
+    remise = _nombre(getattr(devis, "remise_globale", None))
+    if cout and remise > 0 and _regles_2710(devis):
+        return float(quantize_mad(cout * (1 - remise / 100)))
+    return cout
+
+
+def _regles_2710(devis):
+    """RHOR6 — vrai si ce devis est rendu au niveau de règles 3."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
+    return regles_au_moins(devis, REGLES_CORRIGEES_2710)
+
+
 def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
                    avec_items, avec_ok, avertissements_internes, deux_options,
                    devis, devis_etude_override, has_batterie, mode,
@@ -300,9 +321,9 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         _tariff = {}
     # ── QX38 — productible CANONIQUE (source unique PVGIS par ville) ──────────
     # CompanyProfile.productible_kwh_kwc devient un OVERRIDE éditable, pas un
-    # modèle physique concurrent : quand il vaut le défaut historique 1600, on
-    # lit le productible PVGIS de la ville du lead/devis (aligné écran/PDF/web).
-    # Une valeur société ≠ 1600 (réglage explicite) prime. Repli sûr : sur toute
+    # modèle physique concurrent : vide (NULL), on lit le productible PVGIS de
+    # la ville du lead/devis (aligné écran/PDF/web) ; renseigné (1 600 compris
+    # — AMOT64), il prime. Repli sûr : sur toute
     # erreur, on garde l'ancien productible du tarif (comportement inchangé).
     _co_productible = _tariff.get("productible_kwh_kwc") or None
     try:
@@ -361,8 +382,8 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         stockage_present=has_batterie,
         # Q1 — provision de remplacement onduleur = prix TTC RÉEL de la ligne
         # onduleur de chaque option ; aucune ligne ⇒ aucune provision.
-        inverter_cost_sans=_cout_onduleur(sans_items, _blob),
-        inverter_cost_avec=_cout_onduleur(avec_items, _blob),
+        inverter_cost_sans=_cout_onduleur_paye(devis, sans_items, _blob),
+        inverter_cost_avec=_cout_onduleur_paye(devis, avec_items, _blob),
         # CJ2a (ORDRE FONDATEUR) — le bloc du moteur HORAIRE, quand le devis en
         # porte un : les économies deviennent l'intégration réelle production ×
         # consommation, mois par mois, au lieu du forfait 60 %. Absent ⇒
@@ -377,6 +398,8 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         # rendus ; règles d'origine : le calcul d'hier.
         rendement_une_fois=_corrige,
         forme_mensuelle_ghi=_corrige,
+        regles_2710=_regles_2710(devis),
+        deux_options=bool(deux_options),  # RPDF : provision à deux montants seulement à deux options
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le

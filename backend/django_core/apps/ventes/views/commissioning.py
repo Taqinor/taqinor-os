@@ -416,13 +416,24 @@ class TestPerformanceReceptionViewSet(CompanyScopedModelViewSet):  # ARC5 (voir 
         seuil_test = _get('pr_seuil_acceptation')
         self._motif_seuil = motif_seuil(
             seuil_test if seuil_test is not None else seuil_societe)
-        return compute_reception_pr(
+        pr_m, ecart, verdict = compute_reception_pr(
             energie_mesuree_kwh=_get('energie_mesuree_kwh'),
             energie_attendue_kwh=_get('energie_attendue_kwh'),
             pr_mesure=_get('pr_mesure'),
             pr_attendu=_get('pr_attendu'),
             pr_seuil_acceptation=seuil_test,
             pr_seuil_societe=seuil_societe)
+        if (pr_m is not None and abs(pr_m) >= 10) or (
+                ecart is not None and abs(ecart) >= 10000):
+            # api-fuzz-full 27/10 — ``pr_mesure`` numeric(5,4) / ``ecart_pct``
+            # numeric(6,2) : un PR dérivé des énergies hors capacité levait
+            # ``DataError`` (500). Mesures conformes au schéma mais
+            # incompatibles = refus d'état (même règle que l'écart Pmax).
+            from core.conflit_etat import ConflitEtat
+            raise ConflitEtat({'energie_mesuree_kwh': [
+                'PR mesuré hors capacité (< 10, écart ±9 999,99 %) : '
+                'vérifiez les énergies et le PR attendu.']})
+        return pr_m, ecart, verdict
 
     def create(self, request, *args, **kwargs):
         self._motif_seuil = None

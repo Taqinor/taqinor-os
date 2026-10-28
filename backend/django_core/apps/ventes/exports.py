@@ -15,6 +15,16 @@ from django.http import HttpResponse
 ISSUED_STATUTS = ('emise', 'payee', 'en_retard')
 
 
+def _append_sur(feuille, valeurs):
+    """``feuille.append`` sans les caractères de contrôle qu'openpyxl refuse
+    (api-fuzz-full 27/10 : un nom de client / une désignation saisis avec un
+    caractère de contrôle faisaient lever ``IllegalCharacterError`` → export
+    du journal des ventes en 500). Les autres types passent tels quels."""
+    from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+    feuille.append([ILLEGAL_CHARACTERS_RE.sub('', v) if isinstance(v, str) else v
+                    for v in valeurs])
+
+
 def _q2(d):
     return Decimal(d).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
@@ -192,7 +202,7 @@ def export_journal_ventes(company, debut, fin):
     headers = ['Facture', 'Date', 'Type', 'Client', 'ICE client',
                'Désignation', 'Qté', 'P.U. HT', 'Total HT', 'TVA %',
                'Montant TVA', 'Total TTC']
-    ws.append(headers)
+    _append_sur(ws, headers)
     for c in ws[1]:
         c.font = bold
 
@@ -209,7 +219,7 @@ def export_journal_ventes(company, debut, fin):
         if ventilees:
             for ligne, taux, ht, tva in ventilees:
                 ttc = _q2(ht + tva)
-                ws.append([
+                _append_sur(ws, [
                     f.reference, date_f, type_libelle, nom, ice,
                     ligne.designation, str(ligne.quantite),
                     str(ligne.prix_unitaire),
@@ -239,7 +249,7 @@ def export_journal_ventes(company, debut, fin):
             # AFAC52 — une ligne PAR TAUX réel (ventilation de la tranche),
             # jamais le taux mélangé d'en-tête.
             for taux, ht, tva, ttc in paniers_figes(f):
-                ws.append([
+                _append_sur(ws, [
                     f.reference, date_f, type_libelle, nom, ice,
                     f.libelle or type_libelle or 'Facture', '', '',
                     float(ht), float(taux), float(tva), float(ttc),
@@ -270,7 +280,7 @@ def export_journal_ventes(company, debut, fin):
             ht = -_q2(b['base_ht'])
             tva = -_q2(b['montant'])
             ttc = _q2(ht + tva)
-            ws.append([
+            _append_sur(ws, [
                 a.reference, date_a, 'Avoir', nom, ice,
                 desig, '', '',
                 float(ht), float(taux), float(tva), float(ttc),
@@ -284,16 +294,16 @@ def export_journal_ventes(company, debut, fin):
 
     # Feuille résumé TVA.
     ws2 = wb.create_sheet('Résumé TVA')
-    ws2.append(['Taux TVA', 'Base HT', 'Montant TVA', 'Total TTC'])
+    _append_sur(ws2, ['Taux TVA', 'Base HT', 'Montant TVA', 'Total TTC'])
     for c in ws2[1]:
         c.font = bold
     for taux in sorted(par_taux):
         b = par_taux[taux]
-        ws2.append([f'{taux} %', float(_q2(b['ht'])), float(_q2(b['tva'])),
+        _append_sur(ws2, [f'{taux} %', float(_q2(b['ht'])), float(_q2(b['tva'])),
                     float(_q2(b['ht'] + b['tva']))])
-    ws2.append([])
+    _append_sur(ws2, [])
     total_row = ['TOTAL', float(_q2(tot_ht)), float(_q2(tot_tva)), float(_q2(tot_ttc))]
-    ws2.append(total_row)
+    _append_sur(ws2, total_row)
     for c in ws2[ws2.max_row]:
         c.font = bold
 
@@ -374,15 +384,15 @@ def export_comptable_xlsx(company, debut, fin):
     ws = wb.active
     ws.title = 'Export comptable'
     bold = Font(bold=True)
-    ws.append(_COMPTA_HEADERS)
+    _append_sur(ws, _COMPTA_HEADERS)
     for c in ws[1]:
         c.font = bold
     for r in rows:
-        ws.append(r)
-    ws.append([])
+        _append_sur(ws, r)
+    _append_sur(ws, [])
     total_row = ['TOTAL', '', '', '', '', '', '', '',
                  float(_q2(tot_ht)), '', float(_q2(tot_tva)), float(_q2(tot_ttc))]
-    ws.append(total_row)
+    _append_sur(ws, total_row)
     for c in ws[ws.max_row]:
         c.font = bold
 
@@ -624,22 +634,22 @@ def export_grand_livre_xlsx(company, debut, fin):
     ws = wb.active
     ws.title = 'Grand-livre ventes'
     bold = Font(bold=True)
-    ws.append(_GRAND_LIVRE_HEADERS)
+    _append_sur(ws, _GRAND_LIVRE_HEADERS)
     for c in ws[1]:
         c.font = bold
     for r in rows:
-        ws.append(r)
-    ws.append([])
+        _append_sur(ws, r)
+    _append_sur(ws, [])
     total_row = ['TOTAL', '', '', '', '', '', '', '', '',
                  float(_q2(tot_debit)), float(_q2(tot_credit))]
-    ws.append(total_row)
+    _append_sur(ws, total_row)
     for c in ws[ws.max_row]:
         c.font = bold
     # AUD111 — l'approximation est DITE sur le document, jamais tue. Posée
     # APRÈS la ligne TOTAL : l'en-tête et la zone de données gardent leur
     # place exacte pour tout lecteur (humain ou tableur) du document.
-    ws.append([])
-    ws.append([BANDEAU_RECONSTITUTION])
+    _append_sur(ws, [])
+    _append_sur(ws, [BANDEAU_RECONSTITUTION])
 
     resp = HttpResponse(content_type=(
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))

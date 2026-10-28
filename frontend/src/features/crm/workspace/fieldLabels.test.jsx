@@ -59,6 +59,8 @@ const mappedInputIds = new Set(Object.values(fieldLabels).map((f) => f.inputId))
 
 const CAD149_SAISIS_PAR_SECTION_POMPAGE = [
   'decideur', 'pompage_heures_jour', 'pompe_alim_actuelle', 'carburant_litres_mois',
+  // RGEN4 — saisi dans SectionEnergie (bloc véhicule électrique).
+  'equip_ve_statut',
 ]
 
 describe('fieldLabels — la carte ne dérive pas des sections réelles (règle fondateur 08/09/2026)', () => {

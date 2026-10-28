@@ -503,7 +503,8 @@ export function equipmentPresence(
  * si la synthèse la sert. `mode` = clé machine de `resolveInstallMode`.
  */
 export function garantiesCodeesEnDurAffichees(mode: string | null | undefined): boolean {
-  return mode !== 'agricole';
+  // CPRW15 — commercial / industriel : les durées sont celles SERVIES (`synthese_ci.services.garanties`).
+  return mode !== 'agricole' && mode !== 'commercial' && mode !== 'industriel';
 }
 
 /**

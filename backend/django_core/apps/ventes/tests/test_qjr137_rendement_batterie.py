@@ -194,8 +194,10 @@ class HypothesesAffichees(SimpleTestCase):
 
     def test_le_repli_est_annonce_comme_une_hypothese(self):
         note = self._note_stockage()
-        self.assertIn('hypothèse de référence', note)
-        self.assertIn('ne publie pas', note)
+        # RPDF (décision fondateur 26/10 « aucune incertitude imprimée ») :
+        # la valeur de référence reste DITE, sans aveu de fiche muette.
+        self.assertIn('valeur de référence', note)
+        self.assertNotIn('ne publie pas', note)
         self.assertIn(str(round(BATTERY_ROUNDTRIP * 100)), note)
 
     def test_une_valeur_publiee_est_annoncee_comme_telle(self):

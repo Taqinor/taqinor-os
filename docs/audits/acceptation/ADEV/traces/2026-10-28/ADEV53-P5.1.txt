@@ -1,0 +1,11 @@
+ADEV53 — P5.1 (écran + serveur) — rejeu orchestrateur, pile locale : backend monté depuis le code fusionné 1771f7457 (conteneur à part accept-replay-django, base démo partagée), front construit au même code et servi par vite preview :5180, site apps/web en astro dev :4321 → backend :8010, 2026-10-28, navigateur intégré.
+Devis envoyé DEV-202610-0081 (pk 1437, copie par l'action « dupliquer » de DEV-202610-0004, envoyé par « envoyer-email », industriel, TTC 53 500,00).
+1. Page /proposition/<jeton> : formulaire de signature entreprise rempli (nom, raison sociale, qualité, ICE de test, e-mail, pouvoir d'engager, accord), signature tapée.
+2. « Accepter et signer » → POST /api/proposition-accept 200 en 13 863 ms ; la page affiche « ACOMPTE À RÉGLER — 16 050,00 MAD (30 %) » et le bouton « J'ai effectué le virement » (RIB vide : aucun RIB au profil démo).
+3. Clic « J'ai effectué le virement » → POST /api/proposition-virement 200 (145 ms), message « Merci ! Votre déclaration a été transmise à votre conseiller. »
+4. Persistance : devis 1437 statut accepte, signé, PDF devis/1/DEV-202610-0081__signe.pdf ; Notification « Virement déclaré — devis DEV-202610-0081 » au vendeur ;
+   note chatter du devis « Le client déclare avoir effectué le virement de l'acompte » (historique 200) ; GET public data → statut accepte.
+5. Clés card_payment_url / OTP de lecture : moitié serveur déjà PASS le 26/10 (trace 2026-10-26/ADEV53-P5.1.txt), code inchangé.
+Écart hors clauses d'ADEV53 : la seconde copie (DEV-202610-0082) a dépassé le délai de 15 s de la page (« La connexion est lente ») alors que le serveur
+a bien enregistré l'acceptation → reste ERR-MOTEUR-QR-MASQUE-LENT-ACCEPTATION.
+Verdict ADEV53 (écran de paiement affiché, déclaration enregistrée) : PASS.

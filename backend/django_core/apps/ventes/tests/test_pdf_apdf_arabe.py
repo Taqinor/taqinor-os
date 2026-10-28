@@ -613,9 +613,11 @@ class ResidentielLibellesHtmlTests(SimpleTestCase):
         en = dict(deux, langue_sortie="en", libelles_document=L.libelles("en"))
         self.assertEqual(charts.note_variation_mensuelle(en),
                          L.libelle("res_estimation_deux_factures", "en"))
-        # Image matplotlib : l'arabe garde le français du graphe.
+        # Image matplotlib : pas de mise en forme arabe → l'anglais (jamais
+        # du français dans un document arabe).
         self.assertEqual(charts.note_variation_mensuelle(
-            dict(deux, langue_sortie="ar")), fr)
+            dict(deux, langue_sortie="ar")),
+            L.libelle("res_estimation_deux_factures", "en"))
         self.assertEqual(charts.note_variation_mensuelle(
             dict(deux, source_consommation="facture_hiver")),
             "variation mensuelle estimée")
@@ -628,6 +630,35 @@ class ResidentielLibellesHtmlTests(SimpleTestCase):
                                return_value="") as graphe:
             charts.build_all(d)
         self.assertEqual(graphe.call_args.kwargs["variation_estimee"], fr)
+
+    def test_graphiques_et_calepinage_sans_francais_en_anglais(self):
+        """RPDF — mois, titres et étiquettes des images matplotlib et page
+        calepinage : le français est octet pour octet l'ancien littéral ; en
+        anglais (et en arabe pour les images) aucun libellé français."""
+        from apps.ventes.quote_engine import i18n_labels as L
+        from apps.ventes.quote_engine.residential import charts
+        self.assertEqual(charts._mois("fr")[:4], ["Jan", "Fév", "Mar", "Avr"])
+        self.assertEqual(charts._t("rpdf_ch_rentab_un", "fr", a="3,5"),
+                         "rentabilisé en 3,5 ans")
+        self.assertEqual(charts._t("rpdf_ch_rentab_deux", "fr", a="3", b="4"),
+                         "rentabilisés en 3 et 4 ans")
+        francais = ("Fév", "Avr", "Aoû", "Déc", "estimé", "mois par mois",
+                    "couverture", "seuil", "rentabilis", "Années",
+                    "Sans batterie", "économie", "Pièce technique",
+                    "Implantation", "Calepinage", "équipements")
+        cles = [c for c in L.LIBELLES
+                if c.startswith(("rpdf_ch_", "rpdf_cal_"))]
+        self.assertTrue(cles)
+        for cle in cles:
+            for langue in ("en", "ar"):
+                txt = L.libelle(cle, langue)
+                if langue == "ar" and cle.startswith("rpdf_cal_"):
+                    continue
+                for mot in francais:
+                    self.assertNotIn(mot, txt, (cle, langue))
+        self.assertEqual(charts._milliers(12345, "en"), "12,345")
+        self.assertEqual(charts._langue_image({"langue_sortie": "ar"}), "en")
+        self.assertEqual(charts._langue_image({}), "fr")
 
     def test_titre_clauses_residentiel_et_ci_par_langue(self):
         """APDF105 — le titre du bloc « Clauses particulières » du résidentiel
