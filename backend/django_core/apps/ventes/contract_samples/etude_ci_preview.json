@@ -3005,7 +3005,12 @@
       "bornes": {
         "toit": {
           "kwc": 30,
-          "source": "surface utile déclarée (180 m²) — densité de pose du type `toit_plat_leste`"
+          "source": "surface utile déclarée (180 m²), pose estimée « toit_plat_leste » — estimation, à confirmer au calepinage/visite",
+          "kwc_30": 19.17,
+          "source_30": "tables à 30° sur la surface déclarée (défaut toit plat, décision fondateur du 27/10/2026)",
+          "kwc_10": 30,
+          "source_10": "tables jointives en pose rasante 10° sur la surface déclarée (décision fondateur du 28/10/2026)",
+          "surface_m2": 180
         },
         "phase": {
           "kwc": null,

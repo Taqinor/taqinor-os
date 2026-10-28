@@ -180,3 +180,37 @@ class TestSyntheseCiCoeur(SimpleTestCase):
         data = _data(_etude_ci())
         data["all_items"] = [{"designation": "x", "prix_achat": 1}]
         self.assertNotIn("prix_achat", json.dumps(synthese_ci(data)))
+
+    def test_r1_taille_limitee_par_le_toit_en_pose_rasante(self):
+        # R1 (fondateur 28/10/2026) — même la pose rasante ne loge pas la
+        # taille économique : le devis dit « taille limitée par le toit :
+        # X m² déclarés → Y kWc en pose rasante », trilingue, sur l'étude qui
+        # décrit le kWc servi ; rien d'imprimé sinon.
+        from apps.ventes.quote_engine.ci.blocs import libelle_cpdf
+        from apps.ventes.quote_engine.industriel.finance import _rangees_estimation
+        taille = {"retenue_kwc": 35.5, "nb_panneaux": 50, "pas_kwc": 5,
+                  "horizon_marginal_annees": 10, "raison_arret": "toit",
+                  "statut": "calculee",
+                  "bornes": {"toit": {"kwc": 35.5, "kwc_30": 21.3, "kwc_10": 35.5,
+                                      "surface_m2": 200, "source": "s"}}}
+        production = {"source": "pvgis", "inclinaison_deg": 10, "azimut_deg": 0,
+                      "methode_autoconso": "horaire_8760"}
+        s = synthese_ci(_data(_etude_ci(taille=taille, production=production),
+                              puissance_kwc=35.5, nb_panneaux=50))
+        self.assertEqual(s["estimation"]["toit"], {"surface_m2": 200.0, "kwc": 35.5})
+        self.assertEqual(s["estimation"]["production"]["inclinaison_deg"], 10.0)
+        rangees = _rangees_estimation(s, lambda cle, fr, **v: fr.format(**v))
+        self.assertIn(("Taille limitée par le toit",
+                       "200&#160;m² déclarés → 35,5&#160;kWc en pose rasante"), rangees)
+        for langue in ("fr", "en", "ar"):
+            self.assertIn("{m2}", libelle_cpdf("ci_h_taille_toit_rasante", langue))
+            self.assertTrue(libelle_cpdf("ci_h_taille_toit", langue))
+        for t in (dict(taille, raison_arret="horizon_marginal"),
+                  dict(taille, bornes={"toit": {"kwc": 21.3, "source": "s"}})):
+            s2 = synthese_ci(_data(_etude_ci(taille=t, production=production),
+                                   puissance_kwc=35.5, nb_panneaux=50))
+            self.assertNotIn("toit", s2.get("estimation") or {})
+        # Étude d'une AUTRE puissance que celle servie : rien d'imprimé.
+        s3 = synthese_ci(_data(_etude_ci(taille=taille, production=production),
+                               puissance_kwc=20.0, nb_panneaux=29))
+        self.assertNotIn("toit", s3.get("estimation") or {})

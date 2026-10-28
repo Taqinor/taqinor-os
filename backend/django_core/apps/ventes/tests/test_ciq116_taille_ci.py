@@ -16,6 +16,7 @@ from pathlib import Path
 from apps.stock.management.commands.seed_catalogue import CATALOGUE, ht_at
 from apps.ventes import economie_ci, tarif_ci
 from apps.ventes.dimensionnement import HORIZON_MARGINAL_PV
+from apps.ventes.moteur_ci.charge import courbe_declaree
 from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
 from apps.ventes.moteur_ci.taille import cout_vente_ht, dimensionner_ci, grimper_avec_regard
 from apps.ventes.tests.test_ciq110_autoconso_horaire import _charge, _production
@@ -699,6 +700,118 @@ class OptionAvecBatterieTests(unittest.TestCase):
         retenu = monter_regle_10_ans(29, 200, PANNEAU_WC, evaluer)
         self.assertLessEqual(abs(retenu['kwc'] - 40), PANNEAU_WC / 1000.0)
         self.assertIsNone(monter_regle_10_ans(29, 200, PANNEAU_WC, lambda n: None))
+
+
+class PoseRasanteR1Tests(unittest.TestCase):
+    """R1 — décision fondateur du 28/10/2026 (toit plat SANS pente déclarée) :
+    la taille est choisie par l'économie sans être bornée par la pose à 30° ;
+    un palier qui ne tient pas à 30° est évalué (production, panneaux entiers)
+    en pose rasante 10° ; la borne toit ne joue que si même la rasante ne
+    suffit pas, et le devis le dit. Contenances du VRAI service de calepinage
+    (``core.calepinage.contenance_declaree``, module 2 384 × 1 303 mm, 200 m²
+    à Casablanca) : 30 panneaux = 21,3 kWc à 30°, 50 panneaux = 35,5 kWc en
+    pose rasante jointive — jamais un ratio en dur."""
+
+    KWC_30, KWC_10, SURFACE = 21.3, 35.5, 200
+
+    @classmethod
+    def setUpClass(cls):
+        cls.prod, _ = _production()
+        cls.huawei = _catalogue_huawei()
+
+    def _bornes(self, kwc_30=KWC_30, kwc_10=KWC_10, surface=SURFACE):
+        return {'toit': {
+            'kwc': max(kwc_30, kwc_10), 'kwc_30': kwc_30, 'kwc_10': kwc_10,
+            'surface_m2': surface,
+            'source': 'surface utile déclarée (%g m²), pose estimée « toit_plat_leste »' % surface,
+            'source_30': 'tables à 30°', 'source_10': 'pose rasante 10°'}}
+
+    def _taille(self, charge, **kw):
+        appels = []
+
+        def production_rasante():
+            appels.append(1)
+            return self.prod
+        r = dimensionner_ci(
+            charge_jours_types=charge, production_jours_types=self.prod, tension='bt',
+            combiner=partial(combiner_onduleurs, candidats=self.huawei, phase='tri'),
+            composer=_composer, valoriser=_valoriser(charge), taux_tva_pct=20,
+            pmax_wc=PANNEAU_WC, production_rasante=production_rasante, **kw)
+        r['appels_rasante'] = len(appels)
+        return r
+
+    @staticmethod
+    def _hyp(r, cle):
+        return next((h for h in r['hypotheses'] if h['cle'] == cle), None)
+
+    def test_a_boulangerie_200_m2_logee_en_pose_rasante_jamais_20(self):
+        # Lead 1637 : 120 MWh/an, 6 h-22 h, BT patenté, 200 m² déclarés, toit
+        # plat lesté sans pente. Avant R1 : 20,02 kWc par la seule borne 30°.
+        charge, _prov, _al = courbe_declaree(
+            {'plages': {'ouvre': [[6, 22]]}, 'jours_ouverts': [True] * 7},
+            [10000] * 12, annee_reference=2025, archetype='boulangerie')
+        r = self._taille(charge, bornes=self._bornes())
+        t = r['taille']
+        self.assertGreater(t['retenue_kwc'], self.KWC_30)
+        self.assertEqual(r['inclinaison_retenue_deg'], 10.0)
+        self.assertEqual(self._hyp(r, 'inclinaison_retenue_deg')['valeur'], 10.0)
+        self.assertGreater(r['appels_rasante'], 0)
+        # Le service loge 50 panneaux (35,5 kWc) en rasante ; l'économie en
+        # voudrait plus (sans toit, la montée continue) : la borne toit joue.
+        self.assertEqual((t['retenue_kwc'], t['nb_panneaux'], t['raison_arret']),
+                         (35.5, 50, 'toit'))
+        self.assertGreater(self._taille(charge)['taille']['retenue_kwc'], t['retenue_kwc'])
+
+    def test_b_taille_qui_tient_a_30_garde_30_et_la_meme_taille(self):
+        charge = _charge('bureau', 6000)
+        avant = self._taille(charge)
+        r = self._taille(charge, bornes=self._bornes(kwc_30=400, kwc_10=500, surface=3000))
+        self.assertEqual(r['taille']['retenue_kwc'], avant['taille']['retenue_kwc'])
+        self.assertEqual(r['taille']['raison_arret'], 'horizon_marginal')
+        self.assertEqual(r['inclinaison_retenue_deg'], 30.0)
+        self.assertEqual(self._hyp(r, 'inclinaison_retenue_deg')['valeur'], 30.0)
+        self.assertIsNone(self._hyp(r, 'taille_limitee_toit'))
+        self.assertEqual(r['appels_rasante'], 0)             # série 10° jamais lue
+        self.assertIsNone(avant['inclinaison_retenue_deg'])  # sans toit : rien à dire
+
+    def test_c_meme_la_rasante_ne_suffit_pas_raison_toit_texte_client(self):
+        r = self._taille(_charge('hotel', 20000), bornes=self._bornes())
+        t = r['taille']
+        self.assertEqual((t['retenue_kwc'], t['nb_panneaux'], t['raison_arret']),
+                         (35.5, 50, 'toit'))
+        self.assertEqual(t['paliers'][-1]['borne'], 'toit')
+        self.assertEqual(r['inclinaison_retenue_deg'], 10.0)
+        self.assertEqual(self._hyp(r, 'taille_limitee_toit')['source'],
+                         'taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante')
+        self.assertEqual((t['bornes']['toit']['kwc_30'], t['bornes']['toit']['kwc_10']),
+                         (21.3, 35.5))
+        # Les paliers ≤ 21,3 kWc restent évalués à 30° ; la série rasante n'est
+        # lue qu'aux paliers au-delà.
+        au_dela = [p for p in t['paliers'] if p['kwc'] > self.KWC_30]
+        self.assertEqual(r['appels_rasante'], len(au_dela))
+
+    def test_d_pente_declaree_ou_toit_sans_rasante_aucun_basculement(self):
+        # L'orchestrateur ne sert kwc_30/kwc_10 que pour un toit plat sans pente
+        # déclarée : avec la seule contenance, la borne joue comme avant.
+        r = self._taille(_charge('hotel', 20000),
+                         bornes={'toit': {'kwc': 21.3, 'source': 'surface utile déclarée (200 m²)'}})
+        t = r['taille']
+        self.assertEqual(t['raison_arret'], 'toit')
+        self.assertLessEqual(t['retenue_kwc'], 21.3)
+        self.assertIsNone(r['inclinaison_retenue_deg'])
+        self.assertIsNone(self._hyp(r, 'inclinaison_retenue_deg'))
+        self.assertIsNone(self._hyp(r, 'taille_limitee_toit'))
+        self.assertEqual(r['appels_rasante'], 0)
+
+    def test_taille_explicite_au_dela_de_30_logee_en_rasante(self):
+        charge = _charge('hotel', 20000)
+        r = self._taille(charge, bornes=self._bornes(), taille_explicite_kwc=30)
+        self.assertEqual(r['taille']['raison_arret'], 'taille_explicite')
+        self.assertEqual(r['inclinaison_retenue_deg'], 10.0)
+        self.assertNotIn('taille_au_dela_du_toit', [a['code'] for a in r['alertes']])
+        r2 = self._taille(charge, bornes=self._bornes(), taille_explicite_kwc=40)
+        alerte = next(a for a in r2['alertes'] if a['code'] == 'taille_au_dela_du_toit')
+        self.assertIn('35.5', alerte['message'])           # la borne effective, la rasante
 
 
 class GardeAstTests(unittest.TestCase):

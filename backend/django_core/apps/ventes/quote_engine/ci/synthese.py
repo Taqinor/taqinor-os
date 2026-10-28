@@ -360,6 +360,15 @@ def _bloc_estimation(etude_ci, coherente):
     horizon = _num(taille.get("horizon_marginal_annees"))
     if coherente and taille.get("statut") == "calculee" and pas and horizon:
         sortie["dimensionnement"] = {"pas_kwc": pas, "horizon_annees": horizon}
+    # R1 (fondateur 28/10/2026) — même la pose rasante ne loge pas la taille
+    # économique : le devis dit « taille limitée par le toit : X m² déclarés
+    # → Y kWc en pose rasante » (seulement quand l'étude décrit le kWc servi).
+    toit = _dict(_dict(taille.get("bornes")).get("toit"))
+    surface, kwc = _num(toit.get("surface_m2")), _num(taille.get("retenue_kwc"))
+    if (coherente and taille.get("raison_arret") == "toit"
+            and _num(toit.get("kwc_10")) is not None
+            and surface is not None and kwc is not None):
+        sortie["toit"] = {"surface_m2": surface, "kwc": kwc}
     return sortie or None
 
 

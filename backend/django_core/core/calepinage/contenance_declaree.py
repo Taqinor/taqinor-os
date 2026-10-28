@@ -57,7 +57,8 @@ def _nombre(valeur):
 
 def contenance_surface_declaree(surface_m2, *, mode_pose, cotes_module_m,
                                 inclinaison_deg, latitude_deg,
-                                parametres=None, puissance_module_wc=None):
+                                parametres=None, puissance_module_wc=None,
+                                pose_rasante=False):
     """Nombre de modules qu'une surface DÉCLARÉE peut porter (estimation).
 
     ``cotes_module_m`` : ``(longueur, largeur)`` en mètres, lues sur la FICHE
@@ -66,7 +67,11 @@ def contenance_surface_declaree(surface_m2, *, mode_pose, cotes_module_m,
     affleurant, des tables en anti-ombrage). ``parametres`` : un
     ``Parametres`` du moteur (rives + allée des réglages) ou ``None`` = les
     valeurs du moteur, publiées comme hypothèses. ``puissance_module_wc`` :
-    pour rendre les kWc (sinon ``kwc`` vaut ``None``).
+    pour rendre les kWc (sinon ``kwc`` vaut ``None``). ``pose_rasante``
+    (R1, décision fondateur du 28/10/2026) : sur un toit plat, les tables
+    rasantes sont posées JOINTIVES à ``inclinaison_deg`` — la politique
+    affleurante du moteur, sa densité maximale — au lieu de l'espacement
+    anti-ombrage ; sans effet sur les modes affleurants.
 
     Rend ``{nb_modules, kwc, hypotheses, motif}`` ; ``nb_modules`` ``None``
     ⇒ ``motif`` nommé. Ne lève jamais.
@@ -125,11 +130,16 @@ def contenance_surface_declaree(surface_m2, *, mode_pose, cotes_module_m,
               orientation=OrientationModule.PORTRAIT, modules_par_table=1)
     if mode in MODES_AFFLEURANTS:
         politique = Affleurant()
+        source_politique = "mode de pose déclaré « %s »" % mode
+    elif pose_rasante:
+        politique = Affleurant()
+        source_politique = ("pose rasante : tables jointives à %g° sur « %s » (décision "
+                            "fondateur du 28/10/2026)" % (inclinaison, mode))
     else:
         politique = AntiOmbrage(latitude_deg=latitude)
+        source_politique = "mode de pose déclaré « %s »" % mode
     hypotheses.append({"cle": "politique", "valeur": politique.code,
-                       "statut": "declare",
-                       "source": "mode de pose déclaré « %s »" % mode})
+                       "statut": "declare", "source": source_politique})
     champs = {"kits": (kit,), "rives": rives}
     if allee is not None:
         champs["allee_m"] = allee
