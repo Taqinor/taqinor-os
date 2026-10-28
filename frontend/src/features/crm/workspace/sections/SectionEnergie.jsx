@@ -652,6 +652,8 @@ const QUESTIONS_POMPAGE = {
   carburant_litres_mois: "« Combien de litres de carburant la pompe consomme-t-elle par mois ? »",
   carburant_prix_unitaire_mad: "« Combien payez-vous la bouteille (ou le litre) ? »",
   depense_carburant_mad_mois: "« Combien dépensez-vous en carburant par mois ? »",
+  depense_electricite_pompe_mad_mois: "« Si votre pompe actuelle marche à l'électricité, combien payez-vous par mois pour le pompage ? »",
+  depense_electricite_pompe_part_fixe_mad_mois: "« Sur cette facture, combien est fixe chaque mois (abonnement, redevance), même sans pomper ? »",
   mois_irrigation: "« Quels mois de l'année irriguez-vous ? »",
   jours_irrigation_semaine: "« Vous irriguez combien de jours par semaine en saison ? »",
   distance_forage_champ_m: "« Quelle distance entre le forage et l'endroit où on poserait les panneaux ? »",
@@ -808,6 +810,8 @@ export function SectionPompage({ state, setField, errors = {} }) {
         <div className="form-row">
           <PompNombre data-field-anchor="lf-carburant-prix" cle="carburant_prix_unitaire_mad" ctx={ctx} placeholder="ex: 50" />
           <PompNombre data-field-anchor="lf-depense-carburant" cle="depense_carburant_mad_mois" ctx={ctx} placeholder="ex: 1500" />
+          <PompNombre data-field-anchor="lf-depense-electricite-pompe" cle="depense_electricite_pompe_mad_mois" ctx={ctx} placeholder="ex: 800" />
+          <PompNombre data-field-anchor="lf-depense-electricite-pompe-part-fixe" cle="depense_electricite_pompe_part_fixe_mad_mois" ctx={ctx} placeholder="ex: 60" />
         </div>
         {prixDeclareLe && (
           <p className="gen-hint" data-prix-declare-le>Prix déclaré le {prixDeclareLe} (posé par le serveur).</p>

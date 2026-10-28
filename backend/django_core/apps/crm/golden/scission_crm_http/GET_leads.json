@@ -63,6 +63,8 @@
     "deleted_at": null,
     "deleted_by": null,
     "depense_carburant_mad_mois": null,
+    "depense_electricite_pompe_mad_mois": null,
+    "depense_electricite_pompe_part_fixe_mad_mois": null,
     "devis": [],
     "devis_auto": {
      "catalogue_ci": null,
@@ -344,6 +346,8 @@
     "deleted_at": null,
     "deleted_by": null,
     "depense_carburant_mad_mois": null,
+    "depense_electricite_pompe_mad_mois": null,
+    "depense_electricite_pompe_part_fixe_mad_mois": null,
     "devis": [],
     "devis_auto": {
      "catalogue_ci": null,
@@ -625,6 +629,8 @@
     "deleted_at": null,
     "deleted_by": null,
     "depense_carburant_mad_mois": null,
+    "depense_electricite_pompe_mad_mois": null,
+    "depense_electricite_pompe_part_fixe_mad_mois": null,
     "devis": [],
     "devis_auto": {
      "catalogue_ci": null,

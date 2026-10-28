@@ -209,6 +209,20 @@
       "note": "information et barème de score provisoire ; jamais convertie en consommation ni multipliée par 12"
     },
     {
+      "nom": "depense_electricite_pompe_mad_mois",
+      "type": "décimal",
+      "unite": "MAD/mois",
+      "question": "« Si votre pompe actuelle marche à l'électricité, combien payez-vous par mois pour le pompage ? »",
+      "note": "AGV1 — facultative, posée seulement si pompe_alim_actuelle = electrique ; base déclarée des économies (D-AGR-5), jamais pré-remplie"
+    },
+    {
+      "nom": "depense_electricite_pompe_part_fixe_mad_mois",
+      "type": "décimal",
+      "unite": "MAD/mois",
+      "question": "« Sur cette facture, combien est fixe chaque mois (abonnement, redevance), même sans pomper ? »",
+      "note": "AGV8 — facultative, posée avec la facture d'électricité du pompage ; sans elle l'économie réseau est omise (jamais supposée 0)"
+    },
+    {
       "nom": "mois_irrigation",
       "type": "liste d'entiers 1-12",
       "unite": "mois",
@@ -528,6 +542,8 @@
       "butane_bouteilles_jour": "saisies_economie_pompage.consommation (unite bouteille_12kg, periode jour_irrigation) ; AGQ19 (C-AGQ-018) : servie MARQUÉE `ignoree: \"énergie diesel\"` quand `pompe_alim_actuelle` est diesel (une seule colonne par énergie, le moteur saute toute entrée `ignoree`)",
       "carburant_litres_mois": "saisies_economie_pompage.consommation (unite litre, periode mois) ; AGQ19 (C-AGQ-018) : servie MARQUÉE `ignoree: \"énergie butane\"` quand `pompe_alim_actuelle` est butane (une seule colonne par énergie, le moteur saute toute entrée `ignoree`)",
       "carburant_prix_unitaire_mad": "saisies_economie_pompage.depense_unitaire_payee (saisi_le = carburant_prix_declare_le)",
+      "depense_electricite_pompe_mad_mois": "saisies_economie_pompage.facture_reseau.montant_mad (AGV8 ; periodicite « mensuelle » posée par le serveur, saisi_le = date de la déclaration) ; servie MARQUÉE `ignoree: \"énergie …\"` quand `pompe_alim_actuelle` n'est pas electrique",
+      "depense_electricite_pompe_part_fixe_mad_mois": "saisies_economie_pompage.facture_reseau.part_fixe_mad_mois (AGV8 ; jamais supposée 0 : vide ⇒ économie réseau omise, motif nommé) ; même règle `ignoree`",
       "mois_irrigation": "saisies_economie_pompage.mois_irrigation (provenance déclarée)",
       "jours_irrigation_semaine": "saisies_economie_pompage.consommation.jours_irrigation_par_semaine (AGQ10, D-AGQ-6)",
       "mode_pompe": "mode_pompe (AGQ39, D-AGQ-10 ; vide ⇒ neuve « par défaut »)",

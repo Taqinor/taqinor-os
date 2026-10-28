@@ -504,6 +504,26 @@ def _emit_lead_created(sender, instance, created, **kwargs):
             getattr(instance, 'pk', '?'), exc_info=True)
 
 
+@receiver(post_save, sender=Lead, dispatch_uid='crm_dispatch_mise_en_attente')
+def _dispatch_mise_en_attente(sender, instance, **kwargs):
+    """Fondateur 27/10/2026 — un lead confié au responsable par
+    ``default_responsable_for`` (équipe « le responsable confirme chaque
+    lead ») ATTEND sa décision : proposition + échéance (``dispatch.py``).
+    Toute porte d'entrée passe par là ; sans marque, rien. Best-effort (point
+    de sauvegarde) : un échec laisse le lead au responsable, jamais perdu."""
+    from django.db import transaction
+    from .dispatch import appliquer_mise_en_attente, porte_une_marque
+    if not porte_une_marque(instance):
+        return
+    try:
+        with transaction.atomic():
+            appliquer_mise_en_attente(instance)
+    except Exception:  # noqa: BLE001 — la création du lead prime (D-ENF22-BLE001)
+        logger.warning(
+            'dispatch : mise en attente échouée pour le lead #%s',
+            getattr(instance, 'pk', '?'), exc_info=True)
+
+
 # ── VTA5 — LE FEU VERT D'UNE VISITE TERRAIN REDESCEND SUR LE LEAD ────────────
 #
 # ``apps.visites`` a émis ``visite_validee`` ; c'est ICI que le CRM décide ce
