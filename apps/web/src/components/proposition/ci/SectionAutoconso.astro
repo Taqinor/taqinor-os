@@ -54,33 +54,33 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
               <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {ci.systeme?.kwc != null ? (
                   <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance installée" data-en="Installed capacity" data-ar="القدرة المركبة">Puissance installée</p>
+                    <h3 class="tech-label text-lune-faint" data-i18n data-fr="Puissance installée" data-en="Installed capacity" data-ar="القدرة المركبة">Puissance installée</h3>
                     <p class="fig fig-md lum mt-2" dir="ltr" data-figure="puissance_kwc">{formatNumber(ci.systeme.kwc, 2)} kWc</p>
                   </div>
                 ) : null}
                 {ci.systeme?.productionKwhAn != null ? (
                   <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Production solaire / an" data-en="Solar production / year" data-ar="الإنتاج الشمسي / سنة">Production solaire / an</p>
+                    <h3 class="tech-label text-lune-faint" data-i18n data-fr="Production solaire / an" data-en="Solar production / year" data-ar="الإنتاج الشمسي / سنة">Production solaire / an</h3>
                     <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="production_annuelle_kwh">{formatNumber(ci.systeme.productionKwhAn)} kWh</p>
                   </div>
                 ) : null}
                 {ci.energie?.autoconsoPct != null ? (
                   <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Taux d'autoconsommation" data-en="Self-consumption rate" data-ar="نسبة الاستهلاك الذاتي">Taux d'autoconsommation</p>
+                    <h3 class="tech-label text-lune-faint" data-i18n data-fr="Taux d'autoconsommation" data-en="Self-consumption rate" data-ar="نسبة الاستهلاك الذاتي">Taux d'autoconsommation</h3>
                     <p class="fig fig-md lum mt-2" dir="ltr" data-figure="autoconsommation_pct">{formatNumber(ci.energie.autoconsoPct, 1)} %</p>
                     {ci.energie.definitions.autoconso ? <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr={DEFINITIONS_CI.fr.autoconso} data-en={DEFINITIONS_CI.en.autoconso} data-ar={DEFINITIONS_CI.ar.autoconso}>{DEFINITIONS_CI.fr.autoconso}</p> : null}
                   </div>
                 ) : null}
                 {ci.energie?.couverturePct != null ? (
                   <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Taux de couverture" data-en="Coverage rate" data-ar="نسبة التغطية">Taux de couverture</p>
+                    <h3 class="tech-label text-lune-faint" data-i18n data-fr="Taux de couverture" data-en="Coverage rate" data-ar="نسبة التغطية">Taux de couverture</h3>
                     <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="couverture_pct">{formatNumber(ci.energie.couverturePct, 1)} %</p>
                     {ci.energie.definitions.couverture ? <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr={DEFINITIONS_CI.fr.couverture} data-en={DEFINITIONS_CI.en.couverture} data-ar={DEFINITIONS_CI.ar.couverture}>{DEFINITIONS_CI.fr.couverture}</p> : null}
                   </div>
                 ) : null}
                 {ciArgent && ciEco !== null ? (
                   <div class="cine-card rounded-xl p-5" data-ci-economie>
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Économie de l'année 1" data-en="Year-1 savings" data-ar="توفير السنة الأولى">Économie de l'année 1</p>
+                    <h3 class="tech-label text-lune-faint" data-i18n data-fr="Économie de l'année 1" data-en="Year-1 savings" data-ar="توفير السنة الأولى">Économie de l'année 1</h3>
                     <p class="fig fig-md lum mt-2" dir="ltr" data-figure="economie_annuelle">{formatMAD(ciEco)}{' '}<span class="text-base text-lune-soft" data-i18n
                       data-fr={ciArgent.base === 'ttc' ? 'TTC' : 'HT'}
                       data-en={ciArgent.base === 'ttc' ? 'incl. VAT' : 'excl. VAT'}
@@ -92,7 +92,7 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
                 ) : null}
                 {ciArgent && ciArgent.retourAns !== null ? (
                   <div class="cine-card rounded-xl p-5" data-ci-retour>
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
+                    <h3 class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</h3>
                     <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="payback_ans">{formatNumber(ciArgent.retourAns, 1)} <span class="text-base text-lune-soft" data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span></p>
                   </div>
                 ) : null}
@@ -114,7 +114,7 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
               MENTION_82_21) : AUCUNE mention réglementaire n'est écrite dans la page. */}
           {ciInjection && (
             <div class="cine-card mt-5 rounded-xl p-5" data-ci-injection>
-              <p class="tech-label text-brass-300" data-i18n data-fr="Injection du surplus (loi 82-21)" data-en="Surplus injection (law 82-21)" data-ar="حقن الفائض (القانون 82-21)">Injection du surplus (loi 82-21)</p>
+              <h3 class="tech-label text-brass-300" data-i18n data-fr="Injection du surplus (loi 82-21)" data-en="Surplus injection (law 82-21)" data-ar="حقن الفائض (القانون 82-21)">Injection du surplus (loi 82-21)</h3>
               {ciInjection.kwhAn !== null ? (
                 <p class="mt-2 text-sm text-lune-soft" data-i18n
                   data-fr={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/an de surplus injectables${ciInjection.valeurMadAn !== null ? `, soit ≈ ${formatMAD(ciInjection.valeurMadAn)}/an` : ''}.`}
@@ -134,7 +134,7 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
             <div class="mt-5 grid gap-4 sm:grid-cols-2" data-ci-carte-industrielle>
               {ciCarteInd.hypotheses.length > 0 && (
                 <div class="cine-card rounded-xl p-5">
-                  <p class="tech-label text-brass-300" data-i18n data-fr="Ce que le solaire change à votre facture" data-en="What solar changes on your bill" data-ar="ما تغيّره الطاقة الشمسية في فاتورتكم">Ce que le solaire change à votre facture</p>
+                  <h3 class="tech-label text-brass-300" data-i18n data-fr="Ce que le solaire change à votre facture" data-en="What solar changes on your bill" data-ar="ما تغيّره الطاقة الشمسية في فاتورتكم">Ce que le solaire change à votre facture</h3>
                   <ul class="mt-2 space-y-2 text-sm text-lune-soft">
                     {ciCarteInd.hypotheses.map((h) => (
                       <li data-i18n data-fr={h.textes.fr} data-en={h.textes.en} data-ar={h.textes.ar} data-ci-hypothese={h.cle}>{h.textes.fr}</li>
@@ -144,10 +144,10 @@ const tarifServi = ci?.hypotheses.find((h) => h.cle === 'tarif')?.textes ?? null
               )}
               {ciCarteInd.decarbonation && (
                 <div class="cine-card rounded-xl p-5">
-                  <p class="tech-label text-brass-300" data-i18n
+                  <h3 class="tech-label text-brass-300" data-i18n
                     data-fr={ciCarteInd.decarbonation.cbam ? 'Décarbonation et CBAM' : 'Décarbonation'}
                     data-en={ciCarteInd.decarbonation.cbam ? 'Decarbonation and CBAM' : 'Decarbonation'}
-                    data-ar={ciCarteInd.decarbonation.cbam ? 'إزالة الكربون وآلية CBAM' : 'إزالة الكربون'}>{ciCarteInd.decarbonation.cbam ? 'Décarbonation et CBAM' : 'Décarbonation'}</p>
+                    data-ar={ciCarteInd.decarbonation.cbam ? 'إزالة الكربون وآلية CBAM' : 'إزالة الكربون'}>{ciCarteInd.decarbonation.cbam ? 'Décarbonation et CBAM' : 'Décarbonation'}</h3>
                   <p class="mt-2 text-sm text-lune-soft" data-i18n data-ci-decarbonation={ciCarteInd.decarbonation.cbam ? 'cbam' : 'generique'}
                     data-fr={ciCarteInd.decarbonation.textes.fr} data-en={ciCarteInd.decarbonation.textes.en} data-ar={ciCarteInd.decarbonation.textes.ar}>{ciCarteInd.decarbonation.textes.fr}</p>
                 </div>

@@ -235,3 +235,26 @@ describe('CPRW25 — financementCi : l’offre servie, quel que soit le segment'
     expect(src).toContain('data-ci-financement');
   });
 });
+
+// CPRW28 (28/10/2026) — accessibilité des composants C&I : titres de bloc <h3>, tableau des jalons légendé.
+describe('CPRW28 — accessibilité des blocs C&I', () => {
+  const lire = (nom: string) =>
+    readFileSync(fileURLToPath(new URL(`../src/components/proposition/ci/${nom}`, import.meta.url)), 'utf-8').replace(/\r\n/g, '\n');
+  it('les titres de bloc de Garanties, ComparaisonBatterie et SectionAutoconso sont des h3 (plus des p tech-label)', () => {
+    for (const nom of ['GarantiesCi.astro', 'ComparaisonBatterieCi.astro', 'SectionAutoconso.astro']) {
+      const src = lire(nom);
+      expect(src, nom).not.toContain('<p class="tech-label');
+      expect(src, nom).toContain('<h3 class="tech-label');
+    }
+  });
+  it('rentabilité : légende sr-only trilingue, en-têtes de colonne scope=col, année scope=row, nav traduite', () => {
+    const src = lire('SectionRentabiliteIndustrielle.astro');
+    expect(src).toMatch(/<caption class="sr-only" data-i18n/);
+    expect(src).toContain('<th scope="col" class="sr-only"');
+    expect(src).toContain('<th scope="row"');
+    expect(src).toContain('data-aria-label-fr="Sections"');
+    expect(src).toContain('data-aria-label-ar="الأقسام"');
+    expect(src).toContain('data-fr="Année"');
+    expect(src).toContain('Cumul net');
+  });
+});
