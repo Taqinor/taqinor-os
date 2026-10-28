@@ -1,0 +1,92 @@
+---
+// CQSTW8 — questions qui n'entrent ni dans le devis ni dans la règle de visite :
+// repliées sous un <details> natif FERMÉ « Pour affiner (facultatif) ». Rien n'est
+// supprimé : mêmes ids, mêmes lectures par le script de la page.
+import Repli from './Repli.astro';
+import { AIDES_FACTURE } from '../../lib/questionnaireChamps';
+interface Props {
+  ecran: 'activite' | 'reseau';
+  demande: (section: any, cle: string) => boolean;
+  prefill: Record<string, unknown>;
+  cls: string;
+}
+const { ecran, demande, prefill, cls: PRO_INPUT_CLS } = Astro.props;
+const prefillStr = (key: string): string => {
+  const v = prefill[key];
+  return typeof v === 'string' ? v : typeof v === 'number' ? String(v) : '';
+};
+const groupePrefill = prefillStr('groupe_electrogene');
+const affiche = ecran === 'activite'
+  ? ['groupe_electrogene', 'pv_existant_kwc'].some((k) => demande('activite', k))
+  : demande('reseau', 'cos_phi');
+---
+{affiche && (
+  <Repli>
+    {ecran === 'activite' && (
+      <>
+        {demande('activite', 'groupe_electrogene') && (
+          <fieldset class="border-0 p-0">
+            <legend class="mb-1 text-sm font-semibold" data-i18n data-en="Do you have a generator on site?" data-ar="هل لديكم مولد كهربائي في الموقع؟">
+              Avez-vous un groupe électrogène sur le site ?
+            </legend>
+            <div class="flex gap-4">
+              <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                <input type="radio" name="q-groupe-electrogene" id="q-groupe-oui" value="oui" checked={groupePrefill === 'oui'} class="h-5 w-5 accent-azur-600" />
+                <span data-i18n data-en="Yes" data-ar="نعم">Oui</span>
+              </label>
+              <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                <input type="radio" name="q-groupe-electrogene" id="q-groupe-non" value="non" checked={groupePrefill === 'non'} class="h-5 w-5 accent-azur-600" />
+                <span data-i18n data-en="No" data-ar="لا">Non</span>
+              </label>
+            </div>
+          </fieldset>
+        )}
+        <div id="q-groupe-detail" class:list={['flex flex-col gap-4', groupePrefill === 'oui' ? '' : 'hidden']}>
+          {demande('activite', 'groupe_kva') && (
+            <div>
+              <label for="q-groupe-kva" class="mb-1 block text-sm font-semibold" data-i18n data-en="What is its power, in kVA?" data-ar="ما هي قدرته بالكيلوفولت أمبير (kVA)؟">Quelle est sa puissance, en kVA ?</label>
+              <input id="q-groupe-kva" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('groupe_kva')} class={PRO_INPUT_CLS} />
+            </div>
+          )}
+          {demande('activite', 'groupe_litres_mois') && (
+            <div>
+              <label for="q-groupe-litres" class="mb-1 block text-sm font-semibold" data-i18n data-en="How many litres of diesel does it use per month? (optional)" data-ar="كم لتراً من الغازوال يستهلك شهرياً؟ (اختياري)">Combien de litres de gasoil consomme-t-il par mois ? (facultatif)</label>
+              <input id="q-groupe-litres" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('groupe_litres_mois')} class={PRO_INPUT_CLS} />
+            </div>
+          )}
+          {demande('activite', 'groupe_depense_mad_mois') && (
+            <div>
+              <label for="q-groupe-depense" class="mb-1 block text-sm font-semibold" data-i18n data-en="How much do you spend on diesel for it each month? (MAD, optional)" data-ar="كم تنفقون على الغازوال للمولد شهرياً؟ (درهم، اختياري)">Combien dépensez-vous en gasoil pour le groupe chaque mois ? (MAD, facultatif)</label>
+              <input id="q-groupe-depense" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('groupe_depense_mad_mois')} class={PRO_INPUT_CLS} />
+            </div>
+          )}
+        </div>
+        {demande('activite', 'pv_existant_kwc') && (
+          <div>
+            <label for="q-pv-existant" class="mb-1 block text-sm font-semibold" data-i18n
+              data-en="Do you already have solar panels installed? What power (kWp)? (optional)"
+              data-ar="هل لديكم ألواح شمسية مركّبة؟ بأي قدرة (كيلوواط ذروة)؟ (اختياري)">
+              Avez-vous déjà des panneaux solaires installés ? De quelle puissance (kWc) ? (facultatif)
+            </label>
+            <input id="q-pv-existant" type="number" min="0" step="any" inputmode="decimal" value={prefillStr('pv_existant_kwc')} class={PRO_INPUT_CLS} />
+          </div>
+        )}
+      </>
+    )}
+    {ecran === 'reseau' && (
+      <>
+        {demande('reseau', 'cos_phi') && (
+          <div>
+            <label for="q-cos-phi" class="mb-1 block text-sm font-semibold" data-i18n
+              data-en="Does your bill show a power factor (cos φ) or a reactive-energy penalty? What value? (optional)"
+              data-ar="هل تُظهر فاتورتكم معامل القدرة (cos φ) أو غرامة الطاقة غير الفعالة؟ ما قيمته؟ (اختياري)">
+              Votre facture indique-t-elle un cosinus phi ou une pénalité d'énergie réactive ? Quelle valeur ? (facultatif)
+            </label>
+            <p class="mb-1 text-xs text-encre-soft" data-i18n data-en={AIDES_FACTURE.cos_phi.en} data-ar={AIDES_FACTURE.cos_phi.ar}>{AIDES_FACTURE.cos_phi.fr}</p>
+            <input id="q-cos-phi" type="number" min="0" max="1" step="any" inputmode="decimal" value={prefillStr('cos_phi')} class={PRO_INPUT_CLS} />
+          </div>
+        )}
+      </>
+    )}
+  </Repli>
+)}
