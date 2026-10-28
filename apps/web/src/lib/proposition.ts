@@ -2268,8 +2268,10 @@ export interface SavingsHeadline {
   annual: number | null;
   /** Économies cumulées sur 25 ans (MAD) — `economies_cumul_25_ans[opt]` SERVI, tel quel (cumul BRUT). */
   cumulative: number | null;
-  /** RWEB24 — gain NET 25 ans (MAD) — `gain_net_25_ans[opt]` SERVI : la valeur du PDF, prioritaire sur le brut. */
+  /** RWEB24 — gain NET 25 ans (MAD) SERVI (`gain_net_25_ans`) : la valeur du PDF (« ≈ 0 » compris), prioritaire sur le brut. */
   gainNet: number | null;
+  /** RWEB24 — l'option que décrit ce gain net : celle de la carte du PDF (recommandée), pas forcément `opt`. */
+  gainNetOption: OptionKey | null;
   /** Horizon retenu (ans). */
   years: number;
   /** Économie mensuelle équivalente (MAD/mois) ≈ annuel / 12. */
@@ -2281,8 +2283,8 @@ export interface SavingsHeadline {
 }
 
 /**
- * WJ9 — bandeau « money over time » d'une option : `annual` = `eco_*_ann` ; `cumulative` (ADEV50) et `gainNet`
- * (RWEB24) SERVIS par option, jamais recalculés (clé absente ⇒ `null` ⇒ rien d'affiché) ; `monthly` = annuel / 12.
+ * WJ9 — bandeau « money over time » d'une option : `annual` = `eco_*_ann` ; `cumulative` (ADEV50, par option) et `gainNet`
+ * (RWEB24, option de la carte du PDF) SERVIS, jamais recalculés (clé absente ⇒ `null` ⇒ rien d'affiché) ; `monthly` = annuel / 12.
  */
 export function savingsHeadline(
   p: ProposalResponse,
@@ -2292,7 +2294,7 @@ export function savingsHeadline(
   // CIW300 — C&I : l'argent est `synthese_ci.argent` ; tout à `null` ici.
   const modeCi = resolveInstallMode(p);
   if (modeCi === 'commercial' || modeCi === 'industriel') {
-    return { annual: null, cumulative: null, gainNet: null, years, monthly: null, payback: null, cumulativeFromBackend: false };
+    return { annual: null, cumulative: null, gainNet: null, gainNetOption: null, years, monthly: null, payback: null, cumulativeFromBackend: false };
   }
   const annualRaw = opt === 'avec_batterie' ? p.quote?.eco_a_ann : p.quote?.eco_s_ann;
   const annual = typeof annualRaw === 'number' && Number.isFinite(annualRaw) && annualRaw > 0 ? annualRaw : null;
@@ -2302,11 +2304,11 @@ export function savingsHeadline(
 
   const servi = p.economies_cumul_25_ans?.[opt];
   const cumulative = typeof servi === 'number' && Number.isFinite(servi) && servi > 0 ? servi : null;
-  const net = p.gain_net_25_ans?.[opt];
-  const gainNet = typeof net === 'number' && Number.isFinite(net) && net > 0 ? net : null;
+  const [netOpt, net] = Object.entries(p.gain_net_25_ans ?? {})[0] ?? [null, null];
+  const gainNet = typeof net === 'number' && Number.isFinite(net) && net >= 0 ? net : null;
 
   const monthly = annual !== null ? Math.round(annual / 12) : null;
-  return { annual, cumulative, gainNet, years, monthly, payback: formatPayback(paybackRaw), cumulativeFromBackend: cumulative !== null };
+  return { annual, cumulative, gainNet, gainNetOption: gainNet === null ? null : (netOpt as OptionKey), years, monthly, payback: formatPayback(paybackRaw), cumulativeFromBackend: cumulative !== null };
 }
 
 // ── PVCOV (fondateur 2026-08-18) · La synthèse page 1 du PDF, SERVIE ────────

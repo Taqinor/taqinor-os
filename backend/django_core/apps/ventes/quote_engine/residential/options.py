@@ -39,6 +39,17 @@ def gain_net_25_ans(d, avec):
     return round(gain / 1000) * 1000
 
 
+def option_gain_net_avec(d):
+    """QX5 / AMOT33 — l'option que décrit la carte « Gain net sur 25 ans » :
+    vrai = avec batterie. Deux options : la RECOMMANDÉE par le serveur
+    (``figures.option_recommandee``) ; sinon l'option présente. Seule
+    définition : le PDF et la page publique (RWEB24) la lisent."""
+    from ..figures import option_recommandee
+    if bool(d.get("deux_options", True)):
+        return option_recommandee(d) != "sans"
+    return bool(d.get("avec_ok", True))
+
+
 def _qty_par_designation(items):
     """{désignation: quantité TOTALE} — somme des lignes de même désignation."""
     out = {}
@@ -781,7 +792,7 @@ def build_pages(ctx) -> list:
     # (jamais « option avec batterie » sur un devis sans batterie).
     # AMOT33 — deux options : le gain net décrit l'option RECOMMANDÉE par le
     # serveur (« sans » quand c'est elle) ; sinon l'option présente.
-    _ref_avec = ((_reco != "sans") if deux_options else bool(avec_ok))
+    _ref_avec = option_gain_net_avec(d)
     if _ref_avec:
         _tot_ref = d.get("total_avec", 0)
         # AMOT21 — libellé SERVEUR de l'option 2 (BAT-DIFF).

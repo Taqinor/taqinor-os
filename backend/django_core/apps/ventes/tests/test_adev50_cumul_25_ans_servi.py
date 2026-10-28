@@ -114,21 +114,36 @@ class GainNet25AnsServiTests(TestCase):
     def test_net_par_option_egal_pdf(self):
         from apps.ventes.quote_engine.builder import build_quote_data
         from apps.ventes.quote_engine.residential.options import (
-            gain_net_25_ans,
+            gain_net_25_ans, option_gain_net_avec,
         )
-        devis = devis_deux_options('rweb24a')
+        for slug, reco in (('rweb24a', None), ('rweb24c', 'Sans batterie')):
+            with self.subTest(recommandee=reco):
+                self._verifier_net(slug, reco, build_quote_data,
+                                   gain_net_25_ans, option_gain_net_avec)
+
+    def _verifier_net(self, slug, reco, build_quote_data, gain_net_25_ans,
+                      option_gain_net_avec):
+        params = {'scenario': 'Les deux (Sans + Avec)',
+                  'factures_mensuelles_reelles': [1800] * 12,
+                  'distributeur': 'onee', 'ville': 'casablanca'}
+        if reco:
+            # Recommandation EXPLICITE du vendeur : la carte du PDF décrit
+            # alors l'option « sans » — la page doit servir CELLE-LÀ.
+            params['recommended_option'] = reco
+        devis = devis_deux_options(slug, etude_params=params)
         link = ShareLink.objects.create(company=devis.company, devis=devis)
         corps = lire(link.token).json()
         net, brut = corps.get('gain_net_25_ans'), corps['economies_cumul_25_ans']
         data = build_quote_data(devis, {'pdf_mode': 'full',
                                         'share_token': link.token})
-        attendu = {}
-        for option, jamais in (('sans_batterie', 'roi_s_jamais'),
-                               ('avec_batterie', 'roi_a_jamais')):
-            valeur = gain_net_25_ans(data, option == 'avec_batterie')
-            if valeur and not data.get(jamais):
-                attendu[option] = valeur
-        self.assertTrue(attendu, data.get('cashflow_sans'))
+        # L'option que décrit la carte du PDF, et elle seule.
+        avec = option_gain_net_avec(data)
+        option = 'avec_batterie' if avec else 'sans_batterie'
+        if reco:
+            self.assertEqual(option, 'sans_batterie', data.get('recommended'))
+        jamais = data.get('roi_a_jamais' if avec else 'roi_s_jamais')
+        attendu = None if jamais else {option: gain_net_25_ans(data, avec)}
+        self.assertIsNotNone(attendu, data.get('cashflow_sans'))
         self.assertEqual(net, attendu)
         for option, valeur in net.items():
             self.assertEqual(valeur % 1000, 0)

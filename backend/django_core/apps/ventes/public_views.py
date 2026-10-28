@@ -1100,20 +1100,21 @@ def _economies_cumul_25_ans_publique(data, devis=None):
     option, chacun ``None`` quand aucune option n'en porte (clés ADDITIVES).
     Brut : LE flux annuel que le PDF ``/proposal`` trace (``cashflow_*``,
     ``pricing.compute_cashflow_payback``), cumul final + investissement. Net :
-    LA valeur de la carte « Gain net sur 25 ans » du PDF
-    (``residential/options.gain_net_25_ans``, même arrondi au millier), au
+    LA valeur de la carte « Gain net sur 25 ans » du PDF, pour la SEULE option
+    qu'elle décrit (``residential/options.gain_net_25_ans`` /
+    ``option_gain_net_avec``, même arrondi au millier, « ≈ 0 » compris), au
     niveau de règles 3 seulement (un devis envoyé avant garde sa page), omise
-    pour une option « Non rentabilisé ». Aucun calcul de flux ici (règle #4).
+    quand le PDF imprime « Non rentabilisé ». Aucun calcul de flux ici.
     Appelée APRÈS les retraits de la vue (ancrage Z2, agricole/C&I, option
     non vendable, mono-option)."""
     from .domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
-    from .quote_engine.residential.options import gain_net_25_ans
+    from .quote_engine.residential.options import gain_net_25_ans, option_gain_net_avec
     out, net = {}, {}
+    ref = 'avec_batterie' if option_gain_net_avec(data) else 'sans_batterie'
     for option, cle_flux, cle_eco, cle_total, cle_jamais in _OPTIONS_CUMUL_25_ANS:
         flux = data.get(cle_flux)
-        if not isinstance(flux, list) or not flux or data.get(cle_eco) is None:
-            continue
-        if not data.get('totaux_sans' if option == 'sans_batterie' else 'totaux_avec'):
+        if (not isinstance(flux, list) or not flux or data.get(cle_eco) is None
+                or not data.get('totaux_sans' if option == 'sans_batterie' else 'totaux_avec')):
             continue
         try:
             dernier, investissement = float(flux[-1]), float(data.get(cle_total) or 0)
@@ -1122,9 +1123,8 @@ def _economies_cumul_25_ans_publique(data, devis=None):
         if investissement <= 0:
             continue
         out[option] = round(dernier + investissement)
-        if regles_au_moins(devis, REGLES_CORRIGEES_2710) and not data.get(cle_jamais) \
-                and (gain := gain_net_25_ans(data, option == 'avec_batterie')):
-            net[option] = gain
+        if option == ref and regles_au_moins(devis, REGLES_CORRIGEES_2710) and not data.get(cle_jamais):
+            net[option] = gain_net_25_ans(data, option == 'avec_batterie')
     return out or None, net or None
 
 
