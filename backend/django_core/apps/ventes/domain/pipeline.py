@@ -376,11 +376,13 @@ def decider_taille(intention, devis=None):
         source=source, dimensionnement_avec=avec)
 
 
-def intention_de_composition(intention, cible, *, avertissements=None):
+def intention_de_composition(intention, cible, *, avertissements=None,
+                             devis=None):
     """Traduit l'intention de devis en intention de COMPOSITION (étapes 3-4).
 
     Pure traduction : aucun choix n'est fait ici, tout vient de l'intention ou
-    de la cible que l'étape 2 a arrêtée.
+    de la cible que l'étape 2 a arrêtée. ``devis`` (RSIZ5) : le devis
+    recomposé, ``None`` à la création — seul son niveau de règles est lu.
     """
     cible = cible or CibleDevis()
     return IntentionComposition(
@@ -403,6 +405,9 @@ def intention_de_composition(intention, cible, *, avertissements=None):
         ville=ville_du_lead(intention.lead),
         # ACAL63 — une ligne panneau PAR MODÈLE désigné par le calepinage.
         modeles=getattr(cible, 'modeles', None),
+        # RSIZ5 — un devis recomposé aux règles d'origine (< 3) garde ses
+        # paires MPPT, comme ses cartes de taille (``contexte_sonde_du_devis``).
+        paires_mppt_derivees=regles_au_moins(devis, REGLES_CORRIGEES_2710),
     )
 
 
@@ -959,7 +964,7 @@ def appliquer(devis, intention):
     journal.append('decider_taille')
 
     intention_compo = intention_de_composition(
-        intention, cible, avertissements=avertissements)
+        intention, cible, avertissements=avertissements, devis=devis)
     composition = composer(intention_compo)
     journal.append('composer')
 
@@ -1145,6 +1150,10 @@ from apps.ventes.domain.etudes import (  # noqa: E402 — fin de module (anti-cy
     refresh_marge_snapshot,
 )
 from apps.ventes.domain.lignes import remplacer_lignes  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from apps.ventes.domain.regles_calcul import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    REGLES_CORRIGEES_2710,
+    regles_au_moins,
+)
 from apps.ventes.domain.transport import ville_du_lead  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 # SPL265 — les étapes 3 et 4 (composer / verifier) vivent dans
 # ``domain/etape_composer.py`` (une feuille qui n'importe rien d'ici) :
