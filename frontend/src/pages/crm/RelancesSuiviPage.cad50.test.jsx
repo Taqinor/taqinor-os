@@ -20,6 +20,7 @@ vi.mock('../../api/crmApi', async () => (await import('../../test/relancesSuiviM
 }))
 
 import crmApi from '../../api/crmApi'
+import { arreterCadenceAvecMotif } from '../../test/arreterCadenceMotif'
 
 function casaISO(d) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(d)
@@ -42,17 +43,7 @@ describe('RelancesSuiviPage — CAD50 (« Annuler »/« Arrêter » hors fiche)'
     mount()
     await screen.findAllByTestId('relance-etape-row')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Arrêter la cadence' }))
-    const confirmer = screen.getByRole('button', { name: 'Confirmer' })
-    expect(confirmer).toBeDisabled()
-
-    fireEvent.change(screen.getByTestId('cad50-arreter-motif'), { target: { value: 'Client injoignable' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmer' }))
-
-    await waitFor(() => expect(crmApi.arreterCadence).toHaveBeenCalledWith(
-      ETAPE_MODELE.lead, { motif: 'Client injoignable' },
-    ))
-    await waitFor(() => expect(screen.queryByTestId('cad50-arreter-motif')).not.toBeInTheDocument())
+    await arreterCadenceAvecMotif(crmApi, ETAPE_MODELE.lead)
   })
 
   it('une touche « fait » traitée il y a moins de 24h porte « Annuler », qui appelle crmApi.annulerRelanceEtape', async () => {

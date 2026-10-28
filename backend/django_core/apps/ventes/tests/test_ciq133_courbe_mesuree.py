@@ -119,6 +119,32 @@ class CourbeMesureeTests(unittest.TestCase):
             valeurs_horaires_depuis_points([1.0] * 7, pas_min=15, unite='kwh')
         self.assertIn('multiple', str(ctx.exception))
 
+    def test_points_pas_30_agreges_a_l_heure(self):
+        """CLD6 — orchestrateur : pas 30 en kWh (2 pas sommés) et en kW (moyenne)
+        donnent la MÊME étude que les points horaires ; pas 7 ou 61 points au
+        pas 15 ⇒ 400 FR sur ``courbe_mesuree``, plus de troncature."""
+        from rest_framework.exceptions import ValidationError
+        valeurs, _ = _serie(365)
+
+        def etude(points, pas, unite='kwh'):
+            return _etudier(courbe_mesuree={'pas_minutes': pas, 'points': points, 'unite': unite,
+                                            'debut': '%d-01-01' % ANNEE, 'source': 'export',
+                                            'date': '2026-09-30'},
+                            consommation={}, taille_explicite_kwc=40)['profil_charge']
+
+        reference = etude(valeurs, 60)
+        for points, unite in (([v / 2 for v in valeurs for _ in range(2)], 'kwh'),
+                              ([v for v in valeurs for _ in range(2)], 'kw')):
+            profil = etude(points, 30, unite)
+            self.assertEqual(profil['methode'], 'courbe_mesuree')
+            for mois in range(1, 13):
+                self.assertAlmostEqual(_energie(profil['jours_types'], mois),
+                                       _energie(reference['jours_types'], mois), delta=1e-6)
+        for points, pas, attendu in (([1.0] * 48, 7, '7 min'), ([1.0] * 61, 15, '61 points')):
+            with self.assertRaises(ValidationError) as ctx:
+                etude(points, pas)
+            self.assertIn(attendu, str(ctx.exception.detail['courbe_mesuree'][0]))
+
     def test_fichier_illisible_400_nomme_la_colonne(self):
         from rest_framework.exceptions import ValidationError
         contenu = 'horodatage;conso\n2025-01-01 00:00;1,2\n2025-01-01 01:00;abc\n'

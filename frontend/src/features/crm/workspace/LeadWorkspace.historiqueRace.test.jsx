@@ -22,12 +22,7 @@ vi.mock('../../../pages/crm/leads/LeadDevisPanel', () => ({ default: () => null 
 vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
 vi.mock('./IdentityRail', () => ({ default: () => <div data-testid="identity-rail" /> }))
 
-vi.mock('../../../api/recordsApi', () => ({
-  default: {
-    getActivities: vi.fn(() => Promise.resolve({ data: [] })),
-    getAttachments: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
+vi.mock('../../../api/recordsApi', async () => (await import('../../../test/recordsApiVide')).recordsApiVide())
 vi.mock('../../../api/crmApi', () => ({
   default: {
     getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
