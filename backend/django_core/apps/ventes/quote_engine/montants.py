@@ -18,14 +18,30 @@ _REGLES_ORIGINE = contextvars.ContextVar('regles_calcul_origine',
                                          default=False)
 
 
-def poser_regles_origine(valeur):
-    """Pose le drapeau « règles d'origine » du rendu en cours."""
+#: CPDF (27/10/2026) — vrai pendant le rendu d'un devis C&I aux règles d'avant
+#: le niveau 3 (``not regles_au_moins(devis, REGLES_CORRIGEES_2710)`` →
+#: ``data['regles_avant_2710']``) : les corrections de CHIFFRE du PDF C&I
+#: (option « avec » servie, retour au dixième, échéancier au reliquat…) ne
+#: s'appliquent qu'aux nouveaux rendus ; le client relit ce qu'il a reçu.
+_REGLES_AVANT_2710 = contextvars.ContextVar('regles_avant_2710', default=False)
+
+
+def poser_regles_origine(valeur, avant_2710=False):
+    """Pose les drapeaux « règles d'origine » et « avant le niveau 3 » du
+    rendu en cours (un devis aux règles d'origine est aussi avant le niveau 3 :
+    le builder ne pose alors que ``regles_calcul_origine``)."""
     _REGLES_ORIGINE.set(bool(valeur))
+    _REGLES_AVANT_2710.set(bool(avant_2710 or valeur))
 
 
 def regles_origine():
     """Vrai pendant le rendu d'un devis aux règles d'origine."""
     return _REGLES_ORIGINE.get()
+
+
+def regles_avant_2710():
+    """Vrai pendant le rendu d'un devis C&I aux règles d'avant le niveau 3."""
+    return _REGLES_AVANT_2710.get()
 
 
 #: AMOT101 (D-ACI-21=a) — vrai pendant le rendu d'un document C&I en anglais :

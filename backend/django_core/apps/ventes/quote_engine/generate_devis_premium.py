@@ -3223,7 +3223,7 @@ def _cartes_ci_onepage(chiffres):
     payback = chiffres.get("payback_ans")
     if payback is not None:
         cellules.append((_L("op_retour_estime"),
-                         f"{ans(payback)}{_L('op_unite_ans')}",
+                         f"{ans(payback)}{ci_onepage.annees(_L('op_unite_ans'), LANGUE_SORTIE, payback)}",
                          _ancre_figure("payback_ans", ans(payback))))
     return cellules
 
@@ -3296,7 +3296,7 @@ def _formes_total_ttc():
     # AGR313 — en agricole, le bloc « Bon pour accord » compact vient APRÈS
     # les totaux : son libellé (dernière ligne du bloc) borne aussi la zone
     # visible, sinon la signature pourrait être rognée sans qu'on le mesure.
-    if SYNTHESE_AGRICOLE is not None:
+    if SYNTHESE_AGRICOLE is not None or CHIFFRES_CI is not None:  # CPDF : une-page C&I aussi
         bruts += [_L("bon_pour_accord"),
                   i18n_labels.libelle("bon_pour_accord", "fr")]
     for brut in bruts:
@@ -3510,7 +3510,7 @@ def generate_premium_pdf(data: dict, out_path) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"))
+    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"))
     # ERR17 — serialize the whole render: the body writes module globals and
     # reads them back while building the HTML, so concurrent renders must not
     # interleave (one client's data leaking into another's PDF).
@@ -3922,7 +3922,7 @@ def render_html_for(data: dict) -> str:
     """
     # Décision fondateur 08/10/2026 — un devis envoyé avant les
     # corrections du moteur garde ses formats d'origine (AMOT24/26/45).
-    poser_regles_origine((data or {}).get("regles_calcul_origine"))
+    poser_regles_origine((data or {}).get("regles_calcul_origine"), avant_2710=(data or {}).get("regles_avant_2710"))
     # AGR312 — le moteur legacy ne sert JAMAIS un devis agricole en format à
     # options (pas d'onduleur) : le document complet est le renderer agricole
     # de 3 pages (``agricole/renderer``) ; s'il refuse un devis (repli NOMMÉ

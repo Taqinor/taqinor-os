@@ -58,13 +58,14 @@ def build(ctx):
     # codées en dur contredisaient la source (25 vs 30 ans de performance,
     # 5-10 vs 10 ans d'onduleur) et surévaluaient de 5× l'engagement de pose
     # (10 ans imprimés pour 2 ans réels). Aucune durée traçable ⇒ omission.
-    _warranties = [w for w in (theme.warranties_for(d) or [])
-                   if w and str(w[0]).strip()]
+    _warranties = ci_blocs.garanties_servies(
+        d, [w for w in (theme.warranties_for(d) or [])
+            if w and str(w[0]).strip()])
     if _warranties:
         _cells = "".join(
             f'<div class="c3-warr-c">'
-            f'<div class="c3-warr-v">{theme._esc(str(n))} {ci_blocs.textes_garantie(d, u, label)[0]}</div>'
-            f'<div class="c3-warr-l">{ci_blocs.textes_garantie(d, u, label)[1]}</div></div>'
+            f'<div class="c3-warr-v">{theme._esc(str(n))} {ci_blocs.textes_garantie(d, u, label, n)[0]}</div>'
+            f'<div class="c3-warr-l">{ci_blocs.textes_garantie(d, u, label, n)[1]}</div></div>'
             for n, u, label, _sub in _warranties)
         warranties_html = f"""
   <div class="c3-h2">{L("ci_garanties", "Garanties")}</div>
@@ -85,7 +86,8 @@ def build(ctx):
     # CIQ320 — « Bon pour accord — pour la société » : raison sociale,
     # signataire, ICE, date, cadres Signature et Cachet ; valeurs de
     # ``signature_entreprise`` sur la copie signée.
-    acceptation_html = ci_blocs.bloc_acceptation(d, "c3", ink, line)
+    acceptation_html = ci_blocs.bloc_acceptation(
+        d, "c3", ink, line, ctx.get("fmt_mad") or fmt)
     # CIQ314 — seulement les services que le devis porte (O&M nommée,
     # délai saisi) : plus d'étape « supervision », ni de « performance
     # garantie », ni de cellule O&M sans ligne derrière.
@@ -155,6 +157,7 @@ def build(ctx):
 </style>
 """
 
+    vendeur_html = ci_blocs.ligne_vendeur(brand, ident)
     html = f"""{css}
 <div class="c3-root">
   <div class="c3-kicker">{L("ci_kicker_etapes", "Votre projet, étape par étape")}</div>
@@ -177,10 +180,10 @@ def build(ctx):
     <div class="c3-sign-c">
       <div class="c3-sign-h">{L("ci_pour", "Pour {marque}", marque=brand)}</div>
       <div class="c3-sign-box"></div>
-      <div class="c3-sign-co"><b>{brand}</b> &nbsp;·&nbsp; {ident.get('email','')} &nbsp;·&nbsp; {ident.get('phone','')}</div>
+      <div class="c3-sign-co">{vendeur_html}</div>
     </div>
   </div>
-  <div class="c3-legal" style="margin-top:10px;font-size:6.8pt;color:{muted};line-height:1.4;">{bande_legale(d, ident)}</div>
+  <div class="c3-legal" style="margin-top:10px;font-size:6.8pt;color:{muted};line-height:1.4;">{ci_blocs.nettoyer_separateurs(bande_legale(d, ident))}</div>
 </div>
 """
     return html

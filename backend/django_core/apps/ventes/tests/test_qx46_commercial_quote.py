@@ -138,8 +138,10 @@ class TestCommercialCategoryBlocks(SimpleTestCase):
         base["etude"]["rythme"] = {k: v for k, v in dict(base["etude"].get("rythme") or {}).items()
                                    if k != "categorie_commerciale"}
         html = render.build_html(renderer._augment(base))
-        self.assertIn("Votre établissement", html)
-        self.assertIn("Autre commerce", html)
+        # CPDF — activité générique : aucun libellé « Autre commerce » et
+        # aucune case « Votre établissement » vide (CPDF6).
+        self.assertNotIn("Autre commerce", html)
+        self.assertNotIn("Votre établissement", html)
         # les blocs spécifiques n'apparaissent pas
         self.assertNotIn("Votre hôtel", html)
 
@@ -474,7 +476,9 @@ class TestAmot87BlocInvestissement(SimpleTestCase):
                 note = bloc[bloc.index(f'class="{prefixe}-inv-n"'):]
                 self.assertIn("soit 533 333,00 MAD HT",
                               _texte_ci(note).replace("  ", " "))
-                self.assertIn("TVA récupérable", _texte_ci(note))
+                # CPDF5 — base « deux » : plus de note « TVA récupérable non
+                # déclarée » (réserve interne), le HT seul.
+                self.assertNotIn("TVA récupérable", _texte_ci(note))
                 css = html[:html.index(f'<div class="{prefixe}-inv">')]
                 self.assertRegex(css, rf"\.{prefixe}-inv-v\{{[^}}]*"
                                       r"white-space:nowrap")
@@ -563,7 +567,7 @@ class TestAmot89DefinitionsEtSurplus(SimpleTestCase):
             "non_valorise_kwh_an": bilan["non_valorise_kwh"],
             "non_valorise_pct_production": round(
                 bilan["non_valorise_kwh"] / bilan["production_kwh"] * 100)})
-        self.assertIn("Surplus non valorisé : ≈ 25 959 kWh/an (27 % de la "
+        self.assertIn("Surplus non valorisé : 25 959 kWh/an (27 % de la "
                       "production) — revente non ouverte en basse tension à "
                       "ce jour (ANRE, décision 04/26).",
                       _texte_ci(_pages_ci(data)[1]))
@@ -574,9 +578,9 @@ class TestAmot89DefinitionsEtSurplus(SimpleTestCase):
         etude_ci["entrees_resolues"]["tension"]["valeur"] = "mt"
         etude_ci["bilan"].update(injecte_valorise_kwh=19085,
                                  non_valorise_kwh=6874)
-        self.assertIn("Surplus injecté : ≈ 19 085 kWh/an valorisés (plafond "
+        self.assertIn("Surplus injecté : 19 085 kWh/an valorisés (plafond "
                       "légal : 20 % de la production annuelle, loi 82-21 art. "
-                      "12) ; ≈ 6 874 kWh/an non valorisés (7 % de la "
+                      "12) ; 6 874 kWh/an non valorisés (7 % de la "
                       "production).", _texte_ci(_pages_ci(data)[1]))
 
     def test_sans_surplus_servi_ligne_omise(self):
@@ -591,7 +595,7 @@ class TestAmot89DefinitionsEtSurplus(SimpleTestCase):
         self.assertIn("Self-consumption share of the solar production "
                       "consumed on site", p1)
         # AMOT101 (D-ACI-21=a) — milliers « , » en anglais.
-        self.assertIn("Surplus not valued: ≈ 25,959 kWh/yr (27 % of the "
+        self.assertIn("Surplus not valued: 25,959 kWh/yr (27 % of the "
                       "production)", p1)
 
 
@@ -705,27 +709,28 @@ class TestAmot91Hypotheses(SimpleTestCase):
     def test_rangees_lues_sur_les_donnees_servies(self):
         data = _data_ci()
         p3 = self._p3(data)
+        from apps.ventes.quote_engine.montants import fmt_centimes
         production = _ETUDE_CI["production"]
-        taille = _ETUDE_CI["taille"]
+        argent = synthese_ci(_data_ci())["argent"]
+        # CPDF5 — remplacement sur la base du tableau de flux (HT sauf TTC).
+        remplacement = fmt_centimes(argent["remplacements"][0][
+            "montant_ht_mad"]).replace("\u202f", " ")
         for rangee in (
-                "Hypothèses de l'estimation",
-                "Prix du kWh Tarif ONEE BT publié (grille du 16/02/2025).",
+                "Bases du calcul",
+                "Prix du kWh Tarif ONEE BT publié (grille du 16/02/2025)",
                 "Indexation du tarif 0 % / an", "Dégradation des panneaux",
                 "Horizon 25 ans",
                 "Entretien (O&M) non déduit des économies",
-                "Remplacement onduleur en année 11 55 000,00 MAD TTC",
+                f"Remplacement onduleur en année 11 {remplacement} MAD HT",
                 f"Base de production {production['inclinaison_deg']}° "
-                "d'inclinaison, plein sud",
-                f"Règle de dimensionnement chaque palier de "
-                f"{taille['pas_kwc']} kWc retenu se rembourse en moins de "
-                f"{taille['horizon_marginal_annees']} ans"):
+                "d'inclinaison, plein sud"):
             with self.subTest(rangee=rangee):
                 self.assertIn(rangee, p3)
-        # Compact : les montants de la couverture et de la page 2 n'y sont
-        # pas répétés.
-        tableau = p3[p3.index("Hypothèses de l'estimation"):]
-        self.assertNotIn("Investissement", tableau[:tableau.index(
-            "Règle de dimensionnement")])
+        # CPDF5 — « Règle de dimensionnement » interne : non imprimée ;
+        # compact : les montants de la couverture n'y sont pas répétés.
+        self.assertNotIn("Règle de dimensionnement", p3)
+        tableau = p3[p3.index("Bases du calcul"):]
+        self.assertNotIn("Investissement", tableau)
 
     def test_om_souscrite_deduite(self):
         data = _data_ci()
@@ -749,7 +754,7 @@ class TestAmot91Hypotheses(SimpleTestCase):
         data = renderer._augment(_data_ci())
         p3 = render.build_html(dict(data, _sans_graphiques=True)).split(
             'class="page"')[3]
-        self.assertNotIn("Hypothèses de l", p3)
+        self.assertNotIn("Bases du calcul", p3)
         self.assertIn('data-graphique="hypotheses"',
                       render.build_html(data).split('class="page"')[3])
 
@@ -991,8 +996,9 @@ class TestAmot95BaseDeclaree(SimpleTestCase):
         p1 = _texte_ci(_pages_ci(_data_ci())[1])
         self.assertIn("Économies estimées / an (HT)", p1)
         self.assertIn(self.TTC, p1)
-        self.assertIn("TVA récupérable non déclarée : économies en HT et en "
-                      "TTC.", p1)
+        # CPDF5 — « TVA récupérable non déclarée » est une réserve interne :
+        # le HT et le TTC servis suffisent.
+        self.assertNotIn("TVA récupérable non déclarée", p1)
         self.assertNotIn("selon votre régime", p1)
 
     def test_industriel_couverture_et_page_energie(self):
@@ -1017,14 +1023,15 @@ class TestAmot95BaseDeclaree(SimpleTestCase):
 
     def test_anglais(self):
         p1 = _texte_ci(_pages_ci(_data_ci(langue="en"))[1])
-        self.assertIn("Recoverable VAT not declared", p1)
+        self.assertNotIn("Recoverable VAT not declared", p1)  # CPDF5
         self.assertIn("i.e. 118,717 MAD incl. VAT", p1)
 
 
 class TestAmot97ScenarioPrudent(SimpleTestCase):
-    """AMOT97 (D-ACI-15=a) — le commercial résume ses sensibilités d'une
-    ligne : « scénario prudent : retour ≈ N ans », N = le plus long retour
-    SERVI (``argent.sensibilites``) ; aucun scénario chiffré ⇒ rien."""
+    """AMOT97 (D-ACI-15=a) — les sensibilités restent SERVIES
+    (``argent.sensibilites``) ; CPDF5 (décision prise pour le fondateur, à
+    revoir : la règle du 26/10 « aucune incertitude imprimée » prime) — la
+    ligne « scénario prudent : retour ≈ N ans » n'est plus imprimée."""
 
     def _data(self, sensibilites, langue=None):
         data = _data_ci(langue=langue)
@@ -1037,7 +1044,8 @@ class TestAmot97ScenarioPrudent(SimpleTestCase):
              "retour_ans": 4, "tri_pct": 30.0},
             {"cle": "degradation", "variation_pct": 0.75, "source": "D-ACI-15",
              "retour_ans": 5, "tri_pct": 28.0}]))[1])
-        self.assertIn("scénario prudent : retour ≈ 5 ans", p1)
+        self.assertNotIn("scénario prudent", p1)
+        self.assertNotIn("≈ 5 ans", p1)
         self.assertNotIn("≈ 4 ans", p1)
 
     def test_sans_scenario_chiffre_aucune_ligne(self):
@@ -1052,7 +1060,7 @@ class TestAmot97ScenarioPrudent(SimpleTestCase):
         p1 = _texte_ci(_pages_ci(self._data([
             {"cle": "production", "variation_pct": -7.7, "source": "P90",
              "retour_ans": 6, "tri_pct": 20.0}], langue="en"))[1])
-        self.assertIn("cautious scenario: payback ≈ 6 years", p1)
+        self.assertNotIn("cautious scenario", p1)
 
 
 class TestAmot98TarifSurDemande(SimpleTestCase):
