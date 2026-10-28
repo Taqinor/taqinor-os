@@ -221,3 +221,13 @@ def assembler_photos_toit_task(visite_id):
     from apps.visites.tasks import assembler_photos_toit_task as nouvelle
 
     return nouvelle(visite_id)
+
+
+@shared_task(name='crm.attribuer_leads_echus')
+def attribuer_leads_echus_task():
+    """Fondateur 27/10/2026 — chaque minute : un lead dont le responsable
+    d'équipe n'a pas décidé dans le délai (minutes ouvrées) part au membre
+    proposé (``apps/crm/dispatch.py``). Planifiée dans
+    ``erp_agentique/celery.py``."""
+    from apps.crm.dispatch import attribuer_echeances
+    return {'attribues': attribuer_echeances()}

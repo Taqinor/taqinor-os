@@ -64,11 +64,11 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/crm/models_clients.py::ConcurrentPerte.company` | backend/django_core/apps/crm/models_clients.py:1272 | authentication.Company | CASCADE |
 | `backend/django_core/apps/crm/models_clients.py::PlanActivite.company` | backend/django_core/apps/crm/models_clients.py:1349 | authentication.Company | CASCADE |
 | `backend/django_core/apps/crm/models_clients.py::EquipeCommerciale.company` | backend/django_core/apps/crm/models_clients.py:1413 | authentication.Company | CASCADE |
-| `backend/django_core/apps/crm/models_clients.py::ForecastEntry.company` | backend/django_core/apps/crm/models_clients.py:1463 | authentication.Company | CASCADE |
-| `backend/django_core/apps/crm/models_clients.py::ForecastSnapshot.company` | backend/django_core/apps/crm/models_clients.py:1518 | authentication.Company | CASCADE |
-| `backend/django_core/apps/crm/models_clients.py::PlanCompte.company` | backend/django_core/apps/crm/models_clients.py:1564 | authentication.Company | CASCADE |
-| `backend/django_core/apps/crm/models_clients.py::Playbook.company` | backend/django_core/apps/crm/models_clients.py:1637 | authentication.Company | CASCADE |
-| `backend/django_core/apps/crm/models_clients.py::Defi.company` | backend/django_core/apps/crm/models_clients.py:1743 | authentication.Company | CASCADE |
+| `backend/django_core/apps/crm/models_clients.py::ForecastEntry.company` | backend/django_core/apps/crm/models_clients.py:1538 | authentication.Company | CASCADE |
+| `backend/django_core/apps/crm/models_clients.py::ForecastSnapshot.company` | backend/django_core/apps/crm/models_clients.py:1593 | authentication.Company | CASCADE |
+| `backend/django_core/apps/crm/models_clients.py::PlanCompte.company` | backend/django_core/apps/crm/models_clients.py:1639 | authentication.Company | CASCADE |
+| `backend/django_core/apps/crm/models_clients.py::Playbook.company` | backend/django_core/apps/crm/models_clients.py:1712 | authentication.Company | CASCADE |
+| `backend/django_core/apps/crm/models_clients.py::Defi.company` | backend/django_core/apps/crm/models_clients.py:1818 | authentication.Company | CASCADE |
 | `backend/django_core/apps/customfields/models.py::CustomFieldDef.company` | backend/django_core/apps/customfields/models.py:53 | authentication.Company | CASCADE |
 | `backend/django_core/apps/customfields/models.py::CustomObjectDef.company` | backend/django_core/apps/customfields/models.py:183 | authentication.Company | CASCADE |
 | `backend/django_core/apps/customfields/models.py::CustomRecord.company` | backend/django_core/apps/customfields/models.py:226 | authentication.Company | CASCADE |

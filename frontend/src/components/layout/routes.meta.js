@@ -45,6 +45,7 @@ const BASE_PAGE_TITLES = [
   // générique `/crm` et s'intitulerait « Clients » en en-tête (même piège que
   // `/crm/cockpit`/`/crm/forecast`, cf. la note ODY5 ci-dessus).
   ['/crm/visiteurs', 'Visiteurs & alertes'],
+  ['/crm/attribution', 'Attribution des leads'],
   ['/crm', 'Clients'],
   ['/activites', 'Mes activités'],
   ['/calendrier', 'Calendrier'],
