@@ -1,0 +1,10 @@
+Rejeu en direct des ERR construites par #1072 — rejeu orchestrateur, pile locale : backend monté depuis le code fusionné 1771f7457 (conteneur à part accept-replay-django, base démo partagée), front construit au même code et servi par vite preview :5180, site apps/web en astro dev :4321 → backend :8010, 2026-10-28.
+ERR-LEAD-SAISIES-HUMAINES-FORMULAIRE : PASS — voir AMET/traces/2026-10-28/AMET19-PA1.1.txt (marqueur persisté, rejeu Meta sans réécriture).
+ERR-PORTAIL-ACCEPTER-DEVIS-REFUSE : PASS — compte portail de test, « Mes devis » : 33 cartes ; « Accepter » sur les 2 « Envoyé » seulement,
+  absent des 26 « Refusé » et 5 « Accepté » ; API mes-devis : acceptable True seulement pour statut envoye.
+ERR-VNT-FACTURER-ACOMPTE-ONGLET-BROUILLON : PASS — spec frontend/e2e/acceptation/vnt.spec.js 8/8, étape P1.4 verte (FAIL le 26/10),
+  enregistrement VNT/2026-10-28-1771f7457.
+ERR-MOTEUR-QR-MASQUE-LENT-ACCEPTATION : PARTIEL — portail : POST mes-devis/76/accepter/ (DEV-202609-0003, résidentiel) 200 en 12 198 ms
+  (> 20 s / 499 le 26/10) ; page publique industrielle : 13 863 ms (200, écran affiché) puis > 15 000 ms sur la copie suivante
+  (« La connexion est lente », acceptation pourtant enregistrée). Rendu seul mesuré : 10,6 s à froid / 4,6 s à chaud (industriel),
+  9,2 s / 0,2 s (résidentiel). Machine partagée chargée par d'autres sessions. Non coché.
