@@ -817,10 +817,7 @@ class JournalEvenementAic6Tests(unittest.TestCase):
         return _ctx(token=jeton)
 
     def test_journal_evenement_apres_reponse(self):
-        try:
-            from app.services.sql_agent_service import SQLAgentService
-        except ModuleNotFoundError as exc:  # pragma: no cover
-            self.skipTest(str(exc))
+        from app.services.sql_agent_service import SQLAgentService
         with open(self.CONTRAT, encoding="utf-8") as f:
             contrat = json.load(f)
         appels = []
@@ -854,10 +851,7 @@ class JournalEvenementAic6Tests(unittest.TestCase):
             self.assertIsNone(at.journaliser_evenement_assistant(None, {}))
 
     def test_intention_finale_retiree_du_texte(self):
-        try:
-            from app.services import sql_agent_service as svc
-        except ModuleNotFoundError as exc:  # pragma: no cover
-            self.skipTest(str(exc))
+        from app.services import sql_agent_service as svc
         texte, intention = svc._extraire_intention(
             'Cette fonction n\'existe pas.\n<intention>{"intention": "manque"}</intention>')
         self.assertEqual((texte, intention), ("Cette fonction n'existe pas.", "manque"))
@@ -880,10 +874,7 @@ class CapteurErreursAic7Tests(unittest.TestCase):
         return texte, collector
 
     def _intention(self, collector):
-        try:
-            from app.services import sql_agent_service as svc
-        except ModuleNotFoundError as exc:  # pragma: no cover
-            self.skipTest(str(exc))
+        from app.services import sql_agent_service as svc
         return svc._intention_et_erreur(collector, "donnee")
 
     def test_5xx_devient_evenement_bug(self):
@@ -907,10 +898,6 @@ class CapteurErreursAic7Tests(unittest.TestCase):
                 self.assertEqual(self._intention(collector), ("donnee", None))
 
     def test_report_gap_sans_confirmation(self):
-        try:
-            __import__("langchain_core.tools")
-        except Exception:
-            self.skipTest("langchain_core indisponible")
         collector: list = []
         outil = at.outil_report_gap(collector)
         with mock.patch.object(at, "_django_call",

@@ -318,8 +318,6 @@ class RelevantTableSelectionTests(unittest.TestCase):
         self.assertLess(len(tables), len(_TABLE_DESCRIPTIONS))
 
 
-@unittest.skipUnless(_OK and _HAS_CLIENT,
-                     f"fastapi TestClient indisponible: {_ERR}")
 class ContexteEcranAic9Tests(unittest.TestCase):
     """AIC9 — corps de /sql-agent/query : `contexte` {ecran, lead_id} OPTIONNEL,
     injecte dans le message UTILISATEUR et reflete dans l'evenement ; route

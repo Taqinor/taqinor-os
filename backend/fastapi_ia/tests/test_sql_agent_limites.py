@@ -268,11 +268,9 @@ class SqlAgentRepliAic4Tests(unittest.TestCase):
     `repli` vrai ; une erreur d'outil n'est jamais un motif de repli."""
 
     def setUp(self):
-        try:
-            import anthropic  # noqa: F401
-            from sqlalchemy import create_engine, text
-        except ModuleNotFoundError as exc:  # pragma: no cover
-            self.skipTest(str(exc))
+        import anthropic  # noqa: F401
+        from sqlalchemy import create_engine, text
+
         from app.services import sql_agent_service as svc
         self.svc = svc
         from sqlalchemy.pool import StaticPool

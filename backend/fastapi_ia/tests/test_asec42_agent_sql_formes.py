@@ -171,7 +171,6 @@ class LitteralTests(_Base):
         self._verifier()
 
 
-@unittest.skipIf(svc is None, f"sql_agent_service non importable: {_IMPORT_ERR}")
 class PromptSystemeAic5Tests(unittest.TestCase):
     """AIC5 — politique + manifeste + manuel dans le prompt SYSTEME (cache 1 h
     sous claude) ; resultats d'outils etiquetes non fiables."""
@@ -224,12 +223,9 @@ class PromptSystemeAic5Tests(unittest.TestCase):
 
     def test_resultat_outil_etiquete_non_fiable(self):
         import json
-        try:
-            from langchain_community.utilities import SQLDatabase
-            from langchain_core.tools import StructuredTool
-            from sqlalchemy import create_engine, text
-        except ModuleNotFoundError as exc:  # pragma: no cover
-            self.skipTest(str(exc))
+        from langchain_community.utilities import SQLDatabase
+        from langchain_core.tools import StructuredTool
+        from sqlalchemy import create_engine, text
         engine = create_engine("sqlite://")
         with engine.begin() as conn:
             conn.execute(text(

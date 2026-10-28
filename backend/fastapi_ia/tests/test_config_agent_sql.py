@@ -128,7 +128,6 @@ except Exception as exc:  # pragma: no cover - dependances manquantes
     verifier_import_optionnel(exc)
 
 
-@unittest.skipIf(_svc is None, f"service agent non importable: {_SVC_ERR}")
 class FournisseurClaudeAic3Tests(unittest.TestCase):
     """AIC3 — le fournisseur `claude` construit un client sans `temperature`,
     avec l'effort de SQL_AGENT_EFFORT et une sortie bornee (sans reseau :
@@ -166,10 +165,7 @@ class FournisseurClaudeAic3Tests(unittest.TestCase):
                          "claude-haiku-5-5")
 
     def test_groq_inchange(self):
-        try:
-            llm = self._llm("groq", "llama-3.3-70b-versatile")
-        except ModuleNotFoundError as exc:  # pragma: no cover
-            self.skipTest(str(exc))
+        llm = self._llm("groq", "llama-3.3-70b-versatile")
         self.assertLess(llm.temperature, 0.01)  # ChatGroq: 0 -> 1e-8
         self.assertEqual(llm.model_name, "llama-3.3-70b-versatile")
 
