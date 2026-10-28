@@ -119,6 +119,7 @@ const jsonLd = {
 import PompageSolaireG2D36 from '../components/blocs/PompageSolaireG2D36.astro';
 import PompageSolaireDiv9A50 from '../components/blocs/PompageSolaireDiv9A50.astro';
 import PompageSolaireDiv3A4E from '../components/blocs/PompageSolaireDiv3A4E.astro';
+import BandeCapacitePompage from '../components/blocs/BandeCapacitePompage.astro';
 ---
 
 <Layout
@@ -174,20 +175,7 @@ import PompageSolaireDiv3A4E from '../components/blocs/PompageSolaireDiv3A4E.ast
         aucun chiffre de production ou de chantier inventé. */}
     <section class="px-4 pb-4">
       <div class="mx-auto max-w-6xl">
-        <dl class="cine-in grid max-w-3xl grid-cols-1 gap-3 border-t border-white/20 pt-6 sm:grid-cols-3 sm:gap-6">
-          <div class="flex flex-col-reverse">
-            <dt class="tech-label mt-2 text-lune">Mesures relevées sur site</dt>
-            <dd class="fig lum text-base sm:text-3xl">4</dd>
-          </div>
-          <div class="flex flex-col-reverse">
-            <dt class="tech-label mt-2 text-lune">TVA sur la pompe solaire agricole</dt>
-            <dd class="fig lum text-base sm:text-3xl">0 %</dd>
-          </div>
-          <div class="flex flex-col-reverse">
-            <dt class="tech-label mt-2 text-lune">Champ et variateur : marques tier-1</dt>
-            <dd class="fig lum text-base sm:text-3xl">Tier-1</dd>
-          </div>
-        </dl>
+        <BandeCapacitePompage items={[{ label: "Mesures relevées sur site", fig: "4" }, { label: "TVA sur la pompe solaire agricole", fig: "0 %" }, { label: "Champ et variateur : marques tier-1", fig: "Tier-1" }]} />
       </div>
     </section>
 
