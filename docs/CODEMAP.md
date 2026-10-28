@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
 Generated from commit `dev-qah1-20260928` on 2026-09-28, regenerated from source by SOLMVP51 for the **MVP solaire** perimeter (Groupe SOLMVP: 47 backend apps left the code as migration shells, 36 frontend feature folders moved to `frontend/parked/`).
-Structure fingerprint: e26eecb1717a5705030abca2244337037a33fb25e352e65d76469a942c88f6ff
-Plan fingerprint: 9ff85832041c83c75ab1d3b42ef0286640538faca6eb558523be2504365752e1
+Structure fingerprint: 42e78ea9e38ff321b3e11bcb36f41b5e7c131154a4267d3127791b1037148afe
+Plan fingerprint: ac1a84c420d272ce45a66297804afef027377f0ac24cb1fb865cfc2e23750e64
 
 
 
@@ -1881,7 +1881,7 @@ Things this map could not fully verify from source — do not over-trust:
 - `VNT109` — `reporting/insights.py` (rentabilité chantier) : « facturé » = factures ÉMISES de la…
 - `VTAG1` — [GATED: décision fondateur]
 
-**Open — to build (125)**
+**Open — to build (131)**
 
 - `AGR135` — [GATED: founder data] Nom et diamètre réels des pompes OSP 30
 - `AGRM1` — QXG3 étendu : prix des 11 OSP, courbes des pompes réellement vendues, une famille…
@@ -1927,6 +1927,12 @@ Things this map could not fully verify from source — do not over-trust:
 - `AGRM41` — Engagement SAV affichable
 - `AGRM42` — Assurance vol des panneaux
 - `AGRM43` — Consignes de remise au fermier (FR + darija)
+- `AIC50` — Skill `assistant-manuel` : Claude Code génère sur l'abonnement de Reda (jamais une clé…
+- `AIC51` — Skill `assistant-tri` + `docs/assistant-tri.md` + interrupteur…
+- `AIC52` — [GATED: secret `CLAUDE_CODE_OAUTH_TOKEN` GitHub (`claude setup-token`, valable un an…
+- `AICM1` — Réclamer les crédits API et créer le workspace de l'assistant
+- `AICM2` — Réglage de confidentialité du compte claude.ai
+- `AICM3` — Avis juriste loi 09-08 (transfert hors Maroc)
 - `AUD504` — [GATED: coût prestataire — décision fondateur]
 - `CAD177` — (30/09 : nocturne encore rouge — backend-full sur 3 tests PDF ventes réels ; e2e…
 - `CADM1` — Relecture darija par un locuteur natif

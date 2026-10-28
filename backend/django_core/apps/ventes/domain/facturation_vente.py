@@ -745,9 +745,12 @@ def modifier_montant_tranche(facture, montant_ttc, *, user):
     (``ecrire_echeancier_depuis_acompte``, via ``_facturer_acompte``), une
     tranche intermédiaire passe en MAD de même (dernière = reste, contrôle
     ``controler_echeancier_vente``). Refus : 409 ``facture_emise`` (seul un
-    brouillon change de montant — une émise se corrige par avoir), 400
-    ``pas_une_tranche`` / ``montant_invalide`` (la dernière tranche vaut le
-    reste). Aucun statut écrit (règle #4). Rend la facture relue."""
+    brouillon change de montant — une émise se corrige par avoir), 409
+    ``pas_une_tranche`` (api-fuzz-full 27/10 : c'est la facture STOCKÉE qui
+    s'oppose, ENF11), 400 ``montant_invalide`` pour un montant illisible et 409
+    ``montant_invalide`` pour un montant ≥ au prix convenu (la dernière tranche
+    vaut le reste : refus d'état). Aucun statut écrit (règle #4). Rend la
+    facture relue."""
     from apps.ventes.models import Devis
     from apps.ventes.utils.echeancier import UNITE_MONTANT
     from apps.ventes.vente_facturation import plan_facturation
@@ -760,9 +763,8 @@ def modifier_montant_tranche(facture, montant_ttc, *, user):
                        'est émise — corrigez-la par un avoir.')
     if not facture.devis_id or not facture.cle_tranche \
             or facture.type_facture == 'complete':
-        raise FacturationVenteRefusee(
-            "Cette facture n'est pas une tranche d'échéancier.",
-            code='pas_une_tranche')
+        raise _conflit('pas_une_tranche',
+                       "Cette facture n'est pas une tranche d'échéancier.")
     with transaction.atomic():
         devis = next(d for d in verrouiller_vente(facture.devis)
                      if d.pk == facture.devis_id)
@@ -770,9 +772,13 @@ def modifier_montant_tranche(facture, montant_ttc, *, user):
         plan = plan_facturation(devis)
         montant = _montant_demande(plan['prix_convenu_ttc'], montant_ttc,
                                    None)
-        if montant is None or montant >= plan['prix_convenu_ttc']:
+        if montant is None:
             raise FacturationVenteRefusee('Montant invalide.',
                                           code='montant_invalide')
+        if montant >= plan['prix_convenu_ttc']:
+            raise _conflit('montant_invalide', (
+                'Montant invalide : une tranche intermédiaire reste sous le '
+                'prix convenu (la dernière tranche vaut le reste).'))
         if facture.type_facture == 'acompte':
             return _facturer_acompte(
                 devis, plan, user=user, montant=montant,

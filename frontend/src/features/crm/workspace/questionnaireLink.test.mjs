@@ -127,7 +127,8 @@ test('AGR419 — un lead agricole voit pompage et ses photos, jamais equipements
   // sections visibles (jamais equipements → pas de 400).
   const sel = questionsDepuisReponse(data)
   assert.deepEqual(Object.keys(questionsPourEnvoi(sel, sectionsVisibles(data))), cles)
-  assert.equal(nbSectionsChoisies(sel, sectionsVisibles(data)), 5)
+  // CQST7 — la plaque n'est cochée d'office que pour une pompe conservée.
+  assert.equal(nbSectionsChoisies(sel, sectionsVisibles(data)), 4)
 })
 
 test('AGR419 — un lead résidentiel voit la liste d’avant (les 9 sections)', () => {
