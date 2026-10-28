@@ -32,10 +32,11 @@ CONTRAT = json.loads(
 COLONNES_AGRICOLES = (
     'pompe_alim_actuelle', 'butane_bouteilles_jour', 'carburant_litres_mois',
     'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
-    'source_eau', 'niveau_statique_m', 'debit_forage_m3h',
+    'depense_electricite_pompe_mad_mois', 'source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m',
     'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
-    'pompage_heures_jour', 'distance_forage_champ_m',
-    'irrigation_methode', 'mois_irrigation', 'electricite_sur_place',
+    'pompe_actuelle_debit_m3h', 'pompage_heures_jour',
+    'distance_forage_champ_m', 'irrigation_methode', 'mois_irrigation', 'electricite_sur_place',
+    'raccordement',
 )
 #: CIQ410 — colonnes posées à TOUT lead pro (la facture se pose en kWh OU en
 #: dirhams selon le lead : voir les tests dédiés).
@@ -241,20 +242,252 @@ class CIQ410PanneauPro(SimpleTestCase):
         self.assertEqual(data['equipements'], [])
 
     def test_facture_en_dirhams_commerce_bt_en_kwh_industriel_ou_mt(self):
-        self.assertIn('facture_hiver', _champs(Lead(
-            nom='P', type_installation='commercial')))
-        self.assertIn('conso_mensuelle_kwh', _champs(Lead(
-            nom='P', type_installation='industriel')))
+        """CSV2 — l'étape facture sert LES DEUX colonnes ; la principale est
+        celle que le client connaît (dirhams d'abord pour un commerce BT, kWh
+        d'abord pour un industriel ou un site MT)."""
+        commerce = _champs(Lead(nom='P', type_installation='commercial'))
+        self.assertEqual(commerce[:2], ['facture_hiver',
+                                        'conso_mensuelle_kwh'])
+        industriel = _champs(Lead(nom='P', type_installation='industriel'))
+        self.assertEqual(industriel[:2], ['conso_mensuelle_kwh',
+                                          'facture_hiver'])
         mt = _champs(Lead(nom='P', type_installation='commercial',
                           tension_raccordement='mt'))
-        self.assertIn('conso_mensuelle_kwh', mt)
-        self.assertNotIn('raccordement', mt)
+        self.assertEqual(mt[:2], ['conso_mensuelle_kwh', 'facture_hiver'])
+        self.assertIn('raccordement', mt)
 
-    def test_une_facture_connue_ferme_l_etape(self):
+    def test_une_facture_qui_ne_compte_pas_ne_ferme_pas_l_etape(self):
+        """CSV2 — une facture en dirhams ne ferme l'étape que si la tension ET
+        le contrat BT déclaré la laissent compter (règle de ``devis_auto``)."""
+        # Industriel sans basse tension déclarée : les dirhams ne comptent pas.
         champs = _champs(Lead(nom='P', type_installation='industriel',
                               facture_hiver=Decimal('9000')))
+        self.assertIn('conso_mensuelle_kwh', champs)
+        self.assertNotIn('facture_hiver', champs)  # déjà remplie
+        # Commerce BT, dirhams, contrat pas encore posé : étape ouverte.
+        champs = _champs(Lead(nom='P', type_installation='commercial',
+                              tension_raccordement='bt',
+                              facture_hiver=Decimal('5000')))
+        self.assertIn('conso_mensuelle_kwh', champs)
+        # Commerce BT, dirhams, contrat BT déclaré : l'étape est fermée.
+        champs = _champs(Lead(nom='P', type_installation='commercial',
+                              tension_raccordement='bt',
+                              contrat_electricite='bt_patente',
+                              facture_hiver=Decimal('5000')))
         self.assertNotIn('conso_mensuelle_kwh', champs)
         self.assertNotIn('facture_hiver', champs)
+        # Les kWh ferment toujours l'étape.
+        champs = _champs(Lead(nom='P', type_installation='industriel',
+                              conso_mensuelle_kwh=Decimal('42000')))
+        self.assertNotIn('conso_mensuelle_kwh', champs)
+        self.assertNotIn('facture_hiver', champs)
+
+    def test_site_mt_facture_dirhams_redemande_les_kwh(self):
+        """CSV2 — impasse du rejeu : facture en dirhams PUIS tension MT. Les
+        kWh sont redemandés (premier choix), les dirhams jamais reposés."""
+        lead = Lead(nom='P', type_installation='commercial',
+                    facture_hiver=Decimal('5000'), tension_raccordement='mt')
+        champs = _champs(lead)
+        self.assertEqual(champs[0], 'conso_mensuelle_kwh')
+        self.assertNotIn('facture_hiver', champs)
+        self.assertEqual(panneau.prefill_du_panneau(lead)['facture_hiver'],
+                         5000.0)
+        # Contrat « ne sait pas » en BT : les dirhams ne comptent pas non plus.
+        lead = Lead(nom='P', type_installation='commercial',
+                    tension_raccordement='bt',
+                    contrat_electricite='ne_sait_pas',
+                    facture_hiver=Decimal('5000'))
+        self.assertEqual(_champs(lead)[0], 'conso_mensuelle_kwh')
+
+    def test_contrat_pose_en_bt_jamais_en_mt_option_si_force_motrice(self):
+        """CSV3 — le contrat se lit sur la facture : posé juste après la
+        tension à tout site non déclaré en MT, l'option bi-horaire seulement
+        en force motrice, la question reprise mot pour mot du contrat CIQ1."""
+        for segment in ('commercial', 'industriel'):
+            champs = _champs(Lead(nom='P', type_installation=segment,
+                                  tension_raccordement='bt'))
+            self.assertIn('contrat_electricite', champs, segment)
+            self.assertNotIn('option_tarifaire_bt', champs, segment)
+            self.assertLess(champs.index('contrat_electricite'),
+                            champs.index('compteur_puissance_kva'))
+            # Tension inconnue : le contrat est posé aussi.
+            self.assertIn('contrat_electricite', _champs(
+                Lead(nom='P', type_installation=segment)))
+            # MT déclarée : jamais de contrat, jamais d'option.
+            mt = _champs(Lead(nom='P', type_installation=segment,
+                              tension_raccordement='mt',
+                              contrat_electricite='bt_force_motrice'))
+            self.assertNotIn('contrat_electricite', mt, segment)
+            self.assertNotIn('option_tarifaire_bt', mt, segment)
+        force = Lead(nom='P', type_installation='commercial',
+                     tension_raccordement='bt',
+                     contrat_electricite='bt_force_motrice')
+        self.assertIn('option_tarifaire_bt', _champs(force))
+        for autre in ('bt_patente', 'bt_domestique', 'ne_sait_pas'):
+            lead = Lead(nom='P', type_installation='commercial',
+                        tension_raccordement='bt', contrat_electricite=autre)
+            self.assertNotIn('option_tarifaire_bt', _champs(lead), autre)
+            # « Ne sait pas » (comme tout contrat posé) clôt la question.
+            self.assertNotIn('contrat_electricite', _champs(lead), autre)
+
+    def test_contrat_et_option_reprennent_le_contrat_ciq1_mot_pour_mot(self):
+        contrat_pro = json.loads(
+            (Path(__file__).resolve().parent / 'contract_samples'
+             / 'lead_pro.json').read_text(encoding='utf-8'))
+        par_colonne = {c['nom']: c['question']
+                       for c in contrat_pro['colonnes_pro']}
+        for colonne in ('contrat_electricite', 'option_tarifaire_bt'):
+            self.assertIn(panneau.QUESTIONS_PRO[colonne],
+                          par_colonne[colonne], colonne)
+
+    def test_site_bt_ne_propose_pas_le_contrat_moyenne_tension(self):
+        def valeurs(lead):
+            questions = {q['champ']: q
+                         for q in panneau.questions_a_poser(lead)}
+            return [c['valeur']
+                    for c in questions['contrat_electricite']['choix']]
+
+        bt = valeurs(Lead(nom='P', type_installation='commercial',
+                          tension_raccordement='bt'))
+        self.assertNotIn('mt_general', bt)
+        self.assertEqual(bt, ['bt_domestique', 'bt_patente',
+                              'bt_force_motrice', 'ne_sait_pas'])
+        inconnue = valeurs(Lead(nom='P', type_installation='commercial'))
+        self.assertIn('mt_general', inconnue)
+        # BT pré-cochée par le site (pas déclarée) : le client peut être en
+        # MT, le choix reste offert (critique Fable pré-merge, 27/10).
+        site = valeurs(Lead(nom='P', type_installation='commercial',
+                            tension_raccordement='bt',
+                            tension_source='site_defaut_visible'))
+        self.assertIn('mt_general', site)
+
+    def test_phase_posee_a_tout_pro_deux_choix(self):
+        """CSV4 — la phase (mono/tri) se pose à tout pro, MT et industriel
+        compris, avec deux choix ; en MT un seul (triphasé, un clic)."""
+        def phase(lead):
+            return {q['champ']: q for q in panneau.questions_a_poser(lead)}[
+                'raccordement']
+
+        for segment in ('commercial', 'industriel'):
+            question = phase(Lead(nom='P', type_installation=segment,
+                                  tension_raccordement='bt'))
+            self.assertEqual([c['valeur'] for c in question['choix']],
+                             ['monophase', 'triphase'], segment)
+            self.assertIn('monophasé ou triphasé', question['question'])
+            mt = phase(Lead(nom='P', type_installation=segment,
+                            tension_raccordement='mt'))
+            self.assertEqual([c['valeur'] for c in mt['choix']],
+                             ['triphase'], segment)
+            self.assertIn('Site en moyenne tension : alimentation triphasée',
+                          mt['question'])
+
+    def test_phase_inconnue_ou_aucune_est_reposee(self):
+        for valeur in ('inconnu', 'aucun'):
+            lead = Lead(nom='P', type_installation='commercial',
+                        raccordement=valeur)
+            self.assertIn('raccordement', _champs(lead), valeur)
+            self.assertNotIn('raccordement', panneau.prefill_du_panneau(lead))
+        lead = Lead(nom='P', type_installation='industriel',
+                    raccordement='triphase')
+        self.assertNotIn('raccordement', _champs(lead))
+        self.assertEqual(panneau.prefill_du_panneau(lead)['raccordement'],
+                         'triphase')
+
+    def test_talon_pose_dans_l_etape_activite(self):
+        """CSV12 — le talon (équipements qui tournent hors horaires) se pose
+        au téléphone à tout lead pro, après les heures ; répondu, jamais
+        reposé ; la réponse se relit dans le pré-remplissage."""
+        for segment in ('commercial', 'industriel'):
+            lead = Lead(nom='P', type_installation=segment)
+            champs = _champs(lead)
+            self.assertIn('equipements_hors_horaires', champs, segment)
+            self.assertGreater(champs.index('equipements_hors_horaires'),
+                               champs.index('heure_fin'), segment)
+            question = {q['champ']: q for q in panneau.questions_a_poser(
+                lead)}['equipements_hors_horaires']
+            self.assertEqual(question['nature'], 'choix')
+            self.assertEqual([c['valeur'] for c in question['choix']],
+                             ['aucun', 'un_peu', 'beaucoup'])
+            self.assertIn('des appareils continuent-ils de tourner',
+                          question['question'])
+            repondu = Lead(nom='P', type_installation=segment,
+                           equipements_hors_horaires='un_peu')
+            self.assertNotIn('equipements_hors_horaires', _champs(repondu))
+            self.assertEqual(
+                panneau.prefill_du_panneau(repondu)[
+                    'equipements_hors_horaires'], 'un_peu')
+
+    def test_heures_cuisson_ecrivable_et_servie(self):
+        """CSV13 — les clés d'heures que le moteur C&I lit sont écrivables
+        (clés fermées du sérialiseur) et servies seulement quand la réponse
+        qui les rend utiles est donnée ; celles qui changent la courbe passent
+        avant les autres."""
+        from apps.crm.serializers import LeadSerializer
+        from core.conflit_etat import ConflitEtat
+
+        for categorie, cle in (('boulangerie', 'heures_cuisson'),
+                               ('restaurant', 'heures'),
+                               ('sante', 'heures_garde'),
+                               ('ecole', 'fermeture_du'),
+                               ('ecole', 'fermeture_au')):
+            self.assertIn(cle, Lead.REPONSES_CATEGORIE_CLES[categorie])
+            lead = Lead(nom='P', type_installation='commercial',
+                        categorie_commerciale=categorie)
+            LeadSerializer(instance=lead)._valider_colonnes_pro(
+                {'reponses_categorie': {cle: [[2, 6]]}})
+        # Une clé hors de la catégorie reste refusée.
+        with self.assertRaises(ConflitEtat):
+            LeadSerializer(instance=Lead(
+                nom='P', type_installation='commercial',
+                categorie_commerciale='bureau'))._valider_colonnes_pro(
+                    {'reponses_categorie': {'heures_cuisson': [[2, 6]]}})
+
+        def cles(categorie, **reponses):
+            return panneau._cles_categorie_a_poser(Lead(
+                nom='P', type_installation='commercial',
+                categorie_commerciale=categorie, reponses_categorie=reponses))
+
+        # Boulangerie : les heures ne sont posées que pour une cuisson de nuit
+        # au four ÉLECTRIQUE (au gaz, le moteur n'ajoute aucune plage).
+        self.assertEqual(cles('boulangerie'), ('four', 'cuisson_nocturne'))
+        self.assertEqual(cles('boulangerie', four='electrique',
+                              cuisson_nocturne=True), ('heures_cuisson',))
+        self.assertEqual(cles('boulangerie', four='gaz',
+                              cuisson_nocturne=True), ())
+        self.assertEqual(cles('boulangerie', four='electrique',
+                              cuisson_nocturne=False), ())
+        # « oui » du tunnel lu comme le moteur (``moteur_ci.categories._vrai``).
+        self.assertEqual(cles('boulangerie', four='electrique',
+                              cuisson_nocturne='oui'), ('heures_cuisson',))
+        self.assertEqual(cles('boulangerie', four='electrique',
+                              cuisson_nocturne=True,
+                              heures_cuisson=[[2, 6]]), ())
+        # Restaurant : les heures passent AVANT le reste, après les horaires.
+        self.assertNotIn('heures', cles('restaurant'))
+        self.assertEqual(cles('restaurant', horaires='soir')[0], 'heures')
+        self.assertEqual(cles('restaurant', horaires='soir',
+                              heures=[[18, 23]]),
+                         ('chambres_froides', 'cuisson'))
+        # Santé et école : seulement quand garde de nuit / fermeture d'été.
+        self.assertEqual(cles('sante'), ('lits', 'garde_nuit'))
+        self.assertEqual(cles('sante', garde_nuit=True)[0], 'heures_garde')
+        self.assertEqual(cles('ecole', fermeture_estivale=True)[:2],
+                         ('fermeture_du', 'fermeture_au'))
+        self.assertNotIn('fermeture_du', cles('ecole'))
+        # Au plus trois questions, jamais plus.
+        self.assertLessEqual(len(cles('ecole', fermeture_estivale=True)), 3)
+
+    def test_la_question_heures_est_servie_au_panneau_avec_son_libelle(self):
+        lead = Lead(nom='P', type_installation='commercial',
+                    categorie_commerciale='boulangerie',
+                    reponses_categorie={'four': 'electrique',
+                                        'cuisson_nocturne': True})
+        objet = {q['champ']: q for q in panneau.questions_a_poser(lead)}[
+            'reponses_categorie']
+        self.assertEqual(
+            [(s['cle'], s['libelle']) for s in objet['sous_questions']],
+            [('heures_cuisson', '« De quelle heure à quelle heure le four '
+                                'électrique tourne-t-il la nuit ? »')])
 
     def test_decideur_seulement_les_choix_pro(self):
         questions = {q['champ']: q for q in panneau.questions_a_poser(
@@ -293,7 +526,8 @@ class CIQ410PanneauPro(SimpleTestCase):
                     self.assertNotIn(fragment, cle.lower(), cle)
 
     def test_les_exemples_pro_du_contrat_egalent_la_sortie_reelle(self):
-        for nom in ('exemple_commercial', 'exemple_industriel'):
+        for nom in ('exemple_commercial', 'exemple_industriel',
+                    'exemple_commercial_force_motrice'):
             exemple = CONTRAT[nom]
             lead = Lead(pk=exemple['lead_id'], nom='P',
                         type_installation=exemple['segment'],

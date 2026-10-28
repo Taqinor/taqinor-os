@@ -593,9 +593,11 @@
 - frontend/src/api/visitesApi.js :: getMaJournee -> /api/django/visites/ma-journee
     date:texte, en_retard_count:nombre, visites:liste
 - frontend/src/api/visitesApi.js :: getVisite -> /api/django/visites/visites/<>
-    _non_releves:inconnu, arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, devis:inconnu, en_route_le:inconnu, gabarit:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:inconnu, qualification:inconnu, raison_lecture_seule:inconnu, releve_ci:inconnu, statut:inconnu
+    _non_releves:inconnu, arrivee_le:inconnu, checklist:inconnu, client_panel:objet, commercial:inconnu, completude:objet, date_prevue:inconnu, date_realisee:inconnu, declare:inconnu, devis:inconnu, en_route_le:inconnu, gabarit:inconnu, id:inconnu, lead:inconnu, mesures:inconnu, modifiable:inconnu, notes:texte, photo_toit:inconnu, qualification:inconnu, raison_lecture_seule:inconnu, releve_ci:inconnu, statut:inconnu
 - frontend/src/api/visitesApi.js :: rechercherLeads -> /api/django/visites/leads-recherche
     results:inconnu
+- frontend/src/api/visitesApi.js :: reviserDevisApresVisite -> /api/django/ventes/etude-ci/reviser-apres-visite
+    alertes:inconnu, cree:inconnu, devis_id:inconnu, lignes_changees:inconnu, mesures_utilisees:inconnu, reference:inconnu, version:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: appliquerPackage -> /api/django/adminops/config-packages/appliquer
     custom_fields:inconnu, detail:texte, message_templates:inconnu, roles_custom:inconnu
 - frontend/src/features/adminops/adminopsApi.js :: previsualiserPackage -> /api/django/adminops/config-packages/previsualiser

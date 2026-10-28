@@ -121,7 +121,7 @@ function NonReleve({ id, motif, onChange, disabled, erreur }) {
 }
 
 export default function VisiteMesuresForm({
-  visiteId, categorie, libelle, valeurs, onSaved, lectureSeule, gabarit, nonReleves,
+  visiteId, categorie, libelle, valeurs, onSaved, lectureSeule, gabarit, nonReleves, declare,
 }) {
   const schema = schemaMesures(categorie, gabarit)
   const ci = gabarit === GABARIT_CI
@@ -176,8 +176,8 @@ export default function VisiteMesuresForm({
     setForm((prev) => ({ ...prev, [champ.key]: prev[champ.key].filter((_, i) => i !== index) }))
   }
 
-  const payload = () => {
-    const out = payloadDepuisForm(schema, form)
+  const payload = (formCourant = form) => {
+    const out = payloadDepuisForm(schema, formCourant)
     if (ci) {
       // Les états « non relevé » partent TELS QUELS (motif vide compris : le
       // serveur répond « Motif requis »).
@@ -186,14 +186,27 @@ export default function VisiteMesuresForm({
     return out
   }
 
-  const submit = async (e) => {
+  const submit = (e) => {
     e.preventDefault()
+    return enregistrer(form)
+  }
+
+  // CSV9 — « Confirmer » : la valeur que la FICHE du lead porte déjà devient la
+  // mesure, enregistrée d'une touche (même appel que « Enregistrer »).
+  const confirmer = (champ, valeur) => {
+    const saisie = champ.type === 'tribool' ? (valeur ? 'oui' : 'non') : String(valeur)
+    const suite = { ...form, [champ.key]: saisie }
+    setForm(suite)
+    return enregistrer(suite)
+  }
+
+  const enregistrer = async (formCourant) => {
     setSaving(true)
     setErreurs({})
     try {
       // VTA10 — même appel, mais via le branchement offline : hors réseau
       // l'op part dans la file de module `visites` et on le DIT.
-      const res = await enregistrerMesures(visiteId, categorie, payload())
+      const res = await enregistrerMesures(visiteId, categorie, payload(formCourant))
       if (res.queued) {
         toast.success('Mesures mises en file — elles partiront au retour du réseau.')
       } else {
@@ -215,6 +228,8 @@ export default function VisiteMesuresForm({
     const id = idDe(champ.key)
     const cle = cleNonReleve(null, null, champ.key)
     const motif = nr[cle]
+    const fiche = declare?.[champ.key]
+    const vide = form[champ.key] === '' || form[champ.key] == null
     return (
       <div key={champ.key}>
         <ChampScalaire
@@ -223,6 +238,14 @@ export default function VisiteMesuresForm({
           erreur={erreurs[champ.key]}
           onChange={(v) => setChamp(champ.key, v)}
         />
+        {ci && fiche && vide && motif === undefined && !lectureSeule && champ.type !== 'list' && (
+          <p className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Sur la fiche : {fiche.libelle}</span>
+            <Button type="button" size="sm" variant="outline" disabled={saving} onClick={() => confirmer(champ, fiche.valeur)}>
+              Confirmer
+            </Button>
+          </p>
+        )}
         {ci && champ.type !== 'bool' && (
           <NonReleve
             id={id} motif={motif} disabled={lectureSeule}
@@ -239,6 +262,7 @@ export default function VisiteMesuresForm({
     return (
       <fieldset key={champ.key} className="space-y-2 sm:col-span-2" data-testid={`visite-liste-${champ.key}`}>
         <legend className="text-sm font-medium">{champ.label}</legend>
+        {champ.aide && <p className="text-xs text-muted-foreground">{champ.aide}</p>}
         {lignes.length === 0 && (
           <p className="text-xs text-muted-foreground">Aucun élément saisi.</p>
         )}

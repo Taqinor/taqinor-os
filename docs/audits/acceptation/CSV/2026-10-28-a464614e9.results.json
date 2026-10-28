@@ -1,0 +1,143 @@
+{
+  "sha": "a464614e9838b51bf5effdaea0a4951cc13a7462",
+  "date": "2026-10-28",
+  "groupe": "CSV",
+  "verdict": "PASS",
+  "couvre": [
+    "CSV1",
+    "CSV2",
+    "CSV3",
+    "CSV4",
+    "CSV5",
+    "CSV6",
+    "CSV8",
+    "CSV9",
+    "CSV10",
+    "CSV11",
+    "CSV12",
+    "CSV14",
+    "CSV15",
+    "CSV16",
+    "CSV17"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "CSV5",
+        "CSV6",
+        "CSV15",
+        "CSV16"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CSV/traces/2026-10-28/P1.1-residentiel.txt"
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "CSV6",
+        "CSV17"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CSV/traces/2026-10-28/P1.2-agricole.txt"
+    },
+    {
+      "id": "P1.3",
+      "taches": [
+        "CSV1",
+        "CSV2",
+        "CSV3",
+        "CSV4",
+        "CSV6",
+        "CSV12"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CSV/traces/2026-10-28/P1.3-pro.txt"
+    },
+    {
+      "id": "P2.1",
+      "taches": [
+        "CSV8",
+        "CSV9",
+        "CSV10",
+        "CSV14"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "PASS",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "NA",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CSV/traces/2026-10-28/P2.1-visite-ci.txt"
+    },
+    {
+      "id": "P3.1",
+      "taches": [
+        "CSV11"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "NA",
+        "5": "NA",
+        "6": "PASS",
+        "7": "NA",
+        "8": "NA",
+        "9": "PASS",
+        "10": "NA"
+      },
+      "trace": "docs/audits/acceptation/CSV/traces/2026-10-28/P1.3-pro.txt"
+    }
+  ]
+}
