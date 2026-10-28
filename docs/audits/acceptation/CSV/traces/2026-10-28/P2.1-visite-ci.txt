@@ -1,0 +1,13 @@
+Rejeu CSV11 — 2026-10-28 00:48-00:53 UTC — même pile. Devis auto C&I du lead hôtel 2625 : POST /ventes/devis/auto/ {lead: 2625} → 201 DEV-202610-0096 (brouillon).
+Visite 7 (gabarit ci) ouverte en mobile 390×844 sur /visites/7 : pas de défilement horizontal.
+Site commerce : « Sur la fiche : Hôtel / riad — Confirmer », « Sur la fiche : 7j/7, 0 h–24 h — Confirmer » → confirmés, enregistrés (mesures.site_commerce.categorie hotel).
+Comptage : « Sur la fiche : Basse tension (BT) », « Sur la fiche : 36 kVA » confirmés ; « Phases du compteur » → Monophasé ; type « Électronique triphasé ».
+Cheminement : « Distance champ → onduleur (un sens) (m) » 25, « Distance onduleur → TGBT (m) » 15, aide « Mesurez chaque distance UN SEUL SENS … le plus long est retenu, pas la somme. »
+(Photos 6/6 et mesures toiture/TGBT/continuité posées par l'API pour atteindre la complétude — hors périmètre CSV.)
+DÉFAUT trouvé : à 390 px « Terminer la visite » (barre fixe) était sous la barre d'onglets de l'app (clic intercepté) — corrigé a464614e9
+(z-index --z-sticky-raised), rejoué : elementFromPoint = le bouton ; « Terminer sans qualification » ⇒ statut terminee.
+Bureau d'études (desktop) /visites/revue : relevé lisible (Phases du compteur : Monophasé ; trajet 25 m / 15 m) → « Valider (feu vert) » ⇒ Validée.
+GET /crm/leads/2625/ : raccordement monophase (la phase relevée est arrivée sur la fiche).
+« Préparer le devis révisé » ⇒ « Devis révisé : DEV-202610-0096 · V1 » ; lignes avant → après (câble solaire 240 → 200 et 60 → 50, câbles AC 30 → retirée / ajoutée → 15) ;
+« Mesures utilisées » longueur_dc_m 25, longueur_ac_m 15, surface 350, couverture beton (clés en code à l'écran : libellés ajoutés en 19cf68770, non rejoués en direct).
+Console : 0 error ; serveur : aucun 4xx/5xx sur ce parcours.

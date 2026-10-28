@@ -53,6 +53,11 @@ class TableDuContrat(SimpleTestCase):
                 else:
                     self.assertIsNone(provenance)
 
+    def test_la_phase_est_recopiee_sans_provenance(self):
+        # CSV8 — comptage.phases -> Lead.raccordement, aucune colonne de source.
+        self.assertIn(('raccordement', 'raccordement', None),
+                      visites_retour_lead.RETOUR_LEAD_CI)
+
     def test_les_cles_du_releve_sont_celles_du_contrat(self):
         releve = CONTRAT_VISITE['exemple_ci']['releve_ci']
         for cle, _colonne, _source in visites_retour_lead.RETOUR_LEAD_CI:
@@ -121,6 +126,25 @@ class RetourReleveCiALaValidation(TestCase):
         self.assertEqual(rendu['compteur_puissance_kva']['provenance'], {
             'origine': 'mesure_visite', 'detail': f'visite {visite.id}',
             'date': visite.validee_le.isoformat()})
+
+    def test_phase_relevee_recopiee_sur_le_lead(self):
+        # CSV8 — la phase mesurée remplace la déclaration, avec journal.
+        Lead.objects.filter(pk=self.lead.pk).update(raccordement='monophase')
+        visite = self._visite(mesures=self._mesures_ci(phases='triphase'))
+        visites_services.valider_visite(visite, self.bureau)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.raccordement, 'triphase')
+        ligne = self._lignes('raccordement').get()
+        self.assertEqual(ligne.user, self.bureau)
+
+    def test_phase_non_relevee_n_efface_rien(self):
+        Lead.objects.filter(pk=self.lead.pk).update(raccordement='monophase')
+        mesures = self._mesures_ci(phases=None)
+        mesures['comptage']['_non_releves'] = {'phases': 'site_ferme'}
+        visites_services.valider_visite(
+            self._visite(mesures=mesures), self.bureau)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.raccordement, 'monophase')
 
     def test_mesure_non_relevee_laisse_la_valeur_declaree(self):
         mesures = self._mesures_ci(puissance_souscrite_kva_constatee=None)

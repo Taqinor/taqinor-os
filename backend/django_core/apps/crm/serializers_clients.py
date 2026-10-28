@@ -10,7 +10,7 @@ from django.core.validators import RegexValidator
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from core.champs_stricts import ChaineStricte, IdInconnu404Mixin
+from core.champs_stricts import ChaineStricte, EntierStrict, IdInconnu404Mixin
 from core.conflit_etat import ConflitEtat
 
 from .champs_api import MAPPING_STRICT_COMPLET, MAPPING_TEXTE_STRICT, IcePublie
@@ -692,13 +692,18 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
         source='responsable.username', read_only=True,
         allow_null=True)
     nb_membres = serializers.IntegerField(source='membres.count', read_only=True)
+    # Attribution par le responsable (27/10/2026) — délai en minutes OUVRÉES,
+    # borné à une journée de travail.
+    delai_attribution_minutes = EntierStrict(
+        min_value=1, max_value=480, required=False)
 
     class Meta:
         model = EquipeCommerciale
         fields = [
             'id', 'company', 'nom', 'responsable', 'responsable_nom',
             'membres', 'nb_membres', 'actif', 'recoit_leads', 'date_creation',
-            'departement',
+            'departement', 'confirmation_responsable',
+            'delai_attribution_minutes',
         ]
         read_only_fields = ['company', 'date_creation']
 
@@ -732,6 +737,9 @@ class EquipeCommercialeSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixi
                 equipe.company_id, chef_avant, membres_avant,
                 equipe.responsable, list(equipe.membres.all()), equipe.actif)
             recalculer_hierarchie(equipe.company_id)
+            if chef_avant is not None and chef_avant.pk != equipe.responsable_id:
+                from .dispatch import responsable_change
+                responsable_change(equipe, chef_avant.pk)
         # Une seule équipe reçoit les nouveaux leads par société : cocher
         # celle-ci décoche les autres (même société uniquement).
         if equipe.recoit_leads:

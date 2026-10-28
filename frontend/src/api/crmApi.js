@@ -336,6 +336,16 @@ const crmApi = {
     id ? api.patch(`/crm/equipes/${id}/`, data) : api.post('/crm/equipes/', data),
   deleteEquipe: (id) => api.delete(`/crm/equipes/${id}/`),
 
+  // Attribution des leads par le responsable d'équipe (27/10/2026).
+  getDispatch: () => api.get('/crm/dispatch/'),
+  attribuerLead: (leadId, owner) =>
+    api.post(`/crm/dispatch/${leadId}/attribuer/`, { owner }),
+  getReglesAttribution: (equipe, params = {}) =>
+    api.get('/crm/regles-attribution/', { params: { equipe, ...params } }),
+  saveRegleAttribution: (id, data) =>
+    id ? api.patch(`/crm/regles-attribution/${id}/`, data) : api.post('/crm/regles-attribution/', data),
+  deleteRegleAttribution: (id) => api.delete(`/crm/regles-attribution/${id}/`),
+
   // ZSAL4 — Conversion lead → client explicite (nouveau / lier / aucun).
   convertirLeadEnClient: (leadId, payload) =>
     api.post(`/crm/leads/${leadId}/convertir-client/`, payload),

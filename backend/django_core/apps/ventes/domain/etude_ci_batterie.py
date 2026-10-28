@@ -410,7 +410,7 @@ def _investissement_des_lignes(lignes, devis=None):
     des lignes. ``None`` quand l'option que suit l'argent du devis n'est pas
     l'option « avec » (devis accepté « sans »), sans devis, ou sans total."""
     from apps.ventes import economie_ci as eco
-    from apps.ventes.domain.regles_calcul import calcul_corrige
+    from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
     from apps.ventes.economie_ci_options import investissement_hors_om
     from apps.ventes.utils.options import AVEC_BATTERIE, option_effective, option_totaux
     devis = devis or next((d for d in (getattr(li, 'devis', None) for li in lignes or [])
@@ -422,7 +422,9 @@ def _investissement_des_lignes(lignes, devis=None):
     detail = eco.lignes_pour_economie_ci(devis)
     if not ht or ht <= 0 or not detail:
         return None
-    investissement = investissement_hors_om({'ht': ht, 'ttc': ttc}, detail, calcul_corrige(devis))
+    # CEC1 est une règle du 27/10 : un devis envoyé avant (niveau ≤ 2) garde son O&M en an 0.
+    investissement = investissement_hors_om(
+        {'ht': ht, 'ttc': ttc}, detail, regles_au_moins(devis, REGLES_CORRIGEES_2710))
     return {'ht': investissement['ht'], 'ttc': investissement['ttc'], 'lignes': detail}
 
 

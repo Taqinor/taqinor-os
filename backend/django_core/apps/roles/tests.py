@@ -1331,6 +1331,17 @@ class OrganigrammeTest(TestCase):
         recalculer_hierarchie(self.company.pk)
         self.assertEqual(self._sup(rc), dg.pk)
 
+    def test_sans_direction_tete_de_departement_jamais_sous_un_chef(self):
+        # Revue Fable 27/10 : sans département Direction, la tête d'un
+        # département membre d'une équipe ne passe pas sous son chef.
+        h, r = self._user('org_sd_h'), self._user('org_sd_r')
+        self._dep('Ventes', h)
+        resp = self.api.post('/api/django/roles/equipes/', {
+            'nom': 'Casablanca', 'chef': r.pk, 'membres': [h.pk]},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        self.assertNotEqual(self._sup(h), r.pk)
+
     def test_fonction_sans_role_puis_role_propage_et_journalise(self):
         from apps.parametres.models import SettingsAuditLog
         from apps.roles.models import Poste

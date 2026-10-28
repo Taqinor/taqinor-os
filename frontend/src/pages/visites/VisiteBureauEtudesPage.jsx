@@ -9,7 +9,7 @@
 // `terminee` est donc appliqué sur des données déjà renvoyées par le
 // serveur, jamais une invention de paramètre de requête hors contrat.
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import visitesApi from '../../api/visitesApi'
 import calepinageApi from '../../api/calepinageApi'
 import { apiErrorMessage } from '../../lib/apiError'
@@ -253,10 +253,87 @@ function RenvoyerDialog({ open, onOpenChange, visite, onRenvoye }) {
   )
 }
 
+// Rejeu CSV11 — les clés des mesures servies par le contrat, dites comme sur
+// le relevé de visite (D-CMP-2) ; une clé inconnue reste affichée telle quelle.
+const LIBELLES_MESURES = {
+  longueur_dc_m: 'Distance champ → onduleur (un sens, m)',
+  longueur_ac_m: 'Distance onduleur → TGBT (m)',
+  couverture: 'Type de couverture',
+  type_pose: 'Type de pose',
+  surface_utile_m2: 'Surface utile (m²)',
+  surface_type: 'Surface',
+  pente_deg: 'Pente (°)',
+  charge_admissible_kg_m2: 'Charge admissible (kg/m²)',
+  niveau_tension: 'Niveau de tension',
+  puissance_souscrite_kva: 'Puissance souscrite (kVA)',
+}
+
+// CSV14 — la quantité d'une ligne avant / après (ligne ajoutée ou retirée = null).
+const quantiteLigne = (etat, absent) => (etat ? String(Number(etat.quantite)) : absent)
+
+// CSV14 — ce que « Préparer le devis révisé » a changé, tel que servi par le
+// contrat `devis_revise_visite` : lignes avant → après, mesures utilisées, lien.
+function DevisReviseRecap({ resultat }) {
+  return (
+    <Card className="space-y-2 p-3" data-testid="devis-revise">
+      <p className="text-sm font-medium">
+        Devis révisé :{' '}
+        <Link className="underline" to={`/ventes/devis?devis=${resultat.devis_id}`}>
+          {resultat.reference} · V{resultat.version}
+        </Link>
+      </p>
+      {resultat.lignes_changees.length === 0 ? (
+        <p className="text-xs text-muted-foreground">La visite ne change rien au chiffrage.</p>
+      ) : (
+        <ul className="space-y-0.5 text-xs">
+          {resultat.lignes_changees.map((l, i) => (
+            <li key={`${l.designation}-${l.variante}-${i}`}>
+              {l.designation}{l.variante ? ` (${l.variante})` : ''} :{' '}
+              {quantiteLigne(l.avant, 'ajoutée')} → {quantiteLigne(l.apres, 'retirée')}
+            </li>
+          ))}
+        </ul>
+      )}
+      {resultat.mesures_utilisees.length > 0 && (
+        <div>
+          <p className="text-xs text-muted-foreground">Mesures utilisées</p>
+          <ul className="text-xs">
+            {resultat.mesures_utilisees.map((m) => (
+              <li key={m.cle}>{LIBELLES_MESURES[m.cle] || m.cle} : {String(m.valeur)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  )
+}
+
 function DetailVisite({ visite, onRetour, onChanged }) {
   const navigate = useNavigate()
   const [renvoiOuvert, setRenvoiOuvert] = useState(false)
   const [validant, setValidant] = useState(false)
+  const [revision, setRevision] = useState({ envoi: false, resultat: null, refus: null })
+
+  // CSV14 — le devis est le plus récent du lead, tel que servi par la visite
+  // (`devis[0]`, du plus récent au plus ancien) : après une révision, rouvrir
+  // l'écran relit donc la V+1. Le serveur reste juge (409 si non C&I, etc.).
+  const devisPreliminaire = visite.devis?.[0]
+  const reviser = async () => {
+    setRevision({ envoi: true, resultat: null, refus: null })
+    try {
+      const res = await visitesApi.reviserDevisApresVisite(devisPreliminaire.id)
+      setRevision({ envoi: false, resultat: res.data, refus: null })
+    } catch (err) {
+      setRevision({
+        envoi: false,
+        resultat: null,
+        refus: {
+          message: apiErrorMessage(err, 'Le devis n’a pas pu être révisé.'),
+          champ: err?.response?.data?.field ?? null,
+        },
+      })
+    }
+  }
 
   const valider = async () => {
     setValidant(true)
@@ -333,6 +410,23 @@ function DetailVisite({ visite, onRetour, onChanged }) {
           du point d'eau il n'y a aucun toit à calepiner, le lien est masqué. */}
       {visite.statut === 'validee' && !estVisitePointEau(visite) && (
         <Button type="button" onClick={ouvrirAtelier}>Ouvrir l’atelier 3D</Button>
+      )}
+      {/* CSV14 — après le feu vert d'une visite C&I : recomposer le devis
+          préliminaire avec les mesures. La page n'est ouverte qu'aux rôles
+          responsable / admin (route `visites_valider`), comme l'endpoint. */}
+      {visite.statut === 'validee' && estVisiteCi(visite) && devisPreliminaire && (
+        <div className="space-y-2">
+          <Button type="button" variant="outline" onClick={reviser} disabled={revision.envoi}>
+            Préparer le devis révisé
+          </Button>
+          {revision.refus && (
+            <p role="alert" className="text-xs text-destructive">
+              {revision.refus.message}
+              {revision.refus.champ ? ` (champ : ${revision.refus.champ})` : ''}
+            </p>
+          )}
+          {revision.resultat && <DevisReviseRecap resultat={revision.resultat} />}
+        </div>
       )}
 
       <RenvoyerDialog

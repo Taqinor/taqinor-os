@@ -68,6 +68,12 @@ const visitesApi = {
   // serveur, jamais une re-dérivation locale.
   terminerVisite: (id) => api.post(`/visites/visites/${id}/terminer/`),
   validerVisite: (id) => api.post(`/visites/visites/${id}/valider/`),
+  // CSV14 — après le feu vert d'une visite C&I : recompose le devis préliminaire
+  // du lead avec les mesures de la visite (service CORC2, contrat
+  // `ventes/contract_samples/devis_revise_visite.json`). Réservé responsable /
+  // admin. 200 : {devis_id, reference, version, cree, lignes_changees,
+  // mesures_utilisees, alertes} ; 409 : {detail, field}. Aucun statut écrit.
+  reviserDevisApresVisite: (devis) => api.post('/ventes/etude-ci/reviser-apres-visite/', { devis }),
   // `payload` : {photos:[slot_code,...], mesures:[{categorie,champ},...], motif}
   // — `motif` OBLIGATOIRE côté serveur ET côté écran (VT8).
   renvoyerVisite: (id, payload) => api.post(`/visites/visites/${id}/renvoyer/`, payload),

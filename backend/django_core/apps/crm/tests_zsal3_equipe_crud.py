@@ -226,3 +226,227 @@ class TestEquipeAnterieureEditable(TestCase):
         r = api.patch(f'/api/django/crm/equipes/{e1.id}/', {'nom': 'Un bis'},
                       format='json')
         self.assertEqual(r.status_code, 200, r.content)
+
+
+def _cles(valeur):
+    """Squelette de clés d'un JSON (listes : leur premier élément)."""
+    if isinstance(valeur, dict):
+        return {k: _cles(v) for k, v in valeur.items()}
+    if isinstance(valeur, list):
+        return [_cles(valeur[0])] if valeur else []
+    return None
+
+
+class TestDispatchLeads(TestCase):
+    """Fondateur 27/10/2026 — file d'attribution du responsable d'équipe
+    (contrat ``contract_samples/dispatch_leads.json``) et sa décision."""
+
+    def setUp(self):
+        from apps.crm.leads_attribution import default_responsable_for
+        from apps.crm.models import Lead
+        from apps.parametres.models import CompanyProfile
+        self.company = make_company('dispatch-co')
+        CompanyProfile.objects.create(company=self.company)
+        mk = User.objects.create_user
+        self.chef = mk(username='dsp_chef', password='x', company=self.company)
+        self.m1 = mk(username='dsp_m1', password='x', company=self.company,
+                     first_name='Sara')
+        self.m2 = mk(username='dsp_m2', password='x', company=self.company)
+        self.autre_chef = mk(username='dsp_chef2', password='x',
+                             company=self.company)
+        self.admin = mk(username='dsp_admin', password='x',
+                        role_legacy='admin', company=self.company)
+        self.equipe = EquipeCommerciale.objects.create(
+            company=self.company, nom='Casa', responsable=self.chef,
+            recoit_leads=True, confirmation_responsable=True)
+        self.equipe.membres.set([self.m1, self.m2])
+        self.autre = EquipeCommerciale.objects.create(
+            company=self.company, nom='Rabat', responsable=self.autre_chef)
+        self.lead = Lead.objects.create(
+            company=self.company, nom='Tazi', prenom='Karim',
+            ville='Casablanca', owner=default_responsable_for(self.company))
+        self.api = APIClient()
+
+    def auth_as(self, user):
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+
+    def _attribuer(self, user, owner, lead=None):
+        self.auth_as(user)
+        return self.api.post(
+            f'/api/django/crm/dispatch/{(lead or self.lead).pk}/attribuer/',
+            {'owner': owner.pk if owner else None}, format='json')
+
+    def test_choix_fait_sur_la_fiche_jamais_defait_par_la_tache(self):
+        # Revue Fable 27/10 : le responsable change le propriétaire depuis la
+        # fiche du lead ; à l'échéance, la tâche ne le remet pas au proposé.
+        import datetime
+        from django.utils import timezone
+        from apps.crm.dispatch import attribuer_echeances
+        from apps.crm.models_clients import AttributionEnAttente
+        self.lead.owner = self.m2
+        self.lead.save(update_fields=['owner'])
+        attribuer_echeances(timezone.now() + datetime.timedelta(days=30))
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.owner_id, self.m2.pk)
+        self.assertFalse(AttributionEnAttente.objects.filter(
+            lead=self.lead).exists())
+
+    def test_changement_de_responsable_rapatrie_la_file(self):
+        # Revue Fable 27/10 : les leads en attente suivent le nouveau
+        # responsable ; sans responsable, ils partent à leur proposition.
+        from apps.crm.models_clients import AttributionEnAttente
+        self.auth_as(self.admin)
+        url = f'/api/django/crm/equipes/{self.equipe.pk}/'
+        r = self.api.patch(url, {'responsable': self.autre_chef.pk},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.owner_id, self.autre_chef.pk)
+        self.assertTrue(AttributionEnAttente.objects.filter(
+            lead=self.lead).exists())
+        avant = AttributionEnAttente.objects.get(lead=self.lead).echeance
+        r = self.api.patch(url, {'responsable': None}, format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        # Échéance avancée (« maintenant ») : la tâche l'attribue à la minute.
+        attente = AttributionEnAttente.objects.get(lead=self.lead)
+        self.assertLess(attente.echeance, avant)
+
+    def test_file_reservee_au_responsable_et_a_la_direction(self):
+        from apps.roles.models import Role
+        rh = Role.objects.create(company=self.company, nom='Admin RH',
+                                 permissions=['users_voir'])
+        u = User.objects.create_user(username='dsp_rh', password='x',
+                                     company=self.company, role=rh)
+        self.auth_as(u)
+        r = self.api.get('/api/django/crm/dispatch/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['leads'], [])
+
+    def test_file_respecte_le_contrat(self):
+        import json
+        import pathlib
+        chemin = (pathlib.Path(__file__).resolve().parent
+                  / 'contract_samples' / 'dispatch_leads.json')
+        contrat = json.loads(chemin.read_text(encoding='utf-8'))
+        self.auth_as(self.chef)
+        r = self.api.get('/api/django/crm/dispatch/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(_cles(r.json()), _cles(contrat['exemple']))
+        self.assertEqual(r.json()['en_attente'], 1)
+        self.assertEqual(r.json()['leads'][0]['nom'], 'Karim Tazi')
+        self.assertEqual(r.json()['equipe']['delai_minutes'], 5)
+
+    def test_file_vide_pour_une_societe_sans_equipe(self):
+        seul = User.objects.create_user(
+            username='dsp_seul', password='x', company=make_company('dsp-vide'))
+        self.auth_as(seul)
+        r = self.api.get('/api/django/crm/dispatch/')
+        self.assertEqual(r.json(), {'equipe': None, 'en_attente': 0,
+                                    'leads': [], 'membres': []})
+
+    def test_responsable_confirme_la_proposition(self):
+        from apps.crm.models import LeadActivity
+        propose = self.lead.attribution_en_attente.proposee
+        r = self._attribuer(self.chef, propose)
+        self.assertEqual(r.status_code, 200, r.content)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.owner, propose)
+        self.assertTrue(LeadActivity.objects.filter(
+            lead=self.lead, body__endswith='(proposition confirmée)').exists())
+        # Double clic : le lead n'attend plus → 409.
+        self.assertEqual(self._attribuer(self.chef, propose).status_code, 409)
+
+    def test_responsable_choisit_un_autre_membre(self):
+        autre = ({self.m1, self.m2}
+                 - {self.lead.attribution_en_attente.proposee}).pop()
+        self.assertEqual(self._attribuer(self.chef, autre).status_code, 200)
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.owner, autre)
+
+    def test_membre_et_responsable_d_une_autre_equipe_refuses(self):
+        self.assertEqual(self._attribuer(self.m1, self.m1).status_code, 403)
+        self.assertEqual(
+            self._attribuer(self.autre_chef, self.m1).status_code, 403)
+
+    def test_admin_peut_attribuer(self):
+        self.assertEqual(self._attribuer(self.admin, self.m2).status_code, 200)
+
+    def test_owner_hors_equipe_400(self):
+        r = self._attribuer(self.chef, self.autre_chef)
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertEqual(self._attribuer(self.chef, None).status_code, 400)
+
+    def test_lead_d_une_autre_societe_404(self):
+        from apps.crm.models import Lead
+        etranger = Lead.objects.create(
+            company=make_company('dsp-autre'), nom='Etranger')
+        self.assertEqual(
+            self._attribuer(self.admin, self.m1, lead=etranger).status_code, 404)
+
+    def test_regles_responsable_de_son_equipe_seulement(self):
+        url = '/api/django/crm/regles-attribution/'
+        self.auth_as(self.chef)
+        r = self.api.post(url, {'equipe': self.equipe.pk, 'membre': self.m1.pk,
+                                'villes': 'Casablanca', 'ordre': 1},
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        regle = r.json()['id']
+        r = self.api.post(url, {'equipe': self.autre.pk,
+                                'membre': self.m1.pk}, format='json')
+        self.assertIn(r.status_code, (403, 409), r.content)
+        self.auth_as(self.autre_chef)
+        self.assertEqual(self.api.patch(f'{url}{regle}/', {'ordre': 2},
+                                        format='json').status_code, 403)
+        self.assertEqual(self.api.delete(f'{url}{regle}/').status_code, 403)
+        self.auth_as(self.m1)
+        self.assertEqual(self.api.get(f'{url}?equipe={self.equipe.pk}')
+                         .status_code, 200)
+        self.assertEqual(self.api.post(url, {'equipe': self.equipe.pk,
+                                             'membre': self.m1.pk},
+                                       format='json').status_code, 403)
+
+    def test_regle_membre_hors_equipe_409_et_societe_forcee(self):
+        url = '/api/django/crm/regles-attribution/'
+        self.auth_as(self.admin)
+        r = self.api.post(url, {'equipe': self.equipe.pk,
+                                'membre': self.autre_chef.pk}, format='json')
+        self.assertEqual(r.status_code, 409, r.content)
+        r = self.api.post(url, {'equipe': self.equipe.pk, 'membre': self.m2.pk,
+                                'facture_min': '3000.00',
+                                'facture_max': '1000.00'}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(url, {'equipe': self.equipe.pk, 'membre': self.m2.pk,
+                                'type_installation': 'agricole',
+                                'source': 'meta_ads',
+                                'company': make_company('dsp-x').pk},
+                          format='json')
+        self.assertEqual(r.status_code, 201, r.content)
+        from apps.crm.models_clients import RegleAttribution
+        self.assertEqual(RegleAttribution.objects.get(
+            pk=r.json()['id']).company_id, self.company.pk)
+
+    def test_regles_d_une_autre_societe_invisibles(self):
+        from apps.crm.models_clients import RegleAttribution
+        etrangere = make_company('dsp-etr')
+        eq = EquipeCommerciale.objects.create(company=etrangere, nom='X')
+        regle = RegleAttribution.objects.create(company=etrangere, equipe=eq)
+        self.auth_as(self.admin)
+        r = self.api.get('/api/django/crm/regles-attribution/')
+        ids = [x['id'] for x in (r.json().get('results', r.json())
+                                 if isinstance(r.json(), dict) else r.json())]
+        self.assertNotIn(regle.pk, ids)
+        self.assertEqual(self.api.patch(
+            f'/api/django/crm/regles-attribution/{regle.pk}/', {'ordre': 3},
+            format='json').status_code, 404)
+
+    def test_equipe_expose_confirmation_et_delai(self):
+        self.auth_as(self.admin)
+        url = f'/api/django/crm/equipes/{self.autre.pk}/'
+        r = self.api.patch(url, {'confirmation_responsable': True,
+                                 'delai_attribution_minutes': 15},
+                           format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.json()['delai_attribution_minutes'], 15)
+        self.assertEqual(self.api.patch(
+            url, {'delai_attribution_minutes': 0}, format='json').status_code, 400)
