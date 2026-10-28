@@ -48,6 +48,14 @@ def numero_pr(head_ref: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
+def est_allege(journal: str) -> bool:
+    """CI-UNE (fondateur, 27/10/2026) — vrai si le job `changes` du run PR a
+    tourné en mode allégé (`pull_request` sur une branche `claude/*`) : ses lanes
+    lourdes ont été reportées au `merge_group`, son vert ne vaut donc PAS gate.
+    Les lignes recopiées du script (`$`) sont ignorées comme ailleurs."""
+    return any("allege=true" in ligne for ligne in journal.splitlines() if "$" not in ligne)
+
+
 def lire_journal_changes(journal: str):
     """(surfaces, paquets fuzzés) relus dans le journal du job `changes`, ou None.
 
@@ -126,7 +134,12 @@ def chercher(repo: str, head_ref: str, arbre_groupe: str, groupe: dict,
                   '.jobs[] | select(.name == "changes") | .id').split()
         if not job:
             continue
-        lu = lire_journal_changes(_journal(repo, job[0]))
+        texte = _journal(repo, job[0])
+        if est_allege(texte):
+            print(f"Merge queue : run {run} allégé (CI-UNE : lanes lourdes reportées au "
+                  "groupe) — ne vaut pas gate.", file=sys.stderr)
+            continue
+        lu = lire_journal_changes(texte)
         if lu is None:
             print(f"Merge queue : run {run}, journal `changes` illisible.", file=sys.stderr)
             continue

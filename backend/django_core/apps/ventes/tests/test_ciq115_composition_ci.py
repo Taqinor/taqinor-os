@@ -91,8 +91,12 @@ class CompositionTests(TestCase):
         comp = composer_ci(100, self.cat, onduleurs=ond,
                            entrees=_entrees(longueur_dc_m=40), forfaits={})
         dc = self._lignes(comp, 'cable_dc')[0]
-        self.assertEqual(dc['quantite'], 10 * 40)
-        self.assertNotEqual(dc['quantite'], 60)
+        # D-CMP-2 — 2 conducteurs (+ / −) × 10 chaînes × 40 m aller simple.
+        self.assertEqual(dc['quantite'], 2 * 10 * 40)
+        self.assertNotEqual(dc['quantite'], 10 * 40)
+        hyp = next(h for h in comp['hypotheses'] if h['cle'] == 'cable_dc_m')
+        self.assertEqual(hyp['valeur'], 800)
+        self.assertIn('2 × 10 chaînes × 40 m', hyp['source'])
 
     def test_onduleur_150_a_30m_cable_ac_bareme_etendu(self):
         ond = {'combinaison': [{'produit': 1, 'nom': 'Ond 150',
@@ -263,6 +267,87 @@ class CompositionTests(TestCase):
         self.assertFalse(logger['a_confirmer_visite'])
         self.assertIsNone(logger['motif'])
         self.assertEqual(logger['quantite'], 1)
+
+    # ── CMP10 (D-CMP-6) : comptage / logger de la marque des onduleurs ───────
+
+    @staticmethod
+    def _accessoire(id_, nom, role, marque, prix='900', fiche=None):
+        return {'id': id_, 'nom': nom, 'marque': marque, 'role_devis': '', 'role_ci': role,
+                'classement': 'declare', 'type_pose': '', 'fiche': fiche, 'prix_connu': True,
+                'prix_vente_ht': Decimal(prix), 'eligible_ci': True, 'motif_exclusion': None}
+
+    def _cat_marque(self, marque, *accessoires):
+        cat = [dict(p, marque=marque) if p['role_ci'] == 'onduleur_string_tri' else dict(p)
+               for p in self.cat if p['role_ci'] not in ('logger_supervision',)]
+        return cat + list(accessoires)
+
+    def _comptage_et_logger(self, cat, kwc=180):
+        premier = next(p for p in cat if p['role_ci'] == 'onduleur_string_tri')
+        ond = {'combinaison': [{'produit': premier['id'], 'nom': premier['nom'],
+                                'kw_ac': premier['kw_ac'], 'quantite': 3}]}
+        comp = composer_ci(kwc, cat, onduleurs=ond, entrees=_entrees(), forfaits={})
+        comptage = [ligne for ligne in comp['lignes'] if ligne['role'] in (
+            'compteur_injection', 'controleur_injection')]
+        self.assertEqual(len(comptage), 1)
+        return comp, comptage[0], self._lignes(comp, 'logger_supervision')
+
+    def _codes(self, comp):
+        return {a['code'] for a in comp['alertes']}
+
+    def test_deye_et_compteur_huawei_seul_garde_l_article_et_alerte_la_marque(self):
+        cat = self._cat_marque('Deye', self._accessoire(
+            5100, 'Smart Meter DTSU666-H', 'compteur_injection', 'Huawei'))
+        comp, comptage, _logger = self._comptage_et_logger(cat)
+        self.assertEqual(comptage['produit'], 5100)
+        alerte = next(a for a in comp['alertes'] if a['code'] == 'COMPTAGE_MARQUE_A_CONFIRMER')
+        self.assertTrue(alerte['interne'])
+        self.assertIn('deye', alerte['message'])
+
+    def test_deye_et_compteur_deye_prend_le_compteur_deye(self):
+        cat = self._cat_marque(
+            'Deye',
+            self._accessoire(5100, 'Smart Meter DTSU666-H', 'compteur_injection', 'Huawei'),
+            self._accessoire(5101, 'Compteur Deye triphasé', 'compteur_injection', 'Deye'))
+        comp, comptage, _logger = self._comptage_et_logger(cat)
+        self.assertEqual(comptage['produit'], 5101)
+        self.assertNotIn('COMPTAGE_MARQUE_A_CONFIRMER', self._codes(comp))
+
+    def test_compteur_declare_compatible_par_la_fiche_prefere_a_la_marque(self):
+        cat = self._cat_marque(
+            'Deye',
+            self._accessoire(5090, 'Compteur Deye', 'compteur_injection', 'Deye'),
+            self._accessoire(5100, 'Smart Meter DTSU666-H', 'compteur_injection', 'Huawei'))
+        for p in cat:
+            if p['role_ci'] == 'onduleur_string_tri':
+                p['fiche'] = {'ond_compteurs_compatibles': ['DTSU666-H']}
+        _comp, comptage, _logger = self._comptage_et_logger(cat)
+        # La fiche passe devant la marque, même quand la marque a le plus petit id.
+        self.assertEqual(comptage['produit'], 5100)
+
+    def test_logger_de_la_marque_des_onduleurs_ou_alerte(self):
+        huawei = self._accessoire(5200, 'SmartLogger 3000', 'logger_supervision', 'Huawei',
+                                  fiche={'log_onduleurs_max': 80})
+        deye = self._accessoire(5201, 'Logger Deye', 'logger_supervision', 'Deye',
+                                fiche={'log_onduleurs_max': 40})
+        comp, _c, logger = self._comptage_et_logger(self._cat_marque('Deye', huawei, deye))
+        self.assertEqual(logger[0]['produit'], 5201)
+        self.assertNotIn('LOGGER_MARQUE_A_CONFIRMER', self._codes(comp))
+        comp, _c, logger = self._comptage_et_logger(self._cat_marque('Deye', huawei))
+        self.assertEqual(logger[0]['produit'], 5200)
+        alerte = next(a for a in comp['alertes'] if a['code'] == 'LOGGER_MARQUE_A_CONFIRMER')
+        self.assertIn('deye', alerte['message'])
+
+    def test_catalogue_mono_marque_inchange_sans_alerte(self):
+        cat = self._cat_marque(
+            'Huawei',
+            self._accessoire(5100, 'Smart Meter DTSU666-H', 'compteur_injection', 'Huawei'),
+            self._accessoire(5102, 'Compteur générique', 'compteur_injection', '', '300'),
+            self._accessoire(5200, 'SmartLogger 3000', 'logger_supervision', 'Huawei'))
+        comp, comptage, logger = self._comptage_et_logger(cat)
+        self.assertEqual(comptage['produit'], 5100)
+        self.assertEqual(logger[0]['produit'], 5200)
+        self.assertFalse(self._codes(comp) & {'COMPTAGE_MARQUE_A_CONFIRMER',
+                                              'LOGGER_MARQUE_A_CONFIRMER'})
 
     # ── ADEV83 : protections DC, parafoudres DC/AC, mise à la terre ──────────
 

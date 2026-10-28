@@ -57,6 +57,20 @@ def corps_objet(request):
     return request.data
 
 
+class CorpsObjetMixin:
+    """api-fuzz-full 27/10 (ENF11) — toute ÉCRITURE de la vue lit un corps
+    OBJET (``request.data.get``) : un nombre, ``null`` ou un tableau en corps
+    faisait lever ``AttributeError`` (500) dans chaque action → 400 FR dès
+    ``initial`` (après les permissions). Corps vide et formulaire multipart
+    restent des objets."""
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if (request.method in ('POST', 'PUT', 'PATCH')
+                and getattr(self, 'action', None) is not None):
+            corps_objet(request)
+
+
 def id_entier(valeur, nom):
     """Identifiant entier 1..ID_MAX (``int`` ou chaîne de chiffres), sinon
     400 nommant le champ — évite ``TypeError``/``DataError`` côté ORM."""
@@ -68,6 +82,39 @@ def id_entier(valeur, nom):
     return int(valeur)
 
 
+def id_ou_none(valeur):
+    """api-fuzz-full 27/10 (ENF11) — l'identifiant de corps transmis au filtre
+    ORM : un entier JSON (ou une chaîne de chiffres) 1..``ID_MAX``, sinon
+    ``None`` (aucune ligne ne correspond). Une liste ou un objet faisait lever
+    ``TypeError`` dans ``filter(id=…)`` (500) ; ``statut_inconnu`` rend ensuite
+    le 404 (entier) ou le 400 (corps invalide)."""
+    if isinstance(valeur, str) and valeur.isascii() and valeur.isdigit():
+        valeur = int(valeur)
+    if isinstance(valeur, int) and not isinstance(valeur, bool) and 1 <= valeur <= ID_MAX:
+        return valeur
+    return None
+
+
+def champ_requis(request, nom):
+    """api-fuzz-full 27/10 (ENF11) — valeur du champ de corps OBLIGATOIRE
+    ``nom`` (``null`` compris, s'il est publié nullable) ; absent → 400 nommant
+    le champ (le schéma le publie ``required``)."""
+    corps = corps_objet(request)
+    if nom not in corps:
+        raise ValidationError({nom: 'Ce champ est obligatoire.'})
+    return corps[nom]
+
+
+def choix_corps(request, nom, choix, defaut):
+    """api-fuzz-full 27/10 (ENF11) — valeur du champ de corps ``nom`` parmi
+    ``choix`` (``defaut`` si absent) ; toute autre valeur → 400 nommant le
+    champ (une chaîne libre était écrite telle quelle en base)."""
+    valeur = corps_objet(request).get(nom, defaut)
+    if valeur not in list(choix):
+        raise ValidationError({nom: f"Valeur attendue parmi : {', '.join(choix)}."})
+    return valeur
+
+
 def statut_inconnu(valeur, attendu=int):
     """ENF11 — statut d'un identifiant de corps qui ne désigne rien : 404 pour
     une valeur du type publié (``attendu`` : entier JSON, ou chaîne pour une
@@ -76,6 +123,43 @@ def statut_inconnu(valeur, attendu=int):
     if isinstance(valeur, attendu) and not isinstance(valeur, bool):
         return status.HTTP_404_NOT_FOUND
     return status.HTTP_400_BAD_REQUEST
+
+
+def statut_ligne_non_supprimable(ligne, valeur):
+    """api-fuzz-full 27/10 (ENF11) — ``supprimer-ligne-consommation`` : une
+    ligne INCONNUE suit ``statut_inconnu`` (404 pour un id entier) ; une ligne
+    de la NOMENCLATURE (elle existe, l'état stocké s'oppose) = 409."""
+    from rest_framework import status
+    if ligne is None:
+        return statut_inconnu(valeur)
+    return status.HTTP_409_CONFLICT
+
+
+def statut_refus_releve(refus):
+    """api-fuzz-full 27/10 (ENF11) — statut d'un refus de
+    ``field_capture.champs_releve_serie`` : « ni produit ni désignation » est
+    une règle d'ENSEMBLE (l'un OU l'autre de deux champs facultatifs, que le
+    schéma OpenAPI 3.0 du corps ne porte pas) → 409 ; des caractéristiques
+    illisibles restent un 400 (forme du champ)."""
+    from rest_framework import status
+    if 'designation' in refus:
+        return status.HTTP_409_CONFLICT
+    return status.HTTP_400_BAD_REQUEST
+
+
+def texte_corps(request, nom, *autres):
+    """api-fuzz-full 27/10 (ENF11) — valeur TEXTE du champ de corps ``nom``
+    (``''`` si absent ou nul), sans espaces de bord. ``nom`` et ``autres``
+    (lus ensuite par la vue) sont publiés chaînes : un nombre JSON, ou une
+    PARTIE FICHIER multipart sous ce nom, faisait lever ``.strip()`` (500) →
+    400 nommant le champ. Le caractère nul (refusé par PostgreSQL, motif publié
+    par ``ChaineStricte``) aussi : 400, plus un 500 à l'écriture."""
+    corps = corps_objet(request)
+    for cle in (nom, *autres):
+        valeur = corps.get(cle)
+        if valeur is not None and (not isinstance(valeur, str) or chr(0) in valeur):
+            raise ValidationError({cle: 'Texte attendu (sans caractère nul).'})
+    return (corps.get(nom) or '').strip()
 
 
 #: Plus grand pourcentage qu'une colonne ``DecimalField(5, 2)`` sait garder.
@@ -144,6 +228,64 @@ def dec(required=False, null=False, **kw):
     # le schéma le dit (il annonçait une chaîne libre, nombre exclu).
     return DecimalSouple(
         required=required, allow_null=null, allow_blank=False, **kw)
+
+
+#: api-fuzz-full 27/10 (ENF11) — quantité d'une colonne ``DecimalField(12, 2)``
+#: (lignes de consommation) : au plus 10 chiffres entiers et 2 décimales. La
+#: borne est PUBLIÉE et APPLIQUÉE à l'identique (``quantite_bornee``) — une
+#: quantité de 1e15 débordait la colonne (``DataError`` → 500).
+QTE_MAX_TEXTE = '9999999999.99'
+MOTIF_QUANTITE = r'^-?\d{1,10}(\.\d{1,2})?$'
+QUANTITE_BORNEE = {'oneOf': [
+    {'type': 'number', 'minimum': -float(QTE_MAX_TEXTE), 'maximum': float(QTE_MAX_TEXTE)},
+    {'type': 'string', 'pattern': MOTIF_QUANTITE}]}
+
+
+@extend_schema_field(QUANTITE_BORNEE)
+class QuantiteBornee(serializers.CharField):
+    """Champ de DÉCLARATION : quantité bornée (nombre ou chaîne décimale)."""
+
+
+def qte(required=False, null=False, **kw):
+    return QuantiteBornee(
+        required=required, allow_null=null, allow_blank=False, **kw)
+
+
+def quantite_bornee(request, nom, defaut='0'):
+    """``Decimal`` du champ de corps ``nom`` (``defaut`` si absent ou nul),
+    accepté EXACTEMENT comme ``QUANTITE_BORNEE`` le publie ; sinon 400 nommant
+    le champ."""
+    from decimal import Decimal, InvalidOperation
+    valeur = corps_objet(request).get(nom)
+    if valeur is None:
+        return Decimal(defaut)
+    quantite = None
+    if isinstance(valeur, (int, float)) and not isinstance(valeur, bool):
+        try:
+            quantite = Decimal(str(valeur))
+        except InvalidOperation:
+            quantite = None
+    elif isinstance(valeur, str) and re.fullmatch(MOTIF_QUANTITE, valeur):
+        quantite = Decimal(valeur)
+    if (quantite is None or not quantite.is_finite()
+            or abs(quantite) > Decimal(QTE_MAX_TEXTE)):
+        raise ValidationError({nom: f'Quantité décimale attendue (au plus {QTE_MAX_TEXTE}).'})
+    return quantite
+
+
+#: api-fuzz-full 27/10 (ENF11) — ``caracteristiques`` publiées comme
+#: ``field_capture.valider_caracteristiques`` les accepte : objet plat d'au
+#: plus 10 clés, valeurs texte (sans NUL) ou nombre — le DictField libre
+#: annonçait toute valeur (une liste « conforme » était refusée 400).
+CARACTERISTIQUES = {
+    'type': 'object', 'nullable': True, 'maxProperties': 10,
+    'additionalProperties': {'oneOf': [
+        {'type': 'string', 'pattern': MOTIF_SANS_NUL}, {'type': 'number'}]}}
+
+
+@extend_schema_field(CARACTERISTIQUES)
+class Caracteristiques(serializers.DictField):
+    """Champ de DÉCLARATION : caractéristiques de plaque."""
 
 
 def obj(required=False, null=False, **kw):
@@ -632,6 +774,33 @@ class DesignationLigneRequete(serializers.Serializer):
     """F11 — la validation de ``designation`` : le MÊME champ que la
     déclaration du corps d'``ajouter-ligne-consommation``."""
     designation = designation_ligne()
+
+
+class NombreStrict(serializers.FloatField):
+    """Nombre JSON réel : ``"33.5"`` et ``true`` sont refusés (400), comme le
+    type ``number`` publié."""
+
+    def to_internal_value(self, data):
+        if isinstance(data, bool) or not isinstance(data, (int, float)):
+            self.fail('invalid')
+        return super().to_internal_value(data)
+
+
+class PositionRequete(serializers.Serializer):
+    """F6/XFSM7 — ``{lat, lng}`` du départ dépôt et du check-in : la
+    déclaration OpenAPI ET la validation. api-fuzz-full 27/10 (ENF11) : bornes
+    géographiques PUBLIÉES (−90..90, −180..180) — ``lat = 1e142`` débordait la
+    colonne ``numeric(9, 6)`` (``DataError`` → 500)."""
+    lat = NombreStrict(required=False, allow_null=True,
+                       min_value=-90, max_value=90)
+    lng = NombreStrict(required=False, allow_null=True,
+                       min_value=-180, max_value=180)
+
+
+def position(request):
+    """``(lat, lng)`` validés par ``PositionRequete`` (400 nommant le champ)."""
+    corps = corps_valide(PositionRequete, request)
+    return corps.get('lat'), corps.get('lng')
 
 
 #: Drapeau de requête publié booléen : ces valeurs, rien d'autre.

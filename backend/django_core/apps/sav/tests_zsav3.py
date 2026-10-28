@@ -67,6 +67,11 @@ class ZSAV3ActiviteAFaireTest(TestCase):
             }, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertFalse(r.data['fait'])
+        # api-fuzz-full 27/10 : texte strict — le motif sans NUL est publié.
+        from core.champs_stricts import ChaineStricte
+        from apps.sav.serializers import TicketActiviteAFaireSerializer
+        self.assertIsInstance(
+            TicketActiviteAFaireSerializer().fields['titre'], ChaineStricte)
         act = TicketActiviteAFaire.objects.get(pk=r.data['id'])
         self.assertEqual(act.company_id, self.company.id)
         self.assertEqual(act.ticket_id, self.ticket.id)

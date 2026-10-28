@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { REALISATIONS } from '../src/lib/realisations';
 import { TESTIMONIALS, GOOGLE_RATING, hasTestimonials, hasRating } from '../src/lib/testimonials';
-import { lireAstroAvecBlocs } from './astroBlocsHelper';
+import { lireAstroAvecBlocs, lirePageProposition } from './astroBlocsHelper';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
@@ -24,7 +24,7 @@ const INSTALL_COUNTER = read('../src/components/InstallCounter.astro');
 const CERT_LOGO_ROW = read('../src/components/CertLogoRow.astro');
 // ENF19 — la page est lue avec ses blocs partagés (components/blocs) déroulés.
 const MON_TOIT = lireAstroAvecBlocs(root('../src/pages/devis/mon-toit.astro'));
-const PROPOSITION = read('../src/pages/proposition/[...token].astro');
+const PROPOSITION = lirePageProposition();
 
 describe('WJ35/WN6 — StarRating : jamais de note/avis fabriqués, jamais un scaffold "bientôt"', () => {
   it('ne rend une note QUE si GOOGLE_RATING est réel (hasRating())', () => {

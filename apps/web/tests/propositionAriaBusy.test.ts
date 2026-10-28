@@ -35,8 +35,9 @@ import { join } from 'node:path';
 import { PROFONDS } from '../src/lib/proposition/liaisons';
 import { appliquer, capturerOriginaux, marquerChargement, restaurer } from '../src/lib/proposition/swap';
 import { cleCacheDetail, estChargeable, tailleDetail, type TailleDetail } from '../src/lib/tailleDetail';
+import { lirePageProposition } from './astroBlocsHelper';
 
-const SOURCE = readFileSync(join(process.cwd(), 'src/pages/proposition/[...token].astro'), 'utf-8')
+const SOURCE = lirePageProposition()
   .replace(/\r\n/g, '\n');
 
 /** L'îlot des tailles seul — le frontmatter a des helpers aux noms voisins. */

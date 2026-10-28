@@ -9,12 +9,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { pdfDisponible, type ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string): string =>
   readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 const CONTRAT = JSON.parse(read('../src/contract_samples/proposal_data.json')) as Record<string, unknown>;
 const EXEMPLE = CONTRAT.exemple as unknown as ProposalResponse;
-const PAGE = read('../src/pages/proposition/[...token].astro');
+const PAGE = lirePageProposition();
 
 /** Les liens PDF du gabarit : `href={pdfUrl}` ou sa variante `?variante=`. */
 const LIEN_PDF = /href=\{(?:showPdfVariants \? `\$\{pdfUrl\}\?variante=\$\{pdfVariantDefault\}` : )?pdfUrl\}/g;

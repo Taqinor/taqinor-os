@@ -53,6 +53,14 @@ MESSAGE_A_CONFIRMER = 'production à confirmer au calepinage'
 #: aucune ventilation). Surimposition = « entre les deux » (manuel PVGIS) : le
 #: cas le MOINS favorable est retenu.
 MONTAGE_PVGIS_DE_LA_POSE = {'toiture_inclinee': 'building', 'bac_acier': 'building'}
+#: CMP5 — décision fondateur du 27/10/2026 (Reda, D-CMP-4=c) : un toit plat
+#: (lesté ou fixé) sans inclinaison déclarée garde 30° plein sud ;
+#: l'inclinaison réelle des panneaux se saisit dans le générateur (étude C&I,
+#: ``toit.pente_deg``) et passe alors devant ce défaut.
+POSES_TOIT_PLAT = frozenset({'toit_plat_leste', 'toit_plat_fixe'})
+ANGLE_TOIT_PLAT_DEG = float(PVGIS_ANGLE_DEG)
+SOURCE_ANGLE_TOIT_PLAT = ('toit plat sans inclinaison déclarée : 30° (décision fondateur du '
+                          '27/10/2026), modifiable dans le générateur')
 HEURES_AN = 8760
 METHODE_8760 = 'horaire_8760'
 METHODE_JOURNEES_MOYENNES = 'journees_moyennes'
@@ -124,7 +132,9 @@ def traces_production(production, *, source=None, toit=None):
     serie = production.get('serie_horaire') or None
     angle = production.get('inclinaison_deg', PVGIS_ANGLE_DEG)
     aspect = production.get('azimut_deg', PVGIS_ASPECT_DEG)
-    for cle, valeur, declare, defaut in (('inclinaison_deg', angle, pente, 'pvgis_profils.PVGIS_ANGLE_DEG'),
+    # CMP5 — la source de l'angle voyage avec le bloc (pose estimée comprise).
+    defaut_angle = production.get('inclinaison_source') or 'pvgis_profils.PVGIS_ANGLE_DEG'
+    for cle, valeur, declare, defaut in (('inclinaison_deg', angle, pente, defaut_angle),
                                          ('azimut_deg', aspect, azimut, 'pvgis_profils.PVGIS_ASPECT_DEG')):
         lu = serie is not None and declare is not None
         hypotheses.append({'cle': cle, 'valeur': valeur, 'source': 'toit déclaré' if lu else defaut,
@@ -160,7 +170,11 @@ def plan_de_production(toit):
     déclarée ou estimée (D-ACI-13, résolue par l'appelant)."""
     toit = toit or {}
     pente, azimut = toit.get('pente_deg'), toit.get('azimut_deg')
+    source_angle = None
+    if pente is None and toit.get('type_pose') in POSES_TOIT_PLAT:
+        pente, source_angle = ANGLE_TOIT_PLAT_DEG, SOURCE_ANGLE_TOIT_PLAT
     return {'angle_deg': PVGIS_ANGLE_DEG if pente is None else _num(pente),
+            'source_angle': source_angle,
             'aspect_deg': PVGIS_ASPECT_DEG if azimut is None else _num(azimut),
             'montage': MONTAGE_PVGIS_DE_LA_POSE.get(toit.get('type_pose'), 'free')}
 
@@ -261,6 +275,8 @@ def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnee
         'methode_autoconso': METHODE_8760 if depuis_serie else METHODE_JOURNEES_MOYENNES,
         'serie_horaire': None,
     }
+    if depuis_serie and plan.get('source_angle'):
+        production['inclinaison_source'] = plan['source_angle']
     if depuis_serie:
         (production['serie_horaire'], production['kwh_kwc_mensuel'],
          production['jours_types']) = depuis_serie

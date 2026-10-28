@@ -46,6 +46,11 @@ SOURCE_DECISION = 'décision fondateur du 26/10/2026 — devis C&I à deux optio
 SOURCE_REMPLISSAGE = 'règle QJR612 « batteries toujours pleines » (fondateur 30/09/2026)'
 SOURCE_HORIZON_AVEC = ('règle des 10 ans de la taille C&I (taille.grimper_avec_regard, '
                        'fondateur 26/10/2026)')
+#: CMP3 (D-CMP-3) — hybrides basse tension en parallèle : borne de fiche.
+MAX_HYBRIDES_PARALLELE = 10
+SOURCE_PARALLELE = (
+    'datasheet Deye SUN-14-20K-SG05LP3-EU-SM2 (2024-06-01) et '
+    'SUN-3-12K-SG05LP3-EU-SM2 (2024-09-27) : « Max. 10 pcs parallel »')
 #: Seuil (kWh) sous lequel une heure n'a « pas de production solaire ».
 EPSILON_KWH = 1e-6
 
@@ -79,9 +84,11 @@ def _charges(charge_jours_types):
 
 
 def besoin_nocturne_kwh(charge_jours_types, bilan):
-    """kWh consommés HORS des heures de production solaire, sur une journée
-    MOYENNE de l'année (jours types pondérés par leur nombre de jours) : la
-    charge des heures où le bilan horaire ne produit rien."""
+    """kWh de déficit (charge − production) HORS de la fenêtre solaire d'une
+    journée MOYENNE (jours types pondérés par leur nombre de jours) : tout ce
+    qui se situe avant la première heure de surplus et après la dernière (le
+    soir à faible production compris). Jour type sans surplus ⇒ 0 (rien ne
+    charge la banque)."""
     charges = _charges(charge_jours_types)
     total = jours = 0.0
     for bloc in (bilan or {}).get('horaire') or []:
@@ -89,9 +96,13 @@ def besoin_nocturne_kwh(charge_jours_types, bilan):
         if not charge or len(charge) != HEURES:
             continue
         nb = _f(bloc.get('nb_jours')) or 0.0
-        production = [(_f(a) or 0.0) + (_f(s) or 0.0) for a, s in
-                      zip(bloc.get('autoconso_kwh') or [], bloc.get('surplus_kwh') or [])]
-        nuit = sum(c for c, p in zip(charge, production) if p <= EPSILON_KWH)
+        auto = [_f(a) or 0.0 for a in bloc.get('autoconso_kwh') or []]
+        surplus = [_f(s) or 0.0 for s in bloc.get('surplus_kwh') or []]
+        heures = [h for h, s in enumerate(surplus) if s > EPSILON_KWH]
+        nuit = 0.0
+        if heures:
+            nuit = sum(max(0.0, c - a) for h, (c, a) in enumerate(zip(charge, auto))
+                       if h < heures[0] or h > heures[-1])
         total += nuit * nb
         jours += nb
     return total / jours if jours else 0.0
@@ -162,13 +173,39 @@ def puissance_charge_kw(banque, onduleurs, hybrides):
     return min(bornes) if bornes else None
 
 
-def _batterie_sur_jour(charge, bloc, capacite, rendement, borne_charge, simuler):
+def puissance_decharge_kw(banque, onduleurs, hybrides):
+    """CMP7 — goulot de DÉCHARGE (kW) : Σ des packs (``max_decharge_kw``) et Σ
+    des ports batterie des hybrides (``bat_max_decharge_kw``), le plus petit
+    des publiés, plafonné par Σ kW AC de la combinaison ; ``None`` si aucune
+    borne n'est publiée (comportement d'avant : aucune borne)."""
+    bornes = []
+    pack = _f((banque or {}).get('max_decharge_kw'))
+    if pack and int((banque or {}).get('quantite') or 0):
+        bornes.append(pack * int(banque.get('quantite')))
+    fiches = {h.get('produit'): h for h in hybrides or []}
+    items = [(fiches.get(i.get('produit')) or {}, int(i.get('quantite') or 0))
+             for i in (onduleurs or {}).get('combinaison') or []]
+    ports = [_f(h.get('bat_max_decharge_kw')) for h, _q in items]
+    if items and all(ports):
+        bornes.append(sum(p * q for p, (_h, q) in zip(ports, items)))
+    if not bornes:
+        return None
+    ac = [_f(h.get('kw_ac')) for h, _q in items]
+    if items and all(ac):
+        bornes.append(sum(a * q for a, (_h, q) in zip(ac, items)))
+    return min(bornes)
+
+
+def _batterie_sur_jour(charge, bloc, capacite, rendement, borne_charge, simuler,
+                       borne_decharge=None):
     """``(autoconso[24], surplus[24], restitué, chargé)`` d'un jour type avec
     la batterie : déficit = charge non couverte, surplus = production
     non autoconsommée ; LE simulateur résidentiel (``simuler``) tranche."""
     auto = [_f(v) or 0.0 for v in bloc.get('autoconso_kwh') or []]
     surplus = [_f(v) or 0.0 for v in bloc.get('surplus_kwh') or []]
     deficit = [max(0.0, c - a) for c, a in zip(charge, auto)]
+    if borne_decharge is not None:       # CMP7 : kW = kWh sur un pas d'une heure
+        deficit = [min(d, borne_decharge) for d in deficit]
     sim = simuler(deficit, surplus, capacite, rendement=rendement,
                   puissance_charge_kw=borne_charge)
     auto2 = [a + r for a, r in zip(auto, sim['restitue_24h'])]
@@ -177,7 +214,8 @@ def _batterie_sur_jour(charge, bloc, capacite, rendement, borne_charge, simuler)
 
 
 def bilan_avec_batterie(bilan, charge_jours_types, capacite_kwh, *, rendement, simuler,
-                        puissance_charge_kw=None, tension=None, revente_choisie=False):
+                        puissance_charge_kw=None, puissance_decharge_kw=None, tension=None,
+                        revente_choisie=False):
     """Le bloc ``bilan`` (même forme que ``autoconso.bilan_horaire``) quand la
     batterie déplace le surplus du jour vers le soir et la nuit. La
     production ne change pas ; l'autoconsommation monte, le surplus baisse."""
@@ -188,7 +226,8 @@ def bilan_avec_batterie(bilan, charge_jours_types, capacite_kwh, *, rendement, s
     for bloc in (bilan or {}).get('horaire') or []:
         charge = charges.get((bloc.get('mois'), bloc.get('type_jour'))) or [0.0] * HEURES
         auto, surplus, rest, chg = _batterie_sur_jour(charge, bloc, capacite_kwh, rendement,
-                                                      puissance_charge_kw, simuler)
+                                                      puissance_charge_kw, simuler,
+                                                      puissance_decharge_kw)
         nb = _f(bloc.get('nb_jours')) or 0.0
         horaire.append(dict(bloc, autoconso_kwh=[round(v, 3) for v in auto],
                             surplus_kwh=[round(v, 3) for v in surplus]))
@@ -256,6 +295,12 @@ def _combinaison_tenue(onduleurs, ps_kva):
     return ps_kva is None or _puissance_ac(onduleurs) <= ps_kva + 1e-9
 
 
+def _borne_parallele_mord(combiner, n_haut, pmax_wc):
+    """CMP3 — la limite d'appareils en parallèle empêche le champ maximal."""
+    res = combiner(_kwc(n_haut, pmax_wc)) or {}
+    return any(a.get('code') == 'OND_PARALLELE_MAX' for a in res.get('alertes') or [])
+
+
 def _sans_option(motif, *, prix=None, alertes=None):
     return {'evaluation': None, 'motif': motif, 'prix_a_renseigner': list(prix or []),
             'alertes': list(alertes or []), 'hypotheses': []}
@@ -281,9 +326,11 @@ def evaluer_option_avec(kwc, onduleurs, composition, banque, *, charge, producti
     capacite = capacite_banque(banque)
     rendement = _f(banque.get('rendement')) or 1.0
     borne = puissance_charge_kw(banque, onduleurs, hybrides)
+    borne_dech = puissance_decharge_kw(banque, onduleurs, hybrides)
     surplus_min, mois_min = surplus_jour_min(bilan)
     bilan_b = bilan_avec_batterie(bilan, charge, capacite, rendement=rendement, simuler=simuler,
-                                  puissance_charge_kw=borne, tension=tension,
+                                  puissance_charge_kw=borne, puissance_decharge_kw=borne_dech,
+                                  tension=tension,
                                   revente_choisie=revente_choisie)
     economie = valoriser(bilan_b)
     return {
@@ -298,7 +345,7 @@ def evaluer_option_avec(kwc, onduleurs, composition, banque, *, charge, producti
             'quantite': int(banque.get('quantite') or 0),
             'kwh_utile_unitaire': _f(banque.get('kwh_utile')),
             'capacite_utile_kwh': round(capacite, 2), 'rendement': rendement,
-            'puissance_charge_kw': borne,
+            'puissance_charge_kw': borne, 'puissance_decharge_kw': borne_dech,
             'surplus_jour_min_kwh': round(surplus_min, 2), 'mois_surplus_min': mois_min,
             'se_remplit_tous_les_jours': round(capacite, 2) <= round(surplus_min, 2),
         },
@@ -349,13 +396,24 @@ def _champ_rempli(initiale, *, n_bas, n_haut, pmax_wc, bilan_de, combiner, ps_kv
                                           bilan_de=bilan_de)
     onduleurs = combiner(_kwc(n, pmax_wc)) or {}
     if not _combinaison_tenue(onduleurs, ps_kva):
+        borne_cmp3 = False
         # La puissance souscrite (ou le vivier d'hybrides) borne le champ.
-        if not _combinaison_tenue(combiner(_kwc(n_bas, pmax_wc)), ps_kva):
+        if not _combinaison_tenue(combiner(_kwc(n_bas, pmax_wc)), ps_kva) and (
+                _borne_parallele_mord(combiner, n_bas, pmax_wc)
+                and _combinaison_tenue(combiner(_kwc(1, pmax_wc)), ps_kva)):
+            # CMP3 — le départ dépasse ce que 10 hybrides portent : le champ
+            # « avec » est le plus grand champ porté, pas une absence d'option.
+            n_bas = _plus_grand(1, n_bas, lambda m: _combinaison_tenue(
+                combiner(_kwc(m, pmax_wc)), ps_kva))
+            n_haut = n_bas
+            borne_cmp3 = True
+        elif not _combinaison_tenue(combiner(_kwc(n_bas, pmax_wc)), ps_kva):
             return _sans_option(
                 "aucune combinaison d'onduleurs hybrides basse tension tarifés ne porte le champ",
                 prix=_onduleurs_sans_prix(onduleurs))
-        n_haut = _plus_grand(n_bas, n, lambda m: _combinaison_tenue(
-            combiner(_kwc(m, pmax_wc)), ps_kva))
+        if not borne_cmp3:
+            n_haut = _plus_grand(n_bas, max(n, n_bas), lambda m: _combinaison_tenue(
+                combiner(_kwc(m, pmax_wc)), ps_kva))
         n, banque, reduite = _champ_et_banque(initiale, n_bas=n_bas, n_haut=n_haut,
                                               bilan_de=bilan_de)
     if banque is None:
@@ -444,14 +502,21 @@ def dimensionner_option_avec(*, kwc_depart, pmax_wc, charge, production, tension
     evaluation = monter_regle_10_ans(n, n_haut, pmax_wc, evaluer)
     if evaluation is None:
         return _sans_option("aucune combinaison d'onduleurs hybrides basse tension tarifés ne porte le champ")
+    mord = _borne_parallele_mord(combiner, evaluation['n'] + 1, pmax_wc)
+    borne_parallele = [_alerte('HYBRIDES_PARALLELE_MAX', (
+        'Champ « avec batterie » borné à %.1f kWc : le plus grand champ porté par au plus '
+        '%d hybrides en parallèle (%s).' % (evaluation['kwc'], MAX_HYBRIDES_PARALLELE,
+                                            SOURCE_PARALLELE)))] if mord else []
+    n_final = evaluation.pop('n')
     evaluation['batterie'].update(besoin_nocturne_kwh=round(besoin, 2), reduite=reduite,
-                                  panneaux_ajoutes=evaluation.pop('n') - n_bas)
+                                  panneaux_ajoutes=max(0, n_final - n_bas),
+                                  panneaux_retires=max(0, n_bas - n_final))
     return {'evaluation': evaluation, 'motif': None,
             'prix_a_renseigner': list(evaluation['composition'].get('prix_a_renseigner') or []),
-            'alertes': [_alerte('BATTERIE_REDUITE_AU_TOIT', (
+            'alertes': borne_parallele + [_alerte('BATTERIE_REDUITE_AU_TOIT', (
                 'Banque réduite à %d module(s) : le surplus solaire du champ maximal ne remplit '
                 'pas davantage chaque jour (%s).' % (banque['quantite'], SOURCE_REMPLISSAGE)))]
-            if reduite else [],
+            if reduite else borne_parallele,
             'hypotheses': [{'cle': 'option_avec_batterie', 'valeur': evaluation['kwc'],
                             'statut': 'source',
                             'source': '%s ; %s ; %s' % (SOURCE_DECISION, SOURCE_REMPLISSAGE,

@@ -88,6 +88,11 @@ class _Base(TestCase):
         CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
             cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ120 de test'}
             for cle in FORFAITS_TEST}})
+        # CORC6 — chaque prestation réglée a son article (rôle = clé du forfait),
+        # comme le semis ``seed_catalogue`` (CI-ETUDES…CI-TRANSPORT).
+        for cle in FORFAITS_TEST:
+            Produit.objects.create(company=cls.co, nom='Prestation %s' % cle, role_ci=cle,
+                                   prix_vente=Decimal('0'), prix_achat=Decimal('0'))
 
     def setUp(self):
         patcher = mock.patch.object(etude_ci, 'lire_production',
@@ -113,6 +118,17 @@ class _Base(TestCase):
         # officielle (BT patenté, MT général) — jamais un prix plat.
         with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
             return build_devis_auto(lead=lead, user=self.user, company=self.co)
+
+    # ADEV76 / CORC6 : un refus nommé, rien d'écrit (partagé par les classes).
+    def _refus(self, lead, *, reel=False):
+        avant = Devis.objects.filter(company=self.co).count()
+        with self.assertRaises(AutoDevisError) as ctx:
+            if reel:
+                build_devis_auto(lead=lead, user=self.user, company=self.co)
+            else:
+                self._auto(lead)
+        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+        return ctx.exception
 
 
 _TARIF_APPLICABLE = tarif_ci.tarif_applicable
@@ -193,16 +209,6 @@ class DevisAutoCITests(_Base):
         self.assertEqual(ctx.exception.field, 'type_installation')
 
     # ── ADEV76 : les refus nomment un CHAMP DU LEAD ─────────────────────────
-
-    def _refus(self, lead, *, reel=False):
-        avant = Devis.objects.filter(company=self.co).count()
-        with self.assertRaises(AutoDevisError) as ctx:
-            if reel:
-                build_devis_auto(lead=lead, user=self.user, company=self.co)
-            else:
-                self._auto(lead)
-        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
-        return ctx.exception
 
     def test_lead_1637_sans_rythme_ni_categorie_ni_contrat_nomme_le_contrat(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), facture_hiver=Decimal('18000'),
@@ -383,6 +389,21 @@ def _batterie(co, nom, utile, prix, charge_kw):
     return produit
 
 
+class RefusConsigneVendeurCorc3Tests(_Base):
+    """CORC3 (27/10/2026) — un lead sans contrat d'électricité : le refus
+    nomme le champ du lead et donne une CONSIGNE au vendeur, jamais le
+    jargon du moteur (« Tarif non déclaré … économies non chiffrées »)."""
+
+    def test_contrat_absent_consigne_vendeur(self):
+        with self.assertRaises(AutoDevisError) as ctx:
+            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
+                             user=self.user, company=self.co)
+        erreur = ctx.exception
+        self.assertEqual(erreur.field, 'contrat_electricite')
+        self.assertTrue(erreur.message.startswith("Demandez au client son contrat"))
+        self.assertNotIn('Tarif non déclaré', erreur.message)
+
+
 class OptionBatterieCITests(_Base):
     """Fondateur 26/10/2026 — un devis C&I automatique porte DEUX options
     « sans » / « avec batterie » comme le résidentiel : hybrides Deye BASSE
@@ -425,6 +446,10 @@ class OptionBatterieCITests(_Base):
     def test_boulangerie_deux_options_hybrides_bt_et_banque_dyness(self):
         devis = self._auto(self._boulangerie())
         self.assertEqual(devis.etude_params.get('scenario'), 'Les deux (Sans + Avec)')
+        # CORC9 — CIQ302 : l'offre réseau est mise en avant (jamais « avec »).
+        self.assertEqual(devis.etude_params.get('recommended_option'), 'Sans batterie')
+        from apps.ventes.quote_engine.builder import build_quote_data
+        self.assertEqual(build_quote_data(devis)['recommended'], 'Sans batterie')
         sans, avec = self._ids(devis, 'sans'), self._ids(devis, 'avec')
         self.assertIn(self.onduleur.id, sans)
         hybrides = {self.h10.id, self.h15.id, self.h20.id}
@@ -577,3 +602,327 @@ class DesignationOptionAvecTests(SimpleTestCase):
                          'Onduleur hybride Deye 20kW')
         self.assertEqual(designation_option_avec('Dyness PowerBrick SC 16 kWh', 'batterie'),
                          'Batterie Dyness PowerBrick SC 16 kWh')
+
+
+class RetourOptionAvecFluxTests(SimpleTestCase):
+    """CMP6 — ``option_avec.retour_simple_ans`` est le retour lu sur le flux
+    25 ans de ``flux_option_avec`` (dégradation, remplacement des hybrides et de
+    la batterie), comparable à celui de l'option « sans » — plus le quotient
+    coût ÷ économie an 1."""
+
+    ECONOMIE_AN1 = 40000.0
+
+    class _Valoriseur:
+        def __init__(self, statut='calcule'):
+            self.statut = statut
+
+        def complet(self, bilan):
+            return {'statut': self.statut, 'economie_annee1': {
+                'total_mad': 40000.0, 'total_mad_ttc': 48000.0,
+                'par_poste': [{'kwh_evites': 30000.0}]}}
+
+    def _evaluation(self, incomplet=False):
+        return {
+            'kwc': 50, 'puissance_ac': 30, 'batterie': {'produit': 1},
+            'cout': 540000.0, 'economie': self.ECONOMIE_AN1,
+            'bilan': {'production_kwh': 80000.0},
+            'onduleurs': {'combinaison': [], 'prix_vente_total_ht': '60000.00'},
+            'composition': {'incomplet': incomplet, 'lignes': [
+                {'role': 'panneau', 'designation': 'Panneau', 'quantite': 80,
+                 'prix_connu': True, 'prix_unitaire_ht': '3000'},
+                {'role': 'batterie_ci', 'designation': 'Dyness 16 kWh', 'quantite': 4,
+                 'prix_connu': True, 'prix_unitaire_ht': '60000'}]}}
+
+    def _ctx(self):
+        return {'taux_tva_pct': 20, 'batterie': {'garantie_mois': 120}}
+
+    def test_retour_lu_sur_le_flux_pas_sur_le_quotient(self):
+        from apps.ventes import economie_ci as eco
+        from apps.ventes.domain.etude_ci_batterie import _bloc
+        from apps.ventes.economie_ci_options import (
+            annee_remplacement_batterie, flux_option_avec,
+        )
+        bloc = _bloc(self._evaluation(), self._Valoriseur(), self._ctx())
+        base = eco.base_economique(
+            None, investissement={'ht': 540000.0, 'ttc': 648000.0},
+            economie_annee1=self._Valoriseur().complet(None)['economie_annee1'])
+        attendu = flux_option_avec(
+            base, lignes=[
+                {'designation': 'Onduleur(s) hybride(s)', 'ht': 60000.0, 'ttc': 72000.0,
+                 'onduleur': True, 'optionnelle': False},
+                {'designation': 'Panneau', 'ht': 240000.0, 'ttc': 288000.0,
+                 'optionnelle': False},
+                {'designation': 'Batterie Dyness 16 kWh', 'ht': 240000.0, 'ttc': 288000.0,
+                 'optionnelle': False}],
+            batterie=annee_remplacement_batterie(120, None),
+            production_annee1_kwh=80000.0, kwh_evites_an=30000.0)
+        retour = attendu['indicateurs']['retour_dixieme_ans']
+        self.assertEqual(bloc['retour_simple_ans'], retour)
+        self.assertEqual(bloc['economie_flux']['indicateurs']['retour_dixieme_ans'], retour)
+        # L'ancien quotient (540 000 / 40 000 = 13,5) ignorait dégradation et remplacements.
+        self.assertEqual(round(540000.0 / self.ECONOMIE_AN1, 1), 13.5)
+        self.assertNotEqual(bloc['retour_simple_ans'], 13.5)
+        self.assertGreater(bloc['retour_simple_ans'], 13.5)
+        composants = {r['composant'] for r in bloc['economie_flux']['remplacements']}
+        self.assertEqual(composants, {'onduleur', 'batterie'})
+
+    def test_aucune_entree_aucun_quotient(self):
+        from apps.ventes.domain.etude_ci_batterie import _bloc
+        # composition incomplète (prix à renseigner / après visite)
+        self.assertIsNone(_bloc(self._evaluation(incomplet=True), self._Valoriseur(),
+                                self._ctx())['retour_simple_ans'])
+        # économie omise par le valoriseur
+        omis = _bloc(self._evaluation(), self._Valoriseur('omis'), self._ctx())
+        self.assertIsNone(omis['retour_simple_ans'])
+        self.assertIsNone(omis['economie_flux'])
+        # pas de valoriseur : le bloc se sert, sans retour
+        self.assertIsNone(_bloc(self._evaluation(), None, self._ctx())['retour_simple_ans'])
+
+    def test_tva_suit_le_lead_et_la_base_du_flux(self):
+        from types import SimpleNamespace as L
+
+        from apps.ventes.domain.etude_ci_batterie import _bloc, option_avec_de_l_etude
+        vus = {}
+
+        def espion(imposee, contexte):
+            vus.update(contexte)
+            return {}
+        with mock.patch('apps.ventes.domain.etude_ci_batterie._option_imposee', espion):
+            option_avec_de_l_etude({}, None, choix='avec', lead=L(tva_recuperable='non'),
+                                   imposee={'x': 1}, taux_tva_pct=20)
+        self.assertEqual(vus['tva_recuperable']['valeur'], 'non')
+        self.assertEqual(vus['tva_recuperable']['provenance'], 'lead')
+        with mock.patch('apps.ventes.domain.etude_ci_batterie._option_imposee', espion):
+            option_avec_de_l_etude({}, None, choix='avec', lead=None, imposee={'x': 1})
+        self.assertEqual(vus['tva_recuperable']['valeur'], 'inconnu')
+        for valeur, base in (('oui', 'ht'), ('non', 'ttc'), ('inconnu', 'deux')):
+            ctx = dict(self._ctx(), tva_recuperable=valeur)
+            bloc = _bloc(self._evaluation(), self._Valoriseur(), ctx)
+            self.assertEqual(bloc['economie_flux']['base'], base)
+
+    def test_sans_tva_standard_le_remplacement_onduleur_reste(self):
+        from apps.ventes.domain.etude_ci_batterie import _bloc, _investissement_composition
+        avec_tva = _bloc(self._evaluation(), self._Valoriseur(), self._ctx())
+        ctx = {'taux_tva_pct': None, 'batterie': {'garantie_mois': 120}}
+        invest = _investissement_composition(self._evaluation(), None)
+        self.assertIsNone(invest['ttc'])
+        self.assertTrue(all(x['ttc'] == x['ht'] for x in invest['lignes']))
+        sans_tva = _bloc(self._evaluation(), self._Valoriseur(), ctx)
+        self.assertEqual({r['composant'] for r in sans_tva['economie_flux']['remplacements']},
+                         {'onduleur', 'batterie'})
+        self.assertEqual(sans_tva['retour_simple_ans'], avec_tva['retour_simple_ans'])
+
+    def test_option_des_lignes_lue_comme_l_option_sans(self):
+        import contextlib
+
+        from apps.ventes.domain.etude_ci_batterie import _bloc, _investissement_des_lignes
+        devis = object()
+        detail = [
+            {'designation': 'Onduleur hybride', 'ht': 54000.0, 'ttc': 64800.0,
+             'optionnelle': False, 'onduleur': True, 'role_ci': None},
+            {'designation': 'Batterie Dyness', 'ht': 216000.0, 'ttc': 259200.0,
+             'optionnelle': False, 'onduleur': False, 'role_ci': None},
+            {'designation': 'Panneaux', 'ht': 216000.0, 'ttc': 237600.0,
+             'optionnelle': False, 'onduleur': False, 'role_ci': None},
+            {'designation': 'O&M', 'ht': 2000.0, 'ttc': 2400.0,
+             'optionnelle': False, 'onduleur': False, 'role_ci': 'om_ci'}]
+        # totaux NETS (remise globale de 10 % déjà déduite) : jamais la somme brute des lignes
+        cibles = {'apps.ventes.utils.options.option_effective': {'return_value': ''},
+                  'apps.ventes.utils.options.option_totaux':
+                  {'return_value': {'ht': 488000.0, 'ttc': 564000.0}},
+                  'apps.ventes.economie_ci.lignes_pour_economie_ci': {'return_value': detail},
+                  'apps.ventes.domain.regles_calcul.calcul_corrige': {'return_value': True}}
+        with contextlib.ExitStack() as pile:
+            for cible, options in cibles.items():
+                pile.enter_context(mock.patch(cible, **options))
+            invest = _investissement_des_lignes([], devis)
+        self.assertEqual(invest['ht'], 486000.0)       # O&M sortie de l'année 0 (CEC1)
+        self.assertEqual(invest['ttc'], 561600.0)
+        self.assertIs(invest['lignes'], detail)
+        evaluation = dict(self._evaluation(), cout=None, composition=None,
+                          onduleurs={'combinaison': []})
+        bloc = _bloc(evaluation, self._Valoriseur(), self._ctx(), investissement=invest)
+        self.assertGreater(bloc['retour_simple_ans'], 486000.0 / self.ECONOMIE_AN1)
+        # l'argent du devis suit l'option « sans » (accepté) : pas de retour de l'option « avec »
+        with mock.patch('apps.ventes.utils.options.option_effective', return_value='sans_batterie'):
+            self.assertIsNone(_investissement_des_lignes([], devis))
+        # sans devis (ni ``ligne.devis``) : rien
+        self.assertIsNone(_investissement_des_lignes([], None))
+
+    def test_pack_publie_sans_quantite_ne_borne_pas_a_zero(self):
+        from apps.ventes.moteur_ci.batterie import puissance_decharge_kw
+        self.assertIsNone(puissance_decharge_kw({'max_decharge_kw': 5.0, 'quantite': 0}, None, []))
+        self.assertEqual(puissance_decharge_kw({'max_decharge_kw': 5.0, 'quantite': 3}, None, []), 15.0)
+
+
+class OptionAvecDomineeTests(SimpleTestCase):
+    """CMP9 (D-CMP-5) — une option « avec » plus chère ET moins économe que
+    l'option « sans » n'est pas proposée (alerte interne ; bloquante si le
+    lead a choisi « avec »)."""
+
+    SANS = {'kwc': 260, 'cout': 928317.0, 'economie': 233192.0}
+
+    def _avec(self, cout, economie):
+        return {'kwc': 199, 'cout': cout, 'economie': economie, 'batterie': {'produit': 1},
+                'bilan': {}, 'composition': {'lignes': []}, 'onduleurs': {'combinaison': []}}
+
+    def _lancer(self, avec, choix='les_deux', alertes=()):
+        from apps.ventes.domain import etude_ci_batterie as m
+        resultat = {'evaluation': avec, 'prix_a_renseigner': [], 'hypotheses': [],
+                    'alertes': list(alertes), 'motif': None}
+        catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
+        with mock.patch.object(m, 'batteries_compatibles', return_value=[1]), \
+                mock.patch.object(m, '_dimensionner', return_value=resultat), \
+                mock.patch.object(m, '_bloc', return_value={'kwc': 199}):
+            return m.option_avec_de_l_etude(catalogue, dict(self.SANS), choix=choix, lead=None,
+                                            tva_recuperable={'valeur': 'inconnu'})
+
+    def test_option_dominee_aucun_bloc_alerte_interne_nommant_la_cause(self):
+        borne = {'code': 'HYBRIDES_PARALLELE_MAX', 'message': 'x'}
+        sortie = self._lancer(self._avec(1140483.0, 229971.0), alertes=[borne])
+        self.assertIsNone(sortie['bloc'])
+        alerte = next(a for a in sortie['alertes'] if a['code'] == 'OPTION_BATTERIE_DOMINEE')
+        self.assertEqual(alerte['niveau'], 'alerte')
+        self.assertTrue(alerte['interne'])
+        for texte in ('1140483', '928317', '229971', '233192', 'parallèle'):
+            self.assertIn(texte, alerte['message'])
+
+    def test_choix_avec_du_lead_refus_bloquant(self):
+        sortie = self._lancer(self._avec(1140483.0, 229971.0), choix='avec')
+        self.assertIsNone(sortie['bloc'])
+        alerte = next(a for a in sortie['alertes'] if a['code'] == 'OPTION_BATTERIE_DOMINEE')
+        self.assertEqual(alerte['niveau'], 'bloquant')
+
+    def test_option_non_dominee_inchangee(self):
+        sortie = self._lancer(self._avec(1140483.0, 260000.0))
+        self.assertEqual(sortie['bloc'], {'kwc': 199})
+        self.assertFalse([a for a in sortie['alertes'] if a['code'] == 'OPTION_BATTERIE_DOMINEE'])
+
+    def test_cout_ou_economie_manquant_aucun_verdict(self):
+        for avec in (self._avec(None, 100.0), self._avec(2e6, None)):
+            self.assertIsNotNone(self._lancer(avec)['bloc'])
+        from apps.ventes.domain.etude_ci_batterie import _option_dominee
+        self.assertFalse(_option_dominee({'cout': None, 'economie': 1.0}, self._avec(2e6, 0.5)))
+
+
+class RevisionApresVisiteCorc2Tests(_Base):
+    """CORC2 (27/10/2026) — le devis C&I préliminaire est RECOMPOSÉ avec les
+    mesures de la visite C&I validée : brouillon sur place, sinon V+1 ;
+    aucun statut écrit ; contrat ``devis_revise_visite.json``."""
+
+    def _visite(self, lead, dc=10, ac=45):
+        from apps.visites.models import VisiteTerrain
+        return VisiteTerrain.objects.create(
+            company=self.co, lead=lead, gabarit='ci', statut=VisiteTerrain.Statut.VALIDEE,
+            mesures={'cheminement': {'trajets': [
+                {'libelle': 'a', 'longueur_dc_m': dc, 'longueur_ac_m': ac}]}})
+
+    def _reviser(self, devis):
+        from apps.ventes.domain.revision_visite_ci import reviser_devis_apres_visite
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            return reviser_devis_apres_visite(devis, user=self.user)
+
+    def _quantite(self, devis, role_nom):
+        return sum(ligne.quantite for ligne in devis.lignes.all()
+                   if role_nom in ligne.designation)
+
+    def test_sans_visite_validee_refus_nomme(self):
+        from apps.ventes.domain.revision_visite_ci import RevisionVisiteError
+        devis = self._auto(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        with self.assertRaises(RevisionVisiteError) as ctx:
+            self._reviser(devis)
+        self.assertEqual(ctx.exception.champ, 'visite')
+
+    def test_brouillon_recompose_sur_place_avec_les_mesures(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        devis = self._auto(lead)
+        ac_avant = self._quantite(devis, 'Câble AC')
+        self._visite(lead)
+        resultat = self._reviser(devis)
+        self.assertFalse(resultat['cree'])
+        self.assertEqual(resultat['devis'].pk, devis.pk)
+        self.assertEqual(resultat['devis'].statut, Devis.Statut.BROUILLON)
+        self.assertNotEqual(self._quantite(resultat['devis'], 'Câble AC'), ac_avant)
+        self.assertIn('longueur_ac_m', [m['cle'] for m in resultat['mesures_utilisees']])
+        self.assertTrue(resultat['lignes_changees'])
+
+    def test_taille_vendue_gardee(self):
+        from apps.ventes.domain.etudes import puissances_etude_horaire
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        devis = self._auto(lead)
+        avant = puissances_etude_horaire(devis)
+        self._visite(lead)
+        apres = puissances_etude_horaire(self._reviser(devis)['devis'])
+        self.assertEqual(apres, avant)
+
+    def test_refus_apres_revision_rien_ecrit(self):
+        # Fable pré-merge : un refus (ici prestations non réglées) après la
+        # révision d'un envoyé ne laisse ni V1 remplacée ni V2 orpheline.
+        from apps.ventes.domain.revision_visite_ci import RevisionVisiteError
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        devis = self._auto(lead)
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        devis.refresh_from_db()
+        self._visite(lead)
+        CompanyProfile.objects.filter(company=self.co).update(forfaits_ci={})
+        avant = Devis.objects.filter(company=self.co).count()
+        with self.assertRaises(RevisionVisiteError):
+            self._reviser(devis)
+        devis.refresh_from_db()
+        self.assertTrue(devis.is_active)
+        self.assertIsNone(devis.superseded_by_id)
+        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+
+    def test_devis_envoye_v2_creee_v1_intacte(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        devis = self._auto(lead)
+        Devis.objects.filter(pk=devis.pk).update(statut=Devis.Statut.ENVOYE)
+        devis.refresh_from_db()
+        lignes_v1 = list(devis.lignes.values_list('designation', 'quantite'))
+        self._visite(lead)
+        resultat = self._reviser(devis)
+        self.assertTrue(resultat['cree'])
+        self.assertNotEqual(resultat['devis'].pk, devis.pk)
+        self.assertEqual(resultat['devis'].version, devis.version + 1)
+        devis.refresh_from_db()
+        self.assertEqual(devis.statut, Devis.Statut.ENVOYE)  # règle #4
+        self.assertEqual(list(devis.lignes.values_list('designation', 'quantite')), lignes_v1)
+
+
+class BrouillonsMultiplesCorc7Tests(_Base):
+    """CORC7 (27/10/2026) — un 2ᵉ devis automatique C&I sur le même lead
+    NOMME au vendeur le brouillon précédent ; rien n'est archivé (un devis
+    archivé ne se réactive plus)."""
+
+    def test_second_devis_auto_nomme_le_premier_sans_rien_archiver(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        premier = self._auto(lead)
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            second = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                      journal_auto=journal)
+        alerte = next(a for a in journal['alertes'] if a['code'] == 'brouillons_ci_multiples')
+        self.assertIn(premier.reference, alerte['message'])
+        self.assertNotIn(second.reference, alerte['message'])
+        premier.refresh_from_db()
+        self.assertTrue(premier.is_active)
+
+    def test_premier_devis_auto_aucune_alerte(self):
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
+                             user=self.user, company=self.co, journal_auto=journal)
+        self.assertNotIn('brouillons_ci_multiples', [a['code'] for a in journal['alertes']])
+
+
+class PrestationSansArticleCorc6Tests(_Base):
+    """CORC6 (27/10/2026, constat CCAT) — une prestation réglée SANS article
+    au catalogue fait refuser le devis automatique en la NOMMANT ; jamais un
+    total d'étude qui diverge du devis écrit."""
+
+    def test_prestation_sans_article_refus_nomme(self):
+        Produit.objects.filter(company=self.co, role_ci='transport_ci').delete()
+        erreur = self._refus(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertEqual(erreur.field, 'composition')
+        self.assertIn('Article manquant au catalogue', erreur.message)
+        self.assertIn('Transport', erreur.message)

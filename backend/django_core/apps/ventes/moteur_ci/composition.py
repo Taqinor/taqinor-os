@@ -381,10 +381,29 @@ def _du_role_tous(catalogue, role):
             and role in (p.get('role_ci'), p.get('role_devis'))]
 
 
-def _article_de_comptage(catalogue, onduleurs):
+def _marques_onduleurs(catalogue, onduleurs):
+    """CMP10 — les marques (minuscules) des onduleurs de la combinaison."""
+    par_id = _par_id(catalogue)
+    marques = set()
+    for item in (onduleurs or {}).get('combinaison') or []:
+        marque = str((par_id.get(item.get('produit')) or {}).get('marque') or '').strip().lower()
+        if marque:
+            marques.add(marque)
+    return marques
+
+
+def _marque_de(article):
+    return str((article or {}).get('marque') or '').strip().lower()
+
+
+def _article_de_comptage(catalogue, onduleurs, alertes=None):
     """ADEV82 — un article TARIFÉ passe devant un article sans prix ; à prix
     égal, le contrôleur d'injection, puis le compteur que la fiche des
-    onduleurs retenus dit compatible (``ond_compteurs_compatibles``)."""
+    onduleurs retenus dit compatible (``ond_compteurs_compatibles``).
+
+    CMP10 (D-CMP-6) — catalogue multi-marques : l'article compatible (fiche, à
+    défaut même ``marque`` que les onduleurs) d'abord ; aucun article tarifé
+    compatible ⇒ choix actuel gardé + alerte interne ``COMPTAGE_MARQUE_A_CONFIRMER``."""
     par_id = _par_id(catalogue)
     compatibles = set()
     for item in (onduleurs or {}).get('combinaison') or []:
@@ -403,6 +422,22 @@ def _article_de_comptage(catalogue, onduleurs):
              + [c for c in compteurs if c.get('prix_connu') and compatible(c)]
              + [c for c in compteurs if c.get('prix_connu')]
              + controleurs + compteurs)
+    marques = _marques_onduleurs(catalogue, onduleurs)
+    tarifes = [c for c in controleurs + compteurs if c.get('prix_connu')]
+    if marques and any(_marque_de(c) not in ('', *marques) for c in tarifes):
+        def par_fiche(p):
+            texte = ('%s %s' % (p.get('nom') or '', p.get('marque') or '')).lower()
+            return any(t in texte for t in compatibles)
+        # La fiche d'abord, puis la même marque (ordre ADEV82 gardé dans chaque rang).
+        preferes = [c for c in tarifes if par_fiche(c)]
+        preferes += [c for c in tarifes if _marque_de(c) in marques and c not in preferes]
+        if preferes:
+            return preferes[0]
+        if alertes is not None:
+            alertes.append(_alerte('COMPTAGE_MARQUE_A_CONFIRMER', (
+                "Comptage / limitation d'injection : aucun article tarifé compatible avec "
+                "la marque des onduleurs (%s) au catalogue — article actuel gardé, "
+                "compatibilité à confirmer." % ', '.join(sorted(marques)))))
     return ordre[0] if ordre else None
 
 
@@ -418,7 +453,7 @@ def _comptage(catalogue, nb_ond, entrees, lignes, alertes, onduleurs=None):
         points = None
     a_confirmer = points is None
     points = points or 1
-    article = _article_de_comptage(catalogue, onduleurs)
+    article = _article_de_comptage(catalogue, onduleurs, alertes)
     role = article.get('role_ci') if article else 'compteur_injection'
     fiche = (article or {}).get('fiche') or {}
     max_pilotes = fiche.get('lim_onduleurs_max')
@@ -440,10 +475,23 @@ def _comptage(catalogue, nb_ond, entrees, lignes, alertes, onduleurs=None):
             'de comptage compté, à confirmer à la visite'))
 
 
-def _logger(catalogue, nb_ond, lignes):
+def _logger(catalogue, nb_ond, lignes, onduleurs=None, alertes=None):
     if nb_ond < 2:
         return
     article = _du_role(catalogue, 'logger_supervision')
+    marques = _marques_onduleurs(catalogue, onduleurs)
+    loggers = [p for p in _du_role_tous(catalogue, 'logger_supervision') if p.get('prix_connu')]
+    if marques and any(_marque_de(p) not in ('', *marques) for p in loggers):
+        # CMP10 (D-CMP-6) — le logger de la marque des onduleurs d'abord.
+        meme = _du_role(catalogue, 'logger_supervision',
+                        lambda _f, p: _marque_de(p) in marques)
+        if meme is not None and meme.get('prix_connu'):
+            article = meme
+        elif alertes is not None:
+            alertes.append(_alerte('LOGGER_MARQUE_A_CONFIRMER', (
+                'Logger de supervision : aucun article tarifé de la marque des onduleurs '
+                '(%s) au catalogue — article actuel gardé, compatibilité à confirmer.'
+                % ', '.join(sorted(marques)))))
     max_sup = ((article or {}).get('fiche') or {}).get('log_onduleurs_max')
     quantite = int(math.ceil(nb_ond / float(max_sup))) if max_sup else 1
     # ADEV82 — « à confirmer fournisseur » seulement quand la fiche se tait
@@ -557,13 +605,14 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
         lignes[-1]['motif'] = lignes[-1]['motif'] or MOTIF_PRELIMINAIRE % (
             '2 × %d chaînes × %g m' % (nb_chaines, DISTANCE_DC_DEFAUT_M))
     else:
+        # D-CMP-2 (à revoir) — la distance déclarée est l'aller simple champ →
+        # onduleur : 2 conducteurs (+ / −) par chaîne, comme le défaut fondateur.
         nb_chaines = sum(int(c.get('nb_chaines') or 0) for c in chaines)
-        lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC',
-                             round(nb_chaines * longueur_dc, 2), 'm'))
+        metres = round(2 * nb_chaines * longueur_dc, 2)
+        lignes.append(_ligne('cable_dc', cable_dc, 'Câble solaire DC', metres, 'm'))
         hypotheses.append({
-            'cle': 'cable_dc_m', 'valeur': round(nb_chaines * longueur_dc, 2),
-            'statut': 'declare',
-            'source': '%d chaînes × %g m (longueur déclarée par chaîne)' % (
+            'cle': 'cable_dc_m', 'valeur': metres, 'statut': 'declare',
+            'source': '2 × %d chaînes × %g m (distance déclarée champ → onduleur)' % (
                 nb_chaines, longueur_dc)})
 
     # ── Coffrets DC (un par onduleur), protections et câble AC par onduleur
@@ -595,7 +644,7 @@ def composer_ci(kwc, catalogue, *, onduleurs, entrees, forfaits):
 
     # ── Comptage / limitation, logger, coffret AC
     _comptage(catalogue, nb_ond, entrees, lignes, alertes, onduleurs)
-    _logger(catalogue, nb_ond, lignes)
+    _logger(catalogue, nb_ond, lignes, onduleurs, alertes)
     lignes.append(_ligne('coffret_ac', _du_role(catalogue, 'coffret_ac'),
                          'Coffret AC C&I', 1, 'u'))
     _appliquer_bareme_coffret(lignes[-1], _du_role(catalogue, 'coffret_ac'),

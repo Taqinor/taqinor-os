@@ -610,8 +610,7 @@ def _extract_web_questionnaire(data):
     # réponses client réelles dans le blob `web_questionnaire` — le contraire
     # d'un nettoyage. NE PAS SUPPRIMER sans une preuve côté `apps/web`.
     _choice('categorieCommerciale', 'categorie_commerciale',
-            ('hotel', 'restaurant', 'commerce', 'bureau', 'sante', 'ecole',
-             'hammam', 'boulangerie', 'froid', 'autre'))
+            tuple(Lead.CategorieCommerciale.values))
     _num('chambres', 'chambres', hi=100000)
     _num('occupationPct', 'occupation_pct', hi=100)
     _num('chambresFroides', 'chambres_froides', hi=10000)
@@ -787,7 +786,8 @@ def _build_questionnaire_note(questionnaire, estimate, type_installation):
             'commerce': 'commerce', 'bureau': 'bureau', 'sante': 'santé',
             'ecole': 'école privée', 'hammam': 'hammam/spa', 'boulangerie':
             'boulangerie', 'froid': 'entrepôt froid', 'autre': 'commerce',
-        }.get(cat, cat)
+        }.get(cat, Lead.CategorieCommerciale(cat).label.lower()
+              if cat in Lead.CategorieCommerciale.values else cat)
         parts.append(f"catégorie {cat_lbl}")
     if questionnaire.get('chambres') is not None:
         parts.append(f"{fmt(questionnaire['chambres'])} chambres")

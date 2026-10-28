@@ -20,6 +20,13 @@ import Layout from '../../layouts/Layout.astro';
 import OtpLectureForm from '../../components/OtpLectureForm.astro';
 import ChainePrix from '../../components/proposition/ChainePrix.astro';
 import BandeauAvenant from '../../components/proposition/BandeauAvenant.astro';
+// CPRW (27/10/2026) — blocs C&I et agricoles déplacés tels quels dans leurs composants (chaque composant
+// commence par sa balise : la condition d'affichage reste ici, les espaces du rendu ne bougent pas).
+import SectionAutoconso from '../../components/proposition/ci/SectionAutoconso.astro';
+import SectionCategorieCi from '../../components/proposition/ci/SectionCategorieCi.astro';
+import SectionRentabiliteIndustrielle from '../../components/proposition/ci/SectionRentabiliteIndustrielle.astro';
+import SectionAgricole from '../../components/proposition/agricole/SectionAgricole.astro';
+import GarantiesAgricoles from '../../components/proposition/agricole/GarantiesAgricoles.astro';
 // (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
 // réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
 // et la décision fondateur du jour bannit tout avis/étoile de cette page.
@@ -2947,15 +2954,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           <p class="mt-5 text-sm text-lune-soft" data-agri-sav data-i18n data-fr={savAgri.fr} data-en={savAgri.en} data-ar={savAgri.ar}>{savAgri.fr}</p>
         )}
         {isAgricole && argent && argent.garanties.length > 0 && (
-          <div class="cine-card mt-5 rounded-xl p-5" data-agri-garanties>
-            <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.garanties.fr} data-en={AGR_ARGENT_LBL.garanties.en} data-ar={AGR_ARGENT_LBL.garanties.ar}>{AGR_ARGENT_LBL.garanties.fr}</p>
-            <ul class="mt-3 space-y-1.5 text-sm text-lune-soft">
-              {argent.garanties.map((g) => {
-                const { lbl } = libelleGarantie(g);
-                return <li data-garantie-composant={g.composant} data-i18n data-fr={lbl.fr} data-en={lbl.en} data-ar={lbl.ar}>{lbl.fr}</li>;
-              })}
-            </ul>
-          </div>
+          <GarantiesAgricoles {argent} />
         )}
 
 
@@ -3187,364 +3186,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           Aucune carte batterie ici (pompage = pas de batterie, CLAUDE.md).
           ════════════════════════════════════════════════════════════════════ */}
       {isAgricole && agri && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-agricole">
-          <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre pompage solaire" data-en="Your solar pumping" data-ar="ضخّكم الشمسي">Votre pompage solaire</h2>
-          <div class="mt-5 grid gap-4 sm:grid-cols-3">
-            {(agri.pompe_cv || agri.pompe_kw) ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Pompe" data-en="Pump" data-ar="المضخة">Pompe</p>
-                <p class="fig mt-2 text-2xl text-lune" dir="ltr">
-                  {agri.pompe_cv ? <>{formatNumber(agri.pompe_cv, 1)} <span class="text-base text-lune-soft">CV</span></> : null}
-                  {agri.pompe_cv && agri.pompe_kw ? <span class="text-lune-faint"> · </span> : null}
-                  {agri.pompe_kw ? <>{formatNumber(agri.pompe_kw, 1)} <span class="text-base text-lune-soft">kW</span></> : null}
-                </p>
-              </div>
-            ) : null}
-            {agri.m3_jour ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Eau / jour" data-en="Water / day" data-ar="الماء / يوم">Eau / jour</p>
-                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(agri.m3_jour)} <span class="text-base text-lune-soft">m³</span></p>
-                {agri.hmt_m ? (
-                  <p class="mt-1 text-sm text-lune-faint" dir="ltr" data-i18n
-                    data-fr={`à ${formatNumber(agri.hmt_m)} m HMT`}
-                    data-en={`at ${formatNumber(agri.hmt_m)} m head`}
-                    data-ar={`عند ${formatNumber(agri.hmt_m)} m (ع.ر.)`}>à {formatNumber(agri.hmt_m)} m HMT</p>
-                ) : null}
-                {heuresAgri ? (
-                  <p class="mt-1 text-xs text-lune-faint" dir="ltr" data-i18n data-agri-heures-pompage
-                    data-fr={heuresAgri.fr}
-                    data-en={heuresAgri.en}
-                    data-ar={heuresAgri.ar}>{heuresAgri.fr}</p>
-                ) : null}
-              </div>
-            ) : null}
-            {agri.champ_kwc ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Champ solaire" data-en="Solar array" data-ar="الحقل الشمسي">Champ solaire</p>
-                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(agri.champ_kwc, 2)} <span class="text-base text-lune-soft">kWc</span></p>
-              </div>
-            ) : null}
-            {bvl && bvl.hectaresIrrigables !== null ? (
-              <div class="cine-card rounded-xl p-5" data-agri-hectares>
-                <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.surfaceIrrigable.fr} data-en={AGR_LBL.surfaceIrrigable.en} data-ar={AGR_LBL.surfaceIrrigable.ar}>{AGR_LBL.surfaceIrrigable.fr}</p>
-                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(bvl.hectaresIrrigables, 1)} <span class="text-base text-lune-soft">ha</span></p>
-              </div>
-            ) : null}
-          </div>
-          {/* Honnêteté : aucun KPI pompe exploitable → message d'omission clair. */}
-          {(!agri.pompe_cv && !agri.pompe_kw && !agri.m3_jour && !agri.champ_kwc) ? (
-            <p class="mt-4 text-sm text-lune-faint" data-i18n
-              data-fr="Le dimensionnement précis de votre pompe est confirmé avec votre conseiller."
-              data-en="The precise sizing of your pump is confirmed with your advisor."
-              data-ar="يُحدَّد تحجيم مضختكم الدقيق مع مستشاركم.">Le dimensionnement précis de votre pompe est confirmé avec votre conseiller.</p>
-          ) : null}
-          {agri.debit_hmt_m3h ? (
-            <p class="mt-4 text-sm text-lune-soft" data-i18n
-              data-fr={`Débit estimé ≈ ${formatNumber(agri.debit_hmt_m3h)} m³/h à la hauteur de refoulement retenue.`}
-              data-en={`Estimated flow ≈ ${formatNumber(agri.debit_hmt_m3h)} m³/h at the selected head.`}
-              data-ar={`التدفق المقدّر ≈ ${formatNumber(agri.debit_hmt_m3h)} m³/h عند ارتفاع الرفع المعتمد.`}>Débit estimé ≈ {formatNumber(agri.debit_hmt_m3h)} m³/h à la hauteur de refoulement retenue.</p>
-          ) : null}
-
-          {/* ── AGW303 — la synthèse agricole SERVIE (`synthese_agricole`, la MÊME fonction
-              que le PDF — AGR304/AGR308) : la page LIT, elle ne calcule rien. Chaque bloc
-              est OMIS quand le serveur ne le sert pas (jamais un zéro, jamais un graphe
-              vide). ─────────────────────────────────────────────────────────────── */}
-
-          {/* Besoin vs eau livrée, mois par mois (12 barres doubles) + mois le plus serré. */}
-          {bvl && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-besoin-livre>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreBesoinLivre.fr} data-en={AGR_LBL.titreBesoinLivre.en} data-ar={AGR_LBL.titreBesoinLivre.ar}>{AGR_LBL.titreBesoinLivre.fr}</p>
-              <div class="mt-4 flex items-end gap-1.5" dir="ltr" role="img"
-                aria-label="Besoin et eau livrée par jour, mois par mois">
-                {bvl.mois.map((m, i) => (
-                  <div class="flex flex-1 flex-col items-center gap-1">
-                    <div class="flex w-full items-end gap-px">
-                      <span class="w-1/2 rounded-t" data-barre="besoin" style={`height:${Math.max(3, Math.round((m.besoin / bvlMax) * 72))}px; background: var(--color-lune-faint, #9ca3af)`}></span>
-                      <span class="w-1/2 rounded-t" data-barre="livre" style={`height:${Math.max(3, Math.round((m.livre / bvlMax) * 72))}px; background: var(--color-azur-300, #7fb4e8)`}></span>
-                    </div>
-                    <span class="text-[10px] text-lune-faint" data-i18n data-fr={MONTHS_SHORT.fr[i]} data-en={MONTHS_SHORT.en[i]} data-ar={MONTHS_SHORT.ar[i]}>{MONTHS_SHORT.fr[i]}</span>
-                  </div>
-                ))}
-              </div>
-              <p class="mt-3 text-xs text-lune-faint" data-i18n data-fr={AGR_LBL.legendeBarres.fr} data-en={AGR_LBL.legendeBarres.en} data-ar={AGR_LBL.legendeBarres.ar}>{AGR_LBL.legendeBarres.fr}</p>
-              {bvl.moisLePlusSerre !== null && (
-                <p class="mt-1 text-sm text-lune-soft" data-agri-mois-serre data-i18n
-                  data-fr={`${AGR_LBL.moisSerre.fr} ${AGR_MOIS_LONG.fr[bvl.moisLePlusSerre - 1]}.`}
-                  data-en={`${AGR_LBL.moisSerre.en} ${AGR_MOIS_LONG.en[bvl.moisLePlusSerre - 1]}.`}
-                  data-ar={`${AGR_LBL.moisSerre.ar} ${AGR_MOIS_LONG.ar[bvl.moisLePlusSerre - 1]}.`}>{AGR_LBL.moisSerre.fr} {AGR_MOIS_LONG.fr[bvl.moisLePlusSerre - 1]}.</p>
-              )}
-              {bvl.baseBesoin === 'agronomique_plein' && (
-                <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr={AGR_LBL.agronomique.fr} data-en={AGR_LBL.agronomique.en} data-ar={AGR_LBL.agronomique.ar}>{AGR_LBL.agronomique.fr}</p>
-              )}
-              {/* AGQ3/AGQ33 — chaque mois sous la tolérance de conception, avec sa couverture servie (même phrase que le PDF). */}
-              {bvl.moisSousTolerance.length > 0 && (
-                <p class="mt-1 text-sm text-lune-soft" data-agri-mois-tolerance data-i18n
-                  data-fr={`${AGR_LBL_AGQ.moisSousTolerance.fr} ${moisSousToleranceTexte.fr}.`}
-                  data-en={`${AGR_LBL_AGQ.moisSousTolerance.en} ${moisSousToleranceTexte.en}.`}
-                  data-ar={`${AGR_LBL_AGQ.moisSousTolerance.ar} ${moisSousToleranceTexte.ar}.`}>{AGR_LBL_AGQ.moisSousTolerance.fr} {moisSousToleranceTexte.fr}.</p>
-              )}
-            </div>
-          )}
-
-          {/* AGQ38/AGQ35 — notes client du noyau (ratio champ/pompe, variateur retenu, repli d'irradiation…), textes servis. */}
-          {synth && synth.notes.length > 0 && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-notes>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL_AGQ.notesTitre.fr} data-en={AGR_LBL_AGQ.notesTitre.en} data-ar={AGR_LBL_AGQ.notesTitre.ar}>{AGR_LBL_AGQ.notesTitre.fr}</p>
-              <ul class="mt-3 space-y-2 text-sm text-lune-soft">
-                {synth.notes.map((n) => (
-                  <li data-agri-note data-code={n.code ?? ''} data-i18n data-fr={n.textes.fr} data-en={n.textes.en} data-ar={n.textes.ar}>{n.textes.fr}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Schéma forage → pompe → variateur → panneaux → bassin → irrigation : le SVG
-              SERVI, inséré tel quel (déjà échappé côté serveur) — jamais un second dessin. */}
-          {synth?.dessinSchema && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-schema>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreComment.fr} data-en={AGR_LBL.titreComment.en} data-ar={AGR_LBL.titreComment.ar}>{AGR_LBL.titreComment.fr}</p>
-              <div class="mt-4 w-full overflow-x-auto" dir="ltr" set:html={synth.dessinSchema}></div>
-            </div>
-          )}
-
-          {/* Courbe constructeur + point de fonctionnement ; sans courbe, la phrase d'omission. */}
-          {synth && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-point>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.pointFonctionnement.fr} data-en={AGR_LBL.pointFonctionnement.en} data-ar={AGR_LBL.pointFonctionnement.ar}>{AGR_LBL.pointFonctionnement.fr}</p>
-              {courbeGeo ? (
-                <div class="mt-3" dir="ltr">
-                  <svg viewBox={`0 0 ${courbeGeo.largeur} ${courbeGeo.hauteur}`} class="w-full max-w-lg" role="img" aria-label="Courbe de la pompe et point de fonctionnement">
-                    <line x1={courbeGeo.axe.x0} y1={courbeGeo.axe.y0} x2={courbeGeo.axe.x1} y2={courbeGeo.axe.y0} stroke="currentColor" stroke-width="1" opacity="0.5" />
-                    <line x1={courbeGeo.axe.x0} y1={courbeGeo.axe.y0} x2={courbeGeo.axe.x0} y2={courbeGeo.axe.y1} stroke="currentColor" stroke-width="1" opacity="0.5" />
-                    <polyline points={courbeGeo.polyline} fill="none" stroke="#7fb4e8" stroke-width="2.5" />
-                    <line x1={courbeGeo.point.x} y1={courbeGeo.axe.y0} x2={courbeGeo.point.x} y2={courbeGeo.point.y} stroke="#e8b54a" stroke-width="1" stroke-dasharray="4 3" />
-                    <line x1={courbeGeo.axe.x0} y1={courbeGeo.point.y} x2={courbeGeo.point.x} y2={courbeGeo.point.y} stroke="#e8b54a" stroke-width="1" stroke-dasharray="4 3" />
-                    <circle cx={courbeGeo.point.x} cy={courbeGeo.point.y} r="5" fill="#e8b54a" />
-                    <text x={courbeGeo.axe.x1} y={courbeGeo.axe.y0 + 16} font-size="11" text-anchor="end" fill="currentColor" opacity="0.7">{formatNumber(courbeGeo.debitMax)}</text>
-                    <text x={courbeGeo.axe.x0 - 6} y={courbeGeo.axe.y1 + 8} font-size="11" text-anchor="end" fill="currentColor" opacity="0.7">{formatNumber(courbeGeo.hmtMax)}</text>
-                    <text x={courbeGeo.axe.x0 - 6} y={courbeGeo.axe.y0} font-size="11" text-anchor="end" fill="currentColor" opacity="0.7">0</text>
-                  </svg>
-                  <p class="mt-2 text-xs text-lune-faint">
-                    <span data-i18n data-fr={AGR_LBL.axeDebit.fr} data-en={AGR_LBL.axeDebit.en} data-ar={AGR_LBL.axeDebit.ar}>{AGR_LBL.axeDebit.fr}</span> ·
-                    <span data-i18n data-fr={AGR_LBL.axeHmt.fr} data-en={AGR_LBL.axeHmt.en} data-ar={AGR_LBL.axeHmt.ar}>{AGR_LBL.axeHmt.fr}</span>
-                    — <span class="fig">{formatNumber(synth.pointFonctionnement!.point.debitM3h)} m³/h · {formatNumber(synth.pointFonctionnement!.point.hmtM)} m</span>
-                  </p>
-                </div>
-              ) : (
-                <p class="mt-3 text-sm text-lune-faint" data-agri-point-omis data-i18n
-                  data-fr={`${motifCourbe && !motifCourbe.startsWith('courbe constructeur non disponible') ? motifCourbe : AGR_LBL.courbeAbsente.fr} ${AGR_LBL.pointOmis.fr}`}
-                  data-en={`${AGR_LBL.courbeAbsente.en} ${AGR_LBL.pointOmis.en}`}
-                  data-ar={`${AGR_LBL.courbeAbsente.ar} ${AGR_LBL.pointOmis.ar}`}>{motifCourbe && !motifCourbe.startsWith('courbe constructeur non disponible') ? motifCourbe : AGR_LBL.courbeAbsente.fr} {AGR_LBL.pointOmis.fr}</p>
-              )}
-            </div>
-          )}
-
-          {/* Pompe existante conservée : plaque relevée et compatibilité. */}
-          {synth && synth.modePompe === 'existante' && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-plaque>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.pompeExistante.fr} data-en={AGR_LBL.pompeExistante.en} data-ar={AGR_LBL.pompeExistante.ar}>{AGR_LBL.pompeExistante.fr}</p>
-              {plaqueTexte ? (
-                <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr={plaqueTexte.fr} data-en={plaqueTexte.en} data-ar={plaqueTexte.ar}>{plaqueTexte.fr}</p>
-              ) : (
-                <p class="mt-2 text-sm text-lune-faint" data-i18n data-fr={AGR_LBL.plaqueNonRelevee.fr} data-en={AGR_LBL.plaqueNonRelevee.en} data-ar={AGR_LBL.plaqueNonRelevee.ar}>{AGR_LBL.plaqueNonRelevee.fr}</p>
-              )}
-            </div>
-          )}
-
-          {/* D'où viennent ces chiffres : déclaré par vous le … / mesuré par TAQINOR le … /
-              à confirmer par la visite — la provenance SERVIE, jamais une date inventée. */}
-          {synth && (synth.provenance.length > 0 || synth.aConfirmerParVisite.length > 0) && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-provenance>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_LBL.titreProvenance.fr} data-en={AGR_LBL.titreProvenance.en} data-ar={AGR_LBL.titreProvenance.ar}>{AGR_LBL.titreProvenance.fr}</p>
-              {synth.provenance.length > 0 && (
-                <ul class="mt-3 space-y-1 text-sm text-lune-soft">
-                  {synth.provenance.map((e) => {
-                    const lib = libelleEntree(e.cle);
-                    const ph = phraseProvenance(e);
-                    // Rejeu AGQ41 — la valeur À CÔTÉ de sa provenance (parité PDF, AGQ28).
-                    const val = valeurProvenance(e.cle, e.valeur, (n) => formatNumber(n, 1));
-                    return (
-                      <li>
-                        <strong class="text-lune" data-i18n data-fr={lib.fr} data-en={lib.en} data-ar={lib.ar}>{lib.fr}</strong> :
-                        {val && <span class="fig text-lune" dir="ltr" data-agri-provenance-valeur data-i18n data-fr={val.fr} data-en={val.en} data-ar={val.ar}>{' '}{val.fr} —</span>}
-                        {' '}<span data-i18n data-fr={ph.fr} data-en={ph.en} data-ar={ph.ar}>{ph.fr}</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-              {synth.aConfirmerParVisite.length > 0 && (
-                <p class="mt-3 text-sm text-lune-soft" data-agri-a-confirmer data-i18n
-                  data-fr={`${AGR_LBL.aConfirmerVisite.fr} ${aConfirmerLbl.fr}.`}
-                  data-en={`${AGR_LBL.aConfirmerVisite.en} ${aConfirmerLbl.en}.`}
-                  data-ar={`${AGR_LBL.aConfirmerVisite.ar} ${aConfirmerLbl.ar}.`}><strong class="text-lune">{AGR_LBL.aConfirmerVisite.fr}</strong> {aConfirmerLbl.fr}.</p>
-              )}
-            </div>
-          )}
-
-
-          {/* ── AGW304 — L'ARGENT DÉCLARÉ, L'ÉNERGIE ACTUELLE, LA RÈGLE FDA, LES OPTIONS DU KIT ET LES
-              FORMALITÉS, tels que SERVIS par `synthese_agricole` (la MÊME fonction que le PDF).
-              Aucun calcul ici ; chaque bloc est OMIS quand le serveur ne le sert pas. Jamais un
-              montant d'aide propre au client, jamais de pourcentage maximal promis, jamais « gratuit ». ──── */}
-          {argent?.economies && (
-            <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-agri-argent>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.titreArgent.fr} data-en={AGR_ARGENT_LBL.titreArgent.en} data-ar={AGR_ARGENT_LBL.titreArgent.ar}>{AGR_ARGENT_LBL.titreArgent.fr}</p>
-              <dl class="mt-3 divide-y divide-white/10 text-sm">
-                {argent.economies.depenseActuelleMadAn !== null && (
-                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="depense-actuelle">
-                    <dt class="text-lune-soft" data-i18n
-                      data-fr={`${AGR_ARGENT_LBL.depenseActuelle.fr}${energieLbl ? ` — ${energieLbl.fr}` : ''}`}
-                      data-en={`${AGR_ARGENT_LBL.depenseActuelle.en}${energieLbl ? ` — ${energieLbl.en}` : ''}`}
-                      data-ar={`${AGR_ARGENT_LBL.depenseActuelle.ar}${energieLbl ? ` — ${energieLbl.ar}` : ''}`}>{AGR_ARGENT_LBL.depenseActuelle.fr}{energieLbl ? ` — ${energieLbl.fr}` : ''}</dt>
-                    <dd class="fig text-lune" dir="ltr">{formatMAD(argent.economies.depenseActuelleMadAn)}</dd>
-                  </div>
-                )}
-                {argent.economies.chargesSolairesMadAn !== null && (
-                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="charges-solaires">
-                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.chargesSolaires.fr} data-en={AGR_ARGENT_LBL.chargesSolaires.en} data-ar={AGR_ARGENT_LBL.chargesSolaires.ar}>{AGR_ARGENT_LBL.chargesSolaires.fr}</dt>
-                    <dd class="fig text-lune" dir="ltr">{formatMAD(argent.economies.chargesSolairesMadAn)}</dd>
-                  </div>
-                )}
-                {argent.economies.economieNetteAn1 !== null && (
-                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="economie-nette-an1">
-                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.economieNetteAn1.fr} data-en={AGR_ARGENT_LBL.economieNetteAn1.en} data-ar={AGR_ARGENT_LBL.economieNetteAn1.ar}>{AGR_ARGENT_LBL.economieNetteAn1.fr}</dt>
-                    <dd class="fig lum" dir="ltr">{formatMAD(argent.economies.economieNetteAn1)}</dd>
-                  </div>
-                )}
-                {argent.economies.retourAns !== null && (
-                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="retour-sans-aide">
-                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.retourSansAide.fr} data-en={AGR_ARGENT_LBL.retourSansAide.en} data-ar={AGR_ARGENT_LBL.retourSansAide.ar}>{AGR_ARGENT_LBL.retourSansAide.fr}</dt>
-                    <dd class="fig text-lune" dir="ltr" data-i18n
-                      data-fr={`${formatNumber(argent.economies.retourAns, 1)} ans`} data-en={`${formatNumber(argent.economies.retourAns, 1)} years`} data-ar={`${formatNumber(argent.economies.retourAns, 1)} سنوات`}>{formatNumber(argent.economies.retourAns, 1)} ans</dd>
-                  </div>
-                )}
-                {argent.economies.coutM3 && argent.economies.coutM3.actuel !== null && (
-                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="cout-m3">
-                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.coutM3.fr} data-en={AGR_ARGENT_LBL.coutM3.en} data-ar={AGR_ARGENT_LBL.coutM3.ar}>{AGR_ARGENT_LBL.coutM3.fr}</dt>
-                    <dd class="fig text-lune" dir="ltr">{formatNumber(argent.economies.coutM3.actuel, 2)} / {formatNumber(argent.economies.coutM3.solaire, 2)} MAD</dd>
-                  </div>
-                )}
-                {/* AGQ17/AGQ35 — nouveau forage : aucune dépense actuelle, le m³ solaire se dit seul (comme le PDF). */}
-                {argent.economies.coutM3 && argent.economies.coutM3.actuel === null && (
-                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="cout-m3-solaire">
-                    <dt class="text-lune-soft" data-i18n data-fr={AGR_LBL_AGQ.coutM3Solaire.fr} data-en={AGR_LBL_AGQ.coutM3Solaire.en} data-ar={AGR_LBL_AGQ.coutM3Solaire.ar}>{AGR_LBL_AGQ.coutM3Solaire.fr}</dt>
-                    <dd class="fig text-lune" dir="ltr">{formatNumber(argent.economies.coutM3.solaire, 2)} MAD</dd>
-                  </div>
-                )}
-                {/* AGQ20/AGQ35 — retour non publié : le motif SERVI (au-delà de l'horizon…), jamais un chiffre. */}
-                {argent.economies.retourAns === null && argent.economies.retourMotif && (
-                  <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="retour-motif">
-                    <dt class="text-lune-soft" data-i18n data-fr={AGR_ARGENT_LBL.retourSansAide.fr} data-en={AGR_ARGENT_LBL.retourSansAide.en} data-ar={AGR_ARGENT_LBL.retourSansAide.ar}>{AGR_ARGENT_LBL.retourSansAide.fr}</dt>
-                    <dd class="text-sm text-lune-soft">{argent.economies.retourMotif}</dd>
-                  </div>
-                )}
-                {argent.economies.remplacements.map((r) => {
-                  const comp = AGR_COMPOSANT_LBL[r.composant] ?? { fr: r.composant, en: r.composant, ar: r.composant };
-                  const lbl = {
-                    fr: AGR_ARGENT_LBL.remplacement.fr.replace('{composant}', comp.fr).replace('{annee}', String(r.annee)),
-                    en: AGR_ARGENT_LBL.remplacement.en.replace('{composant}', comp.en).replace('{annee}', String(r.annee)),
-                    ar: AGR_ARGENT_LBL.remplacement.ar.replace('{composant}', comp.ar).replace('{annee}', String(r.annee)),
-                  };
-                  return (
-                    <div class="flex items-baseline justify-between gap-4 py-2" data-agri-ligne="remplacement">
-                      <dt class="text-lune-soft" data-i18n data-fr={lbl.fr} data-en={lbl.en} data-ar={lbl.ar}>{lbl.fr}</dt>
-                      <dd class="fig text-lune" dir="ltr">{formatMAD(r.montantTtc)} TTC</dd>
-                    </div>
-                  );
-                })}
-              </dl>
-              <p class="mt-3 text-xs text-lune-faint" data-agri-argent-notes data-i18n
-                data-fr={argentNotes.fr} data-en={argentNotes.en} data-ar={argentNotes.ar}>{argentNotes.fr}</p>
-            </div>
-          )}
-
-          {/* Énergie actuelle — seulement si DÉCLARÉE (jamais le défaut de l'écran). */}
-          {argent?.energieActuelle && energieLbl && (
-            <div class="cine-card mt-5 rounded-xl p-5" data-agri-energie>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.energieActuelle.fr} data-en={AGR_ARGENT_LBL.energieActuelle.en} data-ar={AGR_ARGENT_LBL.energieActuelle.ar}>{AGR_ARGENT_LBL.energieActuelle.fr}</p>
-              <p class="mt-2 text-sm text-lune-soft">
-                <strong class="text-lune" data-i18n data-fr={energieLbl.fr} data-en={energieLbl.en} data-ar={energieLbl.ar}>{energieLbl.fr}</strong> —
-                <span data-i18n data-fr={energiePhrase!.fr} data-en={energiePhrase!.en} data-ar={energiePhrase!.ar}>{energiePhrase!.fr}</span>
-              </p>
-            </div>
-          )}
-
-          {/* La RÈGLE de l'aide FDA (D-AGR-6) : conditions, plafonds, accord AVANT travaux,
-              versement après réalisation, source — JAMAIS un montant propre au client. */}
-          {argent?.aideFda?.textes && (
-            <div class="cine-card mt-5 rounded-xl p-5" data-agri-fda>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.aideTitre.fr} data-en={AGR_ARGENT_LBL.aideTitre.en} data-ar={AGR_ARGENT_LBL.aideTitre.ar}>{AGR_ARGENT_LBL.aideTitre.fr}</p>
-              <p class="mt-2 text-sm leading-relaxed text-lune-soft" data-i18n
-                data-fr={argent.aideFda.textes.fr} data-en={argent.aideFda.textes.en} data-ar={argent.aideFda.textes.ar}>{argent.aideFda.textes.fr}</p>
-            </div>
-          )}
-
-          {/* AGW308 — options du kit À COCHER : chaque option nommée porte « Ajouter au devis » (si le devis
-              n'est pas figé ; INACTIF en aperçu interne, R4) → confirmation → /api/proposition-option →
-              rechargement des totaux servis. Aucun retrait en ligne (le backend n'a pas d'endpoint). */}
-          {argent && argent.optionsKit.length > 0 && (
-            <div class="cine-card mt-5 rounded-xl p-5" id="agri-options-kit" data-agri-options-kit data-token={token}>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.optionsKit.fr} data-en={AGR_ARGENT_LBL.optionsKit.en} data-ar={AGR_ARGENT_LBL.optionsKit.ar}>{AGR_ARGENT_LBL.optionsKit.fr}</p>
-              <ul class="mt-3 space-y-2 text-sm text-lune-soft">
-                {argent.optionsKit.map((o) => {
-                  const etat = etatActivationOption({ ligneId: o.ligneId, apercuInterne, offreVivante: offerState === 'live' });
-                  const conf = confirmationOption(o.designation, o.totalTtc !== null ? formatMAD(o.totalTtc) : null);
-                  return (
-                    <li class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2" data-agri-option-kit data-ligne-id={o.ligneId ?? ''}>
-                      <span class="text-lune">{o.designation}</span>
-                      <span class="flex flex-wrap items-baseline gap-3">
-                        {o.prixConnu && o.totalTtc !== null
-                          ? <span class="fig text-lune" dir="ltr">+ {formatMAD(o.totalTtc)} TTC</span>
-                          : <span class="text-xs text-lune-faint" data-agri-prix-sur-devis data-i18n data-fr={AGR_LBL_AGQ.prixSurDevis.fr} data-en={AGR_LBL_AGQ.prixSurDevis.en} data-ar={AGR_LBL_AGQ.prixSurDevis.ar}>{AGR_LBL_AGQ.prixSurDevis.fr}</span>}
-                        {o.mention && <span class="basis-full text-xs text-lune-faint" data-agri-option-mention>{o.mention}</span>}
-                        {etat !== 'masque' && o.prixConnu && (
-                          <button type="button" data-option-ajouter data-ligne-id={o.ligneId ?? ''}
-                            data-confirm-fr={conf.fr} data-confirm-en={conf.en} data-confirm-ar={conf.ar}
-                            disabled={etat === 'apercu'} aria-disabled={etat === 'apercu' ? 'true' : undefined}
-                            class="border border-brass-400/60 px-3 py-1.5 text-xs font-semibold text-brass-300 transition-colors hover:bg-brass-400/10 disabled:cursor-not-allowed disabled:opacity-50"
-                            data-i18n data-fr="Ajouter au devis" data-en="Add to quote" data-ar="إضافة إلى العرض">Ajouter au devis</button>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-              <div id="agri-option-confirm" hidden role="dialog" aria-modal="true" aria-labelledby="agri-option-confirm-texte"
-                class="mt-4 border border-brass-400/50 bg-black/20 p-4">
-                <p id="agri-option-confirm-texte" class="text-sm text-lune"></p>
-                <div class="mt-3 flex flex-wrap gap-3">
-                  <button type="button" id="agri-option-confirm-ok" class="bg-brass-400 px-4 py-2 text-sm font-bold text-azur-950 disabled:opacity-60"
-                    data-i18n data-fr="Confirmer l’ajout" data-en="Confirm" data-ar="تأكيد الإضافة">Confirmer l’ajout</button>
-                  <button type="button" id="agri-option-confirm-annuler" class="border border-white/30 px-4 py-2 text-sm text-lune-soft"
-                    data-i18n data-fr="Annuler" data-en="Cancel" data-ar="إلغاء">Annuler</button>
-                </div>
-              </div>
-              <p id="agri-option-msg" hidden role="alert" class="mt-3 text-sm text-brass-300"></p>
-            </div>
-          )}
-          {argent && argent.nonInclus.length > 0 && (
-            <p class="mt-3 text-sm text-lune-soft" data-agri-non-inclus data-i18n
-              data-fr={nonInclusLbl.fr} data-en={nonInclusLbl.en} data-ar={nonInclusLbl.ar}>{nonInclusLbl.fr}</p>
-          )}
-
-          {/* Formalités du client (loi 82-21 art. 3 hors réseau, loi 36-15 eau), telles que servies. */}
-          {argent && argent.formalites.length > 0 && (
-            <div class="cine-card mt-5 rounded-xl p-5" data-agri-formalites>
-              <p class="tech-label text-lune-faint" data-i18n data-fr={AGR_ARGENT_LBL.formalites.fr} data-en={AGR_ARGENT_LBL.formalites.en} data-ar={AGR_ARGENT_LBL.formalites.ar}>{AGR_ARGENT_LBL.formalites.fr}</p>
-              <ul class="mt-3 space-y-2 text-sm text-lune-soft">
-                {argent.formalites.map((f) => (
-                  <li data-formalite={f.cle ?? ''} data-i18n data-fr={f.textes.fr} data-en={f.textes.en} data-ar={f.textes.ar}>{f.textes.fr}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* AGW301 — « Bassin recommandé ≈ 2 jours », « Subvention FDA … 30 % » et « Fini le
-              carburant » RETIRÉS (zéro chiffre inventé ; D-AGR-6 : aucune promesse d'aide ;
-              le gasoil n'est pas le cas de tout agriculteur). La règle FDA sans montant et la
-              carte d'énergie DÉCLARÉE reviennent par `synthese_agricole` (AGW304). */}
-        </section>
+        <SectionAgricole {aConfirmerLbl} {agri} {apercuInterne} {argent} {argentNotes} {bvl} {bvlMax} {courbeGeo} {energieLbl} {energiePhrase} {heuresAgri} {moisSousToleranceTexte} {motifCourbe} {nonInclusLbl} {offerState} {plaqueTexte} {remplacement} {synth} {token} />
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
@@ -3553,144 +3195,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           mention servie) — CIW300 : tout est lu dans `synthese_ci`, aucun cashflow.
           ════════════════════════════════════════════════════════════════════ */}
       {isAutoconso && auto && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-autoconso">
-          <h2 class="tech-label rule-brass text-brass-300" data-i18n
-            data-fr={isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}
-            data-en={isCommercial ? 'Your self-consumption' : 'Your industrial self-consumption'}
-            data-ar={isCommercial ? 'استهلاككم الذاتي' : 'استهلاككم الذاتي الصناعي'}>{isCommercial ? 'Votre autoconsommation' : 'Votre autoconsommation industrielle'}</h2>
-          <span id="economies" aria-hidden="true"></span>
-          {/* CIW300 — TOUT est LU dans `synthese_ci` (la MÊME fonction que le PDF) : kWc, production,
-              autoconsommation, couverture (définitions servies), économie de l'année 1, retour.
-              Une clé non servie n'imprime rien (jamais un 0 fabriqué). */}
-          {ci ? (
-            <div data-ci-synthese>
-              {ciSousReserve ? (
-                <div class="mt-4 rounded-xl border border-brass-400/40 bg-brass-400/10 p-4 text-sm text-lune-soft" data-ci-sous-reserve>
-                  <p class="font-semibold text-lune" data-i18n
-                    data-fr="Estimation sous réserve de la visite technique"
-                    data-en="Estimate subject to the technical site visit"
-                    data-ar="تقدير رهين بالزيارة التقنية">Estimation sous réserve de la visite technique</p>
-                  {ci.aConfirmer.length > 0 ? (
-                    <ul class="mt-2 list-disc ps-5 text-xs text-lune-faint">
-                      {ci.aConfirmer.map((c) => <li>{c.libelle}</li>)}
-                    </ul>
-                  ) : null}
-                </div>
-              ) : null}
-              <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {ci.systeme?.kwc != null ? (
-                  <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance installée" data-en="Installed capacity" data-ar="القدرة المركبة">Puissance installée</p>
-                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="puissance_kwc">{formatNumber(ci.systeme.kwc, 2)} kWc</p>
-                  </div>
-                ) : null}
-                {ci.systeme?.productionKwhAn != null ? (
-                  <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Production solaire / an" data-en="Solar production / year" data-ar="الإنتاج الشمسي / سنة">Production solaire / an</p>
-                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="production_annuelle_kwh">{formatNumber(ci.systeme.productionKwhAn)} kWh</p>
-                  </div>
-                ) : null}
-                {ci.energie?.autoconsoPct != null ? (
-                  <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Taux d'autoconsommation" data-en="Self-consumption rate" data-ar="نسبة الاستهلاك الذاتي">Taux d'autoconsommation</p>
-                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="autoconsommation_pct">{formatNumber(ci.energie.autoconsoPct, 1)} %</p>
-                    {ci.energie.definitions.autoconso ? <p class="mt-1 text-xs text-lune-faint">{ci.energie.definitions.autoconso}</p> : null}
-                  </div>
-                ) : null}
-                {ci.energie?.couverturePct != null ? (
-                  <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Taux de couverture" data-en="Coverage rate" data-ar="نسبة التغطية">Taux de couverture</p>
-                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="couverture_pct">{formatNumber(ci.energie.couverturePct, 1)} %</p>
-                    {ci.energie.definitions.couverture ? <p class="mt-1 text-xs text-lune-faint">{ci.energie.definitions.couverture}</p> : null}
-                  </div>
-                ) : null}
-                {ciArgent && ciEco !== null ? (
-                  <div class="cine-card rounded-xl p-5" data-ci-economie>
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Économie de l'année 1" data-en="Year-1 savings" data-ar="توفير السنة الأولى">Économie de l'année 1</p>
-                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="economie_annuelle">{formatMAD(ciEco)}{ciArgent.base === 'ttc' ? ' TTC' : ' HT'}</p>
-                    {ciArgent.base === 'deux' && ciArgent.economieAnnee1?.ttc != null ? (
-                      <p class="mt-1 text-xs text-lune-faint" dir="ltr">{formatMAD(ciArgent.economieAnnee1.ttc)} TTC</p>
-                    ) : null}
-                    {ciEstimation ? (
-                      <p class="mt-1 text-xs text-brass-300" data-i18n data-fr="estimation" data-en="estimate" data-ar="تقدير">estimation</p>
-                    ) : null}
-                  </div>
-                ) : null}
-                {ciArgent && ciArgent.retourAns !== null ? (
-                  <div class="cine-card rounded-xl p-5" data-ci-retour>
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
-                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="payback_ans">{formatNumber(ciArgent.retourAns, 1)} <span class="text-base text-lune-soft" data-i18n data-fr="ans" data-en="years" data-ar="سنة">ans</span></p>
-                  </div>
-                ) : null}
-              </div>
-              {ciArgent?.tarif && (ciArgent.tarif.mention || ciArgent.tarif.source) ? (
-                <p class="mt-4 text-xs text-lune-faint" data-ci-tarif>
-                  <span data-i18n data-fr="Tarif utilisé :" data-en="Tariff used:" data-ar="التعريفة المعتمدة:">Tarif utilisé :</span>
-                  {' '}{ciArgent.tarif.mention ?? ciArgent.tarif.source}
-                </p>
-              ) : null}
-              {ciManque.length > 0 ? (
-                <div class="mt-4 rounded-xl border border-white/10 p-4 text-sm text-lune-soft" data-ci-manque>
-                  <p class="tech-label text-lune-faint" data-i18n data-fr="Ce qu'il nous manque" data-en="What we still need" data-ar="ما ينقصنا">Ce qu'il nous manque</p>
-                  <ul class="mt-2 list-disc ps-5 text-xs">
-                    {ciManque.map((m) => <li>{m}</li>)}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <p class="mt-4 text-sm text-lune-faint" data-i18n
-              data-fr="Les indicateurs détaillés de votre étude sont confirmés avec votre conseiller."
-              data-en="The detailed indicators of your study are confirmed with your advisor."
-              data-ar="تُؤكَّد المؤشرات التفصيلية لدراستكم مع مستشاركم.">Les indicateurs détaillés de votre étude sont confirmés avec votre conseiller.</p>
-          )}
-
-          {/* Injection 82-21 — UNIQUEMENT si le serveur SERT la revente (`synthese_ci.argent.revente`
-              calculée, MT seulement). La mention est le texte servi (`synthese_ci.hypotheses`,
-              MENTION_82_21) : AUCUNE mention réglementaire n'est écrite dans la page. */}
-          {ciInjection && (
-            <div class="cine-card mt-5 rounded-xl p-5" data-ci-injection>
-              <p class="tech-label text-brass-300" data-i18n data-fr="Injection du surplus (loi 82-21)" data-en="Surplus injection (law 82-21)" data-ar="حقن الفائض (القانون 82-21)">Injection du surplus (loi 82-21)</p>
-              {ciInjection.kwhAn !== null ? (
-                <p class="mt-2 text-sm text-lune-soft" data-i18n
-                  data-fr={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/an de surplus injectables${ciInjection.valeurMadAn !== null ? `, soit ≈ ${formatMAD(ciInjection.valeurMadAn)}/an` : ''}.`}
-                  data-en={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/year of injectable surplus${ciInjection.valeurMadAn !== null ? `, i.e. ≈ ${formatMAD(ciInjection.valeurMadAn)}/year` : ''}.`}
-                  data-ar={`≈ ${formatNumber(ciInjection.kwhAn)} kWh/سنة من الفائض القابل للحقن${ciInjection.valeurMadAn !== null ? `، أي ≈ ${formatMAD(ciInjection.valeurMadAn)}/سنة` : ''}.`}>≈ {formatNumber(ciInjection.kwhAn)} kWh/an de surplus injectables{ciInjection.valeurMadAn !== null ? `, soit ≈ ${formatMAD(ciInjection.valeurMadAn)}/an` : ''}.</p>
-              ) : null}
-              <p class="mt-2 text-xs text-lune-faint" data-i18n
-                data-fr={ciInjection.mention.fr} data-en={ciInjection.mention.en} data-ar={ciInjection.mention.ar}>{ciInjection.mention.fr}</p>
-            </div>
-          )}
-
-          {/* CIW307 — Industriel : la carte lit `synthese_ci` (CIQ305/CIQ344), les MÊMES textes que le
-              PDF. Aucune promesse de prix horaire ni de lissage de la puissance : la redevance de
-              puissance se paie sur la puissance SOUSCRITE, que la centrale ne change pas ;
-              CBAM seulement sur drapeau servi, aucun CO₂ chiffré. */}
-          {ciCarteInd && (ciCarteInd.hypotheses.length > 0 || ciCarteInd.decarbonation) && (
-            <div class="mt-5 grid gap-4 sm:grid-cols-2" data-ci-carte-industrielle>
-              {ciCarteInd.hypotheses.length > 0 && (
-                <div class="cine-card rounded-xl p-5">
-                  <p class="tech-label text-brass-300" data-i18n data-fr="Ce que le solaire change à votre facture" data-en="What solar changes on your bill" data-ar="ما تغيّره الطاقة الشمسية في فاتورتكم">Ce que le solaire change à votre facture</p>
-                  <ul class="mt-2 space-y-2 text-sm text-lune-soft">
-                    {ciCarteInd.hypotheses.map((h) => (
-                      <li data-i18n data-fr={h.textes.fr} data-en={h.textes.en} data-ar={h.textes.ar} data-ci-hypothese={h.cle}>{h.textes.fr}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {ciCarteInd.decarbonation && (
-                <div class="cine-card rounded-xl p-5">
-                  <p class="tech-label text-brass-300" data-i18n
-                    data-fr={ciCarteInd.decarbonation.cbam ? 'Décarbonation et CBAM' : 'Décarbonation'}
-                    data-en={ciCarteInd.decarbonation.cbam ? 'Decarbonation and CBAM' : 'Decarbonation'}
-                    data-ar={ciCarteInd.decarbonation.cbam ? 'إزالة الكربون وآلية CBAM' : 'إزالة الكربون'}>{ciCarteInd.decarbonation.cbam ? 'Décarbonation et CBAM' : 'Décarbonation'}</p>
-                  <p class="mt-2 text-sm text-lune-soft" data-i18n data-ci-decarbonation={ciCarteInd.decarbonation.cbam ? 'cbam' : 'generique'}
-                    data-fr={ciCarteInd.decarbonation.textes.fr} data-en={ciCarteInd.decarbonation.textes.en} data-ar={ciCarteInd.decarbonation.textes.ar}>{ciCarteInd.decarbonation.textes.fr}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </section>
+        <SectionAutoconso {ci} {ciArgent} {ciCarteInd} {ciEco} {ciEstimation} {ciInjection} {ciManque} {ciSousReserve} {couverture} {isCommercial} />
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
@@ -3699,20 +3204,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           dans la page ; sans catégorie servie, le bloc est omis.
           ════════════════════════════════════════════════════════════════════ */}
       {ciCategorie && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="mode-commercial-cat" data-ci-categorie={ciCategorie.cle}>
-          <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre secteur" data-en="Your sector" data-ar="قطاعكم">Votre secteur</h2>
-          <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            {ciCategorie.titre ? <p class="fig text-xl text-lune">{ciCategorie.titre}</p> : ciCategorie.libelle ? <p class="fig text-xl text-lune">{ciCategorie.libelle}</p> : null}
-            {ciCategorie.accroche ? <p class="mt-2 text-sm text-lune-soft">{ciCategorie.accroche}</p> : null}
-            {ciCategorie.lignes.length > 0 ? (
-              <ul class="mt-3 list-disc space-y-1 ps-5 text-sm text-lune-soft">
-                {ciCategorie.lignes.map((l) => (
-                  <li data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-        </section>
+        <SectionCategorieCi {ciCategorie} />
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
@@ -3722,92 +3214,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           #direction (synthèse et rentabilité), #exploitation (schéma, services, suivi), #achats
           (conditions, échéancier, acceptation). Aucune statistique sur les acheteurs.
           ════════════════════════════════════════════════════════════════════ */}
-      {installMode === 'industriel' && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="direction" data-ci-lecteurs>
-          <nav class="flex flex-wrap gap-2 text-xs" aria-label="Lire selon votre rôle">
-            <a href="#direction" class="btn-pill px-3 py-1" data-i18n data-fr="Direction" data-en="Management" data-ar="الإدارة">Direction</a>
-            <a href="#exploitation" class="btn-pill px-3 py-1" data-i18n data-fr="Exploitation" data-en="Operations" data-ar="الاستغلال">Exploitation</a>
-            <a href="#achats" class="btn-pill px-3 py-1" data-i18n data-fr="Achats" data-en="Procurement" data-ar="المشتريات">Achats</a>
-          </nav>
-          {ciRent && (
-            <div class="mt-5" id="rentabilite" data-ci-rentabilite>
-              <h2 class="tech-label rule-brass text-brass-300" data-i18n data-fr="Rentabilité de votre projet" data-en="Your project's profitability" data-ar="مردودية مشروعكم">Rentabilité de votre projet</h2>
-              <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {ciRent.triPct !== null ? (
-                  <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n
-                      data-fr={ciRent.triHorizonAns !== null ? `TRI sur ${formatNumber(ciRent.triHorizonAns, 0)} ans` : 'TRI'}
-                      data-en={ciRent.triHorizonAns !== null ? `IRR over ${formatNumber(ciRent.triHorizonAns, 0)} years` : 'IRR'}
-                      data-ar={ciRent.triHorizonAns !== null ? `معدل العائد الداخلي على ${formatNumber(ciRent.triHorizonAns, 0)} سنة` : 'معدل العائد الداخلي'}>{ciRent.triHorizonAns !== null ? `TRI sur ${formatNumber(ciRent.triHorizonAns, 0)} ans` : 'TRI'}</p>
-                    <p class="fig fig-md lum mt-2" dir="ltr" data-figure="tri_pct">{formatNumber(ciRent.triPct, 1)} %</p>
-                  </div>
-                ) : null}
-                {ciRent.lcoeMadKwh !== null ? (
-                  <div class="cine-card rounded-xl p-5">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Coût du kWh solaire (LCOE)" data-en="Cost of solar kWh (LCOE)" data-ar="كلفة الكيلوواط ساعة الشمسي (LCOE)">Coût du kWh solaire (LCOE)</p>
-                    <p class="fig fig-md mt-2 text-lune" dir="ltr" data-figure="lcoe_mad_kwh">{formatNumber(ciRent.lcoeMadKwh, 4)}</p>
-                    <p class="mt-1 text-xs text-lune-faint" dir="ltr">MAD/kWh{ciRent.tarifKwhEvite !== null ? ` — ${formatNumber(ciRent.tarifKwhEvite, 4)} MAD/kWh` : ''}</p>
-                    {ciRent.tarifKwhEvite !== null ? (
-                      <p class="mt-1 text-xs text-lune-faint" data-i18n
-                        data-fr="face au prix moyen de votre kWh évité"
-                        data-en="versus the average price of the kWh you avoid"
-                        data-ar="مقابل متوسط ثمن الكيلوواط ساعة الذي تتفادونه">face au prix moyen de votre kWh évité</p>
-                    ) : null}
-                  </div>
-                ) : null}
-                {ciRent.vanMad !== null ? (
-                  <div class="cine-card rounded-xl p-5" data-ci-van>
-                    <p class="tech-label text-lune-faint" data-i18n
-                      data-fr={ciRent.tauxActualisationPct !== null ? `VAN au taux déclaré de ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'VAN'}
-                      data-en={ciRent.tauxActualisationPct !== null ? `NPV at your declared rate of ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'NPV'}
-                      data-ar={ciRent.tauxActualisationPct !== null ? `القيمة الحالية الصافية بالمعدل المصرح به ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'القيمة الحالية الصافية'}>{ciRent.tauxActualisationPct !== null ? `VAN au taux déclaré de ${formatNumber(ciRent.tauxActualisationPct, 1)} %` : 'VAN'}</p>
-                    <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(ciRent.vanMad)}</p>
-                  </div>
-                ) : null}
-              </div>
-              {ciRent.jalons.length > 0 ? (
-                <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6" data-ci-jalons>
-                  <p class="tech-label text-lune-faint" data-i18n
-                    data-fr={`Cumul net (${ciRentBaseTexte}) aux jalons`} data-en={`Net cumulative (${ciRentBaseTexte}) at milestones`} data-ar={`الصافي التراكمي (${ciRentBaseTexte}) عند المحطات`}>{`Cumul net (${ciRentBaseTexte}) aux jalons`}</p>
-                  <table class="mt-3 w-full text-sm" dir="ltr">
-                    <tbody>
-                      {ciRent.jalons.map((j) => (
-                        <tr>
-                          <td class="py-1 text-lune-soft">{j.annee}<span data-i18n data-fr=" ans" data-en=" years" data-ar=" سنة"> ans</span></td>
-                          <td class="py-1 text-right text-lune" data-figure={j.annee === 25 ? 'cumul_net_25_ans_mad' : undefined}>{formatMAD(j.cumul)}</td>
-                          {ciRent.jalonsTtc.length > 0 ? (
-                            <td class="py-1 text-right text-lune-faint">{ciRent.jalonsTtc.find((x) => x.annee === j.annee) ? `${formatMAD(ciRent.jalonsTtc.find((x) => x.annee === j.annee)!.cumul)} TTC` : ''}</td>
-                          ) : null}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-              {ciRent.sensibilites.length > 0 ? (
-                <div class="cine-card mt-5 rounded-xl p-5" data-ci-sensibilites>
-                  <p class="tech-label text-lune-faint" data-i18n data-fr="Sensibilités saisies par la société" data-en="Sensitivities entered by the company" data-ar="الحساسيات المدخلة من طرف الشركة">Sensibilités saisies par la société</p>
-                  <ul class="mt-2 space-y-1 text-sm text-lune-soft">
-                    {ciRent.sensibilites.map((sn) => (
-                      <li dir="ltr">{sn.cle}{sn.variationPct !== null ? ` ${sn.variationPct > 0 ? '+' : ''}${formatNumber(sn.variationPct, 1)} %` : ''}{sn.retourAns !== null ? ` — ${formatNumber(sn.retourAns, 1)} ans` : ''}{sn.triPct !== null ? `, TRI ${formatNumber(sn.triPct, 1)} %` : ''}{sn.motif && sn.retourAns === null ? ` — ${sn.motif}` : ''}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {ciRent.financement ? (
-                <div class="cine-card mt-5 rounded-xl p-5" data-ci-financement>
-                  <p class="tech-label text-lune-faint" data-i18n data-fr="Financement (offre écrite)" data-en="Financing (written offer)" data-ar="التمويل (عرض مكتوب)">Financement (offre écrite)</p>
-                  {ciRent.financement.libelleClient ? <p class="mt-2 text-sm text-lune-soft">{ciRent.financement.libelleClient}</p> : null}
-                  <ul class="mt-2 space-y-1 text-sm text-lune-soft" dir="ltr">
-                    {ciRent.financement.echeanceMad !== null ? <li>{formatMAD(ciRent.financement.echeanceMad)} / mois{ciRent.financement.dureeMois !== null ? ` — ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}</li> : null}
-                    {ciRent.financement.economieMensuelleMoyenneMad !== null ? <li>{formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} / mois d'économie moyenne</li> : null}
-                    {ciRent.financement.ecartMensuelMad !== null ? <li>{formatMAD(ciRent.financement.ecartMensuelMad)} / mois d'écart</li> : null}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          )}
-        </section>
+      {installMode === 'industriel' && ciRent && (
+        <SectionRentabiliteIndustrielle {ciRent} {ciRentBaseTexte} />
       )}
 
       <!-- ── WJ25 · VOTRE TOIT EN 3D (lecture seule — layout backend optionnel) -->
@@ -11977,7 +11385,8 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     #contact-confirm,
     #sign-form,
     #pdf-download,
-    .btn-pill {
+    /* CPRW — :global : couvre aussi les blocs C&I / agricoles déplacés dans leurs composants. */
+    .proposition :global(.btn-pill) {
       display: none !important;
     }
     /* Fond clair + texte sombre : le thème nuit/laiton par défaut du site
@@ -11994,7 +11403,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
       text-shadow: none !important;
       box-shadow: none !important;
     }
-    .cine-card {
+    .proposition :global(.cine-card) {
       border: 1px solid #ccc !important;
       background: #fff !important;
     }

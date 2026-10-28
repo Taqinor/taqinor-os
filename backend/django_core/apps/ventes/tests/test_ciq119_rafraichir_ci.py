@@ -211,3 +211,36 @@ class RafraichisseurTests(_Base):
         rafraichir_etudes_du_devis(devis)
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'brouillon')
+
+
+class PreseanceVisiteSurDevisTests(TestCase):
+    """CORC4 (27/10/2026, constat CSV) — une mesure de visite VALIDÉE passe
+    devant la valeur STOCKÉE d'un devis brouillon (copie d'une déclaration
+    faite avant la visite) ; un devis envoyé garde ce que le client a reçu ;
+    une saisie du corps reste souveraine."""
+
+    RELEVE = {'visite_id': 7, 'validee_le': '2026-10-27',
+              'trajets': [{'longueur_dc_m': 50, 'longueur_ac_m': 12},
+                          {'longueur_dc_m': 35, 'longueur_ac_m': 40}]}
+
+    def _resoudre(self, statut, origine='devis'):
+        from types import SimpleNamespace
+        res = etude_ci._Resolution()
+        res.poser('longueur_dc_m', 20, etude_ci._provenance(origine))
+        with mock.patch('apps.visites.selectors.releve_ci_pour_lead',
+                        return_value=self.RELEVE):
+            etude_ci._couche_visite(res, object(), [],
+                                    devis=SimpleNamespace(statut=statut))
+        return res
+
+    def test_brouillon_suit_la_visite_trajet_le_plus_long(self):
+        res = self._resoudre('brouillon')
+        self.assertEqual(res.valeur('longueur_dc_m'), 50)
+        self.assertEqual(res.valeur('longueur_ac_m'), 40)
+        self.assertEqual(res.provenance('longueur_dc_m')['origine'], 'mesure_visite')
+
+    def test_devis_envoye_garde_sa_valeur(self):
+        self.assertEqual(self._resoudre('envoye').valeur('longueur_dc_m'), 20)
+
+    def test_saisie_du_corps_reste_souveraine(self):
+        self.assertEqual(self._resoudre('brouillon', origine='saisie').valeur('longueur_dc_m'), 20)

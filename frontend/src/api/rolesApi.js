@@ -14,6 +14,24 @@ const rolesApi = {
   // front↔back ; consommé par l'écran Rôles et le test de dérive.
   getPermissionCatalog: () =>
     api.get('/roles/permission-catalog/'),
+
+  // Organigramme (27/10/2026) — contrat `apps/roles/contract_samples/organisation.json`.
+  getOrganisation: () => api.get('/roles/organisation/'),
+  // Départements (écriture admin) ; `id` nul = création.
+  getDepartements: (params) => api.get('/roles/departements/', params ? { params } : undefined),
+  saveDepartement: (id, data) => (id
+    ? api.patch(`/roles/departements/${id}/`, data)
+    : api.post('/roles/departements/', data)),
+  deleteDepartement: (id) => api.delete(`/roles/departements/${id}/`),
+  // Fonctions (postes) : intitulé + département + rôle par défaut.
+  getPostes: (params) => api.get('/roles/postes/', params ? { params } : undefined),
+  savePoste: (id, data) => (id
+    ? api.patch(`/roles/postes/${id}/`, data)
+    : api.post('/roles/postes/', data)),
+  // Équipes génériques (type « autre »).
+  saveEquipeOrg: (id, data) => (id
+    ? api.patch(`/roles/equipes/${id}/`, data)
+    : api.post('/roles/equipes/', data)),
 }
 
 export default rolesApi

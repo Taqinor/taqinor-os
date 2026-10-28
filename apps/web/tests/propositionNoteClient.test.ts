@@ -9,16 +9,14 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { lireProposal, resolveNoteClient } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const CONTRAT = JSON.parse(readFileSync(
   fileURLToPath(new URL('../src/contract_samples/proposal_data.json', import.meta.url)),
   'utf-8',
 )) as Record<string, Record<string, unknown>>;
 const EXEMPLE = CONTRAT.exemple as Record<string, unknown>;
-const PAGE = readFileSync(
-  fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)),
-  'utf-8',
-);
+const PAGE = lirePageProposition();
 
 describe('QJR627 — note_client est lue et rendue', () => {
   it('l’échantillon porte la clé (chaîne vide = aucun bloc)', () => {

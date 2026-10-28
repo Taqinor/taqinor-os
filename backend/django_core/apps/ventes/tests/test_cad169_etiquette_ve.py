@@ -30,7 +30,10 @@ class UneVoitureSeulementPREVUE(SimpleTestCase):
     def test_elle_est_COMPTEE_comme_une_voiture_possedee(self):
         """Décision fondateur : comptée des DEUX côtés, pas retirée."""
         prevue = CJ.composer_equipements(_ve(ve_statut='prevu'))
-        possedee = CJ.composer_equipements(_ve(ve_statut='possede'))
+        # Règle du 21/09 (devis aux règles d'avant le niveau 3) : la voiture
+        # possédée composait la même couche.
+        possedee = CJ._equipements(_ve(ve_statut='possede'),
+                                   ve_possede_dans_facture=False)
         self.assertIn('ve', prevue)
         self.assertEqual(prevue['ve']['kwh_jour'], possedee['ve']['kwh_jour'])
         self.assertEqual(prevue['ve']['heures'], possedee['ve']['heures'])
@@ -50,14 +53,54 @@ class UneVoitureSeulementPREVUE(SimpleTestCase):
 
 
 class UneVoitureDEJA_LA(SimpleTestCase):
+    """Règles d'avant le niveau 3 (devis déjà envoyé) : couche gardée."""
+
+    def _anciennes(self):
+        return CJ._equipements(_ve(ve_statut='possede'),
+                               ve_possede_dans_facture=False)
+
     def test_elle_ne_porte_AUCUNE_etiquette(self):
-        couches = CJ.composer_equipements(_ve(ve_statut='possede'))
+        couches = self._anciennes()
         self.assertNotIn('etiquette', couches['ve'])
         self.assertIsNone(CJ.etiquette_ve(couches))
 
     def test_son_statut_reste_publie(self):
+        self.assertEqual(self._anciennes()['ve']['statut'],
+                         CJ.VE_STATUT_POSSEDE)
+
+
+class UneVoitureDEJA_LA_N_EST_PAS_AJOUTEE(SimpleTestCase):
+    """D-RES-2710-2 (fondateur, 27/10/2026) : une voiture déjà possédée
+    recharge déjà sur la facture — sa couche n'est pas ajoutée (courbe,
+    estimation publique, plancher de stockage), au niveau de règles 3."""
+
+    def test_aucune_couche_ve_au_niveau_3(self):
+        self.assertNotIn(
+            've', CJ.composer_equipements(_ve(ve_statut='possede')))
+
+    def test_le_devis_au_niveau_3_n_ajoute_rien_le_niveau_2_garde(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        lead = _ve(ve_statut='possede')
+        with mock.patch.object(CJ, '_equipements_lead', return_value=lead):
+            neuf = CJ.equipements_du_devis(SimpleNamespace(regles_calcul=3))
+            envoye = CJ.equipements_du_devis(SimpleNamespace(regles_calcul=2))
+        self.assertNotIn('ve', neuf)
+        self.assertIn('ve', envoye)
+
+    def test_plancher_de_stockage_nul_sans_couche(self):
+        from apps.ventes.horaire.ve_nocturne import (
+            plancher_batterie_recharge_ve, recharge_ve_nocturne_kwh_jour)
         couches = CJ.composer_equipements(_ve(ve_statut='possede'))
-        self.assertEqual(couches['ve']['statut'], CJ.VE_STATUT_POSSEDE)
+        self.assertEqual(recharge_ve_nocturne_kwh_jour(couches), 0.0)
+        self.assertIsNone(plancher_batterie_recharge_ve(10.0, couches, [5.0]))
+        anciennes = CJ._equipements(_ve(ve_statut='possede'),
+                                    ve_possede_dans_facture=False)
+        self.assertGreater(recharge_ve_nocturne_kwh_jour(anciennes), 0.0)
+
+    def test_prevue_et_sans_statut_restent_ajoutees(self):
+        self.assertIn('ve', CJ.composer_equipements(_ve(ve_statut='prevu')))
+        self.assertIn('ve', CJ.composer_equipements(_ve()))
 
 
 class QuandLaQuestionN_A_PAS_ETE_POSEE(SimpleTestCase):
