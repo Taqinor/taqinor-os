@@ -17,6 +17,7 @@ from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
+from core.champs_stricts import IdInconnu404Mixin
 from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -32,11 +33,12 @@ _TYPES = [('', 'Tous')] + list(Lead.TypeInstallation.choices)
 _SOURCES = [('', 'Toutes')] + list(Lead.Canal.choices)
 
 
-class RegleAttributionSerializer(_CompanyScopedRelationsMixin,
+class RegleAttributionSerializer(IdInconnu404Mixin, _CompanyScopedRelationsMixin,
                                  serializers.ModelSerializer):
     """Une règle de proposition. Décimaux en CHAÎNE (``"1500.00"``), entiers
     JSON réels. ``membre`` doit être un membre ACTIF de l'équipe (409 sinon :
-    c'est l'état de l'équipe qui s'y oppose)."""
+    c'est l'état de l'équipe qui s'y oppose). api-fuzz-full 28/10 (ENF11) :
+    une équipe ou un membre inconnu (ou d'une autre société) → 404."""
     scoped_relations = ('equipe', 'membre')
     serializer_field_mapping = MAPPING_STRICT_COMPLET
 
