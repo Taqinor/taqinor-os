@@ -388,6 +388,13 @@ def img_html(b64: str, role: str, alt: str = "TAQINOR", style: str = "") -> str:
             f'style="{css_boite(role)}{style}">')
 
 
+def mot_si_lockup(b64: str, lockup_b64: str) -> str:
+    """Héros bas (résidentiel, 53 mm sous un bloc titre absolu) : le lockup
+    TAQINOR (avec tagline) devient le mot-marque seul ; tout autre logo
+    (société, bandeau neutre) est rendu tel quel."""
+    return taqinor_b64("sombre", "mot") if b64 and b64 == lockup_b64 else b64
+
+
 def bloc_taqinor(role: str) -> str:
     """Bloc du logo TAQINOR pour un rôle : lockup là où la tagline passe,
     mot-marque ailleurs."""
