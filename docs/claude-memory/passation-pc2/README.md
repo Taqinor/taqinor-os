@@ -176,3 +176,5 @@ touché par PC2).
 Les sessions PC1 restantes (RPDF, CORC, RGEN, CQST, CPRW, CPDF) sont arrêtées ; leur dernier état est dans blocs-sessions.md (section « Lanes PC1 ») et dans les PR elles-mêmes.
 
 **00:55 UTC (addendum) :** #1103 RGEN, #1119 CPRW round 2 et #1097 CQST sont MERGÉES (~00:51) → 26 PR mergées sur le run. Reste en vol côté PC1 : #1114 RPDF (seule en file) et le round 3 de CPRW (claude/cprw-r3, PR à venir, jeton pré-accordé). Les sessions RGEN et CQST écrivent leur note finale et s'arrêtent.
+
+**01:22 UTC (addendum) :** #1122 CPRW round 3 (CPRW25-29) MERGÉE à 01:21 → 27 PR mergées sur le run ; la lane CPRW est complète (#1104, #1116, #1119, #1122). Il ne reste côté PC1 que #1114 RPDF (rounds 1-3), en correction après son éjection de 00:57 (trois tests : digests publics, rendu « comme avant », formats de montants EN) — RPDF refusionne main, repousse UNE fois et re-arme ; si sa session tombe au plafond, le PC2 reprend claude/res-rpdf-r1.
