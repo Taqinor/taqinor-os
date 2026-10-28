@@ -28,7 +28,7 @@ import { formatMoney } from '../../../features/ventes/solar'
 // HT » / « Installation clé en main — total HT » au-dessus des composants d'un
 // même `groupe_client` (servi par le serializer). Calcul dans le module PUR
 // `lignesEcran` (aucune règle métier ici), rendu seul dans ce composant.
-import { sequenceGroupesClient } from '../../../features/ventes/quote/lignesEcran'
+import { sequenceGroupesClient, bornesDeplacement } from '../../../features/ventes/quote/lignesEcran'
 
 export default function LigneTable({
   // ── Lignes ──
@@ -225,7 +225,7 @@ export default function LigneTable({
                   dans Note/farmSurfaceHa/n'importe lequel des autres
                   useState ne re-rend plus les lignes inchangées (callbacks
                   stabilisés ci-dessus, clé en argument). */}
-              {sequenceGroupesClient(lines).map((pas) => pas.kind === 'entete' ? (
+              {sequenceGroupesClient(lines, lignesRemiseesTtc).map((pas) => pas.kind === 'entete' ? (
                 <tr key={`groupe-${pas.groupe}`} className="lines-groupe-client"
                     data-groupe-client={pas.groupe}
                     title={`${pas.nb} composant(s) regroupés en une ligne sur le PDF et la proposition — chaque composant reste éditable ci-dessous`}>
@@ -237,7 +237,7 @@ export default function LigneTable({
                     <span className="font-normal text-muted-foreground"> · {pas.nb} composant{pas.nb > 1 ? 's' : ''}</span>
                   </td>
                 </tr>
-              ) : (() => { const i = pas.index; const l = lines[i]; return (
+              ) : (() => { const i = pas.index; const l = lines[i]; const borne = bornesDeplacement(lines)[i]; return (
                 <DevisLineRow
                   key={l._key}
                   line={l}
@@ -260,8 +260,8 @@ export default function LigneTable({
                   onQuantiteChange={onQuantiteChange}
                   onSetGroupe={onSetGroupe}
                   onRemove={onRemove}
-                  canMoveUp={i > 0}
-                  canMoveDown={i < lines.length - 1}
+                  canMoveUp={borne.haut}
+                  canMoveDown={borne.bas}
                   onMoveUp={onMoveUp}
                   onMoveDown={onMoveDown}
                 />

@@ -11,7 +11,7 @@ import { _hasPrix, appliquerRecomposition, deriveRoleOrderFromLines, lignesManue
 import stockApi from '../../../../api/stockApi'
 import { emptyLine, structureLine, withKeys } from '../../../../features/ventes/quote/ligneFabrique.js'
 import { toast } from '../../../../ui/confirm'
-import { lignesServeurVersEcran } from '../../../../features/ventes/quote/lignesEcran'
+import { lignesServeurVersEcran, deplacerDansSequence } from '../../../../features/ventes/quote/lignesEcran'
 
 export function useLignesEcran(ctx) {
   const {
@@ -240,16 +240,9 @@ export function useLignesEcran(ctx) {
   // dérive déjà `ordre: idx` de cet ordre — aucun autre câblage requis pour
   // que le nouvel ordre soit persisté au « Enregistrer ». `delta` = -1
   // (monter) ou +1 (descendre) ; hors bornes = no-op silencieux.
-  const moveLine = useCallback((key, delta) => setLines(ls => {
-    const idx = ls.findIndex(l => l._key === key)
-    if (idx < 0) return ls
-    const target = idx + delta
-    if (target < 0 || target >= ls.length) return ls
-    const copy = ls.slice()
-    const [item] = copy.splice(idx, 1)
-    copy.splice(target, 0, item)
-    return copy
-  }), [setLines])
+  // R2 — le geste suit la SÉQUENCE AFFICHÉE (blocs de groupe client,
+  // `deplacerDansSequence`) ; sans groupe, l'échange de voisins d'hier.
+  const moveLine = useCallback((key, delta) => setLines(ls => deplacerDansSequence(ls, key, delta)), [setLines])
   const moveLineUp = useCallback((key) => moveLine(key, -1), [moveLine])
   const moveLineDown = useCallback((key) => moveLine(key, 1), [moveLine])
   // PVORD — « Enregistrer cet ordre comme ordre par défaut » : dérive la

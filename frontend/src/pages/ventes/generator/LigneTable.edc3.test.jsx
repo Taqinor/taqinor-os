@@ -95,6 +95,33 @@ describe('R2 — LigneTable : « Tableau de protection AC/DC — total HT » au-
     }
   })
 
+  it('[Coffret DC, Panneau, Parafoudre AC] : bloc affiché c, f puis p ; Monter/Descendre bornés sur la position AFFICHÉE', () => {
+    const trio = [
+      { _key: 'c', produit: '88', designation: 'Coffret DC C&I', quantite: '1', prix_unit_ttc: '1800', taux_tva: '20', typeLigne: 'produit', groupeClient: 'tableau_ci' },
+      { _key: 'p', produit: '12', designation: 'Panneau', quantite: '10', prix_unit_ttc: '1200', taux_tva: '20', typeLigne: 'produit', groupeClient: null },
+      { _key: 'f', produit: '91', designation: 'Parafoudre AC', quantite: '1', prix_unit_ttc: '360', taux_tva: '20', typeLigne: 'produit', groupeClient: 'tableau_ci' },
+    ]
+    const onMoveUp = vi.fn()
+    const { container } = rendre({ lines: trio, lignesRemiseesTtc: [null, null, null], onMoveUp })
+    const ordre = [...container.querySelectorAll('tbody tr')].map((tr) =>
+      tr.classList.contains('lines-groupe-client') ? 'entete' : tr.getAttribute('data-line-key'))
+    expect(ordre).toEqual(['entete', 'c', 'f', 'p'])
+    const boutons = (key) => [...container.querySelectorAll(`tr[data-line-key="${key}"] button`)]
+      .filter((b) => /monter|descendre/i.test(b.getAttribute('aria-label') || b.title || ''))
+    const etat = (key) => boutons(key).map((b) => b.disabled)
+    expect(etat('c')).toEqual([true, false])   // premier affiché : Monter inactif
+    expect(etat('f')).toEqual([false, false])  // milieu affiché (index 2 du state) : les deux actifs
+    expect(etat('p')).toEqual([false, true])   // dernier affiché : Descendre inactif
+    boutons('p')[0].click()
+    expect(onMoveUp).toHaveBeenCalledWith('p')
+  })
+
+  it('l’en-tête dit le total HT APRÈS remise globale quand le miroir la donne', () => {
+    const { container } = rendre({ lines: lignes, lignesRemiseesTtc: [null, 3240, null, 1944], montrerRemise: true })
+    // 3 240 + 1 944 TTC remisés ⇒ 2 700 + 1 620 = 4 320 HT (catalogue : 4 800).
+    expect(container.querySelector('[data-groupe-total-ht]').textContent.replace(/[\s\u202f\u00a0]/g, '')).toMatch(/^4320/)
+  })
+
   it('sans groupe_client, aucun en-tête : la table d’hier, ligne par ligne', () => {
     const { container } = rendre({ lines: lignes.map((l) => ({ ...l, groupeClient: null })), lignesRemiseesTtc: [null, null, null, null] })
     expect(container.querySelectorAll('tr.lines-groupe-client')).toHaveLength(0)
