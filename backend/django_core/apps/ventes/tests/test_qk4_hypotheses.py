@@ -226,7 +226,7 @@ class TarifHypotheseModeleHoraireTest(SimpleTestCase):
     le dit (même phrase que le modèle « factures », catalogue AMOT52), au lieu
     d'un tarif plat « saisi pour ce devis » que le calcul n'a pas appliqué."""
 
-    def _lignes(self, bareme_horaire):
+    def _lignes(self, bareme_horaire, utility='onee'):
         from apps.ventes import etude_horaire as EH
         from apps.ventes.courbes_journalieres import OCCUPATION_PRESENCE
         from apps.ventes.horaire import conso as HC
@@ -242,7 +242,7 @@ class TarifHypotheseModeleHoraireTest(SimpleTestCase):
         self.assertEqual(roi['savings_model'], 'horaire')
         sortie = restituer_etude(
             _client_city='Casablanca', _co_productible=None, _corrige=True,
-            _utility='onee', _bareme_horaire=bareme_horaire, etude={},
+            _utility=utility, _bareme_horaire=bareme_horaire, etude={},
             puissance_kwc=6.0, roi=roi, savings_model=roi['savings_model'],
             savings_model_avec=None, savings_model_sans=None,
             scenario='Sans batterie')
@@ -271,3 +271,16 @@ class TarifHypotheseModeleHoraireTest(SimpleTestCase):
         self.assertTrue(lignes)
         self.assertFalse(any('par tranche (barème national)' in t
                              for t in lignes), lignes)
+
+    def test_sans_distributeur_niveau_3_bareme_national(self):
+        """CE2E5 — lead sans distributeur, modèle horaire : « barème national
+        par tranche », jamais « saisi pour ce devis » ; traduite (catalogue)."""
+        from apps.ventes.quote_engine.residential.trust import hypothese_traduite
+        lignes = self._lignes(True, utility=None)
+        self.assertEqual(lignes, ['Tarif électricité : barème national par tranche'])
+        self.assertEqual(hypothese_traduite('en', lignes[0]),
+                         'Electricity tariff: national schedule by bracket')
+
+    def test_sans_distributeur_niveau_2_inchange(self):
+        lignes = self._lignes(False, utility=None)
+        self.assertNotIn('Tarif électricité : barème national par tranche', lignes)

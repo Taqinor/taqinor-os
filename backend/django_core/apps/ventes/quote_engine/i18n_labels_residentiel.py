@@ -9,6 +9,10 @@ porte les trois langues » les couvre aussi.
 """
 
 LIBELLES_RESIDENTIEL = {
+    # CE2E5 — « Nos hypothèses » d'un lead sans distributeur, modèle horaire.
+    'rpdf_hyp_bareme_national': {'fr': 'Tarif électricité : barème national par tranche',
+                                 'en': 'Electricity tariff: national schedule by bracket',
+                                 'ar': 'تعريفة الكهرباء: الجدول الوطني حسب الأشطر'},
     # ── Unités de la une-page (legacy_onepage.py) ──────────────────────────
     'rpdf_kwh_an': {'fr': '{n} kWh/an', 'en': '{n} kWh/year', 'ar': '{n} kWh/سنة'},
     'rpdf_mad_an': {'fr': '{n} MAD/an', 'en': '{n} MAD/year', 'ar': '{n} MAD/سنة'},
