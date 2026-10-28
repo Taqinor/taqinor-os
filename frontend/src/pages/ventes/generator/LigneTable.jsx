@@ -53,6 +53,9 @@ export default function LigneTable({
   // Il est passé en `children` pour que le DOM rendu soit inchangé à l'octet.
   children,
 }) {
+  // R2 — séquence affichée et bornes de déplacement calculées UNE fois par rendu.
+  const sequence = sequenceGroupesClient(lines, lignesRemiseesTtc)
+  const bornes = bornesDeplacement(lines)
   return (
     <Card>
       <GenCardHeader icon={ShoppingCart} title="Lignes de Produits">
@@ -225,7 +228,7 @@ export default function LigneTable({
                   dans Note/farmSurfaceHa/n'importe lequel des autres
                   useState ne re-rend plus les lignes inchangées (callbacks
                   stabilisés ci-dessus, clé en argument). */}
-              {sequenceGroupesClient(lines, lignesRemiseesTtc).map((pas) => pas.kind === 'entete' ? (
+              {sequence.map((pas) => pas.kind === 'entete' ? (
                 <tr key={`groupe-${pas.groupe}`} className="lines-groupe-client"
                     data-groupe-client={pas.groupe}
                     title={`${pas.nb} composant(s) regroupés en une ligne sur le PDF et la proposition — chaque composant reste éditable ci-dessous`}>
@@ -237,7 +240,7 @@ export default function LigneTable({
                     <span className="font-normal text-muted-foreground"> · {pas.nb} composant{pas.nb > 1 ? 's' : ''}</span>
                   </td>
                 </tr>
-              ) : (() => { const i = pas.index; const l = lines[i]; const borne = bornesDeplacement(lines)[i]; return (
+              ) : (() => { const i = pas.index; const l = lines[i]; const borne = bornes[i]; return (
                 <DevisLineRow
                   key={l._key}
                   line={l}

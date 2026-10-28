@@ -102,9 +102,11 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
 // ── R2 — en-têtes de groupe client du tableau des lignes ─────────────────────
 // Les composants d'un même `groupe_client` (Tableau de protection AC/DC,
 // Installation clé en main) s'affichent SOUS un en-tête de section qui dit le
-// total HT du groupe, chaque composant restant éditable ligne à ligne. L'ordre
-// PERSISTÉ (`ordre` = index du state) ne bouge pas : seule la séquence
-// d'affichage rapproche les composants à la place du premier.
+// total HT du groupe, chaque composant restant éditable ligne à ligne. Tant
+// qu'aucun geste n'est fait, l'ordre PERSISTÉ (`ordre` = index du state) ne
+// bouge pas : seule la séquence d'affichage rapproche les composants à la
+// place du premier ; après un Monter/Descendre (`deplacerDansSequence`),
+// l'ordre persisté devient l'ordre affiché.
 export const LIBELLES_GROUPE_CLIENT = Object.freeze({
   tableau_ci: 'Tableau de protection AC/DC',
   installation_ci: 'Installation clé en main',

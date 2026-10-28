@@ -40,8 +40,9 @@ test('DevisGenerator : moveLine mute l\'ordre du tableau lines via deplacerDansS
 })
 
 test('LigneTable : chaque ligne rendue reçoit ses bornes de déplacement AFFICHÉES', () => {
-  assert.match(LT, /sequenceGroupesClient\(lines, lignesRemiseesTtc\)\.map\(/)
-  assert.match(LT, /const borne = bornesDeplacement\(lines\)\[i\]/)
+  assert.match(LT, /const sequence = sequenceGroupesClient\(lines, lignesRemiseesTtc\)/)
+  assert.match(LT, /const bornes = bornesDeplacement\(lines\)/)
+  assert.match(LT, /const borne = bornes\[i\]/)
   assert.match(LT, /canMoveUp=\{borne\.haut\}/)
   assert.match(LT, /canMoveDown=\{borne\.bas\}/)
   assert.match(DG, /lines=\{lines\}/, "l'écran doit passer les lignes à LigneTable")

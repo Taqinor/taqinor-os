@@ -304,6 +304,12 @@ test('R2 — Monter/Descendre sur la séquence affichée : [Coffret DC, Panneau,
   assert.equal(deplacerDansSequence(lines, 'c', -1), lines)
   assert.equal(deplacerDansSequence(lines, 'p', 1), lines)
   assert.equal(deplacerDansSequence(lines, 'zz', 1), lines)
+  // L'ordre PERSISTÉ est l'ordre affiché : après « Monter » Panneau, le corps
+  // replace-lines porte ordre 0/1/2 dans la séquence affichée [p, c, f].
+  const corps = lignesEcranVersPayload(deplacerDansSequence(
+    lines.map((l) => ({ ...l, produit: '7', typeLigne: 'produit' })), 'p', -1))
+  assert.deepEqual(corps.map((o) => [o.designation, o.ordre]),
+    [['Panneau', 0], ['Coffret DC', 1], ['Parafoudre AC', 2]])
   // Sans groupe : l'échange de voisins d'hier.
   const libres = lines.map((l) => ({ ...l, groupeClient: null }))
   assert.deepEqual(cles(deplacerDansSequence(libres, 'f', -1)), ['c', 'f', 'p'])
