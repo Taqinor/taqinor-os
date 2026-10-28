@@ -1353,15 +1353,6 @@ def _decimal_publie(motif):
 
 
 _QuantiteLigne = _decimal_publie(_MOTIF_STRICT_POSITIF)
-#: ENF11 — une ligne de facture saisie porte une quantité et un prix ≥ 0
-#: (« La quantité ne peut pas être négative. », garde ``domain/bornes``) :
-#: publiés sur les écritures de ``factures-lignes`` (le composant de la
-#: réponse, partagé, ne change pas).
-CORPS_LIGNE_FACTURE_POSITIVE = corps_resserre({'properties': {
-    **{champ: {'type': 'string', 'pattern': _MOTIF_POSITIF}
-       for champ in ('quantite', 'prix_unitaire')},
-    # « La remise doit être comprise entre 0 et 100 %. »
-    'remise': {'type': 'string', 'pattern': _MOTIF_POURCENT}}})
 _MontantLigne = _decimal_publie(_MOTIF_POSITIF)
 _PourcentLigne = _decimal_publie(_MOTIF_POURCENT)
 

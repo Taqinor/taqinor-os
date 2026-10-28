@@ -1140,9 +1140,9 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         numero = (request.data.get('numero_serie') or '').strip()
         # ACHT37 — doublon refusé dès la saisie (plus de 500 au push parc).
         raison = field_capture.raison_serie_en_double(company, numero)
-        if raison:
+        if raison:  # doublon (relevé ou parc SAV) : refus d'ÉTAT, 409 (ENF11)
             return Response({'numero_serie': raison},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         serie_ocr = False
         plaque = None
         file = request.FILES.get('file')
@@ -1224,9 +1224,9 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
             nouveau = (request.data.get('numero_serie') or '').strip()
             raison = field_capture.raison_serie_en_double(
                 interv.company, nouveau, exclude_id=serial.pk)
-            if raison:
+            if raison:  # doublon : refus d'ÉTAT, 409 (ENF11)
                 return Response({'numero_serie': raison},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
             serial.numero_serie = nouveau
             serial.serie_ocr = False
             fields += ['numero_serie', 'serie_ocr']
@@ -1354,17 +1354,15 @@ class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedMod
         # l'enveloppe commune ; un NUL ou une valeur non textuelle faisait 500.
         designation = oa.corps_valide(
             oa.DesignationLigneRequete, request)['designation']
-        produit = None
-        if request.data.get('produit'):
-            produit = get_produit_scoped(
-                interv.company, request.data.get('produit'))
+        produit_id = oa.id_corps(request, 'produit')  # liste/objet → 400, plus 500
+        produit = get_produit_scoped(interv.company, produit_id) if produit_id else None
         from decimal import Decimal
         qte = oa.quantite_bornee(request, 'quantite_utilisee')  # (12, 2) : 1e15 → 500
         ligne = ConsommationLigne.objects.create(
             company=interv.company, consommation=cons, produit=produit,
             designation=designation, quantite_prevue=Decimal('0'),
             quantite_utilisee=qte, hors_nomenclature=True,
-            justification=(request.data.get('justification') or '').strip(),
+            justification=oa.texte_corps(request, 'justification'),
             ordre=cons.lignes.count())
         return Response(ConsommationLigneSerializer(ligne).data,
                         status=status.HTTP_201_CREATED)

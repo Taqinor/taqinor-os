@@ -95,6 +95,20 @@ def id_ou_none(valeur):
     return None
 
 
+def id_corps(request, nom):
+    """api-fuzz-full 28/10 (ENF11) — identifiant FACULTATIF du champ de corps
+    ``nom``, publié entier : ``null``/absent → ``None`` ; un entier hors
+    1..``ID_MAX`` ne désigne aucune ligne (``None``) ; tout autre type (liste,
+    objet, booléen, texte) → 400 nommant le champ — une liste atteignait
+    ``filter(id=…)`` (``TypeError``, 500)."""
+    valeur = corps_objet(request).get(nom)
+    if valeur is None:
+        return None
+    if isinstance(valeur, bool) or not isinstance(valeur, int):
+        raise ValidationError({nom: 'Identifiant entier attendu.'})
+    return valeur if 1 <= valeur <= ID_MAX else None
+
+
 def champ_requis(request, nom):
     """api-fuzz-full 27/10 (ENF11) — valeur du champ de corps OBLIGATOIRE
     ``nom`` (``null`` compris, s'il est publié nullable) ; absent → 400 nommant

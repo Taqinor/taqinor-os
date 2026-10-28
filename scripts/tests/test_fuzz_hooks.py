@@ -896,12 +896,14 @@ class IdsFkParCheminTests(unittest.TestCase):
         cas.query = {'lot': 7}
         self.hooks.before_call(None, cas, {})
         self.assertEqual(cas.query, {'lot': 40})
-        # Id déjà réel (non réécrit) : la valeur du lien reste intacte.
+        # api-fuzz-full 28/10 (tranche 11, ``object_id`` de GET
+        # audit/security/) : id déjà réel, NON réécrit par le crochet — publié
+        # ``string``, l'entier du lien part lui aussi en texte.
         cas = _cas(self.hooks, 'DELETE', '/api/django/stock/x/{id}/tags/')
         cas.operation.query = [parametre('lot', 'string')]
         cas.query = {'lot': 40}
         self.hooks.before_call(None, cas, {})
-        self.assertEqual(cas.query, {'lot': 40})
+        self.assertEqual(cas.query, {'lot': '40'})
 
     def test_liste_bornee_et_objet_imbrique(self):
         cas = self._appel('/api/django/x/comparer/', {'ids': [7, 8, 9]})

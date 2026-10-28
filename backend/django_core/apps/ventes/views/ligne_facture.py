@@ -1,4 +1,3 @@
-from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.parsers import JSONParser
 from rest_framework import viewsets
 from ..models import LigneFacture
@@ -9,7 +8,6 @@ from authentication.permissions import (
     IsAdminRole,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: ARC5 — exception documentée (D-ENF22)
-from . import openapi_docs as D
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -20,11 +18,6 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-_ECRITURE_LIGNE = extend_schema(extensions=D.CORPS_LIGNE_FACTURE_POSITIVE)
-
-
-@extend_schema_view(create=_ECRITURE_LIGNE, update=_ECRITURE_LIGNE,
-                    partial_update=_ECRITURE_LIGNE)
 class LigneFactureViewSet(CompanyScopedModelViewSet):
     parser_classes = [JSONParser]  # ENF11/D2 : aucun envoi de fichier
     # ARC5 — sweep TenantMixin : base transverse unique. LigneFacture N'A PAS de

@@ -292,6 +292,35 @@ class RappelDepuisLeJournalTests(_Base):
             format='json')
         self.assertEqual(resp.status_code, 400)
 
+    def test_forme_du_rappel_publiee_et_appliquee_toujours(self):
+        """api-fuzz-full 28/10 (ENF11) : ``rappel_le: "NaN"`` était publié
+        texte libre puis refusé 400 ; date AAAA-MM-JJ et heure HH:MM sont
+        publiées et appliquées dès qu'elles sont saisies, rappel ou non."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.crm import urls as crm_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/crm/', include(crm_urls)),
+        ]).get_schema(request=None, public=True)
+        props = schema['components']['schemas'][
+            'CrmLogInteractionRequestRequest']['properties']
+        self.assertIn({'type': 'string', 'format': 'date'},
+                      props['rappel_le']['anyOf'])
+        self.assertIn('pattern', props['rappel_heure'])
+        url = f'/api/django/crm/leads/{self.lead.pk}/log-interaction/'
+        for corps in ({'outcome': 'rappel', 'rappel_le': 'NaN'},
+                      {'rappel_le': 'NaN'},
+                      {'outcome': 'rappel', 'rappel_le': '2026-09-17',
+                       'rappel_heure': '25:00'},
+                      {'rappel_heure': 'midi'}):
+            resp = self.api.post(url, {'kind': 'appel', **corps},
+                                 format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+        resp = self.api.post(url, {'kind': 'appel', 'rappel_le': '',
+                                   'rappel_heure': ''}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
 
 class UnSeulSystemeDeRappelTests(_Base):
     """Le rival `CallLogPopover` PATCHe `relance_date` seul — il doit rester
