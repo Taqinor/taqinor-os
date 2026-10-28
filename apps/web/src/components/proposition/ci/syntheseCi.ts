@@ -198,7 +198,9 @@ function lireCategorieCi(v: unknown): SyntheseCiCategorie | null {
   };
 }
 
-function lireArgentCi(v: unknown): SyntheseCiArgent | null {
+// CE2E2 — `paybackPdf` = `mode_kpis.payback` servi (au dixième, celui du PDF) : il remplace
+// l'entier `indicateurs.retour_ans` quand celui-ci est servi — jamais un calcul côté page.
+function lireArgentCi(v: unknown, paybackPdf: number | null = null): SyntheseCiArgent | null {
   if (!estRecord(v) || Object.keys(v).length === 0) return null;
   const tarifBrut = estRecord(v.tarif) ? v.tarif : null;
   const premierePoste =
@@ -223,7 +225,7 @@ function lireArgentCi(v: unknown): SyntheseCiArgent | null {
         }
       : null,
     economieAnnee1: ht !== null || ttc !== null ? { ht, ttc } : null,
-    retourAns: ind ? nombreServi(ind.retour_ans) : null,
+    retourAns: ind && nombreServi(ind.retour_ans) !== null ? (paybackPdf ?? nombreServi(ind.retour_ans)) : null,
     revente: rev
       ? { statut: texteServi(rev.statut), kwhAn: nombreServi(rev.kwh_an), valeurMadAn: nombreServi(rev.valeur_mad_an) }
       : null,
@@ -330,6 +332,7 @@ export function syntheseCi(
   const brut = (p as { synthese_ci?: unknown }).synthese_ci;
   if (!estRecord(brut) || Object.keys(brut).length === 0) return null;
 
+  const mk = (p as { mode_kpis?: unknown }).mode_kpis;
   const sys = estRecord(brut.systeme) ? brut.systeme : null;
   const en = estRecord(brut.energie) ? brut.energie : null;
   const defs = en && estRecord(en.definitions) ? en.definitions : {};
@@ -395,7 +398,7 @@ export function syntheseCi(
           definitions: { autoconso: texteServi(defs.autoconso), couverture: texteServi(defs.couverture) },
         }
       : null,
-    argent: lireArgentCi(brut.argent),
+    argent: lireArgentCi(brut.argent, nombreServi(estRecord(mk) ? mk.payback : null)),
     echeancier: Array.isArray(brut.echeancier)
       ? brut.echeancier.flatMap((e) => {
           if (!estRecord(e)) return [];
