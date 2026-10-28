@@ -21,6 +21,7 @@ import { test, expect } from '@playwright/test'
 import {
   API_DJANGO as API, KWH_INDUSTRIEL, choisirMarche, declarerProfilCi, lireJson, uniq, ouvrirAffinerCi,
   nombrePagesPdf, textePdf, cliquerCreerDevis, retirerLignesPrixARenseigner, tariferPostesCiDemo,
+  retablirPrixPartages,
 } from './helpers'
 
 const ANNEE_FACTURES = new Date().getFullYear() - 1
@@ -39,6 +40,8 @@ const ENTREPRISE = {
   ice: '000000000000000',
 }
 const devisIds = []
+// CAD177 — articles PARTAGÉS (câble solaire DC…) tarifés pour la passe, remis à 0 ensuite.
+const prixPartages = []
 const etat = { devisId: null, token: null, pdfTexte: null }
 
 
@@ -66,6 +69,7 @@ test.describe.configure({ mode: 'serial' })
 test.afterAll(async ({ request }) => {
   await Promise.all(devisIds.map((id) =>
     request.delete(`${API}/ventes/devis/${id}/`).catch(() => null)))
+  await retablirPrixPartages(request, prixPartages)
 })
 
 test('CIQ346 — créer (MT, 12 factures, taux d’actualisation déclaré), rouvrir, ré-enregistrer : objet identique', async ({ page, request }) => {
@@ -73,7 +77,9 @@ test('CIQ346 — créer (MT, 12 factures, taux d’actualisation déclaré), rou
   const lead = await premierLead(request)
   // ADEV81 / D-ACI-8 (23/10/2026) — un investissement non chiffré n'imprime
   // ni retour, ni TRI, ni VAN : la démo tarifie ses postes C&I d'abord.
-  await tariferPostesCiDemo(request)
+  // CAD177 — y compris les postes servis par un article partagé au rôle C&I
+  // déduit (câble solaire DC H1Z2Z2 : « 1 article sans prix », nocturne 40664182387).
+  await tariferPostesCiDemo(request, { partages: prixPartages })
   await page.goto(`/ventes/devis/nouveau?lead=${lead.id}`)
   await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
     .toBeVisible({ timeout: 30_000 })

@@ -529,8 +529,9 @@ export async function ouvrirGenerateurDepuisLeadAgricole(page, request, prefixe)
  *  les articles C&I et les forfaits « à renseigner » par conception. La société
  *  de la démo tarifie donc ses postes ICI, par l'API (comme Reda dans
  *  Paramètres › Devis › Prestations C&I et sur les fiches produit) :
- *  idempotent, valeurs d'essai, aucune ligne à 0. */
-export async function tariferPostesCiDemo(request) {
+ *  idempotent, valeurs d'essai, aucune ligne à 0. `partages` (tableau, opt-in) :
+ *  tarife AUSSI les articles partagés au rôle C&I déduit (voir plus bas). */
+export async function tariferPostesCiDemo(request, { partages } = {}) {
   const forfaits = Object.fromEntries(['etudes_ingenierie', 'pose_structure', 'pose_modules', 'raccordement_ac',
     'mise_en_service', 'dossier_raccordement', 'levage_acces', 'transport_ci']
     .map((k) => [k, { fixe_ht: 2500, source: 'e2e C&I (valeur d’essai)', date: '2026-10-23' }]))
@@ -550,7 +551,44 @@ export async function tariferPostesCiDemo(request) {
     }
     suivant = Array.isArray(page_) ? null : page_.next
   }
+  if (partages) tarifes += await tariferPostesCiPartages(request, partages)
   return tarifes
+}
+
+/** CAD177 — un poste C&I peut n'être servi que par un article PARTAGÉ, sans
+ *  `role_ci` déclaré mais au rôle C&I DÉDUIT (`stock.selectors.produits_ci` :
+ *  rôle de devis, fiche ou nom — ADEV87 : le câble solaire DC est le seed
+ *  `CAB-H1Z2Z2-*-M`, prix vide). La boucle `role_ci` ne le voit pas : le PDF
+ *  industriel imprimait « Investissement non encore chiffré (1 article sans
+ *  prix) », sans TRI (nocturne 40664182387). On lit donc la MÊME source que le
+ *  moteur (« Prêt pour le devis C&I ») et on tarifie les articles « prix de
+ *  vente non saisi » des postes matière à compléter (hors panneau/onduleur, qui
+ *  fixent la taille). Ces articles servent aussi le résidentiel et le pompage :
+ *  leurs ids vont dans `partages`, que l'appelant remet à 0 en afterAll
+ *  (`retablirPrixPartages`). */
+async function tariferPostesCiPartages(request, partages) {
+  const pret = await lireJson(await request.get(`${API_DJANGO}/stock/produits/pret-devis-ci/`),
+    'prêt pour le devis C&I')
+  let tarifes = 0
+  for (const poste of pret.postes || []) {
+    if (poste.groupe !== 'materiel' || poste.statut !== 'a_completer'
+      || ['panneau', 'onduleur_string'].includes(poste.cle)) continue
+    for (const article of poste.articles || []) {
+      if (article.motif !== 'prix de vente non saisi' || partages.includes(article.id)) continue
+      await lireJson(await request.patch(`${API_DJANGO}/stock/produits/${article.id}/`,
+        { data: { prix_vente: '900' } }), `prix ${article.nom}`)
+      partages.push(article.id)
+      tarifes += 1
+    }
+  }
+  return tarifes
+}
+
+/** CAD177 — remet à 0 (prix vide du seed) les articles partagés tarifés par
+ *  `tariferPostesCiDemo(request, { partages })` : best-effort, afterAll. */
+export async function retablirPrixPartages(request, partages) {
+  await Promise.all(partages.map((id) => request.patch(`${API_DJANGO}/stock/produits/${id}/`,
+    { data: { prix_vente: '0' } }).catch(() => null)))
 }
 
 /** CAD177 — « Créer le devis » (bouton du formulaire) puis l'issue : la réponse
