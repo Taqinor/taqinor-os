@@ -10,7 +10,10 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 const contrat = JSON.parse(
   read('../../../backend/django_core/apps/crm/contract_samples/questionnaire_lead.json'),
 ) as { colonnes_ecrites: Record<string, string[]> };
-const src = read('../src/pages/questionnaire/[token].astro');
+// CQSTW8 — les questions facultatives vivent dans ChampsAffiner.astro : on les
+// remet « en ligne » à la place de leur balise pour que les gardes lisent la page entière.
+const champsAffiner = read('../src/components/questionnaire/ChampsAffiner.astro');
+const src = read('../src/pages/questionnaire/[token].astro').replace(/<ChampsAffiner ecran="(\w+)"[^>]*\/>/g, (_m, ecran) => champsAffiner.replace(/\{ecran === '\w+' && \(/g, (x) => (x.includes(`'${ecran}'`) ? x : '{false && (')));
 const debut = src.indexOf('function collectSectionRaw');
 const fin = src.indexOf('function ', debut + 10);
 const collect = src.slice(debut, fin);
@@ -20,7 +23,7 @@ const collect = src.slice(debut, fin);
 // nommée RETIRE l'entrée : le test « encore en attente » ci-dessous rougit dès que
 // la page porte toutes les colonnes, pour que l'exemption ne survive pas au code.
 const SECTIONS_POSEES_AVANT_LA_PAGE: Readonly<Record<string, string>> = {
-  // pompage : retiré par AGW408 (la page dessine toutes ses colonnes).
+  // Vide : CQSTW1 a retiré l'exemption `pompage` (la page dessine toutes ses colonnes).
 };
 
 describe('questionnaire — parité colonnes_ecrites ↔ collectSectionRaw', () => {
@@ -170,5 +173,41 @@ describe('questionnaire pro — parité exemple_pro ↔ collectSectionRaw', () =
     expect(labelsI18n.length).toBeGreaterThanOrEqual(labels.length - 1);
     expect(bloc).toContain('data-ar=');
     expect(bloc).toContain('data-en=');
+  });
+});
+
+// CQSTW7 — zéro jargon sans aide : kVA, option tarifaire, cos φ, BT/MT disent où les lire.
+describe('questionnaire pro — aides « où le lire sur votre facture » (CQSTW7)', () => {
+  for (const cle of ['tension', 'option_bt', 'kva', 'cos_phi']) {
+    it(`${cle} : aide FR/EN/AR sous le libellé`, () => {
+      expect(src).toContain(`data-en={AIDES_FACTURE.${cle}.en} data-ar={AIDES_FACTURE.${cle}.ar}>{AIDES_FACTURE.${cle}.fr}`);
+    });
+  }
+  it('les aides disent « où le lire » dans les trois langues', async () => {
+    const { AIDES_FACTURE } = await import('../src/lib/questionnaireChamps');
+    for (const a of [AIDES_FACTURE.tension, AIDES_FACTURE.option_bt, AIDES_FACTURE.kva, AIDES_FACTURE.cos_phi]) {
+      expect(a.fr).toMatch(/Où le lire|Où le trouver/);
+      expect(a.en).toContain('Where to read');
+      expect(a.ar.length).toBeGreaterThan(20);
+    }
+    expect(AIDES_FACTURE.kva.fr).not.toContain('Facultatif');
+  });
+  it('chaque AIDES_FACTURE.<clé> lue par la page existe en FR/EN/AR (sinon la page pro plante au rendu)', async () => {
+    const { AIDES_FACTURE } = await import('../src/lib/questionnaireChamps');
+    const cles = new Set([...src.matchAll(/AIDES_FACTURE\.(\w+)\./g)].map((m) => m[1]));
+    expect(cles.size).toBeGreaterThan(4);
+    for (const cle of cles) {
+      const aide = (AIDES_FACTURE as Record<string, { fr: string; en: string; ar: string } | undefined>)[cle];
+      expect(aide, cle).toBeDefined();
+      expect(aide!.fr && aide!.en && aide!.ar, cle).toBeTruthy();
+    }
+  });
+  it('cos φ et option tarifaire sont marqués facultatifs', () => {
+    const optionBt = src.indexOf('id="q-option-bt"');
+    const libOption = src.slice(src.lastIndexOf('<label', optionBt), optionBt);
+    expect(libOption).toContain('(facultatif)');
+    expect(libOption).toContain('(optional)');
+    const cos = src.indexOf('id="q-cos-phi"');
+    expect(src.slice(src.lastIndexOf('<label', cos), cos)).toContain('(facultatif)');
   });
 });

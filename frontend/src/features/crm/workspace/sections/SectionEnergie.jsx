@@ -51,6 +51,9 @@ const RACCORDEMENTS = {
 const CRENEAU_CHAUFFE_EAU = { matin: 'Matin', soir: 'Soir', nuit: 'Nuit', journee: 'Journée' }
 // source-choix: crm.Lead.equip_ve_creneau
 const CRENEAU_VE = { nuit: 'Nuit', jour: 'Jour', soir: 'Soir' }
+// Véhicule électrique : déjà là (sa recharge est déjà dans la facture) ou prévu.
+// source-choix: crm.Lead.equip_ve_statut
+const STATUT_VE = { possede: 'Véhicule déjà là', prevu: 'Véhicule seulement prévu' }
 // L-FRONT lot 5 (contrat L-BACK2, 24/08) — mêmes 4 créneaux pour clim/piscine.
 // source-choix: crm.Lead.equip_clim_creneau / crm.Lead.equip_piscine_creneau
 const CRENEAU_JOUR = { matin: 'Matin', apres_midi: 'Après-midi', soir: 'Soir', journee: 'Toute la journée' }
@@ -419,6 +422,21 @@ export function SectionEquipements({ state, setField, errors = {} }) {
               {enumOptions(CRENEAU_VE)}
             </select>
           </FormField>
+          <FormField
+            label="Véhicule électrique — déjà là ou prévu ?" htmlFor="lf-equip-ve-statut"
+            error={errors.equip_ve_statut}
+          >
+            <select
+              id="lf-equip-ve-statut"
+              className={errors.equip_ve_statut ? 'form-select is-invalid' : 'form-select'}
+              aria-invalid={errors.equip_ve_statut ? true : undefined}
+              value={v('equip_ve_statut')}
+              onChange={(e) => setField('equip_ve_statut', e.target.value)}
+            >
+              <option value="">— (pas encore demandé)</option>
+              {Object.entries(STATUT_VE).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </FormField>
         </div>
       )}
       <div className="form-row">
@@ -434,7 +452,7 @@ export function SectionEquipements({ state, setField, errors = {} }) {
             error={errors.equip_clim_pieces}
           >
             <Input
-              id="lf-equip-clim-pieces" type="number" step="1" min="0" placeholder="ex: 2"
+              id="lf-equip-clim-pieces" type="number" step="any" min="0" placeholder="ex: 2"
               invalid={!!errors.equip_clim_pieces}
               value={v('equip_clim_pieces')}
               onChange={(e) => setField('equip_clim_pieces', e.target.value)}

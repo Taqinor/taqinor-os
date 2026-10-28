@@ -74,6 +74,8 @@ export function useChargeurEdition(ctx) {
                      bon_commande_etat: d.bon_commande_etat ?? null,
                      chantier: d.chantier ?? null,
                      layout_stale: d.layout_stale ?? null,
+                     // RGEN5 — niveau de règles servi : l'aperçu local suit le PDF.
+                     regles_calcul: d.regles_calcul ?? null,
                      layout_nb_panneaux: d.layout_nb_panneaux ?? null,
                      lineIds: (d.lignes ?? []).map(l => l.id) })
       // QJR658 — LE MAPPEUR EST UN MODULE PUR (`quote/etatDevis.js`,

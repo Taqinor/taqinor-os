@@ -8,8 +8,13 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { lireAstroAvecBlocs } from './astroBlocsHelper';
 
-const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
+// CPRW20 — les pages .astro sont lues avec leurs blocs partagés (components/blocs) déroulés (ENF19).
+const read = (rel: string) => {
+  const chemin = fileURLToPath(new URL(rel, import.meta.url));
+  return rel.endsWith('.astro') ? lireAstroAvecBlocs(chemin) : readFileSync(chemin, 'utf-8');
+};
 
 // Chaque cas : fichier source + une phrase traduite distinctive à y trouver.
 const EN_PAGES = [
@@ -102,6 +107,33 @@ describe('CPRW12 — professionnel EN/AR : mêmes retraits que le FR', () => {
       for (const l of liens) expect(l).toMatch(/\?mode=(industriel|commercial)/);
       expect(SRC).toContain(lang === 'en' ? 'Hour-by-hour study' : 'دراسة ساعة بساعة');
       expect(SRC).toContain(lang === 'en' ? 'From your consumption' : 'انطلاقاً من استهلاككم');
+    });
+  }
+});
+
+// ── CPRW20 — /professionnel : segments Collectivités sans promesse 10 ans, CTA par mode, titres h3 ──
+describe('CPRW20 — /professionnel : sources des 3 pages', () => {
+  const PAGES20 = ['../src/pages/professionnel.astro', '../src/pages/en/professionnel.astro', '../src/pages/ar/professionnel.astro'];
+  for (const rel of PAGES20) {
+    const src = read(rel);
+    it(`${rel} — la ligne Collectivités ne promet aucune durée de 10 ans`, () => {
+      const bloc = src.slice(src.indexOf("n: '04'"), src.indexOf('];', src.indexOf("n: '04'")));
+      const proof = /proof: '([^']*)'/.exec(bloc)![1]!;
+      expect(proof).not.toMatch(/10\s*(ans|years)/);
+      expect(proof).not.toContain('10 سنوات');
+      expect(proof).not.toMatch(/\d/);
+    });
+    it(`${rel} — chaque segment pointe son CTA vers son mode ; titres en h3 ; plus de commentaire périmé`, () => {
+      expect(src).toMatch(/n: '01', mode: 'industriel'/);
+      expect(src).toMatch(/n: '02', mode: 'industriel'/);
+      expect(src).toMatch(/n: '03', mode: 'commercial'/);
+      expect(src).toMatch(/n: '04', mode: 'commercial'/);
+      expect(src).toContain('data-segment-cta');
+      // Carte partagée FR/EN/AR (components/blocs/CarteSegmentPro.astro, déroulée dans la page) : titre en h3.
+      expect(src).toContain('<h3 class="display mt-2 text-xl text-white">{title}</h3>');
+      expect(src).not.toContain('<h2 class="display mt-2 text-xl text-white">{title}</h2>');
+      const tete = src.slice(0, src.indexOf('---', 4));
+      for (const vieux of ['17,04', '3,72', 'ref. 468', '3–5']) expect(tete).not.toContain(vieux);
     });
   }
 });

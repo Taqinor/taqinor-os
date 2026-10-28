@@ -91,3 +91,72 @@ describe('questionnaire/[token].astro — pagination par ÉCRAN', () => {
     expect(src).not.toContain('-skip`');
   });
 });
+
+// CQSTW8 / CQSTW9 — repli « Pour affiner » (pro) et pompe actuelle masquée (agricole).
+describe('questionnaire — CQSTW8 repli facultatif, CQSTW9 pompe actuelle', () => {
+  const affiner = read('../src/components/questionnaire/ChampsAffiner.astro');
+  const repli = read('../src/components/questionnaire/Repli.astro');
+  const donnees = read('../src/components/questionnaire/ChampsDonnees.astro');
+  const chmp = read('../src/lib/questionnaireChamps.ts');
+
+  it('CQSTW8 : un <details> natif fermé, libellé FR/EN/AR, rien de supprimé', () => {
+    expect(repli).toContain('<details');
+    expect(repli).not.toContain('<details open');
+    expect(chmp).toContain("L('Pour affiner (facultatif)', 'To refine (optional)'");
+    for (const id of ['q-groupe-kva', 'q-groupe-litres', 'q-groupe-depense', 'q-pv-existant', 'q-cos-phi']) expect(affiner).toContain(`id="${id}"`);
+    expect(src).toContain('<Repli ferme={');
+    expect(src).toContain("prefillStr('conso_mensuelle_kwh') !== ''");
+    expect(src).toContain('id="q-facture-reseau"');
+    expect(src).toContain('id="q-releve-rows"');
+  });
+
+  it('CQSTW9 : les questions de la pompe actuelle sont masquées quand l’alimentation vaut « aucune »', () => {
+    expect(donnees).toContain("valeur('pompe_alim_actuelle') === 'aucune'");
+    expect(donnees).toContain('q-pompe-actuelle-wrap');
+    for (const cle of ['pompe_actuelle_debit_m3h', 'pompage_heures_jour', 'mode_pompe']) {
+      expect(chmp).toMatch(new RegExp(`cle: '${cle}'[^\n]*actuelle: true`));
+    }
+    expect(src).toContain("fieldVal('q-pompe-alim') === 'aucune'");
+  });
+
+  it('CQSTW9 : le texte GPS parle de terrain/forage à un agriculteur, de toit ailleurs', () => {
+    expect(src).toContain("sections.includes('pompage') ? GPS_AGRI : GPS_TOIT");
+    expect(chmp).toMatch(/GPS_AGRI[^\n]*terrain[^\n]*forage/);
+    expect(chmp).toMatch(/GPS_TOIT[^\n]*toit/);
+    expect(chmp).toMatch(/GPS_AGRI[^\n]*land[^\n]*borehole/);
+    expect(chmp).toMatch(/GPS_AGRI[^\n]*أرضكم/);
+  });
+});
+
+// CQSTW10 — résidentiel : options traduites, « facture d'été différente » jamais pré-cochée sans donnée.
+describe('questionnaire — CQSTW10 résidentiel', () => {
+  const chmp = read('../src/lib/questionnaireChamps.ts');
+  it('raccordement et type de toiture portent data-fr/data-en/data-ar', () => {
+    expect(src).toContain('RACCORDEMENT_RES_LABELS');
+    expect(src).toContain('TOITURE_RES_LABELS');
+    expect(chmp).toContain("L('Monophasé', 'Single-phase'");
+    expect(chmp).toContain("L('Villa', 'Villa', 'فيلا')");
+    expect(src).not.toContain('— Je ne sais pas</option>');
+  });
+  it('CQSTW19 — « facture d’été différente » pré-cochée par eteDifferentePrefill (comportement testé dans questionnaire.test.ts)', () => {
+    expect(src).toContain('const eteRadio = eteDifferentePrefill(prefill);');
+    expect(src).not.toContain("prefillBoolRadio('ete_differente') ===");
+  });
+});
+
+// CQSTW11 — aides en mots simples (contrat, ICE) et titre photos pro.
+describe('questionnaire — CQSTW11 mots simples', () => {
+  const chmp = read('../src/lib/questionnaireChamps.ts');
+  const lib = read('../src/lib/questionnaire.ts');
+  it('contrat et ICE ont une aide FR/EN/AR sous le libellé', () => {
+    expect(src).toContain('{AIDES_FACTURE.contrat.fr}');
+    expect(src).toContain('{AIDES_FACTURE.ice.fr}');
+    expect(chmp).toContain('patenté » = le compteur d\'un commerce');
+    expect(chmp).toContain('force motrice » = le compteur des machines');
+    expect(chmp).toContain('15 chiffres, en bas de vos factures');
+  });
+  it('le titre des photos de factures ne dit plus « 12 dernières »', () => {
+    expect(lib).toContain("Vos factures d'électricité (une suffit, 12 c'est mieux)");
+    expect(lib).not.toContain('Les 12 dernières factures');
+  });
+});

@@ -38,13 +38,13 @@
       "pompage": true,
       "gps": true,
       "photo_compteur": false,
-      "photo_pompe": true,
+      "photo_pompe": false,
       "photo_forage": true,
       "contact": true
     },
     "manquantes": {
       "pompage": true,
-      "photo_pompe": true,
+      "photo_pompe": false,
       "photo_forage": true,
       "gps": true,
       "contact": true

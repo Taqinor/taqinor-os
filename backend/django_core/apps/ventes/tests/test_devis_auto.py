@@ -155,6 +155,49 @@ class BuildDevisAutoServiceTest(TestCase):
                      if 'Panneau' in li.designation)
         self.assertEqual(int(panel.quantite), 9)
 
+    def test_taille_de_la_fiche_ecrit_une_alerte_au_vendeur(self):
+        """RGEN1 — Given un lead avec taille souhaitée 16 kWc ET une facture,
+        When on construit le devis auto, Then le journal dit au vendeur que la
+        facture n'a pas servi ; sans taille, aucune phrase de ce genre."""
+        journal = {}
+        build_devis_auto(
+            lead=self._lead(taille_souhaitee_kwc=Decimal('16'),
+                            facture_hiver=Decimal('1800')),
+            user=self.user, company=self.company, journal_auto=journal)
+        self.assertTrue(any(
+            'Taille demandée sur la fiche du lead : 16 kWc' in a['message']
+            and a['code'] == 'taille_demandee'
+            for a in journal.get('alertes', [])), journal)
+
+        journal2 = {}
+        build_devis_auto(
+            lead=self._lead(facture_hiver=Decimal('1800'),
+                            email='sans-taille@ex.com'),
+            user=self.user, company=self.company, journal_auto=journal2)
+        self.assertFalse(any(
+            a['code'] == 'taille_demandee'
+            for a in journal2.get('alertes', [])), journal2)
+
+    def test_site_sans_reseau_dit_que_la_batterie_est_ajoutee(self):
+        """RGEN1 — Given un lead « sans batterie » au raccordement « aucun »,
+        When on construit le devis auto, Then le vendeur lit que la batterie
+        est ajoutée d'office — que le catalogue de test sache ou non composer
+        le kit autonome (l'alerte précède la composition)."""
+        journal = {}
+        try:
+            build_devis_auto(
+                lead=self._lead(taille_souhaitee_kwc=Decimal('5'),
+                                raccordement='aucun',
+                                batterie_souhaitee='sans',
+                                email='isole@ex.com'),
+                user=self.user, company=self.company, journal_auto=journal)
+        except AutoDevisError:
+            pass
+        self.assertTrue(any(
+            a['code'] == 'batterie_hors_reseau'
+            and 'ajoutée d\'office' in a['message']
+            for a in journal.get('alertes', [])), journal)
+
     def test_le_compte_de_panneaux_couvre_toujours_la_taille_demandee(self):
         """U1 — invariant du PLAFOND, sur tout le domaine résidentiel utile.
 
