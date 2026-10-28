@@ -104,6 +104,19 @@ class TestGarantiesDerivees(TestCase):
                 theme.warranties_for({'sans_items': rows})}
         self.assertEqual(subs['Performance'], 'performance linéaire')
 
+    def test_deux_onduleurs_de_garanties_differentes_une_ligne_par_option(self):
+        """RPDF — Huawei 10 ans (option 1) et Deye 5 ans (option 2) : la
+        bande dit les deux, jamais la seule garantie du premier onduleur."""
+        from apps.ventes.quote_engine.residential import theme
+        d = {'sans_items': [{'designation': 'Onduleur réseau Huawei 10kW',
+                             'garantie_mois': 120}],
+             'avec_items': [{'designation': 'Onduleur hybride Deye 10kW',
+                             'garantie_mois': 60}]}
+        gar = {label: n for n, _u, label, _s in theme.warranties_for(d)}
+        self.assertEqual(gar.get('Onduleur (option 1)'), '10')
+        self.assertEqual(gar.get('Onduleur (option 2)'), '5')
+        self.assertNotIn('Onduleur', gar)
+
     def test_ligne_de_devis_porte_les_durees_catalogue(self):
         """``builder._line_to_item`` injecte les durées structurées (elles
         alimentent la dérivation ci-dessus)."""
