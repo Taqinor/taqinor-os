@@ -302,19 +302,21 @@ class DocumentLifecycleMachine(RuleBasedStateMachine):
         devis_accepte = self.devis.statut == Devis.Statut.ACCEPTE
         facture_bc_deja = Facture.objects.filter(
             devis=self.devis, bon_commande__isnull=False).exists()
+        # Le seul autre motif de refus est un échéancier déjà complet —
+        # l'ORACLE est la fonction réelle qui décrit « la prochaine
+        # tranche », jamais un nombre de tranches réimplémenté ici. Elle est
+        # lue AVANT l'appel : lue après, la facture de la DERNIÈRE tranche
+        # (201 légitime) rendait l'échéancier complet et l'oracle attendait
+        # 409 (nocturnes 25→28/10/2026 : acompte, intermédiaire, solde).
+        from apps.ventes.utils.echeancier import next_tranche
+        tranche = (next_tranche(self.devis)
+                   if devis_accepte and not facture_bc_deja else None)
         resp = self.api.post(
             f'/api/django/ventes/devis/{self.devis.id}/generer-facture/',
             {}, format='json')
         if not devis_accepte or facture_bc_deja:
             assert resp.status_code == 409, (resp.status_code, resp.data)
             return
-        # Le devis est accepté et aucune facture BC ne le bloque : le seul
-        # motif de refus restant est un échéancier déjà complet — l'ORACLE
-        # est la fonction réelle qui décrit « la prochaine tranche »,
-        # jamais un nombre de tranches réimplémenté ici.
-        from apps.ventes.utils.echeancier import next_tranche
-        self.devis.refresh_from_db()
-        tranche = next_tranche(self.devis)
         if tranche is None:
             assert resp.status_code == 409, (resp.status_code, resp.data)
         else:
