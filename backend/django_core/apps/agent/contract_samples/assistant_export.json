@@ -1,0 +1,41 @@
+{
+  "endpoint": "GET /api/django/agent/evenements/export/?depuis=<ISO>&jusqu_a=<ISO>",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "La vue arrive avec AIC11 ; tant qu'elle n'existe pas, une déclaration `complete` fait échouer `check_api_shapes.py` (route introuvable = constat, QJR228). AIC11 bascule cette clé sur `complete` en livrant la vue.",
+  "pourquoi": "AIC2 — contrat d'abord (PACT10) de l'export ANONYMISÉ des événements de l'assistant (`assistant_evenement.json`, AIC1), lu par le tri nocturne (AIC51). Ce tri tourne sur l'abonnement de Reda (Consumer Terms) : il ne reçoit ni nom, ni téléphone, ni e-mail, ni identifiant brut. Export d'UNE société à la fois, celle de l'admin qui le demande : `company` n'apparaît JAMAIS dans la réponse. Les règles d'anonymisation sont écrites UNE fois, ici (clé `anonymisation`), et lues par le test d'AIC11. Appelants : AIC11 (vue), AIC51 (tri nocturne).",
+  "anonymisation": {
+    "telephones": "tout numéro de téléphone (formats marocains et internationaux, espaces, points ou tirets compris) → `[tel]`",
+    "emails": "toute adresse e-mail → `[email]`",
+    "noms": "nom et prénom du lead ou du client de l'événement (`lead_id` résolu dans la société de l'export), insensible à la casse et aux accents → `[client]`",
+    "suites_de_chiffres": "toute suite de 6 chiffres ou plus restant après les règles précédentes → `[num]`",
+    "ordre": "téléphones, puis e-mails, puis noms, puis suites de chiffres",
+    "champs_anonymises": ["question_anonymisee", "resume_reponse_anonymise", "commentaire_anonymise", "erreur.message"],
+    "id_hache": "HMAC-SHA256 de str(id de l'événement), clé = AGENT_HMAC_SECRET (UTF-8), sortie hexadécimale minuscule — même secret et même encodage que `logs_confirmer.json`",
+    "utilisateur_hache": "HMAC-SHA256 de str(id de l'utilisateur), clé = AGENT_HMAC_SECRET (UTF-8), sortie hexadécimale minuscule",
+    "jamais_exportes": ["company", "user", "lead_id", "question", "resume_reponse", "commentaire", "tokens", "outils_appeles"],
+    "sans_secret": "AGENT_HMAC_SECRET absent : l'export est refusé (fail-closed), jamais servi avec des identifiants bruts"
+  },
+  "exemple": {
+    "periode": {"depuis": "2026-10-21T00:00:00Z", "jusqu_a": "2026-10-28T00:00:00Z"},
+    "evenements": [
+      {
+        "id_hache": "5f0c1b2e9a7d4c3b8e6f1a0d2c4b6a8e9f1d3c5b7a9e0f2d4c6b8a0e1f3d5c7b",
+        "utilisateur_hache": "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90",
+        "intention": "manque",
+        "question_anonymisee": "Peux-tu envoyer le devis à [client] au [tel] ?",
+        "resume_reponse_anonymise": "L'envoi WhatsApp n'est pas encore pris en charge.",
+        "ecran": "/crm/leads/12",
+        "erreur": null,
+        "note": -1,
+        "commentaire_anonymise": "Il fallait l'envoyer à [email].",
+        "modele": "claude-sonnet-5-5",
+        "repli": false,
+        "horodatage": "2026-10-27T10:15:00Z"
+      }
+    ],
+    "totaux": {
+      "par_intention": {"question_manuel": 0, "donnee": 0, "action": 0, "bug": 0, "manque": 1, "hors_champ": 0},
+      "non_supportes": 1
+    }
+  }
+}

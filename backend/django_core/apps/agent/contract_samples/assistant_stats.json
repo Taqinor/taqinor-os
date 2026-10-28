@@ -1,0 +1,24 @@
+{
+  "endpoint": "GET /api/django/agent/evenements/stats/?semaines=4",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "La vue arrive avec AIC12 ; tant qu'elle n'existe pas, une déclaration `complete` fait échouer `check_api_shapes.py` (route introuvable = constat, QJR228). AIC12 bascule cette clé sur `complete` en livrant la vue.",
+  "pourquoi": "AIC2 — contrat d'abord (PACT10) des statistiques de l'assistant des commerciaux, calculées sur les événements (`assistant_evenement.json`, AIC1) de la société de l'utilisateur, sur les `semaines` dernières semaines. `taux_non_supporte` = événements d'intention `manque` ou `hors_champ` ÷ questions ; `part_repli` = événements `repli: true` ÷ questions ; `cout_estime_usd` = Σ tokens × `prix_mtok` ÷ 1 000 000, selon le modèle de l'événement (constantes NOMMÉES dans le code, jamais lues du corps). `manques_recents` réutilise l'anonymisation d'`assistant_export.json` (clé `anonymisation`). Appelants : AIC12 (vue), AIC51.",
+  "prix_mtok": {
+    "releve_le": "2026-10-27",
+    "unite": "USD par million de tokens",
+    "claude-sonnet-5-5": {"input": 2, "output": 10, "cache_read": 0.10},
+    "claude-haiku-5-5": {"input": 0.10, "output": 0.50, "cache_read": 0.01}
+  },
+  "exemple": {
+    "questions": 120,
+    "commerciaux_actifs": 3,
+    "questions_par_commercial_semaine": 10.0,
+    "taux_non_supporte": 0.15,
+    "part_repli": 0.05,
+    "cout_estime_usd": 1.84,
+    "par_intention": {"question_manuel": 40, "donnee": 35, "action": 20, "bug": 7, "manque": 12, "hors_champ": 6},
+    "manques_recents": [
+      {"question_anonymisee": "Peux-tu envoyer le devis à [client] sur WhatsApp ?", "vu_n_fois": 4}
+    ]
+  }
+}
