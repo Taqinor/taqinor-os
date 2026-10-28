@@ -230,5 +230,119 @@ class SqlAgentStatementTimeoutTests(unittest.TestCase):
         self.assertEqual(value, "15s")
 
 
+def _llm_factices():
+    """AIC4 — un client Claude qui REFUSE (solde nul) et un client Groq qui
+    repond, construits par le vrai `_run_agent` (aucun mock de l'executeur)."""
+    import anthropic
+    import httpx
+    from langchain_core.language_models.fake_chat_models import (
+        GenericFakeChatModel,
+    )
+    from langchain_core.messages import AIMessage
+
+    class _Fake(GenericFakeChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+    class _ClaudeRefuse(_Fake):
+        erreur: Exception = None
+
+        def _generate(self, *args, **kwargs):
+            raise self.erreur
+
+    def credit_nul():
+        return anthropic.BadRequestError(
+            "Your credit balance is too low to access the Anthropic API.",
+            response=httpx.Response(400, request=httpx.Request(
+                "POST", "https://api.anthropic.com/v1/messages")),
+            body=None)
+
+    def groq():
+        return _Fake(messages=iter([AIMessage(content="Reponse du repli.")]))
+
+    return _ClaudeRefuse, credit_nul, groq
+
+
+class SqlAgentRepliAic4Tests(unittest.TestCase):
+    """AIC4 — Claude refuse (credits, quota, 5xx, cle) => UN rejeu sur Groq,
+    `repli` vrai ; une erreur d'outil n'est jamais un motif de repli."""
+
+    def setUp(self):
+        try:
+            import anthropic  # noqa: F401
+            from sqlalchemy import create_engine, text
+        except ModuleNotFoundError as exc:  # pragma: no cover
+            self.skipTest(str(exc))
+        from app.services import sql_agent_service as svc
+        self.svc = svc
+        from sqlalchemy.pool import StaticPool
+        # Base en memoire partagee entre threads (query -> asyncio.to_thread).
+        engine = create_engine("sqlite://", poolclass=StaticPool,
+                               connect_args={"check_same_thread": False})
+        with engine.begin() as conn:
+            conn.execute(text("CREATE TABLE crm_client (id INTEGER, nom TEXT)"))
+        self.service = svc.SQLAgentService()
+        for cible, valeur in (
+            (_db, {"create_sql_agent_engine": lambda: engine}),
+            (self.service, {"_load_history": lambda uid: [],
+                            "_save_history": lambda *a, **k: None,
+                            "_get_relevant_tables": lambda q: ["crm_client"]}),
+            (svc, {"SQL_AGENT_PROVIDER": "claude",
+                   "SQL_AGENT_FALLBACK_PROVIDER": "groq"}),
+        ):
+            p = mock.patch.multiple(cible, **valeur)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _poser(self, claude, groq):
+        construits = []
+
+        def build(provider=None):
+            construits.append(provider or "claude")
+            return claude() if (provider or "claude") == "claude" else groq()
+
+        p = mock.patch.object(self.svc.SQLAgentService, "_build_llm",
+                              staticmethod(build))
+        p.start()
+        self.addCleanup(p.stop)
+        return construits
+
+    def _question(self):
+        import asyncio
+        return asyncio.run(self.service.query(
+            question="combien de clients ?", user_id=1, company_id=7))
+
+    def test_repli_groq_sur_credits_epuises(self):
+        refuse, credit_nul, groq = _llm_factices()
+        construits = self._poser(lambda: refuse(messages=iter([]),
+                                                erreur=credit_nul()), groq)
+        with self.assertLogs(self.svc.logger, level="WARNING") as logs:
+            out = self._question()
+        self.assertEqual(out["answer"], "Reponse du repli.")
+        self.assertTrue(out["repli"])
+        self.assertEqual(construits, ["claude", "groq"])
+        self.assertTrue(any("credit balance" in m for m in logs.output))
+
+    def test_pas_de_repli_sur_erreur_outil(self):
+        refuse, _credit_nul, groq = _llm_factices()
+        construits = self._poser(
+            lambda: refuse(messages=iter([]),
+                           erreur=ValueError("SQL interdit par l'outil")),
+            groq)
+        out = self._question()
+        self.assertEqual(construits, ["claude"])  # jamais rejoue
+        self.assertNotIn("Reponse du repli.", out["answer"])
+        self.assertFalse(out.get("repli", False))
+
+    def test_sans_fournisseur_de_repli_message_actuel(self):
+        refuse, credit_nul, groq = _llm_factices()
+        construits = self._poser(lambda: refuse(messages=iter([]),
+                                                erreur=credit_nul()), groq)
+        with mock.patch.object(self.svc, "SQL_AGENT_FALLBACK_PROVIDER", ""):
+            out = self._question()
+        self.assertEqual(construits, ["claude"])
+        self.assertIn("Je n'ai pas pu traiter", out["answer"])
+
+
 if __name__ == "__main__":
     unittest.main()

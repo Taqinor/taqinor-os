@@ -1,7 +1,6 @@
 {
   "endpoint": "POST /api/django/agent/evenements/",
-  "forme_serveur": "partielle",
-  "forme_serveur_provisoire": "La forme visée est `complete` (l'exemple porte toute la réponse). Tant que la vue n'existe pas, une déclaration `complete` fait échouer `check_api_shapes.py` (route introuvable = constat, QJR228) : le contrat reste donc déclaré `partielle` jusqu'à AIC6, qui livre la vue et bascule cette clé sur `complete` dans le même commit.",
+  "forme_serveur": "complete",
   "pourquoi": "AIC1 — contrat d'abord (PACT10) du journal de l'assistant des commerciaux : une requête de l'assistant = UN événement, écrit par le RELAIS SERVEUR (FastAPI), jamais par le navigateur. Le seul journal durable existant, `AgentActionLog` (`logs_confirmer.json`), ne retient que les actions CONFIRMÉES et reste un journal séparé, jamais fusionné. `company` et `user` sont TOUJOURS posés côté serveur (société active et utilisateur de la requête), jamais lus du corps. Le navigateur ne peut écrire que `note` et `commentaire`, sur SON événement, via la seconde écriture (`ecriture_commercial`). Appelants : AIC6 (modèle + vues), AIC8 (note depuis le panneau), AIC9 (`lead_id`, `ecran`), AIC11 (export).",
   "champs": {
     "intention": "une valeur parmi question_manuel, donnee, action, bug, manque, hors_champ",

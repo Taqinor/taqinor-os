@@ -11,6 +11,10 @@ import {
   displayMessageText,
   formatAgentError,
   canSendQuestion,
+  marquerNote,
+  NOTE_NEGATIVE,
+  NOTE_POSITIVE,
+  COMMENTAIRE_MAX,
 } from './copilotMessages.js'
 
 test('isConfigMissing reconnaît une réponse « clé API manquante »', () => {
@@ -55,4 +59,19 @@ test('canSendQuestion : seulement un texte non vide et hors chargement', () => {
   assert.equal(canSendQuestion('', false), false)
   assert.equal(canSendQuestion('bonjour', true), false) // requête déjà en vol
   assert.equal(canSendQuestion(null, false), false)
+})
+
+// AIC8 — réduction d'état « noté » (pure) : note + commentaire borné + merci.
+test('marquerNote pose la note, borne le commentaire et passe à « merci »', () => {
+  const msg = { role: 'agent', content: 'ok', evenement_id: 9001 }
+  const note = marquerNote(msg, NOTE_NEGATIVE, `  ${'x'.repeat(250)}  `)
+  assert.equal(note.note, -1)
+  assert.equal(note.commentaire.length, COMMENTAIRE_MAX)
+  assert.equal(note.noteEnvoyee, true)
+  assert.equal(note.evenement_id, 9001)
+  assert.equal(msg.note, undefined) // jamais de mutation
+  // Idempotent : re-noter remplace la note ; commentaire vide => null.
+  const renote = marquerNote(note, NOTE_POSITIVE, '   ')
+  assert.equal(renote.note, 1)
+  assert.equal(renote.commentaire, null)
 })

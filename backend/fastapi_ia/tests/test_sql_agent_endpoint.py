@@ -140,6 +140,9 @@ class SQLResponseAg2FieldsTests(unittest.TestCase):
     def test_fields_present_in_model(self):
         self.assertIn("proposal", _ep.SQLResponse.model_fields)
         self.assertIn("result", _ep.SQLResponse.model_fields)
+        # AIC6 — `evenement_id` (nullable) porte l'evenement journalise.
+        self.assertIn("evenement_id", _ep.SQLResponse.model_fields)
+        self.assertIsNone(_ep.SQLResponse(answer="ok").evenement_id)
 
 
 @unittest.skipUnless(_OK and _HAS_CLIENT,
@@ -313,6 +316,91 @@ class RelevantTableSelectionTests(unittest.TestCase):
         self.assertTrue(tables)
         self.assertLessEqual(len(tables), 5)
         self.assertLess(len(tables), len(_TABLE_DESCRIPTIONS))
+
+
+@unittest.skipUnless(_OK and _HAS_CLIENT,
+                     f"fastapi TestClient indisponible: {_ERR}")
+class ContexteEcranAic9Tests(unittest.TestCase):
+    """AIC9 — corps de /sql-agent/query : `contexte` {ecran, lead_id} OPTIONNEL,
+    injecte dans le message UTILISATEUR et reflete dans l'evenement ; route
+    `GET /sql-agent/suggestions` lue du manifeste."""
+
+    def setUp(self):
+        from app.core.security import get_raw_token, verify_token
+        from app.services import sql_agent_service as svc
+
+        self.svc = svc
+        app = _FastAPI()
+        app.include_router(_ep.router, prefix="/sql-agent")
+        app.dependency_overrides[verify_token] = lambda: {
+            "user_id": 1, "company_id": 7, "role": "normal"}
+        app.dependency_overrides[get_raw_token] = lambda: "jwt-xyz"
+        self.client = _TestClient(app)
+        for cible, attrs in (
+            (_ep._database, {"check_rate_limit": lambda *a, **k: None,
+                             "require_sql_agent_enabled": lambda: None}),
+            (_ep, {"resolve_caller_permissions": lambda ctx: ctx}),
+        ):
+            p = mock.patch.multiple(cible, **attrs)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _poser(self, corps):
+        recus, journal = {}, []
+
+        async def fake_query(self_, question, user_id, company_id, action_ctx,
+                             contexte=None):
+            recus["llm"] = self.svc._question_avec_contexte(question, contexte)
+            return {"answer": "Deux devis.", "sql_query": "", "data": None}
+
+        with mock.patch.object(self.svc.SQLAgentService, "_query", fake_query), \
+                mock.patch.object(_at, "journaliser_evenement_assistant",
+                                  lambda ctx, c: journal.append(c) or 9001):
+            r = self.client.post("/sql-agent/query", json=corps)
+        return r, recus, journal
+
+    def test_contexte_accepte_et_reflete_dans_evenement(self):
+        r, recus, journal = self._poser({
+            "question": "Combien de devis ?",
+            "contexte": {"ecran": "/crm/leads/12", "lead_id": 12}})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["evenement_id"], 9001)
+        self.assertEqual((journal[0]["ecran"], journal[0]["lead_id"]),
+                         ("/crm/leads/12", 12))
+        self.assertTrue(recus["llm"].startswith("Combien de devis ?"))
+        self.assertIn("Écran courant : /crm/leads/12 ; lead courant : #12",
+                      recus["llm"])
+        # Le contexte ne touche jamais le prompt SYSTEME (cache intact).
+        systeme, _ = self.svc._contenu_systeme("claude", True)
+        self.assertNotIn("/crm/leads/12", str(systeme))
+
+    def test_contexte_optionnel(self):
+        r, recus, journal = self._poser({"question": "Combien de devis ?"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(recus["llm"], "Combien de devis ?")
+        self.assertEqual((journal[0]["ecran"], journal[0]["lead_id"]), ("", None))
+        r = self.client.post("/sql-agent/query", json={
+            "question": "x", "contexte": {"ecran": "/", "lead_id": "abc"}})
+        self.assertEqual(r.status_code, 422)
+
+    def test_suggestions_servies_depuis_le_manifeste(self):
+        import tempfile
+        rep = tempfile.mkdtemp()
+        with open(os.path.join(rep, "manuel.md"), "w", encoding="utf-8") as f:
+            f.write("# Manuel")
+        with open(os.path.join(rep, "capacites.yml"), "w", encoding="utf-8") as f:
+            f.write("suggestions:\n  /crm/leads:\n    - Q1 ?\n    - Q2 ?\n"
+                    "    - Q3 ?\n    - Q4 ?\n  /crm:\n    - Generale ?\n")
+        with mock.patch.multiple(self.svc, ASSISTANT_DOCS_DIR=rep, _DOCS_CACHE={}):
+            r = self.client.get("/sql-agent/suggestions",
+                                params={"ecran": "/crm/leads/12"})
+            self.assertEqual(r.json(), ["Q1 ?", "Q2 ?", "Q3 ?"])
+            r = self.client.get("/sql-agent/suggestions",
+                                params={"ecran": "/crm/clients"})
+            self.assertEqual(r.json(), ["Generale ?"])
+            r = self.client.get("/sql-agent/suggestions",
+                                params={"ecran": "/stock"})
+            self.assertEqual(r.json(), [])
 
 
 if __name__ == "__main__":

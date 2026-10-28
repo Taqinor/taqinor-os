@@ -3,6 +3,11 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
+// AIC12 — la carte lit l'exemple committé du contrat (PACT13), jamais une
+// charge utile tapée à la main. `vi.hoisted` : la fabrique de vi.mock la lit.
+const { STATS } = await vi.hoisted(async () => ({
+  STATS: (await import('../../../../backend/django_core/apps/agent/contract_samples/assistant_stats.json')).default,
+}))
 
 // AG3 — mock du client IA : la confirmation ne doit pas toucher le réseau.
 vi.mock('../../api/iaApi', () => ({
@@ -10,6 +15,8 @@ vi.mock('../../api/iaApi', () => ({
     queryAgent: vi.fn(() => Promise.resolve({ data: { answer: '' } })),
     getChatHistory: vi.fn(() => Promise.resolve({ data: [] })),
     clearChatHistory: vi.fn(() => Promise.resolve({})),
+    // AIC12 — mesure de l'assistant (contrat assistant_stats.json).
+    statsAssistant: vi.fn(() => Promise.resolve({ data: STATS.exemple })),
     confirmAction: vi.fn(() =>
       Promise.resolve({
         data: {
@@ -104,9 +111,10 @@ describe('iaSlice — normalisation des messages agent (AG3)', () => {
 })
 
 /* ── Couche COMPOSANT : rendu des cartes + boutons câblés ── */
-function makeStore(messages) {
+function makeStore(messages, role = 'normal') {
   return configureStore({
-    reducer: { ia: iaReducer },
+    // AIC12 — palier machine lu par useIsAdmin (carte coût et qualité).
+    reducer: { ia: iaReducer, auth: (state = { role }) => state },
     preloadedState: {
       ia: { ...iaReducer(undefined, { type: '@@INIT' }), messages },
     },
@@ -215,5 +223,25 @@ describe('AgentChat — reveal texte + mini-tableau (VX37)', () => {
     ])
     render(<Provider store={store}><AgentChat /></Provider>)
     expect(screen.queryByTestId('structured-rows-table')).not.toBeInTheDocument()
+  })
+})
+
+describe('AgentChat — carte « Assistant : coût et qualité » (AIC12)', () => {
+  it('rendue pour l\'admin, avec les chiffres calculés par le serveur', async () => {
+    render(<Provider store={makeStore([], 'admin')}><AgentChat /></Provider>)
+    const carte = await screen.findByTestId('assistant-stats-card')
+    expect(within(carte).getByText(`${STATS.exemple.cout_estime_usd.toFixed(2)} $`)).toBeInTheDocument()
+    expect(within(carte).getByText(String(STATS.exemple.questions))).toBeInTheDocument()
+    expect(within(carte).getByText('15 %')).toBeInTheDocument()
+    expect(within(carte).getByRole('link', { name: 'exporter' }))
+      .toHaveAttribute('href', '/api/django/agent/evenements/export/')
+    expect(iaApi.statsAssistant).toHaveBeenCalledWith(4)
+  })
+
+  it('absente pour un commercial (rôle normal), sans appel au serveur', () => {
+    iaApi.statsAssistant.mockClear()
+    render(<Provider store={makeStore([], 'normal')}><AgentChat /></Provider>)
+    expect(screen.queryByTestId('assistant-stats-card')).not.toBeInTheDocument()
+    expect(iaApi.statsAssistant).not.toHaveBeenCalled()
   })
 })
