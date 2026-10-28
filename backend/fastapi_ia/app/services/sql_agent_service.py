@@ -47,6 +47,7 @@ from app.core.config import (
     OPENAI_API_KEY,
     REDIS_CHAT_URL,
     SQL_AGENT_EFFORT,
+    SQL_AGENT_FALLBACK_PROVIDER,
     SQL_AGENT_MODEL,
     SQL_AGENT_PROVIDER,
 )
@@ -917,12 +918,44 @@ CLAUDE_MODELE_DEFAUT = "claude-sonnet-5-5"
 CLAUDE_MAX_TOKENS = 4096
 
 
+MODELE_REPLI_DEFAUT = "llama-3.3-70b-versatile"
+
+
 def _modele_effectif(provider: str) -> str:
     """Modele reellement servi : sous `claude`, un SQL_AGENT_MODEL vide ou
-    non-Claude (ex. le defaut Groq) => CLAUDE_MODELE_DEFAUT."""
-    if provider == "claude" and not (SQL_AGENT_MODEL or "").startswith("claude"):
-        return CLAUDE_MODELE_DEFAUT
-    return SQL_AGENT_MODEL
+    non-Claude (ex. le defaut Groq) => CLAUDE_MODELE_DEFAUT ; sous un autre
+    fournisseur (repli AIC4 compris), un modele Claude ou vide =>
+    MODELE_REPLI_DEFAUT."""
+    model = SQL_AGENT_MODEL or ""
+    if provider == "claude":
+        return model if model.startswith("claude") else CLAUDE_MODELE_DEFAUT
+    if not model or model.startswith("claude"):
+        return MODELE_REPLI_DEFAUT
+    return model
+
+
+class _RefusFournisseur(Exception):
+    """AIC4 — le LLM a REFUSE la requete (credits, quota, indisponibilite,
+    cle) avant toute action executee : seul motif de repli."""
+
+
+def _est_refus_fournisseur(exc: BaseException) -> bool:
+    """AIC4 — erreur d'API du fournisseur (jamais une erreur d'OUTIL : les
+    outils renvoient leurs echecs en texte/dict, ils ne levent pas ici)."""
+    try:
+        import anthropic
+    except ImportError:  # pragma: no cover - dependance absente
+        return False
+    if isinstance(exc, (anthropic.APIConnectionError, anthropic.RateLimitError,
+                        anthropic.AuthenticationError,
+                        anthropic.PermissionDeniedError)):
+        return True
+    if isinstance(exc, anthropic.APIStatusError):
+        if exc.status_code >= 500:
+            return True
+        # Solde de credits nul : 400 « credit balance is too low ».
+        return bool(re.search(r"credit|billing|balance", str(exc), re.I))
+    return False
 
 
 class SQLAgentService:
@@ -1006,8 +1039,8 @@ class SQLAgentService:
     # ── Factory LLM ───────────────────────────────────────────────────────
 
     @staticmethod
-    def _build_llm():
-        provider = SQL_AGENT_PROVIDER.lower()
+    def _build_llm(provider: str | None = None):
+        provider = (provider or SQL_AGENT_PROVIDER).lower()
         model = _modele_effectif(provider)
 
         if provider == "groq":
@@ -1100,8 +1133,10 @@ class SQLAgentService:
     def _run_agent(
         self, question: str, company_id: int, user_id: int = 0,
         action_ctx: "ActionContext | None" = None,
+        provider: str | None = None,
     ) -> dict[str, Any]:
-        """Execution synchrone de l'agent (appelee via asyncio.to_thread)."""
+        """Execution synchrone de l'agent (appelee via asyncio.to_thread).
+        `provider` : fournisseur force (repli AIC4), sinon SQL_AGENT_PROVIDER."""
         from langchain_community.utilities import SQLDatabase
         from langchain_community.agent_toolkits.sql.toolkit import SQLDatabaseToolkit
         from langchain.agents import AgentExecutor, create_tool_calling_agent
@@ -1152,7 +1187,7 @@ class SQLAgentService:
         _apply_tenant_guc(db, company_id)
 
         # 3. LLM
-        llm = self._build_llm()
+        llm = self._build_llm(provider)
 
         # L17 — autorisation de voir le prix d'achat / la marge : UNIQUEMENT les
         # appelants disposant de la permission `prix_achat_voir` (ou superuser).
@@ -1220,10 +1255,17 @@ class SQLAgentService:
             handle_parsing_errors=True,
         )
 
-        result = executor.invoke(
-            {"input": question, "chat_history": lc_history},
-            config={"callbacks": [capture]},
-        )
+        try:
+            result = executor.invoke(
+                {"input": question, "chat_history": lc_history},
+                config={"callbacks": [capture]},
+            )
+        except Exception as exc:
+            # AIC4 — refus du fournisseur AVANT toute action executee ce tour :
+            # rejouable sur le repli. Une action deja executee => jamais rejoue.
+            if _est_refus_fournisseur(exc) and not capture.action_used:
+                raise _RefusFournisseur(str(exc)) from exc
+            raise
 
         answer = result.get("output", "Aucune reponse obtenue.")
 
@@ -1304,10 +1346,26 @@ class SQLAgentService:
         action_ctx: "ActionContext | None" = None,
     ) -> dict[str, Any]:
         try:
-            return await asyncio.to_thread(
-                self._run_agent, question, company_id or 0, user_id or 0,
-                action_ctx,
-            )
+            try:
+                out = await asyncio.to_thread(
+                    self._run_agent, question, company_id or 0, user_id or 0,
+                    action_ctx,
+                )
+                return {**out, "repli": False,
+                        "modele": _modele_effectif(SQL_AGENT_PROVIDER.lower())}
+            except _RefusFournisseur as refus:
+                repli = (SQL_AGENT_FALLBACK_PROVIDER or "").lower()
+                if not repli or repli == SQL_AGENT_PROVIDER.lower():
+                    raise
+                # AIC4 — UN rejeu : meme question, memes outils, meme historique.
+                logger.warning("Agent SQL : %s a refuse (%s) — repli sur %s",
+                               SQL_AGENT_PROVIDER, refus, repli)
+                out = await asyncio.to_thread(
+                    self._run_agent, question, company_id or 0, user_id or 0,
+                    action_ctx, repli,
+                )
+                return {**out, "repli": True,
+                        "modele": _modele_effectif(repli)}
         except RuntimeError as exc:
             return {"answer": str(exc), "sql_query": "", "data": None}
         except Exception as exc:

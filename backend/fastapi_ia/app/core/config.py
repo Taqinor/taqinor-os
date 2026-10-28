@@ -22,6 +22,9 @@ SQL_AGENT_MODEL = os.environ.get("SQL_AGENT_MODEL", "llama-3.3-70b-versatile")
 # AIC3 — effort des modeles Claude 5.5 (output_config.effort) : low par defaut
 # (Sonnet 5.5 reflechit en `high` sinon, surcout de sortie mesure).
 SQL_AGENT_EFFORT = os.environ.get("SQL_AGENT_EFFORT", "low")
+# AIC4 — fournisseur de REPLI quand Claude refuse (credits nuls, 429, 5xx, cle
+# invalide) : une tentative Claude, puis celui-ci. Vide = pas de repli.
+SQL_AGENT_FALLBACK_PROVIDER = os.environ.get("SQL_AGENT_FALLBACK_PROVIDER", "groq")
 
 # Agent — outils d'ACTION (N86). URL interne du backend Django pour relayer les
 # ecritures (ouverture de ticket SAV, brouillon de bon de commande, planif. de
