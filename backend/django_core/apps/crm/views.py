@@ -34,7 +34,9 @@ from .leads_views import LeadIntakeActionsMixin
 from .clients_views import LeadClientsActionsMixin
 from .visites_views import LeadVisitesActionsMixin
 from .devis_views import LeadDevisActionsMixin
-from .cadence_views import LeadCadenceActionsMixin, _best_effort, _geste_atomique, _parse_rappel
+from .cadence_views import (
+    DateRappelPubliee, LeadCadenceActionsMixin, MOTIF_HEURE_RAPPEL, _best_effort,
+    _geste_atomique, _parse_rappel, rappel_saisi)
 from . import activity, stages
 from .fiche_bulk import BULK_ACTIONS  # SPL3 (main) : déplacé de services ; ENF6 l'expose au schéma
 from .leads_attribution import default_responsable_for
@@ -1434,8 +1436,9 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
                                     body=serializers.CharField(required=False, allow_blank=True),
                                     outcome=serializers.ChoiceField(choices=[k for k, _ in LeadActivity.OUTCOMES if k],
                                                                     required=False),
-                                    rappel_le=serializers.CharField(required=False, allow_blank=True),
-                                    rappel_heure=serializers.CharField(required=False, allow_blank=True)),
+                                    rappel_le=DateRappelPubliee(required=False, allow_blank=True),
+                                    rappel_heure=serializers.RegexField(MOTIF_HEURE_RAPPEL, required=False,
+                                                                        allow_blank=True)),
                    responses={201: LeadActivitySerializer})
     @action(detail=True, methods=['post'], url_path='log-interaction',
             permission_classes=[IsResponsableOrAdmin])
@@ -1477,14 +1480,10 @@ class LeadViewSet(LeadCadenceActionsMixin, LeadIntakeActionsMixin,
         # rappel à côté d'elle.
         rappel_le = (request.data.get('rappel_le') or '').strip()
         rappel_heure = (request.data.get('rappel_heure') or '').strip()
-        quand = None
-        if outcome == 'rappel' and rappel_le:
-            quand = _parse_rappel(rappel_le, rappel_heure)
-            if quand is None:
-                return Response(
-                    {'rappel_le': 'Date invalide (AAAA-MM-JJ attendu, '
-                                  'heure HH:MM optionnelle).'},
-                    status=status.HTTP_400_BAD_REQUEST)
+        quand, refus = rappel_saisi(rappel_le, rappel_heure)  # forme publiée, toujours
+        if refus:
+            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
+        quand = quand if outcome == 'rappel' else None
         # ALEA30 — l'interaction, le premier contact et le report de la
         # touche forment UNE transaction : un report en panne n'écrit rien
         # (avant : chatter écrit puis 500, touche jamais déplacée).
