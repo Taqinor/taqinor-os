@@ -10,6 +10,8 @@ import logging
 
 from django.utils import timezone
 
+from core.money import quantize_mad
+
 from ..models import ShareLink
 from ..utils.anticopie import (
     agreger_designations_kit as _agreger_designations_kit,
@@ -123,7 +125,7 @@ def _variant_summaries(devis) -> list:
                 'reference': s.reference,
                 'version': s.version,
                 'note': (s.note or ''),
-                'total_ttc': round(float(total_ttc), 2),
+                'total_ttc': float(quantize_mad(total_ttc)),
             })
         return out
     except Exception:  # noqa: BLE001 — best-effort, never break the proposal (D-ENF22-BLE001)
@@ -260,12 +262,12 @@ def _gammes_public(devis, est_standard=False):
         info_soeur = gamme_info(soeur)
         lien_soeur = ShareLink.for_devis(soeur)
         total_soeur = display_totals(soeur).get('total')
-        total_soeur = (round(float(total_soeur), 2)
+        total_soeur = (float(quantize_mad(total_soeur))
                        if total_soeur is not None else None)
         total_courant = display_totals(devis).get('total')
-        courant = (round(float(total_courant), 2)
+        courant = (float(quantize_mad(total_courant))
                    if total_courant is not None else None)
-        ecart = (round(total_soeur - courant, 2)
+        ecart = (float(quantize_mad(total_soeur - courant))
                  if (total_soeur is not None and courant is not None) else None)
         lignes_ici = _gamme_lignes_publiques(devis, est_standard)
         lignes_soeur = _gamme_lignes_publiques(soeur, est_standard)

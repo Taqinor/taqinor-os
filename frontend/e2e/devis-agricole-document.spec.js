@@ -15,21 +15,17 @@
 //      FR puis en AR, jointe au rapport.
 // Aucun mock réseau. Base partagée, workers: 1 : nettoyage best-effort.
 import { test, expect } from '@playwright/test'
-import { choisirMarche, nombrePagesPdf, cliquerCreerDevis, retirerLignesPrixARenseigner } from './helpers'
+import {
+  nombrePagesPdf, cliquerCreerDevis, ouvrirGenerateurDepuisLeadAgricole, retirerLignesPrixARenseigner,
+} from './helpers'
 
 const API = '/api/django'
 const devisIds = []
+const leadIds = []
 
 async function json(res, quoi) {
   expect(res.ok(), `${quoi} → HTTP ${res.status()} ${await res.text()}`).toBeTruthy()
   return res.json()
-}
-
-async function premierClient(request) {
-  const corps = await json(await request.get(`${API}/crm/clients/`), 'clients')
-  const liste = Array.isArray(corps) ? corps : (corps.results || [])
-  expect(liste.length, 'seed_demo doit fournir au moins un client').toBeGreaterThan(0)
-  return liste[0]
 }
 
 test.describe.configure({ mode: 'serial' })
@@ -40,20 +36,15 @@ let etudeAvant = null
 test.afterAll(async ({ request }) => {
   await Promise.all(devisIds.map((id) =>
     request.delete(`${API}/ventes/devis/${id}/`).catch(() => null)))
+  await Promise.all(leadIds.map((id) =>
+    request.delete(`${API}/crm/leads/${id}/`).catch(() => null)))
 })
 
 test('AGR318 — créer, rouvrir, ré-enregistrer : etude_params identique', async ({ page, request }) => {
   test.setTimeout(240_000)
-  const client = await premierClient(request)
-  await page.goto('/ventes/devis/nouveau')
-  await expect(page.getByRole('heading', { name: 'Générateur de Devis Solaire' }))
-    .toBeVisible({ timeout: 30_000 })
-  await expect(page.locator('table.lines-table tbody tr').first())
-    .toBeVisible({ timeout: 45_000 })
-  await page.locator('#gen-client').click()
-  await page.locator('[role="searchbox"]').last().fill(client.nom || client.name || '')
-  await page.locator('[role="option"]').first().click()
-  await choisirMarche(page, /Agricole/)
+  // CAD177 — depuis SON lead agricole : le site du lead donne l'irradiation
+  // (sans site, Auto-remplir est refusé à raison : « kit incomplet »).
+  leadIds.push((await ouvrirGenerateurDepuisLeadAgricole(page, request, 'AGR318 ferme')).id)
   await page.getByRole('radio', { name: 'Pompe neuve' }).click()
   await page.getByRole('radio', { name: 'Volume déclaré' }).click()
   await page.locator('#gen-besoin-volume').fill('40')

@@ -39,7 +39,7 @@ CHAMPS_ATTENDUS = (
     'ville', 'lat', 'lon', 'occupation', 'equipements',
     'tranches', 'charges_fixes_mad', 'jour_reference',
     'phase', 'gamme_nom_devis', 'hors_reseau', 'mppt_paires',
-    'perte_ombrage_pct',
+    'perte_ombrage_pct', 'productible_kwh_kwc',
 )
 
 

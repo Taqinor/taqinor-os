@@ -91,6 +91,9 @@ EOF
   relances (cadence de `parcours_suivi.json`) ; le contrôle du suivi ; **ce qui se fait ailleurs que
   dans l'ERP** (ex. Odoo manuel, envoi WhatsApp par le commercial lui-même).
 - Phrases courtes, en français, à l'impératif ; chaque procédure cite l'écran (route) et le bouton.
+- **Bloc FAQ du tri nocturne (AIC51)** : si le `manuel.md` existant contient un bloc
+  `<!-- FAQ-TRI:debut --> … <!-- FAQ-TRI:fin -->`, le recopier TEL QUEL en fin du manuel régénéré (il est
+  écrit par le skill `assistant-tri`, jamais par celui-ci) ; la taille ≤ 60 000 tokens s'applique à l'ensemble.
 
 ## 5. Écrire `backend/fastapi_ia/assistant/capacites.yml` (format = README AIC5)
 

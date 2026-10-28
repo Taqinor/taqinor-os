@@ -51,6 +51,7 @@ from authentication.permissions import IsAnyRole
 from core.champs_stricts import ChaineStricte, non_blanc
 
 from .dimensionnement import CRITERES
+from .horaire.productible_societe import productible_societe
 
 logger = logging.getLogger(__name__)
 
@@ -644,7 +645,9 @@ def etude_horaire_preview(request):
                 jour_reference=jour_reference,
                 # D-RES-2710-1 — même ombrage du calepinage que le bloc du
                 # devis enregistré (``None`` sans devis : aucun ombrage).
-                perte_ombrage_pct=perte_ombrage_du_devis(devis), **batterie)
+                perte_ombrage_pct=perte_ombrage_du_devis(devis),
+                # CE2E6 — le productible saisi par la société, comme le devis.
+                productible_kwh_kwc=productible_societe(company, devis), **batterie)
         if etude is None:
             avertissements.append(
                 'Étude non calculable pour cette taille : localisation du '

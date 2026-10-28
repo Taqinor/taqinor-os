@@ -1,0 +1,36 @@
+# ---------------------------------------------------------------------------
+# Tri nocturne de l'assistant — configuration (AIC51)
+# ---------------------------------------------------------------------------
+# Lue au TOUT DÉBUT de chaque passage par .claude/skills/assistant-tri/SKILL.md.
+# Mode d'emploi, prompt enregistré, planification : docs/assistant-tri.md.
+# Même patron que docs/qa-explorer.config.yml.
+#
+# INTERRUPTEUR. `actif: false` => la tâche sort immédiatement : aucun appel
+# réseau, aucun fichier écrit, aucune PR. Elle affiche exactement
+# `ASSISTANT_TRI: DESACTIVE (interrupteur)` et s'arrête.
+# Livré éteint : il ne s'allume qu'après les gestes de Reda AICM1-AICM3
+# (crédits, réglage de confidentialité, avis juriste) et la pose du secret.
+actif: false
+
+# GARDE-FOU D6. La tâche ne tourne sur l'ABONNEMENT que si l'option « aider à
+# améliorer Claude » est DÉSACTIVÉE sur le compte de Reda (AICM2) ET si l'export
+# est anonymisé (AIC11). Reda passe cette ligne à `true` après avoir vérifié le
+# réglage lui-même. À `false` ET sans clé API de l'organisation liée dans
+# l'environnement : le skill s'arrête (« BLOQUÉ : AICM2 »). Avec
+# ANTHROPIC_API_KEY dans l'environnement, la même tâche tourne aux crédits API.
+confidentialite_aicm2_confirmee: false
+
+# Fenêtre lue dans l'export : les N dernières heures (une fois par nuit => 24).
+fenetre_heures: 24
+
+# Au moins N heures entre deux tirs (la plateforme impose 1 h au minimum).
+intervalle_minimum_heures: 20
+
+# Plafonds d'une passe (le reste attend la nuit suivante, de façon idempotente).
+max_evenements_lus: 500
+max_entrees_faq: 10
+max_lignes_err: 10
+max_taches_routees: 10
+
+# Domaine à ouvrir dans l'allowlist réseau « Custom » de la tâche cloud.
+domaine_export: api.taqinor.ma

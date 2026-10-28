@@ -4,6 +4,7 @@ import { exempleContrat, reponseContrat } from '../../../test/fixtures/contractS
 import { initState } from './draftCore'
 import IdentityRail from './IdentityRail'
 import crmApi from '../../../api/crmApi'
+import { EVENEMENT_OUVRIR } from '../../ia/copilotMessages'
 import { CANAL_LABELS, formatMAD } from '../stages'
 
 // PUB53 — badge « Vient de la pub » gaté au rôle voyant /publicite. Comme
@@ -117,6 +118,22 @@ describe('LW14 — IdentityRail identité + actions', () => {
 
   // LWC2 — les 4 actions secondaires ont quitté la pile pour le menu « ⋯ » ;
   // les handlers, eux, sont les mêmes (mêmes clés onAction).
+  it("AIC34 — « Demander à l'assistant » émet l'événement avec lead_id et ecran", async () => {
+    const recu = vi.fn()
+    window.addEventListener(EVENEMENT_OUVRIR, recu)
+    render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
+    ouvrirPlus()
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Demander à l'assistant/ }))
+    window.removeEventListener(EVENEMENT_OUVRIR, recu)
+    expect(recu).toHaveBeenCalledTimes(1)
+    const detail = recu.mock.calls[0][0].detail
+    expect(detail.lead_id).toBe(makeState().server.id)
+    expect(detail.ecran).toBe(window.location.pathname)
+    expect(detail.envoyer).toBe(true)
+    expect(detail.question).toMatch(/Résume-moi ce lead/)
+    expect(onAction).not.toHaveBeenCalled()
+  })
+
   it('Toiture 3D route par onAction depuis le menu « ⋯ »', async () => {
     render(<IdentityRail state={makeState()} onAction={onAction} users={[]} />)
     ouvrirPlus()

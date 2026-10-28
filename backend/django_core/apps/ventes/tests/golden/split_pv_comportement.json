@@ -15,10 +15,6 @@
     "pay_webhook_inconnu": "535407466c8611fc30780ef7bd85b57d4d98f0369ce86283cc215bfc94a1944c"
   },
   "sites_arrondi": [
-    "round::_gammes_public::363a93bf620d",
-    "round::_gammes_public::52b70f6bdf9c",
-    "round::_gammes_public::843ba953c327",
-    "round::_monthly_consumption._kwh::016f23b2fff9",
-    "round::_variant_summaries::d9ea0585d95f"
+    "round::_monthly_consumption._kwh::016f23b2fff9"
   ]
 }
