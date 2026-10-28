@@ -274,3 +274,62 @@ def motif_tarif_omis(tarif, defaut):
         from apps.ventes.tarif_ci import MENTION_DOMESTIQUE
         return MENTION_DOMESTIQUE
     return defaut
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CEC19 — bande de vraisemblance d'un prix déclaré (décision fondateur
+# 28/10/2026 : k = 3).
+# ═════════════════════════════════════════════════════════════════════════════
+#: Un prix déclaré hors de [grille officielle ÷ k ; grille officielle × k] est
+#: signalé au vendeur (alerte INTERNE, jamais côté client) : faute de virgule
+#: ×10, prix en centimes. Le prix n'est PAS corrigé, seulement signalé.
+K_BANDE_PRIX = 3.0
+CODE_PRIX_HORS_BANDE = 'prix_declare_hors_bande'
+
+
+def _grille_ttc_du_poste(poste, contrat):
+    """Prix TTC publié de la grille officielle pour ce poste, ou None.
+
+    Aucun repère trouvé (contrat inconnu, tranche au-delà de la grille) ⇒
+    None : le poste n'est PAS contrôlé (aucun chiffre inventé, aucune alerte).
+    """
+    from apps.parametres import tarifs_officiels as officiels
+    try:
+        if contrat == 'mt_general':
+            ligne = officiels.MT_GENERAL.get(poste)
+            return _montant(ligne['valeur']) if ligne else None
+        if contrat in ('bt_patente', 'bt_force_motrice') and str(
+                poste).startswith('tranche_'):
+            lignes = officiels.grille_bt(contrat)
+            rang = int(str(poste).split('_', 1)[1]) - 1
+            return _montant(lignes[rang]['valeur']) if 0 <= rang < len(
+                lignes) else None
+    except (ValueError, KeyError, IndexError, TypeError):
+        return None
+    return None
+
+
+def alertes_prix_hors_bande(tarif, k=K_BANDE_PRIX):
+    """Alertes INTERNES (forme de ``economie_ci._alertes_internes``) pour
+    chaque prix DÉCLARÉ hors de [grille ÷ k ; grille × k], nommant le poste
+    et le prix. Seuls les prix déclarés sont contrôlés (origine facture)."""
+    if not isinstance(tarif, dict) or tarif.get('origine') != 'declare_facture':
+        return []
+    alertes = []
+    for entree in tarif.get('tarifs_par_poste') or []:
+        poste = entree.get('poste')
+        declare = _montant(entree.get('tarif_kwh_ttc'))
+        grille = _grille_ttc_du_poste(poste, tarif.get('contrat'))
+        if declare is None or not grille or grille <= 0:
+            continue  # pas de repère officiel : poste non contrôlé
+        if declare < grille / k or declare > grille * k:
+            alertes.append({
+                'code': CODE_PRIX_HORS_BANDE,
+                'message': (
+                    f"Prix déclaré du poste « {poste} » : {declare:g} MAD/kWh "
+                    f"TTC, hors de la bande de vraisemblance (grille "
+                    f"officielle {grille:g} ÷ {k:g} à × {k:g}) — faute de "
+                    f"virgule ou prix en centimes ? À vérifier sur la "
+                    f"facture."),
+                'interne': True})
+    return alertes
