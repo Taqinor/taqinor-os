@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ('authentication', '0035_customuser_fonction'),
-        ('crm', '0143_equipecommerciale_departement'),
+        ('crm', '0144_agv1_depense_electricite_pompe'),
     ]
 
     operations = [
