@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4864, operations: 7648, components: 3582}
+counts: {paths: 4866, operations: 7650, components: 3582}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -901,6 +901,7 @@ operations:
 - patch /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_partial_update
 - put /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_update
 - get /api/django/crm/assignable-users/ -> django_crm_assignable_users_list
+- get /api/django/crm/assistant/a-relancer/ -> django_crm_assistant_a_relancer_retrieve
 - get /api/django/crm/canaux/ -> django_crm_canaux_list
 - post /api/django/crm/canaux/ -> django_crm_canaux_create
 - delete /api/django/crm/canaux/{id}/ -> django_crm_canaux_destroy
@@ -4765,6 +4766,7 @@ operations:
 - patch /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_partial_update
 - put /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_update
 - get /api/v1/crm/assignable-users/ -> v1_crm_assignable_users_list
+- get /api/v1/crm/assistant/a-relancer/ -> v1_crm_assistant_a_relancer_retrieve
 - get /api/v1/crm/canaux/ -> v1_crm_canaux_list
 - post /api/v1/crm/canaux/ -> v1_crm_canaux_create
 - delete /api/v1/crm/canaux/{id}/ -> v1_crm_canaux_destroy

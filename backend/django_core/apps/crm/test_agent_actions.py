@@ -25,17 +25,20 @@ from apps.roles.models import Role
 from apps.crm.models import Lead, LeadActivity
 from apps.crm import stages
 from apps.crm.agent_actions import (
-    CREER_LEAD, METTRE_A_JOUR_LEAD, NOTER_LEAD, PREPARER_ENVOI_WHATSAPP,
-    register_crm_actions,
+    CREER_LEAD, LEADS_A_RELANCER, METTRE_A_JOUR_LEAD, NOTER_LEAD,
+    PREPARER_ENVOI_WHATSAPP, register_crm_actions,
 )
 from apps.agent.registry import all_actions, for_user
 
 User = get_user_model()
 
+# Actions d'ÉCRITURE (crm_creer / crm_modifier) : un rôle lecture seule n'en voit aucune.
 _ALL_CRM_KEYS = {
     CREER_LEAD.key, METTRE_A_JOUR_LEAD.key,
     NOTER_LEAD.key, PREPARER_ENVOI_WHATSAPP.key,
 }
+# Actions de LECTURE (crm_voir) de l'assistant (AIC30+).
+_READ_CRM_KEYS = {LEADS_A_RELANCER.key}
 
 
 def auth(user):
@@ -67,7 +70,7 @@ class CrmAgentActionsCatalogueTest(TestCase):
 
     def test_all_actions_registered_in_catalogue(self):
         keys = {a.key for a in all_actions()}
-        self.assertTrue(_ALL_CRM_KEYS.issubset(keys))
+        self.assertTrue((_ALL_CRM_KEYS | _READ_CRM_KEYS).issubset(keys))
 
     def test_permitted_user_sees_all_actions(self):
         keys = {a.key for a in for_user(self.commercial)}
@@ -76,6 +79,7 @@ class CrmAgentActionsCatalogueTest(TestCase):
     def test_readonly_user_sees_no_write_actions(self):
         keys = {a.key for a in for_user(self.readonly)}
         self.assertFalse(keys & _ALL_CRM_KEYS)
+        self.assertEqual(keys & _READ_CRM_KEYS, _READ_CRM_KEYS)
 
     def test_actions_required_permissions(self):
         self.assertEqual(CREER_LEAD.required_permission, 'crm_creer')
@@ -83,10 +87,11 @@ class CrmAgentActionsCatalogueTest(TestCase):
         self.assertEqual(NOTER_LEAD.required_permission, 'crm_modifier')
         self.assertEqual(
             PREPARER_ENVOI_WHATSAPP.required_permission, 'crm_modifier')
+        self.assertEqual(LEADS_A_RELANCER.required_permission, 'crm_voir')
 
     def test_inputs_never_include_company(self):
         for action in (CREER_LEAD, METTRE_A_JOUR_LEAD, NOTER_LEAD,
-                       PREPARER_ENVOI_WHATSAPP):
+                       PREPARER_ENVOI_WHATSAPP, LEADS_A_RELANCER):
             props = action.inputs.get('properties', {})
             self.assertNotIn('company', props, action.key)
 
@@ -186,3 +191,73 @@ class CrmAgentWhatsappPrepareTest(TestCase):
         self.assertIn('message', resp.data)
         self.assertIn('links', resp.data)
         self.assertTrue(resp.data['wa_url'])
+
+
+class CrmAgentARelancerTest(TestCase):
+    """AIC30 — ``crm.leads.a_relancer`` sert la file du cockpit, pas une copie."""
+
+    def setUp(self):
+        register_crm_actions()
+        self.company = Company.objects.create(nom='AIC30 Co', slug='aic30-co')
+        self.role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_voir', 'crm_modifier'])
+        self.user = User.objects.create_user(
+            username='aic30_com', password='x', role=self.role,
+            company=self.company)
+        # Commercial terrain : visites seulement, aucun accès CRM.
+        self.terrain_role = Role.objects.create(
+            company=self.company, nom='Terrain', permissions=['visites_voir'])
+        self.terrain = User.objects.create_user(
+            username='aic30_ter', password='x', role=self.terrain_role,
+            company=self.company)
+
+    def _touche(self, nom, jours, canal='appel'):
+        import datetime
+        from core.dates import aujourd_hui_local
+        from apps.crm.models import RelanceEtape
+        lead = Lead.objects.create(
+            company=self.company, nom=nom, owner=self.user)
+        due = aujourd_hui_local() + datetime.timedelta(days=jours)
+        return RelanceEtape.objects.create(
+            company=self.company, lead=lead, cadence='contact', ordre=1,
+            canal=canal, libelle=f'Touche {nom}', due_date=due)
+
+    def test_a_relancer_egale_la_file_du_cockpit(self):
+        from apps.crm.selectors import relance_etapes_dues
+        for jours in (-9, -2, 0, 0):
+            self._touche(f'L{jours}', jours)
+        for portee, scope in (('aujourd_hui', 'today'), ('retard', 'overdue'),
+                              ('semaine', 'week')):
+            resp = auth(self.user).get(
+                LEADS_A_RELANCER.endpoint, {'portee': portee})
+            self.assertEqual(resp.status_code, 200, resp.data)
+            attendu = list(relance_etapes_dues(
+                self.company, self.user, scope=scope))
+            self.assertEqual(resp.data['total'], len(attendu), portee)
+            self.assertEqual(
+                [ligne['lead_id'] for ligne in resp.data['lignes']],
+                [e.lead_id for e in attendu], portee)
+
+    def test_retard_en_jours_ouvres_et_champs_servis(self):
+        self._touche('Retard', -9, canal='whatsapp')
+        resp = auth(self.user).get(
+            LEADS_A_RELANCER.endpoint, {'portee': 'retard'})
+        ligne = resp.data['lignes'][0]
+        self.assertEqual(ligne['canal'], 'whatsapp')
+        self.assertGreaterEqual(ligne['retard_jours_ouvres'], 1)
+        for cle in ('nom', 'etape', 'touche_prevue', 'dernier_contact'):
+            self.assertIn(cle, ligne)
+
+    def test_portee_inconnue_nomme_le_champ(self):
+        resp = auth(self.user).get(
+            LEADS_A_RELANCER.endpoint, {'portee': 'hier'})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('portee', resp.data)
+
+    def test_terrain_sans_pipeline(self):
+        # Le catalogue ne la montre pas au terrain ET la route la refuse.
+        self.assertNotIn(
+            LEADS_A_RELANCER.key, {a.key for a in for_user(self.terrain)})
+        resp = auth(self.terrain).get(LEADS_A_RELANCER.endpoint)
+        self.assertEqual(resp.status_code, 403)

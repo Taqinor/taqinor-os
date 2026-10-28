@@ -165,11 +165,43 @@ PREPARER_ENVOI_WHATSAPP = AgentAction(
 )
 
 
+# AIC30 — « Mes leads à relancer » : LECTURE de la file du cockpit « contrôle du
+# suivi » de l'utilisateur connecté (jamais une copie de la règle de retard).
+# Endpoint : GET /api/django/crm/assistant/a-relancer/ (views_assistant).
+LEADS_A_RELANCER = AgentAction(
+    key='crm.leads.a_relancer',
+    label='Mes leads à relancer',
+    description=(
+        "Sert à : lister les leads que le commercial connecté doit relancer "
+        "(nom, étape, touche prévue, retard en jours ouvrés, canal, dernier "
+        "contact), 20 lignes max avec le total. "
+        "Ne pas utiliser pour : relancer, écrire ou chercher un lead précis. "
+        "Exemple : « Qui dois-je relancer aujourd'hui ? » (portee=aujourd_hui). "
+        "Résultat : {portee, total, limite, lignes[]}, même file que le cockpit."
+    ),
+    endpoint='/api/django/crm/assistant/a-relancer/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'portee': {
+                'type': 'string',
+                'enum': ['aujourd_hui', 'retard', 'semaine'],
+                'description': 'Période de la file (défaut aujourd_hui).',
+            },
+        },
+    },
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
+)
+
+
 _ACTIONS = (
     CREER_LEAD,
     METTRE_A_JOUR_LEAD,
     NOTER_LEAD,
     PREPARER_ENVOI_WHATSAPP,
+    LEADS_A_RELANCER,
 )
 
 

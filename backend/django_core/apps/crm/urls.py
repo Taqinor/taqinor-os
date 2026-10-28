@@ -24,6 +24,8 @@ from .public_lead_ref_views import lead_ref_lookup
 from .public_affiner_views import lead_affiner_pro
 # VT12 — la SEULE surface visite restée côté CRM : la texture de toit du lead.
 from .views_visite import lead_photo_toit
+# AIC — lectures servies à l'assistant (relais FastAPI, aucun écran en face).
+from .views_assistant import leads_a_relancer
 # NTCRM4/5/6/10/12 — forecast, plan de compte, playbooks (SPL80 : clients_views).
 from .clients_views import (
     ConcurrentPerteViewSet, EquipeCommercialeViewSet, ObjectifCommercialViewSet,
@@ -186,5 +188,8 @@ urlpatterns = [
     path('forecast/historique/', forecast_historique_view, name='forecast-historique'),
     # NTCRM12 — Progression playbook d'un lead (lecture + coche tâche).
     path('leads/<int:lead_id>/playbook/', lead_playbook_view, name='lead-playbook'),
+    # headless: lecture servie à l'assistant (relais FastAPI), aucun écran ERP
+    path('assistant/a-relancer/', leads_a_relancer,
+         name='assistant-a-relancer'),
     path('', include(router.urls)),
 ]
