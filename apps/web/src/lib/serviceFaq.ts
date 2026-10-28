@@ -7,8 +7,7 @@
  *  - « Comment le prix est calculé » → même mécanique que /faq (cluster
  *    « Prix & ordres de grandeur » : facture → puissance → visite technique).
  *  - « Inclus / exclus » → tableau + exclusions génériques de /garanties
- *    (WG16 encore ouvert sur la liste d'exclusions définitive — même wording
- *    prudent « à confirmer » repris ici).
+ *    (RWEB27 : plus de mention « à confirmer » côté client — renvoi à /garanties).
  *  - « Délais » → le process en 3 temps de /faq (cluster « Délais & process »)
  *    et, pour le SAV, l'engagement de réponse « sous 1 h, 7j/7 » de /garanties
  *    (WG9, résolu par le fondateur le 2026-07-03).
@@ -16,8 +15,8 @@
  *    lignes hors-catalogue structure/main-d'œuvre de facts.ts).
  *  - « Fréquence d'entretien » → PAS de cadence chiffrée inventée : la page
  *    /maintenance-monitoring documente des visites programmées dont le SLA et
- *    le prix restent « en attente de validation du fondateur » (WG10, gate
- *    encore ouvert) — la réponse ici décrit le mécanisme réel (monitoring
+ *    le prix ne sont pas publiés (WG10 ; communiqués sur demande, RWEB27) —
+ *    la réponse ici décrit le mécanisme réel (monitoring
  *    proactif + visite programmée) sans jamais avancer un nombre de fois par
  *    an qui ne serait pas confirmé.
  *
@@ -179,7 +178,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
   fr: {
     entretienQ: 'Une installation résidentielle demande-t-elle un entretien régulier ?',
     entretienA:
-      'Le socle est déjà couvert par le suivi de production en temps réel, mis en place sur chaque installation : nous voyons une anomalie avant vous, sur alerte automatique. Au-delà, un passage d’entretien programmé (nettoyage des panneaux notamment) existe en contrat — cadence, délai de réponse et prix exacts sont encore en attente de validation du fondateur, nous ne publions donc aucun chiffre tant qu’il n’est pas arrêté. Voir la page Maintenance & monitoring.',
+      'Le socle est déjà couvert par le suivi de production en temps réel, mis en place sur chaque installation : nous voyons une anomalie avant vous, sur alerte automatique. Au-delà, un passage d’entretien programmé (nettoyage des panneaux notamment) existe en contrat — cadence, délai de réponse et prix vous sont communiqués sur demande. Voir la page Maintenance & monitoring.',
     prixQ: 'Comment le prix d’une installation résidentielle est-il calculé ?',
     prixA:
       'Le prix suit la puissance, et la puissance suit votre facture — jamais un tarif au mètre carré de toiture. Le diagnostic en ligne donne une première fourchette en 60 secondes à partir de votre facture mensuelle ; le chiffre exact tombe après la visite technique, qui vérifie la toiture et le matériel retenu.',
@@ -188,7 +187,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'Le matériel posé (panneaux, onduleur, éventuellement batterie), la structure de fixation, la pose par notre équipe, le dossier technique complet à la livraison (schémas unifilaires, calcul de câbles, liste des protections) et l’accès personnel au suivi de production en temps réel.',
     exclusQ: 'Qu’est-ce qui n’est pas couvert par la garantie ?',
     exclusA:
-      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure (relève alors de votre assurance habitation, pas de notre garantie matériel) et l’usure normale au-delà des seuils de performance garantis. Liste indicative, à confirmer — voir la page Garanties pour le détail.',
+      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure (relève alors de votre assurance habitation, pas de notre garantie matériel) et l’usure normale au-delà des seuils de performance garantis. Le détail figure sur la page Garanties.',
     delaisQ: 'Combien de temps entre le premier contact et l’installation ?',
     delaisA:
       'Trois temps, sans détour : d’abord un diagnostic de 60 secondes qui renvoie une première fourchette, puis un échange WhatsApp direct avec un technicien (photos de toiture à l’appui), enfin la visite technique, l’étude complète gratuite et le devis. Vous parlez à la personne qui dimensionne, pas à un standard qui rappellera.',
@@ -199,7 +198,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
   en: {
     entretienQ: 'Does a residential installation need regular maintenance?',
     entretienA:
-      'The baseline is already covered by the real-time production monitoring shipped with every installation: we see an anomaly before you do, on an automatic alert. Beyond that, a scheduled maintenance visit (panel cleaning in particular) exists as a contract — the exact cadence, response time and price are still pending founder validation, so we publish no figure until it is settled. See the Maintenance & monitoring page.',
+      'The baseline is already covered by the real-time production monitoring shipped with every installation: we see an anomaly before you do, on an automatic alert. Beyond that, a scheduled maintenance visit (panel cleaning in particular) exists as a contract — cadence, response time and price are shared on request. See the Maintenance & monitoring page.',
     prixQ: 'How is the price of a residential installation calculated?',
     prixA:
       'The price follows the power, and the power follows your bill — never a price per square metre of roof. The online assessment gives a first range in 60 seconds from your monthly bill; the exact figure comes after the technical visit, which checks the roof and the equipment retained.',
@@ -208,7 +207,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'The equipment fitted (panels, inverter, battery where relevant), the mounting structure, the install by our team, the full technical file on delivery (single-line diagrams, cable sizing, list of protections) and personal access to real-time production monitoring.',
     exclusQ: 'What is not covered by the warranty?',
     exclusA:
-      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event (a matter for your home insurance, not our hardware warranty) and normal wear beyond the guaranteed performance thresholds. Indicative list, to be confirmed — see the Warranties page for detail.',
+      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event (a matter for your home insurance, not our hardware warranty) and normal wear beyond the guaranteed performance thresholds. Full detail is on the Warranties page.',
     delaisQ: 'How long between first contact and installation?',
     delaisA:
       'Three steps, straightforward: first a 60-second assessment that returns a first range, then a direct WhatsApp exchange with a technician (roof photos included), finally the technical visit, the full free assessment and the quote. You speak to the person who sizes the system, not a call centre that will call back.',
@@ -219,7 +218,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
   ar: {
     entretienQ: 'هل تحتاج التركيبة السكنية إلى صيانة منتظمة؟',
     entretienA:
-      'القاعدة مُغطّاة بالفعل بمتابعة الإنتاج في الوقت الحقيقي المُعتمَدة مع كل تركيبة: نرى الخلل قبلكم، عبر تنبيه آلي. إضافة إلى ذلك، تتوفّر زيارة صيانة مبرمجة (تنظيف الألواح خصوصاً) ضمن عقد — الوتيرة الدقيقة وزمن الاستجابة والثمن ما زالت في انتظار مصادقة المؤسس، فلا ننشر أي رقم قبل أن يُحسم. انظر صفحة الصيانة والمراقبة.',
+      'القاعدة مُغطّاة بالفعل بمتابعة الإنتاج في الوقت الحقيقي المُعتمَدة مع كل تركيبة: نرى الخلل قبلكم، عبر تنبيه آلي. إضافة إلى ذلك، تتوفّر زيارة صيانة مبرمجة (تنظيف الألواح خصوصاً) ضمن عقد — تُبلَّغ الوتيرة وزمن الاستجابة والثمن عند الطلب. انظر صفحة الصيانة والمراقبة.',
     prixQ: 'كيف يُحسب ثمن تركيبة سكنية؟',
     prixA:
       'الثمن يتبع القدرة، والقدرة تتبع فاتورتكم — لا سعر بالمتر المربع من السطح أبداً. التشخيص عبر الإنترنت يُعطي مجالاً أولياً خلال 60 ثانية انطلاقاً من فاتورتكم الشهرية؛ الرقم الدقيق يأتي بعد الزيارة التقنية التي تتحقّق من السطح والعتاد المُختار.',
@@ -228,7 +227,7 @@ const RESIDENTIEL: Record<Locale, ServiceCopy> = {
       'العتاد المُركَّب (الألواح، العاكس، البطارية عند الاقتضاء)، بنية التثبيت، التركيب من طرف فريقنا، الملف التقني الكامل عند التسليم (مخططات أحادية الخط، حساب الكوابل، لائحة الحمايات) والولوج الشخصي إلى متابعة الإنتاج في الوقت الحقيقي.',
     exclusQ: 'ما الذي لا يُغطّيه الضمان؟',
     exclusA:
-      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة (يخصّ تأمين سكنكم، لا ضمان معداتنا) والتآكل العادي بما يتجاوز عتبات الأداء المضمونة. لائحة إرشادية، قيد التأكيد — انظر صفحة الضمانات للتفصيل.',
+      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة (يخصّ تأمين سكنكم، لا ضمان معداتنا) والتآكل العادي بما يتجاوز عتبات الأداء المضمونة. التفاصيل في صفحة الضمانات.',
     delaisQ: 'كم يستغرق الأمر من أول اتصال إلى التركيب؟',
     delaisA:
       'ثلاث مراحل، دون التفاف: أولاً تشخيص لمدة 60 ثانية يُعيد مجالاً أولياً، ثم تواصل مباشر عبر واتساب مع تقني (بصور السطح)، وأخيراً الزيارة التقنية والدراسة الكاملة المجانية والثمن. تتحدّثون مع الشخص الذي يحدّد المقاس، لا مع مركز نداء سيتصل لاحقاً.',
@@ -253,7 +252,7 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
       'Le matériel tier-1 (panneaux, onduleur, structure), le dossier technique complet, le montage du dossier loi 82-21 (accord de raccordement ou autorisation selon la puissance) et l’accès au suivi de production en temps réel pour votre site.',
     exclusQ: 'Qu’est-ce qui n’est pas couvert par la garantie ?',
     exclusA:
-      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure (assurance du bâtiment, pas notre garantie matériel) et l’usure normale au-delà des seuils garantis. Liste indicative, à confirmer — voir la page Garanties.',
+      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure (assurance du bâtiment, pas notre garantie matériel) et l’usure normale au-delà des seuils garantis. Le détail figure sur la page Garanties.',
     delaisQ: 'Quel est le délai entre le premier contact et la mise en service ?',
     delaisA:
       'Le même process en trois temps que pour un site résidentiel : diagnostic initial, échange direct avec un technicien, puis visite technique et étude complète. Sur un site professionnel, l’étude intègre en plus vos factures et votre rythme d’activité et, selon la puissance, le montage du dossier loi 82-21 — ce qui peut allonger le délai selon le régime applicable (accord de raccordement ou autorisation).',
@@ -273,7 +272,7 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
       'Tier-1 equipment (panels, inverter, structure), the full technical file, building the law 82-21 file (grid-connection agreement or authorisation depending on power) and real-time production monitoring access for your site.',
     exclusQ: 'What is not covered by the warranty?',
     exclusA:
-      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event (a matter for the building’s insurance, not our hardware warranty) and normal wear beyond the guaranteed thresholds. Indicative list, to be confirmed — see the Warranties page.',
+      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event (a matter for the building’s insurance, not our hardware warranty) and normal wear beyond the guaranteed thresholds. Full detail is on the Warranties page.',
     delaisQ: 'What is the timeline from first contact to commissioning?',
     delaisA:
       'The same three-step process as a residential site: initial assessment, direct exchange with a technician, then the technical visit and full assessment. On a business site, the assessment also factors in your bills and your activity rhythm and, depending on power, building the law 82-21 file — which can extend the timeline depending on the applicable regime (grid-connection agreement or authorisation).',
@@ -293,7 +292,7 @@ const PROFESSIONNEL: Record<Locale, ServiceCopy> = {
       'عتاد من الفئة الأولى (ألواح، عاكس، بنية)، الملف التقني الكامل، إعداد ملف القانون 82-21 (اتفاقية ربط أو ترخيص حسب القدرة) وولوج متابعة الإنتاج في الوقت الحقيقي لموقعكم.',
     exclusQ: 'ما الذي لا يُغطّيه الضمان؟',
     exclusA:
-      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة (يخصّ تأمين المبنى، لا ضمان معداتنا) والتآكل العادي بما يتجاوز العتبات المضمونة. لائحة إرشادية، قيد التأكيد — انظر صفحة الضمانات.',
+      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة (يخصّ تأمين المبنى، لا ضمان معداتنا) والتآكل العادي بما يتجاوز العتبات المضمونة. التفاصيل في صفحة الضمانات.',
     delaisQ: 'ما الأجل بين أول اتصال والتشغيل الفعلي؟',
     delaisA:
       'نفس المسار من ثلاث مراحل كما في الموقع السكني: تشخيص أولي، تواصل مباشر مع تقني، ثم الزيارة التقنية والدراسة الكاملة. في الموقع المهني، تُدمج الدراسة كذلك فواتيركم وإيقاع نشاطكم، وحسب القدرة، إعداد ملف القانون 82-21 — ما قد يُطيل الأجل حسب النظام المطبَّق (اتفاقية ربط أو ترخيص).',
@@ -375,7 +374,7 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
   fr: {
     entretienQ: 'Une batterie de stockage demande-t-elle un entretien ?',
     entretienA:
-      'Le BMS intégré gère la charge et la décharge automatiquement, sans intervention manuelle. Le suivi de production en temps réel remonte l’état de la batterie en continu ; un passage d’entretien programmé peut s’ajouter en contrat, mais sa cadence, son délai de réponse et son prix exacts restent en attente de validation du fondateur — aucun chiffre publié tant qu’il n’est pas arrêté.',
+      'Le BMS intégré gère la charge et la décharge automatiquement, sans intervention manuelle. Le suivi de production en temps réel remonte l’état de la batterie en continu ; un passage d’entretien programmé peut s’ajouter en contrat ; sa cadence, son délai de réponse et son prix vous sont communiqués sur demande.',
     prixQ: 'Comment le prix d’une batterie de stockage est-il calculé ?',
     prixA:
       'La capacité — donc le prix — suit votre creux de consommation du soir, pas un palier de catalogue : nos modules Dyness s’empilent par tranches de 5 kWh, et on empile juste assez de modules pour couvrir ce que vos panneaux ne fournissent plus une fois le soleil couché.',
@@ -384,7 +383,7 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
       'La batterie lithium-fer-phosphate (LFP) elle-même, son dialogue CAN BMS natif avec l’onduleur hybride Deye qui pilote charge et décharge, le raccordement, et l’accès au suivi de production en temps réel pour suivre son état.',
     exclusQ: 'Qu’est-ce qui n’est pas couvert par la garantie batterie ?',
     exclusA:
-      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure et l’usure normale au-delà des seuils garantis (≥ 70 % de capacité conservée à 7 ans). Liste indicative, à confirmer — voir la page Garanties.',
+      'Le dommage accidentel ou un choc externe, une intervention par un tiers non habilité par Taqinor, un défaut d’entretien manifeste, un événement de force majeure et l’usure normale au-delà des seuils garantis (≥ 70 % de capacité conservée à 7 ans). Le détail figure sur la page Garanties.',
     delaisQ: 'Quel est le délai pour ajouter une batterie à une installation ?',
     delaisA:
       'Le même process qu’une nouvelle installation : d’abord la lecture de votre courbe de consommation heure par heure pour vérifier que le stockage se justifie, puis un échange direct avec un technicien, enfin la visite technique qui confirme la capacité (en modules de 5 kWh) et le devis.',
@@ -395,7 +394,7 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
   en: {
     entretienQ: 'Does a storage battery need maintenance?',
     entretienA:
-      'The built-in BMS manages charge and discharge automatically, with no manual intervention. Real-time production monitoring reports the battery’s state continuously; a scheduled maintenance visit can be added as a contract, but its exact cadence, response time and price are still pending founder validation — no figure published until it is settled.',
+      'The built-in BMS manages charge and discharge automatically, with no manual intervention. Real-time production monitoring reports the battery’s state continuously; a scheduled maintenance visit can be added as a contract; its cadence, response time and price are shared on request.',
     prixQ: 'How is the price of a storage battery calculated?',
     prixA:
       'Capacity — and therefore price — follows your evening consumption dip, not a catalogue tier: our Dyness modules stack in 5 kWh increments, and we stack just enough modules to cover what your panels no longer provide once the sun has set.',
@@ -404,7 +403,7 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
       'The lithium-iron-phosphate (LFP) battery itself, its native CAN BMS dialogue with the Deye hybrid inverter that drives charge and discharge, the wiring, and real-time production monitoring access to track its state.',
     exclusQ: 'What is not covered by the battery warranty?',
     exclusA:
-      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event and normal wear beyond the guaranteed thresholds (≥ 70 % capacity retained at 7 years). Indicative list, to be confirmed — see the Warranties page.',
+      'Accidental damage or an external impact, an intervention by a third party not authorised by Taqinor, a clear lack of maintenance, a force-majeure event and normal wear beyond the guaranteed thresholds (≥ 70 % capacity retained at 7 years). Full detail is on the Warranties page.',
     delaisQ: 'What is the timeline to add a battery to an installation?',
     delaisA:
       'The same process as a new installation: first reading your hour-by-hour consumption curve to check storage is justified, then a direct exchange with a technician, finally the technical visit that confirms the capacity (in 5 kWh modules) and the quote.',
@@ -415,7 +414,7 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
   ar: {
     entretienQ: 'هل تحتاج بطارية التخزين إلى صيانة؟',
     entretienA:
-      'يدير نظام BMS المُدمَج الشحن والتفريغ تلقائياً، دون أي تدخّل يدوي. تنقل متابعة الإنتاج في الوقت الحقيقي حالة البطارية باستمرار؛ يمكن إضافة زيارة صيانة مبرمجة ضمن عقد، لكن وتيرتها الدقيقة وزمن استجابتها وثمنها ما زالت في انتظار مصادقة المؤسس — لا يُنشَر أي رقم قبل أن يُحسم.',
+      'يدير نظام BMS المُدمَج الشحن والتفريغ تلقائياً، دون أي تدخّل يدوي. تنقل متابعة الإنتاج في الوقت الحقيقي حالة البطارية باستمرار؛ يمكن إضافة زيارة صيانة مبرمجة ضمن عقد؛ تُبلَّغ وتيرتها وزمن استجابتها وثمنها عند الطلب.',
     prixQ: 'كيف يُحسب ثمن بطارية التخزين؟',
     prixA:
       'تتبع السعة — وبالتالي الثمن — تراجع استهلاككم المسائي، لا شريحة كاطالوݣ: تتراكم وحدات Dyness لدينا بشرائح 5 kWh، ونُركِّب فقط ما يكفي من الوحدات لتغطية ما لم تعد ألواحكم توفّره بعد غروب الشمس.',
@@ -424,7 +423,7 @@ const BATTERIES: Record<Locale, ServiceCopy> = {
       'البطارية نفسها من الليثيوم-حديد-فوسفات (LFP)، تواصلها الأصلي عبر CAN BMS مع العاكس الهجين Deye الذي يُدير الشحن والتفريغ، التوصيل، وولوج متابعة الإنتاج في الوقت الحقيقي لمتابعة حالتها.',
     exclusQ: 'ما الذي لا يُغطّيه ضمان البطارية؟',
     exclusA:
-      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة والتآكل العادي بما يتجاوز العتبات المضمونة (≥ 70 % من السعة محفوظة عند 7 سنوات). لائحة إرشادية، قيد التأكيد — انظر صفحة الضمانات.',
+      'الضرر العرضي أو الصدمة الخارجية، تدخّل طرف ثالث غير معتمد من تاكينور، إهمال صيانة واضح، حدث قوة قاهرة والتآكل العادي بما يتجاوز العتبات المضمونة (≥ 70 % من السعة محفوظة عند 7 سنوات). التفاصيل في صفحة الضمانات.',
     delaisQ: 'ما الأجل لإضافة بطارية إلى تركيبة قائمة؟',
     delaisA:
       'نفس مسار التركيبة الجديدة: أولاً قراءة منحنى استهلاككم ساعة بساعة للتحقّق من وجاهة التخزين، ثم تواصل مباشر مع تقني، وأخيراً الزيارة التقنية التي تؤكّد السعة (بوحدات 5 kWh) والثمن.',
