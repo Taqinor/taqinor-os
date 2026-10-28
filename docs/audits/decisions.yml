@@ -2546,6 +2546,17 @@ decisions:
     taches: [CMP10]
     source: "décision prise pour le fondateur (à revoir) — PVGIS 5.3 PVcalc relevé le 27/10/2026 ; session L3 CMP"
     taches: [CMP5]
+  - id: D-CMP-7
+    question: "Un devis C&I envoyé au niveau de règles ≤ 2 recalculé par force_etudes reçoit aujourd'hui les corrections de chiffre CMP5 / CMP7 / CMP8 du moteur C&I (gardées par la seule empreinte de l'étude) : que faire ?"
+    options:
+      - cle: a
+        texte: "tout recalcul forcé passe d'abord le devis au niveau de règles 3 (toutes les corrections du 27/10 ensemble, tracé au chatter)"
+      - cle: b
+        texte: "garder le niveau du devis et gater chaque correction (CMP5, CMP7, CMP8) par regles_au_moins(devis, 3) dans moteur_ci"
+    reponse: ouverte
+    date: "2026-10-28"
+    source: "audit Fable final du run L3 devis (PC2, 28/10/2026), consigné par la coordinatrice ; option recommandée (a) — non construite, décision fondateur"
+    taches: [CMP12]
   - id: D-AGM-1
     question: "Moteur de pompe donné en CV (5,5 CV = 4,05 kW) : quel kW pour la pompe et le variateur (constat R1 AGM : variateur 5,5 kW choisi pour un moteur normalisé de 4 kW) ?"
     options:
