@@ -37,9 +37,19 @@
  * existant (édition) prime toujours sur le ``lead`` (même chaîne que le
  * serveur, ``etude_horaire_view._devis_de_la_societe`` d'abord).
  */
+// RGEN7 — `[{ produit, quantite }]` des lignes batterie de l'option « avec »
+// portant un produit lié (`estBatterieAvec` : le classifieur de l'écran,
+// `isBattery(texteClassement)` + `appartientAuPanierAvec`, passé par le hook
+// pour que ce module n'importe toujours rien).
+export function batteriesDesLignes(lignes, estBatterieAvec) {
+  return (lignes || [])
+    .filter(l => l?.produit && Number(l.quantite) > 0 && estBatterieAvec(l))
+    .map(l => ({ produit: Number(l.produit), quantite: Number(l.quantite) }))
+}
+
 export function construireCorpsPreview({
   modeInstallation, editId, leadId, fHiver, fEte, eteDifferente, ville,
-  raccordement, kwp, batterieKwh, occupation, equipements,
+  raccordement, kwp, batterieKwh, occupation, equipements, batteries,
 } = {}) {
   if (modeInstallation !== 'residentiel') return null
 
@@ -64,6 +74,8 @@ export function construireCorpsPreview({
   if (raccordement) corps.raccordement = raccordement
   if (Number(kwp) > 0) corps.kwc = Number(kwp)
   if (Number(batterieKwh) > 0) corps.batterie_kwh = Number(batterieKwh)
+  // RGEN7 — batteries des lignes « avec » (fiche produit côté serveur) ; absent sans ligne liée.
+  if (Array.isArray(batteries) && batteries.length) corps.batteries = batteries
   if (occupation) corps.occupation = occupation
   if (equipements && Object.keys(equipements).length) corps.equipements = equipements
   return corps

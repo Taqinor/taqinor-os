@@ -31928,7 +31928,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -31941,7 +31941,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -31954,7 +31954,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -31967,7 +31967,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "puissance requise 200 kWc — il faudrait 10 onduleurs hybrides de 20 kW en parallèle (déraisonnable au-delà de 8)"
+    "reason": "pour 200 kWc il faudrait 10 onduleurs hybrides de 20 kW (au plus 8 en parallèle) — réduisez la taille ou ajoutez au catalogue un onduleur hybride plus puissant"
    }
   },
   {
@@ -31980,7 +31980,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -31993,7 +31993,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -32006,7 +32006,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -32019,7 +32019,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "puissance requise 200 kWc — il faudrait 10 onduleurs hybrides de 20 kW en parallèle (déraisonnable au-delà de 8)"
+    "reason": "pour 200 kWc il faudrait 10 onduleurs hybrides de 20 kW (au plus 8 en parallèle) — réduisez la taille ou ajoutez au catalogue un onduleur hybride plus puissant"
    }
   },
   {
@@ -33096,7 +33096,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -33109,7 +33109,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -33122,7 +33122,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -33135,7 +33135,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "puissance requise 200 kWc — il faudrait 10 onduleurs hybrides de 20 kW en parallèle (déraisonnable au-delà de 8)"
+    "reason": "pour 200 kWc il faudrait 10 onduleurs hybrides de 20 kW (au plus 8 en parallèle) — réduisez la taille ou ajoutez au catalogue un onduleur hybride plus puissant"
    }
   },
   {
@@ -33148,7 +33148,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -33161,7 +33161,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -33174,7 +33174,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "aucun onduleur hybride dans la liste"
+    "reason": "aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un"
    }
   },
   {
@@ -33187,7 +33187,7 @@
    },
    "attendu": {
     "available": false,
-    "reason": "puissance requise 200 kWc — il faudrait 10 onduleurs hybrides de 20 kW en parallèle (déraisonnable au-delà de 8)"
+    "reason": "pour 200 kWc il faudrait 10 onduleurs hybrides de 20 kW (au plus 8 en parallèle) — réduisez la taille ou ajoutez au catalogue un onduleur hybride plus puissant"
    }
   },
   {

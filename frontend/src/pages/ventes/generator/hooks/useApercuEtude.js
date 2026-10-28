@@ -11,7 +11,7 @@ import { toast } from '../../../../ui/confirm'
 import {
   CHART_MONTHS, computeROI,
   paybackMoteurHoraire, inverterCostFromLines, appartientAuPanierSans,
-  appartientAuPanierAvec,
+  appartientAuPanierAvec, isBattery, texteClassement,
   batteryKwhFromLines, batteryCapaciteInconnue,
   consoAnnuelleDepuisFactures,
   productibleForCity,
@@ -22,6 +22,7 @@ import {
   falaiseAffichable, glitchAnnuel,
   estimationConsoAffichable,
 } from '../../../../features/ventes/etudeHorairePreview'
+import { batteriesDesLignes } from '../../../../features/ventes/etudeHorairePreviewPur'
 import { toucheNbPanneauxPourComposition } from '../../../../features/ventes/quote/sizingReducer'
 import { useSizingMoteur } from '../../../../features/ventes/quote/hooks/useSizingMoteur'
 import { moteur, apercu } from '../../../../features/ventes/quote/valeur'
@@ -32,7 +33,7 @@ export function useApercuEtude(ctx) {
     monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits,
+    sizing, dispatchSizing, produits, reglesCalcul,
   } = ctx
 
   // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
@@ -167,6 +168,7 @@ export function useApercuEtude(ctx) {
       produits,
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
+      reglesCalcul,
       // QF5 — bascule sur le modèle « deux factures » par tranche (parité
       // PDF) dès qu'une consommation réelle + un distributeur sont connus.
       // AGNR24 — la conso ENREGISTRÉE (`consoEcran`), jamais la seule saisie.
@@ -179,7 +181,7 @@ export function useApercuEtude(ctx) {
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete, produits])
+    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul])
 
   // L-2OPT — miroir local de `roi` recalculé AU kWc DE LA BRANCHE AVEC. `null`
   // dès que rien ne diverge (`kwpAvec === kwp`) : l'écran retombe alors mot
@@ -202,6 +204,7 @@ export function useApercuEtude(ctx) {
       produits,
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
+      reglesCalcul,
       consoAnnuelleKwh: consoEcran,
       utility: distributeur,
       bareme: baremeSociete,
@@ -209,7 +212,7 @@ export function useApercuEtude(ctx) {
         (selectedLead?.ville_effective ?? selectedLead?.ville) || '', quoteLogic.productible),
     })
   }, [dKwpAvec, dKwp, dKwpLignes, dMonthly, dDayUsage, dTotals, dLines, quoteLogic,
-    consoEcran, distributeur, selectedLead, baremeSociete, produits])
+    consoEcran, distributeur, selectedLead, baremeSociete, produits, reglesCalcul])
 
   // QJR586 — la ville de CALCUL du lead sélectionné (servie par le serveur).
   const villeCalculLead = villeEffectiveLead(selectedLead)
@@ -227,6 +230,9 @@ export function useApercuEtude(ctx) {
   // intact comme repli hors-ligne). `null` = rien à ancrer (aucune facture,
   // aucun devis) : aucun appel réseau (règle d'honnêteté — on omet, on
   // n'invente pas).
+  // RGEN7 — batteries des lignes « avec » liées à un produit : le serveur lit leur fiche (capacité utile, rendement).
+  const batteriesAvec = batteriesDesLignes(lines,
+    l => isBattery(texteClassement(l, produits)) && appartientAuPanierAvec(l, produits))
   const etudeHoraireCorps = modeInstallation === 'residentiel'
     ? construireCorpsPreview({
         modeInstallation,
@@ -240,6 +246,7 @@ export function useApercuEtude(ctx) {
         // QJR568 — le kWc FACTURÉ par les lignes, pas la seule cible.
         kwp: kwpLignes,
         batterieKwh: batteryKwhFromLines(lines, produits),
+        batteries: batteriesAvec,
       })
     : null
   // L-2OPT — l'étude horaire de la branche AVEC porte SON PROPRE kWc. Le corps
@@ -260,6 +267,7 @@ export function useApercuEtude(ctx) {
         raccordement: selectedLead?.raccordement || '',
         kwp: kwpAvec,
         batterieKwh: batteryKwhFromLines(lines, produits),
+        batteries: batteriesAvec,
       })
     : null
   // QJR99 — `useSizingMoteur` (QJR90) enrobe `useEtudeHorairePreview` : il rend
