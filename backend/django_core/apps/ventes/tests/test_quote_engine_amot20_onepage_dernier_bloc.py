@@ -27,6 +27,12 @@ except (ImportError, OSError):  # bibliothèques natives absentes
     _WEASY = False
 
 
+def _plat(texte):
+    """Espaces normalisées (fin de ligne, insécables) : un libellé se lit
+    pareil qu'il tienne sur une ligne ou se coupe sur deux."""
+    return ' '.join(texte.split())
+
+
 @unittest.skipUnless(_WEASY, "WeasyPrint absent : mesure impossible")
 @tag('pdf')
 class OnepageDernierBlocTests(TestCase):
@@ -72,11 +78,18 @@ class OnepageDernierBlocTests(TestCase):
                 html, pages, formes_fin, formes_ttc, renvoi = self._rendu(
                     langue)
                 self.assertEqual(len(pages), 1)
-                visibles = ' | '.join(
-                    b.text for b in self._boites_visibles(pages[0]))
+                # Boîtes jointes par une ESPACE (ordre de composition) : un
+                # libellé de plusieurs mots coupé en fin de ligne reste
+                # visible. Nocturnes 25→28/10/2026 : depuis le titre des CGV
+                # en tête de ligne (ERR-APDF48, acb748acd), la puce arabe se
+                # compose « · 10% بعد » / « التشغيل » sur deux lignes, toutes
+                # deux DANS la zone — la jointure « | » y voyait une absence.
+                # Chaque boîte reste filtrée sur la zone visible.
+                visibles = _plat(' '.join(
+                    b.text for b in self._boites_visibles(pages[0])))
                 for forme in formes_fin:
                     if forme in html:
-                        self.assertIn(forme, visibles, (langue, forme))
+                        self.assertIn(_plat(forme), visibles, (langue, forme))
                 self.assertTrue(any(f in visibles for f in formes_ttc))
 
     def test_renvoi_declare(self):
