@@ -172,6 +172,29 @@ describe('CIQ104 — onduleur exclu et filtre « C&I à compléter »', () => {
       .toHaveTextContent(exclu.motif_exclusion)
   })
 
+  // CCAT12 — ouvert par « Compléter » : le champ visé est défilé et focalisé.
+  it('champInitial : focalise le champ visé (prix de vente)', async () => {
+    render(
+      <ProduitForm produit={{ ...CONTROLEUR }} champInitial="pf-vente"
+                   onClose={() => {}} onSaved={() => {}} />,
+      { wrapper },
+    )
+    await pret()
+    await waitFor(() => expect(document.activeElement).toBe(document.getElementById('pf-vente')))
+  })
+
+  it('champInitial dans un <details> replié : le bloc est ouvert puis le champ focalisé', async () => {
+    render(
+      <ProduitForm produit={{ ...CONTROLEUR }} champInitial="pf-tarif-fixe"
+                   onClose={() => {}} onSaved={() => {}} />,
+      { wrapper },
+    )
+    await pret()
+    const champ = document.getElementById('pf-tarif-fixe')
+    await waitFor(() => expect(document.activeElement).toBe(champ))
+    expect(champ.closest('details').open).toBe(true)
+  })
+
   it('le filtre lit eligible_ci / motif_exclusion / prix_connu', () => {
     const ok = { etat_ci: { prix_connu: true, eligible_ci: true, motif_exclusion: null } }
     const sansPrix = { etat_ci: { prix_connu: exemples[2].prix_connu, eligible_ci: true, motif_exclusion: null } }

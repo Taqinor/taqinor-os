@@ -185,3 +185,108 @@ class GarantiesMarocTests(TestCase):
         self.assertEqual(_p('OND-H-DEY-5M').garantie,
                          'Garantie 10 ans (extension achetée)')
         self.assertEqual(_p('OND-H-DEY-5M').garantie_mois, 99)
+
+
+class DescriptionHybridesDeyeTests(TestCase):
+    """CCAT15 (27/10/2026) — aucune fiche semée n'imprime « … » au client ;
+    la migration 0175 corrige l'ancienne description semée des hybrides Deye
+    sans toucher une saisie du fondateur."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Seed CCAT15', slug='seed-ccat15-deye')
+
+    def test_aucune_description_semee_avec_points_de_suspension(self):
+        for sku, fiche in FICHES.items():
+            texte = fiche.get('description', '')
+            self.assertNotIn('…', texte, sku)
+            self.assertNotIn('...', texte, sku)
+
+    def test_migration_0175_corrige_la_seule_valeur_semee(self):
+        from importlib import import_module
+
+        from django.apps import apps as registre
+        mig = import_module(
+            'apps.stock.migrations.0175_ccat15_description_hybrides_deye')
+        _seed(self.company)
+        self.assertEqual(
+            Produit.objects.get(company=self.company, sku='OND-H-DEY-15T')
+            .description, FICHES['OND-H-DEY-15T']['description'])
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-15T').update(
+            description=mig.ANCIENNE)
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-5M').update(
+            description='Saisie fondateur')
+
+        mig.corriger(registre, None)
+
+        def _p(sku):
+            return Produit.objects.get(company=self.company, sku=sku)
+        # Seule la première ligne change (les lignes ajoutées depuis au semis
+        # ne sont pas inventées sur une fiche existante).
+        self.assertEqual(_p('OND-H-DEY-15T').description,
+                         mig.PREMIERE_LIGNE['OND-H-DEY-15T'] + chr(10) + mig._SUITE)
+        self.assertTrue(_p('OND-H-DEY-15T').description.startswith(
+            'Onduleur hybride Deye SUN-15K-SG05LP3-EU-SM2'))
+        self.assertEqual(_p('OND-H-DEY-5M').description, 'Saisie fondateur')
+
+    def test_migration_0175_couvre_les_deux_variantes_semees(self):
+        from importlib import import_module
+
+        from django.apps import apps as registre
+        mig = import_module(
+            'apps.stock.migrations.0175_ccat15_description_hybrides_deye')
+        _seed(self.company)
+        variante_1206 = (
+            'Onduleur hybride Deye SUN-…SG, rendement max ≈ 97,6 %\n'
+            'Compatible batteries lithium 48 V (BMS CAN/RS485)\n'
+            'Bascule secours (EPS/UPS) < 4 ms en cas de coupure réseau\n'
+            'Monitoring Wi-Fi via Solarman Smart / Deye Cloud')
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-10T').update(
+            description=variante_1206)
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-20T').update(
+            description=mig.ANCIENNE)
+
+        def _p(sku):
+            return Produit.objects.get(company=self.company, sku=sku).description
+
+        mig.corriger(registre, None)
+        # Seule la première ligne change ; la suite semée reste telle quelle.
+        self.assertEqual(_p('OND-H-DEY-10T'), variante_1206.replace(
+            'Onduleur hybride Deye SUN-…SG, rendement max ≈ 97,6 %',
+            'Onduleur hybride Deye SUN-10K-SG05LP3-EU-SM2'))
+        self.assertEqual(_p('OND-H-DEY-20T'),
+                         mig.PREMIERE_LIGNE['OND-H-DEY-20T'] + chr(10) + mig._SUITE)
+        self.assertNotIn('…', _p('OND-H-DEY-10T'))
+
+        # Retour arrière exact pour les deux variantes.
+        mig.retablir(registre, None)
+        self.assertEqual(_p('OND-H-DEY-10T'), variante_1206)
+        self.assertEqual(_p('OND-H-DEY-20T'), mig.ANCIENNE)
+
+    def test_migration_0176_fiches_client_sans_extension_ni_modele(self):
+        from importlib import import_module
+
+        from django.apps import apps as registre
+        mig = import_module('apps.stock.migrations.0176_ccat_fiches_client')
+        _seed(self.company)
+
+        def _p(sku):
+            return Produit.objects.get(company=self.company, sku=sku)
+        # Le seeder porte déjà les nouveaux textes.
+        self.assertEqual(_p('OND-R-HUA-100T').garantie, 'Garantie constructeur 5 ans')
+        self.assertNotIn('SI22', _p('VEI-SI22-AFF').description)
+        (garantie, skus, ancienne_g, nouvelle_g), (_c, _s, ancienne_d, nouvelle_d) = mig.CHANGEMENTS
+        Produit.objects.filter(company=self.company, sku='OND-R-HUA-50T').update(garantie=ancienne_g)
+        Produit.objects.filter(company=self.company, sku='VEI-SI22-AFF').update(description=ancienne_d)
+        # Une saisie du fondateur n'est jamais réécrite.
+        Produit.objects.filter(company=self.company, sku='OND-R-HUA-150T').update(
+            garantie='Garantie 10 ans (extension achetée)')
+
+        mig.corriger(registre, None)
+        self.assertEqual(_p('OND-R-HUA-50T').garantie, nouvelle_g)
+        self.assertEqual(_p('VEI-SI22-AFF').description, nouvelle_d)
+        self.assertEqual(_p('OND-R-HUA-150T').garantie, 'Garantie 10 ans (extension achetée)')
+
+        mig.retablir(registre, None)
+        self.assertEqual(_p('OND-R-HUA-50T').garantie, ancienne_g)
+        self.assertEqual(_p('VEI-SI22-AFF').description, ancienne_d)
