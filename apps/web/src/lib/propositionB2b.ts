@@ -46,6 +46,19 @@ export interface SignValidationB2b extends SignValidation {
   errorAr: string;
 }
 
+/**
+ * CPRW26 — le message d'une validation dans la langue courante ; repli sur `error` (FR) quand la
+ * traduction n'est pas servie. Fonction pure : la page l'adoptera.
+ */
+export function messageEntreprise(
+  v: { error: string; errorEn?: string; errorAr?: string },
+  langue: 'fr' | 'en' | 'ar',
+): string {
+  if (langue === 'en') return v.errorEn || v.error;
+  if (langue === 'ar') return v.errorAr || v.error;
+  return v.error;
+}
+
 /** ICE : séparateurs courants (espaces, points, tirets) retirés — la saisie reste libre, la valeur envoyée est nette. */
 export function normaliserIce(valeur: string | null | undefined): string {
   const chiffres = (valeur ?? '')
