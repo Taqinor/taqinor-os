@@ -238,6 +238,29 @@ _EXEMPLE_FR = re.compile(r"Facture actuelle ≈ (.+?) MAD/an → avec solaire �
                          r"(.+?) MAD/an → économie ≈ (.+?) MAD/an")
 
 
+def _exemple_aligne_couverture(d, exemple):
+    """RPDF16 — « Facture actuelle ≈ 35 999 → avec solaire ≈ 9 664 » sous une
+    couverture qui imprime « 36 000 → 9 665 » (somme des 12 factures
+    arrondies) : le MÊME chiffre arrondi deux fois. Quand l'écart est
+    d'arrondi (≤ 0,5 %), l'exemple reprend les montants de la couverture ;
+    l'économie, différence des deux, ne bouge pas."""
+    m = _EXEMPLE_FR.fullmatch(exemple or "")
+    av, ap = d.get("annual_before"), d.get("annual_after")
+    if not (m and av and ap is not None):
+        return exemple
+    sep = next((c for c in m[1] if not c.isdigit()), " ")
+    try:
+        x, y = (float("".join(c for c in m[i] if c.isdigit())) for i in (1, 2))
+    except ValueError:
+        return exemple
+    eco = "".join(c for c in m[3] if c.isdigit())
+    if not (x and abs(x - av) <= 0.005 * x and abs(y - ap) <= 0.005 * max(x, 1)
+            and eco and int(round(av)) - int(round(ap)) == int(eco)):
+        return exemple
+    return (f"Facture actuelle ≈ {int(round(av)):,} MAD/an → avec solaire ≈ "
+            f"{int(round(ap)):,} MAD/an → économie ≈ {m[3]} MAD/an").replace(",", sep)
+
+
 def _methode_traduite(d, sm):
     """(phrase de méthode, exemple) du bloc QF3 dans la langue du document.
 
@@ -248,7 +271,7 @@ def _methode_traduite(d, sm):
     from . import theme
     from .cover import libelle_cat
     ligne = (sm.get("ligne_methode") or "").strip()
-    exemple = (sm.get("exemple") or "").strip()
+    exemple = _exemple_aligne_couverture(d, (sm.get("exemple") or "").strip())
     if theme.langue_doc(d) == "fr" or not ligne:
         return ligne, exemple
     cle = _CLES_METHODE.get(sm.get("model"))
@@ -270,7 +293,7 @@ _CLES_HYPOTHESES = (
     "res_hyp_autoconso", "res_hyp_degradation", "res_hyp_tarif_constant",
     "res_hyp_tarif_hausse", "res_hyp_stockage_publie", "res_hyp_stockage_ref",
     "res_hyp_batt_omis", "res_hyp_provision", "res_hyp_sans_provision",
-    "res_hyp_estimations_nc")
+    "res_hyp_estimations_nc", "rpdf_hyp_provision_options")
 
 
 def _motif_hypothese(cle):
@@ -323,8 +346,8 @@ def build(ctx) -> str:
     validity_days = d.get("validity_days")
     # Q5 — délais commerciaux INDICATIFS, réglages société ; vides ⇒ omis.
     _delais = d.get("delais") or {}
-    _delai_visite = (_delais.get("visite_technique") or "").strip()
-    _delai_install = (_delais.get("installation") or "").strip()
+    _delai_visite = theme.delai_doc(d, (_delais.get("visite_technique") or "").strip())
+    _delai_install = theme.delai_doc(d, (_delais.get("installation") or "").strip())
     site_url = d.get("site_url", "taqinor.ma")
     links = d.get("links", {}) or {}
     # AMOT18 — société identifiée sans site : ``site_url`` vide ⇒ aucun lien
@@ -571,17 +594,21 @@ def build(ctx) -> str:
         _reco = option_recommandee(d)
         _mini = ('<span class="p3-reco-mini">' + LC(d, "res_recommande_min")
                  + '</span>')
+        # RPDF24 — chaque option (case, nom, prix, pastille) est un bloc
+        # insécable ; la ligne, elle, peut passer à la ligne ENTRE les deux
+        # options (devis 1315 : « recommandé » coupé au bord droit).
         accord_pick_html = (
             '<div class="p3-accord-pick">'
             + LF(d, "res_cochez_option", "Cochez votre option :")
-            + ''
+            + ' <span class="p3-pick-opt">'
             f'<span class="p3-box"></span> {nom_option(d, "sans")} — '
             f'<b>{fmt_mad(_ts)} {LC(d, "cgv_mad_ttc")}</b>'
             + (_mini if _reco == "sans" else "")
-            + f'<span class="p3-box"></span> {_libelle_avec} — '
+            + '</span> <span class="p3-pick-opt">'
+            f'<span class="p3-box"></span> {_libelle_avec} — '
             f'<b>{fmt_mad(_ta)} {LC(d, "cgv_mad_ttc")}</b>'
             + (_mini if _reco == "avec" else "")
-            + '</div>')
+            + '</span></div>')
     else:
         accord_opt_html = (_libelle_avec if _avec_ok
                            else nom_option(d, "sans"))
@@ -747,8 +774,9 @@ def build(ctx) -> str:
   border-radius:2px; margin:0 4px 0 10px; vertical-align:-1px; }}
 /* QRES44 — bandeau de choix d'option CHIFFRÉ sous l'en-tête d'accord */
 .p3-accord-pick {{ padding:7px 16px; background:{C['wash']};
-  border-bottom:1px solid {C['line']}; font-size:8.1pt; color:{C['ink']};
-  white-space:nowrap; }}
+  border-bottom:1px solid {C['line']}; font-size:8.1pt; color:{C['ink']}; }}
+/* RPDF24 — une option ne se coupe jamais ; la ligne passe à la ligne entre deux. */
+.p3-pick-opt {{ display:inline-block; white-space:nowrap; }}
 .p3-accord-pick b {{ color:{C['navy']}; }}
 .p3-accord-pick .p3-box {{ width:12px; height:12px; border:1.4px solid
   {C['navy']}; vertical-align:-2px; margin:0 5px 0 11px; }}
