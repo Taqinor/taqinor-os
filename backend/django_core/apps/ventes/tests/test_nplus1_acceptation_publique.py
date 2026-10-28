@@ -146,7 +146,7 @@ class AcceptationNPlus1Tests(TestCase):
         # part de la tâche après le commit : jouée en ligne DANS la mesure.
         from apps.ventes.tests._quote_engine_common import pdf_signe_en_ligne
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
-            with CaptureQueriesContext(connection) as ctx, \n                    pdf_signe_en_ligne(self):
+            with CaptureQueriesContext(connection) as ctx, pdf_signe_en_ligne(self):
                 resp = self.api.post(
                     f'/api/django/public/proposal/{link.token}/accept/',
                     {'nom': 'Client NPLUS1', 'consent_esign': True,
