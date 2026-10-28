@@ -317,8 +317,9 @@ def bloc_production_ci(*, productible_mensuel, formes_saison, derate, coordonnee
         'methode_autoconso': METHODE_8760 if depuis_serie else METHODE_JOURNEES_MOYENNES,
         'serie_horaire': None,
     }
-    if plan.get('source_angle'):
-        production['inclinaison_source'] = plan['source_angle']
+    # R1 — la source de l'angle (défaut toit plat, pose rasante) voyage avec
+    # le bloc, série ou repli ; ``None`` pour la table ou une pente déclarée.
+    production['inclinaison_source'] = plan.get('source_angle')
     if depuis_serie:
         (production['serie_horaire'], production['kwh_kwc_mensuel'],
          production['jours_types']) = depuis_serie

@@ -119,7 +119,8 @@ class TestProductionCI(unittest.TestCase):
         self.assertEqual((declare['inclinaison_deg'], declare['azimut_deg']), (10.0, PVGIS_ASPECT_DEG))
         self.assertEqual(declare['kwh_kwc_mensuel'], reference['kwh_kwc_mensuel'])
         self.assertIn('orientation_non_prise_en_compte', {a['code'] for a in alertes})
-        self.assertNotIn('inclinaison_source', declare)
+        self.assertIsNone(declare['inclinaison_source'])      # pente déclarée : aucune source de défaut
+        self.assertIsNone(reference['inclinaison_source'])
         toit = {'type_pose': 'toit_plat_leste'}
         rasant, hyp, alertes = _bloc('Casablanca', toit=toit, plan=plan_de_production(toit_rasant(toit)))
         self.assertEqual(rasant['inclinaison_deg'], ANGLE_POSE_RASANTE_DEG)

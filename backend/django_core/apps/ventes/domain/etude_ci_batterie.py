@@ -575,6 +575,8 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         return sortie
     fiche = next((b for b in bat['batteries'] if b['produit'] == evalue['batterie'].get('produit')), None)
     sortie['bloc'] = _bloc(evalue, contexte.get('valoriser'), _ctx_flux(flux, fiche))
-    # R1 (P2) — l'inclinaison de la pose qui loge CE champ (30° / rasante 10°).
-    sortie['bloc']['inclinaison_retenue_deg'] = evalue.get('inclinaison_retenue_deg')
+    if evalue.get('inclinaison_retenue_deg') is not None:
+        # R1 (P2) — clé ADDITIVE : l'inclinaison de la pose qui loge CE champ
+        # (30° / rasante 10°), seulement quand le toit plat sans pente la donne.
+        sortie['bloc']['inclinaison_retenue_deg'] = evalue['inclinaison_retenue_deg']
     return sortie

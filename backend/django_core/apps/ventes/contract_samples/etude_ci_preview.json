@@ -702,6 +702,7 @@
     },
     "production": {
       "source": "pvgis",
+      "inclinaison_source": null,
       "coordonnees_figees": {
         "lat": 31.63,
         "lon": -8.01,
@@ -2313,6 +2314,7 @@
     },
     "production": {
       "source": "pvgis",
+      "inclinaison_source": null,
       "coordonnees_figees": {
         "lat": 31.63,
         "lon": -8.01,

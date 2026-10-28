@@ -719,6 +719,7 @@ class PoseRasanteR1(_Base):
         self.assertEqual(self._hyp(data, 'inclinaison_retenue_deg')['valeur'], 30)
         self.assertEqual(data['production']['inclinaison_deg'], 30)
         self.assertEqual(data['production']['inclinaison_source'], SOURCE_ANGLE_TOIT_PLAT)
+        self.assertEqual(self._hyp(data, 'inclinaison_deg')['source'], SOURCE_ANGLE_TOIT_PLAT)
         self.assertEqual(self.production.call_args_list[0].kwargs['toit'].get(CLE_POSE_RASANTE), None)
         self.assertIsNone(self._hyp(data, 'taille_limitee_toit'))
         self.assertEqual((data['taille']['inclinaison_retenue_deg'], data['taille']['taille_limitee_toit']),
