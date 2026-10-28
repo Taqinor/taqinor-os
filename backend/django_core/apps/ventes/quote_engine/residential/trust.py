@@ -293,7 +293,7 @@ _CLES_HYPOTHESES = (
     "res_hyp_autoconso", "res_hyp_degradation", "res_hyp_tarif_constant",
     "res_hyp_tarif_hausse", "res_hyp_stockage_publie", "res_hyp_stockage_ref",
     "res_hyp_batt_omis", "res_hyp_provision", "res_hyp_sans_provision",
-    "res_hyp_estimations_nc", "rpdf_hyp_provision_options")
+    "res_hyp_estimations_nc", "rpdf_hyp_provision_options", "rpdf_hyp_bareme_national")
 
 
 def _motif_hypothese(cle):

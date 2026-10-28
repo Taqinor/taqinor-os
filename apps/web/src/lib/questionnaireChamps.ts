@@ -172,6 +172,8 @@ export interface ChampDonnee {
   plaque?: boolean;
   /** Question sur la pompe actuelle : masquée quand l'alimentation actuelle vaut « aucune » (CQSTW9). */
   actuelle?: boolean;
+  /** CQSTW : dessinée seulement si l'alimentation actuelle vaut « électrique ». */
+  electrique?: boolean;
 }
 
 
@@ -223,6 +225,10 @@ export const CHAMPS_POMPAGE_CQST: readonly ChampDonnee[] = [
       { value: 'mono', libelle: L('Monophasée', 'Single-phase', 'أحادية الطور') },
       { value: 'tri', libelle: L('Triphasée', 'Three-phase', 'ثلاثية الأطوار') },
     ],
+  },
+  {
+    cle: 'depense_electricite_pompe_mad_mois', id: 'q-depense-electricite-pompe', type: 'number', min: 0, electrique: true,
+    libelle: L("Dépense d'électricité de la pompe (MAD / mois)", 'Electricity spend of the pump (MAD / month)', 'مصروف كهرباء المضخة (درهم / الشهر)'),
   },
 ];
 

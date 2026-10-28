@@ -42,9 +42,11 @@ CREER_LEAD = AgentAction(
     key='crm.lead.create',
     label='Créer un lead',
     description=(
-        "Crée un nouveau lead (opportunité) pour un prospect solaire. La "
-        "société et le responsable par défaut sont attribués côté serveur ; "
-        "l'étape initiale est gérée par le modèle."
+        "Sert à : créer un lead (opportunité) pour un prospect solaire "
+        "(société et responsable posés côté serveur). "
+        "Ne pas utiliser pour : un client existant ni modifier un lead. "
+        "Exemple : « Ajoute le prospect Karim Alami, Casablanca ». "
+        "Résultat : le lead créé ; l'étape initiale vient du modèle."
     ),
     endpoint='/api/django/crm/leads/',
     method='POST',
@@ -75,9 +77,13 @@ METTRE_A_JOUR_LEAD = AgentAction(
     key='crm.lead.update',
     label='Mettre à jour un lead',
     description=(
-        "Met à jour un lead : fait avancer l'étape du pipeline et/ou pose une "
-        "date de relance. Les étapes valides sont les clés canoniques de "
-        "STAGES.py. La société du lead n'est jamais modifiable depuis le corps."
+        "Sert à : faire avancer l'étape du pipeline d'un lead et/ou poser sa "
+        "date de relance. "
+        "Ne pas utiliser pour : ajouter une note (crm.lead.note) ni lister "
+        "les relances (crm.leads.a_relancer). "
+        "Exemple : « Passe le lead 12 en devis envoyé, relance le 3 »"
+        " (étapes = clés de STAGES.py). "
+        "Résultat : le lead mis à jour ; la société n'est jamais modifiable."
     ),
     endpoint='/api/django/crm/leads/{id}/',
     method='PATCH',
@@ -111,8 +117,12 @@ NOTER_LEAD = AgentAction(
     key='crm.lead.note',
     label='Noter un lead',
     description=(
-        "Ajoute une note manuelle (appel, commentaire…) au chatter du lead. "
-        "L'auteur et la société sont posés côté serveur ; jamais lus du corps."
+        "Sert à : ajouter une note manuelle (appel, commentaire) au chatter "
+        "d'un lead. "
+        "Ne pas utiliser pour : changer l'étape (crm.lead.update) ni lire le "
+        "lead (crm.lead.resume). "
+        "Exemple : « Note sur le lead 12 : client intéressé, rappeler lundi ». "
+        "Résultat : la note créée ; auteur et société posés côté serveur."
     ),
     endpoint='/api/django/crm/leads/{id}/noter/',
     method='POST',
@@ -138,9 +148,12 @@ PREPARER_ENVOI_WHATSAPP = AgentAction(
     key='crm.lead.whatsapp_prepare',
     label='Préparer un envoi WhatsApp de devis',
     description=(
-        "Prépare un lien wa.me pré-rempli pour un ou plusieurs devis du lead "
-        "et renvoie {wa_url, message, links} pour la carte de résultat. "
-        "N'envoie rien : le commercial valide l'envoi manuellement."
+        "Sert à : préparer le texte et le lien `wa.me` d'un ou plusieurs "
+        "devis du lead ; n'envoie jamais, le commercial valide lui-même. "
+        "Ne pas utiliser pour : une relance sans devis "
+        "(crm.lead.brouillon_suivi). "
+        "Exemple : « Prépare le WhatsApp du devis 45 pour le lead 12 ». "
+        "Résultat : {wa_url, message, links}."
     ),
     endpoint='/api/django/crm/leads/{id}/whatsapp-devis/',
     method='POST',
@@ -165,11 +178,137 @@ PREPARER_ENVOI_WHATSAPP = AgentAction(
 )
 
 
+# AIC30 — « Mes leads à relancer » : LECTURE de la file du cockpit « contrôle du
+# suivi » de l'utilisateur connecté (jamais une copie de la règle de retard).
+# Endpoint : GET /api/django/crm/assistant/a-relancer/ (views_assistant).
+LEADS_A_RELANCER = AgentAction(
+    key='crm.leads.a_relancer',
+    label='Mes leads à relancer',
+    description=(
+        "Sert à : lister les leads que le commercial connecté doit relancer "
+        "(nom, étape, touche prévue, retard en jours ouvrés, canal, dernier "
+        "contact), 20 lignes max avec le total. "
+        "Ne pas utiliser pour : relancer, écrire ou chercher un lead précis. "
+        "Exemple : « Qui dois-je relancer aujourd'hui ? » (portee=aujourd_hui). "
+        "Résultat : {portee, total, limite, lignes[]}, même file que le cockpit."
+    ),
+    endpoint='/api/django/crm/assistant/a-relancer/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'portee': {
+                'type': 'string',
+                'enum': ['aujourd_hui', 'retard', 'semaine'],
+                'description': 'Période de la file (défaut aujourd_hui).',
+            },
+        },
+    },
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
+)
+
+
+# AIC31 — « Résume-moi ce lead avant mon appel » : LECTURE assemblée chez chaque
+# propriétaire (chatter, devis, visites, cadence). Endpoint :
+# GET /api/django/crm/leads/<id>/resume/ (views_assistant.lead_resume).
+RESUME_LEAD = AgentAction(
+    key='crm.lead.resume',
+    label='Résumer un lead',
+    description=(
+        "Sert à : préparer un appel — identité, étape, contact préféré, "
+        "5 dernières entrées du chatter, devis, visites, prochaine touche, "
+        "alertes. "
+        "Ne pas utiliser pour : écrire une note (crm.lead.note) ni modifier "
+        "le lead. "
+        "Exemple : « Résume-moi le lead 12 avant mon appel ». "
+        "Résultat : {identite, etape, chatter[], devis[], visites[], "
+        "prochaine_touche, alertes[]} sans prix d'achat."
+    ),
+    endpoint='/api/django/crm/leads/{id}/resume/',
+    method='GET',
+    inputs={
+        'type': 'object',
+        'properties': {'id': {'type': 'integer'}},
+        'required': ['id'],
+    },
+    required_permission='crm_voir',
+    risk=RISK_INTERNAL,
+)
+
+
+# AIC32 — brouillon de message de suivi (relance après devis, après visite, réveil
+# Froid). Endpoint : POST /api/django/crm/leads/<id>/brouillon-suivi/
+# (views_assistant.lead_brouillon_suivi). N'ENVOIE RIEN et n'écrit RIEN : le
+# commercial relit le texte puis le copie ou ouvre le lien wa.me lui-même.
+BROUILLON_SUIVI = AgentAction(
+    key='crm.lead.brouillon_suivi',
+    label='Brouillon de message de suivi',
+    description=(
+        "Sert à : rédiger un TEXTE de suivi (relance devis, après visite, "
+        "réveil) à relire puis copier ou ouvrir via wa.me. "
+        "Ne pas utiliser pour : envoyer (jamais d'envoi) ni préparer l'envoi "
+        "d'un devis (crm.lead.whatsapp_prepare). "
+        "Exemple : « Prépare une relance WhatsApp pour le lead 12 ». "
+        "Résultat : {texte, lien_wa_me, modele_source, langue_servie}, "
+        "500 caractères max sur WhatsApp, expéditeur = responsable du lead."
+    ),
+    endpoint='/api/django/crm/leads/{id}/brouillon-suivi/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'canal': {'type': 'string',
+                      'enum': ['whatsapp', 'sms', 'email']},
+            'langue': {'type': 'string', 'enum': ['fr', 'ar'],
+                       'description': 'Défaut fr ; ar seulement si un '
+                                      'modèle arabe existe.'},
+            'objectif': {'type': 'string',
+                         'enum': ['relance_devis', 'apres_visite',
+                                  'reveil_froid']},
+        },
+        'required': ['id', 'canal', 'objectif'],
+    },
+    required_permission='crm_modifier',
+    risk=RISK_INTERNAL,
+)
+
+
+# AIC35 — digest du matin (« Mon matin ») : relances du jour (AIC30), visites du
+# jour, devis envoyés sans réponse depuis plus de 7 jours. LECTURE. Permission
+# visites_voir : le commercial terrain n'a QUE ses visites (pas de pipeline).
+# Endpoint : GET /api/django/crm/assistant/digest-matin/.
+DIGEST_MATIN = AgentAction(
+    key='crm.digest_matin',
+    label='Mon matin',
+    description=(
+        "Sert à : commencer la journée — relances du jour, visites du jour, "
+        "devis envoyés sans réponse depuis plus de 7 jours (10 lignes max par "
+        "bloc, avec les totaux). "
+        "Ne pas utiliser pour : envoyer quoi que ce soit ni détailler un lead "
+        "(crm.lead.resume). "
+        "Exemple : « Qu'est-ce que j'ai ce matin ? ». "
+        "Résultat : {visites, relances, devis_sans_reponse} ; un terrain ne "
+        "reçoit que ses visites."
+    ),
+    endpoint='/api/django/crm/assistant/digest-matin/',
+    method='GET',
+    inputs={'type': 'object', 'properties': {}},
+    required_permission='visites_voir',
+    risk=RISK_INTERNAL,
+)
+
+
 _ACTIONS = (
     CREER_LEAD,
     METTRE_A_JOUR_LEAD,
     NOTER_LEAD,
     PREPARER_ENVOI_WHATSAPP,
+    LEADS_A_RELANCER,
+    RESUME_LEAD,
+    BROUILLON_SUIVI,
+    DIGEST_MATIN,
 )
 
 

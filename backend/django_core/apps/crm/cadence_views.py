@@ -1430,6 +1430,23 @@ class RelanceEtapeViewSet(CorpsTexteMixin, TenantMixin, mixins.ListModelMixin,
         return Response(self.get_serializer(etape).data)
 
 
+def rendre_modele_message(tmpl, *, request=None, lead=None, prenom='',
+                          ville='', lien=''):
+    """Rend un ``MessageTemplate`` : l'UNIQUE moteur de texte des modèles
+    (aperçu ``render`` ET brouillon de suivi de l'assistant, AIC32).
+    ``lead`` résout ``{lien_rdv}`` (best-effort) ; sans lead, le placeholder
+    disparaît et rien n'est créé."""
+    lien_rdv = ''
+    if lead is not None and '{lien_rdv}' in (tmpl.corps or ''):
+        from .visites_rdv import public_booking_url
+        try:
+            lien_rdv = public_booking_url(lead, request=request)
+        except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu (D-ENF22-BLE001)
+            logger.warning('%s : échec ignoré (dégradé)', 'render_template', exc_info=True)
+            lien_rdv = ''
+    return tmpl.render(prenom=prenom, ville=ville, lien=lien, lien_rdv=lien_rdv)
+
+
 @extend_schema_view(list=extend_schema(parameters=[sd.P_ARCHIVED_FLAG]))
 class MessageTemplateViewSet(CompanyScopedModelViewSet):
     """Modèles de messages CRM (WhatsApp/SMS). Lecture tout rôle, écriture admin.
@@ -1485,7 +1502,6 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
         prenom = request.data.get('prenom', '')
         ville = request.data.get('ville', '')
         lien = request.data.get('lien', '')
-        lien_rdv = ''
         lead_id = request.data.get('lead_id')
         lead = None
         if lead_id:
@@ -1497,15 +1513,9 @@ class MessageTemplateViewSet(CompanyScopedModelViewSet):
             if lead is None:
                 # LEVÉ, pas renvoyé : le contrat reste la forme du 200.
                 raise DRFValidationError({'lead': ['Lead introuvable.']})
-        if lead is not None and '{lien_rdv}' in (tmpl.corps or ''):
-            from .visites_rdv import public_booking_url
-            try:
-                lien_rdv = public_booking_url(lead, request=request)
-            except Exception:  # noqa: BLE001 — jamais bloquer l'aperçu (D-ENF22-BLE001)
-                logger.warning('%s : échec ignoré (dégradé)', 'render_template', exc_info=True)
-                lien_rdv = ''
-        return Response({'texte': tmpl.render(
-            prenom=prenom, ville=ville, lien=lien, lien_rdv=lien_rdv)})
+        return Response({'texte': rendre_modele_message(
+            tmpl, request=request, lead=lead, prenom=prenom, ville=ville,
+            lien=lien)})
 
 
 def _message_ouvert_sur_touche(etape):

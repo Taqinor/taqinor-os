@@ -191,7 +191,11 @@ _CONTRATS = Path(__file__).resolve().parents[1] / 'contract_samples'
 
 #: Libellés (sans accent ni entité HTML) que seul le bloc « Votre argent »
 #: du document 3 pages imprime (``agricole/pages._argent``, i18n FR).
-LIBELLES_BLOC_ECONOMIES = ('Votre argent', 'Charges du solaire par an')
+#: « Entretien du solaire par an, selon nos tarifs » : libellé du fermier
+#: voulu par AGQ48 (6ccf0e059, 24/10/2026 — ancien « Charges du solaire par
+#: an (barème) »), lu sur la clé ``agr_charges_solaires`` de i18n_labels.
+LIBELLES_BLOC_ECONOMIES = ('Votre argent',
+                           'Entretien du solaire par an, selon nos tarifs')
 
 
 def _bloc_economie_pompage_public():

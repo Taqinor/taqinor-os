@@ -15,13 +15,8 @@ vi.mock('../../../pages/crm/leads/SigneDialog', () => ({ default: () => null }))
 vi.mock('./ContextRail', () => ({ default: () => null }))
 vi.mock('./IdentityRail', () => ({ default: () => <div data-testid="identity-rail" /> }))
 
-vi.mock('../../../api/crmApi', () => ({
-  default: {
-    getAssignableUsers: vi.fn(() => Promise.resolve({ data: [] })),
-    getTags: vi.fn(() => Promise.resolve({ data: [] })),
-    getMotifsPerte: vi.fn(() => Promise.resolve({ data: [] })),
-    getLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
-  },
+vi.mock('../../../api/crmApi', async () => (await import('../../../test/leadWorkspaceMocks')).crmApiLeadWorkspace({
+  getLead: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
 }))
 
 installerHooksLeadWorkspace()

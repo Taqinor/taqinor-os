@@ -85,6 +85,8 @@ export function crmApiLeadWorkspace(surcharge = {}) {
       getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),
       // CRX37 — jalons devis fusionnés dans la timeline (enrichissement passif).
       getLeadJalonsDevis: vi.fn(() => Promise.resolve({ data: { results: [] } })),
+      // SectionPipeline lit la cadence du lead (cadence active ?) au montage.
+      getRelanceEtapesLead: vi.fn(() => Promise.resolve({ data: { count: 0, results: [] } })),
       whatsappDevis: vi.fn(() => Promise.resolve({ data: {} })),
       logInteraction: vi.fn(() => Promise.resolve({ data: {} })),
       mergeLeads: vi.fn(() => Promise.resolve({ data: {} })),

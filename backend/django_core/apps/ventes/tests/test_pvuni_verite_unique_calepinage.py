@@ -487,6 +487,62 @@ class TestQjr63SouverainetéDuKwc(BaseDevisLive):
         self.assertAlmostEqual(puissance_kwc_du_devis(devis),
                                KWC_DES_LIGNES, places=2)
 
+    def _devis_deux_options_kwc(self, mode, regles=None):
+        """CE2E1 — boulangerie : 36 panneaux « sans » (25,56 kWc), 84 « avec »
+        (59,64 kWc), lignes variantées comme le devis automatique C&I."""
+        self.compteur += 1
+        devis = Devis.objects.create(
+            company=self.company, reference=f'DEV-CE2E1-{self.compteur}',
+            client=self.client_obj, created_by=self.user,
+            statut=Devis.Statut.BROUILLON, mode_installation=mode,
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
+        if regles is not None:
+            Devis.objects.filter(pk=devis.pk).update(regles_calcul=regles)
+            devis.refresh_from_db()
+        for nb, variante in ((36, 'sans'), (84, 'avec')):
+            devis.lignes.create(
+                produit=self.panneau, designation='Panneau Canadien Solar 710W',
+                quantite=Decimal(str(nb)), prix_unitaire=Decimal('1272.73'),
+                ordre=0, variante=variante)
+        # L'offre réseau porte son onduleur RÉSEAU (Huawei, comme la
+        # boulangerie) : sans lui l'option « sans » n'est pas servable
+        # (``familles_servables``) et le devis n'a pas deux options.
+        reseau = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 20kW Triphasé',
+            sku=f'DEV-CE2E1-{self.compteur}-ONDR',
+            prix_vente=Decimal('16666.67'), prix_achat=Decimal('11000'),
+            quantite_stock=50)
+        devis.lignes.create(
+            produit=reseau, designation='Onduleur réseau Huawei 20kW Triphasé',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16666.67'), ordre=1,
+            variante='sans')
+        devis.lignes.create(
+            produit=self.onduleur, designation='Onduleur hybride Deye 5kW Monophasé',
+            quantite=Decimal('1'), prix_unitaire=Decimal('14166.67'), ordre=1,
+            variante='avec')
+        devis.lignes.create(
+            produit=self.batterie, designation='Batterie Deyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('14166.67'), ordre=2,
+            variante='avec')
+        return devis
+
+    def test_ci_deux_options_kwc_de_l_option_du_total(self):
+        """CE2E1 — C&I à deux options : le kWc est celui de l'offre réseau qui
+        porte le total (25,56), plus celui de l'option « avec » (59,64) ;
+        le résidentiel et un devis envoyé avant le 27/10 (niveau 2) gardent
+        l'option « avec »."""
+        from apps.ventes.domain.regles_calcul import REGLES_CORRIGEES
+        from apps.ventes.services import puissance_kwc_du_devis
+
+        devis = self._devis_deux_options_kwc('commercial')
+        self.assertAlmostEqual(puissance_kwc_du_devis(devis), 25.56, places=2)
+        relu = Devis.objects.get(pk=devis.pk)
+        self.assertAlmostEqual(puissance_kwc_du_devis(relu), 25.56, places=2)
+        self.assertAlmostEqual(puissance_kwc_du_devis(
+            self._devis_deux_options_kwc('residentiel')), 59.64, places=2)
+        self.assertAlmostEqual(puissance_kwc_du_devis(self._devis_deux_options_kwc(
+            'commercial', regles=REGLES_CORRIGEES)), 59.64, places=2)
+
     def test_le_registre_de_surcharges_passe_devant(self):
         """Décision fondateur D12 : ``taille.kwc`` posé fait autorité."""
         from apps.ventes.domain.overrides import ecrire_colonne, poser

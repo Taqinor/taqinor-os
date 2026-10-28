@@ -499,10 +499,32 @@ class TestCatalogueCiAlea50(TestCase):
             self.assertTrue(self._bloc()['pret'])
             self.assertTrue(self._bloc()['pret'])
             self.assertEqual(calcul.call_count, 1)
-            # Rien n'invalide : le TTL seul rafraîchit (la société voisine, non).
+            # Une lecture (même un nouveau lead) n'invalide rien ; la société
+            # voisine a sa propre entrée.
             autre = make_company(slug='alea50-autre', nom='Autre')
             self.assertFalse(selectors.catalogue_ci_pret(autre.id)['pret'])
             self.assertEqual(calcul.call_count, 2)
+
+    def test_tarifer_les_postes_vide_le_cache(self):
+        """CAD177 (nocturne e2e CIQ127) — l'administrateur règle les forfaits
+        puis tarife les articles : le bloc suivant est PRÊT, sans attendre les
+        5 min du cache (le bouton restait désactivé, « 11 postes sans prix »)."""
+        from apps.parametres.models import CompanyProfile
+        from apps.stock.models import Produit
+        self.assertFalse(self._bloc()['pret'])
+        CompanyProfile.objects.update_or_create(
+            company=self.company, defaults={'forfaits_ci': {
+                cle: {'fixe_ht': '500', 'source': 'grille de test'}
+                for cle in self.FORFAITS}})
+        self.assertEqual(len(self._bloc()['manquants']), 4)
+        for role in ('coffret_dc', 'coffret_ac', 'protection_ac',
+                     'compteur_injection'):
+            produit = Produit.objects.create(
+                company=self.company, nom='Poste %s' % role, role_ci=role,
+                prix_vente=Decimal('0'))
+            produit.prix_vente = Decimal('900')
+            produit.save(update_fields=['prix_vente'])
+        self.assertEqual(self._bloc(), {'pret': True, 'manquants': []})
 
     def test_forme_du_contrat(self):
         exemple = CONTRAT_DEVIS_AUTO['exemple_catalogue_ci']['devis_auto']

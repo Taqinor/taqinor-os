@@ -223,6 +223,21 @@ describe('CPRW25 — financementCi : l’offre servie, quel que soit le segment'
     expect(f.lignes.map((l) => l.fr).join('|')).toContain('Écart mensuel');
     expect(f.lignes[f.lignes.length - 1].fr).toContain('Banque X');
   });
+  it('CEC15 — apport et frais (> 0) puis retour de l’offre servis ; omis sans la clé, jamais recalculés', () => {
+    const avec = { ...FIN, apport_mad: 180000, frais_mad: 5000, retour_offre_ans: 1.8 };
+    const t = financementCi(syntheseCi(payload('commercial', argent({ financement: avec }))))!.lignes.map((l) => l.fr.replace(/[\u00a0\u202f]/g, ' '));
+    expect(t).toContain('Apport à la signature : 180 000,00 MAD');
+    expect(t).toContain("Frais de l'offre : 5 000,00 MAD");
+    expect(t).toContain("Retour sur l'offre : 1,8 ans");
+    expect(t.join('|')).toContain('Écart mensuel : 8 529,17 MAD HT');
+    const ar = financementCi(syntheseCi(payload('commercial', argent({ financement: avec }))))!.lignes.map((l) => l.ar.replace(/[\u00a0\u202f]/g, ' ')).join('|');
+    expect(ar).toContain('مدة الاسترداد مع العرض : 1,8 سنة');
+    const sans = financementCi(syntheseCi(payload('commercial', argent({ financement: { ...FIN, apport_mad: 0, frais_mad: 0 } }))))!;
+    const joint = sans.lignes.map((l) => l.fr).join('|');
+    expect(joint).not.toContain('Apport');
+    expect(joint).not.toContain('Frais');
+    expect(joint).not.toContain('Retour');
+  });
   it('sans financement, sans échéance ou argent non calculé → null (rien)', () => {
     expect(financementCi(syntheseCi(payload('commercial', argent())))).toBeNull();
     expect(financementCi(syntheseCi(payload('commercial', argent({ financement: { libelle_client: 'x' } }))))).toBeNull();

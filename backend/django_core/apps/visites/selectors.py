@@ -1011,6 +1011,19 @@ def ma_journee(visites, *, aujourdhui):
     }
 
 
+def ma_journee_du_commercial(company, user, *, aujourdhui):
+    """AIC35 — SA journée (visites du jour + en retard dont ``user`` est le
+    commercial), société bornée : la porte de lecture cross-app pour
+    ``apps.crm`` (digest du matin de l'assistant), même règle « mes visites »
+    que ``MaJourneeView`` sans ``?tous``. Lecture seule."""
+    from .models import VisiteTerrain
+
+    visites = (VisiteTerrain.objects
+               .select_related('lead', 'commercial')
+               .filter(company=company, commercial=user))
+    return ma_journee(visites, aujourdhui=aujourdhui)
+
+
 # -- CALX363 -- LA PORTE VISITE TECHNIQUE -> CALEPINAGE ------------------------
 #
 # Jusqu'ici la seule porte de sortie de cette app vers le reste de l'ERP etait

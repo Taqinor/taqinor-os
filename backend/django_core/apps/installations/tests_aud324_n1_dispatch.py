@@ -158,3 +158,73 @@ class DispatchN1Tests(TestCase):
         table = Attachment._meta.db_table
         self.assertEqual(
             sum(1 for q in ctx.captured_queries if table in q['sql']), 0)
+
+
+class ListePhotosPrechargeesTests(TestCase):
+    """APRF40 (C-APRF-022) — la LISTE précharge les pièces jointes de toute la
+    page (une requête `Attachment`) et lit la shot-list par `company_id` :
+    5 puis 25 interventions coûtent le même nombre TOTAL de requêtes, avec ou
+    sans créneaux ; `photos_obligatoires_manquantes` reste exact."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = User.objects.create_user(
+            username=f'aprf40-{next(_seq)}', password='x',
+            company=self.company, role_legacy='responsable')
+        self.api = auth(self.user)
+        self.inst = Installation.objects.create(
+            company=self.company, reference='APRF40-1',
+            statut=Installation.Statut.EN_COURS)
+        self.n = 0
+
+    def _interventions(self, nb):
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        ct = ContentType.objects.get_for_model(Intervention)
+        for _ in range(nb):
+            self.n += 1
+            iv = Intervention.objects.create(
+                company=self.company, installation=self.inst,
+                type_intervention=Intervention.Type.POSE,
+                statut=Intervention.Statut.PRETE, technicien=self.user,
+                date_prevue=str(localdate()))
+            if self.n % 2 == 0:
+                Attachment.objects.create(
+                    company=self.company, content_type=ct, object_id=iv.id,
+                    file_key=f'aprf40/{iv.id}', filename='slot:toiture_apres|toit.jpg')
+
+    def _liste(self):
+        with CaptureQueriesContext(connection) as ctx:
+            r = self.api.get(f'{BASE}/')
+        self.assertEqual(r.status_code, 200, getattr(r, 'data', None))
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        return len(ctx.captured_queries), rows
+
+    def _deux_tailles(self):
+        self._interventions(5)
+        n5, rows5 = self._liste()
+        self._interventions(20)
+        n25, rows25 = self._liste()
+        self.assertEqual((len(rows5), len(rows25)), (5, 25))
+        self.assertEqual(n5, n25, (n5, n25))
+        return rows25
+
+    def test_sans_creneaux_requetes_identiques(self):
+        ShotListSlot.objects.filter(company=self.company).delete()
+        self._deux_tailles()
+
+    def test_creneaux_obligatoires_requetes_identiques_et_manquants_exacts(self):
+        from django.contrib.contenttypes.models import ContentType
+        from apps.installations.field_services import seed_shotlist_slots
+        from apps.records.models import Attachment
+        seed_shotlist_slots(self.company)
+        rows = self._deux_tailles()
+        obligatoires = ShotListSlot.objects.filter(
+            company=self.company, actif=True, obligatoire=True)
+        self.assertGreaterEqual(obligatoires.count(), 2)
+        toiture_obligatoire = obligatoires.filter(cle='toiture_apres').exists()
+        ct = ContentType.objects.get_for_model(Intervention)
+        for row in rows:
+            avec_photo = Attachment.objects.filter(content_type=ct, object_id=row['id']).exists()
+            attendu = obligatoires.count() - (1 if avec_photo and toiture_obligatoire else 0)
+            self.assertEqual(row['photos_obligatoires_manquantes'], attendu, row['id'])

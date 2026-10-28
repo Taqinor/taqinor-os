@@ -48,6 +48,32 @@ def libelle_cat(d, cle, **valeurs):
                         **valeurs)
 
 
+#: CE2E7 — premiers mots d'un nom de BIEN ou de société (« Villa Bennani »,
+#: « Résidence … », « Domaine … ») : jamais un prénom à saluer.
+_MOTS_NON_PRENOM = frozenset((
+    "villa", "residence", "domaine", "maison", "riad", "ferme", "appartement",
+    "immeuble", "hotel", "societe", "ste", "sarl", "entreprise", "groupe",
+    "lotissement", "propriete", "projet", "chantier", "clinique", "ecole"))
+
+
+def _sans_accents(texte):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(texte or ""))
+                   if unicodedata.category(c) != "Mn")
+
+
+def _prenom_et_telephone(d, prenom, telephone):
+    """CE2E7 (niveau 3) — ``(prénom salué, téléphone imprimé)`` : « +212 6 … »
+    par LE formateur du PDF C&I ; prénom vide (« Bonjour, ») quand le nom
+    commence par un bien ou une société. Devis envoyé avant : inchangés."""
+    if d.get("regles_avant_2710") or d.get("regles_calcul_origine"):
+        return prenom, telephone
+    from ..ci.couverture import format_telephone
+    if _sans_accents(prenom).lower() in _MOTS_NON_PRENOM:
+        prenom = ""
+    return prenom, format_telephone(telephone)
+
+
 def nom_option(d, option, minuscule=False):
     """Nom de l'option ``"sans"`` / ``"avec"`` dans la langue du document :
     « Sans batterie » ou le libellé du builder (``libelle_avec``, BAT-DIFF)
@@ -113,7 +139,7 @@ def build(ctx):
     first_name = (client_full.split() or [client_full])[0]
     client_addr = d.get("client_addr", "")
     client_city = d.get("client_ville_libelle") or d.get("client_city", "")  # QJR591
-    client_phone = d.get("client_phone", "")
+    first_name, client_phone = _prenom_et_telephone(d, first_name, d.get("client_phone", ""))
     inst_type = (libelle_cat(d, "res_tag_residentielle")
                  if d.get("inst_type") == "Résidentielle"
                  else d.get("inst_type", ""))
@@ -912,7 +938,7 @@ def build(ctx):
     </div>
     <div class="c1-hero-body">
       <div class="c1-kicker c1-hero-kicker">{libelle_fixe(d, 'res_kicker', 'Proposition commerciale — Installation solaire')}</div>
-      <div class="c1-serif c1-hello">{libelle_fixe(d, 'res_bonjour', 'Bonjour ' + format(first_name) + ',', nom=first_name)}</div>
+      <div class="c1-serif c1-hello">{libelle_fixe(d, 'res_bonjour', 'Bonjour ' + format(first_name) + ',', nom=first_name) if first_name else libelle_cat(d, 'rpdf_bonjour_neutre')}</div>
       {hero_sub_html}
     </div>
   </div>

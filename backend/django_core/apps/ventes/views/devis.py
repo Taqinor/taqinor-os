@@ -84,6 +84,11 @@ def _resume_devis_auto(devis):
         bloc = economie_ci_pour_devis(devis, devis.company) or {}
         resume['economie_an_1_ht'] = (bloc.get('economie_annee1') or {}).get('total_mad')
         resume['retour_ans'] = (bloc.get('indicateurs') or {}).get('retour_ans')
+        # CE2E3 — le retour au dixième que le PDF imprime (CPDF7), même calcul.
+        from ..domain.regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
+        from ..quote_engine.ci.couverture import retour_dixieme
+        if regles_au_moins(devis, REGLES_CORRIGEES_2710):
+            resume['retour_ans'] = retour_dixieme(bloc, resume['retour_ans'])
     except Exception:  # lecture seule : la bannière se passe de ces chiffres
         logger.warning('devis/auto : résumé économique indisponible (dégradé)',
                        exc_info=True)

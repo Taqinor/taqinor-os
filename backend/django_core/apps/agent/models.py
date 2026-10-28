@@ -17,6 +17,8 @@ app reste un satellite technique, jamais importe par une app de domaine.
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 
 class AgentActionLog(models.Model):
     class RiskLevel(models.TextChoices):
@@ -93,3 +95,62 @@ class AgentActionLog(models.Model):
             and self.undone_at is None
             and has_undo_handler(self.action_key)
         )
+
+
+class AssistantEvent(TenantModel):
+    """AIC6 — une requête de l'assistant des commerciaux = UN événement
+    (contrat ``contract_samples/assistant_evenement.json``, AIC1).
+
+    Écrit par le RELAIS SERVEUR (FastAPI, preuve HMAC), jamais par le
+    navigateur ; ``company``/``user`` toujours posés côté serveur. Le navigateur
+    ne modifie que ``note`` et ``commentaire`` de SON événement. Journal séparé
+    d'``AgentActionLog`` (actions confirmées) — jamais fusionné."""
+
+    class Intention(models.TextChoices):
+        QUESTION_MANUEL = 'question_manuel', 'Question sur le manuel'
+        DONNEE = 'donnee', 'Donnée'
+        ACTION = 'action', 'Action'
+        BUG = 'bug', 'Bug'
+        MANQUE = 'manque', 'Fonction manquante'
+        HORS_CHAMP = 'hors_champ', 'Hors champ'
+
+    class Note(models.IntegerChoices):
+        NEGATIVE = -1, 'Pouce bas'
+        AUCUNE = 0, 'Pas encore noté'
+        POSITIVE = 1, 'Pouce haut'
+
+    # ``company`` + ``created_at``/``updated_at`` : hérités de TenantModel (SCA4).
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='assistant_events')
+    intention = models.CharField(
+        max_length=20, choices=Intention.choices, default=Intention.DONNEE)
+    question = models.TextField('Question', max_length=2000)
+    resume_reponse = models.CharField(
+        'Résumé de la réponse', max_length=500, blank=True, default='')
+    ecran = models.CharField('Écran', max_length=255, blank=True, default='')
+    # Lead de la société (résolu via apps.crm.selectors) — entier simple : la
+    # frontière cross-app interdit d'importer le modèle crm ici.
+    lead_id = models.PositiveIntegerField('Lead', null=True, blank=True)
+    outils_appeles = models.JSONField('Outils appelés', default=list, blank=True)
+    erreur = models.JSONField('Erreur', null=True, blank=True)
+    note = models.SmallIntegerField(choices=Note.choices, default=Note.AUCUNE)
+    commentaire = models.CharField(max_length=200, null=True, blank=True)
+    modele = models.CharField('Modèle', max_length=64, blank=True, default='')
+    repli = models.BooleanField('Repli Groq', default=False)
+    manuel_present = models.BooleanField('Manuel présent', default=False)
+    tokens = models.JSONField('Tokens', default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Événement de l'assistant"
+        verbose_name_plural = "Événements de l'assistant"
+        indexes = [
+            models.Index(fields=['company', 'created_at'],
+                         name='agent_aev_company_created'),
+            models.Index(fields=['company', 'intention'],
+                         name='agent_aev_company_intent'),
+        ]
+
+    def __str__(self):
+        return f'{self.intention} @ {self.created_at:%Y-%m-%d %H:%M}'

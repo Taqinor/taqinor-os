@@ -19,6 +19,7 @@ from core.conflit_etat import ConflitEtat
 from core.mixins import SameCompanyFKSerializerMixin
 from core.unicite import UniciteEn409Mixin
 
+from .listes_prechargees import totaux_temps_memo
 from .serializers_blocs import (
     bloc_avertissements_cloture, bloc_calepinage, bloc_dossier_8221_resume,
     bloc_regime_suggere)
@@ -421,7 +422,7 @@ class InterventionSerializer(InterventionGpsChampsMixin, IdInconnu404Mixin, Same
         prep = getattr(obj, 'preparation', None)
         return bool(prep and prep.tout_charge)
 
-    def _shotlist(self, company):
+    def _shotlist(self, cid):
         """AUD324 — shot-list MÉMOÏSÉE pour toute la passe de sérialisation.
 
         `active_shotlist(company)` était ré-exécutée à l'identique pour CHAQUE
@@ -432,17 +433,16 @@ class InterventionSerializer(InterventionGpsChampsMixin, IdInconnu404Mixin, Same
         cache = self.context.get('_shotlist_cache')
         if cache is None:
             cache = self.context['_shotlist_cache'] = {}
-        cid = getattr(company, 'id', None)
-        if cid not in cache:
+        if cid not in cache:  # APRF40 : par company_id, sans charger la FK `company`
             from .field_services import active_shotlist
-            cache[cid] = active_shotlist(company)
+            cache[cid] = active_shotlist(cid)
         return cache[cid]
 
     @extend_schema_field(serializers.IntegerField())
     def get_photos_obligatoires_manquantes(self, obj):
         from .field_services import missing_required_shots
         return len(missing_required_shots(
-            obj, slots=self._shotlist(obj.company)))
+            obj, slots=self._shotlist(obj.company_id)))
 
     @extend_schema_field(serializers.DictField())
     def get_crew_time(self, obj):
@@ -2492,13 +2492,11 @@ class OrdreAssemblageSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
 
     @extend_schema_field(serializers.IntegerField(allow_null=True))
     def get_temps_prevu_min(self, obj):
-        from .services import totaux_temps_ordre
-        return totaux_temps_ordre(obj)['prevu']
+        return totaux_temps_memo(self, obj)['prevu']  # APRF39 : un calcul par ordre
 
     @extend_schema_field(serializers.IntegerField())
     def get_temps_reel_min(self, obj):
-        from .services import totaux_temps_ordre
-        return totaux_temps_ordre(obj)['reel']
+        return totaux_temps_memo(self, obj)['reel']
 
 
 class OrdreAssemblageActivitySerializer(serializers.ModelSerializer):
