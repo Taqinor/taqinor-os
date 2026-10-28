@@ -1810,7 +1810,7 @@ def equip_rows(items, totaux, hi_bat=False, ancres=None):
         is_bat = "batterie" in des.lower() and hi_bat
         bg = f"background:{CAL};" if is_bat else (f"background:{CG1};" if i % 2 == 1 else "")
         qty_s = int(qty) if qty == int(qty) else qty
-        desc_html = _desc_lines_html(it, max_lines=2, font_pt=5)
+        desc_html = _desc_lines_html(it, max_lines=2, font_pt=5) + ci_tableau.sous_lignes_html(it, 5, CG4)  # R2
         # QJR146 (e) \u2014 LE TIRET NE MASQUE QUE L'ABSENCE DE PRIX, jamais un
         # prix N\u00c9GATIF. ``pu_ht > 0`` renvoyait \u00ab \u2014 \u00bb sur une ligne \u00e0 montant
         # n\u00e9gatif (une reprise, un geste commercial pass\u00e9 en ligne) alors que
@@ -1827,8 +1827,7 @@ def equip_rows(items, totaux, hi_bat=False, ancres=None):
         taux = it.get("taux_tva", TVA_PCT)
         taux_s = f"{pct_fr(taux)}%"  # AMOT24
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
-                 f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}'
-                 f'{ci_tableau.sous_lignes_html(it, 5, CG4)}</td>'
+                 f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}</td>'
                  f'<td class="tc" style="word-wrap:break-word;font-size:5pt;">{gar}</td>'
                  f'<td class="tc">{qty_s}</td>'
                  f'<td class="tr">{pu_ht_s}</td>'
@@ -3869,8 +3868,6 @@ def apply_quote_data(data: dict) -> None:
     # QJR408 — PLUS AUCUNE SECONDE PASSE DE CLASSIFICATION ICI : le tableau
     # imprime EXACTEMENT les lignes que le builder a comptées dans le total
     # figé (cf. le bloc QJR408 en tête de module).
-    # R2 — échappement AVANT le regroupement C&I : les sous-lignes du
-    # « Tableau de protection AC/DC » héritent des désignations échappées.
     SANS_ITEMS   = ci_installation.lignes_client(_esc_items(data["sans_items"]), data)
     AVEC_ITEMS   = ci_installation.lignes_client(_esc_items(data["avec_items"]), data)
     ECO_S_M      = data["eco_s_monthly"]
