@@ -100,3 +100,13 @@ def arrondi_si_nombre_json(brut):
         return quantize_mad(brut)
     except InvalidOperation:  # NaN, infini, ou plus de 28 chiffres
         return brut
+
+
+#: api-fuzz-full 28/10 (ENF11) — formes PUBLIÉES et appliquées du montant
+#: demandé (``devis/<id>/facturer/``) : décimal strictement positif, virgule
+#: ou point, 10 chiffres entiers au plus (au-delà, ``quantize`` lève) ; un
+#: pourcentage dans ]0 ; 100]. Vide = non renseigné.
+MOTIF_MONTANT_DEMANDE = (r'^(?:|0*(?:[1-9][0-9]{0,9}(?:[.,][0-9]*)?'
+                         r'|[.,][0-9]*[1-9][0-9]*))$')
+MOTIF_POURCENTAGE_DEMANDE = (r'^(?:|0*(?:100(?:[.,]0*)?|[1-9][0-9]?(?:[.,][0-9]*)?'
+                             r'|[.,][0-9]*[1-9][0-9]*))$')

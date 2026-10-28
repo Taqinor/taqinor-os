@@ -22,6 +22,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from django.db import transaction
 
+from .bornes import MOTIF_MONTANT_DEMANDE, MOTIF_POURCENTAGE_DEMANDE
+
 #: Les natures d'une facture de vente (``Facture.TypeFacture``).
 NATURES = ('acompte', 'intermediaire', 'solde', 'complete')
 CENT = Decimal('0.01')
@@ -68,9 +70,18 @@ def _montant_demande(prix_ttc, montant_ttc, pourcentage):
     if montant_ttc in (None, '') and pourcentage in (None, ''):
         return None
     if montant_ttc not in (None, '') and pourcentage not in (None, ''):
+        # « l'un OU l'autre » de deux champs facultatifs : inexprimable au
+        # schéma (vide = absent) — refus d'état 409 (ENF11).
         raise FacturationVenteRefusee(
             'Montant invalide : donnez un montant OU un pourcentage.',
-            code='montant_invalide')
+            code='montant_invalide', status=409)
+    import re
+    for valeur, motif in ((montant_ttc, MOTIF_MONTANT_DEMANDE),
+                          (pourcentage, MOTIF_POURCENTAGE_DEMANDE)):
+        if valeur is not None and not (isinstance(valeur, str)
+                                       and re.fullmatch(motif, valeur)):
+            raise FacturationVenteRefusee('Montant invalide.',
+                                          code='montant_invalide')
     try:
         brut = Decimal(str(montant_ttc if montant_ttc not in (None, '')
                            else pourcentage).replace(',', '.'))

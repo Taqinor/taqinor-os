@@ -27,8 +27,10 @@ from core.conflit_etat import ConflitEtat
 #: lève ``InvalidOperation`` (28 chiffres significatifs) — c'était un 500.
 RELEVE_MAX = 1_000_000_000
 #: Nombre décimal en chaîne tel que le formulaire l'envoie (``<input
-#: type=number>``) et que le serveur le sert (``"250.00"``).
-MOTIF_NOMBRE = r'^(?:[0-9]{1,9}(?:\.[0-9]*)?|\.[0-9]+)$'
+#: type=number>``) et que le serveur le sert (``"250.00"``). api-fuzz-full
+#: 28/10 : le plafond lui-même (``1e9``, ou ``999999999.996`` arrondi au
+#: centime) est servi ``"1000000000.00"`` — dix chiffres, admis par le motif.
+MOTIF_NOMBRE = r'^(?:[0-9]{1,9}(?:\.[0-9]*)?|\.[0-9]+|1000000000(?:\.0*)?)$'
 #: cos φ en chaîne, dans ]0 ; 1] à deux décimales (le relevé les arrondit).
 MOTIF_COS_PHI_RELEVE = r'^(?:1(?:\.0{0,2})?|0?\.(?:[1-9][0-9]?|0[1-9]))$'
 #: cos φ de la colonne ``Lead.cos_phi`` (``DecimalField(4, 3)``), dans ]0 ; 1].

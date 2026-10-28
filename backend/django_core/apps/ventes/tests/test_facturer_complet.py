@@ -773,6 +773,39 @@ class FacturerVenteEndpointVNT31(_BaseVente):
             self.assertEqual(resp.status_code, 400, (brut, resp.data))
         self.assertFalse(Facture.objects.filter(devis=devis).exists())
 
+    def test_montant_et_pourcentage_publies_tels_qu_appliques(self):
+        """api-fuzz-full 28/10 (ENF11) — ``pourcentage`` (et ``montant_ttc``)
+        était publié texte libre puis refusé « Montant invalide. » (400) :
+        motif publié = motif appliqué ; les deux à la fois = 409."""
+        import re
+
+        from apps.ventes.views import openapi_docs as D
+        motifs = {nom: next(v.regex.pattern for v in
+                            D.FacturerVenteRequest.fields[nom].validators
+                            if hasattr(v, 'regex'))
+                  for nom in ('montant_ttc', 'pourcentage')}
+        for nom, valeur, accepte in (
+                ('pourcentage', '30', True), ('pourcentage', '100', True),
+                ('pourcentage', '0,5', True), ('pourcentage', '100.5', False),
+                ('pourcentage', '0', False), ('pourcentage', 'Âȿ', False),
+                ('montant_ttc', '15000.00', True),
+                ('montant_ttc', '1' + '0' * 10, False),
+                ('montant_ttc', '1e3', False)):
+            with self.subTest(nom=nom, valeur=valeur):
+                self.assertEqual(bool(re.fullmatch(motifs[nom], valeur)),
+                                 accepte)
+        devis = self._388('DEV-VNT31-MOTIF')
+        for corps in ({'pourcentage': 'Âȿ'}, {'montant_ttc': '1e3'}):
+            resp = self.api.post(self._url(devis),
+                                 {'nature': 'acompte', **corps}, format='json')
+            self.assertEqual(resp.status_code, 400, (corps, resp.data))
+            self.assertIn(next(iter(corps)), resp.data)
+        resp = self.api.post(self._url(devis), {
+            'nature': 'acompte', 'montant_ttc': '100', 'pourcentage': '30'},
+            format='json')
+        self.assertEqual(resp.status_code, 409, resp.data)
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+
     def test_paiement_publie_avec_montant_requis(self):
         """api-fuzz-full 27/10 (ENF11) — ``paiements: [{…sans montant…}]``
         était publié « objet quelconque » puis refusé 400 « Paiement n°1 :
