@@ -1648,7 +1648,9 @@ OffreTailleConfigRequest = {
                 'properties': {
                     'nb_panneaux': {'type': 'integer', 'minimum': 1,
                                     'maximum': 500},
-                    'batterie_nb_modules': {'type': 'integer', 'minimum': 0,
+                    # api-fuzz-full 28/10 (ENF11) : « zéro module » est refusé
+                    # (``validate_batterie_nb_modules``) — publié dès 1.
+                    'batterie_nb_modules': {'type': 'integer', 'minimum': 1,
                                             'maximum': 100},
                     # CI #997 fuzz (24/10) : les rôles de composition connus,
                     # rien d'autre (« Rôle de composition inconnu. » = 400

@@ -186,6 +186,21 @@ class Ntdst3ApiTests(Ntdst3Base):
         releve = api.get(f'{self.URL}{depot_id}/releve/')
         self.assertEqual(releve.data['quantite_restante'], 8)
 
+    def test_textes_stricts_nul_400_rien_cree(self):
+        # api-fuzz-full 28/10 (ENF11) : ``adresse_site`` avec un NUL était
+        # publié texte libre puis refusé par PostgreSQL ; publié sans NUL,
+        # refusé 400 nommant le champ, aucun dépôt créé.
+        api = auth(self.admin)
+        avant = DepotConsignation.objects.count()
+        for champ in ('adresse_site', 'note'):
+            res = api.post(self.URL, {
+                'client': self.client_crm.id, 'produit': self.produit.id,
+                'quantite_deposee': 1, 'date_depot': JOUR.isoformat(),
+                champ: 'a\x00b'}, format='json')
+            self.assertEqual(res.status_code, 400, (champ, res.content))
+            self.assertIn(champ, res.json())
+        self.assertEqual(DepotConsignation.objects.count(), avant)
+
     def test_un_patch_ne_peut_pas_forcer_la_quantite_consommee(self):
         depot = self._depot(quantite=10)
         res = auth(self.admin).patch(f'{self.URL}{depot.id}/', {

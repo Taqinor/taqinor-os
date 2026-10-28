@@ -217,10 +217,10 @@ class FournisseurSerializer(IdInconnu404Mixin, ChampsStrictsMixin, CompanyScoped
         return value
 
 
-class MouvementStockSerializer(CompanyScopedRelationsMixin,
+class MouvementStockSerializer(IdInconnu404Mixin, CompanyScopedRelationsMixin,
                                ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK5 — toute FK écrite vers un objet d'une autre société est
-    # refusée comme un id absent (« objet inexistant » de DRF).
+    # refusée comme un id absent ; api-fuzz-full 28/10 (ENF11) : 404.
     produit_nom = serializers.CharField(source='produit.nom', read_only=True)
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True, default=None,

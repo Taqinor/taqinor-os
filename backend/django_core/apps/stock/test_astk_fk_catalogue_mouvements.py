@@ -144,9 +144,10 @@ class FkCatalogueMouvementsTests(TestCase):
         self.assertFalse(ToleranceRapprochementCategorie.objects.exists())
 
     def test_mouvement_produit_etranger(self):
+        # api-fuzz-full 28/10 (ENF11) : id inconnu (étranger ou absent) → 404.
         self._post_compare('/api/django/stock/mouvements/',
                            {'type_mouvement': 'entree', 'quantite': 1},
-                           'produit', self.pb.pk)
+                           'produit', self.pb.pk, 404)
         self.pb.refresh_from_db()
         self.assertEqual(self.pb.quantite_stock, 10)
         self.assertFalse(MouvementStock.objects.exists())
@@ -154,7 +155,7 @@ class FkCatalogueMouvementsTests(TestCase):
     def test_mouvement_casier_etranger(self):
         self._post_compare('/api/django/stock/mouvements/', {
             'produit': self.pa.pk, 'type_mouvement': 'entree',
-            'quantite': 1}, 'bin_source', self.bin_b.pk)
+            'quantite': 1}, 'bin_source', self.bin_b.pk, 404)
         self.pa.refresh_from_db()
         self.assertEqual(self.pa.quantite_stock, 10)
         self.assertFalse(MouvementStock.objects.exists())
