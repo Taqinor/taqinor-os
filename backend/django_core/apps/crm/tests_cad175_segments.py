@@ -456,6 +456,9 @@ class CIQ410PanneauPro(SimpleTestCase):
                               cuisson_nocturne=True), ())
         self.assertEqual(cles('boulangerie', four='electrique',
                               cuisson_nocturne=False), ())
+        # « oui » du tunnel lu comme le moteur (``moteur_ci.categories._vrai``).
+        self.assertEqual(cles('boulangerie', four='electrique',
+                              cuisson_nocturne='oui'), ('heures_cuisson',))
         self.assertEqual(cles('boulangerie', four='electrique',
                               cuisson_nocturne=True,
                               heures_cuisson=[[2, 6]]), ())

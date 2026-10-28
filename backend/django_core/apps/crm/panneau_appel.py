@@ -459,11 +459,17 @@ def _cle_courbe_utile(cle, reponses):
     if cle == 'heures':
         return bool(reponses.get('horaires'))
     if cle == 'heures_cuisson':
-        return (reponses.get('cuisson_nocturne') is True
+        return (_oui(reponses.get('cuisson_nocturne'))
                 and reponses.get('four') == 'electrique')
     if cle == 'heures_garde':
-        return reponses.get('garde_nuit') is True
-    return reponses.get('fermeture_estivale') is True
+        return _oui(reponses.get('garde_nuit'))
+    return _oui(reponses.get('fermeture_estivale'))
+
+
+def _oui(valeur):
+    """Même lecture d'un « oui » que le moteur (``moteur_ci.categories._vrai``) :
+    un lead du tunnel peut porter ``'oui'`` ou ``1`` au lieu de ``True``."""
+    return valeur is True or valeur in ('oui', 'true', 'True', 1)
 
 
 def _cles_categorie_a_poser(lead):
