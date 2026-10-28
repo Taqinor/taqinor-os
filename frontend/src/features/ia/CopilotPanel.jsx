@@ -10,7 +10,7 @@ import {
 import { cn } from '../../lib/cn'
 import StateBlock from '../../components/StateBlock'
 import {
-  MessageActions, SuggestionButtons, TypingDots, QuestionForm,
+  MessageActions, NoteReponse, SuggestionButtons, TypingDots, QuestionForm,
 } from './ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
@@ -149,6 +149,8 @@ export default function CopilotPanel() {
                       sensible : jamais de confirmation automatique. */}
                   <MessageActions msg={msg} index={i} variant="copilot"
  confirmingIndex={confirmingIndex} confirmError={confirmError} />
+                  {/* AIC8 — 👍 / 👎 / « ça n'a pas répondu » sous chaque réponse. */}
+                  <NoteReponse msg={msg} index={i} />
                 </div>
               </div>
             ))}

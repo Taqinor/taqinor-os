@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import iaApi from '../../../api/iaApi'
+import { marquerNote } from '../copilotMessages.js'
 
 // ── AG3 — normalisation des messages agent (cartes proposition / résultat) ────
 //
@@ -115,6 +116,21 @@ export const queryAgent = createAsyncThunk('ia/queryAgent', async (question, { r
     return rejectWithValue(err.response?.data ?? err.message)
   }
 })
+
+// AIC8 — le commercial note la réponse `index` (événement `evenementId`) :
+// PATCH note/commentaire (contrat assistant_evenement.json). Une note par
+// événement, modifiable (re-noter remplace).
+export const noterEvenement = createAsyncThunk(
+  'ia/noterEvenement',
+  async ({ evenementId, note, commentaire = null }, { rejectWithValue }) => {
+    try {
+      const res = await iaApi.noterEvenement(evenementId, note, commentaire)
+      return res.data
+    } catch (err) {
+      return rejectWithValue(err.response?.data ?? err.message)
+    }
+  },
+)
 
 // AG3 — confirme une action proposée par son `confirm_token` (POST /confirm).
 // Le payload de l'action `arg` porte aussi `index` (position du message
@@ -277,7 +293,16 @@ const iaSlice = createSlice({
         state.agentLoading = false
         // AG3 — buildAgentMessage rend une carte proposition / résultat quand le
         // payload structuré AG2 est présent ; sinon un message texte (N86).
-        state.messages.push(buildAgentMessage(action.payload))
+        const msg = buildAgentMessage(action.payload)
+        // AIC8 — l'événement journalisé (AIC6) est conservé pour la note.
+        if (action.payload?.evenement_id != null) msg.evenement_id = action.payload.evenement_id
+        state.messages.push(msg)
+      })
+      .addCase(noterEvenement.fulfilled, (state, action) => {
+        const { index, note, commentaire } = action.meta.arg
+        if (state.messages[index]) {
+          state.messages[index] = marquerNote(state.messages[index], note, commentaire)
+        }
       })
       .addCase(queryAgent.rejected, (state, action) => {
         state.agentLoading = false

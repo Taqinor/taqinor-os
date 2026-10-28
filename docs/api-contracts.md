@@ -190,6 +190,8 @@
     count:nombre, results:inconnu
 - frontend/src/api/iaApi.js :: getAgentActions -> /api/django/agent/actions
     actions:inconnu, count:nombre
+- frontend/src/api/iaApi.js :: noterEvenement -> /api/django/agent/evenements/<>/note
+    commentaire:inconnu, detail:texte, id:inconnu, note:inconnu
 - frontend/src/api/iaApi.js :: undoAgentAction -> /api/django/agent/logs/<>/annuler
     action_key:inconnu, confirmed_at:inconnu, detail:texte, executed_at:inconnu, id:inconnu, is_undoable:inconnu, object_repr:inconnu, risk_level:inconnu, undone_at:inconnu, user:inconnu
 - frontend/src/api/identityApi.js :: acknowledge -> /api/django/identity/login-banner

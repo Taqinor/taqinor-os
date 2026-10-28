@@ -22,7 +22,8 @@ describe('ia — module.config (ODY23)', () => {
 
   it.each([
     ['/ia/ocr', 'OCR', ['responsable', 'admin']],
-    ['/ia/agent', 'Agent IA', ['admin']],
+    // AIC8 — `/ia/agent` ouvert aux rôles `normal` et `responsable`.
+    ['/ia/agent', 'Agent IA', ['normal', 'responsable', 'admin']],
     ['/ia/actions', 'Actions IA', ['normal', 'responsable', 'admin']],
   ])('déclare %s en entrée de menu "%s" gatée %j (route déjà enregistrée ailleurs)', async (path, label, roles) => {
     const { default: config } = await import('./module.config.jsx')

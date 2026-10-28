@@ -59,6 +59,19 @@ export function canSendQuestion(text, loading) {
   return typeof text === 'string' && text.trim().length > 0
 }
 
+// AIC8 — notes d'une réponse (contrat assistant_evenement.json) : 👍 = 1,
+// 👎 et « ça n'a pas répondu » = −1. Le commentaire est borné à 200 car.
+export const NOTE_POSITIVE = 1
+export const NOTE_NEGATIVE = -1
+export const COMMENTAIRE_MAX = 200
+
+// Réduction d'état PURE : le message noté porte sa note, son commentaire et
+// `noteEnvoyee` (bouton « merci »). Idempotent : re-noter remplace la note.
+export function marquerNote(msg, note, commentaire = null) {
+  const texte = typeof commentaire === 'string' ? commentaire.trim().slice(0, COMMENTAIRE_MAX) : ''
+  return { ...msg, note, commentaire: texte || null, noteEnvoyee: true }
+}
+
 // Entrée (sans Maj) envoie la question.
 export function enterSubmits(handleSubmit) {
   return (e) => {

@@ -155,6 +155,12 @@ const iaApi = {
 
   deleteOcrDocument: (id) =>
     iaApi_instance.delete(`/ocr/documents/${id}`),
+
+  // AIC8 — le commercial note SA réponse (contrat assistant_evenement.json,
+  // clé `ecriture_commercial`) : note −1/0/1 + commentaire ≤ 200 car. Endpoint
+  // DJANGO absolu (apps/agent) ; seuls `note` et `commentaire` sont envoyés.
+  noterEvenement: (id, note, commentaire = null) =>
+    iaApi_instance.patch(`/api/django/agent/evenements/${id}/note/`, { note, commentaire }),
 }
 
 export default iaApi
