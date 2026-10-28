@@ -94,3 +94,21 @@ class RecommandeTests(TestCase):
         self.assertNotIn(_PILL, h)
         self.assertNotIn(_MINI, h)
         self.assertNotIn('Pourquoi nous la recommandons', h)
+
+    def test_rpdf24_la_pastille_reste_collee_a_son_option(self):
+        """RPDF24 — devis 1315 : la ligne « Cochez votre option » était
+        ``white-space:nowrap`` d'un bout à l'autre ; deux prix à six chiffres
+        et « Hybride, batterie plus tard » poussaient la pastille
+        « recommandé » hors du cadre. Chaque option (case, nom, prix,
+        pastille) est un bloc insécable ; la ligne peut passer à la ligne
+        ENTRE les deux options, jamais au milieu d'une."""
+        h = self._html(self._data('Avec batterie'))
+        accord = h[h.index('Cochez votre option'):]
+        accord = accord[:accord.index('</div>')]
+        blocs = accord.split('<span class="p3-pick-opt">')[1:]
+        self.assertEqual(len(blocs), 2)
+        self.assertNotIn(_MINI, blocs[0])
+        self.assertIn(_MINI, blocs[1])
+        self.assertIn('.p3-pick-opt { display:inline-block; white-space:nowrap; }', h)
+        regle = h[h.index('.p3-accord-pick {'):]
+        self.assertNotIn('white-space:nowrap', regle[:regle.index('}')])
