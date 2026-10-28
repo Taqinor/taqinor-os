@@ -942,6 +942,62 @@ def _borne_toit_de_la_pose(borne_toit, inclinaison_retenue_deg):
     return borne_toit
 
 
+def _serie_rasante(site, toit_serie, toit_declare, production, *, figee):
+    """R1 — la production en pose rasante 10° (même chaîne PVGIS, série au
+    plan rasant), lue PARESSEUSEMENT au premier palier qui ne tient pas à
+    30° : ``{'lire': appelable | None}`` puis, une fois lue, ``bloc``,
+    ``hypotheses``, ``alertes``. Une production figée (CIQ119) ne bascule
+    jamais ; ni une pente déclarée, ni une autre pose (``toit_rasant``)."""
+    from apps.ventes.moteur_ci.production import (
+        bloc_production_ci, production_pour_bilan, toit_rasant,
+    )
+    from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
+    rasant = None if figee else toit_rasant(toit_serie)
+    etat = {'lire': None}
+    if rasant is None:
+        return etat
+
+    def lire():
+        if 'bloc' not in etat:
+            etat['bloc'] = None
+            lecture = lire_production(site, toit=rasant)
+            if lecture:
+                prod_r, formes_r, source_r, serie_r = (tuple(lecture) + (None,))[:4]
+                bloc, hyp, al = bloc_production_ci(
+                    productible_mensuel=prod_r, formes_saison=formes_r, derate=PRODUCTION_DERATE,
+                    coordonnees_figees=dict(production.get('coordonnees_figees') or {}),
+                    source=source_r, toit=toit_declare, serie=serie_r,
+                    plan=(serie_r or {}).get('plan'))
+                if bloc is not None:
+                    etat.update(bloc=bloc, hypotheses=hyp, alertes=al)
+        return production_pour_bilan(etat['bloc']) if etat.get('bloc') else None
+    etat['lire'] = lire
+    return etat
+
+
+def _servir_pose_rasante(resultat, rasante, production, alertes, hypotheses, traces_30):
+    """R1 — la taille retenue est logée en pose rasante : le bloc production
+    servi (et ses traces) est celui de cette inclinaison ; sinon la
+    production telle quelle."""
+    from apps.ventes.moteur_ci.production import ANGLE_POSE_RASANTE_DEG
+    if resultat.get('inclinaison_retenue_deg') != ANGLE_POSE_RASANTE_DEG or not rasante.get('bloc'):
+        return production
+    al_prod, hyp_prod = traces_30
+    _remplacer(alertes, al_prod, rasante['alertes'])
+    _remplacer(hypotheses, hyp_prod, rasante['hypotheses'])
+    return rasante['bloc']
+
+
+def _traces_evaluation(evaluation, alertes, hypotheses):
+    """Les alertes et hypothèses portées par l'évaluation retenue (bilan,
+    composition, combinaison d'onduleurs)."""
+    composition = evaluation['composition']
+    alertes.extend(evaluation['alertes_bilan'])
+    alertes.extend(composition.get('alertes') or [])
+    alertes.extend((evaluation['onduleurs'] or {}).get('alertes') or [])
+    hypotheses.extend(composition.get('hypotheses') or [])
+
+
 def _remplacer(liste, anciens, nouveaux):
     """Retire de ``liste`` (en place) les éléments ``anciens`` (identité) et
     ajoute ``nouveaux`` — ``_uniques`` garde le PREMIER d'une clé."""
@@ -1276,8 +1332,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     from apps.ventes.moteur_ci.production import (
-        ANGLE_POSE_RASANTE_DEG, bloc_production_ci, production_pour_bilan, toit_rasant,
-        traces_production,
+        bloc_production_ci, production_pour_bilan, traces_production,
     )
     from apps.ventes.moteur_ci.taille import dimensionner_ci
     from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
@@ -1341,26 +1396,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         hypotheses.extend(hyp_prod)
     if production is None:
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
-    # R1 — toit plat sans pente déclarée : la production en pose rasante 10°
-    # (même chaîne PVGIS, série au plan rasant) n'est lue qu'au premier palier
-    # qui ne tient pas à 30° ; une production figée ne bascule jamais.
-    rasant = None if production_figee else toit_rasant(toit_serie)
-    rasante = {}
-
-    def production_rasante():
-        if 'bloc' not in rasante:
-            rasante['bloc'] = None
-            lecture_r = lire_production(site, toit=rasant)
-            if lecture_r:
-                prod_r, formes_r, source_r, serie_r = (tuple(lecture_r) + (None,))[:4]
-                bloc_r, hyp_r, al_r = bloc_production_ci(
-                    productible_mensuel=prod_r, formes_saison=formes_r, derate=PRODUCTION_DERATE,
-                    coordonnees_figees=dict(production.get('coordonnees_figees') or {}),
-                    source=source_r, toit=toit_declare, serie=serie_r,
-                    plan=(serie_r or {}).get('plan'))
-                if bloc_r is not None:
-                    rasante.update(bloc=bloc_r, hypotheses=hyp_r, alertes=al_r)
-        return production_pour_bilan(rasante['bloc']) if rasante.get('bloc') else None
+    rasante = _serie_rasante(site, toit_serie, toit_declare, production, figee=bool(production_figee))
 
     if conso is None:
         alertes.append(_alerte('consommation_absente', 'consommation',
@@ -1430,25 +1466,16 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         # ADEV79 — TTC des paliers → HT : TVA de l'article, à défaut le taux
         # standard SAISI de la société (lecture seule), jamais un 20 codé.
         taux_tva_pct=getattr(reglages, 'tva_standard', None), pmax_wc=(catalogue['module'] or {}).get('pmax_wc'),
-        production_rasante=None if rasant is None else production_rasante)
-    if resultat.get('inclinaison_retenue_deg') == ANGLE_POSE_RASANTE_DEG and rasante.get('bloc'):
-        # R1 — la taille retenue est logée en pose rasante : le bloc production
-        # servi (et ses traces) est celui de cette inclinaison.
-        production = rasante['bloc']
-        _remplacer(alertes, al_prod, rasante['alertes'])
-        _remplacer(hypotheses, hyp_prod, rasante['hypotheses'])
+        production_rasante=rasante['lire'])
+    production = _servir_pose_rasante(resultat, rasante, production, alertes, hypotheses, (al_prod, hyp_prod))
     alertes.extend(_alertes_phase_du_site(resultat['alertes'], phase))
     hypotheses.extend(resultat['hypotheses'])
     evaluation = resultat['evaluation']
 
     bilan = composition = economie = regime = None
     if evaluation is not None:
-        bilan = evaluation['bilan']
-        alertes.extend(evaluation['alertes_bilan'])
-        composition = evaluation['composition']
-        alertes.extend(composition.get('alertes') or [])
-        alertes.extend((evaluation['onduleurs'] or {}).get('alertes') or [])
-        hypotheses.extend(composition.get('hypotheses') or [])
+        bilan, composition = evaluation['bilan'], evaluation['composition']
+        _traces_evaluation(evaluation, alertes, hypotheses)
         economie = valoriser.complet(bilan)
         regime = _regime(evaluation['kwc'], evaluation['puissance_ac'], tension)
         alertes.extend(_alertes_reactif(res, tension, bilan, registres))

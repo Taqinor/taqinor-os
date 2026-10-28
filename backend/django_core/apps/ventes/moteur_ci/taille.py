@@ -276,6 +276,27 @@ def _hypotheses_toit(e, bornes_pub, raison, hypotheses):
                            'statut': 'estimation', 'source': texte})
 
 
+def _evaluateur(bornes_pub, kwc_toit, production_jours_types, production_rasante, **noyau):
+    """R1 — ``evaluer(kwc)`` : le palier est évalué (production, borne de
+    panneaux entiers) dans la pose qui le loge — 30° tant qu'il y tient,
+    rasante au-delà (``production_rasante()`` lue alors seulement) ; sans les
+    deux contenances, la borne ``kwc`` du toit joue comme avant."""
+    kwc_30, kwc_10 = _contenances(bornes_pub)
+    deux_poses = kwc_30 is not None and kwc_10 is not None
+
+    def evaluer(kwc):
+        rasante = _pose_rasante(kwc, kwc_30, kwc_10)
+        production = production_jours_types
+        if rasante and production_rasante is not None:
+            production = production_rasante() or production_jours_types
+        kwc_max = (kwc_10 if rasante else kwc_30) if deux_poses else kwc_toit
+        e = _evaluer(kwc, production=production, kwc_max=kwc_max, **noyau)
+        e['inclinaison_retenue_deg'] = (
+            (ANGLE_POSE_RASANTE_DEG if rasante else ANGLE_TOIT_PLAT_DEG) if deux_poses else None)
+        return e
+    return evaluer
+
+
 def _borne_du_palier(e, kwc_toit, ps_kva):
     if kwc_toit is not None and e['kwc'] > kwc_toit + 1e-9:
         return 'toit'
@@ -439,24 +460,11 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
         return {'taille': _vide('consommation_absente', bornes_pub), 'evaluation': None,
                 'alertes': alertes, 'hypotheses': hypotheses}
 
-    kwc_30, kwc_10 = _contenances(bornes_pub)
-    deux_poses = kwc_30 is not None and kwc_10 is not None
-
-    def evaluer(kwc):
-        # R1 — le palier est évalué (production, borne de panneaux entiers)
-        # dans la pose qui le loge : 30° tant qu'il y tient, rasante au-delà.
-        rasante = _pose_rasante(kwc, kwc_30, kwc_10)
-        production = production_jours_types
-        if rasante and production_rasante is not None:
-            production = production_rasante() or production_jours_types
-        kwc_max = (kwc_10 if rasante else kwc_30) if deux_poses else kwc_toit
-        e = _evaluer(kwc, charge=charge_jours_types, production=production,
-                     tension=tension, revente_choisie=revente_choisie, combiner=combiner,
-                     composer=composer, valoriser=valoriser, taux_tva_pct=taux_tva_pct,
-                     pmax_wc=pmax_wc, kwc_max=kwc_max)
-        e['inclinaison_retenue_deg'] = (
-            (ANGLE_POSE_RASANTE_DEG if rasante else ANGLE_TOIT_PLAT_DEG) if deux_poses else None)
-        return e
+    evaluer = _evaluateur(   # R1 — chaque palier dans la pose qui le loge
+        bornes_pub, kwc_toit, production_jours_types, production_rasante,
+        charge=charge_jours_types, tension=tension, revente_choisie=revente_choisie,
+        combiner=combiner, composer=composer, valoriser=valoriser, taux_tva_pct=taux_tva_pct,
+        pmax_wc=pmax_wc)
 
     explicite = _pos(taille_explicite_kwc)
     if explicite is not None:
@@ -572,12 +580,10 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     else:
         raison = 'horizon_marginal'
     if raison == 'horizon_marginal' and index + 1 < len(paliers) and paliers[index + 1]['admis']:
-        paliers[index + 1]['admis'] = False
-        paliers[index + 1]['borne'] = 'horizon_marginal'
+        paliers[index + 1].update(admis=False, borne='horizon_marginal')
     for p in paliers[index + 2:]:
         if p['admis']:
-            p['admis'] = False
-            p['borne'] = p['borne'] or 'horizon_marginal'
+            p.update(admis=False, borne=p['borne'] or 'horizon_marginal')
     if retenu['postes_fixes_sans_prix']:
         alertes.append(_alerte(
             'postes_fixes_sans_prix', 'composition.lignes',
