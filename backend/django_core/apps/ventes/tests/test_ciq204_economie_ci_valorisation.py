@@ -181,6 +181,27 @@ class OmisTest(SimpleTestCase):
 
 
 class GardesTest(SimpleTestCase):
+    def test_prix_declare_hors_bande_alerte(self):
+        # CEC19 (k = 3) : ×10 et centimes alertent (interne), ×3 non.
+        def alertes(**mt):
+            declare = {'contrat': 'mt_general', 'base_tarifs': 'ttc',
+                       'mt': {'tarif_pointe': 1.4157, 'tarif_pleines': 1.0101,
+                              'tarif_creuses': 0.7398, **mt}}
+            bloc = eco.assembler_economie_ci(
+                {}, tarif_declare=declare, mode_installation='industriel')
+            return [a for a in bloc['alertes_internes']
+                    if a['code'] == 'prix_declare_hors_bande']
+        self.assertEqual(alertes(), [])
+        self.assertEqual(alertes(tarif_pleines=3.0), [])  # dans ×3
+        dix = alertes(tarif_pleines=10.101)
+        self.assertEqual(len(dix), 1)
+        self.assertIn('pleines', dix[0]['message'])
+        self.assertIn('10.101', dix[0]['message'])
+        self.assertTrue(dix[0]['interne'])
+        centimes = alertes(tarif_creuses=73.98)
+        self.assertEqual(len(centimes), 1)
+        self.assertIn('creuses', centimes[0]['message'])
+
     def test_aucun_prix_plat_dans_le_module(self):
         with open(eco.__file__, encoding='utf-8') as fh:
             src = fh.read()
