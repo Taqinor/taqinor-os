@@ -196,8 +196,11 @@ class RpdfLegacyMiseEnPageTest(SimpleTestCase):
         # Test-du-test : 11 lignes et 4 totaux ⇒ page 2 d'hier, octet pour octet.
         self.assertNotIn('<style>.eq{font-size:', p2)
         self.assertIn('width:680px;height:170px;display:block;', p2)
+        tva = [{'taux': 10.0, 'montant': 2508.0, 'ht_net': 25080.0},
+               {'taux': 20.0, 'montant': 16602.0, 'ht_net': 83010.0}]
         d = dict(base, discount_pct=5,
-                 totaux_avec=dict(base['totaux_avec'], arrondi=6.5))
+                 totaux_avec=dict(base['totaux_avec'], arrondi=6.5,
+                                  tva_par_taux=tva))
         p2 = self._page2(G.render_html_for(d))
         k = 11.0 / (11 + 0.5 * 3)
         self.assertIn('<style>.eq{font-size:', p2)

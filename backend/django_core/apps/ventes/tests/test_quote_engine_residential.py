@@ -2148,7 +2148,7 @@ class TestRpdf30FormatAnglaisResidentiel(SimpleTestCase):
             self.assertEqual(montants.fmt_centimes(65700), "65,700.00")
         with montants.format_langue({'langue_sortie': 'ar',
                                      'mode_installation': 'residentiel'}):
-            self.assertEqual(montants.fmt_centimes(65700), "65 700,00")
+            self.assertEqual(montants.fmt_centimes(65700), "65 700,00")
         with montants.format_langue({'langue_sortie': 'en',
                                      'mode_installation': 'agricole'}):
             self.assertFalse(montants.format_anglais())
