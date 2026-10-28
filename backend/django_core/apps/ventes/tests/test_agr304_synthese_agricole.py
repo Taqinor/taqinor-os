@@ -647,3 +647,31 @@ class SyntheseAgricoleTests(SimpleTestCase):
         self.assertNotIn('afficheur_variateur',
                          [o['cle'] for o in s['options_kit']])
         self.assertNotIn('afficheur_variateur', s['non_inclus'])
+
+    def test_agc15_depense_declaree_servie_sans_economies(self):
+        """AGC15 (contrat AGC14) — bloc argent calculé mais non publiable :
+        ``depense_declaree = {annuelle_mad}`` recopiée, jamais avec
+        ``economies`` ; absente sur des mois du calendrier non confirmés
+        (AGQ18), sans montant, ou bloc non calculé. Mutant : servir la clé
+        à côté d'``economies`` ⇒ rouge."""
+        from apps.ventes.economie_pompage import MOTIF_MOIS_CALENDRIER
+        data = _data_complete()
+        bloc = data['_economie_pompage'] = {
+            'statut': 'calcule', 'publiable_client': False,
+            'motifs_non_publiable': ['barème des charges solaires non saisi'],
+            'depense_actuelle': {'annuelle_mad': 21000.0}}
+        s = synthese_agricole(data)
+        self.assertEqual(s['depense_declaree'], {'annuelle_mad': 21000.0})
+        self.assertNotIn('economies', s)
+        bloc['motifs_non_publiable'].append(MOTIF_MOIS_CALENDRIER)
+        self.assertNotIn('depense_declaree', synthese_agricole(data))
+        bloc['motifs_non_publiable'].pop()
+        bloc['depense_actuelle'] = {'annuelle_mad': 0}
+        self.assertNotIn('depense_declaree', synthese_agricole(data))
+        bloc['depense_actuelle'] = {'annuelle_mad': 21000.0}
+        bloc['statut'] = 'omis'
+        self.assertNotIn('depense_declaree', synthese_agricole(data))
+        bloc.update(statut='calcule', publiable_client=True)
+        s = synthese_agricole(data)
+        self.assertIn('economies', s)
+        self.assertNotIn('depense_declaree', s)

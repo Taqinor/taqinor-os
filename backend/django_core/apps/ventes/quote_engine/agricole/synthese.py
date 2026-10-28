@@ -613,6 +613,22 @@ def _bloc_economies(bloc):
             if cle not in CLES_INTERNES_AGR3}, None
 
 
+def _depense_declaree(bloc):
+    """AGC15 (D-AGC-6, contrat AGC14) — ``{annuelle_mad}`` : la seule dépense
+    actuelle DÉCLARÉE (``depense_actuelle.annuelle_mad`` du bloc AGR3,
+    recopiée) quand le bloc argent n'est pas publiable mais calculé ; None
+    sans montant ou sur des mois d'irrigation du calendrier non confirmés
+    (AGQ18 : pas une déclaration). Jamais une économie."""
+    from apps.ventes.economie_pompage import MOTIF_MOIS_CALENDRIER
+    bloc = _dict(bloc)
+    annuelle = _num(_dict(bloc.get("depense_actuelle")).get("annuelle_mad"))
+    if (bloc.get("statut") != "calcule" or not annuelle
+            or MOTIF_MOIS_CALENDRIER in (bloc.get("motifs_non_publiable")
+                                         or [])):
+        return None
+    return {"annuelle_mad": annuelle}
+
+
 def _energie_actuelle(etude):
     """AGR307 — l'énergie actuelle DÉCLARÉE (``saisies_economie_pompage``,
     contrat AGR3), ou None : sans provenance, ce n'est pas une déclaration —
@@ -758,6 +774,9 @@ def synthese_agricole(data):
         synthese["economies"] = economies
     else:
         omissions.append({"bloc": "economies", "motif": motif})
+        depense = _depense_declaree(data.get("_economie_pompage"))
+        if depense is not None:
+            synthese["depense_declaree"] = depense
     energie = _energie_actuelle(etude)
     if energie is not None:
         synthese["energie_actuelle"] = energie

@@ -347,27 +347,18 @@ def _mois_declares(eco, lg):
     return " " + _t(lg, "agr_mois_irrigation_phrase", phrase=phrase)
 
 
-def _depense_declaree(d, synthese, lg):
-    """AGC11 (D-AGC-6) — bloc argent omis (non publiable) mais dépense
-    actuelle DÉCLARÉE et calculée (Σ quantité × prix payé déclarés + entretien
-    déclaré, ``economie_pompage.depense_actuelle``) : une ligne neutre qui ne
-    dit QUE la somme déclarée, jamais une économie ; rien sinon — ni quand les
-    mois d'irrigation sont ceux du calendrier, non confirmés (AGQ18 : pas une
-    déclaration)."""
-    from apps.ventes.economie_pompage import MOTIF_MOIS_CALENDRIER
-    if isinstance(synthese.get("economies"), dict):
-        return ""
-    eco = d.get("_economie_pompage")
-    eco = eco if isinstance(eco, dict) else {}
-    dep = eco.get("depense_actuelle")
-    annuelle = dep.get("annuelle_mad") if isinstance(dep, dict) else None
-    if (eco.get("statut") != "calcule" or not _num(annuelle)
-            or MOTIF_MOIS_CALENDRIER in (eco.get("motifs_non_publiable")
-                                         or [])):
+def _depense_declaree(synthese, lg):
+    """AGC11 (D-AGC-6) — bloc argent omis mais dépense actuelle DÉCLARÉE :
+    une ligne neutre qui ne dit QUE la somme déclarée, jamais une économie.
+    Lue sur ``synthese['depense_declaree']`` (AGC15 — la MÊME clé que la page
+    /proposition) ; rien sans elle."""
+    dep = synthese.get("depense_declaree")
+    mad = _mad(dep.get("annuelle_mad")) if isinstance(dep, dict) else None
+    if mad is None:
         return ""
     return (f'<div class="ag-sec">{_t(lg, "agr_votre_argent")}</div>'
             f'<div class="ag-box ag-box-gold" data-agc-depense-declaree>'
-            f'{_t(lg, "agr_depense_declaree_neutre", mad=f"{_mad(annuelle)} MAD")}'
+            f'{_t(lg, "agr_depense_declaree_neutre", mad=f"{mad} MAD")}'
             f'</div>')
 
 
@@ -520,7 +511,7 @@ def page1(ctx):
                       for m in theme.marques_correction(d))
     declare = debit_declare_sans_courbe(d)
     # AGC12 — un bloc argent absent n'empile plus deux respirations.
-    argent = _argent(synthese, lg) or _depense_declaree(d, synthese, lg)
+    argent = _argent(synthese, lg) or _depense_declaree(synthese, lg)
     return (f'<div class="ag-pad">{entete}{_qj(10)}{_hero(synthese, lg, declare)}'
             f'{_qj(15)}{_cartes(synthese, lg)}{_qj(25)}'
             f'{argent}{_qj(25) if argent else ""}'
