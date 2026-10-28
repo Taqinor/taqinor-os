@@ -4,7 +4,7 @@
  * et montants TTC SERVIS (`synthese_ci.echeancier`, le même que le PDF), jamais recalculés ; mots du PDF
  * (`i18n_labels.py` `ci_jalon_*`) en FR/EN/AR. Un montant non servi (ou nul) est omis. Condition dans la page.
  */
-import { formatMAD } from '../../../lib/proposition';
+import { formatMADCentimes } from '../../../lib/proposition';
 import type { SyntheseCi } from '../../../lib/proposition';
 import { TITRE_ECHEANCIER_CI, TTC_CI, echeancierCi } from './blocsCi';
 
@@ -22,7 +22,7 @@ const jalons = echeancierCi(ci);
         <p class="fig text-3xl text-lune" dir="ltr">{String(j.pct).replace('.', ',')} %</p>
         <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr={j.libelle.fr} data-en={j.libelle.en} data-ar={j.libelle.ar}>{j.libelle.fr}</p>
         {j.montantTtc !== null ? (
-          <p class="mt-1 text-sm text-lune" dir="ltr">{formatMAD(j.montantTtc)} <span data-i18n data-fr={TTC_CI.fr} data-en={TTC_CI.en} data-ar={TTC_CI.ar}>{TTC_CI.fr}</span></p>
+          <p class="mt-1 text-sm text-lune" dir="ltr">{formatMADCentimes(j.montantTtc)} <span data-i18n data-fr={TTC_CI.fr} data-en={TTC_CI.en} data-ar={TTC_CI.ar}>{TTC_CI.fr}</span></p>
         ) : null}
       </li>
     ))}
