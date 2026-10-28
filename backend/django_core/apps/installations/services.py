@@ -4634,11 +4634,11 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
     (sinon deux interventions du lot se recréeraient un conflit entre elles
     avant même d'être enregistrées) : chaque proposition déjà retenue plus
     haut dans le lot est exclue des candidats suivants, en repliant sur le
-    meilleur candidat restant. Renvoie
+    meilleur candidat restant (APRF41 : lot calculé par `suggerer_creneaux_lot`). Renvoie
     ``{jour, propositions: [{intervention_id, installation_id,
     type_intervention, technicien_actuel_id, proposition}]}``."""
     from .models import Intervention
-    from . import selectors
+    from .planification_lot import suggerer_creneaux_lot
 
     qs = Intervention.objects.filter(company=company, date_prevue=jour)
     if technicien_id is not None:
@@ -4648,17 +4648,12 @@ def previsualiser_replanification_masse(company, *, jour, technicien_id=None,
 
     propositions = []
     reserves_dans_le_lot = set()
-    for interv in qs.select_related('installation'):
-        suggestions = selectors.suggerer_creneau(
-            company, chantier_id=interv.installation_id,
-            type_intervention=interv.type_intervention, n=10)
-        proposition = None
-        for candidat in suggestions['propositions']:
-            cle = (candidat['technicien_id'], candidat['date'])
-            if cle in reserves_dans_le_lot:
-                continue
-            proposition = candidat
-            break
+    interventions = list(qs.select_related('installation'))
+    # APRF41 — ressources de la fenêtre chargées UNE fois pour tout le lot.
+    lot = suggerer_creneaux_lot(company, [i.installation_id for i in interventions], n=10)
+    for interv in interventions:
+        proposition = next((c for c in lot[interv.installation_id]['propositions']
+                            if (c['technicien_id'], c['date']) not in reserves_dans_le_lot), None)
         if proposition is not None:
             reserves_dans_le_lot.add(
                 (proposition['technicien_id'], proposition['date']))
