@@ -288,3 +288,58 @@ class AssistantExportTests(TestCase):
         self.assertEqual(_auth(self.vendeur).get(self.URL).status_code, 404)
         with override_settings(AGENT_HMAC_SECRET=''):
             self.assertEqual(_auth(self.admin).get(self.URL).status_code, 403)
+
+
+# ── AIC12 — mesure : coût, taux de non-supporté, repli (contrat AIC2) ────────
+CONTRAT_STATS = json.loads(
+    (Path(__file__).resolve().parents[1] / 'contract_samples'
+     / 'assistant_stats.json').read_text(encoding='utf-8'))
+
+
+class AssistantStatsTests(TestCase):
+    URL = URL_EVENEMENTS + 'stats/'
+
+    def setUp(self):
+        self.co = Company.objects.create(nom='AIC12 Co', slug='aic12-co')
+        self.admin = User.objects.create_user(
+            username='aic12_admin', password='x', role_legacy='admin', company=self.co)
+        self.vendeur = User.objects.create_user(
+            username='aic12_vendeur', password='x', role_legacy='normal', company=self.co)
+        self.collegue = User.objects.create_user(
+            username='aic12_collegue', password='x', role_legacy='normal', company=self.co)
+        AssistantEvent.objects.create(
+            company=self.co, user=self.vendeur, question='Combien ?', modele='claude-sonnet-5-5',
+            tokens={'input': 1_000_000, 'output': 100_000, 'cache_read': 2_000_000})
+        AssistantEvent.objects.create(
+            company=self.co, user=self.vendeur, intention='manque', modele='claude-haiku-5-5',
+            question='Envoie-le sur WhatsApp au 0612345678',
+            tokens={'input': 2_000_000, 'output': 0, 'cache_read': 0})
+        AssistantEvent.objects.create(
+            company=self.co, user=self.collegue, intention='hors_champ', repli=True,
+            modele='llama-3.3-70b-versatile', question='Météo ?', tokens={'input': 500_000})
+
+    def test_prix_nommes_alignes_sur_le_contrat(self):
+        prix = {k: v for k, v in CONTRAT_STATS['prix_mtok'].items()
+                if k not in ('releve_le', 'unite')}
+        self.assertEqual(agent_services.PRIX_MTOK_USD, prix)
+        self.assertEqual(agent_services.PRIX_MTOK_RELEVE_LE,
+                         CONTRAT_STATS['prix_mtok']['releve_le'])
+
+    def test_stats_cout_taux_et_repli(self):
+        resp = _auth(self.admin).get(self.URL, {'semaines': 1})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(set(resp.data), set(CONTRAT_STATS['exemple']))
+        # Sonnet : 2 + 1 + 2 000 000 × 0,10 / 1e6 = 3,20 ; Haiku : 0,20 ; Groq : 0.
+        self.assertEqual(resp.data['cout_estime_usd'], 3.40)
+        self.assertEqual(resp.data['questions'], 3)
+        self.assertEqual(resp.data['commerciaux_actifs'], 2)
+        self.assertEqual(resp.data['questions_par_commercial_semaine'], 1.5)
+        self.assertEqual(resp.data['taux_non_supporte'], round(2 / 3, 4))
+        self.assertEqual(resp.data['part_repli'], round(1 / 3, 4))
+        self.assertEqual(resp.data['par_intention']['manque'], 1)
+        self.assertEqual(resp.data['manques_recents'], [
+            {'question_anonymisee': 'Envoie-le sur WhatsApp au [tel]', 'vu_n_fois': 1}])
+
+    def test_stats_admin_seul(self):
+        self.assertEqual(_auth(self.vendeur).get(self.URL).status_code, 403)
+        self.assertEqual(_auth(self.admin).get(self.URL, {'semaines': 'x'}).status_code, 400)

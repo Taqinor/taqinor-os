@@ -223,3 +223,23 @@ def hacher_identifiant(valeur, secret: str) -> str:
     UTF-8) — même secret et même encodage que ``logs_confirmer.json``."""
     return hmac.new(secret.encode('utf-8'), str(valeur).encode('utf-8'),
                     hashlib.sha256).hexdigest()
+
+
+# ── AIC12 — coût estimé de l'assistant (contrat assistant_stats.json) ────────
+# Prix par million de tokens relevés le 27/10/2026 (USD) — constantes NOMMÉES,
+# jamais lues du corps. `cache_read` a son propre prix (0,1 × l'entrée).
+# Un modèle absent (repli Groq gratuit) coûte 0.
+PRIX_MTOK_RELEVE_LE = '2026-10-27'
+PRIX_MTOK_USD = {
+    'claude-sonnet-5-5': {'input': 2.0, 'output': 10.0, 'cache_read': 0.10},
+    'claude-haiku-5-5': {'input': 0.10, 'output': 0.50, 'cache_read': 0.01},
+}
+
+
+def cout_estime_usd(modele: str, tokens: dict) -> float:
+    """Σ tokens × prix ÷ 1 000 000 pour UN modèle (0 si modèle non tarifé)."""
+    prix = PRIX_MTOK_USD.get(modele or '')
+    if not prix or not isinstance(tokens, dict):
+        return 0.0
+    return sum(int(tokens.get(cle) or 0) * prix[cle]
+               for cle in ('input', 'output', 'cache_read')) / 1_000_000

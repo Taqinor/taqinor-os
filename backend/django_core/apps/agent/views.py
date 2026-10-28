@@ -21,8 +21,8 @@ from .models import AgentActionLog, AssistantEvent
 from .registry import for_user
 from .services import (
     ActionNotUndoableError, agent_hmac_secret, annuler_action,
-    anonymiser_texte, hacher_identifiant, log_confirmed_action,
-    preuve_confirmation_valide,
+    anonymiser_texte, cout_estime_usd, hacher_identifiant,
+    log_confirmed_action, preuve_confirmation_valide,
 )
 from rest_framework.parsers import JSONParser
 
@@ -539,6 +539,74 @@ class AssistantEventExportView(APIView):
                 'par_intention': par_intention,
                 'non_supportes': par_intention['manque'] + par_intention['hors_champ'],
             },
+        })
+
+
+class AssistantEventStatsView(APIView):
+    """AIC12 — ``GET /api/django/agent/evenements/stats/?semaines=4`` : mesure
+    de l'assistant (contrat ``assistant_stats.json``) sur la société de
+    l'admin. Agrégats calculés côté serveur (requête annotée par modèle) ;
+    aucun calcul de coût côté navigateur. Non-admin => 403."""
+
+    permission_classes = [IsAnyRole, IsAdminRole]
+
+    @extend_schema(parameters=[OpenApiParameter('semaines', int, required=False)],
+                   responses=inline_serializer('AssistantStats', {
+                       'questions': drf_serializers.IntegerField(),
+                       'commerciaux_actifs': drf_serializers.IntegerField(),
+                       'questions_par_commercial_semaine': drf_serializers.FloatField(),
+                       'taux_non_supporte': drf_serializers.FloatField(),
+                       'part_repli': drf_serializers.FloatField(),
+                       'cout_estime_usd': drf_serializers.FloatField(),
+                       'par_intention': drf_serializers.DictField(),
+                       'manques_recents': drf_serializers.ListField(
+                           child=drf_serializers.DictField())}))
+    def get(self, request):
+        from collections import Counter
+        from datetime import timedelta
+
+        from django.db.models import Count, IntegerField, Q, Sum
+        from django.db.models.fields.json import KT
+        from django.db.models.functions import Cast
+        from django.utils import timezone
+
+        brut = request.query_params.get('semaines', '4')
+        if not str(brut).isdigit() or not 1 <= int(brut) <= 52:
+            raise ParseError('semaines : entier de 1 à 52.')
+        semaines = int(brut)
+        qs = _evenements_de_la_societe(request.user).filter(
+            created_at__gte=timezone.now() - timedelta(weeks=semaines))
+        intentions = AssistantEvent.Intention.values
+        jeton = {cle: Sum(Cast(KT(f'tokens__{cle}'), IntegerField()))
+                 for cle in ('input', 'output', 'cache_read')}
+        par_modele = list(qs.values('modele').annotate(
+            n=Count('id'), repli_n=Count('id', filter=Q(repli=True)),
+            **{f'i_{i}': Count('id', filter=Q(intention=i)) for i in intentions},
+            **{f't_{cle}': agregat for cle, agregat in jeton.items()}))
+        questions = sum(g['n'] for g in par_modele)
+        par_intention = {i: sum(g[f'i_{i}'] for g in par_modele) for i in intentions}
+        commerciaux = qs.exclude(user=None).values('user').distinct().count()
+        cout = sum(cout_estime_usd(g['modele'], {
+            cle: g[f't_{cle}'] or 0 for cle in jeton}) for g in par_modele)
+        # Manques récents : même anonymisation que l'export (AIC11).
+        recents = list(qs.filter(intention=AssistantEvent.Intention.MANQUE)
+                       .order_by('-created_at').values_list('question', 'lead_id')[:200])
+        noms = _noms_des_leads(request.user.company, [lead for _, lead in recents if lead])
+        manques = Counter(anonymiser_texte(q, noms.get(lead, ())) for q, lead in recents)
+        return Response({
+            'questions': questions,
+            'commerciaux_actifs': commerciaux,
+            'questions_par_commercial_semaine': round(
+                questions / max(commerciaux, 1) / semaines, 2),
+            'taux_non_supporte': round(
+                (par_intention['manque'] + par_intention['hors_champ']) / questions, 4)
+            if questions else 0.0,
+            'part_repli': round(sum(g['repli_n'] for g in par_modele) / questions, 4)
+            if questions else 0.0,
+            'cout_estime_usd': round(cout, 2),
+            'par_intention': par_intention,
+            'manques_recents': [{'question_anonymisee': q, 'vu_n_fois': n}
+                                for q, n in manques.most_common(5)],
         })
 
 

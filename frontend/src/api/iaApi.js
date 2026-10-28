@@ -166,6 +166,11 @@ const iaApi = {
   // DJANGO absolu (apps/agent) ; seuls `note` et `commentaire` sont envoyés.
   noterEvenement: (id, note, commentaire = null) =>
     iaApi_instance.patch(`/api/django/agent/evenements/${id}/note/`, { note, commentaire }),
+
+  // AIC12 — mesure de l'assistant (contrat assistant_stats.json), admin seul :
+  // chiffres CALCULÉS côté serveur (coût estimé compris), jamais ici.
+  statsAssistant: (semaines = 4) =>
+    iaApi_instance.get('/api/django/agent/evenements/stats/', { params: { semaines } }),
 }
 
 export default iaApi
