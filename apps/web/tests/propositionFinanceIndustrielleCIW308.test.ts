@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { rentabiliteCi, syntheseCi, type ProposalResponse } from '../src/lib/proposition';
+import { financementCi } from '../src/components/proposition/ci/blocsCi';
 import { lirePageProposition } from './astroBlocsHelper';
 
 const JALONS = [
@@ -146,7 +147,7 @@ describe('CPRW6 — rentabilité industrielle : libellés clients FR/EN/AR', () 
   it('financement : phrases complètes, plus de fragments « / mois »', () => {
     expect(SRC).not.toContain('/ mois');
     expect(SRC).not.toContain("d'écart");
-    expect(SRC).toContain("différence entre l'échéance et l'économie moyenne");
+    expect(SRC).not.toContain('data-ci-financement');
   });
   it('LCOE : une seule ligne, valeur servie à 4 décimales comme le PDF (CPRW10), plus de « MAD/kWh »', () => {
     expect(SRC).toContain('Coût du kWh solaire');
@@ -201,5 +202,36 @@ describe('CPRW22 — SectionRentabiliteIndustrielle : mobile et ordre des pilule
     expect(ordrePilules).toEqual(['direction', 'achats', 'exploitation']);
     const page = lirePageProposition();
     expect(page.indexOf('id="achats"')).toBeLessThan(page.indexOf('id="exploitation"'));
+  });
+});
+
+// CPRW25 (28/10/2026) — l'offre de financement vit dans FinancementCi, commercial comme industriel.
+describe('CPRW25 — financementCi : l’offre servie, quel que soit le segment', () => {
+  const FIN = { libelle_client: 'Offre de crédit', echeance_mad: 12000, duree_mois: 84, economie_mensuelle_moyenne_mad: 20529.17, ecart_mensuel_mad: 8529.17, source: 'Banque X' };
+  it('commercial avec financement servi → titre et lignes FR/EN/AR du PDF, base HT', () => {
+    const f = financementCi(syntheseCi(payload('commercial', argent({ financement: FIN }))))!;
+    expect(f.titre.fr).toBe('Offre de financement');
+    expect(f.lignes[0].fr).toBe('Offre de crédit');
+    expect(f.lignes[1].fr).toContain('Échéance mensuelle');
+    expect(f.lignes[1].fr).toContain('12 000 MAD HT sur 84 mois');
+    expect(f.lignes[1].en).toContain('Monthly instalment');
+    expect(f.lignes[1].en).toContain('over 84 months');
+    expect(f.lignes[1].ar).toContain('القسط الشهري');
+    expect(f.lignes.map((l) => l.fr).join('|')).toContain('Écart mensuel');
+    expect(f.lignes[f.lignes.length - 1].fr).toContain('Banque X');
+  });
+  it('sans financement, sans échéance ou argent non calculé → null (rien)', () => {
+    expect(financementCi(syntheseCi(payload('commercial', argent())))).toBeNull();
+    expect(financementCi(syntheseCi(payload('commercial', argent({ financement: { libelle_client: 'x' } }))))).toBeNull();
+    expect(financementCi(syntheseCi(payload('commercial', argent({ statut: 'omis', financement: FIN }))))).toBeNull();
+    expect(financementCi(null)).toBeNull();
+  });
+  it('la page monte FinancementCi après l’échéancier pour tout segment C&I ; plus de bloc dans SectionRentabiliteIndustrielle', () => {
+    const page = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+    expect(page).toContain('{isAutoconso && ci && financementCi(ci) && (<FinancementCi {ci} />)}');
+    expect(page.indexOf('<EcheancierCi {ci} />')).toBeLessThan(page.indexOf('<FinancementCi {ci} />'));
+    const src = readFileSync(fileURLToPath(new URL('../src/components/proposition/ci/FinancementCi.astro', import.meta.url)), 'utf-8');
+    expect(src.trimStart().startsWith('---')).toBe(true);
+    expect(src).toContain('data-ci-financement');
   });
 });

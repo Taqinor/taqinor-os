@@ -99,17 +99,6 @@ const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIB
                   </ul>
                 </div>
               ) : null}
-              {ciRent.financement ? (
-                <div class="cine-card mt-5 rounded-xl p-5" data-ci-financement>
-                  <p class="tech-label text-lune-faint" data-i18n data-fr="Financement (offre écrite)" data-en="Financing (written offer)" data-ar="التمويل (عرض مكتوب)">Financement (offre écrite)</p>
-                  {ciRent.financement.libelleClient ? <p class="mt-2 text-sm text-lune-soft">{ciRent.financement.libelleClient}</p> : null}
-                  <ul class="mt-2 space-y-1 text-sm text-lune-soft">
-                    {ciRent.financement.echeanceMad !== null ? (
-                      <li data-i18n
-                        data-fr={`${formatMAD(ciRent.financement.echeanceMad)} par mois${ciRent.financement.dureeMois !== null ? `, pendant ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}`}
-                        data-en={`${formatMAD(ciRent.financement.echeanceMad)} per month${ciRent.financement.dureeMois !== null ? `, for ${formatNumber(ciRent.financement.dureeMois, 0)} months` : ''}`}
-                        data-ar={`${formatMAD(ciRent.financement.echeanceMad)} شهريًا${ciRent.financement.dureeMois !== null ? `، لمدة ${formatNumber(ciRent.financement.dureeMois, 0)} شهرًا` : ''}`}>{`${formatMAD(ciRent.financement.echeanceMad)} par mois${ciRent.financement.dureeMois !== null ? `, pendant ${formatNumber(ciRent.financement.dureeMois, 0)} mois` : ''}`}</li>
-                    ) : null}
                     {ciRent.financement.economieMensuelleMoyenneMad !== null ? (
                       <li data-i18n
                         data-fr={`Économie moyenne : ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} par mois`}

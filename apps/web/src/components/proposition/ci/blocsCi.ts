@@ -4,6 +4,7 @@
  * `synthese_ci` (extracteur `syntheseCi.ts`) ; une valeur non servie est omise, jamais un « 0 ».
  */
 import { formatMAD, formatNumber } from '../../../lib/proposition';
+import { argentCiCalcule } from './syntheseCi';
 import type { SyntheseCi, TextesCi } from './syntheseCi';
 
 // ── CPRW15 — garanties ─────────────────────────────────────────────────────────────────────
@@ -214,3 +215,43 @@ export function comparaisonBatterieCi(
     ],
   };
 }
+
+// ── CPRW25 — offre de financement (commercial ET industriel) ──────────────────────────────
+
+export const TITRE_FINANCEMENT_CI: TextesCi = { fr: 'Offre de financement', en: 'Financing offer', ar: 'عرض التمويل' };
+const HT_CI: TextesCi = { fr: 'HT', en: 'excl. VAT', ar: 'دون احتساب الضريبة' };
+const NBSP = ' ';
+
+/**
+ * L'offre de financement SERVIE (`synthese_ci.argent.financement`, `ci/blocs.py::bloc_financement`) : libellé
+ * client (sinon le titre), échéance mensuelle (+ « sur N mois »), économie mensuelle moyenne estimée, écart
+ * mensuel, source — sur la base HT/TTC servie. `null` sans échéance servie (comme le PDF). Aucun taux inventé.
+ */
+export function financementCi(ci: SyntheseCi | null): { titre: TextesCi; lignes: TextesCi[] } | null {
+  const a = argentCiCalcule(ci);
+  const f = a?.financement ?? null;
+  if (!a || !f || f.echeanceMad === null) return null;
+  const suffixe = (lg: keyof TextesCi): string => (a.base === 'ht' ? ` ${HT_CI[lg]}` : a.base === 'ttc' ? ` ${TTC_CI[lg]}` : '');
+  const par = (g: (lg: keyof TextesCi) => string): TextesCi => ({ fr: g('fr'), en: g('en'), ar: g('ar') });
+  const sur = { fr: (n: string) => `sur ${n} mois`, en: (n: string) => `over ${n} months`, ar: (n: string) => `على مدى ${n} شهرا` };
+  const lignes: TextesCi[] = [];
+  if (f.libelleClient) lignes.push({ fr: f.libelleClient, en: f.libelleClient, ar: f.libelleClient });
+  else lignes.push(TITRE_FINANCEMENT_CI);
+  lignes.push(
+    par((lg) => `${LBL_FINANCEMENT_CI.echeance[lg]}${NBSP}: ${formatMAD(f.echeanceMad!)}${suffixe(lg)}${f.dureeMois ? ' ' + sur[lg](formatNumber(f.dureeMois, 0)) : ''}`),
+  );
+  if (f.economieMensuelleMoyenneMad !== null)
+    lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.economie[lg]}${NBSP}: ${formatMAD(f.economieMensuelleMoyenneMad!)}${suffixe(lg)}`));
+  if (f.ecartMensuelMad !== null)
+    lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.ecart[lg]}${NBSP}: ${formatMAD(f.ecartMensuelMad!)}${suffixe(lg)}`));
+  if (f.source) lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.source[lg]}${NBSP}: ${f.source}`));
+  return { titre: TITRE_FINANCEMENT_CI, lignes };
+}
+
+/** `i18n_labels.py` `ci_echeance_mensuelle`, `ci_economie_mensuelle`, `ci_ecart_mensuel`, `ci_source`. */
+const LBL_FINANCEMENT_CI = {
+  echeance: { fr: 'Échéance mensuelle', en: 'Monthly instalment', ar: 'القسط الشهري' } as TextesCi,
+  economie: { fr: 'Économie mensuelle moyenne estimée', en: 'Estimated average monthly saving', ar: 'متوسط الوفر الشهري المقدر' } as TextesCi,
+  ecart: { fr: 'Écart mensuel', en: 'Monthly difference', ar: 'الفارق الشهري' } as TextesCi,
+  source: { fr: 'Source', en: 'Source', ar: 'المصدر' } as TextesCi,
+};
