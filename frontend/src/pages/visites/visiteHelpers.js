@@ -103,6 +103,7 @@ export const MESURES_SCHEMA = {
       options: [{ value: 'immergee', label: 'Immergée' }, { value: 'surface', label: 'De surface' }, { value: 'ne_sait_pas', label: 'Ne sait pas' }],
     },
     { key: 'pompe_actuelle_cv', label: 'Puissance de la pompe actuelle', unite: 'CV', type: 'number' },
+    { key: 'pompe_actuelle_kw', label: 'Puissance plaque de la pompe actuelle', unite: 'kW', type: 'number' },
     { key: 'tension_v', label: 'Tension de la pompe actuelle', unite: 'V', type: 'number' },
     {
       key: 'alimentation', label: 'Alimentation de la pompe actuelle', unite: '', type: 'select',

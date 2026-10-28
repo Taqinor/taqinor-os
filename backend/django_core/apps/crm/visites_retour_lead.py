@@ -148,8 +148,8 @@ def ecrire_retour_lead_visite(lead, recap, visite_id=None):
 # ``retour_lead_point_eau``), recopié ici mot pour mot (garde de test) :
 # mesure de la visite (``categorie.code``) → colonne Lead, + la provenance
 # « mesure_visite » posée sur la colonne ``*_source`` quand elle existe.
-# Une mesure sans colonne Lead (niveau dynamique, refoulement, conduite,
-# tension, alimentation) n'est PAS recopiée : le moteur la lit par
+# Une mesure sans colonne Lead (niveau dynamique, refoulement, conduite)
+# n'est PAS recopiée : le moteur la lit par
 # ``visites.selectors.mesures_point_eau_pour_lead``.
 RETOUR_LEAD_POINT_EAU = (
     ('point_eau', 'source_eau', 'source_eau', None),
@@ -160,6 +160,10 @@ RETOUR_LEAD_POINT_EAU = (
     ('point_eau', 'profondeur_forage_m', 'profondeur_forage_m', None),
     ('pompe_existante', 'pompe_actuelle_type', 'pompe_actuelle_type', None),
     ('pompe_existante', 'pompe_actuelle_cv', 'pompe_actuelle_cv', None),
+    # AGV3 — la plaque de la pompe existante (kW, tension, phases).
+    ('pompe_existante', 'pompe_actuelle_kw', 'pompe_actuelle_kw', None),
+    ('pompe_existante', 'tension_v', 'pompe_actuelle_tension_v', None),
+    ('pompe_existante', 'alimentation', 'pompe_actuelle_phases', None),
     ('electricite', 'electricite_sur_place', 'electricite_sur_place', None),
     ('site_pv', 'distance_forage_champ_m', 'distance_forage_champ_m', None),
     ('administratif', 'autorisation_prelevement', 'autorisation_prelevement',
@@ -171,6 +175,11 @@ RETOUR_LEAD_POINT_EAU = (
      'autorisation_volume_m3_an', None),
     ('administratif', 'compteur_eau', 'compteur_eau', None),
 )
+
+
+#: AGV3 — valeurs admises d'une colonne entière (la tension de plaque n'a que
+#: deux valeurs réelles) ; toute autre n'est pas recopiée.
+_ENTIERS_ADMIS = {'pompe_actuelle_tension_v': (220, 380)}
 
 
 def _valeur_colonne_lead(colonne, brute):
@@ -192,6 +201,16 @@ def _valeur_colonne_lead(colonne, brute):
         return valeur.quantize(Decimal(1).scaleb(-champ.decimal_places))
     if champ.get_internal_type() == 'BooleanField':
         return brute if isinstance(brute, bool) else None
+    if 'Integer' in champ.get_internal_type():
+        try:
+            nombre = Decimal(str(brute))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+        if not nombre.is_finite() or nombre != nombre.to_integral_value():
+            return None
+        entier = int(nombre)
+        admis = _ENTIERS_ADMIS.get(colonne)
+        return entier if admis is None or entier in admis else None
     texte = str(brute).strip()
     if champ.choices and texte not in dict(champ.choices):
         return None
@@ -200,6 +219,38 @@ def _valeur_colonne_lead(colonne, brute):
     except ValidationError:
         return None
     return texte[:champ.max_length] if champ.max_length else texte
+
+
+def _noter_mesure_non_recopiee(lead, user, colonne, brute):
+    """AGV4 — note de chatter « Mesure de visite non recopiée : <libellé> =
+    <valeur> » ; pas de doublon si la même note existe déjà (revalidation)."""
+    libelle = activity.TRACKED_FIELDS.get(colonne, colonne)
+    corps = f'Mesure de visite non recopiée : {libelle} = {brute}'
+    if LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE, body=corps).exists():
+        return None
+    return activity.log_note(lead, user, corps)
+
+
+NOTE_POMPE_EXISTANTE = (
+    'Pompe existante trouvée à la visite : demander au client pompe neuve '
+    'ou pompe conservée (mode de pompe)')
+
+
+def _noter_pompe_existante_trouvee(lead, user, mesures):
+    """AGV9 (D-AGR-9, décision à revoir) — une pompe présente à la visite
+    n'écrit JAMAIS ``mode_pompe`` (le client choisit) : si le mode est vide,
+    une note de chatter (sans doublon) demande de poser la question."""
+    bloc = mesures.get('pompe_existante')
+    if not isinstance(bloc, dict) or bloc.get('pompe_presente') is not True:
+        return None
+    if lead.mode_pompe:
+        return None
+    if LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body=NOTE_POMPE_EXISTANTE).exists():
+        return None
+    return activity.log_note(lead, user, NOTE_POMPE_EXISTANTE)
 
 
 def appliquer_mesures_point_eau(lead, mesures, user):
@@ -222,6 +273,9 @@ def appliquer_mesures_point_eau(lead, mesures, user):
             continue
         valeur = _valeur_colonne_lead(colonne, brute)
         if valeur is None:
+            # AGV4 — jamais perdue en silence : la mesure non recopiable est
+            # nommée au chatter (une seule fois par texte identique).
+            _noter_mesure_non_recopiee(lead, user, colonne, brute)
             continue
         if getattr(lead, colonne) != valeur:
             setattr(lead, colonne, valeur)
@@ -234,6 +288,7 @@ def appliquer_mesures_point_eau(lead, mesures, user):
     if ecrites:
         lead.save(update_fields=ecrites + ['date_modification'])
         activity.log_changes(avant, lead, user)
+    _noter_pompe_existante_trouvee(lead, user, mesures)
     return ecrites
 
 

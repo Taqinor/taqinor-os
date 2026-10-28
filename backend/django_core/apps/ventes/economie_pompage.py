@@ -278,7 +278,8 @@ def depense_actuelle(saisies):
                     champ='facture_reseau.periodicite')
             if facture.get('part_fixe_mad_mois') is None:
                 manque('facture_reseau.part_fixe_mad_mois',
-                       'part fixe de la facture non déclarée (0 si aucune)')
+                       'part fixe de la facture électricité du pompage non déclarée '
+                       '(0 si aucune)')
             else:
                 part_fixe = _positif('facture_reseau.part_fixe_mad_mois',
                                      facture['part_fixe_mad_mois'])
