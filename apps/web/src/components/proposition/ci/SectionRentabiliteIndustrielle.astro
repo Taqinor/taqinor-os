@@ -111,21 +111,6 @@ const sensibilites = (ciRent?.sensibilites ?? []).filter((sn) => LIBELLES_SENSIB
                   </ul>
                 </div>
               ) : null}
-                    {ciRent.financement.economieMensuelleMoyenneMad !== null ? (
-                      <li data-i18n
-                        data-fr={`Économie moyenne : ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} par mois`}
-                        data-en={`Average savings: ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} per month`}
-                        data-ar={`متوسط التوفير: ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} شهريًا`}>{`Économie moyenne : ${formatMAD(ciRent.financement.economieMensuelleMoyenneMad)} par mois`}</li>
-                    ) : null}
-                    {ciRent.financement.ecartMensuelMad !== null ? (
-                      <li data-i18n
-                        data-fr={`${formatMAD(ciRent.financement.ecartMensuelMad)} par mois : différence entre l'échéance et l'économie moyenne`}
-                        data-en={`${formatMAD(ciRent.financement.ecartMensuelMad)} per month: difference between the instalment and the average savings`}
-                        data-ar={`${formatMAD(ciRent.financement.ecartMensuelMad)} شهريًا: الفرق بين القسط ومتوسط التوفير`}>{`${formatMAD(ciRent.financement.ecartMensuelMad)} par mois : différence entre l'échéance et l'économie moyenne`}</li>
-                    ) : null}
-                  </ul>
-                </div>
-              ) : null}
             </div>
             </>
           )}

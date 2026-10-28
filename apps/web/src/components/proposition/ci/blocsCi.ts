@@ -3,7 +3,7 @@
  * (`quote_engine/i18n_labels.py`, `ci/blocs.py`). Aucun chiffre n'est calculé ici : tout est lu dans
  * `synthese_ci` (extracteur `syntheseCi.ts`) ; une valeur non servie est omise, jamais un « 0 ».
  */
-import { formatMAD, formatNumber } from '../../../lib/proposition';
+import { formatMAD, formatMADCentimes, formatNumber } from '../../../lib/proposition';
 import { argentCiCalcule } from './syntheseCi';
 import type { SyntheseCi, TextesCi } from './syntheseCi';
 
@@ -132,7 +132,7 @@ export function servicesCi(ci: SyntheseCi | null, societe: string = SOCIETE_CI):
     lignes.push(
       par((lg) => {
         const detail = (om.lignes.length > 0 ? om.lignes : [{ designation: om.libelle, totalHt: null }]).map((li) => {
-          const prix = li.totalHt !== null && li.totalHt > 0 ? `${formatMAD(li.totalHt)} ${L.ht![lg]}` : L.tarif_sur_demande![lg];
+          const prix = li.totalHt !== null && li.totalHt > 0 ? `${formatMADCentimes(li.totalHt)} ${L.ht![lg]}` : L.tarif_sur_demande![lg];
           return `${li.designation ?? ''} — ${prix}`;
         });
         return `${L.maintenance![lg]} : ${detail.join(' ; ')}${om.statut === 'propose' ? L.propose_non_inclus![lg] : ''}`;
@@ -238,12 +238,12 @@ export function financementCi(ci: SyntheseCi | null): { titre: TextesCi; lignes:
   if (f.libelleClient) lignes.push({ fr: f.libelleClient, en: f.libelleClient, ar: f.libelleClient });
   else lignes.push(TITRE_FINANCEMENT_CI);
   lignes.push(
-    par((lg) => `${LBL_FINANCEMENT_CI.echeance[lg]}${NBSP}: ${formatMAD(f.echeanceMad!)}${suffixe(lg)}${f.dureeMois ? ' ' + sur[lg](formatNumber(f.dureeMois, 0)) : ''}`),
+    par((lg) => `${LBL_FINANCEMENT_CI.echeance[lg]}${NBSP}: ${formatMADCentimes(f.echeanceMad!)}${suffixe(lg)}${f.dureeMois ? ' ' + sur[lg](formatNumber(f.dureeMois, 0)) : ''}`),
   );
   if (f.economieMensuelleMoyenneMad !== null)
-    lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.economie[lg]}${NBSP}: ${formatMAD(f.economieMensuelleMoyenneMad!)}${suffixe(lg)}`));
+    lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.economie[lg]}${NBSP}: ${formatMADCentimes(f.economieMensuelleMoyenneMad!)}${suffixe(lg)}`));
   if (f.ecartMensuelMad !== null)
-    lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.ecart[lg]}${NBSP}: ${formatMAD(f.ecartMensuelMad!)}${suffixe(lg)}`));
+    lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.ecart[lg]}${NBSP}: ${formatMADCentimes(f.ecartMensuelMad!)}${suffixe(lg)}`));
   if (f.source) lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.source[lg]}${NBSP}: ${f.source}`));
   return { titre: TITRE_FINANCEMENT_CI, lignes };
 }

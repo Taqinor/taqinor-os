@@ -148,6 +148,9 @@ describe('CPRW6 — rentabilité industrielle : libellés clients FR/EN/AR', () 
     expect(SRC).not.toContain('/ mois');
     expect(SRC).not.toContain("d'écart");
     expect(SRC).not.toContain('data-ci-financement');
+    // Relecture Fable r3 : aucun reste de l'ancien bloc (il déréférençait `ciRent.financement` nul).
+    expect(SRC).not.toContain('ciRent.financement');
+    expect(SRC).not.toContain('différence entre l');
   });
   it('LCOE : une seule ligne, valeur servie à 4 décimales comme le PDF (CPRW10), plus de « MAD/kWh »', () => {
     expect(SRC).toContain('Coût du kWh solaire');
@@ -213,7 +216,7 @@ describe('CPRW25 — financementCi : l’offre servie, quel que soit le segment'
     expect(f.titre.fr).toBe('Offre de financement');
     expect(f.lignes[0].fr).toBe('Offre de crédit');
     expect(f.lignes[1].fr).toContain('Échéance mensuelle');
-    expect(f.lignes[1].fr).toContain('12 000 MAD HT sur 84 mois');
+    expect(f.lignes[1].fr).toContain('12 000,00 MAD HT sur 84 mois');
     expect(f.lignes[1].en).toContain('Monthly instalment');
     expect(f.lignes[1].en).toContain('over 84 months');
     expect(f.lignes[1].ar).toContain('القسط الشهري');
@@ -240,11 +243,14 @@ describe('CPRW25 — financementCi : l’offre servie, quel que soit le segment'
 describe('CPRW28 — accessibilité des blocs C&I', () => {
   const lire = (nom: string) =>
     readFileSync(fileURLToPath(new URL(`../src/components/proposition/ci/${nom}`, import.meta.url)), 'utf-8').replace(/\r\n/g, '\n');
-  it('les titres de bloc de Garanties, ComparaisonBatterie et SectionAutoconso sont des h3 (plus des p tech-label)', () => {
+  it('les titres de BLOC sont des h3 ; les libellés de chiffres (tuiles) restent du texte, pas des titres', () => {
     for (const nom of ['GarantiesCi.astro', 'ComparaisonBatterieCi.astro', 'SectionAutoconso.astro']) {
-      const src = lire(nom);
-      expect(src, nom).not.toContain('<p class="tech-label');
-      expect(src, nom).toContain('<h3 class="tech-label');
+      expect(lire(nom), nom).toContain('<h3 class="tech-label');
+    }
+    const auto = lire('SectionAutoconso.astro');
+    for (const tuile of ['Puissance installée', 'Taux de couverture', 'Rentabilisé en']) {
+      expect(auto).toContain(`<p class="tech-label text-lune-faint" data-i18n data-fr="${tuile}"`);
+      expect(auto).not.toContain(`<h3 class="tech-label text-lune-faint" data-i18n data-fr="${tuile}"`);
     }
   });
   it('rentabilité : légende sr-only trilingue, en-têtes de colonne scope=col, année scope=row, nav traduite', () => {
