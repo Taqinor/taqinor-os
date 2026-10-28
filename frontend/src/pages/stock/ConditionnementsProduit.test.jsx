@@ -31,8 +31,11 @@ describe('ConditionnementsProduit (WIR109)', () => {
     })
 
     renderPage()
+    // La grille existe dès le premier rendu (0 ligne pendant le chargement) :
+    // la ligne s'attend (findBy), sinon course perdue sous couverture
+    // (nocturne frontend-full 40664182387, aria-rowcount="0").
     const grid = await screen.findByRole('grid', { name: 'Conditionnements produit' })
-    expect(within(grid).getByText('Touret 100 m')).toBeInTheDocument()
+    expect(await within(grid).findByText('Touret 100 m')).toBeInTheDocument()
   })
 
   it('crée un conditionnement rattaché à un produit', async () => {
