@@ -296,18 +296,6 @@ def _hypotheses_toit(e, bornes_pub, raison, hypotheses, limite=None):
     return angle, texte
 
 
-def _toit_borne_taille_explicite(e, bornes_pub, pmax_wc):
-    """R1 (P1) — une taille EXPLICITE (lignes du devis, rafraîchisseur CIQ119)
-    posée au niveau de la contenance rasante — à un panneau près, sans la
-    dépasser — est « limitée par le toit » : la phrase client atteint ainsi
-    le PDF d'un vrai devis créé à cette taille."""
-    _kwc_30, kwc_10 = _contenances(bornes_pub)
-    if kwc_10 is None or e.get('inclinaison_retenue_deg') != ANGLE_POSE_RASANTE_DEG:
-        return False
-    panneau = (_pos(pmax_wc) or 0.0) / 1000.0
-    return kwc_10 - panneau - 1e-9 <= e['kwc'] <= kwc_10 + 1e-9
-
-
 def _evaluateur(bornes_pub, kwc_toit, production_jours_types, production_rasante, **noyau):
     """R1 — ``evaluer(kwc)`` : le palier est évalué (production, borne de
     panneaux entiers) dans la pose qui le loge — 30° tant qu'il y tient,
@@ -501,7 +489,7 @@ def dimensionner_ci(*, charge_jours_types, production_jours_types, tension, comb
     explicite = _pos(taille_explicite_kwc)
     if explicite is not None:
         return _taille_explicite(explicite, evaluer(explicite), bornes_pub, kwc_toit, ps_kva,
-                                 alertes, hypotheses, pmax_wc=pmax_wc)
+                                 alertes, hypotheses)
 
     evals, paliers = [], []
     meilleur, refus, base_refus = None, 0, None
@@ -671,8 +659,11 @@ def _alerte_onduleurs(onduleurs):
                    'Aucun onduleur C&I éligible : %s.' % detail, niveau='bloquant')
 
 
-def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses, pmax_wc=None):
-    """D-QJR5-13 : une taille saisie est SOUVERAINE — calculée telle quelle."""
+def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses):
+    """D-QJR5-13 : une taille saisie est SOUVERAINE — calculée telle quelle.
+    R1 (B1) — elle n'est JAMAIS « limitée par le toit » : l'économie n'a pas
+    été balayée ; le verdict calculé à la création d'un devis est relu par
+    l'orchestrateur (``etude_ci._relire_verdict_toit``), jamais deviné ici."""
     if e['sans_panneau']:
         alertes.append(_alerte_module())
         return {'taille': _vide('module', bornes_pub), 'evaluation': None,
@@ -696,9 +687,7 @@ def _taille_explicite(kwc, e, bornes_pub, kwc_toit, ps_kva, alertes, hypotheses,
             alertes.append(_alerte_onduleurs(e['onduleurs']))
     hypotheses.append({'cle': 'taille_explicite_kwc', 'valeur': kwc, 'statut': 'declare',
                        'source': 'D-QJR5-13 — taille saisie souveraine'})
-    inclinaison, limite_toit = _hypotheses_toit(
-        e, bornes_pub, 'taille_explicite', hypotheses,
-        limite=_toit_borne_taille_explicite(e, bornes_pub, pmax_wc))
+    inclinaison, limite_toit = _hypotheses_toit(e, bornes_pub, 'taille_explicite', hypotheses)
     taille = {
         'retenue_kwc': kwc, 'nb_panneaux': _nb_panneaux(e), 'pas_kwc': PAS_KWC,
         'horizon_marginal_annees': HORIZON_MARGINAL_PV, 'raison_arret': 'taille_explicite',

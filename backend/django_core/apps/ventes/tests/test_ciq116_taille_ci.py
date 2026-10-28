@@ -552,6 +552,38 @@ class OptionAvecBatterieTests(unittest.TestCase):
         params.update(kw)
         return dimensionner_option_avec(**params)
 
+    def test_b2_option_imposee_evaluee_dans_sa_pose(self):
+        # B2 (arbitrage coordinatrice) — l'option « avec » des LIGNES
+        # (rafraîchisseur) prend la production de la pose qui LA loge :
+        # 30,53 kWc au-delà de 21,3 kWc → série rasante, inclinaison 10 ;
+        # 20,59 kWc → 30°, production de l'option « sans », rien d'ajouté.
+        from apps.ventes.domain.etude_ci_batterie import option_avec_de_l_etude
+        hybrides = _hybrides_bt()
+        moindre = [dict(jt, production_kwh_kwc=[v * 0.9 for v in jt['production_kwh_kwc']])
+                   for jt in self.prod]
+        borne = {'kwc': 35.5, 'kwc_30': 21.3, 'kwc_10': 35.5, 'surface_m2': 200, 'source': 's'}
+
+        def imposer(kwc, nb, rasante, toit=borne):
+            imposee = {'kwc': kwc, 'nb_panneaux': nb, 'banque': dict(BATTERIES[1], quantite=2),
+                       'investissement': None, 'empreinte': [], 'hybrides': hybrides,
+                       'onduleurs': {'combinaison': [dict(hybrides[2], quantite=2)]}}
+            return option_avec_de_l_etude(
+                {}, None, choix=None, lead=None, imposee=imposee, charge=self.charge,
+                production=self.prod, tension='bt', revente_choisie=False,
+                valoriser=_valoriser(self.charge), taux_tva_pct=20, phase='tri', ps_kva=None,
+                composer=_composer, borne_toit=toit,
+                production_rasante=(lambda: moindre) if rasante else None)['bloc']
+        avec_serie, sans_serie = imposer(30.53, 43, True), imposer(30.53, 43, False)
+        self.assertEqual(avec_serie['inclinaison_retenue_deg'], 10.0)
+        self.assertLess(avec_serie['bilan']['production_kwh'], sans_serie['bilan']['production_kwh'])
+        bas = imposer(20.59, 29, True)
+        self.assertEqual(bas['inclinaison_retenue_deg'], 30.0)
+        self.assertEqual(bas['bilan']['production_kwh'],
+                         imposer(20.59, 29, False)['bilan']['production_kwh'])
+        # Clé ADDITIVE : absente sans les deux contenances (pente déclarée, autre pose).
+        self.assertNotIn('inclinaison_retenue_deg',
+                         imposer(30.53, 43, True, toit={'kwc': 21.3, 'source': 's'}))
+
     def test_p2_production_de_par_champ(self):
         # R1 (P2) — chaque champ « avec » est évalué avec la production de la
         # pose qui le loge : ``production_de(kwc)`` est appelée au kWc du champ.
@@ -838,22 +870,18 @@ class PoseRasanteR1Tests(unittest.TestCase):
         self.assertIn('35.5', alerte['message'])           # la borne effective, la rasante
         self.assertIsNone(r2['taille']['taille_limitee_toit'])   # au-delà : pas « limitée »
 
-    def test_p1_taille_explicite_des_lignes_au_niveau_de_la_rasante_dit_le_toit(self):
-        # P1 (coordinatrice) — l'étude STOCKÉE vient du rafraîchisseur (taille
-        # explicite = kWc des lignes) : 50 panneaux (35,5 kWc), au niveau de la
-        # contenance rasante à un panneau près, portent la phrase client.
-        r = self._taille(_charge('hotel', 20000), bornes=self._bornes(), taille_explicite_kwc=35.5)
-        t = r['taille']
-        self.assertEqual((t['raison_arret'], t['nb_panneaux'], t['inclinaison_retenue_deg']),
-                         ('taille_explicite', 50, 10.0))
-        self.assertEqual(t['taille_limitee_toit'],
-                         'taille limitée par le toit : 200 m² déclarés → 35.5 kWc en pose rasante')
-        self.assertEqual(self._hyp(r, 'taille_limitee_toit')['source'], t['taille_limitee_toit'])
-        # 49 panneaux (34,79 kWc) : encore « au niveau » ; 48 : non.
-        self.assertIsNotNone(self._taille(_charge('hotel', 20000), bornes=self._bornes(),
-                                          taille_explicite_kwc=34.79)['taille']['taille_limitee_toit'])
-        self.assertIsNone(self._taille(_charge('hotel', 20000), bornes=self._bornes(),
-                                       taille_explicite_kwc=34.08)['taille']['taille_limitee_toit'])
+    def test_b1_taille_explicite_jamais_limitee_par_le_toit(self):
+        # B1 (arbitrage coordinatrice 28/10/2026) — une taille EXPLICITE
+        # (saisie, ou kWc des lignes au rafraîchissement) n'imprime JAMAIS
+        # « limitée par le toit » : l'économie n'a pas été balayée. Même posée
+        # pile à la contenance rasante (50 panneaux = 35,5 kWc). Le verdict
+        # calculé à la création est relu par l'orchestrateur (etude_ci), pas ici.
+        for kwc in (35.5, 34.79, 30):
+            t = self._taille(_charge('hotel', 20000), bornes=self._bornes(),
+                             taille_explicite_kwc=kwc)['taille']
+            self.assertEqual(t['raison_arret'], 'taille_explicite', kwc)
+            self.assertEqual(t['inclinaison_retenue_deg'], 10.0, kwc)
+            self.assertIsNone(t['taille_limitee_toit'], kwc)
 
     def test_production_rasante_differente_pese_sur_l_economie(self):
         # La série 10° (≈ −6 % à Casablanca) ne sert qu'aux paliers logés en

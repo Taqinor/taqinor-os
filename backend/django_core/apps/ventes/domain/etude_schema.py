@@ -385,6 +385,16 @@ SCHEMA = {
     'production_figee': _cle((dict,), MOTEUR_CI, DERIVEE,
                              'CIQ117 — coordonnées + réponse PVGIS figées '
                              '(reproductibilité, CIQ109).'),
+    'production_figee_rasante': _cle((dict,), MOTEUR_CI, DERIVEE,
+                                     'R1 (28/10/2026) — la production PVGIS figée en pose '
+                                     'rasante 10° quand la taille est restée à 30° (option '
+                                     '« avec » logée au-delà, rafraîchisseur).'),
+    'taille_creation_ci': _cle((dict,), MOTEUR_CI, DERIVEE,
+                               'R1 (28/10/2026) — le verdict de taille CALCULÉ à la création '
+                               'du devis automatique (raison d\'arrêt, inclinaison retenue, '
+                               'contenances du toit, phrase « limitée par le toit »), relu au '
+                               'rafraîchissement tant que les lignes et le toit n\'ont pas '
+                               'changé ; copié avec les lignes (V2, copie).'),
 
     # ── Clé HISTORIQUE sans écrivain ─────────────────────────────────────────
     'payback_annees': _cle(
