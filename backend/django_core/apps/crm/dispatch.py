@@ -102,9 +102,11 @@ def _regle_correspond(regle, lead):
     if villes and not ({_sans_accents(lead.ville), _sans_accents(lead.ville_reference)}
                        & set(villes)):
         return False
-    if regle.type_installation and lead.type_installation != regle.type_installation:
+    types = regle.types_installation or []
+    if types and lead.type_installation not in types:
         return False
-    if regle.source and lead.canal != regle.source:
+    sources = regle.sources or []
+    if sources and lead.canal not in sources:
         return False
     if regle.facture_min is None and regle.facture_max is None:
         return True
@@ -121,12 +123,14 @@ def raison_regle(regle):
     if (regle.villes or '').strip():
         morceaux.append('ville ' + ', '.join(
             v.strip() for v in regle.villes.split(',') if v.strip()))
-    if regle.type_installation:
-        morceaux.append('type ' + str(dict(Lead.TypeInstallation.choices).get(
-            regle.type_installation, regle.type_installation)))
-    if regle.source:
-        morceaux.append('source ' + str(dict(Lead.Canal.choices).get(
-            regle.source, regle.source)))
+    if regle.types_installation:
+        libelles = dict(Lead.TypeInstallation.choices)
+        morceaux.append('type ' + ', '.join(
+            str(libelles.get(v, v)) for v in regle.types_installation))
+    if regle.sources:
+        libelles = dict(Lead.Canal.choices)
+        morceaux.append('source ' + ', '.join(
+            str(libelles.get(v, v)) for v in regle.sources))
     if regle.facture_min is not None or regle.facture_max is not None:
         bas = (f'{regle.facture_min.normalize():f}'
                if regle.facture_min is not None else '0')
@@ -184,6 +188,76 @@ def appliquer_mise_en_attente(lead):
     return AttributionEnAttente.objects.create(
         company_id=lead.company_id, lead=lead, equipe=equipe, proposee=membre,
         raison=raison[:255], echeance=echeance_pour(equipe, timezone.now()))
+
+
+def peut_regler(user, equipe):
+    """Qui règle l'attribution automatique d'une équipe (fondateur,
+    28/10/2026) : interrupteur « Le responsable confirme chaque lead », délai
+    et règles de proposition. Direction/Admin (tous les droits), le
+    responsable de l'équipe, et le directeur commercial = la tête du
+    département de l'équipe. Personne d'autre ; toujours la même société."""
+    if (user is None or equipe is None or not user.company_id
+            or user.company_id != equipe.company_id):
+        return False
+    if getattr(user, 'is_admin_role', False):
+        return True
+    if equipe.responsable_id is not None and equipe.responsable_id == user.pk:
+        return True
+    departement = equipe.departement
+    return bool(departement is not None
+                and departement.company_id == equipe.company_id
+                and departement.responsable_id == user.pk)
+
+
+def equipes_reglables(user):
+    """Équipes commerciales ACTIVES dont ``user`` peut régler l'attribution
+    (contrat ``dispatch_leads.json`` → ``equipes_reglables``), par nom."""
+    if not getattr(user, 'company_id', None):
+        return []
+    equipes = (EquipeCommerciale.objects
+               .filter(company_id=user.company_id, actif=True)
+               .select_related('departement').order_by('nom', 'id'))
+    # Membres ACTIFS fournis ici : un responsable au rôle Commercial n'a pas
+    # accès à /crm/assignable-users/ (palier responsable) et l'éditeur de
+    # règles en a besoin pour choisir le membre proposé.
+    return [{**reglage_equipe(e), 'membres': [
+        {'id': m.pk, 'nom': nom_affiche(m)}
+        for m in e.membres.filter(is_active=True, company_id=user.company_id)
+        .order_by('first_name', 'username', 'id')]}
+        for e in equipes if peut_regler(user, e)]
+
+
+def reglage_equipe(equipe):
+    return {'id': equipe.pk, 'nom': equipe.nom,
+            'confirmation_responsable': equipe.confirmation_responsable,
+            'delai_minutes': equipe.delai_attribution_minutes}
+
+
+def modifier_reglages(user, equipe_id, valeurs):
+    """Écrit l'interrupteur et/ou le délai d'une équipe — ces deux champs
+    SEULS (le CRUD des équipes reste réservé à l'Admin, ACRM26). 404 hors
+    société, 403 sans droit de réglage. Couper la confirmation ne bloque
+    aucun lead : les attentes déjà posées gardent leur échéance et la tâche
+    ``attribuer_echeances`` les attribue comme avant."""
+    equipe = (EquipeCommerciale.objects.select_related('departement')
+              .filter(pk=equipe_id, company_id=user.company_id).first()
+              if user.company_id else None)
+    if equipe is None:
+        raise NotFound('Équipe introuvable.')
+    if not peut_regler(user, equipe):
+        raise PermissionDenied(
+            "Seuls le responsable de l'équipe, le directeur commercial et la "
+            "Direction règlent son attribution.")
+    champs = []
+    if 'confirmation_responsable' in valeurs:
+        equipe.confirmation_responsable = valeurs['confirmation_responsable']
+        champs.append('confirmation_responsable')
+    if 'delai_minutes' in valeurs:
+        equipe.delai_attribution_minutes = valeurs['delai_minutes']
+        champs.append('delai_attribution_minutes')
+    if champs:
+        equipe.save(update_fields=champs)
+    return reglage_equipe(equipe)
 
 
 def _peut_tout_voir(user):
@@ -357,7 +431,8 @@ def file_attente(user):
     """La file du responsable (contrat ``dispatch_leads.json``) : leads en
     attente des équipes qu'il dirige (Direction/Admin : toutes), du plus
     ancien au plus récent, et les membres ACTIFS de l'équipe affichée."""
-    vide = {'equipe': None, 'en_attente': 0, 'leads': [], 'membres': []}
+    vide = {'equipe': None, 'en_attente': 0, 'leads': [], 'membres': [],
+            'equipes_reglables': equipes_reglables(user)}
     if not user.company_id:
         return vide
     # Équipes archivées comprises : la tâche attribue aussi leurs leads.
@@ -390,4 +465,5 @@ def file_attente(user):
         'en_attente': len(attentes),
         'leads': [_ligne_lead(a, maintenant) for a in attentes],
         'membres': [_ligne_membre(m, plafond) for m in membres],
+        'equipes_reglables': vide['equipes_reglables'],
     }

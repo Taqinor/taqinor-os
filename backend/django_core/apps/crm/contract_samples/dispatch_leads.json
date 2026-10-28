@@ -54,7 +54,17 @@
         "id": 7,
         "nom": "Casa",
         "confirmation_responsable": true,
-        "delai_minutes": 5
+        "delai_minutes": 5,
+        "membres": [
+          {
+            "id": 4,
+            "nom": "Sara"
+          },
+          {
+            "id": 5,
+            "nom": "Amine"
+          }
+        ]
       }
     ]
   },
@@ -94,7 +104,17 @@
         "id": 7,
         "nom": "Casa",
         "confirmation_responsable": true,
-        "delai_minutes": 5
+        "delai_minutes": 5,
+        "membres": [
+          {
+            "id": 4,
+            "nom": "Sara"
+          },
+          {
+            "id": 5,
+            "nom": "Amine"
+          }
+        ]
       }
     ]
   },
@@ -104,6 +124,6 @@
     "propose.raison": "Texte lisible de la règle appliquée, ou « Rotation équilibrée » quand aucune règle ne correspond.",
     "membres": "Membres ACTIFS de l'équipe, dans l'ordre d'affichage ; `leads_ouverts` = leads non signés/froids/perdus ; `au_plafond` selon le plafond de leads ouverts du profil.",
     "exemple_file_vide": "Équipe dirigée, rien en attente (l'écran dit « Aucun lead en attente ») ; `exemple_vide` = l'appelant ne dirige aucune équipe qui confirme.",
-    "equipes_reglables": "Équipes commerciales dont l'appelant peut régler l'attribution (interrupteur « Le responsable confirme chaque lead », délai, règles de proposition) : celles dont il est le responsable, celles du département dont il est la tête (directeur commercial), toutes pour Direction/Admin. Écriture : `PATCH /api/django/crm/dispatch/reglages/<equipe_id>/` `{confirmation_responsable, delai_minutes}` et le CRUD `crm/regles-attribution/`."
+    "equipes_reglables": "Équipes commerciales dont l'appelant peut régler l'attribution (interrupteur « Le responsable confirme chaque lead », délai, règles de proposition) : celles dont il est le responsable, celles du département dont il est la tête (directeur commercial), toutes pour Direction/Admin. Écriture : `PATCH /api/django/crm/dispatch/reglages/<equipe_id>/` `{confirmation_responsable, delai_minutes}` et le CRUD `crm/regles-attribution/`. `membres` = membres ACTIFS de l'équipe `{id, nom}` (choix du membre proposé dans l'éditeur de règles)."
   }
 }

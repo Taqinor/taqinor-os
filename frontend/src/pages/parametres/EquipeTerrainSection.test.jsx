@@ -19,6 +19,7 @@ const USERS = [
 
 const {
   getEquipes, saveEquipe, deleteEquipe, apiGet, apiPatch, saveEquipeCom, rolesMock, getDispatch, attribuerLead,
+  getEquipesCom, getAssignableUsers, getReglesAttribution, saveRegleAttribution, saveReglagesDispatch, getCanaux,
 } = vi.hoisted(() => ({
   getEquipes: vi.fn(),
   saveEquipe: vi.fn(() => Promise.resolve({ data: {} })),
@@ -28,6 +29,12 @@ const {
   saveEquipeCom: vi.fn(() => Promise.resolve({ data: {} })),
   getDispatch: vi.fn(),
   attribuerLead: vi.fn(() => Promise.resolve({ data: {} })),
+  getEquipesCom: vi.fn(() => Promise.resolve({ data: [{ id: 7, membres: [4, 5] }] })),
+  getAssignableUsers: vi.fn(() => Promise.resolve({ data: [{ id: 4, username: 'sara' }, { id: 5, username: 'amine' }] })),
+  getReglesAttribution: vi.fn(() => Promise.resolve({ data: [] })),
+  saveRegleAttribution: vi.fn(() => Promise.resolve({ data: {} })),
+  saveReglagesDispatch: vi.fn(() => Promise.resolve({ data: {} })),
+  getCanaux: vi.fn(() => Promise.resolve({ data: [] })),
   rolesMock: {
     getOrganisation: vi.fn(),
     getPostes: vi.fn(),
@@ -41,7 +48,10 @@ const {
 
 vi.mock('../../api/axios', () => ({ default: { get: apiGet, patch: apiPatch } }))
 vi.mock('../../api/crmApi', () => ({
-  default: { saveEquipe: saveEquipeCom, getDispatch, attribuerLead },
+  default: {
+    saveEquipe: saveEquipeCom, getDispatch, attribuerLead, getEquipes: getEquipesCom,
+    getAssignableUsers, getReglesAttribution, saveRegleAttribution, saveReglagesDispatch, getCanaux,
+  },
 }))
 vi.mock('../../api/rolesApi', () => ({ default: rolesMock }))
 
@@ -276,5 +286,45 @@ describe('AttributionLeadsPage (attribution des leads)', () => {
     getDispatch.mockResolvedValue(reponseContrat('crm', 'dispatch_leads', 'exemple_vide'))
     render(<AttributionLeadsPage />)
     expect(await screen.findByText(/ne dirigez aucune équipe commerciale/)).toBeInTheDocument()
+  })
+
+  it('panneau de réglages visible avec equipes_reglables, absent sinon', async () => {
+    getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
+    render(<AttributionLeadsPage />)
+    expect(await screen.findByRole('button', { name: /Réglages de l’attribution/ })).toBeInTheDocument()
+    cleanup()
+    getDispatch.mockResolvedValue(reponseContrat('crm', 'dispatch_leads', 'exemple_vide'))
+    render(<AttributionLeadsPage />)
+    await screen.findByText(/ne dirigez aucune équipe commerciale/)
+    expect(screen.queryByRole('button', { name: /Réglages de l’attribution/ })).toBeNull()
+  })
+
+  it('règle à choix multiples : deux types cochés envoyés en tableau', async () => {
+    getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
+    const user = userEvent.setup()
+    render(<AttributionLeadsPage />)
+    await user.click(await screen.findByRole('button', { name: /Réglages de l’attribution/ }))
+    await user.click(await screen.findByRole('button', { name: /Ajouter une règle/ }))
+    await user.click(screen.getByRole('checkbox', { name: 'Résidentiel' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Commercial' }))
+    const membre = screen.getByRole('combobox')
+    await waitFor(() => expect(within(membre).getByRole('option', { name: 'Sara' })).toBeInTheDocument())
+    await user.selectOptions(membre, 'Sara')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(saveRegleAttribution).toHaveBeenCalledWith(null, expect.objectContaining({
+      equipe: 7, types_installation: ['residentiel', 'commercial'], sources: [], membre: 4,
+    })))
+  })
+
+  it('le délai enregistré passe par saveReglagesDispatch', async () => {
+    getDispatch.mockResolvedValue({ data: DISPATCH.exemple })
+    const user = userEvent.setup()
+    render(<AttributionLeadsPage />)
+    await user.click(await screen.findByRole('button', { name: /Réglages de l’attribution/ }))
+    const champ = await screen.findByLabelText(/Délai avant attribution automatique/)
+    await user.clear(champ)
+    await user.type(champ, '9')
+    await user.tab()
+    await waitFor(() => expect(saveReglagesDispatch).toHaveBeenCalledWith(7, { delai_minutes: 9 }))
   })
 })

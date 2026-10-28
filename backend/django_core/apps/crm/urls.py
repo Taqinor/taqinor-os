@@ -37,7 +37,8 @@ from .clients_views import (
 )
 # SPL77 — intake des leads (rapport d'attribution, points de contact).
 from .leads_views import PointContactViewSet, rapport_attribution
-from .dispatch_views import RegleAttributionViewSet, dispatch_attribuer, dispatch_file
+from .dispatch_views import (
+    RegleAttributionViewSet, dispatch_attribuer, dispatch_file, dispatch_reglages)
 # SPL79 — rendez-vous (visites).
 from .visites_views import AppointmentViewSet
 # SPL76 — sous-parcours clients : salle de vente, partenaires, apporteurs,
@@ -143,6 +144,8 @@ urlpatterns = [
     path('dispatch/', dispatch_file, name='dispatch-leads'),
     path('dispatch/<int:lead_id>/attribuer/', dispatch_attribuer,
          name='dispatch-attribuer'),
+    path('dispatch/reglages/<int:equipe_id>/', dispatch_reglages,
+         name='dispatch-reglages'),
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
     path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
     # VT12 — texture du toit CALÉE du lead (dernière visite validée), lue par

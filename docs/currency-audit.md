@@ -48,8 +48,8 @@ with no rate column at all — mono-MAD in practice.
 | crm | CommissionPartenaire | `apps/crm/models_clients.py:277` | base_ht, montant |
 | crm | DealEnregistre | `apps/crm/models_clients.py:555` | montant_commission_du, montant_commission_estime |
 | crm | Client | `apps/crm/models_clients.py:790` | tva_recuperable |
-| crm | ForecastEntry | `apps/crm/models_clients.py:1523` | montant_prevu |
-| crm | ForecastSnapshot | `apps/crm/models_clients.py:1584` | montant_total |
+| crm | ForecastEntry | `apps/crm/models_clients.py:1524` | montant_prevu |
+| crm | ForecastSnapshot | `apps/crm/models_clients.py:1585` | montant_total |
 | crm | LeadPompageMixin | `apps/crm/models_lead_pompage.py:37` | carburant_prix_declare_le, carburant_prix_unitaire_mad |
 | dataimport | ImportJob | `apps/dataimport/models.py:79` | total_lignes |
 | facturation | LigneFacture | `apps/facturation/models.py:776` | prix_unitaire, remise, taux_tva |

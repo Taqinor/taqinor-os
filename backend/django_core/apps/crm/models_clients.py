@@ -1468,9 +1468,10 @@ class RegleAttribution(TenantModel):
     # Villes séparées par des virgules ; comparaison sans casse ni accents
     # avec ``Lead.ville`` (et la ville ERP de rattachement).
     villes = models.TextField(blank=True, default='')
-    type_installation = models.CharField(max_length=20, blank=True, default='')
-    # Canal marketing du lead (``Lead.Canal``) — vide = toutes sources.
-    source = models.CharField(max_length=20, blank=True, default='')
+    # Choix MULTIPLES (fondateur, 28/10/2026) : liste de ``Lead.TypeInstallation``
+    # et de canaux marketing (``Lead.Canal``) ; liste vide = tous.
+    types_installation = models.JSONField(default=list, blank=True)
+    sources = models.JSONField(default=list, blank=True)
     # Facture mensuelle (DH) — bornes incluses ; vide = pas de borne.
     facture_min = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)

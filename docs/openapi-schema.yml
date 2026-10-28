@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4880, operations: 7666, components: 3593}
+counts: {paths: 4881, operations: 7667, components: 3595}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -954,6 +954,7 @@ operations:
 - put /api/django/crm/defis/{id}/ -> django_crm_defis_update
 - get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_list
 - get /api/django/crm/dispatch/ -> django_crm_dispatch_retrieve
+- patch /api/django/crm/dispatch/reglages/{equipe_id}/ -> django_crm_dispatch_reglages_partial_update
 - post /api/django/crm/dispatch/{lead_id}/attribuer/ -> django_crm_dispatch_attribuer_create
 - get /api/django/crm/equipes/ -> django_crm_equipes_list
 - post /api/django/crm/equipes/ -> django_crm_equipes_create
@@ -10024,6 +10025,7 @@ components:
 - CrmConvertirClientRequestModeEnum
 - CrmConvertirClientRequestRequest
 - CrmDispatchAttribuerRequestRequest
+- CrmDispatchReglagesReponse
 - CrmEquipeStatistiques
 - CrmEquipesStatistiques
 - CrmInitialiserRelanceRequestCadenceEnum
@@ -11715,6 +11717,7 @@ components:
 - PatchedReceptionNonFactureeRequest
 - PatchedRecettePompageRequest
 - PatchedRecordsPieceJointePhaseCorpsRequest
+- PatchedReglagesEquipeRequest
 - PatchedRegleAclMetadonneeRequest
 - PatchedRegleApprobationAchatRequest
 - PatchedRegleApprobationGedRequest
