@@ -1,0 +1,232 @@
+{
+  "sha": "da62887dfbcfc8b01df6a8a1b17d71d977cbc95c",
+  "date": "2026-10-13",
+  "groupe": "VNT",
+  "verdict": "FAIL",
+  "couvre": [
+    "VNT15",
+    "VNT16",
+    "VNT17",
+    "VNT18",
+    "VNT19",
+    "VNT20",
+    "VNT21",
+    "VNT22",
+    "VNT23",
+    "VNT25",
+    "VNT26",
+    "VNT27",
+    "VNT28",
+    "VNT29",
+    "VNT30",
+    "VNT31",
+    "VNT44",
+    "VNT45",
+    "VNT33",
+    "VNT34",
+    "VNT35",
+    "VNT36",
+    "VNT37",
+    "VNT38",
+    "VNT39",
+    "VNT40",
+    "VNT41",
+    "VNT42",
+    "VNT10",
+    "VNT11",
+    "VNT12",
+    "VNT13",
+    "VNT14",
+    "VNT46"
+  ],
+  "couvre_avec_ecart": [],
+  "etapes": [
+    {
+      "id": "P1.1",
+      "taches": [
+        "VNT15",
+        "VNT16",
+        "VNT17",
+        "VNT18",
+        "VNT19",
+        "VNT20",
+        "VNT21",
+        "VNT22",
+        "VNT23"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-13/ACCEPTATION-VNT-P1.1.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.2",
+      "taches": [
+        "VNT25",
+        "VNT26",
+        "VNT27",
+        "VNT28",
+        "VNT29",
+        "VNT30",
+        "VNT31",
+        "VNT44",
+        "VNT45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-13/ACCEPTATION-VNT-P1.2.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.3",
+      "taches": [
+        "VNT33",
+        "VNT34",
+        "VNT35",
+        "VNT36",
+        "VNT37",
+        "VNT38",
+        "VNT39",
+        "VNT40",
+        "VNT41",
+        "VNT42"
+      ],
+      "verdict": "FAIL",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-13/ACCEPTATION-VNT-P1.3.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": "erreur : expect(received).toMatch(expected)"
+    },
+    {
+      "id": "P1.4",
+      "taches": [
+        "VNT45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-13/ACCEPTATION-VNT-P1.4.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.5",
+      "taches": [
+        "VNT10",
+        "VNT11",
+        "VNT12",
+        "VNT13",
+        "VNT14",
+        "VNT46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-13/ACCEPTATION-VNT-P1.5.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.6",
+      "taches": [
+        "VNT33",
+        "VNT34",
+        "VNT46"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-13/ACCEPTATION-VNT-P1.6.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "PASS",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    },
+    {
+      "id": "P1.7",
+      "taches": [
+        "VNT44",
+        "VNT45"
+      ],
+      "verdict": "PASS",
+      "base_verdict": null,
+      "trace": "docs/qa-explorer/captures/2026-10-13/ACCEPTATION-VNT-P1.7.jpg",
+      "oracles": {
+        "1": "PASS",
+        "2": "PASS",
+        "3": "PASS",
+        "4": "PASS",
+        "5": "NA",
+        "6": "NA",
+        "7": "NA",
+        "8": "PASS",
+        "9": "NA",
+        "10": "NA"
+      },
+      "notes": ""
+    }
+  ]
+}
