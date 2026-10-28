@@ -180,3 +180,25 @@ Les sessions PC1 restantes (RPDF, CORC, RGEN, CQST, CPRW, CPDF) sont arrêtées 
 **01:22 UTC (addendum) :** #1122 CPRW round 3 (CPRW25-29) MERGÉE à 01:21 → 27 PR mergées sur le run ; la lane CPRW est complète (#1104, #1116, #1119, #1122). Il ne reste côté PC1 que #1114 RPDF (rounds 1-3), en correction après son éjection de 00:57 (trois tests : digests publics, rendu « comme avant », formats de montants EN) — RPDF refusionne main, repousse UNE fois et re-arme ; si sa session tombe au plafond, le PC2 reprend claude/res-rpdf-r1.
 
 **02:33 UTC (addendum — PC1 TERMINÉ) :** #1114 RPDF rounds 1-3 MERGÉE à 02:32 (944b739fc) → **28 PR mergées sur le run**, plus aucune PR PC1 en vol. Toutes les lanes PC1 sont closes ; le reste du run (CSV #1123, CPRS #1121 — à re-fusionner après #1114 : golden split_pv_comportement —, AGV #1120, RSIZ #1124, AGC, RWEB, CEC v4, CCAT r2+3, CE2E, puis audit Fable final, devis boulangerie, PR docs de clôture, rapport du matin, nettoyage) appartient au PC2. Branche de sauvegarde hors run : origin/claude/wip-vnt-acceptation-1310 (acceptation VNT du 13/10 retrouvée non commitée, à trier).
+
+## 8. Demandes du fondateur, 28/10 soir (à construire par le PC2 — priorité haute, boulangerie lead 1637)
+
+Contexte vérifié en prod (devis 460 = DEV-202610-0117, `etude_params.etude_ci.taille`) : la taille C&I s'arrête à
+**20,02 kWc** uniquement par la **borne toit** : surface utile déclarée 200 m², pose estimée `toit_plat_leste`, borne
+21,45 kWc (≈ 9,3 m²/kWc avec l'inclinaison 30° par défaut des toits plats, décision du 27/10). L'économie n'est pas la
+limite (ratio marginal 2,43 ans, horizon 10 ans) ; un seul palier calculé, `raison_arret = taille_explicite`. Avant la
+décision 30°, la même surface donnait ≈ 30 kWc ; le fondateur attend **40 kWc** pour cette boulangerie (120 MWh/an,
+6 h-22 h, BT patenté, facture ≈ 18 000 MAD/mois).
+
+- **R1 — Densité de pose sur toit plat (DÉCISION fondateur à prendre, puis code).** 40 kWc sur 200 m² = 5 m²/kWc, soit
+  une pose rasante/est-ouest (≈ 10°), pas des rangées à 30°. Proposer au fondateur : (a) densité par défaut d'un toit plat
+  C&I = pose rasante 10° (≈ 5-6 m²/kWc), 30° seulement si choisi dans le générateur ; ou (b) garder 30° mais borner par
+  la surface RÉELLE (à relever : 200 m² vient du formulaire/téléphone, « toit non épinglé »). Rendre visible dans la
+  fenêtre du devis auto la phrase « taille limitée par le toit : X m² déclarés → Y kWc » (elle existe dans
+  `taille.bornes.toit.source`, elle n'est pas affichée au vendeur).
+- **R2 — Moins de lignes : regrouper les protections dans une section « Tableau ».** Le devis 460 a 21 lignes ; le
+  fondateur veut une ligne/section « Tableau de protection AC/DC » qui regroupe Coffret DC, Coffret AC, Disjoncteur AC,
+  Protection DC (× MPPT), Parafoudre DC, Parafoudre AC, Mise à la terre, Smart Meter (prix = somme des composants,
+  détail en sous-lignes ou en annexe), sur l'écran, le devis auto et les PDF C&I. Même esprit que le rôle unique
+  `tableau` du résidentiel (RSIZ). Garder les prix des composants au catalogue (ils viennent d'être saisis : CI-TERRE,
+  CI-PROT-DC, CI-PARAF-DC, CI-PARAF-AC).
