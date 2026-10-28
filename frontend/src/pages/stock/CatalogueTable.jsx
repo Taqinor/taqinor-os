@@ -1,5 +1,5 @@
 import { createElement, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle, History, Pencil, Trash2, PackageSearch, PackagePlus,
   TrendingDown, PackageX, Layers,
@@ -184,7 +184,19 @@ export function CatalogueTable({
   // AGR106 — « Pompage à compléter » : filtre OFF par défaut (rendu identique
   // tant qu'on ne l'active pas) + bandeau « kit pompage chiffrable ». Lecture
   // seule ; rien n'apparaît sur un catalogue sans aucun article pompage.
-  const [pompageACompleterSeul, setPompageACompleterSeul] = useState(false)
+  // CCAT9 — `/stock?ci=a_completer` / `/stock?pompage=a_completer` (liens de
+  // l'encadré « Prêt pour les devis ») ouvrent ces filtres, au montage ET à
+  // chaque navigation (l'encadré vit sur /stock : le clic ne remonte rien).
+  const [paramsUrl] = useSearchParams()
+  const { key: cleNavigation } = useLocation()
+  const filtreUrl = (nom) => paramsUrl.get(nom) === 'a_completer'
+  // Les articles en cause nommés par l'encadré (`&articles=12,34`) : le filtre
+  // les montre même quand sa règle locale ne reconnaît pas leur motif (type de
+  // pompe, calibre, plage batterie… calculés côté serveur).
+  const idsUrl = () => new Set((paramsUrl.get('articles') ?? '').split(',')
+    .map(Number).filter((n) => n > 0))
+  const [idsEnCause, setIdsEnCause] = useState(idsUrl)
+  const [pompageACompleterSeul, setPompageACompleterSeul] = useState(() => filtreUrl('pompage'))
   const aDuPompage = useMemo(
     () => (produits ?? []).some((p) => !p?.is_archived && roleDuProduitPompage(p)),
     [produits])
@@ -197,7 +209,15 @@ export function CatalogueTable({
   // CIQ104 — « C&I à compléter » : rôle C&I sans prix ou exclu (fiche
   // incomplète…), lu sur `etat_ci` servi par l'API. OFF par défaut ; absent
   // d'un catalogue sans aucun article C&I.
-  const [ciACompleterSeul, setCiACompleterSeul] = useState(false)
+  const [ciACompleterSeul, setCiACompleterSeul] = useState(() => filtreUrl('ci'))
+  // Ajustement pendant le rendu (pas d'effet) : une fois par navigation.
+  const [navigationVue, setNavigationVue] = useState(cleNavigation)
+  if (navigationVue !== cleNavigation) {
+    setNavigationVue(cleNavigation)
+    setIdsEnCause(idsUrl())
+    if (filtreUrl('ci')) setCiACompleterSeul(true)
+    if (filtreUrl('pompage')) setPompageACompleterSeul(true)
+  }
   const aDuCi = useMemo(
     () => (produits ?? []).some((p) => !p?.is_archived && p?.etat_ci),
     [produits])
@@ -208,11 +228,17 @@ export function CatalogueTable({
     let liste = produits ?? []
     if (pompageACompleterSeul) {
       const ids = new Set(aCompleter.map((x) => x.produit.id))
-      liste = liste.filter((p) => ids.has(p.id))
+      liste = liste.filter((p) => ids.has(p.id) || idsEnCause.has(p.id))
     }
-    if (ciACompleterSeul) liste = liste.filter((p) => produitCiACompleter(p))
+    if (ciACompleterSeul) {
+      liste = liste.filter((p) => produitCiACompleter(p) || idsEnCause.has(p.id))
+    }
     return liste
-  }, [produits, pompageACompleterSeul, aCompleter, ciACompleterSeul])
+  }, [produits, pompageACompleterSeul, aCompleter, ciACompleterSeul, idsEnCause])
+  const basculer = (setFiltre) => () => {
+    setIdsEnCause(new Set())
+    setFiltre((v) => !v)
+  }
 
   const columns = useMemo(() => [
     // Colonne de selection (multi-selection pilotee par StockList → BulkProductBar).
@@ -523,20 +549,20 @@ export function CatalogueTable({
           de l'export propre au moteur (celui de l'en-tête StockList a disparu,
           devenu redondant — même export xlsx serveur des deux côtés). */}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {aDuPompage && (
+        {(aDuPompage || pompageACompleterSeul) && (
           <Button type="button" variant={pompageACompleterSeul ? 'secondary' : 'outline'} size="sm"
                   aria-pressed={pompageACompleterSeul}
                   data-testid="filtre-pompage-a-completer"
-                  onClick={() => setPompageACompleterSeul(v => !v)}
+                  onClick={basculer(setPompageACompleterSeul)}
                   title="Articles pompage sans prix, pompes sans courbe, variateurs sans fiche">
             <AlertTriangle /> Pompage à compléter ({aCompleter.length})
           </Button>
         )}
-        {aDuCi && (
+        {(aDuCi || ciACompleterSeul) && (
           <Button type="button" variant={ciACompleterSeul ? 'secondary' : 'outline'} size="sm"
                   aria-pressed={ciACompleterSeul}
                   data-testid="filtre-ci-a-completer"
-                  onClick={() => setCiACompleterSeul(v => !v)}
+                  onClick={basculer(setCiACompleterSeul)}
                   title="Articles C&I sans prix ou exclus du dimensionnement (fiche incomplète…)">
             <AlertTriangle /> C&amp;I à compléter ({ciACompleter.length})
           </Button>

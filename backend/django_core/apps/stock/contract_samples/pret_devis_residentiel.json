@@ -1,0 +1,234 @@
+{
+  "endpoint": "GET /api/django/stock/produits/pret-devis-residentiel/",
+  "forme_serveur": "partielle",
+  "forme_serveur_provisoire": "Servi par `apps.ventes.selectors.postes_pret_devis_residentiel` (RSIZ11) via la vue Stock (CCAT16). Même forme que `pret_devis_ci.json` : l'écran « Prêt pour les devis » lit les trois segments avec un seul composant.",
+  "pourquoi": "CCAT16 — le volet RÉSIDENTIEL du tableau « ce qui manque pour chiffrer » : règles du composeur résidentiel (`apps/ventes/domain/pret_devis_residentiel.py`, RSIZ11), postes aux deux options (« sans » = onduleur réseau, « avec » = onduleur hybride + batterie). Mêmes clés et mêmes valeurs de `statut` (`ok`, `a_completer`, `absent`) que le contrat C&I ; `groupe` ∈ materiel | onduleur | option_batterie | cable | protection | forfait | accessoire. AUCUNE clé `prix_achat`, marge ni prix. Valeurs ILLUSTRATIVES.",
+  "exemple": {
+    "pret": false,
+    "nb_obligatoires_manquants": 2,
+    "postes": [
+      {
+        "cle": "panneau",
+        "libelle": "Panneau solaire (puissance en Wc dans le nom, prix)",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "onduleur_reseau:mono",
+        "libelle": "Onduleur réseau monophasé (option « sans batterie »)",
+        "groupe": "onduleur",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "onduleur_reseau:tri",
+        "libelle": "Onduleur réseau triphasé",
+        "groupe": "onduleur",
+        "obligatoire": false,
+        "statut": "a_completer",
+        "articles": [
+          {
+            "id": 412,
+            "nom": "Onduleur Huawei SUN2000-10KTL-M1",
+            "motif": "fiche incomplète : mppt_v_min"
+          }
+        ],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "onduleur_hybride:mono",
+        "libelle": "Onduleur hybride monophasé (option « avec batterie »)",
+        "groupe": "onduleur",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "onduleur_hybride:tri",
+        "libelle": "Onduleur hybride triphasé",
+        "groupe": "onduleur",
+        "obligatoire": false,
+        "statut": "absent",
+        "articles": [],
+        "action": {
+          "texte": "Créer l'article en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "batterie",
+        "libelle": "Batterie en stock compatible avec un onduleur hybride",
+        "groupe": "option_batterie",
+        "obligatoire": true,
+        "statut": "a_completer",
+        "articles": [
+          {
+            "id": 520,
+            "nom": "Batterie Dyness 5,12 kWh",
+            "motif": "hors stock (quantité 0)"
+          }
+        ],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "structure:acier",
+        "libelle": "Structure acier",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "structure:alu",
+        "libelle": "Structure aluminium",
+        "groupe": "materiel",
+        "obligatoire": false,
+        "statut": "absent",
+        "articles": [],
+        "action": {
+          "texte": "Créer l'article en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "socle",
+        "libelle": "Socle",
+        "groupe": "materiel",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "cable_dc",
+        "libelle": "Câble solaire DC (vendu au mètre)",
+        "groupe": "cable",
+        "obligatoire": true,
+        "statut": "a_completer",
+        "articles": [
+          {
+            "id": 610,
+            "nom": "Câble solaire 6 mm² rouleau 100 m",
+            "motif": "conditionné en rouleau (désignation sans « au mètre »)"
+          }
+        ],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "cable_terre",
+        "libelle": "Câble de terre AC (vendu au mètre)",
+        "groupe": "cable",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "tableau",
+        "libelle": "Tableau de protection AC/DC",
+        "groupe": "protection",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "accessoires",
+        "libelle": "Accessoires",
+        "groupe": "forfait",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "installation",
+        "libelle": "Installation (pose)",
+        "groupe": "forfait",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "transport",
+        "libelle": "Transport",
+        "groupe": "forfait",
+        "obligatoire": true,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "smart_meter",
+        "libelle": "Smart Meter (onduleur Huawei)",
+        "groupe": "accessoire",
+        "obligatoire": false,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      },
+      {
+        "cle": "wifi_dongle",
+        "libelle": "Clé Wifi (onduleur Huawei)",
+        "groupe": "accessoire",
+        "obligatoire": false,
+        "statut": "ok",
+        "articles": [],
+        "action": {
+          "texte": "Compléter la fiche en Stock",
+          "lien": "/stock"
+        }
+      }
+    ]
+  }
+}
