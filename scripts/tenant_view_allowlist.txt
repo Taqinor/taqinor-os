@@ -21,9 +21,8 @@
 # surface). MeView: get_object() always returns self.request.user (scoped to
 # exactly one row, the caller). LogoutView: no queryset, no data exposure —
 # a token-revocation action endpoint. Reviewed safe 2026-09-06.
-backend/django_core/authentication/views.py::RegisterView
+# ENF15 : RegisterView et MeView sont sortis de la liste (get_queryset borné à la société de l appelant).
 backend/django_core/authentication/views.py::RegisterCompanyView
-backend/django_core/authentication/views.py::MeView
 backend/django_core/authentication/views.py::LogoutView
 # ChangelogViewSet/OutboxEventViewSet (core/views.py): both explicitly
 # documented as GLOBAL/cross-company, SUPERUSER-only exploitant views

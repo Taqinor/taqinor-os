@@ -708,10 +708,14 @@ class SwitchCompanyView(APIView):
 @extend_schema(responses={201: RegisterSerializer, 400: REPONSE_400_COMPTE})
 class RegisterView(generics.CreateAPIView):
     """Admin cree un utilisateur dans sa propre entreprise."""
-    queryset = CustomUser.objects.all()
     permission_classes = [IsAdminRole]
     serializer_class = RegisterSerializer
     throttle_classes = [RegisterRateThrottle]
+
+    def get_queryset(self):
+        # ENF15 — borné à la société de l'appelant (la création force déjà
+        # ``company`` côté serveur ; aucun ``.all()`` global sur les comptes).
+        return CustomUser.objects.filter(company=self.request.user.company)
 
     def get_serializer_context(self):
         from apps.roles.models import Role
@@ -892,6 +896,11 @@ class MeView(generics.RetrieveAPIView):
     # ALEA31 — MeSerializer = UserSerializer + la route d'accueil mobile
     # suggérée par le serveur (seule table, `default_mobile_home_route`).
     serializer_class = MeSerializer
+
+    def get_queryset(self):
+        # ENF15 — le seul compte lisible est celui de l'appelant, dans sa société.
+        user = self.request.user
+        return CustomUser.objects.filter(pk=user.pk, company=user.company)
 
     def get_object(self):
         return self.request.user
