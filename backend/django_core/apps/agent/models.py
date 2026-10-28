@@ -17,6 +17,8 @@ app reste un satellite technique, jamais importe par une app de domaine.
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 
 class AgentActionLog(models.Model):
     class RiskLevel(models.TextChoices):
@@ -95,7 +97,7 @@ class AgentActionLog(models.Model):
         )
 
 
-class AssistantEvent(models.Model):
+class AssistantEvent(TenantModel):
     """AIC6 — une requête de l'assistant des commerciaux = UN événement
     (contrat ``contract_samples/assistant_evenement.json``, AIC1).
 
@@ -117,10 +119,7 @@ class AssistantEvent(models.Model):
         AUCUNE = 0, 'Pas encore noté'
         POSITIVE = 1, 'Pouce haut'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,  # on_delete: donnée propre à la société — supprimée avec elle (multi-tenant)
-        related_name='assistant_events', verbose_name='Société')
+    # ``company`` + ``created_at``/``updated_at`` : hérités de TenantModel (SCA4).
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='assistant_events')
@@ -141,7 +140,6 @@ class AssistantEvent(models.Model):
     repli = models.BooleanField('Repli Groq', default=False)
     manuel_present = models.BooleanField('Manuel présent', default=False)
     tokens = models.JSONField('Tokens', default=dict, blank=True)
-    created_at = models.DateTimeField('Créé le', auto_now_add=True)
 
     class Meta:
         ordering = ['-created_at']

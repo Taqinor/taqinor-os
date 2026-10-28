@@ -30,8 +30,9 @@ class Migration(migrations.Migration):
                 ("repli", models.BooleanField(default=False, verbose_name="Repli Groq")),
                 ("manuel_present", models.BooleanField(default=False, verbose_name="Manuel présent")),
                 ("tokens", models.JSONField(blank=True, default=dict, verbose_name="Tokens")),
-                ("created_at", models.DateTimeField(auto_now_add=True, verbose_name="Créé le")),
-                ("company", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="assistant_events", to="authentication.company", verbose_name="Société")),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("company", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="%(app_label)s_%(class)s_set", to="authentication.company", verbose_name="Société")),
                 ("user", models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name="assistant_events", to=settings.AUTH_USER_MODEL)),
             ],
             options={
