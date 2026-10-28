@@ -69,3 +69,16 @@ class RenduLegacyTests(SimpleTestCase):
                         roi_s_jamais=True, roi_a_jamais=True)
         self.assertIn('Non rentabilisé sur 25 ans', h)
         self.assertNotIn('Retour en 25', h)
+
+    def test_pastille_legacy_virgule_francaise(self):
+        # RPDF : « Retour en 3,0 ans » / « 4.7 » → « 3 » / « 4,7 » (kwc_fr).
+        h = html_legacy('deux', roi_s=3.0, roi_a=4.7)
+        self.assertIn('Retour en 3 ans', h)
+        self.assertIn('Retour en 4,7 ans', h)
+        self.assertNotIn('Retour en 3.0', h)
+        self.assertNotIn('Retour en 4.7', h)
+
+    def test_pastille_legacy_omise_si_retour_nul(self):
+        # RPDF : ROI <= 0 (hors « jamais ») ⇒ aucune pastille « Retour en 0 ans ».
+        h = html_legacy('deux', roi_s=0.0, roi_a=0.0)
+        self.assertNotIn('Retour en 0', h)

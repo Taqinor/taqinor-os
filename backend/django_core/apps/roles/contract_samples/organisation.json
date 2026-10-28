@@ -44,6 +44,9 @@
                 "fonction": "Chargée de clientèle",
                 "role": "Commercial"
               }
+            ],
+            "membres_ids": [
+              4
             ]
           }
         ],
@@ -57,7 +60,8 @@
         "nom": "Nord",
         "chef": null,
         "recoit_leads": null,
-        "membres": []
+        "membres": [],
+        "membres_ids": []
       }
     ],
     "a_completer": [
@@ -66,7 +70,9 @@
         "nom": "Yassine",
         "fonction": null,
         "role": "Technicien",
-        "manque": ["fonction"]
+        "manque": [
+          "fonction"
+        ]
       }
     ]
   },
@@ -75,6 +81,7 @@
     "direction": "Le département marqué `est_direction` (un seul par société) ; null s'il n'existe pas encore. Ses `membres` = les personnes dont la fonction est dans la Direction, hors responsable.",
     "equipes.type": "`commerciale` | `terrain` | `autre`. `recoit_leads` n'a de sens que pour `commerciale` (null sinon).",
     "sans_equipe": "Personnes dont la fonction est dans ce département mais qui ne sont ni membre ni chef d'une équipe active, ni responsable du département.",
-    "a_completer.manque": "Sous-ensemble ordonné de `[\"fonction\", \"role\"]`."
+    "a_completer.manque": "Sous-ensemble ordonné de `[\"fonction\", \"role\"]`.",
+    "equipes.membres_ids": "Ids de TOUS les membres de l'équipe (chef et comptes inactifs compris), triés : base de l'écran d'édition — `membres` n'affiche que les membres actifs hors chef."
   }
 }

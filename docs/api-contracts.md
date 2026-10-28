@@ -70,6 +70,8 @@
     detail:texte, status:texte, task:inconnu, task_id:inconnu
 - frontend/src/api/crmApi.js :: arreterCadence -> /api/django/crm/leads/<>/relance/arreter
     arretees:inconnu, cadences:texte, motif:texte
+- frontend/src/api/crmApi.js :: attribuerLead -> /api/django/crm/dispatch/<>/attribuer
+    id:inconnu, owner:inconnu, owner_nom:inconnu
 - frontend/src/api/crmApi.js :: bulkLeads -> /api/django/crm/leads/bulk
     count:nombre, detail:texte, ok:booleen, op:texte, queue:inconnu, skipped:inconnu, total:nombre, unchanged:inconnu, updated:inconnu
 - frontend/src/api/crmApi.js :: checkDevisAuto -> /api/django/crm/leads/<>/devis-auto
@@ -90,6 +92,8 @@
     count:nombre, results:inconnu, seuil:inconnu
 - frontend/src/api/crmApi.js :: getControleSuivi -> /api/django/crm/relance-etapes/controle
     commerciaux:inconnu, exceptions:inconnu, jours:inconnu, owner:inconnu, par_type:inconnu, periode_jours:inconnu, premier_contact:inconnu, resultats:objet, segment:inconnu, seuils:objet, verdict:objet
+- frontend/src/api/crmApi.js :: getDispatch -> /api/django/crm/dispatch
+    en_attente:inconnu, equipe:inconnu, leads:inconnu, membres:inconnu
 - frontend/src/api/crmApi.js :: getEquipesStatistiques -> /api/django/crm/equipes/statistiques
     equipes:inconnu
 - frontend/src/api/crmApi.js :: getLeadJalonsDevis -> /api/django/crm/leads/<>/jalons-devis
@@ -747,12 +751,14 @@
     champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
     statut ∈ {annule, confirme, effectue, no_show, planifie}
 - frontend/src/api/crmApi.js :: deleteEquipe -> /api/django/crm/equipes/<>  [EquipeCommercialeSerializer]
-    champs: actif, company, date_creation, departement, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
+    champs: actif, company, confirmation_responsable, date_creation, delai_attribution_minutes, departement, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: deleteMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
 - frontend/src/api/crmApi.js :: deleteParrainage -> /api/django/crm/parrainages/<>  [ParrainageSerializer]
     champs: company, date_creation, filleul_client, filleul_display_nom, filleul_lead, filleul_nom, id, notes, parrain, parrain_nom, recompense, statut, statut_display
     statut ∈ {converti, en_attente, recompense_versee}
+- frontend/src/api/crmApi.js :: deleteRegleAttribution -> /api/django/crm/regles-attribution/<>  [RegleAttributionSerializer]
+    champs: actif, equipe, facture_max, facture_min, id, membre, membre_nom, ordre, source, type_installation, villes
 - frontend/src/api/crmApi.js :: deleteSavedView -> /api/django/crm/vues-enregistrees/<>  [SavedViewSerializer]
     champs: created_at, id, name, page, payload, rank, user
 - frontend/src/api/crmApi.js :: getAppointments -> /api/django/crm/appointments  [AppointmentSerializer]
@@ -764,7 +770,7 @@
     champs: actif, cible_equipe, company, created_at, id, metrique, metrique_display, nom, periode_debut, periode_fin, recompense
     metrique ∈ {ca_signe, nb_contacts, nb_devis, nb_leads, nb_rdv}
 - frontend/src/api/crmApi.js :: getEquipes -> /api/django/crm/equipes  [EquipeCommercialeSerializer]
-    champs: actif, company, date_creation, departement, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
+    champs: actif, company, confirmation_responsable, date_creation, delai_attribution_minutes, departement, id, membres, nb_membres, nom, recoit_leads, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: getMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
     champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
 - frontend/src/api/crmApi.js :: getMessageTemplates -> /api/django/crm/message-templates  [MessageTemplateSerializer]
@@ -774,6 +780,8 @@
     statut ∈ {converti, en_attente, recompense_versee}
 - frontend/src/api/crmApi.js :: getPlansActivite -> /api/django/crm/plans-activite  [PlanActiviteSerializer]
     champs: actif, company, date_creation, etapes, id, nom
+- frontend/src/api/crmApi.js :: getReglesAttribution -> /api/django/crm/regles-attribution  [RegleAttributionSerializer]
+    champs: actif, equipe, facture_max, facture_min, id, membre, membre_nom, ordre, source, type_installation, villes
 - frontend/src/api/crmApi.js :: getSiteProfiles -> /api/django/crm/site-profiles  [SiteProfileSerializer]
     champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_actuelle_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
     ombrage ∈ {aucun, important, partiel}

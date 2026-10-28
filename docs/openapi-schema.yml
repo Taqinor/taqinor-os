@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4850, operations: 7626, components: 3577}
+counts: {paths: 4858, operations: 7642, components: 3582}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -946,6 +946,8 @@ operations:
 - patch /api/django/crm/defis/{id}/ -> django_crm_defis_partial_update
 - put /api/django/crm/defis/{id}/ -> django_crm_defis_update
 - get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_list
+- get /api/django/crm/dispatch/ -> django_crm_dispatch_retrieve
+- post /api/django/crm/dispatch/{lead_id}/attribuer/ -> django_crm_dispatch_attribuer_create
 - get /api/django/crm/equipes/ -> django_crm_equipes_list
 - post /api/django/crm/equipes/ -> django_crm_equipes_create
 - get /api/django/crm/equipes/statistiques/ -> django_crm_equipes_statistiques_retrieve
@@ -1101,6 +1103,12 @@ operations:
 - post /api/django/crm/public/questionnaire/{token}/ -> django_crm_public_questionnaire_create
 - post /api/django/crm/public/visite/ -> django_crm_public_visite_create
 - get /api/django/crm/rapports/attribution/ -> django_crm_rapports_attribution_retrieve
+- get /api/django/crm/regles-attribution/ -> django_crm_regles_attribution_list
+- post /api/django/crm/regles-attribution/ -> django_crm_regles_attribution_create
+- delete /api/django/crm/regles-attribution/{id}/ -> django_crm_regles_attribution_destroy
+- get /api/django/crm/regles-attribution/{id}/ -> django_crm_regles_attribution_retrieve
+- patch /api/django/crm/regles-attribution/{id}/ -> django_crm_regles_attribution_partial_update
+- put /api/django/crm/regles-attribution/{id}/ -> django_crm_regles_attribution_update
 - get /api/django/crm/relance-etapes/ -> django_crm_relance_etapes_retrieve
 - get /api/django/crm/relance-etapes/cadences-echues/ -> django_crm_relance_etapes_cadences_echues_retrieve
 - get /api/django/crm/relance-etapes/chaine-commerciale/ -> django_crm_relance_etapes_chaine_commerciale_retrieve
@@ -4799,6 +4807,8 @@ operations:
 - patch /api/v1/crm/defis/{id}/ -> v1_crm_defis_partial_update
 - put /api/v1/crm/defis/{id}/ -> v1_crm_defis_update
 - get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_list
+- get /api/v1/crm/dispatch/ -> v1_crm_dispatch_retrieve
+- post /api/v1/crm/dispatch/{lead_id}/attribuer/ -> v1_crm_dispatch_attribuer_create
 - get /api/v1/crm/equipes/ -> v1_crm_equipes_list
 - post /api/v1/crm/equipes/ -> v1_crm_equipes_create
 - get /api/v1/crm/equipes/statistiques/ -> v1_crm_equipes_statistiques_retrieve
@@ -4954,6 +4964,12 @@ operations:
 - post /api/v1/crm/public/questionnaire/{token}/ -> v1_crm_public_questionnaire_create
 - post /api/v1/crm/public/visite/ -> v1_crm_public_visite_create
 - get /api/v1/crm/rapports/attribution/ -> v1_crm_rapports_attribution_retrieve
+- get /api/v1/crm/regles-attribution/ -> v1_crm_regles_attribution_list
+- post /api/v1/crm/regles-attribution/ -> v1_crm_regles_attribution_create
+- delete /api/v1/crm/regles-attribution/{id}/ -> v1_crm_regles_attribution_destroy
+- get /api/v1/crm/regles-attribution/{id}/ -> v1_crm_regles_attribution_retrieve
+- patch /api/v1/crm/regles-attribution/{id}/ -> v1_crm_regles_attribution_partial_update
+- put /api/v1/crm/regles-attribution/{id}/ -> v1_crm_regles_attribution_update
 - get /api/v1/crm/relance-etapes/ -> v1_crm_relance_etapes_retrieve
 - get /api/v1/crm/relance-etapes/cadences-echues/ -> v1_crm_relance_etapes_cadences_echues_retrieve
 - get /api/v1/crm/relance-etapes/chaine-commerciale/ -> v1_crm_relance_etapes_chaine_commerciale_retrieve
@@ -7854,6 +7870,7 @@ query_params:
   get /api/django/crm/playbooks/: ordering page page_size search
   get /api/django/crm/points-contact/: lead ordering page page_size search
   get /api/django/crm/rapports/attribution/: debut fin
+  get /api/django/crm/regles-attribution/: equipe ordering page page_size search
   get /api/django/crm/relance-etapes/: lead owner scope
   get /api/django/crm/relance-etapes/cadences-echues/: jours
   get /api/django/crm/relance-etapes/controle/: jours owner segment
@@ -8642,6 +8659,7 @@ query_params:
   get /api/v1/crm/playbooks/: ordering page page_size search
   get /api/v1/crm/points-contact/: lead ordering page page_size search
   get /api/v1/crm/rapports/attribution/: debut fin
+  get /api/v1/crm/regles-attribution/: equipe ordering page page_size search
   get /api/v1/crm/relance-etapes/: lead owner scope
   get /api/v1/crm/relance-etapes/cadences-echues/: jours
   get /api/v1/crm/relance-etapes/controle/: jours owner segment
@@ -9969,6 +9987,7 @@ components:
 - CrmControleSuivi
 - CrmConvertirClientRequestModeEnum
 - CrmConvertirClientRequestRequest
+- CrmDispatchAttribuerRequestRequest
 - CrmEquipeStatistiques
 - CrmEquipesStatistiques
 - CrmInitialiserRelanceRequestCadenceEnum
@@ -11295,6 +11314,7 @@ components:
 - PaginatedRegleAclMetadonneeList
 - PaginatedRegleApprobationAchatList
 - PaginatedRegleApprobationGedList
+- PaginatedRegleAttributionList
 - PaginatedRegleCodeBarresList
 - PaginatedRegleDossierList
 - PaginatedRegleRangementList
@@ -11657,6 +11677,7 @@ components:
 - PatchedRegleAclMetadonneeRequest
 - PatchedRegleApprobationAchatRequest
 - PatchedRegleApprobationGedRequest
+- PatchedRegleAttributionRequest
 - PatchedRegleCodeBarresRequest
 - PatchedRegleDossierRequest
 - PatchedRegleRangementRequest
@@ -12087,6 +12108,8 @@ components:
 - RegleApprobationAchatRequest
 - RegleApprobationGed
 - RegleApprobationGedRequest
+- RegleAttribution
+- RegleAttributionRequest
 - RegleCodeBarres
 - RegleCodeBarresRequest
 - RegleDossier

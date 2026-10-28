@@ -29,8 +29,9 @@ def regles_origine():
 
 
 #: AMOT101 (D-ACI-21=a) — vrai pendant le rendu d'un document C&I en anglais :
-#: milliers « , », décimale « . » (« 484,992.48 », « 65.32 ») ; FR, AR,
-#: résidentiel, agricole et devis aux règles d'origine inchangés.
+#: milliers « , », décimale « . » (« 484,992.48 », « 65.32 ») ; RPDF30 —
+#: étendu au résidentiel en anglais ; FR, AR, agricole et devis aux règles
+#: d'origine inchangés.
 _FORMAT_ANGLAIS = contextvars.ContextVar('format_anglais', default=False)
 
 
@@ -40,7 +41,8 @@ def format_langue(data):
     data = data if isinstance(data, dict) else {}
     anglais = (str(data.get('langue_sortie') or '').strip().lower()[:2] == 'en'
                and str(data.get('mode_installation') or '').strip().lower()
-               in ('commercial', 'industriel')
+               in ('commercial', 'industriel', 'residentiel', 'résidentiel',
+                   '')
                and not data.get('regles_calcul_origine'))
     jeton = _FORMAT_ANGLAIS.set(anglais)
     try:

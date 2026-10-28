@@ -22,6 +22,8 @@ export default function RailArgent({
   discountPct, setDiscountPct, remiseMax,
   pkwc, prixCible, setPrixCible, applyPrixCible, kwp,
   marge, kpiTotal, margeLignesSansAchat = 0,
+  // AGV10 — pompage : pas de batterie, donc aucun mot « batterie » au rail.
+  agricole = false,
   // ATOT25 — `lignesRemiseesParPanier` (solar.js) : par option, l'« Arrondi
   // commercial » qui sépare Σ lignes affichées du total (palier ARRONDI-100).
   remiseParPanier = null,
@@ -52,13 +54,13 @@ export default function RailArgent({
       <div className="gen-totals-row gen-tier-1">
         {showSans && (
           <div className="gen-total-item">
-            <span className="gen-total-label">Total SANS batterie{sansRec ? ' ⭐' : ''}</span>
+            <span className="gen-total-label">{agricole ? 'Total TTC' : 'Total SANS batterie'}{sansRec ? ' ⭐' : ''}</span>
             <span className="gen-total-value">{formatMoney(totals.totalSansBrut)}</span>
           </div>
         )}
         {showAvec && (
           <div className="gen-total-item">
-            <span className="gen-total-label">Total AVEC batterie{avecRec ? ' ⭐' : ''}</span>
+            <span className="gen-total-label">{agricole ? 'Total TTC' : 'Total AVEC batterie'}{avecRec ? ' ⭐' : ''}</span>
             <span className="gen-total-value orange">{formatMoney(totals.totalAvecBrut)}</span>
           </div>
         )}
@@ -87,13 +89,13 @@ export default function RailArgent({
         </div>
         {parseFloat(discountPct) > 0 && showSans && (
           <div className="gen-total-item gen-tier-3">
-            <span className="gen-total-label green">Total final SANS batterie</span>
+            <span className="gen-total-label green">{agricole ? 'Total final TTC' : 'Total final SANS batterie'}</span>
             <span className="gen-total-value green">{formatMoney(totals.totalSans)}</span>
           </div>
         )}
         {parseFloat(discountPct) > 0 && showAvec && (
           <div className="gen-total-item gen-tier-3">
-            <span className="gen-total-label green">Total final AVEC batterie</span>
+            <span className="gen-total-label green">{agricole ? 'Total final TTC' : 'Total final AVEC batterie'}</span>
             <span className="gen-total-value green">{formatMoney(totals.totalAvec)}</span>
           </div>
         )}
@@ -101,13 +103,13 @@ export default function RailArgent({
             (remisées au centime comme le PDF) + arrondi = total affiché. */}
         {showSans && arrondiSans !== 0 && (
           <div className="gen-total-item gen-tier-2" data-testid="arrondi-commercial-sans">
-            <span className="gen-total-label">Arrondi commercial{showAvec ? ' SANS batterie' : ''}</span>
+            <span className="gen-total-label">Arrondi commercial{showAvec && !agricole ? ' SANS batterie' : ''}</span>
             <span className="gen-total-value">{formatMoney(arrondiSans)}</span>
           </div>
         )}
         {showAvec && arrondiAvec !== 0 && (
           <div className="gen-total-item gen-tier-2" data-testid="arrondi-commercial-avec">
-            <span className="gen-total-label">Arrondi commercial{showSans ? ' AVEC batterie' : ''}</span>
+            <span className="gen-total-label">Arrondi commercial{showSans && !agricole ? ' AVEC batterie' : ''}</span>
             <span className="gen-total-value">{formatMoney(arrondiAvec)}</span>
           </div>
         )}

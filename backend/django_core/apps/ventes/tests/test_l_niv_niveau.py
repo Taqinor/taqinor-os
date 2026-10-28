@@ -309,6 +309,11 @@ class TestKitLineAggregation(TestCase):
         self.assertFalse(designations & self._kit_designations(),
                          "les lignes kit individuelles ne doivent plus "
                          "apparaître au niveau standard")
+        # CPRS4 — la nomenclature complète (``all_items``) suit la même
+        # granularité : aucune ligne kit lisible dans le JSON standard.
+        tous = {it['designation']
+                for it in payload['quote'].get('all_items') or []}
+        self.assertFalse(tous & self._kit_designations())
 
     def test_confiance_keeps_kit_lines_separate(self):
         devis = add_kit_lines(make_devis(

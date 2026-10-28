@@ -315,10 +315,14 @@ def _stamp_view(link):
         ShareLink.objects.filter(pk=link.pk).update(**champs_maj)
         # Set first_viewed_at only once (conditioned on still being null so
         # concurrent requests from the same client don't overwrite each other).
+        # CPRS5 — « première » = la requête qui a réellement posé la date :
+        # deux onglets ouverts ensemble ne notifient plus deux fois.
         if is_first:
-            ShareLink.objects.filter(
+            is_first = ShareLink.objects.filter(
                 pk=link.pk, first_viewed_at__isnull=True,
-            ).update(first_viewed_at=now)
+            ).update(first_viewed_at=now) == 1
+            if not is_first:  # l'autre onglet vient d'ouvrir : un rechargement
+                link._vue_precedente = now  # (jamais « rouvert », Fable R2)
         link.refresh_from_db(fields=['view_count', 'last_viewed_at', 'first_viewed_at'])
         return is_first
     except Exception:  # noqa: BLE001 — best-effort, never break the public GET (D-ENF22-BLE001)
@@ -377,6 +381,8 @@ def _notify_first_open(link, request=None):
         if not link.devis_id:
             return
         lead = getattr(link.devis, 'lead', None)
+        if lead is None:
+            _notifier_auteur_sans_lead(link)  # CPRS9
         if lead is not None:
             devis_ref = link.devis.reference
             # QJ1 — note chatter (toujours).
@@ -397,6 +403,23 @@ def _notify_first_open(link, request=None):
         _notifier_variante_consultee(link)
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite (D-ENF22-BLE001)
         logger.warning('%s : échec ignoré (dégradé)', '_notify_first_open', exc_info=True)
+
+
+def _notifier_auteur_sans_lead(link, *, reprise=False):
+    """CPRS9 — un devis fait sur un client SANS lead n'a pas de responsable
+    de lead à prévenir : son auteur l'est, avec le même titre que QJ2."""
+    devis = link.devis
+    auteur = getattr(devis, 'created_by', None)
+    if auteur is None or not getattr(auteur, 'is_active', False):
+        return
+    from apps.notifications.types_evenements import EventType
+    from apps.notifications.services import notify
+    verbe = 'rouvert' if reprise else 'ouvert'
+    notify(
+        auteur, EventType.DEVIS_OPENED,
+        f'Devis {devis.reference} {verbe} par le client',
+        body=f'Le client a {verbe} le devis {devis.reference}.',
+        link=f'/ventes/devis?devis={devis.id}', company=devis.company)
 
 
 def _notifier_variante_consultee(link):
@@ -470,11 +493,16 @@ def _notify_open(link, request=None, *, is_first):
         return
     if link.devis_id and _noter_si_version_remplacee(link):
         return  # ACRM11 — version remplacée : la note seule.
+    # CPRS5 — un devis déjà signé reste consultable (ADOC131) : relire sa
+    # proposition n'est plus un signal commercial « le client hésite ».
+    if link.devis_id and getattr(link.devis, 'statut', '') == 'accepte':
+        return
     try:
         if not link.devis_id:
             return
         lead = getattr(link.devis, 'lead', None)
         if lead is None:
+            _notifier_auteur_sans_lead(link, reprise=True)  # CPRS9
             return
         from apps.crm.services import (
             noter_devis_reouvert, notify_devis_opened)
