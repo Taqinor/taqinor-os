@@ -476,20 +476,38 @@ def _ctx_flux(contexte, batterie):
             'flux': contexte.get('flux_options') or {}, 'batterie': batterie}
 
 
+def _recomposer(catalogue, imposee, contexte):
+    """CORC10 — l'option « avec » des lignes RECOMPOSÉE à sa taille vendue
+    (kWc et banque des lignes, jamais redimensionnés) : hybrides recombinés à
+    ce kWc et composition avec les entrées de l'étude (mesures de visite)."""
+    from apps.ventes.moteur_ci.batterie import MAX_HYBRIDES_PARALLELE, _composer_avec
+    from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
+    bat = catalogue.get('batterie') or {}
+    onduleurs = combiner_onduleurs(
+        imposee['kwc'], bat.get('hybrides') or [], phase=contexte.get('phase'),
+        module=catalogue.get('module_spec'), ac_max_kw=contexte.get('ps_kva'),
+        max_appareils=MAX_HYBRIDES_PARALLELE, homogene=True) or {}
+    composition = _composer_avec(
+        lambda kwc, ond: contexte['composer'](kwc, ond, bat.get('elements')),
+        imposee['kwc'], onduleurs, imposee['banque'])
+    return dict(imposee, onduleurs=onduleurs, composition=composition, investissement=None)
+
+
 def _option_imposee(imposee, contexte):
     """Le bilan et l'économie de l'option « avec » des lignes (aucun
-    redimensionnement, aucune composition : le coût est celui des lignes)."""
+    redimensionnement ; sans ``composition`` recomposée — CORC10 — le coût
+    est celui des lignes)."""
     from apps.ventes.etude_horaire import simuler_batterie_jour
     from apps.ventes.moteur_ci.batterie import evaluer_option_avec
     evaluation = evaluer_option_avec(
-        imposee['kwc'], imposee['onduleurs'], None, imposee['banque'],
+        imposee['kwc'], imposee['onduleurs'], imposee.get('composition'), imposee['banque'],
         charge=contexte['charge'], production=contexte['production'],
         tension=contexte['tension'], revente_choisie=contexte['revente_choisie'],
         valoriser=contexte['valoriser'], simuler=simuler_batterie_jour,
         hybrides=imposee['hybrides'], taux_tva_pct=contexte.get('taux_tva_pct'))
     bloc = _bloc(evaluation, contexte['valoriser'], _ctx_flux(contexte, imposee['banque']),
                  investissement=imposee.get('investissement'))
-    bloc['nb_panneaux'] = imposee.get('nb_panneaux')
+    bloc['nb_panneaux'] = imposee.get('nb_panneaux') or bloc['nb_panneaux']
     return bloc
 
 
@@ -516,6 +534,10 @@ def option_avec_de_l_etude(catalogue, evaluation, *, choix, lead, imposee=None, 
         from apps.ventes.economie_ci import resoudre_tva_recuperable
         flux['tva_recuperable'] = resoudre_tva_recuperable(
             getattr(lead, 'tva_recuperable', None))
+    if imposee is not None and imposee.get('recomposer'):
+        imposee = _recomposer(catalogue, imposee, contexte)
+        return dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux)),
+                    prix_a_renseigner=list(imposee['composition'].get('prix_a_renseigner') or []))
     if imposee is not None:
         return dict(vide, bloc=_option_imposee(imposee, dict(contexte, **flux)))
     choix = choix_batterie(choix, lead)

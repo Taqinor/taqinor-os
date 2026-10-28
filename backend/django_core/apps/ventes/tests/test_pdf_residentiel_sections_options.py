@@ -14,7 +14,7 @@ import re
 from decimal import Decimal
 from unittest.mock import patch
 
-from django.test import TestCase, tag
+from django.test import SimpleTestCase, TestCase, tag
 
 from apps.stock.models import Produit
 from apps.ventes.models import LigneDevis
@@ -172,3 +172,30 @@ class TestPdfNoteClient(TestCase):
         self.assertEqual(build_quote_data(devis)['note_client'], '')
         texte = self._texte(devis)
         self.assertNotIn('qa-audit-3009', texte)
+
+
+class TestCouvertureSalutationTelephoneCe2e7(SimpleTestCase):
+    """CE2E7 — couverture résidentielle : « Bonjour, » quand le nom du lead
+    commence par un bien (« Villa Bennani »), « Bonjour <prénom>, » sinon ;
+    téléphone « +212 6 … » (formateur du PDF C&I) ; niveau 3 seulement."""
+
+    def _html(self, **surcharges):
+        from apps.ventes.quote_engine.residential import render, renderer
+        from apps.ventes.tests import _moteur_fixtures as F
+        return render.build_html(renderer._augment(F.donnees_residentiel(**surcharges)))
+
+    def test_villa_sans_prenom_bonjour_neutre_et_telephone_formate(self):
+        html = self._html(client_full='Villa Bennani', client_name='Villa Bennani',
+                          client_phone='212688273203')
+        self.assertIn('Bonjour,', html)
+        self.assertNotIn('Bonjour Villa', html)
+        self.assertIn('+212 6 88 27 32 03', html)
+
+    def test_prenom_salue(self):
+        self.assertIn('Bonjour Mohammed,', self._html(client_full='Mohammed Lahlou'))
+
+    def test_devis_envoye_avant_le_27_10_inchange(self):
+        html = self._html(client_full='Villa Bennani', client_phone='212688273203',
+                          regles_avant_2710=True)
+        self.assertIn('Bonjour Villa,', html)
+        self.assertIn('212688273203', html)
