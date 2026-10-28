@@ -249,6 +249,11 @@ describe('AGW304 — la page', () => {
     const zone = code.slice(code.indexOf('function lireEconomies'), code.indexOf('export function dureeGarantie'));
     expect(zone).not.toMatch(/\*\s*365|0\.3\b|prix_gaz|prix_butane|litres_par_cv/i);
   });
+
+  it('validation R3 (AGC7) — la formule du m³ (sans les remplacements) ne se dit que pour un nouveau forage, comme le PDF', () => {
+    const avant = page.slice(0, page.indexOf('data-agri-formule-m3'));
+    expect(avant.slice(avant.lastIndexOf('{argent.economies'))).toMatch(/^\{argent\.economies\.cas === 'nouveau_forage' && /);
+  });
 });
 
 describe('AGQ35 — parité /proposition ↔ document agricole (C-AGQ-010, 016, 017, 019, 032)', () => {

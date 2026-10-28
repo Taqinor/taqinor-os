@@ -300,7 +300,8 @@ const { aConfirmerLbl, agri, apercuInterne, argent, argentNotes, bvl, bvlMax, co
                   );
                 })}
               </dl>
-                {argent.economies.coutM3 && argent.economies.horizonAns !== null && (
+                {/* Validation R3 — la formule omet les remplacements : seulement pour un NOUVEAU forage, comme le PDF. */}
+                {argent.economies.cas === 'nouveau_forage' && argent.economies.coutM3 && argent.economies.horizonAns !== null && (
                   <p class="mt-2 text-xs text-lune-faint" data-agri-formule-m3 data-i18n
                     data-fr={AGR_LBL_AGQ.formuleM3.fr.replaceAll('{horizon}', String(argent.economies.horizonAns))}
                     data-en={AGR_LBL_AGQ.formuleM3.en.replaceAll('{horizon}', String(argent.economies.horizonAns))}
