@@ -9,6 +9,8 @@ porte les trois langues » les couvre aussi.
 """
 
 LIBELLES_RESIDENTIEL = {
+    # CE2E7 — salutation sans prénom (nom de bien ou de société).
+    'rpdf_bonjour_neutre': {'fr': 'Bonjour,', 'en': 'Hello,', 'ar': 'مرحبًا،'},
     # CE2E5 — « Nos hypothèses » d'un lead sans distributeur, modèle horaire.
     'rpdf_hyp_bareme_national': {'fr': 'Tarif électricité : barème national par tranche',
                                  'en': 'Electricity tariff: national schedule by bracket',

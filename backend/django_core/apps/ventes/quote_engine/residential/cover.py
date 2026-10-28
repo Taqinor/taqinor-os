@@ -48,6 +48,20 @@ def libelle_cat(d, cle, **valeurs):
                         **valeurs)
 
 
+#: CE2E7 — premiers mots d'un nom de BIEN ou de société (« Villa Bennani »,
+#: « Résidence … », « Domaine … ») : jamais un prénom à saluer.
+_MOTS_NON_PRENOM = frozenset((
+    "villa", "residence", "domaine", "maison", "riad", "ferme", "appartement",
+    "immeuble", "hotel", "societe", "ste", "sarl", "entreprise", "groupe",
+    "lotissement", "propriete", "projet", "chantier", "clinique", "ecole"))
+
+
+def _sans_accents(texte):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(texte or ""))
+                   if unicodedata.category(c) != "Mn")
+
+
 def nom_option(d, option, minuscule=False):
     """Nom de l'option ``"sans"`` / ``"avec"`` dans la langue du document :
     « Sans batterie » ou le libellé du builder (``libelle_avec``, BAT-DIFF)
@@ -114,6 +128,13 @@ def build(ctx):
     client_addr = d.get("client_addr", "")
     client_city = d.get("client_ville_libelle") or d.get("client_city", "")  # QJR591
     client_phone = d.get("client_phone", "")
+    if not (d.get("regles_avant_2710") or d.get("regles_calcul_origine")):
+        # CE2E7 (niveau 3) — téléphone « +212 6 … » par LE formateur du PDF
+        # C&I ; « Bonjour, » quand le nom commence par un bien, pas un prénom.
+        from ..ci.couverture import format_telephone
+        client_phone = format_telephone(client_phone)
+        if _sans_accents(first_name).lower() in _MOTS_NON_PRENOM:
+            first_name = ""
     inst_type = (libelle_cat(d, "res_tag_residentielle")
                  if d.get("inst_type") == "Résidentielle"
                  else d.get("inst_type", ""))
@@ -912,7 +933,7 @@ def build(ctx):
     </div>
     <div class="c1-hero-body">
       <div class="c1-kicker c1-hero-kicker">{libelle_fixe(d, 'res_kicker', 'Proposition commerciale — Installation solaire')}</div>
-      <div class="c1-serif c1-hello">{libelle_fixe(d, 'res_bonjour', 'Bonjour ' + format(first_name) + ',', nom=first_name)}</div>
+      <div class="c1-serif c1-hello">{libelle_fixe(d, 'res_bonjour', 'Bonjour ' + format(first_name) + ',', nom=first_name) if first_name else libelle_cat(d, 'rpdf_bonjour_neutre')}</div>
       {hero_sub_html}
     </div>
   </div>
