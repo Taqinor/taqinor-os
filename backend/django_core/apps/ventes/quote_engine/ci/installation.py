@@ -16,6 +16,11 @@ seul — les totaux (``totaux_*``) ne sont jamais recalculés ici.
 
 Module PUR : listes de dicts du builder → nouvelle liste, aucune base,
 aucun statut touché (règle #4). Résidentiel et agricole : liste inchangée.
+
+R2 (fondateur, 28/10/2026) — le MÊME regroupement sert le « Tableau de
+protection AC/DC » (``ci/tableau.py``, rôles ``ROLES_TABLEAU_CI`` du moteur) :
+``regrouper_roles`` est la fonction générique, ``regrouper_installation`` en
+est le cas « prestations ».
 """
 from __future__ import annotations
 
@@ -41,15 +46,22 @@ def _dec(valeur):
     return Decimal(str(valeur or 0))
 
 
-def _ligne_groupee(groupe, langue):
-    """La ligne unique d'un groupe de prestations au même taux de TVA."""
+def sous_ligne(it):
+    """R2 — le détail CLIENT d'une ligne regroupée : désignation, quantité,
+    unité (jamais un prix : le prix est celui de la ligne regroupée)."""
+    return {"designation": it.get("designation") or "",
+            "quantite": float(_dec(it.get("quantite"))),
+            "unite": it.get("unite") or ""}
+
+
+def _ligne_groupee(groupe, langue, libelles, role_groupe, avec_sous_lignes):
+    """La ligne unique d'un groupe de lignes au même taux de TVA."""
     total_ht = sum(_dec(it.get("quantite")) * _dec(it.get("prix_unit_ht"))
                    for it in groupe)
     taux = _dec(groupe[0].get("taux_tva"))
     total_ttc = (total_ht * (1 + taux / 100)).quantize(Decimal("0.01"))
-    return {
-        "designation": LIBELLE_INSTALLATION.get(langue)
-        or LIBELLE_INSTALLATION["fr"],
+    ligne = {
+        "designation": libelles.get(langue) or libelles["fr"],
         "marque": "", "description": "", "garantie": "",
         "garantie_mois": None, "garantie_production_mois": None,
         "quantite": 1.0,
@@ -58,33 +70,46 @@ def _ligne_groupee(groupe, langue):
         "taux_tva": groupe[0].get("taux_tva"),
         "ordre": min((it.get("ordre") or 0) for it in groupe),
         "role_devis": None,
-        "role_ci": "installation_ci",
+        "role_ci": role_groupe,
         "_produit_nom": "",
     }
+    if avec_sous_lignes:
+        ligne["sous_lignes"] = [sous_ligne(it) for it in groupe]
+    return ligne
+
+
+def regrouper_roles(items, roles, libelles, role_groupe, langue="fr",
+                    sous_lignes=False):
+    """``items`` avec les lignes dont le ``role_ci`` est dans ``roles``
+    regroupées (une ligne par taux de TVA, placée à la première ligne de ce
+    taux, ``sous_lignes`` = détail des composants quand demandé). Sans ligne
+    du groupe : ``items`` tel quel (même objet)."""
+    items = items or []
+    groupes = {}
+    for it in items:
+        if isinstance(it, dict) and it.get("role_ci") in roles:
+            groupes.setdefault(it.get("taux_tva"), []).append(it)
+    if not groupes:
+        return items
+    sortie, poses = [], set()
+    for it in items:
+        if not (isinstance(it, dict) and it.get("role_ci") in roles):
+            sortie.append(it)
+            continue
+        taux = it.get("taux_tva")
+        if taux not in poses:
+            poses.add(taux)
+            sortie.append(_ligne_groupee(groupes[taux], langue, libelles,
+                                         role_groupe, sous_lignes))
+    return sortie
 
 
 def regrouper_installation(items, langue="fr"):
     """``items`` avec les prestations C&I regroupées (une ligne par taux de
     TVA, placée à la première prestation de ce taux). Sans prestation :
     ``items`` tel quel (même objet)."""
-    items = items or []
-    groupes = {}
-    for it in items:
-        if isinstance(it, dict) and it.get("role_ci") in ROLES_INSTALLATION_CI:
-            groupes.setdefault(it.get("taux_tva"), []).append(it)
-    if not groupes:
-        return items
-    sortie, poses = [], set()
-    for it in items:
-        if not (isinstance(it, dict)
-                and it.get("role_ci") in ROLES_INSTALLATION_CI):
-            sortie.append(it)
-            continue
-        taux = it.get("taux_tva")
-        if taux not in poses:
-            poses.add(taux)
-            sortie.append(_ligne_groupee(groupes[taux], langue))
-    return sortie
+    return regrouper_roles(items, ROLES_INSTALLATION_CI, LIBELLE_INSTALLATION,
+                           "installation_ci", langue)
 
 
 def est_ci(data):
@@ -104,18 +129,35 @@ def designation_client(texte):
     return propre or texte
 
 
+def _sans_jargon(it):
+    """``it`` sans « C&I » dans sa désignation ni celles de ses sous-lignes
+    (R2) ; l'objet d'origine quand rien n'est à retirer."""
+    if not isinstance(it, dict):
+        return it
+    textes = [it.get("designation")] + [
+        sl.get("designation") for sl in it.get("sous_lignes") or []
+        if isinstance(sl, dict)]
+    if not any(_JARGON_CI.search(str(t or "")) for t in textes):
+        return it
+    propre = dict(it, designation=designation_client(it.get("designation")))
+    if it.get("sous_lignes"):
+        propre["sous_lignes"] = [
+            dict(sl, designation=designation_client(sl.get("designation")))
+            if isinstance(sl, dict) else sl for sl in it["sous_lignes"]]
+    return propre
+
+
 def lignes_client(items, data):
     """Les lignes que le CLIENT lit : regroupées sur un devis C&I
-    (``data['mode_installation']``), désignations sans « C&I » (CPDF),
+    (``data['mode_installation']`` — « Tableau de protection AC/DC » R2 puis
+    « Installation clé en main »), désignations sans « C&I » (CPDF),
     ``items`` inchangé sinon."""
     if not est_ci(data):
         return items
-    lignes = regrouper_installation(items, (data or {}).get("langue_sortie")
-                                    or "fr")
-    return [dict(it, designation=designation_client(it.get("designation")))
-            if isinstance(it, dict) and _JARGON_CI.search(
-                str(it.get("designation") or "")) else it
-            for it in lignes]
+    from .tableau import regrouper_tableau  # frère : import local (cycle)
+    langue = (data or {}).get("langue_sortie") or "fr"
+    lignes = regrouper_installation(regrouper_tableau(items, langue), langue)
+    return [_sans_jargon(it) for it in lignes]
 
 
 def regrouper_paniers(data, cles=("sans_items", "avec_items", "all_items")):

@@ -459,3 +459,171 @@ class Cpdf5Cpdf8Couverture(SimpleTestCase):
         for brut in ("etude_ci.bilan (moteur C&I)",
                      "etude_ci.bilan (moteur C&amp;I)"):
             self.assertNotIn("moteur", texte_client(doc, brut))
+
+
+# ── R2 (fondateur 28/10/2026) — UNE ligne « Tableau de protection AC/DC » ──
+#: Les organes C&I du tableau (rôle produit ``role_ci`` de
+#: ``ROLES_TABLEAU_CI``), Σ HT = 7 800 ; le câble AC (``cable_ac``) n'en fait
+#: PAS partie et reste une ligne à part.
+ORGANES = [
+    ("coffret_dc", "Coffret DC C&I", 2, 1500.0),
+    ("protection_ac", "Disjoncteur AC 63 A (C&I)", 2, 400.0),
+    ("protection_dc", "Protection DC (fusibles / sectionneur) par MPPT", 2, 150.0),
+    ("protection_dc", "Parafoudre DC par onduleur", 1, 200.0),
+    ("protection_ac", "Parafoudre AC", 1, 300.0),
+    ("mise_a_la_terre", "Mise à la terre du champ PV", 1, 900.0),
+    ("compteur_injection", "Comptage / limitation d'injection", 1, 1800.0),
+    ("coffret_ac", "Coffret AC C&I", 1, 500.0),
+]
+CABLE_AC = {"designation": "Câble AC 16 mm²", "marque": "", "quantite": 30,
+            "prix_unit_ht": 50.0, "prix_unit_ttc": 60.0, "taux_tva": 20,
+            "role_ci": "cable_ac"}
+
+
+def items_organes(taux=20):
+    return [{"designation": nom, "marque": "", "quantite": q,
+             "prix_unit_ht": pu, "prix_unit_ttc": round(pu * 1.2, 2),
+             "taux_tva": taux, "role_ci": role}
+            for role, nom, q, pu in ORGANES]
+
+
+def avec_organes(data, cle="all_items"):
+    """``data`` + les 8 organes du tableau et le câble AC (mêmes totaux
+    qu'un devis qui les porterait : les figures du document sont comparées
+    entre le rendu groupé et le rendu ligne à ligne)."""
+    data[cle] = list(data[cle]) + items_organes() + [dict(CABLE_AC)]
+    return data
+
+
+class TableauProtectionAcDc(SimpleTestCase):
+
+    def test_regroupement_pur(self):
+        from apps.ventes.quote_engine.ci.tableau import regrouper_tableau
+        items = [{"designation": "Panneau", "quantite": 2, "prix_unit_ht": 1.0,
+                  "taux_tva": 10, "ordre": 0}] + items_organes() + [dict(CABLE_AC)]
+        for i, it in enumerate(items):
+            it.setdefault("ordre", i)
+        sortie = regrouper_tableau(items)
+        self.assertEqual([it["designation"] for it in sortie],
+                         ["Panneau", "Tableau de protection AC/DC", "Câble AC 16 mm²"])
+        tableau = sortie[1]
+        self.assertEqual(tableau["role_ci"], "tableau_ci")
+        self.assertEqual(tableau["quantite"], 1.0)
+        self.assertEqual(tableau["prix_unit_ht"], 7800.0)
+        self.assertEqual(tableau["prix_unit_ttc"], 9360.0)
+        self.assertEqual(tableau["ordre"], 1)
+        self.assertEqual(
+            [(sl["designation"], sl["quantite"]) for sl in tableau["sous_lignes"]],
+            [(nom, float(q)) for _r, nom, q, _pu in ORGANES])
+        self.assertTrue(all("prix" not in cle for sl in tableau["sous_lignes"]
+                            for cle in sl))
+        # Sans organe : le même objet ; les lignes d'origine ne sont pas mutées.
+        seul = items[:1]
+        self.assertIs(regrouper_tableau(seul), seul)
+        self.assertEqual(items[1]["designation"], "Coffret DC C&I")
+
+    def test_une_ligne_par_taux_de_tva(self):
+        from apps.ventes.quote_engine.ci.tableau import regrouper_tableau
+        items = items_organes()
+        items[0] = dict(items[0], taux_tva=10)
+        groupes = regrouper_tableau(items)
+        self.assertEqual([g["taux_tva"] for g in groupes], [10, 20])
+        self.assertEqual([g["prix_unit_ht"] for g in groupes], [3000.0, 4800.0])
+        self.assertEqual([len(g["sous_lignes"]) for g in groupes], [1, 7])
+
+    def test_libelle_trilingue_jargon_et_hors_ci(self):
+        from apps.ventes.quote_engine.ci.installation import lignes_client
+        items = items_organes()
+        for langue, libelle in (("fr", "Tableau de protection AC/DC"),
+                                ("en", "AC/DC protection switchboard"),
+                                ("ar", "لوحة الحماية AC/DC")):
+            sortie = lignes_client(items, {"mode_installation": "commercial",
+                                           "langue_sortie": langue})
+            self.assertEqual([it["designation"] for it in sortie], [libelle])
+            # CPDF — « C&I » retiré AUSSI des sous-lignes.
+            self.assertEqual(sortie[0]["sous_lignes"][0]["designation"],
+                             "Coffret DC")
+            self.assertEqual(sortie[0]["sous_lignes"][1]["designation"],
+                             "Disjoncteur AC 63 A")
+        for mode in ("residentiel", "agricole", ""):
+            self.assertIs(lignes_client(items, {"mode_installation": mode}),
+                          items)
+        self.assertEqual(items[0]["designation"], "Coffret DC C&I")
+
+    def test_tableau_et_installation_regroupes_ensemble(self):
+        from apps.ventes.quote_engine.ci.installation import lignes_client
+        sortie = lignes_client(items_organes() + items_prestations(),
+                               {"mode_installation": "industriel"})
+        self.assertEqual([it["designation"] for it in sortie],
+                         ["Tableau de protection AC/DC",
+                          "Installation clé en main"])
+        self.assertEqual([it["prix_unit_ht"] for it in sortie],
+                         [7800.0, 90000.0])
+        self.assertNotIn("sous_lignes", sortie[1])
+
+    def test_charge_utile_publique_regroupee_par_panier(self):
+        from apps.ventes.quote_engine.ci.installation import regrouper_paniers
+        data = {"mode_installation": "commercial",
+                "sans_items": items_organes(),
+                "avec_items": items_organes()[:3],
+                "option_batterie": {"lignes": items_organes()[:2]}}
+        regrouper_paniers(data)
+        self.assertEqual(len(data["sans_items"]), 1)
+        self.assertEqual(data["sans_items"][0]["prix_unit_ht"], 7800.0)
+        self.assertEqual(len(data["sans_items"][0]["sous_lignes"]), 8)
+        self.assertEqual(data["avec_items"][0]["prix_unit_ht"], 4100.0)
+        self.assertEqual(data["option_batterie"]["lignes"][0]["prix_unit_ht"],
+                         3800.0)
+        # Les totaux ne sont jamais recalculés ici : aucune clé ``totaux_*``
+        # n'est posée.
+        self.assertFalse([k for k in data if k.startswith("totaux")])
+
+    def test_le_pdf_commercial_imprime_une_ligne_et_le_detail(self):
+        from html import unescape
+        html = _html(avec_organes(_data()))
+        u = unescape(html)
+        self.assertEqual(u.count("Tableau de protection AC/DC"), 1)
+        self.assertEqual(html.count('class="ci-sl"'), len(ORGANES))
+        for _role, nom, _q, _pu in ORGANES:
+            # Jamais une rangée à part entière, toujours en sous-ligne.
+            self.assertNotIn(f'<td class="c2-d">{nom}', u)
+        self.assertIn("2&#160;×&#160;Coffret DC<", html)
+        self.assertNotIn("C&amp;I", html)
+        self.assertIn('<td class="c2-d">Câble AC 16 mm²', u)
+        self.assertIn("7 800,00", u.replace("\u202f", " ").replace("\xa0", " "))
+
+    def test_totaux_identiques_ligne_a_ligne_ou_groupes(self):
+        from apps.ventes.quote_engine.ci import tableau
+        sans = avec_organes(_data())
+        avec = avec_organes(_data())
+        for it in sans["all_items"]:
+            it.pop("role_ci", None)  # ligne à ligne : aucun regroupement
+        self.assertEqual(
+            {k: [m.valeur for m in v] for k, v in extract_figures(_html(sans)).items()},
+            {k: [m.valeur for m in v] for k, v in extract_figures(_html(avec)).items()})
+        self.assertEqual(tableau.sous_lignes_html({"sous_lignes": []}, 6, "#000"), "")
+
+    def test_une_page_legacy_detail_echappe(self):
+        """Le une-page (moteur legacy) imprime la ligne regroupée et ses
+        sous-lignes, échappées UNE fois (ERR37 : l'échappement précède le
+        regroupement)."""
+        from ._moteur_fixtures import html_onepage
+        organes = items_organes()
+        organes[5] = dict(organes[5], designation="Mise à la terre <PV>")
+        html = html_onepage(mode_installation="commercial",
+                            all_items=list(_data()["all_items"]) + organes)
+        self.assertEqual(html.count("Tableau de protection AC/DC"), 1)
+        self.assertEqual(html.count('class="ci-sl"'), len(ORGANES))
+        self.assertIn("&lt;PV&gt;", html)
+        self.assertNotIn("<PV>", html)
+        self.assertNotIn("C&amp;I", html)
+
+
+@tag("weasyprint")  # rendu PDF réel
+class TableauProtectionTroisPages(SimpleTestCase):
+
+    def test_trois_pages_avec_tableau_et_installation(self):
+        data = avec_organes(avec_prestations(_data()))
+        self.assertEqual(len(_pages(data)), 3)
+        data = avec_organes(avec_prestations(_data(lignes=30)))
+        self.assertEqual(len(_pages(data)), 3)

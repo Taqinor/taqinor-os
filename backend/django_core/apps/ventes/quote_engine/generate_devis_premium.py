@@ -1827,7 +1827,8 @@ def equip_rows(items, totaux, hi_bat=False, ancres=None):
         taux = it.get("taux_tva", TVA_PCT)
         taux_s = f"{pct_fr(taux)}%"  # AMOT24
         rows += (f'<tr style="{bg}"><td class="ti">{ico}</td>'
-                 f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}</td>'
+                 f'<td class="tl">{des}{"<br>" + bdg if bdg else ""}{desc_html}'
+                 f'{ci_tableau.sous_lignes_html(it, 5, CG4)}</td>'
                  f'<td class="tc" style="word-wrap:break-word;font-size:5pt;">{gar}</td>'
                  f'<td class="tc">{qty_s}</td>'
                  f'<td class="tr">{pu_ht_s}</td>'
@@ -2867,7 +2868,7 @@ def page3():
 # AMOT35 — LA constante vit dans ``bankable`` (règle partagée).
 from .bankable import TOLERANCE_KWC_SIMULATION  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from .agricole.garanties import garantie_ligne_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
-from .ci import installation as ci_installation, onepage as ci_onepage  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+from .ci import installation as ci_installation, onepage as ci_onepage, tableau as ci_tableau  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
 from .bankable import TOLERANCE_PRODUCTION_PAGE  # noqa: E402,F401 — fin de module (anti-cycle) (D-ENF22)
 
 
@@ -3868,8 +3869,10 @@ def apply_quote_data(data: dict) -> None:
     # QJR408 — PLUS AUCUNE SECONDE PASSE DE CLASSIFICATION ICI : le tableau
     # imprime EXACTEMENT les lignes que le builder a comptées dans le total
     # figé (cf. le bloc QJR408 en tête de module).
-    SANS_ITEMS   = _esc_items(ci_installation.lignes_client(data["sans_items"], data))
-    AVEC_ITEMS   = _esc_items(ci_installation.lignes_client(data["avec_items"], data))
+    # R2 — échappement AVANT le regroupement C&I : les sous-lignes du
+    # « Tableau de protection AC/DC » héritent des désignations échappées.
+    SANS_ITEMS   = ci_installation.lignes_client(_esc_items(data["sans_items"]), data)
+    AVEC_ITEMS   = ci_installation.lignes_client(_esc_items(data["avec_items"]), data)
     ECO_S_M      = data["eco_s_monthly"]
     ECO_A_M      = data["eco_a_monthly"]
     # M1 — `data["factures_mensuelles"]` vaut None quand le client n'a pas
@@ -3941,7 +3944,7 @@ def render_html_for(data: dict) -> str:
             # ``data["sans_items"]`` en dur : une charge utile privée d'``all_items``
             # mais porteuse de ``totaux_all`` produisait un tableau d'équipements
             # VIDE sous un Total TTC complet.
-            return _onepage_html_qui_tient(_esc_items(ci_installation.lignes_client(data["all_items"], data)))
+            return _onepage_html_qui_tient(ci_installation.lignes_client(_esc_items(data["all_items"]), data))
         return build_html()
 
 
