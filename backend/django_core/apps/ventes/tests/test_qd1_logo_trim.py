@@ -234,3 +234,38 @@ class LogoDetourageTests(SimpleTestCase):
         logo.taqinor_png('sombre', 'lockup')
         logo.taqinor_png('sombre', 'lockup')
         self.assertEqual(logo.taqinor_png.cache_info().misses, 1)
+
+    def test_logo_televerse_deja_rogne_par_le_chemin_facture(self):
+        """Critique R3 — sur /proposal et la facture, ``_trim_image_whitespace``
+        rogne le logo AVANT ``logo.societe_png`` : l'encre touche les quatre
+        bords ; le fond reste reconnu (couleur majoritaire du bord), les coins
+        deviennent transparents et l'encre sombre passe en blanc."""
+        import base64
+        import io
+        from PIL import Image
+        from apps.ventes.quote_engine import logo
+        img = Image.new('RGB', (400, 120), (255, 255, 255))
+        for x in (50, 110, 170):                                           # trois « lettres » sombres
+            img.paste(Image.new('RGB', (20, 80), (2, 47, 83)), (x, 20))
+        img.paste(Image.new('RGB', (100, 40), (220, 20, 20)), (250, 40))   # emblème rouge
+        rogne, ext = _trim_image_whitespace(_png_bytes(img))
+        self.assertEqual(ext, 'png')
+        uri = 'data:image/png;base64,' + base64.b64encode(rogne).decode()
+        s = Image.open(io.BytesIO(logo.societe_png(uri, 'sombre'))).convert('RGBA')
+        self.assertEqual(s.size, (300, 80))
+        self.assertEqual(s.getpixel((10, 40)), (255, 255, 255, 255))       # sombre → blanc
+        self.assertEqual(s.getpixel((250, 40)), (220, 20, 20, 255))        # vif gardé
+        self.assertEqual(s.getpixel((40, 10))[3], 0)                       # fond → transparent
+        # Logo rogné dont l'encre occupe TOUT le bord (pavé plein) : non détouré, inchangé.
+        plein = Image.new('RGB', (120, 60), (2, 47, 83))
+        c = Image.open(io.BytesIO(logo.societe_png(_uri(plein), 'clair'))).convert('RGBA')
+        self.assertEqual(c.getpixel((60, 30)), (2, 47, 83, 255))
+
+    def test_logo_televerse_grand_ramene_a_1024(self):
+        from PIL import Image
+        from apps.ventes.quote_engine import logo
+        grand = Image.new('RGB', (3000, 1500), (255, 255, 255))
+        grand.paste(Image.new('RGB', (2000, 1000), (2, 47, 83)), (500, 250))
+        img = logo._decoder_uri(_uri(grand))
+        self.assertEqual(max(img.size), 1024)
+        self.assertAlmostEqual(img.width / img.height, 2.0, places=2)

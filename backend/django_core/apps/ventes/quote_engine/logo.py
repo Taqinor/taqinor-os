@@ -48,6 +48,7 @@ from __future__ import annotations
 import base64
 import functools
 import io
+from html import escape
 from pathlib import Path
 
 import numpy as np
@@ -73,7 +74,9 @@ _LARGEUR_MAX_EN_CAPITALES = 9.0
 _VARIANTES = ("clair", "sombre")
 _BLOCS = ("mot", "lockup", "embleme")
 _FOND_CLAIR_MIN = 180.0     # luminance minimale d'un fond uni détourable
-_BORD_UNI_MAX = 12.0        # écart moyen (canal) toléré sur le bord
+_BORD_UNI_MAX = 12.0        # écart (canal) toléré entre un pixel du bord et le fond
+_BORD_UNI_PART = 0.5        # part minimale du bord qui doit être du fond (majorité : un logo rogné touche ses bords)
+_COTE_MAX = 1024            # grand côté maximal d'un logo téléversé (la boîte max = 54 mm ≈ 640 px à 300 dpi)
 _VIF_MIN, _VIF_MAX = 100.0, 150.0   # rampe « encre sombre → blanc » (valeur max canal)
 _ALPHA_VISIBLE = 0.02
 _CACHE_SOCIETE = 16
@@ -105,10 +108,11 @@ def _dilater(m: np.ndarray) -> np.ndarray:
     return d
 
 
-def _atteignable(graine: np.ndarray, passable: np.ndarray, maxi: int = 2048) -> np.ndarray:
-    """Pixels de ``passable`` reliés à ``graine`` (propagation géodésique)."""
+def _atteignable(graine: np.ndarray, passable: np.ndarray) -> np.ndarray:
+    """Pixels de ``passable`` reliés à ``graine`` (propagation géodésique,
+    bornée par le périmètre de l'image)."""
     m = graine & passable
-    for _ in range(maxi):
+    for _ in range(sum(m.shape)):
         d = _dilater(m) & passable
         if (d == m).all():
             break
@@ -130,13 +134,18 @@ def _rogner(a: np.ndarray) -> np.ndarray:
 
 def _fond(a: np.ndarray):
     """Couleur du fond : médiane des pixels opaques du bord — ``None`` si le
-    bord n'est pas uni ou pas clair (rien n'est alors détouré)."""
+    bord n'est pas majoritairement uni ou pas clair (rien n'est alors détouré).
+
+    Un logo déjà ROGNÉ au trait (``utils.pdf._trim_image_whitespace``, sur le
+    chemin /proposal et facture) a de l'encre sur ses quatre bords : le fond
+    est la couleur MAJORITAIRE du bord (≥ ``_BORD_UNI_PART`` des pixels à
+    ``_BORD_UNI_MAX`` près de la médiane), jamais l'écart moyen."""
     bord = np.concatenate([a[0], a[-1], a[:, 0], a[:, -1]])
     bord = bord[bord[:, 3] > 250][:, :3]
     if len(bord) < 4:
         return None
     med = np.median(bord, axis=0)
-    if np.abs(bord - med).max(axis=1).mean() > _BORD_UNI_MAX:
+    if (np.abs(bord - med).max(axis=1) <= _BORD_UNI_MAX).mean() < _BORD_UNI_PART:
         return None
     if _luminance(med) < _FOND_CLAIR_MIN:
         return None
@@ -247,6 +256,8 @@ def _bloc(a: np.ndarray, bloc: str) -> np.ndarray:
         return a[: m["mot"]]
     if bloc == "embleme":
         b = _bbox(_est_dore(a[..., :3]) & (a[..., 3] > 127))
+        if b is None:           # asset sans doré : le mot-marque tient lieu d'emblème
+            return a[: m["mot"]]
         x0, y0, x1, y1 = b
         cote = max(x1 - x0, y1 - y0)
         cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
@@ -277,11 +288,17 @@ def taqinor_b64(variante: str = "sombre", bloc: str = "lockup") -> str:
 # ── logo téléversé d'une société (APDF4) ─────────────────────────────────────
 
 def _decoder_uri(uri: str):
+    """Image PIL d'une data URI base64, RAMENÉE à ``_COTE_MAX`` px de grand
+    côté (``CompanyProfile.logo_key`` n'a aucune limite : un PNG 4000² coûtait
+    ~1,6 Go en float32 sur ce pipeline) ; ``None`` si ce n'est pas une data URI."""
     entete, _, charge = (uri or "").partition(",")
     if ";base64" not in entete:
         return None
     img = Image.open(io.BytesIO(base64.b64decode(charge)))
     img.load()
+    if max(img.size) > _COTE_MAX:
+        img = img.convert("RGBA")
+        img.thumbnail((_COTE_MAX, _COTE_MAX), Image.LANCZOS)
     return img
 
 
@@ -367,7 +384,7 @@ def img_html(b64: str, role: str, alt: str = "TAQINOR", style: str = "") -> str:
     rôle ; '' sans image."""
     if not b64:
         return ""
-    return (f'<img src="data:image/png;base64,{b64}" alt="{alt}" '
+    return (f'<img src="data:image/png;base64,{b64}" alt="{escape(alt, quote=True)}" '
             f'style="{css_boite(role)}{style}">')
 
 
