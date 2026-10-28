@@ -581,10 +581,16 @@ class LHybrideRetenuPorteUneBatterieDuStock(_Base):
             ond_rendement_euro_pct=Decimal('97.0'),
             ond_bat_v_min=Decimal('160.0'), ond_bat_v_max=Decimal('800.0'))
 
-    def _composer(self):
+    def _composer(self, **extra):
         return services.composition_residentielle(
             services.catalogue_de_la_societe(self.company),
-            kwc=30.25, panel_watt=550, nb_panneaux=55, avec_batterie=True)
+            kwc=30.25, panel_watt=550, nb_panneaux=55, avec_batterie=True,
+            **extra)
+
+    def test_regles_d_origine_gardent_l_hybride_d_hier(self):
+        """Un devis EXISTANT aux règles < 3 garde l'hybride qu'il a servi."""
+        noms = [li.designation for li in self._composer(regles_2710=False)]
+        self.assertIn(self.ond_hv.nom, noms)
 
     def test_plusieurs_hybrides_basse_tension_plutot_que_le_30_kw(self):
         lignes = self._composer()

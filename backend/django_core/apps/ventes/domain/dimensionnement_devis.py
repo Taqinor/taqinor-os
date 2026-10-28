@@ -699,9 +699,9 @@ def echelle_paliers_batterie(devis):
     quand le devis porte un calepinage (:func:`contenance_toit_du_devis` — on ne
     propose pas des panneaux qui ne tiennent pas), ET :data:`FACTEUR_MAX_FALAISE`
     × la taille de parité de CE client, plafonnée par
-    :data:`SEUIL_PANNEAUX_RESIDENTIEL` (l'ancien plafond de 120 panneaux —
-    23/10/2026 : le balayage des TAILLES monte désormais au-delà, pas cette
-    échelle de stockage, qui tire le champ panneau par panneau).
+    :data:`MAX_PANNEAUX_BALAYAGE` (2 000, RSIZ8 — règles ≥ 3 ; un devis aux
+    règles d'origine garde l'ancien plafond de 120 panneaux,
+    :data:`SEUIL_PANNEAUX_RESIDENTIEL`).
 
     LA BORNE DE TOIT SE MESURE, ELLE NE SE DÉCLARE PAS (26/08/2026). Elle lisait
     :func:`plafond_toit_du_devis`, qui rend le nombre de panneaux DESSINÉS par
@@ -753,6 +753,18 @@ def _cibles_au_dessus_du_plancher_ve(cibles, equipements):
     if not taille:
         return list(cibles)
     return [c for c in cibles if c >= taille - 0.05]
+
+
+def _borne_champ_echelle(devis, panneaux_parite):
+    """RSIZ8 — le champ maximal de l'échelle de paliers batterie : falaise ×
+    parité, plafonné à 2 000 (règles ≥ 3) ; un devis aux règles d'origine
+    garde ses paliers servis (plafond 120)."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
+    plafond = (MAX_PANNEAUX_BALAYAGE
+               if regles_au_moins(devis, REGLES_CORRIGEES_2710)
+               else SEUIL_PANNEAUX_RESIDENTIEL)
+    return min(plafond, int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
 
 
 def _echelle_paliers_batterie(devis):
@@ -831,8 +843,7 @@ def _echelle_paliers_batterie(devis):
     # RSIZ8 — LA MÊME borne que le balayage des tailles (falaise × parité,
     # plafond dur 2 000, fondateur 23/10) : le 120 est un SIGNAL, plus un
     # plafond. Sous 120 la borne est inchangée.
-    max_champ = min(MAX_PANNEAUX_BALAYAGE,
-                    int(math.ceil(panneaux_parite * FACTEUR_MAX_FALAISE)))
+    max_champ = _borne_champ_echelle(devis, panneaux_parite)
     # LA BORNE DE TOIT EST LA CONTENANCE, PAS LE DESSIN (fondateur, 26/08/2026).
     #
     # Elle valait ``plafond_toit_du_devis``, c'est-à-dire le nombre de panneaux
@@ -1095,3 +1106,4 @@ from apps.ventes.dimensionnement import (  # noqa: E402 — fin de module (anti-
     capacite_utile_batterie,
     paliers_stockage_candidats,
 )
+from apps.ventes.balayage_adaptatif import SEUIL_PANNEAUX_RESIDENTIEL  # noqa: E402 — fin de module (D-ENF22)

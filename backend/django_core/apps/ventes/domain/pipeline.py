@@ -405,9 +405,9 @@ def intention_de_composition(intention, cible, *, avertissements=None,
         ville=ville_du_lead(intention.lead),
         # ACAL63 — une ligne panneau PAR MODÈLE désigné par le calepinage.
         modeles=getattr(cible, 'modeles', None),
-        # RSIZ5 — un devis recomposé aux règles d'origine (< 3) garde ses
-        # paires MPPT, comme ses cartes de taille (``contexte_sonde_du_devis``).
-        paires_mppt_derivees=regles_au_moins(devis, REGLES_CORRIGEES_2710),
+        # RSIZ2/3/5 — un devis recomposé aux règles d'origine (< 3) garde ses
+        # règles, comme ses cartes de taille (``contexte_sonde_du_devis``).
+        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710),
     )
 
 

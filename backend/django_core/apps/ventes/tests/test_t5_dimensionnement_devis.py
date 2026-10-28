@@ -10,6 +10,7 @@ l'aperçu TRANSITOIRE ``/ventes/etude-horaire/preview/`` — jamais persisté su
 un devis enregistré. Fixtures calquées sur
 ``test_cj2b_economies_publiques._CJ2bBase`` (Casablanca, table de référence
 PVGIS, aucun accès réseau)."""
+import math
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -226,14 +227,21 @@ class BornesEtOmbrageRsizTests(SimpleTestCase):
 
     def test_rsiz8_l_echelle_batterie_n_est_plus_bornee_a_120(self):
         """La borne du champ de l'échelle est celle du balayage (plafond dur
-        2 000), plus le seuil « hors résidentiel » de 120 panneaux."""
-        import inspect
+        2 000), plus le seuil « hors résidentiel » de 120 panneaux — sauf
+        pour un devis aux règles < 3, qui garde ses paliers servis."""
+        from types import SimpleNamespace
 
         from apps.ventes.domain import dimensionnement_devis as D
-        source = inspect.getsource(D._echelle_paliers_batterie)
-        self.assertIn('min(MAX_PANNEAUX_BALAYAGE', source)
-        self.assertNotIn('min(SEUIL_PANNEAUX_RESIDENTIEL', source)
-        self.assertEqual(D.MAX_PANNEAUX_BALAYAGE, 2000)
+        parite = 200  # × falaise : bien au-delà de 120
+        attendu = min(2000, int(math.ceil(parite * D.FACTEUR_MAX_FALAISE)))
+        self.assertGreater(attendu, 120)
+        self.assertEqual(D._borne_champ_echelle(None, parite), attendu)
+        self.assertEqual(D._borne_champ_echelle(
+            SimpleNamespace(regles_calcul=3), parite), attendu)
+        self.assertEqual(D._borne_champ_echelle(
+            SimpleNamespace(regles_calcul=2), parite), 120)
+        self.assertEqual(D._borne_champ_echelle(None, 10),
+                         int(math.ceil(10 * D.FACTEUR_MAX_FALAISE)))
 
     def test_rsiz7_l_ombrage_entre_dans_l_empreinte_seulement_s_il_existe(self):
         from apps.ventes.domain.entrees import EntreesMoteur, empreinte_entrees

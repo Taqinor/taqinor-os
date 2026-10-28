@@ -304,6 +304,21 @@ class LaFusionDesDeuxKits(_Base):
         self.assertIn(avertissement_option_avec_retiree(),
                       list(lignes.avertissements_composition))
 
+    def test_regles_d_origine_gardent_la_forme_commune_servie(self):
+        """Un devis EXISTANT aux règles < 3 (``regles_2710=False``) garde la
+        forme « deux options » commune qu'il a servie (devis envoyés
+        intouchés) ; aucune option n'est retirée."""
+        carte = self._par_designation(self._egaux(regles_2710=False))
+        self.assertEqual(carte['Onduleur réseau Huawei 5kW Monophasé'],
+                         [(1, '')])
+        self.assertEqual(carte['Onduleur hybride Deye 5kW Monophasé'],
+                         [(1, '')])
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        carte = self._par_designation(self._egaux(regles_2710=False))
+        self.assertIn('Onduleur hybride Deye 5kW Monophasé', carte)
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # 2. LE DEVIS AUTO LIT recommandation_avec

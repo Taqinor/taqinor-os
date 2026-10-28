@@ -512,7 +512,7 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                                  marques=None, ordre_lignes=None,
                                  mppt_paires=1, phase=None, modeles=None,
                                  batterie_module_kwh=None,
-                                 paires_mppt_derivees=False):
+                                 regles_2710=True):
     """L-2OPT — LE devis « Les deux » quand les deux optimums DIVERGENT.
 
     Compose DEUX kits complets par ``composition_residentielle`` (la source de
@@ -534,7 +534,9 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
     seul cas où le calepinage dessine les deux options) ;
     ``batterie_module_kwh`` (BATHOMO) va au kit « avec ». Kit « avec » SANS
     aucune batterie ⇒ le kit « sans » seul, avec
-    :func:`avertissement_option_avec_retiree`.
+    :func:`avertissement_option_avec_retiree`. ``regles_2710=False`` (devis
+    EXISTANT aux règles < 3) : l'ancien repli — forme « deux options »
+    commune à champs égaux sans cible de stockage — et les kits d'avant.
 
     Fonction PURE (elle ne requête ni n'écrit rien) ; ``produits`` est déjà
     cantonné à la société appelante par l'appelant.
@@ -565,9 +567,16 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
         structure_produit_id=structure_produit_id,
         taux_tva=taux_tva, avertissements=avertissements, marques=marques,
         ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase,
-        # RSIZ5 — les deux kits dérivent (ou non) leurs paires MPPT ensemble.
-        paires_mppt_derivees=paires_mppt_derivees)
+        # RSIZ2/RSIZ5 — les deux kits suivent les mêmes règles (27/10).
+        regles_2710=regles_2710)
 
+    if not regles_2710:
+        # Règles d'origine (< 3) : un devis envoyé garde ses lignes servies.
+        if nb_avec == nb_sans and cible_stockage is None:
+            return composition_residentielle(
+                catalogue, kwc=kwc_s, nb_panneaux=nb_sans, deux_options=True,
+                **commun)
+        modeles = batterie_module_kwh = None
     modeles_kits = modeles if nb_avec == nb_sans else None
     kit_sans = composition_residentielle(
         catalogue, kwc=kwc_s, nb_panneaux=nb_sans, avec_batterie=False,
@@ -577,7 +586,8 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
         deux_options=False, batterie_cible_kwh=cible_stockage,
         batterie_module_kwh=batterie_module_kwh, modeles=modeles_kits,
         **commun)
-    if kit_sans and 'batterie' not in (getattr(kit_avec, 'roles', ()) or ()):
+    if (regles_2710 and kit_sans
+            and 'batterie' not in (getattr(kit_avec, 'roles', ()) or ())):
         return _sans_option_avec(kit_sans, kit_avec, avertissements)
 
     def _taguees(kit):
@@ -979,8 +989,8 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
             # amputé.
             avertissements=avertissements,
             variante=vue['variante'],
-            # RSIZ5 — un devis aux règles d'origine (< 3) garde ses paires.
-            paires_mppt_derivees=regles_au_moins(
+            # RSIZ2/3/5 — un devis aux règles d'origine (< 3) garde ses règles.
+            regles_2710=regles_au_moins(
                 devis, REGLES_CORRIGEES_2710),
         ))
         roles_attendu = list(getattr(attendu, 'roles', ()) or ())

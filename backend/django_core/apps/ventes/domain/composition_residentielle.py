@@ -143,7 +143,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
                               batterie_cible_kwh=None,
                               batterie_module_kwh=None,
                               hors_reseau=False, modeles=None,
-                              paires_mppt_derivees=False):
+                              regles_2710=True):
     """Le KIT résidentiel COMPLET composé depuis un catalogue.
 
     ``modeles`` (ACAL63, C-ACAL-042) — les modèles POSÉS par le calepinage,
@@ -170,11 +170,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         canonique du simulateur est rendu tel quel.
       · ``mppt_paires`` — C4/PVCBL, nombre de paires de câble DC descendantes
         (60 m par paire) ; repli fondateur explicite à 1 paire.
-      · ``paires_mppt_derivees`` — RSIZ5 : vrai (règles de calcul ≥ 3, cf.
-        ``regles_calcul.regles_au_moins``), les paires sont DÉRIVÉES du champ
-        et des onduleurs vendus (:func:`catalogue.paires_mppt_du_champ`),
-        ``mppt_paires`` n'étant plus qu'un PLANCHER. ``False`` (LE DÉFAUT)
-        ⇒ ``mppt_paires`` tel quel, byte-identique à l'historique.
+      · ``regles_2710`` — corrections résidentielles du 27/10/2026, vrai
+        (LE DÉFAUT, règles courantes) sauf pour un devis EXISTANT aux règles
+        < 3 (``regles_au_moins(devis, REGLES_CORRIGEES_2710)``) : RSIZ5, les
+        paires sont DÉRIVÉES du champ et des onduleurs vendus
+        (:func:`catalogue.paires_mppt_du_champ`), ``mppt_paires`` n'étant
+        plus qu'un PLANCHER ; RSIZ2, l'hybride de l'option « avec » doit être
+        servi par une batterie du stock. ``False`` ⇒ les deux règles
+        d'avant, byte-identiques à l'historique.
       · ``phase`` — PVCOMPAT, le RACCORDEMENT déclaré par le client
         (``'monophase'`` / ``'triphase'``, cf.
         ``compatibilites.normaliser_phase``). Monophasé : les onduleurs
@@ -451,7 +454,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         vivier = (_hybrides_servis_par_une_batterie(
             vivier, par_type.get('batterie'))
             if categorie == 'onduleur_hybride' and veut_batterie
-            else vivier)
+            and regles_2710 else vivier)
         replis_phase[categorie] = replie
         refus_tri[categorie] = False
         for produit in vivier:
@@ -1011,7 +1014,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     # suit les paliers de 5 kWc (25 m de base + 15 m par palier).
     # RSIZ5 — paires DÉRIVÉES du champ et des onduleurs vendus (niveau 3).
     ajouter('cable_dc', cable_dc, metre_cable_dc_par_paires(_paires_mppt(
-        mppt_paires, paires_mppt_derivees, nb, kwp, panneau,
+        mppt_paires, regles_2710, nb, kwp, panneau,
         [(o, quantite_onduleur(k)) for o, k in (
             ((onduleur_reseau, kw_reseau), (onduleur_hybride, kw_hybride))
             if deux_options else ((onduleur, kw_onduleur),))

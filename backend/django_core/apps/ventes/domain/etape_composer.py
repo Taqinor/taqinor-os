@@ -128,11 +128,12 @@ class IntentionComposition:
     #: ACAL63 — les modèles DÉSIGNÉS par le calepinage (``[{produit_id, watt,
     #: count}]``). ``None`` (LE DÉFAUT) ⇒ un seul panneau, choisi au wattage.
     modeles: object = None
-    #: RSIZ5 — paires MPPT DÉRIVÉES du champ (``mppt_paires`` devient un
-    #: plancher). ``True`` (LE DÉFAUT) = règles courantes, celles d'un devis
-    #: neuf ; un appelant qui recompose un devis EXISTANT passe
+    #: Corrections résidentielles du 27/10 (RSIZ2 hybride servi par une
+    #: batterie du stock, RSIZ3 jamais la forme commune, RSIZ5 paires MPPT
+    #: DÉRIVÉES du champ). ``True`` (LE DÉFAUT) = règles courantes, celles
+    #: d'un devis neuf ; un appelant qui recompose un devis EXISTANT passe
     #: ``regles_au_moins(devis, REGLES_CORRIGEES_2710)``.
-    paires_mppt_derivees: bool = True
+    regles_2710: bool = True
 
 
 @dataclass(frozen=True)
@@ -204,7 +205,7 @@ def composer(intention):
         ordre_lignes=reglages.ordre_lignes,
         mppt_paires=intention.mppt_paires,
         phase=intention.phase,
-        paires_mppt_derivees=getattr(intention, 'paires_mppt_derivees', True),
+        regles_2710=getattr(intention, 'regles_2710', True),
     )
     catalogue = reglages.catalogue
     kwc = float(intention.kwc or 0)
@@ -212,8 +213,9 @@ def composer(intention):
 
     # ── L-2OPT — DEUX OPTIMISEURS, TOUJOURS fusionnés (RSIZ3) ───────────────
     # Sans optimum « avec », la fusion joue à champs ÉGAUX : jamais plus la
-    # forme commune réseau + hybride dans une même offre.
-    if deux_options:
+    # forme commune réseau + hybride dans une même offre — sauf pour un devis
+    # existant aux règles < 3, qui garde sa forme servie.
+    if deux_options and (avec or commun['regles_2710']):
         avec = avec or {}
         lignes = composition_deux_optimiseurs(
             catalogue,
@@ -232,6 +234,7 @@ def composer(intention):
             kwc=kwc,
             nb_panneaux=nb_panneaux,
             avec_batterie=avec_batterie,
+            deux_options=deux_options,
             # Un devis MONO « avec » retient la capacité du même optimum ;
             # absente ⇒ la règle historique kWc/5 décide seule.
             batterie_cible_kwh=(avec.get('batterie_kwh')
@@ -314,8 +317,8 @@ class ContexteSonde:
     taux_tva: Decimal = Decimal('20')
     hors_reseau: bool = False
     ville: str = ''
-    #: RSIZ5 — cf. ``IntentionComposition.paires_mppt_derivees``.
-    paires_mppt_derivees: bool = True
+    #: RSIZ2/3/5 — cf. ``IntentionComposition.regles_2710``.
+    regles_2710: bool = True
 
 
 def _mppt_paires_du_devis(devis):
@@ -364,8 +367,8 @@ def contexte_sonde_du_devis(devis, *, reglages=None):
         taux_tva=Decimal(str(taux)) if taux is not None else Decimal('20'),
         hors_reseau=bool(hors_reseau),
         ville=ville_du_lead(lead),
-        # RSIZ5 — un devis aux règles d'origine (< 3) garde ses paires MPPT.
-        paires_mppt_derivees=regles_au_moins(devis, REGLES_CORRIGEES_2710))
+        # RSIZ2/3/5 — un devis aux règles d'origine (< 3) garde ses règles.
+        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
 
 
 def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
@@ -394,7 +397,7 @@ def composer_sonde(contexte, nb_panneaux, *, avec_batterie, cible_kwh=None,
         ville=contexte.ville,
         batterie_module_kwh=module_kwh,
         reglages=contexte.reglages,
-        paires_mppt_derivees=getattr(contexte, 'paires_mppt_derivees', True)))
+        regles_2710=getattr(contexte, 'regles_2710', True)))
 
 
 def sonder_wattage(contexte):

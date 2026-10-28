@@ -606,16 +606,16 @@ class LesPairesMpptSuiventLeChamp(_Base):
     def test_un_grand_champ_derive_plusieurs_paires(self):
         # 15 kWc → 3 paliers de 5 kWc → 3 paires → 180 m.
         self.assertEqual(self._cable_dc(
-            kwc=15, nb_panneaux=22, paires_mppt_derivees=True), 180)
+            kwc=15, nb_panneaux=22, regles_2710=True), 180)
 
     def test_un_petit_champ_garde_une_paire(self):
         self.assertEqual(self._cable_dc(
-            kwc=2.13, nb_panneaux=3, paires_mppt_derivees=True), 60)
+            kwc=2.13, nb_panneaux=3, regles_2710=True), 60)
 
     def test_le_compte_saisi_reste_un_plancher(self):
         self.assertEqual(self._cable_dc(
             kwc=5, nb_panneaux=8, mppt_paires=3,
-            paires_mppt_derivees=True), 180)
+            regles_2710=True), 180)
 
     def test_regles_d_origine_le_compte_saisi_tel_quel(self):
         """Défaut de la fonction pure = règles d'origine : 60 m à 15 kWc."""
@@ -635,8 +635,8 @@ class LesPairesMpptSuiventLeChamp(_Base):
         devis = Devis.objects.get(pk=cree.data['id'])
         Devis.objects.filter(pk=devis.pk).update(regles_calcul=REGLES_CORRIGEES)
         devis.refresh_from_db()
-        self.assertFalse(contexte_sonde_du_devis(devis).paires_mppt_derivees)
+        self.assertFalse(contexte_sonde_du_devis(devis).regles_2710)
         Devis.objects.filter(pk=devis.pk).update(
             regles_calcul=REGLES_CORRIGEES_2710)
         devis.refresh_from_db()
-        self.assertTrue(contexte_sonde_du_devis(devis).paires_mppt_derivees)
+        self.assertTrue(contexte_sonde_du_devis(devis).regles_2710)

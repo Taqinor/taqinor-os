@@ -503,6 +503,8 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             return bloc
 
         from apps.ventes.dimensionnement import recommander_taille
+        from apps.ventes.domain.regles_calcul import (
+            REGLES_CORRIGEES_2710, regles_au_moins)
         resultat = recommander_taille(
             company=entrees['company'], conso_kwh_mensuelles=conso,
             ville=entrees['ville'], lat=entrees['lat'], lon=entrees['lon'],
@@ -518,7 +520,10 @@ def rafraichir_dimensionnement_devis(devis, *, force=False):
             gamme_nom_devis=entrees['gamme_nom_devis'],
             # ERR-QJR605 — site isolé et paires MPPT du devis.
             hors_reseau=entrees['hors_reseau'],
-            mppt_paires=entrees['mppt_paires'])
+            mppt_paires=entrees['mppt_paires'],
+            # RSIZ2/3/5 — les sondes d'un devis aux règles < 3 gardent ses
+            # règles (``balayer_tailles`` → ``ContexteSonde``).
+            regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
         resultat['_empreinte'] = empreinte
         ecrire(devis, proprietaire=MOTEUR_DIMENSIONNEMENT,
                dimensionnement=resultat)

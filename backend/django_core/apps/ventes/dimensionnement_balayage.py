@@ -50,7 +50,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
                     min_panneaux=None,
                     max_panneaux=None, source_conso=None,
                     cible_falaise_kwh_mois=None, jour_reference=None,
-                    hors_reseau=False, mppt_paires=1, perte_ombrage_pct=None):
+                    hors_reseau=False, mppt_paires=1, perte_ombrage_pct=None,
+                    regles_2710=True):
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
 
     ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46). Ils
@@ -153,7 +154,9 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         structure_produit_id=structure_produit_id,
         phase=phase, mppt_paires=mppt_paires or 1,
         taux_tva=_taux_sans_devis(taux_tva, company),
-        hors_reseau=bool(hors_reseau))
+        hors_reseau=bool(hors_reseau),
+        # RSIZ2/3/5 — un devis existant aux règles < 3 garde ses règles.
+        regles_2710=bool(regles_2710))
 
     # Watt du panneau RÉELLEMENT retenu par le catalogue — LA sonde partagée
     # avec l'échelle de paliers et les cartes de taille. Le jour où le

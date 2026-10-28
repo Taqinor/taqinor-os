@@ -333,13 +333,13 @@ class LIntentionDevisEstGelee(SimpleTestCase):
         cible = pipeline.CibleDevis(nb_panneaux=12, panel_watt=550, kwc=6.6)
         intention = _intention(cible=cible)
         self.assertTrue(pipeline.intention_de_composition(
-            intention, cible).paires_mppt_derivees)
+            intention, cible).regles_2710)
         self.assertFalse(pipeline.intention_de_composition(
             intention, cible,
-            devis=SimpleNamespace(regles_calcul=2)).paires_mppt_derivees)
+            devis=SimpleNamespace(regles_calcul=2)).regles_2710)
         self.assertTrue(pipeline.intention_de_composition(
             intention, cible,
-            devis=SimpleNamespace(regles_calcul=3)).paires_mppt_derivees)
+            devis=SimpleNamespace(regles_calcul=3)).regles_2710)
 
 
 #: QJR93+ (M5) — LE LEDGER DES CHEMINS BASCULÉS, par fichier de production.
