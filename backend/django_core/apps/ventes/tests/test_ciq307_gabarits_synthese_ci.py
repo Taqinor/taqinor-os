@@ -67,7 +67,19 @@ def _valeur(figures, cle):
     return mesures[0].valeur if mesures else None
 
 
-class GabaritsLisentSyntheseCi(SimpleTestCase):
+class _ReglesCourantes(SimpleTestCase):
+    """Le drapeau « règles d'avant le niveau 3 » est une ``ContextVar`` que
+    ``poser_regles_origine`` pose sans la retirer : un test antérieur du même
+    processus qui rend un devis ancien la laissait vraie (« 4 » au lieu de
+    « 4,0 », file de merge #1132). Chaque test part des règles courantes."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False)
+
+
+class GabaritsLisentSyntheseCi(_ReglesCourantes):
 
     def test_tuiles_ancrees_sur_la_synthese(self):
         for nom, sample, renderer, render, _pages in GABARITS:
@@ -156,7 +168,7 @@ class GabaritsLisentSyntheseCi(SimpleTestCase):
                     self.assertEqual(html.count('class="page"'), pages)
 
 
-class Cpdf7RetourAuDixieme(SimpleTestCase):
+class Cpdf7RetourAuDixieme(_ReglesCourantes):
     """CPDF7 — un retour au dixième, au même format partout : interpolé
     dans l'année où le cumul SERVI passe à zéro ; virgule en FR / AR, point
     en EN ; sans flux, la valeur servie telle quelle."""
