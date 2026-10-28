@@ -37,11 +37,21 @@ class PhotosPrechargeesListeMixin:
     """APRF40 — la LISTE des interventions (liste, kanban) dépose sur chaque
     intervention de la page ses pièces jointes, chargées en UNE requête
     `Attachment` (`precharger_photos`, APRF37) : `photos_obligatoires_manquantes`
-    ne relance plus une requête par intervention. Hors liste, rien ne change."""
+    ne relance plus une requête par intervention. Hors liste, rien ne change.
+
+    La shot-list de chaque société de la page est lue UNE fois ici et déposée
+    dans la mémo ``_shotlist_cache`` du sérialiseur (AUD324) : le court-circuit
+    de ``precharger_photos`` la relit au lieu d'une seconde requête."""
 
     def get_serializer(self, *args, **kwargs):
         if kwargs.get('many') and args and getattr(self, 'action', None) == 'list':
-            from .field_services import precharger_photos
+            from .field_services import active_shotlist, precharger_photos
             args = (list(args[0]),) + args[1:]
-            precharger_photos(args[0])
+            shotlists = {cid: active_shotlist(cid)
+                         for cid in {i.company_id for i in args[0]}
+                         if cid is not None}
+            precharger_photos(args[0], shotlists=shotlists)
+            serializer = super().get_serializer(*args, **kwargs)
+            serializer.context.setdefault('_shotlist_cache', {}).update(shotlists)
+            return serializer
         return super().get_serializer(*args, **kwargs)

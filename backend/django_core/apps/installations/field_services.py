@@ -449,7 +449,7 @@ def intervention_photos(intervention):
 PHOTOS_PRECHARGEES_ATTR = '_photos_precharges'
 
 
-def precharger_photos(interventions):
+def precharger_photos(interventions, shotlists=None):
     """APRF37 — charge en UNE requête les pièces jointes de toutes les
     `interventions` données (liste des chantiers : N chantiers × M
     interventions) et les dépose sur chacune, au lieu d'une requête
@@ -460,10 +460,19 @@ def precharger_photos(interventions):
     Même court-circuit que `missing_required_shots` : si aucune société des
     interventions n'a de créneau OBLIGATOIRE actif, il n'y a rien à comparer et
     rien n'est chargé (le repli par intervention reste de toute façon
-    correct)."""
+    correct).
+
+    ``shotlists`` (``{company_id: active_shotlist(company_id)}``, facultatif) :
+    shot-lists déjà chargées par l'appelant — le court-circuit les lit au lieu
+    de relancer une requête ``ShotListSlot`` (AUD324 : une seule par liste)."""
     interventions = list(interventions)
     societes = {i.company_id for i in interventions if i.company_id is not None}
-    if not societes or not ShotListSlot.objects.filter(
+    if not societes:
+        return
+    if shotlists is not None and societes <= set(shotlists):
+        if not any(s.obligatoire for cid in societes for s in shotlists[cid]):
+            return
+    elif not ShotListSlot.objects.filter(
             company_id__in=societes, actif=True, obligatoire=True).exists():
         return
     from django.contrib.contenttypes.models import ContentType
