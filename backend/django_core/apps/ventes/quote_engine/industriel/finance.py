@@ -30,7 +30,7 @@ from .. import premium_base
 from ..ci import couverture as ci_couverture
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import decimale
+from ..montants import decimale, regles_avant_2710
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
 from ..ci.graphiques import bloc_energie_mensuelle, cede, css_graphique
 
@@ -64,13 +64,18 @@ _num = nombre_ou_none
 #: citation, « moteur », principe, méthode du devis) n'est jamais imprimée.
 _JARGON_SOURCE = re.compile(
     r"moteur|IEA|NREL|Jordan|σ|P50|bancable|principe|m[ée]thode de calcul"
-    r"|calculation method|engine|bankable|طريقة حساب|محرك",
+    r"|calculation method|engine|bankable|طريقة حساب|محرك"
+    # CPDF — résidus internes (mêmes familles que ``public.payload_ci``) :
+    # code de décision, groupe d'audit, chemin d'écran, « fondateur ».
+    r"|\bD-[A-Z]{2,}-?\d|\bCIQ\d|\bGroupe [A-Z]{2,}|Paramètres|fondateur"
+    r"|\bReda\b|aucun défaut|\binterne\b|\brepli\b",
     re.IGNORECASE)
 
 
 def _source_propre(source):
-    """``source`` telle quelle, ou '' quand elle est du jargon interne."""
-    source = str(source or "")
+    """``source`` telle quelle, ou '' quand elle est du jargon interne ou une
+    réserve (``couverture.sans_reserve``)."""
+    source = ci_couverture.sans_reserve(str(source or ""))
     return "" if _JARGON_SOURCE.search(source) else source
 
 #: AMOT88 — le titre du bloc d'hypothèses, en mots du client.
@@ -258,6 +263,24 @@ def _rangees_flux(flux, fmt, L, d, compact):
     return rangees
 
 
+def _prix_kwh_evite(argent, L):
+    """CPDF — « — prix moyen de votre kWh évité : 1,709 MAD/kWh TTC » : le prix
+    SERVI (``indicateurs.tarif_kwh_evite_moyen`` = économie de l'année 1 ÷
+    kWh évités, base du flux principal) qui permet au client de retrouver son
+    économie ; '' quand il n'est pas servi, quand la ligne LCOE de la page le
+    dit déjà (industriel) ou pour un devis aux règles d'avant le niveau 3."""
+    indicateurs = argent.get("indicateurs") or {}
+    tarif = _num(indicateurs.get("tarif_kwh_evite_moyen"))
+    if tarif is None or tarif <= 0 or regles_avant_2710() \
+            or _num(indicateurs.get("lcoe_mad_kwh")) is not None:
+        return ""
+    base = (L("ci_ttc", "TTC") if flux_principal(argent)[0] == "flux_ttc"
+            else L("ci_ht", "HT"))
+    return (" — " + L("ci_ind_tarif_client", "prix moyen de votre kWh évité "
+                      ": {tarif} MAD/kWh", tarif=_decimal_3(tarif))
+            + f" {base}")
+
+
 def _rangees_argent(argent, fmt_mad, L, d):
     """``(libellé | None, valeur)`` : valorisation, prix du kWh (AMOT88 :
     grille publiée datée ou votre facture, jamais « repli »), remplacements
@@ -271,7 +294,8 @@ def _rangees_argent(argent, fmt_mad, L, d):
                                         ci_blocs.langue(d))
                      if h.get("cle") == "tarif" else None)
         if tarif_txt:
-            rangees.append((L("ci_h_prix_kwh", "Prix du kWh"), tarif_txt))
+            rangees.append((L("ci_h_prix_kwh", "Prix du kWh"),
+                            tarif_txt + _prix_kwh_evite(argent, L)))
         elif h.get("valeur"):
             source = _source_propre(ci_couverture.sans_reserve(
                 ci_couverture.texte_client(d, h.get("source"))))
@@ -284,7 +308,8 @@ def _rangees_argent(argent, fmt_mad, L, d):
     # AMOT94 — le montant du remplacement sur la BASE servie : HT quand la
     # TVA est récupérable (``argent.base == 'ht'``, D-CIQ-3), TTC sinon.
     # CPDF5 — la base du tableau de flux : HT sauf base d'argent TTC.
-    en_ht = argent.get("base") != "ttc"
+    en_ht = (argent.get("base") == "ht" if regles_avant_2710()  # niveau 3
+             else argent.get("base") != "ttc")
     for r in argent.get("remplacements") or []:
         if not isinstance(r, dict) or r.get("annee") is None:
             continue
@@ -522,7 +547,10 @@ def _decimal_txt(valeur):
 
 
 def _decimal_3(valeur):
-    """« 0,108 » — un prix du kWh à 3 décimales (CPDF5)."""
+    """« 0,108 » — un prix du kWh à 3 décimales (CPDF5) ; niveau de règles 3 :
+    un devis envoyé garde le nombre servi."""
+    if regles_avant_2710():
+        return _decimal_txt(valeur)
     return decimale(f"{valeur:.3f}")
 
 
@@ -647,19 +675,22 @@ def _tableau_sensibilites(d, argent, fmt_mad, L):
     formats = (lambda v: ci_couverture.ans(v) + unite_ans,
                lambda v: decimale(f"{v:.1f}") + "&#160;%",
                lambda v: fmt_mad(v) + "&#160;MAD")
+    # CPDF — aucune source imprimable (toutes internes) ⇒ pas de colonne vide.
+    avec_source = any(source for *_, source in rangees)
     lignes = ""
     for nom, *valeurs, source in rangees:
         cellules = "".join(
             f'<td class="i2-n">{f(_num(v)) if _num(v) is not None else "—"}'
             '</td>' for f, v in zip(formats, valeurs))
         lignes += (f'<tr><td>{nom}</td>{cellules}'
-                   f'<td class="i2-mini">{source}</td></tr>')
+                   + (f'<td class="i2-mini">{source}</td>' if avec_source
+                      else "") + '</tr>')
     entete = "".join(f"<th>{x}</th>" for x in (
         L("ci_sens_scenario", "Scénario"),
         L("ci_ind_delai_retour", "Délai de retour"),
         L("ci_ind_tri_sur", "TRI sur {n} ans", n="25"),
-        L("ci_sens_cumul", "Cumul net sur {n} ans", n="25"),
-        L("ci_source", "Source")))
+        L("ci_sens_cumul", "Cumul net sur {n} ans", n="25"))
+        + ((L("ci_source", "Source"),) if avec_source else ()))
     base = L("ci_ind_sens_base", "Sensibilités saisies par la société ; "
              "base : 0 % d'indexation du tarif.")
     return (f'<table class="i2-tbl i2-fx"><tr>{entete}</tr>{lignes}</table>'

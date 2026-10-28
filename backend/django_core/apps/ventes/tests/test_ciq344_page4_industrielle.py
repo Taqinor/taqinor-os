@@ -149,10 +149,13 @@ class Amot81PucesCgvCi(SimpleTestCase):
         self.assertNotIn("après la mise en marche", texte)
         self.assertNotIn("à la réception du matériel", texte)
         self.assertNotIn("barème ONEE/SRM", texte)
+        # CPDF10 — l'échéancier est imprimé en cartes (montants au centime) :
+        # la puce CGV qui le répète n'est plus imprimée.
         self.assertEqual(texte.count(
             "Échéancier de paiement : Commande : 30 % ; Livraison du "
             "matériel : 40 % ; Mise en service : 20 % ; Réception "
-            "définitive : 10 %"), 1)
+            "définitive : 10 %"), 0)
+        self.assertIn("10 % À la réception définitive", texte)
 
     def test_sans_jalons_les_trois_creneaux_en_une_puce(self):
         from apps.ventes.quote_engine.clauses_cgv import cgv_imprimees

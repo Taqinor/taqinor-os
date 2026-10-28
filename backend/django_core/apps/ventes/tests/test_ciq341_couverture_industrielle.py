@@ -220,7 +220,8 @@ class Amot89DefinitionsEtSurplus(SimpleTestCase):
         p1 = _texte(_page1(etude_ci_au_kwc_servi(_data())))
         self.assertIn("Autoconsommation part de la production consommée sur "
                       "place", p1)
-        self.assertIn("Surplus non valorisé : ≈ 25 959 kWh/an (27 % de la "
+        # CPDF5 — un chiffre du bilan, sans « ≈ ».
+        self.assertIn("Surplus non valorisé : 25 959 kWh/an (27 % de la "
                       "production) — revente non ouverte en basse tension",
                       p1)
 

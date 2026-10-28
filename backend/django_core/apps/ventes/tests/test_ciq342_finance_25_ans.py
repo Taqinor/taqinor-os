@@ -61,8 +61,11 @@ class Ciq342Jalons(SimpleTestCase):
                                argent["indicateurs"]["tri_pct"], delta=0.05)
         self.assertAlmostEqual(valeurs["cumul_net_25_ans_mad"],
                                argent["jalons"][-1]["cumul_mad"], places=2)
+        # CPDF7 — le payback ancré est celui de ``chiffres_cles`` (au dixième
+        # sur le flux servi), le même que la couverture et /proposition.
+        from apps.ventes.quote_engine.ci.synthese import chiffres_cles
         self.assertEqual(valeurs["payback_ans"],
-                         argent["indicateurs"]["retour_ans"])
+                         chiffres_cles(synthese_ci(dict(d)))["payback_ans"])
         self.assertIn("tri_pct", FIGURE_KEYS)
         self.assertIn("cumul_net_25_ans_mad", FIGURE_KEYS)
 
@@ -154,10 +157,12 @@ class Amot80PageFinance(SimpleTestCase):
             for interne in CHAINES_INTERNES:
                 with self.subTest(exemple=exemple, interne=interne):
                     self.assertNotIn(interne, texte)
-        # Les sources restent dites, en mots du client.
+        # Les sources restent dites, en mots du client — CPDF6 : une fois, par
+        # la rangée « Valorisation de vos kWh » (plus répétée sous l'économie).
         texte = _texte(_pages(_data())[3])
-        self.assertIn("valorisation heure par heure au tarif de chaque poste",
-                      texte)
+        self.assertIn("tarif du poste horaire couvert, heure par heure", texte)
+        self.assertNotIn("valorisation heure par heure au tarif de chaque "
+                         "poste", texte)
         # « Horizon : 25 ans », une seule mention (la source le répétait).
         self.assertIn("Horizon : 25 ans", texte)
         self.assertNotIn("durée d'analyse", texte)
@@ -195,7 +200,7 @@ class Amot90PageEnergie(SimpleTestCase):
                          36)
         self.assertIn("Ce que la centrale produit pour votre site", texte)
         self.assertIn("Votre énergie mois par mois", texte)
-        self.assertIn("Surplus non valorisé : ≈ 25 959 kWh/an", texte)
+        self.assertIn("Surplus non valorisé : 25 959 kWh/an", texte)  # CPDF5
         # La petite ligne de motif reste ; plus l'encadré blanc.
         self.assertIn("Économies et retour sur investissement non chiffrés",
                       texte)
@@ -281,18 +286,22 @@ class Amot91Hypotheses(SimpleTestCase):
         anglais, le libellé du catalogue."""
         from apps.ventes.quote_engine import i18n_labels
         for methode, cle in (("horaire_8760", "ci_h_methode_8760"),
-                             ("journees_moyennes", "ci_h_methode_journees")):
+                             ("journees_moyennes", None)):
             synthese = {"estimation": {"methode_autoconso": methode}}
             for langue in ("fr", "en"):
                 def L(c, fr, langue=langue, **kw):
                     return i18n_labels.libelle(c, langue)
                 rangees = finance.rangees_hypotheses(
                     {"langue_sortie": langue}, synthese, str, str, L)
+                titre = i18n_labels.libelle("ci_h_methode_autoconso", langue)
                 with self.subTest(methode=methode, langue=langue):
-                    self.assertIn(
-                        (i18n_labels.libelle("ci_h_methode_autoconso",
-                                             langue),
-                         i18n_labels.libelle(cle, langue)), rangees)
+                    if cle is None:
+                        # CPDF5 — « journées moyennes » contredisait « heure
+                        # par heure » de la couverture : aucune rangée.
+                        self.assertNotIn(titre, [r[0] for r in rangees])
+                        continue
+                    self.assertIn((titre, i18n_labels.libelle(cle, langue)),
+                                  rangees)
 
     def test_degradation_de_la_fiche_dite(self):
         """AMOT99 — la dégradation de la fiche module et sa 1re année."""
@@ -355,9 +364,11 @@ class Amot84SourcesServiesParCode(SimpleTestCase):
     def test_francais_texte_servi(self):
         from apps.ventes import economie_ci as eco
         texte = self._texte("fr")
-        for fr in (eco.DEGRADATION_CI_SOURCE,
-                   eco.HYPOTHESE_VALORISATION["valeur"]):
-            self.assertIn(fr, texte)
+        self.assertIn(eco.HYPOTHESE_VALORISATION["valeur"], texte)
+        # CPDF5 — la citation (Jordan & Kurtz, NREL) n'est plus imprimée,
+        # en français comme en anglais : la valeur seule.
+        self.assertNotIn(eco.DEGRADATION_CI_SOURCE, texte)
+        self.assertNotIn("NREL", texte)
         # Décision fondateur 26/10/2026 — « 0 % / an », sans « tarif de
         # vente constant (hypothèse) ».
         self.assertIn("Indexation du tarif : 0 % / an", texte)
@@ -446,10 +457,52 @@ class Amot94RemplacementSurLaBaseServie(SimpleTestCase):
     def test_base_deux_montant_ttc_inchange(self):
         argent, ligne = self._ligne("exemple")
         self.assertEqual(argent["base"], "deux")
-        ttc = argent["remplacements"][0]["montant_ttc_mad"]
         # CPDF5 — le montant suit la base du tableau de flux (HT sauf TTC).
         ht = argent["remplacements"][0]["montant_ht_mad"]
         self.assertIn(fmt_centimes(ht).replace(" ", " ") + " MAD HT", ligne)
+        self.assertNotIn("TTC", ligne)
+
+    def test_base_deux_devis_envoye_garde_le_ttc(self):
+        """CPDF — niveau de règles 3 : un devis envoyé avant garde le montant
+        TTC qu'il imprimait en base « deux »."""
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False, avant_2710=True)
+        self.addCleanup(poser_regles_origine, False)
+        argent, ligne = self._ligne("exemple")
+        ttc = argent["remplacements"][0]["montant_ttc_mad"]
+        self.assertIn(fmt_centimes(ttc).replace(" ", " ") + " MAD TTC",
+                      ligne)
+
+
+class CpdfPrixDuKwhEvite(SimpleTestCase):
+    """CPDF — « Prix du kWh » dit le prix SERVI qui permet de retrouver
+    l'économie (``indicateurs.tarif_kwh_evite_moyen``), sur la base du flux
+    principal ; omis quand la ligne LCOE le dit déjà ou pour un devis aux
+    règles d'avant le niveau 3."""
+
+    def _txt(self, indicateurs, base="ttc"):
+        def L(cle, fr, **kw):
+            return fr.format(**kw) if kw else fr
+        return finance._prix_kwh_evite(
+            {"base": base, "indicateurs": indicateurs}, L)
+
+    def test_prix_imprime_a_trois_decimales_sur_la_base(self):
+        self.assertEqual(self._txt({"tarif_kwh_evite_moyen": 1.70912}),
+                         " — prix moyen de votre kWh évité : 1,709 MAD/kWh "
+                         "TTC")
+        self.assertTrue(self._txt({"tarif_kwh_evite_moyen": 1.4242},
+                                  base="deux").endswith("1,424 MAD/kWh HT"))
+
+    def test_omis_avec_lcoe_ou_sans_prix(self):
+        self.assertEqual(self._txt({"tarif_kwh_evite_moyen": 1.7,
+                                    "lcoe_mad_kwh": 0.31}), "")
+        self.assertEqual(self._txt({}), "")
+
+    def test_omis_pour_un_devis_envoye(self):
+        from apps.ventes.quote_engine.montants import poser_regles_origine
+        poser_regles_origine(False, avant_2710=True)
+        self.addCleanup(poser_regles_origine, False)
+        self.assertEqual(self._txt({"tarif_kwh_evite_moyen": 1.7}), "")
 
 
 class Amot97Sensibilites(SimpleTestCase):
@@ -550,8 +603,11 @@ class Amot97Sensibilites(SimpleTestCase):
         p3 = _pages(d)[3]
         debut = p3.index("Scénario central")
         texte = _texte(p3[debut:p3.index("</table>", debut)])
-        self.assertIn(f"Scénario central {argent['indicateurs']['retour_ans']}"
-                      f" ans", texte)
+        # CPDF7 — le retour central au dixième, celui de la couverture.
+        from apps.ventes.quote_engine.ci.synthese import chiffres_cles
+        central = chiffres_cles(synthese_ci(dict(d)))["payback_ans"]
+        self.assertIn(f"Scénario central {central:.1f} ans".replace(".", ","),
+                      texte)
         self.assertIn(fmt_centimes(argent["flux_ht"]["flux"][-1][
             "cumul_mad"]).replace(" ", " "), texte)
         for s in sensibilites:
@@ -559,8 +615,14 @@ class Amot97Sensibilites(SimpleTestCase):
                 self.assertIn(fmt_centimes(s["cumul_25_ans_mad"]).replace(
                     " ", " "), texte)
                 self.assertIn(f"{s['tri_pct']:.1f}".replace(".", ","), texte)
-                self.assertIn(s["source"], texte)
+                # CPDF — un code de décision (« D-ACI-15 ») n'est jamais
+                # imprimé ; une source saisie en mots du client, si.
+                if s["source"].startswith("D-"):
+                    self.assertNotIn(s["source"], texte)
+                else:
+                    self.assertIn(s["source"], texte)
         self.assertIn("Production -7,7 %", texte)
+        self.assertIn("<th>Source</th>", p3)
         # Rendu adaptatif : le tableau cède avec les hypothèses.
         sans = _pages(dict(d, _sans_graphiques=frozenset({"hypotheses"})))[3]
         self.assertNotIn("Scénario central", sans)

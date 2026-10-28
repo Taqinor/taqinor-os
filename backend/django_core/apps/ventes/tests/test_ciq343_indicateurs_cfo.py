@@ -102,8 +102,11 @@ class Ciq343Sensibilites(SimpleTestCase):
         texte = _texte(_page(_data(sensibilites=SENSIBILITES)))
         # AMOT97 — en tableau (scénario, retour, TRI, cumul, source).
         self.assertIn("Indexation du tarif +2 % 4,0 ans 29,1 %", texte)
-        self.assertIn("Production -10 % 5 ans 24,2 %", texte)
-        self.assertIn("Paramètres › Tarification & ROI", texte)
+        self.assertIn("Production -10 % 5,0 ans 24,2 %", texte)  # CPDF7
+        # CPDF — un chemin d'écran interne n'est jamais imprimé ; aucune source
+        # imprimable ⇒ pas de colonne « Source » vide.
+        self.assertNotIn("Paramètres", texte)
+        self.assertNotIn("Source", texte[texte.index("Scénario central"):])
         self.assertIn("base : 0 % d'indexation", texte)
 
 
