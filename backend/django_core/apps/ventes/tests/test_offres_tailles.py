@@ -1397,11 +1397,6 @@ class SerialiseurTests(TestCase):
         serializer = self._config({'batterie_nb_modules': 0})
         self.assertFalse(serializer.is_valid())
         self.assertIn('batterie_nb_modules', serializer.errors)
-        # api-fuzz-full 28/10 (ENF11) : le schéma publié le dit (dès 1).
-        from apps.ventes.views.openapi_docs import OffreTailleConfigRequest
-        corps = OffreTailleConfigRequest['application/json']
-        self.assertEqual(corps['properties']['config']['properties'][
-            'batterie_nb_modules']['minimum'], 1)
 
     def test_la_cle_de_taille_est_bornee_aux_trois(self):
         from apps.ventes.serializers import OffreTailleEcritureSerializer

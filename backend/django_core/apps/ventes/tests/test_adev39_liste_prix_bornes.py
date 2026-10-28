@@ -111,6 +111,10 @@ class ListePrixBornesTests(TestCase):
         config = _texte(doc['paths'][base + 'offres-tailles/config/'][
             'patch']['requestBody'])
         self.assertIn('"batterie"', config)  # rôle de composition publié
+        # api-fuzz-full 28/10 (ENF11) : « zéro module » est refusé par
+        # ``validate_batterie_nb_modules`` — publié dès 1.
+        self.assertIn('"batterie_nb_modules": {"maximum": 100, "minimum": 1',
+                      config)
         partage = _texte(doc['paths'][base + 'share-link/']['post'][
             'requestBody'])
         self.assertIn('"additionalProperties": false', partage)
