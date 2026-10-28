@@ -42,9 +42,11 @@ CREER_LEAD = AgentAction(
     key='crm.lead.create',
     label='Créer un lead',
     description=(
-        "Crée un nouveau lead (opportunité) pour un prospect solaire. La "
-        "société et le responsable par défaut sont attribués côté serveur ; "
-        "l'étape initiale est gérée par le modèle."
+        "Sert à : créer un lead (opportunité) pour un prospect solaire "
+        "(société et responsable posés côté serveur). "
+        "Ne pas utiliser pour : un client existant ni modifier un lead. "
+        "Exemple : « Ajoute le prospect Karim Alami, Casablanca ». "
+        "Résultat : le lead créé ; l'étape initiale vient du modèle."
     ),
     endpoint='/api/django/crm/leads/',
     method='POST',
@@ -75,9 +77,13 @@ METTRE_A_JOUR_LEAD = AgentAction(
     key='crm.lead.update',
     label='Mettre à jour un lead',
     description=(
-        "Met à jour un lead : fait avancer l'étape du pipeline et/ou pose une "
-        "date de relance. Les étapes valides sont les clés canoniques de "
-        "STAGES.py. La société du lead n'est jamais modifiable depuis le corps."
+        "Sert à : faire avancer l'étape du pipeline d'un lead et/ou poser sa "
+        "date de relance. "
+        "Ne pas utiliser pour : ajouter une note (crm.lead.note) ni lister "
+        "les relances (crm.leads.a_relancer). "
+        "Exemple : « Passe le lead 12 en devis envoyé, relance le 3 »"
+        " (étapes = clés de STAGES.py). "
+        "Résultat : le lead mis à jour ; la société n'est jamais modifiable."
     ),
     endpoint='/api/django/crm/leads/{id}/',
     method='PATCH',
@@ -111,8 +117,12 @@ NOTER_LEAD = AgentAction(
     key='crm.lead.note',
     label='Noter un lead',
     description=(
-        "Ajoute une note manuelle (appel, commentaire…) au chatter du lead. "
-        "L'auteur et la société sont posés côté serveur ; jamais lus du corps."
+        "Sert à : ajouter une note manuelle (appel, commentaire) au chatter "
+        "d'un lead. "
+        "Ne pas utiliser pour : changer l'étape (crm.lead.update) ni lire le "
+        "lead (crm.lead.resume). "
+        "Exemple : « Note sur le lead 12 : client intéressé, rappeler lundi ». "
+        "Résultat : la note créée ; auteur et société posés côté serveur."
     ),
     endpoint='/api/django/crm/leads/{id}/noter/',
     method='POST',
@@ -138,9 +148,12 @@ PREPARER_ENVOI_WHATSAPP = AgentAction(
     key='crm.lead.whatsapp_prepare',
     label='Préparer un envoi WhatsApp de devis',
     description=(
-        "Prépare un lien wa.me pré-rempli pour un ou plusieurs devis du lead "
-        "et renvoie {wa_url, message, links} pour la carte de résultat. "
-        "N'envoie rien : le commercial valide l'envoi manuellement."
+        "Sert à : préparer le texte et le lien `wa.me` d'un ou plusieurs "
+        "devis du lead ; n'envoie jamais, le commercial valide lui-même. "
+        "Ne pas utiliser pour : une relance sans devis "
+        "(crm.lead.brouillon_suivi). "
+        "Exemple : « Prépare le WhatsApp du devis 45 pour le lead 12 ». "
+        "Résultat : {wa_url, message, links}."
     ),
     endpoint='/api/django/crm/leads/{id}/whatsapp-devis/',
     method='POST',

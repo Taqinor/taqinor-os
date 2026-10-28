@@ -26,7 +26,8 @@ from apps.crm.models import Lead, LeadActivity
 from apps.crm import stages
 from apps.crm.agent_actions import (
     BROUILLON_SUIVI, CREER_LEAD, LEADS_A_RELANCER, METTRE_A_JOUR_LEAD,
-    NOTER_LEAD, PREPARER_ENVOI_WHATSAPP, RESUME_LEAD, register_crm_actions,
+    NOTER_LEAD, PREPARER_ENVOI_WHATSAPP, RESUME_LEAD, _ACTIONS,
+    register_crm_actions,
 )
 from apps.agent.registry import all_actions, for_user
 
@@ -385,3 +386,52 @@ class CrmAgentBrouillonSuiviTest(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertIsNone(resp.data['lien_wa_me'])
         self.assertEqual(LeadActivity.objects.count(), avant)
+
+
+class CrmAgentCatalogueParRoleTest(TestCase):
+    """AIC33 — descriptions relues pour le modèle + catalogue vu par rôle."""
+
+    SECTIONS = ('Sert à :', 'Ne pas utiliser pour :', 'Exemple :',
+                'Résultat :')
+    # Golden LITTÉRAL des clés ``crm.*`` visibles par rôle système (via
+    # ``for_user``) : retirer une permission d'une action le fait diverger.
+    CRM_COMMERCIAL = {
+        'crm.client.create', 'crm.lead.brouillon_suivi', 'crm.lead.create',
+        'crm.lead.list', 'crm.lead.note', 'crm.lead.resume',
+        'crm.lead.update', 'crm.lead.whatsapp_prepare',
+        'crm.leads.a_relancer',
+    }
+    GOLDEN = {
+        'Commercial': CRM_COMMERCIAL,
+        'Commercial responsable': CRM_COMMERCIAL,
+        # Terrain = visites seulement : aucune action du pipeline CRM.
+        'Commercial terrain': set(),
+    }
+
+    def test_descriptions_quatre_sections(self):
+        for action in _ACTIONS:
+            with self.subTest(action=action.key):
+                position = -1
+                for section in self.SECTIONS:
+                    suivante = action.description.find(section)
+                    self.assertGreater(suivante, position, section)
+                    position = suivante
+                self.assertLessEqual(len(action.description), 600)
+        self.assertIn(
+            "n'envoie jamais", PREPARER_ENVOI_WHATSAPP.description)
+        self.assertIn('wa.me', PREPARER_ENVOI_WHATSAPP.description)
+
+    def test_catalogue_par_role_commercial(self):
+        from django.core.management import call_command
+        register_crm_actions()
+        company = Company.objects.create(nom='AIC33 Co', slug='aic33-co')
+        call_command('init_roles', verbosity=0)
+        for nom, attendu in self.GOLDEN.items():
+            with self.subTest(role=nom):
+                user = User.objects.create_user(
+                    username='aic33_' + nom.replace(' ', '_').lower(),
+                    password='x', company=company,
+                    role=Role.objects.get(company=company, nom=nom))
+                vus = {a.key for a in for_user(user)
+                       if a.key.startswith('crm.')}
+                self.assertEqual(vus, attendu)
