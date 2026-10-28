@@ -112,6 +112,11 @@ class CompositionLignes(list):
     variantes = False
     nb_panneaux_avec = 0
     kwc_reel_avec = 0.0
+    #: RSIZ4 — les avertissements FRANÇAIS de la composition (phrases prêtes à
+    #: afficher), dédoublonnés, dans l'ordre où ils ont été prononcés. Rendus
+    #: même quand l'appelant n'a fourni aucun canal ``avertissements`` : c'est
+    #: la clé STABLE que l'étude du devis recopie (``etude_params``).
+    avertissements_composition = ()
 
 
 #: STKCAT7 — la valeur de ``stock.Categorie.TypeEquipement.STRUCTURE``.
@@ -272,6 +277,19 @@ def avertissement_aucun_onduleur_triphase():
             'triphasé (tarifé, fiche technique complète) au catalogue.')
 
 
+def avertissement_phase_supposee_triphasee():
+    """RSIZ6 — raccordement NON renseigné et onduleur triphasé retenu.
+
+    Sans phase déclarée, l'heuristique historique (« ≥ 10 kW ⇒ triphasé »,
+    ou le seul modèle du catalogue à cette puissance) choisit seule : le
+    commercial doit le SAVOIR avant d'envoyer, un client monophasé ne peut
+    pas raccorder un onduleur triphasé.
+    """
+    return ('Raccordement non renseigné — onduleur TRIPHASÉ retenu. Vérifiez '
+            "que le client dispose d'un abonnement triphasé et renseignez le "
+            'raccordement sur la fiche.')
+
+
 def _vivier_onduleurs_par_phase(candidats, phase):
     """PVCOMPAT — restreint un vivier d'onduleurs au RACCORDEMENT du client.
 
@@ -381,11 +399,13 @@ from apps.ventes.domain.composition_residentielle import (  # noqa: E402,F401 �
 #   · présente dans un seul kit → une ligne portant la variante de ce kit
 #     (batteries → « avec », onduleur réseau → « sans », hybride → « avec »).
 #
-# LE REPLI DE SÉCURITÉ EST ABSOLU : quand les deux dimensionnements sont ÉGAUX
-# (même nombre de panneaux, aucune cible de stockage distincte), la fusion
-# n'entre JAMAIS en jeu — on rend la composition « deux options » HISTORIQUE,
-# telle quelle, toutes lignes communes. Un devis d'aujourd'hui reste donc
-# byte-identique tant que le moteur ne dit pas deux choses différentes.
+# RSIZ3 (27/10/2026) — PLUS DE FORME COMMUNE. L'ancien « repli de sécurité »
+# rendait, à dimensionnements ÉGAUX, la composition « deux options »
+# HISTORIQUE : onduleur réseau Huawei ET N hybrides Deye dans la MÊME offre,
+# toutes lignes communes, sans variante (mesuré sur les devis auto 25 000 /
+# 80 000 / 100 000 MAD). La fusion est désormais TOUJOURS jouée, au besoin
+# avec ``nb_avec = nb_sans`` ; et quand l'option « avec » ne peut porter
+# AUCUNE batterie, seule l'option « sans » est rendue, et c'est DIT.
 
 
 def _memes_lignes_kit(a, b):
@@ -490,7 +510,9 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
                                  structure_produit_id=None,
                                  taux_tva=Decimal('20'), avertissements=None,
                                  marques=None, ordre_lignes=None,
-                                 mppt_paires=1, phase=None):
+                                 mppt_paires=1, phase=None, modeles=None,
+                                 batterie_module_kwh=None,
+                                 regles_2710=True):
     """L-2OPT — LE devis « Les deux » quand les deux optimums DIVERGENT.
 
     Compose DEUX kits complets par ``composition_residentielle`` (la source de
@@ -505,10 +527,16 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
 
     puis les FUSIONNE (cf. :func:`fusionner_kits`).
 
-    REPLI DE SÉCURITÉ ABSOLU — deux dimensionnements ÉGAUX (même nombre de
-    panneaux ET aucune cible de stockage distincte) ⇒ la fusion n'est PAS
-    jouée : on rend la composition « deux options » historique, toutes lignes
-    communes, byte-identique à ce que ce dépôt produit aujourd'hui.
+    RSIZ3 — deux dimensionnements ÉGAUX fusionnent AUSSI (l'onduleur réseau
+    part dans « sans », l'hybride et les batteries dans « avec », le reste
+    commun) : la forme commune réseau + hybride n'est plus jamais rendue.
+    ``modeles`` (ACAL63) n'est transmis aux deux kits qu'à champs ÉGAUX (le
+    seul cas où le calepinage dessine les deux options) ;
+    ``batterie_module_kwh`` (BATHOMO) va au kit « avec ». Kit « avec » SANS
+    aucune batterie ⇒ le kit « sans » seul, avec
+    :func:`avertissement_option_avec_retiree`. ``regles_2710=False`` (devis
+    EXISTANT aux règles < 3) : l'ancien repli — forme « deux options »
+    commune à champs égaux sans cible de stockage — et les kits d'avant.
 
     Fonction PURE (elle ne requête ni n'écrit rien) ; ``produits`` est déjà
     cantonné à la société appelante par l'appelant.
@@ -538,20 +566,29 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
         # pendant que l'option « sans » porterait la pergola choisie.
         structure_produit_id=structure_produit_id,
         taux_tva=taux_tva, avertissements=avertissements, marques=marques,
-        ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase)
+        ordre_lignes=ordre_lignes, mppt_paires=mppt_paires, phase=phase,
+        # RSIZ2/RSIZ5 — les deux kits suivent les mêmes règles (27/10).
+        regles_2710=regles_2710)
 
-    # ── LE REPLI : les deux optimiseurs disent la même chose ────────────────
-    if nb_avec == nb_sans and cible_stockage is None:
-        return composition_residentielle(
-            catalogue, kwc=kwc_s, nb_panneaux=nb_sans, deux_options=True,
-            **commun)
-
+    if not regles_2710:
+        # Règles d'origine (< 3) : un devis envoyé garde ses lignes servies.
+        if nb_avec == nb_sans and cible_stockage is None:
+            return composition_residentielle(
+                catalogue, kwc=kwc_s, nb_panneaux=nb_sans, deux_options=True,
+                **commun)
+        modeles = batterie_module_kwh = None
+    modeles_kits = modeles if nb_avec == nb_sans else None
     kit_sans = composition_residentielle(
         catalogue, kwc=kwc_s, nb_panneaux=nb_sans, avec_batterie=False,
-        deux_options=False, **commun)
+        deux_options=False, modeles=modeles_kits, **commun)
     kit_avec = composition_residentielle(
         catalogue, kwc=kwc_a, nb_panneaux=nb_avec, avec_batterie=True,
-        deux_options=False, batterie_cible_kwh=cible_stockage, **commun)
+        deux_options=False, batterie_cible_kwh=cible_stockage,
+        batterie_module_kwh=batterie_module_kwh, modeles=modeles_kits,
+        **commun)
+    if (regles_2710 and kit_sans
+            and 'batterie' not in (getattr(kit_avec, 'roles', ()) or ())):
+        return _sans_option_avec(kit_sans, kit_avec, avertissements)
 
     def _taguees(kit):
         roles = list(getattr(kit, 'roles', ()) or ())
@@ -588,7 +625,42 @@ def composition_deux_optimiseurs(produits, *, panel_watt,
             vues.add(cle)
             manquantes.append(manque)
     lignes.marques_manquantes = manquantes
+    lignes.avertissements_composition = avertissements_des_kits(
+        kit_sans, kit_avec)
     return lignes
+
+
+def avertissement_option_avec_retiree():
+    """RSIZ3 — le message FRANÇAIS d'un devis « Les deux » dont l'option
+    « avec batterie » n'a pu porter AUCUNE batterie."""
+    return ('Option « avec batterie » non proposée : aucune batterie '
+            "compatible en stock n'a pu être composée avec l'onduleur "
+            "hybride — le devis ne présente que l'option sans batterie. "
+            'Ajoutez une batterie compatible tarifée en stock pour proposer '
+            'les deux options.')
+
+
+def _sans_option_avec(kit_sans, kit_avec, avertissements):
+    """RSIZ3 — le kit « sans » SEUL, porteur de tous les avertissements des
+    deux kits et de :func:`avertissement_option_avec_retiree` (dit aussi dans
+    le canal de l'appelant quand il en fournit un)."""
+    message = avertissement_option_avec_retiree()
+    if avertissements is not None and message not in avertissements:
+        avertissements.append(message)
+    kit_sans.avertissements_composition = avertissements_des_kits(
+        kit_sans, kit_avec) + [message]
+    return kit_sans
+
+
+def avertissements_des_kits(*kits):
+    """RSIZ4 — l'UNION ordonnée et dédoublonnée des avertissements de
+    composition de plusieurs kits (``.avertissements_composition``)."""
+    union = []
+    for kit in kits:
+        for message in (getattr(kit, 'avertissements_composition', ()) or ()):
+            if message not in union:
+                union.append(message)
+    return union
 
 
 # ── PVHEAL — la resynchronisation GUÉRIT les devis SQUELETTES ────────────────
@@ -875,6 +947,8 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
     # ACAL90 (D-ACAL-22) — les classes RETIRÉES À LA MAIN ne sont jamais
     # recréées ; la réponse le DIT (une fois par classe).
     from apps.ventes.domain.lignes import classes_kit_retirees
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
     retirees = set(classes_kit_retirees(devis))
 
     for vue in _options_a_reparer(devis, lignes, kwc=kwc, watt=watt,
@@ -915,6 +989,9 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
             # amputé.
             avertissements=avertissements,
             variante=vue['variante'],
+            # RSIZ2/3/5 — un devis aux règles d'origine (< 3) garde ses règles.
+            regles_2710=regles_au_moins(
+                devis, REGLES_CORRIGEES_2710),
         ))
         roles_attendu = list(getattr(attendu, 'roles', ()) or ())
         par_classe = {}

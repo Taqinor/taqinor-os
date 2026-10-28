@@ -327,6 +327,20 @@ class LIntentionDevisEstGelee(SimpleTestCase):
         self.assertEqual(compo.taux_tva, Decimal('14'))
         self.assertEqual(compo.dimensionnement_avec, {'nb_panneaux': 16})
 
+    def test_rsiz5_paires_derivees_selon_le_niveau_du_devis_recompose(self):
+        """RSIZ5 — un devis recomposé aux règles < 3 garde ses paires MPPT."""
+        from types import SimpleNamespace
+        cible = pipeline.CibleDevis(nb_panneaux=12, panel_watt=550, kwc=6.6)
+        intention = _intention(cible=cible)
+        self.assertTrue(pipeline.intention_de_composition(
+            intention, cible).regles_2710)
+        self.assertFalse(pipeline.intention_de_composition(
+            intention, cible,
+            devis=SimpleNamespace(regles_calcul=2)).regles_2710)
+        self.assertTrue(pipeline.intention_de_composition(
+            intention, cible,
+            devis=SimpleNamespace(regles_calcul=3)).regles_2710)
+
 
 #: QJR93+ (M5) — LE LEDGER DES CHEMINS BASCULÉS, par fichier de production.
 #:

@@ -172,11 +172,11 @@ describe('P18 — la page gate la phrase de garantie ET les badges', () => {
   });
 
   it('la garantie panneaux et la garantie onduleur sont chacune sous condition', () => {
-    expect(CODE).toContain('{equipPresence.panneaux && (');
-    expect(CODE).toContain('{equipPresence.onduleur && (');
+    expect(CODE).toContain('{equipPresence.panneaux && garantiesPanneauxAns(garantieLignes) && (');
+    // RWEB2 — la durée onduleur dépend de la présence ET de la marque posée (Deye 5 / Huawei 10).
+    expect(CODE).toContain('equipPresence.onduleur ? garantieOnduleurAns(garantieLignes) : null');
     // Les durées elles-mêmes restent la source unique warranty.ts.
     expect(CODE).toContain('PANEL_PERFORMANCE_WARRANTY_YEARS');
-    expect(CODE).toContain('INVERTER_WARRANTY_YEARS');
   });
 
   it('les badges « panneaux » / « onduleur » ne sont plus poussés inconditionnellement', () => {

@@ -16,8 +16,8 @@ inexprimable.
 Cinq garanties, une classe chacune :
 
 1. **La fusion** — deux dimensionnements DIFFÉRENTS produisent des lignes
-   VARIANTÉES ; deux dimensionnements ÉGAUX produisent la composition
-   historique, à la ligne près (le repli de sécurité absolu).
+   VARIANTÉES ; deux dimensionnements ÉGAUX fusionnent AUSSI (RSIZ3, 27/10 :
+   plus jamais l'onduleur réseau ET l'hybride communs dans une même offre).
 2. **Le devis mono « avec »** est dimensionné sur l'optimum AVEC (champ ET
    capacité de stockage), plus sur celui d'un champ sans batterie.
 3. **La resynchronisation 3D** traite le calepinage comme un PLAFOND
@@ -26,8 +26,8 @@ Cinq garanties, une classe chacune :
 4. **L'aval** (bon de commande / facture / chantier) respecte la variante :
    une ligne « avec » ne part jamais dans un document « sans », et
    réciproquement.
-5. **Le repli** — moteur muet sur l'axe batterie ⇒ comportement d'hier, mot
-   pour mot, et JAMAIS un chiffre inventé pour combler le trou.
+5. **Le repli** — moteur muet sur l'axe batterie ⇒ les deux options sur le
+   MÊME champ (fusion à champs égaux), et JAMAIS un chiffre inventé.
 
 Run :
     DB_NAME=erp_ventes python manage.py test \
@@ -248,40 +248,76 @@ class LaFusionDesDeuxKits(_Base):
         self.assertEqual(lignes.nb_panneaux, 8)
         self.assertEqual(lignes.nb_panneaux_avec, 10)
 
-    # ── LE REPLI DE SÉCURITÉ ABSOLU ─────────────────────────────────────────
-    def test_dimensionnements_egaux_rendent_la_composition_historique(self):
-        """MÊME nombre de panneaux ⇒ AUCUNE fusion : la composition « deux
-        options » d'aujourd'hui, ligne pour ligne, toutes variantes vides.
-
-        C'est LA garantie de non-régression du chantier : tant que le moteur
-        ne dit pas deux choses différentes, un devis d'aujourd'hui est
-        inchangé au bit près.
-        """
-        historique = services.composition_residentielle(
-            self._catalogue(), kwc=4.4, panel_watt=550, nb_panneaux=8,
-            deux_options=True)
-        fusionnee = services.composition_deux_optimiseurs(
+    # ── RSIZ3 — PLUS JAMAIS LA FORME COMMUNE RÉSEAU + HYBRIDE ───────────────
+    def _egaux(self, **extra):
+        return services.composition_deux_optimiseurs(
             self._catalogue(), panel_watt=550,
             kwc_sans=4.4, nb_panneaux_sans=8,
-            kwc_avec=4.4, nb_panneaux_avec=8)
+            kwc_avec=4.4, nb_panneaux_avec=8, **extra)
 
-        self.assertEqual(self._empreinte(fusionnee),
-                         self._empreinte(historique))
-        self.assertEqual({ligne.variante for ligne in fusionnee}, {''})
-        self.assertFalse(getattr(fusionnee, 'variantes', False))
+    def test_dimensionnements_egaux_fusionnent_aussi(self):
+        """MÊME nombre de panneaux ⇒ la fusion joue quand même (RSIZ3) : le
+        champ et la pose restent COMMUNS, mais l'onduleur réseau (et le duo
+        Huawei) part dans « sans », l'hybride et la batterie dans « avec »."""
+        carte = self._par_designation(self._egaux())
+        self.assertEqual(carte['Panneau Jinko 550W'], [(8, '')])
+        self.assertEqual(carte['Structures acier'], [(8, '')])
+        self.assertEqual(carte['Transport'], [(1, '')])
+        self.assertEqual(carte['Onduleur réseau Huawei 5kW Monophasé'],
+                         [(1, 'sans')])
+        self.assertEqual(carte['Smart Meter'], [(1, 'sans')])
+        self.assertEqual(carte['Onduleur hybride Deye 5kW Monophasé'],
+                         [(1, 'avec')])
+        self.assertEqual(carte['Batterie Dyness 5 kWh'], [(1, 'avec')])
+
+    def test_aucun_onduleur_n_est_commun_aux_deux_options(self):
+        for ligne in self._egaux():
+            if 'Onduleur' in ligne.designation:
+                self.assertNotEqual(ligne.variante, '', ligne.designation)
 
     def test_optimum_avec_absent_vaut_optimum_sans(self):
         """``nb_panneaux_avec`` à 0 (moteur muet) = les deux champs sont le
-        même : on retombe sur le repli, jamais sur une fusion à moitié."""
+        même : la fusion à champs égaux, jamais une fusion à moitié."""
         fusionnee = services.composition_deux_optimiseurs(
             self._catalogue(), panel_watt=550,
             kwc_sans=4.4, nb_panneaux_sans=8,
             kwc_avec=None, nb_panneaux_avec=0)
-        self.assertEqual(
-            self._empreinte(fusionnee),
-            self._empreinte(services.composition_residentielle(
-                self._catalogue(), kwc=4.4, panel_watt=550, nb_panneaux=8,
-                deux_options=True)))
+        self.assertEqual(self._empreinte(fusionnee),
+                         self._empreinte(self._egaux()))
+
+    def test_option_avec_sans_batterie_rend_la_seule_option_sans(self):
+        """Aucune batterie composable dans l'option « avec » ⇒ seule l'option
+        « sans » est rendue, et c'est DIT (jamais un hybride sans stockage
+        présenté comme l'option batterie)."""
+        from apps.ventes.domain.composition import (
+            avertissement_option_avec_retiree)
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        canal = []
+        lignes = self._egaux(avertissements=canal)
+        carte = self._par_designation(lignes)
+        self.assertNotIn('Onduleur hybride Deye 5kW Monophasé', carte)
+        self.assertEqual(carte['Onduleur réseau Huawei 5kW Monophasé'],
+                         [(1, '')])
+        self.assertIn(avertissement_option_avec_retiree(), canal)
+        self.assertIn(avertissement_option_avec_retiree(),
+                      list(lignes.avertissements_composition))
+
+    def test_regles_d_origine_gardent_la_forme_commune_servie(self):
+        """Un devis EXISTANT aux règles < 3 (``regles_2710=False``) garde la
+        forme « deux options » commune qu'il a servie (devis envoyés
+        intouchés) ; aucune option n'est retirée."""
+        carte = self._par_designation(self._egaux(regles_2710=False))
+        self.assertEqual(carte['Onduleur réseau Huawei 5kW Monophasé'],
+                         [(1, '')])
+        self.assertEqual(carte['Onduleur hybride Deye 5kW Monophasé'],
+                         [(1, '')])
+        Produit.objects.filter(
+            company=self.company, sku__startswith='BAT').update(
+                quantite_stock=0)
+        carte = self._par_designation(self._egaux(regles_2710=False))
+        self.assertIn('Onduleur hybride Deye 5kW Monophasé', carte)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -351,15 +387,18 @@ class LeDevisAutoSuitLOptimumAvec(_Base):
     # ── LE REPLI : moteur muet sur l'axe batterie ───────────────────────────
     def test_recommandation_avec_indisponible_ne_change_rien(self):
         """Aucune configuration « avec » livrable ⇒ les deux options se
-        composent sur le MÊME champ, exactement comme aujourd'hui : aucune
-        ligne variantée, et surtout aucun chiffre inventé."""
+        composent sur le MÊME champ (fusion à champs égaux, RSIZ3) : le champ
+        reste commun, les onduleurs se répartissent, aucun chiffre inventé."""
         devis = self._auto(scenario='les_deux', optimum_avec=None,
                            email='repli@example.com')
         carte = self._par_designation(devis.lignes.all())
         self.assertEqual(carte['Panneau Jinko 550W'], [(8, '')])
-        self.assertEqual({li.variante for li in devis.lignes.all()}, {''})
+        self.assertEqual(carte['Onduleur réseau Huawei 5kW Monophasé'],
+                         [(1, 'sans')])
+        self.assertEqual(carte['Onduleur hybride Deye 5kW Monophasé'],
+                         [(1, 'avec')])
         # 4,4 kWc → la règle historique kWc/5 : un module de 5 kWh.
-        self.assertEqual(carte['Batterie Dyness 5 kWh'], [(1, '')])
+        self.assertEqual(carte['Batterie Dyness 5 kWh'], [(1, 'avec')])
 
     def test_le_pompage_reste_hors_de_ce_chantier(self):
         """Garde-fou : le devis auto refuse toujours un lead NON résidentiel.

@@ -44,7 +44,8 @@ describe('CIW304 — objectionFaq(mode) C&I', () => {
     const raccord = objectionFaq('industriel').find((f) => f.id === 'raccordement')!;
     expect(raccord.answer).toContain('TAQINOR prépare le dossier de raccordement et d’autorisations du site quand il est requis');
     const tva = objectionFaq('industriel').find((f) => f.id === 'tva')!;
-    expect(tva.answer).toContain('à confirmer avec votre comptable');
+    expect(tva.answer).toContain('HT quand votre TVA est récupérable');
+    expect(tva.answer).not.toContain('à confirmer');
   });
 
   it('le suivi de production n\'apparaît que si le délai est servi ; l\'entretien nomme l\'option O&M servie', () => {

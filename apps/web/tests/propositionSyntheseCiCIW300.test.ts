@@ -9,13 +9,11 @@ import {
   argentCiCalcule,
   economieCiHero,
   injectionCi,
-  motifsManquantsCi,
-  ciEstUneEstimation,
-  ciSousReserveVisite,
   bandeauPreliminaireCi,
   lignePostesHorsTotalCi,
   CI_DEVIS_PRELIMINAIRE,
   chiffresEconomiePhare,
+  recommendedOption,
   savingsHeadline,
   type ProposalResponse,
 } from '../src/lib/proposition';
@@ -118,18 +116,6 @@ describe('CIW300 — syntheseCi (extracteur pur, lecture défensive)', () => {
       expect(syntheseCi(payload(m, { synthese_ci: SYNTHESE }))).toBeNull();
     }
   });
-
-  it('étiquette « estimation », réserve de visite et motifs manquants', () => {
-    const ci = syntheseCi(payload('commercial', { synthese_ci: { ...SYNTHESE, argent: argent() } }));
-    expect(ciEstUneEstimation(ci)).toBe(true);
-    expect(ciSousReserveVisite(ci)).toBe(true);
-    expect(motifsManquantsCi(ci)).toEqual(["aucun taux d'actualisation déclaré"]);
-    const ferme = syntheseCi(
-      payload('commercial', { synthese_ci: { ...SYNTHESE, statut_etude: 'offre_ferme', energie: { ...SYNTHESE.energie, methode: 'horaire_declare' } } }),
-    );
-    expect(ciEstUneEstimation(ferme)).toBe(false);
-    expect(ciSousReserveVisite(ferme)).toBe(false);
-  });
 });
 
 describe('CIW300 — chiffresEconomiePhare lit synthese_ci en C&I', () => {
@@ -137,9 +123,23 @@ describe('CIW300 — chiffresEconomiePhare lit synthese_ci en C&I', () => {
     for (const m of ['commercial', 'industriel']) {
       for (const synth of [undefined, { ...SYNTHESE }, { ...SYNTHESE, argent: argent({ statut: 'omis', economie_annee1: undefined }) }]) {
         const r = chiffresEconomiePhare(payload(m, synth ? { synthese_ci: synth } : {}), 'sans_batterie');
-        expect(r).toEqual({ ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null });
+        expect(r).toEqual({ ecoSans: null, ecoAvec: null, paybackSans: null, paybackAvec: null, ecoHero: null, paybackHero: null, paybackHeroI18n: null, paybackHeroJamais: false, modeleHero: null });
       }
     }
+  });
+
+  it('RWEB4 — offre principale servie « avec batterie » : l’argent va sur la carte AVEC, jamais sur la carte SANS', () => {
+    const r = chiffresEconomiePhare(payload('commercial', { synthese_ci: { ...SYNTHESE, option_servie: 'avec_batterie', argent: argent() } }), 'avec_batterie');
+    expect(r.ecoAvec).not.toBeNull();
+    expect(r.ecoSans).toBeNull();
+    expect(r.ecoHero).toBe(r.ecoAvec);
+    expect(r.paybackHeroI18n).toEqual({ fr: '3 ans', en: '3 years', ar: '3 سنوات' });
+  });
+
+  it('RWEB3 — C&I à deux options : option phare = offre principale servie, pas `quote.recommended`', () => {
+    const p = payload('industriel', { synthese_ci: { ...SYNTHESE, option_servie: 'sans', argent: argent() } });
+    (p.quote as Record<string, unknown>).recommended = 'avec_batterie';
+    expect(recommendedOption(p)).toBe('sans_batterie');
   });
 
   it('avec synthese_ci.argent → valeurs servies (HT quand la base est « deux », TTC quand « ttc »)', () => {

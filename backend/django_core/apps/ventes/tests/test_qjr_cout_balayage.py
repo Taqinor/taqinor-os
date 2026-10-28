@@ -306,6 +306,38 @@ class BalayageAdaptatifTests(SimpleTestCase):
         self.assertGreater(reco['panneaux'], B.SEUIL_PANNEAUX_RESIDENTIEL)
         self.assertIn('étude sur mesure conseillée', motivation)
 
+    def test_rsiz9_le_raffinement_se_reprend_quand_l_optimum_bouge(self):
+        """Des creux cachés hors de la grille, chacun à 16 panneaux (un
+        voisinage de raffinement) du précédent : chaque passe en révèle un
+        de plus, et il y en a AU PLUS MAX_RAFFINEMENTS."""
+        self.assertEqual(B.MAX_RAFFINEMENTS, 3)
+        pas = B.pas_balayage(660)
+        self.assertEqual(pas, 17)
+        creux = {314: 1.0, 330: 2.0, 346: 3.0, 362: 4.0}   # grille = 1 + 17 k
+
+        def evaluer(panneaux):
+            ligne = _ligne_factice(panneaux)
+            ligne['payback_annees'] = (
+                5.0 + abs(panneaux - 300) * 0.01 - creux.get(panneaux, 0.0))
+            return ligne
+
+        def choisir(tableau):
+            return min(tableau, key=lambda ligne: ligne['payback_annees']), ''
+
+        appels = []
+
+        def evaluer_compte(panneaux):
+            appels.append(panneaux)
+            return evaluer(panneaux)
+
+        tableau = B.tableau_adaptatif(
+            evaluer_compte, 1, 660, False, (choisir, choisir))
+        retenu, _ = choisir(tableau)
+        self.assertEqual(retenu['panneaux'], 346)   # 3 passes, pas la 4e
+        self.assertNotIn(362, {ligne['panneaux'] for ligne in tableau})
+        self.assertLessEqual(len(set(appels)),
+                             41 + B.MAX_RAFFINEMENTS * 2 * (2 * pas - 2))
+
     def test_un_balayage_dense_ne_porte_aucune_cle_nouvelle(self):
         """Sous le seuil dense, les lignes ont EXACTEMENT la forme d'hier :
         ni ``pas_balayage`` ni ``hors_residentiel``, motivation inchangée."""
