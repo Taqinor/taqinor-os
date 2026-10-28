@@ -324,9 +324,18 @@ class ContexteSonde:
 def _mppt_paires_du_devis(devis):
     """Les paires MPPT que le devis chiffre : son câble DC AU MÈTRE ÷ 60 m
     (``metre_cable_dc_par_paires``, la règle de la composition). Sans ligne
-    lisible : le repli fondateur d'une paire."""
+    lisible : le repli fondateur d'une paire.
+
+    RSIZ5 — aux règles ≥ 3 le câble est DÉRIVÉ du champ par la composition :
+    le relire comme plancher ferait monter les paires sans jamais les faire
+    redescendre (carte « Éco » chiffrée au câble du grand champ, deux lignes
+    variantées sommées) — le plancher est alors une paire."""
     from apps.ventes.domain.catalogue import (
         CABLE_DC_M_PAR_PALIER, _est_au_metre, _is_cable_dc)
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
+    if regles_au_moins(devis, REGLES_CORRIGEES_2710):
+        return 1
     metres = 0.0
     for ligne in devis.lignes.all():
         nom = ligne.designation or ''

@@ -618,8 +618,29 @@ class LesPairesMpptSuiventLeChamp(_Base):
             regles_2710=True), 180)
 
     def test_regles_d_origine_le_compte_saisi_tel_quel(self):
-        """Défaut de la fonction pure = règles d'origine : 60 m à 15 kWc."""
-        self.assertEqual(self._cable_dc(kwc=15, nb_panneaux=22), 60)
+        """Règles d'origine (``regles_2710=False``) : 60 m à 15 kWc ; le
+        défaut de la fonction pure est la règle courante (180 m)."""
+        self.assertEqual(self._cable_dc(
+            kwc=15, nb_panneaux=22, regles_2710=False), 60)
+        self.assertEqual(self._cable_dc(kwc=15, nb_panneaux=22), 180)
+
+    def test_le_cable_relu_n_est_plancher_qu_aux_regles_d_origine(self):
+        """Fable B1 — aux règles ≥ 3 le câble DC du devis n'est plus relu
+        comme plancher des paires (il redescendrait jamais) ; aux règles
+        d'origine il l'est toujours (240 m → 4 paires)."""
+        from types import SimpleNamespace
+
+        from apps.ventes.domain.etape_composer import _mppt_paires_du_devis
+        ligne = SimpleNamespace(
+            designation='Câble solaire Nexans 6 mm² (au mètre)', quantite=240)
+
+        class _Lignes:
+            def all(self):
+                return [ligne]
+        self.assertEqual(_mppt_paires_du_devis(
+            SimpleNamespace(regles_calcul=2, lignes=_Lignes())), 4)
+        self.assertEqual(_mppt_paires_du_devis(
+            SimpleNamespace(regles_calcul=3, lignes=_Lignes())), 1)
 
     def test_un_devis_aux_regles_d_origine_ne_derive_pas(self):
         """Un devis déjà envoyé (règles < 3) recomposé par les sondes garde
