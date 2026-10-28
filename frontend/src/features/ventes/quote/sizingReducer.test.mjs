@@ -117,9 +117,11 @@ test('INVARIANT 2 (bis) : un scénario INTACT prend bien le défaut du marché',
   assert.equal(inact.scenario, SCENARIO_SANS)
   const retour = red(inact, { type: 'MARCHE_CHANGE', mode: 'residentiel' })
   assert.equal(retour.scenario, SCENARIO_LES_DEUX)
-  // Pompage : le scénario n'est PAS touché (ni batterie ni onduleur).
+  // Pompage (AGV6) : « Sans batterie » (ni batterie ni onduleur), puis le retour
+  // en résidentiel rend le défaut « Les deux ».
   const agri = red(ETAT_INITIAL, { type: 'MARCHE_CHANGE', mode: 'agricole' })
-  assert.equal(agri.scenario, SCENARIO_LES_DEUX)
+  assert.equal(agri.scenario, SCENARIO_SANS)
+  assert.equal(red(agri, { type: 'MARCHE_CHANGE', mode: 'residentiel' }).scenario, SCENARIO_LES_DEUX)
 })
 
 test('MARCHE_CHANGE : même marché = aucune transition ; mode inconnu ignoré', () => {
@@ -223,7 +225,7 @@ test('LEAD_APPLIQUE : jamais de scénario en POMPAGE (ni batterie ni onduleur)',
     lead: { type_installation: 'agricole', batterie_souhaitee: 'avec', raccordement: 'monophase' },
   })
   assert.equal(s.modeInstallation, 'agricole')
-  assert.equal(s.scenario, SCENARIO_LES_DEUX)   // le défaut initial, inchangé
+  assert.equal(s.scenario, SCENARIO_SANS)   // AGV6 : défaut pompage, pas le « avec » du lead
   assert.equal(s.pompeAlim, 'mono')
 })
 
@@ -404,6 +406,20 @@ test('REOUVERTURE : mode et scénario du devis ferment leurs drapeaux', () => {
   assert.deepEqual(drapeauxPoses(s).sort(), ['mode', 'scenario'])
   assert.equal(s.nbPanneaux, '24')
   assert.equal(s.touche.nbPanneaux, false)     // relire les lignes n’est pas une saisie
+})
+
+test('AGV13 — REOUVERTURE agricole : « Les deux » enregistré revient en Sans ; résidentiel inchangé', () => {
+  const agri = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE',
+    devis: { mode_installation: 'agricole', scenario: SCENARIO_LES_DEUX, panneaux: 12 },
+  })
+  assert.equal(agri.modeInstallation, 'agricole')
+  assert.equal(agri.scenario, SCENARIO_SANS)
+  const res = sizingReducer(ETAT_INITIAL, {
+    type: 'REOUVERTURE',
+    devis: { mode_installation: 'residentiel', scenario: SCENARIO_LES_DEUX, panneaux: 12 },
+  })
+  assert.equal(res.scenario, SCENARIO_LES_DEUX)
 })
 
 test('QJR526 — REOUVERTURE : le wattage du devis est posé AVANT le compte (5,5 kWc, pas 7,1)', () => {

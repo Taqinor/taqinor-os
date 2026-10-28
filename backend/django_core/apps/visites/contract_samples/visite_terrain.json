@@ -219,7 +219,7 @@
       "conseil_closing": "Insister sur l'autonomie pendant les coupures."
     }
   },
-  "gabarit_regle": "AGR5 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; D-AGR-4) — CONTRAT D'ABORD (PACT10). Aujourd'hui ce contrat ne décrit qu'une checklist TOITURE (reflet de apps/visites/visite_checklist.py) et « terminer » est refusé tant qu'un élément manque : un technicien sur un forage doit inventer des mesures de toit. L'agrégat gagne la clé `gabarit` ('toiture' | 'point_eau'), fixée à la création de la visite ; le gabarit `point_eau` (visite « relevé du point d'eau », posée AVANT le devis quand le niveau d'eau ou le débit du forage est inconnu) REMPLACE les catégories toiture/tableau/local_onduleur/cheminement par point_eau, pompe_existante, electricite, site_pv, administratif, general (`gabarit_point_eau`, `exemple_point_eau`). `photo_toit` vaut null en point_eau. AUCUN seuil ni verdict (règle VT1 : le module montre, le bureau d'études juge). Un `sauf_si` rend une mesure requise facultative quand le technicien coche l'impossibilité (`niveau_non_mesurable`, `debit_non_mesurable`). `retour_lead_point_eau` = la table mesure → colonne Lead du contrat crm `lead_pompage.json` (AGR1), appliquée à la VALIDATION de la visite (jamais avant) ; une mesure sans colonne Lead (niveau dynamique, conduite, refoulement, tension, alimentation) n'est pas recopiée : le moteur la lit par `visites.selectors.mesures_point_eau_pour_lead` (AGR413), provenance lead/mesure_visite. L'`exemple` toiture est IDENTIQUE à l'octet : la clé `gabarit` (« toiture ») y entrera avec la tâche backend qui la sert (`getVisite` est sous contrat de forme : une clé que la vue ne renvoie pas encore rougirait `check_api_shapes.py`). Valeurs ILLUSTRATIVES.",
+  "gabarit_regle": "AGR5 (Groupe AGR, audit L3 du devis agricole, 02/10/2026 ; D-AGR-4) — CONTRAT D'ABORD (PACT10). Aujourd'hui ce contrat ne décrit qu'une checklist TOITURE (reflet de apps/visites/visite_checklist.py) et « terminer » est refusé tant qu'un élément manque : un technicien sur un forage doit inventer des mesures de toit. L'agrégat gagne la clé `gabarit` ('toiture' | 'point_eau'), fixée à la création de la visite ; le gabarit `point_eau` (visite « relevé du point d'eau », posée AVANT le devis quand le niveau d'eau ou le débit du forage est inconnu) REMPLACE les catégories toiture/tableau/local_onduleur/cheminement par point_eau, pompe_existante, electricite, site_pv, administratif, general (`gabarit_point_eau`, `exemple_point_eau`). `photo_toit` vaut null en point_eau. AUCUN seuil ni verdict (règle VT1 : le module montre, le bureau d'études juge). Un `sauf_si` rend une mesure requise facultative quand le technicien coche l'impossibilité (`niveau_non_mesurable`, `debit_non_mesurable`). `retour_lead_point_eau` = la table mesure → colonne Lead du contrat crm `lead_pompage.json` (AGR1), appliquée à la VALIDATION de la visite (jamais avant) ; une mesure sans colonne Lead (niveau dynamique, conduite, refoulement) n'est pas recopiée ; AGV3 : la plaque de la pompe existante (kW, tension 220/380 V, alimentation mono/tri → phases) est recopiée sur les colonnes pompe_actuelle_kw / pompe_actuelle_tension_v / pompe_actuelle_phases : le moteur la lit par `visites.selectors.mesures_point_eau_pour_lead` (AGR413), provenance lead/mesure_visite. L'`exemple` toiture est IDENTIQUE à l'octet : la clé `gabarit` (« toiture ») y entrera avec la tâche backend qui la sert (`getVisite` est sous contrat de forme : une clé que la vue ne renvoie pas encore rougirait `check_api_shapes.py`). Valeurs ILLUSTRATIVES.",
   "gabarit_point_eau": {
     "point_eau": {
       "photos": {
@@ -342,6 +342,12 @@
           "requis": false,
           "libelle": "Puissance de la pompe actuelle",
           "unite": "CV"
+        },
+        "pompe_actuelle_kw": {
+          "type": "décimal",
+          "requis": false,
+          "libelle": "Puissance plaque de la pompe actuelle",
+          "unite": "kW"
         },
         "tension_v": {
           "type": "entier",
@@ -639,6 +645,7 @@
         "pompe_presente": true,
         "pompe_actuelle_type": "immergee",
         "pompe_actuelle_cv": 7.5,
+        "pompe_actuelle_kw": 5.5,
         "tension_v": 380,
         "alimentation": "tri"
       },
@@ -756,6 +763,18 @@
     {
       "mesure": "pompe_existante.pompe_actuelle_cv",
       "colonne_lead": "pompe_actuelle_cv"
+    },
+    {
+      "mesure": "pompe_existante.pompe_actuelle_kw",
+      "colonne_lead": "pompe_actuelle_kw"
+    },
+    {
+      "mesure": "pompe_existante.tension_v",
+      "colonne_lead": "pompe_actuelle_tension_v"
+    },
+    {
+      "mesure": "pompe_existante.alimentation",
+      "colonne_lead": "pompe_actuelle_phases"
     },
     {
       "mesure": "electricite.electricite_sur_place",

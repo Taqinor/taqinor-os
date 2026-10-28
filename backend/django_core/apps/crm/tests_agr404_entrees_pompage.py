@@ -228,6 +228,63 @@ class EntreesPompage(TestCase):
         vide = selectors.entrees_pompage_du_lead(self._lead())
         self.assertIn('mode_pompe', vide['manquants'])
 
+    def test_facture_electricite_pompage_servie_seulement_si_electrique(self):
+        """AGV8 — la facture d'électricité du pompage et sa part fixe visent
+        ``facture_reseau.*`` ; servies seulement pour une pompe actuelle
+        électrique, sinon MARQUÉES ``ignoree`` ; le moteur lit alors la
+        périodicité mensuelle posée par le serveur."""
+        from apps.ventes.domain.pompage import saisies_economie_pompage_du_lead
+        lead = self._lead(
+            pompe_alim_actuelle='electrique',
+            depense_electricite_pompe_mad_mois=Decimal('900'),
+            depense_electricite_pompe_part_fixe_mad_mois=Decimal('60'))
+        par = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+        self.assertEqual(
+            par['depense_electricite_pompe_mad_mois']['chemin'],
+            'saisies_economie_pompage.facture_reseau.montant_mad')
+        self.assertEqual(
+            par['depense_electricite_pompe_part_fixe_mad_mois']['chemin'],
+            'saisies_economie_pompage.facture_reseau.part_fixe_mad_mois')
+        self.assertNotIn('ignoree', par['depense_electricite_pompe_mad_mois'])
+        facture = saisies_economie_pompage_du_lead(lead)['facture_reseau']
+        self.assertEqual(facture['montant_mad'], 900)
+        self.assertEqual(facture['part_fixe_mad_mois'], 60)
+        self.assertEqual(facture['periodicite'], 'mensuelle')
+        self.assertTrue(facture['saisi_le'])  # date de la déclaration
+        for energie in ('butane', 'diesel'):
+            lead = self._lead(
+                pompe_alim_actuelle=energie,
+                depense_electricite_pompe_mad_mois=Decimal('900'))
+            par = _par_colonne(selectors.entrees_pompage_du_lead(lead))
+            self.assertEqual(
+                par['depense_electricite_pompe_mad_mois']['ignoree'],
+                f'énergie {energie}')
+            self.assertNotIn(
+                'facture_reseau',
+                saisies_economie_pompage_du_lead(lead) or {})
+
+    def test_part_fixe_non_declaree_jamais_supposee_zero(self):
+        """AGV8 — facture sans part fixe : la part fixe reste absente (le
+        moteur omet alors l'économie en nommant le champ) ; part fixe sans
+        facture : aucun bloc ``facture_reseau``."""
+        from apps.ventes import economie_pompage as E
+        from apps.ventes.domain.pompage import saisies_economie_pompage_du_lead
+        lead = self._lead(
+            pompe_alim_actuelle='electrique',
+            depense_electricite_pompe_mad_mois=Decimal('900'))
+        saisies = saisies_economie_pompage_du_lead(lead)
+        self.assertNotIn('part_fixe_mad_mois', saisies['facture_reseau'])
+        saisies['mois_irrigation'] = {'mois': [6, 7]}
+        dep = E.depense_actuelle(saisies)
+        self.assertEqual(dep['statut'], 'omis')
+        self.assertTrue(any('part fixe de la facture électricité du pompage'
+                            in m for m in dep['motifs']))
+        lead = self._lead(
+            pompe_alim_actuelle='electrique',
+            depense_electricite_pompe_part_fixe_mad_mois=Decimal('60'))
+        self.assertNotIn('facture_reseau',
+                         saisies_economie_pompage_du_lead(lead) or {})
+
     def test_lecture_filtree_par_societe(self):
         lead = self._lead(niveau_statique_m=Decimal('20'))
         autre, _ = Company.objects.get_or_create(

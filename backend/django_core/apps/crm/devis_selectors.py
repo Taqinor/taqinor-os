@@ -200,6 +200,13 @@ ENTREES_POMPAGE_CIBLES = (
     # laisse le bloc « Votre argent » omis.
     ('jours_irrigation_semaine', 'saisies_economie_pompage',
      'saisies_economie_pompage.consommation.jours_irrigation_par_semaine'),
+    # AGV8 — la facture d'électricité du pompage et sa part fixe : base
+    # déclarée du cas « pompe actuelle sur le réseau » (jamais une grille).
+    ('depense_electricite_pompe_mad_mois', 'saisies_economie_pompage',
+     'saisies_economie_pompage.facture_reseau.montant_mad'),
+    ('depense_electricite_pompe_part_fixe_mad_mois',
+     'saisies_economie_pompage',
+     'saisies_economie_pompage.facture_reseau.part_fixe_mad_mois'),
     # AGQ39 (D-AGQ-10) — le mode de pompe du lead et la plaque de la pompe
     # ACTUELLE : « existante » ⇒ aucune ligne pompe, variateur sur la plaque.
     ('mode_pompe', 'mode_pompe', 'mode_pompe'),
@@ -227,6 +234,10 @@ _ENTREES_POMPAGE_SOURCES = {
         'declaree': 'client', 'site_web': 'site_web'}),
 }
 
+
+#: AGV8 — colonnes de la facture d'électricité du pompage (cas réseau).
+_ENTREES_POMPAGE_RESEAU = ('depense_electricite_pompe_mad_mois',
+                           'depense_electricite_pompe_part_fixe_mad_mois')
 
 #: La pompe ACTUELLE : lue par le moteur seulement en mode « pompe existante
 #: conservée » (D-AGR-7) — servie marquée « information ».
@@ -353,6 +364,13 @@ def entrees_pompage_du_lead(lead):
             attendue = unite_par_energie().get(lead.pompe_alim_actuelle)
             if attendue and entree['unite'] != attendue:
                 entree['ignoree'] = f'énergie {lead.pompe_alim_actuelle}'
+        if colonne in _ENTREES_POMPAGE_RESEAU \
+                and lead.pompe_alim_actuelle != 'electrique':
+            # AGV8 — facture du réseau : lue seulement pour une pompe
+            # actuelle électrique, sinon servie MARQUÉE ``ignoree``.
+            entree['ignoree'] = (f'énergie {lead.pompe_alim_actuelle}'
+                                 if lead.pompe_alim_actuelle
+                                 else 'énergie non déclarée')
         entrees.append(entree)
 
     # D-AGR-3 — volume déclaré : besoin_eau_m3j, sinon débit ACTUEL × heures

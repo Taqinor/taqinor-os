@@ -58,8 +58,9 @@ export const DEFAUT_SCENARIO_PAR_MODE = {
   // à zéro — le double scénario n'y est pas servable.
   industriel: SCENARIO_SANS,
   commercial: SCENARIO_SANS,
-  // Pompage : ni batterie ni onduleur — le scénario n'est PAS touché.
-  agricole: null,
+  // Pompage : ni batterie ni onduleur — scénario « Sans batterie » (AGV6) :
+  // jamais de vocabulaire batterie ni de double option en agricole.
+  agricole: SCENARIO_SANS,
 }
 
 /** Scénario choisi par le client dans le tunnel (crm.Lead.batterie_souhaitee). */
@@ -435,7 +436,10 @@ export function sizingReducer(etat = ETAT_INITIAL, action = {}) {
         }
       }
       if (SCENARIOS_VALIDES.includes(d.scenario)) {
-        s = { ...avecTouche(s, 'scenario'), scenario: d.scenario }
+        // AGV13 — le pompage n'a jamais de batterie : un devis agricole rouvert
+        // revient en « Sans » (le sélecteur de scénario y est masqué).
+        const sc = s.modeInstallation === 'agricole' ? SCENARIO_SANS : d.scenario
+        s = { ...avecTouche(s, 'scenario'), scenario: sc }
       }
       return s
     }
