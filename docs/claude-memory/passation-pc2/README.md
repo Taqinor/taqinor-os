@@ -190,12 +190,15 @@ limite (ratio marginal 2,43 ans, horizon 10 ans) ; un seul palier calculé, `rai
 décision 30°, la même surface donnait ≈ 30 kWc ; le fondateur attend **40 kWc** pour cette boulangerie (120 MWh/an,
 6 h-22 h, BT patenté, facture ≈ 18 000 MAD/mois).
 
-- **R1 — Densité de pose sur toit plat (DÉCISION fondateur à prendre, puis code).** 40 kWc sur 200 m² = 5 m²/kWc, soit
-  une pose rasante/est-ouest (≈ 10°), pas des rangées à 30°. Proposer au fondateur : (a) densité par défaut d'un toit plat
-  C&I = pose rasante 10° (≈ 5-6 m²/kWc), 30° seulement si choisi dans le générateur ; ou (b) garder 30° mais borner par
-  la surface RÉELLE (à relever : 200 m² vient du formulaire/téléphone, « toit non épinglé »). Rendre visible dans la
-  fenêtre du devis auto la phrase « taille limitée par le toit : X m² déclarés → Y kWc » (elle existe dans
-  `taille.bornes.toit.source`, elle n'est pas affichée au vendeur).
+- **R1 — DÉCISION FONDATEUR (28/10, 18:40 UTC) : 30° reste le défaut, la pose rasante 10° sert à loger la taille.**
+  Règle exacte, dans l'ordre : (1) la taille est choisie par l'économie (règle des 10 ans, paliers de 5 kWc) SANS être
+  bornée par la pose à 30° ; (2) si la taille retenue tient sur le toit à 30°, on garde 30° ; sinon on passe à la pose
+  rasante 10° (densité maximale, ≈ 5 m²/kWc) pour la loger ; (3) la borne toit ne s'applique QUE si même la pose rasante
+  ne suffit pas — et alors le devis le dit (« taille limitée par le toit : X m² déclarés → Y kWc en pose rasante »).
+  Aujourd'hui le moteur borne d'abord par la pose 30° (21,45 kWc sur 200 m²), ce qui est faux : il doit borner par la
+  configuration qui met le maximum de panneaux. L'inclinaison retenue (30° ou 10°) s'écrit dans `taille`/`hypotheses`
+  et dans le générateur (modifiable, décision du 27/10). Test attendu : lead 1637 (200 m² déclarés, 120 MWh/an,
+  6 h-22 h, BT patenté) → ≈ 40 kWc en pose rasante, pas 20.
 - **R2 — Moins de lignes : regrouper les protections dans une section « Tableau ».** Le devis 460 a 21 lignes ; le
   fondateur veut une ligne/section « Tableau de protection AC/DC » qui regroupe Coffret DC, Coffret AC, Disjoncteur AC,
   Protection DC (× MPPT), Parafoudre DC, Parafoudre AC, Mise à la terre, Smart Meter (prix = somme des composants,
