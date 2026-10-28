@@ -1,0 +1,18 @@
+Rejeu CSV11 — 2026-10-28 00:41-00:48 UTC — même pile. Quatre leads pro créés vides (nom, téléphone, type).
+Hôtel 2625 (commercial) : facture 6000 MAD → l'étape facture reste ouverte avec « kWh / mois » tant que le contrat n'est pas su ;
+BT → « Quel est votre contrat d'électricité … ? » (consigne photo WhatsApp) → BT patenté ⇒ étape facture close ;
+puissance 36 ; « Votre compteur est-il monophasé ou triphasé ? » → Triphasé ; Hôtel / riad ; 7 jours ; 0 → 24 (consigne 24 h/24) ;
+« La nuit ou quand vous êtes fermé, des appareils continuent-ils de tourner … ? » → Aucun ;
+« Fermez-vous certains mois … ? » : AUCUN moyen de répondre « aucun » (Enregistrer grisé sans coche) — DÉFAUT trouvé, corrigé 6bce250ec
+(bouton « Aucun mois » ⇒ fermeture_mois []) puis rejoué : la question d'activité suit — une entrée par clé (Nombre de chambres,
+taux d'occupation, Piscine chauffée) : 40, 60, Oui ⇒ reponses_categorie {chambres: 40, occupation_pct: 60, piscine: true}.
+Toiture, Terrasse béton, 400 m², Marrakech, « Avec un associé / la direction ». devis_auto.pret true ; POST devis-auto 200.
+Bureaux BT 2621 : 3000 MAD + 1500 kWh, BT, contrat « Ne sait pas », 24 kVA, Triphasé, Bureaux, Lun-Ven 8-18, « Un peu », Aucun mois,
+Toiture/Terrasse béton/200 m²/Rabat/Décide seul ⇒ POST devis-auto 409 « Manque : Contrat d'électricité » (le seul manquant = fait ignoré du client, nommé).
+Clinique MT 2622 : 15000 MAD + 12000 kWh, MT, 250 kVA, « Site en moyenne tension : alimentation triphasée, je le note. » → Triphasé (seul choix),
+Santé, 7/7 0-24, Beaucoup, Aucun mois, toiture 800 m², Casablanca ⇒ POST devis-auto 200 ; panneau propose la visite (« site en moyenne tension »).
+Industriel BT 2623 : 18000 kWh, « Votre site a-t-il son propre poste de transformation … ? » → BT, contrat BT force motrice ⇒ « option normale ou bi-horaire ? »
+→ bi-horaire, 120 kVA, Triphasé, « Que fabriquez-vous … ? » Agroalimentaire, « Une équipe (1×8) », Lun-Sam 7-19, Un peu, Août,
+Bac acier 1500 m², Tanger ⇒ POST devis-auto 200.
+Garde-fous pro : « Aucun chiffre d'économie au téléphone : le devis le donne. » ; ni « le calcul ne sait pas encore », ni bloc D7.
+Serveur : aucun 4xx/5xx sur le parcours écran (seuls 4xx du journal : sondes curl initiales + 409 attendu). Console : 0 error.

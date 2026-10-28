@@ -112,6 +112,8 @@ class EntreesResoluesTests(TestCase):
         entrees = devis.etude_params.get('entrees_pompage') or {}
         self.assertEqual(float(entrees['niveau_statique_m']), 30.0)
         self.assertEqual(float(entrees['profondeur_forage_m']), 80.0)
+        # Validation R3 d'AGC9 — le mode étudié (lead sans mode ⇒ neuve).
+        self.assertEqual(entrees['mode_pompe'], 'neuve')
         self.assertTrue(set(entrees) <= set(CLES_ENTREES_POMPAGE))
         # CLAUSE PERSISTANCE — rafraîchir deux fois → dérivées identiques.
         rafraichir_etude_pompage_devis(devis, force=True)

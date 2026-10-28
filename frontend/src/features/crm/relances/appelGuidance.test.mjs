@@ -50,7 +50,7 @@ test('CAD175 — un lead agricole reçoit le panneau AGRICOLE (jamais un script 
   assert.equal(g.famille, 'agricole')
   assert.deepEqual(g.questions.map((q) => q.champ), ['pompage_heures_jour'])
   assert.equal(g.enTete, null, 'la présence à la maison n\'est pas une question de pompage')
-  assert.ok(g.gardeFous.includes(guidance.AUCUNE_ESTIMATION_SEGMENT))
+  assert.ok(g.gardeFous.includes(guidance.SANS_CHIFFRE_AU_TELEPHONE))
   assert.ok(g.gardeFous.includes(guidance.CARBURANT_DECLARE_SEUL))
 })
 
@@ -59,7 +59,7 @@ test('CAD175 — industriel et commercial partagent le jeu PRO', () => {
     const g = guidanceAppel({ ...exemple(), segment, segment_libelle: segment })
     assert.equal(g.livre, true, segment)
     assert.equal(g.famille, 'pro', segment)
-    assert.deepEqual(g.gardeFous, [guidance.AUCUNE_ESTIMATION_SEGMENT], segment)
+    assert.deepEqual(g.gardeFous, [guidance.SANS_CHIFFRE_AU_TELEPHONE], segment)
   }
 })
 
@@ -495,10 +495,11 @@ function leadVierge175(segment, orauxSegment) {
 const ORAUX_AGRICOLE = [
   'pompe_alim_actuelle', 'butane_bouteilles_jour', 'carburant_litres_mois',
   'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois',
-  'source_eau', 'niveau_statique_m', 'debit_forage_m3h',
+  'depense_electricite_pompe_mad_mois', 'source_eau', 'niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m',
   'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
-  'pompage_heures_jour', 'distance_forage_champ_m',
-  'irrigation_methode', 'mois_irrigation', 'electricite_sur_place',
+  'pompe_actuelle_debit_m3h', 'pompage_heures_jour', 'distance_forage_champ_m',
+  'irrigation_methode', 'mois_irrigation', 'electricite_sur_place', 'raccordement',
+  'jours_irrigation_semaine',
 ]
 
 test('AGR418 — agricole vierge : énergie → eau → besoin → heures/distance → irrigation/électricité', () => {
@@ -506,21 +507,22 @@ test('AGR418 — agricole vierge : énergie → eau → besoin → heures/distan
   assert.deepEqual(guidance.ORDRE_AGRICOLE.map((e) => e.etape),
     ['energie_actuelle', 'eau', 'besoin', 'heures_distance', 'irrigation_electricite'])
   assert.deepEqual(g.questions.map((q) => q.champ), [
-    'pompe_alim_actuelle', 'source_eau', 'besoin_eau_m3j', 'pompage_heures_jour',
+    'pompe_alim_actuelle', 'source_eau', 'besoin_eau_m3j', 'pompe_actuelle_debit_m3h',
     'irrigation_methode',
   ])
   assert.equal(g.questions.length, 5)
   assert.ok(g.questions.length <= BUDGET_APPEL_1)
   // Énergie actuelle inconnue : la suite dépend de la réponse — rien d'autre.
   assert.deepEqual(g.questions[0].complements, [])
+  // CSV5 — la ville (ni ville ni GPS sur la fiche) clôt l'étape de l'eau.
   assert.deepEqual(g.questions[1].complements.map((q) => q.champ),
-    ['niveau_statique_m', 'debit_forage_m3h'])
+    ['niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m', 'ville'])
   assert.deepEqual(g.questions[2].complements.map((q) => q.champ),
     ['surface_irriguee_ha', 'culture'])
   assert.deepEqual(g.questions[4].complements.map((q) => q.champ),
-    ['mois_irrigation', 'electricite_sur_place'])
+    ['mois_irrigation', 'electricite_sur_place', 'raccordement'])
   // Plus jamais la CV de la pompe : elle se relève sur la plaque, en visite.
-  assert.ok(!g.questions.some((q) => /^pompe_(cv|hmt_m|debit_m3h)$/.test(q.champ)))
+  assert.ok(!g.questions.some((q) => /^pompe_(cv|debit_m3h)$/.test(q.champ)))
   // Aucune question résidentielle ne se glisse (facture, présence, toit).
   assert.ok(!g.questions.some((q) => CINQ.includes(q.champ)))
   // Surface et culture ont leur colonne : il ne reste à noter que la force
@@ -574,9 +576,9 @@ test('AGR418 — chaque colonne des cinq étapes est servie par le contrat (exem
 
 test('AGR418 — énergie actuelle : la suite SELON la réponse (prix déclaré, Q17)', () => {
   const cas = {
-    butane: ['butane_bouteilles_jour', 'carburant_prix_unitaire_mad'],
+    butane: ['butane_bouteilles_jour', 'carburant_prix_unitaire_mad', 'jours_irrigation_semaine'],
     diesel: ['carburant_litres_mois', 'carburant_prix_unitaire_mad'],
-    electrique: ['depense_carburant_mad_mois'],
+    electrique: ['depense_electricite_pompe_mad_mois'],
   }
   for (const [alim, attendus] of Object.entries(cas)) {
     const panneau = leadVierge175('agricole', ORAUX_AGRICOLE)
@@ -589,17 +591,45 @@ test('AGR418 — énergie actuelle : la suite SELON la réponse (prix déclaré,
   }
 })
 
+test('CSV18 — heures et débit de la pompe actuelle seulement avec une pompe ; jours d’irrigation au butane', () => {
+  const avec = (alim) => guidanceAppel({
+    ...leadVierge175('agricole', ORAUX_AGRICOLE),
+    prefill: { pompe_alim_actuelle: alim },
+  })
+  const champsHeures = (g) => {
+    const e = g.questions.find((q) => q.etape === 'heures_distance')
+    return [e.champ, ...e.complements.map((q) => q.champ)]
+  }
+  assert.deepEqual(champsHeures(avec('aucune')), ['distance_forage_champ_m'])
+  assert.deepEqual(champsHeures(avec('diesel')),
+    ['pompe_actuelle_debit_m3h', 'pompage_heures_jour', 'distance_forage_champ_m'])
+  const energie = (alim) => avec(alim).questions.find((q) => q.etape === 'energie_actuelle')
+  assert.ok(energie('butane').complements.some((q) => q.champ === 'jours_irrigation_semaine'))
+  assert.ok(!energie('diesel').complements.some((q) => q.champ === 'jours_irrigation_semaine'))
+})
+
 test('AGR418 — besoin connu : ni surface ni culture ne se reposent ; exemple_agricole saute ce qui est répondu', () => {
   const g = guidanceAppel(exemple('exemple_agricole'))
   const etapes = g.questions.map((q) => q.etape)
   assert.ok(!etapes.includes('besoin'))
   assert.deepEqual(g.questions[0].champ, 'butane_bouteilles_jour')
-  assert.deepEqual(g.questions[0].complements.map((q) => q.champ), ['carburant_prix_unitaire_mad'])
+  assert.deepEqual(g.questions[0].complements.map((q) => q.champ), ['carburant_prix_unitaire_mad', 'jours_irrigation_semaine'])
   assert.equal(g.questions[1].champ, 'debit_forage_m3h')
   const mois = g.questions.find((q) => q.etape === 'irrigation_electricite')
     .complements.find((q) => q.champ === 'mois_irrigation')
   assert.equal(mois.nature, 'choix_multiple')
   assert.equal(mois.choix.length, 12)
+})
+
+test('CSV17 — la HMT clôt l’étape de l’eau, la phase de la pompe clôt l’irrigation ; consigne sans chiffre', () => {
+  const g = guidanceAppel(leadVierge175('agricole', ORAUX_AGRICOLE))
+  const eau = g.questions.find((q) => q.etape === 'eau')
+  assert.deepEqual(eau.complements.map((q) => q.champ),
+    ['niveau_statique_m', 'debit_forage_m3h', 'pompe_hmt_m', 'ville'])
+  const irrigation = g.questions.find((q) => q.etape === 'irrigation_electricite')
+  assert.equal(irrigation.complements.at(-1).champ, 'raccordement')
+  assert.ok(guidance.CONSIGNE_HMT_INCONNUE.includes('le technicien la calcule à la visite'))
+  assert.doesNotMatch(guidance.CONSIGNE_HMT_INCONNUE, /[0-9٠-٩۰-۹%[\]]/)
 })
 
 test('AGR418 — segment vide + segment_suggere : « Segment probable : … — confirmez avec le client. »', () => {
@@ -634,7 +664,7 @@ test('CIQ420 — chaque colonne des cinq étapes pro est servie par le contrat (
   const servies = new Set()
   for (const variante of [
     'exemple_commercial', 'exemple_industriel', 'exemple_industriel_fixe',
-    'exemple_commercial_associe',
+    'exemple_commercial_associe', 'exemple_commercial_force_motrice',
   ]) {
     for (const q of exemple(variante).champs_a_poser) servies.add(q.champ)
     for (const champ of Object.keys(exemple(variante).prefill)) servies.add(champ)
@@ -655,7 +685,8 @@ test('CIQ420 — industriel (exemple du contrat) : la facture en kWh ouvre, puis
   ])
   const rythme = g.questions[2]
   assert.deepEqual(rythme.complements.map((q) => q.champ), [
-    'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin', 'fermeture_mois',
+    'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin',
+    'equipements_hors_horaires', 'fermeture_mois',
   ])
   const jours = rythme.complements.find((q) => q.champ === 'jours_ouverture')
   assert.equal(jours.nature, 'choix_multiple')
@@ -671,11 +702,112 @@ test('CIQ420 — commercial (exemple du contrat) : une étape déjà répondue e
   const g = guidanceAppel(exemple('exemple_commercial'))
   // `tension_raccordement` et `categorie_commerciale` sont déjà sur la fiche.
   assert.deepEqual(g.questions.map((q) => q.champ), [
-    'facture_hiver', 'compteur_puissance_kva', 'reponses_categorie',
+    'facture_hiver', 'contrat_electricite', 'jours_ouverture',
     'type_surface', 'decideur',
   ])
   assert.equal(g.questions.length, 5)
   assert.ok(!g.questions.some((q) => q.champ === 'tension_raccordement'))
+})
+
+test('CSV1 — des réponses d’activité partielles restent posées (sous-questions), en dernier dans l’étape', () => {
+  const panneau = exemple('exemple_commercial')
+  const objet = panneau.champs_a_poser.find((q) => q.champ === 'reponses_categorie')
+  assert.ok(objet.sous_questions.length > 0)
+  const partiel = { ...panneau, prefill: { ...panneau.prefill, reponses_categorie: { chambres: 40 } } }
+  const g = guidanceAppel(partiel)
+  const activite = g.questions.find((q) => q.etape === 'activite_rythme')
+  assert.equal(activite.champ, 'jours_ouverture')
+  assert.ok(activite.complements.some((c) => c.champ === 'reponses_categorie'))
+  // Sans sous-question restante, l'objet présent sur la fiche n'est pas reposé.
+  const complet = {
+    ...partiel,
+    champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'reponses_categorie'),
+  }
+  assert.ok(!JSON.stringify(guidanceAppel(complet).questions).includes('sous_questions'))
+})
+
+test('CSV2 — la facture sert deux colonnes : la principale selon le serveur, l’autre visible à côté', () => {
+  const industriel = guidanceAppel(exemple('exemple_industriel')).questions[0]
+  assert.equal(industriel.etape, 'facture')
+  assert.equal(industriel.champ, 'conso_mensuelle_kwh')
+  assert.deepEqual(industriel.complements.map((c) => c.champ), ['facture_hiver'])
+  assert.equal(industriel.complementsVisibles, true)
+  const commercial = guidanceAppel(exemple('exemple_commercial')).questions[0]
+  assert.equal(commercial.champ, 'facture_hiver')
+  assert.deepEqual(commercial.complements.map((c) => c.champ), ['conso_mensuelle_kwh'])
+  // Facture en dirhams déjà sur la fiche mais qui ne compte pas (MT découvert) :
+  // seuls les kWh restent à poser, et l’étape reste ouverte.
+  const panneau = exemple('exemple_industriel')
+  const mad = {
+    ...panneau,
+    champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'facture_hiver'),
+    prefill: { ...panneau.prefill, facture_hiver: 5000 },
+  }
+  const g = guidanceAppel(mad).questions[0]
+  assert.equal(g.champ, 'conso_mensuelle_kwh')
+  assert.equal(g.complementsVisibles, undefined)
+})
+
+test('CSV3 — contrat posé après la tension, option bi-horaire seulement en force motrice', () => {
+  const commercial = guidanceAppel(exemple('exemple_commercial'))
+  const raccordement = commercial.questions.find((q) => q.etape === 'raccordement')
+  assert.equal(raccordement.champ, 'contrat_electricite')
+  assert.ok(raccordement.complements.some((c) => c.champ === 'compteur_puissance_kva'))
+  assert.ok(!raccordement.choix.some((c) => c.valeur === 'mt_general'))
+  const force = guidanceAppel(exemple('exemple_commercial_force_motrice'))
+    .questions.find((q) => q.etape === 'raccordement')
+  assert.equal(force.champ, 'option_tarifaire_bt')
+  // Un site MT n'a ni contrat ni option.
+  const mt = guidanceAppel(exemple('exemple_industriel')).questions.find((q) => q.etape === 'raccordement')
+  assert.equal(mt.champ, 'compteur_puissance_kva')
+  assert.ok(guidance.CONSIGNE_CONTRAT_INCONNU.includes('photo de sa facture par WhatsApp'))
+})
+
+test('CSV4 — la phase est posée à un site MT (un seul choix, triphasé) et à un commercial BT (deux choix)', () => {
+  const panneau = exemple('exemple_industriel')
+  const phase = panneau.champs_a_poser.find((q) => q.champ === 'raccordement')
+  assert.deepEqual(phase.choix.map((c) => c.valeur), ['triphase'])
+  assert.ok(phase.question.includes('Site en moyenne tension'))
+  const puissanceRepondue = {
+    ...panneau,
+    champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'compteur_puissance_kva'),
+    prefill: { ...panneau.prefill, compteur_puissance_kva: 400 },
+  }
+  const g = guidanceAppel(puissanceRepondue).questions.find((q) => q.etape === 'raccordement')
+  assert.equal(g.champ, 'raccordement')
+  const bt = exemple('exemple_commercial').champs_a_poser.find((q) => q.champ === 'raccordement')
+  assert.deepEqual(bt.choix.map((c) => c.valeur), ['monophase', 'triphase'])
+})
+
+test('CSV5 — la ville accompagne l’étape du site (toit / surface / eau), jamais en tête', () => {
+  const ville = (texte) => ({
+    champ: 'ville', section: null, libelle: 'ville', question: texte, choix: null, nature: 'texte',
+  })
+  for (const [nom, etape, attendu] of [
+    [undefined, 'toit_type_bien', '« Dans quelle ville se trouve votre maison ? »'],
+    ['exemple_commercial', 'surface', '« Dans quelle ville se trouve le site ? »'],
+    ['exemple_industriel', 'surface', '« Dans quelle ville se trouve le site ? »'],
+    ['exemple_agricole', 'eau', '« Dans quelle ville se trouve le site ? »'],
+  ]) {
+    const panneau = exemple(nom)
+    const servi = panneau.champs_a_poser.some((q) => q.champ === 'ville')
+    const avec = servi ? panneau : {
+      ...panneau, champs_a_poser: [...panneau.champs_a_poser, ville(`Question à l’appel : ${attendu}`)],
+    }
+    const questions = guidanceAppel(avec).questions
+    const entree = questions.find((q) => q.champ === 'ville' || q.complements.some((c) => c.champ === 'ville'))
+    assert.ok(entree, nom)
+    assert.equal(entree.etape, etape, nom)
+    assert.notEqual(questions[0].champ, 'ville', nom)
+  }
+  // Ville connue (non servie) : jamais posée.
+  const connue = exemple('exemple_commercial')
+  const sans = {
+    ...connue,
+    champs_a_poser: connue.champs_a_poser.filter((q) => q.champ !== 'ville'),
+    prefill: { ...connue.prefill, ville: 'Rabat' },
+  }
+  assert.ok(!JSON.stringify(guidanceAppel(sans).questions).includes('"ville"'))
 })
 
 test('CIQ420 — « avec le conjoint / la famille » est absent pour un pro', () => {
@@ -692,7 +824,7 @@ test('CIQ420 — aucune clé d\'économie dans la guidance pro', () => {
   for (const variante of ['exemple_commercial', 'exemple_industriel']) {
     const g = guidanceAppel(exemple(variante))
     assert.doesNotMatch(JSON.stringify(Object.keys(g)), /econom|payback|gain/i)
-    assert.deepEqual(g.gardeFous, [guidance.AUCUNE_ESTIMATION_SEGMENT])
+    assert.deepEqual(g.gardeFous, [guidance.SANS_CHIFFRE_AU_TELEPHONE])
   }
 })
 
@@ -709,7 +841,8 @@ test('CIQ420 — pro : une réponse déjà sur la fiche ne se repose pas, l\'ord
   const panneau = exemple('exemple_industriel')
   const sans = {
     ...panneau,
-    champs_a_poser: panneau.champs_a_poser.filter((q) => q.champ !== 'conso_mensuelle_kwh'),
+    champs_a_poser: panneau.champs_a_poser
+      .filter((q) => !['conso_mensuelle_kwh', 'facture_hiver'].includes(q.champ)),
     prefill: { ...panneau.prefill, conso_mensuelle_kwh: 42000 },
   }
   assert.deepEqual(guidanceAppel(sans).questions.map((q) => q.etape),
@@ -726,7 +859,7 @@ test('CIQ420 — textes de la visite pro : sans chiffre ni crochet', () => {
 test('CAD175 — consignes à noter et garde-fous : ni chiffre ni crochet', () => {
   const textes = [
     ...guidance.A_NOTER_PAR_FAMILLE.agricole, ...guidance.A_NOTER_PAR_FAMILLE.pro,
-    guidance.AUCUNE_ESTIMATION_SEGMENT, guidance.CARBURANT_DECLARE_SEUL,
+    guidance.SANS_CHIFFRE_AU_TELEPHONE, guidance.CARBURANT_DECLARE_SEUL,
   ]
   for (const texte of textes) {
     assert.doesNotMatch(texte, /[0-9٠-٩۰-۹]/, texte)

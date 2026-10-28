@@ -2579,3 +2579,58 @@ decisions:
     date: "2026-10-27"
     source: "décision prise pour le fondateur (à revoir) — session L3 AGM"
     taches: [AGM9]
+  - id: D-AGC-1
+    question: "Les notes « rendement non publié … production en borne haute / rendement prudent » du PDF agricole sont-elles imprimées au client ?"
+    options:
+      - cle: a
+        texte: "non : retirées du PDF client (règle « rien d'incertain imprimé », ci-decisions-2610) ; le vendeur garde l'information"
+      - cle: b
+        texte: "oui, imprimées telles quelles"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 AGC"
+    taches: [AGC1]
+  - id: D-AGC-2
+    question: "Le une-page agricole imprime-t-il « (hypothèse) » à côté des heures de pompage ?"
+    options:
+      - cle: a
+        texte: "non : « estimation » suffit (même règle que D-AGC-1)"
+      - cle: b
+        texte: "oui, « (hypothèse) » reste imprimé"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 AGC"
+    taches: [AGC2]
+  - id: D-AGC-6
+    question: "Bloc « Votre argent » agricole non publiable alors que le client a DÉCLARÉ sa dépense actuelle : que dit le document ?"
+    options:
+      - cle: a
+        texte: "une ligne neutre avec la SEULE somme déclarée (« Votre dépense actuelle déclarée : X MAD par an. »), jamais une économie ; rien sur des mois du calendrier non confirmés"
+      - cle: b
+        texte: "rien"
+    reponse: a
+    date: "2026-10-28"
+    source: "décision prise pour le fondateur (à revoir) — session L3 AGC (validation R3)"
+    taches: [AGC11, AGC14, AGC15, AGC16]
+  - id: D-AGC-7
+    question: "Vide redistribué par page du PDF agricole (pages 1-2 à plus d'un quart vides) : quel plafond ?"
+    options:
+      - cle: a
+        texte: "45 mm (au lieu de 95)"
+      - cle: b
+        texte: "95 mm inchangé"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 AGC"
+    taches: [AGC12]
+  - id: D-AGC-3
+    question: "La tuile « 0 % » de /pompage-solaire : que vise l'exonération de TVA ?"
+    options:
+      - cle: a
+        texte: "« la pompe solaire agricole » (art. 91-I-C-6°), jamais « le pompage agricole » ni « la pompe et son champ » (panneaux à 10 %, art. 99-B-1°)"
+      - cle: b
+        texte: "« le pompage agricole » inchangé"
+    reponse: a
+    date: "2026-10-27"
+    source: "décision prise pour le fondateur (à revoir) — session L3 AGC"
+    taches: [AGC4]

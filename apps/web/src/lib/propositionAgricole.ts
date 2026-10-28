@@ -149,8 +149,22 @@ export const AGR_LBL_AGQ = {
   prixSurDevis: { fr: 'prix sur devis', en: 'price on request', ar: 'السعر حسب العرض' },
   notesTitre: { fr: 'Notes de dimensionnement', en: 'Sizing notes', ar: 'ملاحظات التحجيم' },
   coutM3Solaire: { fr: 'Coût du m³ avec le solaire', en: 'Cost per m³ with solar', ar: 'تكلفة المتر المكعب مع الطاقة الشمسية' },
+  // AGC17 (D-AGC-6, parité PDF `agr_depense_declaree_neutre`) — bloc argent non publiable : la seule dépense DÉCLARÉE.
+  depenseDeclaree: {
+    fr: 'Votre dépense actuelle déclarée : {mad} par an.',
+    en: 'Your declared current spending: {mad} per year.',
+    ar: 'نفقتكم الحالية المصرّح بها: {mad} في السنة.',
+  },
+  // AGC7 (D-AGR-5, parité PDF `agr_formule_m3_solaire`) — la base du coût du m³ solaire : l'horizon SERVI.
+  formuleM3: {
+    fr: "Calcul : (investissement + charges du solaire sur {horizon} ans) ÷ (volume d'eau utile par an × {horizon}).",
+    en: 'Calculation: (investment + solar running costs over {horizon} years) ÷ (useful water volume per year × {horizon}).',
+    ar: 'الحساب: (الاستثمار + تكاليف الطاقة الشمسية على {horizon} سنوات) ÷ (حجم الماء النافع في السنة × {horizon}).',
+  },
   // AGQ42 — la page d'un pompage parle d'eau, pas de toit.
   eauJour: { fr: 'm³ d’eau par jour', en: 'm³ of water per day', ar: 'م³ من الماء يومياً' },
+  // AGC8 (AMOT65, parité héro PDF) — la puce du héro quand `synth.eau.estimation` est servi vrai.
+  eauJourEstimation: { fr: 'm³ d’eau par jour (estimation)', en: 'm³ of water per day (estimate)', ar: 'م³ من الماء يومياً (تقدير)' },
   kitTitre: { fr: 'Votre kit de pompage solaire', en: 'Your solar pumping kit', ar: 'عدة الضخ الشمسي الخاصة بكم' },
   revisionEau: { fr: 'Ajuster le volume d’eau ou la pompe', en: 'Adjust the water volume or the pump', ar: 'تعديل كمية الماء أو المضخة' },
   etEnsuite: { fr: 'Et ensuite : accord FDA si vous demandez l’aide, commande, pose, mise en service', en: 'And then: FDA approval if you apply for the grant, order, installation, commissioning', ar: 'ثم: موافقة صندوق التنمية الفلاحية إن طلبتم الدعم، الطلبية، التركيب، التشغيل' },
@@ -242,29 +256,34 @@ const moisServi = (v: unknown): number | null =>
 /** Rejeu AGQ du 24/10 (jumeau page d'AGQ3, D-AGQ-2) — la carte « Eau / jour » dit la phrase
  *  du héro PDF (`synthese.texte_heures_eau`) : « sur 5,1 h de pompage équivalentes à plein
  *  débit en octobre, mois de conception · au plus bas : 112,3 m³/j en novembre », lue dans
- *  `synthese_agricole.eau` ; sans mois de conception servi : la phrase d'hier. `null` sans heures. */
+ *  `synthese_agricole.eau` ; sans mois de conception servi : la phrase d'hier. `null` sans heures.
+ *  AGC3 (parité PDF, `agricole/onepage.cartes_pompage`) — « estimation » seulement quand le serveur
+ *  sert `eau.estimation` (étiquettes du noyau, AMOT65 ; absent ⇒ estimation) ; plus aucun « (hypothèse) ». */
 export function heuresEauAgricole(payload: unknown, heures: number | null | undefined, fmt: (n: number) => string): Lbl3 | null {
   if (typeof heures !== 'number' || !Number.isFinite(heures) || heures <= 0) return null;
   const eau = (payload as { synthese_agricole?: { eau?: Record<string, unknown> } } | null)?.synthese_agricole?.eau ?? {};
   const mois = moisServi(eau.mois_conception);
   const h = fmt(heures);
+  const est = eau.estimation === false
+    ? { fr: '', en: '', ar: '' }
+    : { fr: 'estimation, ', en: 'estimate, ', ar: 'تقدير، ' };
   if (mois === null) {
     return {
-      fr: `estimation, sur ${h} h de pompage (hypothèse)`,
-      en: `estimate, over ${h} h of pumping (assumption)`,
-      ar: `تقدير، على ${h} س من الضخّ (فرضية)`,
+      fr: `${est.fr}sur ${h} h de pompage`,
+      en: `${est.en}over ${h} h of pumping`,
+      ar: `${est.ar}على ${h} س من الضخّ`,
     };
   }
   const bas = typeof eau.m3_jour_min === 'number' && Number.isFinite(eau.m3_jour_min) ? fmt(eau.m3_jour_min) : null;
   const moisBas = moisServi(eau.mois_m3_jour_min);
   const auPlusBas = bas !== null && moisBas !== null && moisBas !== mois;
   return {
-    fr: `estimation, sur ${h} h de pompage équivalentes à plein débit en ${MOIS_AGRI.fr[mois - 1]}, mois de conception`
-      + (auPlusBas ? ` · au plus bas : ${bas} m³/j en ${MOIS_AGRI.fr[moisBas - 1]}` : '') + ' (hypothèse)',
-    en: `estimate, over ${h} h of pumping at equivalent full flow in ${MOIS_AGRI.en[mois - 1]}, design month`
-      + (auPlusBas ? ` · at its lowest: ${bas} m³/day in ${MOIS_AGRI.en[moisBas - 1]}` : '') + ' (assumption)',
-    ar: `تقدير، على مدى ${h} ساعات ضخ مكافئة بالصبيب الكامل في ${MOIS_AGRI.ar[mois - 1]}، شهر التصميم`
-      + (auPlusBas ? ` · في أدناه: ${bas} م³/يوم في ${MOIS_AGRI.ar[moisBas - 1]}` : '') + ' (فرضية)',
+    fr: `${est.fr}sur ${h} h de pompage équivalentes à plein débit en ${MOIS_AGRI.fr[mois - 1]}, mois de conception`
+      + (auPlusBas ? ` · au plus bas : ${bas} m³/j en ${MOIS_AGRI.fr[moisBas - 1]}` : ''),
+    en: `${est.en}over ${h} h of pumping at equivalent full flow in ${MOIS_AGRI.en[mois - 1]}, design month`
+      + (auPlusBas ? ` · at its lowest: ${bas} m³/day in ${MOIS_AGRI.en[moisBas - 1]}` : ''),
+    ar: `${est.ar}على مدى ${h} ساعات ضخ مكافئة بالصبيب الكامل في ${MOIS_AGRI.ar[mois - 1]}، شهر التصميم`
+      + (auPlusBas ? ` · في أدناه: ${bas} م³/يوم في ${MOIS_AGRI.ar[moisBas - 1]}` : ''),
   };
 }
 

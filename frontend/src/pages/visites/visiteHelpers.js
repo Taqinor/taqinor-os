@@ -379,6 +379,10 @@ export function ligneQualification(qualification) {
 // `nonReleve` marque un champ d'élément qui peut être « non relevé ».
 const OUI_NON = { type: 'tribool' }
 
+// CSV10 / D-CMP-2 — la règle de composition des câbles, dite au technicien
+// (même texte que `aide` du contrat `gabarit_ci.cheminement`).
+const AIDE_TRAJETS = 'Mesurez chaque distance UN SEUL SENS, à la longueur réelle du trajet : le câble DC aller-retour (2 × le nombre de chaînes) est calculé pour vous, ne doublez pas. « Distance onduleur → TGBT » se mesure pour chaque onduleur. Plusieurs trajets : le plus long est retenu, pas la somme.'
+
 export const MESURES_SCHEMA_CI = {
   // CIQ653 — « site commerce » (contrat `gabarit_ci_site_commerce`) : horaires,
   // circuits critiques, secours existant, accès, besoin de continuité. La pièce
@@ -507,15 +511,20 @@ export const MESURES_SCHEMA_CI = {
       ],
     },
     { key: 'puissance_souscrite_kva_constatee', label: 'Puissance souscrite constatée (plaque / contrat)', unite: 'kVA', type: 'number' },
+    {
+      key: 'phases', label: 'Phases du compteur', unite: '', type: 'select',
+      options: [{ value: 'monophase', label: 'Monophasé' }, { value: 'triphase', label: 'Triphasé' }],
+    },
   ],
   cheminement: [
     {
       key: 'trajets', label: 'Trajets de câbles', type: 'list',
+      aide: AIDE_TRAJETS,
       itemLabel: 'Trajet', addLabel: 'Ajouter un trajet',
       forme: [
         { key: 'libelle', label: 'Trajet', unite: '', type: 'text' },
-        { key: 'longueur_dc_m', label: 'Longueur DC', unite: 'm', type: 'number', nonReleve: true },
-        { key: 'longueur_ac_m', label: 'Longueur AC', unite: 'm', type: 'number', nonReleve: true },
+        { key: 'longueur_dc_m', label: 'Distance champ → onduleur (un sens)', unite: 'm', type: 'number', nonReleve: true },
+        { key: 'longueur_ac_m', label: 'Distance onduleur → TGBT', unite: 'm', type: 'number', nonReleve: true },
       ],
     },
   ],

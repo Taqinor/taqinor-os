@@ -1,0 +1,10 @@
+Rejeu CSV11 — 2026-10-28 00:39 UTC — même pile. Lead 2624 « CSV PC2 Ferme agricole » (créé vide).
+Garde-fous affichés : « Aucun chiffre d'économie au téléphone : le devis le donne. » + carburant déclaré seul ; aucun bloc « ce que le chiffre ne compte pas ».
+Script joué seul : pompe actuelle → Électrique (réseau) ; dépense mensuelle → 1200 ; source → Forage ; profondeur statique → 25 ;
+débit du forage → 8 ; « Connaissez-vous la hauteur totale de pompage, en mètres ? » → 45 ; ville → Berrechid ; besoin m³/jour → 40 ;
+débit pompe actuelle → 6 m³/h ; heures/jour pompe ACTUELLE → 6 ; distance forage → panneaux → 120 ; méthode → Goutte-à-goutte ;
+mois Avril-Septembre ; électricité au forage → Triphasé ; « Votre pompe est-elle en 220 V (monophasé) ou en 380 V (triphasé) ? » → Triphasé.
+Fin : « Rien à demander sur cet appel ». GET lead : pompe_hmt_m 45, raccordement triphase, pompe_actuelle_debit_m3h 6, pompage_heures_jour 6 …
+devis_auto.pret true, manquants []. POST devis-auto → 200.
+Constat (hors CSV, AGV1 en attente) : pompe électrique ⇒ la question servie est « Combien dépensez-vous en carburant par mois ? »
+(colonne depense_carburant_mad_mois) — la question électrique dédiée arrive avec AGV1 (étape 6 du brief CSV).

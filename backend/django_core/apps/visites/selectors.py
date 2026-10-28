@@ -358,6 +358,14 @@ def contexte_visite_terrain(visite):
         # CIQ606 — le relevé déclaré / constaté / écart (écran de revue) ;
         # la même fonction sert ``releve_ci_pour_lead`` (visite validée).
         agregat['releve_ci'] = releve_ci_de_visite(visite)
+        # CSV9 — ce que la fiche du lead porte déjà (« Sur la fiche : … »),
+        # lu par ``crm.selectors`` ; vide = rien de déclaré, rien d'inventé.
+        from apps.crm import selectors as crm_selectors
+
+        from . import visite_checklist as checklist
+
+        agregat['declare'] = checklist.declare_depuis_lead(
+            crm_selectors.entrees_ci_du_lead(visite.lead))
     return agregat
 
 
@@ -503,6 +511,10 @@ def releve_ci_de_visite(visite, declare=None):
     }
     groupe, motif = _mesure_ci(visite, 'reactif_secours', 'groupe_kva')
     releve['groupe_kva'] = {'constate': None if motif else groupe}
+    # CSV8 — la phase du compteur (monophase / triphase) relevée : retour lead
+    # à la validation (``RETOUR_LEAD_CI``), « non relevé » ne remonte rien.
+    phase, motif = _mesure_ci(visite, 'comptage', 'phases')
+    releve['raccordement'] = {'constate': None if motif else phase}
     return releve
 
 

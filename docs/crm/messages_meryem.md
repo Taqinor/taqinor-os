@@ -555,7 +555,7 @@ la commerciale dans le panneau d'appel guidé, PENDANT l'appel. Elles vivent dan
 `frontend/src/features/crm/relances/appelGuidance.js` (constantes du même nom) ; le test
 `PanneauScriptAppel.test.jsx` les re-dérive de ce fichier : une modification se fait ICI et dans le module, dans le
 même commit. Aucune ne porte un chiffre. `MENTION_D7` reprend la tâche CAD152, complétée de l'inclinaison par CAD157
-(décision D7 tranchée : orientation, inclinaison et ombrage ne sont pas câblés au calcul) ; `BANDEAU_PROFIL_SUPPOSE`
+(décision D7 tranchée : orientation, inclinaison et ombrage ne sont pas câblés au calcul) — CSV6 : cette mention et le bloc « Ce que le chiffre ne compte pas » sont RÉSIDENTIELS, un lead pro ou agricole ne les voit pas ;  `BANDEAU_PROFIL_SUPPOSE`
 reprend mot pour mot la décision fondateur du 21/09/2026 (Q5). ✎ Les autres formulations sont à valider par le
 fondateur. Darija : aucune version (consignes d'écran, jamais dites au client).
 MENTION_D7 : Orientation, inclinaison et ombrage servent au dossier et à la visite, pas au chiffre.
@@ -574,7 +574,9 @@ NON_COMPTE_PLAQUE : Pas compté dans le chiffre tant que la puissance manque : p
 A_NOTER_FORCE_MOTRICE : À noter dans la note d’appel : le compteur de la pompe est-il en abonnement force motrice ?
 A_NOTER_MEILLEUR_MOMENT : À noter dans la note d’appel : le meilleur moment pour le joindre (jour de souk, heures au champ).
 A_NOTER_PROCESS : À noter dans la note d’appel : les process critiques, qui ne doivent jamais s’arrêter.
-AUCUNE_ESTIMATION_SEGMENT : Aucun chiffre d'économie au téléphone pour ce segment : le calcul ne sait pas encore le traiter.
+SANS_CHIFFRE_AU_TELEPHONE : Aucun chiffre d'économie au téléphone : le devis le donne.
+CONSIGNE_CONTRAT_INCONNU : Le client ne sait pas : proposez-lui d'envoyer une photo de sa facture par WhatsApp.
+CONSIGNE_HMT_INCONNUE : Le client ne la connaît pas : notez la profondeur de l'eau et la hauteur jusqu'au bassin dans la note, le technicien la calcule à la visite.
 CARBURANT_DECLARE_SEUL : L'économie de carburant se calcule uniquement sur ce que le client déclare (litres ou dirhams par mois) — jamais sur un prix de gasoil supposé.
 SEGMENT_PROBABLE_CONSIGNE : confirmez avec le client.
 VISITE_POINT_EAU_TITRE : Planifier la visite — relevé du point d’eau
@@ -592,6 +594,16 @@ PV existant et TVA récupérable partent au questionnaire (bouton « Envoyer le 
 financement restent des questions orales du rappel. En fin d'appel, si le serveur dit que la visite est requise
 avant le devis (`devis_auto.visite_avant_devis`), le panneau la propose avec ses motifs. Aucun chiffre d'économie, la
 loi 82-21 n'est jamais abordée spontanément. ✎ Formulations à valider par le fondateur.
+
+CSV2 (27/10/2026) — l'étape « facture » du pro sert les DEUX saisies côte à côte, chacune étiquetée de son unité
+(dirhams par mois, kWh par mois) : la colonne principale est celle que le client connaît (kWh d'abord pour un
+industriel, un site en moyenne tension ou un contrat qui n'est pas en basse tension ; dirhams d'abord pour un commerce
+en basse tension), l'autre est visible à côté — « 6 000 kWh » ne se tape plus dans le champ des dirhams. L'étape ne se
+ferme que lorsque la consommation COMPTE pour le calcul (kWh ou relevé présents, ou dirhams + tension basse + contrat
+basse tension déclaré) : un site découvert en moyenne tension après une facture en dirhams se voit redemander les kWh.
+Sous les heures de début et de fin, la consigne « Ouvert 24 h/24 : notez 0 et 24 » (`CONSIGNE_OUVERT_24H`, hors de la
+liste ci-dessus : elle porte des chiffres). Décision prise pour le fondateur (à revoir) : l'ordre de D-CIQ-7 est
+conservé, seule la saisie de la facture change. ✎ Formulations à valider par le fondateur.
 
 CIQ427 (06/10/2026) — trois questions PRO ajoutées au serveur (`apps/crm/panneau_appel.py`, `QUESTIONS_PRO`), sans
 sixième étape. Étape 5 « qui décide », sur une fiche pro que la cadence ne joint que par un FIXE : si le décideur est
@@ -612,6 +624,11 @@ si le niveau ou le débit du forage reste inconnu (`devis_auto.visite_point_eau_
 visite de relevé du point d'eau et son message `visite_releve_point_eau`. Aucun chiffre d'économie. ✎ Formulations à
 valider par le fondateur.
 
+CSV17 (27/10/2026) — l'appel AGRICOLE pose aussi ce que le devis automatique exige : la hauteur manométrique
+(étape de l'eau, avec la consigne `CONSIGNE_HMT_INCONNUE` quand le client ne la connaît pas) et l'alimentation de la
+pompe (étape irrigation et électricité : « Votre pompe est-elle en 220 V (monophasé) ou en 380 V (triphasé) ? », deux
+choix, « je ne sais pas » ne ferme pas la question). ✎ Formulations à valider par le fondateur.
+
 CAD155 (24/09/2026) — `CONSIGNE_CRENEAU`, `RAMADAN_PAS_DE_SOIR` et `JOUR_NON_APPELABLE` n'écrivent AUCUNE heure : la
 fenêtre et ses créneaux sont LUS du moteur (`apps/crm/horaires.py::fenetre_du_jour`, servi par le panneau), Ramadan
 saisi et pause du vendredi compris — jamais recopiés dans un texte, sinon l'écran divergerait du moteur au premier
@@ -630,7 +647,7 @@ carburant ; pro : consommation en kWh, puissance souscrite, surface, décideur) 
 champ, ou à défaut le libellé de la fiche. Les réponses attendues qui n'ont AUCUNE colonne (force motrice, surface et
 culture, tension bt/mt, rythme d'activité et week-end, groupe électrogène, process critiques) sont les consignes
 `A_NOTER_*` ci-dessus : elles se notent dans la note de l'appel, jamais dans un champ inventé. Sur ces deux segments,
-`AUCUNE_ESTIMATION_SEGMENT` rappelle qu'aucun chiffre d'économie ne s'annonce (le moteur horaire ne les traite pas) ;
+`SANS_CHIFFRE_AU_TELEPHONE` rappelle qu'aucun chiffre d'économie ne s'annonce au téléphone, le devis le donnant (CSV6 : les deux moteurs serveur existent, l'ancienne consigne « le calcul ne sait pas encore le traiter » est retirée) ;
 `CARBURANT_DECLARE_SEUL` reprend la règle CAD173 (Q17). ✎ Formulations à valider par le fondateur. Darija : aucune
 version (consignes d'écran).
 
