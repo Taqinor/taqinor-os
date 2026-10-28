@@ -221,8 +221,10 @@ class DescriptionHybridesDeyeTests(TestCase):
 
         def _p(sku):
             return Produit.objects.get(company=self.company, sku=sku)
+        # Seule la première ligne change (les lignes ajoutées depuis au semis
+        # ne sont pas inventées sur une fiche existante).
         self.assertEqual(_p('OND-H-DEY-15T').description,
-                         FICHES['OND-H-DEY-15T']['description'])
+                         mig.PREMIERE_LIGNE['OND-H-DEY-15T'] + chr(10) + mig._SUITE)
         self.assertTrue(_p('OND-H-DEY-15T').description.startswith(
             'Onduleur hybride Deye SUN-15K-SG05LP3-EU-SM2'))
         self.assertEqual(_p('OND-H-DEY-5M').description, 'Saisie fondateur')
@@ -253,7 +255,7 @@ class DescriptionHybridesDeyeTests(TestCase):
             'Onduleur hybride Deye SUN-…SG, rendement max ≈ 97,6 %',
             'Onduleur hybride Deye SUN-10K-SG05LP3-EU-SM2'))
         self.assertEqual(_p('OND-H-DEY-20T'),
-                         FICHES['OND-H-DEY-20T']['description'])
+                         mig.PREMIERE_LIGNE['OND-H-DEY-20T'] + chr(10) + mig._SUITE)
         self.assertNotIn('…', _p('OND-H-DEY-10T'))
 
         # Retour arrière exact pour les deux variantes.

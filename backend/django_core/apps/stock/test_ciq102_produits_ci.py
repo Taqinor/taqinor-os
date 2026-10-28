@@ -548,7 +548,7 @@ class PretDevisAgricoleTests(TestCase):
             role_pompage='structure_sol', prix_vente=Decimal('300'))
         Produit.objects.create(
             company=co, nom='INST-PMP', role_pompage='installation_pompage',
-            prix_fixe_ht=Decimal('2000'))
+            prix_vente=Decimal('0'), prix_fixe_ht=Decimal('2000'))
         res, postes = self._postes(co)
         self.assertEqual(
             {c: p['statut'] for c, p in postes.items()
