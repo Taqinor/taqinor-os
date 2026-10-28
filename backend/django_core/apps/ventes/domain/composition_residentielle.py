@@ -15,6 +15,8 @@ from decimal import Decimal
 import logging
 import math
 
+from core.money import quantize_mad
+
 # Noms du catalogue : liés À L'IMPORT, exactement comme le faisait le bloc
 # du bas de ``composition.py`` (catalogue n'importe jamais composition en
 # tête : aucun cycle).
@@ -760,7 +762,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         if plafond is not None and n > plafond:
             return None
         prix_ttc = _prix_ttc_batterie(produit, n, taux_tva)
-        return (round(prix_ttc, 2), n, calibre, produit)
+        return (float(quantize_mad(prix_ttc)), n, calibre, produit)
 
     calibre_impose = None
     if batterie_module_kwh is not None:

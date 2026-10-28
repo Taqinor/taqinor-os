@@ -48,6 +48,8 @@ from __future__ import annotations
 import logging
 import math
 
+from core.money import quantize_mad
+
 logger = logging.getLogger(__name__)
 
 
@@ -991,7 +993,7 @@ def _echelle_paliers_batterie(devis):
                                            facteur=facteur_remise) or 0.0
         else:
             # Règles d'origine (avant AMOT59) : coût × remise, sans palier.
-            cout = round(_num(vue.get('cout_ttc')) * facteur_remise, 2)
+            cout = float(quantize_mad(_num(vue.get('cout_ttc')) * facteur_remise))
         economie = round(_num(palier['economie_mad']), 2)
         cinq, dix = _compter_modules_batterie(vue.get('lignes'))
         # A1 (revue adversariale Fable, 26/08/2026) — GÉNÉRALISATION additive :
