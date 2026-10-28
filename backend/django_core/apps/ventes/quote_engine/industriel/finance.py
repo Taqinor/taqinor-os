@@ -361,6 +361,14 @@ def _rangees_estimation(synthese, L):
             orientation=orientation,
             incl=_decimal_txt(_num(prod["inclinaison_deg"])))))
     rangees += _rangee_methode(estimation, L)
+    # R1 — la limite du toit en pose rasante, dite au client.
+    toit = estimation.get("toit") or {}
+    surface, kwc = _num(toit.get("surface_m2")), _num(toit.get("kwc"))
+    if surface is not None and kwc is not None:
+        rangees.append((L("ci_h_taille_toit", "Taille limitée par le toit"),
+                        L("ci_h_taille_toit_rasante",
+                          "{m2}&#160;m² déclarés → {kwc}&#160;kWc en pose rasante",
+                          m2=_decimal_txt(surface), kwc=_decimal_txt(kwc))))
     # CPDF5 — la règle de dimensionnement est interne : jamais imprimée.
     return rangees
 

@@ -118,5 +118,57 @@ class ConfigAgentSqlTests(unittest.TestCase):
         self.assertEqual(_config.SQL_AGENT_DISABLED_REASON, "")
 
 
+try:
+    from app.services import sql_agent_service as _svc
+    import langchain_anthropic  # noqa: F401 — dependance du chemin claude
+    _SVC_ERR = None
+except Exception as exc:  # pragma: no cover - dependances manquantes
+    _svc = None
+    _SVC_ERR = exc
+    verifier_import_optionnel(exc)
+
+
+class FournisseurClaudeAic3Tests(unittest.TestCase):
+    """AIC3 — le fournisseur `claude` construit un client sans `temperature`,
+    avec l'effort de SQL_AGENT_EFFORT et une sortie bornee (sans reseau :
+    inspection de l'objet reellement construit par `_build_llm`)."""
+
+    def _llm(self, provider, model, effort="low"):
+        with mock.patch.multiple(
+            _svc, SQL_AGENT_PROVIDER=provider, SQL_AGENT_MODEL=model,
+            SQL_AGENT_EFFORT=effort, CLAUDE_API_KEY="cle-test",
+            GROQ_API_KEY="cle-groq-test",
+        ):
+            return _svc.SQLAgentService._build_llm()
+
+    def test_claude_sans_temperature_et_effort_low(self):
+        llm = self._llm("claude", "claude-sonnet-5-5")
+        self.assertIsNone(llm.temperature)
+        self.assertEqual(llm.model_kwargs.get("output_config"),
+                         {"effort": "low"})
+        self.assertEqual(llm.max_tokens, _svc.CLAUDE_MAX_TOKENS)
+        from langchain_core.messages import HumanMessage
+        corps = llm._get_request_payload([HumanMessage("bonjour")])
+        self.assertNotIn("temperature", corps)
+        self.assertEqual(corps["output_config"], {"effort": "low"})
+
+    def test_effort_lu_de_la_variable(self):
+        llm = self._llm("claude", "claude-sonnet-5-5", effort="medium")
+        self.assertEqual(llm.model_kwargs["output_config"]["effort"], "medium")
+
+    def test_modele_par_defaut_sous_claude(self):
+        # Vide, ou le defaut Groq laisse dans le .env => Sonnet 5.5.
+        for modele in ("", "llama-3.3-70b-versatile"):
+            self.assertEqual(self._llm("claude", modele).model,
+                             "claude-sonnet-5-5")
+        self.assertEqual(self._llm("claude", "claude-haiku-5-5").model,
+                         "claude-haiku-5-5")
+
+    def test_groq_inchange(self):
+        llm = self._llm("groq", "llama-3.3-70b-versatile")
+        self.assertLess(llm.temperature, 0.01)  # ChatGroq: 0 -> 1e-8
+        self.assertEqual(llm.model_name, "llama-3.3-70b-versatile")
+
+
 if __name__ == "__main__":
     unittest.main()

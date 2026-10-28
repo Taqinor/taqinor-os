@@ -368,7 +368,8 @@ def page_onepage(items, tronquees=0):
         rows_html += (
             f'<tr style="background:{bg};">'
             f'<td style="padding:{pad_px}px 10px;word-break:break-word;">'
-            f'<div style="font-weight:700;color:{_g.CN};">{des}</div>{detail_html}</td>'
+            f'<div style="font-weight:700;color:{_g.CN};">{des}</div>{detail_html}'
+            f'{_g.ci_tableau.sous_lignes_html(it, desc_pt, _g.CG4)}</td>'
             f'<td style="padding:{pad_px}px 10px;">{marque_html}</td>'
             f'<td style="padding:{pad_px}px 10px;text-align:center;color:{_g.CG7};">{qty_str}</td>'
             f'<td style="padding:{pad_px}px 10px;text-align:right;color:{_g.CG7};">'

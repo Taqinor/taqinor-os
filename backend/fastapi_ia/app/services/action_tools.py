@@ -188,6 +188,25 @@ def _django_call(
     return _normalize_error(resp, data)
 
 
+# AIC7 — UNE table statut -> intention de l'evenement (lue par le capteur ET
+# par les tests). 403 (permission) et 400 (validation, champ fautif) sont une
+# reponse NORMALE au commercial ; tout autre echec d'une action (5xx, 404, 409,
+# 422 inattendus, Django injoignable = 0) est un `bug`, sans que le modele ait
+# a le decider.
+STATUTS_REPONSE_NORMALE = frozenset({400, 403})
+
+
+def intention_pour_statut(status: Any) -> Optional[str]:
+    """`bug` pour un echec inattendu d'une action, None sinon."""
+    try:
+        code = int(status)
+    except (TypeError, ValueError):
+        code = 0
+    if 200 <= code < 300 or code in STATUTS_REPONSE_NORMALE:
+        return None
+    return "bug"
+
+
 # ── AANA8 — permissions de l'appelant (source DB, via /auth/me/) ─────────────
 # Django n'emet PLUS le claim JWT `permissions` (authentication/serializers.py :
 # cookie trop gros, 502 nginx du 2026-07-16) ; le lire donnait toujours [] et
@@ -558,6 +577,11 @@ def run_catalogue_action(
     # Action interne -> execution immediate.
     res = _execute_catalogue_action(ctx, action, inputs)
     if not res.get("ok"):
+        # AIC7 — capteur : un echec inattendu devient un evenement `bug`.
+        if collector is not None and intention_pour_statut(res.get("status")):
+            collector.append({
+                "type": "erreur", "intention": "bug", "status": res.get("status"),
+                "outil": action["key"], "message": str(res.get("error", ""))[:200]})
         return f"L'action « {action.get('label', action['key'])} » a echoue. {res.get('error', '')}"
     result = {
         "type": "result", "action_key": action["key"],
@@ -713,6 +737,69 @@ def _log_confirmed_action(
             action_key, log_res.get("error"))
 
 
+# ── AIC7 — outil `report_gap` (silencieux, sans confirmation) ────────────────
+INTENTIONS_SIGNALEES = ("hors_champ", "manque", "bug")
+
+
+def outil_report_gap(collector: Optional[list[dict[str, Any]]] = None):
+    """Outil LangChain `report_gap` : signale une demande hors manifeste, une
+    fonction manquante ou un bug. Aucune proposition, aucune confirmation,
+    aucun appel Django ; ce n'est PAS une action du registre (aucune entree de
+    catalogue). La sortie marque l'evenement de la requete (AIC6)."""
+    from typing import Literal
+
+    from langchain_core.tools import StructuredTool
+    from pydantic import create_model
+
+    args = create_model(
+        "Args_report_gap",
+        intention=(Literal["hors_champ", "manque", "bug"], ...),
+        resume=(str, ...),
+        ecran=(Optional[str], None),
+    )
+
+    def _signaler(intention: str, resume: str, ecran: Optional[str] = None) -> str:
+        if collector is not None:
+            collector.append({
+                "type": "signalement",
+                "intention": intention if intention in INTENTIONS_SIGNALEES else "manque",
+                "resume": (resume or "")[:500], "ecran": (ecran or "")[:255]})
+        return "signale"
+
+    return StructuredTool.from_function(
+        name="report_gap", func=_signaler, args_schema=args,
+        description=(
+            "Signale silencieusement (sans confirmation) une demande que l'ERP "
+            "ne sait pas traiter : hors_champ (hors du manifeste), manque "
+            "(fonction absente) ou bug. Dis ensuite au commercial ce que l'ERP "
+            "ne fait pas, sans inventer."))
+
+
+# ── AIC6 — journal de l'assistant (contrat assistant_evenement.json) ─────────
+ACTION_PREUVE_EVENEMENT = "assistant.evenement"
+
+
+def journaliser_evenement_assistant(
+    ctx: Optional[ActionContext], corps: dict[str, Any],
+) -> Optional[int]:
+    """Ecrit l'evenement de la requete chez Django (preuve HMAC du relais,
+    meme secret que logs/confirmer/). Renvoie son id, ou None (best-effort :
+    jamais une exception, la reponse du commercial part quand meme)."""
+    if ctx is None or not getattr(ctx, "token", ""):
+        return None
+    preuve = calculer_preuve_confirmation(
+        action_key=ACTION_PREUVE_EVENEMENT, company_id=ctx.company_id,
+        user_id=_caller_user_id(ctx), inputs=corps, object_id=None)
+    res = _django_call(ctx, "/api/django/agent/evenements/", method="POST",
+                       payload={**corps, "preuve": preuve})
+    data = res.get("data") if res.get("ok") else None
+    if not isinstance(data, dict):
+        logger.warning("Journal de l'assistant non ecrit (%s): %s",
+                       res.get("status"), res.get("error"))
+        return None
+    return data.get("id")
+
+
 # ── Fabrique d'outils LangChain ───────────────────────────────────────────────
 
 
@@ -806,6 +893,8 @@ def build_action_tools(
             description=description,
             args_schema=args_model,
             func=_make_func(action),
+            # AIC6 — cle du registre, journalisee dans `outils_appeles`.
+            metadata={"action_key": action["key"]},
         ))
 
     return tools

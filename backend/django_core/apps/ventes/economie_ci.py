@@ -1013,8 +1013,8 @@ def financement_ci(offre, base_eco, *, mode_installation,
         'economie_mensuelle_moyenne_mad': mensuelle,
         'ecart_mensuel_mad': (None if mensuelle is None
                               else round(mensuelle - echeance, 2)),
-        'duree_mois': duree,
-        'source': SOURCE_FINANCEMENT,
+        'duree_mois': duree, 'source': SOURCE_FINANCEMENT,
+        **_options.cles_flux_offre(offre, echeance, duree, economie_an),  # CEC15
     }
 
 
@@ -1479,7 +1479,7 @@ def assembler_economie_ci(apercu_ci, *, saisies=None, tarif_declare=None,
     tarif = tarif_ci.tarif_applicable(tarif_declare, tension=tension, regles_origine=reglages.get('regles_origine'))
     vue_interne = {'comparaison_cse': None, 'sr500': _sr500(saisies),
                    'apres_impot': None}
-    alertes = _alertes_internes(apercu, tarif) + _options.alertes_om(lignes)  # CEC9
+    alertes = _alertes_internes(apercu, tarif) + _options.alertes_om(lignes) + _options.alertes_prix_hors_bande(tarif)
     if not apercu.get('bilan'):
         motif = (_options.motif_tarif_omis(tarif, MOTIF_TARIF_OMIS) if tarif.get('origine') ==
                  tarif_ci.ORIGINE_OMIS else MOTIF_ETUDE_CI_ABSENTE)

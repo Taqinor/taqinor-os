@@ -16,13 +16,17 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
-from apps.installations.models import Intervention, IndisponibiliteRessource
+from apps.installations import selectors, services
+from apps.installations.models import Installation, Intervention, IndisponibiliteRessource
+from apps.installations.planification_lot import suggerer_creneaux_lot
 from apps.installations.services import create_installation_from_devis
 
 User = get_user_model()
@@ -230,3 +234,85 @@ class TestSuggererCreneauDureeLongue(TestCase):
                      for k in range(5)}
         proposes = {prop['date'] for prop in resp.data['propositions']}
         self.assertFalse(proposes & interdits, proposes & interdits)
+
+
+class TestReplanificationMasseEnLot(TestCase):
+    """APRF41 (C-APRF-023) — la replanification en masse charge les ressources
+    de la fenêtre UNE fois pour le lot (`suggerer_creneaux_lot`) : 2 puis 6
+    interventions à replanifier coûtent le même nombre de requêtes, chaque
+    proposition est égale à celle de `suggerer_creneau` unitaire, et `appliquer`
+    écrit le créneau proposé."""
+
+    def setUp(self):
+        self.company = make_company()
+        self.jour = date.today() + timedelta(days=3)
+        self.absent = make_user(self.company, role='technicien')
+        self.libres = [make_user(self.company, role='technicien') for _ in range(3)]
+        self.inst = Installation.objects.create(
+            company=self.company, reference='APRF41-0', statut=Installation.Statut.EN_COURS)
+        # Techniciens libres « éligibles » (déjà affectés), charges variées,
+        # hors du jour à replanifier.
+        for k, tech in enumerate(self.libres):
+            for d in range(k + 1):
+                self._interv(self.inst, tech, self.jour + timedelta(days=5 + d))
+        IndisponibiliteRessource.objects.create(
+            company=self.company, technicien=self.libres[0],
+            date_debut=date.today() + timedelta(days=1), date_fin=date.today() + timedelta(days=2))
+        self.n = 0
+
+    def _interv(self, inst, tech, jour):
+        return Intervention.objects.create(
+            company=self.company, installation=inst, type_intervention=Intervention.Type.POSE,
+            statut=Intervention.Statut.PRETE, technicien=tech, date_prevue=jour)
+
+    def _a_replanifier(self, nb):
+        for _ in range(nb):
+            self.n += 1
+            inst = Installation.objects.create(
+                company=self.company, reference=f'APRF41-{self.n}', statut=Installation.Statut.EN_COURS)
+            self._interv(inst, self.absent, self.jour)
+
+    def _apercu(self):
+        with CaptureQueriesContext(connection) as ctx:
+            res = services.previsualiser_replanification_masse(
+                self.company, jour=self.jour, technicien_id=self.absent.id)
+        return len(ctx.captured_queries), res
+
+    def test_apercu_requetes_identiques_a_deux_tailles(self):
+        self._a_replanifier(2)
+        n2, res2 = self._apercu()
+        self._a_replanifier(4)
+        n6, res6 = self._apercu()
+        self.assertEqual((len(res2['propositions']), len(res6['propositions'])), (2, 6))
+        self.assertEqual(n2, n6, (n2, n6))
+
+    def test_lot_egal_a_l_unitaire(self):
+        self._a_replanifier(3)
+        chantiers = list(Installation.objects.filter(company=self.company).values_list('id', flat=True))
+        lot = suggerer_creneaux_lot(self.company, chantiers, n=10)
+        for cid in chantiers:
+            unitaire = selectors.suggerer_creneau(
+                self.company, chantier_id=cid, type_intervention=Intervention.Type.POSE, n=10)
+            self.assertEqual(lot[cid], unitaire, cid)
+            self.assertTrue(lot[cid]['propositions'], cid)
+        conge = {str(date.today() + timedelta(days=d)) for d in (1, 2)}
+        for cid in chantiers:
+            for p in lot[cid]['propositions']:
+                if p['technicien_id'] == self.libres[0].id:
+                    self.assertNotIn(p['date'], conge)
+
+    def test_appliquer_persiste_le_creneau_choisi(self):
+        self._a_replanifier(3)
+        apercu = services.previsualiser_replanification_masse(
+            self.company, jour=self.jour, technicien_id=self.absent.id)
+        attendu = {p['intervention_id']: p['proposition'] for p in apercu['propositions']}
+        res = services.appliquer_replanification_masse(
+            self.company, jour=self.jour, motif='absence', user=self.libres[0],
+            technicien_id=self.absent.id)
+        self.assertEqual(len(res['deplacees']) + len(res['non_resolues']), 3)
+        self.assertTrue(res['deplacees'])
+        for d in res['deplacees']:
+            iv = Intervention.objects.get(id=d['intervention_id'])
+            prop = attendu[iv.id]
+            self.assertEqual(iv.technicien_id, prop['technicien_id'])
+            self.assertEqual(str(iv.date_prevue), prop['date'])

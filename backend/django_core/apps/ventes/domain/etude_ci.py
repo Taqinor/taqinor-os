@@ -614,11 +614,10 @@ def _courbe_mesuree_resolue(courbe, annee_reference):
     Fichier illisible ⇒ 400 FR nommant la colonne (message du parseur)."""
     if not isinstance(courbe, dict):
         return None
+    from rest_framework.exceptions import ValidationError
     source = courbe.get('source')
     debut = courbe.get('debut') or courbe.get('date_debut')
     if isinstance(courbe.get('contenu'), str) and courbe['contenu'].strip():
-        from rest_framework.exceptions import ValidationError
-
         from apps.calepinage import services as calepinage_services
         try:
             apercu = calepinage_services.apercu_courbe_csv(
@@ -631,11 +630,13 @@ def _courbe_mesuree_resolue(courbe, annee_reference):
     points = courbe.get('points')
     if not isinstance(points, list) or not points:
         return None
-    valeurs = [_num(p) or 0.0 for p in points]
-    if int(courbe.get('pas_minutes') or 60) == 15:
-        groupes = [valeurs[i:i + 4] for i in range(0, len(valeurs) - len(valeurs) % 4, 4)]
-        moyenne = (courbe.get('unite') or 'kwh') == 'kw'
-        valeurs = [sum(g) / 4.0 if moyenne else sum(g) for g in groupes]
+    from apps.ventes.moteur_ci.charge import valeurs_horaires_depuis_points
+    try:  # CLD6 — tout pas diviseur de 60 min agrégé à l'heure, refus nommé sinon
+        valeurs = valeurs_horaires_depuis_points(
+            [_num(p) or 0.0 for p in points], pas_min=courbe.get('pas_minutes') or 60,
+            unite=courbe.get('unite') or 'kwh')
+    except ValueError as erreur:
+        raise ValidationError({'courbe_mesuree': [str(erreur)]})
     return valeurs, debut, source
 
 
@@ -886,6 +887,7 @@ def _borne_toit(res, devis, module, alertes):
         return None
     from apps.calepinage import services as calepinage_services
     from apps.parametres.pvgis_profils import PVGIS_ANGLE_DEG
+    from apps.ventes.moteur_ci.production import ANGLE_POSE_RASANTE_DEG, bascule_rasante_admissible
     module = module or {}
     cotes = None
     if module.get('longueur_mm') and module.get('largeur_mm'):
@@ -908,7 +910,142 @@ def _borne_toit(res, devis, module, alertes):
     if pose_estimee:
         source = ('surface utile déclarée (%g m²), pose estimée « %s » — estimation, à '
                   'confirmer au calepinage/visite' % (surface, mode_pose))
-    return {'kwc': round(float(resultat['kwc']), 2), 'source': source}
+    borne = {'kwc': round(float(resultat['kwc']), 2), 'source': source}
+    if not bascule_rasante_admissible({'type_pose': mode_pose, 'pente_deg': pente}):
+        return borne
+    if devis is not None and not regles_au_moins(devis, REGLES_CORRIGEES_2710):
+        # R1 (P5) — devis aux règles ≤ 2 : ni bascule rasante, ni borne
+        # maximale, ni disparition de « taille au-delà du toit » (devis envoyés
+        # intouchés) ; sans devis (aperçu) la règle s'applique.
+        return borne
+    # R1 (fondateur 28/10/2026) — toit plat SANS pente déclarée : la borne est
+    # la configuration qui pose le PLUS de panneaux ; les deux contenances
+    # (30° par défaut, pose rasante 10° jointive) viennent du MÊME service.
+    rasante = calepinage_services.contenance_surface_declaree(
+        surface, mode_pose=mode_pose, cotes_module_m=cotes,
+        inclinaison_deg=ANGLE_POSE_RASANTE_DEG, latitude_deg=_point_du_site(site)[0],
+        puissance_module_wc=pmax, pose_rasante=True)
+    if rasante.get('kwc') is None:
+        return borne
+    kwc_30, kwc_10 = borne['kwc'], round(float(rasante['kwc']), 2)
+    borne.update({
+        'kwc': max(kwc_30, kwc_10), 'kwc_30': kwc_30, 'kwc_10': kwc_10, 'surface_m2': surface,
+        'source_30': ('tables à %g° sur la surface déclarée (défaut toit plat, décision '
+                      'fondateur du 27/10/2026)' % PVGIS_ANGLE_DEG),
+        'source_10': ('tables jointives en pose rasante %g° sur la surface déclarée (décision '
+                      'fondateur du 28/10/2026)' % ANGLE_POSE_RASANTE_DEG),
+    })
+    return borne
+
+
+def _serie_rasante(site, toit_serie, toit_declare, production, *, figee, bloc_figee=None,
+                   source_figee=None):
+    """R1 — la production en pose rasante 10° (même chaîne PVGIS, série au
+    plan rasant), lue PARESSEUSEMENT au premier palier qui ne tient pas à
+    30° : ``{'lire': appelable | None}`` puis, une fois lue, ``bloc``,
+    ``hypotheses``, ``alertes``. Production figée (CIQ119) : PVGIS n'est
+    jamais rappelé — seule la série rasante FIGÉE du devis
+    (``production_figee_rasante``, B2) sert, avec ses traces ; ni une pente
+    déclarée, ni une autre pose (``toit_rasant``) n'ouvrent de seconde série."""
+    from apps.ventes.moteur_ci.production import (
+        bloc_production_ci, plan_de_production, production_pour_bilan, toit_rasant,
+        traces_production,
+    )
+    from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
+    etat = {'lire': None}
+    if figee:
+        if bloc_figee and toit_rasant(toit_serie) is not None:
+            hyp, al = traces_production(bloc_figee, source=source_figee, toit=toit_declare)
+            etat.update(bloc=bloc_figee, hypotheses=hyp, alertes=al,
+                        lire=lambda: production_pour_bilan(bloc_figee))
+        return etat
+    rasant = toit_rasant(toit_serie)
+    if rasant is None:
+        return etat
+
+    def lire():
+        if 'bloc' not in etat:
+            etat['bloc'] = None
+            lecture = lire_production(site, toit=rasant)
+            if lecture:
+                prod_r, formes_r, source_r, serie_r = (tuple(lecture) + (None,))[:4]
+                bloc, hyp, al = bloc_production_ci(
+                    productible_mensuel=prod_r, formes_saison=formes_r, derate=PRODUCTION_DERATE,
+                    coordonnees_figees=dict(production.get('coordonnees_figees') or {}),
+                    source=source_r, toit=toit_declare, serie=serie_r,
+                    plan=(serie_r or {}).get('plan') or plan_de_production(rasant))
+                if bloc is not None:
+                    etat.update(bloc=bloc, hypotheses=hyp, alertes=al)
+        return production_pour_bilan(etat['bloc']) if etat.get('bloc') else None
+    etat['lire'] = lire
+    return etat
+
+
+def _servir_pose_rasante(resultat, rasante, production, alertes, hypotheses, traces_30):
+    """R1 — la taille retenue est logée en pose rasante : le bloc production
+    servi (et ses traces) est celui de cette inclinaison ; sinon la
+    production telle quelle."""
+    from apps.ventes.moteur_ci.production import ANGLE_POSE_RASANTE_DEG
+    if resultat.get('inclinaison_retenue_deg') != ANGLE_POSE_RASANTE_DEG or not rasante.get('bloc'):
+        return production
+    al_prod, hyp_prod = traces_30
+    _remplacer(alertes, al_prod, rasante['alertes'])
+    _remplacer(hypotheses, hyp_prod, rasante['hypotheses'])
+    return rasante['bloc']
+
+
+def verdict_taille_creation(etude):
+    """R1 (B1, arbitrage coordinatrice 28/10/2026) — le verdict de taille
+    CALCULÉ par le balayage à la création d'un devis (``taille_creation_ci``
+    de ``etude_params``) : raison d'arrêt, inclinaison retenue, contenances
+    du toit, phrase « limitée par le toit ». ``None`` pour une taille saisie
+    (jamais « limitée par le toit ») ou sans taille."""
+    taille = (etude or {}).get('taille') or {}
+    if taille.get('retenue_kwc') is None or taille.get('raison_arret') == 'taille_explicite':
+        return None
+    toit = (taille.get('bornes') or {}).get('toit') or {}
+    return {'retenue_kwc': taille['retenue_kwc'], 'nb_panneaux': taille.get('nb_panneaux'),
+            'raison_arret': taille.get('raison_arret'),
+            'inclinaison_retenue_deg': taille.get('inclinaison_retenue_deg'),
+            'taille_limitee_toit': taille.get('taille_limitee_toit'),
+            'toit': {k: toit.get(k) for k in ('kwc', 'kwc_30', 'kwc_10', 'surface_m2')}}
+
+
+def _relire_verdict_toit(taille, verdict, hypotheses):
+    """R1 (B1) — l'étude STOCKÉE est rafraîchie depuis les LIGNES (taille
+    explicite) : le verdict « limitée par le toit » calculé à la création est
+    relu tant que les lignes (kWc retenu) et le toit (contenances, surface,
+    pose retenue) n'ont pas changé ; sinon rien — une taille saisie à la main
+    n'imprime jamais la phrase."""
+    if not isinstance(verdict, dict) or not taille or not verdict.get('taille_limitee_toit') \
+            or taille.get('raison_arret') != 'taille_explicite':
+        return
+    toit = (taille.get('bornes') or {}).get('toit') or {}
+    toit_creation = verdict.get('toit') or {}
+    meme_toit = all(_num(toit.get(k)) == _num(toit_creation.get(k))
+                    for k in ('kwc_30', 'kwc_10', 'surface_m2'))
+    if not meme_toit or _num(verdict.get('retenue_kwc')) != _num(taille.get('retenue_kwc')) \
+            or _num(verdict.get('inclinaison_retenue_deg')) != _num(taille.get('inclinaison_retenue_deg')):
+        return
+    taille['taille_limitee_toit'] = verdict['taille_limitee_toit']
+    hypotheses.append({'cle': 'taille_limitee_toit', 'valeur': taille['retenue_kwc'],
+                       'statut': 'estimation', 'source': verdict['taille_limitee_toit']})
+
+
+def _traces_evaluation(evaluation, alertes, hypotheses):
+    """Les alertes et hypothèses portées par l'évaluation retenue (bilan,
+    composition, combinaison d'onduleurs)."""
+    composition = evaluation['composition']
+    alertes.extend(evaluation['alertes_bilan'])
+    alertes.extend(composition.get('alertes') or [])
+    alertes.extend((evaluation['onduleurs'] or {}).get('alertes') or [])
+    hypotheses.extend(composition.get('hypotheses') or [])
+
+
+def _remplacer(liste, anciens, nouveaux):
+    """Retire de ``liste`` (en place) les éléments ``anciens`` (identité) et
+    ajoute ``nouveaux`` — ``_uniques`` garde le PREMIER d'une clé."""
+    liste[:] = [x for x in liste if not any(x is a for a in anciens)] + list(nouveaux or ())
 
 
 def _charge_toiture(res, catalogue, alertes):
@@ -1222,7 +1359,8 @@ def _alertes_postes(composition, avec):
 
 
 def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None,
-               onduleurs_imposes=None, source_production_figee=None, option_avec_imposee=None):
+               onduleurs_imposes=None, source_production_figee=None, option_avec_imposee=None,
+               production_figee_rasante=None, verdict_creation=None):
     """L'étude C&I complète (forme ``exemple`` du contrat), sans écriture.
 
     ``production_figee`` (CIQ119) : le bloc ``production`` déjà figé sur le
@@ -1233,13 +1371,15 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     production reprise rend les MÊMES hypothèses/alertes que son calcul.
     ``option_avec_imposee`` (CIQ119) : l'option « avec batterie » lue sur les
     LIGNES (``etude_ci_batterie.option_imposee_des_lignes``), évaluée telle
-    quelle.
+    quelle. ``production_figee_rasante`` (R1, B2) : la série rasante figée du
+    devis (option « avec » logée au-delà de 30°). ``verdict_creation`` (R1,
+    B1) : ``etude_params.taille_creation_ci``, relu en taille explicite.
     """
     from apps.ventes import tarif_ci
     from apps.ventes.moteur_ci.composition import composer_ci
     from apps.ventes.moteur_ci.onduleurs import combiner_onduleurs
     from apps.ventes.moteur_ci.production import (
-        bloc_production_ci, production_pour_bilan, traces_production,
+        bloc_production_ci, plan_de_production, production_pour_bilan, traces_production,
     )
     from apps.ventes.moteur_ci.taille import dimensionner_ci
     from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
@@ -1298,11 +1438,15 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             # ville au gazetier), pour une étude reproductible.
             coordonnees_figees={'lat': _point_du_site(site)[0], 'lon': _point_du_site(site)[1],
                                 'date_appel': _aujourdhui().isoformat()},
-            source=source, toit=toit_declare, serie=serie, plan=(serie or {}).get('plan'))
+            # R1 (P4) — le plan du toit, série OU repli (pose estimée comprise).
+            source=source, toit=toit_declare, serie=serie,
+            plan=(serie or {}).get('plan') or plan_de_production(toit_serie))
         alertes.extend(al_prod)
         hypotheses.extend(hyp_prod)
     if production is None:
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
+    rasante = _serie_rasante(site, toit_serie, toit_declare, production, figee=bool(production_figee),
+                             bloc_figee=production_figee_rasante, source_figee=source_production_figee)
 
     if conso is None:
         alertes.append(_alerte('consommation_absente', 'consommation',
@@ -1371,19 +1515,18 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses),
         # ADEV79 — TTC des paliers → HT : TVA de l'article, à défaut le taux
         # standard SAISI de la société (lecture seule), jamais un 20 codé.
-        taux_tva_pct=getattr(reglages, 'tva_standard', None), pmax_wc=(catalogue['module'] or {}).get('pmax_wc'))
+        taux_tva_pct=getattr(reglages, 'tva_standard', None), pmax_wc=(catalogue['module'] or {}).get('pmax_wc'),
+        production_rasante=rasante['lire'])
+    production = _servir_pose_rasante(resultat, rasante, production, alertes, hypotheses, (al_prod, hyp_prod))
+    _relire_verdict_toit(resultat['taille'], verdict_creation, resultat['hypotheses'])
     alertes.extend(_alertes_phase_du_site(resultat['alertes'], phase))
     hypotheses.extend(resultat['hypotheses'])
     evaluation = resultat['evaluation']
 
     bilan = composition = economie = regime = None
     if evaluation is not None:
-        bilan = evaluation['bilan']
-        alertes.extend(evaluation['alertes_bilan'])
-        composition = evaluation['composition']
-        alertes.extend(composition.get('alertes') or [])
-        alertes.extend((evaluation['onduleurs'] or {}).get('alertes') or [])
-        hypotheses.extend(composition.get('hypotheses') or [])
+        bilan, composition = evaluation['bilan'], evaluation['composition']
+        _traces_evaluation(evaluation, alertes, hypotheses)
         economie = valoriser.complet(bilan)
         regime = _regime(evaluation['kwc'], evaluation['puissance_ac'], tension)
         alertes.extend(_alertes_reactif(res, tension, bilan, registres))
@@ -1397,7 +1540,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         lead=lead, charge=jours_types, production=production_pour_bilan(production), tension=tension,
         revente_choisie=revente, valoriser=valoriser, taux_tva_pct=getattr(reglages, 'tva_standard', None),
         phase=phase, ps_kva=_num(res.valeur('puissance_souscrite_kva')), composer=composer,
-        borne_toit=borne_toit, imposee=option_avec_imposee,
+        borne_toit=borne_toit, production_rasante=rasante['lire'], imposee=option_avec_imposee,
         regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
@@ -1408,6 +1551,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         'sous_reserve_visite': sous_reserve,
         'profil_charge': profil_charge,
         'production': production,
+        # R1 (B2) — la série rasante lue mais NON retenue (taille à 30°) : figée
+        # par le rafraîchisseur pour loger l'option « avec » au-delà.
+        'production_rasante': rasante.get('bloc') if rasante.get('bloc') is not production else None,
         'taille': resultat['taille'],
         'bilan': bilan,
         'economie_ci': economie,
@@ -1646,6 +1792,8 @@ def lignes_du_devis_ci(composition):
 
 CLE_ETUDE_CI = 'etude_ci'
 CLE_PRODUCTION_FIGEE = 'production_figee'
+CLE_PRODUCTION_FIGEE_RASANTE = 'production_figee_rasante'
+CLE_TAILLE_CREATION = 'taille_creation_ci'
 
 
 def _onduleurs_des_lignes(devis, catalogue):
@@ -1751,7 +1899,8 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
         if not kwc:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,
-                       **{CLE_ETUDE_CI: None, CLE_PRODUCTION_FIGEE: None})
+                       **{CLE_ETUDE_CI: None, CLE_PRODUCTION_FIGEE: None,
+                          CLE_PRODUCTION_FIGEE_RASANTE: None})
             return None
         company = getattr(devis, 'company', None)
         catalogue = lire_catalogue_ci(company)
@@ -1773,11 +1922,14 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
             production_figee=params.get(CLE_PRODUCTION_FIGEE),
             onduleurs_imposes=onduleurs or None,
             source_production_figee=_source_production(existant),
-            option_avec_imposee=imposee)
+            option_avec_imposee=imposee,
+            production_figee_rasante=params.get(CLE_PRODUCTION_FIGEE_RASANTE),
+            verdict_creation=params.get(CLE_TAILLE_CREATION))
         if etude.get('bilan') is None:
             if CLE_ETUDE_CI in params or CLE_PRODUCTION_FIGEE in params:
                 ecrire(devis, proprietaire=MOTEUR_CI,
-                       **{CLE_ETUDE_CI: None, CLE_PRODUCTION_FIGEE: None})
+                       **{CLE_ETUDE_CI: None, CLE_PRODUCTION_FIGEE: None,
+                          CLE_PRODUCTION_FIGEE_RASANTE: None})
             return None
         bloc = {cle: etude.get(cle) for cle in (
             'entrees_resolues', 'profil_charge', 'production', 'taille', 'bilan',
@@ -1795,7 +1947,8 @@ def rafraichir_etude_ci_devis(devis, *, force=False):
             bloc['production'] = dict(bloc['production'], serie_horaire={
                 k: v for k, v in serie.items() if k != 'kwh_kwc'})
         ecrire(devis, proprietaire=MOTEUR_CI,
-               **{CLE_ETUDE_CI: bloc, CLE_PRODUCTION_FIGEE: etude.get('production')})
+               **{CLE_ETUDE_CI: bloc, CLE_PRODUCTION_FIGEE: etude.get('production'),
+                  CLE_PRODUCTION_FIGEE_RASANTE: etude.get('production_rasante')})
         return bloc
     except Exception:  # noqa: BLE001 — jamais bloquant pour un devis (D-ENF22-BLE001)
         logger.warning('etude_ci non rafraîchie sur %s',

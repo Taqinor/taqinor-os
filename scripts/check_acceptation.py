@@ -66,6 +66,7 @@ Usage :
   python scripts/check_acceptation.py --rapport      # mêmes lignes, exit 0
   python scripts/check_acceptation.py --amorcer      # amorce les dettes absentes
   python scripts/check_acceptation.py --write-baseline  # rétrécit les dettes
+  python scripts/check_acceptation.py --parcours     # tables PA* valides (AMET98, parcours_tables.py)
 """
 from __future__ import annotations
 
@@ -370,6 +371,9 @@ def _parser() -> argparse.ArgumentParser:
                     help="couverture d'UN groupe : exit 0 si toute tâche cochée à preuve est "
                          "couverte par un enregistrement PASS (dette vide), 1 sinon — lu par "
                          "scripts/audit_registre.py (statut « accepté »)")
+    ap.add_argument("--parcours", action="store_true",
+                    help="valide les tables apps/*/parcours/PA*.json (AMET98, scripts/parcours_tables.py) : "
+                         "un rejeu de parcours n'est un enregistrement que sur une table valide")
     return ap
 
 
@@ -464,6 +468,9 @@ def main(argv=None) -> int:
     except Exception:
         pass
     args = _parser().parse_args(argv)
+    if args.parcours:
+        import parcours_tables  # local : charge core/parcours.py seulement pour ce mode
+        return parcours_tables.verifier_tout()
 
     erreurs: list = []
     a_couvrir = taches_a_preuve()

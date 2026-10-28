@@ -244,6 +244,18 @@ export function financementCi(ci: SyntheseCi | null): { titre: TextesCi; lignes:
     lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.economie[lg]}${NBSP}: ${formatMADCentimes(f.economieMensuelleMoyenneMad!)}${suffixe(lg)}`));
   if (f.ecartMensuelMad !== null)
     lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.ecart[lg]}${NBSP}: ${formatMADCentimes(f.ecartMensuelMad!)}${suffixe(lg)}`));
+  // CEC15 (affichage) — apport et frais servis (> 0), retour de l'offre servi ; omis sans la clé (`ci_fin_*` du PDF).
+  if (f.apportMad !== null && f.apportMad > 0)
+    lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.apport[lg]}${NBSP}: ${formatMADCentimes(f.apportMad!)}`));
+  if (f.fraisMad !== null && f.fraisMad > 0)
+    lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.frais[lg]}${NBSP}: ${formatMADCentimes(f.fraisMad!)}`));
+  if (f.retourOffreAns !== null) {
+    const r = f.retourOffreAns.toFixed(1).replace('.', ',');
+    // Accord arabe du PDF (`couverture.annees_accordees`) : « سنوات » de 3 à 10 ans entiers, « سنة » sinon.
+    const entier = Number.isInteger(Number(f.retourOffreAns.toFixed(1)));
+    const ans: TextesCi = { ...ANS_CI, ar: entier && f.retourOffreAns >= 3 && f.retourOffreAns <= 10 ? ANS_CI.ar : 'سنة' };
+    lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.retour[lg]}${NBSP}: ${r}${NBSP}${ans[lg]}`));
+  }
   if (f.source) lignes.push(par((lg) => `${LBL_FINANCEMENT_CI.source[lg]}${NBSP}: ${f.source}`));
   return { titre: TITRE_FINANCEMENT_CI, lignes };
 }
@@ -254,4 +266,8 @@ const LBL_FINANCEMENT_CI = {
   economie: { fr: 'Économie mensuelle moyenne estimée', en: 'Estimated average monthly saving', ar: 'متوسط الوفر الشهري المقدر' } as TextesCi,
   ecart: { fr: 'Écart mensuel', en: 'Monthly difference', ar: 'الفارق الشهري' } as TextesCi,
   source: { fr: 'Source', en: 'Source', ar: 'المصدر' } as TextesCi,
+  /** CEC15 — `i18n_labels_ci.py` `ci_fin_apport`, `ci_fin_frais`, `ci_fin_retour`. */
+  apport: { fr: 'Apport à la signature', en: 'Deposit at signature', ar: 'المساهمة عند التوقيع' } as TextesCi,
+  frais: { fr: "Frais de l'offre", en: 'Offer fees', ar: 'مصاريف العرض' } as TextesCi,
+  retour: { fr: "Retour sur l'offre", en: 'Payback with the offer', ar: 'مدة الاسترداد مع العرض' } as TextesCi,
 };

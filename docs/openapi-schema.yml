@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 4864, operations: 7648, components: 3582}
+counts: {paths: 4880, operations: 7666, components: 3592}
 securitySchemes:
 - bearerJWT
 - cookieJWT
@@ -439,6 +439,11 @@ operations:
 - get /api/django/adsengine/wiring-health/ -> django_adsengine_wiring_health_retrieve
 - get /api/django/agent/actions/ -> django_agent_actions_retrieve
 - post /api/django/agent/actions/automation-draft/ -> django_agent_actions_automation_draft_create
+- get /api/django/agent/evenements/ -> django_agent_evenements_retrieve
+- post /api/django/agent/evenements/ -> django_agent_evenements_create
+- get /api/django/agent/evenements/export/ -> django_agent_evenements_export_retrieve
+- get /api/django/agent/evenements/stats/ -> django_agent_evenements_stats_retrieve
+- patch /api/django/agent/evenements/{id}/note/ -> django_agent_evenements_note_partial_update
 - get /api/django/agent/logs/ -> django_agent_logs_retrieve
 - post /api/django/agent/logs/confirmer/ -> django_agent_logs_confirmer_create
 - post /api/django/agent/logs/{id}/annuler/ -> django_agent_logs_annuler_create
@@ -901,6 +906,8 @@ operations:
 - patch /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_partial_update
 - put /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_update
 - get /api/django/crm/assignable-users/ -> django_crm_assignable_users_list
+- get /api/django/crm/assistant/a-relancer/ -> django_crm_assistant_a_relancer_retrieve
+- get /api/django/crm/assistant/digest-matin/ -> django_crm_assistant_digest_matin_retrieve
 - get /api/django/crm/canaux/ -> django_crm_canaux_list
 - post /api/django/crm/canaux/ -> django_crm_canaux_create
 - delete /api/django/crm/canaux/{id}/ -> django_crm_canaux_destroy
@@ -1014,9 +1021,11 @@ operations:
 - post /api/django/crm/leads/{id}/visites/planifier/ -> django_crm_leads_visites_planifier_create
 - post /api/django/crm/leads/{id}/whatsapp-devis-apercu/ -> django_crm_leads_whatsapp_devis_apercu_create
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
+- post /api/django/crm/leads/{lead_id}/brouillon-suivi/ -> django_crm_leads_brouillon_suivi_create
 - get /api/django/crm/leads/{lead_id}/photo-toit/ -> django_crm_leads_photo_toit_retrieve
 - get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_list
 - post /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_create
+- get /api/django/crm/leads/{lead_id}/resume/ -> django_crm_leads_resume_retrieve
 - get /api/django/crm/leads/{lead_id}/roof-footprint/ -> django_crm_leads_roof_footprint_retrieve
 - get /api/django/crm/message-templates/ -> django_crm_message_templates_list
 - post /api/django/crm/message-templates/ -> django_crm_message_templates_create
@@ -4303,6 +4312,11 @@ operations:
 - get /api/v1/adsengine/wiring-health/ -> v1_adsengine_wiring_health_retrieve
 - get /api/v1/agent/actions/ -> v1_agent_actions_retrieve
 - post /api/v1/agent/actions/automation-draft/ -> v1_agent_actions_automation_draft_create
+- get /api/v1/agent/evenements/ -> v1_agent_evenements_retrieve
+- post /api/v1/agent/evenements/ -> v1_agent_evenements_create
+- get /api/v1/agent/evenements/export/ -> v1_agent_evenements_export_retrieve
+- get /api/v1/agent/evenements/stats/ -> v1_agent_evenements_stats_retrieve
+- patch /api/v1/agent/evenements/{id}/note/ -> v1_agent_evenements_note_partial_update
 - get /api/v1/agent/logs/ -> v1_agent_logs_retrieve
 - post /api/v1/agent/logs/confirmer/ -> v1_agent_logs_confirmer_create
 - post /api/v1/agent/logs/{id}/annuler/ -> v1_agent_logs_annuler_create
@@ -4765,6 +4779,8 @@ operations:
 - patch /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_partial_update
 - put /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_update
 - get /api/v1/crm/assignable-users/ -> v1_crm_assignable_users_list
+- get /api/v1/crm/assistant/a-relancer/ -> v1_crm_assistant_a_relancer_retrieve
+- get /api/v1/crm/assistant/digest-matin/ -> v1_crm_assistant_digest_matin_retrieve
 - get /api/v1/crm/canaux/ -> v1_crm_canaux_list
 - post /api/v1/crm/canaux/ -> v1_crm_canaux_create
 - delete /api/v1/crm/canaux/{id}/ -> v1_crm_canaux_destroy
@@ -4878,9 +4894,11 @@ operations:
 - post /api/v1/crm/leads/{id}/visites/planifier/ -> v1_crm_leads_visites_planifier_create
 - post /api/v1/crm/leads/{id}/whatsapp-devis-apercu/ -> v1_crm_leads_whatsapp_devis_apercu_create
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
+- post /api/v1/crm/leads/{lead_id}/brouillon-suivi/ -> v1_crm_leads_brouillon_suivi_create
 - get /api/v1/crm/leads/{lead_id}/photo-toit/ -> v1_crm_leads_photo_toit_retrieve
 - get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_list
 - post /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_create
+- get /api/v1/crm/leads/{lead_id}/resume/ -> v1_crm_leads_resume_retrieve
 - get /api/v1/crm/leads/{lead_id}/roof-footprint/ -> v1_crm_leads_roof_footprint_retrieve
 - get /api/v1/crm/message-templates/ -> v1_crm_message_templates_list
 - post /api/v1/crm/message-templates/ -> v1_crm_message_templates_create
@@ -7757,6 +7775,8 @@ query_params:
   get /api/django/adsengine/veille/annonceurs/export-csv/: aveugle classe decouverte dropshipper jeu sans_etiquette
   get /api/django/adsengine/veille/annonceurs/{id}/: aveugle classe decouverte dropshipper jeu sans_etiquette
   get /api/django/adsengine/veille/decouvertes/: ordering page page_size search
+  get /api/django/agent/evenements/export/: depuis jusqu_a
+  get /api/django/agent/evenements/stats/: semaines
   get /api/django/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/django/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/django/audit/objets/{content_type}/{object_id}/history/: limit
@@ -7834,6 +7854,7 @@ query_params:
   get /api/django/crm/appareils-equipe/: ordering page page_size search
   get /api/django/crm/appointments/: lead ordering page page_size search
   get /api/django/crm/apporteurs/: ordering page page_size search
+  get /api/django/crm/assistant/a-relancer/: portee
   get /api/django/crm/canaux/: ordering page page_size search
   get /api/django/crm/clients/: ordering page page_size search
   get /api/django/crm/clients/dormants/: seuil
@@ -8546,6 +8567,8 @@ query_params:
   get /api/v1/adsengine/veille/annonceurs/export-csv/: aveugle classe decouverte dropshipper jeu sans_etiquette
   get /api/v1/adsengine/veille/annonceurs/{id}/: aveugle classe decouverte dropshipper jeu sans_etiquette
   get /api/v1/adsengine/veille/decouvertes/: ordering page page_size search
+  get /api/v1/agent/evenements/export/: depuis jusqu_a
+  get /api/v1/agent/evenements/stats/: semaines
   get /api/v1/audit/entries/: action from model module object_id ordering page page_size search to user
   get /api/v1/audit/objets/{content_type}/{object_id}/as-of/: date
   get /api/v1/audit/objets/{content_type}/{object_id}/history/: limit
@@ -8623,6 +8646,7 @@ query_params:
   get /api/v1/crm/appareils-equipe/: ordering page page_size search
   get /api/v1/crm/appointments/: lead ordering page page_size search
   get /api/v1/crm/apporteurs/: ordering page page_size search
+  get /api/v1/crm/assistant/a-relancer/: portee
   get /api/v1/crm/canaux/: ordering page page_size search
   get /api/v1/crm/clients/: ordering page page_size search
   get /api/v1/crm/clients/dormants/: seuil
@@ -9502,6 +9526,11 @@ components:
 - AsBuiltPack
 - AsBuiltPackRequest
 - AssetTypeEnum
+- AssistantEvenement
+- AssistantEvenementNote
+- AssistantEvenementsExport
+- AssistantEvenementsPage
+- AssistantStats
 - AssumptionNode
 - AssumptionNodeRequest
 - AssumptionNodeStatutEnum
@@ -9984,6 +10013,7 @@ components:
 - CritereEnum
 - CrmAppliquerPlanRequestRequest
 - CrmArreterRelanceRequestRequest
+- CrmAssistantBrouillonSuiviRequestRequest
 - CrmBulkLeadsRequestActionEnum
 - CrmBulkLeadsRequestRequest
 - CrmCadencesEchues
@@ -10374,6 +10404,7 @@ components:
 - EtudeHorairePreviewResponse
 - EtudeHoraireProfil
 - EtudePompagePreviewResponse
+- EvenementAssistantEntreeRequest
 - EvenementRoutableEnum
 - EventTypeEnum
 - ExecutionRegleDossier
@@ -10688,6 +10719,7 @@ components:
 - InstallationStatutEnum
 - InstallerModeleReponse
 - IntegrityViewsIntegriteInsightReponse
+- IntentionEnum
 - Intervention
 - InterventionActivity
 - InterventionPreparation
@@ -10967,6 +10999,7 @@ components:
 - NoteDebit
 - NoteDebitAnnulationResponse
 - NoteDecisionRequest
+- NoteEnum
 - NoterRequeteRequest
 - NotesVisiteRequest
 - NoticeVersionEnum
@@ -11626,6 +11659,7 @@ components:
 - PatchedMotifPerteRequest
 - PatchedNetworkPolicyRequest
 - PatchedNomenclatureCodeBarresRequest
+- PatchedNoteEvenementRequest
 - PatchedObjectifCommercialRequest
 - PatchedOrdreAssemblageLigneRequest
 - PatchedOrdreAssemblageRequest

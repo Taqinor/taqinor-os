@@ -25,12 +25,7 @@ vi.mock('../../../api/axios', () => ({
     post: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
-vi.mock('../../../api/recordsApi', () => ({
-  default: {
-    getActivities: vi.fn(() => Promise.resolve({ data: [] })),
-    getAttachments: vi.fn(() => Promise.resolve({ data: [] })),
-  },
-}))
+vi.mock('../../../api/recordsApi', async () => (await import('../../../test/recordsApiVide')).recordsApiVide())
 vi.mock('../../../api/crmApi', () => ({
   default: {
     getLeadPointsContact: vi.fn(() => Promise.resolve({ data: null })),

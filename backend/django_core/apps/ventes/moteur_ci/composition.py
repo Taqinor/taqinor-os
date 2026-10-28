@@ -63,6 +63,36 @@ PRESTATIONS_CI = (
     ('transport_ci', 'Transport C&I'),
 )
 
+#: R2 (fondateur, 28/10/2026) — les organes du « Tableau de protection AC/DC »
+#: du document CLIENT C&I : coffrets DC/AC, disjoncteur AC et parafoudre AC
+#: (``protection_ac``), protection DC par MPPT et parafoudre DC
+#: (``protection_dc``), mise à la terre, comptage / limitation d'injection.
+#: Reconnus par le RÔLE de ligne, jamais par la désignation ; UNE source pour
+#: le rendu (``quote_engine/ci/tableau``) et le sérialiseur des lignes.
+#: EXCLUS par décision (R2, à revoir par le fondateur) : ``cable_ac`` (câble,
+#: pas un organe du tableau), ``logger_supervision`` (supervision) et
+#: ``cellule_mt`` (poste de livraison) restent des lignes à part.
+ROLES_TABLEAU_CI = frozenset((
+    'coffret_dc', 'coffret_ac', 'protection_ac', 'protection_dc',
+    'mise_a_la_terre', 'compteur_injection', 'controleur_injection',
+))
+
+#: Groupe CLIENT d'un rôle C&I (clé ``groupe_client`` des lignes de devis) :
+#: ``tableau_ci`` | ``installation_ci`` | ``None``.
+GROUPES_CLIENT = (
+    ('tableau_ci', ROLES_TABLEAU_CI),
+    ('installation_ci', frozenset(cle for cle, _libelle in PRESTATIONS_CI)),
+)
+
+
+def groupe_client_du_role(role_ci):
+    """Le groupe client d'une ligne d'après son ``role_ci``, ou ``None``."""
+    for groupe, roles in GROUPES_CLIENT:
+        if role_ci in roles:
+            return groupe
+    return None
+
+
 MOTIF_PRIX = 'article C&I « prix à renseigner »'
 MOTIF_FOURNISSEUR = 'à confirmer fournisseur (fiche muette)'
 MOTIF_BUREAU = ("section/calibre à dimensionner par le bureau d'études "

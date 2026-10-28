@@ -3044,6 +3044,19 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                               {it.designation}
                               {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
                             </p>
+                            {/* R2 — détail d'une ligne REGROUPÉE (« Tableau de
+                                protection AC/DC » d'un devis C&I) : ses composants
+                                en petit, sans prix, à l'identique du PDF. Clé
+                                additive : absente ⇒ rien ne change. */}
+                            {Array.isArray(it.sous_lignes) && it.sous_lignes.length > 0 ? (
+                              <ul class="mt-1 space-y-0.5 text-xs text-lune-faint" data-sous-lignes>
+                                {it.sous_lignes.map((sl) => (
+                                  <li>
+                                    <span class="fig" dir="ltr">{formatNumber(sl.quantite)} ×</span> {sl.designation}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : null}
                             {/* JAMAIS it.description ici : c'est la fiche produit
                                 BRUTE du catalogue, avec ses notes internes
                                 (« Modèle supposé — à confirmer fondateur » a été

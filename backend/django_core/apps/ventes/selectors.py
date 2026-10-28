@@ -38,7 +38,7 @@ __all__ = [
     'peremption_layout_devis', 'puissance_kwc_projet', 'references_avoirs', 'references_factures',
     'releve_client_pdf_bytes', 'releve_client_portail', 'resume_dossier_8221',
     'resume_portail_client', 'schema_unifilaire_svg', 'signature_velocity_by_month_and_mode',
-    'signed_clients_cross_sell_segments', 'totaux_multi_proprietes', 'tranche_facturee',
+    'signed_clients_cross_sell_segments', 'totaux_multi_proprietes', 'tranche_facturee', 'tranches_facturees',
     'tva_buckets', 'verdict_batterie_onduleur', 'verdict_panneau_onduleur',
 ]
 
@@ -1723,7 +1723,7 @@ from .selectors_facturation import (  # noqa: E402 — ré-export (SPL143) (D-EN
     etat_recouvrement_client,
     analyse_facturation,
     devis_a_facturer,
-    tranche_facturee,
+    tranche_facturee, tranches_facturees,
     jours_impaye_facture,
     carnet_commande_par_mois,
     factures_via_bon_commande,
@@ -1939,17 +1939,18 @@ def profil_charge_prerequis_ci(rythme, categorie=None, *, company=None, mode=Non
 _POSTES_FIXES_CI = (('coffret_dc',), ('coffret_ac',), ('protection_ac',),
                     ('compteur_injection', 'controleur_injection'))
 _TTL_CATALOGUE_CI_S = 300
+CLE_CATALOGUE_CI = 'ventes:catalogue_ci_pret:%s'  # vidée par receivers.py
 
 
 def catalogue_ci_pret(company_id):
     """ALEA50 — ``{pret, manquants}`` : les postes fixes C&I SANS prix (forfaits
     de ``CompanyProfile.forfaits_ci`` non réglés, rôles d'article sans aucun
-    article actif à prix de vente > 0). Mis en cache 5 min par société (le TTL
-    suffit, rien ne l'invalide) ; prend l'ID (une liste de leads ne charge pas
+    article actif à prix de vente > 0). Mis en cache 5 min par société, vidé à
+    l'écriture d'un article ou du profil (receivers.py) ; prend l'ID (une liste de leads ne charge pas
     N sociétés). Lecture seule, jamais ``prix_achat``."""
     from django.core.cache import cache
 
-    cle = 'ventes:catalogue_ci_pret:%s' % company_id
+    cle = CLE_CATALOGUE_CI % company_id
     resultat = cache.get(cle)
     if resultat is None:
         resultat = _calculer_catalogue_ci_pret(company_id)

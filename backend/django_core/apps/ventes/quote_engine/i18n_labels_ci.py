@@ -43,4 +43,23 @@ LIBELLES_CI = {
               'drawn from the same series; calculation basis below.',
         'ar': 'إسقاط على مدى {n} سنة: التدفقات السنوية ومدة الاسترداد ومعدل '
               'العائد الداخلي مستخرجة من نفس السلسلة؛ أسس الحساب أدناه.'},
+    # R1 (fondateur 28/10/2026) — taille limitée par le toit en pose rasante.
+    'ci_h_taille_toit': {
+        'fr': 'Taille limitée par le toit', 'en': 'Size limited by the roof',
+        'ar': 'الحجم محدود بمساحة السطح'},
+    'ci_h_taille_toit_rasante': {
+        'fr': '{m2}&#160;m² déclarés → {kwc}&#160;kWc en pose rasante',
+        'en': '{m2}&#160;m² declared → {kwc}&#160;kWp in low-tilt layout',
+        'ar': '{m2}&#160;م² مصرح بها ← {kwc}&#160;kWp بتركيب منخفض الميل'},
+    # CEC15 (affichage) — l'apport, les frais et le retour de l'offre de
+    # financement servis par ``economie_ci.financement``.
+    'ci_fin_apport': {
+        'fr': 'Apport à la signature', 'en': 'Deposit at signature',
+        'ar': 'المساهمة عند التوقيع'},
+    'ci_fin_frais': {
+        'fr': "Frais de l'offre", 'en': 'Offer fees',
+        'ar': 'مصاريف العرض'},
+    'ci_fin_retour': {
+        'fr': "Retour sur l'offre", 'en': 'Payback with the offer',
+        'ar': 'مدة الاسترداد مع العرض'},
 }

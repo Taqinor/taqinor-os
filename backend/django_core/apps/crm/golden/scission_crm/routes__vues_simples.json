@@ -25,6 +25,18 @@
  },
  {
   "actions_map": null,
+  "motif": "assistant/a-relancer/",
+  "nom": "assistant-a-relancer",
+  "vue": "leads_a_relancer"
+ },
+ {
+  "actions_map": null,
+  "motif": "assistant/digest-matin/",
+  "nom": "assistant-digest-matin",
+  "vue": "digest_matin"
+ },
+ {
+  "actions_map": null,
   "motif": "dispatch/",
   "nom": "dispatch-leads",
   "vue": "dispatch_file"
@@ -55,6 +67,12 @@
  },
  {
   "actions_map": null,
+  "motif": "leads/<int:lead_id>/brouillon-suivi/",
+  "nom": "lead-brouillon-suivi",
+  "vue": "lead_brouillon_suivi"
+ },
+ {
+  "actions_map": null,
   "motif": "leads/<int:lead_id>/photo-toit/",
   "nom": "lead-photo-toit",
   "vue": "lead_photo_toit"
@@ -64,6 +82,12 @@
   "motif": "leads/<int:lead_id>/playbook/",
   "nom": "lead-playbook",
   "vue": "lead_playbook_view"
+ },
+ {
+  "actions_map": null,
+  "motif": "leads/<int:lead_id>/resume/",
+  "nom": "lead-resume",
+  "vue": "lead_resume"
  },
  {
   "actions_map": null,

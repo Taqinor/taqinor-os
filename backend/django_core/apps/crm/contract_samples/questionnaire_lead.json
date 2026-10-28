@@ -68,7 +68,8 @@
         "pompe_actuelle_tension_v",
         "pompe_actuelle_phases",
         "profondeur_forage_m",
-        "debit_forage_m3h"
+        "debit_forage_m3h",
+        "depense_electricite_pompe_mad_mois"
       ],
       "gps": [
         "gps_lat",
@@ -101,7 +102,8 @@
       "pompe_actuelle_tension_v": null,
       "pompe_actuelle_phases": null,
       "profondeur_forage_m": null,
-      "debit_forage_m3h": null
+      "debit_forage_m3h": null,
+      "depense_electricite_pompe_mad_mois": null
     },
     "repondu": {},
     "interne": false
@@ -243,7 +245,8 @@
       "pompe_actuelle_tension_v",
       "pompe_actuelle_phases",
       "profondeur_forage_m",
-      "debit_forage_m3h"
+      "debit_forage_m3h",
+      "depense_electricite_pompe_mad_mois"
     ]
   },
   "colonnes_ecrites_note": "QJR512 — `colonnes_ecrites` {section: [colonnes]} : les colonnes que chaque section écrit réellement ; liste fixée par QJR596. `energie` porte conso_mensuelle_kwh et n’écrit plus tranche_onee.",
@@ -313,7 +316,8 @@
       "pompe_actuelle_tension_v",
       "pompe_actuelle_phases",
       "profondeur_forage_m",
-      "debit_forage_m3h"
+      "debit_forage_m3h",
+      "depense_electricite_pompe_mad_mois"
     ],
     "photo_facture": [],
     "photo_compteur": [],

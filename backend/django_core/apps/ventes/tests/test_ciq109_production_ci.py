@@ -20,11 +20,17 @@ from apps.parametres.pvgis_profils import (
 )
 from apps.ventes.moteur_ci import production as module_production
 from apps.ventes.moteur_ci.production import (
+    ANGLE_POSE_RASANTE_DEG,
     ANGLE_TOIT_PLAT_DEG,
+    CLE_POSE_RASANTE,
     MESSAGE_ORIENTATION,
+    SOURCE_ANGLE_POSE_RASANTE,
+    SOURCE_ANGLE_TOIT_PLAT,
+    bascule_rasante_admissible,
     bloc_production_ci,
     plan_de_production,
     production_jours_types,
+    toit_rasant,
 )
 from apps.ventes.quote_engine.pricing import PRODUCTION_DERATE
 
@@ -103,6 +109,31 @@ class TestProductionCI(unittest.TestCase):
         self.assertEqual(len(orientation), 1)
         self.assertEqual(orientation[0]['message'], MESSAGE_ORIENTATION)
 
+    def test_r1_p4_repli_sert_le_plan_declare_ou_rasant_et_l_alerte(self):
+        # R1 (P4, arbitrage coordinatrice 28/10/2026) — sans série horaire, le
+        # bloc sert le plan du toit (pente déclarée, défaut 30° toit plat, pose
+        # rasante), la production reste la table 30° plein sud : UNE règle,
+        # l'alerte « orientation non prise en compte » pour tout plan hors table.
+        reference, _h, _a = _bloc('Casablanca')
+        declare, _h, alertes = _bloc('Casablanca', toit={'type_pose': 'toit_plat_leste', 'pente_deg': 10})
+        self.assertEqual((declare['inclinaison_deg'], declare['azimut_deg']), (10.0, PVGIS_ASPECT_DEG))
+        self.assertEqual(declare['kwh_kwc_mensuel'], reference['kwh_kwc_mensuel'])
+        self.assertIn('orientation_non_prise_en_compte', {a['code'] for a in alertes})
+        self.assertIsNone(declare['inclinaison_source'])      # pente déclarée : aucune source de défaut
+        self.assertIsNone(reference['inclinaison_source'])
+        toit = {'type_pose': 'toit_plat_leste'}
+        rasant, hyp, alertes = _bloc('Casablanca', toit=toit, plan=plan_de_production(toit_rasant(toit)))
+        self.assertEqual(rasant['inclinaison_deg'], ANGLE_POSE_RASANTE_DEG)
+        self.assertEqual(rasant['inclinaison_source'], SOURCE_ANGLE_POSE_RASANTE)
+        self.assertEqual(rasant['kwh_kwc_mensuel'], reference['kwh_kwc_mensuel'])
+        self.assertIn('orientation_non_prise_en_compte', {a['code'] for a in alertes})
+        self.assertEqual(next(h for h in hyp if h['cle'] == 'inclinaison_deg')['source'],
+                         SOURCE_ANGLE_POSE_RASANTE)
+        defaut, _h, alertes = _bloc('Casablanca', toit=toit)
+        self.assertEqual((defaut['inclinaison_deg'], defaut['inclinaison_source']),
+                         (ANGLE_TOIT_PLAT_DEG, SOURCE_ANGLE_TOIT_PLAT))
+        self.assertNotIn('orientation_non_prise_en_compte', {a['code'] for a in alertes})
+
     def test_bac_acier_sans_calepinage_a_confirmer(self):
         _p, _h, alertes = _bloc('Casablanca', toit={'type_pose': 'bac_acier'})
         self.assertIn('production_a_confirmer_calepinage', {a['code'] for a in alertes})
@@ -165,6 +196,37 @@ class TestPlanToitPlat(unittest.TestCase):
                          PVGIS_ANGLE_DEG)
         self.assertEqual(plan_de_production(None)['angle_deg'], PVGIS_ANGLE_DEG)
         self.assertIsNone(plan_de_production({'type_pose': 'bac_acier'})['source_angle'])
+
+    def test_r1_pose_rasante_dix_degres_source_dite(self):
+        # R1 (fondateur 28/10/2026) — le toit de la série rasante garde la pose
+        # et l'azimut, porte le marqueur ; son plan dit 10° et sa source.
+        for pose in ('toit_plat_leste', 'toit_plat_fixe'):
+            rasant = toit_rasant({'type_pose': pose, 'azimut_deg': -90})
+            self.assertTrue(rasant[CLE_POSE_RASANTE])
+            self.assertTrue(bascule_rasante_admissible(rasant))
+            plan = plan_de_production(rasant)
+            self.assertEqual(plan['angle_deg'], ANGLE_POSE_RASANTE_DEG)
+            self.assertEqual(plan['angle_deg'], 10.0)
+            self.assertEqual(plan['aspect_deg'], -90.0)
+            self.assertEqual(plan['source_angle'], SOURCE_ANGLE_POSE_RASANTE)
+            self.assertIn('28/10/2026', plan['source_angle'])
+            self.assertIn('modifiable dans le générateur', plan['source_angle'])
+        # Sans marqueur, le défaut 30° du 27/10 reste.
+        self.assertEqual(plan_de_production({'type_pose': 'toit_plat_leste'})['angle_deg'],
+                         ANGLE_TOIT_PLAT_DEG)
+
+    def test_r1_pente_declaree_ou_autre_pose_jamais_rasante(self):
+        # (d) — une pente DÉCLARÉE l'emporte toujours ; le marqueur seul ne
+        # change rien à un bac acier ni à une pente saisie (0° compris).
+        self.assertIsNone(toit_rasant({'type_pose': 'toit_plat_leste', 'pente_deg': 15}))
+        self.assertIsNone(toit_rasant({'type_pose': 'toit_plat_leste', 'pente_deg': 0}))
+        self.assertIsNone(toit_rasant({'type_pose': 'bac_acier'}))
+        self.assertIsNone(toit_rasant(None))
+        plan = plan_de_production({'type_pose': 'toit_plat_leste', 'pente_deg': 15,
+                                   CLE_POSE_RASANTE: True})
+        self.assertEqual((plan['angle_deg'], plan['source_angle']), (15.0, None))
+        plan = plan_de_production({'type_pose': 'bac_acier', CLE_POSE_RASANTE: True})
+        self.assertEqual((plan['angle_deg'], plan['source_angle']), (PVGIS_ANGLE_DEG, None))
 
 
 class TestPurete(unittest.TestCase):
