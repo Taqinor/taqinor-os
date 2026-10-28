@@ -74,9 +74,9 @@ const segments = [
   },
   {
     n: '02', title: 'Agro-industrial shed',
-    body: "Drying, cold storage, processing: an agricultural shed consumes in broad daylight, exactly when the sun gives. The roof, already there, costs nothing extra to use — it carries the panels without eating a square metre of ground.",
+    body: "Drying, cold storage, processing: an agricultural shed consumes in broad daylight, exactly when the sun gives. The roof carries the panels without eating a square metre of ground.",
     proof: 'Warranty: galvanised steel structure, 20 years, mounted on the existing roof',
-    financial: 'Zero extra land tied up — the existing roof funds the structure',
+    financial: 'No ground surface used',
     technical: 'Galvanised steel structure, 20-year warranty · no ground surface lost',
   },
   {
@@ -88,10 +88,10 @@ const segments = [
   },
   {
     n: '04', title: 'Public sites',
-    body: "A public building or clinic tolerates no outage. Hybrid inverters plus batteries hold the critical equipment through grid dips, and by day the bill drops on the rest of the building.",
+    body: "A public building or clinic also consumes in the evening and at night. With hybrid inverters (able to switch between the grid, solar and the battery) and batteries that take over in the evening and at night, the bill drops by day on the rest of the building.",
     proof: 'Warranty: Deye/Huawei hybrid inverters, 10 years',
-    financial: 'Lowers the building bill while securing continuity of service',
-    technical: 'Hybrid inverters + batteries · continuity on critical equipment',
+    financial: 'Lowers the building bill by day; batteries take over in the evening and at night',
+    technical: 'Hybrid inverters + batteries · batteries take over in the evening and at night',
   },
 ];
 
@@ -163,7 +163,7 @@ const capexOpex = [
           {/* ONE brass CTA (brass discipline) — gold is authorised here.
               W337 — reframed as an audit offer: same journey, same
               DiagnosticForm webhook, only the label changes. */}
-          <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+          <a href={`${L('/devis/mon-toit')}?mode=industriel`} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Free energy audit of my site →
           </a>
           {/* Ghost WhatsApp — white border, no brass */}
@@ -179,8 +179,8 @@ const capexOpex = [
             <dt class="tech-label mt-2 text-lune">Of production</dt>
           </div>
           <div>
-            <dd class="fig lum text-base sm:text-4xl" data-tally>5 MW</dd>
-            <dt class="tech-label mt-2 text-lune">Authorisation threshold</dt>
+            <dd class="fig lum text-base sm:text-2xl">Hour-by-hour study</dd>
+            <dt class="tech-label mt-2 text-lune">From your consumption</dt>
           </div>
         </dl>
       </div>
