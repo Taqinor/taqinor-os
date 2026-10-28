@@ -294,6 +294,7 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
         _type_equipement,
         _vivier_onduleurs_par_phase,
         avertissement_aucun_onduleur_triphase,
+        avertissement_phase_supposee_triphasee,
         avertissement_batterie_pin_sans_correspondance,
         avertissement_batterie_plafond_banc,
         avertissement_batterie_rupture_stock,
@@ -535,6 +536,14 @@ def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
     if phase_client == PHASE_TRI and any(
             refus_tri.get(categorie) for categorie in _categories_vendues):
         _avertir(avertissement_aucun_onduleur_triphase())
+    # RSIZ6 — raccordement INCONNU : l'onduleur triphasé VENDU vient de
+    # l'heuristique « ≥ 10 kW » seule ; le commercial doit le vérifier.
+    if not phase_client and any(
+            _est_triphase(getattr(
+                _onduleurs_par_categorie.get(categorie), 'nom', '') or '')
+            for categorie in _categories_vendues
+            if _onduleurs_par_categorie.get(categorie) is not None):
+        _avertir(avertissement_phase_supposee_triphasee())
 
     # ── Panneau : wattage demandé d'abord, à défaut le plus proche ──
     # PVMRQ — la marque épinglée restreint le vivier AVANT le rapprochement de

@@ -277,6 +277,19 @@ def avertissement_aucun_onduleur_triphase():
             'triphasé (tarifé, fiche technique complète) au catalogue.')
 
 
+def avertissement_phase_supposee_triphasee():
+    """RSIZ6 — raccordement NON renseigné et onduleur triphasé retenu.
+
+    Sans phase déclarée, l'heuristique historique (« ≥ 10 kW ⇒ triphasé »,
+    ou le seul modèle du catalogue à cette puissance) choisit seule : le
+    commercial doit le SAVOIR avant d'envoyer, un client monophasé ne peut
+    pas raccorder un onduleur triphasé.
+    """
+    return ('Raccordement non renseigné — onduleur TRIPHASÉ retenu. Vérifiez '
+            "que le client dispose d'un abonnement triphasé et renseignez le "
+            'raccordement sur la fiche.')
+
+
 def _vivier_onduleurs_par_phase(candidats, phase):
     """PVCOMPAT — restreint un vivier d'onduleurs au RACCORDEMENT du client.
 

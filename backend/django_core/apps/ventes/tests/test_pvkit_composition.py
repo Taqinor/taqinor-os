@@ -608,6 +608,51 @@ class LHybrideRetenuPorteUneBatterieDuStock(_Base):
             for message in lignes.avertissements_composition))
 
 
+class LaPhaseSupposeeTriphaseeEstDite(_Base):
+    """RSIZ6 — raccordement non renseigné : un onduleur triphasé VENDU
+    (heuristique « ≥ 10 kW ») est signalé au commercial, sur le même canal
+    ``avertissements_composition`` ; une phase déclarée reste muette."""
+
+    slug = 'pvkit-rsiz6'
+
+    def setUp(self):
+        super().setUp()
+        self.ond_tri = Produit.objects.create(
+            company=self.company, nom='Onduleur réseau Huawei 15kW Triphasé',
+            sku='ONDR15-%s' % self.slug, prix_vente=Decimal('20000'),
+            prix_achat=Decimal('1'), quantite_stock=10)
+        FicheTechnique.objects.create(
+            company=self.company, produit=self.ond_tri, type_fiche='onduleur',
+            ond_ac_kw=Decimal('15.00'), ond_phases=3, ond_n_mppt=2,
+            ond_mppt_v_min=Decimal('160.0'), ond_mppt_v_max=Decimal('950.0'),
+            ond_v_max_abs=Decimal('1100.0'), ond_i_max_mppt_a=Decimal('26.0'),
+            ond_rendement_euro_pct=Decimal('97.5'), ond_bat_aucune=True)
+
+    def _composer(self, phase=None):
+        return services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=15.4, panel_watt=550, nb_panneaux=28, phase=phase)
+
+    def _dit_la_phase(self, lignes):
+        return any('Raccordement non renseigné' in message
+                   for message in lignes.avertissements_composition)
+
+    def test_phase_inconnue_triphase_vendu_le_dit(self):
+        lignes = self._composer()
+        self.assertIn(self.ond_tri.nom, [li.designation for li in lignes])
+        self.assertTrue(self._dit_la_phase(lignes))
+
+    def test_phase_declaree_reste_muette(self):
+        self.assertFalse(self._dit_la_phase(self._composer('triphase')))
+        self.assertFalse(self._dit_la_phase(self._composer('monophase')))
+
+    def test_petit_kit_monophase_reste_muet(self):
+        lignes = services.composition_residentielle(
+            services.catalogue_de_la_societe(self.company),
+            kwc=4.4, panel_watt=550, nb_panneaux=8)
+        self.assertFalse(self._dit_la_phase(lignes))
+
+
 class PostesPretDevisResidentielTests(_Base):
     """RSIZ11 — ``postes_pret_devis_residentiel`` : le catalogue de ce montage
     (``CATALOGUE``) chiffre le kit ; chaque trou se lit poste par poste.
