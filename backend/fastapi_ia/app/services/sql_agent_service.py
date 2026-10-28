@@ -426,6 +426,35 @@ def _contenu_systeme(provider: str, allow_price: bool) -> tuple[Any, bool]:
              "cache_control": {"type": "ephemeral", "ttl": "1h"}}], docs["present"]
 
 
+def suggestions_pour_ecran(ecran: str) -> list[str]:
+    """AIC9 — trois questions du manifeste (cle `suggestions`) pour le plus
+    long prefixe de route qui couvre `ecran` ; [] sans manifeste."""
+    table = (_charger_docs_assistant()["manifeste"] or {}).get("suggestions")
+    if not isinstance(table, dict):
+        return []
+    ecran = ecran or "/"
+    prefixes = [p for p in table if isinstance(p, str)
+                and (ecran == p or ecran.startswith(p.rstrip("/") + "/"))]
+    if not prefixes:
+        return []
+    questions = table[max(prefixes, key=len)]
+    return [q for q in questions if isinstance(q, str)][:3] \
+        if isinstance(questions, list) else []
+
+
+def _question_avec_contexte(question: str, contexte: dict | None) -> str:
+    """AIC9 — le contexte de l'ecran va dans le message UTILISATEUR (jamais
+    dans le bloc systeme : le cache du prompt systeme reste intact)."""
+    if not contexte:
+        return question
+    parties = []
+    if contexte.get("ecran"):
+        parties.append(f"Écran courant : {contexte['ecran']}")
+    if contexte.get("lead_id"):
+        parties.append(f"lead courant : #{contexte['lead_id']}")
+    return f"{question}\n\n({' ; '.join(parties)})" if parties else question
+
+
 def _etiqueter_non_fiable(contenu: Any) -> str:
     """AIC5 — tout resultat d'outil (lecture ou action) est une DONNEE."""
     return json.dumps({"source": "erp", "fiabilite": "non_fiable",
@@ -1282,6 +1311,7 @@ class SQLAgentService:
         self, question: str, company_id: int, user_id: int = 0,
         action_ctx: "ActionContext | None" = None,
         provider: str | None = None,
+        contexte: dict | None = None,
     ) -> dict[str, Any]:
         """Execution synchrone de l'agent (appelee via asyncio.to_thread).
         `provider` : fournisseur force (repli AIC4), sinon SQL_AGENT_PROVIDER."""
@@ -1414,7 +1444,8 @@ class SQLAgentService:
 
         try:
             result = executor.invoke(
-                {"input": question, "chat_history": lc_history},
+                {"input": _question_avec_contexte(question, contexte),
+                 "chat_history": lc_history},
                 config={"callbacks": [capture]},
             )
         except Exception as exc:
@@ -1509,23 +1540,28 @@ class SQLAgentService:
         user_id: int | None = None,
         company_id: int | None = None,
         action_ctx: "ActionContext | None" = None,
+        contexte: dict | None = None,
     ) -> dict[str, Any]:
-        """AIC6 — toute reponse (succes, erreur, repli) est journalisee."""
-        out = await self._query(question, user_id, company_id, action_ctx)
+        """AIC6 — toute reponse (succes, erreur, repli) est journalisee.
+        AIC9 — `contexte` {ecran, lead_id} voyage jusqu'a l'evenement."""
+        out = await self._query(question, user_id, company_id, action_ctx,
+                                contexte)
         out["evenement_id"] = await asyncio.to_thread(
-            self._journaliser, question, out, action_ctx)
+            self._journaliser, question, out, action_ctx, contexte)
         return out
 
     @staticmethod
     def _journaliser(question: str, out: dict[str, Any],
-                     action_ctx: "ActionContext | None") -> int | None:
+                     action_ctx: "ActionContext | None",
+                     contexte: dict | None = None) -> int | None:
         from app.services.action_tools import journaliser_evenement_assistant
+        contexte = contexte or {}
         corps = {
             "intention": out.get("intention") or "donnee",
             "question": (question or "")[:2000],
             "resume_reponse": (out.get("answer") or "")[:500],
-            "ecran": "",
-            "lead_id": None,
+            "ecran": str(contexte.get("ecran") or "")[:255],
+            "lead_id": contexte.get("lead_id"),
             "outils_appeles": list(out.get("outils_appeles") or []),
             "erreur": out.get("erreur"),
             "modele": out.get("modele")
@@ -1547,12 +1583,13 @@ class SQLAgentService:
         user_id: int | None,
         company_id: int | None,
         action_ctx: "ActionContext | None",
+        contexte: dict | None = None,
     ) -> dict[str, Any]:
         try:
             try:
                 out = await asyncio.to_thread(
                     self._run_agent, question, company_id or 0, user_id or 0,
-                    action_ctx,
+                    action_ctx, None, contexte,
                 )
                 return {**out, "repli": False,
                         "modele": _modele_effectif(SQL_AGENT_PROVIDER.lower())}
@@ -1565,7 +1602,7 @@ class SQLAgentService:
                                SQL_AGENT_PROVIDER, refus, repli)
                 out = await asyncio.to_thread(
                     self._run_agent, question, company_id or 0, user_id or 0,
-                    action_ctx, repli,
+                    action_ctx, repli, contexte,
                 )
                 return {**out, "repli": True,
                         "modele": _modele_effectif(repli)}

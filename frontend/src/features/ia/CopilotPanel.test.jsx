@@ -14,23 +14,25 @@ vi.mock('../../api/iaApi', () => ({
     getChatHistory: vi.fn(() => Promise.resolve({ data: [] })),
     clearChatHistory: vi.fn(() => Promise.resolve({})),
     noterEvenement: vi.fn(),
+    getSuggestions: vi.fn(),
   },
 }))
 
 import iaApi from '../../api/iaApi'
 import iaReducer from './store/iaSlice'
 import CopilotPanel from './CopilotPanel'
+import { EVENEMENT_OUVRIR } from './copilotMessages'
 
 /* Nouveau fichier car : aucun module vitest n'héberge le panneau Copilote
    (copilotMessages.test.mjs est un test node pur, sans DOM). */
 
 const EVENEMENT_ID = CONTRAT.exemple.id
 
-function monter() {
+function monter({ ouvert = true } = {}) {
   const initial = iaReducer(undefined, { type: '@@init' })
   const store = configureStore({
     reducer: { ia: iaReducer },
-    preloadedState: { ia: { ...initial, copilotOpen: true } },
+    preloadedState: { ia: { ...initial, copilotOpen: ouvert } },
   })
   render(<Provider store={store}><CopilotPanel /></Provider>)
   return store
@@ -42,6 +44,7 @@ beforeEach(() => {
     data: { answer: CONTRAT.exemple.resume_reponse, evenement_id: EVENEMENT_ID },
   })
   iaApi.noterEvenement.mockResolvedValue({ data: CONTRAT.ecriture_commercial.exemple })
+  iaApi.getSuggestions.mockResolvedValue({ data: [] })
 })
 
 async function poserUneQuestion(user) {
@@ -83,5 +86,36 @@ describe('CopilotPanel — note de la réponse (AIC8)', () => {
     await user.click(screen.getByRole('button', { name: 'Envoyer' }))
     await screen.findByText('Sans journal.')
     expect(screen.queryByTestId('note-reponse')).toBeNull()
+  })
+})
+
+describe('CopilotPanel — entrée contextuelle (AIC9)', () => {
+  it('l\'événement EVENEMENT_OUVRIR ouvre le panneau et transmet le contexte', async () => {
+    const store = monter({ ouvert: false })
+    window.dispatchEvent(new CustomEvent(EVENEMENT_OUVRIR, {
+      detail: { ecran: CONTRAT.exemple.ecran, lead_id: CONTRAT.exemple.lead_id,
+        question: CONTRAT.exemple.question, envoyer: true },
+    }))
+    await screen.findByText(CONTRAT.exemple.resume_reponse)
+    expect(store.getState().ia.copilotOpen).toBe(true)
+    expect(iaApi.queryAgent).toHaveBeenLastCalledWith(
+      CONTRAT.exemple.question,
+      { ecran: CONTRAT.exemple.ecran, lead_id: CONTRAT.exemple.lead_id })
+  })
+
+  it('sans événement, le contexte est la route courante (lead null)', async () => {
+    const user = userEvent.setup()
+    monter()
+    await poserUneQuestion(user)
+    expect(iaApi.queryAgent).toHaveBeenLastCalledWith(
+      CONTRAT.exemple.question, { ecran: window.location.pathname, lead_id: null })
+  })
+
+  it('affiche les trois questions du manifeste pour l\'écran', async () => {
+    iaApi.getSuggestions.mockResolvedValue({ data: ['Q1 du lead ?', 'Q2 du lead ?', 'Q3 du lead ?'] })
+    monter()
+    await screen.findByRole('button', { name: 'Q1 du lead ?' })
+    expect(screen.getByRole('button', { name: 'Q3 du lead ?' })).toBeTruthy()
+    expect(iaApi.getSuggestions).toHaveBeenCalledWith(window.location.pathname)
   })
 })

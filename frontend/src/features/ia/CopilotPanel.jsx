@@ -14,10 +14,12 @@ import {
 } from './ChatParts'
 import {
   queryAgent, loadChatHistory, clearChatHistory,
-  closeCopilot,
+  closeCopilot, openCopilot,
 } from './store/iaSlice'
+import iaApi from '../../api/iaApi'
 import {
   displayMessageText, formatAgentError, canSendQuestion, enterSubmits,
+  EVENEMENT_OUVRIR, contexteEcran,
 } from './copilotMessages'
 
 // FG350 — Copilote in-app : tiroir conversationnel GLOBAL câblé sur l'agent
@@ -46,6 +48,11 @@ export default function CopilotPanel() {
   const inputRef = useRef(null)
   // L'historique n'est chargé qu'une fois, à la première ouverture du tiroir.
   const historyLoadedRef = useRef(false)
+  // AIC9 — contexte posé par l'événement `EVENEMENT_OUVRIR` (sinon la route).
+  const [contexte, setContexte] = useState(null)
+  const [suggestions, setSuggestions] = useState(SUGGESTIONS)
+  const ecranCourant = () => contexte?.ecran
+    || (typeof window !== 'undefined' ? window.location.pathname : '/')
 
   useEffect(() => {
     if (open && !historyLoadedRef.current) {
@@ -58,10 +65,42 @@ export default function CopilotPanel() {
     if (open) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, agentLoading, open])
 
-  const send = (q) => {
+  const send = (q, ctx = contexte) => {
     if (!canSendQuestion(q, agentLoading)) return
-    dispatch(queryAgent(q.trim()))
+    const ecran = contexteEcran(ctx, window.location.pathname)
+    dispatch(queryAgent({ question: q.trim(), contexte: ecran }))
   }
+
+  // AIC9 — un module ouvre le panneau avec le contexte de SON écran.
+  useEffect(() => {
+    const ouvrir = (e) => {
+      const detail = e?.detail || {}
+      setContexte(detail)
+      dispatch(openCopilot())
+      const question = typeof detail.question === 'string' ? detail.question.trim() : ''
+      if (question && detail.envoyer) {
+        dispatch(queryAgent({ question, contexte: contexteEcran(detail, window.location.pathname) }))
+      } else if (question) {
+        setInput(question)
+      }
+    }
+    window.addEventListener(EVENEMENT_OUVRIR, ouvrir)
+    return () => window.removeEventListener(EVENEMENT_OUVRIR, ouvrir)
+  }, [dispatch])
+
+  // AIC9 — trois questions du manifeste pour l'écran, conversation vide.
+  useEffect(() => {
+    if (!open || messages.length > 0) return undefined
+    let actif = true
+    Promise.resolve(iaApi.getSuggestions?.(ecranCourant()))
+      .then((res) => {
+        const liste = Array.isArray(res?.data) ? res.data.filter((q) => typeof q === 'string') : []
+        if (actif && liste.length) setSuggestions(liste.slice(0, 3))
+      })
+      .catch(() => {})
+    return () => { actif = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, contexte, messages.length])
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -105,7 +144,7 @@ export default function CopilotPanel() {
               className="border-0 py-6"
               action={
                 <div className="flex flex-col gap-2">
-                  <SuggestionButtons suggestions={SUGGESTIONS} onPick={handleSuggestion}
+                  <SuggestionButtons suggestions={suggestions} onPick={handleSuggestion}
  buttonClassName="h-auto whitespace-normal py-1.5 text-left" />
                 </div>
               }

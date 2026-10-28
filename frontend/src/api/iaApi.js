@@ -83,8 +83,13 @@ iaApi_instance.interceptors.response.use(
 )
 
 const iaApi = {
-  queryAgent: (question) =>
-    iaApi_instance.post('/sql-agent/query', { question }),
+  // AIC9 — `contexte` {ecran, lead_id} facultatif (écran d'où part la question).
+  queryAgent: (question, contexte = null) =>
+    iaApi_instance.post('/sql-agent/query', contexte ? { question, contexte } : { question }),
+
+  // AIC9 — trois questions suggérées pour l'écran (manifeste `capacites.yml`).
+  getSuggestions: (ecran) =>
+    iaApi_instance.get('/sql-agent/suggestions', { params: { ecran }, suppressErrorToast: true }),
 
   // AG3 — exécute une action SENSIBLE précédemment PROPOSÉE par l'agent, via le
   // jeton opaque (`confirm_token`) renvoyé dans la proposition. Miroir frontend

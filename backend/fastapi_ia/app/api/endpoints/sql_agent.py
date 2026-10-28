@@ -11,7 +11,9 @@ from app.core.security import require_company_id as _require_company_id
 from app.services.action_tools import (
     ActionContext, resolve_caller_permissions,
 )
-from app.services.sql_agent_service import sql_agent_service
+from app.services.sql_agent_service import (
+    sql_agent_service, suggestions_pour_ecran,
+)
 
 router = APIRouter()
 
@@ -34,9 +36,18 @@ def _check_sql_agent_rate_limit(user_id) -> None:
     )
 
 
+class ContexteEcran(BaseModel):
+    """AIC9 — contexte de l'ecran d'ou part la question (evenement DOM
+    `taqinor:assistant:ouvrir`, ou `window.location.pathname`)."""
+    ecran: str = Field("", max_length=255)
+    lead_id: int | None = Field(None, ge=1)
+
+
 class SQLQuery(BaseModel):
     # AANA5 — 422 automatique au-dela de la borne (avant tout appel LLM).
     question: str = Field(..., max_length=SQL_AGENT_QUESTION_MAX_LENGTH)
+    # AIC9 — optionnel : injecte dans le message UTILISATEUR, journalise.
+    contexte: ContexteEcran | None = None
 
 
 class SQLResponse(BaseModel):
@@ -100,11 +111,15 @@ async def query_database(
     )
     await asyncio.to_thread(resolve_caller_permissions, action_ctx)
 
+    options = {}
+    if request.contexte is not None:
+        options["contexte"] = request.contexte.model_dump()
     result = await sql_agent_service.query(
         question=request.question,
         user_id=user_id,
         company_id=company_id,
         action_ctx=action_ctx,
+        **options,
     )
     return SQLResponse(
         answer=result["answer"],
@@ -132,6 +147,13 @@ def clear_history(token_payload: dict = Depends(verify_token)):
     """Efface la conversation de l'utilisateur."""
     user_id = int(token_payload.get("user_id", 0))
     sql_agent_service.clear_history(user_id)
+
+
+@router.get("/suggestions", response_model=list[str])
+def get_suggestions(ecran: str = "/", token_payload: dict = Depends(verify_token)):
+    """AIC9 — trois questions suggerees pour l'ecran, lues du manifeste
+    `capacites.yml` deja charge (cle `suggestions`) ; [] sans manifeste."""
+    return suggestions_pour_ecran(ecran[:255])
 
 
 @router.get("/schema")

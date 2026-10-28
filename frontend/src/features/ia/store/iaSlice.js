@@ -108,9 +108,14 @@ function normalizePayload(obj, forcedType) {
   return { ...obj, type }
 }
 
-export const queryAgent = createAsyncThunk('ia/queryAgent', async (question, { rejectWithValue }) => {
+// AIC9 — l'argument est la question (texte) ou `{ question, contexte }`.
+const questionDe = (arg) => (typeof arg === 'string' ? arg : arg?.question ?? '')
+
+export const queryAgent = createAsyncThunk('ia/queryAgent', async (arg, { rejectWithValue }) => {
   try {
-    const res = await iaApi.queryAgent(question)
+    const res = typeof arg === 'string'
+      ? await iaApi.queryAgent(arg)
+      : await iaApi.queryAgent(arg.question, arg.contexte ?? null)
     return res.data
   } catch (err) {
     return rejectWithValue(err.response?.data ?? err.message)
@@ -287,7 +292,7 @@ const iaSlice = createSlice({
       .addCase(queryAgent.pending, (state, action) => {
         state.agentLoading = true
         state.agentError = null
-        state.messages.push({ role: 'user', content: action.meta.arg })
+        state.messages.push({ role: 'user', content: questionDe(action.meta.arg) })
       })
       .addCase(queryAgent.fulfilled, (state, action) => {
         state.agentLoading = false
