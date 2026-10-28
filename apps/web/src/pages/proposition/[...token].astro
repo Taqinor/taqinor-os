@@ -2521,7 +2521,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
               ) : null}
               {isAgricole && synth?.eau?.m3Jour ? (
                 <li class="fig" dir="ltr" data-figure="eau_m3_jour">
-                  {formatNumber(synth.eau.m3Jour)} <span class="text-lune-faint" data-i18n data-fr={AGR_LBL_AGQ.eauJour.fr} data-en={AGR_LBL_AGQ.eauJour.en} data-ar={AGR_LBL_AGQ.eauJour.ar}>{AGR_LBL_AGQ.eauJour.fr}</span>
+                  {formatNumber(synth.eau.m3Jour)} <span class="text-lune-faint" data-i18n data-fr={AGR_LBL_AGQ[synth.eau.estimation ? 'eauJourEstimation' : 'eauJour'].fr} data-en={AGR_LBL_AGQ[synth.eau.estimation ? 'eauJourEstimation' : 'eauJour'].en} data-ar={AGR_LBL_AGQ[synth.eau.estimation ? 'eauJourEstimation' : 'eauJour'].ar}>{AGR_LBL_AGQ[synth.eau.estimation ? 'eauJourEstimation' : 'eauJour'].fr}</span>
                 </li>
               ) : null}
               {prodKwh && !isAgricole ? (
