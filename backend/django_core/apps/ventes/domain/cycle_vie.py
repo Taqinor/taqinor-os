@@ -1117,6 +1117,28 @@ def _effondrer_soeurs_et_publier(*, devis, user, date_acc, ancien,
         avenant_de=pred.pk if pred is not None else None)
 
 
+def _option_offerte(option, *, qd, nb_options, scenario):
+    """CPRS6 — on ne signe qu'une option que le document OFFRE : une offre à
+    une option se signe sur elle seule, et une option non chiffrée
+    (``sans_ok`` / ``avec_ok`` faux) ne se signe jamais — lien, portail ou
+    ERP (un corps forgé ne scelle jamais l'autre). ``qd`` à ``None`` :
+    détection indisponible, l'option explicite passe telle quelle (QJR133).
+    Rend l'option retenue (déduite du scénario quand rien n'est demandé)."""
+    from apps.ventes.models import Devis
+    deduite = (Devis.OptionAcceptee.AVEC_BATTERIE
+               if scenario == 'Avec batterie'
+               else Devis.OptionAcceptee.SANS_BATTERIE)
+    if qd is not None and option and option not in (
+            {deduite} if nb_options == 1 else {
+                o for o, ok in (
+                    (Devis.OptionAcceptee.SANS_BATTERIE, 'sans_ok'),
+                    (Devis.OptionAcceptee.AVEC_BATTERIE, 'avec_ok'))
+                if qd.get(ok, True)}):
+        raise AcceptError(
+            "L'option demandée ne fait pas partie de cette proposition.")
+    return option or deduite
+
+
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
                  signature_image='', signed_at_client=None, on_behalf_of='',
@@ -1356,23 +1378,8 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
             raise AcceptError(
                 'Ce devis comporte deux options — précisez celle choisie par '
                 'le client (« sans_batterie » ou « avec_batterie »).')
-        deduite = (Devis.OptionAcceptee.AVEC_BATTERIE
-                   if scenario == 'Avec batterie'
-                   else Devis.OptionAcceptee.SANS_BATTERIE)
-        # CPRS6 — on ne signe qu'une option que le document OFFRE : une offre
-        # à une option se signe sur elle seule, et une option non chiffrée
-        # (``sans_ok`` / ``avec_ok`` faux) ne se signe jamais — lien, portail
-        # ou ERP (un corps forgé ne scelle jamais l'autre).
-        if detection_sure and option and option not in (
-                {deduite} if nb_options == 1 else {
-                    o for o, ok in (
-                        (Devis.OptionAcceptee.SANS_BATTERIE, 'sans_ok'),
-                        (Devis.OptionAcceptee.AVEC_BATTERIE, 'avec_ok'))
-                    if qd.get(ok, True)}):
-            raise AcceptError(
-                "L'option demandée ne fait pas partie de cette proposition.")
-        if not option:
-            option = deduite
+        option = _option_offerte(option, qd=qd if detection_sure else None,
+                                 nb_options=nb_options, scenario=scenario)
 
         # VNT54 vente unique par lead + VNT57 gel d'un brouillon (T17, ADEV12).
         preparer_acceptation(devis, user=user)

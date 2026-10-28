@@ -921,7 +921,7 @@ def _parametres_site_publics(devis, layout_public, hypotheses,
 #: AGR300 — clés ÉCONOMIQUES RÉSIDENTIELLES de ``data`` (forme publique
 #: ``quote``, contrat partagé ``proposal_data.json`` › ``exemple_agricole``).
 CLES_ECONOMIES_RESIDENTIELLES = (
-    'eco_s_ann', 'eco_a_ann', 'eco_a_cumul', 'roi_s', 'roi_a',
+    'eco_s_ann', 'eco_a_ann', 'eco_a_cumul', 'roi_s', 'roi_a', 'roi_s_jamais', 'roi_a_jamais',
     'cashflow_sans', 'cashflow_avec', 'cashflow_assumptions',
     'net_gain_sans', 'net_gain_avec', 'eco_s_monthly', 'eco_a_monthly',
     'savings_method', 'hypotheses',
