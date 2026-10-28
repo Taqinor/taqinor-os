@@ -5,24 +5,30 @@ import { Badge, Button, Card } from '../../ui'
 import stockApi from '../../api/stockApi'
 
 /* ============================================================================
-   CCAT9/CCAT14 — Encadré « Prêt pour les devis » en tête du catalogue Stock,
-   un onglet par segment. Contrats partagés : `pret_devis_ci.json` et
-   `pret_devis_agricole.json` (même forme ; lus par les tests, jamais recopiés).
+   CCAT9/CCAT14/CCAT16 — Encadré « Prêt pour les devis » en tête du catalogue Stock,
+   un onglet par segment. Contrats partagés : `pret_devis_ci.json`,
+   `pret_devis_agricole.json` et `pret_devis_residentiel.json` (même forme ; lus par les tests, jamais recopiés).
    Une AIDE, pas un verrou : un segment en erreur est masqué, tous en erreur =
    rien à l'écran. Aucun prix ici.
    ========================================================================== */
 
-// Segments : une ligne par segment (le résidentiel, même forme, s'ajoutera ici).
+// Segments : une ligne par segment.
 const SEGMENTS = [
   { cle: 'ci', label: 'Commercial & industriel', charger: () => stockApi.getPretDevisCi() },
   { cle: 'agricole', label: 'Agricole', charger: () => stockApi.getPretDevisAgricole() },
+  { cle: 'residentiel', label: 'Résidentiel', charger: () => stockApi.getPretDevisResidentiel() },
 ]
 
 const GROUPES = [
   ['materiel', 'Matériel'],
+  ['onduleur', 'Onduleurs'],
+  ['cable', 'Câbles'],
+  ['protection', 'Protections'],
   ['prestation', 'Prestations'],
+  ['forfait', 'Forfaits'],
   ['option', 'Options'],
   ['option_batterie', 'Option avec batterie'],
+  ['accessoire', 'Accessoires'],
 ]
 const STATUTS = {
   ok: ['success', 'OK'],
@@ -34,7 +40,7 @@ const STATUTS = {
  * filtre Stock les montre même quand sa règle locale ne connaît pas le motif. */
 function lienAction(poste) {
   const ids = (poste.articles ?? []).map((a) => a.id)
-  if (!ids.length) return poste.action.lien
+  if (!ids.length || !poste.action.lien.includes('a_completer')) return poste.action.lien
   const sep = poste.action.lien.includes('?') ? '&' : '?'
   return `${poste.action.lien}${sep}articles=${ids.join(',')}`
 }
@@ -67,6 +73,10 @@ function LignePoste({ poste }) {
   )
 }
 
+// Un groupe inconnu de l'écran reste affiché (jamais un poste masqué).
+const autresGroupes = (postes) => [...new Set(postes.map((p) => p.groupe))]
+  .filter((g) => !GROUPES.some(([cle]) => cle === g)).map((g) => [g, 'Autres'])
+
 const aTraiter = (p) => p.obligatoire && p.statut !== 'ok'
 const pluriel = (n, mot) => `${n} ${mot}${n > 1 ? 's' : ''}`
 
@@ -77,7 +87,7 @@ function PanneauSegment({ data }) {
   const nbCaches = data.postes.length - postes.length
   return (
     <div className="flex flex-col gap-3">
-      {GROUPES.map(([groupe, label]) => {
+      {[...GROUPES, ...autresGroupes(postes)].map(([groupe, label]) => {
         const lignes = postes
           .filter((p) => p.groupe === groupe)
           .sort((a, b) => Number(aTraiter(b)) - Number(aTraiter(a)))

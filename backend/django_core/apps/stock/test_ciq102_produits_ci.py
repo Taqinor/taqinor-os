@@ -629,3 +629,59 @@ class PretDevisAgricoleTests(TestCase):
         self.assertFalse(r.json()['pret'])
         self.assertNotIn('prix_achat', json.dumps(r.json()))
         self.assertEqual(APIClient().get(URL_PRET_AGR).status_code, 401)
+
+
+CONTRAT_PRET_RES = json.loads(
+    (Path(__file__).parent / 'contract_samples' / 'pret_devis_residentiel.json')
+    .read_text(encoding='utf-8'))
+URL_PRET_RES = '/api/django/stock/produits/pret-devis-residentiel/'
+
+
+class PretDevisResidentielRouteTests(TestCase):
+    """CCAT16 — la vue Stock sert ``ventes.selectors.postes_pret_devis_residentiel``
+    (règles RSIZ11, testées dans ``ventes``) : forme du contrat, société de
+    l'utilisateur, aucun prix."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+
+        from apps.roles.models import Role
+        from apps.roles.permissions_registre import CANONICAL_SYSTEM_ROLES
+        cls.company = Company.objects.get_or_create(
+            slug='ccat16-co', defaults={'nom': 'CCAT16 Co'})[0]
+        autre = Company.objects.get_or_create(
+            slug='ccat16-autre', defaults={'nom': 'CCAT16 Autre'})[0]
+        roles = {nom: Role.objects.create(
+            company=cls.company, nom=nom, permissions=list(perms),
+            est_systeme=True) for nom, perms in CANONICAL_SYSTEM_ROLES}
+        cls.user = get_user_model().objects.create_user(
+            username='ccat16_com', password='x', company=cls.company,
+            role=roles['Commercial'])
+        # Un panneau chiffré d'une AUTRE société ne rend pas ce poste « ok ».
+        Produit.objects.create(company=autre, nom='Panneau 550W',
+                               prix_vente=Decimal('900'))
+
+    def test_route_api(self):
+        from rest_framework.test import APIClient
+        from rest_framework_simplejwt.tokens import AccessToken
+
+        from apps.ventes.selectors import postes_pret_devis_residentiel
+        client = APIClient()
+        client.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        r = client.get(URL_PRET_RES)
+        self.assertEqual(r.status_code, 200)
+        res = r.json()
+        self.assertEqual(set(res), set(CONTRAT_PRET_RES['exemple']))
+        self.assertEqual(res, json.loads(json.dumps(
+            postes_pret_devis_residentiel(self.company), default=str)))
+        self.assertEqual(
+            [p['cle'] for p in res['postes']],
+            [p['cle'] for p in CONTRAT_PRET_RES['exemple']['postes']])
+        panneau = next(p for p in res['postes'] if p['cle'] == 'panneau')
+        self.assertEqual(panneau['statut'], 'absent')
+        self.assertFalse(res['pret'])
+        cles = {c.lower() for c in _cles_recursives(res)}
+        self.assertFalse([c for c in cles if 'prix' in c or 'marge' in c])
+        self.assertEqual(APIClient().get(URL_PRET_RES).status_code, 401)

@@ -112,6 +112,8 @@ const stockApi = {
   getPretDevisCi: () => api.get('/stock/produits/pret-devis-ci/'),
   // CCAT14 — volet agricole du même tableau (contrat pret_devis_agricole.json).
   getPretDevisAgricole: () => api.get('/stock/produits/pret-devis-agricole/'),
+  // CCAT16 — volet résidentiel (contrat pret_devis_residentiel.json).
+  getPretDevisResidentiel: () => api.get('/stock/produits/pret-devis-residentiel/'),
   exportProduitsXlsx: (ids) =>
     api.post('/stock/produits/export-xlsx/', { ids }, { responseType: 'blob' }),
   // N15 — Stock multi-emplacements (dépôt principal + camionnette …).

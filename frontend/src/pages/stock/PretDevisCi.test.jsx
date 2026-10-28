@@ -15,15 +15,18 @@ import { CatalogueTable } from './CatalogueTable.jsx'
    sur le vrai CatalogueTable ci-dessous.
    ========================================================================== */
 
-const { getPretDevisCi, getPretDevisAgricole } = vi.hoisted(() => ({
-  getPretDevisCi: vi.fn(), getPretDevisAgricole: vi.fn(),
+const { getPretDevisCi, getPretDevisAgricole, getPretDevisResidentiel } = vi.hoisted(() => ({
+  getPretDevisCi: vi.fn(), getPretDevisAgricole: vi.fn(), getPretDevisResidentiel: vi.fn(),
 }))
-vi.mock('../../api/stockApi', () => ({ default: { getPretDevisCi, getPretDevisAgricole } }))
+vi.mock('../../api/stockApi', () => ({
+  default: { getPretDevisCi, getPretDevisAgricole, getPretDevisResidentiel },
+}))
 
 import PretDevisCi from './PretDevisCi.jsx'
 
 const contrat = documentContrat('stock', 'pret_devis_ci').exemple
 const contratAgri = documentContrat('stock', 'pret_devis_agricole').exemple
+const contratRes = documentContrat('stock', 'pret_devis_residentiel').exemple
 
 function Lieu() {
   const l = useLocation()
@@ -61,6 +64,7 @@ describe('PretDevisCi (CCAT9, CCAT14)', () => {
   beforeEach(() => {
     getPretDevisCi.mockReset()
     getPretDevisAgricole.mockReset()
+    getPretDevisResidentiel.mockReset()
     if (!window.matchMedia) {
       window.matchMedia = vi.fn().mockImplementation((q) => ({
         matches: false, media: q, onchange: null,
@@ -111,6 +115,26 @@ describe('PretDevisCi (CCAT9, CCAT14)', () => {
     // les postes C&I ne sont plus affichés
     const posteCi = contrat.postes.find((p) => p.statut === 'a_completer' && p.obligatoire)
     expect(screen.queryByTestId(`poste-ci-${posteCi.cle}`)).toBeNull()
+  })
+
+  it('CCAT16 — onglet Résidentiel : chaque groupe du contrat est affiché, lien Stock sans filtre', async () => {
+    getPretDevisCi.mockResolvedValue(toutOk(contrat))
+    getPretDevisAgricole.mockResolvedValue(toutOk(contratAgri))
+    getPretDevisResidentiel.mockResolvedValue(reponseContrat('stock', 'pret_devis_residentiel'))
+    monter(<PretDevisCi />)
+    const onglet = await screen.findByRole('tab', {
+      name: `Résidentiel — ${contratRes.nb_obligatoires_manquants} à compléter` })
+    expect(onglet.getAttribute('aria-selected')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Voir tout' }))
+    // Aucun poste du contrat n'est perdu, quel que soit son groupe.
+    for (const p of contratRes.postes) {
+      expect(screen.getByTestId(`poste-ci-${p.cle}`)).toBeTruthy()
+    }
+    const poste = contratRes.postes.find((p) => p.statut === 'a_completer' && p.obligatoire)
+    const ligne = screen.getByTestId(`poste-ci-${poste.cle}`)
+    fireEvent.click(within(ligne).getByRole('link', { name: poste.action.texte }))
+    expect(screen.getByTestId('lieu').textContent).toBe(poste.action.lien)
+    expect(document.body.textContent).not.toMatch(/prix_achat|MAD|DH/)
   })
 
   it('C&I prêt, agricole non : l’onglet agricole est ouvert d’office ; compte « prêt » sans chiffre', async () => {
