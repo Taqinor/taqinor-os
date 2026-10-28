@@ -1390,12 +1390,15 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
     elif resultat.get('prix_manquants'):
         composition = _composition_prix_manquants(resultat)
     # Fondateur 26/10/2026 — l'option « avec batterie » (hybrides BT + banque).
+    # CEC1 (O&M hors an 0) est une règle du 27/10 : un devis envoyé ≤ 2 recalculé la garde.
+    from .regles_calcul import REGLES_CORRIGEES_2710, regles_au_moins
     avec = option_avec_de_l_etude(
         catalogue, None if onduleurs_imposes else evaluation, choix=res.valeur('batterie_souhaitee'),
         lead=lead, charge=jours_types, production=production_pour_bilan(production), tension=tension,
         revente_choisie=revente, valoriser=valoriser, taux_tva_pct=getattr(reglages, 'tva_standard', None),
         phase=phase, ps_kva=_num(res.valeur('puissance_souscrite_kva')), composer=composer,
-        borne_toit=borne_toit, imposee=option_avec_imposee)
+        borne_toit=borne_toit, imposee=option_avec_imposee,
+        regles_2710=regles_au_moins(devis, REGLES_CORRIGEES_2710))
     alertes.extend(_alertes_postes(composition, avec))
     hypotheses.extend(avec['hypotheses'])
 
