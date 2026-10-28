@@ -134,6 +134,22 @@ def task_generate_devis_pdf(self, devis_id, pdf_options=None):
         raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
 
 
+# Queue `interactive` (même worker que les rendus PDF à la demande) : déclarée
+# sur la tâche, la table CELERY_TASK_ROUTES vivant dans un fichier ≥ 2 000 lignes.
+@shared_task(name='ventes.rendre_pdf_signe', acks_late=True,
+             queue='interactive')
+def task_rendre_pdf_signe(devis_id, user_id=None, envoyer_confirmation=False,
+                          jeton=''):
+    """ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE — l'exemplaire SIGNÉ rendu hors de
+    la requête d'acceptation (mis en file après le commit), puis la
+    confirmation (exemplaire joint). Sceau re-vérifié, idempotente, aucun
+    statut écrit (règle #4) : voir ``domain/pdf_signe.py``."""
+    from .domain.pdf_signe import rendre_pdf_signe
+    return rendre_pdf_signe(devis_id, user_id=user_id,
+                            envoyer_confirmation=envoyer_confirmation,
+                            jeton=jeton)
+
+
 # QG2/PVFRESH — le format « une page » est le SEUL que le moteur accepte pour
 # N'IMPORTE QUEL devis : la règle dure de ``quote_engine.builder`` refuse
 # (``ValueError``) de bâtir le format « full » d'un devis dont aucune option ne

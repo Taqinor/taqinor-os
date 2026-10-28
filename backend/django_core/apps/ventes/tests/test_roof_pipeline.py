@@ -591,10 +591,13 @@ class TestQ7ProposalAcceptSuccess(_Q7ProposalAcceptBase):
 
     def test_accept_flips_status_and_writes_stamp(self):
         from apps.ventes import quote_engine
+        from apps.ventes.tests._quote_engine_common import pdf_signe_en_ligne
+        # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE — le rendu signé tourne dans la
+        # tâche mise en file au commit : jouée ici en ligne.
         with mock.patch(
             'apps.ventes.quote_engine.generate_premium_devis_pdf',
             wraps=quote_engine.generate_premium_devis_pdf,
-        ) as espion:
+        ) as espion, pdf_signe_en_ligne(self):
             resp = self.api.post(
                 self._url(self.link.token),
                 {'nom': 'Salma Bennani', 'consent_esign': True,

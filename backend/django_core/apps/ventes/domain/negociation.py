@@ -413,8 +413,8 @@ def signer_avenant(devis, *, nom, ip=None, user_agent='', consentement=True,
     from django.db import transaction
 
     from apps.ventes import activity
-    from apps.ventes.domain.cycle_vie import (
-        _create_esign_record, _store_signed_pdf)
+    from apps.ventes.domain import pdf_signe
+    from apps.ventes.domain.cycle_vie import _create_esign_record
     from apps.ventes.models import Devis, DevisSignature
 
     with transaction.atomic():
@@ -434,7 +434,8 @@ def signer_avenant(devis, *, nom, ip=None, user_agent='', consentement=True,
             verrouille, None,
             f'Avenant signé en ligne par {(nom or "").strip() or "le client"}'
             + (f' — IP {ip}' if ip else '') + '.')
-    _store_signed_pdf(devis=verrouille)
+    # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE — rendu mis en file après le commit.
+    pdf_signe.planifier_pdf_signe(verrouille)
     logger.info('VNT61: avenant %s signé par le client (statut inchangé).',
                 verrouille.reference)
     return signature
