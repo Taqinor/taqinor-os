@@ -48,13 +48,22 @@
         "leads_ouverts": 20,
         "au_plafond": true
       }
+    ],
+    "equipes_reglables": [
+      {
+        "id": 7,
+        "nom": "Casa",
+        "confirmation_responsable": true,
+        "delai_minutes": 5
+      }
     ]
   },
   "exemple_vide": {
     "equipe": null,
     "en_attente": 0,
     "leads": [],
-    "membres": []
+    "membres": [],
+    "equipes_reglables": []
   },
   "exemple_file_vide": {
     "equipe": {
@@ -79,6 +88,14 @@
         "leads_ouverts": 20,
         "au_plafond": true
       }
+    ],
+    "equipes_reglables": [
+      {
+        "id": 7,
+        "nom": "Casa",
+        "confirmation_responsable": true,
+        "delai_minutes": 5
+      }
     ]
   },
   "notes": {
@@ -86,6 +103,7 @@
     "leads": "Leads en attente de décision, du plus ancien au plus récent. Champs absents du lead = null (jamais inventés). `attente_minutes` et `auto_le` en temps ouvré (horaires de la société).",
     "propose.raison": "Texte lisible de la règle appliquée, ou « Rotation équilibrée » quand aucune règle ne correspond.",
     "membres": "Membres ACTIFS de l'équipe, dans l'ordre d'affichage ; `leads_ouverts` = leads non signés/froids/perdus ; `au_plafond` selon le plafond de leads ouverts du profil.",
-    "exemple_file_vide": "Équipe dirigée, rien en attente (l'écran dit « Aucun lead en attente ») ; `exemple_vide` = l'appelant ne dirige aucune équipe qui confirme."
+    "exemple_file_vide": "Équipe dirigée, rien en attente (l'écran dit « Aucun lead en attente ») ; `exemple_vide` = l'appelant ne dirige aucune équipe qui confirme.",
+    "equipes_reglables": "Équipes commerciales dont l'appelant peut régler l'attribution (interrupteur « Le responsable confirme chaque lead », délai, règles de proposition) : celles dont il est le responsable, celles du département dont il est la tête (directeur commercial), toutes pour Direction/Admin. Écriture : `PATCH /api/django/crm/dispatch/reglages/<equipe_id>/` `{confirmation_responsable, delai_minutes}` et le CRUD `crm/regles-attribution/`."
   }
 }
