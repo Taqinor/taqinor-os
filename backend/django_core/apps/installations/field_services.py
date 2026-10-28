@@ -62,7 +62,7 @@ def seed_shotlist_slots(company):
 
 
 def active_shotlist(company):
-    """Créneaux actifs de la société, triés (phase puis ordre)."""
+    """Créneaux actifs de la société (objet OU id — APRF40), triés (phase puis ordre)."""
     slots = list(ShotListSlot.objects.filter(company=company, actif=True))
     slots.sort(key=lambda s: (PHASE_ORDER.index(s.phase)
                               if s.phase in PHASE_ORDER else 99, s.ordre, s.id))

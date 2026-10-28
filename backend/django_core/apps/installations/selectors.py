@@ -2435,8 +2435,11 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
          planifiées du technicien ce jour-là (0 si aucune — dépôt inconnu).
     Fenêtre de recherche : 14 jours ouvrés à partir de ``date_cible`` (défaut
     aujourd'hui). Lecture seule, NE MUTE RIEN, scopée société. Renvoie
-    ``{propositions: [{technicien_id, nom, date, score...}], chantier_id}``."""
+    ``{propositions: [{technicien_id, nom, date, score...}], chantier_id}``.
+    APRF41 — calcul partagé avec la replanification en masse
+    (`planification_lot.suggerer_creneaux_lot`) : mêmes propositions."""
     import datetime
+    from .planification_lot import contexte_planification, duree_valide, propositions_chantier
 
     chantier = installation_scoped(company, chantier_id)
     if chantier is None:
@@ -2449,95 +2452,11 @@ def suggerer_creneau(company, *, chantier_id, type_intervention, duree_jours=1,
     if not techniciens:
         return {'chantier_id': chantier_id, 'propositions': []}
 
-    eligibles = techniciens
-
-    site_lat = getattr(chantier, 'gps_lat', None)
-    site_lng = getattr(chantier, 'gps_lng', None)
-
-    # ACHT39 — occupation lue par LE sélecteur partagé (annulées exclues,
-    # équipe canonique résolue) : {jour: [interventions]} et
-    # {technicien: [jours occupés]}, chargés UNE fois pour toute la fenêtre.
-    try:
-        duree_jours = max(int(duree_jours or 1), 1)
-    except (TypeError, ValueError):
-        duree_jours = 1
-    fin_fenetre = date_cible + datetime.timedelta(days=14 + duree_jours * 2 + 4)
-    par_jour = {}
-    occupe = {}
-    for iv in interventions_actives(
-            company, date_cible, fin_fenetre).select_related('installation'):
-        par_jour.setdefault(iv.date_prevue, []).append(iv)
-        for membre_id in membres_intervention(iv):
-            occupe.setdefault(membre_id, []).append(iv.date_prevue)
-
-    def _bloc(depart):
-        # ACHT39 — un créneau de ``duree_jours`` s'étale sur autant de jours
-        # OUVRÉS (le jour de départ ouvre le bloc ; 1 jour = ce seul jour).
-        jours = [depart]
-        courant = depart
-        while len(jours) < duree_jours:
-            courant += datetime.timedelta(days=1)
-            if courant.weekday() < 5:
-                jours.append(courant)
-        return jours
-
-    # Fenêtre de recherche : 14 jours calendaires à partir de date_cible.
-    candidats = []
-    jour = date_cible
-    jours_testes = 0
-    while jours_testes < 14:
-        # Interventions déjà planifiées CE JOUR (toute ressource confondue) —
-        # sert de proxy de proximité : un technicien déjà dans le secteur ce
-        # jour-là minimise le trajet total.
-        interventions_du_jour = par_jour.get(jour, [])
-        bloc = _bloc(jour)
-        for tech in eligibles:
-            # FG302 — indisponibilité sur TOUT le bloc.
-            if ressource_indisponible(company, tech.id, bloc[0], bloc[-1]) \
-                    and any(ressource_indisponible(company, tech.id, j, j)
-                            for j in bloc):
-                continue
-            # FG300 — conflit : le technicien (principal OU membre d'équipe)
-            # porte déjà une intervention active sur un jour du bloc →
-            # jamais proposé pour ce créneau.
-            if set(occupe.get(tech.id, ())) & set(bloc):
-                continue
-            charge = sum(
-                1 for j in occupe.get(tech.id, ())
-                if jour <= j < jour + datetime.timedelta(days=14))
-            # Distance au site la plus courte parmi les interventions déjà
-            # planifiées CE JOUR (toute ressource) — 0 si aucune GPS
-            # disponible (dépôt/site inconnu, jamais d'exception).
-            distance = None
-            if site_lat is not None and site_lng is not None:
-                for iv in interventions_du_jour:
-                    autre_lat = getattr(iv.installation, 'gps_lat', None)
-                    autre_lng = getattr(iv.installation, 'gps_lng', None)
-                    if autre_lat is None or autre_lng is None:
-                        continue
-                    d = _haversine_km(
-                        site_lat, site_lng, autre_lat, autre_lng)
-                    if distance is None or d < distance:
-                        distance = d
-            candidats.append({
-                'technicien_id': tech.id,
-                'nom': (getattr(tech, 'get_full_name', lambda: '')()
-                        or tech.username),
-                'date': jour.isoformat(),
-                'charge': charge,
-                'distance_km': round(distance, 1) if distance is not None
-                else None,
-            })
-        jour += datetime.timedelta(days=1)
-        jours_testes += 1
-
-    candidats.sort(key=lambda c: (
-        c['charge'],
-        c['distance_km'] if c['distance_km'] is not None else float('inf'),
-        c['date'], c['nom'].lower()))
+    duree_jours = duree_valide(duree_jours)
+    ctx = contexte_planification(company, techniciens, date_cible, duree_jours)
     return {
         'chantier_id': chantier_id,
-        'propositions': candidats[:max(int(n or 3), 1)],
+        'propositions': propositions_chantier(chantier, ctx, date_cible, duree_jours, n),
     }
 
 

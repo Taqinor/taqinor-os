@@ -12,8 +12,8 @@ from core.conflit_etat import ConflitEtat
 from core.viewsets import CompanyScopedModelViewSet
 from django.utils import timezone
 
-from .. import activity
-from .. import intervention_activity
+from .. import activity, intervention_activity
+from ..listes_prechargees import PhotosPrechargeesListeMixin  # APRF40
 from ..models import (
     Installation,
     Intervention,
@@ -165,7 +165,7 @@ def seed_types_intervention(company):
     p8=oa.qi('ticket'),
     p9=oa.qd('date_prevue', desc='Interventions prévues ce jour exact (AAAA-MM-JJ).'),
 )
-class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
+class InterventionViewSet(PhotosPrechargeesListeMixin, oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
