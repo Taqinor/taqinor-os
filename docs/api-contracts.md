@@ -488,6 +488,8 @@
     composants:inconnu, detail:texte, goulots:inconnu, kit_id:inconnu, kit_nom:inconnu, kits_assemblables:inconnu
 - frontend/src/api/stockApi.js :: getOnboardingFournisseur -> /api/django/stock/fournisseurs/<>/onboarding
     dossier:inconnu, obligatoire:inconnu, progression:inconnu
+- frontend/src/api/stockApi.js :: getPretDevisAgricole -> /api/django/stock/produits/pret-devis-agricole
+    nb_obligatoires_manquants:inconnu, postes:inconnu, pret:booleen
 - frontend/src/api/stockApi.js :: getProduitUtiliseDans -> /api/django/stock/produits/<>/utilise-dans
     chantiers:inconnu, devis:inconnu, leads:inconnu, limite:inconnu
 - frontend/src/api/stockApi.js :: inventaire -> /api/django/stock/produits/inventaire

@@ -6,7 +6,11 @@ Un seul endroit pour « le prix est-il connu ? » : le filtre « C&I à complét
 seule lecture cross-app : le repli par mots du nom, via ``apps.ventes.selectors``
 (jamais ``ventes.domain`` ni ses modèles).
 """
+import logging
+
 from core.product_roles import ROLES_CI_BAREME_COFFRET
+
+logger = logging.getLogger(__name__)
 
 
 def prix_connu_ci(produit, role):
@@ -149,14 +153,43 @@ def etat_option_batterie(produit):
     return None
 
 
+LIBELLE_PANNEAU = 'Panneau (devis C&I)'
+
+
+def etat_panneau(produit):
+    """CCAT11 — l'état d'un panneau vis-à-vis du devis C&I, à la forme de
+    ``etat_ci_produit`` ; sinon ``None``. Mêmes règles que le catalogue du
+    moteur (``ventes.domain.etude_ci.lire_catalogue_ci``) : sans puissance
+    Pmax publiée aucun panneau ne se compte, sans prix le module n'est pas
+    chiffré — le devis C&I est bloqué dans les deux cas."""
+    from .selectors import specs_for_produit
+    role, source = _role_effectif(produit)
+    if role != 'panneau':
+        return None
+    try:
+        specs = specs_for_produit(produit) or {}
+    except Exception:  # fiche illisible : même repli que le moteur
+        logger.warning('Fiche illisible pour le produit %s', produit.pk,
+                       exc_info=True)
+        specs = {}
+    pmax = _num(specs.get('pmax_wc'))
+    if not pmax or pmax <= 0:
+        motif = 'fiche incomplète : puissance (Pmax)'
+    elif not _prix_vente_saisi(produit):
+        motif = MOTIF_SANS_PRIX
+    else:
+        motif = None
+    return _etat('panneau', LIBELLE_PANNEAU, source, produit, motif)
+
+
 def etat_ci_complet(produit):
     """``etat_ci_produit`` (rôles C&I) sinon l'état de l'option « avec
-    batterie ». Une batterie au rôle ``batterie_ci`` garde son état C&I mais
+    batterie », sinon celui du panneau (CCAT11). Une batterie au rôle ``batterie_ci`` garde son état C&I mais
     sa fiche et son prix sont aussi contrôlés (le moteur l'écarte sinon)."""
     from .selectors import etat_ci_produit
     etat = etat_ci_produit(produit)
     if etat is None:
-        return etat_option_batterie(produit)
+        return etat_option_batterie(produit) or etat_panneau(produit)
     if (etat['role_ci'] == 'batterie_ci' and etat['eligible_ci']
             and not _batterie_haute_tension(produit)):
         motif = _motif_batterie(produit)

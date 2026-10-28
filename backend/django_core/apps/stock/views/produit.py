@@ -390,7 +390,13 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 'atp',
                 # NTRET17 — étiquette PRIX de rayon : impression, LECTURE
                 # SEULE, jamais de prix d'achat (même garde qu'`etiquettes`).
-                'etiquettes_prix']:
+                'etiquettes_prix',
+                # CCAT8 — « Prêt pour le devis C&I » : LECTURE SEULE, jamais de prix.
+                'pret_devis_ci',
+                # CCAT13 — idem pour le volet agricole (pompage).
+                'pret_devis_agricole',
+                # CCAT16 — idem pour le volet résidentiel.
+                'pret_devis_residentiel']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
@@ -1379,6 +1385,36 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 {'detail': 'Aucune traçabilité trouvée pour ce numéro.'},
                 status=status.HTTP_404_NOT_FOUND)
         return Response(chaine)
+
+    @extend_schema(responses=OBJET)
+    @action(detail=False, methods=['get'], url_path='pret-devis-ci',
+            permission_classes=[IsAnyRole])
+    def pret_devis_ci(self, request):
+        """CCAT8 — chaque poste du devis C&I : statut, article en cause, raison,
+        lien où corriger. Lecture seule, bornée à la société, jamais de prix."""
+        from ..pret_devis_ci import pret_devis_ci
+        return Response(pret_devis_ci(request.user.company))
+
+    @extend_schema(responses=OBJET)
+    @action(detail=False, methods=['get'], url_path='pret-devis-agricole',
+            permission_classes=[IsAnyRole])
+    def pret_devis_agricole(self, request):
+        """CCAT13 — jumeau agricole de ``pret_devis_ci`` : chaque poste du kit de
+        pompage (pompes à courbe tri/mono, variateur, panneau, structure,
+        barème INST-PMP, transport, options). Lecture seule, bornée à la
+        société, jamais de prix."""
+        from ..pret_devis_agricole import pret_devis_agricole
+        return Response(pret_devis_agricole(request.user.company))
+
+    @extend_schema(responses=OBJET)
+    @action(detail=False, methods=['get'], url_path='pret-devis-residentiel',
+            permission_classes=[IsAnyRole])
+    def pret_devis_residentiel(self, request):
+        """CCAT16 — volet résidentiel du même tableau : les règles sont celles
+        du composeur résidentiel, servies par ``apps.ventes.selectors`` (RSIZ11).
+        Lecture seule, bornée à la société, jamais de prix."""
+        from apps.ventes.selectors import postes_pret_devis_residentiel
+        return Response(postes_pret_devis_residentiel(request.user.company))
 
     @extend_schema(parameters=[P('code', STR, True, 'Code scanné (PRODUIT:<id> / SYSTEME:<id>)',
                                  pattern=MOTIF_NON_BLANC_SANS_NUL)], responses=OBJET)
