@@ -17,25 +17,25 @@ frontend/src/pages/parametres/EmailSection.jsx::saveTemplate  parametres/email-t
 frontend/src/pages/parametres/EmailSection.jsx::resetTemplate  parametres/email-templates/bulk/  @action PUT (pagination_class=None), renvoie la liste effective complète {results} @backend/django_core/apps/parametres/views_email.py:126
 frontend/src/pages/parametres/StatutsSection.jsx::DomaineList  parametres/statuts/effective/  @action(pagination_class=None), statuts canoniques complets d'un domaine dans {domaine, results} @backend/django_core/apps/parametres/views_statuses.py:158
 frontend/src/pages/parametres/StatutsSection.jsx::save  parametres/statuts/bulk/  @action PUT (pagination_class=None), renvoie les statuts effectifs complets du domaine {results} @backend/django_core/apps/parametres/views_statuses.py:178
-frontend/src/pages/installations/InstallationsPage.jsx::InstallationsPage  crm/assignable-users/  vue @api_view (employés assignables de la société, liste complète non paginée) @backend/django_core/apps/crm/views.py:105
+frontend/src/pages/installations/InstallationsPage.jsx::InstallationsPage  crm/assignable-users/  vue @api_view (employés assignables de la société, liste complète non paginée) @backend/django_core/apps/crm/views.py:107
 frontend/src/pages/visites/VisiteHistoriquePanel.jsx::VisiteHistoriquePanel  visites/visites/  pagination_class = None sur le ViewSet des visites (liste complète) @backend/django_core/apps/visites/views.py:223
 # ENF15 (14-15/10/2026) — écrans dont la liste lue est NON paginée côté serveur (marqueur `pagination_class = None` / `@api_view` / tranche posé dans le backend).
 frontend/src/features/core/ExplorateurDonneesPage.jsx::ExplorateurDonneesPage  core/saved-queries/  SavedQueryViewSet pagination_class = None (liste complète) @backend/django_core/core/views.py:887
 frontend/src/features/crm/workspace/VisiteTab.jsx::VisiteTab  visites/visites/  pagination_class = None sur le ViewSet des visites @backend/django_core/apps/visites/views.py:223
 frontend/src/pages/visites/VisiteBureauEtudesPage.jsx::VisiteBureauEtudesPage  visites/visites/  pagination_class = None sur le ViewSet des visites @backend/django_core/apps/visites/views.py:223
 frontend/src/features/audit/ObjectHistoryButton.jsx::charger  audit/objets/<ct>/<id>/history/  vue @api_view plafonnée par limit (défaut 100, max 500) @backend/django_core/apps/audit/views.py:374
-frontend/src/features/crm/workspace/TimelineTab.jsx::TimelineTab  crm/leads/<id>/jalons-devis/  @action(pagination_class=None) liste complète des jalons @backend/django_core/apps/crm/views.py:1128
-frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::CadenceFrise  crm/relance-etapes/?lead=  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:239
-frontend/src/pages/crm/RelancesDuJourWidget.jsx::charger  crm/relance-etapes/  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:239
-frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx::rien  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1839
-frontend/src/features/offlinesync/mobile/EquipeCommercialeHome.jsx::EquipeCommercialeHome  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1839
-frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour  crm/relance-etapes/suivi/  @action(pagination_class=None) liste calculée complète @backend/django_core/apps/crm/cadence_views.py:338
+frontend/src/features/crm/workspace/TimelineTab.jsx::TimelineTab  crm/leads/<id>/jalons-devis/  @action(pagination_class=None) liste complète des jalons @backend/django_core/apps/crm/views.py:1130
+frontend/src/features/crm/workspace/sections/CadenceFrise.jsx::CadenceFrise  crm/relance-etapes/?lead=  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:271
+frontend/src/pages/crm/RelancesDuJourWidget.jsx::charger  crm/relance-etapes/  RelanceEtapeViewSet pagination_class = None (list écrit à la main) @backend/django_core/apps/crm/cadence_views.py:271
+frontend/src/features/offlinesync/mobile/AFaireAujourdhui.jsx::rien  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1871
+frontend/src/features/offlinesync/mobile/EquipeCommercialeHome.jsx::EquipeCommercialeHome  crm/leads/relances/  @action(pagination_class=None) file de relance complète @backend/django_core/apps/crm/cadence_views.py:1871
+frontend/src/pages/crm/ControleSuiviPanel.jsx::ListeDuJour  crm/relance-etapes/suivi/  @action(pagination_class=None) liste calculée complète @backend/django_core/apps/crm/cadence_views.py:370
 frontend/src/pages/crm/DormantAccountsWidget.jsx::DormantAccountsWidget  crm/clients/dormants/  @action(pagination_class=None) liste complète @backend/django_core/apps/crm/clients_views.py:996
 frontend/src/pages/crm/dashboard/PortfolioWidget.jsx::PortfolioWidget  crm/clients/mon-portefeuille/  @action(pagination_class=None) portefeuille complet @backend/django_core/apps/crm/clients_views.py:1061
 frontend/src/pages/crm/VisiteursPage.jsx::chargerAppareils  crm/visites-externes/appareils/  tranche [:200] côté serveur @backend/django_core/apps/crm/clients_views.py:402
-frontend/src/pages/crm/RelancesSuiviPage.jsx::RelancesSuiviPage  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:105
-frontend/src/pages/interventions/InterventionsPage.jsx::reload  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:105
-frontend/src/pages/installations/SuiviGpsPage.jsx::SuiviGpsPage  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:105
+frontend/src/pages/crm/RelancesSuiviPage.jsx::RelancesSuiviPage  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:107
+frontend/src/pages/interventions/InterventionsPage.jsx::reload  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:107
+frontend/src/pages/installations/SuiviGpsPage.jsx::SuiviGpsPage  crm/assignable-users/  vue @api_view (liste plate) @backend/django_core/apps/crm/views.py:107
 frontend/src/features/ged/GedNavigator.jsx::submit  ged/documents/docqa/  @action(pagination_class=None) top-k plafonné à 50 @backend/django_core/apps/ged/views.py:1132
 frontend/src/pages/stock/FournisseurFiche360.jsx::reload  stock/fournisseurs/<id>/portail-tokens/  @action(pagination_class=None) @backend/django_core/apps/stock/views/fournisseur.py:418
 frontend/src/pages/sav/ContratsMaintenance.jsx::loadTournee  sav/contrats-maintenance/tournee/  @action(pagination_class=None) tournée calculée @backend/django_core/apps/sav/maintenance.py:339
