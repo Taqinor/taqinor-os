@@ -36,6 +36,9 @@ describe('AGR213 — vue client de la carte', () => {
       .toContain(formatNumber(ex.depense_actuelle.annuelle_mad))
     const an1 = ex.economie.flux.find((f) => f.annee === 1)
     expect(screen.getByTestId('economie-nette').textContent).toContain(formatNumber(an1.flux_mad))
+    // AGV11 — cumul servi de l'année d'horizon, lu tel quel.
+    const fin = ex.economie.flux.find((f) => f.annee === ex.economie.horizon_ans)
+    expect(screen.getByTestId('economie-10-ans').textContent).toContain(formatNumber(fin.cumul_mad))
     expect(screen.getByTestId('retour-ans').textContent).toContain(`${ex.economie.retour_ans} ans`)
     expect(screen.getByTestId('cout-m3').textContent).toContain(formatNumber(ex.mad_par_m3.actuel))
     expect(screen.getByTestId('detail-declare').textContent).toContain('déclaré le 12/09')
@@ -54,6 +57,7 @@ describe('AGR213 — vue client de la carte', () => {
     render(<CarteEconomiePompageVue reponse={CONTRAT.exemple_rien_declare} />)
     expect(screen.getByTestId('depense-actuelle').textContent).toContain('non calculé')
     expect(screen.getByTestId('economie-nette').textContent).toContain('non calculé')
+    expect(screen.getByTestId('economie-10-ans').textContent).toContain('non calculé')
     expect(screen.getByTestId('motifs-non-publiable').textContent)
       .toContain('énergie actuelle non déclarée')
     expect(screen.getByTestId('omissions').textContent).toContain('prix payé non déclaré')

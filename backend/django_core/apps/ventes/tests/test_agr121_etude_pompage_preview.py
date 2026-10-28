@@ -458,3 +458,13 @@ class ModeEtTypePompeAlertesTests(SimpleTestCase):
         self.assertEqual(alerte[0]['champ'], 'type_pompe')
         self.assertNotIn('type_pompe_supposee',
                          self._codes(self._etude(type_pompe='immergee')))
+
+
+class TensionPlaqueUneSourceAGV14(SimpleTestCase):
+    """AGV14 — la tension de plaque relevée n'entre plus brute par la couche
+    visite : elle passe par la colonne Lead (AGV3, 220/380 seulement)."""
+
+    def test_la_couche_visite_ne_pose_plus_la_tension(self):
+        from apps.ventes.domain.pompage import MESURES_VISITE
+        chemins = {chemin for _cat, _code, chemin in MESURES_VISITE}
+        self.assertNotIn('plaque.tension_v', chemins)
