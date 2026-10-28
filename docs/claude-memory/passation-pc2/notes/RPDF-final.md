@@ -1,0 +1,5 @@
+# RPDF — état final (28/10/2026 02:35 UTC)
+
+1. MERGÉ : #1105 (garanties Deye 5 ans / Dyness DL5.0C 7 ans, migration stock 0174) et #1114 @ 944b739fc (rounds 1-3 : RPDF1-16, RPDF20-26, RPDF30 ; goldens résidentiels recapturés ; plan PLAN_AUDIT_MOTEUR.md groupe RPDF). Aucun conteneur, aucune branche locale non poussée (claude/res-rpdf-r2r3 = sauvegarde, entièrement dans main).
+2. À REVOIR PAR LE FONDATEUR : nombres à l'anglaise dans le résidentiel EN (extension D-ACI-21) ; Dyness DL5.0C V2 = 7 ans ; garantie Deye lue en direct (devis envoyés affichent 5 ans au prochain rendu).
+3. RESTE (pour PC2) : onduleurs Deye hors liste semée (30 kW…) peut-être encore à 120 mois en base (requête lecture seule à faire) ; description semée « SUN-…SG » (CCAT) ; accord arabe de « lg_retour_en » (legacy) ; page 2 premium 2 options : blanc entre tableau et cartes d'options ; « Current bill ≈ 36 000 » au format FR dans l'exemple EN de la page 4 ; D6 dossier technique (+1 page en option, dernier round) non commencé ; agricole legacy_onepage repli vers cartes_pompage (AGC) non fait.
