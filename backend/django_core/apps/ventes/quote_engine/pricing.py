@@ -1011,6 +1011,28 @@ def _fr_pct(v) -> str:
     return s.replace(".", ",")
 
 
+_AVEU_ORIGINE = ("batterie — hypothèse de référence, le constructeur de ce "
+                 "produit ne publie pas cette valeur dans notre fiche.")
+_REFERENCE_DITE = "batterie — valeur de référence retenue pour cette technologie."
+
+
+def _notes_origine(cfa) -> dict:
+    """RPDF15 — un devis aux règles d'origine (< 3) garde la phrase qu'il a
+    imprimée (décision « nouveaux rendus seulement ») ; seul un nouveau rendu
+    dit la valeur de référence sans aveu."""
+    notes = [str(n).replace(_REFERENCE_DITE, _AVEU_ORIGINE) for n in cfa.get("notes") or []]
+    return {**cfa, "notes": notes}
+
+
+def _hypotheses_rendues(cfa, cout_sans, cout_avec, *, deux_options, regles_2710):
+    """RPDF12/RPDF15 — nouveaux rendus (niveau 3) : provision à deux montants
+    quand le document a deux options aux onduleurs différents, valeur de
+    référence dite sans aveu ; règles d'origine : l'hypothèse d'hier."""
+    if not regles_2710:
+        return _notes_origine(cfa)
+    return _provision_par_option(cfa, cout_sans if deux_options else None, cout_avec)
+
+
 def _provision_par_option(cfa, cout_sans, cout_avec) -> dict:
     """RPDF8 — deux onduleurs de prix différents : un creux par courbe, donc
     les DEUX montants (clés lues par la légende du PDF) et la phrase
@@ -1877,12 +1899,13 @@ def calculate_savings_roi(
         # (ou son absence explicite) et abattement batterie seulement s'il
         # s'applique. L'option affichée en priorité est l'option 2 quand elle
         # existe, sinon l'option 1 — même choix que la courbe 25 ans.
-        "cashflow_assumptions": _provision_par_option(cashflow_assumptions(
+        "cashflow_assumptions": _hypotheses_rendues(cashflow_assumptions(
             inverter_replace_cost=(inverter_cost_avec if _stockage
                                    else inverter_cost_sans),
             stockage=_stockage,
             battery_roundtrip=_rt_prouve,
             battery_roundtrip_source=_rt_source,
             # QJR158 (c) — LES MÊMES valeurs que les deux cashflows ci-dessus.
-            **_cf_params), inverter_cost_sans if deux_options else None, inverter_cost_avec),
+            **_cf_params), inverter_cost_sans, inverter_cost_avec,
+            deux_options=deux_options, regles_2710=regles_2710),
     }
