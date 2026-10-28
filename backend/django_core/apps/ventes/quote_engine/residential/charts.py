@@ -41,8 +41,29 @@ plt.rcParams.update({
     "axes.titlecolor": NAVY,
 })
 
-_MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin",
-           "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"]
+def _langue_image(data) -> str:
+    """Langue des TEXTES DESSINÉS dans les images matplotlib. Matplotlib ne
+    met pas l'arabe en forme (lettres non liées, sens inversé) : un document
+    arabe garde donc l'anglais DANS l'image ; fr/en suivent le document."""
+    from . import theme
+    from .. import i18n_labels
+    langue = theme.langue_doc(data)
+    return "en" if i18n_labels.est_rtl(langue) else langue
+
+
+def _t(cle: str, langue: str = "fr", **valeurs) -> str:
+    from .. import i18n_labels
+    txt = i18n_labels.libelle(cle, langue)
+    return txt.format(**valeurs) if valeurs else txt
+
+
+def _mois(langue: str = "fr") -> list:
+    return _t("rpdf_ch_mois", langue).split(",")
+
+
+def _milliers(v, langue: str = "fr") -> str:
+    """Entier groupé par milliers : espace en fr, virgule en en."""
+    return f"{int(v):,}".replace(",", "," if langue == "en" else " ")
 
 
 def _uri(fig, dpi=210) -> str:
@@ -76,22 +97,23 @@ def note_variation_mensuelle(data: dict):
     libellé client ``res_estimation_deux_factures`` du catalogue, via
     ``theme.libelle_doc`` — jamais « réelles ». Autre source estimée (facture
     d'hiver seule) : :data:`VARIATION_ESTIMEE`, inchangé. L'image matplotlib
-    ne met pas l'arabe en forme : un document RTL garde le libellé français,
+    ne met pas l'arabe en forme : un document RTL prend le libellé anglais,
     comme le reste de ce graphe (mois, unité)."""
     if not data.get("factures_mensuelles_estimation"):
         return None
     if data.get("source_consommation") != "facture_hiver_ete":
-        return VARIATION_ESTIMEE
+        return _t("rpdf_ch_variation_estimee", _langue_image(data))
     from . import theme
     from .. import i18n_labels
     fr = i18n_labels.libelle("res_estimation_deux_factures", "fr")
     if i18n_labels.est_rtl(theme.langue_doc(data)):
-        return fr
+        return i18n_labels.libelle("res_estimation_deux_factures", "en")
     return theme.libelle_doc(data, "res_estimation_deux_factures", fr)
 
 
 def bill_before_after(bills_before, bills_after, economies=None,
-                      variation_estimee=False, w=6.6, h=2.0) -> str:
+                      variation_estimee=False, w=6.6, h=2.0,
+                      langue="fr") -> str:
     """QRES19 — barres APPARIÉES (gris|or côte à côte) : la superposition
     pouvait se lire comme un empilement. L'axe Y est étiqueté MAD.
 
@@ -132,7 +154,7 @@ def bill_before_after(bills_before, bills_after, economies=None,
             # 7,6 pt DANS la figure ⇒ ≈ 5 pt une fois l'image ramenée à
             # 33,5 mm de haut par le CSS (facteur 0,66) : lisible à
             # l'impression, ce que 6 pt ne serait pas.
-            ax.annotate(f"{valeur:,}".replace(",", " "), (xi, b),
+            ax.annotate(_milliers(valeur, langue), (xi, b),
                         textcoords="offset points", xytext=(0, 4),
                         ha="center", fontsize=7.6, color=ECO_INK,
                         fontweight="bold", zorder=4)
@@ -142,7 +164,7 @@ def bill_before_after(bills_before, bills_after, economies=None,
         # WeasyPrint gère mal ces rangées. Une ligne de plus la ferait passer
         # à deux lignes et pousserait toute la couverture — alors qu'ici elle
         # ne coûte rien : l'image reste haute de 33,5 mm par le CSS.
-        note = "économie du mois, en MAD"
+        note = _t("rpdf_ch_eco_mois", langue)
         if variation_estimee:
             # Motif Z2 — le NIVEAU vient d'une facture réellement payée, mais
             # la variation d'un mois à l'autre est une hypothèse tant que le
@@ -150,7 +172,7 @@ def bill_before_after(bills_before, bills_after, economies=None,
             # AGNR6 — un texte (``note_variation_mensuelle``) nomme la source.
             note += "  ·  " + (variation_estimee
                                if isinstance(variation_estimee, str)
-                               else VARIATION_ESTIMEE)
+                               else _t("rpdf_ch_variation_estimee", langue))
         ax.text(1.0, 1.03, note, transform=ax.transAxes, fontsize=7,
                 color=ECO_INK, ha="right", va="bottom", fontweight="bold")
     else:
@@ -162,10 +184,10 @@ def bill_before_after(bills_before, bills_after, economies=None,
             ax.annotate(f"−{cut} %", (peak, pb), textcoords="offset points",
                         xytext=(0, 4), ha="center", fontsize=8.2, color=GOLD,
                         fontweight="bold")
-    ax.set_xticks(x); ax.set_xticklabels(_MONTHS, fontsize=7.5, color=MUTED)
+    ax.set_xticks(x); ax.set_xticklabels(_mois(langue), fontsize=7.5, color=MUTED)
     ax.tick_params(axis="y", labelsize=7, colors=MUTED)
     ax.yaxis.set_major_formatter(
-        plt.FuncFormatter(lambda v, _: f"{int(v):,}".replace(",", " ")))
+        plt.FuncFormatter(lambda v, _: _milliers(v, langue)))
     ax.text(0.0, 1.03, "MAD", transform=ax.transAxes, fontsize=7,
             color=MUTED, ha="left", va="bottom")
     _clean(ax)
@@ -176,7 +198,7 @@ def bill_before_after(bills_before, bills_after, economies=None,
     return _uri(fig)
 
 
-def production_mensuelle(valeurs, w=10.0, h=1.05) -> str:
+def production_mensuelle(valeurs, w=10.0, h=1.05, langue="fr") -> str:
     """PRODMOIS — production solaire MOIS PAR MOIS (12 barres, kWh).
 
     ``valeurs`` = les douze productibles mensuels RÉELS du devis, dérivés par
@@ -203,15 +225,15 @@ def production_mensuelle(valeurs, w=10.0, h=1.05) -> str:
     ax.bar(x, valeurs, 0.62, color=GOLD, edgecolor="none", zorder=2)
     ax.set_ylim(0, max(valeurs) * 1.18)
     ax.set_xticks(x)
-    ax.set_xticklabels(_MONTHS, fontsize=8, color=MUTED)
+    ax.set_xticklabels(_mois(langue), fontsize=8, color=MUTED)
     ax.tick_params(axis="y", labelsize=7.5, colors=MUTED)
     ax.yaxis.set_major_formatter(
-        plt.FuncFormatter(lambda v, _: f"{int(v):,}".replace(",", " ")))
+        plt.FuncFormatter(lambda v, _: _milliers(v, langue)))
     ax.text(0.0, 1.04, "kWh", transform=ax.transAxes, fontsize=7.5,
             color=MUTED, ha="left", va="bottom")
     # Le titre vit DANS l'image (comme la note du graphe des factures) : une
     # ligne de titre HTML au-dessus coûterait ~4 mm au budget de la page.
-    ax.text(1.0, 1.04, "Production solaire estimée, mois par mois",
+    ax.text(1.0, 1.04, _t("rpdf_ch_prod_titre", langue),
             transform=ax.transAxes, fontsize=8.5, color=NAVY, ha="right",
             va="bottom", fontweight="bold")
     _clean(ax)
@@ -220,7 +242,7 @@ def production_mensuelle(valeurs, w=10.0, h=1.05) -> str:
     return _uri(fig)
 
 
-def coverage_donut(pct, w=1.95, h=1.95) -> str:
+def coverage_donut(pct, w=1.95, h=1.95, langue="fr") -> str:
     pct = max(0, min(100, int(round(pct))))
     fig, ax = plt.subplots(figsize=(w, h))
     # QRES21 — anneau +25 % plus épais, piste résiduelle légèrement teintée
@@ -229,9 +251,9 @@ def coverage_donut(pct, w=1.95, h=1.95) -> str:
            counterclock=False,
            wedgeprops=dict(width=0.32, edgecolor="white", linewidth=1.4))
     # Typographie française : espace fine avant le %.
-    ax.text(0, 0.08, f"{pct} %", ha="center", va="center",
+    ax.text(0, 0.08, f"{pct}%" if langue == "en" else f"{pct} %", ha="center", va="center",
             fontsize=22, color=NAVY, fontweight="bold")
-    ax.text(0, -0.32, "couverture", ha="center", va="center",
+    ax.text(0, -0.32, _t("rpdf_ch_couverture", langue), ha="center", va="center",
             fontsize=8.5, color=MUTED)
     ax.set(aspect="equal")
     return _uri(fig)
@@ -240,7 +262,7 @@ def coverage_donut(pct, w=1.95, h=1.95) -> str:
 def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
                   w=6.9, h=2.35, cashflow_sans=None, cashflow_avec=None,
                   deux=True, avec_ok=True,
-                  libelle_avec="Avec batterie") -> str:
+                  libelle_avec="Avec batterie", langue="fr") -> str:
     import numpy as np
     years = np.arange(0, 26)
     # QX39 — quand le cumul du cashflow 25 ans réel est fourni (dégradation
@@ -260,7 +282,7 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     # réelle) : plus de scénario « Avec batterie » fantôme ni de double
     # étiquette « rentabilisé » qui se chevauchent sur un devis réseau seul.
     if deux:
-        series = [(cs, NAVY, "Sans batterie", roi_s, 13),
+        series = [(cs, NAVY, _t("rpdf_ch_sans_batterie", langue), roi_s, 13),
                   (ca, GOLD, libelle_avec, roi_a, -24)]
         fill_curve = ca
     else:
@@ -284,7 +306,7 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     # frôler le repère « 25 » de l'axe.
     # AU-DESSUS de la ligne de zéro (sous elle, l'étiquette tombait sur les
     # repères de l'axe quand le zéro est bas — payback très court).
-    ax.annotate("seuil de rentabilité", (24.2, 0),
+    ax.annotate(_t("rpdf_ch_seuil", langue), (24.2, 0),
                 textcoords="offset points", xytext=(0, 4), fontsize=8.2,
                 color=MUTED, ha="right", va="bottom")
 
@@ -307,12 +329,13 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     # le sien. Posée au-dessus du zéro, à droite du dernier point.
     if rois:
         def _fr(v):
-            return f"{v:g}".replace(".", ",")
+            return f"{v:g}" if langue == "en" else f"{v:g}".replace(".", ",")
         uniq = sorted(set(rois))
         if len(uniq) == 1:
-            lbl = f"rentabilisé en {_fr(uniq[0])} ans"
+            lbl = _t("rpdf_ch_rentab_un", langue, a=_fr(uniq[0]))
         else:
-            lbl = f"rentabilisés en {_fr(uniq[0])} et {_fr(uniq[1])} ans"
+            lbl = _t("rpdf_ch_rentab_deux", langue,
+                     a=_fr(uniq[0]), b=_fr(uniq[1]))
         # Posée SOUS la ligne de zéro (le lavis d'investissement y est vide) —
         # au-dessus, elle recoupait les courbes qui montent.
         ax.annotate(lbl, (max(uniq), 0), textcoords="offset points",
@@ -323,13 +346,13 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
     ymin = min(float(min(c[0] for c, *_ in series)) * 1.15, -1.0)
     ymax_v = max(float(max(c[-1] for c, *_ in series)), 1.0)
     ax.set_ylim(ymin, ymax_v * 1.08)
-    ax.set_xlabel("Années", fontsize=9.5, color=MUTED)
+    ax.set_xlabel(_t("rpdf_ch_annees", langue), fontsize=9.5, color=MUTED)
     # QRES19 — plus d'axe vertical pivoté : étiquette horizontale compacte.
     ax.text(0.0, 1.03, "k MAD", transform=ax.transAxes, fontsize=8.5,
             color=MUTED, ha="left", va="bottom")
     ax.tick_params(labelsize=9, colors=MUTED)
     ax.yaxis.set_major_formatter(
-        plt.FuncFormatter(lambda v, _: f"{int(v):,}".replace(",", " ")))
+        plt.FuncFormatter(lambda v, _: _milliers(v, langue)))
     _clean(ax)
     if deux:
         ax.legend(loc="upper left", frameon=False, fontsize=10,
@@ -386,7 +409,9 @@ def build_all(data: dict) -> dict:
     # technique). Elle est donc calculée dans les DEUX branches — et vaut ''
     # dès que la production annuelle manque (carte omise, jamais fabriquée).
     from ..productible import production_mensuelle as _prod_mens
-    prod_chart = production_mensuelle(_prod_mens(data.get("prod_kwh")))
+    lg = _langue_image(data)
+    prod_chart = production_mensuelle(_prod_mens(data.get("prod_kwh")),
+                                      langue=lg)
     if data.get("masquer_synthese"):
         return {"roof": roof_layout(data["nb_panneaux"]),
                 "production": prod_chart}
@@ -396,7 +421,8 @@ def build_all(data: dict) -> dict:
         deux=bool(data.get("deux_options", True)),
         avec_ok=bool(data.get("avec_ok", True)),
         # BAT-DIFF — légende de la courbe « avec » = libellé du builder.
-        libelle_avec=data.get("libelle_avec") or "Avec batterie")
+        libelle_avec=data.get("libelle_avec") or "Avec batterie",
+        langue=lg)
     # ERR-QAC-PAYBACK-JAMAIS-REMBOURSE-25-ANS — une option jamais remboursée
     # sur 25 ans n'a PAS de point de rentabilité : son ROI part à ``None``
     # (aucun point, aucune étiquette « rentabilisé en 25 ans »).
@@ -412,8 +438,8 @@ def build_all(data: dict) -> dict:
         "bill": bill_before_after(
             data["bills_before"], data["bills_after"],
             data.get("eco_mensuelles"),
-            variation_estimee=note_variation_mensuelle(data)),
-        "coverage": coverage_donut(data["coverage_pct"]),
+            variation_estimee=note_variation_mensuelle(data), langue=lg),
+        "coverage": coverage_donut(data["coverage_pct"], langue=lg),
         "payback": payback_curve(*_pb_args, **_pb_kw),
         # QRES51 — variante PLEINE PAGE pour la page rentabilité dédiée :
         # ratio plus haut (la courbe affichée sur 182 mm gagne ~20 mm de

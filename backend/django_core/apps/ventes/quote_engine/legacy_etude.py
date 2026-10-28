@@ -485,6 +485,41 @@ def _part_glitch_pct():
     return round(max(0.0, min(_batt, _sans)) / _sans * 100)
 
 
+def etude_a_contenu():
+    """RPDF20 \u2014 la page \u00c9tude porte-t-elle une VRAIE \u00e9tude ?
+
+    Un devis r\u00e9sidentiel dont les \u00e9conomies viennent du mod\u00e8le horaire porte
+    ``etude_params`` (``dimensionnement``, ``etude_horaire``) sans aucune \u00e9tude
+    saisie : la page sortait avec la seule carte \u00ab Puissance cr\u00eate \u00bb (d\u00e9j\u00e0 en
+    page 1) et la tranche actuelle (devis 1344 du 27/10, page 3 vide). M\u00eames
+    conditions que ``page_etude`` pour chaque bloc ; ni la puissance ni la
+    tranche actuelle seule ne suffisent. ``False`` \u21d2 la page n'est ni rendue ni
+    compt\u00e9e (d\u00e9gradation 4 \u2192 3 pages de CLAUDE.md). Rendu seul (r\u00e8gle #4)."""
+    e = getattr(_g, "ETUDE", None)
+    if not isinstance(e, dict) or not e:
+        return False
+    if any(e.get(k) not in (None, "") for k in (
+            "production_annuelle", "conso_annuelle", "prix_kwc", "economies_annuelles")):
+        return True
+    if len(e.get("prod_mensuelle") or []) == 12 and len(e.get("conso_mensuelle") or []) == 12:
+        return True
+    _ci = _g.CHIFFRES_CI if isinstance(_g.CHIFFRES_CI, dict) else None
+    if _ci is not None and _ci.get("payback_ans") not in (None, ""):
+        return True
+    if _ci is None and e.get("payback") not in (None, ""):
+        return True
+    _f = _falaise_context() or {}
+    if _f.get("residuel_kwh_mois") is not None or _f.get("remplissage_pct") is not None:
+        return True
+    return _part_glitch_pct() is not None or bool(_bankable_block_html(e.get("bankable")))
+
+
+def etude_rendue():
+    """RPDF20 \u2014 la page \u00c9tude est-elle rendue (et compt\u00e9e) ? Source unique du
+    compte de pages (``apply_quote_data``) et du rendu (``build_html``)."""
+    return bool(_g.INCLUDE_ETUDE and _g.ETUDE) and etude_a_contenu()
+
+
 def page_etude():
     """\u00c9tude d'autoconsommation (industriel) : param\u00e8tres, taux, graphique."""
     e = _g.ETUDE
