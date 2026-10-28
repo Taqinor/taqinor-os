@@ -12,6 +12,9 @@ import {
   motifsManquantsCi,
   ciEstUneEstimation,
   ciSousReserveVisite,
+  bandeauPreliminaireCi,
+  lignePostesHorsTotalCi,
+  CI_DEVIS_PRELIMINAIRE,
   chiffresEconomiePhare,
   savingsHeadline,
   type ProposalResponse,
@@ -204,5 +207,129 @@ describe('CIW300 — la page ne calcule plus, ne code plus de mention 82-21', ()
     expect(page).toContain('const ciInjection = injectionCi(ci);');
     expect(page).toContain('const headline = ok && !isAutoconso ?');
     expect(page).toContain('data-figure="economie_annuelle"');
+  });
+});
+
+// CPRW2 (27/10/2026) — « Tarif utilisé » : le texte CLIENT servi, jamais la note interne.
+const SRC_AUTOCONSO = readFileSync(
+  fileURLToPath(new URL('../src/components/proposition/ci/SectionAutoconso.astro', import.meta.url)),
+  'utf-8',
+).replace(/\r\n/g, '\n');
+describe('CPRW2 — tarif utilisé = hypothèse servie', () => {
+  it('lit synthese_ci.hypotheses[cle=tarif].textes, jamais tarif.mention / tarif.source', () => {
+    expect(SRC_AUTOCONSO).toContain("h.cle === 'tarif'");
+    expect(SRC_AUTOCONSO).not.toMatch(/tarif\.mention/);
+    expect(SRC_AUTOCONSO).not.toMatch(/tarif\.source/);
+  });
+});
+
+// CPRW3 (27/10/2026) — bandeau « devis préliminaire » = l'hypothèse `visite` servie (FR/EN/AR).
+describe('CPRW3 — bandeau devis préliminaire', () => {
+  it('rendu dès que le serveur sert l\'hypothèse visite ; plus de liste interne « à confirmer »', () => {
+    expect(SRC_AUTOCONSO).toContain('bandeauPreliminaireCi(ci)');
+    expect(SRC_AUTOCONSO).toContain('data-ci-preliminaire');
+    expect(SRC_AUTOCONSO).not.toContain('Estimation sous réserve de la visite technique');
+    expect(SRC_AUTOCONSO).not.toContain('aConfirmer');
+  });
+});
+
+// CPRW3 — sur TOUT devis C&I (le PDF l'imprime toujours) : texte servi, sinon le MÊME que le PDF.
+describe('CPRW3 — bandeau préliminaire toujours présent en C&I', () => {
+  const base = { mode_installation: 'commercial', synthese_ci: { hypotheses: [] } } as unknown as ProposalResponse;
+  it('sans hypothèse visite servie : le texte du PDF ; hors C&I : rien', () => {
+    expect(bandeauPreliminaireCi(syntheseCi(base))).toEqual(CI_DEVIS_PRELIMINAIRE);
+    expect(bandeauPreliminaireCi(null)).toBeNull();
+  });
+  it('avec hypothèse visite servie : le texte servi', () => {
+    const servi = { fr: 'A', en: 'B', ar: 'C' };
+    const p = { mode_installation: 'commercial', synthese_ci: { hypotheses: [{ cle: 'visite', textes: servi, source: null }] } } as unknown as ProposalResponse;
+    expect(bandeauPreliminaireCi(syntheseCi(p))).toEqual(servi);
+  });
+  it('parité mot pour mot avec ci/mentions.py::TEXTES_VISITE', () => {
+    const py = readFileSync(fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/ci/mentions.py', import.meta.url)), 'utf-8');
+    const bloc = py.slice(py.indexOf('TEXTES_VISITE = {'), py.indexOf('}', py.indexOf('TEXTES_VISITE = {')));
+    const joint = (lg: string) => [...bloc.split(`"${lg}":`)[1]!.split(/\s"(?:fr|en|ar)":/)[0]!.matchAll(/"([^"]*)"/g)].map((m) => m[1]).join('');
+    expect(joint('fr')).toBe(CI_DEVIS_PRELIMINAIRE.fr);
+    expect(joint('en')).toBe(CI_DEVIS_PRELIMINAIRE.en);
+    expect(joint('ar')).toBe(CI_DEVIS_PRELIMINAIRE.ar);
+  });
+});
+
+// CPRW4 (27/10/2026) — plus de badge « estimation » ni de motifs d'omission bruts côté client.
+describe('CPRW4 — ni badge estimation ni « Ce qu\'il nous manque »', () => {
+  it('le composant ne rend plus ces deux blocs', () => {
+    expect(SRC_AUTOCONSO).not.toContain('data-ci-manque');
+    expect(SRC_AUTOCONSO).not.toContain("Ce qu'il nous manque");
+    expect(SRC_AUTOCONSO).not.toContain('ciEstimation');
+    expect(SRC_AUTOCONSO).not.toMatch(/data-fr="estimation"/);
+  });
+});
+
+// CPRW5 (27/10/2026) — suffixes TTC/HT trilingues, motif de la base servi sous la carte.
+describe('CPRW5 — TTC/HT trilingues, motif de base interne non affiché', () => {
+  it('plus de suffixe FR en dur ; libellés FR/EN/AR ; motif de base interne jamais affiché', () => {
+    expect(SRC_AUTOCONSO).not.toContain("' TTC'");
+    expect(SRC_AUTOCONSO).not.toContain("' HT'");
+    expect(SRC_AUTOCONSO).toContain('incl. VAT');
+    expect(SRC_AUTOCONSO).toContain('excl. VAT');
+    expect(SRC_AUTOCONSO).toContain('شامل الضريبة');
+    expect(SRC_AUTOCONSO).toContain('دون احتساب الضريبة');
+    // `argent.motif_base` est une note interne FR (« … (D-CIQ-3) ») : JAMAIS affichée au client.
+    expect(SRC_AUTOCONSO).not.toContain('motifBase');
+  });
+});
+
+// CPRW13 (27/10/2026) — « À chiffrer après la visite technique (hors total) : <postes> » sous le bandeau, comme le PDF.
+describe('CPRW13 — postes hors total sous le bandeau préliminaire', () => {
+  const avec = (postes: unknown) =>
+    ({ mode_installation: 'industriel', synthese_ci: { hypotheses: [], postes_hors_total: postes } }) as unknown as ProposalResponse;
+  const py = readFileSync(
+    fileURLToPath(new URL('../../../backend/django_core/apps/ventes/quote_engine/i18n_labels.py', import.meta.url)),
+    'utf-8',
+  );
+  it('absent ou vide : aucune ligne (lecture défensive)', () => {
+    expect(lignePostesHorsTotalCi(syntheseCi(avec(undefined)))).toBeNull();
+    expect(lignePostesHorsTotalCi(syntheseCi(avec([])))).toBeNull();
+    expect(lignePostesHorsTotalCi(syntheseCi(avec('x')))).toBeNull();
+    expect(lignePostesHorsTotalCi(null)).toBeNull();
+  });
+  it('rôle en mots simples FR/EN/AR, article du catalogue après « — », sans doublon, jamais un montant', () => {
+    const ligne = lignePostesHorsTotalCi(
+      syntheseCi(
+        avec([
+          { role: 'cable_dc', designation: 'Câble solaire Nexans', quantite: 120, unite: 'm', catalogue: true },
+          { role: 'structure_ci', designation: 'Structure C&I', quantite: 1, unite: 'ens', catalogue: false },
+          { role: 'cable_ac', designation: 'Câble AC générique', quantite: 10, unite: 'm', catalogue: false },
+          { role: 'cable_ac', designation: 'Câble AC générique 2', quantite: 5, unite: 'm', catalogue: false },
+          { role: 'role_inconnu', designation: 'Poste libre', quantite: 1, unite: null, catalogue: false },
+        ]),
+      ),
+    )!;
+    expect(ligne.fr).toBe(
+      'À chiffrer après la visite technique (hors total) : câble DC — Câble solaire Nexans, structure de fixation, câble AC, Poste libre',
+    );
+    expect(ligne.en).toBe(
+      'To be priced after the site visit (not in the total): DC cable — Câble solaire Nexans, mounting structure, AC cable, Poste libre',
+    );
+    expect(ligne.ar).toContain('يُسعَّر بعد الزيارة التقنية (خارج المجموع): ');
+    expect(ligne.ar).toContain('كابل التيار المستمر — Câble solaire Nexans');
+    expect(ligne.fr).not.toMatch(/MAD|DH|\d/);
+  });
+  it('parité des mots avec i18n_labels.py (ci_a_chiffrer_hors_total, ci_role_*)', () => {
+    const ligne = lignePostesHorsTotalCi(
+      syntheseCi(avec([{ role: 'coffret_dc', designation: 'X', quantite: 1, unite: null, catalogue: false }])),
+    )!;
+    for (const lg of ['fr', 'en', 'ar'] as const) {
+      const ligneTxt = ligne[lg].split(':')[0]!;
+      expect(py).toContain(ligneTxt);
+    }
+    for (const mot of ['câble DC', 'DC cable', 'كابل التيار المستمر', 'structure de fixation', 'mounting structure', 'هيكل التثبيت', 'coffret DC', 'DC box', 'علبة التيار المستمر', 'protection AC', 'AC protection', 'حماية التيار المتردد', 'onduleur', 'inverter', 'العاكس']) {
+      expect(py).toContain(mot);
+    }
+  });
+  it('SectionAutoconso affiche la ligne sous le bandeau, en FR/EN/AR', () => {
+    expect(SRC_AUTOCONSO).toContain('lignePostesHorsTotalCi(ci)');
+    expect(SRC_AUTOCONSO).toContain('data-ci-postes-hors-total');
+    expect(SRC_AUTOCONSO).toMatch(/data-fr=\{postesHorsTotal\.fr\} data-en=\{postesHorsTotal\.en\} data-ar=\{postesHorsTotal\.ar\}/);
   });
 });
