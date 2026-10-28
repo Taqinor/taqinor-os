@@ -346,6 +346,25 @@ def _extraire_intention(texte: str) -> tuple[str, str]:
     return texte[:m.start()], (intention if intention in INTENTIONS else "donnee")
 
 
+def _intention_et_erreur(sorties: list[dict[str, Any]],
+                         intention: str) -> tuple[str, dict | None]:
+    """AIC7 — capteur d'erreurs d'outils (bug) > `report_gap` > balise du
+    modele. Renvoie (intention, erreur {status, outil, message} | None)."""
+    erreurs = [s for s in sorties or [] if s.get("type") == "erreur"]
+    if erreurs:
+        e = erreurs[-1]
+        return "bug", {"status": e.get("status"), "outil": e.get("outil"),
+                       "message": e.get("message")}
+    signales = [s for s in sorties or [] if s.get("type") == "signalement"]
+    if signales:
+        s = signales[-1]
+        erreur = None
+        if s["intention"] == "bug":
+            erreur = {"status": 0, "outil": "report_gap", "message": s["resume"][:200]}
+        return s["intention"], erreur
+    return intention, None
+
+
 # AIC5 — manuel + manifeste de capacites (produits par AIC50), lus UNE fois.
 ASSISTANT_DOCS_DIR = os.environ.get(
     "ASSISTANT_DOCS_DIR",
@@ -1272,7 +1291,7 @@ class SQLAgentService:
         from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
         from langchain_core.messages import HumanMessage, AIMessage
         from app.services.action_tools import (
-            actions_available, build_action_tools,
+            actions_available, build_action_tools, outil_report_gap,
         )
 
         # 1. Historique Redis → messages LangChain (2 derniers echanges seulement)
@@ -1365,6 +1384,9 @@ class SQLAgentService:
             cle_par_outil = {t.name: (t.metadata or {}).get("action_key", t.name)
                              for t in action_tools}
 
+        # AIC7 — `report_gap` toujours offert (jamais une action du registre).
+        tools.append(outil_report_gap(action_outputs))
+
         # 5. Prompt avec historique (+ restriction marge si non autorise).
         # Defense en profondeur : meme decision que le garde DUR de l'outil SQL.
         # AIC5 — SystemMessage litteral (jamais un gabarit : le manuel peut
@@ -1404,6 +1426,7 @@ class SQLAgentService:
 
         answer, intention = _extraire_intention(
             result.get("output", "Aucune reponse obtenue."))
+        intention, erreur = _intention_et_erreur(action_outputs, intention)
 
         # Sauvegarde l'echange dans Redis
         self._save_history(user_id, question, answer)
@@ -1436,6 +1459,7 @@ class SQLAgentService:
             "manuel_present": manuel_present,
             # AIC6 — matiere de l'evenement (journalise par `query`).
             "intention": intention,
+            "erreur": erreur,
             "outils_appeles": [cle_par_outil.get(n, n) for n in capture.actions],
             "tokens": dict(capture.tokens),
         }

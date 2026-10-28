@@ -866,5 +866,70 @@ class JournalEvenementAic6Tests(unittest.TestCase):
             '<intention>{"intention": "pirate"}</intention>')[1], "donnee")
 
 
+class CapteurErreursAic7Tests(unittest.TestCase):
+    """AIC7 — un echec inattendu d'une action devient un evenement `bug` sans
+    que le modele le decide ; 403/400 restent une reponse normale ;
+    `report_gap` signale sans confirmation."""
+
+    def _lancer(self, status):
+        collector: list = []
+        with mock.patch.object(at, "_django_call", lambda *a, **k: {
+                "ok": False, "status": status, "error": "boom"}):
+            texte = at.run_catalogue_action(
+                _ctx(role="admin"), _CAT_LEAD_LIST, {}, collector)
+        return texte, collector
+
+    def _intention(self, collector):
+        try:
+            from app.services import sql_agent_service as svc
+        except ModuleNotFoundError as exc:  # pragma: no cover
+            self.skipTest(str(exc))
+        return svc._intention_et_erreur(collector, "donnee")
+
+    def test_5xx_devient_evenement_bug(self):
+        for status in (500, 404, 409, 422, 0):
+            with self.subTest(status=status):
+                texte, collector = self._lancer(status)
+                self.assertIn("a echoue", texte)  # reponse au commercial inchangee
+                self.assertEqual(at.intention_pour_statut(status), "bug")
+                intention, erreur = self._intention(collector)
+                self.assertEqual(intention, "bug")
+                self.assertEqual(erreur, {"status": status,
+                                          "outil": "crm.lead.list",
+                                          "message": "boom"})
+
+    def test_403_et_400_ne_sont_pas_des_bugs(self):
+        self.assertEqual(at.STATUTS_REPONSE_NORMALE, frozenset({400, 403}))
+        for status in sorted(at.STATUTS_REPONSE_NORMALE):
+            with self.subTest(status=status):
+                _texte, collector = self._lancer(status)
+                self.assertEqual(collector, [])
+                self.assertEqual(self._intention(collector), ("donnee", None))
+
+    def test_report_gap_sans_confirmation(self):
+        try:
+            __import__("langchain_core.tools")
+        except Exception:
+            self.skipTest("langchain_core indisponible")
+        collector: list = []
+        outil = at.outil_report_gap(collector)
+        with mock.patch.object(at, "_django_call",
+                               lambda *a, **k: self.fail("aucun appel Django")), \
+                mock.patch.object(at, "_stash_proposal",
+                                  lambda *a, **k: self.fail("aucune proposition")):
+            out = outil.invoke({"intention": "hors_champ",
+                                "resume": "Envoyer un e-mail au client",
+                                "ecran": "/crm/leads/12"})
+        self.assertEqual(out, "signale")
+        self.assertEqual(collector, [{
+            "type": "signalement", "intention": "hors_champ",
+            "resume": "Envoyer un e-mail au client", "ecran": "/crm/leads/12"}])
+        self.assertEqual(self._intention(collector), ("hors_champ", None))
+        # report_gap n'est jamais une action du catalogue.
+        with _patch_catalogue([_CAT_LEAD_LIST]):
+            noms = {t.name for t in at.build_action_tools(_ctx(role="admin"))}
+        self.assertNotIn("report_gap", noms)
+
+
 if __name__ == "__main__":
     unittest.main()
