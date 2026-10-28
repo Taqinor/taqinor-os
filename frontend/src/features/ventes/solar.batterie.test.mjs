@@ -286,3 +286,88 @@ test('INVARIANT : l\'option AVEC batterie n\'économise JAMAIS moins que l\'opti
     }
   }
 })
+
+// ── RGEN5 — économie « avec batterie » NETTE au niveau de règles 3 ───────────
+// Valeurs attendues = `pricing.calculate_savings_roi` de RHOR6 sur les MÊMES
+// entrées (10 kWc, productible 1651, conso 15 000 kWh/an, ONEE, batterie
+// 10 kWh, 100 000 / 140 000 TTC) : regles_2710=True → eco_a_ann 22 301,
+// facture_avec_a 3 721, net_gain_avec 385 321 ; False → 22 952 / 3 070.
+test('RGEN5 économie nette niveau 3', () => {
+  const entrees = {
+    kwp: 10, productible: 1651, factures: Array(12).fill(1500),
+    dayUsagePct: 60, totalSans: 100000, totalAvec: 140000,
+    batteryKwh: BATTERY, consoAnnuelleKwh: CONSO, utility: 'onee',
+  }
+  const n3 = computeROI({ ...entrees, reglesCalcul: 3 })
+  assert.equal(n3.savings_model, 'factures')
+  // À la main : part stockée = (0,83766 − 0,60) / 0,83766 = 0,28372 ;
+  // 22 952 × (1 − 0,10 × 0,28372) = 22 300,8 → 22 301 (= le PDF).
+  assert.equal(n3.eco_annuelle_avec, 22301)
+  assert.equal(n3.facture_avec_avec, 3721)
+  assert.equal(n3.net_gain_avec, 385321)
+  const somme = n3.eco_avec_monthly.reduce((s, v) => s + v, 0)
+  assert.equal(Math.abs(somme - 22301) < 1e-6, true)
+  assert.equal(Math.abs(n3.monthly_detail.reduce((s, d) => s + d.eco_avec, 0) - 22301) < 1e-6, true)
+  // L'option sans batterie ne bouge pas.
+  assert.equal(n3.eco_annuelle_sans, 16572)
+  // Niveau < 3 (ou absent : appelants d'hier) : économie BRUTE inchangée.
+  for (const r of [undefined, 1, 2]) {
+    const brut = computeROI({ ...entrees, reglesCalcul: r })
+    assert.equal(brut.eco_annuelle_avec, 22952)
+    assert.equal(brut.facture_avec_avec, 3070)
+  }
+  // Sans batterie : rien à déduire, même au niveau 3.
+  const sansBatt = computeROI({ ...entrees, batteryKwh: 0, reglesCalcul: 3 })
+  assert.deepEqual(sansBatt, computeROI({ ...entrees, batteryKwh: 0 }))
+})
+
+test('RGEN5 economieAvecNette : déduction unique, jamais hors niveau 3', async () => {
+  const { economieAvecNette } = await import('./quote/economieAvecNette.js')
+  const r = { roundtrip: 0.9 }
+  assert.deepEqual(economieAvecNette(10000, 500, 0.5, { ...r, nette: true }),
+    { economie: 9500, factureAvec: 1000, partStockee: 0 })
+  assert.deepEqual(economieAvecNette(10000, null, 0.5, { ...r, nette: true }),
+    { economie: 9500, factureAvec: null, partStockee: 0 })
+  // Hors niveau 3, part nulle ou économie nulle : tout passe tel quel.
+  assert.deepEqual(economieAvecNette(10000, 500, 0.5, r), { economie: 10000, factureAvec: 500, partStockee: 0.5 })
+  assert.deepEqual(economieAvecNette(10000, 500, 0, { ...r, nette: true }), { economie: 10000, factureAvec: 500, partStockee: 0 })
+  assert.deepEqual(economieAvecNette(0, 500, 0.5, { ...r, nette: true }), { economie: 0, factureAvec: 500, partStockee: 0.5 })
+  const serie = [6000, 4000]
+  const detail = [{ eco_avec: 6000 }, { eco_avec: 4000 }]
+  economieAvecNette(10000, 500, 0.5, { ...r, nette: true,
+    series: [{ valeurs: serie }, { valeurs: detail, cle: 'eco_avec' }] })
+  assert.deepEqual(serie, [5700, 3800])
+  assert.deepEqual(detail.map(d => d.eco_avec), [5700, 3800])
+})
+
+// RGEN10 — modèle « estimation » (aucune conso) : l'écran valorise le kWh
+// comme le PDF. Valeurs SERVEUR épinglées : `calculate_savings_roi` (main),
+// appelé avec les kwargs de `build_quote_data` (utility REÇU, barème société,
+// fallback_tarif_kwh = onee_tarif_kwh), 5 kWc, productible 1651, part 60 %.
+test('RGEN10 prix kWh estimation = serveur', async () => {
+  const { prixKwhEstimation } = await import('./quote/prixKwhEstimation.js')
+  const { ONEE_TRANCHES, monthlyBillFromKwh, KWH_PRICE, FALLBACK_KWH_PRICE } = await import('./solar.js')
+  const SOC = [[100, 1.0], [150, 1.2], [200, 1.2], [300, 1.3], [500, 1.5], [null, 1.7]]
+  Object.defineProperty(SOC, 'selectif', { value: { seuil: 150, tolerance: 10 } })
+  const cas = [
+    // [écran, prix serveur, éco sans (sans batterie), éco avec (10 kWh)]
+    [{ utility: 'onee', kwhPrice: 1.75 }, 1.75, 8063, 13438],        // « onee » sans conso : non enregistré
+    [{ utility: undefined, kwhPrice: 2.10 }, 2.10, 9676, 16126],     // tarif société
+    [{ utility: 'lydec', kwhPrice: 1.75 }, 0.916272, 4222, 7036],    // distributeur nommé : 1re tranche (QJR156)
+    [{ utility: 'onee', kwhPrice: 1.75, bareme: { tranches: SOC } }, 1.0, 4607, 7679], // barème société
+    [{ utility: undefined, kwhPrice: 0 }, 1.2, 5529, 9215],          // réglage nul : _FALLBACK_KWH_PRICE
+  ]
+  const outils = { grilleNationale: ONEE_TRANCHES, factureMensuelle: monthlyBillFromKwh, defaut: KWH_PRICE, repli: FALLBACK_KWH_PRICE }
+  for (const [ecran, prix, ecoS, ecoA] of cas) {
+    assert.equal(prixKwhEstimation({ ...ecran, tranches: ecran.bareme?.tranches }, outils), prix)
+    const base = { kwp: 5, productible: 1651, dayUsagePct: 60, totalSans: 50000, totalAvec: 80000, ...ecran }
+    const sans = computeROI({ ...base, batteryKwh: 0 })
+    const avec = computeROI({ ...base, batteryKwh: 10 })
+    assert.equal(sans.savings_model, 'estimation')
+    assert.ok(Math.abs(sans.eco_annuelle_sans - ecoS) <= 1, `${JSON.stringify(ecran)} : ${sans.eco_annuelle_sans} ≠ ${ecoS}`)
+    assert.ok(Math.abs(avec.eco_annuelle_avec - ecoA) <= 1, `${JSON.stringify(ecran)} : ${avec.eco_annuelle_avec} ≠ ${ecoA}`)
+  }
+  // Avec conso (grille pondérée à conso/12) et sans kwhPrice (défaut 1,75 de tariff_for).
+  assert.equal(prixKwhEstimation({ utility: 'onee', consoAnnuelleKwh: 4800 }, outils), ONEE_TRANCHES[4][1])
+  assert.equal(prixKwhEstimation({}, outils), KWH_PRICE)
+})

@@ -30,7 +30,7 @@ describe('avecBatterieAvailability', () => {
       { designation: 'Onduleur hybride Deye 10kW', quantite: '1' },
     ], PRODUITS, 10)
     expect(r.available).toBe(false)
-    expect(r.reason).toBe('aucune batterie dans la liste')
+    expect(r.reason).toBe('aucune batterie dans les lignes du devis — ajoutez-en une')
   })
 
   it('réseau seul : indisponible, raison « aucun onduleur hybride »', () => {
@@ -38,6 +38,6 @@ describe('avecBatterieAvailability', () => {
       { designation: 'Onduleur réseau Huawei 10kW', quantite: '1' },
     ], PRODUITS, 10)
     expect(r.available).toBe(false)
-    expect(r.reason).toBe('aucun onduleur hybride dans la liste')
+    expect(r.reason).toBe('aucun onduleur hybride dans les lignes du devis — cliquez « Auto-remplir » ou ajoutez-en un')
   })
 })

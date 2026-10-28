@@ -212,7 +212,9 @@ CONTRAINTES = {
         'racine': {'anyOf': [
             {'properties': {'mode': {'enum': ['manuel', 'auto_heure']}}},
             {'required': ['seuil_lignes'], 'properties': {
-                'mode': {'enum': ['auto_seuil']}, 'seuil_lignes': {'type': 'integer', 'minimum': 1}}}]}},
+                'mode': {'enum': ['auto_seuil']},
+                # api-fuzz-full 27/10 : borne int4 publiée ET appliquée (2**65 → 500).
+                'seuil_lignes': {'type': 'integer', 'minimum': 1, 'maximum': 2147483647}}}]}},
     'FournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
     'PatchedFournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
     # CI #997 fuzz — `prix_achat` : la fiche produit l'envoie en NOMBRE JSON

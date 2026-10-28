@@ -95,7 +95,8 @@ export function installerGardePdfSigne(g: GardePdfSigne): void {
       bloc.hidden = false;
       bloc.scrollIntoView({ block: 'nearest' });
     }
-    dire(r.ok ? MSG.envoye[g.langue()] : r.detail || MSG.erreur[g.langue()]);
+    // CPRW27 — `detail` est un texte FR du serveur : jamais montré dans une autre langue.
+    dire(r.ok ? MSG.envoye[g.langue()] : (g.langue() === 'fr' && r.detail) || MSG.erreur[g.langue()]);
     saisie?.focus();
   });
   valider?.addEventListener('click', async () => {

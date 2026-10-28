@@ -88,6 +88,11 @@ class _Base(TestCase):
         CompanyProfile.objects.update_or_create(company=cls.co, defaults={'forfaits_ci': {
             cle: {'fixe_ht': '500', 'par_kwc_ht': '50', 'source': 'grille CIQ120 de test'}
             for cle in FORFAITS_TEST}})
+        # CORC6 — chaque prestation réglée a son article (rôle = clé du forfait),
+        # comme le semis ``seed_catalogue`` (CI-ETUDES…CI-TRANSPORT).
+        for cle in FORFAITS_TEST:
+            Produit.objects.create(company=cls.co, nom='Prestation %s' % cle, role_ci=cle,
+                                   prix_vente=Decimal('0'), prix_achat=Decimal('0'))
 
     def setUp(self):
         patcher = mock.patch.object(etude_ci, 'lire_production',
@@ -113,6 +118,17 @@ class _Base(TestCase):
         # officielle (BT patenté, MT général) — jamais un prix plat.
         with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
             return build_devis_auto(lead=lead, user=self.user, company=self.co)
+
+    # ADEV76 / CORC6 : un refus nommé, rien d'écrit (partagé par les classes).
+    def _refus(self, lead, *, reel=False):
+        avant = Devis.objects.filter(company=self.co).count()
+        with self.assertRaises(AutoDevisError) as ctx:
+            if reel:
+                build_devis_auto(lead=lead, user=self.user, company=self.co)
+            else:
+                self._auto(lead)
+        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
+        return ctx.exception
 
 
 _TARIF_APPLICABLE = tarif_ci.tarif_applicable
@@ -193,16 +209,6 @@ class DevisAutoCITests(_Base):
         self.assertEqual(ctx.exception.field, 'type_installation')
 
     # ── ADEV76 : les refus nomment un CHAMP DU LEAD ─────────────────────────
-
-    def _refus(self, lead, *, reel=False):
-        avant = Devis.objects.filter(company=self.co).count()
-        with self.assertRaises(AutoDevisError) as ctx:
-            if reel:
-                build_devis_auto(lead=lead, user=self.user, company=self.co)
-            else:
-                self._auto(lead)
-        self.assertEqual(Devis.objects.filter(company=self.co).count(), avant)
-        return ctx.exception
 
     def test_lead_1637_sans_rythme_ni_categorie_ni_contrat_nomme_le_contrat(self):
         lead = self._lead(conso_mensuelle_kwh=Decimal('10000'), facture_hiver=Decimal('18000'),
@@ -881,3 +887,42 @@ class RevisionApresVisiteCorc2Tests(_Base):
         devis.refresh_from_db()
         self.assertEqual(devis.statut, Devis.Statut.ENVOYE)  # règle #4
         self.assertEqual(list(devis.lignes.values_list('designation', 'quantite')), lignes_v1)
+
+
+class BrouillonsMultiplesCorc7Tests(_Base):
+    """CORC7 (27/10/2026) — un 2ᵉ devis automatique C&I sur le même lead
+    NOMME au vendeur le brouillon précédent ; rien n'est archivé (un devis
+    archivé ne se réactive plus)."""
+
+    def test_second_devis_auto_nomme_le_premier_sans_rien_archiver(self):
+        lead = self._lead(conso_mensuelle_kwh=Decimal('6000'))
+        premier = self._auto(lead)
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            second = build_devis_auto(lead=lead, user=self.user, company=self.co,
+                                      journal_auto=journal)
+        alerte = next(a for a in journal['alertes'] if a['code'] == 'brouillons_ci_multiples')
+        self.assertIn(premier.reference, alerte['message'])
+        self.assertNotIn(second.reference, alerte['message'])
+        premier.refresh_from_db()
+        self.assertTrue(premier.is_active)
+
+    def test_premier_devis_auto_aucune_alerte(self):
+        journal = {}
+        with mock.patch.object(tarif_ci, 'tarif_applicable', side_effect=_tarif_grille):
+            build_devis_auto(lead=self._lead(conso_mensuelle_kwh=Decimal('6000')),
+                             user=self.user, company=self.co, journal_auto=journal)
+        self.assertNotIn('brouillons_ci_multiples', [a['code'] for a in journal['alertes']])
+
+
+class PrestationSansArticleCorc6Tests(_Base):
+    """CORC6 (27/10/2026, constat CCAT) — une prestation réglée SANS article
+    au catalogue fait refuser le devis automatique en la NOMMANT ; jamais un
+    total d'étude qui diverge du devis écrit."""
+
+    def test_prestation_sans_article_refus_nomme(self):
+        Produit.objects.filter(company=self.co, role_ci='transport_ci').delete()
+        erreur = self._refus(self._lead(conso_mensuelle_kwh=Decimal('6000')))
+        self.assertEqual(erreur.field, 'composition')
+        self.assertIn('Article manquant au catalogue', erreur.message)
+        self.assertIn('Transport', erreur.message)

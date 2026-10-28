@@ -127,6 +127,12 @@ class ManquantesTests(TestCase):
         lead = lead_complet(self.company, tranche_onee='')
         self.assertFalse(quest.manquantes(lead)['energie'])
 
+    def test_energie_manque_encore_quand_le_raccordement_est_inconnu(self):
+        # CQST4 — « inconnu » n'est pas une réponse (hors réseau sinon).
+        lead = lead_complet(self.company,
+                            raccordement=Lead.Raccordement.INCONNU)
+        self.assertTrue(quest.manquantes(lead)['energie'])
+
     def test_energie_manque_encore_quand_le_raccordement_est_vide(self):
         lead = lead_complet(self.company, raccordement='')
         self.assertTrue(quest.manquantes(lead)['energie'])
@@ -388,6 +394,22 @@ class PublicQuestionnaireTests(TestCase):
 
     def _get(self, token=None):
         return self.client.get(PUBLIC.format(token or self.lien.token))
+
+    def test_cqst5_la_reponse_qui_debloque_met_le_devis_en_file_une_fois(self):
+        # CQST5 — résidentiel : facture d'hiver absente ⇒ devis bloqué ; la
+        # réponse énergie qui la donne le met en file, une seule fois.
+        from unittest import mock
+        Lead.objects.filter(pk=self.lead.pk).update(facture_hiver=None)
+        self.lead.refresh_from_db()
+        corps = {'section': 'energie', 'reponses': {'facture_hiver': 4200}}
+        with mock.patch('apps.ventes.services.'
+                        'planifier_devis_automatique_pour_lead') as file_:
+            for _ in range(2):
+                with self.captureOnCommitCallbacks(execute=True):
+                    res = self._post(corps)
+                self.assertEqual(res.status_code, 200, res.content)
+                self.assertIs(res.json()['devis_possible'], True)
+        file_.assert_called_once_with(self.lead.pk, self.company.pk)
 
     def _post(self, body, token=None):
         return self.client.post(
