@@ -442,6 +442,8 @@ const NON_LU: Readonly<Record<string, string>> = {
   'quote.totaux_avec.arrondi': 'ATOT26 — même étage « Arrondi » pour l’option avec batterie ; lu par ATOT34 (WEB_PLAN), pas encore par le lecteur typé.',
   'quote.totaux_sans.tva_par_taux[]': 'ATOT26 — ventilation de la TVA par taux {taux, montant, ht_net} : déclarée par le contrat ; ATOT34 (WEB_PLAN) l’imprimera ligne par ligne.',
   'quote.totaux_avec.tva_par_taux[]': 'ATOT26 — même ventilation de la TVA pour l’option avec batterie ; lue par ATOT34 (WEB_PLAN), pas encore par le lecteur typé.',
+  'quote.roi_s_jamais': 'CPRS (contrat d’abord PACT10) — vrai quand le cumul 25 ans de l’option sans batterie ne croise jamais zéro (« Non rentabilisé sur 25 ans » au PDF) ; servi par le serveur, null en C&I et agricole ; la page le lira (RWEB) et le rangera alors dans CLES_LUES.',
+  'quote.roi_a_jamais': 'CPRS (contrat d’abord PACT10) — même drapeau « jamais rentabilisé sur 25 ans » pour l’option avec batterie ; servi par le serveur, lu par la page avec RWEB, pas encore par le lecteur typé.',
   'quote.sans_items[]': 'Lignes du devis en niveau `standard` (kit agrégé) : rendues par le frontmatter depuis le dict interne du moteur, jamais par le lecteur typé.',
 
   // ── Multi-villa — un mode que le lecteur typé ne couvre pas ──────────────
@@ -663,7 +665,13 @@ const FRAGMENTS_DOCUMENTATION: Readonly<Record<string, string>> = {
   'exemple_avenant_a_signer.': 'Fragment d’exemple VNT2 : la charge utile publique d’un avenant négocié encore À SIGNER (bloc `avenant` : a_signer, remplace.reference, signe_le null) posée seule sur main avant que le serveur la serve (VNT25) et que la page la lise (VNT72).',
   'exemple_avenant_signe.': 'Fragment d’exemple VNT2 : la même charge utile une fois l’avenant SIGNÉ par le client (signe_le daté, a_signer false), posée avant ses deux moitiés (VNT25 serveur, VNT72 page).',
   'notes_vnt2.': 'Notes de contrat VNT2 : pourquoi `avenant` est absent des exemples existants (clé posée seulement sur un avenant), le sens de chaque clé et la forme unique du 409 vente_active_existante — documentation, jamais une valeur lue par la page.',
-  'exemple_roof_layout_riche.': 'Fragment d’exemple ACAL18 : le `roof_layout` riche (zones, modules, retraits, exclusions, surfaces de pose) que la page /proposition recevra quand `_safe_roof_layout` sera élargie (D08-T21/T22) — posé seul avant ses deux moitiés.',
+  // CPRS11 (contrat d'abord PACT10, 27/10/2026) — même patron que CIQ4 : le
+  // serveur sert déjà cette forme (option servie, textes assainis), la page
+  // /proposition C&I (CPRW) la lira et rangera chaque clé dans CLES_LUES / NON_LU.
+  'exemple_ci_deux_options.': 'Fragment d’exemple CPRS11 : la charge utile publique RÉELLE d’un devis C&I à deux options (`option_batterie`, totaux par option, `synthese_ci` assainie), posée avant que la page /proposition C&I (CPRW) la lise.',
+  'notes_cprs_deux_options': 'Notes de contrat CPRS11 : d’où vient le fragment `exemple_ci_deux_options` (rendu réel anonymisé) et ce que veut dire `option_batterie` — documentation, jamais une valeur lue par la page.',
+  'notes_cprs': 'Notes de contrat CPRS1-CPRS8 : chiffres C&I de l’option servie, clés internes qui ne partent plus (`libelles_document`, `etude_ci`, `tarif_mt_mention`) et textes traduits par les fonctions du PDF — documentation, jamais une valeur lue par la page.',
+  'exemple_roof_layout_riche.':'Fragment d’exemple ACAL18 : le `roof_layout` riche (zones, modules, retraits, exclusions, surfaces de pose) que la page /proposition recevra quand `_safe_roof_layout` sera élargie (D08-T21/T22) — posé seul avant ses deux moitiés.',
 };
 const decideeParFragment = (c: string): boolean =>
   Object.keys(FRAGMENTS_DOCUMENTATION).some((prefixe) => c.startsWith(prefixe));

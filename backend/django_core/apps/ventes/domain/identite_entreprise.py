@@ -11,6 +11,8 @@ importent depuis ``apps.ventes.domain.cycle_vie`` (vues, portail, tests)
 restent valides. Ce module n'importe jamais ``cycle_vie``.
 """
 
+from apps.parametres.tax_id_validators import normaliser_ice
+
 
 def _champs_signature_entreprise(entreprise):
     """CIQ319 — ``{raison_sociale, signataire_qualite, ice_declare}`` du
@@ -23,7 +25,8 @@ def _champs_signature_entreprise(entreprise):
         .strip()[:200],
         'signataire_qualite': str(entreprise.get('signataire_qualite') or '')
         .strip()[:150],
-        'ice_declare': str(entreprise.get('ice') or '').strip()[:30],
+        # CPRS7 — stocké sous sa forme canonique (celle que la validation lit).
+        'ice_declare': normaliser_ice(entreprise.get('ice'))[:30],
         # ADEV95 — e-mail et attestation de pouvoir du signataire (lien
         # public ; vides / faux sur le portail et l'ERP).
         'signataire_email': str(entreprise.get('signataire_email') or '')
@@ -166,15 +169,14 @@ def _nom_normalise(nom):
 
 
 def _ice_du_client(devis):
-    return ''.join(str(getattr(getattr(devis, 'client', None), 'ice', '')
-                       or '').split())
+    return normaliser_ice(getattr(getattr(devis, 'client', None), 'ice', ''))
 
 
 def divergence_ice(devis, ice_declare):
     """CIQ319 — vrai quand le Client porte DÉJÀ un ICE différent de celui
     déclaré à l'acceptation (jamais écrasé : drapeau pour le vendeur)."""
     ice_client = _ice_du_client(devis)
-    declare = ''.join(str(ice_declare or '').split())
+    declare = normaliser_ice(ice_declare)  # CPRS7 — « 001-234… » = « 001234… »
     return bool(ice_client and declare and ice_client != declare)
 
 
