@@ -9,9 +9,6 @@ import {
   argentCiCalcule,
   economieCiHero,
   injectionCi,
-  motifsManquantsCi,
-  ciEstUneEstimation,
-  ciSousReserveVisite,
   bandeauPreliminaireCi,
   lignePostesHorsTotalCi,
   CI_DEVIS_PRELIMINAIRE,
@@ -118,18 +115,6 @@ describe('CIW300 — syntheseCi (extracteur pur, lecture défensive)', () => {
     for (const m of ['residentiel', 'agricole', '']) {
       expect(syntheseCi(payload(m, { synthese_ci: SYNTHESE }))).toBeNull();
     }
-  });
-
-  it('étiquette « estimation », réserve de visite et motifs manquants', () => {
-    const ci = syntheseCi(payload('commercial', { synthese_ci: { ...SYNTHESE, argent: argent() } }));
-    expect(ciEstUneEstimation(ci)).toBe(true);
-    expect(ciSousReserveVisite(ci)).toBe(true);
-    expect(motifsManquantsCi(ci)).toEqual(["aucun taux d'actualisation déclaré"]);
-    const ferme = syntheseCi(
-      payload('commercial', { synthese_ci: { ...SYNTHESE, statut_etude: 'offre_ferme', energie: { ...SYNTHESE.energie, methode: 'horaire_declare' } } }),
-    );
-    expect(ciEstUneEstimation(ferme)).toBe(false);
-    expect(ciSousReserveVisite(ferme)).toBe(false);
   });
 });
 

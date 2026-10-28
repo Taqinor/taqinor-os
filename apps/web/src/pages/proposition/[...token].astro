@@ -33,6 +33,7 @@ import FinancementCi from '../../components/proposition/ci/FinancementCi.astro';
 import ServicesCi from '../../components/proposition/ci/ServicesCi.astro';
 import ComparaisonBatterieCi from '../../components/proposition/ci/ComparaisonBatterieCi.astro';
 import { financementCi, nomSocieteEmettrice, servicesCi } from '../../components/proposition/ci/blocsCi';
+import { valeursInitialesEntreprise } from '../../lib/propositionB2b';
 // (fondateur 2026-08-17) <StarRating/> n'est plus monté ici : sans note Google
 // réelle (GOOGLE_RATING = null, testimonials.ts) le composant ne rendait RIEN,
 // et la décision fondateur du jour bannit tout avis/étoile de cette page.
@@ -66,9 +67,6 @@ import {
   valeurOptionBatterieCi,
   offrePrincipaleCi,
   signatureEntrepriseRequise,
-  ciEstUneEstimation,
-  ciSousReserveVisite,
-  motifsManquantsCi,
   syntheseAgricole,
   omissionSynthese,
   courbeGeometrie,
@@ -615,16 +613,14 @@ const ci = ok ? syntheseCi(data!) : null;
 const ciArgent = argentCiCalcule(ci);
 const ciEco = economieCiHero(ciArgent);
 const ciInjection = injectionCi(ci);
-const ciManque = motifsManquantsCi(ci);
-const ciEstimation = ciEstUneEstimation(ci);
-const ciSousReserve = ciSousReserveVisite(ci);
 // CIW303 — options C&I : l'offre réseau d'abord ; la batterie est une « option proposée » avec sa
 // seule valeur CHIFFRÉE par le moteur C&I (ou « valeur non chiffrée » + motif). Rien n'est calculé ici.
 const ciOffrePrincipale: OptionKey = offrePrincipaleCi(ci);
 const ciValeurBatterie = valeurOptionBatterieCi(ci);
 // CIW305 — signature d'un devis C&I : raison sociale, nom, qualité du signataire et ICE (D-CIQ-11).
 const entrepriseRequise = signatureEntrepriseRequise(installMode);
-const raisonSocialeServie = ci?.entrepriseClient?.raisonSociale ?? '';
+// CPRW19 — pré-remplissage : raison sociale + ICE (normalisée) en valeurs, la fonction en simple suggestion.
+const prefillEntreprise = valeursInitialesEntreprise(ci?.entrepriseClient);
 // AGW303 — LA SYNTHÈSE AGRICOLE SERVIE (`synthese_agricole`, la MÊME fonction que le PDF).
 // La page LIT : besoin vs eau livrée, schéma, courbe + point, provenance, plaque. Aucun
 // calcul (la livraison d'eau dérivée dans le navigateur, `agricoleMonthlyDelivery`, est
@@ -3184,7 +3180,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
           mention servie) — CIW300 : tout est lu dans `synthese_ci`, aucun cashflow.
           ════════════════════════════════════════════════════════════════════ */}
       {isAutoconso && auto && (
-        <SectionAutoconso {ci} {ciArgent} {ciCarteInd} {ciEco} {ciEstimation} {ciInjection} {ciManque} {ciSousReserve} {couverture} {isCommercial} />
+        <SectionAutoconso {ci} {ciArgent} {ciCarteInd} {ciEco} {ciInjection} {couverture} {isCommercial} />
       )}
 
       {/* ════════════════════════════════════════════════════════════════════
@@ -6568,7 +6564,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     <label for="sign-raison-sociale" class="block text-xs leading-snug text-lune-faint" data-i18n
                       data-fr="Raison sociale" data-en="Company name" data-ar="الاسم التجاري للشركة">Raison sociale</label>
                     <input id="sign-raison-sociale" name="raison_sociale" type="text" autocomplete="organization" required
-                      value={raisonSocialeServie || undefined}
+                      value={prefillEntreprise.valeurs.raison_sociale || undefined}
                       class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
                     <p id="sign-err-entreprise-raison_sociale" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
                   </div>
@@ -6576,6 +6572,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     <label for="sign-qualite" class="block text-xs leading-snug text-lune-faint" data-i18n
                       data-fr="Qualité (gérant, DAF, DG…)" data-en="Capacity (manager, CFO, CEO…)" data-ar="الصفة (مسير، مدير مالي، مدير عام…)">Qualité (gérant, DAF, DG…)</label>
                     <input id="sign-qualite" name="signataire_qualite" type="text" autocomplete="organization-title" required
+                      placeholder={prefillEntreprise.suggestion.fonction || undefined}
                       class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
                     <p id="sign-err-entreprise-signataire_qualite" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
                   </div>
@@ -6583,6 +6580,7 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
                     <label for="sign-ice" class="block text-xs leading-snug text-lune-faint" data-i18n
                       data-fr="ICE" data-en="ICE (company identifier)" data-ar="ICE (المعرّف الموحد للمقاولة)">ICE</label>
                     <input id="sign-ice" name="ice" type="text" inputmode="numeric" autocomplete="off" required
+                      value={prefillEntreprise.valeurs.ice || undefined}
                       class="mt-1 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune placeholder:text-lune-faint" />
                     <p id="sign-err-entreprise-ice" class="mt-1 text-xs text-alert-300" role="alert" hidden></p>
                   </div>
@@ -11380,7 +11378,9 @@ const heroChips: { href: string; fr: string; en: string; ar: string }[] = [
     #contact-confirm,
     #sign-form,
     #pdf-download,
-    /* CPRW — :global : couvre aussi les blocs C&I / agricoles déplacés dans leurs composants. */
+    /* CPRW — :global : couvre aussi les blocs C&I / agricoles déplacés dans leurs composants ;
+       RWEB — `.btn-pill` local garde les pilules des états d'erreur, hors `.proposition`. */
+    .btn-pill,
     .proposition :global(.btn-pill) {
       display: none !important;
     }

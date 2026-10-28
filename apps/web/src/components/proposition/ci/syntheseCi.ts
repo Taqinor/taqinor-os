@@ -492,31 +492,6 @@ export function injectionCi(
   return { kwhAn: rev.kwhAn, valeurMadAn: rev.valeurMadAn, mention };
 }
 
-/** Vrai quand la méthode SERVIE se dit estimation (profil type, méthode inconnue) — l'étiquette « estimation ». */
-export function ciEstUneEstimation(ci: SyntheseCi | null): boolean {
-  return !!ci?.energie?.methode && ci.energie.methode.includes('estimation');
-}
-
-/** Vrai quand le serveur dit « estimation sous réserve de la visite technique » (CIQ303). */
-export function ciSousReserveVisite(ci: SyntheseCi | null): boolean {
-  return ci?.statutEtude === 'estimation_sous_reserve_visite';
-}
-
-/**
- * « Ce qu'il nous manque » : les motifs d'omission SERVIS de l'argent (ceux du bloc
- * `argent` et ceux des `omissions` dont le bloc est `argent…`), dédoublonnés, dans l'ordre servi.
- */
-export function motifsManquantsCi(ci: SyntheseCi | null): string[] {
-  if (!ci) return [];
-  const sortie: string[] = [];
-  const ajoute = (m: string) => {
-    if (!sortie.includes(m)) sortie.push(m);
-  };
-  for (const m of ci.argent?.motifsOmission ?? []) ajoute(m);
-  for (const o of ci.omissions) if (o.bloc === 'argent' || o.bloc.startsWith('argent.')) ajoute(o.motif);
-  return sortie;
-}
-
 // ── CIW303 — Options C&I : l'offre réseau d'abord, la batterie en option ─────
 
 /**
