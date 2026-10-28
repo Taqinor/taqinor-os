@@ -149,6 +149,12 @@ export const AGR_LBL_AGQ = {
   prixSurDevis: { fr: 'prix sur devis', en: 'price on request', ar: 'السعر حسب العرض' },
   notesTitre: { fr: 'Notes de dimensionnement', en: 'Sizing notes', ar: 'ملاحظات التحجيم' },
   coutM3Solaire: { fr: 'Coût du m³ avec le solaire', en: 'Cost per m³ with solar', ar: 'تكلفة المتر المكعب مع الطاقة الشمسية' },
+  // AGC17 (D-AGC-6, parité PDF `agr_depense_declaree_neutre`) — bloc argent non publiable : la seule dépense DÉCLARÉE.
+  depenseDeclaree: {
+    fr: 'Votre dépense actuelle déclarée : {mad} par an.',
+    en: 'Your declared current spending: {mad} per year.',
+    ar: 'نفقتكم الحالية المصرّح بها: {mad} في السنة.',
+  },
   // AGC7 (D-AGR-5, parité PDF `agr_formule_m3_solaire`) — la base du coût du m³ solaire : l'horizon SERVI.
   formuleM3: {
     fr: "Calcul : (investissement + charges du solaire sur {horizon} ans) ÷ (volume d'eau utile par an × {horizon}).",

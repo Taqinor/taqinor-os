@@ -250,6 +250,17 @@ describe('AGW304 — la page', () => {
     expect(zone).not.toMatch(/\*\s*365|0\.3\b|prix_gaz|prix_butane|litres_par_cv/i);
   });
 
+  it('AGC17 — la dépense DÉCLARÉE servie sans `economies` : lue telle quelle, jamais à côté d’un bloc argent', () => {
+    expect(syntheseAgricoleArgent(payload(sans('economies')))!.depenseDeclareeMadAn).toBe(21000);
+    expect(syntheseAgricoleArgent(payload(SERVIE))!.depenseDeclareeMadAn).toBeNull();
+    expect(syntheseAgricoleArgent(payload({ ...sans('economies'), depense_declaree: { annuelle_mad: 0 } }))!.depenseDeclareeMadAn).toBeNull();
+    expect(syntheseAgricoleArgent(payload(sans('depense_declaree')))!.depenseDeclareeMadAn).toBeNull();
+    const bloc = page.slice(page.indexOf('data-agri-depense-declaree'));
+    expect(page.slice(0, page.indexOf('data-agri-depense-declaree'))).toContain('{!argent?.economies && argent?.depenseDeclareeMadAn != null && (');
+    expect(bloc.slice(0, 1200)).toContain('AGR_LBL_AGQ.depenseDeclaree.ar');
+    expect(bloc.slice(0, 1200)).not.toMatch(/économie|retour/i);
+  });
+
   it('validation R3 (AGC7) — la formule du m³ (sans les remplacements) ne se dit que pour un nouveau forage, comme le PDF', () => {
     const avant = page.slice(0, page.indexOf('data-agri-formule-m3'));
     expect(avant.slice(avant.lastIndexOf('{argent.economies'))).toMatch(/^\{argent\.economies\.cas === 'nouveau_forage' && /);
