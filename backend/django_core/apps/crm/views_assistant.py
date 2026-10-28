@@ -29,28 +29,6 @@ LIMITE_LIGNES = 20
 _PORTEES = {'aujourd_hui': 'today', 'retard': 'overdue', 'semaine': 'week'}
 
 
-def _jours_de_retard(etapes, company, today):
-    """``{id d'étape: jours de retard COMPTÉS}`` — LA règle du cockpit
-    (``controle_suivi._jours_comptes`` : jours ouvrés de la société, hors
-    absence déclarée du responsable), jamais une seconde définition."""
-    from apps.notifications.calendar_utils import jours_ouvres_entre
-
-    from . import cadence_absence
-    from .controle_suivi import _jours_comptes
-
-    en_retard = [e for e in etapes if e.due_date and e.due_date < today]
-    if not en_retard:
-        return {}
-    debut = min(e.due_date for e in en_retard) + datetime.timedelta(days=1)
-    ouvres = jours_ouvres_entre(company, debut, today)
-    absences = cadence_absence.couverture(company, debut, today)
-    return {
-        e.pk: _jours_comptes(e.due_date, today, e.lead.owner_id,
-                             ouvres, absences)
-        for e in en_retard
-    }
-
-
 def _derniers_contacts(company, lead_ids):
     """``{lead_id: dernier instant de touche traitée}`` — UNE requête."""
     from django.db.models import Max
@@ -77,7 +55,9 @@ def lignes_a_relancer(user, scope, limite=LIMITE_LIGNES):
     qs = relance_etapes_dues(company, user, scope=scope, today=today)
     total = qs.count()
     etapes = list(qs[:limite])
-    retards = _jours_de_retard(etapes, company, today)
+    from .controle_suivi import jours_de_retard_par_etape
+
+    retards = jours_de_retard_par_etape(etapes, company, today)
     contacts = _derniers_contacts(company, {e.lead_id for e in etapes})
     lignes = []
     for etape in etapes:
