@@ -30,6 +30,15 @@ const STATUTS = {
   absent: ['danger', 'Absent du catalogue'],
 }
 
+/** Le lien de l'action, avec les articles en cause (`&articles=12,34`) : le
+ * filtre Stock les montre même quand sa règle locale ne connaît pas le motif. */
+function lienAction(poste) {
+  const ids = (poste.articles ?? []).map((a) => a.id)
+  if (!ids.length) return poste.action.lien
+  const sep = poste.action.lien.includes('?') ? '&' : '?'
+  return `${poste.action.lien}${sep}articles=${ids.join(',')}`
+}
+
 function LignePoste({ poste }) {
   const [tone, texte] = STATUTS[poste.statut] ?? ['neutral', poste.statut]
   return (
@@ -51,7 +60,7 @@ function LignePoste({ poste }) {
       </div>
       {poste.statut !== 'ok' && poste.action?.lien && (
         <Button asChild variant="outline" size="sm" className="shrink-0 self-start">
-          <Link to={poste.action.lien}>{poste.action.texte}</Link>
+          <Link to={lienAction(poste)}>{poste.action.texte}</Link>
         </Button>
       )}
     </li>

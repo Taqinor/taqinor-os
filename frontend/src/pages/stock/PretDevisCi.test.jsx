@@ -84,7 +84,8 @@ describe('PretDevisCi (CCAT9, CCAT14)', () => {
     expect(within(ligne).getByText(`${art.nom} — ${art.motif}`)).toBeTruthy()
     const lien = within(ligne).getByRole('link', { name: poste.action.texte })
     fireEvent.click(lien)
-    expect(screen.getByTestId('lieu').textContent).toBe(poste.action.lien)
+    expect(screen.getByTestId('lieu').textContent).toBe(
+      `${poste.action.lien}&articles=${poste.articles.map((a) => a.id).join(',')}`)
     // statut absent -> « Absent du catalogue » ; facultatif -> « facultatif »
     expect(screen.getByText('Absent du catalogue')).toBeTruthy()
     const opt = contrat.postes.find((p) => !p.obligatoire)
@@ -245,7 +246,34 @@ describe('CatalogueTable — ?ci= / ?pompage=a_completer (CCAT9)', () => {
     const poste = contrat.postes.find((p) => p.statut === 'a_completer' && p.obligatoire)
     const ligne = await screen.findByTestId(`poste-ci-${poste.cle}`)
     fireEvent.click(within(ligne).getByRole('link', { name: poste.action.texte }))
-    expect(screen.getByTestId('lieu').textContent).toBe('/stock?ci=a_completer')
+    expect(screen.getByTestId('lieu').textContent).toMatch(/^\/stock\?ci=a_completer&articles=/)
     expect(screen.getByTestId('filtre-ci-a-completer').getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('&articles= : un article en cause que la règle locale ne reconnaît pas reste listé (revue Fable B1)', () => {
+    // `produit` est chiffré et éligible côté écran : seul le serveur le juge
+    // à compléter (calibre, plage batterie…) — le filtre doit quand même le montrer.
+    rendre('/stock?ci=a_completer&articles=1')
+    expect(screen.getAllByText('Panneau 550 Wc').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Coffret AC C&I').length).toBeGreaterThan(0)
+    // Rebasculer le filtre oublie les articles de l'encadré.
+    fireEvent.click(screen.getByTestId('filtre-ci-a-completer'))
+    fireEvent.click(screen.getByTestId('filtre-ci-a-completer'))
+    expect(screen.queryAllByText('Panneau 550 Wc')).toHaveLength(0)
+  })
+
+  it('?ci=a_completer sans aucun article C&I : le filtre reste visible pour être éteint', () => {
+    render(
+      <MemoryRouter initialEntries={['/stock?ci=a_completer&articles=9']}>
+        <ThemeProvider>
+          <CatalogueTable produits={[{ ...produitStockBase, id: 9, nom: 'Batterie X' }]}
+                          categories={[{ id: 3, nom: 'Panneaux' }]}
+                          {...propsCatalogueBase} onInlineSave={vi.fn().mockResolvedValue({})}
+                          selected={new Set()} onToggleSelect={() => {}} />
+        </ThemeProvider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByTestId('filtre-ci-a-completer').getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getAllByText('Batterie X').length).toBeGreaterThan(0)
   })
 })

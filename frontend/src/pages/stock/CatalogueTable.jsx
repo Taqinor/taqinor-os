@@ -190,6 +190,12 @@ export function CatalogueTable({
   const [paramsUrl] = useSearchParams()
   const { key: cleNavigation } = useLocation()
   const filtreUrl = (nom) => paramsUrl.get(nom) === 'a_completer'
+  // Les articles en cause nommés par l'encadré (`&articles=12,34`) : le filtre
+  // les montre même quand sa règle locale ne reconnaît pas leur motif (type de
+  // pompe, calibre, plage batterie… calculés côté serveur).
+  const idsUrl = () => new Set((paramsUrl.get('articles') ?? '').split(',')
+    .map(Number).filter((n) => n > 0))
+  const [idsEnCause, setIdsEnCause] = useState(idsUrl)
   const [pompageACompleterSeul, setPompageACompleterSeul] = useState(() => filtreUrl('pompage'))
   const aDuPompage = useMemo(
     () => (produits ?? []).some((p) => !p?.is_archived && roleDuProduitPompage(p)),
@@ -208,6 +214,7 @@ export function CatalogueTable({
   const [navigationVue, setNavigationVue] = useState(cleNavigation)
   if (navigationVue !== cleNavigation) {
     setNavigationVue(cleNavigation)
+    setIdsEnCause(idsUrl())
     if (filtreUrl('ci')) setCiACompleterSeul(true)
     if (filtreUrl('pompage')) setPompageACompleterSeul(true)
   }
@@ -221,11 +228,17 @@ export function CatalogueTable({
     let liste = produits ?? []
     if (pompageACompleterSeul) {
       const ids = new Set(aCompleter.map((x) => x.produit.id))
-      liste = liste.filter((p) => ids.has(p.id))
+      liste = liste.filter((p) => ids.has(p.id) || idsEnCause.has(p.id))
     }
-    if (ciACompleterSeul) liste = liste.filter((p) => produitCiACompleter(p))
+    if (ciACompleterSeul) {
+      liste = liste.filter((p) => produitCiACompleter(p) || idsEnCause.has(p.id))
+    }
     return liste
-  }, [produits, pompageACompleterSeul, aCompleter, ciACompleterSeul])
+  }, [produits, pompageACompleterSeul, aCompleter, ciACompleterSeul, idsEnCause])
+  const basculer = (setFiltre) => () => {
+    setIdsEnCause(new Set())
+    setFiltre((v) => !v)
+  }
 
   const columns = useMemo(() => [
     // Colonne de selection (multi-selection pilotee par StockList → BulkProductBar).
@@ -536,20 +549,20 @@ export function CatalogueTable({
           de l'export propre au moteur (celui de l'en-tête StockList a disparu,
           devenu redondant — même export xlsx serveur des deux côtés). */}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {aDuPompage && (
+        {(aDuPompage || pompageACompleterSeul) && (
           <Button type="button" variant={pompageACompleterSeul ? 'secondary' : 'outline'} size="sm"
                   aria-pressed={pompageACompleterSeul}
                   data-testid="filtre-pompage-a-completer"
-                  onClick={() => setPompageACompleterSeul(v => !v)}
+                  onClick={basculer(setPompageACompleterSeul)}
                   title="Articles pompage sans prix, pompes sans courbe, variateurs sans fiche">
             <AlertTriangle /> Pompage à compléter ({aCompleter.length})
           </Button>
         )}
-        {aDuCi && (
+        {(aDuCi || ciACompleterSeul) && (
           <Button type="button" variant={ciACompleterSeul ? 'secondary' : 'outline'} size="sm"
                   aria-pressed={ciACompleterSeul}
                   data-testid="filtre-ci-a-completer"
-                  onClick={() => setCiACompleterSeul(v => !v)}
+                  onClick={basculer(setCiACompleterSeul)}
                   title="Articles C&I sans prix ou exclus du dimensionnement (fiche incomplète…)">
             <AlertTriangle /> C&amp;I à compléter ({ciACompleter.length})
           </Button>
