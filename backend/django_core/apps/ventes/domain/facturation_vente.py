@@ -76,10 +76,11 @@ def _montant_demande(prix_ttc, montant_ttc, pourcentage):
             'Montant invalide : donnez un montant OU un pourcentage.',
             code='montant_invalide', status=409)
     import re
+    # Le TEXTE reçu suit le motif publié (le sérialiseur déclaré l'applique
+    # déjà côté HTTP) ; un ``Decimal`` des appelants internes passe tel quel.
     for valeur, motif in ((montant_ttc, MOTIF_MONTANT_DEMANDE),
                           (pourcentage, MOTIF_POURCENTAGE_DEMANDE)):
-        if valeur is not None and not (isinstance(valeur, str)
-                                       and re.fullmatch(motif, valeur)):
+        if isinstance(valeur, str) and not re.fullmatch(motif, valeur):
             raise FacturationVenteRefusee('Montant invalide.',
                                           code='montant_invalide')
     try:
