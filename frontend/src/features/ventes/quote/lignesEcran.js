@@ -90,8 +90,66 @@ export function lignesServeurVersEcran(lignes, tauxDevis) {
         // AGR218 (contrat AGR200) — base légale d'un taux à 0 %, telle que
         // saisie (vide = aucune).
         tvaBaseLegale: l.tva_base_legale ?? '',
+        // R2 (fondateur 28/10/2026) — groupe CLIENT servi par le serveur
+        // (`groupe_client` : 'tableau_ci' | 'installation_ci' | null), calculé
+        // du rôle C&I du produit. Marqueur d'écran seulement : l'écran regroupe
+        // à l'AFFICHAGE (`sequenceGroupesClient`), jamais envoyé.
+        groupeClient: l.groupe_client ?? null,
       }
     })
+}
+
+// ── R2 — en-têtes de groupe client du tableau des lignes ─────────────────────
+// Les composants d'un même `groupe_client` (Tableau de protection AC/DC,
+// Installation clé en main) s'affichent SOUS un en-tête de section qui dit le
+// total HT du groupe, chaque composant restant éditable ligne à ligne. L'ordre
+// PERSISTÉ (`ordre` = index du state) ne bouge pas : seule la séquence
+// d'affichage rapproche les composants à la place du premier.
+export const LIBELLES_GROUPE_CLIENT = Object.freeze({
+  tableau_ci: 'Tableau de protection AC/DC',
+  installation_ci: 'Installation clé en main',
+})
+
+function htLigne(l) {
+  const qte = parseFloat(l.quantite) || 0
+  return qte * (parseFloat(htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20)) || 0)
+}
+
+/**
+ * Séquence d'affichage des lignes d'écran : `{ kind: 'entete', groupe,
+ * libelle, totalHt, nb }` avant la PREMIÈRE ligne d'un groupe, suivi de ses
+ * `{ kind: 'ligne', index }` (index dans `lines`, pour les gestes et la remise
+ * répartie), puis les lignes hors groupe à leur place. Sans aucun
+ * `groupeClient` : une ligne par index, dans l'ordre — DOM inchangé.
+ * @param {Array<object>} lines  lignes d'écran
+ */
+export function sequenceGroupesClient(lines) {
+  const liste = Array.isArray(lines) ? lines : []
+  const groupes = new Map()
+  liste.forEach((l, index) => {
+    const g = l && l.groupeClient && LIBELLES_GROUPE_CLIENT[l.groupeClient] ? l.groupeClient : null
+    if (!g) return
+    if (!groupes.has(g)) groupes.set(g, { indexes: [], totalHt: 0 })
+    const entree = groupes.get(g)
+    entree.indexes.push(index)
+    entree.totalHt += estStructure(l) ? 0 : htLigne(l)
+  })
+  if (groupes.size === 0) return liste.map((_l, index) => ({ kind: 'ligne', index }))
+  const sequence = []
+  const places = new Set()
+  liste.forEach((l, index) => {
+    if (places.has(index)) return
+    const g = l && l.groupeClient && groupes.has(l.groupeClient) ? l.groupeClient : null
+    if (!g) {
+      sequence.push({ kind: 'ligne', index })
+      return
+    }
+    const entree = groupes.get(g)
+    sequence.push({ kind: 'entete', groupe: g, libelle: LIBELLES_GROUPE_CLIENT[g],
+      totalHt: Math.round(entree.totalHt * 100) / 100, nb: entree.indexes.length })
+    entree.indexes.forEach((i) => { places.add(i); sequence.push({ kind: 'ligne', index: i }) })
+  })
+  return sequence
 }
 
 const estStructure = (l) => TYPES_STRUCTURE.has(l.typeLigne)

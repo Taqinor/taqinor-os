@@ -7,12 +7,21 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import LigneTable from './LigneTable'
+import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
+
+// R2 — une ligne rendue monte <DevisLineRow> → <ProduitPicker> (Redux) : mocké,
+// comme dans DevisLineRow.test.jsx (la table est testée, pas le sélecteur).
+vi.mock('../../../components/ProduitPicker', () => ({
+  default: function ProduitPickerMock(props) {
+    return <div data-testid="produit-picker-mock">{props.value ?? 'aucun'}</div>
+  },
+}))
 
 const noop = vi.fn()
 
 function rendre(props = {}) {
   return render(
-    <LigneTable
+    <ThemeProvider><LigneTable
       lines={[]} produits={[]} linesTableRef={{ current: null }} canRenameLine
       tarifBadges={{}} quoteLogic={{ tvaPanneaux: 10, tvaStandard: 20 }}
       onSetField={noop} onDesignationBlur={noop} onProduitChange={noop}
@@ -27,7 +36,7 @@ function rendre(props = {}) {
       errorLines={null} accessoiresOnly={false} setAccessoiresOnly={noop}
       lignesRemiseesTtc={[]} montrerRemise={false}
       {...props}
-    />,
+    /></ThemeProvider>,
   )
 }
 
@@ -54,5 +63,41 @@ describe('EDC3 — LigneTable : en-tête collant, table separate, barre proxy', 
     const ref = { current: null }
     const { container } = rendre({ linesTableRef: ref })
     expect(ref.current).toBe(container.querySelector('table.lines-table'))
+  })
+})
+
+// ── R2 (fondateur 28/10/2026) — en-tête de groupe client dans la table ──────
+// Run : npx vitest run src/pages/ventes/generator/LigneTable.edc3.test.jsx
+describe('R2 — LigneTable : « Tableau de protection AC/DC — total HT » au-dessus des composants, toujours éditables', () => {
+  const lignes = [
+    { _key: 'k1', produit: '12', designation: 'Panneau', quantite: '10', prix_unit_ttc: '1200', taux_tva: '20', typeLigne: 'produit', groupeClient: null },
+    { _key: 'k2', produit: '88', designation: 'Coffret DC C&I', quantite: '2', prix_unit_ttc: '1800', taux_tva: '20', typeLigne: 'produit', groupeClient: 'tableau_ci' },
+    { _key: 'k3', produit: '90', designation: 'Câble AC', quantite: '30', prix_unit_ttc: '60', taux_tva: '20', typeLigne: 'produit', groupeClient: null },
+    { _key: 'k4', produit: '91', designation: 'Smart Meter', quantite: '1', prix_unit_ttc: '2160', taux_tva: '20', typeLigne: 'produit', groupeClient: 'tableau_ci' },
+  ]
+
+  it('un en-tête par groupe, total HT du groupe, composants regroupés dessous et toujours des lignes éditables', () => {
+    const { container } = rendre({ lines: lignes, lignesRemiseesTtc: [null, null, null, null] })
+    const entetes = container.querySelectorAll('tr.lines-groupe-client')
+    expect(entetes).toHaveLength(1)
+    expect(entetes[0]).toHaveAttribute('data-groupe-client', 'tableau_ci')
+    expect(entetes[0].textContent).toContain('Tableau de protection AC/DC')
+    expect(entetes[0].textContent).toContain('2 composants')
+    // 2 × 1 500 HT + 1 × 1 800 HT = 4 800 HT (TTC saisi à 20 %).
+    expect(entetes[0].querySelector('[data-groupe-total-ht]').textContent.replace(/[\s\u202f\u00a0]/g, '')).toMatch(/^4800/)
+    const ordre = [...container.querySelectorAll('tbody tr')].map((tr) =>
+      tr.classList.contains('lines-groupe-client') ? 'entete' : tr.getAttribute('data-line-key'))
+    expect(ordre).toEqual(['k1', 'entete', 'k2', 'k4', 'k3'])
+    // Chaque composant garde sa propre ligne éditable (quantité saisissable).
+    for (const key of ['k2', 'k4']) {
+      const tr = container.querySelector(`tr[data-line-key="${key}"]`)
+      expect(tr.querySelector('input[type="number"]')).not.toBeNull()
+    }
+  })
+
+  it('sans groupe_client, aucun en-tête : la table d’hier, ligne par ligne', () => {
+    const { container } = rendre({ lines: lignes.map((l) => ({ ...l, groupeClient: null })), lignesRemiseesTtc: [null, null, null, null] })
+    expect(container.querySelectorAll('tr.lines-groupe-client')).toHaveLength(0)
+    expect([...container.querySelectorAll('tbody tr')].map((tr) => tr.getAttribute('data-line-key'))).toEqual(['k1', 'k2', 'k3', 'k4'])
   })
 })

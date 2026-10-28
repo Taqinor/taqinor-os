@@ -166,6 +166,13 @@ class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
         source='produit.tva', max_digits=5, decimal_places=2,
         read_only=True, allow_null=True, default=None)
 
+    # R2 (fondateur 28/10/2026) — groupe CLIENT de la ligne, calculé du
+    # ``role_ci`` du PRODUIT (une seule source : ``moteur_ci.composition``) :
+    # 'tableau_ci' (Tableau de protection AC/DC) | 'installation_ci'
+    # (Installation clé en main) | null. L'écran regroupe à l'AFFICHAGE sous un
+    # en-tête de section ; rien n'est fusionné en base. Lecture seule.
+    groupe_client = serializers.SerializerMethodField()
+
     same_company_fields = ('devis', 'produit', 'lot')
     #: Sous-ensemble de ``same_company_fields`` qui admet aussi le catalogue
     #: global (``company IS NULL``) — PV15.
@@ -174,6 +181,13 @@ class LigneDevisSerializer(IdInconnu404Mixin, ChampsStrictsMixin,
     class Meta:
         model = LigneDevis
         fields = '__all__'
+
+    @extend_schema_field(serializers.ChoiceField(
+        choices=['tableau_ci', 'installation_ci'], allow_null=True))
+    def get_groupe_client(self, obj):
+        from .moteur_ci.composition import groupe_client_du_role
+        produit = getattr(obj, 'produit', None)
+        return groupe_client_du_role(getattr(produit, 'role_ci', None))
 
     def get_fields(self):
         fields = super().get_fields()

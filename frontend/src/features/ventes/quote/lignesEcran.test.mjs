@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path'
 
 import {
   lignesServeurVersEcran, lignesEcranVersPayload,
-  baseLegaleManquante, erreursBaseLegaleServeur,
+  baseLegaleManquante, erreursBaseLegaleServeur, sequenceGroupesClient,
 } from './lignesEcran.js'
 import { documentContrat, exempleContrat } from '../../../test/fixtures/contractSamples.js'
 import { lireSourceGenerateur } from '../../../pages/ventes/DevisGeneratorSource.js'
@@ -233,4 +233,40 @@ test('AGR218 — le 400 serveur (champ lignes[i].tva_base_legale) revient sur SA
   assert.deepEqual(erreursBaseLegaleServeur(refus, ecran), { k0: refus.detail })
   assert.deepEqual(erreursBaseLegaleServeur({ detail: 'autre' }, ecran), {})
   assert.deepEqual(erreursBaseLegaleServeur(null, ecran), {})
+})
+
+// ── R2 (fondateur 28/10/2026) — `groupe_client` relu + séquence par groupe ──
+test('R2 — groupe_client servi est relu en groupeClient, jamais renvoyé au serveur', () => {
+  const serveur = lignesServeur().map((l, i) => ({ ...l, groupe_client: i === 0 ? 'tableau_ci' : null }))
+  const ecran = lignesServeurVersEcran(serveur, '20.00')
+  assert.deepEqual(ecran.map((l) => l.groupeClient), ['tableau_ci', null, null])
+  const payload = lignesEcranVersPayload(ecran, { multiMode: 'none' })
+  for (const p of payload) assert.equal('groupe_client' in p, false)
+  // Une ligne sans la clé (serveur d'hier) ⇒ null, jamais undefined.
+  assert.equal(lignesServeurVersEcran([{ ...serveur[0], groupe_client: undefined }])[0].groupeClient, null)
+})
+
+test('R2 — sequenceGroupesClient : sans groupe, une ligne par index dans l’ordre (DOM d’hier)', () => {
+  const lines = [{ quantite: '1', prix_unit_ttc: '120', taux_tva: '20' }, { quantite: '2', prix_unit_ttc: '60', taux_tva: '20' }]
+  assert.deepEqual(sequenceGroupesClient(lines), [{ kind: 'ligne', index: 0 }, { kind: 'ligne', index: 1 }])
+  assert.deepEqual(sequenceGroupesClient(undefined), [])
+})
+
+test('R2 — sequenceGroupesClient : en-tête « Tableau de protection AC/DC — total HT » devant les composants, rapprochés à la place du premier', () => {
+  const lines = [
+    { designation: 'Panneau', quantite: '10', prix_unit_ttc: '1200', taux_tva: '20', groupeClient: null },
+    { designation: 'Coffret DC', quantite: '2', prix_unit_ttc: '1800', taux_tva: '20', groupeClient: 'tableau_ci' },
+    { designation: 'Câble AC', quantite: '30', prix_unit_ttc: '60', taux_tva: '20', groupeClient: null },
+    { designation: 'Smart Meter', quantite: '1', prix_unit_ttc: '2160', taux_tva: '20', groupeClient: 'tableau_ci' },
+    { designation: 'Pose des modules', quantite: '1', prix_unit_ttc: '24000', taux_tva: '20', groupeClient: 'installation_ci' },
+    { designation: 'Groupe inconnu', quantite: '1', prix_unit_ttc: '12', taux_tva: '20', groupeClient: 'autre' },
+  ]
+  const seq = sequenceGroupesClient(lines)
+  assert.deepEqual(seq.map((p) => (p.kind === 'entete' ? `${p.groupe}:${p.nb}:${p.totalHt}` : p.index)),
+    [0, 'tableau_ci:2:4800', 1, 3, 2, 'installation_ci:1:20000', 4, 5])
+  assert.equal(seq[1].libelle, 'Tableau de protection AC/DC')
+  assert.equal(seq[5].libelle, 'Installation clé en main')
+  // Chaque ligne reste rendue une seule fois, l’ordre persisté (index) est intact.
+  const indexes = seq.filter((p) => p.kind === 'ligne').map((p) => p.index)
+  assert.deepEqual([...indexes].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5])
 })
