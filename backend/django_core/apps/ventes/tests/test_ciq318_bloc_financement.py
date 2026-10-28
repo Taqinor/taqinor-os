@@ -62,3 +62,32 @@ class BlocFinancement(SimpleTestCase):
         offre = dict(OFFRE, reference_offre="")
         html = bloc_financement(_synthese(offre))
         self.assertNotIn("Prêteur Exemple du", html)
+
+    # CEC15 (affichage) — apport, frais et retour de l'offre, lus servis.
+    def test_apport_frais_et_retour_de_l_offre_imprimes(self):
+        synthese = _synthese(dict(OFFRE, apport_mad=180000, frais_mad=5000))
+        fin = synthese["argent"]["financement"]
+        html = bloc_financement(synthese)
+        self.assertIn("Apport à la signature&#160;: "
+                      f"{fmt_centimes(180000)}&#160;MAD", html)
+        self.assertIn(f"Frais de l'offre&#160;: {fmt_centimes(5000)}&#160;MAD",
+                      html)
+        retour = f"{fin['retour_offre_ans']:.1f}".replace(".", ",")
+        self.assertIn(f"Retour sur l'offre&#160;: {retour}&nbsp;ans", html)
+        # l'écart mensuel reste imprimé tel que servi
+        self.assertIn(f"{fmt_centimes(fin['ecart_mensuel_mad'])}&#160;MAD HT",
+                      html)
+
+    def test_sans_apport_ni_retour_servi_lignes_omises(self):
+        synthese = _synthese(dict(OFFRE))
+        synthese["argent"]["financement"].pop("retour_offre_ans", None)
+        html = bloc_financement(synthese)
+        self.assertNotIn("Apport", html)
+        self.assertNotIn("Frais de l'offre", html)
+        self.assertNotIn("Retour sur l'offre", html)
+
+    def test_libelles_traduits_en_anglais(self):
+        synthese = _synthese(dict(OFFRE, apport_mad=180000))
+        html = bloc_financement(synthese, doc={"langue_sortie": "en"})
+        self.assertIn("Deposit at signature", html)
+        self.assertIn("Payback with the offer", html)

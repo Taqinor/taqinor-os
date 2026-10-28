@@ -456,6 +456,7 @@ def bloc_financement(synthese, prefixe="ci", couleur_titre="#0F1E35",
     if ecart is not None:
         lignes.append(libelle(doc, "ci_ecart_mensuel", "Écart mensuel")
                       + f"&#160;: {_montant(ecart)}&#160;MAD{suffixe}")
+    lignes.extend(_lignes_offre_cec15(doc, offre))
     source = _txt(offre.get("source"))
     if source:
         lignes.append(libelle(doc, "ci_source", "Source")
@@ -466,6 +467,28 @@ def bloc_financement(synthese, prefixe="ci", couleur_titre="#0F1E35",
             f'font-size:8pt;color:{couleur_texte};line-height:1.4;">'
             f'<div style="font-size:9pt;font-weight:700;'
             f'color:{couleur_titre};">{titre}</div>{items}</div>')
+
+
+def _lignes_offre_cec15(doc, offre):
+    """CEC15 (affichage) — « Apport à la signature » et « Frais de l'offre »
+    quand ils sont servis > 0, puis « Retour sur l'offre » lu sur
+    ``retour_offre_ans`` (au dixième) ; omis quand la clé est absente ou
+    nulle — jamais recalculé ici (règle #4)."""
+    from .couverture import unite_ans
+    lignes = []
+    for cle, lib, fr in (("apport_mad", "ci_fin_apport",
+                          "Apport à la signature"),
+                         ("frais_mad", "ci_fin_frais", "Frais de l'offre")):
+        v = offre.get(cle)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+            lignes.append(libelle(doc, lib, fr)
+                          + f"&#160;: {_montant(v)}&#160;MAD")
+    retour = offre.get("retour_offre_ans")
+    if isinstance(retour, (int, float)) and not isinstance(retour, bool):
+        texte = decimale(f"{float(retour):.1f}")
+        lignes.append(libelle(doc, "ci_fin_retour", "Retour sur l'offre")
+                      + f"&#160;: {texte}" + unite_ans(doc, texte))
+    return lignes
 
 
 # ── CIQ311 — bloc « Conditions » ────────────────────────────────────────────

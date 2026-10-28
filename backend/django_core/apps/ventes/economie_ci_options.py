@@ -367,9 +367,16 @@ def flux_offre(offre, echeance, duree_mois, economie_annee1):
 
 
 def cles_flux_offre(offre, echeance, duree_mois, economie_annee1):
-    """Clés ADDITIVES du bloc ``financement`` : ``flux_offre`` et
-    ``retour_offre_ans`` ; ``{}`` sans économie an 1 (flux non calculable)."""
+    """Clés ADDITIVES du bloc ``financement`` : ``apport_mad`` et
+    ``frais_mad`` tels que SAISIS sur l'offre (0 si absents — affichés
+    seulement > 0), puis ``flux_offre`` et ``retour_offre_ans`` — omis sans
+    économie an 1 (flux non calculable)."""
+    def _saisi(cle):
+        v = _montant((offre or {}).get(cle))
+        return round(v, 2) if v and v > 0 else 0.0
+    cles = {'apport_mad': _saisi('apport_mad'), 'frais_mad': _saisi('frais_mad')}
     if economie_annee1 is None:
-        return {}
+        return cles
     res = flux_offre(offre, echeance, duree_mois, economie_annee1)
-    return {'flux_offre': res['flux'], 'retour_offre_ans': res['retour_ans']}
+    return {**cles, 'flux_offre': res['flux'],
+            'retour_offre_ans': res['retour_ans']}
