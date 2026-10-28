@@ -35,6 +35,10 @@ ON_DEMAND_ALLOWLIST = {
     # opt-in société ``devis_auto_depuis_tunnel``) — jamais périodique : un
     # devis auto n'existe que parce qu'un client vient de dessiner son toit.
     'ventes.devis_automatique_depuis_lead',
+    # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE (28/10/2026) — exemplaire SIGNÉ rendu
+    # après le commit d'une acceptation (``transaction.on_commit`` dans
+    # ``domain/pdf_signe.py``) : jamais périodique, une signature le déclenche.
+    'ventes.rendre_pdf_signe',
     # ENG18 — génération de variantes créatives : déclenchée à la demande
     # depuis la bibliothèque créative (jamais périodique).
     'adsengine.generate_creative_variants',

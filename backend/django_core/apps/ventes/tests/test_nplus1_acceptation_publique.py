@@ -142,8 +142,11 @@ class AcceptationNPlus1Tests(TestCase):
         link = ShareLink.for_devis(devis)
         # ADEV51 — calculée HORS de la mesure : le corps renvoie l'empreinte lue.
         empreinte = empreinte_contenu(devis)
+        # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE — la confirmation (bloc d'acompte)
+        # part de la tâche après le commit : jouée en ligne DANS la mesure.
+        from apps.ventes.tests._quote_engine_common import pdf_signe_en_ligne
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
-            with CaptureQueriesContext(connection) as ctx:
+            with CaptureQueriesContext(connection) as ctx, \n                    pdf_signe_en_ligne(self):
                 resp = self.api.post(
                     f'/api/django/public/proposal/{link.token}/accept/',
                     {'nom': 'Client NPLUS1', 'consent_esign': True,

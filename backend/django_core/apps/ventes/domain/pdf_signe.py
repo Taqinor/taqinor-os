@@ -141,7 +141,10 @@ def _confirmer_une_fois(devis, user_id, jeton):
     if user_id:
         from django.contrib.auth import get_user_model
         user = get_user_model().objects.filter(pk=user_id).first()
-    cycle_vie._send_acceptance_emails(devis=devis, user=user)
+    # NPLUS1 — lignes chargées UNE fois et passées au bloc d'acompte, comme
+    # le faisait la requête d'acceptation avant le rendu différé.
+    lignes = list(devis.lignes.select_related('produit').all())
+    cycle_vie._send_acceptance_emails(devis=devis, user=user, lignes=lignes)
 
 
 def rendre_pdf_signe(devis_id, *, user_id=None, envoyer_confirmation=False,
