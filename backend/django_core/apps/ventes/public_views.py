@@ -1576,14 +1576,14 @@ def proposal_data(request, token):
                      if _section_servie(link, 'economies') else None)
         if _cumul_25 is not None:
             payload['economies_cumul_25_ans'] = _cumul_25
-        # AGR308 — synthèse agricole (additive). Son bloc ``economies`` obéit à
-        # la case « Synthèse d'économies » du lien, comme la synthèse
-        # résidentielle (L-SECT) : décochée, l'argent ne part pas.
+        # AGR308 — synthèse agricole (additive). Son argent (``economies``, et
+        # ``depense_declaree`` AGC16) obéit à la case « Synthèse d'économies »
+        # du lien, comme la synthèse résidentielle : décochée, il ne part pas.
         if synthese_agricole_pub is not None:
             if not _section_servie(link, 'economies'):
                 synthese_agricole_pub = {
                     cle: val for cle, val in synthese_agricole_pub.items()
-                    if cle != 'economies'}
+                    if cle not in ('economies', 'depense_declaree')}
             payload['synthese_agricole'] = synthese_agricole_pub
         # CIQ306 — synthèse C&I (additive, absente hors C&I, jamais `null`).
         if synthese_ci_pub is not None:

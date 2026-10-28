@@ -153,6 +153,23 @@ class Agr308SyntheseAgricoleServieTests(TestCase):
         self.assertNotIn('economies', servie)
         self.assertIn('eau', servie)
 
+    def test_agc16_depense_declaree_suit_la_case_economies(self):
+        """AGC16 (contrat AGC14) — bloc non publiable : la dépense DÉCLARÉE
+        part avec la case cochée, jamais avec la case décochée. Mutant :
+        filtrer seulement ``economies`` ⇒ rouge."""
+        devis = self._devis('DEV-AGC16', 'agricole', LIGNES_POMPAGE,
+                            ETUDE_POMPAGE)
+        bloc = dict(_bloc_agr3_public(), publiable_client=False,
+                    motifs_non_publiable=['barème non saisi'])
+        with mock.patch(_PATCH_ECO, return_value=bloc):
+            cochee = self._payload(devis)['synthese_agricole']
+            decochee = self._payload(
+                devis, sections={'economies': False})['synthese_agricole']
+        self.assertEqual(cochee['depense_declaree'],
+                         {'annuelle_mad': 32871.45})
+        self.assertNotIn('economies', cochee)
+        self.assertNotIn('depense_declaree', decochee)
+
     def test_forme_conforme_au_fragment_exemple_agricole(self):
         contrat = json.loads((_CONTRATS / 'proposal_data.json').read_text(
             encoding='utf-8'))['exemple_agricole']['synthese_agricole']
