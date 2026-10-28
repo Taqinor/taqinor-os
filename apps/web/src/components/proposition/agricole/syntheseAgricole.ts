@@ -484,6 +484,8 @@ export interface SyntheseFormalite {
 
 export interface SyntheseAgricoleArgent {
   economies: SyntheseEconomiesAgricole | null;
+  /** AGC17 (contrat AGC14) — dépense actuelle DÉCLARÉE (MAD/an) servie sans `economies` ; jamais avec elle. */
+  depenseDeclareeMadAn: number | null;
   /** Énergie actuelle DÉCLARÉE (butane / diesel / électrique / aucune), avec provenance. */
   energieActuelle: { valeur: string; provenance: SyntheseProvenance } | null;
   aideFda: SyntheseAideFda | null;
@@ -644,8 +646,11 @@ export function syntheseAgricoleArgent(
   if (!p || resolveInstallMode(p) !== 'agricole') return null;
   const brut = (p as { synthese_agricole?: unknown }).synthese_agricole;
   if (!estRecord(brut) || Object.keys(brut).length === 0) return null;
+  const economies = lireEconomies(brut.economies);
+  const depense = economies === null && estRecord(brut.depense_declaree) ? nombreServi(brut.depense_declaree.annuelle_mad) : null;
   return {
-    economies: lireEconomies(brut.economies),
+    economies,
+    depenseDeclareeMadAn: depense !== null && depense > 0 ? depense : null,
     energieActuelle: lireEnergieActuelle(brut.energie_actuelle),
     aideFda: lireAideFda(brut.aide_fda),
     garanties: lireGaranties(brut.garanties),

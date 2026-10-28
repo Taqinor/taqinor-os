@@ -222,6 +222,18 @@ class Agr304OmissionsTests(SimpleTestCase):
         # Sans production, le m³/jour n'est plus une mesure de courbe.
         self.assertTrue(s['eau']['estimation'])
 
+    def test_amot65_etiquettes_du_noyau_font_foi(self):
+        """AMOT65 (D-AMOT-6 = a) — une courbe sur PVGIS dont le noyau sert
+        l'étiquette de similitude est une ESTIMATION (le client lit
+        « estimation » sous le m³/jour) ; une liste servie vide ⇒ mesure.
+        Mutant : ignorer ``etiquettes`` ⇒ rouge (courbe + PVGIS ⇒ False)."""
+        data = _data_complete()
+        data['etude']['production']['etiquettes'] = [
+            'hypothèse P ∝ n³ (lois de similitude) — estimation']
+        self.assertTrue(synthese_agricole(data)['eau']['estimation'])
+        data['etude']['production']['etiquettes'] = []
+        self.assertFalse(synthese_agricole(data)['eau']['estimation'])
+
     def test_hmt_declaree_reste_a_confirmer_par_visite(self):
         data = _data_complete()
         etude = data['etude']
@@ -258,6 +270,34 @@ class Agr304OmissionsTests(SimpleTestCase):
         data = _data_complete()
         data['etude']['source']['volume_reservoir_m3'] = 60
         self.assertEqual(synthese_agricole(data)['schema']['bassin'], 60)
+
+    def test_agc9_devis_auto_pompe_existante_lue_sur_l_entree_resolue(self):
+        """AGC9 — rendu réel R1 (devis auto « pompe existante » 15 CV) : le
+        mode ÉTUDIÉ persisté (``entrees_pompage.mode_pompe``) fait foi ⇒
+        « existante » + plaque servie (bloc « Votre pompe existante » page 2) ;
+        « neuve » ⇒ jamais ce bloc. Critique R4 : une étude persistée avant ce
+        mode, sans ligne pompe mais avec la plaque du lead, ne devine rien
+        (mutant « plaque ⇒ existante » ⇒ rouge)."""
+        data = _data_complete()
+        etude = data['etude']
+        etude['mode_pompe'] = None
+        etude['plaque'] = None
+        etude['entrees_pompage'] = {'mode_pompe': 'existante', 'plaque': {
+            'cv': 15, 'kw': 11, 'phases': 3, 'courant_a': None,
+            'tension_v': 380}}
+        for cle in ('all_items', 'sans_items'):
+            data[cle] = [it for it in data.get(cle) or []
+                         if it.get('role_pompage') != 'pompe'
+                         and not it.get('courbe_pompe')]
+        s = synthese_agricole(data)
+        self.assertEqual(s['mode_pompe'], 'existante')
+        self.assertEqual(s['pompe']['plaque']['kw'], 11)
+        etude['entrees_pompage']['mode_pompe'] = 'neuve'
+        self.assertEqual(synthese_agricole(data)['mode_pompe'], 'neuve')
+        del etude['entrees_pompage']['mode_pompe']
+        self.assertNotIn('mode_pompe', synthese_agricole(data))
+        etude['entrees_pompage'] = {}
+        self.assertNotIn('mode_pompe', synthese_agricole(data))
 
     def test_entree_vide_ne_leve_pas_et_n_invente_rien(self):
         s = synthese_agricole({})
@@ -495,6 +535,11 @@ class SyntheseAgricoleTests(SimpleTestCase):
              'message': 'Variateur VEICHI SI23 11KW écarté pour ce champ.'},
             {'code': 'kw_plaque_a_relever', 'champ': 'plaque',
              'message': 'ALERTE INTERNE : plaque à relever.'},
+            # AGC1 — le rendement non publié reste une alerte VENDEUR.
+            {'code': 'rendement_non_publie', 'champ': 'variateur.fiche',
+             'message': 'Rendement du variateur non publié.'},
+            {'code': 'rendement_non_publie', 'champ': 'pompe.fiche',
+             'message': 'Rendement de la pompe non publié.'},
         ]
         data = _data_complete()
         data['etude']['alertes_pompage'] = copy.deepcopy(alertes)
@@ -521,6 +566,8 @@ class SyntheseAgricoleTests(SimpleTestCase):
             with self.subTest(attendu=attendu):
                 self.assertIn(attendu, p2)
         self.assertNotIn('plaque à relever', p2)
+        self.assertNotIn('borne haute', p2)
+        self.assertNotIn('non publié', p2)
         # Sans alerte : aucune note, aucun titre.
         self.assertEqual(synthese_agricole(_data_complete())['notes'], [])
         p2 = pages.build_html(renderer._augment(data_complete())).split(
@@ -600,3 +647,31 @@ class SyntheseAgricoleTests(SimpleTestCase):
         self.assertNotIn('afficheur_variateur',
                          [o['cle'] for o in s['options_kit']])
         self.assertNotIn('afficheur_variateur', s['non_inclus'])
+
+    def test_agc15_depense_declaree_servie_sans_economies(self):
+        """AGC15 (contrat AGC14) — bloc argent calculé mais non publiable :
+        ``depense_declaree = {annuelle_mad}`` recopiée, jamais avec
+        ``economies`` ; absente sur des mois du calendrier non confirmés
+        (AGQ18), sans montant, ou bloc non calculé. Mutant : servir la clé
+        à côté d'``economies`` ⇒ rouge."""
+        from apps.ventes.economie_pompage import MOTIF_MOIS_CALENDRIER
+        data = _data_complete()
+        bloc = data['_economie_pompage'] = {
+            'statut': 'calcule', 'publiable_client': False,
+            'motifs_non_publiable': ['barème des charges solaires non saisi'],
+            'depense_actuelle': {'annuelle_mad': 21000.0}}
+        s = synthese_agricole(data)
+        self.assertEqual(s['depense_declaree'], {'annuelle_mad': 21000.0})
+        self.assertNotIn('economies', s)
+        bloc['motifs_non_publiable'].append(MOTIF_MOIS_CALENDRIER)
+        self.assertNotIn('depense_declaree', synthese_agricole(data))
+        bloc['motifs_non_publiable'].pop()
+        bloc['depense_actuelle'] = {'annuelle_mad': 0}
+        self.assertNotIn('depense_declaree', synthese_agricole(data))
+        bloc['depense_actuelle'] = {'annuelle_mad': 21000.0}
+        bloc['statut'] = 'omis'
+        self.assertNotIn('depense_declaree', synthese_agricole(data))
+        bloc.update(statut='calcule', publiable_client=True)
+        s = synthese_agricole(data)
+        self.assertIn('economies', s)
+        self.assertNotIn('depense_declaree', s)

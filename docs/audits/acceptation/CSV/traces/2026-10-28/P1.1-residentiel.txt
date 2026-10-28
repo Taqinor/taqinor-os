@@ -1,0 +1,10 @@
+Rejeu CSV11 — 2026-10-28 00:37 UTC — pile locale PC2, conteneur csv-django (code de la branche a464614e9, sans montage) :8011, vite :5173, demo_admin, desktop 1280.
+Lead 2626 « CSV PC2 Villa residentielle » (créé vide : nom, téléphone, type résidentiel). Panneau d'appel ouvert par le lien téléphone de la fiche.
+- « Y a-t-il quelqu'un à la maison en journée ? » → Présent en journée.
+- « Votre facture d'électricité, elle est de combien ? Elle couvre un mois ou deux mois ? » → 900, bouton « 2 mois », Enregistrer.
+- « L'été, votre facture d'électricité change-t-elle beaucoup par rapport à l'hiver ? » → Non.
+- « De quel type de bien s'agit-il … ? » → Villa ; « Qu'est-ce qui compte le plus pour vous … ? » → Baisser la facture.
+- « Dans quelle ville se trouve votre maison ? » (apparue en complément, après type de bien) → Casablanca.
+GET /crm/leads/2626/ : facture_hiver 450.00, facture_ete 450.00, ete_differente false, type_bien villa, objectif_projet facture,
+occupation_jour present, ville Casablanca ; devis_auto.pret true. POST /crm/leads/2626/devis-auto/ → 200 « Lead prêt pour le devis automatique. »
+Rouvert : la question de l'été n'est plus servie. Console : 0 error.
