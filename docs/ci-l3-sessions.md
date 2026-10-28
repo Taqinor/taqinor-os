@@ -71,11 +71,19 @@ Si la limite d'usage est atteinte : arrêter proprement le round, ne pas sauter 
   démo C&I (boulangerie 6 000 kWh/mois 7/7 6-22 h, bureau, hôtel, supermarché, industriel MT). **Aucune écriture en prod.**
 - **Gardien de la pile = session CORC** : elle seule fait `migrate` / rebuild après un merge. Les autres ne migrent jamais la base de dev.
 - **PDF depuis ta branche** : lancé DEPUIS ton worktree (le compose monte `./backend` de ce worktree) :
-  `docker compose -p erp-agentique run --rm --no-deps django_core python manage.py shell` →
-  `from apps.ventes.quote_engine.builder import build_quote_data` ; `from apps.ventes.quote_engine.generate_devis_premium import generate_premium_pdf` ;
-  `generate_premium_pdf(build_quote_data(devis, options), '<chemin>')`, pour chaque scénario (avec / sans batterie, une page,
-  premium, FR/EN/AR). Puis **lire chaque page** (outil Read sur le PDF). Si ta branche porte une migration non appliquée à la
-  base de dev : demande au gardien, ou rends depuis les fixtures des tests.
+  `docker compose -p erp-agentique run --rm --no-deps -T django_core python manage.py shell -c "exec(open('_x_rendu.py').read())" < /dev/null`
+  (script posé dans `backend/django_core/`, jamais commité ; jamais `shell < script`, qui bloque sous Git Bash). **Le vrai
+  chemin de `/proposal` est `builder.generate_premium_devis_pdf` → `registre_renderers()`** (commercial / industriel /
+  agricole) ; `generate_premium_pdf(build_quote_data(...))` seul est le moteur LEGACY (gabarit résidentiel) et a fait
+  chasser des défauts fantômes à trois sessions le 27/10. Recette fidèle, sans MinIO :
+  `o = dict(options); o['_embed_roof_render'] = True; o['_embed_calepinage_planche'] = True` ;
+  `data = B.build_quote_data(devis, o)` ; `dr = B.echapper_textes_client(data)` ;
+  `od = dict(options); od['pdf_mode'] = data.get('pdf_mode') or od.get('pdf_mode') or 'full'` ;
+  `for marche, r, sert in B.registre_renderers(): if sert(devis, od): open(chemin, 'wb').write(r.render_pdf_bytes(dr)); break`
+  `else: generate_premium_pdf(data, chemin)` (la une-page passe bien par le legacy). Tout dans `transaction.atomic()` +
+  `set_rollback(True)`. Pour chaque scénario (avec / sans batterie, une page, premium, FR/EN/AR), puis **lire chaque page**
+  (outil Read sur le PDF). Si ta branche porte une migration non appliquée à la base de dev : demande au gardien, ou rends
+  depuis les fixtures des tests.
 - **Devis web / questionnaire** : `apps/web` en dev local (`npm run dev` dans ton worktree, jonction `node_modules`) +
   navigateur intégré, desktop et mobile. Au plus 2 `astro dev` en même temps sur la machine.
 - Chaque constat « rendu » cite la capture ou la page PDF.
