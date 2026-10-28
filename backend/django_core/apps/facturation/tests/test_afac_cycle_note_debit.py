@@ -128,6 +128,26 @@ class CycleNoteDebitTests(TestCase):
             r = self._creer_nd(corps)
             self.assertEqual(r.status_code, 201, (corps, r.content))
 
+    def test_nd_un_seul_motif_par_champ_publie(self):
+        # api-fuzz-full 27/10 — motif « sans NUL » + motif de montant en
+        # ``allOf`` : corps ingénérable (Failed Health Check). Un seul motif,
+        # sur le champ ; la règle « lignes OU montant » n'en porte aucun.
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ventes import urls as ventes_urls
+        from apps.ventes.views.openapi_docs import (
+            CORPS_NOTE_DEBIT_LIGNES_OU_MONTANT, MOTIF_MONTANT_NOTE_DEBIT,
+            MOTIF_TAUX_NOTE_DEBIT)
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include(ventes_urls)),
+        ]).get_schema(request=None, public=True)
+        props = schema['components']['schemas'][
+            'FactureCreerNoteDebitRequestRequest']['properties']
+        self.assertEqual(props['montant']['pattern'], MOTIF_MONTANT_NOTE_DEBIT)
+        self.assertEqual(props['taux_tva']['pattern'], MOTIF_TAUX_NOTE_DEBIT)
+        self.assertNotIn('pattern', str(CORPS_NOTE_DEBIT_LIGNES_OU_MONTANT))
+
     def test_annuler_nd(self):
         from apps.ventes.models import Avoir, FactureActivity
         r = self._creer_nd({'motif': 'pénalité', 'montant': '500.00',
