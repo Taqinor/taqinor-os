@@ -1013,8 +1013,8 @@ def financement_ci(offre, base_eco, *, mode_installation,
         'economie_mensuelle_moyenne_mad': mensuelle,
         'ecart_mensuel_mad': (None if mensuelle is None
                               else round(mensuelle - echeance, 2)),
-        'duree_mois': duree,
-        'source': SOURCE_FINANCEMENT,
+        'duree_mois': duree, 'source': SOURCE_FINANCEMENT,
+        **_options.cles_flux_offre(offre, echeance, duree, economie_an),  # CEC15
     }
 
 

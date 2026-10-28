@@ -333,3 +333,43 @@ def alertes_prix_hors_bande(tarif, k=K_BANDE_PRIX):
                     f"facture."),
                 'interne': True})
     return alertes
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# CEC15 — l'apport, les frais et la valeur résiduelle SAISIS d'une offre de
+# financement entrent dans le flux de l'offre (décision fondateur 28/10/2026 :
+# inclure).
+# ═════════════════════════════════════════════════════════════════════════════
+def flux_offre(offre, echeance, duree_mois, economie_annee1):
+    """Flux annuel du client avec l'offre : année 0 = −(apport + frais) ;
+    années 1.. = économie − échéances de l'année (dernière année au prorata
+    des mois restants) ; la valeur résiduelle saisie est payée en fin de
+    durée (levée d'option / dernier loyer — lecture prudente). Champs absents
+    ⇒ 0. Retourne ``{flux: [{annee, flux_mad, cumul_mad}], retour_ans}``."""
+    def _v(cle):
+        v = _montant((offre or {}).get(cle))
+        return v if v and v > 0 else 0.0
+    apport, frais, residuelle = (
+        _v('apport_mad'), _v('frais_mad'), _v('valeur_residuelle_mad'))
+    cumul = -(apport + frais)
+    flux = [{'annee': 0, 'flux_mad': round(cumul, 2),
+             'cumul_mad': round(cumul, 2)}]
+    annees = -(-int(duree_mois) // 12)
+    for a in range(1, annees + 1):
+        mois = min(12, int(duree_mois) - 12 * (a - 1))
+        gain = (economie_annee1 or 0.0) * mois / 12 - echeance * mois
+        if a == annees:
+            gain -= residuelle
+        cumul += gain
+        flux.append({'annee': a, 'flux_mad': round(gain, 2),
+                     'cumul_mad': round(cumul, 2)})
+    return {'flux': flux, 'retour_ans': retour_au_dixieme({'flux': flux})}
+
+
+def cles_flux_offre(offre, echeance, duree_mois, economie_annee1):
+    """Clés ADDITIVES du bloc ``financement`` : ``flux_offre`` et
+    ``retour_offre_ans`` ; ``{}`` sans économie an 1 (flux non calculable)."""
+    if economie_annee1 is None:
+        return {}
+    res = flux_offre(offre, echeance, duree_mois, economie_annee1)
+    return {'flux_offre': res['flux'], 'retour_offre_ans': res['retour_ans']}
