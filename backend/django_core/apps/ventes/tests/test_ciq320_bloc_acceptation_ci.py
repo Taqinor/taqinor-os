@@ -76,6 +76,44 @@ class BlocAcceptation(SimpleTestCase):
         self.assertNotIn("&amp;amp;", html)
 
 
+class Cpdf4ChoixOption(SimpleTestCase):
+    """CPDF4 — deux cases « Sans / Avec batterie » + total TTC servi sur un
+    devis à deux options non accepté ; rien sur mono-option ou accepté."""
+
+    @staticmethod
+    def _deux_options(sample, **plus):
+        data = copy.deepcopy(sample.build())
+        data["totaux_all"] = {"ttc": 1750000.0}
+        data["option_batterie"] = {"totaux": {"ttc": 2100000.0}, "lignes": []}
+        data.update(plus)
+        return data
+
+    def _case(self, sample, renderer, render, racine, data):
+        html = render.build_html(renderer._augment(
+            echapper_textes_client(data)))
+        return _case(html, racine)
+
+    def test_deux_options_deux_cases(self):
+        for nom, sample, renderer, render, _p, racine in GABARITS:
+            with self.subTest(gabarit=nom):
+                case = self._case(sample, renderer, render, racine,
+                                  self._deux_options(sample))
+                self.assertIn("Sans batterie", case)
+                self.assertIn("Avec batterie", case)
+                self.assertIn("MAD TTC", case)
+
+    def test_mono_option_ou_accepte_aucune_case(self):
+        for nom, sample, renderer, render, _p, racine in GABARITS:
+            with self.subTest(gabarit=nom):
+                mono = copy.deepcopy(sample.build())
+                self.assertNotIn("Sans batterie", self._case(
+                    sample, renderer, render, racine, mono))
+                accepte = self._deux_options(
+                    sample, accepte_par_nom="A", date_acceptation="01/01/2026")
+                self.assertNotIn("Sans batterie", self._case(
+                    sample, renderer, render, racine, accepte))
+
+
 @tag("weasyprint")
 class BlocAcceptationPages(SimpleTestCase):
 

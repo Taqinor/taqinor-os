@@ -56,6 +56,12 @@ SEUIL_BALAYAGE_DENSE = 60
 #: Nombre de points visé par la grille grossière (pas = ⌈fin / 40⌉).
 POINTS_GRILLE_GROSSIERE = 40
 
+#: RSIZ9 — nombre MAXIMAL de passes de raffinement autour de la meilleure
+#: taille : une passe qui déplace l'optimum (les voisins d'une recommandation
+#: grossière en cachent une meilleure) relance un voisinage autour du nouveau
+#: point. S'arrête dès que les recommandations ne bougent plus.
+MAX_RAFFINEMENTS = 3
+
 #: Avertissement porté par chaque taille au-dessus du seuil résidentiel.
 MESSAGE_HORS_RESIDENTIEL = (
     'Profil au-delà du dimensionnement résidentiel (> %d panneaux) : étude '
@@ -184,7 +190,9 @@ def tableau_adaptatif(evaluer, debut, fin, plafond_atteint, choisirs,
                       plafond=None):
     """LE TABLEAU : dense si ``pas_balayage(fin) == 1`` (historique) ; sinon la
     grille grossière, puis le RAFFINEMENT autour des deux recommandations
-    grossières pour que la taille retenue soit exacte au panneau.
+    grossières pour que la taille retenue soit exacte au panneau. RSIZ9 : le
+    raffinement se REPREND (au plus :data:`MAX_RAFFINEMENTS` passes) tant que
+    l'optimum bouge ; le dense (``pas == 1``) sort avant, à l'octet.
 
     ``choisirs`` = ``(choisir_recommandation, choisir_recommandation_avec)``
     — chacun rend ``(ligne | None, motivation)`` ; reçus en argument, jamais
@@ -197,15 +205,19 @@ def tableau_adaptatif(evaluer, debut, fin, plafond_atteint, choisirs,
                                  plafond)
     if pas <= 1 or not tableau:
         return tableau
-    centres = [int(retenu['panneaux']) for retenu, _motivation
-               in (choisir(tableau) for choisir in choisirs)
-               if retenu is not None]
-    if not centres:
-        return tableau
-    tailles = tailles_raffinees(
-        [ligne['panneaux'] for ligne in tableau], centres, pas, debut, fin)
-    return construire_tableau_tailles(evaluer, tailles, plafond_atteint, pas,
-                                      plafond)
+    deja = None
+    for _passe in range(MAX_RAFFINEMENTS):
+        centres = [int(retenu['panneaux']) for retenu, _motivation
+                   in (choisir(tableau) for choisir in choisirs)
+                   if retenu is not None]
+        if not centres or centres == deja:
+            break
+        deja = centres
+        tailles = tailles_raffinees(
+            [ligne['panneaux'] for ligne in tableau], centres, pas, debut, fin)
+        tableau = construire_tableau_tailles(
+            evaluer, tailles, plafond_atteint, pas, plafond)
+    return tableau
 
 
 def monter_champ_ve(evaluer, tableau, debut, fin, plafond_atteint, choisirs,

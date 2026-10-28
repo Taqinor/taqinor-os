@@ -106,6 +106,11 @@ class EntreesMoteur:
     # les deux entrées de composition que ``contexte_sonde_du_devis`` lit déjà.
     hors_reseau: bool = False
     mppt_paires: int = 1
+    # RSIZ7 — perte d'ombrage (%) SERVIE par le calepinage du devis
+    # (``horaire.ombrage.perte_ombrage_du_devis``) ; ``None`` = pas de devis /
+    # pas de calepinage lisible (lead, règles d'avant le niveau 3) : le moteur
+    # horaire ne reçoit rien et l'empreinte reste celle d'avant.
+    perte_ombrage_pct: object = None
 
     # ── accès mapping en LECTURE SEULE (pont de déplacement, voir docstring) ─
 
@@ -351,7 +356,51 @@ def entrees_depuis_devis(devis, *, contexte=True, jour_reference=None):
         phase=normaliser_phase(raccordement),
         gamme_nom_devis=gamme_nom(devis) or None,
         hors_reseau=est_site_isole(raccordement),
-        mppt_paires=_mppt_paires_du_devis(devis))
+        mppt_paires=_mppt_paires_du_devis(devis),
+        perte_ombrage_pct=_perte_ombrage_du_devis(devis))
+
+
+def _perte_ombrage_du_devis(devis):
+    """RSIZ7 — la perte d'ombrage servie au devis, ou ``None`` (ne lève jamais)."""
+    from apps.ventes.horaire.ombrage import perte_ombrage_du_devis
+    return perte_ombrage_du_devis(devis)
+
+
+def kwargs_ombrage(perte_pct, *moteurs):
+    """RSIZ7 — ``{'perte_ombrage_pct': perte}`` à fusionner dans les arguments
+    du moteur horaire, ou ``{}``.
+
+    ``{}`` (comportement d'hier, à l'octet) quand la perte est ``None`` ou
+    qu'AU MOINS UN des ``moteurs`` appelés avec les mêmes arguments n'accepte
+    pas le paramètre : ombrer l'étude sans ombrer le balayage du stockage
+    mélangerait deux bases de production dans le même tableau (le marginal
+    d'un palier se calcule contre l'économie de l'étude). Le jour où
+    ``balayer_stockage_horaire`` l'accepte, l'ombrage s'allume tout seul.
+    """
+    if perte_pct is None:
+        return {}
+    import inspect
+    for moteur in moteurs:
+        try:
+            accepte = 'perte_ombrage_pct' in inspect.signature(moteur).parameters
+        except (TypeError, ValueError):
+            accepte = False
+        if not accepte:
+            return {}
+    return {'perte_ombrage_pct': perte_pct}
+
+
+def kwargs_moteur_ombre(entrees):
+    """RSIZ7 — ``etude_horaire.kwargs_moteur_horaire(entrees)`` PLUS l'ombrage
+    du calepinage (``entrees['perte_ombrage_pct']``) quand l'étude ET le
+    balayage du stockage l'acceptent (:func:`kwargs_ombrage`). Le point
+    d'entrée unique des appelants : un seul `import` change, rien d'autre."""
+    from apps.ventes.etude_horaire import (
+        balayer_stockage_horaire, calculer_etude_horaire,
+        kwargs_moteur_horaire)
+    return dict(kwargs_moteur_horaire(entrees), **kwargs_ombrage(
+        entrees.get('perte_ombrage_pct'),
+        calculer_etude_horaire, balayer_stockage_horaire))
 
 
 def _phase_du_lead(lead):
@@ -543,6 +592,11 @@ def empreinte_entrees(e):
             getattr(e, 'charges_fixes_mad', None), 2),
         'jour_reference': _texte(getattr(e, 'jour_reference', None)),
     }
+    perte_ombrage = getattr(e, 'perte_ombrage_pct', None)
+    if perte_ombrage is not None:
+        # RSIZ7 — seulement quand un calepinage sert une perte : un devis non
+        # ombré garde l'empreinte d'avant ; une perte qui bouge périme le bloc.
+        charge['perte_ombrage_pct'] = _arrondi(perte_ombrage, 2)
     if getattr(e, 'hors_reseau', False):
         # ERR-QJR605 — seulement « vrai » : l'empreinte d'un site raccordé ne
         # change pas, un site isolé ne partage jamais le tableau d'un autre.

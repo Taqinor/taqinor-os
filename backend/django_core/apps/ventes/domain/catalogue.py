@@ -234,6 +234,67 @@ def metre_cable_dc_par_paires(nb_paires=1):
     return n * CABLE_DC_M_PAR_PALIER
 
 
+def paires_mppt_du_champ(nb_panneaux, kwc, panneau=None, onduleurs=()):
+    """RSIZ5 (27/10/2026) — les paires de câble DC d'un champ, DÉRIVÉES.
+
+    Mesuré sur 8 devis auto : ``mppt_paires`` valait 1 partout, donc 60 m de
+    câble DC pour 3 panneaux comme pour 390. Le compte vient désormais :
+
+    * du NOYAU électrique (``solar_design.string_design``) quand les fiches du
+      panneau ET de l'onduleur portent ce que le calcul consomme : par
+      onduleur vendu, les entrées MPPT réellement utilisées
+      (``min(chaînes, n_mppt)``), multipliées par le nombre d'onduleurs ;
+      ``onduleurs`` = ``[(produit, quantité), ...]``, le plus exigeant gagne ;
+    * à défaut, de l'approximation déjà en usage dans ce dépôt pour les
+      chemins sans compte MPPT (``metre_cable_dc`` : une paire par palier de
+      5 kWc) — jamais un défaut de marché inventé.
+
+    Toujours ≥ 1.
+    """
+    try:
+        nb = int(nb_panneaux or 0)
+    except (TypeError, ValueError):
+        nb = 0
+    if nb <= 0:
+        return 1
+    comptes = [_paires_par_conception(nb, panneau, onduleur, quantite)
+               for onduleur, quantite in (onduleurs or ())]
+    comptes = [c for c in comptes if c]
+    if comptes:
+        return max(comptes)
+    return max(1, _arrondi_js(float(kwc or 0) / 5))
+
+
+def _paires_par_conception(nb, panneau, onduleur, quantite):
+    """RSIZ5 — entrées MPPT utilisées × onduleurs, par le noyau ; ``None``
+    quand une fiche manque (jamais une fenêtre par défaut supposée)."""
+    if panneau is None or onduleur is None:
+        return None
+    from apps.ventes.compatibilites import (
+        _TEMPERATURES_DIMENSIONNEMENT, _onduleur_specs_manquantes_pour_verdict,
+        module_specs_manquantes)
+    from apps.ventes.solar_design import (
+        fenetre_onduleur_pour_produit, specs_module_pour_produit,
+        string_design)
+    if (module_specs_manquantes(panneau)
+            or _onduleur_specs_manquantes_pour_verdict(onduleur)):
+        return None
+    n_onduleurs = max(1, int(quantite or 1))
+    try:
+        design = string_design(
+            int(math.ceil(nb / float(n_onduleurs))),
+            module=specs_module_pour_produit(panneau),
+            inverter=fenetre_onduleur_pour_produit(onduleur),
+            **_TEMPERATURES_DIMENSIONNEMENT)
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+    chaines = design.get('strings')
+    if not chaines:
+        return None
+    entrees = min(int(chaines), max(1, int(design.get('n_mppt') or 1)))
+    return entrees * n_onduleurs
+
+
 def metre_cable_terre(paliers):
     """Longueur (m) de câble de terre AC pour ``paliers`` blocs de 5 kWc."""
     n = max(1, int(round(float(paliers or 0))))

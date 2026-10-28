@@ -128,13 +128,43 @@ def document_adaptatif(d, build_html, rendre):
     dernier = len(PALIERS_DENSITE) - 1
     n = len(puces_conditions(d))
     for garder in range(n - 1, -1, -1):
-        donnees = dict(d, _palier_equip=dernier, _cgv_max=garder,
-                       _sans_graphiques=True)
+        donnees = dict(d, _palier_equip=dernier, _cgv_max=garder)
+        # CPDF — la page 1 ne perd jamais son graphique parce que la page 2
+        # est longue : seuls les blocs cédables des pages 2+ cèdent.
+        donnees["_sans_graphiques"] = _cedables_hors_page1(
+            build_html(dict(donnees, _sans_graphiques=frozenset())))
         html = build_html(donnees)
         doc = rendre(html)
         if _tient(html, doc):
             return doc
     return None
+
+
+def _sans_phrase_pointe(block, d=None):
+    """CPDF6 — la phrase « Le soir et la nuit… » (ou, batterie servie, « Batterie
+    de N kWh utiles… ») est imprimée page 1 : la case catégorie de la page 2
+    ne la répète pas ; sans autre ligne, la case entière est retirée."""
+    import html as _html
+    import re
+    from ..ci import mentions
+    from ..ci.couverture import note_pointe
+    phrases = {_html.unescape(t) for tab in (
+        mentions.TEXTES_POINTE_SANS, mentions.TEXTES_POINTE_SANS_OPTION_AVEC,
+        mentions.TEXTES_POINTE_AVEC_NON_CHIFFREE) for t in tab.values()}
+    if d is not None:
+        # La phrase EXACTE de la page 1 de ce document (variante « en couvre
+        # N % », phrase batterie chiffrée, langue du document).
+        cle = "com" if d.get("com_synthese") else "ind"
+        phrases.add(_html.unescape(str(note_pointe(d, cle) or "")).strip())
+    motif = re.compile(r'<div class="c2b-li">(.*?)</div>', re.S)
+    reste = [m for m in motif.findall(block or "")
+             if _html.unescape(m).strip() not in phrases]
+    if len(reste) == len(motif.findall(block or "")):
+        return block
+    if not reste:
+        return ""
+    return motif.sub(lambda m: m.group(0) if _html.unescape(m.group(1)).strip()
+                     not in phrases else "", block)
 
 
 def _rendu_tenu(donnees, build_html, rendre):
@@ -166,9 +196,22 @@ def _rendu_tenu(donnees, build_html, rendre):
             return doc
     if 'data-graphique="' not in html:
         return None
+    html = build_html(dict(donnees, _sans_graphiques=_cedables_hors_page1(html)))
+    doc = rendre(html)
+    if _tient(html, doc):
+        return doc
     html = build_html(dict(donnees, _sans_graphiques=True))
     doc = rendre(html)
     return doc if _tient(html, doc) else None
+
+
+def _cedables_hors_page1(html):
+    """CPDF — les noms ``data-graphique`` posés sur les pages 2 et suivantes
+    (la page 1 garde les siens)."""
+    import re
+    segments = html.split('<div class="page">')[1:]
+    return frozenset(nom for s in segments[1:]
+                     for nom in re.findall(r'data-graphique="([\w-]+)"', s))
 
 
 #: AMOT90/AMOT94 — l'ORDRE dans lequel les blocs cédables (``data-graphique``)
@@ -445,6 +488,8 @@ def build(ctx):
         categorie=(d.get("com_synthese") or {}).get("categorie"),
         langue=_langue(d),
         synthese=d.get("com_synthese") or d.get("ind_synthese"))
+
+    block = _sans_phrase_pointe(block, d)
 
     css = f"""
 <style>

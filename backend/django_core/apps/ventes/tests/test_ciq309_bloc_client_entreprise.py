@@ -82,8 +82,12 @@ class BlocClientEntreprise(SimpleTestCase):
         data["client_name"] = data["client_full"] = "Karim Benali"
         html = i_render.build_html(i_renderer._augment(
             echapper_textes_client(data)))
-        self.assertIn("Raison sociale&#160;: Atlas Froid &amp; Fils SARL",
-                      html)
+        # CPDF8 — la raison sociale est le titre de la couverture (une fois) ;
+        # le nom du client, différent, est dit sur la ligne client.
+        p1 = html.split('class="page"')[1]
+        self.assertEqual(p1.count("Atlas Froid &amp; Fils SARL"), 1)
+        self.assertNotIn("Raison sociale&#160;:", p1)
+        self.assertIn("Karim Benali", p1)
 
     def test_client_sans_ice_aucun_libelle_ice(self):
         for nom, sample, renderer, render, _pages in GABARITS:

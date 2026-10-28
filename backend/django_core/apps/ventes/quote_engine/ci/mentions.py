@@ -35,6 +35,7 @@ from ..constants_82_21 import (
     mention_mt,
 )
 from ..lecture_pure import nombre_normalise
+from ..montants import regles_avant_2710
 
 LANGUES = ("fr", "en", "ar")
 
@@ -117,6 +118,22 @@ TEXTES_POINTE_SANS_OPTION_AVEC = {
            "by the grid; the battery option covers it."),
     "ar": "في المساء والليل، يظل استهلاككم مزودًا من الشبكة؛ ويغطيه خيار البطارية.",
 }
+#: CPDF9 — l'option « avec » ne couvre qu'une PART du soir et de la nuit :
+#: la part servie (restitution ÷ consommation hors production), en %.
+TEXTES_POINTE_OPTION_AVEC_PART = {
+    "fr": ("Le soir et la nuit, votre consommation reste fournie par le "
+           "réseau ; l'option avec batterie en couvre {pct}\u00a0%."),
+    "en": ("In the evening and at night, your consumption is still supplied "
+           "by the grid; the battery option covers {pct}% of it."),
+    "ar": ("في المساء والليل، يظل استهلاككم مزودًا من الشبكة؛ ويغطي خيار "
+           "البطارية {pct}\u00a0% منه."),
+}
+#: CPDF9 — « la couvre » seulement à partir de cette part (décision prise
+#: pour le fondateur, à revoir).
+SEUIL_COUVRE_SOIR = 0.90
+#: ``option_avec.batterie.besoin_nocturne_kwh`` est servi pour un jour MOYEN
+#: de l'année (jours types pondérés) : × 365 = l'année.
+JOURS_AN = 365
 #: Note sur la pointe AVEC batterie que le moteur ne chiffre pas.
 TEXTES_POINTE_AVEC_NON_CHIFFREE = {
     "fr": "Couverture du soir selon la capacité installée — non chiffrée.",
@@ -379,9 +396,9 @@ def valeur_option_avec(data):
     """``{economie_annuelle_mad, retour_simple_ans, capacite_utile_kwh,
     restitue_kwh_an, textes{fr,en,ar}}`` de l'option « avec batterie » C&I
     (``etude_ci.option_avec`` posé par le rafraîchisseur depuis les LIGNES),
-    ou ``None`` quand le moteur ne la chiffre pas. Retour simple = total HT
-    net de l'option (``option_batterie.totaux``, sinon ``totaux_avec``) ÷
-    économie annuelle HT (la base de la taille C&I)."""
+    ou ``None`` quand le moteur ne la chiffre pas. CPDF2 — le retour est
+    CELUI servi par l'étude (``option_avec.retour_simple_ans``), jamais un
+    quotient recalculé ici ; absent ⇒ ``None`` (ligne omise)."""
     data = _dict(data)
     avec = _dict(_dict(_dict(data.get("etude")).get("etude_ci")).get("option_avec"))
     eco = nombre_normalise(avec.get("economie_annuelle_mad"))
@@ -390,24 +407,64 @@ def valeur_option_avec(data):
     rest = nombre_normalise(stock.get("restitue_kwh_an"))
     if not eco or eco <= 0 or not cap or rest is None:
         return None
-    totaux = (_dict(_dict(data.get("option_batterie")).get("totaux"))
-              or _dict(data.get("totaux_avec")))
-    ht = nombre_normalise(totaux.get("ht_net"))
+    retour = nombre_normalise(avec.get("retour_simple_ans"))
+    if regles_avant_2710():
+        # Niveau de règles 3 — un devis envoyé garde le retour qu'il
+        # imprimait : total HT net de l'option ÷ économie annuelle HT.
+        totaux = (_dict(_dict(data.get("option_batterie")).get("totaux"))
+                  or _dict(data.get("totaux_avec")))
+        ht = nombre_normalise(totaux.get("ht_net"))
+        retour = round(ht / eco, 1) if ht else None
     textes = {lg: gabarit.format(cap=_nombre_langue(cap, lg, 1),
                                  rest=_nombre_langue(rest, lg),
                                  eco=_nombre_langue(eco, lg))
               for lg, gabarit in TEXTES_OPTION_AVEC.items()}
     return {"economie_annuelle_mad": round(eco, 2),
-            "retour_simple_ans": round(ht / eco, 1) if ht else None,
+            "retour_simple_ans": retour if retour and retour > 0 else None,
             "capacite_utile_kwh": cap, "restitue_kwh_an": rest,
             "textes": textes}
+
+
+def part_soir_option_avec(data):
+    """CPDF9 — la part (0-1) de la consommation du soir et de la nuit que
+    l'option « avec batterie » couvre : restitution annuelle de la batterie
+    (``option_avec.bilan.batterie.restitue_kwh_an``) ÷ consommation hors
+    production solaire (``option_avec.batterie.besoin_nocturne_kwh``, jour
+    moyen, × 365), plafonnée à 1 ; ``None`` quand l'une manque."""
+    etude_ci = _dict(_dict(_dict(data).get("etude")).get("etude_ci"))
+    avec = _dict(etude_ci.get("option_avec"))
+    rest = nombre_normalise(_dict(_dict(avec.get("bilan")).get(
+        "batterie")).get("restitue_kwh_an"))
+    besoin = nombre_normalise(_dict(avec.get("batterie")).get(
+        "besoin_nocturne_kwh"))
+    if rest is not None and rest > 0 and besoin and besoin > 0:
+        return min(1.0, rest / (besoin * JOURS_AN))
+    # Critique Fable 28/10 — besoin nocturne non servi : aucun repli sur les
+    # taux de couverture globaux (l'option avec ajoute aussi des panneaux de
+    # jour) ; la phrase est dite sans sa seconde moitié.
+    return None
+
+
+def _textes_pointe_option_avec(data):
+    """CPDF9 — « … la couvre. » seulement à ≥ 90 % ; sinon « … en couvre
+    N %. » ; part non servie ⇒ la phrase sans sa seconde moitié."""
+    if regles_avant_2710():  # niveau 3 : la phrase d'un devis envoyé
+        return TEXTES_POINTE_SANS_OPTION_AVEC
+    part = part_soir_option_avec(data)
+    if part is None or round(part * 100) <= 0:
+        return TEXTES_POINTE_SANS
+    if part >= SEUIL_COUVRE_SOIR:
+        return TEXTES_POINTE_SANS_OPTION_AVEC
+    pct = round(part * 100)
+    return {lg: gabarit.format(pct=pct)
+            for lg, gabarit in TEXTES_POINTE_OPTION_AVEC_PART.items()}
 
 
 def _mention_pointe(data):
     if not _batterie_servie(data):
         # L'offre réseau d'un devis À DEUX options (``option_batterie`` servi
         # par le builder) renvoie à l'option « avec » ; sinon la phrase seule.
-        textes = (TEXTES_POINTE_SANS_OPTION_AVEC
+        textes = (_textes_pointe_option_avec(data)
                   if isinstance(data.get("option_batterie"), dict)
                   and not data.get("avec_batterie_differee")
                   else TEXTES_POINTE_SANS)

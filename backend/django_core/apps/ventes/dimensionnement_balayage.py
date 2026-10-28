@@ -50,7 +50,8 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
                     min_panneaux=None,
                     max_panneaux=None, source_conso=None,
                     cible_falaise_kwh_mois=None, jour_reference=None,
-                    hors_reseau=False, mppt_paires=1):
+                    hors_reseau=False, mppt_paires=1, perte_ombrage_pct=None,
+                    regles_2710=True):
     """Le TABLEAU complet : une ligne par taille candidate, DEUX dimensions.
 
     ``tranches`` / ``charges_fixes_mad`` sont KEYWORD-REQUIS (QJR46). Ils
@@ -153,7 +154,9 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
         structure_produit_id=structure_produit_id,
         phase=phase, mppt_paires=mppt_paires or 1,
         taux_tva=_taux_sans_devis(taux_tva, company),
-        hors_reseau=bool(hors_reseau))
+        hors_reseau=bool(hors_reseau),
+        # RSIZ2/3/5 — un devis existant aux règles < 3 garde ses règles.
+        regles_2710=bool(regles_2710))
 
     # Watt du panneau RÉELLEMENT retenu par le catalogue — LA sonde partagée
     # avec l'échelle de paliers et les cartes de taille. Le jour où le
@@ -168,13 +171,15 @@ def balayer_tailles(*, company, conso_kwh_mensuelles, tranches,
     # référence sert l'étude SANS batterie et le mini-balayage du
     # stockage : deux dates différentes dans un même tableau feraient
     # comparer deux Ramadans.
-    from apps.ventes.etude_horaire import kwargs_moteur_horaire
-    etude_kwargs = kwargs_moteur_horaire({
+    # RSIZ7 — + ombrage du calepinage (``None`` = lead : rien ne bouge).
+    from apps.ventes.domain.entrees import kwargs_moteur_ombre
+    etude_kwargs = kwargs_moteur_ombre({
         'conso_kwh_mensuelles': conso_kwh_mensuelles, 'ville': ville,
         'lat': lat, 'lon': lon, 'occupation': occupation,
         'equipements': equipements, 'tranches': tranches,
         'charges_fixes_mad': charges_fixes_mad,
         'jour_reference': jour_reference,
+        'perte_ombrage_pct': perte_ombrage_pct,
     })
 
     # QJR612 — CAD170 RÉELLEMENT APPLIQUÉ (décision fondateur 30/09/2026 :

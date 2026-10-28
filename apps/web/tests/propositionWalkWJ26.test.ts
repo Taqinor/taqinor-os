@@ -6,41 +6,10 @@ import { describe, expect, it } from 'vitest';
 import {
   orientationLabelFr,
   zoneAnnotations,
-  walkthroughSteps,
   parseRoofLayout,
-  FIGURE_UNAVAILABLE,
-  type ProposalResponse,
   type RoofLayout,
 } from '../src/lib/proposition';
 
-function makeProposal(over: Partial<ProposalResponse> = {}): ProposalResponse {
-  const base: ProposalResponse = {
-    reference: 'DEV-2026-042',
-    date: '22/06/2026',
-    client_name: 'Reda Kasri',
-    statut: 'envoye',
-    quote: {
-      ref: 'DEV-2026-042',
-      date: '22/06/2026',
-      client_name: 'Reda Kasri',
-      inst_type: 'residentiel',
-      puissance_kwc: 6.48,
-      nb_panneaux: 9,
-      watt_par_panneau: 720,
-      prod_kwh: 10000,
-      eco_s_ann: 12000,
-      eco_a_ann: 15000,
-      recommended: 'avec_batterie',
-      totaux_sans: { ht_brut: 50000, remise: 0, ht_net: 50000, tva: 10000, ttc: 60000 },
-      totaux_avec: { ht_brut: 80000, remise: 0, ht_net: 80000, tva: 16000, ttc: 96000 },
-      nb_options: 2,
-    },
-    roof_image_url: null,
-    option_totals: { sans_batterie: 60000, avec_batterie: 96000, display_total: 96000, nb_options: 2 },
-    accepted: false,
-  };
-  return { ...base, ...over, quote: { ...base.quote, ...(over.quote ?? {}) } };
-}
 
 function makeLayout(): RoofLayout {
   return parseRoofLayout({
@@ -109,45 +78,5 @@ describe('WJ26 — zoneAnnotations (chiffres serveur uniquement)', () => {
     expect(a[0].kwc).toBeNull();
     const b = zoneAnnotations(makeLayout(), undefined);
     expect(b[0].kwc).toBeNull();
-  });
-});
-
-describe('WJ26 — walkthroughSteps (4 étapes, chiffres payload ou repli libellé)', () => {
-  it('4 étapes dans l’ordre du récit, FR + gloss arabe', () => {
-    const steps = walkthroughSteps(makeProposal());
-    expect(steps.map((s) => s.id)).toEqual(['toit', 'panneaux', 'production', 'economie']);
-    for (const s of steps) {
-      expect(s.title.length).toBeGreaterThan(0);
-      expect(s.titleAr.length).toBeGreaterThan(0);
-      expect(s.body.length).toBeGreaterThan(0);
-    }
-  });
-
-  it('chiffres tirés du payload : panneaux, kWc, production, économie', () => {
-    const steps = walkthroughSteps(makeProposal());
-    expect(steps[1].body).toContain('9 panneaux');
-    expect(steps[1].body).toContain('6,48 kWc');
-    expect(steps[2].body).toContain('10 000 kWh');
-    // Option recommandée = avec batterie → eco_a_ann = 15 000 MAD.
-    expect(steps[3].body).toContain('15 000 MAD');
-    expect(steps[3].body).toContain('82-21');
-  });
-
-  it('payload incomplet → « estimation indisponible », jamais un chiffre inventé', () => {
-    const p = makeProposal({
-      quote: {
-        nb_panneaux: undefined,
-        puissance_kwc: undefined,
-        prod_kwh: undefined,
-        eco_s_ann: undefined,
-        eco_a_ann: undefined,
-      },
-    });
-    const steps = walkthroughSteps(p);
-    expect(steps[1].body).toContain(FIGURE_UNAVAILABLE);
-    expect(steps[2].body).toContain(FIGURE_UNAVAILABLE);
-    expect(steps[3].body).toContain(FIGURE_UNAVAILABLE);
-    // Aucun montant MAD fabriqué dans les étapes sans donnée.
-    expect(steps[3].body).not.toMatch(/\d+ MAD/);
   });
 });

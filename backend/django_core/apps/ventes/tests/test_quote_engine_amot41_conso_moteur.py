@@ -23,7 +23,8 @@ _CONTRATS = Path(__file__).resolve().parents[1] / "contract_samples"
 ETUDE_CI = json.loads((_CONTRATS / "etude_ci_preview.json").read_text(
     encoding="utf-8"))
 
-_CONSO = re.compile(r"Consommation ≈ ([0-9][0-9\s  .,&#;a-z]*) kWh/an")
+# CPDF5 — plus de « ≈ » : la conso est un chiffre du profil, pas une approximation.
+_CONSO = re.compile(r"Consommation : ([0-9][0-9\s  .,&#;a-z]*?)(?:&#160;|\s)kWh/an")
 
 
 def _data(*, douze_mois=True):

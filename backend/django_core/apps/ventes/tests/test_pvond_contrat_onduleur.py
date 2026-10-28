@@ -31,6 +31,8 @@ from apps.stock.selectors import (
 from apps.ventes import services
 from authentication.models import Company
 from apps.ventes.domain import catalogue as domaine_catalogue
+from apps.ventes.domain.composition import (
+    avertissement_phase_supposee_triphasee)
 
 #: Fiche ONDULEUR complète au sens du contrat (hors plage batterie/garantie,
 #: qui vivent sur le produit).
@@ -379,6 +381,10 @@ class CompositionResidentielleTests(PvOndBase):
             avertissements=avertissements)
 
         self.assertFalse([li for li in lignes if 'Batterie' in li.designation])
+        # RSIZ6 — l'hybride triphasé vendu sans phase déclarée est AUSSI dit ;
+        # cette garde porte sur le message du vivier batterie.
+        avertissements = [a for a in avertissements
+                          if a != avertissement_phase_supposee_triphasee()]
         self.assertEqual(len(avertissements), 1)
         self.assertIn('Aucune batterie compatible tarifée',
                       avertissements[0])
@@ -397,7 +403,9 @@ class CompositionResidentielleTests(PvOndBase):
             catalogue, kwc=5, panel_watt=550, avec_batterie=True,
             avertissements=avertissements)
 
-        self.assertEqual(avertissements, [])
+        # RSIZ6 — seul reste le raccordement non renseigné (triphasé vendu).
+        self.assertEqual(avertissements,
+                         [avertissement_phase_supposee_triphasee()])
 
     def test_sans_batterie_demandee_aucun_avertissement(self):
         """Un devis réseau ne lit jamais le vivier : rien à signaler."""
@@ -411,7 +419,9 @@ class CompositionResidentielleTests(PvOndBase):
             catalogue, kwc=10, panel_watt=550, avec_batterie=False,
             avertissements=avertissements)
 
-        self.assertEqual(avertissements, [])
+        # RSIZ6 — seul reste le raccordement non renseigné (triphasé vendu).
+        self.assertEqual(avertissements,
+                         [avertissement_phase_supposee_triphasee()])
 
 
 class VerrouDeCompletudeBackendTests(PvOndBase):

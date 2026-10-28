@@ -17,6 +17,8 @@ from ..ci import couverture as ci_couverture
 from ..ci import blocs as ci_blocs
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
 from ..ci.graphiques import bloc_energie_mensuelle, css_graphique
+# CPDF3 — les deux options côte à côte (devis « sans / avec batterie »).
+from ..ci import options_cote
 
 
 def build(ctx):
@@ -63,9 +65,14 @@ def build(ctx):
 
     cat = d.get("com_category")
     # CIQ330 — libellé et accroche lus sur ``synthese_ci['categorie']``.
-    meta = categories.meta(cat, (d.get("com_synthese") or {}).get("categorie"))
+    _categorie = (d.get("com_synthese") or {}).get("categorie")
+    meta = categories.meta(cat, _categorie)
     icon = meta["icon"]
-    cat_label = meta["label"]
+    # CPDF — activité inconnue : jamais le libellé interne de repli
+    # (« Autre commerce ») en surtitre ; le surtitre dit le seul métier.
+    _cle_cat = (_categorie.get("cle") if isinstance(_categorie, dict)
+                else None) or (cat if cat in categories.METADATA else "autre")
+    cat_label = "" if _cle_cat == "autre" else meta["label"]
     accroche = meta["accroche"]
 
     kwc = premium_base.kwc_str(d.get("com_kwc"))
@@ -78,9 +85,13 @@ def build(ctx):
 
     # AMOT84 — l'unité dans la langue du document (« kWp » en anglais,
     # comme le titre) ; « &nbsp;kWc » en français, octet pour octet.
-    cellules = [kpi(kwc, L("res_unite_kwc", "&nbsp;kWc"),
-                    L("ci_puissance_crete", "Puissance crête"),
-                    "puissance_kwc")]
+    # CPDF3 — devis à deux options : la puissance, l'argent et la part
+    # couverte de CHAQUE option sont dits par sa carte ; les tuiles gardent
+    # la production et les taux de l'offre servie (un chiffre, une fois).
+    deux_options = options_cote.deux_options(d, "com")
+    cellules = [] if deux_options else [
+        kpi(kwc, L("res_unite_kwc", "&nbsp;kWc"),
+            L("ci_puissance_crete", "Puissance crête"), "puissance_kwc")]
     # CIQ331 — la production annuelle du moteur C&I (``synthese_ci``), ancrée
     # pour la parité avec /proposition ; non servie ⇒ tuile omise.
     production = d.get("com_production")
@@ -89,7 +100,8 @@ def build(ctx):
                             L("ci_unite_kwh_an", "&nbsp;kWh/an"),
                             L("ci_production_annuelle", "Production annuelle"),
                             "production_annuelle_kwh"))
-    cellules.extend(ci_couverture.tuiles_taux(d, "com", kpi))
+    cellules.extend(ci_couverture.tuiles_taux(
+        d, "com", kpi, couverture_tuile=not deux_options))
     # QXMT — dossier MT sans économies d'étude : la vignette est OMISE, pas
     # remplie d'un « 0 » ni d'un chiffre calculé au barème BASSE TENSION.
     # QJR119 — l'omission couvre aussi « valeur non chiffrable » : le garde ne
@@ -99,7 +111,8 @@ def build(ctx):
     kpis = '<td class="c1c-kgap"></td>'.join(cellules)
     # CIQ331 — l'argent sur sa propre rangée (économie de l'année 1, retour du
     # flux) : lu sur ``synthese_ci.argent``, absent ⇒ rangée omise.
-    argent = ci_couverture.tuiles_argent(d, "com", kpi, fmt)
+    argent = [] if deux_options else ci_couverture.tuiles_argent(
+        d, "com", kpi, fmt)
     # AMOT81 — l'origine du prix du kWh, sous les tuiles, quand c'est la
     # grille ONEE de repli (``ci.mentions.ligne_tarif_grille``).
     from ..ci.mentions import ligne_tarif_grille
@@ -110,6 +123,9 @@ def build(ctx):
                    + '</tr></table>'
                    + (f'<div class="c1c-mtsrc">{grille}</div>' if grille
                       else "")) if argent else ""
+    if deux_options:
+        kpis_argent = (f'<div class="c1c-mtsrc">{grille}</div>' if grille
+                       else "")
     bandeau = ci_couverture.bandeau_reserve(d, "com", "c1c")
     # AMOT89 — le surplus chiffré (kWh du bilan) sous la ligne de méthode.
     methode_line = (ci_couverture.ligne_methode(d, "com", "c1c")
@@ -124,7 +140,8 @@ def build(ctx):
             d.get("com_motif_argent") and d.get("com_economies") is None):
         mt_line = ci_couverture.ligne_non_chiffre(d, "com", "c1c")
     elif d.get("com_mt_mention"):
-        mt_line = f'<div class="c1c-mtsrc">{d["com_mt_mention"]}</div>'
+        mt_line = (f'<div class="c1c-mtsrc">'
+                   f'{ci_couverture.mention_client(d["com_mt_mention"])}</div>')
     else:
         mt_line = ""
 
@@ -163,7 +180,7 @@ def build(ctx):
   border-left:4px solid {gold};border-radius:12px;padding:12px 14px;background:#fff;}}
 .c1c-kgap{{display:table-cell;width:11px;}}
 .c1c-kv{{font-family:{f_display};font-size:18pt;color:{navy};line-height:1;}}
-.c1c-ku{{font-size:9pt;color:{muted};}}
+.c1c-ku{{font-size:9pt;color:{muted};white-space:nowrap;}}
 .c1c-kl{{font-size:7pt;color:{muted};margin-top:3px;letter-spacing:.3px;}}
 /* QXMT — ligne SOURCE sous le bloc économies (petite, jamais un chiffre nu). */
 .c1c-mtsrc{{margin-top:6px;font-size:6.8pt;color:{muted};line-height:1.35;}}
@@ -174,6 +191,7 @@ def build(ctx):
 .c1c-note b{{color:{navy};}}
 {ci_couverture.css_investissement("c1c", (line, wash, muted, navy, ink), f_display, 20, 12, "11px 16px")}
 {css_graphique("c1c", navy, muted)}
+{options_cote.css_options("c1c", (line, wash, muted, navy, ink, gold), 10)}
 .c1c-bas{{width:100%;border-collapse:collapse;margin-top:2px;}}
 .c1c-bas td{{vertical-align:top;padding:0;}}
 .c1c-bas-d{{width:52mm;padding-left:8px !important;padding-top:10px !important;}}
@@ -196,8 +214,13 @@ def build(ctx):
         "L'installation vise l'<b>autoconsommation</b> : la valeur porte "
         "d'abord sur\n      la consommation de <b>journée</b> de votre "
         "établissement.")
-    inv_html = ci_couverture.bloc_investissement(
-        d, d.get("com_synthese") or {}, "c1c", fmt_mad, ancre, invest=invest)
+    # CPDF3 — deux options : les deux cartes REMPLACENT le bloc
+    # investissement et la rangée d'argent (jamais ajoutées par-dessus).
+    inv_html = (options_cote.cartes_options(d, "com", "c1c", fmt, fmt_mad,
+                                            invest)
+                if deux_options else ci_couverture.bloc_investissement(
+                    d, d.get("com_synthese") or {}, "c1c", fmt_mad, ancre,
+                    invest=invest))
 
     html = f"""{css}
 <div class="c1c-root">
@@ -213,7 +236,7 @@ def build(ctx):
       </div>
     </div>
     <div class="c1c-hbody">
-      <div class="c1c-kicker">{cat_label} · {L("ci_kicker_autoconso_commerciale", "Autoconsommation solaire commerciale")}</div>
+      <div class="c1c-kicker">{f"{cat_label} · " if cat_label else ""}{L("ci_kicker_autoconso_commerciale", "Autoconsommation solaire commerciale")}</div>
       <div class="c1c-catrow">
         <div class="c1c-caticon">{icon}</div>
         <div class="c1c-catlab"><div class="c1c-serif c1c-title">{ci_couverture.titre_projet(d, "com", kwc, client_full)}</div></div>
@@ -223,9 +246,7 @@ def build(ctx):
   </div>
 
   <div class="c1c-client">
-    <b>{client_full}</b>
-    {f'&nbsp;·&nbsp;{client_meta}' if client_meta else ''}
-    {ci_blocs.bloc_client((d.get("com_synthese") or {}).get("entreprise_client"), "c1c", d.get("client_full") or d.get("client_name"), doc=d)}{ci_couverture.ligne_interlocuteur(d, "c1c")}
+    {ci_couverture.ligne_client(d, "com", client_full, client_meta, "c1c")}
   </div>
 
   <div class="c1c-wrap">

@@ -1,4 +1,5 @@
 ---
+import { TABLEAU_GARANTIES_FR } from '../lib/warranty';
 /**
  * Nos garanties / engagements (W8). Reprend EXACTEMENT le tableau de garanties
  * déjà publié sur la page Équipement + l'engagement monitoring/SAV existant.
@@ -70,15 +71,7 @@ const insuranceFaq = [
   },
 ];
 
-// Identique au tableau de la page Équipement (source de vérité publiée).
-const warranties = [
-  { item: 'Panneaux photovoltaïques (produit)', years: '12 ans' },
-  { item: 'Panneaux photovoltaïques (performance)', years: '30 ans', note: 'linéaire, ≥ 87,4 % de la puissance initiale à 30 ans' },
-  { item: 'Onduleurs (Deye, Huawei)', years: '10 ans' },
-  { item: 'Batteries Dyness LFP', years: '10 ans', note: '≥ 70 % de capacité — selon le document de garantie du distributeur (certaines variantes régionales affichent 7 ans)' },
-  { item: 'Structure acier galvanisé', years: '20 ans' },
-  { item: 'Installation et main-d’œuvre Taqinor', years: '2 ans' },
-];
+const warranties = TABLEAU_GARANTIES_FR;
 
 const engagements = [
   {
@@ -136,7 +129,7 @@ import WarrantyListBlock from '../components/blocs/WarrantyListBlock.astro';
 
 <Layout
   title="Nos garanties — ce qui est couvert, et pour combien d’années | Taqinor"
-  description="Une installation Taqinor s’engage sur la durée : 30 ans de performance linéaire et 12 ans produit sur les panneaux (≥ 87,4 % de puissance à 30 ans), 10 ans onduleurs et batteries, 20 ans structure, 2 ans pose. Et un suivi de production en temps réel qui repère l’anomalie avant vous."
+  description="Une installation Taqinor s’engage sur la durée : 30 ans de performance linéaire et 12 ans produit sur les panneaux (≥ 87,4 % de puissance à 30 ans), 5 ans onduleurs Deye, 10 ans onduleurs Huawei, 7 ans batteries, 20 ans structure, 2 ans pose. Et un suivi de production en temps réel qui repère l’anomalie avant vous."
   ogSlug="garanties"
 >
   <div class="v2">
