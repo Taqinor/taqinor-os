@@ -77,3 +77,21 @@ describe('CIW306 — la copie TS est supprimée', () => {
     expect(page).toContain('id="mode-commercial-cat"');
   });
 });
+
+describe('CE2E2 — « Rentabilisé en » = le retour au dixième du PDF', () => {
+  const argent = { statut: 'calcule', indicateurs: { retour_ans: 7 } };
+  const avecKpis = (kpis: unknown) => ({ ...payload('commercial', { argent }), mode_kpis: kpis }) as ProposalResponse;
+
+  it('hôtel : mode_kpis.payback 6,2 servi → 6,2 ans (pas l\'entier 7)', () => {
+    expect(syntheseCi(avecKpis({ payback: 6.2 }))!.argent!.retourAns).toBe(6.2);
+  });
+  it('payback non servi → l\'entier servi reste', () => {
+    expect(syntheseCi(avecKpis(null))!.argent!.retourAns).toBe(7);
+    expect(syntheseCi(avecKpis({ payback: '6.2' }))!.argent!.retourAns).toBe(7);
+  });
+  it('retour omis par l\'argent servi → omis, même si mode_kpis porte un payback', () => {
+    const argentOmis = { statut: 'calcule', indicateurs: { retour_ans: null } };
+    const p = { ...payload('commercial', { argent: argentOmis }), mode_kpis: { payback: 6.2 } };
+    expect(syntheseCi(p as unknown as ProposalResponse)!.argent!.retourAns).toBeNull();
+  });
+});
