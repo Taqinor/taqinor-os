@@ -499,6 +499,35 @@ class TestResidentialQRESRound(TestCase):
         self.assertNotIn("2.0", joined)
 
 
+class TestRpdf23ModeleHauteurTotaux(TestCase):
+    """RPDF23 — devis 1315 (rendu réel du 27/10, deux options, 9 lignes
+    communes, arrondi + Total HT) : le modèle QRES17 l'estimait à 67,8 mm
+    (≤ 68 : une page) et le bas du bloc « Rentabilité sur 25 ans » passait
+    sous le pied. Les lignes de totaux au-delà des fixtures calibrées
+    (remise / arrondi / Total HT) entrent désormais dans le budget. Aucun
+    rendu WeasyPrint : la décision de pagination se lit sur la LISTE de pages
+    que ``options.build_pages`` rend."""
+
+    @staticmethod
+    def _pages(data):
+        from apps.ventes.quote_engine.residential import (
+            options, render, renderer)
+        return options.build_pages(render.build_ctx(renderer._augment(data)))
+
+    def test_rpdf23_arrondi_et_total_ht_entrent_dans_le_budget(self):
+        from apps.ventes.quote_engine.residential import sample_data
+        base = sample_data.build("plus5")
+        # Test-du-test : la fixture calibrée (9 lignes communes, totaux sans
+        # remise ni arrondi) garde sa page unique d'hier.
+        self.assertEqual(len(self._pages(base)), 1)
+        data = sample_data.build("plus5")
+        for cle in ("totaux_sans", "totaux_avec"):
+            tot = dict(data[cle], arrondi=56.0)
+            tot["ht_net"] = tot["ht_brut"] - 56.0
+            data[cle] = tot
+        self.assertGreater(len(self._pages(data)), 1)
+
+
 @tag('pdf')
 class TestResidentialWarmPathCache(TestCase):
     """QX8 — chemin chaud : polices/logo/graphiques + octets PDF sont mis en
@@ -2034,3 +2063,92 @@ class TestQjr209DossierMtDansLePaquetResidentiel(TestCase):
         d, html = self._html(data)
         self.assertFalse(d['masquer_synthese'])
         self.assertIn('<div class="c1-bigcut">', html)
+
+
+class TestRpdfLangueGarantiesEtDelais(SimpleTestCase):
+    """RPDF (rendu réel du 27/10) — garanties arabes accordées, délais société
+    par défaut traduits, ``_yrs`` via le formateur central."""
+
+    def test_garantie_arabe_accord_annees(self):
+        from apps.ventes.quote_engine.residential import theme
+        d = {"langue_sortie": "ar"}
+        for n, attendu in (("25", "سنة"), ("12", "سنة"), ("10", "سنوات"),
+                           ("5", "سنوات")):
+            u = theme.garantie_doc(d, (n, "ans", "Panneaux", ""))[1]
+            self.assertIn(attendu, u, n)
+            if attendu == "سنة":
+                self.assertNotIn("سنوات", u, n)
+
+    def test_garantie_fr_et_en_inchangees(self):
+        from apps.ventes.quote_engine.residential import theme
+        g = ("12", "ans", "Panneaux", "")
+        self.assertEqual(theme.garantie_doc({}, g), g)
+        self.assertIn("years", theme.garantie_doc({"langue_sortie": "en"}, g)[1])
+
+    def test_delai_defaut_traduit_selon_la_langue(self):
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme.delai_doc({}, "7-14 jours ouvrés"),
+                         "7-14 jours ouvrés")
+        self.assertEqual(
+            theme.delai_doc({"langue_sortie": "en"}, "7-14 jours ouvrés"),
+            "7-14 working days")
+        self.assertNotIn("jours", theme.delai_doc(
+            {"langue_sortie": "ar"}, "7-14 jours ouvrés"))
+        # texte personnalisé par la société : donnée, jamais touchée
+        self.assertEqual(
+            theme.delai_doc({"langue_sortie": "en"}, "environ trois semaines"),
+            "environ trois semaines")
+
+    def test_yrs_decimale_francaise_par_defaut(self):
+        from apps.ventes.quote_engine.residential import cover
+        self.assertEqual(cover._yrs(4.4), "4,4")
+        self.assertEqual(cover._yrs(5.0), "5")
+
+
+class TestRpdf30FormatAnglaisResidentiel(SimpleTestCase):
+    """RPDF30 — un devis résidentiel EN écrit ses nombres à l'anglaise
+    (point décimal, virgule des milliers) ; FR et AR restent octet pour octet.
+    Non exécuté dans cette session (Django indisponible) — à lancer en CI."""
+
+    @staticmethod
+    def _html(langue=None):
+        from apps.ventes.quote_engine.residential import render, renderer
+        data = _residential_sample_data()
+        if langue:
+            data['langue_sortie'] = langue
+        return render.build_html(renderer._augment(data))
+
+    @staticmethod
+    def _visible(html):
+        html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+        return re.sub(r"<[^>]+>", " ", html)
+
+    def test_anglais_puissance_et_payback_a_l_anglaise(self):
+        txt = self._visible(self._html('en'))
+        self.assertIn("11.36", txt)
+        self.assertNotIn("11,36", txt)
+        self.assertRegex(txt, r"\b4\.[0-9]\b")
+
+    def test_francais_inchange_virgule_decimale(self):
+        from apps.ventes.quote_engine.montants import format_anglais
+        txt = self._visible(self._html())
+        self.assertIn("11,36", txt)
+        self.assertNotIn("11.36", txt)
+        self.assertFalse(format_anglais())
+
+    def test_anglais_ne_fuit_pas_vers_le_rendu_suivant(self):
+        avant = self._html()
+        self._html('en')
+        self.assertEqual(self._html(), avant)
+
+    def test_montants_anglais_virgule_milliers(self):
+        from apps.ventes.quote_engine import montants
+        with montants.format_langue({'langue_sortie': 'en',
+                                     'mode_installation': 'residentiel'}):
+            self.assertEqual(montants.fmt_centimes(65700), "65,700.00")
+        with montants.format_langue({'langue_sortie': 'ar',
+                                     'mode_installation': 'residentiel'}):
+            self.assertEqual(montants.fmt_centimes(65700), "65 700,00")
+        with montants.format_langue({'langue_sortie': 'en',
+                                     'mode_installation': 'agricole'}):
+            self.assertFalse(montants.format_anglais())

@@ -2759,7 +2759,12 @@ class NTI18N5DocumentMultilingueTests(TestCase):
         montants = {}
         for langue in ('fr', 'en', 'ar'):
             html = self._html(langue)
-            montants[langue] = _re.findall(r'>([^<>]*?)&nbsp;MAD<', html)
+            lus = _re.findall(r'>([^<>]*?)&nbsp;MAD<', html)
+            # RPDF30 — l'anglais ÉCRIT les nombres à l'anglaise (« 48,650.00 ») :
+            # on compare la VALEUR, jamais l'écriture (séparateurs neutralisés).
+            mil, dec = (',', '.') if langue == 'en' else (' ', ',')
+            montants[langue] = [m.replace(mil, '').replace(' ', '').replace(dec, '#')
+                                for m in lus]
         self.assertTrue(montants['fr'], 'aucun montant lu dans le une-page')
         self.assertEqual(montants['en'], montants['fr'])
         self.assertEqual(montants['ar'], montants['fr'])

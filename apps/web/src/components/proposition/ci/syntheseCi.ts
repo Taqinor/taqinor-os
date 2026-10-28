@@ -76,6 +76,7 @@ export interface SyntheseCiArgent {
     economieMensuelleMoyenneMad: number | null;
     ecartMensuelMad: number | null;
     dureeMois: number | null;
+    source: string | null;
   } | null;
 }
 
@@ -263,6 +264,7 @@ function lireArgentCi(v: unknown): SyntheseCiArgent | null {
           economieMensuelleMoyenneMad: nombreServi(v.financement.economie_mensuelle_moyenne_mad),
           ecartMensuelMad: nombreServi(v.financement.ecart_mensuel_mad),
           dureeMois: nombreServi(v.financement.duree_mois),
+          source: texteServi(v.financement.source),
         }
       : null,
   };
