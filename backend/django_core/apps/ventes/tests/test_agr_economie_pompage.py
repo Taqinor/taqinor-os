@@ -102,6 +102,9 @@ class DepenseActuelleTests(SimpleTestCase):
         })
         self.assertEqual(dep['statut'], 'omis')
         self.assertTrue(any('part fixe' in m for m in dep['motifs']))
+        # AGV8 — le motif nomme le champ du lead à compléter.
+        self.assertTrue(any('part fixe de la facture électricité du pompage'
+                            in m for m in dep['motifs']))
 
     def test_entretien_paye_declare_s_ajoute(self):
         dep = E.depense_actuelle(saisies_carburant(entretien=1500))

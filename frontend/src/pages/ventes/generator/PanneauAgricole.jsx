@@ -130,7 +130,7 @@ function ResultatPompage({ donnees, saisie, majPompage }) {
             Champ {fmtNum(d.champ.kwc)} kWc ({fmtNum(d.champ.nb_panneaux)} panneaux) —
             chaînes {d.champ.chaines?.verifiable
               ? 'vérifiées'
-              : `non vérifiables${d.champ.chaines?.motif ? ` : ${d.champ.chaines.motif}` : ''}`}
+              : `à vérifier${d.champ.chaines?.motif ? ` : ${d.champ.chaines.motif}` : ''}`}
           </div>
         )}
       </div>
@@ -475,7 +475,7 @@ export default function PanneauAgricole({
         ) : (pompeCv !== '' && pompeCv != null && (
           <p className="mt-2 text-xs text-muted-foreground" data-testid="pompe-actuelle-info">
             Pompe actuelle du client : {pompeCv} CV (information — une pompe neuve
-            est dimensionnée par le serveur).
+            est dimensionnée par le logiciel).
           </p>
         ))}
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
@@ -598,14 +598,14 @@ export default function PanneauAgricole({
         <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div className="grid gap-1.5">
             <Label htmlFor="gen-hmt">
-              HMT saisie (m){hmtServeur?.source === 'calculee' && pompeHmt !== '' ? ' — surcharge' : ''}
+              Hauteur de pompage (HMT, m){hmtServeur?.source === 'calculee' && pompeHmt !== '' ? ' — modifiée par vous' : ''}
             </Label>
             <Input id="gen-hmt" type="number" min="0" step="any"
                    placeholder="ex: 120" value={pompeHmt}
                    onChange={e => setPompeHmt(e.target.value)} />
             {hmtServeur?.valeur_m != null && (
               <p className="text-xs text-muted-foreground" data-testid="hmt-serveur">
-                HMT retenue par le serveur : {fmtNum(hmtServeur.valeur_m)} m
+                Hauteur retenue pour le calcul : {fmtNum(hmtServeur.valeur_m)} m
                 ({hmtServeur.source === 'saisie' ? 'saisie' : 'calculée'})
               </p>
             )}

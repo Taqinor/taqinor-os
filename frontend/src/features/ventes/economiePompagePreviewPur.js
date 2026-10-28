@@ -116,6 +116,15 @@ function economieNetteAnnee1(economie) {
   return an1 ? nombreLu(an1.flux_mad) : null
 }
 
+/** AGV11 — le cumul SERVI de la dernière année de l'horizon (lu, jamais
+ *  recalculé), ou `null`. */
+function economieCumulHorizon(economie) {
+  const flux = Array.isArray(economie?.flux) ? economie.flux : []
+  const horizon = nombreLu(economie?.horizon_ans)
+  const fin = horizon === null ? null : flux.find((f) => f && f.annee === horizon)
+  return fin ? nombreLu(fin.cumul_mad) : null
+}
+
 /**
  * Le modèle d'affichage CLIENT de la carte (aucune clé de `vue_interne`).
  * Chaque chiffre porte l'étiquette d'estimation ; chaque omission son motif.
@@ -158,6 +167,7 @@ export function vueCarteEconomie(reponse) {
         motif: r.motif || null,
       })),
     economieNette: economieNetteAnnee1(economie),
+    economieCumul10Ans: economieCumulHorizon(economie),
     retourAns: nombreLu(economie.retour_ans),
     madParM3: reponse.mad_par_m3 ? {
       actuel: nombreLu(reponse.mad_par_m3.actuel),

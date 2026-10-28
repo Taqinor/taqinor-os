@@ -178,6 +178,32 @@
    "args": [],
    "kwargs": {
     "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Si votre pompe actuelle marche à l'électricité, combien payez-vous par mois pour le pompage ? » (MAD/mois, facultatif, vide = pas encore posée).",
+    "max_digits": 10,
+    "null": true,
+    "verbose_name": "Facture électricité du pompage (MAD/mois)"
+   },
+   "nom": "depense_electricite_pompe_mad_mois",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
+    "decimal_places": 2,
+    "help_text": "Question à l'appel : « Sur cette facture, combien est fixe chaque mois (abonnement, redevance), même sans pomper ? » (MAD/mois, facultatif, vide = pas encore posée).",
+    "max_digits": 10,
+    "null": true,
+    "verbose_name": "Part fixe de la facture électricité du pompage (MAD/mois)"
+   },
+   "nom": "depense_electricite_pompe_part_fixe_mad_mois",
+   "type": "DecimalField"
+  },
+  {
+   "args": [],
+   "kwargs": {
+    "blank": true,
     "null": true,
     "on_delete": "callable:CASCADE",
     "related_name": "leads",

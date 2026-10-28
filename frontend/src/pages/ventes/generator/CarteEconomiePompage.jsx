@@ -80,6 +80,8 @@ export function CarteEconomiePompageVue({ reponse }) {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Chiffre libelle="Dépense actuelle (an)" valeur={v.depenseAnnuelle} testid="depense-actuelle" />
         <Chiffre libelle="Économie nette (année 1)" valeur={v.economieNette} testid="economie-nette" />
+        <Chiffre libelle="Économie nette cumulée sur 10 ans (investissement déduit)"
+                 valeur={v.economieCumul10Ans} testid="economie-10-ans" />
         <Chiffre libelle="Retour sans aide" valeur={v.retourAns} testid="retour-ans"
                  unite={(x) => `${formatNumber(x)} ans`} />
         <Chiffre libelle="Coût du m³ (actuel / solaire)"

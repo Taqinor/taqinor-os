@@ -277,6 +277,18 @@
    "required": false
   },
   {
+   "classe": "LeadDecimalField",
+   "nom": "depense_electricite_pompe_mad_mois",
+   "read_only": false,
+   "required": false
+  },
+  {
+   "classe": "LeadDecimalField",
+   "nom": "depense_electricite_pompe_part_fixe_mad_mois",
+   "read_only": false,
+   "required": false
+  },
+  {
    "classe": "ChaineStricte",
    "nom": "nom",
    "read_only": false,
