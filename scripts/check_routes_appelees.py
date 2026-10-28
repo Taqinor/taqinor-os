@@ -14,7 +14,12 @@ Une route crm est VALIDE si l'une de ces conditions tient :
 3. elle est « sans ecran par construction » : prefixe ``public/`` ou
    ``webhooks/`` (appeles par le site public, Meta, un cron - jamais par l'ERP)
    ou portail a jeton ``apporteur-portail/`` ;
-4. elle figure dans ``A_CORRIGER`` ci-dessous, une ligne MOTIVEE par route.
+4. elle figure dans ``A_CORRIGER`` ci-dessous, une ligne MOTIVEE par route ;
+5. elle est l'``endpoint`` d'une action d'agent declaree dans
+   ``backend/django_core/apps/**/agent_actions.py`` (ou ``apps/agent/registry.py``) :
+   le relais FastAPI de l'assistant (``action_tools._build_path`` puis appel HTTP
+   avec le JWT) l'appelle par ce gabarit - un vrai appelant, sans ecran
+   (AIC30-35).
 
 Un detail de routeur ``<pk>`` est couvert des qu'un appelant joint la liste ou
 une action de la meme ressource (le client CRUD l'atteint par le meme prefixe).
@@ -42,6 +47,7 @@ import check_api_contract as cac  # noqa: E402 — après sys.path/setup() (D-EN
 
 MONTAGE = ("api", "django", "crm")
 E2E_DIR = ROOT / "frontend" / "e2e"
+APPS_DIR = ROOT / "backend" / "django_core" / "apps"
 
 #: Premiers segments (apres ``api/django/crm``) servis a des appelants non-ERP.
 SANS_ECRAN_PAR_CONSTRUCTION = {
@@ -88,6 +94,8 @@ A_CORRIGER: dict[str, str] = {
 
 _E2E_CHEMIN = re.compile(r"/api/django/crm/[^'\"`\s?#)\\]*")
 _TROU = re.compile(r"\$\{[^{}]*\}")
+_AGENT_ENDPOINT = re.compile(r"endpoint\s*=\s*['\"](/api/django/crm/[^'\"]*)['\"]")
+_GABARIT = re.compile(r"\{[^{}]*\}")
 
 
 def routes_crm(routes) -> list[tuple]:
@@ -109,6 +117,32 @@ def appels_e2e(dossier: Path = E2E_DIR) -> set[tuple]:
             brut = _TROU.sub(cac.ANY, m.group(0))
             segs = tuple(s for s in brut.strip("/").split("/") if s)
             out.add(segs)
+    return out
+
+
+def _fichiers_agent(dossier: Path = APPS_DIR) -> list[Path]:
+    if not dossier.is_dir():
+        return []
+    fichiers = sorted(dossier.rglob("agent_actions.py"))
+    registre = dossier / "agent" / "registry.py"
+    if registre.is_file():
+        fichiers.append(registre)
+    return fichiers
+
+
+def appels_agent(fichiers=None) -> set[tuple]:
+    """Gabarits ``endpoint=`` crm des actions d'agent, ``{id}`` -> joker.
+
+    Le relais FastAPI de l'assistant appelle ces chemins (condition 5)."""
+    out: set[tuple] = set()
+    for p in (_fichiers_agent() if fichiers is None else fichiers):
+        try:
+            texte = Path(p).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for m in _AGENT_ENDPOINT.finditer(texte):
+            brut = _GABARIT.sub(cac.ANY, m.group(1))
+            out.add(tuple(s for s in brut.strip("/").split("/") if s))
     return out
 
 
@@ -163,6 +197,7 @@ def mesurer():
         if n:
             appels.add(tuple(n))
     appels |= appels_e2e()
+    appels |= appels_agent()
     return backend.routes, appels
 
 
@@ -177,7 +212,7 @@ def main(argv=None) -> int:
     if violations:
         code = 1
         print(f"check_routes_appelees : {len(violations)} route(s) crm SANS appelant "
-              "(ni frontend/src, ni e2e, ni exemption motivee) :")
+              "(ni frontend/src, ni e2e, ni action d'agent, ni exemption motivee) :")
         for r in violations:
             print(f"  /{'/'.join(r)}")
         print("\nCorriger : brancher un appelant (frontend/src/api/*.js), ou retirer "
