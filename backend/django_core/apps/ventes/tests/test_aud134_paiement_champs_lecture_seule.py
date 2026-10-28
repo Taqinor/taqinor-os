@@ -131,3 +131,27 @@ class TestAud134PaiementChampsLectureSeule(TestCase):
                     'company', 'created_by', 'facture', 'escompte_montant'):
             self.assertTrue(
                 champs[nom].read_only, f'{nom} devrait être en lecture seule')
+
+    def test_montant_publie_un_seul_motif_positif(self):
+        """api-fuzz-full 28/10 — le motif signé du ``DecimalField`` et le motif
+        positif en ``allOf`` rendaient le corps ingénérable (Failed Health
+        Check) : UN motif, positif, sur le champ ; 0 et -1 refusés 400."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.ventes import urls as ventes_urls
+        from apps.ventes.domain.bornes import MOTIF_MONTANT_POSITIF
+        schema = SchemaGenerator(patterns=[
+            path('api/django/ventes/', include(ventes_urls)),
+        ]).get_schema(request=None, public=True)
+        corps = schema['paths'][
+            '/api/django/ventes/factures/{id}/enregistrer-paiement/']['post'][
+            'requestBody']['content']['application/json']['schema']
+        self.assertNotIn('allOf', corps)
+        champ = schema['components']['schemas'][
+            corps['$ref'].split('/')[-1]]['properties']['montant']
+        self.assertEqual(champ['pattern'], MOTIF_MONTANT_POSITIF)
+        for montant in ('0', '-1'):
+            resp = self._enregistrer(montant=montant)
+            self.assertEqual(resp.status_code, 400, (montant, resp.data))
+        self.assertFalse(Paiement.objects.filter(facture=self.facture).exists())

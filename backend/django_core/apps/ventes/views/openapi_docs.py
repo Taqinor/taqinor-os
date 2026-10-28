@@ -376,11 +376,19 @@ CORPS_RELEVE_LIGNES = corps_resserre({
     ]}}}})
 
 
-#: Le ``montant`` d'un encaissement est requis et strictement positif.
-CORPS_MONTANT_POSITIF = corps_resserre({
-    'required': ['montant'],
-    'properties': {'montant': {'type': 'string',
-                               'pattern': MOTIF_MONTANT_POSITIF}}})
+class PaiementEncaissementSerializer(PaiementSerializer):
+    """Le corps d'``enregistrer-paiement`` : le ``montant`` d'un encaissement
+    est requis et strictement positif, publié SUR LE CHAMP (api-fuzz-full
+    28/10 — doublé en ``allOf`` du motif signé du ``DecimalField``, le corps
+    était ingénérable : « Failed Health Check », filter_too_much)."""
+
+    def get_fields(self):
+        fields = super().get_fields()
+        set_override(fields['montant'], 'field', {
+            'type': 'string', 'format': 'decimal',
+            'pattern': MOTIF_MONTANT_POSITIF})
+        return fields
+
 
 #: AFAC32 — une note de débit porte des ``lignes`` (au moins une) OU un
 #: ``montant`` HT strictement positif ; ``{}`` était « conforme » puis refusé
@@ -1648,7 +1656,9 @@ OffreTailleConfigRequest = {
                 'properties': {
                     'nb_panneaux': {'type': 'integer', 'minimum': 1,
                                     'maximum': 500},
-                    'batterie_nb_modules': {'type': 'integer', 'minimum': 0,
+                    # api-fuzz-full 28/10 (ENF11) : « zéro module » est refusé
+                    # (``validate_batterie_nb_modules``) — publié dès 1.
+                    'batterie_nb_modules': {'type': 'integer', 'minimum': 1,
                                             'maximum': 100},
                     # CI #997 fuzz (24/10) : les rôles de composition connus,
                     # rien d'autre (« Rôle de composition inconnu. » = 400

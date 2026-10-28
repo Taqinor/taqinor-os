@@ -758,6 +758,17 @@ class TestSafety(_Base):
         r = self.api.post(f'{self.url}/signer-safety/', {}, format='json')
         self.assertTrue(r.data['signe'])
 
+    def test_cle_avec_nul_400_jamais_500(self):
+        # api-fuzz-full 28/10 (ENF11) : un NUL dans `cle` atteignait le
+        # filtre PostgreSQL (500) ; publiée sans NUL, refusée 400. Une clé
+        # inconnue (texte) reste 404.
+        r = self.api.post(f'{self.url}/cocher-safety/', {
+            'cle': 'epi\x00portes'}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        r = self.api.post(f'{self.url}/cocher-safety/', {
+            'cle': 'inconnue'}, format='json')
+        self.assertEqual(r.status_code, 404, r.content)
+
     def test_default_slots_seeded(self):
         field_capture.seed_safety_slots(self.company)
         from apps.installations.models import SafetyChecklistSlot

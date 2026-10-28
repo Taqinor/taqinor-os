@@ -76,7 +76,9 @@ class DeclarationFactureeSerializer(DeclarationConsommationSerializer):
 
 
 class DepotConsignationSerializer(CompanyScopedRelationsMixin,
-                                  serializers.ModelSerializer):
+                                  ChampsTexteBooleenStricts, serializers.ModelSerializer):
+    # api-fuzz-full 28/10 (ENF11) : textes stricts — ``adresse_site`` avec un
+    # NUL était publié texte libre puis refusé 400 par PostgreSQL.
     quantite_restante = serializers.IntegerField(read_only=True)
     produit_nom = serializers.CharField(
         source='produit.nom', read_only=True, default='')

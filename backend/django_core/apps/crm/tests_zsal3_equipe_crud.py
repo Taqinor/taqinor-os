@@ -415,7 +415,10 @@ class TestDispatchLeads(TestCase):
         r = self.api.post(url, {'equipe': self.equipe.pk, 'membre': self.m2.pk,
                                 'facture_min': '3000.00',
                                 'facture_max': '1000.00'}, format='json')
-        self.assertEqual(r.status_code, 400, r.content)
+        # api-fuzz-full 28/10 (ENF11) : max < min est une règle entre deux
+        # champs, inexprimable au schéma — 409, même corps nommant le champ.
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertIn('facture_max', r.json())
         r = self.api.post(url, {'equipe': self.equipe.pk, 'membre': self.m2.pk,
                                 'type_installation': 'agricole',
                                 'source': 'meta_ads',
