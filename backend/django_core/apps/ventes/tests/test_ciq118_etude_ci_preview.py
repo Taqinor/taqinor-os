@@ -41,6 +41,7 @@ from apps.ventes.domain import etude_ci
 from apps.ventes.moteur_ci.production import (
     CLE_POSE_RASANTE,
     SOURCE_ANGLE_POSE_RASANTE,
+    SOURCE_ANGLE_TOIT_PLAT,
     plan_de_production,
 )
 from authentication.models import Company
@@ -714,7 +715,7 @@ class PoseRasanteR1(_Base):
         self.assertLessEqual(data['taille']['retenue_kwc'], toit['kwc_30'])
         self.assertEqual(self._hyp(data, 'inclinaison_retenue_deg')['valeur'], 30)
         self.assertEqual(data['production']['inclinaison_deg'], 30)
-        self.assertNotIn('inclinaison_source', data['production'])
+        self.assertEqual(data['production']['inclinaison_source'], SOURCE_ANGLE_TOIT_PLAT)
         self.assertEqual(self.production.call_args_list[0].kwargs['toit'].get(CLE_POSE_RASANTE), None)
         self.assertIsNone(self._hyp(data, 'taille_limitee_toit'))
 
