@@ -191,6 +191,13 @@ def _nombre(valeur) -> float:
         return 0.0
 
 
+def _regles_2710(devis):
+    """RHOR6 — vrai si ce devis est rendu au niveau de règles 3."""
+    from apps.ventes.domain.regles_calcul import (
+        REGLES_CORRIGEES_2710, regles_au_moins)
+    return regles_au_moins(devis, REGLES_CORRIGEES_2710)
+
+
 def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
                    avec_items, avec_ok, avertissements_internes, deux_options,
                    devis, devis_etude_override, has_batterie, mode,
@@ -300,9 +307,9 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         _tariff = {}
     # ── QX38 — productible CANONIQUE (source unique PVGIS par ville) ──────────
     # CompanyProfile.productible_kwh_kwc devient un OVERRIDE éditable, pas un
-    # modèle physique concurrent : quand il vaut le défaut historique 1600, on
-    # lit le productible PVGIS de la ville du lead/devis (aligné écran/PDF/web).
-    # Une valeur société ≠ 1600 (réglage explicite) prime. Repli sûr : sur toute
+    # modèle physique concurrent : vide (NULL), on lit le productible PVGIS de
+    # la ville du lead/devis (aligné écran/PDF/web) ; renseigné (1 600 compris
+    # — AMOT64), il prime. Repli sûr : sur toute
     # erreur, on garde l'ancien productible du tarif (comportement inchangé).
     _co_productible = _tariff.get("productible_kwh_kwc") or None
     try:
@@ -377,6 +384,7 @@ def chiffrer_etude(*, _blob, _corrige, _mode_ci, avec_batterie_differee,
         # rendus ; règles d'origine : le calcul d'hier.
         rendement_une_fois=_corrige,
         forme_mensuelle_ghi=_corrige,
+        regles_2710=_regles_2710(devis),
     )
     # M2 — puissance inconnue ⇒ production et économies le sont aussi (elles en
     # dérivent toutes). ``calculate_savings_roi`` rend alors des zéros ; le

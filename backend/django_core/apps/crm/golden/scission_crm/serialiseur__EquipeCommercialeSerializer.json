@@ -59,6 +59,12 @@
    "nom": "date_creation",
    "read_only": true,
    "required": false
+  },
+  {
+   "classe": "CompanyScopedPrimaryKeyRelatedField",
+   "nom": "departement",
+   "read_only": false,
+   "required": false
   }
  ]
 }

@@ -1,0 +1,25 @@
+---
+/**
+ * CPRW25 (28/10/2026) — l'offre de financement d'un devis commercial OU industriel : ce que le PDF imprime
+ * (`ci/blocs.py::bloc_financement`, après l'échéancier) — libellé servi, échéance mensuelle, économie moyenne,
+ * écart, source, sur la base HT/TTC servie. Aucun taux inventé. Condition d'affichage dans la page.
+ */
+import type { SyntheseCi } from '../../../lib/proposition';
+import { financementCi } from './blocsCi';
+
+interface Props {
+  ci: SyntheseCi;
+}
+const { ci } = Astro.props;
+const fin = financementCi(ci);
+---
+<section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8" id="financement" data-ci-financement>
+  <div class="cine-card rounded-xl p-5">
+    <h3 class="tech-label text-lune-faint" data-i18n data-fr={fin?.titre.fr} data-en={fin?.titre.en} data-ar={fin?.titre.ar}>{fin?.titre.fr}</h3>
+    <ul class="mt-2 space-y-1 text-sm text-lune-soft">
+      {fin?.lignes.map((l) => (
+        <li data-i18n data-fr={l.fr} data-en={l.en} data-ar={l.ar}>{l.fr}</li>
+      ))}
+    </ul>
+  </div>
+</section>

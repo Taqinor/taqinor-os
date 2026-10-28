@@ -127,3 +127,61 @@ class SeedAdditifTests(TestCase):
         panneau = self._produit('PAN-CS-710')
         self.assertEqual(panneau.tva, Decimal('10.00'))
         self.assertEqual(panneau.prix_vente, Decimal('21818.18'))
+
+
+class GarantiesMarocTests(TestCase):
+    """RPDF (fondateur 27/10/2026) — une garantie client est UNE durée, celle
+    du Maroc : jamais « selon site », « variante régionale » ni « version ».
+    Deye = 5 ans et Dyness DL5.0C V2 = 7 ans (durées de base, l'extension
+    payante n'est pas achetée), texte ET ``garantie_mois`` (sinon la page 2
+    et la tuile de la page 3 se contredisent) ; la migration 0174 corrige les
+    bases déjà seedées sans toucher une saisie du fondateur."""
+
+    def setUp(self):
+        self.company = Company.objects.create(
+            nom='Seed RPDF', slug='seed-rpdf-garanties')
+
+    def test_aucune_garantie_semee_n_affiche_d_incertitude(self):
+        for sku, fiche in FICHES.items():
+            texte = fiche.get('garantie', '').lower()
+            for mot in ('selon', 'variante', 'régionale', 'version', ' à 10'):
+                self.assertNotIn(mot, texte, sku)
+
+    def test_seed_deye_5_ans_dyness_7_ans(self):
+        _seed(self.company)
+        deye = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        self.assertEqual(deye.garantie, 'Garantie constructeur 5 ans')
+        self.assertEqual(deye.garantie_mois, 60)
+        dyness = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        self.assertTrue(dyness.garantie.startswith('Garantie constructeur 7 ans'))
+        self.assertEqual(dyness.garantie_mois, 84)
+
+    def test_migration_0174_corrige_l_ancienne_valeur_semee(self):
+        from importlib import import_module
+
+        from django.apps import apps as registre
+        mig = import_module('apps.stock.migrations.0174_rpdf_garanties_maroc')
+        _seed(self.company)
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-10T').update(
+            garantie=mig.ANCIEN_TEXTE_DEYE, garantie_mois=120)
+        Produit.objects.filter(company=self.company, sku='BAT-DEY-5').update(
+            garantie=mig.ANCIEN_TEXTE_DYNESS_V2, garantie_mois=120)
+        Produit.objects.filter(company=self.company, sku='BAT-DEY-10').update(
+            garantie=mig.ANCIEN_TEXTE_DYNESS)
+        # Une saisie du fondateur n'est jamais réécrite.
+        Produit.objects.filter(company=self.company, sku='OND-H-DEY-5M').update(
+            garantie='Garantie 10 ans (extension achetée)', garantie_mois=99)
+
+        mig.corriger(registre, None)
+
+        def _p(sku):
+            return Produit.objects.get(company=self.company, sku=sku)
+        self.assertEqual(_p('OND-H-DEY-10T').garantie, mig.NOUVEAU_TEXTE_DEYE)
+        self.assertEqual(_p('OND-H-DEY-10T').garantie_mois, 60)
+        self.assertEqual(_p('BAT-DEY-5').garantie, mig.NOUVEAU_TEXTE_DYNESS_5)
+        self.assertEqual(_p('BAT-DEY-5').garantie_mois, 84)
+        self.assertEqual(_p('BAT-DEY-10').garantie, mig.NOUVEAU_TEXTE_DYNESS_10)
+        self.assertEqual(_p('BAT-DEY-10').garantie_mois, 120)
+        self.assertEqual(_p('OND-H-DEY-5M').garantie,
+                         'Garantie 10 ans (extension achetée)')
+        self.assertEqual(_p('OND-H-DEY-5M').garantie_mois, 99)

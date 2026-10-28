@@ -75,7 +75,7 @@ class TailleCITests(unittest.TestCase):
             charge_jours_types=charge, production_jours_types=self.prod, tension='bt',
             combiner=partial(combiner_onduleurs, candidats=self.huawei, phase='tri'),
             composer=kw.pop('composer', _composer), valoriser=_valoriser(charge),
-            taux_tva_pct=20)
+            taux_tva_pct=20, pmax_wc=PANNEAU_WC)
         params.update(kw)
         return dimensionner_ci(**params)
 
@@ -100,11 +100,24 @@ class TailleCITests(unittest.TestCase):
         self.assertNotEqual(t['raison_arret'], 'onduleurs')
 
     def test_toit_declare_borne(self):
-        bornes = {'toit': {'kwc': 30, 'source': 'surface utile déclarée (300 m²)'}}
+        # CLD9 — toit exprimé en panneaux ENTIERS (43 × 710 Wc = 30,53 kWc) :
+        # le palier 30 pose 43 panneaux et tient ; le palier 35 (50 panneaux)
+        # le dépasse.
+        bornes = {'toit': {'kwc': 30.53, 'source': 'surface utile déclarée (300 m²)'}}
         t = self._taille('hotel', 20000, bornes=bornes)['taille']
-        self.assertEqual(t['retenue_kwc'], 30)
+        self.assertEqual(t['retenue_kwc'], 30.53)
+        self.assertEqual(t['nb_panneaux'], 43)
         self.assertEqual(t['raison_arret'], 'toit')
         self.assertEqual(t['paliers'][-1]['borne'], 'toit')
+
+    def test_toit_non_multiple_garde_le_palier_en_panneaux_entiers(self):
+        # CLD9 (R4) — toit de 30,00 kWc : le palier 30 pose 42 panneaux (29,82)
+        # au lieu d'être refusé pour 0,53 kWc.
+        bornes = {'toit': {'kwc': 30.0, 'source': 'surface utile déclarée'}}
+        t = self._taille('hotel', 20000, bornes=bornes)['taille']
+        self.assertEqual(t['nb_panneaux'], 42)
+        self.assertAlmostEqual(t['retenue_kwc'], 29.82, places=2)
+        self.assertEqual(t['raison_arret'], 'toit')
 
     def test_puissance_souscrite_borne(self):
         r = self._taille('hotel', 100000, puissance_souscrite_kva=80)
@@ -129,6 +142,35 @@ class TailleCITests(unittest.TestCase):
         self.assertIn('taille_au_dela_du_toit', codes)
         self.assertIn('taille_au_dela_ps', codes)
 
+    def test_unite_de_la_puissance_ac_comparee_a_la_ps(self):
+        # CLD10 — S max non publiée (Huawei seedés) : la puissance comparée à
+        # la PS est en kW AC, jamais libellée « kVA » ; publiée : en kVA.
+        r = self._taille('hotel', 20000, taille_explicite_kwc=120, puissance_souscrite_kva=50)
+        msg = next(a['message'] for a in r['alertes'] if a['code'] == 'taille_au_dela_ps')
+        self.assertIn('kW AC', msg)
+        self.assertNotIn('kVA au-delà', msg)
+        self.assertEqual(r['evaluation']['unite_puissance_ac'], 'kW AC')
+
+        def avec_smax(kwc):
+            o = combiner_onduleurs(kwc, self.huawei, phase='tri')
+            for item in o.get('combinaison') or []:
+                item['s_max_kva'] = item['kw_ac'] * 1.1
+            return o
+        r = self._taille('hotel', 20000, taille_explicite_kwc=120, puissance_souscrite_kva=50,
+                         combiner=avec_smax)
+        msg = next(a['message'] for a in r['alertes'] if a['code'] == 'taille_au_dela_ps')
+        self.assertIn('kVA au-delà', msg)
+        self.assertEqual(r['evaluation']['unite_puissance_ac'], 'kVA')
+
+    def test_injection_au_dela_ps_en_kw(self):
+        # CLD10 — le surplus horaire est une énergie par heure : une puissance
+        # ACTIVE (kW), comparée aux kVA souscrits.
+        from apps.ventes.moteur_ci.taille import _alertes_injection
+        a = _alertes_injection({'bilan': {'horaire': [{'surplus_kwh': [12.0, 30.0]}]}}, 20.0, True)
+        self.assertEqual(len(a), 1)
+        self.assertIn('30.0 kW injectés', a[0]['message'])
+        self.assertIn('20.0 kVA souscrits', a[0]['message'])
+
     def test_structure_sans_prix_prix_manquants(self):
         r = self._taille('bureau', 6000, composer=partial(_composer, prix_structure=None))
         self.assertIsNone(r['taille']['retenue_kwc'])
@@ -152,6 +194,26 @@ class TailleCITests(unittest.TestCase):
             base['lignes'].append(dict(ligne, quantite=ligne.get('quantite', 3)))
             return base
         return composer
+
+    def test_prix_manquants_au_dela_garde_les_paliers_chiffres(self):
+        # CLD12 — la structure n'a de prix que jusqu'à 16 kWc : le palier 20
+        # n'est plus chiffrable, les paliers 5-15 restent, la taille se
+        # calcule dessus ; alerte INTERNE nommée (palier + articles).
+        def composer(kwc, onduleurs):
+            return _composer(kwc, onduleurs,
+                             prix_structure=PRIX_STRUCTURE if kwc <= 16 else None)
+        r = self._taille('bureau', 6000, composer=composer)
+        t = r['taille']
+        self.assertIsNotNone(t['retenue_kwc'])
+        self.assertLessEqual(t['retenue_kwc'], 16)
+        self.assertEqual([p['kwc'] for p in t['paliers']], [5, 10, 15])
+        self.assertNotIn('prix_manquants', [a['code'] for a in r['alertes']])
+        alerte = next(a for a in r['alertes'] if a['code'] == 'prix_manquants_au_dela')
+        self.assertTrue(alerte['interne'])
+        self.assertNotEqual(alerte['niveau'], 'bloquant')
+        self.assertIn('20 kWc', alerte['message'])
+        self.assertIn('Structure C&I', alerte['message'])
+        self.assertNotIn('prix_manquants', r)
 
     def test_structure_a_confirmer_sans_prix_prix_manquants(self):
         def composer(kwc, onduleurs):
@@ -243,7 +305,46 @@ class TailleCITests(unittest.TestCase):
         self.assertLessEqual(e['cout'] / e['economie'], HORIZON_MARGINAL_PV)
         admis = [p for p in r['taille']['paliers'] if p['admis']]
         self.assertTrue(all(p['ratio_marginal_annees'] <= HORIZON_MARGINAL_PV for p in admis))
-        self.assertEqual(admis[-1]['kwc'], r['taille']['retenue_kwc'])
+        # CLD9 — le dernier palier admis (clé ``kwc`` = palier) est celui dont
+        # les panneaux entiers donnent la taille retenue (kWc POSÉ).
+        import math
+        t = r['taille']
+        self.assertEqual(math.ceil(admis[-1]['kwc'] * 1000 / PANNEAU_WC - 1e-9), t['nb_panneaux'])
+        self.assertAlmostEqual(t['retenue_kwc'], t['nb_panneaux'] * PANNEAU_WC / 1000, places=6)
+
+    def test_bilan_et_onduleurs_au_kwc_pose(self):
+        # CLD9 — le bilan, la combinaison et la borne sont calculés au kWc
+        # réellement posé (panneaux entiers), comme la taille saisie (CAD177).
+        from apps.ventes.moteur_ci.autoconso import bilan_horaire
+        charge = _charge('bureau', 6000)
+        vus = []
+
+        def combiner(kwc):
+            vus.append(kwc)
+            return combiner_onduleurs(kwc, self.huawei, phase='tri')
+        r = self._taille('bureau', 6000, combiner=combiner)
+        t, e = r['taille'], r['evaluation']
+        pose = t['nb_panneaux'] * PANNEAU_WC / 1000
+        self.assertNotEqual(pose % 5, 0)
+        self.assertAlmostEqual(t['retenue_kwc'], pose, places=6)
+        self.assertAlmostEqual(e['kwc'], pose, places=6)
+        attendu, _ = bilan_horaire(charge, self.prod, pose, tension='bt', revente_choisie=False)
+        self.assertAlmostEqual(e['bilan']['production_kwh'], attendu['production_kwh'], places=3)
+        self.assertTrue(all(abs(k * 1000 / PANNEAU_WC - round(k * 1000 / PANNEAU_WC)) < 1e-6
+                            for k in vus))
+        self.assertTrue(all(p['kwc'] % 5 == 0 for p in t['paliers']))
+
+    def test_pmax_lue_sur_la_ligne_panneau(self):
+        # CLD9 — sans ``pmax_wc`` injectée, la Pmax portée par la ligne
+        # panneau suffit : même taille posée.
+        def composer(kwc, onduleurs):
+            base = _composer(kwc, onduleurs)
+            base['lignes'][0]['pmax_wc'] = PANNEAU_WC
+            return base
+        avec = self._taille('bureau', 6000)['taille']
+        ligne = self._taille('bureau', 6000, composer=composer, pmax_wc=None)['taille']
+        self.assertEqual(ligne['retenue_kwc'], avec['retenue_kwc'])
+        self.assertEqual(ligne['nb_panneaux'], avec['nb_panneaux'])
 
 
 class SautOnduleurTests(unittest.TestCase):
@@ -274,6 +375,123 @@ class SautOnduleurTests(unittest.TestCase):
         self.assertEqual(self._monter([
             (25, 122982, 54466), (30, 18974, 5393), (35, 41281, 1000),
             (40, 30000, 500)]), 30)
+
+    # ── CLD8 : fenêtre de regard bornée par la physique, pas par un nombre ──
+
+    @staticmethod
+    def _ond(produit, kw_ac=50.0, quantite=1):
+        return {'combinaison': [{'produit': produit, 'kw_ac': kw_ac, 'quantite': quantite}],
+                'ratio_dc_ac': {'bornes': {'haute': 1.35}}}
+
+    def test_saut_amorti_au_dela_de_4_paliers_garde(self):
+        # Départ 100 kWc (1 × 50 kW) ; 105 = saut vers 2 × 50 kW (+60 000 HT
+        # pour +500/an) ; puis des paliers ORDINAIRES (même combinaison) à
+        # 5 000 HT pour 1 000/an : le groupe 100 → 135 se rembourse en
+        # 90 000 / 7 500 = 12 ans (non), 100 → 140 = 95 000 / 8 500 ≈ 11,2,
+        # … 100 → 160 = 115 000 / 12 500 = 9,2 ans ≤ 10 : gardé jusqu'à 160
+        # (plafond ⌈50 × 1,35 / 5⌉ = 14 paliers ; l'ancienne fenêtre de 4
+        # restait à 100).
+        cout, eco = 100000.0, 30000.0
+        paliers = [{'kwc': 100, 'cout': cout, 'eco': eco, 'onduleurs': self._ond(1)}]
+        cout, eco = cout + 60000, eco + 500
+        paliers.append({'kwc': 105, 'cout': cout, 'eco': eco, 'onduleurs': self._ond(1, quantite=2)})
+        for kwc in range(110, 165, 5):
+            cout, eco = cout + 5000, eco + 1000
+            paliers.append({'kwc': kwc, 'cout': cout, 'eco': eco,
+                            'onduleurs': self._ond(1, quantite=2)})
+        retenu = grimper_avec_regard(paliers[0], paliers[1:], HORIZON_MARGINAL_PV,
+                                     lambda e: e['cout'], lambda e: e['eco'])
+        self.assertEqual(retenu['kwc'], 160)
+
+    def test_regard_arrete_au_palier_ordinaire_hors_horizon(self):
+        # Même saut, mais les paliers ordinaires sont à 11 ans SEULS : le
+        # regard s'arrête au premier d'entre eux passé le plancher (4), jamais
+        # plus loin — rendements décroissants, aucun groupe à sauver.
+        cout, eco = 100000.0, 30000.0
+        paliers = [{'kwc': 100, 'cout': cout, 'eco': eco, 'onduleurs': self._ond(1)}]
+        cout, eco = cout + 60000, eco + 500
+        paliers.append({'kwc': 105, 'cout': cout, 'eco': eco, 'onduleurs': self._ond(1, quantite=2)})
+        for kwc in range(110, 200, 5):
+            cout, eco = cout + 11000, eco + 1000
+            paliers.append({'kwc': kwc, 'cout': cout, 'eco': eco,
+                            'onduleurs': self._ond(1, quantite=2)})
+        vus = []
+
+        def cout_vu(e):
+            vus.append(e['kwc'])
+            return e['cout']
+        retenu = grimper_avec_regard(paliers[0], paliers[1:], HORIZON_MARGINAL_PV,
+                                     cout_vu, lambda e: e['eco'])
+        self.assertEqual(retenu['kwc'], 100)
+        self.assertLessEqual(max(vus), 100 + 5 * 4)
+
+
+class BalayageBorneTests(unittest.TestCase):
+    """CLD8 — une combinaison d'onduleurs DIFFÉRENTE à chaque palier (aucun
+    palier ordinaire) et des pas à 11 ans : le balayage s'arrête au plafond
+    ⌈kW AC du plus gros onduleur × borne haute DC/AC ÷ PAS_KWC⌉, jamais à
+    ``MAX_PAS``."""
+
+    def _balayer(self, kw_ac):
+        from unittest import mock
+        from apps.ventes.moteur_ci import taille as T
+        vus = []
+
+        def evaluer(kwc, **_kw):
+            rang = int(kwc // T.PAS_KWC)
+            vus.append(kwc)
+            cout = 10.0 + 11.0 * (rang - 1)
+            eco = 10.0 + 1.0 * (rang - 1)
+            return {'sans_panneau': False, 'kwc': kwc, 'composition': {'lignes': []},
+                    'onduleurs': {'combinaison': [{'produit': rang, 'kw_ac': kw_ac,
+                                                   'quantite': 1}],
+                                  'ratio_dc_ac': {'bornes': {'haute': 1.35}}},
+                    'bilan': {'taux_couverture': 0.5, 'horaire': []}, 'alertes_bilan': [],
+                    'economie': eco, 'cout': cout, 'puissance_ac': kw_ac,
+                    'prix_manquants': [], 'postes_fixes_sans_prix': []}
+        with mock.patch.object(T, '_evaluer', evaluer):
+            r = dimensionner_ci(
+                charge_jours_types=[{'nb_jours': 365, 'charge_kwh': [1.0] * 24}],
+                production_jours_types=[{'nb_jours': 365}], tension='bt',
+                combiner=None, composer=None, valoriser=None)
+        return r, vus
+
+    def test_combinaison_differente_a_chaque_palier_balayage_borne(self):
+        r, vus = self._balayer(100.0)
+        self.assertEqual(r['taille']['retenue_kwc'], 5)
+        # ⌈100 × 1,35 / 5⌉ = 27 paliers regardés après le dernier admis.
+        self.assertEqual(len(vus), 1 + 27)
+
+    def test_plancher_quatre_paliers(self):
+        r, vus = self._balayer(5.0)    # ⌈5 × 1,35 / 5⌉ = 2 < plancher 4
+        self.assertEqual(r['taille']['retenue_kwc'], 5)
+        self.assertEqual(len(vus), 1 + 4)
+
+    def test_garde_horizon_sur_le_payback_du_depart(self):
+        # CLD11 — meilleur payback 9,9 ans (5 kWc) mais départ départagé à
+        # 10,1 ans (10 kWc, meilleure couverture) : le départ ne tient pas
+        # dans l'horizon ⇒ aucune montée (15 kWc à 10 ans marginal refusé),
+        # alerte citant 10,1.
+        from unittest import mock
+        from apps.ventes.moteur_ci import taille as T
+        table = {5: (99.0, 10.0, 0.3), 10: (202.0, 20.0, 0.5), 15: (252.0, 25.0, 0.4)}
+
+        def evaluer(kwc, **_kw):
+            cout, eco, couv = table.get(kwc, (252.0 + 1000.0 * (kwc - 15), 25.0 + kwc - 15, 0.4))
+            return {'sans_panneau': False, 'kwc': kwc, 'composition': {'lignes': []},
+                    'onduleurs': {'combinaison': [{'produit': 1, 'kw_ac': 10.0, 'quantite': 1}]},
+                    'bilan': {'taux_couverture': couv, 'horaire': []}, 'alertes_bilan': [],
+                    'economie': eco, 'cout': cout, 'puissance_ac': 10.0,
+                    'prix_manquants': [], 'postes_fixes_sans_prix': []}
+        with mock.patch.object(T, '_evaluer', evaluer):
+            r = dimensionner_ci(
+                charge_jours_types=[{'nb_jours': 365, 'charge_kwh': [1.0] * 24}],
+                production_jours_types=[{'nb_jours': 365}], tension='bt',
+                combiner=None, composer=None, valoriser=None)
+        self.assertEqual(r['taille']['retenue_kwc'], 10)
+        alerte = next(a for a in r['alertes'] if a['code'] == 'depart_hors_horizon')
+        self.assertIn('10.1', alerte['message'])
+        self.assertNotIn('9.9', alerte['message'])
 
 
 def _hybrides_bt():
@@ -340,7 +558,14 @@ class OptionAvecBatterieTests(unittest.TestCase):
         self.assertTrue({x['produit'] for x in e['onduleurs']['combinaison']} <= {900, 901, 902})
         bat = e['batterie']
         self.assertIn(bat['produit'], (950, 951, 952))
-        besoin = besoin_nocturne_kwh(self.charge, self.sans['bilan'])
+        # CMP8 : le besoin dépend de la fenêtre de surplus, donc du champ de
+        # DÉPART arrondi aux panneaux (plus seulement des heures sans production).
+        import math
+        from apps.ventes.moteur_ci.autoconso import bilan_horaire
+        n_bas = math.ceil(self.sans['kwc'] * 1000.0 / PANNEAU_WC - 1e-9)
+        bilan_depart = bilan_horaire(self.charge, self.prod, n_bas * PANNEAU_WC / 1000.0,
+                                     tension='bt', revente_choisie=False)[0]
+        besoin = besoin_nocturne_kwh(self.charge, bilan_depart)
         self.assertAlmostEqual(bat['besoin_nocturne_kwh'], round(besoin, 2), places=2)
         self.assertGreaterEqual(bat['capacite_utile_kwh'] * bat['rendement'], besoin - 1e-6)
         self.assertTrue(bat['se_remplit_tous_les_jours'])
@@ -399,6 +624,68 @@ class OptionAvecBatterieTests(unittest.TestCase):
         # Le champ a RETRECI : jamais masque par un « ajoutes » a 0.
         self.assertEqual(e['batterie']['panneaux_ajoutes'], 0)
         self.assertGreater(e['batterie']['panneaux_retires'], 0)
+
+    def test_cmp7_decharge_bornee_par_les_ports_hybrides(self):
+        # 2 SUN-15K (port 14,34 kW, AC 15 kW), charge de nuit de 40 kW : la
+        # restitution de chaque heure ≤ 28,68 kWh ; borne non publiée ⇒ inchangé.
+        from apps.ventes.moteur_ci.batterie import (
+            _batterie_sur_jour, puissance_decharge_kw)
+        onduleurs = {'combinaison': [{'produit': 901, 'quantite': 2}]}
+        hyb = [dict(h, bat_max_decharge_kw=14.34) if h['produit'] == 901 else h
+               for h in _hybrides_bt()]
+        banque = dict(BATTERIES[2], quantite=4)
+        self.assertAlmostEqual(puissance_decharge_kw(banque, onduleurs, hyb), 28.68, places=6)
+        # Port plus grand que l'AC : plafonné par Σ kW AC (2 × 15).
+        hyb_large = [dict(h, bat_max_decharge_kw=20.0) if h['produit'] == 901 else h
+                     for h in _hybrides_bt()]
+        self.assertEqual(puissance_decharge_kw(banque, onduleurs, hyb_large), 30.0)
+        # Pack seul publié : Σ packs ; rien de publié : None.
+        self.assertEqual(puissance_decharge_kw(dict(banque, max_decharge_kw=5.0), {}, []), 20.0)
+        self.assertIsNone(puissance_decharge_kw(banque, onduleurs, _hybrides_bt()))
+        bloc = {'autoconso_kwh': [0.0] * 24, 'surplus_kwh': [30.0] * 6 + [0.0] * 18}
+        nuit = [0.0] * 6 + [40.0] * 18
+        aucune = _batterie_sur_jour(nuit, bloc, 60.0, 1.0, None, self.simuler)
+        self.assertAlmostEqual(aucune[2], 60.0)        # la banque pleine se vide
+        large = _batterie_sur_jour(nuit, bloc, 60.0, 1.0, None, self.simuler, 28.68)
+        self.assertAlmostEqual(large[2], 60.0)         # 60 kWh tiennent en 3 h
+        serree = _batterie_sur_jour(nuit, bloc, 60.0, 1.0, None, self.simuler, 2.0)
+        self.assertAlmostEqual(serree[2], 36.0)        # 18 h × 2 kWh/h, le reste au réseau
+        self.assertLessEqual(max(serree[0][6:]), 2.0 + 1e-9)
+        # Borne None ⇒ strictement identique au comportement d'avant.
+        self.assertEqual(aucune, _batterie_sur_jour(nuit, bloc, 60.0, 1.0, None, self.simuler, None))
+
+    def test_cmp8_besoin_hors_fenetre_solaire(self):
+        # Surplus de 10 h à 16 h ; charge 20 kWh/h à 17-18 h pour 5 kWh/h de
+        # production : ces 2 × 15 = 30 kWh de déficit du soir comptent.
+        from apps.ventes.moteur_ci.batterie import besoin_nocturne_kwh
+        charge, auto, surplus = [0.0] * 24, [0.0] * 24, [0.0] * 24
+        for h in range(10, 17):
+            auto[h], surplus[h] = 5.0, 10.0
+        for h in (17, 18):
+            charge[h], auto[h] = 20.0, 5.0
+        charge[3] = 4.0                  # nuit : 4 kWh, production nulle
+        bloc = {'mois': 6, 'type_jour': 'semaine', 'nb_jours': 20,
+                'autoconso_kwh': auto, 'surplus_kwh': surplus}
+        jt = [{'mois': 6, 'type_jour': 'semaine', 'charge_kwh': charge}]
+        self.assertAlmostEqual(besoin_nocturne_kwh(jt, {'horaire': [bloc]}), 34.0)
+        # Jour sans surplus ⇒ 0 ; pondération par nb_jours conservée.
+        sans = dict(bloc, surplus_kwh=[0.0] * 24)
+        autre = dict(sans, type_jour='dimanche')
+        jt2 = jt + [{'mois': 6, 'type_jour': 'dimanche', 'charge_kwh': charge}]
+        self.assertAlmostEqual(besoin_nocturne_kwh(jt2, {'horaire': [bloc, autre]}), 17.0)
+        self.assertEqual(besoin_nocturne_kwh(jt, {'horaire': [sans]}), 0.0)
+
+    def test_cmp7_option_servie_borne_publiee_baisse_economie(self):
+        hyb_libres = _hybrides_bt()
+        r0 = self._avec(hybrides=hyb_libres)['evaluation']
+        self.assertIsNone(r0['batterie']['puissance_decharge_kw'])
+        serres = [dict(h, bat_max_decharge_kw=0.5) for h in hyb_libres]
+        r1 = self._avec(hybrides=serres, combiner=partial(
+            combiner_onduleurs, candidats=serres, phase='tri'))['evaluation']
+        self.assertEqual(r1['batterie']['puissance_decharge_kw'], 0.5 * sum(
+            x['quantite'] for x in r1['onduleurs']['combinaison']))
+        self.assertLess(r1['bilan']['batterie']['restitue_kwh_an'],
+                        r0['bilan']['batterie']['restitue_kwh_an'])
 
     def test_regle_10_ans_au_dela_du_remplissage(self):
         from apps.ventes.moteur_ci.batterie import monter_regle_10_ans

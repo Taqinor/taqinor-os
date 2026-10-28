@@ -135,6 +135,18 @@ class RetourInvestissementTest(SimpleTestCase):
                     {'roi_s': valeur}, _economies(), {})
                 self.assertNotIn('retour_investissement_ans', bloc['sans'])
 
+    def test_rhor5_jamais_rembourse_omis_jamais_25_ans(self):
+        """C-RHOR-005 — la sentinelle 25,0 du moteur, drapeau
+        ``roi_*_jamais`` levé, ne part pas comme « remboursé en 25 ans »."""
+        bloc = construire_economies_periodes(
+            {'roi_s': 25.0, 'roi_s_jamais': True, 'roi_a': 25.0,
+             'roi_a_jamais': True}, _economies(avec=_AVEC), {})
+        self.assertNotIn('retour_investissement_ans', bloc['sans'])
+        self.assertNotIn('retour_investissement_ans', bloc['avec'])
+        sain = construire_economies_periodes(
+            {'roi_s': 24.6, 'roi_s_jamais': False}, _economies(), {})
+        self.assertEqual(sain['sans']['retour_investissement_ans'], 24.6)
+
 
 class OmissionPropreTest(SimpleTestCase):
     """Rien de dérivable ⇒ rien de servi. Jamais un zéro, jamais un tiret."""
