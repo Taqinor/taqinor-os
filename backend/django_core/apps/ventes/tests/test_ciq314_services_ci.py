@@ -171,3 +171,28 @@ class Amot83ServicesNommes(SimpleTestCase):
         self.assertEqual(services["om_option"]["statut"], "souscrit")
         self.assertIn("Contrat O&M annuel — 4", html)
         self.assertNotIn("prix à renseigner", html)
+
+    def test_designation_standard_sans_redite_ni_jargon(self):
+        """CPDF16 — « Maintenance (O&M) : Exploitation et maintenance (O&M)
+        C&I — … » se lisait deux fois et disait « C&I » : le prix seul."""
+        _services, html = self._services(om_ci_lignes=[
+            {"designation": "Exploitation et maintenance (O&M) C&I",
+             "ht": None, "ttc": None, "optionnelle": True}])
+        self.assertIn("Maintenance (O&amp;M)&#160;: tarif sur demande", html)
+        self.assertNotIn("Exploitation et maintenance", html)
+        self.assertNotIn("C&I", html)
+
+    def test_designation_client_sans_c_et_i(self):
+        from apps.ventes.quote_engine.ci.installation import (
+            designation_client, lignes_client)
+        self.assertEqual(designation_client("Coffret DC C&I"), "Coffret DC")
+        self.assertEqual(designation_client(
+            "Disjoncteur AC 250 A tétrapolaire (C&amp;I)"),
+            "Disjoncteur AC 250 A tétrapolaire")
+        items = [{"designation": "Coffret AC C&I", "quantite": 1}]
+        self.assertEqual(lignes_client(items, {"mode_installation":
+                                               "industriel"})[0]
+                         ["designation"], "Coffret AC")
+        self.assertIs(lignes_client(items, {"mode_installation":
+                                            "residentiel"}), items)
+        self.assertEqual(items[0]["designation"], "Coffret AC C&I")

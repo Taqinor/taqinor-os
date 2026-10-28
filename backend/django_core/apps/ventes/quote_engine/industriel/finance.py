@@ -294,8 +294,10 @@ def _rangees_argent(argent, fmt_mad, L, d):
                                         ci_blocs.langue(d))
                      if h.get("cle") == "tarif" else None)
         if tarif_txt:
+            suffixe = _prix_kwh_evite(argent, L)
             rangees.append((L("ci_h_prix_kwh", "Prix du kWh"),
-                            tarif_txt + _prix_kwh_evite(argent, L)))
+                            tarif_txt.rstrip(".") + suffixe if suffixe
+                            else tarif_txt))
         elif h.get("valeur"):
             source = _source_propre(ci_couverture.sans_reserve(
                 ci_couverture.texte_client(d, h.get("source"))))

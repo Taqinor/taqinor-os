@@ -90,7 +90,9 @@ class Ciq331DocumentChiffre(SimpleTestCase):
             "\xa0", " "))
         self.assertIn("Retour estimé", p1)
         self.assertIn("Valable jusqu", p1)
-        self.assertEqual(chiffres["payback_ans"], 3)
+        # CPDF7 — au dixième sur le flux servi (3 ans servis, 2,5 au flux).
+        self.assertEqual(chiffres["payback_ans"], 2.5)
+        self.assertIn("2,5", p1)
         p3 = pages[2].replace(" ", " ").replace("\xa0", " ")
         self.assertIn("Échéancier de paiement", p3)
         for montant in ("256 000,00", "320 000,00", "64 000,00"):

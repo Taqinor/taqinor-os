@@ -177,14 +177,18 @@ def bloc_services(synthese, prefixe, couleur_titre, couleur_texte, doc=None):
         for li in om.get("lignes") or []:
             ht = li.get("total_ht") if isinstance(li, dict) else None
             nom = _txt(li.get("designation")) if isinstance(li, dict) else ""
-            # CPDF — la désignation standard suit la langue du document.
-            if nom.replace("&amp;", "&") == "Exploitation et maintenance (O&M)":
-                nom = libelle(doc, "ci_om_designation", nom)
             prix = (f"{_montant(ht)} MAD " + libelle(doc, "ci_ht", "HT")
                     if ht and ht > 0
                     else libelle(doc, "ci_tarif_sur_demande",
                                  "tarif sur demande"))
-            detail.append(f"{nom} — {prix}")
+            # CPDF — la désignation standard (« Exploitation et maintenance
+            # (O&M) », « … C&I ») répète le libellé « Maintenance (O&M) » :
+            # le prix seul ; une autre désignation reste nommée.
+            from .installation import designation_client
+            nom = designation_client(nom)
+            standard = nom.replace("&amp;", "&") == \
+                "Exploitation et maintenance (O&M)"
+            detail.append(prix if standard or not nom else f"{nom} — {prix}")
         statut = om.get("statut")
         suffixe = (libelle(doc, "ci_propose_non_inclus",
                            " (proposé, non inclus dans le total)")
