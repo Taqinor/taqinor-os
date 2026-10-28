@@ -23,6 +23,7 @@ from apps.crm.models import Client
 from apps.ventes.models import Devis, DevisSignature
 from apps.ventes.serializers import DevisSerializer
 from apps.ventes.services import accept_devis
+from apps.ventes.tests._quote_engine_common import pdf_signe_en_ligne
 
 User = get_user_model()
 
@@ -70,7 +71,8 @@ class TestSignedPdfKeyStored(TestCase):
            return_value=_DUMMY_KEY)
     def test_signed_pdf_key_set_after_accept(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-A01')
-        accept_devis(devis=devis, user=self.user, nom='M. Bennani')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='M. Bennani')
         sig = DevisSignature.objects.get(devis=devis)
         self.assertEqual(sig.signed_pdf_key, _DUMMY_KEY)
 
@@ -79,7 +81,8 @@ class TestSignedPdfKeyStored(TestCase):
     def test_generate_premium_devis_pdf_called_with_persist_true(
             self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-A02')
-        accept_devis(devis=devis, user=self.user, nom='Test')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='Test')
         mock_gen.assert_called_once()
         call_args = mock_gen.call_args
         # persist=True is required so the PDF is stored permanently.
@@ -141,7 +144,8 @@ class TestSignedPdfKeyBestEffort(TestCase):
     def test_pdf_engine_failure_does_not_block_acceptance(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-C01')
         # Should NOT raise.
-        accept_devis(devis=devis, user=self.user, nom='Test C')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='Test C')
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'accepte')
         # Signature record created; signed_pdf_key is None (engine failed).
@@ -165,7 +169,8 @@ class TestDevisSerializerSignedFields(TestCase):
            return_value=_DUMMY_KEY)
     def test_est_signe_true_after_acceptance(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-D01')
-        accept_devis(devis=devis, user=self.user, nom='M. Signer')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='M. Signer')
         data = DevisSerializer(devis).data
         self.assertTrue(data['est_signe'])
 
@@ -173,7 +178,8 @@ class TestDevisSerializerSignedFields(TestCase):
            return_value=_DUMMY_KEY)
     def test_signature_info_has_required_fields(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-D02')
-        accept_devis(devis=devis, user=self.user, nom='Madame Signer')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='Madame Signer')
         # Re-fetch : la OneToOne `signature` est posée en base par
         # _store_signed_pdf via .update() ; recharger évite une instance en
         # cache (signed_pdf_key périmé) au moment de la sérialisation.
@@ -252,7 +258,8 @@ class TestSignedPdfKeyCompanyScoping(TestCase):
         user_a = _make_user(self.co_a, 'qj22fua')
         devis_a = _make_devis(self.co_a, self.cli_a, 'DEV-QJ22-FA01')
         devis_b = _make_devis(self.co_b, self.cli_b, 'DEV-QJ22-FB01')
-        accept_devis(devis=devis_a, user=user_a, nom='A signer')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis_a, user=user_a, nom='A signer')
         # devis_b has no signature.
         data_b = DevisSerializer(devis_b).data
         self.assertFalse(data_b['est_signe'])
@@ -279,7 +286,8 @@ class TestSignedPdfKeyNoPrixAchat(TestCase):
     def test_no_prix_achat_in_signature_info(self, mock_gen):
         import json
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-G01')
-        accept_devis(devis=devis, user=self.user, nom='Test G')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='Test G')
         data = DevisSerializer(devis).data
         raw = json.dumps(data)
         self.assertNotIn('prix_achat', raw)
@@ -305,5 +313,97 @@ class TestQJ22SellerNotificationStillFires(TestCase):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-H01')
         devis.created_by = self.seller
         devis.save(update_fields=['created_by'])
-        accept_devis(devis=devis, user=None, nom='Client H')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=None, nom='Client H')
         mock_notify.assert_called_once()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE (fondateur 28/10/2026, option a) — le
+# rendu de l'exemplaire signé quitte la requête : tâche Celery après le commit.
+# ═══════════════════════════════════════════════════════════════════════════
+
+class TestPdfSigneHorsRequete(TestCase):
+    """(a) mise en file au commit, (b) rendu depuis le sceau, (c) idempotence,
+    (d) aucun statut touché par la tâche (règle #4)."""
+
+    def setUp(self):
+        self.company = _make_company('qj22-async', 'QJ22 Async')
+        self.client_obj = _make_client(self.company, 'QJ22 Async Client')
+        self.user = _make_user(self.company, 'qj22asyncu')
+
+    def _accepter_sans_tache(self, ref):
+        """Acceptation dont la tâche est seulement MISE EN FILE (non jouée)."""
+        devis = _make_devis(self.company, self.client_obj, ref)
+        with patch('apps.ventes.tasks.task_rendre_pdf_signe.delay') as delay, \
+                patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+                      return_value=_DUMMY_KEY) as gen:
+            with self.captureOnCommitCallbacks(execute=False) as rappels:
+                accept_devis(devis=devis, user=self.user, nom='Client Async')
+            # (a) rien n'est rendu DANS la requête : le rendu attend le commit.
+            gen.assert_not_called()
+            delay.assert_not_called()
+            sig = DevisSignature.objects.get(devis=devis)
+            self.assertFalse(sig.signed_pdf_key)
+            info = DevisSerializer(Devis.objects.get(pk=devis.pk)).data[
+                'signature_info']
+            self.assertEqual(info['pdf_signe'], 'en_preparation')
+            for rappel in rappels:
+                rappel()
+            gen.assert_not_called()
+        delay.assert_called_once()
+        self.assertEqual(delay.call_args.args, (devis.pk,))
+        self.assertEqual(delay.call_args.kwargs['user_id'], self.user.pk)
+        self.assertTrue(delay.call_args.kwargs['envoyer_confirmation'])
+        return devis, delay.call_args.kwargs
+
+    def test_acceptation_met_le_rendu_en_file_au_commit(self):
+        self._accepter_sans_tache('DEV-QJ22-AS01')
+
+    @patch('apps.ventes.domain.cycle_vie._send_acceptance_emails')
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+           return_value=_DUMMY_KEY)
+    def test_tache_rend_depuis_le_sceau_idempotente_sans_statut(
+            self, mock_gen, mock_email):
+        from apps.ventes.tasks import task_rendre_pdf_signe
+        devis, kwargs = self._accepter_sans_tache('DEV-QJ22-AS02')
+        avant = Devis.objects.filter(pk=devis.pk).values(
+            'statut', 'date_acceptation', 'accepte_par_nom').get()
+        # (b) le sceau concorde : rendu persistant, clé posée par la tâche.
+        task_rendre_pdf_signe(devis.pk, **kwargs)
+        sig = DevisSignature.objects.get(devis=devis)
+        self.assertEqual(sig.signed_pdf_key, _DUMMY_KEY)
+        self.assertTrue(mock_gen.call_args.kwargs.get('persist'))
+        mock_email.assert_called_once()
+        # (c) ré-exécution (redélivrance Celery) : ni rendu ni e-mail en plus.
+        task_rendre_pdf_signe(devis.pk, **kwargs)
+        mock_gen.assert_called_once()
+        mock_email.assert_called_once()
+        # (d) la tâche ne touche à aucun statut.
+        self.assertEqual(Devis.objects.filter(pk=devis.pk).values(
+            'statut', 'date_acceptation', 'accepte_par_nom').get(), avant)
+        info = DevisSerializer(Devis.objects.get(pk=devis.pk)).data[
+            'signature_info']
+        self.assertEqual(info['pdf_signe'], 'pret')
+
+    @patch('apps.ventes.domain.cycle_vie._send_acceptance_emails')
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
+           return_value=_DUMMY_KEY)
+    def test_contenu_change_apres_signature_refus_bruyant(
+            self, mock_gen, mock_email):
+        from apps.ventes.tasks import task_rendre_pdf_signe
+        devis, kwargs = self._accepter_sans_tache('DEV-QJ22-AS03')
+        # Le devis bouge entre la signature et le rendu : le sceau ne se
+        # reproduit plus ⇒ aucun document différent de celui signé.
+        Devis.objects.filter(pk=devis.pk).update(remise_globale=Decimal('7'))
+        statut_avant = Devis.objects.get(pk=devis.pk).statut
+        with self.assertLogs('apps.ventes.domain.pdf_signe', 'ERROR'):
+            etat = task_rendre_pdf_signe(devis.pk, **kwargs)
+        self.assertEqual(etat, 'refuse')
+        mock_gen.assert_not_called()
+        self.assertFalse(DevisSignature.objects.get(devis=devis).signed_pdf_key)
+        info = DevisSerializer(Devis.objects.get(pk=devis.pk)).data[
+            'signature_info']
+        self.assertEqual(info['pdf_signe'], 'refuse')
+        self.assertFalse(info['has_pdf'])
+        self.assertEqual(Devis.objects.get(pk=devis.pk).statut, statut_avant)

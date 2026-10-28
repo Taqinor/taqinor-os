@@ -15,6 +15,7 @@ Aucun helper n'a changé d'un octet : mêmes objets, mêmes valeurs.
 """
 
 import itertools
+from contextlib import contextmanager
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -171,3 +172,18 @@ def _residential_sample_data():
         "payment_terms": {"acompte": 30, "materiel": 60, "solde": 10},
         "discount_pct": 0.0, "taux_tva": 20.0,
     }
+
+
+@contextmanager
+def pdf_signe_en_ligne(test):
+    """ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE — l'exemplaire signé et la
+    confirmation partent d'une tâche Celery mise en file APRÈS le commit. Un
+    ``TestCase`` ne commite jamais : ce contexte exécute les ``on_commit`` et
+    joue la tâche EN LIGNE (Celery « eager »), pour les tests qui observent
+    l'après-acceptation (PDF signé, e-mails) — sans affaiblir leurs assertions."""
+    from unittest import mock
+    from apps.ventes.tasks import task_rendre_pdf_signe
+    with mock.patch('apps.ventes.tasks.task_rendre_pdf_signe.delay',
+                    side_effect=lambda *a, **k: task_rendre_pdf_signe(*a, **k)):
+        with test.captureOnCommitCallbacks(execute=True):
+            yield

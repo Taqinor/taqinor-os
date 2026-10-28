@@ -142,8 +142,11 @@ class AcceptationNPlus1Tests(TestCase):
         link = ShareLink.for_devis(devis)
         # ADEV51 — calculée HORS de la mesure : le corps renvoie l'empreinte lue.
         empreinte = empreinte_contenu(devis)
+        # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE — la confirmation (bloc d'acompte)
+        # part de la tâche après le commit : jouée en ligne DANS la mesure.
+        from apps.ventes.tests._quote_engine_common import pdf_signe_en_ligne
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
-            with CaptureQueriesContext(connection) as ctx:
+            with CaptureQueriesContext(connection) as ctx, pdf_signe_en_ligne(self):
                 resp = self.api.post(
                     f'/api/django/public/proposal/{link.token}/accept/',
                     {'nom': 'Client NPLUS1', 'consent_esign': True,
@@ -165,8 +168,11 @@ class AcceptationNPlus1Tests(TestCase):
         #    le comportement d'avant le correctif, mesuré dans la même course.
         _hash_reel = DevisSignature.compute_content_hash
 
-        def _hash_sans_lignes(devis, lignes=None):
-            return _hash_reel(devis)
+        def _hash_sans_lignes(devis, lignes=None, **autres):
+            # Seul ``lignes`` est neutralisé : ``figures`` (sceau C&I) passe tel
+            # quel — sinon la re-vérification du sceau par la tâche « PDF
+            # signé » échouerait ici et fausserait la mesure d'« avant ».
+            return _hash_reel(devis, **autres)
 
         _totaux_reel = options_utils.option_totaux
 
@@ -194,9 +200,13 @@ class AcceptationNPlus1Tests(TestCase):
         def _capture(*, devis, user, lignes=None):
             captures['devis'] = devis
 
+        # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE — les e-mails partent de la
+        # tâche « PDF signé » (après le commit) : jouée en ligne ici ; elle
+        # relit le devis en joignant, elle aussi, client et société.
+        from apps.ventes.tests._quote_engine_common import pdf_signe_en_ligne
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'), \
                 patch('apps.ventes.domain.cycle_vie._send_acceptance_emails',
-                      side_effect=_capture):
+                      side_effect=_capture), pdf_signe_en_ligne(self):
             resp, _lignes_sql = self._post_accept(self._devis())
         self.assertEqual(resp.status_code, 200, resp.data)
 

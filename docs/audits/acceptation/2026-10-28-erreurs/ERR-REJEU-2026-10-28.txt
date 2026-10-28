@@ -8,3 +8,11 @@ ERR-MOTEUR-QR-MASQUE-LENT-ACCEPTATION : PARTIEL — portail : POST mes-devis/76/
   (> 20 s / 499 le 26/10) ; page publique industrielle : 13 863 ms (200, écran affiché) puis > 15 000 ms sur la copie suivante
   (« La connexion est lente », acceptation pourtant enregistrée). Rendu seul mesuré : 10,6 s à froid / 4,6 s à chaud (industriel),
   9,2 s / 0,2 s (résidentiel). Machine partagée chargée par d'autres sessions. Non coché.
+
+--- Suite du 28/10 (après la décision fondateur « rendu signé différé ») — backend à e47558ac4 (ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE) ---
+ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE + ERR-MOTEUR-QR-MASQUE-LENT-ACCEPTATION : PASS.
+  POST public …/proposal/<jeton>/accept/ (copies industrielles envoyées DEV-202610-0090 puis 0091, curl) : 200 en 19,2 s (1re requête après le
+  redémarrage du conteneur : imports à froid) puis 200 en 1,37 s à chaud — le PDF signé n'est plus rendu dans la requête (tâche ventes.rendre_pdf_signe
+  mise en file après le commit ; le worker partagé, encore à l'ancien code, l'a rejetée « unregistered » — preuve qu'elle ne tournait pas en ligne).
+  Corps de la tâche joué sur ce code : 0090 → « pret » en 7,3 s, 0091 en 3,0 s ; signed_pdf_key devis/1/DEV-202610-009x__signe.pdf ; état
+  en_preparation → pret ; statut accepte inchangé ; 3 e-mails de confirmation, chacun avec l'exemplaire joint ; 2e passage : ni rendu ni e-mail.

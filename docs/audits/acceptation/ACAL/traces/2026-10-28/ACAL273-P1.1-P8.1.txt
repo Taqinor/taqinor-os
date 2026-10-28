@@ -1,0 +1,8 @@
+ACAL273 — P1.1 + P8.1 — rejeu orchestrateur, pile locale : backend dans un conteneur à part monté sur le code fusionné cc44b796c, base démo partagée (migrée), front construit au même code et servi par vite preview :5180, navigateur intégré, connexion demo_admin, 2026-10-28.
+Jeu de démo LOCAL construit comme les tests (tests_cal245_bloc_calepinage.py, test_pv78_conception_lead.py) : lead 2329 « ACC ACAL Chantier » + devis DEV-ACC-ACAL-1 (1446, 12 × Panneau mono 550W, accepté) + calepinage 26 (dessin 8,52 kWc / 12 modules, variante V1 retenue) + chantier CHT-ACC-ACAL-1 (272) ; lead 2330 « ACC ACAL Sans devis » + calepinage 27 ouvert (12 × 710 Wc). La production a été lue en lecture seule (accord fondateur) : 6 calepinages, 0 variante retenue — aucun cas réel.
+1. API : GET lead 2330 (sans devis) → conception {kwc 8.52, calepinage {id 27, statut brouillon}} ; GET lead 2329 (devis 12 × 550 W) → conception {kwc 6.6, calepinage null}
+   (le dessin du calepinage dit 8,52 : la pastille lit bien le VENDU).
+2. Écran fiche lead 2330 : pastille « 🛰️ 8,52 kWc conçus » ; menu « Plus d'actions » → « Ouvrir le calepinage CAL-27 (brouillon) ».
+3. Écran fiche lead 2329 : pastille « 🛰️ 6,60 kWc vendus ».
+4. Rappel du 28/10 matin : lead 2325 (DEV-202610-0089) « 5,68 kWc vendus » = puissance_kwc_du_devis.
+Verdict : PASS.

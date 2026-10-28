@@ -24,6 +24,7 @@ from apps.crm.models import Client
 from apps.stock.models import Produit
 from apps.ventes.models import Devis, DevisSignature, LigneDevis
 from apps.ventes.services import accept_devis, AcceptError
+from apps.ventes.tests._quote_engine_common import pdf_signe_en_ligne
 
 User = get_user_model()
 
@@ -292,7 +293,9 @@ class TestDevisSignatureEmail(TestCase):
     @patch('apps.ventes.domain.cycle_vie._send_acceptance_emails')
     def test_acceptance_email_called(self, mock_email):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ10-F01')
-        accept_devis(devis=devis, user=self.user, nom='Test')
+        # La confirmation part de la tâche « PDF signé » (après le commit).
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='Test')
         mock_email.assert_called_once()
         call_kwargs = mock_email.call_args.kwargs
         # QX41 re-lit le devis VERROUILLÉ (select_for_update) sous le verrou
@@ -307,7 +310,9 @@ class TestDevisSignatureEmail(TestCase):
         """Best-effort: email failure does NOT prevent the devis from being accepted."""
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ10-F02')
         # Should not raise.
-        accept_devis(devis=devis, user=self.user, nom='Test2')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=self.user, nom='Test2')
+        mock_email.assert_called_once()
         devis.refresh_from_db()
         self.assertEqual(devis.statut, 'accepte')
 
@@ -330,5 +335,6 @@ class TestDevisSignatureSellerNotification(TestCase):
         devis.created_by = self.seller
         devis.save(update_fields=['created_by'])
         # Accept as a different user (None = public endpoint).
-        accept_devis(devis=devis, user=None, nom='Client')
+        with pdf_signe_en_ligne(self):
+            accept_devis(devis=devis, user=None, nom='Client')
         mock_notify.assert_called_once()

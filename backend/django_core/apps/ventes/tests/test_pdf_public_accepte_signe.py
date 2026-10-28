@@ -340,7 +340,11 @@ class TestAvenantSigneParLeClient(TestCase):
         devis_accepted.connect(_ecoute, dispatch_uid='vnt61', weak=False)
         self.addCleanup(devis_accepted.disconnect, dispatch_uid='vnt61')
 
-        r = self._signer()
+        from apps.ventes.tests._quote_engine_common import pdf_signe_en_ligne
+        # Le rendu signé est mis en file au commit
+        # (ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE) : joué en ligne ici.
+        with pdf_signe_en_ligne(self):
+            r = self._signer()
         self.assertEqual(r.status_code, 200, r.content)
         self.assertIn('avenant_signe', r.json())
         self.assertEqual(
@@ -349,7 +353,8 @@ class TestAvenantSigneParLeClient(TestCase):
         self.v2.refresh_from_db()
         self.assertEqual(self.v2.statut, 'accepte')
 
-        r = self._signer()  # 2e soumission : rien n'est écrit.
+        with pdf_signe_en_ligne(self):
+            r = self._signer()  # 2e soumission : rien n'est écrit.
         self.assertEqual(r.status_code, 200, r.content)
         self.assertNotIn('avenant_signe', r.json())
         self.assertEqual(

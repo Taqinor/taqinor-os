@@ -1,0 +1,6 @@
+ACAL274 — P9.1 — rejeu orchestrateur, pile locale : backend dans un conteneur à part monté sur le code fusionné cc44b796c, base démo partagée (migrée), front construit au même code et servi par vite preview :5180, navigateur intégré, connexion demo_admin, 2026-10-28.
+Jeu de démo LOCAL construit comme les tests (tests_cal245_bloc_calepinage.py, test_pv78_conception_lead.py) : lead 2329 « ACC ACAL Chantier » + devis DEV-ACC-ACAL-1 (1446, 12 × Panneau mono 550W, accepté) + calepinage 26 (dessin 8,52 kWc / 12 modules, variante V1 retenue) + chantier CHT-ACC-ACAL-1 (272) ; lead 2330 « ACC ACAL Sans devis » + calepinage 27 ouvert (12 × 710 Wc). La production a été lue en lecture seule (accord fondateur) : 6 calepinages, 0 variante retenue — aucun cas réel.
+1. API : GET installations/chantiers/272/ → calepinage {calepinage_id 26, kwc 6.6, nb_modules 12, kwc_source devis, dessin_kwc 8.52, ecart_kwc 1.92, planche_url /calepinage/26}.
+2. Écran /chantiers → chantier ouvert depuis la liste : carte « Calepinage retenu · 6.6 kWc vendus · 12 modules · dessin : 8.52 kWc (écart +1.92 kWc) · Voir le calepinage · Plan de pose 3D ».
+3. Lien profond /chantiers?id=272 : même carte.
+Verdict : PASS.

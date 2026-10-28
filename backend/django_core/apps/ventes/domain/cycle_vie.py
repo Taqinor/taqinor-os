@@ -1551,24 +1551,13 @@ def _apres_commit_acceptation(devis, *, user, ip, user_agent, lignes):
     Les noms restent lus sur CE module (``mock.patch`` des tests)."""
     from apps.ventes.domain.facturation_vente import acompte_a_l_acceptation
     acompte_a_l_acceptation(devis, user)
-    # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
-    # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
-    _store_signed_pdf(devis=devis)
-    # QX9 — le PDF signé est persisté sur une AUTRE instance (via le moteur) ;
-    # on rafraîchit ``fichier_pdf`` sur l'instance courante pour que la pièce
-    # jointe de l'email ne parte pas sur un état périmé (bug de l'exemplaire
-    # signé manquant).
-    try:
-        devis.refresh_from_db(fields=['fichier_pdf'])
-    except Exception:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
-        logger.debug('QX9: fichier_pdf non relu pour devis %s',
-                     getattr(devis, 'reference', '?'))
-    # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
-    try:
-        _send_acceptance_emails(devis=devis, user=user, lignes=lignes)
-    except Exception as exc:  # noqa: BLE001 — best-effort (D-ENF22-BLE001)
-        logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
-                       getattr(devis, 'reference', '?'), exc)
+    # QJ22 / QJ10 — exemplaire signé PUIS confirmation (exemplaire joint) :
+    # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE (fondateur 28/10, option a) — mis en
+    # file Celery APRÈS le commit, plus jamais rendus dans la requête
+    # (5-14 s mesurés : la page client abandonnait à 15 s). ``lignes`` reste
+    # reçu pour la signature de l'appel ; la tâche relit le devis.
+    from apps.ventes.domain import pdf_signe
+    pdf_signe.planifier_pdf_signe(devis, user=user, envoyer_confirmation=True)
 
     # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
     # ADSENG2 — thread ip/user_agent (EMQ) déjà reçus par accept_devis.

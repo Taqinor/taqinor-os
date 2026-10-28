@@ -1,0 +1,10 @@
+APRF37 — P1.3 — rejeu orchestrateur, pile locale : backend dans un conteneur à part monté sur le code fusionné cc44b796c, base démo partagée (migrée), front construit au même code et servi par vite preview :5180, navigateur intégré, connexion demo_admin, 2026-10-28.
+Jeu de démo LOCAL construit comme les tests (tests_cal245_bloc_calepinage.py, test_pv78_conception_lead.py) : lead 2329 « ACC ACAL Chantier » + devis DEV-ACC-ACAL-1 (1446, 12 × Panneau mono 550W, accepté) + calepinage 26 (dessin 8,52 kWc / 12 modules, variante V1 retenue) + chantier CHT-ACC-ACAL-1 (272) ; lead 2330 « ACC ACAL Sans devis » + calepinage 27 ouvert (12 × 710 Wc). La production a été lue en lecture seule (accord fondateur) : 6 calepinages, 0 variante retenue — aucun cas réel.
+1. Liste : GET chantiers/?page_size=5 → 5 requêtes ; ?page_size=25 → 5 requêtes ; 0 bloc de détail (regime_suggere / calepinage / dossier_8221_resume) non nul en liste ; chantier 272 dans les deux pages.
+2. Détail GET chantiers/272/ : regime_suggere servi, dossier_8221_resume servi, calepinage servi (voir ACAL274).
+3. Écran /chantiers → ouverture de CHT-ACC-ACAL-1 depuis la liste : UNE requête GET chantiers/272/ part à l'ouverture (Resource Timing) ;
+   panneau : « Suggéré : Déclaration hors réseau (loi 82-21, art. 3) » + bouton « Appliquer », et la carte CalepinageRetenuCard (6.6 kWc vendus · dessin 8.52).
+   (Le chantier a été passé « hors réseau » par PATCH API — geste utilisateur — pour qu'un régime soit suggéré : un résidentiel raccordé de 6,6 kWc est « Non concerné »,
+   et l'écran ne montre « Suggéré » que pour un régime différent de « Non concerné » par conception.)
+4. Lien profond /chantiers?id=272 : requête de détail à l'ouverture, « Suggéré : Déclaration hors réseau » et la carte présents.
+Verdict : PASS.

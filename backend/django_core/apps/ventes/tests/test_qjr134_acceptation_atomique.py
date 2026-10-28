@@ -34,6 +34,7 @@ from apps.stock.models import Produit
 from apps.ventes.domain.lignes import creer_ligne
 from apps.ventes.models import Devis, DevisSignature, EmailLog
 from apps.ventes.services import AcceptError, accept_devis
+from apps.ventes.tests._quote_engine_common import pdf_signe_en_ligne
 from authentication.models import Company
 from core.events import devis_accepted
 
@@ -57,6 +58,12 @@ class _BaseAcceptation(TestCase):
         self._sku = 0
         self.racine = self._devis('DEV-QJR134-A')
         self.soeur = self._devis('DEV-QJR134-B', parent=self.racine)
+
+    def _accepter(self, **kwargs):
+        """``accept_devis`` + l'après-commit joué en ligne : la confirmation
+        part de la tâche « PDF signé » (ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE)."""
+        with pdf_signe_en_ligne(self):
+            return accept_devis(**kwargs)
 
     def _devis(self, ref, *, parent=None):
         devis = Devis.objects.create(
@@ -327,7 +334,7 @@ class LEmailNePromentQueLaPreuveQuiExiste(_BaseAcceptation):
         return log.corps or ''
 
     def test_avec_enregistrement_la_phrase_est_servie(self):
-        accept_devis(devis=self.racine, user=None, nom='M. Client')
+        self._accepter(devis=self.racine, user=None, nom='M. Client')
         self.assertIn(PHRASE_SIGNATURE, self._corps_email(self.racine))
 
     def test_sans_enregistrement_la_phrase_disparait(self):
@@ -335,7 +342,7 @@ class LEmailNePromentQueLaPreuveQuiExiste(_BaseAcceptation):
         WARNING. L'email ne doit alors plus rien affirmer."""
         with patch('apps.ventes.domain.cycle_vie._create_esign_record',
                    return_value=None):
-            accept_devis(devis=self.racine, user=None, nom='M. Client')
+            self._accepter(devis=self.racine, user=None, nom='M. Client')
         self.assertEqual(
             DevisSignature.objects.filter(devis=self.racine).count(), 0)
         corps = self._corps_email(self.racine)
@@ -372,8 +379,8 @@ class LaConfirmationVaAuxDeuxParties(_BaseAcceptation):
 
     def test_signataire_contact_et_copie_vendeur(self):
         self._avec_lead_et_vendeur()
-        accept_devis(devis=self.racine, user=None, nom='Karim Exemple',
-                     entreprise=dict(self.ENTREPRISE))
+        self._accepter(devis=self.racine, user=None, nom='Karim Exemple',
+                       entreprise=dict(self.ENTREPRISE))
         logs = {log.to_email: log for log in EmailLog.objects.filter(
             devis=self.racine)}
         self.assertEqual(set(logs), {'dg@hotel-exemple.test',
@@ -406,8 +413,8 @@ class LaConfirmationVaAuxDeuxParties(_BaseAcceptation):
         mail.outbox = []
         with patch.object(email_service, 'send_document_email',
                           side_effect=envoi):
-            accept_devis(devis=self.racine, user=None, nom='Karim Exemple',
-                         entreprise=dict(self.ENTREPRISE))
+            self._accepter(devis=self.racine, user=None, nom='Karim Exemple',
+                           entreprise=dict(self.ENTREPRISE))
         destinataires = {to for m in mail.outbox for to in m.to}
         self.assertIn('contact@hotel-exemple.test', destinataires)
         self.assertNotIn('dg@hotel-exemple.test', destinataires)
@@ -415,8 +422,8 @@ class LaConfirmationVaAuxDeuxParties(_BaseAcceptation):
         self.assertEqual(self.racine.statut, Devis.Statut.ACCEPTE)
 
     def test_confirmation_en_anglais_quand_la_page_l_etait(self):
-        accept_devis(devis=self.racine, user=None, nom='Mr Client',
-                     langue='en')
+        self._accepter(devis=self.racine, user=None, nom='Mr Client',
+                       langue='en')
         log = EmailLog.objects.filter(devis=self.racine).order_by('-id').first()
         self.assertTrue(log.sujet.startswith('Proposal accepted'), log.sujet)
         self.assertIn('Fingerprint of the signed content (SHA-256)', log.corps)
@@ -449,7 +456,7 @@ class EmailExemplaireSigneTests(_BaseAcceptation):
         from django.core import mail
         mail.outbox = []
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
-            accept_devis(devis=self.racine, user=None, nom='M. Client')
+            self._accepter(devis=self.racine, user=None, nom='M. Client')
         sig = DevisSignature.objects.get(devis=self.racine)
         self.assertFalse(sig.signed_pdf_key)  # None ou '' : rien de stocké
         corps = self._message_au_client().body
@@ -461,8 +468,8 @@ class EmailExemplaireSigneTests(_BaseAcceptation):
         from django.core import mail
         mail.outbox = []
         with patch('apps.ventes.domain.cycle_vie._store_signed_pdf'):
-            accept_devis(devis=self.racine, user=None, nom='Mr Client',
-                         langue='en')
+            self._accepter(devis=self.racine, user=None, nom='Mr Client',
+                           langue='en')
         corps = self._message_au_client().body
         self.assertIn('Fingerprint of the signed content', corps)
         self.assertNotIn('signed copy', corps)
@@ -479,7 +486,7 @@ class EmailExemplaireSigneTests(_BaseAcceptation):
                 patch('apps.ventes.utils.pdf._upload_pdf'), \
                 patch('apps.ventes.utils.pdf.download_pdf',
                       return_value=octets) as telechargement:
-            accept_devis(devis=self.racine, user=None, nom='M. Client')
+            self._accepter(devis=self.racine, user=None, nom='M. Client')
         sig = DevisSignature.objects.get(devis=self.racine)
         self.assertEqual(sig.signed_pdf_key,
                          'devis/adev38/DEV-QJR134-A__signe.pdf')

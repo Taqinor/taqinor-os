@@ -1,0 +1,12 @@
+VNT48 — étape réparation (reparer_vente_active) — rejeu orchestrateur, pile locale : backend dans un conteneur à part monté sur le code fusionné cc44b796c, base démo partagée (migrée), front construit au même code et servi par vite preview :5180, navigateur intégré, connexion demo_admin, 2026-10-28.
+Réplique LOCALE du dossier Kharbachi construite comme test_reparer_vente_active (helpers creer_devis_388 / facture_tranche) dans la société démo :
+lead 2331 « ACC VNT48 Kharbachi », chaîne DEV-ACC48-0367 → 0387 → 0388 (1449, en vigueur) + DEV-ACC48-0389 (1450, signée), FAC-ACC48-0005 annulée,
+0006 matériel 32 700 émise (avoir 50 annulé), 0007 acompte 14 700 PAYÉE (saisie 14 700), 0008 solde 1 600, 0009 acompte 14 700 sur 389, chantier + contrat de 389.
+Le vrai lead 1594 (production) n'est PAS touché.
+1. --lister --societe taqinor-demo : « Lead 2331 … 2 ventes en vigueur » (0388 et 0389, leurs factures) + la commande à lancer.
+2. Dry-run (--garder 1449 --refaire-acompte 15000 --paiement-recu 15000 --paiement-mode virement --utilisateur demo_admin) : DIFF affiché, « DRY-RUN : rien n'a été écrit » ;
+   cible : 0389 envoyée + archivée, 0006-0009 annulées par avoir, paiement 14 700 annule_saisie, acompte 15 000 émis + payé, reste 34 000 = 29 400 + 4 600.
+3. --appliquer : « Réparation appliquée. » ; --lister ne liste plus le lead 2331 (une seule vente en vigueur).
+4. API : acompte refait FAC-202610-0035 15 000,00 = HT 12 720,41 + TVA 2 279,59, payé ; prochaine échéance « Livraison du matériel » 29 400,00 ; DEV-ACC48-0389 statut envoye.
+Gestes d'écran de VNT48 (Facturer l'acompte, PDF réel, 375 px, Annuler → avoir, refacturer) : spec vnt.spec.js 8/8 PASS le 28/10 (VNT/2026-10-28-1771f7457).
+Verdict : PASS.

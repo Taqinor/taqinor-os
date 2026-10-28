@@ -922,10 +922,14 @@ class DevisSerializer(SameCompanyFKSerializerMixin, TiersPayeurValidationMixin,
             return None
         if sig is None:
             return None
+        from .domain.pdf_signe import etat_pdf_signe
         return {
             'signataire_nom': sig.signataire_nom,
             'signed_at': sig.signed_at.isoformat() if sig.signed_at else None,
             'has_pdf': bool(sig.signed_pdf_key),
+            # ERR-ACCEPTATION-PDF-SIGNE-SYNCHRONE — rendu hors requête :
+            # « pret » / « en_preparation » / « refuse » / « absent ».
+            'pdf_signe': etat_pdf_signe(sig),
             # ADEV96 — le certificat : sceau du contenu signé (v3 : étude C&I
             # comprise) et SHA-256 des octets du PDF signé remis.
             'empreinte_contenu': sig.content_hash or '',
