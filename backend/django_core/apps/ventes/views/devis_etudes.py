@@ -407,8 +407,12 @@ class DevisEtudesActionsMixin:
         """LECTURE des trois tailles Éco / Recommandé / Max de ce devis."""
         return Response(self._offres_tailles_reponse(self.get_object()))
 
+    # api-fuzz-full 28/10 (ENF11) : un PATCH SANS corps était « conforme »
+    # (``request`` en dict = corps facultatif) puis refusé 400 : obligatoire.
     @extend_schema(request=D.OffreTailleConfigRequest,
-                   responses=D.OffresTaillesResponse)
+                   responses=D.OffresTaillesResponse,
+                   extensions={EXTENSION_CORPS_RESSERRE: {
+                       'required': ['cle', 'config']}})
     @action(detail=True, methods=['patch'], url_path='offres-tailles/config',
             permission_classes=[IsResponsableOrAdmin])
     def offres_tailles_config(self, request, pk=None):
