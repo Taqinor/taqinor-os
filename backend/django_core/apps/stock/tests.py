@@ -68,8 +68,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(),
-            NB_ARTICLES_SEMES,
+                company=self.company, reference='SEED-CATALOGUE').count(), NB_ARTICLES_SEMES,
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -879,8 +878,7 @@ class TestSeedCatalogue(TestCase):
         seed(self.company)
         count_after_first = Produit.objects.filter(company=self.company).count()
         out = seed(self.company)
-        self.assertEqual(
-            Produit.objects.filter(company=self.company).count(), count_after_first)
+        self.assertEqual(Produit.objects.filter(company=self.company).count(), count_after_first)
         # PVLV2 — les deux doublons « Basse Tension » ne sont plus créés.
         self.assertIn(f'0 created, {NB_ARTICLES_SEMES} already present', out)
 
