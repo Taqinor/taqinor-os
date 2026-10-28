@@ -20,6 +20,13 @@ from core.conflit_etat import ConflitEtat
 from .models import ConfigPackage, ConfigPackageApplication
 
 _INT_MAX = 2147483647
+#: api-fuzz-full 28/10 (ENF11) — un champ personnalisé importé suit les règles
+#: du modèle (``code`` = ``SlugField``, ``type`` parmi ``FieldType``) : écrit
+#: tel quel, ``"é…"`` / ``type: ""`` étaient ensuite SERVIS hors schéma par
+#: ``custom-fields/definitions/`` (« Response violates schema »).
+MOTIF_CODE_CHAMP = r'^[-a-zA-Z0-9_]+$'
+TYPES_CHAMP = ('text', 'number', 'date', 'choice', 'boolean', 'relation',
+               'fichier', 'ia', 'formula', 'rollup')
 
 
 def _contient_nul(valeur):
@@ -54,8 +61,10 @@ SCHEMA_CONTENU = {
         '_version': {'type': 'integer', 'minimum': 0, 'maximum': _INT_MAX},
         'roles_custom': _objets('nom', {'nom': 100}, {'permissions': {
             'type': 'array', 'items': {'type': 'string'}}}),
-        'custom_fields': _objets('code', {
-            'code': 50, 'module': 60, 'type': 12, 'libelle': 120}),
+        'custom_fields': _objets('code', {'module': 60, 'libelle': 120}, {
+            'code': {'type': 'string', 'maxLength': 50,
+                     'pattern': MOTIF_CODE_CHAMP},
+            'type': {'type': 'string', 'enum': list(TYPES_CHAMP)}}),
         'message_templates': _objets('cle', {
             'cle': 40, 'corps_fr': None, 'corps_darija': None}),
     },
@@ -101,6 +110,12 @@ def valider_contenu_import(contenu):
                 c for c, maxi in textes.items()
                 if c in item and (not isinstance(item[c], str)
                                   or (maxi and len(item[c]) > maxi))]
+            if categorie == 'custom_fields':
+                import re
+                if not re.fullmatch(MOTIF_CODE_CHAMP, item[cle]):
+                    faux.append('code')
+                if 'type' in item and item['type'] not in TYPES_CHAMP:
+                    faux.append('type')
             if categorie == 'roles_custom' and 'permissions' in item and (
                     not isinstance(item['permissions'], list)
                     or not all(isinstance(x, str)

@@ -272,6 +272,29 @@ class EnfSchemaValidationTests(TestCase):
         self.assertEqual(contenu['properties']['roles_custom']['items'][
             'required'], ['nom'])
 
+    def test_champ_personnalise_importe_aux_regles_du_modele(self):
+        """api-fuzz-full 28/10 (ENF11) — ``code`` hors slug ou ``type`` hors
+        ``FieldType`` étaient écrits par « appliquer » puis servis hors schéma
+        par ``custom-fields/definitions/`` : publiés et refusés 400, rien
+        d'écrit ; l'énumération publiée est celle du modèle."""
+        from apps.customfields.models import CustomFieldDef
+        from ..config_package_service import TYPES_CHAMP
+        self.assertEqual(set(TYPES_CHAMP),
+                         set(CustomFieldDef.FieldType.values))
+        base = '/api/django/adminops/config-packages/appliquer/'
+        for champ in ({'code': 'é÷d', 'module': 'lead'},
+                      {'code': 'ok_1', 'module': 'lead', 'type': ''},
+                      {'code': 'ok_1', 'module': 'lead', 'type': 'xx'}):
+            resp = self.client_api.post(base, {'contenu': {
+                'custom_fields': [champ]}}, format='json')
+            self.assertEqual(resp.status_code, 400, (champ, resp.content))
+        self.assertFalse(CustomFieldDef.objects.filter(
+            company=self.company).exists())
+        resp = self.client_api.post(base, {'contenu': {'custom_fields': [
+            {'code': 'ok_1', 'module': 'lead', 'type': 'number'}]}},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+
     def test_reglages_booleen_strict(self):
         # api-fuzz (#988) : `sandbox_autorise: 0` n'est pas un booléen JSON.
         resp = self.client_api.patch(
