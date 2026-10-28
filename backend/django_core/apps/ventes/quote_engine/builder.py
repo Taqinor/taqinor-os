@@ -2165,10 +2165,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # la charge utile publique.
     if avertissements_internes:
         data["avertissements_internes"] = list(avertissements_internes)
-    # Décision fondateur 08/10/2026 — drapeaux des GABARITS (devis envoyé avant les corrections : formats
-    # d'origine, AMOT24/26/33/35/45, AMOT19 ; CPDF — devis C&I sous le niveau de règles 3 : les corrections de
-    # chiffre du PDF C&I ne s'appliquent qu'aux nouveaux rendus ; niveau 1 ⇒ déjà dit par la première clé) ; un
-    # devis aux règles courantes ne porte aucune clé.
+    # Fondateur 08/10/2026 — drapeaux des GABARITS (devis envoyé avant les corrections : formats d'origine,
+    # AMOT24/26/33/35/45, AMOT19 ; CPDF — C&I sous le niveau de règles 3 : corrections de chiffre du PDF C&I aux
+    # seuls nouveaux rendus ; niveau 1 ⇒ dit par la 1re clé) ; un devis aux règles courantes ne porte aucune clé.
     data.update({cle: True for cle, pose in (
         ("regles_calcul_origine", not _corrige),
         ("regles_avant_2710", _mode_ci and _corrige and not _regles_2710(devis))) if pose})

@@ -757,6 +757,43 @@ class RetourOptionAvecFluxTests(SimpleTestCase):
         # sans devis (ni ``ligne.devis``) : rien
         self.assertIsNone(_investissement_des_lignes([], None))
 
+    def test_composition_garde_l_om_en_an0_sur_un_devis_envoye_niveau_2(self):
+        """Audit Fable L3 — le chemin « composition » de l'option « avec »
+        (devis « sans » / « les deux » : aucune ligne d'option « avec »)
+        suit le niveau de règles : CEC1 (O&M hors de l'année 0) au niveau 3
+        seulement ; un devis envoyé ≤ 2 recalculé garde l'ancien investissement."""
+        from apps.ventes.domain import etude_ci_batterie as m
+        evaluation = self._evaluation()
+        evaluation['composition']['lignes'].append(
+            {'role': 'om_ci', 'designation': 'O&M', 'quantite': 1,
+             'prix_connu': True, 'prix_unitaire_ht': '1000'})
+        courant = m._investissement_composition(evaluation, 20)
+        envoye = m._investissement_composition(evaluation, 20, regles_2710=False)
+        self.assertEqual((envoye['ht'], envoye['ttc']), (540000.0, 649200.0))
+        self.assertEqual((courant['ht'], courant['ttc']), (539000.0, 648000.0))
+        retours = {}
+        for niveau in (True, False):
+            bloc = m._bloc(evaluation, self._Valoriseur(), dict(self._ctx(), regles_2710=niveau))
+            retours[niveau] = bloc['retour_simple_ans']
+        self.assertGreater(retours[False], retours[True])
+        # le niveau passé à ``option_avec_de_l_etude`` atteint le ctx des DEUX chemins
+        vus = []
+        resultat = {'evaluation': evaluation, 'prix_a_renseigner': [], 'hypotheses': [],
+                    'alertes': [], 'motif': None}
+        catalogue = {'batterie': {'hybrides': [1], 'batteries': [{'produit': 1}]}}
+        with mock.patch.object(m, 'batteries_compatibles', return_value=[1]), \
+                mock.patch.object(m, '_dimensionner', return_value=resultat), \
+                mock.patch.object(m, '_option_dominee', return_value=False), \
+                mock.patch.object(m, '_bloc', lambda ev, val, ctx, **k: vus.append(ctx) or {}), \
+                mock.patch.object(m, '_option_imposee', lambda imp, ctx: vus.append(ctx) or {}):
+            for imposee in (None, {'x': 1}):
+                m.option_avec_de_l_etude(catalogue, {'kwc': 1}, choix='avec', lead=None,
+                                         imposee=imposee, regles_2710=False,
+                                         tva_recuperable={'valeur': 'inconnu'})
+            m.option_avec_de_l_etude(catalogue, {'kwc': 1}, choix='avec', lead=None,
+                                     tva_recuperable={'valeur': 'inconnu'})
+        self.assertEqual([c['regles_2710'] for c in vus], [False, False, True])
+
     def test_pack_publie_sans_quantite_ne_borne_pas_a_zero(self):
         from apps.ventes.moteur_ci.batterie import puissance_decharge_kw
         self.assertIsNone(puissance_decharge_kw({'max_decharge_kw': 5.0, 'quantite': 0}, None, []))

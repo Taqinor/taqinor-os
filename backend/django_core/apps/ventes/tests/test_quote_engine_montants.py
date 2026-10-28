@@ -51,3 +51,36 @@ class TestFormateurUnique(SimpleTestCase):
         # contextlib (stdlib) : format anglais posé puis retiré (AMOT101).
         self.assertEqual(mods - {"decimal", "contextvars", "contextlib"},
                          set())
+
+
+class TestReglesDuRenduReinitialisees(SimpleTestCase):
+    """FIX-MOTEUR (audit Fable L3, #1130) — ``poser_regles_origine`` pose sans
+    retirer : deux devis successifs dans le même thread (worker Celery,
+    runserver), le second ne doit pas hériter des règles du premier."""
+
+    def setUp(self):
+        self.addCleanup(montants.poser_regles_origine, False)
+
+    def _devis_envoye_rendu(self):
+        montants.poser_regles_origine(False, avant_2710=True)
+        self.assertTrue(montants.regles_avant_2710())
+
+    def test_requete_suivante_repart_des_regles_courantes(self):
+        from django.core.signals import request_started
+        montants.poser_regles_origine(True)
+        self.assertTrue(montants.regles_origine())
+        request_started.send(sender=None)
+        self.assertFalse(montants.regles_origine())
+        self.assertFalse(montants.regles_avant_2710())
+
+    def test_tache_celery_suivante_repart_des_regles_courantes(self):
+        from types import SimpleNamespace
+
+        from celery.signals import task_prerun
+        self._devis_envoye_rendu()
+        task_prerun.send(sender=None, task=SimpleNamespace(request=SimpleNamespace(is_eager=False)))
+        self.assertFalse(montants.regles_avant_2710())
+        # tâche exécutée en ligne DANS la requête : le rendu en cours garde ses règles
+        self._devis_envoye_rendu()
+        task_prerun.send(sender=None, task=SimpleNamespace(request=SimpleNamespace(is_eager=True)))
+        self.assertTrue(montants.regles_avant_2710())
