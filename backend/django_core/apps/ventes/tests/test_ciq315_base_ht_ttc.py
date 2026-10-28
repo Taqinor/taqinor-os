@@ -117,9 +117,9 @@ class BaseHtTtc(SimpleTestCase):
                 self.assertIn("MAD&nbsp;HT", html)
                 self.assertIn(Decimal(str(d["totaux_all"]["ht_net"])),
                               _valeurs(html, "total_ht"))
-                # AMOT95 — la mention dit « non déclarée », jamais « selon
-                # votre régime ».
-                self.assertIn(TVA_NON_DECLAREE, html)
+                # CPDF5 — « non déclarée » / « selon votre régime » sont des
+                # réserves internes : aucune mention, le HT et le TTC seuls.
+                self.assertNotIn(TVA_NON_DECLAREE, html)
                 self.assertNotIn("selon votre régime", html)
 
     def test_base_deux_economie_ht_et_ttc_etiquetees(self):
@@ -138,13 +138,13 @@ class BaseHtTtc(SimpleTestCase):
                 self.assertNotIn(attendu, _texte(html))
 
     def test_base_deux_tva_inconnue_declaree(self):
-        """AMOT95 — « ne sait pas » déclaré : « inconnue — à confirmer avec
-        votre comptable »."""
+        """AMOT95 — « ne sait pas » déclaré ; CPDF5 : « inconnue — à confirmer
+        avec votre comptable » (incertitude) n'est plus imprimée."""
         for nom, sample, renderer, render, racine, _p2 in GABARITS:
             with self.subTest(gabarit=nom):
                 _d, html = _rendu(sample, renderer, render, "deux",
                                   tva_declaree="ne_sait_pas")
-                self.assertIn(TVA_INCONNUE, html)
+                self.assertNotIn(TVA_INCONNUE, html)
                 self.assertNotIn(TVA_NON_DECLAREE, html)
 
     def test_sans_argent_libelle_d_hier(self):

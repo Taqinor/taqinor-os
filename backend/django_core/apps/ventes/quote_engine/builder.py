@@ -519,7 +519,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (AMOT24/26) le lisent par ``montants.regles_origine``.
     _corrige = calcul_corrige(devis)
     from .montants import poser_regles_origine
-    poser_regles_origine(not _corrige)
+    poser_regles_origine(not _corrige, avant_2710=not _regles_2710(devis))
     client = devis.client
     # AMOT11 (C-AMOT-006) — un taux de devis à 0 % est un VRAI taux : même
     # règle que ``LigneDevis.taux_tva_effectif`` (``is not None``) ; seul
@@ -2165,12 +2165,13 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # la charge utile publique.
     if avertissements_internes:
         data["avertissements_internes"] = list(avertissements_internes)
-    # Décision fondateur 08/10/2026 — les GABARITS lisent ce drapeau (posé
-    # SEULEMENT pour un devis envoyé avant les corrections) pour garder leurs
-    # formats d'origine (AMOT24/26/33/35/45, AMOT19) : le client relit ce qu'il
-    # a reçu. Un devis aux règles corrigées ne porte pas la clé (dict inchangé).
-    if not _corrige:
-        data["regles_calcul_origine"] = True
+    # Décision fondateur 08/10/2026 — drapeaux des GABARITS (devis envoyé avant les corrections : formats
+    # d'origine, AMOT24/26/33/35/45, AMOT19 ; CPDF — devis C&I sous le niveau de règles 3 : les corrections de
+    # chiffre du PDF C&I ne s'appliquent qu'aux nouveaux rendus ; niveau 1 ⇒ déjà dit par la première clé) ; un
+    # devis aux règles courantes ne porte aucune clé.
+    data.update({cle: True for cle, pose in (
+        ("regles_calcul_origine", not _corrige),
+        ("regles_avant_2710", _mode_ci and _corrige and not _regles_2710(devis))) if pose})
 
     # ── AGR217 — l'attestation d'usage agricole SAISIE (``etude_params``),
     # exposée pour le rendu (D3). Additif : la clé n'est posée QUE lorsqu'une

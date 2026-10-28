@@ -90,7 +90,9 @@ class Ciq331DocumentChiffre(SimpleTestCase):
             "\xa0", " "))
         self.assertIn("Retour estimé", p1)
         self.assertIn("Valable jusqu", p1)
-        self.assertEqual(chiffres["payback_ans"], 3)
+        # CPDF7 — au dixième sur le flux servi (3 ans servis, 2,5 au flux).
+        self.assertEqual(chiffres["payback_ans"], 2.5)
+        self.assertIn("2,5", p1)
         p3 = pages[2].replace(" ", " ").replace("\xa0", " ")
         self.assertIn("Échéancier de paiement", p3)
         for montant in ("256 000,00", "320 000,00", "64 000,00"):
@@ -345,3 +347,115 @@ class InstallationCleEnMain(SimpleTestCase):
                          [90000.0])
         self.assertEqual([it["prix_unit_ht"] for it in data["avec_items"]],
                          [25000.0])
+
+
+# ── CPDF3 / CPDF5 / CPDF8 — couverture d'un devis C&I (27/10/2026) ─────────
+
+def deux_options(data):
+    """``data`` en devis « les deux » : l'offre réseau servie en titre et
+    l'option batterie servie à côté (totaux, valeur chiffrée du moteur)."""
+    data["option_servie"] = "sans"
+    data["puissance_kwc_avec"] = 95.5
+    data["option_batterie"] = {
+        "totaux": {"ht_net": 800000.0, "ttc": 960000.0},
+        "valeur_chiffree": {"economie_annuelle_mad": 120000.0,
+                            "retour_simple_ans": 6.66,
+                            "taux_couverture_pct": 61.4,
+                            "textes": {"fr": "x", "en": "x", "ar": "x"}},
+        "motif": None}
+    return data
+
+
+def _p1(data):
+    import re
+    from html import unescape
+    html = _html(data).split('class="page"')[1]
+    html = re.sub(r"<style>.*?</style>", "", html, flags=re.S)
+    return re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", html))
+                  .replace("\xa0", " ").replace("\u202f", " "))
+
+
+class Cpdf3DeuxOptionsCoteACote(SimpleTestCase):
+
+    def test_deux_cartes_meme_gabarit(self):
+        p1 = _p1(deux_options(_data()))
+        sans, avec = p1.split("Sans batterie")[1].split("Avec batterie")
+        for carte in (sans, avec):
+            for libelle in ("Puissance", "Investissement TTC",
+                            "Économie annuelle", "Retour sur investissement",
+                            "Part de votre consommation couverte"):
+                self.assertIn(libelle, carte)
+        self.assertIn("90 kWc", sans)
+        self.assertIn("640 000,00 MAD", sans)
+        self.assertIn("95,5 kWc", avec)
+        self.assertIn("960 000,00 MAD", avec)
+        self.assertIn("120 000 MAD HT", avec)
+        self.assertIn("6,7 ans", avec)
+        self.assertIn("61 %", avec)
+
+    def test_cartes_remplacent_bloc_investissement_et_tuiles(self):
+        p1 = _p1(deux_options(_data()))
+        self.assertNotIn("Investissement (clé en main)", p1)
+        self.assertNotIn("Économies estimées", p1)
+        self.assertNotIn("Puissance crête", p1)
+        self.assertEqual(p1.count("640 000,00"), 1)
+        cles = _cles(_html(deux_options(_data())))
+        for cle in ("payback_ans", "economie_annuelle", "puissance_kwc",
+                    "couverture_pct", "total_affiche"):
+            self.assertIn(cle, cles)
+
+    def test_valeur_absente_ligne_omise(self):
+        data = deux_options(_data())
+        data["option_batterie"]["valeur_chiffree"] = None
+        data["option_batterie"]["motif"] = "valeur non chiffrée"
+        avec = _p1(data).split("Avec batterie")[1]
+        self.assertIn("960 000,00 MAD", avec)
+        self.assertNotIn("Retour sur investissement",
+                         avec.split("Prochaines")[0])
+
+    def test_mono_option_inchangee(self):
+        p1 = _p1(_data())
+        self.assertNotIn("Sans batterie", p1)
+        self.assertIn("Investissement (clé en main)", p1)
+        self.assertIn("Puissance crête", p1)
+
+
+@tag("weasyprint")  # rendu PDF réel
+class Cpdf3TroisPages(SimpleTestCase):
+
+    def test_deux_options_trois_pages(self):
+        self.assertEqual(len(_pages(deux_options(_data()))), 3)
+
+
+class Cpdf5Cpdf8Couverture(SimpleTestCase):
+
+    def test_ni_scenario_prudent_ni_tva_non_declaree(self):
+        p1 = _p1(_data())
+        self.assertNotIn("scénario prudent", p1)
+        self.assertNotIn("TVA récupérable non déclarée", p1)
+        self.assertNotIn(" · ·", p1)
+
+    def test_nom_une_fois_en_casse_saisie(self):
+        data = _data()
+        nom = "Démo — Boulangerie (7/7, 6-22 h)"
+        data["client_full"] = data["client_name"] = nom
+        p1 = _p1(data)
+        self.assertEqual(p1.count(nom), 1)
+        self.assertNotIn("6-22 H", p1)
+
+    def test_kwh_an_insecable(self):
+        html = _html(_data())
+        self.assertIn(".c1c-ku{font-size:9pt;", html)
+        self.assertIn("white-space:nowrap;}", html.split(".c1c-ku{")[1][:80])
+
+    def test_activite_inconnue_sans_libelle_interne(self):
+        html = _html(_data("autre"))
+        self.assertNotIn("Autre commerce", _p1(_data("autre")))
+        self.assertIn('class="c1c-kicker">Autoconsommation solaire', html)
+
+    def test_source_echappee_traduite(self):
+        from apps.ventes.quote_engine.ci.couverture import texte_client
+        doc = {"langue_sortie": "fr"}
+        for brut in ("etude_ci.bilan (moteur C&I)",
+                     "etude_ci.bilan (moteur C&amp;I)"):
+            self.assertNotIn("moteur", texte_client(doc, brut))

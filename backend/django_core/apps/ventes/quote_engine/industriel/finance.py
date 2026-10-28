@@ -20,14 +20,17 @@ sur le taux DÉCLARÉ, sensibilités saisies par la société, P90 du bloc
 bancable (PDF seulement), offre de financement (CIQ318).
 Rendu seul — aucun statut touché (règle #4).
 """
+import re
 from functools import partial
+
+from .. import i18n_labels_ci_pages  # noqa: F401 — enregistre les libellés CPDF
 
 from ..ci import blocs as ci_blocs
 from .. import premium_base
 from ..ci import couverture as ci_couverture
 from ..figures import ancre
 from ..lecture_pure import nombre_ou_none
-from ..montants import decimale
+from ..montants import decimale, regles_avant_2710
 # AMOT90 — l'énergie mois par mois (SVG en ligne, données servies).
 from ..ci.graphiques import bloc_energie_mensuelle, cede, css_graphique
 
@@ -57,8 +60,26 @@ UNITES_HYPOTHESES = {
 
 _num = nombre_ou_none
 
+#: CPDF5 — une source servie qui n'est que du jargon interne (formule,
+#: citation, « moteur », principe, méthode du devis) n'est jamais imprimée.
+_JARGON_SOURCE = re.compile(
+    r"moteur|IEA|NREL|Jordan|σ|P50|bancable|principe|m[ée]thode de calcul"
+    r"|calculation method|engine|bankable|طريقة حساب|محرك"
+    # CPDF — résidus internes (mêmes familles que ``public.payload_ci``) :
+    # code de décision, groupe d'audit, chemin d'écran, « fondateur ».
+    r"|\bD-[A-Z]{2,}-?\d|\bCIQ\d|\bGroupe [A-Z]{2,}|Paramètres|fondateur"
+    r"|\bReda\b|aucun défaut|\binterne\b|\brepli\b",
+    re.IGNORECASE)
+
+
+def _source_propre(source):
+    """``source`` telle quelle, ou '' quand elle est du jargon interne ou une
+    réserve (``couverture.sans_reserve``)."""
+    source = ci_couverture.sans_reserve(str(source or ""))
+    return "" if _JARGON_SOURCE.search(source) else source
+
 #: AMOT88 — le titre du bloc d'hypothèses, en mots du client.
-TITRE_HYPOTHESES = "Hypothèses de l'estimation"
+TITRE_HYPOTHESES = "Bases du calcul"
 
 
 def flux_principal(argent):
@@ -234,10 +255,30 @@ def _rangees_flux(flux, fmt, L, d, compact):
         # constant (hypothèse) »…) n'est pas imprimée : la valeur seule.
         if h.get("source_code") in CODES_SOURCES_RESERVE:
             source = ""
-        source = ci_couverture.sans_reserve(source)
+        source = _source_propre(ci_couverture.sans_reserve(source))
+        if h["cle"] in CLES_MONTANTS_FLUX:
+            source = ""
         rangees.append((L(cat, fr), valeur + (f" — {source}" if source
                                               else "")))
     return rangees
+
+
+def _prix_kwh_evite(argent, L):
+    """CPDF — « — prix moyen de votre kWh évité : 1,709 MAD/kWh TTC » : le prix
+    SERVI (``indicateurs.tarif_kwh_evite_moyen`` = économie de l'année 1 ÷
+    kWh évités, base du flux principal) qui permet au client de retrouver son
+    économie ; '' quand il n'est pas servi, quand la ligne LCOE de la page le
+    dit déjà (industriel) ou pour un devis aux règles d'avant le niveau 3."""
+    indicateurs = argent.get("indicateurs") or {}
+    tarif = _num(indicateurs.get("tarif_kwh_evite_moyen"))
+    if tarif is None or tarif <= 0 or regles_avant_2710() \
+            or _num(indicateurs.get("lcoe_mad_kwh")) is not None:
+        return ""
+    base = (L("ci_ttc", "TTC") if flux_principal(argent)[0] == "flux_ttc"
+            else L("ci_ht", "HT"))
+    return (" — " + L("ci_ind_tarif_client", "prix moyen de votre kWh évité "
+                      ": {tarif} MAD/kWh", tarif=_decimal_3(tarif))
+            + f" {base}")
 
 
 def _rangees_argent(argent, fmt_mad, L, d):
@@ -253,10 +294,13 @@ def _rangees_argent(argent, fmt_mad, L, d):
                                         ci_blocs.langue(d))
                      if h.get("cle") == "tarif" else None)
         if tarif_txt:
-            rangees.append((L("ci_h_prix_kwh", "Prix du kWh"), tarif_txt))
+            suffixe = _prix_kwh_evite(argent, L)
+            rangees.append((L("ci_h_prix_kwh", "Prix du kWh"),
+                            tarif_txt.rstrip(".") + suffixe if suffixe
+                            else tarif_txt))
         elif h.get("valeur"):
-            source = ci_couverture.sans_reserve(
-                ci_couverture.texte_client(d, h.get("source")))
+            source = _source_propre(ci_couverture.sans_reserve(
+                ci_couverture.texte_client(d, h.get("source"))))
             rangees.append((
                 L("ci_h_valorisation", "Valorisation de vos kWh")
                 if h.get("cle") == "valorisation" else None,
@@ -265,7 +309,9 @@ def _rangees_argent(argent, fmt_mad, L, d):
                 + (f" — {source}" if source else "")))
     # AMOT94 — le montant du remplacement sur la BASE servie : HT quand la
     # TVA est récupérable (``argent.base == 'ht'``, D-CIQ-3), TTC sinon.
-    en_ht = argent.get("base") == "ht"
+    # CPDF5 — la base du tableau de flux : HT sauf base d'argent TTC.
+    en_ht = (argent.get("base") == "ht" if regles_avant_2710()  # niveau 3
+             else argent.get("base") != "ttc")
     for r in argent.get("remplacements") or []:
         if not isinstance(r, dict) or r.get("annee") is None:
             continue
@@ -277,8 +323,8 @@ def _rangees_argent(argent, fmt_mad, L, d):
         cle_composant = f"ci_garantie_{composant}"
         if ci_blocs.langue(d) != "fr" and cle_composant in _cles_catalogue():
             composant = L(cle_composant, composant)
-        motif = ci_couverture.sans_reserve(
-            ci_couverture.texte_client(d, r.get("motif")))
+        motif = _source_propre(ci_couverture.sans_reserve(
+            ci_couverture.texte_client(d, r.get("motif"))))
         motif = f" — {motif}" if motif else ""
         rangees.append((
             L("ci_ind_remplacement", "Remplacement {composant} en année "
@@ -315,13 +361,7 @@ def _rangees_estimation(synthese, L):
             orientation=orientation,
             incl=_decimal_txt(_num(prod["inclinaison_deg"])))))
     rangees += _rangee_methode(estimation, L)
-    dim = estimation.get("dimensionnement") or {}
-    if _num(dim.get("pas_kwc")) and _num(dim.get("horizon_annees")):
-        rangees.append((L("ci_h_dimensionnement", "Règle de dimensionnement"),
-                        L("ci_h_regle_taille", "chaque palier de {pas} kWc "
-                          "retenu se rembourse en moins de {n} ans",
-                          pas=_decimal_txt(_num(dim["pas_kwc"])),
-                          n=_decimal_txt(_num(dim["horizon_annees"])))))
+    # CPDF5 — la règle de dimensionnement est interne : jamais imprimée.
     return rangees
 
 
@@ -331,11 +371,12 @@ def _rangee_methode(estimation, L):
     methode = estimation.get("methode_autoconso")
     if methode not in ("horaire_8760", "journees_moyennes"):
         return []
-    valeur = (L("ci_h_methode_8760", "autoconsommation calculée heure par "
-                "heure sur l'année type (8 760 h)")
-              if methode == "horaire_8760" else
-              L("ci_h_methode_journees", "autoconsommation : estimation sur "
-                "journées moyennes"))
+    # CPDF5 — seule la méthode horaire (celle de la couverture) est dite ;
+    # le repli sur journées moyennes contredirait « calculé heure par heure ».
+    if methode != "horaire_8760":
+        return []
+    valeur = L("ci_h_methode_8760", "autoconsommation calculée heure par "
+               "heure sur l'année type (8 760 h)")
     return [(L("ci_h_methode_autoconso", "Méthode de calcul"), valeur)]
 
 
@@ -420,6 +461,8 @@ def _hypotheses(argent, flux, fmt, fmt_mad, L, d=None):
             else (libelle or valeur)
             for libelle, valeur in rangees_hypotheses(
                 d, synthese, fmt, fmt_mad, L,
+                # CPDF5 — l'investissement est imprimé UNE fois (pied).
+                compact=True,
                 # AMOT96 — l'entretien servi (déduit / non chiffré) est dit.
                 om=isinstance((argent or {}).get("entretien"), dict))]
 
@@ -439,7 +482,7 @@ def tableau_hypotheses(d, synthese, fmt, fmt_mad, L, prefixe,
         for libelle, valeur in rangees)
     marque = ' data-graphique="hypotheses"' if optionnel else ""
     return (f'<div class="{prefixe}-hy"{marque}><div class="{prefixe}-hy-t">'
-            f'{L("ci_hypotheses_estimation", TITRE_HYPOTHESES)}</div>'
+            f'{L("ci_bases_calcul", TITRE_HYPOTHESES)}</div>'
             f'<table class="{prefixe}-hy-tbl">{lignes}</table></div>')
 
 
@@ -505,6 +548,14 @@ def _decimal_txt(valeur):
     return decimale(f"{valeur:g}")
 
 
+def _decimal_3(valeur):
+    """« 0,108 » — un prix du kWh à 3 décimales (CPDF5) ; niveau de règles 3 :
+    un devis envoyé garde le nombre servi."""
+    if regles_avant_2710():
+        return _decimal_txt(valeur)
+    return decimale(f"{valeur:.3f}")
+
+
 def _p90_bancable(d):
     """La P90 du bloc bancable du devis (``etude['bankable']``, PV77 —
     la dispersion du moteur, aucune nouvelle), ou None. Permise sur le PDF,
@@ -544,7 +595,7 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
     from .cover import _taux_declare
     taux = _taux_declare(argent)
     if lcoe is not None:
-        lcoe_txt = _decimal_txt(lcoe)
+        lcoe_txt = _decimal_3(lcoe)
         # AMOT80 — sans taux déclaré, le coût est NON actualisé : dit tel.
         ligne = ((L("ci_ind_lcoe", "Coût du kWh solaire (LCOE, {base})",
                     base=base_txt)
@@ -558,20 +609,14 @@ def _bloc_cfo(d, argent, base_txt, fmt, fmt_mad, L, couleurs):
         if tarif is not None:
             ligne += (" — " + L("ci_ind_tarif_client",
                                "prix moyen de votre kWh évité : {tarif} "
-                               "MAD/kWh", tarif=_decimal_txt(tarif)))
+                               "MAD/kWh", tarif=_decimal_3(tarif)))
         lignes.append(ligne)
     van = _num(indicateurs.get("van_mad"))
     if van is not None and taux is not None:
         lignes.append(L("ci_ind_van", "VAN au taux déclaré de {taux} %",
                         taux=_decimal_txt(taux))
                       + f"&#160;: <b>{fmt_mad(van)}&#160;MAD</b>")
-    else:
-        motif = ci_couverture.texte_client(d, indicateurs.get("van_motif"))
-        if motif and ci_blocs.langue(d) != "fr":
-            # La seule cause d'omission servie : aucun taux déclaré.
-            motif = L("ci_ind_van_motif", motif)
-        lignes.append(L("ci_ind_van_omise", "VAN non calculée")
-                      + (f"&#160;: {motif}" if motif else ""))
+    # CPDF5 — VAN non calculée ⇒ omise, aucune ligne d'explication.
     # AMOT97 (D-ACI-15=a) — central + scénarios servis, en tableau.
     sensibilites = _tableau_sensibilites(d, argent, fmt_mad, L)
     p90 = _p90_bancable(d)
@@ -597,6 +642,10 @@ def _nom_scenario(s, L):
     cle_sens = f"ci_ind_sens_{s.get('cle')}"
     nom = (L(cle_sens, catalogue[cle_sens]["fr"]) if cle_sens in catalogue
            else ci_blocs._txt(s.get("cle")))
+    if variation is not None and s.get("cle") == "degradation":
+        # CPDF5 — la dégradation REMPLACE la valeur de base : « 0,75 %/an ».
+        return decimale(f"{nom} {abs(variation):g}&#160;"
+                        + L("ci_pct_par_an", "%/an"))
     return (decimale(f"{nom} {variation:+g}&#160;%")
             if variation is not None else nom)
 
@@ -614,31 +663,36 @@ def _tableau_sensibilites(d, argent, fmt_mad, L):
     flux = [f for f in flux_principal(argent)[1].get("flux") or []
             if isinstance(f, dict)]
     rangees = [(L("ci_sens_central", "Scénario central"),
-                indicateurs.get("retour_ans"), indicateurs.get("tri_pct"),
+                ci_couverture.retour_dixieme(argent, _num(
+                    indicateurs.get("retour_ans"))), indicateurs.get("tri_pct"),
                 (flux[-1] if flux else {}).get("cumul_mad"), "")]
     rangees += [(_nom_scenario(s, L), s.get("retour_ans"), s.get("tri_pct"),
-                 s.get("cumul_25_ans_mad"), ci_couverture.texte_client(
-                     d, s.get("motif") if s.get("motif") and s.get(
-                         "retour_ans") is None else s.get("source")))
+                 s.get("cumul_25_ans_mad"), _source_propre(
+                     ci_couverture.texte_client(
+                         d, s.get("motif") if s.get("motif") and s.get(
+                             "retour_ans") is None else s.get("source"))))
                 for s in scenarios]
 
-    unite_ans = L("ci_unite_ans", "&nbsp;ans")
-    formats = (lambda v: ci_couverture.ans(v) + unite_ans,
+    formats = (lambda v: ci_couverture.ans(v) + ci_couverture.unite_ans(
+        d, ci_couverture.ans(v)),
                lambda v: decimale(f"{v:.1f}") + "&#160;%",
                lambda v: fmt_mad(v) + "&#160;MAD")
+    # CPDF — aucune source imprimable (toutes internes) ⇒ pas de colonne vide.
+    avec_source = any(source for *_, source in rangees)
     lignes = ""
     for nom, *valeurs, source in rangees:
         cellules = "".join(
             f'<td class="i2-n">{f(_num(v)) if _num(v) is not None else "—"}'
             '</td>' for f, v in zip(formats, valeurs))
         lignes += (f'<tr><td>{nom}</td>{cellules}'
-                   f'<td class="i2-mini">{source}</td></tr>')
+                   + (f'<td class="i2-mini">{source}</td>' if avec_source
+                      else "") + '</tr>')
     entete = "".join(f"<th>{x}</th>" for x in (
         L("ci_sens_scenario", "Scénario"),
         L("ci_ind_delai_retour", "Délai de retour"),
         L("ci_ind_tri_sur", "TRI sur {n} ans", n="25"),
-        L("ci_sens_cumul", "Cumul net sur {n} ans", n="25"),
-        L("ci_source", "Source")))
+        L("ci_sens_cumul", "Cumul net sur {n} ans", n="25"))
+        + ((L("ci_source", "Source"),) if avec_source else ()))
     base = L("ci_ind_sens_base", "Sensibilités saisies par la société ; "
              "base : 0 % d'indexation du tarif.")
     return (f'<table class="i2-tbl i2-fx"><tr>{entete}</tr>{lignes}</table>'
@@ -670,12 +724,24 @@ def _pied_investissement(d, argent, fmt_mad, L):
             + f" : <b>{fmt_mad(ttc)} MAD</b>")
 
 
+def _argent_option_avec_omis(d):
+    from ..ci.synthese import MOTIF_ARGENT_OPTION_AVEC
+    return any(isinstance(o, dict) and o.get("bloc") == "argent"
+               and o.get("motif") == MOTIF_ARGENT_OPTION_AVEC
+               for o in (d.get("ind_synthese") or {}).get("omissions") or [])
+
+
 def _motif_non_chiffre(d, L):
     """``(texte, ligne de motif)`` quand la rentabilité n'est pas chiffrée.
     QJR119 / QXMT — jamais une table de zéros ; CIQ341 — un site MT demande
     ses 12 factures MT ; AMOT80 (D-ACI-8=a) — investissement non chiffré ⇒
     SON motif, jamais « économies pas encore calculées »."""
     motif = ci_couverture.ligne_non_chiffre(d, "ind", "i2")
+    if _argent_option_avec_omis(d):
+        # CPDF1 — option « avec batterie » servie sans son flux 25 ans : la
+        # page garde l'analyse énergétique, sans phrase « économies non
+        # calculées » (la couverture imprime l'économie de l'année 1).
+        return "", ""
     motif_inv = ci_couverture.motif_investissement(d, "ind")
     if motif_inv:
         return L("ci_ind_motif_invest_client",
@@ -704,9 +770,10 @@ def _corps_non_chiffre(d, L, pied, couleurs_gr, police, fmt, fmt_mad):
     énergétique (l'énergie mois par mois, le surplus) sous une petite ligne
     de motif ; sans bilan, l'encadré d'hier."""
     corps_txt, motif = _motif_non_chiffre(d, L)
-    chapeau = L("ci_ind_lead_non_chiffre",
-                "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
-                "calculée sur vos données.")
+    chapeau = "" if _argent_option_avec_omis(d) else L(
+        "ci_ind_lead_non_chiffre",
+        "Aucune rentabilité n'est publiée tant qu'elle n'est pas "
+        "calculée sur vos données.")
     graphique = bloc_energie_mensuelle(
         d, d.get("ind_synthese"), couleurs_gr, police, fmt, "i2",
         hauteur=170, largeur_mm=182)
@@ -835,7 +902,9 @@ def build(ctx):
         base_eco = d.get("ind_economie_base")
         if base_eco in ("HT", "TTC"):
             base_eco = L(f"ci_{base_eco.lower()}", base_eco)
-        payback = _num(indicateurs.get("retour_ans"))
+        # CPDF7 — le MÊME retour que la couverture (au dixième).
+        payback = ci_couverture.retour_dixieme(
+            argent, _num(indicateurs.get("retour_ans")))
         tri = _num(indicateurs.get("tri_pct"))
         tri_txt = decimale(f"{tri:.1f}") if tri is not None else None
 
@@ -856,7 +925,8 @@ def build(ctx):
                 "economie_annuelle", fmt(economie)))
         if payback is not None:
             cellules.append(kpi(
-                ci_couverture.ans(payback), L("ci_unite_ans", "&nbsp;ans"),
+                ci_couverture.ans(payback),
+                ci_couverture.unite_ans(d, ci_couverture.ans(payback)),
                 L("ci_ind_delai_retour", "Délai de retour"),
                 "payback_ans", ci_couverture.ans(payback)))
         if tri_txt is not None:
@@ -884,14 +954,15 @@ def build(ctx):
         hypotheses_html = (
             f'<div class="i2-hyp" data-graphique="hypotheses">'
             f'<div class="i2-hyp-t">'
-            f'{L("ci_hypotheses_estimation", TITRE_HYPOTHESES)}</div>'
+            f'{L("ci_bases_calcul", TITRE_HYPOTHESES)}</div>'
             # AMOT94 — sur deux colonnes : le tableau des 25 ans tient.
             + '<div class="i2-hyp-c">'
             + "".join(f'<div class="i2-hyp-i">{h}</div>' for h in lignes_hyp)
             + '</div></div>') if lignes_hyp and not cede(d, "hypotheses")             else ""
         om_txt = _ligne_om(argent, fmt_mad, L)
         revente_html = _ligne_revente(argent, fmt, L, ci_blocs.langue(d))
-        mt_source = (f'<br><span class="i2-mini">{d["ind_mt_mention"]}</span>'
+        mt_source = (f'<br><span class="i2-mini">'
+                     f'{ci_couverture.mention_client(d["ind_mt_mention"])}</span>'
                      if d.get("ind_mt_mention") else "")
         corps = f"""
   {kpis}
@@ -907,9 +978,9 @@ def build(ctx):
     {L("ci_ind_methode_tri_client", "TRI et délai de retour calculés sur ces flux annuels (méthode actuarielle).")}
     {mt_source}
   </div>"""
-        lead_txt = L("ci_ind_lead_client",
+        lead_txt = L("ci_cpdf_lead_finance",
                      "Projection sur {n} ans : flux annuels, délai de retour "
-                     "et TRI tirés de la même série ; hypothèses détaillées "
+                     "et TRI tirés de la même série ; bases du calcul "
                      "ci-dessous.", n=horizon_txt)
         titre = L("ci_ind_rentabilite_sur", "Rentabilité sur {n} ans",
                   n=horizon_txt)

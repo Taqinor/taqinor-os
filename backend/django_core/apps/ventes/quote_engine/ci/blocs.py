@@ -9,7 +9,15 @@ une seconde fois.
 """
 from __future__ import annotations
 
+import re
+
 from ..montants import decimale
+from ..i18n_labels_ci import LIBELLES_CI
+from ..i18n_labels_ci_pages import LIBELLES_CI_PAGES
+
+#: CPDF — les libellés propres aux pages C&I (résolus ici, jamais versés au
+#: catalogue ``i18n_labels.LIBELLES`` publié dans ``libelles_document``).
+_LIBELLES_CPDF = {**LIBELLES_CI, **LIBELLES_CI_PAGES}
 
 
 def _txt(valeur):
@@ -22,16 +30,59 @@ def libelle(d, cle, fr, **valeurs):
     """Le libellé ``cle`` du catalogue ``i18n_labels`` dans la langue du
     document (``theme.libelle_doc``) ; ``fr`` = le littéral historique du
     gabarit, rendu tel quel pour un document français (octet pour octet).
-    ``valeurs`` : des valeurs DÉJÀ formatées (aucun chiffre fabriqué ici)."""
+    ``valeurs`` : des valeurs DÉJÀ formatées (aucun chiffre fabriqué ici).
+    CPDF — les clés des tables ``i18n_labels_ci*`` se lisent dans ces tables
+    (jamais versées au catalogue publié)."""
+    from .. import i18n_labels
     from ..residential import theme
-    texte = theme.libelle_doc(d if isinstance(d, dict) else {}, cle, fr)
+    d = d if isinstance(d, dict) else {}
+    cpdf = _LIBELLES_CPDF.get(cle)
+    if cpdf is None:
+        texte = theme.libelle_doc(d, cle, fr)
+    else:
+        texte = libelle_cpdf(cle, langue(d)) if langue(d) != "fr" else fr
+        if langue(d) != "fr" and i18n_labels.est_rtl(langue(d)):
+            texte = f'<span class="i18n-rtl" dir="rtl">{texte}</span>'
     return texte.format(**valeurs) if valeurs else texte
+
+
+def libelle_cpdf(cle, langue_doc="fr"):
+    """CPDF — un libellé des tables ``i18n_labels_ci*`` dans ``langue_doc``
+    (repli français), sans balise de direction."""
+    table = _LIBELLES_CPDF[cle]
+    return table.get(langue_doc) or table["fr"]
 
 
 def langue(d):
     """La langue normalisée du document ('fr' par défaut)."""
     from ..residential import theme
     return theme.langue_doc(d if isinstance(d, dict) else {})
+
+
+def joindre(morceaux, separateur=" &middot; "):
+    """CPDF6 — les morceaux NON vides joints : jamais de séparateur orphelin
+    ni de puce vide."""
+    return separateur.join(m for m in (_txt(x) for x in morceaux) if m)
+
+
+def ligne_vendeur(marque, ident):
+    """CPDF6 — « <b>Marque</b> · e-mail · téléphone » du bloc de signature,
+    champs vides omis (UNE composition pour les pages commerciale et
+    industrielle)."""
+    return joindre([f"<b>{marque}</b>", (ident or {}).get("email"),
+                    (ident or {}).get("phone")], " &nbsp;·&nbsp; ")
+
+
+def nettoyer_separateurs(html, separateur=" &middot; "):
+    """CPDF6 — une ligne déjà composée (bande légale) sans morceau vide."""
+    return joindre(str(html or "").split(separateur), separateur)
+
+
+def garanties_servies(d, garanties):
+    """CPDF6 — la garantie « Batterie » seulement quand une option SERVIE
+    porte une batterie (``avec_ok`` du rendu) ; sinon retirée."""
+    batterie = d.get("avec_ok", True) and not d.get("avec_batterie_differee")
+    return [g for g in garanties if batterie or str(g[2]) != "Batterie"]
 
 
 # ── CIQ309 — bloc client entreprise ─────────────────────────────────────────
@@ -100,22 +151,37 @@ def legende_garanties(d):
     return libelle(d, "ci_legende_garanties", LEGENDE_GARANTIES)
 
 
-def textes_garantie(d, unite, etiquette):
+#: CPDF — « Onduleur (option 1) / (option 2) » de ``theme.warranties_for``
+#: (deux onduleurs aux garanties différentes) : en C&I l'option 1 est l'offre
+#: sans batterie, l'option 2 l'option avec batterie.
+_OPTION_GARANTIE = {" (option 1)": ("ci_opt_sans_batterie", "Sans batterie"),
+                    " (option 2)": ("ci_opt_avec_batterie", "Avec batterie")}
+
+
+def textes_garantie(d, unite, etiquette, n=None):
     """CIQ333 — ``(unité, libellé)`` ÉCHAPPÉS d'une cellule de garantie
     (``theme.warranties_for``) : « ans » et les composants connus suivent la
-    langue du document ; tout autre texte reste tel quel."""
+    langue du document ; tout autre texte reste tel quel. CPDF — « ans »
+    accordé à ``n`` en arabe ; « (option 1/2) » dit « sans / avec batterie »."""
     from .. import i18n_labels
     from ..residential import theme
-    unite_txt, etiquette_txt = theme._esc(str(unite)), theme._esc(
-        str(etiquette))
+    etiquette, option = str(etiquette), ""
+    for suffixe, (cle_option, fr_option) in _OPTION_GARANTIE.items():
+        if etiquette.endswith(suffixe):
+            etiquette = etiquette[:-len(suffixe)]
+            option = libelle(d, cle_option, fr_option)
+            option = f" ({option if langue(d) == 'ar' else option.lower()})"
+    unite_txt, etiquette_txt = theme._esc(str(unite)), theme._esc(etiquette)
     if langue(d) == "fr":
-        return unite_txt, etiquette_txt
+        return unite_txt, etiquette_txt + option
     if str(unite) == "ans":
-        unite_txt = libelle(d, "ci_ans", unite_txt)
-    cle = f"ci_garantie_{str(etiquette).strip().lower()}"
+        from .couverture import annees_accordees
+        unite_txt = annees_accordees(libelle(d, "ci_ans", unite_txt),
+                                     langue(d), n)
+    cle = f"ci_garantie_{etiquette.strip().lower()}"
     if cle in i18n_labels.LIBELLES:
         etiquette_txt = libelle(d, cle, etiquette_txt)
-    return unite_txt, etiquette_txt
+    return unite_txt, etiquette_txt + option
 
 
 def _montant(valeur):
@@ -145,7 +211,14 @@ def bloc_services(synthese, prefixe, couleur_titre, couleur_texte, doc=None):
                     if ht and ht > 0
                     else libelle(doc, "ci_tarif_sur_demande",
                                  "tarif sur demande"))
-            detail.append(f"{nom} — {prix}")
+            # CPDF — la désignation standard (« Exploitation et maintenance
+            # (O&M) », « … C&I ») répète le libellé « Maintenance (O&M) » :
+            # le prix seul ; une autre désignation reste nommée.
+            from .installation import designation_client
+            nom = designation_client(nom)
+            standard = nom.replace("&amp;", "&") == \
+                "Exploitation et maintenance (O&M)"
+            detail.append(prix if standard or not nom else f"{nom} — {prix}")
         statut = om.get("statut")
         suffixe = (libelle(doc, "ci_propose_non_inclus",
                            " (proposé, non inclus dans le total)")
@@ -197,8 +270,30 @@ def _date_signature(valeur):
     return _date_jjmmaaaa(valeur) or _txt(valeur)
 
 
+def _options_accord(d, fmt_mad=None):
+    """CPDF4 — ``[(clé, total TTC formaté)]`` des deux options d'un devis à
+    DEUX options non encore accepté ; ``[]`` sinon (mono-option, accepté).
+    Totaux SERVIS (offre réseau : ``totaux_all.ttc`` ; option avec :
+    ``option_batterie.totaux.ttc``), aucun recalcul."""
+    if d.get("deux_options") is False:
+        return []
+    if (_txt(d.get("accepte_par_nom")) or _txt(d.get("date_acceptation"))
+            or (isinstance(d.get("signature_entreprise"), dict)
+                and d["signature_entreprise"])):
+        return []
+    ob = d.get("option_batterie")
+    tot_avec = (_num_bloc(((ob or {}).get("totaux") or {}).get("ttc"))
+                if isinstance(ob, dict) else 0.0)
+    tot_sans = (_num_bloc((d.get("totaux_all") or {}).get("ttc"))
+                or _num_bloc(d.get("_invest_ttc")))
+    if tot_avec <= 0 or tot_sans <= 0 or d.get("avec_batterie_differee"):
+        return []
+    fmt = fmt_mad or _montant
+    return [("sans", fmt(tot_sans)), ("avec", fmt(tot_avec))]
+
+
 def bloc_acceptation(d, prefixe, couleur_texte="#1F2937",
-                     couleur_ligne="#E5E7EB"):
+                     couleur_ligne="#E5E7EB", fmt_mad=None):
     """Contenu de la case client « Bon pour accord — pour la société »
     (D-CIQ-11) : titre et mention éditables (``doc_texts``, CIQ311).
 
@@ -238,6 +333,17 @@ def bloc_acceptation(d, prefixe, couleur_texte="#1F2937",
               f'<div style="{cadre}">'
               f'{libelle(d, "ci_cachet", "Cachet de la société")}'
               f'</div></div>')
+    # CPDF4 — l'option retenue : deux cases à cocher sur un devis à deux options.
+    cases = "".join(
+        f'<div style="margin-top:3px;"><span style="display:inline-block;'
+        f'width:3mm;height:3mm;border:1px solid {couleur_texte};'
+        f'vertical-align:middle;margin-right:2mm;">&#160;</span>'
+        + libelle(d, f"ci_bpa_option_{cle}",
+                  {"sans": "Sans batterie — {total} MAD TTC",
+                   "avec": "Avec batterie — {total} MAD TTC"}[cle],
+                  total=total)
+        + '</div>' for cle, total in _options_accord(d, fmt_mad))
+    lignes = cases + lignes
     pour = libelle(d, "ci_pour_la_societe", "pour la société")
     return (f'<div class="{prefixe}-sign-h">{titre} — {pour}</div>'
             f'<div class="{prefixe}-acc" style="font-size:7pt;'
@@ -298,7 +404,7 @@ def bloc_echeancier(synthese, prefixe, couleur_titre="#0F1E35",
             f'color:{couleur_titre};">{_pct(j.get("pct"))}&#160;%</div>'
             f'<div style="margin-top:1px;">{_libelle_jalon(doc, j)}</div>'
             f'{montant_html}</td>')
-    titre = libelle(doc, "ci_echeancier", TITRE_ECHEANCIER)
+    titre = libelle(doc, "ci_cpdf_echeancier", TITRE_ECHEANCIER)
     return (f'<div class="{prefixe}-ech" style="margin-top:12px;'
             f'font-size:7.5pt;color:{couleur_texte};line-height:1.3;">'
             f'<div style="font-size:9pt;font-weight:700;'
@@ -480,11 +586,26 @@ def puces_conditions(d):
     return puces
 
 
+_PUCE_ECHEANCIER = re.compile(
+    r"\s*(?:échéancier de paiement|payment schedule|جدول الأداء|جدول الدفع)",
+    re.IGNORECASE)
+
+
+def _echeancier_imprime(d):
+    synthese = d.get("com_synthese") or d.get("ind_synthese") or {}
+    return any(isinstance(j, dict) for j in synthese.get("echeancier") or [])
+
+
 def bloc_conditions(d, prefixe, couleur_titre, couleur_texte):
     """``<div>`` « Conditions » : puces CGV (gelées) et note de TVA
     multi-taux (``tva_note``, si les puces ne la portent pas déjà) — styles
     en ligne, compact, pour tenir dans la page EXISTANTE (D-QJR5-12)."""
     puces = puces_conditions(d)
+    if _echeancier_imprime(d):
+        # CPDF10 — l'échéancier est imprimé en cartes (montants au centime,
+        # dernier jalon = reliquat) : la puce CGV qui le répète (« Acompte :
+        # 50 % ; … ; Solde : 10 % ») n'est pas imprimée une seconde fois.
+        puces = [p for p in puces if not _PUCE_ECHEANCIER.match(p)]
     tva_note = _txt(d.get("tva_note"))
     if tva_note and not any(tva_note in p for p in puces):
         puces.append(tva_note)
