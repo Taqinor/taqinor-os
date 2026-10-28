@@ -70,6 +70,30 @@ def _ecrire_devis_auto_par_pipeline(*, company, user, lead, creer, lignes,
     return devis
 
 
+#: CORC7 (27/10/2026) — nombre de références nommées dans l'alerte.
+NB_BROUILLONS_NOMMES = 5
+
+
+def _alertes_brouillons_ci_du_lead(devis):
+    """CORC7 — les AUTRES brouillons C&I actifs du même lead, nommés au
+    vendeur (le lead boulangerie de prod en portait 4). Décision prise pour le
+    fondateur (à revoir) : on PRÉVIENT, on n'archive jamais — un devis archivé
+    ne se réactive plus (``_gardes_mise_a_jour``)."""
+    from apps.ventes.models import Devis
+    autres = list(Devis.objects.filter(
+        company=devis.company, lead=devis.lead, statut=Devis.Statut.BROUILLON,
+        is_active=True, mode_installation__in=('commercial', 'industriel'),
+    ).exclude(pk=devis.pk).order_by('-pk').values_list('reference', flat=True))
+    if not autres:
+        return []
+    noms = ', '.join(autres[:NB_BROUILLONS_NOMMES]) + (' …' if len(autres) > NB_BROUILLONS_NOMMES else '')
+    return [{'code': 'brouillons_ci_multiples', 'champ': 'lead', 'niveau': 'alerte',
+             'interne': True,
+             'message': ('Ce lead a déjà %d autre(s) brouillon(s) commercial/industriel : %s. '
+                         "Gardez le bon et archivez les autres pour ne pas envoyer le "
+                         'mauvais devis au client.' % (len(autres), noms))}]
+
+
 def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
                          journal_auto=None, target_kwc=None):
     """CIQ120 — devis automatique COMMERCIAL / INDUSTRIEL par le serveur.
@@ -121,6 +145,12 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
     entrees['mode'] = lead.type_installation
     if scenario:
         entrees['scenario'] = scenario
+        if scenario == SCENARIO_LES_DEUX:
+            # CORC9 (27/10/2026) — CIQ302 (convention 5) : un C&I à deux
+            # options MET EN AVANT l'offre réseau (``options.
+            # option_mise_en_avant``) ; sans cette clé, le PDF retombait sur
+            # la règle résidentielle et marquait « Avec batterie » RECOMMANDÉ.
+            entrees['recommended_option'] = SCENARIO_SANS_BATTERIE
 
     def _create(ref):
         return Devis.objects.create(
@@ -142,6 +172,7 @@ def _build_devis_auto_ci(*, lead, user, company, taux_tva=None,
         alertes += [dict(a) for a in etude.get('alertes') or []
                     if a.get('niveau') in ('alerte', 'bloquant')
                     and a.get('code') != 'a_chiffrer_visite']
+        alertes += _alertes_brouillons_ci_du_lead(devis)
         journal_auto['alertes'] = alertes
     logger.info('Auto-devis C&I %s: %s kWc (lead %s, company %s)', devis.reference,
                 (etude.get('taille') or {}).get('retenue_kwc'), getattr(lead, 'pk', '?'),
@@ -555,6 +586,10 @@ from apps.ventes.domain.pipeline import (  # noqa: E402 — fin de module (anti-
     ORIGINE_TUNNEL,
     IntentionDevis,
     appliquer,
+)
+from apps.ventes.domain.scenario import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
+    SCENARIO_LES_DEUX,
+    SCENARIO_SANS_BATTERIE,
 )
 from apps.ventes.domain.taille import (  # noqa: E402 — fin de module (anti-cycle) (D-ENF22)
     AutoDevisError,

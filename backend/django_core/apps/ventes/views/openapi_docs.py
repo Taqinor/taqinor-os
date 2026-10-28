@@ -20,6 +20,7 @@ from core.champs_stricts import (
 )
 from core.openapi_erreurs import EXTENSION_CORPS_RESSERRE
 from core.parseurs import ChoixDocumente
+from ..domain.bornes import MOTIF_MONTANT_POSITIF
 from ..models import Devis, Paiement, ROLES_AUTO_COMPOSITION
 from ..payments.providers import providers_lien_actifs
 from ..serializers import (
@@ -351,13 +352,9 @@ PdfOptionsRequest = _ser('DevisPdfOptionsRequest', {
     'langue_sortie': ChaineStricte(required=False),
 })
 
-#: ENF11 (api-fuzz « rejected schema-compliant request ») — un montant
-#: d'encaissement est STRICTEMENT positif (``"0"`` refusé « Le montant doit
-#: être positif. ») : la règle est publiée dans le motif du décimal-chaîne
-#: (drf-spectacular n'émet ni minimum ni maximum pour une chaîne), 12 chiffres
-#: dont 2 décimales.
-MOTIF_MONTANT_POSITIF = (r'^0*(?:[1-9]\d{0,9}(?:\.\d{0,2})?'
-                         r'|\.(?:[1-9]\d?|0[1-9]))$')
+#: ENF11 — ``MOTIF_MONTANT_POSITIF`` (montant d'encaissement STRICTEMENT
+#: positif) vit dans le domaine (``domain/bornes``), partagé avec les
+#: sérialiseurs d'entrée ; importé en tête de module.
 
 
 def corps_resserre(regle):
@@ -398,14 +395,13 @@ MOTIF_MONTANT_NOTE_DEBIT = (r'^0*(?:[1-9][0-9]{0,7}(?:\.[0-9]{0,2})?'
 MOTIF_TAUX_NOTE_DEBIT = (r'^(?:|100(?:\.0{0,2})?'
                          r'|[0-9]{1,2}(?:\.[0-9]{0,2})?'
                          r'|\.[0-9]{1,2})$')
+# api-fuzz-full 27/10 — les motifs vivent sur les champs (un seul ``pattern``
+# par champ) : doublés ici du « sans NUL » de ``ChaineStricte``, l'``allOf``
+# était ingénérable (« Failed Health Check », filter_too_much).
 CORPS_NOTE_DEBIT_LIGNES_OU_MONTANT = corps_resserre({'anyOf': [
     {'required': ['lignes'],
      'properties': {'lignes': {'type': 'array', 'minItems': 1}}},
-    {'required': ['montant'],
-     'properties': {'montant': {'type': 'string',
-                                'pattern': MOTIF_MONTANT_NOTE_DEBIT},
-                    'taux_tva': {'type': 'string',
-                                 'pattern': MOTIF_TAUX_NOTE_DEBIT}}},
+    {'required': ['montant']},
 ]})
 
 EnregistrerAvanceRequest = _ser('PaiementEnregistrerAvanceRequest', {
@@ -415,9 +411,11 @@ EnregistrerAvanceRequest = _ser('PaiementEnregistrerAvanceRequest', {
     # ENF11 — ce que la vue accepte : un mode de ``Paiement.Mode`` (sinon
     # 400 « Mode de paiement inconnu. »), une référence de 120 caractères.
     'mode': s.ChoiceField(choices=Paiement.Mode.choices, required=False),
-    'reference': s.CharField(required=False, allow_blank=True,
-                             max_length=120),
-    'note': s.CharField(required=False, allow_blank=True),
+    # api-fuzz-full 27/10 (ENF11) — textes STRICTS : motif « sans NUL » publié
+    # (un ``\u0000`` dans ``note`` était conforme puis 500 à l'INSERT).
+    'reference': ChaineStricte(required=False, allow_blank=True,
+                               max_length=120),
+    'note': ChaineStricte(required=False, allow_blank=True),
 })
 
 
@@ -1107,15 +1105,26 @@ ErreurEconomie = _ser('DevisErreurEconomie', {
 #: Une date FUTURE est un refus d'état (dépend du jour) : 409.
 MOTIF_MONTANT_SAISI = (
     r'^(?:[1-9][0-9]{0,9}(?:\.[0-9]{0,2})?|0?\.(?:0[1-9]|[1-9][0-9]?))$')
-PaiementDejaRecu = _ser('DevisFacturerCompletPaiementSaisi', {
-    'montant': ChaineStricte(trim_whitespace=False, validators=[_MotifEntier(
-        MOTIF_MONTANT_SAISI, message='Montant invalide.')]),
-    'date_paiement': DateStricte(),
-    'mode_paiement': ChoixDocumente(choices=[
-        'especes', 'virement', 'cheque', 'carte', 'prelevement', 'autre']),
-    'reference': ChaineStricte(required=False, allow_blank=True,
-                               allow_null=True, max_length=120),
-})
+
+
+def _paiement_deja_recu(nom):
+    """Un paiement déjà reçu — instance NEUVE à chaque appel (un sérialiseur
+    n'est l'enfant que d'un seul ``ListField``), sous un nom de composant
+    propre : « Facturer » complet ET « Facturer la vente » (même lecteur,
+    ``valider_paiements_saisis``)."""
+    return _ser(nom, {
+        'montant': ChaineStricte(trim_whitespace=False, validators=[
+            _MotifEntier(MOTIF_MONTANT_SAISI, message='Montant invalide.')]),
+        'date_paiement': DateStricte(),
+        'mode_paiement': ChoixDocumente(choices=[
+            'especes', 'virement', 'cheque', 'carte', 'prelevement',
+            'autre']),
+        'reference': ChaineStricte(required=False, allow_blank=True,
+                                   allow_null=True, max_length=120),
+    })
+
+
+PaiementDejaRecu = _paiement_deja_recu('DevisFacturerCompletPaiementSaisi')
 FacturerCompletRequest = _ser('DevisFacturerCompletRequest', {
     'paiements': s.ListField(child=PaiementDejaRecu, required=False,
                              max_length=5),
@@ -1153,8 +1162,13 @@ FacturerVenteRequest = _ser('DevisFacturerVenteRequest', {
     'libelle': ChaineStricte(required=False, allow_null=True,
                              allow_blank=True),
     'emettre': BooleenStrict(required=False),
-    'paiements': s.ListField(child=s.DictField(), required=False,
-                             max_length=5),
+    # api-fuzz-full 27/10 (ENF11) — publié tel que ``valider_paiements_saisis``
+    # le lit (un ``{}`` sans ``montant`` était « conforme » puis refusé 400
+    # « Paiement n°1 : montant invalide. ») : la forme du paiement de
+    # « Facturer » complet, validée ici par le même sérialiseur.
+    'paiements': s.ListField(
+        child=_paiement_deja_recu('DevisFacturerVentePaiementSaisi'),
+        required=False, max_length=5),
     'remplacer_brouillons': BooleenStrict(required=False),
     'utiliser_avances': BooleenStrict(required=False),
     'override_avertissement': BooleenStrict(required=False),
@@ -1432,8 +1446,12 @@ CreerNoteDebitRequest = _ser('FactureCreerNoteDebitRequest', {
                           required=False),
     # AFAC32 — sans ``lignes`` : un montant HT + un taux (défaut : celui de
     # la facture). Publiés pour que la règle « lignes OU montant » le soit.
-    'montant': ChaineStricte(required=False),
-    'taux_tva': ChaineStricte(required=False, allow_blank=True),
+    # Motifs appliqués dès qu'ils sont présents (avec ou sans lignes).
+    'montant': ChaineStricte(required=False, trim_whitespace=False,
+                             validators=[_MotifEntier(MOTIF_MONTANT_NOTE_DEBIT)]),
+    'taux_tva': ChaineStricte(required=False, allow_blank=True,
+                              trim_whitespace=False,
+                              validators=[_MotifEntier(MOTIF_TAUX_NOTE_DEBIT)]),
 })
 LigneRetour = _ser('FactureLigneRetour', {
     # CI #997 fuzz — un id de produit (≥ 1, entier JSON) : ``0`` était

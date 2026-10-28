@@ -86,6 +86,46 @@ class SignatureInterventionTests(TestCase):
         self.assertFalse(self.non_signee.signature_client)
         self.assertIsNone(self.non_signee.signe_le)
 
+    def test_nom_ou_motif_avec_nul_400_rien_ecrit(self):
+        # api-fuzz-full 27/10 : un NUL dans `signataire_nom` atteignait le
+        # chatter (PostgreSQL) → 500 ; 400 nommant le champ, rien d'écrit.
+        for extra in ({'signataire_nom': 'Cli\x00ent'},
+                      {'motif_override_signature': 'mo\x00tif'},
+                      # api-fuzz-full 27/10 : l'alias `motif_override` est
+                      # publié strict lui aussi (motif sans NUL).
+                      {'motif_override': 'mo\x00tif'},
+                      {'signataire_nom': 5}):
+            r = self._signer(self.non_signee, **extra)
+            self.assertEqual(r.status_code, 400, (extra, r.content))
+            self.non_signee.refresh_from_db()
+            self.assertIsNone(self.non_signee.signe_le)
+
+    def test_motif_publie_egal_acceptation(self):
+        """api-fuzz-full 27/10 (ENF11) : `signature_client` est publiée par le
+        motif de data-URL que le serveur applique (chaîne libre « conforme »
+        puis refusée 400) ; une valeur hors motif reste un 400 sous le champ."""
+        import re
+
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        corps = schema['components']['schemas']['SignerInterventionRequeteRequest']
+        self.assertIn('signature_client', corps['required'])
+        motif = corps['properties']['signature_client']['pattern']
+        for valeur, accepte in ((SIG_B, True), ('0', False), (URL_SSRF, False),
+                                ('data:image/gif;base64,QkJC', False)):
+            with self.subTest(valeur=valeur):
+                self.assertEqual(bool(re.search(motif, valeur)), accepte)
+                if not accepte:
+                    r = self._signer(self.non_signee, signature_client=valeur)
+                    self.assertEqual(r.status_code, 400, r.data)
+                    self.assertIn('signature_client', r.data)
+        self.assertEqual(self._signer(self.non_signee).status_code, 200)
+
     def test_resignature_sans_motif_409(self):
         r = self._signer(self.signee)
         self.assertEqual(r.status_code, 409, r.data)

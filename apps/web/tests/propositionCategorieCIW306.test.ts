@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as lib from '../src/lib/proposition';
 import { syntheseCi, categorieCi, type ProposalResponse } from '../src/lib/proposition';
+import { lirePageProposition, lireLibProposition } from './astroBlocsHelper';
 
 function payload(mode: string, synthese: Record<string, unknown>): ProposalResponse {
   return {
@@ -64,13 +65,13 @@ describe('CIW306 — categorieCi (extracteur pur)', () => {
 describe('CIW306 — la copie TS est supprimée', () => {
   it('COMMERCIAL_ARCHETYPES / commercialArchetype n\'existent plus', () => {
     expect((lib as Record<string, unknown>).commercialArchetype).toBeUndefined();
-    const src = readFileSync(fileURLToPath(new URL('../src/lib/proposition.ts', import.meta.url)), 'utf-8');
+    const src = lireLibProposition();
     expect(src).not.toMatch(/const COMMERCIAL_ARCHETYPES/);
     expect(src).not.toMatch(/export function commercialArchetype/);
     expect(src).not.toMatch(/interface CommercialArchetype/);
   });
   it('la page rend la catégorie servie, pas un archétype local', () => {
-    const page = readFileSync(fileURLToPath(new URL('../src/pages/proposition/[...token].astro', import.meta.url)), 'utf-8');
+    const page = lirePageProposition();
     expect(page).not.toMatch(/comArchetype|commercialArchetype/);
     expect(page).toContain('const ciCategorie = ok && isCommercial ? categorieCi(ci) : null;');
     expect(page).toContain('id="mode-commercial-cat"');

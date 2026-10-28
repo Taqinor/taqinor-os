@@ -10,7 +10,7 @@ rangement (``RegleRangement``/``CategorieStockage``, ZSTK9) vivent dans
 """
 import logging
 
-from .erreurs_achats import EtatIncompatible
+from .erreurs_achats import EtatIncompatible, IntrouvableMetier
 
 logger = logging.getLogger('stock.wms')
 
@@ -1143,7 +1143,7 @@ def configurer_liberation_vague(*, vague, mode, seuil_lignes=None):
         except (TypeError, ValueError):
             raise ValueError(
                 'Le mode AUTO_SEUIL exige un seuil de lignes positif.')
-        if seuil_lignes <= 0:
+        if not 0 < seuil_lignes <= 2147483647:  # int4 : 2**65 débordait (500)
             raise ValueError(
                 'Le mode AUTO_SEUIL exige un seuil de lignes positif.')
     else:
@@ -2062,12 +2062,11 @@ def deplacer_unite_logistique(*, unite, bin_destination, user=None):
 
     if unite is None:
         raise ValueError('Unité logistique introuvable.')
-    if bin_destination is None:
-        raise ValueError('Casier de destination introuvable dans cette '
-                         'société.')
-    if bin_destination.company_id != unite.company_id:
-        raise ValueError('Casier de destination introuvable dans cette '
-                         'société.')
+    # api-fuzz-full 27/10 (ENF11) : un casier absent ou d'une AUTRE société
+    # est une référence qui ne résout rien → 404 (même réponse, pas d'oracle).
+    if bin_destination is None or bin_destination.company_id != unite.company_id:
+        raise IntrouvableMetier('Casier de destination introuvable dans cette '
+                                'société.')
     if unite.statut == unite.Statut.EXPEDIE:
         raise ValueError('Une unité expédiée ne se déplace plus en entrepôt.')
 

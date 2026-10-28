@@ -17,7 +17,15 @@ La GARDE elle-même (« pas de confirmation sans contrôle ») est posée dans
 """
 import logging
 
+from .erreurs_achats import EtatIncompatible
+
 logger = logging.getLogger(__name__)
+
+#: api-fuzz-full 27/10 (ENF11) — refus d'ÉTAT (corps conforme, la réception
+#: confirmée s'y oppose) : ``EtatIncompatible`` → 409, plus un 400.
+_MESSAGE_RECEPTION_CONFIRMEE = (
+    'Cette réception est déjà confirmée : son contrôle qualité ne '
+    'peut plus être modifié.')
 
 
 def plan_echantillonnage_pour_produit(company, produit):
@@ -114,9 +122,7 @@ def enregistrer_controle_reception(*, reception, user, resultat,
         raise ValueError(
             'Résultat invalide : attendu « conforme » ou « non_conforme ».')
     if reception.statut == ReceptionFournisseur.Statut.CONFIRME:
-        raise ValueError(
-            'Cette réception est déjà confirmée : son contrôle qualité ne '
-            'peut plus être modifié.')
+        raise EtatIncompatible(_MESSAGE_RECEPTION_CONFIRMEE)
     try:
         controlees = max(int(unites_controlees or 0), 0)
     except (TypeError, ValueError):
@@ -129,9 +135,7 @@ def enregistrer_controle_reception(*, reception, user, resultat,
         reception = ReceptionFournisseur.objects.select_for_update().get(
             pk=reception.pk)
         if reception.statut == ReceptionFournisseur.Statut.CONFIRME:
-            raise ValueError(
-                'Cette réception est déjà confirmée : son contrôle qualité ne '
-                'peut plus être modifié.')
+            raise EtatIncompatible(_MESSAGE_RECEPTION_CONFIRMEE)
         controle = controle_de_reception(reception)
         if controle is None:
             controle = ControleReception(

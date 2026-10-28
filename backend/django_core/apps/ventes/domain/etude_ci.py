@@ -70,7 +70,28 @@ POSES_SUIVANT_LE_TOIT = ('bac_acier', 'toiture_inclinee')
 #: surimposition. La borne s'applique, dite « pose estimée, à confirmer au
 #: calepinage ».
 POSE_PAR_DEFAUT_COUVERTURE = {'terrasse_beton': 'toit_plat_leste'}
-POSE_PAR_DEFAUT = 'toiture_inclinee'
+#: CORC5 (27/10/2026, décision prise pour le fondateur, à revoir) — sans
+#: couverture connue : une PENTE de toit déclarée ⇒ les panneaux suivent le
+#: toit (surimposition) ; sinon la pose que la composition CHIFFRE
+#: (``moteur_ci.composition.TYPE_POSE_DEFAUT``, toit plat lesté, fondateur
+#: 26/10) — production, borne de toit et prix décrivent la même installation.
+POSE_TOIT_INCLINE = 'toiture_inclinee'
+
+
+def _pose_estimee(res):
+    """CORC5 — le mode de pose ESTIMÉ quand aucun n'est déclaré."""
+    from apps.ventes.moteur_ci.composition import TYPE_POSE_DEFAUT
+    par_couverture = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'))
+    if par_couverture:
+        return par_couverture
+    # Critique Fable (vague 2) : la pente du LEAD vit dans la feuille privée
+    # ``_pente_toit`` (recopiée dans ``pente_deg`` seulement quand les
+    # panneaux suivent le toit) — elle compte aussi.
+    pente = _num(res.valeur('pente_deg'))
+    if pente is None:
+        pente = _num(res.valeur('_pente_toit'))
+    return POSE_TOIT_INCLINE if pente and pente > 0 else TYPE_POSE_DEFAUT
+
 
 #: (feuille, chemin dans le corps / dans ``Devis.etude_params``).
 FEUILLES = (
@@ -119,6 +140,8 @@ CHEMINS_LEAD = {
     'rythme.secteur_industriel': 'secteur_industriel',
     'rythme.categorie_commerciale': 'categorie_commerciale',
     'rythme.reponses_categorie': 'reponses_categorie',
+    # Décision fondateur 26/10/2026 — talon déclaré par le client (part du mois).
+    'rythme.talon': 'talon',
     'toit.surface_utile_m2': 'surface_utile_m2',
     'toit.type_toiture': 'couverture',
     # Feuille PRIVÉE : elle ne sert qu'à choisir la pose (ombrière / sol).
@@ -312,7 +335,7 @@ def _couche_lead(res, lead):
             res.poser('type_pose', POSE_DE_LA_SURFACE_LEAD.get(valeur), prov)
         if feuille == 'surface_utile_m2':
             res.poser('surface_type', 'declaree', prov)
-    if res.valeur('type_pose') in POSES_SUIVANT_LE_TOIT:
+    if (res.valeur('type_pose') or _pose_estimee(res)) in POSES_SUIVANT_LE_TOIT:
         for prive, feuille in (('_pente_toit', 'pente_deg'), ('_azimut_toit', 'azimut_deg')):
             res.poser(feuille, res.valeur(prive), res.provenance(prive))
     # CIQ134 — cos φ DÉCLARÉ (information du lead, avec sa provenance) :
@@ -357,18 +380,21 @@ def _couche_corps(res, corps):
 POSE_DE_LA_COUVERTURE_VISITE = {'bac_acier': 'bac_acier', 'tuile': 'toiture_inclinee'}
 
 
-def _poser_mesure(res, feuille, valeur, provenance):
+def _poser_mesure_visite(res, feuille, valeur, provenance, devis_modifiable=False):
     """Une mesure de visite passe devant le lead, jamais devant une saisie
-    (corps) ni le devis."""
+    (corps). CORC4 (27/10/2026) : elle passe aussi devant la valeur STOCKÉE
+    d'un devis encore modifiable (brouillon) — copie d'une déclaration faite
+    AVANT la visite ; un devis envoyé garde ce que le client a reçu."""
     if _vide(valeur):
         return
     actuelle = res.provenance(feuille) or {}
-    if actuelle.get('origine') in ('saisie', 'devis'):
+    if actuelle.get('origine') == 'saisie' or (
+            actuelle.get('origine') == 'devis' and not devis_modifiable):
         return
     res.poser(feuille, valeur, provenance)
 
 
-def _couche_visite(res, lead, alertes):
+def _couche_visite(res, lead, alertes, devis=None):
     """CIQ141 — le relevé de la dernière visite ``ci`` VALIDÉE du lead (façade
     ``apps.visites.selectors.releve_ci_pour_lead``, jamais ses modèles) :
     vérifié par la visite > déclaré > absent. Une mesure « non relevée » ne
@@ -381,12 +407,20 @@ def _couche_visite(res, lead, alertes):
         return
     prov = _provenance('mesure_visite', 'visite %s' % releve.get('visite_id'),
                        releve.get('validee_le'))
-    # Longueurs de cheminement : par trajet, sommées.
+    modifiable = devis is None or (getattr(devis, 'statut', '') or '') == 'brouillon'
+
+    def poser(feuille, valeur):
+        _poser_mesure_visite(res, feuille, valeur, prov, modifiable)
+
+    # Longueurs de cheminement : CORC4 (constat CMP, 27/10/2026) — le trajet
+    # le PLUS LONG, jamais la somme : la composition lit le DC comme une
+    # distance aller simple champ → onduleur (2 × chaînes × distance) et l'AC
+    # comme une distance par onduleur.
     trajets = releve.get('trajets') or []
     for cle in ('longueur_dc_m', 'longueur_ac_m'):
         valeurs = [_num(t.get(cle)) for t in trajets if _num(t.get(cle)) is not None]
         if valeurs:
-            _poser_mesure(res, cle, round(sum(valeurs), 2), prov)
+            poser(cle, round(max(valeurs), 2))
     # Zones de toiture : la plus grande surface utile devient le toit de l'étude.
     zones = []
     for zone in releve.get('zones_toiture') or []:
@@ -400,20 +434,20 @@ def _couche_visite(res, lead, alertes):
     if zones:
         surface, zone = max(zones, key=lambda z: z[0])
         if surface:
-            _poser_mesure(res, 'surface_utile_m2', round(surface, 2), prov)
-            _poser_mesure(res, 'surface_type', 'mesuree', prov)
+            poser('surface_utile_m2', round(surface, 2))
+            poser('surface_type', 'mesuree')
         couverture = zone.get('couverture')
-        _poser_mesure(res, 'couverture', couverture, prov)
-        _poser_mesure(res, 'type_pose', POSE_DE_LA_COUVERTURE_VISITE.get(couverture), prov)
-        _poser_mesure(res, 'pente_deg', _num(zone.get('pente_deg')), prov)
+        poser('couverture', couverture)
+        poser('type_pose', POSE_DE_LA_COUVERTURE_VISITE.get(couverture))
+        poser('pente_deg', _num(zone.get('pente_deg')))
         charge = _num(zone.get('charge_admissible_declaree_kg_m2'))
         if charge is not None:
             piece = zone.get('charge_admissible_piece')
             source = 'pièce %s, zone « %s » (visite %s du %s)' % (
                 piece if not _vide(piece) else 'non jointe', zone.get('libelle') or '?',
                 releve.get('visite_id'), releve.get('validee_le'))
-            _poser_mesure(res, 'charge_admissible_kg_m2', charge, prov)
-            _poser_mesure(res, 'charge_admissible_source', source, prov)
+            poser('charge_admissible_kg_m2', charge)
+            poser('charge_admissible_source', source)
     # Comptage : seulement si le lead ne le porte pas encore.
     tension = (releve.get('niveau_tension') or {}).get('constate')
     if tension and res.valeur('tension') in (None, 'inconnue'):
@@ -638,8 +672,9 @@ def _garde_kwh_factures(res, tarif, alertes):
 def lire_production(site, toit=None):
     """``(productible_mensuel, formes_saison, source, serie)`` ou ``None`` (PVGIS).
 
-    AMOT99 — ``serie`` : l'année type HORAIRE au plan de ``toit``, au seul point
-    GPS du site ; sinon ``None`` (repli dit, hypothèse ``methode_autoconsommation``)."""
+    AMOT99 — ``serie`` : l'année type HORAIRE au plan de ``toit``, au point
+    GPS du site, sinon (CORC12) au point de sa ville au gazetier ; sinon
+    ``None`` (repli dit, hypothèse ``methode_autoconsommation``)."""
     from apps.parametres.pvgis_profils import productible_mensuel
 
     from ..etude_horaire import _formes_production_par_saison
@@ -655,7 +690,10 @@ def lire_production(site, toit=None):
     if not formes or not mensuel:
         return None
     productibles, source = mensuel
-    return productibles, formes, source, _serie_horaire(lat, lon, toit)
+    # CORC12 (27/10/2026, constat CMP) — sans GPS déclaré, la série horaire
+    # se calcule au point de la VILLE au gazetier (ville inconnue ⇒ repli dit
+    # sur les journées moyennes).
+    return productibles, formes, source, _serie_horaire(*_point_du_site(site), toit)
 
 
 def _serie_horaire(lat, lon, toit):
@@ -678,8 +716,7 @@ def _toit_declare(res):
     prend la pose déclarée, sinon la pose estimée D-ACI-13."""
     toit = {'type_pose': res.valeur('type_pose'), 'pente_deg': res.valeur('pente_deg'),
             'azimut_deg': res.valeur('azimut_deg')}
-    pose = toit['type_pose'] or POSE_PAR_DEFAUT_COUVERTURE.get(
-        res.valeur('couverture'), POSE_PAR_DEFAUT)
+    pose = toit['type_pose'] or _pose_estimee(res)
     return toit, dict(toit, type_pose=pose)
 
 
@@ -758,6 +795,9 @@ def lire_catalogue_ci(company):
             'motif_exclusion': element.get('motif_exclusion'),
             'dc_max_kwc': specs.get('dc_max_kwc'),
             's_max_kva': specs.get('s_max_kva'),
+            # Demande CMP (27/10/2026) : chaînes par entrée MPPT publiées par la
+            # fiche, lues d'abord par le concepteur de chaînes (facultatif).
+            'chaines_max_par_mppt': specs.get('chaines_max_par_mppt'),
             # ADEV87 — la fiche électrique (chaînes), ``None`` si incomplète.
             'spec': specs_onduleur(specs, element.get('nom') or '')[0] if specs else None,
         })
@@ -813,6 +853,21 @@ def _reglages_societe(company):
 
 # ── 4. TOIT ──────────────────────────────────────────────────────────────────
 
+def _point_du_site(site):
+    """``(lat, lon)`` : le GPS déclaré du site, sinon (CORC12) le point de sa
+    VILLE au gazetier (``parametres.villes_maroc.coordonnees_ville`` — la
+    ville que PVGIS lit aussi). Jamais une position devinée : ville inconnue
+    ⇒ ``(None, None)``. Sert la série horaire, la borne lestée (espacement
+    anti-ombrage) et les coordonnées FIGÉES de l'étude."""
+    site = site or {}
+    lat, lon = _num(site.get('lat')), _num(site.get('lon'))
+    if lat is not None and lon is not None:
+        return lat, lon
+    from apps.parametres.villes_maroc import coordonnees_ville
+    coords = coordonnees_ville(site.get('ville') or '')
+    return (coords[0], coords[1]) if coords else (None, None)
+
+
 def _borne_toit(res, devis, module, alertes):
     pmax = (module or {}).get('pmax_wc')
     if devis is not None and pmax:
@@ -839,11 +894,11 @@ def _borne_toit(res, devis, module, alertes):
     mode_pose = res.valeur('type_pose')
     pose_estimee = not mode_pose
     if pose_estimee:
-        mode_pose = POSE_PAR_DEFAUT_COUVERTURE.get(res.valeur('couverture'), POSE_PAR_DEFAUT)
+        mode_pose = _pose_estimee(res)
     resultat = calepinage_services.contenance_surface_declaree(
         surface, mode_pose=mode_pose, cotes_module_m=cotes,
         inclinaison_deg=pente if pente is not None else PVGIS_ANGLE_DEG,
-        latitude_deg=_num(site.get('lat')), puissance_module_wc=pmax)
+        latitude_deg=_point_du_site(site)[0], puissance_module_wc=pmax)
     if resultat.get('kwc') is None:
         alertes.append(_alerte('contenance_toit_inconnue', 'toit',
                                'Contenance du toit non bornée : %s.' % resultat.get('motif')))
@@ -1092,7 +1147,7 @@ def _jours_types_de_charge(company, res, mode, categorie, rythme, mesuree, regis
             profil_societe=_profil_societe(
                 company, mode, categorie if mode == 'commercial'
                 else res.valeur('secteur_industriel')),
-            production_jours_types=production['jours_types'])
+            production_jours_types=production['jours_types'], segment=mode)
     return jours_types, prov_charge, al_charge
 
 
@@ -1195,13 +1250,13 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         alertes.append(_alerte('mode_inconnu', 'mode',
                                'Mode commercial ou industriel requis.', niveau='bloquant'))
         return _sans_cles_interdites(_vide_etude(res, alertes, hypotheses))
-    _couche_visite(res, lead, alertes)
+    _couche_visite(res, lead, alertes, devis=devis)
     if _num(res.valeur('longueur_dc_m')) is None and _num(res.valeur('longueur_ac_m')) is None:
         alertes.append(_alerte(
             'longueurs_non_relevees', 'contraintes',
             'Longueurs de câble non relevées — à confirmer à la visite.'))
     tension = res.valeur('tension')
-    tarif = tarif_ci.tarif_applicable(res.valeur('tarif_declare'), tension=tension)
+    tarif = tarif_ci.tarif_applicable(res.valeur('tarif_declare'), tension=tension, **tarif_ci.regles_du(devis))
     # ADEV76 — dit dès la résolution : un refus nomme le contrat du lead même
     # quand le profil de charge arrête l'étude plus loin.
     if tarif.get('origine') == tarif_ci.ORIGINE_OMIS:
@@ -1238,7 +1293,9 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
         production, hyp_prod, al_prod = bloc_production_ci(
             productible_mensuel=productibles, formes_saison=formes,
             derate=PRODUCTION_DERATE,
-            coordonnees_figees={'lat': _num(site.get('lat')), 'lon': _num(site.get('lon')),
+            # Critique Fable (vague 2) : le point RÉELLEMENT appelé (GPS ou
+            # ville au gazetier), pour une étude reproductible.
+            coordonnees_figees={'lat': _point_du_site(site)[0], 'lon': _point_du_site(site)[1],
                                 'date_appel': _aujourdhui().isoformat()},
             source=source, toit=toit_declare, serie=serie, plan=(serie or {}).get('plan'))
         alertes.extend(al_prod)
@@ -1313,7 +1370,7 @@ def etudier_ci(company, entrees, *, devis=None, lead=None, production_figee=None
             res.valeur('taille_explicite_kwc'), catalogue['module'], hypotheses),
         # ADEV79 — TTC des paliers → HT : TVA de l'article, à défaut le taux
         # standard SAISI de la société (lecture seule), jamais un 20 codé.
-        taux_tva_pct=getattr(reglages, 'tva_standard', None))
+        taux_tva_pct=getattr(reglages, 'tva_standard', None), pmax_wc=(catalogue['module'] or {}).get('pmax_wc'))
     alertes.extend(_alertes_phase_du_site(resultat['alertes'], phase))
     hypotheses.extend(resultat['hypotheses'])
     evaluation = resultat['evaluation']
@@ -1408,6 +1465,11 @@ PHASES_DECLAREES = ('mono', 'tri')
 # ALEA54 — ces refus s'adressent à la COMMERCIALE : une consigne à suivre auprès
 # du client, jamais le jargon du moteur (« profil de charge », « archétype »).
 MESSAGES_CHAMP_LEAD_CI = {
+    # CORC3 (27/10/2026) — le refus nommait le moteur (« Tarif non déclaré et
+    # contrat d'électricité inconnu : économies non chiffrées … »).
+    'contrat_electricite': ("Demandez au client son contrat d'électricité — basse tension "
+                            'patenté, force motrice ou moyenne tension : il est écrit sur '
+                            'sa facture ; sans lui, les économies ne se chiffrent pas.'),
     'raccordement': ('Demandez au client si son site est en monophasé ou en triphasé — '
                      "c'est écrit sur sa facture ou sur son compteur ; le choix des "
                      'onduleurs en dépend.'),
@@ -1432,6 +1494,12 @@ MESSAGES_ARRET = {
 MESSAGE_PRIX_A_RENSEIGNER = (
     "Prix à renseigner avant un devis automatique C&I : %s. À régler par "
     "l'administrateur dans Paramètres › Devis › Prestations C&I, ou sur la fiche de l'article.")
+#: CORC6 (27/10/2026, constat CCAT) — une prestation chiffrée (forfait réglé)
+#: SANS article au catalogue comptait dans l'étude et disparaissait du devis.
+MESSAGE_PRESTATION_SANS_ARTICLE = (
+    "Article manquant au catalogue pour : %s. Le prix est réglé dans Paramètres "
+    "› Devis › Prestations C&I, mais aucun article du Stock ne porte ce rôle : "
+    "créez-le (ou désarchivez-le) avant un devis automatique.")
 MESSAGE_MAD_SANS_CONTRAT = (
     "Facture en MAD sans contrat d'électricité déclaré : précisez le contrat "
     '(BT patenté / force motrice) ou saisissez la conso en kWh.')
@@ -1496,6 +1564,12 @@ def refus_devis_auto_ci(etude):
     if taille.get('raison_arret') == 'prix_manquants' or manquants:
         return (MESSAGE_PRIX_A_RENSEIGNER % ', '.join(str(m) for m in manquants),
                 'composition')
+    # CORC6 — une ligne chiffrée sans article ne s'écrit pas au devis (et le
+    # regroupement « Installation clé en main » ne la reconnaîtrait pas) :
+    # refus nommé, jamais un total d'étude qui diverge du total du devis.
+    orphelines = lignes_chiffrees_sans_article(etude.get('composition'))
+    if orphelines:
+        return MESSAGE_PRESTATION_SANS_ARTICLE % ', '.join(orphelines), 'composition'
     # ADEV78 — TOUTE alerte bloquante refuse, même quand une taille existe
     # (taille saisie aux onduleurs infaisables comprise).
     if bloquants:
@@ -1505,6 +1579,35 @@ def refus_devis_auto_ci(etude):
     if not taille.get('retenue_kwc'):
         return MESSAGES_ARRET.get(taille.get('raison_arret'), MESSAGES_ARRET['horizon_marginal'])
     return None
+
+
+def lignes_chiffrees_sans_article(composition):
+    """CORC6 — désignations des lignes CHIFFRÉES (prix connu, quantité > 0)
+    sans article du catalogue : :func:`lignes_du_devis_ci` les saute, elles
+    n'entrent donc jamais au devis. Les postes « à chiffrer après visite »
+    (hors total) n'en sont pas."""
+    noms = []
+    for ligne in (composition or {}).get('lignes') or []:
+        if ligne.get('a_chiffrer_visite') or ligne.get('produit'):
+            continue
+        quantite = _num(ligne.get('quantite'))
+        if ligne.get('prix_connu') and quantite and quantite > 0:
+            nom = ligne.get('designation') or ligne.get('role') or '?'
+            if nom not in noms:
+                noms.append(nom)
+    return noms
+
+
+def devis_auto_possible(etude):
+    """CORC1 — ``{possible, message, champ}`` : le devis automatique C&I
+    passerait-il sur CETTE étude ? Le MÊME refus que le bouton
+    (:func:`refus_devis_auto_ci`) — le message s'adresse au vendeur et
+    ``champ`` nomme le champ du lead à compléter (``composition`` / ``taille``
+    : réglage catalogue ou cause du moteur)."""
+    refus = refus_devis_auto_ci(etude)
+    if refus:
+        return {'possible': False, 'message': refus[0], 'champ': refus[1]}
+    return {'possible': True, 'message': None, 'champ': None}
 
 
 def lignes_du_devis_ci(composition):

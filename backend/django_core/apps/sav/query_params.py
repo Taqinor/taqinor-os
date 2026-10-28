@@ -83,6 +83,35 @@ def date_param(request, nom):
             {nom: 'Date invalide (format attendu : AAAA-MM-JJ).'})
 
 
+def periode_param(request, jours=30):
+    """XSAV16 — ``(debut, fin)`` (datetimes aware, minuit local) des
+    paramètres ``debut``/``fin`` ; défaut : ``fin`` = maintenant, ``debut`` =
+    ``fin`` − ``jours`` jours. api-fuzz-full 27/10 (ENF11) : ``fin=0001-01-01``
+    faisait déborder ``fin − 30 j`` (``OverflowError`` → 500, même avec un
+    ``debut`` fourni : le défaut était calculé d'avance) — le défaut n'est plus
+    calculé qu'en l'absence de ``debut``, et borné au premier jour du
+    calendrier ; la requête (deux dates valides) est servie."""
+    from datetime import datetime, timedelta
+
+    from django.utils import timezone
+
+    def _borne(nom):
+        jour = date_param(request, nom)
+        if jour is None:
+            return None
+        return datetime(jour.year, jour.month, jour.day,
+                        tzinfo=timezone.get_current_timezone())
+
+    fin = _borne('fin') or timezone.now()
+    debut = _borne('debut')
+    if debut is None:
+        try:
+            debut = fin - timedelta(days=jours)
+        except OverflowError:
+            debut = timezone.make_aware(datetime.min)
+    return debut, fin
+
+
 def choix_param(request, nom, choix, defaut=None):
     """Valeur du paramètre ``nom`` parmi ``choix`` (``defaut`` si absent ou
     vide) ; toute autre valeur → 400 nommant le paramètre."""

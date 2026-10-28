@@ -98,7 +98,7 @@ export const SECTION_META: Record<QuestionnaireSectionId, SectionMeta> = {
   activite: { icon: '🏭', title: { fr: 'Votre activité et vos horaires', en: 'Your activity and opening hours', ar: 'نشاطكم وأوقات العمل' } },
   site: { icon: '📐', title: { fr: 'La surface disponible', en: 'The available surface', ar: 'المساحة المتاحة' } },
   societe: { icon: '🏢', title: { fr: 'Votre société', en: 'Your company', ar: 'شركتكم' } },
-  photo_factures: { icon: '🧾', title: { fr: 'Les 12 dernières factures', en: 'Your last 12 bills', ar: 'آخر 12 فاتورة' } },
+  photo_factures: { icon: '🧾', title: { fr: "Vos factures d'électricité (une suffit, 12 c'est mieux)", en: 'Your electricity bills (one is enough, 12 is better)', ar: 'فواتير الكهرباء (تكفي واحدة، و12 أفضل)' } },
   photo_poste: { icon: '🔢', title: { fr: 'Compteur / poste de livraison', en: 'Meter / delivery substation', ar: 'العداد / محطة التسليم' } },
   occupation: { icon: '🕒', title: { fr: 'Occupation du logement', en: 'Home occupancy', ar: 'شغل المنزل' } },
   equipements: { icon: '🧰', title: { fr: 'Équipements', en: 'Appliances', ar: 'التجهيزات' } },
@@ -217,8 +217,108 @@ export function initialSectionIndex(
   return idx === -1 ? sections.length - 1 : idx;
 }
 
-export function progressLabel(index: number, total: number): string {
+export type QuestionnaireLang = 'fr' | 'en' | 'ar';
+
+export function progressLabel(index: number, total: number, lang: QuestionnaireLang = 'fr'): string {
+  if (lang === 'en') return `Step ${index + 1} of ${total}`;
+  if (lang === 'ar') return `الخطوة ${index + 1} من ${total}`;
   return `Étape ${index + 1} sur ${total}`;
+}
+
+/** CQSTW3 — langue d'ouverture : celle gardée par le client, sinon celle du navigateur, sinon FR. */
+export function detectQuestionnaireLang(saved: unknown, navigatorLang: unknown): QuestionnaireLang {
+  for (const v of [saved, navigatorLang]) {
+    const c = typeof v === 'string' ? v.trim().toLowerCase().slice(0, 2) : '';
+    if (c === 'fr' || c === 'en' || c === 'ar') return c;
+  }
+  return 'fr';
+}
+
+/** Messages d'erreur vus par le client, dans sa langue (CQSTW3) ; `expire` = CQSTW5. */
+export type QuestionnaireErreurCode = 'echec' | 'reseau' | 'limite' | 'expire' | 'requete' | 'photo';
+const MESSAGES_ERREUR: Record<QuestionnaireErreurCode, Record<QuestionnaireLang, string>> = {
+  echec: {
+    fr: 'Cette réponse n’a pas pu être enregistrée. Réessayez dans un instant.',
+    en: 'This answer could not be saved. Please try again in a moment.',
+    ar: 'تعذر حفظ هذا الجواب. المرجو المحاولة بعد لحظات.',
+  },
+  reseau: {
+    fr: 'Connexion impossible. Vérifiez votre réseau et réessayez.',
+    en: 'Connection failed. Check your network and try again.',
+    ar: 'تعذر الاتصال. تحققوا من الشبكة وأعيدوا المحاولة.',
+  },
+  limite: {
+    fr: 'Trop de tentatives, réessayez dans un instant.',
+    en: 'Too many attempts, please try again in a moment.',
+    ar: 'محاولات كثيرة، أعيدوا المحاولة بعد لحظات.',
+  },
+  expire: {
+    fr: 'Ce lien a expiré — demandez-en un nouveau à votre conseiller.',
+    en: 'This link has expired — ask your advisor for a new one.',
+    ar: 'انتهت صلاحية هذا الرابط — اطلبوا رابطاً جديداً من مستشاركم.',
+  },
+  photo: {
+    fr: 'Fichier trop volumineux ou illisible — réessayez avec un autre fichier.',
+    en: 'File too large or unreadable — try another file.',
+    ar: 'الملف كبير جداً أو غير مقروء — جربوا ملفاً آخر.',
+  },
+  requete: {
+    fr: 'Une erreur est survenue. Réessayez.',
+    en: 'Something went wrong. Please try again.',
+    ar: 'حدث خطأ. المرجو المحاولة مرة أخرى.',
+  },
+};
+export function messageErreurQuestionnaire(code: unknown, lang: QuestionnaireLang): string {
+  const c = typeof code === 'string' && code in MESSAGES_ERREUR ? (code as QuestionnaireErreurCode) : 'echec';
+  return MESSAGES_ERREUR[c][lang];
+}
+
+/** CQSTW14 — messages GPS, placeholders et aria-labels dans la langue du client. */
+const GPS_MSG: Record<'indisponible' | 'refuse', Record<QuestionnaireLang, string>> = {
+  indisponible: {
+    fr: "La géolocalisation n'est pas disponible sur cet appareil — pas de souci, continuez sans.",
+    en: 'Geolocation is not available on this device — no problem, continue without it.',
+    ar: 'تحديد الموقع غير متاح على هذا الجهاز — لا مشكلة، تابعوا بدونه.',
+  },
+  refuse: {
+    fr: 'Position non partagée — pas de souci, vous pouvez continuer sans.',
+    en: 'Position not shared — no problem, you can continue without it.',
+    ar: 'لم يتم مشاركة الموقع — لا مشكلة، يمكنكم المتابعة بدونه.',
+  },
+};
+export function messageGps(code: 'indisponible' | 'refuse', lang: QuestionnaireLang): string {
+  return GPS_MSG[code][lang];
+}
+export function messagePositionEnregistree(lat: number, lng: number, lang: QuestionnaireLang): string {
+  const pos = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  return lang === 'en' ? `Position saved — ${pos}` : lang === 'ar' ? `تم تسجيل الموقع — ${pos}` : `Position enregistrée — ${pos}`;
+}
+const ATTRIBUTS: Record<string, Record<QuestionnaireLang, string>> = {
+  mois: { fr: 'AAAA-MM', en: 'YYYY-MM', ar: 'سنة-شهر' },
+  jourmois: { fr: 'JJ/MM', en: 'DD/MM', ar: 'يوم/شهر' },
+  de: { fr: 'De (h)', en: 'From (h)', ar: 'من (س)' },
+  a: { fr: 'À (h)', en: 'To (h)', ar: 'إلى (س)' },
+  langue: { fr: 'Langue', en: 'Language', ar: 'اللغة' },
+};
+/** Valeur d'un attribut (placeholder / aria-label) dans la langue ; clé inconnue → ''. */
+export function libelleAttribut(cle: string, lang: QuestionnaireLang): string {
+  return ATTRIBUTS[cle]?.[lang] ?? '';
+}
+/** CQSTW15 — libellé du bouton « Continuer / Terminer » dans la langue. */
+export function libelleSuivant(dernier: boolean, lang: QuestionnaireLang): string {
+  const t = dernier
+    ? { fr: 'Terminer', en: 'Finish', ar: 'إنهاء' }
+    : { fr: 'Continuer →', en: 'Continue →', ar: 'متابعة ←' };
+  return t[lang];
+}
+/** CQSTW19 — case « facture d'été différente » pré-cochée : « oui » si le serveur le dit
+ *  OU si la facture d'été est connue ; « non » seulement si le serveur dit false. */
+export function eteDifferentePrefill(prefill: Record<string, unknown>): 'oui' | 'non' | '' {
+  const f = prefill.facture_ete;
+  const connue = (typeof f === 'string' && f !== '') || typeof f === 'number';
+  // `false` est le défaut serveur : seul, il ne prouve aucune réponse du client.
+  if (prefill.ete_differente === true) return 'oui';
+  return prefill.ete_differente === false && connue ? 'non' : '';
 }
 
 // ── ÉCRANS : le regroupement des sections en pages ───────────────────────
@@ -369,6 +469,10 @@ export const OCCUPATION_JOUR_VALUES = ['present', 'absent', 'partiel'] as const;
 export const SOURCE_EAU_VALUES = ['puits', 'forage', 'bassin', 'riviere'] as const;
 export const IRRIGATION_METHODE_VALUES = ['goutte', 'aspersion', 'gravitaire'] as const;
 export const POMPE_ALIM_VALUES = ['aucune', 'diesel', 'butane', 'electrique'] as const;
+// CQSTW1 — mode de pompe et plaque (contrat CQST3).
+export const MODE_POMPE_VALUES = ['neuve', 'existante'] as const;
+export const PLAQUE_TENSION_VALUES = [220, 380] as const;
+export const PLAQUE_PHASES_VALUES = ['mono', 'tri'] as const;
 export const MOIS_IRRIGATION_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 
 export type OccupationJourId = (typeof OCCUPATION_JOUR_VALUES)[number];
@@ -392,9 +496,14 @@ export const TYPE_TOITURE_PRO_VALUES = [
 export const REGIME_EQUIPES_VALUES = ['1x8', '2x8', '3x8', 'continu', 'ne_sait_pas'] as const;
 export const OUI_NON_VALUES = ['oui', 'non'] as const;
 export const TVA_RECUPERABLE_VALUES = ['oui', 'non', 'ne_sait_pas'] as const;
+/** crm.Lead.categorie_commerciale (décision fondateur 26/10/2026 : 23 commerces). */
 export const CATEGORIE_COMMERCIALE_VALUES = [
-  'hotel', 'restaurant', 'commerce', 'bureau', 'sante', 'ecole', 'hammam', 'boulangerie', 'froid', 'autre',
+  'hotel', 'restaurant', 'cafe', 'boulangerie', 'commerce', 'supermarche', 'boucherie',
+  'pharmacie', 'coiffure', 'pressing', 'bureau', 'sante', 'ecole', 'salle_sport', 'hammam',
+  'garage', 'atelier', 'imprimerie', 'station_service', 'entrepot', 'froid', 'mosquee', 'autre',
 ] as const;
+/** crm.Lead.equipements_hors_horaires — talon déclaré du moteur C&I. */
+export const EQUIPEMENTS_HORS_HORAIRES_VALUES = ['aucun', 'un_peu', 'beaucoup'] as const;
 /** Jours d'ouverture : 1 (lundi) à 7 (dimanche). */
 export const JOURS_OUVERTURE_VALUES = [1, 2, 3, 4, 5, 6, 7] as const;
 /** Au plus 12 mois de relevé (contrat `releve_conso.max_elements`). */
@@ -456,8 +565,58 @@ export const REPONSES_CATEGORIE_QUESTIONS: Record<string, readonly CategorieQues
     { key: 'volume_m3', type: 'number' },
     { key: 'saisonnalite_recolte', type: 'bool' },
   ],
+  // Décision fondateur 26/10/2026 — commerces sans question propre.
+  cafe: [], supermarche: [], boucherie: [], pharmacie: [], coiffure: [], pressing: [],
+  salle_sport: [], garage: [], atelier: [], imprimerie: [], station_service: [],
+  entrepot: [], mosquee: [],
   autre: [],
 };
+
+/**
+ * CQSTW6 — heures de l'activité (contrat `reponses_categorie_heures_cqst2`) :
+ * `plages` = [[début_h, fin_h], …] (0-24), `jour_mois` = « JJ/MM ». Chaque clé
+ * n'est posée (et envoyée) que si la réponse d'activité la rend utile (`si`,
+ * évalué sur les réponses déjà nettoyées de la catégorie).
+ */
+export interface CategorieHeures {
+  key: string;
+  type: 'plages' | 'jour_mois';
+  si?: Readonly<Record<string, string | boolean>>;
+}
+export const REPONSES_CATEGORIE_HEURES: Record<string, readonly CategorieHeures[]> = {
+  restaurant: [{ key: 'heures', type: 'plages' }],
+  boulangerie: [{ key: 'heures_cuisson', type: 'plages', si: { four: 'electrique', cuisson_nocturne: true } }],
+  sante: [{ key: 'heures_garde', type: 'plages', si: { garde_nuit: true } }],
+  ecole: [
+    { key: 'fermeture_du', type: 'jour_mois', si: { fermeture_estivale: true } },
+    { key: 'fermeture_au', type: 'jour_mois', si: { fermeture_estivale: true } },
+  ],
+};
+
+/** « 5/7 », « 05-07 », « 5.7 » → « 05/07 » ; date impossible (31/02) ou illisible ⇒ `null`. */
+export function cleanJourMois(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const m = /^\s*(\d{1,2})\s*[/.-]\s*(\d{1,2})\s*$/.exec(v);
+  if (!m) return null;
+  const jour = Number(m[1]);
+  const mois = Number(m[2]);
+  const joursDuMois = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (mois < 1 || mois > 12 || jour < 1 || jour > joursDuMois[mois - 1]) return null;
+  return `${String(jour).padStart(2, '0')}/${String(mois).padStart(2, '0')}`;
+}
+
+/** [[début, fin], …] : heures 0-24, début ≠ fin (une garde de nuit 22→6 est permise) ; vide ⇒ `null`. */
+export function cleanPlagesHeures(v: unknown): number[][] | null {
+  if (!Array.isArray(v)) return null;
+  const out: number[][] = [];
+  for (const plage of v.slice(0, 4)) {
+    if (!Array.isArray(plage) || plage.length !== 2) continue;
+    const a = cleanBoundedNumber(plage[0], 0, 24);
+    const b = cleanBoundedNumber(plage[1], 0, 24);
+    if (a != null && b != null && a !== b) out.push([a, b]);
+  }
+  return out.length > 0 ? out : null;
+}
 
 export type EquipementKey =
   | 'equip_piscine'
@@ -597,11 +756,11 @@ export function cleanReleveConso(
 export function cleanReponsesCategorie(
   categorie: string | null,
   v: unknown,
-): Record<string, number | boolean | string> | null {
+): Record<string, number | boolean | string | number[][]> | null {
   if (!categorie || !v || typeof v !== 'object' || Array.isArray(v)) return null;
   const questions = REPONSES_CATEGORIE_QUESTIONS[categorie] ?? [];
   const src = v as Record<string, unknown>;
-  const out: Record<string, number | boolean | string> = {};
+  const out: Record<string, number | boolean | string | number[][]> = {};
   for (const q of questions) {
     const brut = src[q.key];
     if (q.type === 'number') {
@@ -615,6 +774,18 @@ export function cleanReponsesCategorie(
       if (e) out[q.key] = e;
     }
   }
+  // CQSTW6 — heures de l'activité, seulement quand la réponse qui les justifie est donnée.
+  for (const q of REPONSES_CATEGORIE_HEURES[categorie] ?? []) {
+    if (q.si && !Object.entries(q.si).every(([k, val]) => out[k] === val)) continue;
+    const brut = src[q.key];
+    if (q.type === 'plages') {
+      const plages = cleanPlagesHeures(brut);
+      if (plages) out[q.key] = plages;
+    } else {
+      const jm = cleanJourMois(brut);
+      if (jm) out[q.key] = jm;
+    }
+  }
   return Object.keys(out).length > 0 ? out : null;
 }
 
@@ -623,9 +794,9 @@ export function cleanReponsesCategorie(
 /** Plafond d'upload par photo (contrat : ≤ 10 Mo). */
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
-/** `true` si `v` est un data URL image bien formé et sous le plafond de taille. */
+/** `true` si `v` est un data URL image ou PDF (CQSTW4) bien formé et sous le plafond de taille. */
 export function isValidPhotoDataUrl(v: unknown): v is string {
-  if (typeof v !== 'string' || !v.startsWith('data:image/')) return false;
+  if (typeof v !== 'string' || !(v.startsWith('data:image/') || v.startsWith('data:application/pdf;'))) return false;
   const commaIdx = v.indexOf(',');
   if (commaIdx < 0) return false;
   const b64 = v.slice(commaIdx + 1);
@@ -733,6 +904,8 @@ export function buildSectionReponses(
       if (fermeture) out.fermeture_mois = fermeture;
       // « Nous ne fermons jamais » : une RÉPONSE (liste vide), jamais un défaut.
       else if (raw.fermeture_aucune === true) out.fermeture_mois = [];
+      const horsHoraires = cleanEnum(raw.equipements_hors_horaires, EQUIPEMENTS_HORS_HORAIRES_VALUES);
+      if (horsHoraires) out.equipements_hors_horaires = horsHoraires;
       const groupe = cleanEnum(raw.groupe_electrogene, OUI_NON_VALUES);
       if (groupe) out.groupe_electrogene = groupe;
       // Les détails du groupe ne valent que s'il y en a un (jamais une valeur
@@ -841,6 +1014,32 @@ export function buildSectionReponses(
       if (jours != null) out.jours_irrigation_semaine = jours;
       const compteur = cleanOuiNon(raw.compteur_eau);
       if (compteur !== undefined) out.compteur_eau = compteur;
+      // CQSTW1 — colonnes CQST3/CQST6 : nombres > 0, valeurs fermées du contrat.
+      const mesures: Array<[string, number]> = [
+        ['profondeur_forage_m', 10_000], ['debit_forage_m3h', 100_000], ['pompe_hmt_m', 10_000],
+        ['pompe_actuelle_debit_m3h', 100_000], ['pompage_heures_jour', 24],
+      ];
+      // CQSTW13 — « pas de pompe actuellement » : les questions sur la pompe
+      // actuelle (débit, heures, mode, plaque) ne valent pas ; une valeur laissée
+      // dans un champ masqué ne part pas (le serveur les écarte aussi — CQST9).
+      const pasDePompe = alim === 'aucune';
+      for (const [cle, max] of mesures) {
+        if (pasDePompe && (cle === 'pompe_actuelle_debit_m3h' || cle === 'pompage_heures_jour')) continue;
+        const n = cleanPositiveNumber(raw[cle], max);
+        if (n != null) out[cle] = n;
+      }
+      const modePompe = pasDePompe ? undefined : cleanEnum(raw.mode_pompe, MODE_POMPE_VALUES);
+      if (modePompe) out.mode_pompe = modePompe;
+      // La plaque n'a de sens que pour « je garde ma pompe » : jamais envoyée sinon
+      // (une valeur laissée dans un champ masqué ne part pas).
+      if (modePompe === 'existante') {
+        const kw = cleanPositiveNumber(raw.pompe_actuelle_kw, 1_000);
+        if (kw != null) out.pompe_actuelle_kw = kw;
+        const tension = Number(raw.pompe_actuelle_tension_v);
+        if ((PLAQUE_TENSION_VALUES as readonly number[]).includes(tension)) out.pompe_actuelle_tension_v = tension;
+        const phases = cleanEnum(raw.pompe_actuelle_phases, PLAQUE_PHASES_VALUES);
+        if (phases) out.pompe_actuelle_phases = phases;
+      }
       break;
     }
     case 'occupation': {
@@ -898,7 +1097,7 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
   activite: [
     'categorie_commerciale', 'reponses_categorie', 'secteur_industriel', 'export_ue_declare',
     'regime_equipes', 'jours_ouverture', 'heure_debut', 'heure_fin', 'fermeture_mois',
-    'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois', 'pv_existant_kwc',
+    'equipements_hors_horaires', 'groupe_electrogene', 'groupe_kva', 'groupe_litres_mois', 'groupe_depense_mad_mois', 'pv_existant_kwc',
   ],
   site: ['type_surface', 'type_toiture', 'surface_toiture_m2', 'inclinaison_deg', 'orientation'],
   societe: [
@@ -910,7 +1109,9 @@ const SECTION_COLONNES_ECRITES: Partial<Record<QuestionnaireSectionId, readonly 
     'source_eau', 'niveau_statique_m', 'besoin_eau_m3j', 'surface_irriguee_ha', 'culture',
     'irrigation_methode', 'pompe_alim_actuelle', 'butane_bouteilles_jour',
     'carburant_prix_unitaire_mad', 'depense_carburant_mad_mois', 'mois_irrigation',
-    'jours_irrigation_semaine', 'compteur_eau',
+    'jours_irrigation_semaine', 'compteur_eau', 'pompe_hmt_m', 'pompe_actuelle_debit_m3h',
+    'pompage_heures_jour', 'mode_pompe', 'pompe_actuelle_kw', 'pompe_actuelle_tension_v',
+    'pompe_actuelle_phases', 'profondeur_forage_m', 'debit_forage_m3h',
   ],
   equipements: [
     'equip_piscine', 'equip_piscine_pompe_kw', 'equip_voiture_electrique', 'equip_ve_km_semaine',
@@ -984,7 +1185,7 @@ export async function envoyerSectionQuestionnaire(
     const result = parseQuestionnairePostResponse(res.status, await res.json().catch(() => null));
     return { result, prefill: result.ok ? prefillApresEnvoi(prefill, body.reponses) : prefill };
   } catch {
-    return { result: { ok: false, enregistrees: [], detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.' }, prefill };
+    return { result: { ok: false, enregistrees: [], detail: 'Connexion impossible. Vérifiez votre réseau et réessayez.', code: 'reseau' }, prefill };
   }
 }
 
@@ -1004,6 +1205,10 @@ export interface QuestionnairePostResult {
   ok: boolean;
   enregistrees: string[];
   detail?: string;
+  /** CQSTW3/5 — nature de l'échec, traduite par la page (`messageErreurQuestionnaire`). */
+  code?: QuestionnaireErreurCode;
+  /** CQSTW2 — le serveur dit que ces réponses suffisent à préparer le devis. */
+  devisPossible?: boolean;
 }
 
 /** Normalise (statut HTTP, JSON upstream) → une forme unique lue par la page. */
@@ -1013,7 +1218,10 @@ export function parseQuestionnairePostResponse(status: number, body: unknown): Q
   const enregistreesRaw = Array.isArray(b.enregistrees) ? b.enregistrees : [];
   const enregistrees = enregistreesRaw.filter((v): v is string => typeof v === 'string');
   const detail = typeof b.detail === 'string' ? b.detail : undefined;
-  return { ok, enregistrees, detail };
+  // 429 du relais = trop de tentatives (le relais garde le corps commun aux proxies, sans `code`).
+  const code = typeof b.code === 'string' && b.code in MESSAGES_ERREUR ? (b.code as QuestionnaireErreurCode)
+    : status === 429 ? 'limite' : undefined;
+  return { ok, enregistrees, detail, ...(code ? { code } : {}), ...(b.devis_possible === true ? { devisPossible: true } : {}) };
 }
 
 /** `true` tant que le jeton est un APERÇU INTERNE : aucun POST ne doit partir. */

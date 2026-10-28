@@ -142,9 +142,13 @@ class TestPreparation(TestCase):
 
     def test_cannot_leave_a_preparer_without_confirmation(self):
         # Sans confirmation, passer à « Prête » est refusé (F5).
+        # api-fuzz-full 27/10 (ENF11) : refus d'ÉTAT (corps conforme) = 409,
+        # raisons toujours rangées sous `statut`.
         r = self.api.patch(f'{self.url}/', {'statut': 'prete'}, format='json')
-        self.assertEqual(r.status_code, 400, r.data)
-        self.assertIn('statut', r.data)
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('Tout est chargé', str(r.data['statut']))
+        self.interv.refresh_from_db()
+        self.assertEqual(self.interv.statut, 'a_preparer')
         # Confirmer puis réessayer → autorisé.
         prep = field_services.ensure_preparation(self.interv)
         for li in prep.materiel.all():
@@ -179,6 +183,12 @@ class TestPreparation(TestCase):
             self.assertEqual(r.status_code, 404, (route, r.data))
             r = self.api.post(f'{self.url}/{route}/', {}, format='json')
             self.assertEqual(r.status_code, 400, (route, r.data))
+            # api-fuzz-full 27/10 : une liste / un objet en `ligne` faisait
+            # lever TypeError dans filter(id=…) → 500 ; hors int4 → DataError.
+            for brut in ([{}, []], {'a': 1}, True, 2 ** 40):
+                r = self.api.post(f'{self.url}/{route}/', {'ligne': brut},
+                                  format='json')
+                self.assertIn(r.status_code, (400, 404), (route, brut, r.content))
 
     def test_manquant_flag_and_draft_order(self):
         # Produit dont la nomenclature dépasse le stock disponible.
@@ -201,6 +211,25 @@ class TestPreparation(TestCase):
                           {'fournisseur': f.id}, format='json')
         self.assertEqual(r.status_code, 201, r.data)
         self.assertEqual(r.data['nb_lignes'], 1)
+
+    def test_refus_etat_preparation_409_et_fournisseur_inconnu_404(self):
+        """api-fuzz-full 27/10 (ENF11) : `confirmer-charge` sans toutes les
+        lignes cochées et `commander-manques` sans fournisseur par défaut sont
+        des refus d'ÉTAT (corps conforme) → 409 ; un fournisseur CITÉ qui ne
+        désigne rien → 404 (il faisait 400)."""
+        r = self.api.post(f'{self.url}/confirmer-charge/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('cochées', r.data['detail'])
+        rare = make_produit(self.company, 'Câble sans fournisseur', stock=0)
+        inst = make_chantier(self.company, self.user, [(rare, 3)])
+        url = (f'/api/django/installations/interventions/'
+               f'{make_intervention(inst, self.company, self.user).id}')
+        r = self.api.post(f'{url}/commander-manques/', {}, format='json')
+        self.assertEqual(r.status_code, 409, r.data)
+        self.assertIn('fournisseur par défaut', r.data['detail'])
+        r = self.api.post(f'{url}/commander-manques/',
+                          {'fournisseur': 2147483000}, format='json')
+        self.assertEqual(r.status_code, 404, r.data)
 
 
 class TestKitTools(TestCase):
@@ -232,6 +261,21 @@ class TestKitTools(TestCase):
         self.assertEqual(r.data['kit'], self.kit.id)
         outils = {o['libelle'] for o in r.data['outils']}
         self.assertEqual(outils, {'Perceuse', 'Échelle'})
+
+    def test_choisir_kit_obligatoire_null_retire(self):
+        # api-fuzz-full 27/10 : `kit` est publié OBLIGATOIRE et nullable — un
+        # corps sans `kit` retirait le kit en silence (200).
+        r = self.api.post(f'{self.url}/choisir-kit/', {}, format='json')
+        self.assertEqual(r.status_code, 400, r.content)
+        self.assertIn('kit', r.data)
+        r = self.api.post(f'{self.url}/choisir-kit/', {'kit': self.kit.id},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.content)
+        # ``null`` retire le kit choisi (la préparation re-propose ensuite le
+        # kit par défaut du type d'intervention : comportement F5 inchangé).
+        r = self.api.post(f'{self.url}/choisir-kit/', {'kit': None},
+                          format='json')
+        self.assertEqual(r.status_code, 200, r.content)
 
     def test_check_tool_and_completion(self):
         prep = field_services.ensure_preparation(self.interv)
@@ -273,9 +317,10 @@ class TestCheckinGPS(TestCase):
         r = self.api.post(f'{self.url}/depart-depot/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIsNotNone(r.data['depart_depot_le'])
-        # Check-in proche du site → distance faible.
+        # Check-in proche du site → distance faible. api-fuzz-full 27/10
+        # (ENF11) : nombres JSON, comme le schéma (une chaîne est un 400).
         r = self.api.post(f'{self.url}/checkin/',
-                          {'lat': '33.5735', 'lng': '-7.5900'}, format='json')
+                          {'lat': 33.5735, 'lng': -7.5900}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIsNotNone(r.data['arrivee_site_le'])
         self.assertIsNotNone(r.data['distance_site_km'])
@@ -283,6 +328,44 @@ class TestCheckinGPS(TestCase):
         r = self.api.post(f'{self.url}/retour/', {}, format='json')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIsNotNone(r.data['retour_depot_le'])
+
+    def test_position_hors_bornes_400_publiee(self):
+        """api-fuzz-full 27/10 (ENF11) : `lat = 1e142` débordait la colonne
+        `numeric(9, 6)` (DataError → 500) ; bornes du globe PUBLIÉES et
+        appliquées au départ dépôt comme au check-in (400 nommant le champ)."""
+        from django.urls import include, path
+        from drf_spectacular.generators import SchemaGenerator
+
+        from apps.installations import urls as installations_urls
+        for action in ('depart-depot', 'checkin'):
+            for corps, champ in (({'lat': -1.0e142, 'lng': 3.0}, 'lat'),
+                                 ({'lat': 33.5, 'lng': 181}, 'lng'),
+                                 ({'lat': '33.5', 'lng': -7.6}, 'lat'),
+                                 ({'lat': True, 'lng': -7.6}, 'lat')):
+                with self.subTest(action=action, corps=corps):
+                    r = self.api.post(f'{self.url}/{action}/', corps,
+                                      format='json')
+                    self.assertEqual(r.status_code, 400, r.data)
+                    self.assertIn(champ, r.data)
+        self.interv.refresh_from_db()
+        self.assertIsNone(self.interv.depart_gps_lat)
+        self.assertIsNone(self.interv.arrivee_gps_lat)
+        r = self.api.post(f'{self.url}/depart-depot/',
+                          {'lat': 8030484459115369.0, 'lng': None},
+                          format='json')
+        self.assertEqual(r.status_code, 400, r.data)
+        # La synchro hors-ligne ignore une position hors du globe (jamais 500).
+        with self.assertRaises(field_services.CoordonneesInvalides):
+            field_services._lire_gps(1e142, 0)
+        schema = SchemaGenerator(patterns=[
+            path('api/django/installations/', include(installations_urls)),
+        ]).get_schema(request=None, public=True)
+        props = schema['components']['schemas']['PositionRequeteRequest'][
+            'properties']
+        self.assertEqual((props['lat']['minimum'], props['lat']['maximum']),
+                         (-90, 90))
+        self.assertEqual((props['lng']['minimum'], props['lng']['maximum']),
+                         (-180, 180))
 
     def test_distance_none_without_coords(self):
         self.assertIsNone(field_services.distance_to_site(self.interv))
@@ -346,7 +429,8 @@ class TestPhotosAndRequiredEnforcement(TestCase):
             self.assertEqual(r.status_code, 200, (st, r.data))
         r = self.api.patch(f'{self.url}/', {'statut': 'terminee'},
                            format='json')
-        self.assertEqual(r.status_code, 400, r.data)
+        # api-fuzz-full 27/10 (ENF11) : photos manquantes = refus d'ÉTAT, 409.
+        self.assertEqual(r.status_code, 409, r.data)
         self.assertIn('statut', r.data)
         # La checklist des manquants liste les créneaux obligatoires.
         r = self.api.get(f'{self.url}/photos/')

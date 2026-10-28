@@ -19,6 +19,7 @@ import {
   syntheseAgricole,
   type ProposalResponse,
 } from '../src/lib/proposition';
+import { lirePageProposition, lireLibProposition } from './astroBlocsHelper';
 
 const lire = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf-8');
 const contrat = JSON.parse(lire('../src/contract_samples/proposal_data.json')) as {
@@ -163,8 +164,8 @@ describe('AGW303 — courbeGeometrie : mise à l’échelle seule', () => {
 });
 
 describe('AGW303 — la page', () => {
-  const page = lire('../src/pages/proposition/[...token].astro');
-  const lib = lire('../src/lib/proposition.ts');
+  const page = lirePageProposition();
+  const lib = lireLibProposition();
 
   it('agricoleMonthlyDelivery a disparu (fonction et usage)', () => {
     const code = (s: string) => s.replace(/^\s*\/\/.*$/gm, '');

@@ -21,6 +21,15 @@ import {
   parseQuestionnaireGet,
   parseQuestionnairePostResponse,
   progressLabel,
+  REPONSES_CATEGORIE_HEURES,
+  cleanJourMois,
+  detectQuestionnaireLang,
+  messageErreurQuestionnaire,
+  messageGps,
+  messagePositionEnregistree,
+  libelleAttribut,
+  libelleSuivant,
+  eteDifferentePrefill,
   questionnaireEndpoint,
   type QuestionnaireGetResponse,
 } from '../src/lib/questionnaire';
@@ -446,7 +455,8 @@ describe('isValidPhotoDataUrl', () => {
   });
 
   it("rejette un type non-image, une chaîne vide, une valeur non-string", () => {
-    expect(isValidPhotoDataUrl('data:application/pdf;base64,AAAA')).toBe(false);
+    expect(isValidPhotoDataUrl('data:application/pdf;base64,AAAA')).toBe(true); // CQSTW4
+    expect(isValidPhotoDataUrl('data:text/plain;base64,AAAA')).toBe(false);
     expect(isValidPhotoDataUrl('')).toBe(false);
     expect(isValidPhotoDataUrl(undefined)).toBe(false);
     expect(isValidPhotoDataUrl(null)).toBe(false);
@@ -526,6 +536,8 @@ describe('parseQuestionnairePostResponse', () => {
 
   it('corps upstream illisible/non-objet ⇒ jamais un throw', () => {
     expect(parseQuestionnairePostResponse(502, null)).toEqual({ ok: false, enregistrees: [] });
+    // CQSTW5 — 429 du relais (corps commun aux proxies, sans `code`) = « limite ».
+    expect(parseQuestionnairePostResponse(429, { ok: false, detail: 'Trop de tentatives' }).code).toBe('limite');
     expect(parseQuestionnairePostResponse(502, 'erreur brute')).toEqual({ ok: false, enregistrees: [] });
   });
 
@@ -847,6 +859,15 @@ describe('CIW406 — contrat : exemple_pro et choix fermés', () => {
     expect([...lib.REGIME_EQUIPES_VALUES]).toEqual(choix('regime_equipes'));
     expect([...lib.TVA_RECUPERABLE_VALUES]).toEqual(choix('tva_recuperable'));
     expect([...lib.CATEGORIE_COMMERCIALE_VALUES]).toEqual(choix('categorie_commerciale'));
+    expect([...lib.EQUIPEMENTS_HORS_HORAIRES_VALUES]).toEqual(choix('equipements_hors_horaires'));
+  });
+
+  it('équipements hors horaires (décision fondateur 26/10/2026) : valeur fermée, sinon rien', () => {
+    expect(buildSectionReponses('activite', { equipements_hors_horaires: 'beaucoup' }).equipements_hors_horaires)
+      .toBe('beaucoup');
+    expect(buildSectionReponses('activite', { equipements_hors_horaires: 'tout' }).equipements_hors_horaires)
+      .toBeUndefined();
+    expect(buildSectionReponses('activite', { categorie_commerciale: 'cafe' }).categorie_commerciale).toBe('cafe');
   });
 
   it('questions de catégorie = clés fermées du contrat (par catégorie)', async () => {
@@ -854,5 +875,165 @@ describe('CIW406 — contrat : exemple_pro et choix fermés', () => {
     for (const [cat, cles] of Object.entries(lp.reponses_categorie_par_categorie.cles)) {
       expect(lib.REPONSES_CATEGORIE_QUESTIONS[cat].map((q) => q.key), cat).toEqual(cles);
     }
+  });
+});
+
+describe('CQSTW1 — pompage : colonnes CQST3/CQST6', () => {
+  it('envoie des nombres et des valeurs du contrat ; plaque seulement si « existante »', () => {
+    const r = buildSectionReponses('pompage', {
+      pompe_hmt_m: '55', pompe_actuelle_debit_m3h: '12.5', pompage_heures_jour: '6',
+      profondeur_forage_m: '80', debit_forage_m3h: '9', mode_pompe: 'existante',
+      pompe_actuelle_kw: '5.5', pompe_actuelle_tension_v: '380', pompe_actuelle_phases: 'tri',
+    });
+    expect(r).toMatchObject({
+      pompe_hmt_m: 55, pompe_actuelle_debit_m3h: 12.5, pompage_heures_jour: 6,
+      profondeur_forage_m: 80, debit_forage_m3h: 9, mode_pompe: 'existante',
+      pompe_actuelle_kw: 5.5, pompe_actuelle_tension_v: 380, pompe_actuelle_phases: 'tri',
+    });
+  });
+  it("CQSTW13 — alimentation « aucune » : rien sur la pompe actuelle ne part", () => {
+    const r = buildSectionReponses('pompage', {
+      pompe_alim_actuelle: 'aucune', pompe_actuelle_debit_m3h: '12', pompage_heures_jour: '6', pompe_hmt_m: '55',
+      mode_pompe: 'existante', pompe_actuelle_kw: '5.5', pompe_actuelle_tension_v: '380', pompe_actuelle_phases: 'tri',
+      carburant_prix_unitaire_mad: '10',
+    });
+    expect(r).toEqual({ pompe_alim_actuelle: 'aucune', pompe_hmt_m: 55 });
+    const diesel = buildSectionReponses('pompage', { pompe_alim_actuelle: 'diesel', pompe_actuelle_debit_m3h: '12', mode_pompe: 'neuve' });
+    expect(diesel).toMatchObject({ pompe_actuelle_debit_m3h: 12, mode_pompe: 'neuve' });
+  });
+  it('pompe neuve : une plaque laissée dans un champ masqué ne part pas', () => {
+    const r = buildSectionReponses('pompage', {
+      mode_pompe: 'neuve', pompe_actuelle_kw: '5.5', pompe_actuelle_tension_v: '380', pompe_actuelle_phases: 'tri',
+    });
+    expect(r).toEqual({ mode_pompe: 'neuve' });
+  });
+  it('valeurs hors contrat ou ≤ 0 écartées', () => {
+    const r = buildSectionReponses('pompage', {
+      pompe_hmt_m: '-3', pompage_heures_jour: '30', mode_pompe: 'autre',
+    });
+    expect(r).toEqual({});
+    expect(buildSectionReponses('pompage', { mode_pompe: 'existante', pompe_actuelle_tension_v: '110', pompe_actuelle_phases: 'bi' }))
+      .toEqual({ mode_pompe: 'existante' });
+  });
+});
+
+describe('CQSTW3 — langue du client', () => {
+  it('Étape X sur Y suit la langue', () => {
+    expect(progressLabel(1, 4, 'en')).toBe('Step 2 of 4');
+    expect(progressLabel(1, 4, 'ar')).toContain('2');
+    expect(progressLabel(1, 4)).toBe('Étape 2 sur 4');
+  });
+  it('langue gardée > navigateur > FR', () => {
+    expect(detectQuestionnaireLang('ar', 'fr-FR')).toBe('ar');
+    expect(detectQuestionnaireLang(null, 'en-GB')).toBe('en');
+    expect(detectQuestionnaireLang('xx', 'de')).toBe('fr');
+  });
+  it('messages d erreur FR/EN/AR, code inconnu = échec', () => {
+    for (const lang of ['fr', 'en', 'ar'] as const) {
+      expect(messageErreurQuestionnaire('reseau', lang).length).toBeGreaterThan(5);
+      expect(messageErreurQuestionnaire('inconnu', lang)).toBe(messageErreurQuestionnaire('echec', lang));
+    }
+    expect(messageErreurQuestionnaire('reseau', 'en')).toMatch(/network/i);
+  });
+  it('listes pompage traduites (data-fr/en/ar sur les options)', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
+    for (const lab of ['SOURCE_EAU_LABELS', 'IRRIGATION_LABELS', 'ALIM_LABELS']) {
+      expect(src).toContain(`data-en={${lab}[v].en}`);
+      expect(src).toContain(`data-ar={${lab}[v].ar}`);
+    }
+  });
+});
+
+describe('CQSTW4 — photos : plusieurs fichiers et PDF', () => {
+  const src = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
+  it('le contrôle accepte images et PDF, plusieurs fichiers', () => {
+    expect(src).toContain('accept="image/*,application/pdf" multiple');
+    expect(src).not.toContain('capture="environment"');
+  });
+  it('un POST par fichier : la section photo boucle sur sa file', () => {
+    expect(src).toContain('for (const photo of photos)');
+    expect(src).toContain('(photoDataUrls[section] ??= []).push(url)');
+  });
+  it('un PDF passe dans le corps POST d une section photo, pas dans une autre', () => {
+    const pdf = 'data:application/pdf;base64,' + 'A'.repeat(100);
+    expect(buildQuestionnairePostBody('photo_factures', {}, pdf).photo).toBe(pdf);
+    expect(buildQuestionnairePostBody('contact', {}, pdf).photo).toBeUndefined();
+  });
+});
+
+describe('CQSTW6 — heures de l activité', () => {
+  const contrat = JSON.parse(readFileSync(fileURLToPath(new URL(
+    '../../../backend/django_core/apps/crm/contract_samples/questionnaire_lead.json', import.meta.url)), 'utf-8')) as
+    { reponses_categorie_heures_cqst2: { cles: Record<string, string[]> } };
+  const act = (categorie: string, rc: Record<string, unknown>) =>
+    buildSectionReponses('activite', { categorie_commerciale: categorie, reponses_categorie: rc }).reponses_categorie as Record<string, unknown>;
+
+  it('les clés par catégorie = le contrat', () => {
+    const cles = Object.fromEntries(Object.entries(REPONSES_CATEGORIE_HEURES).map(([c, qs]) => [c, qs.map((q) => q.key)]));
+    expect(cles).toEqual(contrat.reponses_categorie_heures_cqst2.cles);
+  });
+  it('restaurant : heures [[début, fin]]', () => {
+    expect(act('restaurant', { heures: [['11', '23']] })).toEqual({ heures: [[11, 23]] });
+    expect(act('restaurant', { heures: [['11', '11']] })).toBeUndefined();
+  });
+  it('boulangerie : cuisson de nuit seulement si four électrique ET cuisson la nuit', () => {
+    const oui = act('boulangerie', { four: 'electrique', cuisson_nocturne: 'oui', heures_cuisson: [['1', '5']] });
+    expect(oui.heures_cuisson).toEqual([[1, 5]]);
+    expect(act('boulangerie', { four: 'gaz', cuisson_nocturne: 'oui', heures_cuisson: [['1', '5']] }).heures_cuisson).toBeUndefined();
+    expect(act('boulangerie', { four: 'electrique', cuisson_nocturne: 'non', heures_cuisson: [['1', '5']] }).heures_cuisson).toBeUndefined();
+  });
+  it('santé : garde de nuit 22→6 permise, seulement si garde_nuit = oui', () => {
+    expect(act('sante', { garde_nuit: 'oui', heures_garde: [['22', '6']] }).heures_garde).toEqual([[22, 6]]);
+    expect(act('sante', { garde_nuit: 'non', heures_garde: [['22', '6']] }).heures_garde).toBeUndefined();
+  });
+  it('école : fermeture JJ/MM seulement si fermeture estivale', () => {
+    const r = act('ecole', { fermeture_estivale: 'oui', fermeture_du: '5/7', fermeture_au: '31-08' });
+    expect(r).toMatchObject({ fermeture_du: '05/07', fermeture_au: '31/08' });
+    expect(act('ecole', { fermeture_estivale: 'non', fermeture_du: '05/07' })).toEqual({ fermeture_estivale: false });
+    expect(cleanJourMois('31/02')).toBeNull();
+    expect(cleanJourMois('juillet')).toBeNull();
+  });
+  it('la page lit les plages et pose les champs par composant', () => {
+    const src = readFileSync(fileURLToPath(new URL('../src/pages/questionnaire/[token].astro', import.meta.url)), 'utf-8');
+    expect(src).toContain('<ChampsHeuresActivite');
+    expect(src).toContain('[data-cat-plage]');
+  });
+});
+
+describe('CQSTW14/15/19 — textes selon la langue', () => {
+  it('messages GPS FR/EN/AR (jamais du français en EN/AR)', () => {
+    for (const code of ['indisponible', 'refuse'] as const) {
+      const [fr, en, ar] = (['fr', 'en', 'ar'] as const).map((l) => messageGps(code, l));
+      expect(new Set([fr, en, ar]).size).toBe(3);
+      expect(en).not.toMatch(/[éèàç]/);
+      expect(ar).toMatch(/[؀-ۿ]/);
+    }
+    expect(messagePositionEnregistree(33.5731, -7.5898, 'fr')).toBe('Position enregistrée — 33.57310, -7.58980');
+    expect(messagePositionEnregistree(33.5731, -7.5898, 'en')).toBe('Position saved — 33.57310, -7.58980');
+    expect(messagePositionEnregistree(33.5731, -7.5898, 'ar')).toMatch(/[؀-ۿ].*33\.57310, -7\.58980/);
+  });
+  it('placeholders et aria-labels suivent la langue', () => {
+    expect(libelleAttribut('mois', 'fr')).toBe('AAAA-MM');
+    expect(libelleAttribut('mois', 'en')).toBe('YYYY-MM');
+    expect(libelleAttribut('jourmois', 'en')).toBe('DD/MM');
+    expect(libelleAttribut('de', 'en')).toBe('From (h)');
+    expect(libelleAttribut('a', 'en')).toBe('To (h)');
+    expect(libelleAttribut('langue', 'en')).toBe('Language');
+    for (const k of ['mois', 'jourmois', 'de', 'a', 'langue']) expect(libelleAttribut(k, 'ar')).toMatch(/[؀-ۿ]/);
+    expect(libelleAttribut('inconnue', 'en')).toBe('');
+  });
+  it('CQSTW15 — libellé Continuer/Terminer dans la langue demandée', () => {
+    expect(libelleSuivant(false, 'fr')).toBe('Continuer →');
+    expect(libelleSuivant(false, 'en')).toBe('Continue →');
+    expect(libelleSuivant(true, 'en')).toBe('Finish');
+    expect(libelleSuivant(true, 'ar')).toBe('إنهاء');
+  });
+  it("CQSTW19 — facture d'été : « oui » survit à la réouverture", () => {
+    expect(eteDifferentePrefill({ ete_differente: true })).toBe('oui');
+    expect(eteDifferentePrefill({ ete_differente: false, facture_ete: '1200' })).toBe('non');
+    expect(eteDifferentePrefill({ ete_differente: false, facture_ete: 800 })).toBe('non');
+    expect(eteDifferentePrefill({ ete_differente: false })).toBe(''); // défaut serveur, pas une réponse
+    expect(eteDifferentePrefill({})).toBe('');
+    expect(eteDifferentePrefill({ ete_differente: null, facture_ete: '' })).toBe('');
   });
 });

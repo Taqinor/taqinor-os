@@ -221,6 +221,7 @@ const fieldLabels = {
   heure_debut: { label: 'Heure de début de journée', section: 'pro', inputId: 'lf-heure-debut' },
   heure_fin: { label: 'Heure de fin de journée', section: 'pro', inputId: 'lf-heure-fin' },
   fermeture_mois: { label: 'Mois de fermeture', section: 'pro', inputId: 'lf-fermeture-mois' },
+  equipements_hors_horaires: { label: 'Équipements hors horaires', section: 'pro', inputId: 'lf-equipements-hors-horaires' },
   type_surface: { label: 'Type de surface', section: 'pro', inputId: 'lf-type-surface' },
   surface_source: { label: 'Provenance de la surface', section: 'pro', inputId: 'lf-surface-source' },
   groupe_electrogene: { label: 'Groupe électrogène', section: 'pro', inputId: 'lf-groupe-electrogene' },
@@ -296,7 +297,7 @@ const fieldLabels = {
   },
   equip_ve_statut: {
     label: 'Véhicule électrique — déjà là ou prévu ?', section: 'equipements',
-    inputId: 'lf-equip-ve-statut', pending: 'PanneauScriptAppel (CAD152/153)',
+    inputId: 'lf-equip-ve-statut',
   },
   pompage_heures_jour: {
     label: 'Pompage — heures par jour', section: 'pompage',

@@ -165,7 +165,7 @@ def seed_types_intervention(company):
     p8=oa.qi('ticket'),
     p9=oa.qd('date_prevue', desc='Interventions prévues ce jour exact (AAAA-MM-JJ).'),
 )
-class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
+class InterventionViewSet(oa.CorpsObjetMixin, oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     """Interventions (sorties chantier) rattachées à un chantier (F3). Chacune
     porte son propre statut (machine à états distincte du chantier et de
     STAGES.py), une équipe, une camionnette, et son propre chatter. Scopées à
@@ -485,7 +485,6 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         chantier, `intervention_completed` YSERV2, `ensure_lien_rapport_token`
         ZFSM2) — la même que la création et la synchro terrain obtiennent
         désormais."""
-        from rest_framework.exceptions import ValidationError
         from ..services import (
             TransitionRefusee, changer_statut_intervention,
         )
@@ -538,7 +537,12 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 # à côté des raisons, sans changer le code HTTP.
                 if getattr(exc, 'avertissements', None):
                     corps['avertissements'] = exc.avertissements
-                raise ValidationError(corps)
+                # api-fuzz-full 27/10 (ENF11) : la garde F5/F8/ZFSM1/EZ7 (et
+                # l'intervention annulée) refuse selon l'ÉTAT stocké — le
+                # corps est conforme au schéma → 409 (mêmes clés de corps),
+                # comme la création (`perform_create`). Une valeur de statut
+                # hors choix reste un 400 du sérialiseur.
+                raise ConflitEtat(corps)
 
     def destroy_guard_message(self, interv):
         """AUD302 — message FR de blocage de la suppression, ou None.
@@ -635,7 +639,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         puis renvoyée avec le pourcentage de complétion."""
         return self._prep_response(self.get_object())
 
-    @oa.extend_schema(request=oa.body('ChoisirKitRequete', kit=oa.i(True)), responses=InterventionPreparationSerializer)
+    @oa.extend_schema(request=oa.body('ChoisirKitRequete', kit=oa.i(True, null=True)),
+                      responses=InterventionPreparationSerializer)
     @action(detail=True, methods=['post'], url_path='choisir-kit',
             permission_classes=[IsResponsableOrAdmin])
     def choisir_kit(self, request, pk=None):
@@ -644,12 +649,14 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         from apps.outillage.models import KitOutillage
         interv = self.get_object()
         prep = field_services.ensure_preparation(interv)
-        kit_id = request.data.get('kit')
-        if kit_id in (None, '', 'null'):
+        # api-fuzz-full 27/10 : `kit` OBLIGATOIRE et nullable (null = retirer le
+        # kit), comme publié — absent était accepté (retrait muet du kit).
+        kit_id = oa.champ_requis(request, 'kit')
+        if kit_id is None:
             prep.kit = None
         else:
             kit = KitOutillage.objects.filter(
-                id=kit_id, company=interv.company).first()
+                id=oa.id_ou_none(kit_id), company=interv.company).first()
             if kit is None:
                 return Response({'kit': 'Kit inconnu.'},
                                 status=oa.statut_inconnu(kit_id))
@@ -674,7 +681,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Corps : {"ligne": <id>, "charge": <bool>}."""
         interv = self.get_object()
         prep = field_services.ensure_preparation(interv)
-        ligne = prep.materiel.filter(id=request.data.get('ligne')).first()
+        ligne = prep.materiel.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
                             status=oa.statut_inconnu(request.data.get('ligne')))
@@ -698,7 +705,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         Corps : {"ligne": <id>, "coche": <bool>}."""
         interv = self.get_object()
         prep = field_services.ensure_preparation(interv)
-        ligne = prep.outils.filter(id=request.data.get('ligne')).first()
+        ligne = prep.outils.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
                             status=oa.statut_inconnu(request.data.get('ligne')))
@@ -726,8 +733,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         try:
             field_services.confirm_charge(prep, request.user)
         except ValueError as exc:
+            # api-fuzz-full 27/10 (ENF11) : lignes non cochées = refus d'ÉTAT.
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         intervention_activity.log_note(
             interv, request.user,
             "Préparation confirmée — « Tout est chargé ».")
@@ -750,16 +758,23 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         fournisseur = resolve_fournisseur(
             company, request.data.get('fournisseur'), inst)
         if fournisseur is None:
+            # api-fuzz-full 27/10 (ENF11) : un fournisseur CITÉ qui ne désigne
+            # rien = 404 ; aucun fournisseur par défaut sur les manques = refus
+            # d'ÉTAT (le corps vide est valide) = 409.
             return Response(
-                {'detail': ('Aucun fournisseur indiqué et aucun fournisseur '
-                            'par défaut sur les produits manquants.')},
-                status=status.HTTP_400_BAD_REQUEST)
+                {'detail': 'Fournisseur inconnu.' if request.data.get('fournisseur') else (
+                    'Aucun fournisseur indiqué et aucun fournisseur '
+                    'par défaut sur les produits manquants.')},
+                status=oa.statut_inconnu(request.data.get('fournisseur'))
+                if request.data.get('fournisseur') else status.HTTP_409_CONFLICT)
         try:
             bon, nb = draft_bcf_for_shortfall(
                 inst, fournisseur, request.user, company)
         except ValueError as exc:
+            # api-fuzz-full 27/10 (ENF11) : rien à commander / BCF ouvert qui
+            # couvre déjà les manques = refus d'ÉTAT.
             return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         data = BonCommandeFournisseurSerializer(
             bon, context={'request': request}).data
         data['nb_lignes'] = nb
@@ -767,7 +782,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── F6 — Trajet & check-in GPS sur site ─────────────────────────────────
     @oa.extend_schema(
-        request=oa.body('PositionRequete', lat=oa.f(null=True), lng=oa.f(null=True)),
+        # api-fuzz-full 27/10 (ENF11) : bornes lat/lng publiées ET appliquées.
+        request=oa.PositionRequete,
         responses=InterventionSerializer,
     )
     @action(detail=True, methods=['post'], url_path='depart-depot',
@@ -781,10 +797,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # Fondateur 27/10/2026 — accord géolocalisation requis (terrain seul).
         if refus := field_services.refus_sans_accord_geoloc(request.user):
             return Response({'detail': refus}, status=status.HTTP_403_FORBIDDEN)
-        # ACHT43 — geste unique partagé avec la synchro terrain.
+        # ACHT43 — geste unique partagé avec la synchro terrain. Position
+        # validée (400) : hors bornes, elle débordait la colonne (500).
         field_services.enregistrer_depart_depot(
-            interv, timezone.now(), request.data.get('lat'),
-            request.data.get('lng'), request.user)
+            interv, timezone.now(), *oa.position(request), request.user)
         return Response(InterventionSerializer(
             interv, context={'request': request}).data)
 
@@ -815,7 +831,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         })
 
     @oa.extend_schema(
-        request=oa.body('PositionRequete', lat=oa.f(null=True), lng=oa.f(null=True)),
+        request=oa.PositionRequete,  # même corps validé que le départ dépôt
         responses=InterventionSerializer,
     )
     @action(detail=True, methods=['post'], url_path='checkin',
@@ -831,8 +847,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # ponctualité dérivée de l'instant vs la fenêtre promise).
         try:
             field_services.enregistrer_arrivee(
-                interv, timezone.now(), request.data.get('lat'),
-                request.data.get('lng'), request.user)
+                interv, timezone.now(), *oa.position(request), request.user)
         except field_services.CoordonneesInvalides as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -951,8 +966,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # `file_key` arbitraire.
         meta, err = store_attachment(file, company=interv.company)
         if err:
+            # api-fuzz-full 27/10 (ENF11) : format lu dans les OCTETS / taille
+            # = règles hors schéma (un ``binary`` publié) → 409, pas 400.
             return Response({'detail': err},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         # Encode le créneau dans le filename pour réutiliser le modèle générique.
         meta = dict(meta)
         meta['filename'] = field_services.encode_slot_filename(
@@ -1016,7 +1033,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         interv = self.get_object()
         ct = ContentType.objects.get_for_model(Intervention)
         att = Attachment.objects.filter(
-            id=request.data.get('photo'), content_type=ct,
+            id=oa.id_ou_none(request.data.get('photo')), content_type=ct,
             object_id=interv.id, company=interv.company).first()
         if att is None:
             return Response({'detail': 'Photo inconnue.'},
@@ -1064,7 +1081,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             numero_serie=oa.s(),
             designation=oa.s(),
             slot=oa.s(),
-            caracteristiques=oa.obj(null=True),
+            caracteristiques=oa.Caracteristiques(required=False, allow_null=True),
             capture_source=oa.s(),
             file=oa.serializers.FileField(required=False),
         ),
@@ -1088,7 +1105,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # ADEP44 — idempotence par `client_op_id` : le rejeu d'une op déjà
         # appliquée (en ligne OU par la synchro) renvoie l'objet existant,
         # AVANT toute autre garde (le doublon de série ne doit pas la bloquer).
-        op_id = (request.data.get('client_op_id') or '').strip()
+        # api-fuzz-full 27/10 (ENF11) : champs texte TYPÉS (un fichier
+        # multipart nommé `client_op_id` faisait lever `.strip()` → 500).
+        op_id = oa.texte_corps(request, 'client_op_id', 'numero_serie',
+                               'designation', 'slot', 'capture_source')
         try:
             memorise = field_sync.rejeu_op_en_ligne(
                 company, op_id, 'intervention.serial')
@@ -1115,8 +1135,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # plaque validées ; source de capture (scan | saisie | photo).
         champs, refus = field_capture.champs_releve_serie(
             produit, request.data)
-        if refus:
-            return Response(refus, status=status.HTTP_400_BAD_REQUEST)
+        if refus:  # api-fuzz-full 27/10 (ENF11) : ni produit ni désignation → 409
+            return Response(refus, status=oa.statut_refus_releve(refus))
         numero = (request.data.get('numero_serie') or '').strip()
         # ACHT37 — doublon refusé dès la saisie (plus de 500 au push parc).
         raison = field_capture.raison_serie_en_double(company, numero)
@@ -1129,9 +1149,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if file is not None:
             # AUD311 (SCA42) — cle scopee societe (voir ajouter_photo).
             meta, err = store_attachment(file, company=company)
-            if err:
+            if err:  # api-fuzz-full 27/10 (ENF11) : format hors schéma → 409
                 return Response({'detail': err},
-                                status=status.HTTP_400_BAD_REQUEST)
+                                status=status.HTTP_409_CONFLICT)
             ct = ContentType.objects.get_for_model(Intervention)
             plaque = Attachment.objects.create(
                 company=company, content_type=ct, object_id=interv.id,
@@ -1191,10 +1211,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """F9 — édite un n° de série relevé. Corps : serial, numero_serie,
         [designation]."""
         interv = self.get_object()
-        serial = interv.serials.filter(id=request.data.get('serial')).first()
-        if serial is None:
+        serial = interv.serials.filter(id=oa.id_ou_none(request.data.get('serial'))).first()
+        if serial is None:  # api-fuzz-full 27/10 (ENF11) : id entier absent → 404
             return Response({'detail': 'Relevé inconnu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('serial')))
         # ACHT37 — un relevé déjà poussé au parc ne se corrige plus ici.
         if serial.pousse_parc:
             return Response({'detail': field_capture.MESSAGE_SERIE_AU_PARC},
@@ -1232,10 +1252,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def supprimer_serial(self, request, pk=None):
         """F9 — supprime un relevé de n° de série. Corps : {"serial": <id>}."""
         interv = self.get_object()
-        serial = interv.serials.filter(id=request.data.get('serial')).first()
-        if serial is None:
+        serial = interv.serials.filter(id=oa.id_ou_none(request.data.get('serial'))).first()
+        if serial is None:  # api-fuzz-full 27/10 (ENF11) : id entier absent → 404
             return Response({'detail': 'Relevé inconnu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('serial')))
         if serial.pousse_parc:  # ACHT37
             return Response({'detail': field_capture.MESSAGE_SERIE_AU_PARC},
                             status=status.HTTP_409_CONFLICT)
@@ -1272,7 +1292,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         interv = self.get_object()
         ct = ContentType.objects.get_for_model(Intervention)
         att = Attachment.objects.filter(
-            id=request.data.get('photo'), content_type=ct,
+            id=oa.id_ou_none(request.data.get('photo')), content_type=ct,
             object_id=interv.id, company=interv.company).first()
         if att is None:
             return Response({'detail': 'Photo inconnue.'},
@@ -1308,9 +1328,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     @oa.extend_schema(
         request=oa.body(
             'AjouterLigneConsommationRequete',
-            designation=oa.s(),
+            designation=oa.designation_ligne(),
             produit=oa.i(null=True),
-            quantite_utilisee=oa.dec(),
+            quantite_utilisee=oa.qte(),
             justification=oa.s(),
         ),
         responses={201: ConsommationLigneSerializer},
@@ -1329,19 +1349,17 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
                 {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
                 status=status.HTTP_400_BAD_REQUEST)
         cons = field_capture.ensure_consommation(interv)
-        designation = (request.data.get('designation') or '').strip()
-        if not designation:
-            return Response({'designation': 'Désignation requise.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        # api-fuzz-full 27/10 (ENF11) : `designation` obligatoire PUBLIÉE et
+        # validée par le même champ (non blanche, sans NUL, ≤ 255) — 400 dans
+        # l'enveloppe commune ; un NUL ou une valeur non textuelle faisait 500.
+        designation = oa.corps_valide(
+            oa.DesignationLigneRequete, request)['designation']
         produit = None
         if request.data.get('produit'):
             produit = get_produit_scoped(
                 interv.company, request.data.get('produit'))
-        from decimal import Decimal, InvalidOperation
-        try:
-            qte = Decimal(str(request.data.get('quantite_utilisee') or 0))
-        except (InvalidOperation, TypeError, ValueError):
-            qte = Decimal('0')
+        from decimal import Decimal
+        qte = oa.quantite_bornee(request, 'quantite_utilisee')  # (12, 2) : 1e15 → 500
         ligne = ConsommationLigne.objects.create(
             company=interv.company, consommation=cons, produit=produit,
             designation=designation, quantite_prevue=Decimal('0'),
@@ -1355,7 +1373,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         request=oa.body(
             'ModifierLigneConsommationRequete',
             ligne=oa.i(True),
-            quantite_utilisee=oa.dec(),
+            quantite_utilisee=oa.qte(),
             justification=oa.s(),
             justification_memo=oa.i(null=True),
         ),
@@ -1367,32 +1385,26 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def modifier_ligne_consommation(self, request, pk=None):
         """F11 — édite une ligne : quantite_utilisee, justification,
         justification_memo. Corps : {"ligne": <id>, ...}."""
-        from decimal import Decimal, InvalidOperation
         interv = self.get_object()
         cons = field_capture.ensure_consommation(interv)
         if not field_capture.consommation_modifiable(cons):  # ACHT30
             return Response(
                 {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
                 status=status.HTTP_400_BAD_REQUEST)
-        ligne = cons.lignes.filter(id=request.data.get('ligne')).first()
+        ligne = cons.lignes.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
         if ligne is None:
             return Response({'detail': 'Ligne inconnue.'},
                             status=oa.statut_inconnu(request.data.get('ligne')))
         fields = []
         if 'quantite_utilisee' in request.data:
-            try:
-                ligne.quantite_utilisee = Decimal(
-                    str(request.data.get('quantite_utilisee') or 0))
-            except (InvalidOperation, TypeError, ValueError):
-                return Response({'quantite_utilisee': 'Quantité invalide.'},
-                                status=status.HTTP_400_BAD_REQUEST)
+            ligne.quantite_utilisee = oa.quantite_bornee(request, 'quantite_utilisee')
             fields.append('quantite_utilisee')
         if 'justification' in request.data:
             ligne.justification = (request.data.get('justification') or '').strip()
             fields.append('justification')
         if 'justification_memo' in request.data:
             memo = interv.voice_memos.filter(
-                id=request.data.get('justification_memo')).first()
+                id=oa.id_ou_none(request.data.get('justification_memo'))).first()
             ligne.justification_memo = memo
             fields.append('justification_memo')
         if fields:
@@ -1412,12 +1424,15 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': field_capture.MESSAGE_CONSOMMATION_VALIDEE},
                 status=status.HTTP_400_BAD_REQUEST)
-        ligne = cons.lignes.filter(
-            id=request.data.get('ligne'), hors_nomenclature=True).first()
-        if ligne is None:
+        # api-fuzz-full 27/10 (ENF11) : ligne inconnue → 404 (id entier) ;
+        # ligne de la nomenclature = refus d'ÉTAT → 409 (les deux faisaient 400).
+        ligne = cons.lignes.filter(id=oa.id_ou_none(request.data.get('ligne'))).first()
+        if ligne is None or not ligne.hors_nomenclature:
             return Response(
-                {'detail': 'Seules les lignes hors-nomenclature sont supprimables.'},
-                status=status.HTTP_400_BAD_REQUEST)
+                {'detail': 'Ligne inconnue.' if ligne is None else
+                 'Seules les lignes hors-nomenclature sont supprimables.'},
+                status=oa.statut_ligne_non_supprimable(
+                    ligne, request.data.get('ligne')))
         motif, refus = self._motif_suppression(interv)  # ACHT41
         if refus is not None:
             return refus
@@ -1559,9 +1574,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # AUD311 (SCA42) — cle scopee societe (voir ajouter_photo).
         meta, err = store_attachment(file, audio=True,
                                      company=interv.company)
-        if err:
+        if err:  # api-fuzz-full 27/10 (ENF11) : format audio hors schéma → 409
             return Response({'detail': err},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=status.HTTP_409_CONFLICT)
         ct = ContentType.objects.get_for_model(Intervention)
         att = Attachment.objects.create(
             company=interv.company, content_type=ct, object_id=interv.id,
@@ -1588,10 +1603,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """F14 — édite la transcription d'un mémo (l'audio reste source de
         vérité). Corps : {"memo": <id>, "transcript": str}."""
         interv = self.get_object()
-        memo = interv.voice_memos.filter(id=request.data.get('memo')).first()
+        memo = interv.voice_memos.filter(id=oa.id_ou_none(request.data.get('memo'))).first()
         if memo is None:
             return Response({'detail': 'Mémo inconnu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('memo')))
         if 'transcript' in request.data:
             memo.transcript = request.data.get('transcript') or ''
             memo.transcrit = True
@@ -1607,10 +1622,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         {"memo": <id>}."""
         from apps.records.storage import delete_attachment
         interv = self.get_object()
-        memo = interv.voice_memos.filter(id=request.data.get('memo')).first()
+        memo = interv.voice_memos.filter(id=oa.id_ou_none(request.data.get('memo'))).first()
         if memo is None:
             return Response({'detail': 'Mémo inconnu.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+                            status=oa.statut_inconnu(request.data.get('memo')))
         motif, refus = self._motif_suppression(interv)  # ACHT41
         if refus is not None:
             return refus
@@ -1662,7 +1677,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             return Response({'detail': "Aucun gabarit pour ce type d'intervention."},
                             status=status.HTTP_409_CONFLICT)
         valeur_obj = releve.valeurs.filter(
-            id=request.data.get('valeur_id')).first()
+            id=oa.id_ou_none(request.data.get('valeur_id'))).first()
         if valeur_obj is None:
             return Response({'detail': 'Champ de fiche inconnu.'},
                             status=oa.statut_inconnu(request.data.get('valeur_id')))
@@ -1815,7 +1830,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     def modifier_reserve(self, request, pk=None):
         """F16 — édite une réserve (description, assignee). Corps : reserve, ..."""
         interv = self.get_object()
-        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        reserve = interv.reserves.filter(id=oa.id_ou_none(request.data.get('reserve'))).first()
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))
@@ -1826,7 +1841,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         if 'assignee' in request.data:
             from authentication.models import CustomUser
             reserve.assignee = CustomUser.objects.filter(
-                id=request.data.get('assignee'), company=interv.company).first()
+                id=oa.id_ou_none(request.data.get('assignee')), company=interv.company).first()
             fields.append('assignee')
         if fields:
             reserve.save(update_fields=fields)
@@ -1834,7 +1849,8 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             reserve, context={'request': request}).data)
 
     @oa.extend_schema(
-        request=oa.body('ResoudreReserveRequete', reserve=oa.i(True), statut=oa.s(), resolution=oa.s()),
+        request=oa.body('ResoudreReserveRequete', reserve=oa.i(True),
+                        statut=oa.choice(Reserve.Statut.values), resolution=oa.s()),
         responses=ReserveSerializer,
     )
     @action(detail=True, methods=['post'], url_path='resoudre-reserve',
@@ -1843,11 +1859,11 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         """F16 — résout (ou ré-ouvre) une réserve. Corps : reserve, resolution,
         [statut]."""
         interv = self.get_object()
-        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        reserve = interv.reserves.filter(id=oa.id_ou_none(request.data.get('reserve'))).first()
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))
-        statut = request.data.get('statut', Reserve.Statut.RESOLUE)
+        statut = oa.choix_corps(request, 'statut', Reserve.Statut.values, Reserve.Statut.RESOLUE)
         reserve.statut = statut
         reserve.resolution = (request.data.get('resolution') or '').strip()
         reserve.resolue_le = (timezone.now()
@@ -1870,7 +1886,7 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         `devis_repare_id`, le renvoie sans en créer un second. Corps :
         {"reserve": <id>}."""
         interv = self.get_object()
-        reserve = interv.reserves.filter(id=request.data.get('reserve')).first()
+        reserve = interv.reserves.filter(id=oa.id_ou_none(request.data.get('reserve'))).first()
         if reserve is None:
             return Response({'detail': 'Réserve inconnue.'},
                             status=oa.statut_inconnu(request.data.get('reserve')))
@@ -2245,7 +2261,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
 
     # ── FG78 — confirmation RDV + reschedule tracking ───────────────────────
     @oa.extend_schema(
-        request=oa.body('ConfirmerRdvRequete', confirme=oa.b(), date_prevue=oa.s(null=True), motif=oa.s(null=True)),
+        # api-fuzz-full 27/10 (ENF11) : `date_prevue` est publiée comme une
+        # DATE (AAAA-MM-JJ) — ce que `parser_date_rdv` accepte ; une chaîne
+        # libre était déclarée conforme puis refusée en 400.
+        request=oa.body('ConfirmerRdvRequete', confirme=oa.b(), date_prevue=oa.d(null=True), motif=oa.s(null=True)),
         responses=InterventionSerializer,
     )
     @action(detail=True, methods=['post'], url_path='confirmer-rdv',
@@ -2262,7 +2281,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
         # ACHT38 — report via le service unique (date parsée AVANT toute
         # écriture : date invalide → 400 sous le champ, jamais de 500).
         is_reschedule = False
-        if new_date:
+        # Absente/null = simple (dé)confirmation ; toute autre valeur doit être
+        # une date (une chaîne vide n'en est pas une : 400, comme le schéma).
+        if new_date is not None:
             try:
                 is_reschedule = replanifier(
                     interv, new_date, request.data.get('motif'),
@@ -2357,10 +2378,10 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
     @oa.extend_schema(
         request=oa.body(
             'SignerInterventionRequete',
-            signature_client=oa.s(True),
-            signataire_nom=oa.s(),
-            motif_override_signature=oa.s(),
-            motif_override=oa.s(),
+            signature_client=oa.signature_publiee(),
+            signataire_nom=oa.ChaineStricte(required=False, allow_blank=True),
+            motif_override_signature=oa.ChaineStricte(required=False, allow_blank=True),
+            motif_override=oa.ChaineStricte(required=False, allow_blank=True),
         ),
         responses=InterventionSerializer,
     )
@@ -2378,7 +2399,9 @@ class InterventionViewSet(oa.JsonOnlyMixin, CompanyScopedModelViewSet):
             SignatureRefusee, enregistrer_signature_intervention,
         )
         interv = self.get_object()
-        nom = (request.data.get('signataire_nom') or '').strip()
+        # api-fuzz-full 27/10 : un NUL dans le nom / le motif atteignait le
+        # chatter (PostgreSQL) → 500 ; textes stricts publiés et validés.
+        nom = oa.texte_corps(request, 'signataire_nom', 'motif_override_signature', 'motif_override')
         motif = (request.data.get('motif_override_signature')
                  or request.data.get('motif_override') or '')
         try:

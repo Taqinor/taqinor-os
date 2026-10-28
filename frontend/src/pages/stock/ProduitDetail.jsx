@@ -13,6 +13,7 @@ import {
 import {
   categorieIcone, estPompage, pointsCourbePompe,
   libelleRolePompage, libelleTypePompe, libelleAlimentation,
+  libelleTypePose, libellePrixCi,
 } from '../../features/stock/catalogue'
 import { useHasPermission } from '../../hooks/useHasPermission'
 import {
@@ -314,14 +315,14 @@ function OngletFicheTechnique({ produit, onEdit }) {
           {produit.etat_ci && (
             <>
               <Ligne label="Rôle C&I" valeur={produit.etat_ci.libelle} />
-              {produit.type_pose ? <Ligne label="Type de pose" valeur={produit.type_pose} /> : null}
+              {produit.type_pose ? <Ligne label="Type de pose" valeur={libelleTypePose(produit.type_pose)} /> : null}
               <Ligne label="Délai d'approvisionnement (jours)" valeur={produit.delai_appro_jours} />
               {!produit.etat_ci.eligible_ci && (
                 <Ligne label="Exclu du C&I" valeur={produit.etat_ci.motif_exclusion} />
               )}
-              {!produit.etat_ci.prix_connu && (
-                <Ligne label="Prix C&I" valeur="prix à renseigner" />
-              )}
+              {/* CCAT4 — une prestation est tarifée dans Paramètres, un coffret au
+                  barème : jamais « prix à renseigner » pour eux. */}
+              {libellePrixCi(produit) && <Ligne label="Prix C&I" valeur={libellePrixCi(produit)} />}
             </>
           )}
         </div>

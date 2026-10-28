@@ -1,0 +1,65 @@
+{
+  "endpoint": "POST /api/django/ventes/etude-ci/reviser-apres-visite/",
+  "pourquoi": "CORC2 (session L3 C&I CORC, 27/10/2026, demande de la session CSV) — CONTRAT D'ABORD (PACT10). Le devis automatique C&I est PRÉLIMINAIRE (fondateur 26/10/2026 : câble DC 2 × chaînes × 30 m, câble AC 30 m par onduleur, toit inconnu = toit plat lesté). Une fois la visite technique C&I VALIDÉE, ce geste RECOMPOSE les lignes du devis avec ses mesures (longueurs de cheminement — le trajet le plus long —, couverture/pose, surface, pente, charge admissible, tension, puissance souscrite). Brouillon : recomposé SUR PLACE (`cree: false`). Envoyé / accepté / refusé / expiré : une V+1 brouillon est créée par la révision (`reviser_devis`) puis recomposée (`cree: true`) ; la V1 garde ce que le client a reçu. La taille vendue (kWc de l'offre réseau) est gardée ; aucun statut écrit (règle #4) ; remise globale et en-tête intouchés ; les réglages de LIGNES de la version d'avant (prix négociés, lignes ajoutées ou retirées à la main) sont remplacés par la recomposition — `lignes_changees` les montre ; tout le geste est UNE transaction (un refus n'écrit rien, jamais de V+1 orpheline). Consommateur : écran de validation de la visite (session CSV), bouton « Préparer le devis révisé ». Rôles : responsable / admin (même garde que « Réviser »).",
+  "corps": {
+    "devis": 1349
+  },
+  "exemple": {
+    "devis_id": 1352,
+    "reference": "DEV-202610-0112",
+    "version": 2,
+    "cree": true,
+    "lignes_changees": [
+      {
+        "designation": "Câble solaire Nexans 6mm² (au mètre)",
+        "variante": "sans",
+        "avant": {"quantite": "120", "prix_unitaire_ht": "10.83"},
+        "apres": {"quantite": "100", "prix_unitaire_ht": "10.83"}
+      },
+      {
+        "designation": "Câble AC cuivre 5×10 mm² (au mètre)",
+        "variante": "sans",
+        "avant": {"quantite": "30", "prix_unitaire_ht": "125.00"},
+        "apres": {"quantite": "45", "prix_unitaire_ht": "125.00"}
+      },
+      {
+        "designation": "Structure toit plat lestée",
+        "variante": "sans",
+        "avant": {"quantite": "42", "prix_unitaire_ht": "450.00"},
+        "apres": null
+      },
+      {
+        "designation": "Structure bac acier",
+        "variante": "sans",
+        "avant": null,
+        "apres": {"quantite": "42", "prix_unitaire_ht": "300.00"}
+      }
+    ],
+    "mesures_utilisees": [
+      {"cle": "couverture", "valeur": "bac_acier", "provenance": {"origine": "mesure_visite", "detail": "visite 31", "date": "2026-10-27"}},
+      {"cle": "longueur_ac_m", "valeur": 45, "provenance": {"origine": "mesure_visite", "detail": "visite 31", "date": "2026-10-27"}},
+      {"cle": "longueur_dc_m", "valeur": 25, "provenance": {"origine": "mesure_visite", "detail": "visite 31", "date": "2026-10-27"}},
+      {"cle": "type_pose", "valeur": "bac_acier", "provenance": {"origine": "mesure_visite", "detail": "visite 31", "date": "2026-10-27"}}
+    ],
+    "alertes": [
+      {"code": "puissance_souscrite_inconnue", "champ": "puissance_souscrite_kva", "message": "Puissance souscrite non déclarée : borne de puissance non appliquée.", "niveau": "alerte", "interne": true}
+    ]
+  },
+  "refus": {
+    "404": "{detail} — devis absent, d'une autre société ou hors portée de l'appelant",
+    "409": "{detail, field} — field ∈ mode_installation (devis non C&I) | lead (devis sans lead) | visite (aucune visite C&I VALIDÉE sur le lead) | devis (version remplacée ou archivée) | scenario (devis « avec batterie » seule : pas encore recomposé automatiquement) | taille (puissance des lignes illisible) | <champ du lead ou composition/taille> (même refus que le devis automatique, `etude_ci.refus_devis_auto_ci`). `detail` est une consigne en français pour le vendeur."
+  },
+  "regles_sorties": {
+    "devis_id": "id du devis RECOMPOSÉ — la V+1 quand `cree`, sinon le brouillon d'origine",
+    "reference": "sa référence",
+    "version": "sa version (1 pour un brouillon jamais envoyé)",
+    "cree": "vrai = une V+1 a été créée (le devis d'origine était envoyé/accepté/refusé/expiré) ; faux = brouillon recomposé sur place",
+    "lignes_changees": "[{designation, variante '' | sans | avec, avant, apres}] — avant/apres = {quantite, prix_unitaire_ht} (textes décimaux) ou null (ligne ajoutée / retirée) ; seules les lignes PRODUIT qui changent ; liste vide = la visite ne change rien au chiffrage",
+    "mesures_utilisees": "[{cle, valeur, provenance}] — les entrées de l'étude dont la provenance est `mesure_visite` (forme provenance UNIQUE d'etude_ci_preview.json)",
+    "alertes": "[{code, champ, message, niveau alerte|bloquant, interne}] — alertes de l'étude recomposée (niveau info exclu)"
+  },
+  "interdit": [
+    "prix_achat",
+    "marge"
+  ]
+}

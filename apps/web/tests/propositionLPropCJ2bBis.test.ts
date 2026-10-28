@@ -23,11 +23,12 @@ import {
   PROPOSAL_JOUR_TYPE_MONTH_IDS,
   type ProposalResponse,
 } from '../src/lib/proposition';
+import { lirePageProposition } from './astroBlocsHelper';
 
 const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
 // mon-toit.astro / proposition sources are CRLF (Windows-authored) — normalize
 // before pinning multi-line source snippets, same discipline as L-WEBT.
-const PAGE = read('../src/pages/proposition/[...token].astro').replace(/\r\n/g, '\n');
+const PAGE = lirePageProposition().replace(/\r\n/g, '\n');
 
 // Même discipline que CJ2b/P18/PV80 : le code réel, commentaires retirés — un
 // commentaire qui mentionne une clause ne doit jamais faire passer un test.

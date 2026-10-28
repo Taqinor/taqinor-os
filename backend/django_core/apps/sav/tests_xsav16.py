@@ -217,6 +217,19 @@ class XSAV16DowntimeTest(TestCase):
             self.assertEqual(resp.status_code, 400, (requete, resp.content))
         self.assertEqual(api.get(url + '?debut=&fin=').status_code, 200)
 
+    def test_disponibilite_premier_jour_du_calendrier_200(self):
+        # api-fuzz-full 27/10 (ENF11) : `fin=0001-01-01` faisait déborder le
+        # début par défaut (`fin − 30 j`, OverflowError → 500), même avec un
+        # `debut` fourni. Deux dates valides au schéma : la période est servie.
+        api = auth(self.admin)
+        url = f'/api/django/sav/equipements/{self.equip.id}/disponibilite/'
+        for requete in ('?debut=0001-01-01&fin=0001-01-01', '?fin=0001-01-01',
+                        '?debut=0001-01-01&fin=0001-01-02',
+                        '?debut=9999-12-31&fin=9999-12-31'):
+            resp = api.get(url + requete)
+            self.assertEqual(resp.status_code, 200, (requete, resp.content))
+            self.assertIn('disponibilite_pct', resp.data)
+
     def test_api_downtime_nul_ticket_inconnu_et_schema_publie(self):
         # api-fuzz-full 24/10 : NUL dans ``motif`` (publié sans motif -> 400
         # sur un corps « conforme ») ; un ticket inconnu est un 404, pas un 400.

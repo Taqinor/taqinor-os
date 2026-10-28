@@ -132,11 +132,13 @@ CATEGORIE_EN_MASSE = {'nullable': True, 'anyOf': [
 #: ``ProduitSerializer.validate_courbe_pompe`` / ``validate_courbe_source`` /
 #: ``validate_paliers_prix_vente`` / ``validate_custom_data`` l'appliquent
 #: (publiés « valeur quelconque », toute forme passait pour conforme).
-#: ``seuil_min`` >= 0 et < ``seuil_max`` : la borne basse n'est PAS publiée en
-#: ``minimum`` (le générateur pousserait seuil_min à 1 = seuil_max « 1 »,
-#: couple que la règle croisée refuse) — elle est dite en description.
+#: api-fuzz-full 27/10 (ENF11) : ``seuil_min`` >= 0 est une borne d'UN champ,
+#: publiée en ``minimum`` (``-5e-90`` était conforme puis refusé 400 « doit
+#: être un nombre positif ») ; « < ``seuil_max`` » est une règle CROISÉE que
+#: OpenAPI 3.0 ne sait pas dire : description + 409 (comme le recouvrement).
 _NOMBRE_OU_TEXTE = {'description': 'Nombre >= 0, strictement inférieur à seuil_max.',
-                    'anyOf': [{'type': 'number'}, {'type': 'string', 'pattern': r'^\d+(?:[.,]\d+)?$'}]}
+                    'anyOf': [{'type': 'number', 'minimum': 0},
+                              {'type': 'string', 'pattern': r'^\d+(?:[.,]\d+)?$'}]}
 _STRICT_POSITIF = {'anyOf': [
     {'type': 'number', 'minimum': 0, 'exclusiveMinimum': True},
     {'type': 'string', 'pattern': r'^(?:0*[1-9]\d*(?:[.,]\d+)?|0*[.,]\d*[1-9]\d*)$'}]}
@@ -210,7 +212,9 @@ CONTRAINTES = {
         'racine': {'anyOf': [
             {'properties': {'mode': {'enum': ['manuel', 'auto_heure']}}},
             {'required': ['seuil_lignes'], 'properties': {
-                'mode': {'enum': ['auto_seuil']}, 'seuil_lignes': {'type': 'integer', 'minimum': 1}}}]}},
+                'mode': {'enum': ['auto_seuil']},
+                # api-fuzz-full 27/10 : borne int4 publiée ET appliquée (2**65 → 500).
+                'seuil_lignes': {'type': 'integer', 'minimum': 1, 'maximum': 2147483647}}}]}},
     'FournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
     'PatchedFournisseurRequest': {'proprietes': ICE_15_CHIFFRES},
     # CI #997 fuzz — `prix_achat` : la fiche produit l'envoie en NOMBRE JSON

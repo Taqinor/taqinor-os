@@ -321,6 +321,29 @@ class FacturerVenteTrancheVNT26(_BaseVente):
     jamais émise, 0 sortie de stock ; 409 ``version_remplacee`` /
     ``cle_inattendue`` / ``tranche_en_brouillon``."""
 
+    def test_montant_tranche_refus_d_etat_409(self):
+        # api-fuzz-full 27/10 (ENF11) : « pas une tranche » et un montant au
+        # moins égal au prix convenu sont des refus d'ÉTAT (409) ; un montant
+        # illisible reste un 400.
+        from apps.ventes.domain.facturation_vente import (
+            FacturationVenteRefusee, modifier_montant_tranche)
+        devis = self._388('DEV-VNT67-ETAT')
+        complete = self._tranche(devis, '', 'solde', '100.00', '83.33',
+                                 '16.67', statut='brouillon',
+                                 type_facture='complete')
+        with self.assertRaises(FacturationVenteRefusee) as ctx:
+            modifier_montant_tranche(complete, '50', user=self.user)
+        self.assertEqual((ctx.exception.status, ctx.exception.corps['code']),
+                         (409, 'pas_une_tranche'))
+        tranche = self._acompte_14700(devis, statut='brouillon', reference='')
+        with self.assertRaises(FacturationVenteRefusee) as ctx:
+            modifier_montant_tranche(tranche, '9999999999', user=self.user)
+        self.assertEqual((ctx.exception.status, ctx.exception.corps['code']),
+                         (409, 'montant_invalide'))
+        with self.assertRaises(FacturationVenteRefusee) as ctx:
+            modifier_montant_tranche(tranche, 'abc', user=self.user)
+        self.assertEqual(ctx.exception.status, 400)
+
     def test_acompte_en_brouillon_bloque_la_tranche_materiel(self):
         devis = self._388('DEV-VNT26-BR')
         acompte = self._acompte_14700(devis, statut='brouillon', reference='')
@@ -736,6 +759,34 @@ class FacturerVenteEndpointVNT31(_BaseVente):
                                  format='json')
             self.assertEqual(resp.status_code, 400, (brut, resp.data))
         self.assertFalse(Facture.objects.filter(devis=devis).exists())
+
+    def test_paiement_publie_avec_montant_requis(self):
+        """api-fuzz-full 27/10 (ENF11) — ``paiements: [{…sans montant…}]``
+        était publié « objet quelconque » puis refusé 400 « Paiement n°1 :
+        montant invalide. » : la forme lue par ``valider_paiements_saisis``
+        est publiée (montant requis, motif ; date ; mode) et appliquée par
+        le sérialiseur déclaré — 400 nommant le champ, aucune facture."""
+        from apps.ventes.views import openapi_docs as D
+        enfant = D.FacturerVenteRequest.fields['paiements'].child
+        self.assertTrue(enfant.fields['montant'].required)
+        self.assertEqual(set(enfant.fields), {
+            'montant', 'date_paiement', 'mode_paiement', 'reference'})
+        devis = self._388('DEV-VNT31-PAIEMENT')
+        resp = self.api.post(self._url(devis), {
+            'nature': 'acompte', 'montant_ttc': '15000.00', 'emettre': True,
+            'paiements': [{'mode_paiement': 'virement',
+                           'date_paiement': date.today().isoformat()}]},
+            format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('paiements', resp.data)
+        self.assertFalse(Facture.objects.filter(devis=devis).exists())
+        resp = self.api.post(self._url(devis), {
+            'nature': 'acompte', 'montant_ttc': '15000.00', 'emettre': True,
+            'paiements': [{'montant': '15000.00', 'mode_paiement': 'virement',
+                           'date_paiement': date.today().isoformat()}]},
+            format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['facture']['statut'], 'payee')
 
     def test_emettre_exige_le_code_d_encaissement(self):
         from apps.roles.permissions_registre import (

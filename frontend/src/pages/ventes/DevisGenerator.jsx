@@ -179,6 +179,7 @@ import CarteParametresTechniques from './generator/CarteParametresTechniques'
 // la table de lignes, le rail d'argent, l'enregistrement — et TOUTE la logique
 // transverse (chaîne d'étude horaire, roi, études par marché, validate).
 import PanneauResidentiel from './generator/PanneauResidentiel'
+import BandeauGrandSysteme from './generator/residentiel/BandeauGrandSysteme'
 import PanneauIndustriel from './generator/PanneauIndustriel'
 import PanneauCommercial, { CATEGORIE_NON_PRECISEE } from './generator/PanneauCommercial'
 import PanneauAgricole from './generator/PanneauAgricole'
@@ -661,8 +662,8 @@ export default function DevisGenerator({
     // repli de taux et l'avertissement de divergence, jamais un recalage forcé.
     tvaStandard: TVA_STANDARD_DEFAUT, tvaPanneaux: TVA_PANNEAUX_DEFAUT,
     // QX38 — override productible société (CompanyProfile.productible_kwh_kwc).
-    // Défaut historique 1600 → productibleForCity lit alors le PVGIS par ville
-    // (source unique alignée écran/PDF/web) ; une valeur société ≠ 1600 prime.
+    // Vide (null) → productibleForCity lit alors le PVGIS par ville (source
+    // unique alignée écran/PDF/web) ; toute valeur société saisie prime (AMOT64).
     productible: null,
   })
   const [remiseMax, setRemiseMax] = useState('')
@@ -1000,7 +1001,9 @@ export default function DevisGenerator({
     monthly, lines, totals, kwp, kwpLignes, kwpAvec, dayUsage, realBillMode, realBillKwh,
     realBillMad, distributeur, baremeSociete, provenanceMois, realBillSaisi, leadDuDevis, leads,
     leadId, modeInstallation, clientsConnus, clientId, confirm, quoteLogic, editId, fHiver, fEte,
-    sizing, dispatchSizing, produits,
+    // RGEN5 — niveau de règles du devis édité (`Devis.regles_calcul`, ancien calcul tant
+    // qu'il n'est pas lu) ; un devis neuf naît au niveau 3.
+    sizing, dispatchSizing, produits, reglesCalcul: editId ? (editDevis?.regles_calcul ?? 0) : 3,
   })
 
   // ── Mode d'installation (Résidentiel / Industriel-Commercial / Agricole) ──
@@ -1274,7 +1277,6 @@ export default function DevisGenerator({
       // du moteur pompage) : l'écran n'a plus de champ « heures » à pré-remplir.
       // Logique de devis éditable (D5) — repli sur les constantes du simulateur.
       const kwh = parseFloat(data?.onee_tarif_kwh)
-      const rend = parseFloat(data?.rendement_global)
       const tvaStd = parseFloat(data?.tva_standard)
       const tvaPan = parseFloat(data?.tva_panneaux)
       // QJR39 — CompanyProfile.productible_kwh_kwc (QX38, exposé tel quel par
@@ -1289,7 +1291,8 @@ export default function DevisGenerator({
       const prod = parseFloat(data?.productible_kwh_kwc)
       setQuoteLogic({
         kwhPrice: (Number.isFinite(kwh) && kwh > 0) ? kwh : KWH_PRICE,
-        efficiency: (Number.isFinite(rend) && rend > 0) ? rend : EFFICIENCY,
+        // RGEN6 (AMOT64) — `rendement_global` ne pilote plus l'écran : la constante du simulateur, celle du serveur.
+        efficiency: EFFICIENCY,
         tvaStandard: (Number.isFinite(tvaStd) && tvaStd > 0) ? tvaStd : TVA_STANDARD_DEFAUT,
         tvaPanneaux: (Number.isFinite(tvaPan) && tvaPan > 0) ? tvaPan : TVA_PANNEAUX_DEFAUT,
         productible: (Number.isFinite(prod) && prod > 0) ? prod : null,
@@ -1810,18 +1813,11 @@ export default function DevisGenerator({
               value={modeInstallation}
               onChange={(v) => { marquerMarcheTouche(); onModeChangeUi(v) }}
             />
-            {modeInstallation === 'residentiel' && kwp > 36 && (
-              <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
-                Ce système fait {formatNumber(kwp, { decimals: 2 })} kWc — au-delà de l'échelle résidentielle.
-                Le mode Industriel ou Commercial produira un document plus adapté
-                (étude d'autoconsommation, option unique). Vous pouvez ignorer cette suggestion.
-              </div>
-            )}
+            <BandeauGrandSysteme modeInstallation={modeInstallation} nbPanneaux={nbPanneaux} kwp={kwp} />
             {showAvecWarning && (
               <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">
-                Option « avec batterie » indisponible pour ce système : {avecDispo.reason}.
-                Le PDF sera un document à option unique (sans batterie) — jamais une
-                option partielle silencieuse.
+                Option « avec batterie » indisponible : {avecDispo.reason}. Tant que ce
+                n'est pas réglé, le PDF ne présente que l'option sans batterie.
               </div>
             )}
             {showAvec && lines.length > 0 && avecDispo.batterieDifferee && (
@@ -1951,7 +1947,7 @@ export default function DevisGenerator({
             Quatre panneaux, un par marché : chacun porte SES champs et se
             retire lui-même hors de sa clé de marché, donc exactement un rend,
             à la place qu'occupaient les deux cartes conditionnelles. */}
-        <PanneauResidentiel {...socleFactures} />
+        <PanneauResidentiel {...socleFactures} sizing={sizing} />
         <PanneauIndustriel {...socleFactures} {...socleEtudeReseau} />
         <PanneauCommercial
           {...socleFactures}
