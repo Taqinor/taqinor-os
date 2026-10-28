@@ -2295,8 +2295,7 @@ export function savingsHeadline(
     return { annual: null, cumulative: null, gainNet: null, years, monthly: null, payback: null, cumulativeFromBackend: false };
   }
   const annualRaw = opt === 'avec_batterie' ? p.quote?.eco_a_ann : p.quote?.eco_s_ann;
-  const annual = typeof annualRaw === 'number' && Number.isFinite(annualRaw) && annualRaw > 0
-    ? annualRaw : null;
+  const annual = typeof annualRaw === 'number' && Number.isFinite(annualRaw) && annualRaw > 0 ? annualRaw : null;
   // RWEB25 — roi_*_jamais : aucun retour, jamais la sentinelle « 25 ans ».
   const jamais = (opt === 'avec_batterie' ? p.quote?.roi_a_jamais : p.quote?.roi_s_jamais) === true;
   const paybackRaw = jamais ? null : opt === 'avec_batterie' ? p.quote?.roi_a : p.quote?.roi_s;
@@ -2306,14 +2305,8 @@ export function savingsHeadline(
   const net = p.gain_net_25_ans?.[opt];
   const gainNet = typeof net === 'number' && Number.isFinite(net) && net > 0 ? net : null;
 
-  return {
-    annual,
-    cumulative, gainNet,
-    years,
-    monthly: annual !== null ? Math.round(annual / 12) : null,
-    payback: formatPayback(paybackRaw),
-    cumulativeFromBackend: cumulative !== null,
-  };
+  const monthly = annual !== null ? Math.round(annual / 12) : null;
+  return { annual, cumulative, gainNet, years, monthly, payback: formatPayback(paybackRaw), cumulativeFromBackend: cumulative !== null };
 }
 
 // ── PVCOV (fondateur 2026-08-18) · La synthèse page 1 du PDF, SERVIE ────────

@@ -1116,16 +1116,15 @@ def _economies_cumul_25_ans_publique(data, devis=None):
         if not data.get('totaux_sans' if option == 'sans_batterie' else 'totaux_avec'):
             continue
         try:
-            dernier = float(flux[-1])
-            investissement = float(data.get(cle_total) or 0)
+            dernier, investissement = float(flux[-1]), float(data.get(cle_total) or 0)
         except (TypeError, ValueError):
             continue
         if investissement <= 0:
             continue
         out[option] = round(dernier + investissement)
-        if regles_au_moins(devis, REGLES_CORRIGEES_2710) and not data.get(cle_jamais):
-            net[option] = gain_net_25_ans(data, option == 'avec_batterie')
-    net = {option: n for option, n in net.items() if n}
+        if regles_au_moins(devis, REGLES_CORRIGEES_2710) and not data.get(cle_jamais) \
+                and (gain := gain_net_25_ans(data, option == 'avec_batterie')):
+            net[option] = gain
     return out or None, net or None
 
 
@@ -1295,11 +1294,9 @@ def proposal_data(request, token):
             data.pop('factures_mensuelles', None)
         if data.get('nb_options') == 1:
             if not data.get('avec_ok'):
-                data['totaux_avec'] = None
-                data['avec_items'] = []
+                data['totaux_avec'], data['avec_items'] = None, []
             if not data.get('sans_ok'):
-                data['totaux_sans'] = None
-                data['sans_items'] = []
+                data['totaux_sans'], data['sans_items'] = None, []
         # CJ2b (21/08/2026) — rien ne franchit la frontière publique qui ne
         # soit vendable : quand
         # l'option batterie n'est pas RÉELLEMENT vendable (`avec_ok` faux),
