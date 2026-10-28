@@ -131,3 +131,38 @@ export function estIceDivergent(status: number, payload: unknown): boolean {
   const code = (payload as { code?: unknown } | null | undefined)?.code;
   return status === 409 && code === CODE_ICE_DIVERGENT;
 }
+
+// ── CPRW19 — préremplissage de la signature entreprise ─────────────────────────────────────
+
+/** Ce que le devis sait de l'entreprise cliente (`synthese_ci.entreprise_client`), tel que `syntheseCi` le lit. */
+export interface EntrepriseServie {
+  raisonSociale: string | null;
+  ice?: string | null;
+  fonction?: string | null;
+}
+
+/**
+ * CPRW19 — de quoi pré-remplir le formulaire de signature : la raison sociale et l'ICE (normalisée comme
+ * le serveur) sont des VALEURS ; la fonction de l'interlocuteur n'est pas forcément celle du signataire :
+ * elle reste une SUGGESTION (placeholder), jamais une valeur envoyée.
+ */
+export function valeursInitialesEntreprise(e: EntrepriseServie | null | undefined): {
+  valeurs: { raison_sociale: string; ice: string };
+  suggestion: { fonction: string };
+} {
+  return {
+    valeurs: { raison_sociale: (e?.raisonSociale ?? '').trim(), ice: normaliserIce(e?.ice) },
+    suggestion: { fonction: (e?.fonction ?? '').trim() },
+  };
+}
+
+/**
+ * CPRW19 — applique le pré-remplissage : `#sign-ice` reçoit l'ICE (value) et `#sign-qualite` la fonction
+ * en placeholder, chacun SEULEMENT s'il est vide (jamais d'écrasement d'une saisie). Sans champ : sans effet.
+ */
+export function installerPrefillEntreprise(racine: ParentNode, r: ReturnType<typeof valeursInitialesEntreprise>): void {
+  const ice = racine.querySelector('#sign-ice') as { value: string } | null;
+  if (ice && !ice.value && r.valeurs.ice) ice.value = r.valeurs.ice;
+  const qualite = racine.querySelector('#sign-qualite') as { value: string; placeholder: string } | null;
+  if (qualite && !qualite.value && !qualite.placeholder && r.suggestion.fonction) qualite.placeholder = r.suggestion.fonction;
+}

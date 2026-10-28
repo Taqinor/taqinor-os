@@ -186,3 +186,20 @@ describe('CPRW9-CPRW10 — rentabilité industrielle : section conditionnelle, l
     expect(SRC).toMatch(/data-figure="lcoe_mad_kwh">\{formatNumber\(ciRent\.lcoeMadKwh, 4\)\}/);
   });
 });
+
+// ── CPRW22 — tableau des jalons défilable en mobile ; pilules dans l'ordre réel de la page ───
+describe('CPRW22 — SectionRentabiliteIndustrielle : mobile et ordre des pilules', () => {
+  const SRC22 = readFileSync(
+    fileURLToPath(new URL('../src/components/proposition/ci/SectionRentabiliteIndustrielle.astro', import.meta.url)),
+    'utf-8',
+  );
+  it('le tableau des jalons est enveloppé dans div.overflow-x-auto', () => {
+    expect(SRC22).toMatch(/<div class="overflow-x-auto">\s*<table class="mt-3 w-full text-sm" dir="ltr">/);
+  });
+  it('pilules Direction, Achats, Exploitation = ordre des ancres de la page', () => {
+    const ordrePilules = [...SRC22.matchAll(/<a href="#(\w+)" class="btn-pill/g)].map((m) => m[1]);
+    expect(ordrePilules).toEqual(['direction', 'achats', 'exploitation']);
+    const page = lirePageProposition();
+    expect(page.indexOf('id="achats"')).toBeLessThan(page.indexOf('id="exploitation"'));
+  });
+});

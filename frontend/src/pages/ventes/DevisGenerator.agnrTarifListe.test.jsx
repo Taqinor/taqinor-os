@@ -16,6 +16,11 @@ vi.mock('../../api/crmApi', async () => (await import('../../test/mocksApiDevis.
 vi.mock('../../api/stockApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 vi.mock('../../api/parametresApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
 vi.mock('../../api/ventesApi', async () => (await import('../../test/mocksApiDevis.js')).apiAutoMock())
+// RGEN6 — `computeROI` ENROBÉ (même fonction, appels observés) pour lire l'efficacité reçue.
+vi.mock('../../features/ventes/solar', async (importOriginal) => {
+  const m = await importOriginal()
+  return { ...m, computeROI: vi.fn(m.computeROI) }
+})
 
 // Contrat AGNR1 : l'exemple « liste » (1 961,82 HT) et sa variante à 1 350 HT.
 const CONTRAT = exempleContrat('ventes', 'prix_applicable')
@@ -62,5 +67,24 @@ describe('AGNR15 — prix de liste HT converti au taux de la ligne', () => {
     const pu = (designation) => lignes.find((l) => l.designation === designation)?.prix_unitaire
     expect(pu('Onduleur réseau 5kW Monophasé')).toBe('1350.00')
     expect(pu('Panneau Canadien Solar 715W')).toBe('1961.82')
+  }, 60000)
+})
+
+describe('RGEN6 rendement_global ignoré', () => {
+  it('une société à rendement_global = 0,7 garde efficiency = EFFICIENCY (0,8) dans l’aperçu local', async () => {
+    const vue = await monter(`/ventes/devis/nouveau?edit=${DEVIS_REGISTRE.id}`, {
+      devis: DEVIS_REGISTRE,
+      avant: (apis) => { apis.parametresApi.getProfile.mockResolvedValue({ data: { rendement_global: 0.7 } }) },
+    })
+    const { container } = vue
+    // L'instance que l'écran a importée (après `resetModules` du harnais).
+    const { computeROI, EFFICIENCY } = await import('../../features/ventes/solar')
+    await waitFor(() => expect(vue.parametresApi.getProfile).toHaveBeenCalled(), { timeout: 5000 })
+    await waitFor(() => expect(computeROI).toHaveBeenCalled(), { timeout: 5000 })
+    await attendreStable(container, act, { stables: 10 })
+    expect(EFFICIENCY).toBe(0.8)
+    const efficacites = computeROI.mock.calls.map(([args]) => args.efficiency)
+    expect(efficacites.length).toBeGreaterThan(0)
+    expect(efficacites.every((e) => e === EFFICIENCY)).toBe(true)
   }, 60000)
 })
