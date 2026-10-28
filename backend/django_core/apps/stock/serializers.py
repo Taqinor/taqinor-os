@@ -1394,12 +1394,12 @@ class LigneRetourFournisseurSerializer(SameCompanyFKSerializerMixin,
         return value
 
 
-class RetourFournisseurSerializer(SameCompanyFKSerializerMixin,
+class RetourFournisseurSerializer(IdInconnu404Mixin, SameCompanyFKSerializerMixin,
                                   ChampsTexteBooleenStricts, serializers.ModelSerializer):
     # ASTK2 — fournisseur et BCF d'origine bornés à la société, en création
     # ET en modification (remplace l'ancien `_validate_company`, création
-    # seule et message propre = oracle d'existence).
-    same_company_fields = ('fournisseur', 'bon_commande')
+    # seule et message propre = oracle d'existence). api-fuzz-full 28/10 : un id inconnu, lignes comprises → 404.
+    same_company_fields, ids_inconnus_imbriques = ('fournisseur', 'bon_commande'), True
     lignes = LigneRetourFournisseurSerializer(many=True)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
